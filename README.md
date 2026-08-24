@@ -1,136 +1,139 @@
 # Ariane
 
-> **Écrit en « vibe coding » avec Claude.** Ce greffon a été conçu et programmé
-> en conversation avec Claude (Anthropic), à partir des besoins réels d'une
-> thèse en sciences de gestion. Je ne suis pas développeur : je décris ce dont
-> j'ai besoin, je teste, je corrige, et le code s'écrit au fil des échanges.
-> Je le dis d'emblée par honnêteté — sachez à quoi vous avez affaire avant de
-> l'installer. Le code est lisible, commenté en français, et sans dépendance :
-> un seul fichier `main.js`, ni TypeScript, ni bundler, ni `npm`.
+> **Written by vibe coding with Claude.** This plugin was designed and written
+> in conversation with Claude (Anthropic), from the real needs of a doctoral
+> student. I am not a developer. I describe what I need, I test, I correct, and
+> the code takes shape through the exchange. I say this up front, out of
+> honesty, so you know what you are installing. The code is readable, commented,
+> and has no dependency: a single `main.js` file, no TypeScript, no bundler, no
+> `npm`.
+>
+> *Français : voir [README.fr.md](README.fr.md).*
 
-**Ariane est le compagnon d'aval de [ZotFlow](https://github.com/zotflow/zotflow).**
-ZotFlow fait entrer Zotero dans Obsidian : références, pièces jointes,
-annotations, notes. Ariane prend le relais et travaille cette matière — elle
-l'atomise, la relie, la cite et l'exporte. Sans ZotFlow, Ariane n'a rien à se
-mettre sous la dent.
+**Ariane is the downstream companion of [ZotFlow](https://github.com/zotflow/zotflow).**
+ZotFlow brings Zotero into Obsidian: references, attachments, annotations,
+notes. Ariane picks up from there and works that material. It atomises it,
+links it, cites it and exports it. Without ZotFlow, Ariane has nothing to work
+on.
+
+Interface available in **English and French**.
 
 ---
 
-## Ce que fait Ariane
+## What Ariane does
 
-### Atomiser
-Chaque annotation Zotero devient une note autonome, à l'identité stable, qui
-survit aux régénérations. Les **notes-filles Zotero** — celles attachées à la
-référence entière plutôt qu'à un passage — deviennent des « notes de lecture »
-à part entière, citables et reliées à leur source.
+### Atomise
+Every Zotero annotation becomes a standalone note with a stable identity that
+survives regeneration. **Zotero child notes**, the ones attached to the whole
+reference rather than to a single passage, become "reading notes" in their own
+right, citable and linked back to their source.
 
-### Citer Zotero, en direct
-Les citations s'écrivent en clair dans vos notes :
+### Cite Zotero, live
+Citations are written in plain sight inside your notes:
 
 ```
-([[CLE|Dresch et al., 2015, p. 63]] ; [[AUTRE|Gibbons, 1994, p. 12]])
+([[KEY|Dresch et al., 2015, p. 63]] ; [[OTHER|Gibbons, 1994, p. 12]])
 ```
 
-Ariane tient l'apparat des **sources de seconde main** — « X, Y et Z, cité dans
-Dupont, 2020 » — replie les citations en pastilles quand elles encombrent la
-lecture, et construit la bibliographie de fin de note.
+Ariane maintains the apparatus for **secondary sources**, as in "X, Y and Z, as
+cited in Dupont, 2020". It can fold citations into a small badge when they
+clutter the reading, and it builds the bibliography at the end of the note.
 
-### Suggérer
-Un panneau latéral propose, au fil de l'écriture, les notes les plus proches.
-Trois moteurs, au choix : lexical (aucune dépendance), sémantique (embeddings
-locaux) ou hybride. **Ollama ou LM Studio**, en local, hors ligne, gratuit.
-Le reclassement par modèle de langue reste à la demande — il est borné en durée
-et en longueur, pour ne pas faire chauffer la machine.
+### Suggest
+A side panel proposes the closest notes as you write. Three engines to choose
+from: lexical (no dependency), semantic (local embeddings) or hybrid. Works with
+**Ollama or LM Studio**, locally, offline, free of charge. Reranking by a
+language model stays on demand, and it is bounded in both time and length so
+your machine does not start roaring.
 
-### Exporter vers Word
-Le point le plus délicat, et le plus abouti : un export `.docx` **avec des
-champs Zotero actualisables**, pas du texte figé. Vous rouvrez le document dans
-Word, vous cliquez « Actualiser », et Zotero refait la mise en forme.
+### Export to Word
+The hardest part, and the most polished: a `.docx` export **with live Zotero
+fields**, not frozen text. Reopen the document in Word, click Refresh, and
+Zotero redoes the formatting.
 
-La mise en page est **pilotée par votre modèle Word**, non par le code. Vous y
-posez des jetons, le greffon les remplit :
+Layout is **driven by your own Word template**, not by the code. You place
+tokens in it, the plugin fills them in:
 
-| Jeton | Rempli par |
+| Token | Filled with |
 |---|---|
-| `{{titre}}` | le titre de la note |
-| `{{dossier}}` | son dossier, sans numéro de rangement |
-| `{{date}}` `{{date:long}}` | sa date de création |
-| `{{réf}}` | sa référence |
-| `{{propriété:clé}}` | une propriété nommée |
-| `{{propriétés.nom}}` / `{{propriétés.valeur}}` | un rang répété par propriété |
-| `{{encadré.titre}}` / `{{encadré.contenu}}` | vos encadrés `> [!info]` |
+| `{{titre}}` | the note title |
+| `{{dossier}}` | its folder, without any leading number |
+| `{{date}}` `{{date:long}}` | its creation date |
+| `{{réf}}` | its reference |
+| `{{propriété:key}}` | a named property |
+| `{{propriétés.nom}}` / `{{propriétés.valeur}}` | a row repeated for each property |
+| `{{encadré.titre}}` / `{{encadré.contenu}}` | your `> [!info]` callouts |
 
-Déplacer un jeton, ajouter une ligne, changer un style : cela se fait dans Word,
-sans toucher au code. Une commande vérifie que le modèle est toujours compris.
+Move a token, add a row, change a style: all of that happens in Word, without
+touching the code. A command checks that your template is still understood.
 
-### Compter le temps
-Le temps passé dans chaque note, en minutes, reporté en propriété. Pause
-automatique dès que le clavier se tait ou que la fenêtre perd le focus.
+### Track time
+Time spent in each note, in minutes, written back to a property. It pauses on
+its own as soon as the keyboard goes quiet or the window loses focus.
 
-### Et aussi
-Schémas draw.io synchronisés dans leurs notes, glisser-déposer d'une annotation
-pour l'insérer en citation, bibliographies par source, rattachement des
-références citées, fusion des doublons d'auteurs.
-
----
-
-## S'adapter à votre organisation
-
-Ariane ne présume rien de votre coffre. Vous décrivez vos **familles de notes**
-dans les réglages — un libellé, un ou plusieurs dossiers, un préfixe éventuel —
-et ce qu'Ariane doit en faire. Aucun type de note n'est nommé dans le code.
-
-Un bouton propose les familles de votre coffre et **devine les préfixes** ;
-un autre détecte les dossiers qui jouent chacun des rôles.
-
-Vous pouvez **exporter votre profil de réglages** pour le partager : les chemins
-propres à votre machine n'y figurent jamais, et un profil importé ne les touche
-pas.
+### And more
+draw.io diagrams mirrored into their notes, drag and drop an annotation to
+insert it as a citation, per source bibliographies, attachment of cited
+references, merging of duplicate authors.
 
 ---
 
-## Installation
+## Fitting your own organisation
 
-Ariane ne figure pas dans le catalogue officiel d'Obsidian. Deux voies :
+Ariane assumes nothing about your vault. You describe your **note families** in
+the settings, giving each a label, one or more folders, an optional filename
+prefix, and what Ariane should do with them. No note type is named in the code.
 
-**Par BRAT** (recommandé, mises à jour automatiques)
-1. installez le greffon [BRAT](https://github.com/TfTHacker/obsidian42-brat) ;
-2. commande « BRAT: Add a beta plugin for testing » ;
-3. collez `Liotou/Ariane`.
+One button proposes the families found in your vault and **guesses their
+prefixes**. Another detects which folders play each functional role.
 
-BRAT suivra les publications de ce dépôt et vous proposera les mises à jour.
-
-**À la main**
-Téléchargez `main.js`, `manifest.json` et `styles.css` depuis la
-[dernière publication](../../releases/latest) et déposez-les dans
-`VotreCoffre/.obsidian/plugins/zotflow-atomiser/`.
-
-### Pour l'export Word
-- [pandoc](https://pandoc.org/) ;
-- le filtre Lua de [Better BibTeX](https://retorque.re/zotero-better-bibtex/)
-  (`pandoc-zotero-live-citemarkers.lua`) ;
-- Zotero ouvert, avec Better BibTeX ;
-- votre modèle `.docx`, porteur des jetons.
-
-### Pour les suggestions sémantiques
-[Ollama](https://ollama.com/) ou [LM Studio](https://lmstudio.ai/), avec un
-modèle d'embeddings — `bge-m3` convient bien au français.
+You can **export your settings profile** to share it. Paths specific to your
+machine never travel with it, and an imported profile never overwrites them.
 
 ---
 
-## Remerciements
+## Installing
 
-**[ZotFlow](https://github.com/zotflow/zotflow)** d'abord et avant tout. Ariane
-ne serait rien sans lui : c'est ZotFlow qui fait vivre Zotero dans Obsidian, et
-tout ce que fait Ariane part de ce qu'il dépose. Merci à celles et ceux qui l'ont
-développé.
+Ariane is not in the official Obsidian catalogue. Two ways in:
 
-Merci également à [Better BibTeX](https://retorque.re/zotero-better-bibtex/) et
-à son filtre pandoc, sans lequel les citations vivantes dans Word resteraient
-un vœu pieux.
+**With BRAT** (recommended, automatic updates)
+1. install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin;
+2. run the command "BRAT: Add a beta plugin for testing";
+3. paste `Liotou/obsidian-ariane`.
+
+BRAT follows the releases of this repository and offers you updates.
+
+**By hand**
+Download `main.js`, `manifest.json` and `styles.css` from the
+[latest release](../../releases/latest) and drop them into
+`YourVault/.obsidian/plugins/zotflow-atomiser/`.
+
+### For the Word export
+- [pandoc](https://pandoc.org/);
+- the Lua filter from [Better BibTeX](https://retorque.re/zotero-better-bibtex/)
+  (`pandoc-zotero-live-citemarkers.lua`);
+- Zotero running, with Better BibTeX;
+- your own `.docx` template carrying the tokens.
+
+### For semantic suggestions
+[Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/), with an
+embedding model. `bge-m3` handles French well.
+
+---
+
+## Thanks
+
+**[ZotFlow](https://github.com/zotflow/zotflow)** first and foremost. Ariane
+would be nothing without it. ZotFlow is what makes Zotero live inside Obsidian,
+and everything Ariane does starts from what ZotFlow puts there. Thank you to the
+people who built it.
+
+Thanks as well to [Better BibTeX](https://retorque.re/zotero-better-bibtex/) and
+its pandoc filter, without which live citations in Word would remain wishful
+thinking.
 
 ---
 
 ## Licence
 
-MIT — voir [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
