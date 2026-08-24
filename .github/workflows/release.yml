@@ -1,0 +1,39 @@
+# Publication automatique : à chaque étiquette « x.y.z » poussée, une
+# publication GitHub est créée avec les trois fichiers qu'Obsidian attend.
+# BRAT les y trouve et propose la mise à jour aux utilisateurs.
+name: Publier une version
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  publier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérifier que le manifeste porte bien cette version
+        run: |
+          etiquette="${GITHUB_REF#refs/tags/}"
+          manifeste=$(node -p "require('./manifest.json').version")
+          if [ "$etiquette" != "$manifeste" ]; then
+            echo "L'étiquette ($etiquette) et manifest.json ($manifeste) diffèrent." >&2
+            exit 1
+          fi
+          node --check main.js
+          echo "Version $etiquette, main.js valide."
+
+      - name: Créer la publication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          etiquette="${GITHUB_REF#refs/tags/}"
+          gh release create "$etiquette" \
+            --title "$etiquette" \
+            --generate-notes \
+            main.js manifest.json styles.css

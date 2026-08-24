@@ -1,0 +1,8291 @@
+'use strict';
+
+/*
+ * Ariane
+ * ================
+ * Plugin Obsidian sur mesure et PARAMÉTRABLE. Transforme les
+ * annotations d'une note source (ZotFlow / Zotero) en notes atomiques
+ * réactives, selon un ou plusieurs standards d'annotation configurables.
+ *
+ * Principes :
+ *   - IDENTITÉ STABLE : chaque note d'annotation garde dans son entête
+ *     une clé stable (zotflow-anno-key). C'est cette clé, et non le nom
+ *     de fichier, qui sert d'identité au plugin. Les liens survivent
+ *     donc aux changements de titre (renommage via l'API d'Obsidian).
+ *   - RÉACTIF : régénération automatique à chaque modification de la
+ *     source (désactivable).
+ *   - VERROUILLÉ : les éditions manuelles des notes automatiques sont
+ *     restaurées (désactivable).
+ *   - SUPPRESSION PROPAGÉE : une annotation retirée de la source voit
+ *     sa note supprimée et ses liens retirés des notes conceptuelles
+ *     (désactivable).
+ *   - RATTACHEMENT ZOTERO : une référence citée correspondant à une
+ *     source Zotero (même premier auteur + année) pointe vers la note
+ *     @citekey (désactivable).
+ *
+ * Paramétrage (onglet Réglages) :
+ *   - Dossiers de sortie, nommage, alias.
+ *   - Motifs d'analyse (regex) par champ, regroupés en PROFILS de
+ *     standard : plusieurs standards peuvent coexister, le premier
+ *     profil dont le motif de titre correspond est retenu pour le bloc.
+ *   - Modèles de sortie type Templater ({{title}}, {{paraphrase}},
+ *     {{source}}, {{references}}, {{image}}, {{page}}...).
+ *   - Interrupteurs de comportement.
+ *
+ * ATTENTION : agit automatiquement, peut supprimer des notes et retirer
+ * des liens. Sauvegardez votre coffre.
+ */
+
+const obsidian = require('obsidian');
+
+const FENETRE_ECRITURE_MS = 2500;
+const DELAI_ANTIREBOND_MS = 800;
+
+const DEFAULT_SETTINGS = {
+  // --- Dossiers ---
+  dossierAnnotations: '',       // rôle : où atomiser les annotations
+  dossierNotesLecture: '',      // rôle : où atomiser les notes-filles Zotero
+  atomiserNotesLecture: true,
+  dossierReferences: '',        // rôle : où déposer les références en attente
+  // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
+  // remplace les réglages qui nommaient en dur des types de notes
+  // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque
+  // ligne : { nom, dossiers[], prefixe, aparte, suggestions, couleur, icone,
+  // monospace, alias }. Vide par défaut : le greffon ne présume d'aucune
+  // organisation, et se peuple à la première ouverture des réglages.
+  famillesNotes: [],
+  // Anciennes clés, conservées le temps de la migration (voir migrerFamilles).
+  dossierNotesConceptuelles: '',
+  prefixeNoteConceptuelle: '',
+  // Correspondances manuelles « Auteur, 2005a » -> « @citekeyZotero » (désambiguïsation)
+  correspondancesSuffixe: {},
+  regrouperParSource: true, // sous-dossier par source (@citekey)
+
+  // --- Nommage / alias ---
+  formatNomFichier: '{{key}}_{{title}}', // nom de fichier ; variables {{key}}, {{title}}
+  aliasTemplate: '{{key}}', // contenu de l'alias (vide = pas d'alias)
+  aliasSurLiens: true, // affiche « (Titre) » discret après un lien montrant la clé
+  // Repliement des citations entre parenthèses : la référence cède la place à
+  // une pastille cliquable, pour aérer la lecture et l'édition.
+  // Citations indirectes : la source consultée porte un compteur des travaux
+  // qu'elle rapporte, au lieu de les nommer tous dans le fil du texte.
+  citationsIndirectesAbregees: true,
+  citationsMarqueEmprunt: '⟨{{n}}⟩',
+  // --- Temps passé sur les notes ----------------------------------------
+  tempsActif: true,
+  tempsPropriete: 'temps-passe',        // en minutes, dans le frontmatter
+  tempsInactiviteSec: 120,              // pause après ce silence
+  tempsEcritureSec: 300,                // report en propriété, au plus tous les…
+  tempsIgnorerVerrouillees: true,       // ne pas chronométrer « locked: true »
+  tempsBarreEtat: true,
+  tempsInfobulleExplorateur: true,
+  tempsDossierJournal: '',      // rôle : où écrire le journal du compteur
+  tempsJournalAuto: true,               // écrire le journal au changement de jour
+  tempsHistorique: {},                  // { 'AAAA-MM-JJ': { chemin: secondes } }
+  // Total de référence, en secondes, par note. La propriété du frontmatter en
+  // est dérivée : arrondir à chaque report, en repartant d'une valeur déjà
+  // arrondie, gonflait le total à chaque écriture.
+  tempsTotalSecondes: {},
+  tempsRetenirJours: 120,
+  dropSignalerRefus: true, // prévenir quand un dépôt n'est pas reconnu
+  citationsRepliables: true,
+  citationsRepliees: false, // état courant, piloté par les commandes
+  aparteAnnotations: true, // aparté actif pour les liens vers des annotations
+  aparteConceptuelles: true, // aparté actif pour les liens vers des notes conceptuelles
+  dossiersAliasExplorateur: [], // dossiers dont les notes affichent leur alias dans l'explorateur
+  modeleAparte: ' ({{alias}})', // format de l'aparté ; variables {{alias}}, {{key}}
+  aparteCouleur: '', // couleur CSS (vide = atténuée par défaut)
+  aparteTaille: '0.8em', // taille de police de l'aparté
+  dropSurParagraphe: true, // déposer une note sur un paragraphe -> note de bas de page
+  dropToutesNotes: true, // accepter n'importe quelle note (sinon seulement les annotations)
+  titreSectionNotes: 'Annotations de lecture associées', // en-tête de la section des notes
+  modeleCitation: '{{auteurs}}, {{annee}}, p. {{page}}',
+  separateurCitation: ' ; ',
+  // Bibliographie de fin de note, régénérée d'après les citations du corps.
+  biblioAuto: true,
+  biblioTitre: 'Bibliographie',
+  biblioModele: '{{auteurs}} ({{annee}}). {{titre}}. *{{publication}}*.',
+  biblioTri: 'auteur', // 'auteur' | 'apparition'
+  // Champ des notes sources contenant la référence déjà mise en forme par
+  // zotflow (filtre Liquid « bibliography », style réglé dans zotflow).
+  // Vide ou absent : Ariane retombe sur le modèle libre ci-dessus.
+  biblioChamp: 'bibliographie',
+  biblioLien: true, // ajouter un renvoi vers la note source
+  biblioLienTexte: '↗', // libellé de ce renvoi
+  nettoyerNotesOrphelines: true, // retirer la définition d'une note quand son appel disparaît
+  marquerOrphelines: true, // taguer les annotations à 0 appel (pour le graphe)
+  tagOrpheline: 'orphelin', // nom du tag (sans #)
+
+  // --- Comportement ---
+  regenerationAuto: true,
+  verrouillage: true,
+  propagerSuppressions: true,
+  rattachementZotero: true,
+  referenceParDefautSource: true, // si aucune réf. citée, utiliser la source
+  liensAuteurs: true, // propriété "auteurs" (nom complet) + notes d'auteur dédiées
+  dossierAuteurs: 'Auteurs',
+  // --- Export Word avec citations Zotero vivantes (Pandoc + filtre BBT) ---
+  exportPandocBin: 'pandoc',    // propre à la machine : jamais exporté dans un profil
+  exportFiltreLua: '',          // propre à la machine : jamais exporté dans un profil
+  exportDossier: '',            // rôle : où déposer les documents exportés
+  // Mise en forme du document exporté.
+  exportDecalerTitres: true,        // « # » est le titre du document, pas une partie
+  exportRetirerNumerotation: true,  // Word numérote seul
+  exportStyleEncadre: 'Items de réflexion',
+  exportInsecables: true,       // espaces insécables devant ; : ! ? et autour des guillemets
+  exportStyleEnteteTableau: 'Titre de tableau',
+  exportStyleCelluleTableau: 'Champ de tableau',
+  exportEntetes: true,          // rattacher les en-têtes du modèle
+  exportNettoyerLiens: true,    // [[Chabane Mazri]] -> Chabane Mazri dans les propriétés
+  exportProprieteReference: 'ref, reference, réf, référence',
+  exportRefDepuisNom: true,     // à défaut de propriété, le nom du fichier fait référence
+
+  exportBibliographie: true,
+  // Apparat de citation de seconde main, partagé par les citations en ligne
+  // et par l'export Word.
+  citeDans: ', cité dans ',
+  exportCiteDansActif: true,    // sinon, on ne cite que la source consultée
+  exportModeleWord: '',
+  exportMapStyles: { Heading1: '', Heading2: '', Heading3: '', Heading4: '', BodyText: 'Corps de texte', BlockText: 'Citation intense', Compact: 'Corps de texte' },
+  validationRattachement: true, // confirmer les rattachements AMBIGUS (risque d'homonymie)
+  rattachementAutoCertain: true, // rattacher sans confirmation les correspondances certaines (unique appariement fort)
+  // Cas ambigus : trancher par le modèle local plutôt que de vous interroger.
+  rattachementIA: true,
+  // Décisions déjà prises, pour ne jamais reposer deux fois la même question.
+  rattachementsDecides: {},
+
+  // --- Références citées via API bibliographique (Crossref / OpenAlex) ---
+  apiReferencesCitees: true, // activer la récupération des références citées d'une source
+  apiSource: 'auto', // 'auto' (Crossref puis OpenAlex) | 'crossref' | 'openalex'
+  apiEmail: '', // email pour les « polite pools » Crossref/OpenAlex (recommandé)
+  dossierBibliographies: '',    // rôle : où écrire les bibliographies citées
+  prefixeBibliographie: 'Biblio - ', // préfixe du nom des notes de biblio (évite l'homonymie avec la source)
+
+  // --- Détection des sources ---
+  marqueurSource: '<!-- ZF_ANNO_BEG_',
+
+  // --- Analyse (global) ---
+  blocRegex: '<!-- ZF_ANNO_BEG_(\\w+) -->([\\s\\S]*?)<!-- ZF_ANNO_END_\\1 -->',
+  pageRegex: '\\.pdf,\\s*p\\.\\s*([^\\]]+?)\\]\\(obsidian',
+  imageRegex: '!\\[\\[([^\\]]+?)\\]\\]',
+  retirerParentheses: true,
+  separateurCitations: ';',
+  separateurAuteurs: '\\s+(?:and|et|&)\\s+|\\s*,\\s*',
+
+  // --- Profils de standard (multi-standards) ---
+  // Chaque profil : { nom, titreRegex (groupe 1 = titre),
+  //                   referenceRegex (groupe 1 = texte de référence) }
+  profils: [
+    {
+      nom: 'ZotFlow standard (gras / texte / *(référence)*)',
+      titreRegex: '^\\*\\*(.+?)\\*\\*\\.?$',
+      referenceRegex: '^\\*(?!\\*)(.+?)(?<!\\*)\\*$',
+    },
+  ],
+
+  // --- Citation (texte surligné) ---
+  inclureCitation: true,
+  calloutCitation: 'quote',
+
+  // --- Modèles de sortie ---
+  modeleNote: '**{{titleLink}}**\n\n{{image}}\n\n{{paraphrase}}\n\n{{citation}}\n\nSource : {{source}}\n\n{{references}}',
+  labelReferences: 'Références citées : ',
+  labelPage: 'Page : ',
+  modeleReference: '---\ntype: reference-citee\n---\n\n{{authorLinks}}',
+
+  // --- Suggestions dynamiques (local, gratuit) ---
+  suggActif: true, // panneau de suggestions actif
+  suggDossiersCandidats: [],   // migré vers famillesNotes
+  // Filtre du panneau : dossiers candidats momentanément décochés.
+  suggDossiersMasques: [],
+
+  suggK: 8, // nombre de suggestions affichées
+  suggSeuil: 0.18, // score final minimal (0..1)
+  suggAntirebond: 900, // ms d'inactivité avant recalcul
+  // Moteur : 'lexical' | 'semantique' | 'hybride'
+  suggMoteur: 'hybride',
+  suggArgAffichage: 'panneau', // suggestions par argument (clic droit) : 'panneau' | 'flottant'
+  hoverPartout: true, // aperçu au survol des liens hors éditeur (chat Claudian, etc.)
+  // Police monospace (largeur fixe) pour les noms codés dans l'explorateur.
+  // --- Pont draw.io : vocabulaire et export (voir plugin Ariane-graph) ---
+  cartesStrict: false, // true = signaler en erreur toute étiquette hors vocabulaire
+  cartesTypesBlocs: [],
+  cartesRelations: [],
+  schemaSyncAuto: true, // recopier le contenu des schémas dans leur note
+  schemaPropagerEtiquettes: true, // une étiquette unique vaut pour tout le faisceau
+  verrouLecture: true, // rendre non modifiables les notes « locked: true »
+  cartesSvgPolice: 'Helvetica',
+  cartesSvgTaille: 10,
+  nomsMonospaceFont: '', // vide = police de code d'Obsidian (var(--font-monospace))
+  // Dossiers dont les notes s'affichent en police à largeur fixe.
+  // Correspondance exacte : les sous-dossiers ne sont PAS concernés.
+  dossiersMonospace: [],       // migré vers famillesNotes
+  suggPoidsSemantique: 0.7, // poids du score sémantique dans l'hybride (0..1)
+  // Style par dossier candidat : { "dossier": { couleur, icone } }
+  suggStylesDossiers: {},
+  // Embeddings via Ollama (local, gratuit)
+  suggFournisseur: 'ollama',     // 'ollama' ou 'lmstudio'
+  suggOllamaUrl: 'http://localhost:11434',
+  suggLmStudioUrl: 'http://localhost:1234',
+  suggModeleEmbed: 'bge-m3',
+  // Reclassement + justification par LLM local (optionnel)
+  suggRerank: false,
+  suggRerankAuto: false,        // le reclassement ne part plus seul : bouton « Affiner »
+  suggRerankJetons: 400,        // borne de longueur de la réponse du modèle
+  suggRerankDelaiSec: 45,       // au-delà, on rend la main
+  suggRerankJustif: true, // afficher la phrase de justification
+  suggModeleLLM: 'llama3.2',
+  suggRerankTopN: 12,
+};
+
+/* =========================================================================
+ * Fonctions PURES (testables hors Obsidian, pilotées par la config)
+ * ========================================================================= */
+
+function echapperRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Nom complet de l'auteur tel qu'utilisé dans Zotero, normalisé en
+// « Prénom Nom » (accepte aussi « Nom, Prénom »).
+// Retire un éventuel balisage de lien [[...]] (et son alias) d'un nom d'auteur.
+// Les « creators » des notes source ZotFlow sont désormais des liens, il faut
+// donc les dé-baliser avant de nommer les fiches auteurs ou de comparer.
+function sansLien(s) {
+  return String(s == null ? '' : s)
+    .replace(/^\s*!?\[\[/, '')
+    .replace(/\]\]\s*$/, '')
+    .replace(/\|.*$/, '')
+    .trim();
+}
+
+function nomCompletAuteur(c) {
+  let s = sansLien(c);
+  if (!s) return '';
+  if (s.includes(',')) {
+    const parts = s.split(',');
+    s = (parts.slice(1).join(',').trim() + ' ' + parts[0].trim()).trim();
+  }
+  return s.replace(/\s+/g, ' ');
+}
+
+// Remplace les variables {{var}} d'un modèle par leurs valeurs.
+function appliquerModele(modele, vars) {
+  return String(modele).replace(/{{\s*(\w+)\s*}}/g, (m, k) =>
+    vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : ''
+  );
+}
+
+// Remplace la conjonction entre auteurs (« et », « and ») par « & »,
+// en préservant « et al. ». Ex. « Bird et Tobin, 2018 » -> « Bird & Tobin, 2018 ».
+function normaliserConjAuteurs(s) {
+  if (!s) return s;
+  let out = String(s).replace(/\bet\s+al\.?/gi, '@@ETAL@@');
+  out = out.replace(/\s+et\s+/g, ' & ').replace(/\s+and\s+/gi, ' & ');
+  out = out.replace(/@@ETAL@@/g, 'et al.');
+  return out;
+}
+
+// Calcule les plages [from,to] à supprimer pour retirer les définitions de
+// notes de bas de page « orphelines » gérées par le plugin (celles dont
+// l'appel [^label] a disparu du corps ET dont le bloc contient un lien [[…]]).
+// Retire aussi l'en-tête de section s'il ne reste plus aucune définition.
+// Fonction pure (testée hors ligne) : ne dépend que de la chaîne du document.
+function rangesNotesOrphelines(docStr, titre) {
+  const lignes = docStr.split('\n');
+  const offsets = [];
+  let acc = 0;
+  for (const l of lignes) { offsets.push(acc); acc += l.length + 1; }
+  const total = docStr.length;
+  const lineStart = (i) => offsets[i];
+  const lineEndExcl = (i) => (i + 1 < lignes.length ? offsets[i + 1] : total);
+
+  // Appels de note réellement utilisés (on ignore les marqueurs de définition).
+  const refs = new Set();
+  for (let i = 0; i < lignes.length; i++) {
+    const line = lignes[i];
+    const re = /\[\^([^\]\s]+)\]/g;
+    let m;
+    while ((m = re.exec(line)) !== null) {
+      const after = line.slice(m.index + m[0].length);
+      if (after.startsWith(':')) continue; // c'est une définition
+      refs.add(m[1]);
+    }
+  }
+
+  // Définitions et étendue de leur bloc (lignes indentées suivantes).
+  const defs = [];
+  for (let i = 0; i < lignes.length; i++) {
+    const d = lignes[i].match(/^[ \t]*\[\^([^\]]+)\]:/);
+    if (!d) continue;
+    let j = i;
+    while (j + 1 < lignes.length && /^[ \t]/.test(lignes[j + 1])) j++;
+    const gere = /\[\[/.test(lignes.slice(i, j + 1).join('\n'));
+    defs.push({ label: d[1], i, j, gere });
+  }
+
+  const ranges = [];
+  for (const dd of defs) {
+    if (!(dd.gere && !refs.has(dd.label))) continue;
+    let last = dd.j;
+    if (dd.j + 1 < lignes.length && lignes[dd.j + 1].trim() === '') last = dd.j + 1;
+    ranges.push({ from: lineStart(dd.i), to: lineEndExcl(last) });
+  }
+
+  const restantes = defs.filter((dd) => !(dd.gere && !refs.has(dd.label)));
+  if (restantes.length === 0 && titre) {
+    for (let h = 0; h < lignes.length; h++) {
+      if (lignes[h].trim() === '**' + titre + '**') {
+        let start = h;
+        if (h - 1 >= 0 && lignes[h - 1].trim() === '---') start = h - 1;
+        while (start - 1 >= 0 && lignes[start - 1].trim() === '') start--;
+        let last = h;
+        if (h + 1 < lignes.length && lignes[h + 1].trim() === '') last = h + 1;
+        ranges.push({ from: lineStart(start), to: lineEndExcl(last) });
+        break;
+      }
+    }
+  }
+
+  ranges.sort((a, b) => a.from - b.from);
+  const merged = [];
+  for (const r of ranges) {
+    if (merged.length && r.from <= merged[merged.length - 1].to) {
+      merged[merged.length - 1].to = Math.max(merged[merged.length - 1].to, r.to);
+    } else merged.push({ from: r.from, to: r.to });
+  }
+  return merged;
+}
+
+// Horodatage AAAAMMJJhhmm à partir d'un temps (ms), pour NC-AAAAMMJJhhmm.
+function horodatageNC(ms) {
+  const d = new Date(ms || Date.now());
+  const p = (n) => String(n).padStart(2, '0');
+  return (
+    d.getFullYear() +
+    p(d.getMonth() + 1) +
+    p(d.getDate()) +
+    p(d.getHours()) +
+    p(d.getMinutes())
+  );
+}
+
+// Analyse "Auteur(s), Année" -> { nom, auteurs[], annee, annee4, premierAuteur }.
+// L'année peut porter un suffixe de désambiguïsation (2005a, 2005b) propre à la
+// bibliographie de la source : on le conserve pour ne pas fusionner des
+// références distinctes. annee4 = les 4 chiffres seuls (pour l'appariement Zotero).
+function parseNomReference(nom, cfg) {
+  const mc = nom.match(/^(.+?),\s*(\d{4}[a-z]?)/i);
+  if (!mc) return null;
+  const auteurComplet = mc[1].trim();
+  const annee = mc[2].trim();
+  const annee4 = (annee.match(/\d{4}/) || [''])[0];
+  let auteurs;
+  if (/\bet\s+(?:al|coll)\.?/i.test(auteurComplet)) {
+    auteurs = [auteurComplet.replace(/\s+et\s+(?:al|coll)\.?.*$/i, '').trim()];
+  } else {
+    let sep;
+    try {
+      sep = new RegExp((cfg && cfg.separateurAuteurs) || '\\s+(?:and|et|&)\\s+|\\s*,\\s*', 'i');
+    } catch (e) {
+      sep = /\s+(?:and|et|&)\s+|\s*,\s*/i;
+    }
+    auteurs = auteurComplet
+      .split(sep)
+      .map((a) => a.trim().replace(/^(?:&|and|et)\s+/i, ''))
+      .filter((a) => a.length > 0);
+  }
+  // Page éventuelle après l'année : « , p. 345 », « pp. 12-14 ».
+  let page = '';
+  const restePage = nom.slice(mc.index + mc[0].length);
+  const mp = restePage.match(/pp?\.?\s*([0-9]+(?:\s*[-–—]\s*[0-9]+)?)/i);
+  if (mp) page = mp[1].replace(/\s*[-–—]\s*/, '-').trim();
+  return {
+    nom: normaliserConjAuteurs(`${auteurComplet}, ${annee}`),
+    auteurComplet,
+    annee,
+    annee4,
+    etAl: /\bet\s+(?:al|coll)\.?/i.test(auteurComplet),
+    auteurs,
+    premierAuteur: auteurs[0] || auteurComplet,
+    page,
+  };
+}
+
+// Analyse une citation « auteur seul » (sans année) -> lien direct vers
+// l'auteur, sans note de référence intermédiaire. Renvoie null si la chaîne
+// contient une année (c'est alors une vraie référence) ou n'a pas de nom propre.
+function parseAuteurSeul(nom, cfg) {
+  const s = normaliserConjAuteurs(String(nom || '').trim());
+  if (!s) return null;
+  if (/\d{4}/.test(s)) return null; // contient une année -> pas « auteur seul »
+  if (!/[A-ZÀ-Ÿ]/.test(s)) return null; // aucun nom propre capitalisé -> ignorer
+  let auteurs;
+  if (/\bet\s+(?:al|coll)\.?/i.test(s)) {
+    auteurs = [s.replace(/\s+et\s+(?:al|coll)\.?.*$/i, '').trim()];
+  } else {
+    let sep;
+    try {
+      sep = new RegExp((cfg && cfg.separateurAuteurs) || '\\s+(?:and|et|&)\\s+|\\s*,\\s*', 'i');
+    } catch (e) {
+      sep = /\s+(?:and|et|&)\s+|\s*,\s*/i;
+    }
+    auteurs = s
+      .split(sep)
+      .map((a) => a.trim().replace(/^(?:&|and|et)\s+/i, ''))
+      .filter((a) => a.length > 0);
+  }
+  if (!auteurs.length) return null;
+  return {
+    estAuteurSeul: true,
+    nom: s,
+    auteurComplet: s,
+    annee: '',
+    annee4: '',
+    auteurs,
+    premierAuteur: auteurs[0] || s,
+  };
+}
+
+// Compile les profils (chaînes -> RegExp), en ignorant les profils invalides.
+function compilerProfils(cfg) {
+  const out = [];
+  for (const p of cfg.profils || []) {
+    try {
+      out.push({
+        nom: p.nom,
+        titre: new RegExp(p.titreRegex),
+        reference: p.referenceRegex ? new RegExp(p.referenceRegex) : null,
+      });
+    } catch (e) {
+      console.error('[Ariane] Profil invalide ignoré :', p.nom, e);
+    }
+  }
+  return out;
+}
+
+// Couleurs standard de Zotero -> nom lisible (pour la propriété « couleur »).
+const COULEURS_ZOTERO = {
+  '#ffd400': 'jaune',
+  '#ff6666': 'rouge',
+  '#5fb236': 'vert',
+  '#2ea8e5': 'bleu',
+  '#a28ae5': 'violet',
+  '#e56eee': 'magenta',
+  '#f19837': 'orange',
+  '#aaaaaa': 'gris',
+};
+function nomCouleur(c) {
+  if (!c) return '';
+  const h = String(c).trim().toLowerCase();
+  return COULEURS_ZOTERO[h] || h;
+}
+
+// Neutralise le contenu des liens [[…]] en conservant la longueur du texte :
+// les points d'une citation (« p. 2 ») ne doivent pas passer pour des fins de
+// phrase. Les positions calculées restent donc valables sur le texte d'origine.
+function masquerLiens(texte) {
+  return String(texte).replace(/\[\[[^\]]*\]\]/g, (m) => '·'.repeat(m.length));
+}
+
+// Fin de la phrase contenant l'offset (index juste après le point/? /! ).
+// Sert au dépôt « par phrase » : place l'appel de note en fin de phrase.
+function finDePhrase(texte, off) {
+  const re = /[.?!…](?=\s|$)/g;
+  re.lastIndex = Math.max(0, Math.min(off, texte.length));
+  const m = re.exec(masquerLiens(texte));
+  return m ? m.index + 1 : texte.length;
+}
+
+// Début de la phrase contenant l'offset : index juste après le dernier
+// point/? /! qui précède l'offset, espaces de tête ignorés.
+// Comme finDePhrase, mais renvoie l'index DE la ponctuation finale (donc juste
+// avant le point), afin de poser l'appel de note avant celui-ci.
+function finDePhraseAvantPonct(texte, off) {
+  const re = /[.?!…](?=\s|$)/g;
+  re.lastIndex = Math.max(0, Math.min(off, texte.length));
+  const m = re.exec(masquerLiens(texte));
+  if (!m) return texte.length;
+  // Typographie française : « … frontière ? » garde son espace avant le point
+  // d'interrogation. On remonte donc avant l'espace qui précède la ponctuation.
+  let i = m.index;
+  while (i > 0 && /[ \t\u00a0\u202f]/.test(texte[i - 1])) i--;
+  return i;
+}
+
+function debutPhrase(texte, off) {
+  const re = /[.?!…](?=\s|$)/g;
+  const masque = masquerLiens(texte);
+  let start = 0, m;
+  while ((m = re.exec(masque)) !== null) {
+    if (m.index + 1 <= off) start = m.index + 1;
+    else break;
+  }
+  while (start < texte.length && /\s/.test(texte[start])) start++;
+  return start;
+}
+
+/* ---------- Moteur de suggestions : similarité lexicale (TF-IDF) -------- */
+
+// Mots vides FR + EN, écartés à l'indexation.
+const MOTS_VIDES = new Set(
+  ('au aux avec ce ces dans de des du elle en et eux il je la le les leur lui ma mais me '
+    + 'meme mes moi mon ne nos notre nous on ont ou par pas pour qu que qui quoi sa se ses '
+    + 'son sur ta te tes toi ton tu un une vos votre vous est sont ete etre avoir fait plus '
+    + 'tres cette comme donc car ainsi alors entre aussi peut selon dont chez sans sous '
+    + 'the and or of to in is are was were be been for on at by with as that this these those '
+    + 'it its from not but they their them we you he she his her also can may such into which '
+    + 'what when where who whom how than then so if there here more most other some any each')
+    .split(/\s+/)
+);
+
+// Normalise (minuscules, sans accents) et découpe un texte en jetons
+// signifiants : longueur >= 3, hors mots vides, dépluralisation légère.
+function tokeniser(texte) {
+  if (!texte) return [];
+  const norm = String(texte)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const jetons = [];
+  for (let mot of norm.split(/[^a-z0-9]+/)) {
+    if (mot.length < 3 || MOTS_VIDES.has(mot)) continue;
+    if (mot.length > 4 && (mot.endsWith('s') || mot.endsWith('x'))) mot = mot.slice(0, -1);
+    jetons.push(mot);
+  }
+  return jetons;
+}
+
+// Fréquence des termes : Map(terme -> compte).
+function frequenceTermes(jetons) {
+  const m = new Map();
+  for (const j of jetons) m.set(j, (m.get(j) || 0) + 1);
+  return m;
+}
+
+// IDF d'un corpus (liste de Map tf) : Map(terme -> idf lissé).
+function calculerIdf(docsTf) {
+  const df = new Map();
+  for (const tf of docsTf) for (const terme of tf.keys()) df.set(terme, (df.get(terme) || 0) + 1);
+  const n = docsTf.length || 1;
+  const idf = new Map();
+  for (const [terme, d] of df) idf.set(terme, Math.log(1 + n / d));
+  return idf;
+}
+
+// Vecteur TF-IDF (Map terme->poids) + norme euclidienne.
+function vecteurTfIdf(tf, idf) {
+  const vec = new Map();
+  let somme = 0;
+  for (const [terme, c] of tf) {
+    const poids = (1 + Math.log(c)) * (idf.get(terme) || 0);
+    if (poids > 0) { vec.set(terme, poids); somme += poids * poids; }
+  }
+  return { vec, norme: Math.sqrt(somme) || 1 };
+}
+
+// Cosinus entre deux vecteurs creux (itère sur le plus petit).
+function cosinusTfIdf(vReq, nReq, vDoc, nDoc) {
+  let a = vReq, b = vDoc;
+  if (a.size > b.size) { a = vDoc; b = vReq; }
+  let dot = 0;
+  for (const [terme, p] of a) { const q = b.get(terme); if (q) dot += p * q; }
+  return dot / (nReq * nDoc);
+}
+
+// Empreinte compacte et stable d'un texte (djb2), pour le cache d'embeddings.
+function hacherTexte(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = (((h << 5) + h) + s.charCodeAt(i)) >>> 0;
+  return h.toString(36) + ':' + s.length;
+}
+
+// Normalise un vecteur (norme L2 = 1) ; renvoie un Float32Array.
+function normaliserVecteur(arr) {
+  let n = 0;
+  for (let i = 0; i < arr.length; i++) n += arr[i] * arr[i];
+  n = Math.sqrt(n) || 1;
+  const out = new Float32Array(arr.length);
+  for (let i = 0; i < arr.length; i++) out[i] = arr[i] / n;
+  return out;
+}
+
+// Cosinus entre deux vecteurs déjà normalisés (= produit scalaire).
+function cosinusVecteurs(a, b) {
+  const n = Math.min(a.length, b.length);
+  let d = 0;
+  for (let i = 0; i < n; i++) d += a[i] * b[i];
+  return d;
+}
+
+// Notes-filles Zotero : celles attachées à la référence entière, non à un
+// passage. Zotflow les dépose dans la fiche source, sous « ## Notes », bornées
+// par <!-- ZF_NOTE_BEG_<clé> --> … <!-- ZF_NOTE_END_<clé> -->. Contrairement
+// aux annotations, elles n'ont ni ancre ni note propre : elles ne pouvaient
+// donc être ni citées ni reliées.
+function extraireNotesFilles(contenu) {
+  const blocs = [];
+  const re = /<!--\s*ZF_NOTE_BEG_(\w+)\s*-->([\s\S]*?)<!--\s*ZF_NOTE_END_\1\s*-->/g;
+  let m;
+  while ((m = re.exec(contenu)) !== null) {
+    const cle = m[1];
+    // La ligne de métadonnées ne porte que du JSON encodé : elle n'a rien à
+    // faire dans la note produite.
+    const corps = String(m[2] || '')
+      .replace(/<!--\s*ZF_NOTE_META[\s\S]*?-->/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    if (!corps) continue;
+    blocs.push({ cle, corps, titre: titreDeNoteFille(corps) });
+  }
+  return blocs;
+}
+
+// Le titre : la première amorce en gras, à défaut la première ligne de texte.
+function titreDeNoteFille(corps) {
+  for (const ligne of corps.split('\n')) {
+    const t = ligne.trim();
+    if (!t) continue;
+    const gras = t.match(/^\*\*(.+?)\*\*\.?\s*$/);
+    if (gras) return gras[1].trim();
+    const nu = t.replace(/^[#>*\-\s]+/, '').replace(/<[^>]+>/g, '').trim();
+    if (nu) return nu.length > 90 ? nu.slice(0, 87).trim() + '…' : nu;
+  }
+  return '';
+}
+
+// Les citations que zotflow inscrit dans une note-fille sont du HTML portant
+// l'URI Zotero de la source et le libellé déjà mis en forme. On les ramène à
+// la forme d'Ariane — ([[@clé|libellé]]) — pour qu'elles nourrissent la
+// bibliographie de fin de note comme l'export Word.
+function citationsZotflowVersAriane(corps, parCleZotero) {
+  const texte = String(corps);
+  // Le span de citation en contient un autre : une expression paresseuse
+  // s'arrêterait sur la balise fermante du span intérieur. On apparie donc à
+  // la profondeur, comme on le ferait pour n'importe quelle imbrication.
+  const ouvre = /<span\b(?=[^>]*class="citation")[^>]*data-citation="([^"]*)"[^>]*>/g;
+  let sortie = '', dernier = 0, m;
+  while ((m = ouvre.exec(texte)) !== null) {
+    const debutDedans = m.index + m[0].length;
+    const apres = finDeSpanApparie(texte, debutDedans);
+    if (apres < 0) continue;
+    const dedans = texte.slice(debutDedans, apres - '</span>'.length);
+    const libelle = dedans.replace(/<[^>]+>/g, '').trim().replace(/^\(+\s*/, '').replace(/\s*\)+$/, '').trim();
+    let cleZot = null;
+    try {
+      const j = JSON.parse(decodeURIComponent(m[1]));
+      const items = (j && j.citationItems) || [];
+      const uri = items[0] && items[0].uris && items[0].uris[0];
+      const mu = uri && String(uri).match(/items\/(\w+)/);
+      if (mu) cleZot = mu[1];
+    } catch (e) { /* citation illisible : on la laisse telle quelle */ }
+    const citekey = cleZot && parCleZotero ? parCleZotero.get(cleZot) : null;
+    const remplacement = (citekey && libelle)
+      ? '([[' + citekey + '|' + libelle + ']])'
+      : texte.slice(m.index, apres);
+    sortie += texte.slice(dernier, m.index) + remplacement;
+    dernier = apres;
+    ouvre.lastIndex = apres;
+  }
+  return sortie + texte.slice(dernier);
+}
+
+// Indice qui suit le </span> appariant le span ouvert juste avant « depart ».
+function finDeSpanApparie(texte, depart) {
+  const re = /<span\b[^>]*>|<\/span>/g;
+  re.lastIndex = depart;
+  let profondeur = 1, m;
+  while ((m = re.exec(texte)) !== null) {
+    profondeur += (m[0] === '</span>') ? -1 : 1;
+    if (profondeur === 0) return m.index + m[0].length;
+  }
+  return -1;
+}
+
+// Extrait tous les blocs d'annotation d'une note source, selon la config.
+function extraireBlocs(contenu, cfg) {
+  let regexBloc, regexPage, regexImage;
+  try {
+    regexBloc = new RegExp(cfg.blocRegex, 'g');
+    regexPage = new RegExp(cfg.pageRegex, 'g');
+    regexImage = new RegExp(cfg.imageRegex, 'g');
+  } catch (e) {
+    console.error('[Ariane] Regex de base invalide :', e);
+    return [];
+  }
+  const profils = compilerProfils(cfg);
+  if (profils.length === 0) return [];
+
+  const sepCit = (cfg.separateurCitations || ';').trim() || ';';
+  const blocs = [];
+  let m;
+  let finBlocPrecedent = 0;
+  while ((m = regexBloc.exec(contenu)) !== null) {
+    const cle = m[1];
+    const brut = m[2] || '';
+
+    // En-tête du callout : tout ce qui sépare la fin du bloc précédent
+    // du marqueur BEG courant (page, image, texte surligné).
+    const entete = contenu.substring(finBlocPrecedent, m.index);
+    finBlocPrecedent = m.index + m[0].length;
+
+    const lignes = brut
+      .split('\n')
+      .map((l) => l.replace(/^>\s?/, '').trim())
+      .filter((l) => l.length > 0);
+    if (lignes.length === 0) continue;
+
+    // Normalisation : titre en gras et référence en italique collés sur la
+    // même ligne (annotation sans paraphrase) -> on les sépare en deux
+    // lignes pour que chacun soit reconnu.
+    const colle = lignes[0].match(/^(\*\*.+?\*\*\.?)\s*(\*(?!\*).+?\*)$/);
+    if (colle) lignes.splice(0, 1, colle[1], colle[2]);
+
+    // Choix du profil : le premier dont le motif de titre correspond.
+    let titre = null;
+    let profReference = null;
+    let profNom = null;
+    for (const p of profils) {
+      const mt = lignes[0].match(p.titre);
+      if (mt) {
+        titre = (mt[1] !== undefined ? mt[1] : mt[0]).trim();
+        profReference = p.reference;
+        profNom = p.nom;
+        break;
+      }
+    }
+    if (titre === null) continue;
+
+    // Référence éventuelle : dernière ligne selon le motif du profil.
+    let ligneReference = null;
+    let lignesParaphrase = lignes.slice(1);
+    const derniere = lignes[lignes.length - 1];
+    if (profReference && lignes.length > 1) {
+      const mr = derniere.match(profReference);
+      if (mr) {
+        ligneReference = (mr[1] !== undefined ? mr[1] : mr[0]).trim();
+        if (cfg.retirerParentheses) {
+          ligneReference = ligneReference.replace(/^\(+\s*/, '').replace(/\s*\)+$/, '').trim();
+        }
+        lignesParaphrase = lignes.slice(1, -1);
+      }
+    }
+    const paraphrase = lignesParaphrase.join('\n').trim();
+
+    let page = '';
+    const pm = [...entete.matchAll(regexPage)];
+    if (pm.length > 0) page = pm[pm.length - 1][1].trim();
+
+    // Lien d'ouverture de l'annotation dans le PDF (dernier de l'en-tête).
+    let lienAnno = '';
+    const am = [...entete.matchAll(/\((obsidian:\/\/zotflow\?type=open-annotation[^)\s]*)\)/g)];
+    if (am.length > 0) lienAnno = am[am.length - 1][1].trim();
+
+    let image = '';
+    const im = [...entete.matchAll(regexImage)];
+    if (im.length > 0) image = im[im.length - 1][1].trim();
+
+    // Texte surligné (citation d'origine) : lignes de blockquote imbriqué
+    // « > > ... » de l'en-tête, en excluant les embeds d'image.
+    const surligne = [];
+    for (const l of entete.split('\n')) {
+      const mh = l.match(/^>\s*>\s?(.*)$/);
+      if (mh) {
+        const t = mh[1].trim();
+        if (t && !/^!\[\[/.test(t)) surligne.push(t);
+      }
+    }
+    const highlight = surligne.join(' ').replace(/\s{2,}/g, ' ').trim();
+
+    const refs = [];
+    if (ligneReference) {
+      let citations;
+      try {
+        citations = ligneReference.split(new RegExp(echapperRegex(sepCit)));
+      } catch (e) {
+        citations = ligneReference.split(sepCit);
+      }
+      for (let c of citations) {
+        c = c.replace(/[()]/g, '').trim();
+        if (!c) continue;
+        const ref = parseNomReference(c, cfg);
+        if (ref) {
+          refs.push(ref);
+        } else {
+          // Pas d'année : citation « auteur seul » -> lien direct vers l'auteur.
+          const aut = parseAuteurSeul(c, cfg);
+          if (aut) refs.push(aut);
+        }
+      }
+    }
+
+    // Couleur de l'annotation : dernier callout « [!zotflow-<type>-<couleur>] » de l'en-tête.
+    const cm = [...entete.matchAll(/\[!zotflow-\w+-(#[0-9a-fA-F]{3,8}|[a-zA-Z]+)\]/g)];
+    const couleur = cm.length ? nomCouleur(cm[cm.length - 1][1]) : '';
+
+    blocs.push({ cle, titre, paraphrase, page, image, highlight, refs, couleur, lienAnno, ordre: blocs.length + 1, profil: profNom });
+  }
+  return blocs;
+}
+
+// Cherche une source Zotero correspondante (1er auteur + année).
+// Noms de famille (minuscule) des auteurs cités d'une référence.
+function surnamesReference(ref) {
+  return (ref && ref.auteurs ? ref.auteurs : [])
+    .map((a) => sansLien(String(a)).trim().split(/\s+/).pop().toLowerCase())
+    .filter(Boolean);
+}
+
+// Force d'appariement entre une référence citée et une entrée d'index Zotero.
+// 'fort'   : année + TOUS les auteurs cités présents (haute certitude).
+// 'faible' : « et al. » (seul le premier auteur connu) + année + 1er auteur présent.
+// null     : pas de correspondance.
+function appariementSource(ref, entree) {
+  if (!ref || !entree) return null;
+  const an = ref.annee4 || ref.annee;
+  if (!an || !entree.annee || entree.annee !== an) return null;
+  const rs = surnamesReference(ref);
+  if (!rs.length) return null;
+  const es = new Set(entree.surnames || []);
+  if (!es.size) return null;
+  if (ref.etAl) return es.has(rs[0]) ? 'faible' : null;
+  return rs.every((s) => es.has(s)) ? 'fort' : null;
+}
+
+// Tous les candidats (les 'fort' d'abord) pour une référence citée.
+function candidatsSource(ref, indexZotero) {
+  const out = [];
+  for (const z of indexZotero || []) {
+    const m = appariementSource(ref, z);
+    if (m) out.push({ entree: z, force: m });
+  }
+  out.sort((a, b) => (a.force === b.force ? 0 : a.force === 'fort' ? -1 : 1));
+  return out;
+}
+
+// Source Zotero CERTAINE pour l'auto-rattachement (construireNote) : un unique
+// appariement 'fort', jamais pour une référence à suffixe (2005a/b, ambiguë).
+function trouverSourceZotero(ref, indexZotero) {
+  if (!ref) return null;
+  if (ref.annee && ref.annee4 && ref.annee !== ref.annee4) return null;
+  const forts = (indexZotero || []).filter((z) => appariementSource(ref, z) === 'fort');
+  return forts.length === 1 ? forts[0].basename : null;
+}
+
+// Parse le nom d'une référence en attente (« Auteurs, année ») en objet ref,
+// pour tenter un appariement Zotero. Retourne null si non parsable.
+function refDepuisNomAttente(nom) {
+  const s = String(nom || '').trim();
+  const m = s.match(/^(.*?),\s*(\d{4}[a-z]?)\b.*$/);
+  if (!m) return null;
+  let auts = m[1].trim();
+  const annee = m[2];
+  const etAl = /\bet\s+al\.?/i.test(auts);
+  auts = auts.replace(/\bet\s+al\.?/ig, ' ').replace(/&|\bet\b|,|;/g, ' ').replace(/\s+/g, ' ').trim();
+  const auteurs = auts.split(' ').filter(Boolean);
+  if (!auteurs.length && !etAl) return null;
+  return { auteurs, annee, annee4: annee.replace(/[a-z]$/, ''), etAl };
+}
+
+// --- Références citées via API bibliographique (fonctions pures, testables) ---
+
+// Normalise un DOI : minuscule, sans préfixe URL ni « doi: ».
+function normDoi(s) {
+  if (!s) return '';
+  return String(s)
+    .trim()
+    .replace(/^https?:\/\/(dx\.)?doi\.org\//i, '')
+    .replace(/^doi:\s*/i, '')
+    // Tirets Unicode (‐ ‑ ‒ – — −) -> tiret ASCII : Crossref en renvoie parfois,
+    // ce qui empêchait la correspondance avec un DOI Zotero écrit normalement.
+    .replace(/[‐‑‒–—−]/g, '-')
+    .trim()
+    .toLowerCase();
+}
+
+// Nom de famille (dernier mot, minuscule) d'un nom d'auteur libre.
+function nomFamille(s) {
+  const t = sansLien(String(s || '')).replace(/,.*$/, '').trim(); // « Nom, Prénom » -> « Nom »
+  const parts = t.split(/\s+/).filter(Boolean);
+  return (parts.length ? parts[parts.length - 1] : t).toLowerCase();
+}
+
+// Sépare un nom complet en { nom (famille), prenom }. Gère « Nom, Prénom » et
+// l'ordre occidental « Prénom Nom » (dernier mot = nom de famille).
+function separerNomPrenom(nomComplet) {
+  const s = sansLien(String(nomComplet || '')).trim();
+  if (!s) return { nom: '', prenom: '' };
+  if (s.includes(',')) {
+    const i = s.indexOf(',');
+    return { nom: s.slice(0, i).trim(), prenom: s.slice(i + 1).trim() };
+  }
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { nom: s, prenom: '' };
+  return { nom: parts[parts.length - 1], prenom: parts.slice(0, -1).join(' ') };
+}
+
+// Parse une réponse Crossref /works/{doi} -> liste de références citées.
+function refsDepuisCrossref(json) {
+  const msg = json && json.message ? json.message : json;
+  const refs = (msg && msg.reference) || [];
+  const out = [];
+  for (const r of refs) {
+    const doi = normDoi(r.DOI || r.doi || '');
+    const titre = String(
+      r['article-title'] || r['volume-title'] || r['journal-title'] || r.unstructured || ''
+    ).trim();
+    const an = String(r.year || '').match(/\d{4}/);
+    const surnames = r.author ? [nomFamille(r.author)].filter(Boolean) : [];
+    out.push({ doi, titre, annee: an ? an[0] : '', auteurs: surnames, brut: String(r.unstructured || '') });
+  }
+  return out;
+}
+
+// Parse une liste de works OpenAlex (déjà résolus) -> références citées.
+function refsDepuisOpenAlexWorks(works) {
+  const out = [];
+  for (const w of works || []) {
+    const doi = normDoi(w.doi || (w.ids && w.ids.doi) || '');
+    const titre = String(w.title || w.display_name || '').trim();
+    const annee = w.publication_year ? String(w.publication_year) : '';
+    const surnames = [];
+    for (const a of w.authorships || []) {
+      const nom = (a.author && a.author.display_name) || a.raw_author_name || '';
+      const f = nomFamille(nom);
+      if (f) surnames.push(f);
+    }
+    out.push({ doi, titre, annee, auteurs: surnames });
+  }
+  return out;
+}
+
+// Construit le contenu canonique d'une note d'annotation (via modèles).
+function construireNote(bloc, sourceBasename, indexZotero, cfg, ctxSource) {
+  ctxSource = ctxSource || {};
+  let refLinks = [];
+  const pagesRef = {}; // cible de lien -> page de la référence citée (propre à l'annotation)
+  for (const r of bloc.refs) {
+    // Citation « auteur seul » (sans année) : lien(s) direct(s) vers l'auteur,
+    // sans note de référence intermédiaire.
+    if (r.estAuteurSeul) {
+      for (const a of r.auteurs) refLinks.push('[[' + a + ']]');
+      continue;
+    }
+    // Correspondance manuelle mémorisée (désambiguïsation 2005a/2005b) prioritaire.
+    const manuel = cfg.correspondancesSuffixe && cfg.correspondancesSuffixe[r.nom];
+    let cibleRef;
+    if (manuel) {
+      cibleRef = manuel;
+    } else {
+      const z = cfg.rattachementZotero ? trouverSourceZotero(r, indexZotero) : null;
+      cibleRef = z || r.nom;
+    }
+    refLinks.push('[[' + cibleRef + ']]');
+    if (r.page) pagesRef[cibleRef] = r.page;
+  }
+  // Aucune référence citée : par défaut, la source de l'annotation.
+  if (refLinks.length === 0 && cfg.referenceParDefautSource) {
+    refLinks = ['[[' + sourceBasename + ']]'];
+  }
+  const liens = refLinks.join(' ; ');
+
+  const vars = {
+    title: bloc.titre,
+    key: bloc.cle,
+    sourceName: sourceBasename,
+    image: bloc.image ? '![[' + bloc.image + ']]' : '',
+    paraphrase: bloc.paraphrase || '',
+    source: '[[' + sourceBasename + '#^' + bloc.cle + ']]',
+    page: bloc.page || '',
+    pageLine: bloc.page ? cfg.labelPage + bloc.page : '',
+    referenceLinks: liens,
+    references: refLinks.length > 0 ? cfg.labelReferences + liens : '',
+    annotationUrl: bloc.lienAnno || '',
+    titleLink: bloc.lienAnno ? '[' + bloc.titre + '](' + bloc.lienAnno + ')' : bloc.titre,
+  };
+
+  // Citation du texte surligné, rendue en encadré (callout).
+  let citation = '';
+  if (cfg.inclureCitation && bloc.highlight) {
+    const type = (cfg.calloutCitation || 'quote').trim() || 'quote';
+    citation =
+      '> [!' + type + ']\n' + bloc.highlight.split('\n').map((l) => '> ' + l).join('\n');
+  }
+  vars.citation = citation;
+  vars.highlight = bloc.highlight || '';
+
+  let corps = appliquerModele(cfg.modeleNote, vars);
+  corps = corps
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/^\n+/, '')
+    .replace(/\n+$/, '');
+
+  const alias = appliquerModele(cfg.aliasTemplate, vars).trim();
+
+  const fm = ['---'];
+  if (alias) {
+    fm.push('aliases:');
+    fm.push('  - ' + JSON.stringify(alias));
+  }
+  // Classe CSS pour cibler le style des notes d'annotation (ex. titre).
+  fm.push('cssclasses:');
+  fm.push('  - annotation');
+  fm.push('zotflow-anno-key: ' + bloc.cle);
+  fm.push('zotflow-source: ' + JSON.stringify('[[' + sourceBasename + ']]'));
+  if (typeof bloc.ordre === 'number') fm.push('ordre: ' + bloc.ordre);
+  if (bloc.page) fm.push('page: ' + JSON.stringify(bloc.page));
+  // Références citées aussi en propriété (liens cliquables) pour les bases.
+  if (refLinks.length > 0) {
+    fm.push('références-citées:');
+    for (const l of refLinks) fm.push('  - ' + JSON.stringify(l));
+  }
+  const clesPages = Object.keys(pagesRef);
+  if (clesPages.length > 0) {
+    fm.push('références-pages:');
+    for (const k of clesPages) fm.push('  ' + JSON.stringify(k) + ': ' + JSON.stringify(String(pagesRef[k])));
+  }
+  // Collections Zotero (héritées de la source) : filtrage direct dans les Bases.
+  const cols = ctxSource.collections;
+  if (cols) {
+    const liste = (Array.isArray(cols) ? cols : [cols]).map((x) => String(x)).filter(Boolean);
+    if (liste.length) {
+      fm.push('collections:');
+      for (const cc of liste) fm.push('  - ' + JSON.stringify(cc));
+    }
+  }
+  if (bloc.couleur) fm.push('couleur: ' + JSON.stringify(bloc.couleur));
+  fm.push('zotflow-auto: true');
+  fm.push('zotflow-locked: true');
+  fm.push('---');
+
+  return fm.join('\n') + '\n' + corps + '\n';
+}
+
+// Construit le contenu d'une note de référence provisoire (via modèle).
+function construireReference(ref, cfg) {
+  const authorLinks = ref.auteurs.map((a) => '[[' + a + ']]').join('\n');
+  const vars = {
+    authorLinks,
+    name: ref.nom,
+    year: ref.annee,
+    firstAuthor: ref.premierAuteur,
+  };
+  return appliquerModele(cfg.modeleReference, vars) + '\n';
+}
+
+/* =========================================================================
+ * Module Cartes — cartes ontologiques sur Canvas (fonctions pures)
+ * =========================================================================
+ * Le Canvas d'Obsidian est la surface de dessin (fichier .canvas = JSON).
+ *  - Les RELATIONS sont les étiquettes natives des arêtes (visibles, éditables).
+ *  - Les TYPES DE BLOCS vivent dans un fichier compagnon « <carte>.ariane.json »
+ *    (id de nœud -> id de type), pour ne pas altérer le texte des blocs.
+ * ========================================================================= */
+
+function normEtiquette(x) {
+  return String(x == null ? '' : x)
+    .replace(/\s*\((\+|-|−)\)\s*$/, '')   // retire la polarité « (+) » / « (−) »
+    .trim().toLowerCase();
+}
+
+// Polarité éventuelle d'une étiquette : '+', '-' ou ''.
+function polariteEtiquette(x) {
+  const m = String(x == null ? '' : x).match(/\((\+|-|−)\)\s*$/);
+  if (!m) return '';
+  return m[1] === '+' ? '+' : '-';
+}
+
+// Relation du vocabulaire correspondant à une étiquette, ou null.
+function relationDeEtiquette(etiquette, relations) {
+  const n = normEtiquette(etiquette);
+  if (!n) return null;
+  for (const r of relations || []) {
+    if (normEtiquette(r.nom) === n || String(r.id).toLowerCase() === n) return r;
+  }
+  return null;
+}
+
+// Texte lisible d'un nœud de canvas.
+function texteNoeud(n) {
+  if (!n) return '';
+  if (n.type === 'text') return String(n.text || '').split('\n')[0].replace(/^#+\s*/, '').trim();
+  if (n.type === 'file') return String(n.file || '').split('/').pop().replace(/\.md$/, '');
+  if (n.type === 'link') return String(n.url || '');
+  if (n.type === 'group') return String(n.label || '');
+  return '';
+}
+
+/* ---- Pont draw.io : lecture des schémas .drawio.svg / .drawio ----------- */
+
+function deshtmlMx(x) {
+  return String(x == null ? '' : x)
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (m, d) => String.fromCharCode(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+}
+
+function texteBrutMx(v) {
+  // Les libellés draw.io sont doublement encodés (HTML dans un attribut XML) :
+  // deux passes de décodage sont nécessaires.
+  return deshtmlMx(deshtmlMx(v))
+    .replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, ' ')
+    .replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function attrsMx(bal) {
+  const o = {}; const re = /([\w:-]+)\s*=\s*"([^"]*)"/g; let m;
+  while ((m = re.exec(bal)) !== null) o[m[1]] = m[2];
+  return o;
+}
+
+// XML mxGraph -> { nodes, edges } au même format que le Canvas, afin que
+// l'analyse, le DSL et l'export SVG fonctionnent sur les deux surfaces.
+function parserMxGraph(xml) {
+  const nodes = [], edges = [], labelsArete = {};
+  const jetons = [];
+  const re = /<(object|UserObject|mxCell|mxGeometry)\b([^>]*?)(\/?)>|<\/(object|UserObject)>/g;
+  let m;
+  while ((m = re.exec(String(xml || ''))) !== null) {
+    if (m[4]) { jetons.push({ t: 'fin-objet' }); continue; }
+    jetons.push({ t: m[1], a: attrsMx(m[2]), ferme: m[3] === '/' });
+  }
+  let objet = null, cell = null;
+  const pousser = () => {
+    if (!cell) return;
+    const c = cell; cell = null;
+    const a = c.a, g = c.geo || {};
+    if (a.edge === '1') {
+      edges.push({ id: c.id, fromNode: a.source || '', toNode: a.target || '', label: texteBrutMx(c.valeur), style: a.style || '' });
+    } else if (a.vertex === '1') {
+      if (a.parent && c.estEtiquette) { labelsArete[a.parent] = texteBrutMx(c.valeur); return; }
+      nodes.push({
+        id: c.id, type: 'text', text: texteBrutMx(c.valeur), style: a.style || '', parent: a.parent || '',
+        x: Number(g.x || 0), y: Number(g.y || 0),
+        width: Number(g.width || 120), height: Number(g.height || 40),
+      });
+    }
+  };
+  for (const j of jetons) {
+    if (j.t === 'object' || j.t === 'UserObject') { objet = j.a; continue; }
+    if (j.t === 'fin-objet') { pousser(); objet = null; continue; }
+    if (j.t === 'mxCell') {
+      pousser();
+      const a = j.a;
+      const val = objet ? (objet.label != null ? objet.label : (objet.value || '')) : (a.value || '');
+      cell = { a, geo: null, id: (objet && objet.id) || a.id || '', valeur: val, estEtiquette: /edgeLabel/.test(a.style || '') };
+      if (j.ferme && !objet) pousser();
+      continue;
+    }
+    if (j.t === 'mxGeometry' && cell) cell.geo = j.a;
+  }
+  pousser();
+  const parId = {};
+  for (const e of edges) parId[e.id] = e;
+  for (const cle of Object.keys(labelsArete)) {
+    if (parId[cle] && !parId[cle].label) parId[cle].label = labelsArete[cle];
+  }
+  return { nodes, edges };
+}
+
+// Décompresse un <diagram> draw.io (base64 + deflate) si nécessaire.
+function decompresserDiagramme(contenu) {
+  const t = String(contenu || '').trim();
+  if (/<mxGraphModel/i.test(t)) return t;
+  try {
+    const zlib = require('zlib');
+    const brut = zlib.inflateRawSync(Buffer.from(t, 'base64')).toString('utf8');
+    return decodeURIComponent(brut);
+  } catch (e) { return ''; }
+}
+
+// Contenu d'un fichier (.drawio.svg ou .drawio) -> pages [{ nom, graphe }].
+function pagesDepuisDrawio(contenu) {
+  let xml = String(contenu || '');
+  if (/^\s*<svg/i.test(xml) || /<svg[\s>]/i.test(xml.slice(0, 400))) {
+    const mc = xml.match(/\scontent="([^"]*)"/);
+    if (!mc) return [];
+    xml = deshtmlMx(mc[1]);
+  }
+  const pages = [];
+  const re = /<diagram\b([^>]*)>([\s\S]*?)<\/diagram>/g;
+  let m, trouve = false;
+  while ((m = re.exec(xml)) !== null) {
+    trouve = true;
+    const a = attrsMx(m[1]);
+    pages.push({ nom: deshtmlMx(a.name || ''), graphe: parserMxGraph(decompresserDiagramme(m[2])) });
+  }
+  if (!trouve && /<mxCell/.test(xml)) pages.push({ nom: '', graphe: parserMxGraph(xml) });
+  return pages;
+}
+
+// Convention de lecture : quand plusieurs flèches partent d'un même bloc (ou
+// convergent vers un même bloc) et qu'une seule étiquette a été écrite, elle
+// vaut pour toutes. On ne propage que si le groupe ne porte QU'UNE étiquette
+// distincte : deux étiquettes différentes rendraient le choix arbitraire.
+function propagerEtiquettes(graphe) {
+  const nodes = (graphe && graphe.nodes) || [];
+  const edges = (graphe && graphe.edges) || [];
+  const parId = {};
+  for (const n of nodes) parId[n.id] = n;
+  const nomme = (id) => (parId[id] ? String(parId[id].text || '').trim() : '');
+  const etiq = (e) => String(e.label || '').trim();
+
+  const copie = edges.map((e) => Object.assign({}, e));
+  const utiles = copie.filter((e) => nomme(e.fromNode) && nomme(e.toNode));
+
+  for (const cle of ['fromNode', 'toNode']) {
+    const groupes = {};
+    for (const e of utiles) {
+      if (!groupes[e[cle]]) groupes[e[cle]] = [];
+      groupes[e[cle]].push(e);
+    }
+    for (const k of Object.keys(groupes)) {
+      const lot = groupes[k];
+      if (lot.length < 2) continue;
+      const labels = [...new Set(lot.map(etiq).filter(Boolean))];
+      if (labels.length !== 1) continue;      // 0 = rien à propager, 2+ = ambigu
+      for (const e of lot) {
+        if (!etiq(e)) { e.label = labels[0]; e.labelHerite = true; }
+      }
+    }
+  }
+  return { nodes: nodes, edges: copie, pages: graphe ? graphe.pages : undefined };
+}
+
+/* --------------------------- Temps passé ---------------------------------
+ * Le compteur s'appuie sur la note active et sur l'activité du clavier et de
+ * la souris. Il ne mesure donc pas la présence devant l'écran, mais le temps
+ * de travail effectif, ce qui est plus honnête pour un journal de thèse.
+ * ------------------------------------------------------------------------ */
+
+// « 95 » -> « 1 h 35 ». Les minutes seules restent lisibles jusqu'à 59.
+function dureeLisible(minutes) {
+  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  if (m < 60) return m + ' min';
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r ? h + ' h ' + String(r).padStart(2, '0') : h + ' h';
+}
+
+function jourIsoDe(d) {
+  const p = (n) => (n < 10 ? '0' : '') + n;
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+/* ------------------------ Citations repliables ---------------------------
+ * Une citation a la forme « ([[CLE|Libellé]] ; [[CLE2|Libellé2]]) ». Repliée,
+ * elle laisse une pastille portant le nombre de références.
+ * ------------------------------------------------------------------------ */
+
+// Un groupe entre parenthèses fait de liens internes séparés par « ; ».
+// La parenthèse ne doit contenir aucune parenthèse imbriquée, ce qui écarte
+// les incises ordinaires du texte.
+const ZFA_RE_CITATION = /\((\s*\[\[[^[\]\n]+\]\](?:\s*;\s*\[\[[^[\]\n]+\]\])*\s*)\)/g;
+
+function citationsDuTexte(texte) {
+  const out = [];
+  // L'expression est réutilisée : la recompiler à chaque appel coûtait cher,
+  // cette fonction étant appelée à chaque frappe et à chaque défilement.
+  const re = ZFA_RE_CITATION;
+  re.lastIndex = 0;
+  let m;
+  while ((m = re.exec(texte)) !== null) {
+    const n = (m[1].match(/\[\[/g) || []).length;
+    out.push({ index: m.index, longueur: m[0].length, nombre: n });
+  }
+  return out;
+}
+
+/* ------------------------- Bibliographie de note -------------------------- */
+
+const ZFA_BIBLIO_DEBUT = '%% ariane:biblio %%';
+const ZFA_BIBLIO_FIN = '%% /ariane:biblio %%';
+
+// « Céline Kermisch » -> « Kermisch, C. » ; « Kermisch, Céline » aussi.
+function auteurBiblio(nom) {
+  const t = sansLien(String(nom || '')).trim();
+  if (!t) return '';
+  let famille, prenoms;
+  if (t.includes(',')) {
+    famille = t.split(',')[0].trim();
+    prenoms = t.split(',').slice(1).join(' ').trim();
+  } else {
+    const parts = t.split(/\s+/).filter(Boolean);
+    famille = parts.length > 1 ? parts[parts.length - 1] : t;
+    prenoms = parts.slice(0, -1).join(' ');
+  }
+  const initiales = prenoms
+    .split(/[\s-]+/).filter(Boolean)
+    .map((x) => x.charAt(0).toUpperCase() + '.')
+    .join(' ');
+  return initiales ? famille + ', ' + initiales : famille;
+}
+
+function listeAuteursBiblio(creators) {
+  const noms = (Array.isArray(creators) ? creators : (creators ? [creators] : []))
+    .map(auteurBiblio).filter(Boolean);
+  if (!noms.length) return '';
+  if (noms.length === 1) return noms[0];
+  return noms.slice(0, -1).join(', ') + ' & ' + noms[noms.length - 1];
+}
+
+// Une entrée de bibliographie à partir du frontmatter d'une note source.
+function entreeBiblio(cle, fm, modele) {
+  const val = (x) => String(x == null ? '' : x).replace(/^["']|["']$/g, '').trim();
+  const annee = (val(fm.year) || val(fm.date)).match(/\d{4}/);
+  const vars = {
+    auteurs: listeAuteursBiblio(fm.creators),
+    auteursComplets: (Array.isArray(fm.creators) ? fm.creators : (fm.creators ? [fm.creators] : []))
+      .map((x) => sansLien(String(x)).trim()).filter(Boolean).join(', '),
+    annee: annee ? annee[0] : '',
+    titre: val(fm.title),
+    publication: val(fm.publication),
+    doi: val(fm.doi),
+    url: val(fm.url),
+    type: val(fm.itemType),
+    cle: cle,
+  };
+  let out = appliquerModele(modele || '{{auteurs}} ({{annee}}). {{titre}}. *{{publication}}*.', vars);
+  // Retire les fragments restés vides : « (). », « ** », doubles espaces…
+  out = out
+    .replace(/\*\s*\*/g, '')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s*\.\s*(?=\.)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s.,;]+/, '')
+    .replace(/[\s,;]+$/, '')
+    .trim();
+  if (out && !/[.!?]$/.test(out)) out += '.';
+  return out;
+}
+
+// Une entrée rendue par Zotero peut porter une numérotation de style (IEEE :
+// « [1] », Vancouver : « 1. »). On la retire, et on neutralise les caractères
+// qui casseraient un alias de lien.
+function nettoyerEntreeBiblio(texte) {
+  return String(texte == null ? '' : texte)
+    .replace(/\s+/g, ' ')
+    .replace(/^\s*(?:\[\d+\]|\(\d+\)|\d+\.)\s*/, '')
+    .trim();
+}
+
+// Le renvoi vers la note source est ajouté APRÈS la référence, et non autour :
+// dans un alias de lien, Obsidian ne rend pas le markdown, si bien que les
+// italiques du style bibliographique resteraient des astérisques littérales.
+function entreeCliquable(texte, cle, marqueur) {
+  const t = String(texte == null ? '' : texte).replace(/\s+$/, '');
+  if (!cle) return t;
+  const m = String(marqueur == null || marqueur === '' ? '↗' : marqueur);
+  return t + ' [[' + cle + '|' + m + ']]';
+}
+
+// Bloc complet, encadré par des marqueurs pour un remplacement idempotent.
+function construireBibliographie(entrees, titre) {
+  const out = [ZFA_BIBLIO_DEBUT];
+  // Ligne vide indispensable : sans elle, « texte + --- » forme un titre
+  // souligné (syntaxe setext) et le marqueur serait rendu comme un titre.
+  out.push('');
+  out.push('---');
+  out.push('## ' + (titre || 'Bibliographie'));
+  if (entrees.length) {
+    for (const e of entrees) out.push('- ' + e);
+  } else {
+    out.push('*Aucune source citée.*');
+  }
+  out.push(ZFA_BIBLIO_FIN);
+  return out.join('\n');
+}
+
+// Remplace le bloc s'il existe, sinon l'ajoute en fin de note.
+function injecterBibliographie(contenu, bloc) {
+  const texte = String(contenu == null ? '' : contenu);
+  const i = texte.indexOf(ZFA_BIBLIO_DEBUT);
+  const j = texte.indexOf(ZFA_BIBLIO_FIN);
+  if (i !== -1 && j !== -1 && j > i) {
+    return texte.slice(0, i) + bloc + texte.slice(j + ZFA_BIBLIO_FIN.length);
+  }
+  return texte.replace(/\s*$/, '') + '\n\n' + bloc + '\n';
+}
+
+// Texte de la note privé de son frontmatter et de ses blocs synchronisés,
+// pour ne repérer que les citations réellement écrites dans le corps.
+// Le plus long début commun à des noms de fichiers, arrêté sur un séparateur.
+// « NP-260826-07 » et « NP-260727-06 » donnent « NP- ». Un début qui n'est pas
+// suivi d'un séparateur ne serait pas un préfixe mais une coïncidence.
+function prefixeCommun(noms) {
+  const l = (noms || []).filter(Boolean);
+  if (l.length < 2) return '';
+  let commun = l[0];
+  for (const n of l.slice(1)) {
+    let i = 0;
+    while (i < commun.length && i < n.length && commun[i] === n[i]) i++;
+    commun = commun.slice(0, i);
+    if (!commun) return '';
+  }
+  const m = commun.match(/^(.*?[-_ ])/);
+  const p = m ? m[1] : '';
+  return p.length >= 2 && p.length <= 12 ? p : '';
+}
+
+// Une valeur de propriété destinée à Word : les liens d'Obsidian n'y ont pas
+// leur place. « [[Chabane Mazri]] » devient « Chabane Mazri », « [[cible|nom]] »
+// devient « nom », « [texte](url) » devient « texte ». Le reste est intact.
+function valeurLisible(texte) {
+  return String(texte == null ? '' : texte)
+    .replace(/\[\[([^\]\n]*?)\\?\|([^\]\n]+)\]\]/g, '$2')       // [[cible|alias]]
+    .replace(/\[\[([^\]|#\n]+)\]\]/g,
+      (m, t) => String(t).split('/').pop().replace(/^@/, '').trim())  // [[cible]]
+    .replace(/\[([^\]\n]+)\]\(([^)\n]+)\)/g, '$1')                  // [texte](url)
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+// Dans un tableau, Obsidian échappe la barre verticale du lien :
+// « [[@clé\|libellé]] ». La clé capturée emporte alors l'antislash, la note
+// n'est plus retrouvée, et la référence disparaissait à la fois de la
+// bibliographie de fin de note et des champs Zotero de l'export Word.
+function cleDeLien(x) {
+  return String(x == null ? '' : x).replace(/\\+$/, '').trim();
+}
+
+function corpsCitable(contenu) {
+  let t = String(contenu == null ? '' : contenu).replace(/^---\n[\s\S]*?\n---\n?/, '');
+  const coupe = (deb, fin) => {
+    const i = t.indexOf(deb), j = t.indexOf(fin);
+    if (i !== -1 && j !== -1 && j > i) t = t.slice(0, i) + t.slice(j + fin.length);
+  };
+  coupe(ZFA_BIBLIO_DEBUT, ZFA_BIBLIO_FIN);
+  coupe(ZFA_SCHEMA_DEBUT, ZFA_SCHEMA_FIN);
+  return t;
+}
+
+/* ---- Conversion entre notes de bas de page et citations classiques ------ */
+
+// Réécrit l'alias des citations « [[clé|libellé]] » du corps, sans toucher au
+// frontmatter ni aux blocs synchronisés (bibliographie, contenu de schéma) —
+// où le lien « ↗ » doit rester tel quel.
+function rafraichirLibelles(contenu, libelle, citable) {
+  const texte = String(contenu == null ? '' : contenu);
+  const zones = [];
+  const mfm = texte.match(/^---\n[\s\S]*?\n---\n?/);
+  if (mfm) zones.push([0, mfm[0].length]);
+  for (const [d, f] of [[ZFA_BIBLIO_DEBUT, ZFA_BIBLIO_FIN], [ZFA_SCHEMA_DEBUT, ZFA_SCHEMA_FIN]]) {
+    const i = texte.indexOf(d), j = texte.indexOf(f);
+    if (i !== -1 && j !== -1 && j > i) zones.push([i, j + f.length]);
+  }
+  const protege = (pos) => zones.some(([a, b]) => pos >= a && pos < b);
+
+  let n = 0;
+  const out = texte.replace(/\[\[([^\]|#\n]+)\|([^\]\n]*)\]\]/g, (tout, cle, alias, pos) => {
+    if (protege(pos)) return tout;
+    const k = cleDeLien(cle);
+    if (!citable(k)) return tout;
+    const neuf = libelle(k);
+    if (!neuf || neuf === alias) return tout;
+    n++;
+    return '[[' + k + '|' + neuf + ']]';
+  });
+  return { texte: out, n };
+}
+
+// Où insérer un groupe de citations « (…) » à la position visée, et sous
+// quelle forme : nouveau groupe, ou ajout dans le groupe déjà présent.
+// Renvoie null si rien à insérer. Fonction pure, donc testable.
+function composerCitation(docStr, pos, entrees, sep) {
+  const separateur = sep || ' ; ';
+  const avant = String(docStr).slice(0, pos);
+  const groupe = avant.match(/\(([^()]*\[\[[^()]*)\)\s*$/);
+  const dedans = groupe ? groupe[1] : '';
+  const retenues = (entrees || []).filter((e) => {
+    const cle = (e.match(/^\[\[([^|\]]+)/) || [])[1];
+    return cle ? dedans.indexOf('[[' + cle) === -1 : true;
+  });
+  if (!retenues.length) return null;
+  if (groupe) {
+    const iFerme = avant.lastIndexOf(')');
+    return { from: iFerme, to: iFerme, insert: separateur + retenues.join(separateur) };
+  }
+  const espace = /\s$/.test(avant) || avant === '' ? '' : ' ';
+  return { from: pos, to: pos, insert: espace + '(' + retenues.join(separateur) + ')' };
+}
+
+// Extrait lisible d'un schéma, destiné à être recopié dans la note associée
+// pour rendre son contenu cherchable (recherche Obsidian + index sémantique).
+const ZFA_SCHEMA_DEBUT = '%% ariane:schema %%';
+const ZFA_SCHEMA_FIN = '%% /ariane:schema %%';
+
+function extraitSchema(graphe, titre) {
+  const nodes = (graphe && graphe.nodes) || [];
+  const edges = (graphe && graphe.edges) || [];
+  const parId = {};
+  for (const n of nodes) parId[n.id] = n;
+
+  const relies = new Set();
+  const lignes = [];
+  for (const e of edges) {
+    const a = parId[e.fromNode], b = parId[e.toNode];
+    const ta = a ? String(a.text || '').trim() : '';
+    const tb = b ? String(b.text || '').trim() : '';
+    if (!ta || !tb) continue;
+    relies.add(ta); relies.add(tb);
+    const et = String(e.label || '').trim();
+    lignes.push(ta + (et ? ' --' + et + '--> ' : ' --> ') + tb);
+  }
+  const isoles = nodes
+    .map((n) => String(n.text || '').trim())
+    .filter((t) => t && !relies.has(t));
+
+  const out = [];
+  out.push(ZFA_SCHEMA_DEBUT);
+  out.push('> [!abstract]- Contenu du schéma' + (titre ? ' — ' + titre : ''));
+  out.push('> *Synchronisé par Ariane depuis le schéma. Ne pas modifier à la main.*');
+  if (lignes.length) {
+    out.push('>');
+    for (const l of lignes) out.push('> - ' + l);
+  }
+  if (isoles.length) {
+    out.push('>');
+    out.push('> **Blocs sans relation** : ' + [...new Set(isoles)].join(' · '));
+  }
+  if (!lignes.length && !isoles.length) {
+    out.push('>');
+    out.push('> *(schéma vide)*');
+  }
+  out.push(ZFA_SCHEMA_FIN);
+  return out.join('\n');
+}
+
+// Remplace (ou ajoute en fin de note) le bloc synchronisé.
+function injecterExtrait(contenu, extrait) {
+  const texte = String(contenu == null ? '' : contenu);
+  const i = texte.indexOf(ZFA_SCHEMA_DEBUT);
+  const j = texte.indexOf(ZFA_SCHEMA_FIN);
+  if (i !== -1 && j !== -1 && j > i) {
+    const avant = texte.slice(0, i);
+    const apres = texte.slice(j + ZFA_SCHEMA_FIN.length);
+    return avant + extrait + apres;
+  }
+  return texte.replace(/\s*$/, '') + '\n\n' + extrait + '\n';
+}
+
+// Analyse une carte : blocs, relations, et problèmes de conformité.
+function analyserCarte(data, vocab, sidecar) {
+  const relations = (vocab && vocab.relations) || [];
+  const types = (vocab && vocab.types) || [];
+  const strict = !!(vocab && vocab.strict);
+  const map = (sidecar && sidecar.blocs) || {};
+  const noeuds = (data && data.nodes) || [];
+  const aretes = (data && data.edges) || [];
+  const parId = {};
+  for (const n of noeuds) parId[n.id] = n;
+
+  const blocs = noeuds
+    .filter((n) => n.type !== 'group')
+    .map((n) => ({ id: n.id, texte: texteNoeud(n), type: map[n.id] || '', noeud: n }));
+
+  const liens = [];
+  const problemes = [];
+  for (const e of aretes) {
+    const rel = relationDeEtiquette(e.label, relations);
+    const src = parId[e.fromNode], dst = parId[e.toNode];
+    liens.push({
+      id: e.id,
+      de: e.fromNode, vers: e.toNode,
+      deTexte: texteNoeud(src), versTexte: texteNoeud(dst),
+      etiquette: e.label || '',
+      relation: rel ? rel.id : '',
+      polarite: polariteEtiquette(e.label),
+    });
+    if (!e.label || !String(e.label).trim()) {
+      problemes.push({ gravite: 'info', type: 'lien-muet', id: e.id, texte: (texteNoeud(src) || '?') + ' → ' + (texteNoeud(dst) || '?') });
+    } else if (!rel && relations.length) {
+      // Vocabulaire vide = aucune norme imposée : on ne signale rien.
+      problemes.push({ gravite: strict ? 'erreur' : 'avert', type: 'hors-vocabulaire', id: e.id, texte: '« ' + e.label +' » (' + (texteNoeud(src) || '?') + ' → ' + (texteNoeud(dst) || '?') + ')' });
+    } else if (rel.soupape) {
+      problemes.push({ gravite: 'info', type: 'soupape', id: e.id, texte: '« ' + rel.nom + ' » à retyper (' + (texteNoeud(src) || '?') + ' → ' + (texteNoeud(dst) || '?') + ')' });
+    }
+  }
+  const idsTypes = new Set((types || []).map((t) => t.id));
+  for (const b of blocs) {
+    if (!b.texte) continue;
+    if (!b.type) problemes.push({ gravite: 'info', type: 'bloc-sans-type', id: b.id, texte: b.texte });
+    else if (!idsTypes.has(b.type)) problemes.push({ gravite: 'avert', type: 'type-inconnu', id: b.id, texte: b.texte + ' (« ' + b.type + ' »)' });
+  }
+  return { blocs, liens, problemes };
+}
+
+/* =========================================================================
+ * Plugin
+ * ========================================================================= */
+
+/* ---------------- Détection de doublons d'auteurs ---------------------- */
+
+function normNom(x) {
+  return String(x || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[‐‑‒–—−]/g, '-')
+    .toLowerCase().replace(/\./g, ' ').replace(/[^a-z0-9\- ]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+function tokensNom(x) { return normNom(x).replace(/-/g, ' ').split(' ').filter(Boolean); }
+function surnameKey(name) {
+  const t = tokensNom(name);
+  if (!t.length) return '';
+  let sur = t[t.length - 1];
+  if (sur.length < 3 && t.length > 1) sur = t[0];
+  return sur;
+}
+// Deux noms partageant le nom de famille désignent-ils la même personne ?
+function memePersonne(a, b) {
+  const fa = tokensNom(a).slice(0, -1), fb = tokensNom(b).slice(0, -1);
+  const fullA = new Set(fa.filter((x) => x.length > 1));
+  const fullB = new Set(fb.filter((x) => x.length > 1));
+  const initA = fa.filter((x) => x.length === 1);
+  const initB = fb.filter((x) => x.length === 1);
+  if (!fullA.size && !fullB.size) return true;
+  if (fullA.size && fullB.size) {
+    for (const w of fullA) if (fullB.has(w)) return true;
+    return false;
+  }
+  const full = fullA.size ? fullA : fullB;
+  const inits = initA.length ? initA : initB;
+  for (const i of inits) { let ok = false; for (const w of full) if (w[0] === i) ok = true; if (!ok) return false; }
+  return true;
+}
+function meilleurCanonique(membres) {
+  const acc = (x) => (/[^\x00-\x7f]/.test(x) ? 1 : 0);
+  const hy = (x) => (x.includes('-') ? 1 : 0);
+  const pleins = (x) => tokensNom(x).slice(0, -1).filter((t) => t.length > 1).length;
+  return membres.slice().sort((a, b) =>
+    (pleins(b) - pleins(a)) || (acc(b) - acc(a)) || (hy(b) - hy(a)) || (b.length - a.length))[0];
+}
+// Regroupe des noms (déjà hors copies de conflit) en clusters de même personne.
+function clustersDoublons(noms) {
+  const groupes = new Map();
+  for (const n of noms) {
+    const k = surnameKey(n);
+    if (!groupes.has(k)) groupes.set(k, []);
+    groupes.get(k).push(n);
+  }
+  const clusters = [];
+  for (const membres of groupes.values()) {
+    if (membres.length < 2) continue;
+    const used = new Set();
+    for (let i = 0; i < membres.length; i++) {
+      if (used.has(membres[i])) continue;
+      const grp = [membres[i]]; used.add(membres[i]);
+      for (let j = i + 1; j < membres.length; j++) {
+        if (!used.has(membres[j]) && memePersonne(membres[i], membres[j])) { grp.push(membres[j]); used.add(membres[j]); }
+      }
+      if (grp.length > 1) clusters.push(grp);
+    }
+  }
+  return clusters;
+}
+
+// Transforme les notes de bas de page « annotations » d'un Markdown Obsidian
+// en citations Pandoc [@citekey, p. XX; ...]. resoudre(cible) -> {citekey,page}|null.
+// Les notes de bas de page de texte libre sont conservées telles quelles.
+/* ---------------------- Préparation du markdown exporté -------------------
+ * Les notes n'emploient plus de notes de bas de page mais des citations en
+ * ligne « ([[CLE|Auteur, année, p. 12]]) ». Sans conversion, pandoc n'y voit
+ * que du texte : c'est pourquoi le document sortait sans le moindre champ
+ * Zotero. On les rend ici sous la forme attendue par le filtre : « [@clé, p. 12] ».
+ * ------------------------------------------------------------------------ */
+
+// Regroupe les entrées d'une même source : deux annotations d'un même travail
+// ne font qu'une citation, et leurs pages se cumulent dans un seul suffixe.
+// « a, b et c ». Le dernier terme est amené par « et », ce qui marque la fin
+// de l'énumération sans recourir au point-virgule.
+function enumererFrancais(liste) {
+  if (liste.length <= 1) return liste.join('');
+  return liste.slice(0, -1).join(', ') + ' et ' + liste[liste.length - 1];
+}
+
+// Rend une grappe de citations. Chaque entrée résolue est soit une chaîne
+// déjà prête, soit { cle, page, travaux } : une source consultée, sa page, et
+// les travaux qu'elle rapporte.
+//
+// Le regroupement se fait ici, à l'échelle de la GRAPPE et non de l'annotation.
+// Plusieurs annotations d'une même source se retrouvent souvent côte à côte :
+// elles produisaient alors autant de citations du même ouvrage, qu'APA
+// regroupait en effaçant le nom de l'auteur à partir de la deuxième —
+// « … cité dans Dresch et al., 2015, p. 48, 2015, p. 52, … ». Une source ne
+// paraît donc plus qu'une fois, ses pages cumulées et ses travaux rapportés
+// réunis.
+// « Le Moigne, 1994 » et « Le Moigne, 1994, p. 228 » désignent le même travail,
+// le second en précisant la page. On garde le plus précis, et jamais les deux.
+function ajouterTravail(liste, travail) {
+  const t = String(travail || '').trim();
+  if (!t) return;
+  for (let i = 0; i < liste.length; i++) {
+    if (t.indexOf(liste[i]) === 0) { liste[i] = t; return; }   // le nouveau précise
+    if (liste[i].indexOf(t) === 0) return;                     // l'ancien précise déjà
+  }
+  liste.push(t);
+}
+
+// Les pages d'une même source, remises en ordre : les liminaires en chiffres
+// romains d'abord, puis les pages numérotées par ordre croissant. Sans cela
+// elles sortaient dans l'ordre où les annotations se présentent — « 48, vii,
+// 62, 52, 50, 53 » — ce qui ne se lit pas.
+function ordonnerPages(pages) {
+  const rang = (p) => {
+    const n = parseInt(String(p).replace(/^\D+/, ''), 10);
+    if (/^[ivxlcdm]+$/i.test(String(p).trim())) return [0, 0, String(p).toLowerCase()];
+    return isNaN(n) ? [2, 0, String(p)] : [1, n, ''];
+  };
+  return pages.slice().sort((a, b) => {
+    const ra = rang(a), rb = rang(b);
+    return ra[0] - rb[0] || ra[1] - rb[1] || String(ra[2]).localeCompare(String(rb[2]));
+  });
+}
+
+function rendreGrappe(entrees, connecteur) {
+  const lien = connecteur || ', cité dans ';
+  const ordre = [];
+  const parCle = new Map();
+  for (const e of entrees) {
+    if (typeof e === 'string') { ordre.push(e); continue; }
+    if (!e || !e.cle) continue;
+    if (!parCle.has(e.cle)) { parCle.set(e.cle, { pages: [], travaux: [] }); ordre.push({ cle: e.cle }); }
+    const g = parCle.get(e.cle);
+    // « vii,62 » vaut deux pages : on les sépare pour ne pas les redoubler.
+    for (const page of String(e.page || '').split(',')) {
+      const v = page.trim();
+      if (v && g.pages.indexOf(v) === -1) g.pages.push(v);
+    }
+    for (const t of (e.travaux || [])) ajouterTravail(g.travaux, t);
+  }
+  return ordre.map((x) => {
+    if (typeof x === 'string') return x;
+    const g = parCle.get(x.cle);
+    const source = '@' + x.cle
+      + (g.pages.length ? ', p. ' + ordonnerPages(g.pages).join(', ') : '');
+    return g.travaux.length ? enumererFrancais(g.travaux) + lien + source : source;
+  });
+}
+
+// Retire la numérotation saisie à la main en tête de titre : « 2.1 Titre »,
+// « II - Titre », « 3) Titre ». Word la reprendra automatiquement.
+function titreSansNumerotation(txt) {
+  return String(txt)
+    .replace(/^\s*(?:\d+(?:[.)]\d+)*|[IVXLCDM]+)\s*[.)\-–—]\s+/, '')
+    .replace(/^\s*(?:\d+(?:\.\d+)*)\s+(?=\S)/, '')
+    .trim();
+}
+
+const ZFA_RE_CIT_GROUPE = /\((\s*\[\[[^[\]\n]+\]\](?:\s*;\s*\[\[[^[\]\n]+\]\])*\s*)\)/g;
+
+function citationsEnLigneVersPandoc(texte, resoudre, connecteur) {
+  return String(texte).replace(ZFA_RE_CIT_GROUPE, (tout, dedans) => {
+    const cles = [...dedans.matchAll(/\[\[([^\]|#\n]+)(?:\|[^\]\n]*)?\]\]/g)].map((x) => cleDeLien(x[1]));
+    const entrees = [];
+    for (const c of cles) {
+      const es = resoudre(c);
+      if (es && es.length) for (const e of es) entrees.push(e);
+    }
+    if (!entrees.length) return tout;            // rien de reconnu : on n'abîme pas
+    return '[' + rendreGrappe(entrees, connecteur).join('; ') + ']';
+  });
+}
+
+// Prépare le markdown : citations, titres, encadrés, blocs à ne pas exporter.
+function preparerMarkdownExport(contenu, resoudre, opts) {
+  const o = opts || {};
+  let s = String(contenu).replace(/^---\n[\s\S]*?\n---\n?/, '');
+
+  // 1. Bibliographie d'Ariane : Zotero produira la sienne.
+  s = s.replace(/%%\s*ariane:biblio\s*%%[\s\S]*?%%\s*\/ariane:biblio\s*%%/g, '');
+  s = s.replace(/^\s*---\s*$\n+(?=#{1,6}\s*Bibliographie)/gim, '');
+  // « \Z » n'existe pas en JavaScript : il y vaut la lettre Z, si bien que la
+  // coupe s'arrêtait au premier Z rencontré. On vise la vraie fin de texte.
+  s = s.replace(/^#{1,6}[ \t]*Bibliographie[ \t]*$[\s\S]*?(?=^#{1,6}[ \t]|$(?![\s\S]))/gim, '');
+
+  // 2. Compteurs de travaux rapportés : ils n'ont pas de sens hors d'Obsidian.
+  s = s.replace(/\s*⟨\d+⟩/g, '');
+
+  // 3. Citations en ligne -> syntaxe du filtre Zotero.
+  s = citationsEnLigneVersPandoc(s, resoudre, o.citeDans);
+
+  // 4. Liens de source isolés « [[@clé]] » -> citation dans le texte.
+  s = s.replace(/\[\[@([^\]|#\n]+)(?:\|[^\]\n]*)?\]\]/g, (t, cle) => '@' + cleDeLien(cle));
+
+  // 4 bis. Les liens Obsidian qui restent ne sont pas des citations : on les
+  //    aplatit pour un rendu propre dans Word.
+  s = s
+    .replace(/\[\[[^\]\n]*\|([^\]\n]+)\]\]/g, '$1')   // [[cible|alias]] -> alias
+    .replace(/\[\[([^\]|#\n]+)\]\]/g,
+      (m, t) => t.split('/').pop().replace(/^@/, '').trim());   // [[note]] -> nom
+
+  // 5. Encadrés Obsidian -> bloc à style Word.
+  s = encadresVersPandoc(s, o.styleEncadre || 'Items de réflexion');
+
+  // 6. Titres : « # » est le titre du document, pas une partie. On décale d'un
+  //    cran, et l'on retire la numérotation manuelle.
+  if (o.decalerTitres !== false) {
+    s = s.replace(/^(#{1,6})[ \t]+(.+?)[ \t]*$/gm, (t, diese, txt) => {
+      const n = diese.length;
+      const titre = o.retirerNumerotation === false ? txt.trim() : titreSansNumerotation(txt);
+      if (n === 1) return '';                    // titre global : porté par l'en-tête
+      return '#'.repeat(Math.max(1, n - 1)) + ' ' + titre;
+    });
+  } else if (o.retirerNumerotation !== false) {
+    s = s.replace(/^(#{1,6})[ \t]+(.+?)[ \t]*$/gm,
+      (t, d, txt) => d + ' ' + titreSansNumerotation(txt));
+  }
+
+  // 7. Séparation des blocs : sans cela pandoc avale titres et listes.
+  s = normaliserBlocsPandoc(s);
+
+  // 8. Typographie française : les espaces devant la ponctuation double
+  //    deviennent insécables, pour que Word ne les rejette pas en début de
+  //    ligne.
+  if (o.insecables !== false) s = insecablesFrancais(s);
+
+  return s.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// Deux écarts entre Obsidian et pandoc, tous deux dus aux lignes vides que
+// que l'on n'écrit pas toujours :
+//   - pandoc exige une ligne vide AVANT un titre, une liste, une citation, un
+//     tableau ou un bloc « ::: » ; sans elle, il rattache la ligne au
+//     paragraphe précédent et les dièses s'affichent en clair ;
+//   - pandoc réunit en UN paragraphe des lignes consécutives, là où Obsidian
+//     en fait autant de paragraphes. Le saut de paragraphe se perdait, et les
+//     amorces en gras qui servent de sous-titres se noyaient dans des blocs
+//     de plusieurs milliers de caractères.
+// On pose donc les lignes vides manquantes, dans les deux cas.
+function normaliserBlocsPandoc(texte) {
+  const vide = (l) => !String(l || '').trim();
+  const estTitre = (l) => /^#{1,6}[ \t]+\S/.test(l);
+  const estListe = (l) => /^[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+)\S/.test(l);
+  const estCitation = (l) => /^[ \t]*>/.test(l);
+  const estDiv = (l) => /^[ \t]*:::/.test(l);
+  const estTableau = (l) => /^[ \t]*\|/.test(l);
+  const estCloture = (l) => /^[ \t]*(?:```|~~~)/.test(l);
+
+  const lignes = String(texte).split('\n');
+  const out = [];
+  let dansCode = false;
+  for (const l of lignes) {
+    if (estCloture(l)) { dansCode = !dansCode; out.push(l); continue; }
+    if (dansCode) { out.push(l); continue; }
+    const prec = out.length ? out[out.length - 1] : '';
+    // Une ligne de texte ordinaire : ni titre, ni liste, ni tableau, ni
+    // citation, ni bloc, et sans retrait — un retrait signale la suite d'un
+    // élément de liste, qu'il ne faut pas couper.
+    const estTexte = (x) => !vide(x) && !estTitre(x) && !estListe(x)
+      && !estCitation(x) && !estDiv(x) && !estTableau(x) && !estCloture(x)
+      && !/^[ \t]/.test(x);
+    const manque =
+      (estTitre(l) && !vide(prec)) ||
+      (estListe(l) && !vide(prec) && !estListe(prec)) ||
+      (estCitation(l) && !vide(prec) && !estCitation(prec)) ||
+      (estDiv(l) && !vide(prec)) ||
+      (estTableau(l) && !vide(prec) && !estTableau(prec)) ||
+      (estTexte(l) && !vide(prec) && !estTitre(prec) && !estDiv(prec));
+    if (manque && out.length) out.push('');
+    out.push(l);
+  }
+  // Un titre veut aussi une ligne vide derrière lui.
+  const final = [];
+  for (let i = 0; i < out.length; i++) {
+    final.push(out[i]);
+    if (estTitre(out[i]) && !vide(out[i + 1])) final.push('');
+  }
+  return final.join('\n');
+}
+
+// Typographie française. On ne fait que RENDRE INSÉCABLE une espace déjà
+// présente ; on n'en ajoute jamais. Ajouter une espace devant un « : » nu
+// abîmerait les adresses (« https://… »), les heures (« 14:30 ») et les
+// attributs pandoc (« custom-style="…" »), qui n'en ont pas.
+//
+// Les grappes de citation sont laissées telles quelles : Zotero les réécrit à
+// l'actualisation, et le « ; » y sépare les références.
+function insecablesFrancais(texte) {
+  const NB = '\u00a0';                       // espace insécable
+  const lignes = String(texte).split('\n');
+  let dansCode = false;
+  const sortie = lignes.map((l) => {
+    if (/^\s*(?:```|~~~)/.test(l)) { dansCode = !dansCode; return l; }
+    if (dansCode) return l;
+    if (/^\s*:::/.test(l)) return l;          // délimiteur de bloc pandoc
+    if (/^\s*\|[\s|:-]*\|\s*$/.test(l)) return l; // ligne de séparation de tableau
+    // split avec groupe capturant : les crochets tombent aux rangs impairs.
+    return l.split(/(\[[^\]\n]*\])/).map((bout, i) => (i % 2 ? bout : bout
+      .replace(/ +([;:!?»])/g, NB + '$1')
+      .replace(/(«) +/g, '$1' + NB))).join('');
+  });
+  return sortie.join('\n');
+}
+
+// Marques encadrant une mise en avant dans le markdown intermédiaire. La
+// finition les retrouve dans le document produit, en tire le titre, et
+// remplace le tout par le gabarit d'encadré du modèle. On ne peut pas se fier
+// aux styles : pandoc donne aux éléments de liste le style de liste, non celui
+// du bloc, et un encadré à puces échapperait à toute détection par le style.
+const MARQUE_ENCADRE_DEBUT = '\u27E6ariane:encadre\u27E7';
+const MARQUE_ENCADRE_FIN = '\u27E6/ariane:encadre\u27E7';
+
+// « > [!info] Titre » devient un bloc pandoc à style Word, borné par les deux
+// marques ci-dessus. Sans gabarit d'encadré dans le modèle, la finition se
+// borne à retirer les marques : le bloc reste stylé, ce qui reste lisible.
+function encadresVersPandoc(texte, style) {
+  const lignes = String(texte).split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lignes.length) {
+    const m = lignes[i].match(/^>\s*\[!(\w+)\][-+]?\s*(.*)$/);
+    if (!m) { out.push(lignes[i]); i++; continue; }
+    const titre = m[2].trim();
+    const corps = [];
+    i++;
+    while (i < lignes.length && /^>/.test(lignes[i])) {
+      corps.push(lignes[i].replace(/^>\s?/, ''));
+      i++;
+    }
+    out.push('::: {custom-style="' + style + '"}');
+    out.push(MARQUE_ENCADRE_DEBUT + titre);
+    out.push('');
+    for (const l of corps) out.push(l);
+    out.push('');
+    out.push(MARQUE_ENCADRE_FIN);
+    out.push(':::');
+    out.push('');
+  }
+  return out.join('\n');
+}
+
+function footnotesVersCitations(contenu, resoudre, connecteur) {
+  let s = String(contenu).replace(/^---\n[\s\S]*?\n---\n?/, ''); // retire le frontmatter
+  const lignes = s.split('\n');
+  const defs = {};              // label -> cluster Pandoc
+  const aRetirer = new Set();   // indices de lignes de définition (citations) à retirer
+  for (let i = 0; i < lignes.length; i++) {
+    const m = lignes[i].match(/^\[\^([^\]]+)\]:(.*)$/);
+    if (!m) continue;
+    const label = m[1];
+    let j = i + 1;
+    const corps = [m[2]];
+    while (j < lignes.length && /^[ \t]+\S/.test(lignes[j])) { corps.push(lignes[j]); j++; }
+    const texte = corps.join('\n');
+    const cibles = [...texte.matchAll(/\[\[([^\]|#\n]+)(?:\|[^\]\n]*)?\]\]/g)].map((x) => cleDeLien(x[1]));
+    const entrees = [];
+    for (const c of cibles) {
+      const es = resoudre(c);
+      if (es && es.length) for (const e of es) entrees.push(e);
+    }
+    if (entrees.length) {
+      defs[label] = '[' + rendreGrappe(entrees, connecteur).join('; ') + ']';
+      for (let k = i; k < j; k++) aRetirer.add(k);
+    }
+    i = j - 1;
+  }
+  // Retire le titre de section « Annotations de lecture associées » et son séparateur ---.
+  for (let i = 0; i < lignes.length; i++) {
+    if (!/^\*\*Annotations de lecture associées\*\*\s*$/.test(lignes[i])) continue;
+    aRetirer.add(i);
+    let k = i - 1;
+    while (k >= 0 && lignes[k].trim() === '') { aRetirer.add(k); k--; }
+    if (k >= 0 && /^-{3,}\s*$/.test(lignes[k])) aRetirer.add(k);
+  }
+  const sortie = [];
+  for (let i = 0; i < lignes.length; i++) {
+    if (aRetirer.has(i)) continue;
+    const l = lignes[i].replace(/\[\^([^\]\s]+)\]/g, (full, lab) => (defs[lab] || full));
+    sortie.push(l);
+  }
+  const texte = sortie.join('\n');
+  // Les liens Obsidian ne sont PAS aplatis ici : une citation en ligne s'écrit
+  // ([[CLE|Power, 2010, p. 5]]), et l'aplatir à cet endroit la réduisait à du
+  // texte mort avant que preparerMarkdownExport n'ait pu la convertir en champ
+  // Zotero. L'aplatissement a lieu là-bas, une fois les citations converties.
+  return texte.replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '') + '\n';
+}
+
+class ZotflowAtomiser extends obsidian.Plugin {
+  async onload() {
+    await this.loadSettings();
+    this.appliquerStyleAparte();
+    this.installerVerrouLecture();
+    this.ecrituresRecentes = new Map();
+    this.antirebonds = new Map();
+    this.rattachementsIgnores = new Set();
+
+    // État du panier flottant d'annotations.
+    this.panier = [];
+    this.panierEl = null;
+    this.glisseDepuisPanier = false;
+    this.register(() => this.fermerPanier());
+    this.argFenetreEl = null;
+    this.suggAncrage = null;
+    this.register(() => this.fermerFenetreArgument());
+
+    this.addSettingTab(new ZotflowAtomiserSettingTab(this.app, this));
+
+    this.addRibbonIcon('layers', "Panier d'annotations (Ariane)", () => this.basculerPanier());
+
+    this.addCommand({
+      id: 'atomise-active',
+      name: 'Atomiser la note source active',
+      callback: () => this.commandeNoteActive(),
+    });
+    this.addCommand({
+      id: 'atomise-tout',
+      name: 'Ré-atomiser toutes les sources',
+      callback: () => this.atomiserTout(),
+    });
+    this.addCommand({
+      id: 'retirer-alias-liens',
+      name: "Retirer l'alias affiché des liens d'annotation",
+      callback: () => this.retirerAliasLiensAnnotation(),
+    });
+    this.addCommand({
+      id: 'normaliser-conjonctions-references',
+      name: 'Normaliser les conjonctions des références (et → &)',
+      callback: () => this.normaliserConjonctionsReferences(),
+    });
+    this.addCommand({
+      id: 'panier-annotations',
+      name: "Panier d'annotations : afficher / masquer",
+      callback: () => this.basculerPanier(),
+    });
+    this.addCommand({
+      id: 'lier-reference-zotero',
+      name: 'Lier cette référence à une fiche Zotero (désambiguïsation 2005a/b)',
+      callback: () => this.assistantLiageReference(),
+    });
+    this.addCommand({
+      id: 'rattacher-toutes-references',
+      name: 'Rattacher automatiquement les références en attente aux sources Zotero',
+      callback: () => this.rattacherToutesReferences(),
+    });
+    this.addCommand({
+      id: 'temps-journal',
+      name: 'Temps : écrire le journal du jour',
+      callback: () => this.ouvrirBilanTemps(),
+    });
+    this.addCommand({
+      id: 'temps-reporter',
+      name: 'Temps : reporter maintenant dans les notes',
+      callback: async () => {
+        await this.reporterTemps();
+        new obsidian.Notice('Temps reporté dans les propriétés.');
+      },
+    });
+    this.addCommand({
+      id: 'citations-replier',
+      name: 'Citations : tout replier',
+      callback: () => this.basculerCitations(true),
+    });
+    this.addCommand({
+      id: 'citations-deplier',
+      name: 'Citations : tout déplier',
+      callback: () => this.basculerCitations(false),
+    });
+    this.addCommand({
+      id: 'citations-basculer',
+      name: 'Citations : replier ou déplier',
+      callback: () => this.basculerCitations(!this.settings.citationsRepliees),
+    });
+    this.addCommand({
+      id: 'citations-rafraichir',
+      name: 'Citations : rafraîchir les libellés…',
+      callback: () => new ChoixListeModal(this.app, 'Rafraîchir les libellés de citation', [
+        { nom: 'Note active', portee: 'active' },
+        { nom: 'Toutes les notes du coffre', portee: 'tout' },
+      ], (c) => this.rafraichirCitations(c.portee)).open(),
+    });
+    this.addCommand({
+      id: 'biblio-note',
+      name: 'Bibliographie : régénérer dans la note active',
+      callback: () => {
+        const f = this.app.workspace.getActiveFile();
+        if (f) this.majBibliographie(f); else new obsidian.Notice('Ouvrez une note.');
+      },
+    });
+    this.addCommand({
+      id: 'biblio-tout',
+      name: 'Bibliographie : régénérer dans toutes les notes',
+      callback: () => this.majBibliographieToutes(),
+    });
+    this.addCommand({
+      id: 'schema-synchroniser-tout',
+      name: 'Schémas : synchroniser le contenu dans les notes associées',
+      callback: () => this.synchroniserTousSchemas(),
+    });
+    this.addCommand({
+      id: 'carte-valider',
+      name: 'Schémas : valider le schéma actif',
+      callback: () => this.validerCarte(),
+    });
+    this.addCommand({
+      id: 'carte-interroger',
+      name: 'Schémas : interroger le graphe',
+      callback: () => this.interrogerGraphe(),
+    });
+    this.addCommand({
+      id: 'notes-lecture-atomiser',
+      name: 'Notes de lecture : atomiser les notes-filles Zotero',
+      callback: () => this.atomiserToutesNotesLecture(),
+    });
+    this.addCommand({
+      id: 'ouvrir-dans-zotero',
+      name: 'Ouvrir dans Zotero (lecteur ZotFlow, annotation ou source)',
+      callback: () => this.ouvrirDansZotero(),
+    });
+    this.addCommand({
+      id: 'verifier-modele-word',
+      name: 'Vérifier le modèle Word (jetons et gabarits)',
+      callback: () => this.verifierModeleWord(),
+    });
+    this.addCommand({
+      id: 'exporter-word-zotero',
+      name: 'Exporter en Word avec citations Zotero (Pandoc)',
+      callback: () => this.exporterWordZotero(),
+    });
+    this.addCommand({
+      id: 'bibliographie-citee-source',
+      name: 'Générer la bibliographie citée de cette source (via API)',
+      callback: () => this.genererBibliographieSource(),
+    });
+    this.addCommand({
+      id: 'bibliographies-citees-toutes',
+      name: 'Générer les bibliographies citées de TOUTES les sources (via API)',
+      callback: () => this.genererToutesBibliographies(),
+    });
+    this.addCommand({
+      id: 'fusionner-doublons-auteurs',
+      name: "Fusionner les doublons d'auteurs",
+      callback: () => this.ouvrirFusionAuteurs(),
+    });
+    this.addCommand({
+      id: 'suggestions-ouvrir',
+      name: "Suggestions d'annotations : ouvrir le panneau",
+      callback: () => this.ouvrirVueSuggestions(),
+    });
+    this.addCommand({
+      id: 'suggestions-reconstruire',
+      name: "Suggestions d'annotations : reconstruire l'index",
+      callback: async () => {
+        const n = await this.construireIndexSuggestions();
+        new obsidian.Notice('Index de suggestions reconstruit (' + n + ' notes).');
+        this.majSuggestions();
+      },
+    });
+
+    // Panneau de suggestions dynamiques (moteur lexical local).
+    this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
+    this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
+      () => this.basculerCitations(!this.settings.citationsRepliees));
+    this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
+    // Déclare le panneau comme source d'aperçu au survol (« Page preview »).
+    if (this.registerHoverLinkSource) {
+      this.registerHoverLinkSource('zfa-suggestions', { display: 'Suggestions (Ariane)', defaultMod: false });
+      this.registerHoverLinkSource('zfa-partout', { display: 'Ariane — liens (chat, panneaux)', defaultMod: false });
+    }
+    // Aperçu au survol des liens internes dans les vues NON-markdown (ex. chat
+    // Claudian), qui ne déclenchent pas l'aperçu natif elles-mêmes.
+    this.registerDomEvent(document, 'mouseover', (e) => {
+      if (!this.settings.hoverPartout) return;
+      const a = e.target && e.target.closest ? e.target.closest('a.internal-link') : null;
+      if (!a) return;
+      if (a.closest('.markdown-reading-view, .markdown-source-view, .cm-editor')) return; // déjà géré
+      const cible = a.getAttribute('data-href') || a.getAttribute('href');
+      if (!cible) return;
+      this.app.workspace.trigger('hover-link', { event: e, source: 'zfa-partout', hoverParent: this, targetEl: a, linktext: cible, sourcePath: '' });
+    });
+
+    // Clic sur un lien dans une fenêtre de survol : la refermer. Les liens
+    // externes (obsidian://, zotero://) ouvrent une autre app sans que le
+    // popover natif ne se ferme ; on le retire après le traitement du clic.
+    this.registerDomEvent(document, 'click', (e) => {
+      const a = e.target && e.target.closest ? e.target.closest('a') : null;
+      if (!a || !a.closest('.hover-popover, .popover')) return;
+      setTimeout(() => {
+        document.querySelectorAll('.hover-popover').forEach((el) => el.remove());
+      }, 0);
+    }, { capture: true });
+
+    // Glisser une annotation sur un paragraphe -> note de bas de page.
+    // Enregistré sur le document principal ET sur chaque fenêtre détachée
+    // (pop-out / multi-moniteurs), pour que le dépôt fonctionne partout.
+    // Les fenêtres détachées ouvertes AVANT le chargement du greffon — celles
+    // qu'Obsidian restaure au démarrage — n'étaient couvertes par aucun
+    // gestionnaire : seuls le document principal et les fenêtres ouvertes
+    // ensuite l'étaient. Le dépôt y restait donc sans effet.
+    const docsCouverts = new WeakSet();
+    const enregistrerDnD = (doc) => {
+      if (!doc || docsCouverts.has(doc)) return;
+      docsCouverts.add(doc);
+      // Un glisser parti d'un panneau tiers peut arriver avec un dataTransfer
+      // vide : Chromium refuse de transporter une adresse « app:// », et c'est
+      // précisément la forme que prennent les liens internes rendus hors d'une
+      // vue markdown (le chat de Claudian, par exemple). On note donc la cible
+      // au départ du glisser, seul moment où l'information est sûre.
+      this.registerDomEvent(doc, 'dragstart', (e) => this.noterSourceGlissee(e), { capture: true });
+      this.registerDomEvent(doc, 'dragover', (e) => this.surDragOverParagraphe(e), { capture: true });
+      this.registerDomEvent(doc, 'drop', (e) => this.surDropParagraphe(e), { capture: true });
+      this.registerDomEvent(doc, 'dragend', () => { this._sourceGlissee = ''; this.nettoyerZoneDrop(); });
+    };
+    enregistrerDnD(document);
+    // Rattrapage des fenêtres déjà ouvertes.
+    this.app.workspace.onLayoutReady(() => {
+      try {
+        this.app.workspace.iterateAllLeaves((feuille) => {
+          const c = feuille && feuille.view && feuille.view.containerEl;
+          if (c && c.ownerDocument) enregistrerDnD(c.ownerDocument);
+        });
+      } catch (e) {
+        console.warn('[Ariane] fenêtres détachées non parcourues :', e);
+      }
+    });
+    this.registerEvent(
+      this.app.workspace.on('window-open', (_wsWin, win) => {
+        if (win && win.document) enregistrerDnD(win.document);
+      })
+    );
+    // Suppression dynamique des notes de bas de page orphelines.
+    this.registerEvent(
+      this.app.workspace.on('editor-change', (editor) => {
+        if (!this.settings.nettoyerNotesOrphelines) return;
+        this.antirebond('notesOrphelines', () => this.nettoyageNotesOrphelines(editor), 1200);
+      })
+    );
+    // Affiche dynamiquement le titre (alias) en aparté discret après un
+    // lien d'annotation montrant la clé, en lecture. Non destructif.
+    this.registerMarkdownPostProcessor((el, ctx) => this.enrichirLiensAnnotation(el, ctx));
+    this.registerMarkdownPostProcessor((el) => this.rendreCitationsRepliables(el));
+    this.registerMarkdownPostProcessor((el) => this.enrichirCompteursEmprunts(el));
+    this.app.workspace.onLayoutReady(() => this.installerDecorateurExplorateur());
+    this.app.workspace.onLayoutReady(() => {
+      this.elaguerHistoriqueTemps();
+      this.demarrerCompteurTemps();
+      this.installerInfobulleTemps();
+    });
+    this._citVersion = 0;
+    this.app.workspace.onLayoutReady(() => this.appliquerEtatCitations());
+
+    // Même aparté en mode édition (Live Preview), via une extension CodeMirror.
+    try {
+      const { ViewPlugin, Decoration, WidgetType } = require('@codemirror/view');
+      const { RangeSetBuilder } = require('@codemirror/state');
+      const plugin = this;
+
+      class AliasWidget extends WidgetType {
+        constructor(texte) { super(); this.texte = texte; }
+        eq(other) { return other.texte === this.texte; }
+        toDOM() {
+          const span = document.createElement('span');
+          span.className = 'zfa-lien-alias';
+          span.textContent = this.texte;
+          return span;
+        }
+        ignoreEvent() { return true; }
+      }
+
+      const ext = ViewPlugin.fromClass(
+        class {
+          constructor(view) { this.decorations = this.build(view); }
+          update(u) {
+            if (u.docChanged || u.viewportChanged || u.selectionSet) this.decorations = this.build(u.view);
+          }
+          build(view) {
+            const builder = new RangeSetBuilder();
+            if (!plugin.settings.aliasSurLiens) return builder.finish();
+            for (const { from, to } of view.visibleRanges) {
+              const texte = view.state.doc.sliceString(from, to);
+              const re = /\[\[([^\]\n]+?)\]\]/g;
+              let m;
+              while ((m = re.exec(texte)) !== null) {
+                if (m.index > 0 && texte[m.index - 1] === '!') continue; // embeds
+                const inner = m[1];
+                if (inner.includes('#')) continue;
+                const parts = inner.split('|');
+                if (parts.length > 1) continue; // alias manuel présent -> pas d'aparté auto
+                const cible = parts[0].trim();
+                const titre = plugin.titreAnnotationCiblee(cible, '', true);
+                if (!titre) continue;
+                const pos = from + m.index + m[0].length;
+                builder.add(pos, pos, Decoration.widget({ widget: new AliasWidget(plugin.formatAparte(titre, cible)), side: 1 }));
+              }
+            }
+            return builder.finish();
+          }
+        },
+        { decorations: (v) => v.decorations }
+      );
+
+      this.registerEditorExtension(ext);
+    } catch (e) {
+      console.error('[Ariane] Aparté en édition indisponible :', e);
+    }
+
+    // Citations repliables en édition (Live Preview et mode source).
+    // La citation est remplacée par une pastille cliquable ; le contenu
+    // réapparaît si le curseur y entre, pour ne jamais gêner la frappe.
+    try {
+      const { ViewPlugin, Decoration, WidgetType } = require('@codemirror/view');
+      const { RangeSetBuilder } = require('@codemirror/state');
+      const plugin = this;
+
+      class PastilleCitation extends WidgetType {
+        constructor(nombre, deplier) { super(); this.nombre = nombre; this.deplier = deplier; }
+        eq(autre) { return autre.nombre === this.nombre; }
+        toDOM() {
+          const b = document.createElement('span');
+          b.className = 'zfa-cit-pastille';
+          b.textContent = String(this.nombre);
+          b.setAttribute('aria-label', this.nombre > 1
+            ? this.nombre + ' références — cliquer pour déplier'
+            : 'Une référence — cliquer pour déplier');
+          b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
+          b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.deplier(); });
+          return b;
+        }
+        ignoreEvent() { return false; }
+      }
+
+      const extCitations = ViewPlugin.fromClass(
+        class {
+          constructor(view) {
+            this.ouvertes = new Set();
+            this.local = false;
+            this.plages = [];
+            this.version = plugin._citVersion;
+            this.decorations = this.build(view);
+          }
+          update(u) {
+            // Les décalages changent dès que le document change : les
+            // exceptions ouvertes à la main ne survivent pas à une édition.
+            if (u.docChanged) this.ouvertes.clear();
+
+            // Le basculement global ne modifie ni le texte ni la sélection :
+            // sans ce compteur, la vue restait telle quelle jusqu'au prochain
+            // clic, ce qui donnait l'impression d'une latence considérable.
+            const bascule = this.version !== plugin._citVersion;
+            if (bascule) {
+              this.version = plugin._citVersion;
+              // Une commande globale reprend la main sur les citations
+              // dépliées une à une : sans cet oubli, « tout replier » laissait
+              // ouvertes celles que l'on avait touchées au doigt.
+              this.ouvertes.clear();
+            }
+
+            // Dépliement d'une citation isolée : il ne passe pas par le
+            // compteur global, qui viderait aussitôt l'exception demandée.
+            const local = this.local;
+            this.local = false;
+
+            if (bascule || local || u.docChanged || u.viewportChanged) {
+              this.decorations = this.build(u.view);
+              return;
+            }
+
+            // Un simple déplacement du curseur ne change rien tant qu'il
+            // n'entre ni ne sort d'une citation. C'est le cas le plus fréquent,
+            // et le reconstruire à chaque frappe était inutilement coûteux.
+            if (u.selectionSet && this.selectionCompte(u.startState, u.state)) {
+              this.decorations = this.build(u.view);
+            }
+          }
+          selectionCompte(avant, apres) {
+            const a = avant.selection.main, b = apres.selection.main;
+            for (const p of this.plages) {
+              const dedansAvant = a.from <= p.to && a.to >= p.from;
+              const dedansApres = b.from <= p.to && b.to >= p.from;
+              if (dedansAvant !== dedansApres) return true;
+            }
+            return false;
+          }
+          build(view) {
+            const builder = new RangeSetBuilder();
+            this.plages = [];
+            const s = plugin.settings;
+            if (!s.citationsRepliables || !s.citationsRepliees) return builder.finish();
+            const sel = view.state.selection.main;
+            const self = this;
+            for (const { from, to } of view.visibleRanges) {
+              const texte = view.state.doc.sliceString(from, to);
+              for (const c of citationsDuTexte(texte)) {
+                const debut = from + c.index;
+                const fin = debut + c.longueur;
+                this.plages.push({ from: debut, to: fin });
+                if (this.ouvertes.has(debut)) continue;
+                // Curseur ou sélection dans la citation : on la laisse lisible.
+                if (sel.from <= fin && sel.to >= debut) continue;
+                builder.add(debut, fin, Decoration.replace({
+                  widget: new PastilleCitation(c.nombre, () => {
+                    self.ouvertes.add(debut);
+                    self.local = true;
+                    view.dispatch({});
+                  }),
+                }));
+              }
+            }
+            return builder.finish();
+          }
+        },
+        { decorations: (v) => v.decorations }
+      );
+
+      this.registerEditorExtension(extCitations);
+    } catch (e) {
+      console.error('[Ariane] Citations repliables indisponibles :', e);
+    }
+
+    // Surlignage de la phrase visée pendant un glisser (mode « cibler la phrase »).
+    try {
+      const { StateField, StateEffect } = require('@codemirror/state');
+      const { Decoration, EditorView } = require('@codemirror/view');
+      this.effetPhrase = StateEffect.define();
+      const effetPhrase = this.effetPhrase;
+      const marque = Decoration.mark({ class: 'zfa-drop-cible-phrase' });
+      const champPhrase = StateField.define({
+        create() { return Decoration.none; },
+        update(deco, tr) {
+          deco = deco.map(tr.changes);
+          for (const ef of tr.effects) {
+            if (ef.is(effetPhrase)) {
+              deco = ef.value && ef.value.to > ef.value.from
+                ? Decoration.set([marque.range(ef.value.from, ef.value.to)])
+                : Decoration.none;
+            }
+          }
+          return deco;
+        },
+        provide: (f) => EditorView.decorations.from(f),
+      });
+      this.registerEditorExtension(champPhrase);
+    } catch (e) {
+      console.error('[Ariane] Surlignage de phrase indisponible :', e);
+    }
+
+    // Suggestions : recalcul à la pause de frappe et au changement de note.
+    const estCandidat = (f) => {
+      if (!f || !f.path) return false;
+      const dossiers = this.dossiersSuggeres();
+      return !dossiers.length || dossiers.some((d) => f.path === d + '.md' || f.path.startsWith(d + '/'));
+    };
+    this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
+      if (this.settings.suggActif) this.antirebond('suggestions', () => this.majSuggestions(false), 200);
+    }));
+    this.registerEvent(this.app.workspace.on('editor-change', () => {
+      if (this.settings.suggActif) this.antirebond('suggestions', () => this.majSuggestions(false), this.settings.suggAntirebond || 900);
+    }));
+    // Bouton « Ouvrir dans Zotero » dans les lecteurs ZotFlow : au démarrage
+    // pour les vues déjà restaurées, puis à chaque changement de disposition.
+    this.app.workspace.onLayoutReady(() => this.decorerLecteursZotflow());
+    this.registerEvent(this.app.workspace.on('layout-change', () => this.decorerLecteursZotflow()));
+    this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.decorerLecteursZotflow()));
+
+    // « Ouvrir dans Zotero », au clic droit sur la note comme dans l'éditeur.
+    const entreeZotero = (menu, fichier) => {
+      if (!fichier || fichier.extension !== 'md') return;
+      if (!this.cibleZotero(fichier)) return;
+      menu.addItem((it) => it.setTitle('Ariane : ouvrir dans Zotero').setIcon('external-link')
+        .onClick(() => this.ouvrirDansZotero(fichier)));
+    };
+    this.registerEvent(this.app.workspace.on('file-menu', (menu, f) => entreeZotero(menu, f)));
+    this.registerEvent(this.app.workspace.on('editor-menu', (menu, ed, vue) => {
+      entreeZotero(menu, vue && vue.file ? vue.file : this.app.workspace.getActiveFile());
+    }));
+
+    // Clic droit sur une sélection -> suggestions ciblées sur ce passage.
+    this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor) => {
+      const sel = editor && editor.getSelection ? editor.getSelection() : '';
+      if (!sel || !sel.trim()) return;
+      menu.addItem((it) => it.setTitle('Ariane : suggestions pour ce passage').setIcon('sparkles')
+        .onClick(() => this.suggestionsPourArgument(sel)));
+    }));
+    // Invalidation de l'index quand une note candidate change.
+    const revaliderIndex = (f) => {
+      if (!estCandidat(f)) return;
+      this.marquerNoteSale(f);
+      if (this.settings.suggActif) this.antirebond('suggestionsIndex', () => this.majSuggestions(false), 1500);
+    };
+    this.registerEvent(this.app.vault.on('modify', revaliderIndex));
+    this.registerEvent(this.app.vault.on('create', revaliderIndex));
+    this.registerEvent(this.app.vault.on('delete', revaliderIndex));
+    this.registerEvent(this.app.vault.on('rename', (f) => revaliderIndex(f)));
+
+    this.app.workspace.onLayoutReady(() => {
+      this.registerEvent(this.app.vault.on('modify', (f) => this.surModification(f)));
+
+      // Un schéma draw.io modifié -> on rafraîchit l'extrait dans sa note.
+      const majSchema = (f) => {
+        if (!this.settings.schemaSyncAuto) return;
+        if (!(f instanceof obsidian.TFile) || !this.estSchemaDrawio(f)) return;
+        this.antirebond('schema:' + f.path, () => this.synchroniserSchema(f, true), 1200);
+      };
+      this.registerEvent(this.app.vault.on('modify', majSchema));
+
+      // Bibliographie : régénérée après une pause dans la frappe.
+      this.registerEvent(this.app.vault.on('modify', (f) => {
+        if (!this.settings.biblioAuto) return;
+        if (!(f instanceof obsidian.TFile) || f.extension !== 'md') return;
+        if (this.ecritePlugin(f.path)) return;
+        if (f.path.startsWith(this.dossierA + '/') || f.path.startsWith('Références/')) return;
+        this.antirebond('biblio:' + f.path, () => this.majBibliographie(f, true), 2500);
+      }));
+      this.registerEvent(this.app.vault.on('create', majSchema));
+      this.registerEvent(this.app.vault.on('create', (f) => this.surCreation(f)));
+      this.registerEvent(this.app.vault.on('delete', (f) => this.surSuppression(f)));
+
+      // Tag « orpheline » : mise à jour quand les liens changent.
+      this.registerEvent(this.app.metadataCache.on('resolved', () => {
+        if (!this.settings.marquerOrphelines) return;
+        this.antirebond('orphelines', () => this.synchroniserTagsOrphelines(), 800);
+      }));
+      if (this.settings.marquerOrphelines) {
+        this.antirebond('orphelines', () => this.synchroniserTagsOrphelines(), 1500);
+      }
+    });
+  }
+
+  /* --------------------- Moteur de suggestions -------------------------- */
+
+  // Fichiers markdown appartenant aux dossiers candidats configurés.
+  fichiersCandidatsSuggestions() {
+    const dossiers = this.dossiersSuggeres();
+    const res = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!dossiers.length || dossiers.some((d) => f.path === d + '.md' || f.path.startsWith(d + '/'))) {
+        res.push(f);
+      }
+    }
+    return res;
+  }
+
+  // Dossier candidat (le plus spécifique) contenant un chemin, ou '' si aucun.
+  // Un dossier candidat est-il retenu par le filtre du panneau ?
+  dossierRetenu(dossier) {
+    const masques = this.settings.suggDossiersMasques || [];
+    return !masques.includes(dossier);
+  }
+
+  dossierCandidatDe(chemin) {
+    const dossiers = this.dossiersSuggeres()
+      .slice().sort((a, b) => b.length - a.length); // plus spécifique d'abord
+    for (const d of dossiers) {
+      if (chemin === d + '.md' || chemin.startsWith(d + '/')) return d;
+    }
+    return '';
+  }
+
+  // Titre lisible : premier alias, sinon nom de fichier.
+  titreLisibleFichier(file) {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const al = cache && cache.frontmatter ? cache.frontmatter.aliases : null;
+    if (Array.isArray(al) && al.length) return String(al[0]);
+    if (typeof al === 'string' && al) return al;
+    return file.basename;
+  }
+
+  // Texte indexable d'un fichier candidat : titre (pondéré) + corps nettoyé.
+  async texteIndexable(file) {
+    let contenu = '';
+    try { contenu = await this.app.vault.cachedRead(file); } catch (e) { contenu = ''; }
+    const sansFm = contenu.replace(/^---\n[\s\S]*?\n---\n?/, '');
+    const propre = sansFm
+      .replace(/`{1,3}[^`]*`{1,3}/g, ' ')
+      .replace(/[#>*_\[\]\(\)!|^-]+/g, ' ')
+      .replace(/\s+/g, ' ');
+    const titre = this.titreLisibleFichier(file);
+    return titre + ' . ' + titre + ' . ' + propre; // titre compté deux fois
+  }
+
+  // (Re)construit l'index des notes candidates : lexical (toujours) et
+  // sémantique (si le moteur l'exige et qu'Ollama répond).
+  async construireIndexSuggestions() {
+    const fichiers = this.fichiersCandidatsSuggestions();
+    const entrees = [];
+    for (const f of fichiers) {
+      const texte = await this.texteIndexable(f);
+      if (!texte.trim()) continue;
+      entrees.push({ path: f.path, basename: f.basename, titre: this.titreLisibleFichier(f), texte, hash: hacherTexte(texte) });
+    }
+    this.suggEntrees = entrees;
+    this.suggSales = new Set();
+    this.recomposerIndexLexical();
+    if (this.moteurSemantiqueDemande()) await this.construireIndexSemantique(entrees);
+    else this.suggIndexSem = null;
+    return this.suggIndex.docs.length;
+  }
+
+  moteurSemantiqueDemande() {
+    const m = this.settings.suggMoteur || 'hybride';
+    return m === 'semantique' || m === 'hybride';
+  }
+
+  // Recompose les vecteurs lexicaux à partir des entrées DÉJÀ en mémoire : une
+  // centaine de millisecondes pour tout le coffre, sans lire un seul fichier.
+  // C'est ce qui permet de ne plus tout relire au moindre enregistrement.
+  recomposerIndexLexical() {
+    const entrees = this.suggEntrees || [];
+    const docsTf = entrees.map((e) => frequenceTermes(tokeniser(e.texte)));
+    const idf = calculerIdf(docsTf);
+    const docs = entrees.map((e, i) => {
+      const v = vecteurTfIdf(docsTf[i], idf);
+      return { path: e.path, basename: e.basename, titre: e.titre, vec: v.vec, norme: v.norme };
+    });
+    this.suggIndex = { docs, idf };
+  }
+
+  async assurerIndexSuggestions() {
+    if (!this.suggIndex || !this.suggEntrees) { await this.construireIndexSuggestions(); return; }
+    if (this.suggSales && this.suggSales.size) await this.rafraichirIndexSuggestions();
+  }
+
+  // Une note modifiée ne salit qu'elle-même. Auparavant le moindre
+  // enregistrement jetait l'index entier : 1344 notes relues, et 29 Mo de
+  // cache d'embeddings relus puis réécrits, à chaque fois.
+  marquerNoteSale(file) {
+    if (!file || !file.path || !this.suggEntrees) return;
+    (this.suggSales = this.suggSales || new Set()).add(file.path);
+  }
+
+  async rafraichirIndexSuggestions() {
+    const sales = [...(this.suggSales || [])];
+    this.suggSales = new Set();
+    if (!sales.length) return;
+    const parPath = new Map((this.suggEntrees || []).map((e) => [e.path, e]));
+    const candidats = new Set(this.fichiersCandidatsSuggestions().map((f) => f.path));
+    for (const chemin of sales) {
+      const f = this.app.vault.getAbstractFileByPath(chemin);
+      if (!f || !f.basename || !candidats.has(chemin)) { parPath.delete(chemin); continue; }
+      const texte = await this.texteIndexable(f);
+      if (!texte.trim()) { parPath.delete(chemin); continue; }
+      parPath.set(chemin, { path: chemin, basename: f.basename, titre: this.titreLisibleFichier(f), texte, hash: hacherTexte(texte) });
+    }
+    this.suggEntrees = [...parPath.values()];
+    this.recomposerIndexLexical();
+    if (this.moteurSemantiqueDemande()) await this.construireIndexSemantique(this.suggEntrees);
+    else this.suggIndexSem = null;
+  }
+
+  invaliderIndexSuggestions() {
+    this.suggIndex = null;
+    this.suggIndexSem = null;
+    this.suggEntrees = null;
+    this.suggSales = null;
+  }
+
+  /* ---- Embeddings locaux via Ollama (gratuit, hors-ligne) ---- */
+
+  cheminCacheEmbeddings() {
+    return this.manifest.dir + '/cache-embeddings.json';
+  }
+
+  // Le cache des embeddings pèse 29 Mo. Il vit désormais en mémoire pour toute
+  // la session : le relire et le réécrire à chaque mise à jour de l'index
+  // coûtait cher, et faisait repartir OneDrive pour rien.
+  async assurerCacheEmbeddings(modele) {
+    if (this.suggEmb && this.suggEmbModele === modele) return this.suggEmb;
+    let entrees = {};
+    try {
+      const chemin = this.cheminCacheEmbeddings();
+      if (await this.app.vault.adapter.exists(chemin)) {
+        const j = JSON.parse(await this.app.vault.adapter.read(chemin));
+        if (j && j.model === modele && j.entries) entrees = j.entries;
+      }
+    } catch (e) { /* cache illisible : on repart de zéro */ }
+    this.suggEmb = entrees;
+    this.suggEmbModele = modele;
+    this.suggEmbSale = false;
+    this.suggVecs = new Map();
+    return entrees;
+  }
+
+  // Écriture espacée : au plus une fois toutes les cinq minutes, et à la
+  // fermeture. Les 29 Mo n'ont pas à repartir sur le disque à chaque frappe.
+  planifierSauvegardeEmbeddings() {
+    this.suggEmbSale = true;
+    if (this.suggEmbMinuteur) return;
+    this.suggEmbMinuteur = setTimeout(() => {
+      this.suggEmbMinuteur = null;
+      this.sauverCacheEmbeddings().catch(() => { /* fermeture en cours */ });
+    }, 5 * 60 * 1000);
+  }
+
+  async sauverCacheEmbeddings() {
+    if (!this.suggEmbSale || !this.suggEmb) return;
+    this.suggEmbSale = false;
+    try {
+      await this.app.vault.adapter.write(this.cheminCacheEmbeddings(),
+        JSON.stringify({ model: this.suggEmbModele, entries: this.suggEmb }));
+    } catch (e) { console.debug('[Ariane] sauvegarde cache embeddings', e); }
+  }
+
+  // Encode une liste de textes via Ollama. Renvoie null si Ollama est
+  // indisponible (le moteur bascule alors sur le lexical).
+  /* --- Service d'inférence local : Ollama ou LM Studio --------------- */
+
+  fournisseurLmStudio() {
+    return (this.settings.suggFournisseur || 'ollama') === 'lmstudio';
+  }
+
+  urlInference() {
+    return this.fournisseurLmStudio()
+      ? (this.settings.suggLmStudioUrl || 'http://localhost:1234').replace(/\/+$/, '')
+      : (this.settings.suggOllamaUrl || 'http://localhost:11434').replace(/\/+$/, '');
+  }
+
+  // Encode une liste de textes. LM Studio parle l'API d'OpenAI — /v1/embeddings,
+  // réponse dans « data[].embedding » — là où Ollama a la sienne. Rend null si
+  // le service est indisponible : le moteur bascule alors sur le lexical.
+  async encoderTextes(textes) {
+    const lm = this.fournisseurLmStudio();
+    try {
+      const url = this.urlInference() + (lm ? '/v1/embeddings' : '/api/embed');
+      const rep = await obsidian.requestUrl({
+        url, method: 'POST', throw: false,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: this.settings.suggModeleEmbed || 'bge-m3', input: textes }),
+      });
+      if (rep && rep.status >= 200 && rep.status < 300) {
+        const j = rep.json !== undefined ? rep.json : JSON.parse(rep.text);
+        if (lm && Array.isArray(j.data)) return j.data.map((d) => d.embedding);
+        if (Array.isArray(j.embeddings)) return j.embeddings;
+        if (Array.isArray(j.embedding)) return [j.embedding];
+      }
+    } catch (e) {
+      console.debug('[Ariane] encodage indisponible', e);
+    }
+    return null;
+  }
+
+  // Une génération censée rendre du JSON. Bornée dans les deux dialectes :
+  // « num_predict » pour Ollama, « max_tokens » pour LM Studio. Sans cette
+  // borne, un modèle qui ne referme pas son objet tourne jusqu'à saturer son
+  // contexte — plusieurs minutes à pleine charge.
+  async genererJson(prompt, jetons) {
+    const lm = this.fournisseurLmStudio();
+    const modele = this.settings.suggModeleLLM || 'llama3.2';
+    const max = jetons || this.settings.suggRerankJetons || 400;
+    try {
+      const url = this.urlInference() + (lm ? '/v1/chat/completions' : '/api/generate');
+      const corps = lm
+        // LM Studio refuse « response_format: json_object » — il n'accepte que
+        // « json_schema » ou « text », et cela varie d'une version à l'autre.
+        // On s'en passe : la consigne est dans l'invite, et l'analyse de la
+        // réponse est déjà tolérante. « max_tokens » suffit à borner.
+        ? { model: modele, messages: [{ role: 'user', content: prompt }],
+            temperature: 0, max_tokens: max }
+        : { model: modele, prompt, stream: false, format: 'json', keep_alive: '2m',
+            options: { temperature: 0, num_predict: max } };
+      const rep = await obsidian.requestUrl({
+        url, method: 'POST', throw: false,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corps),
+      });
+      if (!rep || rep.status < 200 || rep.status >= 300) return null;
+      const j = rep.json !== undefined ? rep.json : JSON.parse(rep.text);
+      if (lm) {
+        const c = j && j.choices && j.choices[0];
+        return c && c.message ? String(c.message.content || '') : null;
+      }
+      return j && typeof j.response === 'string' ? j.response : (rep.text || null);
+    } catch (e) {
+      console.debug('[Ariane] génération indisponible', e);
+      return null;
+    }
+  }
+
+  async testerEncodage() {
+    const v = await this.encoderTextes(['test']);
+    return !!(v && v[0] && v[0].length);
+  }
+
+  async testerLLM() {
+    const t = await this.genererJson('Réponds uniquement : {"ok":true}', 32);
+    return !!t;
+  }
+
+  // Construit l'index sémantique en réutilisant le cache disque : seules les
+  // notes nouvelles ou modifiées sont réencodées.
+  async construireIndexSemantique(entrees) {
+    const modele = this.settings.suggModeleEmbed || 'bge-m3';
+    const cache = await this.assurerCacheEmbeddings(modele);
+    const aEncoder = entrees.filter((e) => {
+      const c = cache[e.path];
+      return !(c && c.hash === e.hash && Array.isArray(c.vec));
+    });
+    const total = aEncoder.length;
+    const vue = this.vueSuggestions();
+    let notice = null;
+    const rapporter = (fait) => {
+      const msg = 'Indexation sémantique : ' + fait + ' / ' + total + ' notes…';
+      if (notice) notice.setMessage(msg);
+      if (vue && vue.marquerIndexation) vue.marquerIndexation(fait, total);
+    };
+    // Popup uniquement pour un gros index (premier build / reconstruction).
+    // Les petites réindexations (note éditée) restent silencieuses.
+    if (total > 30) notice = new obsidian.Notice('Indexation sémantique…', 0);
+    if (total > 0) rapporter(0);
+    const lot = 24;
+    let fait = 0;
+    for (let i = 0; i < aEncoder.length; i += lot) {
+      const tranche = aEncoder.slice(i, i + lot);
+      const vecs = await this.encoderTextes(tranche.map((e) => e.texte));
+      if (!vecs) { // Ollama indisponible -> repli lexical
+        if (notice) notice.hide();
+        if (vue && vue.marquerIndexation) vue.marquerIndexation(-1, total);
+        this.suggIndexSem = null;
+        return;
+      }
+      tranche.forEach((e, k) => {
+        const v = normaliserVecteur(vecs[k]);
+        cache[e.path] = { hash: e.hash, vec: Array.from(v) };
+        this.suggVecs.set(e.path, { hash: e.hash, vec: v });
+      });
+      fait += tranche.length;
+      rapporter(fait);
+    }
+    if (notice) notice.hide();
+    if (vue && vue.marquerIndexation) vue.marquerIndexation(total, total, true);
+
+    // Les vecteurs restent en Float32Array d'une mise à jour à l'autre : les
+    // reconvertir depuis le JSON coûtait 1,4 million de conversions à chaque
+    // reconstruction, pour un résultat identique.
+    const docs = [];
+    for (const e of entrees) {
+      let v = this.suggVecs.get(e.path);
+      if (!v || v.hash !== e.hash) {
+        const c = cache[e.path];
+        if (!c || !Array.isArray(c.vec)) continue;
+        v = { hash: c.hash, vec: Float32Array.from(c.vec) };
+        this.suggVecs.set(e.path, v);
+      }
+      docs.push({ path: e.path, basename: e.basename, titre: e.titre, hash: e.hash, vec: v.vec });
+    }
+    this.suggIndexSem = { model: modele, docs };
+    if (total > 0) this.planifierSauvegardeEmbeddings();
+  }
+
+  async reclasserLLM(noteTexte, candidats) {
+    // Second garde-fou, côté greffon : même borné, un modèle peut être lent.
+    // On rend la main au bout du délai réglé plutôt que d'attendre sans fin.
+    const secondes = this.settings.suggRerankDelaiSec || 45;
+    return Promise.race([
+      this._reclasserLLM(noteTexte, candidats),
+      new Promise((r) => setTimeout(() => r(null), secondes * 1000)),
+    ]);
+  }
+
+  async _reclasserLLM(noteTexte, candidats) {
+    try {
+      const liste = candidats.map((c) => '- [' + c.basename + '] ' + c.titre).join('\n');
+      const avecJustif = this.settings.suggRerankJustif !== false;
+      const formatJson = avecJustif
+        ? '{"resultats":[{"basename":"<identifiant>","raison":"courte justification en français"}]}'
+        : '{"resultats":["<identifiant>", "..."]}';
+      const prompt =
+        'Tu aides un chercheur qui rédige une note. Voici son texte en cours :\n"""\n'
+        + noteTexte.slice(0, 1800)
+        + '\n"""\n\nParmi les notes candidates ci-dessous, sélectionne et classe les plus pertinentes pour enrichir sa rédaction (de la plus à la moins pertinente). N\'invente aucune note ; recopie exactement les identifiants entre crochets.\n\n'
+        + liste
+        + '\n\nRéponds UNIQUEMENT en JSON : ' + formatJson + ', au plus '
+        + (this.settings.suggK || 8) + ' éléments.';
+      const brut = await this.genererJson(prompt);
+      if (!brut) return null;
+      console.debug('[Ariane] LLM brut', brut);
+      // Analyse tolérante : JSON direct, sinon premier bloc { } ou [ ] trouvé.
+      let obj = null;
+      try { obj = JSON.parse(brut); } catch (e) {
+        const m = brut.match(/[\[{][\s\S]*[\]}]/);
+        if (m) { try { obj = JSON.parse(m[0]); } catch (e2) { obj = null; } }
+      }
+      if (!obj) return null;
+      // Trouve le tableau de résultats quelle que soit la clé.
+      let arr = null;
+      if (Array.isArray(obj)) arr = obj;
+      else if (Array.isArray(obj.resultats)) arr = obj.resultats;
+      else if (Array.isArray(obj.results)) arr = obj.results;
+      else if (Array.isArray(obj.suggestions)) arr = obj.suggestions;
+      else for (const v of Object.values(obj)) { if (Array.isArray(v)) { arr = v; break; } }
+      if (!arr || !arr.length) return null;
+      // Appariement tolérant (crochets, .md, casse) sur clé puis titre.
+      const norm = (x) => String(x || '').trim().replace(/^\[+|\]+$/g, '').replace(/\.md$/i, '').trim().toLowerCase();
+      const parBase = new Map();
+      const parTitre = new Map();
+      for (const c of candidats) { parBase.set(norm(c.basename), c); parTitre.set(norm(c.titre), c); }
+      const ordonne = [];
+      for (const r of arr) {
+        let id = '', raison = '';
+        if (typeof r === 'string') id = r;
+        else if (r && typeof r === 'object') {
+          id = r.basename || r.id || r.identifiant || r.nom || r.name || r.cle || r.key || r.titre || r.title || '';
+          raison = r.raison || r.reason || r.justification || r.pourquoi || '';
+        }
+        let c = parBase.get(norm(id)) || parTitre.get(norm(id));
+        if (c && !ordonne.includes(c)) { c.raison = String(raison || '').trim(); ordonne.push(c); }
+      }
+      return ordonne.length ? ordonne : null;
+    } catch (e) {
+      console.debug('[Ariane] reclassement LLM échoué', e);
+      return null;
+    }
+  }
+
+  // Basenames déjà liés dans un contenu (pour ne pas les re-proposer).
+  liensExistants(contenu) {
+    const set = new Set();
+    const re = /\[\[([^\]|#\n]+)/g;
+    let m;
+    while ((m = re.exec(contenu)) !== null) set.add(cleDeLien(m[1]));
+    return set;
+  }
+
+  // Meilleures suggestions pour une note : combine score lexical et sémantique
+  // selon le moteur choisi. Renvoie { liste, statut }.
+  async suggestionsPour(cheminActif, contenu, dejaLies) {
+    if (!this.suggIndex || !this.suggIndex.docs.length) return { liste: [], statut: 'vide' };
+    const moteur = this.settings.suggMoteur || 'hybride';
+    // Score lexical (toujours calculé)
+    const { vec, norme } = vecteurTfIdf(frequenceTermes(tokeniser(contenu)), this.suggIndex.idf);
+    const lex = new Map();
+    for (const d of this.suggIndex.docs) lex.set(d.path, cosinusTfIdf(vec, norme, d.vec, d.norme));
+    // Score sémantique (si disponible)
+    let sem = null;
+    let statut = 'lexical';
+    if (moteur !== 'lexical' && this.suggIndexSem && this.suggIndexSem.docs.length) {
+      // La requête change peu d'un recalcul à l'autre : revenir sur une note
+      // déjà vue ne doit plus coûter 600 ms d'Ollama.
+      const extrait = contenu.slice(0, 4000);
+      const empreinte = hacherTexte(extrait);
+      this.suggReqCache = this.suggReqCache || new Map();
+      let q = this.suggReqCache.get(empreinte);
+      if (!q) {
+        const qv = await this.encoderTextes([extrait]);
+        if (qv && qv[0]) {
+          q = normaliserVecteur(qv[0]);
+          if (this.suggReqCache.size > 24) this.suggReqCache.clear();
+          this.suggReqCache.set(empreinte, q);
+        }
+      }
+      if (q) {
+        sem = new Map();
+        for (const d of this.suggIndexSem.docs) sem.set(d.path, cosinusVecteurs(q, d.vec));
+        statut = moteur === 'semantique' ? 'sémantique' : 'hybride';
+      } else {
+        statut = 'lexical (repli)';
+      }
+    }
+    const w = typeof this.settings.suggPoidsSemantique === 'number' ? this.settings.suggPoidsSemantique : 0.7;
+    const seuil = typeof this.settings.suggSeuil === 'number' ? this.settings.suggSeuil : 0.18;
+    const res = [];
+    for (const d of this.suggIndex.docs) {
+      if (d.path === cheminActif) continue;
+      if (dejaLies && dejaLies.has(d.basename)) continue;
+      const l = lex.get(d.path) || 0;
+      const s = sem ? (sem.get(d.path) || 0) : 0;
+      let score;
+      if (!sem) score = l;
+      else if (moteur === 'semantique') score = s;
+      else score = w * s + (1 - w) * l;
+      if (score < seuil) continue;
+      const dossier = this.dossierCandidatDe(d.path);
+      if (!this.dossierRetenu(dossier)) continue;   // filtre du panneau
+      res.push({ path: d.path, basename: d.basename, titre: d.titre, score, dossier });
+    }
+    res.sort((a, b) => b.score - a.score);
+    return { liste: res.slice(0, this.settings.suggK || 8), statut };
+  }
+
+  vueSuggestions() {
+    // Obsidian 1.7 diffère l'instanciation des vues : une feuille peut exister
+    // sans que sa vue le soit encore. On ne renvoie qu'une vue réellement prête.
+    const feuilles = this.app.workspace.getLeavesOfType('zfa-suggestions');
+    for (const f of feuilles) {
+      const v = f ? f.view : null;
+      if (v && typeof v.rendre === 'function') return v;
+    }
+    return null;
+  }
+
+  // Recalcule et pousse les suggestions vers la vue, si ouverte.
+  // forcerRerank : autorise le reclassement LLM (changement de note / manuel).
+  // Une vue existe même repliée dans la barre latérale ou cachée derrière un
+  // autre onglet. Tant qu'elle n'est pas RÉELLEMENT affichée, tout calcul est
+  // perdu — et c'est ce qui faisait tourner Ollama pour rien. Le test porte sur
+  // les dimensions du conteneur, ce qui vaut aussi en fenêtre détachée.
+  vueSuggestionsVisible() {
+    const v = this.vueSuggestions();
+    const el = v ? v.containerEl : null;
+    if (!el) return null;
+    return (el.offsetWidth > 0 || el.offsetHeight > 0) ? v : null;
+  }
+
+  async majSuggestions(forcerRerank, ignorerVisibilite) {
+    const vue = ignorerVisibilite ? this.vueSuggestions() : this.vueSuggestionsVisible();
+    if (!vue) return;
+    if (!this.settings.suggActif) { vue.rendre([], null, 'inactif'); return; }
+    await this.assurerIndexSuggestions();
+    const anc = this.suggAncrage;
+    const file = this.app.workspace.getActiveFile();
+    let cheminActif = '', requete = null, dejaLies = new Set();
+    if (anc) {
+      cheminActif = anc.sourcePath || (file ? file.path : '');
+      requete = anc.texte;
+    } else {
+      if (!file || file.extension !== 'md') { if (vue.montrerAncrage) vue.montrerAncrage(null); vue.rendre([], null); return; }
+      cheminActif = file.path;
+      try { requete = await this.app.vault.cachedRead(file); } catch (e) { requete = ''; }
+      dejaLies = this.liensExistants(requete);
+    }
+    if (vue.montrerAncrage) vue.montrerAncrage(anc ? anc.texte : null);
+    const etiq = anc ? { basename: 'Argument sélectionné' } : file;
+    const jeton = (this._suggJeton = (this._suggJeton || 0) + 1);
+    const { liste, statut } = await this.suggestionsPour(cheminActif, requete, dejaLies);
+    if (jeton !== this._suggJeton) return;
+    vue.rendre(liste, etiq, (anc ? 'argument · ' : '') + statut);
+    const reclasser = (forcerRerank || this.settings.suggRerankAuto === true)
+      && this.settings.suggRerank && liste.length
+      && (statut === 'sémantique' || statut === 'hybride');
+    if (reclasser) {
+      vue.marquerReclassement(true);
+      const topN = liste.slice(0, this.settings.suggRerankTopN || 12).map((x) => Object.assign({}, x));
+      const reclasse = await this.reclasserLLM(requete, topN);
+      if (jeton !== this._suggJeton) return;
+      vue.marquerReclassement(false);
+      if (reclasse && reclasse.length) vue.rendre(reclasse, etiq, (anc ? 'argument · ' : '') + statut + ' + LLM');
+      else vue.rendre(liste, etiq, (anc ? 'argument · ' : '') + statut + ' · LLM indisponible');
+    }
+  }
+
+  // Suggestions ciblées sur un passage sélectionné (clic droit).
+  async suggestionsPourArgument(texte) {
+    if (!texte || !texte.trim()) return;
+    await this.assurerIndexSuggestions();
+    const file = this.app.workspace.getActiveFile();
+    const cheminActif = file ? file.path : '';
+    if ((this.settings.suggArgAffichage || 'panneau') === 'flottant') {
+      const { liste } = await this.suggestionsPour(cheminActif, texte, new Set());
+      this.afficherFenetreArgument(texte, liste);
+    } else {
+      this.suggAncrage = { texte, sourcePath: cheminActif };
+      await this.ouvrirVueSuggestions();
+      this.majSuggestions(true, true);
+    }
+  }
+
+  libererAncrage() { this.suggAncrage = null; this.majSuggestions(false, true); }
+
+  // Un item de suggestion (cliquable, glissable, aperçu au survol).
+  construireItemSugg(container, sug, hoverParent) {
+    const styleDe = (d) => this.styleDuDossier(d);
+    const item = container.createDiv({ cls: 'zfa-sugg-item' });
+    item.setAttribute('draggable', 'true');
+    const style = sug.dossier ? styleDe(sug.dossier) : null;
+    if (style && style.couleur) { item.addClass('zfa-sugg-colore'); item.style.setProperty('--zfa-sugg-couleur', style.couleur); }
+    const tete = item.createDiv({ cls: 'zfa-sugg-tete' });
+    if (style && style.icone) { const ic = tete.createSpan({ cls: 'zfa-sugg-icone' }); obsidian.setIcon(ic, style.icone); if (style.couleur) ic.style.color = style.couleur; }
+    tete.createSpan({ cls: 'zfa-sugg-lien', text: sug.titre });
+    if (sug.raison) item.createDiv({ cls: 'zfa-sugg-raison', text: sug.raison });
+    const pct = typeof sug.score === 'number' ? Math.round(sug.score * 100) + '%  ·  ' : '';
+    item.createDiv({ cls: 'zfa-sugg-meta', text: pct + sug.basename });
+    item.addEventListener('click', () => this.app.workspace.openLinkText(sug.basename, '', false));
+    item.addEventListener('mouseover', (event) => this.app.workspace.trigger('hover-link', { event, source: 'zfa-suggestions', hoverParent: hoverParent || this, targetEl: item, linktext: sug.path || sug.basename, sourcePath: '' }));
+    item.addEventListener('dragstart', (e) => { if (e.dataTransfer) { e.dataTransfer.setData('text/plain', '[[' + sug.basename + ']]'); e.dataTransfer.effectAllowed = 'copy'; } });
+    return item;
+  }
+
+  afficherFenetreArgument(texte, suggestions) {
+    this.fermerFenetreArgument();
+    const el = document.createElement('div');
+    el.className = 'zfa-argfen';
+    el.style.top = '90px'; el.style.right = '40px';
+    const header = el.createDiv({ cls: 'zfa-argfen-header' });
+    header.createSpan({ cls: 'zfa-argfen-titre', text: "Suggestions pour l'argument" });
+    const x = header.createSpan({ cls: 'zfa-argfen-x', text: '✕' });
+    x.onmousedown = (e) => e.stopPropagation();
+    x.onclick = () => this.fermerFenetreArgument();
+    const snip = String(texte).replace(/\s+/g, ' ').trim();
+    el.createDiv({ cls: 'zfa-argfen-arg', text: snip.slice(0, 160) + (snip.length > 160 ? '…' : '') });
+    const liste = el.createDiv({ cls: 'zfa-argfen-liste' });
+    if (!suggestions || !suggestions.length) liste.createDiv({ cls: 'zfa-sugg-vide', text: 'Aucune suggestion pertinente.' });
+    else for (const sug of suggestions) this.construireItemSugg(liste, sug, this);
+    this.rendreDeplacable(el, header);
+    document.body.appendChild(el);
+    this.argFenetreEl = el;
+  }
+
+  fermerFenetreArgument() { if (this.argFenetreEl) { this.argFenetreEl.remove(); this.argFenetreEl = null; } }
+
+  async ouvrirVueSuggestions() {
+    let feuilles = this.app.workspace.getLeavesOfType('zfa-suggestions');
+    if (!feuilles.length) {
+      const leaf = this.app.workspace.getRightLeaf(false);
+      if (leaf) await leaf.setViewState({ type: 'zfa-suggestions', active: true });
+      feuilles = this.app.workspace.getLeavesOfType('zfa-suggestions');
+    }
+    if (feuilles.length) this.app.workspace.revealLeaf(feuilles[0]);
+    this.majSuggestions();
+  }
+
+  /* ------------------- Fusion des doublons d'auteurs -------------------- */
+
+  baseSansConflit(n) {
+    return n.replace(/\s*-?\s*MacBook Pro de .*/i, '')
+            .replace(/\s*\(conflicted copy[^)]*\)/i, '')
+            .replace(/\s+\(\d+\)$/, '').trim();
+  }
+
+  async detecterDoublonsAuteurs() {
+    const dossier = (this.settings.dossierAuteurs || 'Auteurs').replace(/\/+$/, '');
+    const noms = this.app.vault.getMarkdownFiles()
+      .filter((f) => f.path.startsWith(dossier + '/'))
+      .map((f) => f.basename);
+    const ensemble = new Set(noms);
+    const conflits = [], propres = [];
+    for (const n of noms) {
+      const base = this.baseSansConflit(n);
+      if (base && base !== n && ensemble.has(base)) conflits.push({ nom: n, base });
+      else propres.push(n);
+    }
+    return { conflits, clusters: clustersDoublons(propres), dossier };
+  }
+
+  async ouvrirFusionAuteurs() {
+    const { conflits, clusters, dossier } = await this.detecterDoublonsAuteurs();
+    if (!conflits.length && !clusters.length) { new obsidian.Notice("Aucun doublon d'auteur détecté."); return; }
+    new FusionAuteursModal(this.app, this, conflits, clusters, dossier).open();
+  }
+
+  async supprimerConflitsAuteurs(conflits, dossier) {
+    for (const c of conflits) {
+      const f = this.app.vault.getAbstractFileByPath(dossier + '/' + c.nom + '.md');
+      if (f instanceof obsidian.TFile) await this.app.fileManager.trashFile(f);
+    }
+  }
+
+  async fusionnerCluster(canon, variantes, dossier) {
+    const fCanon = this.app.vault.getAbstractFileByPath(dossier + '/' + canon + '.md');
+    if (fCanon instanceof obsidian.TFile) {
+      await this.app.fileManager.processFrontMatter(fCanon, (fm) => {
+        const al = new Set(Array.isArray(fm.aliases) ? fm.aliases : (fm.aliases ? [fm.aliases] : []));
+        for (const v of variantes) al.add(v);
+        fm.aliases = [...al];
+      });
+    }
+    // Redirige les liens partout dans le coffre.
+    const repl = [];
+    for (const v of variantes) { repl.push(['[[' + v + ']]', '[[' + canon + ']]']); repl.push(['[[' + v + '|', '[[' + canon + '|']); }
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      let contenu = await this.app.vault.read(f); const orig = contenu;
+      for (const [a, b] of repl) if (contenu.includes(a)) contenu = contenu.split(a).join(b);
+      if (contenu !== orig) await this.app.vault.modify(f, contenu);
+    }
+    // Supprime les variantes.
+    for (const v of variantes) {
+      const f = this.app.vault.getAbstractFileByPath(dossier + '/' + v + '.md');
+      if (f instanceof obsidian.TFile) await this.app.fileManager.trashFile(f);
+    }
+  }
+
+  /* ----------------------- Module Cartes (Canvas) ------------------------ */
+
+  vocabCartes() {
+    return {
+      relations: this.settings.cartesRelations || [],
+      types: this.settings.cartesTypesBlocs || [],
+      strict: !!this.settings.cartesStrict,
+    };
+  }
+
+  // Fichier de schéma draw.io actif (.drawio.svg ou .drawio).
+  estSchemaDrawio(f) {
+    return !!f && (/\.drawio\.svg$/i.test(f.path) || f.extension === 'drawio');
+  }
+
+  fichierSchemaActif() {
+    const f = this.app.workspace.getActiveFile();
+    return this.estSchemaDrawio(f) ? f : null;
+  }
+
+  // Graphe d'un schéma draw.io : toutes les pages fusionnées.
+  async grapheSchema(file) {
+    let contenu = '';
+    try { contenu = await this.app.vault.read(file); } catch (e) { return { nodes: [], edges: [] }; }
+    const pages = pagesDepuisDrawio(contenu);
+    const nodes = [], edges = [];
+    pages.forEach((pg, i) => {
+      const pref = pages.length > 1 ? 'p' + i + ':' : '';
+      for (const n of pg.graphe.nodes) nodes.push(Object.assign({}, n, { id: pref + n.id, page: pg.nom }));
+      for (const e of pg.graphe.edges) edges.push(Object.assign({}, e, { id: pref + e.id, fromNode: pref + e.fromNode, toNode: pref + e.toNode, page: pg.nom }));
+    });
+    // Étiquettes implicites : voir propagerEtiquettes.
+    const brut = { nodes, edges, pages: pages.map((x) => x.nom) };
+    return this.settings.schemaPropagerEtiquettes === false ? brut : propagerEtiquettes(brut);
+  }
+
+  async validerCarte() {
+    const schema = this.fichierSchemaActif();
+    if (!schema) { new obsidian.Notice('Ouvrez un schéma draw.io (.drawio.svg).'); return; }
+    const g = await this.grapheSchema(schema);
+    new RapportCarteModal(this.app, schema.basename, analyserCarte(g, this.vocabCartes(), {})).open();
+  }
+
+  /* ------------------------- Verrou d'édition --------------------------- */
+
+  // Les notes portant « locked: true » deviennent non modifiables. Le verrou
+  // est purement visuel (contenteditable) : le fichier reste accessible aux
+  // outils, notamment à la synchronisation des schémas.
+  installerVerrouLecture() {
+    const appliquer = () => this.appliquerVerrouLecture();
+    this.registerEvent(this.app.workspace.on('file-open', appliquer));
+    this.registerEvent(this.app.workspace.on('active-leaf-change', appliquer));
+    this.registerEvent(this.app.workspace.on('layout-change', appliquer));
+    this.registerEvent(this.app.metadataCache.on('resolved', appliquer));
+    this.app.workspace.onLayoutReady(appliquer);
+  }
+
+  appliquerVerrouLecture() {
+    if (this.settings.verrouLecture === false) return;
+    for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+      const vue = leaf ? leaf.view : null;
+      if (!vue || !vue.file || !vue.contentEl) continue;
+      const fm = (this.app.metadataCache.getFileCache(vue.file) || {}).frontmatter;
+      const verrou = !!(fm && (fm.locked === true || fm['zotflow-locked'] === true));
+      const zone = vue.contentEl.querySelector('.cm-content');
+      if (zone) zone.setAttribute('contenteditable', verrou ? 'false' : 'true');
+      vue.contentEl.toggleClass('zfa-verrouillee', verrou);
+    }
+  }
+
+  // Note associée à un schéma : d'abord par la propriété « graphique »,
+  // sinon par la référence (nom de note = préfixe du nom du schéma).
+  noteDeSchema(file) {
+    const base = file.basename.replace(/\.drawio$/i, '');
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      if (!fm || !fm.graphique) continue;
+      const cible = String(fm.graphique).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+      if (cible === base + '.drawio.svg' || cible === base || cible === file.path) return f;
+    }
+    // À défaut, par la référence : « FS007 - Contingence » -> note « FS007 ».
+    // Les schémas peuvent vivre dans un sous-dossier (ex. « Graphiques ») et
+    // les notes dans le dossier parent : on élargit donc la recherche, du plus
+    // proche au plus lointain.
+    const sep = base.match(/^(.*?)\s+-\s+/);
+    const reference = (sep ? sep[1] : base).trim();
+    if (!reference) return null;
+
+    const dossierSchema = file.parent ? file.parent.path : '';
+    const dossierParent = file.parent && file.parent.parent ? file.parent.parent.path : '';
+    const homonymes = this.app.vault.getMarkdownFiles().filter((f) => f.basename === reference);
+    if (!homonymes.length) return null;
+
+    const dans = (d) => homonymes.find((f) => (f.parent ? f.parent.path : '') === d);
+    return dans(dossierSchema) || dans(dossierParent) || homonymes[0];
+  }
+
+  // Recopie l'extrait lisible du schéma dans sa note. Renvoie true si écrit.
+  async synchroniserSchema(file, silencieux) {
+    if (!this.estSchemaDrawio(file)) return false;
+    const note = this.noteDeSchema(file);
+    if (!note) {
+      if (!silencieux) new obsidian.Notice('Aucune note associée à « ' + file.basename + ' ».');
+      return false;
+    }
+    const graphe = await this.grapheSchema(file);
+    const base = file.basename.replace(/\.drawio$/i, '');
+    const sep = base.match(/^.*?\s+-\s+(.*)$/);
+    const extrait = extraitSchema(graphe, sep ? sep[1].trim() : base);
+    const actuel = await this.app.vault.read(note);
+    const nouveau = injecterExtrait(actuel, extrait);
+    if (nouveau === actuel) return false;
+    await this.ecrire(note.path, nouveau, note);
+    if (!silencieux) new obsidian.Notice('Note « ' + note.basename + ' » synchronisée.');
+    return true;
+  }
+
+  async synchroniserTousSchemas() {
+    const schemas = this.app.vault.getFiles().filter((f) => this.estSchemaDrawio(f));
+    if (!schemas.length) { new obsidian.Notice('Aucun schéma draw.io trouvé.'); return; }
+    const notice = new obsidian.Notice('Synchronisation des schémas…', 0);
+    let majes = 0, sansNote = 0;
+    try {
+      for (const f of schemas) {
+        if (!this.noteDeSchema(f)) { sansNote++; continue; }
+        if (await this.synchroniserSchema(f, true)) majes++;
+      }
+    } finally { notice.hide(); }
+    new obsidian.Notice(
+      'Schémas : ' + majes + ' note(s) mise(s) à jour sur ' + schemas.length
+      + (sansNote ? ', ' + sansNote + ' sans note associée.' : '.')
+    );
+  }
+
+  // Agrège toutes les cartes du coffre en un graphe unique.
+  async indexerCartes() {
+    const vocab = this.vocabCartes();
+    const noeuds = new Map();  // texte -> { texte, type, cartes:Set }
+    const liens = [];
+    for (const f of this.app.vault.getFiles()) {
+      if (!this.estSchemaDrawio(f)) continue;
+      const data = await this.grapheSchema(f);
+      const a = analyserCarte(data, vocab, { blocs: {} });
+      const parId = {};
+      for (const b of a.blocs) {
+        parId[b.id] = b.texte;
+        if (!b.texte) continue;
+        if (!noeuds.has(b.texte)) noeuds.set(b.texte, { texte: b.texte, type: b.type, cartes: new Set() });
+        const n = noeuds.get(b.texte);
+        n.cartes.add(f.basename);
+        if (!n.type && b.type) n.type = b.type;
+      }
+      for (const l of a.liens) {
+        if (!l.deTexte || !l.versTexte) continue;
+        liens.push({ de: l.deTexte, vers: l.versTexte, etiquette: l.etiquette, relation: l.relation, carte: f.basename });
+      }
+    }
+    return { noeuds: [...noeuds.values()], liens };
+  }
+
+  async interrogerGraphe() {
+    const notice = new obsidian.Notice('Indexation des cartes…', 0);
+    let g;
+    try { g = await this.indexerCartes(); } finally { notice.hide(); }
+    if (!g.noeuds.length) { new obsidian.Notice('Aucun schéma draw.io trouvé (.drawio.svg).'); return; }
+    const choix = g.noeuds
+      .sort((a, b) => a.texte.localeCompare(b.texte))
+      .map((n) => ({ nom: n.texte + (n.cartes.size > 1 ? '  (' + n.cartes.size + ' cartes)' : ''), valeur: n.texte }));
+    new ChoixListeModal(this.app, 'Concept (' + g.noeuds.length + ')', choix, (c) => {
+      const sortants = g.liens.filter((l) => l.de === c.valeur);
+      const entrants = g.liens.filter((l) => l.vers === c.valeur);
+      new VoisinageModal(this.app, c.valeur, sortants, entrants, this).open();
+    }).open();
+  }
+
+  /* ------------- Export Word avec citations Zotero vivantes -------------- */
+
+  cheminAbsoluVault(rel) {
+    const ad = this.app.vault.adapter;
+    if (typeof ad.getFullPath === 'function') return ad.getFullPath(rel);
+    return require('path').join(ad.basePath || '', rel);
+  }
+
+  cheminScriptPandoc(nom) {
+    return require('path').join(this.cheminAbsoluVault(this.manifest.dir), 'pandoc', nom);
+  }
+
+  // Applique les styles du modèle Word en remappant les identifiants pandoc.
+  async remapperStyles(outPath, env) {
+    const map = this.settings.exportMapStyles || {};
+    if (!Object.values(map).some((v) => v && String(v).trim())) return;
+    const m = Object.assign({}, map);
+    if (m.BodyText) m.FirstParagraph = m.BodyText;
+    const script = this.cheminScriptPandoc('remap-styles.py');
+    try {
+      await new Promise((resolve, reject) => {
+        require('child_process').execFile('python3', [script, '--remap', outPath, JSON.stringify(m)],
+          { env: env || process.env },
+          (e, so, se) => e ? reject(new Error(String(se || e.message || e).slice(0, 300))) : resolve());
+      });
+    } catch (e) {
+      new obsidian.Notice('Styles du modèle non appliqués : ' + (e && e.message ? e.message : e));
+      console.error('[Ariane] remap styles', e);
+    }
+  }
+
+  // Liste les styles du modèle Word dans une fenêtre.
+  async listerStylesModele() {
+    const modele = this.settings.exportModeleWord;
+    if (!modele || !require('fs').existsSync(modele)) { new obsidian.Notice('Renseignez un modèle Word valide dans les réglages.'); return; }
+    const script = this.cheminScriptPandoc('remap-styles.py');
+    const env = Object.assign({}, process.env, { PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + (process.env.PATH || '') });
+    try {
+      const out = await new Promise((resolve, reject) => {
+        require('child_process').execFile('python3', [script, '--list', modele], { env, maxBuffer: 8 * 1024 * 1024 },
+          (e, so, se) => e ? reject(new Error(String(se || e.message || e).slice(0, 300))) : resolve(so));
+      });
+      new StylesModeleModal(this.app, JSON.parse(out)).open();
+    } catch (e) {
+      new obsidian.Notice('Lecture des styles — échec : ' + (e && e.message ? e.message : e));
+    }
+  }
+
+  citekeyDepuisLien(v) {
+    return String(v || '').replace(/^\[\[/, '').replace(/\]\]$/, '').replace(/\|.*$/, '').replace(/#.*/, '').replace(/^@/, '').trim();
+  }
+
+  cibleDepuisLien(v) {
+    return String(v || '').replace(/^\[\[/, '').replace(/\]\]$/, '').replace(/\|.*$/, '').replace(/#.*/, '').trim();
+  }
+
+  // Résout un lien [[annotation]] en un tableau d'entrées de citation Pandoc,
+  // ou null. Gère l'apparat « cité dans » pour les références citées distinctes
+  // de la source et absentes de Zotero.
+  resoudreCitation(cible, sourcePath, ctx) {
+    ctx = ctx || {};
+    const dest = this.app.metadataCache.getFirstLinkpathDest(cible, sourcePath || '');
+    if (!dest) return null;
+    const fm = (this.app.metadataCache.getFileCache(dest) || {}).frontmatter || {};
+    const src = fm['zotflow-source'];
+    if (!src) {
+      if (fm.citationKey) return ['@' + String(fm.citationKey).trim()];
+      if (dest.basename.startsWith('@')) return ['@' + dest.basename.slice(1)];
+      return null;
+    }
+    const srcKey = this.citekeyDepuisLien(src);
+    if (!srcKey) return null;
+    const page = fm.page != null ? String(fm.page).replace(/^["']|["']$/g, '').trim() : '';
+    // Entrée structurée : le regroupement se fait plus tard, à l'échelle de la
+    // grappe, où l'on voit toutes les annotations d'une même source.
+    const srcEntry = { cle: srcKey, page };
+    const pages = fm['références-pages'] || {};
+    let refs = fm['références-citées'];
+    refs = Array.isArray(refs) ? refs : (refs ? [refs] : []);
+    const citeDansActif = this.settings.exportCiteDansActif !== false;
+    const entrees = [];
+    const rapportes = [];                          // travaux rapportés, absents de Zotero
+    for (const rv of refs) {
+      const cibleRef = this.cibleDepuisLien(rv);
+      if (!cibleRef) continue;
+      const ck = this.citekeyDepuisLien(rv);
+      if (ck === srcKey) continue;                 // la référence est la source : rien de plus
+      const pc = String(pages[cibleRef] != null ? pages[cibleRef] : '').replace(/^["']|["']$/g, '').trim();
+      const locRef = pc ? ', p. ' + pc : '';       // page propre à la référence citée
+      if (/^@/.test(cibleRef)) { entrees.push({ cle: ck, page: pc }); continue; } // déjà dans Zotero -> directe
+      // référence en attente : présente malgré tout dans Zotero ?
+      let base = null;
+      if (ctx.index) {
+        const ref = refDepuisNomAttente(cibleRef);
+        base = ref ? trouverSourceZotero(ref, ctx.index) : null;
+      }
+      if (base) { entrees.push({ cle: base.replace(/^@/, ''), page: pc }); continue; } // citation directe
+      // Travail rapporté, introuvable dans Zotero.
+      if (citeDansActif) rapportes.push(cibleRef + locRef);
+      else entrees.push({ cle: srcKey, page });    // on ne cite que la source consultée
+    }
+    // Les travaux rapportés d'une même source tiennent en UNE entrée. Huit
+    // entrées distinctes renvoyant à la même source donnaient huit citations
+    // que Zotero regroupait en effaçant le nom de l'auteur : « … cité dans
+    // Raizada & Sinha, 2025, p. 1, …, cité dans 2025, p. 1, … ».
+    //
+    // Ils sont énumérés à la française — virgules, puis « et » — et non par des
+    // points-virgules : le « ; » reste ainsi réservé à la séparation des
+    // citations entre elles, si bien que le lecteur voit où le groupe finit.
+    if (rapportes.length) {
+      entrees.push({ cle: srcKey, page, travaux: rapportes });
+    }
+    return entrees.length ? entrees : [srcEntry];
+  }
+
+  // Garde-fou : le modèle se retouche dans Word, et Word y scinde les
+  // jetons, quand ce n'est pas une faute de frappe qui les rend muets. Cette
+  // commande dit ce que le modèle porte, et ce qui cloche, avant d'exporter.
+  async verifierModeleWord() {
+    const fs = require('fs');
+    const script = this.cheminScriptPandoc('finition.py');
+    const modele = this.settings.exportModeleWord || '';
+    if (!fs.existsSync(script)) { new obsidian.Notice('finition.py introuvable.'); return; }
+    if (!modele || !fs.existsSync(modele)) { new obsidian.Notice('Modèle Word introuvable : ' + modele); return; }
+    try {
+      const sortie = await new Promise((resolve) => {
+        require('child_process').execFile('python3', [script, '--verifier', modele],
+          { maxBuffer: 4 * 1024 * 1024 },
+          (e, so, se) => resolve(String(so || '') + String(se || '')));
+      });
+      console.log('[Ariane] modèle —\n' + sortie);
+      const alertes = sortie.split('\n').filter((l) => l.startsWith('ATTENTION'));
+      new obsidian.Notice(alertes.length
+        ? 'Modèle Word — ' + alertes.length + ' anomalie(s) :\n' + alertes.join('\n')
+        : 'Modèle Word : aucune anomalie.\n' + sortie.trim(), alertes.length ? 0 : 12000);
+    } catch (e) {
+      new obsidian.Notice('Vérification du modèle — échec : ' + (e && e.message ? e.message : e));
+    }
+  }
+
+  async exporterWordZotero() {
+    const file = this.app.workspace.getActiveFile();
+    if (!file || file.extension !== 'md') { new obsidian.Notice('Ouvrez la note à exporter.'); return; }
+    const contenu = await this.app.vault.read(file);
+    const ctx = { index: this.construireIndexZotero() };
+    const resoudre = (c) => this.resoudreCitation(c, file.path, ctx);
+    // Les notes anciennes portent encore des notes de bas de page ; les
+    // récentes des citations en ligne. Les deux passes se complètent.
+    const citeDans = this.settings.citeDans || ', cité dans ';
+    let md = footnotesVersCitations(contenu, resoudre, citeDans);
+    md = preparerMarkdownExport(md, resoudre, {
+      citeDans,
+      styleEncadre: this.settings.exportStyleEncadre || 'Items de réflexion',
+      insecables: this.settings.exportInsecables !== false,
+      decalerTitres: this.settings.exportDecalerTitres !== false,
+      retirerNumerotation: this.settings.exportRetirerNumerotation !== false,
+    });
+    // La bibliographie est ajoutée APRÈS la préparation, qui supprime celle
+    // d'Ariane : c'est Zotero qui produira la sienne à cet emplacement.
+    if (this.settings.exportBibliographie) md += '\n\n# Bibliographie\n';
+    // Active les citations « auteur dans le texte » pour les liens [[@clé]] du corps.
+    md = '---\nzotero:\n  author-in-text: true\n---\n\n' + md;
+    const fs = require('fs'), os = require('os'), pathMod = require('path');
+    const tmp = pathMod.join(os.tmpdir(), 'ariane-export-' + Date.now() + '.md');
+    fs.writeFileSync(tmp, md, 'utf8');
+    await this.assurerDossier(this.settings.exportDossier);
+    const outPath = pathMod.join(this.cheminAbsoluVault(this.settings.exportDossier), file.basename + '.docx');
+    const notice = new obsidian.Notice('Export Word (Zotero)…', 0);
+    try {
+      const dirFiltre = pathMod.dirname(this.settings.exportFiltreLua);
+      const env = Object.assign({}, process.env, {
+        PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + (process.env.PATH || ''),
+        LUA_PATH: dirFiltre + '/?.lua;' + dirFiltre + '/?/init.lua;;',
+      });
+      const args = ['--lua-filter', this.settings.exportFiltreLua];
+      const modele = this.settings.exportModeleWord;
+      if (modele && fs.existsSync(modele)) args.push('--reference-doc', modele);
+      args.push(tmp, '-s', '-o', outPath);
+      await new Promise((resolve, reject) => {
+        require('child_process').execFile(
+          this.settings.exportPandocBin || 'pandoc', args,
+          { maxBuffer: 64 * 1024 * 1024, env, cwd: dirFiltre },
+          (e, so, se) => e ? reject(new Error(String(se || e.message || e).slice(0, 400))) : resolve());
+      });
+      await this.remapperStyles(outPath, env);
+      await this.finirDocument(outPath, env, file);
+      notice.hide();
+      new obsidian.Notice('Export terminé : ' + file.basename + '.docx (dans « ' + this.settings.exportDossier + ' »).');
+    } catch (e) {
+      notice.hide();
+      new obsidian.Notice('Export — échec : ' + (e && e.message ? e.message : e) + ' — pandoc installé ? Zotero lancé ?');
+      console.error('[Ariane] export word', e);
+    } finally {
+      try { fs.unlinkSync(tmp); } catch (e) { /* */ }
+    }
+  }
+
+  // Finition du .docx : en-têtes du modèle rattachés, en-tête de première page
+  // alimenté par les propriétés de la note, tableaux habillés. Pandoc écrit sa
+  // propre section et laisse les en-têtes du modèle orphelins dans le fichier.
+  async finirDocument(chemin, env, fichier) {
+    if (this.settings.exportEntetes === false) return;
+    const fs = require('fs'), os = require('os'), pathMod = require('path');
+    const script = this.cheminScriptPandoc('finition.py');
+    if (!fs.existsSync(script)) return;
+
+    const fm = ((this.app.metadataCache.getFileCache(fichier) || {}).frontmatter) || {};
+    const date = this.dateDeNote(fichier, fm);
+
+    // Le greffon ne décide plus de rien : il dit seulement ce que vaut chaque
+    // jeton. C'est le MODÈLE qui porte les jetons, donc qui décide où va
+    // quelle donnée, et laquelle apparaît. Voir la légende en fin de modèle.
+    // Les liens d'Obsidian n'ont pas leur place dans un document Word : sans
+    // ce nettoyage, une propriété sortait « [[Chabane Mazri]], [[Lionel
+    // Garreau]] », crochets compris.
+    const lisible = (x) => (this.settings.exportNettoyerLiens === false ? String(x) : valeurLisible(x));
+
+    const valeurs = {
+      titre: lisible((Array.isArray(fm.aliases) && fm.aliases[0]) || fichier.basename),
+      dossier: this.dossierDeNote(fichier),
+      date: this.formaterDate(date, 'court'),
+      'date:long': this.formaterDate(date, 'long'),
+      'réf': this.referenceDeNote(fichier, fm),
+    };
+
+    // Toutes les propriétés de la note, à double titre : nommément, pour un
+    // {{propriété:clé}} du modèle, et en liste, pour ses rangs répétables. La
+    // finition écarte de la liste celles que le modèle place déjà ailleurs.
+    const structurelles = new Set(['position', 'aliases', 'tags', 'cssclasses']);
+    const proprietes = [];
+    for (const [cle, val] of Object.entries(fm)) {
+      if (val == null || val === '') continue;
+      const texte = lisible(Array.isArray(val) ? val.map(lisible).join(', ') : val);
+      if (!texte.trim()) continue;
+      valeurs['propriété:' + cle] = texte;
+      if (!structurelles.has(String(cle).toLowerCase())) {
+        proprietes.push([this.libellePropriete(cle), texte]);
+      }
+    }
+
+    const ordres = pathMod.join(os.tmpdir(), 'ariane-finition-' + Date.now() + '.json');
+    fs.writeFileSync(ordres, JSON.stringify({
+      valeurs,
+      proprietes,
+      // Le modèle porte les préférences Zotero (ZOTERO_PREF_1, _2) que pandoc
+      // n'écrit pas pour le .docx : sans elles, Word ne reconnaît pas un
+      // document Zotero et refuse d'actualiser les citations. Il porte aussi
+      // la section et le gabarit du tableau des propriétés.
+      modele: this.settings.exportModeleWord || '',
+      // Le champ ZOTERO_BIBL, que le filtre ne pose que pour l'ODT.
+      bibliographie: this.settings.exportBibliographie !== false,
+      styleEnteteTableau: this.settings.exportStyleEnteteTableau || 'Titre de tableau',
+      styleCelluleTableau: this.settings.exportStyleCelluleTableau || 'Champ de tableau',
+      // Les styles que pandoc invente pour le corps de texte sont ramenés à
+      // ceux du modèle. La finition résout les noms en identifiants.
+      styles: this.settings.exportMapStyles || {},
+    }), 'utf8');
+
+    try {
+      const sortie = await new Promise((resolve, reject) => {
+        require('child_process').execFile('python3', [script, chemin, ordres],
+          { maxBuffer: 32 * 1024 * 1024, env },
+          (e, so, se) => (e ? reject(new Error(String(se || e.message).slice(0, 400))) : resolve(String(so || ''))));
+      });
+      console.log('[Ariane] finition —', sortie.trim());
+      // Rien ne doit se dérégler en silence : ce que la finition signale est
+      // remonté à l'utilisateur, l'export ayant tout de même abouti.
+      const alertes = sortie.split('\n').filter((l) => l.startsWith('ATTENTION'));
+      if (alertes.length) {
+        new obsidian.Notice('Modèle Word — ' + alertes.length + ' anomalie(s) :\n'
+          + alertes.join('\n') + '\n(commande « Vérifier le modèle Word » pour le détail)', 0);
+      }
+      try { fs.unlinkSync(chemin + '.avant-finition'); } catch (e) { /* */ }
+    } catch (e) {
+      new obsidian.Notice('Finition non appliquée : ' + (e && e.message ? e.message : e), 10000);
+      console.error('[Ariane] finition', e);
+      try {
+        if (fs.existsSync(chemin + '.avant-finition')) {
+          fs.copyFileSync(chemin + '.avant-finition', chemin);
+          fs.unlinkSync(chemin + '.avant-finition');
+        }
+      } catch (err) { /* on garde ce qu'on a */ }
+    } finally {
+      try { fs.unlinkSync(ordres); } catch (e) { /* */ }
+    }
+  }
+
+  // La référence de la note pour l'en-tête principal. On cherche, dans
+  // l'ordre, les propriétés que l'utilisateur a désignées ; à défaut, et s'il
+  // l'a demandé, le nom du fichier fait office de référence — c'est le cas des
+  // notes nommées « NP-260826-07 » ou « CR-260826-07 ».
+  referenceDeNote(fichier, fm) {
+    const noms = String(this.settings.exportProprieteReference || 'ref')
+      .split(',').map((x) => x.trim()).filter(Boolean);
+    const sansAccent = (x) => String(x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const table = new Map();
+    for (const [k, v] of Object.entries(fm || {})) table.set(sansAccent(k).replace(/\.$/, ''), v);
+    for (const n of noms) {
+      const v = table.get(sansAccent(n).replace(/\.$/, ''));
+      if (v != null && String(v).trim()) {
+        return valeurLisible(Array.isArray(v) ? v.join(', ') : v);
+      }
+    }
+    return this.settings.exportRefDepuisNom === false ? '' : fichier.basename;
+  }
+
+  // Le dossier du coffre où vit la note, sans son numéro de rangement :
+  // « 2 - Notes conceptuelles » -> « Notes conceptuelles ». C'est ce que le
+  // gabarit de l'en-tête principal appelle « Type ».
+  dossierDeNote(fichier) {
+    const parent = fichier.parent && fichier.parent.name ? fichier.parent.name : '';
+    return parent.replace(/^\s*\d+\s*-\s*/, '').trim();
+  }
+
+  // Date de création : la propriété « date » de la note si elle est lisible,
+  // sinon la date de création du fichier.
+  dateDeNote(fichier, fm) {
+    const brute = fm && fm.date ? String(fm.date) : '';
+    const d = brute ? new Date(brute) : null;
+    if (d && !isNaN(d.getTime())) return d;
+    const ctime = fichier.stat && fichier.stat.ctime;
+    return ctime ? new Date(ctime) : new Date();
+  }
+
+  // Deux formats, ceux du modèle : « 02/07/2026 » dans l'en-tête principal,
+  // « Jeudi 02 juillet 2026 » dans le tableau des propriétés.
+  formaterDate(d, forme) {
+    if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+    if (forme === 'court') {
+      return d.toLocaleDateString('fr-FR',
+        { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+    const t = d.toLocaleDateString('fr-FR',
+      { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+
+  // « date-creation » -> « Date creation ». Les noms techniques restent lisibles.
+  libellePropriete(cle) {
+    const t = String(cle).replace(/[-_]+/g, ' ').trim();
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+
+  onunload() {
+    for (const t of this.antirebonds.values()) clearTimeout(t);
+    this.antirebonds.clear();
+    // Le cache d'embeddings n'est plus écrit à chaque frappe : il faut donc le
+    // poser au plus tard ici, faute de quoi la session serait perdue.
+    if (this.suggEmbMinuteur) { clearTimeout(this.suggEmbMinuteur); this.suggEmbMinuteur = null; }
+    this.sauverCacheEmbeddings().catch(() => { /* fermeture en cours */ });
+    // Dernier report : sans cela, les minutes de la session en cours seraient
+    // perdues à la fermeture d'Obsidian ou au rechargement du greffon.
+    this.reporterTemps().catch(() => { /* fermeture en cours */ });
+  }
+
+  // Infobulle dans l'explorateur : le total inscrit dans la note.
+  installerInfobulleTemps() {
+    if (!this.settings.tempsInfobulleExplorateur) return;
+    this.registerDomEvent(document, 'mouseover', (e) => {
+      const cible = e && e.target;
+      if (!cible || typeof cible.closest !== 'function') return;
+      const titre = cible.closest('.nav-file-title');
+      if (!titre) return;
+      const chemin = titre.getAttribute('data-path');
+      if (!chemin || !chemin.endsWith('.md')) return;
+      const minutes = this.tempsTotalDe(chemin)
+        + ((this._tempsSecondes && this._tempsSecondes.get(chemin)) || 0) / 60;
+      if (minutes < 1) return;
+      titre.setAttribute('title', 'Temps passé : ' + dureeLisible(minutes));
+    }, { capture: true });
+  }
+
+  /* Compteur d'appels dans l'explorateur retiré : voir la vue
+     « Ordre et appels » de la base ZotFlow. */
+
+  // Titre (alias) d'une annotation ciblée par un lien, ou '' si ce n'en
+  // est pas une.
+  titreAnnotationCiblee(cheminLien, sourcePath, pourAparte) {
+    if (!cheminLien) return '';
+    const dest = this.app.metadataCache.getFirstLinkpathDest(cheminLien, sourcePath || '');
+    if (!dest) return '';
+    const cache = this.app.metadataCache.getFileCache(dest);
+    const fm = cache ? cache.frontmatter : null;
+    if (!fm) return '';
+    // Cibles éligibles à l'aparté : annotations ET notes conceptuelles.
+    const estAnnotation = dest.path.startsWith(this.dossierA + '/') && fm['zotflow-anno-key'] !== undefined;
+    // Hors annotations, c'est la famille de la note qui dit si l'aparté
+    // s'applique — plus aucun type de note n'est nommé dans le code.
+    const famille = estAnnotation ? null : this.familleDuChemin(dest.path, dest.basename);
+    if (!estAnnotation && !famille) return '';
+    // Filtrage par type, uniquement pour l'aparté sur les liens.
+    if (pourAparte) {
+      if (estAnnotation && !this.settings.aparteAnnotations) return '';
+      if (famille && !famille.aparte) return '';
+    }
+    const al = fm.aliases;
+    if (Array.isArray(al) && al.length) return String(al[0]);
+    if (typeof al === 'string') return al;
+    return '';
+  }
+
+  // Post-traitement (lecture) : ajoute « (Titre) » discret après un lien
+  // d'annotation qui affiche la clé. N'écrit rien dans les notes.
+  enrichirLiensAnnotation(el, ctx) {
+    if (!this.settings.aliasSurLiens) return;
+    const liens = el.querySelectorAll('a.internal-link');
+    liens.forEach((a) => {
+      const suivant = a.nextElementSibling;
+      if (suivant && suivant.classList && suivant.classList.contains('zfa-lien-alias')) return;
+      const cible = a.getAttribute('data-href') || a.getAttribute('href') || '';
+      if (!cible || cible.includes('#')) return;
+      // Alias manuel présent ([[cible|affiché]]) -> pas d'aparté auto.
+      const affiche = (a.textContent || '').trim();
+      const base = cible.split('/').pop().replace(/\.md$/, '');
+      if (affiche && affiche !== cible && affiche !== base) return;
+      const titre = this.titreAnnotationCiblee(cible, ctx && ctx.sourcePath, true);
+      if (!titre) return;
+      // On n'ajoute rien si le lien affiche déjà le titre.
+      if (affiche === titre) return;
+      const span = document.createElement('span');
+      span.className = 'zfa-lien-alias';
+      span.textContent = this.formatAparte(titre, cible);
+      a.insertAdjacentElement('afterend', span);
+    });
+  }
+
+  // Explorateur de fichiers : ajoute l'alias (titre) à côté du nom des
+  // annotations et notes conceptuelles, dont le nom de fichier est cryptique.
+  installerDecorateurExplorateur() {
+    const planifier = () => this.antirebond('explorateur', () => this.decorerExplorateur(), 200);
+    this.registerEvent(this.app.workspace.on('layout-change', planifier));
+    this.registerEvent(this.app.workspace.on('active-leaf-change', planifier));
+    this.registerEvent(this.app.metadataCache.on('resolved', planifier));
+    const cont = document.querySelector('.nav-files-container');
+    if (cont && typeof MutationObserver !== 'undefined') {
+      const obs = new MutationObserver(() => planifier());
+      obs.observe(cont, { childList: true, subtree: true });
+      this.register(() => obs.disconnect());
+    }
+    planifier();
+  }
+
+  decorerExplorateur() {
+    const dossiers = this.dossiersDeFamille('alias');
+    // Dossiers en police à largeur fixe : appartenance directe uniquement,
+    // un sous-dossier n'hérite pas du réglage de son parent.
+    const dossiersMono = new Set(this.dossiersDeFamille('monospace'));
+    document.querySelectorAll('.nav-file-title').forEach((el) => {
+      const ancien = el.querySelector('.zfa-explorer-alias');
+      const path = el.getAttribute('data-path') || '';
+      // Police à largeur fixe si la note est directement dans un dossier listé.
+      const i = path.lastIndexOf('/');
+      const dossierNote = i === -1 ? '' : path.slice(0, i);
+      el.classList.toggle('zfa-nom-mono', !!(path.endsWith('.md') && dossiersMono.has(dossierNote)));
+      if (!path.endsWith('.md') || !dossiers.some((d) => path === d + '.md' || path.startsWith(d + '/'))) {
+        if (ancien) ancien.remove();
+        return;
+      }
+      const alias = this.aliasDeFichier(path);
+      if (!alias) { if (ancien) ancien.remove(); return; }
+      if (ancien) { if (ancien.textContent !== alias) ancien.textContent = alias; return; }
+      el.createSpan({ cls: 'zfa-explorer-alias', text: alias });
+    });
+  }
+
+  // Premier alias du frontmatter d'un fichier, quel que soit son type.
+  aliasDeFichier(path) {
+    const f = this.app.vault.getAbstractFileByPath(path);
+    if (!f) return '';
+    const cache = this.app.metadataCache.getFileCache(f);
+    const al = cache && cache.frontmatter ? cache.frontmatter.aliases : null;
+    if (Array.isArray(al) && al.length) return String(al[0]);
+    if (typeof al === 'string' && al) return al;
+    return '';
+  }
+
+  formaterAuteurs(familles, annee) {
+    familles = (familles || []).filter(Boolean);
+    let court = '';
+    if (familles.length === 1) court = familles[0];
+    else if (familles.length === 2) court = familles[0] + ' et ' + familles[1];
+    else if (familles.length >= 3) court = familles[0] + ' et al.';
+    return { court, complet: familles.join(', '), annee: annee || '' };
+  }
+
+  // Auteurs déduits d'un lien de référence : via les « creators » si la
+  // cible en a (source Zotero), sinon via l'analyse du nom « Auteur, Année ».
+  auteursDepuisReference(lien, ctx) {
+    const cible = String(lien)
+      .replace(/^\[\[|\]\]$/g, '')
+      .replace(/\|.*$/, '')
+      .replace(/#.*$/, '')
+      .trim();
+    if (!cible) return null;
+    const dest = this.app.metadataCache.getFirstLinkpathDest(cible, ctx || '');
+    if (dest) {
+      const cache = this.app.metadataCache.getFileCache(dest);
+      const fm = cache ? cache.frontmatter : null;
+      if (fm && fm.creators) {
+        const creators = (Array.isArray(fm.creators) ? fm.creators : [fm.creators]).map(sansLien);
+        const familles = creators
+          .map((c) => {
+            const s = String(c).trim();
+            return s.includes(',') ? s.split(',')[0].trim() : s.split(/\s+/).pop();
+          })
+          .filter(Boolean);
+        const an = String(fm.year || fm.date || '').match(/\d{4}/);
+        return this.formaterAuteurs(familles, an ? an[0] : '');
+      }
+    }
+    // Pas de creators : la cible est du type « Auteur(s), Année ».
+    const ref = parseNomReference(cible, this.settings);
+    if (ref) return { court: ref.auteurComplet, complet: ref.auteurComplet, annee: ref.annee };
+    return null;
+  }
+
+  // Auteurs de l'annotation : d'abord la référence citée, puis la source.
+  auteursAnnotation(cle) {
+    const anno = this.app.metadataCache.getFirstLinkpathDest(cle, '');
+    if (!anno) return null;
+    const cache = this.app.metadataCache.getFileCache(anno);
+    const fmA = cache ? cache.frontmatter : null;
+    if (!fmA) return null;
+
+    // 1) Référence(s) citée(s) en priorité.
+    let refs = fmA['références-citées'];
+    if (refs) {
+      if (!Array.isArray(refs)) refs = [refs];
+      if (refs.length) {
+        const r = this.auteursDepuisReference(refs[0], anno.path);
+        if (r && r.court) return r;
+      }
+    }
+    // 2) Repli : la source de l'annotation.
+    const src = String(fmA['zotflow-source'] || '')
+      .replace(/^\[\[|\]\]$/g, '')
+      .replace(/\|.*$/, '')
+      .trim();
+    if (src) {
+      const r = this.auteursDepuisReference('[[' + src + ']]', anno.path);
+      if (r && r.court) return r;
+    }
+    return null;
+  }
+
+  // Texte de l'aparté, à partir du modèle configurable.
+  formatAparte(titre, cle) {
+    const vars = { alias: titre, title: titre, key: cle || '', auteur: '', auteurs: '', annee: '' };
+    if (/\{\{\s*(auteur|auteurs|annee)\s*\}\}/.test(this.settings.modeleAparte || '')) {
+      const a = this.auteursAnnotation(cle);
+      if (a) {
+        vars.auteur = a.court;
+        vars.auteurs = a.complet;
+        vars.annee = a.annee;
+      }
+    }
+    let out = appliquerModele(this.settings.modeleAparte || ' ({{alias}})', vars);
+    // Retire une parenthèse d'auteurs restée vide (ex. « (, ) » pour les notes
+    // conceptuelles, qui n'ont pas d'auteur), sans toucher au reste de l'alias.
+    out = out.replace(/\s*\([\s,;]*\)/g, '').replace(/\s+$/, '');
+    return out;
+  }
+
+  // Applique couleur et taille de l'aparté via des variables CSS globales.
+  appliquerStyleAparte() {
+    const b = document.body;
+    if (!b) return;
+    const taille = (this.settings.aparteTaille || '').trim();
+    const couleur = (this.settings.aparteCouleur || '').trim();
+    if (taille) b.style.setProperty('--zfa-aparte-taille', taille);
+    else b.style.removeProperty('--zfa-aparte-taille');
+    if (couleur) b.style.setProperty('--zfa-aparte-couleur', couleur);
+    else b.style.removeProperty('--zfa-aparte-couleur');
+    const police = (this.settings.nomsMonospaceFont || '').trim();
+    if (police) b.style.setProperty('--zfa-nom-mono-font', police);
+    else b.style.removeProperty('--zfa-nom-mono-font');
+  }
+
+  // Commande : retire l'alias affiché des liens d'annotation
+  // (« [[clé|Titre]] » -> « [[clé]] »). Ne touche pas les notes d'annotation.
+  async retirerAliasLiensAnnotation() {
+    const cles = new Set();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierA + '/')) continue;
+      const cache = this.app.metadataCache.getFileCache(f);
+      const fm = cache ? cache.frontmatter : null;
+      if (fm && fm['zotflow-anno-key'] !== undefined) cles.add(f.basename);
+    }
+    if (cles.size === 0) {
+      new obsidian.Notice('Aucune annotation trouvée.');
+      return;
+    }
+    let modifs = 0;
+    const re = /(?<!!)\[\[([^\]|#^\n]+)\|[^\]\n]*\]\]/g;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (f.path.startsWith(this.dossierA + '/')) continue;
+      const contenu = await this.app.vault.read(f);
+      const nouveau = contenu.replace(re, (m, cible) => {
+        const t = cible.trim();
+        if (cles.has(t)) {
+          modifs++;
+          return '[[' + t + ']]';
+        }
+        return m;
+      });
+      if (nouveau !== contenu) await this.ecrire(f.path, nouveau, f);
+    }
+    new obsidian.Notice('Ariane : ' + modifs + ' lien(s) nettoyé(s).');
+  }
+
+  /* ------------- Glisser une annotation sur un paragraphe --------------- */
+
+  // Éditeur CodeMirror situé sous un point de l'écran (quel que soit le
+  // volet actif), pour gérer le glisser depuis la base vers la note.
+  // Document de l'événement (gère les fenêtres détachées / multi-moniteurs).
+  docDeEvenement(e) {
+    return (e && e.view && e.view.document) ||
+      (e && e.target && e.target.ownerDocument) ||
+      document;
+  }
+
+  cmSousPoint(x, y, doc) {
+    const d = doc || document;
+    const el = d.elementFromPoint(x, y);
+    const editeur = el && el.closest ? el.closest('.cm-editor') : null;
+    if (!editeur) return null;
+    for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+      const view = leaf.view;
+      const cm = view && view.editor ? view.editor.cm : null;
+      if (cm && cm.dom === editeur) return cm;
+    }
+    return null;
+  }
+
+  estAnnotationCle(cle) {
+    const dest = this.app.metadataCache.getFirstLinkpathDest(cle, '');
+    if (!dest || !dest.path.startsWith(this.dossierA + '/')) return false;
+    const cache = this.app.metadataCache.getFileCache(dest);
+    const fm = cache ? cache.frontmatter : null;
+    return !!(fm && fm['zotflow-anno-key'] !== undefined);
+  }
+
+  extraireCleDepuisTexte(text) {
+    if (!text) return '';
+    const s = String(text).trim();
+    const m = s.match(/\[\[([^\]|#\n]+)/);
+    return m ? cleDeLien(m[1]) : s.split('\n')[0].trim();
+  }
+
+  // Un glisser venu d'un panneau tiers — le chat de Claudian, par exemple —
+  // n'est pas un glisser interne d'Obsidian : c'est un glisser HTML natif,
+  // dont la charge peut prendre des formes très diverses. On les ramène
+  // toutes à un nom de note.
+  cleDepuisCharge(brut) {
+    if (!brut) return '';
+    let s = String(brut).trim().split('\n')[0].trim();
+    if (!s) return '';
+
+    // Lien interne, la forme la plus directe.
+    const w = s.match(/\[\[([^\]|#\n]+)/);
+    if (w) return cleDeLien(w[1]);
+
+    // Lien markdown : on ne garde que la cible.
+    const md = s.match(/\]\(([^)]+)\)/);
+    if (md) s = md[1].trim();
+
+    // URL Obsidian : le nom de la note est dans le paramètre « file ».
+    const ob = s.match(/obsidian:\/\/[^\s]*[?&]file=([^&\s]+)/i);
+    if (ob) {
+      try { s = decodeURIComponent(ob[1]); } catch (e) { s = ob[1]; }
+    } else if (/^app:\/\//i.test(s)) {
+      // Forme interne d'Obsidian pour un fichier du coffre.
+      try { s = decodeURIComponent(s.replace(/^app:\/\/[^/]*\//i, '')); } catch (e) { /* brut */ }
+    } else if (/%[0-9a-f]{2}/i.test(s)) {
+      try { s = decodeURIComponent(s); } catch (e) { /* brut */ }
+    }
+
+    return s.replace(/^<|>$/g, '')
+      .replace(/#.*$/, '')
+      .replace(/\|.*$/, '')
+      .replace(/\.md$/i, '')
+      .trim();
+  }
+
+  // Note la cible du lien d'où part le glisser. On interroge « data-href »
+  // en premier : c'est la valeur qu'Obsidian et Claudian y inscrivent, non
+  // résolue, donc exploitable telle quelle.
+  noterSourceGlissee(e) {
+    this._sourceGlissee = '';
+    const cible = e && e.target;
+    if (!cible || typeof cible.closest !== 'function') return;
+
+    let a = cible.closest('a[data-href], a.internal-link, .claudian-file-link');
+    // Le glisser peut partir de l'aparté qu'Ariane accole après le lien.
+    if (!a) {
+      const aparte = cible.closest('.zfa-lien-alias');
+      if (aparte && aparte.previousElementSibling) a = aparte.previousElementSibling;
+    }
+    if (a && typeof a.getAttribute === 'function') {
+      this._sourceGlissee = (a.getAttribute('data-href')
+        || a.getAttribute('href')
+        || a.textContent
+        || '').trim();
+      return;
+    }
+
+    // En édition, une citation déjà posée n'est pas une balise « a » : le lien
+    // est rendu sans « data-href », seul l'alias est visible. On lit donc le
+    // document sous le point de départ pour y retrouver le « [[…]] » englobant.
+    const cle = this.lienSousPoint(e);
+    if (!cle) return;
+    this._sourceGlissee = cle;
+
+    // Réutiliser une citation, c'est la copier : sans cela l'éditeur la
+    // déplacerait, et elle disparaîtrait du paragraphe d'origine. On ne force
+    // cet effet que sur une cible réellement citable, pour ne pas altérer le
+    // déplacement ordinaire d'un lien quelconque.
+    if (e.dataTransfer && this.noteCitable(cle)) {
+      try { e.dataTransfer.effectAllowed = 'copy'; } catch (err) { /* selon la source */ }
+    }
+  }
+
+  // Une note peut-elle servir d'appui : annotation, ou source Zotero ?
+  noteCitable(cle) {
+    if (!cle) return false;
+    for (const c of [cle, String(cle).split('/').pop()]) {
+      const f = this.app.metadataCache.getFirstLinkpathDest(c, '');
+      if (!f || f.extension !== 'md') continue;
+      if (this.settings.dropToutesNotes) return true;
+      const fm = ((this.app.metadataCache.getFileCache(f) || {}).frontmatter) || {};
+      if (f.path.startsWith(this.dossierA + '/') && fm['zotflow-anno-key'] !== undefined) return true;
+      if (fm.citationKey !== undefined) return true;
+    }
+    return false;
+  }
+
+  // Cible du lien interne situé sous les coordonnées d'un événement, lue dans
+  // le texte source de l'éditeur. Rend '' si le point ne tombe pas dans un lien.
+  lienSousPoint(e) {
+    if (!e || e.clientX == null) return '';
+    let cm = null;
+    try {
+      cm = this.cmSousPoint(e.clientX, e.clientY, this.docDeEvenement(e));
+    } catch (err) { return ''; }
+    if (!cm) return '';
+
+    let pos = null;
+    try { pos = cm.posAtCoords({ x: e.clientX, y: e.clientY }); } catch (err) { return ''; }
+    if (pos == null) return '';
+
+    const ligne = cm.state.doc.lineAt(pos);
+    const rel = pos - ligne.from;
+    for (const m of ligne.text.matchAll(/\[\[([^\]\n]+)\]\]/g)) {
+      if (rel >= m.index && rel <= m.index + m[0].length) {
+        return m[1].split('|')[0].split('#')[0].trim();
+      }
+    }
+    return '';
+  }
+
+  // Quand la charge n'est pas un identifiant propre — une sélection de texte,
+  // par exemple, où la clé se trouve collée au titre par l'aparté d'Ariane —
+  // on y cherche les jetons qui ressemblent à une clé : citekey Zotero
+  // « @auteurTitre2014 », ou clé d'annotation en capitales « TG7F24EE ».
+  clesCandidates(brut) {
+    const s = String(brut || '');
+    const out = [];
+    const ajouter = (x) => { if (x && out.indexOf(x) === -1) out.push(x); };
+    for (const m of s.matchAll(/@[A-Za-zÀ-ÿ0-9_-]{4,}/g)) ajouter(m[0]);
+    for (const m of s.matchAll(/\b[A-Z0-9]{6,12}\b/g)) ajouter(m[0]);
+    return out;
+  }
+
+  // Récupère la clé de l'annotation glissée, en priorité via le
+  // gestionnaire de glisser interne d'Obsidian (dragManager), sinon via
+  // les données du presse-papier.
+  obtenirCleGlissee(e) {
+    const toutes = this.settings.dropToutesNotes;
+    // Un fichier est-il acceptable comme appui ? Toute note markdown si
+    // « toutes les notes », sinon seulement les annotations.
+    const accepteFichier = (f) => {
+      if (!f || !f.path || f.extension !== 'md') return false;
+      if (toutes) return true;
+      const cache = this.app.metadataCache.getFileCache(f);
+      const fm = (cache ? cache.frontmatter : null) || {};
+      // Annotation.
+      if (f.path.startsWith(this.dossierA + '/') && fm['zotflow-anno-key'] !== undefined) return true;
+      // Note source : citer un travail sans passer par une annotation reste
+      // légitime, et c'est précisément ce qu'on glisse depuis un panneau tiers.
+      return fm.citationKey !== undefined;
+    };
+    const accepteCible = (cible) => {
+      if (!cible) return false;
+      // La charge peut porter un chemin complet comme un simple nom.
+      const essais = [cible, cible.split('/').pop()];
+      for (const c of essais) {
+        if (accepteFichier(this.app.metadataCache.getFirstLinkpathDest(c, ''))) return true;
+      }
+      return false;
+    };
+    const normaliser = (cible) => {
+      const essais = [cible, cible.split('/').pop()];
+      for (const c of essais) {
+        const f = this.app.metadataCache.getFirstLinkpathDest(c, '');
+        if (accepteFichier(f)) return f.basename;
+      }
+      return '';
+    };
+    const dm = this.app.dragManager;
+    const d = dm && dm.draggable;
+    if (d) {
+      if (accepteFichier(d.file)) return d.file.basename;
+      const arr = d.files || d.items;
+      if (Array.isArray(arr)) {
+        for (const f of arr) if (accepteFichier(f)) return f.basename;
+      }
+      for (const k of ['linktext', 'link', 'title', 'name']) {
+        if (typeof d[k] === 'string') {
+          const cible = this.extraireCleDepuisTexte(d[k]);
+          if (accepteCible(cible)) return cible;
+        }
+      }
+    }
+    // Élément d'origine, retenu au départ du glisser. C'est la seule voie
+    // quand la charge est vide, ce qui est le cas depuis un panneau tiers.
+    if (this._sourceGlissee) {
+      const k = normaliser(this.cleDepuisCharge(this._sourceGlissee));
+      if (k) return k;
+      for (const jeton of this.clesCandidates(this._sourceGlissee)) {
+        const j = normaliser(jeton);
+        if (j) return j;
+      }
+    }
+
+    // Glisser natif : on interroge chaque format proposé, du plus explicite
+    // au plus vague. Un panneau tiers ne remplit pas forcément « text/plain ».
+    const dt = e && e.dataTransfer;
+    if (dt) {
+      const formats = ['text/plain', 'text/uri-list', 'text/x-moz-url', 'text/html'];
+      const vus = [];
+      for (const fmt of formats) {
+        let brut = '';
+        try { brut = dt.getData(fmt); } catch (err) { brut = ''; }
+        if (!brut) continue;
+        vus.push(fmt);
+
+        if (fmt === 'text/html') {
+          // On tente d'abord les liens du fragment, puis son texte.
+          const candidats = [];
+          const re = /(?:href|data-href)\s*=\s*["']([^"']+)["']/gi;
+          let m;
+          while ((m = re.exec(brut)) !== null) candidats.push(m[1]);
+          candidats.push(brut.replace(/<[^>]*>/g, ' '));
+          for (const c of candidats) {
+            const k = normaliser(this.cleDepuisCharge(c));
+            if (k) return k;
+          }
+          for (const jeton of this.clesCandidates(brut)) {
+            const k = normaliser(jeton);
+            if (k) return k;
+          }
+          continue;
+        }
+
+        for (const ligne of String(brut).split('\n')) {
+          const k = normaliser(this.cleDepuisCharge(ligne));
+          if (k) return k;
+        }
+        // La charge entière n'a rien donné : on y cherche une clé isolée.
+        for (const jeton of this.clesCandidates(brut)) {
+          const k = normaliser(jeton);
+          if (k) return k;
+        }
+      }
+      // Aide au diagnostic : sans cela, un dépôt refusé reste muet.
+      if (this.settings.dropSignalerRefus !== false) {
+        const apercu = this._sourceGlissee || (() => {
+          try { return dt.getData('text/plain'); } catch (err) { return ''; }
+        })();
+        new obsidian.Notice("Dépôt non reconnu : "
+          + (apercu ? '« ' + String(apercu).slice(0, 80) + ' »' : 'charge vide')
+          + '. Aucune note du coffre ne correspond.', 6000);
+      }
+      console.debug('[Ariane] glisser non reconnu. Formats reçus :',
+        Array.from(dt.types || []), '| exploités :', vus,
+        '| text/plain :', (() => { try { return dt.getData('text/plain'); } catch (err) { return '?'; } })());
+    }
+    if (d) console.debug('[Ariane] objet glissé non reconnu :', Object.keys(d), d);
+    return '';
+  }
+
+  // La ligne appartient-elle à un paragraphe de corps (éligible au dépôt) ?
+  ligneEstParagraphe(doc, n) {
+    if (n < 1 || n > doc.lines) return false;
+    const t = doc.line(n).text;
+    if (t.trim() === '') return false;
+    if (/^#{1,6}\s/.test(t)) return false; // titre
+    if (/^\s*\[\^[^\]]+\]:/.test(t)) return false; // définition de note
+    if (/^[\t ]/.test(t)) return false; // ligne indentée (continuation)
+    if (/^(?:!?\[\[[^\]]*\]\]\s*)+$/.test(t.trim())) return false; // ligne de liens seuls
+    // exclure la zone des notes de bas de page (à partir de la 1re définition)
+    for (let k = 1; k < n; k++) {
+      if (/^\s*\[\^[^\]]+\]:/.test(doc.line(k).text)) return false;
+    }
+    return true;
+  }
+
+  // Rattache une ou plusieurs annotations à la note de bas de page du
+  // paragraphe contenant la ligne donnée (création ou complément).
+  // Notes concernées par une conversion : on écarte les annotations elles-mêmes
+  // et les fiches Zotero, qui ne contiennent pas de rédaction.
+  notesConvertibles() {
+    const exclus = [this.dossierA + '/', this.dossierR + '/', 'Références/', 'Auteurs/'];
+    return this.app.vault.getMarkdownFiles()
+      .filter((f) => !exclus.some((d) => f.path.startsWith(d)));
+  }
+
+  /* ----------------------------- Temps passé ----------------------------- */
+
+  demarrerCompteurTemps() {
+    if (!this.settings.tempsActif) return;
+
+    this._tempsSecondes = new Map();   // chemin -> secondes non encore reportées
+    this._tempsDerniereActivite = Date.now();
+    this._tempsCheminCourant = '';
+    this._tempsDernierJour = jourIsoDe(new Date());
+
+    // Toute action de l'utilisateur repousse l'inactivité. Le passage en
+    // capture évite qu'un panneau tiers n'intercepte l'événement avant nous.
+    const marquer = () => { this._tempsDerniereActivite = Date.now(); };
+    const surDocument = (doc) => {
+      for (const ev of ['keydown', 'mousedown', 'mousemove', 'wheel', 'touchstart']) {
+        this.registerDomEvent(doc, ev, marquer, { capture: true, passive: true });
+      }
+    };
+    // Les fenêtres détachées déjà ouvertes au chargement doivent être écoutées
+    // elles aussi : sans cela, taper dans l'une d'elles ne repoussait jamais
+    // l'inactivité, et le compteur s'y arrêtait au bout du délai.
+    const docsEcoutes = new WeakSet();
+    const ecouter = (doc) => {
+      if (!doc || docsEcoutes.has(doc)) return;
+      docsEcoutes.add(doc);
+      surDocument(doc);
+    };
+    ecouter(document);
+    try {
+      this.app.workspace.iterateAllLeaves((feuille) => {
+        const c = feuille && feuille.view && feuille.view.containerEl;
+        if (c && c.ownerDocument) ecouter(c.ownerDocument);
+      });
+    } catch (e) {
+      console.warn('[Ariane] fenêtres non parcourues pour le compteur :', e);
+    }
+    this.registerEvent(this.app.workspace.on('window-open', (_w, win) => {
+      if (win && win.document) ecouter(win.document);
+    }));
+
+    // Un battement court : la précision du compte vaut mieux qu'une économie
+    // de quelques réveils, et le calcul se résume à une comparaison de dates.
+    this.registerInterval(window.setInterval(() => this.battementTemps(), 5000));
+
+    if (this.settings.tempsBarreEtat) {
+      this._tempsBarre = this.addStatusBarItem();
+      this._tempsBarre.addClass('zfa-temps-barre');
+      this._tempsBarre.addEventListener('click', () => this.ouvrirBilanTemps());
+    }
+
+    // Report en propriété à intervalle régulier, et non à chaque seconde :
+    // écrire dans le fichier agite la synchronisation et les sauvegardes.
+    this.registerInterval(window.setInterval(
+      () => this.reporterTemps(),
+      Math.max(60, this.settings.tempsEcritureSec || 300) * 1000
+    ));
+  }
+
+  // La note actuellement chronométrée, ou '' si aucune ne l'est.
+  noteChronometrable() {
+    const feuille = this.app.workspace.activeLeaf;
+    const vue = feuille && feuille.view;
+    if (!vue || vue.getViewType() !== 'markdown') return '';
+    // Mode lecture : on ne chronomètre que ce qui est modifiable.
+    if (typeof vue.getMode === 'function' && vue.getMode() !== 'source') return '';
+    const f = vue.file;
+    if (!f || f.extension !== 'md') return '';
+
+    if (this.settings.tempsIgnorerVerrouillees !== false) {
+      const fm = ((this.app.metadataCache.getFileCache(f) || {}).frontmatter) || {};
+      if (fm.locked === true) return '';
+    }
+    return f.path;
+  }
+
+  battementTemps() {
+    if (!this.settings.tempsActif || !this._tempsSecondes) return;
+
+    // Changement de jour : on clôt la veille avant de continuer.
+    const jour = jourIsoDe(new Date());
+    if (jour !== this._tempsDernierJour) {
+      this.reporterTemps();
+      const veille = this._tempsDernierJour;
+      this._tempsDernierJour = jour;
+      if (this.settings.tempsJournalAuto) {
+        this.ecrireJournalTemps(veille).catch((e) => console.error('[Ariane] journal du temps', e));
+      }
+    }
+
+    const chemin = this.noteChronometrable();
+    const inactifDepuis = (Date.now() - this._tempsDerniereActivite) / 1000;
+    const seuil = Math.max(10, this.settings.tempsInactiviteSec || 120);
+    // Le focus doit être jugé sur la fenêtre qui porte la note. Interroger le
+    // document principal revenait à déclarer en pause tout travail mené dans
+    // une fenêtre détachée, sur un second écran par exemple.
+    const enPause = !chemin || inactifDepuis > seuil || !this.fenetreNoteActive();
+
+    if (!enPause) {
+      this._tempsSecondes.set(chemin, (this._tempsSecondes.get(chemin) || 0) + 5);
+      // Le relevé cumule des SECONDES : arrondir en minutes à chaque battement
+      // accumulait une erreur de plusieurs pour cent sur une journée.
+      const h = this.settings.tempsHistorique || (this.settings.tempsHistorique = {});
+      const dujour = h[jour] || (h[jour] = {});
+      dujour[chemin] = (dujour[chemin] || 0) + 5;
+    }
+
+    // Quitter une note reporte aussitôt son temps : on ne perd rien si
+    // Obsidian se ferme brutalement.
+    if (chemin !== this._tempsCheminCourant) {
+      const precedent = this._tempsCheminCourant;
+      this._tempsCheminCourant = chemin;
+      if (precedent) this.reporterTemps(precedent);
+    }
+
+    this.rafraichirBarreTemps(chemin, enPause);
+  }
+
+  // La fenêtre portant la note active a-t-elle le focus ? On interroge son
+  // propre document : chaque fenêtre détachée a le sien.
+  fenetreNoteActive() {
+    const feuille = this.app.workspace.activeLeaf;
+    const c = feuille && feuille.view && feuille.view.containerEl;
+    const doc = (c && c.ownerDocument) || document;
+    try {
+      return typeof doc.hasFocus === 'function' ? doc.hasFocus() : true;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  rafraichirBarreTemps(chemin, enPause) {
+    if (!this._tempsBarre) return;
+    if (!chemin) { this._tempsBarre.setText(''); return; }
+    const totaux = this.settings.tempsTotalSecondes || {};
+    const base = totaux[chemin] != null ? totaux[chemin] / 60 : this.tempsTotalDe(chemin);
+    const total = base + (this._tempsSecondes.get(chemin) || 0) / 60;
+    this._tempsBarre.setText((enPause ? '○ ' : '● ') + dureeLisible(total));
+    this._tempsBarre.setAttr('aria-label',
+      (enPause ? 'Compteur en pause — ' : 'Compteur actif — ') + chemin.split('/').pop());
+  }
+
+  // Total déjà inscrit dans la note, en minutes.
+  tempsTotalDe(chemin) {
+    const f = this.app.vault.getAbstractFileByPath(chemin);
+    if (!(f instanceof obsidian.TFile)) return 0;
+    const fm = ((this.app.metadataCache.getFileCache(f) || {}).frontmatter) || {};
+    return Number(fm[this.settings.tempsPropriete || 'temps-passe']) || 0;
+  }
+
+  // Reporte en propriété les secondes accumulées. Sans argument, pour toutes
+  // les notes en attente.
+  async reporterTemps(cheminVoulu) {
+    if (!this._tempsSecondes || !this._tempsSecondes.size) return;
+    const prop = this.settings.tempsPropriete || 'temps-passe';
+    const chemins = cheminVoulu ? [cheminVoulu] : Array.from(this._tempsSecondes.keys());
+
+    const totaux = this.settings.tempsTotalSecondes || (this.settings.tempsTotalSecondes = {});
+
+    for (const chemin of chemins) {
+      const secondes = this._tempsSecondes.get(chemin) || 0;
+      if (secondes < 30) continue; // sous la demi-minute, on attend
+      const f = this.app.vault.getAbstractFileByPath(chemin);
+      if (!(f instanceof obsidian.TFile)) { this._tempsSecondes.delete(chemin); continue; }
+      try {
+        // Amorçage : une note déjà porteuse d'un total le conserve.
+        if (totaux[chemin] == null) totaux[chemin] = Math.round(this.tempsTotalDe(chemin) * 60);
+        totaux[chemin] += secondes;
+        const minutes = Math.round(totaux[chemin] / 60);
+        this.marquerEcriture(f.path);
+        await this.app.fileManager.processFrontMatter(f, (fm) => { fm[prop] = minutes; });
+        this._tempsSecondes.delete(chemin);
+      } catch (e) {
+        console.error('[Ariane] report du temps impossible :', chemin, e);
+      }
+    }
+    await this.saveSettings();
+  }
+
+  /* ------------------------- Journal quotidien --------------------------- */
+
+  async ecrireJournalTemps(jour) {
+    const j = jour || jourIsoDe(new Date());
+    await this.reporterTemps();
+    const releve = (this.settings.tempsHistorique || {})[j] || {};
+    const lignes = Object.entries(releve)
+      .map(([chemin, secondes]) => [chemin, secondes / 60])
+      .filter(([, m]) => m >= 1)
+      .sort((a, b) => b[1] - a[1]);
+
+    if (!lignes.length) {
+      new obsidian.Notice('Aucun temps enregistré pour le ' + j + '.');
+      return '';
+    }
+
+    const dossier = (this.settings.tempsDossierJournal || '9 - Journal du temps').replace(/\/+$/, '');
+    if (!this.app.vault.getAbstractFileByPath(dossier)) {
+      try { await this.app.vault.createFolder(dossier); } catch (e) { /* déjà là */ }
+    }
+
+    const total = lignes.reduce((s, [, m]) => s + m, 0);
+    const out = ['---', 'type: journal-temps', 'date: ' + j,
+      'total-minutes: ' + Math.round(total), '---',
+      '# Temps de travail du ' + j, '',
+      '**Total : ' + dureeLisible(total) + '** sur ' + lignes.length + ' note(s).', '',
+      '| Note | Temps |', '| --- | --- |'];
+    for (const [chemin, m] of lignes) {
+      const nom = chemin.replace(/\.md$/, '');
+      out.push('| [[' + nom + ']] | ' + dureeLisible(m) + ' |');
+    }
+    out.push('');
+
+    const chemin = dossier + '/' + j + '.md';
+    const existant = this.app.vault.getAbstractFileByPath(chemin);
+    if (existant instanceof obsidian.TFile) {
+      this.marquerEcriture(chemin);
+      await this.app.vault.modify(existant, out.join('\n'));
+    } else {
+      await this.ecrire(chemin, out.join('\n'));
+    }
+    return chemin;
+  }
+
+  async ouvrirBilanTemps() {
+    const chemin = await this.ecrireJournalTemps();
+    if (!chemin) return;
+    await this.app.workspace.openLinkText(chemin.replace(/\.md$/, ''), '', false);
+  }
+
+  // Écarte les relevés trop anciens, pour que le fichier de réglages ne gonfle
+  // pas indéfiniment.
+  elaguerHistoriqueTemps() {
+    const h = this.settings.tempsHistorique || {};
+    const garder = Math.max(7, this.settings.tempsRetenirJours || 120);
+    const limite = jourIsoDe(new Date(Date.now() - garder * 24 * 3600 * 1000));
+    let retires = 0;
+    for (const j of Object.keys(h)) {
+      if (j < limite) { delete h[j]; retires++; }
+    }
+    return retires;
+  }
+
+  /* --------------------- Citations repliables ---------------------------- */
+
+  // En lecture, la citation est rendue par un « ( », des liens internes, des
+  // « ; » et un « ) ». On enveloppe l'ensemble pour pouvoir le masquer par
+  // CSS, en laissant une pastille cliquable à sa place.
+  rendreCitationsRepliables(el) {
+    if (!this.settings.citationsRepliables) return;
+    // Une citation contient forcément un lien interne : en l'absence de tout
+    // lien, il est inutile de parcourir les blocs. La grande majorité des
+    // paragraphes sort ici, en une seule interrogation du DOM.
+    if (!el.querySelector || !el.querySelector('a.internal-link')) return;
+
+    const blocs = el.querySelectorAll('p, li, td, th, blockquote, h1, h2, h3, h4, h5, h6');
+    for (const bloc of [el, ...blocs]) {
+      if (!bloc.querySelector) continue;
+      if (!bloc.querySelector('a.internal-link')) continue;
+      if (bloc.querySelector('.zfa-cit')) continue;
+      this.envelopperCitations(bloc);
+    }
+  }
+
+  // Le tableau des enfants devient obsolète dès qu'une citation est
+  // enveloppée : on relance donc une passe complète après chaque prise, plutôt
+  // que de poursuivre sur une liste périmée. La borne évite toute boucle
+  // infinie si un cas imprévu empêchait le repérage d'avancer.
+  envelopperCitations(bloc) {
+    for (let passe = 0; passe < 50; passe++) {
+      if (!this.envelopperUneCitation(bloc)) return;
+    }
+  }
+
+  envelopperUneCitation(bloc) {
+    const enfants = Array.from(bloc.childNodes);
+    for (let i = 0; i < enfants.length; i++) {
+      const n = enfants[i];
+      if (n.nodeType !== Node.TEXT_NODE || !n.nodeValue.endsWith('(')) continue;
+
+      // On avance tant qu'on rencontre des liens internes et des séparateurs.
+      let j = i + 1;
+      let liens = 0;
+      let ferme = null;
+      while (j < enfants.length) {
+        const suivant = enfants[j];
+        if (suivant.nodeType === Node.ELEMENT_NODE
+            && suivant.classList && suivant.classList.contains('internal-link')) {
+          liens++; j++; continue;
+        }
+        if (suivant.nodeType === Node.TEXT_NODE) {
+          const t = suivant.nodeValue;
+          if (/^\s*;\s*$/.test(t)) { j++; continue; }
+          if (t.startsWith(')')) { ferme = suivant; break; }
+        }
+        break;
+      }
+      if (!liens || !ferme) continue;
+
+      // On coupe les parenthèses des textes qui les portent.
+      n.nodeValue = n.nodeValue.slice(0, -1);
+      ferme.nodeValue = ferme.nodeValue.slice(1);
+
+      const enveloppe = document.createElement('span');
+      enveloppe.className = 'zfa-cit';
+
+      const pastille = document.createElement('span');
+      pastille.className = 'zfa-cit-pastille';
+      pastille.textContent = String(liens);
+      pastille.setAttribute('aria-label', liens > 1
+        ? liens + ' références — cliquer pour déplier'
+        : 'Une référence — cliquer pour déplier');
+      pastille.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        enveloppe.classList.toggle('zfa-cit--ouverte');
+      });
+
+      const contenu = document.createElement('span');
+      contenu.className = 'zfa-cit-contenu';
+      contenu.appendChild(document.createTextNode('('));
+      for (let k = i + 1; k < j; k++) contenu.appendChild(enfants[k]);
+      contenu.appendChild(document.createTextNode(')'));
+
+      enveloppe.appendChild(pastille);
+      enveloppe.appendChild(contenu);
+      bloc.insertBefore(enveloppe, ferme);
+      return true;
+    }
+    return false;
+  }
+
+  // L'état de repliement se lit sur le corps du document : le mode lecture est
+  // ainsi piloté par la seule feuille de style, sans nouveau rendu.
+  appliquerEtatCitations() {
+    this._citVersion = (this._citVersion || 0) + 1;
+    // Même reprise en main côté lecture : une citation dépliée d'un clic porte
+    // sa propre exception, qui doit céder devant la commande globale.
+    for (const e of document.querySelectorAll('.zfa-cit--ouverte')) {
+      e.classList.remove('zfa-cit--ouverte');
+    }
+    document.body.classList.toggle(
+      'zfa-citations-repliees',
+      !!(this.settings.citationsRepliables && this.settings.citationsRepliees)
+    );
+    // En édition, il faut en revanche relancer le calcul des décorations.
+    for (const feuille of this.app.workspace.getLeavesOfType('markdown')) {
+      const cm = feuille.view && feuille.view.editor && feuille.view.editor.cm;
+      if (cm && typeof cm.dispatch === 'function') {
+        try { cm.dispatch({}); } catch (e) { /* vue non prête */ }
+      }
+    }
+  }
+
+  // L'affichage est modifié d'abord, l'enregistrement ensuite : attendre
+  // l'écriture du fichier de réglages avant de rafraîchir ajoutait un délai
+  // perceptible à chaque basculement.
+  basculerCitations(replier) {
+    this.settings.citationsRepliees = replier;
+    // Aucune notification : le changement se voit à l'écran, l'annoncer en
+    // plus ne fait qu'encombrer.
+    this.appliquerEtatCitations();
+    this.saveSettings().catch((e) => console.error('[Ariane] réglages non enregistrés :', e));
+  }
+
+  /* --------------------- Notes de lecture (notes-filles) ---------------- */
+
+  // Table clé Zotero -> clé de citation, bâtie sur les fiches sources. Elle
+  // permet de rendre à une citation de note-fille sa forme d'Ariane.
+  indexParCleZotero() {
+    const m = new Map();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (fm.citationKey && fm['zotero-key']) {
+        m.set(String(fm['zotero-key']).trim(), '@' + String(fm.citationKey).trim());
+      }
+    }
+    return m;
+  }
+
+  // Atomise les notes-filles d'une fiche source : une note par bloc, dans le
+  // dossier des notes de lecture. Le lien vers la source suffit à la
+  // réciprocité — Obsidian tient les rétroliens.
+  async atomiserNotesLecture(fichierSource, parCleZotero) {
+    if (this.settings.atomiserNotesLecture === false) return 0;
+    const fm = (this.app.metadataCache.getFileCache(fichierSource) || {}).frontmatter || {};
+    if (!fm.citationKey) return 0;
+    const contenu = await this.app.vault.cachedRead(fichierSource);
+    const blocs = extraireNotesFilles(contenu);
+    if (!blocs.length) return 0;
+
+    const table = parCleZotero || this.indexParCleZotero();
+    const racine = this.settings.dossierNotesLecture || '2 - Notes de lecture';
+    const dossier = racine + '/' + fichierSource.basename;
+    await this.assurerDossier(racine);
+    await this.assurerDossier(dossier);
+
+    let faits = 0;
+    for (const bloc of blocs) {
+      const chemin = dossier + '/' + bloc.cle + '.md';
+      const existant = this.app.vault.getAbstractFileByPath(chemin);
+      if (existant) {
+        const fmx = (this.app.metadataCache.getFileCache(existant) || {}).frontmatter || {};
+        if (fmx['zotflow-locked'] === false || fmx.locked === true) continue; // note reprise à la main
+      }
+      const corps = citationsZotflowVersAriane(bloc.corps, table);
+      const entete = [
+        '---',
+        'aliases:',
+        '  - ' + JSON.stringify(bloc.titre || bloc.cle),
+        'cssclasses:',
+        '  - note-de-lecture',
+        'zotflow-note-key: ' + bloc.cle,
+        'zotflow-source: "[[' + fichierSource.basename + ']]"',
+        'type: lecture',
+        'zotflow-auto: true',
+        '---',
+        '',
+      ].join('\n');
+      await this.ecrire(chemin, entete + corps + '\n', existant || null);
+      faits += 1;
+    }
+    return faits;
+  }
+
+  // Passe sur toutes les fiches sources. L'index des clés Zotero n'est bâti
+  // qu'une fois : le refaire par source coûterait 736 lectures à chaque tour.
+  async atomiserToutesNotesLecture() {
+    const table = this.indexParCleZotero();
+    let sources = 0, notes = 0;
+    const notice = new obsidian.Notice('Notes de lecture : atomisation…', 0);
+    try {
+      for (const f of this.app.vault.getMarkdownFiles()) {
+        const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+        if (!fm.citationKey) continue;
+        const n = await this.atomiserNotesLecture(f, table);
+        if (n) { sources += 1; notes += n; }
+      }
+    } finally {
+      notice.hide();
+    }
+    new obsidian.Notice('Notes de lecture : ' + notes + ' note(s) depuis ' + sources + ' source(s).');
+    return notes;
+  }
+
+  /* ----------------------- Retour vers Zotero --------------------------- */
+
+  // Les deux vues de lecture de zotflow. Leur état de feuille porte, tel quel,
+  // { libraryID, itemKey } — et cette clé est celle de la PIÈCE JOINTE, la
+  // même que Zotero attend. Aucun détour par la fiche source n'est nécessaire.
+  estLecteurZotflow(vue) {
+    if (!vue || typeof vue.getViewType !== 'function') return false;
+    const t = vue.getViewType();
+    return t === 'zotflow-zotero-reader-view' || t === 'zotflow-local-zotero-reader-view';
+  }
+
+  cibleLecteurZotflow(feuille) {
+    if (!feuille || typeof feuille.getViewState !== 'function') return null;
+    let etat = null;
+    try { etat = (feuille.getViewState() || {}).state || null; } catch (e) { return null; }
+    if (!etat || !etat.itemKey) return null;
+    return { libraryID: etat.libraryID, itemKey: String(etat.itemKey) };
+  }
+
+  // La page en cours. On tente d'abord la vue vivante — sans rien supposer de
+  // sa structure interne, qui appartient à zotflow — puis on se rabat sur
+  // l'état que zotflow persiste dans ses réglages.
+  async pageDuLecteur(vue, cible) {
+    const sonder = (o, profondeur) => {
+      if (!o || typeof o !== 'object' || profondeur > 3) return null;
+      const p = o.primaryViewState;
+      if (p && typeof p.pageIndex === 'number') return p.pageIndex;
+      if (typeof o.pageIndex === 'number') return o.pageIndex;
+      for (const cle of ['state', 'reader', 'viewer', 'viewState', '_state']) {
+        const v = sonder(o[cle], profondeur + 1);
+        if (v !== null) return v;
+      }
+      return null;
+    };
+    let idx = null;
+    try { idx = sonder(vue, 0); } catch (e) { idx = null; }
+    if (idx === null && cible) {
+      try {
+        const chemin = this.manifest.dir.replace(/[^/]+$/, 'zotflow') + '/data.json';
+        if (await this.app.vault.adapter.exists(chemin)) {
+          const d = JSON.parse(await this.app.vault.adapter.read(chemin));
+          const e = (d.viewStates || {})[cible.libraryID + ':' + cible.itemKey];
+          const p = e && e.primaryViewState;
+          if (p && typeof p.pageIndex === 'number') idx = p.pageIndex;
+        }
+      } catch (e) { /* réglages de zotflow illisibles : on ouvrira sans page */ }
+    }
+    return (typeof idx === 'number' && idx >= 0) ? idx + 1 : null;   // pageIndex est à base zéro
+  }
+
+  async ouvrirLecteurDansZotero(feuille) {
+    const f = feuille || this.app.workspace.activeLeaf;
+    const cible = this.cibleLecteurZotflow(f);
+    if (!cible) { new obsidian.Notice("Ce n'est pas un lecteur ZotFlow."); return; }
+    const page = await this.pageDuLecteur(f ? f.view : null, cible);
+    const uri = 'zotero://open-pdf/library/items/' + cible.itemKey
+      + (page ? '?page=' + page : '');
+    try {
+      window.open(uri);
+      console.log('[Ariane] Zotero —', uri);
+    } catch (e) {
+      new obsidian.Notice('Ouverture dans Zotero impossible : ' + (e && e.message ? e.message : e));
+    }
+  }
+
+  // Un bouton dans la barre d'actions du lecteur. On parcourt TOUTES les
+  // feuilles, y compris celles des fenêtres détachées : trois fonctionnalités
+  // se sont déjà cassées pour n'avoir couvert que la fenêtre principale.
+  decorerLecteursZotflow() {
+    this.app.workspace.iterateAllLeaves((feuille) => {
+      const vue = feuille ? feuille.view : null;
+      if (!this.estLecteurZotflow(vue)) return;
+      if (vue._arianeBoutonZotero) return;
+      if (typeof vue.addAction !== 'function') return;   // zotflow a changé : on n'insiste pas
+      try {
+        vue.addAction('external-link', 'Ouvrir dans Zotero (même page)',
+          () => this.ouvrirLecteurDansZotero(feuille));
+        vue._arianeBoutonZotero = true;
+      } catch (e) { console.debug('[Ariane] bouton Zotero non posé', e); }
+    });
+  }
+
+  // La fiche source de zotflow porte ses pièces jointes sous « ## Attachments »,
+  // chacune sous la forme :
+  //   - [nom.pdf](obsidian://zotflow?type=open-attachment&libraryID=…&key=T5HPDH45)
+  // C'est cette clé de pièce jointe — et non celle de la référence — que Zotero
+  // attend pour ouvrir le PDF.
+  async cleAttachement(fichierSource) {
+    try {
+      const texte = await this.app.vault.cachedRead(fichierSource);
+      const bloc = texte.split(/^##\s+Attachments\s*$/m)[1];
+      if (!bloc) return null;
+      const avant = bloc.split(/^##\s+/m)[0];
+      const m = avant.match(/type=open-attachment[^)\n]*?[&;]key=([A-Za-z0-9]+)/);
+      return m ? m[1] : null;
+    } catch (e) { return null; }
+  }
+
+  // Rend { source, annoKey, page, libraryId } si la note active se rattache à
+  // Zotero, sinon null. Vaut pour une annotation comme pour une fiche source.
+  cibleZotero(fichier) {
+    const f = fichier || this.app.workspace.getActiveFile();
+    if (!f || f.extension !== 'md') return null;
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    if (fm.citationKey) {
+      return { source: f, annoKey: null, page: '', libraryId: fm['library-id'] || '' };
+    }
+    const src = fm['zotflow-source'];
+    if (!src) return null;
+    const cible = String(src).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+    const source = this.app.metadataCache.getFirstLinkpathDest(cible, f.path);
+    if (!source) return null;
+    const fms = (this.app.metadataCache.getFileCache(source) || {}).frontmatter || {};
+    return {
+      source,
+      annoKey: fm['zotflow-anno-key'] ? String(fm['zotflow-anno-key']).trim() : null,
+      page: fm.page != null ? String(fm.page).replace(/^["']|["']$/g, '').trim() : '',
+      libraryId: fms['library-id'] || '',
+    };
+  }
+
+  async ouvrirDansZotero(fichier) {
+    // Depuis un lecteur ZotFlow, la feuille active dit tout : on n'a pas
+    // besoin de la note.
+    if (!fichier) {
+      const f = this.app.workspace.activeLeaf;
+      if (f && this.estLecteurZotflow(f.view)) { await this.ouvrirLecteurDansZotero(f); return; }
+    }
+    const cible = this.cibleZotero(fichier);
+    if (!cible) { new obsidian.Notice('Cette note ne se rattache pas à une source Zotero.'); return; }
+    const fms = (this.app.metadataCache.getFileCache(cible.source) || {}).frontmatter || {};
+    const att = await this.cleAttachement(cible.source);
+    let uri;
+    if (att) {
+      // Zotero replace le lecteur sur l'annotation quand on la lui nomme ;
+      // à défaut, sur la page. Sans pièce jointe, on se rabat sur la fiche.
+      const ancre = cible.annoKey
+        ? '?annotation=' + encodeURIComponent(cible.annoKey)
+        : (cible.page ? '?page=' + encodeURIComponent(cible.page) : '');
+      uri = 'zotero://open-pdf/library/items/' + att + ancre;
+    } else if (fms['zotero-key']) {
+      uri = 'zotero://select/library/items/' + String(fms['zotero-key']).trim();
+    } else {
+      new obsidian.Notice('Aucune pièce jointe ni clé Zotero dans « ' + cible.source.basename + ' ».');
+      return;
+    }
+    try {
+      window.open(uri);
+      console.log('[Ariane] Zotero —', uri);
+    } catch (e) {
+      new obsidian.Notice('Ouverture dans Zotero impossible : ' + (e && e.message ? e.message : e));
+    }
+  }
+
+  /* -------------------------- Bibliographie ----------------------------- */
+
+  // Note source (@citekey) correspondant à une clé citée : elle-même si c'en
+  // est une, sinon la source de l'annotation.
+  sourceDeCle(cle) {
+    const dest = this.app.metadataCache.getFirstLinkpathDest(String(cle), '');
+    if (!dest) return null;
+    const fm = (this.app.metadataCache.getFileCache(dest) || {}).frontmatter || {};
+    if (fm.citationKey) return dest;
+    const src = fm['zotflow-source'];
+    if (!src) return null;
+    const cible = String(src).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+    const f = this.app.metadataCache.getFirstLinkpathDest(cible, dest.path);
+    return f || null;
+  }
+
+  // Sources citées dans le corps, dans l'ordre d'apparition, sans doublon.
+  sourcesCitees(contenu) {
+    const corps = corpsCitable(contenu);
+    const vues = new Map();
+    for (const m of corps.matchAll(/\[\[([^\]|#\n]+)(?:\|[^\]\n]*)?\]\]/g)) {
+      const f = this.sourceDeCle(cleDeLien(m[1]));
+      if (f && !vues.has(f.path)) vues.set(f.path, f);
+    }
+    return [...vues.values()];
+  }
+
+  async majBibliographie(file, silencieux) {
+    if (!file || file.extension !== 'md') return false;
+    const avant = await this.app.vault.read(file);
+    const sources = this.sourcesCitees(avant);
+
+    // Aucune citation et aucun bloc existant : on n'ajoute rien.
+    if (!sources.length && avant.indexOf(ZFA_BIBLIO_DEBUT) === -1) return false;
+
+    const modele = this.settings.biblioModele;
+    const champ = this.settings.biblioChamp || 'bibliographie';
+
+    const entrees = [];
+    for (const f of sources) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      // Référence déjà formatée par zotflow, sinon repli sur le modèle libre.
+      let texte = nettoyerEntreeBiblio(fm[champ]);
+      if (!texte) texte = entreeBiblio(f.basename, fm, modele);
+      if (!texte) continue;
+      entrees.push({
+        texte,
+        cle: f.basename,
+        tri: entreeBiblio(f.basename, fm, '{{auteurs}} {{annee}}') || texte,
+      });
+    }
+
+    if (this.settings.biblioTri !== 'apparition') {
+      entrees.sort((a, b) => a.tri.localeCompare(b.tri, 'fr'));
+    }
+
+    const lignes = entrees.map((e) => (this.settings.biblioLien === false
+      ? e.texte
+      : entreeCliquable(e.texte, e.cle, this.settings.biblioLienTexte)));
+    const bloc = construireBibliographie(lignes, this.settings.biblioTitre);
+    const apres = injecterBibliographie(avant, bloc);
+    if (apres === avant) return false;
+    await this.ecrire(file.path, apres, file);
+    if (!silencieux) new obsidian.Notice('Bibliographie : ' + entrees.length + ' source(s).');
+    return true;
+  }
+
+  async majBibliographieToutes() {
+    const notes = this.notesConvertibles();
+    const notice = new obsidian.Notice('Bibliographies…', 0);
+    let n = 0;
+    try {
+      for (const f of notes) { if (await this.majBibliographie(f, true)) n++; }
+    } finally { notice.hide(); }
+    new obsidian.Notice('Bibliographie mise à jour dans ' + n + ' note(s).');
+  }
+
+  // Une clé désigne-t-elle une annotation ou une note source citable ?
+  estCitable(cle) {
+    const dest = this.app.metadataCache.getFirstLinkpathDest(String(cle), '');
+    if (!dest) return false;
+    const fm = (this.app.metadataCache.getFileCache(dest) || {}).frontmatter || {};
+    return fm['zotflow-anno-key'] !== undefined || !!fm.citationKey;
+  }
+
+  async rafraichirCitations(portee) {
+    let fichiers;
+    if (portee === 'active') {
+      const f = this.app.workspace.getActiveFile();
+      if (!f || f.extension !== 'md') { new obsidian.Notice('Ouvrez une note.'); return; }
+      fichiers = [f];
+    } else {
+      fichiers = this.notesConvertibles();
+    }
+    const notice = new obsidian.Notice('Rafraîchissement des citations…', 0);
+    let notes = 0, total = 0;
+    try {
+      for (const f of fichiers) {
+        const avant = await this.app.vault.read(f);
+        if (avant.indexOf('|') === -1) continue;
+        const r = rafraichirLibelles(avant, (c) => this.libelleCitation(c), (c) => this.estCitable(c));
+        if (!r.n || r.texte === avant) continue;
+        await this.ecrire(f.path, r.texte, f);
+        notes++; total += r.n;
+      }
+    } finally { notice.hide(); }
+    new obsidian.Notice(total
+      ? total + ' citation(s) mise(s) à jour dans ' + notes + ' note(s).'
+      : 'Toutes les citations sont déjà à jour.');
+  }
+
+  // Libellé lisible d'une annotation : « Méric et al., 2009, p. 2 ».
+  // Met en forme un libellé « Auteurs, année, p. X » à partir de composants.
+  formatCitation(a, page, cle) {
+    const vars = {
+      auteur: a ? a.court : '',
+      auteurs: a ? a.court : '',
+      auteursComplets: a ? a.complet : '',
+      annee: a ? a.annee : '',
+      page: page || '',
+      key: cle || '',
+    };
+    return appliquerModele(this.settings.modeleCitation || '{{auteurs}}, {{annee}}, p. {{page}}', vars)
+      .replace(/,\s*p\.\s*(?=$|[;,)])/g, '')
+      .replace(/\s*,\s*(?=,)/g, '')
+      .replace(/^[\s,;]+|[\s,;]+$/g, '')
+      .replace(/\s{2,}/g, ' ');
+  }
+
+  // Libellé d'une citation. Trois cas :
+  //  - note source : ses propres auteurs, sans page ;
+  //  - annotation sans référence citée : auteurs de la source + page ;
+  //  - annotation citant un travail tiers : ce travail, suivi de « cité dans »
+  //    et de la source réellement consultée — sauf si ce travail figure lui
+  //    aussi dans Zotero, auquel cas il est cité directement.
+  libelleCitation(cle) {
+    const dest = this.app.metadataCache.getFirstLinkpathDest(cle, '');
+    const fm = dest ? ((this.app.metadataCache.getFileCache(dest) || {}).frontmatter || {}) : {};
+
+    if (fm['zotflow-anno-key'] === undefined) {
+      return this.formatCitation(this.auteursDepuisReference('[[' + cle + ']]', ''), '', cle) || cle;
+    }
+
+    const pageAnno = fm.page != null ? String(fm.page).replace(/^["']|["']$/g, '').trim() : '';
+    const src = String(fm['zotflow-source'] || '').replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+    const libSource = this.formatCitation(
+      src ? this.auteursDepuisReference('[[' + src + ']]', dest ? dest.path : '') : null, pageAnno, cle);
+
+    // Références citées distinctes de la source. Une annotation peut en
+    // porter plusieurs : elles sont toutes retenues, et non la première
+    // seulement. Celles qui figurent dans Zotero sont citées directement,
+    // les autres sont regroupées derrière un unique « cité dans ».
+    let refs = fm['références-citées'];
+    refs = Array.isArray(refs) ? refs : (refs ? [refs] : []);
+    const pages = fm['références-pages'] || {};
+    const sep = this.settings.separateurCitation || ' ; ';
+    const directes = [];
+    const indirectes = [];
+
+    for (const rv of refs) {
+      const cible = String(rv).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').replace(/#.*/, '').trim();
+      if (!cible || cible === src) continue;
+
+      const pageRef = String(pages[cible] != null ? pages[cible] : '').replace(/^["']|["']$/g, '').trim();
+      const dansZotero = cible.startsWith('@')
+        || !!(this.app.metadataCache.getFirstLinkpathDest(cible, '')
+          && ((this.app.metadataCache.getFileCache(
+            this.app.metadataCache.getFirstLinkpathDest(cible, '')) || {}).frontmatter || {}).citationKey);
+
+      const libRef = this.formatCitation(
+        this.auteursDepuisReference('[[' + cible + ']]', dest ? dest.path : ''), pageRef, cible);
+      if (!libRef) continue;
+
+      // Consultée directement : citation simple. Sinon : citation de seconde main.
+      (dansZotero ? directes : indirectes).push(libRef);
+    }
+
+    const morceaux = [];
+    if (directes.length) morceaux.push(directes.join(sep));
+
+    if (indirectes.length) {
+      if (this.settings.citationsIndirectesAbregees !== false) {
+        // Forme abrégée : la source porte le nombre de travaux qu'elle
+        // rapporte. La portée du « cité dans » cesse d'être ambiguë, puisque
+        // les emprunts sont rattachés à leur source au lieu d'être alignés
+        // à côté des citations directes.
+        morceaux.push(libSource + ' ' + this.marqueEmprunt(indirectes.length));
+      } else {
+        // Forme complète. L'accord au pluriel signale au moins qu'il y a
+        // plusieurs emprunts derrière un même « cité dans ».
+        const mention = this.settings.citeDans || ', cité dans ';
+        // « \b » ne marque pas de frontière après « é », qui n'est pas un
+        // caractère de mot : on vise donc explicitement « cité dans ».
+        const accorde = indirectes.length > 1
+          ? mention.replace(/cité(\s+dans)/, 'cités$1')
+          : mention;
+        morceaux.push(indirectes.join(sep) + accorde + libSource);
+      }
+    }
+    if (morceaux.length) return morceaux.join(sep);
+
+    return libSource || cle;
+  }
+
+  // Motif du compteur, dérivé du modèle de réglage : « ⟨{{n}}⟩ » -> /⟨(\d+)⟩/
+  motifEmprunt() {
+    const modele = this.settings.citationsMarqueEmprunt || '⟨{{n}}⟩';
+    const echappe = modele.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(echappe.replace('\\{\\{n\\}\\}', '(\\d+)').replace('{{n}}', '(\\d+)'));
+  }
+
+  // Infobulle listant les travaux rapportés, en liens cliquables. Une seule
+  // bulle vit à la fois ; elle se ferme au départ du pointeur.
+  ouvrirBulleEmprunts(ancre, cle) {
+    this.fermerBulleEmprunts();
+    const emprunts = this.empruntsDeAnnotation(cle);
+    if (!emprunts.length) return;
+
+    const bulle = document.createElement('div');
+    bulle.className = 'zfa-bulle-emprunts';
+
+    const source = this.sourceLisible(cle);
+    const entete = bulle.createDiv({ cls: 'zfa-bulle-entete' });
+    entete.setText(emprunts.length > 1
+      ? 'Travaux rapportés par ' + (source || 'cette source')
+      : 'Travail rapporté par ' + (source || 'cette source'));
+
+    for (const e of emprunts) {
+      const l = bulle.createDiv({ cls: 'zfa-bulle-item' });
+      const a = l.createEl('a', { cls: 'internal-link', text: e.libelle });
+      a.setAttr('href', e.cible);
+      a.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        this.app.workspace.openLinkText(e.cible, e.chemin, ev.ctrlKey || ev.metaKey);
+        this.fermerBulleEmprunts();
+      });
+    }
+
+    document.body.appendChild(bulle);
+    const r = ancre.getBoundingClientRect();
+    bulle.style.left = Math.max(8, Math.min(r.left, window.innerWidth - bulle.offsetWidth - 8)) + 'px';
+    const dessous = r.bottom + 6;
+    bulle.style.top = (dessous + bulle.offsetHeight > window.innerHeight
+      ? Math.max(8, r.top - bulle.offsetHeight - 6) : dessous) + 'px';
+
+    // La bulle reste tant que le pointeur est sur elle ou sur le compteur.
+    let sortie = null;
+    const partir = () => { sortie = window.setTimeout(() => this.fermerBulleEmprunts(), 220); };
+    const rester = () => { if (sortie) { window.clearTimeout(sortie); sortie = null; } };
+    ancre.addEventListener('mouseleave', partir);
+    bulle.addEventListener('mouseenter', rester);
+    bulle.addEventListener('mouseleave', partir);
+    this._bulleEmprunts = bulle;
+  }
+
+  fermerBulleEmprunts() {
+    if (this._bulleEmprunts) {
+      this._bulleEmprunts.remove();
+      this._bulleEmprunts = null;
+    }
+  }
+
+  // En lecture : le compteur est un morceau de texte dans le lien de citation.
+  // On l'isole pour lui accrocher la bulle, sans toucher au lien lui-même.
+  enrichirCompteursEmprunts(el) {
+    if (!el.querySelectorAll) return;
+    const motif = this.motifEmprunt();
+    for (const a of el.querySelectorAll('a.internal-link')) {
+      if (a.querySelector('.zfa-emprunt')) continue;
+      const cle = (a.getAttribute('data-href') || a.getAttribute('href') || '')
+        .replace(/#.*$/, '').trim();
+      if (!cle) continue;
+      for (const noeud of Array.from(a.childNodes)) {
+        if (noeud.nodeType !== Node.TEXT_NODE) continue;
+        const m = noeud.nodeValue.match(motif);
+        if (!m) continue;
+        const apres = noeud.splitText(m.index);
+        apres.nodeValue = apres.nodeValue.slice(m[0].length);
+        const marque = document.createElement('span');
+        marque.className = 'zfa-emprunt';
+        marque.textContent = m[0];
+        marque.setAttribute('aria-label', m[1] + ' travaux rapportés');
+        marque.addEventListener('mouseenter', () => this.ouvrirBulleEmprunts(marque, cle));
+        a.insertBefore(marque, apres);
+        break;
+      }
+    }
+  }
+
+  // Compteur d'emprunts accolé à la source consultée.
+  marqueEmprunt(n) {
+    const modele = this.settings.citationsMarqueEmprunt || '⟨{{n}}⟩';
+    return modele.replace(/\{\{n\}\}/g, String(n));
+  }
+
+  // Références rapportées par une annotation, pour l'infobulle du compteur.
+  // Rend les cibles telles qu'écrites, afin qu'elles restent cliquables.
+  empruntsDeAnnotation(cle) {
+    const dest = this.app.metadataCache.getFirstLinkpathDest(cle, '');
+    if (!dest) return [];
+    const fm = (this.app.metadataCache.getFileCache(dest) || {}).frontmatter || {};
+    if (fm['zotflow-anno-key'] === undefined) return [];
+
+    const src = String(fm['zotflow-source'] || '').replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+    let refs = fm['références-citées'];
+    refs = Array.isArray(refs) ? refs : (refs ? [refs] : []);
+    const pages = fm['références-pages'] || {};
+    const out = [];
+    for (const rv of refs) {
+      const cible = String(rv).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').replace(/#.*/, '').trim();
+      if (!cible || cible === src) continue;
+      const dansZotero = cible.startsWith('@')
+        || !!(this.app.metadataCache.getFirstLinkpathDest(cible, '')
+          && ((this.app.metadataCache.getFileCache(
+            this.app.metadataCache.getFirstLinkpathDest(cible, '')) || {}).frontmatter || {}).citationKey);
+      if (dansZotero) continue; // citée directement, elle figure déjà en clair
+      const page = String(pages[cible] != null ? pages[cible] : '').replace(/^["']|["']$/g, '').trim();
+      const libelle = this.formatCitation(
+        this.auteursDepuisReference('[[' + cible + ']]', dest.path), page, cible) || cible;
+      out.push({ cible, libelle, chemin: dest.path });
+    }
+    return out;
+  }
+
+  // Source consultée d'une annotation, pour l'en-tête de l'infobulle.
+  sourceLisible(cle) {
+    const dest = this.app.metadataCache.getFirstLinkpathDest(cle, '');
+    if (!dest) return '';
+    const fm = (this.app.metadataCache.getFileCache(dest) || {}).frontmatter || {};
+    const src = String(fm['zotflow-source'] || '').replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+    if (!src) return '';
+    const page = fm.page != null ? String(fm.page).replace(/^["']|["']$/g, '').trim() : '';
+    return this.formatCitation(this.auteursDepuisReference('[[' + src + ']]', dest.path), page, cle) || src;
+  }
+
+
+
+  // Mode « citation classique » : insère « ([[clé|Auteur, année, p. X]]) » au
+  // point visé, ou complète le groupe de citations déjà présent à cet endroit.
+  attacherCitation(cm, lineNumber, cles, insertOffset) {
+    const doc = cm.state.doc;
+    const docStr = doc.toString();
+    const ligneFin = doc.line(lineNumber);
+    const sep = this.settings.separateurCitation || ' ; ';
+
+    // La citation se place toujours AVANT la ponctuation finale. En dépôt sur
+    // la phrase, l'offset est déjà calculé ainsi ; en dépôt sur le paragraphe,
+    // on vise la ponctuation qui termine la ligne.
+    let pos;
+    if (insertOffset != null) {
+      pos = insertOffset;
+    } else {
+      const txt = ligneFin.text;
+      const mFin = masquerLiens(txt).match(/[.?!…][ \t]*$/);
+      if (mFin) {
+        let i = mFin.index;
+        while (i > 0 && /[ \t\u00a0\u202f]/.test(txt[i - 1])) i--;
+        pos = ligneFin.from + i;
+      } else {
+        pos = ligneFin.to;
+      }
+    }
+
+    // Ne pas citer deux fois la même annotation dans le voisinage immédiat.
+    const voisinage = docStr.slice(Math.max(0, pos - 400), pos + 400);
+    const entrees = cles
+      .filter((c) => voisinage.indexOf('[[' + c + '|') === -1)
+      .map((c) => '[[' + c + '|' + this.libelleCitation(c) + ']]');
+
+    const modif = composerCitation(docStr, pos, entrees, sep);
+    if (!modif) return false;
+    cm.dispatch({ changes: [modif] });
+    return true;
+  }
+
+  attacherAnnotationParagraphe(cm, lineNumber, cles, insertOffset) {
+    cles = (Array.isArray(cles) ? cles : [cles]).filter(Boolean);
+    if (!cles.length) return false;
+    return this.attacherCitation(cm, lineNumber, cles, insertOffset);
+  }
+
+  // Retire dynamiquement les définitions de notes de bas de page orphelines
+  // (appel disparu) gérées par le plugin. Déclenché, avec anti-rebond, à
+  // chaque modification de l'éditeur.
+  nettoyageNotesOrphelines(editor) {
+    if (!this.settings.nettoyerNotesOrphelines) return;
+    if (!editor || !editor.cm) return;
+    const cm = editor.cm;
+    const docStr = cm.state.doc.toString();
+    const ranges = rangesNotesOrphelines(docStr, this.settings.titreSectionNotes || '');
+    if (!ranges.length) return;
+    cm.dispatch({ changes: ranges.map((r) => ({ from: r.from, to: r.to })) });
+  }
+
+  /* ------------------------------ Événements DnD ------------------------- */
+
+  surDragOverParagraphe(e) {
+    if (!this.settings.dropSurParagraphe) return;
+    const doc = this.docDeEvenement(e);
+    const cm = this.cmSousPoint(e.clientX, e.clientY, doc);
+    if (!cm) { this.nettoyerZoneDrop(); return; }
+    const pos = cm.posAtCoords({ x: e.clientX, y: e.clientY });
+    if (pos == null || !this.ligneEstParagraphe(cm.state.doc, cm.state.doc.lineAt(pos).number)) {
+      this.nettoyerZoneDrop();
+      return;
+    }
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    // Sur le texte -> mode phrase ; dans la marge gauche du paragraphe -> mode paragraphe.
+    if (this.modeDrop(e, doc) === 'phrase' && this.effetPhrase) {
+      this.surlignerPhrase(cm, pos);
+      return;
+    }
+    this.effacerSurlignagePhrase();
+    const ligneDom = this.ligneDomPour(cm, cm.state.doc.lineAt(pos).from);
+    if (ligneDom && ligneDom !== this.zoneDrop) {
+      if (this.zoneDrop) this.zoneDrop.classList.remove('zfa-drop-cible');
+      ligneDom.classList.add('zfa-drop-cible');
+      this.zoneDrop = ligneDom;
+    }
+  }
+
+  // Détermine le mode de dépôt selon la position du survol : sur le texte
+  // (au-dessus d'une .cm-line) -> « phrase » ; dans la marge gauche -> « paragraphe ».
+  modeDrop(e, doc) {
+    const el = doc.elementFromPoint(e.clientX, e.clientY);
+    const surTexte = el && el.closest && el.closest('.cm-line');
+    return surTexte ? 'phrase' : 'paragraphe';
+  }
+
+  // Retrouve l'élément .cm-line correspondant à une position, même quand le
+  // survol a lieu dans la marge (hors de tout .cm-line sous le curseur).
+  ligneDomPour(cm, pos) {
+    try {
+      const d = cm.domAtPos(pos);
+      let n = d && d.node;
+      if (n && n.nodeType === 3) n = n.parentElement;
+      return n && n.closest ? n.closest('.cm-line') : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Surligne, via une décoration CodeMirror, la phrase visée sous le point de dépôt.
+  surlignerPhrase(cm, pos) {
+    const ligne = cm.state.doc.lineAt(pos);
+    const localOff = pos - ligne.from;
+    const from = ligne.from + debutPhrase(ligne.text, localOff);
+    const to = ligne.from + finDePhrase(ligne.text, localOff);
+    // Retire un éventuel surlignage de paragraphe hérité.
+    if (this.zoneDrop) { this.zoneDrop.classList.remove('zfa-drop-cible'); this.zoneDrop = null; }
+    if (to <= from) { this.effacerSurlignagePhrase(); return; }
+    if (this.cmPhrase && this.cmPhrase !== cm) this.effacerSurlignagePhrase();
+    if (this.cmPhrase === cm && this.phraseRange && this.phraseRange.from === from && this.phraseRange.to === to) return;
+    this.cmPhrase = cm;
+    this.phraseRange = { from, to };
+    try { cm.dispatch({ effects: this.effetPhrase.of({ from, to }) }); } catch (e) { /* silencieux */ }
+  }
+
+  effacerSurlignagePhrase() {
+    if (this.cmPhrase && this.effetPhrase) {
+      try { this.cmPhrase.dispatch({ effects: this.effetPhrase.of(null) }); } catch (e) { /* silencieux */ }
+    }
+    this.cmPhrase = null;
+    this.phraseRange = null;
+  }
+
+  surDropParagraphe(e) {
+    if (!this.settings.dropSurParagraphe) return;
+    const doc = this.docDeEvenement(e);
+    const cm = this.cmSousPoint(e.clientX, e.clientY, doc);
+    if (!cm) { this.nettoyerZoneDrop(); return; }
+    const pos = cm.posAtCoords({ x: e.clientX, y: e.clientY });
+    if (pos == null) { this.nettoyerZoneDrop(); return; }
+    const n = cm.state.doc.lineAt(pos).number;
+    if (!this.ligneEstParagraphe(cm.state.doc, n)) { this.nettoyerZoneDrop(); return; }
+    // Dépôt groupé depuis le panier flottant, sinon annotation unique glissée.
+    let cles;
+    if (this.glisseDepuisPanier && this.panier && this.panier.length) {
+      cles = this.panier.slice();
+    } else {
+      const cle = this.obtenirCleGlissee(e);
+      if (!cle) { this.nettoyerZoneDrop(); return; }
+      cles = [cle];
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    // Dépôt sur le texte -> fin de la phrase visée ; dans la marge -> paragraphe.
+    let insertOffset;
+    if (this.modeDrop(e, doc) === 'phrase') {
+      const ligne = cm.state.doc.lineAt(pos);
+      insertOffset = ligne.from + finDePhraseAvantPonct(ligne.text, pos - ligne.from);
+    }
+    this.attacherAnnotationParagraphe(cm, n, cles, insertOffset);
+    this.nettoyerZoneDrop();
+  }
+
+  nettoyerZoneDrop() {
+    if (this.zoneDrop) {
+      this.zoneDrop.classList.remove('zfa-drop-cible');
+      this.zoneDrop = null;
+    }
+    this.effacerSurlignagePhrase();
+  }
+
+  /* --------------------------- Panier flottant --------------------------- */
+
+  basculerPanier() {
+    if (this.panierEl) this.fermerPanier();
+    else this.creerPanier();
+  }
+
+  fermerPanier() {
+    if (this.panierEl) {
+      this.panierEl.remove();
+      this.panierEl = null;
+      this.panierListe = null;
+    }
+  }
+
+  creerPanier() {
+    const el = document.createElement('div');
+    el.className = 'zfa-panier';
+    el.style.top = '80px';
+    el.style.right = '30px';
+
+    const header = el.createDiv({ cls: 'zfa-panier-header' });
+    this.panierTitre = header.createSpan({ cls: 'zfa-panier-titre', text: "Panier d'annotations" });
+    const fermer = header.createSpan({ cls: 'zfa-panier-fermer', text: '✕' });
+    fermer.onclick = () => this.fermerPanier();
+
+    this.panierListe = el.createDiv({ cls: 'zfa-panier-liste' });
+
+    const pied = el.createDiv({ cls: 'zfa-panier-pied' });
+    const poignee = pied.createDiv({ cls: 'zfa-panier-deposer', text: '⇱ Glisser sur un paragraphe' });
+    poignee.setAttribute('draggable', 'true');
+    poignee.addEventListener('dragstart', (e) => {
+      this.glisseDepuisPanier = true;
+      if (e.dataTransfer) {
+        e.dataTransfer.setData('text/plain', 'zfa-panier');
+        e.dataTransfer.effectAllowed = 'copy';
+      }
+    });
+    poignee.addEventListener('dragend', () => { this.glisseDepuisPanier = false; });
+
+    const btns = pied.createDiv({ cls: 'zfa-panier-boutons' });
+    const bDep = btns.createEl('button', { cls: 'zfa-panier-btn', text: 'Déposer sur le curseur' });
+    bDep.onclick = () => this.deposerPanierSurCurseur();
+    const bVide = btns.createEl('button', { cls: 'zfa-panier-btn', text: 'Vider' });
+    bVide.onclick = () => this.viderPanier();
+
+    this.rendreDeplacable(el, header);
+
+    // Recevoir des annotations glissées dans le panier.
+    el.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      if (!this.glisseDepuisPanier) el.classList.add('zfa-panier-survol');
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('zfa-panier-survol'));
+    el.addEventListener('drop', (e) => {
+      el.classList.remove('zfa-panier-survol');
+      if (this.glisseDepuisPanier) return; // ne pas s'auto-recevoir
+      const cle = this.obtenirCleGlissee(e);
+      if (cle) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.ajouterAuPanier(cle);
+      }
+    });
+
+    document.body.appendChild(el);
+    this.panierEl = el;
+    this.rendrePanier();
+  }
+
+  rendreDeplacable(el, handle) {
+    let sx = 0, sy = 0, ox = 0, oy = 0, actif = false;
+    const surMouvement = (e) => {
+      if (!actif) return;
+      el.style.left = (ox + e.clientX - sx) + 'px';
+      el.style.top = (oy + e.clientY - sy) + 'px';
+      el.style.right = 'auto';
+    };
+    const surRelache = () => {
+      actif = false;
+      document.removeEventListener('mousemove', surMouvement);
+      document.removeEventListener('mouseup', surRelache);
+    };
+    handle.addEventListener('mousedown', (e) => {
+      if (e.target && e.target.classList && e.target.classList.contains('zfa-panier-fermer')) return;
+      const rect = el.getBoundingClientRect();
+      ox = rect.left; oy = rect.top; sx = e.clientX; sy = e.clientY;
+      el.style.left = rect.left + 'px';
+      el.style.top = rect.top + 'px';
+      el.style.right = 'auto';
+      actif = true;
+      document.addEventListener('mousemove', surMouvement);
+      document.addEventListener('mouseup', surRelache);
+      e.preventDefault();
+    });
+  }
+
+  ajouterAuPanier(cle) {
+    if (!this.panier.includes(cle)) this.panier.push(cle);
+    this.rendrePanier();
+  }
+
+  retirerDuPanier(cle) {
+    this.panier = this.panier.filter((c) => c !== cle);
+    this.rendrePanier();
+  }
+
+  viderPanier() {
+    this.panier = [];
+    this.rendrePanier();
+  }
+
+  rendrePanier() {
+    if (this.panierTitre) {
+      this.panierTitre.textContent = "Panier d'annotations (" + this.panier.length + ')';
+    }
+    if (!this.panierListe) return;
+    this.panierListe.empty();
+    if (!this.panier.length) {
+      this.panierListe.createDiv({ cls: 'zfa-panier-vide', text: 'Glissez des annotations ici…' });
+      return;
+    }
+    for (const cle of this.panier) {
+      const item = this.panierListe.createDiv({ cls: 'zfa-panier-item' });
+      const titre = this.titreAnnotationCiblee(cle, '') || cle;
+      item.createSpan({ cls: 'zfa-panier-item-txt', text: titre });
+      const x = item.createSpan({ cls: 'zfa-panier-item-x', text: '✕' });
+      x.onclick = () => this.retirerDuPanier(cle);
+    }
+  }
+
+  deposerPanierSurCurseur() {
+    const view = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+    if (!view || !view.editor || !view.editor.cm) {
+      new obsidian.Notice('Ouvrez une note en mode édition.');
+      return;
+    }
+    if (!this.panier.length) {
+      new obsidian.Notice('Le panier est vide.');
+      return;
+    }
+    const cm = view.editor.cm;
+    const n = view.editor.getCursor().line + 1;
+    if (!this.ligneEstParagraphe(cm.state.doc, n)) {
+      new obsidian.Notice('Placez le curseur dans un paragraphe.');
+      return;
+    }
+    this.attacherAnnotationParagraphe(cm, n, this.panier.slice());
+    new obsidian.Notice(this.panier.length + ' annotation(s) déposée(s) en note de bas de page.');
+  }
+
+  /* ------------- Tag « orpheline » (annotations à 0 appel) --------------- */
+
+  // Ajoute ou retire le tag orpheline dans l'entête, sans toucher au corps.
+  async appliquerTagOrpheline(file, orpheline) {
+    const tag = this.settings.tagOrpheline || 'orphelin';
+    this.marquerEcriture(file.path);
+    await this.app.fileManager.processFrontMatter(file, (fm) => {
+      let tags = fm.tags;
+      if (Array.isArray(tags)) { /* garder */ }
+      else if (typeof tags === 'string' && tags.trim()) tags = [tags];
+      else tags = [];
+      tags = tags.filter((t) => String(t).replace(/^#/, '') !== tag);
+      if (orpheline) tags.push(tag);
+      if (tags.length) fm.tags = tags;
+      else delete fm.tags;
+    });
+  }
+
+  // Met à jour le tag orpheline sur toutes les annotations selon leur
+  // nombre d'appels (notes distinctes qui les citent).
+  async synchroniserTagsOrphelines() {
+    if (!this.settings.marquerOrphelines) return;
+    const tag = this.settings.tagOrpheline || 'orphelin';
+    const resolved = this.app.metadataCache.resolvedLinks || {};
+    const counts = new Map();
+    for (const source in resolved) {
+      for (const cible in resolved[source]) {
+        if (cible === source) continue;
+        counts.set(cible, (counts.get(cible) || 0) + 1);
+      }
+    }
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierA + '/')) continue;
+      const cache = this.app.metadataCache.getFileCache(f);
+      const fm = cache ? cache.frontmatter : null;
+      if (!fm || fm['zotflow-anno-key'] === undefined) continue;
+      const orpheline = (counts.get(f.path) || 0) === 0;
+      let present = false;
+      const tg = fm.tags;
+      if (Array.isArray(tg)) present = tg.some((t) => String(t).replace(/^#/, '') === tag);
+      else if (typeof tg === 'string') present = tg.replace(/^#/, '') === tag;
+      if (orpheline !== present) await this.appliquerTagOrpheline(f, orpheline);
+    }
+  }
+
+  async retirerTousTagsOrphelines() {
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierA + '/')) continue;
+      const cache = this.app.metadataCache.getFileCache(f);
+      const fm = cache ? cache.frontmatter : null;
+      if (!fm || fm['zotflow-anno-key'] === undefined) continue;
+      await this.appliquerTagOrpheline(f, false);
+    }
+  }
+
+  async loadSettings() {
+    const charge = await this.loadData();
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, charge || {});
+    if (!Array.isArray(this.settings.profils) || this.settings.profils.length === 0) {
+      this.settings.profils = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.profils));
+    }
+    // Reprise des anciens réglages de dossiers vers la table des familles.
+    const migrees = this.migrerFamilles();
+    if (migrees) console.log('[Ariane] familles de notes reprises des anciens réglages :', migrees);
+
+    // Migration : titre cliquable (ancien modèle par défaut -> nouveau).
+    const ancienModele = '**{{title}}**\n\n{{image}}\n\n{{paraphrase}}\n\n{{citation}}\n\nSource : {{source}}\n\n{{references}}';
+    if (this.settings.modeleNote === ancienModele) this.settings.modeleNote = DEFAULT_SETTINGS.modeleNote;
+  }
+
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
+
+  /* --------------------- Renommage d'une propriété ---------------------- */
+
+  // Changer le nom d'une propriété dans les réglages ne touche que les
+  // écritures À VENIR : les notes déjà écrites gardent l'ancien nom. D'où cet
+  // outil, qui reporte l'ancienne valeur sur la nouvelle dans tout le coffre.
+  notesAvecPropriete(nom) {
+    const cle = String(nom || '').trim();
+    if (!cle) return [];
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      if (fm && Object.prototype.hasOwnProperty.call(fm, cle)) out.push(f);
+    }
+    return out;
+  }
+
+  // Rend { faites, ignorees, echecs }. Une note qui porte déjà la nouvelle
+  // propriété n'est pas touchée : on ne remplace jamais une valeur existante.
+  async renommerPropriete(ancien, nouveau) {
+    const a = String(ancien || '').trim();
+    const n = String(nouveau || '').trim();
+    if (!a || !n || a === n) return { faites: 0, ignorees: 0, echecs: 0 };
+    let faites = 0, ignorees = 0, echecs = 0;
+    for (const f of this.notesAvecPropriete(a)) {
+      try {
+        let saute = false;
+        this.marquerEcriture(f.path);
+        await this.app.fileManager.processFrontMatter(f, (fm) => {
+          if (!Object.prototype.hasOwnProperty.call(fm, a)) { saute = true; return; }
+          if (Object.prototype.hasOwnProperty.call(fm, n) && fm[n] !== null && fm[n] !== '') {
+            saute = true; return;
+          }
+          fm[n] = fm[a];
+          delete fm[a];
+        });
+        if (saute) ignorees += 1; else faites += 1;
+      } catch (e) {
+        echecs += 1;
+        console.error('[Ariane] renommage de propriété', f.path, e);
+      }
+    }
+    return { faites, ignorees, echecs };
+  }
+
+  /* --------------------------- Profil portable --------------------------- */
+
+  // Ce qui ne voyage pas : chemins absolus et adresses de services locaux.
+  // Un profil partagé ne doit jamais imposer l'installation de qui l'a écrit.
+  static get CLES_MACHINE() {
+    return ['exportPandocBin', 'exportFiltreLua', 'exportModeleWord',
+            'suggOllamaUrl', 'suggLmStudioUrl'];
+  }
+
+  // Ce qui ne voyage pas non plus : l'état accumulé, propre au coffre.
+  static get CLES_ETAT() {
+    return ['tempsTotalSecondes', 'tempsHistorique', 'rattachementsIgnores',
+            'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
+            'dossierReferences', 'dossierBibliographies', 'exportDossier',
+            'tempsDossierJournal'];
+  }
+
+  profilExportable(avecOrganisation) {
+    const hors = new Set(ZotflowAtomiser.CLES_MACHINE);
+    if (!avecOrganisation) for (const k of ZotflowAtomiser.CLES_ETAT) hors.add(k);
+    const out = {};
+    for (const [k, v] of Object.entries(this.settings)) if (!hors.has(k)) out[k] = v;
+    return { ariane: this.manifest.version, profil: out };
+  }
+
+  async ecrireProfil(avecOrganisation) {
+    const nom = 'Ariane - profil' + (avecOrganisation ? ' (avec organisation)' : '') + '.json';
+    const chemin = this.manifest.dir + '/' + nom;
+    await this.app.vault.adapter.write(chemin,
+      JSON.stringify(this.profilExportable(avecOrganisation), null, 2));
+    return chemin;
+  }
+
+  // À l'import, on ne touche jamais aux clés de machine, même si le fichier
+  // en contient : le chemin de pandoc de quelqu'un d'autre n'a aucun sens ici.
+  async importerProfil(texte) {
+    let j = null;
+    try { j = JSON.parse(texte); } catch (e) { return { erreur: 'Fichier illisible (JSON invalide).' }; }
+    const profil = (j && j.profil) || j;
+    if (!profil || typeof profil !== 'object') return { erreur: 'Ce fichier ne contient pas de profil.' };
+    const machine = new Set(ZotflowAtomiser.CLES_MACHINE);
+    let n = 0;
+    for (const [k, v] of Object.entries(profil)) {
+      if (machine.has(k)) continue;
+      if (!(k in DEFAULT_SETTINGS)) continue;   // clé inconnue : on l'ignore
+      this.settings[k] = v;
+      n += 1;
+    }
+    await this.saveSettings();
+    return { poses: n, version: j && j.ariane };
+  }
+
+  /* ------------------------ Familles de notes --------------------------- */
+
+  // Une famille : un libellé, un ou PLUSIEURS dossiers, un préfixe facultatif,
+  // et ce qu'Ariane doit en faire. Rien n'y est imposé : c'est l'utilisateur
+  // qui décrit son organisation, et non le greffon qui présume la sienne.
+  familles() {
+    const brut = Array.isArray(this.settings.famillesNotes) ? this.settings.famillesNotes : [];
+    return brut.map((f) => ({
+      nom: String((f && f.nom) || '').trim(),
+      dossiers: (Array.isArray(f && f.dossiers) ? f.dossiers : [])
+        .map((d) => String(d || '').trim().replace(/^\/+|\/+$/g, '')).filter(Boolean),
+      prefixe: String((f && f.prefixe) || '').trim(),
+      aparte: (f && f.aparte) !== false,
+      suggestions: !!(f && f.suggestions),
+      couleur: String((f && f.couleur) || '').trim(),
+      icone: String((f && f.icone) || '').trim(),
+      monospace: !!(f && f.monospace),
+      alias: !!(f && f.alias),
+    })).filter((f) => f.dossiers.length || f.prefixe);
+  }
+
+  // Une note appartient à une famille par son dossier — sous-dossiers compris —
+  // ou par son préfixe de nom. Le dossier prime : le préfixe n'est qu'un
+  // filet de sécurité pour les notes rangées ailleurs.
+  familleDuChemin(chemin, basename) {
+    const c = String(chemin || '');
+    const n = String(basename || c.split('/').pop() || '').replace(/\.md$/i, '');
+    const fams = this.familles();
+    for (const f of fams) {
+      if (f.dossiers.some((d) => c === d + '.md' || c.startsWith(d + '/'))) return f;
+    }
+    for (const f of fams) {
+      if (f.prefixe && n.startsWith(f.prefixe)) return f;
+    }
+    return null;
+  }
+
+  // Tous les dossiers dont les notes nourrissent les suggestions.
+  dossiersSuggeres() {
+    const out = [];
+    for (const f of this.familles()) {
+      if (!f.suggestions) continue;
+      for (const d of f.dossiers) if (!out.includes(d)) out.push(d);
+    }
+    return out;
+  }
+
+  // Couleur et icône d'un dossier, portées par sa famille.
+  styleDuDossier(dossier) {
+    const d = String(dossier || '').trim();
+    for (const f of this.familles()) {
+      if (f.dossiers.includes(d)) return { couleur: f.couleur, icone: f.icone };
+    }
+    return {};
+  }
+
+  dossiersDeFamille(propriete) {
+    const out = [];
+    for (const f of this.familles()) {
+      if (!f[propriete]) continue;
+      for (const d of f.dossiers) if (!out.includes(d)) out.push(d);
+    }
+    return out;
+  }
+
+  // Reprise des anciens réglages : l'utilisateur ne doit rien ressaisir. On ne
+  // migre qu'une fois, et seulement si la table est encore vide.
+  // Propose un rôle par dossier dont le nom s'en approche. On ne remplit que
+  // les rôles restés vides : jamais on n'écrase un choix de l'utilisateur.
+  proposerRoles() {
+    const racines = new Set();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const parts = f.path.split('/');
+      for (let i = 1; i <= Math.min(2, parts.length - 1); i++) racines.add(parts.slice(0, i).join('/'));
+    }
+    const sansAccent = (x) => String(x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const indices = [
+      ['dossierAnnotations', ['annotation']],
+      ['dossierNotesLecture', ['note de lecture', 'notes de lecture', 'lecture']],
+      ['dossierReferences', ['reference en attente', 'references en attente', 'en attente']],
+      ['dossierBibliographies', ['bibliographie citee', 'bibliographies citees', 'biblio']],
+      ['exportDossier', ['livrable', 'export', 'document']],
+      ['tempsDossierJournal', ['journal']],
+    ];
+    let poses = 0;
+    for (const [cle, mots] of indices) {
+      if (this.settings[cle]) continue;
+      let choisi = null;
+      for (const d of racines) {
+        const n = sansAccent(d);
+        if (mots.some((m) => n.includes(m))) {
+          if (!choisi || d.length < choisi.length) choisi = d;
+        }
+      }
+      if (choisi) { this.settings[cle] = choisi; poses += 1; }
+    }
+    return poses;
+  }
+
+  // Propose une famille par dossier qui porte des notes — sous-dossiers
+  // compris, car les vôtres comptent : les comptes-rendus et les notes
+  // préparatoires vivent sous « Livrables ». Le préfixe est DÉDUIT des noms de
+  // fichiers : si toutes les notes d'un dossier commencent pareil, c'en est un.
+  familiesProposees() {
+    const parDossier = new Map();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const parts = f.path.split('/');
+      if (parts.length < 2) continue;
+      const dossier = parts.slice(0, -1).join('/');
+      if (dossier.startsWith('.')) continue;
+      if (!parDossier.has(dossier)) parDossier.set(dossier, []);
+      parDossier.get(dossier).push(f.basename);
+    }
+    // Un dossier dont TOUS les sous-dossiers sont déjà proposés n'apporte rien.
+    const deja = new Set();
+    for (const f of this.familles()) for (const d of f.dossiers) deja.add(d);
+    const out = [];
+    for (const [dossier, noms] of [...parDossier.entries()].sort((a, b) => a[0].localeCompare(b[0], 'fr'))) {
+      if (deja.has(dossier) || noms.length < 2) continue;
+      // Annotations et notes de lecture sont rangées PAR SOURCE : des dizaines
+      // de sous-dossiers « @citekey », qui n'ont pas à devenir autant de
+      // familles. On les écarte par leur rôle et par leur nom.
+      const parents = [this.settings.dossierAnnotations, this.settings.dossierNotesLecture].filter(Boolean);
+      if (parents.some((r) => dossier.startsWith(r + '/'))) continue;
+      if (dossier.split('/').pop().startsWith('@')) continue;
+      out.push({
+        nom: dossier.replace(/^\d+\s*-\s*/, '').split('/').pop(),
+        dossiers: [dossier],
+        prefixe: prefixeCommun(noms),
+        aparte: true, suggestions: false, couleur: '', icone: '',
+        monospace: false, alias: false,
+      });
+    }
+    return out;
+  }
+
+  migrerFamilles() {
+    if (Array.isArray(this.settings.famillesNotes) && this.settings.famillesNotes.length) return 0;
+    const s = this.settings;
+    const styles = s.suggStylesDossiers || {};
+    const mono = new Set((s.dossiersMonospace || []).map((x) => String(x).trim()));
+    const alias = new Set((s.dossiersAliasExplorateur || []).map((x) => String(x).trim()));
+    const parDossier = new Map();
+    const ajouter = (dossier, champs) => {
+      const d = String(dossier || '').trim().replace(/^\/+|\/+$/g, '');
+      if (!d) return;
+      const f = parDossier.get(d) || {
+        nom: d.replace(/^\d+\s*-\s*/, '').split('/').pop(),
+        dossiers: [d], prefixe: '', aparte: true, suggestions: false,
+        couleur: '', icone: '', monospace: false, alias: false,
+      };
+      Object.assign(f, champs);
+      parDossier.set(d, f);
+    };
+    for (const d of (s.suggDossiersCandidats || [])) {
+      ajouter(d, { suggestions: true, couleur: (styles[d] || {}).couleur || '', icone: (styles[d] || {}).icone || '' });
+    }
+    if (s.dossierNotesConceptuelles) {
+      ajouter(s.dossierNotesConceptuelles, {
+        nom: 'Note conceptuelle',
+        prefixe: s.prefixeNoteConceptuelle || '',
+        aparte: s.aparteConceptuelles !== false,
+      });
+    }
+    for (const d of mono) ajouter(d, { monospace: true });
+    for (const d of alias) ajouter(d, { alias: true });
+    if (!parDossier.size) return 0;
+    this.settings.famillesNotes = [...parDossier.values()];
+    return this.settings.famillesNotes.length;
+  }
+
+  get dossierA() {
+    return this.settings.dossierAnnotations;
+  }
+  get dossierR() {
+    return this.settings.dossierReferences;
+  }
+
+  /* ------------------------- Utilitaires d'écriture ------------------------- */
+
+  marquerEcriture(chemin) {
+    this.ecrituresRecentes.set(chemin, Date.now());
+  }
+
+  ecritePlugin(chemin) {
+    const t = this.ecrituresRecentes.get(chemin);
+    return t !== undefined && Date.now() - t < FENETRE_ECRITURE_MS;
+  }
+
+  antirebond(cle, fn, delai) {
+    clearTimeout(this.antirebonds.get(cle));
+    this.antirebonds.set(
+      cle,
+      setTimeout(() => {
+        this.antirebonds.delete(cle);
+        Promise.resolve(fn()).catch((e) => console.error('[Ariane]', e));
+      }, delai || DELAI_ANTIREBOND_MS)
+    );
+  }
+
+  async ecrire(chemin, contenu, fichierExistant) {
+    this.marquerEcriture(chemin);
+    const f = fichierExistant || this.app.vault.getAbstractFileByPath(chemin);
+    if (f instanceof obsidian.TFile) await this.app.vault.modify(f, contenu);
+    else await this.app.vault.create(chemin, contenu);
+  }
+
+  async supprimerFichier(file) {
+    this.marquerEcriture(file.path);
+    await this.app.fileManager.trashFile(file);
+  }
+
+  async assurerDossier(chemin) {
+    if (!this.app.vault.getAbstractFileByPath(chemin)) {
+      this.marquerEcriture(chemin);
+      await this.app.vault.createFolder(chemin);
+    }
+  }
+
+  nettoyerNomFichier(nom) {
+    return nom.replace(/[\\/:*?"<>|]/g, '').trim();
+  }
+
+  nomFichierAnnotation(bloc) {
+    const brut = appliquerModele(this.settings.formatNomFichier || '{{key}}_{{title}}', {
+      key: bloc.cle,
+      title: bloc.titre,
+    });
+    const nom = this.nettoyerNomFichier(brut).replace(/[.\s]+$/, '');
+    return nom || bloc.cle;
+  }
+
+  indexAnnotationsParCle() {
+    const map = new Map();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierA + '/')) continue;
+      const cache = this.app.metadataCache.getFileCache(f);
+      const fm = cache ? cache.frontmatter : null;
+      if (fm && fm['zotflow-auto'] === true && fm['zotflow-anno-key']) {
+        map.set(String(fm['zotflow-anno-key']), f);
+      }
+    }
+    return map;
+  }
+
+  /* ------------------------------ Index Zotero ------------------------------ */
+
+  // Construit une entrée d'index Zotero à partir du frontmatter d'un fichier.
+  // Renvoie toujours un objet ; « citkey » vide = ce n'est pas une source Zotero.
+  entreeIndex(file) {
+    const fm = (this.app.metadataCache.getFileCache(file) || {}).frontmatter || {};
+    const citkey = fm.citationKey || (file.basename.startsWith('@') ? file.basename.slice(1) : '');
+    const creators = fm.creators
+      ? (Array.isArray(fm.creators) ? fm.creators : [fm.creators]).map(sansLien)
+      : [];
+    const surnames = creators
+      .map((c) => String(c).trim().split(/\s+/).pop().toLowerCase())
+      .filter((x) => x.length > 0);
+    const anneeMatch = String(fm.year || fm.date || '').match(/\d{4}/);
+    const creatorsFull = [];
+    for (const c of creators) {
+      const nom = nomCompletAuteur(c);
+      if (nom && !creatorsFull.includes(nom)) creatorsFull.push(nom);
+    }
+    return {
+      basename: file.basename,
+      citkey,
+      premier: surnames[0] || '',
+      surnames,
+      creatorsFull,
+      titre: fm.title || '',
+      doi: normDoi(fm.doi),
+      annee: anneeMatch ? anneeMatch[0] : '',
+    };
+  }
+
+  construireIndexZotero() {
+    const idx = [];
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const e = this.entreeIndex(file);
+      if (e.citkey) idx.push(e);
+    }
+    return idx;
+  }
+
+  estSourceZoteroFrontmatter(file) {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const fm = cache ? cache.frontmatter : null;
+    return !!((fm && fm.citationKey) || file.basename.startsWith('@'));
+  }
+
+  /* --------------------------- Atomisation source --------------------------- */
+
+  async commandeNoteActive() {
+    const file = this.app.workspace.getActiveFile();
+    if (!file) {
+      new obsidian.Notice('Aucune note active.');
+      return;
+    }
+    const contenu = await this.app.vault.read(file);
+    if (!contenu.includes(this.settings.marqueurSource)) {
+      new obsidian.Notice("Cette note ne contient pas d'annotations reconnues.");
+      return;
+    }
+    await this.atomiseSource(file);
+  }
+
+  async atomiserTout() {
+    let n = 0;
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const contenu = await this.app.vault.read(file);
+      if (contenu.includes(this.settings.marqueurSource)) {
+        await this.atomiseSource(file);
+        n++;
+      }
+    }
+    new obsidian.Notice('Ariane : ' + n + ' source(s) atomisée(s).');
+  }
+
+  async atomiseSource(file) {
+    const cfg = this.settings;
+    const contenu = await this.app.vault.read(file);
+    if (!contenu.includes(cfg.marqueurSource)) return;
+
+    const idx = this.construireIndexZotero();
+    const blocs = extraireBlocs(contenu, cfg);
+
+    // Dossier cible des annotations : sous-dossier par source si activé.
+    const dossierCible = cfg.regrouperParSource
+      ? this.dossierA + '/' + this.nettoyerNomFichier(file.basename)
+      : this.dossierA;
+
+    // Aucune annotation compatible : retirer les annotations désormais
+    // orphelines de cette source, puis le sous-dossier une fois vidé.
+    if (blocs.length === 0) {
+      if (cfg.propagerSuppressions) {
+        await this.nettoyerSupprimees(file.basename, new Set());
+      }
+      if (cfg.regrouperParSource) {
+        const d = this.app.vault.getAbstractFileByPath(dossierCible);
+        if (d instanceof obsidian.TFolder && d.children.length === 0) {
+          this.marquerEcriture(dossierCible);
+          await this.app.fileManager.trashFile(d);
+        }
+      }
+      return;
+    }
+
+    await this.assurerDossier(this.dossierA);
+    if (dossierCible !== this.dossierA) await this.assurerDossier(dossierCible);
+
+    let creees = 0;
+    let majes = 0;
+    let renommees = 0;
+    const clesPresentes = new Set();
+    const parCle = this.indexAnnotationsParCle();
+
+    for (const bloc of blocs) {
+      clesPresentes.add(bloc.cle);
+
+      for (const r of bloc.refs) {
+        if (r.estAuteurSeul) continue; // auteur seul : pas de note de référence
+        const z = cfg.rattachementZotero ? trouverSourceZotero(r, idx) : null;
+        if (!z) await this.assurerReference(r);
+      }
+
+      const fmSource = (this.app.metadataCache.getFileCache(file) || {}).frontmatter || {};
+      const canon = construireNote(bloc, file.basename, idx, cfg, { collections: fmSource.collections });
+      const existant = parCle.get(bloc.cle);
+
+      const base = this.nomFichierAnnotation(bloc);
+      let cible = dossierCible + '/' + base + '.md';
+      const occupant = this.app.vault.getAbstractFileByPath(cible);
+      if (occupant instanceof obsidian.TFile && (!existant || occupant.path !== existant.path)) {
+        cible = dossierCible + '/' + base + ' (' + bloc.cle + ').md';
+      }
+
+      if (existant instanceof obsidian.TFile) {
+        if (existant.path !== cible) {
+          this.marquerEcriture(existant.path);
+          this.marquerEcriture(cible);
+          await this.app.fileManager.renameFile(existant, cible);
+          renommees++;
+        }
+        const actuel = await this.app.vault.read(existant);
+        if (actuel !== canon) {
+          await this.ecrire(existant.path, canon, existant);
+          majes++;
+        }
+      } else {
+        await this.ecrire(cible, canon);
+        creees++;
+      }
+    }
+
+    if (cfg.propagerSuppressions) {
+      await this.nettoyerSupprimees(file.basename, clesPresentes);
+    }
+
+    // Notes d'auteur (nom complet) pour les auteurs de cette source.
+    if (cfg.liensAuteurs) {
+      const entreeSrc = idx.find((z) => z.basename === file.basename);
+      await this.assurerNotesAuteurs(file.basename, (entreeSrc && entreeSrc.creatorsFull) || []);
+    }
+
+    if (creees || majes || renommees) {
+      new obsidian.Notice(
+        'ZotFlow [' + file.basename + '] : ' + creees + ' créée(s), ' + majes + ' maj, ' + renommees + ' renommée(s).'
+      );
+    }
+  }
+
+  async assurerReference(ref) {
+    const chemin = this.dossierR + '/' + this.nettoyerNomFichier(ref.nom) + '.md';
+    if (this.app.vault.getAbstractFileByPath(chemin)) return;
+    await this.assurerDossier(this.dossierR);
+    await this.ecrire(chemin, construireReference(ref, this.settings));
+  }
+
+  // Renomme les notes de référence « … et … » / « … and … » en « … & … »
+  // (en conservant « et al. »), via l'API Obsidian pour préserver les liens.
+  async normaliserConjonctionsReferences() {
+    const dossier = this.dossierR;
+    const fichiers = this.app.vault
+      .getMarkdownFiles()
+      .filter((f) => f.path === dossier + '/' + f.name || f.path.startsWith(dossier + '/'));
+    let renommees = 0;
+    let conflits = 0;
+    for (const f of fichiers) {
+      const nouveauNom = this.nettoyerNomFichier(normaliserConjAuteurs(f.basename));
+      if (nouveauNom === f.basename) continue;
+      const cible = dossier + '/' + nouveauNom + '.md';
+      if (this.app.vault.getAbstractFileByPath(cible)) {
+        conflits++;
+        continue;
+      }
+      try {
+        await this.app.fileManager.renameFile(f, cible);
+        renommees++;
+      } catch (e) {
+        conflits++;
+      }
+    }
+    new obsidian.Notice(
+      'Ariane : ' + renommees + ' référence(s) normalisée(s) (et → &)' +
+      (conflits ? ', ' + conflits + ' ignorée(s) (conflit de nom)' : '') + '.'
+    );
+  }
+
+  async nettoyerSupprimees(sourceBasename, clesPresentes) {
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierA + '/')) continue;
+      const cache = this.app.metadataCache.getFileCache(f);
+      const fm = cache ? cache.frontmatter : null;
+      if (!fm || fm['zotflow-auto'] !== true) continue;
+      if (!String(fm['zotflow-source'] || '').includes(sourceBasename)) continue;
+      const cle = fm['zotflow-anno-key'];
+      if (cle && !clesPresentes.has(cle)) {
+        await this.supprimerAnnotation(f, cle);
+      }
+    }
+  }
+
+  async supprimerAnnotation(file, cle) {
+    await this.supprimerFichier(file);
+    if (this.settings.propagerSuppressions) await this.retirerLiens(cle);
+  }
+
+  // Propagation de la suppression d'une SOURCE (supprimée dans Zotero) :
+  // retire toutes ses annotations, son sous-dossier vidé, et les fiches
+  // auteurs qui ne dépendaient que de cette source.
+  async surSuppressionSource(basename) {
+    const annotations = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierA + '/')) continue;
+      const cache = this.app.metadataCache.getFileCache(f);
+      const fm = cache ? cache.frontmatter : null;
+      if (!fm || fm['zotflow-auto'] !== true) continue;
+      const s = String(fm['zotflow-source'] || '')
+        .replace(/^\[\[|\]\]$/g, '')
+        .replace(/\|.*$/, '')
+        .trim();
+      if (s === basename) annotations.push({ f, cle: fm['zotflow-anno-key'] });
+    }
+    const dossierSource = this.dossierA + '/' + this.nettoyerNomFichier(basename);
+    const dossier = this.app.vault.getAbstractFileByPath(dossierSource);
+    const dossierExiste = dossier instanceof obsidian.TFolder;
+    // Rien qui rattache ce fichier à une source atomisée : on n'y touche pas.
+    if (annotations.length === 0 && !dossierExiste) return;
+
+    for (const { f, cle } of annotations) {
+      if (cle) await this.supprimerAnnotation(f, cle);
+      else await this.supprimerFichier(f);
+    }
+
+    // Sous-dossier de la source, une fois vidé.
+    const d = this.app.vault.getAbstractFileByPath(dossierSource);
+    if (d instanceof obsidian.TFolder && d.children.length === 0) {
+      this.marquerEcriture(dossierSource);
+      await this.app.fileManager.trashFile(d);
+    }
+
+    await this.nettoyerAuteursSource(basename);
+  }
+
+  // Fiches auteurs pointant vers une source supprimée : retire le lien ; si la
+  // fiche ne pointe plus vers aucune source, elle est mise à la corbeille.
+  async nettoyerAuteursSource(basename) {
+    if (!this.settings.liensAuteurs) return;
+    const dossier = this.settings.dossierAuteurs;
+    if (!(this.app.vault.getAbstractFileByPath(dossier) instanceof obsidian.TFolder)) return;
+    const lien = '[[' + basename + ']]';
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(dossier + '/')) continue;
+      const contenu = await this.app.vault.read(f);
+      if (!contenu.includes(lien)) continue;
+      const lignes = contenu.split('\n').filter((l) => !l.includes(lien));
+      const resteUnLien = /\[\[[^\]]+\]\]/.test(lignes.join('\n'));
+      const cache = this.app.metadataCache.getFileCache(f);
+      const estFicheAuteur = !!(cache && cache.frontmatter && cache.frontmatter.type === 'auteur');
+      if (!resteUnLien && estFicheAuteur) {
+        await this.supprimerFichier(f);
+      } else {
+        const nouveau = lignes.join('\n');
+        if (nouveau !== contenu) await this.ecrire(f.path, nouveau, f);
+      }
+    }
+  }
+
+  async retirerLiens(cible) {
+    const re = new RegExp('!?\\[\\[' + echapperRegex(cible) + '(\\|[^\\]]*)?\\]\\]', 'g');
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (f.path.startsWith(this.dossierA + '/')) continue;
+      const contenu = await this.app.vault.read(f);
+      re.lastIndex = 0;
+      if (!re.test(contenu)) continue;
+
+      const lignes = contenu.split('\n').map((l) => {
+        re.lastIndex = 0;
+        if (!re.test(l)) return l;
+        re.lastIndex = 0;
+        return l
+          .replace(re, '')
+          .replace(/[ \t]{2,}/g, ' ')
+          .replace(/\s+;\s*$/, '')
+          .replace(/^\s*;\s*/, '')
+          .replace(/[ \t]+$/g, '');
+      });
+      const nettoyees = lignes.filter((l) => !/^\s*([-*+]|\d+\.)\s*$/.test(l));
+      const nouveau = nettoyees.join('\n');
+      if (nouveau !== contenu) await this.ecrire(f.path, nouveau, f);
+    }
+  }
+
+  /* ------------------------------ Verrouillage ------------------------------ */
+
+  async verrouiller(file) {
+    if (!this.settings.verrouillage) return;
+    const cache = this.app.metadataCache.getFileCache(file);
+    const fm = cache ? cache.frontmatter : null;
+    if (!fm || fm['zotflow-auto'] !== true) return;
+
+    const cle = fm['zotflow-anno-key'];
+    const srcNom = String(fm['zotflow-source'] || '').replace(/^\[\[|\]\]$/g, '');
+    if (!cle || !srcNom) return;
+
+    const source = this.app.metadataCache.getFirstLinkpathDest(srcNom, file.path);
+    if (!source) return;
+
+    const contenu = await this.app.vault.read(source);
+    const blocs = extraireBlocs(contenu, this.settings);
+    const bloc = blocs.find((b) => b.cle === cle);
+    if (!bloc) {
+      if (this.settings.propagerSuppressions) await this.supprimerAnnotation(file, cle);
+      return;
+    }
+    const idx = this.construireIndexZotero();
+    const fmSrc = (this.app.metadataCache.getFileCache(source) || {}).frontmatter || {};
+    const canon = construireNote(bloc, source.basename, idx, this.settings, { collections: fmSrc.collections });
+    const actuel = await this.app.vault.read(file);
+    if (actuel !== canon) await this.ecrire(file.path, canon, file);
+  }
+
+  /* ------------------------ Rattachement Zotero (réf.) ----------------------- */
+
+  async rattacherReferencesZotero(zoteroFile) {
+    if (!this.settings.rattachementZotero) return;
+    const entree = this.entreeIndex(zoteroFile);
+    const creatorsFull = entree.creatorsFull;
+    if (!entree.premier || !entree.annee) return;
+
+    if (!this.app.vault.getAbstractFileByPath(this.dossierR)) return;
+    // Index complet (pour juger l'unicité d'un appariement fort).
+    const index = this.settings.rattachementAutoCertain ? this.construireIndexZotero() : null;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierR + '/')) continue;
+      const ref = parseNomReference(f.basename, this.settings);
+      if (!ref) continue;
+      if (ref.annee && ref.annee4 && ref.annee !== ref.annee4) continue; // suffixe -> assistant
+      if (appariementSource(ref, entree)) {
+        // Correspondance CERTAINE (unique appariement fort dans toute la
+        // bibliothèque) -> rattachement automatique, sans confirmation.
+        const certaine = index && trouverSourceZotero(ref, index) === zoteroFile.basename;
+        if (!certaine && !(await this.deciderRattachement(f.basename, zoteroFile, entree))) continue;
+        await this.remplacerLiens(f.basename, zoteroFile.basename);
+        await this.supprimerFichier(f);
+        await this.assurerNotesAuteurs(zoteroFile.basename, creatorsFull);
+      }
+    }
+  }
+
+  // Balaye toutes les références en attente et rattache automatiquement celles
+  // qui ont une correspondance Zotero certaine (unique appariement fort), sans
+  // confirmation. Les cas ambigus (plusieurs candidats, « et al. », 2005a/b)
+  // sont laissés à l'assistant.
+  async rattacherToutesReferences() {
+    if (!this.app.vault.getAbstractFileByPath(this.dossierR)) {
+      new obsidian.Notice('Aucun dossier de références en attente.');
+      return;
+    }
+    const index = this.construireIndexZotero();
+    let attachees = 0, ambigues = 0, sansSource = 0;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierR + '/')) continue;
+      const ref = parseNomReference(f.basename, this.settings);
+      if (!ref) continue;
+      if (ref.annee && ref.annee4 && ref.annee !== ref.annee4) { ambigues++; continue; }
+      const base = trouverSourceZotero(ref, index);
+      if (base) {
+        await this.remplacerLiens(f.basename, base);
+        await this.supprimerFichier(f);
+        const e = index.find((z) => z.basename === base);
+        if (e) await this.assurerNotesAuteurs(base, e.creatorsFull || []);
+        attachees++;
+      } else {
+        (candidatsSource(ref, index).length ? (ambigues++) : (sansSource++));
+      }
+    }
+    new obsidian.Notice(
+      'Références : ' + attachees + ' rattachée(s) automatiquement, ' + ambigues +
+      ' ambiguë(s) (assistant), ' + sansSource + ' sans source Zotero.'
+    );
+  }
+
+  // Notes d'auteur dédiées : pour chaque auteur (nom complet Zotero) d'une
+  // source, garantit une note Auteurs/<Nom complet>.md qui pointe vers la
+  // source. Entièrement sous contrôle du plugin (indépendant de ZotFlow).
+  async assurerNotesAuteurs(sourceBasename, auteursFull) {
+    if (!this.settings.liensAuteurs || !auteursFull || auteursFull.length === 0) return;
+    const dossier = this.settings.dossierAuteurs;
+    await this.assurerDossier(dossier);
+    const lien = '[[' + sourceBasename + ']]';
+    for (const auteur of auteursFull) {
+      const chemin = dossier + '/' + this.nettoyerNomFichier(auteur) + '.md';
+      const f = this.app.vault.getAbstractFileByPath(chemin);
+      const { nom, prenom } = separerNomPrenom(auteur);
+      if (f instanceof obsidian.TFile) {
+        const contenu = await this.app.vault.read(f);
+        if (!contenu.includes(lien)) {
+          await this.ecrire(chemin, contenu.replace(/\s*$/, '') + '\n' + lien + '\n', f);
+        }
+        // Rétro-remplit nom/prénom si absents.
+        const fmc = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+        const manque = (nom && !fmc.nom) || (prenom && (fmc['prénom'] == null || fmc['prénom'] === ''));
+        if (manque) {
+          this.marquerEcriture(f.path);
+          await this.app.fileManager.processFrontMatter(f, (fm) => {
+            if (nom && !fm.nom) fm.nom = nom;
+            if (prenom && (fm['prénom'] == null || fm['prénom'] === '')) fm['prénom'] = prenom;
+          });
+        }
+      } else {
+        const tete = '---\ntype: auteur\n'
+          + (nom ? 'nom: ' + JSON.stringify(nom) + '\n' : '')
+          + (prenom ? 'prénom: ' + JSON.stringify(prenom) + '\n' : '')
+          + '---\n\n';
+        await this.ecrire(chemin, tete + lien + '\n');
+      }
+    }
+  }
+
+  // Tranche un rattachement ambigu avec le modèle local. Renvoie true, false,
+  // ou null si le modèle est injoignable (on retombe alors sur la fenêtre).
+  async deciderRattachementIA(refNom, entree) {
+    try {
+      const auteurs = (entree.creatorsFull || []).join(', ');
+      const prompt =
+        'Tu aides un chercheur à relier une référence citée à une fiche bibliographique.\n\n'
+        + 'Référence citée, telle qu\'elle apparaît dans un texte :\n"' + refNom + '"\n\n'
+        + 'Fiche candidate :\n'
+        + '- Auteurs : ' + (auteurs || '(inconnus)') + '\n'
+        + '- Année : ' + (entree.annee || '(inconnue)') + '\n'
+        + '- Titre : ' + (entree.titre || '(inconnu)') + '\n\n'
+        + 'Désignent-elles le même travail ? Sois prudent : en cas de doute sérieux '
+        + '(auteurs différents, homonymie possible, année incohérente), réponds false.\n'
+        + 'Réponds UNIQUEMENT en JSON : {"meme": true} ou {"meme": false}.';
+      const brut = await this.genererJson(prompt, 64);
+      if (!brut) return null;
+      let obj = null;
+      try { obj = JSON.parse(brut); } catch (e) {
+        const m = brut.match(/\{[\s\S]*\}/);
+        if (m) { try { obj = JSON.parse(m[0]); } catch (e2) { obj = null; } }
+      }
+      if (!obj) return null;
+      const v = obj.meme !== undefined ? obj.meme : obj.same;
+      if (typeof v === 'boolean') return v;
+      if (typeof v === 'string') return /^(true|oui|yes)$/i.test(v.trim());
+      return null;
+    } catch (e) {
+      console.debug('[Ariane] rattachement IA', e);
+      return null;
+    }
+  }
+
+  // Décision pour un couple (référence en attente, fiche Zotero) : mémoire
+  // persistante d'abord, puis modèle local, puis vous. Une question posée une
+  // fois ne revient jamais, même après une nouvelle synchronisation zotflow.
+  async deciderRattachement(refNom, zoteroFile, entree) {
+    if (!this.settings.rattachementsDecides) this.settings.rattachementsDecides = {};
+    const memo = this.settings.rattachementsDecides;
+    const cle = refNom + ' => ' + zoteroFile.basename;
+    if (Object.prototype.hasOwnProperty.call(memo, cle)) return memo[cle] === true;
+
+    let ok = null;
+    if (this.settings.rattachementIA !== false) {
+      ok = await this.deciderRattachementIA(refNom, entree);
+    }
+    if (ok === null) {
+      ok = await this.confirmerRattachement(refNom, zoteroFile.basename, entree.creatorsFull);
+    }
+    memo[cle] = ok === true;
+    await this.saveSettings();
+    return ok === true;
+  }
+
+  // Fenêtre de validation d'un rattachement (anti-homonymie). Renvoie une
+  // promesse booléenne. Sans validation activée, renvoie true directement.
+  confirmerRattachement(refNom, sourceBasename, auteursFull) {
+    if (!this.settings.validationRattachement) return Promise.resolve(true);
+    const cle = refNom + '|' + sourceBasename;
+    if (this.rattachementsIgnores && this.rattachementsIgnores.has(cle)) {
+      return Promise.resolve(false);
+    }
+    return new Promise((resolve) => {
+      const texte =
+        'Rattacher la référence citée « ' + refNom + ' » à la source Zotero « ' +
+        sourceBasename + ' »' +
+        (auteursFull && auteursFull.length ? ' (auteurs : ' + auteursFull.join(', ') + ')' : '') +
+        ' ? Vérifiez qu\'il ne s\'agit pas d\'un homonyme.';
+      new ConfirmationRattachement(this.app, texte, (ok) => {
+        if (!ok && this.rattachementsIgnores) this.rattachementsIgnores.add(cle);
+        resolve(ok);
+      }).open();
+    });
+  }
+
+  // Assistant : lie la note de référence active (ex. « Aven, 2005a ») à la
+  // bonne fiche Zotero parmi les candidats auteur+année, mémorise le choix,
+  // remplace les liens et retire la note provisoire.
+  async assistantLiageReference() {
+    const file = this.app.workspace.getActiveFile();
+    if (!file || file.extension !== 'md' || !file.path.startsWith(this.dossierR + '/')) {
+      new obsidian.Notice('Ouvrez une note de référence (dossier « ' + this.dossierR + ' »).');
+      return;
+    }
+    const ref = parseNomReference(file.basename, this.settings);
+    if (!ref) {
+      new obsidian.Notice('Nom de référence non reconnu (attendu « Auteur, Année »).');
+      return;
+    }
+    const candidats = candidatsSource(ref, this.construireIndexZotero()).map((c) => c.entree);
+    if (!candidats.length) {
+      new obsidian.Notice('Aucune fiche Zotero pour « ' + (ref.premierAuteur || '') + ', ' + (ref.annee4 || ref.annee) + ' ».');
+      return;
+    }
+    new ChoixSourceModal(this.app, file.basename, candidats, async (choix) => {
+      if (!choix) return;
+      if (!this.settings.correspondancesSuffixe) this.settings.correspondancesSuffixe = {};
+      this.settings.correspondancesSuffixe[ref.nom] = choix;
+      await this.saveSettings();
+      await this.remplacerLiens(file.basename, choix);
+      const entree = candidats.find((c) => c.basename === choix);
+      if (entree) await this.assurerNotesAuteurs(choix, entree.creatorsFull || []);
+      await this.supprimerFichier(file);
+      new obsidian.Notice('Référence « ' + file.basename + ' » liée à « ' + choix + ' ».');
+    }).open();
+  }
+
+  async remplacerLiens(ancien, nouveau) {
+    const re = new RegExp('\\[\\[' + echapperRegex(ancien) + '(\\|[^\\]]*)?\\]\\]', 'g');
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const contenu = await this.app.vault.read(f);
+      re.lastIndex = 0;
+      if (!re.test(contenu)) continue;
+      const nouveauContenu = contenu.replace(re, '[[' + nouveau + ']]');
+      if (nouveauContenu !== contenu) await this.ecrire(f.path, nouveauContenu, f);
+    }
+  }
+
+  /* --------------- Références citées via API bibliographique ---------------- */
+
+  paramMailto() {
+    const e = (this.settings.apiEmail || '').trim();
+    return e ? 'mailto=' + encodeURIComponent(e) : '';
+  }
+
+  async apiGetJson(url) {
+    try {
+      const rep = await obsidian.requestUrl({ url, method: 'GET', throw: false });
+      if (rep && rep.status >= 200 && rep.status < 300) {
+        return rep.json !== undefined ? rep.json : JSON.parse(rep.text);
+      }
+    } catch (e) {
+      console.debug('[Ariane] apiGetJson', url, e);
+    }
+    return null;
+  }
+
+  async apiCrossref(doi) {
+    const q = this.paramMailto();
+    const url = 'https://api.crossref.org/works/' + encodeURIComponent(doi) + (q ? '?' + q : '');
+    const json = await this.apiGetJson(url);
+    return json ? refsDepuisCrossref(json) : [];
+  }
+
+  async apiOpenAlex(doi) {
+    const q = this.paramMailto();
+    const base = 'https://api.openalex.org';
+    const w = await this.apiGetJson(base + '/works/doi:' + doi + '?select=referenced_works' + (q ? '&' + q : ''));
+    const ids = (w && w.referenced_works) || [];
+    const refs = [];
+    for (let i = 0; i < ids.length; i += 50) {
+      const lot = ids.slice(i, i + 50).map((x) => String(x).replace(/^https?:\/\/openalex\.org\//i, ''));
+      const rep = await this.apiGetJson(
+        base + '/works?filter=ids.openalex:' + lot.join('|') +
+        '&per-page=50&select=id,doi,title,publication_year,authorships' + (q ? '&' + q : '')
+      );
+      if (rep && rep.results) refs.push(...refsDepuisOpenAlexWorks(rep.results));
+    }
+    return refs;
+  }
+
+  async apiRefsPourDoi(doi) {
+    doi = normDoi(doi);
+    if (!doi) return [];
+    const src = this.settings.apiSource || 'auto';
+    let refs;
+    if (src === 'crossref') refs = await this.apiCrossref(doi);
+    else if (src === 'openalex') refs = await this.apiOpenAlex(doi);
+    else {
+      refs = await this.apiCrossref(doi); // Crossref d'abord (couverture, un appel)
+      if (!refs.length) refs = await this.apiOpenAlex(doi); // sinon OpenAlex
+    }
+    return this.enrichirRefsParDoi(refs);
+  }
+
+  // Complète les références qui n'ont qu'un DOI (fréquent avec Crossref) en
+  // récupérant titre / année / auteurs via OpenAlex, par lots. Échoue en
+  // silence : au pire les références restent « sans titre ».
+  async enrichirRefsParDoi(refs) {
+    const manquants = (refs || []).filter((r) => r.doi && (!r.titre || !r.auteurs || !r.auteurs.length));
+    const dois = [...new Set(manquants.map((r) => r.doi))];
+    if (!dois.length) return refs;
+    const q = this.paramMailto();
+    const parDoi = new Map();
+    for (let i = 0; i < dois.length; i += 40) {
+      const lot = dois.slice(i, i + 40);
+      const url = 'https://api.openalex.org/works?filter=doi:' + lot.join('|') +
+        '&per-page=40&select=doi,title,publication_year,authorships' + (q ? '&' + q : '');
+      const rep = await this.apiGetJson(url);
+      for (const w of (rep && rep.results) || []) {
+        const d = normDoi(w.doi || '');
+        if (d) parDoi.set(d, w);
+      }
+    }
+    for (const r of refs) {
+      const w = r.doi ? parDoi.get(r.doi) : null;
+      if (!w) continue;
+      if (!r.titre) r.titre = String(w.title || '').trim();
+      if (!r.annee && w.publication_year) r.annee = String(w.publication_year);
+      if (!r.auteurs || !r.auteurs.length) {
+        r.auteurs = (w.authorships || [])
+          .map((a) => nomFamille((a.author && a.author.display_name) || a.raw_author_name || ''))
+          .filter(Boolean);
+      }
+    }
+    return refs;
+  }
+
+  sourceParDoi(doi, index) {
+    const d = normDoi(doi);
+    if (!d) return null;
+    for (const z of index || []) if (z.doi && z.doi === d) return z.basename;
+    return null;
+  }
+
+  doiDeSource(file) {
+    const fm = (this.app.metadataCache.getFileCache(file) || {}).frontmatter;
+    return normDoi(fm && fm.doi);
+  }
+
+  // Une référence citée (parseNomReference) correspond-elle à une réf. API ?
+  refCorrespondApi(ref, apiRef) {
+    return appariementSource(ref, { surnames: apiRef.auteurs || [], annee: apiRef.annee }) != null;
+  }
+
+  // Notes de référence en attente citées par une source (via ses annotations).
+  referencesEnAttenteDeSource(sourceBasename) {
+    const noms = new Set();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierA + '/')) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      if (!fm || fm['zotflow-auto'] !== true) continue;
+      const s = String(fm['zotflow-source'] || '').replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+      if (s !== sourceBasename) continue;
+      let refs = fm['références-citées'];
+      if (!refs) continue;
+      if (!Array.isArray(refs)) refs = [refs];
+      for (const r of refs) {
+        const cible = String(r).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+        if (!cible) continue;
+        const dest = this.app.metadataCache.getFirstLinkpathDest(cible, f.path);
+        if (dest && dest.path.startsWith(this.dossierR + '/')) noms.add(dest.basename);
+      }
+    }
+    return [...noms];
+  }
+
+  async enrichirReference(refFile, apiRef) {
+    this.marquerEcriture(refFile.path);
+    await this.app.fileManager.processFrontMatter(refFile, (fm) => {
+      if (apiRef.titre) fm['titre-cité'] = apiRef.titre;
+      if (apiRef.doi) fm['doi'] = apiRef.doi;
+    });
+  }
+
+  // Commande : générer la note de bibliographie citée d'une source.
+  ligneRefTexte(a) {
+    const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+    const aut = (a.auteurs || []).map(cap).join(', ');
+    const t = a.titre || a.brut || '(sans titre)';
+    const d = a.doi ? '`' + a.doi + '`' : '`—`';
+    return '- ' + (aut ? aut + ' ' : '') + (a.annee ? '(' + a.annee + ') ' : '') + '— ' + t + '  ' + d;
+  }
+
+  // Génère la note de bibliographie citée d'une source, à trois statuts, et
+  // rattache / enrichit dynamiquement ses références en attente au passage.
+  async genererBibliographieSource(fileArg, silencieux) {
+    if (!this.settings.apiReferencesCitees) {
+      if (!silencieux) new obsidian.Notice('Références citées via API : désactivé dans les réglages.');
+      return null;
+    }
+    const file = fileArg || this.app.workspace.getActiveFile();
+    if (!file || !this.estSourceZoteroFrontmatter(file)) {
+      if (!silencieux) new obsidian.Notice('Ouvrez une note source Zotero.');
+      return null;
+    }
+    const doi = this.doiDeSource(file);
+    if (!doi) { if (!silencieux) new obsidian.Notice("Cette source n'a pas de DOI."); return null; }
+    if (!silencieux) new obsidian.Notice('Récupération de la bibliographie…');
+    const apiRefs = await this.apiRefsPourDoi(doi);
+    if (!apiRefs.length) { if (!silencieux) new obsidian.Notice("Aucune référence citée trouvée pour ce DOI."); return null; }
+
+    const index = this.construireIndexZotero();
+    const pendings = this.referencesEnAttenteDeSource(file.basename)
+      .map((nm) => ({ nom: nm, ref: parseNomReference(nm, this.settings) }))
+      .filter((x) => x.ref);
+    const dejaMatch = new Set();
+    const secZotero = [];
+    const secAttente = [];
+    const secSeule = [];
+
+    for (const a of apiRefs) {
+      const zBase = a.doi ? this.sourceParDoi(a.doi, index) : null;
+      const pm = pendings.find((x) => !dejaMatch.has(x.nom) && this.refCorrespondApi(x.ref, a));
+      if (zBase) {
+        // Présente dans Zotero : rattache la référence en attente correspondante.
+        if (pm) {
+          await this.remplacerLiens(pm.nom, zBase);
+          const pf = this.app.vault.getAbstractFileByPath(this.dossierR + '/' + pm.nom + '.md');
+          if (pf instanceof obsidian.TFile) await this.supprimerFichier(pf);
+          const e = index.find((z) => z.basename === zBase);
+          if (e) await this.assurerNotesAuteurs(zBase, e.creatorsFull || []);
+          dejaMatch.add(pm.nom);
+        }
+        secZotero.push('[[' + zBase + ']]');
+      } else if (pm) {
+        // Référence en attente (citée en annotation, absente de Zotero) : enrichie.
+        const pf = this.app.vault.getAbstractFileByPath(this.dossierR + '/' + pm.nom + '.md');
+        if (pf instanceof obsidian.TFile) await this.enrichirReference(pf, a);
+        dejaMatch.add(pm.nom);
+        secAttente.push('[[' + pm.nom + ']]');
+      } else {
+        // Bibliographie seule : texte, hors graphe.
+        secSeule.push(this.ligneRefTexte(a));
+      }
+    }
+    for (const x of pendings) if (!dejaMatch.has(x.nom)) secAttente.push('[[' + x.nom + ']]');
+
+    const uniq = (arr) => [...new Set(arr)];
+    const zList = uniq(secZotero);
+    const aList = uniq(secAttente);
+    const sList = uniq(secSeule);
+
+    const lignes = [
+      '---',
+      'type: bibliographie-citée',
+      'source: ' + JSON.stringify('[[' + file.basename + ']]'),
+      'nb-references: ' + apiRefs.length,
+      'nb-dans-zotero: ' + zList.length,
+      'nb-en-attente: ' + aList.length,
+      '---',
+      '',
+      '# Bibliographie citée — ' + file.basename,
+      '',
+      '> ' + zList.length + ' dans Zotero · ' + aList.length + ' en attente · ' +
+        sList.length + ' hors corpus (sur ' + apiRefs.length + ').',
+      '',
+      '## Dans Zotero',
+      ...(zList.length ? zList.map((l) => '- ' + l) : ['*(aucune)*']),
+      '',
+      '## Références en attente (citées dans vos annotations)',
+      ...(aList.length ? aList.map((l) => '- ' + l) : ['*(aucune)*']),
+      '',
+      '## Bibliographie seule (non citées — hors graphe)',
+      ...(sList.length ? sList : ['*(aucune)*']),
+    ];
+    await this.assurerDossier(this.settings.dossierBibliographies);
+    const nomBiblio = this.nettoyerNomFichier((this.settings.prefixeBibliographie || '') + file.basename);
+    const chemin = this.settings.dossierBibliographies + '/' + nomBiblio + '.md';
+    await this.ecrire(chemin, lignes.join('\n') + '\n');
+    if (!silencieux) {
+      new obsidian.Notice(
+        'Bibliographie : ' + zList.length + ' dans Zotero, ' + aList.length + ' en attente, ' +
+        sList.length + ' hors corpus.'
+      );
+      const nf = this.app.vault.getAbstractFileByPath(chemin);
+      if (nf instanceof obsidian.TFile) this.app.workspace.getLeaf(false).openFile(nf);
+    }
+    return { zotero: zList.length, attente: aList.length, seule: sList.length, total: apiRefs.length };
+  }
+
+  // Batch : génère les bibliographies pour toutes les sources ZotFlow à DOI.
+  async genererToutesBibliographies() {
+    if (!this.settings.apiReferencesCitees) { new obsidian.Notice('Références citées via API : désactivé.'); return; }
+    const sources = this.app.vault
+      .getMarkdownFiles()
+      .filter((f) => this.estSourceZoteroFrontmatter(f) && this.doiDeSource(f));
+    if (!sources.length) { new obsidian.Notice('Aucune source Zotero avec DOI.'); return; }
+    new obsidian.Notice('Bibliographies : ' + sources.length + ' source(s) à traiter…');
+    let ok = 0, vide = 0, i = 0;
+    for (const f of sources) {
+      i++;
+      try {
+        const r = await this.genererBibliographieSource(f, true);
+        if (r) ok++; else vide++;
+      } catch (e) {
+        vide++;
+        console.error('[Ariane] biblio', f.basename, e);
+      }
+      if (i % 10 === 0) new obsidian.Notice('Bibliographies : ' + i + '/' + sources.length + '…');
+      await new Promise((res) => setTimeout(res, 1200)); // temporisation (pool poli)
+    }
+    new obsidian.Notice(
+      'Bibliographies terminées : ' + ok + ' générée(s), ' + vide + ' sans résultat, sur ' + sources.length + '.'
+    );
+  }
+
+  /* -------------------------------- Événements ------------------------------- */
+
+  surModification(file) {
+    if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
+    if (this.ecritePlugin(file.path)) return;
+
+    if (file.path.startsWith(this.dossierA + '/')) {
+      if (this.settings.verrouillage) {
+        this.antirebond('lock:' + file.path, () => this.verrouiller(file));
+      }
+      return;
+    }
+    if (!this.settings.regenerationAuto && !this.settings.rattachementZotero) return;
+    this.antirebond('src:' + file.path, async () => {
+      const contenu = await this.app.vault.read(file);
+      if (this.settings.regenerationAuto && contenu.includes(this.settings.marqueurSource)) {
+        await this.atomiseSource(file);
+      }
+      if (this.settings.rattachementZotero && this.estSourceZoteroFrontmatter(file)) {
+        await this.rattacherReferencesZotero(file);
+      }
+    });
+  }
+
+  surCreation(file) {
+    if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
+    if (this.ecritePlugin(file.path)) return;
+    if (!this.settings.regenerationAuto && !this.settings.rattachementZotero) return;
+    this.antirebond('src:' + file.path, async () => {
+      const contenu = await this.app.vault.read(file);
+      if (this.settings.regenerationAuto && contenu.includes(this.settings.marqueurSource)) {
+        await this.atomiseSource(file);
+      }
+      if (this.settings.rattachementZotero && this.estSourceZoteroFrontmatter(file)) {
+        await this.rattacherReferencesZotero(file);
+      }
+    });
+  }
+
+  surSuppression(file) {
+    if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
+    if (this.ecritePlugin(file.path)) return;
+    if (!this.settings.propagerSuppressions) return;
+    if (file.path.startsWith(this.dossierA + '/')) {
+      this.antirebond('del:' + file.path, () => this.retirerLiens(file.basename));
+    } else {
+      // Une source supprimée (dans Zotero) : retirer ses annotations, son
+      // sous-dossier, et les fiches auteurs qui n'en dépendaient que d'elle.
+      this.antirebond('delsrc:' + file.path, () => this.surSuppressionSource(file.basename));
+    }
+  }
+}
+
+/* =========================================================================
+ * Onglet de réglages
+ * ========================================================================= */
+
+class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    const s = this.plugin.settings;
+    const maj = async () => this.plugin.saveSettings();
+    containerEl.createEl('h2', { text: 'Ariane' });
+
+    const onglets = [
+      ['Général', 'settings', (c) => this.ongletGeneral(c, s, maj)],
+      ['Dossiers & familles', 'folder-tree', (c) => this.ongletDossiers(c, s, maj)],
+      ['Affichage', 'eye', (c) => this.ongletAffichage(c, s, maj)],
+      ['Citations & bibliographie', 'quote', (c) => this.ongletCitations(c, s, maj)],
+      ['Suggestions', 'sparkles', (c) => this.ongletSuggestions(c, s, maj)],
+      ['Contenu des notes', 'file-text', (c) => this.ongletContenu(c, s, maj)],
+      ['Références & auteurs', 'users', (c) => this.ongletReferences(c, s, maj)],
+      ['Temps passé', 'timer', (c) => this.ongletTemps(c, s, maj)],
+      ['Schémas', 'git-branch', (c) => this.ongletSchemas(c, s, maj)],
+      ['Export Word', 'file-output', (c) => this.ongletExport(c, s, maj)],
+      ['Avancé', 'wrench', (c) => this.ongletAvance(c, s, maj)],
+    ];
+    if (typeof this._ongletActif !== 'number' || this._ongletActif >= onglets.length) this._ongletActif = 0;
+
+    const barre = containerEl.createDiv({ cls: 'zfa-onglets' });
+    const corps = containerEl.createDiv();
+    const rendre = (i) => {
+      this._ongletActif = i;
+      corps.empty();
+      Array.from(barre.children).forEach((b, k) => b.toggleClass('is-active', k === i));
+      onglets[i][2](corps);
+    };
+    onglets.forEach(([nom, icone], i) => {
+      const b = barre.createEl('button', { cls: 'zfa-onglet' });
+      const ic = b.createSpan({ cls: 'zfa-onglet-icone' });
+      obsidian.setIcon(ic, icone);
+      b.createSpan({ cls: 'zfa-onglet-nom', text: nom });
+      b.setAttribute('aria-label', nom);
+      b.onclick = () => rendre(i);
+    });
+    rendre(this._ongletActif);
+  }
+
+  /* ---------------- Table des familles de notes (réglages) --------------- */
+
+  // Une ligne par famille, réordonnable au glisser-déposer. C'est le cœur de
+  // la généralisation : plus aucun type de note n'est nommé dans le code, tout
+  // vient d'ici.
+  _tableFamilles(parent, s, maj) {
+    const rendre = () => {
+      hote.empty();
+      const familles = Array.isArray(s.famillesNotes) ? s.famillesNotes : (s.famillesNotes = []);
+      if (!familles.length) {
+        hote.createDiv({ cls: 'zfa-fam-vide', text: "Aucune famille. Ajoutez-en une, ou laissez Ariane proposer celles de votre coffre." });
+      }
+      familles.forEach((f, i) => {
+        const ligne = hote.createDiv({ cls: 'zfa-fam' });
+        ligne.setAttribute('draggable', 'true');
+
+        // Réordonnancement : on ne transporte que le rang, jamais l'objet.
+        ligne.addEventListener('dragstart', (ev) => {
+          ev.dataTransfer.setData('text/zfa-famille', String(i));
+          ev.dataTransfer.effectAllowed = 'move';
+          ligne.addClass('zfa-fam-glissee');
+        });
+        ligne.addEventListener('dragend', () => ligne.removeClass('zfa-fam-glissee'));
+        ligne.addEventListener('dragover', (ev) => {
+          if (!ev.dataTransfer.types.includes('text/zfa-famille')) return;
+          ev.preventDefault(); ligne.addClass('zfa-fam-cible');
+        });
+        ligne.addEventListener('dragleave', () => ligne.removeClass('zfa-fam-cible'));
+        ligne.addEventListener('drop', async (ev) => {
+          ligne.removeClass('zfa-fam-cible');
+          const depuis = parseInt(ev.dataTransfer.getData('text/zfa-famille'), 10);
+          if (isNaN(depuis) || depuis === i) return;
+          ev.preventDefault();
+          const [x] = familles.splice(depuis, 1);
+          familles.splice(i, 0, x);
+          await maj(); rendre();
+        });
+
+        const tete = ligne.createDiv({ cls: 'zfa-fam-tete' });
+        const poignee = tete.createSpan({ cls: 'zfa-fam-poignee' });
+        obsidian.setIcon(poignee, 'grip-vertical');
+        poignee.setAttribute('aria-label', 'Glisser pour réordonner');
+
+        const nom = tete.createEl('input', { cls: 'zfa-fam-nom', type: 'text' });
+        nom.placeholder = 'Nom de la famille';
+        nom.value = f.nom || '';
+        nom.onchange = async () => { f.nom = nom.value.trim(); await maj(); };
+
+        const pastille = tete.createEl('input', { cls: 'zfa-fam-couleur', type: 'color' });
+        pastille.value = f.couleur || '#888888';
+        pastille.setAttribute('aria-label', 'Couleur dans le panneau de suggestions');
+        pastille.onchange = async () => { f.couleur = pastille.value; await maj(); };
+
+        const icone = tete.createEl('input', { cls: 'zfa-fam-icone', type: 'text' });
+        icone.placeholder = 'icône';
+        icone.value = f.icone || '';
+        icone.setAttribute('aria-label', "Nom d'icône Lucide, ex. « book »");
+        icone.onchange = async () => { f.icone = icone.value.trim(); await maj(); };
+
+        const monter = tete.createEl('button', { cls: 'zfa-fam-bouton' });
+        obsidian.setIcon(monter, 'chevron-up');
+        monter.setAttribute('aria-label', 'Monter');
+        monter.onclick = async () => {
+          if (i === 0) return;
+          familles.splice(i - 1, 0, familles.splice(i, 1)[0]); await maj(); rendre();
+        };
+        const descendre = tete.createEl('button', { cls: 'zfa-fam-bouton' });
+        obsidian.setIcon(descendre, 'chevron-down');
+        descendre.setAttribute('aria-label', 'Descendre');
+        descendre.onclick = async () => {
+          if (i >= familles.length - 1) return;
+          familles.splice(i + 1, 0, familles.splice(i, 1)[0]); await maj(); rendre();
+        };
+        const suppr = tete.createEl('button', { cls: 'zfa-fam-bouton zfa-fam-suppr' });
+        obsidian.setIcon(suppr, 'trash-2');
+        suppr.setAttribute('aria-label', 'Retirer cette famille');
+        suppr.onclick = async () => { familles.splice(i, 1); await maj(); rendre(); this.plugin.decorerExplorateur(); };
+
+        const corps = ligne.createDiv({ cls: 'zfa-fam-corps' });
+        const champ = (libelle, valeur, aide, sur) => {
+          const bloc = corps.createDiv({ cls: 'zfa-fam-champ' });
+          bloc.createEl('label', { text: libelle });
+          const e = bloc.createEl('input', { type: 'text' });
+          e.value = valeur; e.placeholder = aide;
+          e.onchange = async () => { await sur(e.value); };
+          return e;
+        };
+        champ('Dossiers', (f.dossiers || []).join(', '),
+          'un ou plusieurs, séparés par des virgules',
+          async (v) => {
+            f.dossiers = v.split(',').map((x) => x.trim().replace(/^\/+|\/+$/g, '')).filter(Boolean);
+            await maj(); this.plugin.invaliderIndexSuggestions(); this.plugin.decorerExplorateur();
+          });
+        champ('Préfixe', f.prefixe || '', 'ex. NC-  (facultatif)',
+          async (v) => { f.prefixe = v.trim(); await maj(); });
+
+        const cases = ligne.createDiv({ cls: 'zfa-fam-cases' });
+        const bascule = (libelle, cle, aide, apres) => {
+          const et = cases.createEl('label', { cls: 'zfa-fam-case' });
+          const cb = et.createEl('input', { type: 'checkbox' });
+          cb.checked = !!f[cle];
+          et.createSpan({ text: libelle });
+          if (aide) et.setAttribute('aria-label', aide);
+          cb.onchange = async () => { f[cle] = cb.checked; await maj(); if (apres) apres(); };
+        };
+        bascule('Aparté', 'aparte', "Afficher le titre après un lien vers une note de cette famille");
+        bascule('Suggestions', 'suggestions', 'Ces notes nourrissent le panneau de suggestions',
+          () => this.plugin.invaliderIndexSuggestions());
+        bascule('Chasse fixe', 'monospace', "Police à largeur fixe dans l'explorateur",
+          () => this.plugin.decorerExplorateur());
+        bascule('Alias', 'alias', "Afficher l'alias plutôt que le nom de fichier",
+          () => this.plugin.decorerExplorateur());
+      });
+    };
+
+    const hote = parent.createDiv({ cls: 'zfa-familles' });
+    const barre = parent.createDiv({ cls: 'zfa-fam-barre' });
+    new obsidian.Setting(barre)
+      .addButton((b) => b.setButtonText('Ajouter une famille').setCta().onClick(async () => {
+        (s.famillesNotes = s.famillesNotes || []).push({
+          nom: '', dossiers: [], prefixe: '', aparte: true,
+          suggestions: false, couleur: '', icone: '', monospace: false, alias: false,
+        });
+        await maj(); rendre();
+      }))
+      .addButton((b) => b.setButtonText('Proposer depuis mon coffre').onClick(async () => {
+        const proposees = this.plugin.familiesProposees();
+        if (!proposees.length) { new obsidian.Notice('Aucun dossier à proposer.'); return; }
+        s.famillesNotes = (s.famillesNotes || []).concat(proposees);
+        await maj(); rendre();
+        new obsidian.Notice(proposees.length + ' famille(s) proposée(s) — à ajuster.');
+      }));
+    rendre();
+  }
+
+  _section(parent, titre, desc) {
+    const st = new obsidian.Setting(parent).setName(titre).setHeading();
+    if (desc) st.setDesc(desc);
+    return st;
+  }
+  _aide(parent, txt) {
+    const p = parent.createEl('div', { text: txt, cls: 'setting-item-description' });
+    p.style.margin = '2px 0 10px';
+    return p;
+  }
+
+  _sectionProfil(c, s, maj) {
+    this._section(c, 'Profil de réglages');
+    this._aide(c, "Un profil rassemble vos réglages pour les partager ou les retrouver ailleurs. Les chemins propres à cette machine — pandoc, filtre Lua, modèle Word, adresses des services d'inférence — n'y figurent jamais, et un profil importé ne les touche pas.");
+    new obsidian.Setting(c)
+      .setName('Exporter')
+      .setDesc("Écrit un fichier JSON dans le dossier du greffon. « Avec organisation » y ajoute vos dossiers et vos familles de notes ; sans, le profil ne contient que les réglages de fonctionnement.")
+      .addButton((b) => b.setButtonText('Exporter').onClick(async () => {
+        try {
+          const chemin = await this.plugin.ecrireProfil(false);
+          new obsidian.Notice('Profil écrit : ' + chemin);
+        } catch (e) { new obsidian.Notice('Échec : ' + (e && e.message ? e.message : e)); }
+      }))
+      .addButton((b) => b.setButtonText('Avec organisation').onClick(async () => {
+        try {
+          const chemin = await this.plugin.ecrireProfil(true);
+          new obsidian.Notice('Profil écrit : ' + chemin);
+        } catch (e) { new obsidian.Notice('Échec : ' + (e && e.message ? e.message : e)); }
+      }));
+    new obsidian.Setting(c)
+      .setName('Importer')
+      .setDesc("Collez ici le contenu d'un fichier de profil. Les réglages inconnus sont ignorés.")
+      .addTextArea((t) => {
+        t.inputEl.rows = 3;
+        t.setPlaceholder('{ "ariane": "…", "profil": { … } }');
+        this._profilColle = '';
+        t.onChange((v) => { this._profilColle = v; });
+      })
+      .addButton((b) => b.setButtonText('Importer').setWarning().onClick(async () => {
+        if (!this._profilColle || !this._profilColle.trim()) { new obsidian.Notice('Rien à importer.'); return; }
+        const r = await this.plugin.importerProfil(this._profilColle);
+        if (r.erreur) { new obsidian.Notice(r.erreur); return; }
+        new obsidian.Notice(r.poses + ' réglage(s) repris' + (r.version ? ' (profil Ariane ' + r.version + ')' : '') + '.');
+        this.display();
+      }));
+  }
+
+  ongletGeneral(c, s, maj) {
+    this._sectionProfil(c, s, maj);
+    new obsidian.Setting(c)
+      .setName('Ré-atomiser tout le coffre')
+      .setDesc('Régénère toutes les annotations à partir des sources.')
+      .addButton((b) => b.setButtonText('Lancer').setCta().onClick(() => this.plugin.atomiserTout()));
+
+    this._section(c, 'Automatisation');
+    new obsidian.Setting(c)
+      .setName('Régénération automatique')
+      .setDesc('Régénère les annotations à chaque modification de la source.')
+      .addToggle((t) => t.setValue(s.regenerationAuto).onChange(async (v) => { s.regenerationAuto = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Verrouiller les notes automatiques')
+      .setDesc('Restaure toute édition manuelle des notes générées.')
+      .addToggle((t) => t.setValue(s.verrouillage).onChange(async (v) => { s.verrouillage = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Notes verrouillées non modifiables')
+      .setDesc('Les notes portant « locked: true » (fiches graphiques, notes importées) ne peuvent pas être éditées par inadvertance.')
+      .addToggle((t) => t.setValue(s.verrouLecture !== false).onChange(async (v) => {
+        s.verrouLecture = v; await maj(); this.plugin.appliquerVerrouLecture();
+      }));
+    new obsidian.Setting(c)
+      .setName('Propager les suppressions')
+      .setDesc("Supprime la note quand l'annotation disparaît de la source et retire ses liens. Action destructive.")
+      .addToggle((t) => t.setValue(s.propagerSuppressions).onChange(async (v) => { s.propagerSuppressions = v; await maj(); }));
+
+    this._section(c, 'Renommer une propriété');
+    this._aide(c, "Changer le nom d'une propriété dans les réglages ne vaut que pour les écritures à venir : les notes déjà écrites gardent l'ancien nom. Cet outil reporte l'ancienne valeur sur la nouvelle dans tout le coffre. Une note qui porte déjà la nouvelle propriété n'est jamais écrasée.");
+    this._renAncien = this._renAncien || '';
+    this._renNouveau = this._renNouveau || '';
+    new obsidian.Setting(c)
+      .setName('Ancien nom → nouveau nom')
+      .addText((t) => t.setPlaceholder('temps-passe').setValue(this._renAncien).onChange((v) => { this._renAncien = v.trim(); }))
+      .addText((t) => t.setPlaceholder('temps').setValue(this._renNouveau).onChange((v) => { this._renNouveau = v.trim(); }))
+      .addButton((b) => b.setButtonText('Compter').onClick(() => {
+        const n = this.plugin.notesAvecPropriete(this._renAncien).length;
+        new obsidian.Notice(this._renAncien
+          ? n + ' note(s) portent « ' + this._renAncien + ' ».'
+          : 'Indiquez le nom actuel de la propriété.');
+      }))
+      .addButton((b) => b.setButtonText('Renommer').setWarning().onClick(async () => {
+        if (!this._renAncien || !this._renNouveau) { new obsidian.Notice('Indiquez les deux noms.'); return; }
+        const avis = new obsidian.Notice('Renommage en cours…', 0);
+        const r = await this.plugin.renommerPropriete(this._renAncien, this._renNouveau);
+        avis.hide();
+        new obsidian.Notice(r.faites + ' note(s) renommée(s)'
+          + (r.ignorees ? ', ' + r.ignorees + ' laissée(s) intacte(s)' : '')
+          + (r.echecs ? ', ' + r.echecs + ' en échec' : '') + '.');
+      }));
+
+    new obsidian.Setting(c)
+      .setName('Correspondances de références mémorisées')
+      .setDesc("Les rapprochements que vous avez confirmés à la main entre une référence en attente et une source Zotero. Les oublier vous fera reposer la question.")
+      .addButton((b) => b.setButtonText('Oublier').setWarning().onClick(async () => {
+        const n = Object.keys(s.correspondancesSuffixe || {}).length;
+        s.correspondancesSuffixe = {};
+        await maj();
+        new obsidian.Notice(n + ' correspondance(s) oubliée(s).');
+      }));
+
+    this._section(c, 'Réinitialisation');
+    new obsidian.Setting(c)
+      .setName('Rétablir les réglages par défaut')
+      .addButton((b) =>
+        b.setButtonText('Réinitialiser').setWarning().onClick(async () => {
+          this.plugin.settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+          await this.plugin.saveSettings();
+          this.display();
+        })
+      );
+  }
+
+  ongletDossiers(c, s, maj) {
+    // ---- Les RÔLES : les emplacements dont Ariane a besoin pour travailler.
+    // Ils sont vides par défaut : le greffon ne présume d'aucune organisation.
+    this._section(c, 'Rôles — où Ariane range ses productions');
+    this._aide(c, "Ces dossiers ne décrivent pas vos types de notes, mais les emplacements dont Ariane a besoin. Laissez vide ce dont vous ne vous servez pas.");
+    const role = (nom, cle, desc) => new obsidian.Setting(c)
+      .setName(nom).setDesc(desc)
+      .addText((t) => t.setValue(s[cle] || '').setPlaceholder('chemin dans le coffre')
+        .onChange(async (v) => { s[cle] = v.trim().replace(/^\/+|\/+$/g, ''); await maj(); }));
+    role('Annotations atomisées', 'dossierAnnotations', "Une note par annotation Zotero.");
+    role('Notes de lecture', 'dossierNotesLecture', "Notes-filles Zotero, attachées à la référence entière.");
+    role('Références en attente', 'dossierReferences', "Références citées mais pas encore dans Zotero.");
+    role('Bibliographies citées', 'dossierBibliographies', "Une note de bibliographie par source.");
+    role('Documents exportés', 'exportDossier', "Sortie de l'export Word.");
+    role('Journal du temps', 'tempsDossierJournal', "Journaux quotidiens du compteur de temps.");
+    new obsidian.Setting(c)
+      .setName('Atomiser les notes de lecture')
+      .setDesc("Les notes-filles Zotero — attachées à la référence entière, non à un passage — deviennent des notes à part, citables et reliées à leur source.")
+      .addToggle((t) => t.setValue(s.atomiserNotesLecture !== false).onChange(async (v) => { s.atomiserNotesLecture = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Détecter les dossiers de mon coffre')
+      .setDesc("Propose un rôle par dossier dont le nom s'en approche. Rien n'est écrit sans votre relecture.")
+      .addButton((b) => b.setButtonText('Proposer').onClick(async () => {
+        const n = this.plugin.proposerRoles();
+        await maj(); this.display();
+        new obsidian.Notice(n ? n + ' rôle(s) proposé(s) — vérifiez-les.' : 'Rien à proposer.');
+      }));
+
+    this._section(c, "Nommage des annotations");
+    new obsidian.Setting(c)
+      .setName('Regrouper par source')
+      .setDesc('Range chaque annotation dans un sous-dossier au nom de sa source (@citekey).')
+      .addToggle((t) => t.setValue(s.regrouperParSource).onChange(async (v) => { s.regrouperParSource = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Format du nom de fichier')
+      .setDesc('Variables : {{key}}, {{title}}. Ex. « {{key}}_{{title}} » (recommandé), « {{title}} » ou « {{key}} ».')
+      .addText((t) => t.setValue(s.formatNomFichier).onChange(async (v) => { s.formatNomFichier = v.trim() || '{{key}}_{{title}}'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName("Modèle d'alias")
+      .setDesc("Variables : {{key}}, {{title}}. Vide = pas d'alias.")
+      .addText((t) => t.setValue(s.aliasTemplate).onChange(async (v) => { s.aliasTemplate = v; await maj(); }));
+
+    // ---- Les FAMILLES : la description de VOTRE organisation.
+    this._section(c, 'Familles de notes');
+    this._aide(c, "Décrivez vos types de notes. Une famille couvre un ou plusieurs dossiers, éventuellement un préfixe de nom, et dit ce qu'Ariane doit en faire : afficher le titre après les liens, nourrir les suggestions, changer l'apparence dans l'explorateur. Glissez les lignes pour les réordonner — la première qui couvre une note l'emporte.");
+    this._tableFamilles(c, s, maj);
+  }
+
+  ongletAffichage(c, s, maj) {
+    this._section(c, 'Aparté (titre sur les liens)');
+    new obsidian.Setting(c)
+      .setName('Afficher le titre en aparté')
+      .setDesc("Ajoute le titre après un lien d'annotation ou de note conceptuelle qui affiche la clé (lecture et édition).")
+      .addToggle((t) => t.setValue(s.aliasSurLiens).onChange(async (v) => { s.aliasSurLiens = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Aperçu au survol hors éditeur')
+      .setDesc("Affiche l'aperçu natif au survol des liens internes dans les vues qui ne le font pas (ex. chat Claudian, panneaux).")
+      .addToggle((t) => t.setValue(s.hoverPartout !== false).onChange(async (v) => { s.hoverPartout = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('— Aparté sur les annotations')
+      .setDesc('Afficher l’aparté pour les liens vers des notes d’annotation.')
+      .addToggle((t) => t.setValue(s.aparteAnnotations).setDisabled(!s.aliasSurLiens).onChange(async (v) => { s.aparteAnnotations = v; await maj(); }));
+    this._aide(c, "L'aparté sur les autres notes, et l'affichage de l'alias dans l'explorateur, se règlent famille par famille — onglet « Dossiers & familles ».");
+
+    new obsidian.Setting(c).setName('Noms codés en police monospace').setHeading();
+    this._aide(c, "Affiche en police à largeur fixe les notes des dossiers listés. Liste vide : aucun. Le texte reste normal (recherche et tri intacts).");
+    new obsidian.Setting(c)
+      .setName('Police')
+      .setDesc('Nom de la police monospace (vide = police de code d’Obsidian).')
+      .addText((t) => t.setPlaceholder('var(--font-monospace)').setValue(s.nomsMonospaceFont || '').onChange(async (v) => { s.nomsMonospaceFont = v.trim(); await maj(); this.plugin.appliquerStyleAparte(); }));
+    this._aide(c, "Les dossiers concernés se cochent famille par famille — onglet « Dossiers & familles ».");
+    new obsidian.Setting(c)
+      .setName("Format de l'aparté")
+      .setDesc("Variables : {{alias}} (titre), {{key}}, {{auteur}}, {{auteurs}}, {{annee}}. Ex. « ({{alias}}) », « ({{auteur}}, {{annee}}) ».")
+      .addText((t) => t.setValue(s.modeleAparte).onChange(async (v) => { s.modeleAparte = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName("Couleur de l'aparté")
+      .setDesc("Couleur CSS. Vide = atténuée. Ex. « #999 », « var(--text-faint) ».")
+      .addText((t) => t.setValue(s.aparteCouleur).onChange(async (v) => { s.aparteCouleur = v.trim(); await maj(); this.plugin.appliquerStyleAparte(); }));
+    new obsidian.Setting(c)
+      .setName("Taille de l'aparté")
+      .setDesc("Ex. « 0.8em », « 11px ».")
+      .addText((t) => t.setValue(s.aparteTaille).onChange(async (v) => { s.aparteTaille = v.trim() || '0.8em'; await maj(); this.plugin.appliquerStyleAparte(); }));
+
+  }
+
+  ongletCitations(c, s, maj) {
+    this._section(c, 'Citations indirectes');
+    this._aide(c, "Quand une annotation rapporte des travaux que vous n'avez pas consultés, la source consultée porte un compteur des travaux qu'elle rapporte, au lieu de les nommer tous dans le fil du texte. Le survol du compteur les affiche en liens cliquables. Les références déjà présentes dans Zotero restent citées en clair, puisque vous les avez lues. Après changement, lancer « Citations : rafraîchir les libellés » pour réécrire les notes.");
+    new obsidian.Setting(c)
+      .setName('Abréger les citations indirectes')
+      .setDesc("Décoché, tous les auteurs rapportés sont nommés, suivis de « cité dans » et de la source.")
+      .addToggle((t) => t.setValue(s.citationsIndirectesAbregees !== false).onChange(async (v) => {
+        s.citationsIndirectesAbregees = v; await maj();
+      }));
+    new obsidian.Setting(c)
+      .setName('Forme du compteur')
+      .setDesc("{{n}} tient la place du nombre de travaux rapportés.")
+      .addText((t) => t.setValue(s.citationsMarqueEmprunt || '⟨{{n}}⟩').onChange(async (v) => {
+        s.citationsMarqueEmprunt = v.trim() || '⟨{{n}}⟩'; await maj();
+      }));
+
+    this._section(c, 'Repliement des citations');
+    this._aide(c, "Une citation entre parenthèses cède la place à une pastille portant le nombre de références. Un clic sur la pastille déplie cette citation seule ; les commandes « Citations : tout replier » et « tout déplier » agissent sur l'ensemble, comme le bouton de la barre latérale. En édition, une citation se déplie d'elle-même dès que le curseur y entre.");
+    new obsidian.Setting(c)
+      .setName('Activer le repliement')
+      .setDesc('Décoché, les citations restent toujours visibles et les commandes sans effet.')
+      .addToggle((t) => t.setValue(s.citationsRepliables !== false).onChange(async (v) => {
+        s.citationsRepliables = v; await maj(); this.plugin.appliquerEtatCitations();
+      }));
+    new obsidian.Setting(c)
+      .setName('Replier par défaut')
+      .setDesc("État au démarrage. Les commandes le modifient et l'enregistrent.")
+      .addToggle((t) => t.setValue(s.citationsRepliees === true).onChange(async (v) => {
+        s.citationsRepliees = v; await maj(); this.plugin.appliquerEtatCitations();
+      }));
+
+    this._section(c, 'Glisser-déposer & notes de bas de page');
+    new obsidian.Setting(c)
+      .setName('Déposer une note sur un paragraphe')
+      .setDesc("Glisser un lien de note sur un paragraphe l'ajoute à sa note de bas de page. Déposer ailleurs reste normal.")
+      .addToggle((t) => t.setValue(s.dropSurParagraphe).onChange(async (v) => { s.dropSurParagraphe = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Signaler les dépôts non reconnus')
+      .setDesc("Affiche un message quand un élément déposé ne correspond à aucune note du coffre, au lieu de ne rien faire.")
+      .addToggle((t) => t.setValue(s.dropSignalerRefus !== false).onChange(async (v) => { s.dropSignalerRefus = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName("Accepter n'importe quelle note")
+      .setDesc("Si activé, tout lien de note peut être déposé. Sinon, seules les annotations.")
+      .addToggle((t) => t.setValue(s.dropToutesNotes).onChange(async (v) => { s.dropToutesNotes = v; await maj(); }));
+    this._aide(c, 'Cible automatique : en survolant le texte, l’appel de note se place en fin de la phrase visée ; en survolant la marge gauche du paragraphe, il se place en fin de paragraphe. La zone visée est surlignée pendant le glisser.');
+    new obsidian.Setting(c)
+      .setName('Titre de la section des notes')
+      .addText((t) => t.setValue(s.titreSectionNotes).onChange(async (v) => { s.titreSectionNotes = v.trim() || 'Annotations de lecture associées'; await maj(); }));
+
+    new obsidian.Setting(c).setName('Citations').setHeading();
+    this._aide(c, 'Une annotation ou une source déposée sur une phrase insère sa référence en ligne, entre parenthèses, avant la ponctuation finale.');
+    new obsidian.Setting(c)
+      .setName('Format de la citation')
+      .setDesc('Variables : {{auteurs}}, {{auteursComplets}}, {{annee}}, {{page}}, {{key}}. Les fragments restés vides sont retirés.')
+      .addText((t) => t.setValue(s.modeleCitation || '').onChange(async (v) => { s.modeleCitation = v.trim() || '{{auteurs}}, {{annee}}, p. {{page}}'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Apparat « cité dans »')
+      .setDesc("Quand une annotation cite un travail absent de Zotero — donc non consulté directement — la citation prend la forme « Moulin et Gérard, 2026, p. 345, cité dans Aven, 2012, p. 34 ». Si ce travail figure dans Zotero, il est cité directement. Texte inséré entre les deux références :")
+      .addText((t) => t.setValue(s.citeDans != null ? s.citeDans : ', cité dans ').onChange(async (v) => { s.citeDans = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Séparateur entre citations')
+      .addText((t) => t.setValue(s.separateurCitation || '').onChange(async (v) => { s.separateurCitation = v || ' ; '; await maj(); }));
+
+    new obsidian.Setting(c).setName('Bibliographie de fin de note').setHeading();
+    this._aide(c, 'Ariane relève les annotations et les sources citées dans le corps de la note, puis entretient une bibliographie en fin de note, à la manière de Zotero dans Word.');
+    new obsidian.Setting(c)
+      .setName('Mise à jour automatique')
+      .setDesc('Régénère la bibliographie après une pause dans la frappe.')
+      .addToggle((t) => t.setValue(s.biblioAuto !== false).onChange(async (v) => { s.biblioAuto = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Titre de la section')
+      .addText((t) => t.setValue(s.biblioTitre || '').onChange(async (v) => { s.biblioTitre = v.trim() || 'Bibliographie'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Champ de référence formatée')
+      .setDesc('Propriété des notes sources contenant la référence mise en forme par zotflow (filtre « bibliography »). Le style se règle dans zotflow. Champ absent : Ariane utilise le modèle libre ci-dessous.')
+      .addText((t) => t.setValue(s.biblioChamp || '').onChange(async (v) => { s.biblioChamp = v.trim() || 'bibliographie'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Renvoi vers la note source')
+      .setDesc('Ajoute un lien après chaque référence. Il est placé à la suite, et non autour du texte, afin de préserver les italiques du style bibliographique.')
+      .addToggle((t) => t.setValue(s.biblioLien !== false).onChange(async (v) => { s.biblioLien = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Libellé du renvoi')
+      .addText((t) => t.setValue(s.biblioLienTexte != null ? s.biblioLienTexte : '↗').onChange(async (v) => { s.biblioLienTexte = v || '↗'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Format des entrées (repli, si le champ est absent)')
+      .setDesc('Variables : {{auteurs}}, {{auteursComplets}}, {{annee}}, {{titre}}, {{publication}}, {{doi}}, {{url}}, {{type}}, {{cle}}. Les fragments vides sont retirés.')
+      .addTextArea((t) => {
+        t.inputEl.rows = 2;
+        t.setValue(s.biblioModele || '');
+        t.onChange(async (v) => { s.biblioModele = v.trim() || '{{auteurs}} ({{annee}}). {{titre}}. *{{publication}}*.'; await maj(); });
+      });
+    new obsidian.Setting(c)
+      .setName('Ordre')
+      .addDropdown((d) => {
+        d.addOption('auteur', 'Alphabétique (auteur, année)');
+        d.addOption('apparition', 'Ordre d’apparition dans la note');
+        d.setValue(s.biblioTri === 'apparition' ? 'apparition' : 'auteur');
+        d.onChange(async (v) => { s.biblioTri = v; await maj(); });
+      });
+    new obsidian.Setting(c)
+      .setName('Supprimer les notes de bas de page orphelines')
+      .setDesc("Quand l'appel [^n] disparaît, retire sa définition. N'agit que sur les notes contenant des liens d'annotation.")
+      .addToggle((t) => t.setValue(s.nettoyerNotesOrphelines).onChange(async (v) => { s.nettoyerNotesOrphelines = v; await maj(); }));
+
+    this._section(c, 'Graphe');
+    new obsidian.Setting(c)
+      .setName('Taguer les annotations non citées')
+      .setDesc('Ajoute un tag aux annotations à zéro appel, pour les colorer dans le graphe.')
+      .addToggle((t) => t.setValue(s.marquerOrphelines).onChange(async (v) => {
+        s.marquerOrphelines = v;
+        await maj();
+        if (v) this.plugin.synchroniserTagsOrphelines();
+        else this.plugin.retirerTousTagsOrphelines();
+      }));
+    new obsidian.Setting(c)
+      .setName('Nom du tag « orpheline »')
+      .setDesc('Sans le #. Utilisez « tag:#' + (s.tagOrpheline || 'orphelin') + ' » dans un groupe du graphe.')
+      .addText((t) => t.setValue(s.tagOrpheline).onChange(async (v) => { s.tagOrpheline = v.trim().replace(/^#/, '') || 'orphelin'; await maj(); }));
+  }
+
+  ongletTemps(c, s, maj) {
+    this._aide(c, "Le compteur mesure le temps passé dans une note ouverte en édition. Il se met en pause dès que le clavier et la souris se taisent, ou que la fenêtre perd le focus : il compte donc le travail effectif, non la présence devant l'écran. Le total est inscrit en minutes dans une propriété de la note.");
+
+    new obsidian.Setting(c)
+      .setName('Activer le compteur')
+      .addToggle((t) => t.setValue(s.tempsActif !== false).onChange(async (v) => { s.tempsActif = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Propriété où inscrire le total')
+      .setDesc('En minutes, dans le frontmatter de chaque note.')
+      .addText((t) => t.setValue(s.tempsPropriete || 'temps-passe').onChange(async (v) => { s.tempsPropriete = v.trim() || 'temps-passe'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName("Pause après ce silence")
+      .setDesc("En secondes, sans clavier ni souris. 120 convient à la rédaction, où l'on s'arrête pour réfléchir ; 30 ne compte que la frappe.")
+      .addText((t) => t.setValue(String(s.tempsInactiviteSec || 120)).onChange(async (v) => { s.tempsInactiviteSec = Math.max(10, parseInt(v, 10) || 120); await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Écrire dans la note au plus tous les')
+      .setDesc("En secondes. Espacer les écritures évite d'agiter la synchronisation ; le temps en attente n'est jamais perdu, il est reporté en quittant la note.")
+      .addText((t) => t.setValue(String(s.tempsEcritureSec || 300)).onChange(async (v) => { s.tempsEcritureSec = Math.max(60, parseInt(v, 10) || 300); await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Ignorer les notes verrouillées')
+      .setDesc("Les notes portant « locked: true » ne sont pas chronométrées.")
+      .addToggle((t) => t.setValue(s.tempsIgnorerVerrouillees !== false).onChange(async (v) => { s.tempsIgnorerVerrouillees = v; await maj(); }));
+
+    this._section(c, 'Affichage');
+    new obsidian.Setting(c)
+      .setName("Barre d'état")
+      .setDesc("Temps de la note en cours. Le point est plein quand le compteur tourne, vide en pause. Un clic ouvre le journal du jour.")
+      .addToggle((t) => t.setValue(s.tempsBarreEtat !== false).onChange(async (v) => { s.tempsBarreEtat = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName("Infobulle dans l'explorateur")
+      .addToggle((t) => t.setValue(s.tempsInfobulleExplorateur !== false).onChange(async (v) => { s.tempsInfobulleExplorateur = v; await maj(); }));
+
+    this._section(c, 'Journal quotidien');
+    new obsidian.Setting(c)
+      .setName('Dossier du journal')
+      .addText((t) => t.setValue(s.tempsDossierJournal || '').onChange(async (v) => { s.tempsDossierJournal = v.trim() || '9 - Journal du temps'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Écrire le journal automatiquement')
+      .setDesc('Au changement de jour, la veille est consignée.')
+      .addToggle((t) => t.setValue(s.tempsJournalAuto !== false).onChange(async (v) => { s.tempsJournalAuto = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Conserver le relevé quotidien')
+      .setDesc("En jours. Ce relevé sert au journal ; passé ce délai il est effacé des réglages, les totaux inscrits dans les notes demeurent.")
+      .addText((t) => t.setValue(String(s.tempsRetenirJours || 120)).onChange(async (v) => { s.tempsRetenirJours = Math.max(7, parseInt(v, 10) || 120); await maj(); }));
+  }
+
+  ongletSchemas(c, s, maj) {
+    this._section(c, 'Vocabulaire des schémas');
+    this._aide(c, "Les étiquettes admises sur vos schémas. Une liste vide n'impose rien. Un terme par ligne.");
+    new obsidian.Setting(c)
+      .setName('Relations admises')
+      .setDesc("Étiquettes portées par les flèches, ex. « précède », « contredit ».")
+      .addTextArea((t) => {
+        t.inputEl.rows = 4;
+        t.setValue((s.cartesRelations || []).join('\n'));
+        t.onChange(async (v) => { s.cartesRelations = v.split('\n').map((x) => x.trim()).filter(Boolean); await maj(); });
+      });
+    new obsidian.Setting(c)
+      .setName('Types de blocs admis')
+      .setDesc('Étiquettes portées par les formes, ex. « concept », « acteur ».')
+      .addTextArea((t) => {
+        t.inputEl.rows = 4;
+        t.setValue((s.cartesTypesBlocs || []).join('\n'));
+        t.onChange(async (v) => { s.cartesTypesBlocs = v.split('\n').map((x) => x.trim()).filter(Boolean); await maj(); });
+      });
+    new obsidian.Setting(c)
+      .setName('Vocabulaire strict')
+      .setDesc("Signale en erreur toute étiquette hors des listes ci-dessus. Sans cela, elles sont seulement signalées comme inconnues.")
+      .addToggle((t) => t.setValue(!!s.cartesStrict).onChange(async (v) => { s.cartesStrict = v; await maj(); }));
+
+    this._aide(c, 'Schémas draw.io (.drawio.svg) et notes associées. L’éditeur lui-même est fourni par le plugin Ariane-graph.');
+
+    new obsidian.Setting(c)
+      .setName('Recopier le contenu dans la note')
+      .setDesc('Entretient un encart « Contenu du schéma » dans la note associée, ce qui rend les blocs et relations cherchables.')
+      .addToggle((t) => t.setValue(s.schemaSyncAuto !== false).onChange(async (v) => { s.schemaSyncAuto = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Étiquettes implicites')
+      .setDesc('Quand plusieurs flèches partent d’un même bloc et qu’une seule porte une étiquette, elle vaut pour tout le faisceau. Sans effet si deux étiquettes différentes coexistent.')
+      .addToggle((t) => t.setValue(s.schemaPropagerEtiquettes !== false).onChange(async (v) => { s.schemaPropagerEtiquettes = v; await maj(); }));
+
+    this._section(c, 'Export SVG');
+    new obsidian.Setting(c)
+      .setName('Police')
+      .addText((t) => t.setValue(s.cartesSvgPolice || 'Helvetica').onChange(async (v) => { s.cartesSvgPolice = v.trim() || 'Helvetica'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Corps (pt)')
+      .addText((t) => t.setValue(String(s.cartesSvgTaille || 10)).onChange(async (v) => { s.cartesSvgTaille = Number(v) || 10; await maj(); }));
+  }
+
+  ongletSuggestions(c, s, maj) {
+    const rafraichir = () => this.plugin.majSuggestions(false, true);
+    const reindexer = () => { this.plugin.invaliderIndexSuggestions(); this.plugin.majSuggestions(false, true); };
+
+    this._section(c, "Suggestions dynamiques d'annotations");
+    this._aide(c, "Un panneau latéral propose, au fil de ce que vous écrivez, les notes les plus proches. Tout est local, gratuit et hors-ligne. Ouvrez-le via l'icône ✦ du ruban ou la commande dédiée.");
+    new obsidian.Setting(c)
+      .setName('Activer les suggestions')
+      .addToggle((t) => t.setValue(s.suggActif).onChange(async (v) => { s.suggActif = v; await maj(); rafraichir(); }));
+    new obsidian.Setting(c)
+      .setName('Suggestions par argument (clic droit)')
+      .setDesc('Où afficher les suggestions déclenchées par clic droit sur une sélection.')
+      .addDropdown((d) => d.addOption('panneau', 'Panneau latéral (ancré)').addOption('flottant', 'Fenêtre flottante')
+        .setValue(s.suggArgAffichage || 'panneau').onChange(async (v) => { s.suggArgAffichage = v; await maj(); }));
+    this._aide(c, "Les dossiers puisés par les suggestions, leur couleur et leur icône se règlent famille par famille — onglet « Dossiers & familles », case « Suggestions ».")
+    new obsidian.Setting(c)
+      .setName('Nombre de suggestions')
+      .addSlider((sl) => sl.setLimits(3, 20, 1).setValue(s.suggK).setDynamicTooltip().onChange(async (v) => { s.suggK = v; await maj(); rafraichir(); }));
+    new obsidian.Setting(c)
+      .setName('Seuil de pertinence')
+      .setDesc('Score final minimal (en %) pour qu\'une note soit proposée. Plus haut = plus sélectif.')
+      .addSlider((sl) => sl.setLimits(1, 60, 1).setValue(Math.round((s.suggSeuil || 0.18) * 100)).setDynamicTooltip().onChange(async (v) => { s.suggSeuil = v / 100; await maj(); rafraichir(); }));
+    new obsidian.Setting(c)
+      .setName('Délai avant recalcul (ms)')
+      .setDesc('Temps d’inactivité dans la frappe avant de rafraîchir.')
+      .addText((t) => t.setValue(String(s.suggAntirebond)).onChange(async (v) => { const n = parseInt(v, 10); s.suggAntirebond = Number.isFinite(n) && n >= 100 ? n : 900; await maj(); }));
+
+    this._section(c, 'Moteur de pertinence');
+    this._aide(c, "Lexical : mots en commun (aucune dépendance). Sémantique : comprend le sens via des embeddings locaux (Ollama). Hybride : combine les deux (recommandé). En l'absence d'Ollama, le moteur bascule automatiquement sur le lexical.");
+    new obsidian.Setting(c)
+      .setName('Moteur')
+      .addDropdown((d) => d
+        .addOption('lexical', 'Lexical (mots)')
+        .addOption('semantique', 'Sémantique (embeddings)')
+        .addOption('hybride', 'Hybride (recommandé)')
+        .setValue(s.suggMoteur || 'hybride')
+        .onChange(async (v) => { s.suggMoteur = v; await maj(); reindexer(); this.display(); }));
+    if (s.suggMoteur === 'hybride') {
+      new obsidian.Setting(c)
+        .setName('Poids du sémantique')
+        .setDesc('Part du score sémantique dans l’hybride (le reste est lexical).')
+        .addSlider((sl) => sl.setLimits(0, 100, 5).setValue(Math.round((s.suggPoidsSemantique || 0.7) * 100)).setDynamicTooltip().onChange(async (v) => { s.suggPoidsSemantique = v / 100; await maj(); rafraichir(); }));
+    }
+
+    if (s.suggMoteur === 'semantique' || s.suggMoteur === 'hybride') {
+      // ---- Le service d'inférence, quel qu'il soit. Ollama était nommé
+      // partout, jusque dans les titres ; il n'est plus qu'un choix parmi deux.
+      const lm = (s.suggFournisseur || 'ollama') === 'lmstudio';
+      const nomService = lm ? 'LM Studio' : 'Ollama';
+      this._section(c, "Service d'inférence local");
+      this._aide(c, lm
+        ? "LM Studio, par son API compatible OpenAI. Chargez un modèle d'embeddings et un modèle de langue dans l'onglet « Developer », serveur démarré. Identifiants tels que LM Studio les affiche, par exemple « text-embedding-bge-m3-latest »."
+        : "Ollama. Dans un terminal : « ollama pull bge-m3 » pour les embeddings, « ollama pull llama3.2 » pour le reclassement. Modèle conseillé en français : bge-m3, multilingue ; plus léger : nomic-embed-text.");
+      new obsidian.Setting(c)
+        .setName('Service')
+        .setDesc("Changer de service réencode l'index : les vecteurs de deux modèles ne se comparent pas.")
+        .addDropdown((d) => d
+          .addOption('ollama', 'Ollama')
+          .addOption('lmstudio', 'LM Studio')
+          .setValue(s.suggFournisseur || 'ollama')
+          .onChange(async (v) => { s.suggFournisseur = v; await maj(); this.display(); }));
+      new obsidian.Setting(c)
+        .setName('Adresse')
+        .setDesc('Propre à cette machine : jamais reprise dans un profil exporté.')
+        .addText((t) => t
+          .setPlaceholder(lm ? 'http://localhost:1234' : 'http://localhost:11434')
+          .setValue((lm ? s.suggLmStudioUrl : s.suggOllamaUrl) || '')
+          .onChange(async (v) => {
+            const url = v.trim() || (lm ? 'http://localhost:1234' : 'http://localhost:11434');
+            if (lm) s.suggLmStudioUrl = url; else s.suggOllamaUrl = url;
+            await maj();
+          }));
+      new obsidian.Setting(c)
+        .setName("Modèle d'embeddings")
+        .setDesc("Sert à mesurer la proximité de sens entre vos notes.")
+        .addText((t) => t.setValue(s.suggModeleEmbed).onChange(async (v) => { s.suggModeleEmbed = v.trim() || 'bge-m3'; await maj(); reindexer(); }))
+        .addButton((b) => b.setButtonText('Tester').onClick(async () => {
+          new obsidian.Notice('Test en cours…');
+          const ok = await this.plugin.testerEncodage();
+          new obsidian.Notice(ok
+            ? nomService + ' répond : encodage disponible.'
+            : 'Échec : ' + nomService + ' injoignable, ou modèle « ' + (s.suggModeleEmbed || 'bge-m3') + ' » absent.');
+        }));
+
+      this._section(c, 'Reclassement par modèle de langue');
+      this._aide(c, "Un modèle de langue relit les meilleurs candidats et les remet en ordre. C'est de loin le poste le plus lourd du greffon : il ne part que sur demande, par le bouton ✨ du panneau.");
+      new obsidian.Setting(c)
+        .setName('Activer le reclassement')
+        .addToggle((t) => t.setValue(s.suggRerank).onChange(async (v) => { s.suggRerank = v; await maj(); this.display(); }));
+      if (s.suggRerank) {
+        new obsidian.Setting(c)
+          .setName('Modèle de langue')
+          .addText((t) => t.setValue(s.suggModeleLLM).onChange(async (v) => { s.suggModeleLLM = v.trim() || 'llama3.2'; await maj(); }))
+          .addButton((b) => b.setButtonText('Tester').onClick(async () => {
+            new obsidian.Notice('Test du modèle…');
+            const ok = await this.plugin.testerLLM();
+            new obsidian.Notice(ok
+              ? 'Le modèle répond : le reclassement est disponible.'
+              : 'Échec : modèle « ' + (s.suggModeleLLM || 'llama3.2') + ' » injoignable sur ' + nomService + '.');
+          }));
+        new obsidian.Setting(c)
+          .setName('Reclasser automatiquement')
+          .setDesc("Déconseillé. Activé, le modèle repart à chaque changement de note — c'est ce qui faisait tourner la ventilation sans répit.")
+          .addToggle((t) => t.setValue(s.suggRerankAuto === true).onChange(async (v) => { s.suggRerankAuto = v; await maj(); }));
+        new obsidian.Setting(c)
+          .setName('Candidats soumis')
+          .setDesc('Nombre de meilleurs candidats relus par le modèle.')
+          .addSlider((sl) => sl.setLimits(5, 30, 1).setValue(s.suggRerankTopN || 12).setDynamicTooltip().onChange(async (v) => { s.suggRerankTopN = v; await maj(); }));
+        new obsidian.Setting(c)
+          .setName('Afficher la justification')
+          .setDesc("Une phrase expliquant pourquoi chaque note est proposée. Sans elle, le reclassement est un peu plus rapide.")
+          .addToggle((t) => t.setValue(s.suggRerankJustif !== false).onChange(async (v) => { s.suggRerankJustif = v; await maj(); this.plugin.majSuggestions(false, true); }));
+
+        this._aide(c, "Garde-fous. Sans borne de longueur, un modèle qui ne referme pas sa réponse peut tourner plusieurs minutes à pleine charge : c'est arrivé, et mesuré.");
+        new obsidian.Setting(c)
+          .setName('Longueur maximale de la réponse')
+          .setDesc('En jetons.')
+          .addText((t) => t.setValue(String(s.suggRerankJetons || 400)).onChange(async (v) => { s.suggRerankJetons = Math.max(60, parseInt(v, 10) || 400); await maj(); }));
+        new obsidian.Setting(c)
+          .setName('Délai maximal')
+          .setDesc("En secondes. Au-delà, Ariane rend la main et garde le classement sans le modèle.")
+          .addText((t) => t.setValue(String(s.suggRerankDelaiSec || 45)).onChange(async (v) => { s.suggRerankDelaiSec = Math.max(5, parseInt(v, 10) || 45); await maj(); }));
+      }
+    }
+
+    this._section(c, 'Maintenance');
+    new obsidian.Setting(c)
+      .setName("Reconstruire l'index maintenant")
+      .setDesc('Réindexe les dossiers candidats et réencode si nécessaire.')
+      .addButton((b) => b.setButtonText('Reconstruire').onClick(async () => {
+        const n = await this.plugin.construireIndexSuggestions();
+        new obsidian.Notice('Index reconstruit (' + n + ' notes).');
+        this.plugin.majSuggestions(false, true);
+      }));
+  }
+
+  ongletContenu(c, s, maj) {
+    this._aide(c, 'Variables : {{title}}, {{titleLink}} (titre cliquable vers l’annotation dans le PDF), {{annotationUrl}}, {{key}}, {{paraphrase}}, {{image}}, {{citation}}, {{highlight}}, {{source}}, {{page}}, {{pageLine}}, {{references}}, {{referenceLinks}}, {{sourceName}}.');
+    new obsidian.Setting(c)
+      .setName('Modèle de corps de note')
+      .addTextArea((t) => {
+        t.setValue(s.modeleNote).onChange(async (v) => { s.modeleNote = v; await maj(); });
+        t.inputEl.rows = 6;
+        t.inputEl.style.width = '100%';
+        t.inputEl.style.fontFamily = 'monospace';
+      });
+    new obsidian.Setting(c)
+      .setName('Inclure le texte surligné (citation)')
+      .setDesc('Intègre le surlignage via {{citation}} (encadré) ou {{highlight}} (brut).')
+      .addToggle((t) => t.setValue(s.inclureCitation).onChange(async (v) => { s.inclureCitation = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName("Type d'encadré de citation")
+      .setDesc('Callout pour {{citation}} : quote, cite, note, info…')
+      .addText((t) => t.setValue(s.calloutCitation).onChange(async (v) => { s.calloutCitation = v.trim() || 'quote'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Libellé des références')
+      .addText((t) => t.setValue(s.labelReferences).onChange(async (v) => { s.labelReferences = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Libellé de la page')
+      .addText((t) => t.setValue(s.labelPage).onChange(async (v) => { s.labelPage = v; await maj(); }));
+  }
+
+  ongletReferences(c, s, maj) {
+    new obsidian.Setting(c)
+      .setName('Référence par défaut = source')
+      .setDesc('Si une annotation ne cite aucune référence, utilise sa source Zotero.')
+      .addToggle((t) => t.setValue(s.referenceParDefautSource).onChange(async (v) => { s.referenceParDefautSource = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Rattachement aux sources Zotero')
+      .setDesc('Relie les références en attente aux fiches Zotero par auteurs + année. Les correspondances certaines (un seul appariement possible) sont toujours rattachées sans rien demander ; ce réglage ne concerne que les cas ambigus.')
+      .addDropdown((d) => {
+        d.addOption('desactive', 'Désactivé');
+        d.addOption('certain', 'Certaines seulement, ignorer les ambiguës');
+        d.addOption('ia', 'Trancher les ambiguës par le modèle local');
+        d.addOption('manuel', 'Me demander pour les ambiguës');
+        const v = s.rattachementZotero === false ? 'desactive'
+          : (s.rattachementIA !== false ? 'ia'
+            : (s.validationRattachement ? 'manuel' : 'certain'));
+        d.setValue(v);
+        d.onChange(async (val) => {
+          s.rattachementZotero = val !== 'desactive';
+          s.rattachementAutoCertain = true;
+          s.rattachementIA = val === 'ia';
+          s.validationRattachement = val === 'manuel';
+          await maj();
+        });
+      });
+    new obsidian.Setting(c)
+      .setName('Oublier les décisions enregistrées')
+      .setDesc('Une décision prise sur un couple référence/fiche n’est jamais reposée. Ce bouton remet le compteur à zéro (' + Object.keys(s.rattachementsDecides || {}).length + ' décision(s) en mémoire).')
+      .addButton((b) => b.setButtonText('Oublier').onClick(async () => {
+        s.rattachementsDecides = {};
+        await maj();
+        new obsidian.Notice('Décisions de rattachement oubliées.');
+        this.display();
+      }));
+    new obsidian.Setting(c)
+      .setName('Fiches auteurs')
+      .setDesc('Maintient une note par auteur pointant vers ses sources.')
+      .addToggle((t) => t.setValue(s.liensAuteurs).onChange(async (v) => { s.liensAuteurs = v; await maj(); }));
+
+    new obsidian.Setting(c)
+      .setName('Dossier des auteurs')
+      .addText((t) => t.setValue(s.dossierAuteurs).onChange(async (v) => { s.dossierAuteurs = v.trim() || 'Auteurs'; await maj(); }));
+    this._section(c, 'Bibliographies citées (API)');
+    this._aide(c, "Récupère la bibliographie d'une source via Crossref/OpenAlex (commandes « Confirmer les références en attente » et « Générer la bibliographie citée »).");
+    new obsidian.Setting(c)
+      .setName('Activer la récupération via API')
+      .addToggle((t) => t.setValue(s.apiReferencesCitees).onChange(async (v) => { s.apiReferencesCitees = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Source des données')
+      .setDesc('« auto » = Crossref puis OpenAlex. OpenAlex couvre mieux, Crossref est plus direct.')
+      .addDropdown((d) => d
+        .addOption('auto', 'Auto (Crossref puis OpenAlex)')
+        .addOption('crossref', 'Crossref')
+        .addOption('openalex', 'OpenAlex')
+        .setValue(s.apiSource || 'auto')
+        .onChange(async (v) => { s.apiSource = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Email (pool poli)')
+      .setDesc('Recommandé : de meilleures limites de débit avec un email.')
+      .addText((t) => t.setPlaceholder('vous@exemple.fr').setValue(s.apiEmail || '').onChange(async (v) => { s.apiEmail = v.trim(); await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Dossier des bibliographies')
+      .addText((t) => t.setValue(s.dossierBibliographies || '').onChange(async (v) => { s.dossierBibliographies = v.trim() || '6 - Bibliographies citées'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Préfixe des notes de bibliographie')
+      .setDesc("Ajouté devant le nom de la source (ex. « Biblio - @cle »). Peut être vide.")
+      .addText((t) => t.setValue(s.prefixeBibliographie || '').onChange(async (v) => { s.prefixeBibliographie = v; await maj(); }));
+
+    new obsidian.Setting(c)
+      .setName('Dossier des références citées')
+      .addText((t) => t.setValue(s.dossierReferences).onChange(async (v) => { s.dossierReferences = v.trim() || 'Références citées'; await maj(); }));
+  }
+
+  ongletExport(c, s, maj) {
+    this._aide(c, 'Exporte la note active en .docx où chaque note de bas de page devient une citation Zotero vivante (via Pandoc + filtre BetterBibTeX). Zotero doit tourner ; pandoc doit être installé (brew install pandoc). Commande : « Exporter en Word avec citations Zotero (Pandoc) ».');
+
+    new obsidian.Setting(c).setName('Moteur').setHeading();
+    new obsidian.Setting(c)
+      .setName('Chemin de pandoc')
+      .addText((t) => t.setValue(s.exportPandocBin).onChange(async (v) => { s.exportPandocBin = v.trim() || 'pandoc'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Filtre Lua (BetterBibTeX)')
+      .setDesc('pandoc-zotero-live-citemarkers.lua avec ses dépendances.')
+      .addText((t) => t.setValue(s.exportFiltreLua).onChange(async (v) => { s.exportFiltreLua = v.trim(); await maj(); }));
+
+    new obsidian.Setting(c).setName('Mise en page (modèle Word)').setHeading();
+    new obsidian.Setting(c)
+      .setName('Modèle Word (styles)')
+      .setDesc('.docx dont les styles seront appliqués (titres, corps, citation, etc.).')
+      .addText((t) => t.setValue(s.exportModeleWord || '').onChange(async (v) => { s.exportModeleWord = v.trim(); await maj(); }))
+      .addButton((b) => b.setButtonText('Voir les styles').onClick(() => this.plugin.listerStylesModele()));
+    this._aide(c, 'Associez chaque niveau markdown à un nom de style de votre modèle (laisser vide = style pandoc par défaut).');
+    s.exportMapStyles = s.exportMapStyles || { Heading1: '', Heading2: '', Heading3: '', Heading4: '', BodyText: 'Corps de texte', BlockText: 'Citation intense', Compact: 'Corps de texte' };
+    for (const [cle, lbl] of [['Heading1', 'Titre 1  (#)'], ['Heading2', 'Titre 2  (##)'], ['Heading3', 'Titre 3  (###)'], ['Heading4', 'Titre 4  (####)'], ['BodyText', 'Corps de texte'], ['BlockText', 'Citation  (>)']]) {
+      new obsidian.Setting(c)
+        .setName(lbl)
+        .addText((t) => t.setValue(s.exportMapStyles[cle] || '').onChange(async (v) => { s.exportMapStyles[cle] = v.trim(); await maj(); }));
+    }
+
+    new obsidian.Setting(c).setName('Références citées (apparat « cité dans »)').setHeading();
+    this._aide(c, "Quand une annotation cite une référence absente de Zotero, la citation prend la forme : « Auteurs, année<texte ci-dessous>Source, p. XX ». Si la référence citée existe dans Zotero, elle est citée directement.");
+    new obsidian.Setting(c)
+      .setName('Espaces insécables')
+      .setDesc("Rend insécables les espaces déjà présentes devant « ; », « : », « ! », « ? » et « » », et après « « ». Aucune espace n'est ajoutée : les adresses, les heures et les grappes de citation restent intactes.")
+      .addToggle((t) => t.setValue(s.exportInsecables !== false).onChange(async (v) => { s.exportInsecables = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName("Apparat « cité dans » à l'export")
+      .setDesc("Activé, un travail rapporté mais absent de Zotero est cité sous la forme « Fan et al., 2022, cité dans Raizada & Sinha, 2025, p. 1 ». Désactivé, seule la source réellement consultée est citée. Sans effet sur les travaux présents dans Zotero, toujours cités directement.")
+      .addToggle((t) => t.setValue(s.exportCiteDansActif !== false).onChange(async (v) => { s.exportCiteDansActif = v; await maj(); }));
+    this._section(c, 'Mise en forme du document');
+    new obsidian.Setting(c)
+      .setName('Décaler les titres d’un cran')
+      .setDesc("« # » est le titre du document, pas une partie : « ## » devient donc Titre 1 dans Word.")
+      .addToggle((t) => t.setValue(s.exportDecalerTitres !== false).onChange(async (v) => { s.exportDecalerTitres = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Retirer la numérotation saisie à la main')
+      .setDesc("« 2.1 Titre » devient « Titre » : Word numérote seul.")
+      .addToggle((t) => t.setValue(s.exportRetirerNumerotation !== false).onChange(async (v) => { s.exportRetirerNumerotation = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Rattacher les en-têtes du modèle')
+      .setDesc("Pandoc écrit sa propre section et laisse les en-têtes orphelins. Désactiver ne se justifie qu'en cas de difficulté.")
+      .addToggle((t) => t.setValue(s.exportEntetes !== false).onChange(async (v) => { s.exportEntetes = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Retirer les crochets des propriétés')
+      .setDesc("Une propriété « [[Chabane Mazri]] » sort « Chabane Mazri ». Vaut pour les liens simples, les liens à alias et les liens markdown.")
+      .addToggle((t) => t.setValue(s.exportNettoyerLiens !== false).onChange(async (v) => { s.exportNettoyerLiens = v; await maj(); }));
+
+    this._section(c, 'Styles du modèle employés');
+    this._aide(c, "Noms de styles tels qu'ils figurent dans votre modèle Word. Ariane les résout en identifiants — « Corps de texte » se range sous « Corpsdetexte ».");
+    const style = (nom, cle, defaut, desc) => new obsidian.Setting(c)
+      .setName(nom).setDesc(desc || '')
+      .addText((t) => t.setPlaceholder(defaut).setValue(s[cle] || '')
+        .onChange(async (v) => { s[cle] = v.trim() || defaut; await maj(); }));
+    style('Encadrés', 'exportStyleEncadre', 'Items de réflexion', "Style du contenu des mises en avant « > [!info] ».");
+    style('En-tête de tableau', 'exportStyleEnteteTableau', 'Titre de tableau', "Première ligne des tableaux markdown.");
+    style('Cellule de tableau', 'exportStyleCelluleTableau', 'Champ de tableau', "Lignes suivantes.");
+
+    this._section(c, 'Référence de la note');
+    this._aide(c, "Le jeton {{réf}} de votre modèle. Ariane cherche les propriétés ci-dessous, dans l'ordre, accents et majuscules indifférents.");
+    new obsidian.Setting(c)
+      .setName('Propriétés à consulter')
+      .setDesc('Séparées par des virgules.')
+      .addText((t) => t.setPlaceholder('ref, reference, réf').setValue(s.exportProprieteReference || '')
+        .onChange(async (v) => { s.exportProprieteReference = v.trim() || 'ref'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('À défaut, le nom du fichier')
+      .setDesc("Vos notes s'appellent « NP-260826-07 » ou « CR-260826-07 » : le nom fait alors référence. Désactivé, le champ reste vide si aucune propriété n'est trouvée.")
+      .addToggle((t) => t.setValue(s.exportRefDepuisNom !== false).onChange(async (v) => { s.exportRefDepuisNom = v; await maj(); }));
+
+    this._aide(c, "Le texte de liaison — « , cité dans » — se règle une seule fois, dans l'onglet « Citations & bibliographie ». Il vaut pour les citations en ligne comme pour l'export.");
+
+    new obsidian.Setting(c).setName('Sortie').setHeading();
+    new obsidian.Setting(c)
+      .setName('Dossier de sortie')
+      .addText((t) => t.setValue(s.exportDossier).onChange(async (v) => { s.exportDossier = v.trim() || '5 - Livrables'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Emplacement de bibliographie')
+      .setDesc('Ajoute un titre « Bibliographie » où insérer la bibliographie dans Word (Zotero > Add Bibliography).')
+      .addToggle((t) => t.setValue(s.exportBibliographie !== false).onChange(async (v) => { s.exportBibliographie = v; await maj(); }));
+  }
+
+
+  ongletAvance(c, s, maj) {
+    this._section(c, 'Analyse (expressions régulières)', "À ne modifier qu'en connaissance de cause.");
+    new obsidian.Setting(c)
+      .setName('Marqueur de source')
+      .setDesc('Chaîne détectant une note source à traiter.')
+      .addText((t) => t.setValue(s.marqueurSource).onChange(async (v) => { s.marqueurSource = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Regex de bloc')
+      .setDesc('Groupe 1 = clé stable, groupe 2 = contenu.')
+      .addText((t) => t.setValue(s.blocRegex).onChange(async (v) => { s.blocRegex = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Regex de page')
+      .addText((t) => t.setValue(s.pageRegex).onChange(async (v) => { s.pageRegex = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName("Regex d'image")
+      .addText((t) => t.setValue(s.imageRegex).onChange(async (v) => { s.imageRegex = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Retirer les parenthèses des références')
+      .addToggle((t) => t.setValue(s.retirerParentheses).onChange(async (v) => { s.retirerParentheses = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName('Séparateur de citations')
+      .addText((t) => t.setValue(s.separateurCitations).onChange(async (v) => { s.separateurCitations = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName("Séparateur d'auteurs (regex)")
+      .addText((t) => t.setValue(s.separateurAuteurs).onChange(async (v) => { s.separateurAuteurs = v; await maj(); }));
+
+    this._section(c, 'Notes de référence provisoires');
+    new obsidian.Setting(c)
+      .setName('Modèle')
+      .setDesc('Variables : {{authorLinks}}, {{name}}, {{year}}, {{firstAuthor}}.')
+      .addTextArea((t) => {
+        t.setValue(s.modeleReference).onChange(async (v) => { s.modeleReference = v; await maj(); });
+        t.inputEl.rows = 4;
+        t.inputEl.style.width = '100%';
+        t.inputEl.style.fontFamily = 'monospace';
+      });
+
+    this._section(c, 'Profils de standard');
+    this._aide(c, 'Liste JSON. Pour chaque bloc, le premier profil dont « titreRegex » correspond est retenu.');
+    let profilsErreur;
+    new obsidian.Setting(c)
+      .setName('Profils (JSON)')
+      .addTextArea((t) => {
+        t.setValue(JSON.stringify(s.profils, null, 2)).onChange(async (v) => {
+          try {
+            const p = JSON.parse(v);
+            if (Array.isArray(p) && p.length > 0) {
+              s.profils = p;
+              if (profilsErreur) profilsErreur.setText('');
+              await maj();
+            } else if (profilsErreur) {
+              profilsErreur.setText('Le JSON doit être un tableau non vide.');
+            }
+          } catch (e) {
+            if (profilsErreur) profilsErreur.setText('JSON invalide : ' + e.message);
+          }
+        });
+        t.inputEl.rows = 8;
+        t.inputEl.style.width = '100%';
+        t.inputEl.style.fontFamily = 'monospace';
+      });
+    profilsErreur = c.createEl('div', { text: '', cls: 'setting-item-description' });
+    profilsErreur.style.color = 'var(--text-error)';
+  }
+}
+
+/* =========================================================================
+ * Fenêtre de confirmation d'un rattachement (anti-homonymie)
+ * ========================================================================= */
+
+class ConfirmationRattachement extends obsidian.Modal {
+  constructor(app, texte, onChoix) {
+    super(app);
+    this.texte = texte;
+    this.onChoix = onChoix;
+    this.repondu = false;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl('h3', { text: 'Ariane — rattachement' });
+    contentEl.createEl('p', { text: this.texte });
+    const row = contentEl.createDiv();
+    row.style.display = 'flex';
+    row.style.gap = '8px';
+    row.style.justifyContent = 'flex-end';
+    row.style.marginTop = '14px';
+    const non = row.createEl('button', { text: 'Ignorer' });
+    non.addEventListener('click', () => this.repondre(false));
+    const oui = row.createEl('button', { text: 'Confirmer' });
+    oui.addClass('mod-cta');
+    oui.addEventListener('click', () => this.repondre(true));
+  }
+  repondre(v) {
+    if (this.repondu) return;
+    this.repondu = true;
+    this.close();
+    this.onChoix(v);
+  }
+  onClose() {
+    this.contentEl.empty();
+    if (!this.repondu) {
+      this.repondu = true;
+      this.onChoix(false);
+    }
+  }
+}
+
+// Fenêtre de choix de la fiche Zotero pour une référence suffixée (2005a/b).
+class ChoixSourceModal extends obsidian.Modal {
+  constructor(app, refNom, candidats, onChoix) {
+    super(app);
+    this.refNom = refNom;
+    this.candidats = candidats;
+    this.onChoix = onChoix;
+    this.repondu = false;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl('h3', { text: 'Ariane — lier « ' + this.refNom + ' »' });
+    contentEl.createEl('p', { text: 'Choisissez la fiche Zotero correspondante :' });
+    for (const c of this.candidats) {
+      const etiquette = c.basename +
+        (c.creatorsFull && c.creatorsFull.length ? '  —  ' + c.creatorsFull.join(', ') : '') +
+        (c.titre ? '  —  ' + c.titre : '');
+      const b = contentEl.createEl('button', { text: etiquette });
+      b.style.display = 'block';
+      b.style.width = '100%';
+      b.style.textAlign = 'left';
+      b.style.marginBottom = '6px';
+      b.addEventListener('click', () => this.choisir(c.basename));
+    }
+    const row = contentEl.createDiv();
+    row.style.textAlign = 'right';
+    row.style.marginTop = '10px';
+    const annuler = row.createEl('button', { text: 'Annuler' });
+    annuler.addEventListener('click', () => this.choisir(null));
+  }
+  choisir(v) {
+    if (this.repondu) return;
+    this.repondu = true;
+    this.close();
+    this.onChoix(v);
+  }
+  onClose() {
+    this.contentEl.empty();
+    if (!this.repondu) {
+      this.repondu = true;
+      this.onChoix(null);
+    }
+  }
+}
+
+/* ---------------- Vue latérale : Suggestions ZotFlow ------------------- */
+class VueSuggestionsZotflow extends obsidian.ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+  getViewType() { return 'zfa-suggestions'; }
+  getDisplayText() { return 'Suggestions (Ariane)'; }
+  getIcon() { return 'sparkles'; }
+
+  async onOpen() {
+    const c = this.contentEl;
+    c.empty();
+    c.addClass('zfa-sugg');
+    const entete = c.createDiv({ cls: 'zfa-sugg-entete' });
+    entete.createSpan({ cls: 'zfa-sugg-titre', text: 'Suggestions' });
+    const rafr = entete.createEl('button', { cls: 'zfa-sugg-refresh', text: '⟳' });
+    rafr.setAttribute('aria-label', 'Rafraîchir les suggestions (sans modèle de langue)');
+    rafr.onclick = () => this.plugin.majSuggestions(false, true);
+    // Le reclassement par modèle de langue est le poste le plus lourd de tout
+    // le greffon. Il ne part plus tout seul : il attend ce bouton.
+    this.affiner = entete.createEl('button', { cls: 'zfa-sugg-refresh', text: '✨' });
+    this.affiner.setAttribute('aria-label', 'Affiner par le modèle de langue');
+    this.affiner.onclick = () => this.plugin.majSuggestions(true, true);
+    this.pause = entete.createEl('button', { cls: 'zfa-sugg-refresh' });
+    this.majBoutonPause();
+    this.pause.onclick = async () => {
+      this.plugin.settings.suggActif = !this.plugin.settings.suggActif;
+      await this.plugin.saveSettings();
+      this.majBoutonPause();
+      this.plugin.majSuggestions(false, true);
+    };
+    this.filtres = c.createDiv({ cls: 'zfa-sugg-filtres' });
+    this.construireFiltres();
+    this.info = c.createDiv({ cls: 'zfa-sugg-info' });
+    this.ancre = c.createDiv({ cls: 'zfa-sugg-ancre' }); this.ancre.style.display = 'none';
+    this.barre = null;
+    this.barreJauge = null;
+    this.liste = c.createDiv({ cls: 'zfa-sugg-liste' });
+    // À l'ouverture, la vue n'a pas encore ses dimensions : on passe outre le
+    // test de visibilité, mais sans lancer le modèle de langue.
+    this.plugin.majSuggestions(false, true);
+  }
+
+  majBoutonPause() {
+    if (!this.pause) return;
+    const actif = this.plugin.settings.suggActif;
+    this.pause.setText(actif ? '⏸' : '▶');
+    this.pause.setAttribute('aria-label',
+      actif ? 'Suspendre les suggestions' : 'Reprendre les suggestions');
+  }
+
+  // Cases à cocher : un type de note par dossier candidat.
+  construireFiltres() {
+    if (!this.filtres) return;
+    this.filtres.empty();
+    const s = this.plugin.settings;
+    const dossiers = this.plugin.dossiersSuggeres();
+    if (dossiers.length < 2) { this.filtres.style.display = 'none'; return; }
+    this.filtres.style.display = '';
+
+    for (const dossier of dossiers) {
+      const masque = (s.suggDossiersMasques || []).includes(dossier);
+      const et = this.filtres.createEl('label', { cls: 'zfa-sugg-filtre' });
+      const cb = et.createEl('input', { type: 'checkbox' });
+      cb.checked = !masque;
+      // Étiquette : le nom que l'utilisateur a donné à la famille, à défaut
+      // le nom du dossier débarrassé de son numéro.
+      const fam = this.plugin.familles().find((x) => x.dossiers.includes(dossier));
+      et.createSpan({ text: (fam && fam.nom) || dossier.replace(/^\d+\s*-\s*/, '').split('/').pop() });
+      et.setAttribute('aria-label', dossier);
+      cb.onchange = async () => {
+        const masques = new Set(s.suggDossiersMasques || []);
+        if (cb.checked) masques.delete(dossier); else masques.add(dossier);
+        s.suggDossiersMasques = [...masques];
+        await this.plugin.saveSettings();
+        this.plugin.majSuggestions(false, true);
+      };
+    }
+  }
+
+  montrerAncrage(texte) {
+    if (!this.ancre) return;
+    this.ancre.empty();
+    if (!texte) { this.ancre.style.display = 'none'; return; }
+    this.ancre.style.display = '';
+    const snip = String(texte).replace(/\s+/g, ' ').trim();
+    this.ancre.createSpan({ cls: 'zfa-sugg-ancre-txt', text: '📌 ' + snip.slice(0, 120) + (snip.length > 120 ? '…' : '') });
+    const x = this.ancre.createSpan({ cls: 'zfa-sugg-ancre-x', text: '✕' });
+    x.setAttribute('aria-label', "Relâcher l'argument");
+    x.onclick = () => this.plugin.libererAncrage();
+  }
+
+  marquerReclassement(actif) {
+    if (this.info) this.info.toggleClass('zfa-sugg-occupe', !!actif);
+    this._reclassement = !!actif;
+  }
+
+  // Affiche l'avancement de l'indexation sémantique.
+  // fait === -1 signale un échec (Ollama injoignable).
+  marquerIndexation(fait, total, termine) {
+    if (!this.info) return;
+    if (fait === -1) {
+      this.info.setText('Ollama injoignable — repli lexical.');
+      if (this.barre) { this.barre.remove(); this.barre = null; }
+      return;
+    }
+    if (termine || (total && fait >= total)) {
+      if (this.barre) { this.barre.remove(); this.barre = null; }
+      return;
+    }
+    const pct = total ? Math.round((fait / total) * 100) : 0;
+    this.info.setText('Indexation sémantique… ' + fait + ' / ' + total + ' (' + pct + '%)');
+    if (!this.barre) {
+      this.barre = this.info.insertAdjacentElement('afterend', createDiv({ cls: 'zfa-sugg-barre' }));
+      this.barreJauge = this.barre.createDiv({ cls: 'zfa-sugg-jauge' });
+    }
+    if (this.barreJauge) this.barreJauge.style.width = pct + '%';
+  }
+
+  rendre(suggestions, file, etat) {
+    if (!this.liste) return;
+    this.liste.empty();
+    if (this.info) {
+      this.info.removeClass('zfa-sugg-occupe');
+      if (etat === 'inactif') this.info.setText('Suggestions désactivées dans les réglages.');
+      else if (file) this.info.setText((file.basename) + (etat ? '  ·  ' + etat : ''));
+      else this.info.setText('Ouvrez une note pour voir des suggestions.');
+    }
+    if (!suggestions || !suggestions.length) {
+      if (etat !== 'inactif') this.liste.createDiv({ cls: 'zfa-sugg-vide', text: 'Aucune suggestion pertinente.' });
+      return;
+    }
+    const styleDe = (d) => this.plugin.styleDuDossier(d);
+    for (const sug of suggestions) {
+      const item = this.liste.createDiv({ cls: 'zfa-sugg-item' });
+      item.setAttribute('draggable', 'true');
+      const style = sug.dossier ? styleDe(sug.dossier) : null;
+      if (style && style.couleur) {
+        item.addClass('zfa-sugg-colore');
+        item.style.setProperty('--zfa-sugg-couleur', style.couleur);
+      }
+      const tete = item.createDiv({ cls: 'zfa-sugg-tete' });
+      if (style && style.icone) {
+        const ic = tete.createSpan({ cls: 'zfa-sugg-icone' });
+        obsidian.setIcon(ic, style.icone);
+        if (style.couleur) ic.style.color = style.couleur;
+      }
+      tete.createSpan({ cls: 'zfa-sugg-lien', text: sug.titre });
+      if (sug.raison) item.createDiv({ cls: 'zfa-sugg-raison', text: sug.raison });
+      const pct = typeof sug.score === 'number' ? Math.round(sug.score * 100) + '%  ·  ' : '';
+      item.createDiv({ cls: 'zfa-sugg-meta', text: pct + sug.basename });
+      item.addEventListener('click', () => {
+        this.plugin.app.workspace.openLinkText(sug.basename, '', false);
+      });
+      // Aperçu natif au survol (« Page preview »).
+      item.addEventListener('mouseover', (event) => {
+        this.plugin.app.workspace.trigger('hover-link', {
+          event,
+          source: 'zfa-suggestions',
+          hoverParent: this,
+          targetEl: item,
+          linktext: sug.path || sug.basename,
+          sourcePath: '',
+        });
+      });
+      item.addEventListener('dragstart', (e) => {
+        if (e.dataTransfer) {
+          e.dataTransfer.setData('text/plain', '[[' + sug.basename + ']]');
+          e.dataTransfer.effectAllowed = 'copy';
+        }
+      });
+    }
+  }
+
+  async onClose() { this.contentEl.empty(); }
+}
+
+/* --------------------- Fenêtres du module Cartes ------------------------ */
+
+// Sélecteur générique à filtre (relations, types, concepts).
+class ChoixListeModal extends obsidian.FuzzySuggestModal {
+  constructor(app, titre, items, onChoix) {
+    super(app);
+    this.items = items || [];
+    this.onChoix = onChoix;
+    this.setPlaceholder(titre);
+  }
+  getItems() { return this.items; }
+  getItemText(it) { return it.nom; }
+  onChooseItem(it) { if (this.onChoix) this.onChoix(it); }
+}
+
+// Rapport de conformité d'une carte.
+class RapportCarteModal extends obsidian.Modal {
+  constructor(app, nom, analyse) { super(app); this.nom = nom; this.a = analyse; }
+  onOpen() {
+    const c = this.contentEl;
+    c.createEl('h3', { text: 'Carte « ' + this.nom + ' »' });
+    const a = this.a;
+    const typés = a.blocs.filter((b) => b.type).length;
+    const relTypées = a.liens.filter((l) => l.relation).length;
+    c.createEl('p', {
+      cls: 'zfa-dedup-info',
+      text: a.blocs.length + ' bloc(s), dont ' + typés + ' typé(s) · '
+        + a.liens.length + ' relation(s), dont ' + relTypées + ' conforme(s).',
+    });
+    if (!a.problemes.length) { c.createEl('p', { text: 'Aucun problème détecté.' }); return; }
+    const groupes = {
+      'lien-muet': 'Flèches sans étiquette',
+      'hors-vocabulaire': 'Étiquettes hors vocabulaire',
+      soupape: 'Liens non typés (soupape)',
+      'bloc-sans-type': 'Blocs sans type',
+      'type-inconnu': 'Types inconnus',
+    };
+    const liste = c.createDiv();
+    liste.style.maxHeight = '50vh';
+    liste.style.overflow = 'auto';
+    for (const [cle, titre] of Object.entries(groupes)) {
+      const items = a.problemes.filter((p) => p.type === cle);
+      if (!items.length) continue;
+      liste.createEl('h4', { text: titre + ' (' + items.length + ')' });
+      const ul = liste.createEl('ul');
+      for (const it of items.slice(0, 60)) ul.createEl('li', { text: it.texte });
+      if (items.length > 60) liste.createEl('p', { cls: 'zfa-dedup-info', text: '…et ' + (items.length - 60) + ' autre(s).' });
+    }
+  }
+  onClose() { this.contentEl.empty(); }
+}
+
+// Affichage d'un texte (DSL) avec copie.
+class TexteModal extends obsidian.Modal {
+  constructor(app, titre, texte) { super(app); this.titre = titre; this.texte = texte; }
+  onOpen() {
+    const c = this.contentEl;
+    c.createEl('h3', { text: this.titre });
+    const ta = c.createEl('textarea', { cls: 'zfa-dsl-zone' });
+    ta.value = this.texte;
+    ta.rows = 18;
+    const pied = c.createDiv({ cls: 'zfa-dedup-pied' });
+    const b = pied.createEl('button', { text: 'Copier' });
+    b.onclick = () => { navigator.clipboard.writeText(this.texte); new obsidian.Notice('DSL copié.'); };
+  }
+  onClose() { this.contentEl.empty(); }
+}
+
+// Voisinage d'un concept dans le graphe agrégé.
+class VoisinageModal extends obsidian.Modal {
+  constructor(app, concept, sortants, entrants, plugin) {
+    super(app); this.concept = concept; this.sortants = sortants; this.entrants = entrants; this.plugin = plugin;
+  }
+  onOpen() {
+    const c = this.contentEl;
+    c.createEl('h3', { text: this.concept });
+    const bloc = (titre, liens, sens) => {
+      c.createEl('h4', { text: titre + ' (' + liens.length + ')' });
+      if (!liens.length) { c.createEl('p', { cls: 'zfa-dedup-info', text: '—' }); return; }
+      const ul = c.createEl('ul');
+      for (const l of liens) {
+        const et = l.etiquette && l.etiquette.trim() ? l.etiquette.trim() : '?';
+        const autre = sens === 'sortant' ? l.vers : l.de;
+        const li = ul.createEl('li');
+        li.createSpan({ text: sens === 'sortant' ? '— ' + et + ' → ' : '← ' + et + ' — ' });
+        li.createSpan({ text: autre, cls: 'zfa-voisin-cible' });
+        li.createSpan({ cls: 'zfa-dedup-info', text: '   [' + l.carte + ']' });
+      }
+    };
+    const zone = c.createDiv();
+    zone.style.maxHeight = '55vh';
+    zone.style.overflow = 'auto';
+    bloc('Relations sortantes', this.sortants, 'sortant');
+    bloc('Relations entrantes', this.entrants, 'entrant');
+  }
+  onClose() { this.contentEl.empty(); }
+}
+
+class StylesModeleModal extends obsidian.Modal {
+  constructor(app, noms) { super(app); this.noms = Array.isArray(noms) ? noms : []; }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl('h3', { text: 'Styles du modèle Word (' + this.noms.length + ')' });
+    contentEl.createEl('p', { text: 'Copiez le nom exact du style voulu dans les champs de mapping des réglages.', cls: 'zfa-dedup-info' });
+    const liste = contentEl.createDiv();
+    liste.style.maxHeight = '52vh';
+    liste.style.overflow = 'auto';
+    for (const n of this.noms) {
+      const row = liste.createDiv({ cls: 'zfa-style-row' });
+      row.createSpan({ text: n });
+      const b = row.createEl('button', { text: 'Copier' });
+      b.onclick = () => { navigator.clipboard.writeText(n); new obsidian.Notice('Copié : ' + n); };
+    }
+  }
+  onClose() { this.contentEl.empty(); }
+}
+
+class FusionAuteursModal extends obsidian.Modal {
+  constructor(app, plugin, conflits, clusters, dossier) {
+    super(app);
+    this.plugin = plugin; this.conflits = conflits; this.dossier = dossier;
+    this.choix = clusters.map((grp) => ({ membres: grp, inclure: true, canon: meilleurCanonique(grp) }));
+  }
+  onOpen() {
+    const c = this.contentEl;
+    c.createEl('h3', { text: "Fusionner les doublons d'auteurs" });
+    if (this.conflits.length) {
+      c.createEl('p', { text: this.conflits.length + ' copie(s) de conflit à supprimer :' });
+      const ul = c.createEl('ul');
+      for (const cf of this.conflits) ul.createEl('li', { text: cf.nom });
+    }
+    if (this.choix.length) {
+      c.createEl('p', { text: this.choix.length + ' groupe(s) de variantes. Décochez ceux à ne pas fusionner ; choisissez la fiche à conserver.' });
+      this.choix.forEach((ch) => {
+        const box = c.createDiv({ cls: 'zfa-dedup-ligne' });
+        const cb = box.createEl('input', { type: 'checkbox' }); cb.checked = ch.inclure;
+        cb.onchange = () => { ch.inclure = cb.checked; };
+        const sel = box.createEl('select', { cls: 'dropdown' });
+        for (const m of ch.membres) { const o = sel.createEl('option', { text: m, value: m }); if (m === ch.canon) o.selected = true; }
+        sel.onchange = () => { ch.canon = sel.value; };
+        box.createSpan({ cls: 'zfa-dedup-info', text: ' ← conserver ; fusionne : ' + ch.membres.join(', ') });
+      });
+    } else {
+      c.createEl('p', { text: 'Aucune variante de nom détectée.' });
+    }
+    const pied = c.createDiv({ cls: 'zfa-dedup-pied' });
+    const ok = pied.createEl('button', { text: 'Fusionner', cls: 'mod-cta' });
+    ok.onclick = () => this.executer();
+    pied.createEl('button', { text: 'Annuler' }).onclick = () => this.close();
+  }
+  async executer() {
+    this.close();
+    const notice = new obsidian.Notice('Fusion des auteurs…', 0);
+    try {
+      if (this.conflits.length) await this.plugin.supprimerConflitsAuteurs(this.conflits, this.dossier);
+      let n = 0;
+      for (const ch of this.choix) {
+        if (!ch.inclure) continue;
+        const variantes = ch.membres.filter((m) => m !== ch.canon);
+        if (variantes.length) { await this.plugin.fusionnerCluster(ch.canon, variantes, this.dossier); n += variantes.length; }
+      }
+      notice.hide();
+      new obsidian.Notice('Auteurs : ' + this.conflits.length + ' conflit(s) supprimé(s), ' + n + ' variante(s) fusionnée(s).');
+    } catch (e) { notice.hide(); new obsidian.Notice('Fusion — échec : ' + (e && e.message ? e.message : e)); console.error('[Ariane] fusion auteurs', e); }
+  }
+  onClose() { this.contentEl.empty(); }
+}
+
+module.exports = ZotflowAtomiser;
+
+// Exposition des fonctions pures pour les tests.
+module.exports._test = {
+  DEFAULT_SETTINGS,
+  echapperRegex,
+  nomCompletAuteur,
+  appliquerModele,
+  parseNomReference,
+  parseAuteurSeul,
+  compilerProfils,
+  extraireBlocs,
+  trouverSourceZotero,
+  appariementSource,
+  candidatsSource,
+  surnamesReference,
+  construireNote,
+  construireReference,
+  normaliserConjAuteurs,
+  horodatageNC,
+  rangesNotesOrphelines,
+  normDoi,
+  nomFamille,
+  refsDepuisCrossref,
+  refsDepuisOpenAlexWorks,
+  tokeniser,
+  frequenceTermes,
+  calculerIdf,
+  vecteurTfIdf,
+  cosinusTfIdf,
+  hacherTexte,
+  normaliserVecteur,
+  cosinusVecteurs,
+  normNom,
+  surnameKey,
+  memePersonne,
+  clustersDoublons,
+  meilleurCanonique,
+};

@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "ariane-annotations": {
+      "command": "node",
+      "args": [
+        "/chemin/vers/ariane/mcp/serveur.js"
+      ],
+      "env": {
+        "OLLAMA_URL": "http://localhost:11434",
+        "ARIANE_VAULT": "/chemin/vers/votre/coffre",
+        "ARIANE_CACHE": "/chemin/vers/votre/coffre/.obsidian/plugins/zotflow-atomiser/cache-embeddings.json"
+      }
+    }
+  }
+}

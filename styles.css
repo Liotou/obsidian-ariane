@@ -1,0 +1,478 @@
+/* ZotFlow Atomiser — styles du plugin */
+
+/* Alias affiché dans l'explorateur de fichiers (annotations, notes conceptuelles) */
+.zfa-explorer-alias {
+  margin-left: 6px;
+  color: var(--text-faint);
+  font-size: 0.85em;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Noms codés (NR-, NC-, CR-…) en police monospace, pour alignement à largeur fixe */
+.nav-file-title.zfa-nom-mono .nav-file-title-content {
+  font-family: var(--zfa-nom-mono-font, var(--font-monospace));
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* ------------------- Compteur de travaux rapportés ---------------------- */
+
+/* Le compteur accolé à une source consultée : discret, mais survolable. */
+.zfa-emprunt {
+  font-size: 0.82em;
+  color: var(--text-faint);
+  cursor: help;
+  padding: 0 0.05em;
+  transition: color 0.12s ease;
+}
+.zfa-emprunt:hover {
+  color: var(--text-accent);
+}
+
+.zfa-bulle-emprunts {
+  position: fixed;
+  z-index: 1100;
+  max-width: 380px;
+  padding: 8px 10px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  font-size: 0.85em;
+  line-height: 1.4;
+}
+.zfa-bulle-entete {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.9em;
+  margin-bottom: 5px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.zfa-bulle-item {
+  padding: 2px 0;
+}
+.zfa-bulle-item a {
+  cursor: pointer;
+}
+
+/* ---------------------- Citations repliables --------------------------- */
+
+/* La pastille tient la place de la citation : discrète, mais cliquable.
+   Sa taille ne suit pas celle du texte, pour ne pas décaler l'interligne. */
+.zfa-cit-pastille {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.05em;
+  height: 1.05em;
+  padding: 0 0.25em;
+  margin: 0 0.15em;
+  border-radius: 0.6em;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-faint);
+  font-size: 0.68em;
+  font-weight: 600;
+  line-height: 1;
+  vertical-align: 0.15em;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.zfa-cit-pastille:hover {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+}
+
+/* En lecture, l'état global est porté par le corps du document ; une citation
+   dépliée à la main porte sa propre exception. */
+.zfa-cit-pastille { display: none; }
+.zfa-cit-contenu { display: inline; }
+
+body.zfa-citations-repliees .zfa-cit-pastille { display: inline-flex; }
+body.zfa-citations-repliees .zfa-cit .zfa-cit-contenu { display: none; }
+body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-contenu { display: inline; }
+body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
+  color: var(--text-accent);
+  border-color: var(--interactive-accent);
+}
+
+/* En édition, la pastille est un widget CodeMirror : elle n'est jamais masquée
+   par la règle ci-dessus, qui ne vise que les citations enveloppées. */
+.cm-editor .zfa-cit-pastille { display: inline-flex; }
+
+/* ---------------------- Panneau de suggestions ------------------------- */
+.zfa-sugg {
+  padding: 8px 10px;
+}
+.zfa-sugg-entete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.zfa-sugg-titre {
+  font-weight: 600;
+}
+.zfa-sugg-refresh {
+  cursor: pointer;
+  padding: 2px 8px;
+  line-height: 1.2;
+}
+/* Filtre par type de note dans le panneau de suggestions */
+.zfa-sugg-filtres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+.zfa-sugg-filtre {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78em;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.zfa-sugg-filtre input {
+  margin: 0;
+  cursor: pointer;
+}
+.zfa-sugg-filtre:hover { color: var(--text-normal); }
+
+.zfa-sugg-info {
+  color: var(--text-muted);
+  font-size: 0.8em;
+  margin-bottom: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zfa-sugg-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.zfa-sugg-item {
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  cursor: grab;
+  background: var(--background-primary);
+}
+.zfa-sugg-item:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+}
+.zfa-sugg-item:active {
+  cursor: grabbing;
+}
+.zfa-sugg-item.zfa-sugg-colore {
+  border-left: 3px solid var(--zfa-sugg-couleur, var(--interactive-accent));
+}
+.zfa-sugg-tete {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.zfa-sugg-icone {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  margin-top: 1px;
+}
+.zfa-sugg-icone .svg-icon {
+  width: 15px;
+  height: 15px;
+}
+.zfa-sugg-lien {
+  font-size: 0.9em;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.zfa-sugg-raison {
+  color: var(--text-muted);
+  font-size: 0.78em;
+  line-height: 1.3;
+  margin-top: 3px;
+  font-style: italic;
+}
+.zfa-sugg-meta {
+  color: var(--text-faint);
+  font-size: 0.75em;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zfa-sugg-info.zfa-sugg-occupe::after {
+  content: ' · reclassement…';
+  color: var(--text-accent);
+}
+.zfa-sugg-barre {
+  height: 4px;
+  border-radius: 3px;
+  background: var(--background-modifier-border);
+  overflow: hidden;
+  margin: 2px 0 8px;
+}
+.zfa-sugg-jauge {
+  height: 100%;
+  width: 0%;
+  background: var(--interactive-accent);
+  transition: width 0.2s ease;
+}
+.zfa-sugg-vide {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  padding: 10px 4px;
+  text-align: center;
+}
+
+/* Onglets de la page de réglages */
+.zfa-onglets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin: 6px 0 16px;
+}
+.zfa-onglet {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.zfa-onglet:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+.zfa-onglet.is-active {
+  color: var(--text-normal);
+  border-bottom-color: var(--interactive-accent);
+  font-weight: 600;
+}
+
+/* Aparté (titre) affiché après un lien d'annotation.
+   Taille et couleur pilotées par les réglages via des variables CSS ;
+   valeurs par défaut : 0.8em et couleur atténuée. */
+.zfa-lien-alias {
+  font-size: var(--zfa-aparte-taille, 0.8em);
+  color: var(--zfa-aparte-couleur, var(--text-muted));
+  font-weight: normal;
+  font-style: normal;
+}
+
+/* Paragraphe survolé pendant un glisser d'annotation (zone de dépôt). */
+.cm-line.zfa-drop-cible {
+  border-radius: 4px;
+  outline: 2px dashed var(--interactive-accent);
+  outline-offset: 1px;
+  background-color: var(--text-selection);
+}
+
+/* Phrase visée pendant un glisser (mode « cibler la phrase »). */
+.zfa-drop-cible-phrase {
+  border-radius: 4px;
+  outline: 2px dashed var(--interactive-accent);
+  outline-offset: 1px;
+  background-color: var(--text-selection);
+}
+
+/* ---------------------- Panier flottant d'annotations ------------------- */
+.zfa-panier {
+  position: fixed;
+  z-index: 1000;
+  width: 260px;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  font-size: 0.85em;
+  overflow: hidden;
+}
+.zfa-panier.zfa-panier-survol {
+  outline: 2px dashed var(--interactive-accent);
+  outline-offset: -2px;
+}
+.zfa-panier-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--background-secondary);
+  cursor: move;
+  user-select: none;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.zfa-panier-titre { font-weight: 600; }
+.zfa-panier-fermer { cursor: pointer; opacity: 0.6; padding: 0 4px; }
+.zfa-panier-fermer:hover { opacity: 1; }
+.zfa-panier-liste {
+  overflow-y: auto;
+  padding: 6px;
+  flex: 1;
+  min-height: 40px;
+}
+.zfa-panier-vide {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 12px 4px;
+}
+.zfa-panier-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+.zfa-panier-item:hover { background: var(--background-modifier-hover); }
+.zfa-panier-item-txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zfa-panier-item-x { cursor: pointer; opacity: 0.5; }
+.zfa-panier-item-x:hover { opacity: 1; color: var(--text-error); }
+.zfa-panier-pied {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 6px;
+}
+.zfa-panier-deposer {
+  text-align: center;
+  padding: 5px;
+  margin-bottom: 6px;
+  border: 1px dashed var(--interactive-accent);
+  border-radius: 6px;
+  cursor: grab;
+  color: var(--text-muted);
+}
+.zfa-panier-deposer:active { cursor: grabbing; }
+.zfa-panier-boutons { display: flex; gap: 6px; }
+.zfa-panier-btn { flex: 1; font-size: 0.9em; }
+
+/* Note verrouillée (locked: true) : signal discret, curseur non éditable */
+.zfa-verrouillee .cm-content {
+  caret-color: transparent;
+}
+.zfa-verrouillee .cm-line::selection,
+.zfa-verrouillee .cm-line ::selection {
+  background: var(--text-selection);
+}
+
+/* ------------------------- Module Cartes -------------------------------- */
+.zfa-dsl-zone {
+  width: 100%;
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+  line-height: 1.5;
+  resize: vertical;
+}
+.zfa-voisin-cible { font-weight: 600; }
+
+/* Liste des styles du modèle Word */
+.zfa-style-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 4px; border-bottom: 1px solid var(--background-modifier-border); }
+.zfa-style-row button { font-size: 0.8em; padding: 2px 8px; }
+
+/* Fenêtre de fusion des doublons d'auteurs */
+.zfa-dedup-ligne { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.zfa-dedup-ligne select { max-width: 260px; }
+.zfa-dedup-info { color: var(--text-muted); font-size: 0.85em; }
+.zfa-dedup-pied { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+/* Ancrage « argument » dans le panneau de suggestions */
+.zfa-sugg-ancre { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 0.8em; padding: 4px 6px; margin-bottom: 6px; background: var(--background-secondary); border-radius: 4px; }
+.zfa-sugg-ancre-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-style: italic; }
+.zfa-sugg-ancre-x { cursor: pointer; opacity: 0.6; flex: 0 0 auto; }
+.zfa-sugg-ancre-x:hover { opacity: 1; color: var(--text-error); }
+
+/* Fenêtre flottante des suggestions par argument */
+.zfa-argfen { position: fixed; z-index: 1000; width: 300px; max-height: 60vh; display: flex; flex-direction: column; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,0.3); overflow: hidden; }
+.zfa-argfen-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: var(--background-secondary); cursor: move; user-select: none; border-bottom: 1px solid var(--background-modifier-border); }
+.zfa-argfen-titre { font-weight: 600; font-size: 0.9em; }
+.zfa-argfen-x { cursor: pointer; opacity: 0.6; }
+.zfa-argfen-x:hover { opacity: 1; color: var(--text-error); }
+.zfa-argfen-arg { font-size: 0.78em; color: var(--text-muted); font-style: italic; padding: 6px 10px; border-bottom: 1px solid var(--background-modifier-border); }
+.zfa-argfen-liste { overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+
+/* -------------------------- Temps passé -------------------------------- */
+
+/* Compteur en barre d'état : discret, cliquable, sans sauts de largeur. */
+.zfa-temps-barre {
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.zfa-temps-barre:hover {
+  color: var(--text-normal);
+}
+
+/* ---------------- Onglets de réglages : icône + libellé ---------------- */
+.zfa-onglet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.zfa-onglet-icone {
+  display: inline-flex;
+  opacity: 0.75;
+}
+.zfa-onglet.is-active .zfa-onglet-icone { opacity: 1; }
+.zfa-onglet-icone svg { width: 15px; height: 15px; }
+
+/* ---------------- Table des familles de notes -------------------------- */
+.zfa-familles { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 10px; }
+.zfa-fam-vide {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  padding: 12px;
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  text-align: center;
+}
+.zfa-fam {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: 8px 10px;
+  background: var(--background-secondary);
+}
+.zfa-fam.zfa-fam-glissee { opacity: 0.45; }
+.zfa-fam.zfa-fam-cible { border-color: var(--interactive-accent); }
+.zfa-fam-tete { display: flex; align-items: center; gap: 6px; }
+.zfa-fam-poignee { cursor: grab; color: var(--text-faint); display: inline-flex; }
+.zfa-fam-poignee:active { cursor: grabbing; }
+.zfa-fam-nom { flex: 1 1 auto; min-width: 120px; font-weight: 600; }
+.zfa-fam-couleur { width: 30px; padding: 0; border: none; background: none; cursor: pointer; }
+.zfa-fam-icone { width: 88px; }
+.zfa-fam-bouton {
+  background: transparent; border: none; box-shadow: none;
+  padding: 4px; cursor: pointer; color: var(--text-muted);
+  display: inline-flex; align-items: center;
+}
+.zfa-fam-bouton:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.zfa-fam-suppr:hover { color: var(--text-error); }
+.zfa-fam-corps { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.zfa-fam-champ { display: flex; flex-direction: column; gap: 2px; flex: 1 1 220px; }
+.zfa-fam-champ label { font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.zfa-fam-cases { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
+.zfa-fam-case { display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-ui-smaller); cursor: pointer; }
+.zfa-fam-barre { display: flex; justify-content: flex-end; }
+.zfa-fam-barre .setting-item { border: none; padding: 4px 0; }

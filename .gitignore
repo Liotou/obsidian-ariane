@@ -1,0 +1,6 @@
+# Jamais publiés : réglages personnels, cache d'embeddings (29 Mo), sauvegardes.
+data.json
+cache-embeddings.json
+*.avant-finition
+.DS_Store
+node_modules/
