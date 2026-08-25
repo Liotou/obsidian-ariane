@@ -349,6 +349,16 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Annotations sans titre": "Untitled annotations",
+    "Par défaut, une annotation dont le commentaire ne correspond à aucun profil est ignorée : elle ne devient pas une note. Activez l'option ci-dessous pour l'atomiser quand même, avec un titre déduit de son contenu.": "By default, an annotation whose comment matches no profile is skipped: it never becomes a note. Turn the option below on to atomise it anyway, with a title inferred from its content.",
+    "Atomiser les annotations sans titre": "Atomise untitled annotations",
+    "Le commentaire entier devient la paraphrase et le titre est déduit.": "The whole comment becomes the paraphrase and the title is inferred.",
+    "Déduire le titre à partir de": "Infer the title from",
+    "À défaut, l'autre source est utilisée, puis la clé Zotero.": "Failing that, the other source is used, then the Zotero key.",
+    "Le commentaire": "The comment",
+    "Le texte surligné": "The highlighted text",
+    "Longueur maximale du titre déduit": "Maximum length of the inferred title",
+    "En caractères. La coupe se fait à la fin de la première phrase, sinon au dernier mot entier.": "In characters. The cut falls at the end of the first sentence, otherwise at the last whole word",
     "Propager les suppressions": "Propagate deletions",
     "Propose un rôle par dossier dont le nom s'en approche. Rien n'est écrit sans votre relecture.": "Proposes a role for each folder whose name comes close. Nothing is written without your review.",
     "Proposer": "Propose",
@@ -693,6 +703,11 @@ const DEFAULT_SETTINGS = {
   pageRegex: '\\.pdf,\\s*p\\.\\s*([^\\]]+?)\\]\\(obsidian',
   imageRegex: '!\\[\\[([^\\]]+?)\\]\\]',
   retirerParentheses: true,
+  // Annotations dont le commentaire ne porte pas de titre reconnu : écartées
+  // par défaut, atomisées avec un titre de repli si l'option est active.
+  titreFacultatif: false,
+  titreReplSource: 'paraphrase', // 'paraphrase' | 'surlignage'
+  titreReplLongueur: 60,
   separateurCitations: ';',
   separateurAuteurs: '\\s+(?:and|et|&)\\s+|\\s*,\\s*',
 
@@ -1245,6 +1260,33 @@ function finDeSpanApparie(texte, depart) {
 }
 
 // Extrait tous les blocs d'annotation d'une note source, selon la config.
+// Titre de repli pour une annotation dont le commentaire ne porte pas de titre
+// reconnu par un profil. On coupe à la première phrase si elle tient dans la
+// longueur voulue, sinon au dernier mot entier.
+function titreDeRepli(paraphrase, highlight, cle, cfg) {
+  const limite = Math.max(10, parseInt(cfg.titreReplLongueur, 10) || 60);
+  const surlignageDabord = cfg.titreReplSource === 'surlignage';
+  const sources = surlignageDabord ? [highlight, paraphrase] : [paraphrase, highlight];
+  let base = '';
+  for (const s of sources) {
+    base = String(s || '')
+      .replace(/!\[\[[^\]]*\]\]/g, ' ')
+      .replace(/[*_`>]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (base) break;
+  }
+  if (!base) return cle;
+  const phrase = base.match(/^[^.!?…]*[.!?…]/);
+  if (phrase && phrase[0].trim().length <= limite) {
+    return phrase[0].replace(/[.!?…]+$/, '').trim() || cle;
+  }
+  if (base.length <= limite) return base;
+  const coupe = base.slice(0, limite);
+  const esp = coupe.lastIndexOf(' ');
+  return (esp > limite / 2 ? coupe.slice(0, esp) : coupe).trim() + '…';
+}
+
 function extraireBlocs(contenu, cfg) {
   let regexBloc, regexPage, regexImage;
   try {
@@ -1287,6 +1329,8 @@ function extraireBlocs(contenu, cfg) {
     let titre = null;
     let profReference = null;
     let profNom = null;
+    // Le titre occupe-t-il la première ligne ? Sinon elle appartient au corps.
+    let ligneTitre = true;
     for (const p of profils) {
       const mt = lignes[0].match(p.titre);
       if (mt) {
@@ -1296,20 +1340,29 @@ function extraireBlocs(contenu, cfg) {
         break;
       }
     }
-    if (titre === null) continue;
+    if (titre === null) {
+      // Commentaire sans titre reconnu : annotation écartée par défaut,
+      // atomisée avec un titre de repli si l'option est active.
+      if (!cfg.titreFacultatif) continue;
+      ligneTitre = false;
+      titre = ''; // calculé plus bas, la paraphrase étant alors connue
+      profReference = profils[0].reference;
+      profNom = profils[0].nom;
+    }
 
     // Référence éventuelle : dernière ligne selon le motif du profil.
+    const premiere = ligneTitre ? 1 : 0;
     let ligneReference = null;
-    let lignesParaphrase = lignes.slice(1);
+    let lignesParaphrase = lignes.slice(premiere);
     const derniere = lignes[lignes.length - 1];
-    if (profReference && lignes.length > 1) {
+    if (profReference && lignes.length > premiere) {
       const mr = derniere.match(profReference);
       if (mr) {
         ligneReference = (mr[1] !== undefined ? mr[1] : mr[0]).trim();
         if (cfg.retirerParentheses) {
           ligneReference = ligneReference.replace(/^\(+\s*/, '').replace(/\s*\)+$/, '').trim();
         }
-        lignesParaphrase = lignes.slice(1, -1);
+        lignesParaphrase = lignes.slice(premiere, -1);
       }
     }
     const paraphrase = lignesParaphrase.join('\n').trim();
@@ -1364,6 +1417,8 @@ function extraireBlocs(contenu, cfg) {
     // Couleur de l'annotation : dernier callout « [!zotflow-<type>-<couleur>] » de l'en-tête.
     const cm = [...entete.matchAll(/\[!zotflow-\w+-(#[0-9a-fA-F]{3,8}|[a-zA-Z]+)\]/g)];
     const couleur = cm.length ? nomCouleur(cm[cm.length - 1][1]) : '';
+
+    if (!titre) titre = titreDeRepli(paraphrase, highlight, cle, cfg);
 
     blocs.push({ cle, titre, paraphrase, page, image, highlight, refs, couleur, lienAnno, ordre: blocs.length + 1, profil: profNom });
   }
@@ -8378,6 +8433,33 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
       });
     profilsErreur = c.createEl('div', { text: tr(''), cls: 'setting-item-description' });
     profilsErreur.style.color = 'var(--text-error)';
+
+    this._section(c, tr('Annotations sans titre'));
+    this._aide(c, tr("Par défaut, une annotation dont le commentaire ne correspond à aucun profil est ignorée : elle ne devient pas une note. Activez l'option ci-dessous pour l'atomiser quand même, avec un titre déduit de son contenu."));
+    new obsidian.Setting(c)
+      .setName(tr('Atomiser les annotations sans titre'))
+      .setDesc(tr('Le commentaire entier devient la paraphrase et le titre est déduit.'))
+      .addToggle((t) => t.setValue(s.titreFacultatif === true).onChange(async (v) => { s.titreFacultatif = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Déduire le titre à partir de'))
+      .setDesc(tr("À défaut, l'autre source est utilisée, puis la clé Zotero."))
+      .addDropdown((d) => {
+        d.addOption('paraphrase', tr('Le commentaire'));
+        d.addOption('surlignage', tr('Le texte surligné'));
+        d.setValue(s.titreReplSource === 'surlignage' ? 'surlignage' : 'paraphrase');
+        d.onChange(async (v) => { s.titreReplSource = v; await maj(); });
+      });
+    new obsidian.Setting(c)
+      .setName(tr('Longueur maximale du titre déduit'))
+      .setDesc(tr('En caractères. La coupe se fait à la fin de la première phrase, sinon au dernier mot entier.'))
+      .addText((t) => {
+        t.setValue(String(s.titreReplLongueur || 60)).onChange(async (v) => {
+          const n = parseInt(v, 10);
+          s.titreReplLongueur = isNaN(n) ? 60 : Math.max(10, Math.min(200, n));
+          await maj();
+        });
+        t.inputEl.type = 'number';
+      });
   }
 }
 

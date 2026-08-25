@@ -22,11 +22,12 @@ mettre sous la dent.
 
 ## 🧭 Sommaire
 
+- [⚠️ Avant de commencer](#-avant-de-commencer)
 - [⚛️ Atomiser](#-atomiser)
 - [🔖 Citer Zotero, en direct](#-citer-zotero-en-direct)
 - [🖱️ Glisser-déposer](#-glisser-déposer)
 - [🪗 Replier les citations](#-replier-les-citations)
-- [🏷️ L'aparté](#-laparté)
+- [🏷️ L'aparté](#-laparté-ou-comment-lire-les-noms-codés)
 - [✨ Suggestions](#-suggestions)
 - [↩️ Retour vers Zotero](#-retour-vers-zotero)
 - [📚 Bibliographies](#-bibliographies)
@@ -38,6 +39,86 @@ mettre sous la dent.
 - [🗂️ S'adapter à votre organisation](#-sadapter-à-votre-organisation)
 - [⌨️ Commandes](#-commandes)
 - [📦 Installation](#-installation)
+
+---
+
+## ⚠️ Avant de commencer
+
+À lire en premier. Tout le reste en dépend. 🧱
+
+Ariane ne lit pas votre PDF, elle lit ce que **vous** avez écrit dans Zotero. La
+manière dont vous rédigez le commentaire de vos annotations est donc le contrat
+entre les deux outils, et la pièce maîtresse de ce contrat, c'est le **titre**.
+
+La forme attendue, avec le profil livré par défaut, est celle-ci :
+
+```
+**Un titre court pour cette idée**
+Votre paraphrase, avec vos mots, sur autant de lignes que vous voulez.
+*(Fan et al., 2022 ; Stål et al., 2023)*
+```
+
+Trois lignes, trois rôles :
+
+1. 🏷️ **Le titre, en gras, sur la première ligne. Celui-là est obligatoire.**
+   Il devient le nom de la note, l'étiquette que vous lisez dans l'explorateur,
+   dans le panneau de suggestions et dans chaque lien qui pointe vers cette
+   annotation.
+2. ✍️ **La paraphrase**, sur les lignes suivantes. Facultative, et libre.
+3. 📎 **Les références citées, en italique, sur la dernière ligne.** Facultatives
+   elles aussi. Voir plus bas.
+
+Sachez ce qui se passe sans titre : par défaut, une annotation dont le
+commentaire ne commence pas par une ligne en gras n'est **pas atomisée du tout**.
+Elle ne devient pas une note mal nommée, elle est simplement écartée, et le
+passage reste dans Zotero sans jamais rejoindre votre coffre.
+
+🩹 Ce comportement se lève. Dans *Avancé → Annotations sans titre*, activez
+**Atomiser les annotations sans titre** : le commentaire entier devient alors la
+paraphrase, et Ariane en déduit un titre, en coupant à la fin de la première
+phrase ou au dernier mot entier. Vous choisissez si le titre vient du
+commentaire ou du texte surligné, et sur quelle longueur. Cela fonctionne bien,
+et cela reste un repli : un titre que vous avez écrit vaudra toujours mieux
+qu'un titre deviné.
+
+L'habitude à prendre est donc toujours la même : surligner, écrire un titre en
+gras, puis paraphraser. Cela coûte quelques secondes par annotation, et c'est ce
+qui rend tout le coffre navigable ensuite.
+
+🤖 **Vous n'êtes pas obligé de l'écrire à la main.** Je maintiens un second
+plugin pour cela, côté Zotero : [**Annota**](https://github.com/Liotou/zotero-annota).
+Vous attribuez une consigne à chaque couleur de surlignage et, au moment où vous
+surlignez un passage, le modèle rédige le commentaire pour vous, déjà mis en
+forme : titre en gras, paraphrase, références en italique. La consigne
+académique fournie avec produit exactement la structure décrite ci-dessus, ce
+qui n'est pas un hasard. Annota est facultatif et indépendant, Ariane n'en a
+jamais besoin, mais c'est lui qui transforme la discipline en réflexe.
+
+📐 **Cette forme n'est pas imposée.** Si votre propre convention diffère,
+l'onglet *Analyse* permet de la décrire : un profil, c'est un couple
+d'expressions régulières, une pour le titre et une pour la ligne de référence.
+Vous pouvez en déclarer plusieurs, et Ariane retient le premier qui correspond.
+Le profil par défaut ne fait que suivre ce qu'écrit ZotFlow.
+
+### 📎 Les références citées, entièrement facultatives
+
+La dernière ligne en italique sert aux travaux que le passage **rapporte** sans
+en être l'auteur, ceux que vous écririez avec un « cité dans ».
+
+```
+**Deux modes de production de la connaissance**
+Les auteurs distinguent le mode 1 du mode 2 et reprennent le cadrage antérieur.
+*(Gibbons, 1994 ; Nowotny et al., 2001)*
+```
+
+N'y écrivez rien et vous ne perdez rien : l'annotation est atomisée comme
+d'habitude, avec son titre et sa paraphrase. Écrivez-la et Ariane la prend en
+charge. Elle transforme chaque nom en référence en attente, regroupe en une
+seule citation les travaux rapportés par la même source, vérifie si le travail
+rapporté figure déjà dans votre bibliothèque Zotero et le cite directement le
+cas échéant. Elle en tire aussi les pages d'auteurs et de références en attente.
+
+C'est un ajout, jamais une obligation. 🙂
 
 ---
 
@@ -145,19 +226,36 @@ rendent dès qu'on en a besoin.
 - en édition, une citation se déplie d'elle-même dès que le curseur y entre, et
   se replie quand vous en sortez.
 
-## 🏷️ L'aparté
+## 🏷️ L'aparté, ou comment lire les noms codés
 
-Les notes d'annotation portent le nom de leur clé Zotero, illisible. L'aparté
-affiche le titre de la note juste après le lien, en lecture comme en édition,
-sans modifier un seul caractère de votre fichier.
+Un coffre construit ainsi se remplit de noms que personne ne peut lire. Les
+notes d'annotation portent le nom de leur clé Zotero, `6BH5SHHB`. Les notes
+conceptuelles portent un horodatage, `NC-202607041635`. Ces noms sont excellents
+pour la machine, stables et sans collision, et illisibles pour vous. L'aparté
+vous rend la lecture sans toucher un seul caractère de vos fichiers. ✨
 
-Son format, sa couleur et sa taille se règlent, et vous décidez famille par
-famille quelles notes en reçoivent un.
+**Dans une note**, l'aparté affiche le titre juste après le lien, en lecture
+comme en édition. Vous écrivez `[[6BH5SHHB]]` et vous lisez `[[6BH5SHHB]] Deux
+modes de production`. Son format, sa couleur et sa taille se règlent, et vous
+décidez famille par famille quelles notes en reçoivent un.
 
-L'explorateur peut aussi afficher l'**alias plutôt que le nom de fichier**, et
-présenter les dossiers de votre choix en **police à largeur fixe**, ce qui rend
-les noms codés bien plus lisibles. Le texte n'est pas modifié : la recherche et
-le tri restent intacts.
+**Dans l'explorateur**, la même idée s'applique aux noms de fichiers. Ariane
+peut afficher l'**alias plutôt que le nom de fichier**, et présenter les
+dossiers de votre choix en **police à largeur fixe**, pour que la partie codée
+s'aligne colonne par colonne.
+
+![L'explorateur de fichiers affichant des noms de notes codés en police à largeur fixe, chacun suivi de son alias en italique](docs/explorer-alias.png)
+
+Le dossier ci-dessus contient des notes conceptuelles. La référence est à
+gauche, alignée et balayable du regard, et l'alias se lit à côté :
+`NC-202607060948`, c'est *Design Science (Research)*, `NC-202607061244`, c'est
+*Pensée systémique*. Vous gardez en même temps un identifiant stable et un nom
+lisible, sans avoir à choisir entre les deux.
+
+Les deux affichages ne sont que de la décoration. Le fichier sur le disque n'est
+pas modifié, son nom non plus : la recherche, le tri, les rétroliens et les
+autres plugins continuent de voir exactement ce qui a toujours été là. Coupez
+l'option et tout revient à son nom codé.
 
 ## ✨ Suggestions
 

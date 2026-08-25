@@ -22,11 +22,12 @@ on.
 
 ## 🧭 Table of contents
 
+- [⚠️ Before you start](#-before-you-start)
 - [⚛️ Atomising](#-atomising)
 - [🔖 Citing Zotero, live](#-citing-zotero-live)
 - [🖱️ Drag and drop](#-drag-and-drop)
 - [🪗 Folding citations](#-folding-citations)
-- [🏷️ The aside](#-the-aside)
+- [🏷️ The aside](#-the-aside-or-reading-coded-names)
 - [✨ Suggestions](#-suggestions)
 - [↩️ Back to Zotero](#-back-to-zotero)
 - [📚 Bibliographies](#-bibliographies)
@@ -38,6 +39,85 @@ on.
 - [🗂️ Fitting your own organisation](#-fitting-your-own-organisation)
 - [⌨️ Commands](#-commands)
 - [📦 Installing](#-installing)
+
+---
+
+## ⚠️ Before you start
+
+Read this first. Everything else depends on it. 🧱
+
+Ariane does not read your PDF, it reads what **you** wrote in Zotero. So the way
+you write your annotation comments is the contract between the two tools, and
+the most important part of that contract is the **title**.
+
+The expected shape, with the profile shipped by default, is this:
+
+```
+**A short title for this idea**
+Your paraphrase, in your own words, over as many lines as you like.
+*(Fan et al., 2022 ; Stål et al., 2023)*
+```
+
+Three lines, three roles:
+
+1. 🏷️ **The title, in bold, on the first line. This one is required.** It
+   becomes the name of the note, the label you see in the file explorer, in the
+   suggestions panel and in every link pointing to that annotation.
+2. ✍️ **The paraphrase**, on the lines that follow. Optional, and free.
+3. 📎 **The secondary references, in italics, on the last line.** Optional. See
+   below.
+
+Be aware of what happens without a title: by default, an annotation whose
+comment does not open with a bold line is **not atomised at all**. It is not
+turned into a note with a missing name, it is simply skipped, and the passage
+stays in Zotero without ever reaching your vault.
+
+🩹 That default can be lifted. In *Advanced → Untitled annotations*, turn
+**Atomise untitled annotations** on: the whole comment then becomes the
+paraphrase, and Ariane infers a title from it, cutting at the end of the first
+sentence or at the last whole word. You choose whether the title is taken from
+the comment or from the highlighted text, and how long it may run. It works
+well, and it is still a fallback: a title you wrote yourself will always beat a
+title a machine guessed.
+
+So the habit to build is the same one every time: highlight, then write a bold
+title, then paraphrase. It costs a few seconds per annotation and it is what
+makes the whole vault navigable afterwards.
+
+🤖 **You do not have to write it by hand.** I keep a second plugin for that, on
+the Zotero side: [**Annota**](https://github.com/Liotou/zotero-annota). You
+assign a prompt to each highlight colour, and the moment you highlight a
+passage, the model writes the comment for you, already shaped: bold title,
+paraphrase, italic references. The academic prompt shipped with it produces
+exactly the structure described above, which is no accident. Annota is optional
+and independent, and Ariane never needs it, but it is what turns the discipline
+into a reflex.
+
+📐 **This shape is not imposed.** If your own convention differs, the *Analysis*
+tab lets you describe it: a profile is a pair of regular expressions, one for the
+title and one for the reference line. You may declare several profiles, and
+Ariane uses the first one that matches. The default profile simply follows what
+ZotFlow writes.
+
+### 📎 Secondary references, entirely optional
+
+The italic last line is for the works the passage **reports** without being their
+author, the ones you would write as "as cited in".
+
+```
+**Two ways of producing knowledge**
+The authors distinguish mode 1 from mode 2 and take up the earlier framing.
+*(Gibbons, 1994 ; Nowotny et al., 2001)*
+```
+
+Write nothing there and you lose nothing: the annotation is atomised as usual,
+with its title and its paraphrase. Write it and Ariane takes it in hand. It
+turns each name into a pending reference, groups the works reported by the same
+source into a single citation, checks whether the reported work is already in
+your Zotero library, and cites it directly when it is. It also builds the
+authors and pending references pages from it.
+
+It is an addition, never a requirement. 🙂
 
 ---
 
@@ -145,18 +225,34 @@ the moment you need them.
 - while editing, a citation unfolds on its own as soon as the cursor enters it,
   and folds again when you leave.
 
-## 🏷️ The aside
+## 🏷️ The aside, or reading coded names
 
-Annotation notes are named after their Zotero key, which is unreadable. The
-aside prints the note title just after the link, in reading view and while
-editing, without changing a single character of your file.
+A vault built this way fills up with names nobody can read. Annotation notes are
+named after their Zotero key, `6BH5SHHB`. Concept notes carry a timestamp,
+`NC-202607041635`. Those names are excellent for the machine, stable and never
+colliding, and useless for you. The aside gives you back the reading without
+touching a single character of your files. ✨
 
-Its format, colour and size are yours to set, and you decide family by family
-which notes get one.
+**Inside a note**, the aside prints the title just after the link, in reading
+view and while editing. You write `[[6BH5SHHB]]` and you read
+`[[6BH5SHHB]] Two ways of producing knowledge`. Its format, colour and size are
+yours to set, and you decide family by family which notes get one.
 
-The file explorer can also show the **alias instead of the filename**, and
-display chosen folders in a **fixed width font**, which makes coded names much
-easier to scan. The text itself is untouched, so search and sorting still work.
+**In the file explorer**, the same idea applies to filenames. Ariane can show
+the **alias instead of the filename**, and display chosen folders in a **fixed
+width font** so the coded part lines up column by column.
+
+![The file explorer showing coded note names in a fixed width font, each followed by its alias in italics](docs/explorer-alias.png)
+
+The folder above holds concept notes. The reference is on the left, aligned and
+scannable, and the alias reads beside it: `NC-202607060948` is *Design Science
+(Research)*, `NC-202607061244` is *Systems thinking*. You keep a stable
+identifier and a readable name at the same time, without choosing between them.
+
+Both displays are decoration only. The file on disk is untouched, the filename
+is untouched, so search, sorting, backlinks and any other plugin keep seeing
+exactly what was always there. Turn the option off and everything falls back to
+its coded name.
 
 ## ✨ Suggestions
 
