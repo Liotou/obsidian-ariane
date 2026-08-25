@@ -283,7 +283,29 @@ agiter la synchronisation, et le temps en attente n'est jamais perdu.
 
 Un **journal quotidien** peut s'écrire au changement de jour, et un élément de
 barre d'état affiche le temps de la note en cours, le point plein quand le
-compteur tourne, vide en pause.
+compteur tourne, vide en pause. Le journal est une note ordinaire : il reste
+cherchable et renvoie au travail dont il rend compte.
+
+```markdown
+---
+type: journal-temps
+date: 2026-08-21
+total-minutes: 34
+---
+# Temps de travail du 2026-08-21
+
+**Total : 34 min** sur 3 note(s).
+
+| Note | Temps |
+| --- | --- |
+| [[3 - Notes conceptuelles/NC-202608210937]] | 29 min |
+| [[3 - Notes conceptuelles/NC-202607231002]] | 4 min |
+| [[Modification à apporter au modèle documentaire]] | 1 min |
+```
+
+Chaque ligne étant un vrai lien, le journal apparaît dans les rétroliens des
+notes qu'il cite. Rouvrir une note des mois plus tard vous dit le temps qu'elle
+a coûté.
 
 ## 🧹 Outils d'entretien
 

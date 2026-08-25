@@ -280,7 +280,28 @@ quiet, and pending time is never lost.
 
 A **daily journal** can be written automatically when the day turns, and a
 status bar item shows the time on the current note, solid while the timer runs
-and hollow when paused.
+and hollow when paused. The journal is an ordinary note, so it stays searchable
+and links back to the work it accounts for:
+
+```markdown
+---
+type: journal-temps
+date: 2026-08-21
+total-minutes: 34
+---
+# Temps de travail du 2026-08-21
+
+**Total : 34 min** sur 3 note(s).
+
+| Note | Temps |
+| --- | --- |
+| [[3 - Notes conceptuelles/NC-202608210937]] | 29 min |
+| [[3 - Notes conceptuelles/NC-202607231002]] | 4 min |
+| [[Modification à apporter au modèle documentaire]] | 1 min |
+```
+
+Because every row is a real link, the journal appears in the backlinks of the
+notes it mentions. Opening a note months later tells you how long it took.
 
 ## 🧹 Housekeeping tools
 
