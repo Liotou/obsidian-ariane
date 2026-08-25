@@ -32,7 +32,6 @@ mettre sous la dent.
 - [📚 Bibliographies](#-bibliographies)
 - [⏳ Références en attente](#-références-en-attente)
 - [👥 Auteurs](#-auteurs)
-- [🕸️ Schémas](#-schémas)
 - [📝 Exporter vers Word](#-exporter-vers-word)
 - [⏱️ Compter le temps](#-compter-le-temps)
 - [🧹 Outils d'entretien](#-outils-dentretien)
@@ -208,21 +207,6 @@ Ariane peut tenir une note par auteur, listant ses sources. Les noms d'auteurs
 arrivent sous bien des formes : une commande repère les **doublons**, regroupe
 les variantes, et vous laisse cocher celles à fusionner et la fiche à conserver.
 
-## 🕸️ Schémas
-
-Des schémas draw.io appariés à une note. Leur contenu est recopié dans la note
-entre deux marqueurs, ce qui rend blocs et relations cherchables depuis
-Obsidian.
-
-- **valider** le schéma actif contre un vocabulaire que vous définissez, en
-  listant les relations et les types de blocs admis ;
-- **interroger le graphe** pour voir les relations entrantes et sortantes d'un
-  bloc ;
-- une étiquette unique posée sur un faisceau de flèches vaut pour toutes.
-
-L'éditeur lui-même vient du greffon Ariane-graph. Ariane ne gère que le lien
-avec vos notes.
-
 ## 📝 Exporter vers Word
 
 Le point le plus délicat, et le plus abouti : un export `.docx` **avec des
@@ -318,7 +302,6 @@ tombent les exports, et ainsi de suite.
 | Rattacher les références en attente aux sources Zotero | par auteurs et année |
 | Lier cette référence à une fiche Zotero | le cas 2005a et 2005b |
 | Fusionner les doublons d'auteurs | regroupe les variantes de nom |
-| Schémas : synchroniser, valider, interroger le graphe | draw.io |
 | Ouvrir dans Zotero | lecteur, annotation ou source |
 | Vérifier le modèle Word | jetons et gabarits |
 | Exporter en Word avec citations Zotero | toute la chaîne |

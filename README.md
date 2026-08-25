@@ -32,7 +32,6 @@ on.
 - [📚 Bibliographies](#-bibliographies)
 - [⏳ Pending references](#-pending-references)
 - [👥 Authors](#-authors)
-- [🕸️ Diagrams](#-diagrams)
 - [📝 Exporting to Word](#-exporting-to-word)
 - [⏱️ Tracking time](#-tracking-time)
 - [🧹 Housekeeping tools](#-housekeeping-tools)
@@ -206,19 +205,6 @@ Ariane can keep one note per author, listing their sources. Author names arrive
 in many shapes, so a command finds the **duplicates**, groups the variants, and
 lets you tick which ones to merge and which entry to keep.
 
-## 🕸️ Diagrams
-
-draw.io diagrams paired with a note. Their contents are copied into the note
-between two markers, which makes shapes and relations searchable from Obsidian.
-
-- **validate** the active diagram against a vocabulary you define, listing
-  allowed relations and shape types;
-- **query the graph** to see incoming and outgoing relations of a shape;
-- a single label on a bundle of arrows applies to all of them.
-
-The editor itself comes from the Ariane-graph plugin. Ariane only handles the
-link with your notes.
-
 ## 📝 Exporting to Word
 
 The hardest part, and the most polished: a `.docx` export **with live Zotero
@@ -311,7 +297,6 @@ where exports land, and so on.
 | Attach pending references to Zotero sources | by author and year |
 | Link this reference to a Zotero entry | the 2005a and 2005b case |
 | Merge duplicate authors | groups the name variants |
-| Diagrams: sync, validate, query the graph | draw.io |
 | Open in Zotero | reader, annotation or source |
 | Check the Word template | tokens and layouts |
 | Export to Word with live Zotero citations | the whole chain |
