@@ -24,6 +24,7 @@ on.
 
 - [⚠️ Before you start](#-before-you-start)
 - [⚛️ Atomising](#-atomising)
+- [🧮 A base for your annotations](#-a-base-for-your-annotations)
 - [🔖 Citing Zotero, live](#-citing-zotero-live)
 - [🖱️ Drag and drop](#-drag-and-drop)
 - [🪗 Folding citations](#-folding-citations)
@@ -144,6 +145,114 @@ Three behaviours you can turn on or off:
 Annotations that no note ever cites can be **tagged** automatically, which lets
 you colour them in the graph and see at a glance what you have read but never
 used.
+
+## 🧮 A base for your annotations
+
+Atomising gives you thousands of small notes. To actually see them, Obsidian has
+**Bases**, its built in database view, and Ariane writes exactly the properties a
+base needs. This view is **not shipped with the plugin**: a base is a file in
+your vault, yours to shape, so here is everything you need to build it. A ready
+made one sits in [`docs/annotations.base`](docs/annotations.base), which you can
+copy into your vault and open straight away. 📋
+
+### What Ariane writes on every annotation note
+
+| Property | Contents |
+| --- | --- |
+| `aliases` | the annotation title, the readable name |
+| `zotflow-anno-key` | the Zotero annotation key, stable across regenerations |
+| `zotflow-source` | a link to the source note, `[[@authorTitle2020]]` |
+| `ordre` | position of the annotation in the document |
+| `page` | page in the PDF |
+| `couleur` | Zotero highlight colour, as a readable name |
+| `références-citées` | links to the secondary works the passage reports |
+| `références-pages` | the page given for each of them |
+| `collections` | the Zotero collections, from root to leaf |
+| `couleur`, `zotflow-auto`, `zotflow-locked` | colour, generated, locked |
+| `tags: orphelin` | added to annotations no note ever cites |
+
+Source notes come from ZotFlow and carry `citationKey`, `title`, `creators`,
+`year`, `itemType`, `zotero-key` and `collections`. A base can reach them from an
+annotation through `asFile()`, which is what makes the whole thing work.
+
+### The formulas
+
+```yaml
+formulas:
+  source: note["zotflow-source"]
+  appels: file.backlinks.length
+  auteurs: note["zotflow-source"].asFile().properties["creators"]
+  annee: note["zotflow-source"].asFile().properties["year"]
+```
+
+`source` gives you a clickable link to the reference. `appels` counts how many
+notes cite this annotation, which is the single most useful column: it separates
+the material you have exploited from the material you merely collected. The last
+two reach into the source note and pull the author and the year back out, so you
+can sort annotations by author without ever leaving the table.
+
+### Sorting by Zotero collection
+
+`collections` is a list running from the root down to the deepest folder, for
+example `My Library`, `Doctorat`, `04 - Risks`, `Systemic risk`. The first two
+carry no information, so drop them, and what remains is your actual thematic
+path:
+
+```yaml
+formulas:
+  chemin: note["collections"].filter(value.toString().containsAny("My Library", "Doctorat") == false).join(" › ")
+  collection: note["collections"].filter(value.toString().containsAny("My Library", "Doctorat") == false).reverse().slice(0, 1).join("")
+```
+
+`chemin` renders the whole path, `collection` keeps only the last item, the
+deepest subcollection, which is the right key to group by. Replace the two names
+with whatever your own library puts at the top.
+
+```yaml
+    groupBy:
+      property: formula.collection
+      direction: ASC
+```
+
+Group a table this way and you read your corpus by theme rather than by
+reference: every annotation on systemic risk together, whichever book it came
+from. **Obsidian prints the number of rows in each group header, so grouping is
+already a counter.** 🔢
+
+### Counting annotations per source
+
+The other direction is a table whose rows are the **sources**, with the number of
+annotations each one produced. Backlinks give it to you:
+
+```yaml
+formulas:
+  annotations: file.backlinks.filter(value.asFile().path.startsWith("1 - Annotations/")).map(value.asFile().path).unique().length
+  jamaisCitees: file.backlinks.filter(value.asFile().path.startsWith("1 - Annotations/")).filter(value.asFile().hasTag("orphelin")).map(value.asFile().path).unique().length
+```
+
+Read it from the inside out: take everything that links to this source, keep only
+what lives in the annotations folder, reduce each one to its path, remove
+duplicates, count. The `map` and `unique` steps matter: an annotation links to
+its source twice, once in its properties and once in its body, and without them
+every source would count double. `jamaisCitees` adds one filter and tells you how
+much of what you read you never used.
+
+Filter the view with `file.hasProperty("zotero-key")` to keep the ZotFlow source
+notes and nothing else, then sort by `formula.annotations` descending. You get
+your reading effort ranked, most annotated first, with the unused share beside
+it. Adapt `"1 - Annotations/"` to your own folder name.
+
+### Views worth having
+
+- **by source**, grouped on `formula.source`, sorted by `ordre`: the annotations
+  of a book in reading order;
+- **by Zotero collection**, grouped on `formula.collection`, sorted by
+  `formula.appels` descending: your themes, most exploited first;
+- **never cited**, filtered on `file.backlinks.length == 0`: what you have read
+  and never used;
+- **counter per source**, described above;
+- **by colour**, grouped on `note.couleur`, as cards: useful if your highlight
+  colours carry a meaning, definition, objection, method.
 
 ## 🔖 Citing Zotero, live
 

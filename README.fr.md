@@ -24,6 +24,7 @@ mettre sous la dent.
 
 - [⚠️ Avant de commencer](#-avant-de-commencer)
 - [⚛️ Atomiser](#-atomiser)
+- [🧮 Une base pour vos annotations](#-une-base-pour-vos-annotations)
 - [🔖 Citer Zotero, en direct](#-citer-zotero-en-direct)
 - [🖱️ Glisser-déposer](#-glisser-déposer)
 - [🪗 Replier les citations](#-replier-les-citations)
@@ -145,6 +146,119 @@ Trois comportements, activables séparément :
 Les annotations qu'aucune note ne cite peuvent être **taguées** automatiquement,
 ce qui permet de les colorer dans le graphe et de voir d'un coup d'œil ce que
 vous avez lu sans jamais l'employer.
+
+## 🧮 Une base pour vos annotations
+
+L'atomisation vous donne des milliers de petites notes. Pour les voir vraiment,
+Obsidian dispose des **Bases**, sa vue en base de données intégrée, et Ariane
+écrit précisément les propriétés dont une base a besoin. Cette vue **n'est pas
+livrée avec le plugin** : une base est un fichier de votre coffre, à vous de la
+façonner, voici donc tout ce qu'il faut pour la construire. Une base toute faite
+se trouve dans [`docs/annotations.base`](docs/annotations.base), à copier dans
+votre coffre et à ouvrir telle quelle. 📋
+
+### Ce qu'Ariane écrit sur chaque note d'annotation
+
+| Propriété | Contenu |
+| --- | --- |
+| `aliases` | le titre de l'annotation, le nom lisible |
+| `zotflow-anno-key` | la clé Zotero de l'annotation, stable d'une régénération à l'autre |
+| `zotflow-source` | un lien vers la fiche source, `[[@auteurTitre2020]]` |
+| `ordre` | position de l'annotation dans le document |
+| `page` | page dans le PDF |
+| `couleur` | couleur du surlignage Zotero, en toutes lettres |
+| `références-citées` | liens vers les travaux secondaires que le passage rapporte |
+| `références-pages` | la page indiquée pour chacun d'eux |
+| `collections` | les collections Zotero, de la racine à la feuille |
+| `zotflow-auto`, `zotflow-locked` | note générée, note verrouillée |
+| `tags: orphelin` | ajouté aux annotations qu'aucune note ne cite |
+
+Les fiches source viennent de ZotFlow et portent `citationKey`, `title`,
+`creators`, `year`, `itemType`, `zotero-key` et `collections`. Depuis une
+annotation, une base les atteint par `asFile()`, et c'est ce qui fait tenir
+l'ensemble.
+
+### Les formules
+
+```yaml
+formulas:
+  source: note["zotflow-source"]
+  appels: file.backlinks.length
+  auteurs: note["zotflow-source"].asFile().properties["creators"]
+  annee: note["zotflow-source"].asFile().properties["year"]
+```
+
+`source` vous donne un lien cliquable vers la référence. `appels` compte combien
+de notes citent cette annotation, et c'est la colonne la plus utile de toutes :
+elle sépare la matière que vous avez exploitée de celle que vous avez seulement
+récoltée. Les deux dernières vont chercher dans la fiche source l'auteur et
+l'année, ce qui permet de trier les annotations par auteur sans quitter le
+tableau.
+
+### Trier par collection Zotero
+
+`collections` est une liste qui va de la racine jusqu'au dossier le plus
+profond, par exemple `My Library`, `Doctorat`, `04 - Risques`, `Risque
+systémique`. Les deux premières ne portent aucune information, on les écarte, et
+ce qui reste est votre véritable chemin thématique :
+
+```yaml
+formulas:
+  chemin: note["collections"].filter(value.toString().containsAny("My Library", "Doctorat") == false).join(" › ")
+  collection: note["collections"].filter(value.toString().containsAny("My Library", "Doctorat") == false).reverse().slice(0, 1).join("")
+```
+
+`chemin` affiche le chemin entier, `collection` ne garde que le dernier élément,
+la sous-collection la plus fine, qui est la bonne clé de regroupement. Remplacez
+les deux noms par ce que votre propre bibliothèque place en tête.
+
+```yaml
+    groupBy:
+      property: formula.collection
+      direction: ASC
+```
+
+Regroupez un tableau ainsi et vous lisez votre corpus par thème plutôt que par
+référence : toutes les annotations sur le risque systémique ensemble, quel que
+soit l'ouvrage d'où elles viennent. **Obsidian inscrit le nombre de lignes dans
+l'en-tête de chaque groupe : regrouper, c'est déjà compter.** 🔢
+
+### Compter les annotations par source
+
+L'autre sens, c'est un tableau dont les lignes sont les **sources**, avec le
+nombre d'annotations que chacune a produites. Les rétroliens vous le donnent :
+
+```yaml
+formulas:
+  annotations: file.backlinks.filter(value.asFile().path.startsWith("1 - Annotations/")).map(value.asFile().path).unique().length
+  jamaisCitees: file.backlinks.filter(value.asFile().path.startsWith("1 - Annotations/")).filter(value.asFile().hasTag("orphelin")).map(value.asFile().path).unique().length
+```
+
+Cela se lit de l'intérieur vers l'extérieur : prendre tout ce qui pointe vers
+cette source, ne garder que ce qui vit dans le dossier des annotations, réduire
+chaque élément à son chemin, retirer les doublons, compter. Les étapes `map` et
+`unique` ne sont pas décoratives : une annotation pointe deux fois vers sa
+source, une fois dans ses propriétés et une fois dans son corps, et sans elles
+chaque source compterait double. `jamaisCitees` ajoute un filtre et vous dit
+quelle part de vos lectures n'a jamais servi.
+
+Filtrez la vue sur `file.hasProperty("zotero-key")` pour ne garder que les
+fiches source de ZotFlow, puis triez sur `formula.annotations` en ordre
+décroissant. Vous obtenez votre effort de lecture classé, du plus annoté au
+moins annoté, avec la part inexploitée à côté. Adaptez `"1 - Annotations/"` au
+nom de votre propre dossier.
+
+### Les vues qui valent la peine
+
+- **par source**, regroupée sur `formula.source` et triée sur `ordre` : les
+  annotations d'un ouvrage dans l'ordre de lecture ;
+- **par collection Zotero**, regroupée sur `formula.collection` et triée sur
+  `formula.appels` en décroissant : vos thèmes, du plus exploité au moins ;
+- **jamais citées**, filtrée sur `file.backlinks.length == 0` : ce que vous avez
+  lu et jamais réemployé ;
+- **compteur par source**, décrite ci-dessus ;
+- **par couleur**, regroupée sur `note.couleur`, en cartes : utile si vos
+  couleurs de surlignage portent un sens, définition, objection, méthode.
 
 ## 🔖 Citer Zotero, en direct
 

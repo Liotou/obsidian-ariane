@@ -1,0 +1,121 @@
+formulas:
+  source: note["zotflow-source"]
+  cle: note["zotflow-anno-key"]
+  appels: file.backlinks.length
+  refs: note["références-citées"]
+  collection: note["collections"].filter(value.toString().containsAny("My Library", "Doctorat") == false).reverse().slice(0, 1).join("")
+  chemin: note["collections"].filter(value.toString().containsAny("My Library", "Doctorat") == false).join(" › ")
+  auteurs: note["zotflow-source"].asFile().properties["creators"]
+  annee: note["zotflow-source"].asFile().properties["year"]
+  annotations: file.backlinks.filter(value.asFile().path.startsWith("1 - Annotations/")).map(value.asFile().path).unique().length
+  jamaisCitees: file.backlinks.filter(value.asFile().path.startsWith("1 - Annotations/")).filter(value.asFile().hasTag("orphelin")).map(value.asFile().path).unique().length
+properties:
+  file.name:
+    displayName: Clé
+  note.aliases:
+    displayName: Titre
+  note.ordre:
+    displayName: Ordre
+  note.page:
+    displayName: Page
+  note.couleur:
+    displayName: Couleur
+  formula.refs:
+    displayName: Références citées
+  formula.source:
+    displayName: Source
+  formula.appels:
+    displayName: Citée
+  formula.collection:
+    displayName: Collection
+  formula.chemin:
+    displayName: Chemin Zotero
+  formula.auteurs:
+    displayName: Auteurs
+  formula.annee:
+    displayName: Année
+  formula.annotations:
+    displayName: Annotations
+  formula.jamaisCitees:
+    displayName: Jamais citées
+  note.title:
+    displayName: Titre de la source
+views:
+  - type: table
+    name: 1. Par source
+    filters:
+      and:
+        - note["zotflow-auto"] == true
+        - file.folder.startsWith("1 - Annotations")
+    groupBy:
+      property: formula.source
+      direction: ASC
+    order:
+      - ordre
+      - aliases
+      - page
+      - couleur
+      - formula.appels
+    sort:
+      - property: ordre
+        direction: ASC
+  - type: table
+    name: 2. Par collection Zotero
+    filters:
+      and:
+        - note["zotflow-auto"] == true
+        - file.folder.startsWith("1 - Annotations")
+    groupBy:
+      property: formula.collection
+      direction: ASC
+    order:
+      - aliases
+      - formula.source
+      - formula.chemin
+      - page
+      - formula.appels
+    sort:
+      - property: formula.appels
+        direction: DESC
+  - type: table
+    name: 3. Jamais citées
+    filters:
+      and:
+        - note["zotflow-auto"] == true
+        - file.folder.startsWith("1 - Annotations")
+        - file.backlinks.length == 0
+    groupBy:
+      property: formula.source
+      direction: ASC
+    order:
+      - ordre
+      - aliases
+      - page
+      - formula.collection
+  - type: table
+    name: 4. Compteur par source
+    filters:
+      and:
+        - file.hasProperty("zotero-key")
+    order:
+      - file.name
+      - note.title
+      - formula.annotations
+      - formula.jamaisCitees
+      - formula.chemin
+    sort:
+      - property: formula.annotations
+        direction: DESC
+  - type: cards
+    name: 5. Par couleur
+    filters:
+      and:
+        - note["zotflow-auto"] == true
+        - file.folder.startsWith("1 - Annotations")
+    groupBy:
+      property: note.couleur
+      direction: ASC
+    order:
+      - aliases
+      - formula.source
+      - page
