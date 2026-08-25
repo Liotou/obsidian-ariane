@@ -601,7 +601,9 @@ thinking.
 
 ## ☕ Buy me a coffee
 
-If Ariane saves you time, you can [buy me a coffee](https://buymeacoffee.com/liotou).
+If Ariane saves you time, you can buy me a coffee.
+
+[![Buy me a coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=liotou&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://buymeacoffee.com/liotou)
 
 I said at the top that this plugin was written by vibe coding with Claude, and I
 stand by it. But a model does not know what a reading note should look like, nor

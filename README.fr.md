@@ -614,8 +614,9 @@ vœu pieux.
 
 ## ☕ Offrez-moi un café
 
-Si Ariane vous fait gagner du temps, vous pouvez
-[m'offrir un café](https://buymeacoffee.com/liotou).
+Si Ariane vous fait gagner du temps, vous pouvez m'offrir un café.
+
+[![Offrez-moi un café](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=liotou&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://buymeacoffee.com/liotou)
 
 Je dis en tête de page que ce plugin est écrit en vibe coding avec Claude, et je
 le maintiens. Mais un modèle ne sait pas à quoi doit ressembler une note de
