@@ -91,9 +91,15 @@ a **counter** instead, and hovering it shows them as clickable links.
 
 This is the fastest way to cite while writing.
 
+![Dragging annotations onto a sentence, which inserts the citations inline and builds the bibliography](docs/drag-and-drop.gif)
+
 **Drag an annotation, or a source, onto a sentence.** Its reference is inserted
 inline, in brackets, before the closing punctuation. You never leave the
 keyboard flow for more than a second.
+
+In the recording above, three annotations are dropped one after another onto the
+same sentence. Each one inserts its citation before the full stop, and the
+bibliography at the end of the note builds itself as they arrive.
 
 The target follows your cursor: hovering the **text** places the citation at the
 end of the sentence under the pointer, hovering the **left margin** of the

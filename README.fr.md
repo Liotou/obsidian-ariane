@@ -91,9 +91,15 @@ peut porter un **compteur**, dont le survol les affiche en liens cliquables.
 
 C'est la façon la plus rapide de citer en écrivant.
 
+![Des annotations glissées sur une phrase : les citations s'insèrent en ligne et la bibliographie se construit](docs/drag-and-drop.gif)
+
 **Glissez une annotation, ou une source, sur une phrase.** Sa référence
 s'insère en ligne, entre parenthèses, avant la ponctuation finale. Vous ne
 quittez pas le fil de la frappe plus d'une seconde.
+
+Dans l'enregistrement ci-dessus, trois annotations sont déposées l'une après
+l'autre sur la même phrase. Chacune insère sa citation avant le point, et la
+bibliographie de fin de note se construit à mesure.
 
 La cible suit votre curseur : en survolant le **texte**, la citation se place en
 fin de la phrase visée ; en survolant la **marge gauche** du paragraphe, elle se
