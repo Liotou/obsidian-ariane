@@ -40,6 +40,7 @@ mettre sous la dent.
 - [🗂️ S'adapter à votre organisation](#-sadapter-à-votre-organisation)
 - [⌨️ Commandes](#-commandes)
 - [📦 Installation](#-installation)
+- [☕ Offrez-moi un café](#-offrez-moi-un-café)
 
 ---
 
@@ -608,6 +609,20 @@ tout ce que fait Ariane part de ce qu'il dépose. Merci à
 Merci également à [Better BibTeX](https://retorque.re/zotero-better-bibtex/) et
 à son filtre pandoc, sans lequel les citations vivantes dans Word resteraient un
 vœu pieux.
+
+---
+
+## ☕ Offrez-moi un café
+
+Si Ariane vous fait gagner du temps, vous pouvez
+[m'offrir un café](https://buymeacoffee.com/liotou).
+
+Je dis en tête de page que ce plugin est écrit en vibe coding avec Claude, et je
+le maintiens. Mais un modèle ne sait pas à quoi doit ressembler une note de
+lecture, ni pourquoi une citation se place avant le point, ni ce qui casse quand
+on régénère une annotation dont on a retouché la paraphrase. Tout cela vient de
+mois passés à rédiger ma propre thèse, à tester, à trouver ce qui n'allait pas et
+à le dire, encore et encore. Le code n'est pas de moi. Le plugin, si. ☕
 
 ---
 

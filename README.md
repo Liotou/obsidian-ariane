@@ -40,6 +40,7 @@ on.
 - [🗂️ Fitting your own organisation](#-fitting-your-own-organisation)
 - [⌨️ Commands](#-commands)
 - [📦 Installing](#-installing)
+- [☕ Buy me a coffee](#-buy-me-a-coffee)
 
 ---
 
@@ -595,6 +596,19 @@ and everything Ariane does starts from what ZotFlow puts there. Thank you to
 Thanks as well to [Better BibTeX](https://retorque.re/zotero-better-bibtex/) and
 its pandoc filter, without which live citations in Word would remain wishful
 thinking.
+
+---
+
+## ☕ Buy me a coffee
+
+If Ariane saves you time, you can [buy me a coffee](https://buymeacoffee.com/liotou).
+
+I said at the top that this plugin was written by vibe coding with Claude, and I
+stand by it. But a model does not know what a reading note should look like, nor
+why a citation goes before the full stop, nor what breaks when you regenerate an
+annotation whose paraphrase you have edited. All of that came from months of
+writing my own thesis, of testing, of finding what was wrong and saying so, over
+and over. The code is not mine. The plugin is. ☕
 
 ---
 

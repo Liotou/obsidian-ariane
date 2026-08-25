@@ -1,10 +1,11 @@
 {
   "id": "zotflow-atomiser",
   "name": "Ariane",
-  "version": "2.55.0",
+  "version": "2.55.1",
   "minAppVersion": "1.0.0",
   "description": "Compagnon de ZotFlow : atomise les annotations et les notes Zotero en notes reliées, cite Zotero en direct dans Obsidian, suggère les rapprochements et exporte vers Word avec des champs Zotero actualisables.",
   "author": "Liotou",
+  "fundingUrl": "https://buymeacoffee.com/liotou",
   "isDesktopOnly": false,
   "authorUrl": "https://github.com/Liotou"
 }
