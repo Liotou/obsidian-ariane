@@ -106,8 +106,16 @@ end of the sentence under the pointer, hovering the **left margin** of the
 paragraph places it at the end of the paragraph. The area being targeted is
 highlighted while you drag, so you see where it will land before you let go.
 
-The **annotation basket**, opened from the ribbon, lets you gather several
-annotations as you read and drop them one after another when you write.
+The **annotation basket**, opened from the ribbon, lets you gather annotations
+as you read, then place the whole set at once when you write. Drag the basket
+onto a paragraph, or drop it at the cursor, and every annotation it holds
+arrives as a single citation.
+
+![Collecting annotations in the basket, then dropping the whole set onto a sentence as one citation](docs/annotation-basket.gif)
+
+Four annotations are gathered here, from three different sources, and land in
+one go as `(Aven and Renn, 2010, p. 49 ; Aven and Renn, 2010, p. 65 ; Aven and
+Ylönen, 2019, p. 285 ; Babeau, 2025)`. The bibliography follows on its own.
 
 Two details that took some work:
 
@@ -152,6 +160,8 @@ Three engines: **lexical** (shared words, no dependency at all), **semantic**
 (meaning, through local embeddings) and **hybrid**, which combines the two and
 is the recommended choice. Everything runs locally, offline and free of charge,
 through **Ollama or LM Studio**.
+
+![The suggestions panel, filtered by note family, proposing notes with a relevance score](docs/suggestions.gif)
 
 - filter the panel by note family, with the colour and icon you gave each one;
 - **right click a passage** to get suggestions for that passage alone, rather

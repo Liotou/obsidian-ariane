@@ -106,9 +106,17 @@ fin de la phrase visée ; en survolant la **marge gauche** du paragraphe, elle s
 place en fin de paragraphe. La zone visée est surlignée pendant le glisser, si
 bien que vous voyez où elle tombera avant de lâcher.
 
-Le **panier d'annotations**, ouvert depuis le ruban, permet d'en rassembler
-plusieurs au fil de la lecture, puis de les déposer l'une après l'autre au
-moment d'écrire.
+Le **panier d'annotations**, ouvert depuis le ruban, permet d'en rassembler au
+fil de la lecture, puis de poser l'ensemble d'un coup au moment d'écrire.
+Glissez le panier sur un paragraphe, ou déposez-le au curseur, et toutes les
+annotations qu'il contient arrivent en une seule citation.
+
+![Des annotations rassemblées dans le panier, puis déposées d'un coup sur une phrase en une seule citation](docs/annotation-basket.gif)
+
+Quatre annotations sont réunies ici, venues de trois sources différentes, et
+tombent d'un seul geste en `(Aven et Renn, 2010, p. 49 ; Aven et Renn, 2010,
+p. 65 ; Aven et Ylönen, 2019, p. 285 ; Babeau, 2025)`. La bibliographie suit
+d'elle-même.
 
 Deux détails qui ont demandé du travail :
 
@@ -153,6 +161,8 @@ Trois moteurs : **lexical** (mots en commun, aucune dépendance), **sémantique*
 (le sens, par embeddings locaux) et **hybride**, qui combine les deux et reste
 le choix recommandé. Tout est local, hors ligne et gratuit, par **Ollama ou
 LM Studio**.
+
+![Le panneau de suggestions, filtré par famille de notes, proposant des notes avec leur score de pertinence](docs/suggestions.gif)
 
 - filtrez le panneau par famille de notes, avec la couleur et l'icône que vous
   leur avez données ;
