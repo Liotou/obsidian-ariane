@@ -134,6 +134,12 @@ le coffre, plutôt que de ne rien faire en silence.
 Une citation longue encombre la lecture. Repliée, elle cède la place à une
 pastille portant le nombre de références qu'elle contient.
 
+![Des citations repliées en pastilles numérotées en fin de phrase, qui se déplient au survol](docs/folding-citations.gif)
+
+La note ci-dessus porte cinq citations et se lit d'un trait. Les pastilles
+comptent respectivement deux, sept, deux, trois et une référence, et les
+rendent dès qu'on en a besoin.
+
 - un clic sur la pastille déplie cette citation seule ;
 - les commandes, ou le bouton du ruban, replient ou déplient toute la note ;
 - en édition, une citation se déplie d'elle-même dès que le curseur y entre, et

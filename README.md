@@ -134,6 +134,12 @@ silently doing nothing.
 A long citation can crowd the reading. Fold it, and it gives way to a small
 badge carrying the number of references it holds.
 
+![Citations folded into small numbered badges at the end of each sentence, unfolding on hover](docs/folding-citations.gif)
+
+The note above holds five citations, and reads as continuous prose. The badges
+carry two, seven, two, three and one reference respectively, and give them back
+the moment you need them.
+
 - click the badge to unfold that one citation;
 - use the commands, or the ribbon button, to fold or unfold the whole note;
 - while editing, a citation unfolds on its own as soon as the cursor enters it,
