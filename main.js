@@ -62,16 +62,25 @@ const TEXTES = {
     "Affiche en police à largeur fixe les notes des dossiers listés. Liste vide : aucun. Le texte reste normal (recherche et tri intacts).": "Shows notes from the listed folders in a fixed width font. An empty list means none. The text itself is unchanged, so search and sorting still work.",
     "Affiche l'aperçu natif au survol des liens internes dans les vues qui ne le font pas (ex. chat Claudian, panneaux).": "Shows the native hover preview for internal links in views that do not provide one, such as side panels.",
     "Affiche un message quand un élément déposé ne correspond à aucune note du coffre, au lieu de ne rien faire.": "Shows a message when a dropped item matches no note in the vault, instead of doing nothing.",
+    "Afficher l'alias plutôt que le nom de fichier": "Show the alias instead of the filename",
     "Afficher la justification": "Show the reason",
+    "Afficher le titre après un lien vers une note de cette famille": "Show the title after a link to a note of this family",
     "Afficher le titre en aparté": "Show the title as an aside",
     "Afficher l’aparté pour les liens vers des notes d’annotation.": "Show the aside for links pointing to annotation notes.",
+    "Affiner par le modèle de langue": "Refine with the language model",
     "Ajoute le titre après un lien d'annotation ou de note conceptuelle qui affiche la clé (lecture et édition).": "Adds the title after a link that shows only a key, in reading view and while editing.",
     "Ajoute un lien après chaque référence. Il est placé à la suite, et non autour du texte, afin de préserver les italiques du style bibliographique.": "Adds a link after each reference. It goes next to the entry rather than around it, so the italics of the bibliographic style survive.",
     "Ajoute un tag aux annotations à zéro appel, pour les colorer dans le graphe.": "Tags annotations that are never cited, so you can colour them in the graph.",
     "Ajoute un titre « Bibliographie » où insérer la bibliographie dans Word (Zotero > Add Bibliography).": "Adds a “Bibliography” heading where Word should place the bibliography (Zotero > Add Bibliography).",
     "Ajouter une famille": "Add a family",
     "Ajouté devant le nom de la source (ex. « Biblio - @cle »). Peut être vide.": "Placed before the source name, for example “Biblio - @key”. May be left empty.",
+    "Alias": "Alias",
+    "Alphabétique (auteur, année)": "Alphabetical (author, year)",
+    "Analyse (expressions régulières)": "Parsing (regular expressions)",
     "Ancien nom → nouveau nom": "Old name to new name",
+    "Annotations atomisées": "Atomised annotations",
+    "Annuler": "Cancel",
+    "Aparté": "Aside",
     "Aparté (titre sur les liens)": "Aside (title shown after links)",
     "Aperçu au survol hors éditeur": "Hover preview outside the editor",
     "Apparat « cité dans »": "Secondary source apparatus",
@@ -80,6 +89,7 @@ const TEXTES = {
     "Ariane : ouvrir dans Zotero": "Ariane: open in Zotero",
     "Ariane : suggestions pour ce passage": "Ariane: suggestions for this passage",
     "Ariane relève les annotations et les sources citées dans le corps de la note, puis entretient une bibliographie en fin de note, à la manière de Zotero dans Word.": "Ariane collects the annotations and sources cited in the body of the note, then keeps a bibliography at the end of it, the way Zotero does in Word.",
+    "Ariane — rattachement": "Ariane: attachment",
     "Associez chaque niveau markdown à un nom de style de votre modèle (laisser vide = style pandoc par défaut).": "Map each markdown level to a style name from your template. Leave empty to keep the default pandoc style.",
     "Atomiser la note source active": "Atomise the active source note",
     "Atomiser les notes de lecture": "Atomise reading notes",
@@ -87,18 +97,25 @@ const TEXTES = {
     "Aucun dossier de références en attente.": "No folder set for pending references.",
     "Aucun dossier à proposer.": "No folder to propose.",
     "Aucun doublon d'auteur détecté.": "No duplicate author found.",
+    "Aucun problème détecté.": "No problem found.",
     "Aucun schéma draw.io trouvé (.drawio.svg).": "No draw.io diagram found (.drawio.svg).",
     "Aucun schéma draw.io trouvé.": "No draw.io diagram found.",
     "Aucun temps enregistré pour le ": "No time recorded for ",
     "Aucune annotation trouvée.": "No annotation found.",
+    "Aucune famille. Ajoutez-en une, ou laissez Ariane proposer celles de votre coffre.": "No family yet. Add one, or let Ariane propose the ones found in your vault.",
     "Aucune fiche Zotero pour « ": "No Zotero entry for “",
     "Aucune note active.": "No active note.",
     "Aucune note associée à « ": "No note attached to “",
     "Aucune pièce jointe ni clé Zotero dans « ": "Neither attachment nor Zotero key in “",
     "Aucune référence citée trouvée pour ce DOI.": "No cited reference found for this DOI.",
     "Aucune source Zotero avec DOI.": "No Zotero source carries a DOI.",
+    "Aucune suggestion pertinente.": "No relevant suggestion.",
+    "Aucune variante de nom détectée.": "No name variant found.",
     "Auteurs : ": "Authors: ",
+    "Auto (Crossref puis OpenAlex)": "Auto (Crossref then OpenAlex)",
+    "Automatique": "Automatic",
     "Automatisation": "Automation",
+    "Avancé": "Advanced",
     "Avec organisation": "With organisation",
     "Barre d'état": "Status bar",
     "Bibliographie : ": "Bibliography: ",
@@ -107,23 +124,32 @@ const TEXTES = {
     "Bibliographie de fin de note": "Bibliography at the end of the note",
     "Bibliographie mise à jour dans ": "Bibliography updated in ",
     "Bibliographies : ": "Bibliographies: ",
+    "Bibliographies citées": "Cited bibliographies",
     "Bibliographies citées (API)": "Cited bibliographies (API)",
     "Bibliographies terminées : ": "Bibliographies finished: ",
     "Bibliographies…": "Bibliographies…",
+    "Blocs sans type": "Shapes without a type",
     "Callout pour {{citation}} : quote, cite, note, info…": "Callout used for {{citation}}: quote, cite, note, info…",
     "Candidats soumis": "Candidates submitted",
     "Ce n'est pas un lecteur ZotFlow.": "This is not a ZotFlow reader.",
+    "Cellule de tableau": "Table cell",
+    "Certaines seulement, ignorer les ambiguës": "Certain matches only, skip ambiguous ones",
     "Ces dossiers ne décrivent pas vos types de notes, mais les emplacements dont Ariane a besoin. Laissez vide ce dont vous ne vous servez pas.": "These folders do not describe your note types. They are the places Ariane needs in order to work. Leave empty whatever you do not use.",
+    "Ces notes nourrissent le panneau de suggestions": "These notes feed the suggestions panel",
     "Cette note ne contient pas d'annotations reconnues.": "This note contains no recognised annotation.",
     "Cette note ne se rattache pas à une source Zotero.": "This note is not attached to a Zotero source.",
     "Cette source n'a pas de DOI.": "This source has no DOI.",
     "Champ de référence formatée": "Formatted reference field",
     "Changer de service réencode l'index : les vecteurs de deux modèles ne se comparent pas.": "Switching service re-encodes the index, because vectors from two different models cannot be compared.",
     "Changer le nom d'une propriété dans les réglages ne vaut que pour les écritures à venir : les notes déjà écrites gardent l'ancien nom. Cet outil reporte l'ancienne valeur sur la nouvelle dans tout le coffre. Une note qui porte déjà la nouvelle propriété n'est jamais écrasée.": "Renaming a property in the settings only applies to future writes, so notes already written keep the old name. This tool carries the old value over to the new one across the whole vault. A note that already has the new property is never overwritten.",
+    "Chasse fixe": "Fixed width",
     "Chaîne détectant une note source à traiter.": "String used to detect a source note worth processing.",
     "Chemin de pandoc": "Path to pandoc",
+    "Choisissez la fiche Zotero correspondante :": "Choose the matching Zotero entry:",
     "Cible automatique : en survolant le texte, l’appel de note se place en fin de la phrase visée ; en survolant la marge gauche du paragraphe, il se place en fin de paragraphe. La zone visée est surlignée pendant le glisser.": "Automatic target: hovering the text places the citation at the end of the sentence under the cursor, hovering the left margin places it at the end of the paragraph. The target area is highlighted while you drag.",
+    "Citation  (>)": "Quote  (>)",
     "Citations": "Citations",
+    "Citations & bibliographie": "Citations and bibliography",
     "Citations : rafraîchir les libellés…": "Citations: refresh labels…",
     "Citations : replier ou déplier": "Citations: fold or unfold",
     "Citations : tout déplier": "Citations: unfold all",
@@ -131,19 +157,28 @@ const TEXTES = {
     "Citations indirectes": "Secondary citations",
     "Collez ici le contenu d'un fichier de profil. Les réglages inconnus sont ignorés.": "Paste the contents of a profile file here. Unknown settings are ignored.",
     "Compter": "Count",
+    "Confirmer": "Confirm",
     "Conserver le relevé quotidien": "Keep the daily record",
+    "Contenu des notes": "Note contents",
+    "Copier": "Copy",
+    "Copiez le nom exact du style voulu dans les champs de mapping des réglages.": "Copy the exact style name you want into the mapping fields in the settings.",
     "Copié : ": "Copied: ",
     "Corps (pt)": "Body size (pt)",
     "Correspondances de références mémorisées": "Remembered reference matches",
     "Couleur CSS. Vide = atténuée. Ex. « #999 », « var(--text-faint) ».": "A CSS colour. Empty means muted. For example “#999” or “var(--text-faint)”.",
+    "Couleur dans le panneau de suggestions": "Colour in the suggestions panel",
     "Couleur de l'aparté": "Colour of the aside",
     "DSL copié.": "DSL copied.",
+    "Descendre": "Move down",
+    "Documents exportés": "Exported documents",
     "Dossier de sortie": "Output folder",
     "Dossier des annotations": "Annotations folder",
     "Dossier des auteurs": "Authors folder",
     "Dossier des bibliographies": "Bibliographies folder",
     "Dossier des références citées": "Cited references folder",
     "Dossier du journal": "Journal folder",
+    "Dossiers": "Folders",
+    "Dossiers & familles": "Folders and families",
     "Décaler les titres d’un cran": "Shift headings down one level",
     "Décisions de rattachement oubliées.": "Attachment decisions forgotten.",
     "Décoché, les citations restent toujours visibles et les commandes sans effet.": "When unchecked, citations always stay visible and the commands do nothing.",
@@ -152,8 +187,10 @@ const TEXTES = {
     "Décrivez vos types de notes. Une famille couvre un ou plusieurs dossiers, éventuellement un préfixe de nom, et dit ce qu'Ariane doit en faire : afficher le titre après les liens, nourrir les suggestions, changer l'apparence dans l'explorateur. Glissez les lignes pour les réordonner — la première qui couvre une note l'emporte.": "Describe your own note types. A family covers one or more folders, optionally a filename prefix, and states what Ariane should do with them: show the title after links, feed the suggestions, change the look in the file explorer. Drag rows to reorder them, since the first family that covers a note wins.",
     "Délai avant recalcul (ms)": "Delay before recomputing (ms)",
     "Délai maximal": "Maximum delay",
+    "Déposer sur le curseur": "Drop at the cursor",
     "Déposer une note sur un paragraphe": "Drop a note onto a paragraph",
     "Dépôt non reconnu : ": "Unrecognised drop: ",
+    "Désactivé": "Disabled",
     "Détecter les dossiers de mon coffre": "Detect the folders in my vault",
     "Email (pool poli)": "Email (polite pool)",
     "Emplacement de bibliographie": "Bibliography placement",
@@ -163,10 +200,13 @@ const TEXTES = {
     "En secondes, sans clavier ni souris. 120 convient à la rédaction, où l'on s'arrête pour réfléchir ; 30 ne compte que la frappe.": "In seconds, with neither keyboard nor mouse. 120 suits writing, where you pause to think. 30 counts typing only.",
     "En secondes. Au-delà, Ariane rend la main et garde le classement sans le modèle.": "In seconds. Beyond that, Ariane gives up and keeps the ranking without the model.",
     "En secondes. Espacer les écritures évite d'agiter la synchronisation ; le temps en attente n'est jamais perdu, il est reporté en quittant la note.": "In seconds. Spacing out the writes keeps your sync quiet. Pending time is never lost, it is written when you leave the note.",
+    "En-tête de tableau": "Table header",
+    "Encadrés": "Callouts",
     "Entretient un encart « Contenu du schéma » dans la note associée, ce qui rend les blocs et relations cherchables.": "Keeps a “Diagram contents” block in the paired note, which makes shapes and relations searchable.",
     "Espaces insécables": "Non breaking spaces",
     "Ex. « 0.8em », « 11px ».": "For example “0.8em” or “11px”.",
     "Export SVG": "SVG export",
+    "Export Word": "Word export",
     "Export Word (Zotero)…": "Word export (Zotero)…",
     "Export terminé : ": "Export finished: ",
     "Export — échec : ": "Export failed: ",
@@ -174,9 +214,11 @@ const TEXTES = {
     "Exporter": "Export",
     "Exporter en Word avec citations Zotero (Pandoc)": "Export to Word with live Zotero citations (pandoc)",
     "Familles de notes": "Note families",
+    "Fenêtre flottante": "Floating window",
     "Fiches auteurs": "Author notes",
     "Filtre Lua (BetterBibTeX)": "Lua filter (BetterBibTeX)",
     "Finition non appliquée : ": "Finishing pass not applied: ",
+    "Flèches sans étiquette": "Arrows without a label",
     "Format de l'aparté": "Format of the aside",
     "Format de la citation": "Citation format",
     "Format des entrées (repli, si le champ est absent)": "Entry format (fallback, when the field is missing)",
@@ -184,14 +226,20 @@ const TEXTES = {
     "Forme du compteur": "Timer display",
     "Fusion des auteurs…": "Merging authors…",
     "Fusion — échec : ": "Merge failed: ",
+    "Fusionner": "Merge",
     "Fusionner les doublons d'auteurs": "Merge duplicate authors",
     "Garde-fous. Sans borne de longueur, un modèle qui ne referme pas sa réponse peut tourner plusieurs minutes à pleine charge : c'est arrivé, et mesuré.": "Safeguards. Without a length limit, a model that never closes its answer can run for several minutes at full load. That happened, and it was measured.",
+    "Glisser pour réordonner": "Drag to reorder",
     "Glisser un lien de note sur un paragraphe l'ajoute à sa note de bas de page. Déposer ailleurs reste normal.": "Dragging a note link onto a paragraph adds it to that paragraph's citation. Dropping anywhere else behaves as usual.",
     "Glisser-déposer & notes de bas de page": "Drag and drop, footnotes",
+    "Glissez des annotations ici…": "Drag annotations here…",
     "Graphe": "Graph",
     "Groupe 1 = clé stable, groupe 2 = contenu.": "Group 1 is the stable key, group 2 is the content.",
+    "Général": "General",
     "Générer la bibliographie citée de cette source (via API)": "Build the cited bibliography of this source (through the API)",
     "Générer les bibliographies citées de TOUTES les sources (via API)": "Build the cited bibliographies of EVERY source (through the API)",
+    "Hybride (recommandé)": "Hybrid (recommended)",
+    "Ignorer": "Skip",
     "Ignorer les notes verrouillées": "Skip locked notes",
     "Importer": "Import",
     "Inclure le texte surligné (citation)": "Include the highlighted text (quotation)",
@@ -199,14 +247,21 @@ const TEXTES = {
     "Index reconstruit (": "Index rebuilt (",
     "Indexation des cartes…": "Indexing diagrams…",
     "Indexation sémantique…": "Semantic indexing…",
+    "Indiquez le nom actuel de la propriété.": "Give the current name of the property.",
     "Indiquez les deux noms.": "Give both names.",
     "Infobulle dans l'explorateur": "Tooltip in the file explorer",
     "Intègre le surlignage via {{citation}} (encadré) ou {{highlight}} (brut).": "Inserts the highlight through {{citation}} as a callout, or {{highlight}} as plain text.",
+    "JSON invalide : ": "Invalid JSON: ",
+    "Journal du temps": "Time journal",
     "Journal quotidien": "Daily journal",
+    "Journaux quotidiens du compteur de temps.": "Daily records from the timer.",
     "L'aparté sur les autres notes, et l'affichage de l'alias dans l'explorateur, se règlent famille par famille — onglet « Dossiers & familles ».": "The aside on other notes, and showing the alias in the file explorer, are set family by family, in the “Folders and families” tab.",
     "Lancer": "Run",
+    "Langue": "Language",
+    "Le JSON doit être un tableau non vide.": "The JSON must be a non empty array.",
     "Le compteur mesure le temps passé dans une note ouverte en édition. Il se met en pause dès que le clavier et la souris se taisent, ou que la fenêtre perd le focus : il compte donc le travail effectif, non la présence devant l'écran. Le total est inscrit en minutes dans une propriété de la note.": "The timer measures time spent in a note open for editing. It pauses as soon as keyboard and mouse go quiet, or the window loses focus, so it counts actual work rather than presence in front of the screen. The total is written in minutes into a property of the note.",
     "Le jeton {{réf}} de votre modèle. Ariane cherche les propriétés ci-dessous, dans l'ordre, accents et majuscules indifférents.": "The {{réf}} token of your template. Ariane looks for the properties below, in order, ignoring accents and case.",
+    "Le modèle répond : le reclassement est disponible.": "The model answers: reranking is available.",
     "Le panier est vide.": "The basket is empty.",
     "Le texte de liaison — « , cité dans » — se règle une seule fois, dans l'onglet « Citations & bibliographie ». Il vaut pour les citations en ligne comme pour l'export.": "The linking text, “, as cited in”, is set in one place only, in the “Citations and bibliography” tab. It applies to inline citations and to the export alike.",
     "Lecture des styles — échec : ": "Reading the styles failed: ",
@@ -217,16 +272,20 @@ const TEXTES = {
     "Les notes-filles Zotero — attachées à la référence entière, non à un passage — deviennent des notes à part, citables et reliées à leur source.": "Zotero child notes, attached to the whole reference rather than to a passage, become notes in their own right, citable and linked back to their source.",
     "Les rapprochements que vous avez confirmés à la main entre une référence en attente et une source Zotero. Les oublier vous fera reposer la question.": "The matches you confirmed by hand between a pending reference and a Zotero source. Forgetting them means being asked again.",
     "Les étiquettes admises sur vos schémas. Une liste vide n'impose rien. Un terme par ligne.": "The labels allowed on your diagrams. An empty list imposes nothing. One term per line.",
+    "Lexical (mots)": "Lexical (words)",
     "Lexical : mots en commun (aucune dépendance). Sémantique : comprend le sens via des embeddings locaux (Ollama). Hybride : combine les deux (recommandé). En l'absence d'Ollama, le moteur bascule automatiquement sur le lexical.": "Lexical: shared words, with no dependency. Semantic: meaning, through local embeddings. Hybrid: both at once, and the recommended choice. With no inference service available, the engine falls back to lexical on its own.",
     "Libellé de la page": "Page label",
     "Libellé des références": "References label",
     "Libellé du renvoi": "Link label",
+    "Liens non typés (soupape)": "Untyped links (safety valve)",
     "Lier cette référence à une fiche Zotero (désambiguïsation 2005a/b)": "Link this reference to a Zotero entry (to tell 2005a from 2005b)",
+    "Lignes suivantes.": "Following rows.",
     "Liste JSON. Pour chaque bloc, le premier profil dont « titreRegex » correspond est retenu.": "A JSON list. For each block, the first profile whose “titreRegex” matches is used.",
     "Longueur maximale de la réponse": "Maximum answer length",
     "Maintenance": "Maintenance",
     "Maintient une note par auteur pointant vers ses sources.": "Keeps one note per author, pointing to their sources.",
     "Marqueur de source": "Source marker",
+    "Me demander pour les ambiguës": "Ask me about ambiguous ones",
     "Mise en forme du document": "Document formatting",
     "Mise en page (modèle Word)": "Layout (Word template)",
     "Mise à jour automatique": "Automatic update",
@@ -238,8 +297,11 @@ const TEXTES = {
     "Modèle d'embeddings": "Embedding model",
     "Modèle de corps de note": "Note body template",
     "Modèle de langue": "Language model",
+    "Monter": "Move up",
     "Moteur": "Engine",
     "Moteur de pertinence": "Relevance engine",
+    "Nom d'icône Lucide, ex. « book »": "A Lucide icon name, for example “book”",
+    "Nom de la famille": "Family name",
     "Nom de la police monospace (vide = police de code d’Obsidian).": "Name of the monospace font. Empty means the Obsidian code font.",
     "Nom de référence non reconnu (attendu « Auteur, Année »).": "Reference name not recognised. Expected “Author, Year”.",
     "Nom du tag « orpheline »": "Name of the “orphan” tag",
@@ -250,12 +312,16 @@ const TEXTES = {
     "Noms de styles tels qu'ils figurent dans votre modèle Word. Ariane les résout en identifiants — « Corps de texte » se range sous « Corpsdetexte ».": "Style names as they appear in your Word template. Ariane resolves them into identifiers, so “Body Text” is stored as “BodyText”.",
     "Normaliser les conjonctions des références (et → &)": "Normalise conjunctions in references (et to &)",
     "Note « ": "Note “",
+    "Notes de lecture": "Reading notes",
     "Notes de lecture : ": "Reading notes: ",
     "Notes de lecture : atomisation…": "Reading notes: atomising…",
     "Notes de lecture : atomiser les notes-filles Zotero": "Reading notes: atomise Zotero child notes",
     "Notes de référence provisoires": "Provisional reference notes",
     "Notes verrouillées non modifiables": "Locked notes cannot be edited",
+    "Notes-filles Zotero, attachées à la référence entière.": "Zotero child notes, attached to the whole reference.",
+    "Ollama injoignable — repli lexical.": "Inference service unreachable, falling back to lexical.",
     "Ordre": "Order",
+    "Ordre d’apparition dans la note": "Order of appearance in the note",
     "Oublier": "Forget",
     "Oublier les décisions enregistrées": "Forget the saved decisions",
     "Ouverture dans Zotero impossible : ": "Could not open in Zotero: ",
@@ -263,17 +329,22 @@ const TEXTES = {
     "Ouvrez un schéma draw.io (.drawio.svg).": "Open a draw.io diagram (.drawio.svg).",
     "Ouvrez une note de référence (dossier « ": "Open a reference note (folder “",
     "Ouvrez une note en mode édition.": "Open a note in editing mode.",
+    "Ouvrez une note pour voir des suggestions.": "Open a note to see suggestions.",
     "Ouvrez une note source Zotero.": "Open a Zotero source note.",
     "Ouvrez une note.": "Open a note.",
     "Ouvrir dans Zotero (lecteur ZotFlow, annotation ou source)": "Open in Zotero (ZotFlow reader, annotation or source)",
     "Où afficher les suggestions déclenchées par clic droit sur une sélection.": "Where to show suggestions triggered by right clicking a selection.",
     "Pandoc écrit sa propre section et laisse les en-têtes orphelins. Désactiver ne se justifie qu'en cas de difficulté.": "Pandoc writes its own section and leaves the headers orphaned. Turning this off is only worth trying if something goes wrong.",
+    "Panier d'annotations": "Annotation basket",
     "Panier d'annotations : afficher / masquer": "Annotation basket: show or hide",
+    "Panneau latéral (ancré)": "Side panel (docked)",
     "Part du score sémantique dans l’hybride (le reste est lexical).": "Share of the semantic score in the hybrid engine. The rest is lexical.",
     "Pause après ce silence": "Pause after this much silence",
     "Placez le curseur dans un paragraphe.": "Put the cursor inside a paragraph.",
     "Poids du sémantique": "Weight of the semantic score",
     "Police": "Font",
+    "Police à largeur fixe dans l'explorateur": "Fixed width font in the file explorer",
+    "Première ligne des tableaux markdown.": "First row of markdown tables.",
     "Profil de réglages": "Settings profile",
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
@@ -286,12 +357,14 @@ const TEXTES = {
     "Propriété des notes sources contenant la référence mise en forme par zotflow (filtre « bibliography »). Le style se règle dans zotflow. Champ absent : Ariane utilise le modèle libre ci-dessous.": "The property of source notes holding the reference as formatted by ZotFlow. The style itself is set in ZotFlow. If the field is missing, Ariane falls back to the free template below.",
     "Propriété où inscrire le total": "Property where the total is written",
     "Propriétés à consulter": "Properties to look at",
+    "Préfixe": "Prefix",
     "Préfixe des notes de bibliographie": "Prefix for bibliography notes",
     "Quand l'appel [^n] disparaît, retire sa définition. N'agit que sur les notes contenant des liens d'annotation.": "When the [^n] marker disappears, removes its definition. Only acts on notes containing annotation links.",
     "Quand plusieurs flèches partent d’un même bloc et qu’une seule porte une étiquette, elle vaut pour tout le faisceau. Sans effet si deux étiquettes différentes coexistent.": "When several arrows leave the same shape and only one carries a label, that label applies to all of them. No effect if two different labels coexist.",
     "Quand une annotation cite un travail absent de Zotero — donc non consulté directement — la citation prend la forme « Moulin et Gérard, 2026, p. 345, cité dans Aven, 2012, p. 34 ». Si ce travail figure dans Zotero, il est cité directement. Texte inséré entre les deux références :": "When an annotation cites a work absent from Zotero, and therefore not read directly, the citation reads “Moulin and Gérard, 2026, p. 345, as cited in Aven, 2012, p. 34”. If that work is in Zotero, it is cited directly. Text inserted between the two references:",
     "Quand une annotation cite une référence absente de Zotero, la citation prend la forme : « Auteurs, année<texte ci-dessous>Source, p. XX ». Si la référence citée existe dans Zotero, elle est citée directement.": "When an annotation cites a reference absent from Zotero, the citation reads “Authors, year<text below>Source, p. XX”. If the cited reference exists in Zotero, it is cited directly.",
     "Quand une annotation rapporte des travaux que vous n'avez pas consultés, la source consultée porte un compteur des travaux qu'elle rapporte, au lieu de les nommer tous dans le fil du texte. Le survol du compteur les affiche en liens cliquables. Les références déjà présentes dans Zotero restent citées en clair, puisque vous les avez lues. Après changement, lancer « Citations : rafraîchir les libellés » pour réécrire les notes.": "When an annotation reports works you have not read yourself, the source you did read carries a counter of those works instead of naming them all in the running text. Hovering the counter shows them as clickable links. References already in Zotero stay cited in full, since you have read them. After changing this, run “Citations: refresh labels” to rewrite the notes.",
+    "Rafraîchir les suggestions (sans modèle de langue)": "Refresh the suggestions (without the language model)",
     "Rafraîchissement des citations…": "Refreshing citations…",
     "Range chaque annotation dans un sous-dossier au nom de sa source (@citekey).": "Files each annotation in a subfolder named after its source (@citekey).",
     "Rattachement aux sources Zotero": "Attachment to Zotero sources",
@@ -308,7 +381,10 @@ const TEXTES = {
     "Regex de page": "Page regex",
     "Regrouper par source": "Group by source",
     "Relations admises": "Allowed relations",
+    "Relations entrantes": "Incoming relations",
+    "Relations sortantes": "Outgoing relations",
     "Relie les références en attente aux fiches Zotero par auteurs + année. Les correspondances certaines (un seul appariement possible) sont toujours rattachées sans rien demander ; ce réglage ne concerne que les cas ambigus.": "Links pending references to Zotero entries by author and year. Certain matches, where only one pairing is possible, are always attached without asking. This setting concerns ambiguous cases only.",
+    "Relâcher l'argument": "Release the passage",
     "Rend insécables les espaces déjà présentes devant « ; », « : », « ! », « ? » et « » », et après « « ». Aucune espace n'est ajoutée : les adresses, les heures et les grappes de citation restent intactes.": "Turns spaces already present before “;”, “:”, “!”, “?” and “»”, and after “«”, into non breaking ones. No space is ever added, so URLs, clock times and citation clusters stay untouched.",
     "Renommage en cours…": "Renaming…",
     "Renommer": "Rename",
@@ -317,12 +393,15 @@ const TEXTES = {
     "Renvoi vers la note source": "Link back to the source note",
     "Repliement des citations": "Folding of citations",
     "Replier par défaut": "Fold by default",
+    "Reprendre les suggestions": "Resume suggestions",
     "Restaure toute édition manuelle des notes générées.": "Restores any manual edit made to generated notes.",
+    "Retirer cette famille": "Remove this family",
     "Retirer l'alias affiché des liens d'annotation": "Remove the displayed alias from annotation links",
     "Retirer la numérotation saisie à la main": "Remove hand typed numbering",
     "Retirer les crochets des propriétés": "Remove brackets from properties",
     "Retirer les parenthèses des références": "Remove parentheses from references",
     "Rien à importer.": "Nothing to import.",
+    "Rien à proposer.": "Nothing to propose.",
     "Ré-atomiser tout le coffre": "Re-atomise the whole vault",
     "Ré-atomiser toutes les sources": "Re-atomise every source",
     "Récupère la bibliographie d'une source via Crossref/OpenAlex (commandes « Confirmer les références en attente » et « Générer la bibliographie citée »).": "Fetches the bibliography of a source through Crossref and OpenAlex.",
@@ -330,10 +409,13 @@ const TEXTES = {
     "Référence de la note": "Reference of the note",
     "Référence par défaut = source": "Default reference is the source",
     "Référence « ": "Reference “",
+    "Références & auteurs": "References and authors",
     "Références : ": "References: ",
     "Références citées (apparat « cité dans »)": "Cited references (secondary source apparatus)",
+    "Références citées mais pas encore dans Zotero.": "References cited but not yet in Zotero.",
     "Références citées via API : désactivé dans les réglages.": "Cited references through the API are disabled in the settings.",
     "Références citées via API : désactivé.": "Cited references through the API are disabled.",
+    "Références en attente": "Pending references",
     "Régénère la bibliographie après une pause dans la frappe.": "Rebuilds the bibliography after a pause in typing.",
     "Régénère les annotations à chaque modification de la source.": "Rebuilds annotations whenever the source changes.",
     "Régénère toutes les annotations à partir des sources.": "Rebuilds every annotation from its source.",
@@ -343,6 +425,7 @@ const TEXTES = {
     "Réinitialiser": "Reset",
     "Rétablir les réglages par défaut": "Restore the default settings",
     "Rôles — où Ariane range ses productions": "Roles: where Ariane files what it produces",
+    "Schémas": "Diagrams",
     "Schémas : ": "Diagrams: ",
     "Schémas : interroger le graphe": "Diagrams: query the graph",
     "Schémas : synchroniser le contenu dans les notes associées": "Diagrams: sync contents into the paired notes",
@@ -358,16 +441,24 @@ const TEXTES = {
     "Signale en erreur toute étiquette hors des listes ci-dessus. Sans cela, elles sont seulement signalées comme inconnues.": "Reports as an error any label outside the lists above. Otherwise they are merely flagged as unknown.",
     "Signaler les dépôts non reconnus": "Report unrecognised drops",
     "Sortie": "Output",
+    "Sortie de l'export Word.": "Output of the Word export.",
     "Source des données": "Data source",
+    "Style du contenu des mises en avant « > [!info] ».": "Style for the contents of “> [!info]” callouts.",
     "Styles du modèle employés": "Template styles in use",
     "Styles du modèle non appliqués : ": "Template styles not applied: ",
+    "Suggestions": "Suggestions",
+    "Suggestions (Ariane)": "Suggestions (Ariane)",
     "Suggestions d'annotations : ouvrir le panneau": "Annotation suggestions: open the panel",
     "Suggestions d'annotations : reconstruire l'index": "Annotation suggestions: rebuild the index",
     "Suggestions dynamiques d'annotations": "Live annotation suggestions",
+    "Suggestions désactivées dans les réglages.": "Suggestions are disabled in the settings.",
     "Suggestions par argument (clic droit)": "Suggestions for a passage (right click)",
+    "Suggestions pour l'argument": "Suggestions for the passage",
     "Supprime la note quand l'annotation disparaît de la source et retire ses liens. Action destructive.": "Deletes the note when the annotation disappears from the source, and removes its links. This is destructive.",
     "Supprimer les notes de bas de page orphelines": "Delete orphaned footnotes",
+    "Suspendre les suggestions": "Pause suggestions",
     "Synchronisation des schémas…": "Syncing diagrams…",
+    "Sémantique (embeddings)": "Semantic (embeddings)",
     "Séparateur d'auteurs (regex)": "Author separator (regex)",
     "Séparateur de citations": "Citation separator",
     "Séparateur entre citations": "Separator between citations",
@@ -378,19 +469,28 @@ const TEXTES = {
     "Temps : écrire le journal du jour": "Time: write today's journal",
     "Temps de la note en cours. Le point est plein quand le compteur tourne, vide en pause. Un clic ouvre le journal du jour.": "Time on the current note. The dot is solid while the timer runs and hollow when paused. Clicking it opens today's journal.",
     "Temps d’inactivité dans la frappe avant de rafraîchir.": "How long typing must stop before refreshing.",
+    "Temps passé": "Time spent",
     "Temps reporté dans les propriétés.": "Time written into the properties.",
     "Test du modèle…": "Testing the model…",
     "Test en cours…": "Testing…",
     "Tester": "Test",
+    "Titre 1  (#)": "Heading 1  (#)",
+    "Titre 2  (##)": "Heading 2  (##)",
+    "Titre 3  (###)": "Heading 3  (###)",
+    "Titre 4  (####)": "Heading 4  (####)",
     "Titre de la section": "Section title",
     "Titre de la section des notes": "Title of the notes section",
+    "Trancher les ambiguës par le modèle local": "Let the local model decide ambiguous ones",
     "Type d'encadré de citation": "Callout type for quotations",
     "Types de blocs admis": "Allowed shape types",
+    "Types inconnus": "Unknown types",
     "Un modèle de langue relit les meilleurs candidats et les remet en ordre. C'est de loin le poste le plus lourd du greffon : il ne part que sur demande, par le bouton ✨ du panneau.": "A language model reviews the best candidates and puts them back in order. It is by far the heaviest part of the plugin, so it only runs on demand, through the ✨ button in the panel.",
     "Un panneau latéral propose, au fil de ce que vous écrivez, les notes les plus proches. Tout est local, gratuit et hors-ligne. Ouvrez-le via l'icône ✦ du ruban ou la commande dédiée.": "A side panel proposes the closest notes as you write. Everything runs locally, free of charge and offline. Open it from the ✦ ribbon icon or the matching command.",
     "Un profil rassemble vos réglages pour les partager ou les retrouver ailleurs. Les chemins propres à cette machine — pandoc, filtre Lua, modèle Word, adresses des services d'inférence — n'y figurent jamais, et un profil importé ne les touche pas.": "A profile gathers your settings so you can share them or find them again elsewhere. Paths specific to this machine, meaning pandoc, the Lua filter, the Word template and the inference service addresses, never appear in it, and an imported profile never touches them.",
     "Une annotation ou une source déposée sur une phrase insère sa référence en ligne, entre parenthèses, avant la ponctuation finale.": "An annotation or a source dropped onto a sentence inserts its reference inline, in brackets, before the closing punctuation.",
     "Une citation entre parenthèses cède la place à une pastille portant le nombre de références. Un clic sur la pastille déplie cette citation seule ; les commandes « Citations : tout replier » et « tout déplier » agissent sur l'ensemble, comme le bouton de la barre latérale. En édition, une citation se déplie d'elle-même dès que le curseur y entre.": "A citation in brackets gives way to a badge carrying the number of references. Clicking the badge unfolds that citation alone, while the “fold all” and “unfold all” commands act on the whole note, as does the sidebar button. While editing, a citation unfolds on its own as soon as the cursor enters it.",
+    "Une note de bibliographie par source.": "One bibliography note per source.",
+    "Une note par annotation Zotero.": "One note per Zotero annotation.",
     "Une phrase expliquant pourquoi chaque note est proposée. Sans elle, le reclassement est un peu plus rapide.": "A sentence explaining why each note is proposed. Without it, reranking is a little faster.",
     "Une propriété « [[Chabane Mazri]] » sort « Chabane Mazri ». Vaut pour les liens simples, les liens à alias et les liens markdown.": "A property written “[[Jane Doe]]” comes out as “Jane Doe”. This covers plain links, aliased links and markdown links.",
     "Variables : {{alias}} (titre), {{key}}, {{auteur}}, {{auteurs}}, {{annee}}. Ex. « ({{alias}}) », « ({{auteur}}, {{annee}}) ».": "Variables: {{alias}} (title), {{key}}, {{auteur}}, {{auteurs}}, {{annee}}. For example “({{alias}})” or “({{auteur}}, {{annee}})”.",
@@ -401,6 +501,7 @@ const TEXTES = {
     "Variables : {{key}}, {{title}}. Vide = pas d'alias.": "Variables: {{key}}, {{title}}. Empty means no alias.",
     "Variables : {{title}}, {{titleLink}} (titre cliquable vers l’annotation dans le PDF), {{annotationUrl}}, {{key}}, {{paraphrase}}, {{image}}, {{citation}}, {{highlight}}, {{source}}, {{page}}, {{pageLine}}, {{references}}, {{referenceLinks}}, {{sourceName}}.": "Variables: {{title}}, {{titleLink}} (clickable title leading to the annotation in the PDF), {{annotationUrl}}, {{key}}, {{paraphrase}}, {{image}}, {{citation}}, {{highlight}}, {{source}}, {{page}}, {{pageLine}}, {{references}}, {{referenceLinks}}, {{sourceName}}.",
     "Verrouiller les notes automatiques": "Lock generated notes",
+    "Vider": "Clear",
     "Vocabulaire des schémas": "Diagram vocabulary",
     "Vocabulaire strict": "Strict vocabulary",
     "Voir les styles": "View the styles",
@@ -410,27 +511,33 @@ const TEXTES = {
     "ZotFlow [": "ZotFlow [",
     "chemin dans le coffre": "path inside the vault",
     "finition.py introuvable.": "finition.py not found.",
+    "icône": "icon",
     "pandoc-zotero-live-citemarkers.lua avec ses dépendances.": "pandoc-zotero-live-citemarkers.lua, with its dependencies.",
     "ref, reference, réf": "ref, reference",
     "temps": "temps",
     "temps-passe": "temps-passe",
+    "un ou plusieurs, séparés par des virgules": "one or more, separated by commas",
     "var(--font-monospace)": "var(--font-monospace)",
     "vous@exemple.fr": "you@example.com",
     "{ \"ariane\": \"…\", \"profil\": { … } }": "{ \"ariane\": \"…\", \"profil\": { … } }",
     "{{n}} tient la place du nombre de travaux rapportés.": "{{n}} stands for the number of reported works.",
     "« # » est le titre du document, pas une partie : « ## » devient donc Titre 1 dans Word.": "“#” is the document title, not a part, so “##” becomes Heading 1 in Word.",
     "« 2.1 Titre » devient « Titre » : Word numérote seul.": "“2.1 Title” becomes “Title”, since Word numbers on its own.",
+    "« Automatique » suit la langue d'Obsidian. Le greffon parle français et anglais ; toute autre langue affiche l'anglais.": "“Automatic” follows the Obsidian language. The plugin speaks English and French, and any other language shows English.",
     "« auto » = Crossref puis OpenAlex. OpenAlex couvre mieux, Crossref est plus direct.": "“auto” means Crossref then OpenAlex. OpenAlex has wider coverage, Crossref is more direct.",
     "À défaut, le nom du fichier": "Otherwise, the filename",
+    "À ne modifier qu'en connaissance de cause.": "Only change these if you know what you are doing.",
     "Échec : ": "Failed: ",
     "Écrire dans la note au plus tous les": "Write into the note at most every",
     "Écrire le journal automatiquement": "Write the journal automatically",
     "Écrit un fichier JSON dans le dossier du greffon. « Avec organisation » y ajoute vos dossiers et vos familles de notes ; sans, le profil ne contient que les réglages de fonctionnement.": "Writes a JSON file into the plugin folder. “With organisation” adds your folders and note families. Without it, the profile holds only the working settings.",
     "État au démarrage. Les commandes le modifient et l'enregistrent.": "State at startup. The commands change it and save it.",
+    "Étiquettes hors vocabulaire": "Labels outside the vocabulary",
     "Étiquettes implicites": "Implicit labels",
     "Étiquettes portées par les flèches, ex. « précède », « contredit ».": "Labels carried by arrows, for example “precedes” or “contradicts”.",
     "Étiquettes portées par les formes, ex. « concept », « acteur ».": "Labels carried by shapes, for example “concept” or “actor”.",
     "— Aparté sur les annotations": "Aside on annotations",
+    "⇱ Glisser sur un paragraphe": "⇱ Drag onto a paragraph",
   },
 };
 let LANGUE = 'fr';
@@ -2600,7 +2707,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
     // Déclare le panneau comme source d'aperçu au survol (« Page preview »).
     if (this.registerHoverLinkSource) {
-      this.registerHoverLinkSource('zfa-suggestions', { display: 'Suggestions (Ariane)', defaultMod: false });
+      this.registerHoverLinkSource('zfa-suggestions', { display: tr('Suggestions (Ariane)'), defaultMod: false });
       this.registerHoverLinkSource('zfa-partout', { display: 'Ariane — liens (chat, panneaux)', defaultMod: false });
     }
     // Aperçu au survol des liens internes dans les vues NON-markdown (ex. chat
@@ -3516,14 +3623,14 @@ class ZotflowAtomiser extends obsidian.Plugin {
     el.className = 'zfa-argfen';
     el.style.top = '90px'; el.style.right = '40px';
     const header = el.createDiv({ cls: 'zfa-argfen-header' });
-    header.createSpan({ cls: 'zfa-argfen-titre', text: "Suggestions pour l'argument" });
-    const x = header.createSpan({ cls: 'zfa-argfen-x', text: '✕' });
+    header.createSpan({ cls: 'zfa-argfen-titre', text: tr("Suggestions pour l'argument") });
+    const x = header.createSpan({ cls: 'zfa-argfen-x', text: tr('✕') });
     x.onmousedown = (e) => e.stopPropagation();
     x.onclick = () => this.fermerFenetreArgument();
     const snip = String(texte).replace(/\s+/g, ' ').trim();
     el.createDiv({ cls: 'zfa-argfen-arg', text: snip.slice(0, 160) + (snip.length > 160 ? '…' : '') });
     const liste = el.createDiv({ cls: 'zfa-argfen-liste' });
-    if (!suggestions || !suggestions.length) liste.createDiv({ cls: 'zfa-sugg-vide', text: 'Aucune suggestion pertinente.' });
+    if (!suggestions || !suggestions.length) liste.createDiv({ cls: 'zfa-sugg-vide', text: tr('Aucune suggestion pertinente.') });
     else for (const sug of suggestions) this.construireItemSugg(liste, sug, this);
     this.rendreDeplacable(el, header);
     document.body.appendChild(el);
@@ -5818,14 +5925,14 @@ class ZotflowAtomiser extends obsidian.Plugin {
     el.style.right = '30px';
 
     const header = el.createDiv({ cls: 'zfa-panier-header' });
-    this.panierTitre = header.createSpan({ cls: 'zfa-panier-titre', text: "Panier d'annotations" });
-    const fermer = header.createSpan({ cls: 'zfa-panier-fermer', text: '✕' });
+    this.panierTitre = header.createSpan({ cls: 'zfa-panier-titre', text: tr("Panier d'annotations") });
+    const fermer = header.createSpan({ cls: 'zfa-panier-fermer', text: tr('✕') });
     fermer.onclick = () => this.fermerPanier();
 
     this.panierListe = el.createDiv({ cls: 'zfa-panier-liste' });
 
     const pied = el.createDiv({ cls: 'zfa-panier-pied' });
-    const poignee = pied.createDiv({ cls: 'zfa-panier-deposer', text: '⇱ Glisser sur un paragraphe' });
+    const poignee = pied.createDiv({ cls: 'zfa-panier-deposer', text: tr('⇱ Glisser sur un paragraphe') });
     poignee.setAttribute('draggable', 'true');
     poignee.addEventListener('dragstart', (e) => {
       this.glisseDepuisPanier = true;
@@ -5837,9 +5944,9 @@ class ZotflowAtomiser extends obsidian.Plugin {
     poignee.addEventListener('dragend', () => { this.glisseDepuisPanier = false; });
 
     const btns = pied.createDiv({ cls: 'zfa-panier-boutons' });
-    const bDep = btns.createEl('button', { cls: 'zfa-panier-btn', text: 'Déposer sur le curseur' });
+    const bDep = btns.createEl('button', { cls: 'zfa-panier-btn', text: tr('Déposer sur le curseur') });
     bDep.onclick = () => this.deposerPanierSurCurseur();
-    const bVide = btns.createEl('button', { cls: 'zfa-panier-btn', text: 'Vider' });
+    const bVide = btns.createEl('button', { cls: 'zfa-panier-btn', text: tr('Vider') });
     bVide.onclick = () => this.viderPanier();
 
     this.rendreDeplacable(el, header);
@@ -5916,14 +6023,14 @@ class ZotflowAtomiser extends obsidian.Plugin {
     if (!this.panierListe) return;
     this.panierListe.empty();
     if (!this.panier.length) {
-      this.panierListe.createDiv({ cls: 'zfa-panier-vide', text: 'Glissez des annotations ici…' });
+      this.panierListe.createDiv({ cls: 'zfa-panier-vide', text: tr('Glissez des annotations ici…') });
       return;
     }
     for (const cle of this.panier) {
       const item = this.panierListe.createDiv({ cls: 'zfa-panier-item' });
       const titre = this.titreAnnotationCiblee(cle, '') || cle;
       item.createSpan({ cls: 'zfa-panier-item-txt', text: titre });
-      const x = item.createSpan({ cls: 'zfa-panier-item-x', text: '✕' });
+      const x = item.createSpan({ cls: 'zfa-panier-item-x', text: tr('✕') });
       x.onclick = () => this.retirerDuPanier(cle);
     }
   }
@@ -7251,20 +7358,20 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
     containerEl.empty();
     const s = this.plugin.settings;
     const maj = async () => this.plugin.saveSettings();
-    containerEl.createEl('h2', { text: 'Ariane' });
+    containerEl.createEl('h2', { text: tr('Ariane') });
 
     const onglets = [
-      ['Général', 'settings', (c) => this.ongletGeneral(c, s, maj)],
-      ['Dossiers & familles', 'folder-tree', (c) => this.ongletDossiers(c, s, maj)],
-      ['Affichage', 'eye', (c) => this.ongletAffichage(c, s, maj)],
-      ['Citations & bibliographie', 'quote', (c) => this.ongletCitations(c, s, maj)],
-      ['Suggestions', 'sparkles', (c) => this.ongletSuggestions(c, s, maj)],
-      ['Contenu des notes', 'file-text', (c) => this.ongletContenu(c, s, maj)],
-      ['Références & auteurs', 'users', (c) => this.ongletReferences(c, s, maj)],
-      ['Temps passé', 'timer', (c) => this.ongletTemps(c, s, maj)],
-      ['Schémas', 'git-branch', (c) => this.ongletSchemas(c, s, maj)],
-      ['Export Word', 'file-output', (c) => this.ongletExport(c, s, maj)],
-      ['Avancé', 'wrench', (c) => this.ongletAvance(c, s, maj)],
+      [tr('Général'), 'settings', (c) => this.ongletGeneral(c, s, maj)],
+      [tr('Dossiers & familles'), 'folder-tree', (c) => this.ongletDossiers(c, s, maj)],
+      [tr('Affichage'), 'eye', (c) => this.ongletAffichage(c, s, maj)],
+      [tr('Citations & bibliographie'), 'quote', (c) => this.ongletCitations(c, s, maj)],
+      [tr('Suggestions'), 'sparkles', (c) => this.ongletSuggestions(c, s, maj)],
+      [tr('Contenu des notes'), 'file-text', (c) => this.ongletContenu(c, s, maj)],
+      [tr('Références & auteurs'), 'users', (c) => this.ongletReferences(c, s, maj)],
+      [tr('Temps passé'), 'timer', (c) => this.ongletTemps(c, s, maj)],
+      [tr('Schémas'), 'git-branch', (c) => this.ongletSchemas(c, s, maj)],
+      [tr('Export Word'), 'file-output', (c) => this.ongletExport(c, s, maj)],
+      [tr('Avancé'), 'wrench', (c) => this.ongletAvance(c, s, maj)],
     ];
     if (typeof this._ongletActif !== 'number' || this._ongletActif >= onglets.length) this._ongletActif = 0;
 
@@ -7297,7 +7404,7 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
       hote.empty();
       const familles = Array.isArray(s.famillesNotes) ? s.famillesNotes : (s.famillesNotes = []);
       if (!familles.length) {
-        hote.createDiv({ cls: 'zfa-fam-vide', text: "Aucune famille. Ajoutez-en une, ou laissez Ariane proposer celles de votre coffre." });
+        hote.createDiv({ cls: 'zfa-fam-vide', text: tr("Aucune famille. Ajoutez-en une, ou laissez Ariane proposer celles de votre coffre.") });
       }
       familles.forEach((f, i) => {
         const ligne = hote.createDiv({ cls: 'zfa-fam' });
@@ -7328,41 +7435,41 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
         const tete = ligne.createDiv({ cls: 'zfa-fam-tete' });
         const poignee = tete.createSpan({ cls: 'zfa-fam-poignee' });
         obsidian.setIcon(poignee, 'grip-vertical');
-        poignee.setAttribute('aria-label', 'Glisser pour réordonner');
+        poignee.setAttribute('aria-label', tr('Glisser pour réordonner'));
 
         const nom = tete.createEl('input', { cls: 'zfa-fam-nom', type: 'text' });
-        nom.placeholder = 'Nom de la famille';
+        nom.placeholder = tr('Nom de la famille');
         nom.value = f.nom || '';
         nom.onchange = async () => { f.nom = nom.value.trim(); await maj(); };
 
         const pastille = tete.createEl('input', { cls: 'zfa-fam-couleur', type: 'color' });
         pastille.value = f.couleur || '#888888';
-        pastille.setAttribute('aria-label', 'Couleur dans le panneau de suggestions');
+        pastille.setAttribute('aria-label', tr('Couleur dans le panneau de suggestions'));
         pastille.onchange = async () => { f.couleur = pastille.value; await maj(); };
 
         const icone = tete.createEl('input', { cls: 'zfa-fam-icone', type: 'text' });
-        icone.placeholder = 'icône';
+        icone.placeholder = tr('icône');
         icone.value = f.icone || '';
-        icone.setAttribute('aria-label', "Nom d'icône Lucide, ex. « book »");
+        icone.setAttribute('aria-label', tr("Nom d'icône Lucide, ex. « book »"));
         icone.onchange = async () => { f.icone = icone.value.trim(); await maj(); };
 
         const monter = tete.createEl('button', { cls: 'zfa-fam-bouton' });
         obsidian.setIcon(monter, 'chevron-up');
-        monter.setAttribute('aria-label', 'Monter');
+        monter.setAttribute('aria-label', tr('Monter'));
         monter.onclick = async () => {
           if (i === 0) return;
           familles.splice(i - 1, 0, familles.splice(i, 1)[0]); await maj(); rendre();
         };
         const descendre = tete.createEl('button', { cls: 'zfa-fam-bouton' });
         obsidian.setIcon(descendre, 'chevron-down');
-        descendre.setAttribute('aria-label', 'Descendre');
+        descendre.setAttribute('aria-label', tr('Descendre'));
         descendre.onclick = async () => {
           if (i >= familles.length - 1) return;
           familles.splice(i + 1, 0, familles.splice(i, 1)[0]); await maj(); rendre();
         };
         const suppr = tete.createEl('button', { cls: 'zfa-fam-bouton zfa-fam-suppr' });
         obsidian.setIcon(suppr, 'trash-2');
-        suppr.setAttribute('aria-label', 'Retirer cette famille');
+        suppr.setAttribute('aria-label', tr('Retirer cette famille'));
         suppr.onclick = async () => { familles.splice(i, 1); await maj(); rendre(); this.plugin.decorerExplorateur(); };
 
         const corps = ligne.createDiv({ cls: 'zfa-fam-corps' });
@@ -7374,13 +7481,13 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
           e.onchange = async () => { await sur(e.value); };
           return e;
         };
-        champ('Dossiers', (f.dossiers || []).join(', '),
-          'un ou plusieurs, séparés par des virgules',
+        champ(tr('Dossiers'), (f.dossiers || []).join(', '),
+          tr('un ou plusieurs, séparés par des virgules'),
           async (v) => {
             f.dossiers = v.split(',').map((x) => x.trim().replace(/^\/+|\/+$/g, '')).filter(Boolean);
             await maj(); this.plugin.invaliderIndexSuggestions(); this.plugin.decorerExplorateur();
           });
-        champ('Préfixe', f.prefixe || '', 'ex. NC-  (facultatif)',
+        champ(tr('Préfixe'), f.prefixe || '', 'ex. NC-  (facultatif)',
           async (v) => { f.prefixe = v.trim(); await maj(); });
 
         const cases = ligne.createDiv({ cls: 'zfa-fam-cases' });
@@ -7392,12 +7499,12 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
           if (aide) et.setAttribute('aria-label', aide);
           cb.onchange = async () => { f[cle] = cb.checked; await maj(); if (apres) apres(); };
         };
-        bascule('Aparté', 'aparte', "Afficher le titre après un lien vers une note de cette famille");
-        bascule('Suggestions', 'suggestions', 'Ces notes nourrissent le panneau de suggestions',
+        bascule(tr('Aparté'), 'aparte', tr("Afficher le titre après un lien vers une note de cette famille"));
+        bascule(tr('Suggestions'), 'suggestions', tr('Ces notes nourrissent le panneau de suggestions'),
           () => this.plugin.invaliderIndexSuggestions());
-        bascule('Chasse fixe', 'monospace', "Police à largeur fixe dans l'explorateur",
+        bascule(tr('Chasse fixe'), 'monospace', tr("Police à largeur fixe dans l'explorateur"),
           () => this.plugin.decorerExplorateur());
-        bascule('Alias', 'alias', "Afficher l'alias plutôt que le nom de fichier",
+        bascule(tr('Alias'), 'alias', tr("Afficher l'alias plutôt que le nom de fichier"),
           () => this.plugin.decorerExplorateur());
       });
     };
@@ -7475,8 +7582,8 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("« Automatique » suit la langue d'Obsidian. Le greffon parle français et anglais ; toute autre langue affiche l'anglais."))
       .addDropdown((d) => d
         .addOption('auto', tr('Automatique'))
-        .addOption('fr', 'Français')
-        .addOption('en', 'English')
+        .addOption('fr', tr('Français'))
+        .addOption('en', tr('English'))
         .setValue(s.langue || 'auto')
         .onChange(async (v) => { s.langue = v; definirLangue(v); await maj(); this.display(); }));
 
@@ -7518,7 +7625,7 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
         const n = this.plugin.notesAvecPropriete(this._renAncien).length;
         new obsidian.Notice(this._renAncien
           ? n + ' note(s) portent « ' + this._renAncien + ' ».'
-          : 'Indiquez le nom actuel de la propriété.');
+          : tr('Indiquez le nom actuel de la propriété.'));
       }))
       .addButton((b) => b.setButtonText(tr('Renommer')).setWarning().onClick(async () => {
         if (!this._renAncien || !this._renNouveau) { new obsidian.Notice(tr('Indiquez les deux noms.')); return; }
@@ -7561,12 +7668,12 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
       .setName(nom).setDesc(desc)
       .addText((t) => t.setValue(s[cle] || '').setPlaceholder(tr('chemin dans le coffre'))
         .onChange(async (v) => { s[cle] = v.trim().replace(/^\/+|\/+$/g, ''); await maj(); }));
-    role('Annotations atomisées', 'dossierAnnotations', "Une note par annotation Zotero.");
-    role('Notes de lecture', 'dossierNotesLecture', "Notes-filles Zotero, attachées à la référence entière.");
-    role('Références en attente', 'dossierReferences', "Références citées mais pas encore dans Zotero.");
-    role('Bibliographies citées', 'dossierBibliographies', "Une note de bibliographie par source.");
-    role('Documents exportés', 'exportDossier', "Sortie de l'export Word.");
-    role('Journal du temps', 'tempsDossierJournal', "Journaux quotidiens du compteur de temps.");
+    role(tr('Annotations atomisées'), 'dossierAnnotations', tr("Une note par annotation Zotero."));
+    role(tr('Notes de lecture'), 'dossierNotesLecture', tr("Notes-filles Zotero, attachées à la référence entière."));
+    role(tr('Références en attente'), 'dossierReferences', tr("Références citées mais pas encore dans Zotero."));
+    role(tr('Bibliographies citées'), 'dossierBibliographies', tr("Une note de bibliographie par source."));
+    role(tr('Documents exportés'), 'exportDossier', tr("Sortie de l'export Word."));
+    role(tr('Journal du temps'), 'tempsDossierJournal', tr("Journaux quotidiens du compteur de temps."));
     new obsidian.Setting(c)
       .setName(tr('Atomiser les notes de lecture'))
       .setDesc(tr("Les notes-filles Zotero — attachées à la référence entière, non à un passage — deviennent des notes à part, citables et reliées à leur source."))
@@ -7577,7 +7684,7 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
       .addButton((b) => b.setButtonText(tr('Proposer')).onClick(async () => {
         const n = this.plugin.proposerRoles();
         await maj(); this.display();
-        new obsidian.Notice(n ? n + ' rôle(s) proposé(s) — vérifiez-les.' : 'Rien à proposer.');
+        new obsidian.Notice(n ? n + ' rôle(s) proposé(s) — vérifiez-les.' : tr('Rien à proposer.'));
       }));
 
     this._section(c, tr("Nommage des annotations"));
@@ -7732,8 +7839,8 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
     new obsidian.Setting(c)
       .setName(tr('Ordre'))
       .addDropdown((d) => {
-        d.addOption('auteur', 'Alphabétique (auteur, année)');
-        d.addOption('apparition', 'Ordre d’apparition dans la note');
+        d.addOption('auteur', tr('Alphabétique (auteur, année)'));
+        d.addOption('apparition', tr('Ordre d’apparition dans la note'));
         d.setValue(s.biblioTri === 'apparition' ? 'apparition' : 'auteur');
         d.onChange(async (v) => { s.biblioTri = v; await maj(); });
       });
@@ -7860,7 +7967,7 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
     new obsidian.Setting(c)
       .setName(tr('Suggestions par argument (clic droit)'))
       .setDesc(tr('Où afficher les suggestions déclenchées par clic droit sur une sélection.'))
-      .addDropdown((d) => d.addOption('panneau', 'Panneau latéral (ancré)').addOption('flottant', 'Fenêtre flottante')
+      .addDropdown((d) => d.addOption('panneau', tr('Panneau latéral (ancré)')).addOption('flottant', tr('Fenêtre flottante'))
         .setValue(s.suggArgAffichage || 'panneau').onChange(async (v) => { s.suggArgAffichage = v; await maj(); }));
     this._aide(c, tr("Les dossiers puisés par les suggestions, leur couleur et leur icône se règlent famille par famille — onglet « Dossiers & familles », case « Suggestions »."))
     new obsidian.Setting(c)
@@ -7880,9 +7987,9 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
     new obsidian.Setting(c)
       .setName(tr('Moteur'))
       .addDropdown((d) => d
-        .addOption('lexical', 'Lexical (mots)')
-        .addOption('semantique', 'Sémantique (embeddings)')
-        .addOption('hybride', 'Hybride (recommandé)')
+        .addOption('lexical', tr('Lexical (mots)'))
+        .addOption('semantique', tr('Sémantique (embeddings)'))
+        .addOption('hybride', tr('Hybride (recommandé)'))
         .setValue(s.suggMoteur || 'hybride')
         .onChange(async (v) => { s.suggMoteur = v; await maj(); reindexer(); this.display(); }));
     if (s.suggMoteur === 'hybride') {
@@ -7905,8 +8012,8 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
         .setName(tr('Service'))
         .setDesc(tr("Changer de service réencode l'index : les vecteurs de deux modèles ne se comparent pas."))
         .addDropdown((d) => d
-          .addOption('ollama', 'Ollama')
-          .addOption('lmstudio', 'LM Studio')
+          .addOption('ollama', tr('Ollama'))
+          .addOption('lmstudio', tr('LM Studio'))
           .setValue(s.suggFournisseur || 'ollama')
           .onChange(async (v) => { s.suggFournisseur = v; await maj(); this.display(); }));
       new obsidian.Setting(c)
@@ -7945,7 +8052,7 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
             new obsidian.Notice(tr('Test du modèle…'));
             const ok = await this.plugin.testerLLM();
             new obsidian.Notice(ok
-              ? 'Le modèle répond : le reclassement est disponible.'
+              ? tr('Le modèle répond : le reclassement est disponible.')
               : 'Échec : modèle « ' + (s.suggModeleLLM || 'llama3.2') + ' » injoignable sur ' + nomService + '.');
           }));
         new obsidian.Setting(c)
@@ -8019,10 +8126,10 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Rattachement aux sources Zotero'))
       .setDesc(tr('Relie les références en attente aux fiches Zotero par auteurs + année. Les correspondances certaines (un seul appariement possible) sont toujours rattachées sans rien demander ; ce réglage ne concerne que les cas ambigus.'))
       .addDropdown((d) => {
-        d.addOption('desactive', 'Désactivé');
-        d.addOption('certain', 'Certaines seulement, ignorer les ambiguës');
-        d.addOption('ia', 'Trancher les ambiguës par le modèle local');
-        d.addOption('manuel', 'Me demander pour les ambiguës');
+        d.addOption('desactive', tr('Désactivé'));
+        d.addOption('certain', tr('Certaines seulement, ignorer les ambiguës'));
+        d.addOption('ia', tr('Trancher les ambiguës par le modèle local'));
+        d.addOption('manuel', tr('Me demander pour les ambiguës'));
         const v = s.rattachementZotero === false ? 'desactive'
           : (s.rattachementIA !== false ? 'ia'
             : (s.validationRattachement ? 'manuel' : 'certain'));
@@ -8061,9 +8168,9 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Source des données'))
       .setDesc(tr('« auto » = Crossref puis OpenAlex. OpenAlex couvre mieux, Crossref est plus direct.'))
       .addDropdown((d) => d
-        .addOption('auto', 'Auto (Crossref puis OpenAlex)')
-        .addOption('crossref', 'Crossref')
-        .addOption('openalex', 'OpenAlex')
+        .addOption('auto', tr('Auto (Crossref puis OpenAlex)'))
+        .addOption('crossref', tr('Crossref'))
+        .addOption('openalex', tr('OpenAlex'))
         .setValue(s.apiSource || 'auto')
         .onChange(async (v) => { s.apiSource = v; await maj(); }));
     new obsidian.Setting(c)
@@ -8103,7 +8210,7 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
       .addButton((b) => b.setButtonText(tr('Voir les styles')).onClick(() => this.plugin.listerStylesModele()));
     this._aide(c, tr('Associez chaque niveau markdown à un nom de style de votre modèle (laisser vide = style pandoc par défaut).'));
     s.exportMapStyles = s.exportMapStyles || { Heading1: '', Heading2: '', Heading3: '', Heading4: '', BodyText: 'Corps de texte', BlockText: 'Citation intense', Compact: 'Corps de texte' };
-    for (const [cle, lbl] of [['Heading1', 'Titre 1  (#)'], ['Heading2', 'Titre 2  (##)'], ['Heading3', 'Titre 3  (###)'], ['Heading4', 'Titre 4  (####)'], ['BodyText', 'Corps de texte'], ['BlockText', 'Citation  (>)']]) {
+    for (const [cle, lbl] of [['Heading1', tr('Titre 1  (#)')], ['Heading2', tr('Titre 2  (##)')], ['Heading3', tr('Titre 3  (###)')], ['Heading4', tr('Titre 4  (####)')], ['BodyText', 'Corps de texte'], ['BlockText', tr('Citation  (>)')]]) {
       new obsidian.Setting(c)
         .setName(lbl)
         .addText((t) => t.setValue(s.exportMapStyles[cle] || '').onChange(async (v) => { s.exportMapStyles[cle] = v.trim(); await maj(); }));
@@ -8143,9 +8250,9 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
       .setName(nom).setDesc(desc || '')
       .addText((t) => t.setPlaceholder(defaut).setValue(s[cle] || '')
         .onChange(async (v) => { s[cle] = v.trim() || defaut; await maj(); }));
-    style('Encadrés', 'exportStyleEncadre', 'Items de réflexion', "Style du contenu des mises en avant « > [!info] ».");
-    style('En-tête de tableau', 'exportStyleEnteteTableau', 'Titre de tableau', "Première ligne des tableaux markdown.");
-    style('Cellule de tableau', 'exportStyleCelluleTableau', 'Champ de tableau', "Lignes suivantes.");
+    style(tr('Encadrés'), 'exportStyleEncadre', 'Items de réflexion', tr("Style du contenu des mises en avant « > [!info] »."));
+    style(tr('En-tête de tableau'), 'exportStyleEnteteTableau', 'Titre de tableau', tr("Première ligne des tableaux markdown."));
+    style(tr('Cellule de tableau'), 'exportStyleCelluleTableau', 'Champ de tableau', tr("Lignes suivantes."));
 
     this._section(c, tr('Référence de la note'));
     this._aide(c, tr("Le jeton {{réf}} de votre modèle. Ariane cherche les propriétés ci-dessous, dans l'ordre, accents et majuscules indifférents."));
@@ -8173,7 +8280,7 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
 
 
   ongletAvance(c, s, maj) {
-    this._section(c, 'Analyse (expressions régulières)', "À ne modifier qu'en connaissance de cause.");
+    this._section(c, tr('Analyse (expressions régulières)'), tr("À ne modifier qu'en connaissance de cause."));
     new obsidian.Setting(c)
       .setName(tr('Marqueur de source'))
       .setDesc(tr('Chaîne détectant une note source à traiter.'))
@@ -8223,17 +8330,17 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
               if (profilsErreur) profilsErreur.setText('');
               await maj();
             } else if (profilsErreur) {
-              profilsErreur.setText('Le JSON doit être un tableau non vide.');
+              profilsErreur.setText(tr('Le JSON doit être un tableau non vide.'));
             }
           } catch (e) {
-            if (profilsErreur) profilsErreur.setText('JSON invalide : ' + e.message);
+            if (profilsErreur) profilsErreur.setText(tr('JSON invalide : ') + e.message);
           }
         });
         t.inputEl.rows = 8;
         t.inputEl.style.width = '100%';
         t.inputEl.style.fontFamily = 'monospace';
       });
-    profilsErreur = c.createEl('div', { text: '', cls: 'setting-item-description' });
+    profilsErreur = c.createEl('div', { text: tr(''), cls: 'setting-item-description' });
     profilsErreur.style.color = 'var(--text-error)';
   }
 }
@@ -8251,16 +8358,16 @@ class ConfirmationRattachement extends obsidian.Modal {
   }
   onOpen() {
     const { contentEl } = this;
-    contentEl.createEl('h3', { text: 'Ariane — rattachement' });
+    contentEl.createEl('h3', { text: tr('Ariane — rattachement') });
     contentEl.createEl('p', { text: this.texte });
     const row = contentEl.createDiv();
     row.style.display = 'flex';
     row.style.gap = '8px';
     row.style.justifyContent = 'flex-end';
     row.style.marginTop = '14px';
-    const non = row.createEl('button', { text: 'Ignorer' });
+    const non = row.createEl('button', { text: tr('Ignorer') });
     non.addEventListener('click', () => this.repondre(false));
-    const oui = row.createEl('button', { text: 'Confirmer' });
+    const oui = row.createEl('button', { text: tr('Confirmer') });
     oui.addClass('mod-cta');
     oui.addEventListener('click', () => this.repondre(true));
   }
@@ -8291,7 +8398,7 @@ class ChoixSourceModal extends obsidian.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.createEl('h3', { text: 'Ariane — lier « ' + this.refNom + ' »' });
-    contentEl.createEl('p', { text: 'Choisissez la fiche Zotero correspondante :' });
+    contentEl.createEl('p', { text: tr('Choisissez la fiche Zotero correspondante :') });
     for (const c of this.candidats) {
       const etiquette = c.basename +
         (c.creatorsFull && c.creatorsFull.length ? '  —  ' + c.creatorsFull.join(', ') : '') +
@@ -8306,7 +8413,7 @@ class ChoixSourceModal extends obsidian.Modal {
     const row = contentEl.createDiv();
     row.style.textAlign = 'right';
     row.style.marginTop = '10px';
-    const annuler = row.createEl('button', { text: 'Annuler' });
+    const annuler = row.createEl('button', { text: tr('Annuler') });
     annuler.addEventListener('click', () => this.choisir(null));
   }
   choisir(v) {
@@ -8331,7 +8438,7 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
     this.plugin = plugin;
   }
   getViewType() { return 'zfa-suggestions'; }
-  getDisplayText() { return 'Suggestions (Ariane)'; }
+  getDisplayText() { return tr('Suggestions (Ariane)'); }
   getIcon() { return 'sparkles'; }
 
   async onOpen() {
@@ -8339,14 +8446,14 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
     c.empty();
     c.addClass('zfa-sugg');
     const entete = c.createDiv({ cls: 'zfa-sugg-entete' });
-    entete.createSpan({ cls: 'zfa-sugg-titre', text: 'Suggestions' });
-    const rafr = entete.createEl('button', { cls: 'zfa-sugg-refresh', text: '⟳' });
-    rafr.setAttribute('aria-label', 'Rafraîchir les suggestions (sans modèle de langue)');
+    entete.createSpan({ cls: 'zfa-sugg-titre', text: tr('Suggestions') });
+    const rafr = entete.createEl('button', { cls: 'zfa-sugg-refresh', text: tr('⟳') });
+    rafr.setAttribute('aria-label', tr('Rafraîchir les suggestions (sans modèle de langue)'));
     rafr.onclick = () => this.plugin.majSuggestions(false, true);
     // Le reclassement par modèle de langue est le poste le plus lourd de tout
     // le greffon. Il ne part plus tout seul : il attend ce bouton.
-    this.affiner = entete.createEl('button', { cls: 'zfa-sugg-refresh', text: '✨' });
-    this.affiner.setAttribute('aria-label', 'Affiner par le modèle de langue');
+    this.affiner = entete.createEl('button', { cls: 'zfa-sugg-refresh', text: tr('✨') });
+    this.affiner.setAttribute('aria-label', tr('Affiner par le modèle de langue'));
     this.affiner.onclick = () => this.plugin.majSuggestions(true, true);
     this.pause = entete.createEl('button', { cls: 'zfa-sugg-refresh' });
     this.majBoutonPause();
@@ -8373,7 +8480,7 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
     const actif = this.plugin.settings.suggActif;
     this.pause.setText(actif ? '⏸' : '▶');
     this.pause.setAttribute('aria-label',
-      actif ? 'Suspendre les suggestions' : 'Reprendre les suggestions');
+      actif ? tr('Suspendre les suggestions') : tr('Reprendre les suggestions'));
   }
 
   // Cases à cocher : un type de note par dossier candidat.
@@ -8412,8 +8519,8 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
     this.ancre.style.display = '';
     const snip = String(texte).replace(/\s+/g, ' ').trim();
     this.ancre.createSpan({ cls: 'zfa-sugg-ancre-txt', text: '📌 ' + snip.slice(0, 120) + (snip.length > 120 ? '…' : '') });
-    const x = this.ancre.createSpan({ cls: 'zfa-sugg-ancre-x', text: '✕' });
-    x.setAttribute('aria-label', "Relâcher l'argument");
+    const x = this.ancre.createSpan({ cls: 'zfa-sugg-ancre-x', text: tr('✕') });
+    x.setAttribute('aria-label', tr("Relâcher l'argument"));
     x.onclick = () => this.plugin.libererAncrage();
   }
 
@@ -8427,7 +8534,7 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
   marquerIndexation(fait, total, termine) {
     if (!this.info) return;
     if (fait === -1) {
-      this.info.setText('Ollama injoignable — repli lexical.');
+      this.info.setText(tr('Ollama injoignable — repli lexical.'));
       if (this.barre) { this.barre.remove(); this.barre = null; }
       return;
     }
@@ -8449,12 +8556,12 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
     this.liste.empty();
     if (this.info) {
       this.info.removeClass('zfa-sugg-occupe');
-      if (etat === 'inactif') this.info.setText('Suggestions désactivées dans les réglages.');
+      if (etat === 'inactif') this.info.setText(tr('Suggestions désactivées dans les réglages.'));
       else if (file) this.info.setText((file.basename) + (etat ? '  ·  ' + etat : ''));
-      else this.info.setText('Ouvrez une note pour voir des suggestions.');
+      else this.info.setText(tr('Ouvrez une note pour voir des suggestions.'));
     }
     if (!suggestions || !suggestions.length) {
-      if (etat !== 'inactif') this.liste.createDiv({ cls: 'zfa-sugg-vide', text: 'Aucune suggestion pertinente.' });
+      if (etat !== 'inactif') this.liste.createDiv({ cls: 'zfa-sugg-vide', text: tr('Aucune suggestion pertinente.') });
       return;
     }
     const styleDe = (d) => this.plugin.styleDuDossier(d);
@@ -8531,13 +8638,13 @@ class RapportCarteModal extends obsidian.Modal {
       text: a.blocs.length + ' bloc(s), dont ' + typés + ' typé(s) · '
         + a.liens.length + ' relation(s), dont ' + relTypées + ' conforme(s).',
     });
-    if (!a.problemes.length) { c.createEl('p', { text: 'Aucun problème détecté.' }); return; }
+    if (!a.problemes.length) { c.createEl('p', { text: tr('Aucun problème détecté.') }); return; }
     const groupes = {
-      'lien-muet': 'Flèches sans étiquette',
-      'hors-vocabulaire': 'Étiquettes hors vocabulaire',
-      soupape: 'Liens non typés (soupape)',
-      'bloc-sans-type': 'Blocs sans type',
-      'type-inconnu': 'Types inconnus',
+      'lien-muet': tr('Flèches sans étiquette'),
+      'hors-vocabulaire': tr('Étiquettes hors vocabulaire'),
+      soupape: tr('Liens non typés (soupape)'),
+      'bloc-sans-type': tr('Blocs sans type'),
+      'type-inconnu': tr('Types inconnus'),
     };
     const liste = c.createDiv();
     liste.style.maxHeight = '50vh';
@@ -8564,7 +8671,7 @@ class TexteModal extends obsidian.Modal {
     ta.value = this.texte;
     ta.rows = 18;
     const pied = c.createDiv({ cls: 'zfa-dedup-pied' });
-    const b = pied.createEl('button', { text: 'Copier' });
+    const b = pied.createEl('button', { text: tr('Copier') });
     b.onclick = () => { navigator.clipboard.writeText(this.texte); new obsidian.Notice(tr('DSL copié.')); };
   }
   onClose() { this.contentEl.empty(); }
@@ -8580,7 +8687,7 @@ class VoisinageModal extends obsidian.Modal {
     c.createEl('h3', { text: this.concept });
     const bloc = (titre, liens, sens) => {
       c.createEl('h4', { text: titre + ' (' + liens.length + ')' });
-      if (!liens.length) { c.createEl('p', { cls: 'zfa-dedup-info', text: '—' }); return; }
+      if (!liens.length) { c.createEl('p', { cls: 'zfa-dedup-info', text: tr('—') }); return; }
       const ul = c.createEl('ul');
       for (const l of liens) {
         const et = l.etiquette && l.etiquette.trim() ? l.etiquette.trim() : '?';
@@ -8594,8 +8701,8 @@ class VoisinageModal extends obsidian.Modal {
     const zone = c.createDiv();
     zone.style.maxHeight = '55vh';
     zone.style.overflow = 'auto';
-    bloc('Relations sortantes', this.sortants, 'sortant');
-    bloc('Relations entrantes', this.entrants, 'entrant');
+    bloc(tr('Relations sortantes'), this.sortants, 'sortant');
+    bloc(tr('Relations entrantes'), this.entrants, 'entrant');
   }
   onClose() { this.contentEl.empty(); }
 }
@@ -8605,14 +8712,14 @@ class StylesModeleModal extends obsidian.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.createEl('h3', { text: 'Styles du modèle Word (' + this.noms.length + ')' });
-    contentEl.createEl('p', { text: 'Copiez le nom exact du style voulu dans les champs de mapping des réglages.', cls: 'zfa-dedup-info' });
+    contentEl.createEl('p', { text: tr('Copiez le nom exact du style voulu dans les champs de mapping des réglages.'), cls: 'zfa-dedup-info' });
     const liste = contentEl.createDiv();
     liste.style.maxHeight = '52vh';
     liste.style.overflow = 'auto';
     for (const n of this.noms) {
       const row = liste.createDiv({ cls: 'zfa-style-row' });
       row.createSpan({ text: n });
-      const b = row.createEl('button', { text: 'Copier' });
+      const b = row.createEl('button', { text: tr('Copier') });
       b.onclick = () => { navigator.clipboard.writeText(n); new obsidian.Notice(tr('Copié : ') + n); };
     }
   }
@@ -8627,7 +8734,7 @@ class FusionAuteursModal extends obsidian.Modal {
   }
   onOpen() {
     const c = this.contentEl;
-    c.createEl('h3', { text: "Fusionner les doublons d'auteurs" });
+    c.createEl('h3', { text: tr("Fusionner les doublons d'auteurs") });
     if (this.conflits.length) {
       c.createEl('p', { text: this.conflits.length + ' copie(s) de conflit à supprimer :' });
       const ul = c.createEl('ul');
@@ -8645,12 +8752,12 @@ class FusionAuteursModal extends obsidian.Modal {
         box.createSpan({ cls: 'zfa-dedup-info', text: ' ← conserver ; fusionne : ' + ch.membres.join(', ') });
       });
     } else {
-      c.createEl('p', { text: 'Aucune variante de nom détectée.' });
+      c.createEl('p', { text: tr('Aucune variante de nom détectée.') });
     }
     const pied = c.createDiv({ cls: 'zfa-dedup-pied' });
-    const ok = pied.createEl('button', { text: 'Fusionner', cls: 'mod-cta' });
+    const ok = pied.createEl('button', { text: tr('Fusionner'), cls: 'mod-cta' });
     ok.onclick = () => this.executer();
-    pied.createEl('button', { text: 'Annuler' }).onclick = () => this.close();
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
   }
   async executer() {
     this.close();
