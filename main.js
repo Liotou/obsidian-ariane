@@ -443,6 +443,7 @@ const TEXTES = {
     "Sortie": "Output",
     "Sortie de l'export Word.": "Output of the Word export.",
     "Source des données": "Data source",
+    "Sources à ne jamais atomiser": "Sources never to atomise",
     "Style du contenu des mises en avant « > [!info] ».": "Style for the contents of “> [!info]” callouts.",
     "Styles du modèle employés": "Template styles in use",
     "Styles du modèle non appliqués : ": "Template styles not applied: ",
@@ -489,6 +490,7 @@ const TEXTES = {
     "Un profil rassemble vos réglages pour les partager ou les retrouver ailleurs. Les chemins propres à cette machine — pandoc, filtre Lua, modèle Word, adresses des services d'inférence — n'y figurent jamais, et un profil importé ne les touche pas.": "A profile gathers your settings so you can share them or find them again elsewhere. Paths specific to this machine, meaning pandoc, the Lua filter, the Word template and the inference service addresses, never appear in it, and an imported profile never touches them.",
     "Une annotation ou une source déposée sur une phrase insère sa référence en ligne, entre parenthèses, avant la ponctuation finale.": "An annotation or a source dropped onto a sentence inserts its reference inline, in brackets, before the closing punctuation.",
     "Une citation entre parenthèses cède la place à une pastille portant le nombre de références. Un clic sur la pastille déplie cette citation seule ; les commandes « Citations : tout replier » et « tout déplier » agissent sur l'ensemble, comme le bouton de la barre latérale. En édition, une citation se déplie d'elle-même dès que le curseur y entre.": "A citation in brackets gives way to a badge carrying the number of references. Clicking the badge unfolds that citation alone, while the “fold all” and “unfold all” commands act on the whole note, as does the sidebar button. While editing, a citation unfolds on its own as soon as the cursor enters it.",
+    "Une clé de citation par ligne. Certains modules de Zotero rangent leurs réglages dans un élément de la bibliothèque, qui remonte alors comme une source : « AddonItem » en est le cas le plus courant. Les notes sans prose sont déjà écartées d'elles-mêmes.": "One citation key per line. Some Zotero add-ons store their settings inside a library item, which then shows up as a source. “AddonItem” is the most common case. Notes containing no prose are already skipped on their own.",
     "Une note de bibliographie par source.": "One bibliography note per source.",
     "Une note par annotation Zotero.": "One note per Zotero annotation.",
     "Une phrase expliquant pourquoi chaque note est proposée. Sans elle, le reclassement est un peu plus rapide.": "A sentence explaining why each note is proposed. Without it, reranking is a little faster.",
@@ -566,6 +568,7 @@ const DEFAULT_SETTINGS = {
   // --- Dossiers ---
   dossierAnnotations: '',       // rôle : où atomiser les annotations
   dossierNotesLecture: '',      // rôle : où atomiser les notes-filles Zotero
+  sourcesExclues: [],           // clés de citation à ne jamais atomiser
   atomiserNotesLecture: true,
   dossierReferences: '',        // rôle : où déposer les références en attente
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
@@ -1139,6 +1142,24 @@ function cosinusVecteurs(a, b) {
   return d;
 }
 
+// Certains modules de Zotero rangent leurs réglages dans un élément de la
+// bibliothèque, qui remonte alors comme une source ordinaire. Ses « notes »
+// ne sont pas des notes : ce sont des relevés au format JSON, ou de simples
+// clés d'éléments. On refuse de les atomiser plutôt que de fabriquer des notes
+// vides d'à peu près tout.
+function estNoteDeDonnees(corps) {
+  let t = String(corps || '').trim();
+  if (!t) return true;
+  // Une clé Zotero seule en première ligne ne dit rien : on l'écarte d'abord.
+  t = t.replace(/^[A-Z0-9]{6,10}\s*\n/, '').trim();
+  if (!t) return true;
+  if (/^[[{][\s\S]*[\]}]$/.test(t)) {
+    try { JSON.parse(t); return true; } catch (e) { /* pas du JSON : on continue */ }
+  }
+  // Aucun mot de quatre lettres ou plus : ce n'est pas de la prose.
+  return !/[A-Za-zÀ-ÿ]{4,}/.test(t.replace(/[A-Z0-9]{6,10}/g, ' '));
+}
+
 // Notes-filles Zotero : celles attachées à la référence entière, non à un
 // passage. Zotflow les dépose dans la fiche source, sous « ## Notes », bornées
 // par <!-- ZF_NOTE_BEG_<clé> --> … <!-- ZF_NOTE_END_<clé> -->. Contrairement
@@ -1156,7 +1177,7 @@ function extraireNotesFilles(contenu) {
       .replace(/<!--\s*ZF_NOTE_META[\s\S]*?-->/g, '')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
-    if (!corps) continue;
+    if (!corps || estNoteDeDonnees(corps)) continue;
     blocs.push({ cle, corps, titre: titreDeNoteFille(corps) });
   }
   return blocs;
@@ -5185,6 +5206,9 @@ class ZotflowAtomiser extends obsidian.Plugin {
     if (this.settings.atomiserNotesLecture === false) return 0;
     const fm = (this.app.metadataCache.getFileCache(fichierSource) || {}).frontmatter || {};
     if (!fm.citationKey) return 0;
+    const exclues = (this.settings.sourcesExclues || [])
+      .map((x) => String(x).trim().replace(/^@/, '')).filter(Boolean);
+    if (exclues.includes(String(fm.citationKey).trim())) return 0;
     const contenu = await this.app.vault.cachedRead(fichierSource);
     const blocs = extraireNotesFilles(contenu);
     if (!blocs.length) return 0;
@@ -7674,6 +7698,18 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
     role(tr('Bibliographies citées'), 'dossierBibliographies', tr("Une note de bibliographie par source."));
     role(tr('Documents exportés'), 'exportDossier', tr("Sortie de l'export Word."));
     role(tr('Journal du temps'), 'tempsDossierJournal', tr("Journaux quotidiens du compteur de temps."));
+    new obsidian.Setting(c)
+      .setName(tr('Sources à ne jamais atomiser'))
+      .setDesc(tr("Une clé de citation par ligne. Certains modules de Zotero rangent leurs réglages dans un élément de la bibliothèque, qui remonte alors comme une source : « AddonItem » en est le cas le plus courant. Les notes sans prose sont déjà écartées d'elles-mêmes."))
+      .addTextArea((t) => {
+        t.inputEl.rows = 3;
+        t.setPlaceholder('AddonItem');
+        t.setValue((s.sourcesExclues || []).join('\n'));
+        t.onChange(async (v) => {
+          s.sourcesExclues = v.split('\n').map((x) => x.trim().replace(/^@/, '')).filter(Boolean);
+          await maj();
+        });
+      });
     new obsidian.Setting(c)
       .setName(tr('Atomiser les notes de lecture'))
       .setDesc(tr("Les notes-filles Zotero — attachées à la référence entière, non à un passage — deviennent des notes à part, citables et reliées à leur source."))
