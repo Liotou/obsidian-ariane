@@ -303,6 +303,8 @@ total-minutes: 34
 | [[Modification à apporter au modèle documentaire]] | 1 min |
 ```
 
+![Le journal quotidien tel qu'Obsidian le rend, avec ses propriétés et le tableau des notes et des minutes](docs/time-journal.png)
+
 Chaque ligne étant un vrai lien, le journal apparaît dans les rétroliens des
 notes qu'il cite. Rouvrir une note des mois plus tard vous dit le temps qu'elle
 a coûté.

@@ -300,6 +300,8 @@ total-minutes: 34
 | [[Modification à apporter au modèle documentaire]] | 1 min |
 ```
 
+![The daily time journal rendered in Obsidian, with its properties and a table of notes and minutes](docs/time-journal.png)
+
 Because every row is a real link, the journal appears in the backlinks of the
 notes it mentions. Opening a note months later tells you how long it took.
 
