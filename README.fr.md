@@ -16,6 +16,14 @@ annotations, notes. Ariane prend le relais et travaille cette matière. Elle
 l'atomise, la relie, la cite et l'exporte. Sans ZotFlow, Ariane n'a rien à se
 mettre sous la dent.
 
+✍️ **En amont, [Annota](https://github.com/Liotou/zotero-annota) prépare la
+matière.** C'est mon greffon pour Zotero : vous attribuez une consigne à chaque
+couleur de surlignage et, dès que vous surlignez un passage, un modèle rédige le
+commentaire de l'annotation, déjà structuré en titre, paraphrase et références.
+Or c'est précisément cette structure qu'Ariane attend pour titrer ses notes.
+Annota reste facultatif, Ariane n'en a jamais besoin, mais les deux forment une
+chaîne : Annota écrit, ZotFlow transporte, Ariane exploite.
+
 🌍 Interface disponible en **français et en anglais**.
 
 ---
@@ -87,14 +95,10 @@ L'habitude à prendre est donc toujours la même : surligner, écrire un titre e
 gras, puis paraphraser. Cela coûte quelques secondes par annotation, et c'est ce
 qui rend tout le coffre navigable ensuite.
 
-🤖 **Vous n'êtes pas obligé de l'écrire à la main.** Je maintiens un second
-plugin pour cela, côté Zotero : [**Annota**](https://github.com/Liotou/zotero-annota).
-Vous attribuez une consigne à chaque couleur de surlignage et, au moment où vous
-surlignez un passage, le modèle rédige le commentaire pour vous, déjà mis en
-forme : titre en gras, paraphrase, références en italique. La consigne
-académique fournie avec produit exactement la structure décrite ci-dessus, ce
-qui n'est pas un hasard. Annota est facultatif et indépendant, Ariane n'en a
-jamais besoin, mais c'est lui qui transforme la discipline en réflexe.
+🤖 **Vous n'êtes pas obligé de l'écrire à la main.** C'est le rôle
+d'[Annota](https://github.com/Liotou/zotero-annota), présenté plus haut : la
+consigne académique qu'il fournit produit exactement la structure décrite ici,
+ce qui n'est pas un hasard. C'est lui qui transforme la discipline en réflexe.
 
 📐 **Cette forme n'est pas imposée.** Si votre propre convention diffère,
 l'onglet *Analyse* permet de la décrire : un profil, c'est un couple

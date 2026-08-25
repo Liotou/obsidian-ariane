@@ -16,6 +16,14 @@ notes. Ariane picks up from there and works that material. It atomises it,
 links it, cites it and exports it. Without ZotFlow, Ariane has nothing to work
 on.
 
+✍️ **Upstream, [Annota](https://github.com/Liotou/zotero-annota) prepares the
+material.** It is my Zotero plugin: you assign a prompt to each highlight
+colour, and the moment you highlight a passage, a model writes the annotation
+comment, already shaped into a title, a paraphrase and references. That shape is
+exactly what Ariane expects in order to name its notes. Annota stays optional
+and Ariane never needs it, but the two form a chain: Annota writes, ZotFlow
+carries, Ariane exploits.
+
 🌍 Interface available in **English and French**.
 
 ---
@@ -86,14 +94,10 @@ So the habit to build is the same one every time: highlight, then write a bold
 title, then paraphrase. It costs a few seconds per annotation and it is what
 makes the whole vault navigable afterwards.
 
-🤖 **You do not have to write it by hand.** I keep a second plugin for that, on
-the Zotero side: [**Annota**](https://github.com/Liotou/zotero-annota). You
-assign a prompt to each highlight colour, and the moment you highlight a
-passage, the model writes the comment for you, already shaped: bold title,
-paraphrase, italic references. The academic prompt shipped with it produces
-exactly the structure described above, which is no accident. Annota is optional
-and independent, and Ariane never needs it, but it is what turns the discipline
-into a reflex.
+🤖 **You do not have to write it by hand.** That is what
+[Annota](https://github.com/Liotou/zotero-annota), introduced above, is for: the
+academic prompt it ships with produces exactly the structure described here,
+which is no accident. It is what turns the discipline into a reflex.
 
 📐 **This shape is not imposed.** If your own convention differs, the *Analysis*
 tab lets you describe it: a profile is a pair of regular expressions, one for the
