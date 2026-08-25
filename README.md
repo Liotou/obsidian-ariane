@@ -10,7 +10,7 @@
 >
 > *Français : voir [README.fr.md](README.fr.md).*
 
-🔗 **Ariane is the downstream companion of [ZotFlow](https://github.com/zotflow/zotflow).**
+🔗 **Ariane is the downstream companion of [ZotFlow](https://github.com/duanxianpi/zotflow).**
 ZotFlow brings Zotero into Obsidian: references, attachments, annotations,
 notes. Ariane picks up from there and works that material. It atomises it,
 links it, cites it and exports it. Without ZotFlow, Ariane has nothing to work
@@ -587,10 +587,10 @@ embedding model. `bge-m3` handles French well.
 
 ## 🙏 Thanks
 
-**[ZotFlow](https://github.com/zotflow/zotflow)** first and foremost. Ariane
+**[ZotFlow](https://github.com/duanxianpi/zotflow)** first and foremost. Ariane
 would be nothing without it. ZotFlow is what makes Zotero live inside Obsidian,
-and everything Ariane does starts from what ZotFlow puts there. Thank you to the
-people who built it.
+and everything Ariane does starts from what ZotFlow puts there. Thank you to
+[Xianpi Duan](https://github.com/duanxianpi), who built it.
 
 Thanks as well to [Better BibTeX](https://retorque.re/zotero-better-bibtex/) and
 its pandoc filter, without which live citations in Word would remain wishful

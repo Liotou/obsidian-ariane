@@ -10,7 +10,7 @@
 >
 > *English: see [README.md](README.md).*
 
-🔗 **Ariane est le compagnon d'aval de [ZotFlow](https://github.com/zotflow/zotflow).**
+🔗 **Ariane est le compagnon d'aval de [ZotFlow](https://github.com/duanxianpi/zotflow).**
 ZotFlow fait entrer Zotero dans Obsidian : références, pièces jointes,
 annotations, notes. Ariane prend le relais et travaille cette matière. Elle
 l'atomise, la relie, la cite et l'exporte. Sans ZotFlow, Ariane n'a rien à se
@@ -600,10 +600,10 @@ modèle d'embeddings. `bge-m3` convient bien au français.
 
 ## 🙏 Remerciements
 
-**[ZotFlow](https://github.com/zotflow/zotflow)** d'abord et avant tout. Ariane
+**[ZotFlow](https://github.com/duanxianpi/zotflow)** d'abord et avant tout. Ariane
 ne serait rien sans lui. C'est ZotFlow qui fait vivre Zotero dans Obsidian, et
-tout ce que fait Ariane part de ce qu'il dépose. Merci à celles et ceux qui
-l'ont développé.
+tout ce que fait Ariane part de ce qu'il dépose. Merci à
+[Xianpi Duan](https://github.com/duanxianpi), qui l'a développé.
 
 Merci également à [Better BibTeX](https://retorque.re/zotero-better-bibtex/) et
 à son filtre pandoc, sans lequel les citations vivantes dans Word resteraient un
