@@ -1,6 +1,6 @@
 # Ariane
 
-> **Written by vibe coding with Claude.** This plugin was designed and written
+> 🤖 **Written by vibe coding with Claude.** This plugin was designed and written
 > in conversation with Claude (Anthropic), from the real needs of a doctoral
 > student. I am not a developer. I describe what I need, I test, I correct, and
 > the code takes shape through the exchange. I say this up front, out of
@@ -10,39 +10,39 @@
 >
 > *Français : voir [README.fr.md](README.fr.md).*
 
-**Ariane is the downstream companion of [ZotFlow](https://github.com/zotflow/zotflow).**
+🔗 **Ariane is the downstream companion of [ZotFlow](https://github.com/zotflow/zotflow).**
 ZotFlow brings Zotero into Obsidian: references, attachments, annotations,
 notes. Ariane picks up from there and works that material. It atomises it,
 links it, cites it and exports it. Without ZotFlow, Ariane has nothing to work
 on.
 
-Interface available in **English and French**.
+🌍 Interface available in **English and French**.
 
 ---
 
-## Table of contents
+## 🧭 Table of contents
 
-- [Atomising](#atomising)
-- [Citing Zotero, live](#citing-zotero-live)
-- [Drag and drop](#drag-and-drop)
-- [Folding citations](#folding-citations)
-- [The aside](#the-aside)
-- [Suggestions](#suggestions)
-- [Back to Zotero](#back-to-zotero)
-- [Bibliographies](#bibliographies)
-- [Pending references](#pending-references)
-- [Authors](#authors)
-- [Diagrams](#diagrams)
-- [Exporting to Word](#exporting-to-word)
-- [Tracking time](#tracking-time)
-- [Housekeeping tools](#housekeeping-tools)
-- [Fitting your own organisation](#fitting-your-own-organisation)
-- [Commands](#commands)
-- [Installing](#installing)
+- [⚛️ Atomising](#-atomising)
+- [🔖 Citing Zotero, live](#-citing-zotero-live)
+- [🖱️ Drag and drop](#-drag-and-drop)
+- [🪗 Folding citations](#-folding-citations)
+- [🏷️ The aside](#-the-aside)
+- [✨ Suggestions](#-suggestions)
+- [↩️ Back to Zotero](#-back-to-zotero)
+- [📚 Bibliographies](#-bibliographies)
+- [⏳ Pending references](#-pending-references)
+- [👥 Authors](#-authors)
+- [🕸️ Diagrams](#-diagrams)
+- [📝 Exporting to Word](#-exporting-to-word)
+- [⏱️ Tracking time](#-tracking-time)
+- [🧹 Housekeeping tools](#-housekeeping-tools)
+- [🗂️ Fitting your own organisation](#-fitting-your-own-organisation)
+- [⌨️ Commands](#-commands)
+- [📦 Installing](#-installing)
 
 ---
 
-## Atomising
+## ⚛️ Atomising
 
 Every Zotero annotation becomes a standalone note with a stable identity that
 survives regeneration. Rename the note, edit its paraphrase, move it: the link
@@ -66,7 +66,7 @@ Annotations that no note ever cites can be **tagged** automatically, which lets
 you colour them in the graph and see at a glance what you have read but never
 used.
 
-## Citing Zotero, live
+## 🔖 Citing Zotero, live
 
 Citations are written in plain sight inside your notes:
 
@@ -88,7 +88,7 @@ cited directly instead, since you can read it.
 Rather than naming every reported work in the running text, the source can carry
 a **counter** instead, and hovering it shows them as clickable links.
 
-## Drag and drop
+## 🖱️ Drag and drop
 
 This is the fastest way to cite while writing.
 
@@ -116,7 +116,7 @@ You can choose whether any note may be dropped or only annotations, and whether
 Ariane tells you when a dropped item matches nothing in the vault, rather than
 silently doing nothing.
 
-## Folding citations
+## 🪗 Folding citations
 
 A long citation can crowd the reading. Fold it, and it gives way to a small
 badge carrying the number of references it holds.
@@ -126,7 +126,7 @@ badge carrying the number of references it holds.
 - while editing, a citation unfolds on its own as soon as the cursor enters it,
   and folds again when you leave.
 
-## The aside
+## 🏷️ The aside
 
 Annotation notes are named after their Zotero key, which is unreadable. The
 aside prints the note title just after the link, in reading view and while
@@ -139,7 +139,7 @@ The file explorer can also show the **alias instead of the filename**, and
 display chosen folders in a **fixed width font**, which makes coded names much
 easier to scan. The text itself is untouched, so search and sorting still work.
 
-## Suggestions
+## ✨ Suggestions
 
 A side panel proposes the closest notes as you write.
 
@@ -155,11 +155,11 @@ through **Ollama or LM Studio**.
 - the ✨ button reranks the best candidates with a local language model, on
   demand only.
 
-That last point matters. Reranking is by far the heaviest thing the plugin does,
+⚡ That last point matters. Reranking is by far the heaviest thing the plugin does,
 so it never starts on its own, it is bounded both in answer length and in time,
 and nothing is computed at all while the panel is not actually visible.
 
-## Back to Zotero
+## ↩️ Back to Zotero
 
 A button in the ZotFlow reader, and a command, take you back to Zotero at the
 right place:
@@ -170,7 +170,7 @@ right place:
 - from a **source note**, Zotero opens its attachment, or selects the entry if
   there is none.
 
-## Bibliographies
+## 📚 Bibliographies
 
 **At the end of a note.** Ariane collects the sources cited in the body and
 maintains a bibliography between two markers, the way Zotero does in Word. The
@@ -185,7 +185,7 @@ across the whole vault.
 Crossref and OpenAlex, and write them into a dedicated note. Give it an email
 address and the two services grant you better rate limits.
 
-## Pending references
+## ⏳ Pending references
 
 A reference cited by one of your annotations but absent from Zotero is not lost.
 Ariane keeps it as a provisional note, and tries to attach it to a real Zotero
@@ -200,13 +200,13 @@ click.
 There is also a command for the classic **2005a and 2005b** problem, where you
 link a given reference to the right Zotero entry yourself.
 
-## Authors
+## 👥 Authors
 
 Ariane can keep one note per author, listing their sources. Author names arrive
 in many shapes, so a command finds the **duplicates**, groups the variants, and
 lets you tick which ones to merge and which entry to keep.
 
-## Diagrams
+## 🕸️ Diagrams
 
 draw.io diagrams paired with a note. Their contents are copied into the note
 between two markers, which makes shapes and relations searchable from Obsidian.
@@ -219,7 +219,7 @@ between two markers, which makes shapes and relations searchable from Obsidian.
 The editor itself comes from the Ariane-graph plugin. Ariane only handles the
 link with your notes.
 
-## Exporting to Word
+## 📝 Exporting to Word
 
 The hardest part, and the most polished: a `.docx` export **with live Zotero
 fields**, not frozen text. Reopen the document in Word, click Refresh, and
@@ -255,9 +255,9 @@ Along the way the export also:
 - adds the Zotero bibliography field at the end, so you do not have to insert it
   yourself.
 
-Requires pandoc, the Better BibTeX Lua filter, and Zotero running.
+⚠️ Requires pandoc, the Better BibTeX Lua filter, and Zotero running.
 
-## Tracking time
+## ⏱️ Tracking time
 
 Time spent in each note, in minutes, written back to a property.
 
@@ -274,7 +274,7 @@ A **daily journal** can be written automatically when the day turns, and a
 status bar item shows the time on the current note, solid while the timer runs
 and hollow when paused.
 
-## Housekeeping tools
+## 🧹 Housekeeping tools
 
 - **Rename a property** across the whole vault. Changing a name in the settings
   only affects future writes, so this carries the old value over to the new one.
@@ -284,7 +284,7 @@ and hollow when paused.
 - **Check the Word template**, before an export rather than after.
 - **Restore** any generated note that was edited by hand.
 
-## Fitting your own organisation
+## 🗂️ Fitting your own organisation
 
 Ariane assumes nothing about your vault. You describe your **note families** in
 the settings, giving each a label, one or more folders, an optional filename
@@ -297,7 +297,7 @@ prefixes** from the filenames. Another detects which folders play each
 functional role, meaning where annotations are filed, where reading notes go,
 where exports land, and so on.
 
-## Commands
+## ⌨️ Commands
 
 | Command | What it does |
 |---|---|
@@ -321,11 +321,11 @@ where exports land, and so on.
 
 ---
 
-## Installing
+## 📦 Installing
 
 Ariane is not in the official Obsidian catalogue. Two ways in:
 
-**With BRAT** (recommended, automatic updates)
+**With BRAT** ✅ (recommended, automatic updates)
 1. install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin;
 2. run the command "BRAT: Add a beta plugin for testing";
 3. paste `Liotou/obsidian-ariane`.
@@ -350,7 +350,7 @@ embedding model. `bge-m3` handles French well.
 
 ---
 
-## Thanks
+## 🙏 Thanks
 
 **[ZotFlow](https://github.com/zotflow/zotflow)** first and foremost. Ariane
 would be nothing without it. ZotFlow is what makes Zotero live inside Obsidian,
@@ -363,6 +363,6 @@ thinking.
 
 ---
 
-## Licence
+## ⚖️ Licence
 
 MIT, see [LICENSE](LICENSE).

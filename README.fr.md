@@ -1,6 +1,6 @@
 # Ariane
 
-> **Écrit en vibe coding avec Claude.** Ce greffon a été conçu et programmé en
+> 🤖 **Écrit en vibe coding avec Claude.** Ce greffon a été conçu et programmé en
 > conversation avec Claude (Anthropic), à partir des besoins réels d'un
 > doctorant. Je ne suis pas développeur. Je décris ce dont j'ai besoin, je
 > teste, je corrige, et le code prend forme au fil des échanges. Je le dis
@@ -10,39 +10,39 @@
 >
 > *English: see [README.md](README.md).*
 
-**Ariane est le compagnon d'aval de [ZotFlow](https://github.com/zotflow/zotflow).**
+🔗 **Ariane est le compagnon d'aval de [ZotFlow](https://github.com/zotflow/zotflow).**
 ZotFlow fait entrer Zotero dans Obsidian : références, pièces jointes,
 annotations, notes. Ariane prend le relais et travaille cette matière. Elle
 l'atomise, la relie, la cite et l'exporte. Sans ZotFlow, Ariane n'a rien à se
 mettre sous la dent.
 
-Interface disponible en **français et en anglais**.
+🌍 Interface disponible en **français et en anglais**.
 
 ---
 
-## Sommaire
+## 🧭 Sommaire
 
-- [Atomiser](#atomiser)
-- [Citer Zotero, en direct](#citer-zotero-en-direct)
-- [Glisser-déposer](#glisser-déposer)
-- [Replier les citations](#replier-les-citations)
-- [L'aparté](#laparté)
-- [Suggestions](#suggestions)
-- [Retour vers Zotero](#retour-vers-zotero)
-- [Bibliographies](#bibliographies)
-- [Références en attente](#références-en-attente)
-- [Auteurs](#auteurs)
-- [Schémas](#schémas)
-- [Exporter vers Word](#exporter-vers-word)
-- [Compter le temps](#compter-le-temps)
-- [Outils d'entretien](#outils-dentretien)
-- [S'adapter à votre organisation](#sadapter-à-votre-organisation)
-- [Commandes](#commandes)
-- [Installation](#installation)
+- [⚛️ Atomiser](#-atomiser)
+- [🔖 Citer Zotero, en direct](#-citer-zotero-en-direct)
+- [🖱️ Glisser-déposer](#-glisser-déposer)
+- [🪗 Replier les citations](#-replier-les-citations)
+- [🏷️ L'aparté](#-laparté)
+- [✨ Suggestions](#-suggestions)
+- [↩️ Retour vers Zotero](#-retour-vers-zotero)
+- [📚 Bibliographies](#-bibliographies)
+- [⏳ Références en attente](#-références-en-attente)
+- [👥 Auteurs](#-auteurs)
+- [🕸️ Schémas](#-schémas)
+- [📝 Exporter vers Word](#-exporter-vers-word)
+- [⏱️ Compter le temps](#-compter-le-temps)
+- [🧹 Outils d'entretien](#-outils-dentretien)
+- [🗂️ S'adapter à votre organisation](#-sadapter-à-votre-organisation)
+- [⌨️ Commandes](#-commandes)
+- [📦 Installation](#-installation)
 
 ---
 
-## Atomiser
+## ⚛️ Atomiser
 
 Chaque annotation Zotero devient une note autonome, à l'identité stable, qui
 survit aux régénérations. Renommez la note, retouchez sa paraphrase, déplacez-la :
@@ -66,7 +66,7 @@ Les annotations qu'aucune note ne cite peuvent être **taguées** automatiquemen
 ce qui permet de les colorer dans le graphe et de voir d'un coup d'œil ce que
 vous avez lu sans jamais l'employer.
 
-## Citer Zotero, en direct
+## 🔖 Citer Zotero, en direct
 
 Les citations s'écrivent en clair dans vos notes :
 
@@ -88,7 +88,7 @@ Zotero, il est cité directement, puisque vous pouvez le lire.
 Plutôt que de nommer tous les travaux rapportés dans le fil du texte, la source
 peut porter un **compteur**, dont le survol les affiche en liens cliquables.
 
-## Glisser-déposer
+## 🖱️ Glisser-déposer
 
 C'est la façon la plus rapide de citer en écrivant.
 
@@ -116,7 +116,7 @@ Vous choisissez si n'importe quelle note peut être déposée ou seulement les
 annotations, et si Ariane vous prévient quand un dépôt ne correspond à rien dans
 le coffre, plutôt que de ne rien faire en silence.
 
-## Replier les citations
+## 🪗 Replier les citations
 
 Une citation longue encombre la lecture. Repliée, elle cède la place à une
 pastille portant le nombre de références qu'elle contient.
@@ -126,7 +126,7 @@ pastille portant le nombre de références qu'elle contient.
 - en édition, une citation se déplie d'elle-même dès que le curseur y entre, et
   se replie quand vous en sortez.
 
-## L'aparté
+## 🏷️ L'aparté
 
 Les notes d'annotation portent le nom de leur clé Zotero, illisible. L'aparté
 affiche le titre de la note juste après le lien, en lecture comme en édition,
@@ -140,7 +140,7 @@ présenter les dossiers de votre choix en **police à largeur fixe**, ce qui ren
 les noms codés bien plus lisibles. Le texte n'est pas modifié : la recherche et
 le tri restent intacts.
 
-## Suggestions
+## ✨ Suggestions
 
 Un panneau latéral propose les notes les plus proches au fil de l'écriture.
 
@@ -157,11 +157,11 @@ LM Studio**.
 - le bouton ✨ fait relire les meilleurs candidats par un modèle de langue
   local, à la demande seulement.
 
-Ce dernier point compte. Le reclassement est de loin le poste le plus lourd du
+⚡ Ce dernier point compte. Le reclassement est de loin le poste le plus lourd du
 greffon : il ne part jamais seul, il est borné en longueur de réponse comme en
 durée, et rien n'est calculé tant que le panneau n'est pas réellement visible.
 
-## Retour vers Zotero
+## ↩️ Retour vers Zotero
 
 Un bouton dans le lecteur ZotFlow, et une commande, vous ramènent à Zotero au
 bon endroit :
@@ -172,7 +172,7 @@ bon endroit :
 - depuis une **fiche source**, Zotero ouvre sa pièce jointe, ou sélectionne la
   référence s'il n'y en a pas.
 
-## Bibliographies
+## 📚 Bibliographies
 
 **En fin de note.** Ariane relève les sources citées dans le corps et entretient
 une bibliographie entre deux marqueurs, à la manière de Zotero dans Word. La
@@ -187,7 +187,7 @@ dans tout le coffre.
 via Crossref et OpenAlex, et les inscrire dans une note dédiée. Renseignez une
 adresse électronique et les deux services vous accordent de meilleures limites.
 
-## Références en attente
+## ⏳ Références en attente
 
 Une référence citée par une de vos annotations mais absente de Zotero n'est pas
 perdue. Ariane la garde comme note provisoire et tente de la rattacher à une
@@ -202,13 +202,13 @@ bouton permet d'effacer ces souvenirs.
 Une commande traite aussi le cas classique du **2005a et 2005b**, où vous liez
 vous-même une référence à la bonne fiche Zotero.
 
-## Auteurs
+## 👥 Auteurs
 
 Ariane peut tenir une note par auteur, listant ses sources. Les noms d'auteurs
 arrivent sous bien des formes : une commande repère les **doublons**, regroupe
 les variantes, et vous laisse cocher celles à fusionner et la fiche à conserver.
 
-## Schémas
+## 🕸️ Schémas
 
 Des schémas draw.io appariés à une note. Leur contenu est recopié dans la note
 entre deux marqueurs, ce qui rend blocs et relations cherchables depuis
@@ -223,7 +223,7 @@ Obsidian.
 L'éditeur lui-même vient du greffon Ariane-graph. Ariane ne gère que le lien
 avec vos notes.
 
-## Exporter vers Word
+## 📝 Exporter vers Word
 
 Le point le plus délicat, et le plus abouti : un export `.docx` **avec des
 champs Zotero actualisables**, et non du texte figé. Vous rouvrez le document
@@ -260,9 +260,9 @@ L'export, au passage :
 - pose le champ de bibliographie Zotero à la fin, pour que vous n'ayez pas à
   l'insérer vous-même.
 
-Demande pandoc, le filtre Lua de Better BibTeX, et Zotero ouvert.
+⚠️ Demande pandoc, le filtre Lua de Better BibTeX, et Zotero ouvert.
 
-## Compter le temps
+## ⏱️ Compter le temps
 
 Le temps passé dans chaque note, en minutes, reporté en propriété.
 
@@ -279,7 +279,7 @@ Un **journal quotidien** peut s'écrire au changement de jour, et un élément d
 barre d'état affiche le temps de la note en cours, le point plein quand le
 compteur tourne, vide en pause.
 
-## Outils d'entretien
+## 🧹 Outils d'entretien
 
 - **Renommer une propriété** dans tout le coffre. Changer un nom dans les
   réglages ne vaut que pour les écritures à venir : cet outil reporte l'ancienne
@@ -290,7 +290,7 @@ compteur tourne, vide en pause.
 - **Vérifier le modèle Word**, avant l'export plutôt qu'après.
 - **Restaurer** toute note produite qui aurait été modifiée à la main.
 
-## S'adapter à votre organisation
+## 🗂️ S'adapter à votre organisation
 
 Ariane ne présume rien de votre coffre. Vous décrivez vos **familles de notes**
 dans les réglages, avec pour chacune un libellé, un ou plusieurs dossiers, un
@@ -304,7 +304,7 @@ partir des noms de fichiers. Un autre détecte les dossiers qui jouent chacun de
 rôles : où sont rangées les annotations, où vont les notes de lecture, où
 tombent les exports, et ainsi de suite.
 
-## Commandes
+## ⌨️ Commandes
 
 | Commande | Ce qu'elle fait |
 |---|---|
@@ -328,11 +328,11 @@ tombent les exports, et ainsi de suite.
 
 ---
 
-## Installation
+## 📦 Installation
 
 Ariane ne figure pas dans le catalogue officiel d'Obsidian. Deux voies :
 
-**Par BRAT** (recommandé, mises à jour automatiques)
+**Par BRAT** ✅ (recommandé, mises à jour automatiques)
 1. installez le greffon [BRAT](https://github.com/TfTHacker/obsidian42-brat) ;
 2. lancez la commande « BRAT: Add a beta plugin for testing » ;
 3. collez `Liotou/obsidian-ariane`.
@@ -357,7 +357,7 @@ modèle d'embeddings. `bge-m3` convient bien au français.
 
 ---
 
-## Remerciements
+## 🙏 Remerciements
 
 **[ZotFlow](https://github.com/zotflow/zotflow)** d'abord et avant tout. Ariane
 ne serait rien sans lui. C'est ZotFlow qui fait vivre Zotero dans Obsidian, et
@@ -370,6 +370,6 @@ vœu pieux.
 
 ---
 
-## Licence
+## ⚖️ Licence
 
 MIT, voir [LICENSE](LICENSE).
