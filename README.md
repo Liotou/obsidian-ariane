@@ -48,6 +48,7 @@ carries, Ariane exploits.
 - [🗂️ Fitting your own organisation](#-fitting-your-own-organisation)
 - [⌨️ Commands](#-commands)
 - [📦 Installing](#-installing)
+- [🔐 What the plugin can do](#-what-the-plugin-can-do-on-your-machine)
 - [☕ Buy me a coffee](#-buy-me-a-coffee)
 
 ---
@@ -558,6 +559,40 @@ where exports land, and so on.
 | Time: write today's journal, write it into the notes now | the timer |
 | Annotation basket: show or hide | for drag and drop |
 | Annotation suggestions: open the panel, rebuild the index | the side panel |
+
+---
+
+## 🔐 What the plugin can do on your machine
+
+Obsidian's automated review flags three kinds of access. They are real, they are
+needed, and you deserve to know why.
+
+**Running commands** (`child_process`). For the Word export only: Ariane calls
+`pandoc`, its Better BibTeX filter and a Python script shipped in `pandoc/`, all
+three installed by you. No other program is launched, nothing is downloaded. If
+you never export to Word, that path is never taken. On mobile it is refused up
+front, with a message.
+
+**Direct filesystem access** (`fs`). Same reason: pandoc works on real files,
+outside the vault. The document lands in the export folder you named, and the
+Word template is read where you put it. Everything else goes through Obsidian's
+own API.
+
+**Vault enumeration.** Atomising, the suggestion index and the bibliographies
+need to know which notes exist. Nothing is sent anywhere: there is **no network
+call** in the plugin, apart from the optional reference lookup on Crossref and
+OpenAlex, which you trigger yourself, and the local models of Ollama or LM
+Studio, which run on your own machine.
+
+**Clipboard.** Write only, and only when you click a "copy" button. The plugin
+never reads what you copied elsewhere.
+
+**Local storage.** A single read, that of your interface language, to know
+whether to speak French or English to you. Plugin settings go through Obsidian's
+data API, as they should.
+
+The code is one readable, commented file, with no dependency and no
+minification: you can check all of this yourself.
 
 ---
 

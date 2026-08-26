@@ -349,6 +349,7 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "L'export Word demande pandoc et n'est possible que sur ordinateur.": "Exporting to Word needs pandoc and only works on the desktop.",
     "Annotations sans titre": "Untitled annotations",
     "Par défaut, une annotation dont le commentaire ne correspond à aucun profil est ignorée : elle ne devient pas une note. Activez l'option ci-dessous pour l'atomiser quand même, avec un titre déduit de son contenu.": "By default, an annotation whose comment matches no profile is skipped: it never becomes a note. Turn the option below on to atomise it anyway, with a title inferred from its content.",
     "Atomiser les annotations sans titre": "Atomise untitled annotations",
@@ -4101,6 +4102,14 @@ class ZotflowAtomiser extends obsidian.Plugin {
   }
 
   async exporterWordZotero() {
+    // L'export appelle pandoc et python par child_process : rien de tout cela
+    // n'existe sur mobile. Le greffon se charge malgré tout, tous les modules
+    // Node étant requis à l'intérieur des fonctions, mais mieux vaut un
+    // message clair qu'une exception non rattrapée.
+    if (obsidian.Platform && !obsidian.Platform.isDesktopApp) {
+      new obsidian.Notice(tr("L'export Word demande pandoc et n'est possible que sur ordinateur."));
+      return;
+    }
     const file = this.app.workspace.getActiveFile();
     if (!file || file.extension !== 'md') { new obsidian.Notice(tr('Ouvrez la note à exporter.')); return; }
     const contenu = await this.app.vault.read(file);

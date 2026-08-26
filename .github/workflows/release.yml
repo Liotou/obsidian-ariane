@@ -10,6 +10,10 @@ on:
 
 permissions:
   contents: write
+  # Attestations de provenance : elles prouvent que les fichiers publiés ont
+  # bien été construits depuis ce dépôt, et non déposés à la main.
+  id-token: write
+  attestations: write
 
 jobs:
   publier:
@@ -27,6 +31,13 @@ jobs:
           fi
           node --check main.js
           echo "Version $etiquette, main.js valide."
+
+      - name: Attester la provenance des fichiers publiés
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            main.js
+            styles.css
 
       - name: Créer la publication
         env:

@@ -48,6 +48,7 @@ chaîne : Annota écrit, ZotFlow transporte, Ariane exploite.
 - [🗂️ S'adapter à votre organisation](#-sadapter-à-votre-organisation)
 - [⌨️ Commandes](#-commandes)
 - [📦 Installation](#-installation)
+- [🔐 Ce que le greffon peut faire](#-ce-que-le-greffon-peut-faire-sur-votre-machine)
 - [☕ Offrez-moi un café](#-offrez-moi-un-café)
 
 ---
@@ -571,6 +572,41 @@ tombent les exports, et ainsi de suite.
 | Temps : écrire le journal du jour, reporter dans les notes | le compteur |
 | Panier d'annotations : afficher ou masquer | pour le glisser-déposer |
 | Suggestions : ouvrir le panneau, reconstruire l'index | le panneau latéral |
+
+---
+
+## 🔐 Ce que le greffon peut faire sur votre machine
+
+La revue automatique d'Obsidian signale trois accès. Ils sont réels, ils sont
+nécessaires, et vous méritez de savoir pourquoi.
+
+**Exécution de commandes** (`child_process`). Uniquement pour l'export Word :
+Ariane appelle `pandoc`, son filtre Better BibTeX et un script Python livré dans
+`pandoc/`, tous trois installés par vous. Aucun autre programme n'est lancé,
+rien n'est téléchargé. Si vous n'exportez jamais vers Word, cette voie n'est
+jamais empruntée. Sur mobile elle est refusée d'emblée, avec un message.
+
+**Accès direct au système de fichiers** (`fs`). Même raison : pandoc travaille
+sur de vrais fichiers, hors du coffre. Le document produit va dans le dossier
+d'export que vous avez indiqué, et le modèle Word est lu là où vous l'avez mis.
+Tout le reste passe par l'API d'Obsidian.
+
+**Parcours du coffre.** L'atomisation, l'index des suggestions et les
+bibliographies ont besoin de savoir quelles notes existent. Rien n'est envoyé
+nulle part : il n'y a **aucun appel réseau** dans le greffon, hormis la
+recherche facultative de références sur Crossref et OpenAlex, que vous
+déclenchez vous-même, et les modèles d'IA locaux d'Ollama ou LM Studio, qui
+tournent sur votre machine.
+
+**Presse-papiers.** En écriture seulement, et seulement quand vous cliquez sur
+un bouton « copier ». Le greffon ne lit jamais ce que vous avez copié ailleurs.
+
+**Stockage local.** Une seule lecture, celle de la langue de votre interface,
+pour savoir s'il faut vous parler français ou anglais. Les réglages du greffon
+passent par l'API de données d'Obsidian, comme il se doit.
+
+Le code est en un seul fichier lisible et commenté, sans dépendance ni
+minification : vous pouvez tout vérifier vous-même.
 
 ---
 
