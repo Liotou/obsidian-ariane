@@ -349,6 +349,9 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Afficher le titre à côté des liens": "Show the title next to links",
+    "Déclare une famille de notes pour ce dossier, ce qui permet à l’aparté d’afficher le titre de la référence dans vos annotations.": "Declares a note family for this folder, which lets the aside show the reference title inside your annotations.",
+    "Famille déclarée : le titre s’affichera à côté des liens.": "Family declared: the title will show next to links.",
     "Complétion": "Completion",
     "fiche complète": "complete record",
     "Fiche introuvable pour ce DOI.": "No record found for this DOI.",
@@ -7542,6 +7545,10 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const f = entree.fichier;
     this.marquerEcriture(f.path);
     await this.app.fileManager.processFrontMatter(f, (fm) => {
+      // L'alias porte le titre : c'est lui que lit l'aparté, et c'est par lui
+      // que la référence devient trouvable ailleurs qu'en « Auteur, Année ».
+      const al = Array.isArray(fm.aliases) ? fm.aliases : (fm.aliases ? [fm.aliases] : []);
+      if (!al.includes(fiche.titre)) fm.aliases = [fiche.titre].concat(al.filter((x) => x !== fiche.titre));
       fm['titre-cité'] = fiche.titre;
       fm.doi = fiche.doi;
       if (fiche.auteurs.length) fm.auteurs = fiche.auteurs;
@@ -7569,6 +7576,31 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === basename);
     if (f) await this.app.workspace.getLeaf(true).openFile(f);
     else new obsidian.Notice(tr('Note introuvable : ') + basename);
+  }
+
+  // Le dossier des références en attente est-il couvert par une famille ? Sans
+  // cela l'aparté ne s'y applique pas, et le titre complété reste invisible
+  // dans les annotations qui citent la référence.
+  familleDesReferences() {
+    const cible = this.settings.dossierReferences || '';
+    if (!cible) return null;
+    return (this.settings.famillesNotes || []).find(
+      (f) => (f.dossiers || []).some((d) => d && cible.startsWith(d))) || null;
+  }
+
+  async declarerFamilleReferences() {
+    if (this.familleDesReferences()) return false;
+    const cible = this.settings.dossierReferences;
+    if (!cible) { new obsidian.Notice(tr('Aucun dossier de références en attente.')); return false; }
+    if (!Array.isArray(this.settings.famillesNotes)) this.settings.famillesNotes = [];
+    this.settings.famillesNotes.push({
+      nom: tr('Références en attente'), dossiers: [cible], prefixe: '',
+      aparte: true, suggestions: false, couleur: '', icone: 'scale',
+      monospace: false, alias: true,
+    });
+    await this.saveSettings();
+    new obsidian.Notice(tr('Famille déclarée : le titre s’affichera à côté des liens.'));
+    return true;
   }
 
   async ouvrirVueReferences() {
@@ -9652,6 +9684,14 @@ class VueReferencesAttente extends obsidian.ItemView {
     bMaj.onclick = async () => { await this.greffon.rafraichirBibliographies(false); await this.preparer(); };
     const bRe = outils.createEl('button', { text: tr('Recalculer') });
     bRe.onclick = () => this.preparer();
+    // N'apparaît que tant que l'aparté ne s'applique pas à ces notes.
+    if (!this.greffon.familleDesReferences()) {
+      const bFam = outils.createEl('button', { cls: 'mod-cta',
+        text: tr('Afficher le titre à côté des liens') });
+      bFam.setAttribute('aria-label',
+        tr('Déclare une famille de notes pour ce dossier, ce qui permet à l’aparté d’afficher le titre de la référence dans vos annotations.'));
+      bFam.onclick = async () => { await this.greffon.declarerFamilleReferences(); this.rendre(); };
+    }
     if (this.enCours) {
       const bStop = outils.createEl('button', { cls: 'mod-warning', text: tr('Arrêter le lot') });
       bStop.onclick = () => { this.enCours = false; };
