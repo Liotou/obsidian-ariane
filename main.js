@@ -349,6 +349,20 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "œuvres": "works",
+    "À détacher": "To detach",
+    "À fusionner": "To merge",
+    "Fusionnées": "Merged",
+    "occurrence(s) non résolue(s), non comptée(s) ici.": "unresolved occurrence(s), not counted here.",
+    "Fusionnée : ": "Merged: ",
+    "Détachée : ": "Detached: ",
+    "lien(s)": "link(s)",
+    "Titre insuffisant pour détacher.": "Title too short to detach.",
+    "Fusionner ici": "Merge here",
+    "Détacher cette œuvre": "Detach this work",
+    "Compté par œuvre": "Counted by work",
+    "Ce libellé couvre plusieurs œuvres": "This label covers several works",
+    "Même œuvre que": "Same work as",
     "Afficher le titre à côté des liens": "Show the title next to links",
     "Déclare une famille de notes pour ce dossier, ce qui permet à l’aparté d’afficher le titre de la référence dans vos annotations.": "Declares a note family for this folder, which lets the aside show the reference title inside your annotations.",
     "Famille déclarée : le titre s’affichera à côté des liens.": "Family declared: the title will show next to links.",
@@ -1649,6 +1663,52 @@ function candidatsSource(ref, indexZotero) {
 
 // Source Zotero CERTAINE pour l'auto-rattachement (construireNote) : un unique
 // appariement 'fort', jamais pour une référence à suffixe (2005a/b, ambiguë).
+// La cible d'un libellé dépend de l'article qui le porte : « Renn, 2008 »
+// désigne le chapitre chez l'un et le livre chez l'autre. La table est donc à
+// deux étages, { libellé: { source: cible, __defaut: cible } }. L'ancienne forme
+// plate, { libellé: cible }, reste lue telle quelle.
+function cibleDeReference(table, nom, source) {
+  const e = table && table[nom];
+  if (!e) return null;
+  if (typeof e === 'string') return e;
+  if (source && e[source]) return e[source];
+  return e.__defaut || null;
+}
+
+function migrerCorrespondances(table) {
+  const out = {};
+  for (const [nom, v] of Object.entries(table || {})) {
+    out[nom] = typeof v === 'string' ? { __defaut: v } : v;
+  }
+  return out;
+}
+
+// Clé d'œuvre : le DOI s'il existe, sinon le titre normalisé. Les tirets
+// Unicode sont ramenés à l'ASCII, « Co-opetition » et « Co‐opetition » étant le
+// même travail. Un titre trop court n'identifie rien.
+function cleOeuvre(titre, doi) {
+  if (doi) return 'doi:' + doi;
+  const t = sansAccents(titre || '')
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  return t.length >= 12 ? 'titre:' + t.slice(0, 44) : '';
+}
+
+// Nom de note pour une œuvre détachée d'un libellé partagé. Le qualificatif
+// vient de l'ŒUVRE, jamais de l'article : le suffixe a/b des styles n'a de sens
+// que dans une bibliographie donnée et désignerait deux travaux d'un article à
+// l'autre.
+function nomOeuvreDetachee(libelle, titre) {
+  const t = String(titre || '').replace(/\s+/g, ' ').trim();
+  if (!t) return libelle;
+  let court = t.split(/\s*[:;–—]\s*|\.\s+/)[0].trim();
+  if (court.length < 10) court = t;
+  if (court.length > 48) court = court.slice(0, 48).replace(/\s+\S*$/, '');
+  court = court.replace(/[\\/:*?"<>|#^\[\]]/g, ' ').replace(/\s+/g, ' ').trim();
+  return court ? libelle + ' (' + court + ')' : libelle;
+}
+
 function trouverSourceZotero(ref, indexZotero) {
   if (!ref) return null;
   if (ref.annee && ref.annee4 && ref.annee !== ref.annee4) return null;
@@ -1763,7 +1823,9 @@ function construireNote(bloc, sourceBasename, indexZotero, cfg, ctxSource) {
       continue;
     }
     // Correspondance manuelle mémorisée (désambiguïsation 2005a/2005b) prioritaire.
-    const manuel = cfg.correspondancesSuffixe && cfg.correspondancesSuffixe[r.nom];
+    // La cible dépend de la source : c'est ce qui permet à un même libellé de
+    // désigner deux travaux selon l'article, et de survivre à la ré-atomisation.
+    const manuel = cibleDeReference(cfg.correspondancesSuffixe, r.nom, sourceBasename);
     let cibleRef;
     if (manuel) {
       cibleRef = manuel;
@@ -6492,6 +6554,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   async loadSettings() {
     const charge = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, charge || {});
+    this.settings.correspondancesSuffixe = migrerCorrespondances(this.settings.correspondancesSuffixe);
     if (!Array.isArray(this.settings.profils) || this.settings.profils.length === 0) {
       this.settings.profils = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.profils));
     }
@@ -7381,7 +7444,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     new ChoixSourceModal(this.app, file.basename, candidats, async (choix) => {
       if (!choix) return;
       if (!this.settings.correspondancesSuffixe) this.settings.correspondancesSuffixe = {};
-      this.settings.correspondancesSuffixe[ref.nom] = choix;
+      this.settings.correspondancesSuffixe[ref.nom] = { __defaut: choix };
       await this.saveSettings();
       await this.remplacerLiens(file.basename, choix);
       const entree = candidats.find((c) => c.basename === choix);
@@ -7418,7 +7481,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   async rattacherReference(entree, cible) {
     if (!cible) return;
     if (!this.settings.correspondancesSuffixe) this.settings.correspondancesSuffixe = {};
-    this.settings.correspondancesSuffixe[entree.nom] = cible;
+    this.settings.correspondancesSuffixe[entree.nom] = { __defaut: cible };
     await this.saveSettings();
     await this.remplacerLiens(entree.nom, cible);
     const z = this.construireIndexZotero().find((x) => x.basename === cible);
@@ -7570,6 +7633,85 @@ class ZotflowAtomiser extends obsidian.Plugin {
       await this.assurerNotesAuteurs(entree.nom, fiche.auteurs);
     }
     return true;
+  }
+
+  /* --------------------- Fusionner deux libellés --------------------------- *
+   * « Gawer & Cusumano, 2014 » et « Gawer, 2014 » désignent parfois le même
+   * article et comptent séparément : le signal d'acquisition en est dilué. La
+   * fusion réunit les liens sous un seul libellé et mémorise le renvoi.
+   * ------------------------------------------------------------------------ */
+
+  async fusionnerReferences(depuis, vers) {
+    if (!depuis || !vers || depuis.nom === vers) return 0;
+    const n = await this.remplacerLiens(depuis.nom, vers);
+    const cible = this.app.vault.getMarkdownFiles().find((f) => f.basename === vers);
+    if (cible) {
+      // Le libellé absorbé est conservé en propriété : il reste cherchable, et
+      // l'on sait sous quelles formes ce travail a été cité.
+      this.marquerEcriture(cible.path);
+      await this.app.fileManager.processFrontMatter(cible, (fm) => {
+        const l = Array.isArray(fm['libellés']) ? fm['libellés'] : (fm['libellés'] ? [fm['libellés']] : []);
+        if (!l.includes(depuis.nom)) l.push(depuis.nom);
+        fm['libellés'] = l;
+      });
+    }
+    if (!this.settings.correspondancesSuffixe) this.settings.correspondancesSuffixe = {};
+    this.settings.correspondancesSuffixe[depuis.nom] = { __defaut: vers };
+    await this.saveSettings();
+    await this.marquerReference(depuis, 'fusionnée');
+    new obsidian.Notice(tr('Fusionnée : ') + depuis.nom + ' → ' + vers
+      + ' (' + n + ' ' + tr('lien(s)') + ').', 8000);
+    return n;
+  }
+
+  /* ------------------- Détacher une œuvre d'un libellé --------------------- *
+   * « Renn, 2008 » recouvre deux travaux selon l'article citant. On crée une
+   * note pour l'œuvre minoritaire, nommée par SON titre, et la table renvoie
+   * chaque source vers la bonne. Le libellé d'origine garde son nom : aucun
+   * lien existant ne se casse ailleurs.
+   * ------------------------------------------------------------------------ */
+
+  async detacherOeuvre(entree, oeuvre) {
+    if (!oeuvre || !oeuvre.sources || !oeuvre.sources.length) return null;
+    const nom = this.nettoyerNomFichier(nomOeuvreDetachee(entree.nom, oeuvre.titre));
+    if (nom === entree.nom) { new obsidian.Notice(tr('Titre insuffisant pour détacher.')); return null; }
+    const chemin = this.dossierR + '/' + nom + '.md';
+    if (!this.app.vault.getAbstractFileByPath(chemin)) {
+      const fm = ['---', 'aliases:', '  - ' + JSON.stringify(oeuvre.titre || nom),
+        'type: reference-citee'];
+      if (oeuvre.doi) fm.push('doi: ' + JSON.stringify(oeuvre.doi));
+      if (oeuvre.titre) fm.push('titre-cité: ' + JSON.stringify(oeuvre.titre));
+      fm.push('libellés:'); fm.push('  - ' + JSON.stringify(entree.nom));
+      fm.push('détachée-de: ' + JSON.stringify('[[' + entree.nom + ']]'));
+      fm.push('---');
+      await this.ecrire(chemin, fm.join('\n') + '\n');
+    }
+    if (!this.settings.correspondancesSuffixe) this.settings.correspondancesSuffixe = {};
+    const table = Object.assign({}, this.settings.correspondancesSuffixe[entree.nom] || {});
+    for (const src of oeuvre.sources) table[src] = nom;
+    this.settings.correspondancesSuffixe[entree.nom] = table;
+    await this.saveSettings();
+
+    // On ne réécrit que les notes des sources concernées : les autres gardent
+    // leur lien vers le libellé d'origine, qui reste valide.
+    const motif = new RegExp('\\[\\[' + echapperRegex(entree.nom) + '(\\|[^\\]]*)?\\]\\]', 'g');
+    const cibles = new Set(oeuvre.sources);
+    let n = 0;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const fmc = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      const src = cleDeLien(sansLien(fmc['zotflow-source'] || ''));
+      if (!src || !cibles.has(src)) continue;
+      const contenu = await this.app.vault.cachedRead(f);
+      motif.lastIndex = 0;
+      if (!motif.test(contenu)) continue;
+      motif.lastIndex = 0;
+      const neuf = contenu.replace(motif, (tout, alias) => '[[' + nom + (alias || '') + ']]');
+      if (neuf === contenu) continue;
+      await this.ecrire(f.path, neuf, f);
+      n += 1;
+    }
+    new obsidian.Notice(tr('Détachée : ') + nom + ' (' + n + ' ' + tr('lien(s)') + ').', 8000);
+    return { nom, liens: n };
   }
 
   async ouvrirNote(basename) {
@@ -7779,6 +7921,136 @@ class ZotflowAtomiser extends obsidian.Plugin {
       if (compte > i) { index = k; break; }
     }
     return mots.slice(Math.max(0, index - 25), index + 25).join(' ');
+  }
+
+  // Les candidats de bibliographie d'un libellé chez UNE source, classés. Sorti
+  // de la résolution pour que le comptage par œuvre s'appuie exactement sur le
+  // même appariement, sans en écrire un second qui divergerait.
+  candidatsPourSource(libelle, source, passage) {
+    const m = String(libelle).match(/^(.*?),\s*(\d{4})([a-z]?)/);
+    if (!m) return [];
+    const premier = sansAccents(m[1].split(/\s+(?:et al\.?|&|and|et)\s+|,/)[0].trim().split(/\s+/).pop());
+    const annee = m[2];
+    const suffixe = m[3] || '';
+    const fiche = this.construireIndexZotero().find((z) => z.basename === source);
+    const liste = fiche && fiche.doi ? this.bibliographieDeDoi(fiche.doi) : null;
+    if (!liste || !liste.length) return [];
+    const sac = new Set(tokeniser(this.fenetreCitation(passage || '', premier)));
+
+    const cands = [];
+    for (const e of liste) {
+      if (String(e.annee || '') !== annee) continue;
+      const brut = sansAccents(e.brut || '');
+      const noms = (e.auteurs || []).map((x) => sansAccents(String(x).split(/\s+/).pop()));
+      const colle = noms.length
+        ? noms.includes(premier)
+        : brut.split(/[^a-z0-9]+/).filter(Boolean)[0] === premier;
+      if (!colle) continue;
+      const titre = String(e.titre || e.brut || '').trim();
+      const doi = normDoi(e.doi);
+      if (!titre && !doi) continue;
+      cands.push({ titre, doi, brut, revue: String(e.revue || '').trim(), score: 0 });
+    }
+    if (!cands.length) return [];
+
+    if (suffixe) {
+      const explicite = cands.filter((c) => c.brut.includes(annee + suffixe));
+      if (explicite.length) {
+        for (const c of explicite) c.score += 100;
+      } else {
+        const rang = suffixe.charCodeAt(0) - 97;
+        const tries = cands.slice().sort((x, y) => x.titre.localeCompare(y.titre));
+        if (tries[rang]) tries[rang].score += 60;
+      }
+    }
+    for (const c of cands) {
+      let ctx = 0;
+      for (const mot of tokeniser(c.titre)) if (sac.has(mot)) ctx += 3;
+      c.score += Math.min(ctx, 30);
+    }
+    cands.sort((a, b) => b.score - a.score);
+    return cands;
+  }
+
+  /* ------------------ Compter par œuvre, non par libellé ------------------- *
+   * Le libellé agrège mal : « Gawer & Cusumano, 2014 » et « Gawer, 2014 » sont
+   * le même article et comptent séparément, tandis que « Iansiti & Levien,
+   * 2004 » cumule six citations pour DEUX ouvrages distincts. Compter par œuvre
+   * répare les deux, et c'est ce compte qui doit guider une acquisition.
+   * ------------------------------------------------------------------------ */
+
+  // Deux entrées désignent le même travail quand l'une des deux commence ou
+  // contient l'autre au-delà de douze caractères : « Co-opetition » et
+  // « Co‐opetition: A revolutionary mindset… », « Designing interactive
+  // strategy » et « From value chain… designing interactive strategy ». Deux
+  // DOI distincts restent deux œuvres, quel que soit le titre.
+  static fondreOeuvresProches(liste) {
+    const clef = (t) => sansAccents(t || '')
+      .replace(/[\u2010-\u2015\u2212]/g, '-')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    const out = [];
+    for (const o of liste) {
+      const ko = clef(o.titre);
+      const jumeau = out.find((x) => {
+        if (x.doi && o.doi) return x.doi === o.doi;
+        if (x.doi !== o.doi && (x.doi || o.doi)) return false;
+        const kx = clef(x.titre);
+        if (!ko || !kx) return false;
+        const court = ko.length < kx.length ? ko : kx;
+        const long = ko.length < kx.length ? kx : ko;
+        return court.length >= 12 && long.includes(court);
+      });
+      if (!jumeau) { out.push(o); continue; }
+      jumeau.n += o.n;
+      for (const sr of o.sources) if (!jumeau.sources.includes(sr)) jumeau.sources.push(sr);
+      if ((o.titre || '').length > (jumeau.titre || '').length) jumeau.titre = o.titre;
+      if (!jumeau.doi && o.doi) jumeau.doi = o.doi;
+    }
+    return out;
+  }
+
+  async indexOeuvres(passages) {
+    const P = passages || this.indexPassages();
+    const parRef = new Map();
+    const parOeuvre = new Map();
+
+    for (const [libelle, occurrences] of P) {
+      const oeuvres = new Map();
+      let nonResolues = 0;
+      for (const occ of occurrences) {
+        const passage = await this.passageDe(occ.fichier, occ.marque);
+        const c = this.candidatsPourSource(libelle, occ.source, passage)[0];
+        const cle = c ? cleOeuvre(c.titre, c.doi) : '';
+        if (!cle) { nonResolues += 1; continue; }
+        if (!oeuvres.has(cle)) {
+          oeuvres.set(cle, { cle, titre: c.titre, doi: c.doi, revue: c.revue, n: 0, sources: [] });
+        }
+        const o = oeuvres.get(cle);
+        o.n += 1;
+        if (!o.sources.includes(occ.source)) o.sources.push(occ.source);
+        if (c.titre.length > (o.titre || '').length) o.titre = c.titre;
+        if (!o.doi && c.doi) o.doi = c.doi;
+      }
+      // Une occurrence non résolue ne fonde pas une œuvre : elle rejoint la
+      // seule connue quand il n'y en a qu'une. Sans cette règle, « Bowker &
+      // Star, 1999 » passait pour deux travaux, l'un identifié et l'autre non.
+      const liste = ZotflowAtomiser.fondreOeuvresProches([...oeuvres.values()]);
+      if (liste.length === 1) liste[0].n += nonResolues;
+      const total = occurrences.length;
+      parRef.set(libelle, { oeuvres: liste, nonResolues: liste.length === 1 ? 0 : nonResolues, total });
+      for (const o of liste) {
+        if (!parOeuvre.has(o.cle)) {
+          parOeuvre.set(o.cle, { cle: o.cle, titre: o.titre, doi: o.doi, n: 0, libelles: [] });
+        }
+        const g = parOeuvre.get(o.cle);
+        g.n += o.n;
+        if (!g.libelles.includes(libelle)) g.libelles.push(libelle);
+        if ((o.titre || '').length > (g.titre || '').length) g.titre = o.titre;
+        if (!g.doi && o.doi) g.doi = o.doi;
+      }
+    }
+    return { parRef, parOeuvre };
   }
 
   // Résolution d'une référence en attente, source par source.
@@ -9666,6 +9938,11 @@ class VueReferencesAttente extends obsidian.ItemView {
     const toutes = g.indexReferencesAttente();
     const index = g.construireIndexZotero();
     const passages = g.indexPassages();
+    // Le compteur qui guide une acquisition doit porter sur l'ŒUVRE, pas sur le
+    // libellé : deux libellés d'un même article diluent le signal, et un libellé
+    // qui recouvre deux ouvrages le gonfle à tort.
+    const { parRef, parOeuvre } = await g.indexOeuvres(passages);
+    this.parOeuvre = parOeuvre;
 
     this.lignes = [];
     for (const r of toutes) {
@@ -9679,10 +9956,22 @@ class VueReferencesAttente extends obsidian.ItemView {
         const z = index.find((x) => x.doi && x.doi === doi);
         if (z) dansZotero = z.basename;
       }
-      const l = { r, ref, candidats, auto, biblio, dansZotero, doi, verdict: null };
+      const compte = parRef.get(r.nom) || { oeuvres: [], nonResolues: r.citations, total: r.citations };
+      const jumeaux = [];
+      for (const o of compte.oeuvres) {
+        const g2 = parOeuvre.get(o.cle);
+        if (g2) for (const autre of g2.libelles) if (autre !== r.nom && !jumeaux.includes(autre)) jumeaux.push(autre);
+      }
+      const l = { r, ref, candidats, auto, biblio, dansZotero, doi, verdict: null,
+        oeuvres: compte.oeuvres, nonResolues: compte.nonResolues, jumeaux };
+      // Le rang d'acquisition : la plus citée des œuvres du libellé.
+      l.poids = compte.oeuvres.length
+        ? Math.max.apply(null, compte.oeuvres.map((o) => o.n))
+        : compte.total;
       l.etat = this.classer(l);
       this.lignes.push(l);
     }
+    this.lignes.sort((a, b) => b.poids - a.poids || a.r.nom.localeCompare(b.r.nom));
     this.rendre();
   }
 
@@ -9695,7 +9984,10 @@ class VueReferencesAttente extends obsidian.ItemView {
     const onglets = [
       ['tous', tr('Toutes'), lignes.length],
       ['rattachable', tr('À rattacher'), compte('rattachable')],
+      ['detacher', tr('À détacher'), compte('detacher')],
+      ['fusionner', tr('À fusionner'), compte('fusionner')],
       ['conflit', tr('Plusieurs œuvres'), compte('conflit')],
+      ['fusionnee', tr('Fusionnées'), compte('fusionnee')],
       ['arbitrer', tr('À arbitrer'), compte('arbitrer')],
       ['identifiee', tr('À acquérir'), compte('identifiee')],
       ['inconnue', tr('Non résolues'), compte('inconnue')],
@@ -9760,8 +10052,11 @@ class VueReferencesAttente extends obsidian.ItemView {
   }
 
   classer(l) {
+    if (l.r.etat === 'fusionnée') return 'fusionnee';
     if (l.r.etat === 'écartée') return 'ecartee';
     if (l.r.etat === 'à acquérir') return 'acquerir';
+    if ((l.oeuvres || []).length > 1) return 'detacher';
+    if ((l.jumeaux || []).length) return 'fusionner';
     if (l.biblio && l.biblio.conflit && !l.verdict) return 'conflit';
     if (l.auto || l.dansZotero) return 'rattachable';
     if (l.candidats.length) return 'arbitrer';
@@ -9878,7 +10173,10 @@ class VueReferencesAttente extends obsidian.ItemView {
     const resume = l.r.titre || (l.biblio && l.biblio.titre) || '';
     if (l.r.complete) tete.createSpan({ cls: 'zfa-ref-etiquette', text: tr('fiche complète') });
     if (resume) tete.createSpan({ cls: 'zfa-ref-resume', text: resume });
-    tete.createSpan({ cls: 'zfa-ref-compteur', text: l.r.citations + '×' });
+    tete.createSpan({ cls: 'zfa-ref-compteur', text: (l.poids || 0) + '×' });
+    if ((l.oeuvres || []).length > 1) {
+      tete.createSpan({ cls: 'zfa-ref-etiquette', text: l.oeuvres.length + ' ' + tr('œuvres') });
+    }
     if (l.r.etat) tete.createSpan({ cls: 'zfa-ref-etiquette', text: l.r.etat });
     tete.onclick = () => {
       if (ouvert) this.deplies.delete(l.r.nom); else this.deplies.add(l.r.nom);
@@ -9919,6 +10217,47 @@ class VueReferencesAttente extends obsidian.ItemView {
       v.createDiv({ cls: 'zfa-ref-verdict-titre', text: tr('Non identifiée') });
       v.createDiv({ cls: 'zfa-ref-faible',
         text: tr("Aucune bibliographie de source citante ne la mentionne.") });
+    }
+
+    /* ---- Le compte, par œuvre ---- */
+    if ((l.oeuvres || []).length) {
+      const bo = d.createDiv({ cls: 'zfa-ref-bloc' });
+      bo.createDiv({ cls: 'zfa-ref-titre-bloc', text: tr('Compté par œuvre') });
+      for (const o of l.oeuvres) {
+        const li = bo.createDiv({ cls: 'zfa-ref-oeuvre' });
+        const t = li.createDiv({ cls: 'zfa-ref-texte' });
+        t.createSpan({ cls: 'zfa-ref-compteur', text: o.n + '×  ' });
+        t.createSpan({ text: '« ' + (o.titre || o.doi) + ' »' });
+        li.createDiv({ cls: 'zfa-ref-faible', text: o.sources.join(', ') });
+        if (o.doi) this.ligneDoi(li, o.doi);
+        if (l.oeuvres.length > 1) {
+          const ba = li.createDiv({ cls: 'zfa-ref-barre-actions' });
+          this.bouton(ba, tr('Détacher cette œuvre'), 'split', async () => {
+            await g.detacherOeuvre(l.r, o);
+            await this.preparer();
+          });
+        }
+      }
+      if (l.nonResolues) {
+        bo.createDiv({ cls: 'zfa-ref-faible',
+          text: l.nonResolues + ' ' + tr('occurrence(s) non résolue(s), non comptée(s) ici.') });
+      }
+    }
+
+    /* ---- Les libellés qui désignent le même travail ---- */
+    if ((l.jumeaux || []).length) {
+      const bj = d.createDiv({ cls: 'zfa-ref-bloc' });
+      bj.createDiv({ cls: 'zfa-ref-titre-bloc', text: tr('Même œuvre que') });
+      for (const j of l.jumeaux) {
+        const li = bj.createDiv({ cls: 'zfa-ref-candidat' });
+        li.createDiv({ cls: 'zfa-ref-texte', text: j });
+        const ba = li.createDiv({ cls: 'zfa-ref-barre-actions' });
+        this.bouton(ba, tr('Fusionner ici'), 'merge', async () => {
+          const autre = (this.lignes || []).find((x) => x.r.nom === j);
+          if (autre) { await g.fusionnerReferences(autre.r, l.r.nom); await this.preparer(); }
+        });
+        this.bouton(ba, tr('Ouvrir la note'), 'file', () => g.ouvrirNote(j));
+      }
     }
 
     /* ---- Les gestes, groupés et visibles ---- */

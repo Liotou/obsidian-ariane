@@ -759,3 +759,8 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 
 .zfa-ref-coche { flex: 0 0 auto; margin: 0; cursor: pointer; }
 .zfa-refs-selection .zfa-ref-faible { flex: 1 1 auto; }
+
+.zfa-ref-detacher-etat .zfa-ref-tete::before { background: var(--color-pink); }
+.zfa-ref-fusionner-etat .zfa-ref-tete::before { background: var(--color-cyan); }
+.zfa-ref-fusionnee-etat { opacity: 0.5; }
+.zfa-ref-fusionnee-etat .zfa-ref-tete::before { background: var(--text-faint); }
