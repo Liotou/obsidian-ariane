@@ -509,12 +509,28 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-ref-tete {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 7px;
   cursor: pointer;
+  padding: 2px 0;
+}
+
+.zfa-ref-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 0.8em; }
+
+/* Le titre connu se lit dès la ligne fermée : c'est lui qui identifie, pas
+   « Auteur, Année » qui ne distingue rien. */
+.zfa-ref-resume {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .zfa-ref-tete:hover { color: var(--text-accent); }
-.zfa-ref-nom { flex: 1 1 auto; font-weight: 600; }
+.zfa-ref-nom { flex: 0 0 auto; font-weight: 600; }
 
 .zfa-ref-compteur {
   flex: 0 0 auto;
@@ -653,3 +669,70 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   background: var(--background-modifier-hover);
   font-size: var(--font-ui-smaller);
 }
+
+
+/* ---- Verdict : ce qu'Ariane conclut, mis en tête et non enfoui ---- */
+
+.zfa-ref-verdict {
+  margin-bottom: 9px;
+  padding: 9px 11px;
+  border-radius: 6px;
+  border-left: 3px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.zfa-ref-verdict-titre {
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.zfa-ref-verdict-rattachable { border-left-color: var(--color-green); }
+.zfa-ref-verdict-conflit { border-left-color: var(--color-orange); }
+.zfa-ref-verdict-identifiee { border-left-color: var(--color-blue); }
+.zfa-ref-verdict-inconnue { border-left-color: var(--background-modifier-border); }
+
+/* ---- Les gestes, groupés, avec leur icône ---- */
+
+.zfa-ref-barre-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 7px 0 11px;
+}
+
+.zfa-ref-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  font-size: var(--font-ui-smaller);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.zfa-ref-action .svg-icon { width: 13px; height: 13px; }
+
+.zfa-ref-source-tete {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.zfa-ref-source-nom {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+}
+
+.zfa-ref-source {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--background-modifier-border);
+}
+
+.zfa-ref-source:last-child { border-bottom: none; }
+.zfa-ref-source .zfa-ref-barre-actions { margin: 4px 0 6px; }
