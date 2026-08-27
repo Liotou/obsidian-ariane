@@ -9303,7 +9303,10 @@ class VueReferencesAttente extends obsidian.ItemView {
 
   getViewType() { return TYPE_VUE_REFS; }
   getDisplayText() { return tr('Références en attente'); }
-  getIcon() { return 'library'; }
+  // « library » entrait en collision : icon-folder la pose déjà sur le dossier
+  // « 98 - Bibliographie », celui-là même qui contient ces références. La
+  // balance dit d'ailleurs mieux ce que fait ce volet.
+  getIcon() { return 'scale'; }
 
   async onOpen() {
     this.contentEl.addClass('zfa-refs');
