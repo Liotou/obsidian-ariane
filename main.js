@@ -349,6 +349,15 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Génération déjà en cours.": "Generation already running.",
+    "Arrêter la génération des bibliographies": "Stop the bibliography generation",
+    "Aucune génération en cours.": "No generation running.",
+    "Génération interrompue : ": "Generation interrupted: ",
+    "générée(s)": "generated",
+    "sans résultat": "with no result",
+    "Reste environ ": "About ",
+    "sur ": "out of ",
+    "appel(s) réseau": "network call(s)",
     "Réparer les liens d’auteurs (esperluette collée)": "Repair author links (stuck ampersand)",
     "Aucun lien d’auteur à réparer.": "No author link to repair.",
     "Liens d’auteurs réparés : ": "Author links repaired: ",
@@ -2909,6 +2918,14 @@ class ZotflowAtomiser extends obsidian.Plugin {
       id: 'bibliographie-citee-source',
       name: tr('Générer la bibliographie citée de cette source (via API)'),
       callback: () => this.genererBibliographieSource(),
+    });
+    this.addCommand({
+      id: 'arreter-bibliographies',
+      name: tr('Arrêter la génération des bibliographies'),
+      callback: () => {
+        if (!this.bibliosEnCours) { new obsidian.Notice(tr('Aucune génération en cours.')); return; }
+        this.bibliosEnCours = false;
+      },
     });
     this.addCommand({
       id: 'bibliographies-citees-toutes',
@@ -7932,10 +7949,12 @@ class ZotflowAtomiser extends obsidian.Plugin {
     // Le cache est partagé avec le volet d'arbitrage : générer une
     // bibliographie l'alimente, et l'ouvrir n'appelle plus le réseau. Les deux
     // fonctions interrogeaient les mêmes DOI chacune de son côté.
+    this.dernierAppelReseau = false;
     if (!forcer) {
       const enCache = this.bibliographieDeDoi(doi);
       if (enCache && enCache.length) return enCache;
     }
+    this.dernierAppelReseau = true;
     const src = this.settings.apiSource || 'auto';
     let refs;
     if (src === 'crossref') refs = await this.apiCrossref(doi);
@@ -8159,14 +8178,31 @@ class ZotflowAtomiser extends obsidian.Plugin {
   // Batch : génère les bibliographies pour toutes les sources ZotFlow à DOI.
   async genererToutesBibliographies() {
     if (!this.settings.apiReferencesCitees) { new obsidian.Notice(tr('Références citées via API : désactivé.')); return; }
+    if (this.bibliosEnCours) { new obsidian.Notice(tr('Génération déjà en cours.')); return; }
     const sources = this.app.vault
       .getMarkdownFiles()
       .filter((f) => this.estSourceZoteroFrontmatter(f) && this.doiDeSource(f));
     if (!sources.length) { new obsidian.Notice(tr('Aucune source Zotero avec DOI.')); return; }
-    new obsidian.Notice(tr('Bibliographies : ') + sources.length + ' source(s) à traiter…');
-    let ok = 0, vide = 0, i = 0;
+
+    this.bibliosEnCours = true;
+    // Une notification persistante, mise à jour à chaque source. L'ancienne
+    // version en créait une neuve toutes les dix sources, qui s'effaçait au
+    // bout de quelques secondes : entre deux, l'écran ne disait plus rien.
+    const avis = new obsidian.Notice('', 0);
+    const debut = Date.now();
+    let ok = 0, vide = 0, i = 0, reseau = 0;
+
     for (const f of sources) {
+      if (!this.bibliosEnCours) break;
       i++;
+      const ecoule = (Date.now() - debut) / 1000;
+      const reste = reseau > 0 && i > 1
+        ? Math.round((ecoule / i) * (sources.length - i))
+        : null;
+      avis.setMessage(tr('Bibliographies : ') + i + ' / ' + sources.length
+        + '  ·  ' + ok + ' ' + tr('générée(s)') + ', ' + vide + ' ' + tr('sans résultat')
+        + (reste !== null ? '\n' + tr('Reste environ ') + dureeLisible(Math.ceil(reste / 60)) : '')
+        + '\n' + f.basename.slice(0, 46));
       try {
         const r = await this.genererBibliographieSource(f, true);
         if (r) ok++; else vide++;
@@ -8174,11 +8210,17 @@ class ZotflowAtomiser extends obsidian.Plugin {
         vide++;
         console.error('[Ariane] biblio', f.basename, e);
       }
-      if (i % 10 === 0) new obsidian.Notice(tr('Bibliographies : ') + i + '/' + sources.length + '…');
-      await new Promise((res) => setTimeout(res, 1200)); // temporisation (pool poli)
+      // La temporisation ne vaut que pour le réseau. Une source déjà en cache
+      // n'appelle personne : la faire attendre 1,2 s coûtait un quart d'heure
+      // sur sept cents sources.
+      if (this.dernierAppelReseau) { reseau++; await new Promise((res) => setTimeout(res, 1200)); }
     }
-    new obsidian.Notice(tr('Bibliographies terminées : ') + ok + ' générée(s), ' + vide + ' sans résultat, sur ' + sources.length + '.'
-    );
+    const arrete = !this.bibliosEnCours;
+    this.bibliosEnCours = false;
+    avis.hide();
+    new obsidian.Notice((arrete ? tr('Génération interrompue : ') : tr('Bibliographies terminées : '))
+      + ok + ' ' + tr('générée(s)') + ', ' + vide + ' ' + tr('sans résultat')
+      + ', ' + tr('sur ') + i + '. ' + reseau + ' ' + tr('appel(s) réseau') + '.', 12000);
   }
 
   /* -------------------------------- Événements ------------------------------- */
