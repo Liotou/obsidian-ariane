@@ -349,6 +349,14 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Complétion": "Completion",
+    "fiche complète": "complete record",
+    "Fiche introuvable pour ce DOI.": "No record found for this DOI.",
+    "La fiche du DOI ne concorde pas avec « ": "The DOI record does not match “",
+    "Rien n’a été écrit.": "Nothing was written.",
+    "Compléter depuis le DOI": "Complete from the DOI",
+    "Compléter": "Complete",
+    "Complétée : ": "Completed: ",
     "Atomiser : la note source active": "Atomise: the active source note",
     "Atomiser : toutes les sources": "Atomise: every source",
     "Atomiser : les notes-filles Zotero": "Atomise: Zotero child notes",
@@ -7479,6 +7487,84 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return liens;
   }
 
+  /* ------------- Compléter une référence depuis son DOI -------------------- *
+   * L'arbitrage identifie l'œuvre ; il n'en donne que le titre et le DOI, parce
+   * que c'est tout ce qu'une entrée de bibliographie contient. La fiche
+   * complète, elle, se demande à Crossref sur le DOI lui-même : auteurs avec
+   * leurs prénoms, revue ou éditeur, type, année.
+   * ------------------------------------------------------------------------ */
+
+  async ficheDepuisDoi(doi) {
+    const d = normDoi(doi);
+    if (!d) return null;
+    const q = this.paramMailto();
+    const j = await this.apiGetJson(
+      'https://api.crossref.org/works/' + encodeURIComponent(d) + (q ? '?' + q : ''));
+    const m = j && j.message ? j.message : null;
+    if (!m) return null;
+    const parts = (m.issued && m.issued['date-parts']) || [];
+    const auteurs = (m.author || [])
+      .map((a) => String((a.given || '') + ' ' + (a.family || a.name || '')).replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    return {
+      doi: d,
+      titre: String((m.title || [])[0] || '').trim(),
+      auteurs,
+      annee: String((parts[0] || [])[0] || '').trim(),
+      revue: String((m['container-title'] || [])[0] || '').trim(),
+      editeur: String(m.publisher || '').trim(),
+      type: String(m.type || '').trim(),
+      url: String(m.URL || '').trim(),
+    };
+  }
+
+  // La fiche récupérée doit parler du même travail : l'année et le nom cité
+  // doivent s'y retrouver. Sinon on ne l'écrit pas. Un DOI erroné, cela arrive,
+  // et une fausse fiche dans une thèse coûte plus cher qu'une fiche absente.
+  ficheConcorde(fiche, nomReference) {
+    if (!fiche || !fiche.titre) return false;
+    const m = String(nomReference).match(/^(.*?),\s*(\d{4})/);
+    if (!m) return true;
+    if (fiche.annee && fiche.annee !== m[2]) return false;
+    const premier = sansAccents(m[1].split(/\s+(?:et al\.?|&|and|et)\s+|,/)[0].trim().split(/\s+/).pop());
+    if (!premier || !fiche.auteurs.length) return true;
+    return fiche.auteurs.some((a) => sansAccents(a).split(/[^a-z0-9]+/).includes(premier));
+  }
+
+  async completerReference(entree, doi) {
+    const fiche = await this.ficheDepuisDoi(doi);
+    if (!fiche) { new obsidian.Notice(tr('Fiche introuvable pour ce DOI.')); return false; }
+    if (!this.ficheConcorde(fiche, entree.nom)) {
+      new obsidian.Notice(tr('La fiche du DOI ne concorde pas avec « ') + entree.nom + ' ». '
+        + tr('Rien n’a été écrit.'), 9000);
+      return false;
+    }
+    const f = entree.fichier;
+    this.marquerEcriture(f.path);
+    await this.app.fileManager.processFrontMatter(f, (fm) => {
+      fm['titre-cité'] = fiche.titre;
+      fm.doi = fiche.doi;
+      if (fiche.auteurs.length) fm.auteurs = fiche.auteurs;
+      if (fiche.annee) fm.annee = fiche.annee;
+      if (fiche.revue) fm.revue = fiche.revue;
+      if (fiche.editeur) fm['éditeur'] = fiche.editeur;
+      if (fiche.type) fm['type-œuvre'] = fiche.type;
+      if (fiche.url) fm.url = fiche.url;
+    });
+    // Le corps ne portait que des noms de famille, « [[Bowker]] », alors que
+    // les notes d'auteurs du coffre sont en noms complets. On les aligne.
+    if (fiche.auteurs.length) {
+      const contenu = await this.app.vault.read(f);
+      const corps = contenu.replace(/^---\n[\s\S]*?\n---\n?/, '');
+      const reste = corps.replace(/^\s*\[\[[^\]]+\]\]\s*$/gm, '').trim();
+      const liens = fiche.auteurs.map((a) => '[[' + a + ']]').join('\n');
+      const fmBloc = (contenu.match(/^---\n[\s\S]*?\n---\n?/) || [''])[0];
+      await this.ecrire(f.path, fmBloc + '\n' + liens + (reste ? '\n\n' + reste : '') + '\n', f);
+      await this.assurerNotesAuteurs(entree.nom, fiche.auteurs);
+    }
+    return true;
+  }
+
   async ouvrirNote(basename) {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === basename);
     if (f) await this.app.workspace.getLeaf(true).openFile(f);
@@ -7598,6 +7684,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
         doi: normDoi(fm.doi),
         titre: String(fm['titre-cité'] || '').trim(),
         etat: String(fm['arbitrage'] || '').trim(),
+        complete: Array.isArray(fm.auteurs) && fm.auteurs.length > 0 && !!fm['titre-cité'],
         citations: c.total,
         sources: [...c.sources.entries()].sort((a, b) => b[1] - a[1]),
       });
@@ -9662,6 +9749,16 @@ class VueReferencesAttente extends obsidian.ItemView {
           return true;
         }), true);
     }
+    const avecDoi = choisies.filter((l) => l.doi);
+    if (avecDoi.length) {
+      this.bouton(barre, tr('Compléter') + ' (' + avecDoi.length + ')', 'download-cloud',
+        () => this.enLot(avecDoi, tr('Complétion'), async (l) => {
+          const ok = await g.completerReference(l.r, l.doi);
+          // Crossref demande de la retenue quand on enchaîne.
+          await new Promise((r) => setTimeout(r, 300));
+          return ok;
+        }), true);
+    }
     this.bouton(barre, tr('À acquérir'), 'shopping-cart',
       () => this.enLot(choisies, tr('Marquage'), async (l) => {
         await g.marquerReference(l.r, 'à acquérir'); return true;
@@ -9711,6 +9808,7 @@ class VueReferencesAttente extends obsidian.ItemView {
     tete.createSpan({ cls: 'zfa-ref-nom', text: l.r.nom });
     // Le titre connu se lit dès la ligne fermée : c'est lui qui identifie.
     const resume = l.r.titre || (l.biblio && l.biblio.titre) || '';
+    if (l.r.complete) tete.createSpan({ cls: 'zfa-ref-etiquette', text: tr('fiche complète') });
     if (resume) tete.createSpan({ cls: 'zfa-ref-resume', text: resume });
     tete.createSpan({ cls: 'zfa-ref-compteur', text: l.r.citations + '×' });
     if (l.r.etat) tete.createSpan({ cls: 'zfa-ref-etiquette', text: l.r.etat });
@@ -9784,6 +9882,13 @@ class VueReferencesAttente extends obsidian.ItemView {
       this.bouton(actes, tr('Annuler le verdict'), 'undo', () => {
         l.verdict = null; l.etat = this.classer(l); this.rendre();
       });
+    }
+    if (l.doi) {
+      this.bouton(actes, tr('Compléter depuis le DOI'), 'download-cloud', async () => {
+        const ok = await g.completerReference(l.r, l.doi);
+        if (ok) new obsidian.Notice(tr('Complétée : ') + l.r.nom);
+        await this.rafraichirLigne(l);
+      }, !l.r.titre);
     }
     this.bouton(actes, l.r.etat === 'à acquérir' ? tr('Ne plus marquer') : tr('À acquérir'),
       'shopping-cart', () => g.marquerReference(l.r, l.r.etat === 'à acquérir' ? '' : 'à acquérir')
