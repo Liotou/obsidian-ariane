@@ -349,6 +349,36 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Arbitrer les références en attente": "Arbitrate pending references",
+    "Récupérer les bibliographies des sources citantes": "Fetch the bibliographies of citing sources",
+    "Récupérer les bibliographies": "Fetch bibliographies",
+    "Bibliographies déjà à jour.": "Bibliographies already up to date.",
+    "Bibliographies : 0 / ": "Bibliographies: 0 / ",
+    "Bibliographies : ": "Bibliographies: ",
+    "Bibliographies récupérées : ": "Bibliographies fetched: ",
+    "Toutes": "All",
+    "À rattacher": "To attach",
+    "À arbitrer": "To arbitrate",
+    "À acquérir": "To acquire",
+    "Non résolues": "Unresolved",
+    "Écartées": "Set aside",
+    "Rien dans cette catégorie.": "Nothing in this category.",
+    "Déjà connu": "Already known",
+    "Citée dans": "Cited in",
+    "Aucune source identifiée.": "No source identified.",
+    "Candidats dans Zotero": "Candidates in Zotero",
+    "DOI identique": "same DOI",
+    "auteur et année": "author and year",
+    "candidat": "candidate",
+    "Aucun candidat.": "No candidate.",
+    "Rattacher": "Attach",
+    "Ne plus marquer": "Unmark",
+    "Réintégrer": "Bring back",
+    "Écarter": "Set aside",
+    "Ouvrir la note": "Open the note",
+    "Copier": "Copy",
+    "Ouvrir": "Open",
+    "Note introuvable : ": "Note not found: ",
     "L'export Word demande pandoc et n'est possible que sur ordinateur.": "Exporting to Word needs pandoc and only works on the desktop.",
     "Annotations sans titre": "Untitled annotations",
     "Par défaut, une annotation dont le commentaire ne correspond à aucun profil est ignorée : elle ne devient pas une note. Activez l'option ci-dessous pour l'atomiser quand même, avec un titre déduit de son contenu.": "By default, an annotation whose comment matches no profile is skipped: it never becomes a note. Turn the option below on to atomise it anyway, with a title inferred from its content.",
@@ -2757,6 +2787,16 @@ class ZotflowAtomiser extends obsidian.Plugin {
       callback: () => this.verifierModeleWord(),
     });
     this.addCommand({
+      id: 'arbitrer-references-attente',
+      name: tr('Arbitrer les références en attente'),
+      callback: () => this.ouvrirVueReferences(),
+    });
+    this.addCommand({
+      id: 'recuperer-bibliographies',
+      name: tr('Récupérer les bibliographies des sources citantes'),
+      callback: () => this.rafraichirBibliographies(false),
+    });
+    this.addCommand({
       id: 'exporter-word-zotero',
       name: tr('Exporter en Word avec citations Zotero (Pandoc)'),
       callback: () => this.exporterWordZotero(),
@@ -2793,6 +2833,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
 
     // Panneau de suggestions dynamiques (moteur lexical local).
     this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
+    this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
     this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
@@ -7125,6 +7166,208 @@ class ZotflowAtomiser extends obsidian.Plugin {
     }
   }
 
+  /* ===================== Arbitrage des références en attente ================ *
+   * Mesuré sur un vrai coffre : sur 631 références en attente, 19 seulement se
+   * rattachent par auteur et année. Les autres demandent un arbitrage humain,
+   * et pour arbitrer il faut voir ce que la référence désigne réellement. D'où
+   * la résolution par la bibliographie de la source citante : l'article qui
+   * cite « Aven & Renn, 2009a » donne dans sa propre liste de références le
+   * titre et le DOI de ce qu'il désigne.
+   * ========================================================================= */
+
+  // Le rattachement complet : mémoriser le choix, réécrire tous les liens du
+  // coffre, créer les notes d'auteurs, retirer la note provisoire. C'est le
+  // même geste que l'assistant sur note active, factorisé pour que les deux
+  // chemins ne divergent jamais.
+  async rattacherReference(entree, cible) {
+    if (!cible) return;
+    if (!this.settings.correspondancesSuffixe) this.settings.correspondancesSuffixe = {};
+    this.settings.correspondancesSuffixe[entree.nom] = cible;
+    await this.saveSettings();
+    await this.remplacerLiens(entree.nom, cible);
+    const z = this.construireIndexZotero().find((x) => x.basename === cible);
+    if (z) await this.assurerNotesAuteurs(cible, z.creatorsFull || []);
+    await this.supprimerFichier(entree.fichier);
+    new obsidian.Notice(tr('Référence « ') + entree.nom + ' » liée à « ' + cible + ' ».');
+  }
+
+  // « à acquérir » ou « écartée », inscrit dans la note elle-même pour que la
+  // décision survive à une réinstallation du greffon.
+  async marquerReference(entree, etat) {
+    const f = entree.fichier;
+    const contenu = await this.app.vault.read(f);
+    let neuf;
+    if (/^---\n[\s\S]*?\n---/.test(contenu)) {
+      const sansLigne = contenu.replace(/^(---\n[\s\S]*?)^arbitrage:.*\n([\s\S]*?---)/m, '$1$2');
+      neuf = etat
+        ? sansLigne.replace(/^(---\n)/, '$1arbitrage: ' + JSON.stringify(etat) + '\n')
+        : sansLigne;
+    } else {
+      neuf = etat ? '---\narbitrage: ' + JSON.stringify(etat) + '\n---\n\n' + contenu : contenu;
+    }
+    await this.ecrire(f.path, neuf, f);
+  }
+
+  async ouvrirNote(basename) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === basename);
+    if (f) await this.app.workspace.getLeaf(true).openFile(f);
+    else new obsidian.Notice(tr('Note introuvable : ') + basename);
+  }
+
+  async ouvrirVueReferences() {
+    const ex = this.app.workspace.getLeavesOfType(TYPE_VUE_REFS);
+    if (ex.length) { this.app.workspace.revealLeaf(ex[0]); return; }
+    const feuille = this.app.workspace.getRightLeaf(false);
+    if (!feuille) return;
+    await feuille.setViewState({ type: TYPE_VUE_REFS, active: true });
+    this.app.workspace.revealLeaf(feuille);
+  }
+
+  cheminBibliographies() {
+    const rel = this.app.vault.configDir + '/plugins/' + this.manifest.id + '/bibliographies.json';
+    const base = (this.app.vault.adapter && this.app.vault.adapter.basePath) || '';
+    return base ? require('path').join(base, rel) : null;
+  }
+
+  chargerBibliographies() {
+    if (this.bibliographies) return this.bibliographies;
+    const c = this.cheminBibliographies();
+    try {
+      this.bibliographies = c ? JSON.parse(require('fs').readFileSync(c, 'utf8')) : {};
+    } catch (e) {
+      this.bibliographies = {};
+    }
+    return this.bibliographies;
+  }
+
+  async ecrireBibliographies() {
+    const c = this.cheminBibliographies();
+    if (!c) return;
+    try {
+      require('fs').writeFileSync(c, JSON.stringify(this.bibliographies || {}), 'utf8');
+    } catch (e) {
+      console.error('[Ariane] Cache de bibliographies non écrit :', e);
+    }
+  }
+
+  // Qui cite quoi. Une annotation porte « zotflow-source » et
+  // « références-citées » : le croisement des deux donne, pour chaque référence
+  // en attente, les sources qui la mentionnent et combien de fois.
+  indexCitations() {
+    const parRef = new Map();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      const src = sansLien(fm['zotflow-source'] || '');
+      const refs = fm['références-citées'];
+      if (!src || !refs) continue;
+      const liste = Array.isArray(refs) ? refs : [refs];
+      for (const brut of liste) {
+        const nom = cleDeLien(sansLien(brut));
+        if (!nom || nom === src) continue;
+        if (!parRef.has(nom)) parRef.set(nom, { total: 0, sources: new Map() });
+        const e = parRef.get(nom);
+        e.total += 1;
+        e.sources.set(src, (e.sources.get(src) || 0) + 1);
+      }
+    }
+    return parRef;
+  }
+
+  // Toutes les références en attente, avec ce qu'on sait d'elles.
+  indexReferencesAttente() {
+    const dossier = this.dossierR;
+    const citations = this.indexCitations();
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!dossier || !f.path.startsWith(dossier + '/')) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (fm.type !== 'reference-citee') continue;
+      const c = citations.get(f.basename) || { total: 0, sources: new Map() };
+      out.push({
+        fichier: f,
+        nom: f.basename,
+        doi: normDoi(fm.doi),
+        titre: String(fm['titre-cité'] || '').trim(),
+        etat: String(fm['arbitrage'] || '').trim(),
+        citations: c.total,
+        sources: [...c.sources.entries()].sort((a, b) => b[1] - a[1]),
+      });
+    }
+    out.sort((a, b) => b.citations - a.citations || a.nom.localeCompare(b.nom));
+    return out;
+  }
+
+  // L'entrée de bibliographie que la source citante donne pour cette référence.
+  // L'égalité des noms est stricte : chercher « han » CONTENU dans « hannah »
+  // rattachait Han et al. 2017 à Hannah 2018. Vérifié, puis corrigé.
+  resoudreParBibliographie(entree) {
+    const biblio = this.chargerBibliographies();
+    const m = entree.nom.match(/^(.*?),\s*(\d{4})/);
+    if (!m) return null;
+    const premier = sansAccents(m[1].split(/\s+(?:et al\.?|&|and|et)\s+|,/)[0].trim().split(/\s+/).pop());
+    const annee = m[2];
+    const index = this.construireIndexZotero();
+    for (const [src] of entree.sources) {
+      const fiche = index.find((z) => z.basename === src);
+      const liste = fiche && fiche.doi ? biblio[fiche.doi] : null;
+      if (!liste) continue;
+      for (const e of liste) {
+        if (String(e.year || '') !== annee) continue;
+        const auteur = sansAccents(e.author || '');
+        const brut = sansAccents(e.unstructured || '');
+        const colle = auteur
+          ? auteur.split(/[^a-z0-9]+/).includes(premier)
+          : brut.split(/[^a-z0-9]+/)[0] === premier;
+        if (!colle) continue;
+        return {
+          source: src,
+          doi: normDoi(e.DOI),
+          titre: String(e['article-title'] || e['volume-title'] || e.unstructured || '').trim(),
+          revue: String(e['journal-title'] || '').trim(),
+        };
+      }
+    }
+    return null;
+  }
+
+  // Une passe unique sur les sources citantes qui portent un DOI. Mesuré : 69
+  // appels suffisent pour couvrir 631 références en attente, et le résultat est
+  // conservé sur disque, donc le volet s'ouvre ensuite sans réseau.
+  async rafraichirBibliographies(forcer) {
+    const biblio = this.chargerBibliographies();
+    const index = this.construireIndexZotero();
+    const refs = this.indexReferencesAttente();
+    const besoins = new Set();
+    for (const r of refs) {
+      for (const [src] of r.sources) {
+        const fiche = index.find((z) => z.basename === src);
+        if (fiche && fiche.doi && (forcer || !(fiche.doi in biblio))) besoins.add(fiche.doi);
+      }
+    }
+    if (!besoins.size) {
+      new obsidian.Notice(tr('Bibliographies déjà à jour.'));
+      return 0;
+    }
+    const liste = [...besoins];
+    const avis = new obsidian.Notice(tr('Bibliographies : 0 / ') + liste.length, 0);
+    let n = 0;
+    for (const doi of liste) {
+      const q = this.paramMailto();
+      const json = await this.apiGetJson(
+        'https://api.crossref.org/works/' + encodeURIComponent(doi) + (q ? '?' + q : ''));
+      const m = json && json.message ? json.message : null;
+      biblio[doi] = (m && m.reference) || [];
+      n += 1;
+      avis.setMessage(tr('Bibliographies : ') + n + ' / ' + liste.length);
+      // Crossref demande de la retenue : on n'enchaîne pas les appels.
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    await this.ecrireBibliographies();
+    avis.hide();
+    new obsidian.Notice(tr('Bibliographies récupérées : ') + n);
+    return n;
+  }
+
   /* --------------- Références citées via API bibliographique ---------------- */
 
   paramMailto() {
@@ -8573,6 +8816,179 @@ class ChoixSourceModal extends obsidian.Modal {
 }
 
 /* ---------------- Vue latérale : Suggestions ZotFlow ------------------- */
+/* =========================================================================
+ * Volet d'arbitrage des références en attente
+ * ========================================================================= */
+
+const TYPE_VUE_REFS = 'zfa-references';
+
+class VueReferencesAttente extends obsidian.ItemView {
+  constructor(feuille, greffon) {
+    super(feuille);
+    this.greffon = greffon;
+    this.filtre = 'tous';
+    this.deplies = new Set();
+  }
+
+  getViewType() { return TYPE_VUE_REFS; }
+  getDisplayText() { return tr('Références en attente'); }
+  getIcon() { return 'library'; }
+
+  async onOpen() {
+    this.contentEl.addClass('zfa-refs');
+    this.rendre();
+  }
+
+  rendre() {
+    const c = this.contentEl;
+    c.empty();
+    const g = this.greffon;
+    const toutes = g.indexReferencesAttente();
+    const index = g.construireIndexZotero();
+
+    // Chaque référence est qualifiée une fois : c'est ce qui permet de filtrer
+    // sans tout recalculer à chaque clic.
+    const lignes = toutes.map((r) => {
+      const ref = parseNomReference(r.nom, g.settings);
+      const candidats = ref ? candidatsSource(ref, index).map((x) => x.entree) : [];
+      const auto = ref ? trouverSourceZotero(ref, index) : null;
+      const biblio = g.resoudreParBibliographie(r);
+      let dansZotero = null;
+      const doi = r.doi || (biblio && biblio.doi) || '';
+      if (doi) {
+        const z = index.find((x) => x.doi && x.doi === doi);
+        if (z) dansZotero = z.basename;
+      }
+      let etat;
+      if (r.etat === 'écartée') etat = 'ecartee';
+      else if (r.etat === 'à acquérir') etat = 'acquerir';
+      else if (auto || dansZotero) etat = 'rattachable';
+      else if (candidats.length) etat = 'arbitrer';
+      else if (doi || (biblio && biblio.titre)) etat = 'identifiee';
+      else etat = 'inconnue';
+      return { r, ref, candidats, auto, biblio, dansZotero, doi, etat };
+    });
+
+    const compte = (e) => lignes.filter((l) => l.etat === e).length;
+    const onglets = [
+      ['tous', tr('Toutes'), lignes.length],
+      ['rattachable', tr('À rattacher'), compte('rattachable')],
+      ['arbitrer', tr('À arbitrer'), compte('arbitrer')],
+      ['identifiee', tr('À acquérir'), compte('identifiee')],
+      ['inconnue', tr('Non résolues'), compte('inconnue')],
+      ['ecartee', tr('Écartées'), compte('ecartee')],
+    ];
+
+    const barre = c.createDiv({ cls: 'zfa-refs-barre' });
+    for (const [cle, nom, n] of onglets) {
+      const b = barre.createEl('button', { cls: 'zfa-refs-onglet', text: nom + ' (' + n + ')' });
+      if (this.filtre === cle) b.addClass('zfa-refs-actif');
+      b.onclick = () => { this.filtre = cle; this.rendre(); };
+    }
+    const outils = c.createDiv({ cls: 'zfa-refs-outils' });
+    const bMaj = outils.createEl('button', { text: tr('Récupérer les bibliographies') });
+    bMaj.onclick = async () => { await this.greffon.rafraichirBibliographies(false); this.rendre(); };
+
+    const corps = c.createDiv({ cls: 'zfa-refs-liste' });
+    const visibles = lignes.filter((l) => this.filtre === 'tous' || l.etat === this.filtre);
+    if (!visibles.length) {
+      corps.createDiv({ cls: 'zfa-refs-vide', text: tr('Rien dans cette catégorie.') });
+      return;
+    }
+    for (const l of visibles) this.rendreLigne(corps, l);
+  }
+
+  rendreLigne(parent, l) {
+    const g = this.greffon;
+    const el = parent.createDiv({ cls: 'zfa-ref zfa-ref-' + l.etat });
+
+    const tete = el.createDiv({ cls: 'zfa-ref-tete' });
+    tete.createSpan({ cls: 'zfa-ref-nom', text: l.r.nom });
+    tete.createSpan({ cls: 'zfa-ref-compteur', text: l.r.citations + '×' });
+    if (l.r.etat) tete.createSpan({ cls: 'zfa-ref-etiquette', text: l.r.etat });
+    tete.onclick = () => {
+      if (this.deplies.has(l.r.nom)) this.deplies.delete(l.r.nom);
+      else this.deplies.add(l.r.nom);
+      this.rendre();
+    };
+    if (!this.deplies.has(l.r.nom)) return;
+
+    const d = el.createDiv({ cls: 'zfa-ref-detail' });
+
+    // 1. Ce qu'on sait déjà.
+    if (l.r.titre || l.r.doi) {
+      const b = d.createDiv({ cls: 'zfa-ref-bloc' });
+      b.createDiv({ cls: 'zfa-ref-titre-bloc', text: tr('Déjà connu') });
+      if (l.r.titre) b.createDiv({ cls: 'zfa-ref-texte', text: l.r.titre });
+      if (l.r.doi) this.ligneDoi(b, l.r.doi);
+    }
+
+    // 2. Où elle est citée, et ce que la source en dit dans sa bibliographie.
+    const b2 = d.createDiv({ cls: 'zfa-ref-bloc' });
+    b2.createDiv({ cls: 'zfa-ref-titre-bloc', text: tr('Citée dans') });
+    if (!l.r.sources.length) {
+      b2.createDiv({ cls: 'zfa-ref-faible', text: tr('Aucune source identifiée.') });
+    }
+    for (const [src, n] of l.r.sources.slice(0, 6)) {
+      const ls = b2.createDiv({ cls: 'zfa-ref-source' });
+      const lien = ls.createEl('a', { text: src, href: '#' });
+      lien.onclick = (e) => { e.preventDefault(); this.greffon.ouvrirNote(src); };
+      ls.createSpan({ cls: 'zfa-ref-compteur', text: n + '×' });
+      if (l.biblio && l.biblio.source === src) {
+        const bb = ls.createDiv({ cls: 'zfa-ref-biblio' });
+        bb.createDiv({ cls: 'zfa-ref-texte', text: '« ' + l.biblio.titre + ' »' });
+        if (l.biblio.revue) bb.createDiv({ cls: 'zfa-ref-faible', text: l.biblio.revue });
+        if (l.biblio.doi) this.ligneDoi(bb, l.biblio.doi);
+      }
+    }
+
+    // 3. Les candidats Zotero.
+    const b3 = d.createDiv({ cls: 'zfa-ref-bloc' });
+    b3.createDiv({ cls: 'zfa-ref-titre-bloc', text: tr('Candidats dans Zotero') });
+    const vus = new Set();
+    const proposes = [];
+    if (l.dansZotero) proposes.push({ basename: l.dansZotero, raison: tr('DOI identique') });
+    if (l.auto && l.auto !== l.dansZotero) proposes.push({ basename: l.auto, raison: tr('auteur et année') });
+    for (const cand of l.candidats) {
+      if (proposes.some((x) => x.basename === cand.basename)) continue;
+      proposes.push({ basename: cand.basename, raison: tr('candidat') });
+    }
+    if (!proposes.length) b3.createDiv({ cls: 'zfa-ref-faible', text: tr('Aucun candidat.') });
+    for (const p of proposes) {
+      if (vus.has(p.basename)) continue;
+      vus.add(p.basename);
+      const lc = b3.createDiv({ cls: 'zfa-ref-candidat' });
+      const e = this.greffon.construireIndexZotero().find((x) => x.basename === p.basename);
+      lc.createDiv({ cls: 'zfa-ref-texte', text: e && e.titre ? e.titre : p.basename });
+      lc.createDiv({ cls: 'zfa-ref-faible', text: p.basename + '  ·  ' + p.raison });
+      const b = lc.createEl('button', { cls: 'mod-cta', text: tr('Rattacher') });
+      b.onclick = () => this.greffon.rattacherReference(l.r, p.basename).then(() => this.rendre());
+    }
+
+    // 4. Les gestes.
+    const b4 = d.createDiv({ cls: 'zfa-ref-actions' });
+    const acq = b4.createEl('button', { text: l.r.etat === 'à acquérir' ? tr('Ne plus marquer') : tr('À acquérir') });
+    acq.onclick = () => this.greffon.marquerReference(l.r, l.r.etat === 'à acquérir' ? '' : 'à acquérir')
+      .then(() => this.rendre());
+    const ec = b4.createEl('button', { text: l.r.etat === 'écartée' ? tr('Réintégrer') : tr('Écarter') });
+    ec.onclick = () => this.greffon.marquerReference(l.r, l.r.etat === 'écartée' ? '' : 'écartée')
+      .then(() => this.rendre());
+    const ouvrir = b4.createEl('button', { text: tr('Ouvrir la note') });
+    ouvrir.onclick = () => this.app.workspace.getLeaf(true).openFile(l.r.fichier);
+  }
+
+  ligneDoi(parent, doi) {
+    const el = parent.createDiv({ cls: 'zfa-ref-doi' });
+    el.createSpan({ text: doi });
+    const c = el.createEl('button', { cls: 'zfa-ref-mini', text: tr('Copier') });
+    c.onclick = () => { navigator.clipboard.writeText(doi); new obsidian.Notice(tr('Copié : ') + doi); };
+    const o = el.createEl('button', { cls: 'zfa-ref-mini', text: tr('Ouvrir') });
+    o.onclick = () => window.open('https://doi.org/' + doi);
+  }
+
+  async onClose() { this.contentEl.empty(); }
+}
+
 class VueSuggestionsZotflow extends obsidian.ItemView {
   constructor(leaf, plugin) {
     super(leaf);

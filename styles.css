@@ -476,3 +476,129 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-fam-case { display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-ui-smaller); cursor: pointer; }
 .zfa-fam-barre { display: flex; justify-content: flex-end; }
 .zfa-fam-barre .setting-item { border: none; padding: 4px 0; }
+
+/* ===================== Arbitrage des références en attente ================= */
+
+.zfa-refs { padding: 8px 10px 16px; }
+
+.zfa-refs-barre { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+
+.zfa-refs-onglet {
+  padding: 3px 8px;
+  font-size: var(--font-ui-smaller);
+  border-radius: 999px;
+  background: var(--background-modifier-hover);
+  border: none;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.zfa-refs-onglet.zfa-refs-actif {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.zfa-refs-outils { margin-bottom: 10px; }
+.zfa-refs-vide { color: var(--text-faint); font-style: italic; padding: 12px 2px; }
+
+.zfa-ref {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 5px 0;
+}
+
+.zfa-ref-tete {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.zfa-ref-tete:hover { color: var(--text-accent); }
+.zfa-ref-nom { flex: 1 1 auto; font-weight: 600; }
+
+.zfa-ref-compteur {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+
+.zfa-ref-etiquette {
+  flex: 0 0 auto;
+  font-size: var(--font-ui-smaller);
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+/* Une pastille de couleur dit l'état sans qu'on ait à lire. */
+.zfa-ref-tete::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.zfa-ref-rattachable .zfa-ref-tete::before { background: var(--color-green); }
+.zfa-ref-arbitrer .zfa-ref-tete::before { background: var(--color-orange); }
+.zfa-ref-identifiee .zfa-ref-tete::before { background: var(--color-blue); }
+.zfa-ref-ecartee { opacity: 0.5; }
+
+.zfa-ref-detail {
+  margin: 6px 0 10px 15px;
+  padding-left: 10px;
+  border-left: 2px solid var(--background-modifier-border);
+}
+
+.zfa-ref-bloc { margin-bottom: 10px; }
+
+.zfa-ref-titre-bloc {
+  font-size: var(--font-ui-smaller);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  margin-bottom: 3px;
+}
+
+.zfa-ref-texte { line-height: 1.35; }
+.zfa-ref-faible { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.zfa-ref-source { margin-bottom: 6px; }
+
+/* L'entrée de bibliographie de la source citante : c'est elle qui permet de
+   trancher, elle est donc mise en évidence. */
+.zfa-ref-biblio {
+  margin: 3px 0 0 12px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: var(--background-secondary);
+}
+
+.zfa-ref-candidat {
+  margin-bottom: 7px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: var(--background-secondary);
+}
+
+.zfa-ref-candidat button { margin-top: 5px; }
+
+.zfa-ref-doi {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.zfa-ref-mini {
+  padding: 0 6px;
+  font-size: var(--font-ui-smaller);
+  box-shadow: none;
+}
+
+.zfa-ref-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.zfa-refs-liste { display: block; }
