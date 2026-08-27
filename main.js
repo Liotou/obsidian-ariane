@@ -349,6 +349,21 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Moteur de l'arbitrage": "Arbitration engine",
+    "Choisir entre deux œuvres du même auteur et de la même année demande de comprendre le passage. Mesuré : les modèles locaux refusent de trancher même quand la phrase est explicite, là où Claude répond juste.": "Choosing between two works by the same author in the same year requires understanding the passage. Measured: local models refuse to decide even when the sentence is explicit, whereas Claude answers correctly.",
+    "Un passage d’article cite une référence. Plusieurs œuvres portent le même auteur et la même année. Dis laquelle le passage désigne.": "A passage from an article cites a reference. Several works share the same author and year. Say which one the passage points to.",
+    "Rends STRICTEMENT un objet JSON avec la clé numero (le numéro de l’œuvre dans la liste, ou 0 si le passage ne permet pas de trancher) et la clé confiance (haute, moyenne ou basse). Aucun texte hors du JSON.": "Return STRICTLY a JSON object with the key numero (the number of the work in the list, or 0 if the passage does not allow a decision) and the key confiance (haute, moyenne or basse). No text outside the JSON.",
+    "Plusieurs œuvres": "Several works",
+    "Cette référence désigne ": "This reference points to ",
+    " œuvres distinctes selon la source.": " distinct works depending on the source.",
+    "Faire arbitrer par le modèle": "Let the model arbitrate",
+    "Arbitrage…": "Arbitrating…",
+    "Arbitrages rendus : ": "Arbitrations returned: ",
+    "Le modèle lit ici : ": "The model reads here: ",
+    "confiance ": "confidence ",
+    "Référence citée :": "Cited reference:",
+    "Passage :": "Passage:",
+    "Œuvres possibles :": "Possible works:",
     "Découpage des bibliographies": "Splitting raw bibliography entries",
     "Une entrée de bibliographie sur six n'existe qu'en texte brut, qu'aucune expression régulière ne découpe. Un modèle s'en charge. Il propose, il ne décide pas : chaque extraction est recoupée avec le texte d'origine, l'année, le nom et le titre devant s'y retrouver, sinon elle est jetée.": "One bibliography entry in six exists only as raw text, which no regular expression can split. A model handles it. It proposes, it does not decide: every extraction is checked against the original text, the year, the name and the title having to appear in it, otherwise it is discarded.",
     "Moteur du découpage": "Splitting engine",
@@ -842,6 +857,12 @@ const DEFAULT_SETTINGS = {
   refsModele: 'llama3.2',
   refsCleMistral: '',
   refsCheminClaude: 'claude',
+  // L'arbitrage a son propre moteur. Mesuré sur « Renn, 2008 » : llama3.2 et
+  // llama3.1:8b refusent de trancher même quand le passage dit « Renn (2008)
+  // defines risk governance as… », là où Claude répond juste et avec assurance.
+  // Le découpage, lui, se contente très bien d'un modèle local.
+  arbitreFournisseur: 'claude',
+  arbitreModele: '',
   suggRerankTopN: 12,
 };
 
@@ -3501,15 +3522,23 @@ class ZotflowAtomiser extends obsidian.Plugin {
   // dialectes se rejoignent ici, pour qu'il n'existe qu'un seul endroit où
   // borner la génération et rattraper les erreurs.
   async genererJsonRefs(prompt, jetons) {
-    const f = this.settings.refsFournisseur || 'ollama';
-    const max = jetons || 300;
-    if (f === 'mistral') return this.genererMistral(prompt, max);
-    if (f === 'claude') return this.genererClaude(prompt, max);
-    return this.genererJsonAvec(prompt, max, f === 'lmstudio',
-      this.settings.refsModele || 'llama3.2');
+    return this.genererAvecFournisseur(prompt, jetons || 300,
+      this.settings.refsFournisseur || 'ollama', this.settings.refsModele || 'llama3.2');
   }
 
-  async genererMistral(prompt, max) {
+  async genererJsonArbitre(prompt, jetons) {
+    return this.genererAvecFournisseur(prompt, jetons || 120,
+      this.settings.arbitreFournisseur || 'claude',
+      this.settings.arbitreModele || this.settings.refsModele || 'llama3.2');
+  }
+
+  async genererAvecFournisseur(prompt, max, f, modele) {
+    if (f === 'mistral') return this.genererMistral(prompt, max, modele);
+    if (f === 'claude') return this.genererClaude(prompt, max);
+    return this.genererJsonAvec(prompt, max, f === 'lmstudio', modele);
+  }
+
+  async genererMistral(prompt, max, modele) {
     const cle = (this.settings.refsCleMistral || '').trim();
     if (!cle) { new obsidian.Notice(tr('Clé Mistral absente des réglages.')); return null; }
     try {
@@ -3518,7 +3547,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
         method: 'POST', throw: false,
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cle },
         body: JSON.stringify({
-          model: this.settings.refsModele || 'mistral-small-latest',
+          model: modele || this.settings.refsModele || 'mistral-small-latest',
           messages: [{ role: 'user', content: prompt }],
           temperature: 0, max_tokens: max,
           response_format: { type: 'json_object' },
@@ -3551,6 +3580,9 @@ class ZotflowAtomiser extends obsidian.Plugin {
           fini = true;
           resoudre(err ? null : String(sortie || '').trim());
         });
+      // Sans cela le CLI attend trois secondes une entrée standard qui ne
+      // viendra jamais, à chaque appel.
+      try { if (enfant.stdin) enfant.stdin.end(); } catch (e) { /* déjà fermée */ }
       setTimeout(() => { if (!fini) { try { enfant.kill('SIGKILL'); } catch (e) { /* déjà mort */ } } }, 61000);
     });
   }
@@ -7458,14 +7490,17 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return mots.slice(Math.max(0, index - 25), index + 25).join(' ');
   }
 
-  // Résolution d'une référence en attente par la bibliographie de ses sources
-  // citantes, départagée par le passage surligné.
+  // Résolution d'une référence en attente, source par source.
+  //
+  // On ne retient plus « la première source qui répond ». Une même note,
+  // « Renn, 2008 », peut désigner deux travaux différents selon l'article qui
+  // la cite : mesuré, sur les neuf références résolues par au moins deux
+  // sources, cinq divergent et deux désignent réellement deux œuvres. Prendre
+  // la première venue choisissait au hasard, et le hasard s'est déjà écrit dans
+  // le coffre.
   //
   // L'égalité des noms est stricte sur les mots : « han » CONTENU dans
   // « hannah » rattachait Han et al. 2017 à Hannah 2018.
-  //
-  // Et l'on ne choisit jamais en silence : quand plusieurs entrées restent
-  // possibles et que le passage ne tranche pas nettement, on les rend toutes.
   async resoudreParBibliographie(entree, passages) {
     const biblio = this.chargerBibliographies();
     const m = entree.nom.match(/^(.*?),\s*(\d{4})([a-z]?)/);
@@ -7476,14 +7511,13 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const index = this.construireIndexZotero();
     const occurrences = (passages || this.indexPassages()).get(entree.nom) || [];
 
-    const trouves = [];
+    const parSource = [];
     for (const occ of occurrences) {
       const fiche = index.find((z) => z.basename === occ.source);
       const liste = fiche && fiche.doi ? biblio[fiche.doi] : null;
       if (!liste) continue;
       const passage = await this.passageDe(occ.fichier, occ.marque);
-      const fenetre = tokeniser(this.fenetreCitation(passage, premier));
-      const sac = new Set(fenetre);
+      const sac = new Set(tokeniser(this.fenetreCitation(passage, premier)));
 
       const cands = [];
       for (const e of liste) {
@@ -7497,31 +7531,25 @@ class ZotflowAtomiser extends obsidian.Plugin {
         const decoupe = e._ariane && e._ariane.titre ? e._ariane.titre : '';
         const titre = String(e['article-title'] || e['volume-title'] || decoupe || e.unstructured || '').trim();
         const doi = normDoi(e.DOI);
-        // Une entrée sans titre ni DOI n'apprend rien et ne peut pas s'arbitrer.
         if (!titre && !doi) continue;
-        cands.push({ entree: e, titre, doi, brut,
+        cands.push({ titre, doi, brut,
           revue: String(e['journal-title'] || '').trim(), score: 0 });
       }
       if (!cands.length) continue;
 
-      // Le suffixe d'année d'abord, car il désigne un travail précis, alors que
-      // le contexte lexical ne fait que ressembler. Vérifié : sur
-      // « Aven & Renn, 2009a » le contexte élisait le mauvais article du même
-      // auteur, celui dont le sujet ressemble le plus à la phrase citante.
+      // Le suffixe d'année d'abord : il désigne un travail précis, là où le
+      // contexte ne fait que ressembler. Vérifié sur « Aven & Renn, 2009a »,
+      // où le contexte élisait le mauvais article du même auteur.
       if (suffixe) {
         const explicite = cands.filter((c) => c.brut.includes(annee + suffixe));
         if (explicite.length) {
           for (const c of explicite) c.score += 100;
         } else {
-          // Convention des styles bibliographiques : a, b, c suivent l'ordre
-          // alphabétique des titres du même auteur pour la même année.
           const rang = suffixe.charCodeAt(0) - 97;
           const tries = cands.slice().sort((x, y) => x.titre.localeCompare(y.titre));
           if (tries[rang]) tries[rang].score += 60;
         }
       }
-      // Le contexte départage ce que le suffixe n'a pas tranché, sans jamais
-      // pouvoir le renverser : d'où le plafond.
       for (const c of cands) {
         let ctx = 0;
         for (const mot of tokeniser(c.titre)) if (sac.has(mot)) ctx += 3;
@@ -7529,19 +7557,74 @@ class ZotflowAtomiser extends obsidian.Plugin {
       }
       cands.sort((a, b) => b.score - a.score);
       const ecart = cands.length > 1 ? cands[0].score - cands[1].score : 999;
-      trouves.push({ source: occ.source, fichier: occ.fichier, passage,
-        candidats: cands, sur: cands.length === 1 || ecart >= 3 });
+      parSource.push({
+        source: occ.source, fichier: occ.fichier, passage,
+        candidats: cands, retenu: cands[0], sur: cands.length === 1 || ecart >= 3,
+      });
     }
-    if (!trouves.length) return null;
-    // On préfère l'occurrence où le passage tranche.
-    trouves.sort((a, b) => (b.sur ? 1 : 0) - (a.sur ? 1 : 0));
-    const t = trouves[0];
-    const c = t.candidats[0];
+    if (!parSource.length) return null;
+
+    // Regroupement en œuvres distinctes : deux sources qui donnent le même DOI,
+    // ou le même titre à la casse et aux accents près, parlent du même travail.
+    const oeuvres = [];
+    for (const p of parSource) {
+      const c = p.retenu;
+      const cle = c.doi || sansAccents(c.titre).replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 46);
+      let o = oeuvres.find((x) => x.cle === cle);
+      if (!o) {
+        o = { cle, titre: c.titre, doi: c.doi, revue: c.revue, sources: [] };
+        oeuvres.push(o);
+      }
+      // Un titre plus complet vaut mieux qu'un titre tronqué.
+      if (c.titre.length > (o.titre || '').length) o.titre = c.titre;
+      if (!o.doi && c.doi) o.doi = c.doi;
+      o.sources.push(p.source);
+    }
+    oeuvres.sort((a, b) => b.sources.length - a.sources.length);
+
+    const t = parSource.find((x) => x.sur) || parSource[0];
     return {
-      source: t.source, passage: t.passage, sur: t.sur,
-      doi: c.doi, titre: c.titre, revue: c.revue,
+      parSource, oeuvres,
+      conflit: oeuvres.length > 1,
+      source: t.source, passage: t.passage, sur: t.sur && oeuvres.length === 1,
+      doi: t.retenu.doi, titre: t.retenu.titre, revue: t.retenu.revue,
       autres: t.candidats.slice(1).map((x) => ({ titre: x.titre, doi: x.doi })),
     };
+  }
+
+  /* ---------------------- Arbitrage par le modèle -------------------------- *
+   * Quand une même référence désigne plusieurs œuvres selon la source, seul le
+   * sens du passage tranche. Le modèle choisit dans une LISTE FERMÉE d'œuvres
+   * réellement présentes dans les bibliographies : il rend un numéro, jamais
+   * une référence. Un numéro hors bornes est rejeté.
+   * ------------------------------------------------------------------------ */
+
+  async arbitrerConflit(entree, resolution) {
+    if (!resolution || !resolution.conflit) return 0;
+    const oeuvres = resolution.oeuvres;
+    let n = 0;
+    for (const p of resolution.parSource) {
+      const numeros = oeuvres.map((o, i) => (i + 1) + '. ' + o.titre
+        + (o.revue ? ' (' + o.revue + ')' : '')).join('\n');
+      const invite = tr('Un passage d’article cite une référence. Plusieurs œuvres portent le même auteur et la même année. Dis laquelle le passage désigne.')
+        + ' ' + tr('Rends STRICTEMENT un objet JSON avec la clé numero (le numéro de l’œuvre dans la liste, ou 0 si le passage ne permet pas de trancher) et la clé confiance (haute, moyenne ou basse). Aucun texte hors du JSON.')
+        + '\n\n' + tr('Référence citée :') + ' ' + entree.nom
+        + '\n' + tr('Passage :') + '\n' + String(p.passage || '').slice(0, 1200)
+        + '\n\n' + tr('Œuvres possibles :') + '\n' + numeros;
+      const rep = await this.genererJsonArbitre(invite, 120);
+      if (!rep) continue;
+      let brut = String(rep).trim();
+      const a = brut.indexOf('{'), b = brut.lastIndexOf('}');
+      if (a >= 0 && b > a) brut = brut.slice(a, b + 1);
+      let j;
+      try { j = JSON.parse(brut); } catch (e) { continue; }
+      const num = parseInt(ZotflowAtomiser.premier(j.numero), 10);
+      // Hors bornes ou zéro : le modèle n'a pas tranché, on n'invente rien.
+      if (!Number.isFinite(num) || num < 1 || num > oeuvres.length) continue;
+      p.arbitre = { oeuvre: oeuvres[num - 1], confiance: String(j.confiance || '').trim() };
+      n += 1;
+    }
+    return n;
   }
 
   /* ------------- Découpage des entrées de bibliographie brutes ------------- *
@@ -8671,6 +8754,17 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
           .onChange(async (v) => { s.refsCheminClaude = v.trim() || 'claude'; await maj(); }));
     }
     new obsidian.Setting(c)
+      .setName(tr("Moteur de l'arbitrage"))
+      .setDesc(tr("Choisir entre deux œuvres du même auteur et de la même année demande de comprendre le passage. Mesuré : les modèles locaux refusent de trancher même quand la phrase est explicite, là où Claude répond juste."))
+      .addDropdown((d) => d
+        .addOption('claude', tr('Claude en ligne de commande'))
+        .addOption('mistral', 'Mistral')
+        .addOption('ollama', 'Ollama')
+        .addOption('lmstudio', 'LM Studio')
+        .setValue(s.arbitreFournisseur || 'claude')
+        .onChange(async (v) => { s.arbitreFournisseur = v; await maj(); }));
+
+    new obsidian.Setting(c)
       .setName(tr('Lancer le découpage'))
       .setDesc(tr("Une passe sur les entrées en texte brut, mise en cache. Interruptible, et reprise là où elle s'était arrêtée."))
       .addButton((b) => b.setButtonText(tr('Découper')).setCta()
@@ -9204,6 +9298,7 @@ class VueReferencesAttente extends obsidian.ItemView {
       let etat;
       if (r.etat === 'écartée') etat = 'ecartee';
       else if (r.etat === 'à acquérir') etat = 'acquerir';
+      else if (biblio && biblio.conflit) etat = 'conflit';
       else if (auto || dansZotero) etat = 'rattachable';
       else if (candidats.length) etat = 'arbitrer';
       else if (doi || (biblio && biblio.titre)) etat = 'identifiee';
@@ -9222,6 +9317,7 @@ class VueReferencesAttente extends obsidian.ItemView {
     const onglets = [
       ['tous', tr('Toutes'), lignes.length],
       ['rattachable', tr('À rattacher'), compte('rattachable')],
+      ['conflit', tr('Plusieurs œuvres'), compte('conflit')],
       ['arbitrer', tr('À arbitrer'), compte('arbitrer')],
       ['identifiee', tr('À acquérir'), compte('identifiee')],
       ['inconnue', tr('Non résolues'), compte('inconnue')],
@@ -9250,7 +9346,7 @@ class VueReferencesAttente extends obsidian.ItemView {
 
   rendreLigne(parent, l) {
     const g = this.greffon;
-    const el = parent.createDiv({ cls: 'zfa-ref zfa-ref-' + l.etat });
+    const el = parent.createDiv({ cls: 'zfa-ref zfa-ref-' + l.etat + '-etat' });
 
     const tete = el.createDiv({ cls: 'zfa-ref-tete' });
     tete.createSpan({ cls: 'zfa-ref-nom', text: l.r.nom });
@@ -9279,26 +9375,56 @@ class VueReferencesAttente extends obsidian.ItemView {
     if (!l.r.sources.length) {
       b2.createDiv({ cls: 'zfa-ref-faible', text: tr('Aucune source identifiée.') });
     }
-    for (const [src, n] of l.r.sources.slice(0, 6)) {
+
+    // Une même référence peut désigner plusieurs œuvres selon l'article qui la
+    // cite : on le dit, et on montre chaque source avec ce que SA bibliographie
+    // en dit, plutôt que d'imposer une réponse unique.
+    if (l.biblio && l.biblio.conflit) {
+      const av = b2.createDiv({ cls: 'zfa-ref-conflit' });
+      av.createDiv({ cls: 'zfa-ref-texte',
+        text: tr('Cette référence désigne ') + l.biblio.oeuvres.length + tr(' œuvres distinctes selon la source.') });
+      for (const o of l.biblio.oeuvres) {
+        const li = av.createDiv({ cls: 'zfa-ref-oeuvre' });
+        li.createDiv({ cls: 'zfa-ref-texte', text: '« ' + o.titre + ' »' });
+        li.createDiv({ cls: 'zfa-ref-faible', text: o.sources.join(', ') });
+        if (o.doi) this.ligneDoi(li, o.doi);
+      }
+      const ba = av.createEl('button', { cls: 'mod-cta', text: tr('Faire arbitrer par le modèle') });
+      ba.onclick = async () => {
+        ba.setText(tr('Arbitrage…'));
+        const n = await this.greffon.arbitrerConflit(l.r, l.biblio);
+        new obsidian.Notice(tr('Arbitrages rendus : ') + n);
+        this.rendre();
+      };
+    }
+
+    const parSource = new Map();
+    for (const p of (l.biblio && l.biblio.parSource) || []) parSource.set(p.source, p);
+
+    for (const [src, n] of l.r.sources.slice(0, 8)) {
       const ls = b2.createDiv({ cls: 'zfa-ref-source' });
       const lien = ls.createEl('a', { text: src, href: '#' });
       lien.onclick = (e) => { e.preventDefault(); this.greffon.ouvrirNote(src); };
       ls.createSpan({ cls: 'zfa-ref-compteur', text: n + '×' });
-      if (!l.biblio || l.biblio.source !== src) continue;
+      const p = parSource.get(src);
+      if (!p) continue;
 
-      // Le passage surligné, avec l'appel de citation mis en évidence : c'est
-      // lui qui justifie la proposition, et qui permet de la contester.
-      if (l.biblio.passage) {
+      if (p.passage) {
         const pa = ls.createDiv({ cls: 'zfa-ref-passage' });
-        this.ecrirePassage(pa, l.biblio.passage, l.r.nom);
+        this.ecrirePassage(pa, p.passage, l.r.nom);
       }
       const bb = ls.createDiv({ cls: 'zfa-ref-biblio' });
       bb.createDiv({ cls: 'zfa-ref-titre-bloc',
-        text: l.biblio.sur ? tr('Dans sa bibliographie') : tr('Dans sa bibliographie, sans certitude') });
-      bb.createDiv({ cls: 'zfa-ref-texte', text: '« ' + l.biblio.titre + ' »' });
-      if (l.biblio.revue) bb.createDiv({ cls: 'zfa-ref-faible', text: l.biblio.revue });
-      if (l.biblio.doi) this.ligneDoi(bb, l.biblio.doi);
-      for (const autre of l.biblio.autres || []) {
+        text: p.sur ? tr('Dans sa bibliographie') : tr('Dans sa bibliographie, sans certitude') });
+      bb.createDiv({ cls: 'zfa-ref-texte', text: '« ' + p.retenu.titre + ' »' });
+      if (p.retenu.revue) bb.createDiv({ cls: 'zfa-ref-faible', text: p.retenu.revue });
+      if (p.retenu.doi) this.ligneDoi(bb, p.retenu.doi);
+      if (p.arbitre) {
+        bb.createDiv({ cls: 'zfa-ref-arbitre',
+          text: tr('Le modèle lit ici : ') + '« ' + p.arbitre.oeuvre.titre + ' »'
+            + (p.arbitre.confiance ? '  (' + tr('confiance ') + p.arbitre.confiance + ')' : '') });
+      }
+      for (const autre of p.candidats.slice(1, 3)) {
         const au = bb.createDiv({ cls: 'zfa-ref-autre' });
         au.createDiv({ cls: 'zfa-ref-faible', text: tr('ou bien : ') + '« ' + autre.titre + ' »' });
         if (autre.doi) this.ligneDoi(au, autre.doi);

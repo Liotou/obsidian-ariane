@@ -543,6 +543,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-ref-rattachable .zfa-ref-tete::before { background: var(--color-green); }
 .zfa-ref-arbitrer .zfa-ref-tete::before { background: var(--color-orange); }
 .zfa-ref-identifiee .zfa-ref-tete::before { background: var(--color-blue); }
+.zfa-ref-conflit-etat .zfa-ref-tete::before { background: var(--color-orange); }
 .zfa-ref-ecartee { opacity: 0.5; }
 
 .zfa-ref-detail {
@@ -627,4 +628,28 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   margin-top: 5px;
   padding-top: 5px;
   border-top: 1px dashed var(--background-modifier-border);
+}
+
+/* Une référence qui désigne plusieurs œuvres selon la source. */
+.zfa-ref-conflit {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border-left: 3px solid var(--color-orange);
+  background: var(--background-secondary);
+}
+
+.zfa-ref-oeuvre {
+  margin: 6px 0 0 10px;
+  padding-left: 8px;
+  border-left: 2px solid var(--background-modifier-border);
+}
+
+.zfa-ref-conflit button { margin-top: 8px; }
+.zfa-ref-arbitre {
+  margin-top: 5px;
+  padding: 4px 7px;
+  border-radius: 4px;
+  background: var(--background-modifier-hover);
+  font-size: var(--font-ui-smaller);
 }
