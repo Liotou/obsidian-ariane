@@ -349,6 +349,10 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Mes citations : régénérer la bibliographie de la note active": "My citations: rebuild the bibliography of the active note",
+    "Mes citations : régénérer la bibliographie de toutes mes notes": "My citations: rebuild the bibliography of all my notes",
+    "Ce que citent mes sources : générer la note de la source active (via API)": "What my sources cite: build the note for the active source (via API)",
+    "Ce que citent mes sources : générer les notes de toutes les sources (via API)": "What my sources cite: build the notes for all sources (via API)",
     "Génération déjà en cours.": "Generation already running.",
     "Arrêter la génération des bibliographies": "Stop the bibliography generation",
     "Aucune génération en cours.": "No generation running.",
@@ -2848,7 +2852,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'biblio-note',
-      name: tr('Bibliographie : régénérer dans la note active'),
+      name: tr('Mes citations : régénérer la bibliographie de la note active'),
       callback: () => {
         const f = this.app.workspace.getActiveFile();
         if (f) this.majBibliographie(f); else new obsidian.Notice(tr('Ouvrez une note.'));
@@ -2856,7 +2860,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'biblio-tout',
-      name: tr('Bibliographie : régénérer dans toutes les notes'),
+      name: tr('Mes citations : régénérer la bibliographie de toutes mes notes'),
       callback: () => this.majBibliographieToutes(),
     });
     this.addCommand({
@@ -2916,7 +2920,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'bibliographie-citee-source',
-      name: tr('Générer la bibliographie citée de cette source (via API)'),
+      name: tr('Ce que citent mes sources : générer la note de la source active (via API)'),
       callback: () => this.genererBibliographieSource(),
     });
     this.addCommand({
@@ -2929,7 +2933,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'bibliographies-citees-toutes',
-      name: tr('Générer les bibliographies citées de TOUTES les sources (via API)'),
+      name: tr('Ce que citent mes sources : générer les notes de toutes les sources (via API)'),
       callback: () => this.genererToutesBibliographies(),
     });
     this.addCommand({
