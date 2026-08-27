@@ -349,6 +349,30 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Découpage des bibliographies": "Splitting raw bibliography entries",
+    "Une entrée de bibliographie sur six n'existe qu'en texte brut, qu'aucune expression régulière ne découpe. Un modèle s'en charge. Il propose, il ne décide pas : chaque extraction est recoupée avec le texte d'origine, l'année, le nom et le titre devant s'y retrouver, sinon elle est jetée.": "One bibliography entry in six exists only as raw text, which no regular expression can split. A model handles it. It proposes, it does not decide: every extraction is checked against the original text, the year, the name and the title having to appear in it, otherwise it is discarded.",
+    "Moteur du découpage": "Splitting engine",
+    "Claude en ligne de commande": "Claude command line",
+    "Modèle": "Model",
+    "llama3.2 suffit largement pour cette tâche.": "llama3.2 is more than enough for this task.",
+    "Clé Mistral": "Mistral key",
+    "Conservée dans les réglages du greffon, sur votre machine.": "Kept in the plugin settings, on your machine.",
+    "Commande": "Command",
+    "Chemin du binaire, si « claude » ne suffit pas.": "Path to the binary, if “claude” is not enough.",
+    "Lancer le découpage": "Run the splitting",
+    "Une passe sur les entrées en texte brut, mise en cache. Interruptible, et reprise là où elle s'était arrêtée.": "One pass over the raw entries, cached. Interruptible, and resumed where it stopped.",
+    "Découper": "Split",
+    "Arrêter": "Stop",
+    "Découper les bibliographies en texte brut": "Split raw bibliography entries",
+    "Rien à découper.": "Nothing to split.",
+    "Découpage : 0 / ": "Splitting: 0 / ",
+    "Découpage : ": "Splitting: ",
+    "Découpage terminé : ": "Splitting done: ",
+    "retenus": "kept",
+    "rejetés": "discarded",
+    "Clé Mistral absente des réglages.": "Mistral key missing from settings.",
+    "Référence :": "Reference:",
+    "Tu reçois une référence bibliographique brute. Rends STRICTEMENT un objet JSON avec les clés auteurs (liste de noms de famille), annee (chaîne de 4 chiffres), titre (le titre de l'œuvre, sans la revue ni l'éditeur), revue (ou chaîne vide). Aucun texte hors du JSON.": "You are given a raw bibliographic reference. Return STRICTLY a JSON object with the keys auteurs (list of surnames), annee (four-digit string), titre (the title of the work, without the journal or publisher), revue (or empty string). No text outside the JSON.",
     "Analyse des références…": "Analysing references…",
     "Recalculer": "Recompute",
     "Dans sa bibliographie": "In its bibliography",
@@ -810,6 +834,14 @@ const DEFAULT_SETTINGS = {
   suggRerankDelaiSec: 45,       // au-delà, on rend la main
   suggRerankJustif: true, // afficher la phrase de justification
   suggModeleLLM: 'llama3.2',
+
+  // --- Moteur du découpage bibliographique ---
+  // Séparé de celui des suggestions : Mistral et le CLI de Claude savent
+  // rédiger mais ne fournissent pas les embeddings dont l'index a besoin.
+  refsFournisseur: 'ollama',   // 'ollama' | 'lmstudio' | 'mistral' | 'claude'
+  refsModele: 'llama3.2',
+  refsCleMistral: '',
+  refsCheminClaude: 'claude',
   suggRerankTopN: 12,
 };
 
@@ -2792,6 +2824,11 @@ class ZotflowAtomiser extends obsidian.Plugin {
       callback: () => this.verifierModeleWord(),
     });
     this.addCommand({
+      id: 'decouper-bibliographies',
+      name: tr('Découper les bibliographies en texte brut'),
+      callback: () => this.decouperBibliographies(),
+    });
+    this.addCommand({
       id: 'arbitrer-references-attente',
       name: tr('Arbitrer les références en attente'),
       callback: () => this.ouvrirVueReferences(),
@@ -3388,8 +3425,11 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return (this.settings.suggFournisseur || 'ollama') === 'lmstudio';
   }
 
-  urlInference() {
-    return this.fournisseurLmStudio()
+  // Le drapeau est passé explicitement : deux réglages coexistent, celui des
+  // suggestions et celui du découpage bibliographique, et ils peuvent différer.
+  urlInference(lm) {
+    const estLm = lm === undefined ? this.fournisseurLmStudio() : !!lm;
+    return estLm
       ? (this.settings.suggLmStudioUrl || 'http://localhost:1234').replace(/\/+$/, '')
       : (this.settings.suggOllamaUrl || 'http://localhost:11434').replace(/\/+$/, '');
   }
@@ -3423,11 +3463,13 @@ class ZotflowAtomiser extends obsidian.Plugin {
   // borne, un modèle qui ne referme pas son objet tourne jusqu'à saturer son
   // contexte — plusieurs minutes à pleine charge.
   async genererJson(prompt, jetons) {
-    const lm = this.fournisseurLmStudio();
-    const modele = this.settings.suggModeleLLM || 'llama3.2';
-    const max = jetons || this.settings.suggRerankJetons || 400;
+    return this.genererJsonAvec(prompt, jetons || this.settings.suggRerankJetons || 400,
+      this.fournisseurLmStudio(), this.settings.suggModeleLLM || 'llama3.2');
+  }
+
+  async genererJsonAvec(prompt, max, lm, modele) {
     try {
-      const url = this.urlInference() + (lm ? '/v1/chat/completions' : '/api/generate');
+      const url = this.urlInference(lm) + (lm ? '/v1/chat/completions' : '/api/generate');
       const corps = lm
         // LM Studio refuse « response_format: json_object » — il n'accepte que
         // « json_schema » ou « text », et cela varie d'une version à l'autre.
@@ -3453,6 +3495,64 @@ class ZotflowAtomiser extends obsidian.Plugin {
       console.debug('[Ariane] génération indisponible', e);
       return null;
     }
+  }
+
+  // Le découpage bibliographique passe par son propre moteur. Les quatre
+  // dialectes se rejoignent ici, pour qu'il n'existe qu'un seul endroit où
+  // borner la génération et rattraper les erreurs.
+  async genererJsonRefs(prompt, jetons) {
+    const f = this.settings.refsFournisseur || 'ollama';
+    const max = jetons || 300;
+    if (f === 'mistral') return this.genererMistral(prompt, max);
+    if (f === 'claude') return this.genererClaude(prompt, max);
+    return this.genererJsonAvec(prompt, max, f === 'lmstudio',
+      this.settings.refsModele || 'llama3.2');
+  }
+
+  async genererMistral(prompt, max) {
+    const cle = (this.settings.refsCleMistral || '').trim();
+    if (!cle) { new obsidian.Notice(tr('Clé Mistral absente des réglages.')); return null; }
+    try {
+      const rep = await obsidian.requestUrl({
+        url: 'https://api.mistral.ai/v1/chat/completions',
+        method: 'POST', throw: false,
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cle },
+        body: JSON.stringify({
+          model: this.settings.refsModele || 'mistral-small-latest',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0, max_tokens: max,
+          response_format: { type: 'json_object' },
+        }),
+      });
+      if (!rep || rep.status < 200 || rep.status >= 300) return null;
+      const j = rep.json !== undefined ? rep.json : JSON.parse(rep.text);
+      const c = j && j.choices && j.choices[0];
+      return c && c.message ? String(c.message.content || '') : null;
+    } catch (e) {
+      console.debug('[Ariane] Mistral indisponible', e);
+      return null;
+    }
+  }
+
+  // Le CLI de Claude ne demande ni clé ni serveur. On le borne dans le temps :
+  // un processus qui ne rend pas la main bloquerait tout le lot.
+  genererClaude(prompt, max) {
+    const bin = (this.settings.refsCheminClaude || 'claude').trim() || 'claude';
+    return new Promise((resoudre) => {
+      let fini = false;
+      const env = Object.assign({}, process.env, {
+        PATH: process.env.HOME + '/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:'
+          + (process.env.PATH || ''),
+      });
+      const enfant = require('child_process').execFile(
+        bin, ['-p', prompt], { env, timeout: 60000, maxBuffer: 1 << 20 },
+        (err, sortie) => {
+          if (fini) return;
+          fini = true;
+          resoudre(err ? null : String(sortie || '').trim());
+        });
+      setTimeout(() => { if (!fini) { try { enfant.kill('SIGKILL'); } catch (e) { /* déjà mort */ } } }, 61000);
+    });
   }
 
   async testerEncodage() {
@@ -7394,7 +7494,8 @@ class ZotflowAtomiser extends obsidian.Plugin {
         const motsBrut = brut.split(/[^a-z0-9]+/).filter(Boolean);
         const colle = motsAuteur.length ? motsAuteur.includes(premier) : motsBrut[0] === premier;
         if (!colle) continue;
-        const titre = String(e['article-title'] || e['volume-title'] || e.unstructured || '').trim();
+        const decoupe = e._ariane && e._ariane.titre ? e._ariane.titre : '';
+        const titre = String(e['article-title'] || e['volume-title'] || decoupe || e.unstructured || '').trim();
         const doi = normDoi(e.DOI);
         // Une entrée sans titre ni DOI n'apprend rien et ne peut pas s'arbitrer.
         if (!titre && !doi) continue;
@@ -7441,6 +7542,90 @@ class ZotflowAtomiser extends obsidian.Plugin {
       doi: c.doi, titre: c.titre, revue: c.revue,
       autres: t.candidats.slice(1).map((x) => ({ titre: x.titre, doi: x.doi })),
     };
+  }
+
+  /* ------------- Découpage des entrées de bibliographie brutes ------------- *
+   * Mesuré : sur 5917 entrées en cache, 2988 portent un titre, 1974 ne portent
+   * rien d'exploitable, et 955 n'existent qu'en texte brut, du genre
+   * « Baldwin C. Y.(2014).Bottlenecks modules… (Working Paper No. 15-028) ».
+   * Aucune expression régulière n'en vient à bout. Un modèle, si.
+   *
+   * Règle : le modèle propose, il ne décide jamais. Chaque extraction est
+   * recoupée avec le texte d'origine, l'année et le nom devant s'y retrouver,
+   * faute de quoi elle est jetée. Une fausse référence dans une thèse est un
+   * dégât autrement plus grave qu'une référence non résolue.
+   * ------------------------------------------------------------------------ */
+
+  // Le modèle rend parfois « {"annee":["2012"]} » au lieu d'une chaîne : on
+  // accepte les deux plutôt que de perdre l'extraction sur une vétille.
+  static premier(v) {
+    if (Array.isArray(v)) return v.length ? String(v[0]).trim() : '';
+    return String(v == null ? '' : v).trim();
+  }
+
+  // Recoupement avec le texte d'origine. C'est ici que se joue la confiance.
+  validerDecoupage(extrait, brut) {
+    const b = sansAccents(brut);
+    const annee = ZotflowAtomiser.premier(extrait.annee);
+    if (!/^\d{4}$/.test(annee) || !b.includes(annee)) return null;
+    const auteurs = (Array.isArray(extrait.auteurs) ? extrait.auteurs : [extrait.auteurs])
+      .map((x) => sansAccents(String(x || '')).split(/\s+/)[0])
+      .filter((x) => x.length > 1);
+    if (!auteurs.length) return null;
+    const mots = new Set(b.split(/[^a-z0-9]+/).filter(Boolean));
+    if (!mots.has(auteurs[0])) return null;
+    const titre = ZotflowAtomiser.premier(extrait.titre);
+    // Un titre que le texte d'origine ne contient pas est une invention.
+    if (titre.length < 8 || !b.includes(sansAccents(titre).slice(0, 24))) return null;
+    return { auteurs, annee, titre, revue: ZotflowAtomiser.premier(extrait.revue) };
+  }
+
+  async decouperBibliographies() {
+    const biblio = this.chargerBibliographies();
+    const aFaire = [];
+    for (const doi of Object.keys(biblio)) {
+      const liste = biblio[doi] || [];
+      for (let i = 0; i < liste.length; i++) {
+        const e = liste[i];
+        if (e['article-title'] || e['volume-title'] || e._ariane) continue;
+        if (!e.unstructured || String(e.unstructured).trim().length < 20) continue;
+        aFaire.push({ doi, i, brut: String(e.unstructured).trim() });
+      }
+    }
+    if (!aFaire.length) { new obsidian.Notice(tr('Rien à découper.')); return 0; }
+
+    const consigne = tr("Tu reçois une référence bibliographique brute. Rends STRICTEMENT un objet JSON avec les clés auteurs (liste de noms de famille), annee (chaîne de 4 chiffres), titre (le titre de l'œuvre, sans la revue ni l'éditeur), revue (ou chaîne vide). Aucun texte hors du JSON.")
+      + '\n\n' + tr('Référence :') + '\n';
+
+    const avis = new obsidian.Notice(tr('Découpage : 0 / ') + aFaire.length, 0);
+    let n = 0, gardes = 0, jetes = 0;
+    this.decoupageEnCours = true;
+    for (const t of aFaire) {
+      if (!this.decoupageEnCours) break;
+      const rep = await this.genererJsonRefs(consigne + t.brut, 320);
+      n += 1;
+      avis.setMessage(tr('Découpage : ') + n + ' / ' + aFaire.length
+        + '  (' + gardes + ' ' + tr('retenus') + ', ' + jetes + ' ' + tr('rejetés') + ')');
+      if (!rep) { jetes += 1; continue; }
+      let brutJson = String(rep).trim();
+      const d = brutJson.indexOf('{'), f = brutJson.lastIndexOf('}');
+      if (d >= 0 && f > d) brutJson = brutJson.slice(d, f + 1);
+      let extrait;
+      try { extrait = JSON.parse(brutJson); } catch (e) { jetes += 1; continue; }
+      const valide = this.validerDecoupage(extrait, t.brut);
+      if (!valide) { jetes += 1; continue; }
+      this.bibliographies[t.doi][t.i]._ariane = valide;
+      gardes += 1;
+      // Écriture régulière : un lot de mille entrées ne doit pas être perdu
+      // parce qu'Obsidian a été fermé en cours de route.
+      if (gardes % 25 === 0) await this.ecrireBibliographies();
+    }
+    this.decoupageEnCours = false;
+    await this.ecrireBibliographies();
+    avis.hide();
+    new obsidian.Notice(tr('Découpage terminé : ') + gardes + ' ' + tr('retenus')
+      + ', ' + jetes + ' ' + tr('rejetés') + '.');
+    return gardes;
   }
 
   // Une passe unique sur les sources citantes qui portent un DOI. Mesuré : 69
@@ -8451,6 +8636,47 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Délai avant recalcul (ms)'))
       .setDesc(tr('Temps d’inactivité dans la frappe avant de rafraîchir.'))
       .addText((t) => t.setValue(String(s.suggAntirebond)).onChange(async (v) => { const n = parseInt(v, 10); s.suggAntirebond = Number.isFinite(n) && n >= 100 ? n : 900; await maj(); }));
+
+    this._section(c, tr('Découpage des bibliographies'));
+    this._aide(c, tr("Une entrée de bibliographie sur six n'existe qu'en texte brut, qu'aucune expression régulière ne découpe. Un modèle s'en charge. Il propose, il ne décide pas : chaque extraction est recoupée avec le texte d'origine, l'année, le nom et le titre devant s'y retrouver, sinon elle est jetée."));
+    new obsidian.Setting(c)
+      .setName(tr('Moteur du découpage'))
+      .addDropdown((d) => d
+        .addOption('ollama', 'Ollama')
+        .addOption('lmstudio', 'LM Studio')
+        .addOption('mistral', 'Mistral')
+        .addOption('claude', tr('Claude en ligne de commande'))
+        .setValue(s.refsFournisseur || 'ollama')
+        .onChange(async (v) => { s.refsFournisseur = v; await maj(); this.display(); }));
+    if (s.refsFournisseur !== 'claude') {
+      new obsidian.Setting(c)
+        .setName(tr('Modèle'))
+        .setDesc(tr('llama3.2 suffit largement pour cette tâche.'))
+        .addText((t) => t.setValue(s.refsModele || 'llama3.2')
+          .onChange(async (v) => { s.refsModele = v.trim() || 'llama3.2'; await maj(); }));
+    }
+    if (s.refsFournisseur === 'mistral') {
+      new obsidian.Setting(c)
+        .setName(tr('Clé Mistral'))
+        .setDesc(tr('Conservée dans les réglages du greffon, sur votre machine.'))
+        .addText((t) => { t.setValue(s.refsCleMistral || '')
+          .onChange(async (v) => { s.refsCleMistral = v.trim(); await maj(); });
+          t.inputEl.type = 'password'; });
+    }
+    if (s.refsFournisseur === 'claude') {
+      new obsidian.Setting(c)
+        .setName(tr('Commande'))
+        .setDesc(tr('Chemin du binaire, si « claude » ne suffit pas.'))
+        .addText((t) => t.setValue(s.refsCheminClaude || 'claude')
+          .onChange(async (v) => { s.refsCheminClaude = v.trim() || 'claude'; await maj(); }));
+    }
+    new obsidian.Setting(c)
+      .setName(tr('Lancer le découpage'))
+      .setDesc(tr("Une passe sur les entrées en texte brut, mise en cache. Interruptible, et reprise là où elle s'était arrêtée."))
+      .addButton((b) => b.setButtonText(tr('Découper')).setCta()
+        .onClick(() => this.plugin.decouperBibliographies()))
+      .addButton((b) => b.setButtonText(tr('Arrêter'))
+        .onClick(() => { this.plugin.decoupageEnCours = false; }));
 
     this._section(c, tr('Moteur de pertinence'));
     this._aide(c, tr("Lexical : mots en commun (aucune dépendance). Sémantique : comprend le sens via des embeddings locaux (Ollama). Hybride : combine les deux (recommandé). En l'absence d'Ollama, le moteur bascule automatiquement sur le lexical."));
