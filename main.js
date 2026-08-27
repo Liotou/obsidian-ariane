@@ -349,6 +349,11 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Analyse des références…": "Analysing references…",
+    "Recalculer": "Recompute",
+    "Dans sa bibliographie": "In its bibliography",
+    "Dans sa bibliographie, sans certitude": "In its bibliography, uncertain",
+    "ou bien : ": "or else: ",
     "Arbitrer les références en attente": "Arbitrate pending references",
     "Récupérer les bibliographies des sources citantes": "Fetch the bibliographies of citing sources",
     "Récupérer les bibliographies": "Fetch bibliographies",
@@ -7297,37 +7302,145 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return out;
   }
 
-  // L'entrée de bibliographie que la source citante donne pour cette référence.
-  // L'égalité des noms est stricte : chercher « han » CONTENU dans « hannah »
-  // rattachait Han et al. 2017 à Hannah 2018. Vérifié, puis corrigé.
-  resoudreParBibliographie(entree) {
+  // Les passages surlignés où une référence est citée. C'est la matière que
+  // demande la résolution fine : le texte de l'article autour de l'appel de
+  // citation, qui dit de quoi il retourne.
+  indexPassages() {
+    const parRef = new Map();
+    const marque = '[!' + (this.settings.calloutCitation || 'quote') + ']';
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      const src = sansLien(fm['zotflow-source'] || '');
+      const refs = fm['références-citées'];
+      if (!src || !refs) continue;
+      const liste = (Array.isArray(refs) ? refs : [refs]).map((x) => cleDeLien(sansLien(x)));
+      const noms = liste.filter((n) => n && n !== src);
+      if (!noms.length) continue;
+      parRef.set('__fichiers__', true);
+      for (const nom of noms) {
+        if (!parRef.has(nom)) parRef.set(nom, []);
+        parRef.get(nom).push({ fichier: f, source: src, marque });
+      }
+    }
+    parRef.delete('__fichiers__');
+    return parRef;
+  }
+
+  // Le passage surligné d'une note d'annotation, tel que le modèle l'a écrit.
+  async passageDe(fichier, marque) {
+    const t = await this.app.vault.cachedRead(fichier);
+    const i = t.indexOf('> ' + marque);
+    if (i < 0) return '';
+    const lignes = [];
+    for (const l of t.slice(i).split('\n').slice(1)) {
+      const m = l.match(/^>\s?(.*)$/);
+      if (!m) break;
+      if (/^\[!/.test(m[1].trim())) break;
+      lignes.push(m[1]);
+    }
+    return lignes.join(' ').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  // Fenêtre de texte autour de l'appel de citation dans le passage. C'est elle
+  // qui départage deux entrées de bibliographie du même auteur et de la même
+  // année : le sujet de la phrase ressemble au titre du bon travail.
+  fenetreCitation(passage, nomFamille) {
+    if (!passage || !nomFamille) return '';
+    const p = sansAccents(passage);
+    const i = p.indexOf(sansAccents(nomFamille));
+    if (i < 0) return passage;
+    const mots = passage.split(/\s+/);
+    let compte = 0, index = 0;
+    for (let k = 0; k < mots.length; k++) {
+      compte += mots[k].length + 1;
+      if (compte > i) { index = k; break; }
+    }
+    return mots.slice(Math.max(0, index - 25), index + 25).join(' ');
+  }
+
+  // Résolution d'une référence en attente par la bibliographie de ses sources
+  // citantes, départagée par le passage surligné.
+  //
+  // L'égalité des noms est stricte sur les mots : « han » CONTENU dans
+  // « hannah » rattachait Han et al. 2017 à Hannah 2018.
+  //
+  // Et l'on ne choisit jamais en silence : quand plusieurs entrées restent
+  // possibles et que le passage ne tranche pas nettement, on les rend toutes.
+  async resoudreParBibliographie(entree, passages) {
     const biblio = this.chargerBibliographies();
-    const m = entree.nom.match(/^(.*?),\s*(\d{4})/);
+    const m = entree.nom.match(/^(.*?),\s*(\d{4})([a-z]?)/);
     if (!m) return null;
     const premier = sansAccents(m[1].split(/\s+(?:et al\.?|&|and|et)\s+|,/)[0].trim().split(/\s+/).pop());
     const annee = m[2];
+    const suffixe = m[3] || '';
     const index = this.construireIndexZotero();
-    for (const [src] of entree.sources) {
-      const fiche = index.find((z) => z.basename === src);
+    const occurrences = (passages || this.indexPassages()).get(entree.nom) || [];
+
+    const trouves = [];
+    for (const occ of occurrences) {
+      const fiche = index.find((z) => z.basename === occ.source);
       const liste = fiche && fiche.doi ? biblio[fiche.doi] : null;
       if (!liste) continue;
+      const passage = await this.passageDe(occ.fichier, occ.marque);
+      const fenetre = tokeniser(this.fenetreCitation(passage, premier));
+      const sac = new Set(fenetre);
+
+      const cands = [];
       for (const e of liste) {
         if (String(e.year || '') !== annee) continue;
         const auteur = sansAccents(e.author || '');
         const brut = sansAccents(e.unstructured || '');
-        const colle = auteur
-          ? auteur.split(/[^a-z0-9]+/).includes(premier)
-          : brut.split(/[^a-z0-9]+/)[0] === premier;
+        const motsAuteur = auteur.split(/[^a-z0-9]+/).filter(Boolean);
+        const motsBrut = brut.split(/[^a-z0-9]+/).filter(Boolean);
+        const colle = motsAuteur.length ? motsAuteur.includes(premier) : motsBrut[0] === premier;
         if (!colle) continue;
-        return {
-          source: src,
-          doi: normDoi(e.DOI),
-          titre: String(e['article-title'] || e['volume-title'] || e.unstructured || '').trim(),
-          revue: String(e['journal-title'] || '').trim(),
-        };
+        const titre = String(e['article-title'] || e['volume-title'] || e.unstructured || '').trim();
+        const doi = normDoi(e.DOI);
+        // Une entrée sans titre ni DOI n'apprend rien et ne peut pas s'arbitrer.
+        if (!titre && !doi) continue;
+        cands.push({ entree: e, titre, doi, brut,
+          revue: String(e['journal-title'] || '').trim(), score: 0 });
       }
+      if (!cands.length) continue;
+
+      // Le suffixe d'année d'abord, car il désigne un travail précis, alors que
+      // le contexte lexical ne fait que ressembler. Vérifié : sur
+      // « Aven & Renn, 2009a » le contexte élisait le mauvais article du même
+      // auteur, celui dont le sujet ressemble le plus à la phrase citante.
+      if (suffixe) {
+        const explicite = cands.filter((c) => c.brut.includes(annee + suffixe));
+        if (explicite.length) {
+          for (const c of explicite) c.score += 100;
+        } else {
+          // Convention des styles bibliographiques : a, b, c suivent l'ordre
+          // alphabétique des titres du même auteur pour la même année.
+          const rang = suffixe.charCodeAt(0) - 97;
+          const tries = cands.slice().sort((x, y) => x.titre.localeCompare(y.titre));
+          if (tries[rang]) tries[rang].score += 60;
+        }
+      }
+      // Le contexte départage ce que le suffixe n'a pas tranché, sans jamais
+      // pouvoir le renverser : d'où le plafond.
+      for (const c of cands) {
+        let ctx = 0;
+        for (const mot of tokeniser(c.titre)) if (sac.has(mot)) ctx += 3;
+        c.score += Math.min(ctx, 30);
+      }
+      cands.sort((a, b) => b.score - a.score);
+      const ecart = cands.length > 1 ? cands[0].score - cands[1].score : 999;
+      trouves.push({ source: occ.source, fichier: occ.fichier, passage,
+        candidats: cands, sur: cands.length === 1 || ecart >= 3 });
     }
-    return null;
+    if (!trouves.length) return null;
+    // On préfère l'occurrence où le passage tranche.
+    trouves.sort((a, b) => (b.sur ? 1 : 0) - (a.sur ? 1 : 0));
+    const t = trouves[0];
+    const c = t.candidats[0];
+    return {
+      source: t.source, passage: t.passage, sur: t.sur,
+      doi: c.doi, titre: c.titre, revue: c.revue,
+      autres: t.candidats.slice(1).map((x) => ({ titre: x.titre, doi: x.doi })),
+    };
   }
 
   // Une passe unique sur les sources citantes qui portent un DOI. Mesuré : 69
@@ -8836,25 +8949,28 @@ class VueReferencesAttente extends obsidian.ItemView {
 
   async onOpen() {
     this.contentEl.addClass('zfa-refs');
-    this.rendre();
+    await this.preparer();
   }
 
-  rendre() {
+  // Un seul calcul à l'ouverture : résoudre 631 références à chaque clic
+  // d'onglet rendrait le volet inutilisable.
+  async preparer() {
     const c = this.contentEl;
     c.empty();
+    c.createDiv({ cls: 'zfa-refs-vide', text: tr('Analyse des références…') });
     const g = this.greffon;
     const toutes = g.indexReferencesAttente();
     const index = g.construireIndexZotero();
+    const passages = g.indexPassages();
 
-    // Chaque référence est qualifiée une fois : c'est ce qui permet de filtrer
-    // sans tout recalculer à chaque clic.
-    const lignes = toutes.map((r) => {
+    this.lignes = [];
+    for (const r of toutes) {
       const ref = parseNomReference(r.nom, g.settings);
       const candidats = ref ? candidatsSource(ref, index).map((x) => x.entree) : [];
       const auto = ref ? trouverSourceZotero(ref, index) : null;
-      const biblio = g.resoudreParBibliographie(r);
-      let dansZotero = null;
+      const biblio = await g.resoudreParBibliographie(r, passages);
       const doi = r.doi || (biblio && biblio.doi) || '';
+      let dansZotero = null;
       if (doi) {
         const z = index.find((x) => x.doi && x.doi === doi);
         if (z) dansZotero = z.basename;
@@ -8866,8 +8982,15 @@ class VueReferencesAttente extends obsidian.ItemView {
       else if (candidats.length) etat = 'arbitrer';
       else if (doi || (biblio && biblio.titre)) etat = 'identifiee';
       else etat = 'inconnue';
-      return { r, ref, candidats, auto, biblio, dansZotero, doi, etat };
-    });
+      this.lignes.push({ r, ref, candidats, auto, biblio, dansZotero, doi, etat });
+    }
+    this.rendre();
+  }
+
+  rendre() {
+    const c = this.contentEl;
+    c.empty();
+    const lignes = this.lignes || [];
 
     const compte = (e) => lignes.filter((l) => l.etat === e).length;
     const onglets = [
@@ -8878,7 +9001,6 @@ class VueReferencesAttente extends obsidian.ItemView {
       ['inconnue', tr('Non résolues'), compte('inconnue')],
       ['ecartee', tr('Écartées'), compte('ecartee')],
     ];
-
     const barre = c.createDiv({ cls: 'zfa-refs-barre' });
     for (const [cle, nom, n] of onglets) {
       const b = barre.createEl('button', { cls: 'zfa-refs-onglet', text: nom + ' (' + n + ')' });
@@ -8887,7 +9009,9 @@ class VueReferencesAttente extends obsidian.ItemView {
     }
     const outils = c.createDiv({ cls: 'zfa-refs-outils' });
     const bMaj = outils.createEl('button', { text: tr('Récupérer les bibliographies') });
-    bMaj.onclick = async () => { await this.greffon.rafraichirBibliographies(false); this.rendre(); };
+    bMaj.onclick = async () => { await this.greffon.rafraichirBibliographies(false); await this.preparer(); };
+    const bRe = outils.createEl('button', { text: tr('Recalculer') });
+    bRe.onclick = () => this.preparer();
 
     const corps = c.createDiv({ cls: 'zfa-refs-liste' });
     const visibles = lignes.filter((l) => this.filtre === 'tous' || l.etat === this.filtre);
@@ -8934,11 +9058,24 @@ class VueReferencesAttente extends obsidian.ItemView {
       const lien = ls.createEl('a', { text: src, href: '#' });
       lien.onclick = (e) => { e.preventDefault(); this.greffon.ouvrirNote(src); };
       ls.createSpan({ cls: 'zfa-ref-compteur', text: n + '×' });
-      if (l.biblio && l.biblio.source === src) {
-        const bb = ls.createDiv({ cls: 'zfa-ref-biblio' });
-        bb.createDiv({ cls: 'zfa-ref-texte', text: '« ' + l.biblio.titre + ' »' });
-        if (l.biblio.revue) bb.createDiv({ cls: 'zfa-ref-faible', text: l.biblio.revue });
-        if (l.biblio.doi) this.ligneDoi(bb, l.biblio.doi);
+      if (!l.biblio || l.biblio.source !== src) continue;
+
+      // Le passage surligné, avec l'appel de citation mis en évidence : c'est
+      // lui qui justifie la proposition, et qui permet de la contester.
+      if (l.biblio.passage) {
+        const pa = ls.createDiv({ cls: 'zfa-ref-passage' });
+        this.ecrirePassage(pa, l.biblio.passage, l.r.nom);
+      }
+      const bb = ls.createDiv({ cls: 'zfa-ref-biblio' });
+      bb.createDiv({ cls: 'zfa-ref-titre-bloc',
+        text: l.biblio.sur ? tr('Dans sa bibliographie') : tr('Dans sa bibliographie, sans certitude') });
+      bb.createDiv({ cls: 'zfa-ref-texte', text: '« ' + l.biblio.titre + ' »' });
+      if (l.biblio.revue) bb.createDiv({ cls: 'zfa-ref-faible', text: l.biblio.revue });
+      if (l.biblio.doi) this.ligneDoi(bb, l.biblio.doi);
+      for (const autre of l.biblio.autres || []) {
+        const au = bb.createDiv({ cls: 'zfa-ref-autre' });
+        au.createDiv({ cls: 'zfa-ref-faible', text: tr('ou bien : ') + '« ' + autre.titre + ' »' });
+        if (autre.doi) this.ligneDoi(au, autre.doi);
       }
     }
 
@@ -8975,6 +9112,17 @@ class VueReferencesAttente extends obsidian.ItemView {
       .then(() => this.rendre());
     const ouvrir = b4.createEl('button', { text: tr('Ouvrir la note') });
     ouvrir.onclick = () => this.app.workspace.getLeaf(true).openFile(l.r.fichier);
+  }
+
+  // Le nom cité est souligné dans le passage, pour que l'œil aille droit à
+  // l'endroit qui compte.
+  ecrirePassage(el, passage, nomRef) {
+    const nom = nomRef.split(/,/)[0].split(/\s+et al/)[0].split(/\s*&/)[0].trim();
+    const i = sansAccents(passage).indexOf(sansAccents(nom));
+    if (!nom || i < 0) { el.setText('« ' + passage + ' »'); return; }
+    el.createSpan({ text: '« ' + passage.slice(0, i) });
+    el.createSpan({ cls: 'zfa-ref-appel', text: passage.slice(i, i + nom.length) });
+    el.createSpan({ text: passage.slice(i + nom.length) + ' »' });
   }
 
   ligneDoi(parent, doi) {
