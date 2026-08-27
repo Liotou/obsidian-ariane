@@ -349,6 +349,11 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Réparer les liens d’auteurs (esperluette collée)": "Repair author links (stuck ampersand)",
+    "Aucun lien d’auteur à réparer.": "No author link to repair.",
+    "Liens d’auteurs réparés : ": "Author links repaired: ",
+    " dans ": " in ",
+    " note(s).": " note(s).",
     "sélectionnée(s)": "selected",
     "Tout sélectionner dans cet onglet": "Select everything in this tab",
     "Arbitrer": "Arbitrate",
@@ -2879,6 +2884,11 @@ class ZotflowAtomiser extends obsidian.Plugin {
       id: 'decouper-bibliographies',
       name: tr('Découper les bibliographies en texte brut'),
       callback: () => this.decouperBibliographies(),
+    });
+    this.addCommand({
+      id: 'reparer-liens-auteurs',
+      name: tr('Réparer les liens d’auteurs (esperluette collée)'),
+      callback: () => this.reparerLiensAuteurs(),
     });
     this.addCommand({
       id: 'arbitrer-references-attente',
@@ -7394,6 +7404,34 @@ class ZotflowAtomiser extends obsidian.Plugin {
     new obsidian.Notice(tr('Identification écrite : ') + '« ' + verdict.titre.slice(0, 60) + ' »');
   }
 
+  // Réparation : d'anciennes versions découpaient « Dupont, Martin, & Durand »
+  // en laissant l'esperluette collée au dernier nom, d'où des liens « [[& X]] »
+  // qui ne pointent nulle part. Le découpage est corrigé, restent les résidus.
+  async reparerLiensAuteurs() {
+    const motif = /\[\[\s*&\s+([^\]|#]+?)\s*(\|[^\]]*)?\]\]/g;
+    let fichiers = 0, liens = 0;
+    const touches = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const contenu = await this.app.vault.cachedRead(f);
+      motif.lastIndex = 0;
+      if (!motif.test(contenu)) continue;
+      motif.lastIndex = 0;
+      let n = 0;
+      const neuf = contenu.replace(motif, (tout, nom, alias) => {
+        n += 1;
+        return '[[' + nom.trim() + (alias || '') + ']]';
+      });
+      if (neuf === contenu) continue;
+      await this.ecrire(f.path, neuf, f);
+      fichiers += 1; liens += n;
+      touches.push(f.basename);
+    }
+    if (!fichiers) new obsidian.Notice(tr('Aucun lien d’auteur à réparer.'));
+    else new obsidian.Notice(tr('Liens d’auteurs réparés : ') + liens + tr(' dans ') + fichiers + tr(' note(s).'));
+    console.log('[Ariane] liens d’auteurs réparés dans :', touches);
+    return liens;
+  }
+
   async ouvrirNote(basename) {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === basename);
     if (f) await this.app.workspace.getLeaf(true).openFile(f);
@@ -7415,6 +7453,32 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return base ? require('path').join(base, rel) : null;
   }
 
+  // Deux formes ont coexisté dans le cache : les tableaux « reference » bruts de
+  // Crossref, et la forme d'Ariane { auteurs, annee, titre, doi, brut }. On
+  // convertit à la lecture, pour n'en manipuler qu'une seule ensuite.
+  static normaliserEntree(e) {
+    if (!e || typeof e !== 'object') return null;
+    if (Array.isArray(e.auteurs) || e.annee !== undefined) return e; // déjà normalisée
+    const brut = String(e.unstructured || '').trim();
+    const decoupe = e._ariane || null;
+    const auteur = String(e.author || '').trim();
+    const auteurs = decoupe && decoupe.auteurs && decoupe.auteurs.length
+      ? decoupe.auteurs
+      : (auteur ? auteur.split(/[^\p{L}\p{M}'-]+/u).filter((x) => x.length > 1) : []);
+    return {
+      auteurs,
+      annee: String(e.year || (decoupe && decoupe.annee) || '').trim(),
+      titre: String(e['article-title'] || e['volume-title'] || (decoupe && decoupe.titre) || '').trim(),
+      revue: String(e['journal-title'] || (decoupe && decoupe.revue) || '').trim(),
+      doi: normDoi(e.DOI),
+      brut,
+    };
+  }
+
+  static normaliserBiblio(liste) {
+    return (liste || []).map((e) => ZotflowAtomiser.normaliserEntree(e)).filter(Boolean);
+  }
+
   chargerBibliographies() {
     if (this.bibliographies) return this.bibliographies;
     const c = this.cheminBibliographies();
@@ -7424,6 +7488,18 @@ class ZotflowAtomiser extends obsidian.Plugin {
       this.bibliographies = {};
     }
     return this.bibliographies;
+  }
+
+  // Les références citées d'une source, dans la forme d'Ariane, quelle que soit
+  // la manière dont elles sont entrées dans le cache.
+  bibliographieDeDoi(doi) {
+    const d = normDoi(doi);
+    if (!d) return null;
+    const brut = this.chargerBibliographies()[d];
+    if (!brut) return null;
+    if (!this._biblioNorm) this._biblioNorm = {};
+    if (!this._biblioNorm[d]) this._biblioNorm[d] = ZotflowAtomiser.normaliserBiblio(brut);
+    return this._biblioNorm[d];
   }
 
   async ecrireBibliographies() {
@@ -7563,26 +7639,26 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const parSource = [];
     for (const occ of occurrences) {
       const fiche = index.find((z) => z.basename === occ.source);
-      const liste = fiche && fiche.doi ? biblio[fiche.doi] : null;
-      if (!liste) continue;
+      const liste = fiche && fiche.doi ? this.bibliographieDeDoi(fiche.doi) : null;
+      if (!liste || !liste.length) continue;
       const passage = await this.passageDe(occ.fichier, occ.marque);
       const sac = new Set(tokeniser(this.fenetreCitation(passage, premier)));
 
       const cands = [];
       for (const e of liste) {
-        if (String(e.year || '') !== annee) continue;
-        const auteur = sansAccents(e.author || '');
-        const brut = sansAccents(e.unstructured || '');
-        const motsAuteur = auteur.split(/[^a-z0-9]+/).filter(Boolean);
-        const motsBrut = brut.split(/[^a-z0-9]+/).filter(Boolean);
-        const colle = motsAuteur.length ? motsAuteur.includes(premier) : motsBrut[0] === premier;
+        if (String(e.annee || '') !== annee) continue;
+        const brut = sansAccents(e.brut || '');
+        const noms = (e.auteurs || []).map((x) => sansAccents(String(x).split(/\s+/).pop()));
+        // Égalité stricte sur les mots : « han » CONTENU dans « hannah »
+        // rattachait Han et al. 2017 à Hannah 2018.
+        const colle = noms.length
+          ? noms.includes(premier)
+          : brut.split(/[^a-z0-9]+/).filter(Boolean)[0] === premier;
         if (!colle) continue;
-        const decoupe = e._ariane && e._ariane.titre ? e._ariane.titre : '';
-        const titre = String(e['article-title'] || e['volume-title'] || decoupe || e.unstructured || '').trim();
-        const doi = normDoi(e.DOI);
+        const titre = String(e.titre || e.brut || '').trim();
+        const doi = normDoi(e.doi);
         if (!titre && !doi) continue;
-        cands.push({ titre, doi, brut,
-          revue: String(e['journal-title'] || '').trim(), score: 0 });
+        cands.push({ titre, doi, brut, revue: String(e.revue || '').trim(), score: 0 });
       }
       if (!cands.length) continue;
 
@@ -7717,11 +7793,12 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const aFaire = [];
     for (const doi of Object.keys(biblio)) {
       const liste = biblio[doi] || [];
-      for (let i = 0; i < liste.length; i++) {
-        const e = liste[i];
-        if (e['article-title'] || e['volume-title'] || e._ariane) continue;
-        if (!e.unstructured || String(e.unstructured).trim().length < 20) continue;
-        aFaire.push({ doi, i, brut: String(e.unstructured).trim() });
+      const norm = this.bibliographieDeDoi(doi) || [];
+      for (let i = 0; i < norm.length; i++) {
+        const e = norm[i];
+        if (e.titre) continue;
+        if (!e.brut || e.brut.length < 20) continue;
+        aFaire.push({ doi, i, brut: e.brut });
       }
     }
     if (!aFaire.length) { new obsidian.Notice(tr('Rien à découper.')); return 0; }
@@ -7746,7 +7823,14 @@ class ZotflowAtomiser extends obsidian.Plugin {
       try { extrait = JSON.parse(brutJson); } catch (e) { jetes += 1; continue; }
       const valide = this.validerDecoupage(extrait, t.brut);
       if (!valide) { jetes += 1; continue; }
-      this.bibliographies[t.doi][t.i]._ariane = valide;
+      // On écrit dans la forme normalisée, qui est celle du cache désormais.
+      const cible = (this.bibliographieDeDoi(t.doi) || [])[t.i];
+      if (!cible) { jetes += 1; continue; }
+      cible.titre = valide.titre;
+      cible.revue = cible.revue || valide.revue || '';
+      if (!cible.auteurs || !cible.auteurs.length) cible.auteurs = valide.auteurs;
+      if (!cible.annee) cible.annee = valide.annee;
+      this.bibliographies[t.doi] = this.bibliographieDeDoi(t.doi);
       gardes += 1;
       // Écriture régulière : un lot de mille entrées ne doit pas être perdu
       // parce qu'Obsidian a été fermé en cours de route.
@@ -7786,7 +7870,8 @@ class ZotflowAtomiser extends obsidian.Plugin {
       const json = await this.apiGetJson(
         'https://api.crossref.org/works/' + encodeURIComponent(doi) + (q ? '?' + q : ''));
       const m = json && json.message ? json.message : null;
-      biblio[doi] = (m && m.reference) || [];
+      biblio[doi] = ZotflowAtomiser.normaliserBiblio((m && m.reference) || []);
+      if (this._biblioNorm) delete this._biblioNorm[doi];
       n += 1;
       avis.setMessage(tr('Bibliographies : ') + n + ' / ' + liste.length);
       // Crossref demande de la retenue : on n'enchaîne pas les appels.
@@ -7841,9 +7926,16 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return refs;
   }
 
-  async apiRefsPourDoi(doi) {
+  async apiRefsPourDoi(doi, forcer) {
     doi = normDoi(doi);
     if (!doi) return [];
+    // Le cache est partagé avec le volet d'arbitrage : générer une
+    // bibliographie l'alimente, et l'ouvrir n'appelle plus le réseau. Les deux
+    // fonctions interrogeaient les mêmes DOI chacune de son côté.
+    if (!forcer) {
+      const enCache = this.bibliographieDeDoi(doi);
+      if (enCache && enCache.length) return enCache;
+    }
     const src = this.settings.apiSource || 'auto';
     let refs;
     if (src === 'crossref') refs = await this.apiCrossref(doi);
@@ -7852,7 +7944,13 @@ class ZotflowAtomiser extends obsidian.Plugin {
       refs = await this.apiCrossref(doi); // Crossref d'abord (couverture, un appel)
       if (!refs.length) refs = await this.apiOpenAlex(doi); // sinon OpenAlex
     }
-    return this.enrichirRefsParDoi(refs);
+    const finales = await this.enrichirRefsParDoi(refs);
+    if (finales && finales.length) {
+      this.chargerBibliographies()[doi] = finales;
+      if (this._biblioNorm) delete this._biblioNorm[doi];
+      await this.ecrireBibliographies();
+    }
+    return finales;
   }
 
   // Complète les références qui n'ont qu'un DOI (fréquent avec Crossref) en
@@ -7966,6 +8064,17 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const pendings = this.referencesEnAttenteDeSource(file.basename)
       .map((nm) => ({ nom: nm, ref: parseNomReference(nm, this.settings) }))
       .filter((x) => x.ref);
+    // Combien d'entrées de la bibliographie répondent à chaque référence en
+    // attente ? Au-delà d'une, l'appariement auteur-année ne désigne rien : on
+    // classe la référence sans écrire d'identification. C'est ce silence qui
+    // avait inscrit un mauvais « Renn, 2008 » dans le coffre.
+    const ambigues = new Set();
+    for (const x of pendings) {
+      let n = 0;
+      for (const a of apiRefs) if (this.refCorrespondApi(x.ref, a)) n += 1;
+      if (n > 1) ambigues.add(x.nom);
+    }
+
     const dejaMatch = new Set();
     const secZotero = [];
     const secAttente = [];
@@ -7988,13 +8097,14 @@ class ZotflowAtomiser extends obsidian.Plugin {
       } else if (pm) {
         // Référence en attente (citée en annotation, absente de Zotero) : enrichie.
         const pf = this.app.vault.getAbstractFileByPath(this.dossierR + '/' + pm.nom + '.md');
-        if (pf instanceof obsidian.TFile) await this.enrichirReference(pf, a);
+        if (pf instanceof obsidian.TFile && !ambigues.has(pm.nom)) await this.enrichirReference(pf, a);
         dejaMatch.add(pm.nom);
         // On inscrit à côté du lien ce que la bibliographie dit de cette
         // référence. Sans cela la note ne montre qu'un « Auteur, Année » qui ne
         // distingue rien, alors que l'identification vient d'être trouvée et
         // écrite dans la note en attente : elle était invérifiable.
-        secAttente.push('[[' + pm.nom + ']] ' + this.ligneRefTexte(a).replace(/^- /, '— '));
+        secAttente.push('[[' + pm.nom + ']] ' + this.ligneRefTexte(a).replace(/^- /, '— ')
+          + (ambigues.has(pm.nom) ? '  *(plusieurs entrées possibles : à arbitrer)*' : ''));
       } else {
         // Bibliographie seule : texte, hors graphe.
         secSeule.push(this.ligneRefTexte(a));

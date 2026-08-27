@@ -1,7 +1,7 @@
 {
   "id": "zotflow-atomiser",
   "name": "Ariane",
-  "version": "2.62.1",
+  "version": "2.63.0",
   "minAppVersion": "1.0.0",
   "description": "Downstream companion of ZotFlow: turns Zotero annotations and notes into linked atomic notes, cites Zotero live while you write, suggests related notes locally, and exports to Word with refreshable Zotero fields.",
   "author": "Liotou",
