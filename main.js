@@ -349,6 +349,17 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "sélectionnée(s)": "selected",
+    "Tout sélectionner dans cet onglet": "Select everything in this tab",
+    "Arbitrer": "Arbitrate",
+    "Écrire les identifications": "Write the identifications",
+    "Désélectionner": "Clear selection",
+    "Un traitement est déjà en cours.": "A batch is already running.",
+    "Arbitrage": "Arbitration",
+    "Écriture": "Writing",
+    "Marquage": "Marking",
+    "aboutis": "succeeded",
+    "Arrêter le lot": "Stop the batch",
     "Fiche Zotero trouvée": "Zotero entry found",
     "Verdict du modèle": "Model verdict",
     "Identifiée": "Identified",
@@ -9299,6 +9310,7 @@ class VueReferencesAttente extends obsidian.ItemView {
     this.greffon = greffon;
     this.filtre = 'tous';
     this.deplies = new Set();
+    this.choisies = new Set();
   }
 
   getViewType() { return TYPE_VUE_REFS; }
@@ -9369,9 +9381,15 @@ class VueReferencesAttente extends obsidian.ItemView {
     bMaj.onclick = async () => { await this.greffon.rafraichirBibliographies(false); await this.preparer(); };
     const bRe = outils.createEl('button', { text: tr('Recalculer') });
     bRe.onclick = () => this.preparer();
+    if (this.enCours) {
+      const bStop = outils.createEl('button', { cls: 'mod-warning', text: tr('Arrêter le lot') });
+      bStop.onclick = () => { this.enCours = false; };
+    }
+
+    const visibles = lignes.filter((l) => this.filtre === 'tous' || l.etat === this.filtre);
+    this.rendreSelection(c, visibles);
 
     const corps = c.createDiv({ cls: 'zfa-refs-liste' });
-    const visibles = lignes.filter((l) => this.filtre === 'tous' || l.etat === this.filtre);
     if (!visibles.length) {
       corps.createDiv({ cls: 'zfa-refs-vide', text: tr('Rien dans cette catégorie.') });
       return;
@@ -9420,12 +9438,91 @@ class VueReferencesAttente extends obsidian.ItemView {
     return b;
   }
 
+  // Sélection multiple : les gestes d'arbitrage sont longs et répétitifs, les
+  // enchaîner un par un n'a pas de sens sur six cents références.
+  rendreSelection(c, visibles) {
+    const g = this.greffon;
+    const choisies = visibles.filter((l) => this.choisies.has(l.r.nom));
+    const barre = c.createDiv({ cls: 'zfa-refs-selection' });
+
+    const tout = barre.createEl('input', { type: 'checkbox', cls: 'zfa-ref-coche' });
+    tout.checked = visibles.length > 0 && choisies.length === visibles.length;
+    tout.indeterminate = choisies.length > 0 && choisies.length < visibles.length;
+    tout.onclick = () => {
+      if (tout.checked) for (const l of visibles) this.choisies.add(l.r.nom);
+      else for (const l of visibles) this.choisies.delete(l.r.nom);
+      this.rendre();
+    };
+    barre.createSpan({ cls: 'zfa-ref-faible',
+      text: choisies.length
+        ? choisies.length + ' / ' + visibles.length + ' ' + tr('sélectionnée(s)')
+        : tr('Tout sélectionner dans cet onglet') });
+    if (!choisies.length) return;
+
+    const enConflit = choisies.filter((l) => l.biblio && l.biblio.conflit && !l.verdict);
+    const avecVerdict = choisies.filter((l) => l.verdict);
+
+    if (enConflit.length) {
+      this.bouton(barre, tr('Arbitrer') + ' (' + enConflit.length + ')', 'wand',
+        () => this.enLot(enConflit, tr('Arbitrage'), async (l) => {
+          await g.arbitrerConflit(l.r, l.biblio);
+          l.verdict = this.conclure(l.biblio);
+          l.etat = this.classer(l);
+          return !!l.verdict;
+        }), true);
+    }
+    if (avecVerdict.length) {
+      this.bouton(barre, tr('Écrire les identifications') + ' (' + avecVerdict.length + ')', 'check',
+        () => this.enLot(avecVerdict, tr('Écriture'), async (l) => {
+          await g.ecrireIdentification(l.r, l.verdict);
+          return true;
+        }), true);
+    }
+    this.bouton(barre, tr('À acquérir'), 'shopping-cart',
+      () => this.enLot(choisies, tr('Marquage'), async (l) => {
+        await g.marquerReference(l.r, 'à acquérir'); return true;
+      }));
+    this.bouton(barre, tr('Écarter'), 'eye-off',
+      () => this.enLot(choisies, tr('Marquage'), async (l) => {
+        await g.marquerReference(l.r, 'écartée'); return true;
+      }));
+    this.bouton(barre, tr('Désélectionner'), 'x', () => { this.choisies.clear(); this.rendre(); });
+  }
+
+  // Un lot avance visiblement et s'interrompt : l'arbitrage prend plusieurs
+  // secondes par référence, personne ne doit rester devant une fenêtre figée.
+  async enLot(lignes, intitule, action) {
+    if (this.enCours) { new obsidian.Notice(tr('Un traitement est déjà en cours.')); return; }
+    this.enCours = true;
+    const avis = new obsidian.Notice(intitule + ' : 0 / ' + lignes.length, 0);
+    let n = 0, ok = 0;
+    for (const l of lignes) {
+      if (!this.enCours) break;
+      try { if (await action(l)) ok += 1; } catch (e) { console.error('[Ariane] lot', e); }
+      n += 1;
+      avis.setMessage(intitule + ' : ' + n + ' / ' + lignes.length + '  (' + ok + ' ' + tr('aboutis') + ')');
+    }
+    this.enCours = false;
+    avis.hide();
+    new obsidian.Notice(intitule + ' — ' + ok + ' / ' + n + ' ' + tr('aboutis') + '.');
+    // Les marquages changent l'état lu dans les notes : on recharge.
+    await this.preparer();
+  }
+
   rendreLigne(parent, l) {
     const g = this.greffon;
     const el = parent.createDiv({ cls: 'zfa-ref zfa-ref-' + l.etat + '-etat' });
     const ouvert = this.deplies.has(l.r.nom);
 
     const tete = el.createDiv({ cls: 'zfa-ref-tete' });
+    const coche = tete.createEl('input', { type: 'checkbox', cls: 'zfa-ref-coche' });
+    coche.checked = this.choisies.has(l.r.nom);
+    // Sans cela, cocher replierait ou déplierait la fiche du même geste.
+    coche.onclick = (e) => {
+      e.stopPropagation();
+      if (coche.checked) this.choisies.add(l.r.nom); else this.choisies.delete(l.r.nom);
+      this.rendre();
+    };
     tete.createSpan({ cls: 'zfa-ref-chevron', text: ouvert ? '▾' : '▸' });
     tete.createSpan({ cls: 'zfa-ref-nom', text: l.r.nom });
     // Le titre connu se lit dès la ligne fermée : c'est lui qui identifie.

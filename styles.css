@@ -556,11 +556,17 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   border-radius: 50%;
   background: var(--text-faint);
 }
-.zfa-ref-rattachable .zfa-ref-tete::before { background: var(--color-green); }
-.zfa-ref-arbitrer .zfa-ref-tete::before { background: var(--color-orange); }
-.zfa-ref-identifiee .zfa-ref-tete::before { background: var(--color-blue); }
+/* Le suffixe « -etat » n'est pas décoratif : sans lui ces règles visaient une
+   classe que le script ne pose plus, et toutes les pastilles retombaient sur le
+   gris par défaut, rendant les états indiscernables. */
+.zfa-ref-rattachable-etat .zfa-ref-tete::before { background: var(--color-green); }
 .zfa-ref-conflit-etat .zfa-ref-tete::before { background: var(--color-orange); }
-.zfa-ref-ecartee { opacity: 0.5; }
+.zfa-ref-arbitrer-etat .zfa-ref-tete::before { background: var(--color-yellow); }
+.zfa-ref-identifiee-etat .zfa-ref-tete::before { background: var(--color-blue); }
+.zfa-ref-acquerir-etat .zfa-ref-tete::before { background: var(--color-purple); }
+.zfa-ref-inconnue-etat .zfa-ref-tete::before { background: var(--text-faint); }
+.zfa-ref-ecartee-etat { opacity: 0.45; }
+.zfa-ref-ecartee-etat .zfa-ref-tete::before { background: var(--text-faint); }
 
 .zfa-ref-detail {
   margin: 6px 0 10px 15px;
@@ -736,3 +742,20 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 
 .zfa-ref-source:last-child { border-bottom: none; }
 .zfa-ref-source .zfa-ref-barre-actions { margin: 4px 0 6px; }
+
+
+/* ---- Sélection multiple ---- */
+
+.zfa-refs-selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--background-secondary);
+}
+
+.zfa-ref-coche { flex: 0 0 auto; margin: 0; cursor: pointer; }
+.zfa-refs-selection .zfa-ref-faible { flex: 1 1 auto; }
