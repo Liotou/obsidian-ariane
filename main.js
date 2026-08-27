@@ -1430,7 +1430,7 @@ function extraireBlocs(contenu, cfg) {
 // Noms de famille (minuscule) des auteurs cités d'une référence.
 function surnamesReference(ref) {
   return (ref && ref.auteurs ? ref.auteurs : [])
-    .map((a) => sansLien(String(a)).trim().split(/\s+/).pop().toLowerCase())
+    .map((a) => sansAccents(sansLien(String(a)).trim().split(/\s+/).pop()))
     .filter(Boolean);
 }
 
@@ -1444,9 +1444,16 @@ function appariementSource(ref, entree) {
   if (!an || !entree.annee || entree.annee !== an) return null;
   const rs = surnamesReference(ref);
   if (!rs.length) return null;
-  const es = new Set(entree.surnames || []);
+  const liste = entree.surnames || [];
+  const es = new Set(liste);
   if (!es.size) return null;
-  if (ref.etAl) return es.has(rs[0]) ? 'faible' : null;
+  if (ref.etAl) {
+    // « Renn et al., 2011 » doit désigner une fiche dont Renn est le PREMIER
+    // auteur. Se contenter de sa présence quelque part dans la liste rattachait
+    // à des travaux où l'auteur cité n'est que co-signataire : vérifié, quatre
+    // faux appariements sur vingt-six.
+    return rs[0] === liste[0] ? 'fort' : (es.has(rs[0]) ? 'faible' : null);
+  }
   return rs.every((s) => es.has(s)) ? 'fort' : null;
 }
 
@@ -1488,6 +1495,13 @@ function refDepuisNomAttente(nom) {
 // --- Références citées via API bibliographique (fonctions pures, testables) ---
 
 // Normalise un DOI : minuscule, sans préfixe URL ni « doi: ».
+// Björnsdóttir, Ylönen, Méric, Santaló : sans cette normalisation, une simple
+// mise en minuscules laisse les diacritiques et l'appariement échoue dès que
+// les deux graphies diffèrent d'un accent.
+function sansAccents(s) {
+  return String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 function normDoi(s) {
   if (!s) return '';
   return String(s)
@@ -6571,7 +6585,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
       ? (Array.isArray(fm.creators) ? fm.creators : [fm.creators]).map(sansLien)
       : [];
     const surnames = creators
-      .map((c) => String(c).trim().split(/\s+/).pop().toLowerCase())
+      .map((c) => sansAccents(String(c).trim().split(/\s+/).pop()))
       .filter((x) => x.length > 0);
     const anneeMatch = String(fm.year || fm.date || '').match(/\d{4}/);
     const creatorsFull = [];
