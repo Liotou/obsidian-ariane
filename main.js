@@ -349,6 +349,37 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Atomiser : la note source active": "Atomise: the active source note",
+    "Atomiser : toutes les sources": "Atomise: every source",
+    "Atomiser : les notes-filles Zotero": "Atomise: Zotero child notes",
+    "Annotations : afficher ou masquer le panier": "Annotations: show or hide the basket",
+    "Annotations : ouvrir le panneau de suggestions": "Annotations: open the suggestions panel",
+    "Annotations : reconstruire l’index des suggestions": "Annotations: rebuild the suggestions index",
+    "Annotations : ouvrir dans Zotero": "Annotations: open in Zotero",
+    "Citations : tout replier": "Citations: fold all",
+    "Citations : tout déplier": "Citations: unfold all",
+    "Citations : replier ou déplier": "Citations: fold or unfold",
+    "Citations : rafraîchir les libellés…": "Citations: refresh the labels…",
+    "Bibliographie : régénérer dans la note active": "Bibliography: rebuild in the active note",
+    "Bibliographie : régénérer dans toutes mes notes": "Bibliography: rebuild in all my notes",
+    "Références citées : générer pour la source active": "Cited references: build for the active source",
+    "Références citées : générer pour toutes les sources": "Cited references: build for every source",
+    "Références citées : arrêter la génération": "Cited references: stop the run",
+    "Références citées : découper les entrées en texte brut": "Cited references: split the raw entries",
+    "Références en attente : ouvrir l’arbitrage": "Pending references: open the arbitration",
+    "Références en attente : rattacher automatiquement": "Pending references: attach automatically",
+    "Références en attente : lier la référence active à une fiche Zotero": "Pending references: link the active reference to a Zotero entry",
+    "Entretien : réparer les liens d’auteurs": "Housekeeping: repair author links",
+    "Entretien : retirer l’alias des liens d’annotation": "Housekeeping: strip the alias from annotation links",
+    "Entretien : normaliser les conjonctions des références": "Housekeeping: normalise reference conjunctions",
+    "Entretien : fusionner les doublons d’auteurs": "Housekeeping: merge duplicate authors",
+    "Word : exporter avec citations Zotero": "Word: export with Zotero citations",
+    "Word : vérifier le modèle": "Word: check the template",
+    "Schémas : synchroniser dans les notes": "Diagrams: synchronise into the notes",
+    "Schémas : valider le schéma actif": "Diagrams: validate the active diagram",
+    "Schémas : interroger le graphe": "Diagrams: query the graph",
+    "Temps : écrire le journal du jour": "Time: write today’s journal",
+    "Temps : reporter maintenant dans les notes": "Time: report now into the notes",
     "Mes citations : régénérer la bibliographie de la note active": "My citations: rebuild the bibliography of the active note",
     "Mes citations : régénérer la bibliographie de toutes mes notes": "My citations: rebuild the bibliography of all my notes",
     "Ce que citent mes sources : générer la note de la source active (via API)": "What my sources cite: build the note for the active source (via API)",
@@ -2781,37 +2812,37 @@ class ZotflowAtomiser extends obsidian.Plugin {
 
     this.addCommand({
       id: 'atomise-active',
-      name: tr('Atomiser la note source active'),
+      name: tr('Atomiser : la note source active'),
       callback: () => this.commandeNoteActive(),
     });
     this.addCommand({
       id: 'atomise-tout',
-      name: tr('Ré-atomiser toutes les sources'),
+      name: tr('Atomiser : toutes les sources'),
       callback: () => this.atomiserTout(),
     });
     this.addCommand({
       id: 'retirer-alias-liens',
-      name: tr("Retirer l'alias affiché des liens d'annotation"),
+      name: tr('Entretien : retirer l’alias des liens d’annotation'),
       callback: () => this.retirerAliasLiensAnnotation(),
     });
     this.addCommand({
       id: 'normaliser-conjonctions-references',
-      name: tr('Normaliser les conjonctions des références (et → &)'),
+      name: tr('Entretien : normaliser les conjonctions des références'),
       callback: () => this.normaliserConjonctionsReferences(),
     });
     this.addCommand({
       id: 'panier-annotations',
-      name: tr("Panier d'annotations : afficher / masquer"),
+      name: tr('Annotations : afficher ou masquer le panier'),
       callback: () => this.basculerPanier(),
     });
     this.addCommand({
       id: 'lier-reference-zotero',
-      name: tr('Lier cette référence à une fiche Zotero (désambiguïsation 2005a/b)'),
+      name: tr('Références en attente : lier la référence active à une fiche Zotero'),
       callback: () => this.assistantLiageReference(),
     });
     this.addCommand({
       id: 'rattacher-toutes-references',
-      name: tr('Rattacher automatiquement les références en attente aux sources Zotero'),
+      name: tr('Références en attente : rattacher automatiquement'),
       callback: () => this.rattacherToutesReferences(),
     });
     this.addCommand({
@@ -2852,7 +2883,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'biblio-note',
-      name: tr('Mes citations : régénérer la bibliographie de la note active'),
+      name: tr('Bibliographie : régénérer dans la note active'),
       callback: () => {
         const f = this.app.workspace.getActiveFile();
         if (f) this.majBibliographie(f); else new obsidian.Notice(tr('Ouvrez une note.'));
@@ -2860,12 +2891,12 @@ class ZotflowAtomiser extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'biblio-tout',
-      name: tr('Mes citations : régénérer la bibliographie de toutes mes notes'),
+      name: tr('Bibliographie : régénérer dans toutes mes notes'),
       callback: () => this.majBibliographieToutes(),
     });
     this.addCommand({
       id: 'schema-synchroniser-tout',
-      name: tr('Schémas : synchroniser le contenu dans les notes associées'),
+      name: tr('Schémas : synchroniser dans les notes'),
       callback: () => this.synchroniserTousSchemas(),
     });
     this.addCommand({
@@ -2880,52 +2911,47 @@ class ZotflowAtomiser extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'notes-lecture-atomiser',
-      name: tr('Notes de lecture : atomiser les notes-filles Zotero'),
+      name: tr('Atomiser : les notes-filles Zotero'),
       callback: () => this.atomiserToutesNotesLecture(),
     });
     this.addCommand({
       id: 'ouvrir-dans-zotero',
-      name: tr('Ouvrir dans Zotero (lecteur ZotFlow, annotation ou source)'),
+      name: tr('Annotations : ouvrir dans Zotero'),
       callback: () => this.ouvrirDansZotero(),
     });
     this.addCommand({
       id: 'verifier-modele-word',
-      name: tr('Vérifier le modèle Word (jetons et gabarits)'),
+      name: tr('Word : vérifier le modèle'),
       callback: () => this.verifierModeleWord(),
     });
     this.addCommand({
       id: 'decouper-bibliographies',
-      name: tr('Découper les bibliographies en texte brut'),
+      name: tr('Références citées : découper les entrées en texte brut'),
       callback: () => this.decouperBibliographies(),
     });
     this.addCommand({
       id: 'reparer-liens-auteurs',
-      name: tr('Réparer les liens d’auteurs (esperluette collée)'),
+      name: tr('Entretien : réparer les liens d’auteurs'),
       callback: () => this.reparerLiensAuteurs(),
     });
     this.addCommand({
       id: 'arbitrer-references-attente',
-      name: tr('Arbitrer les références en attente'),
+      name: tr('Références en attente : ouvrir l’arbitrage'),
       callback: () => this.ouvrirVueReferences(),
     });
     this.addCommand({
-      id: 'recuperer-bibliographies',
-      name: tr('Récupérer les bibliographies des sources citantes'),
-      callback: () => this.rafraichirBibliographies(false),
-    });
-    this.addCommand({
       id: 'exporter-word-zotero',
-      name: tr('Exporter en Word avec citations Zotero (Pandoc)'),
+      name: tr('Word : exporter avec citations Zotero'),
       callback: () => this.exporterWordZotero(),
     });
     this.addCommand({
       id: 'bibliographie-citee-source',
-      name: tr('Ce que citent mes sources : générer la note de la source active (via API)'),
+      name: tr('Références citées : générer pour la source active'),
       callback: () => this.genererBibliographieSource(),
     });
     this.addCommand({
       id: 'arreter-bibliographies',
-      name: tr('Arrêter la génération des bibliographies'),
+      name: tr('Références citées : arrêter la génération'),
       callback: () => {
         if (!this.bibliosEnCours) { new obsidian.Notice(tr('Aucune génération en cours.')); return; }
         this.bibliosEnCours = false;
@@ -2933,22 +2959,22 @@ class ZotflowAtomiser extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'bibliographies-citees-toutes',
-      name: tr('Ce que citent mes sources : générer les notes de toutes les sources (via API)'),
+      name: tr('Références citées : générer pour toutes les sources'),
       callback: () => this.genererToutesBibliographies(),
     });
     this.addCommand({
       id: 'fusionner-doublons-auteurs',
-      name: tr("Fusionner les doublons d'auteurs"),
+      name: tr('Entretien : fusionner les doublons d’auteurs'),
       callback: () => this.ouvrirFusionAuteurs(),
     });
     this.addCommand({
       id: 'suggestions-ouvrir',
-      name: tr("Suggestions d'annotations : ouvrir le panneau"),
+      name: tr('Annotations : ouvrir le panneau de suggestions'),
       callback: () => this.ouvrirVueSuggestions(),
     });
     this.addCommand({
       id: 'suggestions-reconstruire',
-      name: tr("Suggestions d'annotations : reconstruire l'index"),
+      name: tr('Annotations : reconstruire l’index des suggestions'),
       callback: async () => {
         const n = await this.construireIndexSuggestions();
         new obsidian.Notice(tr('Index de suggestions reconstruit (') + n + ' notes).');
@@ -7887,18 +7913,14 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const avis = new obsidian.Notice(tr('Bibliographies : 0 / ') + liste.length, 0);
     let n = 0;
     for (const doi of liste) {
-      const q = this.paramMailto();
-      const json = await this.apiGetJson(
-        'https://api.crossref.org/works/' + encodeURIComponent(doi) + (q ? '?' + q : ''));
-      const m = json && json.message ? json.message : null;
-      biblio[doi] = ZotflowAtomiser.normaliserBiblio((m && m.reference) || []);
-      if (this._biblioNorm) delete this._biblioNorm[doi];
+      // On passe par le chemin unique : il interroge Crossref puis OpenAlex,
+      // complète les entrées qui n'ont qu'un DOI, et écrit dans le cache
+      // partagé. Une seconde requête maison faisait double emploi.
+      await this.apiRefsPourDoi(doi);
       n += 1;
       avis.setMessage(tr('Bibliographies : ') + n + ' / ' + liste.length);
-      // Crossref demande de la retenue : on n'enchaîne pas les appels.
-      await new Promise((r) => setTimeout(r, 300));
+      if (this.dernierAppelReseau) await new Promise((r) => setTimeout(r, 300));
     }
-    await this.ecrireBibliographies();
     avis.hide();
     new obsidian.Notice(tr('Bibliographies récupérées : ') + n);
     return n;
