@@ -7855,15 +7855,43 @@ class ZotflowAtomiser extends obsidian.Plugin {
     }
     if (!parSource.length) return null;
 
-    // Regroupement en œuvres distinctes : deux sources qui donnent le même DOI,
-    // ou le même titre à la casse et aux accents près, parlent du même travail.
+    // Regroupement en œuvres distinctes. La comparaison des titres est plus
+    // délicate qu'il n'y paraît : mesuré sur un vrai coffre, trois « conflits »
+    // sur cinq n'en étaient pas. « Co-opetition » et « Co‐opetition: A
+    // revolutionary mindset… » diffèrent par un trait d'union Unicode et un
+    // sous-titre ; « Designing interactive strategy » est la troncature de
+    // « From value chain to value constellation: designing interactive
+    // strategy ». D'où : normalisation dure, puis un titre qui commence l'autre
+    // désigne le même travail. Un titre vide ne fonde jamais une œuvre à part.
+    const clefTitre = (t) => sansAccents(t)
+      .replace(/[\u2010-\u2015\u2212]/g, '-')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
     const oeuvres = [];
     for (const p of parSource) {
       const c = p.retenu;
-      const cle = c.doi || sansAccents(c.titre).replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 46);
-      let o = oeuvres.find((x) => x.cle === cle);
+      const kt = clefTitre(c.titre);
+      let o = null;
+      if (c.doi) o = oeuvres.find((x) => x.doi && x.doi === c.doi);
+      if (!o && kt) {
+        o = oeuvres.find((x) => {
+          if (x.doi && c.doi && x.doi !== c.doi) return false; // deux DOI distincts : deux œuvres
+          const kx = clefTitre(x.titre);
+          if (!kx) return true;
+          const court = kt.length < kx.length ? kt : kx;
+          const long = kt.length < kx.length ? kx : kt;
+          // Contenu, et pas seulement en tête : « Designing interactive
+          // strategy » est le SOUS-titre de « From value chain to value
+          // constellation: designing interactive strategy ». Le seuil de douze
+          // caractères écarte les rapprochements fortuits.
+          return court.length >= 12 && long.includes(court);
+        });
+      }
+      // Entrée sans titre ni DOI : elle rejoint la première œuvre plutôt que
+      // d'en inventer une seconde à partir de rien.
+      if (!o && !kt && !c.doi) o = oeuvres[0];
       if (!o) {
-        o = { cle, titre: c.titre, doi: c.doi, revue: c.revue, sources: [] };
+        o = { cle: c.doi || kt, titre: c.titre, doi: c.doi, revue: c.revue, sources: [] };
         oeuvres.push(o);
       }
       // Un titre plus complet vaut mieux qu'un titre tronqué.
