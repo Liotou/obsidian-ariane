@@ -7990,13 +7990,19 @@ class ZotflowAtomiser extends obsidian.Plugin {
         const pf = this.app.vault.getAbstractFileByPath(this.dossierR + '/' + pm.nom + '.md');
         if (pf instanceof obsidian.TFile) await this.enrichirReference(pf, a);
         dejaMatch.add(pm.nom);
-        secAttente.push('[[' + pm.nom + ']]');
+        // On inscrit à côté du lien ce que la bibliographie dit de cette
+        // référence. Sans cela la note ne montre qu'un « Auteur, Année » qui ne
+        // distingue rien, alors que l'identification vient d'être trouvée et
+        // écrite dans la note en attente : elle était invérifiable.
+        secAttente.push('[[' + pm.nom + ']] ' + this.ligneRefTexte(a).replace(/^- /, '— '));
       } else {
         // Bibliographie seule : texte, hors graphe.
         secSeule.push(this.ligneRefTexte(a));
       }
     }
-    for (const x of pendings) if (!dejaMatch.has(x.nom)) secAttente.push('[[' + x.nom + ']]');
+    // Celles que la bibliographie ne mentionne pas restent nues : c'est une
+    // information en soi, et il ne faut pas laisser croire à une identification.
+    for (const x of pendings) if (!dejaMatch.has(x.nom)) secAttente.push('[[' + x.nom + ']]  *(non trouvée dans cette bibliographie)*');
 
     const uniq = (arr) => [...new Set(arr)];
     const zList = uniq(secZotero);
