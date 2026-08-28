@@ -827,6 +827,18 @@ const TEXTES = {
     "Un canvas désigne cette tâche, mais sa note n'existe pas. Elle a pu être renommée ou supprimée ; rien n'a été effacé.": "A canvas points at this task, but its note does not exist. It may have been renamed or deleted; nothing was erased.",
     "Rien à signaler : vos tâches sont cohérentes.": "Nothing to report: your tasks are consistent.",
     "Tâches : incohérences": "Tasks: inconsistencies",
+    "Frise des tâches": "Task timeline",
+    "Tâches : frise": "Tasks: timeline",
+    "semaine": "week",
+    "mois": "month",
+    "trimestre": "quarter",
+    "année": "year",
+    " sur ": " of ",
+    " tâche(s) datée(s)": " task(s) dated",
+    "Non planifiées": "Unplanned",
+    "Tâche": "Task",
+    "Aucune tâche datée. Donnez une échéance à une tâche pour la voir ici.": "No dated task. Give a task a due date to see it here.",
+    "Aujourd'hui": "Today",
   },
 };
 let LANGUE = 'fr';
@@ -861,6 +873,7 @@ const DEFAULT_SETTINGS = {
   dossierTaches: '',            // rôle : où déposer les notes de tâche
   listeRappelsDefaut: 'Doctorat - Tâches',
   couleurCompositionCanvas: '6',
+  ganttZoom: 'mois',            // semaine | mois | trimestre | année
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes
   // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque
@@ -3149,6 +3162,11 @@ class ZotflowAtomiser extends obsidian.Plugin {
       callback: () => this.rattacherToutesReferences(),
     });
     this.addCommand({
+      id: 'frise-taches',
+      name: tr('Tâches : frise'),
+      callback: () => this.ouvrirVueGantt(),
+    });
+    this.addCommand({
       id: 'incoherences-taches',
       name: tr('Tâches : incohérences'),
       callback: () => this.ouvrirVueIncoherences(),
@@ -3313,6 +3331,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
     this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
+    this.registerView(TYPE_VUE_GANTT, (leaf) => new VueGanttTaches(leaf, this));
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
     this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
@@ -9657,6 +9676,38 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return out;
   }
 
+  static get COULEURS_GANTT() {
+    return {
+      'à faire': 'var(--text-faint)',
+      'en cours': 'var(--color-yellow)',
+      'en attente': 'var(--color-orange)',
+      'terminée': 'var(--color-green)',
+      'abandonnée': 'var(--text-faint)',
+    };
+  }
+
+  static get ZOOMS_GANTT() {
+    return { semaine: 24, mois: 8, trimestre: 3, 'année': 1 };
+  }
+
+  // Étendue de la frise : de la première date à la dernière, avec une marge de
+  // part et d'autre. Sans aucune date, on montre le mois autour d'aujourd'hui
+  // plutôt qu'une frise vide.
+  static etendueGantt(lignes, aujourdhui) {
+    const dates = [];
+    for (const l of lignes || []) {
+      if (l.debut) dates.push(l.debut);
+      if (l.echeance) dates.push(l.echeance);
+    }
+    if (!dates.length) {
+      return { debut: ZotflowAtomiser.decalerJour(aujourdhui, -7),
+               fin: ZotflowAtomiser.decalerJour(aujourdhui, 30) };
+    }
+    dates.sort();
+    return { debut: ZotflowAtomiser.decalerJour(dates[0], -3),
+             fin: ZotflowAtomiser.decalerJour(dates[dates.length - 1], 3) };
+  }
+
   static get COULEURS_STATUT() {
     return { 'à faire': '', 'en cours': '3', 'en attente': '2', 'terminée': '4', 'abandonnée': '5' };
   }
@@ -9776,6 +9827,58 @@ class ZotflowAtomiser extends obsidian.Plugin {
       }
     }
     return l.join('\n');
+  }
+
+  // Les tâches du coffre, dans la forme qu'attend disposerGantt.
+  tachesPourGantt() {
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const ref = this.refDeChemin(f.path);
+      if (!ref) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (fm.type !== 'tache') continue;
+      const alias = [].concat(fm.aliases || []).map(String).filter(Boolean);
+      out.push({
+        ref,
+        intitule: alias[0] || ref,
+        parent: fm.parent || '',
+        bloquePar: [].concat(fm['bloque-par'] || []).map(String),
+        debut: fm.debut || '',
+        echeance: fm.echeance || '',
+        statut: fm.statut || 'à faire',
+        avancement: Number(fm.avancement) || 0,
+        jalon: fm.jalon === true,
+        fichier: f,
+      });
+    }
+    return out;
+  }
+
+  // Écrit en une passe les dates rendues par decalerSousArbre ou cascadeAval.
+  async ecrireDatesTaches(changements) {
+    const parRef = new Map(this.tachesPourGantt().map((t) => [t.ref, t.fichier]));
+    let n = 0;
+    for (const c of changements || []) {
+      const f = parRef.get(c.ref);
+      if (!f) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (String(fm.debut || '') === c.debut && String(fm.echeance || '') === c.echeance) continue;
+      await this.app.fileManager.processFrontMatter(f, (x) => {
+        if (c.debut) x.debut = c.debut;
+        if (c.echeance) x.echeance = c.echeance;
+        x.modifie = new Date().toISOString().slice(0, 10);
+      });
+      n += 1;
+    }
+    return n;
+  }
+
+  async ouvrirVueGantt() {
+    const ex = this.app.workspace.getLeavesOfType(TYPE_VUE_GANTT);
+    if (ex.length) { this.app.workspace.revealLeaf(ex[0]); return; }
+    const feuille = this.app.workspace.getLeaf(true);
+    await feuille.setViewState({ type: TYPE_VUE_GANTT, active: true });
+    this.app.workspace.revealLeaf(feuille);
   }
 
   // La référence d'une tâche, déduite du chemin. On la reconnaît à sa forme
@@ -11373,6 +11476,225 @@ class ModaleNouvelleTache extends obsidian.Modal {
 
 const TYPE_VUE_REFS = 'zfa-references';
 const TYPE_VUE_INCOHERENCES = 'zfa-taches-incoherences';
+const TYPE_VUE_GANTT = 'zfa-taches-gantt';
+const HAUTEUR_LIGNE_GANTT = 28;
+
+/* =========================================================================
+ * Frise Gantt des tâches
+ * ========================================================================= */
+
+// Instrument de planification, à l'échelle du trimestre. Ce n'est pas la vue du
+// quotidien, qui reste la base « Débloquées » : une frise répond à « quand »,
+// pas à « quoi maintenant ».
+class VueGanttTaches extends obsidian.ItemView {
+  constructor(feuille, greffon) {
+    super(feuille);
+    this.greffon = greffon;
+    this.replies = new Set();
+  }
+
+  getViewType() { return TYPE_VUE_GANTT; }
+  getDisplayText() { return tr('Frise des tâches'); }
+  getIcon() { return 'calendar-range'; }
+
+  async onOpen() {
+    this.contentEl.addClass('zfa-gantt');
+    this.dessiner();
+    // La frise suit les notes : changer une date ailleurs doit se voir ici.
+    this.registerEvent(this.app.metadataCache.on('changed', (f) => {
+      if (!this.greffon.refDeChemin(f.path)) return;
+      this.greffon.antirebond('gantt:vue', () => this.dessiner(), 600);
+    }));
+  }
+
+  get zoom() { return this.greffon.settings.ganttZoom || 'mois'; }
+  get pixelsParJour() { return ZotflowAtomiser.ZOOMS_GANTT[this.zoom] || 8; }
+
+  // Les lignes effectivement visibles : une méta-tâche repliée masque toute sa
+  // descendance, quelle que soit sa profondeur.
+  visibles(lignes) {
+    const out = [];
+    let seuil = -1;
+    for (const l of lignes) {
+      if (seuil >= 0 && l.niveau > seuil) continue;
+      seuil = -1;
+      out.push(l);
+      if (l.aDesEnfants && this.replies.has(l.ref)) seuil = l.niveau;
+    }
+    return out;
+  }
+
+  ouvrir(ref) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    if (f) this.app.workspace.getLeaf(true).openFile(f);
+  }
+
+  dessiner() {
+    const c = this.contentEl;
+    const defilement = c.querySelector('.zfa-gantt-corps');
+    const memeX = defilement ? defilement.scrollLeft : null;
+    c.empty();
+
+    const taches = this.greffon.tachesPourGantt();
+    const toutes = ZotflowAtomiser.disposerGantt(taches);
+    const planifiees = toutes.filter((l) => l.debut || l.echeance);
+    const nonPlanifiees = toutes.filter((l) => !l.debut && !l.echeance);
+
+    this.dessinerBarre(c, taches.length, planifiees.length);
+    if (nonPlanifiees.length) this.dessinerTiroir(c, nonPlanifiees);
+
+    if (!planifiees.length) {
+      c.createDiv({ cls: 'zfa-refs-vide', text: tr('Aucune tâche datée. Donnez une échéance à une tâche pour la voir ici.') });
+      return;
+    }
+
+    const aujourdhui = new Date().toISOString().slice(0, 10);
+    const etendue = ZotflowAtomiser.etendueGantt(planifiees, aujourdhui);
+    const jours = ZotflowAtomiser.ecartJours(etendue.debut, etendue.fin) + 1;
+    const ppj = this.pixelsParJour;
+    const largeur = jours * ppj;
+    const lignes = this.visibles(planifiees);
+
+    const corps = c.createDiv({ cls: 'zfa-gantt-corps' });
+    const arbre = corps.createDiv({ cls: 'zfa-gantt-arbre' });
+    const frise = corps.createDiv({ cls: 'zfa-gantt-frise' });
+    frise.style.width = largeur + 'px';
+
+    this.dessinerEntete(arbre, frise, etendue, ppj, largeur);
+    this.dessinerLignes(arbre, frise, lignes, etendue, ppj);
+    this.dessinerJalons(frise, lignes, etendue, ppj, lignes.length);
+    this.dessinerAujourdhui(frise, etendue, ppj, aujourdhui, lignes.length);
+
+    if (memeX !== null) corps.scrollLeft = memeX;
+    else corps.scrollLeft = Math.max(0, ZotflowAtomiser.ecartJours(etendue.debut, aujourdhui) * ppj - 200);
+  }
+
+  bouton(parent, texte, action, actif) {
+    const b = parent.createEl('button', {
+      cls: 'zfa-ref-action' + (actif ? ' mod-cta' : ''), text: texte });
+    b.onclick = (e) => { e.stopPropagation(); action(); };
+    return b;
+  }
+
+  dessinerBarre(c, nTaches, nPlanifiees) {
+    const b = c.createDiv({ cls: 'zfa-gantt-barre' });
+    for (const z of Object.keys(ZotflowAtomiser.ZOOMS_GANTT)) {
+      this.bouton(b, tr(z), async () => {
+        this.greffon.settings.ganttZoom = z;
+        await this.greffon.saveSettings();
+        this.dessiner();
+      }, this.zoom === z);
+    }
+    b.createSpan({ cls: 'zfa-gantt-compte',
+      text: nPlanifiees + tr(' sur ') + nTaches + tr(' tâche(s) datée(s)') });
+  }
+
+  dessinerTiroir(c, lignes) {
+    const t = c.createDiv({ cls: 'zfa-gantt-tiroir' });
+    t.createSpan({ cls: 'zfa-ref-titre-bloc', text: tr('Non planifiées') });
+    for (const l of lignes) {
+      const p = t.createDiv({ cls: 'zfa-gantt-pastille', text: l.intitule });
+      p.title = l.ref;
+      p.onclick = () => this.ouvrir(l.ref);
+    }
+  }
+
+  dessinerEntete(arbre, frise, etendue, ppj, largeur) {
+    arbre.createDiv({ cls: 'zfa-gantt-entete-arbre', text: tr('Tâche') });
+    const e = frise.createDiv({ cls: 'zfa-gantt-entete' });
+    e.style.width = largeur + 'px';
+    const jours = ZotflowAtomiser.ecartJours(etendue.debut, etendue.fin);
+    const mois = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+                  'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    for (let i = 0; i <= jours; i++) {
+      const jour = ZotflowAtomiser.decalerJour(etendue.debut, i);
+      const [a, m, j] = jour.split('-').map(Number);
+      const premierDuMois = j === 1;
+      const lundi = new Date(Date.UTC(a, m - 1, j)).getUTCDay() === 1;
+      if (premierDuMois) {
+        const d = e.createDiv({ cls: 'zfa-gantt-mois', text: mois[m - 1] + ' ' + a });
+        d.style.left = (i * ppj) + 'px';
+      }
+      if (this.zoom === 'semaine' || (this.zoom === 'mois' && lundi)) {
+        const d = e.createDiv({ cls: 'zfa-gantt-tick', text: this.zoom === 'semaine' ? String(j) : String(j) });
+        d.style.left = (i * ppj) + 'px';
+        d.style.width = (this.zoom === 'semaine' ? ppj : ppj * 7) + 'px';
+      }
+      if (premierDuMois && this.zoom !== 'semaine') {
+        const t = e.createDiv({ cls: 'zfa-gantt-trait' });
+        t.style.left = (i * ppj) + 'px';
+      }
+    }
+  }
+
+  dessinerLignes(arbre, frise, lignes, etendue, ppj) {
+    const couleurs = ZotflowAtomiser.COULEURS_GANTT;
+    for (const l of lignes) {
+      const rangee = arbre.createDiv({ cls: 'zfa-gantt-ligne' });
+      rangee.style.paddingLeft = (6 + l.niveau * 14) + 'px';
+      if (l.aDesEnfants) {
+        const chev = rangee.createSpan({ cls: 'zfa-gantt-chevron',
+          text: this.replies.has(l.ref) ? '▸' : '▾' });
+        chev.onclick = (e) => {
+          e.stopPropagation();
+          if (this.replies.has(l.ref)) this.replies.delete(l.ref);
+          else this.replies.add(l.ref);
+          this.dessiner();
+        };
+      }
+      rangee.createSpan({ cls: 'zfa-gantt-intitule', text: l.intitule });
+      rangee.title = l.ref;
+      rangee.onclick = () => this.ouvrir(l.ref);
+
+      const piste = frise.createDiv({ cls: 'zfa-gantt-piste' });
+      if (l.jalon) continue;
+      const debut = l.debut || l.echeance;
+      const fin = l.echeance || l.debut;
+      if (!debut || !fin) continue;
+      const x = ZotflowAtomiser.ecartJours(etendue.debut, debut) * ppj;
+      const largeur = Math.max(ppj, (ZotflowAtomiser.ecartJours(debut, fin) + 1) * ppj);
+      const barre = piste.createDiv({
+        cls: 'zfa-gantt-tache' + (l.aDesEnfants ? ' zfa-gantt-meta' : '') });
+      barre.style.left = x + 'px';
+      barre.style.width = largeur + 'px';
+      barre.style.borderColor = couleurs[l.statut] || couleurs['à faire'];
+      barre.title = l.ref + ' · ' + debut + ' → ' + fin;
+      if (!l.aDesEnfants) {
+        const rempli = barre.createDiv({ cls: 'zfa-gantt-rempli' });
+        rempli.style.width = Math.max(0, Math.min(100, l.avancement)) + '%';
+        rempli.style.background = couleurs[l.statut] || couleurs['à faire'];
+      }
+      barre.dataset.ref = l.ref;
+    }
+  }
+
+  dessinerJalons(frise, lignes, etendue, ppj, nLignes) {
+    const hauteur = nLignes * HAUTEUR_LIGNE_GANTT;
+    for (const l of lignes) {
+      if (!l.jalon || !l.echeance) continue;
+      const x = ZotflowAtomiser.ecartJours(etendue.debut, l.echeance) * ppj;
+      const trait = frise.createDiv({ cls: 'zfa-gantt-jalon-trait' });
+      trait.style.left = x + 'px';
+      trait.style.height = hauteur + 'px';
+      const rang = lignes.indexOf(l);
+      const los = frise.createDiv({ cls: 'zfa-gantt-losange' });
+      los.style.left = (x - 6) + 'px';
+      los.style.top = (rang * HAUTEUR_LIGNE_GANTT + 8) + 'px';
+      los.title = l.intitule + ' · ' + l.echeance;
+    }
+  }
+
+  dessinerAujourdhui(frise, etendue, ppj, aujourdhui, nLignes) {
+    const n = ZotflowAtomiser.ecartJours(etendue.debut, aujourdhui);
+    if (n < 0 || n > ZotflowAtomiser.ecartJours(etendue.debut, etendue.fin)) return;
+    const t = frise.createDiv({ cls: 'zfa-gantt-aujourdhui' });
+    t.style.left = (n * ppj) + 'px';
+    t.style.height = (nLignes * HAUTEUR_LIGNE_GANTT) + 'px';
+    t.title = tr("Aujourd'hui");
+  }
+
+  async onClose() { this.contentEl.empty(); }
+}
 
 /* =========================================================================
  * Volet des incohérences des tâches

@@ -798,3 +798,95 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   color: var(--text-muted);
 }
 .zfa-ref-repli summary:hover { color: var(--text-normal); }
+
+/* ------------------------------ Frise Gantt ------------------------------ */
+
+.zfa-gantt { padding: 8px 0 16px; display: flex; flex-direction: column; height: 100%; }
+
+.zfa-gantt-barre {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  padding: 0 10px 8px;
+}
+.zfa-gantt-compte { color: var(--text-faint); font-size: var(--font-ui-smaller); margin-left: 8px; }
+
+.zfa-gantt-tiroir {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  padding: 0 10px 8px; border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 6px;
+}
+.zfa-gantt-pastille {
+  padding: 2px 8px; border-radius: 10px; cursor: pointer;
+  background: var(--background-modifier-hover);
+  font-size: var(--font-ui-smaller); color: var(--text-muted);
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.zfa-gantt-pastille:hover { color: var(--text-accent); }
+
+/* Une seule zone défilante : la colonne de gauche y reste collée, faute de quoi
+   les deux colonnes se désaccordent au défilement vertical. */
+.zfa-gantt-corps { flex: 1 1 auto; overflow: auto; position: relative; display: flex; }
+
+.zfa-gantt-arbre {
+  position: sticky; left: 0; z-index: 3; flex: 0 0 260px; width: 260px;
+  background: var(--background-primary);
+  border-right: 1px solid var(--background-modifier-border);
+}
+.zfa-gantt-entete-arbre,
+.zfa-gantt-entete {
+  height: 34px; position: sticky; top: 0; z-index: 2;
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.zfa-gantt-entete-arbre {
+  display: flex; align-items: center; padding-left: 8px;
+  font-size: var(--font-ui-smaller); text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-faint);
+}
+.zfa-gantt-entete { position: sticky; top: 0; }
+
+.zfa-gantt-ligne {
+  height: 28px; display: flex; align-items: center; gap: 4px;
+  cursor: pointer; padding-right: 6px;
+  font-size: var(--font-ui-small);
+}
+.zfa-gantt-ligne:hover { background: var(--background-modifier-hover); }
+.zfa-gantt-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 0.8em; }
+.zfa-gantt-intitule { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.zfa-gantt-frise { position: relative; flex: 0 0 auto; }
+.zfa-gantt-piste { height: 28px; position: relative; }
+.zfa-gantt-piste:nth-child(even) { background: var(--background-secondary); }
+
+.zfa-gantt-mois {
+  position: absolute; top: 2px; font-size: var(--font-ui-smaller);
+  color: var(--text-muted); white-space: nowrap; padding-left: 3px;
+}
+.zfa-gantt-tick {
+  position: absolute; bottom: 2px; font-size: 10px; color: var(--text-faint);
+  text-align: center;
+}
+.zfa-gantt-trait {
+  position: absolute; top: 0; bottom: 0; width: 1px;
+  background: var(--background-modifier-border);
+}
+
+.zfa-gantt-tache {
+  position: absolute; top: 5px; height: 18px; border-radius: 4px;
+  border: 1.5px solid var(--text-faint); overflow: hidden;
+  background: var(--background-primary);
+}
+.zfa-gantt-meta { top: 9px; height: 10px; border-radius: 2px; background: transparent; }
+.zfa-gantt-rempli { height: 100%; opacity: 0.55; }
+
+.zfa-gantt-jalon-trait {
+  position: absolute; top: 34px; width: 1px;
+  background: var(--text-accent); opacity: 0.35;
+}
+.zfa-gantt-losange {
+  position: absolute; width: 12px; height: 12px; margin-top: 34px;
+  background: var(--text-accent); transform: rotate(45deg);
+}
+.zfa-gantt-aujourdhui {
+  position: absolute; top: 34px; width: 2px;
+  background: var(--color-red); opacity: 0.6; z-index: 1;
+}
