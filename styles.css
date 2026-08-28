@@ -890,3 +890,45 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   position: absolute; top: 34px; width: 2px;
   background: var(--color-red); opacity: 0.6; z-index: 1;
 }
+
+.zfa-gantt-separateur {
+  display: inline-block; width: 1px; height: 16px; margin: 0 4px;
+  background: var(--background-modifier-border);
+}
+.zfa-gantt-cascade {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin: 0 10px 8px; padding: 6px 10px; border-radius: 6px;
+  background: var(--background-modifier-error-hover);
+  font-size: var(--font-ui-smaller);
+}
+.zfa-gantt-weekend { color: var(--text-faint); opacity: 0.55; }
+
+.zfa-gantt-tache { cursor: grab; }
+.zfa-gantt-tache.zfa-gantt-glisse { cursor: grabbing; opacity: 0.75; }
+.zfa-gantt-poignee {
+  position: absolute; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 2;
+}
+.zfa-gantt-poignee-gauche { left: 0; }
+.zfa-gantt-poignee-droite { right: 0; }
+.zfa-gantt-tache:hover .zfa-gantt-poignee { background: var(--text-accent); opacity: 0.5; }
+
+.zfa-gantt-fantome {
+  position: fixed; z-index: 100; pointer-events: none;
+  padding: 2px 8px; border-radius: 10px;
+  background: var(--background-modifier-hover); color: var(--text-normal);
+  font-size: var(--font-ui-smaller); box-shadow: var(--shadow-s);
+}
+
+/* Le calque des flèches ne prend jamais le pointeur : les barres qu il recouvre
+   doivent rester saisissables. */
+.zfa-gantt-fleches {
+  position: absolute; top: 0; left: 0; pointer-events: none; z-index: 2;
+}
+.zfa-gantt-fleche {
+  fill: none; stroke: var(--text-faint); stroke-width: 1.2;
+}
+.zfa-gantt-pointe { fill: var(--text-faint); stroke: none; }
+.zfa-gantt-fleche-rouge { stroke: var(--color-red); fill: var(--color-red); }
+.zfa-gantt-fleche-libelle {
+  fill: var(--text-muted); font-size: 10px;
+}
