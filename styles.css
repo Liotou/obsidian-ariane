@@ -799,136 +799,192 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-ref-repli summary:hover { color: var(--text-normal); }
 
-/* ------------------------------ Frise Gantt ------------------------------ */
+/* ------------------------------- Frise Gantt -------------------------------
+ * Parti graphique repris de « Project Manager for Obsidian » de Stepan
+ * Kropachev (github.com/stepankropachev/obsidian-pm), sous licence MIT.
+ * -------------------------------------------------------------------------- */
 
-.zfa-gantt { padding: 8px 0 16px; display: flex; flex-direction: column; height: 100%; }
+.zfa-gantt { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
 .zfa-gantt-barre {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
-  padding: 0 10px 8px;
-}
-.zfa-gantt-compte { color: var(--text-faint); font-size: var(--font-ui-smaller); margin-left: 8px; }
-
-.zfa-gantt-tiroir {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
-  padding: 0 10px 8px; border-bottom: 1px solid var(--background-modifier-border);
-  margin-bottom: 6px;
-}
-.zfa-gantt-pastille {
-  padding: 2px 8px; border-radius: 10px; cursor: pointer;
-  background: var(--background-modifier-hover);
-  font-size: var(--font-ui-smaller); color: var(--text-muted);
-  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.zfa-gantt-pastille:hover { color: var(--text-accent); }
-
-/* Une seule zone défilante : la colonne de gauche y reste collée, faute de quoi
-   les deux colonnes se désaccordent au défilement vertical. */
-.zfa-gantt-corps { flex: 1 1 auto; overflow: auto; position: relative; display: flex; }
-
-.zfa-gantt-arbre {
-  position: sticky; left: 0; z-index: 3; flex: 0 0 260px; width: 260px;
-  background: var(--background-primary);
-  border-right: 1px solid var(--background-modifier-border);
-}
-.zfa-gantt-entete-arbre,
-.zfa-gantt-entete {
-  height: 34px; position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
+  padding: 8px 14px; flex-shrink: 0;
   background: var(--background-primary);
   border-bottom: 1px solid var(--background-modifier-border);
 }
-.zfa-gantt-entete-arbre {
-  display: flex; align-items: center; padding-left: 8px;
-  font-size: var(--font-ui-smaller); text-transform: uppercase;
-  letter-spacing: 0.05em; color: var(--text-faint);
-}
-.zfa-gantt-entete { position: sticky; top: 0; }
-
-.zfa-gantt-ligne {
-  height: 28px; display: flex; align-items: center; gap: 4px;
-  cursor: pointer; padding-right: 6px;
-  font-size: var(--font-ui-small);
-}
-.zfa-gantt-ligne:hover { background: var(--background-modifier-hover); }
-.zfa-gantt-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 0.8em; }
-.zfa-gantt-intitule { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.zfa-gantt-frise { position: relative; flex: 0 0 auto; }
-.zfa-gantt-piste { height: 28px; position: relative; }
-.zfa-gantt-piste:nth-child(even) { background: var(--background-secondary); }
-
-.zfa-gantt-mois {
-  position: absolute; top: 2px; font-size: var(--font-ui-smaller);
-  color: var(--text-muted); white-space: nowrap; padding-left: 3px;
-}
-.zfa-gantt-tick {
-  position: absolute; bottom: 2px; font-size: 10px; color: var(--text-faint);
-  text-align: center;
-}
-.zfa-gantt-trait {
-  position: absolute; top: 0; bottom: 0; width: 1px;
-  background: var(--background-modifier-border);
-}
-
-.zfa-gantt-tache {
-  position: absolute; top: 5px; height: 18px; border-radius: 4px;
-  border: 1.5px solid var(--text-faint); overflow: hidden;
-  background: var(--background-primary);
-}
-.zfa-gantt-meta { top: 9px; height: 10px; border-radius: 2px; background: transparent; }
-.zfa-gantt-rempli { height: 100%; opacity: 0.55; }
-
-.zfa-gantt-jalon-trait {
-  position: absolute; top: 34px; width: 1px;
-  background: var(--text-accent); opacity: 0.35;
-}
-.zfa-gantt-losange {
-  position: absolute; width: 12px; height: 12px; margin-top: 34px;
-  background: var(--text-accent); transform: rotate(45deg);
-}
-.zfa-gantt-aujourdhui {
-  position: absolute; top: 34px; width: 2px;
-  background: var(--color-red); opacity: 0.6; z-index: 1;
-}
-
 .zfa-gantt-separateur {
-  display: inline-block; width: 1px; height: 16px; margin: 0 4px;
+  width: 1px; height: 16px; margin: 0 3px;
   background: var(--background-modifier-border);
 }
+.zfa-gantt-compte {
+  margin-left: auto; color: var(--text-faint); font-size: var(--font-ui-smaller);
+}
+
 .zfa-gantt-cascade {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  margin: 0 10px 8px; padding: 6px 10px; border-radius: 6px;
-  background: var(--background-modifier-error-hover);
-  font-size: var(--font-ui-smaller);
+  padding: 7px 14px; flex-shrink: 0; font-size: var(--font-ui-smaller);
+  background: color-mix(in srgb, var(--color-red) 10%, transparent);
+  border-bottom: 1px solid var(--background-modifier-border);
 }
-.zfa-gantt-weekend { color: var(--text-faint); opacity: 0.55; }
 
-.zfa-gantt-tache { cursor: grab; }
-.zfa-gantt-tache.zfa-gantt-glisse { cursor: grabbing; opacity: 0.75; }
-.zfa-gantt-poignee {
-  position: absolute; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 2;
+.zfa-gantt-tiroir {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
+  padding: 7px 14px; flex-shrink: 0;
+  border-bottom: 1px solid var(--background-modifier-border);
 }
-.zfa-gantt-poignee-gauche { left: 0; }
-.zfa-gantt-poignee-droite { right: 0; }
-.zfa-gantt-tache:hover .zfa-gantt-poignee { background: var(--text-accent); opacity: 0.5; }
+.zfa-gantt-pastille {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 11px; cursor: grab;
+  background: var(--background-modifier-hover);
+  font-size: var(--font-ui-smaller); color: var(--text-muted);
+  max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.zfa-gantt-pastille:hover { color: var(--text-normal); }
+.zfa-gantt-pastille:active { cursor: grabbing; }
 
 .zfa-gantt-fantome {
   position: fixed; z-index: 100; pointer-events: none;
-  padding: 2px 8px; border-radius: 10px;
-  background: var(--background-modifier-hover); color: var(--text-normal);
+  padding: 3px 10px; border-radius: 11px;
+  background: var(--interactive-accent); color: var(--text-on-accent);
   font-size: var(--font-ui-smaller); box-shadow: var(--shadow-s);
 }
 
-/* Le calque des flèches ne prend jamais le pointeur : les barres qu il recouvre
-   doivent rester saisissables. */
-.zfa-gantt-fleches {
-  position: absolute; top: 0; left: 0; pointer-events: none; z-index: 2;
+/* --- Les deux colonnes --- */
+
+.zfa-gantt-enveloppe { display: flex; flex: 1; overflow: hidden; position: relative; }
+
+.zfa-gantt-gauche {
+  flex-shrink: 0; display: flex; flex-direction: column; position: relative;
+  background: var(--background-secondary);
+  border-right: 1px solid var(--background-modifier-border);
+  z-index: 5;
 }
+.zfa-gantt-gauche-entete {
+  height: 56px; flex-shrink: 0; box-sizing: border-box;
+  display: flex; align-items: flex-end; padding: 0 12px 10px;
+  background: var(--background-primary);
+  box-shadow: inset 0 -1px 0 var(--background-modifier-border);
+}
+.zfa-gantt-gauche-titre {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-muted);
+}
+/* Le défilement vertical est accordé par le script sur celui de la frise. */
+.zfa-gantt-gauche-corps { flex: 1; overflow: hidden; }
+
+.zfa-gantt-libelle {
+  height: 44px; box-sizing: border-box;
+  display: flex; align-items: center; gap: 7px; padding-right: 10px;
+  box-shadow: inset 0 -1px 0 var(--background-modifier-border);
+  font-size: 13px;
+}
+.zfa-gantt-libelle:hover { background: var(--background-modifier-hover); }
+.zfa-gantt-chevron {
+  flex: 0 0 auto; width: 12px; color: var(--text-faint);
+  font-size: 0.75em; cursor: pointer;
+}
+.zfa-gantt-cale { flex: 0 0 auto; width: 12px; }
+.zfa-gantt-point { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; }
+.zfa-gantt-titre {
+  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer;
+}
+.zfa-gantt-titre:hover { color: var(--interactive-accent); }
+.zfa-gantt-pourcent {
+  flex: 0 0 auto; font-size: 11px; color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.zfa-gantt-poignee-colonne {
+  position: absolute; top: 0; right: -2px; bottom: 0; width: 4px;
+  cursor: col-resize; z-index: 6; transition: background 0.15s;
+}
+.zfa-gantt-poignee-colonne:hover,
+.zfa-gantt-poignee-colonne:active { background: var(--interactive-accent); }
+
+.zfa-gantt-droite { flex: 1; overflow: auto; position: relative; }
+.zfa-gantt-svg { display: block; }
+
+/* --- L'en-tête --- */
+
+.zfa-gantt-entete-fond { fill: var(--background-primary); }
+.zfa-gantt-bande-paire { fill: rgba(0, 0, 0, 0); }
+.zfa-gantt-bande-impaire { fill: rgba(0, 0, 0, 0.03); }
+.theme-dark .zfa-gantt-bande-impaire { fill: rgba(255, 255, 255, 0.03); }
+.zfa-gantt-entete-trait { stroke: var(--background-modifier-border); stroke-width: 1; }
+.zfa-gantt-entete-mois {
+  font-size: 10px; fill: var(--text-muted); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.zfa-gantt-entete-jour,
+.zfa-gantt-entete-semaine,
+.zfa-gantt-entete-titre {
+  fill: var(--text-muted); text-anchor: middle; dominant-baseline: central;
+}
+.zfa-gantt-entete-jour { font-size: 10px; }
+.zfa-gantt-entete-semaine { font-size: 10px; font-weight: 600; }
+.zfa-gantt-entete-titre { font-size: 11px; font-weight: 600; fill: var(--text-normal); }
+.zfa-gantt-weekend-entete { fill: rgba(0, 0, 0, 0.04); }
+.theme-dark .zfa-gantt-weekend-entete { fill: rgba(255, 255, 255, 0.04); }
+
+/* --- Le fond --- */
+
+.zfa-gantt-weekend { fill: rgba(0, 0, 0, 0.025); }
+.theme-dark .zfa-gantt-weekend { fill: rgba(255, 255, 255, 0.025); }
+.zfa-gantt-grille-v {
+  stroke: var(--background-modifier-border); stroke-width: 1; stroke-dasharray: 3 4;
+}
+.zfa-gantt-grille-h { stroke: var(--background-modifier-border); stroke-width: 0.5; }
+.zfa-gantt-survol { fill: transparent; }
+.zfa-gantt-survol:hover {
+  fill: color-mix(in srgb, var(--interactive-accent) 4%, transparent);
+}
+
+/* --- Les barres --- */
+
+.zfa-gantt-groupe { transition: filter 0.15s; }
+.zfa-gantt-groupe:hover { filter: brightness(1.15); }
+.zfa-gantt-groupe.zfa-gantt-glisse { opacity: 0.7; }
+.zfa-gantt-barre-tache { cursor: grab; }
+.zfa-gantt-glisse .zfa-gantt-barre-tache { cursor: grabbing; }
+.zfa-gantt-rempli { pointer-events: none; }
+.zfa-gantt-etiquette {
+  font-size: 10px; fill: var(--text-normal); font-weight: 600;
+  letter-spacing: 0.02em; pointer-events: none; dominant-baseline: central;
+}
+.theme-dark .zfa-gantt-etiquette { fill: var(--text-normal); }
+.zfa-gantt-poignee { fill: transparent; cursor: col-resize; }
+.zfa-gantt-groupe:hover .zfa-gantt-poignee {
+  fill: var(--interactive-accent); opacity: 0.45;
+}
+
+.zfa-gantt-jalon-trait {
+  stroke: var(--interactive-accent); stroke-width: 1; stroke-dasharray: 2 4; opacity: 0.4;
+}
+.zfa-gantt-losange { fill: var(--interactive-accent); }
+.zfa-gantt-jalon-titre {
+  font-size: 11px; fill: var(--text-muted); dominant-baseline: central;
+  pointer-events: none;
+}
+
+.zfa-gantt-aujourdhui {
+  stroke: color-mix(in srgb, var(--color-red) 70%, transparent);
+  stroke-width: 1.5; stroke-dasharray: 5 4;
+}
+.zfa-gantt-aujourdhui-pointe {
+  fill: color-mix(in srgb, var(--color-red) 70%, transparent);
+}
+
+/* --- Les flèches --- */
+
 .zfa-gantt-fleche {
-  fill: none; stroke: var(--text-faint); stroke-width: 1.2;
+  fill: none; stroke: var(--interactive-accent); stroke-width: 1.5;
+  stroke-dasharray: 4 3; opacity: 0.45;
 }
-.zfa-gantt-pointe { fill: var(--text-faint); stroke: none; }
-.zfa-gantt-fleche-rouge { stroke: var(--color-red); fill: var(--color-red); }
+.zfa-gantt-pointe { fill: var(--interactive-accent); opacity: 0.55; }
+.zfa-gantt-fleche.zfa-gantt-rouge { stroke: var(--color-red); opacity: 0.9; stroke-dasharray: none; }
+.zfa-gantt-pointe.zfa-gantt-rouge { fill: var(--color-red); opacity: 0.9; }
 .zfa-gantt-fleche-libelle {
-  fill: var(--text-muted); font-size: 10px;
+  font-size: 10px; fill: var(--text-muted); text-anchor: middle;
+  pointer-events: none;
 }

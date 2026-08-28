@@ -844,6 +844,7 @@ const TEXTES = {
     "nº de semaine": "week no.",
     "dates": "dates",
     "les deux": "both",
+    " · glissez-la sur la frise pour la dater": " · drag it onto the timeline to date it",
   },
 };
 let LANGUE = 'fr';
@@ -881,6 +882,7 @@ const DEFAULT_SETTINGS = {
   ganttZoom: 'mois',            // jour | semaine | mois | trimestre | année
   ganttMasquerTerminees: false,
   ganttLibelleSemaine: 'numero', // numero | dates | les-deux
+  ganttLargeurLibelles: 280,
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes
   // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque
@@ -11495,11 +11497,36 @@ class ModaleNouvelleTache extends obsidian.Modal {
 const TYPE_VUE_REFS = 'zfa-references';
 const TYPE_VUE_INCOHERENCES = 'zfa-taches-incoherences';
 const TYPE_VUE_GANTT = 'zfa-taches-gantt';
-const HAUTEUR_LIGNE_GANTT = 28;
 
 /* =========================================================================
  * Frise Gantt des tâches
+ *
+ * La géométrie et le parti graphique de cette frise sont repris de
+ * « Project Manager for Obsidian » de Stepan Kropachev
+ * (https://github.com/stepankropachev/obsidian-pm), sous licence MIT :
+ * hauteurs de ligne et d'en-tête, largeurs par cran de zoom, bandes de mois
+ * alternées, week-ends teintés, barres à deux couches dont le remplissage dit
+ * l'avancement, et tracé en SVG plutôt qu'en éléments HTML. La mention de
+ * droit d'auteur figure dans le fichier LICENSE.
  * ========================================================================= */
+
+const HAUTEUR_LIGNE_GANTT = 44;
+const HAUTEUR_ENTETE_GANTT = 56;
+const MARGE_BARRE_GANTT = 8;
+const RAYON_BARRE_GANTT = 7;
+
+// Étendue minimale par cran, pour qu'une frise de trois tâches ne se réduise
+// pas à trois traits collés dans un coin.
+const JOURS_MINIMUM_GANTT = { jour: 30, semaine: 90, mois: 365, trimestre: 365, 'année': 1095 };
+
+const MOIS_COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+                     'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+function svgEl(nom, attrs) {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', nom);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, String(v));
+  return e;
+}
 
 // Instrument de planification, à l'échelle du trimestre. Ce n'est pas la vue du
 // quotidien, qui reste la base « Débloquées » : une frise répond à « quand »,
@@ -11509,6 +11536,7 @@ class VueGanttTaches extends obsidian.ItemView {
     super(feuille);
     this.greffon = greffon;
     this.replies = new Set();
+    this._cascade = null;
   }
 
   getViewType() { return TYPE_VUE_GANTT; }
@@ -11518,7 +11546,6 @@ class VueGanttTaches extends obsidian.ItemView {
   async onOpen() {
     this.contentEl.addClass('zfa-gantt');
     this.dessiner();
-    // La frise suit les notes : changer une date ailleurs doit se voir ici.
     this.registerEvent(this.app.metadataCache.on('changed', (f) => {
       if (!this.greffon.refDeChemin(f.path)) return;
       this.greffon.antirebond('gantt:vue', () => this.dessiner(), 600);
@@ -11526,10 +11553,8 @@ class VueGanttTaches extends obsidian.ItemView {
   }
 
   get zoom() { return this.greffon.settings.ganttZoom || 'mois'; }
-  get pixelsParJour() { return ZotflowAtomiser.ZOOMS_GANTT[this.zoom] || 8; }
+  get ppj() { return ZotflowAtomiser.ZOOMS_GANTT[this.zoom] || 9; }
 
-  // Les lignes effectivement visibles : une méta-tâche repliée masque toute sa
-  // descendance, quelle que soit sa profondeur.
   visibles(lignes) {
     const out = [];
     let seuil = -1;
@@ -11547,64 +11572,115 @@ class VueGanttTaches extends obsidian.ItemView {
     if (f) this.app.workspace.getLeaf(true).openFile(f);
   }
 
+  couleur(statut) {
+    const c = ZotflowAtomiser.COULEURS_GANTT;
+    return c[statut] || c['à faire'];
+  }
+
+  /* ------------------------------ Ossature ------------------------------ */
+
   dessiner() {
     const c = this.contentEl;
-    const defilement = c.querySelector('.zfa-gantt-corps');
-    const memeX = defilement ? defilement.scrollLeft : null;
+    const ancienne = c.querySelector('.zfa-gantt-droite');
+    const memeX = ancienne ? ancienne.scrollLeft : null;
+    const memeY = ancienne ? ancienne.scrollTop : null;
     c.empty();
 
     let taches = this.greffon.tachesPourGantt();
     const nTotal = taches.length;
-    // Masquer une méta-tâche terminée masquerait sa descendance encore vive :
-    // on n'écarte donc que les feuilles, et les méta-tâches dont tout est clos.
-    if (this.greffon.settings.ganttMasquerTerminees) {
-      const clos = (t) => t.statut === 'terminée' || t.statut === 'abandonnée';
-      const aUnDescendantVif = (ref, vus) => taches.some((x) =>
-        ZotflowAtomiser.refDeLien(x.parent) === ref
-        && !vus.has(x.ref)
-        && (!clos(x) || aUnDescendantVif(x.ref, new Set([...vus, x.ref]))));
-      taches = taches.filter((t) => !clos(t) || aUnDescendantVif(t.ref, new Set([t.ref])));
-    }
+    if (this.greffon.settings.ganttMasquerTerminees) taches = this.sansLesCloses(taches);
     const toutes = ZotflowAtomiser.disposerGantt(taches);
     const planifiees = toutes.filter((l) => l.debut || l.echeance);
     const nonPlanifiees = toutes.filter((l) => !l.debut && !l.echeance);
 
-    this.dessinerBarre(c, nTotal, planifiees.length);
+    this.dessinerReglages(c, nTotal, planifiees.length);
     this.dessinerCascade(c);
     if (nonPlanifiees.length) this.dessinerTiroir(c, nonPlanifiees);
 
     if (!planifiees.length) {
-      c.createDiv({ cls: 'zfa-refs-vide', text: tr('Aucune tâche datée. Donnez une échéance à une tâche pour la voir ici.') });
+      c.createDiv({ cls: 'zfa-refs-vide',
+        text: tr('Aucune tâche datée. Donnez une échéance à une tâche pour la voir ici.') });
       return;
     }
 
     const aujourdhui = new Date().toISOString().slice(0, 10);
-    const etendue = ZotflowAtomiser.etendueGantt(planifiees, aujourdhui);
-    const jours = ZotflowAtomiser.ecartJours(etendue.debut, etendue.fin) + 1;
-    const ppj = this.pixelsParJour;
-    const largeur = jours * ppj;
+    const cfg = this.calculerEtendue(planifiees, aujourdhui);
     const lignes = this.visibles(planifiees);
     this._lignes = planifiees;
-    this._visibles = lignes;
-    this._etendue = etendue;
-    this._ppj = ppj;
+    this._cfg = cfg;
     this._taches = taches;
 
-    const corps = c.createDiv({ cls: 'zfa-gantt-corps' });
-    const arbre = corps.createDiv({ cls: 'zfa-gantt-arbre' });
-    const frise = corps.createDiv({ cls: 'zfa-gantt-frise' });
-    frise.style.width = largeur + 'px';
+    const env = c.createDiv({ cls: 'zfa-gantt-enveloppe' });
+    const gauche = env.createDiv({ cls: 'zfa-gantt-gauche' });
+    const droite = env.createDiv({ cls: 'zfa-gantt-droite' });
+    gauche.style.width = (this.greffon.settings.ganttLargeurLibelles || 280) + 'px';
 
-    this.dessinerEntete(arbre, frise, etendue, ppj, largeur);
-    this.dessinerLignes(arbre, frise, lignes, etendue, ppj);
-    this.dessinerJalons(frise, lignes, etendue, ppj, lignes.length);
-    this.dessinerAujourdhui(frise, etendue, ppj, aujourdhui, lignes.length);
-    this.dessinerFleches(frise, lignes, etendue, ppj, largeur);
-    this._frise = frise;
+    this.dessinerColonneGauche(gauche, lignes);
 
-    if (memeX !== null) corps.scrollLeft = memeX;
-    else corps.scrollLeft = Math.max(0, ZotflowAtomiser.ecartJours(etendue.debut, aujourdhui) * ppj - 200);
+    const hauteur = HAUTEUR_ENTETE_GANTT + lignes.length * HAUTEUR_LIGNE_GANTT;
+    const svg = svgEl('svg', { class: 'zfa-gantt-svg', width: cfg.largeur, height: hauteur });
+    droite.appendChild(svg);
+    this._svg = svg;
+
+    this.dessinerFond(svg, cfg, lignes.length);
+    this.dessinerBarres(svg, cfg, lignes);
+    this.dessinerFleches(svg, cfg, lignes);
+    this.dessinerAujourdhui(svg, cfg, aujourdhui, lignes.length);
+    this.dessinerEntete(svg, cfg);
+
+    // Les deux colonnes défilent ensemble : sans cet accord, l'arbre et les
+    // pistes se décalent dès la trentième ligne et la frise devient illisible.
+    const corpsGauche = gauche.querySelector('.zfa-gantt-gauche-corps');
+    droite.addEventListener('scroll', () => { corpsGauche.scrollTop = droite.scrollTop; });
+
+    droite.scrollLeft = memeX !== null ? memeX
+      : Math.max(0, ZotflowAtomiser.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220);
+    if (memeY !== null) { droite.scrollTop = memeY; corpsGauche.scrollTop = memeY; }
   }
+
+  // Masquer une méta-tâche close masquerait sa descendance encore vive : on
+  // n'écarte donc que les feuilles closes et les méta-tâches entièrement closes.
+  sansLesCloses(taches) {
+    const clos = (t) => t.statut === 'terminée' || t.statut === 'abandonnée';
+    const vif = (ref, vus) => taches.some((x) =>
+      ZotflowAtomiser.refDeLien(x.parent) === ref && !vus.has(x.ref)
+      && (!clos(x) || vif(x.ref, new Set([...vus, x.ref]))));
+    return taches.filter((t) => !clos(t) || vif(t.ref, new Set([t.ref])));
+  }
+
+  // L'étendue part de la première date et va à la dernière, élargie jusqu'au
+  // minimum du cran, et calée sur un début de mois hors du cran « jour » pour
+  // que les bandes de mois tombent juste.
+  calculerEtendue(lignes, aujourdhui) {
+    const dates = [aujourdhui];
+    for (const l of lignes) {
+      if (l.debut) dates.push(l.debut);
+      if (l.echeance) dates.push(l.echeance);
+    }
+    dates.sort();
+    let debut = ZotflowAtomiser.decalerJour(dates[0], -7);
+    let fin = ZotflowAtomiser.decalerJour(dates[dates.length - 1], 14);
+    const mini = JOURS_MINIMUM_GANTT[this.zoom] || 365;
+    const etendu = ZotflowAtomiser.ecartJours(debut, fin);
+    if (etendu < mini) {
+      const extra = Math.ceil((mini - etendu) / 2);
+      debut = ZotflowAtomiser.decalerJour(debut, -extra);
+      fin = ZotflowAtomiser.decalerJour(fin, extra);
+    }
+    if (this.zoom !== 'jour') debut = debut.slice(0, 8) + '01';
+    const ppj = this.ppj;
+    const jours = ZotflowAtomiser.ecartJours(debut, fin);
+    return { debut, fin, ppj, jours, largeur: jours * ppj };
+  }
+
+  x(cfg, jour) { return ZotflowAtomiser.ecartJours(cfg.debut, jour) * cfg.ppj; }
+
+  moisSuivant(jour) {
+    const [a, m] = jour.split('-').map(Number);
+    return m === 12 ? (a + 1) + '-01-01' : a + '-' + String(m + 1).padStart(2, '0') + '-01';
+  }
+
+  /* ------------------------------- Réglages ------------------------------ */
 
   bouton(parent, texte, action, actif) {
     const b = parent.createEl('button', {
@@ -11613,245 +11689,29 @@ class VueGanttTaches extends obsidian.ItemView {
     return b;
   }
 
-  dessinerBarre(c, nTaches, nPlanifiees) {
+  dessinerReglages(c, nTotal, nPlanifiees) {
     const s = this.greffon.settings;
     const b = c.createDiv({ cls: 'zfa-gantt-barre' });
     for (const z of Object.keys(ZotflowAtomiser.ZOOMS_GANTT)) {
       this.bouton(b, tr(z), async () => {
-        s.ganttZoom = z;
-        await this.greffon.saveSettings();
-        this.dessiner();
+        s.ganttZoom = z; await this.greffon.saveSettings(); this.dessiner();
       }, this.zoom === z);
     }
     b.createSpan({ cls: 'zfa-gantt-separateur' });
     this.bouton(b, tr('Masquer les terminées'), async () => {
       s.ganttMasquerTerminees = !s.ganttMasquerTerminees;
-      await this.greffon.saveSettings();
-      this.dessiner();
+      await this.greffon.saveSettings(); this.dessiner();
     }, !!s.ganttMasquerTerminees);
-    if (this.zoom === 'mois' || this.zoom === 'semaine') {
+    if (this.zoom === 'semaine') {
       const suite = { numero: 'dates', dates: 'les-deux', 'les-deux': 'numero' };
       const libelles = { numero: tr('nº de semaine'), dates: tr('dates'), 'les-deux': tr('les deux') };
       this.bouton(b, libelles[s.ganttLibelleSemaine || 'numero'], async () => {
         s.ganttLibelleSemaine = suite[s.ganttLibelleSemaine || 'numero'];
-        await this.greffon.saveSettings();
-        this.dessiner();
+        await this.greffon.saveSettings(); this.dessiner();
       });
     }
     b.createSpan({ cls: 'zfa-gantt-compte',
-      text: nPlanifiees + tr(' sur ') + nTaches + tr(' tâche(s) datée(s)') });
-  }
-
-  dessinerTiroir(c, lignes) {
-    const t = c.createDiv({ cls: 'zfa-gantt-tiroir' });
-    t.createSpan({ cls: 'zfa-ref-titre-bloc', text: tr('Non planifiées') });
-    for (const l of lignes) {
-      const p = t.createDiv({ cls: 'zfa-gantt-pastille', text: l.intitule });
-      p.title = l.ref;
-      p.onclick = () => this.ouvrir(l.ref);
-      p.addEventListener('pointerdown', (e) => this.deposerPastille(e, l));
-    }
-  }
-
-  // Glisser une pastille du tiroir sur la frise donne ses dates à la tâche :
-  // le jour du dépôt, et une semaine de durée. Un jalon n'en reçoit qu'une.
-  deposerPastille(e, ligne) {
-    if (!this._frise) return;
-    e.preventDefault();
-    const fantome = document.body.createDiv({ cls: 'zfa-gantt-fantome', text: ligne.intitule });
-    const suivre = (ev) => {
-      fantome.style.left = (ev.clientX + 8) + 'px';
-      fantome.style.top = (ev.clientY - 10) + 'px';
-    };
-    suivre(e);
-    const lacher = async (ev) => {
-      document.removeEventListener('pointermove', suivre);
-      document.removeEventListener('pointerup', lacher);
-      fantome.remove();
-      const boite = this._frise.getBoundingClientRect();
-      if (ev.clientX < boite.left || ev.clientX > boite.right
-          || ev.clientY < boite.top || ev.clientY > boite.bottom) return;
-      const n = Math.floor((ev.clientX - boite.left) / this._ppj);
-      const jour = ZotflowAtomiser.decalerJour(this._etendue.debut, n);
-      if (!jour) return;
-      await this.greffon.ecrireDatesTaches([ligne.jalon
-        ? { ref: ligne.ref, debut: '', echeance: jour }
-        : { ref: ligne.ref, debut: jour, echeance: ZotflowAtomiser.decalerJour(jour, 6) }]);
-      this.dessiner();
-    };
-    document.addEventListener('pointermove', suivre);
-    document.addEventListener('pointerup', lacher);
-  }
-
-  dessinerEntete(arbre, frise, etendue, ppj, largeur) {
-    arbre.createDiv({ cls: 'zfa-gantt-entete-arbre', text: tr('Tâche') });
-    const e = frise.createDiv({ cls: 'zfa-gantt-entete' });
-    e.style.width = largeur + 'px';
-    const jours = ZotflowAtomiser.ecartJours(etendue.debut, etendue.fin);
-    const mois = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
-                  'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-    for (let i = 0; i <= jours; i++) {
-      const jour = ZotflowAtomiser.decalerJour(etendue.debut, i);
-      const [a, m, j] = jour.split('-').map(Number);
-      const premierDuMois = j === 1;
-      const lundi = new Date(Date.UTC(a, m - 1, j)).getUTCDay() === 1;
-      if (premierDuMois) {
-        const d = e.createDiv({ cls: 'zfa-gantt-mois', text: mois[m - 1] + ' ' + a });
-        d.style.left = (i * ppj) + 'px';
-      }
-      const jourSemaine = new Date(Date.UTC(a, m - 1, j)).getUTCDay();
-      if (this.zoom === 'jour' || this.zoom === 'semaine') {
-        const lettres = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
-        const d = e.createDiv({
-          cls: 'zfa-gantt-tick' + (jourSemaine === 0 || jourSemaine === 6 ? ' zfa-gantt-weekend' : ''),
-          text: this.zoom === 'jour' ? lettres[jourSemaine] + ' ' + j : String(j) });
-        d.style.left = (i * ppj) + 'px';
-        d.style.width = ppj + 'px';
-      } else if (this.zoom === 'mois' && lundi) {
-        const mode = this.greffon.settings.ganttLibelleSemaine || 'numero';
-        const fin = ZotflowAtomiser.decalerJour(jour, 6);
-        const num = 'S' + ZotflowAtomiser.semaineIso(jour);
-        const plage = j + '–' + Number(fin.slice(8, 10));
-        const texte = mode === 'numero' ? num : (mode === 'dates' ? plage : num + ' ' + plage);
-        const d = e.createDiv({ cls: 'zfa-gantt-tick', text: texte });
-        d.style.left = (i * ppj) + 'px';
-        d.style.width = (ppj * 7) + 'px';
-      }
-      if (premierDuMois && this.zoom !== 'semaine' && this.zoom !== 'jour') {
-        const t = e.createDiv({ cls: 'zfa-gantt-trait' });
-        t.style.left = (i * ppj) + 'px';
-      }
-    }
-  }
-
-  dessinerLignes(arbre, frise, lignes, etendue, ppj) {
-    const couleurs = ZotflowAtomiser.COULEURS_GANTT;
-    for (const l of lignes) {
-      const rangee = arbre.createDiv({ cls: 'zfa-gantt-ligne' });
-      rangee.style.paddingLeft = (6 + l.niveau * 14) + 'px';
-      if (l.aDesEnfants) {
-        const chev = rangee.createSpan({ cls: 'zfa-gantt-chevron',
-          text: this.replies.has(l.ref) ? '▸' : '▾' });
-        chev.onclick = (e) => {
-          e.stopPropagation();
-          if (this.replies.has(l.ref)) this.replies.delete(l.ref);
-          else this.replies.add(l.ref);
-          this.dessiner();
-        };
-      }
-      rangee.createSpan({ cls: 'zfa-gantt-intitule', text: l.intitule });
-      rangee.title = l.ref;
-      rangee.onclick = () => this.ouvrir(l.ref);
-
-      const piste = frise.createDiv({ cls: 'zfa-gantt-piste' });
-      if (l.jalon) continue;
-      const debut = l.debut || l.echeance;
-      const fin = l.echeance || l.debut;
-      if (!debut || !fin) continue;
-      const x = ZotflowAtomiser.ecartJours(etendue.debut, debut) * ppj;
-      const largeur = Math.max(ppj, (ZotflowAtomiser.ecartJours(debut, fin) + 1) * ppj);
-      const barre = piste.createDiv({
-        cls: 'zfa-gantt-tache' + (l.aDesEnfants ? ' zfa-gantt-meta' : '') });
-      barre.style.left = x + 'px';
-      barre.style.width = largeur + 'px';
-      barre.style.borderColor = couleurs[l.statut] || couleurs['à faire'];
-      barre.title = l.ref + ' · ' + debut + ' → ' + fin;
-      if (!l.aDesEnfants) {
-        const rempli = barre.createDiv({ cls: 'zfa-gantt-rempli' });
-        rempli.style.width = Math.max(0, Math.min(100, l.avancement)) + '%';
-        rempli.style.background = couleurs[l.statut] || couleurs['à faire'];
-      }
-      barre.dataset.ref = l.ref;
-      // Une méta-tâche n'a pas de bords à tirer : ses dates sont celles de sa
-      // descendance, et les étirer ne voudrait rien dire.
-      if (!l.aDesEnfants) {
-        for (const cote of ['gauche', 'droite']) {
-          const poignee = barre.createDiv({ cls: 'zfa-gantt-poignee zfa-gantt-poignee-' + cote });
-          poignee.addEventListener('pointerdown', (e) => this.saisir(e, barre, l, cote));
-        }
-      }
-      barre.addEventListener('pointerdown', (e) => {
-        if (e.target !== barre && !e.target.classList.contains('zfa-gantt-rempli')) return;
-        this.saisir(e, barre, l, 'deplacer');
-      });
-    }
-  }
-
-  // Un seul geste, trois modes. L'écriture n'a lieu qu'au lâcher : écrire
-  // pendant le glissé ferait cent passes de frontmatter pour un seul
-  // déplacement, et l'affichage clignoterait à chaque redessin.
-  saisir(e, barre, ligne, mode) {
-    e.preventDefault();
-    e.stopPropagation();
-    const ppj = this._ppj;
-    const x0 = e.clientX;
-    const gauche0 = parseFloat(barre.style.left) || 0;
-    const largeur0 = parseFloat(barre.style.width) || ppj;
-    barre.addClass('zfa-gantt-glisse');
-    try { barre.setPointerCapture(e.pointerId); } catch (err) { /* sans capture, on suit tout de même */ }
-    const jours = (ev) => Math.round((ev.clientX - x0) / ppj);
-    const bouger = (ev) => {
-      const d = jours(ev) * ppj;
-      if (mode === 'deplacer') {
-        barre.style.left = (gauche0 + d) + 'px';
-      } else if (mode === 'gauche') {
-        const w = Math.max(ppj, largeur0 - d);
-        barre.style.left = (gauche0 + largeur0 - w) + 'px';
-        barre.style.width = w + 'px';
-      } else {
-        barre.style.width = Math.max(ppj, largeur0 + d) + 'px';
-      }
-    };
-    const lacher = async (ev) => {
-      barre.removeEventListener('pointermove', bouger);
-      barre.removeEventListener('pointerup', lacher);
-      barre.removeEventListener('pointercancel', lacher);
-      barre.removeClass('zfa-gantt-glisse');
-      const n = jours(ev);
-      if (!n) { this.dessiner(); return; }
-      await this.appliquerGeste(ligne, mode, n);
-    };
-    barre.addEventListener('pointermove', bouger);
-    barre.addEventListener('pointerup', lacher);
-    barre.addEventListener('pointercancel', lacher);
-  }
-
-  async appliquerGeste(ligne, mode, n) {
-    const J = ZotflowAtomiser;
-    let changements = [];
-    if (mode === 'deplacer') {
-      changements = J.decalerSousArbre(this._lignes, ligne.ref, n);
-    } else if (mode === 'gauche') {
-      const debut = J.decalerJour(ligne.propre.debut || ligne.propre.echeance, n);
-      // Un début ne passe pas l'échéance : le geste s'arrête au jour de la fin.
-      const fin = ligne.propre.echeance || debut;
-      changements = [{ ref: ligne.ref, debut: (debut && debut > fin) ? fin : debut, echeance: fin }];
-    } else {
-      const fin = J.decalerJour(ligne.propre.echeance || ligne.propre.debut, n);
-      const debut = ligne.propre.debut || fin;
-      changements = [{ ref: ligne.ref, debut, echeance: (fin && fin < debut) ? debut : fin }];
-    }
-    const ecrites = await this.greffon.ecrireDatesTaches(changements);
-    if (!ecrites) { this.dessiner(); return; }
-    this.proposerCascade(ligne.ref, n);
-    this.dessiner();
-  }
-
-  // Après un décalage, si la tâche déplacée contredit désormais une tâche
-  // qu'elle bloque, on ne corrige rien d'office : propager un retard est une
-  // décision, pas une conséquence.
-  proposerCascade(ref, n) {
-    const bloquants = [];
-    const dates = {};
-    for (const t of this._taches || []) {
-      dates[t.ref] = { debut: t.debut, echeance: t.echeance };
-      for (const b of t.bloquePar || []) {
-        bloquants.push({ de: ZotflowAtomiser.refDeLien(b), vers: t.ref });
-      }
-    }
-    const fautives = ZotflowAtomiser.datesIncoherentes(bloquants, dates)
-      .filter((i) => i.de === ref || i.vers === ref);
-    this._cascade = fautives.length ? { ref, jours: n, bloquants } : null;
+      text: nPlanifiees + tr(' sur ') + nTotal + tr(' tâche(s) datée(s)') });
   }
 
   dessinerCascade(c) {
@@ -11863,100 +11723,477 @@ class VueGanttTaches extends obsidian.ItemView {
       const ch = ZotflowAtomiser.cascadeAval(this._lignes, bloquants, ref, jours)
         .filter((x) => x.ref !== ref);
       await this.greffon.ecrireDatesTaches(ch);
-      this._cascade = null;
-      this.dessiner();
+      this._cascade = null; this.dessiner();
     }, true);
     this.bouton(d, tr('Laisser'), () => { this._cascade = null; this.dessiner(); });
   }
 
-  // Les flèches sont dessinées, jamais tracées ici : le canvas seul crée les
-  // liens, et un même geste ne doit pas exister à deux endroits.
-  dessinerFleches(frise, lignes, etendue, ppj, largeur) {
+  dessinerTiroir(c, lignes) {
+    const t = c.createDiv({ cls: 'zfa-gantt-tiroir' });
+    t.createSpan({ cls: 'zfa-ref-titre-bloc', text: tr('Non planifiées') });
+    for (const l of lignes) {
+      const p = t.createDiv({ cls: 'zfa-gantt-pastille' });
+      const pt = p.createSpan({ cls: 'zfa-gantt-point' });
+      pt.style.background = this.couleur(l.statut);
+      p.createSpan({ text: l.intitule });
+      p.title = l.ref + tr(' · glissez-la sur la frise pour la dater');
+      p.addEventListener('pointerdown', (e) => this.deposerPastille(e, l));
+      p.addEventListener('dblclick', () => this.ouvrir(l.ref));
+    }
+  }
+
+  /* ---------------------------- Colonne gauche --------------------------- */
+
+  dessinerColonneGauche(gauche, lignes) {
+    const entete = gauche.createDiv({ cls: 'zfa-gantt-gauche-entete' });
+    entete.createSpan({ cls: 'zfa-gantt-gauche-titre', text: tr('Tâche') });
+    const corps = gauche.createDiv({ cls: 'zfa-gantt-gauche-corps' });
+    for (const l of lignes) {
+      const r = corps.createDiv({ cls: 'zfa-gantt-libelle' });
+      r.style.paddingLeft = (10 + l.niveau * 15) + 'px';
+      if (l.aDesEnfants) {
+        const chev = r.createSpan({ cls: 'zfa-gantt-chevron',
+          text: this.replies.has(l.ref) ? '▸' : '▾' });
+        chev.onclick = (e) => {
+          e.stopPropagation();
+          if (this.replies.has(l.ref)) this.replies.delete(l.ref);
+          else this.replies.add(l.ref);
+          this.dessiner();
+        };
+      } else {
+        r.createSpan({ cls: 'zfa-gantt-cale' });
+      }
+      const point = r.createSpan({ cls: 'zfa-gantt-point' });
+      point.style.background = this.couleur(l.statut);
+      const titre = r.createSpan({ cls: 'zfa-gantt-titre', text: l.intitule });
+      titre.onclick = () => this.ouvrir(l.ref);
+      titre.title = l.ref;
+      if (!l.jalon && l.avancement > 0) {
+        r.createSpan({ cls: 'zfa-gantt-pourcent', text: l.avancement + ' %' });
+      }
+    }
+    // Poignée de largeur : 280 px conviennent aux intitulés courts, pas à
+    // « Rédiger la partie sur la gouvernance des risques ».
+    const poignee = gauche.createDiv({ cls: 'zfa-gantt-poignee-colonne' });
+    poignee.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const x0 = e.clientX;
+      const l0 = gauche.offsetWidth;
+      const bouger = (ev) => {
+        gauche.style.width = Math.max(160, Math.min(560, l0 + ev.clientX - x0)) + 'px';
+      };
+      const lacher = async () => {
+        document.removeEventListener('pointermove', bouger);
+        document.removeEventListener('pointerup', lacher);
+        this.greffon.settings.ganttLargeurLibelles = gauche.offsetWidth;
+        await this.greffon.saveSettings();
+      };
+      document.addEventListener('pointermove', bouger);
+      document.addEventListener('pointerup', lacher);
+    });
+  }
+
+  /* ------------------------------- Le fond ------------------------------- */
+
+  dessinerFond(svg, cfg, nLignes) {
+    const g = svgEl('g', {});
+    const haut = HAUTEUR_ENTETE_GANTT;
+    const bas = haut + nLignes * HAUTEUR_LIGNE_GANTT;
+    for (let i = 0; i <= cfg.jours; i++) {
+      const jour = ZotflowAtomiser.decalerJour(cfg.debut, i);
+      const [a, m, j] = jour.split('-').map(Number);
+      const js = new Date(Date.UTC(a, m - 1, j)).getUTCDay();
+      const x = i * cfg.ppj;
+      if ((js === 0 || js === 6) && cfg.ppj >= 8) {
+        g.appendChild(svgEl('rect', { x, y: haut, width: cfg.ppj,
+          height: bas - haut, class: 'zfa-gantt-weekend' }));
+      }
+      const trait = this.zoom === 'jour' ? true
+        : (this.zoom === 'semaine' ? js === 1 : j === 1);
+      if (trait) {
+        g.appendChild(svgEl('line', { x1: x, y1: haut, x2: x, y2: bas,
+          class: 'zfa-gantt-grille-v' }));
+      }
+    }
+    for (let r = 0; r <= nLignes; r++) {
+      const y = haut + r * HAUTEUR_LIGNE_GANTT;
+      g.appendChild(svgEl('line', { x1: 0, y1: y, x2: cfg.largeur, y2: y,
+        class: 'zfa-gantt-grille-h' }));
+    }
+    svg.appendChild(g);
+  }
+
+  /* ------------------------------ L'en-tête ------------------------------ */
+
+  dessinerEntete(svg, cfg) {
+    const g = svgEl('g', { class: 'zfa-gantt-entete' });
+    g.appendChild(svgEl('rect', { x: 0, y: 0, width: cfg.largeur,
+      height: HAUTEUR_ENTETE_GANTT, class: 'zfa-gantt-entete-fond' }));
+
+    // Bandeau supérieur : les mois, en bandes alternées pour qu'on les
+    // distingue d'un coup d'oeil sans avoir à compter les traits.
+    let mois = cfg.debut.slice(0, 8) + '01';
+    let rang = 0;
+    while (mois <= cfg.fin) {
+      const [a, m] = mois.split('-').map(Number);
+      const suivant = this.moisSuivant(mois);
+      const x1 = Math.max(0, this.x(cfg, mois));
+      const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
+      g.appendChild(svgEl('rect', { x: x1, y: 0, width: Math.max(0, x2 - x1), height: 24,
+        class: rang % 2 ? 'zfa-gantt-bande-impaire' : 'zfa-gantt-bande-paire' }));
+      if (x2 - x1 > 34) {
+        const t = svgEl('text', { x: x1 + 6, y: 17, class: 'zfa-gantt-entete-mois' });
+        t.textContent = MOIS_COURTS[m - 1] + ' ' + String(a).slice(2);
+        g.appendChild(t);
+      }
+      g.appendChild(svgEl('line', { x1, y1: 0, x2: x1, y2: HAUTEUR_ENTETE_GANTT,
+        class: 'zfa-gantt-entete-trait' }));
+      mois = suivant;
+      rang += 1;
+    }
+
+    if (this.zoom === 'jour') this.enteteJours(g, cfg);
+    else if (this.zoom === 'semaine') this.enteteSemaines(g, cfg);
+    else if (this.zoom === 'mois') this.enteteMois(g, cfg);
+    else this.enteteTrimestres(g, cfg);
+
+    svg.appendChild(g);
+  }
+
+  enteteJours(g, cfg) {
+    const lettres = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
+    for (let i = 0; i < cfg.jours; i++) {
+      const jour = ZotflowAtomiser.decalerJour(cfg.debut, i);
+      const [a, m, j] = jour.split('-').map(Number);
+      const js = new Date(Date.UTC(a, m - 1, j)).getUTCDay();
+      const x = i * cfg.ppj;
+      if (js === 0 || js === 6) {
+        g.appendChild(svgEl('rect', { x, y: 24, width: cfg.ppj,
+          height: HAUTEUR_ENTETE_GANTT - 24, class: 'zfa-gantt-weekend-entete' }));
+      }
+      const t = svgEl('text', { x: x + cfg.ppj / 2, y: 42, class: 'zfa-gantt-entete-jour' });
+      t.textContent = lettres[js] + ' ' + j;
+      g.appendChild(t);
+    }
+  }
+
+  enteteSemaines(g, cfg) {
+    const mode = this.greffon.settings.ganttLibelleSemaine || 'numero';
+    for (let i = 0; i < cfg.jours; i++) {
+      const jour = ZotflowAtomiser.decalerJour(cfg.debut, i);
+      const [a, m, j] = jour.split('-').map(Number);
+      if (new Date(Date.UTC(a, m - 1, j)).getUTCDay() !== 1) continue;
+      const nb = Math.min(7, cfg.jours - i);
+      const x = i * cfg.ppj;
+      const w = nb * cfg.ppj;
+      const fin = ZotflowAtomiser.decalerJour(jour, nb - 1);
+      const num = 'S' + ZotflowAtomiser.semaineIso(jour);
+      const plage = j + '–' + Number(fin.slice(8, 10));
+      const t = svgEl('text', { x: x + w / 2, y: 42, class: 'zfa-gantt-entete-semaine' });
+      t.textContent = mode === 'numero' ? num : (mode === 'dates' ? plage : num + ' · ' + plage);
+      g.appendChild(t);
+      g.appendChild(svgEl('line', { x1: x, y1: 24, x2: x, y2: HAUTEUR_ENTETE_GANTT,
+        class: 'zfa-gantt-entete-trait' }));
+    }
+  }
+
+  enteteMois(g, cfg) {
+    let mois = cfg.debut.slice(0, 8) + '01';
+    while (mois <= cfg.fin) {
+      const m = Number(mois.slice(5, 7));
+      const suivant = this.moisSuivant(mois);
+      const x1 = Math.max(0, this.x(cfg, mois));
+      const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
+      if (x2 - x1 > 26) {
+        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: 42, class: 'zfa-gantt-entete-titre' });
+        t.textContent = MOIS_COURTS[m - 1];
+        g.appendChild(t);
+      }
+      mois = suivant;
+    }
+  }
+
+  enteteTrimestres(g, cfg) {
+    let a = Number(cfg.debut.slice(0, 4));
+    let m = Math.floor((Number(cfg.debut.slice(5, 7)) - 1) / 3) * 3 + 1;
+    while (a + '-' + String(m).padStart(2, '0') + '-01' <= cfg.fin) {
+      const jour = a + '-' + String(m).padStart(2, '0') + '-01';
+      const am = m + 3 > 12 ? a + 1 : a;
+      const mm = m + 3 > 12 ? m - 9 : m + 3;
+      const suivant = am + '-' + String(mm).padStart(2, '0') + '-01';
+      const x1 = Math.max(0, this.x(cfg, jour));
+      const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
+      if (x2 - x1 > 30) {
+        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: 42, class: 'zfa-gantt-entete-titre' });
+        t.textContent = 'T' + (Math.floor((m - 1) / 3) + 1) + ' ' + a;
+        g.appendChild(t);
+      }
+      g.appendChild(svgEl('line', { x1, y1: 24, x2: x1, y2: HAUTEUR_ENTETE_GANTT,
+        class: 'zfa-gantt-entete-trait' }));
+      a = am; m = mm;
+    }
+  }
+
+  /* ------------------------------ Les barres ----------------------------- */
+
+  dessinerBarres(svg, cfg, lignes) {
+    const g = svgEl('g', {});
+    lignes.forEach((l, rang) => {
+      const yLigne = HAUTEUR_ENTETE_GANTT + rang * HAUTEUR_LIGNE_GANTT;
+      g.appendChild(svgEl('rect', { x: 0, y: yLigne, width: cfg.largeur,
+        height: HAUTEUR_LIGNE_GANTT, class: 'zfa-gantt-survol' }));
+      if (l.jalon) { this.dessinerJalon(g, cfg, l, rang, lignes.length); return; }
+      const debut = l.debut || l.echeance;
+      const fin = l.echeance || l.debut;
+      if (!debut || !fin) return;
+      // Une échéance au jour E occupe le jour E : le bord droit tombe donc au
+      // début de E+1, faute de quoi une tâche d'un jour n'aurait pas d'épaisseur.
+      const x = Math.max(0, this.x(cfg, debut));
+      const x2 = Math.min(cfg.largeur, this.x(cfg, ZotflowAtomiser.decalerJour(fin, 1)));
+      const w = Math.max(8, x2 - x);
+      const y = yLigne + MARGE_BARRE_GANTT;
+      const h = HAUTEUR_LIGNE_GANTT - MARGE_BARRE_GANTT * 2;
+      const couleur = this.couleur(l.statut);
+      const groupe = svgEl('g', { class: 'zfa-gantt-groupe' });
+
+      const meta = l.aDesEnfants;
+      const fond = svgEl('rect', {
+        x, y: meta ? y + h / 3 : y, width: w, height: meta ? h / 3 : h,
+        rx: RAYON_BARRE_GANTT, ry: RAYON_BARRE_GANTT,
+        class: 'zfa-gantt-barre-tache' + (meta ? ' zfa-gantt-meta' : '') });
+      fond.style.fill = couleur;
+      fond.style.opacity = meta ? '0.75' : '0.35';
+      groupe.appendChild(fond);
+
+      if (!meta && l.avancement > 0) {
+        const rempli = svgEl('rect', { x, y,
+          width: Math.max(2, w * Math.min(100, l.avancement) / 100), height: h,
+          rx: RAYON_BARRE_GANTT, ry: RAYON_BARRE_GANTT, class: 'zfa-gantt-rempli' });
+        rempli.style.fill = couleur;
+        rempli.style.opacity = '0.9';
+        groupe.appendChild(rempli);
+      }
+      if (w > 55 && !meta) {
+        const t = svgEl('text', { x: x + 9, y: y + h / 2, class: 'zfa-gantt-etiquette' });
+        const max = Math.max(4, Math.floor((w - 18) / 7.2));
+        t.textContent = l.intitule.length > max ? l.intitule.slice(0, max - 1) + '…' : l.intitule;
+        groupe.appendChild(t);
+      }
+      const bulle = svgEl('title', {});
+      bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + debut + ' → ' + fin
+        + (l.avancement ? '  ·  ' + l.avancement + ' %' : '');
+      groupe.appendChild(bulle);
+
+      fond.addEventListener('pointerdown', (e) => this.saisir(e, groupe, l, 'deplacer', { x, w }));
+      if (!meta) {
+        for (const cote of ['gauche', 'droite']) {
+          const p = svgEl('rect', {
+            x: cote === 'gauche' ? x : x + w - 7, y, width: 7, height: h,
+            class: 'zfa-gantt-poignee' });
+          p.addEventListener('pointerdown', (ev) => this.saisir(ev, groupe, l, cote, { x, w }));
+          groupe.appendChild(p);
+        }
+      }
+      g.appendChild(groupe);
+    });
+    svg.appendChild(g);
+  }
+
+  dessinerJalon(g, cfg, l, rang, nLignes) {
+    if (!l.echeance) return;
+    const x = this.x(cfg, l.echeance) + cfg.ppj / 2;
+    const y = HAUTEUR_ENTETE_GANTT + rang * HAUTEUR_LIGNE_GANTT + HAUTEUR_LIGNE_GANTT / 2;
+    g.appendChild(svgEl('line', { x1: x, y1: HAUTEUR_ENTETE_GANTT, x2: x,
+      y2: HAUTEUR_ENTETE_GANTT + nLignes * HAUTEUR_LIGNE_GANTT,
+      class: 'zfa-gantt-jalon-trait' }));
+    const d = svgEl('path', {
+      d: 'M ' + x + ' ' + (y - 9) + ' L ' + (x + 9) + ' ' + y
+         + ' L ' + x + ' ' + (y + 9) + ' L ' + (x - 9) + ' ' + y + ' Z',
+      class: 'zfa-gantt-losange' });
+    const bulle = svgEl('title', {});
+    bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + l.echeance;
+    d.appendChild(bulle);
+    g.appendChild(d);
+    if (cfg.ppj >= 8) {
+      const t = svgEl('text', { x: x + 14, y: y + 4, class: 'zfa-gantt-jalon-titre' });
+      t.textContent = l.intitule;
+      g.appendChild(t);
+    }
+  }
+
+  dessinerAujourdhui(svg, cfg, aujourdhui, nLignes) {
+    const n = ZotflowAtomiser.ecartJours(cfg.debut, aujourdhui);
+    if (n < 0 || n > cfg.jours) return;
+    const x = n * cfg.ppj;
+    const bas = HAUTEUR_ENTETE_GANTT + nLignes * HAUTEUR_LIGNE_GANTT;
+    const g = svgEl('g', {});
+    g.appendChild(svgEl('line', { x1: x, y1: HAUTEUR_ENTETE_GANTT, x2: x, y2: bas,
+      class: 'zfa-gantt-aujourdhui' }));
+    g.appendChild(svgEl('path', {
+      d: 'M ' + x + ' ' + (HAUTEUR_ENTETE_GANTT - 1) + ' l 5 -7 l -10 0 z',
+      class: 'zfa-gantt-aujourdhui-pointe' }));
+    svg.appendChild(g);
+  }
+
+  /* ------------------------------ Les flèches ---------------------------- */
+
+  // Dessinées, jamais tracées ici : le canvas seul crée les liens, et un même
+  // geste ne doit pas exister à deux endroits.
+  dessinerFleches(svg, cfg, lignes) {
     const rang = new Map(lignes.map((l, i) => [l.ref, i]));
-    const parRef = new Map((this._taches || []).map((t) => [t.ref, t]));
     const dates = {};
-    for (const t of this._taches || []) dates[t.ref] = { debut: t.debut, echeance: t.echeance };
     const aretes = [];
     for (const t of this._taches || []) {
+      dates[t.ref] = { debut: t.debut, echeance: t.echeance };
       for (const b of t.bloquePar || []) {
-        aretes.push({ de: ZotflowAtomiser.refDeLien(b), vers: t.ref, libelle: (String(b).match(/\|(.*)\]\]$/) || [, ''])[1] });
+        aretes.push({ de: ZotflowAtomiser.refDeLien(b), vers: t.ref,
+          libelle: (String(b).match(/\|(.*)\]\]$/) || [null, ''])[1] });
       }
     }
     const fautives = new Set(ZotflowAtomiser.datesIncoherentes(aretes, dates)
-      .map((i) => i.de + '\u0000' + i.vers));
-    const visibles = aretes.filter((a) => rang.has(a.de) && rang.has(a.vers));
-    if (!visibles.length) return;
-
+      .map((i) => i.de + ' ' + i.vers));
+    const g = svgEl('g', { class: 'zfa-gantt-fleches' });
     const H = HAUTEUR_LIGNE_GANTT;
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'zfa-gantt-fleches');
-    svg.setAttribute('width', String(largeur));
-    svg.setAttribute('height', String(lignes.length * H + 34));
-    const x = (jour) => ZotflowAtomiser.ecartJours(etendue.debut, jour) * ppj;
-
-    for (const a of visibles) {
-      const source = lignes[rang.get(a.de)];
-      const cible = lignes[rang.get(a.vers)];
-      const finSource = source.echeance || source.debut;
-      const debutCible = cible.debut || cible.echeance;
-      if (!finSource || !debutCible) continue;
-      const x1 = x(finSource) + ppj;
-      const y1 = 34 + rang.get(a.de) * H + H / 2;
-      const x2 = x(debutCible);
-      const y2 = 34 + rang.get(a.vers) * H + H / 2;
-      const rouge = fautives.has(a.de + '\u0000' + a.vers);
-      // Coude en trois segments : sortir à droite du bloquant, descendre,
-      // entrer à gauche du bloqué. Quand le bloqué est à gauche, le coude
-      // contourne par en dessous plutôt que de traverser les barres.
-      const marge = Math.max(8, ppj);
-      const xm = x2 > x1 + marge ? (x1 + x2) / 2 : x1 + marge;
-      const d = x2 > x1 + marge
-        ? 'M ' + x1 + ' ' + y1 + ' H ' + xm + ' V ' + y2 + ' H ' + x2
-        : 'M ' + x1 + ' ' + y1 + ' H ' + xm + ' V ' + (y2 - H / 2 + 2)
-          + ' H ' + (x2 - marge) + ' V ' + y2 + ' H ' + x2;
-      const chemin = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      chemin.setAttribute('d', d);
-      chemin.setAttribute('class', 'zfa-gantt-fleche' + (rouge ? ' zfa-gantt-fleche-rouge' : ''));
-      svg.appendChild(chemin);
-      const pointe = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      pointe.setAttribute('d', 'M ' + x2 + ' ' + y2 + ' l -5 -3.5 l 0 7 z');
-      pointe.setAttribute('class', 'zfa-gantt-pointe' + (rouge ? ' zfa-gantt-fleche-rouge' : ''));
-      svg.appendChild(pointe);
-      if (a.libelle) {
-        const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        txt.setAttribute('x', String(xm + 3));
-        txt.setAttribute('y', String((y1 + y2) / 2 - 3));
-        txt.setAttribute('class', 'zfa-gantt-fleche-libelle');
-        txt.textContent = a.libelle;
-        svg.appendChild(txt);
+    for (const a of aretes) {
+      if (!rang.has(a.de) || !rang.has(a.vers)) continue;
+      const src = lignes[rang.get(a.de)];
+      const cib = lignes[rang.get(a.vers)];
+      const finSrc = src.echeance || src.debut;
+      const debCib = cib.debut || cib.echeance;
+      if (!finSrc || !debCib) continue;
+      const x1 = this.x(cfg, ZotflowAtomiser.decalerJour(finSrc, 1));
+      const y1 = HAUTEUR_ENTETE_GANTT + rang.get(a.de) * H + H / 2;
+      const x2 = this.x(cfg, debCib);
+      const y2 = HAUTEUR_ENTETE_GANTT + rang.get(a.vers) * H + H / 2;
+      const rouge = fautives.has(a.de + ' ' + a.vers);
+      const marge = 12;
+      // Coude en trois segments quand la cible est à droite. Quand elle est à
+      // gauche, le coude contourne par le bord de la ligne plutôt que de
+      // traverser les barres.
+      const contour = y2 > y1 ? y2 - H / 2 + 3 : y2 + H / 2 - 3;
+      const d = x2 > x1 + marge * 2
+        ? 'M ' + x1 + ' ' + y1 + ' H ' + (x2 - marge) + ' V ' + y2 + ' H ' + (x2 - 6)
+        : 'M ' + x1 + ' ' + y1 + ' H ' + (x1 + marge) + ' V ' + contour
+          + ' H ' + (x2 - marge) + ' V ' + y2 + ' H ' + (x2 - 6);
+      g.appendChild(svgEl('path', { d,
+        class: 'zfa-gantt-fleche' + (rouge ? ' zfa-gantt-rouge' : '') }));
+      g.appendChild(svgEl('path', { d: 'M ' + x2 + ' ' + y2 + ' l -6 -4 l 0 8 z',
+        class: 'zfa-gantt-pointe' + (rouge ? ' zfa-gantt-rouge' : '') }));
+      if (a.libelle && Math.abs(x2 - x1) > 60) {
+        const t = svgEl('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 4,
+          class: 'zfa-gantt-fleche-libelle' });
+        t.textContent = a.libelle;
+        g.appendChild(t);
       }
     }
-    frise.appendChild(svg);
+    svg.appendChild(g);
   }
 
-  dessinerJalons(frise, lignes, etendue, ppj, nLignes) {
-    const hauteur = nLignes * HAUTEUR_LIGNE_GANTT;
-    for (const l of lignes) {
-      if (!l.jalon || !l.echeance) continue;
-      const x = ZotflowAtomiser.ecartJours(etendue.debut, l.echeance) * ppj;
-      const trait = frise.createDiv({ cls: 'zfa-gantt-jalon-trait' });
-      trait.style.left = x + 'px';
-      trait.style.height = hauteur + 'px';
-      const rang = lignes.indexOf(l);
-      const los = frise.createDiv({ cls: 'zfa-gantt-losange' });
-      los.style.left = (x - 6) + 'px';
-      los.style.top = (rang * HAUTEUR_LIGNE_GANTT + 8) + 'px';
-      los.title = l.intitule + ' · ' + l.echeance;
+  /* ------------------------------- Les gestes ---------------------------- */
+
+  // Un seul geste, trois modes. L'écriture n'a lieu qu'au lâcher : écrire
+  // pendant le glissé ferait cent passes de frontmatter pour un déplacement.
+  saisir(e, groupe, ligne, mode, geo) {
+    e.preventDefault();
+    e.stopPropagation();
+    const ppj = this._cfg.ppj;
+    const x0 = e.clientX;
+    const fond = groupe.querySelector('.zfa-gantt-barre-tache');
+    const rempli = groupe.querySelector('.zfa-gantt-rempli');
+    groupe.classList.add('zfa-gantt-glisse');
+    const jours = (ev) => Math.round((ev.clientX - x0) / ppj);
+    const bouger = (ev) => {
+      const d = jours(ev) * ppj;
+      if (mode === 'deplacer') {
+        groupe.setAttribute('transform', 'translate(' + d + ',0)');
+      } else if (mode === 'gauche') {
+        const w = Math.max(ppj, geo.w - d);
+        const nx = geo.x + geo.w - w;
+        fond.setAttribute('x', nx);
+        fond.setAttribute('width', w);
+        if (rempli) rempli.setAttribute('x', nx);
+      } else {
+        fond.setAttribute('width', Math.max(ppj, geo.w + d));
+      }
+    };
+    const lacher = async (ev) => {
+      document.removeEventListener('pointermove', bouger);
+      document.removeEventListener('pointerup', lacher);
+      groupe.classList.remove('zfa-gantt-glisse');
+      const n = jours(ev);
+      if (!n) { this.dessiner(); return; }
+      await this.appliquerGeste(ligne, mode, n);
+    };
+    document.addEventListener('pointermove', bouger);
+    document.addEventListener('pointerup', lacher);
+  }
+
+  async appliquerGeste(ligne, mode, n) {
+    const J = ZotflowAtomiser;
+    let changements;
+    if (mode === 'deplacer') {
+      changements = J.decalerSousArbre(this._lignes, ligne.ref, n);
+    } else if (mode === 'gauche') {
+      const fin = ligne.propre.echeance || ligne.propre.debut;
+      let debut = J.decalerJour(ligne.propre.debut || fin, n);
+      if (debut && fin && debut > fin) debut = fin;
+      changements = [{ ref: ligne.ref, debut, echeance: fin }];
+    } else {
+      const debut = ligne.propre.debut || ligne.propre.echeance;
+      let fin = J.decalerJour(ligne.propre.echeance || debut, n);
+      if (fin && debut && fin < debut) fin = debut;
+      changements = [{ ref: ligne.ref, debut, echeance: fin }];
     }
+    const ecrites = await this.greffon.ecrireDatesTaches(changements);
+    if (!ecrites) { this.dessiner(); return; }
+    this.proposerCascade(ligne.ref, n);
+    this.dessiner();
   }
 
-  dessinerAujourdhui(frise, etendue, ppj, aujourdhui, nLignes) {
-    const n = ZotflowAtomiser.ecartJours(etendue.debut, aujourdhui);
-    if (n < 0 || n > ZotflowAtomiser.ecartJours(etendue.debut, etendue.fin)) return;
-    const t = frise.createDiv({ cls: 'zfa-gantt-aujourdhui' });
-    t.style.left = (n * ppj) + 'px';
-    t.style.height = (nLignes * HAUTEUR_LIGNE_GANTT) + 'px';
-    t.title = tr("Aujourd'hui");
+  // Après un décalage qui contredit un blocage, on ne corrige rien d'office :
+  // propager un retard est une décision, pas une conséquence.
+  proposerCascade(ref, n) {
+    const bloquants = [];
+    const dates = {};
+    for (const t of this.greffon.tachesPourGantt()) {
+      dates[t.ref] = { debut: t.debut, echeance: t.echeance };
+      for (const b of t.bloquePar || []) {
+        bloquants.push({ de: ZotflowAtomiser.refDeLien(b), vers: t.ref });
+      }
+    }
+    const fautives = ZotflowAtomiser.datesIncoherentes(bloquants, dates)
+      .filter((i) => i.de === ref || i.vers === ref);
+    this._cascade = fautives.length ? { ref, jours: n, bloquants } : null;
+  }
+
+  // Glisser une pastille du tiroir sur la frise la date : le jour du dépôt, et
+  // une semaine de durée. Un jalon n'en reçoit qu'une.
+  deposerPastille(e, ligne) {
+    if (!this._svg) return;
+    e.preventDefault();
+    const fantome = document.body.createDiv({ cls: 'zfa-gantt-fantome', text: ligne.intitule });
+    const suivre = (ev) => {
+      fantome.style.left = (ev.clientX + 10) + 'px';
+      fantome.style.top = (ev.clientY - 12) + 'px';
+    };
+    suivre(e);
+    const lacher = async (ev) => {
+      document.removeEventListener('pointermove', suivre);
+      document.removeEventListener('pointerup', lacher);
+      fantome.remove();
+      const b = this._svg.getBoundingClientRect();
+      if (ev.clientX < b.left || ev.clientX > b.right
+          || ev.clientY < b.top || ev.clientY > b.bottom) return;
+      const n = Math.floor((ev.clientX - b.left) / this._cfg.ppj);
+      const jour = ZotflowAtomiser.decalerJour(this._cfg.debut, n);
+      if (!jour) return;
+      await this.greffon.ecrireDatesTaches([ligne.jalon
+        ? { ref: ligne.ref, debut: '', echeance: jour }
+        : { ref: ligne.ref, debut: jour, echeance: ZotflowAtomiser.decalerJour(jour, 6) }]);
+      this.dessiner();
+    };
+    document.addEventListener('pointermove', suivre);
+    document.addEventListener('pointerup', lacher);
   }
 
   async onClose() { this.contentEl.empty(); }
