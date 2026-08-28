@@ -630,6 +630,9 @@ you from making an inconsistent one, it reports it a second later.
 | Time: write today's journal, write it into the notes now | the timer |
 | Annotation basket: show or hide | for drag and drop |
 | Annotation suggestions: open the panel, rebuild the index | the side panel |
+| Tasks: create a task | form, reference computed for you |
+| Tasks: read the canvases again | carries the arrows into the notes |
+| Tasks: inconsistencies | cycles, contradicted dates, competing parents |
 
 ---
 

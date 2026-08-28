@@ -650,6 +650,9 @@ suit.
 | Temps : écrire le journal du jour, reporter dans les notes | le compteur |
 | Panier d'annotations : afficher ou masquer | pour le glisser-déposer |
 | Suggestions : ouvrir le panneau, reconstruire l'index | le panneau latéral |
+| Tâches : créer une tâche | formulaire, référence calculée |
+| Tâches : relire les canvas | reporte les flèches dans les notes |
+| Tâches : incohérences | cycles, dates contredites, parents concurrents |
 
 ---
 
