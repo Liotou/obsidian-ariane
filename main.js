@@ -802,6 +802,9 @@ const TEXTES = {
     "Tâches : rafraîchir le bloc de la tâche active": "Tasks: refresh the block of the active task",
     "Bloc rafraîchi.": "Block refreshed.",
     "Cette note n'est pas une tâche.": "This note is not a task.",
+    "La base existe déjà, elle n a pas été touchée.": "The base already exists, it was left untouched.",
+    "Tâches : poser la base de travail": "Tasks: lay down the working base",
+    "Base posée : ": "Base laid down: ",
   },
 };
 let LANGUE = 'fr';
@@ -2260,6 +2263,101 @@ function citationsDuTexte(texte) {
 
 /* ------------------------- Bibliographie de note -------------------------- */
 
+// Base de travail des tâches. Le contenu est celui de docs/taches.base, dont
+// c'est l'exemplaire versionné : les deux doivent rester identiques.
+const BASE_TACHES = `formulas:
+  bloquantes: note["bloque-par"].filter(value.asFile().properties["statut"] != "terminée").length
+  famille: if(note["source"], "lecture", if(note["livrable"], "production", if(note["fichier"], "production", "action")))
+properties:
+  file.name:
+    displayName: Réf.
+  note.aliases:
+    displayName: Intitulé
+  note.statut:
+    displayName: Statut
+  note.priorite:
+    displayName: Priorité
+  note.debut:
+    displayName: Début
+  note.echeance:
+    displayName: Échéance
+  note.avancement:
+    displayName: Avancement
+  note.parent:
+    displayName: Rattachée à
+  note.termine-le:
+    displayName: Terminée le
+  formula.famille:
+    displayName: Famille
+  formula.bloquantes:
+    displayName: Bloquantes
+views:
+  - type: table
+    name: 1. Débloquées
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "terminée"
+        - note["statut"] != "abandonnée"
+        - formula.bloquantes == 0
+    order:
+      - file.name
+      - aliases
+      - echeance
+      - priorite
+      - avancement
+      - formula.famille
+    sort:
+      - property: echeance
+        direction: ASC
+  - type: table
+    name: 2. Cette semaine
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "terminée"
+        - note["statut"] != "abandonnée"
+        - note["echeance"] <= now() + "7 days"
+    order:
+      - file.name
+      - aliases
+      - echeance
+      - priorite
+      - formula.bloquantes
+    sort:
+      - property: echeance
+        direction: ASC
+  - type: table
+    name: 3. Par famille
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "terminée"
+    groupBy:
+      property: formula.famille
+      direction: ASC
+    order:
+      - file.name
+      - aliases
+      - statut
+      - echeance
+      - avancement
+  - type: table
+    name: 4. Terminées
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] == "terminée"
+    order:
+      - file.name
+      - aliases
+      - termine-le
+      - formula.famille
+    sort:
+      - property: termine-le
+        direction: DESC
+`;
+
 const ZFA_TACHE_DEBUT = '%% ariane:tache %%';
 const ZFA_TACHE_FIN = '%% /ariane:tache %%';
 
@@ -3036,6 +3134,14 @@ class ZotflowAtomiser extends obsidian.Plugin {
         const f = this.app.vault.getAbstractFileByPath(chemin);
         if (f) await this.app.workspace.getLeaf(true).openFile(f);
       }).open(),
+    });
+    this.addCommand({
+      id: 'poser-base-taches',
+      name: tr('Tâches : poser la base de travail'),
+      callback: async () => {
+        const chemin = await this.ecrireBaseTaches();
+        new obsidian.Notice(tr('Base posée : ') + chemin);
+      },
     });
     this.addCommand({
       id: 'maj-bloc-tache',
@@ -9335,6 +9441,21 @@ class ZotflowAtomiser extends obsidian.Plugin {
     }
     await this.app.vault.modify(file, texte);
     return true;
+  }
+
+  // Pose la base de travail dans le dossier des tâches. Ne l'écrase jamais :
+  // Monsieur y ajoutera ses propres vues, et les perdre à chaque mise à jour du
+  // greffon serait pire que de ne pas la fournir.
+  async ecrireBaseTaches() {
+    const dossier = this.dossierT;
+    await this.assurerDossier(dossier);
+    const chemin = dossier + '/Tâches.base';
+    if (this.app.vault.getAbstractFileByPath(chemin)) {
+      new obsidian.Notice(tr('La base existe déjà, elle n a pas été touchée.'));
+      return chemin;
+    }
+    await this.app.vault.create(chemin, BASE_TACHES);
+    return chemin;
   }
 
   // Écrit une note de tâche neuve et rend son chemin. La référence se calcule

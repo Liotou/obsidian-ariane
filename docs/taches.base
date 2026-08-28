@@ -1,0 +1,91 @@
+formulas:
+  bloquantes: note["bloque-par"].filter(value.asFile().properties["statut"] != "terminée").length
+  famille: if(note["source"], "lecture", if(note["livrable"], "production", if(note["fichier"], "production", "action")))
+properties:
+  file.name:
+    displayName: Réf.
+  note.aliases:
+    displayName: Intitulé
+  note.statut:
+    displayName: Statut
+  note.priorite:
+    displayName: Priorité
+  note.debut:
+    displayName: Début
+  note.echeance:
+    displayName: Échéance
+  note.avancement:
+    displayName: Avancement
+  note.parent:
+    displayName: Rattachée à
+  note.termine-le:
+    displayName: Terminée le
+  formula.famille:
+    displayName: Famille
+  formula.bloquantes:
+    displayName: Bloquantes
+views:
+  - type: table
+    name: 1. Débloquées
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "terminée"
+        - note["statut"] != "abandonnée"
+        - formula.bloquantes == 0
+    order:
+      - file.name
+      - aliases
+      - echeance
+      - priorite
+      - avancement
+      - formula.famille
+    sort:
+      - property: echeance
+        direction: ASC
+  - type: table
+    name: 2. Cette semaine
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "terminée"
+        - note["statut"] != "abandonnée"
+        - note["echeance"] <= now() + "7 days"
+    order:
+      - file.name
+      - aliases
+      - echeance
+      - priorite
+      - formula.bloquantes
+    sort:
+      - property: echeance
+        direction: ASC
+  - type: table
+    name: 3. Par famille
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "terminée"
+    groupBy:
+      property: formula.famille
+      direction: ASC
+    order:
+      - file.name
+      - aliases
+      - statut
+      - echeance
+      - avancement
+  - type: table
+    name: 4. Terminées
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] == "terminée"
+    order:
+      - file.name
+      - aliases
+      - termine-le
+      - formula.famille
+    sort:
+      - property: termine-le
+        direction: DESC
