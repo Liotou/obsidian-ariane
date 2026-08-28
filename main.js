@@ -3516,6 +3516,19 @@ class ZotflowAtomiser extends obsidian.Plugin {
       this.marquerNoteSale(f);
       if (this.settings.suggActif) this.antirebond('suggestionsIndex', () => this.majSuggestions(false), 1500);
     };
+    // La date d'achèvement suit le statut. La passe ne réécrit que si la valeur
+    // change vraiment, faute de quoi cette écoute se rappellerait elle-même.
+    this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _donnees, cacheNote) => {
+      const fm = (cacheNote && cacheNote.frontmatter) || null;
+      const jour = new Date().toISOString().slice(0, 10);
+      const valeur = ZotflowAtomiser.achevementAEcrire(fm, jour);
+      if (valeur === null) return;
+      await this.app.fileManager.processFrontMatter(fichier, (x) => {
+        x['termine-le'] = valeur;
+        x.modifie = jour;
+      });
+    }));
+
     this.registerEvent(this.app.vault.on('modify', revaliderIndex));
     this.registerEvent(this.app.vault.on('create', revaliderIndex));
     this.registerEvent(this.app.vault.on('delete', revaliderIndex));
@@ -9195,6 +9208,17 @@ class ZotflowAtomiser extends obsidian.Plugin {
     if (f.title) bouts.push('— ' + String(f.title));
     bouts.push('· ' + basename);
     return bouts.join(' ');
+  }
+
+  // La date d'achèvement se déduit du statut, elle ne se saisit pas. Rendre
+  // null veut dire « ne rien écrire », ce qui compte : réécrire à l'identique
+  // relancerait l'événement de modification et ferait tourner la boucle.
+  // Une tâche abandonnée n'est pas une tâche achevée, elle ne reçoit pas de date.
+  static achevementAEcrire(fm, aujourdhui) {
+    if (!fm || fm.type !== 'tache') return null;
+    const dejaPosee = String(fm['termine-le'] == null ? '' : fm['termine-le']).trim();
+    if (fm.statut === 'terminée') return dejaPosee ? null : aujourdhui;
+    return dejaPosee ? '' : null;
   }
 
   // Contenu du bloc d'accès, sans ses marques. Une action n'en a pas besoin :

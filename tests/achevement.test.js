@@ -1,0 +1,29 @@
+const test = require('node:test');
+const assert = require('node:assert');
+const Ariane = require('./obsidian-factice.js');
+
+const a = (fm) => Ariane.achevementAEcrire(fm, '2026-08-28');
+
+test('une tâche terminée sans date reçoit le jour même', () => {
+  assert.equal(a({ type: 'tache', statut: 'terminée' }), '2026-08-28');
+});
+
+test('une tâche terminée qui a déjà sa date n est pas retouchée', () => {
+  assert.equal(a({ type: 'tache', statut: 'terminée', 'termine-le': '2026-07-01' }), null);
+});
+
+test('une tâche non terminée qui porte une date la perd', () => {
+  assert.equal(a({ type: 'tache', statut: 'en cours', 'termine-le': '2026-07-01' }), '');
+});
+
+test('une tâche non terminée sans date ne demande rien', () => {
+  assert.equal(a({ type: 'tache', statut: 'à faire' }), null);
+});
+
+test('une tâche abandonnée n est pas une tâche achevée', () => {
+  assert.equal(a({ type: 'tache', statut: 'abandonnée' }), null);
+});
+
+test('une note qui n est pas une tâche est laissée tranquille', () => {
+  assert.equal(a({ type: 'conceptuelle', statut: 'terminée' }), null);
+});
