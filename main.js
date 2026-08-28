@@ -761,6 +761,34 @@ const TEXTES = {
     "Étiquettes portées par les formes, ex. « concept », « acteur ».": "Labels carried by shapes, for example “concept” or “actor”.",
     "— Aparté sur les annotations": "Aside on annotations",
     "⇱ Glisser sur un paragraphe": "⇱ Drag onto a paragraph",
+    "Tâches": "Tasks",
+    "Une note par tâche.": "One note per task.",
+    "Ariane — nouvelle tâche": "Ariane — new task",
+    "Intitulé": "Title",
+    "Famille": "Kind",
+    "Action": "Action",
+    "Lecture": "Reading",
+    "Production, note du coffre": "Output, note in the vault",
+    "Production, fichier externe": "Output, external file",
+    "Source Zotero": "Zotero source",
+    "Clé de citation, sans les crochets.": "Citation key, without the brackets.",
+    "Note produite": "Note produced",
+    "Nom de la note, sans les crochets.": "Note name, without the brackets.",
+    "Fichier externe": "External file",
+    "Chemin absolu du document.": "Absolute path of the document.",
+    "Début": "Start",
+    "Échéance": "Due",
+    "Priorité": "Priority",
+    "(aucune)": "(none)",
+    "haute": "high",
+    "moyenne": "medium",
+    "basse": "low",
+    "Jalon": "Milestone",
+    "Repère de calendrier : seule l'échéance est retenue.": "Calendar marker: only the due date is kept.",
+    "Liste Apple Rappels": "Apple Reminders list",
+    "Créer": "Create",
+    "Tâches : créer une tâche": "Tasks: create a task",
+    "Une tâche sans intitulé ne se retrouve pas.": "A task without a title cannot be found again.",
   },
 };
 let LANGUE = 'fr';
@@ -792,6 +820,8 @@ const DEFAULT_SETTINGS = {
   sourcesExclues: [],           // clés de citation à ne jamais atomiser
   atomiserNotesLecture: true,
   dossierReferences: '',        // rôle : où déposer les références en attente
+  dossierTaches: '',            // rôle : où déposer les notes de tâche
+  listeRappelsDefaut: 'Doctorat - Tâches',
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes
   // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque
@@ -2980,6 +3010,16 @@ class ZotflowAtomiser extends obsidian.Plugin {
       id: 'rattacher-toutes-references',
       name: tr('Références en attente : rattacher automatiquement'),
       callback: () => this.rattacherToutesReferences(),
+    });
+    this.addCommand({
+      id: 'creer-tache',
+      name: tr('Tâches : créer une tâche'),
+      callback: () => new ModaleNouvelleTache(this.app, this, async (champs) => {
+        if (!champs) return;
+        const chemin = await this.creerTache(champs);
+        const f = this.app.vault.getAbstractFileByPath(chemin);
+        if (f) await this.app.workspace.getLeaf(true).openFile(f);
+      }).open(),
     });
     this.addCommand({
       id: 'temps-journal',
@@ -6691,7 +6731,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return ['tempsTotalSecondes', 'tempsHistorique', 'rattachementsIgnores',
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
-            'tempsDossierJournal'];
+            'dossierTaches', 'tempsDossierJournal'];
   }
 
   profilExportable(avecOrganisation) {
@@ -6809,6 +6849,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
       ['dossierAnnotations', ['annotation']],
       ['dossierNotesLecture', ['note de lecture', 'notes de lecture', 'lecture']],
       ['dossierReferences', ['reference en attente', 'references en attente', 'en attente']],
+      ['dossierTaches', ['tache', 'taches']],
       ['dossierBibliographies', ['bibliographie citee', 'bibliographies citees', 'biblio']],
       ['exportDossier', ['livrable', 'export', 'document']],
       ['tempsDossierJournal', ['journal']],
@@ -6905,6 +6946,10 @@ class ZotflowAtomiser extends obsidian.Plugin {
   }
   get dossierR() {
     return this.settings.dossierReferences;
+  }
+
+  get dossierT() {
+    return this.settings.dossierTaches || '8 - Tâches';
   }
 
   /* ------------------------- Utilitaires d'écriture ------------------------- */
@@ -9093,6 +9138,25 @@ class ZotflowAtomiser extends obsidian.Plugin {
     l.push('');
     return l.join('\n');
   }
+
+  // Écrit une note de tâche neuve et rend son chemin. La référence se calcule
+  // sur les notes déjà présentes, ce qui garantit l'unicité sans compteur
+  // conservé dans les réglages, lequel se désynchroniserait du coffre.
+  async creerTache(champs) {
+    const dossier = this.dossierT;
+    await this.assurerDossier(dossier);
+    const noms = this.app.vault.getMarkdownFiles()
+      .filter((f) => f.path.startsWith(dossier + '/'))
+      .map((f) => f.basename);
+    const reference = ZotflowAtomiser.referenceTacheSuivante(noms, new Date().getFullYear());
+    const chemin = dossier + '/' + reference + '.md';
+    const jour = new Date().toISOString().slice(0, 10);
+    await this.ecrire(chemin, ZotflowAtomiser.corpsNouvelleTache(Object.assign({}, champs, {
+      aujourdhui: jour,
+      liste: (champs && champs.liste) || this.settings.listeRappelsDefaut,
+    })));
+    return chemin;
+  }
 }
 
 /* =========================================================================
@@ -9423,6 +9487,7 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
     role(tr('Annotations atomisées'), 'dossierAnnotations', tr("Une note par annotation Zotero."));
     role(tr('Notes de lecture'), 'dossierNotesLecture', tr("Notes-filles Zotero, attachées à la référence entière."));
     role(tr('Références en attente'), 'dossierReferences', tr("Références citées mais pas encore dans Zotero."));
+    role(tr('Tâches'), 'dossierTaches', tr("Une note par tâche."));
     role(tr('Bibliographies citées'), 'dossierBibliographies', tr("Une note de bibliographie par source."));
     role(tr('Documents exportés'), 'exportDossier', tr("Sortie de l'export Word."));
     role(tr('Journal du temps'), 'tempsDossierJournal', tr("Journaux quotidiens du compteur de temps."));
@@ -10268,6 +10333,136 @@ class ChoixSourceModal extends obsidian.Modal {
     if (!this.repondu) {
       this.repondu = true;
       this.onChoix(null);
+    }
+  }
+}
+
+/* ---------------- Formulaire de création d'une tâche ------------------- */
+
+class ModaleNouvelleTache extends obsidian.Modal {
+  constructor(app, greffon, surValidation) {
+    super(app);
+    this.greffon = greffon;
+    this.surValidation = surValidation;
+    this.repondu = false;
+    this.champs = {
+      intitule: '', statut: 'à faire', priorite: '', debut: '', echeance: '',
+      avancement: 0, jalon: false, source: '', livrable: '', fichier: '',
+      liste: greffon.settings.listeRappelsDefaut,
+    };
+    this.famille = 'action';
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl('h3', { text: tr('Ariane — nouvelle tâche') });
+    this.corps = contentEl.createDiv();
+    this.dessiner();
+  }
+
+  // Le formulaire se redessine à chaque changement de famille : c'est elle qui
+  // décide du seul champ de désignation offert, et en offrir plusieurs à la
+  // fois inviterait à remplir la contradiction que le schéma interdit.
+  dessiner() {
+    this.corps.empty();
+    const c = this.corps;
+
+    new obsidian.Setting(c).setName(tr('Intitulé'))
+      .addText((t) => t.setValue(this.champs.intitule)
+        .onChange((v) => { this.champs.intitule = v; }));
+
+    new obsidian.Setting(c).setName(tr('Famille'))
+      .addDropdown((d) => d
+        .addOption('action', tr('Action'))
+        .addOption('lecture', tr('Lecture'))
+        .addOption('production-interne', tr('Production, note du coffre'))
+        .addOption('production-externe', tr('Production, fichier externe'))
+        .setValue(this.famille)
+        .onChange((v) => {
+          this.famille = v;
+          this.champs.source = '';
+          this.champs.livrable = '';
+          this.champs.fichier = '';
+          this.dessiner();
+        }));
+
+    if (this.famille === 'lecture') {
+      new obsidian.Setting(c).setName(tr('Source Zotero'))
+        .setDesc(tr('Clé de citation, sans les crochets.'))
+        .addText((t) => t.setPlaceholder('@perrowNormalAccidents1984')
+          .onChange((v) => {
+            const n = v.trim();
+            this.champs.source = n ? '[[' + n + ']]' : '';
+          }));
+    } else if (this.famille === 'production-interne') {
+      new obsidian.Setting(c).setName(tr('Note produite'))
+        .setDesc(tr('Nom de la note, sans les crochets.'))
+        .addText((t) => t.onChange((v) => {
+          const n = v.trim();
+          this.champs.livrable = n ? '[[' + n + ']]' : '';
+        }));
+    } else if (this.famille === 'production-externe') {
+      new obsidian.Setting(c).setName(tr('Fichier externe'))
+        .setDesc(tr('Chemin absolu du document.'))
+        .addText((t) => t.setPlaceholder('/Users/…/soutenance.pptx')
+          .onChange((v) => { this.champs.fichier = v.trim(); }));
+    }
+
+    new obsidian.Setting(c).setName(tr('Début'))
+      .addText((t) => t.setPlaceholder('AAAA-MM-JJ').setValue(this.champs.debut)
+        .onChange((v) => { this.champs.debut = v.trim(); }));
+
+    new obsidian.Setting(c).setName(tr('Échéance'))
+      .addText((t) => t.setPlaceholder('AAAA-MM-JJ').setValue(this.champs.echeance)
+        .onChange((v) => { this.champs.echeance = v.trim(); }));
+
+    new obsidian.Setting(c).setName(tr('Priorité'))
+      .addDropdown((d) => d
+        .addOption('', tr('(aucune)'))
+        .addOption('haute', tr('haute'))
+        .addOption('moyenne', tr('moyenne'))
+        .addOption('basse', tr('basse'))
+        .setValue(this.champs.priorite)
+        .onChange((v) => { this.champs.priorite = v; }));
+
+    new obsidian.Setting(c).setName(tr('Jalon'))
+      .setDesc(tr("Repère de calendrier : seule l'échéance est retenue."))
+      .addToggle((t) => t.setValue(this.champs.jalon)
+        .onChange((v) => { this.champs.jalon = v; }));
+
+    new obsidian.Setting(c).setName(tr('Liste Apple Rappels'))
+      .addText((t) => t.setValue(this.champs.liste)
+        .onChange((v) => { this.champs.liste = v.trim(); }));
+
+    const ligne = c.createDiv();
+    ligne.style.textAlign = 'right';
+    ligne.style.marginTop = '10px';
+    const annuler = ligne.createEl('button', { text: tr('Annuler') });
+    annuler.addEventListener('click', () => this.repondre(null));
+    const creer = ligne.createEl('button', { text: tr('Créer') });
+    creer.style.marginLeft = '6px';
+    creer.addEventListener('click', () => {
+      if (!this.champs.intitule.trim()) {
+        new obsidian.Notice(tr('Une tâche sans intitulé ne se retrouve pas.'));
+        return;
+      }
+      if (this.champs.jalon) this.champs.debut = '';
+      this.repondre(this.champs);
+    });
+  }
+
+  repondre(v) {
+    if (this.repondu) return;
+    this.repondu = true;
+    this.close();
+    this.surValidation(v);
+  }
+
+  onClose() {
+    this.contentEl.empty();
+    if (!this.repondu) {
+      this.repondu = true;
+      this.surValidation(null);
     }
   }
 }
