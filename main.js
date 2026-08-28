@@ -811,6 +811,22 @@ const TEXTES = {
     "vert": "green",
     "cyan": "cyan",
     "violet": "purple",
+    "Incohérences des tâches": "Task inconsistencies",
+    "Relecture des canvas…": "Reading the canvases again…",
+    "Relire les canvas": "Read the canvases again",
+    "Cycles": "Cycles",
+    "Ces tâches se bloquent en rond : aucune ne peut commencer. Retirez une flèche du cercle.": "These tasks block one another in a ring: none can start. Remove one arrow from the circle.",
+    "Dates contredites": "Contradicted dates",
+    "commence le": "starts on",
+    "alors que": "while",
+    "ne s'achève que le": "only ends on",
+    "Parents concurrents": "Competing parents",
+    "Deux canvas lui donnent des parents différents :": "Two canvases give it different parents:",
+    "Le premier dans l ordre alphabétique est retenu, en attendant que vous tranchiez.": "The first in alphabetical order is kept, until you decide.",
+    "Liens morts": "Dead links",
+    "Un canvas désigne cette tâche, mais sa note n'existe pas. Elle a pu être renommée ou supprimée ; rien n'a été effacé.": "A canvas points at this task, but its note does not exist. It may have been renamed or deleted; nothing was erased.",
+    "Rien à signaler : vos tâches sont cohérentes.": "Nothing to report: your tasks are consistent.",
+    "Tâches : incohérences": "Tasks: inconsistencies",
   },
 };
 let LANGUE = 'fr';
@@ -3133,6 +3149,11 @@ class ZotflowAtomiser extends obsidian.Plugin {
       callback: () => this.rattacherToutesReferences(),
     });
     this.addCommand({
+      id: 'incoherences-taches',
+      name: tr('Tâches : incohérences'),
+      callback: () => this.ouvrirVueIncoherences(),
+    });
+    this.addCommand({
       id: 'synchroniser-canvas-taches',
       name: tr('Tâches : relire les canvas'),
       callback: async () => {
@@ -3291,6 +3312,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     // Panneau de suggestions dynamiques (moteur lexical local).
     this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
+    this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
     this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
@@ -8182,6 +8204,15 @@ class ZotflowAtomiser extends obsidian.Plugin {
     this.app.workspace.revealLeaf(feuille);
   }
 
+  async ouvrirVueIncoherences() {
+    const ex = this.app.workspace.getLeavesOfType(TYPE_VUE_INCOHERENCES);
+    if (ex.length) { this.app.workspace.revealLeaf(ex[0]); return; }
+    const feuille = this.app.workspace.getRightLeaf(false);
+    if (!feuille) return;
+    await feuille.setViewState({ type: TYPE_VUE_INCOHERENCES, active: true });
+    this.app.workspace.revealLeaf(feuille);
+  }
+
   cheminBibliographies() {
     const rel = this.app.vault.configDir + '/plugins/' + this.manifest.id + '/bibliographies.json';
     const base = (this.app.vault.adapter && this.app.vault.adapter.basePath) || '';
@@ -11163,6 +11194,124 @@ class ModaleNouvelleTache extends obsidian.Modal {
  * ========================================================================= */
 
 const TYPE_VUE_REFS = 'zfa-references';
+const TYPE_VUE_INCOHERENCES = 'zfa-taches-incoherences';
+
+/* =========================================================================
+ * Volet des incohérences des tâches
+ * ========================================================================= */
+
+// Ce volet ne liste que ce qu'Ariane ne peut pas trancher seule. Tout ce qui
+// est déterministe est déjà fait au moment où il s'ouvre : il reste les
+// contradictions, qui appellent une décision.
+class VueIncoherencesTaches extends obsidian.ItemView {
+  constructor(feuille, greffon) {
+    super(feuille);
+    this.greffon = greffon;
+  }
+
+  getViewType() { return TYPE_VUE_INCOHERENCES; }
+  getDisplayText() { return tr('Incohérences des tâches'); }
+  getIcon() { return 'unlink'; }
+
+  async onOpen() {
+    this.contentEl.addClass('zfa-refs');
+    await this.rafraichir();
+  }
+
+  async rafraichir() {
+    const c = this.contentEl;
+    c.empty();
+    c.createDiv({ cls: 'zfa-refs-vide', text: tr('Relecture des canvas…') });
+    await this.greffon.synchroniserCanvas();
+    this.dessiner();
+  }
+
+  bouton(parent, texte, icone, action) {
+    const b = parent.createEl('button', { cls: 'zfa-ref-action' });
+    if (icone) { const i = b.createSpan(); obsidian.setIcon(i, icone); }
+    b.createSpan({ text: texte });
+    b.onclick = (e) => { e.stopPropagation(); action(); };
+    return b;
+  }
+
+  ouvrir(ref) {
+    const f = this.greffon.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    if (f) this.app.workspace.getLeaf(true).openFile(f);
+    else new obsidian.Notice(tr('Note introuvable : ') + ref);
+  }
+
+  section(parent, titre, lignes, rendre) {
+    if (!lignes.length) return 0;
+    parent.createEl('h4', { cls: 'zfa-ref-titre-bloc', text: titre + ' (' + lignes.length + ')' });
+    for (const l of lignes) {
+      const d = parent.createDiv({ cls: 'zfa-ref' });
+      rendre(d, l);
+    }
+    return lignes.length;
+  }
+
+  dessiner() {
+    const c = this.contentEl;
+    c.empty();
+    const etat = this.greffon._incoherencesTaches
+      || { cycles: [], dates: [], conflits: [], morts: [] };
+
+    const barre = c.createDiv({ cls: 'zfa-refs-barre' });
+    this.bouton(barre, tr('Relire les canvas'), 'refresh-cw', () => this.rafraichir());
+
+    let total = 0;
+
+    total += this.section(c, tr('Cycles'), etat.cycles, (d, cycle) => {
+      d.createDiv({ cls: 'zfa-ref-nom', text: cycle.join('  →  ') });
+      d.createDiv({
+        cls: 'zfa-ref-faible',
+        text: tr("Ces tâches se bloquent en rond : aucune ne peut commencer. Retirez une flèche du cercle."),
+      });
+      const actes = d.createDiv({ cls: 'zfa-ref-actions' });
+      for (const ref of [...new Set(cycle)]) {
+        this.bouton(actes, ref, 'file-text', () => this.ouvrir(ref));
+      }
+    });
+
+    total += this.section(c, tr('Dates contredites'), etat.dates, (d, i) => {
+      d.createDiv({ cls: 'zfa-ref-nom', text: i.de + '  →  ' + i.vers });
+      d.createDiv({
+        cls: 'zfa-ref-faible',
+        text: i.vers + ' ' + tr('commence le') + ' ' + i.debut + ', ' + tr('alors que')
+          + ' ' + i.de + ' ' + tr("ne s'achève que le") + ' ' + i.fin + '.',
+      });
+      const actes = d.createDiv({ cls: 'zfa-ref-actions' });
+      this.bouton(actes, i.de, 'file-text', () => this.ouvrir(i.de));
+      this.bouton(actes, i.vers, 'file-text', () => this.ouvrir(i.vers));
+    });
+
+    total += this.section(c, tr('Parents concurrents'), etat.conflits, (d, x) => {
+      d.createDiv({ cls: 'zfa-ref-nom', text: x.ref });
+      d.createDiv({
+        cls: 'zfa-ref-faible',
+        text: tr('Deux canvas lui donnent des parents différents :') + ' ' + x.parents.join(', ')
+          + '. ' + tr('Le premier dans l ordre alphabétique est retenu, en attendant que vous tranchiez.'),
+      });
+      const actes = d.createDiv({ cls: 'zfa-ref-actions' });
+      this.bouton(actes, x.ref, 'file-text', () => this.ouvrir(x.ref));
+      for (const p of x.parents) this.bouton(actes, p, 'file-text', () => this.ouvrir(p));
+    });
+
+    total += this.section(c, tr('Liens morts'), etat.morts, (d, ref) => {
+      d.createDiv({ cls: 'zfa-ref-nom', text: ref });
+      d.createDiv({
+        cls: 'zfa-ref-faible',
+        text: tr("Un canvas désigne cette tâche, mais sa note n'existe pas. Elle a pu être renommée ou supprimée ; rien n'a été effacé."),
+      });
+    });
+
+    if (!total) {
+      c.createDiv({ cls: 'zfa-refs-vide', text: tr('Rien à signaler : vos tâches sont cohérentes.') });
+    }
+  }
+
+  async onClose() { this.contentEl.empty(); }
+}
 
 class VueReferencesAttente extends obsidian.ItemView {
   constructor(feuille, greffon) {
