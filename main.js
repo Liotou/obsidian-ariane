@@ -7919,7 +7919,15 @@ class ZotflowAtomiser extends obsidian.Plugin {
     for (const t of aTraiter) {
       // L'œuvre la plus attestée garde le libellé ; les autres sont détachées.
       const tries = t.oeuvres.slice().sort((a, b) => b.n - a.n);
+      // Prudence : on ne sépare que sur une preuve symétrique. Deux DOI
+      // distincts, ou aucun DOI de part et d'autre. Quand une seule des deux
+      // entrées porte un DOI, l'écart peut n'être qu'une lacune de l'une des
+      // bibliographies : le chapitre « Risk Governance: An Application… » et le
+      // livre « Handbook of performability engineering » qui le contient sont
+      // le même travail, et rien dans les titres ne le dit.
+      const separables = (a, b) => (a.doi && b.doi) ? a.doi !== b.doi : (!a.doi && !b.doi);
       for (const o of tries.slice(1)) {
+        if (!separables(tries[0], o)) continue;
         const r = await this.detacherOeuvre(t.entree, o, true);
         if (r) { notes += 1; liens += r.liens; }
       }
