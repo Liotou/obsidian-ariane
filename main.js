@@ -348,6 +348,11 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Identifications écrites : ": "Identifications written: ",
+    "Rien de nouveau à identifier.": "Nothing new to identify.",
+    "Identification": "Identification",
+    "Sources citantes": "Citing sources",
+    "Actions": "Actions",
     "Références en attente (Ariane)": "Pending references (Ariane)",
     "Rattachement": "Attaching",
     "Bibliographie : recomposer celle de la note active": "Bibliography: rebuild the one in the active note",
@@ -374,9 +379,6 @@ const TEXTES = {
     "renommée(s)": "renamed",
     "fusionnée(s)": "merged",
     "en échec": "failed",
-    "1. Ce que c’est": "1. What it is",
-    "2. Où elle est citée": "2. Where it is cited",
-    "3. Que faire": "3. What to do",
     "Déjà dans votre Zotero : ": "Already in your Zotero: ",
     "Ce libellé recouvre ": "This label covers ",
     " travaux différents.": " different works.",
@@ -7867,6 +7869,39 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return n;
   }
 
+  // La résolution vivait en mémoire, recalculée à chaque ouverture du volet, et
+  // n'était écrite dans les notes que par un geste manuel. Tout ce qui lit les
+  // notes voyait donc des références non identifiées alors qu'elles l'étaient.
+  // On inscrit ce qui ne souffre aucun doute : une seule œuvre pour ce libellé.
+  async ecrireIdentificationsAutomatiquement(silencieux) {
+    const { parRef } = await this.indexOeuvres();
+    let n = 0;
+    for (const [libelle, e] of parRef) {
+      if (!e.oeuvres || e.oeuvres.length !== 1) continue;
+      const o = e.oeuvres[0];
+      if (!o.titre || !titreCredible(o.titre)) continue;
+      const f = this.app.vault.getAbstractFileByPath(this.dossierR + '/' + libelle + '.md');
+      if (!(f instanceof obsidian.TFile)) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      // On n'écrase pas une identification déjà posée, ni ce que l'utilisateur
+      // a corrigé à la main.
+      if (fm['titre-cité']) continue;
+      this.marquerEcriture(f.path);
+      await this.app.fileManager.processFrontMatter(f, (x) => {
+        x['titre-cité'] = o.titre;
+        if (o.doi) x.doi = o.doi;
+        const al = Array.isArray(x.aliases) ? x.aliases : (x.aliases ? [x.aliases] : []);
+        if (!al.includes(o.titre)) x.aliases = [o.titre].concat(al);
+      });
+      n += 1;
+    }
+    if (!silencieux) {
+      new obsidian.Notice(n ? tr('Identifications écrites : ') + n : tr('Rien de nouveau à identifier.'));
+    }
+    console.log('[Ariane] identifications écrites :', n);
+    return n;
+  }
+
   async detacherAutomatiquement(silencieux) {
     const { parRef } = await this.indexOeuvres();
     const aTraiter = [];
@@ -8200,12 +8235,14 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const liste = fiche && fiche.doi ? this.bibliographieDeDoi(fiche.doi) : null;
     // Crossref muet — le cas de tous les livres, qui n'ont pas de DOI : on lit
     // la bibliographie dans le texte du PDF lui-même.
-    if (!liste || !liste.length) {
+    const versPdf = () => {
       const cle = this._attachements ? this._attachements.get(source) : null;
       const e = cle ? ZotflowAtomiser.entreeDansTexte(this.texteAttachement(cle), premier2, annee) : null;
       if (!e || !titreCredible(e.titre)) return [];
       return [{ titre: e.titre, doi: '', brut: e.brut, revue: '', score: 0, viaPdf: true }];
-    }
+    };
+    // Crossref muet, le cas de tous les livres, qui n'ont pas de DOI.
+    if (!liste || !liste.length) return versPdf();
     const sac = new Set(tokeniser(this.fenetreCitation(passage || '', premier)));
 
     const cands = [];
@@ -8243,6 +8280,10 @@ class ZotflowAtomiser extends obsidian.Plugin {
       for (const mot of tokeniser(c.titre)) if (sac.has(mot)) ctx += 3;
       c.score += Math.min(ctx, 30);
     }
+    // Crossref a répondu mais ne mentionne pas cette référence : sa liste est
+    // souvent incomplète. Le PDF, lui, porte la bibliographie entière.
+    if (!cands.length) return versPdf();
+
     cands.sort((a, b) => b.score - a.score);
     return cands;
   }
@@ -8532,7 +8573,11 @@ class ZotflowAtomiser extends obsidian.Plugin {
     this.decoupageEnCours = false;
     await this.ecrireBibliographies();
     avis.hide();
-    if (gardes) { await this.fusionnerAutomatiquement(true); await this.detacherAutomatiquement(true); }
+    if (gardes) {
+      await this.fusionnerAutomatiquement(true);
+      await this.detacherAutomatiquement(true);
+      await this.ecrireIdentificationsAutomatiquement(true);
+    }
     new obsidian.Notice(tr('Découpage terminé : ') + gardes + ' ' + tr('retenus')
       + ', ' + jetes + ' ' + tr('rejetés') + '.');
     return gardes;
@@ -8893,7 +8938,11 @@ class ZotflowAtomiser extends obsidian.Plugin {
     avis.hide();
     // L'identification vient de changer : les libellés à double sens se
     // détachent d'eux-mêmes, sans rien demander.
-    if (!arrete) { await this.fusionnerAutomatiquement(true); await this.detacherAutomatiquement(true); }
+    if (!arrete) {
+      await this.fusionnerAutomatiquement(true);
+      await this.detacherAutomatiquement(true);
+      await this.ecrireIdentificationsAutomatiquement(true);
+    }
     new obsidian.Notice((arrete ? tr('Génération interrompue : ') : tr('Bibliographies terminées : '))
       + ok + ' ' + tr('générée(s)') + ', ' + vide + ' ' + tr('sans résultat')
       + ', ' + tr('sur ') + i + '. ' + reseau + ' ' + tr('appel(s) réseau') + '.', 12000);
@@ -10383,7 +10432,7 @@ class VueReferencesAttente extends obsidian.ItemView {
 
     /* --------------------------- 1. Ce que c'est -------------------------- */
     const ident = d.createDiv({ cls: 'zfa-ref-section' });
-    ident.createDiv({ cls: 'zfa-ref-num', text: tr('1. Ce que c’est') });
+    ident.createDiv({ cls: 'zfa-ref-num', text: tr('Identification') });
     const cible = l.dansZotero || l.auto;
     const oeuvres = l.oeuvres || [];
 
@@ -10418,7 +10467,7 @@ class VueReferencesAttente extends obsidian.ItemView {
     /* ----------------------- 2. Sur quoi je me fonde ---------------------- */
     const preuve = d.createDiv({ cls: 'zfa-ref-section' });
     preuve.createDiv({ cls: 'zfa-ref-num',
-      text: tr('2. Où elle est citée') + '  ·  ' + l.r.sources.length + ' ' + tr('source(s)') });
+      text: tr('Sources citantes') + '  ·  ' + l.r.sources.length + ' ' + tr('source(s)') });
     const parSource = new Map();
     for (const p of (l.biblio && l.biblio.parSource) || []) parSource.set(p.source, p);
     if (!l.r.sources.length) {
@@ -10430,10 +10479,6 @@ class VueReferencesAttente extends obsidian.ItemView {
       ent.createSpan({ cls: 'zfa-ref-source-nom', text: src });
       ent.createSpan({ cls: 'zfa-ref-compteur', text: n + '×' });
       const p = parSource.get(src);
-      if (p && p.passage) {
-        const pa = ls.createDiv({ cls: 'zfa-ref-passage' });
-        this.ecrirePassage(pa, p.passage, l.r.nom);
-      }
       if (p) {
         const bb = ls.createDiv({ cls: 'zfa-ref-biblio' });
         bb.createDiv({ cls: 'zfa-ref-texte',
@@ -10458,7 +10503,7 @@ class VueReferencesAttente extends obsidian.ItemView {
 
     /* --------------------------- 3. Que faire ----------------------------- */
     const faire = d.createDiv({ cls: 'zfa-ref-section' });
-    faire.createDiv({ cls: 'zfa-ref-num', text: tr('3. Que faire') });
+    faire.createDiv({ cls: 'zfa-ref-num', text: tr('Actions') });
     const actes = faire.createDiv({ cls: 'zfa-ref-barre-actions' });
 
     // Une seule action mise en avant, celle que l'état appelle.
@@ -10506,17 +10551,6 @@ class VueReferencesAttente extends obsidian.ItemView {
 
   // Le verdict d'ensemble : les sources arbitrées désignent-elles la même œuvre ?
 
-
-  // Le nom cité est souligné dans le passage, pour que l'œil aille droit à
-  // l'endroit qui compte.
-  ecrirePassage(el, passage, nomRef) {
-    const nom = nomRef.split(/,/)[0].split(/\s+et al/)[0].split(/\s*&/)[0].trim();
-    const i = sansAccents(passage).indexOf(sansAccents(nom));
-    if (!nom || i < 0) { el.setText('« ' + passage + ' »'); return; }
-    el.createSpan({ text: '« ' + passage.slice(0, i) });
-    el.createSpan({ cls: 'zfa-ref-appel', text: passage.slice(i, i + nom.length) });
-    el.createSpan({ text: passage.slice(i + nom.length) + ' »' });
-  }
 
   ligneDoi(parent, doi) {
     const el = parent.createDiv({ cls: 'zfa-ref-doi' });
