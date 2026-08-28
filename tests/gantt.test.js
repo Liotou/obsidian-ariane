@@ -1,0 +1,102 @@
+const test = require('node:test');
+const assert = require('node:assert');
+const Ariane = require('./obsidian-factice.js');
+
+const t = (ref, o) => Object.assign(
+  { ref, intitule: ref, parent: '', debut: '', echeance: '', statut: 'à faire',
+    avancement: 0, jalon: false }, o);
+
+test('des tâches sans parent restent au premier niveau', () => {
+  const l = Ariane.disposerGantt([t('T26-001'), t('T26-002')]);
+  assert.deepEqual(l.map((x) => x.niveau), [0, 0]);
+});
+
+test('un enfant suit son parent et descend d un niveau', () => {
+  const l = Ariane.disposerGantt([
+    t('T26-001'), t('T26-002', { parent: '[[T26-001]]' })]);
+  assert.deepEqual(l.map((x) => x.ref), ['T26-001', 'T26-002']);
+  assert.deepEqual(l.map((x) => x.niveau), [0, 1]);
+});
+
+test('un parent écrit avec un alias est reconnu', () => {
+  const l = Ariane.disposerGantt([
+    t('T26-001'), t('T26-002', { parent: '[[T26-001|partie 2]]' })]);
+  assert.equal(l[1].niveau, 1);
+});
+
+test('la barre d une méta-tâche couvre sa descendance', () => {
+  const l = Ariane.disposerGantt([
+    t('T26-001'),
+    t('T26-002', { parent: 'T26-001', debut: '2026-09-05', echeance: '2026-09-20' }),
+    t('T26-003', { parent: 'T26-001', debut: '2026-09-01', echeance: '2026-09-10' }),
+  ]);
+  const meta = l.find((x) => x.ref === 'T26-001');
+  assert.equal(meta.debut, '2026-09-01');
+  assert.equal(meta.echeance, '2026-09-20');
+  assert.equal(meta.aDesEnfants, true);
+});
+
+test('la remontée traverse deux niveaux', () => {
+  const l = Ariane.disposerGantt([
+    t('T26-001'),
+    t('T26-002', { parent: 'T26-001' }),
+    t('T26-003', { parent: 'T26-002', debut: '2026-09-01', echeance: '2026-09-10' }),
+  ]);
+  assert.equal(l.find((x) => x.ref === 'T26-001').echeance, '2026-09-10');
+});
+
+test('les dates propres de la méta-tâche sont conservées à part', () => {
+  const l = Ariane.disposerGantt([
+    t('T26-001', { debut: '2026-08-01', echeance: '2026-08-02' }),
+    t('T26-002', { parent: 'T26-001', debut: '2026-09-01', echeance: '2026-09-10' }),
+  ]);
+  const meta = l.find((x) => x.ref === 'T26-001');
+  assert.equal(meta.debut, '2026-08-01');
+  assert.equal(meta.propre.echeance, '2026-08-02');
+  assert.equal(meta.echeance, '2026-09-10');
+});
+
+test('un parent inconnu ne fait pas disparaître la tâche', () => {
+  const l = Ariane.disposerGantt([t('T26-002', { parent: 'T26-999' })]);
+  assert.equal(l.length, 1);
+  assert.equal(l[0].niveau, 0);
+});
+
+test('un cycle de parenté ne fait pas tourner la disposition à l infini', () => {
+  const l = Ariane.disposerGantt([
+    t('T26-001', { parent: 'T26-002' }), t('T26-002', { parent: 'T26-001' })]);
+  assert.equal(l.length, 2);
+});
+
+test('une tâche qui se dit son propre parent remonte à la racine', () => {
+  const l = Ariane.disposerGantt([t('T26-001', { parent: 'T26-001' })]);
+  assert.equal(l.length, 1);
+  assert.equal(l[0].niveau, 0);
+});
+
+test('un jalon n a pas de début, quelle que soit la note', () => {
+  const l = Ariane.disposerGantt([
+    t('T26-001', { jalon: true, debut: '2026-09-01', echeance: '2026-09-30' })]);
+  assert.equal(l[0].debut, '');
+  assert.equal(l[0].echeance, '2026-09-30');
+});
+
+test('les racines sont triées sur la date puis sur la référence', () => {
+  const l = Ariane.disposerGantt([
+    t('T26-003', { debut: '2026-09-10' }),
+    t('T26-002', { debut: '2026-09-01' }),
+    t('T26-001'),
+  ]);
+  assert.deepEqual(l.map((x) => x.ref), ['T26-002', 'T26-003', 'T26-001']);
+});
+
+test('une date invalide dans la note ne se propage pas dans la frise', () => {
+  const l = Ariane.disposerGantt([t('T26-001', { debut: 'bientôt', echeance: '2026-09-30' })]);
+  assert.equal(l[0].debut, '');
+  assert.equal(l[0].echeance, '2026-09-30');
+});
+
+test('une liste vide rend une liste vide', () => {
+  assert.deepEqual(Ariane.disposerGantt([]), []);
+  assert.deepEqual(Ariane.disposerGantt(null), []);
+});

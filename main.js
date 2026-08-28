@@ -9384,6 +9384,86 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return Math.round((tb - ta) / 86400000);
   }
 
+  // Référence nue d'un lien, alias compris : « [[T26-001|partie 2]] » rend
+  // « T26-001 ».
+  static refDeLien(v) {
+    return String(v == null ? '' : v).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+  }
+
+  // Disposition de la frise : parcours en profondeur, dates remontées sur les
+  // méta-tâches. Les dates propres sont conservées à part, le glissé d'une
+  // barre devant écrire celles de la note et non celles de sa descendance.
+  // Un parent inconnu ou un cycle ne fait pas disparaître la tâche : elle
+  // remonte à la racine, ce qui la rend visible plutôt que perdue.
+  static disposerGantt(taches) {
+    const liste = (taches || []).filter((x) => x && x.ref);
+    const parRef = new Map(liste.map((x) => [x.ref, x]));
+    const enfants = new Map();
+    const racines = [];
+    for (const x of liste) {
+      const p = ZotflowAtomiser.refDeLien(x.parent);
+      // Un cycle se casse à la remontée : dès qu'on repasse par une tâche déjà
+      // vue, la parenté est tenue pour invalide et la tâche devient racine.
+      let valide = !!p && parRef.has(p) && p !== x.ref;
+      if (valide) {
+        const vus = new Set([x.ref]);
+        let cur = p;
+        while (cur && parRef.has(cur)) {
+          if (vus.has(cur)) { valide = false; break; }
+          vus.add(cur);
+          cur = ZotflowAtomiser.refDeLien(parRef.get(cur).parent);
+        }
+      }
+      if (valide) {
+        if (!enfants.has(p)) enfants.set(p, []);
+        enfants.get(p).push(x);
+      } else {
+        racines.push(x);
+      }
+    }
+    // Une tâche sans date passe après celles qui en ont : sa place est au
+    // tiroir des non planifiées, pas au milieu de la frise.
+    const trier = (a, b) => {
+      const da = ZotflowAtomiser.jourValide(a.debut) || ZotflowAtomiser.jourValide(a.echeance);
+      const db = ZotflowAtomiser.jourValide(b.debut) || ZotflowAtomiser.jourValide(b.echeance);
+      if (da && db && da !== db) return da < db ? -1 : 1;
+      if (da && !db) return -1;
+      if (!da && db) return 1;
+      return a.ref.localeCompare(b.ref);
+    };
+    const lignes = [];
+    const descendre = (x, niveau) => {
+      const fils = (enfants.get(x.ref) || []).slice().sort(trier);
+      const jalon = !!x.jalon;
+      const propre = {
+        debut: jalon ? '' : ZotflowAtomiser.jourValide(x.debut),
+        echeance: ZotflowAtomiser.jourValide(x.echeance),
+      };
+      const ligne = {
+        ref: x.ref, intitule: x.intitule || x.ref, niveau,
+        statut: x.statut || 'à faire', avancement: Number(x.avancement) || 0,
+        jalon, aDesEnfants: fils.length > 0, propre,
+        debut: propre.debut, echeance: propre.echeance,
+      };
+      lignes.push(ligne);
+      const posees = fils.map((f) => descendre(f, niveau + 1));
+      if (posees.length) {
+        const debuts = posees.map((p) => p.debut).filter(Boolean);
+        const fins = posees.map((p) => p.echeance).filter(Boolean);
+        if (!jalon && debuts.length) {
+          ligne.debut = [ligne.debut, ...debuts].filter(Boolean).sort()[0];
+        }
+        if (fins.length) {
+          const toutes = [ligne.echeance, ...fins].filter(Boolean).sort();
+          ligne.echeance = toutes[toutes.length - 1];
+        }
+      }
+      return ligne;
+    };
+    for (const r of racines.slice().sort(trier)) descendre(r, 0);
+    return lignes;
+  }
+
   /* ------------------------ Articulation par canvas ------------------------ */
 
   // Lecture d'un canvas. On n'y prend que ce dont les notes ont besoin : qui
