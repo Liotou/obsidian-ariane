@@ -349,6 +349,11 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Le PDF": "The PDF",
+    "Cette source n’a pas de PDF attaché.": "This source has no PDF attached.",
+    "Aucun libellé à détacher.": "No label to detach.",
+    "Détachements : ": "Detachments: ",
+    "note(s)": "note(s)",
     "Bibliographies lues dans les PDF": "Bibliographies read from the PDFs",
     "Crossref ne connaît que ce qui porte un DOI, or les livres n'en ont souvent pas et ce sont eux qui portent les références les plus citées. Zotero garde le texte extrait de chaque PDF : Ariane y lit la bibliographie directement.": "Crossref only knows what carries a DOI, yet books often have none and they carry the most cited references. Zotero keeps the extracted text of every PDF: Ariane reads the bibliography straight from it.",
     "Dossier de données Zotero": "Zotero data folder",
@@ -1720,6 +1725,27 @@ function cleLibelle(nom) {
   x = x.replace(/\s+(?:et|and|&)\s+/g, '&');
   x = x.replace(/\bet\s+al\.?/g, 'etal');
   return x.replace(/[^a-z0-9&]+/g, '');
+}
+
+// Un « titre » qui commence par un nom suivi d'initiales n'en est pas un : c'est
+// une liste d'auteurs tronquée, « Lawrence, M.G., S. Williams… ». La retenir
+// fabriquerait une œuvre fantôme et une note au nom absurde.
+function titreCredible(t) {
+  const x = String(t || '').trim();
+  if (x.length < 10) return false;
+  if (/^[A-ZÀ-Ý][\wÀ-ÿ'’-]+,\s*(?:[A-Z]\.\s*){1,4}/.test(x)) return false;
+  return /[a-zà-ÿ]{3}/.test(x);
+}
+
+// « Lawrence, M.G., S. Williams… 2022. Characteristics, potentials… One Earth
+// 5: 44–61. » : le titre suit l'année. On le récupère plutôt que de jeter
+// l'entrée, et l'on rend une chaîne vide si rien de crédible n'en sort.
+function titreDansReference(texte, annee) {
+  const t = String(texte || '');
+  if (!annee) return '';
+  const m = new RegExp(annee + '\\)?\\s*[.,]\\s*(.+?)(?:\\.\\s|\\.$)').exec(t);
+  const cand = m ? m[1].trim() : '';
+  return titreCredible(cand) ? cand : '';
 }
 
 function cleOeuvre(titre, doi) {
@@ -7765,7 +7791,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
    * lien existant ne se casse ailleurs.
    * ------------------------------------------------------------------------ */
 
-  async detacherOeuvre(entree, oeuvre) {
+  async detacherOeuvre(entree, oeuvre, silencieux) {
     if (!oeuvre || !oeuvre.sources || !oeuvre.sources.length) return null;
     const nom = this.nettoyerNomFichier(nomOeuvreDetachee(entree.nom, oeuvre.titre));
     if (nom === entree.nom) { new obsidian.Notice(tr('Titre insuffisant pour détacher.')); return null; }
@@ -7804,8 +7830,68 @@ class ZotflowAtomiser extends obsidian.Plugin {
       await this.ecrire(f.path, neuf, f);
       n += 1;
     }
-    new obsidian.Notice(tr('Détachée : ') + nom + ' (' + n + ' ' + tr('lien(s)') + ').', 8000);
+    if (!silencieux) {
+      new obsidian.Notice(tr('Détachée : ') + nom + ' (' + n + ' ' + tr('lien(s)') + ').', 8000);
+    }
     return { nom, liens: n };
+  }
+
+  /* ------------------ Détachement automatique ------------------------------ *
+   * Quand la bibliographie de deux sources désigne deux travaux pour un même
+   * libellé, il n'y a rien à arbitrer : chacune a raison pour son article. On
+   * crée la note de l'œuvre minoritaire et la table renvoie chaque source vers
+   * la sienne. Le libellé d'origine garde son nom, donc aucun lien valide ne
+   * se casse.
+   *
+   * Cela suit la génération des bibliographies, seul moment où l'identification
+   * change, plutôt que d'être une commande de plus.
+   * ------------------------------------------------------------------------ */
+
+  async detacherAutomatiquement(silencieux) {
+    const { parRef } = await this.indexOeuvres();
+    const aTraiter = [];
+    for (const [libelle, e] of parRef) {
+      if (!e.oeuvres || e.oeuvres.length < 2) continue;
+      const f = this.app.vault.getAbstractFileByPath(this.dossierR + '/' + libelle + '.md');
+      if (!(f instanceof obsidian.TFile)) continue;
+      aTraiter.push({ entree: { nom: libelle, fichier: f }, oeuvres: e.oeuvres });
+    }
+    if (!aTraiter.length) {
+      if (!silencieux) new obsidian.Notice(tr('Aucun libellé à détacher.'));
+      return 0;
+    }
+    let notes = 0, liens = 0;
+    for (const t of aTraiter) {
+      // L'œuvre la plus attestée garde le libellé ; les autres sont détachées.
+      const tries = t.oeuvres.slice().sort((a, b) => b.n - a.n);
+      for (const o of tries.slice(1)) {
+        const r = await this.detacherOeuvre(t.entree, o, true);
+        if (r) { notes += 1; liens += r.liens; }
+      }
+    }
+    if (!silencieux) {
+      new obsidian.Notice(tr('Détachements : ') + notes + ' ' + tr('note(s)')
+        + ', ' + liens + ' ' + tr('lien(s)') + '.', 9000);
+    }
+    console.log('[Ariane] détachements automatiques :', notes, 'notes,', liens, 'liens');
+    return notes;
+  }
+
+  // Ouvre le PDF d'une source dans le lecteur ZotFlow, à l'intérieur d'Obsidian.
+  // Le lecteur accepte une page : navigation={"pageIndex":N}, en base zéro.
+  async ouvrirPdfSource(sourceBasename, page) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === sourceBasename);
+    if (!f) { new obsidian.Notice(tr('Note introuvable : ') + sourceBasename); return; }
+    const cle = await this.cleAttachement(f);
+    if (!cle) { new obsidian.Notice(tr('Cette source n’a pas de PDF attaché.')); return; }
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    const lib = fm['library-id'] || '';
+    let url = 'obsidian://zotflow?type=open-attachment&libraryID=' + encodeURIComponent(lib)
+      + '&key=' + encodeURIComponent(cle);
+    if (page) {
+      url += '&navigation=' + encodeURIComponent(JSON.stringify({ pageIndex: Math.max(0, page - 1) }));
+    }
+    window.open(url);
   }
 
   async ouvrirNote(basename) {
@@ -8097,7 +8183,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     if (!liste || !liste.length) {
       const cle = this._attachements ? this._attachements.get(source) : null;
       const e = cle ? ZotflowAtomiser.entreeDansTexte(this.texteAttachement(cle), premier2, annee) : null;
-      if (!e || !e.titre || e.titre.length < 8) return [];
+      if (!e || !titreCredible(e.titre)) return [];
       return [{ titre: e.titre, doi: '', brut: e.brut, revue: '', score: 0, viaPdf: true }];
     }
     const sac = new Set(tokeniser(this.fenetreCitation(passage || '', premier)));
@@ -8111,7 +8197,11 @@ class ZotflowAtomiser extends obsidian.Plugin {
         ? noms.includes(premier)
         : brut.split(/[^a-z0-9]+/).filter(Boolean)[0] === premier;
       if (!colle) continue;
-      const titre = String(e.titre || e.brut || '').trim();
+      // Crossref rend parfois la référence entière en guise de titre. On en
+      // extrait le vrai titre, faute de quoi la note détachée s'appellerait
+      // « (Lawrence, M.G., S) », un début de liste d'auteurs.
+      let titre = String(e.titre || '').trim();
+      if (titre && !titreCredible(titre)) titre = titreDansReference(titre, annee);
       const doi = normDoi(e.doi);
       if (!titre && !doi) continue;
       cands.push({ titre, doi, brut, revue: String(e.revue || '').trim(), score: 0 });
@@ -8144,7 +8234,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
    * répare les deux, et c'est ce compte qui doit guider une acquisition.
    * ------------------------------------------------------------------------ */
 
-  // Deux entrées désignent le même travail quand l'une des deux commence ou
+// Deux entrées désignent le même travail quand l'une des deux commence ou
   // contient l'autre au-delà de douze caractères : « Co-opetition » et
   // « Co‐opetition: A revolutionary mindset… », « Designing interactive
   // strategy » et « From value chain… designing interactive strategy ». Deux
@@ -8164,7 +8254,16 @@ class ZotflowAtomiser extends obsidian.Plugin {
         if (!ko || !kx) return false;
         const court = ko.length < kx.length ? ko : kx;
         const long = ko.length < kx.length ? kx : ko;
-        return court.length >= 12 && long.includes(court);
+        if (court.length >= 12 && long.includes(court)) return true;
+        // Un mot d'écart ne fait pas deux œuvres : « Design science in
+        // information systems research » et « Design research in information
+        // systems research » sortent du même PDF, à une coquille près.
+        const a = new Set(court.split(' ').filter((w) => w.length > 2));
+        const b = new Set(long.split(' ').filter((w) => w.length > 2));
+        if (a.size < 3 || b.size < 3) return false;
+        let communs = 0;
+        for (const w of a) if (b.has(w)) communs += 1;
+        return communs / Math.max(a.size, b.size) >= 0.75;
       });
       if (!jumeau) { out.push(o); continue; }
       jumeau.n += o.n;
@@ -8256,43 +8355,10 @@ class ZotflowAtomiser extends obsidian.Plugin {
       const passage = await this.passageDe(occ.fichier, occ.marque);
       const sac = new Set(tokeniser(this.fenetreCitation(passage, premier)));
 
-      const cands = [];
-      for (const e of liste) {
-        if (String(e.annee || '') !== annee) continue;
-        const brut = sansAccents(e.brut || '');
-        const noms = (e.auteurs || []).map((x) => sansAccents(String(x).split(/\s+/).pop()));
-        // Égalité stricte sur les mots : « han » CONTENU dans « hannah »
-        // rattachait Han et al. 2017 à Hannah 2018.
-        const colle = noms.length
-          ? noms.includes(premier)
-          : brut.split(/[^a-z0-9]+/).filter(Boolean)[0] === premier;
-        if (!colle) continue;
-        const titre = String(e.titre || e.brut || '').trim();
-        const doi = normDoi(e.doi);
-        if (!titre && !doi) continue;
-        cands.push({ titre, doi, brut, revue: String(e.revue || '').trim(), score: 0 });
-      }
+      // Un seul appariement dans tout le greffon : la copie qui vivait ici a
+      // divergé une fois, un garde-fou n'ayant été posé que sur l'autre.
+      const cands = this.candidatsPourSource(entree.nom, occ.source, passage);
       if (!cands.length) continue;
-
-      // Le suffixe d'année d'abord : il désigne un travail précis, là où le
-      // contexte ne fait que ressembler. Vérifié sur « Aven & Renn, 2009a »,
-      // où le contexte élisait le mauvais article du même auteur.
-      if (suffixe) {
-        const explicite = cands.filter((c) => c.brut.includes(annee + suffixe));
-        if (explicite.length) {
-          for (const c of explicite) c.score += 100;
-        } else {
-          const rang = suffixe.charCodeAt(0) - 97;
-          const tries = cands.slice().sort((x, y) => x.titre.localeCompare(y.titre));
-          if (tries[rang]) tries[rang].score += 60;
-        }
-      }
-      for (const c of cands) {
-        let ctx = 0;
-        for (const mot of tokeniser(c.titre)) if (sac.has(mot)) ctx += 3;
-        c.score += Math.min(ctx, 30);
-      }
-      cands.sort((a, b) => b.score - a.score);
       const ecart = cands.length > 1 ? cands[0].score - cands[1].score : 999;
       parSource.push({
         source: occ.source, fichier: occ.fichier, passage,
@@ -8479,6 +8545,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     this.decoupageEnCours = false;
     await this.ecrireBibliographies();
     avis.hide();
+    if (gardes) await this.detacherAutomatiquement(true);
     new obsidian.Notice(tr('Découpage terminé : ') + gardes + ' ' + tr('retenus')
       + ', ' + jetes + ' ' + tr('rejetés') + '.');
     return gardes;
@@ -8837,6 +8904,9 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const arrete = !this.bibliosEnCours;
     this.bibliosEnCours = false;
     avis.hide();
+    // L'identification vient de changer : les libellés à double sens se
+    // détachent d'eux-mêmes, sans rien demander.
+    if (!arrete) await this.detacherAutomatiquement(true);
     new obsidian.Notice((arrete ? tr('Génération interrompue : ') : tr('Bibliographies terminées : '))
       + ok + ' ' + tr('générée(s)') + ', ' + vide + ' ' + tr('sans résultat')
       + ', ' + tr('sur ') + i + '. ' + reseau + ' ' + tr('appel(s) réseau') + '.', 12000);
@@ -10375,13 +10445,7 @@ class VueReferencesAttente extends obsidian.ItemView {
         t.createSpan({ cls: 'zfa-ref-compteur', text: o.n + '×  ' });
         t.createSpan({ text: o.titre || o.doi });
         li.createDiv({ cls: 'zfa-ref-faible', text: o.sources.join(', ') });
-        const ba = li.createDiv({ cls: 'zfa-ref-barre-actions' });
-        this.bouton(ba, tr('Détacher'), 'split', async () => {
-          await g.detacherOeuvre(l.r, o); await this.preparer();
-        });
-        if (o.doi) this.bouton(ba, tr('DOI'), 'copy', () => {
-          navigator.clipboard.writeText(o.doi); new obsidian.Notice(tr('Copié : ') + o.doi);
-        });
+        if (o.doi) this.ligneDoi(li, o.doi);
       }
     } else if (oeuvres.length === 1) {
       ident.createDiv({ cls: 'zfa-ref-fort', text: oeuvres[0].titre || oeuvres[0].doi });
@@ -10445,6 +10509,9 @@ class VueReferencesAttente extends obsidian.ItemView {
       if (p && p.fichier) {
         this.bouton(bs, tr("L'annotation"), 'pen', () => this.app.workspace.getLeaf(true).openFile(p.fichier));
       }
+      // Dernier recours : aller lire la bibliographie dans le PDF, quand ni
+      // Crossref ni le texte extrait n'ont rien donné.
+      this.bouton(bs, tr('Le PDF'), 'file-search', () => g.ouvrirPdfSource(src));
     }
 
     /* --------------------------- 3. Que faire ----------------------------- */
