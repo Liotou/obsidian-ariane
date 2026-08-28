@@ -348,6 +348,8 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Références en attente (Ariane)": "Pending references (Ariane)",
+    "Rattachement": "Attaching",
     "Bibliographie : recomposer celle de la note active": "Bibliography: rebuild the one in the active note",
     "Bibliographie : recomposer celles de toutes les notes": "Bibliography: rebuild the ones in every note",
     "Références citées : extraire celles de la source active": "Cited references: extract those of the active source",
@@ -3120,6 +3122,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
     this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
+    this.addRibbonIcon('scale', tr('Références en attente (Ariane)'), () => this.ouvrirVueReferences());
     // Déclare le panneau comme source d'aperçu au survol (« Page preview »).
     if (this.registerHoverLinkSource) {
       this.registerHoverLinkSource('zfa-suggestions', { display: tr('Suggestions (Ariane)'), defaultMod: false });
@@ -10300,6 +10303,25 @@ class VueReferencesAttente extends obsidian.ItemView {
         : tr('Tout sélectionner dans cet onglet') });
     if (!choisies.length) return;
 
+    // Le geste principal du lot : aller chercher chez Crossref auteurs, revue et
+    // éditeur pour tout ce qui porte un DOI.
+    const avecDoi = choisies.filter((l) => l.doi && !l.r.complete);
+    if (avecDoi.length) {
+      this.bouton(barre, tr('Compléter') + ' (' + avecDoi.length + ')', 'download-cloud',
+        () => this.enLot(avecDoi, tr('Complétion'), async (l) => {
+          const ok = await g.completerReference(l.r, l.doi);
+          await new Promise((r) => setTimeout(r, 300));
+          return ok;
+        }), true);
+    }
+    const rattachables = choisies.filter((l) => l.dansZotero || l.auto);
+    if (rattachables.length) {
+      this.bouton(barre, tr('Rattacher') + ' (' + rattachables.length + ')', 'link',
+        () => this.enLot(rattachables, tr('Rattachement'), async (l) => {
+          await g.rattacherReference(l.r, l.dansZotero || l.auto);
+          return true;
+        }), true);
+    }
     this.bouton(barre, tr('À acquérir'), 'shopping-cart',
       () => this.enLot(choisies, tr('Marquage'), async (l) => {
         await g.marquerReference(l.r, 'à acquérir'); return true;
