@@ -845,6 +845,10 @@ const TEXTES = {
     "dates": "dates",
     "les deux": "both",
     " · glissez-la sur la frise pour la dater": " · drag it onto the timeline to date it",
+    " jour(s)": " day(s)",
+    "Ce décalage contredit un blocage de ": "This shift contradicts a blocking link of ",
+    "Décaler l aval de ": "Push everything downstream by ",
+    "Laisser": "Leave it",
   },
 };
 let LANGUE = 'fr';
