@@ -768,14 +768,7 @@ const TEXTES = {
     "Famille": "Kind",
     "Action": "Action",
     "Lecture": "Reading",
-    "Production, note du coffre": "Output, note in the vault",
-    "Production, fichier externe": "Output, external file",
     "Source Zotero": "Zotero source",
-    "Clé de citation, sans les crochets.": "Citation key, without the brackets.",
-    "Note produite": "Note produced",
-    "Nom de la note, sans les crochets.": "Note name, without the brackets.",
-    "Fichier externe": "External file",
-    "Chemin absolu du document.": "Absolute path of the document.",
     "Début": "Start",
     "Échéance": "Due",
     "Priorité": "Priority",
@@ -789,6 +782,14 @@ const TEXTES = {
     "Créer": "Create",
     "Tâches : créer une tâche": "Tasks: create a task",
     "Une tâche sans intitulé ne se retrouve pas.": "A task without a title cannot be found again.",
+    "Production": "Output",
+    "Chercher…": "Search…",
+    "aucune pour l instant": "none yet",
+    "Auteur, titre, année ou clé…": "Author, title, year or key…",
+    "Aucune fiche Zotero trouvée dans le coffre.": "No Zotero entry found in the vault.",
+    "Ce qui est produit": "What is produced",
+    "Une note du coffre, ou le chemin absolu d un fichier. Peut rester vide.": "A note in the vault, or the absolute path of a file. May stay empty.",
+    "NC-202607081912  ou  /Users/…/soutenance.pptx": "NC-202607081912  or  /Users/…/talk.pptx",
   },
 };
 let LANGUE = 'fr';
@@ -9139,6 +9140,52 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return l.join('\n');
   }
 
+  // Une production porte soit une note du coffre, soit un fichier du disque.
+  // Monsieur ne veut pas trancher au moment de créer la tâche : la forme de ce
+  // qu'il saisit suffit à décider. Seul un chemin absolu désigne le disque, ce
+  // qui laisse « 3 - Notes conceptuelles/NC-… » du côté des notes malgré ses
+  // barres obliques.
+  static livrableOuFichier(saisie) {
+    const v = String(saisie == null ? '' : saisie).trim();
+    if (!v) return { champ: null, valeur: '' };
+    if (v.startsWith('/') || v.startsWith('~/') || v.startsWith('file://')) {
+      return { champ: 'fichier', valeur: v };
+    }
+    const nu = v.replace(/^\[\[|\]\]$/g, '');
+    return { champ: 'livrable', valeur: '[[' + nu + ']]' };
+  }
+
+  // Libellé d'une fiche Zotero dans le sélecteur. Tout y est réuni pour que la
+  // recherche approchée morde sur l'auteur, l'année, le titre ou la clé : on ne
+  // retient pas une clé de citation par cœur.
+  static libelleSource(fm, basename) {
+    const f = fm || {};
+    const auteurs = []
+      .concat(f.creators || [])
+      .map((c) => String(c).replace(/^\[\[|\]\]$/g, '').trim())
+      .filter(Boolean);
+    const bouts = [];
+    if (auteurs.length) bouts.push(auteurs.slice(0, 3).join(', '));
+    if (f.year) bouts.push('(' + f.year + ')');
+    if (f.title) bouts.push('— ' + String(f.title));
+    bouts.push('· ' + basename);
+    return bouts.join(' ');
+  }
+
+  // Les fiches Zotero du coffre, prêtes pour une recherche approchée. On les
+  // reconnaît à leur clé de citation plutôt qu'à leur dossier, qui varie.
+  sourcesZoteroPourChoix() {
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (f.basename.charAt(0) !== '@') continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      if (!fm || !fm.citationKey) continue;
+      out.push({ nom: ZotflowAtomiser.libelleSource(fm, f.basename), cle: f.basename });
+    }
+    out.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    return out;
+  }
+
   // Écrit une note de tâche neuve et rend son chemin. La référence se calcule
   // sur les notes déjà présentes, ce qui garantit l'unicité sans compteur
   // conservé dans les réglages, lequel se désynchroniserait du coffre.
@@ -10351,6 +10398,7 @@ class ModaleNouvelleTache extends obsidian.Modal {
       liste: greffon.settings.listeRappelsDefaut,
     };
     this.famille = 'action';
+    this.saisieProduction = '';
   }
 
   onOpen() {
@@ -10375,46 +10423,58 @@ class ModaleNouvelleTache extends obsidian.Modal {
       .addDropdown((d) => d
         .addOption('action', tr('Action'))
         .addOption('lecture', tr('Lecture'))
-        .addOption('production-interne', tr('Production, note du coffre'))
-        .addOption('production-externe', tr('Production, fichier externe'))
+        .addOption('production', tr('Production'))
         .setValue(this.famille)
         .onChange((v) => {
           this.famille = v;
           this.champs.source = '';
           this.champs.livrable = '';
           this.champs.fichier = '';
+          this.saisieProduction = '';
           this.dessiner();
         }));
 
     if (this.famille === 'lecture') {
+      // On ne retient pas 739 clés de citation par cœur : la source se cherche
+      // par auteur, année ou titre, et le choix s'affiche pour être relu.
+      const choisie = this.champs.source
+        ? this.champs.source.replace(/^\[\[|\]\]$/g, '')
+        : tr('aucune pour l instant');
       new obsidian.Setting(c).setName(tr('Source Zotero'))
-        .setDesc(tr('Clé de citation, sans les crochets.'))
-        .addText((t) => t.setPlaceholder('@perrowNormalAccidents1984')
-          .onChange((v) => {
-            const n = v.trim();
-            this.champs.source = n ? '[[' + n + ']]' : '';
-          }));
-    } else if (this.famille === 'production-interne') {
-      new obsidian.Setting(c).setName(tr('Note produite'))
-        .setDesc(tr('Nom de la note, sans les crochets.'))
-        .addText((t) => t.onChange((v) => {
-          const n = v.trim();
-          this.champs.livrable = n ? '[[' + n + ']]' : '';
+        .setDesc(choisie)
+        .addButton((b) => b.setButtonText(tr('Chercher…')).onClick(() => {
+          const items = this.greffon.sourcesZoteroPourChoix();
+          if (!items.length) {
+            new obsidian.Notice(tr('Aucune fiche Zotero trouvée dans le coffre.'));
+            return;
+          }
+          new ChoixListeModal(this.app, tr('Auteur, titre, année ou clé…'), items, (it) => {
+            if (it) this.champs.source = '[[' + it.cle + ']]';
+            this.dessiner();
+          }).open();
         }));
-    } else if (this.famille === 'production-externe') {
-      new obsidian.Setting(c).setName(tr('Fichier externe'))
-        .setDesc(tr('Chemin absolu du document.'))
-        .addText((t) => t.setPlaceholder('/Users/…/soutenance.pptx')
-          .onChange((v) => { this.champs.fichier = v.trim(); }));
+    } else if (this.famille === 'production') {
+      // Note du coffre ou fichier du disque : la forme de la saisie tranche,
+      // et rien n'oblige à trancher tout de suite, le champ pouvant rester vide.
+      new obsidian.Setting(c).setName(tr('Ce qui est produit'))
+        .setDesc(tr('Une note du coffre, ou le chemin absolu d un fichier. Peut rester vide.'))
+        .addText((t) => t.setPlaceholder(tr('NC-202607081912  ou  /Users/…/soutenance.pptx'))
+          .setValue(this.saisieProduction || '')
+          .onChange((v) => {
+            this.saisieProduction = v;
+            const r = ZotflowAtomiser.livrableOuFichier(v);
+            this.champs.livrable = r.champ === 'livrable' ? r.valeur : '';
+            this.champs.fichier = r.champ === 'fichier' ? r.valeur : '';
+          }));
     }
 
-    new obsidian.Setting(c).setName(tr('Début'))
-      .addText((t) => t.setPlaceholder('AAAA-MM-JJ').setValue(this.champs.debut)
-        .onChange((v) => { this.champs.debut = v.trim(); }));
-
-    new obsidian.Setting(c).setName(tr('Échéance'))
-      .addText((t) => t.setPlaceholder('AAAA-MM-JJ').setValue(this.champs.echeance)
-        .onChange((v) => { this.champs.echeance = v.trim(); }));
+    const dateur = (nom, cle) => new obsidian.Setting(c).setName(nom)
+      .addText((t) => {
+        t.inputEl.type = 'date';
+        t.setValue(this.champs[cle]).onChange((v) => { this.champs[cle] = v.trim(); });
+      });
+    if (!this.champs.jalon) dateur(tr('Début'), 'debut');
+    dateur(tr('Échéance'), 'echeance');
 
     new obsidian.Setting(c).setName(tr('Priorité'))
       .addDropdown((d) => d
@@ -10428,7 +10488,7 @@ class ModaleNouvelleTache extends obsidian.Modal {
     new obsidian.Setting(c).setName(tr('Jalon'))
       .setDesc(tr("Repère de calendrier : seule l'échéance est retenue."))
       .addToggle((t) => t.setValue(this.champs.jalon)
-        .onChange((v) => { this.champs.jalon = v; }));
+        .onChange((v) => { this.champs.jalon = v; this.dessiner(); }));
 
     new obsidian.Setting(c).setName(tr('Liste Apple Rappels'))
       .addText((t) => t.setValue(this.champs.liste)
