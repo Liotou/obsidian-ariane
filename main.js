@@ -790,6 +790,18 @@ const TEXTES = {
     "Ce qui est produit": "What is produced",
     "Une note du coffre, ou le chemin absolu d un fichier. Peut rester vide.": "A note in the vault, or the absolute path of a file. May stay empty.",
     "NC-202607081912  ou  /Users/…/soutenance.pptx": "NC-202607081912  or  /Users/…/talk.pptx",
+    "Conflit de champs": "Conflicting fields",
+    "Seul le premier est retenu.": "Only the first one is kept.",
+    "Source": "Source",
+    "Ouvrir le PDF": "Open the PDF",
+    "Ouvrir dans Zotero": "Open in Zotero",
+    "Livrable": "Output",
+    "Fichier": "File",
+    "modifié le": "changed on",
+    "ouvert le": "opened on",
+    "Tâches : rafraîchir le bloc de la tâche active": "Tasks: refresh the block of the active task",
+    "Bloc rafraîchi.": "Block refreshed.",
+    "Cette note n'est pas une tâche.": "This note is not a task.",
   },
 };
 let LANGUE = 'fr';
@@ -2248,6 +2260,9 @@ function citationsDuTexte(texte) {
 
 /* ------------------------- Bibliographie de note -------------------------- */
 
+const ZFA_TACHE_DEBUT = '%% ariane:tache %%';
+const ZFA_TACHE_FIN = '%% /ariane:tache %%';
+
 const ZFA_BIBLIO_DEBUT = '%% ariane:biblio %%';
 const ZFA_BIBLIO_FIN = '%% /ariane:biblio %%';
 
@@ -3021,6 +3036,16 @@ class ZotflowAtomiser extends obsidian.Plugin {
         const f = this.app.vault.getAbstractFileByPath(chemin);
         if (f) await this.app.workspace.getLeaf(true).openFile(f);
       }).open(),
+    });
+    this.addCommand({
+      id: 'maj-bloc-tache',
+      name: tr('Tâches : rafraîchir le bloc de la tâche active'),
+      callback: async () => {
+        const f = this.app.workspace.getActiveFile();
+        if (!f) return;
+        const fait = await this.majBlocTache(f);
+        new obsidian.Notice(fait ? tr('Bloc rafraîchi.') : tr("Cette note n'est pas une tâche."));
+      },
     });
     this.addCommand({
       id: 'temps-journal',
@@ -9172,6 +9197,39 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return bouts.join(' ');
   }
 
+  // Contenu du bloc d'accès, sans ses marques. Une action n'en a pas besoin :
+  // un bloc vide dans chaque note d'action ne serait que du bruit.
+  static blocTache(fm, meta) {
+    const c = ZotflowAtomiser.champTache(fm);
+    if (!c.retenu) return '';
+    const l = [];
+    if (c.conflits.length) {
+      l.push('> [!warning] ' + tr('Conflit de champs') + ' : ' + c.conflits.join(', ')
+             + '. ' + tr('Seul le premier est retenu.'));
+      l.push('');
+    }
+    if (c.retenu === 'source') {
+      l.push('**' + tr('Source') + '** ' + String(fm.source).trim());
+      const acces = [];
+      if (meta && meta.uriPdf) acces.push('[' + tr('Ouvrir le PDF') + '](' + meta.uriPdf + ')');
+      if (meta && meta.uriZotero) acces.push('[' + tr('Ouvrir dans Zotero') + '](' + meta.uriZotero + ')');
+      if (acces.length) { l.push(''); l.push(acces.join('  ·  ')); }
+    } else if (c.retenu === 'livrable') {
+      l.push('**' + tr('Livrable') + '** ' + String(fm.livrable).trim());
+    } else {
+      const chemin = String(fm.fichier).trim();
+      l.push('**' + tr('Fichier') + '** `' + chemin.split('/').pop() + '`');
+      if (meta && (meta.modifie || meta.ouvert)) {
+        const bouts = [];
+        if (meta.modifie) bouts.push(tr('modifié le') + ' ' + meta.modifie);
+        if (meta.ouvert) bouts.push(tr('ouvert le') + ' ' + meta.ouvert);
+        l.push('');
+        l.push('*' + bouts.join('  ·  ') + '*');
+      }
+    }
+    return l.join('\n');
+  }
+
   // Les fiches Zotero du coffre, prêtes pour une recherche approchée. On les
   // reconnaît à leur clé de citation plutôt qu'à leur dossier, qui varie.
   sourcesZoteroPourChoix() {
@@ -9184,6 +9242,75 @@ class ZotflowAtomiser extends obsidian.Plugin {
     }
     out.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
     return out;
+  }
+
+  // Interroge Spotlight pour les deux dates d'un fichier externe. mdls est
+  // fourni par macOS et ne demande aucune installation. Avec -raw les valeurs
+  // sont séparées par un octet nul ; un fichier absent ou non indexé ne rend
+  // rien qui ressemble à une date, et le filtre le laisse tomber.
+  async metadonneesFichier(chemin) {
+    const abs = chemin.startsWith('~/')
+      ? require('os').homedir() + chemin.slice(1)
+      : chemin.replace(/^file:\/\//, '');
+    return new Promise((resolve) => {
+      require('child_process').execFile('mdls', [
+        '-raw', '-name', 'kMDItemContentModificationDate',
+        '-name', 'kMDItemLastUsedDate', abs,
+      ], (err, sortie) => {
+        if (err || !sortie) return resolve(null);
+        const dates = String(sortie).split('\0')
+          .map((x) => x.trim())
+          .map((x) => (/^\d{4}-\d{2}-\d{2}/.test(x) ? x.slice(0, 10) : ''));
+        if (!dates[0] && !dates[1]) return resolve(null);
+        resolve({ modifie: dates[0] || '', ouvert: dates[1] || '' });
+      });
+    });
+  }
+
+  // Rassemble ce que le bloc a besoin de savoir et que seule l'application
+  // connaît : les deux URI d'une lecture, les deux dates d'un fichier externe.
+  // Le calcul des URI réemploie cleAttachement, déjà écrite pour le volet des
+  // références : la clé de la pièce jointe ne se déduit pas de la clé de
+  // citation, elle se lit dans la fiche.
+  async accesTache(fm) {
+    const c = ZotflowAtomiser.champTache(fm);
+    if (c.retenu === 'fichier') return this.metadonneesFichier(String(fm.fichier).trim());
+    if (c.retenu !== 'source') return null;
+    const base = String(fm.source).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === base);
+    if (!f) return null;
+    const fms = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    const out = {};
+    const cle = await this.cleAttachement(f);
+    if (cle) {
+      out.uriPdf = 'obsidian://zotflow?type=open-attachment&libraryID='
+        + encodeURIComponent(fms['library-id'] || '') + '&key=' + encodeURIComponent(cle);
+    }
+    if (fms['zotero-key']) {
+      out.uriZotero = 'zotero://select/library/items/' + String(fms['zotero-key']).trim();
+    }
+    return (out.uriPdf || out.uriZotero) ? out : null;
+  }
+
+  // Réécrit le bloc marqué de la note. Il se pose sous le titre s'il n'existe
+  // pas encore, et disparaît si la tâche cesse de désigner quoi que ce soit.
+  async majBlocTache(file) {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const fm = (cache && cache.frontmatter) || {};
+    if (fm.type !== 'tache') return false;
+    const meta = await this.accesTache(fm);
+    const interieur = ZotflowAtomiser.blocTache(fm, meta);
+    const bloc = interieur ? ZFA_TACHE_DEBUT + '\n' + interieur + '\n' + ZFA_TACHE_FIN : '';
+    let texte = await this.app.vault.read(file);
+    const debut = texte.indexOf(ZFA_TACHE_DEBUT);
+    const fin = texte.indexOf(ZFA_TACHE_FIN);
+    if (debut !== -1 && fin > debut) {
+      texte = texte.slice(0, debut) + bloc + texte.slice(fin + ZFA_TACHE_FIN.length);
+    } else if (bloc) {
+      texte = texte.replace(/^(# .*\n)/m, '$1\n' + bloc + '\n');
+    }
+    await this.app.vault.modify(file, texte);
+    return true;
   }
 
   // Écrit une note de tâche neuve et rend son chemin. La référence se calcule
