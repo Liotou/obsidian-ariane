@@ -15,7 +15,9 @@ avant la classe `ZotflowAtomiserSettingTab`. La logique pure devient des
 d'Obsidian. Les méthodes d'instance ne font que de l'entrée-sortie.
 
 **Pile technique :** JavaScript sans transpilation, sans empaqueteur, sans npm.
-API Obsidian 1.9 ou supérieure. Tests par `node --test`, sans dépendance.
+API Obsidian 1.9 ou supérieure. Tests par `node --test "tests/**/*.test.js"`, sans dépendance. Node 25 prend
+`node --test tests/` pour un module et non pour un dossier : la forme entre
+guillemets est la seule qui fonctionne.
 
 **Spécification :** `docs/conception/2026-08-28-systeme-de-taches.md`
 
@@ -137,7 +139,7 @@ test('un rang écrit sans zéros de tête est tout de même compté', () => {
 
 - [ ] **Étape 3 : lancer le test et vérifier qu'il échoue**
 
-Lancer : `cd ~/obsidian-ariane && node --test tests/`
+Lancer : `cd ~/obsidian-ariane && node --test "tests/**/*.test.js"`
 
 Attendu : échec sur les sept cas, avec `Ariane.referenceTacheSuivante is not a function`.
 
@@ -169,7 +171,7 @@ l'intérieur de cette classe, à côté de `static fondreOeuvresProches`.
 
 - [ ] **Étape 5 : lancer le test et vérifier qu'il passe**
 
-Lancer : `cd ~/obsidian-ariane && node --test tests/ && node --check main.js`
+Lancer : `cd ~/obsidian-ariane && node --test "tests/**/*.test.js" && node --check main.js`
 
 Attendu : sept tests passés, et aucune sortie de `node --check`.
 
@@ -249,7 +251,7 @@ test('un seul champ rempli ne produit aucun conflit', () => {
 
 - [ ] **Étape 2 : lancer le test et vérifier qu'il échoue**
 
-Lancer : `cd ~/obsidian-ariane && node --test tests/famille.test.js`
+Lancer : `cd ~/obsidian-ariane && node --test "tests/famille.test.js"`
 
 Attendu : échec, `Ariane.familleTache is not a function`.
 
@@ -277,7 +279,7 @@ Dans la section « Tâches » de `main.js`, à la suite de `referenceTacheSuivan
 
 - [ ] **Étape 4 : lancer le test et vérifier qu'il passe**
 
-Lancer : `cd ~/obsidian-ariane && node --test tests/ && node --check main.js`
+Lancer : `cd ~/obsidian-ariane && node --test "tests/**/*.test.js" && node --check main.js`
 
 Attendu : quinze tests passés au total.
 
@@ -390,7 +392,7 @@ test('yamlChaine rend la chaîne vide pour une valeur absente', () => {
 
 - [ ] **Étape 2 : lancer le test et vérifier qu'il échoue**
 
-Lancer : `cd ~/obsidian-ariane && node --test tests/corps.test.js`
+Lancer : `cd ~/obsidian-ariane && node --test "tests/corps.test.js"`
 
 Attendu : échec, `Ariane.corpsNouvelleTache is not a function`.
 
@@ -451,7 +453,7 @@ Dans la section « Tâches » de `main.js`, à la suite de `familleTache` :
 
 - [ ] **Étape 4 : lancer le test et vérifier qu'il passe**
 
-Lancer : `cd ~/obsidian-ariane && node --test tests/ && node --check main.js`
+Lancer : `cd ~/obsidian-ariane && node --test "tests/**/*.test.js" && node --check main.js`
 
 Attendu : vingt-cinq tests passés au total.
 
@@ -564,7 +566,7 @@ Puis, dans `TEXTES.en`, ajouter les deux clés employées :
 - [ ] **Étape 6 : éprouver dans le coffre**
 
 ```bash
-cd ~/obsidian-ariane && node --check main.js && node --test tests/
+cd ~/obsidian-ariane && node --check main.js && node --test "tests/**/*.test.js"
 cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/"
 ```
 
@@ -767,7 +769,7 @@ d'elles existe déjà, auquel cas ne pas la dupliquer.
 - [ ] **Étape 4 : éprouver dans le coffre**
 
 ```bash
-cd ~/obsidian-ariane && node --check main.js && node --test tests/
+cd ~/obsidian-ariane && node --check main.js && node --test "tests/**/*.test.js"
 cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/"
 ```
 
@@ -876,7 +878,7 @@ test('un conflit de champs est signalé dans le bloc', () => {
 
 - [ ] **Étape 2 : lancer le test et vérifier qu'il échoue**
 
-Lancer : `cd ~/obsidian-ariane && node --test tests/bloc.test.js`
+Lancer : `cd ~/obsidian-ariane && node --test "tests/bloc.test.js"`
 
 Attendu : échec, `Ariane.blocTache is not a function`.
 
@@ -922,7 +924,7 @@ Dans la section « Tâches » :
 
 - [ ] **Étape 4 : lancer le test et vérifier qu'il passe**
 
-Lancer : `cd ~/obsidian-ariane && node --test tests/ && node --check main.js`
+Lancer : `cd ~/obsidian-ariane && node --test "tests/**/*.test.js" && node --check main.js`
 
 - [ ] **Étape 5 : écrire la méthode d'instance et la commande**
 
@@ -1024,7 +1026,7 @@ Ajouter dans `TEXTES.en` les clés introduites.
 - [ ] **Étape 6 : éprouver dans le coffre**
 
 ```bash
-cd ~/obsidian-ariane && node --check main.js && node --test tests/
+cd ~/obsidian-ariane && node --check main.js && node --test "tests/**/*.test.js"
 cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/"
 ```
 
@@ -1098,7 +1100,7 @@ test('une note qui n est pas une tâche est laissée tranquille', () => {
 
 - [ ] **Étape 2 : lancer le test et vérifier qu'il échoue**
 
-Lancer : `cd ~/obsidian-ariane && node --test tests/achevement.test.js`
+Lancer : `cd ~/obsidian-ariane && node --test "tests/achevement.test.js"`
 
 - [ ] **Étape 3 : écrire la méthode**
 
@@ -1116,7 +1118,7 @@ Lancer : `cd ~/obsidian-ariane && node --test tests/achevement.test.js`
 
 - [ ] **Étape 4 : lancer le test et vérifier qu'il passe**
 
-Lancer : `cd ~/obsidian-ariane && node --test tests/ && node --check main.js`
+Lancer : `cd ~/obsidian-ariane && node --test "tests/**/*.test.js" && node --check main.js`
 
 - [ ] **Étape 5 : brancher l'écoute**
 
@@ -1137,7 +1139,7 @@ Dans `onload`, à côté des autres `registerEvent` :
 - [ ] **Étape 6 : éprouver dans le coffre**
 
 ```bash
-cd ~/obsidian-ariane && node --check main.js && node --test tests/
+cd ~/obsidian-ariane && node --check main.js && node --test "tests/**/*.test.js"
 cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/"
 ```
 
@@ -1310,7 +1312,7 @@ Ajouter dans `TEXTES.en` les clés introduites.
 - [ ] **Étape 3 : éprouver dans le coffre**
 
 ```bash
-cd ~/obsidian-ariane && node --check main.js && node --test tests/
+cd ~/obsidian-ariane && node --check main.js && node --test "tests/**/*.test.js"
 cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/"
 ```
 

@@ -9007,6 +9007,24 @@ class ZotflowAtomiser extends obsidian.Plugin {
       this.antirebond('delsrc:' + file.path, () => this.surSuppressionSource(file.basename));
     }
   }
+
+  /* ============================== Tâches =============================== */
+
+  // Référence d'une tâche : T, l'année sur deux chiffres, le rang dans l'année.
+  // Le rang ne réemploie jamais un numéro libéré : une référence est définitive,
+  // et deux tâches distinctes ne doivent jamais avoir porté le même nom.
+  // L'horodatage employé par les notes conceptuelles est écarté à dessein, un
+  // lot importé produisant plusieurs objets dans la même minute.
+  static referenceTacheSuivante(noms, annee) {
+    const prefixe = 'T' + String(annee % 100).padStart(2, '0') + '-';
+    let max = 0;
+    for (const nom of noms || []) {
+      if (typeof nom !== 'string' || !nom.startsWith(prefixe)) continue;
+      const m = nom.slice(prefixe.length).match(/^(\d+)$/);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    return prefixe + String(max + 1).padStart(3, '0');
+  }
 }
 
 /* =========================================================================
