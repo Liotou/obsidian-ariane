@@ -41,6 +41,10 @@ Elles s'appliquent implicitement à chaque tâche du plan.
 - **Priorités :** vide, `basse`, `moyenne`, `haute`.
 - **Hors périmètre de ce chantier :** canvas, frise Gantt, pont Rappels, capture
   par modèle, export, reprise de l'existant. Ne rien anticiper de tout cela.
+- **Ne pas supprimer `97 - Modèles/Templater/Templates/Tâche.md`.** La
+  spécification l'annonce au § 4, mais son § 12 le range dans la reprise de
+  l'existant, qui vient en dernier. Le retirer maintenant priverait Monsieur de
+  son outil actuel avant que le nouveau soit éprouvé.
 
 ---
 
@@ -794,9 +798,18 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consomme : `ZotflowAtomiser.familleTache`, `ZotflowAtomiser.champTache`.
 - Produit :
   - `ZotflowAtomiser.blocTache(fm: object, meta: object|null) -> string` rendant
-    le contenu du bloc marqué, où `meta` porte `{ modifie, ouvert }` en ISO pour
-    un fichier externe, ou `null` ;
-  - `async majBlocTache(file)` qui lit les métadonnées et réécrit le bloc.
+    le contenu du bloc marqué. `meta` porte `{ uriPdf, uriZotero }` pour une
+    lecture, `{ modifie, ouvert }` pour un fichier externe, ou vaut `null` ;
+  - `async accesTache(fm) -> object|null` qui calcule ce `meta` ;
+  - `async majBlocTache(file)` qui réécrit le bloc.
+
+**Les URI ne s'inventent pas.** Le greffon en emploie déjà deux formes, et ce
+sont les seules qui fonctionnent : `obsidian://zotflow?type=open-attachment&libraryID=…&key=…`,
+où la clé est celle de la **pièce jointe**, obtenue par `cleAttachement(f)`, et
+`zotero://select/library/items/…`, où la clé est le `zotero-key` du frontmatter
+de la fiche source. Ni l'une ni l'autre ne se déduit de la clé de citation, d'où
+le passage par `accesTache` plutôt que par une chaîne bâtie dans la méthode
+statique.
 
 Le bloc est délimité par `%% ariane:tache %%` et `%% /ariane:tache %%`, sur le
 modèle de `ZFA_BIBLIO_DEBUT` et `ZFA_BIBLIO_FIN` déjà employés pour les
@@ -812,11 +825,22 @@ const test = require('node:test');
 const assert = require('node:assert');
 const Ariane = require('./obsidian-factice.js');
 
-test('une lecture offre les trois accès', () => {
-  const s = Ariane.blocTache({ source: '[[@perrow1984]]' }, null);
+test('une lecture offre les accès quand les URI sont connus', () => {
+  const s = Ariane.blocTache({ source: '[[@perrow1984]]' }, {
+    uriPdf: 'obsidian://zotflow?type=open-attachment&libraryID=1&key=ABCD1234',
+    uriZotero: 'zotero://select/library/items/WXYZ9876',
+  });
   assert.ok(s.includes('[[@perrow1984]]'));
-  assert.ok(s.includes('obsidian://zotflow'));
-  assert.ok(s.includes('zotero://select'));
+  assert.ok(s.includes('obsidian://zotflow?type=open-attachment'));
+  assert.ok(s.includes('zotero://select/library/items/WXYZ9876'));
+});
+
+test('une lecture sans PDF attaché n offre pas de lien mort', () => {
+  const s = Ariane.blocTache({ source: '[[@perrow1984]]' },
+    { uriZotero: 'zotero://select/library/items/W' });
+  assert.ok(s.includes('[[@perrow1984]]'));
+  assert.ok(!s.includes('obsidian://zotflow'));
+  assert.ok(!s.includes('undefined'));
 });
 
 test('une production interne renvoie vers la note produite', () => {
@@ -873,14 +897,11 @@ Dans la section « Tâches » :
       l.push('');
     }
     if (c.retenu === 'source') {
-      const lien = String(fm.source).trim();
-      const cle = lien.replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '');
-      l.push('**' + tr('Source') + '** ' + lien);
-      l.push('');
-      l.push('[' + tr('Ouvrir le PDF') + '](obsidian://zotflow?type=open-source&key=' +
-             encodeURIComponent(cle.replace(/^@/, '')) + ')' +
-             '  ·  [' + tr('Ouvrir dans Zotero') + '](zotero://select/items/@' +
-             encodeURIComponent(cle.replace(/^@/, '')) + ')');
+      l.push('**' + tr('Source') + '** ' + String(fm.source).trim());
+      const acces = [];
+      if (meta && meta.uriPdf) acces.push('[' + tr('Ouvrir le PDF') + '](' + meta.uriPdf + ')');
+      if (meta && meta.uriZotero) acces.push('[' + tr('Ouvrir dans Zotero') + '](' + meta.uriZotero + ')');
+      if (acces.length) { l.push(''); l.push(acces.join('  ·  ')); }
     } else if (c.retenu === 'livrable') {
       l.push('**' + tr('Livrable') + '** ' + String(fm.livrable).trim());
     } else {
@@ -927,15 +948,38 @@ Toujours dans la section « Tâches », après `creerTache` :
     });
   }
 
+  // Rassemble ce que le bloc a besoin de savoir et que seule l'application
+  // connaît : les deux URI d'une lecture, les deux dates d'un fichier externe.
+  // Le calcul des URI réemploie cleAttachement, déjà écrite pour le volet des
+  // références : la clé de la pièce jointe ne se déduit pas de la clé de
+  // citation, elle se lit dans la fiche.
+  async accesTache(fm) {
+    const c = ZotflowAtomiser.champTache(fm);
+    if (c.retenu === 'fichier') return this.metadonneesFichier(String(fm.fichier).trim());
+    if (c.retenu !== 'source') return null;
+    const base = String(fm.source).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === base);
+    if (!f) return null;
+    const fms = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    const out = {};
+    const cle = await this.cleAttachement(f);
+    if (cle) {
+      out.uriPdf = 'obsidian://zotflow?type=open-attachment&libraryID='
+        + encodeURIComponent(fms['library-id'] || '') + '&key=' + encodeURIComponent(cle);
+    }
+    if (fms['zotero-key']) {
+      out.uriZotero = 'zotero://select/library/items/' + String(fms['zotero-key']).trim();
+    }
+    return (out.uriPdf || out.uriZotero) ? out : null;
+  }
+
   // Réécrit le bloc marqué de la note active. Le bloc est ajouté sous le titre
   // s'il n'existe pas encore.
   async majBlocTache(file) {
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = (cache && cache.frontmatter) || {};
     if (fm.type !== 'tache') return false;
-    const c = ZotflowAtomiser.champTache(fm);
-    let meta = null;
-    if (c.retenu === 'fichier') meta = await this.metadonneesFichier(String(fm.fichier).trim());
+    const meta = await this.accesTache(fm);
     const interieur = ZotflowAtomiser.blocTache(fm, meta);
     const bloc = interieur
       ? ZFA_TACHE_DEBUT + '\n' + interieur + '\n' + ZFA_TACHE_FIN
@@ -989,9 +1033,8 @@ de la tâche active » et vérifier que les liens apparaissent et fonctionnent.
 Créer ensuite une tâche de production externe pointant vers un fichier réel du
 Bureau et vérifier que les deux dates s'affichent.
 
-Si l'URI ZotFlow `open-source` ne trouve pas la source, le relever et le
-signaler : la forme exacte est à confirmer contre le lecteur installé, seule
-`open-attachment` étant employée ailleurs dans le greffon.
+Vérifier enfin qu'une tâche de lecture sur une source **sans PDF attaché**
+n'affiche pas de lien « Ouvrir le PDF » mort, mais garde le lien Zotero.
 
 - [ ] **Étape 7 : engager**
 
