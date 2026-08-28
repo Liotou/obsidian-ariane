@@ -9448,6 +9448,55 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return out;
   }
 
+  static get COULEURS_STATUT() {
+    return { 'à faire': '', 'en cours': '3', 'en attente': '2', 'terminée': '4', 'abandonnée': '5' };
+  }
+
+  // Les deux seules choses qu'Ariane écrit dans un canvas : la couleur d'un
+  // nœud, qui suit le statut de sa note, et le rouge d'une arête fautive.
+  // La position, la taille et le libellé appartiennent au canvas et ne sont
+  // jamais touchés. Rend change à faux quand rien ne bouge, pour ne pas
+  // réécrire un fichier que Monsieur a peut-être ouvert.
+  // Seules rougissent les arêtes SANS couleur : une couleur posée à la main est
+  // un choix, et l'écraser la perdrait pour de bon, l'incohérence restant de
+  // toute façon inscrite au volet.
+  static majCanvas(json, etats, incoherences, couleurCompo) {
+    const c = JSON.parse(JSON.stringify(json || {}));
+    const couleurs = ZotflowAtomiser.COULEURS_STATUT;
+    const ref = (chemin) => {
+      const m = String(chemin || '').match(/(?:^|\/)(T\d{2}-\d{3,4})\.md$/);
+      return m ? m[1] : null;
+    };
+    let change = false;
+    const parId = new Map();
+    for (const n of c.nodes || []) {
+      if (!n || n.type !== 'file') continue;
+      const r = ref(n.file);
+      if (!r) continue;
+      parId.set(n.id, r);
+      const etat = (etats || {})[r];
+      if (!etat || !(etat.statut in couleurs)) continue;
+      const voulue = couleurs[etat.statut];
+      if (voulue === (n.color || '')) continue;
+      if (voulue) n.color = voulue; else delete n.color;
+      change = true;
+    }
+    const fautives = new Set((incoherences || []).map((i) => i.de + '\u0000' + i.vers));
+    for (const e of c.edges || []) {
+      if (!e) continue;
+      const de = parId.get(e.fromNode);
+      const vers = parId.get(e.toNode);
+      if (!de || !vers) continue;
+      const couleur = String(e.color || '');
+      if (couleur && couleur !== '1') continue;
+      const doitRougir = fautives.has(de + '\u0000' + vers);
+      if (doitRougir === (couleur === '1')) continue;
+      if (doitRougir) e.color = '1'; else delete e.color;
+      change = true;
+    }
+    return { json: c, change };
+  }
+
   // Libellé d'une note du coffre dans le sélecteur. L'alias passe devant : c'est
   // sous ce nom que Monsieur connaît ses notes, « NC-202607081912 » ne disant
   // rien à personne. Le nom de fichier suit tout de même, pour rester cherchable.
@@ -9606,6 +9655,20 @@ class ZotflowAtomiser extends obsidian.Plugin {
         x.modifie = new Date().toISOString().slice(0, 10);
       });
       ecrites += 1;
+    }
+
+    // Retour vers les canvas : la couleur des nœuds suit le statut des notes,
+    // et les flèches fautives passent au rouge.
+    const etats = {};
+    for (const [ref, f] of fichierDe) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      etats[ref] = { statut: fm.statut || '' };
+    }
+    for (const c of canvas) {
+      const r = ZotflowAtomiser.majCanvas(
+        c.json, etats, incoherences, this.settings.couleurCompositionCanvas || '6');
+      if (!r.change) continue;
+      await this.app.vault.modify(c.fichier, JSON.stringify(r.json, null, 2));
     }
 
     this._incoherencesTaches = { cycles, dates: incoherences, conflits, morts };
