@@ -119,7 +119,6 @@ const TEXTES = {
     "Avec organisation": "With organisation",
     "Barre d'état": "Status bar",
     "Bibliographie : ": "Bibliography: ",
-    "Bibliographie : régénérer dans la note active": "Bibliography: rebuild in the active note",
     "Bibliographie : régénérer dans toutes les notes": "Bibliography: rebuild in every note",
     "Bibliographie de fin de note": "Bibliography at the end of the note",
     "Bibliographie mise à jour dans ": "Bibliography updated in ",
@@ -349,6 +348,12 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Bibliographie : recomposer celle de la note active": "Bibliography: rebuild the one in the active note",
+    "Bibliographie : recomposer celles de toutes les notes": "Bibliography: rebuild the ones in every note",
+    "Références citées : extraire celles de la source active": "Cited references: extract those of the active source",
+    "Références citées : extraire celles de toutes les sources": "Cited references: extract those of every source",
+    "Références citées : interrompre l’extraction": "Cited references: stop the extraction",
+    "Références citées : structurer les entrées non structurées": "Cited references: structure the unstructured entries",
     "Références en attente : ouvrir la liste": "Pending references: open the list",
     "Mises de côté": "Set aside",
     "Aucun libellé à fusionner.": "No label to merge.",
@@ -416,11 +421,6 @@ const TEXTES = {
     "Citations : replier ou déplier": "Citations: fold or unfold",
     "Citations : rafraîchir les libellés…": "Citations: refresh the labels…",
     "Bibliographie : régénérer dans la note active": "Bibliography: rebuild in the active note",
-    "Bibliographie : régénérer dans toutes mes notes": "Bibliography: rebuild in all my notes",
-    "Références citées : générer pour la source active": "Cited references: build for the active source",
-    "Références citées : générer pour toutes les sources": "Cited references: build for every source",
-    "Références citées : arrêter la génération": "Cited references: stop the run",
-    "Références citées : découper les entrées en texte brut": "Cited references: split the raw entries",
     "Références en attente : ouvrir l’arbitrage": "Pending references: open the arbitration",
     "Références en attente : rattacher automatiquement": "Pending references: attach automatically",
     "Références en attente : lier la référence active à une fiche Zotero": "Pending references: link the active reference to a Zotero entry",
@@ -3015,7 +3015,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'biblio-note',
-      name: tr('Bibliographie : régénérer dans la note active'),
+      name: tr('Bibliographie : recomposer celle de la note active'),
       callback: () => {
         const f = this.app.workspace.getActiveFile();
         if (f) this.majBibliographie(f); else new obsidian.Notice(tr('Ouvrez une note.'));
@@ -3023,7 +3023,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'biblio-tout',
-      name: tr('Bibliographie : régénérer dans toutes mes notes'),
+      name: tr('Bibliographie : recomposer celles de toutes les notes'),
       callback: () => this.majBibliographieToutes(),
     });
     this.addCommand({
@@ -3058,7 +3058,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'decouper-bibliographies',
-      name: tr('Références citées : découper les entrées en texte brut'),
+      name: tr('Références citées : structurer les entrées non structurées'),
       callback: () => this.decouperBibliographies(),
     });
     this.addCommand({
@@ -3078,12 +3078,12 @@ class ZotflowAtomiser extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'bibliographie-citee-source',
-      name: tr('Références citées : générer pour la source active'),
+      name: tr('Références citées : extraire celles de la source active'),
       callback: () => this.genererBibliographieSource(),
     });
     this.addCommand({
       id: 'arreter-bibliographies',
-      name: tr('Références citées : arrêter la génération'),
+      name: tr('Références citées : interrompre l’extraction'),
       callback: () => {
         if (!this.bibliosEnCours) { new obsidian.Notice(tr('Aucune génération en cours.')); return; }
         this.bibliosEnCours = false;
@@ -3091,7 +3091,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'bibliographies-citees-toutes',
-      name: tr('Références citées : générer pour toutes les sources'),
+      name: tr('Références citées : extraire celles de toutes les sources'),
       callback: () => this.genererToutesBibliographies(),
     });
     this.addCommand({
