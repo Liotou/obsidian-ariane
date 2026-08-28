@@ -349,6 +349,21 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "1. Ce que c’est": "1. What it is",
+    "2. Où elle est citée": "2. Where it is cited",
+    "3. Que faire": "3. What to do",
+    "Déjà dans votre Zotero : ": "Already in your Zotero: ",
+    "Ce libellé recouvre ": "This label covers ",
+    " travaux différents.": " different works.",
+    "Détacher": "Detach",
+    "DOI": "DOI",
+    " citation(s), d’après la bibliographie de ": " citation(s), from the bibliography of ",
+    "Non identifiée : aucune bibliographie de source citante ne la mentionne.": "Not identified: no citing source bibliography mentions it.",
+    "Le même travail est aussi cité sous : ": "The same work is also cited as: ",
+    "Fusionner ": "Merge ",
+    " ici": " here",
+    "Rattacher à cette fiche": "Attach to this entry",
+    "autre(s) fiche(s) Zotero possible(s)": "other possible Zotero entries",
     "œuvres": "works",
     "À détacher": "To detach",
     "À fusionner": "To merge",
@@ -363,9 +378,6 @@ const TEXTES = {
     "Compté par œuvre": "Counted by work",
     "Ce libellé couvre plusieurs œuvres": "This label covers several works",
     "Même œuvre que": "Same work as",
-    "Afficher le titre à côté des liens": "Show the title next to links",
-    "Déclare une famille de notes pour ce dossier, ce qui permet à l’aparté d’afficher le titre de la référence dans vos annotations.": "Declares a note family for this folder, which lets the aside show the reference title inside your annotations.",
-    "Famille déclarée : le titre s’affichera à côté des liens.": "Family declared: the title will show next to links.",
     "Complétion": "Completion",
     "fiche complète": "complete record",
     "Fiche introuvable pour ce DOI.": "No record found for this DOI.",
@@ -7720,31 +7732,6 @@ class ZotflowAtomiser extends obsidian.Plugin {
     else new obsidian.Notice(tr('Note introuvable : ') + basename);
   }
 
-  // Le dossier des références en attente est-il couvert par une famille ? Sans
-  // cela l'aparté ne s'y applique pas, et le titre complété reste invisible
-  // dans les annotations qui citent la référence.
-  familleDesReferences() {
-    const cible = this.settings.dossierReferences || '';
-    if (!cible) return null;
-    return (this.settings.famillesNotes || []).find(
-      (f) => (f.dossiers || []).some((d) => d && cible.startsWith(d))) || null;
-  }
-
-  async declarerFamilleReferences() {
-    if (this.familleDesReferences()) return false;
-    const cible = this.settings.dossierReferences;
-    if (!cible) { new obsidian.Notice(tr('Aucun dossier de références en attente.')); return false; }
-    if (!Array.isArray(this.settings.famillesNotes)) this.settings.famillesNotes = [];
-    this.settings.famillesNotes.push({
-      nom: tr('Références en attente'), dossiers: [cible], prefixe: '',
-      aparte: true, suggestions: false, couleur: '', icone: 'scale',
-      monospace: false, alias: true,
-    });
-    await this.saveSettings();
-    new obsidian.Notice(tr('Famille déclarée : le titre s’affichera à côté des liens.'));
-    return true;
-  }
-
   async ouvrirVueReferences() {
     const ex = this.app.workspace.getLeavesOfType(TYPE_VUE_REFS);
     if (ex.length) { this.app.workspace.revealLeaf(ex[0]); return; }
@@ -10004,14 +9991,6 @@ class VueReferencesAttente extends obsidian.ItemView {
     bMaj.onclick = async () => { await this.greffon.rafraichirBibliographies(false); await this.preparer(); };
     const bRe = outils.createEl('button', { text: tr('Recalculer') });
     bRe.onclick = () => this.preparer();
-    // N'apparaît que tant que l'aparté ne s'applique pas à ces notes.
-    if (!this.greffon.familleDesReferences()) {
-      const bFam = outils.createEl('button', { cls: 'mod-cta',
-        text: tr('Afficher le titre à côté des liens') });
-      bFam.setAttribute('aria-label',
-        tr('Déclare une famille de notes pour ce dossier, ce qui permet à l’aparté d’afficher le titre de la référence dans vos annotations.'));
-      bFam.onclick = async () => { await this.greffon.declarerFamilleReferences(); this.rendre(); };
-    }
     if (this.enCours) {
       const bStop = outils.createEl('button', { cls: 'mod-warning', text: tr('Arrêter le lot') });
       bStop.onclick = () => { this.enCours = false; };
@@ -10158,10 +10137,10 @@ class VueReferencesAttente extends obsidian.ItemView {
     const el = parent.createDiv({ cls: 'zfa-ref zfa-ref-' + l.etat + '-etat' });
     const ouvert = this.deplies.has(l.r.nom);
 
+    /* ------------------------------ La ligne ------------------------------ */
     const tete = el.createDiv({ cls: 'zfa-ref-tete' });
     const coche = tete.createEl('input', { type: 'checkbox', cls: 'zfa-ref-coche' });
     coche.checked = this.choisies.has(l.r.nom);
-    // Sans cela, cocher replierait ou déplierait la fiche du même geste.
     coche.onclick = (e) => {
       e.stopPropagation();
       if (coche.checked) this.choisies.add(l.r.nom); else this.choisies.delete(l.r.nom);
@@ -10169,14 +10148,9 @@ class VueReferencesAttente extends obsidian.ItemView {
     };
     tete.createSpan({ cls: 'zfa-ref-chevron', text: ouvert ? '▾' : '▸' });
     tete.createSpan({ cls: 'zfa-ref-nom', text: l.r.nom });
-    // Le titre connu se lit dès la ligne fermée : c'est lui qui identifie.
     const resume = l.r.titre || (l.biblio && l.biblio.titre) || '';
-    if (l.r.complete) tete.createSpan({ cls: 'zfa-ref-etiquette', text: tr('fiche complète') });
     if (resume) tete.createSpan({ cls: 'zfa-ref-resume', text: resume });
     tete.createSpan({ cls: 'zfa-ref-compteur', text: (l.poids || 0) + '×' });
-    if ((l.oeuvres || []).length > 1) {
-      tete.createSpan({ cls: 'zfa-ref-etiquette', text: l.oeuvres.length + ' ' + tr('œuvres') });
-    }
     if (l.r.etat) tete.createSpan({ cls: 'zfa-ref-etiquette', text: l.r.etat });
     tete.onclick = () => {
       if (ouvert) this.deplies.delete(l.r.nom); else this.deplies.add(l.r.nom);
@@ -10186,97 +10160,120 @@ class VueReferencesAttente extends obsidian.ItemView {
 
     const d = el.createDiv({ cls: 'zfa-ref-detail' });
 
-    /* ---- Le verdict, en tête : ce qu'Ariane conclut, et quoi faire ---- */
-    const v = d.createDiv({ cls: 'zfa-ref-verdict zfa-ref-verdict-' + l.etat });
+    /* --------------------------- 1. Ce que c'est -------------------------- */
+    const ident = d.createDiv({ cls: 'zfa-ref-section' });
+    ident.createDiv({ cls: 'zfa-ref-num', text: tr('1. Ce que c’est') });
     const cible = l.dansZotero || l.auto;
-    if (cible) {
-      v.createDiv({ cls: 'zfa-ref-verdict-titre', text: tr('Fiche Zotero trouvée') });
-      const e = g.construireIndexZotero().find((x) => x.basename === cible);
-      v.createDiv({ cls: 'zfa-ref-texte', text: e && e.titre ? e.titre : cible });
-      v.createDiv({ cls: 'zfa-ref-faible', text: cible });
-    } else if (l.biblio && l.biblio.conflit && !l.verdict) {
-      v.createDiv({ cls: 'zfa-ref-verdict-titre',
-        text: tr('Cette référence désigne ') + l.biblio.oeuvres.length + tr(' œuvres distinctes selon la source.') });
-      for (const o of l.biblio.oeuvres) {
-        const li = v.createDiv({ cls: 'zfa-ref-oeuvre' });
-        li.createDiv({ cls: 'zfa-ref-texte', text: '« ' + o.titre + ' »' });
-        li.createDiv({ cls: 'zfa-ref-faible', text: o.sources.join(', ') });
-        if (o.doi) this.ligneDoi(li, o.doi);
-      }
-    } else if (l.verdict) {
-      v.createDiv({ cls: 'zfa-ref-verdict-titre', text: tr('Verdict du modèle') });
-      v.createDiv({ cls: 'zfa-ref-texte', text: '« ' + l.verdict.titre + ' »' });
-      v.createDiv({ cls: 'zfa-ref-faible', text: l.verdict.detail });
-      if (l.verdict.doi) this.ligneDoi(v, l.verdict.doi);
-    } else if (l.biblio && l.biblio.titre) {
-      v.createDiv({ cls: 'zfa-ref-verdict-titre',
-        text: l.biblio.sur ? tr('Identifiée') : tr('Identifiée, sans certitude') });
-      v.createDiv({ cls: 'zfa-ref-texte', text: '« ' + l.biblio.titre + ' »' });
-      if (l.biblio.doi) this.ligneDoi(v, l.biblio.doi);
-    } else {
-      v.createDiv({ cls: 'zfa-ref-verdict-titre', text: tr('Non identifiée') });
-      v.createDiv({ cls: 'zfa-ref-faible',
-        text: tr("Aucune bibliographie de source citante ne la mentionne.") });
-    }
+    const oeuvres = l.oeuvres || [];
 
-    /* ---- Le compte, par œuvre ---- */
-    if ((l.oeuvres || []).length) {
-      const bo = d.createDiv({ cls: 'zfa-ref-bloc' });
-      bo.createDiv({ cls: 'zfa-ref-titre-bloc', text: tr('Compté par œuvre') });
-      for (const o of l.oeuvres) {
-        const li = bo.createDiv({ cls: 'zfa-ref-oeuvre' });
+    if (cible) {
+      const e = g.construireIndexZotero().find((x) => x.basename === cible);
+      ident.createDiv({ cls: 'zfa-ref-fort', text: e && e.titre ? e.titre : cible });
+      ident.createDiv({ cls: 'zfa-ref-faible', text: tr('Déjà dans votre Zotero : ') + cible });
+    } else if (oeuvres.length > 1) {
+      ident.createDiv({ cls: 'zfa-ref-fort',
+        text: tr('Ce libellé recouvre ') + oeuvres.length + tr(' travaux différents.') });
+      for (const o of oeuvres) {
+        const li = ident.createDiv({ cls: 'zfa-ref-oeuvre' });
         const t = li.createDiv({ cls: 'zfa-ref-texte' });
         t.createSpan({ cls: 'zfa-ref-compteur', text: o.n + '×  ' });
-        t.createSpan({ text: '« ' + (o.titre || o.doi) + ' »' });
+        t.createSpan({ text: o.titre || o.doi });
         li.createDiv({ cls: 'zfa-ref-faible', text: o.sources.join(', ') });
-        if (o.doi) this.ligneDoi(li, o.doi);
-        if (l.oeuvres.length > 1) {
-          const ba = li.createDiv({ cls: 'zfa-ref-barre-actions' });
-          this.bouton(ba, tr('Détacher cette œuvre'), 'split', async () => {
-            await g.detacherOeuvre(l.r, o);
-            await this.preparer();
-          });
-        }
-      }
-      if (l.nonResolues) {
-        bo.createDiv({ cls: 'zfa-ref-faible',
-          text: l.nonResolues + ' ' + tr('occurrence(s) non résolue(s), non comptée(s) ici.') });
-      }
-    }
-
-    /* ---- Les libellés qui désignent le même travail ---- */
-    if ((l.jumeaux || []).length) {
-      const bj = d.createDiv({ cls: 'zfa-ref-bloc' });
-      bj.createDiv({ cls: 'zfa-ref-titre-bloc', text: tr('Même œuvre que') });
-      for (const j of l.jumeaux) {
-        const li = bj.createDiv({ cls: 'zfa-ref-candidat' });
-        li.createDiv({ cls: 'zfa-ref-texte', text: j });
         const ba = li.createDiv({ cls: 'zfa-ref-barre-actions' });
-        this.bouton(ba, tr('Fusionner ici'), 'merge', async () => {
-          const autre = (this.lignes || []).find((x) => x.r.nom === j);
-          if (autre) { await g.fusionnerReferences(autre.r, l.r.nom); await this.preparer(); }
+        this.bouton(ba, tr('Détacher'), 'split', async () => {
+          await g.detacherOeuvre(l.r, o); await this.preparer();
         });
-        this.bouton(ba, tr('Ouvrir la note'), 'file', () => g.ouvrirNote(j));
+        if (o.doi) this.bouton(ba, tr('DOI'), 'copy', () => {
+          navigator.clipboard.writeText(o.doi); new obsidian.Notice(tr('Copié : ') + o.doi);
+        });
+      }
+    } else if (oeuvres.length === 1) {
+      ident.createDiv({ cls: 'zfa-ref-fort', text: oeuvres[0].titre || oeuvres[0].doi });
+      if (oeuvres[0].doi) this.ligneDoi(ident, oeuvres[0].doi);
+      ident.createDiv({ cls: 'zfa-ref-faible',
+        text: oeuvres[0].n + tr(' citation(s), d’après la bibliographie de ') + oeuvres[0].sources.join(', ') });
+    } else if (l.r.titre) {
+      ident.createDiv({ cls: 'zfa-ref-fort', text: l.r.titre });
+      if (l.r.doi) this.ligneDoi(ident, l.r.doi);
+    } else {
+      ident.createDiv({ cls: 'zfa-ref-faible',
+        text: tr('Non identifiée : aucune bibliographie de source citante ne la mentionne.') });
+    }
+
+    if ((l.jumeaux || []).length) {
+      const j = ident.createDiv({ cls: 'zfa-ref-oeuvre' });
+      j.createDiv({ cls: 'zfa-ref-texte',
+        text: tr('Le même travail est aussi cité sous : ') + l.jumeaux.join(', ') });
+      const ba = j.createDiv({ cls: 'zfa-ref-barre-actions' });
+      for (const autre of l.jumeaux) {
+        this.bouton(ba, tr('Fusionner ') + autre + tr(' ici'), 'merge', async () => {
+          const x = (this.lignes || []).find((y) => y.r.nom === autre);
+          if (x) { await g.fusionnerReferences(x.r, l.r.nom); await this.preparer(); }
+        });
       }
     }
 
-    /* ---- Les gestes, groupés et visibles ---- */
-    const actes = d.createDiv({ cls: 'zfa-ref-barre-actions' });
+    /* ----------------------- 2. Sur quoi je me fonde ---------------------- */
+    const preuve = d.createDiv({ cls: 'zfa-ref-section' });
+    preuve.createDiv({ cls: 'zfa-ref-num',
+      text: tr('2. Où elle est citée') + '  ·  ' + l.r.sources.length + ' ' + tr('source(s)') });
+    const parSource = new Map();
+    for (const p of (l.biblio && l.biblio.parSource) || []) parSource.set(p.source, p);
+    if (!l.r.sources.length) {
+      preuve.createDiv({ cls: 'zfa-ref-faible', text: tr('Aucune source identifiée.') });
+    }
+    for (const [src, n] of l.r.sources.slice(0, 8)) {
+      const ls = preuve.createDiv({ cls: 'zfa-ref-source' });
+      const ent = ls.createDiv({ cls: 'zfa-ref-source-tete' });
+      ent.createSpan({ cls: 'zfa-ref-source-nom', text: src });
+      ent.createSpan({ cls: 'zfa-ref-compteur', text: n + '×' });
+      const p = parSource.get(src);
+      if (p && p.passage) {
+        const pa = ls.createDiv({ cls: 'zfa-ref-passage' });
+        this.ecrirePassage(pa, p.passage, l.r.nom);
+      }
+      if (p) {
+        const bb = ls.createDiv({ cls: 'zfa-ref-biblio' });
+        bb.createDiv({ cls: 'zfa-ref-texte',
+          text: (p.sur ? '' : '≈ ') + (p.retenu.titre || p.retenu.doi) });
+        if (p.retenu.doi) bb.createDiv({ cls: 'zfa-ref-faible', text: p.retenu.doi });
+        if (p.arbitre) {
+          bb.createDiv({ cls: 'zfa-ref-arbitre',
+            text: tr('Le modèle lit ici : ') + p.arbitre.oeuvre.titre });
+        }
+      } else {
+        ls.createDiv({ cls: 'zfa-ref-faible', text: tr('Bibliographie indisponible pour cette source.') });
+      }
+      const bs = ls.createDiv({ cls: 'zfa-ref-barre-actions' });
+      this.bouton(bs, tr('La source'), 'file-text', () => g.ouvrirNote(src));
+      if (p && p.fichier) {
+        this.bouton(bs, tr("L'annotation"), 'pen', () => this.app.workspace.getLeaf(true).openFile(p.fichier));
+      }
+    }
+
+    /* --------------------------- 3. Que faire ----------------------------- */
+    const faire = d.createDiv({ cls: 'zfa-ref-section' });
+    faire.createDiv({ cls: 'zfa-ref-num', text: tr('3. Que faire') });
+    const actes = faire.createDiv({ cls: 'zfa-ref-barre-actions' });
+
+    // Une seule action mise en avant, celle que l'état appelle.
     if (cible) {
-      this.bouton(actes, tr('Rattacher'), 'link', async () => {
+      this.bouton(actes, tr('Rattacher à cette fiche'), 'link', async () => {
         await g.rattacherReference(l.r, cible);
         this.lignes = (this.lignes || []).filter((x) => x !== l);
         this.rendre();
       }, true);
-      this.bouton(actes, tr('Voir la fiche'), 'file-text', () => g.ouvrirNote(cible));
-    }
-    if (l.biblio && l.biblio.conflit && !l.verdict) {
+    } else if (l.doi && !l.r.complete) {
+      this.bouton(actes, tr('Compléter depuis le DOI'), 'download-cloud', async () => {
+        await g.completerReference(l.r, l.doi);
+        await this.rafraichirLigne(l);
+      }, true);
+    } else if (l.biblio && l.biblio.conflit && !l.verdict) {
       this.bouton(actes, tr('Faire arbitrer par le modèle'), 'wand', async () => {
         const avis = new obsidian.Notice(tr('Arbitrage…'), 0);
-        const n = await g.arbitrerConflit(l.r, l.biblio);
+        await g.arbitrerConflit(l.r, l.biblio);
         avis.hide();
         l.verdict = this.conclure(l.biblio);
-        if (!l.verdict) new obsidian.Notice(tr('Le modèle n’a pas tranché.'));
         l.etat = this.classer(l);
         this.rendre();
       }, true);
@@ -10286,32 +10283,24 @@ class VueReferencesAttente extends obsidian.ItemView {
         await g.ecrireIdentification(l.r, l.verdict);
         await this.rafraichirLigne(l);
       }, true);
-      this.bouton(actes, tr('Annuler le verdict'), 'undo', () => {
-        l.verdict = null; l.etat = this.classer(l); this.rendre();
-      });
     }
-    if (l.doi) {
-      this.bouton(actes, tr('Compléter depuis le DOI'), 'download-cloud', async () => {
-        const ok = await g.completerReference(l.r, l.doi);
-        if (ok) new obsidian.Notice(tr('Complétée : ') + l.r.nom);
-        await this.rafraichirLigne(l);
-      }, !l.r.titre);
-    }
+
     this.bouton(actes, l.r.etat === 'à acquérir' ? tr('Ne plus marquer') : tr('À acquérir'),
       'shopping-cart', () => g.marquerReference(l.r, l.r.etat === 'à acquérir' ? '' : 'à acquérir')
         .then(() => this.rafraichirLigne(l)));
     this.bouton(actes, l.r.etat === 'écartée' ? tr('Réintégrer') : tr('Écarter'),
       'eye-off', () => g.marquerReference(l.r, l.r.etat === 'écartée' ? '' : 'écartée')
         .then(() => this.rafraichirLigne(l)));
-    this.bouton(actes, tr('Ouvrir la note'), 'file', () => this.app.workspace.getLeaf(true).openFile(l.r.fichier));
+    this.bouton(actes, tr('Ouvrir la note'), 'file',
+      () => this.app.workspace.getLeaf(true).openFile(l.r.fichier));
 
-    /* ---- Les candidats Zotero, s'il y en a d'autres ---- */
+    // Les autres fiches Zotero possibles restent accessibles, sans encombrer.
     const restants = (l.candidats || []).filter((x) => x.basename !== cible);
     if (restants.length) {
-      const b3 = d.createDiv({ cls: 'zfa-ref-bloc' });
-      b3.createDiv({ cls: 'zfa-ref-titre-bloc', text: tr('Autres candidats dans Zotero') });
+      const det = faire.createEl('details', { cls: 'zfa-ref-repli' });
+      det.createEl('summary', { text: restants.length + ' ' + tr('autre(s) fiche(s) Zotero possible(s)') });
       for (const cand of restants.slice(0, 5)) {
-        const lc = b3.createDiv({ cls: 'zfa-ref-candidat' });
+        const lc = det.createDiv({ cls: 'zfa-ref-candidat' });
         lc.createDiv({ cls: 'zfa-ref-texte', text: cand.titre || cand.basename });
         lc.createDiv({ cls: 'zfa-ref-faible', text: cand.basename });
         const bb = lc.createDiv({ cls: 'zfa-ref-barre-actions' });
@@ -10321,48 +10310,6 @@ class VueReferencesAttente extends obsidian.ItemView {
           this.rendre();
         });
         this.bouton(bb, tr('Voir la fiche'), 'file-text', () => g.ouvrirNote(cand.basename));
-      }
-    }
-
-    /* ---- Les sources, avec le passage et l'entrée de LEUR bibliographie ---- */
-    const b2 = d.createDiv({ cls: 'zfa-ref-bloc' });
-    b2.createDiv({ cls: 'zfa-ref-titre-bloc',
-      text: tr('Citée dans') + ' ' + l.r.sources.length + ' ' + tr('source(s)') });
-    const parSource = new Map();
-    for (const p of (l.biblio && l.biblio.parSource) || []) parSource.set(p.source, p);
-
-    for (const [src, n] of l.r.sources.slice(0, 8)) {
-      const ls = b2.createDiv({ cls: 'zfa-ref-source' });
-      const ent = ls.createDiv({ cls: 'zfa-ref-source-tete' });
-      ent.createSpan({ cls: 'zfa-ref-source-nom', text: src });
-      ent.createSpan({ cls: 'zfa-ref-compteur', text: n + '×' });
-      const p = parSource.get(src);
-      const bs = ls.createDiv({ cls: 'zfa-ref-barre-actions' });
-      this.bouton(bs, tr('La source'), 'file-text', () => g.ouvrirNote(src));
-      if (p && p.fichier) {
-        this.bouton(bs, tr("L'annotation"), 'pen', () => this.app.workspace.getLeaf(true).openFile(p.fichier));
-      }
-      if (!p) { ls.createDiv({ cls: 'zfa-ref-faible', text: tr('Bibliographie indisponible pour cette source.') }); continue; }
-
-      if (p.passage) {
-        const pa = ls.createDiv({ cls: 'zfa-ref-passage' });
-        this.ecrirePassage(pa, p.passage, l.r.nom);
-      }
-      const bb = ls.createDiv({ cls: 'zfa-ref-biblio' });
-      bb.createDiv({ cls: 'zfa-ref-titre-bloc',
-        text: p.sur ? tr('Dans sa bibliographie') : tr('Dans sa bibliographie, sans certitude') });
-      bb.createDiv({ cls: 'zfa-ref-texte', text: '« ' + p.retenu.titre + ' »' });
-      if (p.retenu.revue) bb.createDiv({ cls: 'zfa-ref-faible', text: p.retenu.revue });
-      if (p.retenu.doi) this.ligneDoi(bb, p.retenu.doi);
-      if (p.arbitre) {
-        bb.createDiv({ cls: 'zfa-ref-arbitre',
-          text: tr('Le modèle lit ici : ') + '« ' + p.arbitre.oeuvre.titre + ' »'
-            + (p.arbitre.confiance ? '  (' + tr('confiance ') + p.arbitre.confiance + ')' : '') });
-      }
-      for (const autre of p.candidats.slice(1, 3)) {
-        const au = bb.createDiv({ cls: 'zfa-ref-autre' });
-        au.createDiv({ cls: 'zfa-ref-faible', text: tr('ou bien : ') + '« ' + autre.titre + ' »' });
-        if (autre.doi) this.ligneDoi(au, autre.doi);
       }
     }
   }

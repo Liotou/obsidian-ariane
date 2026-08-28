@@ -764,3 +764,37 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-ref-fusionner-etat .zfa-ref-tete::before { background: var(--color-cyan); }
 .zfa-ref-fusionnee-etat { opacity: 0.5; }
 .zfa-ref-fusionnee-etat .zfa-ref-tete::before { background: var(--text-faint); }
+
+/* ---- Fiche dépliée : trois sections numérotées, pas un empilement ---- */
+
+.zfa-ref-section {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.zfa-ref-section:last-child { border-bottom: none; padding-bottom: 0; }
+
+.zfa-ref-num {
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  margin-bottom: 6px;
+}
+
+/* L'identité se lit d'abord : c'est la réponse à « qu'est-ce que c'est ». */
+.zfa-ref-fort {
+  font-weight: 600;
+  line-height: 1.35;
+  margin-bottom: 3px;
+}
+
+.zfa-ref-repli { margin-top: 8px; }
+.zfa-ref-repli summary {
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+.zfa-ref-repli summary:hover { color: var(--text-normal); }
