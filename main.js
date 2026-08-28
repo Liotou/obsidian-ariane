@@ -349,6 +349,10 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Entretien : retirer les références fusionnées sans lien": "Housekeeping: remove merged references with no link",
+    "Aucune note fusionnée à retirer.": "No merged note to remove.",
+    "Notes fusionnées retirées : ": "Merged notes removed: ",
+    "gardée(s), encore citée(s)": "kept, still cited",
     "Doublon d’écriture, à la ponctuation près : ": "Spelling duplicate, up to punctuation: ",
     "Normalisation…": "Normalising…",
     "Normalisation : ": "Normalising: ",
@@ -3032,6 +3036,11 @@ class ZotflowAtomiser extends obsidian.Plugin {
       id: 'decouper-bibliographies',
       name: tr('Références citées : découper les entrées en texte brut'),
       callback: () => this.decouperBibliographies(),
+    });
+    this.addCommand({
+      id: 'supprimer-fusionnees',
+      name: tr('Entretien : retirer les références fusionnées sans lien'),
+      callback: () => this.supprimerFusionnees(),
     });
     this.addCommand({
       id: 'reparer-liens-auteurs',
@@ -7760,6 +7769,38 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return { nom, liens: n };
   }
 
+  // Retire les notes absorbées par une fusion. La condition est stricte : la
+  // note doit être marquée « fusionnée » ET n'avoir plus aucun lien entrant.
+  // Une note encore citée quelque part n'est jamais supprimée, quel que soit
+  // son marquage.
+  async supprimerFusionnees() {
+    const dossier = this.dossierR;
+    const candidates = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(dossier + '/')) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (String(fm.arbitrage || '').trim() !== 'fusionnée') continue;
+      candidates.push(f);
+    }
+    if (!candidates.length) { new obsidian.Notice(tr('Aucune note fusionnée à retirer.')); return 0; }
+
+    const cites = new Set();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const cache = this.app.metadataCache.getFileCache(f);
+      for (const l of (cache && cache.links) || []) cites.add(cleDeLien(l.link));
+      for (const l of (cache && cache.frontmatterLinks) || []) cites.add(cleDeLien(l.link));
+    }
+    let retirees = 0, gardees = 0;
+    for (const f of candidates) {
+      if (cites.has(f.basename)) { gardees += 1; continue; }
+      await this.supprimerFichier(f);
+      retirees += 1;
+    }
+    new obsidian.Notice(tr('Notes fusionnées retirées : ') + retirees
+      + (gardees ? ', ' + gardees + ' ' + tr('gardée(s), encore citée(s)') : '') + '.', 9000);
+    return retirees;
+  }
+
   async ouvrirNote(basename) {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === basename);
     if (f) await this.app.workspace.getLeaf(true).openFile(f);
@@ -8057,6 +8098,11 @@ class ZotflowAtomiser extends obsidian.Plugin {
       // seule connue quand il n'y en a qu'une. Sans cette règle, « Bowker &
       // Star, 1999 » passait pour deux travaux, l'un identifié et l'autre non.
       const liste = ZotflowAtomiser.fondreOeuvresProches([...oeuvres.values()]);
+      // La clé doit être recalculée après la fonte : le titre retenu est le plus
+      // complet des deux, et sans ce recalcul la clé restait celle du premier
+      // venu. Deux libellés désignant la même œuvre gardaient alors des clés
+      // différentes, et la détection des fusions tombait à zéro.
+      for (const o of liste) o.cle = cleOeuvre(o.titre, o.doi) || o.cle;
       if (liste.length === 1) liste[0].n += nonResolues;
       const total = occurrences.length;
       parRef.set(libelle, { oeuvres: liste, nonResolues: liste.length === 1 ? 0 : nonResolues, total });
@@ -9996,6 +10042,9 @@ class VueReferencesAttente extends obsidian.ItemView {
     // qui suppose que la référence est identifiée.
     const parCle = new Map();
     for (const l of this.lignes) {
+      // Une note déjà fusionnée n'est plus un doublon à traiter : elle n'est que
+      // le fichier absorbé, sans lien entrant.
+      if (l.r.etat === 'fusionnée' || l.r.etat === 'écartée') continue;
       const k = cleLibelle(l.r.nom);
       if (!parCle.has(k)) parCle.set(k, []);
       parCle.get(k).push(l);
