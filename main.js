@@ -9287,6 +9287,40 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return { champ: 'livrable', valeur: '[[' + nu + ']]' };
   }
 
+  /* ------------------------ Articulation par canvas ------------------------ */
+
+  // Lecture d'un canvas. On n'y prend que ce dont les notes ont besoin : qui
+  // est relié à qui, comment, et sous quel libellé. La position et la taille
+  // des nœuds restent au canvas, qui en est seul propriétaire.
+  // Un même fichier peut occuper plusieurs nœuds : les arêtes valent alors pour
+  // la tâche, sans qu'il faille désigner un nœud de référence.
+  static lireCanvasTaches(canvas, estTache, couleurCompo) {
+    const c = canvas || {};
+    const parId = new Map();
+    const noeuds = [];
+    for (const n of c.nodes || []) {
+      if (!n || n.type !== 'file' || !n.file) continue;
+      const ref = estTache(n.file);
+      if (!ref) continue;
+      parId.set(n.id, ref);
+      if (!noeuds.includes(ref)) noeuds.push(ref);
+    }
+    const liens = [];
+    const vus = new Set();
+    for (const e of c.edges || []) {
+      if (!e) continue;
+      const de = parId.get(e.fromNode);
+      const vers = parId.get(e.toNode);
+      if (!de || !vers || de === vers) continue;
+      const relation = String(e.color || '') === String(couleurCompo) ? 'compose' : 'bloque';
+      const cle = de + '\u0000' + vers + '\u0000' + relation;
+      if (vus.has(cle)) continue;
+      vus.add(cle);
+      liens.push({ de, vers, relation, libelle: String(e.label || '').trim() });
+    }
+    return { liens, noeuds };
+  }
+
   // Libellé d'une note du coffre dans le sélecteur. L'alias passe devant : c'est
   // sous ce nom que Monsieur connaît ses notes, « NC-202607081912 » ne disant
   // rien à personne. Le nom de fichier suit tout de même, pour rester cherchable.
