@@ -9464,6 +9464,70 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return lignes;
   }
 
+  // Le sous-arbre d'une ligne, déduit des niveaux : tout ce qui suit et qui est
+  // plus profond, jusqu'à retomber au niveau de départ.
+  static _sousArbre(lignes, ref) {
+    const l = lignes || [];
+    const i = l.findIndex((x) => x.ref === ref);
+    if (i === -1) return [];
+    const out = [l[i]];
+    for (let k = i + 1; k < l.length && l[k].niveau > l[i].niveau; k++) out.push(l[k]);
+    return out;
+  }
+
+  // Décaler une barre emporte sa descendance : quand un chantier glisse d'un
+  // mois, tout ce qu'il contient glisse avec lui.
+  // Une tâche sans dates n'est pas planifiée par ricochet : ce serait décider à
+  // la place de Monsieur.
+  static decalerSousArbre(lignes, ref, jours) {
+    const n = Number(jours) || 0;
+    if (!n) return [];
+    const out = [];
+    for (const l of ZotflowAtomiser._sousArbre(lignes, ref)) {
+      const d = ZotflowAtomiser.decalerJour(l.propre.debut, n);
+      const e = ZotflowAtomiser.decalerJour(l.propre.echeance, n);
+      if (!d && !e) continue;
+      out.push({ ref: l.ref, debut: d, echeance: e });
+    }
+    return out;
+  }
+
+  // Réordonnancement de l'aval : la tâche et tout ce qu'elle bloque, de proche
+  // en proche, du même nombre de jours, descendances comprises. Le parcours
+  // retient les tâches déjà vues, sans quoi un cycle de blocage le ferait
+  // tourner sans fin.
+  static cascadeAval(lignes, bloquants, ref, jours) {
+    const n = Number(jours) || 0;
+    if (!n) return [];
+    const suivants = new Map();
+    for (const b of bloquants || []) {
+      if (!b || !b.de || !b.vers) continue;
+      if (!suivants.has(b.de)) suivants.set(b.de, []);
+      suivants.get(b.de).push(b.vers);
+    }
+    const vus = new Set();
+    const file = [ref];
+    while (file.length) {
+      const cur = file.shift();
+      if (vus.has(cur)) continue;
+      vus.add(cur);
+      for (const s of suivants.get(cur) || []) file.push(s);
+    }
+    const out = [];
+    const deja = new Set();
+    for (const r of vus) {
+      for (const l of ZotflowAtomiser._sousArbre(lignes, r)) {
+        if (deja.has(l.ref)) continue;
+        deja.add(l.ref);
+        const d = ZotflowAtomiser.decalerJour(l.propre.debut, n);
+        const e = ZotflowAtomiser.decalerJour(l.propre.echeance, n);
+        if (!d && !e) continue;
+        out.push({ ref: l.ref, debut: d, echeance: e });
+      }
+    }
+    return out;
+  }
+
   /* ------------------------ Articulation par canvas ------------------------ */
 
   // Lecture d'un canvas. On n'y prend que ce dont les notes ont besoin : qui
