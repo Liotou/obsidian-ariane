@@ -46,6 +46,7 @@ carries, Ariane exploits.
 - [⏱️ Tracking time](#-tracking-time)
 - [🧹 Housekeeping tools](#-housekeeping-tools)
 - [🗂️ Fitting your own organisation](#-fitting-your-own-organisation)
+- [✅ Tasks](#-tasks)
 - [⌨️ Commands](#-commands)
 - [📦 Installing](#-installing)
 - [🔐 What the plugin can do](#-what-the-plugin-can-do-on-your-machine)
@@ -538,6 +539,43 @@ One button proposes the families found in your vault and **guesses their
 prefixes** from the filenames. Another detects which folders play each
 functional role, meaning where annotations are filed, where reading notes go,
 where exports land, and so on.
+
+## ✅ Tasks
+
+A task and back-planning system, of which this is the **first stage**: creating
+tasks, describing them, finding them again. Canvas-based articulation and the
+Gantt chart come later.
+
+A task is **a note** in your tasks folder, named `T26-042`: the letter `T`, the
+year, the rank within the year. Its title goes into `aliases`, as in your other
+note families. The counter restarts every January.
+
+Its **kind is never declared**, it follows from whichever field is filled in:
+
+| Field filled | Kind | What the note additionally shows |
+| --- | --- | --- |
+| `source` | reading | links to the entry, to the ZotFlow reader and to Zotero |
+| `livrable` | output | a link to the note produced |
+| `fichier` | output | the document's last change and last opening |
+| none | action | nothing |
+
+A `famille` field could contradict the fields actually present; leaving it out
+makes the contradiction impossible.
+
+The **Tasks: create a task** command opens a form. The Zotero source is searched
+by author, title, year or key, since nobody remembers a citation key by heart.
+Dates go through the system calendar. For an output, a single field: an absolute
+path means a file on disk, anything else a note in the vault.
+
+Two fields look after themselves. `termine-le` is written as soon as the status
+becomes `terminée`, and cleared if it goes back. The note's **access block** is
+refreshed by **Tasks: refresh the block of the active task**.
+
+The **Tasks: lay down the working base** command drops a four-view base into your
+tasks folder; a versioned copy lives in [`docs/taches.base`](docs/taches.base).
+The **Débloquées** view is the daily one: it shows only the tasks nothing is
+holding back any more. The command never replaces an existing base, so your own
+views are safe.
 
 ## ⌨️ Commands
 

@@ -46,6 +46,7 @@ chaîne : Annota écrit, ZotFlow transporte, Ariane exploite.
 - [⏱️ Compter le temps](#-compter-le-temps)
 - [🧹 Outils d'entretien](#-outils-dentretien)
 - [🗂️ S'adapter à votre organisation](#-sadapter-à-votre-organisation)
+- [✅ Tâches](#-tâches)
 - [⌨️ Commandes](#-commandes)
 - [📦 Installation](#-installation)
 - [🔐 Ce que le greffon peut faire](#-ce-que-le-greffon-peut-faire-sur-votre-machine)
@@ -551,6 +552,45 @@ Un bouton propose les familles de votre coffre et **devine leurs préfixes** à
 partir des noms de fichiers. Un autre détecte les dossiers qui jouent chacun des
 rôles : où sont rangées les annotations, où vont les notes de lecture, où
 tombent les exports, et ainsi de suite.
+
+## ✅ Tâches
+
+Un système de gestion des tâches et de rétroplanning, dont voici la **première
+étape** : créer des tâches, les décrire, les retrouver. L'articulation par
+canvas et la frise Gantt viendront ensuite.
+
+Une tâche est **une note** de votre dossier de tâches, nommée `T26-042` : la
+lettre `T`, l'année, le rang dans l'année. Son intitulé va en `aliases`, comme
+dans vos autres familles de notes. Le compteur repart chaque janvier.
+
+Sa **famille ne se déclare pas**, elle se déduit du champ rempli :
+
+| Champ rempli | Famille | Ce que la note montre en plus |
+| --- | --- | --- |
+| `source` | lecture | des liens vers la fiche, vers le lecteur ZotFlow et vers Zotero |
+| `livrable` | production | un lien vers la note produite |
+| `fichier` | production | la dernière modification et la dernière ouverture du document |
+| aucun | action | rien |
+
+Un champ `famille` pourrait contredire les champs présents ; son absence rend la
+contradiction impossible.
+
+La commande **« Tâches : créer une tâche »** ouvre un formulaire. La source
+Zotero s'y cherche par auteur, titre, année ou clé, personne ne retenant une clé
+de citation par cœur. Les dates passent par le calendrier du système. Pour une
+production, un seul champ : un chemin absolu désigne un fichier du disque, tout
+le reste une note du coffre.
+
+Deux champs se tiennent seuls. `termine-le` s'inscrit dès que le statut passe à
+`terminée`, et s'efface s'il en revient. Le **bloc d'accès** de la note se
+rafraîchit par la commande **« Tâches : rafraîchir le bloc de la tâche active »**.
+
+La commande **« Tâches : poser la base de travail »** dépose une base à quatre
+vues dans votre dossier de tâches, dont un exemplaire versionné se trouve dans
+[`docs/taches.base`](docs/taches.base). La vue **Débloquées** est celle du
+quotidien : elle ne montre que les tâches dont plus rien n'empêche l'exécution.
+La commande ne remplace jamais une base existante, vos propres vues ne risquent
+donc rien.
 
 ## ⌨️ Commandes
 
