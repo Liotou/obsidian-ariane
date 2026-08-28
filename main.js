@@ -9041,6 +9041,58 @@ class ZotflowAtomiser extends obsidian.Plugin {
     if (retenu === 'source') return 'lecture';
     return retenu ? 'production' : 'action';
   }
+
+  // Une valeur YAML citée. Les intitulés portent des apostrophes, des deux
+  // points et des guillemets typographiques : les citer systématiquement évite
+  // d'avoir à décider au cas par cas.
+  static yamlChaine(v) {
+    const s = String(v == null ? '' : v);
+    if (!s) return '';
+    return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  }
+
+  // Le corps d'une note de tâche neuve. Tous les champs du schéma sont émis,
+  // y compris vides : l'éditeur de propriétés d'Obsidian ne montre que ce qui
+  // existe, et une tâche dont les champs manquent est une tâche qu'on ne pense
+  // pas à remplir. Un champ vide s'écrit sans espace en fin de ligne, que
+  // certains éditeurs suppriment et qui ferait alors diverger le fichier.
+  static corpsNouvelleTache(champs) {
+    const c = champs || {};
+    const q = ZotflowAtomiser.yamlChaine;
+    const ligne = (cle, val) => cle + ':' + (val ? ' ' + val : '');
+    const intitule = c.intitule || 'Sans titre';
+    const jour = c.aujourdhui || '';
+    const l = [];
+    l.push('---');
+    l.push('aliases:');
+    l.push('  - ' + q(intitule));
+    l.push('type: tache');
+    l.push(ligne('statut', c.statut || 'à faire'));
+    l.push(ligne('priorite', c.priorite));
+    l.push(ligne('debut', c.debut));
+    l.push(ligne('echeance', c.echeance));
+    l.push('avancement: ' + (Number(c.avancement) || 0));
+    l.push('termine-le:');
+    l.push('jalon: ' + (c.jalon ? 'true' : 'false'));
+    l.push('parent:');
+    l.push('bloque-par: []');
+    l.push(ligne('source', q(c.source)));
+    l.push(ligne('livrable', q(c.livrable)));
+    l.push(ligne('fichier', q(c.fichier)));
+    l.push(ligne('liste', q(c.liste)));
+    l.push('rappel-id:');
+    l.push(ligne('cree', jour));
+    l.push(ligne('modifie', jour));
+    l.push('---');
+    l.push('');
+    l.push('# ' + intitule);
+    l.push('');
+    l.push('## Note de travail');
+    l.push('');
+    l.push('## Journal');
+    l.push('');
+    return l.join('\n');
+  }
 }
 
 /* =========================================================================
