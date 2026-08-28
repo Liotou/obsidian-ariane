@@ -799,12 +799,8 @@ const TEXTES = {
     "Fichier": "File",
     "modifié le": "changed on",
     "ouvert le": "opened on",
-    "Tâches : rafraîchir le bloc de la tâche active": "Tasks: refresh the block of the active task",
-    "Bloc rafraîchi.": "Block refreshed.",
-    "Cette note n'est pas une tâche.": "This note is not a task.",
-    "La base existe déjà, elle n a pas été touchée.": "The base already exists, it was left untouched.",
-    "Tâches : poser la base de travail": "Tasks: lay down the working base",
-    "Base posée : ": "Base laid down: ",
+    "Aucune note à proposer.": "No note to offer.",
+    "Alias ou nom de note…": "Alias or note name…",
   },
 };
 let LANGUE = 'fr';
@@ -3136,24 +3132,6 @@ class ZotflowAtomiser extends obsidian.Plugin {
       }).open(),
     });
     this.addCommand({
-      id: 'poser-base-taches',
-      name: tr('Tâches : poser la base de travail'),
-      callback: async () => {
-        const chemin = await this.ecrireBaseTaches();
-        new obsidian.Notice(tr('Base posée : ') + chemin);
-      },
-    });
-    this.addCommand({
-      id: 'maj-bloc-tache',
-      name: tr('Tâches : rafraîchir le bloc de la tâche active'),
-      callback: async () => {
-        const f = this.app.workspace.getActiveFile();
-        if (!f) return;
-        const fait = await this.majBlocTache(f);
-        new obsidian.Notice(fait ? tr('Bloc rafraîchi.') : tr("Cette note n'est pas une tâche."));
-      },
-    });
-    this.addCommand({
       id: 'temps-journal',
       name: tr('Temps : écrire le journal du jour'),
       callback: () => this.ouvrirBilanTemps(),
@@ -3633,6 +3611,16 @@ class ZotflowAtomiser extends obsidian.Plugin {
         x['termine-le'] = valeur;
         x.modifie = jour;
       });
+    }));
+
+    // Le bloc d'accès suit les champs de la note, sans commande à lancer.
+    // Il ne se réécrit que s'il change vraiment, faute de quoi cette écoute
+    // se rappellerait elle-même sans fin. L'antirebond évite en outre de
+    // réécrire à chaque frappe pendant que Monsieur remplit ses propriétés.
+    this.registerEvent(this.app.metadataCache.on('changed', (fichier, _d, cacheNote) => {
+      const fm = (cacheNote && cacheNote.frontmatter) || null;
+      if (!fm || fm.type !== 'tache') return;
+      this.antirebond('tache:' + fichier.path, () => this.majBlocTache(fichier));
     }));
 
     this.registerEvent(this.app.vault.on('modify', revaliderIndex));
@@ -9299,6 +9287,17 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return { champ: 'livrable', valeur: '[[' + nu + ']]' };
   }
 
+  // Libellé d'une note du coffre dans le sélecteur. L'alias passe devant : c'est
+  // sous ce nom que Monsieur connaît ses notes, « NC-202607081912 » ne disant
+  // rien à personne. Le nom de fichier suit tout de même, pour rester cherchable.
+  static libelleNote(fm, basename) {
+    const alias = []
+      .concat((fm && fm.aliases) || [])
+      .map((a) => String(a).trim())
+      .filter(Boolean);
+    return alias.length ? alias.join(' / ') + '  ·  ' + basename : basename;
+  }
+
   // Libellé d'une fiche Zotero dans le sélecteur. Tout y est réuni pour que la
   // recherche approchée morde sur l'auteur, l'année, le titre ou la clé : on ne
   // retient pas une clé de citation par cœur.
@@ -9431,7 +9430,8 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const meta = await this.accesTache(fm);
     const interieur = ZotflowAtomiser.blocTache(fm, meta);
     const bloc = interieur ? ZFA_TACHE_DEBUT + '\n' + interieur + '\n' + ZFA_TACHE_FIN : '';
-    let texte = await this.app.vault.read(file);
+    const avant = await this.app.vault.read(file);
+    let texte = avant;
     const debut = texte.indexOf(ZFA_TACHE_DEBUT);
     const fin = texte.indexOf(ZFA_TACHE_FIN);
     if (debut !== -1 && fin > debut) {
@@ -9439,23 +9439,43 @@ class ZotflowAtomiser extends obsidian.Plugin {
     } else if (bloc) {
       texte = texte.replace(/^(# .*\n)/m, '$1\n' + bloc + '\n');
     }
+    // Ne rien écrire quand rien ne change : c'est ce qui empêche l'écoute qui
+    // appelle cette méthode de se rappeler elle-même sans fin.
+    if (texte === avant) return false;
     await this.app.vault.modify(file, texte);
     return true;
   }
 
-  // Pose la base de travail dans le dossier des tâches. Ne l'écrase jamais :
-  // Monsieur y ajoutera ses propres vues, et les perdre à chaque mise à jour du
-  // greffon serait pire que de ne pas la fournir.
-  async ecrireBaseTaches() {
-    const dossier = this.dossierT;
-    await this.assurerDossier(dossier);
-    const chemin = dossier + '/Tâches.base';
-    if (this.app.vault.getAbstractFileByPath(chemin)) {
-      new obsidian.Notice(tr('La base existe déjà, elle n a pas été touchée.'));
-      return chemin;
-    }
+  // Pose la base de travail si elle manque. Appelée à la création d'une tâche,
+  // ce qui la rend inutile en tant que commande : elle n'a lieu qu'une fois, et
+  // une commande à usage unique encombre la palette pour rien.
+  // Une base existante n'est jamais remplacée : Monsieur y ajoutera ses propres
+  // vues, et les perdre à chaque mise à jour du greffon serait pire que de ne
+  // pas fournir la base du tout.
+  async assurerBaseTaches() {
+    const chemin = this.dossierT + '/Tâches.base';
+    if (this.app.vault.getAbstractFileByPath(chemin)) return chemin;
     await this.app.vault.create(chemin, BASE_TACHES);
     return chemin;
+  }
+
+  // Les notes que Monsieur peut désigner comme livrable. On écarte ce qui est
+  // matière documentaire plutôt que production : fiches Zotero, annotations,
+  // notes-filles, références en attente, bibliographies, et les tâches elles-mêmes.
+  notesPourChoix() {
+    const s = this.settings;
+    const exclus = [s.dossierAnnotations, s.dossierNotesLecture, s.dossierReferences,
+                    s.dossierBibliographies, s.dossierZotero, this.dossierT]
+      .map((d) => String(d || '').trim()).filter(Boolean);
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (f.basename.charAt(0) === '@') continue;
+      if (exclus.some((d) => f.path.startsWith(d + '/'))) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      out.push({ nom: ZotflowAtomiser.libelleNote(fm, f.basename), cle: f.basename });
+    }
+    out.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    return out;
   }
 
   // Écrit une note de tâche neuve et rend son chemin. La référence se calcule
@@ -9464,6 +9484,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   async creerTache(champs) {
     const dossier = this.dossierT;
     await this.assurerDossier(dossier);
+    await this.assurerBaseTaches();
     const noms = this.app.vault.getMarkdownFiles()
       .filter((f) => f.path.startsWith(dossier + '/'))
       .map((f) => f.basename);
@@ -10728,16 +10749,28 @@ class ModaleNouvelleTache extends obsidian.Modal {
     } else if (this.famille === 'production') {
       // Note du coffre ou fichier du disque : la forme de la saisie tranche,
       // et rien n'oblige à trancher tout de suite, le champ pouvant rester vide.
+      const poser = (v) => {
+        this.saisieProduction = v;
+        const r = ZotflowAtomiser.livrableOuFichier(v);
+        this.champs.livrable = r.champ === 'livrable' ? r.valeur : '';
+        this.champs.fichier = r.champ === 'fichier' ? r.valeur : '';
+      };
       new obsidian.Setting(c).setName(tr('Ce qui est produit'))
         .setDesc(tr('Une note du coffre, ou le chemin absolu d un fichier. Peut rester vide.'))
+        .addButton((b) => b.setButtonText(tr('Chercher…')).onClick(() => {
+          const items = this.greffon.notesPourChoix();
+          if (!items.length) {
+            new obsidian.Notice(tr('Aucune note à proposer.'));
+            return;
+          }
+          new ChoixListeModal(this.app, tr('Alias ou nom de note…'), items, (it) => {
+            if (it) poser(it.cle);
+            this.dessiner();
+          }).open();
+        }))
         .addText((t) => t.setPlaceholder(tr('NC-202607081912  ou  /Users/…/soutenance.pptx'))
           .setValue(this.saisieProduction || '')
-          .onChange((v) => {
-            this.saisieProduction = v;
-            const r = ZotflowAtomiser.livrableOuFichier(v);
-            this.champs.livrable = r.champ === 'livrable' ? r.valeur : '';
-            this.champs.fichier = r.champ === 'fichier' ? r.valeur : '';
-          }));
+          .onChange(poser));
     }
 
     const dateur = (nom, cle) => new obsidian.Setting(c).setName(nom)

@@ -581,16 +581,17 @@ de citation par cœur. Les dates passent par le calendrier du système. Pour une
 production, un seul champ : un chemin absolu désigne un fichier du disque, tout
 le reste une note du coffre.
 
-Deux champs se tiennent seuls. `termine-le` s'inscrit dès que le statut passe à
-`terminée`, et s'efface s'il en revient. Le **bloc d'accès** de la note se
-rafraîchit par la commande **« Tâches : rafraîchir le bloc de la tâche active »**.
+Rien d'autre ne se commande. `termine-le` s'inscrit dès que le statut passe à
+`terminée`, et s'efface s'il en revient. Le **bloc d'accès** suit les champs de
+la note et se réécrit tout seul, sans jamais toucher au fichier quand rien n'a
+changé.
 
-La commande **« Tâches : poser la base de travail »** dépose une base à quatre
-vues dans votre dossier de tâches, dont un exemplaire versionné se trouve dans
+Votre **première tâche** dépose aussi une base à quatre vues dans le dossier,
+dont un exemplaire versionné se trouve dans
 [`docs/taches.base`](docs/taches.base). La vue **Débloquées** est celle du
 quotidien : elle ne montre que les tâches dont plus rien n'empêche l'exécution.
-La commande ne remplace jamais une base existante, vos propres vues ne risquent
-donc rien.
+Une base déjà présente n'est jamais remplacée, vos propres vues ne risquent donc
+rien.
 
 ## ⌨️ Commandes
 

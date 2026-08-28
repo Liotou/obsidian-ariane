@@ -567,15 +567,14 @@ by author, title, year or key, since nobody remembers a citation key by heart.
 Dates go through the system calendar. For an output, a single field: an absolute
 path means a file on disk, anything else a note in the vault.
 
-Two fields look after themselves. `termine-le` is written as soon as the status
-becomes `terminée`, and cleared if it goes back. The note's **access block** is
-refreshed by **Tasks: refresh the block of the active task**.
+Nothing else needs a command. `termine-le` is written as soon as the status
+becomes `terminée`, and cleared if it goes back. The **access block** follows the
+note's fields and rewrites itself, never touching the file when nothing changed.
 
-The **Tasks: lay down the working base** command drops a four-view base into your
-tasks folder; a versioned copy lives in [`docs/taches.base`](docs/taches.base).
-The **Débloquées** view is the daily one: it shows only the tasks nothing is
-holding back any more. The command never replaces an existing base, so your own
-views are safe.
+Your **first task** also drops a four-view base into the folder; a versioned copy
+lives in [`docs/taches.base`](docs/taches.base). The **Débloquées** view is the
+daily one: it shows only the tasks nothing is holding back any more. An existing
+base is never replaced, so your own views are safe.
 
 ## ⌨️ Commands
 

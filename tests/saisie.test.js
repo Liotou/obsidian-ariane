@@ -52,3 +52,24 @@ test('une fiche sans auteur ni année reste cherchable par son titre', () => {
   assert.ok(l.includes('@sansAuteur2020'));
   assert.ok(!l.includes('undefined'));
 });
+
+test('le libellé d une note met l alias en avant et garde le nom de fichier', () => {
+  const l = Ariane.libelleNote({ aliases: ['Science formelle'] }, 'NC-202607081912');
+  assert.ok(l.startsWith('Science formelle'));
+  assert.ok(l.includes('NC-202607081912'));
+});
+
+test('une note sans alias reste cherchable par son nom', () => {
+  const l = Ariane.libelleNote({}, 'Chapitre 3');
+  assert.equal(l, 'Chapitre 3');
+});
+
+test('un alias écrit en chaîne plutôt qu en liste est accepté', () => {
+  assert.ok(Ariane.libelleNote({ aliases: 'Science formelle' }, 'NC-1').startsWith('Science formelle'));
+});
+
+test('plusieurs alias sont tous cherchables', () => {
+  const l = Ariane.libelleNote({ aliases: ['Science formelle', 'Formal science'] }, 'NC-1');
+  assert.ok(l.includes('Science formelle'));
+  assert.ok(l.includes('Formal science'));
+});
