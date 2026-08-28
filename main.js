@@ -801,6 +801,16 @@ const TEXTES = {
     "ouvert le": "opened on",
     "Aucune note à proposer.": "No note to offer.",
     "Alias ou nom de note…": "Alias or note name…",
+    "Tâches : relire les canvas": "Tasks: read the canvases again",
+    " note(s) mise(s) à jour, ": " note(s) updated, ",
+    " incohérence(s).": " inconsistency/ies.",
+    "Couleur des arêtes de composition": "Colour of composition edges",
+    "Dans un canvas de tâches, une arête de cette couleur relie une méta-tâche à ce qui la compose. Une arête sans couleur est un blocage. Le rouge est réservé aux signalements d'Ariane.": "In a task canvas, an edge of this colour links a meta-task to what makes it up. An edge with no colour is a blocking link. Red is reserved for Ariane's warnings.",
+    "orange": "orange",
+    "jaune": "yellow",
+    "vert": "green",
+    "cyan": "cyan",
+    "violet": "purple",
   },
 };
 let LANGUE = 'fr';
@@ -834,6 +844,7 @@ const DEFAULT_SETTINGS = {
   dossierReferences: '',        // rôle : où déposer les références en attente
   dossierTaches: '',            // rôle : où déposer les notes de tâche
   listeRappelsDefaut: 'Doctorat - Tâches',
+  couleurCompositionCanvas: '6',
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes
   // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque
@@ -3122,6 +3133,15 @@ class ZotflowAtomiser extends obsidian.Plugin {
       callback: () => this.rattacherToutesReferences(),
     });
     this.addCommand({
+      id: 'synchroniser-canvas-taches',
+      name: tr('Tâches : relire les canvas'),
+      callback: async () => {
+        const r = await this.synchroniserCanvas();
+        const n = r.cycles.length + r.dates.length + r.conflits.length + r.morts.length;
+        new obsidian.Notice(r.ecrites + tr(' note(s) mise(s) à jour, ') + n + tr(' incohérence(s).'));
+      },
+    });
+    this.addCommand({
       id: 'creer-tache',
       name: tr('Tâches : créer une tâche'),
       callback: () => new ModaleNouvelleTache(this.app, this, async (champs) => {
@@ -3612,6 +3632,18 @@ class ZotflowAtomiser extends obsidian.Plugin {
         x.modifie = jour;
       });
     }));
+
+    // Le canvas fait foi pour les arêtes : sa modification se reporte dans les
+    // notes. L'antirebond laisse passer un glissé de plusieurs nœuds en une
+    // seule passe, et tous les canvas partagent la même clé puisque la lecture
+    // est de toute façon globale.
+    const surCanvas = (f) => {
+      if (!f || f.extension !== 'canvas') return;
+      this.antirebond('canvas-taches', () => this.synchroniserCanvas(), 1200);
+    };
+    this.registerEvent(this.app.vault.on('modify', surCanvas));
+    this.registerEvent(this.app.vault.on('create', surCanvas));
+    this.registerEvent(this.app.vault.on('delete', surCanvas));
 
     // Le bloc d'accès suit les champs de la note, sans commande à lancer.
     // Il ne se réécrit que s'il change vraiment, faute de quoi cette écoute
@@ -9488,6 +9520,98 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return l.join('\n');
   }
 
+  // La référence d'une tâche, déduite du chemin. On la reconnaît à sa forme
+  // plutôt qu'à son dossier : une tâche déplacée reste une tâche.
+  refDeChemin(chemin) {
+    const m = String(chemin || '').match(/(?:^|\/)(T\d{2}-\d{3,4})\.md$/);
+    return m ? m[1] : null;
+  }
+
+  // Est canvas de tâches tout fichier .canvas dont au moins un nœud vise une
+  // note de tâche. Aucun dossier convenu, aucun réglage : Monsieur range ses
+  // canvas où il veut, et en fait autant qu'il lui plaît.
+  async canvasDeTaches() {
+    const out = [];
+    for (const f of this.app.vault.getFiles()) {
+      if (f.extension !== 'canvas') continue;
+      let json = null;
+      try { json = JSON.parse(await this.app.vault.read(f)); } catch (e) { continue; }
+      const lu = ZotflowAtomiser.lireCanvasTaches(
+        json, (p) => this.refDeChemin(p), this.settings.couleurCompositionCanvas || '6');
+      if (lu.noeuds.length) out.push({ fichier: f, json, lu });
+    }
+    return out;
+  }
+
+  // Reporte dans les notes ce que les canvas disent des liens. Le canvas fait
+  // foi : parent et bloque-par sont réécrits d'après lui, jamais l'inverse.
+  // Aucune écriture qui ne change rien, sans quoi l'écoute qui appelle cette
+  // méthode se rappellerait elle-même sans fin.
+  async synchroniserCanvas() {
+    const canvas = await this.canvasDeTaches();
+    const table = ZotflowAtomiser.unionLiens(canvas.map((c) => c.lu));
+    const tous = [].concat(...canvas.map((c) => c.lu.liens));
+    const bloquants = tous.filter((l) => l.relation === 'bloque');
+    const compositions = tous.filter((l) => l.relation === 'compose');
+
+    const dates = {};
+    const fichierDe = new Map();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const ref = this.refDeChemin(f.path);
+      if (!ref) continue;
+      fichierDe.set(ref, f);
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      dates[ref] = { debut: fm.debut || '', echeance: fm.echeance || '' };
+    }
+
+    const cycles = ZotflowAtomiser.cyclesDe(bloquants)
+      .concat(ZotflowAtomiser.cyclesDe(compositions));
+    const incoherences = ZotflowAtomiser.datesIncoherentes(bloquants, dates);
+    const morts = [];
+    const conflits = [];
+    let ecrites = 0;
+
+    for (const [ref, etat] of table) {
+      if (etat.conflits.length) conflits.push({ ref, parents: etat.conflits });
+      const f = fichierDe.get(ref);
+      if (!f) { morts.push(ref); continue; }
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      const avantParent = String(fm.parent == null ? '' : fm.parent);
+      const avantBloque = [].concat(fm['bloque-par'] || []).map(String);
+      const memeListe = avantBloque.length === etat.bloquePar.length
+        && avantBloque.every((v, i) => v === etat.bloquePar[i]);
+      if (avantParent === etat.parent && memeListe) continue;
+      await this.app.fileManager.processFrontMatter(f, (x) => {
+        x.parent = etat.parent;
+        x['bloque-par'] = etat.bloquePar;
+        x.modifie = new Date().toISOString().slice(0, 10);
+      });
+      ecrites += 1;
+    }
+
+    // Une tâche posée dans un canvas mais qu'aucune arête ne touche doit perdre
+    // ses liens, faute de quoi effacer une flèche laisserait un blocage fantôme.
+    // Une tâche qui ne figure dans AUCUN canvas est en revanche laissée
+    // tranquille : la spécification admet les liens écrits à la main, et les
+    // effacer ici reviendrait à détruire ce que Monsieur vient de taper.
+    const dessinees = new Set([].concat(...canvas.map((c) => c.lu.noeuds)));
+    for (const [ref, f] of fichierDe) {
+      if (table.has(ref) || !dessinees.has(ref)) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      const avantBloque = [].concat(fm['bloque-par'] || []);
+      if (!String(fm.parent || '') && !avantBloque.length) continue;
+      await this.app.fileManager.processFrontMatter(f, (x) => {
+        x.parent = '';
+        x['bloque-par'] = [];
+        x.modifie = new Date().toISOString().slice(0, 10);
+      });
+      ecrites += 1;
+    }
+
+    this._incoherencesTaches = { cycles, dates: incoherences, conflits, morts };
+    return { ecrites, cycles, dates: incoherences, conflits, morts };
+  }
+
   // Les fiches Zotero du coffre, prêtes pour une recherche approchée. On les
   // reconnaît à leur clé de citation plutôt qu'à leur dossier, qui varie.
   sourcesZoteroPourChoix() {
@@ -9957,6 +10081,15 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
     role(tr('Notes de lecture'), 'dossierNotesLecture', tr("Notes-filles Zotero, attachées à la référence entière."));
     role(tr('Références en attente'), 'dossierReferences', tr("Références citées mais pas encore dans Zotero."));
     role(tr('Tâches'), 'dossierTaches', tr("Une note par tâche."));
+    new obsidian.Setting(c)
+      .setName(tr('Couleur des arêtes de composition'))
+      .setDesc(tr("Dans un canvas de tâches, une arête de cette couleur relie une méta-tâche à ce qui la compose. Une arête sans couleur est un blocage. Le rouge est réservé aux signalements d'Ariane."))
+      .addDropdown((d) => d
+        .addOption('2', tr('orange')).addOption('3', tr('jaune'))
+        .addOption('4', tr('vert')).addOption('5', tr('cyan'))
+        .addOption('6', tr('violet'))
+        .setValue(s.couleurCompositionCanvas || '6')
+        .onChange(async (v) => { s.couleurCompositionCanvas = v; await maj(); }));
     role(tr('Bibliographies citées'), 'dossierBibliographies', tr("Une note de bibliographie par source."));
     role(tr('Documents exportés'), 'exportDossier', tr("Sortie de l'export Word."));
     role(tr('Journal du temps'), 'tempsDossierJournal', tr("Journaux quotidiens du compteur de temps."));
