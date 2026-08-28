@@ -349,6 +349,10 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Bibliographies lues dans les PDF": "Bibliographies read from the PDFs",
+    "Crossref ne connaît que ce qui porte un DOI, or les livres n'en ont souvent pas et ce sont eux qui portent les références les plus citées. Zotero garde le texte extrait de chaque PDF : Ariane y lit la bibliographie directement.": "Crossref only knows what carries a DOI, yet books often have none and they carry the most cited references. Zotero keeps the extracted text of every PDF: Ariane reads the bibliography straight from it.",
+    "Dossier de données Zotero": "Zotero data folder",
+    "Vide : détection automatique dans votre dossier personnel.": "Empty: detected automatically in your home folder",
     "Normalisation…": "Normalising…",
     "Normalisation : ": "Normalising: ",
     "Conjonctions : ": "Conjunctions: ",
@@ -980,6 +984,8 @@ const DEFAULT_SETTINGS = {
   refsModele: 'llama3.2',
   refsCleMistral: '',
   refsCheminClaude: 'claude',
+  // Dossier de données de Zotero. Vide : détection automatique (~/Zotero).
+  dossierZotero: '',
   // L'arbitrage a son propre moteur. Mesuré sur « Renn, 2008 » : llama3.2 et
   // llama3.1:8b refusent de trancher même quand le passage dit « Renn (2008)
   // defines risk governance as… », là où Claude répond juste et avec assurance.
@@ -7862,6 +7868,94 @@ class ZotflowAtomiser extends obsidian.Plugin {
 
   // Les références citées d'une source, dans la forme d'Ariane, quelle que soit
   // la manière dont elles sont entrées dans le cache.
+  /* ------------- La bibliographie lue dans le PDF lui-même ----------------- *
+   * Crossref ne connaît que ce qui porte un DOI. Or les livres n'en ont
+   * souvent pas, et ce sont eux qui portent les références les plus citées :
+   * Dresch 2015 à lui seul cite March & Smith, Romme et van Aken, invisibles
+   * autrement. Zotero garde sur le disque le texte extrait de chaque PDF, dans
+   * « storage/<clé>/.zotero-ft-cache ». On y lit la bibliographie directement.
+   * ------------------------------------------------------------------------ */
+
+  racineZotero() {
+    const regle = (this.settings.dossierZotero || '').trim();
+    if (regle) return regle;
+    const os = require('os');
+    return require('path').join(os.homedir(), 'Zotero');
+  }
+
+  // Le texte extrait d'une pièce jointe, mis en cache mémoire : un PDF pèse
+  // deux cent cinquante mille caractères, on ne le relit pas par référence.
+  texteAttachement(cle) {
+    if (!cle) return '';
+    if (!this._textesPdf) this._textesPdf = {};
+    if (Object.prototype.hasOwnProperty.call(this._textesPdf, cle)) return this._textesPdf[cle];
+    const chemin = require('path').join(this.racineZotero(), 'storage', cle, '.zotero-ft-cache');
+    let t = '';
+    try { t = require('fs').readFileSync(chemin, 'utf8'); } catch (e) { t = ''; }
+    this._textesPdf[cle] = t;
+    return t;
+  }
+
+  // Une entrée de bibliographie porte le nom SUIVI d'initiales, « March, S. T.
+  // (1995) », ce qu'un appel en cours de texte n'écrit jamais : « (March and
+  // Smith 1995) ». C'est ce discriminant qui distingue les deux, et il est
+  // fiable — vérifié sur huit références d'un même ouvrage.
+  static entreeDansTexte(texte, nomFamille, annee) {
+    if (!texte || !nomFamille || !annee) return null;
+    let motif;
+    try {
+      motif = new RegExp(echapperRegex(nomFamille)
+        + ',\\s*(?:[A-Z]\\.\\s*){1,4}[^\\n]{0,120}?\\b' + annee + '\\b[^\\n]{0,320}', 'g');
+    } catch (e) { return null; }
+    let brut = null;
+    let m;
+    while ((m = motif.exec(texte)) !== null) {
+      const s = m[0].replace(/\s+/g, ' ').trim();
+      if (!brut || s.length > brut.length) brut = s;
+    }
+    if (!brut) return null;
+    // Couper à l'entrée suivante, qui commence par « Nom, X. ».
+    const suivante = /\s(?:[A-Z][\wÀ-ÿ'’-]+(?:\s[A-Z][\wÀ-ÿ'’-]+)?,\s*(?:[A-Z]\.\s*){1,4})/;
+    const apres = brut.indexOf(annee) + annee.length;
+    const d = suivante.exec(brut.slice(apres));
+    if (d) brut = brut.slice(0, apres + d.index).trim();
+    let titre = '';
+    const mt = new RegExp(annee + '\\)?\\s*[.,]\\s*(.+?)(?:\\.\\s|\\.$)').exec(brut);
+    if (mt) titre = mt[1].trim();
+    return { brut, titre };
+  }
+
+  // Cherche dans le PDF d'une source ce qu'elle dit d'un libellé cité.
+  async entreePdfPourSource(sourceBasename, libelle) {
+    const m = String(libelle).match(/^(.*?),\s*(\d{4})/);
+    if (!m) return null;
+    const nom = m[1].split(/\s+(?:et al\.?|&|and|et)\s+|,/)[0].trim().split(/\s+/).pop();
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === sourceBasename);
+    if (!f) return null;
+    const cle = await this.cleAttachement(f);
+    if (!cle) return null;
+    const t = this.texteAttachement(cle);
+    if (!t) return null;
+    const e = ZotflowAtomiser.entreeDansTexte(t, nom, m[2]);
+    if (!e || !e.titre || e.titre.length < 8) return null;
+    return { auteurs: [nom.toLowerCase()], annee: m[2], titre: e.titre,
+      revue: '', doi: '', brut: e.brut, viaPdf: true };
+  }
+
+  // Clé de pièce jointe par source, construite une fois : candidatsPourSource
+  // est synchrone et ne peut pas lire les notes.
+  async indexAttachements() {
+    if (this._attachements) return this._attachements;
+    const m = new Map();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!this.estSourceZoteroFrontmatter(f)) continue;
+      const cle = await this.cleAttachement(f);
+      if (cle) m.set(f.basename, cle);
+    }
+    this._attachements = m;
+    return m;
+  }
+
   bibliographieDeDoi(doi) {
     const d = normDoi(doi);
     if (!d) return null;
@@ -7992,12 +8086,20 @@ class ZotflowAtomiser extends obsidian.Plugin {
   candidatsPourSource(libelle, source, passage) {
     const m = String(libelle).match(/^(.*?),\s*(\d{4})([a-z]?)/);
     if (!m) return [];
-    const premier = sansAccents(m[1].split(/\s+(?:et al\.?|&|and|et)\s+|,/)[0].trim().split(/\s+/).pop());
+    const premier2 = m[1].split(/\s+(?:et al\.?|&|and|et)\s+|,/)[0].trim().split(/\s+/).pop();
+    const premier = sansAccents(premier2);
     const annee = m[2];
     const suffixe = m[3] || '';
     const fiche = this.construireIndexZotero().find((z) => z.basename === source);
     const liste = fiche && fiche.doi ? this.bibliographieDeDoi(fiche.doi) : null;
-    if (!liste || !liste.length) return [];
+    // Crossref muet — le cas de tous les livres, qui n'ont pas de DOI : on lit
+    // la bibliographie dans le texte du PDF lui-même.
+    if (!liste || !liste.length) {
+      const cle = this._attachements ? this._attachements.get(source) : null;
+      const e = cle ? ZotflowAtomiser.entreeDansTexte(this.texteAttachement(cle), premier2, annee) : null;
+      if (!e || !e.titre || e.titre.length < 8) return [];
+      return [{ titre: e.titre, doi: '', brut: e.brut, revue: '', score: 0, viaPdf: true }];
+    }
     const sac = new Set(tokeniser(this.fenetreCitation(passage || '', premier)));
 
     const cands = [];
@@ -8075,6 +8177,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
 
   async indexOeuvres(passages) {
     const P = passages || this.indexPassages();
+    await this.indexAttachements();
     const parRef = new Map();
     const parOeuvre = new Map();
 
@@ -8087,7 +8190,8 @@ class ZotflowAtomiser extends obsidian.Plugin {
         const cle = c ? cleOeuvre(c.titre, c.doi) : '';
         if (!cle) { nonResolues += 1; continue; }
         if (!oeuvres.has(cle)) {
-          oeuvres.set(cle, { cle, titre: c.titre, doi: c.doi, revue: c.revue, n: 0, sources: [] });
+          oeuvres.set(cle, { cle, titre: c.titre, doi: c.doi, revue: c.revue,
+            viaPdf: !!c.viaPdf, n: 0, sources: [] });
         }
         const o = oeuvres.get(cle);
         o.n += 1;
@@ -8109,7 +8213,8 @@ class ZotflowAtomiser extends obsidian.Plugin {
       parRef.set(libelle, { oeuvres: liste, nonResolues: liste.length === 1 ? 0 : nonResolues, total });
       for (const o of liste) {
         if (!parOeuvre.has(o.cle)) {
-          parOeuvre.set(o.cle, { cle: o.cle, titre: o.titre, doi: o.doi, n: 0, libelles: [] });
+          parOeuvre.set(o.cle, { cle: o.cle, titre: o.titre, doi: o.doi,
+            viaPdf: !!o.viaPdf, n: 0, libelles: [] });
         }
         const g = parOeuvre.get(o.cle);
         g.n += o.n;
@@ -8133,6 +8238,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   // L'égalité des noms est stricte sur les mots : « han » CONTENU dans
   // « hannah » rattachait Han et al. 2017 à Hannah 2018.
   async resoudreParBibliographie(entree, passages) {
+    await this.indexAttachements();
     const biblio = this.chargerBibliographies();
     const m = entree.nom.match(/^(.*?),\s*(\d{4})([a-z]?)/);
     if (!m) return null;
@@ -9852,6 +9958,15 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
       });
     profilsErreur = c.createEl('div', { text: tr(''), cls: 'setting-item-description' });
     profilsErreur.style.color = 'var(--text-error)';
+
+    this._section(c, tr('Bibliographies lues dans les PDF'));
+    this._aide(c, tr("Crossref ne connaît que ce qui porte un DOI, or les livres n'en ont souvent pas et ce sont eux qui portent les références les plus citées. Zotero garde le texte extrait de chaque PDF : Ariane y lit la bibliographie directement."));
+    new obsidian.Setting(c)
+      .setName(tr('Dossier de données Zotero'))
+      .setDesc(tr('Vide : détection automatique dans votre dossier personnel.'))
+      .addText((t) => t.setValue(s.dossierZotero || '')
+        .setPlaceholder(require('path').join(require('os').homedir(), 'Zotero'))
+        .onChange(async (v) => { s.dossierZotero = v.trim(); this.plugin._textesPdf = null; await maj(); }));
 
     this._section(c, tr('Annotations sans titre'));
     this._aide(c, tr("Par défaut, une annotation dont le commentaire ne correspond à aucun profil est ignorée : elle ne devient pas une note. Activez l'option ci-dessous pour l'atomiser quand même, avec un titre déduit de son contenu."));
