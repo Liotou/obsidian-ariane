@@ -349,11 +349,6 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
-    "Entretien : retirer les références fusionnées sans lien": "Housekeeping: remove merged references with no link",
-    "Aucune note fusionnée à retirer.": "No merged note to remove.",
-    "Notes fusionnées retirées : ": "Merged notes removed: ",
-    "gardée(s), encore citée(s)": "kept, still cited",
-    "Doublon d’écriture, à la ponctuation près : ": "Spelling duplicate, up to punctuation: ",
     "Normalisation…": "Normalising…",
     "Normalisation : ": "Normalising: ",
     "Conjonctions : ": "Conjunctions: ",
@@ -1866,7 +1861,10 @@ function construireNote(bloc, sourceBasename, indexZotero, cfg, ctxSource) {
       cibleRef = manuel;
     } else {
       const z = cfg.rattachementZotero ? trouverSourceZotero(r, indexZotero) : null;
-      cibleRef = z || r.nom;
+      // À défaut, la note existante dont l'écriture est équivalente : sans quoi
+      // « Castan~er » créerait un lien vers un second fichier.
+      const canon = ctxSource.canoniques ? ctxSource.canoniques.get(cleLibelle(r.nom)) : null;
+      cibleRef = z || canon || r.nom;
     }
     refLinks.push('[[' + cibleRef + ']]');
     if (r.page) pagesRef[cibleRef] = r.page;
@@ -3036,11 +3034,6 @@ class ZotflowAtomiser extends obsidian.Plugin {
       id: 'decouper-bibliographies',
       name: tr('Références citées : découper les entrées en texte brut'),
       callback: () => this.decouperBibliographies(),
-    });
-    this.addCommand({
-      id: 'supprimer-fusionnees',
-      name: tr('Entretien : retirer les références fusionnées sans lien'),
-      callback: () => this.supprimerFusionnees(),
     });
     this.addCommand({
       id: 'reparer-liens-auteurs',
@@ -7065,6 +7058,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     let renommees = 0;
     const clesPresentes = new Set();
     const parCle = this.indexAnnotationsParCle();
+    const canoniques = this.indexCanoniques();
 
     for (const bloc of blocs) {
       clesPresentes.add(bloc.cle);
@@ -7072,11 +7066,12 @@ class ZotflowAtomiser extends obsidian.Plugin {
       for (const r of bloc.refs) {
         if (r.estAuteurSeul) continue; // auteur seul : pas de note de référence
         const z = cfg.rattachementZotero ? trouverSourceZotero(r, idx) : null;
-        if (!z) await this.assurerReference(r);
+        if (!z) await this.assurerReference(r, canoniques);
       }
 
       const fmSource = (this.app.metadataCache.getFileCache(file) || {}).frontmatter || {};
-      const canon = construireNote(bloc, file.basename, idx, cfg, { collections: fmSource.collections });
+      const canon = construireNote(bloc, file.basename, idx, cfg,
+        { collections: fmSource.collections, canoniques });
       const existant = parCle.get(bloc.cle);
 
       const base = this.nomFichierAnnotation(bloc);
@@ -7120,11 +7115,49 @@ class ZotflowAtomiser extends obsidian.Plugin {
     }
   }
 
-  async assurerReference(ref) {
-    const chemin = this.dossierR + '/' + this.nettoyerNomFichier(ref.nom) + '.md';
-    if (this.app.vault.getAbstractFileByPath(chemin)) return;
-    await this.assurerDossier(this.dossierR);
-    await this.ecrire(chemin, construireReference(ref, this.settings));
+  // Nom canonique par clé de libellé. Deux écritures qui ne diffèrent que par
+  // une conjonction, un accent, un trait d'union ou une virgule désignent la
+  // même référence : « Castan~er » et « Castaner », « Gentner et al., » et
+  // « Gentner, et al., ». Il n'y a rien à arbitrer là-dedans, c'est
+  // déterministe, et cela se règle à la création plutôt qu'après coup.
+  indexCanoniques() {
+    const m = new Map();
+    const dossier = this.dossierR;
+    if (!dossier) return m;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(dossier + '/')) continue;
+      const k = cleLibelle(f.basename);
+      if (!k) continue;
+      const ancien = m.get(k);
+      if (!ancien) { m.set(k, f.basename); continue; }
+      // Départage, dans cet ordre et sans dépendre de l'ordre des fichiers, qui
+      // n'est pas garanti : d'abord la forme normalisée sur les conjonctions,
+      // puis la plus petite dans l'ordre des caractères. Ce second critère
+      // retient les formes lisibles : « Castaner » avant « Castan~er »,
+      // « Gentner et al. » avant « Gentner, et al. », « Garcia-Aristizabal »
+      // avant « GarciaAristizabal ».
+      const normNeuf = normaliserConjAuteurs(f.basename) === f.basename;
+      const normAncien = normaliserConjAuteurs(ancien) === ancien;
+      if (normNeuf !== normAncien) { if (normNeuf) m.set(k, f.basename); continue; }
+      if (f.basename < ancien) m.set(k, f.basename);
+    }
+    return m;
+  }
+
+  // Rend le nom de note à employer : celui qui existe déjà sous une écriture
+  // équivalente, sinon celui de la référence, la note étant alors créée.
+  async assurerReference(ref, canoniques) {
+    const k = cleLibelle(ref.nom);
+    const deja = canoniques && k ? canoniques.get(k) : null;
+    if (deja) return deja;
+    const nom = this.nettoyerNomFichier(ref.nom);
+    const chemin = this.dossierR + '/' + nom + '.md';
+    if (!this.app.vault.getAbstractFileByPath(chemin)) {
+      await this.assurerDossier(this.dossierR);
+      await this.ecrire(chemin, construireReference(ref, this.settings));
+    }
+    if (canoniques && k) canoniques.set(k, nom);
+    return nom;
   }
 
   // Renomme les notes de référence « … et … » / « … and … » en « … & … »
@@ -7767,38 +7800,6 @@ class ZotflowAtomiser extends obsidian.Plugin {
     }
     new obsidian.Notice(tr('Détachée : ') + nom + ' (' + n + ' ' + tr('lien(s)') + ').', 8000);
     return { nom, liens: n };
-  }
-
-  // Retire les notes absorbées par une fusion. La condition est stricte : la
-  // note doit être marquée « fusionnée » ET n'avoir plus aucun lien entrant.
-  // Une note encore citée quelque part n'est jamais supprimée, quel que soit
-  // son marquage.
-  async supprimerFusionnees() {
-    const dossier = this.dossierR;
-    const candidates = [];
-    for (const f of this.app.vault.getMarkdownFiles()) {
-      if (!f.path.startsWith(dossier + '/')) continue;
-      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      if (String(fm.arbitrage || '').trim() !== 'fusionnée') continue;
-      candidates.push(f);
-    }
-    if (!candidates.length) { new obsidian.Notice(tr('Aucune note fusionnée à retirer.')); return 0; }
-
-    const cites = new Set();
-    for (const f of this.app.vault.getMarkdownFiles()) {
-      const cache = this.app.metadataCache.getFileCache(f);
-      for (const l of (cache && cache.links) || []) cites.add(cleDeLien(l.link));
-      for (const l of (cache && cache.frontmatterLinks) || []) cites.add(cleDeLien(l.link));
-    }
-    let retirees = 0, gardees = 0;
-    for (const f of candidates) {
-      if (cites.has(f.basename)) { gardees += 1; continue; }
-      await this.supprimerFichier(f);
-      retirees += 1;
-    }
-    new obsidian.Notice(tr('Notes fusionnées retirées : ') + retirees
-      + (gardees ? ', ' + gardees + ' ' + tr('gardée(s), encore citée(s)') : '') + '.', 9000);
-    return retirees;
   }
 
   async ouvrirNote(basename) {
@@ -10030,7 +10031,7 @@ class VueReferencesAttente extends obsidian.ItemView {
         if (g2) for (const autre of g2.libelles) if (autre !== r.nom && !jumeaux.includes(autre)) jumeaux.push(autre);
       }
       const l = { r, ref, candidats, auto, biblio, dansZotero, doi, verdict: null,
-        oeuvres: compte.oeuvres, nonResolues: compte.nonResolues, jumeaux, jumeauxNom: [] };
+        oeuvres: compte.oeuvres, nonResolues: compte.nonResolues, jumeaux };
       // Le rang d'acquisition : la plus citée des œuvres du libellé.
       l.poids = compte.oeuvres.length
         ? Math.max.apply(null, compte.oeuvres.map((o) => o.n))
@@ -10038,25 +10039,6 @@ class VueReferencesAttente extends obsidian.ItemView {
       l.etat = this.classer(l);
       this.lignes.push(l);
     }
-    // Doublons repérables au nom seul : ils échappent à la détection par œuvre,
-    // qui suppose que la référence est identifiée.
-    const parCle = new Map();
-    for (const l of this.lignes) {
-      // Une note déjà fusionnée n'est plus un doublon à traiter : elle n'est que
-      // le fichier absorbé, sans lien entrant.
-      if (l.r.etat === 'fusionnée' || l.r.etat === 'écartée') continue;
-      const k = cleLibelle(l.r.nom);
-      if (!parCle.has(k)) parCle.set(k, []);
-      parCle.get(k).push(l);
-    }
-    for (const groupe of parCle.values()) {
-      if (groupe.length < 2) continue;
-      for (const l of groupe) {
-        l.jumeauxNom = groupe.filter((x) => x !== l).map((x) => x.r.nom);
-        l.etat = this.classer(l);
-      }
-    }
-
     this.lignes.sort((a, b) => b.poids - a.poids || a.r.nom.localeCompare(b.r.nom));
     this.rendre();
   }
@@ -10134,7 +10116,7 @@ class VueReferencesAttente extends obsidian.ItemView {
     if (l.r.etat === 'écartée') return 'ecartee';
     if (l.r.etat === 'à acquérir') return 'acquerir';
     if ((l.oeuvres || []).length > 1) return 'detacher';
-    if ((l.jumeaux || []).length || (l.jumeauxNom || []).length) return 'fusionner';
+    if ((l.jumeaux || []).length) return 'fusionner';
     if (l.biblio && l.biblio.conflit && !l.verdict) return 'conflit';
     if (l.auto || l.dansZotero) return 'rattachable';
     if (l.candidats.length) return 'arbitrer';
@@ -10297,19 +10279,6 @@ class VueReferencesAttente extends obsidian.ItemView {
     } else {
       ident.createDiv({ cls: 'zfa-ref-faible',
         text: tr('Non identifiée : aucune bibliographie de source citante ne la mentionne.') });
-    }
-
-    if ((l.jumeauxNom || []).length) {
-      const j = ident.createDiv({ cls: 'zfa-ref-oeuvre' });
-      j.createDiv({ cls: 'zfa-ref-texte',
-        text: tr('Doublon d’écriture, à la ponctuation près : ') + l.jumeauxNom.join(', ') });
-      const ba = j.createDiv({ cls: 'zfa-ref-barre-actions' });
-      for (const autre of l.jumeauxNom) {
-        this.bouton(ba, tr('Fusionner ') + autre + tr(' ici'), 'merge', async () => {
-          const x = (this.lignes || []).find((y) => y.r.nom === autre);
-          if (x) { await g.fusionnerReferences(x.r, l.r.nom); await this.preparer(); }
-        }, true);
-      }
     }
 
     if ((l.jumeaux || []).length) {
