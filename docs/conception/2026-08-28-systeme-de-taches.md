@@ -31,6 +31,9 @@ Trois instruments, et trois seulement :
 | 6 | Export tableur | 3a |
 | 7 | Reprise de l'existant | tous |
 
+Le plan d'implémentation qui suit ce document **ne couvre que le chantier 1**.
+Chacun des suivants recevra le sien, une fois le précédent éprouvé à l'usage.
+
 Les chantiers 4 et 5 ne dépendent que du noyau et peuvent être avancés si le
 confort quotidien prime sur la planification. Le chantier 7 vient en dernier,
 par décision expresse.
@@ -70,6 +73,7 @@ priorite:                # (vide) | basse | moyenne | haute
 debut:                   # AAAA-MM-JJ
 echeance:                # AAAA-MM-JJ
 avancement: 0            # entier de 0 à 100, saisi à la main
+termine-le:              # AAAA-MM-JJ, inscrit au passage au statut terminée
 jalon: false
 parent:                  # "[[T26-012]]" ou "[[T26-012|libellé]]"
 bloque-par: []           # ["[[T26-038|données livrées]]", …]
@@ -132,7 +136,8 @@ nécessaire.
 
 ### 3.6 Jalons
 
-`jalon: true` marque une tâche comme repère de calendrier. Elle se dessine en
+`jalon: true` marque une tâche comme repère de calendrier. Un jalon n'a pas de
+durée : seule son `echeance` est retenue, `debut` est ignoré. Elle se dessine en
 losange et d'un trait vertical traversant toute la frise. Une tâche d'action
 telle qu'« envoyer le document au comité » est ainsi à la fois cochable et
 structurante, sans être deux objets.
@@ -151,9 +156,9 @@ et la liste Rappels. Il ne demande jamais la référence, qui est calculée.
 
 `8 - Tâches/Tâches.base`, aujourd'hui vide, reçoit quatre vues :
 
-- **Débloquées** : statut `à faire` ou `en cours`, dont aucune entrée de
-  `bloque-par` n'est encore terminée. C'est la vue quotidienne, et la seule qui
-  réponde à la question « que puis-je attaquer maintenant ».
+- **Débloquées** : statut `à faire` ou `en cours`, dont **toutes** les entrées de
+  `bloque-par` sont terminées, la liste vide comptant comme satisfaite. C'est la
+  vue quotidienne, et la seule qui réponde à la question « que puis-je attaquer maintenant ».
 - **Cette semaine** : échéance dans les sept jours, non terminées.
 - **Par famille** : regroupée sur la famille déduite.
 - **Terminées** : archive, triée sur `termine-le`.
@@ -215,7 +220,7 @@ appliquées, de façon qu'un glissé de plusieurs nœuds ne déclenche qu'une pa
 
 ## 7. Garde-fous
 
-Trois contrôles, appliqués à chaque synchronisation :
+Quatre contrôles, appliqués à chaque synchronisation :
 
 1. **Cycle de blocage.** `A bloque B bloque A` rend la disposition de la frise
    incalculable. Le cycle est détecté sur le graphe de `bloque-par`, la dernière
@@ -224,6 +229,14 @@ Trois contrôles, appliqués à chaque synchronisation :
    en outre une descente infinie.
 3. **Dates incohérentes.** Si A bloque B et que `B.debut` précède `A.echeance`,
    l'arête est teinte en rouge et inscrite au volet des incohérences.
+4. **Lien mort.** Une entrée de `parent:` ou de `bloque-par:` désignant une note
+   inexistante est tolérée et non effacée, car la note peut être renommée ou
+   restaurée. Elle est inscrite au volet des incohérences, et ignorée par la
+   frise.
+
+La synchronisation est **automatique**, déclenchée par la modification d'un
+canvas ou d'une note de tâche, et regroupée sur un court délai. Une commande de
+resynchronisation complète existe pour les cas de reprise après import.
 
 Obsidian ne permet pas d'intercepter le tracé d'une arête depuis l'API publique.
 Le refus du geste au moment où il se produit relève du chantier 3b et repose sur
@@ -277,6 +290,13 @@ référence et un lien `obsidian://`. La clé de jointure est `rappel-id`.
 
 **Retour, volontairement étroit.** Deux signaux seulement : la tâche a été cochée
 sur le téléphone, et l'échéance a été déplacée. Rien d'autre ne remonte.
+
+**Priorités.** EventKit gradue de 0 à 9. La correspondance est fixe : vide vaut
+0, `basse` vaut 9, `moyenne` vaut 5, `haute` vaut 1. Une valeur intermédiaire
+venue de Rappels est arrondie au palier le plus proche.
+
+**Liste par défaut.** Une tâche sans `liste:` est poussée vers la liste réglée
+dans les préférences, « Doctorat - Tâches » à l'installation.
 
 **Conflit.** La date de modification la plus récente l'emporte, et le cas est
 inscrit au volet des incohérences plutôt que résolu en silence.
