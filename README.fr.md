@@ -593,6 +593,43 @@ quotidien : elle ne montre que les tâches dont plus rien n'empêche l'exécutio
 Une base déjà présente n'est jamais remplacée, vos propres vues ne risquent donc
 rien.
 
+### Articuler les tâches dans un canvas
+
+Les dépendances se tracent **à la souris**, dans un canvas Obsidian ordinaire.
+Est canvas de tâches tout canvas dont au moins un nœud vise une note de tâche :
+aucun dossier convenu, aucun réglage, et autant de canvas que de chantiers.
+
+L'autorité se partage **par nature d'information**, jamais par fichier, ce qui
+est la seule façon d'aller dans les deux sens sans risque.
+
+| Information | Propriétaire |
+| --- | --- |
+| Position, taille d'un nœud | le canvas, et rien ne la recopie ailleurs |
+| Flèches et leurs libellés | **le canvas**, reporté dans `parent` et `bloque-par` |
+| Existence, intitulé, statut, dates | **la note**, reportés en couleur de nœud |
+
+Une flèche **sans couleur** exprime un blocage, une flèche **violette** une
+composition, c'est-à-dire le lien d'une méta-tâche à ce qui la constitue. La
+couleur se règle. Le **rouge est réservé** aux signalements d'Ariane. Le nom que
+vous donnez à une flèche devient l'alias du lien : `[[T26-038|données livrées]]`,
+qui reste un vrai lien dans votre graphe.
+
+Une même tâche peut figurer dans plusieurs canvas. Les flèches **s'additionnent**
+de l'un à l'autre, si bien qu'effacer une flèche quelque part ne supprime le lien
+que si aucun autre canvas ne le porte. Vous pouvez donc ouvrir un canvas partiel
+sans perdre ce que vous avez tracé ailleurs.
+
+Trois contrôles tournent à chaque relecture, et ce qu'ils trouvent va dans le
+volet **Tâches : incohérences** : les **cycles**, où des tâches se bloquent en
+rond et où aucune ne peut commencer ; les **dates contredites**, quand une tâche
+commence avant la fin de ce qui la bloque, auquel cas la flèche rougit dans le
+canvas ; et les **parents concurrents**, quand deux canvas donnent deux parents
+à une même tâche.
+
+Obsidian ne permet pas d'intercepter le tracé d'une flèche : Ariane ne peut pas
+vous empêcher d'en poser une incohérente, elle la signale dans la seconde qui
+suit.
+
 ## ⌨️ Commandes
 
 | Commande | Ce qu'elle fait |

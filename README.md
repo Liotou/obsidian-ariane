@@ -576,6 +576,40 @@ lives in [`docs/taches.base`](docs/taches.base). The **Débloquées** view is th
 daily one: it shows only the tasks nothing is holding back any more. An existing
 base is never replaced, so your own views are safe.
 
+### Articulating tasks in a canvas
+
+Dependencies are drawn **with the mouse**, in an ordinary Obsidian canvas. Any
+canvas with at least one node pointing at a task note counts as a task canvas: no
+agreed folder, no setting, and as many canvases as you have strands of work.
+
+Authority is split **by kind of information**, never by file, which is the only
+way to go both ways safely.
+
+| Information | Owner |
+| --- | --- |
+| A node's position and size | the canvas, and nothing copies it elsewhere |
+| Arrows and their labels | **the canvas**, carried into `parent` and `bloque-par` |
+| Existence, title, status, dates | **the note**, carried back as node colour |
+
+An arrow with **no colour** means blocking, a **purple** arrow means composition,
+that is, the link from a meta-task to what makes it up. The colour is
+configurable. **Red is reserved** for Ariane's warnings. Whatever you name an
+arrow becomes the link's alias: `[[T26-038|data delivered]]`, still a real link
+in your graph.
+
+One task may appear in several canvases. Arrows **add up** across them, so
+deleting an arrow somewhere only removes the link if no other canvas carries it.
+You can open a partial canvas without losing what you drew elsewhere.
+
+Three checks run on every re-read, and whatever they find goes to the **Tasks:
+inconsistencies** panel: **cycles**, where tasks block one another in a ring and
+none can start; **contradicted dates**, when a task starts before the end of what
+blocks it, in which case the arrow turns red in the canvas; and **competing
+parents**, when two canvases give one task two parents.
+
+Obsidian offers no way to intercept the drawing of an arrow: Ariane cannot stop
+you from making an inconsistent one, it reports it a second later.
+
 ## ⌨️ Commands
 
 | Command | What it does |
