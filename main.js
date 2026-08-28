@@ -9321,6 +9321,101 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return { liens, noeuds };
   }
 
+  // Réunion des arêtes de tous les canvas. Un lien existe s'il figure dans au
+  // moins un d'entre eux : c'est ce qui permet d'ouvrir un canvas partiel sans
+  // effacer les liens tracés ailleurs.
+  // Une tâche n'a qu'un parent. Deux canvas qui lui en donnent deux se
+  // contredisent : on retient le premier dans l'ordre alphabétique, pour que le
+  // résultat ne dépende pas de l'ordre de lecture des fichiers, et on signale.
+  static unionLiens(lectures) {
+    const table = new Map();
+    const assurer = (ref) => {
+      if (!table.has(ref)) table.set(ref, { parent: '', bloquePar: [], conflits: [] });
+      return table.get(ref);
+    };
+    const bloquants = new Map();   // enfant -> Map(référence -> libellé)
+    const parents = new Map();     // enfant -> Map(référence -> libellé)
+    for (const lecture of lectures || []) {
+      for (const lien of (lecture && lecture.liens) || []) {
+        assurer(lien.de);
+        assurer(lien.vers);
+        const cible = lien.relation === 'compose' ? parents : bloquants;
+        if (!cible.has(lien.vers)) cible.set(lien.vers, new Map());
+        const m = cible.get(lien.vers);
+        // Un libellé déjà posé n'est pas effacé par une arête qui n'en a pas.
+        if (!m.get(lien.de)) m.set(lien.de, lien.libelle || '');
+      }
+    }
+    const ecrire = (ref, libelle) => '[[' + ref + (libelle ? '|' + libelle : '') + ']]';
+    for (const [enfant, m] of bloquants) {
+      assurer(enfant).bloquePar = [...m.keys()].sort().map((r) => ecrire(r, m.get(r)));
+    }
+    for (const [enfant, m] of parents) {
+      const refs = [...m.keys()].sort();
+      const e = assurer(enfant);
+      e.parent = ecrire(refs[0], m.get(refs[0]));
+      e.conflits = refs.length > 1 ? refs : [];
+    }
+    return table;
+  }
+
+  // Détection des cycles par parcours en profondeur. Le tableau « chemin »
+  // garde la branche courante : y retomber, c'est boucler.
+  // Un cycle n'est retenu qu'une fois, quel que soit le sommet par lequel on y
+  // entre, d'où la signature construite sur ses membres triés.
+  static cyclesDe(aretes) {
+    const sortants = new Map();
+    for (const e of aretes || []) {
+      if (!e || !e.de || !e.vers) continue;
+      if (!sortants.has(e.de)) sortants.set(e.de, []);
+      sortants.get(e.de).push(e.vers);
+    }
+    const trouves = new Map();
+    const clos = new Set();
+    const chemin = [];
+    const dansChemin = new Set();
+    const descendre = (n) => {
+      if (dansChemin.has(n)) {
+        const cycle = chemin.slice(chemin.indexOf(n)).concat([n]);
+        const signature = [...new Set(cycle)].sort().join('\u0000');
+        if (!trouves.has(signature)) trouves.set(signature, cycle);
+        return;
+      }
+      if (clos.has(n)) return;
+      chemin.push(n);
+      dansChemin.add(n);
+      for (const suivant of sortants.get(n) || []) descendre(suivant);
+      dansChemin.delete(n);
+      chemin.pop();
+      clos.add(n);
+    };
+    for (const depart of sortants.keys()) descendre(depart);
+    return [...trouves.values()];
+  }
+
+  // Si A bloque B, B ne peut pas commencer avant que A ne s'achève. Commencer
+  // le jour même de l'échéance reste admis : une tâche peut prendre la suite
+  // d'une autre dans la journée.
+  // Une date manquante ne permet de rien conclure, et ne signale donc rien :
+  // mieux vaut taire un doute que crier une fausse erreur sur chaque tâche non
+  // encore planifiée.
+  static datesIncoherentes(aretes, datesParRef) {
+    const d = datesParRef || {};
+    const jour = (v) => {
+      const x = String(v == null ? '' : v).slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : '';
+    };
+    const out = [];
+    for (const e of aretes || []) {
+      if (!e) continue;
+      const fin = jour(d[e.de] && d[e.de].echeance);
+      const debut = jour(d[e.vers] && d[e.vers].debut);
+      if (!fin || !debut) continue;
+      if (debut < fin) out.push({ de: e.de, vers: e.vers, fin, debut });
+    }
+    return out;
+  }
+
   // Libellé d'une note du coffre dans le sélecteur. L'alias passe devant : c'est
   // sous ce nom que Monsieur connaît ses notes, « NC-202607081912 » ne disant
   // rien à personne. Le nom de fichier suit tout de même, pour rester cherchable.
