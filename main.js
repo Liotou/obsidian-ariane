@@ -349,6 +349,13 @@ const TEXTES = {
     "Profil écrit : ": "Profile written: ",
     "Profils (JSON)": "Profiles (JSON)",
     "Profils de standard": "Standard profiles",
+    "Doublon d’écriture, à la ponctuation près : ": "Spelling duplicate, up to punctuation: ",
+    "Normalisation…": "Normalising…",
+    "Normalisation : ": "Normalising: ",
+    "Conjonctions : ": "Conjunctions: ",
+    "renommée(s)": "renamed",
+    "fusionnée(s)": "merged",
+    "en échec": "failed",
     "1. Ce que c’est": "1. What it is",
     "2. Où elle est citée": "2. Where it is cited",
     "3. Que faire": "3. What to do",
@@ -1698,6 +1705,18 @@ function migrerCorrespondances(table) {
 // Clé d'œuvre : le DOI s'il existe, sinon le titre normalisé. Les tirets
 // Unicode sont ramenés à l'ASCII, « Co-opetition » et « Co‐opetition » étant le
 // même travail. Un titre trop court n'identifie rien.
+// Deux libellés qui ne diffèrent que par une conjonction, un accent, un trait
+// d'union ou une virgule désignent la même référence : « Garcia-Aristizabal »
+// et « GarciaAristizabal », « Castaner » et « Castan~er », « Gentner et al., »
+// et « Gentner, et al., ». La normalisation des conjonctions, posée à la
+// création, ne les attrape pas.
+function cleLibelle(nom) {
+  let x = sansAccents(nom || '');
+  x = x.replace(/\s+(?:et|and|&)\s+/g, '&');
+  x = x.replace(/\bet\s+al\.?/g, 'etal');
+  return x.replace(/[^a-z0-9&]+/g, '');
+}
+
 function cleOeuvre(titre, doi) {
   if (doi) return 'doi:' + doi;
   const t = sansAccents(titre || '')
@@ -7101,31 +7120,44 @@ class ZotflowAtomiser extends obsidian.Plugin {
 
   // Renomme les notes de référence « … et … » / « … and … » en « … & … »
   // (en conservant « et al. »), via l'API Obsidian pour préserver les liens.
+  // « March et Smith, 1995 » et « March & Smith, 1995 » sont la même référence.
+  // parseNomReference normalise déjà les conjonctions à la création, donc seules
+  // les notes antérieures à ce garde-fou subsistent. Renommer ne suffit pas :
+  // quand la forme normalisée existe déjà, il faut FUSIONNER, ce que l'ancienne
+  // version refusait de faire en comptant un « conflit ». Elle échouait donc
+  // exactement sur les cas qui la justifient.
   async normaliserConjonctionsReferences() {
     const dossier = this.dossierR;
     const fichiers = this.app.vault
       .getMarkdownFiles()
-      .filter((f) => f.path === dossier + '/' + f.name || f.path.startsWith(dossier + '/'));
-    let renommees = 0;
-    let conflits = 0;
+      .filter((f) => f.path.startsWith(dossier + '/'));
+    let renommees = 0, fusionnees = 0, liens = 0, echecs = 0;
+    const avis = new obsidian.Notice(tr('Normalisation…'), 0);
     for (const f of fichiers) {
       const nouveauNom = this.nettoyerNomFichier(normaliserConjAuteurs(f.basename));
       if (nouveauNom === f.basename) continue;
       const cible = dossier + '/' + nouveauNom + '.md';
-      if (this.app.vault.getAbstractFileByPath(cible)) {
-        conflits++;
+      const existante = this.app.vault.getAbstractFileByPath(cible);
+      if (existante) {
+        const c = this.indexCitations().get(f.basename) || { total: 0, sources: new Map() };
+        const n = await this.fusionnerReferences(
+          { nom: f.basename, fichier: f, citations: c.total }, nouveauNom, true);
+        fusionnees += 1; liens += n;
+        avis.setMessage(tr('Normalisation : ') + (renommees + fusionnees) + ' / ' + fichiers.length);
         continue;
       }
       try {
         await this.app.fileManager.renameFile(f, cible);
-        renommees++;
+        renommees += 1;
       } catch (e) {
-        conflits++;
+        echecs += 1;
+        console.error('[Ariane] normalisation', f.basename, e);
       }
     }
-    new obsidian.Notice(tr('Ariane : ') + renommees + ' référence(s) normalisée(s) (et → &)' +
-      (conflits ? ', ' + conflits + ' ignorée(s) (conflit de nom)' : '') + '.'
-    );
+    avis.hide();
+    new obsidian.Notice(tr('Conjonctions : ') + renommees + ' ' + tr('renommée(s)')
+      + ', ' + fusionnees + ' ' + tr('fusionnée(s)') + ' (' + liens + ' ' + tr('lien(s)') + ')'
+      + (echecs ? ', ' + echecs + ' ' + tr('en échec') : '') + '.', 10000);
   }
 
   async nettoyerSupprimees(sourceBasename, clesPresentes) {
@@ -7653,7 +7685,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
    * fusion réunit les liens sous un seul libellé et mémorise le renvoi.
    * ------------------------------------------------------------------------ */
 
-  async fusionnerReferences(depuis, vers) {
+  async fusionnerReferences(depuis, vers, silencieux) {
     if (!depuis || !vers || depuis.nom === vers) return 0;
     const n = await this.remplacerLiens(depuis.nom, vers);
     const cible = this.app.vault.getMarkdownFiles().find((f) => f.basename === vers);
@@ -7671,8 +7703,10 @@ class ZotflowAtomiser extends obsidian.Plugin {
     this.settings.correspondancesSuffixe[depuis.nom] = { __defaut: vers };
     await this.saveSettings();
     await this.marquerReference(depuis, 'fusionnée');
-    new obsidian.Notice(tr('Fusionnée : ') + depuis.nom + ' → ' + vers
-      + ' (' + n + ' ' + tr('lien(s)') + ').', 8000);
+    if (!silencieux) {
+      new obsidian.Notice(tr('Fusionnée : ') + depuis.nom + ' → ' + vers
+        + ' (' + n + ' ' + tr('lien(s)') + ').', 8000);
+    }
     return n;
   }
 
@@ -9950,7 +9984,7 @@ class VueReferencesAttente extends obsidian.ItemView {
         if (g2) for (const autre of g2.libelles) if (autre !== r.nom && !jumeaux.includes(autre)) jumeaux.push(autre);
       }
       const l = { r, ref, candidats, auto, biblio, dansZotero, doi, verdict: null,
-        oeuvres: compte.oeuvres, nonResolues: compte.nonResolues, jumeaux };
+        oeuvres: compte.oeuvres, nonResolues: compte.nonResolues, jumeaux, jumeauxNom: [] };
       // Le rang d'acquisition : la plus citée des œuvres du libellé.
       l.poids = compte.oeuvres.length
         ? Math.max.apply(null, compte.oeuvres.map((o) => o.n))
@@ -9958,6 +9992,22 @@ class VueReferencesAttente extends obsidian.ItemView {
       l.etat = this.classer(l);
       this.lignes.push(l);
     }
+    // Doublons repérables au nom seul : ils échappent à la détection par œuvre,
+    // qui suppose que la référence est identifiée.
+    const parCle = new Map();
+    for (const l of this.lignes) {
+      const k = cleLibelle(l.r.nom);
+      if (!parCle.has(k)) parCle.set(k, []);
+      parCle.get(k).push(l);
+    }
+    for (const groupe of parCle.values()) {
+      if (groupe.length < 2) continue;
+      for (const l of groupe) {
+        l.jumeauxNom = groupe.filter((x) => x !== l).map((x) => x.r.nom);
+        l.etat = this.classer(l);
+      }
+    }
+
     this.lignes.sort((a, b) => b.poids - a.poids || a.r.nom.localeCompare(b.r.nom));
     this.rendre();
   }
@@ -10035,7 +10085,7 @@ class VueReferencesAttente extends obsidian.ItemView {
     if (l.r.etat === 'écartée') return 'ecartee';
     if (l.r.etat === 'à acquérir') return 'acquerir';
     if ((l.oeuvres || []).length > 1) return 'detacher';
-    if ((l.jumeaux || []).length) return 'fusionner';
+    if ((l.jumeaux || []).length || (l.jumeauxNom || []).length) return 'fusionner';
     if (l.biblio && l.biblio.conflit && !l.verdict) return 'conflit';
     if (l.auto || l.dansZotero) return 'rattachable';
     if (l.candidats.length) return 'arbitrer';
@@ -10198,6 +10248,19 @@ class VueReferencesAttente extends obsidian.ItemView {
     } else {
       ident.createDiv({ cls: 'zfa-ref-faible',
         text: tr('Non identifiée : aucune bibliographie de source citante ne la mentionne.') });
+    }
+
+    if ((l.jumeauxNom || []).length) {
+      const j = ident.createDiv({ cls: 'zfa-ref-oeuvre' });
+      j.createDiv({ cls: 'zfa-ref-texte',
+        text: tr('Doublon d’écriture, à la ponctuation près : ') + l.jumeauxNom.join(', ') });
+      const ba = j.createDiv({ cls: 'zfa-ref-barre-actions' });
+      for (const autre of l.jumeauxNom) {
+        this.bouton(ba, tr('Fusionner ') + autre + tr(' ici'), 'merge', async () => {
+          const x = (this.lignes || []).find((y) => y.r.nom === autre);
+          if (x) { await g.fusionnerReferences(x.r, l.r.nom); await this.preparer(); }
+        }, true);
+      }
     }
 
     if ((l.jumeaux || []).length) {
