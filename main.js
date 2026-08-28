@@ -9350,6 +9350,40 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return { champ: 'livrable', valeur: '[[' + nu + ']]' };
   }
 
+  /* ----------------------------- Frise Gantt ----------------------------- */
+
+  // Les dates circulent en chaînes « AAAA-MM-JJ » et l'arithmétique passe par
+  // UTC. Un Date local franchissant un changement d'heure décale d'un jour, ce
+  // qui déplacerait des barres deux fois par an sans qu'on comprenne pourquoi.
+  static jourValide(v) {
+    const s = String(v == null ? '' : v).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+    const [a, m, j] = s.split('-').map(Number);
+    const d = new Date(Date.UTC(a, m - 1, j));
+    // Écarte le 31 février et consorts, que Date.UTC reporterait en silence.
+    return (d.getUTCFullYear() === a && d.getUTCMonth() === m - 1 && d.getUTCDate() === j) ? s : '';
+  }
+
+  static _versUTC(jour) {
+    const s = ZotflowAtomiser.jourValide(jour);
+    if (!s) return null;
+    const [a, m, j] = s.split('-').map(Number);
+    return Date.UTC(a, m - 1, j);
+  }
+
+  static decalerJour(jour, n) {
+    const t = ZotflowAtomiser._versUTC(jour);
+    if (t === null) return '';
+    return new Date(t + (Number(n) || 0) * 86400000).toISOString().slice(0, 10);
+  }
+
+  static ecartJours(a, b) {
+    const ta = ZotflowAtomiser._versUTC(a);
+    const tb = ZotflowAtomiser._versUTC(b);
+    if (ta === null || tb === null) return 0;
+    return Math.round((tb - ta) / 86400000);
+  }
+
   /* ------------------------ Articulation par canvas ------------------------ */
 
   // Lecture d'un canvas. On n'y prend que ce dont les notes ont besoin : qui
