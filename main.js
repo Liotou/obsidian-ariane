@@ -9025,6 +9025,22 @@ class ZotflowAtomiser extends obsidian.Plugin {
     }
     return prefixe + String(max + 1).padStart(3, '0');
   }
+
+  // La famille d'une tâche n'est pas déclarée, elle se déduit du champ rempli.
+  // Un champ « famille » pourrait contredire les champs présents ; son absence
+  // rend la contradiction impossible.
+  // L'ordre est aussi celui de la priorité quand plusieurs sont remplis.
+  static champTache(fm) {
+    const ordre = ['source', 'livrable', 'fichier'];
+    const remplis = ordre.filter((c) => fm && String(fm[c] == null ? '' : fm[c]).trim());
+    return { retenu: remplis[0] || null, conflits: remplis.length > 1 ? remplis : [] };
+  }
+
+  static familleTache(fm) {
+    const retenu = ZotflowAtomiser.champTache(fm).retenu;
+    if (retenu === 'source') return 'lecture';
+    return retenu ? 'production' : 'action';
+  }
 }
 
 /* =========================================================================
