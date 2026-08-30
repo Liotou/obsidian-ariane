@@ -12089,15 +12089,29 @@ class MoteurFrise {
       if (it.debut || it.echeance) { avecDates.push(it); }
       else if (!vusNP.has(it.ref)) { vusNP.add(it.ref); nonPlanifiees.push(it); }
     }
-    // Retirer les bandes de groupe devenues vides, compter les datées restantes.
+    // Retirer les bandes de groupe devenues vides, compter les datées restantes,
+    // et résumer l'étalement dans le temps (min, max, une date par tâche) pour
+    // l'aperçu dessiné dans le bandeau — utile surtout quand le groupe est replié.
     const dispo = [];
     for (let i = 0; i < avecDates.length; i++) {
       const it = avecDates[i];
       if (it.kind === 'groupe') {
         let n = 0;
-        for (let j = i + 1; j < avecDates.length && avecDates[j].kind !== 'groupe'; j++) n += 1;
+        let min = '';
+        let max = '';
+        const points = [];
+        for (let j = i + 1; j < avecDates.length && avecDates[j].kind !== 'groupe'; j++) {
+          n += 1;
+          const t = avecDates[j];
+          const d = t.debut || t.echeance;
+          const e = t.echeance || t.debut;
+          if (d && (!min || d < min)) min = d;
+          if (e && (!max || e > max)) max = e;
+          if (e) points.push(e);
+        }
         if (!n) continue;
-        dispo.push(Object.assign({}, it, { n }));
+        dispo.push(Object.assign({}, it, { n,
+          apercu: (min && max) ? { min, max, points } : null }));
       } else dispo.push(it);
     }
     const planifiees = dispo.filter((x) => x.kind === 'tache');
@@ -12148,7 +12162,7 @@ class MoteurFrise {
     const droite = env.createDiv({ cls: 'zfa-gantt-droite' });
     this.dessinerColonneGauche(gauche, lignes);
 
-    const hauteur = this._hauteurTotale;
+    const hauteur = this._hauteurTotale + 18; // marge basse pour la date du jour
     const svg = svgEl('svg', { class: 'zfa-gantt-svg', width: cfg.largeur, height: hauteur });
     droite.appendChild(svg);
     this._svg = svg;
@@ -12738,32 +12752,7 @@ class MoteurFrise {
       }
     });
 
-    // Ligne « + Nouvelle tâche », à l'image du « + Nouveau » d'une base : elle
-    // crée une note de tâche dans le dossier prévu, avec l'entête attendu par le
-    // filtre, puis l'ouvre.
-    if (this.greffon && typeof this.greffon.creerTache === 'function') {
-      const ajout = table.createDiv({ cls: 'bases-tr zfa-gantt-nouvelle' });
-      ajout.style.width = total + 'px';
-      ajout.style.height = H + 'px';
-      const cel = ajout.createDiv({ cls: 'zfa-gantt-nouvelle-cel' });
-      obsidian.setIcon(cel.createSpan({ cls: 'zfa-gantt-nouvelle-ic' }), 'plus');
-      cel.createSpan({ text: tr('Nouvelle tâche') });
-      ajout.addEventListener('click', () => this.nouvelleTache());
-    }
-
     this.poserSeparateurVertical(gauche, table, cols);
-  }
-
-  // Ouvre la saisie d'une tâche, la crée dans le dossier des tâches, l'ouvre.
-  nouvelleTache() {
-    const g = this.greffon;
-    new ModaleNouvelleTache(g.app, g, async (champs) => {
-      if (!champs) return;
-      const chemin = await g.creerTache(champs);
-      const f = g.app.vault.getAbstractFileByPath(chemin);
-      if (f) await g.app.workspace.getLeaf(true).openFile(f);
-      this.dessiner();
-    }).open();
   }
 
   // Bandes d'en-tête de groupe : une par ligne kind:'groupe', repliables.
@@ -12831,6 +12820,21 @@ class MoteurFrise {
       if (l.kind !== 'groupe') continue;
       g.appendChild(svgEl('rect', { x: 0, y: l.y, width: cfg.largeur, height: l.h,
         class: 'zfa-gantt-bande-groupe-fond' }));
+      // Aperçu de l'étalement du groupe : une barre d'ensemble (échéance la plus
+      // ancienne -> la plus lointaine) et un repère par tâche. Neutre, discret.
+      if (l.apercu) {
+        const yc = l.y + l.h / 2;
+        const xa = this.x(cfg, l.apercu.min);
+        const xb = this.x(cfg, Ariane.decalerJour(l.apercu.max, 1));
+        g.appendChild(svgEl('rect', { x: xa, y: yc - 2,
+          width: Math.max(2, xb - xa), height: 4, rx: 2,
+          class: 'zfa-gantt-apercu-barre' }));
+        for (const p of l.apercu.points) {
+          const xp = this.x(cfg, p);
+          g.appendChild(svgEl('line', { x1: xp, y1: yc - 5, x2: xp, y2: yc + 5,
+            class: 'zfa-gantt-apercu-tic' }));
+        }
+      }
     }
     svg.appendChild(g);
   }
@@ -12869,7 +12873,11 @@ class MoteurFrise {
       const suivant = this.moisSuivant(mois);
       const x1 = Math.max(0, this.x(cfg, mois));
       const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
-      g.appendChild(svgEl('rect', { x: x1, y: 0, width: Math.max(0, x2 - x1), height: this._bande,
+      // Bande teintée sur TOUTE la hauteur de l'en-tête : sans ça, la limite
+      // haute/basse des étages laissait un filet horizontal à mi-en-tête que la
+      // liste, elle, n'a pas — d'où l'impression de bordures différentes.
+      g.appendChild(svgEl('rect', { x: x1, y: 0, width: Math.max(0, x2 - x1),
+        height: this._hEntete,
         class: rang % 2 ? 'zfa-gantt-bande-impaire' : 'zfa-gantt-bande-paire' }));
       if (x2 - x1 > 34) {
         const t = svgEl('text', { x: x1 + 6, y: this._bande - 5, class: 'zfa-gantt-entete-mois' });
@@ -13233,6 +13241,11 @@ class MoteurFrise {
     g.appendChild(svgEl('path', {
       d: 'M ' + x + ' ' + (this._hEntete - 1) + ' l 5 -7 l -10 0 z',
       class: 'zfa-gantt-aujourdhui-pointe' }));
+    // La date du jour sous la dernière ligne, même couleur que le repère.
+    const [aa, mm, jj] = aujourdhui.split('-').map(Number);
+    const t = svgEl('text', { x, y: bas + 13, class: 'zfa-gantt-aujourdhui-date' });
+    t.textContent = jj + ' ' + (MOIS_COURTS[mm - 1] || '') + ' ' + String(aa).slice(2);
+    g.appendChild(t);
     svg.appendChild(g);
   }
 

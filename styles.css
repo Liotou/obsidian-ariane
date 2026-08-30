@@ -858,11 +858,15 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
    On ne pose ici que ce qui tient à la frise. */
 .zfa-gantt-gauche {
   flex-shrink: 0; position: relative; overflow: hidden;
-  border-right: var(--bases-table-column-border-width, 1px) solid
-                var(--table-border-color, var(--background-modifier-border));
   z-index: 5; background: var(--background-primary);
 }
-.zfa-gantt-table { position: absolute; top: 0; left: 0; }
+/* Le trait de séparation liste / frise porte sur le tableau, pas sur le
+   panneau : il s'arrête donc à la dernière ligne, pas au bas de la fenêtre. */
+.zfa-gantt-table {
+  position: absolute; top: 0; left: 0;
+  border-right: var(--bases-table-column-border-width, 1px) solid
+                var(--table-border-color, var(--background-modifier-border));
+}
 /* Les bordures de cellule viennent d'une ombre portée chez Obsidian, que le
    débordement masqué de notre panneau peut rogner. On les repose donc en clair,
    avec ses variables, pour que chaque case soit encadrée comme dans un tableau. */
@@ -885,24 +889,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   background-color: var(--bases-table-row-background-hover, var(--background-modifier-hover));
 }
 .zfa-gantt-cellule-arbre { gap: 0; }
-
-/* Ligne « + Nouvelle tâche » au pied du panneau, comme le « + Nouveau » d'une
-   base. Elle suit le style des lignes (bordure, hauteur) et s'éclaire au survol. */
-.zfa-gantt-nouvelle {
-  display: flex; align-items: center; cursor: pointer;
-  color: var(--text-muted); font-size: 0.875em;
-}
-.zfa-gantt-nouvelle:hover {
-  background: var(--bases-table-row-background-hover, var(--background-modifier-hover));
-  color: var(--text-normal);
-}
-.zfa-gantt-nouvelle-cel {
-  display: flex; align-items: center; gap: 6px;
-  padding: 0 var(--bases-table-cell-edge-padding, 8px);
-}
-.zfa-gantt-nouvelle-ic { display: inline-flex; }
-.zfa-gantt-nouvelle-ic svg { width: 14px; height: 14px; }
-
 /* Le chevron et sa cale tiennent dans la zone de marge de la cellule, sans
    s'y ajouter : une référence de premier niveau démarre donc au même retrait
    qu'une cellule ordinaire (et que le tableau des bases), pas 13 px plus loin. */
@@ -972,7 +958,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-gantt-entete-jour { font-size: 10px; }
 .zfa-gantt-entete-semaine { font-size: 10px; font-weight: 600; }
-.zfa-gantt-entete-titre { font-size: 11px; font-weight: 600; fill: var(--text-normal); }
+.zfa-gantt-entete-titre { font-size: 9px; font-weight: 600; fill: var(--text-muted); }
 .zfa-gantt-weekend-entete { fill: rgba(0, 0, 0, 0.04); }
 .theme-dark .zfa-gantt-weekend-entete { fill: rgba(255, 255, 255, 0.04); }
 
@@ -1045,6 +1031,18 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-gantt-aujourdhui-pointe {
   fill: color-mix(in srgb, var(--color-red) 70%, transparent);
+}
+.zfa-gantt-aujourdhui-date {
+  fill: color-mix(in srgb, var(--color-red) 70%, transparent);
+  font-size: 10px; font-weight: 600; text-anchor: middle;
+}
+
+/* Aperçu de l'étalement d'un groupe, dans son bandeau côté frise. Neutre. */
+.zfa-gantt-apercu-barre {
+  fill: var(--text-faint); opacity: 0.35;
+}
+.zfa-gantt-apercu-tic {
+  stroke: var(--text-muted); stroke-width: 1; opacity: 0.7;
 }
 
 /* --- Les flèches --- */
