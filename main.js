@@ -3412,7 +3412,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
           {
             type: 'dropdown', key: 'rowHeight', displayName: tr('Hauteur de ligne'),
             default: 'medium',
-            options: { '': tr('Fine'), medium: tr('Moyenne'),
+            options: { short: tr('Fine'), medium: tr('Moyenne'),
                        tall: tr('Haute'), extra: tr('Très haute') },
           },
           {
@@ -11832,16 +11832,29 @@ class MoteurFrise {
   // Même clé et même arithmétique que la vue en tableau des bases, pour que la
   // frise s'aligne au pixel près sur les autres vues de la même base.
   // La base de calcul vient du thème, pas d'une valeur écrite en dur.
-  get hauteurLigne() {
-    // Chez Bases la valeur « fine » est la chaîne vide, pas « short » : s'en
-    // écarter aurait suffi à désaligner les deux vues.
-    const mult = { '': 1, short: 1, medium: 2, tall: 4, extra: 8 }[this.ctx.lire('rowHeight') || ''] || 1;
+  // La base vient du thème et se lit UNE FOIS, sur le corps du document.
+  // La lire sur la racine de la frise serait une faute : c'est là que la
+  // hauteur calculée est écrite, et chaque redessin remultiplierait la valeur
+  // déjà multipliée, la ligne enflant sans fin à chaque clic.
+  get baseLigne() {
+    if (this._baseLigne) return this._baseLigne;
     let base = 30;
     try {
-      const v = parseFloat(this.racine.getCssPropertyValue('--bases-table-row-height'));
+      const v = parseFloat(getComputedStyle(document.body)
+        .getPropertyValue('--bases-table-row-height'));
       if (Number.isFinite(v) && v > 0) base = v;
     } catch (e) { /* le thème ne la définit pas : 30 fait l'affaire */ }
-    return Math.round(base * mult);
+    this._baseLigne = base;
+    return base;
+  }
+
+  // Bases écrit la chaîne vide pour « fine » et ignore ce qu'il ne connaît
+  // pas, en retombant sur 1 : les deux valeurs sont donc sûres dans les deux
+  // sens, et une liste déroulante à clé vide se comporte mal.
+  get hauteurLigne() {
+    const cle = String(this.ctx.lire('rowHeight') || '');
+    const mult = { '': 1, short: 1, medium: 2, tall: 4, extra: 8 }[cle] || 1;
+    return Math.round(this.baseLigne * mult);
   }
 
   // Épaisseur de la barre, et ce qu'on peut y écrire. Une barre suit la
@@ -11946,6 +11959,8 @@ class MoteurFrise {
     this._hEntete = Math.max(44, this._H);
     // On pose la variable des bases sur la racine : tout le balisage repris du
     // tableau s'y accroche, et le thème de Monsieur reste maître du reste.
+    // La variable est posée ici pour que le balisage repris du tableau s'y
+    // accroche. Elle n'est jamais relue depuis cet élément, voir baseLigne.
     c.style.setProperty('--bases-table-row-height', this._H + 'px');
     this._geo = this.geometrieBarre(this._H);
     this._lignes = planifiees;
@@ -12040,11 +12055,12 @@ class MoteurFrise {
       }, this.zoom === z);
     }
     b.createSpan({ cls: 'zfa-gantt-separateur' });
-    const suiteH = { '': 'medium', medium: 'tall', tall: 'extra', extra: '' };
-    const nomsH = { '': tr('lignes fines'), medium: tr('lignes moyennes'),
+    const suiteH = { short: 'medium', medium: 'tall', tall: 'extra', extra: 'short' };
+    const nomsH = { short: tr('lignes fines'), medium: tr('lignes moyennes'),
                     tall: tr('lignes hautes'), extra: tr('lignes très hautes') };
-    const hCourant = this.ctx.lire('rowHeight') || '';
-    this.bouton(b, nomsH[hCourant] || nomsH[''], async () => {
+    const hCourant = String(this.ctx.lire('rowHeight') || 'short') === ''
+      ? 'short' : String(this.ctx.lire('rowHeight') || 'short');
+    this.bouton(b, nomsH[hCourant] || nomsH.short, async () => {
       await this.ctx.ecrire('rowHeight', suiteH[hCourant] || 'medium');
       this.dessiner();
     });
