@@ -885,6 +885,24 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   background-color: var(--bases-table-row-background-hover, var(--background-modifier-hover));
 }
 .zfa-gantt-cellule-arbre { gap: 0; }
+
+/* Ligne « + Nouvelle tâche » au pied du panneau, comme le « + Nouveau » d'une
+   base. Elle suit le style des lignes (bordure, hauteur) et s'éclaire au survol. */
+.zfa-gantt-nouvelle {
+  display: flex; align-items: center; cursor: pointer;
+  color: var(--text-muted); font-size: 0.875em;
+}
+.zfa-gantt-nouvelle:hover {
+  background: var(--bases-table-row-background-hover, var(--background-modifier-hover));
+  color: var(--text-normal);
+}
+.zfa-gantt-nouvelle-cel {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 var(--bases-table-cell-edge-padding, 8px);
+}
+.zfa-gantt-nouvelle-ic { display: inline-flex; }
+.zfa-gantt-nouvelle-ic svg { width: 14px; height: 14px; }
+
 /* Le chevron et sa cale tiennent dans la zone de marge de la cellule, sans
    s'y ajouter : une référence de premier niveau démarre donc au même retrait
    qu'une cellule ordinaire (et que le tableau des bases), pas 13 px plus loin. */
@@ -965,11 +983,30 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-grille-v {
   stroke: var(--background-modifier-border); stroke-width: 1; stroke-dasharray: 3 4;
 }
-.zfa-gantt-grille-h { stroke: var(--background-modifier-border); stroke-width: 0.5; }
-.zfa-gantt-survol { fill: transparent; }
-.zfa-gantt-survol:hover {
-  fill: color-mix(in srgb, var(--interactive-accent) 4%, transparent);
+
+/* Bordures horizontales de la frise : de vraies bordures HTML reprenant, à la
+   déclaration près, le CSS des lignes du tableau de gauche. Elles tombent donc
+   au même sous-pixel, quel que soit le thème. En surcouche du SVG, sans capter
+   les clics. */
+.zfa-gantt-bordures { position: absolute; top: 0; left: 0; z-index: 6; pointer-events: none; }
+.zfa-gantt-bordure-entete,
+.zfa-gantt-bordure-ligne,
+.zfa-gantt-bordure-groupe {
+  position: absolute; left: 0; right: 0; box-sizing: border-box;
 }
+.zfa-gantt-bordure-entete,
+.zfa-gantt-bordure-ligne {
+  border-bottom: var(--bases-table-row-border-width, 1px) solid
+                 var(--table-border-color, var(--background-modifier-border));
+}
+.zfa-gantt-bordure-entete { top: 0; }
+.zfa-gantt-bordure-groupe {
+  border-top: 1px solid var(--background-modifier-border);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+/* Ne capte pas les clics : sinon, les flèches (dessinées juste avant les
+   barres) ne seraient plus sélectionnables sous ce rectangle pleine largeur. */
+.zfa-gantt-survol { fill: transparent; pointer-events: none; }
 
 /* --- Les barres --- */
 
@@ -1019,7 +1056,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-pointe { fill: var(--interactive-accent); opacity: 0.55; }
 /* Trait large invisible : la cible cliquable d'une flèche fine. */
 .zfa-gantt-fleche-cible {
-  fill: none; stroke: transparent; stroke-width: 14;
+  fill: none; stroke: transparent; stroke-width: 10;
   pointer-events: stroke; cursor: pointer;
 }
 .zfa-gantt-fleche-groupe.est-active .zfa-gantt-fleche {
@@ -1028,6 +1065,24 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-fleche-groupe.est-active .zfa-gantt-fleche.zfa-gantt-rouge {
   stroke-width: 2.5;
 }
+.zfa-gantt-fleche-poignee {
+  fill: var(--interactive-accent); stroke: var(--background-primary);
+  stroke-width: 1.5; cursor: grab; pointer-events: all;
+}
+.zfa-gantt-fleche-poignee:active { cursor: grabbing; }
+
+/* Badge « flèches masquées » sur une barre : autre bout dans un groupe replié. */
+.zfa-gantt-badge-masque { cursor: pointer; }
+.zfa-gantt-badge-masque circle {
+  fill: var(--background-secondary);
+  stroke: var(--interactive-accent); stroke-width: 1.5;
+}
+.zfa-gantt-badge-masque:hover circle { fill: var(--interactive-accent); }
+.zfa-gantt-badge-masque text {
+  fill: var(--text-normal); font-size: 10px; font-weight: 600;
+  text-anchor: middle; pointer-events: none;
+}
+.zfa-gantt-badge-masque:hover text { fill: var(--text-on-accent); }
 .zfa-gantt-fleche.zfa-gantt-rouge { stroke: var(--color-red); opacity: 0.9; stroke-dasharray: none; }
 .zfa-gantt-pointe.zfa-gantt-rouge { fill: var(--color-red); opacity: 0.9; }
 .zfa-gantt-fleche-libelle {
@@ -1049,7 +1104,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
    frise), au-dessus du tableau (z 5) et du SVG. La piste défile avec la frise
    via transform ; le cadre est calé sous l'en-tête fixe et masque le débord. */
 .zfa-gantt-bandes {
-  position: absolute; left: 0; right: 0; bottom: 0;
+  position: absolute; left: 0; right: auto; bottom: 0;
   overflow: hidden; z-index: 7; pointer-events: none;
 }
 .zfa-gantt-bandes-piste { position: absolute; top: 0; left: 0; right: 0; }
@@ -1058,12 +1113,16 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   display: flex; align-items: center; gap: 6px;
   padding: 0 var(--bases-table-cell-edge-padding, 8px);
   font-size: 0.875em; font-weight: 600; color: var(--text-normal);
+  /* Même couleur que le rect SVG « zfa-gantt-bande-groupe-fond » qui prolonge
+     la bande sur les dates. La bande HTML ne couvre que la largeur de la liste,
+     donc elle ne masque pas les flèches ni le trait d'aujourd'hui. */
   background: var(--background-secondary);
   border-top: 1px solid var(--background-modifier-border);
   border-bottom: 1px solid var(--background-modifier-border);
   cursor: pointer; white-space: nowrap; overflow: hidden;
 }
 .zfa-gantt-bande-groupe:hover { background: var(--background-modifier-hover); }
+.zfa-gantt-bande-groupe-fond { fill: var(--background-secondary); pointer-events: none; }
 .zfa-gantt-bande-groupe .zfa-gantt-chevron { font-weight: 400; flex: 0 0 auto; }
 .zfa-gantt-bande-nom { overflow: hidden; text-overflow: ellipsis; }
 .zfa-gantt-bande-compte { color: var(--text-faint); font-weight: 400; flex: 0 0 auto; }

@@ -12102,6 +12102,18 @@ class MoteurFrise {
     }
     const planifiees = dispo.filter((x) => x.kind === 'tache');
 
+    // Ref -> cleGroupe des tâches masquées parce que leur groupe est replié.
+    // Sert aux badges « flèches masquées » sur les barres visibles.
+    this._masqueParGroupe = new Map();
+    {
+      let gReplie = null;
+      for (const it of dispo) {
+        if (it.kind === 'groupe') {
+          gReplie = this.replies.has(it.cleGroupe) ? it.cleGroupe : null;
+        } else if (gReplie) this._masqueParGroupe.set(it.ref, gReplie);
+      }
+    }
+
     // Le bandeau de réglages (zoom, hauteur de ligne, filtres…) n'appartient
     // pas à une base : dans la vue de base, ces options passent par « Configurer
     // la vue ». On ne le dessine donc que pour la vue autonome.
@@ -12147,10 +12159,14 @@ class MoteurFrise {
 
     this.dessinerFond(svg, cfg, lignes);
     this.dessinerRegroupements(svg, cfg, lignes);
-    this.dessinerBarres(svg, cfg, lignes);
+    // Les flèches d'abord : les barres et leurs pastilles de liaison passent
+    // ainsi par-dessus, et rester cliquables malgré la cible large des flèches.
     this.dessinerFleches(svg, cfg, lignes);
+    this.dessinerBarres(svg, cfg, lignes);
+    this.dessinerBadgesFleches(svg);
     this.dessinerAujourdhui(svg, cfg, aujourdhui);
     this.dessinerEntete(svg, cfg);
+    this.dessinerBorduresFrise(droite, lignes, cfg.largeur);
     const piste = this.dessinerEntetesGroupes(env, lignes);
 
     // Les deux colonnes défilent ensemble : sans cet accord, l'arbre et les
@@ -12722,19 +12738,48 @@ class MoteurFrise {
       }
     });
 
+    // Ligne « + Nouvelle tâche », à l'image du « + Nouveau » d'une base : elle
+    // crée une note de tâche dans le dossier prévu, avec l'entête attendu par le
+    // filtre, puis l'ouvre.
+    if (this.greffon && typeof this.greffon.creerTache === 'function') {
+      const ajout = table.createDiv({ cls: 'bases-tr zfa-gantt-nouvelle' });
+      ajout.style.width = total + 'px';
+      ajout.style.height = H + 'px';
+      const cel = ajout.createDiv({ cls: 'zfa-gantt-nouvelle-cel' });
+      obsidian.setIcon(cel.createSpan({ cls: 'zfa-gantt-nouvelle-ic' }), 'plus');
+      cel.createSpan({ text: tr('Nouvelle tâche') });
+      ajout.addEventListener('click', () => this.nouvelleTache());
+    }
+
     this.poserSeparateurVertical(gauche, table, cols);
   }
 
-  // Bandes d'en-tête de groupe : une par ligne kind:'groupe', pleine largeur
-  // (panneau gauche et frise d'un seul tenant), repliables. Dessinées en
-  // surcouche dans l'enveloppe, au-dessus du tableau et du SVG. Renvoie la
+  // Ouvre la saisie d'une tâche, la crée dans le dossier des tâches, l'ouvre.
+  nouvelleTache() {
+    const g = this.greffon;
+    new ModaleNouvelleTache(g.app, g, async (champs) => {
+      if (!champs) return;
+      const chemin = await g.creerTache(champs);
+      const f = g.app.vault.getAbstractFileByPath(chemin);
+      if (f) await g.app.workspace.getLeaf(true).openFile(f);
+      this.dessiner();
+    }).open();
+  }
+
+  // Bandes d'en-tête de groupe : une par ligne kind:'groupe', repliables.
+  // Le libellé (bande HTML) tient sur la largeur du panneau de gauche, de la
+  // même couleur que le rect SVG qui prolonge la bande sur les dates ; les
+  // bordures fortes et le fond SVG assurent la continuité visuelle. Renvoie la
   // piste défilante que le gestionnaire de scroll fait suivre.
   dessinerEntetesGroupes(env, lignes) {
     const groupes = lignes.filter((l) => l.kind === 'groupe');
     if (!groupes.length) return null;
     const nomProp = (this.ctx.nomGroupe && this.ctx.nomGroupe()) || '';
+    const gaucheEl = env.querySelector('.zfa-gantt-gauche');
+    const largeurListe = gaucheEl ? gaucheEl.offsetWidth : 0;
     const cadre = env.createDiv({ cls: 'zfa-gantt-bandes' });
     cadre.style.top = this._hEntete + 'px';
+    if (largeurListe) cadre.style.width = largeurListe + 'px';
     const piste = cadre.createDiv({ cls: 'zfa-gantt-bandes-piste' });
     for (const l of groupes) {
       const b = piste.createDiv({ cls: 'zfa-gantt-bande-groupe' });
@@ -12778,13 +12823,34 @@ class MoteurFrise {
           class: 'zfa-gantt-grille-v' }));
       }
     }
+    // Fond des bandes de groupe, sous les barres et les flèches (qui passent
+    // donc au-dessus). Les bordures horizontales, elles, ne sont PAS tracées
+    // ici : elles sont posées en HTML par dessinerBorduresFrise, avec le CSS
+    // exact des lignes du tableau — seul moyen d'un calage au pixel près.
     for (const l of lignes) {
-      g.appendChild(svgEl('line', { x1: 0, y1: l.y, x2: cfg.largeur, y2: l.y,
-        class: 'zfa-gantt-grille-h' }));
+      if (l.kind !== 'groupe') continue;
+      g.appendChild(svgEl('rect', { x: 0, y: l.y, width: cfg.largeur, height: l.h,
+        class: 'zfa-gantt-bande-groupe-fond' }));
     }
-    g.appendChild(svgEl('line', { x1: 0, y1: bas, x2: cfg.largeur, y2: bas,
-      class: 'zfa-gantt-grille-h' }));
     svg.appendChild(g);
+  }
+
+  // Bordures horizontales de la frise, en HTML, avec exactement le CSS des
+  // lignes du tableau de gauche : elles tombent alors au même sous-pixel.
+  dessinerBorduresFrise(droite, lignes, largeur) {
+    const cont = droite.createDiv({ cls: 'zfa-gantt-bordures' });
+    cont.style.width = largeur + 'px';
+    cont.style.height = this._hauteurTotale + 'px';
+    const ent = cont.createDiv({ cls: 'zfa-gantt-bordure-entete' });
+    ent.style.height = this._hEntete + 'px';
+    for (const l of lignes) {
+      const d = cont.createDiv({
+        cls: l.kind === 'groupe' ? 'zfa-gantt-bordure-groupe' : 'zfa-gantt-bordure-ligne',
+      });
+      d.style.top = l.y + 'px';
+      d.style.height = l.h + 'px';
+    }
+    return cont;
   }
 
   /* ------------------------------ L'en-tête ------------------------------ */
@@ -13192,22 +13258,31 @@ class MoteurFrise {
     const fautives = new Set(Ariane.datesIncoherentes(aretes, dates)
       .map((i) => i.de + ' ' + i.vers));
     const g = svgEl('g', { class: 'zfa-gantt-fleches' });
-    const defs = svgEl('defs', {});
-    for (const [id, cls] of [['zfa-pointe-fleche', 'zfa-gantt-pointe'],
-                             ['zfa-pointe-fleche-rouge', 'zfa-gantt-pointe zfa-gantt-rouge']]) {
-      const mk = svgEl('marker', { id, markerWidth: 8, markerHeight: 8,
-        refX: 7, refY: 3, orient: 'auto' });
-      mk.appendChild(svgEl('path', { d: 'M0,0 L0,6 L8,3 z', class: cls }));
-      defs.appendChild(mk);
-    }
-    g.appendChild(defs);
+    // Pas de pointe : une dépendance va toujours du passé vers l'avenir, le
+    // sens est implicite. Seul le tracé pointillé compte.
     // Mémorisées pour que le glissé d'une barre les fasse suivre en direct :
     // voir _bougerFleches, appelé depuis saisir.
     this._fleches = [];
+    // Comptes de flèches masquées par un groupe replié, par barre visible.
+    const masque = this._masqueParGroupe || new Map();
+    const badges = new Map(); // ref visible -> { d: {n, groupes:Set}, g: {…} }
+    const tallier = (ref, cote, gcle) => {
+      let e = badges.get(ref);
+      if (!e) { e = { d: null, g: null }; badges.set(ref, e); }
+      if (!e[cote]) e[cote] = { n: 0, groupes: new Set() };
+      e[cote].n += 1;
+      e[cote].groupes.add(gcle);
+    };
     for (const a of aretes) {
       const src = parRef.get(a.de);
       const cib = parRef.get(a.vers);
-      if (!src || !cib) continue;
+      if (!src && !cib) continue;
+      if (!src || !cib) {
+        // Un bout est masqué par son groupe : badge du côté des liaisons.
+        if (src && !cib && masque.has(a.vers)) tallier(a.de, 'd', masque.get(a.vers));
+        else if (cib && !src && masque.has(a.de)) tallier(a.vers, 'g', masque.get(a.de));
+        continue;
+      }
       const finSrc = src.echeance || src.debut;
       const debCib = cib.debut || cib.echeance;
       if (!finSrc || !debCib) continue;
@@ -13224,7 +13299,6 @@ class MoteurFrise {
       grFleche.dataset.vers = a.vers;
       const cible = svgEl('path', { d, class: 'zfa-gantt-fleche-cible' });
       const chemin = svgEl('path', { d,
-        'marker-end': 'url(#zfa-pointe-fleche' + (rouge ? '-rouge' : '') + ')',
         class: 'zfa-gantt-fleche' + (rouge ? ' zfa-gantt-rouge' : '') });
       grFleche.appendChild(cible);
       grFleche.appendChild(chemin);
@@ -13233,7 +13307,17 @@ class MoteurFrise {
         this.selectionnerFleche(a.de, a.vers, grFleche);
       });
       if (this._flecheSelectionnee && this._flecheSelectionnee.de === a.de
-        && this._flecheSelectionnee.vers === a.vers) grFleche.classList.add('est-active');
+        && this._flecheSelectionnee.vers === a.vers) {
+        grFleche.classList.add('est-active');
+        // Poignées aux deux bouts : les glisser sur une autre barre repointe
+        // la dépendance (retire l'ancienne, pose la nouvelle).
+        for (const [px, py, bout] of [[x1, y1, 'de'], [x2, y2, 'vers']]) {
+          const p = svgEl('circle', { cx: px, cy: py, r: 5,
+            class: 'zfa-gantt-fleche-poignee' });
+          p.addEventListener('pointerdown', (ev) => this.repointerFleche(ev, a, bout));
+          grFleche.appendChild(p);
+        }
+      }
       g.appendChild(grFleche);
       let etiquette = null;
       if (a.libelle) {
@@ -13247,6 +13331,101 @@ class MoteurFrise {
         etiquette, x1, y1, x2, y2 });
     }
     svg.appendChild(g);
+
+    // Position des badges de flèches masquées, dessinés après les barres.
+    this._badgesFleches = [];
+    for (const [ref, e] of badges) {
+      const row = parRef.get(ref);
+      if (!row) continue;
+      const cy = row.y + row.h / 2;
+      if (e.d) {
+        const fin = row.echeance || row.debut;
+        this._badgesFleches.push({ x: this.x(cfg, Ariane.decalerJour(fin, 1)) + 13,
+          y: cy, n: e.d.n, groupes: e.d.groupes });
+      }
+      if (e.g) {
+        const deb = row.debut || row.echeance;
+        this._badgesFleches.push({ x: this.x(cfg, deb) - 13, y: cy,
+          n: e.g.n, groupes: e.g.groupes });
+      }
+    }
+  }
+
+  // Petits ronds numérotés indiquant, sur une barre, des dépendances dont
+  // l'autre bout est dans un groupe replié. Un clic déplie ce(s) groupe(s).
+  dessinerBadgesFleches(svg) {
+    if (!this._badgesFleches || !this._badgesFleches.length) return;
+    const g = svgEl('g', { class: 'zfa-gantt-badges' });
+    for (const b of this._badgesFleches) {
+      const gr = svgEl('g', { class: 'zfa-gantt-badge-masque' });
+      gr.appendChild(svgEl('circle', { cx: b.x, cy: b.y, r: 8 }));
+      const t = svgEl('text', { x: b.x, y: b.y + 3 });
+      t.textContent = String(b.n);
+      gr.appendChild(t);
+      const bulle = svgEl('title', {});
+      bulle.textContent = b.n + ' ' + tr('flèche(s) vers un groupe replié — cliquer pour déplier');
+      gr.appendChild(bulle);
+      gr.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        for (const cle of b.groupes) this.replies.delete(cle);
+        this.dessiner();
+      });
+      g.appendChild(gr);
+    }
+    svg.appendChild(g);
+  }
+
+  // Repointe un bout d'une flèche sélectionnée. Le bout opposé reste ancré ;
+  // on suit le pointeur, et la barre sous le curseur au lâcher devient la
+  // nouvelle extrémité. Retire l'ancienne dépendance, pose la nouvelle.
+  repointerFleche(e, arete, bout) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const svg = this._svg;
+    const boite = svg.getBoundingClientRect();
+    const f = (this._fleches || []).find((x) => x.de === arete.de && x.vers === arete.vers);
+    if (!f) return;
+    const ancre = bout === 'de' ? { x: f.x2, y: f.y2 } : { x: f.x1, y: f.y1 };
+    const autre = bout === 'de' ? arete.vers : arete.de;
+    const trait = svgEl('path', { class: 'zfa-gantt-lien-en-cours', d: '' });
+    svg.appendChild(trait);
+    let cible = null;
+    const bouger = (ev) => {
+      const px = ev.clientX - boite.left;
+      const py = ev.clientY - boite.top;
+      const sens = px >= ancre.x ? 1 : -1;
+      trait.setAttribute('d', 'M ' + ancre.x + ' ' + ancre.y + ' C '
+        + (ancre.x + sens * 40) + ' ' + ancre.y + ', ' + (px - sens * 40) + ' ' + py
+        + ', ' + px + ' ' + py);
+      const sous = document.elementFromPoint(ev.clientX, ev.clientY);
+      const gg = sous && sous.closest ? sous.closest('.zfa-gantt-groupe') : null;
+      const ref = gg && gg.dataset ? gg.dataset.ref : null;
+      const anc = svg.querySelector('.zfa-gantt-cible');
+      if (anc && anc !== gg) anc.classList.remove('zfa-gantt-cible');
+      cible = ref && ref !== autre ? ref : null;
+      if (cible && gg) gg.classList.add('zfa-gantt-cible');
+    };
+    const lacher = async () => {
+      document.removeEventListener('pointermove', bouger);
+      document.removeEventListener('pointerup', lacher);
+      trait.remove();
+      const marque = svg.querySelector('.zfa-gantt-cible');
+      if (marque) marque.classList.remove('zfa-gantt-cible');
+      if (!cible) return;
+      const g = this.greffon;
+      await g.retirerBlocage(arete.de, arete.vers);
+      if (bout === 'de') {
+        await g.creerBlocage(cible, arete.vers);
+        this._flecheSelectionnee = { de: cible, vers: arete.vers };
+      } else {
+        await g.creerBlocage(arete.de, cible);
+        this._flecheSelectionnee = { de: arete.de, vers: cible };
+      }
+      this.dessiner();
+    };
+    document.addEventListener('pointermove', bouger);
+    document.addEventListener('pointerup', lacher);
   }
 
   // Une courbe de Bézier plutôt qu'un coude : elle se suit mieux à l'oeil quand
