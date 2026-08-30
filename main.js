@@ -10437,6 +10437,32 @@ class Ariane extends obsidian.Plugin {
     return true;
   }
 
+  // Le titre d'une tâche EST son premier alias (c'est ce qu'affichent la frise
+  // et l'articulation). On aligne aussi le titre H1 du corps s'il existe, pour
+  // que la note ne se contredise pas.
+  async renommerTitreTache(ref, titre) {
+    const t = String(titre == null ? '' : titre).trim();
+    if (!t) return false;
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    if (!f) return false;
+    this.marquerEcriture(f.path);
+    await this.app.fileManager.processFrontMatter(f, (x) => {
+      x.aliases = [t];
+      x.modifie = new Date().toISOString().slice(0, 10);
+    });
+    const avant = await this.app.vault.read(f);
+    const lignes = avant.split('\n');
+    for (let i = 0; i < lignes.length; i += 1) {
+      if (/^# /.test(lignes[i])) { lignes[i] = '# ' + t; break; }
+    }
+    const apres = lignes.join('\n');
+    if (apres !== avant) {
+      this.marquerEcriture(f.path);
+      await this.app.vault.modify(f, apres);
+    }
+    return true;
+  }
+
   // Écrit en une passe les dates rendues par decalerSousArbre ou cascadeAval.
   async ecrireDatesTaches(changements) {
     const parRef = new Map(this.tachesPourGantt().map((t) => [t.ref, t.fichier]));
@@ -14337,7 +14363,14 @@ class MoteurArticulation {
       });
     }
     const corps = carte.createDiv({ cls: 'zfa-artic-corps' });
-    corps.createDiv({ cls: 'zfa-artic-titre', text: n.intitule });
+    const titreEl = corps.createDiv({ cls: 'zfa-artic-titre', text: n.intitule });
+    titreEl.setAttribute('title', tr('Double-clic pour renommer'));
+    titreEl.addEventListener('click', (e) => e.stopPropagation());
+    titreEl.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      this._editerTitre(titreEl, n);
+    });
     const bas = corps.createDiv({ cls: 'zfa-artic-bas' });
     bas.createSpan({ cls: 'zfa-artic-pastille', text: n.statut });
     if (n.echeance) bas.createSpan({ cls: 'zfa-artic-ech', text: n.echeance });
@@ -14600,6 +14633,35 @@ class MoteurArticulation {
     this.dessiner();
   }
 
+  // Édition en place du titre de la carte (double-clic). Entrée valide, Échap
+  // annule, la perte de focus valide aussi.
+  _editerTitre(el, n) {
+    if (el.querySelector('input')) return;
+    const val0 = n.intitule || '';
+    el.empty();
+    const inp = el.createEl('input', { type: 'text', cls: 'zfa-artic-titre-edit' });
+    inp.value = val0;
+    inp.addEventListener('pointerdown', (e) => e.stopPropagation());
+    inp.addEventListener('click', (e) => e.stopPropagation());
+    let fait = false;
+    const finir = async (garder) => {
+      if (fait) return;
+      fait = true;
+      const v = inp.value.trim();
+      if (garder && v && v !== val0 && this.ctx.poserTitre) {
+        await this.ctx.poserTitre(n.ref, v);
+      }
+      this.dessiner();
+    };
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); finir(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); finir(false); }
+    });
+    inp.addEventListener('blur', () => finir(true));
+    inp.focus();
+    inp.select();
+  }
+
   tirerArete(ev, ref, type) {
     if (ev.button !== 0) return;
     ev.preventDefault();
@@ -14753,6 +14815,7 @@ function fabriquerVueArticulationBase(greffon) {
         },
         ecrire: async (cle, v) => { this.config.set(cle, v); },
         poserFamille: async (ref, id) => { await this.greffon.majTache(ref, { famille: id }); },
+        poserTitre: async (ref, titre) => { await this.greffon.renommerTitreTache(ref, titre); },
         poserPosition: async (ref, x, y) => {
           const f = this.greffon.app.vault.getMarkdownFiles().find((z) => z.basename === ref);
           if (!f) return;
