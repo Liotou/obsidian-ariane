@@ -96,3 +96,23 @@ une méthode de `class Ariane`). Déjà signalé par le lot régions 1–4 ; apr
 regroupement de la region 6 il se retrouve accolé au bloc des modèles de bases.
 Laissé en place, à retirer lors de la mise au propre de la zone « temps passé »
 de `class Ariane`.
+
+## `masquerLiens` / `finDePhrase` / `finDePhraseAvantPonct` / `debutPhrase` → region 2
+
+`main.js` : ces quatre helpers de phrase figuraient dans la liste region 7 du
+brief « s'ils ne servent qu'à l'export ». Vérification des appelants : aucune
+fonction de la region 7 (export Pandoc) ne les appelle ; leurs seuls appelants
+sont des méthodes de `class Ariane` du dépôt de citation par glisser-déposer
+(`attacherCitation`, `surlignerPhrase`, `surDropParagraphe`). Domaine unique mais
+hors regions 5–10 → déplacés en region 2 · Utilitaires génériques (juste après
+`cleDeLien`), conformément au repli prévu par le brief et la spec.
+
+## Bandeau ad hoc `/* Préparation du markdown exporté */` supprimé (region 7)
+
+`main.js` : ce bandeau, échoué entre `clustersDoublons` (region 9) et
+`ajouterTravail` (region 9) après le lot régions 1–4, est supprimé — superséordé
+par le bandeau `//#region 7 · Export Pandoc / Word`. Le commentaire
+« Transforme les notes de bas de page… » qui le précédait décrivait en fait
+`footnotesVersCitations` : il a été remonté avec le bloc region 7, juste
+au-dessus de cette fonction (retrouvailles commentaire/fonction). Seules
+modifications non-déplacement du commit region 7.
