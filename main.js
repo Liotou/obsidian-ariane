@@ -9920,6 +9920,140 @@ class Ariane extends obsidian.Plugin {
     return out;
   }
 
+  /* ---------------------- Vue « Articulation » ------------------------ */
+
+  // Le graphe des tâches : nœuds + arêtes typées, déduits du frontmatter.
+  // Arête hiérarchie : de = parent, vers = enfant. Arête blocage : de =
+  // bloquant, vers = bloqué. Un bout absent du jeu, ou un lien vers soi, est
+  // ignoré. Chaque paire (de, vers, type) n'apparaît qu'une fois.
+  static grapheArticulation(taches) {
+    const liste = (taches || []).filter((x) => x && x.ref);
+    const dedans = new Set(liste.map((x) => x.ref));
+    const noeuds = liste.map((x) => ({
+      ref: x.ref, intitule: x.intitule || x.ref, statut: x.statut || 'à faire',
+      avancement: Number(x.avancement) || 0, jalon: !!x.jalon,
+      famille: x.famille || 'action', echeance: Ariane.jourValide(x.echeance),
+      x: x.x, y: x.y,
+    }));
+    const aretes = [];
+    const vues = new Set();
+    const pousser = (de, vers, type, libelle) => {
+      if (!de || !vers || de === vers || !dedans.has(de) || !dedans.has(vers)) return;
+      const cle = de + ' ' + vers + ' ' + type;
+      if (vues.has(cle)) return;
+      vues.add(cle);
+      aretes.push({ de, vers, type, libelle: libelle || '' });
+    };
+    for (const x of liste) {
+      const p = Ariane.refDeLien(x.parent);
+      if (p) pousser(p, x.ref, 'hier', '');
+      for (const b of x.bloquePar || []) {
+        const m = String(b).match(/\|([^\]]*)\]\]$/);
+        pousser(Ariane.refDeLien(b), x.ref, 'bloque', m ? m[1].trim() : '');
+      }
+    }
+    return { noeuds, aretes };
+  }
+
+  // Place les nœuds SANS position (x/y non finis). Ceux qui en ont sont laissés
+  // tels quels. Rang = profondeur dans le DAG (hiérarchie ∪ blocage) par un
+  // parcours de Kahn ; les nœuds d'un cycle retombent au rang 0. Dans un rang,
+  // tri par échéance puis ref, et on décale en y pour ne rien chevaucher.
+  static placerGraphe(noeuds, aretes, opts) {
+    const dx = (opts && opts.dx) || 260;
+    const dy = (opts && opts.dy) || 120;
+    const refs = new Set((noeuds || []).map((n) => n.ref));
+    const out = new Map();
+    const inc = new Map();
+    for (const n of noeuds || []) { out.set(n.ref, []); inc.set(n.ref, 0); }
+    for (const a of aretes || []) {
+      if (!a || !refs.has(a.de) || !refs.has(a.vers) || a.de === a.vers) continue;
+      out.get(a.de).push(a.vers);
+      inc.set(a.vers, inc.get(a.vers) + 1);
+    }
+    const rang = new Map();
+    const reste = new Map(inc);
+    const file = (noeuds || []).filter((n) => reste.get(n.ref) === 0).map((n) => n.ref);
+    for (const r of file) rang.set(r, 0);
+    for (let i = 0; i < file.length; i += 1) {
+      const cur = file[i];
+      const rc = rang.get(cur);
+      for (const v of out.get(cur) || []) {
+        reste.set(v, reste.get(v) - 1);
+        if (reste.get(v) === 0) {
+          rang.set(v, Math.max(rang.has(v) ? rang.get(v) : 0, rc + 1));
+          file.push(v);
+        }
+      }
+    }
+    for (const n of noeuds || []) if (!rang.has(n.ref)) rang.set(n.ref, 0);
+
+    const pos = new Map();
+    const fini = (v) => Number.isFinite(Number(v)) && v !== '' && v !== null;
+    for (const n of noeuds || []) {
+      if (fini(n.x) && fini(n.y)) pos.set(n.ref, { x: Number(n.x), y: Number(n.y) });
+    }
+    const chevauche = (x, y) => {
+      for (const p of pos.values()) {
+        if (Math.abs(p.x - x) < dx * 0.8 && Math.abs(p.y - y) < dy * 0.8) return true;
+      }
+      return false;
+    };
+    const parRang = new Map();
+    for (const n of noeuds || []) {
+      if (pos.has(n.ref)) continue;
+      const r = rang.get(n.ref);
+      if (!parRang.has(r)) parRang.set(r, []);
+      parRang.get(r).push(n);
+    }
+    for (const [r, groupe] of [...parRang.entries()].sort((a, b) => a[0] - b[0])) {
+      groupe.sort((a, b) => (Ariane.jourValide(a.echeance) || '~')
+        .localeCompare(Ariane.jourValide(b.echeance) || '~') || a.ref.localeCompare(b.ref));
+      const x = r * dx;
+      let k = 0;
+      for (const n of groupe) {
+        let y = k * dy;
+        while (chevauche(x, y)) y += dy;
+        pos.set(n.ref, { x, y });
+        k += 1;
+      }
+    }
+    return pos;
+  }
+
+  // Un lien proposé est-il licite ? Refus si (a) il referme un cycle sur
+  // l'union des arêtes, (b) les dates se contredisent : un blocage dont
+  // l'amont s'achève après le début de l'aval ; une hiérarchie dont la mère
+  // s'achève avant la fille. On ne bloque que sur une preuve : une date
+  // manquante n'interdit rien.
+  static lienValide(aretes, dates, ajout) {
+    const { de, vers, type } = ajout || {};
+    if (!de || !vers || de === vers) return { ok: false, raison: 'soi' };
+    const adj = new Map();
+    const arc = (a, b) => { if (!adj.has(a)) adj.set(a, []); adj.get(a).push(b); };
+    for (const e of aretes || []) if (e) arc(e.de, e.vers);
+    // Cycle ssi « vers » atteint déjà « de » par les arêtes existantes.
+    const vus = new Set();
+    const pile = [vers];
+    while (pile.length) {
+      const c = pile.pop();
+      if (c === de) return { ok: false, raison: 'cycle' };
+      if (vus.has(c)) continue;
+      vus.add(c);
+      for (const x of adj.get(c) || []) pile.push(x);
+    }
+    const lire = (k) => (dates && dates.get ? dates.get(k) : (dates || {})[k]) || {};
+    const eDe = Ariane.jourValide(lire(de).echeance);
+    const dVers = Ariane.jourValide(lire(vers).debut);
+    const eVers = Ariane.jourValide(lire(vers).echeance);
+    if (type === 'hier') {
+      if (eDe && eVers && eDe < eVers) return { ok: false, raison: 'dates-hier' };
+    } else if (eDe && dVers && eDe > dVers) {
+      return { ok: false, raison: 'dates' };
+    }
+    return { ok: true };
+  }
+
   static get COULEURS_GANTT() {
     return {
       'à faire': 'var(--text-faint)',
