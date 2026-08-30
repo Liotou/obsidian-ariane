@@ -929,7 +929,7 @@ const DEFAULT_SETTINGS = {
   masquerPrefixeAffichage: true, // cacher le préfixe dans les en-têtes de colonnes / cartes
   clesTaches: {},
   libellesTaches: {}, // ancien réglage, plus utilisé
-  _clesTachesNettoye: false,
+  _clesTachesNettoye: 0,
   // Vue Articulation : accrochage magnétique des cartes au glissé.
   articulationAimant: true,
   articulationFleches: 'courbe', // 'courbe' | 'angulaire'
@@ -7056,10 +7056,10 @@ class Ariane extends obsidian.Plugin {
     // dans clesTaches et servaient de clés de frontmatter par erreur. On repart
     // d'une table vide ; l'utilisateur redéfinit ses clés précises s'il le veut.
     let aEnregistrer = false;
-    if (!this.settings._clesTachesNettoye) {
+    if ((this.settings._clesTachesNettoye || 0) < 3) {
       this.settings.clesTaches = {};
       this.settings.libellesTaches = {};
-      this.settings._clesTachesNettoye = true;
+      this.settings._clesTachesNettoye = 3;
       aEnregistrer = true;
     }
     if (aEnregistrer) await this.saveSettings();
@@ -10437,9 +10437,11 @@ class Ariane extends obsidian.Plugin {
   // Le préfixe est repris tel quel, espace final compris.
   cleT(concept) {
     if (concept === 'intitule') return 'intitule';
-    const perso = (this.settings.clesTaches || {})[concept];
-    if (perso && String(perso).trim()) return String(perso).trim();
     const pre = this.settings.prefixeTaches || '';
+    const perso = String((this.settings.clesTaches || {})[concept] || '').trim();
+    // On n'honore une clé précise que si elle commence par le préfixe (ou s'il
+    // n'y a pas de préfixe). Ça élimine d'anciens intitulés qui traînaient.
+    if (perso && perso !== concept && (!pre || perso.startsWith(pre))) return perso;
     return pre ? pre + concept : concept;
   }
 
@@ -11474,7 +11476,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Préfixe'))
       .setDesc(tr('Vide = pas de préfixe. L\'espace final compte : « Tâche - ».'))
       .addText((t) => t.setPlaceholder('Tâche - ').setValue(s.prefixeTaches || '')
-        .onChange(async (v) => { s.prefixeTaches = v; await maj(); this.display(); }));
+        .onChange(async (v) => { s.prefixeTaches = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Masquer le préfixe à l\'affichage'))
       .setDesc(tr("Les colonnes de la frise et les propriétés des cartes d'articulation montrent le nom sans le préfixe."))
