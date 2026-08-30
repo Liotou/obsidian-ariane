@@ -477,6 +477,59 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-fam-barre { display: flex; justify-content: flex-end; }
 .zfa-fam-barre .setting-item { border: none; padding: 4px 0; }
 
+/* ---------------- Table des familles de tâches ------------------------ */
+.zfa-famt-hote { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 10px; }
+.zfa-famt {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: 8px 10px;
+  background: var(--background-secondary);
+}
+.zfa-famt-tete { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.zfa-famt-apercu {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: 0 0 auto;
+  color: var(--zfa-fam-couleur, var(--text-muted));
+}
+.zfa-famt-apercu svg { width: 16px; height: 16px; }
+.zfa-famt-tete input { margin: 0; min-width: 0; }
+.zfa-famt-id {
+  flex: 0 0 110px; width: 110px;
+  font-family: var(--font-monospace); font-size: var(--font-ui-smaller);
+}
+.zfa-famt-nom { flex: 1 1 140px; min-width: 120px; font-weight: 600; }
+.zfa-famt-couleur {
+  flex: 0 0 auto; width: 30px; height: 24px;
+  padding: 0; border: none; background: none; cursor: pointer;
+}
+.zfa-famt-icone { flex: 0 0 120px; width: 120px; font-size: var(--font-ui-smaller); }
+.zfa-famt-tete .zfa-fam-bouton { flex: 0 0 auto; }
+.zfa-famt-collision { border-color: var(--text-error) !important; box-shadow: 0 0 0 1px var(--text-error); }
+.zfa-famt-avert {
+  margin: 6px 0 0; font-size: var(--font-ui-smaller); color: var(--text-faint);
+}
+.zfa-famt-props {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.zfa-famt-props-titre {
+  font-size: var(--font-ui-smaller); color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.zfa-famt-prop { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.zfa-famt-prop input { margin: 0; min-width: 0; }
+.zfa-famt-prop input:first-of-type { flex: 0 0 150px; width: 150px; }
+.zfa-famt-prop input:nth-of-type(2) { flex: 1 1 160px; min-width: 120px; }
+.zfa-famt-prop select { flex: 0 0 auto; }
+.zfa-famt-prop-plus {
+  align-self: flex-start;
+  background: transparent; border: 1px dashed var(--background-modifier-border);
+  border-radius: var(--radius-s); padding: 2px 8px;
+  font-size: var(--font-ui-smaller); color: var(--text-muted); cursor: pointer;
+}
+.zfa-famt-prop-plus:hover { color: var(--text-normal); border-color: var(--interactive-accent); }
+
 /* ===================== Arbitrage des références en attente ================= */
 
 .zfa-refs { padding: 8px 10px 16px; }

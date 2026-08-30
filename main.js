@@ -11184,6 +11184,9 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       const familles = Array.isArray(s.famillesTaches) ? s.famillesTaches : (s.famillesTaches = []);
       if (!familles.length) {
         hote.createDiv({ cls: 'zfa-fam-vide', text: tr('Aucune famille de tâches.') });
+      } else {
+        hote.createDiv({ cls: 'zfa-famt-avert', text:
+          tr("Renommer l'identifiant d'une famille ne migre pas les tâches déjà rattachées.") });
       }
       familles.forEach((f, i) => {
         const ligne = hote.createDiv({ cls: 'zfa-famt' });
@@ -11229,9 +11232,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         const suppr = tete.createEl('button', { cls: 'zfa-fam-bouton zfa-fam-suppr' });
         obsidian.setIcon(suppr, 'trash-2');
         suppr.onclick = async () => { familles.splice(i, 1); await maj(); rendre(); };
-
-        ligne.createDiv({ cls: 'zfa-famt-avert', text:
-          tr("Renommer l'identifiant ne migre pas les tâches déjà rattachées.") });
 
         const corps = ligne.createDiv({ cls: 'zfa-famt-props' });
         corps.createEl('div', { cls: 'zfa-famt-props-titre', text: tr('Propriétés ajoutées') });
