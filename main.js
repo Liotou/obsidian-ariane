@@ -1249,6 +1249,12 @@ function enumererFrancais(liste) {
 //#endregion 2 · Utilitaires génériques
 
 //#region 3 · Références Zotero — parsing & appariement
+// ═══════════════════════════════════════════════════════════════════════════
+//  3 · RÉFÉRENCES ZOTERO — parsing & appariement
+//  Analyse des noms d'auteurs, appariement d'une référence à une entrée
+//  Zotero, import depuis Crossref / OpenAlex, construction d'une note
+//  « référence ».
+// ═══════════════════════════════════════════════════════════════════════════
 
 function nomCompletAuteur(c) {
   let s = sansLien(c);
@@ -1260,13 +1266,6 @@ function nomCompletAuteur(c) {
   return s.replace(/\s+/g, ' ');
 }
 
-// Remplace les variables {{var}} d'un modèle par leurs valeurs.
-function appliquerModele(modele, vars) {
-  return String(modele).replace(/{{\s*(\w+)\s*}}/g, (m, k) =>
-    vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : ''
-  );
-}
-
 // Remplace la conjonction entre auteurs (« et », « and ») par « & »,
 // en préservant « et al. ». Ex. « Bird et Tobin, 2018 » -> « Bird & Tobin, 2018 ».
 function normaliserConjAuteurs(s) {
@@ -1275,77 +1274,6 @@ function normaliserConjAuteurs(s) {
   out = out.replace(/\s+et\s+/g, ' & ').replace(/\s+and\s+/gi, ' & ');
   out = out.replace(/@@ETAL@@/g, 'et al.');
   return out;
-}
-
-// Calcule les plages [from,to] à supprimer pour retirer les définitions de
-// notes de bas de page « orphelines » gérées par le plugin (celles dont
-// l'appel [^label] a disparu du corps ET dont le bloc contient un lien [[…]]).
-// Retire aussi l'en-tête de section s'il ne reste plus aucune définition.
-// Fonction pure (testée hors ligne) : ne dépend que de la chaîne du document.
-function rangesNotesOrphelines(docStr, titre) {
-  const lignes = docStr.split('\n');
-  const offsets = [];
-  let acc = 0;
-  for (const l of lignes) { offsets.push(acc); acc += l.length + 1; }
-  const total = docStr.length;
-  const lineStart = (i) => offsets[i];
-  const lineEndExcl = (i) => (i + 1 < lignes.length ? offsets[i + 1] : total);
-
-  // Appels de note réellement utilisés (on ignore les marqueurs de définition).
-  const refs = new Set();
-  for (let i = 0; i < lignes.length; i++) {
-    const line = lignes[i];
-    const re = /\[\^([^\]\s]+)\]/g;
-    let m;
-    while ((m = re.exec(line)) !== null) {
-      const after = line.slice(m.index + m[0].length);
-      if (after.startsWith(':')) continue; // c'est une définition
-      refs.add(m[1]);
-    }
-  }
-
-  // Définitions et étendue de leur bloc (lignes indentées suivantes).
-  const defs = [];
-  for (let i = 0; i < lignes.length; i++) {
-    const d = lignes[i].match(/^[ \t]*\[\^([^\]]+)\]:/);
-    if (!d) continue;
-    let j = i;
-    while (j + 1 < lignes.length && /^[ \t]/.test(lignes[j + 1])) j++;
-    const gere = /\[\[/.test(lignes.slice(i, j + 1).join('\n'));
-    defs.push({ label: d[1], i, j, gere });
-  }
-
-  const ranges = [];
-  for (const dd of defs) {
-    if (!(dd.gere && !refs.has(dd.label))) continue;
-    let last = dd.j;
-    if (dd.j + 1 < lignes.length && lignes[dd.j + 1].trim() === '') last = dd.j + 1;
-    ranges.push({ from: lineStart(dd.i), to: lineEndExcl(last) });
-  }
-
-  const restantes = defs.filter((dd) => !(dd.gere && !refs.has(dd.label)));
-  if (restantes.length === 0 && titre) {
-    for (let h = 0; h < lignes.length; h++) {
-      if (lignes[h].trim() === '**' + titre + '**') {
-        let start = h;
-        if (h - 1 >= 0 && lignes[h - 1].trim() === '---') start = h - 1;
-        while (start - 1 >= 0 && lignes[start - 1].trim() === '') start--;
-        let last = h;
-        if (h + 1 < lignes.length && lignes[h + 1].trim() === '') last = h + 1;
-        ranges.push({ from: lineStart(start), to: lineEndExcl(last) });
-        break;
-      }
-    }
-  }
-
-  ranges.sort((a, b) => a.from - b.from);
-  const merged = [];
-  for (const r of ranges) {
-    if (merged.length && r.from <= merged[merged.length - 1].to) {
-      merged[merged.length - 1].to = Math.max(merged[merged.length - 1].to, r.to);
-    } else merged.push({ from: r.from, to: r.to });
-  }
-  return merged;
 }
 
 // Analyse "Auteur(s), Année" -> { nom, auteurs[], annee, annee4, premierAuteur }.
@@ -1442,66 +1370,222 @@ function compilerProfils(cfg) {
   return out;
 }
 
-// Couleurs standard de Zotero -> nom lisible (pour la propriété « couleur »).
-const COULEURS_ZOTERO = {
-  '#ffd400': 'jaune',
-  '#ff6666': 'rouge',
-  '#5fb236': 'vert',
-  '#2ea8e5': 'bleu',
-  '#a28ae5': 'violet',
-  '#e56eee': 'magenta',
-  '#f19837': 'orange',
-  '#aaaaaa': 'gris',
-};
-function nomCouleur(c) {
-  if (!c) return '';
-  const h = String(c).trim().toLowerCase();
-  return COULEURS_ZOTERO[h] || h;
+// Cherche une source Zotero correspondante (1er auteur + année).
+// Noms de famille (minuscule) des auteurs cités d'une référence.
+function surnamesReference(ref) {
+  return (ref && ref.auteurs ? ref.auteurs : [])
+    .map((a) => sansAccents(sansLien(String(a)).trim().split(/\s+/).pop()))
+    .filter(Boolean);
 }
 
-// Neutralise le contenu des liens [[…]] en conservant la longueur du texte :
-// les points d'une citation (« p. 2 ») ne doivent pas passer pour des fins de
-// phrase. Les positions calculées restent donc valables sur le texte d'origine.
-function masquerLiens(texte) {
-  return String(texte).replace(/\[\[[^\]]*\]\]/g, (m) => '·'.repeat(m.length));
-}
-
-// Fin de la phrase contenant l'offset (index juste après le point/? /! ).
-// Sert au dépôt « par phrase » : place l'appel de note en fin de phrase.
-function finDePhrase(texte, off) {
-  const re = /[.?!…](?=\s|$)/g;
-  re.lastIndex = Math.max(0, Math.min(off, texte.length));
-  const m = re.exec(masquerLiens(texte));
-  return m ? m.index + 1 : texte.length;
-}
-
-// Début de la phrase contenant l'offset : index juste après le dernier
-// point/? /! qui précède l'offset, espaces de tête ignorés.
-// Comme finDePhrase, mais renvoie l'index DE la ponctuation finale (donc juste
-// avant le point), afin de poser l'appel de note avant celui-ci.
-function finDePhraseAvantPonct(texte, off) {
-  const re = /[.?!…](?=\s|$)/g;
-  re.lastIndex = Math.max(0, Math.min(off, texte.length));
-  const m = re.exec(masquerLiens(texte));
-  if (!m) return texte.length;
-  // Typographie française : « … frontière ? » garde son espace avant le point
-  // d'interrogation. On remonte donc avant l'espace qui précède la ponctuation.
-  let i = m.index;
-  while (i > 0 && /[ \t\u00a0\u202f]/.test(texte[i - 1])) i--;
-  return i;
-}
-
-function debutPhrase(texte, off) {
-  const re = /[.?!…](?=\s|$)/g;
-  const masque = masquerLiens(texte);
-  let start = 0, m;
-  while ((m = re.exec(masque)) !== null) {
-    if (m.index + 1 <= off) start = m.index + 1;
-    else break;
+// Force d'appariement entre une référence citée et une entrée d'index Zotero.
+// 'fort'   : année + TOUS les auteurs cités présents (haute certitude).
+// 'faible' : « et al. » (seul le premier auteur connu) + année + 1er auteur présent.
+// null     : pas de correspondance.
+function appariementSource(ref, entree) {
+  if (!ref || !entree) return null;
+  const an = ref.annee4 || ref.annee;
+  if (!an || !entree.annee || entree.annee !== an) return null;
+  const rs = surnamesReference(ref);
+  if (!rs.length) return null;
+  const liste = entree.surnames || [];
+  const es = new Set(liste);
+  if (!es.size) return null;
+  if (ref.etAl) {
+    // « Renn et al., 2011 » doit désigner une fiche dont Renn est le PREMIER
+    // auteur. Se contenter de sa présence quelque part dans la liste rattachait
+    // à des travaux où l'auteur cité n'est que co-signataire : vérifié, quatre
+    // faux appariements sur vingt-six.
+    return rs[0] === liste[0] ? 'fort' : (es.has(rs[0]) ? 'faible' : null);
   }
-  while (start < texte.length && /\s/.test(texte[start])) start++;
-  return start;
+  return rs.every((s) => es.has(s)) ? 'fort' : null;
 }
+
+// Tous les candidats (les 'fort' d'abord) pour une référence citée.
+function candidatsSource(ref, indexZotero) {
+  const out = [];
+  for (const z of indexZotero || []) {
+    const m = appariementSource(ref, z);
+    if (m) out.push({ entree: z, force: m });
+  }
+  out.sort((a, b) => (a.force === b.force ? 0 : a.force === 'fort' ? -1 : 1));
+  return out;
+}
+
+// Source Zotero CERTAINE pour l'auto-rattachement (construireNote) : un unique
+// appariement 'fort', jamais pour une référence à suffixe (2005a/b, ambiguë).
+// La cible d'un libellé dépend de l'article qui le porte : « Renn, 2008 »
+// désigne le chapitre chez l'un et le livre chez l'autre. La table est donc à
+// deux étages, { libellé: { source: cible, __defaut: cible } }. L'ancienne forme
+// plate, { libellé: cible }, reste lue telle quelle.
+function cibleDeReference(table, nom, source) {
+  const e = table && table[nom];
+  if (!e) return null;
+  if (typeof e === 'string') return e;
+  if (source && e[source]) return e[source];
+  return e.__defaut || null;
+}
+
+function migrerCorrespondances(table) {
+  const out = {};
+  for (const [nom, v] of Object.entries(table || {})) {
+    out[nom] = typeof v === 'string' ? { __defaut: v } : v;
+  }
+  return out;
+}
+
+// Clé d'œuvre : le DOI s'il existe, sinon le titre normalisé. Les tirets
+// Unicode sont ramenés à l'ASCII, « Co-opetition » et « Co‐opetition » étant le
+// même travail. Un titre trop court n'identifie rien.
+// Deux libellés qui ne diffèrent que par une conjonction, un accent, un trait
+// d'union ou une virgule désignent la même référence : « Garcia-Aristizabal »
+// et « GarciaAristizabal », « Castaner » et « Castan~er », « Gentner et al., »
+// et « Gentner, et al., ». La normalisation des conjonctions, posée à la
+// création, ne les attrape pas.
+function cleLibelle(nom) {
+  let x = sansAccents(nom || '');
+  x = x.replace(/\s+(?:et|and|&)\s+/g, '&');
+  x = x.replace(/\bet\s+al\.?/g, 'etal');
+  return x.replace(/[^a-z0-9&]+/g, '');
+}
+
+// Un « titre » qui commence par un nom suivi d'initiales n'en est pas un : c'est
+// une liste d'auteurs tronquée, « Lawrence, M.G., S. Williams… ». La retenir
+// fabriquerait une œuvre fantôme et une note au nom absurde.
+function titreCredible(t) {
+  const x = String(t || '').trim();
+  if (x.length < 10) return false;
+  if (/^[A-ZÀ-Ý][\wÀ-ÿ'’-]+,\s*(?:[A-Z]\.\s*){1,4}/.test(x)) return false;
+  return /[a-zà-ÿ]{3}/.test(x);
+}
+
+// « Lawrence, M.G., S. Williams… 2022. Characteristics, potentials… One Earth
+// 5: 44–61. » : le titre suit l'année. On le récupère plutôt que de jeter
+// l'entrée, et l'on rend une chaîne vide si rien de crédible n'en sort.
+function titreDansReference(texte, annee) {
+  const t = String(texte || '');
+  if (!annee) return '';
+  const m = new RegExp(annee + '\\)?\\s*[.,]\\s*(.+?)(?:\\.\\s|\\.$)').exec(t);
+  const cand = m ? m[1].trim() : '';
+  return titreCredible(cand) ? cand : '';
+}
+
+function cleOeuvre(titre, doi) {
+  if (doi) return 'doi:' + doi;
+  const t = sansAccents(titre || '')
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  return t.length >= 12 ? 'titre:' + t.slice(0, 44) : '';
+}
+
+// Nom de note pour une œuvre détachée d'un libellé partagé. Le qualificatif
+// vient de l'ŒUVRE, jamais de l'article : le suffixe a/b des styles n'a de sens
+// que dans une bibliographie donnée et désignerait deux travaux d'un article à
+// l'autre.
+function nomOeuvreDetachee(libelle, titre) {
+  const t = String(titre || '').replace(/\s+/g, ' ').trim();
+  if (!t) return libelle;
+  let court = t.split(/\s*[:;–—]\s*|\.\s+/)[0].trim();
+  if (court.length < 10) court = t;
+  if (court.length > 48) court = court.slice(0, 48).replace(/\s+\S*$/, '');
+  court = court.replace(/[\\/:*?"<>|#^\[\]]/g, ' ').replace(/\s+/g, ' ').trim();
+  return court ? libelle + ' (' + court + ')' : libelle;
+}
+
+function trouverSourceZotero(ref, indexZotero) {
+  if (!ref) return null;
+  if (ref.annee && ref.annee4 && ref.annee !== ref.annee4) return null;
+  const forts = (indexZotero || []).filter((z) => appariementSource(ref, z) === 'fort');
+  return forts.length === 1 ? forts[0].basename : null;
+}
+
+// Parse le nom d'une référence en attente (« Auteurs, année ») en objet ref,
+// pour tenter un appariement Zotero. Retourne null si non parsable.
+function refDepuisNomAttente(nom) {
+  const s = String(nom || '').trim();
+  const m = s.match(/^(.*?),\s*(\d{4}[a-z]?)\b.*$/);
+  if (!m) return null;
+  let auts = m[1].trim();
+  const annee = m[2];
+  const etAl = /\bet\s+al\.?/i.test(auts);
+  auts = auts.replace(/\bet\s+al\.?/ig, ' ').replace(/&|\bet\b|,|;/g, ' ').replace(/\s+/g, ' ').trim();
+  const auteurs = auts.split(' ').filter(Boolean);
+  if (!auteurs.length && !etAl) return null;
+  return { auteurs, annee, annee4: annee.replace(/[a-z]$/, ''), etAl };
+}
+
+// Nom de famille (dernier mot, minuscule) d'un nom d'auteur libre.
+function nomFamille(s) {
+  const t = sansLien(String(s || '')).replace(/,.*$/, '').trim(); // « Nom, Prénom » -> « Nom »
+  const parts = t.split(/\s+/).filter(Boolean);
+  return (parts.length ? parts[parts.length - 1] : t).toLowerCase();
+}
+
+// Sépare un nom complet en { nom (famille), prenom }. Gère « Nom, Prénom » et
+// l'ordre occidental « Prénom Nom » (dernier mot = nom de famille).
+function separerNomPrenom(nomComplet) {
+  const s = sansLien(String(nomComplet || '')).trim();
+  if (!s) return { nom: '', prenom: '' };
+  if (s.includes(',')) {
+    const i = s.indexOf(',');
+    return { nom: s.slice(0, i).trim(), prenom: s.slice(i + 1).trim() };
+  }
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { nom: s, prenom: '' };
+  return { nom: parts[parts.length - 1], prenom: parts.slice(0, -1).join(' ') };
+}
+
+// --- Références citées via API bibliographique (fonctions pures, testables) ---
+
+// Parse une réponse Crossref /works/{doi} -> liste de références citées.
+function refsDepuisCrossref(json) {
+  const msg = json && json.message ? json.message : json;
+  const refs = (msg && msg.reference) || [];
+  const out = [];
+  for (const r of refs) {
+    const doi = normDoi(r.DOI || r.doi || '');
+    const titre = String(
+      r['article-title'] || r['volume-title'] || r['journal-title'] || r.unstructured || ''
+    ).trim();
+    const an = String(r.year || '').match(/\d{4}/);
+    const surnames = r.author ? [nomFamille(r.author)].filter(Boolean) : [];
+    out.push({ doi, titre, annee: an ? an[0] : '', auteurs: surnames, brut: String(r.unstructured || '') });
+  }
+  return out;
+}
+
+// Parse une liste de works OpenAlex (déjà résolus) -> références citées.
+function refsDepuisOpenAlexWorks(works) {
+  const out = [];
+  for (const w of works || []) {
+    const doi = normDoi(w.doi || (w.ids && w.ids.doi) || '');
+    const titre = String(w.title || w.display_name || '').trim();
+    const annee = w.publication_year ? String(w.publication_year) : '';
+    const surnames = [];
+    for (const a of w.authorships || []) {
+      const nom = (a.author && a.author.display_name) || a.raw_author_name || '';
+      const f = nomFamille(nom);
+      if (f) surnames.push(f);
+    }
+    out.push({ doi, titre, annee, auteurs: surnames });
+  }
+  return out;
+}
+
+// Construit le contenu d'une note de référence provisoire (via modèle).
+function construireReference(ref, cfg) {
+  const authorLinks = ref.auteurs.map((a) => '[[' + a + ']]').join('\n');
+  const vars = {
+    authorLinks,
+    name: ref.nom,
+    year: ref.annee,
+    firstAuthor: ref.premierAuteur,
+  };
+  return appliquerModele(cfg.modeleReference, vars) + '\n';
+}
+
+//#endregion 3 · Références Zotero — parsing & appariement
 
 /* ---------- Moteur de suggestions : similarité lexicale (TF-IDF) -------- */
 
@@ -1594,6 +1678,145 @@ function cosinusVecteurs(a, b) {
   let d = 0;
   for (let i = 0; i < n; i++) d += a[i] * b[i];
   return d;
+}
+
+// Remplace les variables {{var}} d'un modèle par leurs valeurs.
+function appliquerModele(modele, vars) {
+  return String(modele).replace(/{{\s*(\w+)\s*}}/g, (m, k) =>
+    vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : ''
+  );
+}
+
+// Calcule les plages [from,to] à supprimer pour retirer les définitions de
+// notes de bas de page « orphelines » gérées par le plugin (celles dont
+// l'appel [^label] a disparu du corps ET dont le bloc contient un lien [[…]]).
+// Retire aussi l'en-tête de section s'il ne reste plus aucune définition.
+// Fonction pure (testée hors ligne) : ne dépend que de la chaîne du document.
+function rangesNotesOrphelines(docStr, titre) {
+  const lignes = docStr.split('\n');
+  const offsets = [];
+  let acc = 0;
+  for (const l of lignes) { offsets.push(acc); acc += l.length + 1; }
+  const total = docStr.length;
+  const lineStart = (i) => offsets[i];
+  const lineEndExcl = (i) => (i + 1 < lignes.length ? offsets[i + 1] : total);
+
+  // Appels de note réellement utilisés (on ignore les marqueurs de définition).
+  const refs = new Set();
+  for (let i = 0; i < lignes.length; i++) {
+    const line = lignes[i];
+    const re = /\[\^([^\]\s]+)\]/g;
+    let m;
+    while ((m = re.exec(line)) !== null) {
+      const after = line.slice(m.index + m[0].length);
+      if (after.startsWith(':')) continue; // c'est une définition
+      refs.add(m[1]);
+    }
+  }
+
+  // Définitions et étendue de leur bloc (lignes indentées suivantes).
+  const defs = [];
+  for (let i = 0; i < lignes.length; i++) {
+    const d = lignes[i].match(/^[ \t]*\[\^([^\]]+)\]:/);
+    if (!d) continue;
+    let j = i;
+    while (j + 1 < lignes.length && /^[ \t]/.test(lignes[j + 1])) j++;
+    const gere = /\[\[/.test(lignes.slice(i, j + 1).join('\n'));
+    defs.push({ label: d[1], i, j, gere });
+  }
+
+  const ranges = [];
+  for (const dd of defs) {
+    if (!(dd.gere && !refs.has(dd.label))) continue;
+    let last = dd.j;
+    if (dd.j + 1 < lignes.length && lignes[dd.j + 1].trim() === '') last = dd.j + 1;
+    ranges.push({ from: lineStart(dd.i), to: lineEndExcl(last) });
+  }
+
+  const restantes = defs.filter((dd) => !(dd.gere && !refs.has(dd.label)));
+  if (restantes.length === 0 && titre) {
+    for (let h = 0; h < lignes.length; h++) {
+      if (lignes[h].trim() === '**' + titre + '**') {
+        let start = h;
+        if (h - 1 >= 0 && lignes[h - 1].trim() === '---') start = h - 1;
+        while (start - 1 >= 0 && lignes[start - 1].trim() === '') start--;
+        let last = h;
+        if (h + 1 < lignes.length && lignes[h + 1].trim() === '') last = h + 1;
+        ranges.push({ from: lineStart(start), to: lineEndExcl(last) });
+        break;
+      }
+    }
+  }
+
+  ranges.sort((a, b) => a.from - b.from);
+  const merged = [];
+  for (const r of ranges) {
+    if (merged.length && r.from <= merged[merged.length - 1].to) {
+      merged[merged.length - 1].to = Math.max(merged[merged.length - 1].to, r.to);
+    } else merged.push({ from: r.from, to: r.to });
+  }
+  return merged;
+}
+
+// Couleurs standard de Zotero -> nom lisible (pour la propriété « couleur »).
+const COULEURS_ZOTERO = {
+  '#ffd400': 'jaune',
+  '#ff6666': 'rouge',
+  '#5fb236': 'vert',
+  '#2ea8e5': 'bleu',
+  '#a28ae5': 'violet',
+  '#e56eee': 'magenta',
+  '#f19837': 'orange',
+  '#aaaaaa': 'gris',
+};
+function nomCouleur(c) {
+  if (!c) return '';
+  const h = String(c).trim().toLowerCase();
+  return COULEURS_ZOTERO[h] || h;
+}
+
+// Neutralise le contenu des liens [[…]] en conservant la longueur du texte :
+// les points d'une citation (« p. 2 ») ne doivent pas passer pour des fins de
+// phrase. Les positions calculées restent donc valables sur le texte d'origine.
+function masquerLiens(texte) {
+  return String(texte).replace(/\[\[[^\]]*\]\]/g, (m) => '·'.repeat(m.length));
+}
+
+// Fin de la phrase contenant l'offset (index juste après le point/? /! ).
+// Sert au dépôt « par phrase » : place l'appel de note en fin de phrase.
+function finDePhrase(texte, off) {
+  const re = /[.?!…](?=\s|$)/g;
+  re.lastIndex = Math.max(0, Math.min(off, texte.length));
+  const m = re.exec(masquerLiens(texte));
+  return m ? m.index + 1 : texte.length;
+}
+
+// Début de la phrase contenant l'offset : index juste après le dernier
+// point/? /! qui précède l'offset, espaces de tête ignorés.
+// Comme finDePhrase, mais renvoie l'index DE la ponctuation finale (donc juste
+// avant le point), afin de poser l'appel de note avant celui-ci.
+function finDePhraseAvantPonct(texte, off) {
+  const re = /[.?!…](?=\s|$)/g;
+  re.lastIndex = Math.max(0, Math.min(off, texte.length));
+  const m = re.exec(masquerLiens(texte));
+  if (!m) return texte.length;
+  // Typographie française : « … frontière ? » garde son espace avant le point
+  // d'interrogation. On remonte donc avant l'espace qui précède la ponctuation.
+  let i = m.index;
+  while (i > 0 && /[ \t\u00a0\u202f]/.test(texte[i - 1])) i--;
+  return i;
+}
+
+function debutPhrase(texte, off) {
+  const re = /[.?!…](?=\s|$)/g;
+  const masque = masquerLiens(texte);
+  let start = 0, m;
+  while ((m = re.exec(masque)) !== null) {
+    if (m.index + 1 <= off) start = m.index + 1;
+    else break;
+  }
+  while (start < texte.length && /\s/.test(texte[start])) start++;
+  return start;
 }
 
 // Certains modules de Zotero rangent leurs réglages dans un élément de la
@@ -1864,209 +2087,6 @@ function extraireBlocs(contenu, cfg) {
   return blocs;
 }
 
-// Cherche une source Zotero correspondante (1er auteur + année).
-// Noms de famille (minuscule) des auteurs cités d'une référence.
-function surnamesReference(ref) {
-  return (ref && ref.auteurs ? ref.auteurs : [])
-    .map((a) => sansAccents(sansLien(String(a)).trim().split(/\s+/).pop()))
-    .filter(Boolean);
-}
-
-// Force d'appariement entre une référence citée et une entrée d'index Zotero.
-// 'fort'   : année + TOUS les auteurs cités présents (haute certitude).
-// 'faible' : « et al. » (seul le premier auteur connu) + année + 1er auteur présent.
-// null     : pas de correspondance.
-function appariementSource(ref, entree) {
-  if (!ref || !entree) return null;
-  const an = ref.annee4 || ref.annee;
-  if (!an || !entree.annee || entree.annee !== an) return null;
-  const rs = surnamesReference(ref);
-  if (!rs.length) return null;
-  const liste = entree.surnames || [];
-  const es = new Set(liste);
-  if (!es.size) return null;
-  if (ref.etAl) {
-    // « Renn et al., 2011 » doit désigner une fiche dont Renn est le PREMIER
-    // auteur. Se contenter de sa présence quelque part dans la liste rattachait
-    // à des travaux où l'auteur cité n'est que co-signataire : vérifié, quatre
-    // faux appariements sur vingt-six.
-    return rs[0] === liste[0] ? 'fort' : (es.has(rs[0]) ? 'faible' : null);
-  }
-  return rs.every((s) => es.has(s)) ? 'fort' : null;
-}
-
-// Tous les candidats (les 'fort' d'abord) pour une référence citée.
-function candidatsSource(ref, indexZotero) {
-  const out = [];
-  for (const z of indexZotero || []) {
-    const m = appariementSource(ref, z);
-    if (m) out.push({ entree: z, force: m });
-  }
-  out.sort((a, b) => (a.force === b.force ? 0 : a.force === 'fort' ? -1 : 1));
-  return out;
-}
-
-// Source Zotero CERTAINE pour l'auto-rattachement (construireNote) : un unique
-// appariement 'fort', jamais pour une référence à suffixe (2005a/b, ambiguë).
-// La cible d'un libellé dépend de l'article qui le porte : « Renn, 2008 »
-// désigne le chapitre chez l'un et le livre chez l'autre. La table est donc à
-// deux étages, { libellé: { source: cible, __defaut: cible } }. L'ancienne forme
-// plate, { libellé: cible }, reste lue telle quelle.
-function cibleDeReference(table, nom, source) {
-  const e = table && table[nom];
-  if (!e) return null;
-  if (typeof e === 'string') return e;
-  if (source && e[source]) return e[source];
-  return e.__defaut || null;
-}
-
-function migrerCorrespondances(table) {
-  const out = {};
-  for (const [nom, v] of Object.entries(table || {})) {
-    out[nom] = typeof v === 'string' ? { __defaut: v } : v;
-  }
-  return out;
-}
-
-// Clé d'œuvre : le DOI s'il existe, sinon le titre normalisé. Les tirets
-// Unicode sont ramenés à l'ASCII, « Co-opetition » et « Co‐opetition » étant le
-// même travail. Un titre trop court n'identifie rien.
-// Deux libellés qui ne diffèrent que par une conjonction, un accent, un trait
-// d'union ou une virgule désignent la même référence : « Garcia-Aristizabal »
-// et « GarciaAristizabal », « Castaner » et « Castan~er », « Gentner et al., »
-// et « Gentner, et al., ». La normalisation des conjonctions, posée à la
-// création, ne les attrape pas.
-function cleLibelle(nom) {
-  let x = sansAccents(nom || '');
-  x = x.replace(/\s+(?:et|and|&)\s+/g, '&');
-  x = x.replace(/\bet\s+al\.?/g, 'etal');
-  return x.replace(/[^a-z0-9&]+/g, '');
-}
-
-// Un « titre » qui commence par un nom suivi d'initiales n'en est pas un : c'est
-// une liste d'auteurs tronquée, « Lawrence, M.G., S. Williams… ». La retenir
-// fabriquerait une œuvre fantôme et une note au nom absurde.
-function titreCredible(t) {
-  const x = String(t || '').trim();
-  if (x.length < 10) return false;
-  if (/^[A-ZÀ-Ý][\wÀ-ÿ'’-]+,\s*(?:[A-Z]\.\s*){1,4}/.test(x)) return false;
-  return /[a-zà-ÿ]{3}/.test(x);
-}
-
-// « Lawrence, M.G., S. Williams… 2022. Characteristics, potentials… One Earth
-// 5: 44–61. » : le titre suit l'année. On le récupère plutôt que de jeter
-// l'entrée, et l'on rend une chaîne vide si rien de crédible n'en sort.
-function titreDansReference(texte, annee) {
-  const t = String(texte || '');
-  if (!annee) return '';
-  const m = new RegExp(annee + '\\)?\\s*[.,]\\s*(.+?)(?:\\.\\s|\\.$)').exec(t);
-  const cand = m ? m[1].trim() : '';
-  return titreCredible(cand) ? cand : '';
-}
-
-function cleOeuvre(titre, doi) {
-  if (doi) return 'doi:' + doi;
-  const t = sansAccents(titre || '')
-    .replace(/[\u2010-\u2015\u2212]/g, '-')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-  return t.length >= 12 ? 'titre:' + t.slice(0, 44) : '';
-}
-
-// Nom de note pour une œuvre détachée d'un libellé partagé. Le qualificatif
-// vient de l'ŒUVRE, jamais de l'article : le suffixe a/b des styles n'a de sens
-// que dans une bibliographie donnée et désignerait deux travaux d'un article à
-// l'autre.
-function nomOeuvreDetachee(libelle, titre) {
-  const t = String(titre || '').replace(/\s+/g, ' ').trim();
-  if (!t) return libelle;
-  let court = t.split(/\s*[:;–—]\s*|\.\s+/)[0].trim();
-  if (court.length < 10) court = t;
-  if (court.length > 48) court = court.slice(0, 48).replace(/\s+\S*$/, '');
-  court = court.replace(/[\\/:*?"<>|#^\[\]]/g, ' ').replace(/\s+/g, ' ').trim();
-  return court ? libelle + ' (' + court + ')' : libelle;
-}
-
-function trouverSourceZotero(ref, indexZotero) {
-  if (!ref) return null;
-  if (ref.annee && ref.annee4 && ref.annee !== ref.annee4) return null;
-  const forts = (indexZotero || []).filter((z) => appariementSource(ref, z) === 'fort');
-  return forts.length === 1 ? forts[0].basename : null;
-}
-
-// Parse le nom d'une référence en attente (« Auteurs, année ») en objet ref,
-// pour tenter un appariement Zotero. Retourne null si non parsable.
-function refDepuisNomAttente(nom) {
-  const s = String(nom || '').trim();
-  const m = s.match(/^(.*?),\s*(\d{4}[a-z]?)\b.*$/);
-  if (!m) return null;
-  let auts = m[1].trim();
-  const annee = m[2];
-  const etAl = /\bet\s+al\.?/i.test(auts);
-  auts = auts.replace(/\bet\s+al\.?/ig, ' ').replace(/&|\bet\b|,|;/g, ' ').replace(/\s+/g, ' ').trim();
-  const auteurs = auts.split(' ').filter(Boolean);
-  if (!auteurs.length && !etAl) return null;
-  return { auteurs, annee, annee4: annee.replace(/[a-z]$/, ''), etAl };
-}
-
-// --- Références citées via API bibliographique (fonctions pures, testables) ---
-
-// Nom de famille (dernier mot, minuscule) d'un nom d'auteur libre.
-function nomFamille(s) {
-  const t = sansLien(String(s || '')).replace(/,.*$/, '').trim(); // « Nom, Prénom » -> « Nom »
-  const parts = t.split(/\s+/).filter(Boolean);
-  return (parts.length ? parts[parts.length - 1] : t).toLowerCase();
-}
-
-// Sépare un nom complet en { nom (famille), prenom }. Gère « Nom, Prénom » et
-// l'ordre occidental « Prénom Nom » (dernier mot = nom de famille).
-function separerNomPrenom(nomComplet) {
-  const s = sansLien(String(nomComplet || '')).trim();
-  if (!s) return { nom: '', prenom: '' };
-  if (s.includes(',')) {
-    const i = s.indexOf(',');
-    return { nom: s.slice(0, i).trim(), prenom: s.slice(i + 1).trim() };
-  }
-  const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length <= 1) return { nom: s, prenom: '' };
-  return { nom: parts[parts.length - 1], prenom: parts.slice(0, -1).join(' ') };
-}
-
-// Parse une réponse Crossref /works/{doi} -> liste de références citées.
-function refsDepuisCrossref(json) {
-  const msg = json && json.message ? json.message : json;
-  const refs = (msg && msg.reference) || [];
-  const out = [];
-  for (const r of refs) {
-    const doi = normDoi(r.DOI || r.doi || '');
-    const titre = String(
-      r['article-title'] || r['volume-title'] || r['journal-title'] || r.unstructured || ''
-    ).trim();
-    const an = String(r.year || '').match(/\d{4}/);
-    const surnames = r.author ? [nomFamille(r.author)].filter(Boolean) : [];
-    out.push({ doi, titre, annee: an ? an[0] : '', auteurs: surnames, brut: String(r.unstructured || '') });
-  }
-  return out;
-}
-
-// Parse une liste de works OpenAlex (déjà résolus) -> références citées.
-function refsDepuisOpenAlexWorks(works) {
-  const out = [];
-  for (const w of works || []) {
-    const doi = normDoi(w.doi || (w.ids && w.ids.doi) || '');
-    const titre = String(w.title || w.display_name || '').trim();
-    const annee = w.publication_year ? String(w.publication_year) : '';
-    const surnames = [];
-    for (const a of w.authorships || []) {
-      const nom = (a.author && a.author.display_name) || a.raw_author_name || '';
-      const f = nomFamille(nom);
-      if (f) surnames.push(f);
-    }
-    out.push({ doi, titre, annee, auteurs: surnames });
-  }
-  return out;
-}
-
 // Construit le contenu canonique d'une note d'annotation (via modèles).
 function construireNote(bloc, sourceBasename, indexZotero, cfg, ctxSource) {
   ctxSource = ctxSource || {};
@@ -2173,18 +2193,6 @@ function construireNote(bloc, sourceBasename, indexZotero, cfg, ctxSource) {
   fm.push('---');
 
   return fm.join('\n') + '\n' + corps + '\n';
-}
-
-// Construit le contenu d'une note de référence provisoire (via modèle).
-function construireReference(ref, cfg) {
-  const authorLinks = ref.auteurs.map((a) => '[[' + a + ']]').join('\n');
-  const vars = {
-    authorLinks,
-    name: ref.nom,
-    year: ref.annee,
-    firstAuthor: ref.premierAuteur,
-  };
-  return appliquerModele(cfg.modeleReference, vars) + '\n';
 }
 
 /* =========================================================================
