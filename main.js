@@ -14120,6 +14120,32 @@ class MoteurArticulation {
       j.createDiv({ cls: 'zfa-artic-jauge-in' }).style.width = Math.min(100, n.avancement) + '%';
     }
 
+    const cols = (this.ctx.ordre && this.ctx.ordre()) || [];
+    if (cols.length) {
+      const tb = corps.createDiv({ cls: 'zfa-artic-props' });
+      for (const col of cols) {
+        const rg = tb.createDiv({ cls: 'zfa-artic-prop' });
+        rg.createSpan({ cls: 'zfa-artic-prop-cle', text: col.nom });
+        const val = rg.createSpan({ cls: 'zfa-artic-prop-val' });
+        if (!this._rendreValeurTypee(val, col, n.ref)) {
+          const brut = col.valeur ? col.valeur(n.ref) : null;
+          val.setText(MoteurArticulation.texteValeur(brut && typeof brut === 'object' && 'data' in brut ? brut.data : brut));
+        }
+      }
+    }
+
+    const pied = carte.createDiv({ cls: 'zfa-artic-famchoix' });
+    const sel = pied.createEl('select', { cls: 'zfa-artic-famsel' });
+    for (const f of (this.greffon.settings.famillesTaches || [])) {
+      sel.createEl('option', { value: f.id, text: f.nom || f.id });
+    }
+    sel.value = n.famille || '';
+    sel.addEventListener('pointerdown', (e) => e.stopPropagation());
+    sel.addEventListener('change', async () => {
+      await this.ctx.poserFamille(n.ref, sel.value);
+      this.dessiner();
+    });
+
     carte.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target.closest('.zfa-artic-accroche')) return;
       this.glisserNoeud(e, n.ref, gn);
@@ -14141,6 +14167,43 @@ class MoteurArticulation {
       gn.appendChild(a);
     }
     g.appendChild(gn);
+  }
+
+  // Rend une valeur de propriété avec le widget de type d'Obsidian. true si le
+  // widget a pris la main, false sinon (l'appelant retombe sur du texte).
+  _rendreValeurTypee(hote, col, ref) {
+    const id = String(col.id || '');
+    if (id.startsWith('file.') || id.startsWith('formula.')) return false;
+    const widgets = this.app.metadataTypeManager
+      && this.app.metadataTypeManager.registeredTypeWidgets;
+    const w = widgets && widgets[col.type];
+    if (!w || typeof w.render !== 'function') return false;
+    const v = col.valeur ? col.valeur(ref) : null;
+    const brut = (v && typeof v === 'object' && 'data' in v) ? v.data : v;
+    try {
+      w.render(hote, brut == null ? '' : brut, {
+        app: this.app, key: col.champ, sourcePath: ref + '.md',
+        blur: () => {},
+        onChange: (nv) => this.greffon.majTache(ref, { [col.champ]: nv }),
+      });
+      hote.addClass('bases-metadata-value', 'metadata-property-value');
+      return true;
+    } catch (e) { hote.empty(); return false; }
+  }
+
+  // Réplique locale de VueFriseBase.texteValeur (hors de portée depuis ce
+  // module) : stringifie une Value de base sans jamais afficher « [object Object] ».
+  static texteValeur(v) {
+    if (v === null || v === undefined) return '';
+    if (Array.isArray(v)) return v.map((x) => MoteurArticulation.texteValeur(x)).filter(Boolean).join(', ');
+    if (typeof v === 'object') {
+      if (typeof v.toString === 'function') {
+        const t = v.toString();
+        return t === '[object Object]' ? '' : t;
+      }
+      return '';
+    }
+    return String(v);
   }
 
   dessinerArete(g, a) {
