@@ -827,8 +827,6 @@ const TEXTES = {
     "Un canvas désigne cette tâche, mais sa note n'existe pas. Elle a pu être renommée ou supprimée ; rien n'a été effacé.": "A canvas points at this task, but its note does not exist. It may have been renamed or deleted; nothing was erased.",
     "Rien à signaler : vos tâches sont cohérentes.": "Nothing to report: your tasks are consistent.",
     "Tâches : incohérences": "Tasks: inconsistencies",
-    "Frise des tâches": "Task timeline",
-    "Tâches : frise": "Tasks: timeline",
     "semaine": "week",
     "mois": "month",
     "trimestre": "quarter",
@@ -921,14 +919,6 @@ const DEFAULT_SETTINGS = {
   dossierTaches: '',            // rôle : où déposer les notes de tâche
   listeRappelsDefaut: 'Doctorat - Tâches',
   couleurCompositionCanvas: '6',
-  ganttZoom: 'mois',            // jour | semaine | mois | trimestre | année
-  ganttMasquerTerminees: false,
-  ganttLibelleSemaine: 'numero', // numero | dates | les-deux
-  ganttTri: 'date',             // date | priorite | intitule
-  ganttRowHeight: 'medium',    // '' | medium | tall | extra, comme les bases
-  ganttColumnSize: null,
-  ganttTriColonne: null,
-  ganttTriColonneSens: 1,
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes
   // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque
@@ -3223,11 +3213,6 @@ class Ariane extends obsidian.Plugin {
       callback: () => this.rattacherToutesReferences(),
     });
     this.addCommand({
-      id: 'frise-taches',
-      name: tr('Tâches : frise'),
-      callback: () => this.ouvrirVueGantt(),
-    });
-    this.addCommand({
       id: 'incoherences-taches',
       name: tr('Tâches : incohérences'),
       callback: () => this.ouvrirVueIncoherences(),
@@ -3392,9 +3377,7 @@ class Ariane extends obsidian.Plugin {
     this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
     this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
-    this.registerView(TYPE_VUE_GANTT, (leaf) => new VueGanttTaches(leaf, this));
-    // Vue de base : rend false si Bases est désactivé, auquel cas la vue
-    // autonome reste le seul accès à la frise, et rien n'est perdu.
+    // La frise est une vue de base : elle n'existe que si Bases est actif.
     if (typeof this.registerBasesView === 'function') {
       const Vue = fabriquerVueFriseBase(this);
       this.registerBasesView(TYPE_VUE_BASE_FRISE, {
@@ -10243,14 +10226,6 @@ class Ariane extends obsidian.Plugin {
     return n;
   }
 
-  async ouvrirVueGantt() {
-    const ex = this.app.workspace.getLeavesOfType(TYPE_VUE_GANTT);
-    if (ex.length) { this.app.workspace.revealLeaf(ex[0]); return; }
-    const feuille = this.app.workspace.getLeaf(true);
-    await feuille.setViewState({ type: TYPE_VUE_GANTT, active: true });
-    this.app.workspace.revealLeaf(feuille);
-  }
-
   // La référence d'une tâche, déduite du chemin. On la reconnaît à sa forme
   // plutôt qu'à son dossier : une tâche déplacée reste une tâche.
   refDeChemin(chemin) {
@@ -11866,7 +11841,6 @@ class ModaleNouvelleTache extends obsidian.Modal {
 
 const TYPE_VUE_REFS = 'zfa-references';
 const TYPE_VUE_INCOHERENCES = 'zfa-taches-incoherences';
-const TYPE_VUE_GANTT = 'zfa-taches-gantt';
 const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 
 // Valeurs par défaut des réglages d'une frise de base. Ils ne passent plus par
@@ -11922,7 +11896,6 @@ class MoteurFrise {
     this.ctx = contexte;
     this.replies = new Set();
     this._cascade = null;
-    this._filtre = {};
     this._flecheSelectionnee = null;
     racine.addClass('zfa-gantt');
     // La frise capte le clavier pour supprimer une flèche sélectionnée.
@@ -12074,7 +12047,6 @@ class MoteurFrise {
     }
     const nTotal = taches.length;
     if (this.ctx.lire('masquerTerminees')) taches = this.sansLesCloses(taches);
-    if (this.ctx.avecFiltres) taches = Ariane.filtrerTaches(taches, this._filtre);
     // Priorité : un tri posé sur un en-tête (geste le plus explicite), sinon le
     // tri natif de la base (menu Trier, multi-critères), sinon le repli par date.
     const colTri = this.ctx.lire('triColonne');
@@ -12156,11 +12128,9 @@ class MoteurFrise {
       }
     }
 
-    // Le bandeau complet de réglages n'appartient pas à une base : dans la vue
-    // de base, tout passe par « Configurer la vue ». On y garde juste une barre
-    // légère pour l'échelle et le retour à aujourd'hui, façon barre d'outils.
-    if (this.ctx.avecFiltres) this.dessinerReglages(c, nTotal, planifiees.length);
-    else if (this.ctx.echelleReglable) this.dessinerBarreVue(c);
+    // Les réglages de la frise passent par « Configurer la vue » de la base ;
+    // seule une barre d'outils légère (échelle, aujourd'hui…) reste à l'écran.
+    if (this.ctx.echelleReglable) this.dessinerBarreVue(c);
     this.dessinerCascade(c);
     if (nonPlanifiees.length) this.dessinerTiroir(c, nonPlanifiees);
 
@@ -12340,92 +12310,6 @@ class MoteurFrise {
     const cible = Math.max(0, x - this._droite.clientWidth / 2);
     if (this._droite.scrollTo) this._droite.scrollTo({ left: cible, behavior: 'smooth' });
     else this._droite.scrollLeft = cible;
-  }
-
-  dessinerReglages(c, nTotal, nPlanifiees) {
-    const b = c.createDiv({ cls: 'zfa-gantt-barre' });
-    for (const z of Object.keys(Ariane.ZOOMS_GANTT)) {
-      this.bouton(b, tr(z), async () => {
-        await this.ctx.ecrire('zoom', z); this.dessiner();
-      }, this.zoom === z);
-    }
-    b.createSpan({ cls: 'zfa-gantt-separateur' });
-    const suiteH = { short: 'medium', medium: 'tall', tall: 'extra', extra: 'short' };
-    const nomsH = { short: tr('lignes courtes'), medium: tr('lignes moyennes'),
-                    tall: tr('lignes hautes'), extra: tr('lignes très hautes') };
-    const hCourant = String(this.ctx.lire('rowHeight') || 'short') === ''
-      ? 'short' : String(this.ctx.lire('rowHeight') || 'short');
-    this.bouton(b, nomsH[hCourant] || nomsH.short, async () => {
-      await this.ctx.ecrire('rowHeight', suiteH[hCourant] || 'medium');
-      this.dessiner();
-    });
-    b.createSpan({ cls: 'zfa-gantt-separateur' });
-    this.bouton(b, tr('Masquer les terminées'), async () => {
-      await this.ctx.ecrire('masquerTerminees', !this.ctx.lire('masquerTerminees'));
-      this.dessiner();
-    }, !!this.ctx.lire('masquerTerminees'));
-    if (this.zoom === 'semaine') {
-      const suite = { numero: 'dates', dates: 'les-deux', 'les-deux': 'numero' };
-      const libelles = { numero: tr('nº de semaine'), dates: tr('dates'), 'les-deux': tr('les deux') };
-      const mode = this.ctx.lire('libelleSemaine') || 'numero';
-      this.bouton(b, libelles[mode], async () => {
-        await this.ctx.ecrire('libelleSemaine', suite[mode]); this.dessiner();
-      });
-    }
-    b.createSpan({ cls: 'zfa-gantt-compte',
-      text: nPlanifiees + tr(' sur ') + nTotal + tr(' tâche(s) datée(s)') });
-
-    if (!this.ctx.avecFiltres) return;
-    const f = this._filtre;
-    const b2 = c.createDiv({ cls: 'zfa-gantt-barre zfa-gantt-barre-filtres' });
-
-    const champ = b2.createEl('input', { cls: 'zfa-gantt-recherche',
-      attr: { type: 'search', placeholder: tr('Chercher un intitulé ou une référence…') } });
-    champ.value = f.texte || '';
-    // On redessine à la frappe : la frise est locale, il n'y a rien à attendre.
-    champ.addEventListener('input', () => {
-      f.texte = champ.value;
-      this._focusRecherche = true;
-      this.dessiner();
-    });
-
-    const liste = (libelle, cle, options) => {
-      const sel = b2.createEl('select', { cls: 'dropdown zfa-gantt-liste' });
-      for (const [texte, valeur] of options) {
-        const o = sel.createEl('option', { text: texte });
-        o.value = valeur;
-      }
-      sel.value = cle === 'tri' ? (this.ctx.lire('tri') || 'date') : (f[cle] || '');
-      sel.title = libelle;
-      sel.addEventListener('change', async () => {
-        if (cle === 'tri') {
-          await this.ctx.ecrire('tri', sel.value);
-        } else {
-          f[cle] = sel.value;
-        }
-        this.dessiner();
-      });
-      return sel;
-    };
-
-    liste(tr('Statut'), 'statut', [[tr('Tous les statuts'), ''],
-      ['à faire', 'à faire'], ['en cours', 'en cours'], ['en attente', 'en attente'],
-      ['terminée', 'terminée'], ['abandonnée', 'abandonnée']]);
-    liste(tr('Priorité'), 'priorite', [[tr('Toutes priorités'), ''],
-      [tr('haute'), 'haute'], [tr('moyenne'), 'moyenne'], [tr('basse'), 'basse']]);
-    liste(tr('Tri'), 'tri', [[tr('Par date'), 'date'],
-      [tr('Par priorité'), 'priorite'], [tr('Par intitulé'), 'intitule']]);
-
-    if (f.texte || f.statut || f.priorite) {
-      this.bouton(b2, tr('Tout afficher'), () => {
-        this._filtre = {};
-        this.dessiner();
-      });
-    }
-    if (this._focusRecherche) {
-      this._focusRecherche = false;
-      window.setTimeout(() => { champ.focus(); champ.setSelectionRange(999, 999); }, 0);
-    }
   }
 
   dessinerCascade(c) {
@@ -13778,42 +13662,7 @@ class MoteurFrise {
   detruire() { this.racine.empty(); }
 }
 
-/* ---- Enveloppe 1 : la frise en vue autonome ---------------------------- */
-
-// Elle survit à tout : elle marche sans base, et elle reste le repli si
-// registerBasesView échoue, ce qui arrive quand Bases est désactivé.
-class VueGanttTaches extends obsidian.ItemView {
-  constructor(feuille, greffon) {
-    super(feuille);
-    this.greffon = greffon;
-  }
-
-  getViewType() { return TYPE_VUE_GANTT; }
-  getDisplayText() { return tr('Frise des tâches'); }
-  getIcon() { return 'calendar-range'; }
-
-  async onOpen() {
-    const g = this.greffon;
-    this.moteur = new MoteurFrise(g, this.contentEl, {
-      avecFiltres: true,
-      taches: () => g.tachesPourGantt(),
-      lire: (cle) => g.settings['gantt' + cle.charAt(0).toUpperCase() + cle.slice(1)],
-      ecrire: async (cle, v) => {
-        g.settings['gantt' + cle.charAt(0).toUpperCase() + cle.slice(1)] = v;
-        await g.saveSettings();
-      },
-    });
-    this.moteur.dessiner();
-    this.registerEvent(this.app.metadataCache.on('changed', (f) => {
-      if (!g.refDeChemin(f.path)) return;
-      g.antirebond('gantt:vue', () => this.moteur.dessiner(), 600);
-    }));
-  }
-
-  async onClose() { if (this.moteur) this.moteur.detruire(); }
-}
-
-/* ---- Enveloppe 2 : la frise comme vue d'une base ----------------------- */
+/* ---- La frise comme vue d'une base ----------------------------------- */
 
 // C'est la base qui filtre, qui trie et qui range les réglages, chacun dans sa
 // propre vue du fichier .base. Deux frises peuvent donc coexister dans une même
@@ -13829,7 +13678,6 @@ function fabriquerVueFriseBase(greffon) {
 
     onload() {
       this.moteur = new MoteurFrise(this.greffon, this.conteneur, {
-        avecFiltres: false,
         echelleReglable: true,
         colonnes: () => this.colonnes(),
         taches: () => this.tachesDeLaBase(),

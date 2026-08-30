@@ -806,13 +806,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 
 .zfa-gantt { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
-.zfa-gantt-barre {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
-  padding: 8px 14px; flex-shrink: 0;
-  background: var(--background-primary);
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
 /* Barre d'outils légère de la vue de base : à droite, comme les actions de la
    barre native de Bases juste au-dessus. */
 .zfa-gantt-barre-vue {
@@ -858,14 +851,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-echelle-opt.is-active {
   background: var(--interactive-accent); color: var(--text-on-accent);
 }
-.zfa-gantt-separateur {
-  width: 1px; height: 16px; margin: 0 3px;
-  background: var(--background-modifier-border);
-}
-.zfa-gantt-compte {
-  margin-left: auto; color: var(--text-faint); font-size: var(--font-ui-smaller);
-}
-
 .zfa-gantt-cascade {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   padding: 7px 14px; flex-shrink: 0; font-size: var(--font-ui-smaller);
@@ -1186,14 +1171,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-groupe.zfa-gantt-cible .zfa-gantt-barre-tache {
   stroke: var(--interactive-accent); stroke-width: 2;
 }
-
-.zfa-gantt-barre-filtres { padding-top: 0; gap: 6px; }
-.zfa-gantt-recherche {
-  flex: 1 1 180px; min-width: 140px; max-width: 320px;
-  font-size: var(--font-ui-smaller);
-}
-.zfa-gantt-liste { font-size: var(--font-ui-smaller); height: 26px; padding: 0 22px 0 8px; }
-
 
 /* La flèche de tri n'apparaît qu'au survol tant que la colonne n'est pas
    triée, comme dans le tableau des bases. */
