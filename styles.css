@@ -853,52 +853,36 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 
 .zfa-gantt-enveloppe { display: flex; flex: 1; overflow: hidden; position: relative; }
 
+/* La partie gauche emploie le balisage du tableau des bases (bases-table,
+   bases-thead, bases-tr, bases-td) : tout son style vient donc d'Obsidian.
+   On ne pose ici que ce qui tient à la frise. */
 .zfa-gantt-gauche {
-  flex-shrink: 0; display: flex; flex-direction: column; position: relative;
-  background: var(--background-primary);
+  flex-shrink: 0; position: relative; overflow: hidden;
   border-right: var(--bases-table-column-border-width, 1px) solid
-                var(--bases-table-border-color, var(--background-modifier-border));
-  z-index: 5;
+                var(--table-border-color, var(--background-modifier-border));
+  z-index: 5; background: var(--background-primary);
 }
-
-/* L'en-tête reprend le fond, la couleur et la graisse de l'en-tête de tableau
-   des bases, pour que la frise ne détonne pas à côté des autres vues. */
-.zfa-gantt-gauche-entete {
-  height: 56px; flex-shrink: 0; box-sizing: border-box;
-  display: flex; align-items: flex-end;
-  background: var(--bases-table-header-background, var(--background-primary));
-  border-bottom: var(--bases-table-row-border-width, 1px) solid
-                 var(--bases-table-border-color, var(--background-modifier-border));
+.zfa-gantt-table { position: absolute; top: 0; left: 0; }
+.zfa-gantt-table .bases-thead {
+  background-color: var(--bases-table-header-background, var(--background-primary));
 }
-.zfa-gantt-gauche-titre {
-  flex: 1; min-width: 0; box-sizing: border-box;
-  padding: 0 var(--bases-table-cell-edge-padding, 8px) 9px;
-  font-size: var(--bases-table-font-size, 13px);
-  font-weight: var(--bases-table-header-weight, 500);
-  color: var(--bases-table-header-color, var(--text-muted));
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.zfa-gantt-table .bases-tr:hover {
+  background-color: var(--bases-table-row-background-hover, var(--background-modifier-hover));
 }
-.zfa-gantt-gauche-corps { flex: 1; overflow: hidden; position: relative; }
-
-/* La hauteur est posée par le script : elle suit le réglage rowHeight de la
-   base, exactement comme la vue en tableau. */
-.zfa-gantt-libelle {
-  box-sizing: border-box; display: flex; align-items: center;
-  border-bottom: var(--bases-table-row-border-width, 1px) solid
-                 var(--bases-table-border-color, var(--background-modifier-border));
-  font-size: var(--bases-table-font-size, 13px);
-}
-.zfa-gantt-libelle:hover {
-  background: var(--bases-table-row-background-hover, var(--background-modifier-hover));
-}
+.zfa-gantt-cellule-arbre { gap: 0; }
 .zfa-gantt-chevron {
   flex: 0 0 auto; width: 13px; color: var(--text-faint);
   font-size: 0.75em; cursor: pointer;
 }
 .zfa-gantt-cale { flex: 0 0 auto; width: 13px; }
+.zfa-gantt-prise {
+  flex: 0 0 auto; width: 11px; cursor: grab; color: var(--text-faint);
+  opacity: 0; font-size: 11px; line-height: 1; transition: opacity 0.12s;
+}
+.bases-tr:hover .zfa-gantt-prise { opacity: 1; }
+.zfa-gantt-prise:active { cursor: grabbing; }
 .zfa-gantt-point {
-  flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%;
-  margin-right: 7px;
+  flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px;
 }
 .zfa-gantt-titre {
   flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
@@ -906,18 +890,19 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   padding-right: var(--bases-table-cell-edge-padding, 8px);
 }
 .zfa-gantt-titre:hover { color: var(--interactive-accent); }
+.zfa-gantt-valeur {
+  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  padding: 0 var(--bases-table-cell-edge-padding, 8px);
+}
 .zfa-gantt-pourcent {
   flex: 0 0 auto; font-size: var(--font-ui-smaller); color: var(--text-faint);
   font-variant-numeric: tabular-nums;
   padding-right: var(--bases-table-cell-edge-padding, 8px);
 }
-
-.zfa-gantt-poignee-colonne {
-  position: absolute; top: 0; right: -2px; bottom: 0; width: 4px;
-  cursor: col-resize; z-index: 6; transition: background 0.15s;
+.zfa-gantt-insertion {
+  position: absolute; left: 0; right: 0; height: 2px; pointer-events: none;
+  background: var(--interactive-accent); z-index: 7;
 }
-.zfa-gantt-poignee-colonne:hover,
-.zfa-gantt-poignee-colonne:active { background: var(--interactive-accent); }
 
 .zfa-gantt-droite { flex: 1; overflow: auto; position: relative; }
 .zfa-gantt-svg { display: block; }
@@ -1041,32 +1026,17 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-gantt-liste { font-size: var(--font-ui-smaller); height: 26px; padding: 0 22px 0 8px; }
 
-.zfa-gantt-gauche-corps { position: relative; }
+
 .zfa-gantt-prise {
   flex: 0 0 auto; width: 10px; cursor: grab; color: var(--text-faint);
   opacity: 0; font-size: 11px; line-height: 1; transition: opacity 0.12s;
 }
-.zfa-gantt-libelle:hover .zfa-gantt-prise { opacity: 1; }
+
 .zfa-gantt-prise:active { cursor: grabbing; }
 .zfa-gantt-insertion {
   position: absolute; left: 0; right: 0; height: 2px; pointer-events: none;
   background: var(--interactive-accent); z-index: 7;
 }
 
-.zfa-gantt-colonne {
-  flex: 0 0 auto; box-sizing: border-box;
-  width: clamp(var(--bases-table-column-min-width, 72px), 110px,
-               var(--bases-table-column-max-width, 240px));
-  padding: 0 var(--bases-table-cell-edge-padding, 8px);
-  border-left: var(--bases-table-column-border-width, 1px) solid
-               var(--bases-table-border-color, var(--background-modifier-border));
-  font-size: var(--bases-table-font-size, 13px);
-  color: var(--text-normal);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  line-height: 1.4; align-self: stretch; display: flex; align-items: center;
-}
-.zfa-gantt-gauche-entete .zfa-gantt-colonne {
-  flex: 0 0 auto; align-items: flex-end; padding-bottom: 9px;
-  font-weight: var(--bases-table-header-weight, 500);
-  color: var(--bases-table-header-color, var(--text-muted));
-}
+
+

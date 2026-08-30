@@ -928,7 +928,8 @@ const DEFAULT_SETTINGS = {
   ganttLibelleSemaine: 'numero', // numero | dates | les-deux
   ganttLargeurLibelles: 280,
   ganttTri: 'date',             // date | manuel | priorite | intitule
-  ganttRowHeight: 'medium',    // short | medium | tall | extra, comme les bases
+  ganttRowHeight: 'medium',    // '' | medium | tall | extra, comme les bases
+  ganttColumnSize: null,
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes
   // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque
@@ -3409,7 +3410,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
           {
             type: 'dropdown', key: 'rowHeight', displayName: tr('Hauteur de ligne'),
             default: 'medium',
-            options: { short: tr('Fine'), medium: tr('Moyenne'),
+            options: { '': tr('Fine'), medium: tr('Moyenne'),
                        tall: tr('Haute'), extra: tr('Très haute') },
           },
           {
@@ -11763,7 +11764,7 @@ const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 // les réglages d'Ariane : chaque vue d'une base porte les siens.
 const DEFAUTS_FRISE = {
   zoom: 'mois', masquerTerminees: false, libelleSemaine: 'numero',
-  largeurLibelles: 280, tri: 'date', rowHeight: 'medium',
+  largeurLibelles: 280, tri: 'date', rowHeight: 'medium', columnSize: null,
 };
 
 /* =========================================================================
@@ -11820,7 +11821,9 @@ class MoteurFrise {
   // frise s'aligne au pixel près sur les autres vues de la même base.
   // La base de calcul vient du thème, pas d'une valeur écrite en dur.
   get hauteurLigne() {
-    const mult = { short: 1, medium: 2, tall: 4, extra: 8 }[this.ctx.lire('rowHeight')] || 1;
+    // Chez Bases la valeur « fine » est la chaîne vide, pas « short » : s'en
+    // écarter aurait suffi à désaligner les deux vues.
+    const mult = { '': 1, short: 1, medium: 2, tall: 4, extra: 8 }[this.ctx.lire('rowHeight') || ''] || 1;
     let base = 30;
     try {
       const v = parseFloat(this.racine.getCssPropertyValue('--bases-table-row-height'));
@@ -11909,6 +11912,13 @@ class MoteurFrise {
     const cfg = this.calculerEtendue(planifiees, aujourdhui);
     const lignes = this.visibles(planifiees);
     this._H = this.hauteurLigne;
+    // L'en-tête porte deux étages, les mois puis les semaines ou les jours : il
+    // lui faut 44 px au minimum. Au-delà il suit la hauteur de ligne, pour que
+    // les deux colonnes commencent exactement à la même ordonnée.
+    this._hEntete = Math.max(44, this._H);
+    // On pose la variable des bases sur la racine : tout le balisage repris du
+    // tableau s'y accroche, et le thème de Monsieur reste maître du reste.
+    c.style.setProperty('--bases-table-row-height', this._H + 'px');
     this._geo = this.geometrieBarre(this._H);
     this._lignes = planifiees;
     this._cfg = cfg;
@@ -11917,11 +11927,9 @@ class MoteurFrise {
     const env = c.createDiv({ cls: 'zfa-gantt-enveloppe' });
     const gauche = env.createDiv({ cls: 'zfa-gantt-gauche' });
     const droite = env.createDiv({ cls: 'zfa-gantt-droite' });
-    gauche.style.width = (this.ctx.lire('largeurLibelles') || 280) + 'px';
-
     this.dessinerColonneGauche(gauche, lignes);
 
-    const hauteur = HAUTEUR_ENTETE_GANTT + lignes.length * this._H;
+    const hauteur = this._hEntete + lignes.length * this._H;
     const svg = svgEl('svg', { class: 'zfa-gantt-svg', width: cfg.largeur, height: hauteur });
     droite.appendChild(svg);
     this._svg = svg;
@@ -11935,12 +11943,14 @@ class MoteurFrise {
 
     // Les deux colonnes défilent ensemble : sans cet accord, l'arbre et les
     // pistes se décalent dès la trentième ligne et la frise devient illisible.
-    const corpsGauche = gauche.querySelector('.zfa-gantt-gauche-corps');
-    droite.addEventListener('scroll', () => { corpsGauche.scrollTop = droite.scrollTop; });
+    // Le tableau de gauche défile avec la frise : c'est le conteneur qui bouge,
+    // les lignes étant en position absolue comme chez Bases.
+    const table = gauche.querySelector('.zfa-gantt-table');
+    droite.addEventListener('scroll', () => { table.style.top = (-droite.scrollTop) + 'px'; });
 
     droite.scrollLeft = memeX !== null ? memeX
       : Math.max(0, ZotflowAtomiser.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220);
-    if (memeY !== null) { droite.scrollTop = memeY; corpsGauche.scrollTop = memeY; }
+    if (memeY !== null) { droite.scrollTop = memeY; table.style.top = (-memeY) + 'px'; }
   }
 
   // Masquer une méta-tâche close masquerait sa descendance encore vive : on
@@ -12002,11 +12012,11 @@ class MoteurFrise {
       }, this.zoom === z);
     }
     b.createSpan({ cls: 'zfa-gantt-separateur' });
-    const suiteH = { short: 'medium', medium: 'tall', tall: 'extra', extra: 'short' };
-    const nomsH = { short: tr('lignes fines'), medium: tr('lignes moyennes'),
+    const suiteH = { '': 'medium', medium: 'tall', tall: 'extra', extra: '' };
+    const nomsH = { '': tr('lignes fines'), medium: tr('lignes moyennes'),
                     tall: tr('lignes hautes'), extra: tr('lignes très hautes') };
-    const hCourant = this.ctx.lire('rowHeight') || 'short';
-    this.bouton(b, nomsH[hCourant] || nomsH.short, async () => {
+    const hCourant = this.ctx.lire('rowHeight') || '';
+    this.bouton(b, nomsH[hCourant] || nomsH[''], async () => {
       await this.ctx.ecrire('rowHeight', suiteH[hCourant] || 'medium');
       this.dessiner();
     });
@@ -12109,69 +12119,163 @@ class MoteurFrise {
 
   /* ---------------------------- Colonne gauche --------------------------- */
 
-  dessinerColonneGauche(gauche, lignes) {
-    // Quand l'enveloppe en fournit, la partie gauche devient un petit tableau :
-    // l'arbre d'abord, qui porte la hiérarchie et ne se retire pas, puis une
-    // colonne par propriété que la base affiche.
-    const colonnes = (this.ctx.colonnes && this.ctx.colonnes()) || [];
-    const entete = gauche.createDiv({ cls: 'zfa-gantt-gauche-entete' });
-    entete.createSpan({ cls: 'zfa-gantt-gauche-titre', text: tr('Tâche') });
-    for (const col of colonnes) {
-      entete.createSpan({ cls: 'zfa-gantt-colonne', text: col.nom, attr: { title: col.nom } });
-    }
-    const corps = gauche.createDiv({ cls: 'zfa-gantt-gauche-corps' });
-    lignes.forEach((l, rang) => {
-      const r = corps.createDiv({ cls: 'zfa-gantt-libelle' });
-      r.style.height = this._H + 'px';
-      r.dataset.ref = l.ref;
-      r.style.paddingLeft = (10 + l.niveau * 15) + 'px';
-      const prise = r.createSpan({ cls: 'zfa-gantt-prise', text: '⠿' });
-      prise.title = tr('Glisser pour réordonner parmi les tâches de même rang');
-      prise.addEventListener('pointerdown', (e) => this.reordonner(e, l, lignes, rang, corps));
-      if (l.aDesEnfants) {
-        const chev = r.createSpan({ cls: 'zfa-gantt-chevron',
-          text: this.replies.has(l.ref) ? '▸' : '▾' });
-        chev.onclick = (e) => {
-          e.stopPropagation();
-          if (this.replies.has(l.ref)) this.replies.delete(l.ref);
-          else this.replies.add(l.ref);
-          this.dessiner();
-        };
-      } else {
-        r.createSpan({ cls: 'zfa-gantt-cale' });
-      }
-      const point = r.createSpan({ cls: 'zfa-gantt-point' });
-      point.style.background = this.couleur(l.statut);
-      const titre = r.createSpan({ cls: 'zfa-gantt-titre', text: l.intitule });
-      titre.onclick = () => this.ouvrir(l.ref);
-      titre.title = l.ref;
-      if (!colonnes.length && !l.jalon && l.avancement > 0) {
-        r.createSpan({ cls: 'zfa-gantt-pourcent', text: l.avancement + ' %' });
-      }
-      for (const col of colonnes) {
-        const cell = r.createSpan({ cls: 'zfa-gantt-colonne', text: col.valeur(l.ref) });
-        cell.title = col.nom + ' : ' + cell.textContent;
-      }
-      r.addEventListener('contextmenu', (e) => this.menuTache(e, l));
-    });
-    // Poignée de largeur : 280 px conviennent aux intitulés courts, pas à
-    // « Rédiger la partie sur la gouvernance des risques ».
-    const poignee = gauche.createDiv({ cls: 'zfa-gantt-poignee-colonne' });
-    poignee.addEventListener('pointerdown', (e) => {
+  // Icône d'en-tête selon le type de la propriété, comme le fait le tableau
+  // des bases. On interroge le gestionnaire de types d'Obsidian plutôt que de
+  // deviner d'après le nom.
+  iconeColonne(id) {
+    if (String(id).startsWith('file.')) return 'info';
+    if (String(id).startsWith('formula.')) return 'variable';
+    const nom = String(id).replace(/^note\./, '');
+    let type = '';
+    try {
+      const m = this.app.metadataTypeManager;
+      type = (m && m.getAssignedType && m.getAssignedType(nom)) || '';
+    } catch (e) { /* le gestionnaire n'est pas là : on retombe sur le texte */ }
+    return {
+      text: 'text', number: 'binary', checkbox: 'square-check', date: 'calendar',
+      datetime: 'clock', multitext: 'list', tags: 'tags', aliases: 'forward',
+    }[type] || 'text';
+  }
+
+  // Largeur d'une colonne de propriété. La clé columnSize est celle du tableau
+  // des bases : les deux vues d'une même base partagent donc leurs largeurs, et
+  // en redimensionner une redimensionne l'autre.
+  largeurColonne(id) {
+    const t = this.ctx.lire('columnSize');
+    const v = t && typeof t === 'object' ? Number(t[id]) : NaN;
+    return Number.isFinite(v) && v > 40 ? v : 160;
+  }
+
+  async poserLargeurColonne(id, px) {
+    const t = this.ctx.lire('columnSize');
+    const table = (t && typeof t === 'object') ? Object.assign({}, t) : {};
+    table[id] = Math.round(px);
+    await this.ctx.ecrire('columnSize', table);
+  }
+
+  // Poignée de redimensionnement, au même endroit et de la même classe que
+  // celle du tableau des bases, pour qu'elle en reçoive le style et le curseur.
+  poserResizer(cellule, largeurActuelle, surLache) {
+    const r = cellule.createDiv({ cls: 'bases-table-header-resizer' });
+    r.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
+      e.stopPropagation();
+      r.addClass('is-active');
       const x0 = e.clientX;
-      const l0 = gauche.offsetWidth;
+      let large = largeurActuelle;
       const bouger = (ev) => {
-        gauche.style.width = Math.max(160, Math.min(560, l0 + ev.clientX - x0)) + 'px';
+        large = Math.max(60, Math.min(600, largeurActuelle + ev.clientX - x0));
+        surLache(large, false);
       };
       const lacher = async () => {
         document.removeEventListener('pointermove', bouger);
         document.removeEventListener('pointerup', lacher);
-        await this.ctx.ecrire('largeurLibelles', gauche.offsetWidth);
+        r.removeClass('is-active');
+        await surLache(large, true);
       };
       document.addEventListener('pointermove', bouger);
       document.addEventListener('pointerup', lacher);
+    });
+    return r;
+  }
+
+  // La partie gauche est un vrai tableau de base : mêmes classes, même
+  // imbrication, mêmes variables. Le style vient donc d'Obsidian lui-même, et
+  // suivra ses évolutions comme celles des thèmes de Monsieur.
+  // Les cellules sont en position absolue, comme chez lui, la largeur de chaque
+  // colonne étant posée par le script.
+  dessinerColonneGauche(gauche, lignes) {
+    const colonnes = (this.ctx.colonnes && this.ctx.colonnes()) || [];
+    const H = this._H;
+    const hEntete = this._hEntete;
+
+    const conteneur = gauche.createDiv({ cls: 'bases-table-container zfa-gantt-table' });
+    const table = conteneur.createDiv({ cls: 'bases-table' });
+
+    // Géométrie des colonnes : l'arbre d'abord, puis les propriétés.
+    const cols = [{ cle: '__arbre', nom: tr('Tâche'), icone: 'list-tree',
+                    largeur: this.ctx.lire('largeurLibelles') || 280, arbre: true }];
+    for (const c of colonnes) {
+      cols.push({ cle: c.cle, nom: c.nom, icone: this.iconeColonne(c.cle),
+                  largeur: this.largeurColonne(c.cle), valeur: c.valeur });
+    }
+    let total = 0;
+    for (const c of cols) { c.gauche = total; total += c.largeur; }
+    gauche.style.width = total + 'px';
+    table.style.width = total + 'px';
+
+    const thead = table.createDiv({ cls: 'bases-thead' });
+    thead.style.height = hEntete + 'px';
+    for (const c of cols) {
+      const td = thead.createDiv({ cls: 'bases-td' });
+      td.style.left = c.gauche + 'px';
+      td.style.width = c.largeur + 'px';
+      td.style.height = hEntete + 'px';
+      const entete = td.createDiv({ cls: 'bases-table-header' });
+      entete.style.height = hEntete + 'px';
+      entete.style.alignItems = 'flex-end';
+      entete.style.paddingBottom = '9px';
+      const label = entete.createDiv({ cls: 'bases-table-header-label' });
+      const ic = label.createSpan({ cls: 'bases-table-header-icon' });
+      obsidian.setIcon(ic, c.icone);
+      label.createSpan({ cls: 'bases-table-header-name', text: c.nom });
+      this.poserResizer(td, c.largeur, async (px, definitif) => {
+        td.style.width = px + 'px';
+        if (!definitif) return;
+        if (c.arbre) await this.ctx.ecrire('largeurLibelles', px);
+        else await this.poserLargeurColonne(c.cle, px);
+        this.dessiner();
+      });
+    }
+
+    const tbody = table.createDiv({ cls: 'bases-tbody zfa-gantt-gauche-corps' });
+    tbody.style.height = (lignes.length * H) + 'px';
+    lignes.forEach((l, rang) => {
+      const tr = tbody.createDiv({ cls: 'bases-tr zfa-gantt-libelle' });
+      tr.dataset.ref = l.ref;
+      tr.style.top = (rang * H) + 'px';
+      tr.style.height = H + 'px';
+      tr.addEventListener('contextmenu', (e) => this.menuTache(e, l));
+
+      for (const c of cols) {
+        const td = tr.createDiv({ cls: 'bases-td bases-table-cell' });
+        td.style.left = c.gauche + 'px';
+        td.style.width = c.largeur + 'px';
+        td.style.height = H + 'px';
+        if (!c.arbre) {
+          const texte = c.valeur(l.ref);
+          td.createSpan({ cls: 'zfa-gantt-valeur', text: texte });
+          td.title = c.nom + ' : ' + texte;
+          continue;
+        }
+        td.addClass('zfa-gantt-cellule-arbre');
+        td.style.paddingLeft = (8 + l.niveau * 15) + 'px';
+        const prise = td.createSpan({ cls: 'zfa-gantt-prise', text: '⠿' });
+        prise.title = tr('Glisser pour réordonner parmi les tâches de même rang');
+        prise.addEventListener('pointerdown',
+          (e) => this.reordonner(e, l, lignes, rang, tbody));
+        if (l.aDesEnfants) {
+          const chev = td.createSpan({ cls: 'zfa-gantt-chevron',
+            text: this.replies.has(l.ref) ? '▸' : '▾' });
+          chev.onclick = (e) => {
+            e.stopPropagation();
+            if (this.replies.has(l.ref)) this.replies.delete(l.ref);
+            else this.replies.add(l.ref);
+            this.dessiner();
+          };
+        } else {
+          td.createSpan({ cls: 'zfa-gantt-cale' });
+        }
+        const point = td.createSpan({ cls: 'zfa-gantt-point' });
+        point.style.background = this.couleur(l.statut);
+        const titre = td.createSpan({ cls: 'zfa-gantt-titre', text: l.intitule });
+        titre.onclick = () => this.ouvrir(l.ref);
+        titre.title = l.ref;
+        if (!colonnes.length && !l.jalon && l.avancement > 0) {
+          td.createSpan({ cls: 'zfa-gantt-pourcent', text: l.avancement + ' %' });
+        }
+      }
     });
   }
 
@@ -12235,7 +12339,7 @@ class MoteurFrise {
 
   dessinerFond(svg, cfg, nLignes) {
     const g = svgEl('g', {});
-    const haut = HAUTEUR_ENTETE_GANTT;
+    const haut = this._hEntete;
     const bas = haut + nLignes * this._H;
     for (let i = 0; i <= cfg.jours; i++) {
       const jour = ZotflowAtomiser.decalerJour(cfg.debut, i);
@@ -12266,7 +12370,7 @@ class MoteurFrise {
   dessinerEntete(svg, cfg) {
     const g = svgEl('g', { class: 'zfa-gantt-entete' });
     g.appendChild(svgEl('rect', { x: 0, y: 0, width: cfg.largeur,
-      height: HAUTEUR_ENTETE_GANTT, class: 'zfa-gantt-entete-fond' }));
+      height: this._hEntete, class: 'zfa-gantt-entete-fond' }));
 
     // Bandeau supérieur : les mois, en bandes alternées pour qu'on les
     // distingue d'un coup d'oeil sans avoir à compter les traits.
@@ -12284,7 +12388,7 @@ class MoteurFrise {
         t.textContent = MOIS_COURTS[m - 1] + ' ' + String(a).slice(2);
         g.appendChild(t);
       }
-      g.appendChild(svgEl('line', { x1, y1: 0, x2: x1, y2: HAUTEUR_ENTETE_GANTT,
+      g.appendChild(svgEl('line', { x1, y1: 0, x2: x1, y2: this._hEntete,
         class: 'zfa-gantt-entete-trait' }));
       mois = suivant;
       rang += 1;
@@ -12307,7 +12411,7 @@ class MoteurFrise {
       const x = i * cfg.ppj;
       if (js === 0 || js === 6) {
         g.appendChild(svgEl('rect', { x, y: 24, width: cfg.ppj,
-          height: HAUTEUR_ENTETE_GANTT - 24, class: 'zfa-gantt-weekend-entete' }));
+          height: this._hEntete - 24, class: 'zfa-gantt-weekend-entete' }));
       }
       const t = svgEl('text', { x: x + cfg.ppj / 2, y: 42, class: 'zfa-gantt-entete-jour' });
       t.textContent = lettres[js] + ' ' + j;
@@ -12330,7 +12434,7 @@ class MoteurFrise {
       const t = svgEl('text', { x: x + w / 2, y: 42, class: 'zfa-gantt-entete-semaine' });
       t.textContent = mode === 'numero' ? num : (mode === 'dates' ? plage : num + ' · ' + plage);
       g.appendChild(t);
-      g.appendChild(svgEl('line', { x1: x, y1: 24, x2: x, y2: HAUTEUR_ENTETE_GANTT,
+      g.appendChild(svgEl('line', { x1: x, y1: 24, x2: x, y2: this._hEntete,
         class: 'zfa-gantt-entete-trait' }));
     }
   }
@@ -12366,7 +12470,7 @@ class MoteurFrise {
         t.textContent = 'T' + (Math.floor((m - 1) / 3) + 1) + ' ' + a;
         g.appendChild(t);
       }
-      g.appendChild(svgEl('line', { x1, y1: 24, x2: x1, y2: HAUTEUR_ENTETE_GANTT,
+      g.appendChild(svgEl('line', { x1, y1: 24, x2: x1, y2: this._hEntete,
         class: 'zfa-gantt-entete-trait' }));
       a = am; m = mm;
     }
@@ -12385,7 +12489,7 @@ class MoteurFrise {
       let dernier = rang;
       for (let k = rang + 1; k < lignes.length && lignes[k].niveau > l.niveau; k++) dernier = k;
       if (dernier === rang) return;
-      const y = HAUTEUR_ENTETE_GANTT + rang * this._H;
+      const y = this._hEntete + rang * this._H;
       const h = (dernier - rang + 1) * this._H;
       const bande = svgEl('rect', { x: 0, y, width: cfg.largeur, height: h,
         class: 'zfa-gantt-groupe-bande' });
@@ -12402,7 +12506,7 @@ class MoteurFrise {
   dessinerBarres(svg, cfg, lignes) {
     const g = svgEl('g', {});
     lignes.forEach((l, rang) => {
-      const yLigne = HAUTEUR_ENTETE_GANTT + rang * this._H;
+      const yLigne = this._hEntete + rang * this._H;
       g.appendChild(svgEl('rect', { x: 0, y: yLigne, width: cfg.largeur,
         height: this._H, class: 'zfa-gantt-survol' }));
       if (l.jalon) { this.dessinerJalon(g, cfg, l, rang, lignes.length); return; }
@@ -12607,9 +12711,9 @@ class MoteurFrise {
   dessinerJalon(g, cfg, l, rang, nLignes) {
     if (!l.echeance) return;
     const x = this.x(cfg, l.echeance) + cfg.ppj / 2;
-    const y = HAUTEUR_ENTETE_GANTT + rang * this._H + this._H / 2;
-    g.appendChild(svgEl('line', { x1: x, y1: HAUTEUR_ENTETE_GANTT, x2: x,
-      y2: HAUTEUR_ENTETE_GANTT + nLignes * this._H,
+    const y = this._hEntete + rang * this._H + this._H / 2;
+    g.appendChild(svgEl('line', { x1: x, y1: this._hEntete, x2: x,
+      y2: this._hEntete + nLignes * this._H,
       class: 'zfa-gantt-jalon-trait' }));
     const d = svgEl('path', {
       d: 'M ' + x + ' ' + (y - 9) + ' L ' + (x + 9) + ' ' + y
@@ -12631,12 +12735,12 @@ class MoteurFrise {
     const n = ZotflowAtomiser.ecartJours(cfg.debut, aujourdhui);
     if (n < 0 || n > cfg.jours) return;
     const x = n * cfg.ppj;
-    const bas = HAUTEUR_ENTETE_GANTT + nLignes * this._H;
+    const bas = this._hEntete + nLignes * this._H;
     const g = svgEl('g', {});
-    g.appendChild(svgEl('line', { x1: x, y1: HAUTEUR_ENTETE_GANTT, x2: x, y2: bas,
+    g.appendChild(svgEl('line', { x1: x, y1: this._hEntete, x2: x, y2: bas,
       class: 'zfa-gantt-aujourdhui' }));
     g.appendChild(svgEl('path', {
-      d: 'M ' + x + ' ' + (HAUTEUR_ENTETE_GANTT - 1) + ' l 5 -7 l -10 0 z',
+      d: 'M ' + x + ' ' + (this._hEntete - 1) + ' l 5 -7 l -10 0 z',
       class: 'zfa-gantt-aujourdhui-pointe' }));
     svg.appendChild(g);
   }
@@ -12677,9 +12781,9 @@ class MoteurFrise {
       const debCib = cib.debut || cib.echeance;
       if (!finSrc || !debCib) continue;
       const x1 = this.x(cfg, ZotflowAtomiser.decalerJour(finSrc, 1));
-      const y1 = HAUTEUR_ENTETE_GANTT + rang.get(a.de) * H + H / 2;
+      const y1 = this._hEntete + rang.get(a.de) * H + H / 2;
       const x2 = this.x(cfg, debCib);
-      const y2 = HAUTEUR_ENTETE_GANTT + rang.get(a.vers) * H + H / 2;
+      const y2 = this._hEntete + rang.get(a.vers) * H + H / 2;
       const rouge = fautives.has(a.de + ' ' + a.vers);
       // Une courbe de Bézier plutôt qu'un coude : elle se suit mieux à l'oeil
       // quand plusieurs flèches se croisent, et l'écartement des poignées de
