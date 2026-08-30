@@ -922,11 +922,12 @@ const DEFAULT_SETTINGS = {
   dossierTaches: '',            // rôle : où déposer les notes de tâche
   listeRappelsDefaut: 'Doctorat - Tâches',
   // Clés de frontmatter des propriétés de tâche. « prefixeTaches » s'ajoute
-  // devant chaque concept (« Tâche - echeance ») ; « libellesTaches » permet
-  // en plus de renommer une propriété une par une (concept -> clé complète).
+  // devant chaque concept (« Tâche - echeance ») ; « clesTaches » permet en
+  // plus de fixer la clé complète d'une propriété précise (concept -> clé).
   prefixeTaches: '',
   prefixeTachesApplique: '',
-  libellesTaches: {},
+  clesTaches: {},
+  libellesTaches: {}, // ancien réglage, lu une dernière fois par la migration
   // Vue Articulation : accrochage magnétique des cartes au glissé.
   articulationAimant: true,
   articulationFleches: 'courbe', // 'courbe' | 'angulaire'
@@ -10415,12 +10416,15 @@ class Ariane extends obsidian.Plugin {
       || { id: id || '', nom: id || tr('(sans famille)'), couleur: '#888888', icone: 'circle', proprietes: [] };
   }
 
-  // Clé de frontmatter d'une propriété de tâche : le préfixe global suivi du
-  // concept (« Tâche - echeance »), ou le concept nu si aucun préfixe. Le
-  // préfixe évite les collisions avec une propriété de même nom sur des notes
-  // qui ne sont pas des tâches. Il est repris tel quel, espace final compris.
+  // Clé de frontmatter d'une propriété de tâche :
+  //   1. la clé complète fixée pour ce concept (clesTaches), si elle existe ;
+  //   2. sinon le préfixe global suivi du concept (« Tâche - echeance ») ;
+  //   3. sinon le concept nu.
+  // Le préfixe est repris tel quel, espace final compris.
   cleT(concept) {
     if (concept === 'intitule') return 'intitule';
+    const perso = (this.settings.clesTaches || {})[concept];
+    if (perso && String(perso).trim()) return String(perso).trim();
     const pre = this.settings.prefixeTaches || '';
     return pre ? pre + concept : concept;
   }
@@ -11441,13 +11445,28 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           .onChange(async (v) => { s.familleTacheDefaut = v; await maj(); });
       });
 
-    this._section(c, tr('Préfixe des propriétés de tâche'));
-    this._aide(c, tr("Un préfixe ajouté devant chaque propriété de tâche, pour ne pas entrer en collision avec une propriété de même nom sur des notes qui ne sont pas des tâches. Ex. « Tâche - » donne « Tâche - statut », « Tâche - echeance »… La frise, l'articulation, le formulaire et les nouvelles écritures suivent ce préfixe."));
+    this._section(c, tr('Clés des propriétés de tâche'));
+    this._aide(c, tr("Ariane peut nommer les propriétés des tâches à sa façon, pour ne pas entrer en collision avec une propriété de même nom sur des notes qui ne sont pas des tâches. Un préfixe s'ajoute devant chaque propriété, et chaque propriété peut aussi recevoir une clé précise. La frise, l'articulation, le formulaire et les nouvelles écritures suivent ces clés."));
     new obsidian.Setting(c)
       .setName(tr('Préfixe'))
       .setDesc(tr('Vide = pas de préfixe. L\'espace final compte : « Tâche - ».'))
       .addText((t) => t.setPlaceholder('Tâche - ').setValue(s.prefixeTaches || '')
-        .onChange(async (v) => { s.prefixeTaches = v; await maj(); }));
+        .onChange(async (v) => { s.prefixeTaches = v; await maj(); this.display(); }));
+    {
+      const ct = s.clesTaches || (s.clesTaches = {});
+      const pre = s.prefixeTaches || '';
+      for (const p of Ariane.PROPS_GENERIQUES) {
+        if (p.cle === 'intitule') continue;
+        const st = new obsidian.Setting(c).setName(tr(p.defaut));
+        const ic = createSpan({ cls: 'zfa-tache-ic' });
+        obsidian.setIcon(ic, p.icone);
+        st.nameEl.prepend(ic);
+        st.setDesc(tr('Clé : ') + this.plugin.cleT(p.cle));
+        st.addText((t) => t.setPlaceholder(pre ? pre + p.cle : p.cle)
+          .setValue(ct[p.cle] || '')
+          .onChange(async (v) => { ct[p.cle] = v.trim(); await maj(); }));
+      }
+    }
     new obsidian.Setting(c)
       .setName(tr('Appliquer aux notes existantes'))
       .setDesc(tr("Renomme les propriétés dans toutes les notes de tâches (et elles seules). Une note qui porte déjà la nouvelle clé n'est pas touchée."))
