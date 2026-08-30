@@ -14407,6 +14407,7 @@ class MoteurArticulation {
     this._selNoeud = null;
     this._mode = 'retracte';
     this._plies = this._plies || new Set();
+    this._repliesNoeuds = new Set(); // tâches dont on masque la descendance
     racine.addClass('zfa-artic');
     racine.tabIndex = -1;
     racine.addEventListener('keydown', (e) => this.touche(e));
@@ -14427,7 +14428,7 @@ class MoteurArticulation {
     const c = this.racine;
     const svgAncien = c.querySelector('.zfa-artic-svg');
     c.empty();
-    const taches = (this.ctx.taches && this.ctx.taches()) || [];
+    let taches = (this.ctx.taches && this.ctx.taches()) || [];
 
     // Tri natif de la base : on réordonne le tableau des tâches selon les refs
     // triées. Les tâches hors liste retombent à la fin, dans leur ordre reçu.
@@ -14441,10 +14442,8 @@ class MoteurArticulation {
     const barre = c.createDiv({ cls: 'zfa-artic-barre' });
     this.boutonBarre(barre, 'layout-grid', tr('Re-disposer'), () => this.redisposer());
     this.boutonBarre(barre, 'maximize-2', tr('Ajuster'), () => this.ajuster());
-    // Le décompte réel de cartes dessinées (l'en-tête de la base compte, lui,
-    // toutes les entrées de la source, pas seulement les tâches).
-    barre.createSpan({ cls: 'zfa-artic-compte',
-      text: taches.length + ' ' + (taches.length > 1 ? tr('tâches') : tr('tâche')) });
+    this.boutonBarre(barre, 'minus', tr('Replier un niveau'), () => this._replierNiveau());
+    this.boutonBarre(barre, 'plus', tr('Déplier un niveau'), () => this._deplierNiveau());
 
     const mode = (this.ctx.lire && this.ctx.lire('modeCarte')) || 'retracte';
     this._mode = mode;
@@ -14457,6 +14456,28 @@ class MoteurArticulation {
     if (!taches.length) {
       c.createDiv({ cls: 'zfa-refs-vide', text: tr('Aucune tâche dans cette base.') });
       return;
+    }
+
+    // Arbre de parenté sur TOUT le jeu, puis masquage des descendants des
+    // nœuds repliés. La suite ne dessine que les tâches visibles.
+    const arbre = this._calculerArbre(taches);
+    this._arbre = arbre;
+    const aretesTotales = Ariane.grapheArticulation(taches).aretes;
+    taches = taches.filter((t) => arbre.refsVisibles.has(t.ref));
+
+    // Le décompte réel de cartes dessinées (l'en-tête de la base compte, lui,
+    // toutes les entrées de la source, pas seulement les tâches).
+    barre.createSpan({ cls: 'zfa-artic-compte',
+      text: taches.length + ' ' + (taches.length > 1 ? tr('tâches') : tr('tâche')) });
+
+    // Nombre d'arêtes de blocage dont l'autre bout est masqué, par tâche visible.
+    this._bloqueCaches = new Map();
+    for (const a of aretesTotales) {
+      if (a.type !== 'bloque') continue;
+      const vd = arbre.refsVisibles.has(a.de);
+      const vv = arbre.refsVisibles.has(a.vers);
+      if (vd && !vv) this._bloqueCaches.set(a.de, (this._bloqueCaches.get(a.de) || 0) + 1);
+      else if (!vd && vv) this._bloqueCaches.set(a.vers, (this._bloqueCaches.get(a.vers) || 0) + 1);
     }
 
     this._dates = {};
@@ -14658,6 +14679,52 @@ class MoteurArticulation {
       ga.appendChild(t);
       ga.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.tirerArete(e, n.ref, type); });
       gn.appendChild(ga);
+    }
+
+    // Repli des sous-tâches : bouton « − » au survol si la tâche a des enfants
+    // visibles ; pastille numérotée toujours visible si elle est repliée.
+    const arbre = this._arbre;
+    if (arbre) {
+      const aEnfantsVisibles = (arbre.enfants.get(n.ref) || [])
+        .some((c) => arbre.refsVisibles.has(c));
+      const repliee = this._repliesNoeuds.has(n.ref);
+      if (repliee || aEnfantsVisibles) {
+        const gb = svgEl('g', {
+          class: 'zfa-artic-repli zfa-artic-repli-hier'
+            + (repliee ? ' est-repliee' : ''),
+          transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, 'hier') + ')' });
+        gb.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-repli-fond' }));
+        const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
+        tx.textContent = repliee ? String(this._compteSousArbre(n.ref)) : '–';
+        gb.appendChild(tx);
+        const ti = svgEl('title', {});
+        ti.textContent = repliee ? tr('Afficher les sous-tâches')
+          : tr('Masquer les sous-tâches');
+        gb.appendChild(ti);
+        gb.addEventListener('pointerdown', (e) => e.stopPropagation());
+        gb.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (this._repliesNoeuds.has(n.ref)) this._repliesNoeuds.delete(n.ref);
+          else this._repliesNoeuds.add(n.ref);
+          this.dessiner();
+        });
+        gn.appendChild(gb);
+      }
+      // Blocages dont l'autre bout est masqué : pastille accent, informative.
+      const nbBloc = (this._bloqueCaches && this._bloqueCaches.get(n.ref)) || 0;
+      if (nbBloc > 0) {
+        const gv = svgEl('g', {
+          class: 'zfa-artic-repli zfa-artic-repli-bloque est-repliee',
+          transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, 'bloque') + ')' });
+        gv.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-repli-fond' }));
+        const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
+        tx.textContent = String(nbBloc);
+        gv.appendChild(tx);
+        const ti = svgEl('title', {});
+        ti.textContent = tr('Blocages vers des tâches masquées');
+        gv.appendChild(ti);
+        gn.appendChild(gv);
+      }
     }
     g.appendChild(gn);
   }
@@ -14996,6 +15063,86 @@ class MoteurArticulation {
   async redisposer() {
     for (const ref of this._pos.keys()) await this.ctx.poserPosition(ref, null, null);
     new obsidian.Notice(tr('Disposition recalculée.'));
+    this.dessiner();
+  }
+
+  // Arbre de parenté du jeu : enfants, profondeur (calculée sur TOUT l'arbre),
+  // et l'ensemble des refs visibles une fois masquée la descendance des nœuds
+  // repliés (this._repliesNoeuds).
+  _calculerArbre(taches) {
+    const refs = new Set((taches || []).map((t) => t.ref));
+    const enfants = new Map();
+    const parent = new Map();
+    for (const t of taches || []) {
+      const p = Ariane.refDeLien(t.parent || '');
+      if (p && refs.has(p) && p !== t.ref) {
+        parent.set(t.ref, p);
+        if (!enfants.has(p)) enfants.set(p, []);
+        enfants.get(p).push(t.ref);
+      }
+    }
+    const prof = new Map();
+    const calc = (ref, d, vus) => {
+      if (vus.has(ref)) return;
+      vus.add(ref);
+      prof.set(ref, d);
+      for (const cc of enfants.get(ref) || []) calc(cc, d + 1, vus);
+    };
+    for (const t of taches || []) if (!parent.has(t.ref)) calc(t.ref, 0, new Set());
+    for (const t of taches || []) if (!prof.has(t.ref)) prof.set(t.ref, 0);
+    const caches = new Set();
+    const masquer = (ref) => {
+      for (const cc of enfants.get(ref) || []) {
+        if (caches.has(cc)) continue;
+        caches.add(cc);
+        masquer(cc);
+      }
+    };
+    for (const ref of this._repliesNoeuds) if (refs.has(ref)) masquer(ref);
+    const refsVisibles = new Set([...refs].filter((r) => !caches.has(r)));
+    return { enfants, parent, prof, caches, refsVisibles };
+  }
+
+  _compteSousArbre(ref) {
+    const e = this._arbre && this._arbre.enfants;
+    if (!e) return 0;
+    let n = 0;
+    for (const c of e.get(ref) || []) n += 1 + this._compteSousArbre(c);
+    return n;
+  }
+
+  // « − » : replie le niveau de parents visibles le plus profond dont des
+  // enfants sont encore montrés.
+  _replierNiveau() {
+    const a = this._arbre;
+    if (!a) return;
+    let dMax = -1;
+    for (const ref of a.refsVisibles) {
+      if ((a.enfants.get(ref) || []).some((c) => a.refsVisibles.has(c))) {
+        dMax = Math.max(dMax, a.prof.get(ref) || 0);
+      }
+    }
+    if (dMax < 0) return;
+    for (const ref of a.refsVisibles) {
+      if ((a.prof.get(ref) || 0) === dMax
+        && (a.enfants.get(ref) || []).some((c) => a.refsVisibles.has(c))) {
+        this._repliesNoeuds.add(ref);
+      }
+    }
+    this.dessiner();
+  }
+
+  // « + » : déplie le niveau replié le plus profond.
+  _deplierNiveau() {
+    const a = this._arbre;
+    if (!a || !this._repliesNoeuds.size) return;
+    let dMax = -1;
+    for (const ref of this._repliesNoeuds) {
+      dMax = Math.max(dMax, a.prof.has(ref) ? a.prof.get(ref) : 0);
+    }
+    for (const ref of [...this._repliesNoeuds]) {
+      if ((a.prof.has(ref) ? a.prof.get(ref) : 0) === dMax) this._repliesNoeuds.delete(ref);
+    }
     this.dessiner();
   }
 

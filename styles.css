@@ -1332,6 +1332,19 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-accroche:hover .zfa-artic-accroche-pastille { transform: scale(1.35); }
 .zfa-artic-accroche-hier .zfa-artic-accroche-pastille { fill: var(--text-muted); }
 .zfa-artic-accroche-bloque .zfa-artic-accroche-pastille { fill: var(--interactive-accent); }
+
+/* Pastille de repli / compteur de sous-tâches masquées, au point de connexion. */
+.zfa-artic-repli { cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+.zfa-artic-repli.est-repliee { opacity: 1; }
+.zfa-artic-noeud:hover .zfa-artic-repli { opacity: 1; }
+.zfa-artic-repli-fond { stroke: var(--background-primary); stroke-width: 1.5; }
+.zfa-artic-repli-hier .zfa-artic-repli-fond { fill: var(--text-muted); }
+.zfa-artic-repli-bloque .zfa-artic-repli-fond { fill: var(--interactive-accent); cursor: default; }
+.zfa-artic-repli-bloque { cursor: default; }
+.zfa-artic-repli-txt {
+  fill: var(--background-primary); font-size: 9px; font-weight: 700;
+  text-anchor: middle; dominant-baseline: central; pointer-events: none;
+}
 .zfa-artic-noeud.est-cible .zfa-artic-carte {
   outline: 2px solid var(--interactive-accent); outline-offset: 1px;
 }
