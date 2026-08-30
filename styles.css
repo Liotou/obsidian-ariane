@@ -860,13 +860,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   flex-shrink: 0; position: relative; overflow: hidden;
   z-index: 5; background: var(--background-primary);
 }
-/* Le trait de séparation liste / frise porte sur le tableau, pas sur le
-   panneau : il s'arrête donc à la dernière ligne, pas au bas de la fenêtre. */
-.zfa-gantt-table {
-  position: absolute; top: 0; left: 0;
-  border-right: var(--bases-table-column-border-width, 1px) solid
-                var(--table-border-color, var(--background-modifier-border));
-}
+.zfa-gantt-table { position: absolute; top: 0; left: 0; }
 /* Les bordures de cellule viennent d'une ombre portée chez Obsidian, que le
    débordement masqué de notre panneau peut rogner. On les repose donc en clair,
    avec ses variables, pour que chaque case soit encadrée comme dans un tableau. */
@@ -900,21 +894,23 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-cellule-arbre .zfa-gantt-liens,
 .zfa-gantt-cellule-arbre .zfa-gantt-valeur { padding-left: 0; }
 
-/* Séparateur pleine hauteur entre le panneau gauche et la frise. Enfant de
-   .zfa-gantt-enveloppe (positionnée), calé par le script sur le bord droit du
-   panneau. On l'attrape sur toute la hauteur, pas seulement dans l'en-tête. */
+/* Séparateur liste / frise. Enfant de .zfa-gantt-enveloppe (positionnée),
+   calé par le script sur le bord droit du panneau, hauteur = contenu (il
+   s'arrête à la dernière ligne). z-index 8 : passe AU-DESSUS des bandeaux de
+   groupe (z 7). Le trait d'accent est toujours visible. On l'attrape sur
+   toute sa hauteur pour redimensionner. */
 .zfa-gantt-separateur-v {
-  position: absolute; top: 0; bottom: 0; width: 9px;
+  position: absolute; top: 0; width: 9px;
   transform: translateX(-5px);
   cursor: col-resize; z-index: 8;
 }
 .zfa-gantt-separateur-v::after {
   content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px;
-  background: transparent; transition: background 0.12s;
+  background: var(--interactive-accent); transition: width 0.12s;
 }
 .zfa-gantt-separateur-v:hover::after,
 .zfa-gantt-separateur-v.is-active::after {
-  background: var(--interactive-accent);
+  width: 2px; left: 3px;
 }
 
 /* Le texte brut d'une cellule (référence, valeur simple, lien) reprend la
@@ -1040,9 +1036,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 /* Aperçu de l'étalement d'un groupe, dans son bandeau côté frise. Neutre. */
 .zfa-gantt-apercu-barre {
   fill: var(--text-faint); opacity: 0.35;
-}
-.zfa-gantt-apercu-tic {
-  stroke: var(--text-muted); stroke-width: 1; opacity: 0.7;
 }
 
 /* --- Les flèches --- */

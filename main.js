@@ -12099,7 +12099,6 @@ class MoteurFrise {
         let n = 0;
         let min = '';
         let max = '';
-        const points = [];
         for (let j = i + 1; j < avecDates.length && avecDates[j].kind !== 'groupe'; j++) {
           n += 1;
           const t = avecDates[j];
@@ -12107,11 +12106,10 @@ class MoteurFrise {
           const e = t.echeance || t.debut;
           if (d && (!min || d < min)) min = d;
           if (e && (!max || e > max)) max = e;
-          if (e) points.push(e);
         }
         if (!n) continue;
         dispo.push(Object.assign({}, it, { n,
-          apercu: (min && max) ? { min, max, points } : null }));
+          apercu: (min && max) ? { min, max } : null }));
       } else dispo.push(it);
     }
     const planifiees = dispo.filter((x) => x.kind === 'tache');
@@ -12542,6 +12540,7 @@ class MoteurFrise {
     const env = gauche.parentElement;
     if (!env) return;
     const sep = env.createDiv({ cls: 'zfa-gantt-separateur-v' });
+    sep.style.height = this._hauteurTotale + 'px';
     const derniere = cols[cols.length - 1];
     this._placerSeparateur = () => {
       sep.style.left = (gauche.offsetLeft + gauche.offsetWidth) + 'px';
@@ -12820,8 +12819,8 @@ class MoteurFrise {
       if (l.kind !== 'groupe') continue;
       g.appendChild(svgEl('rect', { x: 0, y: l.y, width: cfg.largeur, height: l.h,
         class: 'zfa-gantt-bande-groupe-fond' }));
-      // Aperçu de l'étalement du groupe : une barre d'ensemble (échéance la plus
-      // ancienne -> la plus lointaine) et un repère par tâche. Neutre, discret.
+      // Aperçu de l'étalement du groupe : une barre d'ensemble de l'échéance la
+      // plus ancienne à la plus lointaine. Neutre, discret.
       if (l.apercu) {
         const yc = l.y + l.h / 2;
         const xa = this.x(cfg, l.apercu.min);
@@ -12829,11 +12828,6 @@ class MoteurFrise {
         g.appendChild(svgEl('rect', { x: xa, y: yc - 2,
           width: Math.max(2, xb - xa), height: 4, rx: 2,
           class: 'zfa-gantt-apercu-barre' }));
-        for (const p of l.apercu.points) {
-          const xp = this.x(cfg, p);
-          g.appendChild(svgEl('line', { x1: xp, y1: yc - 5, x2: xp, y2: yc + 5,
-            class: 'zfa-gantt-apercu-tic' }));
-        }
       }
     }
     svg.appendChild(g);
