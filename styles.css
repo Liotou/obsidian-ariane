@@ -1360,3 +1360,12 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-carte { position: relative; overflow: hidden; }
 .zfa-artic-chevron { position: absolute; top: 4px; right: 4px; cursor: pointer; color: var(--text-muted); }
 .zfa-artic-carte:has(.zfa-artic-props) { height: auto; }
+
+/* Décompte réel de cartes, dans la barre de la vue. */
+.zfa-artic-compte { margin-left: 4px; font-size: 0.8em; color: var(--text-muted); align-self: center; }
+
+/* Repères d'alignement magnétique pendant le glissé d'un nœud. */
+.zfa-artic-guide {
+  stroke: var(--interactive-accent); stroke-width: 1; stroke-dasharray: 4 3;
+  opacity: 0.7; pointer-events: none;
+}

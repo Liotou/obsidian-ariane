@@ -14085,6 +14085,8 @@ function fabriquerVueFriseBase(greffon) {
 
 const ARTIC_W = 210;
 const ARTIC_H = 58;
+const GRILLE_ARTIC = 20;   // pas de la grille magnétique
+const SEUIL_AIMANT = 7;    // distance d'accrochage à un bord / centre voisin
 
 class MoteurArticulation {
   constructor(greffon, racine, ctx) {
@@ -14128,8 +14130,13 @@ class MoteurArticulation {
     }
 
     const barre = c.createDiv({ cls: 'zfa-artic-barre' });
+    this.boutonBarre(barre, 'plus', tr('Nouvelle tâche'), () => this.nouvelleTache());
     this.boutonBarre(barre, 'layout-grid', tr('Re-disposer'), () => this.redisposer());
     this.boutonBarre(barre, 'maximize-2', tr('Ajuster'), () => this.ajuster());
+    // Le décompte réel de cartes dessinées (l'en-tête de la base compte, lui,
+    // toutes les entrées de la source, pas seulement les tâches).
+    barre.createSpan({ cls: 'zfa-artic-compte',
+      text: taches.length + ' ' + (taches.length > 1 ? tr('tâches') : tr('tâche')) });
 
     const mode = (this.ctx.lire && this.ctx.lire('modeCarte')) || 'retracte';
     this._mode = mode;
@@ -14172,6 +14179,7 @@ class MoteurArticulation {
     const g = svgEl('g', { class: 'zfa-artic-scene' });
     svg.appendChild(g);
     this._scene = g;
+    this._reperes = null;
 
     for (const a of aretes) this.dessinerArete(g, a);
     for (const n of noeuds) this.dessinerNoeud(g, n);
@@ -14438,15 +14446,18 @@ class MoteurArticulation {
     const bouger = (e) => {
       const s = this._versScene(e);
       if (Math.abs(s.x - dep.x) > 2 || Math.abs(s.y - dep.y) > 2) bouge = true;
-      const x = p0.x + (s.x - dep.x);
-      const y = p0.y + (s.y - dep.y);
-      this._pos.set(ref, { x, y });
-      gn.setAttribute('transform', 'translate(' + x + ',' + y + ')');
+      const brutX = p0.x + (s.x - dep.x);
+      const brutY = p0.y + (s.y - dep.y);
+      const a = this._aimanter(ref, brutX, brutY);
+      this._pos.set(ref, { x: a.x, y: a.y });
+      gn.setAttribute('transform', 'translate(' + a.x + ',' + a.y + ')');
       this.majAretesDe(ref);
+      this._tracerReperes(bouge ? a.repères : null);
     };
     const lacher = async () => {
       document.removeEventListener('pointermove', bouger);
       document.removeEventListener('pointerup', lacher);
+      this._tracerReperes(null);
       if (!bouge) return;
       gn.dataset.aGlisse = '1';
       const p = this._pt(ref);
@@ -14536,6 +14547,78 @@ class MoteurArticulation {
     for (const ref of this._pos.keys()) await this.ctx.poserPosition(ref, null, null);
     new obsidian.Notice(tr('Disposition recalculée.'));
     this.dessiner();
+  }
+
+  // Crée une vraie note de tâche (référence T26-xxx, entête complète), la pose
+  // au centre de la vue et l'ouvre. Le bouton « Nouveau » natif de la base ne
+  // crée qu'une note vide : celui-ci passe par greffon.creerTache.
+  async nouvelleTache() {
+    let centre = { x: 0, y: 0 };
+    if (this._svg) {
+      const b = this._svg.getBoundingClientRect();
+      centre = this._versScene({ clientX: b.left + b.width / 2, clientY: b.top + b.height / 2 });
+    }
+    const chemin = await this.greffon.creerTache({});
+    const ref = this.greffon.refDeChemin(chemin);
+    if (ref) {
+      await this.ctx.poserPosition(ref,
+        Math.round(centre.x - ARTIC_W / 2), Math.round(centre.y - ARTIC_H / 2));
+    }
+    const f = this.greffon.app.vault.getAbstractFileByPath(chemin);
+    if (f) await this.greffon.app.workspace.getLeaf(true).openFile(f);
+    this.dessiner();
+  }
+
+  // Accrochage magnétique d'un nœud en cours de glissé : à la grille, et aux
+  // bords / centres des autres nœuds. Renvoie la position accrochée et les
+  // repères à tracer.
+  _aimanter(ref, x, y) {
+    let sx = Math.round(x / GRILLE_ARTIC) * GRILLE_ARTIC;
+    let sy = Math.round(y / GRILLE_ARTIC) * GRILLE_ARTIC;
+    const repères = [];
+    const hMoi = ((this._noeudsParRef && this._noeudsParRef.get(ref)) || {}).h || ARTIC_H;
+    let prisX = false;
+    let prisY = false;
+    for (const [r, p] of (this._pos || new Map())) {
+      if (r === ref) continue;
+      const hAutre = ((this._noeudsParRef && this._noeudsParRef.get(r)) || {}).h || ARTIC_H;
+      if (!prisX) {
+        for (const [mien, autre] of [
+          [x, p.x], [x + ARTIC_W, p.x + ARTIC_W], [x + ARTIC_W / 2, p.x + ARTIC_W / 2],
+        ]) {
+          if (Math.abs(mien - autre) < SEUIL_AIMANT) {
+            sx = x + (autre - mien); prisX = true;
+            repères.push({ axe: 'x', v: autre });
+            break;
+          }
+        }
+      }
+      if (!prisY) {
+        for (const [mien, autre] of [
+          [y, p.y], [y + hMoi, p.y + hAutre], [y + hMoi / 2, p.y + hAutre / 2],
+        ]) {
+          if (Math.abs(mien - autre) < SEUIL_AIMANT) {
+            sy = y + (autre - mien); prisY = true;
+            repères.push({ axe: 'y', v: autre });
+            break;
+          }
+        }
+      }
+    }
+    return { x: sx, y: sy, repères };
+  }
+
+  _tracerReperes(repères) {
+    if (this._reperes) this._reperes.remove();
+    if (!repères || !repères.length || !this._scene) { this._reperes = null; return; }
+    const g = svgEl('g', { class: 'zfa-artic-guides' });
+    for (const r of repères) {
+      g.appendChild(r.axe === 'x'
+        ? svgEl('line', { x1: r.v, y1: -4000, x2: r.v, y2: 8000, class: 'zfa-artic-guide' })
+        : svgEl('line', { x1: -4000, y1: r.v, x2: 8000, y2: r.v, class: 'zfa-artic-guide' }));
+    }
+    this._scene.appendChild(g);
+    this._reperes = g;
   }
 }
 
