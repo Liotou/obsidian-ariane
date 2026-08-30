@@ -925,6 +925,19 @@ const DEFAULT_SETTINGS = {
   // monospace, alias }. Vide par défaut : le greffon ne présume d'aucune
   // organisation, et se peuple à la première ouverture des réglages.
   famillesNotes: [],
+  // FAMILLES DE TÂCHES — distinctes des familles de notes ci-dessus. Chaque
+  // ligne : { id, nom, couleur, icone, proprietes:[{cle,libelle,type}] }. La
+  // valeur d'id est celle écrite dans le champ `famille` d'une note de tâche.
+  // Préchargées avec les trois familles historiques pour ne rien casser.
+  famillesTaches: [
+    { id: 'lecture', nom: 'Lecture', couleur: '#4c78c9', icone: 'book-open',
+      proprietes: [{ cle: 'source', libelle: 'Source', type: 'lien' }] },
+    { id: 'production', nom: 'Production', couleur: '#e0873d', icone: 'file-pen',
+      proprietes: [{ cle: 'livrable', libelle: 'Livrable', type: 'lien' },
+                   { cle: 'fichier', libelle: 'Fichier', type: 'texte' }] },
+    { id: 'action', nom: 'Action', couleur: '#6aa84f', icone: 'zap', proprietes: [] },
+  ],
+  familleTacheDefaut: 'action',
   // Anciennes clés, conservées le temps de la migration (voir migrerFamilles).
   dossierNotesConceptuelles: '',
   prefixeNoteConceptuelle: '',
@@ -9381,10 +9394,39 @@ class Ariane extends obsidian.Plugin {
     return { retenu: remplis[0] || null, conflits: remplis.length > 1 ? remplis : [] };
   }
 
-  static familleTache(fm) {
+  // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
+  // « Type » de l'en-tête de frise et le rendu des cartes d'articulation.
+  static get TYPE_FR_VERS_OBSIDIAN() {
+    return { texte: 'text', nombre: 'number', date: 'date',
+             case: 'checkbox', liste: 'multitext', lien: 'link' };
+  }
+
+  static familleTache(fm, familles, defaut) {
+    const liste = Array.isArray(familles) ? familles : null;
+    // Appel historique (un seul argument) : on garde la déduction d'origine.
+    if (!liste) {
+      const retenu = Ariane.champTache(fm).retenu;
+      if (retenu === 'source') return 'lecture';
+      return retenu ? 'production' : 'action';
+    }
+    const connus = new Set(liste.map((f) => f && f.id).filter(Boolean));
+    const explicite = fm && fm.famille ? String(fm.famille).trim() : '';
+    if (explicite && connus.has(explicite)) return explicite;
     const retenu = Ariane.champTache(fm).retenu;
-    if (retenu === 'source') return 'lecture';
-    return retenu ? 'production' : 'action';
+    if (retenu === 'source' && connus.has('lecture')) return 'lecture';
+    if (retenu && connus.has('production')) return 'production';
+    return (defaut && connus.has(defaut)) ? defaut
+      : (connus.has('action') ? 'action' : (liste[0] && liste[0].id) || 'action');
+  }
+
+  // Les propriétés qu'une famille ajoute à une tâche et qui n'existent pas
+  // encore dans son entête. « Existe » = la clé est présente, même vide.
+  static proprietesManquantes(fm, famille) {
+    const props = (famille && Array.isArray(famille.proprietes)) ? famille.proprietes : [];
+    const cles = new Set(Object.keys(fm || {}));
+    return props
+      .filter((p) => p && p.cle && !cles.has(p.cle))
+      .map((p) => ({ cle: p.cle, type: p.type || 'texte' }));
   }
 
   // Une valeur YAML citée. Les intitulés portent des apostrophes, des deux
