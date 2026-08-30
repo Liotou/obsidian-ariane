@@ -120,8 +120,8 @@ qui les garde visibles sans les rattacher à un groupe arbitraire.
      - `lignesG = Ariane.disposerGantt(tachesG, tri, sens)` — l'arbre est
        reconstruit sur ce sous-ensemble, donc un parent absent du groupe
        devient racine (règle existante) ;
-     - donner à chaque ligne une `cleLigne` de `lignesG` par `G + ''` pour
-       distinguer les doublons entre groupes ;
+     - donner à chaque ligne une `cleLigne` = `G` + séparateur nul + `ref`,
+       pour distinguer les doublons d'une tâche multi-valeur entre groupes ;
      - émettre `{ kind: 'groupe', libelle: G, cleGroupe: 'groupe:' + G }` puis
        les lignes de `lignesG` (`kind: 'tache'`).
 - Retour : liste unifiée `[{kind, …}]`, dans l'ordre d'affichage, repli non
