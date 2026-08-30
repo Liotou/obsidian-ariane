@@ -855,6 +855,8 @@ const TEXTES = {
     "Redevenir une tâche": "Back to a task",
     "Faire un jalon": "Make it a milestone",
     "Retirer les dates": "Remove the dates",
+    "Ce lien fermerait un cycle : les deux tâches se bloqueraient.": "This link would close a cycle: the two tasks would block each other.",
+    "Retirer le blocage par ": "Remove the blocking link from ",
   },
 };
 let LANGUE = 'fr';
@@ -9884,6 +9886,88 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return out;
   }
 
+  // Créer un blocage depuis la frise. Le canvas reste le registre des arêtes :
+  // on écrit donc dans la note ET dans les canvas qui portent déjà les deux
+  // nœuds, faute de quoi la relecture des canvas effacerait le lien à la passe
+  // suivante. Une tâche qu'aucun canvas ne montre garde son lien dans la note
+  // seule, ce que la spécification prévoit au § 6.5.
+  async creerBlocage(deRef, versRef) {
+    if (!deRef || !versRef || deRef === versRef) return false;
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === versRef);
+    if (!f) return false;
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    const deja = [].concat(fm['bloque-par'] || []).map(String);
+    if (deja.some((v) => ZotflowAtomiser.refDeLien(v) === deRef)) return false;
+    // Un cycle rendrait la frise incalculable : on refuse avant d'écrire.
+    const aretes = [{ de: deRef, vers: versRef }];
+    for (const t of this.tachesPourGantt()) {
+      for (const b of t.bloquePar || []) {
+        aretes.push({ de: ZotflowAtomiser.refDeLien(b), vers: t.ref });
+      }
+    }
+    if (ZotflowAtomiser.cyclesDe(aretes).length) {
+      new obsidian.Notice(tr('Ce lien fermerait un cycle : les deux tâches se bloqueraient.'));
+      return false;
+    }
+    await this.app.fileManager.processFrontMatter(f, (x) => {
+      x['bloque-par'] = deja.concat(['[[' + deRef + ']]']);
+      x.modifie = new Date().toISOString().slice(0, 10);
+    });
+    await this.ecrireAreteCanvas(deRef, versRef, true);
+    return true;
+  }
+
+  async retirerBlocage(deRef, versRef) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === versRef);
+    if (!f) return false;
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    const reste = [].concat(fm['bloque-par'] || []).map(String)
+      .filter((v) => ZotflowAtomiser.refDeLien(v) !== deRef);
+    await this.app.fileManager.processFrontMatter(f, (x) => {
+      x['bloque-par'] = reste;
+      x.modifie = new Date().toISOString().slice(0, 10);
+    });
+    await this.ecrireAreteCanvas(deRef, versRef, false);
+    return true;
+  }
+
+  // Pose ou retire l'arête correspondante dans tout canvas qui porte déjà les
+  // deux nœuds. On n'ajoute jamais de nœud : disposer un canvas est un geste
+  // graphique, qui appartient à Monsieur.
+  async ecrireAreteCanvas(deRef, versRef, poser) {
+    const compo = this.settings.couleurCompositionCanvas || '6';
+    for (const f of this.app.vault.getFiles()) {
+      if (f.extension !== 'canvas') continue;
+      let json = null;
+      try { json = JSON.parse(await this.app.vault.read(f)); } catch (e) { continue; }
+      const idsDe = [];
+      const idsVers = [];
+      for (const n of json.nodes || []) {
+        if (!n || n.type !== 'file') continue;
+        const r = this.refDeChemin(n.file);
+        if (r === deRef) idsDe.push(n.id);
+        if (r === versRef) idsVers.push(n.id);
+      }
+      if (!idsDe.length || !idsVers.length) continue;
+      const estLien = (e) => e && idsDe.includes(e.fromNode) && idsVers.includes(e.toNode)
+        && String(e.color || '') !== String(compo);
+      const avant = JSON.stringify(json.edges || []);
+      if (poser) {
+        if (!(json.edges || []).some(estLien)) {
+          json.edges = (json.edges || []).concat([{
+            id: 'zfa' + Math.random().toString(36).slice(2, 12),
+            fromNode: idsDe[0], fromSide: 'right',
+            toNode: idsVers[0], toSide: 'left',
+          }]);
+        }
+      } else {
+        json.edges = (json.edges || []).filter((e) => !estLien(e));
+      }
+      if (JSON.stringify(json.edges || []) === avant) continue;
+      await this.app.vault.modify(f, JSON.stringify(json, null, 2));
+    }
+  }
+
   // Écrit quelques propriétés d'une tâche, sans toucher au reste.
   async majTache(ref, champs) {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
@@ -12018,6 +12102,7 @@ class VueGanttTaches extends obsidian.ItemView {
       const h = HAUTEUR_LIGNE_GANTT - MARGE_BARRE_GANTT * 2;
       const couleur = this.couleur(l.statut);
       const groupe = svgEl('g', { class: 'zfa-gantt-groupe' });
+      groupe.dataset.ref = l.ref;
 
       const meta = l.aDesEnfants;
       const fond = svgEl('rect', {
@@ -12069,9 +12154,61 @@ class VueGanttTaches extends obsidian.ItemView {
           groupe.appendChild(p);
         }
       }
+      // Pastilles de liaison, hors de la barre pour ne pas gêner l'étirement.
+      // On tire depuis celle de droite vers la tâche que l'on veut bloquer.
+      for (const [cx, sens] of [[x - 7, -1], [x + w + 7, 1]]) {
+        const rond = svgEl('circle', { cx, cy: yLigne + HAUTEUR_LIGNE_GANTT / 2, r: 5,
+          class: 'zfa-gantt-connecteur' });
+        rond.addEventListener('pointerdown', (ev) => this.tirerLien(ev, l, cx, sens));
+        groupe.appendChild(rond);
+      }
       g.appendChild(groupe);
     });
     svg.appendChild(g);
+  }
+
+  // Tirer un lien d'une barre vers une autre. Le trait suit le pointeur, et
+  // c'est la barre sous le pointeur au lâcher qui reçoit le blocage.
+  tirerLien(e, ligne, cx, sens) {
+    e.preventDefault();
+    e.stopPropagation();
+    const svg = this._svg;
+    const boite = svg.getBoundingClientRect();
+    const cy = Number(e.target.getAttribute('cy'));
+    const trait = svgEl('path', { class: 'zfa-gantt-lien-en-cours', d: '' });
+    svg.appendChild(trait);
+    let cible = null;
+    const bouger = (ev) => {
+      const px = ev.clientX - boite.left;
+      const py = ev.clientY - boite.top;
+      trait.setAttribute('d', 'M ' + cx + ' ' + cy + ' C ' + (cx + sens * 40) + ' ' + cy
+        + ', ' + (px - sens * 40) + ' ' + py + ', ' + px + ' ' + py);
+      const sous = document.elementFromPoint(ev.clientX, ev.clientY);
+      const g = sous && sous.closest ? sous.closest('.zfa-gantt-groupe') : null;
+      const ref = g && g.dataset ? g.dataset.ref : null;
+      if (cible && cible !== ref) {
+        const anc = svg.querySelector('.zfa-gantt-cible');
+        if (anc) anc.classList.remove('zfa-gantt-cible');
+      }
+      cible = ref && ref !== ligne.ref ? ref : null;
+      if (cible && g) g.classList.add('zfa-gantt-cible');
+    };
+    const lacher = async () => {
+      document.removeEventListener('pointermove', bouger);
+      document.removeEventListener('pointerup', lacher);
+      trait.remove();
+      const marque = svg.querySelector('.zfa-gantt-cible');
+      if (marque) marque.classList.remove('zfa-gantt-cible');
+      if (!cible) return;
+      // Tirer depuis la droite : cette tâche bloque celle qu'on vise.
+      // Depuis la gauche : c'est l'inverse, on déclare ce qui la bloque.
+      const fait = sens > 0
+        ? await this.greffon.creerBlocage(ligne.ref, cible)
+        : await this.greffon.creerBlocage(cible, ligne.ref);
+      if (fait) this.dessiner();
+    };
+    document.addEventListener('pointermove', bouger);
+    document.addEventListener('pointerup', lacher);
   }
 
   // Le clic droit donne accès à ce qui se règle sans ouvrir la note. Les
@@ -12117,6 +12254,20 @@ class VueGanttTaches extends obsidian.ItemView {
       .onClick(() => poser(ligne.jalon ? { jalon: false } : { jalon: true, debut: '' })));
     m.addItem((i) => i.setTitle(tr('Retirer les dates')).setIcon('calendar-off')
       .onClick(() => poser({ debut: '', echeance: '' })));
+
+    const bloquants = (tache.bloquePar || []).map((b) => ZotflowAtomiser.refDeLien(b));
+    if (bloquants.length) {
+      m.addSeparator();
+      for (const b of bloquants) {
+        const t = (this._taches || []).find((x) => x.ref === b);
+        m.addItem((i) => i.setTitle(tr('Retirer le blocage par ') + (t ? t.intitule : b))
+          .setIcon('unlink')
+          .onClick(async () => {
+            await this.greffon.retirerBlocage(b, ligne.ref);
+            this.dessiner();
+          }));
+      }
+    }
     m.showAtMouseEvent(e);
   }
 

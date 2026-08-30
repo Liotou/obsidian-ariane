@@ -998,3 +998,17 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   stroke-width: 1;
 }
 .zfa-gantt-embout { fill: var(--text-muted); opacity: 0.75; pointer-events: none; }
+
+.zfa-gantt-connecteur {
+  fill: var(--background-primary); stroke: var(--interactive-accent);
+  stroke-width: 1.5; opacity: 0; cursor: crosshair; transition: opacity 0.12s;
+}
+.zfa-gantt-groupe:hover .zfa-gantt-connecteur { opacity: 1; }
+.zfa-gantt-connecteur:hover { fill: var(--interactive-accent); }
+.zfa-gantt-lien-en-cours {
+  fill: none; stroke: var(--interactive-accent); stroke-width: 2;
+  stroke-dasharray: 5 3; pointer-events: none;
+}
+.zfa-gantt-groupe.zfa-gantt-cible .zfa-gantt-barre-tache {
+  stroke: var(--interactive-accent); stroke-width: 2;
+}
