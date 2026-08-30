@@ -1305,3 +1305,8 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-prop-val input { font-size: inherit; min-height: 0; padding: 0; }
 .zfa-artic-famchoix { margin-top: 4px; }
 .zfa-artic-famsel { width: 100%; font-size: 0.75em; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: 4px; }
+
+/* Modes Rétracté / Détaillé : carte de hauteur variable, chevron de dépli. */
+.zfa-artic-carte { position: relative; overflow: hidden; }
+.zfa-artic-chevron { position: absolute; top: 4px; right: 4px; cursor: pointer; color: var(--text-muted); }
+.zfa-artic-carte:has(.zfa-artic-props) { height: auto; }

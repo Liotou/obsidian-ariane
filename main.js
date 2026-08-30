@@ -3430,7 +3430,13 @@ class Ariane extends obsidian.Plugin {
         name: tr('Articulation'),
         icon: 'git-branch',
         factory: (controleur, conteneur) => new VueArtic(controleur, conteneur),
-        options: () => [],
+        options: () => [
+          {
+            type: 'dropdown', key: 'modeCarte', displayName: tr('Cartes'),
+            default: 'retracte',
+            options: { retracte: tr('Rétracté'), detaille: tr('Détaillé') },
+          },
+        ],
       });
     }
     // « famille » est un texte pour Obsidian ; le menu déroulant se fait
@@ -9996,6 +10002,14 @@ class Ariane extends obsidian.Plugin {
     // après, dans leur ordre d'origine). Sinon, tri par échéance puis ref.
     const ordreImpose = (opts && Array.isArray(opts.ordre) && opts.ordre.length) ? opts.ordre : null;
     const rangImpose = ordreImpose ? new Map(ordreImpose.map((r, i) => [r, i])) : null;
+    // opts.hauteur : (ref) => hauteur réelle du nœud. Fourni, l'empilement
+    // vertical d'un rang cumule ces hauteurs (+ une marge) au lieu d'un dy fixe.
+    // Absent, comportement d'origine (chaque carte à k * dy).
+    const hauteurDe = (opts && typeof opts.hauteur === 'function') ? opts.hauteur : null;
+    // Marge entre deux cartes empilées : ce qui, en hauteur fixe, séparait déjà
+    // deux rangs (dy − hauteur de carte). ARTIC_H est défini plus bas mais lu au
+    // seul appel, jamais au chargement du module.
+    const margeRang = dy > ARTIC_H ? dy - ARTIC_H : Math.max(24, dy * 0.25);
     for (const [r, groupe] of [...parRang.entries()].sort((a, b) => a[0] - b[0])) {
       if (rangImpose) {
         groupe.sort((a, b) => (rangImpose.has(a.ref) ? rangImpose.get(a.ref) : 1e9)
@@ -10005,12 +10019,21 @@ class Ariane extends obsidian.Plugin {
           .localeCompare(Ariane.jourValide(b.echeance) || '~') || a.ref.localeCompare(b.ref));
       }
       const x = r * dx;
-      let k = 0;
-      for (const n of groupe) {
-        let y = k * dy;
-        while (chevauche(x, y)) y += dy;
-        pos.set(n.ref, { x, y });
-        k += 1;
+      if (hauteurDe) {
+        let y = 0;
+        for (const n of groupe) {
+          while (chevauche(x, y)) y += dy;
+          pos.set(n.ref, { x, y });
+          y += (Number(hauteurDe(n.ref)) || dy) + margeRang;
+        }
+      } else {
+        let k = 0;
+        for (const n of groupe) {
+          let y = k * dy;
+          while (chevauche(x, y)) y += dy;
+          pos.set(n.ref, { x, y });
+          k += 1;
+        }
       }
     }
     return pos;
@@ -14014,6 +14037,8 @@ class MoteurArticulation {
     this.ctx = ctx;
     this._vue = { x: 40, y: 40, k: 1 };
     this._selArete = null;
+    this._mode = 'retracte';
+    this._plies = this._plies || new Set();
     racine.addClass('zfa-artic');
     racine.tabIndex = -1;
     racine.addEventListener('keydown', (e) => this.touche(e));
@@ -14050,6 +14075,14 @@ class MoteurArticulation {
     this.boutonBarre(barre, 'layout-grid', tr('Re-disposer'), () => this.redisposer());
     this.boutonBarre(barre, 'maximize-2', tr('Ajuster'), () => this.ajuster());
 
+    const mode = (this.ctx.lire && this.ctx.lire('modeCarte')) || 'retracte';
+    this._mode = mode;
+    this.boutonBarre(barre, mode === 'detaille' ? 'rows-3' : 'rows-2',
+      mode === 'detaille' ? tr('Détaillé') : tr('Rétracté'), async () => {
+        await this.ctx.ecrire('modeCarte', mode === 'detaille' ? 'retracte' : 'detaille');
+        this.dessiner();
+      });
+
     if (!taches.length) {
       c.createDiv({ cls: 'zfa-refs-vide', text: tr('Aucune tâche dans cette base.') });
       return;
@@ -14059,8 +14092,23 @@ class MoteurArticulation {
     for (const t of taches) this._dates[t.ref] = { debut: t.debut || '', echeance: t.echeance || '' };
     const { noeuds, aretes } = Ariane.grapheArticulation(taches);
     this._aretes = aretes;
+
+    // Hauteur effective par nœud selon le mode et le nombre de propriétés.
+    const cols = (this.ctx.ordre && this.ctx.ordre()) || [];
+    const hDe = (n) => {
+      if (this._mode !== 'detaille') return ARTIC_H;
+      if (this._plies && this._plies.has(n.ref)) return ARTIC_H;
+      return ARTIC_H + Math.max(0, cols.length) * 18 + 22; // rangées + pied famille
+    };
+    for (const n of noeuds) n.h = hDe(n);
+    this._noeudsParRef = new Map(noeuds.map((n) => [n.ref, n]));
+
     this._pos = Ariane.placerGraphe(noeuds, aretes,
-      { dx: 300, dy: 130, ordre: ordreTri.length ? ordreTri : null });
+      { dx: 300, dy: 130, ordre: ordreTri.length ? ordreTri : null,
+        hauteur: (ref) => {
+          const n = this._noeudsParRef.get(ref);
+          return n && n.h ? n.h : ARTIC_H;
+        } });
 
     const svg = svgEl('svg', { class: 'zfa-artic-svg' });
     c.appendChild(svg);
@@ -14104,7 +14152,7 @@ class MoteurArticulation {
     const p = this._pt(n.ref);
     const gn = svgEl('g', { class: 'zfa-artic-noeud', transform: 'translate(' + p.x + ',' + p.y + ')' });
     gn.dataset.ref = n.ref;
-    const fo = svgEl('foreignObject', { width: ARTIC_W, height: ARTIC_H });
+    const fo = svgEl('foreignObject', { width: ARTIC_W, height: n.h || ARTIC_H });
     gn.appendChild(fo);
     const carte = fo.createDiv({ cls: 'zfa-artic-carte' + (n.jalon ? ' est-jalon' : '') });
     carte.dataset.statut = n.statut;
@@ -14113,6 +14161,20 @@ class MoteurArticulation {
     const ic = carte.createSpan({ cls: 'zfa-artic-fam' });
     ic.setAttribute('aria-label', fam.nom || n.famille || '');
     obsidian.setIcon(ic, fam.icone || 'circle');
+
+    const deplie = this._mode === 'detaille' && !(this._plies && this._plies.has(n.ref));
+    if (this._mode === 'detaille') {
+      const chev = carte.createSpan({ cls: 'zfa-artic-chevron' });
+      const plie = this._plies && this._plies.has(n.ref);
+      obsidian.setIcon(chev, plie ? 'chevron-right' : 'chevron-down');
+      chev.addEventListener('pointerdown', (e) => e.stopPropagation());
+      chev.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._plies = this._plies || new Set();
+        if (this._plies.has(n.ref)) this._plies.delete(n.ref); else this._plies.add(n.ref);
+        this.dessiner();
+      });
+    }
     const corps = carte.createDiv({ cls: 'zfa-artic-corps' });
     corps.createDiv({ cls: 'zfa-artic-titre', text: n.intitule });
     const bas = corps.createDiv({ cls: 'zfa-artic-bas' });
@@ -14123,31 +14185,33 @@ class MoteurArticulation {
       j.createDiv({ cls: 'zfa-artic-jauge-in' }).style.width = Math.min(100, n.avancement) + '%';
     }
 
-    const cols = (this.ctx.ordre && this.ctx.ordre()) || [];
-    if (cols.length) {
-      const tb = corps.createDiv({ cls: 'zfa-artic-props' });
-      for (const col of cols) {
-        const rg = tb.createDiv({ cls: 'zfa-artic-prop' });
-        rg.createSpan({ cls: 'zfa-artic-prop-cle', text: col.nom });
-        const val = rg.createSpan({ cls: 'zfa-artic-prop-val' });
-        if (!this._rendreValeurTypee(val, col, n.ref)) {
-          const brut = col.valeur ? col.valeur(n.ref) : null;
-          val.setText(MoteurArticulation.texteValeur(brut && typeof brut === 'object' && 'data' in brut ? brut.data : brut));
+    if (deplie) {
+      const cols = (this.ctx.ordre && this.ctx.ordre()) || [];
+      if (cols.length) {
+        const tb = corps.createDiv({ cls: 'zfa-artic-props' });
+        for (const col of cols) {
+          const rg = tb.createDiv({ cls: 'zfa-artic-prop' });
+          rg.createSpan({ cls: 'zfa-artic-prop-cle', text: col.nom });
+          const val = rg.createSpan({ cls: 'zfa-artic-prop-val' });
+          if (!this._rendreValeurTypee(val, col, n.ref)) {
+            const brut = col.valeur ? col.valeur(n.ref) : null;
+            val.setText(MoteurArticulation.texteValeur(brut && typeof brut === 'object' && 'data' in brut ? brut.data : brut));
+          }
         }
       }
-    }
 
-    const pied = carte.createDiv({ cls: 'zfa-artic-famchoix' });
-    const sel = pied.createEl('select', { cls: 'zfa-artic-famsel' });
-    for (const f of (this.greffon.settings.famillesTaches || [])) {
-      sel.createEl('option', { value: f.id, text: f.nom || f.id });
+      const pied = carte.createDiv({ cls: 'zfa-artic-famchoix' });
+      const sel = pied.createEl('select', { cls: 'zfa-artic-famsel' });
+      for (const f of (this.greffon.settings.famillesTaches || [])) {
+        sel.createEl('option', { value: f.id, text: f.nom || f.id });
+      }
+      sel.value = n.famille || '';
+      sel.addEventListener('pointerdown', (e) => e.stopPropagation());
+      sel.addEventListener('change', async () => {
+        await this.ctx.poserFamille(n.ref, sel.value);
+        this.dessiner();
+      });
     }
-    sel.value = n.famille || '';
-    sel.addEventListener('pointerdown', (e) => e.stopPropagation());
-    sel.addEventListener('change', async () => {
-      await this.ctx.poserFamille(n.ref, sel.value);
-      this.dessiner();
-    });
 
     carte.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target.closest('.zfa-artic-accroche')) return;
@@ -14158,7 +14222,8 @@ class MoteurArticulation {
       this.greffon.ouvrir(n.ref, e.metaKey || e.ctrlKey);
     });
 
-    for (const [type, cy, glyphe] of [['hier', ARTIC_H * 0.32, '↳'], ['bloque', ARTIC_H * 0.72, '⊘']]) {
+    const hN = n.h || ARTIC_H;
+    for (const [type, cy, glyphe] of [['hier', hN * 0.32, '↳'], ['bloque', hN * 0.72, '⊘']]) {
       const a = svgEl('circle', { cx: ARTIC_W, cy, r: 7, class: 'zfa-artic-accroche' });
       a.dataset.type = type;
       const t = svgEl('title', {});
@@ -14212,10 +14277,12 @@ class MoteurArticulation {
   dessinerArete(g, a) {
     const s = this._pt(a.de);
     const t = this._pt(a.vers);
+    const hs = ((this._noeudsParRef && this._noeudsParRef.get(a.de)) || {}).h || ARTIC_H;
+    const ht = ((this._noeudsParRef && this._noeudsParRef.get(a.vers)) || {}).h || ARTIC_H;
     const x1 = s.x + ARTIC_W;
-    const y1 = s.y + ARTIC_H / 2;
+    const y1 = s.y + hs / 2;
     const x2 = t.x;
-    const y2 = t.y + ARTIC_H / 2;
+    const y2 = t.y + ht / 2;
     const d = Ariane._cheminFleche(x1, y1, x2, y2);
     const gr = svgEl('g', { class: 'zfa-artic-arete-groupe' });
     gr.dataset.de = a.de; gr.dataset.vers = a.vers; gr.dataset.type = a.type;
@@ -14339,7 +14406,9 @@ class MoteurArticulation {
       if (gr.dataset.de !== ref && gr.dataset.vers !== ref) continue;
       const s = this._pt(gr.dataset.de);
       const t = this._pt(gr.dataset.vers);
-      const d = Ariane._cheminFleche(s.x + ARTIC_W, s.y + ARTIC_H / 2, t.x, t.y + ARTIC_H / 2);
+      const hs = ((this._noeudsParRef && this._noeudsParRef.get(gr.dataset.de)) || {}).h || ARTIC_H;
+      const ht = ((this._noeudsParRef && this._noeudsParRef.get(gr.dataset.vers)) || {}).h || ARTIC_H;
+      const d = Ariane._cheminFleche(s.x + ARTIC_W, s.y + hs / 2, t.x, t.y + ht / 2);
       for (const p of gr.querySelectorAll('path')) p.setAttribute('d', d);
     }
   }
@@ -14348,8 +14417,9 @@ class MoteurArticulation {
     if (ev.button !== 0) return;
     ev.preventDefault();
     const s0 = this._pt(ref);
+    const hN = ((this._noeudsParRef && this._noeudsParRef.get(ref)) || {}).h || ARTIC_H;
     const x1 = s0.x + ARTIC_W;
-    const y1 = s0.y + (type === 'hier' ? ARTIC_H * 0.32 : ARTIC_H * 0.72);
+    const y1 = s0.y + (type === 'hier' ? hN * 0.32 : hN * 0.72);
     const trait = svgEl('path', { class: 'zfa-artic-lien-en-cours', d: '' });
     this._scene.appendChild(trait);
     let cible = null;

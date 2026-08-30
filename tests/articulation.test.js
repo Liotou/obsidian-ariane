@@ -94,6 +94,12 @@ test('un cycle ne fait pas boucler placerGraphe', () => {
   assert.equal(pos.size, 2);
 });
 
+test('placerGraphe : hauteur variable espace les nœuds d un même rang', () => {
+  const pos = Ariane.placerGraphe([N('A'), N('B')], [],
+    { dx: 200, dy: 100, hauteur: (r) => (r === 'A' ? 200 : 60) });
+  assert.ok(pos.get('B').y - pos.get('A').y >= 200);
+});
+
 /* -------------------------- lienValide ------------------------------ */
 
 const D = (obj) => new Map(Object.entries(obj));
