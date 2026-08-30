@@ -870,6 +870,7 @@ const TEXTES = {
     "Glisser pour réordonner parmi les tâches de même rang": "Drag to reorder among tasks of the same rank",
     "Rien à réordonner : cette tâche n a pas de sœur.": "Nothing to reorder: this task has no sibling.",
     "Tri passé en manuel.": "Sort switched to manual.",
+    "Frise": "Timeline",
   },
 };
 let LANGUE = 'fr';
@@ -2427,6 +2428,12 @@ views:
     sort:
       - property: termine-le
         direction: DESC
+  - type: ariane-frise
+    name: 5. Frise
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "abandonnée"
 `;
 
 const ZFA_TACHE_DEBUT = '%% ariane:tache %%';
@@ -3367,6 +3374,16 @@ class ZotflowAtomiser extends obsidian.Plugin {
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
     this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
     this.registerView(TYPE_VUE_GANTT, (leaf) => new VueGanttTaches(leaf, this));
+    // Vue de base : rend false si Bases est désactivé, auquel cas la vue
+    // autonome reste le seul accès à la frise, et rien n'est perdu.
+    if (typeof this.registerBasesView === 'function') {
+      const Vue = fabriquerVueFriseBase(this);
+      this.registerBasesView(TYPE_VUE_BASE_FRISE, {
+        name: tr('Frise'),
+        icon: 'calendar-range',
+        factory: (controleur, conteneur) => new Vue(controleur, conteneur),
+      });
+    }
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
     this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
@@ -11682,6 +11699,14 @@ class ModaleNouvelleTache extends obsidian.Modal {
 const TYPE_VUE_REFS = 'zfa-references';
 const TYPE_VUE_INCOHERENCES = 'zfa-taches-incoherences';
 const TYPE_VUE_GANTT = 'zfa-taches-gantt';
+const TYPE_VUE_BASE_FRISE = 'ariane-frise';
+
+// Valeurs par défaut des réglages d'une frise de base. Ils ne passent plus par
+// les réglages d'Ariane : chaque vue d'une base porte les siens.
+const DEFAUTS_FRISE = {
+  zoom: 'mois', masquerTerminees: false, libelleSemaine: 'numero',
+  largeurLibelles: 280, tri: 'date',
+};
 
 /* =========================================================================
  * Frise Gantt des tâches
@@ -11716,28 +11741,23 @@ function svgEl(nom, attrs) {
 // Instrument de planification, à l'échelle du trimestre. Ce n'est pas la vue du
 // quotidien, qui reste la base « Débloquées » : une frise répond à « quand »,
 // pas à « quoi maintenant ».
-class VueGanttTaches extends obsidian.ItemView {
-  constructor(feuille, greffon) {
-    super(feuille);
+// Le moteur de la frise, indépendant de l'enveloppe qui l'accueille. Deux
+// enveloppes s'en servent : la vue autonome, et la vue de base. Le contexte
+// dit d'où viennent les tâches et où se rangent les réglages, ce qui permet à
+// la vue de base de les ranger dans le fichier .base, par vue.
+class MoteurFrise {
+  constructor(greffon, racine, contexte) {
     this.greffon = greffon;
+    this.app = greffon.app;
+    this.racine = racine;
+    this.ctx = contexte;
     this.replies = new Set();
     this._cascade = null;
+    this._filtre = {};
+    racine.addClass('zfa-gantt');
   }
 
-  getViewType() { return TYPE_VUE_GANTT; }
-  getDisplayText() { return tr('Frise des tâches'); }
-  getIcon() { return 'calendar-range'; }
-
-  async onOpen() {
-    this.contentEl.addClass('zfa-gantt');
-    this.dessiner();
-    this.registerEvent(this.app.metadataCache.on('changed', (f) => {
-      if (!this.greffon.refDeChemin(f.path)) return;
-      this.greffon.antirebond('gantt:vue', () => this.dessiner(), 600);
-    }));
-  }
-
-  get zoom() { return this.greffon.settings.ganttZoom || 'mois'; }
+  get zoom() { return this.ctx.lire('zoom') || 'mois'; }
   get ppj() { return ZotflowAtomiser.ZOOMS_GANTT[this.zoom] || 9; }
 
   visibles(lignes) {
@@ -11765,13 +11785,13 @@ class VueGanttTaches extends obsidian.ItemView {
   /* ------------------------------ Ossature ------------------------------ */
 
   dessiner() {
-    const c = this.contentEl;
+    const c = this.racine;
     const ancienne = c.querySelector('.zfa-gantt-droite');
     const memeX = ancienne ? ancienne.scrollLeft : null;
     const memeY = ancienne ? ancienne.scrollTop : null;
     c.empty();
 
-    let taches = this.greffon.tachesPourGantt();
+    let taches = this.ctx.taches();
     // Une écriture de frontmatter n'apparaît dans l'index qu'après un battement.
     // Sans ce report, la frise redessine d'abord les anciennes dates puis les
     // nouvelles : c'est le rebond qu'on voyait à l'étirement d'une barre.
@@ -11789,9 +11809,9 @@ class VueGanttTaches extends obsidian.ItemView {
       }
     }
     const nTotal = taches.length;
-    if (this.greffon.settings.ganttMasquerTerminees) taches = this.sansLesCloses(taches);
-    taches = ZotflowAtomiser.filtrerTaches(taches, this._filtre || {});
-    const toutes = ZotflowAtomiser.disposerGantt(taches, this.greffon.settings.ganttTri || 'date');
+    if (this.ctx.lire('masquerTerminees')) taches = this.sansLesCloses(taches);
+    if (this.ctx.avecFiltres) taches = ZotflowAtomiser.filtrerTaches(taches, this._filtre);
+    const toutes = ZotflowAtomiser.disposerGantt(taches, this.ctx.lire('tri') || 'date');
     const planifiees = toutes.filter((l) => l.debut || l.echeance);
     const nonPlanifiees = toutes.filter((l) => !l.debut && !l.echeance);
 
@@ -11815,7 +11835,7 @@ class VueGanttTaches extends obsidian.ItemView {
     const env = c.createDiv({ cls: 'zfa-gantt-enveloppe' });
     const gauche = env.createDiv({ cls: 'zfa-gantt-gauche' });
     const droite = env.createDiv({ cls: 'zfa-gantt-droite' });
-    gauche.style.width = (this.greffon.settings.ganttLargeurLibelles || 280) + 'px';
+    gauche.style.width = (this.ctx.lire('largeurLibelles') || 280) + 'px';
 
     this.dessinerColonneGauche(gauche, lignes);
 
@@ -11893,30 +11913,30 @@ class VueGanttTaches extends obsidian.ItemView {
   }
 
   dessinerReglages(c, nTotal, nPlanifiees) {
-    const s = this.greffon.settings;
     const b = c.createDiv({ cls: 'zfa-gantt-barre' });
     for (const z of Object.keys(ZotflowAtomiser.ZOOMS_GANTT)) {
       this.bouton(b, tr(z), async () => {
-        s.ganttZoom = z; await this.greffon.saveSettings(); this.dessiner();
+        await this.ctx.ecrire('zoom', z); this.dessiner();
       }, this.zoom === z);
     }
     b.createSpan({ cls: 'zfa-gantt-separateur' });
     this.bouton(b, tr('Masquer les terminées'), async () => {
-      s.ganttMasquerTerminees = !s.ganttMasquerTerminees;
-      await this.greffon.saveSettings(); this.dessiner();
-    }, !!s.ganttMasquerTerminees);
+      await this.ctx.ecrire('masquerTerminees', !this.ctx.lire('masquerTerminees'));
+      this.dessiner();
+    }, !!this.ctx.lire('masquerTerminees'));
     if (this.zoom === 'semaine') {
       const suite = { numero: 'dates', dates: 'les-deux', 'les-deux': 'numero' };
       const libelles = { numero: tr('nº de semaine'), dates: tr('dates'), 'les-deux': tr('les deux') };
-      this.bouton(b, libelles[s.ganttLibelleSemaine || 'numero'], async () => {
-        s.ganttLibelleSemaine = suite[s.ganttLibelleSemaine || 'numero'];
-        await this.greffon.saveSettings(); this.dessiner();
+      const mode = this.ctx.lire('libelleSemaine') || 'numero';
+      this.bouton(b, libelles[mode], async () => {
+        await this.ctx.ecrire('libelleSemaine', suite[mode]); this.dessiner();
       });
     }
     b.createSpan({ cls: 'zfa-gantt-compte',
       text: nPlanifiees + tr(' sur ') + nTotal + tr(' tâche(s) datée(s)') });
 
-    const f = this._filtre || (this._filtre = {});
+    if (!this.ctx.avecFiltres) return;
+    const f = this._filtre;
     const b2 = c.createDiv({ cls: 'zfa-gantt-barre zfa-gantt-barre-filtres' });
 
     const champ = b2.createEl('input', { cls: 'zfa-gantt-recherche',
@@ -11935,12 +11955,11 @@ class VueGanttTaches extends obsidian.ItemView {
         const o = sel.createEl('option', { text: texte });
         o.value = valeur;
       }
-      sel.value = cle === 'tri' ? (this.greffon.settings.ganttTri || 'date') : (f[cle] || '');
+      sel.value = cle === 'tri' ? (this.ctx.lire('tri') || 'date') : (f[cle] || '');
       sel.title = libelle;
       sel.addEventListener('change', async () => {
         if (cle === 'tri') {
-          this.greffon.settings.ganttTri = sel.value;
-          await this.greffon.saveSettings();
+          await this.ctx.ecrire('tri', sel.value);
         } else {
           f[cle] = sel.value;
         }
@@ -12045,8 +12064,7 @@ class VueGanttTaches extends obsidian.ItemView {
       const lacher = async () => {
         document.removeEventListener('pointermove', bouger);
         document.removeEventListener('pointerup', lacher);
-        this.greffon.settings.ganttLargeurLibelles = gauche.offsetWidth;
-        await this.greffon.saveSettings();
+        await this.ctx.ecrire('largeurLibelles', gauche.offsetWidth);
       };
       document.addEventListener('pointermove', bouger);
       document.addEventListener('pointerup', lacher);
@@ -12097,9 +12115,8 @@ class VueGanttTaches extends obsidian.ItemView {
       }
       // Réordonner sans passer en tri manuel ne changerait rien à l'écran :
       // on bascule, plutôt que de laisser Monsieur devant un geste sans effet.
-      if ((this.greffon.settings.ganttTri || 'date') !== 'manuel') {
-        this.greffon.settings.ganttTri = 'manuel';
-        await this.greffon.saveSettings();
+      if ((this.ctx.lire('tri') || 'date') !== 'manuel') {
+        await this.ctx.ecrire('tri', 'manuel');
         new obsidian.Notice(tr('Tri passé en manuel.'));
       }
       this.dessiner();
@@ -12194,7 +12211,7 @@ class VueGanttTaches extends obsidian.ItemView {
   }
 
   enteteSemaines(g, cfg) {
-    const mode = this.greffon.settings.ganttLibelleSemaine || 'numero';
+    const mode = this.ctx.lire('libelleSemaine') || 'numero';
     for (let i = 0; i < cfg.jours; i++) {
       const jour = ZotflowAtomiser.decalerJour(cfg.debut, i);
       const [a, m, j] = jour.split('-').map(Number);
@@ -12667,7 +12684,102 @@ class VueGanttTaches extends obsidian.ItemView {
     document.addEventListener('pointerup', lacher);
   }
 
-  async onClose() { this.contentEl.empty(); }
+  detruire() { this.racine.empty(); }
+}
+
+/* ---- Enveloppe 1 : la frise en vue autonome ---------------------------- */
+
+// Elle survit à tout : elle marche sans base, et elle reste le repli si
+// registerBasesView échoue, ce qui arrive quand Bases est désactivé.
+class VueGanttTaches extends obsidian.ItemView {
+  constructor(feuille, greffon) {
+    super(feuille);
+    this.greffon = greffon;
+  }
+
+  getViewType() { return TYPE_VUE_GANTT; }
+  getDisplayText() { return tr('Frise des tâches'); }
+  getIcon() { return 'calendar-range'; }
+
+  async onOpen() {
+    const g = this.greffon;
+    this.moteur = new MoteurFrise(g, this.contentEl, {
+      avecFiltres: true,
+      taches: () => g.tachesPourGantt(),
+      lire: (cle) => g.settings['gantt' + cle.charAt(0).toUpperCase() + cle.slice(1)],
+      ecrire: async (cle, v) => {
+        g.settings['gantt' + cle.charAt(0).toUpperCase() + cle.slice(1)] = v;
+        await g.saveSettings();
+      },
+    });
+    this.moteur.dessiner();
+    this.registerEvent(this.app.metadataCache.on('changed', (f) => {
+      if (!g.refDeChemin(f.path)) return;
+      g.antirebond('gantt:vue', () => this.moteur.dessiner(), 600);
+    }));
+  }
+
+  async onClose() { if (this.moteur) this.moteur.detruire(); }
+}
+
+/* ---- Enveloppe 2 : la frise comme vue d'une base ----------------------- */
+
+// C'est la base qui filtre, qui trie et qui range les réglages, chacun dans sa
+// propre vue du fichier .base. Deux frises peuvent donc coexister dans une même
+// base, l'une au trimestre et l'autre à l'année, sans se marcher dessus.
+function fabriquerVueFriseBase(greffon) {
+  return class VueFriseBase extends obsidian.BasesView {
+    constructor(controleur, conteneur) {
+      super(controleur);
+      this.type = TYPE_VUE_BASE_FRISE;
+      this.greffon = greffon;
+      this.conteneur = conteneur;
+    }
+
+    onload() {
+      this.moteur = new MoteurFrise(this.greffon, this.conteneur, {
+        avecFiltres: false,
+        taches: () => this.tachesDeLaBase(),
+        lire: (cle) => {
+          const v = this.config.get(cle);
+          return v === undefined || v === null ? DEFAUTS_FRISE[cle] : v;
+        },
+        ecrire: async (cle, v) => { this.config.set(cle, v); },
+      });
+    }
+
+    onunload() { if (this.moteur) this.moteur.detruire(); }
+
+    onDataUpdated() { if (this.moteur) this.moteur.dessiner(); }
+
+    onResize() { if (this.moteur) this.moteur.dessiner(); }
+
+    // La base ne rend que les notes retenues par son filtre. Une méta-tâche
+    // écartée mais parente d'une tâche retenue manquerait, et l'arbre casserait :
+    // on va donc rechercher les ancêtres absents dans le coffre.
+    tachesDeLaBase() {
+      const dedans = new Set();
+      for (const e of (this.data && this.data.data) || []) {
+        const chemin = e && e.file ? e.file.path : null;
+        const ref = chemin ? this.greffon.refDeChemin(chemin) : null;
+        if (ref) dedans.add(ref);
+      }
+      if (!dedans.size) return [];
+      const toutes = this.greffon.tachesPourGantt();
+      const parRef = new Map(toutes.map((t) => [t.ref, t]));
+      const gardes = new Set(dedans);
+      for (const ref of dedans) {
+        let p = ZotflowAtomiser.refDeLien((parRef.get(ref) || {}).parent || '');
+        const vus = new Set([ref]);
+        while (p && parRef.has(p) && !vus.has(p)) {
+          gardes.add(p);
+          vus.add(p);
+          p = ZotflowAtomiser.refDeLien(parRef.get(p).parent || '');
+        }
+      }
+      return toutes.filter((t) => gardes.has(t.ref));
+    }
+  };
 }
 
 /* =========================================================================

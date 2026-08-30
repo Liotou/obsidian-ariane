@@ -89,3 +89,9 @@ views:
     sort:
       - property: termine-le
         direction: DESC
+  - type: ariane-frise
+    name: 5. Frise
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "abandonnée"
