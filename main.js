@@ -11089,7 +11089,121 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setValue(s.listeRappelsDefaut || '')
         .onChange(async (v) => { s.listeRappelsDefaut = v.trim(); await maj(); }));
 
+    this._section(c, tr('Familles de tâches'));
+    this._aide(c, tr("Chaque famille porte une couleur et une icône (cartes de l'articulation) et déclare les propriétés qu'elle ajoute à une tâche. La famille d'une tâche vit dans son champ « famille »."));
+    this._tableFamillesTaches(c, s, maj);
+    new obsidian.Setting(c)
+      .setName(tr('Famille par défaut'))
+      .setDesc(tr("Appliquée quand le champ « famille » est vide et qu'aucune règle ne tranche."))
+      .addDropdown((d) => {
+        for (const f of (s.famillesTaches || [])) d.addOption(f.id, f.nom || f.id);
+        d.setValue(s.familleTacheDefaut || 'action')
+          .onChange(async (v) => { s.familleTacheDefaut = v; await maj(); });
+      });
+
     this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue » (et par le clic droit sur un en-tête de colonne)."));
+  }
+
+  // Éditeur des familles de tâches. Même esprit que _tableFamilles (familles
+  // de notes) : liste répétable, réordonnable, chaque ligne portant en plus
+  // une sous-liste de propriétés { cle, libelle, type }.
+  _tableFamillesTaches(parent, s, maj) {
+    const TYPES = Object.keys(Ariane.TYPE_FR_VERS_OBSIDIAN); // texte, nombre, …
+    const slug = (v) => String(v || '').toLowerCase().trim()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const hote = parent.createDiv({ cls: 'zfa-famt-hote' });
+
+    const rendre = () => {
+      hote.empty();
+      const familles = Array.isArray(s.famillesTaches) ? s.famillesTaches : (s.famillesTaches = []);
+      if (!familles.length) {
+        hote.createDiv({ cls: 'zfa-fam-vide', text: tr('Aucune famille de tâches.') });
+      }
+      familles.forEach((f, i) => {
+        const ligne = hote.createDiv({ cls: 'zfa-famt' });
+        const tete = ligne.createDiv({ cls: 'zfa-famt-tete' });
+
+        const apercu = tete.createSpan({ cls: 'zfa-famt-apercu' });
+        const peindreApercu = () => {
+          apercu.empty();
+          apercu.style.setProperty('--zfa-fam-couleur', f.couleur || '#888888');
+          obsidian.setIcon(apercu, f.icone || 'circle');
+        };
+        peindreApercu();
+
+        const id = tete.createEl('input', { cls: 'zfa-famt-id', type: 'text' });
+        id.placeholder = tr('identifiant'); id.value = f.id || '';
+        id.onchange = async () => {
+          const v = slug(id.value); id.value = v;
+          const collision = (familles || []).some((g, j) => j !== i && g.id === v);
+          id.toggleClass('zfa-famt-collision', !!collision || !v);
+          if (v && !collision) { f.id = v; await maj(); }
+        };
+
+        const nom = tete.createEl('input', { cls: 'zfa-famt-nom', type: 'text' });
+        nom.placeholder = tr('Nom affiché'); nom.value = f.nom || '';
+        nom.onchange = async () => { f.nom = nom.value.trim(); await maj(); };
+
+        const couleur = tete.createEl('input', { cls: 'zfa-famt-couleur', type: 'color' });
+        couleur.value = f.couleur || '#888888';
+        couleur.onchange = async () => { f.couleur = couleur.value; peindreApercu(); await maj(); };
+
+        const icone = tete.createEl('input', { cls: 'zfa-famt-icone', type: 'text' });
+        icone.placeholder = tr('icône Lucide'); icone.value = f.icone || '';
+        icone.onchange = async () => { f.icone = icone.value.trim(); peindreApercu(); await maj(); };
+
+        const monter = tete.createEl('button', { cls: 'zfa-fam-bouton' });
+        obsidian.setIcon(monter, 'chevron-up');
+        monter.onclick = async () => { if (i === 0) return;
+          familles.splice(i - 1, 0, familles.splice(i, 1)[0]); await maj(); rendre(); };
+        const descendre = tete.createEl('button', { cls: 'zfa-fam-bouton' });
+        obsidian.setIcon(descendre, 'chevron-down');
+        descendre.onclick = async () => { if (i >= familles.length - 1) return;
+          familles.splice(i + 1, 0, familles.splice(i, 1)[0]); await maj(); rendre(); };
+        const suppr = tete.createEl('button', { cls: 'zfa-fam-bouton zfa-fam-suppr' });
+        obsidian.setIcon(suppr, 'trash-2');
+        suppr.onclick = async () => { familles.splice(i, 1); await maj(); rendre(); };
+
+        ligne.createDiv({ cls: 'zfa-famt-avert', text:
+          tr("Renommer l'identifiant ne migre pas les tâches déjà rattachées.") });
+
+        const corps = ligne.createDiv({ cls: 'zfa-famt-props' });
+        corps.createEl('div', { cls: 'zfa-famt-props-titre', text: tr('Propriétés ajoutées') });
+        (f.proprietes = Array.isArray(f.proprietes) ? f.proprietes : []).forEach((p, j) => {
+          const pr = corps.createDiv({ cls: 'zfa-famt-prop' });
+          const cle = pr.createEl('input', { type: 'text' });
+          cle.placeholder = tr('clé'); cle.value = p.cle || '';
+          cle.onchange = async () => { p.cle = cle.value.trim(); await maj(); };
+          const lib = pr.createEl('input', { type: 'text' });
+          lib.placeholder = tr('libellé'); lib.value = p.libelle || '';
+          lib.onchange = async () => { p.libelle = lib.value.trim(); await maj(); };
+          const typ = pr.createEl('select');
+          for (const t of TYPES) typ.createEl('option', { value: t, text: tr(t[0].toUpperCase() + t.slice(1)) });
+          typ.value = p.type || 'texte';
+          typ.onchange = async () => { p.type = typ.value; await maj(); };
+          const del = pr.createEl('button', { cls: 'zfa-fam-bouton zfa-fam-suppr' });
+          obsidian.setIcon(del, 'x');
+          del.onclick = async () => { f.proprietes.splice(j, 1); await maj(); rendre(); };
+        });
+        const plus = corps.createEl('button', { cls: 'zfa-famt-prop-plus' });
+        plus.setText(tr('Ajouter une propriété'));
+        plus.onclick = async () => { f.proprietes.push({ cle: '', libelle: '', type: 'texte' }); await maj(); rendre(); };
+      });
+    };
+
+    const barre = parent.createDiv({ cls: 'zfa-fam-barre' });
+    new obsidian.Setting(barre)
+      .addButton((b) => b.setButtonText(tr('Ajouter une famille')).setCta().onClick(async () => {
+        (s.famillesTaches = s.famillesTaches || []).push({
+          id: '', nom: '', couleur: '#888888', icone: 'circle', proprietes: [],
+        });
+        await maj(); rendre();
+      }))
+      .addButton((b) => b.setButtonText(tr('Recharger les familles par défaut')).onClick(async () => {
+        s.famillesTaches = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.famillesTaches));
+        await maj(); rendre();
+      }));
+    rendre();
   }
 
   ongletSuggestions(c, s, maj) {
