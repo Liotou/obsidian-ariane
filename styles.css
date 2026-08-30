@@ -1303,7 +1303,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-fam svg { width: 15px; height: 15px; }
 .zfa-artic-corps { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .zfa-artic-titre {
-  font-weight: 600; color: var(--text-normal);
+  font-weight: 600; color: var(--text-normal); padding-right: 38px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .zfa-artic-bas {

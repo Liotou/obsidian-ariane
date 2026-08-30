@@ -14406,7 +14406,9 @@ class MoteurArticulation {
     this._selArete = null;
     this._selNoeud = null;
     this._mode = 'retracte';
-    this._plies = this._plies || new Set();
+    // Cartes dont l'affichage des propriétés est INVERSÉ par rapport au mode
+    // courant (rétracté montre compact ; détaillé montre les propriétés).
+    this._cartesInversees = this._cartesInversees || new Set();
     this._repliesNoeuds = new Set(); // tâches dont on masque la descendance
     racine.addClass('zfa-artic');
     racine.tabIndex = -1;
@@ -14449,6 +14451,7 @@ class MoteurArticulation {
     this._mode = mode;
     this.boutonBarre(barre, mode === 'detaille' ? 'rows-3' : 'rows-2',
       mode === 'detaille' ? tr('Détaillé') : tr('Rétracté'), async () => {
+        this._cartesInversees.clear();
         await this.ctx.ecrire('modeCarte', mode === 'detaille' ? 'retracte' : 'detaille');
         this.dessiner();
       });
@@ -14487,11 +14490,9 @@ class MoteurArticulation {
 
     // Hauteur effective par nœud selon le mode et le nombre de propriétés.
     const cols = (this.ctx.ordre && this.ctx.ordre()) || [];
-    const hDe = (n) => {
-      if (this._mode !== 'detaille') return ARTIC_H;
-      if (this._plies && this._plies.has(n.ref)) return ARTIC_H;
-      return ARTIC_H + Math.max(0, cols.length) * 18 + 22; // rangées + pied famille
-    };
+    const hDe = (n) => (this._estDeplie(n.ref)
+      ? ARTIC_H + Math.max(0, cols.length) * 18 + 22 // rangées + pied famille
+      : ARTIC_H);
     for (const n of noeuds) n.h = hDe(n);
     this._noeudsParRef = new Map(noeuds.map((n) => [n.ref, n]));
 
@@ -14593,16 +14594,19 @@ class MoteurArticulation {
       m.showAtMouseEvent(e);
     });
 
-    const deplie = this._mode === 'detaille' && !(this._plies && this._plies.has(n.ref));
-    if (this._mode === 'detaille') {
+    // Le chevron est toujours là : il montre / masque les propriétés de CETTE
+    // carte, quel que soit le mode par défaut de la vue.
+    const deplie = this._estDeplie(n.ref);
+    {
       const chev = carte.createSpan({ cls: 'zfa-artic-chevron' });
-      const plie = this._plies && this._plies.has(n.ref);
-      obsidian.setIcon(chev, plie ? 'chevron-right' : 'chevron-down');
+      obsidian.setIcon(chev, deplie ? 'chevron-down' : 'chevron-right');
+      chev.setAttribute('aria-label', deplie
+        ? tr('Masquer les propriétés') : tr('Afficher les propriétés'));
       chev.addEventListener('pointerdown', (e) => e.stopPropagation());
       chev.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._plies = this._plies || new Set();
-        if (this._plies.has(n.ref)) this._plies.delete(n.ref); else this._plies.add(n.ref);
+        if (this._cartesInversees.has(n.ref)) this._cartesInversees.delete(n.ref);
+        else this._cartesInversees.add(n.ref);
         this.dessiner();
       });
     }
@@ -15101,6 +15105,13 @@ class MoteurArticulation {
     for (const ref of this._repliesNoeuds) if (refs.has(ref)) masquer(ref);
     const refsVisibles = new Set([...refs].filter((r) => !caches.has(r)));
     return { enfants, parent, prof, caches, refsVisibles };
+  }
+
+  // Les propriétés de cette carte sont-elles montrées ? Le mode de la vue
+  // donne le défaut ; le chevron de la carte l'inverse individuellement.
+  _estDeplie(ref) {
+    const parDefaut = this._mode === 'detaille';
+    return this._cartesInversees.has(ref) ? !parDefaut : parDefaut;
   }
 
   _compteSousArbre(ref) {
