@@ -926,6 +926,7 @@ const DEFAULT_SETTINGS = {
   // plus de fixer la clé complète d'une propriété précise (concept -> clé).
   prefixeTaches: '',
   prefixeTachesApplique: '',
+  nomsTachesLisibles: false, // « Tâche - Échéance » plutôt que « Tâche - echeance »
   masquerPrefixeAffichage: true, // cacher le préfixe dans les en-têtes de colonnes / cartes
   clesTaches: {},
   libellesTaches: {}, // ancien réglage, plus utilisé
@@ -10441,6 +10442,17 @@ class Ariane extends obsidian.Plugin {
   //   2. sinon le préfixe global suivi du concept (« Tâche - echeance ») ;
   //   3. sinon le concept nu.
   // Le préfixe est repris tel quel, espace final compris.
+  // Nom lisible d'un concept (pour la forme « Tâche - Échéance »).
+  _labelConcept(concept) {
+    const d = Ariane.PROPS_GENERIQUES.find((p) => p.cle === concept);
+    if (d) return tr(d.defaut);
+    return ({
+      'bloque-par': 'Bloquée par', 'termine-le': 'Terminée le',
+      source: 'Source', livrable: 'Livrable', fichier: 'Fichier',
+      liste: 'Liste', 'rappel-id': 'Rappel ID',
+    })[concept] || concept;
+  }
+
   cleT(concept) {
     if (concept === 'intitule') return 'intitule';
     const pre = this.settings.prefixeTaches || '';
@@ -10448,7 +10460,8 @@ class Ariane extends obsidian.Plugin {
     // On n'honore une clé précise que si elle commence par le préfixe (ou s'il
     // n'y a pas de préfixe). Ça élimine d'anciens intitulés qui traînaient.
     if (perso && perso !== concept && (!pre || perso.startsWith(pre))) return perso;
-    return pre ? pre + concept : concept;
+    const base = this.settings.nomsTachesLisibles ? this._labelConcept(concept) : concept;
+    return pre ? pre + base : base;
   }
 
   // Intitulé d'une colonne / propriété affichée : sans le préfixe des tâches si
@@ -10463,9 +10476,16 @@ class Ariane extends obsidian.Plugin {
   // Lit un concept dans un entête, en acceptant l'ancienne clé par défaut le
   // temps que les notes soient migrées.
   _lireT(fm, concept) {
+    if (!fm) return undefined;
     const k = this.cleT(concept);
-    if (fm && k in fm) return fm[k];
-    return fm ? fm[concept] : undefined;
+    if (k in fm) return fm[k];
+    // Repli sur d'autres formes le temps que les notes soient migrées.
+    const pre = this.settings.prefixeTaches || '';
+    for (const alt of [concept, pre + concept,
+      this._labelConcept(concept), pre + this._labelConcept(concept)]) {
+      if (alt in fm) return fm[alt];
+    }
+    return undefined;
   }
 
   // Intitulé affiché d'une propriété générique dans le formulaire (toujours
@@ -11498,6 +11518,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setPlaceholder('Tâche - ').setValue(s.prefixeTaches || '')
         .onChange(async (v) => { s.prefixeTaches = v; await maj(); }));
     new obsidian.Setting(c)
+      .setName(tr('Noms lisibles'))
+      .setDesc(tr("« Tâche - Échéance » plutôt que « Tâche - echeance ». Après changement, « Renommer dans les notes »."))
+      .addToggle((t) => t.setValue(s.nomsTachesLisibles === true)
+        .onChange(async (v) => { s.nomsTachesLisibles = v; await maj(); }));
+    new obsidian.Setting(c)
       .setName(tr('Masquer le préfixe à l\'affichage'))
       .setDesc(tr("Les colonnes de la frise et les propriétés des cartes d'articulation montrent le nom sans le préfixe."))
       .addToggle((t) => t.setValue(s.masquerPrefixeAffichage !== false)
@@ -11540,12 +11565,15 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           for (const con of Ariane.CONCEPTS_TACHE) {
             const nk = g.cleT(con);
             if (nk in fm) continue;
-            const candidats = new Set([con]);
-            if (pa) candidats.add(pa + con);
-            if (s.prefixeTaches) candidats.add(s.prefixeTaches + con);
+            const lab = g._labelConcept(con);
+            const candidats = new Set([con, lab]);
+            for (const p of [pa, s.prefixeTaches]) {
+              if (p) { candidats.add(p + con); candidats.add(p + lab); }
+            }
             if (stale[con]) candidats.add(String(stale[con]).trim());
-            // Toute clé « <préfixe finissant par un séparateur><concept> ».
-            const re = new RegExp('^.*[\\s\\-–—]' + con.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$');
+            // Toute clé « <préfixe finissant par un séparateur><concept ou libellé> ».
+            const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const re = new RegExp('^.*[\\s\\-–—](?:' + esc(con) + '|' + esc(lab) + ')$', 'i');
             for (const k of cles) if (re.test(k)) candidats.add(k);
             for (const ancien of candidats) {
               if (ancien && ancien !== nk && (ancien in fm)) { aFaire.push([ancien, nk]); break; }
@@ -11570,8 +11598,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addButton((b) => b.setButtonText(tr('Nettoyer')).setWarning().onClick(async () => {
         const g = this.plugin;
         const avis = new obsidian.Notice(tr('Nettoyage en cours…'), 0);
-        const labels = {};
-        for (const p of Ariane.PROPS_GENERIQUES) labels[p.cle] = tr(p.defaut);
+        const pa = s.prefixeTachesApplique || '';
+        const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         let total = 0;
         for (const f of g.app.vault.getMarkdownFiles()) {
           if (!g.refDeChemin(f.path)) continue;
@@ -11581,11 +11609,15 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           for (const con of Ariane.CONCEPTS_TACHE) {
             const nk = g.cleT(con);
             if (!(nk in fm)) continue; // clé actuelle absente : on n'y touche pas
-            const conEsc = con.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const re = new RegExp('^.*[\\s\\-–—]' + conEsc + '$');
+            const lab = g._labelConcept(con);
+            const variantes = new Set([con, lab]);
+            for (const p of [pa, s.prefixeTaches]) {
+              if (p) { variantes.add(p + con); variantes.add(p + lab); }
+            }
+            const re = new RegExp('^.*[\\s\\-–—](?:' + esc(con) + '|' + esc(lab) + ')$', 'i');
             for (const k of cles) {
               if (k === nk) continue;
-              if (k === con || k === labels[con] || re.test(k)) aSupprimer.add(k);
+              if (variantes.has(k) || re.test(k)) aSupprimer.add(k);
             }
           }
           if (!aSupprimer.size) continue;
