@@ -128,3 +128,36 @@ absente du bandeau de region. Conservé tel quel comme commentaire interne à la
 region 8 plutôt que supprimé. Regroupé avec lui : le sous-bloc `ZFA_SCHEMA_*` /
 `extraitSchema` / `injecterExtrait`, jusque-là séparé du bloc mxGraph par les
 modèles de bases (region 10).
+
+## Bandeaux ad hoc supprimés au commit régions 9–10
+
+`main.js` :
+- `/* ---- Détection de doublons d'auteurs ---- */` : titre nu, superséordé par
+  `//#region 9 · Doublons d'auteurs`. Supprimé.
+- `/* --------------------------- Temps passé --------------------------------- */`
+  (bloc 5 lignes) : bandeau orphelin de premier niveau — le compteur de temps
+  passé est un groupe de méthodes de `class Ariane`, aucun code de cette zone ne
+  s'y rapporte. Déjà signalé par le lot régions 1–4 (« à retirer lors de la mise
+  au propre des régions concernées ») ; retiré ici. Les sections `/* Temps passé
+  */` internes à `class Ariane` (≈ L984, ≈ L5780) ne sont pas touchées.
+
+Le bandeau `/* === Plugin === */` a été conservé et laissé juste avant
+`class Ariane` (il annonce la region 11, hors périmètre de ce lot).
+
+## Ordre des régions 6→10 : blocs remontés à leur rang
+
+`main.js` : pour respecter « l'ordre du fichier suit la spec » (region N avant
+region N+1, tout avant `class Ariane`), les blocs suivants ont été remontés au fil
+des commits de ce lot, sans toucher aux corps :
+- region 6 : `ZFA_RE_CITATION` / `citationsDuTexte` d'une part, bloc
+  `ZFA_BIBLIO_*` → `composerCitation` d'autre part, réunis juste après
+  `//#endregion 5` (ils encadraient `BASE_TACHES`).
+- region 7 : bloc `ZFA_RE_CIT_GROUPE` → `footnotesVersCitations` remonté depuis
+  la fin de zone (après les régions 8/9/10) jusqu'après `//#endregion 6`.
+- region 8 : sous-bloc `ZFA_SCHEMA_*` / `extraitSchema` / `injecterExtrait`
+  rapproché du bloc mxGraph (ils étaient séparés par les modèles de bases).
+- region 10 : bloc `BASE_TACHES` → `ZFA_TACHE_FIN` redescendu après la region 9.
+Aucun risque de TDZ : les `const` concernés (`BASE_TACHES`, `ZFA_TACHE_*`,
+`ZFA_SCHEMA_*`, `ZFA_RE_CIT_GROUPE`, `MARQUE_ENCADRE_*`, `COULEURS_ZOTERO`) ne
+sont lus qu'au sein de corps de fonctions/méthodes, jamais au chargement du
+module. Vérifié : 184 tests verts et invariants d'API vides à chaque commit.

@@ -2992,137 +2992,12 @@ function injecterExtrait(contenu, extrait) {
 
 //#endregion 8 · Schémas mxgraph / draw.io
 
-/* --------------------------- Temps passé ---------------------------------
- * Le compteur s'appuie sur la note active et sur l'activité du clavier et de
- * la souris. Il ne mesure donc pas la présence devant l'écran, mais le temps
- * de travail effectif, ce qui est plus honnête pour un journal de thèse.
- * ------------------------------------------------------------------------ */
-
-// Base de travail des tâches. Le contenu est celui de docs/taches.base, dont
-// c'est l'exemplaire versionné : les deux doivent rester identiques.
-const BASE_TACHES = `formulas:
-  bloquantes: note["bloque-par"].filter(value.asFile().properties["statut"] != "terminée").length
-  famille: if(note["source"], "lecture", if(note["livrable"], "production", if(note["fichier"], "production", "action")))
-properties:
-  file.name:
-    displayName: Réf.
-  note.aliases:
-    displayName: Intitulé
-  note.statut:
-    displayName: Statut
-  note.priorite:
-    displayName: Priorité
-  note.debut:
-    displayName: Début
-  note.echeance:
-    displayName: Échéance
-  note.avancement:
-    displayName: Avancement
-  note.parent:
-    displayName: Rattachée à
-  note.termine-le:
-    displayName: Terminée le
-  formula.famille:
-    displayName: Famille
-  formula.bloquantes:
-    displayName: Bloquantes
-views:
-  - type: table
-    name: 1. Débloquées
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["statut"] != "terminée"
-        - note["statut"] != "abandonnée"
-        - formula.bloquantes == 0
-    order:
-      - file.name
-      - aliases
-      - echeance
-      - priorite
-      - avancement
-      - formula.famille
-    sort:
-      - property: echeance
-        direction: ASC
-  - type: table
-    name: 2. Cette semaine
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["statut"] != "terminée"
-        - note["statut"] != "abandonnée"
-        - note["echeance"] <= now() + "7 days"
-    order:
-      - file.name
-      - aliases
-      - echeance
-      - priorite
-      - formula.bloquantes
-    sort:
-      - property: echeance
-        direction: ASC
-  - type: table
-    name: 3. Par famille
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["statut"] != "terminée"
-    groupBy:
-      property: formula.famille
-      direction: ASC
-    order:
-      - file.name
-      - aliases
-      - statut
-      - echeance
-      - avancement
-  - type: table
-    name: 4. Terminées
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["statut"] == "terminée"
-    order:
-      - file.name
-      - aliases
-      - termine-le
-      - formula.famille
-    sort:
-      - property: termine-le
-        direction: DESC
-  - type: ariane-frise
-    name: 5. Frise
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["statut"] != "abandonnée"
-  - type: ariane-articulation
-    name: 6. Articulation
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["statut"] != "abandonnée"
-`;
-
-// Bloc de vue Articulation, ajouté aux bases de tâches déjà créées qui ne
-// l'ont pas encore (assurerBaseTaches).
-const VUE_ARTICULATION_BASE = `  - type: ariane-articulation
-    name: 6. Articulation
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["statut"] != "abandonnée"
-`;
-
-const ZFA_TACHE_DEBUT = '%% ariane:tache %%';
-const ZFA_TACHE_FIN = '%% /ariane:tache %%';
-
-/* =========================================================================
- * Plugin
- * ========================================================================= */
-
-/* ---------------- Détection de doublons d'auteurs ---------------------- */
+//#region 9 · Doublons d'auteurs
+// ═══════════════════════════════════════════════════════════════════════════
+//  9 · DOUBLONS D'AUTEURS
+//  Normalisation de noms, détection de personnes identiques, regroupement
+//  des œuvres d'un même auteur.
+// ═══════════════════════════════════════════════════════════════════════════
 
 function normNom(x) {
   return String(x || '')
@@ -3259,6 +3134,141 @@ function titreSansNumerotation(txt) {
     .replace(/^\s*(?:\d+(?:\.\d+)*)\s+(?=\S)/, '')
     .trim();
 }
+
+//#endregion 9 · Doublons d'auteurs
+
+//#region 10 · Modèles de bases & marqueurs de tâche
+// ═══════════════════════════════════════════════════════════════════════════
+//  10 · MODÈLES DE BASES & MARQUEURS DE TÂCHE
+//  Gabarits `Tâches.base` et vue articulation, marqueurs de bloc
+//  `%% ariane:tache %%`.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Base de travail des tâches. Le contenu est celui de docs/taches.base, dont
+// c'est l'exemplaire versionné : les deux doivent rester identiques.
+const BASE_TACHES = `formulas:
+  bloquantes: note["bloque-par"].filter(value.asFile().properties["statut"] != "terminée").length
+  famille: if(note["source"], "lecture", if(note["livrable"], "production", if(note["fichier"], "production", "action")))
+properties:
+  file.name:
+    displayName: Réf.
+  note.aliases:
+    displayName: Intitulé
+  note.statut:
+    displayName: Statut
+  note.priorite:
+    displayName: Priorité
+  note.debut:
+    displayName: Début
+  note.echeance:
+    displayName: Échéance
+  note.avancement:
+    displayName: Avancement
+  note.parent:
+    displayName: Rattachée à
+  note.termine-le:
+    displayName: Terminée le
+  formula.famille:
+    displayName: Famille
+  formula.bloquantes:
+    displayName: Bloquantes
+views:
+  - type: table
+    name: 1. Débloquées
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "terminée"
+        - note["statut"] != "abandonnée"
+        - formula.bloquantes == 0
+    order:
+      - file.name
+      - aliases
+      - echeance
+      - priorite
+      - avancement
+      - formula.famille
+    sort:
+      - property: echeance
+        direction: ASC
+  - type: table
+    name: 2. Cette semaine
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "terminée"
+        - note["statut"] != "abandonnée"
+        - note["echeance"] <= now() + "7 days"
+    order:
+      - file.name
+      - aliases
+      - echeance
+      - priorite
+      - formula.bloquantes
+    sort:
+      - property: echeance
+        direction: ASC
+  - type: table
+    name: 3. Par famille
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "terminée"
+    groupBy:
+      property: formula.famille
+      direction: ASC
+    order:
+      - file.name
+      - aliases
+      - statut
+      - echeance
+      - avancement
+  - type: table
+    name: 4. Terminées
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] == "terminée"
+    order:
+      - file.name
+      - aliases
+      - termine-le
+      - formula.famille
+    sort:
+      - property: termine-le
+        direction: DESC
+  - type: ariane-frise
+    name: 5. Frise
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "abandonnée"
+  - type: ariane-articulation
+    name: 6. Articulation
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "abandonnée"
+`;
+
+// Bloc de vue Articulation, ajouté aux bases de tâches déjà créées qui ne
+// l'ont pas encore (assurerBaseTaches).
+const VUE_ARTICULATION_BASE = `  - type: ariane-articulation
+    name: 6. Articulation
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "abandonnée"
+`;
+
+const ZFA_TACHE_DEBUT = '%% ariane:tache %%';
+const ZFA_TACHE_FIN = '%% /ariane:tache %%';
+
+//#endregion 10 · Modèles de bases & marqueurs de tâche
+
+/* =========================================================================
+ * Plugin
+ * ========================================================================= */
 
 class Ariane extends obsidian.Plugin {
   async onload() {
