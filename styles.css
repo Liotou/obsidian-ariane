@@ -863,6 +863,21 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   z-index: 5; background: var(--background-primary);
 }
 .zfa-gantt-table { position: absolute; top: 0; left: 0; }
+/* Les bordures de cellule viennent d'une ombre portée chez Obsidian, que le
+   débordement masqué de notre panneau peut rogner. On les repose donc en clair,
+   avec ses variables, pour que chaque case soit encadrée comme dans un tableau. */
+.zfa-gantt-table .bases-td {
+  border-right: var(--bases-table-column-border-width, 1px) solid
+                var(--table-border-color, var(--background-modifier-border));
+}
+.zfa-gantt-table .bases-tr {
+  border-bottom: var(--bases-table-row-border-width, 1px) solid
+                 var(--table-border-color, var(--background-modifier-border));
+}
+.zfa-gantt-table .bases-thead {
+  border-bottom: var(--bases-table-row-border-width, 1px) solid
+                 var(--table-border-color, var(--background-modifier-border));
+}
 .zfa-gantt-table .bases-thead {
   background-color: var(--bases-table-header-background, var(--background-primary));
 }

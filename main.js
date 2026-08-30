@@ -11953,10 +11953,13 @@ class MoteurFrise {
     const cfg = this.calculerEtendue(planifiees, aujourdhui);
     const lignes = this.visibles(planifiees);
     this._H = this.hauteurLigne;
-    // L'en-tête porte deux étages, les mois puis les semaines ou les jours : il
-    // lui faut 44 px au minimum. Au-delà il suit la hauteur de ligne, pour que
-    // les deux colonnes commencent exactement à la même ordonnée.
-    this._hEntete = Math.max(44, this._H);
+    // L'en-tête porte deux étages, les mois puis les semaines ou les jours,
+    // mais ils sont proportionnels : il peut donc épouser la hauteur de ligne
+    // et tomber à 30 px en lignes fines, exactement comme un en-tête de
+    // tableau. En dessous de 28 les deux étages cessent d'être lisibles.
+    this._hEntete = Math.max(28, this._H);
+    this._bande = Math.round(this._hEntete * 0.52);
+    this._basEntete = this._bande + Math.round((this._hEntete - this._bande) / 2) + 1;
     // On pose la variable des bases sur la racine : tout le balisage repris du
     // tableau s'y accroche, et le thème de Monsieur reste maître du reste.
     // La variable est posée ici pour que le balisage repris du tableau s'y
@@ -12292,8 +12295,7 @@ class MoteurFrise {
       td.style.height = hEntete + 'px';
       const entete = td.createDiv({ cls: 'bases-table-header' });
       entete.style.height = hEntete + 'px';
-      entete.style.alignItems = 'flex-end';
-      entete.style.paddingBottom = '9px';
+      entete.style.alignItems = 'center';
       const label = entete.createDiv({ cls: 'bases-table-header-label' });
       const ic = label.createSpan({ cls: 'bases-table-header-icon' });
       obsidian.setIcon(ic, c.icone);
@@ -12464,10 +12466,10 @@ class MoteurFrise {
       const suivant = this.moisSuivant(mois);
       const x1 = Math.max(0, this.x(cfg, mois));
       const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
-      g.appendChild(svgEl('rect', { x: x1, y: 0, width: Math.max(0, x2 - x1), height: 24,
+      g.appendChild(svgEl('rect', { x: x1, y: 0, width: Math.max(0, x2 - x1), height: this._bande,
         class: rang % 2 ? 'zfa-gantt-bande-impaire' : 'zfa-gantt-bande-paire' }));
       if (x2 - x1 > 34) {
-        const t = svgEl('text', { x: x1 + 6, y: 17, class: 'zfa-gantt-entete-mois' });
+        const t = svgEl('text', { x: x1 + 6, y: this._bande - 5, class: 'zfa-gantt-entete-mois' });
         t.textContent = MOIS_COURTS[m - 1] + ' ' + String(a).slice(2);
         g.appendChild(t);
       }
@@ -12493,10 +12495,11 @@ class MoteurFrise {
       const js = new Date(Date.UTC(a, m - 1, j)).getUTCDay();
       const x = i * cfg.ppj;
       if (js === 0 || js === 6) {
-        g.appendChild(svgEl('rect', { x, y: 24, width: cfg.ppj,
-          height: this._hEntete - 24, class: 'zfa-gantt-weekend-entete' }));
+        g.appendChild(svgEl('rect', { x, y: this._bande, width: cfg.ppj,
+          height: this._hEntete - this._bande, class: 'zfa-gantt-weekend-entete' }));
       }
-      const t = svgEl('text', { x: x + cfg.ppj / 2, y: 42, class: 'zfa-gantt-entete-jour' });
+      const t = svgEl('text', { x: x + cfg.ppj / 2, y: this._basEntete,
+        class: 'zfa-gantt-entete-jour' });
       t.textContent = lettres[js] + ' ' + j;
       g.appendChild(t);
     }
@@ -12514,10 +12517,10 @@ class MoteurFrise {
       const fin = ZotflowAtomiser.decalerJour(jour, nb - 1);
       const num = 'S' + ZotflowAtomiser.semaineIso(jour);
       const plage = j + '–' + Number(fin.slice(8, 10));
-      const t = svgEl('text', { x: x + w / 2, y: 42, class: 'zfa-gantt-entete-semaine' });
+      const t = svgEl('text', { x: x + w / 2, y: this._basEntete, class: 'zfa-gantt-entete-semaine' });
       t.textContent = mode === 'numero' ? num : (mode === 'dates' ? plage : num + ' · ' + plage);
       g.appendChild(t);
-      g.appendChild(svgEl('line', { x1: x, y1: 24, x2: x, y2: this._hEntete,
+      g.appendChild(svgEl('line', { x1: x, y1: this._bande, x2: x, y2: this._hEntete,
         class: 'zfa-gantt-entete-trait' }));
     }
   }
@@ -12530,7 +12533,7 @@ class MoteurFrise {
       const x1 = Math.max(0, this.x(cfg, mois));
       const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
       if (x2 - x1 > 26) {
-        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: 42, class: 'zfa-gantt-entete-titre' });
+        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: this._basEntete, class: 'zfa-gantt-entete-titre' });
         t.textContent = MOIS_COURTS[m - 1];
         g.appendChild(t);
       }
@@ -12549,11 +12552,11 @@ class MoteurFrise {
       const x1 = Math.max(0, this.x(cfg, jour));
       const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
       if (x2 - x1 > 30) {
-        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: 42, class: 'zfa-gantt-entete-titre' });
+        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: this._basEntete, class: 'zfa-gantt-entete-titre' });
         t.textContent = 'T' + (Math.floor((m - 1) / 3) + 1) + ' ' + a;
         g.appendChild(t);
       }
-      g.appendChild(svgEl('line', { x1, y1: 24, x2: x1, y2: this._hEntete,
+      g.appendChild(svgEl('line', { x1, y1: this._bande, x2: x1, y2: this._hEntete,
         class: 'zfa-gantt-entete-trait' }));
       a = am; m = mm;
     }
