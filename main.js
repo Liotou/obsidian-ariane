@@ -918,7 +918,6 @@ const DEFAULT_SETTINGS = {
   dossierReferences: '',        // rôle : où déposer les références en attente
   dossierTaches: '',            // rôle : où déposer les notes de tâche
   listeRappelsDefaut: 'Doctorat - Tâches',
-  couleurCompositionCanvas: '6',
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes
   // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque
@@ -3218,12 +3217,12 @@ class Ariane extends obsidian.Plugin {
       callback: () => this.ouvrirVueIncoherences(),
     });
     this.addCommand({
-      id: 'synchroniser-canvas-taches',
-      name: tr('Tâches : relire les canvas'),
-      callback: async () => {
-        const r = await this.synchroniserCanvas();
-        const n = r.cycles.length + r.dates.length + r.conflits.length + r.morts.length;
-        new obsidian.Notice(r.ecrites + tr(' note(s) mise(s) à jour, ') + n + tr(' incohérence(s).'));
+      id: 'relire-incoherences-taches',
+      name: tr('Tâches : relire les incohérences'),
+      callback: () => {
+        const r = this.recalculerIncoherences();
+        const n = r.cycles.length + r.dates.length + r.morts.length;
+        new obsidian.Notice(n + tr(' incohérence(s).'));
       },
     });
     this.addCommand({
@@ -3756,17 +3755,14 @@ class Ariane extends obsidian.Plugin {
       });
     }));
 
-    // Le canvas fait foi pour les arêtes : sa modification se reporte dans les
-    // notes. L'antirebond laisse passer un glissé de plusieurs nœuds en une
-    // seule passe, et tous les canvas partagent la même clé puisque la lecture
-    // est de toute façon globale.
-    const surCanvas = (f) => {
-      if (!f || f.extension !== 'canvas') return;
-      this.antirebond('canvas-taches', () => this.synchroniserCanvas(), 1200);
+    // Les incohérences des tâches se recalculent à l'entête, avec un antirebond
+    // pour absorber une rafale de modifications.
+    const surTache = (f) => {
+      if (!f || !this.refDeChemin(f.path)) return;
+      this.antirebond('incoherences-taches', () => this.recalculerIncoherences(), 1200);
     };
-    this.registerEvent(this.app.vault.on('modify', surCanvas));
-    this.registerEvent(this.app.vault.on('create', surCanvas));
-    this.registerEvent(this.app.vault.on('delete', surCanvas));
+    this.registerEvent(this.app.metadataCache.on('changed', surTache));
+    this.registerEvent(this.app.vault.on('delete', surTache));
 
     // Le bloc d'accès suit les champs de la note, sans commande à lancer.
     // Il ne se réécrit que s'il change vraiment, faute de quoi cette écoute
@@ -9791,77 +9787,7 @@ class Ariane extends obsidian.Plugin {
     return out;
   }
 
-  /* ------------------------ Articulation par canvas ------------------------ */
-
-  // Lecture d'un canvas. On n'y prend que ce dont les notes ont besoin : qui
-  // est relié à qui, comment, et sous quel libellé. La position et la taille
-  // des nœuds restent au canvas, qui en est seul propriétaire.
-  // Un même fichier peut occuper plusieurs nœuds : les arêtes valent alors pour
-  // la tâche, sans qu'il faille désigner un nœud de référence.
-  static lireCanvasTaches(canvas, estTache, couleurCompo) {
-    const c = canvas || {};
-    const parId = new Map();
-    const noeuds = [];
-    for (const n of c.nodes || []) {
-      if (!n || n.type !== 'file' || !n.file) continue;
-      const ref = estTache(n.file);
-      if (!ref) continue;
-      parId.set(n.id, ref);
-      if (!noeuds.includes(ref)) noeuds.push(ref);
-    }
-    const liens = [];
-    const vus = new Set();
-    for (const e of c.edges || []) {
-      if (!e) continue;
-      const de = parId.get(e.fromNode);
-      const vers = parId.get(e.toNode);
-      if (!de || !vers || de === vers) continue;
-      const relation = String(e.color || '') === String(couleurCompo) ? 'compose' : 'bloque';
-      const cle = de + '\u0000' + vers + '\u0000' + relation;
-      if (vus.has(cle)) continue;
-      vus.add(cle);
-      liens.push({ de, vers, relation, libelle: String(e.label || '').trim() });
-    }
-    return { liens, noeuds };
-  }
-
-  // Réunion des arêtes de tous les canvas. Un lien existe s'il figure dans au
-  // moins un d'entre eux : c'est ce qui permet d'ouvrir un canvas partiel sans
-  // effacer les liens tracés ailleurs.
-  // Une tâche n'a qu'un parent. Deux canvas qui lui en donnent deux se
-  // contredisent : on retient le premier dans l'ordre alphabétique, pour que le
-  // résultat ne dépende pas de l'ordre de lecture des fichiers, et on signale.
-  static unionLiens(lectures) {
-    const table = new Map();
-    const assurer = (ref) => {
-      if (!table.has(ref)) table.set(ref, { parent: '', bloquePar: [], conflits: [] });
-      return table.get(ref);
-    };
-    const bloquants = new Map();   // enfant -> Map(référence -> libellé)
-    const parents = new Map();     // enfant -> Map(référence -> libellé)
-    for (const lecture of lectures || []) {
-      for (const lien of (lecture && lecture.liens) || []) {
-        assurer(lien.de);
-        assurer(lien.vers);
-        const cible = lien.relation === 'compose' ? parents : bloquants;
-        if (!cible.has(lien.vers)) cible.set(lien.vers, new Map());
-        const m = cible.get(lien.vers);
-        // Un libellé déjà posé n'est pas effacé par une arête qui n'en a pas.
-        if (!m.get(lien.de)) m.set(lien.de, lien.libelle || '');
-      }
-    }
-    const ecrire = (ref, libelle) => '[[' + ref + (libelle ? '|' + libelle : '') + ']]';
-    for (const [enfant, m] of bloquants) {
-      assurer(enfant).bloquePar = [...m.keys()].sort().map((r) => ecrire(r, m.get(r)));
-    }
-    for (const [enfant, m] of parents) {
-      const refs = [...m.keys()].sort();
-      const e = assurer(enfant);
-      e.parent = ecrire(refs[0], m.get(refs[0]));
-      e.conflits = refs.length > 1 ? refs : [];
-    }
-    return table;
-  }
+  /* --------------------- Cohérence des tâches -------------------------- */
 
   // Détection des cycles par parcours en profondeur. Le tableau « chemin »
   // garde la branche courante : y retomber, c'est boucler.
@@ -10101,55 +10027,6 @@ class Ariane extends obsidian.Plugin {
              fin: Ariane.decalerJour(dates[dates.length - 1], 3) };
   }
 
-  static get COULEURS_STATUT() {
-    return { 'à faire': '', 'en cours': '3', 'en attente': '2', 'terminée': '4', 'abandonnée': '5' };
-  }
-
-  // Les deux seules choses qu'Ariane écrit dans un canvas : la couleur d'un
-  // nœud, qui suit le statut de sa note, et le rouge d'une arête fautive.
-  // La position, la taille et le libellé appartiennent au canvas et ne sont
-  // jamais touchés. Rend change à faux quand rien ne bouge, pour ne pas
-  // réécrire un fichier que Monsieur a peut-être ouvert.
-  // Seules rougissent les arêtes SANS couleur : une couleur posée à la main est
-  // un choix, et l'écraser la perdrait pour de bon, l'incohérence restant de
-  // toute façon inscrite au volet.
-  static majCanvas(json, etats, incoherences, couleurCompo) {
-    const c = JSON.parse(JSON.stringify(json || {}));
-    const couleurs = Ariane.COULEURS_STATUT;
-    const ref = (chemin) => {
-      const m = String(chemin || '').match(/(?:^|\/)(T\d{2}-\d{3,4})\.md$/);
-      return m ? m[1] : null;
-    };
-    let change = false;
-    const parId = new Map();
-    for (const n of c.nodes || []) {
-      if (!n || n.type !== 'file') continue;
-      const r = ref(n.file);
-      if (!r) continue;
-      parId.set(n.id, r);
-      const etat = (etats || {})[r];
-      if (!etat || !(etat.statut in couleurs)) continue;
-      const voulue = couleurs[etat.statut];
-      if (voulue === (n.color || '')) continue;
-      if (voulue) n.color = voulue; else delete n.color;
-      change = true;
-    }
-    const fautives = new Set((incoherences || []).map((i) => i.de + '\u0000' + i.vers));
-    for (const e of c.edges || []) {
-      if (!e) continue;
-      const de = parId.get(e.fromNode);
-      const vers = parId.get(e.toNode);
-      if (!de || !vers) continue;
-      const couleur = String(e.color || '');
-      if (couleur && couleur !== '1') continue;
-      const doitRougir = fautives.has(de + '\u0000' + vers);
-      if (doitRougir === (couleur === '1')) continue;
-      if (doitRougir) e.color = '1'; else delete e.color;
-      change = true;
-    }
-    return { json: c, change };
-  }
-
   // Libellé d'une note du coffre dans le sélecteur. L'alias passe devant : c'est
   // sous ce nom que Monsieur connaît ses notes, « NC-202607081912 » ne disant
   // rien à personne. Le nom de fichier suit tout de même, pour rester cherchable.
@@ -10231,6 +10108,8 @@ class Ariane extends obsidian.Plugin {
       const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
       if (fm.type !== 'tache') continue;
       const alias = [].concat(fm.aliases || []).map(String).filter(Boolean);
+      const nx = Number(fm['canvas-x']);
+      const ny = Number(fm['canvas-y']);
       out.push({
         ref,
         intitule: alias[0] || ref,
@@ -10242,17 +10121,17 @@ class Ariane extends obsidian.Plugin {
         priorite: fm.priorite || '',
         avancement: Number(fm.avancement) || 0,
         jalon: fm.jalon === true,
+        famille: Ariane.familleTache(fm),
+        x: Number.isFinite(nx) ? nx : null,
+        y: Number.isFinite(ny) ? ny : null,
         fichier: f,
       });
     }
     return out;
   }
 
-  // Créer un blocage depuis la frise. Le canvas reste le registre des arêtes :
-  // on écrit donc dans la note ET dans les canvas qui portent déjà les deux
-  // nœuds, faute de quoi la relecture des canvas effacerait le lien à la passe
-  // suivante. Une tâche qu'aucun canvas ne montre garde son lien dans la note
-  // seule, ce que la spécification prévoit au § 6.5.
+  // Écrit un blocage dans l'entête de la tâche bloquée. Le frontmatter est la
+  // seule source : plus de registre canvas. Un cycle est refusé avant écriture.
   async creerBlocage(deRef, versRef) {
     if (!deRef || !versRef || deRef === versRef) return false;
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === versRef);
@@ -10260,7 +10139,6 @@ class Ariane extends obsidian.Plugin {
     const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
     const deja = [].concat(fm['bloque-par'] || []).map(String);
     if (deja.some((v) => Ariane.refDeLien(v) === deRef)) return false;
-    // Un cycle rendrait la frise incalculable : on refuse avant d'écrire.
     const aretes = [{ de: deRef, vers: versRef }];
     for (const t of this.tachesPourGantt()) {
       for (const b of t.bloquePar || []) {
@@ -10275,7 +10153,6 @@ class Ariane extends obsidian.Plugin {
       x['bloque-par'] = deja.concat(['[[' + deRef + ']]']);
       x.modifie = new Date().toISOString().slice(0, 10);
     });
-    await this.ecrireAreteCanvas(deRef, versRef, true);
     return true;
   }
 
@@ -10289,181 +10166,41 @@ class Ariane extends obsidian.Plugin {
       x['bloque-par'] = reste;
       x.modifie = new Date().toISOString().slice(0, 10);
     });
-    await this.ecrireAreteCanvas(deRef, versRef, false);
     return true;
   }
 
-  // Pose ou retire l'arête correspondante dans tout canvas qui porte déjà les
-  // deux nœuds. On n'ajoute jamais de nœud : disposer un canvas est un geste
-  // graphique, qui appartient à Monsieur.
-  async ecrireAreteCanvas(deRef, versRef, poser) {
-    const compo = this.settings.couleurCompositionCanvas || '6';
-    for (const f of this.app.vault.getFiles()) {
-      if (f.extension !== 'canvas') continue;
-      let json = null;
-      try { json = JSON.parse(await this.app.vault.read(f)); } catch (e) { continue; }
-      const idsDe = [];
-      const idsVers = [];
-      for (const n of json.nodes || []) {
-        if (!n || n.type !== 'file') continue;
-        const r = this.refDeChemin(n.file);
-        if (r === deRef) idsDe.push(n.id);
-        if (r === versRef) idsVers.push(n.id);
-      }
-      if (!idsDe.length || !idsVers.length) continue;
-      const estLien = (e) => e && idsDe.includes(e.fromNode) && idsVers.includes(e.toNode)
-        && String(e.color || '') !== String(compo);
-      const avant = JSON.stringify(json.edges || []);
-      if (poser) {
-        if (!(json.edges || []).some(estLien)) {
-          json.edges = (json.edges || []).concat([{
-            id: 'zfa' + Math.random().toString(36).slice(2, 12),
-            fromNode: idsDe[0], fromSide: 'right',
-            toNode: idsVers[0], toSide: 'left',
-          }]);
-        }
-      } else {
-        json.edges = (json.edges || []).filter((e) => !estLien(e));
-      }
-      if (JSON.stringify(json.edges || []) === avant) continue;
-      await this.app.vault.modify(f, JSON.stringify(json, null, 2));
-    }
-  }
-
-  // Écrit quelques propriétés d'une tâche, sans toucher au reste.
-  async majTache(ref, champs) {
-    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
-    if (!f) return false;
-    await this.app.fileManager.processFrontMatter(f, (x) => {
-      for (const [k, v] of Object.entries(champs)) x[k] = v;
-      x.modifie = new Date().toISOString().slice(0, 10);
-    });
-    return true;
-  }
-
-  // Écrit en une passe les dates rendues par decalerSousArbre ou cascadeAval.
-  async ecrireDatesTaches(changements) {
-    const parRef = new Map(this.tachesPourGantt().map((t) => [t.ref, t.fichier]));
-    let n = 0;
-    for (const c of changements || []) {
-      const f = parRef.get(c.ref);
-      if (!f) continue;
-      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      if (String(fm.debut || '') === c.debut && String(fm.echeance || '') === c.echeance) continue;
-      await this.app.fileManager.processFrontMatter(f, (x) => {
-        if (c.debut) x.debut = c.debut;
-        if (c.echeance) x.echeance = c.echeance;
-        x.modifie = new Date().toISOString().slice(0, 10);
-      });
-      n += 1;
-    }
-    return n;
-  }
-
-  // La référence d'une tâche, déduite du chemin. On la reconnaît à sa forme
-  // plutôt qu'à son dossier : une tâche déplacée reste une tâche.
-  refDeChemin(chemin) {
-    const m = String(chemin || '').match(/(?:^|\/)(T\d{2}-\d{3,4})\.md$/);
-    return m ? m[1] : null;
-  }
-
-  // Est canvas de tâches tout fichier .canvas dont au moins un nœud vise une
-  // note de tâche. Aucun dossier convenu, aucun réglage : Monsieur range ses
-  // canvas où il veut, et en fait autant qu'il lui plaît.
-  async canvasDeTaches() {
-    const out = [];
-    for (const f of this.app.vault.getFiles()) {
-      if (f.extension !== 'canvas') continue;
-      let json = null;
-      try { json = JSON.parse(await this.app.vault.read(f)); } catch (e) { continue; }
-      const lu = Ariane.lireCanvasTaches(
-        json, (p) => this.refDeChemin(p), this.settings.couleurCompositionCanvas || '6');
-      if (lu.noeuds.length) out.push({ fichier: f, json, lu });
-    }
-    return out;
-  }
-
-  // Reporte dans les notes ce que les canvas disent des liens. Le canvas fait
-  // foi : parent et bloque-par sont réécrits d'après lui, jamais l'inverse.
-  // Aucune écriture qui ne change rien, sans quoi l'écoute qui appelle cette
-  // méthode se rappellerait elle-même sans fin.
-  async synchroniserCanvas() {
-    const canvas = await this.canvasDeTaches();
-    const table = Ariane.unionLiens(canvas.map((c) => c.lu));
-    const tous = [].concat(...canvas.map((c) => c.lu.liens));
-    const bloquants = tous.filter((l) => l.relation === 'bloque');
-    const compositions = tous.filter((l) => l.relation === 'compose');
-
+  // Les incohérences des tâches, lues dans le frontmatter (plus dans les
+  // canvas) : cycles de blocage ou de composition, échéances qui se
+  // contredisent, liens vers une note absente.
+  recalculerIncoherences() {
+    const taches = this.tachesPourGantt();
+    const refs = new Set(taches.map((t) => t.ref));
+    const bloquants = [];
+    const compositions = [];
     const dates = {};
-    const fichierDe = new Map();
-    for (const f of this.app.vault.getMarkdownFiles()) {
-      const ref = this.refDeChemin(f.path);
-      if (!ref) continue;
-      fichierDe.set(ref, f);
-      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      dates[ref] = { debut: fm.debut || '', echeance: fm.echeance || '' };
+    const morts = new Set();
+    for (const t of taches) {
+      dates[t.ref] = { debut: t.debut || '', echeance: t.echeance || '' };
+      const p = Ariane.refDeLien(t.parent || '');
+      if (p) {
+        if (refs.has(p)) compositions.push({ de: p, vers: t.ref });
+        else morts.add(p);
+      }
+      for (const b of t.bloquePar || []) {
+        const x = Ariane.refDeLien(b);
+        if (!x) continue;
+        if (refs.has(x)) bloquants.push({ de: x, vers: t.ref });
+        else morts.add(x);
+      }
     }
-
-    const cycles = Ariane.cyclesDe(bloquants)
-      .concat(Ariane.cyclesDe(compositions));
-    const incoherences = Ariane.datesIncoherentes(bloquants, dates);
-    const morts = [];
-    const conflits = [];
-    let ecrites = 0;
-
-    for (const [ref, etat] of table) {
-      if (etat.conflits.length) conflits.push({ ref, parents: etat.conflits });
-      const f = fichierDe.get(ref);
-      if (!f) { morts.push(ref); continue; }
-      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      const avantParent = String(fm.parent == null ? '' : fm.parent);
-      const avantBloque = [].concat(fm['bloque-par'] || []).map(String);
-      const memeListe = avantBloque.length === etat.bloquePar.length
-        && avantBloque.every((v, i) => v === etat.bloquePar[i]);
-      if (avantParent === etat.parent && memeListe) continue;
-      await this.app.fileManager.processFrontMatter(f, (x) => {
-        x.parent = etat.parent;
-        x['bloque-par'] = etat.bloquePar;
-        x.modifie = new Date().toISOString().slice(0, 10);
-      });
-      ecrites += 1;
-    }
-
-    // Une tâche posée dans un canvas mais qu'aucune arête ne touche doit perdre
-    // ses liens, faute de quoi effacer une flèche laisserait un blocage fantôme.
-    // Une tâche qui ne figure dans AUCUN canvas est en revanche laissée
-    // tranquille : la spécification admet les liens écrits à la main, et les
-    // effacer ici reviendrait à détruire ce que Monsieur vient de taper.
-    const dessinees = new Set([].concat(...canvas.map((c) => c.lu.noeuds)));
-    for (const [ref, f] of fichierDe) {
-      if (table.has(ref) || !dessinees.has(ref)) continue;
-      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      const avantBloque = [].concat(fm['bloque-par'] || []);
-      if (!String(fm.parent || '') && !avantBloque.length) continue;
-      await this.app.fileManager.processFrontMatter(f, (x) => {
-        x.parent = '';
-        x['bloque-par'] = [];
-        x.modifie = new Date().toISOString().slice(0, 10);
-      });
-      ecrites += 1;
-    }
-
-    // Retour vers les canvas : la couleur des nœuds suit le statut des notes,
-    // et les flèches fautives passent au rouge.
-    const etats = {};
-    for (const [ref, f] of fichierDe) {
-      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      etats[ref] = { statut: fm.statut || '' };
-    }
-    for (const c of canvas) {
-      const r = Ariane.majCanvas(
-        c.json, etats, incoherences, this.settings.couleurCompositionCanvas || '6');
-      if (!r.change) continue;
-      await this.app.vault.modify(c.fichier, JSON.stringify(r.json, null, 2));
-    }
-
-    this._incoherencesTaches = { cycles, dates: incoherences, conflits, morts };
-    return { ecrites, cycles, dates: incoherences, conflits, morts };
+    const cycles = Ariane.cyclesDe(bloquants).concat(Ariane.cyclesDe(compositions));
+    this._incoherencesTaches = {
+      cycles,
+      dates: Ariane.datesIncoherentes(bloquants, dates),
+      conflits: [],
+      morts: [...morts],
+    };
+    return this._incoherencesTaches;
   }
 
   // Les fiches Zotero du coffre, prêtes pour une recherche approchée. On les
@@ -11247,17 +10984,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setValue(s.listeRappelsDefaut || '')
         .onChange(async (v) => { s.listeRappelsDefaut = v.trim(); await maj(); }));
 
-    new obsidian.Setting(c)
-      .setName(tr('Couleur des arêtes de composition'))
-      .setDesc(tr("Dans un canvas de tâches, une arête de cette couleur relie une méta-tâche à ce qui la compose. Une arête sans couleur est un blocage. Le rouge est réservé aux signalements d'Ariane."))
-      .addDropdown((d) => d
-        .addOption('2', tr('orange')).addOption('3', tr('jaune'))
-        .addOption('4', tr('vert')).addOption('5', tr('cyan'))
-        .addOption('6', tr('violet'))
-        .setValue(s.couleurCompositionCanvas || '6')
-        .onChange(async (v) => { s.couleurCompositionCanvas = v; await maj(); }));
-
-    this._aide(c, tr("L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue » de la base (et par le clic droit sur un en-tête de colonne)."));
+    this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue » (et par le clic droit sur un en-tête de colonne)."));
   }
 
   ongletSuggestions(c, s, maj) {
@@ -14037,8 +13764,7 @@ class VueIncoherencesTaches extends obsidian.ItemView {
   async rafraichir() {
     const c = this.contentEl;
     c.empty();
-    c.createDiv({ cls: 'zfa-refs-vide', text: tr('Relecture des canvas…') });
-    await this.greffon.synchroniserCanvas();
+    this.greffon.recalculerIncoherences();
     this.dessiner();
   }
 
@@ -14073,7 +13799,7 @@ class VueIncoherencesTaches extends obsidian.ItemView {
       || { cycles: [], dates: [], conflits: [], morts: [] };
 
     const barre = c.createDiv({ cls: 'zfa-refs-barre' });
-    this.bouton(barre, tr('Relire les canvas'), 'refresh-cw', () => this.rafraichir());
+    this.bouton(barre, tr('Recalculer'), 'refresh-cw', () => this.rafraichir());
 
     let total = 0;
 
