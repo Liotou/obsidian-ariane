@@ -25,6 +25,7 @@ test('le frontmatter porte tous les champs du schéma, même vides', () => {
                      'cree', 'modifie']) {
     assert.ok(new RegExp('^' + cle + ':', 'm').test(s), 'champ manquant : ' + cle);
   }
+  assert.ok(/^famille:/m.test(s), 'la note neuve déclare une ligne famille');
 });
 
 test('l intitulé figure en alias et en titre de niveau 1', () => {

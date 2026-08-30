@@ -925,6 +925,19 @@ const DEFAULT_SETTINGS = {
   // monospace, alias }. Vide par défaut : le greffon ne présume d'aucune
   // organisation, et se peuple à la première ouverture des réglages.
   famillesNotes: [],
+  // FAMILLES DE TÂCHES — distinctes des familles de notes ci-dessus. Chaque
+  // ligne : { id, nom, couleur, icone, proprietes:[{cle,libelle,type}] }. La
+  // valeur d'id est celle écrite dans le champ `famille` d'une note de tâche.
+  // Préchargées avec les trois familles historiques pour ne rien casser.
+  famillesTaches: [
+    { id: 'lecture', nom: 'Lecture', couleur: '#4c78c9', icone: 'book-open',
+      proprietes: [{ cle: 'source', libelle: 'Source', type: 'lien' }] },
+    { id: 'production', nom: 'Production', couleur: '#e0873d', icone: 'file-pen',
+      proprietes: [{ cle: 'livrable', libelle: 'Livrable', type: 'lien' },
+                   { cle: 'fichier', libelle: 'Fichier', type: 'texte' }] },
+    { id: 'action', nom: 'Action', couleur: '#6aa84f', icone: 'zap', proprietes: [] },
+  ],
+  familleTacheDefaut: 'action',
   // Anciennes clés, conservées le temps de la migration (voir migrerFamilles).
   dossierNotesConceptuelles: '',
   prefixeNoteConceptuelle: '',
@@ -3417,9 +3430,24 @@ class Ariane extends obsidian.Plugin {
         name: tr('Articulation'),
         icon: 'git-branch',
         factory: (controleur, conteneur) => new VueArtic(controleur, conteneur),
-        options: () => [],
+        options: () => [
+          {
+            type: 'dropdown', key: 'modeCarte', displayName: tr('Cartes'),
+            default: 'retracte',
+            options: { retracte: tr('Rétracté'), detaille: tr('Détaillé') },
+          },
+        ],
       });
     }
+    // « famille » est un texte pour Obsidian ; le menu déroulant se fait
+    // côté carte (l'API n'expose pas de type énuméré).
+    try {
+      const mtm = this.app.metadataTypeManager;
+      if (mtm && typeof mtm.setType === 'function'
+        && (!mtm.properties || !mtm.properties.famille)) {
+        mtm.setType('famille', 'text');
+      }
+    } catch (e) { /* metadataTypeManager indisponible : sans gravité */ }
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
     this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
@@ -9381,10 +9409,39 @@ class Ariane extends obsidian.Plugin {
     return { retenu: remplis[0] || null, conflits: remplis.length > 1 ? remplis : [] };
   }
 
-  static familleTache(fm) {
+  // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
+  // « Type » de l'en-tête de frise et le rendu des cartes d'articulation.
+  static get TYPE_FR_VERS_OBSIDIAN() {
+    return { texte: 'text', nombre: 'number', date: 'date',
+             case: 'checkbox', liste: 'multitext', lien: 'link' };
+  }
+
+  static familleTache(fm, familles, defaut) {
+    const liste = Array.isArray(familles) ? familles : null;
+    // Appel historique (un seul argument) : on garde la déduction d'origine.
+    if (!liste) {
+      const retenu = Ariane.champTache(fm).retenu;
+      if (retenu === 'source') return 'lecture';
+      return retenu ? 'production' : 'action';
+    }
+    const connus = new Set(liste.map((f) => f && f.id).filter(Boolean));
+    const explicite = fm && fm.famille ? String(fm.famille).trim() : '';
+    if (explicite && connus.has(explicite)) return explicite;
     const retenu = Ariane.champTache(fm).retenu;
-    if (retenu === 'source') return 'lecture';
-    return retenu ? 'production' : 'action';
+    if (retenu === 'source' && connus.has('lecture')) return 'lecture';
+    if (retenu && connus.has('production')) return 'production';
+    return (defaut && connus.has(defaut)) ? defaut
+      : (connus.has('action') ? 'action' : (liste[0] && liste[0].id) || 'action');
+  }
+
+  // Les propriétés qu'une famille ajoute à une tâche et qui n'existent pas
+  // encore dans son entête. « Existe » = la clé est présente, même vide.
+  static proprietesManquantes(fm, famille) {
+    const props = (famille && Array.isArray(famille.proprietes)) ? famille.proprietes : [];
+    const cles = new Set(Object.keys(fm || {}));
+    return props
+      .filter((p) => p && p.cle && !cles.has(p.cle))
+      .map((p) => ({ cle: p.cle, type: p.type || 'texte' }));
   }
 
   // Une valeur YAML citée. Les intitulés portent des apostrophes, des deux
@@ -9412,6 +9469,7 @@ class Ariane extends obsidian.Plugin {
     l.push('aliases:');
     l.push('  - ' + q(intitule));
     l.push('type: tache');
+    l.push(ligne('famille', c.famille));
     l.push(ligne('statut', c.statut || 'à faire'));
     l.push(ligne('priorite', c.priorite));
     l.push(ligne('debut', c.debut));
@@ -9939,16 +9997,43 @@ class Ariane extends obsidian.Plugin {
       if (!parRang.has(r)) parRang.set(r, []);
       parRang.get(r).push(n);
     }
+    // opts.ordre : liste de refs dans l'ordre d'affichage voulu. Quand elle est
+    // fournie et non vide, chaque rang suit cet ordre (les refs absentes vont
+    // après, dans leur ordre d'origine). Sinon, tri par échéance puis ref.
+    const ordreImpose = (opts && Array.isArray(opts.ordre) && opts.ordre.length) ? opts.ordre : null;
+    const rangImpose = ordreImpose ? new Map(ordreImpose.map((r, i) => [r, i])) : null;
+    // opts.hauteur : (ref) => hauteur réelle du nœud. Fourni, l'empilement
+    // vertical d'un rang cumule ces hauteurs (+ une marge) au lieu d'un dy fixe.
+    // Absent, comportement d'origine (chaque carte à k * dy).
+    const hauteurDe = (opts && typeof opts.hauteur === 'function') ? opts.hauteur : null;
+    // Marge entre deux cartes empilées : ce qui, en hauteur fixe, séparait déjà
+    // deux rangs (dy − hauteur de carte). ARTIC_H est défini plus bas mais lu au
+    // seul appel, jamais au chargement du module.
+    const margeRang = dy > ARTIC_H ? dy - ARTIC_H : Math.max(24, dy * 0.25);
     for (const [r, groupe] of [...parRang.entries()].sort((a, b) => a[0] - b[0])) {
-      groupe.sort((a, b) => (Ariane.jourValide(a.echeance) || '~')
-        .localeCompare(Ariane.jourValide(b.echeance) || '~') || a.ref.localeCompare(b.ref));
+      if (rangImpose) {
+        groupe.sort((a, b) => (rangImpose.has(a.ref) ? rangImpose.get(a.ref) : 1e9)
+          - (rangImpose.has(b.ref) ? rangImpose.get(b.ref) : 1e9));
+      } else {
+        groupe.sort((a, b) => (Ariane.jourValide(a.echeance) || '~')
+          .localeCompare(Ariane.jourValide(b.echeance) || '~') || a.ref.localeCompare(b.ref));
+      }
       const x = r * dx;
-      let k = 0;
-      for (const n of groupe) {
-        let y = k * dy;
-        while (chevauche(x, y)) y += dy;
-        pos.set(n.ref, { x, y });
-        k += 1;
+      if (hauteurDe) {
+        let y = 0;
+        for (const n of groupe) {
+          while (chevauche(x, y)) y += dy;
+          pos.set(n.ref, { x, y });
+          y += (Number(hauteurDe(n.ref)) || dy) + margeRang;
+        }
+      } else {
+        let k = 0;
+        for (const n of groupe) {
+          let y = k * dy;
+          while (chevauche(x, y)) y += dy;
+          pos.set(n.ref, { x, y });
+          k += 1;
+        }
       }
     }
     return pos;
@@ -10137,13 +10222,46 @@ class Ariane extends obsidian.Plugin {
         priorite: fm.priorite || '',
         avancement: Number(fm.avancement) || 0,
         jalon: fm.jalon === true,
-        famille: Ariane.familleTache(fm),
+        famille: Ariane.familleTache(fm, this.settings.famillesTaches, this.settings.familleTacheDefaut),
         x: Number.isFinite(nx) ? nx : null,
         y: Number.isFinite(ny) ? ny : null,
         fichier: f,
       });
     }
     return out;
+  }
+
+  // La définition d'une famille par son id, ou un repli gris/rond pour une
+  // famille inconnue ou supprimée. Jamais null : les dessinateurs s'appuient
+  // dessus sans garde.
+  familleDe(id) {
+    const liste = Array.isArray(this.settings.famillesTaches) ? this.settings.famillesTaches : [];
+    return liste.find((f) => f && f.id === id)
+      || { id: id || '', nom: id || tr('(sans famille)'), couleur: '#888888', icone: 'circle', proprietes: [] };
+  }
+
+  // « Une tâche de la famille X porte les champs de X » : on complète les
+  // entêtes qui ne les ont pas encore. Une seule passe, silencieuse, et jamais
+  // d'écriture si rien ne manque.
+  async rattraperProprietesFamilles() {
+    const liste = Array.isArray(this.settings.famillesTaches) ? this.settings.famillesTaches : [];
+    if (!liste.length) return 0;
+    let touchees = 0;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (fm.type !== 'tache') continue;
+      const id = fm.famille ? String(fm.famille).trim() : '';
+      if (!id) continue;
+      const fam = liste.find((x) => x && x.id === id);
+      if (!fam) continue;
+      const manquantes = Ariane.proprietesManquantes(fm, fam);
+      if (!manquantes.length) continue;
+      await this.app.fileManager.processFrontMatter(f, (m) => {
+        for (const p of manquantes) if (!(p.cle in m)) m[p.cle] = '';
+      });
+      touchees += 1;
+    }
+    return touchees;
   }
 
   // Écrit un blocage dans l'entête de la tâche bloquée. Le frontmatter est la
@@ -11037,7 +11155,121 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setValue(s.listeRappelsDefaut || '')
         .onChange(async (v) => { s.listeRappelsDefaut = v.trim(); await maj(); }));
 
+    this._section(c, tr('Familles de tâches'));
+    this._aide(c, tr("Chaque famille porte une couleur et une icône (cartes de l'articulation) et déclare les propriétés qu'elle ajoute à une tâche. La famille d'une tâche vit dans son champ « famille »."));
+    this._tableFamillesTaches(c, s, maj);
+    new obsidian.Setting(c)
+      .setName(tr('Famille par défaut'))
+      .setDesc(tr("Appliquée quand le champ « famille » est vide et qu'aucune règle ne tranche."))
+      .addDropdown((d) => {
+        for (const f of (s.famillesTaches || [])) d.addOption(f.id, f.nom || f.id);
+        d.setValue(s.familleTacheDefaut || 'action')
+          .onChange(async (v) => { s.familleTacheDefaut = v; await maj(); });
+      });
+
     this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue » (et par le clic droit sur un en-tête de colonne)."));
+  }
+
+  // Éditeur des familles de tâches. Même esprit que _tableFamilles (familles
+  // de notes) : liste répétable, réordonnable, chaque ligne portant en plus
+  // une sous-liste de propriétés { cle, libelle, type }.
+  _tableFamillesTaches(parent, s, maj) {
+    const TYPES = Object.keys(Ariane.TYPE_FR_VERS_OBSIDIAN); // texte, nombre, …
+    const slug = (v) => String(v || '').toLowerCase().trim()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const hote = parent.createDiv({ cls: 'zfa-famt-hote' });
+
+    const rendre = () => {
+      hote.empty();
+      const familles = Array.isArray(s.famillesTaches) ? s.famillesTaches : (s.famillesTaches = []);
+      if (!familles.length) {
+        hote.createDiv({ cls: 'zfa-fam-vide', text: tr('Aucune famille de tâches.') });
+      } else {
+        hote.createDiv({ cls: 'zfa-famt-avert', text:
+          tr("Renommer l'identifiant d'une famille ne migre pas les tâches déjà rattachées.") });
+      }
+      familles.forEach((f, i) => {
+        const ligne = hote.createDiv({ cls: 'zfa-famt' });
+        const tete = ligne.createDiv({ cls: 'zfa-famt-tete' });
+
+        const apercu = tete.createSpan({ cls: 'zfa-famt-apercu' });
+        const peindreApercu = () => {
+          apercu.empty();
+          apercu.style.setProperty('--zfa-fam-couleur', f.couleur || '#888888');
+          obsidian.setIcon(apercu, f.icone || 'circle');
+        };
+        peindreApercu();
+
+        const id = tete.createEl('input', { cls: 'zfa-famt-id', type: 'text' });
+        id.placeholder = tr('identifiant'); id.value = f.id || '';
+        id.onchange = async () => {
+          const v = slug(id.value); id.value = v;
+          const collision = (familles || []).some((g, j) => j !== i && g.id === v);
+          id.toggleClass('zfa-famt-collision', !!collision || !v);
+          if (v && !collision) { f.id = v; await maj(); }
+        };
+
+        const nom = tete.createEl('input', { cls: 'zfa-famt-nom', type: 'text' });
+        nom.placeholder = tr('Nom affiché'); nom.value = f.nom || '';
+        nom.onchange = async () => { f.nom = nom.value.trim(); await maj(); };
+
+        const couleur = tete.createEl('input', { cls: 'zfa-famt-couleur', type: 'color' });
+        couleur.value = f.couleur || '#888888';
+        couleur.onchange = async () => { f.couleur = couleur.value; peindreApercu(); await maj(); };
+
+        const icone = tete.createEl('input', { cls: 'zfa-famt-icone', type: 'text' });
+        icone.placeholder = tr('icône Lucide'); icone.value = f.icone || '';
+        icone.onchange = async () => { f.icone = icone.value.trim(); peindreApercu(); await maj(); };
+
+        const monter = tete.createEl('button', { cls: 'zfa-fam-bouton' });
+        obsidian.setIcon(monter, 'chevron-up');
+        monter.onclick = async () => { if (i === 0) return;
+          familles.splice(i - 1, 0, familles.splice(i, 1)[0]); await maj(); rendre(); };
+        const descendre = tete.createEl('button', { cls: 'zfa-fam-bouton' });
+        obsidian.setIcon(descendre, 'chevron-down');
+        descendre.onclick = async () => { if (i >= familles.length - 1) return;
+          familles.splice(i + 1, 0, familles.splice(i, 1)[0]); await maj(); rendre(); };
+        const suppr = tete.createEl('button', { cls: 'zfa-fam-bouton zfa-fam-suppr' });
+        obsidian.setIcon(suppr, 'trash-2');
+        suppr.onclick = async () => { familles.splice(i, 1); await maj(); rendre(); };
+
+        const corps = ligne.createDiv({ cls: 'zfa-famt-props' });
+        corps.createEl('div', { cls: 'zfa-famt-props-titre', text: tr('Propriétés ajoutées') });
+        (f.proprietes = Array.isArray(f.proprietes) ? f.proprietes : []).forEach((p, j) => {
+          const pr = corps.createDiv({ cls: 'zfa-famt-prop' });
+          const cle = pr.createEl('input', { type: 'text' });
+          cle.placeholder = tr('clé'); cle.value = p.cle || '';
+          cle.onchange = async () => { p.cle = cle.value.trim(); await maj(); };
+          const lib = pr.createEl('input', { type: 'text' });
+          lib.placeholder = tr('libellé'); lib.value = p.libelle || '';
+          lib.onchange = async () => { p.libelle = lib.value.trim(); await maj(); };
+          const typ = pr.createEl('select');
+          for (const t of TYPES) typ.createEl('option', { value: t, text: tr(t[0].toUpperCase() + t.slice(1)) });
+          typ.value = p.type || 'texte';
+          typ.onchange = async () => { p.type = typ.value; await maj(); };
+          const del = pr.createEl('button', { cls: 'zfa-fam-bouton zfa-fam-suppr' });
+          obsidian.setIcon(del, 'x');
+          del.onclick = async () => { f.proprietes.splice(j, 1); await maj(); rendre(); };
+        });
+        const plus = corps.createEl('button', { cls: 'zfa-famt-prop-plus' });
+        plus.setText(tr('Ajouter une propriété'));
+        plus.onclick = async () => { f.proprietes.push({ cle: '', libelle: '', type: 'texte' }); await maj(); rendre(); };
+      });
+    };
+
+    const barre = parent.createDiv({ cls: 'zfa-fam-barre' });
+    new obsidian.Setting(barre)
+      .addButton((b) => b.setButtonText(tr('Ajouter une famille')).setCta().onClick(async () => {
+        (s.famillesTaches = s.famillesTaches || []).push({
+          id: '', nom: '', couleur: '#888888', icone: 'circle', proprietes: [],
+        });
+        await maj(); rendre();
+      }))
+      .addButton((b) => b.setButtonText(tr('Recharger les familles par défaut')).onClick(async () => {
+        s.famillesTaches = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.famillesTaches));
+        await maj(); rendre();
+      }));
+    rendre();
   }
 
   ongletSuggestions(c, s, maj) {
@@ -13689,7 +13921,12 @@ function fabriquerVueFriseBase(greffon) {
 
     onunload() { if (this.moteur) this.moteur.detruire(); }
 
-    onDataUpdated() { if (this.moteur) this.moteur.dessiner(); }
+    async onDataUpdated() {
+      if (this.greffon.settings.famillesTaches && this.greffon.settings.famillesTaches.length) {
+        try { await this.greffon.rattraperProprietesFamilles(); } catch (e) { /* sans gravité */ }
+      }
+      if (this.moteur) this.moteur.dessiner();
+    }
 
     onResize() { if (this.moteur) this.moteur.dessiner(); }
 
@@ -13800,6 +14037,8 @@ class MoteurArticulation {
     this.ctx = ctx;
     this._vue = { x: 40, y: 40, k: 1 };
     this._selArete = null;
+    this._mode = 'retracte';
+    this._plies = this._plies || new Set();
     racine.addClass('zfa-artic');
     racine.tabIndex = -1;
     racine.addEventListener('keydown', (e) => this.touche(e));
@@ -13822,10 +14061,26 @@ class MoteurArticulation {
     c.empty();
     const taches = (this.ctx.taches && this.ctx.taches()) || [];
 
+    // Tri natif de la base : on réordonne le tableau des tâches selon les refs
+    // triées. Les tâches hors liste retombent à la fin, dans leur ordre reçu.
+    const ordreTri = (this.ctx.triRefs && this.ctx.triRefs()) || [];
+    if (ordreTri.length) {
+      const rang = new Map(ordreTri.map((r, i) => [r, i]));
+      taches.sort((a, b) => (rang.has(a.ref) ? rang.get(a.ref) : 1e9)
+        - (rang.has(b.ref) ? rang.get(b.ref) : 1e9));
+    }
+
     const barre = c.createDiv({ cls: 'zfa-artic-barre' });
-    this.boutonBarre(barre, 'plus', tr('Tâche'), () => this.ajoutRapide());
     this.boutonBarre(barre, 'layout-grid', tr('Re-disposer'), () => this.redisposer());
     this.boutonBarre(barre, 'maximize-2', tr('Ajuster'), () => this.ajuster());
+
+    const mode = (this.ctx.lire && this.ctx.lire('modeCarte')) || 'retracte';
+    this._mode = mode;
+    this.boutonBarre(barre, mode === 'detaille' ? 'rows-3' : 'rows-2',
+      mode === 'detaille' ? tr('Détaillé') : tr('Rétracté'), async () => {
+        await this.ctx.ecrire('modeCarte', mode === 'detaille' ? 'retracte' : 'detaille');
+        this.dessiner();
+      });
 
     if (!taches.length) {
       c.createDiv({ cls: 'zfa-refs-vide', text: tr('Aucune tâche dans cette base.') });
@@ -13836,7 +14091,23 @@ class MoteurArticulation {
     for (const t of taches) this._dates[t.ref] = { debut: t.debut || '', echeance: t.echeance || '' };
     const { noeuds, aretes } = Ariane.grapheArticulation(taches);
     this._aretes = aretes;
-    this._pos = Ariane.placerGraphe(noeuds, aretes, { dx: 300, dy: 130 });
+
+    // Hauteur effective par nœud selon le mode et le nombre de propriétés.
+    const cols = (this.ctx.ordre && this.ctx.ordre()) || [];
+    const hDe = (n) => {
+      if (this._mode !== 'detaille') return ARTIC_H;
+      if (this._plies && this._plies.has(n.ref)) return ARTIC_H;
+      return ARTIC_H + Math.max(0, cols.length) * 18 + 22; // rangées + pied famille
+    };
+    for (const n of noeuds) n.h = hDe(n);
+    this._noeudsParRef = new Map(noeuds.map((n) => [n.ref, n]));
+
+    this._pos = Ariane.placerGraphe(noeuds, aretes,
+      { dx: 300, dy: 130, ordre: ordreTri.length ? ordreTri : null,
+        hauteur: (ref) => {
+          const n = this._noeudsParRef.get(ref);
+          return n && n.h ? n.h : ARTIC_H;
+        } });
 
     const svg = svgEl('svg', { class: 'zfa-artic-svg' });
     c.appendChild(svg);
@@ -13880,12 +14151,29 @@ class MoteurArticulation {
     const p = this._pt(n.ref);
     const gn = svgEl('g', { class: 'zfa-artic-noeud', transform: 'translate(' + p.x + ',' + p.y + ')' });
     gn.dataset.ref = n.ref;
-    const fo = svgEl('foreignObject', { width: ARTIC_W, height: ARTIC_H });
+    const fo = svgEl('foreignObject', { width: ARTIC_W, height: n.h || ARTIC_H });
     gn.appendChild(fo);
     const carte = fo.createDiv({ cls: 'zfa-artic-carte' + (n.jalon ? ' est-jalon' : '') });
     carte.dataset.statut = n.statut;
+    const fam = this.greffon.familleDe(n.famille);
+    carte.style.setProperty('--zfa-fam-couleur', fam.couleur || '#888888');
     const ic = carte.createSpan({ cls: 'zfa-artic-fam' });
-    obsidian.setIcon(ic, { lecture: 'book-open', production: 'file-pen', action: 'zap' }[n.famille] || 'circle');
+    ic.setAttribute('aria-label', fam.nom || n.famille || '');
+    obsidian.setIcon(ic, fam.icone || 'circle');
+
+    const deplie = this._mode === 'detaille' && !(this._plies && this._plies.has(n.ref));
+    if (this._mode === 'detaille') {
+      const chev = carte.createSpan({ cls: 'zfa-artic-chevron' });
+      const plie = this._plies && this._plies.has(n.ref);
+      obsidian.setIcon(chev, plie ? 'chevron-right' : 'chevron-down');
+      chev.addEventListener('pointerdown', (e) => e.stopPropagation());
+      chev.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._plies = this._plies || new Set();
+        if (this._plies.has(n.ref)) this._plies.delete(n.ref); else this._plies.add(n.ref);
+        this.dessiner();
+      });
+    }
     const corps = carte.createDiv({ cls: 'zfa-artic-corps' });
     corps.createDiv({ cls: 'zfa-artic-titre', text: n.intitule });
     const bas = corps.createDiv({ cls: 'zfa-artic-bas' });
@@ -13894,6 +14182,34 @@ class MoteurArticulation {
     if (n.avancement > 0) {
       const j = corps.createDiv({ cls: 'zfa-artic-jauge' });
       j.createDiv({ cls: 'zfa-artic-jauge-in' }).style.width = Math.min(100, n.avancement) + '%';
+    }
+
+    if (deplie) {
+      const cols = (this.ctx.ordre && this.ctx.ordre()) || [];
+      if (cols.length) {
+        const tb = corps.createDiv({ cls: 'zfa-artic-props' });
+        for (const col of cols) {
+          const rg = tb.createDiv({ cls: 'zfa-artic-prop' });
+          rg.createSpan({ cls: 'zfa-artic-prop-cle', text: col.nom });
+          const val = rg.createSpan({ cls: 'zfa-artic-prop-val' });
+          if (!this._rendreValeurTypee(val, col, n.ref)) {
+            const brut = col.valeur ? col.valeur(n.ref) : null;
+            val.setText(MoteurArticulation.texteValeur(brut && typeof brut === 'object' && 'data' in brut ? brut.data : brut));
+          }
+        }
+      }
+
+      const pied = corps.createDiv({ cls: 'zfa-artic-famchoix' });
+      const sel = pied.createEl('select', { cls: 'zfa-artic-famsel' });
+      for (const f of (this.greffon.settings.famillesTaches || [])) {
+        sel.createEl('option', { value: f.id, text: f.nom || f.id });
+      }
+      sel.value = n.famille || '';
+      sel.addEventListener('pointerdown', (e) => e.stopPropagation());
+      sel.addEventListener('change', async () => {
+        await this.ctx.poserFamille(n.ref, sel.value);
+        this.dessiner();
+      });
     }
 
     carte.addEventListener('pointerdown', (e) => {
@@ -13905,7 +14221,8 @@ class MoteurArticulation {
       this.greffon.ouvrir(n.ref, e.metaKey || e.ctrlKey);
     });
 
-    for (const [type, cy, glyphe] of [['hier', ARTIC_H * 0.32, '↳'], ['bloque', ARTIC_H * 0.72, '⊘']]) {
+    const hN = n.h || ARTIC_H;
+    for (const [type, cy, glyphe] of [['hier', hN * 0.32, '↳'], ['bloque', hN * 0.72, '⊘']]) {
       const a = svgEl('circle', { cx: ARTIC_W, cy, r: 7, class: 'zfa-artic-accroche' });
       a.dataset.type = type;
       const t = svgEl('title', {});
@@ -13919,13 +14236,52 @@ class MoteurArticulation {
     g.appendChild(gn);
   }
 
+  // Rend une valeur de propriété avec le widget de type d'Obsidian. true si le
+  // widget a pris la main, false sinon (l'appelant retombe sur du texte).
+  _rendreValeurTypee(hote, col, ref) {
+    const id = String(col.id || '');
+    if (id.startsWith('file.') || id.startsWith('formula.')) return false;
+    const widgets = this.app.metadataTypeManager
+      && this.app.metadataTypeManager.registeredTypeWidgets;
+    const w = widgets && widgets[col.type];
+    if (!w || typeof w.render !== 'function') return false;
+    const v = col.valeur ? col.valeur(ref) : null;
+    const brut = (v && typeof v === 'object' && 'data' in v) ? v.data : v;
+    try {
+      w.render(hote, brut == null ? '' : brut, {
+        app: this.app, key: col.champ, sourcePath: ref + '.md',
+        blur: () => {},
+        onChange: (nv) => this.greffon.majTache(ref, { [col.champ]: nv }),
+      });
+      hote.addClass('bases-metadata-value', 'metadata-property-value');
+      return true;
+    } catch (e) { hote.empty(); return false; }
+  }
+
+  // Réplique locale de VueFriseBase.texteValeur (hors de portée depuis ce
+  // module) : stringifie une Value de base sans jamais afficher « [object Object] ».
+  static texteValeur(v) {
+    if (v === null || v === undefined) return '';
+    if (Array.isArray(v)) return v.map((x) => MoteurArticulation.texteValeur(x)).filter(Boolean).join(', ');
+    if (typeof v === 'object') {
+      if (typeof v.toString === 'function') {
+        const t = v.toString();
+        return t === '[object Object]' ? '' : t;
+      }
+      return '';
+    }
+    return String(v);
+  }
+
   dessinerArete(g, a) {
     const s = this._pt(a.de);
     const t = this._pt(a.vers);
+    const hs = ((this._noeudsParRef && this._noeudsParRef.get(a.de)) || {}).h || ARTIC_H;
+    const ht = ((this._noeudsParRef && this._noeudsParRef.get(a.vers)) || {}).h || ARTIC_H;
     const x1 = s.x + ARTIC_W;
-    const y1 = s.y + ARTIC_H / 2;
+    const y1 = s.y + hs / 2;
     const x2 = t.x;
-    const y2 = t.y + ARTIC_H / 2;
+    const y2 = t.y + ht / 2;
     const d = Ariane._cheminFleche(x1, y1, x2, y2);
     const gr = svgEl('g', { class: 'zfa-artic-arete-groupe' });
     gr.dataset.de = a.de; gr.dataset.vers = a.vers; gr.dataset.type = a.type;
@@ -14049,7 +14405,9 @@ class MoteurArticulation {
       if (gr.dataset.de !== ref && gr.dataset.vers !== ref) continue;
       const s = this._pt(gr.dataset.de);
       const t = this._pt(gr.dataset.vers);
-      const d = Ariane._cheminFleche(s.x + ARTIC_W, s.y + ARTIC_H / 2, t.x, t.y + ARTIC_H / 2);
+      const hs = ((this._noeudsParRef && this._noeudsParRef.get(gr.dataset.de)) || {}).h || ARTIC_H;
+      const ht = ((this._noeudsParRef && this._noeudsParRef.get(gr.dataset.vers)) || {}).h || ARTIC_H;
+      const d = Ariane._cheminFleche(s.x + ARTIC_W, s.y + hs / 2, t.x, t.y + ht / 2);
       for (const p of gr.querySelectorAll('path')) p.setAttribute('d', d);
     }
   }
@@ -14058,8 +14416,9 @@ class MoteurArticulation {
     if (ev.button !== 0) return;
     ev.preventDefault();
     const s0 = this._pt(ref);
+    const hN = ((this._noeudsParRef && this._noeudsParRef.get(ref)) || {}).h || ARTIC_H;
     const x1 = s0.x + ARTIC_W;
-    const y1 = s0.y + (type === 'hier' ? ARTIC_H * 0.32 : ARTIC_H * 0.72);
+    const y1 = s0.y + (type === 'hier' ? hN * 0.32 : hN * 0.72);
     const trait = svgEl('path', { class: 'zfa-artic-lien-en-cours', d: '' });
     this._scene.appendChild(trait);
     let cible = null;
@@ -14121,19 +14480,6 @@ class MoteurArticulation {
     new obsidian.Notice(tr('Disposition recalculée.'));
     this.dessiner();
   }
-
-  async ajoutRapide() {
-    const centre = this._versScene({
-      clientX: this._svg.getBoundingClientRect().left + this._svg.clientWidth / 2,
-      clientY: this._svg.getBoundingClientRect().top + this._svg.clientHeight / 2,
-    });
-    const chemin = await this.greffon.creerTache({});
-    const ref = this.greffon.refDeChemin(chemin);
-    if (ref) await this.ctx.poserPosition(ref, Math.round(centre.x - ARTIC_W / 2), Math.round(centre.y));
-    const f = this.greffon.app.vault.getAbstractFileByPath(chemin);
-    if (f) await this.greffon.app.workspace.getLeaf(true).openFile(f);
-    this.dessiner();
-  }
 }
 
 function fabriquerVueArticulationBase(greffon) {
@@ -14148,6 +14494,14 @@ function fabriquerVueArticulationBase(greffon) {
     onload() {
       this.moteur = new MoteurArticulation(this.greffon, this.conteneur, {
         taches: () => this.tachesDuGraphe(),
+        ordre: () => this.colonnesArtic(),
+        triRefs: () => this.refsTriees(),
+        lire: (cle) => {
+          const v = this.config.get(cle);
+          return v === undefined || v === null ? null : v;
+        },
+        ecrire: async (cle, v) => { this.config.set(cle, v); },
+        poserFamille: async (ref, id) => { await this.greffon.majTache(ref, { famille: id }); },
         poserPosition: async (ref, x, y) => {
           const f = this.greffon.app.vault.getMarkdownFiles().find((z) => z.basename === ref);
           if (!f) return;
@@ -14163,7 +14517,12 @@ function fabriquerVueArticulationBase(greffon) {
     }
 
     onunload() { if (this.moteur) this.moteur.detruire(); }
-    onDataUpdated() { if (this.moteur) this.moteur.dessiner(); }
+    async onDataUpdated() {
+      if (this.greffon.settings.famillesTaches && this.greffon.settings.famillesTaches.length) {
+        try { await this.greffon.rattraperProprietesFamilles(); } catch (e) { /* sans gravité */ }
+      }
+      if (this.moteur) this.moteur.dessiner();
+    }
     onResize() { if (this.moteur) this.moteur.dessiner(); }
 
     // Le jeu filtré par la base, plus la remontée des ancêtres absents pour ne
@@ -14187,6 +14546,67 @@ function fabriquerVueArticulationBase(greffon) {
         }
       }
       return toutes.filter((t) => gardes.has(t.ref));
+    }
+
+    // Le tri NATIF de la base (menu Trier), multi-critères : liste ordonnée de
+    // { property, desc }. Lu dans le sérialisé de la vue, comme la frise.
+    sortNatif() {
+      let s = [];
+      try { s = (this.config.serialize() || {}).sort || (this.config.getSort && this.config.getSort()) || []; }
+      catch (e) { s = []; }
+      return (Array.isArray(s) ? s : [])
+        .filter((x) => x && x.property)
+        .map((x) => ({ property: String(x.property),
+          desc: String(x.direction || 'ASC').toUpperCase() === 'DESC' }));
+    }
+
+    // Les refs du jeu filtré, ordonnées selon le tri natif multi-critères.
+    // Vide si aucun tri : le moteur garde alors l'ordre de tachesDuGraphe.
+    refsTriees() {
+      const crit = this.sortNatif();
+      if (!crit.length) return [];
+      const parRef = new Map();
+      for (const e of (this.data && this.data.data) || []) {
+        const ref = e && e.file ? this.greffon.refDeChemin(e.file.path) : null;
+        if (ref) parRef.set(ref, e);
+      }
+      return [...parRef.keys()].sort((ra, rb) => {
+        for (const c of crit) {
+          const va = this._valTri(parRef.get(ra), c.property);
+          const vb = this._valTri(parRef.get(rb), c.property);
+          if (va < vb) return c.desc ? 1 : -1;
+          if (va > vb) return c.desc ? -1 : 1;
+        }
+        return 0;
+      });
+    }
+
+    _valTri(e, prop) {
+      let v = null;
+      try { v = e ? e.getValue(prop) : null; } catch (err) { v = null; }
+      const b = (v && typeof v === 'object' && 'data' in v && v.data != null) ? v.data : v;
+      return b == null ? '' : b;
+    }
+
+    colonnesArtic() {
+      let props = [];
+      try { props = this.config.getOrder() || []; } catch (e) { props = []; }
+      if (!props.length) props = (this.data && this.data.properties) || [];
+      const parRef = new Map();
+      for (const en of (this.data && this.data.data) || []) {
+        const ref = en && en.file ? this.greffon.refDeChemin(en.file.path) : null;
+        if (ref) parRef.set(ref, en);
+      }
+      return props
+        .filter((id) => !String(id).startsWith('file.'))
+        .map((id) => {
+          let nom = id;
+          try { nom = this.config.getDisplayName(id) || id; } catch (e) { /* garde l'id */ }
+          const type = Ariane.typeProprieteBase(this.app.metadataTypeManager, id);
+          return { id, nom, type, champ: String(id).replace(/^note\./, ''),
+            valeur: (ref) => { const en = parRef.get(ref);
+              try { return en ? en.getValue(id) : null; } catch (e) { return null; } } };
+        });
     }
   };
 }
