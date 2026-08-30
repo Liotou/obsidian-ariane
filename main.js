@@ -14384,15 +14384,14 @@ class MoteurArticulation {
     });
 
     const hN = n.h || ARTIC_H;
-    for (const [type, part, glyphe] of [['hier', 0.32, '↳'], ['bloque', 0.72, '⊘']]) {
+    for (const [type, part] of [['hier', 0.32], ['bloque', 0.72]]) {
       const ga = svgEl('g', {
         class: 'zfa-artic-accroche zfa-artic-accroche-' + type,
         transform: 'translate(' + ARTIC_W + ',' + (hN * part) + ')' });
       ga.dataset.type = type;
-      ga.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-accroche-pastille' }));
-      const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-accroche-glyphe' });
-      tx.textContent = glyphe;
-      ga.appendChild(tx);
+      // Cible large invisible pour viser à la souris, puis la pastille visible.
+      ga.appendChild(svgEl('circle', { r: 11, class: 'zfa-artic-accroche-cible' }));
+      ga.appendChild(svgEl('circle', { r: 5, class: 'zfa-artic-accroche-pastille' }));
       const t = svgEl('title', {});
       t.textContent = type === 'hier'
         ? tr('Clic : nouvelle sous-tâche. Maintenir et tirer : relier une tâche existante.')
