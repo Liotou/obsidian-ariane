@@ -54,3 +54,45 @@ juste après `//#endregion 3` dès le commit de la region 3, pour que
 `//#endregion 3` précède immédiatement la première déclaration de la region 4
 (contrainte d'ordre du fichier). Le commit de la region 4 ne fait plus que poser
 `//#region 4` + bandeau + `//#endregion 4` autour de ce bloc déjà en place.
+
+## `COULEURS_ZOTERO` / `nomCouleur` placés en region 5 (et non 3 ou 9)
+
+`main.js`, region 5 · Notes atomiques (juste après `rangesNotesOrphelines`). Le
+brief envisageait la region 9 (doublons d'auteurs) ou 3 pour ce couple, mais le
+seul appelant est `extraireBlocs` (region 5, calcul de la couleur d'une
+annotation). Placés donc en region 5, sans déplacement (ils y étaient déjà). Rien
+de suspect sur le fond ; note laissée pour justifier l'écart au brief.
+
+## Commentaire orphelin « Extrait tous les blocs d'annotation… » (region 5)
+
+`main.js`, region 5, juste au-dessus du commentaire de `titreDeRepli`. La ligne
+« Extrait tous les blocs d'annotation d'une note source, selon la config. »
+décrit `extraireBlocs`, pas `titreDeRepli` qui la suit immédiatement. Commentaire
+mal placé pré-existant, déplacé tel quel avec le bloc (pas de chirurgie de
+commentaire dans le reshuffle).
+
+## `cleDeLien` déplacé en region 2 (et non region 6)
+
+`main.js` : `cleDeLien` figurait dans la liste region 6 du brief, mais avec ~13
+sites d'appel répartis sur plusieurs domaines (bibliographie, export Pandoc,
+méthodes `Ariane` de références / tâches / index). Transverse → déplacé en
+region 2 · Utilitaires génériques (juste avant `//#endregion 2`), conformément à
+la règle « dans la region 2 si plusieurs domaines l'utilisent ». `valeurLisible`,
+lui, n'a que 2 appelants (tous export) : laissé en region 6 comme le liste le
+brief.
+
+## Bandeau ad hoc `/* Bibliographie de note */` supprimé (region 6)
+
+`main.js` : le bandeau `/* ------- Bibliographie de note ------- */`, mal placé
+(il précédait `BASE_TACHES`, qui relève des tâches, pas de la bibliographie), est
+supprimé — superséordé par le bandeau `//#region 6 · Bibliographie`. Seule ligne
+retirée du commit region 6.
+
+## Bandeau orphelin `/* Temps passé */` désormais collé à `BASE_TACHES`
+
+`main.js`, juste avant le commentaire de `BASE_TACHES` (region 10 à venir). Ce
+bandeau ad hoc n'annonce aucun code de cette zone (le compteur de temps passé est
+une méthode de `class Ariane`). Déjà signalé par le lot régions 1–4 ; après le
+regroupement de la region 6 il se retrouve accolé au bloc des modèles de bases.
+Laissé en place, à retirer lors de la mise au propre de la zone « temps passé »
+de `class Ariane`.
