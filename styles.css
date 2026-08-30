@@ -1336,6 +1336,14 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-noeud.est-cible .zfa-artic-carte {
   outline: 2px solid var(--interactive-accent); outline-offset: 1px;
 }
+.zfa-artic-noeud.est-selectionne .zfa-artic-carte {
+  outline: 2px solid var(--interactive-accent); outline-offset: 1px;
+  box-shadow: var(--shadow-l);
+}
+
+.zfa-artic-pointe { stroke: none; }
+.zfa-artic-pointe-hier { fill: var(--background-modifier-border); }
+.zfa-artic-pointe-bloque { fill: var(--interactive-accent); opacity: 0.65; }
 
 .zfa-artic-arete { fill: none; pointer-events: none; }
 .zfa-artic-arete.zfa-artic-hier {
@@ -1395,9 +1403,14 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-carte:has(.zfa-artic-chevron) .zfa-artic-crayon { right: 22px; }
 
 /* Formulaire de tâche (création / modification) — deux colonnes. */
-.zfa-tache-modale { min-width: min(560px, 82vw); }
+.zfa-tache-fenetre {
+  width: 680px; max-width: 94vw; min-width: 360px;
+  resize: both; overflow: auto;
+}
+.zfa-tache-fenetre .modal-content { width: 100%; }
+.zfa-tache-modale { width: 100%; }
 .zfa-tache-modale .setting-item {
-  display: block; border-top: 0; padding: 7px 0;
+  display: block; border: 0 !important; padding: 6px 0; min-width: 0;
 }
 .zfa-tache-modale .setting-item-info { margin: 0 0 3px; }
 .zfa-tache-modale .setting-item-name {
@@ -1405,12 +1418,14 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   display: flex; align-items: center;
 }
 .zfa-tache-modale .setting-item-description { font-size: var(--font-ui-smaller); }
-.zfa-tache-modale .setting-item-control { justify-content: flex-start; }
+.zfa-tache-modale .setting-item-control {
+  justify-content: flex-start; width: 100%; flex-wrap: nowrap;
+}
 .zfa-tache-modale .setting-item-control input[type="text"],
 .zfa-tache-modale .setting-item-control input[type="date"],
 .zfa-tache-modale .setting-item-control input[type="number"],
 .zfa-tache-modale .setting-item-control input[type="range"],
-.zfa-tache-modale .setting-item-control select { flex: 1; width: 100%; }
+.zfa-tache-modale .setting-item-control select { flex: 1 1 auto; width: 100%; min-width: 0; }
 .zfa-tache-modale .setting-item.setting-item-heading {
   padding-top: 16px; margin-top: 4px;
 }
@@ -1418,11 +1433,15 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   font-size: var(--font-ui-small); color: var(--text-normal); font-weight: 600;
 }
 .zfa-tache-ic {
-  display: inline-flex; margin-right: 6px; color: var(--text-faint);
+  display: inline-flex; margin-right: 6px; color: var(--text-faint); flex: 0 0 auto;
 }
 .zfa-tache-ic svg { width: 14px; height: 14px; }
 
-.zfa-tache-grille { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
+.zfa-tache-grille {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  column-gap: 18px;
+}
+.zfa-tache-grille > .setting-item { min-width: 0; }
 .zfa-tache-grille .zfa-tache-large { grid-column: 1 / -1; }
 
 .zfa-tache-modale .zfa-tache-modale-pied {

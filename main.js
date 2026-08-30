@@ -10475,6 +10475,24 @@ class Ariane extends obsidian.Plugin {
     return true;
   }
 
+  // Met la note d'une tâche à la corbeille et nettoie les renvois des autres
+  // tâches vers elle (parent, bloque-par) pour ne pas laisser de liens morts.
+  async supprimerTache(ref) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    if (!f) return false;
+    for (const t of this.tachesPourGantt()) {
+      if (t.ref === ref) continue;
+      const champs = {};
+      if (Ariane.refDeLien(t.parent || '') === ref) champs.parent = '';
+      const bp = (t.bloquePar || []).filter((b) => Ariane.refDeLien(b) !== ref);
+      if (bp.length !== (t.bloquePar || []).length) champs['bloque-par'] = bp;
+      if (Object.keys(champs).length) await this.majTache(t.ref, champs);
+    }
+    this.marquerEcriture(f.path);
+    await this.app.fileManager.trashFile(f);
+    return true;
+  }
+
   // Écrit en une passe les dates rendues par decalerSousArbre ou cascadeAval.
   async ecrireDatesTaches(changements) {
     const parRef = new Map(this.tachesPourGantt().map((t) => [t.ref, t.fichier]));
@@ -12009,6 +12027,7 @@ class ModaleTache extends obsidian.Modal {
   async onOpen() {
     const { contentEl, titleEl } = this;
     contentEl.addClass('zfa-tache-modale');
+    if (this.modalEl) this.modalEl.addClass('zfa-tache-fenetre');
     titleEl.setText(this.ref ? tr('Modifier la tâche') : tr('Nouvelle tâche'));
     if (this.ref) await this._chargerDepuisNote();
     else this._synchroniserProps();
@@ -14329,6 +14348,7 @@ class MoteurArticulation {
     this.ctx = ctx;
     this._vue = { x: 40, y: 40, k: 1 };
     this._selArete = null;
+    this._selNoeud = null;
     this._mode = 'retracte';
     this._plies = this._plies || new Set();
     racine.addClass('zfa-artic');
@@ -14408,6 +14428,18 @@ class MoteurArticulation {
     const svg = svgEl('svg', { class: 'zfa-artic-svg' });
     c.appendChild(svg);
     this._svg = svg;
+    // Pointes de flèche : l'articulation n'a pas d'axe du temps, le sens de
+    // chaque contrainte doit être montré.
+    const defs = svgEl('defs', {});
+    for (const type of ['hier', 'bloque']) {
+      const mk = svgEl('marker', {
+        id: 'zfa-artic-pointe-' + type, viewBox: '0 0 10 10',
+        refX: 8.5, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto' });
+      mk.appendChild(svgEl('path', {
+        d: 'M0 0 L10 5 L0 10 z', class: 'zfa-artic-pointe zfa-artic-pointe-' + type }));
+      defs.appendChild(mk);
+    }
+    svg.appendChild(defs);
     const g = svgEl('g', { class: 'zfa-artic-scene' });
     svg.appendChild(g);
     this._scene = g;
@@ -14421,6 +14453,7 @@ class MoteurArticulation {
       if (e.target === svg || e.target.closest('.zfa-artic-scene') === g
         && !e.target.closest('.zfa-artic-noeud') && !e.target.closest('.zfa-artic-arete-groupe')) {
         this._deselectionnerArete();
+        this._deselectionnerNoeud();
         this.panDepart(e);
       }
     });
@@ -14448,6 +14481,7 @@ class MoteurArticulation {
     const p = this._pt(n.ref);
     const gn = svgEl('g', { class: 'zfa-artic-noeud', transform: 'translate(' + p.x + ',' + p.y + ')' });
     gn.dataset.ref = n.ref;
+    if (this._selNoeud === n.ref) gn.classList.add('est-selectionne');
     const fo = svgEl('foreignObject', { width: ARTIC_W, height: n.h || ARTIC_H });
     gn.appendChild(fo);
     const carte = fo.createDiv({ cls: 'zfa-artic-carte' + (n.jalon ? ' est-jalon' : '') });
@@ -14476,6 +14510,9 @@ class MoteurArticulation {
       m.addItem((i) => i.setTitle(tr('Modifier la tâche…')).setIcon('pencil')
         .onClick(() => new ModaleTache(this.app, this.greffon,
           { ref: n.ref, apres: () => this.dessiner() }).open()));
+      m.addSeparator();
+      m.addItem((i) => i.setTitle(tr('Supprimer la tâche…')).setIcon('trash-2')
+        .onClick(() => this._supprimerNoeud(n.ref)));
       m.showAtMouseEvent(e);
     });
 
@@ -14541,8 +14578,15 @@ class MoteurArticulation {
       if (e.button !== 0 || e.target.closest('.zfa-artic-accroche')) return;
       this.glisserNoeud(e, n.ref, gn);
     });
+    // Clic simple : sélectionne la carte (⌫ pour la supprimer).
+    // Double-clic : ouvre la note. Le titre garde son propre double-clic.
     carte.addEventListener('click', (e) => {
       if (gn.dataset.aGlisse) { delete gn.dataset.aGlisse; return; }
+      this.selectionnerNoeud(n.ref, gn);
+    });
+    carte.addEventListener('dblclick', (e) => {
+      if (e.target.closest('.zfa-artic-titre')) return;
+      e.stopPropagation();
       this.greffon.ouvrir(n.ref, e.metaKey || e.ctrlKey);
     });
 
@@ -14618,7 +14662,8 @@ class MoteurArticulation {
     const gr = svgEl('g', { class: 'zfa-artic-arete-groupe' });
     gr.dataset.de = a.de; gr.dataset.vers = a.vers; gr.dataset.type = a.type;
     gr.appendChild(svgEl('path', { d, class: 'zfa-artic-arete-cible' }));
-    gr.appendChild(svgEl('path', { d, class: 'zfa-artic-arete zfa-artic-' + a.type }));
+    gr.appendChild(svgEl('path', { d, class: 'zfa-artic-arete zfa-artic-' + a.type,
+      'marker-end': 'url(#zfa-artic-pointe-' + a.type + ')' }));
     if (a.libelle) {
       const lab = svgEl('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 4, class: 'zfa-artic-arete-lab' });
       lab.textContent = a.libelle;
@@ -14649,17 +14694,60 @@ class MoteurArticulation {
     }
   }
 
+  selectionnerNoeud(ref, gn) {
+    this._deselectionnerArete();
+    this._deselectionnerNoeud();
+    this._selNoeud = ref;
+    if (gn) gn.classList.add('est-selectionne');
+    if (this.racine.focus) this.racine.focus({ preventScroll: true });
+  }
+
+  _deselectionnerNoeud() {
+    this._selNoeud = null;
+    if (this._svg) {
+      for (const el of this._svg.querySelectorAll('.zfa-artic-noeud.est-selectionne')) {
+        el.classList.remove('est-selectionne');
+      }
+    }
+  }
+
+  async _supprimerNoeud(ref) {
+    if (!ref) return;
+    const n = (this._noeudsParRef && this._noeudsParRef.get(ref)) || {};
+    const ok = await new Promise((res) => {
+      new ConfirmationRattachement(this.app,
+        tr('Supprimer la tâche « ') + (n.intitule || ref)
+          + tr(' » ? Sa note ira à la corbeille.'),
+        res).open();
+    });
+    if (!ok) return;
+    this._selNoeud = null;
+    await this.greffon.supprimerTache(ref);
+    this.dessiner();
+  }
+
   async touche(e) {
     const cible = e.target;
     if (cible && (cible.matches('input, textarea, select') || cible.isContentEditable)) return;
-    if (e.key === 'Escape') { this._deselectionnerArete(); return; }
-    if (e.key !== 'Backspace' || !this._selArete) return;
-    e.preventDefault();
-    const { de, vers, type } = this._selArete;
-    this._selArete = null;
-    if (type === 'hier') await this.ctx.poserParent(vers, null);
-    else await this.greffon.retirerBlocage(de, vers);
-    this.dessiner();
+    if (e.key === 'Escape') {
+      this._deselectionnerArete();
+      this._deselectionnerNoeud();
+      return;
+    }
+    if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+    if (this._selArete) {
+      e.preventDefault();
+      const { de, vers, type } = this._selArete;
+      this._selArete = null;
+      if (type === 'hier') await this.ctx.poserParent(vers, null);
+      else await this.greffon.retirerBlocage(de, vers);
+      this.dessiner();
+      return;
+    }
+    if (this._selNoeud) {
+      e.preventDefault();
+      await this._supprimerNoeud(this._selNoeud);
+    }
   }
 
   // Coordonnées scène à partir d'un évènement pointeur.
@@ -14804,7 +14892,8 @@ class MoteurArticulation {
     const y1 = s0.y + hN * (ANCRE_PART[type] || 0.5);
     const dep = this._versScene(ev);
     const trait = svgEl('path', {
-      class: 'zfa-artic-lien-en-cours zfa-artic-lien-en-cours-' + type, d: '' });
+      class: 'zfa-artic-lien-en-cours zfa-artic-lien-en-cours-' + type, d: '',
+      'marker-end': 'url(#zfa-artic-pointe-' + type + ')' });
     this._scene.appendChild(trait);
     let cible = null;
     let bouge = false;
