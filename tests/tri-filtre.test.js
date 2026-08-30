@@ -120,3 +120,45 @@ test('une clé vide passe après celles qui sont remplies', () => {
   ], 'cle');
   assert.deepEqual(l.map((x) => x.ref), ['T26-002', 'T26-001']);
 });
+
+/* --------- Le tri natif de la base : multi-critères (_multi) ---------- */
+
+test('le tri multi range sur le premier critère', () => {
+  const l = Ariane.disposerGantt([
+    Object.assign(t('T26-001'), { _multi: [{ v: 'b', s: 1 }] }),
+    Object.assign(t('T26-002'), { _multi: [{ v: 'a', s: 1 }] }),
+  ], 'multi');
+  assert.deepEqual(l.map((x) => x.ref), ['T26-002', 'T26-001']);
+});
+
+test('le tri multi départage par le second critère à égalité du premier', () => {
+  const l = Ariane.disposerGantt([
+    Object.assign(t('T26-001'), { _multi: [{ v: 'a', s: 1 }, { v: '2', s: 1 }] }),
+    Object.assign(t('T26-002'), { _multi: [{ v: 'a', s: 1 }, { v: '1', s: 1 }] }),
+  ], 'multi');
+  assert.deepEqual(l.map((x) => x.ref), ['T26-002', 'T26-001']);
+});
+
+test('le sens descendant d un critère inverse ce critère', () => {
+  const l = Ariane.disposerGantt([
+    Object.assign(t('T26-001'), { _multi: [{ v: 'a', s: -1 }] }),
+    Object.assign(t('T26-002'), { _multi: [{ v: 'b', s: -1 }] }),
+  ], 'multi');
+  assert.deepEqual(l.map((x) => x.ref), ['T26-002', 'T26-001']);
+});
+
+test('le tri multi compare les nombres comme des nombres', () => {
+  const l = Ariane.disposerGantt([
+    Object.assign(t('T26-001'), { _multi: [{ v: 10, s: 1 }] }),
+    Object.assign(t('T26-002'), { _multi: [{ v: 9, s: 1 }] }),
+  ], 'multi');
+  assert.deepEqual(l.map((x) => x.ref), ['T26-002', 'T26-001']);
+});
+
+test('une valeur vide passe après, quel que soit le sens', () => {
+  const l = Ariane.disposerGantt([
+    Object.assign(t('T26-001'), { _multi: [{ v: '', s: -1 }] }),
+    Object.assign(t('T26-002'), { _multi: [{ v: 'z', s: -1 }] }),
+  ], 'multi');
+  assert.deepEqual(l.map((x) => x.ref), ['T26-002', 'T26-001']);
+});

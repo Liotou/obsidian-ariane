@@ -3425,12 +3425,6 @@ class Ariane extends obsidian.Plugin {
             shouldHide: () => config.get('zoom') !== 'semaine',
           },
           {
-            type: 'dropdown', key: 'tri', displayName: tr('Ordre des tâches'),
-            default: 'date',
-            options: { date: tr('Par date'), priorite: tr('Par priorité'),
-                       intitule: tr('Par intitulé') },
-          },
-          {
             type: 'toggle', key: 'masquerTerminees',
             displayName: tr('Masquer les terminées'), default: false,
           },
@@ -9598,6 +9592,18 @@ class Ariane extends obsidian.Plugin {
         const c = String(a.intitule || a.ref)
           .localeCompare(String(b.intitule || b.ref), 'fr', { sensitivity: 'base' });
         if (c) return c;
+      } else if (tri === 'multi') {
+        // Tri natif de la base : plusieurs critères { v, s(ens) } préparés par
+        // la vue, comparés dans l'ordre. Une valeur vide passe toujours après.
+        const ma = a._multi || [];
+        const mb = b._multi || [];
+        for (let i = 0; i < ma.length; i += 1) {
+          const ka = String(ma[i] && ma[i].v != null ? ma[i].v : '');
+          const kb = String(mb[i] && mb[i].v != null ? mb[i].v : '');
+          if (!ka !== !kb) return ka ? -1 : 1;
+          const c = ka.localeCompare(kb, 'fr', { sensitivity: 'base', numeric: true });
+          if (c) return c * (ma[i].s === -1 ? -1 : 1);
+        }
       }
       return parDate(a, b);
     };
@@ -11873,6 +11879,7 @@ const JOURS_MINIMUM_GANTT = { jour: 30, semaine: 90, mois: 365, trimestre: 365, 
 
 const MOIS_COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
                      'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+const MOIS_LETTRES = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 
 function svgEl(nom, attrs) {
   const e = document.createElementNS('http://www.w3.org/2000/svg', nom);
@@ -12048,8 +12055,8 @@ class MoteurFrise {
     const nTotal = taches.length;
     if (this.ctx.lire('masquerTerminees')) taches = this.sansLesCloses(taches);
     if (this.ctx.avecFiltres) taches = Ariane.filtrerTaches(taches, this._filtre);
-    // Un tri posé sur un en-tête l'emporte sur celui des réglages : c'est le
-    // geste le plus récent, et le plus explicite.
+    // Priorité : un tri posé sur un en-tête (geste le plus explicite), sinon le
+    // tri natif de la base (menu Trier, multi-critères), sinon le repli par date.
     const colTri = this.ctx.lire('triColonne');
     let mode = this.ctx.lire('tri') || 'date';
     let sensTri = 1;
@@ -12066,13 +12073,18 @@ class MoteurFrise {
         mode = 'cle';
       }
       sensTri = this.ctx.lire('triColonneSens') === -1 ? -1 : 1;
+    } else {
+      const tn = this.ctx.triNatif ? this.ctx.triNatif() : null;
+      if (tn && tn.criteres.length) { tn.preparer(taches); mode = 'multi'; }
     }
     this._H = this.hauteurLigne;
     // L'en-tête reste fixe quelle que soit la hauteur de ligne, comme dans le
     // tableau des bases : seules les lignes de données s'épaississent. On suit
     // la variable d'Obsidian si elle existe, sinon 34 px — assez pour les deux
     // étages (mois puis semaines ou jours), illisibles en dessous de 28.
-    this._hEntete = this.hauteurEntete;
+    // Vue « année » : un troisième étage (année, trimestres, mois) → en-tête
+    // un peu plus haute.
+    this._hEntete = this.hauteurEntete + (this.zoom === 'année' ? 16 : 0);
     this._bande = Math.round(this._hEntete * 0.52);
     this._basEntete = this._bande + Math.round((this._hEntete - this._bande) / 2) + 1;
 
@@ -12126,10 +12138,11 @@ class MoteurFrise {
       }
     }
 
-    // Le bandeau de réglages (zoom, hauteur de ligne, filtres…) n'appartient
-    // pas à une base : dans la vue de base, ces options passent par « Configurer
-    // la vue ». On ne le dessine donc que pour la vue autonome.
+    // Le bandeau complet de réglages n'appartient pas à une base : dans la vue
+    // de base, tout passe par « Configurer la vue ». On y garde juste une barre
+    // légère pour l'échelle et le retour à aujourd'hui, façon barre d'outils.
     if (this.ctx.avecFiltres) this.dessinerReglages(c, nTotal, planifiees.length);
+    else if (this.ctx.echelleReglable) this.dessinerBarreVue(c);
     this.dessinerCascade(c);
     if (nonPlanifiees.length) this.dessinerTiroir(c, nonPlanifiees);
 
@@ -12158,9 +12171,10 @@ class MoteurFrise {
     const env = c.createDiv({ cls: 'zfa-gantt-enveloppe' });
     const gauche = env.createDiv({ cls: 'zfa-gantt-gauche' });
     const droite = env.createDiv({ cls: 'zfa-gantt-droite' });
+    this._droite = droite;
     this.dessinerColonneGauche(gauche, lignes);
 
-    const hauteur = this._hauteurTotale + 18; // marge basse pour la date du jour
+    const hauteur = this._hauteurTotale + 26; // marge basse : date du jour + barre de défilement
     const svg = svgEl('svg', { class: 'zfa-gantt-svg', width: cfg.largeur, height: hauteur });
     droite.appendChild(svg);
     this._svg = svg;
@@ -12185,6 +12199,15 @@ class MoteurFrise {
     // pistes se décalent dès la trentième ligne et la frise devient illisible.
     // Le tableau de gauche défile avec la frise : c'est le conteneur qui bouge,
     // les lignes étant en position absolue comme chez Bases.
+    // La frise ne descend pas jusqu'au bas du volet : sa hauteur suit le
+    // contenu (barre de défilement horizontale juste sous le Gantt), plafonnée
+    // à la place disponible pour que les listes longues gardent leur défilement.
+    const dispoH = env.clientHeight || hauteur;
+    droite.style.alignSelf = 'flex-start';
+    droite.style.height = Math.min(hauteur + 14, dispoH) + 'px';
+    gauche.style.alignSelf = 'flex-start';
+    gauche.style.height = Math.min(this._hauteurTotale, dispoH) + 'px';
+
     const table = gauche.querySelector('.zfa-gantt-table');
     droite.addEventListener('scroll', () => {
       const y = -droite.scrollTop;
@@ -12250,6 +12273,53 @@ class MoteurFrise {
       cls: 'zfa-ref-action' + (actif ? ' mod-cta' : ''), text: texte });
     b.onclick = (e) => { e.stopPropagation(); action(); };
     return b;
+  }
+
+  // Barre d'outils légère pour la vue de base : choix de l'échelle (segmenté)
+  // et retour à aujourd'hui. Le reste des réglages est dans « Configurer la vue ».
+  dessinerBarreVue(c) {
+    const b = c.createDiv({ cls: 'zfa-gantt-barre-vue' });
+
+    const masque = !!this.ctx.lire('masquerTerminees');
+    const mt = b.createEl('button', {
+      cls: 'zfa-gantt-bv-bouton zfa-gantt-bv-bascule' + (masque ? ' is-active' : ''),
+      attr: { type: 'button', 'aria-pressed': masque ? 'true' : 'false' } });
+    obsidian.setIcon(mt.createSpan({ cls: 'zfa-gantt-bv-ic' }),
+      masque ? 'eye-off' : 'eye');
+    mt.createSpan({ text: tr('Masquer les terminées') });
+    mt.addEventListener('click', async () => {
+      await this.ctx.ecrire('masquerTerminees', !this.ctx.lire('masquerTerminees'));
+      this.dessiner();
+    });
+
+    const auj = b.createEl('button', { cls: 'zfa-gantt-bv-bouton', attr: { type: 'button' } });
+    obsidian.setIcon(auj.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'locate-fixed');
+    auj.createSpan({ text: tr("Aujourd'hui") });
+    auj.addEventListener('click', () => this.recentrerAujourdhui());
+
+    const seg = b.createDiv({ cls: 'zfa-gantt-echelle', attr: { role: 'group' } });
+    const libs = { jour: tr('Jour'), semaine: tr('Semaine'), mois: tr('Mois'),
+                   trimestre: tr('Trimestre'), 'année': tr('Année') };
+    for (const z of Object.keys(Ariane.ZOOMS_GANTT)) {
+      const o = seg.createEl('button', { cls: 'zfa-gantt-echelle-opt',
+        text: libs[z] || z, attr: { type: 'button' } });
+      if (z === this.zoom) o.addClass('is-active');
+      o.addEventListener('click', async () => {
+        if (z === this.zoom) return;
+        await this.ctx.ecrire('zoom', z);
+        this.dessiner();
+      });
+    }
+  }
+
+  // Ramène la frise sur la colonne d'aujourd'hui, centrée dans la fenêtre.
+  recentrerAujourdhui() {
+    if (!this._droite || !this._cfg) return;
+    const auj = new Date().toISOString().slice(0, 10);
+    const x = Ariane.ecartJours(this._cfg.debut, auj) * this._cfg.ppj;
+    const cible = Math.max(0, x - this._droite.clientWidth / 2);
+    if (this._droite.scrollTo) this._droite.scrollTo({ left: cible, behavior: 'smooth' });
+    else this._droite.scrollLeft = cible;
   }
 
   dessinerReglages(c, nTotal, nPlanifiees) {
@@ -12870,13 +12940,17 @@ class MoteurFrise {
       // Bande teintée sur TOUTE la hauteur de l'en-tête : sans ça, la limite
       // haute/basse des étages laissait un filet horizontal à mi-en-tête que la
       // liste, elle, n'a pas — d'où l'impression de bordures différentes.
-      g.appendChild(svgEl('rect', { x: x1, y: 0, width: Math.max(0, x2 - x1),
-        height: this._hEntete,
-        class: rang % 2 ? 'zfa-gantt-bande-impaire' : 'zfa-gantt-bande-paire' }));
-      if (x2 - x1 > 34) {
-        const t = svgEl('text', { x: x1 + 6, y: this._bande - 5, class: 'zfa-gantt-entete-mois' });
-        t.textContent = MOIS_COURTS[m - 1] + ' ' + String(a).slice(2);
-        g.appendChild(t);
+      // En vue année, la teinte et le libellé viennent de enteteAnnees (par
+      // année, pas par mois) ; ici on ne garde que le filet vertical mensuel.
+      if (this.zoom !== 'année') {
+        g.appendChild(svgEl('rect', { x: x1, y: 0, width: Math.max(0, x2 - x1),
+          height: this._hEntete,
+          class: rang % 2 ? 'zfa-gantt-bande-impaire' : 'zfa-gantt-bande-paire' }));
+        if (x2 - x1 > 34) {
+          const t = svgEl('text', { x: x1 + 6, y: this._bande - 5, class: 'zfa-gantt-entete-mois' });
+          t.textContent = MOIS_COURTS[m - 1] + ' ' + String(a).slice(2);
+          g.appendChild(t);
+        }
       }
       g.appendChild(svgEl('line', { x1, y1: 0, x2: x1, y2: this._hEntete,
         class: 'zfa-gantt-entete-trait' }));
@@ -12887,6 +12961,7 @@ class MoteurFrise {
     if (this.zoom === 'jour') this.enteteJours(g, cfg);
     else if (this.zoom === 'semaine') this.enteteSemaines(g, cfg);
     else if (this.zoom === 'mois') this.enteteMois(g, cfg);
+    else if (this.zoom === 'année') this.enteteAnnees(g, cfg);
     else this.enteteTrimestres(g, cfg);
 
     svg.appendChild(g);
@@ -12943,6 +13018,63 @@ class MoteurFrise {
         g.appendChild(t);
       }
       mois = suivant;
+    }
+  }
+
+  // Vue année : trois étages — l'année (bande teintée + libellé), les
+  // trimestres (T1…T4), les mois en une lettre.
+  enteteAnnees(g, cfg) {
+    const yAn = Math.round(this._hEntete / 3);
+    const yTri = Math.round((this._hEntete * 2) / 3);
+    const finA = Number(cfg.fin.slice(0, 4));
+    let idx = 0;
+    for (let a = Number(cfg.debut.slice(0, 4)); a <= finA; a += 1, idx += 1) {
+      const x1 = Math.max(0, this.x(cfg, a + '-01-01'));
+      const x2 = Math.min(cfg.largeur, this.x(cfg, (a + 1) + '-01-01'));
+      g.appendChild(svgEl('rect', { x: x1, y: 0, width: Math.max(0, x2 - x1),
+        height: this._hEntete,
+        class: idx % 2 ? 'zfa-gantt-bande-impaire' : 'zfa-gantt-bande-paire' }));
+      if (x2 - x1 > 24) {
+        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: yAn - 4,
+          class: 'zfa-gantt-entete-annee' });
+        t.textContent = String(a);
+        g.appendChild(t);
+      }
+      g.appendChild(svgEl('line', { x1, y1: 0, x2: x1, y2: this._hEntete,
+        class: 'zfa-gantt-entete-trait-fort' }));
+    }
+    let ya = Number(cfg.debut.slice(0, 4));
+    let m = Math.floor((Number(cfg.debut.slice(5, 7)) - 1) / 3) * 3 + 1;
+    while (ya + '-' + String(m).padStart(2, '0') + '-01' <= cfg.fin) {
+      const jour = ya + '-' + String(m).padStart(2, '0') + '-01';
+      const am = m + 3 > 12 ? ya + 1 : ya;
+      const mm = m + 3 > 12 ? m - 9 : m + 3;
+      const suivant = am + '-' + String(mm).padStart(2, '0') + '-01';
+      const x1 = Math.max(0, this.x(cfg, jour));
+      const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
+      if (x2 - x1 > 16) {
+        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: yTri - 3,
+          class: 'zfa-gantt-entete-titre' });
+        t.textContent = 'T' + (Math.floor((m - 1) / 3) + 1);
+        g.appendChild(t);
+      }
+      g.appendChild(svgEl('line', { x1, y1: yAn, x2: x1, y2: this._hEntete,
+        class: 'zfa-gantt-entete-trait' }));
+      ya = am; m = mm;
+    }
+    let mo = cfg.debut.slice(0, 8) + '01';
+    while (mo <= cfg.fin) {
+      const mm = Number(mo.slice(5, 7));
+      const suivant = this.moisSuivant(mo);
+      const x1 = Math.max(0, this.x(cfg, mo));
+      const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
+      if (x2 - x1 > 7) {
+        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: this._hEntete - 4,
+          class: 'zfa-gantt-entete-mois-lettre' });
+        t.textContent = MOIS_LETTRES[mm - 1];
+        g.appendChild(t);
+      }
+      mo = suivant;
     }
   }
 
@@ -13644,6 +13776,7 @@ function fabriquerVueFriseBase(greffon) {
     onload() {
       this.moteur = new MoteurFrise(this.greffon, this.conteneur, {
         avecFiltres: false,
+        echelleReglable: true,
         colonnes: () => this.colonnes(),
         taches: () => this.tachesDeLaBase(),
         lire: (cle) => {
@@ -13673,7 +13806,38 @@ function fabriquerVueFriseBase(greffon) {
               ? { property: prop, direction: 'ASC' } : undefined);
           } catch (e) { /* setGroupBy absent : rien à faire */ }
         },
+        triNatif: () => {
+          const criteres = this.sortNatif();
+          if (!criteres.length) return null;
+          return {
+            criteres,
+            preparer: (taches) => {
+              for (const t of taches) {
+                const e = this._parRef && this._parRef.get(t.ref);
+                t._multi = criteres.map((c) => {
+                  let v = null;
+                  try { v = e ? e.getValue(c.property) : null; } catch (err) { v = null; }
+                  const brut = (v && typeof v === 'object' && 'data' in v && v.data != null)
+                    ? v.data : v;
+                  return { v: brut == null ? '' : brut, s: c.desc ? -1 : 1 };
+                });
+              }
+            },
+          };
+        },
       });
+    }
+
+    // Le tri NATIF de la base (menu Trier), multi-critères : liste ordonnée de
+    // { property, desc }. Lu dans le sérialisé de la vue, comme le groupBy.
+    sortNatif() {
+      let s = [];
+      try { s = (this.config.serialize() || {}).sort || this.config.getSort() || []; }
+      catch (e) { s = []; }
+      return (Array.isArray(s) ? s : [])
+        .filter((x) => x && x.property)
+        .map((x) => ({ property: String(x.property),
+          desc: String(x.direction || 'ASC').toUpperCase() === 'DESC' }));
     }
 
     // Le « Grouper par » NATIF de Bases (menu Trier), lu dans le sérialisé de

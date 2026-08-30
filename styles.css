@@ -812,6 +812,52 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   background: var(--background-primary);
   border-bottom: 1px solid var(--background-modifier-border);
 }
+
+/* Barre d'outils légère de la vue de base : à droite, comme les actions de la
+   barre native de Bases juste au-dessus. */
+.zfa-gantt-barre-vue {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 5px 10px; flex: 0 0 auto;
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.zfa-gantt-bv-bouton {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--font-ui-smaller); padding: 4px 9px; cursor: pointer;
+  color: var(--text-muted); background: transparent;
+  border: none; box-shadow: none; border-radius: var(--radius-s);
+}
+.zfa-gantt-bv-bouton:hover {
+  background: var(--background-modifier-hover); color: var(--text-normal);
+}
+.zfa-gantt-bv-bascule.is-active {
+  background: var(--interactive-accent); color: var(--text-on-accent);
+}
+.zfa-gantt-bv-bascule.is-active:hover {
+  background: var(--interactive-accent-hover); color: var(--text-on-accent);
+}
+.zfa-gantt-bv-ic { display: inline-flex; }
+.zfa-gantt-bv-ic svg { width: 14px; height: 14px; }
+
+.zfa-gantt-echelle {
+  display: inline-flex; align-items: stretch;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s); overflow: hidden;
+}
+.zfa-gantt-echelle-opt {
+  border: none; box-shadow: none; background: transparent; border-radius: 0;
+  font-size: var(--font-ui-smaller); padding: 4px 10px; cursor: pointer;
+  color: var(--text-muted); line-height: 1;
+}
+.zfa-gantt-echelle-opt + .zfa-gantt-echelle-opt {
+  border-left: 1px solid var(--background-modifier-border);
+}
+.zfa-gantt-echelle-opt:hover {
+  background: var(--background-modifier-hover); color: var(--text-normal);
+}
+.zfa-gantt-echelle-opt.is-active {
+  background: var(--interactive-accent); color: var(--text-on-accent);
+}
 .zfa-gantt-separateur {
   width: 1px; height: 16px; margin: 0 3px;
   background: var(--background-modifier-border);
@@ -955,6 +1001,16 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-entete-jour { font-size: 10px; }
 .zfa-gantt-entete-semaine { font-size: 10px; font-weight: 600; }
 .zfa-gantt-entete-titre { font-size: 9px; font-weight: 600; fill: var(--text-muted); }
+.zfa-gantt-entete-annee {
+  font-size: 10px; font-weight: 700; fill: var(--text-normal);
+  text-anchor: middle;
+}
+.zfa-gantt-entete-mois-lettre {
+  font-size: 8px; fill: var(--text-faint); text-anchor: middle;
+}
+.zfa-gantt-entete-trait-fort {
+  stroke: var(--background-modifier-border); stroke-width: 1;
+}
 .zfa-gantt-weekend-entete { fill: rgba(0, 0, 0, 0.04); }
 .theme-dark .zfa-gantt-weekend-entete { fill: rgba(255, 255, 255, 0.04); }
 
