@@ -863,20 +863,17 @@ const TEXTES = {
     "Statut": "Status",
     "Tri": "Sort",
     "Par date": "By date",
-    "Manuel": "Manual",
     "Par priorité": "By priority",
     "Par intitulé": "By title",
     "Tout afficher": "Show everything",
     "Glisser pour réordonner parmi les tâches de même rang": "Drag to reorder among tasks of the same rank",
-    "Rien à réordonner : cette tâche n a pas de sœur.": "Nothing to reorder: this task has no sibling.",
-    "Tri passé en manuel.": "Sort switched to manual.",
     "Frise": "Timeline",
-    "lignes fines": "compact rows",
+    "lignes courtes": "short rows",
     "lignes moyennes": "medium rows",
     "lignes hautes": "tall rows",
     "lignes très hautes": "extra tall rows",
     "Hauteur de ligne": "Row height",
-    "Fine": "Compact",
+    "Courte": "Short",
     "Moyenne": "Medium",
     "Haute": "Tall",
     "Très haute": "Extra tall",
@@ -927,8 +924,7 @@ const DEFAULT_SETTINGS = {
   ganttZoom: 'mois',            // jour | semaine | mois | trimestre | année
   ganttMasquerTerminees: false,
   ganttLibelleSemaine: 'numero', // numero | dates | les-deux
-  ganttLargeurLibelles: 280,
-  ganttTri: 'date',             // date | manuel | priorite | intitule
+  ganttTri: 'date',             // date | priorite | intitule
   ganttRowHeight: 'medium',    // '' | medium | tall | extra, comme les bases
   ganttColumnSize: null,
   ganttTriColonne: null,
@@ -3413,7 +3409,7 @@ class Ariane extends obsidian.Plugin {
           {
             type: 'dropdown', key: 'rowHeight', displayName: tr('Hauteur de ligne'),
             default: 'medium',
-            options: { short: tr('Fine'), medium: tr('Moyenne'),
+            options: { short: tr('Courte'), medium: tr('Moyenne'),
                        tall: tr('Haute'), extra: tr('Très haute') },
           },
           {
@@ -3431,17 +3427,12 @@ class Ariane extends obsidian.Plugin {
           {
             type: 'dropdown', key: 'tri', displayName: tr('Ordre des tâches'),
             default: 'date',
-            options: { date: tr('Par date'), manuel: tr('Manuel'),
-                       priorite: tr('Par priorité'), intitule: tr('Par intitulé') },
+            options: { date: tr('Par date'), priorite: tr('Par priorité'),
+                       intitule: tr('Par intitulé') },
           },
           {
             type: 'toggle', key: 'masquerTerminees',
             displayName: tr('Masquer les terminées'), default: false,
-          },
-          {
-            type: 'slider', key: 'largeurLibelles',
-            displayName: tr('Largeur de la colonne des tâches'),
-            default: 280, min: 160, max: 560, step: 10,
           },
         ],
       });
@@ -9588,15 +9579,7 @@ class Ariane extends obsidian.Plugin {
     // Le tri s'applique entre frères, jamais à travers la hiérarchie : un
     // enfant reste sous son parent quoi qu'il arrive.
     const trier = (a, b) => {
-      if (tri === 'manuel') {
-        // Une tâche jamais rangée à la main passe après celles qui l'ont été,
-        // plutôt que de s'insérer au hasard en tête.
-        const oa = Number.isFinite(Number(a.ordre)) && a.ordre !== null && a.ordre !== ''
-          ? Number(a.ordre) : Infinity;
-        const ob = Number.isFinite(Number(b.ordre)) && b.ordre !== null && b.ordre !== ''
-          ? Number(b.ordre) : Infinity;
-        if (oa !== ob) return oa - ob;
-      } else if (tri === 'priorite') {
+      if (tri === 'priorite') {
         const pa = RANGS_PRIORITE[a.priorite];
         const pb = RANGS_PRIORITE[b.priorite];
         const ra = pa === undefined ? 3 : pa;
@@ -10065,7 +10048,6 @@ class Ariane extends obsidian.Plugin {
         echeance: fm.echeance || '',
         statut: fm.statut || 'à faire',
         priorite: fm.priorite || '',
-        ordre: fm.ordre === undefined ? null : fm.ordre,
         avancement: Number(fm.avancement) || 0,
         jalon: fm.jalon === true,
         fichier: f,
@@ -11796,7 +11778,7 @@ const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 // les réglages d'Ariane : chaque vue d'une base porte les siens.
 const DEFAUTS_FRISE = {
   zoom: 'mois', masquerTerminees: false, libelleSemaine: 'numero',
-  largeurLibelles: 280, tri: 'date', rowHeight: 'medium', columnSize: null,
+  tri: 'date', rowHeight: 'medium', columnSize: null,
   triColonne: null, triColonneSens: 1,
 };
 
@@ -12106,7 +12088,7 @@ class MoteurFrise {
     }
     b.createSpan({ cls: 'zfa-gantt-separateur' });
     const suiteH = { short: 'medium', medium: 'tall', tall: 'extra', extra: 'short' };
-    const nomsH = { short: tr('lignes fines'), medium: tr('lignes moyennes'),
+    const nomsH = { short: tr('lignes courtes'), medium: tr('lignes moyennes'),
                     tall: tr('lignes hautes'), extra: tr('lignes très hautes') };
     const hCourant = String(this.ctx.lire('rowHeight') || 'short') === ''
       ? 'short' : String(this.ctx.lire('rowHeight') || 'short');
@@ -12168,7 +12150,7 @@ class MoteurFrise {
       ['terminée', 'terminée'], ['abandonnée', 'abandonnée']]);
     liste(tr('Priorité'), 'priorite', [[tr('Toutes priorités'), ''],
       [tr('haute'), 'haute'], [tr('moyenne'), 'moyenne'], [tr('basse'), 'basse']]);
-    liste(tr('Tri'), 'tri', [[tr('Par date'), 'date'], [tr('Manuel'), 'manuel'],
+    liste(tr('Tri'), 'tri', [[tr('Par date'), 'date'],
       [tr('Par priorité'), 'priorite'], [tr('Par intitulé'), 'intitule']]);
 
     if (f.texte || f.statut || f.priorite) {

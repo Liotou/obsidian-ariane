@@ -4,7 +4,7 @@ const Ariane = require('./obsidian-factice.js');
 
 const t = (ref, o) => Object.assign(
   { ref, intitule: ref, parent: '', debut: '', echeance: '', statut: 'à faire',
-    priorite: '', avancement: 0, jalon: false, ordre: null }, o);
+    priorite: '', avancement: 0, jalon: false }, o);
 
 /* ------------------------------- Le tri -------------------------------- */
 
@@ -12,20 +12,6 @@ test('par défaut les racines se rangent par date', () => {
   const l = Ariane.disposerGantt([
     t('T26-003', { debut: '2026-09-10' }), t('T26-002', { debut: '2026-09-01' })]);
   assert.deepEqual(l.map((x) => x.ref), ['T26-002', 'T26-003']);
-});
-
-test('le tri manuel suit le champ ordre', () => {
-  const l = Ariane.disposerGantt([
-    t('T26-001', { debut: '2026-09-01', ordre: 2 }),
-    t('T26-002', { debut: '2026-09-10', ordre: 1 }),
-  ], 'manuel');
-  assert.deepEqual(l.map((x) => x.ref), ['T26-002', 'T26-001']);
-});
-
-test('en tri manuel une tâche sans ordre passe après celles qui en ont', () => {
-  const l = Ariane.disposerGantt([
-    t('T26-001'), t('T26-002', { ordre: 5 })], 'manuel');
-  assert.deepEqual(l.map((x) => x.ref), ['T26-002', 'T26-001']);
 });
 
 test('le tri par priorité met la haute en tête', () => {
@@ -55,9 +41,9 @@ test('le tri par intitulé ignore la casse et les accents', () => {
 test('le tri s applique aussi entre frères, pas seulement aux racines', () => {
   const l = Ariane.disposerGantt([
     t('T26-001'),
-    t('T26-002', { parent: 'T26-001', ordre: 2 }),
-    t('T26-003', { parent: 'T26-001', ordre: 1 }),
-  ], 'manuel');
+    t('T26-002', { parent: 'T26-001', intitule: 'Bravo' }),
+    t('T26-003', { parent: 'T26-001', intitule: 'Alpha' }),
+  ], 'intitule');
   assert.deepEqual(l.map((x) => x.ref), ['T26-001', 'T26-003', 'T26-002']);
 });
 
