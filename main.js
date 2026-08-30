@@ -9563,7 +9563,8 @@ class Ariane extends obsidian.Plugin {
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
             'debut', 'echeance', 'avancement', 'parent',
-            'bloque-par', 'termine-le'];
+            'bloque-par', 'termine-le',
+            'source', 'livrable', 'fichier', 'liste', 'rappel-id'];
   }
 
   static familleTache(fm, familles, defaut) {
@@ -9632,11 +9633,11 @@ class Ariane extends obsidian.Plugin {
     l.push(K('jalon') + ': ' + (c.jalon ? 'true' : 'false'));
     l.push(K('parent') + ':');
     l.push(K('bloque-par') + ': []');
-    l.push(ligne('source', q(c.source)));
-    l.push(ligne('livrable', q(c.livrable)));
-    l.push(ligne('fichier', q(c.fichier)));
-    l.push(ligne('liste', q(c.liste)));
-    l.push('rappel-id:');
+    l.push(ligne(K('source'), q(c.source)));
+    l.push(ligne(K('livrable'), q(c.livrable)));
+    l.push(ligne(K('fichier'), q(c.fichier)));
+    l.push(ligne(K('liste'), q(c.liste)));
+    l.push(K('rappel-id') + ':');
     l.push(ligne('cree', jour));
     l.push(ligne('modifie', jour));
     l.push('---');
@@ -10399,8 +10400,12 @@ class Ariane extends obsidian.Plugin {
       const alias = [].concat(fm.aliases || []).map(String).filter(Boolean);
       const nx = Number(fm['canvas-x']);
       const ny = Number(fm['canvas-y']);
-      const famVal = this._lireT(fm, 'famille');
-      const fmFam = famVal != null ? Object.assign({}, fm, { famille: famVal }) : fm;
+      const fmFam = Object.assign({}, fm, {
+        famille: this._lireT(fm, 'famille'),
+        source: this._lireT(fm, 'source'),
+        livrable: this._lireT(fm, 'livrable'),
+        fichier: this._lireT(fm, 'fichier'),
+      });
       out.push({
         ref,
         intitule: alias[0] || ref,
@@ -10729,7 +10734,12 @@ class Ariane extends obsidian.Plugin {
   async majBlocTache(file) {
     if (!this.refDeChemin(file.path)) return false;
     const cache = this.app.metadataCache.getFileCache(file);
-    const fm = (cache && cache.frontmatter) || {};
+    const fmBrut = (cache && cache.frontmatter) || {};
+    const fm = Object.assign({}, fmBrut, {
+      source: this._lireT(fmBrut, 'source'),
+      livrable: this._lireT(fmBrut, 'livrable'),
+      fichier: this._lireT(fmBrut, 'fichier'),
+    });
     const meta = await this.accesTache(fm);
     const interieur = Ariane.blocTache(fm, meta);
     const bloc = interieur ? ZFA_TACHE_DEBUT + '\n' + interieur + '\n' + ZFA_TACHE_FIN : '';
@@ -12313,10 +12323,12 @@ class ModaleTache extends obsidian.Modal {
     this.v.avancement = Number(L('avancement')) || 0;
     this.v.jalon = L('jalon') === true;
     this.v.parent = Ariane.refDeLien(L('parent') || '') || '';
-    const famVal = L('famille');
-    this.v.famille = Ariane.familleTache(
-      famVal != null ? Object.assign({}, fm, { famille: famVal }) : fm,
-      this.familles, this.greffon.settings.familleTacheDefaut);
+    const fmN = Object.assign({}, fm, {
+      famille: L('famille'), source: L('source'),
+      livrable: L('livrable'), fichier: L('fichier'),
+    });
+    this.v.famille = Ariane.familleTache(fmN, this.familles,
+      this.greffon.settings.familleTacheDefaut);
     this._fm = fm;
     this._synchroniserProps();
   }
@@ -12325,10 +12337,14 @@ class ModaleTache extends obsidian.Modal {
   // qui reste valable, on retire le reste, on amorce ce qui manque.
   _synchroniserProps() {
     const fam = this.familles.find((x) => x.id === this.v.famille);
+    const conc = new Set(Ariane.CONCEPTS_TACHE);
     const garde = {};
     for (const p of (fam && fam.proprietes) || []) {
+      const lu = this._fm
+        ? (conc.has(p.cle) ? this.greffon._lireT(this._fm, p.cle) : this._fm[p.cle])
+        : undefined;
       if (p.cle in this.props) garde[p.cle] = this.props[p.cle];
-      else if (this._fm && this._fm[p.cle] != null) garde[p.cle] = this._fm[p.cle];
+      else if (lu != null) garde[p.cle] = lu;
       else garde[p.cle] = '';
     }
     this.props = garde;
