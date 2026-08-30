@@ -926,6 +926,7 @@ const DEFAULT_SETTINGS = {
   libellesTaches: {},
   // Vue Articulation : accrochage magnétique des cartes au glissé.
   articulationAimant: true,
+  articulationFleches: 'courbe', // 'courbe' | 'angulaire'
   articulationGrille: 20,       // pas de la grille (0 = pas de grille)
   articulationSeuilAimant: 7,   // distance d'accrochage aux voisins (px)
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
@@ -3825,6 +3826,31 @@ class Ariane extends obsidian.Plugin {
       await this.app.fileManager.processFrontMatter(fichier, (x) => {
         x['termine-le'] = valeur;
         x.modifie = jour;
+      });
+    }));
+
+    // « terminee » (case) et « statut » restent en phase, dans les deux sens :
+    // celui des deux qui vient de changer entraîne l'autre.
+    this._etatTermine = this._etatTermine || new Map();
+    this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _d, cacheNote) => {
+      if (!this.refDeChemin(fichier.path)) return;
+      const fm = (cacheNote && cacheNote.frontmatter) || {};
+      const coche = fm.terminee === true;
+      const fini = fm.statut === 'terminée';
+      if (coche === fini) { this._etatTermine.set(fichier.path, { coche, fini }); return; }
+      const av = this._etatTermine.get(fichier.path) || { coche: fini, fini };
+      const caseModifiee = av.coche !== coche;
+      const cible = caseModifiee
+        ? { statut: coche ? 'terminée' : 'à faire' }   // la case pilote le statut
+        : { terminee: fini };                           // le statut pilote la case
+      this._etatTermine.set(fichier.path,
+        { coche: cible.terminee != null ? cible.terminee : coche,
+          fini: cible.statut ? cible.statut === 'terminée' : fini });
+      this.marquerEcriture(fichier.path);
+      await this.app.fileManager.processFrontMatter(fichier, (x) => {
+        if (cible.statut != null) x.statut = cible.statut;
+        if (cible.terminee != null) x.terminee = cible.terminee;
+        x.modifie = new Date().toISOString().slice(0, 10);
       });
     }));
 
@@ -9492,6 +9518,7 @@ class Ariane extends obsidian.Plugin {
       { cle: 'intitule', defaut: 'Intitulé', icone: 'text' },
       { cle: 'famille', defaut: 'Famille', icone: 'shapes' },
       { cle: 'statut', defaut: 'Statut', icone: 'circle-dot' },
+      { cle: 'terminee', defaut: 'Terminée', icone: 'check-check' },
       { cle: 'priorite', defaut: 'Priorité', icone: 'flag' },
       { cle: 'jalon', defaut: 'Jalon', icone: 'diamond' },
       { cle: 'debut', defaut: 'Début', icone: 'calendar' },
@@ -9556,6 +9583,7 @@ class Ariane extends obsidian.Plugin {
     l.push('type: tache');
     l.push(ligne('famille', c.famille));
     l.push(ligne('statut', c.statut || 'à faire'));
+    l.push('terminee: ' + ((c.statut || '') === 'terminée' ? 'true' : 'false'));
     l.push(ligne('priorite', c.priorite));
     l.push(ligne('debut', c.debut));
     l.push(ligne('echeance', c.echeance));
@@ -10503,6 +10531,13 @@ class Ariane extends obsidian.Plugin {
     return true;
   }
 
+  // Coche / décoche « terminée » : statut et case écrits ensemble.
+  async basculerTermine(ref, coche) {
+    return this.majTache(ref, coche
+      ? { statut: 'terminée', terminee: true }
+      : { statut: 'à faire', terminee: false });
+  }
+
   // Met la note d'une tâche à la corbeille et nettoie les renvois des autres
   // tâches vers elle (parent, bloque-par) pour ne pas laisser de liens morts.
   async supprimerTache(ref) {
@@ -11369,6 +11404,14 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._section(c, tr('Vue Articulation'));
     this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue »."));
     new obsidian.Setting(c)
+      .setName(tr('Fléchage'))
+      .setDesc(tr('Forme des liens entre cartes.'))
+      .addDropdown((d) => d
+        .addOption('courbe', tr('Courbe'))
+        .addOption('angulaire', tr('Angulaire'))
+        .setValue(s.articulationFleches || 'courbe')
+        .onChange(async (v) => { s.articulationFleches = v; await maj(); }));
+    new obsidian.Setting(c)
       .setName(tr("Accrochage magnétique"))
       .setDesc(tr("Au glissé d'une carte, l'accrocher à une grille et aux bords / centres des cartes voisines."))
       .addToggle((t) => t.setValue(s.articulationAimant !== false)
@@ -12154,8 +12197,16 @@ class ModaleTache extends obsidian.Modal {
       for (const st of ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée']) {
         d.addOption(st, tr(st));
       }
-      d.setValue(this.v.statut).onChange((x) => { this.v.statut = x; });
+      d.setValue(this.v.statut).onChange((x) => { this.v.statut = x; this._dessiner(); });
     });
+
+    this._settingGen(g, 'terminee').addToggle((t) => t
+      .setValue(this.v.statut === 'terminée')
+      .onChange((x) => {
+        if (x) this.v.statut = 'terminée';
+        else if (this.v.statut === 'terminée') this.v.statut = 'à faire';
+        this._dessiner();
+      }));
 
     this._settingGen(g, 'priorite').addDropdown((d) => {
       d.addOption('', tr('(aucune)'));
@@ -12281,6 +12332,7 @@ class ModaleTache extends obsidian.Modal {
       await this.greffon.renommerTitreTache(ref, titre);
       const champs = {
         statut: this.v.statut,
+        terminee: this.v.statut === 'terminée',
         priorite: this.v.priorite,
         debut: this.v.debut,
         echeance: this.v.echeance,
@@ -14611,7 +14663,17 @@ class MoteurArticulation {
       });
     }
     const corps = carte.createDiv({ cls: 'zfa-artic-corps' });
-    const titreEl = corps.createDiv({ cls: 'zfa-artic-titre', text: n.intitule });
+    const tete = corps.createDiv({ cls: 'zfa-artic-tete' });
+    const coche = tete.createEl('input', { type: 'checkbox', cls: 'zfa-artic-coche' });
+    coche.checked = n.statut === 'terminée';
+    coche.setAttribute('aria-label', tr('Terminée'));
+    coche.addEventListener('pointerdown', (e) => e.stopPropagation());
+    coche.addEventListener('click', (e) => e.stopPropagation());
+    coche.addEventListener('change', async () => {
+      await this.greffon.basculerTermine(n.ref, coche.checked);
+      this.dessiner();
+    });
+    const titreEl = tete.createDiv({ cls: 'zfa-artic-titre', text: n.intitule });
     titreEl.setAttribute('title', tr('Double-clic pour renommer'));
     titreEl.addEventListener('click', (e) => e.stopPropagation());
     titreEl.addEventListener('dblclick', (e) => {
@@ -14759,6 +14821,15 @@ class MoteurArticulation {
     return String(v);
   }
 
+  // Tracé d'une arête : courbe (défaut) ou angulaire selon le réglage.
+  _chemin(x1, y1, x2, y2) {
+    if ((this.greffon.settings.articulationFleches || 'courbe') === 'angulaire') {
+      const mx = Math.max(x1 + 16, (x1 + x2) / 2);
+      return 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + y2 + ' H ' + x2;
+    }
+    return Ariane._cheminFleche(x1, y1, x2, y2);
+  }
+
   dessinerArete(g, a) {
     const s = this._pt(a.de);
     const t = this._pt(a.vers);
@@ -14768,7 +14839,7 @@ class MoteurArticulation {
     const y1 = s.y + ancreY(hs, a.type);
     const x2 = t.x;
     const y2 = t.y + ancreY(ht, a.type);
-    const d = Ariane._cheminFleche(x1, y1, x2, y2);
+    const d = this._chemin(x1, y1, x2, y2);
     const gr = svgEl('g', { class: 'zfa-artic-arete-groupe' });
     gr.dataset.de = a.de; gr.dataset.vers = a.vers; gr.dataset.type = a.type;
     gr.appendChild(svgEl('path', { d, class: 'zfa-artic-arete-cible' }));
@@ -14941,7 +15012,7 @@ class MoteurArticulation {
       const hs = ((this._noeudsParRef && this._noeudsParRef.get(gr.dataset.de)) || {}).h || ARTIC_H;
       const ht = ((this._noeudsParRef && this._noeudsParRef.get(gr.dataset.vers)) || {}).h || ARTIC_H;
       const ty = gr.dataset.type;
-      const d = Ariane._cheminFleche(
+      const d = this._chemin(
         s.x + ARTIC_W, s.y + ancreY(hs, ty), t.x, t.y + ancreY(ht, ty));
       for (const p of gr.querySelectorAll('path')) p.setAttribute('d', d);
     }
@@ -15011,7 +15082,7 @@ class MoteurArticulation {
     const bouger = (e) => {
       const s = this._versScene(e);
       if (Math.abs(s.x - dep.x) > 4 || Math.abs(s.y - dep.y) > 4) bouge = true;
-      trait.setAttribute('d', Ariane._cheminFleche(x1, y1, s.x, s.y));
+      trait.setAttribute('d', this._chemin(x1, y1, s.x, s.y));
       const sous = document.elementFromPoint(e.clientX, e.clientY);
       const gn = sous && sous.closest ? sous.closest('.zfa-artic-noeud') : null;
       const r = gn && gn.dataset ? gn.dataset.ref : null;
