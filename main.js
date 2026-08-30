@@ -3826,9 +3826,8 @@ class Ariane extends obsidian.Plugin {
     // Il ne se réécrit que s'il change vraiment, faute de quoi cette écoute
     // se rappellerait elle-même sans fin. L'antirebond évite en outre de
     // réécrire à chaque frappe pendant que Monsieur remplit ses propriétés.
-    this.registerEvent(this.app.metadataCache.on('changed', (fichier, _d, cacheNote) => {
-      const fm = (cacheNote && cacheNote.frontmatter) || null;
-      if (!fm || fm.type !== 'tache') return;
+    this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
+      if (!this.refDeChemin(fichier.path)) return;
       this.antirebond('tache:' + fichier.path, () => this.majBlocTache(fichier));
     }));
 
@@ -9400,31 +9399,26 @@ class Ariane extends obsidian.Plugin {
     if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
     if (this.ecritePlugin(file.path)) return;
     const dossier = this.dossierT;
-    if (!file.parent || file.parent.path !== dossier) return;
-    if (/^T\d{2}-\d{3,4}$/.test(file.basename)) return;
+    if (!file.parent || (file.parent.path !== dossier && !file.path.startsWith(dossier + '/'))) return;
     this.antirebond('tache-vierge:' + file.path, async () => {
       const f = this.app.vault.getAbstractFileByPath(file.path);
       if (!(f instanceof obsidian.TFile)) return;
-      if (/^T\d{2}-\d{3,4}$/.test(f.basename)) return;
       const brut = await this.app.vault.read(f);
+      // On ne touche pas une note déjà rédigée ou déjà pourvue d'un schéma.
       const corps = brut.replace(/^---[\s\S]*?\n---\r?\n?/, '').trim();
       if (corps.length) return;
       const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      if (fm.statut || fm.debut || fm.echeance || fm.parent) return;
+      if (fm.statut || fm.debut || fm.echeance || fm.parent || fm.avancement != null) return;
+      // Le nom de fichier est libre : on n'en impose plus. On ne fait qu'amorcer
+      // l'entête pour que la frise et l'articulation aient de quoi travailler.
       const titre = /^(sans titre|untitled)\b/i.test(f.basename) ? '' : f.basename;
-      const noms = this.app.vault.getMarkdownFiles()
-        .filter((x) => x.parent && x.parent.path === dossier).map((x) => x.basename);
-      const ref = Ariane.referenceTacheSuivante(noms, new Date().getFullYear());
-      const cible = dossier + '/' + ref + '.md';
-      this.marquerEcriture(f.path);
-      this.marquerEcriture(cible);
       const jour = new Date().toISOString().slice(0, 10);
+      this.marquerEcriture(f.path);
       await this.app.vault.modify(f, Ariane.corpsNouvelleTache({
         intitule: titre, aujourdhui: jour,
         liste: this.settings.listeRappelsDefaut,
       }));
-      if (f.basename !== ref) await this.app.fileManager.renameFile(f, cible);
-      new obsidian.Notice(tr('Nouvelle tâche : ') + ref);
+      new obsidian.Notice(tr('Tâche initialisée : ') + f.basename);
     }, 450);
   }
 
@@ -9630,6 +9624,20 @@ class Ariane extends obsidian.Plugin {
   // « T26-001 ».
   static refDeLien(v) {
     return String(v == null ? '' : v).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+  }
+
+  // Le chemin d'une note désigne-t-il une tâche, et sous quelle référence ?
+  // Une tâche est une note .md du dossier des tâches (sous-dossiers compris) ;
+  // les anciennes références « T26-001 » restent reconnues où qu'elles soient.
+  // La référence EST le nom de fichier, quel qu'il soit — plus de forme imposée.
+  static refDepuisChemin(chemin, dossier) {
+    const p = String(chemin || '');
+    if (!/\.md$/i.test(p)) return null;
+    const base = p.slice(p.lastIndexOf('/') + 1).replace(/\.md$/i, '');
+    const d = String(dossier || '').replace(/^\/+|\/+$/g, '');
+    if (d && p.startsWith(d + '/')) return base;
+    const m = p.match(/(?:^|\/)(T\d{2}-\d{3,4})\.md$/);
+    return m ? m[1] : null;
   }
 
   // Disposition de la frise : parcours en profondeur, dates remontées sur les
@@ -10289,7 +10297,6 @@ class Ariane extends obsidian.Plugin {
       const ref = this.refDeChemin(f.path);
       if (!ref) continue;
       const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      if (fm.type !== 'tache') continue;
       const alias = [].concat(fm.aliases || []).map(String).filter(Boolean);
       const nx = Number(fm['canvas-x']);
       const ny = Number(fm['canvas-y']);
@@ -10330,8 +10337,8 @@ class Ariane extends obsidian.Plugin {
     if (!liste.length) return 0;
     let touchees = 0;
     for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!this.refDeChemin(f.path)) continue;
       const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      if (fm.type !== 'tache') continue;
       const id = fm.famille ? String(fm.famille).trim() : '';
       if (!id) continue;
       const fam = liste.find((x) => x && x.id === id);
@@ -10449,11 +10456,10 @@ class Ariane extends obsidian.Plugin {
     return n;
   }
 
-  // La référence d'une tâche, déduite du chemin. On la reconnaît à sa forme
-  // plutôt qu'à son dossier : une tâche déplacée reste une tâche.
+  // La référence d'une tâche, déduite du chemin : toute note du dossier des
+  // tâches, plus les anciennes références « T26-xxx » où qu'elles soient.
   refDeChemin(chemin) {
-    const m = String(chemin || '').match(/(?:^|\/)(T\d{2}-\d{3,4})\.md$/);
-    return m ? m[1] : null;
+    return Ariane.refDepuisChemin(chemin, this.dossierT);
   }
 
   // Les fiches Zotero du coffre, prêtes pour une recherche approchée. On les
@@ -10521,9 +10527,9 @@ class Ariane extends obsidian.Plugin {
   // Réécrit le bloc marqué de la note. Il se pose sous le titre s'il n'existe
   // pas encore, et disparaît si la tâche cesse de désigner quoi que ce soit.
   async majBlocTache(file) {
+    if (!this.refDeChemin(file.path)) return false;
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = (cache && cache.frontmatter) || {};
-    if (fm.type !== 'tache') return false;
     const meta = await this.accesTache(fm);
     const interieur = Ariane.blocTache(fm, meta);
     const bloc = interieur ? ZFA_TACHE_DEBUT + '\n' + interieur + '\n' + ZFA_TACHE_FIN : '';
