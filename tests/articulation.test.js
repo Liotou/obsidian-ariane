@@ -65,6 +65,22 @@ test('un nœud avec x/y fixés n est pas déplacé', () => {
   assert.deepEqual(pos.get('A'), { x: 42, y: 7 });
 });
 
+test('placerGraphe : opts.ordre impose l ordre des nœuds d un rang, les placés ne bougent pas', () => {
+  const pos = Ariane.placerGraphe(
+    [N('B', { x: 999, y: 999 }), N('A'), N('C')],
+    [],
+    { dx: 200, dy: 100, ordre: ['C', 'A', 'B'] });
+  assert.deepEqual(pos.get('B'), { x: 999, y: 999 });   // placé : intact
+  assert.ok(pos.get('C').y < pos.get('A').y);            // ordre imposé : C avant A
+});
+
+test('placerGraphe : sans opts.ordre, tri par échéance puis ref inchangé', () => {
+  const pos = Ariane.placerGraphe(
+    [N('A', { echeance: '2026-03-02' }), N('B', { echeance: '2026-01-01' })],
+    [], { dx: 200, dy: 100 });
+  assert.ok(pos.get('B').y < pos.get('A').y);            // B échoit avant A
+});
+
 test('deux nœuds du même rang ne se superposent pas', () => {
   const pos = Ariane.placerGraphe([N('A'), N('B')], [], { dx: 200, dy: 100 });
   assert.notEqual(pos.get('A').y, pos.get('B').y);

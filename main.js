@@ -9991,9 +9991,19 @@ class Ariane extends obsidian.Plugin {
       if (!parRang.has(r)) parRang.set(r, []);
       parRang.get(r).push(n);
     }
+    // opts.ordre : liste de refs dans l'ordre d'affichage voulu. Quand elle est
+    // fournie et non vide, chaque rang suit cet ordre (les refs absentes vont
+    // après, dans leur ordre d'origine). Sinon, tri par échéance puis ref.
+    const ordreImpose = (opts && Array.isArray(opts.ordre) && opts.ordre.length) ? opts.ordre : null;
+    const rangImpose = ordreImpose ? new Map(ordreImpose.map((r, i) => [r, i])) : null;
     for (const [r, groupe] of [...parRang.entries()].sort((a, b) => a[0] - b[0])) {
-      groupe.sort((a, b) => (Ariane.jourValide(a.echeance) || '~')
-        .localeCompare(Ariane.jourValide(b.echeance) || '~') || a.ref.localeCompare(b.ref));
+      if (rangImpose) {
+        groupe.sort((a, b) => (rangImpose.has(a.ref) ? rangImpose.get(a.ref) : 1e9)
+          - (rangImpose.has(b.ref) ? rangImpose.get(b.ref) : 1e9));
+      } else {
+        groupe.sort((a, b) => (Ariane.jourValide(a.echeance) || '~')
+          .localeCompare(Ariane.jourValide(b.echeance) || '~') || a.ref.localeCompare(b.ref));
+      }
       const x = r * dx;
       let k = 0;
       for (const n of groupe) {
@@ -14026,6 +14036,15 @@ class MoteurArticulation {
     c.empty();
     const taches = (this.ctx.taches && this.ctx.taches()) || [];
 
+    // Tri natif de la base : on réordonne le tableau des tâches selon les refs
+    // triées. Les tâches hors liste retombent à la fin, dans leur ordre reçu.
+    const ordreTri = (this.ctx.triRefs && this.ctx.triRefs()) || [];
+    if (ordreTri.length) {
+      const rang = new Map(ordreTri.map((r, i) => [r, i]));
+      taches.sort((a, b) => (rang.has(a.ref) ? rang.get(a.ref) : 1e9)
+        - (rang.has(b.ref) ? rang.get(b.ref) : 1e9));
+    }
+
     const barre = c.createDiv({ cls: 'zfa-artic-barre' });
     this.boutonBarre(barre, 'plus', tr('Tâche'), () => this.ajoutRapide());
     this.boutonBarre(barre, 'layout-grid', tr('Re-disposer'), () => this.redisposer());
@@ -14040,7 +14059,8 @@ class MoteurArticulation {
     for (const t of taches) this._dates[t.ref] = { debut: t.debut || '', echeance: t.echeance || '' };
     const { noeuds, aretes } = Ariane.grapheArticulation(taches);
     this._aretes = aretes;
-    this._pos = Ariane.placerGraphe(noeuds, aretes, { dx: 300, dy: 130 });
+    this._pos = Ariane.placerGraphe(noeuds, aretes,
+      { dx: 300, dy: 130, ordre: ordreTri.length ? ordreTri : null });
 
     const svg = svgEl('svg', { class: 'zfa-artic-svg' });
     c.appendChild(svg);
@@ -14352,6 +14372,14 @@ function fabriquerVueArticulationBase(greffon) {
     onload() {
       this.moteur = new MoteurArticulation(this.greffon, this.conteneur, {
         taches: () => this.tachesDuGraphe(),
+        ordre: () => this.colonnesArtic(),
+        triRefs: () => this.refsTriees(),
+        lire: (cle) => {
+          const v = this.config.get(cle);
+          return v === undefined || v === null ? null : v;
+        },
+        ecrire: async (cle, v) => { this.config.set(cle, v); },
+        poserFamille: async (ref, id) => { await this.greffon.majTache(ref, { famille: id }); },
         poserPosition: async (ref, x, y) => {
           const f = this.greffon.app.vault.getMarkdownFiles().find((z) => z.basename === ref);
           if (!f) return;
@@ -14396,6 +14424,67 @@ function fabriquerVueArticulationBase(greffon) {
         }
       }
       return toutes.filter((t) => gardes.has(t.ref));
+    }
+
+    // Le tri NATIF de la base (menu Trier), multi-critères : liste ordonnée de
+    // { property, desc }. Lu dans le sérialisé de la vue, comme la frise.
+    sortNatif() {
+      let s = [];
+      try { s = (this.config.serialize() || {}).sort || (this.config.getSort && this.config.getSort()) || []; }
+      catch (e) { s = []; }
+      return (Array.isArray(s) ? s : [])
+        .filter((x) => x && x.property)
+        .map((x) => ({ property: String(x.property),
+          desc: String(x.direction || 'ASC').toUpperCase() === 'DESC' }));
+    }
+
+    // Les refs du jeu filtré, ordonnées selon le tri natif multi-critères.
+    // Vide si aucun tri : le moteur garde alors l'ordre de tachesDuGraphe.
+    refsTriees() {
+      const crit = this.sortNatif();
+      if (!crit.length) return [];
+      const parRef = new Map();
+      for (const e of (this.data && this.data.data) || []) {
+        const ref = e && e.file ? this.greffon.refDeChemin(e.file.path) : null;
+        if (ref) parRef.set(ref, e);
+      }
+      return [...parRef.keys()].sort((ra, rb) => {
+        for (const c of crit) {
+          const va = this._valTri(parRef.get(ra), c.property);
+          const vb = this._valTri(parRef.get(rb), c.property);
+          if (va < vb) return c.desc ? 1 : -1;
+          if (va > vb) return c.desc ? -1 : 1;
+        }
+        return 0;
+      });
+    }
+
+    _valTri(e, prop) {
+      let v = null;
+      try { v = e ? e.getValue(prop) : null; } catch (err) { v = null; }
+      const b = (v && typeof v === 'object' && 'data' in v && v.data != null) ? v.data : v;
+      return b == null ? '' : b;
+    }
+
+    colonnesArtic() {
+      let props = [];
+      try { props = this.config.getOrder() || []; } catch (e) { props = []; }
+      if (!props.length) props = (this.data && this.data.properties) || [];
+      const parRef = new Map();
+      for (const en of (this.data && this.data.data) || []) {
+        const ref = en && en.file ? this.greffon.refDeChemin(en.file.path) : null;
+        if (ref) parRef.set(ref, en);
+      }
+      return props
+        .filter((id) => !String(id).startsWith('file.'))
+        .map((id) => {
+          let nom = id;
+          try { nom = this.config.getDisplayName(id) || id; } catch (e) { /* garde l'id */ }
+          const type = Ariane.typeProprieteBase(this.app.metadataTypeManager, id);
+          return { id, nom, type, champ: String(id).replace(/^note\./, ''),
+            valeur: (ref) => { const en = parRef.get(ref);
+              try { return en ? en.getValue(id) : null; } catch (e) { return null; } } };
+        });
     }
   };
 }
