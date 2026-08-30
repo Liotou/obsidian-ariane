@@ -38,6 +38,13 @@
 
 const obsidian = require('obsidian');
 
+//#region 1 · Constantes & i18n
+// ═══════════════════════════════════════════════════════════════════════════
+//  1 · CONSTANTES & I18N
+//  Délais globaux, table de traduction (le français sert de clé), réglages
+//  par défaut du greffon.
+// ═══════════════════════════════════════════════════════════════════════════
+
 const FENETRE_ECRITURE_MS = 2500;
 const DELAI_ANTIREBOND_MS = 800;
 
@@ -1155,6 +1162,10 @@ const DEFAULT_SETTINGS = {
   dossierZotero: '',
   suggRerankTopN: 12,
 };
+
+//#endregion 1 · Constantes & i18n
+
+//#region 2 · Utilitaires génériques
 
 /* =========================================================================
  * Fonctions PURES (testables hors Obsidian, pilotées par la config)
