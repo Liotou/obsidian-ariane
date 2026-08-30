@@ -855,46 +855,61 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 
 .zfa-gantt-gauche {
   flex-shrink: 0; display: flex; flex-direction: column; position: relative;
-  background: var(--background-secondary);
-  border-right: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  border-right: var(--bases-table-column-border-width, 1px) solid
+                var(--bases-table-border-color, var(--background-modifier-border));
   z-index: 5;
 }
+
+/* L'en-tête reprend le fond, la couleur et la graisse de l'en-tête de tableau
+   des bases, pour que la frise ne détonne pas à côté des autres vues. */
 .zfa-gantt-gauche-entete {
   height: 56px; flex-shrink: 0; box-sizing: border-box;
-  display: flex; align-items: flex-end; padding: 0 12px 10px;
-  background: var(--background-primary);
-  box-shadow: inset 0 -1px 0 var(--background-modifier-border);
+  display: flex; align-items: flex-end;
+  background: var(--bases-table-header-background, var(--background-primary));
+  border-bottom: var(--bases-table-row-border-width, 1px) solid
+                 var(--bases-table-border-color, var(--background-modifier-border));
 }
 .zfa-gantt-gauche-titre {
-  font-size: 11px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.06em; color: var(--text-muted);
+  flex: 1; min-width: 0; box-sizing: border-box;
+  padding: 0 var(--bases-table-cell-edge-padding, 8px) 9px;
+  font-size: var(--bases-table-font-size, 13px);
+  font-weight: var(--bases-table-header-weight, 500);
+  color: var(--bases-table-header-color, var(--text-muted));
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* Le défilement vertical est accordé par le script sur celui de la frise. */
-.zfa-gantt-gauche-corps { flex: 1; overflow: hidden; }
+.zfa-gantt-gauche-corps { flex: 1; overflow: hidden; position: relative; }
 
 /* La hauteur est posée par le script : elle suit le réglage rowHeight de la
    base, exactement comme la vue en tableau. */
 .zfa-gantt-libelle {
-  box-sizing: border-box;
-  display: flex; align-items: center; gap: 7px; padding-right: 10px;
-  box-shadow: inset 0 -1px 0 var(--background-modifier-border);
-  font-size: 13px;
+  box-sizing: border-box; display: flex; align-items: center;
+  border-bottom: var(--bases-table-row-border-width, 1px) solid
+                 var(--bases-table-border-color, var(--background-modifier-border));
+  font-size: var(--bases-table-font-size, 13px);
 }
-.zfa-gantt-libelle:hover { background: var(--background-modifier-hover); }
+.zfa-gantt-libelle:hover {
+  background: var(--bases-table-row-background-hover, var(--background-modifier-hover));
+}
 .zfa-gantt-chevron {
-  flex: 0 0 auto; width: 12px; color: var(--text-faint);
+  flex: 0 0 auto; width: 13px; color: var(--text-faint);
   font-size: 0.75em; cursor: pointer;
 }
-.zfa-gantt-cale { flex: 0 0 auto; width: 12px; }
-.zfa-gantt-point { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; }
+.zfa-gantt-cale { flex: 0 0 auto; width: 13px; }
+.zfa-gantt-point {
+  flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 7px;
+}
 .zfa-gantt-titre {
-  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  cursor: pointer;
+  flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; cursor: pointer;
+  padding-right: var(--bases-table-cell-edge-padding, 8px);
 }
 .zfa-gantt-titre:hover { color: var(--interactive-accent); }
 .zfa-gantt-pourcent {
-  flex: 0 0 auto; font-size: 11px; color: var(--text-faint);
+  flex: 0 0 auto; font-size: var(--font-ui-smaller); color: var(--text-faint);
   font-variant-numeric: tabular-nums;
+  padding-right: var(--bases-table-cell-edge-padding, 8px);
 }
 
 .zfa-gantt-poignee-colonne {
@@ -1039,13 +1054,19 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 
 .zfa-gantt-colonne {
-  flex: 0 0 92px; width: 92px; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; font-size: 12px; color: var(--text-muted);
-  border-left: 1px solid var(--background-modifier-border);
-  padding-left: 8px; box-sizing: border-box;
+  flex: 0 0 auto; box-sizing: border-box;
+  width: clamp(var(--bases-table-column-min-width, 72px), 110px,
+               var(--bases-table-column-max-width, 240px));
+  padding: 0 var(--bases-table-cell-edge-padding, 8px);
+  border-left: var(--bases-table-column-border-width, 1px) solid
+               var(--bases-table-border-color, var(--background-modifier-border));
+  font-size: var(--bases-table-font-size, 13px);
+  color: var(--text-normal);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  line-height: 1.4; align-self: stretch; display: flex; align-items: center;
 }
 .zfa-gantt-gauche-entete .zfa-gantt-colonne {
-  font-size: 11px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.06em; border-left: none;
+  flex: 0 0 auto; align-items: flex-end; padding-bottom: 9px;
+  font-weight: var(--bases-table-header-weight, 500);
+  color: var(--bases-table-header-color, var(--text-muted));
 }
-.zfa-gantt-gauche-entete { gap: 0; }

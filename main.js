@@ -875,6 +875,20 @@ const TEXTES = {
     "lignes moyennes": "medium rows",
     "lignes hautes": "tall rows",
     "lignes très hautes": "extra tall rows",
+    "Hauteur de ligne": "Row height",
+    "Fine": "Compact",
+    "Moyenne": "Medium",
+    "Haute": "Tall",
+    "Très haute": "Extra tall",
+    "Échelle": "Scale",
+    "Jour": "Day",
+    "Semaine": "Week",
+    "Mois": "Month",
+    "Trimestre": "Quarter",
+    "Année": "Year",
+    "Libellé des semaines": "Week labels",
+    "Ordre des tâches": "Task order",
+    "Largeur de la colonne des tâches": "Width of the task column",
   },
 };
 let LANGUE = 'fr';
@@ -3387,6 +3401,45 @@ class ZotflowAtomiser extends obsidian.Plugin {
         name: tr('Frise'),
         icon: 'calendar-range',
         factory: (controleur, conteneur) => new Vue(controleur, conteneur),
+        // Les réglages de la frise se déclarent ici pour figurer dans
+        // « Configurer la vue », comme ceux des vues natives, et se ranger
+        // dans le fichier .base. Ils restent doublés dans la barre de la frise,
+        // qu'on manipule sans arrêt.
+        options: (config) => [
+          {
+            type: 'dropdown', key: 'rowHeight', displayName: tr('Hauteur de ligne'),
+            default: 'medium',
+            options: { short: tr('Fine'), medium: tr('Moyenne'),
+                       tall: tr('Haute'), extra: tr('Très haute') },
+          },
+          {
+            type: 'dropdown', key: 'zoom', displayName: tr('Échelle'), default: 'mois',
+            options: { jour: tr('Jour'), semaine: tr('Semaine'), mois: tr('Mois'),
+                       trimestre: tr('Trimestre'), 'année': tr('Année') },
+          },
+          {
+            type: 'dropdown', key: 'libelleSemaine',
+            displayName: tr('Libellé des semaines'), default: 'numero',
+            options: { numero: tr('nº de semaine'), dates: tr('dates'),
+                       'les-deux': tr('les deux') },
+            shouldHide: () => config.get('zoom') !== 'semaine',
+          },
+          {
+            type: 'dropdown', key: 'tri', displayName: tr('Ordre des tâches'),
+            default: 'date',
+            options: { date: tr('Par date'), manuel: tr('Manuel'),
+                       priorite: tr('Par priorité'), intitule: tr('Par intitulé') },
+          },
+          {
+            type: 'toggle', key: 'masquerTerminees',
+            displayName: tr('Masquer les terminées'), default: false,
+          },
+          {
+            type: 'slider', key: 'largeurLibelles',
+            displayName: tr('Largeur de la colonne des tâches'),
+            default: 280, min: 160, max: 560, step: 10,
+          },
+        ],
       });
     }
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
@@ -12064,7 +12117,7 @@ class MoteurFrise {
     const entete = gauche.createDiv({ cls: 'zfa-gantt-gauche-entete' });
     entete.createSpan({ cls: 'zfa-gantt-gauche-titre', text: tr('Tâche') });
     for (const col of colonnes) {
-      entete.createSpan({ cls: 'zfa-gantt-gauche-titre zfa-gantt-colonne', text: col.nom });
+      entete.createSpan({ cls: 'zfa-gantt-colonne', text: col.nom, attr: { title: col.nom } });
     }
     const corps = gauche.createDiv({ cls: 'zfa-gantt-gauche-corps' });
     lignes.forEach((l, rang) => {
