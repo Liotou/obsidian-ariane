@@ -13318,9 +13318,15 @@ class MoteurFrise {
       if (!debut || !fin) return;
       // Une échéance au jour E occupe le jour E : le bord droit tombe donc au
       // début de E+1, faute de quoi une tâche d'un jour n'aurait pas d'épaisseur.
-      const x = Math.max(0, this.x(cfg, debut));
-      const x2 = Math.min(cfg.largeur, this.x(cfg, Ariane.decalerJour(fin, 1)));
+      // Positions réelles avant rognage : si un bout tombe hors de la fenêtre,
+      // la barre y est coupée net (elle « continue ») plutôt que capuchonnée.
+      const xReel = this.x(cfg, debut);
+      const x2Reel = this.x(cfg, Ariane.decalerJour(fin, 1));
+      const x = Math.max(0, xReel);
+      const x2 = Math.min(cfg.largeur, x2Reel);
       const w = Math.max(8, x2 - x);
+      const coupeG = xReel < -0.5;
+      const coupeD = x2Reel > cfg.largeur + 0.5;
       const geo = this._geo;
       const y = yLigne + geo.marge;
       const h = geo.epaisseur;
@@ -13329,8 +13335,10 @@ class MoteurFrise {
       groupe.dataset.ref = l.ref;
 
       const meta = l.aDesEnfants;
+      const hMeta = Math.max(3, Math.round(h / 3));
+      const yMeta = y + Math.round((h - hMeta) / 2);
       const fond = svgEl('rect', {
-        x, y: meta ? y + h / 3 : y, width: w, height: meta ? h / 3 : h,
+        x, y: meta ? yMeta : y, width: w, height: meta ? hMeta : h,
         rx: geo.rayon, ry: geo.rayon,
         class: 'zfa-gantt-barre-tache' + (meta ? ' zfa-gantt-meta' : '') });
       fond.style.fill = couleur;
@@ -13366,14 +13374,19 @@ class MoteurFrise {
           groupe.appendChild(t);
         });
       }
-      // Embouts en pointe, comme sur toute barre de synthèse : ils disent d'un
-      // coup d'oeil que la barre résume et ne se travaille pas elle-même.
+      // Embouts de barre de synthèse : un petit triangle vers le bas à chaque
+      // extrémité réelle. Ils disent que la barre résume et ne se travaille pas
+      // elle-même. Sur un bout coupé par la fenêtre, pas d'embout : le bord net
+      // signale que la barre continue au-delà.
       if (meta) {
-        const yh = y + h / 3;
-        for (const bx of [x, x + w]) {
-          const sens = bx === x ? 1 : -1;
+        const yb = yMeta + hMeta;
+        const bouts = [];
+        if (!coupeG) bouts.push(x);
+        if (!coupeD) bouts.push(x + w);
+        for (const bx of bouts) {
           groupe.appendChild(svgEl('path', {
-            d: 'M ' + bx + ' ' + yh + ' l ' + (7 * sens) + ' 0 l 0 10 z',
+            d: 'M ' + (bx - 4) + ' ' + yb + ' L ' + (bx + 4) + ' ' + yb
+              + ' L ' + bx + ' ' + (yb + 5) + ' Z',
             class: 'zfa-gantt-embout' }));
         }
       }
