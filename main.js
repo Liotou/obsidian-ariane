@@ -11542,6 +11542,40 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         avis.hide();
         new obsidian.Notice(total + tr(' propriété(s) renommée(s) dans les notes.'));
       }));
+    new obsidian.Setting(c)
+      .setName(tr('Nettoyer les clés résiduelles'))
+      .setDesc(tr("Supprime des notes de tâches les propriétés en double laissées par un ancien nommage (ex. « Statut » quand « Tâche - statut » existe déjà). Ne touche qu'une clé reconnue comme variante d'un concept, et seulement si la clé actuelle est déjà là."))
+      .addButton((b) => b.setButtonText(tr('Nettoyer')).setWarning().onClick(async () => {
+        const g = this.plugin;
+        const avis = new obsidian.Notice(tr('Nettoyage en cours…'), 0);
+        const labels = {};
+        for (const p of Ariane.PROPS_GENERIQUES) labels[p.cle] = tr(p.defaut);
+        let total = 0;
+        for (const f of g.app.vault.getMarkdownFiles()) {
+          if (!g.refDeChemin(f.path)) continue;
+          const fm = (g.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+          const cles = Object.keys(fm);
+          const aSupprimer = new Set();
+          for (const con of Ariane.CONCEPTS_TACHE) {
+            const nk = g.cleT(con);
+            if (!(nk in fm)) continue; // clé actuelle absente : on n'y touche pas
+            const conEsc = con.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const re = new RegExp('^.*[\\s\\-–—]' + conEsc + '$');
+            for (const k of cles) {
+              if (k === nk) continue;
+              if (k === con || k === labels[con] || re.test(k)) aSupprimer.add(k);
+            }
+          }
+          if (!aSupprimer.size) continue;
+          g.marquerEcriture(f.path);
+          await g.app.fileManager.processFrontMatter(f, (x) => {
+            for (const k of aSupprimer) delete x[k];
+          });
+          total += aSupprimer.size;
+        }
+        avis.hide();
+        new obsidian.Notice(total + tr(' clé(s) résiduelle(s) supprimée(s).'));
+      }));
     this._aide(c, tr("Les colonnes et filtres du fichier « Tâches.base » lui-même restent écrits avec les noms par défaut : adaptez-les à la main si vous vous servez de ses tableaux."));
 
     this._section(c, tr('Vue Articulation'));
