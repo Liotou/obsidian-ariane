@@ -921,8 +921,11 @@ const DEFAULT_SETTINGS = {
   dossierReferences: '',        // rôle : où déposer les références en attente
   dossierTaches: '',            // rôle : où déposer les notes de tâche
   listeRappelsDefaut: 'Doctorat - Tâches',
-  // Noms d'affichage personnalisés des propriétés communes aux tâches
-  // (clé interne -> intitulé). Vide = intitulé par défaut.
+  // Clés de frontmatter des propriétés de tâche. « prefixeTaches » s'ajoute
+  // devant chaque concept (« Tâche - echeance ») ; « libellesTaches » permet
+  // en plus de renommer une propriété une par une (concept -> clé complète).
+  prefixeTaches: '',
+  prefixeTachesApplique: '',
   libellesTaches: {},
   // Vue Articulation : accrochage magnétique des cartes au glissé.
   articulationAimant: true,
@@ -3820,11 +3823,16 @@ class Ariane extends obsidian.Plugin {
     // change vraiment, faute de quoi cette écoute se rappellerait elle-même.
     this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _donnees, cacheNote) => {
       const fm = (cacheNote && cacheNote.frontmatter) || null;
+      if (!fm) return;
       const jour = new Date().toISOString().slice(0, 10);
-      const valeur = Ariane.achevementAEcrire(fm, jour);
+      const kFin = this.cleT('termine-le');
+      const fmN = Object.assign({}, fm,
+        { statut: this._lireT(fm, 'statut'), 'termine-le': this._lireT(fm, 'termine-le') });
+      const valeur = Ariane.achevementAEcrire(fmN, jour);
       if (valeur === null) return;
+      this.marquerEcriture(fichier.path);
       await this.app.fileManager.processFrontMatter(fichier, (x) => {
-        x['termine-le'] = valeur;
+        x[kFin] = valeur;
         x.modifie = jour;
       });
     }));
@@ -3835,8 +3843,10 @@ class Ariane extends obsidian.Plugin {
     this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _d, cacheNote) => {
       if (!this.refDeChemin(fichier.path)) return;
       const fm = (cacheNote && cacheNote.frontmatter) || {};
-      const coche = fm.terminee === true;
-      const fini = fm.statut === 'terminée';
+      const kSt = this.cleT('statut');
+      const kTe = this.cleT('terminee');
+      const coche = this._lireT(fm, 'terminee') === true;
+      const fini = this._lireT(fm, 'statut') === 'terminée';
       if (coche === fini) { this._etatTermine.set(fichier.path, { coche, fini }); return; }
       const av = this._etatTermine.get(fichier.path) || { coche: fini, fini };
       const caseModifiee = av.coche !== coche;
@@ -3848,8 +3858,8 @@ class Ariane extends obsidian.Plugin {
           fini: cible.statut ? cible.statut === 'terminée' : fini });
       this.marquerEcriture(fichier.path);
       await this.app.fileManager.processFrontMatter(fichier, (x) => {
-        if (cible.statut != null) x.statut = cible.statut;
-        if (cible.terminee != null) x.terminee = cible.terminee;
+        if (cible.statut != null) x[kSt] = cible.statut;
+        if (cible.terminee != null) x[kTe] = cible.terminee;
         x.modifie = new Date().toISOString().slice(0, 10);
       });
     }));
@@ -9449,14 +9459,18 @@ class Ariane extends obsidian.Plugin {
       const corps = brut.replace(/^---[\s\S]*?\n---\r?\n?/, '').trim();
       if (corps.length) return;
       const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      if (fm.statut || fm.debut || fm.echeance || fm.parent || fm.avancement != null) return;
+      if (this._lireT(fm, 'statut') || this._lireT(fm, 'debut')
+        || this._lireT(fm, 'echeance') || this._lireT(fm, 'parent')
+        || this._lireT(fm, 'avancement') != null) return;
       // Le nom de fichier est libre : on n'en impose plus. On ne fait qu'amorcer
       // l'entête pour que la frise et l'articulation aient de quoi travailler.
       const titre = /^(sans titre|untitled)\b/i.test(f.basename) ? '' : f.basename;
       const jour = new Date().toISOString().slice(0, 10);
+      const cles = {};
+      for (const con of Ariane.CONCEPTS_TACHE) cles[con] = this.cleT(con);
       this.marquerEcriture(f.path);
       await this.app.vault.modify(f, Ariane.corpsNouvelleTache({
-        intitule: titre, aujourdhui: jour,
+        intitule: titre, aujourdhui: jour, cles,
         liste: this.settings.listeRappelsDefaut,
       }));
       new obsidian.Notice(tr('Tâche initialisée : ') + f.basename);
@@ -9528,6 +9542,15 @@ class Ariane extends obsidian.Plugin {
     ];
   }
 
+  // Concepts génériques dont la clé de frontmatter est renommable / préfixable
+  // (tous sauf l'intitulé, qui n'est pas une vraie propriété mais le premier
+  // alias). On y ajoute les champs structurels propres aux tâches.
+  static get CONCEPTS_TACHE() {
+    return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
+            'debut', 'echeance', 'avancement', 'parent',
+            'bloque-par', 'termine-le'];
+  }
+
   static familleTache(fm, familles, defaut) {
     const liste = Array.isArray(familles) ? familles : null;
     // Appel historique (un seul argument) : on garde la déduction d'origine.
@@ -9574,6 +9597,8 @@ class Ariane extends obsidian.Plugin {
     const c = champs || {};
     const q = Ariane.yamlChaine;
     const ligne = (cle, val) => cle + ':' + (val ? ' ' + val : '');
+    // Clés personnalisées éventuelles : c.cles = { concept: 'nom réel', … }.
+    const K = (concept) => (c.cles && c.cles[concept]) || concept;
     const intitule = c.intitule || 'Sans titre';
     const jour = c.aujourdhui || '';
     const l = [];
@@ -9581,17 +9606,17 @@ class Ariane extends obsidian.Plugin {
     l.push('aliases:');
     l.push('  - ' + q(intitule));
     l.push('type: tache');
-    l.push(ligne('famille', c.famille));
-    l.push(ligne('statut', c.statut || 'à faire'));
-    l.push('terminee: ' + ((c.statut || '') === 'terminée' ? 'true' : 'false'));
-    l.push(ligne('priorite', c.priorite));
-    l.push(ligne('debut', c.debut));
-    l.push(ligne('echeance', c.echeance));
-    l.push('avancement: ' + (Number(c.avancement) || 0));
-    l.push('termine-le:');
-    l.push('jalon: ' + (c.jalon ? 'true' : 'false'));
-    l.push('parent:');
-    l.push('bloque-par: []');
+    l.push(ligne(K('famille'), c.famille));
+    l.push(ligne(K('statut'), c.statut || 'à faire'));
+    l.push(K('terminee') + ': ' + ((c.statut || '') === 'terminée' ? 'true' : 'false'));
+    l.push(ligne(K('priorite'), c.priorite));
+    l.push(ligne(K('debut'), c.debut));
+    l.push(ligne(K('echeance'), c.echeance));
+    l.push(K('avancement') + ': ' + (Number(c.avancement) || 0));
+    l.push(K('termine-le') + ':');
+    l.push(K('jalon') + ': ' + (c.jalon ? 'true' : 'false'));
+    l.push(K('parent') + ':');
+    l.push(K('bloque-par') + ': []');
     l.push(ligne('source', q(c.source)));
     l.push(ligne('livrable', q(c.livrable)));
     l.push(ligne('fichier', q(c.fichier)));
@@ -10359,18 +10384,20 @@ class Ariane extends obsidian.Plugin {
       const alias = [].concat(fm.aliases || []).map(String).filter(Boolean);
       const nx = Number(fm['canvas-x']);
       const ny = Number(fm['canvas-y']);
+      const famVal = this._lireT(fm, 'famille');
+      const fmFam = famVal != null ? Object.assign({}, fm, { famille: famVal }) : fm;
       out.push({
         ref,
         intitule: alias[0] || ref,
-        parent: fm.parent || '',
-        bloquePar: [].concat(fm['bloque-par'] || []).map(String),
-        debut: fm.debut || '',
-        echeance: fm.echeance || '',
-        statut: fm.statut || 'à faire',
-        priorite: fm.priorite || '',
-        avancement: Number(fm.avancement) || 0,
-        jalon: fm.jalon === true,
-        famille: Ariane.familleTache(fm, this.settings.famillesTaches, this.settings.familleTacheDefaut),
+        parent: this._lireT(fm, 'parent') || '',
+        bloquePar: [].concat(this._lireT(fm, 'bloque-par') || []).map(String),
+        debut: this._lireT(fm, 'debut') || '',
+        echeance: this._lireT(fm, 'echeance') || '',
+        statut: this._lireT(fm, 'statut') || 'à faire',
+        priorite: this._lireT(fm, 'priorite') || '',
+        avancement: Number(this._lireT(fm, 'avancement')) || 0,
+        jalon: this._lireT(fm, 'jalon') === true,
+        famille: Ariane.familleTache(fmFam, this.settings.famillesTaches, this.settings.familleTacheDefaut),
         x: Number.isFinite(nx) ? nx : null,
         y: Number.isFinite(ny) ? ny : null,
         fichier: f,
@@ -10388,11 +10415,33 @@ class Ariane extends obsidian.Plugin {
       || { id: id || '', nom: id || tr('(sans famille)'), couleur: '#888888', icone: 'circle', proprietes: [] };
   }
 
-  // Intitulé affiché d'une propriété générique de tâche : le nom personnalisé
-  // des réglages s'il existe, sinon l'intitulé par défaut.
-  libelleGen(cle) {
-    const perso = (this.settings.libellesTaches || {})[cle];
+  // Clé de frontmatter d'une propriété de tâche :
+  //   1. le nom personnalisé de la propriété s'il est défini ;
+  //   2. sinon, le préfixe global suivi du concept (« Tâche - echeance ») ;
+  //   3. sinon le concept nu.
+  // Le préfixe permet de ne pas entrer en collision avec une propriété de même
+  // nom sur des notes qui ne sont pas des tâches.
+  cleT(concept) {
+    if (concept === 'intitule') return 'intitule';
+    const perso = (this.settings.libellesTaches || {})[concept];
     if (perso && String(perso).trim()) return String(perso).trim();
+    const pre = (this.settings.prefixeTaches || '').trim();
+    return pre ? pre + concept : concept;
+  }
+
+  // Lit un concept dans un entête, en acceptant l'ancienne clé par défaut le
+  // temps que les notes soient migrées.
+  _lireT(fm, concept) {
+    const k = this.cleT(concept);
+    if (fm && k in fm) return fm[k];
+    return fm ? fm[concept] : undefined;
+  }
+
+  // Intitulé affiché d'une propriété générique dans le formulaire : la clé
+  // personnalisée si elle existe, sinon l'intitulé par défaut.
+  libelleGen(cle) {
+    const k = this.cleT(cle);
+    if (k !== cle) return k;
     const d = Ariane.PROPS_GENERIQUES.find((p) => p.cle === cle);
     return d ? tr(d.defaut) : cle;
   }
@@ -10407,7 +10456,8 @@ class Ariane extends obsidian.Plugin {
     for (const f of this.app.vault.getMarkdownFiles()) {
       if (!this.refDeChemin(f.path)) continue;
       const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      const id = fm.famille ? String(fm.famille).trim() : '';
+      const fVal = this._lireT(fm, 'famille');
+      const id = fVal ? String(fVal).trim() : '';
       if (!id) continue;
       const fam = liste.find((x) => x && x.id === id);
       if (!fam) continue;
@@ -10428,7 +10478,8 @@ class Ariane extends obsidian.Plugin {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === versRef);
     if (!f) return false;
     const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-    const deja = [].concat(fm['bloque-par'] || []).map(String);
+    const kBP = this.cleT('bloque-par');
+    const deja = [].concat(this._lireT(fm, 'bloque-par') || []).map(String);
     if (deja.some((v) => Ariane.refDeLien(v) === deRef)) return false;
     const aretes = [{ de: deRef, vers: versRef }];
     for (const t of this.tachesPourGantt()) {
@@ -10441,7 +10492,7 @@ class Ariane extends obsidian.Plugin {
       return false;
     }
     await this.app.fileManager.processFrontMatter(f, (x) => {
-      x['bloque-par'] = deja.concat(['[[' + deRef + ']]']);
+      x[kBP] = deja.concat(['[[' + deRef + ']]']);
       x.modifie = new Date().toISOString().slice(0, 10);
     });
     return true;
@@ -10451,10 +10502,11 @@ class Ariane extends obsidian.Plugin {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === versRef);
     if (!f) return false;
     const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-    const reste = [].concat(fm['bloque-par'] || []).map(String)
+    const kBP = this.cleT('bloque-par');
+    const reste = [].concat(this._lireT(fm, 'bloque-par') || []).map(String)
       .filter((v) => Ariane.refDeLien(v) !== deRef);
     await this.app.fileManager.processFrontMatter(f, (x) => {
-      x['bloque-par'] = reste;
+      x[kBP] = reste;
       x.modifie = new Date().toISOString().slice(0, 10);
     });
     return true;
@@ -10498,8 +10550,11 @@ class Ariane extends obsidian.Plugin {
   async majTache(ref, champs) {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
     if (!f) return false;
+    const conc = new Set(Ariane.CONCEPTS_TACHE);
     await this.app.fileManager.processFrontMatter(f, (x) => {
-      for (const [k, v] of Object.entries(champs)) x[k] = v;
+      for (const [k, v] of Object.entries(champs)) {
+        x[conc.has(k) ? this.cleT(k) : k] = v;
+      }
       x.modifie = new Date().toISOString().slice(0, 10);
     });
     return true;
@@ -10564,10 +10619,13 @@ class Ariane extends obsidian.Plugin {
       const f = parRef.get(c.ref);
       if (!f) continue;
       const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      if (String(fm.debut || '') === c.debut && String(fm.echeance || '') === c.echeance) continue;
+      const kD = this.cleT('debut');
+      const kE = this.cleT('echeance');
+      if (String(this._lireT(fm, 'debut') || '') === c.debut
+        && String(this._lireT(fm, 'echeance') || '') === c.echeance) continue;
       await this.app.fileManager.processFrontMatter(f, (x) => {
-        if (c.debut) x.debut = c.debut;
-        if (c.echeance) x.echeance = c.echeance;
+        if (c.debut) x[kD] = c.debut;
+        if (c.echeance) x[kE] = c.echeance;
         x.modifie = new Date().toISOString().slice(0, 10);
       });
       n += 1;
@@ -10726,8 +10784,10 @@ class Ariane extends obsidian.Plugin {
     const reference = Ariane.referenceTacheSuivante(noms, new Date().getFullYear());
     const chemin = dossier + '/' + reference + '.md';
     const jour = new Date().toISOString().slice(0, 10);
+    const cles = {};
+    for (const con of Ariane.CONCEPTS_TACHE) cles[con] = this.cleT(con);
     await this.ecrire(chemin, Ariane.corpsNouvelleTache(Object.assign({}, champs, {
-      aujourdhui: jour,
+      aujourdhui: jour, cles,
       liste: (champs && champs.liste) || this.settings.listeRappelsDefaut,
     })));
     return chemin;
@@ -11388,18 +11448,59 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       });
 
     this._section(c, tr('Noms des propriétés de tâche'));
-    this._aide(c, tr("Renommez l'intitulé affiché des propriétés communes à toutes les tâches (formulaire de création et de modification). Vide = intitulé par défaut. Les icônes ne changent pas."));
+    this._aide(c, tr("Ariane peut nommer les propriétés des tâches à sa façon, pour ne pas entrer en collision avec une propriété de même nom sur d'autres notes. Le préfixe s'ajoute devant chaque concept ; un champ permet aussi de renommer une propriété précise. Après un changement, « Appliquer aux notes existantes » reporte l'ancienne valeur sur la nouvelle clé."));
+    new obsidian.Setting(c)
+      .setName(tr('Préfixe des propriétés'))
+      .setDesc(tr('Ex. « Tâche - » → « Tâche - echeance », « Tâche - statut »…'))
+      .addText((t) => t.setPlaceholder('Tâche - ').setValue(s.prefixeTaches || '')
+        .onChange(async (v) => { s.prefixeTaches = v; await maj(); }));
     {
       const lib = s.libellesTaches || (s.libellesTaches = {});
       for (const p of Ariane.PROPS_GENERIQUES) {
+        if (p.cle === 'intitule') continue; // pas une vraie propriété
         const st = new obsidian.Setting(c).setName(tr(p.defaut));
         const ic = createSpan({ cls: 'zfa-tache-ic' });
         obsidian.setIcon(ic, p.icone);
         st.nameEl.prepend(ic);
-        st.addText((t) => t.setPlaceholder(tr(p.defaut)).setValue(lib[p.cle] || '')
+        st.setDesc(tr('Clé actuelle : ') + this.plugin.cleT(p.cle));
+        st.addText((t) => t.setPlaceholder(this.plugin.cleT(p.cle)).setValue(lib[p.cle] || '')
           .onChange(async (v) => { lib[p.cle] = v.trim(); await maj(); }));
       }
     }
+    new obsidian.Setting(c)
+      .setName(tr('Appliquer aux notes existantes'))
+      .setDesc(tr("Renomme la propriété dans toutes les notes de tâches. Une note qui porte déjà la nouvelle clé n'est pas touchée."))
+      .addButton((b) => b.setButtonText(tr('Renommer dans les notes')).setWarning().onClick(async () => {
+        const g = this.plugin;
+        const avis = new obsidian.Notice(tr('Renommage en cours…'), 0);
+        const prefixes = [''];
+        const pa = (s.prefixeTachesApplique || '').trim();
+        if (pa) prefixes.push(pa);
+        let total = 0;
+        for (const f of g.app.vault.getMarkdownFiles()) {
+          if (!g.refDeChemin(f.path)) continue; // notes de tâches seulement
+          const fm = (g.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+          const aFaire = [];
+          for (const con of Ariane.CONCEPTS_TACHE) {
+            const nk = g.cleT(con);
+            for (const pre of prefixes) {
+              const ancien = pre ? pre + con : con;
+              if (ancien !== nk && (ancien in fm) && !(nk in fm)) aFaire.push([ancien, nk]);
+            }
+          }
+          if (!aFaire.length) continue;
+          g.marquerEcriture(f.path);
+          await g.app.fileManager.processFrontMatter(f, (x) => {
+            for (const [a, nk] of aFaire) { x[nk] = x[a]; delete x[a]; }
+          });
+          total += aFaire.length;
+        }
+        s.prefixeTachesApplique = (s.prefixeTaches || '').trim();
+        await maj();
+        avis.hide();
+        new obsidian.Notice(total + tr(' propriété(s) renommée(s) dans les notes.'));
+      }));
+    this._aide(c, tr("La frise, l'articulation et le formulaire suivent ces clés. En revanche les colonnes et filtres du fichier « Tâches.base » lui-même restent écrits avec les noms par défaut : adaptez-les à la main si besoin."));
 
     this._section(c, tr('Vue Articulation'));
     this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue »."));
@@ -12124,17 +12225,20 @@ class ModaleTache extends obsidian.Modal {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === this.ref);
     if (!f) return;
     const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    const L = (con) => this.greffon._lireT(fm, con);
     const alias = [].concat(fm.aliases || []).map(String).filter(Boolean);
     this.v.intitule = alias[0] || this.ref;
-    this.v.statut = fm.statut || 'à faire';
-    this.v.priorite = fm.priorite || '';
-    this.v.debut = fm.debut || '';
-    this.v.echeance = fm.echeance || '';
-    this.v.avancement = Number(fm.avancement) || 0;
-    this.v.jalon = fm.jalon === true;
-    this.v.parent = Ariane.refDeLien(fm.parent || '') || '';
-    this.v.famille = Ariane.familleTache(fm, this.familles,
-      this.greffon.settings.familleTacheDefaut);
+    this.v.statut = L('statut') || 'à faire';
+    this.v.priorite = L('priorite') || '';
+    this.v.debut = L('debut') || '';
+    this.v.echeance = L('echeance') || '';
+    this.v.avancement = Number(L('avancement')) || 0;
+    this.v.jalon = L('jalon') === true;
+    this.v.parent = Ariane.refDeLien(L('parent') || '') || '';
+    const famVal = L('famille');
+    this.v.famille = Ariane.familleTache(
+      famVal != null ? Object.assign({}, fm, { famille: famVal }) : fm,
+      this.familles, this.greffon.settings.familleTacheDefaut);
     this._fm = fm;
     this._synchroniserProps();
   }
