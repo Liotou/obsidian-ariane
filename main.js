@@ -12392,6 +12392,61 @@ class MoteurFrise {
     this.dessiner();
   }
 
+  // Tri direct d'une colonne dans un sens donné (depuis le menu d'en-tête).
+  async trierColonneVers(col, sens) {
+    await this.ctx.ecrire('triColonne', col.cle);
+    await this.ctx.ecrire('triColonneSens', sens === -1 ? -1 : 1);
+    this.dessiner();
+  }
+
+  // Menu contextuel d'un en-tête de colonne, à l'image de celui du tableau des
+  // bases. Bases ne l'expose pas ; on le reconstruit sur ce qui est réellement
+  // câblable. Les libellés de tri suivent le type de la colonne.
+  menuEntete(e, col) {
+    e.preventDefault();
+    e.stopPropagation();
+    const cle = String(col.cle || '');
+    const fichier = cle.startsWith('file.') || cle.startsWith('formula.');
+    const type = this.typeColonne(cle);
+    const paires = {
+      number: ['1 → 9', '9 → 1'],
+      date: [tr('ancien → récent'), tr('récent → ancien')],
+      datetime: [tr('ancien → récent'), tr('récent → ancien')],
+    }[type] || ['A → Z', 'Z → A'];
+
+    const menu = new obsidian.Menu();
+    menu.addItem((i) => i.setTitle(tr('Trier') + ' ' + paires[0]).setIcon('arrow-down-a-z')
+      .onClick(() => this.trierColonneVers(col, 1)));
+    menu.addItem((i) => i.setTitle(tr('Trier') + ' ' + paires[1]).setIcon('arrow-up-a-z')
+      .onClick(() => this.trierColonneVers(col, -1)));
+
+    if (!fichier) {
+      menu.addSeparator();
+      if (this.ctx.masquerColonne) {
+        menu.addItem((i) => i.setTitle(tr('Masquer la colonne')).setIcon('eye-off')
+          .onClick(async () => { await this.ctx.masquerColonne(cle); this.dessiner(); }));
+      }
+      menu.addItem((i) => i.setTitle(tr('Modifier la propriété…')).setIcon('pencil')
+        .onClick(() => this.app.commands.executeCommandById('properties:open-local')));
+
+      const nomProp = cle.replace(/^note\./, '');
+      const mtm = this.app.metadataTypeManager;
+      const widgets = (mtm && mtm.registeredTypeWidgets) || {};
+      const noms = Object.keys(widgets);
+      if (mtm && typeof mtm.setType === 'function' && noms.length) {
+        menu.addItem((i) => {
+          i.setTitle(tr('Type de propriété')).setIcon('type');
+          const sous = i.setSubmenu();
+          for (const t of noms) {
+            sous.addItem((si) => si.setTitle(t).setChecked(type === t)
+              .onClick(async () => { await mtm.setType(nomProp, t); this.dessiner(); }));
+          }
+        });
+      }
+    }
+    menu.showAtMouseEvent(e);
+  }
+
   // La partie gauche est un vrai tableau de base : mêmes classes, même
   // imbrication, mêmes variables. Le style vient donc d'Obsidian lui-même, et
   // suivra ses évolutions comme celles des thèmes de Monsieur.
@@ -12448,6 +12503,7 @@ class MoteurFrise {
         if (e.target.closest('.bases-table-header-resizer')) return;
         this.basculerTriColonne(c);
       });
+      td.addEventListener('contextmenu', (e) => this.menuEntete(e, c));
       this.poserResizer(td, c, cols, gauche, table);
     }
 
@@ -13185,6 +13241,11 @@ function fabriquerVueFriseBase(greffon) {
           return v === undefined || v === null ? DEFAUTS_FRISE[cle] : v;
         },
         ecrire: async (cle, v) => { this.config.set(cle, v); },
+        masquerColonne: async (id) => {
+          let ordre = [];
+          try { ordre = this.config.getOrder() || []; } catch (e) { ordre = []; }
+          this.config.setOrder(ordre.filter((x) => x !== id));
+        },
       });
     }
 
