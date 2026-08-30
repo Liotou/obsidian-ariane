@@ -651,7 +651,7 @@ const TEXTES = {
     "Schémas : interroger le graphe": "Diagrams: query the graph",
     "Schémas : synchroniser le contenu dans les notes associées": "Diagrams: sync contents into the paired notes",
     "Schémas : valider le schéma actif": "Diagrams: validate the active diagram",
-    "Schémas draw.io (.drawio.svg) et notes associées. L’éditeur lui-même est fourni par le plugin Ariane-graph.": "draw.io diagrams (.drawio.svg) and their paired notes. The editor itself comes from the Ariane-graph plugin.",
+    "Schémas draw.io (.drawio.svg) et notes associées. L’éditeur lui-même est fourni par le plugin Ariane-graph.": "draw.io diagrams (.drawio.svg) and their paired notes. The editor itself comes from a draw.io plugin, which Ariane does not replace.",
     "Score final minimal (en %) pour qu'une note soit proposée. Plus haut = plus sélectif.": "Minimum final score, as a percentage, for a note to be proposed. Higher means more selective.",
     "Sert à mesurer la proximité de sens entre vos notes.": "Used to measure how close in meaning your notes are.",
     "Service": "Service",
@@ -849,6 +849,12 @@ const TEXTES = {
     "Ce décalage contredit un blocage de ": "This shift contradicts a blocking link of ",
     "Décaler l aval de ": "Push everything downstream by ",
     "Laisser": "Leave it",
+    "Statut : ": "Status: ",
+    "Avancement : ": "Progress: ",
+    "Priorité : ": "Priority: ",
+    "Redevenir une tâche": "Back to a task",
+    "Faire un jalon": "Make it a milestone",
+    "Retirer les dates": "Remove the dates",
   },
 };
 let LANGUE = 'fr';
@@ -1052,7 +1058,7 @@ const DEFAULT_SETTINGS = {
   suggArgAffichage: 'panneau', // suggestions par argument (clic droit) : 'panneau' | 'flottant'
   hoverPartout: true, // aperçu au survol des liens hors éditeur (chat Claudian, etc.)
   // Police monospace (largeur fixe) pour les noms codés dans l'explorateur.
-  // --- Pont draw.io : vocabulaire et export (voir plugin Ariane-graph) ---
+  // --- Pont draw.io : vocabulaire et export -----------------------------
   cartesStrict: false, // true = signaler en erreur toute étiquette hors vocabulaire
   cartesTypesBlocs: [],
   cartesRelations: [],
@@ -9878,6 +9884,17 @@ class ZotflowAtomiser extends obsidian.Plugin {
     return out;
   }
 
+  // Écrit quelques propriétés d'une tâche, sans toucher au reste.
+  async majTache(ref, champs) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    if (!f) return false;
+    await this.app.fileManager.processFrontMatter(f, (x) => {
+      for (const [k, v] of Object.entries(champs)) x[k] = v;
+      x.modifie = new Date().toISOString().slice(0, 10);
+    });
+    return true;
+  }
+
   // Écrit en une passe les dates rendues par decalerSousArbre ou cascadeAval.
   async ecrireDatesTaches(changements) {
     const parRef = new Map(this.tachesPourGantt().map((t) => [t.ref, t.fichier]));
@@ -11591,6 +11608,22 @@ class VueGanttTaches extends obsidian.ItemView {
     c.empty();
 
     let taches = this.greffon.tachesPourGantt();
+    // Une écriture de frontmatter n'apparaît dans l'index qu'après un battement.
+    // Sans ce report, la frise redessine d'abord les anciennes dates puis les
+    // nouvelles : c'est le rebond qu'on voyait à l'étirement d'une barre.
+    // Chaque entrée disparaît d'elle-même dès que l'index l'a rattrapée.
+    if (this._enAttente && this._enAttente.size) {
+      for (const t of taches) {
+        const p = this._enAttente.get(t.ref);
+        if (!p) continue;
+        if (String(t.debut || '') === p.debut && String(t.echeance || '') === p.echeance) {
+          this._enAttente.delete(t.ref);
+          continue;
+        }
+        t.debut = p.debut;
+        t.echeance = p.echeance;
+      }
+    }
     const nTotal = taches.length;
     if (this.greffon.settings.ganttMasquerTerminees) taches = this.sansLesCloses(taches);
     const toutes = ZotflowAtomiser.disposerGantt(taches);
@@ -11627,6 +11660,7 @@ class VueGanttTaches extends obsidian.ItemView {
     this._svg = svg;
 
     this.dessinerFond(svg, cfg, lignes.length);
+    this.dessinerRegroupements(svg, cfg, lignes);
     this.dessinerBarres(svg, cfg, lignes);
     this.dessinerFleches(svg, cfg, lignes);
     this.dessinerAujourdhui(svg, cfg, aujourdhui, lignes.length);
@@ -11940,6 +11974,31 @@ class VueGanttTaches extends obsidian.ItemView {
 
   /* ------------------------------ Les barres ----------------------------- */
 
+  // Une méta-tâche se lit mal si rien ne dit où commence et où finit ce qu'elle
+  // contient. Une bande teintée couvre ses lignes, et les bandes s'assombrissent
+  // en s'imbriquant, ce qui donne la profondeur sans avoir à compter les
+  // indentations.
+  dessinerRegroupements(svg, cfg, lignes) {
+    const g = svgEl('g', {});
+    lignes.forEach((l, rang) => {
+      if (!l.aDesEnfants) return;
+      let dernier = rang;
+      for (let k = rang + 1; k < lignes.length && lignes[k].niveau > l.niveau; k++) dernier = k;
+      if (dernier === rang) return;
+      const y = HAUTEUR_ENTETE_GANTT + rang * HAUTEUR_LIGNE_GANTT;
+      const h = (dernier - rang + 1) * HAUTEUR_LIGNE_GANTT;
+      const bande = svgEl('rect', { x: 0, y, width: cfg.largeur, height: h,
+        class: 'zfa-gantt-groupe-bande' });
+      bande.style.opacity = String(Math.min(0.5, 0.16 + l.niveau * 0.08));
+      g.appendChild(bande);
+      g.appendChild(svgEl('line', { x1: 0, y1: y, x2: cfg.largeur, y2: y,
+        class: 'zfa-gantt-groupe-trait' }));
+      g.appendChild(svgEl('line', { x1: 0, y1: y + h, x2: cfg.largeur, y2: y + h,
+        class: 'zfa-gantt-groupe-trait' }));
+    });
+    svg.appendChild(g);
+  }
+
   dessinerBarres(svg, cfg, lignes) {
     const g = svgEl('g', {});
     lignes.forEach((l, rang) => {
@@ -11983,12 +12042,24 @@ class VueGanttTaches extends obsidian.ItemView {
         t.textContent = l.intitule.length > max ? l.intitule.slice(0, max - 1) + '…' : l.intitule;
         groupe.appendChild(t);
       }
+      // Embouts en pointe, comme sur toute barre de synthèse : ils disent d'un
+      // coup d'oeil que la barre résume et ne se travaille pas elle-même.
+      if (meta) {
+        const yh = y + h / 3;
+        for (const bx of [x, x + w]) {
+          const sens = bx === x ? 1 : -1;
+          groupe.appendChild(svgEl('path', {
+            d: 'M ' + bx + ' ' + yh + ' l ' + (7 * sens) + ' 0 l 0 10 z',
+            class: 'zfa-gantt-embout' }));
+        }
+      }
       const bulle = svgEl('title', {});
       bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + debut + ' → ' + fin
         + (l.avancement ? '  ·  ' + l.avancement + ' %' : '');
       groupe.appendChild(bulle);
 
       fond.addEventListener('pointerdown', (e) => this.saisir(e, groupe, l, 'deplacer', { x, w }));
+      groupe.addEventListener('contextmenu', (e) => this.menuTache(e, l));
       if (!meta) {
         for (const cote of ['gauche', 'droite']) {
           const p = svgEl('rect', {
@@ -12001,6 +12072,52 @@ class VueGanttTaches extends obsidian.ItemView {
       g.appendChild(groupe);
     });
     svg.appendChild(g);
+  }
+
+  // Le clic droit donne accès à ce qui se règle sans ouvrir la note. Les
+  // valeurs proposées sont celles du schéma, pas des inventions du moment.
+  menuTache(e, ligne) {
+    e.preventDefault();
+    e.stopPropagation();
+    const m = new obsidian.Menu();
+    const tache = (this._taches || []).find((t) => t.ref === ligne.ref) || {};
+    const poser = async (champs) => {
+      await this.greffon.majTache(ligne.ref, champs);
+      this.dessiner();
+    };
+
+    m.addItem((i) => i.setTitle(tr('Ouvrir la note')).setIcon('file-text')
+      .onClick(() => this.ouvrir(ligne.ref)));
+    m.addSeparator();
+
+    for (const st of ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée']) {
+      m.addItem((i) => i.setTitle(tr('Statut : ') + st)
+        .setChecked(tache.statut === st)
+        .onClick(() => poser({ statut: st })));
+    }
+    m.addSeparator();
+
+    for (const v of [0, 25, 50, 75, 100]) {
+      m.addItem((i) => i.setTitle(tr('Avancement : ') + v + ' %')
+        .setChecked(Number(tache.avancement) === v)
+        .onClick(() => poser({ avancement: v })));
+    }
+    m.addSeparator();
+
+    for (const [libelle, valeur] of [[tr('(aucune)'), ''], [tr('basse'), 'basse'],
+                                     [tr('moyenne'), 'moyenne'], [tr('haute'), 'haute']]) {
+      m.addItem((i) => i.setTitle(tr('Priorité : ') + libelle)
+        .setChecked(String(tache.priorite || '') === valeur)
+        .onClick(() => poser({ priorite: valeur })));
+    }
+    m.addSeparator();
+
+    m.addItem((i) => i.setTitle(ligne.jalon ? tr('Redevenir une tâche') : tr('Faire un jalon'))
+      .setIcon('diamond')
+      .onClick(() => poser(ligne.jalon ? { jalon: false } : { jalon: true, debut: '' })));
+    m.addItem((i) => i.setTitle(tr('Retirer les dates')).setIcon('calendar-off')
+      .onClick(() => poser({ debut: '', echeance: '' })));
+    m.showAtMouseEvent(e);
   }
 
   dessinerJalon(g, cfg, l, rang, nLignes) {
@@ -12017,6 +12134,7 @@ class VueGanttTaches extends obsidian.ItemView {
     const bulle = svgEl('title', {});
     bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + l.echeance;
     d.appendChild(bulle);
+    d.addEventListener('contextmenu', (e) => this.menuTache(e, l));
     g.appendChild(d);
     if (cfg.ppj >= 8) {
       const t = svgEl('text', { x: x + 14, y: y + 4, class: 'zfa-gantt-jalon-titre' });
@@ -12150,6 +12268,10 @@ class VueGanttTaches extends obsidian.ItemView {
     }
     const ecrites = await this.greffon.ecrireDatesTaches(changements);
     if (!ecrites) { this.dessiner(); return; }
+    if (!this._enAttente) this._enAttente = new Map();
+    for (const c of changements) {
+      this._enAttente.set(c.ref, { debut: c.debut || '', echeance: c.echeance || '' });
+    }
     this.proposerCascade(ligne.ref, n);
     this.dessiner();
   }
