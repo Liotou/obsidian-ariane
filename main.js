@@ -3397,28 +3397,6 @@ class Ariane extends obsidian.Plugin {
     // autonome reste le seul accès à la frise, et rien n'est perdu.
     if (typeof this.registerBasesView === 'function') {
       const Vue = fabriquerVueFriseBase(this);
-      // « Grouper par » propose, comme une base native, n'importe quelle
-      // propriété du coffre. « __rien » = pas de regroupement (une valeur
-      // vide « » invaliderait toute l'entrée côté Bases). Les libellés sont
-      // groupés : les colonnes de fichier d'abord, puis les propriétés triées.
-      const choixGroupby = () => {
-        const o = { __rien: tr('(aucun)'),
-                    'file.name': tr('Fichier : nom'),
-                    'file.folder': tr('Fichier : dossier') };
-        const noms = new Set();
-        try {
-          const mtm = this.app.metadataTypeManager;
-          const all = mtm && (typeof mtm.getAllProperties === 'function'
-            ? mtm.getAllProperties() : mtm.properties);
-          if (Array.isArray(all)) for (const p of all) noms.add(p && p.name ? p.name : p);
-          else for (const k of Object.keys(all || {})) noms.add(k);
-        } catch (e) { /* pas de gestionnaire de types : liste courte */ }
-        for (const nom of [...noms].filter(Boolean)
-          .sort((a, b) => String(a).localeCompare(String(b), 'fr'))) {
-          o['note.' + nom] = 'Propriété : ' + nom;
-        }
-        return o;
-      };
       this.registerBasesView(TYPE_VUE_BASE_FRISE, {
         name: tr('Frise'),
         icon: 'calendar-range',
@@ -3455,10 +3433,6 @@ class Ariane extends obsidian.Plugin {
           {
             type: 'toggle', key: 'masquerTerminees',
             displayName: tr('Masquer les terminées'), default: false,
-          },
-          {
-            type: 'dropdown', key: 'groupBy', displayName: tr('Grouper par'),
-            default: '__rien', options: choixGroupby(),
           },
         ],
       });
@@ -9666,7 +9640,7 @@ class Ariane extends obsidian.Plugin {
   // groupe redevient racine, comme pour un parent inconnu. Une tâche
   // multi-valeur est reprise dans chaque groupe, avec une cleLigne distincte
   // mais le même ref pour l'écriture.
-  static disposerFriseGroupee(taches, groupes, tri, sens) {
+  static disposerFriseGroupee(taches, groupes, tri, sens, groupeDesc) {
     if (!groupes) {
       return Ariane.disposerGantt(taches, tri, sens)
         .map((l) => Object.assign(l, { kind: 'tache', cleLigne: l.ref }));
@@ -9682,6 +9656,7 @@ class Ariane extends obsidian.Plugin {
       .filter((g) => g !== Ariane.SANS_GROUPE)
       .sort((a, b) => String(a).localeCompare(String(b), 'fr',
         { sensitivity: 'base', numeric: true }));
+    if (groupeDesc) ordre.reverse();
     if (tous.has(Ariane.SANS_GROUPE)) ordre.push(Ariane.SANS_GROUPE);
 
     const out = [];
@@ -11873,7 +11848,7 @@ const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 const DEFAUTS_FRISE = {
   zoom: 'mois', masquerTerminees: false, libelleSemaine: 'numero',
   tri: 'date', rowHeight: 'medium', columnSize: null,
-  triColonne: null, triColonneSens: 1, groupBy: '__rien',
+  triColonne: null, triColonneSens: 1,
 };
 
 /* =========================================================================
@@ -12067,7 +12042,8 @@ class MoteurFrise {
     // Regroupement (propre à Ariane, faute d'API Bases) : disposition en arbre
     // par groupe, puis tri des datées / non datées, puis placement en y/h.
     const groupes = this.ctx.groupes ? this.ctx.groupes() : null;
-    const brut = Ariane.disposerFriseGroupee(taches, groupes, mode, sensTri);
+    const groupeDesc = this.ctx.sensGroupe ? this.ctx.sensGroupe() === -1 : false;
+    const brut = Ariane.disposerFriseGroupee(taches, groupes, mode, sensTri, groupeDesc);
     const nonPlanifiees = [];
     const vusNP = new Set();
     const avecDates = [];
@@ -12543,20 +12519,20 @@ class MoteurFrise {
     }[type] || ['A → Z', 'Z → A'];
     const triActif = this.ctx.lire('triColonne') === cle;
     const sensActif = this.ctx.lire('triColonneSens') === -1 ? -1 : 1;
-    const groupeActif = this.ctx.lire('groupBy') === cle;
+    const groupeActif = this.ctx.groupeActuel && this.ctx.groupeActuel() === cle;
 
     const menu = new obsidian.Menu();
     if (!fichier && this.ctx.masquerColonne) {
       menu.addItem((i) => i.setTitle(tr('Masquer la colonne')).setIcon('eye-off')
         .onClick(async () => { await this.ctx.masquerColonne(cle); this.dessiner(); }));
     }
-    if (!fichier && this.ctx.groupes) {
+    if (this.ctx.poserGroupe) {
       menu.addItem((i) => i
         .setTitle(groupeActif ? tr('Ne plus regrouper par cette propriété')
                               : tr('Regrouper par cette propriété'))
         .setIcon('rows-3')
-        .onClick(async () => {
-          await this.ctx.ecrire('groupBy', groupeActif ? '__rien' : cle);
+        .onClick(() => {
+          this.ctx.poserGroupe(groupeActif ? null : cle);
           this.dessiner();
         }));
     }
@@ -13436,35 +13412,57 @@ function fabriquerVueFriseBase(greffon) {
           this.config.setOrder(ordre.filter((x) => x !== id));
         },
         groupes: () => this.groupesParTache(),
+        sensGroupe: () => (this.groupeNatif() || {}).desc ? -1 : 1,
         nomGroupe: () => {
+          const g = this.groupeNatif();
+          if (!g) return '';
           try {
-            const id = this.config.get('groupBy');
-            return id ? (this.config.getDisplayName(id) || id.replace(/^note\./, '')) : '';
-          } catch (e) { return ''; }
+            return this.config.getDisplayName(g.property)
+              || g.property.replace(/^(note|formula|file)\./, '');
+          } catch (e) { return g.property; }
+        },
+        groupeActuel: () => (this.groupeNatif() || {}).property || null,
+        poserGroupe: (prop) => {
+          try {
+            this.config.setGroupBy(prop
+              ? { property: prop, direction: 'ASC' } : undefined);
+          } catch (e) { /* setGroupBy absent : rien à faire */ }
         },
       });
+    }
+
+    // Le « Grouper par » NATIF de Bases (menu Trier), lu dans le sérialisé de
+    // la vue : { property, direction }. C'est là que Bases le range, pas dans
+    // le sac data.* de nos réglages ; il n'y a pas de getGroupBy exposé.
+    groupeNatif() {
+      try {
+        const g = (this.config.serialize() || {}).groupBy;
+        return g && g.property
+          ? { property: String(g.property),
+              desc: String(g.direction || 'ASC').toUpperCase() === 'DESC' }
+          : null;
+      } catch (e) { return null; }
     }
 
     // Libellés de groupe d'une Value de base : [] si vide, un par élément si
     // tableau. La disposition met les tâches sans libellé dans SANS_GROUPE.
     static libellesGroupe(v) {
       if (v === null || v === undefined || v === '') return [];
-      const brut = (typeof v === 'object' && 'data' in v && v.data != null) ? v.data : v;
+      const brut = (typeof v === 'object' && v && 'data' in v && v.data != null) ? v.data : v;
       const arr = Array.isArray(brut) ? brut : [brut];
       return arr.map((x) => VueFriseBase.texteValeur(x)).filter((s) => s !== '');
     }
 
     // Map<ref, string[]> des groupes de chaque tâche retenue, ou null si aucun
-    // regroupement. Les ancêtres hors filtre (absents de _parRef) vont en
+    // regroupement natif. Les ancêtres hors filtre (absents de _parRef) vont en
     // SANS_GROUPE, ce qui les garde visibles sans les rattacher au hasard.
     groupesParTache() {
-      let id = '';
-      try { id = this.config.get('groupBy') || ''; } catch (e) { id = ''; }
-      if (!id || id === '__rien') return null;
+      const g = this.groupeNatif();
+      if (!g) return null;
       const out = new Map();
       for (const [ref, e] of (this._parRef || new Map())) {
         let v = null;
-        try { v = e.getValue(id); } catch (err) { v = null; }
+        try { v = e.getValue(g.property); } catch (err) { v = null; }
         const libs = VueFriseBase.libellesGroupe(v);
         out.set(ref, libs.length ? libs : [Ariane.SANS_GROUPE]);
       }

@@ -47,6 +47,15 @@ test('les groupes sont classés alphabétiquement, « sans » toujours en dernie
     ['Analyse', 'Zoologie', S]);
 });
 
+test('la direction descendante inverse l ordre des groupes, « sans » reste en dernier', () => {
+  const g = new Map([
+    ['T26-001', ['Zoologie']], ['T26-002', ['Analyse']], ['T26-003', [S]]]);
+  const l = Ariane.disposerFriseGroupee(
+    [t('T26-001'), t('T26-002'), t('T26-003')], g, 'date', 1, true);
+  assert.deepEqual(l.filter((x) => x.kind === 'groupe').map((x) => x.libelle),
+    ['Zoologie', 'Analyse', S]);
+});
+
 test('une tâche multi-valeur apparaît dans chaque groupe, cleLigne distinctes', () => {
   const g = new Map([['T26-001', ['A', 'B']]]);
   const l = Ariane.disposerFriseGroupee([t('T26-001')], g, 'date', 1);
