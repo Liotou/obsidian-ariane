@@ -933,6 +933,7 @@ const DEFAULT_SETTINGS = {
   // Vue Articulation : accrochage magnétique des cartes au glissé.
   articulationAimant: true,
   articulationFleches: 'courbe', // 'courbe' | 'angulaire'
+  friseBarreCouleur: 'famille', // 'famille' | 'statut'
   articulationGrille: 20,       // pas de la grille (0 = pas de grille)
   articulationSeuilAimant: 7,   // distance d'accrochage aux voisins (px)
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
@@ -10672,9 +10673,10 @@ class Ariane extends obsidian.Plugin {
   sourcesZoteroPourChoix() {
     const out = [];
     for (const f of this.app.vault.getMarkdownFiles()) {
+      // Le préfixe « @ » EST la convention des fiches de source : on ne réclame
+      // plus de citationKey (les fiches d'anciens formats n'en ont pas).
       if (f.basename.charAt(0) !== '@') continue;
-      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
-      if (!fm || !fm.citationKey) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
       out.push({ nom: Ariane.libelleSource(fm, f.basename), cle: f.basename });
     }
     out.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
@@ -11590,6 +11592,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       }));
     this._aide(c, tr("Les colonnes et filtres du fichier « Tâches.base » lui-même restent écrits avec les noms par défaut : adaptez-les à la main si vous vous servez de ses tableaux."));
 
+    this._section(c, tr('Vue Frise'));
+    new obsidian.Setting(c)
+      .setName(tr('Couleur des barres'))
+      .setDesc(tr('Selon la famille de la tâche, ou selon son statut.'))
+      .addDropdown((d) => d
+        .addOption('famille', tr('Famille'))
+        .addOption('statut', tr('Statut'))
+        .setValue(s.friseBarreCouleur || 'famille')
+        .onChange(async (v) => { s.friseBarreCouleur = v; await maj(); }));
+
     this._section(c, tr('Vue Articulation'));
     this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue »."));
     new obsidian.Setting(c)
@@ -12496,13 +12508,19 @@ class ModaleTache extends obsidian.Modal {
         }));
     } else if (type === 'link') {
       s.setDesc(cur ? String(cur) : tr('aucune'));
+      // Une « source » se cherche parmi les fiches Zotero (@…) ; le reste
+      // parmi les notes ordinaires du coffre.
+      const zotero = p.cle === 'source';
       s.addButton((b) => b.setButtonText(tr('Choisir…')).onClick(() => {
-        const items = this.greffon.notesPourChoix();
+        const items = zotero
+          ? this.greffon.sourcesZoteroPourChoix()
+          : this.greffon.notesPourChoix();
         if (!items.length) { new obsidian.Notice(tr('Aucune note à proposer.')); return; }
-        new ChoixListeModal(this.app, tr('Note…'), items, (it) => {
-          if (it) this.props[p.cle] = '[[' + it.cle + ']]';
-          this._dessiner();
-        }).open();
+        new ChoixListeModal(this.app,
+          zotero ? tr('Auteur, titre, année ou clé…') : tr('Note…'), items, (it) => {
+            if (it) this.props[p.cle] = '[[' + it.cle + ']]';
+            this._dessiner();
+          }).open();
       }))
       .addExtraButton((b) => b.setIcon('x')
         .onClick(() => { this.props[p.cle] = ''; this._dessiner(); }));
@@ -13870,7 +13888,9 @@ class MoteurFrise {
       const geo = this._geo;
       const y = yLigne + geo.marge;
       const h = geo.epaisseur;
-      const couleur = this.couleur(l.statut);
+      const couleur = (this.greffon.settings.friseBarreCouleur || 'famille') === 'statut'
+        ? this.couleur(l.statut)
+        : (this.greffon.familleDe(l.famille).couleur || this.couleur(l.statut));
       const groupe = svgEl('g', { class: 'zfa-gantt-groupe' });
       groupe.dataset.ref = l.ref;
 
