@@ -14199,7 +14199,7 @@ class MoteurArticulation {
         }
       }
 
-      const pied = carte.createDiv({ cls: 'zfa-artic-famchoix' });
+      const pied = corps.createDiv({ cls: 'zfa-artic-famchoix' });
       const sel = pied.createEl('select', { cls: 'zfa-artic-famsel' });
       for (const f of (this.greffon.settings.famillesTaches || [])) {
         sel.createEl('option', { value: f.id, text: f.nom || f.id });

@@ -559,9 +559,6 @@ Its **kind is never declared**, it follows from whichever field is filled in:
 | `fichier` | output | the document's last change and last opening |
 | none | action | nothing |
 
-A `famille` field could contradict the fields actually present; leaving it out
-makes the contradiction impossible.
-
 The **Tasks: create a task** command opens a form. The Zotero source is searched
 by author, title, year or key, since nobody remembers a citation key by heart.
 Dates go through the system calendar. For an output, a single field: an absolute

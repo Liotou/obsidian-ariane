@@ -39,6 +39,12 @@ test('appel historique sans familles : comportement inchange', () => {
   assert.equal(Ariane.familleTache({}), 'action');
 });
 
+test('familleTache : le paramètre defaut est honoré quand action n existe pas', () => {
+  const fam = [{ id: 'x', nom: 'X', couleur: '#111', icone: 'circle', proprietes: [] },
+               { id: 'y', nom: 'Y', couleur: '#222', icone: 'circle', proprietes: [] }];
+  assert.equal(Ariane.familleTache({}, fam, 'y'), 'y');
+});
+
 /* ------------------- proprietesManquantes ------------------- */
 
 test('fm vide : toutes les proprietes de la famille manquent', () => {

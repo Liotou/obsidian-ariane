@@ -1241,7 +1241,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-artic-carte:active { cursor: grabbing; }
 .zfa-artic-carte[data-statut="abandonnée"] { opacity: 0.55; }
-.zfa-artic-carte.est-jalon { border-style: dashed; border-left-color: var(--interactive-accent); }
+.zfa-artic-carte.est-jalon { border-style: dashed; }
 
 .zfa-artic-fam { flex: 0 0 auto; display: inline-flex; color: var(--zfa-fam-couleur, var(--text-muted)); }
 .zfa-artic-fam svg { width: 15px; height: 15px; }
