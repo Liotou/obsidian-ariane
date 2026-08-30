@@ -3398,18 +3398,25 @@ class Ariane extends obsidian.Plugin {
     if (typeof this.registerBasesView === 'function') {
       const Vue = fabriquerVueFriseBase(this);
       // « Grouper par » propose, comme une base native, n'importe quelle
-      // propriété du coffre, plus les colonnes de fichier et « (aucun) ».
+      // propriété du coffre. « __rien » = pas de regroupement (une valeur
+      // vide « » invaliderait toute l'entrée côté Bases). Les libellés sont
+      // groupés : les colonnes de fichier d'abord, puis les propriétés triées.
       const choixGroupby = () => {
-        const o = { '': tr('(aucun)'), 'file.name': tr('nom du fichier'),
-                    'file.folder': tr('dossier') };
+        const o = { __rien: tr('(aucun)'),
+                    'file.name': tr('Fichier : nom'),
+                    'file.folder': tr('Fichier : dossier') };
+        const noms = new Set();
         try {
-          const props = this.app.metadataTypeManager
-            && this.app.metadataTypeManager.properties;
-          for (const nom of Object.keys(props || {})
-            .sort((a, b) => a.localeCompare(b, 'fr'))) {
-            o['note.' + nom] = (props[nom] && props[nom].name) || nom;
-          }
+          const mtm = this.app.metadataTypeManager;
+          const all = mtm && (typeof mtm.getAllProperties === 'function'
+            ? mtm.getAllProperties() : mtm.properties);
+          if (Array.isArray(all)) for (const p of all) noms.add(p && p.name ? p.name : p);
+          else for (const k of Object.keys(all || {})) noms.add(k);
         } catch (e) { /* pas de gestionnaire de types : liste courte */ }
+        for (const nom of [...noms].filter(Boolean)
+          .sort((a, b) => String(a).localeCompare(String(b), 'fr'))) {
+          o['note.' + nom] = 'Propriété : ' + nom;
+        }
         return o;
       };
       this.registerBasesView(TYPE_VUE_BASE_FRISE, {
@@ -3451,7 +3458,7 @@ class Ariane extends obsidian.Plugin {
           },
           {
             type: 'dropdown', key: 'groupBy', displayName: tr('Grouper par'),
-            default: '', options: choixGroupby(),
+            default: '__rien', options: choixGroupby(),
           },
         ],
       });
@@ -11866,7 +11873,7 @@ const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 const DEFAUTS_FRISE = {
   zoom: 'mois', masquerTerminees: false, libelleSemaine: 'numero',
   tri: 'date', rowHeight: 'medium', columnSize: null,
-  triColonne: null, triColonneSens: 1, groupBy: '',
+  triColonne: null, triColonneSens: 1, groupBy: '__rien',
 };
 
 /* =========================================================================
@@ -12534,32 +12541,54 @@ class MoteurFrise {
       date: [tr('ancien → récent'), tr('récent → ancien')],
       datetime: [tr('ancien → récent'), tr('récent → ancien')],
     }[type] || ['A → Z', 'Z → A'];
+    const triActif = this.ctx.lire('triColonne') === cle;
+    const sensActif = this.ctx.lire('triColonneSens') === -1 ? -1 : 1;
+    const groupeActif = this.ctx.lire('groupBy') === cle;
 
     const menu = new obsidian.Menu();
+    if (!fichier && this.ctx.masquerColonne) {
+      menu.addItem((i) => i.setTitle(tr('Masquer la colonne')).setIcon('eye-off')
+        .onClick(async () => { await this.ctx.masquerColonne(cle); this.dessiner(); }));
+    }
+    if (!fichier && this.ctx.groupes) {
+      menu.addItem((i) => i
+        .setTitle(groupeActif ? tr('Ne plus regrouper par cette propriété')
+                              : tr('Regrouper par cette propriété'))
+        .setIcon('rows-3')
+        .onClick(async () => {
+          await this.ctx.ecrire('groupBy', groupeActif ? '__rien' : cle);
+          this.dessiner();
+        }));
+    }
+
+    menu.addSeparator();
     menu.addItem((i) => i.setTitle(tr('Trier') + ' ' + paires[0]).setIcon('arrow-down-a-z')
-      .onClick(() => this.trierColonneVers(col, 1)));
+      .setChecked(triActif && sensActif === 1).onClick(() => this.trierColonneVers(col, 1)));
     menu.addItem((i) => i.setTitle(tr('Trier') + ' ' + paires[1]).setIcon('arrow-up-a-z')
-      .onClick(() => this.trierColonneVers(col, -1)));
+      .setChecked(triActif && sensActif === -1).onClick(() => this.trierColonneVers(col, -1)));
+    if (triActif) {
+      menu.addItem((i) => i.setTitle(tr('Effacer le tri')).setIcon('x')
+        .onClick(async () => { await this.ctx.ecrire('triColonne', null); this.dessiner(); }));
+    }
 
     if (!fichier) {
       menu.addSeparator();
-      if (this.ctx.masquerColonne) {
-        menu.addItem((i) => i.setTitle(tr('Masquer la colonne')).setIcon('eye-off')
-          .onClick(async () => { await this.ctx.masquerColonne(cle); this.dessiner(); }));
-      }
       menu.addItem((i) => i.setTitle(tr('Modifier la propriété…')).setIcon('pencil')
         .onClick(() => this.app.commands.executeCommandById('properties:open-local')));
 
       const nomProp = cle.replace(/^note\./, '');
       const mtm = this.app.metadataTypeManager;
-      const widgets = (mtm && mtm.registeredTypeWidgets) || {};
-      const noms = Object.keys(widgets);
-      if (mtm && typeof mtm.setType === 'function' && noms.length) {
+      if (mtm && typeof mtm.setType === 'function') {
+        // Les six types visibles d'une base, avec leurs libellés français.
+        const TYPES = [['checkbox', tr('Case à cocher')], ['date', tr('Date')],
+          ['datetime', tr('Date & heure')], ['multitext', tr('Liste')],
+          ['number', tr('Nombre')], ['text', tr('Texte')]];
+        menu.addSeparator();
         menu.addItem((i) => {
           i.setTitle(tr('Type de propriété')).setIcon('type');
           const sous = i.setSubmenu();
-          for (const t of noms) {
-            sous.addItem((si) => si.setTitle(t).setChecked(type === t)
+          for (const [t, libelle] of TYPES) {
+            sous.addItem((si) => si.setTitle(libelle).setChecked(type === t)
               .onClick(async () => { await mtm.setType(nomProp, t); this.dessiner(); }));
           }
         });
@@ -13431,7 +13460,7 @@ function fabriquerVueFriseBase(greffon) {
     groupesParTache() {
       let id = '';
       try { id = this.config.get('groupBy') || ''; } catch (e) { id = ''; }
-      if (!id) return null;
+      if (!id || id === '__rien') return null;
       const out = new Map();
       for (const [ref, e] of (this._parRef || new Map())) {
         let v = null;
