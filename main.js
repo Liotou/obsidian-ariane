@@ -928,7 +928,8 @@ const DEFAULT_SETTINGS = {
   prefixeTachesApplique: '',
   masquerPrefixeAffichage: true, // cacher le préfixe dans les en-têtes de colonnes / cartes
   clesTaches: {},
-  libellesTaches: {}, // ancien réglage, lu une dernière fois par la migration
+  libellesTaches: {}, // ancien réglage, plus utilisé
+  _clesTachesNettoye: false,
   // Vue Articulation : accrochage magnétique des cartes au glissé.
   articulationAimant: true,
   articulationFleches: 'courbe', // 'courbe' | 'angulaire'
@@ -7050,6 +7051,18 @@ class Ariane extends obsidian.Plugin {
     const charge = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, charge || {});
     this.settings.correspondancesSuffixe = migrerCorrespondances(this.settings.correspondancesSuffixe);
+
+    // Nettoyage unique : d'anciens intitulés d'affichage s'étaient retrouvés
+    // dans clesTaches et servaient de clés de frontmatter par erreur. On repart
+    // d'une table vide ; l'utilisateur redéfinit ses clés précises s'il le veut.
+    let aEnregistrer = false;
+    if (!this.settings._clesTachesNettoye) {
+      this.settings.clesTaches = {};
+      this.settings.libellesTaches = {};
+      this.settings._clesTachesNettoye = true;
+      aEnregistrer = true;
+    }
+    if (aEnregistrer) await this.saveSettings();
     if (!Array.isArray(this.settings.profils) || this.settings.profils.length === 0) {
       this.settings.profils = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.profils));
     }
@@ -11479,7 +11492,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         st.setDesc(tr('Clé : ') + this.plugin.cleT(p.cle));
         st.addText((t) => t.setPlaceholder(pre ? pre + p.cle : p.cle)
           .setValue(ct[p.cle] || '')
-          .onChange(async (v) => { ct[p.cle] = v.trim(); await maj(); }));
+          .onChange(async (v) => {
+            const t2 = v.trim();
+            if (t2) ct[p.cle] = t2; else delete ct[p.cle];
+            await maj();
+          }));
       }
     }
     new obsidian.Setting(c)
