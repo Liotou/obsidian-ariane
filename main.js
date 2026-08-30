@@ -3397,6 +3397,21 @@ class Ariane extends obsidian.Plugin {
     // autonome reste le seul accès à la frise, et rien n'est perdu.
     if (typeof this.registerBasesView === 'function') {
       const Vue = fabriquerVueFriseBase(this);
+      // « Grouper par » propose, comme une base native, n'importe quelle
+      // propriété du coffre, plus les colonnes de fichier et « (aucun) ».
+      const choixGroupby = () => {
+        const o = { '': tr('(aucun)'), 'file.name': tr('nom du fichier'),
+                    'file.folder': tr('dossier') };
+        try {
+          const props = this.app.metadataTypeManager
+            && this.app.metadataTypeManager.properties;
+          for (const nom of Object.keys(props || {})
+            .sort((a, b) => a.localeCompare(b, 'fr'))) {
+            o['note.' + nom] = (props[nom] && props[nom].name) || nom;
+          }
+        } catch (e) { /* pas de gestionnaire de types : liste courte */ }
+        return o;
+      };
       this.registerBasesView(TYPE_VUE_BASE_FRISE, {
         name: tr('Frise'),
         icon: 'calendar-range',
@@ -3433,6 +3448,10 @@ class Ariane extends obsidian.Plugin {
           {
             type: 'toggle', key: 'masquerTerminees',
             displayName: tr('Masquer les terminées'), default: false,
+          },
+          {
+            type: 'dropdown', key: 'groupBy', displayName: tr('Grouper par'),
+            default: '', options: choixGroupby(),
           },
         ],
       });
@@ -9634,6 +9653,70 @@ class Ariane extends obsidian.Plugin {
     return lignes;
   }
 
+  // Regroupement de la frise. `groupes` = Map<ref, string[]> (les libellés de
+  // groupe d'une tâche) ou null. La disposition en arbre est faite par
+  // disposerGantt sur les seules tâches de chaque groupe : un parent absent du
+  // groupe redevient racine, comme pour un parent inconnu. Une tâche
+  // multi-valeur est reprise dans chaque groupe, avec une cleLigne distincte
+  // mais le même ref pour l'écriture.
+  static disposerFriseGroupee(taches, groupes, tri, sens) {
+    if (!groupes) {
+      return Ariane.disposerGantt(taches, tri, sens)
+        .map((l) => Object.assign(l, { kind: 'tache', cleLigne: l.ref }));
+    }
+    const SEP = ' ';
+    const grDe = (ref) => {
+      const g = groupes.get(ref);
+      return g && g.length ? g : [Ariane.SANS_GROUPE];
+    };
+    const tous = new Set();
+    for (const t of taches || []) for (const g of grDe(t.ref)) tous.add(g);
+    const ordre = [...tous]
+      .filter((g) => g !== Ariane.SANS_GROUPE)
+      .sort((a, b) => String(a).localeCompare(String(b), 'fr',
+        { sensitivity: 'base', numeric: true }));
+    if (tous.has(Ariane.SANS_GROUPE)) ordre.push(Ariane.SANS_GROUPE);
+
+    const out = [];
+    for (const g of ordre) {
+      const tachesG = (taches || []).filter((t) => grDe(t.ref).includes(g));
+      if (!tachesG.length) continue;
+      out.push({ kind: 'groupe', libelle: g, cleGroupe: 'groupe:' + g });
+      for (const l of Ariane.disposerGantt(tachesG, tri, sens)) {
+        out.push(Object.assign(l, { kind: 'tache', cleLigne: g + SEP + l.ref }));
+      }
+    }
+    return out;
+  }
+
+  // Passe de placement. Attribue à chaque ligne visible un `y` et un `h`, en
+  // sautant la descendance des méta-tâches repliées (comme l'ancienne
+  // MoteurFrise.visibles) et les tâches des groupes repliés. `replies` : Set
+  // des `ref` de méta-tâches et des `cleGroupe` repliés.
+  static placerLignes(dispo, hEntete, hLigne, replies) {
+    const R = replies instanceof Set ? replies : new Set(replies || []);
+    const out = [];
+    let y = hEntete;
+    let sautGroupe = false;
+    let seuilMeta = -1;
+    for (const it of dispo || []) {
+      if (it.kind === 'groupe') {
+        sautGroupe = R.has(it.cleGroupe);
+        seuilMeta = -1;
+        out.push(Object.assign({}, it, { y, h: hEntete }));
+        y += hEntete;
+        continue;
+      }
+      if (sautGroupe) continue;
+      if (seuilMeta >= 0 && it.niveau > seuilMeta) continue;
+      seuilMeta = -1;
+      out.push(Object.assign({}, it, { y, h: hLigne }));
+      y += hLigne;
+      if (it.aDesEnfants && R.has(it.ref)) seuilMeta = it.niveau;
+    }
+    return { lignes: out, hauteurTotale: y };
+  }
+
   // Filtre les tâches avant disposition. Les ancêtres d'une tâche retenue sont
   // conservés : sans eux, une sous-tâche apparaîtrait à la racine, détachée du
   // chantier auquel elle appartient, et on ne saurait plus de quoi il s'agit.
@@ -9879,6 +9962,10 @@ class Ariane extends obsidian.Plugin {
   static get ZOOMS_GANTT() {
     return { jour: 44, semaine: 22, mois: 8, trimestre: 3, 'année': 1 };
   }
+
+  // Sentinelle du groupe « sans valeur » : impossible à confondre avec un
+  // libellé réel. La vue la remplace par « (sans <propriété>) » à l'affichage.
+  static get SANS_GROUPE() { return ' sans'; }
 
   // Numéro de semaine ISO. La règle ISO rattache la semaine au jeudi, ce qui
   // évite qu'une semaine à cheval sur deux années soit comptée deux fois.
@@ -11779,7 +11866,7 @@ const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 const DEFAUTS_FRISE = {
   zoom: 'mois', masquerTerminees: false, libelleSemaine: 'numero',
   tri: 'date', rowHeight: 'medium', columnSize: null,
-  triColonne: null, triColonneSens: 1,
+  triColonne: null, triColonneSens: 1, groupBy: '',
 };
 
 /* =========================================================================
@@ -11961,9 +12048,39 @@ class MoteurFrise {
       }
       sensTri = this.ctx.lire('triColonneSens') === -1 ? -1 : 1;
     }
-    const toutes = Ariane.disposerGantt(taches, mode, sensTri);
-    const planifiees = toutes.filter((l) => l.debut || l.echeance);
-    const nonPlanifiees = toutes.filter((l) => !l.debut && !l.echeance);
+    this._H = this.hauteurLigne;
+    // L'en-tête reste fixe quelle que soit la hauteur de ligne, comme dans le
+    // tableau des bases : seules les lignes de données s'épaississent. On suit
+    // la variable d'Obsidian si elle existe, sinon 34 px — assez pour les deux
+    // étages (mois puis semaines ou jours), illisibles en dessous de 28.
+    this._hEntete = this.hauteurEntete;
+    this._bande = Math.round(this._hEntete * 0.52);
+    this._basEntete = this._bande + Math.round((this._hEntete - this._bande) / 2) + 1;
+
+    // Regroupement (propre à Ariane, faute d'API Bases) : disposition en arbre
+    // par groupe, puis tri des datées / non datées, puis placement en y/h.
+    const groupes = this.ctx.groupes ? this.ctx.groupes() : null;
+    const brut = Ariane.disposerFriseGroupee(taches, groupes, mode, sensTri);
+    const nonPlanifiees = [];
+    const vusNP = new Set();
+    const avecDates = [];
+    for (const it of brut) {
+      if (it.kind === 'groupe') { avecDates.push(it); continue; }
+      if (it.debut || it.echeance) { avecDates.push(it); }
+      else if (!vusNP.has(it.ref)) { vusNP.add(it.ref); nonPlanifiees.push(it); }
+    }
+    // Retirer les bandes de groupe devenues vides, compter les datées restantes.
+    const dispo = [];
+    for (let i = 0; i < avecDates.length; i++) {
+      const it = avecDates[i];
+      if (it.kind === 'groupe') {
+        let n = 0;
+        for (let j = i + 1; j < avecDates.length && avecDates[j].kind !== 'groupe'; j++) n += 1;
+        if (!n) continue;
+        dispo.push(Object.assign({}, it, { n }));
+      } else dispo.push(it);
+    }
+    const planifiees = dispo.filter((x) => x.kind === 'tache');
 
     // Le bandeau de réglages (zoom, hauteur de ligne, filtres…) n'appartient
     // pas à une base : dans la vue de base, ces options passent par « Configurer
@@ -11980,22 +12097,17 @@ class MoteurFrise {
 
     const aujourdhui = new Date().toISOString().slice(0, 10);
     const cfg = this.calculerEtendue(planifiees, aujourdhui);
-    const lignes = this.visibles(planifiees);
-    this._H = this.hauteurLigne;
-    // L'en-tête reste fixe quelle que soit la hauteur de ligne, comme dans le
-    // tableau des bases : seules les lignes de données s'épaississent. On suit
-    // la variable d'Obsidian si elle existe, sinon 34 px — assez pour les deux
-    // étages (mois puis semaines ou jours), illisibles en dessous de 28.
-    this._hEntete = this.hauteurEntete;
-    this._bande = Math.round(this._hEntete * 0.52);
-    this._basEntete = this._bande + Math.round((this._hEntete - this._bande) / 2) + 1;
+    const place = Ariane.placerLignes(dispo, this._hEntete, this._H, this.replies);
+    const lignes = place.lignes;
+    this._hauteurTotale = place.hauteurTotale;
     // On pose la variable des bases sur la racine : tout le balisage repris du
     // tableau s'y accroche, et le thème de Monsieur reste maître du reste.
     // La variable est posée ici pour que le balisage repris du tableau s'y
     // accroche. Elle n'est jamais relue depuis cet élément, voir baseLigne.
     c.style.setProperty('--bases-table-row-height', this._H + 'px');
     this._geo = this.geometrieBarre(this._H);
-    this._lignes = planifiees;
+    // decalerSousArbre travaille par ref : on déduplique les tâches multi-groupe.
+    this._lignes = [...new Map(planifiees.map((l) => [l.ref, l])).values()];
     this._cfg = cfg;
     this._taches = taches;
 
@@ -12004,28 +12116,37 @@ class MoteurFrise {
     const droite = env.createDiv({ cls: 'zfa-gantt-droite' });
     this.dessinerColonneGauche(gauche, lignes);
 
-    const hauteur = this._hEntete + lignes.length * this._H;
+    const hauteur = this._hauteurTotale;
     const svg = svgEl('svg', { class: 'zfa-gantt-svg', width: cfg.largeur, height: hauteur });
     droite.appendChild(svg);
     this._svg = svg;
 
-    this.dessinerFond(svg, cfg, lignes.length);
+    this.dessinerFond(svg, cfg, lignes);
     this.dessinerRegroupements(svg, cfg, lignes);
     this.dessinerBarres(svg, cfg, lignes);
     this.dessinerFleches(svg, cfg, lignes);
-    this.dessinerAujourdhui(svg, cfg, aujourdhui, lignes.length);
+    this.dessinerAujourdhui(svg, cfg, aujourdhui);
     this.dessinerEntete(svg, cfg);
+    const piste = this.dessinerEntetesGroupes(env, lignes);
 
     // Les deux colonnes défilent ensemble : sans cet accord, l'arbre et les
     // pistes se décalent dès la trentième ligne et la frise devient illisible.
     // Le tableau de gauche défile avec la frise : c'est le conteneur qui bouge,
     // les lignes étant en position absolue comme chez Bases.
     const table = gauche.querySelector('.zfa-gantt-table');
-    droite.addEventListener('scroll', () => { table.style.top = (-droite.scrollTop) + 'px'; });
+    droite.addEventListener('scroll', () => {
+      const y = -droite.scrollTop;
+      table.style.top = y + 'px';
+      if (piste) piste.style.transform = 'translateY(' + y + 'px)';
+    });
 
     droite.scrollLeft = memeX !== null ? memeX
       : Math.max(0, Ariane.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220);
-    if (memeY !== null) { droite.scrollTop = memeY; table.style.top = (-memeY) + 'px'; }
+    if (memeY !== null) {
+      droite.scrollTop = memeY;
+      table.style.top = (-memeY) + 'px';
+      if (piste) piste.style.transform = 'translateY(' + (-memeY) + 'px)';
+    }
   }
 
   // Masquer une méta-tâche close masquerait sa descendance encore vive : on
@@ -12508,15 +12629,17 @@ class MoteurFrise {
     }
 
     const tbody = table.createDiv({ cls: 'bases-tbody zfa-gantt-gauche-corps' });
-    tbody.style.height = (lignes.length * H) + 'px';
-    lignes.forEach((l, rang) => {
+    tbody.style.height = (this._hauteurTotale - this._hEntete) + 'px';
+    lignes.forEach((l) => {
+      // Les bandes de groupe sont dessinées à part, en surcouche pleine largeur.
+      if (l.kind === 'groupe') return;
       // Surtout ne pas nommer cette variable « tr » : ce nom est celui de la
       // fonction de traduction du greffon, et le masquer faisait lever une
       // exception au premier libellé, ce qui interrompait tout le dessin.
       const rangee = tbody.createDiv({ cls: 'bases-tr zfa-gantt-libelle' });
       rangee.dataset.ref = l.ref;
-      rangee.style.top = (rang * H) + 'px';
-      rangee.style.height = H + 'px';
+      rangee.style.top = (l.y - this._hEntete) + 'px';
+      rangee.style.height = l.h + 'px';
       rangee.addEventListener('contextmenu', (e) => this.menuTache(e, l));
 
       for (const c of cols) {
@@ -12524,7 +12647,7 @@ class MoteurFrise {
         td.dataset.colonne = c.cle;
         td.style.left = c.gauche + 'px';
         td.style.width = c.largeur + 'px';
-        td.style.height = H + 'px';
+        td.style.height = l.h + 'px';
         const cellule = td.createDiv({ cls: 'bases-table-cell' });
         if (c.type) cellule.dataset.propertyType = c.type;
         if (!c.arbre) {
@@ -12556,12 +12679,43 @@ class MoteurFrise {
     this.poserSeparateurVertical(gauche, table, cols);
   }
 
+  // Bandes d'en-tête de groupe : une par ligne kind:'groupe', pleine largeur
+  // (panneau gauche et frise d'un seul tenant), repliables. Dessinées en
+  // surcouche dans l'enveloppe, au-dessus du tableau et du SVG. Renvoie la
+  // piste défilante que le gestionnaire de scroll fait suivre.
+  dessinerEntetesGroupes(env, lignes) {
+    const groupes = lignes.filter((l) => l.kind === 'groupe');
+    if (!groupes.length) return null;
+    const nomProp = (this.ctx.nomGroupe && this.ctx.nomGroupe()) || '';
+    const cadre = env.createDiv({ cls: 'zfa-gantt-bandes' });
+    cadre.style.top = this._hEntete + 'px';
+    const piste = cadre.createDiv({ cls: 'zfa-gantt-bandes-piste' });
+    for (const l of groupes) {
+      const b = piste.createDiv({ cls: 'zfa-gantt-bande-groupe' });
+      b.style.top = (l.y - this._hEntete) + 'px';
+      b.style.height = l.h + 'px';
+      const replie = this.replies.has(l.cleGroupe);
+      b.createSpan({ cls: 'zfa-gantt-chevron', text: replie ? '▸' : '▾' });
+      const nom = l.libelle === Ariane.SANS_GROUPE
+        ? (tr('(sans ') + (nomProp || tr('valeur')) + ')')
+        : String(l.libelle);
+      b.createSpan({ cls: 'zfa-gantt-bande-nom', text: nom });
+      b.createSpan({ cls: 'zfa-gantt-bande-compte', text: ' (' + (l.n || 0) + ')' });
+      b.addEventListener('click', () => {
+        if (this.replies.has(l.cleGroupe)) this.replies.delete(l.cleGroupe);
+        else this.replies.add(l.cleGroupe);
+        this.dessiner();
+      });
+    }
+    return piste;
+  }
+
   /* ------------------------------- Le fond ------------------------------- */
 
-  dessinerFond(svg, cfg, nLignes) {
+  dessinerFond(svg, cfg, lignes) {
     const g = svgEl('g', {});
     const haut = this._hEntete;
-    const bas = haut + nLignes * this._H;
+    const bas = this._hauteurTotale;
     for (let i = 0; i <= cfg.jours; i++) {
       const jour = Ariane.decalerJour(cfg.debut, i);
       const [a, m, j] = jour.split('-').map(Number);
@@ -12578,11 +12732,12 @@ class MoteurFrise {
           class: 'zfa-gantt-grille-v' }));
       }
     }
-    for (let r = 0; r <= nLignes; r++) {
-      const y = haut + r * this._H;
-      g.appendChild(svgEl('line', { x1: 0, y1: y, x2: cfg.largeur, y2: y,
+    for (const l of lignes) {
+      g.appendChild(svgEl('line', { x1: 0, y1: l.y, x2: cfg.largeur, y2: l.y,
         class: 'zfa-gantt-grille-h' }));
     }
+    g.appendChild(svgEl('line', { x1: 0, y1: bas, x2: cfg.largeur, y2: bas,
+      class: 'zfa-gantt-grille-h' }));
     svg.appendChild(g);
   }
 
@@ -12707,12 +12862,13 @@ class MoteurFrise {
   dessinerRegroupements(svg, cfg, lignes) {
     const g = svgEl('g', {});
     lignes.forEach((l, rang) => {
-      if (!l.aDesEnfants) return;
+      if (l.kind === 'groupe' || !l.aDesEnfants) return;
       let dernier = rang;
-      for (let k = rang + 1; k < lignes.length && lignes[k].niveau > l.niveau; k++) dernier = k;
+      for (let k = rang + 1; k < lignes.length
+        && lignes[k].kind === 'tache' && lignes[k].niveau > l.niveau; k++) dernier = k;
       if (dernier === rang) return;
-      const y = this._hEntete + rang * this._H;
-      const h = (dernier - rang + 1) * this._H;
+      const y = l.y;
+      const h = (lignes[dernier].y + lignes[dernier].h) - l.y;
       const bande = svgEl('rect', { x: 0, y, width: cfg.largeur, height: h,
         class: 'zfa-gantt-groupe-bande' });
       bande.style.opacity = String(Math.min(0.5, 0.16 + l.niveau * 0.08));
@@ -12727,11 +12883,12 @@ class MoteurFrise {
 
   dessinerBarres(svg, cfg, lignes) {
     const g = svgEl('g', {});
-    lignes.forEach((l, rang) => {
-      const yLigne = this._hEntete + rang * this._H;
+    lignes.forEach((l) => {
+      if (l.kind === 'groupe') return;
+      const yLigne = l.y;
       g.appendChild(svgEl('rect', { x: 0, y: yLigne, width: cfg.largeur,
-        height: this._H, class: 'zfa-gantt-survol' }));
-      if (l.jalon) { this.dessinerJalon(g, cfg, l, rang, lignes.length); return; }
+        height: l.h, class: 'zfa-gantt-survol' }));
+      if (l.jalon) { this.dessinerJalon(g, cfg, l); return; }
       const debut = l.debut || l.echeance;
       const fin = l.echeance || l.debut;
       if (!debut || !fin) return;
@@ -12930,12 +13087,12 @@ class MoteurFrise {
     m.showAtMouseEvent(e);
   }
 
-  dessinerJalon(g, cfg, l, rang, nLignes) {
+  dessinerJalon(g, cfg, l) {
     if (!l.echeance) return;
     const x = this.x(cfg, l.echeance) + cfg.ppj / 2;
-    const y = this._hEntete + rang * this._H + this._H / 2;
+    const y = l.y + l.h / 2;
     g.appendChild(svgEl('line', { x1: x, y1: this._hEntete, x2: x,
-      y2: this._hEntete + nLignes * this._H,
+      y2: this._hauteurTotale,
       class: 'zfa-gantt-jalon-trait' }));
     const d = svgEl('path', {
       d: 'M ' + x + ' ' + (y - 9) + ' L ' + (x + 9) + ' ' + y
@@ -12953,11 +13110,11 @@ class MoteurFrise {
     }
   }
 
-  dessinerAujourdhui(svg, cfg, aujourdhui, nLignes) {
+  dessinerAujourdhui(svg, cfg, aujourdhui) {
     const n = Ariane.ecartJours(cfg.debut, aujourdhui);
     if (n < 0 || n > cfg.jours) return;
     const x = n * cfg.ppj;
-    const bas = this._hEntete + nLignes * this._H;
+    const bas = this._hauteurTotale;
     const g = svgEl('g', {});
     g.appendChild(svgEl('line', { x1: x, y1: this._hEntete, x2: x, y2: bas,
       class: 'zfa-gantt-aujourdhui' }));
@@ -12972,7 +13129,11 @@ class MoteurFrise {
   // Dessinées, jamais tracées ici : le canvas seul crée les liens, et un même
   // geste ne doit pas exister à deux endroits.
   dessinerFleches(svg, cfg, lignes) {
-    const rang = new Map(lignes.map((l, i) => [l.ref, i]));
+    // Première occurrence de chaque tâche (une tâche multi-groupe est dupliquée).
+    const parRef = new Map();
+    for (const l of lignes) {
+      if (l.kind === 'tache' && !parRef.has(l.ref)) parRef.set(l.ref, l);
+    }
     const dates = {};
     const aretes = [];
     for (const t of this._taches || []) {
@@ -12994,21 +13155,20 @@ class MoteurFrise {
       defs.appendChild(mk);
     }
     g.appendChild(defs);
-    const H = this._H;
     // Mémorisées pour que le glissé d'une barre les fasse suivre en direct :
     // voir _bougerFleches, appelé depuis saisir.
     this._fleches = [];
     for (const a of aretes) {
-      if (!rang.has(a.de) || !rang.has(a.vers)) continue;
-      const src = lignes[rang.get(a.de)];
-      const cib = lignes[rang.get(a.vers)];
+      const src = parRef.get(a.de);
+      const cib = parRef.get(a.vers);
+      if (!src || !cib) continue;
       const finSrc = src.echeance || src.debut;
       const debCib = cib.debut || cib.echeance;
       if (!finSrc || !debCib) continue;
       const x1 = this.x(cfg, Ariane.decalerJour(finSrc, 1));
-      const y1 = this._hEntete + rang.get(a.de) * H + H / 2;
+      const y1 = src.y + src.h / 2;
       const x2 = this.x(cfg, debCib);
-      const y2 = this._hEntete + rang.get(a.vers) * H + H / 2;
+      const y2 = cib.y + cib.h / 2;
       const rouge = fautives.has(a.de + ' ' + a.vers);
       const chemin = svgEl('path', { d: this._cheminFleche(x1, y1, x2, y2),
         'marker-end': 'url(#zfa-pointe-fleche' + (rouge ? '-rouge' : '') + ')',
@@ -13246,7 +13406,40 @@ function fabriquerVueFriseBase(greffon) {
           try { ordre = this.config.getOrder() || []; } catch (e) { ordre = []; }
           this.config.setOrder(ordre.filter((x) => x !== id));
         },
+        groupes: () => this.groupesParTache(),
+        nomGroupe: () => {
+          try {
+            const id = this.config.get('groupBy');
+            return id ? (this.config.getDisplayName(id) || id.replace(/^note\./, '')) : '';
+          } catch (e) { return ''; }
+        },
       });
+    }
+
+    // Libellés de groupe d'une Value de base : [] si vide, un par élément si
+    // tableau. La disposition met les tâches sans libellé dans SANS_GROUPE.
+    static libellesGroupe(v) {
+      if (v === null || v === undefined || v === '') return [];
+      const brut = (typeof v === 'object' && 'data' in v && v.data != null) ? v.data : v;
+      const arr = Array.isArray(brut) ? brut : [brut];
+      return arr.map((x) => VueFriseBase.texteValeur(x)).filter((s) => s !== '');
+    }
+
+    // Map<ref, string[]> des groupes de chaque tâche retenue, ou null si aucun
+    // regroupement. Les ancêtres hors filtre (absents de _parRef) vont en
+    // SANS_GROUPE, ce qui les garde visibles sans les rattacher au hasard.
+    groupesParTache() {
+      let id = '';
+      try { id = this.config.get('groupBy') || ''; } catch (e) { id = ''; }
+      if (!id) return null;
+      const out = new Map();
+      for (const [ref, e] of (this._parRef || new Map())) {
+        let v = null;
+        try { v = e.getValue(id); } catch (err) { v = null; }
+        const libs = VueFriseBase.libellesGroupe(v);
+        out.set(ref, libs.length ? libs : [Ariane.SANS_GROUPE]);
+      }
+      return out;
     }
 
     onunload() { if (this.moteur) this.moteur.detruire(); }

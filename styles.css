@@ -1034,6 +1034,29 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-gantt-embout { fill: var(--text-muted); opacity: 0.75; pointer-events: none; }
 
+/* Bandes d'en-tête de groupe : surcouche pleine largeur (panneau gauche +
+   frise), au-dessus du tableau (z 5) et du SVG. La piste défile avec la frise
+   via transform ; le cadre est calé sous l'en-tête fixe et masque le débord. */
+.zfa-gantt-bandes {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  overflow: hidden; z-index: 7; pointer-events: none;
+}
+.zfa-gantt-bandes-piste { position: absolute; top: 0; left: 0; right: 0; }
+.zfa-gantt-bande-groupe {
+  position: absolute; left: 0; right: 0; pointer-events: auto;
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 var(--bases-table-cell-edge-padding, 8px);
+  font-size: 0.875em; font-weight: 600; color: var(--text-normal);
+  background: var(--background-secondary);
+  border-top: 1px solid var(--background-modifier-border);
+  border-bottom: 1px solid var(--background-modifier-border);
+  cursor: pointer; white-space: nowrap; overflow: hidden;
+}
+.zfa-gantt-bande-groupe:hover { background: var(--background-modifier-hover); }
+.zfa-gantt-bande-groupe .zfa-gantt-chevron { font-weight: 400; flex: 0 0 auto; }
+.zfa-gantt-bande-nom { overflow: hidden; text-overflow: ellipsis; }
+.zfa-gantt-bande-compte { color: var(--text-faint); font-weight: 400; flex: 0 0 auto; }
+
 .zfa-gantt-connecteur {
   fill: var(--background-primary); stroke: var(--interactive-accent);
   stroke-width: 1.5; opacity: 0; cursor: crosshair; transition: opacity 0.12s;
