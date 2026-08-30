@@ -11896,7 +11896,44 @@ class MoteurFrise {
     this.replies = new Set();
     this._cascade = null;
     this._filtre = {};
+    this._flecheSelectionnee = null;
     racine.addClass('zfa-gantt');
+    // La frise capte le clavier pour supprimer une flèche sélectionnée.
+    racine.tabIndex = -1;
+    racine.addEventListener('keydown', (e) => this.toucheFrise(e));
+  }
+
+  // Sélection d'une flèche de dépendance au clic. Une seule à la fois.
+  selectionnerFleche(de, vers, groupeEl) {
+    this._deselectionnerFleche();
+    this._flecheSelectionnee = { de, vers };
+    if (groupeEl) groupeEl.classList.add('est-active');
+    if (this.racine && this.racine.focus) this.racine.focus({ preventScroll: true });
+  }
+
+  _deselectionnerFleche() {
+    this._flecheSelectionnee = null;
+    if (this._svg) {
+      for (const el of this._svg.querySelectorAll('.zfa-gantt-fleche-groupe.est-active')) {
+        el.classList.remove('est-active');
+      }
+    }
+  }
+
+  // Retour arrière (⌫) sur une flèche sélectionnée : on retire le blocage.
+  // Pas la touche Suppr : Monsieur l'a demandé ainsi.
+  async toucheFrise(e) {
+    const t = e.target;
+    if (t && (t.matches('input, textarea, select') || t.isContentEditable)) return;
+    if (e.key === 'Escape') { this._deselectionnerFleche(); return; }
+    if (e.key !== 'Backspace' || !this._flecheSelectionnee) return;
+    e.preventDefault();
+    const { de, vers } = this._flecheSelectionnee;
+    this._flecheSelectionnee = null;
+    if (this.greffon && typeof this.greffon.retirerBlocage === 'function') {
+      await this.greffon.retirerBlocage(de, vers);
+    }
+    this.dessiner();
   }
 
   get zoom() { return this.ctx.lire('zoom') || 'mois'; }
@@ -12103,6 +12140,10 @@ class MoteurFrise {
     const svg = svgEl('svg', { class: 'zfa-gantt-svg', width: cfg.largeur, height: hauteur });
     droite.appendChild(svg);
     this._svg = svg;
+    // Cliquer ailleurs qu'une flèche la désélectionne.
+    svg.addEventListener('pointerdown', (e) => {
+      if (!e.target.closest('.zfa-gantt-fleche-groupe')) this._deselectionnerFleche();
+    });
 
     this.dessinerFond(svg, cfg, lignes);
     this.dessinerRegroupements(svg, cfg, lignes);
@@ -13175,10 +13216,25 @@ class MoteurFrise {
       const x2 = this.x(cfg, debCib);
       const y2 = cib.y + cib.h / 2;
       const rouge = fautives.has(a.de + ' ' + a.vers);
-      const chemin = svgEl('path', { d: this._cheminFleche(x1, y1, x2, y2),
+      const d = this._cheminFleche(x1, y1, x2, y2);
+      // Un groupe : le trait visible plus un trait large invisible qui offre
+      // une cible cliquable, une flèche fine étant impossible à viser.
+      const grFleche = svgEl('g', { class: 'zfa-gantt-fleche-groupe' });
+      grFleche.dataset.de = a.de;
+      grFleche.dataset.vers = a.vers;
+      const cible = svgEl('path', { d, class: 'zfa-gantt-fleche-cible' });
+      const chemin = svgEl('path', { d,
         'marker-end': 'url(#zfa-pointe-fleche' + (rouge ? '-rouge' : '') + ')',
         class: 'zfa-gantt-fleche' + (rouge ? ' zfa-gantt-rouge' : '') });
-      g.appendChild(chemin);
+      grFleche.appendChild(cible);
+      grFleche.appendChild(chemin);
+      grFleche.addEventListener('pointerdown', (ev) => {
+        ev.stopPropagation();
+        this.selectionnerFleche(a.de, a.vers, grFleche);
+      });
+      if (this._flecheSelectionnee && this._flecheSelectionnee.de === a.de
+        && this._flecheSelectionnee.vers === a.vers) grFleche.classList.add('est-active');
+      g.appendChild(grFleche);
       let etiquette = null;
       if (a.libelle) {
         etiquette = svgEl('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 4,
@@ -13187,7 +13243,8 @@ class MoteurFrise {
         if (Math.abs(x2 - x1) <= 60) etiquette.style.display = 'none';
         g.appendChild(etiquette);
       }
-      this._fleches.push({ de: a.de, vers: a.vers, chemin, etiquette, x1, y1, x2, y2 });
+      this._fleches.push({ de: a.de, vers: a.vers, chemin, cible, groupe: grFleche,
+        etiquette, x1, y1, x2, y2 });
     }
     svg.appendChild(g);
   }
@@ -13209,7 +13266,9 @@ class MoteurFrise {
       if (f.de !== ref && f.vers !== ref) continue;
       const x1 = f.x1 + (f.de === ref ? dx : 0);
       const x2 = f.x2 + (f.vers === ref ? dx : 0);
-      f.chemin.setAttribute('d', this._cheminFleche(x1, f.y1, x2, f.y2));
+      const d = this._cheminFleche(x1, f.y1, x2, f.y2);
+      f.chemin.setAttribute('d', d);
+      if (f.cible) f.cible.setAttribute('d', d);
       if (f.etiquette) {
         f.etiquette.setAttribute('x', (x1 + x2) / 2);
         f.etiquette.setAttribute('y', (f.y1 + f.y2) / 2 - 4);
