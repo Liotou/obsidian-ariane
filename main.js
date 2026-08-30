@@ -12082,9 +12082,7 @@ class MoteurFrise {
     // tableau des bases : seules les lignes de données s'épaississent. On suit
     // la variable d'Obsidian si elle existe, sinon 34 px — assez pour les deux
     // étages (mois puis semaines ou jours), illisibles en dessous de 28.
-    // Vue « année » : un troisième étage (année, trimestres, mois) → en-tête
-    // un peu plus haute.
-    this._hEntete = this.hauteurEntete + (this.zoom === 'année' ? 16 : 0);
+    this._hEntete = this.hauteurEntete;
     this._bande = Math.round(this._hEntete * 0.52);
     this._basEntete = this._bande + Math.round((this._hEntete - this._bande) / 2) + 1;
 
@@ -12213,6 +12211,7 @@ class MoteurFrise {
       const y = -droite.scrollTop;
       table.style.top = y + 'px';
       if (piste) piste.style.transform = 'translateY(' + y + 'px)';
+      this.recalerEnteteHaut(droite.scrollLeft);
     });
 
     droite.scrollLeft = memeX !== null ? memeX
@@ -12222,6 +12221,7 @@ class MoteurFrise {
       table.style.top = (-memeY) + 'px';
       if (piste) piste.style.transform = 'translateY(' + (-memeY) + 'px)';
     }
+    this.recalerEnteteHaut(droite.scrollLeft);
   }
 
   // Masquer une méta-tâche close masquerait sa descendance encore vive : on
@@ -12927,6 +12927,10 @@ class MoteurFrise {
     const g = svgEl('g', { class: 'zfa-gantt-entete' });
     g.appendChild(svgEl('rect', { x: 0, y: 0, width: cfg.largeur,
       height: this._hEntete, class: 'zfa-gantt-entete-fond' }));
+    // Libellés du haut (mois, ou année en vue année) : mémorisés pour qu'ils
+    // « collent » au bord gauche pendant le défilement, afin qu'on sache
+    // toujours de quel mois relèvent les jours visibles. Voir recalerEnteteHaut.
+    this._enteteHaut = [];
 
     // Bandeau supérieur : les mois, en bandes alternées pour qu'on les
     // distingue d'un coup d'oeil sans avoir à compter les traits.
@@ -12950,6 +12954,7 @@ class MoteurFrise {
           const t = svgEl('text', { x: x1 + 6, y: this._bande - 5, class: 'zfa-gantt-entete-mois' });
           t.textContent = MOIS_COURTS[m - 1] + ' ' + String(a).slice(2);
           g.appendChild(t);
+          this._enteteHaut.push({ el: t, x1: x1 + 6, x2 });
         }
       }
       g.appendChild(svgEl('line', { x1, y1: 0, x2: x1, y2: this._hEntete,
@@ -12965,6 +12970,19 @@ class MoteurFrise {
     else this.enteteTrimestres(g, cfg);
 
     svg.appendChild(g);
+  }
+
+  // Fait « coller » chaque libellé du haut au bord gauche visible tant que sa
+  // plage l'englobe : on ne perd plus le mois (ou l'année) en défilant.
+  recalerEnteteHaut(sx) {
+    for (const it of this._enteteHaut || []) {
+      let w = 0;
+      try { w = it.el.getComputedTextLength(); } catch (e) { w = 0; }
+      if (!w) w = it.el.textContent.length * 6;
+      const xmin = it.x1;
+      const xmax = Math.max(xmin, it.x2 - w - 6);
+      it.el.setAttribute('x', Math.min(xmax, Math.max(xmin, sx + 6)));
+    }
   }
 
   enteteJours(g, cfg) {
@@ -13021,11 +13039,10 @@ class MoteurFrise {
     }
   }
 
-  // Vue année : trois étages — l'année (bande teintée + libellé), les
-  // trimestres (T1…T4), les mois en une lettre.
+  // Vue année, dans la hauteur d'en-tête ordinaire : l'année en haut (bande
+  // teintée + libellé), les mois en une lettre en bas. Les traits de trimestre
+  // sont plus marqués que ceux des mois, ceux d'année encore davantage.
   enteteAnnees(g, cfg) {
-    const yAn = Math.round(this._hEntete / 3);
-    const yTri = Math.round((this._hEntete * 2) / 3);
     const finA = Number(cfg.fin.slice(0, 4));
     let idx = 0;
     for (let a = Number(cfg.debut.slice(0, 4)); a <= finA; a += 1, idx += 1) {
@@ -13034,11 +13051,12 @@ class MoteurFrise {
       g.appendChild(svgEl('rect', { x: x1, y: 0, width: Math.max(0, x2 - x1),
         height: this._hEntete,
         class: idx % 2 ? 'zfa-gantt-bande-impaire' : 'zfa-gantt-bande-paire' }));
-      if (x2 - x1 > 24) {
-        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: yAn - 4,
+      if (x2 - x1 > 22) {
+        const t = svgEl('text', { x: x1 + 6, y: this._bande - 4,
           class: 'zfa-gantt-entete-annee' });
         t.textContent = String(a);
         g.appendChild(t);
+        this._enteteHaut.push({ el: t, x1: x1 + 6, x2 });
       }
       g.appendChild(svgEl('line', { x1, y1: 0, x2: x1, y2: this._hEntete,
         class: 'zfa-gantt-entete-trait-fort' }));
@@ -13049,17 +13067,9 @@ class MoteurFrise {
       const jour = ya + '-' + String(m).padStart(2, '0') + '-01';
       const am = m + 3 > 12 ? ya + 1 : ya;
       const mm = m + 3 > 12 ? m - 9 : m + 3;
-      const suivant = am + '-' + String(mm).padStart(2, '0') + '-01';
       const x1 = Math.max(0, this.x(cfg, jour));
-      const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
-      if (x2 - x1 > 16) {
-        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: yTri - 3,
-          class: 'zfa-gantt-entete-titre' });
-        t.textContent = 'T' + (Math.floor((m - 1) / 3) + 1);
-        g.appendChild(t);
-      }
-      g.appendChild(svgEl('line', { x1, y1: yAn, x2: x1, y2: this._hEntete,
-        class: 'zfa-gantt-entete-trait' }));
+      g.appendChild(svgEl('line', { x1, y1: this._bande, x2: x1, y2: this._hEntete,
+        class: 'zfa-gantt-entete-trait-fort' }));
       ya = am; m = mm;
     }
     let mo = cfg.debut.slice(0, 8) + '01';
@@ -13069,7 +13079,7 @@ class MoteurFrise {
       const x1 = Math.max(0, this.x(cfg, mo));
       const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
       if (x2 - x1 > 7) {
-        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: this._hEntete - 4,
+        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: this._basEntete,
           class: 'zfa-gantt-entete-mois-lettre' });
         t.textContent = MOIS_LETTRES[mm - 1];
         g.appendChild(t);

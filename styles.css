@@ -1003,7 +1003,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-entete-titre { font-size: 9px; font-weight: 600; fill: var(--text-muted); }
 .zfa-gantt-entete-annee {
   font-size: 10px; font-weight: 700; fill: var(--text-normal);
-  text-anchor: middle;
 }
 .zfa-gantt-entete-mois-lettre {
   font-size: 8px; fill: var(--text-faint); text-anchor: middle;
