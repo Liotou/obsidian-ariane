@@ -10415,17 +10415,13 @@ class Ariane extends obsidian.Plugin {
       || { id: id || '', nom: id || tr('(sans famille)'), couleur: '#888888', icone: 'circle', proprietes: [] };
   }
 
-  // Clé de frontmatter d'une propriété de tâche :
-  //   1. le nom personnalisé de la propriété s'il est défini ;
-  //   2. sinon, le préfixe global suivi du concept (« Tâche - echeance ») ;
-  //   3. sinon le concept nu.
-  // Le préfixe permet de ne pas entrer en collision avec une propriété de même
-  // nom sur des notes qui ne sont pas des tâches.
+  // Clé de frontmatter d'une propriété de tâche : le préfixe global suivi du
+  // concept (« Tâche - echeance »), ou le concept nu si aucun préfixe. Le
+  // préfixe évite les collisions avec une propriété de même nom sur des notes
+  // qui ne sont pas des tâches. Il est repris tel quel, espace final compris.
   cleT(concept) {
     if (concept === 'intitule') return 'intitule';
-    const perso = (this.settings.libellesTaches || {})[concept];
-    if (perso && String(perso).trim()) return String(perso).trim();
-    const pre = (this.settings.prefixeTaches || '').trim();
+    const pre = this.settings.prefixeTaches || '';
     return pre ? pre + concept : concept;
   }
 
@@ -10437,11 +10433,9 @@ class Ariane extends obsidian.Plugin {
     return fm ? fm[concept] : undefined;
   }
 
-  // Intitulé affiché d'une propriété générique dans le formulaire : la clé
-  // personnalisée si elle existe, sinon l'intitulé par défaut.
+  // Intitulé affiché d'une propriété générique dans le formulaire (toujours
+  // l'intitulé lisible ; la clé de frontmatter réelle est un détail).
   libelleGen(cle) {
-    const k = this.cleT(cle);
-    if (k !== cle) return k;
     const d = Ariane.PROPS_GENERIQUES.find((p) => p.cle === cle);
     return d ? tr(d.defaut) : cle;
   }
@@ -11447,45 +11441,41 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           .onChange(async (v) => { s.familleTacheDefaut = v; await maj(); });
       });
 
-    this._section(c, tr('Noms des propriétés de tâche'));
-    this._aide(c, tr("Ariane peut nommer les propriétés des tâches à sa façon, pour ne pas entrer en collision avec une propriété de même nom sur d'autres notes. Le préfixe s'ajoute devant chaque concept ; un champ permet aussi de renommer une propriété précise. Après un changement, « Appliquer aux notes existantes » reporte l'ancienne valeur sur la nouvelle clé."));
+    this._section(c, tr('Préfixe des propriétés de tâche'));
+    this._aide(c, tr("Un préfixe ajouté devant chaque propriété de tâche, pour ne pas entrer en collision avec une propriété de même nom sur des notes qui ne sont pas des tâches. Ex. « Tâche - » donne « Tâche - statut », « Tâche - echeance »… La frise, l'articulation, le formulaire et les nouvelles écritures suivent ce préfixe."));
     new obsidian.Setting(c)
-      .setName(tr('Préfixe des propriétés'))
-      .setDesc(tr('Ex. « Tâche - » → « Tâche - echeance », « Tâche - statut »…'))
+      .setName(tr('Préfixe'))
+      .setDesc(tr('Vide = pas de préfixe. L\'espace final compte : « Tâche - ».'))
       .addText((t) => t.setPlaceholder('Tâche - ').setValue(s.prefixeTaches || '')
         .onChange(async (v) => { s.prefixeTaches = v; await maj(); }));
-    {
-      const lib = s.libellesTaches || (s.libellesTaches = {});
-      for (const p of Ariane.PROPS_GENERIQUES) {
-        if (p.cle === 'intitule') continue; // pas une vraie propriété
-        const st = new obsidian.Setting(c).setName(tr(p.defaut));
-        const ic = createSpan({ cls: 'zfa-tache-ic' });
-        obsidian.setIcon(ic, p.icone);
-        st.nameEl.prepend(ic);
-        st.setDesc(tr('Clé actuelle : ') + this.plugin.cleT(p.cle));
-        st.addText((t) => t.setPlaceholder(this.plugin.cleT(p.cle)).setValue(lib[p.cle] || '')
-          .onChange(async (v) => { lib[p.cle] = v.trim(); await maj(); }));
-      }
-    }
     new obsidian.Setting(c)
       .setName(tr('Appliquer aux notes existantes'))
-      .setDesc(tr("Renomme la propriété dans toutes les notes de tâches. Une note qui porte déjà la nouvelle clé n'est pas touchée."))
+      .setDesc(tr("Renomme les propriétés dans toutes les notes de tâches (et elles seules). Une note qui porte déjà la nouvelle clé n'est pas touchée."))
       .addButton((b) => b.setButtonText(tr('Renommer dans les notes')).setWarning().onClick(async () => {
         const g = this.plugin;
         const avis = new obsidian.Notice(tr('Renommage en cours…'), 0);
-        const prefixes = [''];
-        const pa = (s.prefixeTachesApplique || '').trim();
-        if (pa) prefixes.push(pa);
+        // Anciennes clés possibles : le concept nu, le préfixe déjà appliqué,
+        // et d'éventuels anciens intitulés personnalisés restés en réglages.
+        const stale = s.libellesTaches || {};
+        const pa = (s.prefixeTachesApplique || '');
         let total = 0;
         for (const f of g.app.vault.getMarkdownFiles()) {
-          if (!g.refDeChemin(f.path)) continue; // notes de tâches seulement
+          if (!g.refDeChemin(f.path)) continue;
           const fm = (g.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
           const aFaire = [];
+          const cles = Object.keys(fm);
           for (const con of Ariane.CONCEPTS_TACHE) {
             const nk = g.cleT(con);
-            for (const pre of prefixes) {
-              const ancien = pre ? pre + con : con;
-              if (ancien !== nk && (ancien in fm) && !(nk in fm)) aFaire.push([ancien, nk]);
+            if (nk in fm) continue;
+            const candidats = new Set([con]);
+            if (pa) candidats.add(pa + con);
+            if (s.prefixeTaches) candidats.add(s.prefixeTaches + con);
+            if (stale[con]) candidats.add(String(stale[con]).trim());
+            // Toute clé « <préfixe finissant par un séparateur><concept> ».
+            const re = new RegExp('^.*[\\s\\-–—]' + con.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$');
+            for (const k of cles) if (re.test(k)) candidats.add(k);
+            for (const ancien of candidats) {
+              if (ancien && ancien !== nk && (ancien in fm)) { aFaire.push([ancien, nk]); break; }
             }
           }
           if (!aFaire.length) continue;
@@ -11495,12 +11485,13 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           });
           total += aFaire.length;
         }
-        s.prefixeTachesApplique = (s.prefixeTaches || '').trim();
+        s.prefixeTachesApplique = s.prefixeTaches || '';
+        s.libellesTaches = {};
         await maj();
         avis.hide();
         new obsidian.Notice(total + tr(' propriété(s) renommée(s) dans les notes.'));
       }));
-    this._aide(c, tr("La frise, l'articulation et le formulaire suivent ces clés. En revanche les colonnes et filtres du fichier « Tâches.base » lui-même restent écrits avec les noms par défaut : adaptez-les à la main si besoin."));
+    this._aide(c, tr("Les colonnes et filtres du fichier « Tâches.base » lui-même restent écrits avec les noms par défaut : adaptez-les à la main si vous vous servez de ses tableaux."));
 
     this._section(c, tr('Vue Articulation'));
     this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue »."));
