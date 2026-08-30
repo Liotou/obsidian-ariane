@@ -1351,9 +1351,11 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-arete-lab {
   font-size: 10px; fill: var(--text-muted); text-anchor: middle; pointer-events: none;
 }
-.zfa-artic-lien-en-cours {
-  fill: none; stroke: var(--interactive-accent); stroke-width: 2;
-  stroke-dasharray: 5 3; pointer-events: none;
+.zfa-artic-lien-en-cours { fill: none; stroke-width: 2; pointer-events: none; }
+/* Le tracé provisoire reprend le langage de l'arête qu'il va poser. */
+.zfa-artic-lien-en-cours-hier { stroke: var(--text-muted); stroke-dasharray: 2 3; }
+.zfa-artic-lien-en-cours-bloque {
+  stroke: var(--interactive-accent); stroke-dasharray: 5 3;
 }
 .zfa-artic-props { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
 .zfa-artic-prop { display: flex; gap: 6px; font-size: 0.75em; line-height: 1.3; }

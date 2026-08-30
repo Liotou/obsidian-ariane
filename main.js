@@ -14609,7 +14609,8 @@ class MoteurArticulation {
     const x1 = s0.x + ARTIC_W;
     const y1 = s0.y + (type === 'hier' ? hN * 0.32 : hN * 0.72);
     const dep = this._versScene(ev);
-    const trait = svgEl('path', { class: 'zfa-artic-lien-en-cours', d: '' });
+    const trait = svgEl('path', {
+      class: 'zfa-artic-lien-en-cours zfa-artic-lien-en-cours-' + type, d: '' });
     this._scene.appendChild(trait);
     let cible = null;
     let bouge = false;
