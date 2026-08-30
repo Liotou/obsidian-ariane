@@ -10520,6 +10520,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       [tr('Affichage'), 'eye', (c) => this.ongletAffichage(c, s, maj)],
       [tr('Citations & bibliographie'), 'quote', (c) => this.ongletCitations(c, s, maj)],
       [tr('Suggestions'), 'sparkles', (c) => this.ongletSuggestions(c, s, maj)],
+      [tr('Tâches'), 'list-checks', (c) => this.ongletTaches(c, s, maj)],
       [tr('Contenu des notes'), 'file-text', (c) => this.ongletContenu(c, s, maj)],
       [tr('Références & auteurs'), 'users', (c) => this.ongletReferences(c, s, maj)],
       [tr('Temps passé'), 'timer', (c) => this.ongletTemps(c, s, maj)],
@@ -10825,16 +10826,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     role(tr('Annotations atomisées'), 'dossierAnnotations', tr("Une note par annotation Zotero."));
     role(tr('Notes de lecture'), 'dossierNotesLecture', tr("Notes-filles Zotero, attachées à la référence entière."));
     role(tr('Références en attente'), 'dossierReferences', tr("Références citées mais pas encore dans Zotero."));
-    role(tr('Tâches'), 'dossierTaches', tr("Une note par tâche."));
-    new obsidian.Setting(c)
-      .setName(tr('Couleur des arêtes de composition'))
-      .setDesc(tr("Dans un canvas de tâches, une arête de cette couleur relie une méta-tâche à ce qui la compose. Une arête sans couleur est un blocage. Le rouge est réservé aux signalements d'Ariane."))
-      .addDropdown((d) => d
-        .addOption('2', tr('orange')).addOption('3', tr('jaune'))
-        .addOption('4', tr('vert')).addOption('5', tr('cyan'))
-        .addOption('6', tr('violet'))
-        .setValue(s.couleurCompositionCanvas || '6')
-        .onChange(async (v) => { s.couleurCompositionCanvas = v; await maj(); }));
     role(tr('Bibliographies citées'), 'dossierBibliographies', tr("Une note de bibliographie par source."));
     role(tr('Documents exportés'), 'exportDossier', tr("Sortie de l'export Word."));
     role(tr('Journal du temps'), 'tempsDossierJournal', tr("Journaux quotidiens du compteur de temps."));
@@ -11129,6 +11120,35 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     new obsidian.Setting(c)
       .setName(tr('Corps (pt)'))
       .addText((t) => t.setValue(String(s.cartesSvgTaille || 10)).onChange(async (v) => { s.cartesSvgTaille = Number(v) || 10; await maj(); }));
+  }
+
+  ongletTaches(c, s, maj) {
+    this._section(c, tr('Tâches'));
+    this._aide(c, tr("Ariane crée une note par tâche (référence T26-001, T26-002…), lit les canvas de tâches pour en déduire compositions et blocages, et affiche le rétroplanning dans la frise."));
+
+    new obsidian.Setting(c)
+      .setName(tr('Dossier des tâches'))
+      .setDesc(tr("Où Ariane crée les nouvelles tâches et où elle les cherche. Vide : « 8 - Tâches »."))
+      .addText((t) => t.setValue(s.dossierTaches || '').setPlaceholder(tr('chemin dans le coffre'))
+        .onChange(async (v) => { s.dossierTaches = v.trim().replace(/^\/+|\/+$/g, ''); await maj(); }));
+
+    new obsidian.Setting(c)
+      .setName(tr('Liste de rappels par défaut'))
+      .setDesc(tr("Liste Apple Rappels associée à une nouvelle tâche quand aucune n'est précisée."))
+      .addText((t) => t.setValue(s.listeRappelsDefaut || '')
+        .onChange(async (v) => { s.listeRappelsDefaut = v.trim(); await maj(); }));
+
+    new obsidian.Setting(c)
+      .setName(tr('Couleur des arêtes de composition'))
+      .setDesc(tr("Dans un canvas de tâches, une arête de cette couleur relie une méta-tâche à ce qui la compose. Une arête sans couleur est un blocage. Le rouge est réservé aux signalements d'Ariane."))
+      .addDropdown((d) => d
+        .addOption('2', tr('orange')).addOption('3', tr('jaune'))
+        .addOption('4', tr('vert')).addOption('5', tr('cyan'))
+        .addOption('6', tr('violet'))
+        .setValue(s.couleurCompositionCanvas || '6')
+        .onChange(async (v) => { s.couleurCompositionCanvas = v; await maj(); }));
+
+    this._aide(c, tr("L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue » de la base (et par le clic droit sur un en-tête de colonne)."));
   }
 
   ongletSuggestions(c, s, maj) {
