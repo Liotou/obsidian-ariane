@@ -12339,10 +12339,12 @@ class MoteurFrise {
       }
     }
 
-    // Les tâches sans date : un bloc de lignes en bas de la liste, hors groupes,
-    // sans barre. On les ajoute après le calcul des masques : elles n'héritent
-    // d'aucun groupe replié.
-    for (const it of sansDate) dispo.push(Object.assign({}, it, { sansDate: true }));
+    // Les tâches sans date : un bloc de lignes en bas de la liste, hors groupes
+    // et hors arbre (mises à plat : ni retrait ni chevron). On les ajoute après
+    // le calcul des masques : elles n'héritent d'aucun groupe replié.
+    for (const it of sansDate) {
+      dispo.push(Object.assign({}, it, { sansDate: true, niveau: 0, aDesEnfants: false }));
+    }
 
     // Les réglages de la frise passent par « Configurer la vue » de la base ;
     // seule une barre d'outils légère (échelle, aujourd'hui…) reste à l'écran.
@@ -13318,15 +13320,9 @@ class MoteurFrise {
       if (!debut || !fin) return;
       // Une échéance au jour E occupe le jour E : le bord droit tombe donc au
       // début de E+1, faute de quoi une tâche d'un jour n'aurait pas d'épaisseur.
-      // Positions réelles avant rognage : si un bout tombe hors de la fenêtre,
-      // la barre y est coupée net (elle « continue ») plutôt que capuchonnée.
-      const xReel = this.x(cfg, debut);
-      const x2Reel = this.x(cfg, Ariane.decalerJour(fin, 1));
-      const x = Math.max(0, xReel);
-      const x2 = Math.min(cfg.largeur, x2Reel);
+      const x = Math.max(0, this.x(cfg, debut));
+      const x2 = Math.min(cfg.largeur, this.x(cfg, Ariane.decalerJour(fin, 1)));
       const w = Math.max(8, x2 - x);
-      const coupeG = xReel < -0.5;
-      const coupeD = x2Reel > cfg.largeur + 0.5;
       const geo = this._geo;
       const y = yLigne + geo.marge;
       const h = geo.epaisseur;
@@ -13334,18 +13330,19 @@ class MoteurFrise {
       const groupe = svgEl('g', { class: 'zfa-gantt-groupe' });
       groupe.dataset.ref = l.ref;
 
+      // Une méta-tâche (qui a des sous-tâches) se dessine comme n'importe quelle
+      // barre : même forme, même hauteur. Elle reste seulement non
+      // redimensionnable directement (sa durée vient de ses filles).
       const meta = l.aDesEnfants;
-      const hMeta = Math.max(3, Math.round(h / 3));
-      const yMeta = y + Math.round((h - hMeta) / 2);
       const fond = svgEl('rect', {
-        x, y: meta ? yMeta : y, width: w, height: meta ? hMeta : h,
+        x, y, width: w, height: h,
         rx: geo.rayon, ry: geo.rayon,
         class: 'zfa-gantt-barre-tache' + (meta ? ' zfa-gantt-meta' : '') });
       fond.style.fill = couleur;
-      fond.style.opacity = meta ? '0.75' : '0.35';
+      fond.style.opacity = meta ? '0.5' : '0.35';
       groupe.appendChild(fond);
 
-      if (!meta && l.avancement > 0) {
+      if (l.avancement > 0) {
         const rempli = svgEl('rect', { x, y,
           width: Math.max(2, w * Math.min(100, l.avancement) / 100), height: h,
           rx: geo.rayon, ry: geo.rayon, class: 'zfa-gantt-rempli' });
@@ -13357,7 +13354,7 @@ class MoteurFrise {
       // seul ; à deux, les dates ; à trois, le statut et l'avancement. On
       // n'écrit jamais ce qui ne tient pas, la troncature étant plus pénible
       // qu'une information absente.
-      if (w > 55 && !meta) {
+      if (w > 55) {
         const textes = [l.intitule];
         if (geo.lignes >= 2) textes.push(debut + '  →  ' + fin);
         if (geo.lignes >= 3) {
@@ -13373,22 +13370,6 @@ class MoteurFrise {
           t.textContent = texte.length > max ? texte.slice(0, max - 1) + '…' : texte;
           groupe.appendChild(t);
         });
-      }
-      // Embouts de barre de synthèse : un petit triangle vers le bas à chaque
-      // extrémité réelle. Ils disent que la barre résume et ne se travaille pas
-      // elle-même. Sur un bout coupé par la fenêtre, pas d'embout : le bord net
-      // signale que la barre continue au-delà.
-      if (meta) {
-        const yb = yMeta + hMeta;
-        const bouts = [];
-        if (!coupeG) bouts.push(x);
-        if (!coupeD) bouts.push(x + w);
-        for (const bx of bouts) {
-          groupe.appendChild(svgEl('path', {
-            d: 'M ' + (bx - 4) + ' ' + yb + ' L ' + (bx + 4) + ' ' + yb
-              + ' L ' + bx + ' ' + (yb + 5) + ' Z',
-            class: 'zfa-gantt-embout' }));
-        }
       }
       const bulle = svgEl('title', {});
       bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + debut + ' → ' + fin
