@@ -1321,16 +1321,15 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-artic-jauge-in { height: 100%; background: var(--interactive-accent); }
 
-.zfa-artic-accroche { cursor: crosshair; opacity: 0; transition: opacity 0.12s; }
-.zfa-artic-noeud:hover .zfa-artic-accroche { opacity: 1; }
+/* Points de connexion : deux demi-cercles toujours visibles sur le bord droit
+   de la carte. Parenté = gris, blocage = accent (comme leurs arêtes). */
+.zfa-artic-accroche { cursor: crosshair; }
 .zfa-artic-accroche-cible { fill: transparent; }
 .zfa-artic-accroche-pastille {
-  stroke: var(--background-primary); stroke-width: 2;
-  transition: r 0.1s;
+  stroke: var(--background-primary); stroke-width: 1.5;
+  transition: transform 0.1s;
 }
-.zfa-artic-accroche:hover .zfa-artic-accroche-pastille { r: 6; }
-/* Deux pastilles pleines, distinguées par la couleur — comme leurs arêtes :
-   parenté = gris, blocage = accent. */
+.zfa-artic-accroche:hover .zfa-artic-accroche-pastille { transform: scale(1.35); }
 .zfa-artic-accroche-hier .zfa-artic-accroche-pastille { fill: var(--text-muted); }
 .zfa-artic-accroche-bloque .zfa-artic-accroche-pastille { fill: var(--interactive-accent); }
 .zfa-artic-noeud.est-cible .zfa-artic-carte {
@@ -1350,8 +1349,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   stroke: var(--background-modifier-border); stroke-width: 1.5;
 }
 .zfa-artic-arete.zfa-artic-bloque {
-  stroke: var(--interactive-accent); stroke-width: 1.5;
-  stroke-dasharray: 4 3; opacity: 0.6;
+  stroke: var(--interactive-accent); stroke-width: 1.5; opacity: 0.85;
 }
 .zfa-artic-arete-cible {
   fill: none; stroke: transparent; stroke-width: 12;
@@ -1376,14 +1374,20 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   background: var(--background-primary); border: 1px solid var(--interactive-accent);
   border-radius: 3px;
 }
-.zfa-artic-props { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
-.zfa-artic-prop { display: flex; gap: 6px; font-size: 0.75em; line-height: 1.3; }
-.zfa-artic-prop-cle { color: var(--text-muted); flex: 0 0 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.zfa-artic-prop-val { flex: 1 1 60%; overflow: hidden; text-overflow: ellipsis; }
-.zfa-artic-prop-val .metadata-input-longtext,
-.zfa-artic-prop-val input { font-size: inherit; min-height: 0; padding: 0; }
-.zfa-artic-famchoix { margin-top: 4px; }
-.zfa-artic-famsel { width: 100%; font-size: 0.75em; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: 4px; }
+.zfa-artic-props {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-top: 5px; padding-top: 4px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.zfa-artic-prop { display: flex; gap: 6px; font-size: 0.75em; line-height: 1.35; }
+.zfa-artic-prop-cle {
+  color: var(--text-muted); flex: 0 0 42%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.zfa-artic-prop-val {
+  flex: 1 1 58%; color: var(--text-normal);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 /* Modes Rétracté / Détaillé : carte de hauteur variable, chevron de dépli. */
 .zfa-artic-carte { position: relative; overflow: hidden; }

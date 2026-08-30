@@ -14547,31 +14547,20 @@ class MoteurArticulation {
     }
 
     if (deplie) {
+      // En détaillé, la carte AFFICHE les propriétés cochées (lecture seule).
+      // La modification passe par le formulaire (double-clic, crayon, clic droit).
       const cols = (this.ctx.ordre && this.ctx.ordre()) || [];
       if (cols.length) {
         const tb = corps.createDiv({ cls: 'zfa-artic-props' });
         for (const col of cols) {
+          const brut = col.valeur ? col.valeur(n.ref) : null;
+          const txt = MoteurArticulation.texteValeur(
+            brut && typeof brut === 'object' && 'data' in brut ? brut.data : brut);
           const rg = tb.createDiv({ cls: 'zfa-artic-prop' });
           rg.createSpan({ cls: 'zfa-artic-prop-cle', text: col.nom });
-          const val = rg.createSpan({ cls: 'zfa-artic-prop-val' });
-          if (!this._rendreValeurTypee(val, col, n.ref)) {
-            const brut = col.valeur ? col.valeur(n.ref) : null;
-            val.setText(MoteurArticulation.texteValeur(brut && typeof brut === 'object' && 'data' in brut ? brut.data : brut));
-          }
+          rg.createSpan({ cls: 'zfa-artic-prop-val', text: txt || '—' });
         }
       }
-
-      const pied = corps.createDiv({ cls: 'zfa-artic-famchoix' });
-      const sel = pied.createEl('select', { cls: 'zfa-artic-famsel' });
-      for (const f of (this.greffon.settings.famillesTaches || [])) {
-        sel.createEl('option', { value: f.id, text: f.nom || f.id });
-      }
-      sel.value = n.famille || '';
-      sel.addEventListener('pointerdown', (e) => e.stopPropagation());
-      sel.addEventListener('change', async () => {
-        await this.ctx.poserFamille(n.ref, sel.value);
-        this.dessiner();
-      });
     }
 
     carte.addEventListener('pointerdown', (e) => {
@@ -14579,7 +14568,8 @@ class MoteurArticulation {
       this.glisserNoeud(e, n.ref, gn);
     });
     // Clic simple : sélectionne la carte (⌫ pour la supprimer).
-    // Double-clic : ouvre la note. Le titre garde son propre double-clic.
+    // Double-clic : formulaire de modification. Le titre garde son propre
+    // double-clic (renommage en place).
     carte.addEventListener('click', (e) => {
       if (gn.dataset.aGlisse) { delete gn.dataset.aGlisse; return; }
       this.selectionnerNoeud(n.ref, gn);
@@ -14587,7 +14577,8 @@ class MoteurArticulation {
     carte.addEventListener('dblclick', (e) => {
       if (e.target.closest('.zfa-artic-titre')) return;
       e.stopPropagation();
-      this.greffon.ouvrir(n.ref, e.metaKey || e.ctrlKey);
+      new ModaleTache(this.app, this.greffon,
+        { ref: n.ref, apres: () => this.dessiner() }).open();
     });
 
     const hN = n.h || ARTIC_H;
@@ -14597,9 +14588,11 @@ class MoteurArticulation {
         class: 'zfa-artic-accroche zfa-artic-accroche-' + type,
         transform: 'translate(' + ARTIC_W + ',' + (hN * part) + ')' });
       ga.dataset.type = type;
-      // Cible large invisible pour viser à la souris, puis la pastille visible.
+      // Cible large invisible pour viser à la souris, puis le demi-cercle
+      // toujours visible qui marque le point de connexion, sur le bord de la carte.
       ga.appendChild(svgEl('circle', { r: 11, class: 'zfa-artic-accroche-cible' }));
-      ga.appendChild(svgEl('circle', { r: 5, class: 'zfa-artic-accroche-pastille' }));
+      ga.appendChild(svgEl('path', {
+        d: 'M 0 -5 A 5 5 0 0 1 0 5 Z', class: 'zfa-artic-accroche-pastille' }));
       const t = svgEl('title', {});
       t.textContent = type === 'hier'
         ? tr('Clic : nouvelle sous-tâche. Maintenir et tirer : relier une tâche existante.')
@@ -14609,28 +14602,6 @@ class MoteurArticulation {
       gn.appendChild(ga);
     }
     g.appendChild(gn);
-  }
-
-  // Rend une valeur de propriété avec le widget de type d'Obsidian. true si le
-  // widget a pris la main, false sinon (l'appelant retombe sur du texte).
-  _rendreValeurTypee(hote, col, ref) {
-    const id = String(col.id || '');
-    if (id.startsWith('file.') || id.startsWith('formula.')) return false;
-    const widgets = this.app.metadataTypeManager
-      && this.app.metadataTypeManager.registeredTypeWidgets;
-    const w = widgets && widgets[col.type];
-    if (!w || typeof w.render !== 'function') return false;
-    const v = col.valeur ? col.valeur(ref) : null;
-    const brut = (v && typeof v === 'object' && 'data' in v) ? v.data : v;
-    try {
-      w.render(hote, brut == null ? '' : brut, {
-        app: this.app, key: col.champ, sourcePath: ref + '.md',
-        blur: () => {},
-        onChange: (nv) => this.greffon.majTache(ref, { [col.champ]: nv }),
-      });
-      hote.addClass('bases-metadata-value', 'metadata-property-value');
-      return true;
-    } catch (e) { hote.empty(); return false; }
   }
 
   // Réplique locale de VueFriseBase.texteValeur (hors de portée depuis ce
