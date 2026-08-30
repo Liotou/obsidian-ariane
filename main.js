@@ -14108,8 +14108,11 @@ class MoteurArticulation {
     gn.appendChild(fo);
     const carte = fo.createDiv({ cls: 'zfa-artic-carte' + (n.jalon ? ' est-jalon' : '') });
     carte.dataset.statut = n.statut;
+    const fam = this.greffon.familleDe(n.famille);
+    carte.style.setProperty('--zfa-fam-couleur', fam.couleur || '#888888');
     const ic = carte.createSpan({ cls: 'zfa-artic-fam' });
-    obsidian.setIcon(ic, { lecture: 'book-open', production: 'file-pen', action: 'zap' }[n.famille] || 'circle');
+    ic.setAttribute('aria-label', fam.nom || n.famille || '');
+    obsidian.setIcon(ic, fam.icone || 'circle');
     const corps = carte.createDiv({ cls: 'zfa-artic-corps' });
     corps.createDiv({ cls: 'zfa-artic-titre', text: n.intitule });
     const bas = corps.createDiv({ cls: 'zfa-artic-bas' });
