@@ -9485,6 +9485,26 @@ class Ariane extends obsidian.Plugin {
 
   /* ----------------------------- Frise Gantt ----------------------------- */
 
+  // Type d'une propriété de base, à la source, sans deviner d'après le nom :
+  // « properties[nom].widget » porte le widget assigné (date, checkbox…),
+  // « getTypeInfo » sert de repli quand rien n'est assigné. Les colonnes de
+  // fichier et de formule n'ont pas de type de propriété. En 1.12
+  // « getAssignedType » a disparu : on ne s'appuie plus dessus.
+  static typeProprieteBase(gestionnaire, id) {
+    const s = String(id == null ? '' : id);
+    if (s.startsWith('file.') || s.startsWith('formula.')) return '';
+    const nom = s.replace(/^note\./, '');
+    try {
+      const p = gestionnaire && gestionnaire.properties;
+      const assigne = p && p[nom] && p[nom].widget;
+      if (assigne) return String(assigne);
+      const info = gestionnaire && typeof gestionnaire.getTypeInfo === 'function'
+        ? gestionnaire.getTypeInfo(nom) : null;
+      const t = info && info.expected && info.expected.type;
+      return t ? String(t) : '';
+    } catch (e) { return ''; }
+  }
+
   // Les dates circulent en chaînes « AAAA-MM-JJ » et l'arithmétique passe par
   // UTC. Un Date local franchissant un changement d'heure décale d'un jour, ce
   // qui déplacerait des barres deux fois par an sans qu'on comprenne pourquoi.
@@ -11858,6 +11878,13 @@ class MoteurFrise {
     return Math.round(this.baseLigne * mult);
   }
 
+  // L'en-tête — et les lignes de regroupement — gardent la hauteur d'une ligne
+  // « fine » : elles ne suivent pas le multiplicateur rowHeight, seules les
+  // lignes de données s'épaississent, comme dans le tableau des bases.
+  get hauteurEntete() {
+    return Math.max(28, Math.round(this.baseLigne));
+  }
+
   // Épaisseur de la barre, et ce qu'on peut y écrire. Une barre suit la
   // hauteur de ligne mais cesse de grossir au-delà de 64 px : au-delà elle
   // cesserait d'être une barre. La place gagnée sert alors au texte.
@@ -11944,7 +11971,10 @@ class MoteurFrise {
       if (colTri === '__arbre') {
         mode = 'intitule';
       } else if (col) {
-        for (const t of taches) t._cle = col.valeur(t.ref);
+        // Trier sur la donnée brute quand la colonne l'expose (chaîne ISO pour
+        // une date) : son rendu localisé se classerait de travers.
+        const cle = col.valeurBrute || col.valeur;
+        for (const t of taches) t._cle = cle(t.ref);
         mode = 'cle';
       }
       sensTri = this.ctx.lire('triColonneSens') === -1 ? -1 : 1;
@@ -11953,7 +11983,10 @@ class MoteurFrise {
     const planifiees = toutes.filter((l) => l.debut || l.echeance);
     const nonPlanifiees = toutes.filter((l) => !l.debut && !l.echeance);
 
-    this.dessinerReglages(c, nTotal, planifiees.length);
+    // Le bandeau de réglages (zoom, hauteur de ligne, filtres…) n'appartient
+    // pas à une base : dans la vue de base, ces options passent par « Configurer
+    // la vue ». On ne le dessine donc que pour la vue autonome.
+    if (this.ctx.avecFiltres) this.dessinerReglages(c, nTotal, planifiees.length);
     this.dessinerCascade(c);
     if (nonPlanifiees.length) this.dessinerTiroir(c, nonPlanifiees);
 
@@ -11967,11 +12000,11 @@ class MoteurFrise {
     const cfg = this.calculerEtendue(planifiees, aujourdhui);
     const lignes = this.visibles(planifiees);
     this._H = this.hauteurLigne;
-    // L'en-tête porte deux étages, les mois puis les semaines ou les jours,
-    // mais ils sont proportionnels : il peut donc épouser la hauteur de ligne
-    // et tomber à 30 px en lignes fines, exactement comme un en-tête de
-    // tableau. En dessous de 28 les deux étages cessent d'être lisibles.
-    this._hEntete = Math.max(28, this._H);
+    // L'en-tête reste fixe quelle que soit la hauteur de ligne, comme dans le
+    // tableau des bases : seules les lignes de données s'épaississent. On suit
+    // la variable d'Obsidian si elle existe, sinon 34 px — assez pour les deux
+    // étages (mois puis semaines ou jours), illisibles en dessous de 28.
+    this._hEntete = this.hauteurEntete;
     this._bande = Math.round(this._hEntete * 0.52);
     this._basEntete = this._bande + Math.round((this._hEntete - this._bande) / 2) + 1;
     // On pose la variable des bases sur la racine : tout le balisage repris du
@@ -12184,12 +12217,7 @@ class MoteurFrise {
   // des bases. On interroge le gestionnaire de types d'Obsidian plutôt que de
   // deviner d'après le nom.
   typeColonne(id) {
-    if (String(id).startsWith('file.')) return '';
-    if (String(id).startsWith('formula.')) return '';
-    try {
-      const m = this.app.metadataTypeManager;
-      return (m && m.getAssignedType && m.getAssignedType(String(id).replace(/^note\./, ''))) || '';
-    } catch (e) { return ''; }
+    return Ariane.typeProprieteBase(this.app.metadataTypeManager, id);
   }
 
   // Le contenu d'une cellule, dans le balisage qu'emploie le tableau des bases :
@@ -12205,7 +12233,14 @@ class MoteurFrise {
       let m;
       while ((m = re.exec(texte))) liens.push({ cible: m[1].trim(), libelle: (m[2] || m[1]).trim() });
     }
+    // Hors colonnes de liens : on confie la cellule au widget de type
+    // d'Obsidian (le même que le panneau de propriétés et le tableau des
+    // bases). Une date sort au format des propriétés, avec le sélecteur de
+    // calendrier ; une case devient une vraie case ; un nombre est aligné.
+    // L'édition écrit dans l'entête de la note via majTache. Le repli
+    // textuel reste derrière si le widget manque ou lève.
     if (!liens.length) {
+      if (this.rendreCelluleTypee(cellule, col, ligne)) return;
       cellule.createSpan({ cls: 'zfa-gantt-valeur', text: texte });
       return;
     }
@@ -12231,15 +12266,45 @@ class MoteurFrise {
     });
   }
 
+  // Rend une cellule avec le widget de type d'Obsidian. Renvoie true si le
+  // widget a pris la main, false s'il n'y en a pas pour ce type ou s'il a levé.
+  rendreCelluleTypee(cellule, col, ligne) {
+    const cle = String(col.cle || '');
+    if (cle.startsWith('file.') || cle.startsWith('formula.')) return false;
+    const type = this.typeColonne(cle);
+    const widgets = this.app.metadataTypeManager
+      && this.app.metadataTypeManager.registeredTypeWidgets;
+    const widget = widgets && widgets[type];
+    if (!widget || typeof widget.render !== 'function') return false;
+
+    const champ = cle.replace(/^note\./, '');
+    const brut = col.valeurBrute ? col.valeurBrute(ligne.ref) : col.valeur(ligne.ref);
+    const ctx = {
+      app: this.app,
+      key: champ,
+      sourcePath: (col.chemin && col.chemin(ligne.ref)) || (ligne.ref + '.md'),
+      blur: () => {},
+      onChange: (v) => {
+        if (this.greffon && typeof this.greffon.majTache === 'function') {
+          this.greffon.majTache(ligne.ref, { [champ]: v });
+        }
+      },
+    };
+    try {
+      widget.render(cellule, brut == null ? '' : brut, ctx);
+      cellule.addClass('bases-metadata-value', 'metadata-property-value');
+      return true;
+    } catch (e) {
+      cellule.empty();
+      cellule.removeClass('bases-metadata-value', 'metadata-property-value');
+      return false;
+    }
+  }
+
   iconeColonne(id) {
     if (String(id).startsWith('file.')) return 'info';
     if (String(id).startsWith('formula.')) return 'variable';
-    const nom = String(id).replace(/^note\./, '');
-    let type = '';
-    try {
-      const m = this.app.metadataTypeManager;
-      type = (m && m.getAssignedType && m.getAssignedType(nom)) || '';
-    } catch (e) { /* le gestionnaire n'est pas là : on retombe sur le texte */ }
+    const type = Ariane.typeProprieteBase(this.app.metadataTypeManager, id);
     return {
       text: 'text', number: 'binary', checkbox: 'square-check', date: 'calendar',
       datetime: 'clock', multitext: 'list', tags: 'tags', aliases: 'forward',
@@ -12262,47 +12327,71 @@ class MoteurFrise {
     await this.ctx.ecrire('columnSize', table);
   }
 
+  // Repositionne en-tête et cellules après un changement de largeur, et cale la
+  // largeur du panneau gauche sur la somme des colonnes. Toute la frise se
+  // décale d'autant : sans retour vivant, on croit que rien ne se passe.
+  _appliquerLargeurs(cols, gauche, table) {
+    let x = 0;
+    for (const c of cols) { c.gauche = x; x += c.largeur; }
+    for (const cel of table.querySelectorAll('.bases-td')) {
+      const c = cols.find((y) => y.cle === cel.dataset.colonne);
+      if (!c) continue;
+      cel.style.left = c.gauche + 'px';
+      cel.style.width = c.largeur + 'px';
+    }
+    table.style.width = x + 'px';
+    gauche.style.width = x + 'px';
+  }
+
+  // Fait suivre une largeur de colonne à la souris pendant un glisser, puis la
+  // persiste au relâchement. Partagé par la poignée d'en-tête et le séparateur.
+  _glisserLargeur(col, evtDepart, cols, gauche, table, marqueur) {
+    if (evtDepart.button !== 0) return;
+    evtDepart.preventDefault();
+    evtDepart.stopPropagation();
+    if (marqueur) marqueur.addClass('is-active');
+    const x0 = evtDepart.clientX;
+    const large0 = col.largeur;
+    const bouger = (ev) => {
+      col.largeur = Math.max(60, Math.min(600, large0 + ev.clientX - x0));
+      this._appliquerLargeurs(cols, gauche, table);
+      if (this._placerSeparateur) this._placerSeparateur();
+    };
+    const lacher = async () => {
+      document.removeEventListener('pointermove', bouger);
+      document.removeEventListener('pointerup', lacher);
+      if (marqueur) marqueur.removeClass('is-active');
+      await this.poserLargeurColonne(col.cle, col.largeur);
+      this.dessiner();
+    };
+    document.addEventListener('pointermove', bouger);
+    document.addEventListener('pointerup', lacher);
+  }
+
   // Poignée de redimensionnement, au même endroit et de la même classe que
   // celle du tableau des bases, pour qu'elle en reçoive le style et le curseur.
   poserResizer(cellule, col, cols, gauche, table) {
     const r = cellule.createDiv({ cls: 'bases-table-header-resizer' });
-    r.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      r.addClass('is-active');
-      const x0 = e.clientX;
-      const large0 = col.largeur;
-      // Toute la colonne suit la souris, en-tête et cellules, et la frise se
-      // décale d'autant. Ne bouger que l'en-tête, comme je le faisais, ne
-      // donnait aucun retour et laissait croire que rien ne se passait.
-      const appliquer = (px) => {
-        col.largeur = px;
-        let x = 0;
-        for (const c of cols) { c.gauche = x; x += c.largeur; }
-        for (const cel of table.querySelectorAll('.bases-td')) {
-          const c = cols.find((y) => y.cle === cel.dataset.colonne);
-          if (!c) continue;
-          cel.style.left = c.gauche + 'px';
-          cel.style.width = c.largeur + 'px';
-        }
-        table.style.width = x + 'px';
-        gauche.style.width = x + 'px';
-      };
-      const bouger = (ev) => {
-        appliquer(Math.max(60, Math.min(600, large0 + ev.clientX - x0)));
-      };
-      const lacher = async () => {
-        document.removeEventListener('pointermove', bouger);
-        document.removeEventListener('pointerup', lacher);
-        r.removeClass('is-active');
-        await this.poserLargeurColonne(col.cle, col.largeur);
-        this.dessiner();
-      };
-      document.addEventListener('pointermove', bouger);
-      document.addEventListener('pointerup', lacher);
-    });
+    r.addEventListener('pointerdown',
+      (e) => this._glisserLargeur(col, e, cols, gauche, table, r));
     return r;
+  }
+
+  // Séparateur pleine hauteur entre le panneau gauche et la frise : il tombe
+  // sur le bord droit du panneau et pilote la largeur de la dernière colonne,
+  // donc celle du panneau. La poignée d'en-tête ne se prenait qu'en haut.
+  poserSeparateurVertical(gauche, table, cols) {
+    if (!cols.length) return;
+    const env = gauche.parentElement;
+    if (!env) return;
+    const sep = env.createDiv({ cls: 'zfa-gantt-separateur-v' });
+    const derniere = cols[cols.length - 1];
+    this._placerSeparateur = () => {
+      sep.style.left = (gauche.offsetLeft + gauche.offsetWidth) + 'px';
+    };
+    this._placerSeparateur();
+    sep.addEventListener('pointerdown',
+      (e) => this._glisserLargeur(derniere, e, cols, gauche, table, sep));
   }
 
   // Le tri par en-tête, comme dans le tableau : un clic range en ordre
@@ -12330,6 +12419,7 @@ class MoteurFrise {
     const colonnes = (this.ctx.colonnes && this.ctx.colonnes()) || [];
     const H = this._H;
     const hEntete = this._hEntete;
+    this._placerSeparateur = null;
 
     const conteneur = gauche.createDiv({ cls: 'bases-table-container zfa-gantt-table' });
     const table = conteneur.createDiv({ cls: 'bases-table' });
@@ -12341,7 +12431,9 @@ class MoteurFrise {
     const cols = colonnes.map((c, i) => ({
       cle: c.cle, nom: c.nom, icone: this.iconeColonne(c.cle),
       type: this.typeColonne(c.cle),
-      largeur: this.largeurColonne(c.cle), valeur: c.valeur, arbre: i === 0,
+      largeur: this.largeurColonne(c.cle), valeur: c.valeur,
+      valeurBase: c.valeurBase, valeurBrute: c.valeurBrute, chemin: c.chemin,
+      arbre: i === 0,
     }));
     if (!cols.length) { gauche.style.width = '0px'; gauche.addClass('zfa-gantt-sans-colonnes'); return; }
     let total = 0;
@@ -12402,14 +12494,10 @@ class MoteurFrise {
           td.title = c.nom + ' : ' + String(c.valeur(l.ref) || '');
           continue;
         }
-        // La hiérarchie s'accroche à la première colonne : retrait, poignée de
-        // réordonnancement et chevron. Le contenu reste celui de la propriété.
+        // La hiérarchie s'accroche à la première colonne : retrait et chevron.
+        // Le contenu reste celui de la propriété.
         cellule.addClass('zfa-gantt-cellule-arbre');
         cellule.style.paddingLeft = (l.niveau * 15) + 'px';
-        const prise = cellule.createSpan({ cls: 'zfa-gantt-prise', text: '⠿' });
-        prise.title = tr('Glisser pour réordonner parmi les tâches de même rang');
-        prise.addEventListener('pointerdown',
-          (e) => this.reordonner(e, l, lignes, rang, tbody));
         if (l.aDesEnfants) {
           const chev = cellule.createSpan({ cls: 'zfa-gantt-chevron',
             text: this.replies.has(l.ref) ? '▸' : '▾' });
@@ -12426,62 +12514,8 @@ class MoteurFrise {
         td.title = l.ref + ' · ' + l.intitule;
       }
     });
-  }
 
-  // Réordonner ne vaut qu'entre tâches de même rang : un enfant ne peut pas
-  // passer devant son parent sans changer de parent, ce qui serait un autre
-  // geste. On ne propose donc que les positions valides.
-  reordonner(e, ligne, lignes, rang, corps) {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const parent = Ariane.refDeLien(ligne.parent || '');
-    const freres = lignes.filter((x) => x.niveau === ligne.niveau
-      && Ariane.refDeLien(x.parent || '') === parent);
-    if (freres.length < 2) {
-      new obsidian.Notice(tr('Rien à réordonner : cette tâche n a pas de sœur.'));
-      return;
-    }
-    const rangees = [...corps.children];
-    const boites = freres.map((f) => {
-      const el = rangees.find((r) => r.dataset.ref === f.ref);
-      return { ref: f.ref, haut: el.offsetTop, bas: el.offsetTop + el.offsetHeight };
-    });
-    const trait = corps.createDiv({ cls: 'zfa-gantt-insertion' });
-    let cible = freres.findIndex((f) => f.ref === ligne.ref);
-    const boiteCorps = corps.getBoundingClientRect();
-    const bouger = (ev) => {
-      const y = ev.clientY - boiteCorps.top + corps.scrollTop;
-      cible = boites.length;
-      for (let i = 0; i < boites.length; i++) {
-        if (y < (boites[i].haut + boites[i].bas) / 2) { cible = i; break; }
-      }
-      trait.style.top = (cible < boites.length ? boites[cible].haut
-        : boites[boites.length - 1].bas) + 'px';
-    };
-    const lacher = async () => {
-      document.removeEventListener('pointermove', bouger);
-      document.removeEventListener('pointerup', lacher);
-      trait.remove();
-      const depart = freres.findIndex((f) => f.ref === ligne.ref);
-      if (cible === depart || cible === depart + 1) { this.dessiner(); return; }
-      const ordre = freres.map((f) => f.ref);
-      ordre.splice(depart, 1);
-      ordre.splice(cible > depart ? cible - 1 : cible, 0, ligne.ref);
-      for (let i = 0; i < ordre.length; i++) {
-        await this.greffon.majTache(ordre[i], { ordre: i + 1 });
-      }
-      // Réordonner sans passer en tri manuel ne changerait rien à l'écran :
-      // on bascule, plutôt que de laisser Monsieur devant un geste sans effet.
-      if ((this.ctx.lire('tri') || 'date') !== 'manuel') {
-        await this.ctx.ecrire('tri', 'manuel');
-        new obsidian.Notice(tr('Tri passé en manuel.'));
-      }
-      this.dessiner();
-    };
-    bouger(e);
-    document.addEventListener('pointermove', bouger);
-    document.addEventListener('pointerup', lacher);
+    this.poserSeparateurVertical(gauche, table, cols);
   }
 
   /* ------------------------------- Le fond ------------------------------- */
@@ -12923,6 +12957,9 @@ class MoteurFrise {
     }
     g.appendChild(defs);
     const H = this._H;
+    // Mémorisées pour que le glissé d'une barre les fasse suivre en direct :
+    // voir _bougerFleches, appelé depuis saisir.
+    this._fleches = [];
     for (const a of aretes) {
       if (!rang.has(a.de) || !rang.has(a.vers)) continue;
       const src = lignes[rang.get(a.de)];
@@ -12935,25 +12972,47 @@ class MoteurFrise {
       const x2 = this.x(cfg, debCib);
       const y2 = this._hEntete + rang.get(a.vers) * H + H / 2;
       const rouge = fautives.has(a.de + ' ' + a.vers);
-      // Une courbe de Bézier plutôt qu'un coude : elle se suit mieux à l'oeil
-      // quand plusieurs flèches se croisent, et l'écartement des poignées de
-      // contrôle rend le cas où la cible est à gauche lisible sans traitement
-      // particulier, la courbe bombant d'elle-même.
-      const ecart = Math.max(34, Math.abs(x2 - x1) / 2);
-      const d = 'M ' + x1 + ' ' + y1
-        + ' C ' + (x1 + ecart) + ' ' + y1 + ', ' + (x2 - ecart) + ' ' + y2
-        + ', ' + x2 + ' ' + y2;
-      g.appendChild(svgEl('path', { d,
+      const chemin = svgEl('path', { d: this._cheminFleche(x1, y1, x2, y2),
         'marker-end': 'url(#zfa-pointe-fleche' + (rouge ? '-rouge' : '') + ')',
-        class: 'zfa-gantt-fleche' + (rouge ? ' zfa-gantt-rouge' : '') }));
-      if (a.libelle && Math.abs(x2 - x1) > 60) {
-        const t = svgEl('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 4,
+        class: 'zfa-gantt-fleche' + (rouge ? ' zfa-gantt-rouge' : '') });
+      g.appendChild(chemin);
+      let etiquette = null;
+      if (a.libelle) {
+        etiquette = svgEl('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 4,
           class: 'zfa-gantt-fleche-libelle' });
-        t.textContent = a.libelle;
-        g.appendChild(t);
+        etiquette.textContent = a.libelle;
+        if (Math.abs(x2 - x1) <= 60) etiquette.style.display = 'none';
+        g.appendChild(etiquette);
       }
+      this._fleches.push({ de: a.de, vers: a.vers, chemin, etiquette, x1, y1, x2, y2 });
     }
     svg.appendChild(g);
+  }
+
+  // Une courbe de Bézier plutôt qu'un coude : elle se suit mieux à l'oeil quand
+  // plusieurs flèches se croisent, et l'écartement des poignées de contrôle
+  // rend lisible le cas où la cible est à gauche, la courbe bombant d'elle-même.
+  _cheminFleche(x1, y1, x2, y2) {
+    const ecart = Math.max(34, Math.abs(x2 - x1) / 2);
+    return 'M ' + x1 + ' ' + y1
+      + ' C ' + (x1 + ecart) + ' ' + y1 + ', ' + (x2 - ecart) + ' ' + y2
+      + ', ' + x2 + ' ' + y2;
+  }
+
+  // Fait suivre en direct, pendant le glissé d'une barre, les flèches qui la
+  // touchent : seul le bout accroché à la tâche déplacée bouge, de dx pixels.
+  _bougerFleches(ref, dx) {
+    for (const f of this._fleches || []) {
+      if (f.de !== ref && f.vers !== ref) continue;
+      const x1 = f.x1 + (f.de === ref ? dx : 0);
+      const x2 = f.x2 + (f.vers === ref ? dx : 0);
+      f.chemin.setAttribute('d', this._cheminFleche(x1, f.y1, x2, f.y2));
+      if (f.etiquette) {
+        f.etiquette.setAttribute('x', (x1 + x2) / 2);
+        f.etiquette.setAttribute('y', (f.y1 + f.y2) / 2 - 4);
+        f.etiquette.style.display = Math.abs(x2 - x1) > 60 ? '' : 'none';
+      }
+    }
   }
 
   /* ------------------------------- Les gestes ---------------------------- */
@@ -12980,6 +13039,7 @@ class MoteurFrise {
       const d = jours(ev) * ppj;
       if (mode === 'deplacer') {
         groupe.setAttribute('transform', 'translate(' + d + ',0)');
+        this._bougerFleches(ligne.ref, d);
       } else if (mode === 'gauche') {
         const w = Math.max(ppj, geo.w - d);
         const nx = geo.x + geo.w - w;
@@ -13165,13 +13225,32 @@ function fabriquerVueFriseBase(greffon) {
       for (const id of props) {
         let nom = id;
         try { nom = this.config.getDisplayName(id) || id; } catch (e) { /* laisse l'identifiant */ }
+        const valeurDe = (ref) => {
+          const e = this._parRef ? this._parRef.get(ref) : null;
+          if (!e) return null;
+          try { return e.getValue(id); } catch (err) { return null; }
+        };
         out.push({
           cle: id,
           nom,
-          valeur: (ref) => {
+          // Chemin de la note de la ligne : sert de sourcePath au widget.
+          chemin: (ref) => {
             const e = this._parRef ? this._parRef.get(ref) : null;
-            if (!e) return '';
-            try { return VueFriseBase.texteValeur(e.getValue(id)); } catch (err) { return ''; }
+            return e && e.file ? e.file.path : '';
+          },
+          // La Value de base elle-même, si un jour on en a besoin telle quelle.
+          valeurBase: (ref) => valeurDe(ref),
+          // Repli textuel : sert au title=, et quand aucun widget ne convient.
+          valeur: (ref) => {
+            try { return VueFriseBase.texteValeur(valeurDe(ref)); } catch (err) { return ''; }
+          },
+          // Clé brute pour le tri : la donnée sous-jacente (chaîne ISO pour une
+          // date) plutôt que son rendu localisé, qui se classerait de travers.
+          valeurBrute: (ref) => {
+            const v = valeurDe(ref);
+            if (v == null) return '';
+            if (typeof v === 'object' && 'data' in v && v.data != null) return v.data;
+            return VueFriseBase.texteValeur(v);
           },
         });
       }

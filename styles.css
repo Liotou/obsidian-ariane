@@ -885,20 +885,45 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   background-color: var(--bases-table-row-background-hover, var(--background-modifier-hover));
 }
 .zfa-gantt-cellule-arbre { gap: 0; }
+/* Le chevron et sa cale tiennent dans la zone de marge de la cellule, sans
+   s'y ajouter : une référence de premier niveau démarre donc au même retrait
+   qu'une cellule ordinaire (et que le tableau des bases), pas 13 px plus loin. */
 .zfa-gantt-chevron {
-  flex: 0 0 auto; width: 13px; color: var(--text-faint);
-  font-size: 0.75em; cursor: pointer;
+  flex: 0 0 auto; width: var(--bases-table-cell-edge-padding, 8px);
+  color: var(--text-faint); font-size: 9px; cursor: pointer;
 }
-.zfa-gantt-cale { flex: 0 0 auto; width: 13px; }
-.zfa-gantt-prise {
-  flex: 0 0 auto; width: 11px; cursor: grab; color: var(--text-faint);
-  opacity: 0; font-size: 11px; line-height: 1; transition: opacity 0.12s;
+.zfa-gantt-cale { flex: 0 0 auto; width: var(--bases-table-cell-edge-padding, 8px); }
+.zfa-gantt-cellule-arbre .zfa-gantt-liens,
+.zfa-gantt-cellule-arbre .zfa-gantt-valeur { padding-left: 0; }
+
+/* Séparateur pleine hauteur entre le panneau gauche et la frise. Enfant de
+   .zfa-gantt-enveloppe (positionnée), calé par le script sur le bord droit du
+   panneau. On l'attrape sur toute la hauteur, pas seulement dans l'en-tête. */
+.zfa-gantt-separateur-v {
+  position: absolute; top: 0; bottom: 0; width: 9px;
+  transform: translateX(-5px);
+  cursor: col-resize; z-index: 8;
 }
-.bases-tr:hover .zfa-gantt-prise { opacity: 1; }
-.zfa-gantt-prise:active { cursor: grabbing; }
+.zfa-gantt-separateur-v::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px;
+  background: transparent; transition: background 0.12s;
+}
+.zfa-gantt-separateur-v:hover::after,
+.zfa-gantt-separateur-v.is-active::after {
+  background: var(--interactive-accent);
+}
 
-
-
+/* Le texte brut d'une cellule (référence, valeur simple, lien) reprend la
+   taille du tableau des bases : 0,875 em (13,125 px pour une cellule à 15) et
+   line-height normal. Surtout pas var(--table-text-size), qui retombe sur
+   --font-text-size (ici 20 px). On ne touche PAS aux cellules à widget
+   (.bases-metadata-value) : leur champ garde la police native des propriétés. */
+.zfa-gantt-valeur,
+.zfa-gantt-table .zfa-gantt-liens,
+.zfa-gantt-table .bases-rendered-value {
+  font-size: 0.875em;
+  line-height: normal;
+}
 .zfa-gantt-valeur {
   min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   padding: 0 var(--bases-table-cell-edge-padding, 8px);
@@ -908,11 +933,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   font-variant-numeric: tabular-nums;
   padding-right: var(--bases-table-cell-edge-padding, 8px);
 }
-.zfa-gantt-insertion {
-  position: absolute; left: 0; right: 0; height: 2px; pointer-events: none;
-  background: var(--interactive-accent); z-index: 7;
-}
-
 .zfa-gantt-droite { flex: 1; overflow: auto; position: relative; }
 .zfa-gantt-svg { display: block; }
 
@@ -1034,20 +1054,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   font-size: var(--font-ui-smaller);
 }
 .zfa-gantt-liste { font-size: var(--font-ui-smaller); height: 26px; padding: 0 22px 0 8px; }
-
-
-.zfa-gantt-prise {
-  flex: 0 0 auto; width: 10px; cursor: grab; color: var(--text-faint);
-  opacity: 0; font-size: 11px; line-height: 1; transition: opacity 0.12s;
-}
-
-.zfa-gantt-prise:active { cursor: grabbing; }
-.zfa-gantt-insertion {
-  position: absolute; left: 0; right: 0; height: 2px; pointer-events: none;
-  background: var(--interactive-accent); z-index: 7;
-}
-
-
 
 
 /* La flèche de tri n'apparaît qu'au survol tant que la colonne n'est pas
