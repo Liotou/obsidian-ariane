@@ -3264,12 +3264,24 @@ class Ariane extends obsidian.Plugin {
     this.addCommand({
       id: 'creer-tache',
       name: tr('Tâches : créer une tâche'),
-      callback: () => new ModaleNouvelleTache(this.app, this, async (champs) => {
-        if (!champs) return;
-        const chemin = await this.creerTache(champs);
-        const f = this.app.vault.getAbstractFileByPath(chemin);
-        if (f) await this.app.workspace.getLeaf(true).openFile(f);
+      callback: () => new ModaleTache(this.app, this, {
+        apres: async (ref) => {
+          const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+          if (f) await this.app.workspace.getLeaf(true).openFile(f);
+        },
       }).open(),
+    });
+    this.addCommand({
+      id: 'modifier-tache',
+      name: tr('Tâches : modifier une tâche…'),
+      callback: () => {
+        const items = this.tachesPourGantt()
+          .map((t) => ({ nom: t.intitule + '  (' + t.ref + ')', cle: t.ref }));
+        if (!items.length) { new obsidian.Notice(tr('Aucune tâche.')); return; }
+        new ChoixListeModal(this.app, tr('Tâche à modifier…'), items, (it) => {
+          if (it) new ModaleTache(this.app, this, { ref: it.cle }).open();
+        }).open();
+      },
     });
     this.addCommand({
       id: 'temps-journal',
@@ -11974,159 +11986,226 @@ class ChoixSourceModal extends obsidian.Modal {
   }
 }
 
-/* ---------------- Formulaire de création d'une tâche ------------------- */
+/* ---------------- Formulaire de tâche (création et modification) ------- */
 
-class ModaleNouvelleTache extends obsidian.Modal {
-  constructor(app, greffon, surValidation) {
+class ModaleTache extends obsidian.Modal {
+  // opts : { ref?, apres?(ref) }. Sans ref → création ; avec ref → édition.
+  constructor(app, greffon, opts) {
     super(app);
     this.greffon = greffon;
-    this.surValidation = surValidation;
+    this.ref = (opts && opts.ref) || null;
+    this.apres = (opts && opts.apres) || null;
     this.repondu = false;
-    this.champs = {
+    this.familles = Array.isArray(greffon.settings.famillesTaches)
+      ? greffon.settings.famillesTaches : [];
+    this.v = {
       intitule: '', statut: 'à faire', priorite: '', debut: '', echeance: '',
-      avancement: 0, jalon: false, source: '', livrable: '', fichier: '',
-      liste: greffon.settings.listeRappelsDefaut,
+      avancement: 0, jalon: false, parent: '',
+      famille: greffon.settings.familleTacheDefaut || 'action',
     };
-    this.famille = 'action';
-    this.saisieProduction = '';
+    this.props = {};
   }
 
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.createEl('h3', { text: tr('Ariane — nouvelle tâche') });
+  async onOpen() {
+    const { contentEl, titleEl } = this;
+    contentEl.addClass('zfa-tache-modale');
+    titleEl.setText(this.ref ? tr('Modifier la tâche') : tr('Nouvelle tâche'));
+    if (this.ref) await this._chargerDepuisNote();
+    else this._synchroniserProps();
     this.corps = contentEl.createDiv();
-    this.dessiner();
+    this._dessiner();
   }
 
-  // Le formulaire se redessine à chaque changement de famille : c'est elle qui
-  // décide du seul champ de désignation offert, et en offrir plusieurs à la
-  // fois inviterait à remplir la contradiction que le schéma interdit.
-  dessiner() {
-    this.corps.empty();
+  async _chargerDepuisNote() {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === this.ref);
+    if (!f) return;
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    const alias = [].concat(fm.aliases || []).map(String).filter(Boolean);
+    this.v.intitule = alias[0] || this.ref;
+    this.v.statut = fm.statut || 'à faire';
+    this.v.priorite = fm.priorite || '';
+    this.v.debut = fm.debut || '';
+    this.v.echeance = fm.echeance || '';
+    this.v.avancement = Number(fm.avancement) || 0;
+    this.v.jalon = fm.jalon === true;
+    this.v.parent = Ariane.refDeLien(fm.parent || '') || '';
+    this.v.famille = Ariane.familleTache(fm, this.familles,
+      this.greffon.settings.familleTacheDefaut);
+    this._fm = fm;
+    this._synchroniserProps();
+  }
+
+  // Aligne this.props sur les propriétés de la famille courante : on garde ce
+  // qui reste valable, on retire le reste, on amorce ce qui manque.
+  _synchroniserProps() {
+    const fam = this.familles.find((x) => x.id === this.v.famille);
+    const garde = {};
+    for (const p of (fam && fam.proprietes) || []) {
+      if (p.cle in this.props) garde[p.cle] = this.props[p.cle];
+      else if (this._fm && this._fm[p.cle] != null) garde[p.cle] = this._fm[p.cle];
+      else garde[p.cle] = '';
+    }
+    this.props = garde;
+  }
+
+  _dessiner() {
     const c = this.corps;
+    c.empty();
 
     new obsidian.Setting(c).setName(tr('Intitulé'))
-      .addText((t) => t.setValue(this.champs.intitule)
-        .onChange((v) => { this.champs.intitule = v; }));
+      .addText((t) => t.setValue(this.v.intitule)
+        .onChange((x) => { this.v.intitule = x; }));
 
-    new obsidian.Setting(c).setName(tr('Famille'))
-      .addDropdown((d) => d
-        .addOption('action', tr('Action'))
-        .addOption('lecture', tr('Lecture'))
-        .addOption('production', tr('Production'))
-        .setValue(this.famille)
-        .onChange((v) => {
-          this.famille = v;
-          this.champs.source = '';
-          this.champs.livrable = '';
-          this.champs.fichier = '';
-          this.saisieProduction = '';
-          this.dessiner();
-        }));
-
-    if (this.famille === 'lecture') {
-      // On ne retient pas 739 clés de citation par cœur : la source se cherche
-      // par auteur, année ou titre, et le choix s'affiche pour être relu.
-      const choisie = this.champs.source
-        ? this.champs.source.replace(/^\[\[|\]\]$/g, '')
-        : tr('aucune pour l instant');
-      new obsidian.Setting(c).setName(tr('Source Zotero'))
-        .setDesc(choisie)
-        .addButton((b) => b.setButtonText(tr('Chercher…')).onClick(() => {
-          const items = this.greffon.sourcesZoteroPourChoix();
-          if (!items.length) {
-            new obsidian.Notice(tr('Aucune fiche Zotero trouvée dans le coffre.'));
-            return;
-          }
-          new ChoixListeModal(this.app, tr('Auteur, titre, année ou clé…'), items, (it) => {
-            if (it) this.champs.source = '[[' + it.cle + ']]';
-            this.dessiner();
-          }).open();
-        }));
-    } else if (this.famille === 'production') {
-      // Note du coffre ou fichier du disque : la forme de la saisie tranche,
-      // et rien n'oblige à trancher tout de suite, le champ pouvant rester vide.
-      const poser = (v) => {
-        this.saisieProduction = v;
-        const r = Ariane.livrableOuFichier(v);
-        this.champs.livrable = r.champ === 'livrable' ? r.valeur : '';
-        this.champs.fichier = r.champ === 'fichier' ? r.valeur : '';
-      };
-      new obsidian.Setting(c).setName(tr('Ce qui est produit'))
-        .setDesc(tr('Une note du coffre, ou le chemin absolu d un fichier. Peut rester vide.'))
-        .addButton((b) => b.setButtonText(tr('Chercher…')).onClick(() => {
-          const items = this.greffon.notesPourChoix();
-          if (!items.length) {
-            new obsidian.Notice(tr('Aucune note à proposer.'));
-            return;
-          }
-          new ChoixListeModal(this.app, tr('Alias ou nom de note…'), items, (it) => {
-            if (it) poser(it.cle);
-            this.dessiner();
-          }).open();
-        }))
-        .addText((t) => t.setPlaceholder(tr('NC-202607081912  ou  /Users/…/soutenance.pptx'))
-          .setValue(this.saisieProduction || '')
-          .onChange(poser));
-    }
-
-    const dateur = (nom, cle) => new obsidian.Setting(c).setName(nom)
-      .addText((t) => {
-        t.inputEl.type = 'date';
-        t.setValue(this.champs[cle]).onChange((v) => { this.champs[cle] = v.trim(); });
+    new obsidian.Setting(c).setName(tr('Famille')).addDropdown((d) => {
+      if (!this.familles.length) d.addOption('action', 'Action');
+      for (const f of this.familles) d.addOption(f.id, f.nom || f.id);
+      d.setValue(this.v.famille).onChange((x) => {
+        this.v.famille = x;
+        this._synchroniserProps();
+        this._dessiner();
       });
-    if (!this.champs.jalon) dateur(tr('Début'), 'debut');
-    dateur(tr('Échéance'), 'echeance');
+    });
 
-    new obsidian.Setting(c).setName(tr('Priorité'))
-      .addDropdown((d) => d
-        .addOption('', tr('(aucune)'))
-        .addOption('haute', tr('haute'))
-        .addOption('moyenne', tr('moyenne'))
-        .addOption('basse', tr('basse'))
-        .setValue(this.champs.priorite)
-        .onChange((v) => { this.champs.priorite = v; }));
+    new obsidian.Setting(c).setName(tr('Statut')).addDropdown((d) => {
+      for (const st of ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée']) {
+        d.addOption(st, tr(st));
+      }
+      d.setValue(this.v.statut).onChange((x) => { this.v.statut = x; });
+    });
+
+    new obsidian.Setting(c).setName(tr('Priorité')).addDropdown((d) => {
+      d.addOption('', tr('(aucune)'));
+      for (const p of ['haute', 'moyenne', 'basse']) d.addOption(p, tr(p));
+      d.setValue(this.v.priorite).onChange((x) => { this.v.priorite = x; });
+    });
 
     new obsidian.Setting(c).setName(tr('Jalon'))
-      .setDesc(tr("Repère de calendrier : seule l'échéance est retenue."))
-      .addToggle((t) => t.setValue(this.champs.jalon)
-        .onChange((v) => { this.champs.jalon = v; this.dessiner(); }));
+      .setDesc(tr("Repère de calendrier : seule l'échéance compte."))
+      .addToggle((t) => t.setValue(this.v.jalon)
+        .onChange((x) => { this.v.jalon = x; this._dessiner(); }));
 
-    new obsidian.Setting(c).setName(tr('Liste Apple Rappels'))
-      .addText((t) => t.setValue(this.champs.liste)
-        .onChange((v) => { this.champs.liste = v.trim(); }));
-
-    const ligne = c.createDiv();
-    ligne.style.textAlign = 'right';
-    ligne.style.marginTop = '10px';
-    const annuler = ligne.createEl('button', { text: tr('Annuler') });
-    annuler.addEventListener('click', () => this.repondre(null));
-    const creer = ligne.createEl('button', { text: tr('Créer') });
-    creer.style.marginLeft = '6px';
-    creer.addEventListener('click', () => {
-      if (!this.champs.intitule.trim()) {
-        new obsidian.Notice(tr('Une tâche sans intitulé ne se retrouve pas.'));
-        return;
-      }
-      if (this.champs.jalon) this.champs.debut = '';
-      this.repondre(this.champs);
+    if (!this.v.jalon) {
+      new obsidian.Setting(c).setName(tr('Début')).addText((t) => {
+        t.inputEl.type = 'date';
+        t.setValue(this.v.debut).onChange((x) => { this.v.debut = x.trim(); });
+      });
+    }
+    new obsidian.Setting(c).setName(tr('Échéance')).addText((t) => {
+      t.inputEl.type = 'date';
+      t.setValue(this.v.echeance).onChange((x) => { this.v.echeance = x.trim(); });
     });
+
+    new obsidian.Setting(c).setName(tr('Avancement'))
+      .addSlider((sl) => sl.setLimits(0, 100, 5).setDynamicTooltip()
+        .setValue(Number(this.v.avancement) || 0)
+        .onChange((x) => { this.v.avancement = x; }));
+
+    new obsidian.Setting(c).setName(tr('Rattachée à'))
+      .setDesc(this.v.parent || tr('aucune'))
+      .addButton((b) => b.setButtonText(tr('Choisir…')).onClick(() => {
+        const items = this.greffon.tachesPourGantt()
+          .filter((t) => t.ref !== this.ref)
+          .map((t) => ({ nom: t.intitule + '  (' + t.ref + ')', cle: t.ref }));
+        if (!items.length) { new obsidian.Notice(tr('Aucune autre tâche.')); return; }
+        new ChoixListeModal(this.app, tr('Tâche parente…'), items, (it) => {
+          if (it) this.v.parent = it.cle;
+          this._dessiner();
+        }).open();
+      }))
+      .addExtraButton((b) => b.setIcon('x').setTooltip(tr('Détacher'))
+        .onClick(() => { this.v.parent = ''; this._dessiner(); }));
+
+    const fam = this.familles.find((x) => x.id === this.v.famille);
+    const ps = (fam && fam.proprietes) || [];
+    if (ps.length) {
+      new obsidian.Setting(c)
+        .setName(tr('Propriétés de la famille : ') + (fam.nom || fam.id)).setHeading();
+      for (const p of ps) this._champProp(c, p);
+    }
+
+    const pied = c.createDiv({ cls: 'zfa-tache-modale-pied' });
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    const ok = pied.createEl('button', {
+      cls: 'mod-cta', text: this.ref ? tr('Enregistrer') : tr('Créer') });
+    ok.onclick = () => this._valider();
   }
 
-  repondre(v) {
-    if (this.repondu) return;
-    this.repondu = true;
-    this.close();
-    this.surValidation(v);
-  }
-
-  onClose() {
-    this.contentEl.empty();
-    if (!this.repondu) {
-      this.repondu = true;
-      this.surValidation(null);
+  _champProp(c, p) {
+    const type = Ariane.TYPE_FR_VERS_OBSIDIAN[p.type] || 'text';
+    const s = new obsidian.Setting(c).setName(p.libelle || p.cle);
+    const cur = this.props[p.cle];
+    if (type === 'checkbox') {
+      s.addToggle((t) => t.setValue(cur === true || cur === 'true')
+        .onChange((x) => { this.props[p.cle] = x; }));
+    } else if (type === 'number') {
+      s.addText((t) => {
+        t.inputEl.type = 'number';
+        t.setValue(cur === '' || cur == null ? '' : String(cur))
+          .onChange((x) => { this.props[p.cle] = x === '' ? '' : Number(x); });
+      });
+    } else if (type === 'date') {
+      s.addText((t) => {
+        t.inputEl.type = 'date';
+        t.setValue(cur ? String(cur) : '').onChange((x) => { this.props[p.cle] = x.trim(); });
+      });
+    } else if (type === 'multitext') {
+      s.setDesc(tr('Valeurs séparées par des virgules.'));
+      s.addText((t) => t.setValue(Array.isArray(cur) ? cur.join(', ') : (cur || ''))
+        .onChange((x) => {
+          this.props[p.cle] = x.split(',').map((z) => z.trim()).filter(Boolean);
+        }));
+    } else if (type === 'link') {
+      s.setDesc(cur ? String(cur) : tr('aucune'));
+      s.addButton((b) => b.setButtonText(tr('Choisir…')).onClick(() => {
+        const items = this.greffon.notesPourChoix();
+        if (!items.length) { new obsidian.Notice(tr('Aucune note à proposer.')); return; }
+        new ChoixListeModal(this.app, tr('Note…'), items, (it) => {
+          if (it) this.props[p.cle] = '[[' + it.cle + ']]';
+          this._dessiner();
+        }).open();
+      }))
+      .addExtraButton((b) => b.setIcon('x')
+        .onClick(() => { this.props[p.cle] = ''; this._dessiner(); }));
+    } else {
+      s.addText((t) => t.setValue(cur == null ? '' : String(cur))
+        .onChange((x) => { this.props[p.cle] = x; }));
     }
   }
+
+  async _valider() {
+    if (this.repondu) return;
+    const titre = this.v.intitule.trim();
+    if (!titre) {
+      new obsidian.Notice(tr('Une tâche sans intitulé ne se retrouve pas.'));
+      return;
+    }
+    this.repondu = true;
+    if (this.v.jalon) this.v.debut = '';
+    let ref = this.ref;
+    if (!ref) {
+      const chemin = await this.greffon.creerTache({ intitule: titre });
+      ref = this.greffon.refDeChemin(chemin);
+    }
+    if (ref) {
+      await this.greffon.renommerTitreTache(ref, titre);
+      const champs = {
+        statut: this.v.statut,
+        priorite: this.v.priorite,
+        debut: this.v.debut,
+        echeance: this.v.echeance,
+        avancement: Number(this.v.avancement) || 0,
+        jalon: this.v.jalon === true,
+        parent: this.v.parent ? '[[' + this.v.parent + ']]' : '',
+        famille: this.v.famille,
+      };
+      for (const [k, val] of Object.entries(this.props)) champs[k] = val;
+      await this.greffon.majTache(ref, champs);
+    }
+    this.close();
+    if (this.apres && ref) this.apres(ref);
+  }
+
+  onClose() { this.contentEl.empty(); }
 }
 
 /* ---------------- Dater une tâche sans date (depuis la frise) --------- */
@@ -13583,6 +13662,10 @@ class MoteurFrise {
 
     m.addItem((i) => i.setTitle(tr('Ouvrir la note')).setIcon('file-text')
       .onClick(() => this.ouvrir(ligne.ref)));
+    m.addItem((i) => i.setTitle(tr('Modifier la tâche…')).setIcon('pencil')
+      .onClick(() => new ModaleTache(this.app, this.greffon, {
+        ref: ligne.ref, apres: () => this.dessiner(),
+      }).open()));
     m.addSeparator();
 
     for (const st of ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée']) {
@@ -14348,6 +14431,27 @@ class MoteurArticulation {
     const ic = carte.createSpan({ cls: 'zfa-artic-fam' });
     ic.setAttribute('aria-label', fam.nom || n.famille || '');
     obsidian.setIcon(ic, fam.icone || 'circle');
+
+    // Crayon (au survol) : ouvre le formulaire de propriétés de la tâche.
+    const crayon = carte.createSpan({ cls: 'zfa-artic-crayon' });
+    crayon.setAttribute('aria-label', tr('Modifier la tâche'));
+    obsidian.setIcon(crayon, 'pencil');
+    crayon.addEventListener('pointerdown', (e) => e.stopPropagation());
+    crayon.addEventListener('click', (e) => {
+      e.stopPropagation();
+      new ModaleTache(this.app, this.greffon, { ref: n.ref, apres: () => this.dessiner() }).open();
+    });
+    carte.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const m = new obsidian.Menu();
+      m.addItem((i) => i.setTitle(tr('Ouvrir la note')).setIcon('file-text')
+        .onClick(() => this.greffon.ouvrir(n.ref)));
+      m.addItem((i) => i.setTitle(tr('Modifier la tâche…')).setIcon('pencil')
+        .onClick(() => new ModaleTache(this.app, this.greffon,
+          { ref: n.ref, apres: () => this.dessiner() }).open()));
+      m.showAtMouseEvent(e);
+    });
 
     const deplie = this._mode === 'detaille' && !(this._plies && this._plies.has(n.ref));
     if (this._mode === 'detaille') {

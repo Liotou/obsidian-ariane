@@ -1382,6 +1382,24 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-chevron { position: absolute; top: 4px; right: 4px; cursor: pointer; color: var(--text-muted); }
 .zfa-artic-carte:has(.zfa-artic-props) { height: auto; }
 
+/* Crayon d'édition, révélé au survol de la carte. */
+.zfa-artic-crayon {
+  position: absolute; top: 3px; right: 4px;
+  display: inline-flex; padding: 2px; border-radius: 4px;
+  color: var(--text-muted); cursor: pointer;
+  opacity: 0; transition: opacity 0.12s;
+}
+.zfa-artic-crayon svg { width: 13px; height: 13px; }
+.zfa-artic-noeud:hover .zfa-artic-crayon { opacity: 1; }
+.zfa-artic-crayon:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.zfa-artic-carte:has(.zfa-artic-chevron) .zfa-artic-crayon { right: 22px; }
+
+/* Formulaire de tâche (création / modification). */
+.zfa-tache-modale .zfa-tache-modale-pied {
+  display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;
+}
+.zfa-tache-modale .setting-item { padding: 8px 0; }
+
 /* Décompte réel de cartes, dans la barre de la vue. */
 .zfa-artic-compte { margin-left: 4px; font-size: 0.8em; color: var(--text-muted); align-self: center; }
 
