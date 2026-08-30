@@ -1166,10 +1166,11 @@ const DEFAULT_SETTINGS = {
 //#endregion 1 · Constantes & i18n
 
 //#region 2 · Utilitaires génériques
-
-/* =========================================================================
- * Fonctions PURES (testables hors Obsidian, pilotées par la config)
- * ========================================================================= */
+// ═══════════════════════════════════════════════════════════════════════════
+//  2 · UTILITAIRES GÉNÉRIQUES
+//  Petits helpers chaîne / date / format sans domaine propre, partagés par
+//  plusieurs sections.
+// ═══════════════════════════════════════════════════════════════════════════
 
 function echapperRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1187,6 +1188,67 @@ function sansLien(s) {
     .replace(/\|.*$/, '')
     .trim();
 }
+
+// Normalise un DOI : minuscule, sans préfixe URL ni « doi: ».
+// Björnsdóttir, Ylönen, Méric, Santaló : sans cette normalisation, une simple
+// mise en minuscules laisse les diacritiques et l'appariement échoue dès que
+// les deux graphies diffèrent d'un accent.
+function sansAccents(s) {
+  return String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function normDoi(s) {
+  if (!s) return '';
+  return String(s)
+    .trim()
+    .replace(/^https?:\/\/(dx\.)?doi\.org\//i, '')
+    .replace(/^doi:\s*/i, '')
+    // Tirets Unicode (‐ ‑ ‒ – — −) -> tiret ASCII : Crossref en renvoie parfois,
+    // ce qui empêchait la correspondance avec un DOI Zotero écrit normalement.
+    .replace(/[‐‑‒–—−]/g, '-')
+    .trim()
+    .toLowerCase();
+}
+
+function jourIsoDe(d) {
+  const p = (n) => (n < 10 ? '0' : '') + n;
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+// Horodatage AAAAMMJJhhmm à partir d'un temps (ms), pour NC-AAAAMMJJhhmm.
+function horodatageNC(ms) {
+  const d = new Date(ms || Date.now());
+  const p = (n) => String(n).padStart(2, '0');
+  return (
+    d.getFullYear() +
+    p(d.getMonth() + 1) +
+    p(d.getDate()) +
+    p(d.getHours()) +
+    p(d.getMinutes())
+  );
+}
+
+// « 95 » -> « 1 h 35 ». Les minutes seules restent lisibles jusqu'à 59.
+function dureeLisible(minutes) {
+  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  if (m < 60) return m + ' min';
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r ? h + ' h ' + String(r).padStart(2, '0') : h + ' h';
+}
+
+// Regroupe les entrées d'une même source : deux annotations d'un même travail
+// ne font qu'une citation, et leurs pages se cumulent dans un seul suffixe.
+// « a, b et c ». Le dernier terme est amené par « et », ce qui marque la fin
+// de l'énumération sans recourir au point-virgule.
+function enumererFrancais(liste) {
+  if (liste.length <= 1) return liste.join('');
+  return liste.slice(0, -1).join(', ') + ' et ' + liste[liste.length - 1];
+}
+
+//#endregion 2 · Utilitaires génériques
+
+//#region 3 · Références Zotero — parsing & appariement
 
 function nomCompletAuteur(c) {
   let s = sansLien(c);
@@ -1284,19 +1346,6 @@ function rangesNotesOrphelines(docStr, titre) {
     } else merged.push({ from: r.from, to: r.to });
   }
   return merged;
-}
-
-// Horodatage AAAAMMJJhhmm à partir d'un temps (ms), pour NC-AAAAMMJJhhmm.
-function horodatageNC(ms) {
-  const d = new Date(ms || Date.now());
-  const p = (n) => String(n).padStart(2, '0');
-  return (
-    d.getFullYear() +
-    p(d.getMonth() + 1) +
-    p(d.getDate()) +
-    p(d.getHours()) +
-    p(d.getMinutes())
-  );
 }
 
 // Analyse "Auteur(s), Année" -> { nom, auteurs[], annee, annee4, premierAuteur }.
@@ -1962,27 +2011,6 @@ function refDepuisNomAttente(nom) {
 
 // --- Références citées via API bibliographique (fonctions pures, testables) ---
 
-// Normalise un DOI : minuscule, sans préfixe URL ni « doi: ».
-// Björnsdóttir, Ylönen, Méric, Santaló : sans cette normalisation, une simple
-// mise en minuscules laisse les diacritiques et l'appariement échoue dès que
-// les deux graphies diffèrent d'un accent.
-function sansAccents(s) {
-  return String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-}
-
-function normDoi(s) {
-  if (!s) return '';
-  return String(s)
-    .trim()
-    .replace(/^https?:\/\/(dx\.)?doi\.org\//i, '')
-    .replace(/^doi:\s*/i, '')
-    // Tirets Unicode (‐ ‑ ‒ – — −) -> tiret ASCII : Crossref en renvoie parfois,
-    // ce qui empêchait la correspondance avec un DOI Zotero écrit normalement.
-    .replace(/[‐‑‒–—−]/g, '-')
-    .trim()
-    .toLowerCase();
-}
-
 // Nom de famille (dernier mot, minuscule) d'un nom d'auteur libre.
 function nomFamille(s) {
   const t = sansLien(String(s || '')).replace(/,.*$/, '').trim(); // « Nom, Prénom » -> « Nom »
@@ -2345,20 +2373,6 @@ function propagerEtiquettes(graphe) {
  * la souris. Il ne mesure donc pas la présence devant l'écran, mais le temps
  * de travail effectif, ce qui est plus honnête pour un journal de thèse.
  * ------------------------------------------------------------------------ */
-
-// « 95 » -> « 1 h 35 ». Les minutes seules restent lisibles jusqu'à 59.
-function dureeLisible(minutes) {
-  const m = Math.max(0, Math.round(Number(minutes) || 0));
-  if (m < 60) return m + ' min';
-  const h = Math.floor(m / 60);
-  const r = m % 60;
-  return r ? h + ' h ' + String(r).padStart(2, '0') : h + ' h';
-}
-
-function jourIsoDe(d) {
-  const p = (n) => (n < 10 ? '0' : '') + n;
-  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
-}
 
 /* ------------------------ Citations repliables ---------------------------
  * Une citation a la forme « ([[CLE|Libellé]] ; [[CLE2|Libellé2]]) ». Repliée,
@@ -2900,15 +2914,6 @@ function clustersDoublons(noms) {
  * que du texte : c'est pourquoi le document sortait sans le moindre champ
  * Zotero. On les rend ici sous la forme attendue par le filtre : « [@clé, p. 12] ».
  * ------------------------------------------------------------------------ */
-
-// Regroupe les entrées d'une même source : deux annotations d'un même travail
-// ne font qu'une citation, et leurs pages se cumulent dans un seul suffixe.
-// « a, b et c ». Le dernier terme est amené par « et », ce qui marque la fin
-// de l'énumération sans recourir au point-virgule.
-function enumererFrancais(liste) {
-  if (liste.length <= 1) return liste.join('');
-  return liste.slice(0, -1).join(', ') + ' et ' + liste[liste.length - 1];
-}
 
 // Rend une grappe de citations. Chaque entrée résolue est soit une chaîne
 // déjà prête, soit { cle, page, travaux } : une source consultée, sa page, et
