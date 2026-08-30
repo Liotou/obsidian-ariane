@@ -1340,16 +1340,16 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   box-shadow: var(--shadow-l);
 }
 
-.zfa-artic-pointe { stroke: none; }
+.zfa-artic-pointe { stroke: none; opacity: 1; }
 .zfa-artic-pointe-hier { fill: var(--background-modifier-border); }
-.zfa-artic-pointe-bloque { fill: var(--interactive-accent); opacity: 0.65; }
+.zfa-artic-pointe-bloque { fill: var(--interactive-accent); }
 
 .zfa-artic-arete { fill: none; pointer-events: none; }
 .zfa-artic-arete.zfa-artic-hier {
   stroke: var(--background-modifier-border); stroke-width: 1.5;
 }
 .zfa-artic-arete.zfa-artic-bloque {
-  stroke: var(--interactive-accent); stroke-width: 1.5; opacity: 0.85;
+  stroke: var(--interactive-accent); stroke-width: 1.5;
 }
 .zfa-artic-arete-cible {
   fill: none; stroke: transparent; stroke-width: 12;
@@ -1382,8 +1382,11 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-prop { display: flex; gap: 6px; font-size: 0.75em; line-height: 1.35; }
 .zfa-artic-prop-cle {
   color: var(--text-muted); flex: 0 0 42%;
+  display: flex; align-items: center; gap: 4px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.zfa-artic-prop-ic { display: inline-flex; flex: 0 0 auto; color: var(--text-faint); }
+.zfa-artic-prop-ic svg { width: 11px; height: 11px; }
 .zfa-artic-prop-val {
   flex: 1 1 58%; color: var(--text-normal);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

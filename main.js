@@ -921,6 +921,9 @@ const DEFAULT_SETTINGS = {
   dossierReferences: '',        // rôle : où déposer les références en attente
   dossierTaches: '',            // rôle : où déposer les notes de tâche
   listeRappelsDefaut: 'Doctorat - Tâches',
+  // Noms d'affichage personnalisés des propriétés communes aux tâches
+  // (clé interne -> intitulé). Vide = intitulé par défaut.
+  libellesTaches: {},
   // Vue Articulation : accrochage magnétique des cartes au glissé.
   articulationAimant: true,
   articulationGrille: 20,       // pas de la grille (0 = pas de grille)
@@ -9482,6 +9485,22 @@ class Ariane extends obsidian.Plugin {
              case: 'checkbox', liste: 'multitext', lien: 'link' };
   }
 
+  // Les propriétés communes à toutes les tâches : identifiant interne, intitulé
+  // affiché par défaut (renommable dans les réglages), icône (fixe).
+  static get PROPS_GENERIQUES() {
+    return [
+      { cle: 'intitule', defaut: 'Intitulé', icone: 'text' },
+      { cle: 'famille', defaut: 'Famille', icone: 'shapes' },
+      { cle: 'statut', defaut: 'Statut', icone: 'circle-dot' },
+      { cle: 'priorite', defaut: 'Priorité', icone: 'flag' },
+      { cle: 'jalon', defaut: 'Jalon', icone: 'diamond' },
+      { cle: 'debut', defaut: 'Début', icone: 'calendar' },
+      { cle: 'echeance', defaut: 'Échéance', icone: 'calendar-check' },
+      { cle: 'avancement', defaut: 'Avancement', icone: 'percent' },
+      { cle: 'parent', defaut: 'Rattachée à', icone: 'git-branch' },
+    ];
+  }
+
   static familleTache(fm, familles, defaut) {
     const liste = Array.isArray(familles) ? familles : null;
     // Appel historique (un seul argument) : on garde la déduction d'origine.
@@ -10339,6 +10358,15 @@ class Ariane extends obsidian.Plugin {
     const liste = Array.isArray(this.settings.famillesTaches) ? this.settings.famillesTaches : [];
     return liste.find((f) => f && f.id === id)
       || { id: id || '', nom: id || tr('(sans famille)'), couleur: '#888888', icone: 'circle', proprietes: [] };
+  }
+
+  // Intitulé affiché d'une propriété générique de tâche : le nom personnalisé
+  // des réglages s'il existe, sinon l'intitulé par défaut.
+  libelleGen(cle) {
+    const perso = (this.settings.libellesTaches || {})[cle];
+    if (perso && String(perso).trim()) return String(perso).trim();
+    const d = Ariane.PROPS_GENERIQUES.find((p) => p.cle === cle);
+    return d ? tr(d.defaut) : cle;
   }
 
   // « Une tâche de la famille X porte les champs de X » : on complète les
@@ -11324,6 +11352,20 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           .onChange(async (v) => { s.familleTacheDefaut = v; await maj(); });
       });
 
+    this._section(c, tr('Noms des propriétés de tâche'));
+    this._aide(c, tr("Renommez l'intitulé affiché des propriétés communes à toutes les tâches (formulaire de création et de modification). Vide = intitulé par défaut. Les icônes ne changent pas."));
+    {
+      const lib = s.libellesTaches || (s.libellesTaches = {});
+      for (const p of Ariane.PROPS_GENERIQUES) {
+        const st = new obsidian.Setting(c).setName(tr(p.defaut));
+        const ic = createSpan({ cls: 'zfa-tache-ic' });
+        obsidian.setIcon(ic, p.icone);
+        st.nameEl.prepend(ic);
+        st.addText((t) => t.setPlaceholder(tr(p.defaut)).setValue(lib[p.cle] || '')
+          .onChange(async (v) => { lib[p.cle] = v.trim(); await maj(); }));
+      }
+    }
+
     this._section(c, tr('Vue Articulation'));
     this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue »."));
     new obsidian.Setting(c)
@@ -12079,19 +12121,26 @@ class ModaleTache extends obsidian.Modal {
     return s;
   }
 
+  // Une ligne pour une propriété générique : intitulé personnalisable dans les
+  // réglages, icône fixe (Ariane.PROPS_GENERIQUES).
+  _settingGen(parent, cle, large) {
+    const d = Ariane.PROPS_GENERIQUES.find((p) => p.cle === cle) || {};
+    return this._setting(parent, this.greffon.libelleGen(cle), d.icone, large);
+  }
+
   _dessiner() {
     const c = this.corps;
     c.empty();
 
     // Intitulé : pleine largeur, en tête.
-    this._setting(c, tr('Intitulé'), 'text', true)
+    this._settingGen(c, 'intitule', true)
       .addText((t) => t.setValue(this.v.intitule)
         .onChange((x) => { this.v.intitule = x; }));
 
     // Le reste des champs génériques, sur deux colonnes.
     const g = c.createDiv({ cls: 'zfa-tache-grille' });
 
-    this._setting(g, tr('Famille'), 'shapes').addDropdown((d) => {
+    this._settingGen(g, 'famille').addDropdown((d) => {
       if (!this.familles.length) d.addOption('action', 'Action');
       for (const f of this.familles) d.addOption(f.id, f.nom || f.id);
       d.setValue(this.v.famille).onChange((x) => {
@@ -12101,40 +12150,40 @@ class ModaleTache extends obsidian.Modal {
       });
     });
 
-    this._setting(g, tr('Statut'), 'circle-dot').addDropdown((d) => {
+    this._settingGen(g, 'statut').addDropdown((d) => {
       for (const st of ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée']) {
         d.addOption(st, tr(st));
       }
       d.setValue(this.v.statut).onChange((x) => { this.v.statut = x; });
     });
 
-    this._setting(g, tr('Priorité'), 'flag').addDropdown((d) => {
+    this._settingGen(g, 'priorite').addDropdown((d) => {
       d.addOption('', tr('(aucune)'));
       for (const p of ['haute', 'moyenne', 'basse']) d.addOption(p, tr(p));
       d.setValue(this.v.priorite).onChange((x) => { this.v.priorite = x; });
     });
 
-    this._setting(g, tr('Jalon'), 'diamond')
+    this._settingGen(g, 'jalon')
       .addToggle((t) => t.setValue(this.v.jalon)
         .onChange((x) => { this.v.jalon = x; this._dessiner(); }));
 
     if (!this.v.jalon) {
-      this._setting(g, tr('Début'), 'calendar').addText((t) => {
+      this._settingGen(g, 'debut').addText((t) => {
         t.inputEl.type = 'date';
         t.setValue(this.v.debut).onChange((x) => { this.v.debut = x.trim(); });
       });
     }
-    this._setting(g, tr('Échéance'), 'calendar-check').addText((t) => {
+    this._settingGen(g, 'echeance').addText((t) => {
       t.inputEl.type = 'date';
       t.setValue(this.v.echeance).onChange((x) => { this.v.echeance = x.trim(); });
     });
 
-    this._setting(c, tr('Avancement'), 'percent', true)
+    this._settingGen(c, 'avancement', true)
       .addSlider((sl) => sl.setLimits(0, 100, 5).setDynamicTooltip()
         .setValue(Number(this.v.avancement) || 0)
         .onChange((x) => { this.v.avancement = x; }));
 
-    this._setting(c, tr('Rattachée à'), 'git-branch', true)
+    this._settingGen(c, 'parent', true)
       .setDesc(this.v.parent || tr('aucune'))
       .addButton((b) => b.setButtonText(tr('Choisir…')).onClick(() => {
         const items = this.greffon.tachesPourGantt()
@@ -14338,7 +14387,14 @@ const GRILLE_ARTIC = 20;   // pas de la grille magnétique
 const SEUIL_AIMANT = 7;    // distance d'accrochage à un bord / centre voisin
 // Hauteur relative des points d'accroche (et donc des extrémités d'arête)
 // dans une carte : la parenté en haut, le blocage en bas.
-const ANCRE_PART = { hier: 0.32, bloque: 0.72 };
+// Les points d'accroche restent centrés sur la carte, à écart fixe l'un de
+// l'autre, quelle que soit la hauteur de la carte : parenté au-dessus du
+// centre, blocage en dessous.
+const ANCRE_ECART = 22;
+function ancreY(h, type) {
+  const c = (h || ARTIC_H) / 2;
+  return type === 'bloque' ? c + ANCRE_ECART / 2 : c - ANCRE_ECART / 2;
+}
 
 class MoteurArticulation {
   constructor(greffon, racine, ctx) {
@@ -14557,7 +14613,10 @@ class MoteurArticulation {
           const txt = MoteurArticulation.texteValeur(
             brut && typeof brut === 'object' && 'data' in brut ? brut.data : brut);
           const rg = tb.createDiv({ cls: 'zfa-artic-prop' });
-          rg.createSpan({ cls: 'zfa-artic-prop-cle', text: col.nom });
+          const cle = rg.createSpan({ cls: 'zfa-artic-prop-cle' });
+          obsidian.setIcon(cle.createSpan({ cls: 'zfa-artic-prop-ic' }),
+            MoteurArticulation._iconeType(col.type, col.id));
+          cle.createSpan({ text: col.nom });
           rg.createSpan({ cls: 'zfa-artic-prop-val', text: txt || '—' });
         }
       }
@@ -14583,10 +14642,9 @@ class MoteurArticulation {
 
     const hN = n.h || ARTIC_H;
     for (const type of ['hier', 'bloque']) {
-      const part = ANCRE_PART[type];
       const ga = svgEl('g', {
         class: 'zfa-artic-accroche zfa-artic-accroche-' + type,
-        transform: 'translate(' + ARTIC_W + ',' + (hN * part) + ')' });
+        transform: 'translate(' + ARTIC_W + ',' + ancreY(hN, type) + ')' });
       ga.dataset.type = type;
       // Cible large invisible pour viser à la souris, puis le demi-cercle
       // toujours visible qui marque le point de connexion, sur le bord de la carte.
@@ -14602,6 +14660,17 @@ class MoteurArticulation {
       gn.appendChild(ga);
     }
     g.appendChild(gn);
+  }
+
+  // Icône Obsidian d'une propriété selon son type (ou son identifiant de base).
+  static _iconeType(type, id) {
+    if (id && String(id).startsWith('formula.')) return 'variable';
+    if (id && String(id).startsWith('file.')) return 'file';
+    return ({
+      text: 'text', number: 'hash', date: 'calendar', datetime: 'clock',
+      checkbox: 'check-square', multitext: 'list', tags: 'tags',
+      aliases: 'corner-down-right',
+    })[type] || 'tag';
   }
 
   // Réplique locale de VueFriseBase.texteValeur (hors de portée depuis ce
@@ -14624,11 +14693,10 @@ class MoteurArticulation {
     const t = this._pt(a.vers);
     const hs = ((this._noeudsParRef && this._noeudsParRef.get(a.de)) || {}).h || ARTIC_H;
     const ht = ((this._noeudsParRef && this._noeudsParRef.get(a.vers)) || {}).h || ARTIC_H;
-    const part = ANCRE_PART[a.type] || 0.5;
     const x1 = s.x + ARTIC_W;
-    const y1 = s.y + hs * part;
+    const y1 = s.y + ancreY(hs, a.type);
     const x2 = t.x;
-    const y2 = t.y + ht * part;
+    const y2 = t.y + ancreY(ht, a.type);
     const d = Ariane._cheminFleche(x1, y1, x2, y2);
     const gr = svgEl('g', { class: 'zfa-artic-arete-groupe' });
     gr.dataset.de = a.de; gr.dataset.vers = a.vers; gr.dataset.type = a.type;
@@ -14801,8 +14869,9 @@ class MoteurArticulation {
       const t = this._pt(gr.dataset.vers);
       const hs = ((this._noeudsParRef && this._noeudsParRef.get(gr.dataset.de)) || {}).h || ARTIC_H;
       const ht = ((this._noeudsParRef && this._noeudsParRef.get(gr.dataset.vers)) || {}).h || ARTIC_H;
-      const part = ANCRE_PART[gr.dataset.type] || 0.5;
-      const d = Ariane._cheminFleche(s.x + ARTIC_W, s.y + hs * part, t.x, t.y + ht * part);
+      const ty = gr.dataset.type;
+      const d = Ariane._cheminFleche(
+        s.x + ARTIC_W, s.y + ancreY(hs, ty), t.x, t.y + ancreY(ht, ty));
       for (const p of gr.querySelectorAll('path')) p.setAttribute('d', d);
     }
   }
@@ -14860,7 +14929,7 @@ class MoteurArticulation {
     const s0 = this._pt(ref);
     const hN = ((this._noeudsParRef && this._noeudsParRef.get(ref)) || {}).h || ARTIC_H;
     const x1 = s0.x + ARTIC_W;
-    const y1 = s0.y + hN * (ANCRE_PART[type] || 0.5);
+    const y1 = s0.y + ancreY(hN, type);
     const dep = this._versScene(ev);
     const trait = svgEl('path', {
       class: 'zfa-artic-lien-en-cours zfa-artic-lien-en-cours-' + type, d: '',
