@@ -872,8 +872,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 /* Le défilement vertical est accordé par le script sur celui de la frise. */
 .zfa-gantt-gauche-corps { flex: 1; overflow: hidden; }
 
+/* La hauteur est posée par le script : elle suit le réglage rowHeight de la
+   base, exactement comme la vue en tableau. */
 .zfa-gantt-libelle {
-  height: 44px; box-sizing: border-box;
+  box-sizing: border-box;
   display: flex; align-items: center; gap: 7px; padding-right: 10px;
   box-shadow: inset 0 -1px 0 var(--background-modifier-border);
   font-size: 13px;
@@ -949,8 +951,12 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-glisse .zfa-gantt-barre-tache { cursor: grabbing; }
 .zfa-gantt-rempli { pointer-events: none; }
 .zfa-gantt-etiquette {
-  font-size: 10px; fill: var(--text-normal); font-weight: 600;
+  font-size: 11px; fill: var(--text-normal); font-weight: 600;
   letter-spacing: 0.02em; pointer-events: none; dominant-baseline: central;
+}
+.zfa-gantt-etiquette-menue {
+  font-size: 10px; font-weight: 400; fill: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 .theme-dark .zfa-gantt-etiquette { fill: var(--text-normal); }
 .zfa-gantt-poignee { fill: transparent; cursor: col-resize; }

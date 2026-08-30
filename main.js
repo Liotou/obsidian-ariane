@@ -871,6 +871,10 @@ const TEXTES = {
     "Rien à réordonner : cette tâche n a pas de sœur.": "Nothing to reorder: this task has no sibling.",
     "Tri passé en manuel.": "Sort switched to manual.",
     "Frise": "Timeline",
+    "lignes fines": "compact rows",
+    "lignes moyennes": "medium rows",
+    "lignes hautes": "tall rows",
+    "lignes très hautes": "extra tall rows",
   },
 };
 let LANGUE = 'fr';
@@ -910,6 +914,7 @@ const DEFAULT_SETTINGS = {
   ganttLibelleSemaine: 'numero', // numero | dates | les-deux
   ganttLargeurLibelles: 280,
   ganttTri: 'date',             // date | manuel | priorite | intitule
+  ganttRowHeight: 'medium',    // short | medium | tall | extra, comme les bases
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes
   // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque
@@ -11705,7 +11710,7 @@ const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 // les réglages d'Ariane : chaque vue d'une base porte les siens.
 const DEFAUTS_FRISE = {
   zoom: 'mois', masquerTerminees: false, libelleSemaine: 'numero',
-  largeurLibelles: 280, tri: 'date',
+  largeurLibelles: 280, tri: 'date', rowHeight: 'medium',
 };
 
 /* =========================================================================
@@ -11720,10 +11725,9 @@ const DEFAUTS_FRISE = {
  * droit d'auteur figure dans le fichier LICENSE.
  * ========================================================================= */
 
-const HAUTEUR_LIGNE_GANTT = 44;
+// La hauteur de ligne n'est plus une constante : elle suit le réglage rowHeight
+// de la base, comme la vue en tableau. Voir MoteurFrise.hauteurLigne.
 const HAUTEUR_ENTETE_GANTT = 56;
-const MARGE_BARRE_GANTT = 8;
-const RAYON_BARRE_GANTT = 7;
 
 // Étendue minimale par cran, pour qu'une frise de trois tâches ne se réduise
 // pas à trois traits collés dans un coin.
@@ -11758,6 +11762,29 @@ class MoteurFrise {
   }
 
   get zoom() { return this.ctx.lire('zoom') || 'mois'; }
+
+  // Même clé et même arithmétique que la vue en tableau des bases, pour que la
+  // frise s'aligne au pixel près sur les autres vues de la même base.
+  // La base de calcul vient du thème, pas d'une valeur écrite en dur.
+  get hauteurLigne() {
+    const mult = { short: 1, medium: 2, tall: 4, extra: 8 }[this.ctx.lire('rowHeight')] || 1;
+    let base = 30;
+    try {
+      const v = parseFloat(this.racine.getCssPropertyValue('--bases-table-row-height'));
+      if (Number.isFinite(v) && v > 0) base = v;
+    } catch (e) { /* le thème ne la définit pas : 30 fait l'affaire */ }
+    return Math.round(base * mult);
+  }
+
+  // Épaisseur de la barre, et ce qu'on peut y écrire. Une barre suit la
+  // hauteur de ligne mais cesse de grossir au-delà de 64 px : au-delà elle
+  // cesserait d'être une barre. La place gagnée sert alors au texte.
+  geometrieBarre(H) {
+    const epaisseur = Math.min(64, Math.max(12, Math.round(H * 0.6)));
+    const marge = Math.round((H - epaisseur) / 2);
+    const lignes = epaisseur >= 54 ? 3 : (epaisseur >= 36 ? 2 : 1);
+    return { epaisseur, marge, lignes, rayon: Math.min(9, Math.max(3, Math.round(epaisseur / 3))) };
+  }
   get ppj() { return ZotflowAtomiser.ZOOMS_GANTT[this.zoom] || 9; }
 
   visibles(lignes) {
@@ -11828,6 +11855,8 @@ class MoteurFrise {
     const aujourdhui = new Date().toISOString().slice(0, 10);
     const cfg = this.calculerEtendue(planifiees, aujourdhui);
     const lignes = this.visibles(planifiees);
+    this._H = this.hauteurLigne;
+    this._geo = this.geometrieBarre(this._H);
     this._lignes = planifiees;
     this._cfg = cfg;
     this._taches = taches;
@@ -11839,7 +11868,7 @@ class MoteurFrise {
 
     this.dessinerColonneGauche(gauche, lignes);
 
-    const hauteur = HAUTEUR_ENTETE_GANTT + lignes.length * HAUTEUR_LIGNE_GANTT;
+    const hauteur = HAUTEUR_ENTETE_GANTT + lignes.length * this._H;
     const svg = svgEl('svg', { class: 'zfa-gantt-svg', width: cfg.largeur, height: hauteur });
     droite.appendChild(svg);
     this._svg = svg;
@@ -11919,6 +11948,15 @@ class MoteurFrise {
         await this.ctx.ecrire('zoom', z); this.dessiner();
       }, this.zoom === z);
     }
+    b.createSpan({ cls: 'zfa-gantt-separateur' });
+    const suiteH = { short: 'medium', medium: 'tall', tall: 'extra', extra: 'short' };
+    const nomsH = { short: tr('lignes fines'), medium: tr('lignes moyennes'),
+                    tall: tr('lignes hautes'), extra: tr('lignes très hautes') };
+    const hCourant = this.ctx.lire('rowHeight') || 'short';
+    this.bouton(b, nomsH[hCourant] || nomsH.short, async () => {
+      await this.ctx.ecrire('rowHeight', suiteH[hCourant] || 'medium');
+      this.dessiner();
+    });
     b.createSpan({ cls: 'zfa-gantt-separateur' });
     this.bouton(b, tr('Masquer les terminées'), async () => {
       await this.ctx.ecrire('masquerTerminees', !this.ctx.lire('masquerTerminees'));
@@ -12031,6 +12069,7 @@ class MoteurFrise {
     const corps = gauche.createDiv({ cls: 'zfa-gantt-gauche-corps' });
     lignes.forEach((l, rang) => {
       const r = corps.createDiv({ cls: 'zfa-gantt-libelle' });
+      r.style.height = this._H + 'px';
       r.dataset.ref = l.ref;
       r.style.paddingLeft = (10 + l.niveau * 15) + 'px';
       const prise = r.createSpan({ cls: 'zfa-gantt-prise', text: '⠿' });
@@ -12144,7 +12183,7 @@ class MoteurFrise {
   dessinerFond(svg, cfg, nLignes) {
     const g = svgEl('g', {});
     const haut = HAUTEUR_ENTETE_GANTT;
-    const bas = haut + nLignes * HAUTEUR_LIGNE_GANTT;
+    const bas = haut + nLignes * this._H;
     for (let i = 0; i <= cfg.jours; i++) {
       const jour = ZotflowAtomiser.decalerJour(cfg.debut, i);
       const [a, m, j] = jour.split('-').map(Number);
@@ -12162,7 +12201,7 @@ class MoteurFrise {
       }
     }
     for (let r = 0; r <= nLignes; r++) {
-      const y = haut + r * HAUTEUR_LIGNE_GANTT;
+      const y = haut + r * this._H;
       g.appendChild(svgEl('line', { x1: 0, y1: y, x2: cfg.largeur, y2: y,
         class: 'zfa-gantt-grille-h' }));
     }
@@ -12293,8 +12332,8 @@ class MoteurFrise {
       let dernier = rang;
       for (let k = rang + 1; k < lignes.length && lignes[k].niveau > l.niveau; k++) dernier = k;
       if (dernier === rang) return;
-      const y = HAUTEUR_ENTETE_GANTT + rang * HAUTEUR_LIGNE_GANTT;
-      const h = (dernier - rang + 1) * HAUTEUR_LIGNE_GANTT;
+      const y = HAUTEUR_ENTETE_GANTT + rang * this._H;
+      const h = (dernier - rang + 1) * this._H;
       const bande = svgEl('rect', { x: 0, y, width: cfg.largeur, height: h,
         class: 'zfa-gantt-groupe-bande' });
       bande.style.opacity = String(Math.min(0.5, 0.16 + l.niveau * 0.08));
@@ -12310,9 +12349,9 @@ class MoteurFrise {
   dessinerBarres(svg, cfg, lignes) {
     const g = svgEl('g', {});
     lignes.forEach((l, rang) => {
-      const yLigne = HAUTEUR_ENTETE_GANTT + rang * HAUTEUR_LIGNE_GANTT;
+      const yLigne = HAUTEUR_ENTETE_GANTT + rang * this._H;
       g.appendChild(svgEl('rect', { x: 0, y: yLigne, width: cfg.largeur,
-        height: HAUTEUR_LIGNE_GANTT, class: 'zfa-gantt-survol' }));
+        height: this._H, class: 'zfa-gantt-survol' }));
       if (l.jalon) { this.dessinerJalon(g, cfg, l, rang, lignes.length); return; }
       const debut = l.debut || l.echeance;
       const fin = l.echeance || l.debut;
@@ -12322,8 +12361,9 @@ class MoteurFrise {
       const x = Math.max(0, this.x(cfg, debut));
       const x2 = Math.min(cfg.largeur, this.x(cfg, ZotflowAtomiser.decalerJour(fin, 1)));
       const w = Math.max(8, x2 - x);
-      const y = yLigne + MARGE_BARRE_GANTT;
-      const h = HAUTEUR_LIGNE_GANTT - MARGE_BARRE_GANTT * 2;
+      const geo = this._geo;
+      const y = yLigne + geo.marge;
+      const h = geo.epaisseur;
       const couleur = this.couleur(l.statut);
       const groupe = svgEl('g', { class: 'zfa-gantt-groupe' });
       groupe.dataset.ref = l.ref;
@@ -12331,7 +12371,7 @@ class MoteurFrise {
       const meta = l.aDesEnfants;
       const fond = svgEl('rect', {
         x, y: meta ? y + h / 3 : y, width: w, height: meta ? h / 3 : h,
-        rx: RAYON_BARRE_GANTT, ry: RAYON_BARRE_GANTT,
+        rx: geo.rayon, ry: geo.rayon,
         class: 'zfa-gantt-barre-tache' + (meta ? ' zfa-gantt-meta' : '') });
       fond.style.fill = couleur;
       fond.style.opacity = meta ? '0.75' : '0.35';
@@ -12340,16 +12380,31 @@ class MoteurFrise {
       if (!meta && l.avancement > 0) {
         const rempli = svgEl('rect', { x, y,
           width: Math.max(2, w * Math.min(100, l.avancement) / 100), height: h,
-          rx: RAYON_BARRE_GANTT, ry: RAYON_BARRE_GANTT, class: 'zfa-gantt-rempli' });
+          rx: geo.rayon, ry: geo.rayon, class: 'zfa-gantt-rempli' });
         rempli.style.fill = couleur;
         rempli.style.opacity = '0.9';
         groupe.appendChild(rempli);
       }
+      // Plus la ligne est haute, plus la barre en dit. À une ligne, l'intitulé
+      // seul ; à deux, les dates ; à trois, le statut et l'avancement. On
+      // n'écrit jamais ce qui ne tient pas, la troncature étant plus pénible
+      // qu'une information absente.
       if (w > 55 && !meta) {
-        const t = svgEl('text', { x: x + 9, y: y + h / 2, class: 'zfa-gantt-etiquette' });
-        const max = Math.max(4, Math.floor((w - 18) / 7.2));
-        t.textContent = l.intitule.length > max ? l.intitule.slice(0, max - 1) + '…' : l.intitule;
-        groupe.appendChild(t);
+        const textes = [l.intitule];
+        if (geo.lignes >= 2) textes.push(debut + '  →  ' + fin);
+        if (geo.lignes >= 3) {
+          textes.push(l.statut + (l.avancement ? '  ·  ' + l.avancement + ' %' : ''));
+        }
+        const hauteurTexte = 13;
+        const depart = y + h / 2 - ((textes.length - 1) * hauteurTexte) / 2;
+        textes.forEach((texte, i) => {
+          const max = Math.max(4, Math.floor((w - 18) / (i ? 6.4 : 7.2)));
+          if (texte.length > max && i) return;
+          const t = svgEl('text', { x: x + 9, y: depart + i * hauteurTexte,
+            class: 'zfa-gantt-etiquette' + (i ? ' zfa-gantt-etiquette-menue' : '') });
+          t.textContent = texte.length > max ? texte.slice(0, max - 1) + '…' : texte;
+          groupe.appendChild(t);
+        });
       }
       // Embouts en pointe, comme sur toute barre de synthèse : ils disent d'un
       // coup d'oeil que la barre résume et ne se travaille pas elle-même.
@@ -12381,7 +12436,7 @@ class MoteurFrise {
       // Pastilles de liaison, hors de la barre pour ne pas gêner l'étirement.
       // On tire depuis celle de droite vers la tâche que l'on veut bloquer.
       for (const [cx, sens] of [[x - 7, -1], [x + w + 7, 1]]) {
-        const rond = svgEl('circle', { cx, cy: yLigne + HAUTEUR_LIGNE_GANTT / 2, r: 5,
+        const rond = svgEl('circle', { cx, cy: yLigne + this._H / 2, r: 5,
           class: 'zfa-gantt-connecteur' });
         rond.addEventListener('pointerdown', (ev) => this.tirerLien(ev, l, cx, sens));
         groupe.appendChild(rond);
@@ -12499,9 +12554,9 @@ class MoteurFrise {
   dessinerJalon(g, cfg, l, rang, nLignes) {
     if (!l.echeance) return;
     const x = this.x(cfg, l.echeance) + cfg.ppj / 2;
-    const y = HAUTEUR_ENTETE_GANTT + rang * HAUTEUR_LIGNE_GANTT + HAUTEUR_LIGNE_GANTT / 2;
+    const y = HAUTEUR_ENTETE_GANTT + rang * this._H + this._H / 2;
     g.appendChild(svgEl('line', { x1: x, y1: HAUTEUR_ENTETE_GANTT, x2: x,
-      y2: HAUTEUR_ENTETE_GANTT + nLignes * HAUTEUR_LIGNE_GANTT,
+      y2: HAUTEUR_ENTETE_GANTT + nLignes * this._H,
       class: 'zfa-gantt-jalon-trait' }));
     const d = svgEl('path', {
       d: 'M ' + x + ' ' + (y - 9) + ' L ' + (x + 9) + ' ' + y
@@ -12523,7 +12578,7 @@ class MoteurFrise {
     const n = ZotflowAtomiser.ecartJours(cfg.debut, aujourdhui);
     if (n < 0 || n > cfg.jours) return;
     const x = n * cfg.ppj;
-    const bas = HAUTEUR_ENTETE_GANTT + nLignes * HAUTEUR_LIGNE_GANTT;
+    const bas = HAUTEUR_ENTETE_GANTT + nLignes * this._H;
     const g = svgEl('g', {});
     g.appendChild(svgEl('line', { x1: x, y1: HAUTEUR_ENTETE_GANTT, x2: x, y2: bas,
       class: 'zfa-gantt-aujourdhui' }));
@@ -12560,7 +12615,7 @@ class MoteurFrise {
       defs.appendChild(mk);
     }
     g.appendChild(defs);
-    const H = HAUTEUR_LIGNE_GANTT;
+    const H = this._H;
     for (const a of aretes) {
       if (!rang.has(a.de) || !rang.has(a.vers)) continue;
       const src = lignes[rang.get(a.de)];
