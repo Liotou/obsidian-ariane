@@ -857,6 +857,19 @@ const TEXTES = {
     "Retirer les dates": "Remove the dates",
     "Ce lien fermerait un cycle : les deux tâches se bloqueraient.": "This link would close a cycle: the two tasks would block each other.",
     "Retirer le blocage par ": "Remove the blocking link from ",
+    "Chercher un intitulé ou une référence…": "Search a title or a reference…",
+    "Tous les statuts": "All statuses",
+    "Toutes priorités": "All priorities",
+    "Statut": "Status",
+    "Tri": "Sort",
+    "Par date": "By date",
+    "Manuel": "Manual",
+    "Par priorité": "By priority",
+    "Par intitulé": "By title",
+    "Tout afficher": "Show everything",
+    "Glisser pour réordonner parmi les tâches de même rang": "Drag to reorder among tasks of the same rank",
+    "Rien à réordonner : cette tâche n a pas de sœur.": "Nothing to reorder: this task has no sibling.",
+    "Tri passé en manuel.": "Sort switched to manual.",
   },
 };
 let LANGUE = 'fr';
@@ -895,6 +908,7 @@ const DEFAULT_SETTINGS = {
   ganttMasquerTerminees: false,
   ganttLibelleSemaine: 'numero', // numero | dates | les-deux
   ganttLargeurLibelles: 280,
+  ganttTri: 'date',             // date | manuel | priorite | intitule
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes
   // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque
@@ -9435,7 +9449,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   // barre devant écrire celles de la note et non celles de sa descendance.
   // Un parent inconnu ou un cycle ne fait pas disparaître la tâche : elle
   // remonte à la racine, ce qui la rend visible plutôt que perdue.
-  static disposerGantt(taches) {
+  static disposerGantt(taches, tri) {
     const liste = (taches || []).filter((x) => x && x.ref);
     const parRef = new Map(liste.map((x) => [x.ref, x]));
     const enfants = new Map();
@@ -9463,13 +9477,38 @@ class ZotflowAtomiser extends obsidian.Plugin {
     }
     // Une tâche sans date passe après celles qui en ont : sa place est au
     // tiroir des non planifiées, pas au milieu de la frise.
-    const trier = (a, b) => {
+    const parDate = (a, b) => {
       const da = ZotflowAtomiser.jourValide(a.debut) || ZotflowAtomiser.jourValide(a.echeance);
       const db = ZotflowAtomiser.jourValide(b.debut) || ZotflowAtomiser.jourValide(b.echeance);
       if (da && db && da !== db) return da < db ? -1 : 1;
       if (da && !db) return -1;
       if (!da && db) return 1;
       return a.ref.localeCompare(b.ref);
+    };
+    const RANGS_PRIORITE = { haute: 0, moyenne: 1, basse: 2 };
+    // Le tri s'applique entre frères, jamais à travers la hiérarchie : un
+    // enfant reste sous son parent quoi qu'il arrive.
+    const trier = (a, b) => {
+      if (tri === 'manuel') {
+        // Une tâche jamais rangée à la main passe après celles qui l'ont été,
+        // plutôt que de s'insérer au hasard en tête.
+        const oa = Number.isFinite(Number(a.ordre)) && a.ordre !== null && a.ordre !== ''
+          ? Number(a.ordre) : Infinity;
+        const ob = Number.isFinite(Number(b.ordre)) && b.ordre !== null && b.ordre !== ''
+          ? Number(b.ordre) : Infinity;
+        if (oa !== ob) return oa - ob;
+      } else if (tri === 'priorite') {
+        const pa = RANGS_PRIORITE[a.priorite];
+        const pb = RANGS_PRIORITE[b.priorite];
+        const ra = pa === undefined ? 3 : pa;
+        const rb = pb === undefined ? 3 : pb;
+        if (ra !== rb) return ra - rb;
+      } else if (tri === 'intitule') {
+        const c = String(a.intitule || a.ref)
+          .localeCompare(String(b.intitule || b.ref), 'fr', { sensitivity: 'base' });
+        if (c) return c;
+      }
+      return parDate(a, b);
     };
     const lignes = [];
     const descendre = (x, niveau) => {
@@ -9502,6 +9541,45 @@ class ZotflowAtomiser extends obsidian.Plugin {
     };
     for (const r of racines.slice().sort(trier)) descendre(r, 0);
     return lignes;
+  }
+
+  // Filtre les tâches avant disposition. Les ancêtres d'une tâche retenue sont
+  // conservés : sans eux, une sous-tâche apparaîtrait à la racine, détachée du
+  // chantier auquel elle appartient, et on ne saurait plus de quoi il s'agit.
+  static filtrerTaches(taches, filtre) {
+    const liste = (taches || []).filter((x) => x && x.ref);
+    const f = filtre || {};
+    const texte = ZotflowAtomiser._sansAccentMinuscule(f.texte || '');
+    if (!f.statut && !f.priorite && !texte) return liste;
+    const parRef = new Map(liste.map((x) => [x.ref, x]));
+    const retenu = (x) => {
+      if (f.statut && String(x.statut || '') !== f.statut) return false;
+      if (f.priorite && String(x.priorite || '') !== f.priorite) return false;
+      if (texte) {
+        const cible = ZotflowAtomiser._sansAccentMinuscule(
+          String(x.intitule || '') + ' ' + x.ref);
+        if (!cible.includes(texte)) return false;
+      }
+      return true;
+    };
+    const gardes = new Set();
+    for (const x of liste) {
+      if (!retenu(x)) continue;
+      gardes.add(x.ref);
+      let p = ZotflowAtomiser.refDeLien(x.parent);
+      const vus = new Set([x.ref]);
+      while (p && parRef.has(p) && !vus.has(p)) {
+        gardes.add(p);
+        vus.add(p);
+        p = ZotflowAtomiser.refDeLien(parRef.get(p).parent);
+      }
+    }
+    return liste.filter((x) => gardes.has(x.ref));
+  }
+
+  static _sansAccentMinuscule(v) {
+    return String(v == null ? '' : v)
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
   }
 
   // Le sous-arbre d'une ligne, déduit des niveaux : tout ce qui suit et qui est
@@ -9878,6 +9956,8 @@ class ZotflowAtomiser extends obsidian.Plugin {
         debut: fm.debut || '',
         echeance: fm.echeance || '',
         statut: fm.statut || 'à faire',
+        priorite: fm.priorite || '',
+        ordre: fm.ordre === undefined ? null : fm.ordre,
         avancement: Number(fm.avancement) || 0,
         jalon: fm.jalon === true,
         fichier: f,
@@ -11710,7 +11790,8 @@ class VueGanttTaches extends obsidian.ItemView {
     }
     const nTotal = taches.length;
     if (this.greffon.settings.ganttMasquerTerminees) taches = this.sansLesCloses(taches);
-    const toutes = ZotflowAtomiser.disposerGantt(taches);
+    taches = ZotflowAtomiser.filtrerTaches(taches, this._filtre || {});
+    const toutes = ZotflowAtomiser.disposerGantt(taches, this.greffon.settings.ganttTri || 'date');
     const planifiees = toutes.filter((l) => l.debut || l.echeance);
     const nonPlanifiees = toutes.filter((l) => !l.debut && !l.echeance);
 
@@ -11834,6 +11915,58 @@ class VueGanttTaches extends obsidian.ItemView {
     }
     b.createSpan({ cls: 'zfa-gantt-compte',
       text: nPlanifiees + tr(' sur ') + nTotal + tr(' tâche(s) datée(s)') });
+
+    const f = this._filtre || (this._filtre = {});
+    const b2 = c.createDiv({ cls: 'zfa-gantt-barre zfa-gantt-barre-filtres' });
+
+    const champ = b2.createEl('input', { cls: 'zfa-gantt-recherche',
+      attr: { type: 'search', placeholder: tr('Chercher un intitulé ou une référence…') } });
+    champ.value = f.texte || '';
+    // On redessine à la frappe : la frise est locale, il n'y a rien à attendre.
+    champ.addEventListener('input', () => {
+      f.texte = champ.value;
+      this._focusRecherche = true;
+      this.dessiner();
+    });
+
+    const liste = (libelle, cle, options) => {
+      const sel = b2.createEl('select', { cls: 'dropdown zfa-gantt-liste' });
+      for (const [texte, valeur] of options) {
+        const o = sel.createEl('option', { text: texte });
+        o.value = valeur;
+      }
+      sel.value = cle === 'tri' ? (this.greffon.settings.ganttTri || 'date') : (f[cle] || '');
+      sel.title = libelle;
+      sel.addEventListener('change', async () => {
+        if (cle === 'tri') {
+          this.greffon.settings.ganttTri = sel.value;
+          await this.greffon.saveSettings();
+        } else {
+          f[cle] = sel.value;
+        }
+        this.dessiner();
+      });
+      return sel;
+    };
+
+    liste(tr('Statut'), 'statut', [[tr('Tous les statuts'), ''],
+      ['à faire', 'à faire'], ['en cours', 'en cours'], ['en attente', 'en attente'],
+      ['terminée', 'terminée'], ['abandonnée', 'abandonnée']]);
+    liste(tr('Priorité'), 'priorite', [[tr('Toutes priorités'), ''],
+      [tr('haute'), 'haute'], [tr('moyenne'), 'moyenne'], [tr('basse'), 'basse']]);
+    liste(tr('Tri'), 'tri', [[tr('Par date'), 'date'], [tr('Manuel'), 'manuel'],
+      [tr('Par priorité'), 'priorite'], [tr('Par intitulé'), 'intitule']]);
+
+    if (f.texte || f.statut || f.priorite) {
+      this.bouton(b2, tr('Tout afficher'), () => {
+        this._filtre = {};
+        this.dessiner();
+      });
+    }
+    if (this._focusRecherche) {
+      this._focusRecherche = false;
+      window.setTimeout(() => { champ.focus(); champ.setSelectionRange(999, 999); }, 0);
+    }
   }
 
   dessinerCascade(c) {
@@ -11870,9 +12003,13 @@ class VueGanttTaches extends obsidian.ItemView {
     const entete = gauche.createDiv({ cls: 'zfa-gantt-gauche-entete' });
     entete.createSpan({ cls: 'zfa-gantt-gauche-titre', text: tr('Tâche') });
     const corps = gauche.createDiv({ cls: 'zfa-gantt-gauche-corps' });
-    for (const l of lignes) {
+    lignes.forEach((l, rang) => {
       const r = corps.createDiv({ cls: 'zfa-gantt-libelle' });
+      r.dataset.ref = l.ref;
       r.style.paddingLeft = (10 + l.niveau * 15) + 'px';
+      const prise = r.createSpan({ cls: 'zfa-gantt-prise', text: '⠿' });
+      prise.title = tr('Glisser pour réordonner parmi les tâches de même rang');
+      prise.addEventListener('pointerdown', (e) => this.reordonner(e, l, lignes, rang, corps));
       if (l.aDesEnfants) {
         const chev = r.createSpan({ cls: 'zfa-gantt-chevron',
           text: this.replies.has(l.ref) ? '▸' : '▾' });
@@ -11893,7 +12030,8 @@ class VueGanttTaches extends obsidian.ItemView {
       if (!l.jalon && l.avancement > 0) {
         r.createSpan({ cls: 'zfa-gantt-pourcent', text: l.avancement + ' %' });
       }
-    }
+      r.addEventListener('contextmenu', (e) => this.menuTache(e, l));
+    });
     // Poignée de largeur : 280 px conviennent aux intitulés courts, pas à
     // « Rédiger la partie sur la gouvernance des risques ».
     const poignee = gauche.createDiv({ cls: 'zfa-gantt-poignee-colonne' });
@@ -11913,6 +12051,62 @@ class VueGanttTaches extends obsidian.ItemView {
       document.addEventListener('pointermove', bouger);
       document.addEventListener('pointerup', lacher);
     });
+  }
+
+  // Réordonner ne vaut qu'entre tâches de même rang : un enfant ne peut pas
+  // passer devant son parent sans changer de parent, ce qui serait un autre
+  // geste. On ne propose donc que les positions valides.
+  reordonner(e, ligne, lignes, rang, corps) {
+    e.preventDefault();
+    e.stopPropagation();
+    const parent = ZotflowAtomiser.refDeLien(ligne.parent || '');
+    const freres = lignes.filter((x) => x.niveau === ligne.niveau
+      && ZotflowAtomiser.refDeLien(x.parent || '') === parent);
+    if (freres.length < 2) {
+      new obsidian.Notice(tr('Rien à réordonner : cette tâche n a pas de sœur.'));
+      return;
+    }
+    const rangees = [...corps.children];
+    const boites = freres.map((f) => {
+      const el = rangees.find((r) => r.dataset.ref === f.ref);
+      return { ref: f.ref, haut: el.offsetTop, bas: el.offsetTop + el.offsetHeight };
+    });
+    const trait = corps.createDiv({ cls: 'zfa-gantt-insertion' });
+    let cible = freres.findIndex((f) => f.ref === ligne.ref);
+    const boiteCorps = corps.getBoundingClientRect();
+    const bouger = (ev) => {
+      const y = ev.clientY - boiteCorps.top + corps.scrollTop;
+      cible = boites.length;
+      for (let i = 0; i < boites.length; i++) {
+        if (y < (boites[i].haut + boites[i].bas) / 2) { cible = i; break; }
+      }
+      trait.style.top = (cible < boites.length ? boites[cible].haut
+        : boites[boites.length - 1].bas) + 'px';
+    };
+    const lacher = async () => {
+      document.removeEventListener('pointermove', bouger);
+      document.removeEventListener('pointerup', lacher);
+      trait.remove();
+      const depart = freres.findIndex((f) => f.ref === ligne.ref);
+      if (cible === depart || cible === depart + 1) { this.dessiner(); return; }
+      const ordre = freres.map((f) => f.ref);
+      ordre.splice(depart, 1);
+      ordre.splice(cible > depart ? cible - 1 : cible, 0, ligne.ref);
+      for (let i = 0; i < ordre.length; i++) {
+        await this.greffon.majTache(ordre[i], { ordre: i + 1 });
+      }
+      // Réordonner sans passer en tri manuel ne changerait rien à l'écran :
+      // on bascule, plutôt que de laisser Monsieur devant un geste sans effet.
+      if ((this.greffon.settings.ganttTri || 'date') !== 'manuel') {
+        this.greffon.settings.ganttTri = 'manuel';
+        await this.greffon.saveSettings();
+        new obsidian.Notice(tr('Tri passé en manuel.'));
+      }
+      this.dessiner();
+    };
+    bouger(e);
+    document.addEventListener('pointermove', bouger);
+    document.addEventListener('pointerup', lacher);
   }
 
   /* ------------------------------- Le fond ------------------------------- */

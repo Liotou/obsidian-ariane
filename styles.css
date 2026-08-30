@@ -1012,3 +1012,22 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-groupe.zfa-gantt-cible .zfa-gantt-barre-tache {
   stroke: var(--interactive-accent); stroke-width: 2;
 }
+
+.zfa-gantt-barre-filtres { padding-top: 0; gap: 6px; }
+.zfa-gantt-recherche {
+  flex: 1 1 180px; min-width: 140px; max-width: 320px;
+  font-size: var(--font-ui-smaller);
+}
+.zfa-gantt-liste { font-size: var(--font-ui-smaller); height: 26px; padding: 0 22px 0 8px; }
+
+.zfa-gantt-gauche-corps { position: relative; }
+.zfa-gantt-prise {
+  flex: 0 0 auto; width: 10px; cursor: grab; color: var(--text-faint);
+  opacity: 0; font-size: 11px; line-height: 1; transition: opacity 0.12s;
+}
+.zfa-gantt-libelle:hover .zfa-gantt-prise { opacity: 1; }
+.zfa-gantt-prise:active { cursor: grabbing; }
+.zfa-gantt-insertion {
+  position: absolute; left: 0; right: 0; height: 2px; pointer-events: none;
+  background: var(--interactive-accent); z-index: 7;
+}
