@@ -10673,11 +10673,19 @@ class Ariane extends obsidian.Plugin {
   sourcesZoteroPourChoix() {
     const out = [];
     for (const f of this.app.vault.getMarkdownFiles()) {
-      // Le préfixe « @ » EST la convention des fiches de source : on ne réclame
-      // plus de citationKey (les fiches d'anciens formats n'en ont pas).
-      if (f.basename.charAt(0) !== '@') continue;
       const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      out.push({ nom: Ariane.libelleSource(fm, f.basename), cle: f.basename });
+      // Une fiche de source se reconnaît largement : nom en « @… », ou l'une
+      // des clés d'identification Zotero, quel que soit le format.
+      const estSource = f.basename.charAt(0) === '@'
+        || fm.citationKey != null || fm['citation-key'] != null
+        || fm.citekey != null || fm['zotero-key'] != null
+        || fm.type === 'source' || fm.type === 'reference';
+      if (!estSource) continue;
+      const alias = [].concat(fm.aliases || []).map(String).filter(Boolean);
+      out.push({
+        nom: Ariane.libelleSource(fm, f.basename) + (alias.length ? '  ⟨' + alias.join(' · ') + '⟩' : ''),
+        cle: f.basename,
+      });
     }
     out.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
     return out;
@@ -12509,8 +12517,9 @@ class ModaleTache extends obsidian.Modal {
     } else if (type === 'link') {
       s.setDesc(cur ? String(cur) : tr('aucune'));
       // Une « source » se cherche parmi les fiches Zotero (@…) ; le reste
-      // parmi les notes ordinaires du coffre.
-      const zotero = p.cle === 'source';
+      // parmi les notes ordinaires du coffre. Insensible à la casse : la clé
+      // peut avoir été saisie « Source ».
+      const zotero = String(p.cle || '').toLowerCase() === 'source';
       s.addButton((b) => b.setButtonText(tr('Choisir…')).onClick(() => {
         const items = zotero
           ? this.greffon.sourcesZoteroPourChoix()
