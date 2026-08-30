@@ -926,6 +926,7 @@ const DEFAULT_SETTINGS = {
   // plus de fixer la clé complète d'une propriété précise (concept -> clé).
   prefixeTaches: '',
   prefixeTachesApplique: '',
+  masquerPrefixeAffichage: true, // cacher le préfixe dans les en-têtes de colonnes / cartes
   clesTaches: {},
   libellesTaches: {}, // ancien réglage, lu une dernière fois par la migration
   // Vue Articulation : accrochage magnétique des cartes au glissé.
@@ -10429,6 +10430,15 @@ class Ariane extends obsidian.Plugin {
     return pre ? pre + concept : concept;
   }
 
+  // Intitulé d'une colonne / propriété affichée : sans le préfixe des tâches si
+  // l'option est active (les vues frise et articulation).
+  libelleColonne(nom) {
+    if (this.settings.masquerPrefixeAffichage === false) return nom;
+    const pre = this.settings.prefixeTaches || '';
+    if (pre && typeof nom === 'string' && nom.startsWith(pre)) return nom.slice(pre.length);
+    return nom;
+  }
+
   // Lit un concept dans un entête, en acceptant l'ancienne clé par défaut le
   // temps que les notes soient migrées.
   _lireT(fm, concept) {
@@ -11452,6 +11462,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr('Vide = pas de préfixe. L\'espace final compte : « Tâche - ».'))
       .addText((t) => t.setPlaceholder('Tâche - ').setValue(s.prefixeTaches || '')
         .onChange(async (v) => { s.prefixeTaches = v; await maj(); this.display(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Masquer le préfixe à l\'affichage'))
+      .setDesc(tr("Les colonnes de la frise et les propriétés des cartes d'articulation montrent le nom sans le préfixe."))
+      .addToggle((t) => t.setValue(s.masquerPrefixeAffichage !== false)
+        .onChange(async (v) => { s.masquerPrefixeAffichage = v; await maj(); }));
     {
       const ct = s.clesTaches || (s.clesTaches = {});
       const pre = s.prefixeTaches || '';
@@ -14463,7 +14478,7 @@ function fabriquerVueFriseBase(greffon) {
       const out = [];
       for (const id of props) {
         let nom = id;
-        try { nom = this.config.getDisplayName(id) || id; } catch (e) { /* laisse l'identifiant */ }
+        try { nom = this.greffon.libelleColonne(this.config.getDisplayName(id) || id); } catch (e) { /* laisse l'identifiant */ }
         const valeurDe = (ref) => {
           const e = this._parRef ? this._parRef.get(ref) : null;
           if (!e) return null;
@@ -15522,7 +15537,7 @@ function fabriquerVueArticulationBase(greffon) {
         .filter((id) => !String(id).startsWith('file.'))
         .map((id) => {
           let nom = id;
-          try { nom = this.config.getDisplayName(id) || id; } catch (e) { /* garde l'id */ }
+          try { nom = this.greffon.libelleColonne(this.config.getDisplayName(id) || id); } catch (e) { /* garde l'id */ }
           const type = Ariane.typeProprieteBase(this.app.metadataTypeManager, id);
           return { id, nom, type, champ: String(id).replace(/^note\./, ''),
             valeur: (ref) => { const en = parRef.get(ref);
