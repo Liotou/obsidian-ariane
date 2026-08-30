@@ -12048,15 +12048,31 @@ class ModaleTache extends obsidian.Modal {
     this.props = garde;
   }
 
+  // Une ligne de réglage avec une icône Obsidian devant l'intitulé.
+  _setting(parent, nom, icone, large) {
+    const s = new obsidian.Setting(parent).setName(nom);
+    if (large) s.setClass('zfa-tache-large');
+    if (icone) {
+      const ic = createSpan({ cls: 'zfa-tache-ic' });
+      obsidian.setIcon(ic, icone);
+      s.nameEl.prepend(ic);
+    }
+    return s;
+  }
+
   _dessiner() {
     const c = this.corps;
     c.empty();
 
-    new obsidian.Setting(c).setName(tr('Intitulé'))
+    // Intitulé : pleine largeur, en tête.
+    this._setting(c, tr('Intitulé'), 'text', true)
       .addText((t) => t.setValue(this.v.intitule)
         .onChange((x) => { this.v.intitule = x; }));
 
-    new obsidian.Setting(c).setName(tr('Famille')).addDropdown((d) => {
+    // Le reste des champs génériques, sur deux colonnes.
+    const g = c.createDiv({ cls: 'zfa-tache-grille' });
+
+    this._setting(g, tr('Famille'), 'shapes').addDropdown((d) => {
       if (!this.familles.length) d.addOption('action', 'Action');
       for (const f of this.familles) d.addOption(f.id, f.nom || f.id);
       d.setValue(this.v.famille).onChange((x) => {
@@ -12066,41 +12082,40 @@ class ModaleTache extends obsidian.Modal {
       });
     });
 
-    new obsidian.Setting(c).setName(tr('Statut')).addDropdown((d) => {
+    this._setting(g, tr('Statut'), 'circle-dot').addDropdown((d) => {
       for (const st of ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée']) {
         d.addOption(st, tr(st));
       }
       d.setValue(this.v.statut).onChange((x) => { this.v.statut = x; });
     });
 
-    new obsidian.Setting(c).setName(tr('Priorité')).addDropdown((d) => {
+    this._setting(g, tr('Priorité'), 'flag').addDropdown((d) => {
       d.addOption('', tr('(aucune)'));
       for (const p of ['haute', 'moyenne', 'basse']) d.addOption(p, tr(p));
       d.setValue(this.v.priorite).onChange((x) => { this.v.priorite = x; });
     });
 
-    new obsidian.Setting(c).setName(tr('Jalon'))
-      .setDesc(tr("Repère de calendrier : seule l'échéance compte."))
+    this._setting(g, tr('Jalon'), 'diamond')
       .addToggle((t) => t.setValue(this.v.jalon)
         .onChange((x) => { this.v.jalon = x; this._dessiner(); }));
 
     if (!this.v.jalon) {
-      new obsidian.Setting(c).setName(tr('Début')).addText((t) => {
+      this._setting(g, tr('Début'), 'calendar').addText((t) => {
         t.inputEl.type = 'date';
         t.setValue(this.v.debut).onChange((x) => { this.v.debut = x.trim(); });
       });
     }
-    new obsidian.Setting(c).setName(tr('Échéance')).addText((t) => {
+    this._setting(g, tr('Échéance'), 'calendar-check').addText((t) => {
       t.inputEl.type = 'date';
       t.setValue(this.v.echeance).onChange((x) => { this.v.echeance = x.trim(); });
     });
 
-    new obsidian.Setting(c).setName(tr('Avancement'))
+    this._setting(c, tr('Avancement'), 'percent', true)
       .addSlider((sl) => sl.setLimits(0, 100, 5).setDynamicTooltip()
         .setValue(Number(this.v.avancement) || 0)
         .onChange((x) => { this.v.avancement = x; }));
 
-    new obsidian.Setting(c).setName(tr('Rattachée à'))
+    this._setting(c, tr('Rattachée à'), 'git-branch', true)
       .setDesc(this.v.parent || tr('aucune'))
       .addButton((b) => b.setButtonText(tr('Choisir…')).onClick(() => {
         const items = this.greffon.tachesPourGantt()
@@ -12118,9 +12133,10 @@ class ModaleTache extends obsidian.Modal {
     const fam = this.familles.find((x) => x.id === this.v.famille);
     const ps = (fam && fam.proprietes) || [];
     if (ps.length) {
-      new obsidian.Setting(c)
-        .setName(tr('Propriétés de la famille : ') + (fam.nom || fam.id)).setHeading();
-      for (const p of ps) this._champProp(c, p);
+      this._setting(c, tr('Propriétés de la famille : ') + (fam.nom || fam.id),
+        fam.icone || 'shapes', true).setHeading();
+      const gp = c.createDiv({ cls: 'zfa-tache-grille' });
+      for (const p of ps) this._champProp(gp, p);
     }
 
     const pied = c.createDiv({ cls: 'zfa-tache-modale-pied' });
@@ -12133,6 +12149,13 @@ class ModaleTache extends obsidian.Modal {
   _champProp(c, p) {
     const type = Ariane.TYPE_FR_VERS_OBSIDIAN[p.type] || 'text';
     const s = new obsidian.Setting(c).setName(p.libelle || p.cle);
+    // Les champs à sélecteur ou à liste tiennent mieux sur toute la largeur.
+    if (type === 'link' || type === 'multitext') s.setClass('zfa-tache-large');
+    const ICONES = { text: 'text', number: 'hash', date: 'calendar',
+      checkbox: 'check-square', multitext: 'list', link: 'link' };
+    const ic = createSpan({ cls: 'zfa-tache-ic' });
+    obsidian.setIcon(ic, ICONES[type] || 'text');
+    s.nameEl.prepend(ic);
     const cur = this.props[p.cle];
     if (type === 'checkbox') {
       s.addToggle((t) => t.setValue(cur === true || cur === 'true')

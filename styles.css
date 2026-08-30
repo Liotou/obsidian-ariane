@@ -1394,11 +1394,40 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-crayon:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
 .zfa-artic-carte:has(.zfa-artic-chevron) .zfa-artic-crayon { right: 22px; }
 
-/* Formulaire de tâche (création / modification). */
-.zfa-tache-modale .zfa-tache-modale-pied {
-  display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;
+/* Formulaire de tâche (création / modification) — deux colonnes. */
+.zfa-tache-modale { min-width: min(560px, 82vw); }
+.zfa-tache-modale .setting-item {
+  display: block; border-top: 0; padding: 7px 0;
 }
-.zfa-tache-modale .setting-item { padding: 8px 0; }
+.zfa-tache-modale .setting-item-info { margin: 0 0 3px; }
+.zfa-tache-modale .setting-item-name {
+  font-size: var(--font-ui-smaller); color: var(--text-muted);
+  display: flex; align-items: center;
+}
+.zfa-tache-modale .setting-item-description { font-size: var(--font-ui-smaller); }
+.zfa-tache-modale .setting-item-control { justify-content: flex-start; }
+.zfa-tache-modale .setting-item-control input[type="text"],
+.zfa-tache-modale .setting-item-control input[type="date"],
+.zfa-tache-modale .setting-item-control input[type="number"],
+.zfa-tache-modale .setting-item-control input[type="range"],
+.zfa-tache-modale .setting-item-control select { flex: 1; width: 100%; }
+.zfa-tache-modale .setting-item.setting-item-heading {
+  padding-top: 16px; margin-top: 4px;
+}
+.zfa-tache-modale .setting-item-heading .setting-item-name {
+  font-size: var(--font-ui-small); color: var(--text-normal); font-weight: 600;
+}
+.zfa-tache-ic {
+  display: inline-flex; margin-right: 6px; color: var(--text-faint);
+}
+.zfa-tache-ic svg { width: 14px; height: 14px; }
+
+.zfa-tache-grille { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
+.zfa-tache-grille .zfa-tache-large { grid-column: 1 / -1; }
+
+.zfa-tache-modale .zfa-tache-modale-pied {
+  display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;
+}
 
 /* Décompte réel de cartes, dans la barre de la vue. */
 .zfa-artic-compte { margin-left: 4px; font-size: 0.8em; color: var(--text-muted); align-self: center; }
