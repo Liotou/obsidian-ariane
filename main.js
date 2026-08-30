@@ -14294,6 +14294,9 @@ const ARTIC_W = 210;
 const ARTIC_H = 58;
 const GRILLE_ARTIC = 20;   // pas de la grille magnétique
 const SEUIL_AIMANT = 7;    // distance d'accrochage à un bord / centre voisin
+// Hauteur relative des points d'accroche (et donc des extrémités d'arête)
+// dans une carte : la parenté en haut, le blocage en bas.
+const ANCRE_PART = { hier: 0.32, bloque: 0.72 };
 
 class MoteurArticulation {
   constructor(greffon, racine, ctx) {
@@ -14521,7 +14524,8 @@ class MoteurArticulation {
     });
 
     const hN = n.h || ARTIC_H;
-    for (const [type, part] of [['hier', 0.32], ['bloque', 0.72]]) {
+    for (const type of ['hier', 'bloque']) {
+      const part = ANCRE_PART[type];
       const ga = svgEl('g', {
         class: 'zfa-artic-accroche zfa-artic-accroche-' + type,
         transform: 'translate(' + ARTIC_W + ',' + (hN * part) + ')' });
@@ -14582,10 +14586,11 @@ class MoteurArticulation {
     const t = this._pt(a.vers);
     const hs = ((this._noeudsParRef && this._noeudsParRef.get(a.de)) || {}).h || ARTIC_H;
     const ht = ((this._noeudsParRef && this._noeudsParRef.get(a.vers)) || {}).h || ARTIC_H;
+    const part = ANCRE_PART[a.type] || 0.5;
     const x1 = s.x + ARTIC_W;
-    const y1 = s.y + hs / 2;
+    const y1 = s.y + hs * part;
     const x2 = t.x;
-    const y2 = t.y + ht / 2;
+    const y2 = t.y + ht * part;
     const d = Ariane._cheminFleche(x1, y1, x2, y2);
     const gr = svgEl('g', { class: 'zfa-artic-arete-groupe' });
     gr.dataset.de = a.de; gr.dataset.vers = a.vers; gr.dataset.type = a.type;
@@ -14714,7 +14719,8 @@ class MoteurArticulation {
       const t = this._pt(gr.dataset.vers);
       const hs = ((this._noeudsParRef && this._noeudsParRef.get(gr.dataset.de)) || {}).h || ARTIC_H;
       const ht = ((this._noeudsParRef && this._noeudsParRef.get(gr.dataset.vers)) || {}).h || ARTIC_H;
-      const d = Ariane._cheminFleche(s.x + ARTIC_W, s.y + hs / 2, t.x, t.y + ht / 2);
+      const part = ANCRE_PART[gr.dataset.type] || 0.5;
+      const d = Ariane._cheminFleche(s.x + ARTIC_W, s.y + hs * part, t.x, t.y + ht * part);
       for (const p of gr.querySelectorAll('path')) p.setAttribute('d', d);
     }
   }
@@ -14772,7 +14778,7 @@ class MoteurArticulation {
     const s0 = this._pt(ref);
     const hN = ((this._noeudsParRef && this._noeudsParRef.get(ref)) || {}).h || ARTIC_H;
     const x1 = s0.x + ARTIC_W;
-    const y1 = s0.y + (type === 'hier' ? hN * 0.32 : hN * 0.72);
+    const y1 = s0.y + hN * (ANCRE_PART[type] || 0.5);
     const dep = this._versScene(ev);
     const trait = svgEl('path', {
       class: 'zfa-artic-lien-en-cours zfa-artic-lien-en-cours-' + type, d: '' });
