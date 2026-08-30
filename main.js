@@ -14071,7 +14071,6 @@ class MoteurArticulation {
     }
 
     const barre = c.createDiv({ cls: 'zfa-artic-barre' });
-    this.boutonBarre(barre, 'plus', tr('Tâche'), () => this.ajoutRapide());
     this.boutonBarre(barre, 'layout-grid', tr('Re-disposer'), () => this.redisposer());
     this.boutonBarre(barre, 'maximize-2', tr('Ajuster'), () => this.ajuster());
 
@@ -14479,19 +14478,6 @@ class MoteurArticulation {
   async redisposer() {
     for (const ref of this._pos.keys()) await this.ctx.poserPosition(ref, null, null);
     new obsidian.Notice(tr('Disposition recalculée.'));
-    this.dessiner();
-  }
-
-  async ajoutRapide() {
-    const centre = this._versScene({
-      clientX: this._svg.getBoundingClientRect().left + this._svg.clientWidth / 2,
-      clientY: this._svg.getBoundingClientRect().top + this._svg.clientHeight / 2,
-    });
-    const chemin = await this.greffon.creerTache({});
-    const ref = this.greffon.refDeChemin(chemin);
-    if (ref) await this.ctx.poserPosition(ref, Math.round(centre.x - ARTIC_W / 2), Math.round(centre.y));
-    const f = this.greffon.app.vault.getAbstractFileByPath(chemin);
-    if (f) await this.greffon.app.workspace.getLeaf(true).openFile(f);
     this.dessiner();
   }
 }
