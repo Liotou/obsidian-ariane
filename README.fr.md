@@ -630,6 +630,17 @@ Obsidian ne permet pas d'intercepter le tracé d'une flèche : Ariane ne peut pa
 vous empêcher d'en poser une incohérente, elle la signale dans la seconde qui
 suit.
 
+### Familles de tâches et vue Articulation
+
+Une tâche peut désormais porter un champ `famille`. Les familles se décrivent
+dans l'onglet de réglages **Tâches**, section « Familles de tâches » : un nom,
+une couleur, une icône Lucide et les propriétés que la famille ajoute à
+l'entête ; lecture, production et action sont préchargées. La vue **Articulation**
+est une vue de base : elle colore et illustre chaque carte par sa famille,
+n'affiche que les propriétés cochées sous le bouton « Propriétés », et respecte
+le filtre et le tri natifs de Bases. La barre bascule entre deux présentations de
+carte, **Rétracté** et **Détaillé**, la seconde dépliant les cartes une à une.
+
 ## ⌨️ Commandes
 
 | Commande | Ce qu'elle fait |

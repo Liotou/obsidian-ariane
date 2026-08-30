@@ -610,6 +610,17 @@ parents**, when two canvases give one task two parents.
 Obsidian offers no way to intercept the drawing of an arrow: Ariane cannot stop
 you from making an inconsistent one, it reports it a second later.
 
+### Task families and the Articulation view
+
+A task can now carry a `famille` field. Families are described in the plugin's
+**Tâches** settings tab, under "Familles de tâches": a name, a colour, a Lucide
+icon and the properties the family adds to the note's header; reading, output and
+action come preloaded. The **Articulation** view is a base view: it colours and
+marks each card by its family, shows only the properties ticked under the
+"Propriétés" button, and honours Bases' native filter and sort. The bar toggles
+between two card modes, **Rétracté** and **Détaillé**, the latter unfolding cards
+one at a time.
+
 ## ⌨️ Commands
 
 | Command | What it does |
