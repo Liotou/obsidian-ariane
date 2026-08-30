@@ -123,3 +123,46 @@ test('sans marqueurs de groupe, placerLignes se comporte comme visibles + y', ()
   assert.deepEqual(r.lignes.map((x) => x.ref), ['P', 'T']);
   assert.deepEqual(r.lignes.map((x) => x.y), [30, 70]);
 });
+
+/* --------------------- repartirSansDate ------------------------------ */
+
+test('repartirSansDate : groupes et tâches datées à part, sans-date à part', () => {
+  const brut = [
+    { kind: 'groupe', cleGroupe: 'g' },
+    { kind: 'tache', ref: 'A', debut: '2026-09-01', echeance: '' },
+    { kind: 'tache', ref: 'B', debut: '', echeance: '2026-09-10' },
+    { kind: 'tache', ref: 'C', debut: '', echeance: '' },
+  ];
+  const r = Ariane.repartirSansDate(brut);
+  assert.deepEqual(r.avecDates.map((x) => x.ref || x.kind), ['groupe', 'A', 'B']);
+  assert.deepEqual(r.sansDate.map((x) => x.ref), ['C']);
+});
+
+test('repartirSansDate : une tâche sans date vue deux fois n apparaît qu une fois', () => {
+  const brut = [
+    { kind: 'tache', ref: 'C', debut: '', echeance: '' },
+    { kind: 'tache', ref: 'C', debut: '', echeance: '' },
+    { kind: 'tache', ref: 'D', debut: '', echeance: '' },
+  ];
+  const r = Ariane.repartirSansDate(brut);
+  assert.deepEqual(r.sansDate.map((x) => x.ref), ['C', 'D']);
+  assert.equal(r.avecDates.length, 0);
+});
+
+test('repartirSansDate : l ordre est préservé dans les deux listes', () => {
+  const brut = [
+    { kind: 'tache', ref: 'A', debut: '', echeance: '' },
+    { kind: 'tache', ref: 'B', debut: '2026-09-01', echeance: '' },
+    { kind: 'tache', ref: 'C', debut: '', echeance: '' },
+  ];
+  const r = Ariane.repartirSansDate(brut);
+  assert.deepEqual(r.avecDates.map((x) => x.ref), ['B']);
+  assert.deepEqual(r.sansDate.map((x) => x.ref), ['A', 'C']);
+});
+
+test('placerLignes : une tâche sans date en fin de liste reste visible après un groupe replié', () => {
+  const d = [gr('A'), ta('T1'),
+    { kind: 'tache', ref: 'Z', cleLigne: 'Z', niveau: 0, aDesEnfants: false, sansDate: true }];
+  const r = Ariane.placerLignes(d, 30, 20, new Set(['groupe:A']));
+  assert.deepEqual(r.lignes.filter((x) => x.kind === 'tache').map((x) => x.ref), ['Z']);
+});
