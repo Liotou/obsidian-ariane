@@ -1288,6 +1288,12 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   border-radius: var(--radius-m);
   box-shadow: var(--shadow-s);
   font-size: var(--font-ui-smaller);
+  transition: box-shadow 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.zfa-artic-noeud:hover .zfa-artic-carte {
+  background: var(--background-primary);
+  border-color: var(--background-modifier-border-hover);
+  box-shadow: var(--shadow-l);
 }
 .zfa-artic-carte:active { cursor: grabbing; }
 .zfa-artic-carte[data-statut="abandonnée"] { opacity: 0.55; }
@@ -1323,12 +1329,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   transition: r 0.1s;
 }
 .zfa-artic-accroche:hover .zfa-artic-accroche-pastille { r: 6; }
-/* Parenté : pastille pleine, gris — comme l'arête de hiérarchie. */
+/* Deux pastilles pleines, distinguées par la couleur — comme leurs arêtes :
+   parenté = gris, blocage = accent. */
 .zfa-artic-accroche-hier .zfa-artic-accroche-pastille { fill: var(--text-muted); }
-/* Blocage : pastille creuse cerclée d'accent — comme l'arête de blocage. */
-.zfa-artic-accroche-bloque .zfa-artic-accroche-pastille {
-  fill: var(--background-primary); stroke: var(--interactive-accent);
-}
+.zfa-artic-accroche-bloque .zfa-artic-accroche-pastille { fill: var(--interactive-accent); }
 .zfa-artic-noeud.est-cible .zfa-artic-carte {
   outline: 2px solid var(--interactive-accent); outline-offset: 1px;
 }
