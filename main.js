@@ -921,6 +921,10 @@ const DEFAULT_SETTINGS = {
   dossierReferences: '',        // rôle : où déposer les références en attente
   dossierTaches: '',            // rôle : où déposer les notes de tâche
   listeRappelsDefaut: 'Doctorat - Tâches',
+  // Vue Articulation : accrochage magnétique des cartes au glissé.
+  articulationAimant: true,
+  articulationGrille: 20,       // pas de la grille (0 = pas de grille)
+  articulationSeuilAimant: 7,   // distance d'accrochage aux voisins (px)
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes
   // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque
@@ -2458,6 +2462,22 @@ views:
       and:
         - note["type"] == "tache"
         - note["statut"] != "abandonnée"
+  - type: ariane-articulation
+    name: 6. Articulation
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "abandonnée"
+`;
+
+// Bloc de vue Articulation, ajouté aux bases de tâches déjà créées qui ne
+// l'ont pas encore (assurerBaseTaches).
+const VUE_ARTICULATION_BASE = `  - type: ariane-articulation
+    name: 6. Articulation
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "abandonnée"
 `;
 
 const ZFA_TACHE_DEBUT = '%% ariane:tache %%';
@@ -3838,6 +3858,7 @@ class Ariane extends obsidian.Plugin {
       }));
       this.registerEvent(this.app.vault.on('create', majSchema));
       this.registerEvent(this.app.vault.on('create', (f) => this.surCreation(f)));
+      this.registerEvent(this.app.vault.on('create', (f) => this.surCreationTacheVierge(f)));
       this.registerEvent(this.app.vault.on('delete', (f) => this.surSuppression(f)));
 
       // Tag « orpheline » : mise à jour quand les liens changent.
@@ -9371,6 +9392,42 @@ class Ariane extends obsidian.Plugin {
     });
   }
 
+  // Le bouton « Nouveau » d'une base (ou une création à la main) dépose une
+  // note vide dans le dossier des tâches. On la transforme en vraie tâche :
+  // référence T26-xxx et entête complète. On ne touche jamais une note qui a
+  // déjà un corps rédigé ou un schéma de tâche renseigné.
+  surCreationTacheVierge(file) {
+    if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
+    if (this.ecritePlugin(file.path)) return;
+    const dossier = this.dossierT;
+    if (!file.parent || file.parent.path !== dossier) return;
+    if (/^T\d{2}-\d{3,4}$/.test(file.basename)) return;
+    this.antirebond('tache-vierge:' + file.path, async () => {
+      const f = this.app.vault.getAbstractFileByPath(file.path);
+      if (!(f instanceof obsidian.TFile)) return;
+      if (/^T\d{2}-\d{3,4}$/.test(f.basename)) return;
+      const brut = await this.app.vault.read(f);
+      const corps = brut.replace(/^---[\s\S]*?\n---\r?\n?/, '').trim();
+      if (corps.length) return;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (fm.statut || fm.debut || fm.echeance || fm.parent) return;
+      const titre = /^(sans titre|untitled)\b/i.test(f.basename) ? '' : f.basename;
+      const noms = this.app.vault.getMarkdownFiles()
+        .filter((x) => x.parent && x.parent.path === dossier).map((x) => x.basename);
+      const ref = Ariane.referenceTacheSuivante(noms, new Date().getFullYear());
+      const cible = dossier + '/' + ref + '.md';
+      this.marquerEcriture(f.path);
+      this.marquerEcriture(cible);
+      const jour = new Date().toISOString().slice(0, 10);
+      await this.app.vault.modify(f, Ariane.corpsNouvelleTache({
+        intitule: titre, aujourdhui: jour,
+        liste: this.settings.listeRappelsDefaut,
+      }));
+      if (f.basename !== ref) await this.app.fileManager.renameFile(f, cible);
+      new obsidian.Notice(tr('Nouvelle tâche : ') + ref);
+    }, 450);
+  }
+
   surSuppression(file) {
     if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
     if (this.ecritePlugin(file.path)) return;
@@ -10494,8 +10551,21 @@ class Ariane extends obsidian.Plugin {
   // pas fournir la base du tout.
   async assurerBaseTaches() {
     const chemin = this.dossierT + '/Tâches.base';
-    if (this.app.vault.getAbstractFileByPath(chemin)) return chemin;
-    await this.app.vault.create(chemin, BASE_TACHES);
+    const f = this.app.vault.getAbstractFileByPath(chemin);
+    if (!f) {
+      this.marquerEcriture(chemin);
+      await this.app.vault.create(chemin, BASE_TACHES);
+      return chemin;
+    }
+    // Base déjà là mais sans vue Articulation : on l'ajoute (source déjà
+    // restreinte aux tâches, contrairement à une vue posée à la main).
+    if (f instanceof obsidian.TFile) {
+      const t = await this.app.vault.read(f);
+      if (!/type:\s*ariane-articulation/.test(t)) {
+        this.marquerEcriture(chemin);
+        await this.app.vault.modify(f, t.replace(/\s*$/, '\n') + VUE_ARTICULATION_BASE);
+      }
+    }
     return chemin;
   }
 
@@ -11192,7 +11262,29 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           .onChange(async (v) => { s.familleTacheDefaut = v; await maj(); });
       });
 
-    this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue » (et par le clic droit sur un en-tête de colonne)."));
+    this._section(c, tr('Vue Articulation'));
+    this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue »."));
+    new obsidian.Setting(c)
+      .setName(tr("Accrochage magnétique"))
+      .setDesc(tr("Au glissé d'une carte, l'accrocher à une grille et aux bords / centres des cartes voisines."))
+      .addToggle((t) => t.setValue(s.articulationAimant !== false)
+        .onChange(async (v) => { s.articulationAimant = v; await maj(); this.display(); }));
+    if (s.articulationAimant !== false) {
+      new obsidian.Setting(c)
+        .setName(tr('Pas de la grille (px)'))
+        .setDesc(tr('0 pour ne pas accrocher à la grille.'))
+        .addText((t) => t.setValue(String(s.articulationGrille ?? 20))
+          .onChange(async (v) => {
+            const n = parseInt(v, 10);
+            s.articulationGrille = Number.isFinite(n) && n >= 0 ? n : 20;
+            await maj();
+          }));
+      new obsidian.Setting(c)
+        .setName(tr("Distance d'accrochage aux voisins (px)"))
+        .addSlider((sl) => sl.setLimits(0, 24, 1).setDynamicTooltip()
+          .setValue(Number.isFinite(s.articulationSeuilAimant) ? s.articulationSeuilAimant : 7)
+          .onChange(async (v) => { s.articulationSeuilAimant = v; await maj(); }));
+    }
   }
 
   // Éditeur des familles de tâches. Même esprit que _tableFamilles (familles
@@ -14130,7 +14222,6 @@ class MoteurArticulation {
     }
 
     const barre = c.createDiv({ cls: 'zfa-artic-barre' });
-    this.boutonBarre(barre, 'plus', tr('Nouvelle tâche'), () => this.nouvelleTache());
     this.boutonBarre(barre, 'layout-grid', tr('Re-disposer'), () => this.redisposer());
     this.boutonBarre(barre, 'maximize-2', tr('Ajuster'), () => this.ajuster());
     // Le décompte réel de cartes dessinées (l'en-tête de la base compte, lui,
@@ -14549,32 +14640,17 @@ class MoteurArticulation {
     this.dessiner();
   }
 
-  // Crée une vraie note de tâche (référence T26-xxx, entête complète), la pose
-  // au centre de la vue et l'ouvre. Le bouton « Nouveau » natif de la base ne
-  // crée qu'une note vide : celui-ci passe par greffon.creerTache.
-  async nouvelleTache() {
-    let centre = { x: 0, y: 0 };
-    if (this._svg) {
-      const b = this._svg.getBoundingClientRect();
-      centre = this._versScene({ clientX: b.left + b.width / 2, clientY: b.top + b.height / 2 });
-    }
-    const chemin = await this.greffon.creerTache({});
-    const ref = this.greffon.refDeChemin(chemin);
-    if (ref) {
-      await this.ctx.poserPosition(ref,
-        Math.round(centre.x - ARTIC_W / 2), Math.round(centre.y - ARTIC_H / 2));
-    }
-    const f = this.greffon.app.vault.getAbstractFileByPath(chemin);
-    if (f) await this.greffon.app.workspace.getLeaf(true).openFile(f);
-    this.dessiner();
-  }
-
   // Accrochage magnétique d'un nœud en cours de glissé : à la grille, et aux
   // bords / centres des autres nœuds. Renvoie la position accrochée et les
   // repères à tracer.
   _aimanter(ref, x, y) {
-    let sx = Math.round(x / GRILLE_ARTIC) * GRILLE_ARTIC;
-    let sy = Math.round(y / GRILLE_ARTIC) * GRILLE_ARTIC;
+    const rg = this.greffon.settings || {};
+    if (rg.articulationAimant === false) return { x, y, repères: [] };
+    const pas = Number.isFinite(rg.articulationGrille) ? rg.articulationGrille : GRILLE_ARTIC;
+    const seuil = Number.isFinite(rg.articulationSeuilAimant)
+      ? rg.articulationSeuilAimant : SEUIL_AIMANT;
+    let sx = pas > 1 ? Math.round(x / pas) * pas : x;
+    let sy = pas > 1 ? Math.round(y / pas) * pas : y;
     const repères = [];
     const hMoi = ((this._noeudsParRef && this._noeudsParRef.get(ref)) || {}).h || ARTIC_H;
     let prisX = false;
@@ -14586,7 +14662,7 @@ class MoteurArticulation {
         for (const [mien, autre] of [
           [x, p.x], [x + ARTIC_W, p.x + ARTIC_W], [x + ARTIC_W / 2, p.x + ARTIC_W / 2],
         ]) {
-          if (Math.abs(mien - autre) < SEUIL_AIMANT) {
+          if (Math.abs(mien - autre) < seuil) {
             sx = x + (autre - mien); prisX = true;
             repères.push({ axe: 'x', v: autre });
             break;
@@ -14597,7 +14673,7 @@ class MoteurArticulation {
         for (const [mien, autre] of [
           [y, p.y], [y + hMoi, p.y + hAutre], [y + hMoi / 2, p.y + hAutre / 2],
         ]) {
-          if (Math.abs(mien - autre) < SEUIL_AIMANT) {
+          if (Math.abs(mien - autre) < seuil) {
             sy = y + (autre - mien); prisY = true;
             repères.push({ axe: 'y', v: autre });
             break;
