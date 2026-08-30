@@ -1687,6 +1687,13 @@ function cosinusVecteurs(a, b) {
 
 //#endregion 4 · Similarité locale (TF-IDF & vecteurs)
 
+//#region 5 · Notes atomiques
+// ═══════════════════════════════════════════════════════════════════════════
+//  5 · NOTES ATOMIQUES
+//  Détection des notes de données, extraction des blocs d'une source,
+//  construction d'une note atomique, parsing des cartes mentales.
+// ═══════════════════════════════════════════════════════════════════════════
+
 // Remplace les variables {{var}} d'un modèle par leurs valeurs.
 function appliquerModele(modele, vars) {
   return String(modele).replace(/{{\s*(\w+)\s*}}/g, (m, k) =>
@@ -1780,50 +1787,6 @@ function nomCouleur(c) {
   if (!c) return '';
   const h = String(c).trim().toLowerCase();
   return COULEURS_ZOTERO[h] || h;
-}
-
-// Neutralise le contenu des liens [[…]] en conservant la longueur du texte :
-// les points d'une citation (« p. 2 ») ne doivent pas passer pour des fins de
-// phrase. Les positions calculées restent donc valables sur le texte d'origine.
-function masquerLiens(texte) {
-  return String(texte).replace(/\[\[[^\]]*\]\]/g, (m) => '·'.repeat(m.length));
-}
-
-// Fin de la phrase contenant l'offset (index juste après le point/? /! ).
-// Sert au dépôt « par phrase » : place l'appel de note en fin de phrase.
-function finDePhrase(texte, off) {
-  const re = /[.?!…](?=\s|$)/g;
-  re.lastIndex = Math.max(0, Math.min(off, texte.length));
-  const m = re.exec(masquerLiens(texte));
-  return m ? m.index + 1 : texte.length;
-}
-
-// Début de la phrase contenant l'offset : index juste après le dernier
-// point/? /! qui précède l'offset, espaces de tête ignorés.
-// Comme finDePhrase, mais renvoie l'index DE la ponctuation finale (donc juste
-// avant le point), afin de poser l'appel de note avant celui-ci.
-function finDePhraseAvantPonct(texte, off) {
-  const re = /[.?!…](?=\s|$)/g;
-  re.lastIndex = Math.max(0, Math.min(off, texte.length));
-  const m = re.exec(masquerLiens(texte));
-  if (!m) return texte.length;
-  // Typographie française : « … frontière ? » garde son espace avant le point
-  // d'interrogation. On remonte donc avant l'espace qui précède la ponctuation.
-  let i = m.index;
-  while (i > 0 && /[ \t\u00a0\u202f]/.test(texte[i - 1])) i--;
-  return i;
-}
-
-function debutPhrase(texte, off) {
-  const re = /[.?!…](?=\s|$)/g;
-  const masque = masquerLiens(texte);
-  let start = 0, m;
-  while ((m = re.exec(masque)) !== null) {
-    if (m.index + 1 <= off) start = m.index + 1;
-    else break;
-  }
-  while (start < texte.length && /\s/.test(texte[start])) start++;
-  return start;
 }
 
 // Certains modules de Zotero rangent leurs réglages dans un élément de la
@@ -2200,6 +2163,98 @@ function construireNote(bloc, sourceBasename, indexZotero, cfg, ctxSource) {
   fm.push('---');
 
   return fm.join('\n') + '\n' + corps + '\n';
+}
+
+// Analyse une carte : blocs, relations, et problèmes de conformité.
+function analyserCarte(data, vocab, sidecar) {
+  const relations = (vocab && vocab.relations) || [];
+  const types = (vocab && vocab.types) || [];
+  const strict = !!(vocab && vocab.strict);
+  const map = (sidecar && sidecar.blocs) || {};
+  const noeuds = (data && data.nodes) || [];
+  const aretes = (data && data.edges) || [];
+  const parId = {};
+  for (const n of noeuds) parId[n.id] = n;
+
+  const blocs = noeuds
+    .filter((n) => n.type !== 'group')
+    .map((n) => ({ id: n.id, texte: texteNoeud(n), type: map[n.id] || '', noeud: n }));
+
+  const liens = [];
+  const problemes = [];
+  for (const e of aretes) {
+    const rel = relationDeEtiquette(e.label, relations);
+    const src = parId[e.fromNode], dst = parId[e.toNode];
+    liens.push({
+      id: e.id,
+      de: e.fromNode, vers: e.toNode,
+      deTexte: texteNoeud(src), versTexte: texteNoeud(dst),
+      etiquette: e.label || '',
+      relation: rel ? rel.id : '',
+      polarite: polariteEtiquette(e.label),
+    });
+    if (!e.label || !String(e.label).trim()) {
+      problemes.push({ gravite: 'info', type: 'lien-muet', id: e.id, texte: (texteNoeud(src) || '?') + ' → ' + (texteNoeud(dst) || '?') });
+    } else if (!rel && relations.length) {
+      // Vocabulaire vide = aucune norme imposée : on ne signale rien.
+      problemes.push({ gravite: strict ? 'erreur' : 'avert', type: 'hors-vocabulaire', id: e.id, texte: '« ' + e.label +' » (' + (texteNoeud(src) || '?') + ' → ' + (texteNoeud(dst) || '?') + ')' });
+    } else if (rel.soupape) {
+      problemes.push({ gravite: 'info', type: 'soupape', id: e.id, texte: '« ' + rel.nom + ' » à retyper (' + (texteNoeud(src) || '?') + ' → ' + (texteNoeud(dst) || '?') + ')' });
+    }
+  }
+  const idsTypes = new Set((types || []).map((t) => t.id));
+  for (const b of blocs) {
+    if (!b.texte) continue;
+    if (!b.type) problemes.push({ gravite: 'info', type: 'bloc-sans-type', id: b.id, texte: b.texte });
+    else if (!idsTypes.has(b.type)) problemes.push({ gravite: 'avert', type: 'type-inconnu', id: b.id, texte: b.texte + ' (« ' + b.type + ' »)' });
+  }
+  return { blocs, liens, problemes };
+}
+
+//#endregion 5 · Notes atomiques
+
+// Neutralise le contenu des liens [[…]] en conservant la longueur du texte :
+// les points d'une citation (« p. 2 ») ne doivent pas passer pour des fins de
+// phrase. Les positions calculées restent donc valables sur le texte d'origine.
+function masquerLiens(texte) {
+  return String(texte).replace(/\[\[[^\]]*\]\]/g, (m) => '·'.repeat(m.length));
+}
+
+// Fin de la phrase contenant l'offset (index juste après le point/? /! ).
+// Sert au dépôt « par phrase » : place l'appel de note en fin de phrase.
+function finDePhrase(texte, off) {
+  const re = /[.?!…](?=\s|$)/g;
+  re.lastIndex = Math.max(0, Math.min(off, texte.length));
+  const m = re.exec(masquerLiens(texte));
+  return m ? m.index + 1 : texte.length;
+}
+
+// Début de la phrase contenant l'offset : index juste après le dernier
+// point/? /! qui précède l'offset, espaces de tête ignorés.
+// Comme finDePhrase, mais renvoie l'index DE la ponctuation finale (donc juste
+// avant le point), afin de poser l'appel de note avant celui-ci.
+function finDePhraseAvantPonct(texte, off) {
+  const re = /[.?!…](?=\s|$)/g;
+  re.lastIndex = Math.max(0, Math.min(off, texte.length));
+  const m = re.exec(masquerLiens(texte));
+  if (!m) return texte.length;
+  // Typographie française : « … frontière ? » garde son espace avant le point
+  // d'interrogation. On remonte donc avant l'espace qui précède la ponctuation.
+  let i = m.index;
+  while (i > 0 && /[ \t\u00a0\u202f]/.test(texte[i - 1])) i--;
+  return i;
+}
+
+function debutPhrase(texte, off) {
+  const re = /[.?!…](?=\s|$)/g;
+  const masque = masquerLiens(texte);
+  let start = 0, m;
+  while ((m = re.exec(masque)) !== null) {
+    if (m.index + 1 <= off) start = m.index + 1;
+    else break;
+  }
+  while (start < texte.length && /\s/.test(texte[start])) start++;
+  return start;
 }
 
 /* =========================================================================
@@ -2803,52 +2858,6 @@ function injecterExtrait(contenu, extrait) {
     return avant + extrait + apres;
   }
   return texte.replace(/\s*$/, '') + '\n\n' + extrait + '\n';
-}
-
-// Analyse une carte : blocs, relations, et problèmes de conformité.
-function analyserCarte(data, vocab, sidecar) {
-  const relations = (vocab && vocab.relations) || [];
-  const types = (vocab && vocab.types) || [];
-  const strict = !!(vocab && vocab.strict);
-  const map = (sidecar && sidecar.blocs) || {};
-  const noeuds = (data && data.nodes) || [];
-  const aretes = (data && data.edges) || [];
-  const parId = {};
-  for (const n of noeuds) parId[n.id] = n;
-
-  const blocs = noeuds
-    .filter((n) => n.type !== 'group')
-    .map((n) => ({ id: n.id, texte: texteNoeud(n), type: map[n.id] || '', noeud: n }));
-
-  const liens = [];
-  const problemes = [];
-  for (const e of aretes) {
-    const rel = relationDeEtiquette(e.label, relations);
-    const src = parId[e.fromNode], dst = parId[e.toNode];
-    liens.push({
-      id: e.id,
-      de: e.fromNode, vers: e.toNode,
-      deTexte: texteNoeud(src), versTexte: texteNoeud(dst),
-      etiquette: e.label || '',
-      relation: rel ? rel.id : '',
-      polarite: polariteEtiquette(e.label),
-    });
-    if (!e.label || !String(e.label).trim()) {
-      problemes.push({ gravite: 'info', type: 'lien-muet', id: e.id, texte: (texteNoeud(src) || '?') + ' → ' + (texteNoeud(dst) || '?') });
-    } else if (!rel && relations.length) {
-      // Vocabulaire vide = aucune norme imposée : on ne signale rien.
-      problemes.push({ gravite: strict ? 'erreur' : 'avert', type: 'hors-vocabulaire', id: e.id, texte: '« ' + e.label +' » (' + (texteNoeud(src) || '?') + ' → ' + (texteNoeud(dst) || '?') + ')' });
-    } else if (rel.soupape) {
-      problemes.push({ gravite: 'info', type: 'soupape', id: e.id, texte: '« ' + rel.nom + ' » à retyper (' + (texteNoeud(src) || '?') + ' → ' + (texteNoeud(dst) || '?') + ')' });
-    }
-  }
-  const idsTypes = new Set((types || []).map((t) => t.id));
-  for (const b of blocs) {
-    if (!b.texte) continue;
-    if (!b.type) problemes.push({ gravite: 'info', type: 'bloc-sans-type', id: b.id, texte: b.texte });
-    else if (!idsTypes.has(b.type)) problemes.push({ gravite: 'avert', type: 'type-inconnu', id: b.id, texte: b.texte + ' (« ' + b.type + ' »)' });
-  }
-  return { blocs, liens, problemes };
 }
 
 /* =========================================================================
