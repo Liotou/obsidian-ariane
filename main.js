@@ -10219,6 +10219,43 @@ class Ariane extends obsidian.Plugin {
     return this._incoherencesTaches;
   }
 
+  // Écrit quelques propriétés d'une tâche, sans toucher au reste.
+  async majTache(ref, champs) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    if (!f) return false;
+    await this.app.fileManager.processFrontMatter(f, (x) => {
+      for (const [k, v] of Object.entries(champs)) x[k] = v;
+      x.modifie = new Date().toISOString().slice(0, 10);
+    });
+    return true;
+  }
+
+  // Écrit en une passe les dates rendues par decalerSousArbre ou cascadeAval.
+  async ecrireDatesTaches(changements) {
+    const parRef = new Map(this.tachesPourGantt().map((t) => [t.ref, t.fichier]));
+    let n = 0;
+    for (const c of changements || []) {
+      const f = parRef.get(c.ref);
+      if (!f) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (String(fm.debut || '') === c.debut && String(fm.echeance || '') === c.echeance) continue;
+      await this.app.fileManager.processFrontMatter(f, (x) => {
+        if (c.debut) x.debut = c.debut;
+        if (c.echeance) x.echeance = c.echeance;
+        x.modifie = new Date().toISOString().slice(0, 10);
+      });
+      n += 1;
+    }
+    return n;
+  }
+
+  // La référence d'une tâche, déduite du chemin. On la reconnaît à sa forme
+  // plutôt qu'à son dossier : une tâche déplacée reste une tâche.
+  refDeChemin(chemin) {
+    const m = String(chemin || '').match(/(?:^|\/)(T\d{2}-\d{3,4})\.md$/);
+    return m ? m[1] : null;
+  }
+
   // Les fiches Zotero du coffre, prêtes pour une recherche approchée. On les
   // reconnaît à leur clé de citation plutôt qu'à leur dossier, qui varie.
   sourcesZoteroPourChoix() {
