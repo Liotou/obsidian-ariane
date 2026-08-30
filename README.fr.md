@@ -705,7 +705,7 @@ BRAT suivra les publications de ce dépôt et vous proposera les mises à jour.
 **À la main**
 Téléchargez `main.js`, `manifest.json` et `styles.css` depuis la
 [dernière publication](../../releases/latest) et déposez-les dans
-`VotreCoffre/.obsidian/plugins/zotflow-atomiser/`.
+`VotreCoffre/.obsidian/plugins/obsidian-ariane/`.
 
 ### Pour l'export Word
 - [pandoc](https://pandoc.org/) ;

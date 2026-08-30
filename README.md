@@ -684,7 +684,7 @@ BRAT follows the releases of this repository and offers you updates.
 **By hand**
 Download `main.js`, `manifest.json` and `styles.css` from the
 [latest release](../../releases/latest) and drop them into
-`YourVault/.obsidian/plugins/zotflow-atomiser/`.
+`YourVault/.obsidian/plugins/obsidian-ariane/`.
 
 ### For the Word export
 - [pandoc](https://pandoc.org/);

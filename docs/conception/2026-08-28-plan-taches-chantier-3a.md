@@ -8,7 +8,7 @@
 
 **Architecture :** l'arithmétique des jours, la disposition de l'arbre, la
 remontée des dates sur les méta-tâches et le calcul des décalages sont des
-**fonctions pures**, méthodes statiques de `ZotflowAtomiser`. La vue ne fait que
+**fonctions pures**, méthodes statiques de `Ariane`. La vue ne fait que
 dessiner ce qu'elles rendent et écrire ce qu'elles décident.
 
 **Pile technique :** identique. Barres en DOM pour que le glissé soit simple,
@@ -40,9 +40,9 @@ Celles des chantiers 1 et 2 restent en vigueur. S'y ajoutent :
 **Fichiers :** créer `tests/jours.test.js` ; modifier `main.js`.
 
 **Interfaces :**
-- `ZotflowAtomiser.jourValide(v) -> string` rend `'AAAA-MM-JJ'` ou `''` ;
-- `ZotflowAtomiser.decalerJour(jour, n) -> string` ;
-- `ZotflowAtomiser.ecartJours(a, b) -> number`, nombre de jours de `a` vers `b`,
+- `Ariane.jourValide(v) -> string` rend `'AAAA-MM-JJ'` ou `''` ;
+- `Ariane.decalerJour(jour, n) -> string` ;
+- `Ariane.ecartJours(a, b) -> number`, nombre de jours de `a` vers `b`,
   négatif si `b` précède `a`, et `0` si l'une des deux est invalide.
 
 - [ ] **Étape 1 : écrire le test qui échoue**
@@ -127,21 +127,21 @@ test('décaler une date invalide rend la chaîne vide', () => {
   }
 
   static _versUTC(jour) {
-    const s = ZotflowAtomiser.jourValide(jour);
+    const s = Ariane.jourValide(jour);
     if (!s) return null;
     const [a, m, j] = s.split('-').map(Number);
     return Date.UTC(a, m - 1, j);
   }
 
   static decalerJour(jour, n) {
-    const t = ZotflowAtomiser._versUTC(jour);
+    const t = Ariane._versUTC(jour);
     if (t === null) return '';
     return new Date(t + (Number(n) || 0) * 86400000).toISOString().slice(0, 10);
   }
 
   static ecartJours(a, b) {
-    const ta = ZotflowAtomiser._versUTC(a);
-    const tb = ZotflowAtomiser._versUTC(b);
+    const ta = Ariane._versUTC(a);
+    const tb = Ariane._versUTC(b);
     if (ta === null || tb === null) return 0;
     return Math.round((tb - ta) / 86400000);
   }
@@ -166,7 +166,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 **Fichiers :** créer `tests/gantt.test.js` ; modifier `main.js`.
 
 **Interfaces :**
-- `ZotflowAtomiser.disposerGantt(taches) -> lignes[]` où `taches` est un tableau
+- `Ariane.disposerGantt(taches) -> lignes[]` où `taches` est un tableau
   de `{ ref, intitule, parent, debut, echeance, statut, avancement, jalon }`,
   `parent` étant une référence nue ou un lien `[[…]]`, et où chaque ligne rend
   `{ ref, intitule, niveau, debut, echeance, statut, avancement, jalon,
@@ -301,7 +301,7 @@ la frise et ira au tiroir des non planifiées.
     const racines = [];
     const parentDe = new Map();
     for (const x of liste) {
-      const p = ZotflowAtomiser.refDeLien(x.parent);
+      const p = Ariane.refDeLien(x.parent);
       // Un cycle se casse à la remontée : dès qu'on repasse par la tâche
       // elle-même, on la traite comme une racine.
       let valide = p && parRef.has(p) && p !== x.ref;
@@ -311,7 +311,7 @@ la frise et ira au tiroir des non planifiées.
         while (cur && parRef.has(cur)) {
           if (vus.has(cur)) { valide = false; break; }
           vus.add(cur);
-          cur = ZotflowAtomiser.refDeLien(parRef.get(cur).parent);
+          cur = Ariane.refDeLien(parRef.get(cur).parent);
         }
       }
       if (valide) {
@@ -323,8 +323,8 @@ la frise et ira au tiroir des non planifiées.
       }
     }
     const trier = (a, b) => {
-      const da = ZotflowAtomiser.jourValide(a.debut) || ZotflowAtomiser.jourValide(a.echeance);
-      const db = ZotflowAtomiser.jourValide(b.debut) || ZotflowAtomiser.jourValide(b.echeance);
+      const da = Ariane.jourValide(a.debut) || Ariane.jourValide(a.echeance);
+      const db = Ariane.jourValide(b.debut) || Ariane.jourValide(b.echeance);
       if (da && db && da !== db) return da < db ? -1 : 1;
       if (da && !db) return -1;
       if (!da && db) return 1;
@@ -335,8 +335,8 @@ la frise et ira au tiroir des non planifiées.
       const fils = (enfants.get(x.ref) || []).slice().sort(trier);
       const jalon = !!x.jalon;
       const propre = {
-        debut: jalon ? '' : ZotflowAtomiser.jourValide(x.debut),
-        echeance: ZotflowAtomiser.jourValide(x.echeance),
+        debut: jalon ? '' : Ariane.jourValide(x.debut),
+        echeance: Ariane.jourValide(x.echeance),
       };
       const ligne = {
         ref: x.ref, intitule: x.intitule || x.ref, niveau,
@@ -376,8 +376,8 @@ la frise et ira au tiroir des non planifiées.
 **Fichiers :** créer `tests/decalage.test.js` ; modifier `main.js`.
 
 **Interfaces :**
-- `ZotflowAtomiser.decalerSousArbre(lignes, ref, jours) -> [{ref, debut, echeance}]`
-- `ZotflowAtomiser.cascadeAval(lignes, bloquants, ref, jours) -> [{ref, debut, echeance}]`
+- `Ariane.decalerSousArbre(lignes, ref, jours) -> [{ref, debut, echeance}]`
+- `Ariane.cascadeAval(lignes, bloquants, ref, jours) -> [{ref, debut, echeance}]`
   où `bloquants` est un tableau de `{de, vers}`.
 
 Décaler une méta-tâche décale tout son sous-arbre. Réordonner l'aval décale la
@@ -476,9 +476,9 @@ test('une branche aval déjà à l écart n est pas oubliée pour autant', () =>
     const n = Number(jours) || 0;
     if (!n) return [];
     const out = [];
-    for (const l of ZotflowAtomiser._sousArbre(lignes, ref)) {
-      const d = ZotflowAtomiser.decalerJour(l.propre.debut, n);
-      const e = ZotflowAtomiser.decalerJour(l.propre.echeance, n);
+    for (const l of Ariane._sousArbre(lignes, ref)) {
+      const d = Ariane.decalerJour(l.propre.debut, n);
+      const e = Ariane.decalerJour(l.propre.echeance, n);
       if (!d && !e) continue;
       out.push({ ref: l.ref, debut: d, echeance: e });
     }
@@ -507,10 +507,10 @@ test('une branche aval déjà à l écart n est pas oubliée pour autant', () =>
     }
     const out = [];
     for (const r of vus) {
-      for (const l of ZotflowAtomiser._sousArbre(lignes, r)) {
+      for (const l of Ariane._sousArbre(lignes, r)) {
         if (out.some((x) => x.ref === l.ref)) continue;
-        const d = ZotflowAtomiser.decalerJour(l.propre.debut, n);
-        const e = ZotflowAtomiser.decalerJour(l.propre.echeance, n);
+        const d = Ariane.decalerJour(l.propre.debut, n);
+        const e = Ariane.decalerJour(l.propre.echeance, n);
         if (!d && !e) continue;
         out.push({ ref: l.ref, debut: d, echeance: e });
       }

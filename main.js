@@ -3169,7 +3169,7 @@ function footnotesVersCitations(contenu, resoudre, connecteur) {
   return texte.replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '') + '\n';
 }
 
-class ZotflowAtomiser extends obsidian.Plugin {
+class Ariane extends obsidian.Plugin {
   async onload() {
     await this.loadSettings();
     this.appliquerStyleAparte();
@@ -3187,7 +3187,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     this.suggAncrage = null;
     this.register(() => this.fermerFenetreArgument());
 
-    this.addSettingTab(new ZotflowAtomiserSettingTab(this.app, this));
+    this.addSettingTab(new ArianeSettingTab(this.app, this));
 
     this.addRibbonIcon('layers', "Panier d'annotations (Ariane)", () => this.basculerPanier());
 
@@ -3780,7 +3780,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _donnees, cacheNote) => {
       const fm = (cacheNote && cacheNote.frontmatter) || null;
       const jour = new Date().toISOString().slice(0, 10);
-      const valeur = ZotflowAtomiser.achevementAEcrire(fm, jour);
+      const valeur = Ariane.achevementAEcrire(fm, jour);
       if (valeur === null) return;
       await this.app.fileManager.processFrontMatter(fichier, (x) => {
         x['termine-le'] = valeur;
@@ -7055,8 +7055,8 @@ class ZotflowAtomiser extends obsidian.Plugin {
   }
 
   profilExportable(avecOrganisation) {
-    const hors = new Set(ZotflowAtomiser.CLES_MACHINE);
-    if (!avecOrganisation) for (const k of ZotflowAtomiser.CLES_ETAT) hors.add(k);
+    const hors = new Set(Ariane.CLES_MACHINE);
+    if (!avecOrganisation) for (const k of Ariane.CLES_ETAT) hors.add(k);
     const out = {};
     for (const [k, v] of Object.entries(this.settings)) if (!hors.has(k)) out[k] = v;
     return { ariane: this.manifest.version, profil: out };
@@ -7077,7 +7077,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     try { j = JSON.parse(texte); } catch (e) { return { erreur: 'Fichier illisible (JSON invalide).' }; }
     const profil = (j && j.profil) || j;
     if (!profil || typeof profil !== 'object') return { erreur: 'Ce fichier ne contient pas de profil.' };
-    const machine = new Set(ZotflowAtomiser.CLES_MACHINE);
+    const machine = new Set(Ariane.CLES_MACHINE);
     let n = 0;
     for (const [k, v] of Object.entries(profil)) {
       if (machine.has(k)) continue;
@@ -8375,7 +8375,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   }
 
   static normaliserBiblio(liste) {
-    return (liste || []).map((e) => ZotflowAtomiser.normaliserEntree(e)).filter(Boolean);
+    return (liste || []).map((e) => Ariane.normaliserEntree(e)).filter(Boolean);
   }
 
   chargerBibliographies() {
@@ -8459,7 +8459,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     if (!cle) return null;
     const t = this.texteAttachement(cle);
     if (!t) return null;
-    const e = ZotflowAtomiser.entreeDansTexte(t, nom, m[2]);
+    const e = Ariane.entreeDansTexte(t, nom, m[2]);
     if (!e || !e.titre || e.titre.length < 8) return null;
     return { auteurs: [nom.toLowerCase()], annee: m[2], titre: e.titre,
       revue: '', doi: '', brut: e.brut, viaPdf: true };
@@ -8485,7 +8485,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const brut = this.chargerBibliographies()[d];
     if (!brut) return null;
     if (!this._biblioNorm) this._biblioNorm = {};
-    if (!this._biblioNorm[d]) this._biblioNorm[d] = ZotflowAtomiser.normaliserBiblio(brut);
+    if (!this._biblioNorm[d]) this._biblioNorm[d] = Ariane.normaliserBiblio(brut);
     return this._biblioNorm[d];
   }
 
@@ -8619,7 +8619,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     // la bibliographie dans le texte du PDF lui-même.
     const versPdf = () => {
       const cle = this._attachements ? this._attachements.get(source) : null;
-      const e = cle ? ZotflowAtomiser.entreeDansTexte(this.texteAttachement(cle), premier2, annee) : null;
+      const e = cle ? Ariane.entreeDansTexte(this.texteAttachement(cle), premier2, annee) : null;
       if (!e || !titreCredible(e.titre)) return [];
       return [{ titre: e.titre, doi: '', brut: e.brut, revue: '', score: 0, viaPdf: true }];
     };
@@ -8744,7 +8744,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
       // Une occurrence non résolue ne fonde pas une œuvre : elle rejoint la
       // seule connue quand il n'y en a qu'une. Sans cette règle, « Bowker &
       // Star, 1999 » passait pour deux travaux, l'un identifié et l'autre non.
-      const liste = ZotflowAtomiser.fondreOeuvresProches([...oeuvres.values()]);
+      const liste = Ariane.fondreOeuvresProches([...oeuvres.values()]);
       // La clé doit être recalculée après la fonte : le titre retenu est le plus
       // complet des deux, et sans ce recalcul la clé restait celle du premier
       // venu. Deux libellés désignant la même œuvre gardaient alors des clés
@@ -8890,7 +8890,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   // Recoupement avec le texte d'origine. C'est ici que se joue la confiance.
   validerDecoupage(extrait, brut) {
     const b = sansAccents(brut);
-    const annee = ZotflowAtomiser.premier(extrait.annee);
+    const annee = Ariane.premier(extrait.annee);
     if (!/^\d{4}$/.test(annee) || !b.includes(annee)) return null;
     const auteurs = (Array.isArray(extrait.auteurs) ? extrait.auteurs : [extrait.auteurs])
       .map((x) => sansAccents(String(x || '')).split(/\s+/)[0])
@@ -8898,10 +8898,10 @@ class ZotflowAtomiser extends obsidian.Plugin {
     if (!auteurs.length) return null;
     const mots = new Set(b.split(/[^a-z0-9]+/).filter(Boolean));
     if (!mots.has(auteurs[0])) return null;
-    const titre = ZotflowAtomiser.premier(extrait.titre);
+    const titre = Ariane.premier(extrait.titre);
     // Un titre que le texte d'origine ne contient pas est une invention.
     if (titre.length < 8 || !b.includes(sansAccents(titre).slice(0, 24))) return null;
-    return { auteurs, annee, titre, revue: ZotflowAtomiser.premier(extrait.revue) };
+    return { auteurs, annee, titre, revue: Ariane.premier(extrait.revue) };
   }
 
   async decouperBibliographies() {
@@ -9411,7 +9411,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   }
 
   static familleTache(fm) {
-    const retenu = ZotflowAtomiser.champTache(fm).retenu;
+    const retenu = Ariane.champTache(fm).retenu;
     if (retenu === 'source') return 'lecture';
     return retenu ? 'production' : 'action';
   }
@@ -9432,7 +9432,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   // certains éditeurs suppriment et qui ferait alors diverger le fichier.
   static corpsNouvelleTache(champs) {
     const c = champs || {};
-    const q = ZotflowAtomiser.yamlChaine;
+    const q = Ariane.yamlChaine;
     const ligne = (cle, val) => cle + ':' + (val ? ' ' + val : '');
     const intitule = c.intitule || 'Sans titre';
     const jour = c.aujourdhui || '';
@@ -9498,21 +9498,21 @@ class ZotflowAtomiser extends obsidian.Plugin {
   }
 
   static _versUTC(jour) {
-    const s = ZotflowAtomiser.jourValide(jour);
+    const s = Ariane.jourValide(jour);
     if (!s) return null;
     const [a, m, j] = s.split('-').map(Number);
     return Date.UTC(a, m - 1, j);
   }
 
   static decalerJour(jour, n) {
-    const t = ZotflowAtomiser._versUTC(jour);
+    const t = Ariane._versUTC(jour);
     if (t === null) return '';
     return new Date(t + (Number(n) || 0) * 86400000).toISOString().slice(0, 10);
   }
 
   static ecartJours(a, b) {
-    const ta = ZotflowAtomiser._versUTC(a);
-    const tb = ZotflowAtomiser._versUTC(b);
+    const ta = Ariane._versUTC(a);
+    const tb = Ariane._versUTC(b);
     if (ta === null || tb === null) return 0;
     return Math.round((tb - ta) / 86400000);
   }
@@ -9534,7 +9534,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const enfants = new Map();
     const racines = [];
     for (const x of liste) {
-      const p = ZotflowAtomiser.refDeLien(x.parent);
+      const p = Ariane.refDeLien(x.parent);
       // Un cycle se casse à la remontée : dès qu'on repasse par une tâche déjà
       // vue, la parenté est tenue pour invalide et la tâche devient racine.
       let valide = !!p && parRef.has(p) && p !== x.ref;
@@ -9544,7 +9544,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
         while (cur && parRef.has(cur)) {
           if (vus.has(cur)) { valide = false; break; }
           vus.add(cur);
-          cur = ZotflowAtomiser.refDeLien(parRef.get(cur).parent);
+          cur = Ariane.refDeLien(parRef.get(cur).parent);
         }
       }
       if (valide) {
@@ -9557,8 +9557,8 @@ class ZotflowAtomiser extends obsidian.Plugin {
     // Une tâche sans date passe après celles qui en ont : sa place est au
     // tiroir des non planifiées, pas au milieu de la frise.
     const parDate = (a, b) => {
-      const da = ZotflowAtomiser.jourValide(a.debut) || ZotflowAtomiser.jourValide(a.echeance);
-      const db = ZotflowAtomiser.jourValide(b.debut) || ZotflowAtomiser.jourValide(b.echeance);
+      const da = Ariane.jourValide(a.debut) || Ariane.jourValide(a.echeance);
+      const db = Ariane.jourValide(b.debut) || Ariane.jourValide(b.echeance);
       if (da && db && da !== db) return da < db ? -1 : 1;
       if (da && !db) return -1;
       if (!da && db) return 1;
@@ -9603,8 +9603,8 @@ class ZotflowAtomiser extends obsidian.Plugin {
       const fils = (enfants.get(x.ref) || []).slice().sort(trier);
       const jalon = !!x.jalon;
       const propre = {
-        debut: jalon ? '' : ZotflowAtomiser.jourValide(x.debut),
-        echeance: ZotflowAtomiser.jourValide(x.echeance),
+        debut: jalon ? '' : Ariane.jourValide(x.debut),
+        echeance: Ariane.jourValide(x.echeance),
       };
       const ligne = {
         ref: x.ref, intitule: x.intitule || x.ref, niveau,
@@ -9637,14 +9637,14 @@ class ZotflowAtomiser extends obsidian.Plugin {
   static filtrerTaches(taches, filtre) {
     const liste = (taches || []).filter((x) => x && x.ref);
     const f = filtre || {};
-    const texte = ZotflowAtomiser._sansAccentMinuscule(f.texte || '');
+    const texte = Ariane._sansAccentMinuscule(f.texte || '');
     if (!f.statut && !f.priorite && !texte) return liste;
     const parRef = new Map(liste.map((x) => [x.ref, x]));
     const retenu = (x) => {
       if (f.statut && String(x.statut || '') !== f.statut) return false;
       if (f.priorite && String(x.priorite || '') !== f.priorite) return false;
       if (texte) {
-        const cible = ZotflowAtomiser._sansAccentMinuscule(
+        const cible = Ariane._sansAccentMinuscule(
           String(x.intitule || '') + ' ' + x.ref);
         if (!cible.includes(texte)) return false;
       }
@@ -9654,12 +9654,12 @@ class ZotflowAtomiser extends obsidian.Plugin {
     for (const x of liste) {
       if (!retenu(x)) continue;
       gardes.add(x.ref);
-      let p = ZotflowAtomiser.refDeLien(x.parent);
+      let p = Ariane.refDeLien(x.parent);
       const vus = new Set([x.ref]);
       while (p && parRef.has(p) && !vus.has(p)) {
         gardes.add(p);
         vus.add(p);
-        p = ZotflowAtomiser.refDeLien(parRef.get(p).parent);
+        p = Ariane.refDeLien(parRef.get(p).parent);
       }
     }
     return liste.filter((x) => gardes.has(x.ref));
@@ -9689,9 +9689,9 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const n = Number(jours) || 0;
     if (!n) return [];
     const out = [];
-    for (const l of ZotflowAtomiser._sousArbre(lignes, ref)) {
-      const d = ZotflowAtomiser.decalerJour(l.propre.debut, n);
-      const e = ZotflowAtomiser.decalerJour(l.propre.echeance, n);
+    for (const l of Ariane._sousArbre(lignes, ref)) {
+      const d = Ariane.decalerJour(l.propre.debut, n);
+      const e = Ariane.decalerJour(l.propre.echeance, n);
       if (!d && !e) continue;
       out.push({ ref: l.ref, debut: d, echeance: e });
     }
@@ -9722,11 +9722,11 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const out = [];
     const deja = new Set();
     for (const r of vus) {
-      for (const l of ZotflowAtomiser._sousArbre(lignes, r)) {
+      for (const l of Ariane._sousArbre(lignes, r)) {
         if (deja.has(l.ref)) continue;
         deja.add(l.ref);
-        const d = ZotflowAtomiser.decalerJour(l.propre.debut, n);
-        const e = ZotflowAtomiser.decalerJour(l.propre.echeance, n);
+        const d = Ariane.decalerJour(l.propre.debut, n);
+        const e = Ariane.decalerJour(l.propre.echeance, n);
         if (!d && !e) continue;
         out.push({ ref: l.ref, debut: d, echeance: e });
       }
@@ -9880,7 +9880,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   // Numéro de semaine ISO. La règle ISO rattache la semaine au jeudi, ce qui
   // évite qu'une semaine à cheval sur deux années soit comptée deux fois.
   static semaineIso(jour) {
-    const t = ZotflowAtomiser._versUTC(jour);
+    const t = Ariane._versUTC(jour);
     if (t === null) return 0;
     const d = new Date(t);
     d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
@@ -9898,12 +9898,12 @@ class ZotflowAtomiser extends obsidian.Plugin {
       if (l.echeance) dates.push(l.echeance);
     }
     if (!dates.length) {
-      return { debut: ZotflowAtomiser.decalerJour(aujourdhui, -7),
-               fin: ZotflowAtomiser.decalerJour(aujourdhui, 30) };
+      return { debut: Ariane.decalerJour(aujourdhui, -7),
+               fin: Ariane.decalerJour(aujourdhui, 30) };
     }
     dates.sort();
-    return { debut: ZotflowAtomiser.decalerJour(dates[0], -3),
-             fin: ZotflowAtomiser.decalerJour(dates[dates.length - 1], 3) };
+    return { debut: Ariane.decalerJour(dates[0], -3),
+             fin: Ariane.decalerJour(dates[dates.length - 1], 3) };
   }
 
   static get COULEURS_STATUT() {
@@ -9920,7 +9920,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   // toute façon inscrite au volet.
   static majCanvas(json, etats, incoherences, couleurCompo) {
     const c = JSON.parse(JSON.stringify(json || {}));
-    const couleurs = ZotflowAtomiser.COULEURS_STATUT;
+    const couleurs = Ariane.COULEURS_STATUT;
     const ref = (chemin) => {
       const m = String(chemin || '').match(/(?:^|\/)(T\d{2}-\d{3,4})\.md$/);
       return m ? m[1] : null;
@@ -9997,7 +9997,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   // Contenu du bloc d'accès, sans ses marques. Une action n'en a pas besoin :
   // un bloc vide dans chaque note d'action ne serait que du bruit.
   static blocTache(fm, meta) {
-    const c = ZotflowAtomiser.champTache(fm);
+    const c = Ariane.champTache(fm);
     if (!c.retenu) return '';
     const l = [];
     if (c.conflits.length) {
@@ -10065,15 +10065,15 @@ class ZotflowAtomiser extends obsidian.Plugin {
     if (!f) return false;
     const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
     const deja = [].concat(fm['bloque-par'] || []).map(String);
-    if (deja.some((v) => ZotflowAtomiser.refDeLien(v) === deRef)) return false;
+    if (deja.some((v) => Ariane.refDeLien(v) === deRef)) return false;
     // Un cycle rendrait la frise incalculable : on refuse avant d'écrire.
     const aretes = [{ de: deRef, vers: versRef }];
     for (const t of this.tachesPourGantt()) {
       for (const b of t.bloquePar || []) {
-        aretes.push({ de: ZotflowAtomiser.refDeLien(b), vers: t.ref });
+        aretes.push({ de: Ariane.refDeLien(b), vers: t.ref });
       }
     }
-    if (ZotflowAtomiser.cyclesDe(aretes).length) {
+    if (Ariane.cyclesDe(aretes).length) {
       new obsidian.Notice(tr('Ce lien fermerait un cycle : les deux tâches se bloqueraient.'));
       return false;
     }
@@ -10090,7 +10090,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     if (!f) return false;
     const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
     const reste = [].concat(fm['bloque-par'] || []).map(String)
-      .filter((v) => ZotflowAtomiser.refDeLien(v) !== deRef);
+      .filter((v) => Ariane.refDeLien(v) !== deRef);
     await this.app.fileManager.processFrontMatter(f, (x) => {
       x['bloque-par'] = reste;
       x.modifie = new Date().toISOString().slice(0, 10);
@@ -10190,7 +10190,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
       if (f.extension !== 'canvas') continue;
       let json = null;
       try { json = JSON.parse(await this.app.vault.read(f)); } catch (e) { continue; }
-      const lu = ZotflowAtomiser.lireCanvasTaches(
+      const lu = Ariane.lireCanvasTaches(
         json, (p) => this.refDeChemin(p), this.settings.couleurCompositionCanvas || '6');
       if (lu.noeuds.length) out.push({ fichier: f, json, lu });
     }
@@ -10203,7 +10203,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   // méthode se rappellerait elle-même sans fin.
   async synchroniserCanvas() {
     const canvas = await this.canvasDeTaches();
-    const table = ZotflowAtomiser.unionLiens(canvas.map((c) => c.lu));
+    const table = Ariane.unionLiens(canvas.map((c) => c.lu));
     const tous = [].concat(...canvas.map((c) => c.lu.liens));
     const bloquants = tous.filter((l) => l.relation === 'bloque');
     const compositions = tous.filter((l) => l.relation === 'compose');
@@ -10218,9 +10218,9 @@ class ZotflowAtomiser extends obsidian.Plugin {
       dates[ref] = { debut: fm.debut || '', echeance: fm.echeance || '' };
     }
 
-    const cycles = ZotflowAtomiser.cyclesDe(bloquants)
-      .concat(ZotflowAtomiser.cyclesDe(compositions));
-    const incoherences = ZotflowAtomiser.datesIncoherentes(bloquants, dates);
+    const cycles = Ariane.cyclesDe(bloquants)
+      .concat(Ariane.cyclesDe(compositions));
+    const incoherences = Ariane.datesIncoherentes(bloquants, dates);
     const morts = [];
     const conflits = [];
     let ecrites = 0;
@@ -10270,7 +10270,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
       etats[ref] = { statut: fm.statut || '' };
     }
     for (const c of canvas) {
-      const r = ZotflowAtomiser.majCanvas(
+      const r = Ariane.majCanvas(
         c.json, etats, incoherences, this.settings.couleurCompositionCanvas || '6');
       if (!r.change) continue;
       await this.app.vault.modify(c.fichier, JSON.stringify(r.json, null, 2));
@@ -10288,7 +10288,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
       if (f.basename.charAt(0) !== '@') continue;
       const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
       if (!fm || !fm.citationKey) continue;
-      out.push({ nom: ZotflowAtomiser.libelleSource(fm, f.basename), cle: f.basename });
+      out.push({ nom: Ariane.libelleSource(fm, f.basename), cle: f.basename });
     }
     out.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
     return out;
@@ -10323,7 +10323,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   // références : la clé de la pièce jointe ne se déduit pas de la clé de
   // citation, elle se lit dans la fiche.
   async accesTache(fm) {
-    const c = ZotflowAtomiser.champTache(fm);
+    const c = Ariane.champTache(fm);
     if (c.retenu === 'fichier') return this.metadonneesFichier(String(fm.fichier).trim());
     if (c.retenu !== 'source') return null;
     const base = String(fm.source).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
@@ -10349,7 +10349,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const fm = (cache && cache.frontmatter) || {};
     if (fm.type !== 'tache') return false;
     const meta = await this.accesTache(fm);
-    const interieur = ZotflowAtomiser.blocTache(fm, meta);
+    const interieur = Ariane.blocTache(fm, meta);
     const bloc = interieur ? ZFA_TACHE_DEBUT + '\n' + interieur + '\n' + ZFA_TACHE_FIN : '';
     const avant = await this.app.vault.read(file);
     let texte = avant;
@@ -10393,7 +10393,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
       if (f.basename.charAt(0) === '@') continue;
       if (exclus.some((d) => f.path.startsWith(d + '/'))) continue;
       const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
-      out.push({ nom: ZotflowAtomiser.libelleNote(fm, f.basename), cle: f.basename });
+      out.push({ nom: Ariane.libelleNote(fm, f.basename), cle: f.basename });
     }
     out.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
     return out;
@@ -10409,10 +10409,10 @@ class ZotflowAtomiser extends obsidian.Plugin {
     const noms = this.app.vault.getMarkdownFiles()
       .filter((f) => f.path.startsWith(dossier + '/'))
       .map((f) => f.basename);
-    const reference = ZotflowAtomiser.referenceTacheSuivante(noms, new Date().getFullYear());
+    const reference = Ariane.referenceTacheSuivante(noms, new Date().getFullYear());
     const chemin = dossier + '/' + reference + '.md';
     const jour = new Date().toISOString().slice(0, 10);
-    await this.ecrire(chemin, ZotflowAtomiser.corpsNouvelleTache(Object.assign({}, champs, {
+    await this.ecrire(chemin, Ariane.corpsNouvelleTache(Object.assign({}, champs, {
       aujourdhui: jour,
       liste: (champs && champs.liste) || this.settings.listeRappelsDefaut,
     })));
@@ -10424,7 +10424,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
  * Onglet de réglages
  * ========================================================================= */
 
-class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
+class ArianeSettingTab extends obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -11681,7 +11681,7 @@ class ModaleNouvelleTache extends obsidian.Modal {
       // et rien n'oblige à trancher tout de suite, le champ pouvant rester vide.
       const poser = (v) => {
         this.saisieProduction = v;
-        const r = ZotflowAtomiser.livrableOuFichier(v);
+        const r = Ariane.livrableOuFichier(v);
         this.champs.livrable = r.champ === 'livrable' ? r.valeur : '';
         this.champs.fichier = r.champ === 'fichier' ? r.valeur : '';
       };
@@ -11867,7 +11867,7 @@ class MoteurFrise {
     const lignes = epaisseur >= 54 ? 3 : (epaisseur >= 36 ? 2 : 1);
     return { epaisseur, marge, lignes, rayon: Math.min(9, Math.max(3, Math.round(epaisseur / 3))) };
   }
-  get ppj() { return ZotflowAtomiser.ZOOMS_GANTT[this.zoom] || 9; }
+  get ppj() { return Ariane.ZOOMS_GANTT[this.zoom] || 9; }
 
   visibles(lignes) {
     const out = [];
@@ -11887,7 +11887,7 @@ class MoteurFrise {
   }
 
   couleur(statut) {
-    const c = ZotflowAtomiser.COULEURS_GANTT;
+    const c = Ariane.COULEURS_GANTT;
     return c[statut] || c['à faire'];
   }
 
@@ -11932,7 +11932,7 @@ class MoteurFrise {
     }
     const nTotal = taches.length;
     if (this.ctx.lire('masquerTerminees')) taches = this.sansLesCloses(taches);
-    if (this.ctx.avecFiltres) taches = ZotflowAtomiser.filtrerTaches(taches, this._filtre);
+    if (this.ctx.avecFiltres) taches = Ariane.filtrerTaches(taches, this._filtre);
     // Un tri posé sur un en-tête l'emporte sur celui des réglages : c'est le
     // geste le plus récent, et le plus explicite.
     const colTri = this.ctx.lire('triColonne');
@@ -11949,7 +11949,7 @@ class MoteurFrise {
       }
       sensTri = this.ctx.lire('triColonneSens') === -1 ? -1 : 1;
     }
-    const toutes = ZotflowAtomiser.disposerGantt(taches, mode, sensTri);
+    const toutes = Ariane.disposerGantt(taches, mode, sensTri);
     const planifiees = toutes.filter((l) => l.debut || l.echeance);
     const nonPlanifiees = toutes.filter((l) => !l.debut && !l.echeance);
 
@@ -12009,7 +12009,7 @@ class MoteurFrise {
     droite.addEventListener('scroll', () => { table.style.top = (-droite.scrollTop) + 'px'; });
 
     droite.scrollLeft = memeX !== null ? memeX
-      : Math.max(0, ZotflowAtomiser.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220);
+      : Math.max(0, Ariane.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220);
     if (memeY !== null) { droite.scrollTop = memeY; table.style.top = (-memeY) + 'px'; }
   }
 
@@ -12018,7 +12018,7 @@ class MoteurFrise {
   sansLesCloses(taches) {
     const clos = (t) => t.statut === 'terminée' || t.statut === 'abandonnée';
     const vif = (ref, vus) => taches.some((x) =>
-      ZotflowAtomiser.refDeLien(x.parent) === ref && !vus.has(x.ref)
+      Ariane.refDeLien(x.parent) === ref && !vus.has(x.ref)
       && (!clos(x) || vif(x.ref, new Set([...vus, x.ref]))));
     return taches.filter((t) => !clos(t) || vif(t.ref, new Set([t.ref])));
   }
@@ -12033,22 +12033,22 @@ class MoteurFrise {
       if (l.echeance) dates.push(l.echeance);
     }
     dates.sort();
-    let debut = ZotflowAtomiser.decalerJour(dates[0], -7);
-    let fin = ZotflowAtomiser.decalerJour(dates[dates.length - 1], 14);
+    let debut = Ariane.decalerJour(dates[0], -7);
+    let fin = Ariane.decalerJour(dates[dates.length - 1], 14);
     const mini = JOURS_MINIMUM_GANTT[this.zoom] || 365;
-    const etendu = ZotflowAtomiser.ecartJours(debut, fin);
+    const etendu = Ariane.ecartJours(debut, fin);
     if (etendu < mini) {
       const extra = Math.ceil((mini - etendu) / 2);
-      debut = ZotflowAtomiser.decalerJour(debut, -extra);
-      fin = ZotflowAtomiser.decalerJour(fin, extra);
+      debut = Ariane.decalerJour(debut, -extra);
+      fin = Ariane.decalerJour(fin, extra);
     }
     if (this.zoom !== 'jour') debut = debut.slice(0, 8) + '01';
     const ppj = this.ppj;
-    const jours = ZotflowAtomiser.ecartJours(debut, fin);
+    const jours = Ariane.ecartJours(debut, fin);
     return { debut, fin, ppj, jours, largeur: jours * ppj };
   }
 
-  x(cfg, jour) { return ZotflowAtomiser.ecartJours(cfg.debut, jour) * cfg.ppj; }
+  x(cfg, jour) { return Ariane.ecartJours(cfg.debut, jour) * cfg.ppj; }
 
   moisSuivant(jour) {
     const [a, m] = jour.split('-').map(Number);
@@ -12066,7 +12066,7 @@ class MoteurFrise {
 
   dessinerReglages(c, nTotal, nPlanifiees) {
     const b = c.createDiv({ cls: 'zfa-gantt-barre' });
-    for (const z of Object.keys(ZotflowAtomiser.ZOOMS_GANTT)) {
+    for (const z of Object.keys(Ariane.ZOOMS_GANTT)) {
       this.bouton(b, tr(z), async () => {
         await this.ctx.ecrire('zoom', z); this.dessiner();
       }, this.zoom === z);
@@ -12156,7 +12156,7 @@ class MoteurFrise {
     const d = c.createDiv({ cls: 'zfa-gantt-cascade' });
     d.createSpan({ text: tr('Ce décalage contredit un blocage de ') + ref + '. ' });
     this.bouton(d, tr('Décaler l aval de ') + jours + tr(' jour(s)'), async () => {
-      const ch = ZotflowAtomiser.cascadeAval(this._lignes, bloquants, ref, jours)
+      const ch = Ariane.cascadeAval(this._lignes, bloquants, ref, jours)
         .filter((x) => x.ref !== ref);
       await this.greffon.ecrireDatesTaches(ch);
       this._cascade = null; this.dessiner();
@@ -12435,9 +12435,9 @@ class MoteurFrise {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    const parent = ZotflowAtomiser.refDeLien(ligne.parent || '');
+    const parent = Ariane.refDeLien(ligne.parent || '');
     const freres = lignes.filter((x) => x.niveau === ligne.niveau
-      && ZotflowAtomiser.refDeLien(x.parent || '') === parent);
+      && Ariane.refDeLien(x.parent || '') === parent);
     if (freres.length < 2) {
       new obsidian.Notice(tr('Rien à réordonner : cette tâche n a pas de sœur.'));
       return;
@@ -12491,7 +12491,7 @@ class MoteurFrise {
     const haut = this._hEntete;
     const bas = haut + nLignes * this._H;
     for (let i = 0; i <= cfg.jours; i++) {
-      const jour = ZotflowAtomiser.decalerJour(cfg.debut, i);
+      const jour = Ariane.decalerJour(cfg.debut, i);
       const [a, m, j] = jour.split('-').map(Number);
       const js = new Date(Date.UTC(a, m - 1, j)).getUTCDay();
       const x = i * cfg.ppj;
@@ -12554,7 +12554,7 @@ class MoteurFrise {
   enteteJours(g, cfg) {
     const lettres = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
     for (let i = 0; i < cfg.jours; i++) {
-      const jour = ZotflowAtomiser.decalerJour(cfg.debut, i);
+      const jour = Ariane.decalerJour(cfg.debut, i);
       const [a, m, j] = jour.split('-').map(Number);
       const js = new Date(Date.UTC(a, m - 1, j)).getUTCDay();
       const x = i * cfg.ppj;
@@ -12572,14 +12572,14 @@ class MoteurFrise {
   enteteSemaines(g, cfg) {
     const mode = this.ctx.lire('libelleSemaine') || 'numero';
     for (let i = 0; i < cfg.jours; i++) {
-      const jour = ZotflowAtomiser.decalerJour(cfg.debut, i);
+      const jour = Ariane.decalerJour(cfg.debut, i);
       const [a, m, j] = jour.split('-').map(Number);
       if (new Date(Date.UTC(a, m - 1, j)).getUTCDay() !== 1) continue;
       const nb = Math.min(7, cfg.jours - i);
       const x = i * cfg.ppj;
       const w = nb * cfg.ppj;
-      const fin = ZotflowAtomiser.decalerJour(jour, nb - 1);
-      const num = 'S' + ZotflowAtomiser.semaineIso(jour);
+      const fin = Ariane.decalerJour(jour, nb - 1);
+      const num = 'S' + Ariane.semaineIso(jour);
       const plage = j + '–' + Number(fin.slice(8, 10));
       const t = svgEl('text', { x: x + w / 2, y: this._basEntete, class: 'zfa-gantt-entete-semaine' });
       t.textContent = mode === 'numero' ? num : (mode === 'dates' ? plage : num + ' · ' + plage);
@@ -12666,7 +12666,7 @@ class MoteurFrise {
       // Une échéance au jour E occupe le jour E : le bord droit tombe donc au
       // début de E+1, faute de quoi une tâche d'un jour n'aurait pas d'épaisseur.
       const x = Math.max(0, this.x(cfg, debut));
-      const x2 = Math.min(cfg.largeur, this.x(cfg, ZotflowAtomiser.decalerJour(fin, 1)));
+      const x2 = Math.min(cfg.largeur, this.x(cfg, Ariane.decalerJour(fin, 1)));
       const w = Math.max(8, x2 - x);
       const geo = this._geo;
       const y = yLigne + geo.marge;
@@ -12842,7 +12842,7 @@ class MoteurFrise {
     m.addItem((i) => i.setTitle(tr('Retirer les dates')).setIcon('calendar-off')
       .onClick(() => poser({ debut: '', echeance: '' })));
 
-    const bloquants = (tache.bloquePar || []).map((b) => ZotflowAtomiser.refDeLien(b));
+    const bloquants = (tache.bloquePar || []).map((b) => Ariane.refDeLien(b));
     if (bloquants.length) {
       m.addSeparator();
       for (const b of bloquants) {
@@ -12882,7 +12882,7 @@ class MoteurFrise {
   }
 
   dessinerAujourdhui(svg, cfg, aujourdhui, nLignes) {
-    const n = ZotflowAtomiser.ecartJours(cfg.debut, aujourdhui);
+    const n = Ariane.ecartJours(cfg.debut, aujourdhui);
     if (n < 0 || n > cfg.jours) return;
     const x = n * cfg.ppj;
     const bas = this._hEntete + nLignes * this._H;
@@ -12906,11 +12906,11 @@ class MoteurFrise {
     for (const t of this._taches || []) {
       dates[t.ref] = { debut: t.debut, echeance: t.echeance };
       for (const b of t.bloquePar || []) {
-        aretes.push({ de: ZotflowAtomiser.refDeLien(b), vers: t.ref,
+        aretes.push({ de: Ariane.refDeLien(b), vers: t.ref,
           libelle: (String(b).match(/\|(.*)\]\]$/) || [null, ''])[1] });
       }
     }
-    const fautives = new Set(ZotflowAtomiser.datesIncoherentes(aretes, dates)
+    const fautives = new Set(Ariane.datesIncoherentes(aretes, dates)
       .map((i) => i.de + ' ' + i.vers));
     const g = svgEl('g', { class: 'zfa-gantt-fleches' });
     const defs = svgEl('defs', {});
@@ -12930,7 +12930,7 @@ class MoteurFrise {
       const finSrc = src.echeance || src.debut;
       const debCib = cib.debut || cib.echeance;
       if (!finSrc || !debCib) continue;
-      const x1 = this.x(cfg, ZotflowAtomiser.decalerJour(finSrc, 1));
+      const x1 = this.x(cfg, Ariane.decalerJour(finSrc, 1));
       const y1 = this._hEntete + rang.get(a.de) * H + H / 2;
       const x2 = this.x(cfg, debCib);
       const y2 = this._hEntete + rang.get(a.vers) * H + H / 2;
@@ -13010,7 +13010,7 @@ class MoteurFrise {
   }
 
   async appliquerGeste(ligne, mode, n) {
-    const J = ZotflowAtomiser;
+    const J = Ariane;
     let changements;
     if (mode === 'deplacer') {
       changements = J.decalerSousArbre(this._lignes, ligne.ref, n);
@@ -13043,10 +13043,10 @@ class MoteurFrise {
     for (const t of this.greffon.tachesPourGantt()) {
       dates[t.ref] = { debut: t.debut, echeance: t.echeance };
       for (const b of t.bloquePar || []) {
-        bloquants.push({ de: ZotflowAtomiser.refDeLien(b), vers: t.ref });
+        bloquants.push({ de: Ariane.refDeLien(b), vers: t.ref });
       }
     }
-    const fautives = ZotflowAtomiser.datesIncoherentes(bloquants, dates)
+    const fautives = Ariane.datesIncoherentes(bloquants, dates)
       .filter((i) => i.de === ref || i.vers === ref);
     this._cascade = fautives.length ? { ref, jours: n, bloquants } : null;
   }
@@ -13070,11 +13070,11 @@ class MoteurFrise {
       if (ev.clientX < b.left || ev.clientX > b.right
           || ev.clientY < b.top || ev.clientY > b.bottom) return;
       const n = Math.floor((ev.clientX - b.left) / this._cfg.ppj);
-      const jour = ZotflowAtomiser.decalerJour(this._cfg.debut, n);
+      const jour = Ariane.decalerJour(this._cfg.debut, n);
       if (!jour) return;
       await this.greffon.ecrireDatesTaches([ligne.jalon
         ? { ref: ligne.ref, debut: '', echeance: jour }
-        : { ref: ligne.ref, debut: jour, echeance: ZotflowAtomiser.decalerJour(jour, 6) }]);
+        : { ref: ligne.ref, debut: jour, echeance: Ariane.decalerJour(jour, 6) }]);
       this.dessiner();
     };
     document.addEventListener('pointermove', suivre);
@@ -13212,12 +13212,12 @@ function fabriquerVueFriseBase(greffon) {
       const parRef = new Map(toutes.map((t) => [t.ref, t]));
       const gardes = new Set(dedans);
       for (const ref of dedans) {
-        let p = ZotflowAtomiser.refDeLien((parRef.get(ref) || {}).parent || '');
+        let p = Ariane.refDeLien((parRef.get(ref) || {}).parent || '');
         const vus = new Set([ref]);
         while (p && parRef.has(p) && !vus.has(p)) {
           gardes.add(p);
           vus.add(p);
-          p = ZotflowAtomiser.refDeLien(parRef.get(p).parent || '');
+          p = Ariane.refDeLien(parRef.get(p).parent || '');
         }
       }
       return toutes.filter((t) => gardes.has(t.ref));
@@ -14066,7 +14066,7 @@ class FusionAuteursModal extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
-module.exports = ZotflowAtomiser;
+module.exports = Ariane;
 
 // Exposition des fonctions pures pour les tests.
 module.exports._test = {

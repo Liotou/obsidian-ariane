@@ -9,8 +9,8 @@
 référence calculée, famille déduite et vues de travail, sans canvas ni frise.
 
 **Architecture :** tout entre dans `main.js`, en une section « Tâches » placée
-avant la classe `ZotflowAtomiserSettingTab`. La logique pure devient des
-**méthodes statiques** de `ZotflowAtomiser`, à l'image de `entreeDansTexte` et
+avant la classe `ArianeSettingTab`. La logique pure devient des
+**méthodes statiques** de `Ariane`, à l'image de `entreeDansTexte` et
 `fondreOeuvresProches` qui existent déjà : c'est ce qui la rend testable hors
 d'Obsidian. Les méthodes d'instance ne font que de l'entrée-sortie.
 
@@ -60,7 +60,7 @@ Elles s'appliquent implicitement à chaque tâche du plan.
 
 **Interfaces :**
 - Consomme : rien.
-- Produit : `ZotflowAtomiser.referenceTacheSuivante(noms: string[], annee: number) -> string`.
+- Produit : `Ariane.referenceTacheSuivante(noms: string[], annee: number) -> string`.
   `noms` est la liste des `basename` des notes du dossier des tâches, `annee`
   l'année sur quatre chiffres. Rend la référence libre suivante.
 
@@ -145,8 +145,8 @@ Attendu : échec sur les sept cas, avec `Ariane.referenceTacheSuivante is not a 
 
 - [ ] **Étape 4 : écrire la méthode**
 
-Dans `main.js`, ouvrir une section juste avant `class ZotflowAtomiserSettingTab`,
-et y placer la méthode comme **statique de `ZotflowAtomiser`**, c'est à dire à
+Dans `main.js`, ouvrir une section juste avant `class ArianeSettingTab`,
+et y placer la méthode comme **statique de `Ariane`**, c'est à dire à
 l'intérieur de cette classe, à côté de `static fondreOeuvresProches`.
 
 ```js
@@ -200,10 +200,10 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 **Interfaces :**
 - Consomme : rien.
 - Produit :
-  - `ZotflowAtomiser.champTache(fm: object) -> { retenu: string|null, conflits: string[] }`
+  - `Ariane.champTache(fm: object) -> { retenu: string|null, conflits: string[] }`
     où `retenu` vaut `'source'`, `'livrable'`, `'fichier'` ou `null`, et
     `conflits` liste les champs remplis quand il y en a plus d'un.
-  - `ZotflowAtomiser.familleTache(fm: object) -> 'lecture'|'production'|'action'`.
+  - `Ariane.familleTache(fm: object) -> 'lecture'|'production'|'action'`.
 
 - [ ] **Étape 1 : écrire le test qui échoue**
 
@@ -271,7 +271,7 @@ Dans la section « Tâches » de `main.js`, à la suite de `referenceTacheSuivan
   }
 
   static familleTache(fm) {
-    const retenu = ZotflowAtomiser.champTache(fm).retenu;
+    const retenu = Ariane.champTache(fm).retenu;
     if (retenu === 'source') return 'lecture';
     return retenu ? 'production' : 'action';
   }
@@ -304,9 +304,9 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 **Interfaces :**
 - Consomme : rien.
 - Produit :
-  - `ZotflowAtomiser.yamlChaine(v: any) -> string` rendant une valeur YAML entre
+  - `Ariane.yamlChaine(v: any) -> string` rendant une valeur YAML entre
     guillemets, ou la chaîne vide si la valeur est vide.
-  - `ZotflowAtomiser.corpsNouvelleTache(champs: object) -> string` où `champs`
+  - `Ariane.corpsNouvelleTache(champs: object) -> string` où `champs`
     porte `intitule`, `statut`, `priorite`, `debut`, `echeance`, `avancement`,
     `jalon`, `source`, `livrable`, `fichier`, `liste`, `aujourdhui`.
 
@@ -416,7 +416,7 @@ Dans la section « Tâches » de `main.js`, à la suite de `familleTache` :
   // pas à remplir.
   static corpsNouvelleTache(champs) {
     const c = champs || {};
-    const q = ZotflowAtomiser.yamlChaine;
+    const q = Ariane.yamlChaine;
     const jour = c.aujourdhui || '';
     const l = [];
     l.push('---');
@@ -479,8 +479,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   `TEXTES.en`.
 
 **Interfaces :**
-- Consomme : `ZotflowAtomiser.referenceTacheSuivante`,
-  `ZotflowAtomiser.corpsNouvelleTache`.
+- Consomme : `Ariane.referenceTacheSuivante`,
+  `Ariane.corpsNouvelleTache`.
 - Produit :
   - le réglage `dossierTaches` et le réglage `listeRappelsDefaut` ;
   - le getter d'instance `dossierT`, sur le modèle de `dossierR` ;
@@ -536,10 +536,10 @@ d'instance :
     const noms = this.app.vault.getMarkdownFiles()
       .filter((f) => f.path.startsWith(dossier + '/'))
       .map((f) => f.basename);
-    const reference = ZotflowAtomiser.referenceTacheSuivante(noms, new Date().getFullYear());
+    const reference = Ariane.referenceTacheSuivante(noms, new Date().getFullYear());
     const chemin = dossier + '/' + reference + '.md';
     const jour = new Date().toISOString().slice(0, 10);
-    await this.ecrire(chemin, ZotflowAtomiser.corpsNouvelleTache({
+    await this.ecrire(chemin, Ariane.corpsNouvelleTache({
       ...champs,
       aujourdhui: jour,
       liste: champs.liste || this.settings.listeRappelsDefaut,
@@ -567,7 +567,7 @@ Puis, dans `TEXTES.en`, ajouter les deux clés employées :
 
 ```bash
 cd ~/obsidian-ariane && node --check main.js && node --test "tests/**/*.test.js"
-cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/"
+cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"
 ```
 
 Recharger le greffon dans Obsidian, ouvrir les réglages et vérifier que le champ
@@ -770,7 +770,7 @@ d'elles existe déjà, auquel cas ne pas la dupliquer.
 
 ```bash
 cd ~/obsidian-ariane && node --check main.js && node --test "tests/**/*.test.js"
-cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/"
+cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"
 ```
 
 Recharger le greffon, lancer « Tâches : créer une tâche », créer une tâche de
@@ -797,9 +797,9 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Modifier : `main.js`, section « Tâches », plus un `addCommand`
 
 **Interfaces :**
-- Consomme : `ZotflowAtomiser.familleTache`, `ZotflowAtomiser.champTache`.
+- Consomme : `Ariane.familleTache`, `Ariane.champTache`.
 - Produit :
-  - `ZotflowAtomiser.blocTache(fm: object, meta: object|null) -> string` rendant
+  - `Ariane.blocTache(fm: object, meta: object|null) -> string` rendant
     le contenu du bloc marqué. `meta` porte `{ uriPdf, uriZotero }` pour une
     lecture, `{ modifie, ouvert }` pour un fichier externe, ou vaut `null` ;
   - `async accesTache(fm) -> object|null` qui calcule ce `meta` ;
@@ -890,7 +890,7 @@ Dans la section « Tâches » :
   // Contenu du bloc d'accès, sans ses marques. Une action n'en a pas besoin :
   // un bloc vide dans chaque note d'action serait du bruit.
   static blocTache(fm, meta) {
-    const c = ZotflowAtomiser.champTache(fm);
+    const c = Ariane.champTache(fm);
     if (!c.retenu) return '';
     const l = [];
     if (c.conflits.length) {
@@ -956,7 +956,7 @@ Toujours dans la section « Tâches », après `creerTache` :
   // références : la clé de la pièce jointe ne se déduit pas de la clé de
   // citation, elle se lit dans la fiche.
   async accesTache(fm) {
-    const c = ZotflowAtomiser.champTache(fm);
+    const c = Ariane.champTache(fm);
     if (c.retenu === 'fichier') return this.metadonneesFichier(String(fm.fichier).trim());
     if (c.retenu !== 'source') return null;
     const base = String(fm.source).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
@@ -982,7 +982,7 @@ Toujours dans la section « Tâches », après `creerTache` :
     const fm = (cache && cache.frontmatter) || {};
     if (fm.type !== 'tache') return false;
     const meta = await this.accesTache(fm);
-    const interieur = ZotflowAtomiser.blocTache(fm, meta);
+    const interieur = Ariane.blocTache(fm, meta);
     const bloc = interieur
       ? ZFA_TACHE_DEBUT + '\n' + interieur + '\n' + ZFA_TACHE_FIN
       : '';
@@ -1027,7 +1027,7 @@ Ajouter dans `TEXTES.en` les clés introduites.
 
 ```bash
 cd ~/obsidian-ariane && node --check main.js && node --test "tests/**/*.test.js"
-cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/"
+cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"
 ```
 
 Sur la tâche de lecture créée à la tâche 5, lancer « Tâches : rafraîchir le bloc
@@ -1058,7 +1058,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 **Interfaces :**
 - Consomme : rien.
-- Produit : `ZotflowAtomiser.achevementAEcrire(fm, aujourdhui) -> string|null`,
+- Produit : `Ariane.achevementAEcrire(fm, aujourdhui) -> string|null`,
   rendant la valeur à inscrire dans `termine-le`, ou `null` s'il n'y a rien à
   faire.
 
@@ -1127,7 +1127,7 @@ Dans `onload`, à côté des autres `registerEvent` :
 ```js
     this.registerEvent(this.app.metadataCache.on('changed', async (file, _d, cache) => {
       const fm = (cache && cache.frontmatter) || null;
-      const valeur = ZotflowAtomiser.achevementAEcrire(fm, new Date().toISOString().slice(0, 10));
+      const valeur = Ariane.achevementAEcrire(fm, new Date().toISOString().slice(0, 10));
       if (valeur === null) return;
       await this.app.fileManager.processFrontMatter(file, (x) => {
         x['termine-le'] = valeur;
@@ -1140,7 +1140,7 @@ Dans `onload`, à côté des autres `registerEvent` :
 
 ```bash
 cd ~/obsidian-ariane && node --check main.js && node --test "tests/**/*.test.js"
-cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/"
+cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"
 ```
 
 Passer une tâche au statut `terminée` et vérifier que `termine-le` se remplit du
@@ -1313,7 +1313,7 @@ Ajouter dans `TEXTES.en` les clés introduites.
 
 ```bash
 cd ~/obsidian-ariane && node --check main.js && node --test "tests/**/*.test.js"
-cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/"
+cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"
 ```
 
 Le coffre porte déjà `8 - Tâches/Tâches.base`, vide. **La déplacer d'abord** vers

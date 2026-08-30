@@ -10,7 +10,7 @@ information n'ait deux propriétaires.
 
 **Architecture :** la lecture d'un canvas, l'union entre canvas, la détection de
 cycles et celle des dates incohérentes sont des **fonctions pures**, méthodes
-statiques de `ZotflowAtomiser`, donc éprouvables par `node --test`. Les méthodes
+statiques de `Ariane`, donc éprouvables par `node --test`. Les méthodes
 d'instance ne font que lire et écrire des fichiers.
 
 **Pile technique :** identique au chantier 1. Tests par
@@ -55,7 +55,7 @@ Celles du chantier 1 restent en vigueur. S'y ajoutent :
 - Modifier : `main.js`, section « Tâches »
 
 **Interfaces :**
-- Produit : `ZotflowAtomiser.lireCanvasTaches(canvas, estTache, couleurCompo) -> {liens, noeuds}`
+- Produit : `Ariane.lireCanvasTaches(canvas, estTache, couleurCompo) -> {liens, noeuds}`
   - `canvas` est l'objet JSON déjà analysé ;
   - `estTache(chemin)` rend la référence de la tâche (`'T26-001'`) ou `null` ;
   - `couleurCompo` est la couleur de composition en vigueur ;
@@ -249,7 +249,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Modifier : `main.js`, section « Tâches »
 
 **Interfaces :**
-- Produit : `ZotflowAtomiser.unionLiens(lectures) -> Map<ref, {parent, bloquePar, conflits}>`
+- Produit : `Ariane.unionLiens(lectures) -> Map<ref, {parent, bloquePar, conflits}>`
   où `lectures` est le tableau des résultats de `lireCanvasTaches`, `parent` une
   chaîne `[[T26-012|libellé]]` ou `''`, `bloquePar` un tableau de telles chaînes
   trié, et `conflits` la liste des parents concurrents quand il y en a plusieurs.
@@ -392,7 +392,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Modifier : `main.js`, section « Tâches »
 
 **Interfaces :**
-- Produit : `ZotflowAtomiser.cyclesDe(aretes) -> string[][]` où `aretes` est un
+- Produit : `Ariane.cyclesDe(aretes) -> string[][]` où `aretes` est un
   tableau de `{ de, vers }` et le résultat la liste des cycles, chacun donné
   comme la suite de ses références, la première répétée en fin pour se lire.
 
@@ -512,7 +512,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Modifier : `main.js`, section « Tâches »
 
 **Interfaces :**
-- Produit : `ZotflowAtomiser.datesIncoherentes(aretes, datesParRef) -> [{de, vers, fin, debut}]`
+- Produit : `Ariane.datesIncoherentes(aretes, datesParRef) -> [{de, vers, fin, debut}]`
   où `datesParRef` est un objet `{ 'T26-001': { debut, echeance } }`.
 
 Si A bloque B, B ne peut pas commencer avant que A ne s'achève. Une date
@@ -673,7 +673,7 @@ Dans la section « Tâches » :
       if (f.extension !== 'canvas') continue;
       let json = null;
       try { json = JSON.parse(await this.app.vault.read(f)); } catch (e) { continue; }
-      const lu = ZotflowAtomiser.lireCanvasTaches(
+      const lu = Ariane.lireCanvasTaches(
         json, (p) => this.refDeChemin(p), this.settings.couleurCompositionCanvas || '6');
       if (lu.noeuds.length) out.push({ fichier: f, json, lu });
     }
@@ -686,7 +686,7 @@ Dans la section « Tâches » :
   // méthode se rappellerait elle-même sans fin.
   async synchroniserCanvas() {
     const canvas = await this.canvasDeTaches();
-    const table = ZotflowAtomiser.unionLiens(canvas.map((c) => c.lu));
+    const table = Ariane.unionLiens(canvas.map((c) => c.lu));
     const tous = [].concat(...canvas.map((c) => c.lu.liens));
     const bloquants = tous.filter((l) => l.relation === 'bloque');
     const compositions = tous.filter((l) => l.relation === 'compose');
@@ -701,9 +701,9 @@ Dans la section « Tâches » :
       dates[ref] = { debut: fm.debut || '', echeance: fm.echeance || '' };
     }
 
-    const cycles = ZotflowAtomiser.cyclesDe(bloquants)
-      .concat(ZotflowAtomiser.cyclesDe(compositions));
-    const incoherences = ZotflowAtomiser.datesIncoherentes(bloquants, dates);
+    const cycles = Ariane.cyclesDe(bloquants)
+      .concat(Ariane.cyclesDe(compositions));
+    const incoherences = Ariane.datesIncoherentes(bloquants, dates);
     const conflits = [];
     let ecrites = 0;
 
@@ -770,7 +770,7 @@ Ajouter dans `TEXTES.en` les clés introduites.
 
 ```bash
 cd ~/obsidian-ariane && node --check main.js && node --test "tests/**/*.test.js"
-cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/"
+cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"
 ```
 
 Dans un canvas, poser deux notes de tâche et tirer une flèche de l'une à l'autre.
@@ -798,7 +798,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 **Interfaces :**
 - Produit :
-  - `ZotflowAtomiser.majCanvas(json, etats, incoherences, couleurCompo) -> {json, change}`
+  - `Ariane.majCanvas(json, etats, incoherences, couleurCompo) -> {json, change}`
     où `etats` est un objet `{ 'T26-001': { statut } }` ;
   - `async ecrireCanvas()` qui applique le résultat aux fichiers.
 
@@ -887,7 +887,7 @@ La correspondance des couleurs de statut est fixe : `à faire` sans couleur,
   // réécrire un fichier que Monsieur a peut-être ouvert.
   static majCanvas(json, etats, incoherences, couleurCompo) {
     const c = JSON.parse(JSON.stringify(json || {}));
-    const couleurs = ZotflowAtomiser.COULEURS_STATUT;
+    const couleurs = Ariane.COULEURS_STATUT;
     const ref = (chemin) => {
       const m = String(chemin || '').match(/(?:^|\\/)(T\\d{2}-\\d{3,4})\\.md$/);
       return m ? m[1] : null;
@@ -942,7 +942,7 @@ Lancer : `node --test "tests/**/*.test.js" && node --check main.js`
       etats[ref] = { statut: fm.statut || '' };
     }
     for (const c of canvas) {
-      const r = ZotflowAtomiser.majCanvas(
+      const r = Ariane.majCanvas(
         c.json, etats, incoherences, this.settings.couleurCompositionCanvas || '6');
       if (!r.change) continue;
       await this.app.vault.modify(c.fichier, JSON.stringify(r.json, null, 2));
@@ -953,7 +953,7 @@ Lancer : `node --test "tests/**/*.test.js" && node --check main.js`
 
 ```bash
 cd ~/obsidian-ariane && node --check main.js && node --test "tests/**/*.test.js"
-cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/"
+cp main.js "$HOME/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"
 ```
 
 Passer une tâche du canvas au statut `terminée` et vérifier que son nœud verdit.
@@ -1016,7 +1016,7 @@ plutôt que d'en inventer : le volet doit se fondre dans le greffon.
 
 ```bash
 cd ~/obsidian-ariane && node --check main.js && node --test "tests/**/*.test.js"
-cp main.js styles.css "$HOME/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/"
+cp main.js styles.css "$HOME/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"
 ```
 
 Fabriquer volontairement un cycle de deux tâches dans un canvas, ouvrir le volet
