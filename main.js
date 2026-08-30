@@ -2743,6 +2743,13 @@ function footnotesVersCitations(contenu, resoudre, connecteur) {
 
 //#endregion 7 · Export Pandoc / Word
 
+//#region 8 · Schémas mxgraph / draw.io
+// ═══════════════════════════════════════════════════════════════════════════
+//  8 · SCHÉMAS MXGRAPH / DRAW.IO
+//  Parsing d'un diagramme draw.io / mxGraph, propagation des étiquettes de
+//  relation, extrait de schéma injecté dans une note.
+// ═══════════════════════════════════════════════════════════════════════════
+
 /* =========================================================================
  * Module Cartes — cartes ontologiques sur Canvas (fonctions pures)
  * =========================================================================
@@ -2924,6 +2931,67 @@ function propagerEtiquettes(graphe) {
   return { nodes: nodes, edges: copie, pages: graphe ? graphe.pages : undefined };
 }
 
+// Extrait lisible d'un schéma, destiné à être recopié dans la note associée
+// pour rendre son contenu cherchable (recherche Obsidian + index sémantique).
+const ZFA_SCHEMA_DEBUT = '%% ariane:schema %%';
+const ZFA_SCHEMA_FIN = '%% /ariane:schema %%';
+
+function extraitSchema(graphe, titre) {
+  const nodes = (graphe && graphe.nodes) || [];
+  const edges = (graphe && graphe.edges) || [];
+  const parId = {};
+  for (const n of nodes) parId[n.id] = n;
+
+  const relies = new Set();
+  const lignes = [];
+  for (const e of edges) {
+    const a = parId[e.fromNode], b = parId[e.toNode];
+    const ta = a ? String(a.text || '').trim() : '';
+    const tb = b ? String(b.text || '').trim() : '';
+    if (!ta || !tb) continue;
+    relies.add(ta); relies.add(tb);
+    const et = String(e.label || '').trim();
+    lignes.push(ta + (et ? ' --' + et + '--> ' : ' --> ') + tb);
+  }
+  const isoles = nodes
+    .map((n) => String(n.text || '').trim())
+    .filter((t) => t && !relies.has(t));
+
+  const out = [];
+  out.push(ZFA_SCHEMA_DEBUT);
+  out.push('> [!abstract]- Contenu du schéma' + (titre ? ' — ' + titre : ''));
+  out.push('> *Synchronisé par Ariane depuis le schéma. Ne pas modifier à la main.*');
+  if (lignes.length) {
+    out.push('>');
+    for (const l of lignes) out.push('> - ' + l);
+  }
+  if (isoles.length) {
+    out.push('>');
+    out.push('> **Blocs sans relation** : ' + [...new Set(isoles)].join(' · '));
+  }
+  if (!lignes.length && !isoles.length) {
+    out.push('>');
+    out.push('> *(schéma vide)*');
+  }
+  out.push(ZFA_SCHEMA_FIN);
+  return out.join('\n');
+}
+
+// Remplace (ou ajoute en fin de note) le bloc synchronisé.
+function injecterExtrait(contenu, extrait) {
+  const texte = String(contenu == null ? '' : contenu);
+  const i = texte.indexOf(ZFA_SCHEMA_DEBUT);
+  const j = texte.indexOf(ZFA_SCHEMA_FIN);
+  if (i !== -1 && j !== -1 && j > i) {
+    const avant = texte.slice(0, i);
+    const apres = texte.slice(j + ZFA_SCHEMA_FIN.length);
+    return avant + extrait + apres;
+  }
+  return texte.replace(/\s*$/, '') + '\n\n' + extrait + '\n';
+}
+
+//#endregion 8 · Schémas mxgraph / draw.io
+
 /* --------------------------- Temps passé ---------------------------------
  * Le compteur s'appuie sur la note active et sur l'activité du clavier et de
  * la souris. Il ne mesure donc pas la présence devant l'écran, mais le temps
@@ -3049,65 +3117,6 @@ const VUE_ARTICULATION_BASE = `  - type: ariane-articulation
 
 const ZFA_TACHE_DEBUT = '%% ariane:tache %%';
 const ZFA_TACHE_FIN = '%% /ariane:tache %%';
-
-// Extrait lisible d'un schéma, destiné à être recopié dans la note associée
-// pour rendre son contenu cherchable (recherche Obsidian + index sémantique).
-const ZFA_SCHEMA_DEBUT = '%% ariane:schema %%';
-const ZFA_SCHEMA_FIN = '%% /ariane:schema %%';
-
-function extraitSchema(graphe, titre) {
-  const nodes = (graphe && graphe.nodes) || [];
-  const edges = (graphe && graphe.edges) || [];
-  const parId = {};
-  for (const n of nodes) parId[n.id] = n;
-
-  const relies = new Set();
-  const lignes = [];
-  for (const e of edges) {
-    const a = parId[e.fromNode], b = parId[e.toNode];
-    const ta = a ? String(a.text || '').trim() : '';
-    const tb = b ? String(b.text || '').trim() : '';
-    if (!ta || !tb) continue;
-    relies.add(ta); relies.add(tb);
-    const et = String(e.label || '').trim();
-    lignes.push(ta + (et ? ' --' + et + '--> ' : ' --> ') + tb);
-  }
-  const isoles = nodes
-    .map((n) => String(n.text || '').trim())
-    .filter((t) => t && !relies.has(t));
-
-  const out = [];
-  out.push(ZFA_SCHEMA_DEBUT);
-  out.push('> [!abstract]- Contenu du schéma' + (titre ? ' — ' + titre : ''));
-  out.push('> *Synchronisé par Ariane depuis le schéma. Ne pas modifier à la main.*');
-  if (lignes.length) {
-    out.push('>');
-    for (const l of lignes) out.push('> - ' + l);
-  }
-  if (isoles.length) {
-    out.push('>');
-    out.push('> **Blocs sans relation** : ' + [...new Set(isoles)].join(' · '));
-  }
-  if (!lignes.length && !isoles.length) {
-    out.push('>');
-    out.push('> *(schéma vide)*');
-  }
-  out.push(ZFA_SCHEMA_FIN);
-  return out.join('\n');
-}
-
-// Remplace (ou ajoute en fin de note) le bloc synchronisé.
-function injecterExtrait(contenu, extrait) {
-  const texte = String(contenu == null ? '' : contenu);
-  const i = texte.indexOf(ZFA_SCHEMA_DEBUT);
-  const j = texte.indexOf(ZFA_SCHEMA_FIN);
-  if (i !== -1 && j !== -1 && j > i) {
-    const avant = texte.slice(0, i);
-    const apres = texte.slice(j + ZFA_SCHEMA_FIN.length);
-    return avant + extrait + apres;
-  }
-  return texte.replace(/\s*$/, '') + '\n\n' + extrait + '\n';
-}
 
 /* =========================================================================
  * Plugin

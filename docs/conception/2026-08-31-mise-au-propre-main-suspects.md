@@ -116,3 +116,15 @@ par le bandeau `//#region 7 · Export Pandoc / Word`. Le commentaire
 `footnotesVersCitations` : il a été remonté avec le bloc region 7, juste
 au-dessus de cette fonction (retrouvailles commentaire/fonction). Seules
 modifications non-déplacement du commit region 7.
+
+## Bandeau ad hoc `/* Module Cartes */` conservé dans la region 8
+
+`main.js`, region 8, juste sous le bandeau `//#region 8`. Contrairement aux
+bandeaux `/* Bibliographie de note */` et `/* Préparation du markdown exporté */`
+(supprimés car réduits à un titre), le bloc `/* Module Cartes — cartes
+ontologiques sur Canvas … */` porte de la doc de fond (fichier `.canvas` = JSON,
+relations = étiquettes d'arêtes, types de blocs dans un sidecar `.ariane.json`)
+absente du bandeau de region. Conservé tel quel comme commentaire interne à la
+region 8 plutôt que supprimé. Regroupé avec lui : le sous-bloc `ZFA_SCHEMA_*` /
+`extraitSchema` / `injecterExtrait`, jusque-là séparé du bloc mxGraph par les
+modèles de bases (region 10).
