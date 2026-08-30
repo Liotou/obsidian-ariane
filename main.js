@@ -4019,6 +4019,1030 @@ class Ariane extends obsidian.Plugin {
 
   //#endregion Ariane · cycle de vie
 
+  //#region Ariane · static · getters
+  // ── static · getters ─────────────────────────────────────────────────────
+
+  // Ce qui ne voyage pas : chemins absolus et adresses de services locaux.
+  // Un profil partagé ne doit jamais imposer l'installation de qui l'a écrit.
+  static get CLES_MACHINE() {
+    return ['exportPandocBin', 'exportFiltreLua', 'exportModeleWord',
+            'suggOllamaUrl', 'suggLmStudioUrl'];
+  }
+
+  // Ce qui ne voyage pas non plus : l'état accumulé, propre au coffre.
+  static get CLES_ETAT() {
+    return ['tempsTotalSecondes', 'tempsHistorique', 'rattachementsIgnores',
+            'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
+            'dossierReferences', 'dossierBibliographies', 'exportDossier',
+            'dossierTaches', 'tempsDossierJournal'];
+  }
+
+  // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
+  // « Type » de l'en-tête de frise et le rendu des cartes d'articulation.
+  static get TYPE_FR_VERS_OBSIDIAN() {
+    return { texte: 'text', nombre: 'number', date: 'date',
+             case: 'checkbox', liste: 'multitext', lien: 'link' };
+  }
+
+  // Les propriétés communes à toutes les tâches : identifiant interne, intitulé
+  // affiché par défaut (renommable dans les réglages), icône (fixe).
+  static get PROPS_GENERIQUES() {
+    return [
+      { cle: 'intitule', defaut: 'Intitulé', icone: 'text' },
+      { cle: 'famille', defaut: 'Famille', icone: 'shapes' },
+      { cle: 'statut', defaut: 'Statut', icone: 'circle-dot' },
+      { cle: 'terminee', defaut: 'Terminée', icone: 'check-check' },
+      { cle: 'priorite', defaut: 'Priorité', icone: 'flag' },
+      { cle: 'jalon', defaut: 'Jalon', icone: 'diamond' },
+      { cle: 'debut', defaut: 'Début', icone: 'calendar' },
+      { cle: 'echeance', defaut: 'Échéance', icone: 'calendar-check' },
+      { cle: 'avancement', defaut: 'Avancement', icone: 'percent' },
+      { cle: 'parent', defaut: 'Rattachée à', icone: 'git-branch' },
+    ];
+  }
+
+  // Concepts génériques dont la clé de frontmatter est renommable / préfixable
+  // (tous sauf l'intitulé, qui n'est pas une vraie propriété mais le premier
+  // alias). On y ajoute les champs structurels propres aux tâches.
+  static get CONCEPTS_TACHE() {
+    return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
+            'debut', 'echeance', 'avancement', 'parent',
+            'bloque-par', 'termine-le',
+            'source', 'livrable', 'fichier', 'liste', 'rappel-id'];
+  }
+
+  static get COULEURS_GANTT() {
+    return {
+      'à faire': 'var(--text-faint)',
+      'en cours': 'var(--color-yellow)',
+      'en attente': 'var(--color-orange)',
+      'terminée': 'var(--color-green)',
+      'abandonnée': 'var(--text-faint)',
+    };
+  }
+
+  static get ZOOMS_GANTT() {
+    return { jour: 44, semaine: 22, mois: 8, trimestre: 3, 'année': 1 };
+  }
+
+  // Sentinelle du groupe « sans valeur » : impossible à confondre avec un
+  // libellé réel. La vue la remplace par « (sans <propriété>) » à l'affichage.
+  static get SANS_GROUPE() { return ' sans'; }
+
+  //#endregion Ariane · static · getters
+
+  //#region Ariane · static · références
+  // ── static · références ──────────────────────────────────────────────────
+
+  // Deux formes ont coexisté dans le cache : les tableaux « reference » bruts de
+  // Crossref, et la forme d'Ariane { auteurs, annee, titre, doi, brut }. On
+  // convertit à la lecture, pour n'en manipuler qu'une seule ensuite.
+  static normaliserEntree(e) {
+    if (!e || typeof e !== 'object') return null;
+    if (Array.isArray(e.auteurs) || e.annee !== undefined) return e; // déjà normalisée
+    const brut = String(e.unstructured || '').trim();
+    const decoupe = e._ariane || null;
+    const auteur = String(e.author || '').trim();
+    const auteurs = decoupe && decoupe.auteurs && decoupe.auteurs.length
+      ? decoupe.auteurs
+      : (auteur ? auteur.split(/[^\p{L}\p{M}'-]+/u).filter((x) => x.length > 1) : []);
+    return {
+      auteurs,
+      annee: String(e.year || (decoupe && decoupe.annee) || '').trim(),
+      titre: String(e['article-title'] || e['volume-title'] || (decoupe && decoupe.titre) || '').trim(),
+      revue: String(e['journal-title'] || (decoupe && decoupe.revue) || '').trim(),
+      doi: normDoi(e.DOI),
+      brut,
+    };
+  }
+
+  static normaliserBiblio(liste) {
+    return (liste || []).map((e) => Ariane.normaliserEntree(e)).filter(Boolean);
+  }
+
+  // Une entrée de bibliographie porte le nom SUIVI d'initiales, « March, S. T.
+  // (1995) », ce qu'un appel en cours de texte n'écrit jamais : « (March and
+  // Smith 1995) ». C'est ce discriminant qui distingue les deux, et il est
+  // fiable — vérifié sur huit références d'un même ouvrage.
+  static entreeDansTexte(texte, nomFamille, annee) {
+    if (!texte || !nomFamille || !annee) return null;
+    let motif;
+    try {
+      motif = new RegExp(echapperRegex(nomFamille)
+        + ',\\s*(?:[A-Z]\\.\\s*){1,4}[^\\n]{0,120}?\\b' + annee + '\\b[^\\n]{0,320}', 'g');
+    } catch (e) { return null; }
+    let brut = null;
+    let m;
+    while ((m = motif.exec(texte)) !== null) {
+      const s = m[0].replace(/\s+/g, ' ').trim();
+      if (!brut || s.length > brut.length) brut = s;
+    }
+    if (!brut) return null;
+    // Couper à l'entrée suivante, qui commence par « Nom, X. ».
+    const suivante = /\s(?:[A-Z][\wÀ-ÿ'’-]+(?:\s[A-Z][\wÀ-ÿ'’-]+)?,\s*(?:[A-Z]\.\s*){1,4})/;
+    const apres = brut.indexOf(annee) + annee.length;
+    const d = suivante.exec(brut.slice(apres));
+    if (d) brut = brut.slice(0, apres + d.index).trim();
+    let titre = '';
+    const mt = new RegExp(annee + '\\)?\\s*[.,]\\s*(.+?)(?:\\.\\s|\\.$)').exec(brut);
+    if (mt) titre = mt[1].trim();
+    return { brut, titre };
+  }
+
+// Deux entrées désignent le même travail quand l'une des deux commence ou
+  // contient l'autre au-delà de douze caractères : « Co-opetition » et
+  // « Co‐opetition: A revolutionary mindset… », « Designing interactive
+  // strategy » et « From value chain… designing interactive strategy ». Deux
+  // DOI distincts restent deux œuvres, quel que soit le titre.
+  static fondreOeuvresProches(liste) {
+    const clef = (t) => sansAccents(t || '')
+      .replace(/[\u2010-\u2015\u2212]/g, '-')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    const out = [];
+    for (const o of liste) {
+      const ko = clef(o.titre);
+      const jumeau = out.find((x) => {
+        if (x.doi && o.doi) return x.doi === o.doi;
+        if (x.doi !== o.doi && (x.doi || o.doi)) return false;
+        const kx = clef(x.titre);
+        if (!ko || !kx) return false;
+        const court = ko.length < kx.length ? ko : kx;
+        const long = ko.length < kx.length ? kx : ko;
+        if (court.length >= 12 && long.includes(court)) return true;
+        // Un mot d'écart ne fait pas deux œuvres : « Design science in
+        // information systems research » et « Design research in information
+        // systems research » sortent du même PDF, à une coquille près.
+        const a = new Set(court.split(' ').filter((w) => w.length > 2));
+        const b = new Set(long.split(' ').filter((w) => w.length > 2));
+        if (a.size < 3 || b.size < 3) return false;
+        let communs = 0;
+        for (const w of a) if (b.has(w)) communs += 1;
+        return communs / Math.max(a.size, b.size) >= 0.75;
+      });
+      if (!jumeau) { out.push(o); continue; }
+      jumeau.n += o.n;
+      for (const sr of o.sources) if (!jumeau.sources.includes(sr)) jumeau.sources.push(sr);
+      if ((o.titre || '').length > (jumeau.titre || '').length) jumeau.titre = o.titre;
+      if (!jumeau.doi && o.doi) jumeau.doi = o.doi;
+    }
+    return out;
+  }
+
+  // Le modèle rend parfois « {"annee":["2012"]} » au lieu d'une chaîne : on
+  // accepte les deux plutôt que de perdre l'extraction sur une vétille.
+  static premier(v) {
+    if (Array.isArray(v)) return v.length ? String(v[0]).trim() : '';
+    return String(v == null ? '' : v).trim();
+  }
+
+  // Référence d'une tâche : T, l'année sur deux chiffres, le rang dans l'année.
+  // Le rang ne réemploie jamais un numéro libéré : une référence est définitive,
+  // et deux tâches distinctes ne doivent jamais avoir porté le même nom.
+  // L'horodatage employé par les notes conceptuelles est écarté à dessein, un
+  // lot importé produisant plusieurs objets dans la même minute.
+  static referenceTacheSuivante(noms, annee) {
+    const prefixe = 'T' + String(annee % 100).padStart(2, '0') + '-';
+    let max = 0;
+    for (const nom of noms || []) {
+      if (typeof nom !== 'string' || !nom.startsWith(prefixe)) continue;
+      const m = nom.slice(prefixe.length).match(/^(\d+)$/);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    return prefixe + String(max + 1).padStart(3, '0');
+  }
+
+  //#endregion Ariane · static · références
+
+  //#region Ariane · static · dates & jours
+  // ── static · dates & jours ───────────────────────────────────────────────
+
+  // Les dates circulent en chaînes « AAAA-MM-JJ » et l'arithmétique passe par
+  // UTC. Un Date local franchissant un changement d'heure décale d'un jour, ce
+  // qui déplacerait des barres deux fois par an sans qu'on comprenne pourquoi.
+  static jourValide(v) {
+    const s = String(v == null ? '' : v).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+    const [a, m, j] = s.split('-').map(Number);
+    const d = new Date(Date.UTC(a, m - 1, j));
+    // Écarte le 31 février et consorts, que Date.UTC reporterait en silence.
+    return (d.getUTCFullYear() === a && d.getUTCMonth() === m - 1 && d.getUTCDate() === j) ? s : '';
+  }
+
+  static _versUTC(jour) {
+    const s = Ariane.jourValide(jour);
+    if (!s) return null;
+    const [a, m, j] = s.split('-').map(Number);
+    return Date.UTC(a, m - 1, j);
+  }
+
+  static decalerJour(jour, n) {
+    const t = Ariane._versUTC(jour);
+    if (t === null) return '';
+    return new Date(t + (Number(n) || 0) * 86400000).toISOString().slice(0, 10);
+  }
+
+  static ecartJours(a, b) {
+    const ta = Ariane._versUTC(a);
+    const tb = Ariane._versUTC(b);
+    if (ta === null || tb === null) return 0;
+    return Math.round((tb - ta) / 86400000);
+  }
+
+  // Numéro de semaine ISO. La règle ISO rattache la semaine au jeudi, ce qui
+  // évite qu'une semaine à cheval sur deux années soit comptée deux fois.
+  static semaineIso(jour) {
+    const t = Ariane._versUTC(jour);
+    if (t === null) return 0;
+    const d = new Date(t);
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+    const debutAnnee = Date.UTC(d.getUTCFullYear(), 0, 1);
+    return Math.ceil(((d.getTime() - debutAnnee) / 86400000 + 1) / 7);
+  }
+
+  //#endregion Ariane · static · dates & jours
+
+  //#region Ariane · static · tâches
+  // ── static · tâches ──────────────────────────────────────────────────────
+
+  // La famille d'une tâche n'est pas déclarée, elle se déduit du champ rempli.
+  // Un champ « famille » pourrait contredire les champs présents ; son absence
+  // rend la contradiction impossible.
+  // L'ordre est aussi celui de la priorité quand plusieurs sont remplis.
+  static champTache(fm) {
+    const ordre = ['source', 'livrable', 'fichier'];
+    const remplis = ordre.filter((c) => fm && String(fm[c] == null ? '' : fm[c]).trim());
+    return { retenu: remplis[0] || null, conflits: remplis.length > 1 ? remplis : [] };
+  }
+
+  static familleTache(fm, familles, defaut) {
+    const liste = Array.isArray(familles) ? familles : null;
+    // Appel historique (un seul argument) : on garde la déduction d'origine.
+    if (!liste) {
+      const retenu = Ariane.champTache(fm).retenu;
+      if (retenu === 'source') return 'lecture';
+      return retenu ? 'production' : 'action';
+    }
+    const connus = new Set(liste.map((f) => f && f.id).filter(Boolean));
+    const explicite = fm && fm.famille ? String(fm.famille).trim() : '';
+    if (explicite && connus.has(explicite)) return explicite;
+    const retenu = Ariane.champTache(fm).retenu;
+    if (retenu === 'source' && connus.has('lecture')) return 'lecture';
+    if (retenu && connus.has('production')) return 'production';
+    return (defaut && connus.has(defaut)) ? defaut
+      : (connus.has('action') ? 'action' : (liste[0] && liste[0].id) || 'action');
+  }
+
+  // Les propriétés qu'une famille ajoute à une tâche et qui n'existent pas
+  // encore dans son entête. « Existe » = la clé est présente, même vide.
+  static proprietesManquantes(fm, famille) {
+    const props = (famille && Array.isArray(famille.proprietes)) ? famille.proprietes : [];
+    const cles = new Set(Object.keys(fm || {}));
+    return props
+      .filter((p) => p && p.cle && !cles.has(p.cle))
+      .map((p) => ({ cle: p.cle, type: p.type || 'texte' }));
+  }
+
+  // Une valeur YAML citée. Les intitulés portent des apostrophes, des deux
+  // points et des guillemets typographiques : les citer systématiquement évite
+  // d'avoir à décider au cas par cas.
+  static yamlChaine(v) {
+    const s = String(v == null ? '' : v);
+    if (!s) return '';
+    return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  }
+
+  // Le corps d'une note de tâche neuve. Tous les champs du schéma sont émis,
+  // y compris vides : l'éditeur de propriétés d'Obsidian ne montre que ce qui
+  // existe, et une tâche dont les champs manquent est une tâche qu'on ne pense
+  // pas à remplir. Un champ vide s'écrit sans espace en fin de ligne, que
+  // certains éditeurs suppriment et qui ferait alors diverger le fichier.
+  static corpsNouvelleTache(champs) {
+    const c = champs || {};
+    const q = Ariane.yamlChaine;
+    const ligne = (cle, val) => cle + ':' + (val ? ' ' + val : '');
+    // Clés personnalisées éventuelles : c.cles = { concept: 'nom réel', … }.
+    const K = (concept) => (c.cles && c.cles[concept]) || concept;
+    const intitule = c.intitule || 'Sans titre';
+    const jour = c.aujourdhui || '';
+    const l = [];
+    l.push('---');
+    l.push('aliases:');
+    l.push('  - ' + q(intitule));
+    l.push('type: tache');
+    l.push(ligne(K('famille'), c.famille));
+    l.push(ligne(K('statut'), c.statut || 'à faire'));
+    l.push(K('terminee') + ': ' + ((c.statut || '') === 'terminée' ? 'true' : 'false'));
+    l.push(ligne(K('priorite'), c.priorite));
+    l.push(ligne(K('debut'), c.debut));
+    l.push(ligne(K('echeance'), c.echeance));
+    l.push(K('avancement') + ': ' + (Number(c.avancement) || 0));
+    l.push(K('termine-le') + ':');
+    l.push(K('jalon') + ': ' + (c.jalon ? 'true' : 'false'));
+    l.push(K('parent') + ':');
+    l.push(K('bloque-par') + ': []');
+    l.push(ligne(K('source'), q(c.source)));
+    l.push(ligne(K('livrable'), q(c.livrable)));
+    l.push(ligne(K('fichier'), q(c.fichier)));
+    l.push(ligne(K('liste'), q(c.liste)));
+    l.push(K('rappel-id') + ':');
+    l.push(ligne('cree', jour));
+    l.push(ligne('modifie', jour));
+    l.push('---');
+    l.push('');
+    l.push('# ' + intitule);
+    l.push('');
+    l.push('## Note de travail');
+    l.push('');
+    l.push('## Journal');
+    l.push('');
+    return l.join('\n');
+  }
+
+  // Une production porte soit une note du coffre, soit un fichier du disque.
+  // Monsieur ne veut pas trancher au moment de créer la tâche : la forme de ce
+  // qu'il saisit suffit à décider. Seul un chemin absolu désigne le disque, ce
+  // qui laisse « 3 - Notes conceptuelles/NC-… » du côté des notes malgré ses
+  // barres obliques.
+  static livrableOuFichier(saisie) {
+    const v = String(saisie == null ? '' : saisie).trim();
+    if (!v) return { champ: null, valeur: '' };
+    if (v.startsWith('/') || v.startsWith('~/') || v.startsWith('file://')) {
+      return { champ: 'fichier', valeur: v };
+    }
+    const nu = v.replace(/^\[\[|\]\]$/g, '');
+    return { champ: 'livrable', valeur: '[[' + nu + ']]' };
+  }
+
+  // Référence nue d'un lien, alias compris : « [[T26-001|partie 2]] » rend
+  // « T26-001 ».
+  static refDeLien(v) {
+    return String(v == null ? '' : v).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+  }
+
+  // Le chemin d'une note désigne-t-il une tâche, et sous quelle référence ?
+  // Une tâche est une note .md du dossier des tâches (sous-dossiers compris) ;
+  // les anciennes références « T26-001 » restent reconnues où qu'elles soient.
+  // La référence EST le nom de fichier, quel qu'il soit — plus de forme imposée.
+  static refDepuisChemin(chemin, dossier) {
+    const p = String(chemin || '');
+    if (!/\.md$/i.test(p)) return null;
+    const base = p.slice(p.lastIndexOf('/') + 1).replace(/\.md$/i, '');
+    const d = String(dossier || '').replace(/^\/+|\/+$/g, '');
+    if (d && p.startsWith(d + '/')) return base;
+    const m = p.match(/(?:^|\/)(T\d{2}-\d{3,4})\.md$/);
+    return m ? m[1] : null;
+  }
+
+  // Filtre les tâches avant disposition. Les ancêtres d'une tâche retenue sont
+  // conservés : sans eux, une sous-tâche apparaîtrait à la racine, détachée du
+  // chantier auquel elle appartient, et on ne saurait plus de quoi il s'agit.
+  static filtrerTaches(taches, filtre) {
+    const liste = (taches || []).filter((x) => x && x.ref);
+    const f = filtre || {};
+    const texte = Ariane._sansAccentMinuscule(f.texte || '');
+    if (!f.statut && !f.priorite && !texte) return liste;
+    const parRef = new Map(liste.map((x) => [x.ref, x]));
+    const retenu = (x) => {
+      if (f.statut && String(x.statut || '') !== f.statut) return false;
+      if (f.priorite && String(x.priorite || '') !== f.priorite) return false;
+      if (texte) {
+        const cible = Ariane._sansAccentMinuscule(
+          String(x.intitule || '') + ' ' + x.ref);
+        if (!cible.includes(texte)) return false;
+      }
+      return true;
+    };
+    const gardes = new Set();
+    for (const x of liste) {
+      if (!retenu(x)) continue;
+      gardes.add(x.ref);
+      let p = Ariane.refDeLien(x.parent);
+      const vus = new Set([x.ref]);
+      while (p && parRef.has(p) && !vus.has(p)) {
+        gardes.add(p);
+        vus.add(p);
+        p = Ariane.refDeLien(parRef.get(p).parent);
+      }
+    }
+    return liste.filter((x) => gardes.has(x.ref));
+  }
+
+  // La date d'achèvement se déduit du statut, elle ne se saisit pas. Rendre
+  // null veut dire « ne rien écrire », ce qui compte : réécrire à l'identique
+  // relancerait l'événement de modification et ferait tourner la boucle.
+  // Une tâche abandonnée n'est pas une tâche achevée, elle ne reçoit pas de date.
+  static achevementAEcrire(fm, aujourdhui) {
+    if (!fm || fm.type !== 'tache') return null;
+    const dejaPosee = String(fm['termine-le'] == null ? '' : fm['termine-le']).trim();
+    if (fm.statut === 'terminée') return dejaPosee ? null : aujourdhui;
+    return dejaPosee ? '' : null;
+  }
+
+  // Contenu du bloc d'accès, sans ses marques. Une action n'en a pas besoin :
+  // un bloc vide dans chaque note d'action ne serait que du bruit.
+  static blocTache(fm, meta) {
+    const c = Ariane.champTache(fm);
+    if (!c.retenu) return '';
+    const l = [];
+    if (c.conflits.length) {
+      l.push('> [!warning] ' + tr('Conflit de champs') + ' : ' + c.conflits.join(', ')
+             + '. ' + tr('Seul le premier est retenu.'));
+      l.push('');
+    }
+    if (c.retenu === 'source') {
+      l.push('**' + tr('Source') + '** ' + String(fm.source).trim());
+      const acces = [];
+      if (meta && meta.uriPdf) acces.push('[' + tr('Ouvrir le PDF') + '](' + meta.uriPdf + ')');
+      if (meta && meta.uriZotero) acces.push('[' + tr('Ouvrir dans Zotero') + '](' + meta.uriZotero + ')');
+      if (acces.length) { l.push(''); l.push(acces.join('  ·  ')); }
+    } else if (c.retenu === 'livrable') {
+      l.push('**' + tr('Livrable') + '** ' + String(fm.livrable).trim());
+    } else {
+      const chemin = String(fm.fichier).trim();
+      l.push('**' + tr('Fichier') + '** `' + chemin.split('/').pop() + '`');
+      if (meta && (meta.modifie || meta.ouvert)) {
+        const bouts = [];
+        if (meta.modifie) bouts.push(tr('modifié le') + ' ' + meta.modifie);
+        if (meta.ouvert) bouts.push(tr('ouvert le') + ' ' + meta.ouvert);
+        l.push('');
+        l.push('*' + bouts.join('  ·  ') + '*');
+      }
+    }
+    return l.join('\n');
+  }
+
+  // Libellé d'une note du coffre dans le sélecteur. L'alias passe devant : c'est
+  // sous ce nom que Monsieur connaît ses notes, « NC-202607081912 » ne disant
+  // rien à personne. Le nom de fichier suit tout de même, pour rester cherchable.
+  static libelleNote(fm, basename) {
+    const alias = []
+      .concat((fm && fm.aliases) || [])
+      .map((a) => String(a).trim())
+      .filter(Boolean);
+    return alias.length ? alias.join(' / ') + '  ·  ' + basename : basename;
+  }
+
+  // Libellé d'une fiche Zotero dans le sélecteur. Tout y est réuni pour que la
+  // recherche approchée morde sur l'auteur, l'année, le titre ou la clé : on ne
+  // retient pas une clé de citation par cœur.
+  static libelleSource(fm, basename) {
+    const f = fm || {};
+    const auteurs = []
+      .concat(f.creators || [])
+      .map((c) => String(c).replace(/^\[\[|\]\]$/g, '').trim())
+      .filter(Boolean);
+    const bouts = [];
+    if (auteurs.length) bouts.push(auteurs.slice(0, 3).join(', '));
+    if (f.year) bouts.push('(' + f.year + ')');
+    if (f.title) bouts.push('— ' + String(f.title));
+    bouts.push('· ' + basename);
+    return bouts.join(' ');
+  }
+
+  //#endregion Ariane · static · tâches
+
+  //#region Ariane · static · frise / gantt
+  // ── static · frise / gantt ───────────────────────────────────────────────
+
+  // Disposition de la frise : parcours en profondeur, dates remontées sur les
+  // méta-tâches. Les dates propres sont conservées à part, le glissé d'une
+  // barre devant écrire celles de la note et non celles de sa descendance.
+  // Un parent inconnu ou un cycle ne fait pas disparaître la tâche : elle
+  // remonte à la racine, ce qui la rend visible plutôt que perdue.
+  static disposerGantt(taches, tri, sens) {
+    const liste = (taches || []).filter((x) => x && x.ref);
+    const parRef = new Map(liste.map((x) => [x.ref, x]));
+    const enfants = new Map();
+    const racines = [];
+    for (const x of liste) {
+      const p = Ariane.refDeLien(x.parent);
+      // Un cycle se casse à la remontée : dès qu'on repasse par une tâche déjà
+      // vue, la parenté est tenue pour invalide et la tâche devient racine.
+      let valide = !!p && parRef.has(p) && p !== x.ref;
+      if (valide) {
+        const vus = new Set([x.ref]);
+        let cur = p;
+        while (cur && parRef.has(cur)) {
+          if (vus.has(cur)) { valide = false; break; }
+          vus.add(cur);
+          cur = Ariane.refDeLien(parRef.get(cur).parent);
+        }
+      }
+      if (valide) {
+        if (!enfants.has(p)) enfants.set(p, []);
+        enfants.get(p).push(x);
+      } else {
+        racines.push(x);
+      }
+    }
+    // Une tâche sans date passe après celles qui en ont : sa place est au
+    // tiroir des non planifiées, pas au milieu de la frise.
+    const parDate = (a, b) => {
+      const da = Ariane.jourValide(a.debut) || Ariane.jourValide(a.echeance);
+      const db = Ariane.jourValide(b.debut) || Ariane.jourValide(b.echeance);
+      if (da && db && da !== db) return da < db ? -1 : 1;
+      if (da && !db) return -1;
+      if (!da && db) return 1;
+      return a.ref.localeCompare(b.ref);
+    };
+    const RANGS_PRIORITE = { haute: 0, moyenne: 1, basse: 2 };
+    // Le tri s'applique entre frères, jamais à travers la hiérarchie : un
+    // enfant reste sous son parent quoi qu'il arrive.
+    const trier = (a, b) => {
+      if (tri === 'priorite') {
+        const pa = RANGS_PRIORITE[a.priorite];
+        const pb = RANGS_PRIORITE[b.priorite];
+        const ra = pa === undefined ? 3 : pa;
+        const rb = pb === undefined ? 3 : pb;
+        if (ra !== rb) return ra - rb;
+      } else if (tri === 'cle') {
+        // La vue prépare _cle : elle seule sait lire une propriété de base.
+        // Une clé vide passe après celles qui sont remplies, comme partout
+        // ailleurs dans la frise.
+        const ka = String(a._cle == null ? '' : a._cle);
+        const kb = String(b._cle == null ? '' : b._cle);
+        if (!ka !== !kb) return ka ? -1 : 1;
+        const c = ka.localeCompare(kb, 'fr', { sensitivity: 'base', numeric: true });
+        if (c) return c * (sens === -1 ? -1 : 1);
+      } else if (tri === 'intitule') {
+        const c = String(a.intitule || a.ref)
+          .localeCompare(String(b.intitule || b.ref), 'fr', { sensitivity: 'base' });
+        if (c) return c;
+      } else if (tri === 'multi') {
+        // Tri natif de la base : plusieurs critères { v, s(ens) } préparés par
+        // la vue, comparés dans l'ordre. Une valeur vide passe toujours après.
+        const ma = a._multi || [];
+        const mb = b._multi || [];
+        for (let i = 0; i < ma.length; i += 1) {
+          const ka = String(ma[i] && ma[i].v != null ? ma[i].v : '');
+          const kb = String(mb[i] && mb[i].v != null ? mb[i].v : '');
+          if (!ka !== !kb) return ka ? -1 : 1;
+          const c = ka.localeCompare(kb, 'fr', { sensitivity: 'base', numeric: true });
+          if (c) return c * (ma[i].s === -1 ? -1 : 1);
+        }
+      }
+      return parDate(a, b);
+    };
+    const lignes = [];
+    const descendre = (x, niveau) => {
+      const fils = (enfants.get(x.ref) || []).slice().sort(trier);
+      const jalon = !!x.jalon;
+      const propre = {
+        debut: jalon ? '' : Ariane.jourValide(x.debut),
+        echeance: Ariane.jourValide(x.echeance),
+      };
+      const ligne = {
+        ref: x.ref, intitule: x.intitule || x.ref, niveau,
+        statut: x.statut || 'à faire', avancement: Number(x.avancement) || 0,
+        jalon, aDesEnfants: fils.length > 0, propre,
+        debut: propre.debut, echeance: propre.echeance,
+      };
+      lignes.push(ligne);
+      const posees = fils.map((f) => descendre(f, niveau + 1));
+      if (posees.length) {
+        const debuts = posees.map((p) => p.debut).filter(Boolean);
+        const fins = posees.map((p) => p.echeance).filter(Boolean);
+        if (!jalon && debuts.length) {
+          ligne.debut = [ligne.debut, ...debuts].filter(Boolean).sort()[0];
+        }
+        if (fins.length) {
+          const toutes = [ligne.echeance, ...fins].filter(Boolean).sort();
+          ligne.echeance = toutes[toutes.length - 1];
+        }
+      }
+      return ligne;
+    };
+    for (const r of racines.slice().sort(trier)) descendre(r, 0);
+    return lignes;
+  }
+
+  // Regroupement de la frise. `groupes` = Map<ref, string[]> (les libellés de
+  // groupe d'une tâche) ou null. La disposition en arbre est faite par
+  // disposerGantt sur les seules tâches de chaque groupe : un parent absent du
+  // groupe redevient racine, comme pour un parent inconnu. Une tâche
+  // multi-valeur est reprise dans chaque groupe, avec une cleLigne distincte
+  // mais le même ref pour l'écriture.
+  static disposerFriseGroupee(taches, groupes, tri, sens, groupeDesc) {
+    if (!groupes) {
+      return Ariane.disposerGantt(taches, tri, sens)
+        .map((l) => Object.assign(l, { kind: 'tache', cleLigne: l.ref }));
+    }
+    const SEP = ' ';
+    const grDe = (ref) => {
+      const g = groupes.get(ref);
+      return g && g.length ? g : [Ariane.SANS_GROUPE];
+    };
+    const tous = new Set();
+    for (const t of taches || []) for (const g of grDe(t.ref)) tous.add(g);
+    const ordre = [...tous]
+      .filter((g) => g !== Ariane.SANS_GROUPE)
+      .sort((a, b) => String(a).localeCompare(String(b), 'fr',
+        { sensitivity: 'base', numeric: true }));
+    if (groupeDesc) ordre.reverse();
+    if (tous.has(Ariane.SANS_GROUPE)) ordre.push(Ariane.SANS_GROUPE);
+
+    const out = [];
+    for (const g of ordre) {
+      const tachesG = (taches || []).filter((t) => grDe(t.ref).includes(g));
+      if (!tachesG.length) continue;
+      out.push({ kind: 'groupe', libelle: g, cleGroupe: 'groupe:' + g });
+      for (const l of Ariane.disposerGantt(tachesG, tri, sens)) {
+        out.push(Object.assign(l, { kind: 'tache', cleLigne: g + SEP + l.ref }));
+      }
+    }
+    return out;
+  }
+
+  // Passe de placement. Attribue à chaque ligne visible un `y` et un `h`, en
+  // sautant la descendance des méta-tâches repliées (comme l'ancienne
+  // MoteurFrise.visibles) et les tâches des groupes repliés. `replies` : Set
+  // des `ref` de méta-tâches et des `cleGroupe` repliés.
+  static placerLignes(dispo, hEntete, hLigne, replies) {
+    const R = replies instanceof Set ? replies : new Set(replies || []);
+    const out = [];
+    let y = hEntete;
+    let sautGroupe = false;
+    let seuilMeta = -1;
+    for (const it of dispo || []) {
+      if (it.kind === 'groupe') {
+        sautGroupe = R.has(it.cleGroupe);
+        seuilMeta = -1;
+        out.push(Object.assign({}, it, { y, h: hEntete }));
+        y += hEntete;
+        continue;
+      }
+      // Les tâches sans date forment un bloc à part, hors de tout groupe : ni un
+      // groupe replié au-dessus ni une méta-tâche repliée ne les masquent.
+      if (it.sansDate) { sautGroupe = false; seuilMeta = -1; }
+      if (sautGroupe) continue;
+      if (seuilMeta >= 0 && it.niveau > seuilMeta) continue;
+      seuilMeta = -1;
+      out.push(Object.assign({}, it, { y, h: hLigne }));
+      y += hLigne;
+      if (it.aDesEnfants && R.has(it.ref)) seuilMeta = it.niveau;
+    }
+    return { lignes: out, hauteurTotale: y };
+  }
+
+  // Sépare la sortie de disposerFriseGroupee : d'un côté les groupes et les
+  // tâches datées (dans l'ordre), de l'autre les tâches sans début ni échéance,
+  // dédoublonnées par ref (une tâche présente dans plusieurs groupes n'y figure
+  // qu'une fois). La vue pose ce second lot en bloc au bas de la liste, sans
+  // barre : la ligne seule signale qu'il manque une date.
+  static repartirSansDate(brut) {
+    const avecDates = [];
+    const sansDate = [];
+    const vus = new Set();
+    for (const it of brut || []) {
+      if (!it) continue;
+      if (it.kind === 'groupe' || it.debut || it.echeance) { avecDates.push(it); continue; }
+      if (vus.has(it.ref)) continue;
+      vus.add(it.ref);
+      sansDate.push(it);
+    }
+    return { avecDates, sansDate };
+  }
+
+  // Le sous-arbre d'une ligne, déduit des niveaux : tout ce qui suit et qui est
+  // plus profond, jusqu'à retomber au niveau de départ.
+  static _sousArbre(lignes, ref) {
+    const l = lignes || [];
+    const i = l.findIndex((x) => x.ref === ref);
+    if (i === -1) return [];
+    const out = [l[i]];
+    for (let k = i + 1; k < l.length && l[k].niveau > l[i].niveau; k++) out.push(l[k]);
+    return out;
+  }
+
+  // Décaler une barre emporte sa descendance : quand un chantier glisse d'un
+  // mois, tout ce qu'il contient glisse avec lui.
+  // Une tâche sans dates n'est pas planifiée par ricochet : ce serait décider à
+  // la place de Monsieur.
+  static decalerSousArbre(lignes, ref, jours) {
+    const n = Number(jours) || 0;
+    if (!n) return [];
+    const out = [];
+    for (const l of Ariane._sousArbre(lignes, ref)) {
+      const d = Ariane.decalerJour(l.propre.debut, n);
+      const e = Ariane.decalerJour(l.propre.echeance, n);
+      if (!d && !e) continue;
+      out.push({ ref: l.ref, debut: d, echeance: e });
+    }
+    return out;
+  }
+
+  // Réordonnancement de l'aval : la tâche et tout ce qu'elle bloque, de proche
+  // en proche, du même nombre de jours, descendances comprises. Le parcours
+  // retient les tâches déjà vues, sans quoi un cycle de blocage le ferait
+  // tourner sans fin.
+  static cascadeAval(lignes, bloquants, ref, jours) {
+    const n = Number(jours) || 0;
+    if (!n) return [];
+    const suivants = new Map();
+    for (const b of bloquants || []) {
+      if (!b || !b.de || !b.vers) continue;
+      if (!suivants.has(b.de)) suivants.set(b.de, []);
+      suivants.get(b.de).push(b.vers);
+    }
+    const vus = new Set();
+    const file = [ref];
+    while (file.length) {
+      const cur = file.shift();
+      if (vus.has(cur)) continue;
+      vus.add(cur);
+      for (const s of suivants.get(cur) || []) file.push(s);
+    }
+    const out = [];
+    const deja = new Set();
+    for (const r of vus) {
+      for (const l of Ariane._sousArbre(lignes, r)) {
+        if (deja.has(l.ref)) continue;
+        deja.add(l.ref);
+        const d = Ariane.decalerJour(l.propre.debut, n);
+        const e = Ariane.decalerJour(l.propre.echeance, n);
+        if (!d && !e) continue;
+        out.push({ ref: l.ref, debut: d, echeance: e });
+      }
+    }
+    return out;
+  }
+
+  // Étendue de la frise : de la première date à la dernière, avec une marge de
+  // part et d'autre. Sans aucune date, on montre le mois autour d'aujourd'hui
+  // plutôt qu'une frise vide.
+  static etendueGantt(lignes, aujourdhui) {
+    const dates = [];
+    for (const l of lignes || []) {
+      if (l.debut) dates.push(l.debut);
+      if (l.echeance) dates.push(l.echeance);
+    }
+    if (!dates.length) {
+      return { debut: Ariane.decalerJour(aujourdhui, -7),
+               fin: Ariane.decalerJour(aujourdhui, 30) };
+    }
+    dates.sort();
+    return { debut: Ariane.decalerJour(dates[0], -3),
+             fin: Ariane.decalerJour(dates[dates.length - 1], 3) };
+  }
+
+  // Type d'une propriété de base, à la source, sans deviner d'après le nom :
+  // « properties[nom].widget » porte le widget assigné (date, checkbox…),
+  // « getTypeInfo » sert de repli quand rien n'est assigné. Les colonnes de
+  // fichier et de formule n'ont pas de type de propriété. En 1.12
+  // « getAssignedType » a disparu : on ne s'appuie plus dessus.
+  static typeProprieteBase(gestionnaire, id) {
+    const s = String(id == null ? '' : id);
+    if (s.startsWith('file.') || s.startsWith('formula.')) return '';
+    const nom = s.replace(/^note\./, '');
+    try {
+      const p = gestionnaire && gestionnaire.properties;
+      const assigne = p && p[nom] && p[nom].widget;
+      if (assigne) return String(assigne);
+      const info = gestionnaire && typeof gestionnaire.getTypeInfo === 'function'
+        ? gestionnaire.getTypeInfo(nom) : null;
+      const t = info && info.expected && info.expected.type;
+      return t ? String(t) : '';
+    } catch (e) { return ''; }
+  }
+
+  static _sansAccentMinuscule(v) {
+    return String(v == null ? '' : v)
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  }
+
+  //#endregion Ariane · static · frise / gantt
+
+  //#region Ariane · static · articulation
+  // ── static · articulation ────────────────────────────────────────────────
+
+  // Détection des cycles par parcours en profondeur. Le tableau « chemin »
+  // garde la branche courante : y retomber, c'est boucler.
+  // Un cycle n'est retenu qu'une fois, quel que soit le sommet par lequel on y
+  // entre, d'où la signature construite sur ses membres triés.
+  static cyclesDe(aretes) {
+    const sortants = new Map();
+    for (const e of aretes || []) {
+      if (!e || !e.de || !e.vers) continue;
+      if (!sortants.has(e.de)) sortants.set(e.de, []);
+      sortants.get(e.de).push(e.vers);
+    }
+    const trouves = new Map();
+    const clos = new Set();
+    const chemin = [];
+    const dansChemin = new Set();
+    const descendre = (n) => {
+      if (dansChemin.has(n)) {
+        const cycle = chemin.slice(chemin.indexOf(n)).concat([n]);
+        const signature = [...new Set(cycle)].sort().join('\u0000');
+        if (!trouves.has(signature)) trouves.set(signature, cycle);
+        return;
+      }
+      if (clos.has(n)) return;
+      chemin.push(n);
+      dansChemin.add(n);
+      for (const suivant of sortants.get(n) || []) descendre(suivant);
+      dansChemin.delete(n);
+      chemin.pop();
+      clos.add(n);
+    };
+    for (const depart of sortants.keys()) descendre(depart);
+    return [...trouves.values()];
+  }
+
+  // Si A bloque B, B ne peut pas commencer avant que A ne s'achève. Commencer
+  // le jour même de l'échéance reste admis : une tâche peut prendre la suite
+  // d'une autre dans la journée.
+  // Une date manquante ne permet de rien conclure, et ne signale donc rien :
+  // mieux vaut taire un doute que crier une fausse erreur sur chaque tâche non
+  // encore planifiée.
+  static datesIncoherentes(aretes, datesParRef) {
+    const d = datesParRef || {};
+    const jour = (v) => {
+      const x = String(v == null ? '' : v).slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : '';
+    };
+    const out = [];
+    for (const e of aretes || []) {
+      if (!e) continue;
+      const fin = jour(d[e.de] && d[e.de].echeance);
+      const debut = jour(d[e.vers] && d[e.vers].debut);
+      if (!fin || !debut) continue;
+      if (debut < fin) out.push({ de: e.de, vers: e.vers, fin, debut });
+    }
+    return out;
+  }
+
+  // Le graphe des tâches : nœuds + arêtes typées, déduits du frontmatter.
+  // Arête hiérarchie : de = parent, vers = enfant. Arête blocage : de =
+  // bloquant, vers = bloqué. Un bout absent du jeu, ou un lien vers soi, est
+  // ignoré. Chaque paire (de, vers, type) n'apparaît qu'une fois.
+  static grapheArticulation(taches) {
+    const liste = (taches || []).filter((x) => x && x.ref);
+    const dedans = new Set(liste.map((x) => x.ref));
+    const noeuds = liste.map((x) => ({
+      ref: x.ref, intitule: x.intitule || x.ref, statut: x.statut || 'à faire',
+      avancement: Number(x.avancement) || 0, jalon: !!x.jalon,
+      famille: x.famille || 'action', echeance: Ariane.jourValide(x.echeance),
+      x: x.x, y: x.y,
+    }));
+    const aretes = [];
+    const vues = new Set();
+    const pousser = (de, vers, type, libelle) => {
+      if (!de || !vers || de === vers || !dedans.has(de) || !dedans.has(vers)) return;
+      const cle = de + ' ' + vers + ' ' + type;
+      if (vues.has(cle)) return;
+      vues.add(cle);
+      aretes.push({ de, vers, type, libelle: libelle || '' });
+    };
+    for (const x of liste) {
+      const p = Ariane.refDeLien(x.parent);
+      if (p) pousser(p, x.ref, 'hier', '');
+      for (const b of x.bloquePar || []) {
+        const m = String(b).match(/\|([^\]]*)\]\]$/);
+        pousser(Ariane.refDeLien(b), x.ref, 'bloque', m ? m[1].trim() : '');
+      }
+    }
+    return { noeuds, aretes };
+  }
+
+  // Place les nœuds SANS position (x/y non finis). Ceux qui en ont sont laissés
+  // tels quels. Rang = profondeur dans le DAG (hiérarchie ∪ blocage) par un
+  // parcours de Kahn ; les nœuds d'un cycle retombent au rang 0. Dans un rang,
+  // tri par échéance puis ref, et on décale en y pour ne rien chevaucher.
+  static placerGraphe(noeuds, aretes, opts) {
+    const dx = (opts && opts.dx) || 260;
+    const dy = (opts && opts.dy) || 120;
+    const refs = new Set((noeuds || []).map((n) => n.ref));
+    const out = new Map();
+    const inc = new Map();
+    for (const n of noeuds || []) { out.set(n.ref, []); inc.set(n.ref, 0); }
+    for (const a of aretes || []) {
+      if (!a || !refs.has(a.de) || !refs.has(a.vers) || a.de === a.vers) continue;
+      out.get(a.de).push(a.vers);
+      inc.set(a.vers, inc.get(a.vers) + 1);
+    }
+    const rang = new Map();
+    const reste = new Map(inc);
+    const file = (noeuds || []).filter((n) => reste.get(n.ref) === 0).map((n) => n.ref);
+    for (const r of file) rang.set(r, 0);
+    for (let i = 0; i < file.length; i += 1) {
+      const cur = file[i];
+      const rc = rang.get(cur);
+      for (const v of out.get(cur) || []) {
+        reste.set(v, reste.get(v) - 1);
+        if (reste.get(v) === 0) {
+          rang.set(v, Math.max(rang.has(v) ? rang.get(v) : 0, rc + 1));
+          file.push(v);
+        }
+      }
+    }
+    for (const n of noeuds || []) if (!rang.has(n.ref)) rang.set(n.ref, 0);
+
+    const pos = new Map();
+    const fini = (v) => Number.isFinite(Number(v)) && v !== '' && v !== null;
+    for (const n of noeuds || []) {
+      if (fini(n.x) && fini(n.y)) pos.set(n.ref, { x: Number(n.x), y: Number(n.y) });
+    }
+    const chevauche = (x, y) => {
+      for (const p of pos.values()) {
+        if (Math.abs(p.x - x) < dx * 0.8 && Math.abs(p.y - y) < dy * 0.8) return true;
+      }
+      return false;
+    };
+    const parRang = new Map();
+    for (const n of noeuds || []) {
+      if (pos.has(n.ref)) continue;
+      const r = rang.get(n.ref);
+      if (!parRang.has(r)) parRang.set(r, []);
+      parRang.get(r).push(n);
+    }
+    // opts.ordre : liste de refs dans l'ordre d'affichage voulu. Quand elle est
+    // fournie et non vide, chaque rang suit cet ordre (les refs absentes vont
+    // après, dans leur ordre d'origine). Sinon, tri par échéance puis ref.
+    const ordreImpose = (opts && Array.isArray(opts.ordre) && opts.ordre.length) ? opts.ordre : null;
+    const rangImpose = ordreImpose ? new Map(ordreImpose.map((r, i) => [r, i])) : null;
+    // opts.hauteur : (ref) => hauteur réelle du nœud. Fourni, l'empilement
+    // vertical d'un rang cumule ces hauteurs (+ une marge) au lieu d'un dy fixe.
+    // Absent, comportement d'origine (chaque carte à k * dy).
+    const hauteurDe = (opts && typeof opts.hauteur === 'function') ? opts.hauteur : null;
+    // Marge entre deux cartes empilées : ce qui, en hauteur fixe, séparait déjà
+    // deux rangs (dy − hauteur de carte). ARTIC_H est défini plus bas mais lu au
+    // seul appel, jamais au chargement du module.
+    const margeRang = dy > ARTIC_H ? dy - ARTIC_H : Math.max(24, dy * 0.25);
+    for (const [r, groupe] of [...parRang.entries()].sort((a, b) => a[0] - b[0])) {
+      if (rangImpose) {
+        groupe.sort((a, b) => (rangImpose.has(a.ref) ? rangImpose.get(a.ref) : 1e9)
+          - (rangImpose.has(b.ref) ? rangImpose.get(b.ref) : 1e9));
+      } else {
+        groupe.sort((a, b) => (Ariane.jourValide(a.echeance) || '~')
+          .localeCompare(Ariane.jourValide(b.echeance) || '~') || a.ref.localeCompare(b.ref));
+      }
+      const x = r * dx;
+      if (hauteurDe) {
+        let y = 0;
+        for (const n of groupe) {
+          while (chevauche(x, y)) y += dy;
+          pos.set(n.ref, { x, y });
+          y += (Number(hauteurDe(n.ref)) || dy) + margeRang;
+        }
+      } else {
+        let k = 0;
+        for (const n of groupe) {
+          let y = k * dy;
+          while (chevauche(x, y)) y += dy;
+          pos.set(n.ref, { x, y });
+          k += 1;
+        }
+      }
+    }
+    return pos;
+  }
+
+  // Un lien proposé est-il licite ? Refus si (a) il referme un cycle sur
+  // l'union des arêtes, (b) les dates se contredisent : un blocage dont
+  // l'amont s'achève après le début de l'aval ; une hiérarchie dont la mère
+  // s'achève avant la fille. On ne bloque que sur une preuve : une date
+  // manquante n'interdit rien.
+  static lienValide(aretes, dates, ajout) {
+    const { de, vers, type } = ajout || {};
+    if (!de || !vers || de === vers) return { ok: false, raison: 'soi' };
+    const adj = new Map();
+    const arc = (a, b) => { if (!adj.has(a)) adj.set(a, []); adj.get(a).push(b); };
+    for (const e of aretes || []) if (e) arc(e.de, e.vers);
+    // Cycle ssi « vers » atteint déjà « de » par les arêtes existantes.
+    const vus = new Set();
+    const pile = [vers];
+    while (pile.length) {
+      const c = pile.pop();
+      if (c === de) return { ok: false, raison: 'cycle' };
+      if (vus.has(c)) continue;
+      vus.add(c);
+      for (const x of adj.get(c) || []) pile.push(x);
+    }
+    const lire = (k) => (dates && dates.get ? dates.get(k) : (dates || {})[k]) || {};
+    const eDe = Ariane.jourValide(lire(de).echeance);
+    const dVers = Ariane.jourValide(lire(vers).debut);
+    const eVers = Ariane.jourValide(lire(vers).echeance);
+    if (type === 'hier') {
+      if (eDe && eVers && eDe < eVers) return { ok: false, raison: 'dates-hier' };
+    } else if (eDe && dVers && eDe > dVers) {
+      return { ok: false, raison: 'dates' };
+    }
+    return { ok: true };
+  }
+
+  // Courbe de Bézier entre deux points : elle se suit mieux à l'œil que le coude
+  // quand plusieurs liens se croisent. Partagée par la frise et l'articulation.
+  static _cheminFleche(x1, y1, x2, y2) {
+    const ecart = Math.max(34, Math.abs(x2 - x1) / 2);
+    return 'M ' + x1 + ' ' + y1
+      + ' C ' + (x1 + ecart) + ' ' + y1 + ', ' + (x2 - ecart) + ' ' + y2
+      + ', ' + x2 + ' ' + y2;
+  }
+
+  //#endregion Ariane · static · articulation
+
   /* --------------------- Moteur de suggestions -------------------------- */
 
   // Fichiers markdown appartenant aux dossiers candidats configurés.
@@ -7209,21 +8233,6 @@ class Ariane extends obsidian.Plugin {
 
   /* --------------------------- Profil portable --------------------------- */
 
-  // Ce qui ne voyage pas : chemins absolus et adresses de services locaux.
-  // Un profil partagé ne doit jamais imposer l'installation de qui l'a écrit.
-  static get CLES_MACHINE() {
-    return ['exportPandocBin', 'exportFiltreLua', 'exportModeleWord',
-            'suggOllamaUrl', 'suggLmStudioUrl'];
-  }
-
-  // Ce qui ne voyage pas non plus : l'état accumulé, propre au coffre.
-  static get CLES_ETAT() {
-    return ['tempsTotalSecondes', 'tempsHistorique', 'rattachementsIgnores',
-            'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
-            'dossierReferences', 'dossierBibliographies', 'exportDossier',
-            'dossierTaches', 'tempsDossierJournal'];
-  }
-
   profilExportable(avecOrganisation) {
     const hors = new Set(Ariane.CLES_MACHINE);
     if (!avecOrganisation) for (const k of Ariane.CLES_ETAT) hors.add(k);
@@ -8522,32 +9531,6 @@ class Ariane extends obsidian.Plugin {
     return base ? require('path').join(base, rel) : null;
   }
 
-  // Deux formes ont coexisté dans le cache : les tableaux « reference » bruts de
-  // Crossref, et la forme d'Ariane { auteurs, annee, titre, doi, brut }. On
-  // convertit à la lecture, pour n'en manipuler qu'une seule ensuite.
-  static normaliserEntree(e) {
-    if (!e || typeof e !== 'object') return null;
-    if (Array.isArray(e.auteurs) || e.annee !== undefined) return e; // déjà normalisée
-    const brut = String(e.unstructured || '').trim();
-    const decoupe = e._ariane || null;
-    const auteur = String(e.author || '').trim();
-    const auteurs = decoupe && decoupe.auteurs && decoupe.auteurs.length
-      ? decoupe.auteurs
-      : (auteur ? auteur.split(/[^\p{L}\p{M}'-]+/u).filter((x) => x.length > 1) : []);
-    return {
-      auteurs,
-      annee: String(e.year || (decoupe && decoupe.annee) || '').trim(),
-      titre: String(e['article-title'] || e['volume-title'] || (decoupe && decoupe.titre) || '').trim(),
-      revue: String(e['journal-title'] || (decoupe && decoupe.revue) || '').trim(),
-      doi: normDoi(e.DOI),
-      brut,
-    };
-  }
-
-  static normaliserBiblio(liste) {
-    return (liste || []).map((e) => Ariane.normaliserEntree(e)).filter(Boolean);
-  }
-
   chargerBibliographies() {
     if (this.bibliographies) return this.bibliographies;
     const c = this.cheminBibliographies();
@@ -8587,35 +9570,6 @@ class Ariane extends obsidian.Plugin {
     try { t = require('fs').readFileSync(chemin, 'utf8'); } catch (e) { t = ''; }
     this._textesPdf[cle] = t;
     return t;
-  }
-
-  // Une entrée de bibliographie porte le nom SUIVI d'initiales, « March, S. T.
-  // (1995) », ce qu'un appel en cours de texte n'écrit jamais : « (March and
-  // Smith 1995) ». C'est ce discriminant qui distingue les deux, et il est
-  // fiable — vérifié sur huit références d'un même ouvrage.
-  static entreeDansTexte(texte, nomFamille, annee) {
-    if (!texte || !nomFamille || !annee) return null;
-    let motif;
-    try {
-      motif = new RegExp(echapperRegex(nomFamille)
-        + ',\\s*(?:[A-Z]\\.\\s*){1,4}[^\\n]{0,120}?\\b' + annee + '\\b[^\\n]{0,320}', 'g');
-    } catch (e) { return null; }
-    let brut = null;
-    let m;
-    while ((m = motif.exec(texte)) !== null) {
-      const s = m[0].replace(/\s+/g, ' ').trim();
-      if (!brut || s.length > brut.length) brut = s;
-    }
-    if (!brut) return null;
-    // Couper à l'entrée suivante, qui commence par « Nom, X. ».
-    const suivante = /\s(?:[A-Z][\wÀ-ÿ'’-]+(?:\s[A-Z][\wÀ-ÿ'’-]+)?,\s*(?:[A-Z]\.\s*){1,4})/;
-    const apres = brut.indexOf(annee) + annee.length;
-    const d = suivante.exec(brut.slice(apres));
-    if (d) brut = brut.slice(0, apres + d.index).trim();
-    let titre = '';
-    const mt = new RegExp(annee + '\\)?\\s*[.,]\\s*(.+?)(?:\\.\\s|\\.$)').exec(brut);
-    if (mt) titre = mt[1].trim();
-    return { brut, titre };
   }
 
   // Cherche dans le PDF d'une source ce qu'elle dit d'un libellé cité.
@@ -8847,46 +9801,6 @@ class Ariane extends obsidian.Plugin {
    * répare les deux, et c'est ce compte qui doit guider une acquisition.
    * ------------------------------------------------------------------------ */
 
-// Deux entrées désignent le même travail quand l'une des deux commence ou
-  // contient l'autre au-delà de douze caractères : « Co-opetition » et
-  // « Co‐opetition: A revolutionary mindset… », « Designing interactive
-  // strategy » et « From value chain… designing interactive strategy ». Deux
-  // DOI distincts restent deux œuvres, quel que soit le titre.
-  static fondreOeuvresProches(liste) {
-    const clef = (t) => sansAccents(t || '')
-      .replace(/[\u2010-\u2015\u2212]/g, '-')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .trim();
-    const out = [];
-    for (const o of liste) {
-      const ko = clef(o.titre);
-      const jumeau = out.find((x) => {
-        if (x.doi && o.doi) return x.doi === o.doi;
-        if (x.doi !== o.doi && (x.doi || o.doi)) return false;
-        const kx = clef(x.titre);
-        if (!ko || !kx) return false;
-        const court = ko.length < kx.length ? ko : kx;
-        const long = ko.length < kx.length ? kx : ko;
-        if (court.length >= 12 && long.includes(court)) return true;
-        // Un mot d'écart ne fait pas deux œuvres : « Design science in
-        // information systems research » et « Design research in information
-        // systems research » sortent du même PDF, à une coquille près.
-        const a = new Set(court.split(' ').filter((w) => w.length > 2));
-        const b = new Set(long.split(' ').filter((w) => w.length > 2));
-        if (a.size < 3 || b.size < 3) return false;
-        let communs = 0;
-        for (const w of a) if (b.has(w)) communs += 1;
-        return communs / Math.max(a.size, b.size) >= 0.75;
-      });
-      if (!jumeau) { out.push(o); continue; }
-      jumeau.n += o.n;
-      for (const sr of o.sources) if (!jumeau.sources.includes(sr)) jumeau.sources.push(sr);
-      if ((o.titre || '').length > (jumeau.titre || '').length) jumeau.titre = o.titre;
-      if (!jumeau.doi && o.doi) jumeau.doi = o.doi;
-    }
-    return out;
-  }
-
   async indexOeuvres(passages) {
     const P = passages || this.indexPassages();
     await this.indexAttachements();
@@ -9049,13 +9963,6 @@ class Ariane extends obsidian.Plugin {
    * faute de quoi elle est jetée. Une fausse référence dans une thèse est un
    * dégât autrement plus grave qu'une référence non résolue.
    * ------------------------------------------------------------------------ */
-
-  // Le modèle rend parfois « {"annee":["2012"]} » au lieu d'une chaîne : on
-  // accepte les deux plutôt que de perdre l'extraction sur une vétille.
-  static premier(v) {
-    if (Array.isArray(v)) return v.length ? String(v[0]).trim() : '';
-    return String(v == null ? '' : v).trim();
-  }
 
   // Recoupement avec le texte d'origine. C'est ici que se joue la confiance.
   validerDecoupage(extrait, brut) {
@@ -9589,888 +10496,11 @@ class Ariane extends obsidian.Plugin {
 
   /* ============================== Tâches =============================== */
 
-  // Référence d'une tâche : T, l'année sur deux chiffres, le rang dans l'année.
-  // Le rang ne réemploie jamais un numéro libéré : une référence est définitive,
-  // et deux tâches distinctes ne doivent jamais avoir porté le même nom.
-  // L'horodatage employé par les notes conceptuelles est écarté à dessein, un
-  // lot importé produisant plusieurs objets dans la même minute.
-  static referenceTacheSuivante(noms, annee) {
-    const prefixe = 'T' + String(annee % 100).padStart(2, '0') + '-';
-    let max = 0;
-    for (const nom of noms || []) {
-      if (typeof nom !== 'string' || !nom.startsWith(prefixe)) continue;
-      const m = nom.slice(prefixe.length).match(/^(\d+)$/);
-      if (m) max = Math.max(max, parseInt(m[1], 10));
-    }
-    return prefixe + String(max + 1).padStart(3, '0');
-  }
-
-  // La famille d'une tâche n'est pas déclarée, elle se déduit du champ rempli.
-  // Un champ « famille » pourrait contredire les champs présents ; son absence
-  // rend la contradiction impossible.
-  // L'ordre est aussi celui de la priorité quand plusieurs sont remplis.
-  static champTache(fm) {
-    const ordre = ['source', 'livrable', 'fichier'];
-    const remplis = ordre.filter((c) => fm && String(fm[c] == null ? '' : fm[c]).trim());
-    return { retenu: remplis[0] || null, conflits: remplis.length > 1 ? remplis : [] };
-  }
-
-  // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
-  // « Type » de l'en-tête de frise et le rendu des cartes d'articulation.
-  static get TYPE_FR_VERS_OBSIDIAN() {
-    return { texte: 'text', nombre: 'number', date: 'date',
-             case: 'checkbox', liste: 'multitext', lien: 'link' };
-  }
-
-  // Les propriétés communes à toutes les tâches : identifiant interne, intitulé
-  // affiché par défaut (renommable dans les réglages), icône (fixe).
-  static get PROPS_GENERIQUES() {
-    return [
-      { cle: 'intitule', defaut: 'Intitulé', icone: 'text' },
-      { cle: 'famille', defaut: 'Famille', icone: 'shapes' },
-      { cle: 'statut', defaut: 'Statut', icone: 'circle-dot' },
-      { cle: 'terminee', defaut: 'Terminée', icone: 'check-check' },
-      { cle: 'priorite', defaut: 'Priorité', icone: 'flag' },
-      { cle: 'jalon', defaut: 'Jalon', icone: 'diamond' },
-      { cle: 'debut', defaut: 'Début', icone: 'calendar' },
-      { cle: 'echeance', defaut: 'Échéance', icone: 'calendar-check' },
-      { cle: 'avancement', defaut: 'Avancement', icone: 'percent' },
-      { cle: 'parent', defaut: 'Rattachée à', icone: 'git-branch' },
-    ];
-  }
-
-  // Concepts génériques dont la clé de frontmatter est renommable / préfixable
-  // (tous sauf l'intitulé, qui n'est pas une vraie propriété mais le premier
-  // alias). On y ajoute les champs structurels propres aux tâches.
-  static get CONCEPTS_TACHE() {
-    return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
-            'debut', 'echeance', 'avancement', 'parent',
-            'bloque-par', 'termine-le',
-            'source', 'livrable', 'fichier', 'liste', 'rappel-id'];
-  }
-
-  static familleTache(fm, familles, defaut) {
-    const liste = Array.isArray(familles) ? familles : null;
-    // Appel historique (un seul argument) : on garde la déduction d'origine.
-    if (!liste) {
-      const retenu = Ariane.champTache(fm).retenu;
-      if (retenu === 'source') return 'lecture';
-      return retenu ? 'production' : 'action';
-    }
-    const connus = new Set(liste.map((f) => f && f.id).filter(Boolean));
-    const explicite = fm && fm.famille ? String(fm.famille).trim() : '';
-    if (explicite && connus.has(explicite)) return explicite;
-    const retenu = Ariane.champTache(fm).retenu;
-    if (retenu === 'source' && connus.has('lecture')) return 'lecture';
-    if (retenu && connus.has('production')) return 'production';
-    return (defaut && connus.has(defaut)) ? defaut
-      : (connus.has('action') ? 'action' : (liste[0] && liste[0].id) || 'action');
-  }
-
-  // Les propriétés qu'une famille ajoute à une tâche et qui n'existent pas
-  // encore dans son entête. « Existe » = la clé est présente, même vide.
-  static proprietesManquantes(fm, famille) {
-    const props = (famille && Array.isArray(famille.proprietes)) ? famille.proprietes : [];
-    const cles = new Set(Object.keys(fm || {}));
-    return props
-      .filter((p) => p && p.cle && !cles.has(p.cle))
-      .map((p) => ({ cle: p.cle, type: p.type || 'texte' }));
-  }
-
-  // Une valeur YAML citée. Les intitulés portent des apostrophes, des deux
-  // points et des guillemets typographiques : les citer systématiquement évite
-  // d'avoir à décider au cas par cas.
-  static yamlChaine(v) {
-    const s = String(v == null ? '' : v);
-    if (!s) return '';
-    return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-  }
-
-  // Le corps d'une note de tâche neuve. Tous les champs du schéma sont émis,
-  // y compris vides : l'éditeur de propriétés d'Obsidian ne montre que ce qui
-  // existe, et une tâche dont les champs manquent est une tâche qu'on ne pense
-  // pas à remplir. Un champ vide s'écrit sans espace en fin de ligne, que
-  // certains éditeurs suppriment et qui ferait alors diverger le fichier.
-  static corpsNouvelleTache(champs) {
-    const c = champs || {};
-    const q = Ariane.yamlChaine;
-    const ligne = (cle, val) => cle + ':' + (val ? ' ' + val : '');
-    // Clés personnalisées éventuelles : c.cles = { concept: 'nom réel', … }.
-    const K = (concept) => (c.cles && c.cles[concept]) || concept;
-    const intitule = c.intitule || 'Sans titre';
-    const jour = c.aujourdhui || '';
-    const l = [];
-    l.push('---');
-    l.push('aliases:');
-    l.push('  - ' + q(intitule));
-    l.push('type: tache');
-    l.push(ligne(K('famille'), c.famille));
-    l.push(ligne(K('statut'), c.statut || 'à faire'));
-    l.push(K('terminee') + ': ' + ((c.statut || '') === 'terminée' ? 'true' : 'false'));
-    l.push(ligne(K('priorite'), c.priorite));
-    l.push(ligne(K('debut'), c.debut));
-    l.push(ligne(K('echeance'), c.echeance));
-    l.push(K('avancement') + ': ' + (Number(c.avancement) || 0));
-    l.push(K('termine-le') + ':');
-    l.push(K('jalon') + ': ' + (c.jalon ? 'true' : 'false'));
-    l.push(K('parent') + ':');
-    l.push(K('bloque-par') + ': []');
-    l.push(ligne(K('source'), q(c.source)));
-    l.push(ligne(K('livrable'), q(c.livrable)));
-    l.push(ligne(K('fichier'), q(c.fichier)));
-    l.push(ligne(K('liste'), q(c.liste)));
-    l.push(K('rappel-id') + ':');
-    l.push(ligne('cree', jour));
-    l.push(ligne('modifie', jour));
-    l.push('---');
-    l.push('');
-    l.push('# ' + intitule);
-    l.push('');
-    l.push('## Note de travail');
-    l.push('');
-    l.push('## Journal');
-    l.push('');
-    return l.join('\n');
-  }
-
-  // Une production porte soit une note du coffre, soit un fichier du disque.
-  // Monsieur ne veut pas trancher au moment de créer la tâche : la forme de ce
-  // qu'il saisit suffit à décider. Seul un chemin absolu désigne le disque, ce
-  // qui laisse « 3 - Notes conceptuelles/NC-… » du côté des notes malgré ses
-  // barres obliques.
-  static livrableOuFichier(saisie) {
-    const v = String(saisie == null ? '' : saisie).trim();
-    if (!v) return { champ: null, valeur: '' };
-    if (v.startsWith('/') || v.startsWith('~/') || v.startsWith('file://')) {
-      return { champ: 'fichier', valeur: v };
-    }
-    const nu = v.replace(/^\[\[|\]\]$/g, '');
-    return { champ: 'livrable', valeur: '[[' + nu + ']]' };
-  }
-
   /* ----------------------------- Frise Gantt ----------------------------- */
-
-  // Type d'une propriété de base, à la source, sans deviner d'après le nom :
-  // « properties[nom].widget » porte le widget assigné (date, checkbox…),
-  // « getTypeInfo » sert de repli quand rien n'est assigné. Les colonnes de
-  // fichier et de formule n'ont pas de type de propriété. En 1.12
-  // « getAssignedType » a disparu : on ne s'appuie plus dessus.
-  static typeProprieteBase(gestionnaire, id) {
-    const s = String(id == null ? '' : id);
-    if (s.startsWith('file.') || s.startsWith('formula.')) return '';
-    const nom = s.replace(/^note\./, '');
-    try {
-      const p = gestionnaire && gestionnaire.properties;
-      const assigne = p && p[nom] && p[nom].widget;
-      if (assigne) return String(assigne);
-      const info = gestionnaire && typeof gestionnaire.getTypeInfo === 'function'
-        ? gestionnaire.getTypeInfo(nom) : null;
-      const t = info && info.expected && info.expected.type;
-      return t ? String(t) : '';
-    } catch (e) { return ''; }
-  }
-
-  // Les dates circulent en chaînes « AAAA-MM-JJ » et l'arithmétique passe par
-  // UTC. Un Date local franchissant un changement d'heure décale d'un jour, ce
-  // qui déplacerait des barres deux fois par an sans qu'on comprenne pourquoi.
-  static jourValide(v) {
-    const s = String(v == null ? '' : v).slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
-    const [a, m, j] = s.split('-').map(Number);
-    const d = new Date(Date.UTC(a, m - 1, j));
-    // Écarte le 31 février et consorts, que Date.UTC reporterait en silence.
-    return (d.getUTCFullYear() === a && d.getUTCMonth() === m - 1 && d.getUTCDate() === j) ? s : '';
-  }
-
-  static _versUTC(jour) {
-    const s = Ariane.jourValide(jour);
-    if (!s) return null;
-    const [a, m, j] = s.split('-').map(Number);
-    return Date.UTC(a, m - 1, j);
-  }
-
-  static decalerJour(jour, n) {
-    const t = Ariane._versUTC(jour);
-    if (t === null) return '';
-    return new Date(t + (Number(n) || 0) * 86400000).toISOString().slice(0, 10);
-  }
-
-  static ecartJours(a, b) {
-    const ta = Ariane._versUTC(a);
-    const tb = Ariane._versUTC(b);
-    if (ta === null || tb === null) return 0;
-    return Math.round((tb - ta) / 86400000);
-  }
-
-  // Référence nue d'un lien, alias compris : « [[T26-001|partie 2]] » rend
-  // « T26-001 ».
-  static refDeLien(v) {
-    return String(v == null ? '' : v).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
-  }
-
-  // Le chemin d'une note désigne-t-il une tâche, et sous quelle référence ?
-  // Une tâche est une note .md du dossier des tâches (sous-dossiers compris) ;
-  // les anciennes références « T26-001 » restent reconnues où qu'elles soient.
-  // La référence EST le nom de fichier, quel qu'il soit — plus de forme imposée.
-  static refDepuisChemin(chemin, dossier) {
-    const p = String(chemin || '');
-    if (!/\.md$/i.test(p)) return null;
-    const base = p.slice(p.lastIndexOf('/') + 1).replace(/\.md$/i, '');
-    const d = String(dossier || '').replace(/^\/+|\/+$/g, '');
-    if (d && p.startsWith(d + '/')) return base;
-    const m = p.match(/(?:^|\/)(T\d{2}-\d{3,4})\.md$/);
-    return m ? m[1] : null;
-  }
-
-  // Disposition de la frise : parcours en profondeur, dates remontées sur les
-  // méta-tâches. Les dates propres sont conservées à part, le glissé d'une
-  // barre devant écrire celles de la note et non celles de sa descendance.
-  // Un parent inconnu ou un cycle ne fait pas disparaître la tâche : elle
-  // remonte à la racine, ce qui la rend visible plutôt que perdue.
-  static disposerGantt(taches, tri, sens) {
-    const liste = (taches || []).filter((x) => x && x.ref);
-    const parRef = new Map(liste.map((x) => [x.ref, x]));
-    const enfants = new Map();
-    const racines = [];
-    for (const x of liste) {
-      const p = Ariane.refDeLien(x.parent);
-      // Un cycle se casse à la remontée : dès qu'on repasse par une tâche déjà
-      // vue, la parenté est tenue pour invalide et la tâche devient racine.
-      let valide = !!p && parRef.has(p) && p !== x.ref;
-      if (valide) {
-        const vus = new Set([x.ref]);
-        let cur = p;
-        while (cur && parRef.has(cur)) {
-          if (vus.has(cur)) { valide = false; break; }
-          vus.add(cur);
-          cur = Ariane.refDeLien(parRef.get(cur).parent);
-        }
-      }
-      if (valide) {
-        if (!enfants.has(p)) enfants.set(p, []);
-        enfants.get(p).push(x);
-      } else {
-        racines.push(x);
-      }
-    }
-    // Une tâche sans date passe après celles qui en ont : sa place est au
-    // tiroir des non planifiées, pas au milieu de la frise.
-    const parDate = (a, b) => {
-      const da = Ariane.jourValide(a.debut) || Ariane.jourValide(a.echeance);
-      const db = Ariane.jourValide(b.debut) || Ariane.jourValide(b.echeance);
-      if (da && db && da !== db) return da < db ? -1 : 1;
-      if (da && !db) return -1;
-      if (!da && db) return 1;
-      return a.ref.localeCompare(b.ref);
-    };
-    const RANGS_PRIORITE = { haute: 0, moyenne: 1, basse: 2 };
-    // Le tri s'applique entre frères, jamais à travers la hiérarchie : un
-    // enfant reste sous son parent quoi qu'il arrive.
-    const trier = (a, b) => {
-      if (tri === 'priorite') {
-        const pa = RANGS_PRIORITE[a.priorite];
-        const pb = RANGS_PRIORITE[b.priorite];
-        const ra = pa === undefined ? 3 : pa;
-        const rb = pb === undefined ? 3 : pb;
-        if (ra !== rb) return ra - rb;
-      } else if (tri === 'cle') {
-        // La vue prépare _cle : elle seule sait lire une propriété de base.
-        // Une clé vide passe après celles qui sont remplies, comme partout
-        // ailleurs dans la frise.
-        const ka = String(a._cle == null ? '' : a._cle);
-        const kb = String(b._cle == null ? '' : b._cle);
-        if (!ka !== !kb) return ka ? -1 : 1;
-        const c = ka.localeCompare(kb, 'fr', { sensitivity: 'base', numeric: true });
-        if (c) return c * (sens === -1 ? -1 : 1);
-      } else if (tri === 'intitule') {
-        const c = String(a.intitule || a.ref)
-          .localeCompare(String(b.intitule || b.ref), 'fr', { sensitivity: 'base' });
-        if (c) return c;
-      } else if (tri === 'multi') {
-        // Tri natif de la base : plusieurs critères { v, s(ens) } préparés par
-        // la vue, comparés dans l'ordre. Une valeur vide passe toujours après.
-        const ma = a._multi || [];
-        const mb = b._multi || [];
-        for (let i = 0; i < ma.length; i += 1) {
-          const ka = String(ma[i] && ma[i].v != null ? ma[i].v : '');
-          const kb = String(mb[i] && mb[i].v != null ? mb[i].v : '');
-          if (!ka !== !kb) return ka ? -1 : 1;
-          const c = ka.localeCompare(kb, 'fr', { sensitivity: 'base', numeric: true });
-          if (c) return c * (ma[i].s === -1 ? -1 : 1);
-        }
-      }
-      return parDate(a, b);
-    };
-    const lignes = [];
-    const descendre = (x, niveau) => {
-      const fils = (enfants.get(x.ref) || []).slice().sort(trier);
-      const jalon = !!x.jalon;
-      const propre = {
-        debut: jalon ? '' : Ariane.jourValide(x.debut),
-        echeance: Ariane.jourValide(x.echeance),
-      };
-      const ligne = {
-        ref: x.ref, intitule: x.intitule || x.ref, niveau,
-        statut: x.statut || 'à faire', avancement: Number(x.avancement) || 0,
-        jalon, aDesEnfants: fils.length > 0, propre,
-        debut: propre.debut, echeance: propre.echeance,
-      };
-      lignes.push(ligne);
-      const posees = fils.map((f) => descendre(f, niveau + 1));
-      if (posees.length) {
-        const debuts = posees.map((p) => p.debut).filter(Boolean);
-        const fins = posees.map((p) => p.echeance).filter(Boolean);
-        if (!jalon && debuts.length) {
-          ligne.debut = [ligne.debut, ...debuts].filter(Boolean).sort()[0];
-        }
-        if (fins.length) {
-          const toutes = [ligne.echeance, ...fins].filter(Boolean).sort();
-          ligne.echeance = toutes[toutes.length - 1];
-        }
-      }
-      return ligne;
-    };
-    for (const r of racines.slice().sort(trier)) descendre(r, 0);
-    return lignes;
-  }
-
-  // Regroupement de la frise. `groupes` = Map<ref, string[]> (les libellés de
-  // groupe d'une tâche) ou null. La disposition en arbre est faite par
-  // disposerGantt sur les seules tâches de chaque groupe : un parent absent du
-  // groupe redevient racine, comme pour un parent inconnu. Une tâche
-  // multi-valeur est reprise dans chaque groupe, avec une cleLigne distincte
-  // mais le même ref pour l'écriture.
-  static disposerFriseGroupee(taches, groupes, tri, sens, groupeDesc) {
-    if (!groupes) {
-      return Ariane.disposerGantt(taches, tri, sens)
-        .map((l) => Object.assign(l, { kind: 'tache', cleLigne: l.ref }));
-    }
-    const SEP = ' ';
-    const grDe = (ref) => {
-      const g = groupes.get(ref);
-      return g && g.length ? g : [Ariane.SANS_GROUPE];
-    };
-    const tous = new Set();
-    for (const t of taches || []) for (const g of grDe(t.ref)) tous.add(g);
-    const ordre = [...tous]
-      .filter((g) => g !== Ariane.SANS_GROUPE)
-      .sort((a, b) => String(a).localeCompare(String(b), 'fr',
-        { sensitivity: 'base', numeric: true }));
-    if (groupeDesc) ordre.reverse();
-    if (tous.has(Ariane.SANS_GROUPE)) ordre.push(Ariane.SANS_GROUPE);
-
-    const out = [];
-    for (const g of ordre) {
-      const tachesG = (taches || []).filter((t) => grDe(t.ref).includes(g));
-      if (!tachesG.length) continue;
-      out.push({ kind: 'groupe', libelle: g, cleGroupe: 'groupe:' + g });
-      for (const l of Ariane.disposerGantt(tachesG, tri, sens)) {
-        out.push(Object.assign(l, { kind: 'tache', cleLigne: g + SEP + l.ref }));
-      }
-    }
-    return out;
-  }
-
-  // Passe de placement. Attribue à chaque ligne visible un `y` et un `h`, en
-  // sautant la descendance des méta-tâches repliées (comme l'ancienne
-  // MoteurFrise.visibles) et les tâches des groupes repliés. `replies` : Set
-  // des `ref` de méta-tâches et des `cleGroupe` repliés.
-  static placerLignes(dispo, hEntete, hLigne, replies) {
-    const R = replies instanceof Set ? replies : new Set(replies || []);
-    const out = [];
-    let y = hEntete;
-    let sautGroupe = false;
-    let seuilMeta = -1;
-    for (const it of dispo || []) {
-      if (it.kind === 'groupe') {
-        sautGroupe = R.has(it.cleGroupe);
-        seuilMeta = -1;
-        out.push(Object.assign({}, it, { y, h: hEntete }));
-        y += hEntete;
-        continue;
-      }
-      // Les tâches sans date forment un bloc à part, hors de tout groupe : ni un
-      // groupe replié au-dessus ni une méta-tâche repliée ne les masquent.
-      if (it.sansDate) { sautGroupe = false; seuilMeta = -1; }
-      if (sautGroupe) continue;
-      if (seuilMeta >= 0 && it.niveau > seuilMeta) continue;
-      seuilMeta = -1;
-      out.push(Object.assign({}, it, { y, h: hLigne }));
-      y += hLigne;
-      if (it.aDesEnfants && R.has(it.ref)) seuilMeta = it.niveau;
-    }
-    return { lignes: out, hauteurTotale: y };
-  }
-
-  // Sépare la sortie de disposerFriseGroupee : d'un côté les groupes et les
-  // tâches datées (dans l'ordre), de l'autre les tâches sans début ni échéance,
-  // dédoublonnées par ref (une tâche présente dans plusieurs groupes n'y figure
-  // qu'une fois). La vue pose ce second lot en bloc au bas de la liste, sans
-  // barre : la ligne seule signale qu'il manque une date.
-  static repartirSansDate(brut) {
-    const avecDates = [];
-    const sansDate = [];
-    const vus = new Set();
-    for (const it of brut || []) {
-      if (!it) continue;
-      if (it.kind === 'groupe' || it.debut || it.echeance) { avecDates.push(it); continue; }
-      if (vus.has(it.ref)) continue;
-      vus.add(it.ref);
-      sansDate.push(it);
-    }
-    return { avecDates, sansDate };
-  }
-
-  // Filtre les tâches avant disposition. Les ancêtres d'une tâche retenue sont
-  // conservés : sans eux, une sous-tâche apparaîtrait à la racine, détachée du
-  // chantier auquel elle appartient, et on ne saurait plus de quoi il s'agit.
-  static filtrerTaches(taches, filtre) {
-    const liste = (taches || []).filter((x) => x && x.ref);
-    const f = filtre || {};
-    const texte = Ariane._sansAccentMinuscule(f.texte || '');
-    if (!f.statut && !f.priorite && !texte) return liste;
-    const parRef = new Map(liste.map((x) => [x.ref, x]));
-    const retenu = (x) => {
-      if (f.statut && String(x.statut || '') !== f.statut) return false;
-      if (f.priorite && String(x.priorite || '') !== f.priorite) return false;
-      if (texte) {
-        const cible = Ariane._sansAccentMinuscule(
-          String(x.intitule || '') + ' ' + x.ref);
-        if (!cible.includes(texte)) return false;
-      }
-      return true;
-    };
-    const gardes = new Set();
-    for (const x of liste) {
-      if (!retenu(x)) continue;
-      gardes.add(x.ref);
-      let p = Ariane.refDeLien(x.parent);
-      const vus = new Set([x.ref]);
-      while (p && parRef.has(p) && !vus.has(p)) {
-        gardes.add(p);
-        vus.add(p);
-        p = Ariane.refDeLien(parRef.get(p).parent);
-      }
-    }
-    return liste.filter((x) => gardes.has(x.ref));
-  }
-
-  static _sansAccentMinuscule(v) {
-    return String(v == null ? '' : v)
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-  }
-
-  // Le sous-arbre d'une ligne, déduit des niveaux : tout ce qui suit et qui est
-  // plus profond, jusqu'à retomber au niveau de départ.
-  static _sousArbre(lignes, ref) {
-    const l = lignes || [];
-    const i = l.findIndex((x) => x.ref === ref);
-    if (i === -1) return [];
-    const out = [l[i]];
-    for (let k = i + 1; k < l.length && l[k].niveau > l[i].niveau; k++) out.push(l[k]);
-    return out;
-  }
-
-  // Décaler une barre emporte sa descendance : quand un chantier glisse d'un
-  // mois, tout ce qu'il contient glisse avec lui.
-  // Une tâche sans dates n'est pas planifiée par ricochet : ce serait décider à
-  // la place de Monsieur.
-  static decalerSousArbre(lignes, ref, jours) {
-    const n = Number(jours) || 0;
-    if (!n) return [];
-    const out = [];
-    for (const l of Ariane._sousArbre(lignes, ref)) {
-      const d = Ariane.decalerJour(l.propre.debut, n);
-      const e = Ariane.decalerJour(l.propre.echeance, n);
-      if (!d && !e) continue;
-      out.push({ ref: l.ref, debut: d, echeance: e });
-    }
-    return out;
-  }
-
-  // Réordonnancement de l'aval : la tâche et tout ce qu'elle bloque, de proche
-  // en proche, du même nombre de jours, descendances comprises. Le parcours
-  // retient les tâches déjà vues, sans quoi un cycle de blocage le ferait
-  // tourner sans fin.
-  static cascadeAval(lignes, bloquants, ref, jours) {
-    const n = Number(jours) || 0;
-    if (!n) return [];
-    const suivants = new Map();
-    for (const b of bloquants || []) {
-      if (!b || !b.de || !b.vers) continue;
-      if (!suivants.has(b.de)) suivants.set(b.de, []);
-      suivants.get(b.de).push(b.vers);
-    }
-    const vus = new Set();
-    const file = [ref];
-    while (file.length) {
-      const cur = file.shift();
-      if (vus.has(cur)) continue;
-      vus.add(cur);
-      for (const s of suivants.get(cur) || []) file.push(s);
-    }
-    const out = [];
-    const deja = new Set();
-    for (const r of vus) {
-      for (const l of Ariane._sousArbre(lignes, r)) {
-        if (deja.has(l.ref)) continue;
-        deja.add(l.ref);
-        const d = Ariane.decalerJour(l.propre.debut, n);
-        const e = Ariane.decalerJour(l.propre.echeance, n);
-        if (!d && !e) continue;
-        out.push({ ref: l.ref, debut: d, echeance: e });
-      }
-    }
-    return out;
-  }
 
   /* --------------------- Cohérence des tâches -------------------------- */
 
-  // Détection des cycles par parcours en profondeur. Le tableau « chemin »
-  // garde la branche courante : y retomber, c'est boucler.
-  // Un cycle n'est retenu qu'une fois, quel que soit le sommet par lequel on y
-  // entre, d'où la signature construite sur ses membres triés.
-  static cyclesDe(aretes) {
-    const sortants = new Map();
-    for (const e of aretes || []) {
-      if (!e || !e.de || !e.vers) continue;
-      if (!sortants.has(e.de)) sortants.set(e.de, []);
-      sortants.get(e.de).push(e.vers);
-    }
-    const trouves = new Map();
-    const clos = new Set();
-    const chemin = [];
-    const dansChemin = new Set();
-    const descendre = (n) => {
-      if (dansChemin.has(n)) {
-        const cycle = chemin.slice(chemin.indexOf(n)).concat([n]);
-        const signature = [...new Set(cycle)].sort().join('\u0000');
-        if (!trouves.has(signature)) trouves.set(signature, cycle);
-        return;
-      }
-      if (clos.has(n)) return;
-      chemin.push(n);
-      dansChemin.add(n);
-      for (const suivant of sortants.get(n) || []) descendre(suivant);
-      dansChemin.delete(n);
-      chemin.pop();
-      clos.add(n);
-    };
-    for (const depart of sortants.keys()) descendre(depart);
-    return [...trouves.values()];
-  }
-
-  // Si A bloque B, B ne peut pas commencer avant que A ne s'achève. Commencer
-  // le jour même de l'échéance reste admis : une tâche peut prendre la suite
-  // d'une autre dans la journée.
-  // Une date manquante ne permet de rien conclure, et ne signale donc rien :
-  // mieux vaut taire un doute que crier une fausse erreur sur chaque tâche non
-  // encore planifiée.
-  static datesIncoherentes(aretes, datesParRef) {
-    const d = datesParRef || {};
-    const jour = (v) => {
-      const x = String(v == null ? '' : v).slice(0, 10);
-      return /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : '';
-    };
-    const out = [];
-    for (const e of aretes || []) {
-      if (!e) continue;
-      const fin = jour(d[e.de] && d[e.de].echeance);
-      const debut = jour(d[e.vers] && d[e.vers].debut);
-      if (!fin || !debut) continue;
-      if (debut < fin) out.push({ de: e.de, vers: e.vers, fin, debut });
-    }
-    return out;
-  }
-
   /* ---------------------- Vue « Articulation » ------------------------ */
-
-  // Le graphe des tâches : nœuds + arêtes typées, déduits du frontmatter.
-  // Arête hiérarchie : de = parent, vers = enfant. Arête blocage : de =
-  // bloquant, vers = bloqué. Un bout absent du jeu, ou un lien vers soi, est
-  // ignoré. Chaque paire (de, vers, type) n'apparaît qu'une fois.
-  static grapheArticulation(taches) {
-    const liste = (taches || []).filter((x) => x && x.ref);
-    const dedans = new Set(liste.map((x) => x.ref));
-    const noeuds = liste.map((x) => ({
-      ref: x.ref, intitule: x.intitule || x.ref, statut: x.statut || 'à faire',
-      avancement: Number(x.avancement) || 0, jalon: !!x.jalon,
-      famille: x.famille || 'action', echeance: Ariane.jourValide(x.echeance),
-      x: x.x, y: x.y,
-    }));
-    const aretes = [];
-    const vues = new Set();
-    const pousser = (de, vers, type, libelle) => {
-      if (!de || !vers || de === vers || !dedans.has(de) || !dedans.has(vers)) return;
-      const cle = de + ' ' + vers + ' ' + type;
-      if (vues.has(cle)) return;
-      vues.add(cle);
-      aretes.push({ de, vers, type, libelle: libelle || '' });
-    };
-    for (const x of liste) {
-      const p = Ariane.refDeLien(x.parent);
-      if (p) pousser(p, x.ref, 'hier', '');
-      for (const b of x.bloquePar || []) {
-        const m = String(b).match(/\|([^\]]*)\]\]$/);
-        pousser(Ariane.refDeLien(b), x.ref, 'bloque', m ? m[1].trim() : '');
-      }
-    }
-    return { noeuds, aretes };
-  }
-
-  // Place les nœuds SANS position (x/y non finis). Ceux qui en ont sont laissés
-  // tels quels. Rang = profondeur dans le DAG (hiérarchie ∪ blocage) par un
-  // parcours de Kahn ; les nœuds d'un cycle retombent au rang 0. Dans un rang,
-  // tri par échéance puis ref, et on décale en y pour ne rien chevaucher.
-  static placerGraphe(noeuds, aretes, opts) {
-    const dx = (opts && opts.dx) || 260;
-    const dy = (opts && opts.dy) || 120;
-    const refs = new Set((noeuds || []).map((n) => n.ref));
-    const out = new Map();
-    const inc = new Map();
-    for (const n of noeuds || []) { out.set(n.ref, []); inc.set(n.ref, 0); }
-    for (const a of aretes || []) {
-      if (!a || !refs.has(a.de) || !refs.has(a.vers) || a.de === a.vers) continue;
-      out.get(a.de).push(a.vers);
-      inc.set(a.vers, inc.get(a.vers) + 1);
-    }
-    const rang = new Map();
-    const reste = new Map(inc);
-    const file = (noeuds || []).filter((n) => reste.get(n.ref) === 0).map((n) => n.ref);
-    for (const r of file) rang.set(r, 0);
-    for (let i = 0; i < file.length; i += 1) {
-      const cur = file[i];
-      const rc = rang.get(cur);
-      for (const v of out.get(cur) || []) {
-        reste.set(v, reste.get(v) - 1);
-        if (reste.get(v) === 0) {
-          rang.set(v, Math.max(rang.has(v) ? rang.get(v) : 0, rc + 1));
-          file.push(v);
-        }
-      }
-    }
-    for (const n of noeuds || []) if (!rang.has(n.ref)) rang.set(n.ref, 0);
-
-    const pos = new Map();
-    const fini = (v) => Number.isFinite(Number(v)) && v !== '' && v !== null;
-    for (const n of noeuds || []) {
-      if (fini(n.x) && fini(n.y)) pos.set(n.ref, { x: Number(n.x), y: Number(n.y) });
-    }
-    const chevauche = (x, y) => {
-      for (const p of pos.values()) {
-        if (Math.abs(p.x - x) < dx * 0.8 && Math.abs(p.y - y) < dy * 0.8) return true;
-      }
-      return false;
-    };
-    const parRang = new Map();
-    for (const n of noeuds || []) {
-      if (pos.has(n.ref)) continue;
-      const r = rang.get(n.ref);
-      if (!parRang.has(r)) parRang.set(r, []);
-      parRang.get(r).push(n);
-    }
-    // opts.ordre : liste de refs dans l'ordre d'affichage voulu. Quand elle est
-    // fournie et non vide, chaque rang suit cet ordre (les refs absentes vont
-    // après, dans leur ordre d'origine). Sinon, tri par échéance puis ref.
-    const ordreImpose = (opts && Array.isArray(opts.ordre) && opts.ordre.length) ? opts.ordre : null;
-    const rangImpose = ordreImpose ? new Map(ordreImpose.map((r, i) => [r, i])) : null;
-    // opts.hauteur : (ref) => hauteur réelle du nœud. Fourni, l'empilement
-    // vertical d'un rang cumule ces hauteurs (+ une marge) au lieu d'un dy fixe.
-    // Absent, comportement d'origine (chaque carte à k * dy).
-    const hauteurDe = (opts && typeof opts.hauteur === 'function') ? opts.hauteur : null;
-    // Marge entre deux cartes empilées : ce qui, en hauteur fixe, séparait déjà
-    // deux rangs (dy − hauteur de carte). ARTIC_H est défini plus bas mais lu au
-    // seul appel, jamais au chargement du module.
-    const margeRang = dy > ARTIC_H ? dy - ARTIC_H : Math.max(24, dy * 0.25);
-    for (const [r, groupe] of [...parRang.entries()].sort((a, b) => a[0] - b[0])) {
-      if (rangImpose) {
-        groupe.sort((a, b) => (rangImpose.has(a.ref) ? rangImpose.get(a.ref) : 1e9)
-          - (rangImpose.has(b.ref) ? rangImpose.get(b.ref) : 1e9));
-      } else {
-        groupe.sort((a, b) => (Ariane.jourValide(a.echeance) || '~')
-          .localeCompare(Ariane.jourValide(b.echeance) || '~') || a.ref.localeCompare(b.ref));
-      }
-      const x = r * dx;
-      if (hauteurDe) {
-        let y = 0;
-        for (const n of groupe) {
-          while (chevauche(x, y)) y += dy;
-          pos.set(n.ref, { x, y });
-          y += (Number(hauteurDe(n.ref)) || dy) + margeRang;
-        }
-      } else {
-        let k = 0;
-        for (const n of groupe) {
-          let y = k * dy;
-          while (chevauche(x, y)) y += dy;
-          pos.set(n.ref, { x, y });
-          k += 1;
-        }
-      }
-    }
-    return pos;
-  }
-
-  // Un lien proposé est-il licite ? Refus si (a) il referme un cycle sur
-  // l'union des arêtes, (b) les dates se contredisent : un blocage dont
-  // l'amont s'achève après le début de l'aval ; une hiérarchie dont la mère
-  // s'achève avant la fille. On ne bloque que sur une preuve : une date
-  // manquante n'interdit rien.
-  static lienValide(aretes, dates, ajout) {
-    const { de, vers, type } = ajout || {};
-    if (!de || !vers || de === vers) return { ok: false, raison: 'soi' };
-    const adj = new Map();
-    const arc = (a, b) => { if (!adj.has(a)) adj.set(a, []); adj.get(a).push(b); };
-    for (const e of aretes || []) if (e) arc(e.de, e.vers);
-    // Cycle ssi « vers » atteint déjà « de » par les arêtes existantes.
-    const vus = new Set();
-    const pile = [vers];
-    while (pile.length) {
-      const c = pile.pop();
-      if (c === de) return { ok: false, raison: 'cycle' };
-      if (vus.has(c)) continue;
-      vus.add(c);
-      for (const x of adj.get(c) || []) pile.push(x);
-    }
-    const lire = (k) => (dates && dates.get ? dates.get(k) : (dates || {})[k]) || {};
-    const eDe = Ariane.jourValide(lire(de).echeance);
-    const dVers = Ariane.jourValide(lire(vers).debut);
-    const eVers = Ariane.jourValide(lire(vers).echeance);
-    if (type === 'hier') {
-      if (eDe && eVers && eDe < eVers) return { ok: false, raison: 'dates-hier' };
-    } else if (eDe && dVers && eDe > dVers) {
-      return { ok: false, raison: 'dates' };
-    }
-    return { ok: true };
-  }
-
-  // Courbe de Bézier entre deux points : elle se suit mieux à l'œil que le coude
-  // quand plusieurs liens se croisent. Partagée par la frise et l'articulation.
-  static _cheminFleche(x1, y1, x2, y2) {
-    const ecart = Math.max(34, Math.abs(x2 - x1) / 2);
-    return 'M ' + x1 + ' ' + y1
-      + ' C ' + (x1 + ecart) + ' ' + y1 + ', ' + (x2 - ecart) + ' ' + y2
-      + ', ' + x2 + ' ' + y2;
-  }
-
-  static get COULEURS_GANTT() {
-    return {
-      'à faire': 'var(--text-faint)',
-      'en cours': 'var(--color-yellow)',
-      'en attente': 'var(--color-orange)',
-      'terminée': 'var(--color-green)',
-      'abandonnée': 'var(--text-faint)',
-    };
-  }
-
-  static get ZOOMS_GANTT() {
-    return { jour: 44, semaine: 22, mois: 8, trimestre: 3, 'année': 1 };
-  }
-
-  // Sentinelle du groupe « sans valeur » : impossible à confondre avec un
-  // libellé réel. La vue la remplace par « (sans <propriété>) » à l'affichage.
-  static get SANS_GROUPE() { return ' sans'; }
-
-  // Numéro de semaine ISO. La règle ISO rattache la semaine au jeudi, ce qui
-  // évite qu'une semaine à cheval sur deux années soit comptée deux fois.
-  static semaineIso(jour) {
-    const t = Ariane._versUTC(jour);
-    if (t === null) return 0;
-    const d = new Date(t);
-    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-    const debutAnnee = Date.UTC(d.getUTCFullYear(), 0, 1);
-    return Math.ceil(((d.getTime() - debutAnnee) / 86400000 + 1) / 7);
-  }
-
-  // Étendue de la frise : de la première date à la dernière, avec une marge de
-  // part et d'autre. Sans aucune date, on montre le mois autour d'aujourd'hui
-  // plutôt qu'une frise vide.
-  static etendueGantt(lignes, aujourdhui) {
-    const dates = [];
-    for (const l of lignes || []) {
-      if (l.debut) dates.push(l.debut);
-      if (l.echeance) dates.push(l.echeance);
-    }
-    if (!dates.length) {
-      return { debut: Ariane.decalerJour(aujourdhui, -7),
-               fin: Ariane.decalerJour(aujourdhui, 30) };
-    }
-    dates.sort();
-    return { debut: Ariane.decalerJour(dates[0], -3),
-             fin: Ariane.decalerJour(dates[dates.length - 1], 3) };
-  }
-
-  // Libellé d'une note du coffre dans le sélecteur. L'alias passe devant : c'est
-  // sous ce nom que Monsieur connaît ses notes, « NC-202607081912 » ne disant
-  // rien à personne. Le nom de fichier suit tout de même, pour rester cherchable.
-  static libelleNote(fm, basename) {
-    const alias = []
-      .concat((fm && fm.aliases) || [])
-      .map((a) => String(a).trim())
-      .filter(Boolean);
-    return alias.length ? alias.join(' / ') + '  ·  ' + basename : basename;
-  }
-
-  // Libellé d'une fiche Zotero dans le sélecteur. Tout y est réuni pour que la
-  // recherche approchée morde sur l'auteur, l'année, le titre ou la clé : on ne
-  // retient pas une clé de citation par cœur.
-  static libelleSource(fm, basename) {
-    const f = fm || {};
-    const auteurs = []
-      .concat(f.creators || [])
-      .map((c) => String(c).replace(/^\[\[|\]\]$/g, '').trim())
-      .filter(Boolean);
-    const bouts = [];
-    if (auteurs.length) bouts.push(auteurs.slice(0, 3).join(', '));
-    if (f.year) bouts.push('(' + f.year + ')');
-    if (f.title) bouts.push('— ' + String(f.title));
-    bouts.push('· ' + basename);
-    return bouts.join(' ');
-  }
-
-  // La date d'achèvement se déduit du statut, elle ne se saisit pas. Rendre
-  // null veut dire « ne rien écrire », ce qui compte : réécrire à l'identique
-  // relancerait l'événement de modification et ferait tourner la boucle.
-  // Une tâche abandonnée n'est pas une tâche achevée, elle ne reçoit pas de date.
-  static achevementAEcrire(fm, aujourdhui) {
-    if (!fm || fm.type !== 'tache') return null;
-    const dejaPosee = String(fm['termine-le'] == null ? '' : fm['termine-le']).trim();
-    if (fm.statut === 'terminée') return dejaPosee ? null : aujourdhui;
-    return dejaPosee ? '' : null;
-  }
-
-  // Contenu du bloc d'accès, sans ses marques. Une action n'en a pas besoin :
-  // un bloc vide dans chaque note d'action ne serait que du bruit.
-  static blocTache(fm, meta) {
-    const c = Ariane.champTache(fm);
-    if (!c.retenu) return '';
-    const l = [];
-    if (c.conflits.length) {
-      l.push('> [!warning] ' + tr('Conflit de champs') + ' : ' + c.conflits.join(', ')
-             + '. ' + tr('Seul le premier est retenu.'));
-      l.push('');
-    }
-    if (c.retenu === 'source') {
-      l.push('**' + tr('Source') + '** ' + String(fm.source).trim());
-      const acces = [];
-      if (meta && meta.uriPdf) acces.push('[' + tr('Ouvrir le PDF') + '](' + meta.uriPdf + ')');
-      if (meta && meta.uriZotero) acces.push('[' + tr('Ouvrir dans Zotero') + '](' + meta.uriZotero + ')');
-      if (acces.length) { l.push(''); l.push(acces.join('  ·  ')); }
-    } else if (c.retenu === 'livrable') {
-      l.push('**' + tr('Livrable') + '** ' + String(fm.livrable).trim());
-    } else {
-      const chemin = String(fm.fichier).trim();
-      l.push('**' + tr('Fichier') + '** `' + chemin.split('/').pop() + '`');
-      if (meta && (meta.modifie || meta.ouvert)) {
-        const bouts = [];
-        if (meta.modifie) bouts.push(tr('modifié le') + ' ' + meta.modifie);
-        if (meta.ouvert) bouts.push(tr('ouvert le') + ' ' + meta.ouvert);
-        l.push('');
-        l.push('*' + bouts.join('  ·  ') + '*');
-      }
-    }
-    return l.join('\n');
-  }
 
   // Les tâches du coffre, dans la forme qu'attend disposerGantt.
   tachesPourGantt() {

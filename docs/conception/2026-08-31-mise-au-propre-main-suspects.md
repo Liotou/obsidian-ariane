@@ -161,3 +161,25 @@ Aucun risque de TDZ : les `const` concernés (`BASE_TACHES`, `ZFA_TACHE_*`,
 `ZFA_SCHEMA_*`, `ZFA_RE_CIT_GROUPE`, `MARQUE_ENCADRE_*`, `COULEURS_ZOTERO`) ne
 sont lus qu'au sein de corps de fonctions/méthodes, jamais au chargement du
 module. Vérifié : 184 tests verts et invariants d'API vides à chaque commit.
+
+## Bandeaux de section `/* … */` orphelins après regroupement des `static` (region 11)
+
+`main.js` ~10497 (après commit « helpers static par domaine ») : quatre bandeaux
+mono-ligne se retrouvent empilés entre `surSuppression` et `tachesPourGantt` :
+
+```
+  /* ============================== Tâches =============================== */
+  /* ----------------------------- Frise Gantt ----------------------------- */
+  /* --------------------- Cohérence des tâches -------------------------- */
+  /* ---------------------- Vue « Articulation » ------------------------ */
+```
+
+Ils précédaient chacun un groupe thématique de méthodes `static` (referenceTacheSuivante /
+disposerGantt / cyclesDe / grapheArticulation). Ces `static` ayant été remontés dans
+les sous-régions `Ariane · static · …`, les bandeaux — qui ne sont pas le
+commentaire d'en-tête d'un `static` précis mais des séparateurs de section — sont
+restés sur place et se sont regroupés. Le bandeau `/* === Tâches === */` garde du
+sens (il ouvre la série de méthodes d'instance « tâches » qui suit) ; les trois
+autres sont désormais redondants. Non touché ici : retirer/déplacer un séparateur
+de section relève du rangement des méthodes d'instance par domaine (lot suivant),
+pas de ce commit. Aucun impact : ce sont des commentaires.
