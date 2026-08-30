@@ -14384,16 +14384,22 @@ class MoteurArticulation {
     });
 
     const hN = n.h || ARTIC_H;
-    for (const [type, cy, glyphe] of [['hier', hN * 0.32, '↳'], ['bloque', hN * 0.72, '⊘']]) {
-      const a = svgEl('circle', { cx: ARTIC_W, cy, r: 7, class: 'zfa-artic-accroche' });
-      a.dataset.type = type;
+    for (const [type, part, glyphe] of [['hier', 0.32, '↳'], ['bloque', 0.72, '⊘']]) {
+      const ga = svgEl('g', {
+        class: 'zfa-artic-accroche zfa-artic-accroche-' + type,
+        transform: 'translate(' + ARTIC_W + ',' + (hN * part) + ')' });
+      ga.dataset.type = type;
+      ga.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-accroche-pastille' }));
+      const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-accroche-glyphe' });
+      tx.textContent = glyphe;
+      ga.appendChild(tx);
       const t = svgEl('title', {});
-      t.textContent = type === 'hier' ? tr('Tirer vers une tâche pour en faire une sous-tâche')
-        : tr('Tirer vers une tâche que celle-ci bloque');
-      a.appendChild(t);
-      a.dataset.glyphe = glyphe;
-      a.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.tirerArete(e, n.ref, type); });
-      gn.appendChild(a);
+      t.textContent = type === 'hier'
+        ? tr('Clic : nouvelle sous-tâche. Maintenir et tirer : relier une tâche existante.')
+        : tr('Clic : nouvelle tâche bloquée. Maintenir et tirer : relier une tâche existante.');
+      ga.appendChild(t);
+      ga.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.tirerArete(e, n.ref, type); });
+      gn.appendChild(ga);
     }
     g.appendChild(gn);
   }
@@ -14577,6 +14583,24 @@ class MoteurArticulation {
     }
   }
 
+  // Crée une tâche vierge reliée au nœud « ref » selon le bouton : sous-tâche
+  // pour « hier », tâche bloquée pour « bloque ». Utilisé au clic simple sur
+  // un point d'accroche.
+  async _nouvelleTacheReliee(ref, type, s0) {
+    const chemin = await this.greffon.creerTache({});
+    const nouv = this.greffon.refDeChemin(chemin);
+    if (!nouv) return;
+    const gigue = () => Math.round((Math.random() - 0.5) * 40);
+    await this.ctx.poserPosition(nouv,
+      Math.round(s0.x + ARTIC_W + 70) + gigue(),
+      Math.round(s0.y + (type === 'hier' ? 20 : 90)) + gigue());
+    if (type === 'hier') await this.ctx.poserParent(nouv, ref);
+    else await this.greffon.creerBlocage(ref, nouv);
+    new obsidian.Notice((type === 'hier'
+      ? tr('Sous-tâche créée : ') : tr('Tâche bloquée créée : ')) + nouv);
+    this.dessiner();
+  }
+
   tirerArete(ev, ref, type) {
     if (ev.button !== 0) return;
     ev.preventDefault();
@@ -14584,11 +14608,14 @@ class MoteurArticulation {
     const hN = ((this._noeudsParRef && this._noeudsParRef.get(ref)) || {}).h || ARTIC_H;
     const x1 = s0.x + ARTIC_W;
     const y1 = s0.y + (type === 'hier' ? hN * 0.32 : hN * 0.72);
+    const dep = this._versScene(ev);
     const trait = svgEl('path', { class: 'zfa-artic-lien-en-cours', d: '' });
     this._scene.appendChild(trait);
     let cible = null;
+    let bouge = false;
     const bouger = (e) => {
       const s = this._versScene(e);
+      if (Math.abs(s.x - dep.x) > 4 || Math.abs(s.y - dep.y) > 4) bouge = true;
       trait.setAttribute('d', Ariane._cheminFleche(x1, y1, s.x, s.y));
       const sous = document.elementFromPoint(e.clientX, e.clientY);
       const gn = sous && sous.closest ? sous.closest('.zfa-artic-noeud') : null;
@@ -14604,6 +14631,8 @@ class MoteurArticulation {
       trait.remove();
       const m = this._svg.querySelector('.zfa-artic-noeud.est-cible');
       if (m) m.classList.remove('est-cible');
+      // Clic simple (sans glisser) : nouvelle tâche vierge reliée.
+      if (!bouge) { await this._nouvelleTacheReliee(ref, type, s0); return; }
       if (!cible) return;
       const ajout = { de: ref, vers: cible, type };
       const v = Ariane.lienValide(this._aretes, this._dates, ajout);

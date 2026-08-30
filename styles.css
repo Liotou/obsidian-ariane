@@ -1315,11 +1315,19 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-artic-jauge-in { height: 100%; background: var(--interactive-accent); }
 
-.zfa-artic-accroche {
-  fill: var(--interactive-accent); stroke: var(--background-primary); stroke-width: 1.5;
-  cursor: crosshair; opacity: 0; transition: opacity 0.12s;
-}
+.zfa-artic-accroche { cursor: crosshair; opacity: 0; transition: opacity 0.12s; }
 .zfa-artic-noeud:hover .zfa-artic-accroche { opacity: 1; }
+.zfa-artic-accroche-pastille { stroke: var(--background-primary); stroke-width: 1.5; }
+/* Parenté = plein, gris (comme l'arête hiérarchie). */
+.zfa-artic-accroche-hier .zfa-artic-accroche-pastille { fill: var(--text-muted); }
+/* Blocage = accent, contour pointillé (comme l'arête de blocage). */
+.zfa-artic-accroche-bloque .zfa-artic-accroche-pastille {
+  fill: var(--interactive-accent); stroke-dasharray: 2 2;
+}
+.zfa-artic-accroche-glyphe {
+  fill: var(--background-primary); font-size: 10px; font-weight: 700;
+  text-anchor: middle; dominant-baseline: central; pointer-events: none;
+}
 .zfa-artic-noeud.est-cible .zfa-artic-carte {
   outline: 2px solid var(--interactive-accent); outline-offset: 1px;
 }
