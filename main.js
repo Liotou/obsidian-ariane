@@ -889,6 +889,7 @@ const TEXTES = {
     "Libellé des semaines": "Week labels",
     "Ordre des tâches": "Task order",
     "Largeur de la colonne des tâches": "Width of the task column",
+    "La frise n a pas pu se dessiner : ": "The timeline could not be drawn: ",
   },
 };
 let LANGUE = 'fr';
@@ -11893,6 +11894,19 @@ class MoteurFrise {
   /* ------------------------------ Ossature ------------------------------ */
 
   dessiner() {
+    try {
+      this.dessinerVraiment();
+    } catch (e) {
+      // Une exception au milieu du tracé laissait la vue à moitié construite,
+      // sans rien dire. Mieux vaut l'afficher que de la chercher à l'aveugle.
+      console.error('[Ariane] frise :', e);
+      this.racine.empty();
+      this.racine.createDiv({ cls: 'zfa-refs-vide',
+        text: tr('La frise n a pas pu se dessiner : ') + (e && e.message ? e.message : e) });
+    }
+  }
+
+  dessinerVraiment() {
     const c = this.racine;
     const ancienne = c.querySelector('.zfa-gantt-droite');
     const memeX = ancienne ? ancienne.scrollLeft : null;
@@ -12234,8 +12248,7 @@ class MoteurFrise {
         document.removeEventListener('pointermove', bouger);
         document.removeEventListener('pointerup', lacher);
         r.removeClass('is-active');
-        if (col.arbre) await this.ctx.ecrire('largeurLibelles', col.largeur);
-        else await this.poserLargeurColonne(col.cle, col.largeur);
+        await this.poserLargeurColonne(col.cle, col.largeur);
         this.dessiner();
       };
       document.addEventListener('pointermove', bouger);
@@ -12274,12 +12287,14 @@ class MoteurFrise {
     const table = conteneur.createDiv({ cls: 'bases-table' });
 
     // Géométrie des colonnes : l'arbre d'abord, puis les propriétés.
-    const cols = [{ cle: '__arbre', nom: tr('Tâche'), icone: 'list-tree',
-                    largeur: this.ctx.lire('largeurLibelles') || 280, arbre: true }];
-    for (const c of colonnes) {
-      cols.push({ cle: c.cle, nom: c.nom, icone: this.iconeColonne(c.cle),
-                  largeur: this.largeurColonne(c.cle), valeur: c.valeur });
-    }
+    // La hiérarchie s'accroche à la PREMIÈRE colonne, quelle qu'elle soit :
+    // c'est là qu'Obsidian met le nom, et c'est là qu'on attend les chevrons.
+    // Sans aucune colonne, il n'y a pas de panneau du tout.
+    const cols = colonnes.map((c, i) => ({
+      cle: c.cle, nom: c.nom, icone: this.iconeColonne(c.cle),
+      largeur: this.largeurColonne(c.cle), valeur: c.valeur, arbre: i === 0,
+    }));
+    if (!cols.length) { gauche.style.width = '0px'; gauche.addClass('zfa-gantt-sans-colonnes'); return; }
     let total = 0;
     for (const c of cols) { c.gauche = total; total += c.largeur; }
     gauche.style.width = total + 'px';
@@ -12316,14 +12331,17 @@ class MoteurFrise {
     const tbody = table.createDiv({ cls: 'bases-tbody zfa-gantt-gauche-corps' });
     tbody.style.height = (lignes.length * H) + 'px';
     lignes.forEach((l, rang) => {
-      const tr = tbody.createDiv({ cls: 'bases-tr zfa-gantt-libelle' });
-      tr.dataset.ref = l.ref;
-      tr.style.top = (rang * H) + 'px';
-      tr.style.height = H + 'px';
-      tr.addEventListener('contextmenu', (e) => this.menuTache(e, l));
+      // Surtout ne pas nommer cette variable « tr » : ce nom est celui de la
+      // fonction de traduction du greffon, et le masquer faisait lever une
+      // exception au premier libellé, ce qui interrompait tout le dessin.
+      const rangee = tbody.createDiv({ cls: 'bases-tr zfa-gantt-libelle' });
+      rangee.dataset.ref = l.ref;
+      rangee.style.top = (rang * H) + 'px';
+      rangee.style.height = H + 'px';
+      rangee.addEventListener('contextmenu', (e) => this.menuTache(e, l));
 
       for (const c of cols) {
-        const td = tr.createDiv({ cls: 'bases-td bases-table-cell' });
+        const td = rangee.createDiv({ cls: 'bases-td bases-table-cell' });
         td.dataset.colonne = c.cle;
         td.style.left = c.gauche + 'px';
         td.style.width = c.largeur + 'px';
@@ -12354,12 +12372,13 @@ class MoteurFrise {
         }
         const point = td.createSpan({ cls: 'zfa-gantt-point' });
         point.style.background = this.couleur(l.statut);
-        const titre = td.createSpan({ cls: 'zfa-gantt-titre', text: l.intitule });
+        // La première colonne affiche sa propre propriété, comme dans un
+        // tableau. Si elle ne rend rien, l'intitulé prend le relais plutôt que
+        // de laisser une cellule muette.
+        const valeur = String(c.valeur(l.ref) || '').trim() || l.intitule;
+        const titre = td.createSpan({ cls: 'zfa-gantt-titre', text: valeur });
         titre.onclick = () => this.ouvrir(l.ref);
-        titre.title = l.ref;
-        if (!colonnes.length && !l.jalon && l.avancement > 0) {
-          td.createSpan({ cls: 'zfa-gantt-pourcent', text: l.avancement + ' %' });
-        }
+        titre.title = l.ref + ' · ' + l.intitule;
       }
     });
   }
@@ -13088,13 +13107,17 @@ function fabriquerVueFriseBase(greffon) {
 
     onResize() { if (this.moteur) this.moteur.dessiner(); }
 
-    // Les propriétés que la base affiche deviennent les colonnes de gauche.
-    // On écarte le nom de fichier et les alias, que l'arbre montre déjà.
+    // Les colonnes de gauche sont exactement les propriétés que la base
+    // affiche, dans l'ordre où Monsieur les a rangées. On n'en impose aucune et
+    // on n'en écarte aucune : les retirer toutes laisse la frise seule.
     colonnes() {
-      const props = (this.data && this.data.properties) || [];
+      // getOrder rend les propriétés dans l'ordre où Monsieur les a rangées ;
+      // data.properties ne sert que de repli quand l'ordre n'est pas défini.
+      let props = [];
+      try { props = this.config.getOrder() || []; } catch (e) { props = []; }
+      if (!props.length) props = (this.data && this.data.properties) || [];
       const out = [];
       for (const id of props) {
-        if (id === 'file.name' || id === 'note.aliases') continue;
         let nom = id;
         try { nom = this.config.getDisplayName(id) || id; } catch (e) { /* laisse l'identifiant */ }
         out.push({

@@ -1061,3 +1061,5 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-tri-latent { opacity: 0; transition: opacity 0.12s; }
 .zfa-gantt-table .bases-thead .bases-td:hover .zfa-gantt-tri-latent { opacity: 0.45; }
 .zfa-gantt-table .bases-thead .bases-td { cursor: var(--cursor); }
+
+.zfa-gantt-sans-colonnes { border-right: none; }
