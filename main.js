@@ -3270,7 +3270,17 @@ const ZFA_TACHE_FIN = '%% /ariane:tache %%';
  * Plugin
  * ========================================================================= */
 
+//#region 11 · class Ariane
+// ═══════════════════════════════════════════════════════════════════════════
+//  11 · CLASS ARIANE  (extends obsidian.Plugin)
+//  Le greffon lui-même. Sous-régions : cycle de vie · commandes · événements ·
+//  helpers static (par domaine) · méthodes d'instance (par domaine).
+// ═══════════════════════════════════════════════════════════════════════════
+
 class Ariane extends obsidian.Plugin {
+  //#region Ariane · cycle de vie
+  // ── cycle de vie ─────────────────────────────────────────────────────────
+
   async onload() {
     await this.loadSettings();
     this.appliquerStyleAparte();
@@ -3994,6 +4004,20 @@ class Ariane extends obsidian.Plugin {
       }
     });
   }
+
+  onunload() {
+    for (const t of this.antirebonds.values()) clearTimeout(t);
+    this.antirebonds.clear();
+    // Le cache d'embeddings n'est plus écrit à chaque frappe : il faut donc le
+    // poser au plus tard ici, faute de quoi la session serait perdue.
+    if (this.suggEmbMinuteur) { clearTimeout(this.suggEmbMinuteur); this.suggEmbMinuteur = null; }
+    this.sauverCacheEmbeddings().catch(() => { /* fermeture en cours */ });
+    // Dernier report : sans cela, les minutes de la session en cours seraient
+    // perdues à la fermeture d'Obsidian ou au rechargement du greffon.
+    this.reporterTemps().catch(() => { /* fermeture en cours */ });
+  }
+
+  //#endregion Ariane · cycle de vie
 
   /* --------------------- Moteur de suggestions -------------------------- */
 
@@ -5229,18 +5253,6 @@ class Ariane extends obsidian.Plugin {
   libellePropriete(cle) {
     const t = String(cle).replace(/[-_]+/g, ' ').trim();
     return t.charAt(0).toUpperCase() + t.slice(1);
-  }
-
-  onunload() {
-    for (const t of this.antirebonds.values()) clearTimeout(t);
-    this.antirebonds.clear();
-    // Le cache d'embeddings n'est plus écrit à chaque frappe : il faut donc le
-    // poser au plus tard ici, faute de quoi la session serait perdue.
-    if (this.suggEmbMinuteur) { clearTimeout(this.suggEmbMinuteur); this.suggEmbMinuteur = null; }
-    this.sauverCacheEmbeddings().catch(() => { /* fermeture en cours */ });
-    // Dernier report : sans cela, les minutes de la session en cours seraient
-    // perdues à la fermeture d'Obsidian ou au rechargement du greffon.
-    this.reporterTemps().catch(() => { /* fermeture en cours */ });
   }
 
   // Infobulle dans l'explorateur : le total inscrit dans la note.
@@ -10924,6 +10936,8 @@ class Ariane extends obsidian.Plugin {
     return chemin;
   }
 }
+
+//#endregion 11 · class Ariane
 
 /* =========================================================================
  * Onglet de réglages
