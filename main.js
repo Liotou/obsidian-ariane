@@ -833,16 +833,19 @@ const TEXTES = {
     "année": "year",
     " sur ": " of ",
     " tâche(s) datée(s)": " task(s) dated",
-    "Non planifiées": "Unplanned",
     "Tâche": "Task",
-    "Aucune tâche datée. Donnez une échéance à une tâche pour la voir ici.": "No dated task. Give a task a due date to see it here.",
+    "Aucune tâche. Créez une tâche pour la voir ici.": "No task. Create a task to see it here.",
+    "sans date": "no date",
+    "cliquez pour dater": "click to set dates",
+    "Dater la tâche": "Set task dates",
+    "Enregistrer": "Save",
+    "Indiquez au moins une date.": "Enter at least one date.",
     "Aujourd'hui": "Today",
     "jour": "day",
     "Masquer les terminées": "Hide completed",
     "nº de semaine": "week no.",
     "dates": "dates",
     "les deux": "both",
-    " · glissez-la sur la frise pour la dater": " · drag it onto the timeline to date it",
     " jour(s)": " day(s)",
     "Ce décalage contredit un blocage de ": "This shift contradicts a blocking link of ",
     "Décaler l aval de ": "Push everything downstream by ",
@@ -918,6 +921,10 @@ const DEFAULT_SETTINGS = {
   dossierReferences: '',        // rôle : où déposer les références en attente
   dossierTaches: '',            // rôle : où déposer les notes de tâche
   listeRappelsDefaut: 'Doctorat - Tâches',
+  // Vue Articulation : accrochage magnétique des cartes au glissé.
+  articulationAimant: true,
+  articulationGrille: 20,       // pas de la grille (0 = pas de grille)
+  articulationSeuilAimant: 7,   // distance d'accrochage aux voisins (px)
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes
   // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque
@@ -2455,6 +2462,22 @@ views:
       and:
         - note["type"] == "tache"
         - note["statut"] != "abandonnée"
+  - type: ariane-articulation
+    name: 6. Articulation
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "abandonnée"
+`;
+
+// Bloc de vue Articulation, ajouté aux bases de tâches déjà créées qui ne
+// l'ont pas encore (assurerBaseTaches).
+const VUE_ARTICULATION_BASE = `  - type: ariane-articulation
+    name: 6. Articulation
+    filters:
+      and:
+        - note["type"] == "tache"
+        - note["statut"] != "abandonnée"
 `;
 
 const ZFA_TACHE_DEBUT = '%% ariane:tache %%';
@@ -3835,6 +3858,7 @@ class Ariane extends obsidian.Plugin {
       }));
       this.registerEvent(this.app.vault.on('create', majSchema));
       this.registerEvent(this.app.vault.on('create', (f) => this.surCreation(f)));
+      this.registerEvent(this.app.vault.on('create', (f) => this.surCreationTacheVierge(f)));
       this.registerEvent(this.app.vault.on('delete', (f) => this.surSuppression(f)));
 
       // Tag « orpheline » : mise à jour quand les liens changent.
@@ -9368,6 +9392,42 @@ class Ariane extends obsidian.Plugin {
     });
   }
 
+  // Le bouton « Nouveau » d'une base (ou une création à la main) dépose une
+  // note vide dans le dossier des tâches. On la transforme en vraie tâche :
+  // référence T26-xxx et entête complète. On ne touche jamais une note qui a
+  // déjà un corps rédigé ou un schéma de tâche renseigné.
+  surCreationTacheVierge(file) {
+    if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
+    if (this.ecritePlugin(file.path)) return;
+    const dossier = this.dossierT;
+    if (!file.parent || file.parent.path !== dossier) return;
+    if (/^T\d{2}-\d{3,4}$/.test(file.basename)) return;
+    this.antirebond('tache-vierge:' + file.path, async () => {
+      const f = this.app.vault.getAbstractFileByPath(file.path);
+      if (!(f instanceof obsidian.TFile)) return;
+      if (/^T\d{2}-\d{3,4}$/.test(f.basename)) return;
+      const brut = await this.app.vault.read(f);
+      const corps = brut.replace(/^---[\s\S]*?\n---\r?\n?/, '').trim();
+      if (corps.length) return;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (fm.statut || fm.debut || fm.echeance || fm.parent) return;
+      const titre = /^(sans titre|untitled)\b/i.test(f.basename) ? '' : f.basename;
+      const noms = this.app.vault.getMarkdownFiles()
+        .filter((x) => x.parent && x.parent.path === dossier).map((x) => x.basename);
+      const ref = Ariane.referenceTacheSuivante(noms, new Date().getFullYear());
+      const cible = dossier + '/' + ref + '.md';
+      this.marquerEcriture(f.path);
+      this.marquerEcriture(cible);
+      const jour = new Date().toISOString().slice(0, 10);
+      await this.app.vault.modify(f, Ariane.corpsNouvelleTache({
+        intitule: titre, aujourdhui: jour,
+        liste: this.settings.listeRappelsDefaut,
+      }));
+      if (f.basename !== ref) await this.app.fileManager.renameFile(f, cible);
+      new obsidian.Notice(tr('Nouvelle tâche : ') + ref);
+    }, 450);
+  }
+
   surSuppression(file) {
     if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
     if (this.ecritePlugin(file.path)) return;
@@ -9739,6 +9799,9 @@ class Ariane extends obsidian.Plugin {
         y += hEntete;
         continue;
       }
+      // Les tâches sans date forment un bloc à part, hors de tout groupe : ni un
+      // groupe replié au-dessus ni une méta-tâche repliée ne les masquent.
+      if (it.sansDate) { sautGroupe = false; seuilMeta = -1; }
       if (sautGroupe) continue;
       if (seuilMeta >= 0 && it.niveau > seuilMeta) continue;
       seuilMeta = -1;
@@ -9747,6 +9810,25 @@ class Ariane extends obsidian.Plugin {
       if (it.aDesEnfants && R.has(it.ref)) seuilMeta = it.niveau;
     }
     return { lignes: out, hauteurTotale: y };
+  }
+
+  // Sépare la sortie de disposerFriseGroupee : d'un côté les groupes et les
+  // tâches datées (dans l'ordre), de l'autre les tâches sans début ni échéance,
+  // dédoublonnées par ref (une tâche présente dans plusieurs groupes n'y figure
+  // qu'une fois). La vue pose ce second lot en bloc au bas de la liste, sans
+  // barre : la ligne seule signale qu'il manque une date.
+  static repartirSansDate(brut) {
+    const avecDates = [];
+    const sansDate = [];
+    const vus = new Set();
+    for (const it of brut || []) {
+      if (!it) continue;
+      if (it.kind === 'groupe' || it.debut || it.echeance) { avecDates.push(it); continue; }
+      if (vus.has(it.ref)) continue;
+      vus.add(it.ref);
+      sansDate.push(it);
+    }
+    return { avecDates, sansDate };
   }
 
   // Filtre les tâches avant disposition. Les ancêtres d'une tâche retenue sont
@@ -10469,8 +10551,21 @@ class Ariane extends obsidian.Plugin {
   // pas fournir la base du tout.
   async assurerBaseTaches() {
     const chemin = this.dossierT + '/Tâches.base';
-    if (this.app.vault.getAbstractFileByPath(chemin)) return chemin;
-    await this.app.vault.create(chemin, BASE_TACHES);
+    const f = this.app.vault.getAbstractFileByPath(chemin);
+    if (!f) {
+      this.marquerEcriture(chemin);
+      await this.app.vault.create(chemin, BASE_TACHES);
+      return chemin;
+    }
+    // Base déjà là mais sans vue Articulation : on l'ajoute (source déjà
+    // restreinte aux tâches, contrairement à une vue posée à la main).
+    if (f instanceof obsidian.TFile) {
+      const t = await this.app.vault.read(f);
+      if (!/type:\s*ariane-articulation/.test(t)) {
+        this.marquerEcriture(chemin);
+        await this.app.vault.modify(f, t.replace(/\s*$/, '\n') + VUE_ARTICULATION_BASE);
+      }
+    }
     return chemin;
   }
 
@@ -11167,7 +11262,29 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           .onChange(async (v) => { s.familleTacheDefaut = v; await maj(); });
       });
 
-    this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue » (et par le clic droit sur un en-tête de colonne)."));
+    this._section(c, tr('Vue Articulation'));
+    this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue »."));
+    new obsidian.Setting(c)
+      .setName(tr("Accrochage magnétique"))
+      .setDesc(tr("Au glissé d'une carte, l'accrocher à une grille et aux bords / centres des cartes voisines."))
+      .addToggle((t) => t.setValue(s.articulationAimant !== false)
+        .onChange(async (v) => { s.articulationAimant = v; await maj(); this.display(); }));
+    if (s.articulationAimant !== false) {
+      new obsidian.Setting(c)
+        .setName(tr('Pas de la grille (px)'))
+        .setDesc(tr('0 pour ne pas accrocher à la grille.'))
+        .addText((t) => t.setValue(String(s.articulationGrille ?? 20))
+          .onChange(async (v) => {
+            const n = parseInt(v, 10);
+            s.articulationGrille = Number.isFinite(n) && n >= 0 ? n : 20;
+            await maj();
+          }));
+      new obsidian.Setting(c)
+        .setName(tr("Distance d'accrochage aux voisins (px)"))
+        .addSlider((sl) => sl.setLimits(0, 24, 1).setDynamicTooltip()
+          .setValue(Number.isFinite(s.articulationSeuilAimant) ? s.articulationSeuilAimant : 7)
+          .onChange(async (v) => { s.articulationSeuilAimant = v; await maj(); }));
+    }
   }
 
   // Éditeur des familles de tâches. Même esprit que _tableFamilles (familles
@@ -11980,6 +12097,52 @@ class ModaleNouvelleTache extends obsidian.Modal {
   }
 }
 
+/* ---------------- Dater une tâche sans date (depuis la frise) --------- */
+
+class ModaleDaterTache extends obsidian.Modal {
+  constructor(app, ligne, sur) {
+    super(app);
+    this.ligne = ligne;
+    this.sur = sur;
+  }
+
+  onOpen() {
+    const { contentEl, titleEl } = this;
+    titleEl.setText(tr('Dater la tâche'));
+    contentEl.addClass('zfa-gantt-modale-date');
+    contentEl.createEl('p', { cls: 'zfa-gantt-modale-sous',
+      text: this.ligne.ref + ' · ' + this.ligne.intitule });
+
+    const champ = (libelle, valeur) => {
+      const l = contentEl.createEl('label', { cls: 'zfa-gantt-modale-champ' });
+      l.createSpan({ text: libelle });
+      const i = l.createEl('input', { type: 'date' });
+      if (valeur) i.value = valeur;
+      return i;
+    };
+    const d = champ(tr('Début'), this.ligne.debut || '');
+    const e = champ(tr('Échéance'), this.ligne.echeance || '');
+    setTimeout(() => d.focus(), 0);
+
+    const pied = contentEl.createDiv({ cls: 'zfa-gantt-modale-pied' });
+    const annuler = pied.createEl('button', { text: tr('Annuler') });
+    annuler.onclick = () => this.close();
+    const ok = pied.createEl('button', { cls: 'mod-cta', text: tr('Enregistrer') });
+    ok.onclick = async () => {
+      const debut = d.value || '';
+      const echeance = e.value || '';
+      if (!debut && !echeance) {
+        new obsidian.Notice(tr('Indiquez au moins une date.'));
+        return;
+      }
+      this.close();
+      await this.sur({ debut, echeance });
+    };
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 /* ---------------- Vue latérale : Suggestions ZotFlow ------------------- */
 /* =========================================================================
  * Volet d'arbitrage des références en attente
@@ -12230,14 +12393,7 @@ class MoteurFrise {
     const groupes = this.ctx.groupes ? this.ctx.groupes() : null;
     const groupeDesc = this.ctx.sensGroupe ? this.ctx.sensGroupe() === -1 : false;
     const brut = Ariane.disposerFriseGroupee(taches, groupes, mode, sensTri, groupeDesc);
-    const nonPlanifiees = [];
-    const vusNP = new Set();
-    const avecDates = [];
-    for (const it of brut) {
-      if (it.kind === 'groupe') { avecDates.push(it); continue; }
-      if (it.debut || it.echeance) { avecDates.push(it); }
-      else if (!vusNP.has(it.ref)) { vusNP.add(it.ref); nonPlanifiees.push(it); }
-    }
+    const { avecDates, sansDate } = Ariane.repartirSansDate(brut);
     // Retirer les bandes de groupe devenues vides, compter les datées restantes,
     // et résumer l'étalement dans le temps (min, max, une date par tâche) pour
     // l'aperçu dessiné dans le bandeau — utile surtout quand le groupe est replié.
@@ -12275,15 +12431,21 @@ class MoteurFrise {
       }
     }
 
+    // Les tâches sans date : un bloc de lignes en bas de la liste, hors groupes
+    // et hors arbre (mises à plat : ni retrait ni chevron). On les ajoute après
+    // le calcul des masques : elles n'héritent d'aucun groupe replié.
+    for (const it of sansDate) {
+      dispo.push(Object.assign({}, it, { sansDate: true, niveau: 0, aDesEnfants: false }));
+    }
+
     // Les réglages de la frise passent par « Configurer la vue » de la base ;
     // seule une barre d'outils légère (échelle, aujourd'hui…) reste à l'écran.
     if (this.ctx.echelleReglable) this.dessinerBarreVue(c);
     this.dessinerCascade(c);
-    if (nonPlanifiees.length) this.dessinerTiroir(c, nonPlanifiees);
 
-    if (!planifiees.length) {
+    if (!planifiees.length && !sansDate.length) {
       c.createDiv({ cls: 'zfa-refs-vide',
-        text: tr('Aucune tâche datée. Donnez une échéance à une tâche pour la voir ici.') });
+        text: tr('Aucune tâche. Créez une tâche pour la voir ici.') });
       return;
     }
 
@@ -12313,6 +12475,16 @@ class MoteurFrise {
     const svg = svgEl('svg', { class: 'zfa-gantt-svg', width: cfg.largeur, height: hauteur });
     droite.appendChild(svg);
     this._svg = svg;
+    // Motif de hachures pour les lignes des tâches sans date.
+    {
+      const defs = svgEl('defs', {});
+      const pat = svgEl('pattern', { id: 'zfa-gantt-hachures', width: 7, height: 7,
+        patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
+      pat.appendChild(svgEl('line', { x1: 0, y1: 0, x2: 0, y2: 7,
+        class: 'zfa-gantt-hachure-trait' }));
+      defs.appendChild(pat);
+      svg.appendChild(defs);
+    }
     // Cliquer ailleurs qu'une flèche la désélectionne.
     svg.addEventListener('pointerdown', (e) => {
       if (!e.target.closest('.zfa-gantt-fleche-groupe')) this._deselectionnerFleche();
@@ -12473,18 +12645,13 @@ class MoteurFrise {
     this.bouton(d, tr('Laisser'), () => { this._cascade = null; this.dessiner(); });
   }
 
-  dessinerTiroir(c, lignes) {
-    const t = c.createDiv({ cls: 'zfa-gantt-tiroir' });
-    t.createSpan({ cls: 'zfa-ref-titre-bloc', text: tr('Non planifiées') });
-    for (const l of lignes) {
-      const p = t.createDiv({ cls: 'zfa-gantt-pastille' });
-      const pt = p.createSpan({ cls: 'zfa-gantt-point' });
-      pt.style.background = this.couleur(l.statut);
-      p.createSpan({ text: l.intitule });
-      p.title = l.ref + tr(' · glissez-la sur la frise pour la dater');
-      p.addEventListener('pointerdown', (e) => this.deposerPastille(e, l));
-      p.addEventListener('dblclick', () => this.ouvrir(l.ref));
-    }
+  // Clic sur la ligne d'une tâche sans date : une petite modale pour saisir
+  // début et/ou échéance. À l'enregistrement, la tâche reprend sa place datée.
+  ouvrirModaleDate(ligne) {
+    new ModaleDaterTache(this.app, ligne, async ({ debut, echeance }) => {
+      await this.greffon.ecrireDatesTaches([{ ref: ligne.ref, debut, echeance }]);
+      this.dessiner();
+    }).open();
   }
 
   /* ---------------------------- Colonne gauche --------------------------- */
@@ -13219,6 +13386,26 @@ class MoteurFrise {
       const yLigne = l.y;
       g.appendChild(svgEl('rect', { x: 0, y: yLigne, width: cfg.largeur,
         height: l.h, class: 'zfa-gantt-survol' }));
+      // Tâche sans date : pas de barre, une bande hachurée cliquable qui ouvre
+      // la saisie des dates.
+      if (l.sansDate) {
+        const bande = svgEl('rect', { x: 0, y: yLigne + 2, width: cfg.largeur,
+          height: Math.max(2, l.h - 4), class: 'zfa-gantt-sansdate-bande',
+          fill: 'url(#zfa-gantt-hachures)' });
+        const lab = svgEl('text', { x: 10, y: yLigne + l.h / 2 + 4,
+          class: 'zfa-gantt-sansdate-label' });
+        lab.textContent = tr('sans date');
+        const ouvrir = (e) => { e.stopPropagation(); this.ouvrirModaleDate(l); };
+        bande.addEventListener('click', ouvrir);
+        lab.addEventListener('click', ouvrir);
+        const bulle = svgEl('title', {});
+        bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + tr('sans date') + ' — '
+          + tr('cliquez pour dater');
+        bande.appendChild(bulle);
+        g.appendChild(bande);
+        g.appendChild(lab);
+        return;
+      }
       if (l.jalon) { this.dessinerJalon(g, cfg, l); return; }
       const debut = l.debut || l.echeance;
       const fin = l.echeance || l.debut;
@@ -13235,16 +13422,19 @@ class MoteurFrise {
       const groupe = svgEl('g', { class: 'zfa-gantt-groupe' });
       groupe.dataset.ref = l.ref;
 
+      // Une méta-tâche (qui a des sous-tâches) se dessine comme n'importe quelle
+      // barre : même forme, même hauteur. Elle reste seulement non
+      // redimensionnable directement (sa durée vient de ses filles).
       const meta = l.aDesEnfants;
       const fond = svgEl('rect', {
-        x, y: meta ? y + h / 3 : y, width: w, height: meta ? h / 3 : h,
+        x, y, width: w, height: h,
         rx: geo.rayon, ry: geo.rayon,
         class: 'zfa-gantt-barre-tache' + (meta ? ' zfa-gantt-meta' : '') });
       fond.style.fill = couleur;
-      fond.style.opacity = meta ? '0.75' : '0.35';
+      fond.style.opacity = meta ? '0.5' : '0.35';
       groupe.appendChild(fond);
 
-      if (!meta && l.avancement > 0) {
+      if (l.avancement > 0) {
         const rempli = svgEl('rect', { x, y,
           width: Math.max(2, w * Math.min(100, l.avancement) / 100), height: h,
           rx: geo.rayon, ry: geo.rayon, class: 'zfa-gantt-rempli' });
@@ -13256,7 +13446,7 @@ class MoteurFrise {
       // seul ; à deux, les dates ; à trois, le statut et l'avancement. On
       // n'écrit jamais ce qui ne tient pas, la troncature étant plus pénible
       // qu'une information absente.
-      if (w > 55 && !meta) {
+      if (w > 55) {
         const textes = [l.intitule];
         if (geo.lignes >= 2) textes.push(debut + '  →  ' + fin);
         if (geo.lignes >= 3) {
@@ -13272,17 +13462,6 @@ class MoteurFrise {
           t.textContent = texte.length > max ? texte.slice(0, max - 1) + '…' : texte;
           groupe.appendChild(t);
         });
-      }
-      // Embouts en pointe, comme sur toute barre de synthèse : ils disent d'un
-      // coup d'oeil que la barre résume et ne se travaille pas elle-même.
-      if (meta) {
-        const yh = y + h / 3;
-        for (const bx of [x, x + w]) {
-          const sens = bx === x ? 1 : -1;
-          groupe.appendChild(svgEl('path', {
-            d: 'M ' + bx + ' ' + yh + ' l ' + (7 * sens) + ' 0 l 0 10 z',
-            class: 'zfa-gantt-embout' }));
-        }
       }
       const bulle = svgEl('title', {});
       bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + debut + ' → ' + fin
@@ -13768,36 +13947,6 @@ class MoteurFrise {
     this._cascade = fautives.length ? { ref, jours: n, bloquants } : null;
   }
 
-  // Glisser une pastille du tiroir sur la frise la date : le jour du dépôt, et
-  // une semaine de durée. Un jalon n'en reçoit qu'une.
-  deposerPastille(e, ligne) {
-    if (!this._svg || e.button !== 0) return;
-    e.preventDefault();
-    const fantome = document.body.createDiv({ cls: 'zfa-gantt-fantome', text: ligne.intitule });
-    const suivre = (ev) => {
-      fantome.style.left = (ev.clientX + 10) + 'px';
-      fantome.style.top = (ev.clientY - 12) + 'px';
-    };
-    suivre(e);
-    const lacher = async (ev) => {
-      document.removeEventListener('pointermove', suivre);
-      document.removeEventListener('pointerup', lacher);
-      fantome.remove();
-      const b = this._svg.getBoundingClientRect();
-      if (ev.clientX < b.left || ev.clientX > b.right
-          || ev.clientY < b.top || ev.clientY > b.bottom) return;
-      const n = Math.floor((ev.clientX - b.left) / this._cfg.ppj);
-      const jour = Ariane.decalerJour(this._cfg.debut, n);
-      if (!jour) return;
-      await this.greffon.ecrireDatesTaches([ligne.jalon
-        ? { ref: ligne.ref, debut: '', echeance: jour }
-        : { ref: ligne.ref, debut: jour, echeance: Ariane.decalerJour(jour, 6) }]);
-      this.dessiner();
-    };
-    document.addEventListener('pointermove', suivre);
-    document.addEventListener('pointerup', lacher);
-  }
-
   detruire() { this.racine.empty(); }
 }
 
@@ -14028,6 +14177,8 @@ function fabriquerVueFriseBase(greffon) {
 
 const ARTIC_W = 210;
 const ARTIC_H = 58;
+const GRILLE_ARTIC = 20;   // pas de la grille magnétique
+const SEUIL_AIMANT = 7;    // distance d'accrochage à un bord / centre voisin
 
 class MoteurArticulation {
   constructor(greffon, racine, ctx) {
@@ -14073,6 +14224,10 @@ class MoteurArticulation {
     const barre = c.createDiv({ cls: 'zfa-artic-barre' });
     this.boutonBarre(barre, 'layout-grid', tr('Re-disposer'), () => this.redisposer());
     this.boutonBarre(barre, 'maximize-2', tr('Ajuster'), () => this.ajuster());
+    // Le décompte réel de cartes dessinées (l'en-tête de la base compte, lui,
+    // toutes les entrées de la source, pas seulement les tâches).
+    barre.createSpan({ cls: 'zfa-artic-compte',
+      text: taches.length + ' ' + (taches.length > 1 ? tr('tâches') : tr('tâche')) });
 
     const mode = (this.ctx.lire && this.ctx.lire('modeCarte')) || 'retracte';
     this._mode = mode;
@@ -14115,6 +14270,7 @@ class MoteurArticulation {
     const g = svgEl('g', { class: 'zfa-artic-scene' });
     svg.appendChild(g);
     this._scene = g;
+    this._reperes = null;
 
     for (const a of aretes) this.dessinerArete(g, a);
     for (const n of noeuds) this.dessinerNoeud(g, n);
@@ -14381,15 +14537,18 @@ class MoteurArticulation {
     const bouger = (e) => {
       const s = this._versScene(e);
       if (Math.abs(s.x - dep.x) > 2 || Math.abs(s.y - dep.y) > 2) bouge = true;
-      const x = p0.x + (s.x - dep.x);
-      const y = p0.y + (s.y - dep.y);
-      this._pos.set(ref, { x, y });
-      gn.setAttribute('transform', 'translate(' + x + ',' + y + ')');
+      const brutX = p0.x + (s.x - dep.x);
+      const brutY = p0.y + (s.y - dep.y);
+      const a = this._aimanter(ref, brutX, brutY);
+      this._pos.set(ref, { x: a.x, y: a.y });
+      gn.setAttribute('transform', 'translate(' + a.x + ',' + a.y + ')');
       this.majAretesDe(ref);
+      this._tracerReperes(bouge ? a.repères : null);
     };
     const lacher = async () => {
       document.removeEventListener('pointermove', bouger);
       document.removeEventListener('pointerup', lacher);
+      this._tracerReperes(null);
       if (!bouge) return;
       gn.dataset.aGlisse = '1';
       const p = this._pt(ref);
@@ -14479,6 +14638,63 @@ class MoteurArticulation {
     for (const ref of this._pos.keys()) await this.ctx.poserPosition(ref, null, null);
     new obsidian.Notice(tr('Disposition recalculée.'));
     this.dessiner();
+  }
+
+  // Accrochage magnétique d'un nœud en cours de glissé : à la grille, et aux
+  // bords / centres des autres nœuds. Renvoie la position accrochée et les
+  // repères à tracer.
+  _aimanter(ref, x, y) {
+    const rg = this.greffon.settings || {};
+    if (rg.articulationAimant === false) return { x, y, repères: [] };
+    const pas = Number.isFinite(rg.articulationGrille) ? rg.articulationGrille : GRILLE_ARTIC;
+    const seuil = Number.isFinite(rg.articulationSeuilAimant)
+      ? rg.articulationSeuilAimant : SEUIL_AIMANT;
+    let sx = pas > 1 ? Math.round(x / pas) * pas : x;
+    let sy = pas > 1 ? Math.round(y / pas) * pas : y;
+    const repères = [];
+    const hMoi = ((this._noeudsParRef && this._noeudsParRef.get(ref)) || {}).h || ARTIC_H;
+    let prisX = false;
+    let prisY = false;
+    for (const [r, p] of (this._pos || new Map())) {
+      if (r === ref) continue;
+      const hAutre = ((this._noeudsParRef && this._noeudsParRef.get(r)) || {}).h || ARTIC_H;
+      if (!prisX) {
+        for (const [mien, autre] of [
+          [x, p.x], [x + ARTIC_W, p.x + ARTIC_W], [x + ARTIC_W / 2, p.x + ARTIC_W / 2],
+        ]) {
+          if (Math.abs(mien - autre) < seuil) {
+            sx = x + (autre - mien); prisX = true;
+            repères.push({ axe: 'x', v: autre });
+            break;
+          }
+        }
+      }
+      if (!prisY) {
+        for (const [mien, autre] of [
+          [y, p.y], [y + hMoi, p.y + hAutre], [y + hMoi / 2, p.y + hAutre / 2],
+        ]) {
+          if (Math.abs(mien - autre) < seuil) {
+            sy = y + (autre - mien); prisY = true;
+            repères.push({ axe: 'y', v: autre });
+            break;
+          }
+        }
+      }
+    }
+    return { x: sx, y: sy, repères };
+  }
+
+  _tracerReperes(repères) {
+    if (this._reperes) this._reperes.remove();
+    if (!repères || !repères.length || !this._scene) { this._reperes = null; return; }
+    const g = svgEl('g', { class: 'zfa-artic-guides' });
+    for (const r of repères) {
+      g.appendChild(r.axe === 'x'
+        ? svgEl('line', { x1: r.v, y1: -4000, x2: r.v, y2: 8000, class: 'zfa-artic-guide' })
+        : svgEl('line', { x1: -4000, y1: r.v, x2: 8000, y2: r.v, class: 'zfa-artic-guide' }));
+    }
+    this._scene.appendChild(g);
+    this._reperes = g;
   }
 }
 
