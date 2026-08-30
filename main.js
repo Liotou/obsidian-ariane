@@ -12183,6 +12183,54 @@ class MoteurFrise {
   // Icône d'en-tête selon le type de la propriété, comme le fait le tableau
   // des bases. On interroge le gestionnaire de types d'Obsidian plutôt que de
   // deviner d'après le nom.
+  typeColonne(id) {
+    if (String(id).startsWith('file.')) return '';
+    if (String(id).startsWith('formula.')) return '';
+    try {
+      const m = this.app.metadataTypeManager;
+      return (m && m.getAssignedType && m.getAssignedType(String(id).replace(/^note\./, ''))) || '';
+    } catch (e) { return ''; }
+  }
+
+  // Le contenu d'une cellule, dans le balisage qu'emploie le tableau des bases :
+  // une valeur qui désigne une note devient un vrai lien interne, coloré et
+  // cliquable, avec l'aperçu au survol. Le reste est du texte.
+  contenuCellule(cellule, col, ligne) {
+    const texte = String(col.valeur(ligne.ref) || '');
+    const liens = [];
+    if (col.cle === 'file.name') {
+      liens.push({ cible: ligne.ref, libelle: texte || ligne.ref });
+    } else {
+      const re = /\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g;
+      let m;
+      while ((m = re.exec(texte))) liens.push({ cible: m[1].trim(), libelle: (m[2] || m[1]).trim() });
+    }
+    if (!liens.length) {
+      cellule.createSpan({ cls: 'zfa-gantt-valeur', text: texte });
+      return;
+    }
+    const enveloppe = cellule.createDiv({ cls: 'metadata-link zfa-gantt-liens' });
+    liens.forEach((l, i) => {
+      if (i) enveloppe.createSpan({ cls: 'zfa-gantt-separe', text: ', ' });
+      const a = enveloppe.createEl('a', {
+        cls: 'internal-link metadata-link-inner', text: l.libelle,
+        attr: { href: l.cible, 'data-href': l.cible },
+      });
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.app.workspace.openLinkText(l.cible, '', e.metaKey || e.ctrlKey);
+      });
+      // L'aperçu au survol, comme sur n'importe quel lien du coffre.
+      a.addEventListener('mouseover', (e) => {
+        this.app.workspace.trigger('hover-link', {
+          event: e, source: TYPE_VUE_BASE_FRISE, hoverParent: this, targetEl: a,
+          linktext: l.cible,
+        });
+      });
+    });
+  }
+
   iconeColonne(id) {
     if (String(id).startsWith('file.')) return 'info';
     if (String(id).startsWith('formula.')) return 'variable';
@@ -12292,6 +12340,7 @@ class MoteurFrise {
     // Sans aucune colonne, il n'y a pas de panneau du tout.
     const cols = colonnes.map((c, i) => ({
       cle: c.cle, nom: c.nom, icone: this.iconeColonne(c.cle),
+      type: this.typeColonne(c.cle),
       largeur: this.largeurColonne(c.cle), valeur: c.valeur, arbre: i === 0,
     }));
     if (!cols.length) { gauche.style.width = '0px'; gauche.addClass('zfa-gantt-sans-colonnes'); return; }
@@ -12341,25 +12390,28 @@ class MoteurFrise {
       rangee.addEventListener('contextmenu', (e) => this.menuTache(e, l));
 
       for (const c of cols) {
-        const td = rangee.createDiv({ cls: 'bases-td bases-table-cell' });
+        const td = rangee.createDiv({ cls: 'bases-td' });
         td.dataset.colonne = c.cle;
         td.style.left = c.gauche + 'px';
         td.style.width = c.largeur + 'px';
         td.style.height = H + 'px';
+        const cellule = td.createDiv({ cls: 'bases-table-cell' });
+        if (c.type) cellule.dataset.propertyType = c.type;
         if (!c.arbre) {
-          const texte = c.valeur(l.ref);
-          td.createSpan({ cls: 'zfa-gantt-valeur', text: texte });
-          td.title = c.nom + ' : ' + texte;
+          this.contenuCellule(cellule, c, l);
+          td.title = c.nom + ' : ' + String(c.valeur(l.ref) || '');
           continue;
         }
-        td.addClass('zfa-gantt-cellule-arbre');
-        td.style.paddingLeft = (8 + l.niveau * 15) + 'px';
-        const prise = td.createSpan({ cls: 'zfa-gantt-prise', text: '⠿' });
+        // La hiérarchie s'accroche à la première colonne : retrait, poignée de
+        // réordonnancement et chevron. Le contenu reste celui de la propriété.
+        cellule.addClass('zfa-gantt-cellule-arbre');
+        cellule.style.paddingLeft = (l.niveau * 15) + 'px';
+        const prise = cellule.createSpan({ cls: 'zfa-gantt-prise', text: '⠿' });
         prise.title = tr('Glisser pour réordonner parmi les tâches de même rang');
         prise.addEventListener('pointerdown',
           (e) => this.reordonner(e, l, lignes, rang, tbody));
         if (l.aDesEnfants) {
-          const chev = td.createSpan({ cls: 'zfa-gantt-chevron',
+          const chev = cellule.createSpan({ cls: 'zfa-gantt-chevron',
             text: this.replies.has(l.ref) ? '▸' : '▾' });
           chev.onclick = (e) => {
             e.stopPropagation();
@@ -12368,17 +12420,10 @@ class MoteurFrise {
             this.dessiner();
           };
         } else {
-          td.createSpan({ cls: 'zfa-gantt-cale' });
+          cellule.createSpan({ cls: 'zfa-gantt-cale' });
         }
-        const point = td.createSpan({ cls: 'zfa-gantt-point' });
-        point.style.background = this.couleur(l.statut);
-        // La première colonne affiche sa propre propriété, comme dans un
-        // tableau. Si elle ne rend rien, l'intitulé prend le relais plutôt que
-        // de laisser une cellule muette.
-        const valeur = String(c.valeur(l.ref) || '').trim() || l.intitule;
-        const titre = td.createSpan({ cls: 'zfa-gantt-titre', text: valeur });
-        titre.onclick = () => this.ouvrir(l.ref);
-        titre.title = l.ref + ' · ' + l.intitule;
+        this.contenuCellule(cellule, c, l);
+        td.title = l.ref + ' · ' + l.intitule;
       }
     });
   }
