@@ -102,3 +102,35 @@ test('deux critères se combinent', () => {
 test('un filtre qui ne trouve rien rend une liste vide', () => {
   assert.deepEqual(Ariane.filtrerTaches(jeu, { texte: 'introuvable' }), []);
 });
+
+test('le tri par clé range sur la valeur préparée par la vue', () => {
+  const l = Ariane.disposerGantt([
+    Object.assign(t('T26-001'), { _cle: 'zèbre' }),
+    Object.assign(t('T26-002'), { _cle: 'abeille' }),
+  ], 'cle');
+  assert.deepEqual(l.map((x) => x.ref), ['T26-002', 'T26-001']);
+});
+
+test('le sens du tri par clé s inverse', () => {
+  const l = Ariane.disposerGantt([
+    Object.assign(t('T26-001'), { _cle: 'zèbre' }),
+    Object.assign(t('T26-002'), { _cle: 'abeille' }),
+  ], 'cle', -1);
+  assert.deepEqual(l.map((x) => x.ref), ['T26-001', 'T26-002']);
+});
+
+test('le tri par clé compare les nombres comme des nombres', () => {
+  const l = Ariane.disposerGantt([
+    Object.assign(t('T26-001'), { _cle: '10' }),
+    Object.assign(t('T26-002'), { _cle: '9' }),
+  ], 'cle');
+  assert.deepEqual(l.map((x) => x.ref), ['T26-002', 'T26-001']);
+});
+
+test('une clé vide passe après celles qui sont remplies', () => {
+  const l = Ariane.disposerGantt([
+    Object.assign(t('T26-001'), { _cle: '' }),
+    Object.assign(t('T26-002'), { _cle: 'a' }),
+  ], 'cle');
+  assert.deepEqual(l.map((x) => x.ref), ['T26-002', 'T26-001']);
+});

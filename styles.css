@@ -1040,3 +1040,9 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 
 
 
+
+/* La flèche de tri n'apparaît qu'au survol tant que la colonne n'est pas
+   triée, comme dans le tableau des bases. */
+.zfa-gantt-tri-latent { opacity: 0; transition: opacity 0.12s; }
+.zfa-gantt-table .bases-thead .bases-td:hover .zfa-gantt-tri-latent { opacity: 0.45; }
+.zfa-gantt-table .bases-thead .bases-td { cursor: var(--cursor); }

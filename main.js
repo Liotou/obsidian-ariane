@@ -930,6 +930,8 @@ const DEFAULT_SETTINGS = {
   ganttTri: 'date',             // date | manuel | priorite | intitule
   ganttRowHeight: 'medium',    // '' | medium | tall | extra, comme les bases
   ganttColumnSize: null,
+  ganttTriColonne: null,
+  ganttTriColonneSens: 1,
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes
   // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque
@@ -9525,7 +9527,7 @@ class ZotflowAtomiser extends obsidian.Plugin {
   // barre devant écrire celles de la note et non celles de sa descendance.
   // Un parent inconnu ou un cycle ne fait pas disparaître la tâche : elle
   // remonte à la racine, ce qui la rend visible plutôt que perdue.
-  static disposerGantt(taches, tri) {
+  static disposerGantt(taches, tri, sens) {
     const liste = (taches || []).filter((x) => x && x.ref);
     const parRef = new Map(liste.map((x) => [x.ref, x]));
     const enfants = new Map();
@@ -9579,6 +9581,15 @@ class ZotflowAtomiser extends obsidian.Plugin {
         const ra = pa === undefined ? 3 : pa;
         const rb = pb === undefined ? 3 : pb;
         if (ra !== rb) return ra - rb;
+      } else if (tri === 'cle') {
+        // La vue prépare _cle : elle seule sait lire une propriété de base.
+        // Une clé vide passe après celles qui sont remplies, comme partout
+        // ailleurs dans la frise.
+        const ka = String(a._cle == null ? '' : a._cle);
+        const kb = String(b._cle == null ? '' : b._cle);
+        if (!ka !== !kb) return ka ? -1 : 1;
+        const c = ka.localeCompare(kb, 'fr', { sensitivity: 'base', numeric: true });
+        if (c) return c * (sens === -1 ? -1 : 1);
       } else if (tri === 'intitule') {
         const c = String(a.intitule || a.ref)
           .localeCompare(String(b.intitule || b.ref), 'fr', { sensitivity: 'base' });
@@ -11765,6 +11776,7 @@ const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 const DEFAUTS_FRISE = {
   zoom: 'mois', masquerTerminees: false, libelleSemaine: 'numero',
   largeurLibelles: 280, tri: 'date', rowHeight: 'medium', columnSize: null,
+  triColonne: null, triColonneSens: 1,
 };
 
 /* =========================================================================
@@ -11894,7 +11906,23 @@ class MoteurFrise {
     const nTotal = taches.length;
     if (this.ctx.lire('masquerTerminees')) taches = this.sansLesCloses(taches);
     if (this.ctx.avecFiltres) taches = ZotflowAtomiser.filtrerTaches(taches, this._filtre);
-    const toutes = ZotflowAtomiser.disposerGantt(taches, this.ctx.lire('tri') || 'date');
+    // Un tri posé sur un en-tête l'emporte sur celui des réglages : c'est le
+    // geste le plus récent, et le plus explicite.
+    const colTri = this.ctx.lire('triColonne');
+    let mode = this.ctx.lire('tri') || 'date';
+    let sensTri = 1;
+    if (colTri) {
+      const col = ((this.ctx.colonnes && this.ctx.colonnes()) || [])
+        .find((c) => c.cle === colTri);
+      if (colTri === '__arbre') {
+        mode = 'intitule';
+      } else if (col) {
+        for (const t of taches) t._cle = col.valeur(t.ref);
+        mode = 'cle';
+      }
+      sensTri = this.ctx.lire('triColonneSens') === -1 ? -1 : 1;
+    }
+    const toutes = ZotflowAtomiser.disposerGantt(taches, mode, sensTri);
     const planifiees = toutes.filter((l) => l.debut || l.echeance);
     const nonPlanifiees = toutes.filter((l) => !l.debut && !l.echeance);
 
@@ -12155,7 +12183,7 @@ class MoteurFrise {
 
   // Poignée de redimensionnement, au même endroit et de la même classe que
   // celle du tableau des bases, pour qu'elle en reçoive le style et le curseur.
-  poserResizer(cellule, largeurActuelle, surLache) {
+  poserResizer(cellule, col, cols, gauche, table) {
     const r = cellule.createDiv({ cls: 'bases-table-header-resizer' });
     r.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
@@ -12163,21 +12191,54 @@ class MoteurFrise {
       e.stopPropagation();
       r.addClass('is-active');
       const x0 = e.clientX;
-      let large = largeurActuelle;
+      const large0 = col.largeur;
+      // Toute la colonne suit la souris, en-tête et cellules, et la frise se
+      // décale d'autant. Ne bouger que l'en-tête, comme je le faisais, ne
+      // donnait aucun retour et laissait croire que rien ne se passait.
+      const appliquer = (px) => {
+        col.largeur = px;
+        let x = 0;
+        for (const c of cols) { c.gauche = x; x += c.largeur; }
+        for (const cel of table.querySelectorAll('.bases-td')) {
+          const c = cols.find((y) => y.cle === cel.dataset.colonne);
+          if (!c) continue;
+          cel.style.left = c.gauche + 'px';
+          cel.style.width = c.largeur + 'px';
+        }
+        table.style.width = x + 'px';
+        gauche.style.width = x + 'px';
+      };
       const bouger = (ev) => {
-        large = Math.max(60, Math.min(600, largeurActuelle + ev.clientX - x0));
-        surLache(large, false);
+        appliquer(Math.max(60, Math.min(600, large0 + ev.clientX - x0)));
       };
       const lacher = async () => {
         document.removeEventListener('pointermove', bouger);
         document.removeEventListener('pointerup', lacher);
         r.removeClass('is-active');
-        await surLache(large, true);
+        if (col.arbre) await this.ctx.ecrire('largeurLibelles', col.largeur);
+        else await this.poserLargeurColonne(col.cle, col.largeur);
+        this.dessiner();
       };
       document.addEventListener('pointermove', bouger);
       document.addEventListener('pointerup', lacher);
     });
     return r;
+  }
+
+  // Le tri par en-tête, comme dans le tableau : un clic range en ordre
+  // croissant, un deuxième inverse, un troisième rend la main au tri courant.
+  async basculerTriColonne(col) {
+    const actuel = this.ctx.lire('triColonne');
+    const sens = this.ctx.lire('triColonneSens');
+    if (actuel !== col.cle) {
+      await this.ctx.ecrire('triColonne', col.cle);
+      await this.ctx.ecrire('triColonneSens', 1);
+    } else if (sens !== -1) {
+      await this.ctx.ecrire('triColonneSens', -1);
+    } else {
+      await this.ctx.ecrire('triColonne', null);
+    }
+    this.dessiner();
   }
 
   // La partie gauche est un vrai tableau de base : mêmes classes, même
@@ -12209,6 +12270,7 @@ class MoteurFrise {
     thead.style.height = hEntete + 'px';
     for (const c of cols) {
       const td = thead.createDiv({ cls: 'bases-td' });
+      td.dataset.colonne = c.cle;
       td.style.left = c.gauche + 'px';
       td.style.width = c.largeur + 'px';
       td.style.height = hEntete + 'px';
@@ -12220,13 +12282,17 @@ class MoteurFrise {
       const ic = label.createSpan({ cls: 'bases-table-header-icon' });
       obsidian.setIcon(ic, c.icone);
       label.createSpan({ cls: 'bases-table-header-name', text: c.nom });
-      this.poserResizer(td, c.largeur, async (px, definitif) => {
-        td.style.width = px + 'px';
-        if (!definitif) return;
-        if (c.arbre) await this.ctx.ecrire('largeurLibelles', px);
-        else await this.poserLargeurColonne(c.cle, px);
-        this.dessiner();
+      const trie = this.ctx.lire('triColonne') === c.cle;
+      const sens = this.ctx.lire('triColonneSens') === -1 ? 'desc' : 'asc';
+      if (trie) td.dataset.sort = sens;
+      const fleche = entete.createDiv({ cls: 'bases-table-header-sort' });
+      obsidian.setIcon(fleche, sens === 'desc' ? 'chevron-down' : 'chevron-up');
+      if (!trie) fleche.addClass('zfa-gantt-tri-latent');
+      td.addEventListener('click', (e) => {
+        if (e.target.closest('.bases-table-header-resizer')) return;
+        this.basculerTriColonne(c);
       });
+      this.poserResizer(td, c, cols, gauche, table);
     }
 
     const tbody = table.createDiv({ cls: 'bases-tbody zfa-gantt-gauche-corps' });
@@ -12240,6 +12306,7 @@ class MoteurFrise {
 
       for (const c of cols) {
         const td = tr.createDiv({ cls: 'bases-td bases-table-cell' });
+        td.dataset.colonne = c.cle;
         td.style.left = c.gauche + 'px';
         td.style.width = c.largeur + 'px';
         td.style.height = H + 'px';
