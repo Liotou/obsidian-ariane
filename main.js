@@ -10198,6 +10198,39 @@ class Ariane extends obsidian.Plugin {
     return out;
   }
 
+  // La définition d'une famille par son id, ou un repli gris/rond pour une
+  // famille inconnue ou supprimée. Jamais null : les dessinateurs s'appuient
+  // dessus sans garde.
+  familleDe(id) {
+    const liste = Array.isArray(this.settings.famillesTaches) ? this.settings.famillesTaches : [];
+    return liste.find((f) => f && f.id === id)
+      || { id: id || '', nom: id || tr('(sans famille)'), couleur: '#888888', icone: 'circle', proprietes: [] };
+  }
+
+  // « Une tâche de la famille X porte les champs de X » : on complète les
+  // entêtes qui ne les ont pas encore. Une seule passe, silencieuse, et jamais
+  // d'écriture si rien ne manque.
+  async rattraperProprietesFamilles() {
+    const liste = Array.isArray(this.settings.famillesTaches) ? this.settings.famillesTaches : [];
+    if (!liste.length) return 0;
+    let touchees = 0;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (fm.type !== 'tache') continue;
+      const id = fm.famille ? String(fm.famille).trim() : '';
+      if (!id) continue;
+      const fam = liste.find((x) => x && x.id === id);
+      if (!fam) continue;
+      const manquantes = Ariane.proprietesManquantes(fm, fam);
+      if (!manquantes.length) continue;
+      await this.app.fileManager.processFrontMatter(f, (m) => {
+        for (const p of manquantes) if (!(p.cle in m)) m[p.cle] = '';
+      });
+      touchees += 1;
+    }
+    return touchees;
+  }
+
   // Écrit un blocage dans l'entête de la tâche bloquée. Le frontmatter est la
   // seule source : plus de registre canvas. Un cycle est refusé avant écriture.
   async creerBlocage(deRef, versRef) {
@@ -13855,7 +13888,12 @@ function fabriquerVueFriseBase(greffon) {
 
     onunload() { if (this.moteur) this.moteur.detruire(); }
 
-    onDataUpdated() { if (this.moteur) this.moteur.dessiner(); }
+    async onDataUpdated() {
+      if (this.greffon.settings.famillesTaches && this.greffon.settings.famillesTaches.length) {
+        try { await this.greffon.rattraperProprietesFamilles(); } catch (e) { /* sans gravité */ }
+      }
+      if (this.moteur) this.moteur.dessiner();
+    }
 
     onResize() { if (this.moteur) this.moteur.dessiner(); }
 
@@ -14329,7 +14367,12 @@ function fabriquerVueArticulationBase(greffon) {
     }
 
     onunload() { if (this.moteur) this.moteur.detruire(); }
-    onDataUpdated() { if (this.moteur) this.moteur.dessiner(); }
+    async onDataUpdated() {
+      if (this.greffon.settings.famillesTaches && this.greffon.settings.famillesTaches.length) {
+        try { await this.greffon.rattraperProprietesFamilles(); } catch (e) { /* sans gravité */ }
+      }
+      if (this.moteur) this.moteur.dessiner();
+    }
     onResize() { if (this.moteur) this.moteur.dessiner(); }
 
     // Le jeu filtré par la base, plus la remontée des ancêtres absents pour ne
