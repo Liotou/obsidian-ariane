@@ -14618,7 +14618,19 @@ class MoteurArticulation {
     carte.dataset.statut = n.statut;
     const fam = this.greffon.familleDe(n.famille);
     carte.style.setProperty('--zfa-fam-couleur', fam.couleur || '#888888');
-    const ic = carte.createSpan({ cls: 'zfa-artic-fam' });
+
+    // Colonne de gauche : la case « terminée » au-dessus de l'icône de famille.
+    const marge = carte.createDiv({ cls: 'zfa-artic-marge' });
+    const coche = marge.createEl('input', { type: 'checkbox', cls: 'zfa-artic-coche' });
+    coche.checked = n.statut === 'terminée';
+    coche.setAttribute('aria-label', tr('Terminée'));
+    coche.addEventListener('pointerdown', (e) => e.stopPropagation());
+    coche.addEventListener('click', (e) => e.stopPropagation());
+    coche.addEventListener('change', async () => {
+      await this.greffon.basculerTermine(n.ref, coche.checked);
+      this.dessiner();
+    });
+    const ic = marge.createSpan({ cls: 'zfa-artic-fam' });
     ic.setAttribute('aria-label', fam.nom || n.famille || '');
     obsidian.setIcon(ic, fam.icone || 'circle');
 
@@ -14663,17 +14675,7 @@ class MoteurArticulation {
       });
     }
     const corps = carte.createDiv({ cls: 'zfa-artic-corps' });
-    const tete = corps.createDiv({ cls: 'zfa-artic-tete' });
-    const coche = tete.createEl('input', { type: 'checkbox', cls: 'zfa-artic-coche' });
-    coche.checked = n.statut === 'terminée';
-    coche.setAttribute('aria-label', tr('Terminée'));
-    coche.addEventListener('pointerdown', (e) => e.stopPropagation());
-    coche.addEventListener('click', (e) => e.stopPropagation());
-    coche.addEventListener('change', async () => {
-      await this.greffon.basculerTermine(n.ref, coche.checked);
-      this.dessiner();
-    });
-    const titreEl = tete.createDiv({ cls: 'zfa-artic-titre', text: n.intitule });
+    const titreEl = corps.createDiv({ cls: 'zfa-artic-titre', text: n.intitule });
     titreEl.setAttribute('title', tr('Double-clic pour renommer'));
     titreEl.addEventListener('click', (e) => e.stopPropagation());
     titreEl.addEventListener('dblclick', (e) => {
