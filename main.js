@@ -3433,6 +3433,15 @@ class Ariane extends obsidian.Plugin {
         options: () => [],
       });
     }
+    // « famille » est un texte pour Obsidian ; le menu déroulant se fait
+    // côté carte (l'API n'expose pas de type énuméré).
+    try {
+      const mtm = this.app.metadataTypeManager;
+      if (mtm && typeof mtm.setType === 'function'
+        && (!mtm.properties || !mtm.properties.famille)) {
+        mtm.setType('famille', 'text');
+      }
+    } catch (e) { /* metadataTypeManager indisponible : sans gravité */ }
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
     this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
@@ -9454,6 +9463,7 @@ class Ariane extends obsidian.Plugin {
     l.push('aliases:');
     l.push('  - ' + q(intitule));
     l.push('type: tache');
+    l.push(ligne('famille', c.famille));
     l.push(ligne('statut', c.statut || 'à faire'));
     l.push(ligne('priorite', c.priorite));
     l.push(ligne('debut', c.debut));
@@ -10179,7 +10189,7 @@ class Ariane extends obsidian.Plugin {
         priorite: fm.priorite || '',
         avancement: Number(fm.avancement) || 0,
         jalon: fm.jalon === true,
-        famille: Ariane.familleTache(fm),
+        famille: Ariane.familleTache(fm, this.settings.famillesTaches, this.settings.familleTacheDefaut),
         x: Number.isFinite(nx) ? nx : null,
         y: Number.isFinite(ny) ? ny : null,
         fichier: f,
