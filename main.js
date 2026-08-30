@@ -12950,7 +12950,10 @@ class MoteurFrise {
         g.appendChild(svgEl('rect', { x: x1, y: 0, width: Math.max(0, x2 - x1),
           height: this._hEntete,
           class: rang % 2 ? 'zfa-gantt-bande-impaire' : 'zfa-gantt-bande-paire' }));
-        if (x2 - x1 > 34) {
+        // Le mois occupe l'étage du haut (collant) en vues jour / semaine /
+        // mois. En vue trimestre c'est le trimestre qui y va, le mois passant
+        // en bas ; en vue année c'est l'année.
+        if (this.zoom !== 'trimestre' && x2 - x1 > 34) {
           const t = svgEl('text', { x: x1 + 6, y: this._bande - 5, class: 'zfa-gantt-entete-mois' });
           t.textContent = MOIS_COURTS[m - 1] + ' ' + String(a).slice(2);
           g.appendChild(t);
@@ -13023,19 +13026,24 @@ class MoteurFrise {
     }
   }
 
+  // Vue mois : le mois est déjà l'étage du haut (collant). En bas, le numéro
+  // de semaine plutôt qu'un mois répété.
   enteteMois(g, cfg) {
-    let mois = cfg.debut.slice(0, 8) + '01';
-    while (mois <= cfg.fin) {
-      const m = Number(mois.slice(5, 7));
-      const suivant = this.moisSuivant(mois);
-      const x1 = Math.max(0, this.x(cfg, mois));
-      const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
-      if (x2 - x1 > 26) {
-        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: this._basEntete, class: 'zfa-gantt-entete-titre' });
-        t.textContent = MOIS_COURTS[m - 1];
+    for (let i = 0; i < cfg.jours; i += 1) {
+      const jour = Ariane.decalerJour(cfg.debut, i);
+      const [a, m, j] = jour.split('-').map(Number);
+      if (new Date(Date.UTC(a, m - 1, j)).getUTCDay() !== 1) continue;
+      const nb = Math.min(7, cfg.jours - i);
+      const x = i * cfg.ppj;
+      const w = nb * cfg.ppj;
+      if (w > 20) {
+        const t = svgEl('text', { x: x + w / 2, y: this._basEntete,
+          class: 'zfa-gantt-entete-semaine' });
+        t.textContent = 'S' + Ariane.semaineIso(jour);
         g.appendChild(t);
       }
-      mois = suivant;
+      g.appendChild(svgEl('line', { x1: x, y1: this._bande, x2: x, y2: this._hEntete,
+        class: 'zfa-gantt-entete-trait' }));
     }
   }
 
@@ -13088,6 +13096,8 @@ class MoteurFrise {
     }
   }
 
+  // Vue trimestre : le trimestre occupe l'étage du haut (collant, on le voit
+  // en permanence), le mois passe en bas, fixe sur sa colonne.
   enteteTrimestres(g, cfg) {
     let a = Number(cfg.debut.slice(0, 4));
     let m = Math.floor((Number(cfg.debut.slice(5, 7)) - 1) / 3) * 3 + 1;
@@ -13098,14 +13108,28 @@ class MoteurFrise {
       const suivant = am + '-' + String(mm).padStart(2, '0') + '-01';
       const x1 = Math.max(0, this.x(cfg, jour));
       const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
-      if (x2 - x1 > 30) {
-        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: this._basEntete, class: 'zfa-gantt-entete-titre' });
-        t.textContent = 'T' + (Math.floor((m - 1) / 3) + 1) + ' ' + a;
+      const t = svgEl('text', { x: x1 + 6, y: this._bande - 5,
+        class: 'zfa-gantt-entete-mois' });
+      t.textContent = 'T' + (Math.floor((m - 1) / 3) + 1) + ' ' + a;
+      g.appendChild(t);
+      this._enteteHaut.push({ el: t, x1: x1 + 6, x2 });
+      g.appendChild(svgEl('line', { x1, y1: 0, x2: x1, y2: this._hEntete,
+        class: 'zfa-gantt-entete-trait-fort' }));
+      a = am; m = mm;
+    }
+    let mo = cfg.debut.slice(0, 8) + '01';
+    while (mo <= cfg.fin) {
+      const mm = Number(mo.slice(5, 7));
+      const suivant = this.moisSuivant(mo);
+      const x1 = Math.max(0, this.x(cfg, mo));
+      const x2 = Math.min(cfg.largeur, this.x(cfg, suivant));
+      if (x2 - x1 > 22) {
+        const t = svgEl('text', { x: x1 + (x2 - x1) / 2, y: this._basEntete,
+          class: 'zfa-gantt-entete-titre' });
+        t.textContent = MOIS_COURTS[mm - 1];
         g.appendChild(t);
       }
-      g.appendChild(svgEl('line', { x1, y1: this._bande, x2: x1, y2: this._hEntete,
-        class: 'zfa-gantt-entete-trait' }));
-      a = am; m = mm;
+      mo = suivant;
     }
   }
 
