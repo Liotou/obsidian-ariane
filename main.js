@@ -651,7 +651,7 @@ const TEXTES = {
     "Schémas : interroger le graphe": "Diagrams: query the graph",
     "Schémas : synchroniser le contenu dans les notes associées": "Diagrams: sync contents into the paired notes",
     "Schémas : valider le schéma actif": "Diagrams: validate the active diagram",
-    "Schémas draw.io (.drawio.svg) et notes associées. L’éditeur lui-même est fourni par le plugin Ariane-graph.": "draw.io diagrams (.drawio.svg) and their paired notes. The editor itself comes from a draw.io plugin, which Ariane does not replace.",
+    "Schémas draw.io (.drawio.svg) et notes associées. L’éditeur lui-même est fourni par un greffon draw.io, qu’Ariane ne remplace pas.": "draw.io diagrams (.drawio.svg) and their paired notes. The editor itself comes from a draw.io plugin, which Ariane does not replace.",
     "Score final minimal (en %) pour qu'une note soit proposée. Plus haut = plus sélectif.": "Minimum final score, as a percentage, for a note to be proposed. Higher means more selective.",
     "Sert à mesurer la proximité de sens entre vos notes.": "Used to measure how close in meaning your notes are.",
     "Service": "Service",
@@ -10782,7 +10782,7 @@ class ZotflowAtomiserSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Signale en erreur toute étiquette hors des listes ci-dessus. Sans cela, elles sont seulement signalées comme inconnues."))
       .addToggle((t) => t.setValue(!!s.cartesStrict).onChange(async (v) => { s.cartesStrict = v; await maj(); }));
 
-    this._aide(c, tr('Schémas draw.io (.drawio.svg) et notes associées. L’éditeur lui-même est fourni par le plugin Ariane-graph.'));
+    this._aide(c, tr('Schémas draw.io (.drawio.svg) et notes associées. L’éditeur lui-même est fourni par un greffon draw.io, qu’Ariane ne remplace pas.'));
 
     new obsidian.Setting(c)
       .setName(tr('Recopier le contenu dans la note'))
