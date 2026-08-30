@@ -1587,7 +1587,12 @@ function construireReference(ref, cfg) {
 
 //#endregion 3 · Références Zotero — parsing & appariement
 
-/* ---------- Moteur de suggestions : similarité lexicale (TF-IDF) -------- */
+//#region 4 · Similarité locale (TF-IDF & vecteurs)
+// ═══════════════════════════════════════════════════════════════════════════
+//  4 · SIMILARITÉ LOCALE (TF-IDF & VECTEURS)
+//  Tokenisation, TF-IDF, similarité cosinus — utilisées par les suggestions
+//  de voisinage locales.
+// ═══════════════════════════════════════════════════════════════════════════
 
 // Mots vides FR + EN, écartés à l'indexation.
 const MOTS_VIDES = new Set(
@@ -1679,6 +1684,8 @@ function cosinusVecteurs(a, b) {
   for (let i = 0; i < n; i++) d += a[i] * b[i];
   return d;
 }
+
+//#endregion 4 · Similarité locale (TF-IDF & vecteurs)
 
 // Remplace les variables {{var}} d'un modèle par leurs valeurs.
 function appliquerModele(modele, vars) {
