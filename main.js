@@ -11772,9 +11772,9 @@ class MoteurFrise {
     return out;
   }
 
-  ouvrir(ref) {
+  ouvrir(ref, nouvelOnglet) {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
-    if (f) this.app.workspace.getLeaf(true).openFile(f);
+    if (f) this.app.workspace.getLeaf(nouvelOnglet === undefined ? true : nouvelOnglet).openFile(f);
   }
 
   couleur(statut) {
@@ -12019,8 +12019,15 @@ class MoteurFrise {
   /* ---------------------------- Colonne gauche --------------------------- */
 
   dessinerColonneGauche(gauche, lignes) {
+    // Quand l'enveloppe en fournit, la partie gauche devient un petit tableau :
+    // l'arbre d'abord, qui porte la hiérarchie et ne se retire pas, puis une
+    // colonne par propriété que la base affiche.
+    const colonnes = (this.ctx.colonnes && this.ctx.colonnes()) || [];
     const entete = gauche.createDiv({ cls: 'zfa-gantt-gauche-entete' });
     entete.createSpan({ cls: 'zfa-gantt-gauche-titre', text: tr('Tâche') });
+    for (const col of colonnes) {
+      entete.createSpan({ cls: 'zfa-gantt-gauche-titre zfa-gantt-colonne', text: col.nom });
+    }
     const corps = gauche.createDiv({ cls: 'zfa-gantt-gauche-corps' });
     lignes.forEach((l, rang) => {
       const r = corps.createDiv({ cls: 'zfa-gantt-libelle' });
@@ -12046,8 +12053,12 @@ class MoteurFrise {
       const titre = r.createSpan({ cls: 'zfa-gantt-titre', text: l.intitule });
       titre.onclick = () => this.ouvrir(l.ref);
       titre.title = l.ref;
-      if (!l.jalon && l.avancement > 0) {
+      if (!colonnes.length && !l.jalon && l.avancement > 0) {
         r.createSpan({ cls: 'zfa-gantt-pourcent', text: l.avancement + ' %' });
+      }
+      for (const col of colonnes) {
+        const cell = r.createSpan({ cls: 'zfa-gantt-colonne', text: col.valeur(l.ref) });
+        cell.title = col.nom + ' : ' + cell.textContent;
       }
       r.addEventListener('contextmenu', (e) => this.menuTache(e, l));
     });
@@ -12055,6 +12066,7 @@ class MoteurFrise {
     // « Rédiger la partie sur la gouvernance des risques ».
     const poignee = gauche.createDiv({ cls: 'zfa-gantt-poignee-colonne' });
     poignee.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
       e.preventDefault();
       const x0 = e.clientX;
       const l0 = gauche.offsetWidth;
@@ -12075,6 +12087,7 @@ class MoteurFrise {
   // passer devant son parent sans changer de parent, ce qui serait un autre
   // geste. On ne propose donc que les positions valides.
   reordonner(e, ligne, lignes, rang, corps) {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     const parent = ZotflowAtomiser.refDeLien(ligne.parent || '');
@@ -12381,6 +12394,7 @@ class MoteurFrise {
   // Tirer un lien d'une barre vers une autre. Le trait suit le pointeur, et
   // c'est la barre sous le pointeur au lâcher qui reçoit le blocage.
   tirerLien(e, ligne, cx, sens) {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     const svg = this._svg;
@@ -12537,6 +12551,15 @@ class MoteurFrise {
     const fautives = new Set(ZotflowAtomiser.datesIncoherentes(aretes, dates)
       .map((i) => i.de + ' ' + i.vers));
     const g = svgEl('g', { class: 'zfa-gantt-fleches' });
+    const defs = svgEl('defs', {});
+    for (const [id, cls] of [['zfa-pointe-fleche', 'zfa-gantt-pointe'],
+                             ['zfa-pointe-fleche-rouge', 'zfa-gantt-pointe zfa-gantt-rouge']]) {
+      const mk = svgEl('marker', { id, markerWidth: 8, markerHeight: 8,
+        refX: 7, refY: 3, orient: 'auto' });
+      mk.appendChild(svgEl('path', { d: 'M0,0 L0,6 L8,3 z', class: cls }));
+      defs.appendChild(mk);
+    }
+    g.appendChild(defs);
     const H = HAUTEUR_LIGNE_GANTT;
     for (const a of aretes) {
       if (!rang.has(a.de) || !rang.has(a.vers)) continue;
@@ -12550,19 +12573,17 @@ class MoteurFrise {
       const x2 = this.x(cfg, debCib);
       const y2 = HAUTEUR_ENTETE_GANTT + rang.get(a.vers) * H + H / 2;
       const rouge = fautives.has(a.de + ' ' + a.vers);
-      const marge = 12;
-      // Coude en trois segments quand la cible est à droite. Quand elle est à
-      // gauche, le coude contourne par le bord de la ligne plutôt que de
-      // traverser les barres.
-      const contour = y2 > y1 ? y2 - H / 2 + 3 : y2 + H / 2 - 3;
-      const d = x2 > x1 + marge * 2
-        ? 'M ' + x1 + ' ' + y1 + ' H ' + (x2 - marge) + ' V ' + y2 + ' H ' + (x2 - 6)
-        : 'M ' + x1 + ' ' + y1 + ' H ' + (x1 + marge) + ' V ' + contour
-          + ' H ' + (x2 - marge) + ' V ' + y2 + ' H ' + (x2 - 6);
+      // Une courbe de Bézier plutôt qu'un coude : elle se suit mieux à l'oeil
+      // quand plusieurs flèches se croisent, et l'écartement des poignées de
+      // contrôle rend le cas où la cible est à gauche lisible sans traitement
+      // particulier, la courbe bombant d'elle-même.
+      const ecart = Math.max(34, Math.abs(x2 - x1) / 2);
+      const d = 'M ' + x1 + ' ' + y1
+        + ' C ' + (x1 + ecart) + ' ' + y1 + ', ' + (x2 - ecart) + ' ' + y2
+        + ', ' + x2 + ' ' + y2;
       g.appendChild(svgEl('path', { d,
+        'marker-end': 'url(#zfa-pointe-fleche' + (rouge ? '-rouge' : '') + ')',
         class: 'zfa-gantt-fleche' + (rouge ? ' zfa-gantt-rouge' : '') }));
-      g.appendChild(svgEl('path', { d: 'M ' + x2 + ' ' + y2 + ' l -6 -4 l 0 8 z',
-        class: 'zfa-gantt-pointe' + (rouge ? ' zfa-gantt-rouge' : '') }));
       if (a.libelle && Math.abs(x2 - x1) > 60) {
         const t = svgEl('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 4,
           class: 'zfa-gantt-fleche-libelle' });
@@ -12578,6 +12599,10 @@ class MoteurFrise {
   // Un seul geste, trois modes. L'écriture n'a lieu qu'au lâcher : écrire
   // pendant le glissé ferait cent passes de frontmatter pour un déplacement.
   saisir(e, groupe, ligne, mode, geo) {
+    // Seul le bouton principal saisit. Sans ce garde-fou, un clic droit
+    // installait le glissé, et comme le menu contextuel avale le relâchement,
+    // la barre suivait ensuite la souris sans qu'on ait rien demandé.
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     const ppj = this._cfg.ppj;
@@ -12585,8 +12610,11 @@ class MoteurFrise {
     const fond = groupe.querySelector('.zfa-gantt-barre-tache');
     const rempli = groupe.querySelector('.zfa-gantt-rempli');
     groupe.classList.add('zfa-gantt-glisse');
+    const y0 = e.clientY;
+    let bouge = false;
     const jours = (ev) => Math.round((ev.clientX - x0) / ppj);
     const bouger = (ev) => {
+      if (Math.abs(ev.clientX - x0) > 3 || Math.abs(ev.clientY - y0) > 3) bouge = true;
       const d = jours(ev) * ppj;
       if (mode === 'deplacer') {
         groupe.setAttribute('transform', 'translate(' + d + ',0)');
@@ -12605,6 +12633,13 @@ class MoteurFrise {
       document.removeEventListener('pointerup', lacher);
       groupe.classList.remove('zfa-gantt-glisse');
       const n = jours(ev);
+      // Un appui qui n'a pas bougé est un clic, et un clic sur une barre ouvre
+      // la note : c'est ce qu'on attend d'une barre, et il ne se passait rien.
+      if (!bouge && mode === 'deplacer') {
+        this.ouvrir(ligne.ref, ev.metaKey || ev.ctrlKey);
+        this.dessiner();
+        return;
+      }
       if (!n) { this.dessiner(); return; }
       await this.appliquerGeste(ligne, mode, n);
     };
@@ -12657,7 +12692,7 @@ class MoteurFrise {
   // Glisser une pastille du tiroir sur la frise la date : le jour du dépôt, et
   // une semaine de durée. Un jalon n'en reçoit qu'une.
   deposerPastille(e, ligne) {
-    if (!this._svg) return;
+    if (!this._svg || e.button !== 0) return;
     e.preventDefault();
     const fantome = document.body.createDiv({ cls: 'zfa-gantt-fantome', text: ligne.intitule });
     const suivre = (ev) => {
@@ -12739,6 +12774,7 @@ function fabriquerVueFriseBase(greffon) {
     onload() {
       this.moteur = new MoteurFrise(this.greffon, this.conteneur, {
         avecFiltres: false,
+        colonnes: () => this.colonnes(),
         taches: () => this.tachesDeLaBase(),
         lire: (cle) => {
           const v = this.config.get(cle);
@@ -12754,15 +12790,56 @@ function fabriquerVueFriseBase(greffon) {
 
     onResize() { if (this.moteur) this.moteur.dessiner(); }
 
+    // Les propriétés que la base affiche deviennent les colonnes de gauche.
+    // On écarte le nom de fichier et les alias, que l'arbre montre déjà.
+    colonnes() {
+      const props = (this.data && this.data.properties) || [];
+      const out = [];
+      for (const id of props) {
+        if (id === 'file.name' || id === 'note.aliases') continue;
+        let nom = id;
+        try { nom = this.config.getDisplayName(id) || id; } catch (e) { /* laisse l'identifiant */ }
+        out.push({
+          cle: id,
+          nom,
+          valeur: (ref) => {
+            const e = this._parRef ? this._parRef.get(ref) : null;
+            if (!e) return '';
+            try { return VueFriseBase.texteValeur(e.getValue(id)); } catch (err) { return ''; }
+          },
+        });
+      }
+      return out;
+    }
+
+    // Une Value de base peut être une primitive, un tableau, ou un objet qui
+    // sait se rendre en texte. On ne suppose rien et on retombe sur du vide
+    // plutôt que d'afficher « [object Object] ».
+    static texteValeur(v) {
+      if (v === null || v === undefined) return '';
+      if (Array.isArray(v)) return v.map((x) => VueFriseBase.texteValeur(x)).filter(Boolean).join(', ');
+      if (typeof v === 'object') {
+        if (typeof v.toString === 'function') {
+          const t = v.toString();
+          return t === '[object Object]' ? '' : t;
+        }
+        return '';
+      }
+      return String(v);
+    }
+
     // La base ne rend que les notes retenues par son filtre. Une méta-tâche
     // écartée mais parente d'une tâche retenue manquerait, et l'arbre casserait :
     // on va donc rechercher les ancêtres absents dans le coffre.
     tachesDeLaBase() {
       const dedans = new Set();
+      this._parRef = new Map();
       for (const e of (this.data && this.data.data) || []) {
         const chemin = e && e.file ? e.file.path : null;
         const ref = chemin ? this.greffon.refDeChemin(chemin) : null;
-        if (ref) dedans.add(ref);
+        if (!ref) continue;
+        dedans.add(ref);
+        this._parRef.set(ref, e);
       }
       if (!dedans.size) return [];
       const toutes = this.greffon.tachesPourGantt();

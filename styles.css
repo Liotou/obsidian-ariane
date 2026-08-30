@@ -1031,3 +1031,15 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   position: absolute; left: 0; right: 0; height: 2px; pointer-events: none;
   background: var(--interactive-accent); z-index: 7;
 }
+
+.zfa-gantt-colonne {
+  flex: 0 0 92px; width: 92px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 12px; color: var(--text-muted);
+  border-left: 1px solid var(--background-modifier-border);
+  padding-left: 8px; box-sizing: border-box;
+}
+.zfa-gantt-gauche-entete .zfa-gantt-colonne {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; border-left: none;
+}
+.zfa-gantt-gauche-entete { gap: 0; }
