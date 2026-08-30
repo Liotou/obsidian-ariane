@@ -3412,6 +3412,13 @@ class Ariane extends obsidian.Plugin {
           },
         ],
       });
+      const VueArtic = fabriquerVueArticulationBase(this);
+      this.registerBasesView(TYPE_VUE_BASE_ARTIC, {
+        name: tr('Articulation'),
+        icon: 'git-branch',
+        factory: (controleur, conteneur) => new VueArtic(controleur, conteneur),
+        options: () => [],
+      });
     }
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
@@ -9980,6 +9987,15 @@ class Ariane extends obsidian.Plugin {
     return { ok: true };
   }
 
+  // Courbe de Bézier entre deux points : elle se suit mieux à l'œil que le coude
+  // quand plusieurs liens se croisent. Partagée par la frise et l'articulation.
+  static _cheminFleche(x1, y1, x2, y2) {
+    const ecart = Math.max(34, Math.abs(x2 - x1) / 2);
+    return 'M ' + x1 + ' ' + y1
+      + ' C ' + (x1 + ecart) + ' ' + y1 + ', ' + (x2 - ecart) + ' ' + y2
+      + ', ' + x2 + ' ' + y2;
+  }
+
   static get COULEURS_GANTT() {
     return {
       'à faire': 'var(--text-faint)',
@@ -11703,6 +11719,7 @@ class ModaleNouvelleTache extends obsidian.Modal {
 const TYPE_VUE_REFS = 'zfa-references';
 const TYPE_VUE_INCOHERENCES = 'zfa-taches-incoherences';
 const TYPE_VUE_BASE_FRISE = 'ariane-frise';
+const TYPE_VUE_BASE_ARTIC = 'ariane-articulation';
 
 // Valeurs par défaut des réglages d'une frise de base. Ils ne passent plus par
 // les réglages d'Ariane : chaque vue d'une base porte les siens.
@@ -13366,15 +13383,7 @@ class MoteurFrise {
     document.addEventListener('pointerup', lacher);
   }
 
-  // Une courbe de Bézier plutôt qu'un coude : elle se suit mieux à l'oeil quand
-  // plusieurs flèches se croisent, et l'écartement des poignées de contrôle
-  // rend lisible le cas où la cible est à gauche, la courbe bombant d'elle-même.
-  _cheminFleche(x1, y1, x2, y2) {
-    const ecart = Math.max(34, Math.abs(x2 - x1) / 2);
-    return 'M ' + x1 + ' ' + y1
-      + ' C ' + (x1 + ecart) + ' ' + y1 + ', ' + (x2 - ecart) + ' ' + y2
-      + ', ' + x2 + ' ' + y2;
-  }
+  _cheminFleche(x1, y1, x2, y2) { return Ariane._cheminFleche(x1, y1, x2, y2); }
 
   // Fait suivre en direct, pendant le glissé d'une barre, les flèches qui la
   // touchent : seul le bout accroché à la tâche déplacée bouge, de dx pixels.
@@ -13731,6 +13740,412 @@ function fabriquerVueFriseBase(greffon) {
         while (p && parRef.has(p) && !vus.has(p)) {
           gardes.add(p);
           vus.add(p);
+          p = Ariane.refDeLien(parRef.get(p).parent || '');
+        }
+      }
+      return toutes.filter((t) => gardes.has(t.ref));
+    }
+  };
+}
+
+/* =========================================================================
+ * Vue « Articulation » — le graphe des tâches
+ * ========================================================================= */
+
+const ARTIC_W = 210;
+const ARTIC_H = 58;
+
+class MoteurArticulation {
+  constructor(greffon, racine, ctx) {
+    this.greffon = greffon;
+    this.app = greffon.app;
+    this.racine = racine;
+    this.ctx = ctx;
+    this._vue = { x: 40, y: 40, k: 1 };
+    this._selArete = null;
+    racine.addClass('zfa-artic');
+    racine.tabIndex = -1;
+    racine.addEventListener('keydown', (e) => this.touche(e));
+  }
+
+  detruire() { this.racine.empty(); }
+
+  dessiner() {
+    try { this.dessinerVraiment(); } catch (e) {
+      console.error('[Ariane] articulation :', e);
+      this.racine.empty();
+      this.racine.createDiv({ cls: 'zfa-refs-vide',
+        text: tr("L'articulation n'a pas pu se dessiner : ") + (e && e.message ? e.message : e) });
+    }
+  }
+
+  dessinerVraiment() {
+    const c = this.racine;
+    const svgAncien = c.querySelector('.zfa-artic-svg');
+    c.empty();
+    const taches = (this.ctx.taches && this.ctx.taches()) || [];
+
+    const barre = c.createDiv({ cls: 'zfa-artic-barre' });
+    this.boutonBarre(barre, 'plus', tr('Tâche'), () => this.ajoutRapide());
+    this.boutonBarre(barre, 'layout-grid', tr('Re-disposer'), () => this.redisposer());
+    this.boutonBarre(barre, 'maximize-2', tr('Ajuster'), () => this.ajuster());
+
+    if (!taches.length) {
+      c.createDiv({ cls: 'zfa-refs-vide', text: tr('Aucune tâche dans cette base.') });
+      return;
+    }
+
+    this._dates = {};
+    for (const t of taches) this._dates[t.ref] = { debut: t.debut || '', echeance: t.echeance || '' };
+    const { noeuds, aretes } = Ariane.grapheArticulation(taches);
+    this._aretes = aretes;
+    this._pos = Ariane.placerGraphe(noeuds, aretes, { dx: 300, dy: 130 });
+
+    const svg = svgEl('svg', { class: 'zfa-artic-svg' });
+    c.appendChild(svg);
+    this._svg = svg;
+    const g = svgEl('g', { class: 'zfa-artic-scene' });
+    svg.appendChild(g);
+    this._scene = g;
+
+    for (const a of aretes) this.dessinerArete(g, a);
+    for (const n of noeuds) this.dessinerNoeud(g, n);
+
+    svg.addEventListener('wheel', (e) => this.zoomer(e), { passive: false });
+    svg.addEventListener('pointerdown', (e) => {
+      if (e.target === svg || e.target.closest('.zfa-artic-scene') === g
+        && !e.target.closest('.zfa-artic-noeud') && !e.target.closest('.zfa-artic-arete-groupe')) {
+        this._deselectionnerArete();
+        this.panDepart(e);
+      }
+    });
+
+    // Cadrer la vue la première fois seulement.
+    if (!svgAncien) this.ajuster(); else this.appliquerVue();
+  }
+
+  boutonBarre(parent, icone, texte, action) {
+    const b = parent.createEl('button', { cls: 'zfa-artic-bouton', attr: { type: 'button' } });
+    obsidian.setIcon(b.createSpan({ cls: 'zfa-artic-bouton-ic' }), icone);
+    b.createSpan({ text: texte });
+    b.addEventListener('click', action);
+  }
+
+  appliquerVue() {
+    const v = this._vue;
+    this._scene.setAttribute('transform',
+      'translate(' + v.x + ',' + v.y + ') scale(' + v.k + ')');
+  }
+
+  _pt(ref) { return this._pos.get(ref) || { x: 0, y: 0 }; }
+
+  dessinerNoeud(g, n) {
+    const p = this._pt(n.ref);
+    const gn = svgEl('g', { class: 'zfa-artic-noeud', transform: 'translate(' + p.x + ',' + p.y + ')' });
+    gn.dataset.ref = n.ref;
+    const fo = svgEl('foreignObject', { width: ARTIC_W, height: ARTIC_H });
+    gn.appendChild(fo);
+    const carte = fo.createDiv({ cls: 'zfa-artic-carte' + (n.jalon ? ' est-jalon' : '') });
+    carte.dataset.statut = n.statut;
+    const ic = carte.createSpan({ cls: 'zfa-artic-fam' });
+    obsidian.setIcon(ic, { lecture: 'book-open', production: 'file-pen', action: 'zap' }[n.famille] || 'circle');
+    const corps = carte.createDiv({ cls: 'zfa-artic-corps' });
+    corps.createDiv({ cls: 'zfa-artic-titre', text: n.intitule });
+    const bas = corps.createDiv({ cls: 'zfa-artic-bas' });
+    bas.createSpan({ cls: 'zfa-artic-pastille', text: n.statut });
+    if (n.echeance) bas.createSpan({ cls: 'zfa-artic-ech', text: n.echeance });
+    if (n.avancement > 0) {
+      const j = corps.createDiv({ cls: 'zfa-artic-jauge' });
+      j.createDiv({ cls: 'zfa-artic-jauge-in' }).style.width = Math.min(100, n.avancement) + '%';
+    }
+
+    carte.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.target.closest('.zfa-artic-accroche')) return;
+      this.glisserNoeud(e, n.ref, gn);
+    });
+    carte.addEventListener('click', (e) => {
+      if (gn.dataset.aGlisse) { delete gn.dataset.aGlisse; return; }
+      this.greffon.ouvrir(n.ref, e.metaKey || e.ctrlKey);
+    });
+
+    for (const [type, cy, glyphe] of [['hier', ARTIC_H * 0.32, '↳'], ['bloque', ARTIC_H * 0.72, '⊘']]) {
+      const a = svgEl('circle', { cx: ARTIC_W, cy, r: 7, class: 'zfa-artic-accroche' });
+      a.dataset.type = type;
+      const t = svgEl('title', {});
+      t.textContent = type === 'hier' ? tr('Tirer vers une tâche pour en faire une sous-tâche')
+        : tr('Tirer vers une tâche que celle-ci bloque');
+      a.appendChild(t);
+      a.dataset.glyphe = glyphe;
+      a.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.tirerArete(e, n.ref, type); });
+      gn.appendChild(a);
+    }
+    g.appendChild(gn);
+  }
+
+  dessinerArete(g, a) {
+    const s = this._pt(a.de);
+    const t = this._pt(a.vers);
+    const x1 = s.x + ARTIC_W;
+    const y1 = s.y + ARTIC_H / 2;
+    const x2 = t.x;
+    const y2 = t.y + ARTIC_H / 2;
+    const d = Ariane._cheminFleche(x1, y1, x2, y2);
+    const gr = svgEl('g', { class: 'zfa-artic-arete-groupe' });
+    gr.dataset.de = a.de; gr.dataset.vers = a.vers; gr.dataset.type = a.type;
+    gr.appendChild(svgEl('path', { d, class: 'zfa-artic-arete-cible' }));
+    gr.appendChild(svgEl('path', { d, class: 'zfa-artic-arete zfa-artic-' + a.type }));
+    if (a.libelle) {
+      const lab = svgEl('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 4, class: 'zfa-artic-arete-lab' });
+      lab.textContent = a.libelle;
+      gr.appendChild(lab);
+    }
+    if (this._selArete && this._selArete.de === a.de && this._selArete.vers === a.vers
+      && this._selArete.type === a.type) gr.classList.add('est-active');
+    gr.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.selectionnerArete(a.de, a.vers, a.type, gr);
+    });
+    g.appendChild(gr);
+  }
+
+  selectionnerArete(de, vers, type, gr) {
+    this._deselectionnerArete();
+    this._selArete = { de, vers, type };
+    if (gr) gr.classList.add('est-active');
+    if (this.racine.focus) this.racine.focus({ preventScroll: true });
+  }
+
+  _deselectionnerArete() {
+    this._selArete = null;
+    if (this._svg) {
+      for (const el of this._svg.querySelectorAll('.zfa-artic-arete-groupe.est-active')) {
+        el.classList.remove('est-active');
+      }
+    }
+  }
+
+  async touche(e) {
+    const cible = e.target;
+    if (cible && (cible.matches('input, textarea, select') || cible.isContentEditable)) return;
+    if (e.key === 'Escape') { this._deselectionnerArete(); return; }
+    if (e.key !== 'Backspace' || !this._selArete) return;
+    e.preventDefault();
+    const { de, vers, type } = this._selArete;
+    this._selArete = null;
+    if (type === 'hier') await this.ctx.poserParent(vers, null);
+    else await this.greffon.retirerBlocage(de, vers);
+    this.dessiner();
+  }
+
+  // Coordonnées scène à partir d'un évènement pointeur.
+  _versScene(ev) {
+    const b = this._svg.getBoundingClientRect();
+    return {
+      x: (ev.clientX - b.left - this._vue.x) / this._vue.k,
+      y: (ev.clientY - b.top - this._vue.y) / this._vue.k,
+    };
+  }
+
+  panDepart(ev) {
+    if (ev.button !== 0) return;
+    const x0 = ev.clientX;
+    const y0 = ev.clientY;
+    const vx = this._vue.x;
+    const vy = this._vue.y;
+    const bouger = (e) => {
+      this._vue.x = vx + (e.clientX - x0);
+      this._vue.y = vy + (e.clientY - y0);
+      this.appliquerVue();
+    };
+    const lacher = () => {
+      document.removeEventListener('pointermove', bouger);
+      document.removeEventListener('pointerup', lacher);
+    };
+    document.addEventListener('pointermove', bouger);
+    document.addEventListener('pointerup', lacher);
+  }
+
+  zoomer(ev) {
+    ev.preventDefault();
+    const b = this._svg.getBoundingClientRect();
+    const cx = ev.clientX - b.left;
+    const cy = ev.clientY - b.top;
+    const facteur = ev.deltaY < 0 ? 1.1 : 1 / 1.1;
+    const k = Math.max(0.25, Math.min(2.5, this._vue.k * facteur));
+    // garder le point sous le curseur fixe
+    this._vue.x = cx - (cx - this._vue.x) * (k / this._vue.k);
+    this._vue.y = cy - (cy - this._vue.y) * (k / this._vue.k);
+    this._vue.k = k;
+    this.appliquerVue();
+  }
+
+  glisserNoeud(ev, ref, gn) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const dep = this._versScene(ev);
+    const p0 = { ...this._pt(ref) };
+    let bouge = false;
+    const bouger = (e) => {
+      const s = this._versScene(e);
+      if (Math.abs(s.x - dep.x) > 2 || Math.abs(s.y - dep.y) > 2) bouge = true;
+      const x = p0.x + (s.x - dep.x);
+      const y = p0.y + (s.y - dep.y);
+      this._pos.set(ref, { x, y });
+      gn.setAttribute('transform', 'translate(' + x + ',' + y + ')');
+      this.majAretesDe(ref);
+    };
+    const lacher = async () => {
+      document.removeEventListener('pointermove', bouger);
+      document.removeEventListener('pointerup', lacher);
+      if (!bouge) return;
+      gn.dataset.aGlisse = '1';
+      const p = this._pt(ref);
+      await this.ctx.poserPosition(ref, Math.round(p.x), Math.round(p.y));
+    };
+    document.addEventListener('pointermove', bouger);
+    document.addEventListener('pointerup', lacher);
+  }
+
+  // Redessine les chemins des arêtes touchant un nœud déplacé.
+  majAretesDe(ref) {
+    for (const gr of this._svg.querySelectorAll('.zfa-artic-arete-groupe')) {
+      if (gr.dataset.de !== ref && gr.dataset.vers !== ref) continue;
+      const s = this._pt(gr.dataset.de);
+      const t = this._pt(gr.dataset.vers);
+      const d = Ariane._cheminFleche(s.x + ARTIC_W, s.y + ARTIC_H / 2, t.x, t.y + ARTIC_H / 2);
+      for (const p of gr.querySelectorAll('path')) p.setAttribute('d', d);
+    }
+  }
+
+  tirerArete(ev, ref, type) {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    const s0 = this._pt(ref);
+    const x1 = s0.x + ARTIC_W;
+    const y1 = s0.y + (type === 'hier' ? ARTIC_H * 0.32 : ARTIC_H * 0.72);
+    const trait = svgEl('path', { class: 'zfa-artic-lien-en-cours', d: '' });
+    this._scene.appendChild(trait);
+    let cible = null;
+    const bouger = (e) => {
+      const s = this._versScene(e);
+      trait.setAttribute('d', Ariane._cheminFleche(x1, y1, s.x, s.y));
+      const sous = document.elementFromPoint(e.clientX, e.clientY);
+      const gn = sous && sous.closest ? sous.closest('.zfa-artic-noeud') : null;
+      const r = gn && gn.dataset ? gn.dataset.ref : null;
+      const anc = this._svg.querySelector('.zfa-artic-noeud.est-cible');
+      if (anc && anc !== gn) anc.classList.remove('est-cible');
+      cible = r && r !== ref ? r : null;
+      if (cible && gn) gn.classList.add('est-cible');
+    };
+    const lacher = async () => {
+      document.removeEventListener('pointermove', bouger);
+      document.removeEventListener('pointerup', lacher);
+      trait.remove();
+      const m = this._svg.querySelector('.zfa-artic-noeud.est-cible');
+      if (m) m.classList.remove('est-cible');
+      if (!cible) return;
+      const ajout = { de: ref, vers: cible, type };
+      const v = Ariane.lienValide(this._aretes, this._dates, ajout);
+      if (!v.ok) {
+        new obsidian.Notice({
+          cycle: tr('Ce lien fermerait un cycle.'),
+          dates: tr("L'amont s'achève après le début de l'aval."),
+          'dates-hier': tr('La tâche mère s\'achèverait avant sa sous-tâche.'),
+          soi: tr('Une tâche ne se relie pas à elle-même.'),
+        }[v.raison] || tr('Lien refusé.'));
+        return;
+      }
+      if (type === 'hier') await this.ctx.poserParent(cible, ref);
+      else await this.greffon.creerBlocage(ref, cible);
+      this.dessiner();
+    };
+    document.addEventListener('pointermove', bouger);
+    document.addEventListener('pointerup', lacher);
+  }
+
+  ajuster() {
+    if (!this._pos || !this._pos.size) return;
+    let minx = Infinity; let miny = Infinity; let maxx = -Infinity; let maxy = -Infinity;
+    for (const p of this._pos.values()) {
+      minx = Math.min(minx, p.x); miny = Math.min(miny, p.y);
+      maxx = Math.max(maxx, p.x + ARTIC_W); maxy = Math.max(maxy, p.y + ARTIC_H);
+    }
+    const b = this._svg.getBoundingClientRect();
+    const marge = 40;
+    const kx = (b.width - marge * 2) / Math.max(1, maxx - minx);
+    const ky = (b.height - marge * 2) / Math.max(1, maxy - miny);
+    const k = Math.max(0.25, Math.min(1.2, Math.min(kx, ky)));
+    this._vue = { k, x: marge - minx * k, y: marge - miny * k };
+    this.appliquerVue();
+  }
+
+  async redisposer() {
+    for (const ref of this._pos.keys()) await this.ctx.poserPosition(ref, null, null);
+    new obsidian.Notice(tr('Disposition recalculée.'));
+    this.dessiner();
+  }
+
+  async ajoutRapide() {
+    const centre = this._versScene({
+      clientX: this._svg.getBoundingClientRect().left + this._svg.clientWidth / 2,
+      clientY: this._svg.getBoundingClientRect().top + this._svg.clientHeight / 2,
+    });
+    const chemin = await this.greffon.creerTache({});
+    const ref = this.greffon.refDeChemin(chemin);
+    if (ref) await this.ctx.poserPosition(ref, Math.round(centre.x - ARTIC_W / 2), Math.round(centre.y));
+    const f = this.greffon.app.vault.getAbstractFileByPath(chemin);
+    if (f) await this.greffon.app.workspace.getLeaf(true).openFile(f);
+    this.dessiner();
+  }
+}
+
+function fabriquerVueArticulationBase(greffon) {
+  return class VueArticulationBase extends obsidian.BasesView {
+    constructor(controleur, conteneur) {
+      super(controleur);
+      this.type = TYPE_VUE_BASE_ARTIC;
+      this.greffon = greffon;
+      this.conteneur = conteneur;
+    }
+
+    onload() {
+      this.moteur = new MoteurArticulation(this.greffon, this.conteneur, {
+        taches: () => this.tachesDuGraphe(),
+        poserPosition: async (ref, x, y) => {
+          const f = this.greffon.app.vault.getMarkdownFiles().find((z) => z.basename === ref);
+          if (!f) return;
+          await this.greffon.app.fileManager.processFrontMatter(f, (fm) => {
+            if (x == null) { delete fm['canvas-x']; delete fm['canvas-y']; }
+            else { fm['canvas-x'] = x; fm['canvas-y'] = y; }
+          });
+        },
+        poserParent: async (ref, parentRef) => {
+          await this.greffon.majTache(ref, { parent: parentRef ? '[[' + parentRef + ']]' : '' });
+        },
+      });
+    }
+
+    onunload() { if (this.moteur) this.moteur.detruire(); }
+    onDataUpdated() { if (this.moteur) this.moteur.dessiner(); }
+    onResize() { if (this.moteur) this.moteur.dessiner(); }
+
+    // Le jeu filtré par la base, plus la remontée des ancêtres absents pour ne
+    // pas casser une arête de hiérarchie. Mêmes règles que la frise.
+    tachesDuGraphe() {
+      const dedans = new Set();
+      for (const e of (this.data && this.data.data) || []) {
+        const ref = e && e.file ? this.greffon.refDeChemin(e.file.path) : null;
+        if (ref) dedans.add(ref);
+      }
+      if (!dedans.size) return [];
+      const toutes = this.greffon.tachesPourGantt();
+      const parRef = new Map(toutes.map((t) => [t.ref, t]));
+      const gardes = new Set(dedans);
+      for (const ref of dedans) {
+        let p = Ariane.refDeLien((parRef.get(ref) || {}).parent || '');
+        const vus = new Set([ref]);
+        while (p && parRef.has(p) && !vus.has(p)) {
+          gardes.add(p); vus.add(p);
           p = Ariane.refDeLien(parRef.get(p).parent || '');
         }
       }

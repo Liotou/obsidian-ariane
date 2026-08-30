@@ -1195,3 +1195,108 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   padding: 0 var(--bases-table-cell-edge-padding, 4px);
 }
 .zfa-gantt-cellule-arbre { gap: 0; }
+
+/* =====================================================================
+   Vue « Articulation » — le graphe des tâches
+   ===================================================================== */
+
+.zfa-artic { display: flex; flex-direction: column; height: 100%; overflow: hidden; position: relative; }
+
+.zfa-artic-barre {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px; flex: 0 0 auto;
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.zfa-artic-bouton {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--font-ui-smaller); padding: 4px 9px; cursor: pointer;
+  color: var(--text-muted); background: transparent;
+  border: none; box-shadow: none; border-radius: var(--radius-s);
+}
+.zfa-artic-bouton:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.zfa-artic-bouton-ic { display: inline-flex; }
+.zfa-artic-bouton-ic svg { width: 14px; height: 14px; }
+
+.zfa-artic-svg {
+  flex: 1; width: 100%; display: block;
+  cursor: grab; touch-action: none;
+  background:
+    radial-gradient(var(--background-modifier-border) 0.5px, transparent 0.5px) 0 0 / 26px 26px;
+  background-color: var(--background-primary);
+}
+.zfa-artic-svg:active { cursor: grabbing; }
+
+.zfa-artic-noeud foreignObject { overflow: visible; }
+.zfa-artic-carte {
+  box-sizing: border-box; width: 100%; height: 100%;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 9px; cursor: grab;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--text-faint);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-s);
+  font-size: var(--font-ui-smaller);
+}
+.zfa-artic-carte:active { cursor: grabbing; }
+.zfa-artic-carte[data-statut="en cours"] { border-left-color: var(--color-yellow); }
+.zfa-artic-carte[data-statut="en attente"] { border-left-color: var(--color-orange); }
+.zfa-artic-carte[data-statut="terminée"] { border-left-color: var(--color-green); }
+.zfa-artic-carte[data-statut="abandonnée"] { opacity: 0.55; }
+.zfa-artic-carte.est-jalon { border-style: dashed; border-left-color: var(--interactive-accent); }
+
+.zfa-artic-fam { flex: 0 0 auto; display: inline-flex; color: var(--text-muted); }
+.zfa-artic-fam svg { width: 15px; height: 15px; }
+.zfa-artic-corps { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.zfa-artic-titre {
+  font-weight: 600; color: var(--text-normal);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.zfa-artic-bas {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--text-muted); font-size: 0.85em;
+}
+.zfa-artic-pastille {
+  padding: 0 6px; border-radius: 9px;
+  background: var(--background-modifier-hover); white-space: nowrap;
+}
+.zfa-artic-ech { font-variant-numeric: tabular-nums; }
+.zfa-artic-jauge {
+  height: 3px; border-radius: 2px; overflow: hidden;
+  background: var(--background-modifier-border);
+}
+.zfa-artic-jauge-in { height: 100%; background: var(--interactive-accent); }
+
+.zfa-artic-accroche {
+  fill: var(--interactive-accent); stroke: var(--background-primary); stroke-width: 1.5;
+  cursor: crosshair; opacity: 0; transition: opacity 0.12s;
+}
+.zfa-artic-noeud:hover .zfa-artic-accroche { opacity: 1; }
+.zfa-artic-noeud.est-cible .zfa-artic-carte {
+  outline: 2px solid var(--interactive-accent); outline-offset: 1px;
+}
+
+.zfa-artic-arete { fill: none; pointer-events: none; }
+.zfa-artic-arete.zfa-artic-hier {
+  stroke: var(--background-modifier-border); stroke-width: 1.5;
+}
+.zfa-artic-arete.zfa-artic-bloque {
+  stroke: var(--interactive-accent); stroke-width: 1.5;
+  stroke-dasharray: 4 3; opacity: 0.6;
+}
+.zfa-artic-arete-cible {
+  fill: none; stroke: transparent; stroke-width: 12;
+  pointer-events: stroke; cursor: pointer;
+}
+.zfa-artic-arete-groupe.est-active .zfa-artic-arete {
+  stroke: var(--interactive-accent); stroke-width: 2.5;
+  stroke-dasharray: none; opacity: 1;
+}
+.zfa-artic-arete-lab {
+  font-size: 10px; fill: var(--text-muted); text-anchor: middle; pointer-events: none;
+}
+.zfa-artic-lien-en-cours {
+  fill: none; stroke: var(--interactive-accent); stroke-width: 2;
+  stroke-dasharray: 5 3; pointer-events: none;
+}
