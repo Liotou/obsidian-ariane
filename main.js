@@ -16029,6 +16029,7 @@ class MoteurFrise {
       table.style.top = y + 'px';
       if (piste) piste.style.transform = 'translateY(' + y + 'px)';
       this.recalerEnteteHaut(droite.scrollLeft);
+      this.recalerEtiquettes(droite.scrollLeft);
     });
 
     droite.scrollLeft = jourAncre
@@ -16041,6 +16042,7 @@ class MoteurFrise {
       if (piste) piste.style.transform = 'translateY(' + (-memeY) + 'px)';
     }
     this.recalerEnteteHaut(droite.scrollLeft);
+    this.recalerEtiquettes(droite.scrollLeft);
   }
 
   // L'étendue part de la première date et va à la dernière, élargie jusqu'au
@@ -16912,6 +16914,16 @@ class MoteurFrise {
     }
   }
 
+  // Même idée pour les libellés portés par les barres : le titre (et, selon la
+  // hauteur de ligne, les dates et le statut) reste calé au bord gauche visible
+  // tant qu'une part de la barre est à l'écran — sans jamais déborder à droite.
+  recalerEtiquettes(sx) {
+    for (const it of this._etiquettesMobiles || []) {
+      const xmax = Math.max(it.x1, it.x2 - it.approxW - 8);
+      it.el.setAttribute('x', Math.min(xmax, Math.max(it.x1, sx + 9)));
+    }
+  }
+
   enteteJours(g, cfg) {
     const lettres = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
     for (let i = 0; i < cfg.jours; i++) {
@@ -17061,6 +17073,8 @@ class MoteurFrise {
 
   dessinerBarres(svg, cfg, lignes) {
     const g = svgEl('g', {});
+    // Libellés qui « collent » au bord gauche visible pendant le défilement.
+    this._etiquettesMobiles = [];
     lignes.forEach((l) => {
       if (l.kind === 'groupe') return;
       const yLigne = l.y;
@@ -17174,8 +17188,12 @@ class MoteurFrise {
           if (texte.length > max && i) return;
           const t = svgEl('text', { x: x + 9, y: depart + i * hauteurTexte,
             class: 'zfa-gantt-etiquette' + (i ? ' zfa-gantt-etiquette-menue' : '') });
-          t.textContent = texte.length > max ? texte.slice(0, max - 1) + '…' : texte;
+          const contenu = texte.length > max ? texte.slice(0, max - 1) + '…' : texte;
+          t.textContent = contenu;
           groupe.appendChild(t);
+          this._etiquettesMobiles.push({
+            el: t, x1: x + 9, x2: x + w, approxW: contenu.length * (i ? 6 : 6.6),
+          });
         });
       }
       const bulle = svgEl('title', {});
@@ -17483,9 +17501,15 @@ class MoteurFrise {
       const finSrc = src.echeance || src.debut;
       const debCib = cib.debut || cib.echeance;
       if (!finSrc || !debCib) continue;
-      const x1 = this.x(cfg, Ariane.decalerJour(finSrc, 1));
+      // Un jalon n'a pas de bord : le trait part / arrive sur la pointe du
+      // losange (centré au milieu du jour de l'échéance, demi-largeur 9).
+      const x1 = src.jalon
+        ? this.x(cfg, src.echeance) + cfg.ppj / 2 + 9
+        : this.x(cfg, Ariane.decalerJour(finSrc, 1));
       const y1 = src.y + src.h / 2;
-      const x2 = this.x(cfg, debCib);
+      const x2 = cib.jalon
+        ? this.x(cfg, cib.echeance) + cfg.ppj / 2 - 9
+        : this.x(cfg, debCib);
       const y2 = cib.y + cib.h / 2;
       const rouge = fautives.has(a.de + ' ' + a.vers);
       const d = this._cheminFleche(x1, y1, x2, y2);
