@@ -11275,19 +11275,6 @@ class Ariane extends obsidian.Plugin {
     return chemin;
   }
 
-  // Réécrit entièrement « Tâches.base » avec la config de clés courante
-  // (préfixe, clés personnalisées, affichage sans préfixe).
-  async regenererBaseTaches() {
-    const chemin = this.dossierT + '/Tâches.base';
-    await this.assurerDossier(this.dossierT);
-    const f = this.app.vault.getAbstractFileByPath(chemin);
-    this.marquerEcriture(chemin);
-    const contenu = this.gabaritBaseTaches();
-    if (f instanceof obsidian.TFile) await this.app.vault.modify(f, contenu);
-    else await this.app.vault.create(chemin, contenu);
-    return chemin;
-  }
-
   // Les notes que Monsieur peut désigner comme livrable. On écarte ce qui est
   // matière documentaire plutôt que production : fiches Zotero, annotations,
   // notes-filles, références en attente, bibliographies, et les tâches elles-mêmes.
@@ -12133,14 +12120,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         avis.hide();
         new obsidian.Notice(total + tr(' clé(s) résiduelle(s) supprimée(s).'));
       }));
-    new obsidian.Setting(c)
-      .setName(tr('Régénérer « Tâches.base »'))
-      .setDesc(tr("Réécrit le fichier « Tâches.base » (colonnes, filtres, tris) avec les clés courantes. Les noms de colonnes suivent l'option « Masquer le préfixe à l'affichage ». Écrase toute personnalisation manuelle de ce fichier."))
-      .addButton((b) => b.setButtonText(tr('Régénérer')).setWarning().onClick(async () => {
-        await this.plugin.regenererBaseTaches();
-        new obsidian.Notice(tr('« Tâches.base » régénéré.'));
-      }));
-
     this._section(c, tr('Note de tâche'));
     new obsidian.Setting(c)
       .setName(tr('Habillage de la note de tâche'))
