@@ -4112,14 +4112,14 @@ class Ariane extends obsidian.Plugin {
             'source', 'livrable', 'fichier', 'liste', 'rappel-id'];
   }
 
-  // Regroupement classique des propriétés d'une tâche (habillage de la note).
+  // Regroupement des propriétés d'une tâche (habillage de la note). `famille`
+  // est traité à part (en tête, distinct). Les propriétés apportées par la
+  // famille (source/livrable/fichier + clés déclarées) vont dans un volet final.
   static get GROUPES_TACHE() {
     return [
       { id: 'etat', nom: 'État & progression', concepts: ['statut', 'terminee', 'priorite', 'avancement'] },
       { id: 'planning', nom: 'Planning', concepts: ['debut', 'echeance', 'jalon', 'termine-le'] },
-      { id: 'classement', nom: 'Classement', concepts: ['famille'] },
       { id: 'relations', nom: 'Relations', concepts: ['parent', 'bloque-par'] },
-      { id: 'sources', nom: 'Sources & livrables', concepts: ['source', 'livrable', 'fichier'] },
       { id: 'rappel', nom: 'Rappel', concepts: ['liste', 'rappel-id'] },
     ];
   }
@@ -11312,33 +11312,50 @@ class Ariane extends obsidian.Plugin {
         }
       }
       if (skin) {
-        const conteneurs = vue.contentEl.querySelectorAll('.metadata-properties');
-        for (const cont of conteneurs) {
-          try { this._grouperProprietes(cont); } catch (e) { /* rien */ }
+        const clesFamille = new Set();
+        for (const f of (this.settings.famillesTaches || [])) {
+          for (const p of (f && f.proprietes) || []) {
+            if (p && p.cle) clesFamille.add(String(p.cle).toLowerCase());
+          }
+        }
+        for (const cont of vue.contentEl.querySelectorAll('.metadata-properties')) {
+          try { this._grouperProprietes(cont, clesFamille); } catch (e) { /* rien */ }
         }
       }
     }
   }
 
-  // Range les lignes de propriétés en groupes (via `order`) et insère un
-  // en-tête par groupe présent.
-  _grouperProprietes(cont) {
+  // Range les lignes de propriétés en zones (via `order`) et insère un en-tête
+  // par zone présente. `famille` en tête (distinct). Les champs apportés par la
+  // famille en fin, dans un volet dédié.
+  _grouperProprietes(cont, clesFamille) {
     const groupes = Ariane.GROUPES_TACHE;
+    const NOM_FAMILLE = 'Propriétés de la famille';
     const rang = new Map();
     groupes.forEach((g, gi) => g.concepts.forEach((cpt, ci) => rang.set(cpt, (gi + 1) * 100 + ci)));
     const presents = new Set();
-    for (const row of cont.querySelectorAll('.metadata-property[data-zfa-concept]')) {
-      const cpt = row.dataset.zfaConcept;
-      row.style.order = String(rang.has(cpt) ? rang.get(cpt) : 899);
-      const g = groupes.find((x) => x.concepts.includes(cpt));
-      if (g) presents.add(g.id);
-    }
-    for (const row of cont.querySelectorAll('.metadata-property:not([data-zfa-concept])')) {
+    let aFamille = false;
+    for (const row of cont.querySelectorAll('.metadata-property')) {
+      const cpt = row.dataset.zfaConcept || '';
+      const cleBrute = String(row.dataset.propertyKey || '').toLowerCase();
+      row.classList.toggle('zfa-note-tache-cle', cpt === 'famille');
+      if (cpt === 'famille') { row.style.order = '0'; continue; }
+      if (rang.has(cpt)) {
+        row.style.order = String(rang.get(cpt));
+        const g = groupes.find((x) => x.concepts.includes(cpt));
+        if (g) presents.add(g.id);
+        continue;
+      }
+      const estFamille = ['source', 'livrable', 'fichier'].includes(cpt)
+        || (clesFamille && clesFamille.has(cleBrute));
+      if (estFamille) { row.style.order = '700'; row.dataset.zfaGroupe = 'famille'; aFamille = true; continue; }
       row.style.order = '950';
     }
+    const attendus = [...groupes.filter((g) => presents.has(g.id)).map((g) => g.id)];
+    if (aFamille) attendus.push('famille');
     const vus = new Set();
     for (const h of cont.querySelectorAll(':scope > .zfa-note-tache-groupe')) {
-      if (!presents.has(h.dataset.zfaGroupe)) h.remove();
+      if (!attendus.includes(h.dataset.zfaGroupe)) h.remove();
       else vus.add(h.dataset.zfaGroupe);
     }
     groupes.forEach((g, gi) => {
@@ -11347,6 +11364,11 @@ class Ariane extends obsidian.Plugin {
       h.dataset.zfaGroupe = g.id;
       h.style.order = String((gi + 1) * 100 - 1);
     });
+    if (aFamille && !vus.has('famille')) {
+      const h = cont.createDiv({ cls: 'zfa-note-tache-groupe', text: tr(NOM_FAMILLE) });
+      h.dataset.zfaGroupe = 'famille';
+      h.style.order = '699';
+    }
   }
 
   // Feuille de style personnelle (réglage). Injectée / mise à jour dans <head>.

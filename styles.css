@@ -1577,6 +1577,46 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-note-tache-skin .metadata-add-button { opacity: 0.4; font-size: var(--font-ui-smaller); margin-top: 6px; }
 
+/* La famille : en tête, en bandeau, valeur mise en avant. */
+.zfa-note-tache-skin .metadata-property.zfa-note-tache-cle {
+  grid-column: 1 / -1;
+  margin-bottom: 10px;
+  padding: 9px 12px;
+  background: var(--background-modifier-hover);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+}
+.zfa-note-tache-skin .zfa-note-tache-cle .metadata-property-key {
+  width: auto; text-transform: uppercase; font-size: var(--font-ui-smaller);
+}
+.zfa-note-tache-skin .zfa-note-tache-cle .metadata-property-icon svg { width: 19px; height: 19px; }
+.zfa-note-tache-skin .zfa-note-tache-cle .metadata-property-value {
+  font-weight: 700; font-size: var(--font-ui-medium);
+  text-transform: capitalize; color: var(--text-normal);
+}
+
+/* Distinctions par type de propriété, là où ça s'intègre. */
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="statut"] .metadata-property-value {
+  display: inline-flex; align-items: center;
+  padding: 1px 9px; border-radius: 999px;
+  background: var(--background-modifier-hover);
+  border: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-smaller); font-weight: 600;
+  text-transform: capitalize;
+}
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="echeance"] .metadata-property-value,
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="debut"] .metadata-property-value,
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="termine-le"] .metadata-property-value {
+  font-variant-numeric: tabular-nums;
+}
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="priorite"] .metadata-property-value {
+  font-weight: 600;
+}
+/* Volet « famille » : légère indentation pour le distinguer du noyau. */
+.zfa-note-tache-skin .metadata-property[data-zfa-groupe="famille"] {
+  background: var(--background-primary-alt, transparent);
+}
+
 /* En-tête de groupe de propriétés (injecté par habillerNotesTache). */
 .zfa-note-tache-skin .zfa-note-tache-groupe {
   grid-column: 1 / -1;
