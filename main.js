@@ -4822,6 +4822,32 @@ class Ariane extends obsidian.Plugin {
     return out;
   }
 
+  // Étend les dates PROPRES des ascendants (`parentRef` puis au-dessus) pour
+  // qu'ils contiennent la plage `bas` ({debut, echeance}). S'arrête au premier
+  // niveau qui la contient déjà. Chaque niveau étendu devient la nouvelle borne
+  // à contenir pour le niveau supérieur. Renvoie [{ref, debut, echeance}].
+  static datesAscendants(lignes, parentRef, bas) {
+    const parRef = new Map();
+    for (const l of lignes || []) if (l && l.ref && !parRef.has(l.ref)) parRef.set(l.ref, l);
+    const out = [];
+    let borne = { debut: (bas && bas.debut) || '', echeance: (bas && bas.echeance) || '' };
+    const vus = new Set();
+    let ref = parentRef;
+    while (ref && parRef.has(ref) && !vus.has(ref)) {
+      vus.add(ref);
+      const mere = parRef.get(ref);
+      const pd = (mere.propre && mere.propre.debut) || '';
+      const pe = (mere.propre && mere.propre.echeance) || '';
+      const nd = (pd && (!borne.debut || pd <= borne.debut)) ? pd : (borne.debut || pd);
+      const ne = (pe && (!borne.echeance || pe >= borne.echeance)) ? pe : (borne.echeance || pe);
+      if (nd === pd && ne === pe) break;
+      out.push({ ref: mere.ref, debut: nd, echeance: ne });
+      borne = { debut: nd, echeance: ne };
+      ref = mere.parent;
+    }
+    return out;
+  }
+
   // Réordonnancement de l'aval : la tâche et tout ce qu'elle bloque, de proche
   // en proche, du même nombre de jours, descendances comprises. Le parcours
   // retient les tâches déjà vues, sans quoi un cycle de blocage le ferait
@@ -14567,6 +14593,16 @@ class MoteurFrise {
       groupe.dataset.ref = l.ref;
       // Points d'accroche pour les liens de lignée (survol).
       l._anc = { xg: x, xd: x + w, cy: y + h / 2 };
+      // Géométrie des dates PROPRES (pour recalculer l'enveloppe d'une mère en
+      // direct pendant qu'on glisse une fille — voir _apercuAscendants).
+      if (l.propre && (l.propre.debut || l.propre.echeance)) {
+        const pd = l.propre.debut || l.propre.echeance;
+        const pf = l.propre.echeance || l.propre.debut;
+        l._ancPropre = {
+          xg: Math.max(0, this.x(cfg, pd)),
+          xd: Math.min(cfg.largeur, this.x(cfg, Ariane.decalerJour(pf, 1))),
+        };
+      }
       groupe.addEventListener('pointerenter', () => this._montrerLignage(l.ref));
       groupe.addEventListener('pointerleave', () => this._effacerLignage());
 
@@ -15100,6 +15136,38 @@ class MoteurFrise {
     }
   }
 
+  // Aperçu en direct : pendant qu'on glisse ou étire une barre, l'enveloppe de
+  // chaque mère au-dessus se redessine pour rester l'union de ses dates propres
+  // et de ses filles. `xgProv`/`xdProv` : géométrie provisoire de la barre tirée.
+  // Le lâcher redessine tout ; c'est purement visuel.
+  _apercuAscendants(refDrag, xgProv, xdProv) {
+    if (!this._svg || !this._lignesRendu) return;
+    const parRef = new Map();
+    for (const l of this._lignesRendu) if (!parRef.has(l.ref)) parRef.set(l.ref, l);
+    const geoProv = new Map([[refDrag, { xg: xgProv, xd: xdProv }]]);
+    const vus = new Set([refDrag]);
+    let ref = (parRef.get(refDrag) || {}).parent;
+    while (ref && parRef.has(ref) && !vus.has(ref)) {
+      vus.add(ref);
+      const mere = parRef.get(ref);
+      let xg = mere._ancPropre ? mere._ancPropre.xg : Infinity;
+      let xd = mere._ancPropre ? mere._ancPropre.xd : -Infinity;
+      for (const k of this._lignesRendu) {
+        if (k.parent !== ref) continue;
+        const g = geoProv.get(k.ref) || (k._anc ? { xg: k._anc.xg, xd: k._anc.xd } : null);
+        if (!g) continue;
+        if (g.xg < xg) xg = g.xg;
+        if (g.xd > xd) xd = g.xd;
+      }
+      if (!isFinite(xg) || !isFinite(xd) || xd <= xg) break;
+      geoProv.set(ref, { xg, xd });
+      const gEl = this._svg.querySelector('.zfa-gantt-groupe[data-ref="' + ref + '"]');
+      const fond = gEl && gEl.querySelector('.zfa-gantt-barre-tache');
+      if (fond) { fond.setAttribute('x', xg); fond.setAttribute('width', xd - xg); }
+      ref = mere.parent;
+    }
+  }
+
   /* ------------------------------- Les gestes ---------------------------- */
 
   // Un seul geste, trois modes. L'écriture n'a lieu qu'au lâcher : écrire
@@ -15126,14 +15194,18 @@ class MoteurFrise {
         groupe.setAttribute('transform', 'translate(' + d + ',0)');
         this._bougerFleches(ligne.ref, d);
         this._bougerLignage(ligne.ref, d);
+        this._apercuAscendants(ligne.ref, geo.x + d, geo.x + geo.w + d);
       } else if (mode === 'gauche') {
         const w = Math.max(ppj, geo.w - d);
         const nx = geo.x + geo.w - w;
         fond.setAttribute('x', nx);
         fond.setAttribute('width', w);
         if (rempli) rempli.setAttribute('x', nx);
+        this._apercuAscendants(ligne.ref, nx, nx + w);
       } else {
-        fond.setAttribute('width', Math.max(ppj, geo.w + d));
+        const w = Math.max(ppj, geo.w + d);
+        fond.setAttribute('width', w);
+        this._apercuAscendants(ligne.ref, geo.x, geo.x + w);
       }
     };
     const lacher = async (ev) => {
@@ -15155,6 +15227,17 @@ class MoteurFrise {
     document.addEventListener('pointerup', lacher);
   }
 
+  // Une fille sortie des bornes de sa mère fait s'étendre la mère (dates
+  // propres réécrites), puis la grand-mère, etc.
+  _etendreAscendants(ligne, changements) {
+    const bougee = changements.find((c) => c.ref === ligne.ref) || changements[0];
+    if (!bougee) return;
+    for (const ch of Ariane.datesAscendants(this._lignes, ligne.parent,
+      { debut: bougee.debut || '', echeance: bougee.echeance || '' })) {
+      changements.push(ch);
+    }
+  }
+
   async appliquerGeste(ligne, mode, n) {
     const J = Ariane;
     let changements;
@@ -15171,6 +15254,7 @@ class MoteurFrise {
       if (fin && debut && fin < debut) fin = debut;
       changements = [{ ref: ligne.ref, debut, echeance: fin }];
     }
+    this._etendreAscendants(ligne, changements);
     const ecrites = await this.greffon.ecrireDatesTaches(changements);
     if (!ecrites) { this.dessiner(); return; }
     if (!this._enAttente) this._enAttente = new Map();

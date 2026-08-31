@@ -101,6 +101,39 @@ test('une liste vide rend une liste vide', () => {
   assert.deepEqual(Ariane.disposerGantt(null), []);
 });
 
+test('datesAscendants : la mère (puis au-dessus) s étend pour contenir la fille', () => {
+  const L = [
+    { ref: 'GP', parent: '', propre: { debut: '2026-09-10', echeance: '2026-09-20' } },
+    { ref: 'M', parent: 'GP', propre: { debut: '2026-09-11', echeance: '2026-09-15' } },
+    { ref: 'F', parent: 'M', propre: { debut: '2026-09-12', echeance: '2026-09-14' } },
+  ];
+  // la fille part au 2026-09-25 : M doit s étendre à ...09-25, puis GP aussi
+  const r = Ariane.datesAscendants(L, 'M', { debut: '2026-09-22', echeance: '2026-09-25' });
+  assert.deepEqual(r, [
+    { ref: 'M', debut: '2026-09-11', echeance: '2026-09-25' },
+    { ref: 'GP', debut: '2026-09-10', echeance: '2026-09-25' },
+  ]);
+});
+
+test('datesAscendants : rien si la mère contient déjà la fille', () => {
+  const L = [
+    { ref: 'M', parent: '', propre: { debut: '2026-09-01', echeance: '2026-09-30' } },
+    { ref: 'F', parent: 'M', propre: { debut: '2026-09-10', echeance: '2026-09-12' } },
+  ];
+  assert.deepEqual(
+    Ariane.datesAscendants(L, 'M', { debut: '2026-09-14', echeance: '2026-09-16' }), []);
+});
+
+test('datesAscendants : une mère sans dates propres prend celles de la fille', () => {
+  const L = [
+    { ref: 'M', parent: '', propre: { debut: '', echeance: '' } },
+    { ref: 'F', parent: 'M', propre: { debut: '2026-09-10', echeance: '2026-09-12' } },
+  ];
+  assert.deepEqual(
+    Ariane.datesAscendants(L, 'M', { debut: '2026-09-10', echeance: '2026-09-12' }),
+    [{ ref: 'M', debut: '2026-09-10', echeance: '2026-09-12' }]);
+});
+
 test('chaque ligne porte le parent (réf. résolue), en mode arbre comme à plat', () => {
   const t2 = { ref: 'T26-002', intitule: 'T26-002', parent: '[[T26-001|Mère]]',
     debut: '', echeance: '', statut: 'à faire', avancement: 0, jalon: false };
