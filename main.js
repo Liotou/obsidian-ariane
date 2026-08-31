@@ -15152,6 +15152,8 @@ class MoteurArticulation {
     this.boutonBarre(barre, 'maximize-2', tr('Ajuster'), () => this.ajuster());
     this.boutonBarre(barre, 'zoom-out', tr('Zoom arrière'), () => this._zoomVers(1 / 1.2));
     this.boutonBarre(barre, 'zoom-in', tr('Zoom avant'), () => this._zoomVers(1.2));
+    this.boutonBarre(barre, 'minus', tr('Retirer un niveau de sous-tâches'), () => this._replierNiveau());
+    this.boutonBarre(barre, 'plus', tr('Ajouter un niveau de sous-tâches'), () => this._deplierNiveau());
     this.boutonBarre(barre, 'list-plus', tr('Ajouter au plan les tâches du filtre'),
       () => this._ajouterDuFiltre());
     this.boutonBarre(barre, 'eraser', tr('Nettoyer le canvas'), () => this._nettoyerPlan());
@@ -15267,39 +15269,27 @@ class MoteurArticulation {
       if (!surFond(e)) return;
       // Prendre le focus clavier pour que la barre d'espace (pan) réponde.
       if (this.racine.focus) this.racine.focus({ preventScroll: true });
-      // Clic milieu, ou Espace + clic gauche : pan. Sinon clic gauche : lasso.
+      // Clic milieu, Espace + gauche, ou bouton droit : pan.
       if (e.button === 1 || (e.button === 0 && this._espace)) { this.panDepart(e); return; }
+      if (e.button === 2) { this._panDroit(e); return; }
       if (e.button !== 0) return;
       this._deselectionnerArete();
       if (!e.shiftKey && !e.metaKey && !e.ctrlKey) this._toutDeselectionner();
       this.rubberBand(e);
     });
-    svg.addEventListener('contextmenu', (e) => {
+    // Le menu du fond s'ouvre au relâché (cf. _panDroit), pas ici : on empêche
+    // seulement le menu natif.
+    svg.addEventListener('contextmenu', (e) => { if (surFond(e)) e.preventDefault(); });
+    // Double-clic sur une zone vide : créer une tâche (après choix de la famille).
+    svg.addEventListener('dblclick', (e) => {
       if (!surFond(e)) return;
       e.preventDefault();
       const p = this._versScene(e);
-      const m = new obsidian.Menu();
-      let n = 0;
-      if (this._selNoeuds.size) {
-        n++;
-        m.addItem((i) => i.setTitle(this._selNoeuds.size > 1
-          ? tr('Copier les ') + this._selNoeuds.size + tr(' tâches')
-          : tr('Copier la tâche')).setIcon('copy').onClick(() => this._copier()));
-      }
-      const pp = this.greffon._presseArtic;
-      if (pp && pp.taches && pp.taches.length) {
-        n++;
-        m.addItem((i) => i.setTitle(pp.taches.length > 1
-          ? tr('Coller ') + pp.taches.length + tr(' tâches')
-          : tr('Coller la tâche')).setIcon('clipboard-paste').onClick(() => this._coller(p)));
-      }
-      if (this._plan && this._plan.cartes.length) {
-        n++;
-        m.addSeparator();
-        m.addItem((i) => i.setTitle(tr('Nettoyer le canvas')).setIcon('eraser')
-          .onClick(() => this._nettoyerPlan()));
-      }
-      if (n) m.showAtMouseEvent(e);
+      const familles = this.greffon.settings.famillesTaches || [];
+      if (!familles.length) { this._creerAuCanvas('', p); return; }
+      const items = familles.map((f) => ({ nom: f.nom || f.id, cle: f.id }));
+      new ChoixListeModal(this.app, tr('Type de tâche à créer'), items,
+        (it) => { if (it && it.cle != null) this._creerAuCanvas(it.cle, p); }).open();
     });
     // Dernière position du curseur sur le fond : cible du collage au clavier.
     svg.addEventListener('pointermove', (e) => { this._dernierePosFond = this._versScene(e); });
@@ -15835,6 +15825,58 @@ class MoteurArticulation {
     document.addEventListener('pointerup', lacher);
   }
 
+  // Bouton droit sur le fond : glisser = pan ; clic net (sans déplacement)
+  // = menu contextuel du fond, ouvert au relâché.
+  _panDroit(ev) {
+    ev.preventDefault();
+    const x0 = ev.clientX;
+    const y0 = ev.clientY;
+    const vx = this._vue.x;
+    const vy = this._vue.y;
+    let bouge = false;
+    this.racine.addClass('est-pan');
+    const bouger = (e) => {
+      if (Math.abs(e.clientX - x0) > 3 || Math.abs(e.clientY - y0) > 3) bouge = true;
+      this._vue.x = vx + (e.clientX - x0);
+      this._vue.y = vy + (e.clientY - y0);
+      this.appliquerVue();
+    };
+    const lacher = (e) => {
+      document.removeEventListener('pointermove', bouger);
+      document.removeEventListener('pointerup', lacher);
+      this.racine.removeClass('est-pan');
+      if (!bouge) this._menuFond(e);
+    };
+    document.addEventListener('pointermove', bouger);
+    document.addEventListener('pointerup', lacher);
+  }
+
+  _menuFond(ev) {
+    const p = this._versScene(ev);
+    const m = new obsidian.Menu();
+    let n = 0;
+    if (this._selNoeuds.size) {
+      n++;
+      m.addItem((i) => i.setTitle(this._selNoeuds.size > 1
+        ? tr('Copier les ') + this._selNoeuds.size + tr(' tâches')
+        : tr('Copier la tâche')).setIcon('copy').onClick(() => this._copier()));
+    }
+    const pp = this.greffon._presseArtic;
+    if (pp && pp.taches && pp.taches.length) {
+      n++;
+      m.addItem((i) => i.setTitle(pp.taches.length > 1
+        ? tr('Coller ') + pp.taches.length + tr(' tâches')
+        : tr('Coller la tâche')).setIcon('clipboard-paste').onClick(() => this._coller(p)));
+    }
+    if (this._plan && this._plan.cartes.length) {
+      n++;
+      m.addSeparator();
+      m.addItem((i) => i.setTitle(tr('Nettoyer le canvas')).setIcon('eraser')
+        .onClick(() => this._nettoyerPlan()));
+    }
+    if (n) m.showAtMouseEvent(ev);
+  }
+
   zoomer(ev) {
     ev.preventDefault();
     const b = this._svg.getBoundingClientRect();
@@ -16070,10 +16112,17 @@ class MoteurArticulation {
     const i = this._plan.cartes.findIndex((c) => c.ref === ref);
     if (i >= 0) {
       const cc = this._plan.cartes[i];
-      const b = this._svg.getBoundingClientRect();
-      this._vue.x = b.width / 2 - cc.x * this._vue.k;
-      this._vue.y = b.height / 2 - cc.y * this._vue.k;
-      this.appliquerVue();
+      if (!Number.isFinite(cc.x) || !Number.isFinite(cc.y)) {
+        // Carte tout juste ajoutée (pose auto) sans position : on la place ici.
+        cc.x = Math.round(x); cc.y = Math.round(y);
+        this.ctx.ecrirePlan(this._plan);
+        this.dessiner();
+      } else {
+        const b = this._svg.getBoundingClientRect();
+        this._vue.x = b.width / 2 - cc.x * this._vue.k;
+        this._vue.y = b.height / 2 - cc.y * this._vue.k;
+        this.appliquerVue();
+      }
       this._appliquerSelection(new Set([ref]));
       return;
     }
@@ -16085,6 +16134,14 @@ class MoteurArticulation {
     this.ctx.ecrirePlan(this._plan);
     this.dessiner();
     this._appliquerSelection(new Set([ref]));
+  }
+
+  // Crée une tâche de la famille choisie et la pose à `pos` (coords scène).
+  async _creerAuCanvas(familleId, pos) {
+    const chemin = await this.greffon.creerTache(familleId ? { famille: familleId } : {});
+    const ref = this.greffon.refDeChemin(chemin);
+    if (!ref) return;
+    this._poserRef(ref, pos.x, pos.y);
   }
 
   _retirerDuPlan(refs) {
@@ -16121,6 +16178,76 @@ class MoteurArticulation {
         new Set(this._plan.cartes.map((c) => c.ref)));
       this._plan.cartes[ic].replie = apres.sousTaches.length > 0 || apres.bloquantes.length > 0;
     }
+    this.ctx.ecrirePlan(this._plan);
+    this.dessiner();
+  }
+
+  // « + » : ajoute au plan un niveau de sous-tâches (les enfants directs hors
+  // plan de toutes les cartes du plan), en éventail sous chaque parent.
+  _deplierNiveau() {
+    if (!this._plan) return;
+    const grapheAll = Ariane.grapheArticulation(this.greffon.tachesPourGantt());
+    const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
+    const parParent = new Map();
+    const vus = new Set();
+    for (const c of this._plan.cartes) {
+      for (const a of grapheAll.aretes) {
+        if (a.type === 'hier' && a.de === c.ref && !refsPlan.has(a.vers) && !vus.has(a.vers)) {
+          vus.add(a.vers);
+          if (!parParent.has(c.ref)) parParent.set(c.ref, []);
+          parParent.get(c.ref).push(a.vers);
+        }
+      }
+    }
+    if (!vus.size) return;
+    const occupe = this._plan.cartes.map((c) => ({ x: c.x, y: c.y, w: ARTIC_W, h: ARTIC_H }));
+    for (const [parent, enfants] of parParent) {
+      const src = this._pt(parent);
+      const pos = Ariane.grillePlacement(enfants.length, {
+        origine: { x: Math.round(src.x - ((enfants.length - 1) * 120)), y: Math.round(src.y + 150) },
+        pas: { x: 240, y: 120 }, carte: { w: ARTIC_W, h: ARTIC_H }, occupe, parLigne: 4 });
+      enfants.forEach((r, k) => {
+        this._plan.cartes.push({ ref: r, x: pos[k].x, y: pos[k].y, replie: false });
+        occupe.push({ x: pos[k].x, y: pos[k].y, w: ARTIC_W, h: ARTIC_H });
+      });
+    }
+    const refsFin = new Set(this._plan.cartes.map((c) => c.ref));
+    for (const c of this._plan.cartes) {
+      const rel = Ariane.relativesHorsPlan(c.ref, grapheAll.aretes, refsFin);
+      c.replie = rel.sousTaches.length > 0 || rel.bloquantes.length > 0;
+    }
+    this.ctx.ecrirePlan(this._plan);
+    this.dessiner();
+  }
+
+  // « − » : retire du plan le niveau de sous-tâches le plus profond (feuilles du
+  // sous-arbre hiérarchique formé par les cartes du plan).
+  _replierNiveau() {
+    if (!this._plan || !this._plan.cartes.length) return;
+    const grapheAll = Ariane.grapheArticulation(this.greffon.tachesPourGantt());
+    const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
+    const parentDe = new Map();
+    const aEnfantSurPlan = new Set();
+    for (const a of grapheAll.aretes) {
+      if (a.type !== 'hier') continue;
+      if (refsPlan.has(a.de) && refsPlan.has(a.vers)) { parentDe.set(a.vers, a.de); aEnfantSurPlan.add(a.de); }
+    }
+    const feuilles = [...refsPlan].filter((r) => parentDe.has(r) && !aEnfantSurPlan.has(r));
+    if (!feuilles.length) return;
+    const prof = (r) => {
+      let d = 0; let x = r; const vus = new Set();
+      while (parentDe.has(x) && !vus.has(x)) { vus.add(x); x = parentDe.get(x); d++; }
+      return d;
+    };
+    const dMax = Math.max(...feuilles.map(prof));
+    const aRetirer = new Set(feuilles.filter((r) => prof(r) === dMax));
+    this._plan.cartes = this._plan.cartes.filter((c) => !aRetirer.has(c.ref));
+    const refsFin = new Set(this._plan.cartes.map((c) => c.ref));
+    for (const c of this._plan.cartes) {
+      const rel = Ariane.relativesHorsPlan(c.ref, grapheAll.aretes, refsFin);
+      c.replie = rel.sousTaches.length > 0 || rel.bloquantes.length > 0;
+    }
+    this._selNoeuds = new Set([...this._selNoeuds].filter((r) => !aRetirer.has(r)));
     this.ctx.ecrirePlan(this._plan);
     this.dessiner();
   }
