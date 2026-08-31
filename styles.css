@@ -1675,6 +1675,16 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-tache-ic svg { width: 14px; height: 14px; }
 
+.zfa-tache-note { margin: 4px 0 10px; }
+.zfa-tache-note-tete {
+  display: flex; align-items: center;
+  font-size: var(--font-ui-smaller); color: var(--text-muted); margin-bottom: 4px;
+}
+.zfa-tache-note-zone {
+  width: 100%; resize: vertical; min-height: 5.5em; line-height: 1.5;
+  font-size: var(--font-ui-small);
+}
+
 .zfa-tache-grille {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   column-gap: 18px;

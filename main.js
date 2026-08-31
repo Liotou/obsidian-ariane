@@ -11476,6 +11476,44 @@ class Ariane extends obsidian.Plugin {
     await this.app.vault.modify(f, lignes.join('\n'));
   }
 
+  // Corps (sans le titre) de la section « ## Note de travail » d'une tâche.
+  async lireNoteTache(ref) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    if (!f) return '';
+    const lignes = (await this.app.vault.read(f)).split('\n');
+    const i = lignes.findIndex((l) => /^##\s+Note de travail\s*$/.test(l));
+    if (i < 0) return '';
+    let j = i + 1;
+    while (j < lignes.length && !/^##\s+/.test(lignes[j])) j += 1;
+    return lignes.slice(i + 1, j).join('\n').trim();
+  }
+
+  // Remplace le corps de « ## Note de travail » (crée la section si absente).
+  async ecrireNoteTache(ref, texte) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    if (!f) return false;
+    const corps = String(texte == null ? '' : texte).replace(/\s+$/, '');
+    const lignes = (await this.app.vault.read(f)).split('\n');
+    const i = lignes.findIndex((l) => /^##\s+Note de travail\s*$/.test(l));
+    let sortie;
+    if (i < 0) {
+      let k = 0;
+      if (lignes[0] === '---') { const fin = lignes.indexOf('---', 1); k = fin >= 0 ? fin + 1 : 0; }
+      while (k < lignes.length && (lignes[k].trim() === '' || /^# /.test(lignes[k]))) k += 1;
+      sortie = lignes.slice(0, k).concat(['## Note de travail', '', corps, ''], lignes.slice(k));
+    } else {
+      let j = i + 1;
+      while (j < lignes.length && !/^##\s+/.test(lignes[j])) j += 1;
+      sortie = lignes.slice(0, i + 1).concat(['', corps, ''], lignes.slice(j));
+    }
+    const texteSortie = sortie.join('\n');
+    const avant = await this.app.vault.read(f);
+    if (texteSortie === avant) return false;
+    this.marquerEcriture(f.path);
+    await this.app.vault.modify(f, texteSortie);
+    return true;
+  }
+
   // Crée un arbre de specs (déjà normalisées). Renvoie la liste des réfs créées.
   // opts.vue = { fichier, nom } d'une vue articulation où poser les cartes.
   async creerArbreTaches(specs, opts) {
@@ -13882,10 +13920,11 @@ class ModaleTache extends obsidian.Modal {
       ? greffon.settings.famillesTaches : [];
     this.v = {
       intitule: '', statut: 'à faire', priorite: '', debut: '', echeance: '',
-      avancement: 0, jalon: false, parent: '',
+      avancement: 0, jalon: false, parent: '', note: '',
       famille: greffon.settings.familleTacheDefaut || 'action',
     };
     this.props = {};
+    this._noteInitiale = '';
   }
 
   async onOpen() {
@@ -13921,6 +13960,10 @@ class ModaleTache extends obsidian.Modal {
       this.greffon.settings.familleTacheDefaut);
     this._fm = fm;
     this._synchroniserProps();
+    try {
+      this._noteInitiale = await this.greffon.lireNoteTache(this.ref);
+      this.v.note = this._noteInitiale;
+    } catch (e) { /* pas grave */ }
   }
 
   // Aligne this.props sur les propriétés de la famille courante : on garde ce
@@ -13967,6 +14010,18 @@ class ModaleTache extends obsidian.Modal {
     this._settingGen(c, 'intitule', true)
       .addText((t) => t.setValue(this.v.intitule)
         .onChange((x) => { this.v.intitule = x; }));
+
+    // Note de travail : éditable directement, sans ouvrir la fiche.
+    const nb = c.createDiv({ cls: 'zfa-tache-note' });
+    const nl = nb.createEl('div', { cls: 'zfa-tache-note-tete' });
+    const ni = nl.createSpan({ cls: 'zfa-tache-ic' });
+    obsidian.setIcon(ni, 'text');
+    nl.createSpan({ text: tr('Note de travail') });
+    const na = nb.createEl('textarea', { cls: 'zfa-tache-note-zone' });
+    na.rows = 5;
+    na.placeholder = tr('Ce que vous voulez garder sous la main pour cette tâche (Markdown accepté).');
+    na.value = this.v.note || '';
+    na.oninput = () => { this.v.note = na.value; };
 
     // Le reste des champs génériques, sur deux colonnes.
     const g = c.createDiv({ cls: 'zfa-tache-grille' });
@@ -14144,6 +14199,9 @@ class ModaleTache extends obsidian.Modal {
       }
       for (const [k, val] of Object.entries(this.props)) champs[k] = val;
       await this.greffon.majTache(ref, champs);
+      if (String(this.v.note || '') !== String(this._noteInitiale || '')) {
+        try { await this.greffon.ecrireNoteTache(ref, this.v.note); } catch (e) { /* rien */ }
+      }
     }
     this.close();
     if (this.apres && ref) this.apres(ref);
