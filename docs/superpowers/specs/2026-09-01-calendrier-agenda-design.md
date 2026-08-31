@@ -38,59 +38,103 @@ rappels, entité `1`).
 
 ### 2.1 Nouveau concept : `Créneau`
 
-`creneau` entre dans `Ariane.CONCEPTS_TACHE` → clé de frontmatter préfixée
-`Tâche - Créneau`, type **texte**, renommable dans les réglages. Ajouté aussi à
-`PROPS_GENERIQUES` (`{ cle: 'creneau', defaut: 'Créneau', icone: 'calendar-clock' }`)
-et au groupe `planning` de `GROUPES_TACHE`, après `heure`.
+Une tâche se travaille en **plusieurs sessions** : `creneaux` est une **liste**.
 
-**Format écrit :**
+`creneaux` entre dans `Ariane.CONCEPTS_TACHE` → clé de frontmatter préfixée
+`Tâche - Créneaux`, type **liste**, renommable. Ajouté à `PROPS_GENERIQUES`
+(`{ cle: 'creneaux', defaut: 'Créneaux', icone: 'calendar-clock' }`) et au groupe
+`planning` de `GROUPES_TACHE`, après `heure`.
 
-- même jour : `2026-09-08 14:00-16:00`
-- passage de minuit : `2026-09-08 22:00 / 2026-09-09 01:30`
-
-**`Ariane.parseCreneau(str)` → `{ debut, fin }` (ISO `YYYY-MM-DDTHH:MM`) ou
-`null`.** Tolérant : accepte `-`, `–`, `—`, ` à `, ` / ` comme séparateur ;
-heures `H:MM` ou `HH:MM` ; si la fin est avant le début (même jour), on ajoute
-un jour à la fin.
-
-**`Ariane.formatCreneau(debut, fin)`** → chaîne canonique (pour réécrire depuis
-la vue après un glissé).
-
-### 2.2 Concept : `agenda-id`
-
-`agenda-id` entre dans `CONCEPTS_TACHE` (comme `rappel-id`). Contient le
-`calendarItemIdentifier` de l'EKEvent lié. Écrit par `pousserAgenda`.
-
-### 2.3 Clé interne : `agenda-sync`
-
-**Pas** un concept (comme `rappel-sync`, `cree`, `modifie`). Instantané des
-champs pertinents au dernier accord note ↔ événement :
-
-```
-agenda-sync: "<début>|<échéance>|<heure>|<créneau canonique>|<statut>"
+```yaml
+Tâche - Créneaux:
+  - 2026-09-08 14:00-16:00
+  - 2026-09-10 09:00-11:00
+  - 2026-09-08 22:00 / 2026-09-09 01:30   # passage de minuit explicite
 ```
 
-`greffon._instantAgenda(t)` le construit. Sert à `releverAgenda` pour trancher :
-si l'instantané ≠ l'état actuel de la note, **la note a bougé → elle fait foi**,
-on ne répercute pas le changement venu de l'événement.
+Chaque entrée est une plage texte, éditable à la main dans l'éditeur de
+propriétés d'Obsidian.
 
-### 2.4 Règle : quelle tâche → quel événement
+**Helpers purs :**
 
-`Ariane.evenementDeTache(t)` → `{ genre: 'horaire'|'jour'|null, debut, fin, allDay }`
-ou `null` :
+- `Ariane.parseCreneau(str)` → `{ debut, fin }` (ISO `YYYY-MM-DDTHH:MM`) ou
+  `null`. Tolérant : séparateurs `-`, `–`, `—`, ` à `, ` / ` ; heures `H:MM` ou
+  `HH:MM` ; fin ≤ début même jour → fin le lendemain.
+- `Ariane.formatCreneau(debut, fin)` → chaîne canonique (réécriture après un
+  geste). Compacte si même jour, `… / …` sinon.
+- `Ariane.creneauxDeTache(fmOuTache)` → `[{ debut, fin, brut }]` triés par
+  `debut`, entrées invalides écartées. `brut` = la chaîne d'origine (sert à
+  retrouver et réécrire **l'entrée exacte** dans la liste après un geste).
 
-| La tâche a… | Événement |
+### 2.2 Section `## Créneaux` dans la note + statistiques
+
+Ariane entretient, dans le corps de chaque note de tâche portant au moins un
+créneau, un bloc **régénéré** entre marqueurs `ZFA_CRENEAUX_DEBUT` /
+`ZFA_CRENEAUX_FIN` (même mécanique que le bloc d'accès `majBlocTache` :
+idempotent, pas d'écriture si rien ne change, inséré après le `# Titre` si
+absent). Objectif : l'information est **autoportée par la note**, lisible sans
+ouvrir les propriétés, et jamais perdue.
+
+`Ariane.blocCreneaux(creneaux, stats)` → markdown :
+
+```markdown
+## Créneaux
+
+| Session | Date | Heures | Durée |
+|---|---|---|---|
+| 1 | lun. 8 sept. | 14:00 – 16:00 | 2 h 00 |
+| 2 | mar. 8 sept. | 22:00 – 01:00 | 3 h 00 |
+| 3 | jeu. 10 sept. | 09:00 – 11:00 | 2 h 00 |
+
+**3 sessions · 7 h 00 planifiées · 2 h 00 à venir · dernière : jeu. 10 sept.**
+```
+
+`Ariane.statsCreneaux(creneaux, maintenantISO)` → `{ nb, totalMin, passeMin,
+futurMin, premier, dernier }`. « passé » = fin < maintenant, « à venir » =
+début ≥ maintenant. (La durée **réellement travaillée**, distincte de la durée
+planifiée, arrivera avec la synchro : un événement redimensionné dans Calendar
+renverra sa vraie durée — plan §4. Ici, planifié = travaillé.)
+
+`greffon.majBlocCreneaux(file)`, appelée depuis l'écoute `metadataCache.changed`
+des notes de tâche (antirebond, à côté de `majBlocTache`).
+
+### 2.3 Concept : `agenda-id` (liste parallèle)
+
+`agenda-id` entre dans `CONCEPTS_TACHE`. Comme il y a plusieurs créneaux, c'est
+une **liste** alignée sur `creneaux` (même longueur, même ordre après tri) :
+`agenda-id[i]` = `calendarItemIdentifier` de l'EKEvent du créneau `i`, ou vide.
+Écrit par `pousserAgenda` (plan §4). Type liste, non affiché dans l'éditeur de
+famille (usage interne).
+
+### 2.4 Clé interne : `agenda-sync`
+
+**Pas** un concept. Instantané du dernier accord note ↔ événements :
+
+```
+agenda-sync: "<début>|<échéance>|<heure>|<créneaux canoniques joints par ';'>|<statut>"
+```
+
+`greffon._instantAgenda(t)`. Sert à `releverAgenda` : instantané ≠ état actuel
+→ **la note a bougé, elle fait foi**.
+
+### 2.5 Règle : quelle tâche → quels événements
+
+`Ariane.evenementsDeTache(t)` → **tableau** d'événements
+`{ genre: 'horaire'|'jour', debut, fin, allDay, source: 'creneau'|'dates', idx }` :
+
+| La tâche a… | Événement(s) |
 |---|---|
-| `creneau` valide | **horaire** : `debut`/`fin` du créneau, `allDay=false` |
-| pas de `creneau`, `début` **et** `échéance` | **jour** : `allDay=true`, du `début` (00:00) à la **fin de l'échéance** (échéance + 1 jour, 00:00 — EventKit exclut la borne haute) |
-| pas de `creneau`, `échéance` seule, avec `heure` | **horaire** : `échéance` `heure` → +1 h |
-| pas de `creneau`, `échéance` seule, sans `heure` | **jour** : `allDay=true`, journée de l'échéance |
-| jalon (`jalon`), `échéance` | **jour** : journée de l'échéance |
-| aucune date | `null` — pas au calendrier |
+| ≥ 1 `creneau` valide | **un événement horaire par créneau** (`source:'creneau'`, `idx` = position dans la liste triée) |
+| aucun créneau, `début` **et** `échéance` | **un** événement jour, `allDay`, du `début` à **échéance + 1 jour** (borne haute exclue par EventKit) |
+| aucun créneau, `échéance` seule + `heure` | **un** événement horaire, `échéance` `heure` → +1 h |
+| aucun créneau, `échéance` seule sans `heure` | **un** événement jour sur l'échéance |
+| jalon + `échéance` | **un** événement jour sur l'échéance |
+| aucune date, aucun créneau | `[]` |
 
-`début`/`échéance` ne sont **jamais** modifiés par la présence d'un `creneau` :
-la frise continue d'afficher la fenêtre de planning, le calendrier montre le
-bloc concret.
+Les créneaux **priment** : quand il y en a, l'événement « fenêtre de planning »
+(`début→échéance`) n'est **pas** émis — la frise garde cette fenêtre, le
+calendrier montre les blocs concrets. `début`/`échéance` ne sont jamais modifiés
+par les créneaux.
 
 ---
 
@@ -143,12 +187,20 @@ enregistrée sous `TYPE_VUE_BASE_CALENDRIER` (`'ariane-calendrier'`), icône
 | Clic sur une pastille | ouvre la note |
 | Glisser une pastille « jour » sur un autre jour | décale `début` **et** `échéance` du même nombre de jours (`Ariane.decalerSousArbre` comme la frise) |
 | Glisser un bord d'une barre « jour » (mois) | réécrit `début` ou `échéance` |
-| Glisser un bloc « horaire » (semaine) | réécrit `creneau` (jour + heures translatés) |
-| Redimensionner un bloc « horaire » | réécrit la fin du `creneau` |
-| Glisser sur une plage vide (semaine) | propose de créer un `creneau` sur la tâche active, ou une nouvelle tâche |
+| Glisser un bloc « horaire » (semaine) | réécrit **l'entrée** de créneau visée (jour + heures translatés) |
+| Redimensionner un bloc « horaire » | réécrit la fin de **cette entrée** |
+| Supprimer un bloc (touche Suppr sur un bloc sélectionné) | retire l'entrée de la liste |
+| Glisser sur une plage vide (semaine) | ajoute une entrée de créneau à la tâche active |
 
-Écritures via un `greffon.ecrireCreneau(ref, debut, fin)` (efface `creneau` si
-`debut`/`fin` nuls) et le `ecrireDatesTaches` existant. Après écriture :
+Chaque bloc « horaire » porte `dataset.brut` = la chaîne d'origine de son entrée.
+Écritures via **`greffon.majCreneau(ref, { avant, debut, fin })`** :
+
+- `avant` = la chaîne de l'entrée à remplacer ; vide → **ajout** en fin de liste ;
+- `debut`/`fin` nuls → **suppression** de l'entrée `avant` ;
+- sinon → remplacement de `avant` par `Ariane.formatCreneau(debut, fin)`, liste
+  re-triée, `Tâche - Créneaux` réécrit, puis `majBlocCreneaux(file)`.
+
+Plus `ecrireDatesTaches` pour les gestes sur les barres « jour ». Après écriture :
 `_enAttente` (report d'index) comme la frise, puis `dessiner()`.
 
 ### 3.4 Glisser-déposer entre vues (frise → calendrier)
@@ -168,12 +220,12 @@ possible d'une vue à l'autre** (même fenêtre) :
     `[[…]]` ou un chemin `.md`, ou l'URI `obsidian://open`) résolu en `ref`
     via `greffon.refDeChemin` ;
   - `ref` inconnu comme tâche → ignoré ;
-  - **vue semaine** : `Ariane.creneauDepuisDrop({ x, y, jourColonne, heureAxe })`
+  - **vue semaine** : `Ariane.creneauDepuisDrop({ yRel, hauteurHeure, heureDebut, jourISO })`
     → `{ debut, fin }` (fin = début + 1 h, minutes calées sur 15) →
-    `greffon.ecrireCreneau(ref, debut, fin)` ;
+    `greffon.majCreneau(ref, { avant: '', debut, fin })` (**ajout** d'une entrée) ;
   - **vue mois** : `drop` sur une cellule-jour → `ecrireDatesTaches` pour caler
     `début` **et** `échéance` sur ce jour (reprogrammation, comme la frise) ;
-    pas de `creneau`.
+    pas de créneau créé.
 - Accepte aussi un **lien de note glissé depuis n'importe où** (explorateur,
   `[[wikilink]]`) : même résolution `text/plain` → `ref`.
 - `Ariane.creneauDepuisDrop(opts)` est un **helper pur testable** : position
@@ -202,12 +254,14 @@ synchro pour cette base.** Aucune vue → rien n'est poussé.
 
 1. `if (!Platform.isMacOS || !settings.agendaActif) return 0`.
 2. Carte `ref → calendrier`. Pour chaque tâche concernée :
-   `ev = Ariane.evenementDeTache(t)`. `ev == null` **et** pas d'`agenda-id` →
-   ignorer. `ev == null` **et** `agenda-id` présent → **supprimer** l'événement
-   (la tâche a perdu ses dates), effacer `agenda-id`/`agenda-sync`.
-3. Charge par tâche : `{ ref, id: agenda-id, titre: '[T26-001] - Intitulé'
-   (gabarit `rappelsFormatTitre` réutilisé), notes: extrait note de travail +
-   `obsidian://…`, calendrier, debut, fin, allDay, termine: statut === 'terminée' }`.
+   `evs = Ariane.evenementsDeTache(t)` (tableau). On aligne `evs` sur la liste
+   `agenda-id` (par `idx` pour les créneaux, index 0 pour un événement
+   « dates »). Un `agenda-id` sans événement correspondant → **suppression** de
+   cet EKEvent, entrée retirée de la liste `agenda-id`.
+3. Charge : **une entrée par événement** `{ ref, idx, id: agenda-id[idx], titre,
+   notes, calendrier, debut, fin, allDay, termine }`. Le titre d'un créneau
+   numéroté : `'[T26-001] - Intitulé (session 2)'` ; celui d'un événement
+   « dates » : sans suffixe.
 4. `Ariane.genererJXAEvenements(...)` **push** : pour chaque entrée, `remById`
    (via `calendarItemWithIdentifier` + `isKindOfClass($.EKEvent)`), sinon
    `$.EKEvent.eventWithEventStore(ST)` ; si le calendrier diffère, on déplace ;
@@ -233,13 +287,15 @@ suppression — l'historique reste visible.
 4. Traitement des retours :
    - `MANQUANT` → l'événement a été supprimé côté macOS : effacer `agenda-id` /
      `agenda-sync` de la note (la tâche reste, sans événement).
-   - Ligne `ref` connue : si `_instantAgenda(t)` == `agenda-sync` de la note
-     (la note n'a pas bougé) **et** l'événement a changé →
+   - Ligne `ref`+`idx` connue : si `_instantAgenda(t)` == `agenda-sync` de la
+     note (la note n'a pas bougé) **et** l'événement a changé →
      - `termine` passé à 1 → `majTache(ref, {statut:'terminée'})` ;
-     - dates changées → si `allDay` : réécrire `début`/`échéance` ; sinon
-       réécrire `creneau`. Puis rafraîchir `agenda-sync`.
-     Sinon (la note a bougé) → on **repoussera** au prochain `pousserAgenda`,
-     rien ici.
+     - dates changées → événement « dates » (`idx` absent) : réécrire
+       `début`/`échéance` ; événement de créneau : réécrire **l'entrée `idx`** de
+       `Tâche - Créneaux` (via `majCreneau`), donc la durée réellement passée
+       dans Calendar revient dans la note et alimente les stats. Puis rafraîchir
+       `agenda-sync` et `majBlocCreneaux`.
+     Sinon (la note a bougé) → on **repoussera** au prochain `pousserAgenda`.
    - `NOUVEAU` : titre `[T26-…]` d'une tâche connue → relier (`agenda-id`).
      Sinon `creerTache({ intitule, ... , famille: _familleParCalendrier(nom) })`
      avec `début`/`échéance` (allDay) ou `creneau` (horaire), puis `agenda-id` +
@@ -290,41 +346,59 @@ choix par famille. `_familleParCalendrier(nom)` : réciproque, pour la relève.
   dans leurs notes et pas d'`agenda-id` ; `releverAgenda` les ignore (test §4.3).
   Un événement poussé par Ariane n'a pas de lien de rappel → le pont ne le
   touche pas non plus. Les deux coexistent.
-- **Frise** : `creneau` n'entre pas dans `disposerGantt` — la frise ignore le
+- **Frise** : `creneaux` n'entre pas dans `disposerGantt` — la frise ignore le
   concept dans son rendu. Seul ajout : ses barres deviennent **source de
   glisser-déposer** (`text/x-ariane-tache`), sans gêner les gestes existants
   (voir §3.4).
+- **Bloc d'accès de la tâche** (`majBlocTache`) : inchangé. Le bloc `## Créneaux`
+  est un **second** bloc balisé, indépendant, entretenu par `majBlocCreneaux`.
 - **`heure`** : conservé ; sert au cas « échéance seule + heure ».
+- **Note de travail** : le bloc `## Créneaux` s'insère après le `# Titre` comme
+  le bloc d'accès ; il ne touche ni `## Note de travail` ni `## Journal`.
 
 ---
 
 ## 7 · Tranches de construction
 
-1. **Modèle** — `creneau` dans les constantes, `parseCreneau` / `formatCreneau`
-   / `evenementDeTache`, `corpsNouvelleTache`, tests purs. Aucune UI.
-2. **Vue mois (lecture)** — `MoteurCalendrier`, grille mois, rendu des tâches,
+1. **Modèle** — `creneaux` (liste) dans les constantes, `parseCreneau` /
+   `formatCreneau` / `creneauxDeTache` / `evenementsDeTache`, `corpsNouvelleTache`,
+   `tachesPourGantt.creneaux`, tests purs. Aucune UI.
+2. **Section `## Créneaux`** — `statsCreneaux`, `blocCreneaux`, marqueurs,
+   `majBlocCreneaux` + écoute `metadataCache.changed`. Tests purs.
+3. **Vue mois (lecture)** — `MoteurCalendrier`, grille mois (N pastilles / tâche),
    toolbar, ouverture au clic. Pas d'agenda de fond, pas de gestes.
-3. **Vue semaine (lecture)** — axe horaire, bandeau journée entière.
-4. **Gestes internes** — glisser/redimensionner → `ecrireCreneau` / `ecrireDatesTaches`.
-5. **Glisser-déposer inter-vues** — `Ariane.creneauDepuisDrop` (pur, testé) ;
-   frise : barres `draggable` + `dragstart` ; calendrier : `drop` → `ecrireCreneau`
-   (semaine) ou `ecrireDatesTaches` (mois) ; résolution d'un lien de note glissé.
-6. **Agenda de fond** — `_jxaEKEvents`, `genererJXAEvenements`, rendu grisé.
-7. **Push** — `evenementDeTache` → `genererJXAEvenements` (push), `agenda-id` /
+4. **Vue semaine (lecture)** — axe horaire, bandeau journée entière, un bloc par
+   créneau.
+5. **Gestes internes** — déplacer / redimensionner / supprimer un bloc →
+   `majCreneau({ avant, debut, fin })` ; barres « jour » → `ecrireDatesTaches`.
+6. **Glisser-déposer inter-vues** — `Ariane.creneauDepuisDrop` (pur, testé) ;
+   frise : barres `draggable` + `dragstart` ; calendrier : `drop` semaine →
+   `majCreneau({ avant:'', … })` (ajout), `drop` mois → `ecrireDatesTaches` ;
+   résolution d'un lien de note glissé.
+7. **Agenda de fond** — `_jxaEKEvents`, `genererJXAEvenements`, rendu grisé.
+8. **Push** — `evenementsDeTache` → `genererJXAEvenements`, `agenda-id` (liste) /
    `agenda-sync`, carte `ref → calendrier`, réglages, câblage sauvegarde.
-8. **Relève** — `genererJXAReleveAgenda`, réconciliation, `NOUVEAU`, minuterie.
-9. **README** FR + EN.
+9. **Relève** — `genererJXAReleveAgenda`, réconciliation par `idx`, `NOUVEAU`,
+   minuterie ; durée redimensionnée dans Calendar → `majCreneau` → stats.
+10. **README** FR + EN.
 
-Chaque tranche : `node --check`, `node --test`, déploiement coffre, commit.
+Tranches 1-6 = **plan « vue calendrier »** (aucun macOS). Tranches 7-9 = **plan
+« synchro agenda »** (EventKit). Chaque tranche : `node --check`, `node --test`,
+déploiement coffre, commit.
 
 ## 8 · Tests
 
-- `parseCreneau` / `formatCreneau` : formats, séparateurs, fin < début, minuit,
+- `parseCreneau` / `formatCreneau` : formats, séparateurs, fin ≤ début, minuit,
   aller-retour.
-- `evenementDeTache` : les six lignes du tableau §2.4, bornes allDay (échéance +1).
+- `creneauxDeTache` : liste triée, entrées invalides écartées, `brut` conservé.
+- `evenementsDeTache` : ≥ 1 créneau → un horaire par entrée avec `idx` ; sans
+  créneau, les lignes du tableau §2.5 ; bornes allDay (échéance + 1).
+- `statsCreneaux` : `nb`, `totalMin`, `passeMin`/`futurMin` autour de
+  `maintenant`, `premier`/`dernier`.
+- `blocCreneaux` : markdown attendu, stable (deux appels identiques).
 - `creneauDepuisDrop` : position + géométrie → `{ debut, fin }`, calage 15 min,
   jour hors grille rejeté.
-- `_instantAgenda` : stabilité, sensibilité à chaque champ.
+- `_instantAgenda` : stabilité, sensibilité à chaque champ (dont la liste de créneaux).
 - `genererJXAEvenements` (push + relève) : `vm.Script` valide, présence de
   `EKEvent`, `saveEventSpanCommitError`, `calendarsForEntityType(0)`,
   `predicateForEventsWithStartDateEndDateCalendars`, filtrage lien-de-rappel,
