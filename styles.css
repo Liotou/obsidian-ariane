@@ -637,8 +637,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-fam-champ label { font-size: var(--font-ui-smaller); color: var(--text-muted); }
 .zfa-fam-cases { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
 .zfa-fam-case { display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-ui-smaller); cursor: pointer; }
-.zfa-fam-barre { display: flex; justify-content: flex-end; }
-.zfa-fam-barre .setting-item { border: none; padding: 4px 0; }
+.zfa-fam-barre { display: block; margin-top: 10px; }
+.zfa-fam-barre .setting-item { border: none; padding: 0; }
+.zfa-fam-barre .setting-item-info { display: none; }
+.zfa-fam-barre .setting-item-control { justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
 
 /* ---------------- Table des familles de tâches ------------------------ */
 .zfa-famt-hote { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 10px; }
@@ -672,9 +674,11 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   margin: 6px 0 0; font-size: var(--font-ui-smaller); color: var(--text-faint);
 }
 .zfa-famt-props {
-  display: flex; flex-direction: column; gap: 6px;
-  margin-top: 8px; padding-top: 8px;
-  border-top: 1px solid var(--background-modifier-border);
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 8px; padding: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
 }
 .zfa-famt-props-titre {
   font-size: var(--font-ui-smaller); color: var(--text-muted);
@@ -689,7 +693,16 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-famt-prop input { margin: 0; min-width: 0; }
 .zfa-famt-prop input:first-of-type { flex: 0 0 150px; width: 150px; }
 .zfa-famt-prop input:nth-of-type(2) { flex: 1 1 160px; min-width: 120px; }
-.zfa-famt-prop select { flex: 0 0 auto; }
+.zfa-famt-prop select {
+  flex: 0 0 132px;
+  padding: 4px 6px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+  background: var(--background-modifier-form-field);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+}
+.zfa-famt-prop .zfa-fam-suppr { margin-left: auto; }
 .zfa-famt-prop-plus {
   align-self: flex-start;
   background: transparent; border: 1px dashed var(--background-modifier-border);
