@@ -15226,10 +15226,12 @@ class MoteurArticulation {
     if (!svgAncien) this.ajuster(); else this.appliquerVue();
   }
 
+  // Boutons de la barre : icône seule, l'intitulé passe en infobulle.
   boutonBarre(parent, icone, texte, action) {
-    const b = parent.createEl('button', { cls: 'zfa-artic-bouton', attr: { type: 'button' } });
+    const b = parent.createEl('button', {
+      cls: 'zfa-artic-bouton',
+      attr: { type: 'button', 'aria-label': texte, title: texte } });
     obsidian.setIcon(b.createSpan({ cls: 'zfa-artic-bouton-ic' }), icone);
-    b.createSpan({ text: texte });
     b.addEventListener('click', action);
   }
 

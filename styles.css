@@ -1272,8 +1272,8 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   border-bottom: 1px solid var(--background-modifier-border);
 }
 .zfa-artic-bouton {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: var(--font-ui-smaller); padding: 4px 9px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 5px; cursor: pointer;
   color: var(--text-muted); background: transparent;
   border: none; box-shadow: none; border-radius: var(--radius-s);
 }
