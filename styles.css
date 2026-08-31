@@ -1454,16 +1454,21 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   fill: var(--background-primary); stroke: var(--interactive-accent);
   stroke-width: 1.5; opacity: 0; cursor: crosshair; transition: opacity 0.12s;
 }
-.zfa-gantt-groupe:hover .zfa-gantt-connecteur { opacity: 1; }
+.zfa-gantt-groupe:hover .zfa-gantt-connecteur,
+.zfa-gantt-jalon-groupe:hover .zfa-gantt-connecteur { opacity: 1; }
 .zfa-gantt-connecteur:hover { fill: var(--interactive-accent); }
 /* Pendant qu'on glisse ou étire la barre : plus de pastilles de liaison — leur
    position est figée au tracé et elles clignotaient sous le bord déplacé. */
-.zfa-gantt-groupe.zfa-gantt-glisse .zfa-gantt-connecteur { display: none; }
+.zfa-gantt-groupe.zfa-gantt-glisse .zfa-gantt-connecteur,
+.zfa-gantt-jalon-groupe.zfa-gantt-glisse .zfa-gantt-connecteur { display: none; }
 .zfa-gantt-lien-en-cours {
   fill: none; stroke: var(--interactive-accent); stroke-width: 2;
   stroke-dasharray: 5 3; pointer-events: none;
 }
 .zfa-gantt-groupe.zfa-gantt-cible .zfa-gantt-barre-tache {
+  stroke: var(--interactive-accent); stroke-width: 2;
+}
+.zfa-gantt-jalon-groupe.zfa-gantt-cible .zfa-gantt-losange {
   stroke: var(--interactive-accent); stroke-width: 2;
 }
 

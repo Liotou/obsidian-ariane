@@ -17226,7 +17226,8 @@ class MoteurFrise {
       trait.setAttribute('d', 'M ' + cx + ' ' + cy + ' C ' + (cx + sens * 40) + ' ' + cy
         + ', ' + (px - sens * 40) + ' ' + py + ', ' + px + ' ' + py);
       const sous = document.elementFromPoint(ev.clientX, ev.clientY);
-      const g = sous && sous.closest ? sous.closest('.zfa-gantt-groupe') : null;
+      const g = sous && sous.closest
+        ? sous.closest('.zfa-gantt-groupe, .zfa-gantt-jalon-groupe') : null;
       const ref = g && g.dataset ? g.dataset.ref : null;
       if (cible && cible !== ref) {
         const anc = svg.querySelector('.zfa-gantt-cible');
@@ -17356,6 +17357,13 @@ class MoteurFrise {
     d.addEventListener('pointerleave', () => this._effacerLignage());
     d.addEventListener('pointerdown', (e) => this.saisirJalon(e, grp, l, x, y));
     grp.appendChild(d);
+    // Pastilles de liaison, comme sur une barre : tirer depuis la droite pose
+    // « ce jalon bloque… », depuis la gauche « ce jalon est bloqué par… ».
+    for (const [cx, sens] of [[x - 16, -1], [x + 16, 1]]) {
+      const rond = svgEl('circle', { cx, cy: y, r: 5, class: 'zfa-gantt-connecteur' });
+      rond.addEventListener('pointerdown', (ev) => this.tirerLien(ev, l, cx, sens));
+      grp.appendChild(rond);
+    }
     if (this._enRetard && this._enRetard.has(l.ref)) {
       d.classList.add('zfa-gantt-retard');
       this._marqueRetard(grp, x + 11, y - 6);
