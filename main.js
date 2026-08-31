@@ -20267,7 +20267,85 @@ class MoteurCalendrier {
       }
     }
   }
-  dessinerSemaine(g) { g.createDiv({ cls: 'zfa-cal-vide', text: '…' }); } // Task 7
+  _plageHoraire() {
+    const h = (s, def) => {
+      const m = String(this.lire(s) || '').match(/^(\d{1,2}):(\d{2})$/);
+      return m ? Number(m[1]) + Number(m[2]) / 60 : def;
+    };
+    let d = h('calHeureDebut', 7);
+    let f = h('calHeureFin', 21);
+    if (f <= d) { d = 7; f = 21; }
+    return { debut: d, fin: f };
+  }
+
+  dessinerSemaine(hote) {
+    const g = Ariane.grilleSemaine(this._ancre);
+    const auj = new Date().toISOString().slice(0, 10);
+    const { debut: hDeb, fin: hFin } = this._plageHoraire();
+    const PXH = 42;
+    this._pxHeure = PXH; this._hDeb = hDeb; this._joursSemaine = g.jours;
+    const horaire = new Map(g.jours.map((j) => [j, []]));
+    const toutJour = new Map(g.jours.map((j) => [j, []]));
+    for (const t of this._taches) {
+      for (const ev of Ariane.evenementsDeTache(t)) {
+        if (ev.allDay) {
+          let j = ev.debut.slice(0, 10);
+          while (j < ev.fin.slice(0, 10)) {
+            if (toutJour.has(j)) toutJour.get(j).push({ t, ev });
+            j = Ariane.decalerJour(j, 1);
+          }
+        } else {
+          const j = ev.debut.slice(0, 10);
+          if (horaire.has(j)) horaire.get(j).push({ t, ev });
+        }
+      }
+    }
+    const bandeau = hote.createDiv({ cls: 'zfa-cal-bandeau' });
+    bandeau.createDiv({ cls: 'zfa-cal-gouttiere' });
+    for (const j of g.jours) {
+      const col = bandeau.createDiv({ cls: 'zfa-cal-bandeau-jour' + (j === auj ? ' est-aujourdhui' : '') });
+      col.dataset.jour = j;
+      for (const { t } of toutJour.get(j)) {
+        const p = col.createDiv({ cls: 'zfa-cal-pastille est-jour' });
+        p.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
+        p.textContent = t.intitule || t.ref;
+        p.dataset.ref = t.ref;
+        p.addEventListener('click', (e) => this.ouvrir(t.ref, e.metaKey || e.ctrlKey));
+      }
+    }
+    const corps = hote.createDiv({ cls: 'zfa-cal-corps' });
+    const axe = corps.createDiv({ cls: 'zfa-cal-axe' });
+    axe.style.height = ((hFin - hDeb) * PXH) + 'px';
+    for (let h = Math.ceil(hDeb); h < hFin; h += 1) {
+      const l = axe.createDiv({ cls: 'zfa-cal-axe-heure' });
+      l.style.top = ((h - hDeb) * PXH) + 'px';
+      l.textContent = h + ' h';
+    }
+    for (const j of g.jours) {
+      const col = corps.createDiv({ cls: 'zfa-cal-col' + (j === auj ? ' est-aujourdhui' : '') });
+      col.dataset.jour = j;
+      col.style.height = ((hFin - hDeb) * PXH) + 'px';
+      for (let h = Math.ceil(hDeb); h < hFin; h += 1) {
+        const tr = col.createDiv({ cls: 'zfa-cal-trait' });
+        tr.style.top = ((h - hDeb) * PXH) + 'px';
+      }
+      for (const { t, ev } of horaire.get(j)) {
+        const y0 = (Number(ev.debut.slice(11, 13)) + Number(ev.debut.slice(14, 16)) / 60 - hDeb) * PXH;
+        const finH = ev.fin.slice(0, 10) === j
+          ? Number(ev.fin.slice(11, 13)) + Number(ev.fin.slice(14, 16)) / 60 : 24;
+        const y1 = (finH - hDeb) * PXH;
+        const bloc = col.createDiv({ cls: 'zfa-cal-bloc' });
+        bloc.style.top = Math.max(0, y0) + 'px';
+        bloc.style.height = Math.max(14, y1 - y0) + 'px';
+        bloc.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
+        bloc.dataset.ref = t.ref;
+        if (ev.source === 'creneau') bloc.dataset.brut = ev.brut;
+        bloc.createSpan({ text: ev.debut.slice(11, 16) + ' ' + (t.intitule || t.ref) });
+        bloc.addEventListener('click', (e) => { e.stopPropagation();
+          this.ouvrir(t.ref, e.metaKey || e.ctrlKey); });
+      }
+    }
+  }
 }
 
 function fabriquerVueCalendrierBase(greffon) {
