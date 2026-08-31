@@ -1177,8 +1177,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
    de permanent : au repos la frise reste un tableau. L'opacité des barres est
    posée en style inline par le script, d'où les !important ici. */
 .zfa-gantt-lignage { pointer-events: none; }
+/* Parenté : violet (rattachement). Le blocage, lui, garde la couleur d'accent
+   — deux natures de lien, deux couleurs. */
 .zfa-gantt-lignage-lien {
-  fill: none; stroke: var(--text-accent); stroke-width: 1.6; opacity: 0.9;
+  fill: none; stroke: var(--color-purple); stroke-width: 1.6; opacity: 0.9;
 }
 .zfa-gantt-lignage-actif .zfa-gantt-barre-tache,
 .zfa-gantt-lignage-actif .zfa-gantt-rempli { opacity: 0.12 !important; }
@@ -1413,12 +1415,14 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 
 .zfa-artic-pointe { stroke: none; opacity: 1; }
-.zfa-artic-pointe-hier { fill: var(--text-muted); }
+/* Deux natures de lien, deux couleurs : parenté (rattachement) en violet,
+   blocage en couleur d'accent. */
+.zfa-artic-pointe-hier { fill: var(--color-purple); }
 .zfa-artic-pointe-bloque { fill: var(--interactive-accent); }
 
 .zfa-artic-arete { fill: none; pointer-events: none; }
 .zfa-artic-arete.zfa-artic-hier {
-  stroke: var(--text-muted); stroke-width: 1.5;
+  stroke: var(--color-purple); stroke-width: 1.5;
 }
 .zfa-artic-arete.zfa-artic-bloque {
   stroke: var(--interactive-accent); stroke-width: 1.5;
@@ -1430,7 +1434,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 /* Sélection : on épaissit sans changer la famille de couleur. */
 .zfa-artic-arete-groupe.est-active .zfa-artic-arete { stroke-width: 2.75; }
 .zfa-artic-arete-groupe.est-active .zfa-artic-arete.zfa-artic-hier {
-  stroke: var(--text-normal);
+  stroke: var(--color-purple); filter: brightness(1.2);
 }
 .zfa-artic-arete-groupe.est-active .zfa-artic-arete.zfa-artic-bloque {
   stroke: var(--interactive-accent); filter: brightness(1.15);

@@ -14570,10 +14570,11 @@ class MoteurFrise {
       groupe.addEventListener('pointerenter', () => this._montrerLignage(l.ref));
       groupe.addEventListener('pointerleave', () => this._effacerLignage());
 
-      // Une méta-tâche (qui a des sous-tâches) n'est pas redimensionnable :
-      // sa durée vient de ses filles. Mais en mode « tri actif » (plat), la
-      // frise n'agrège plus : chaque tâche montre SES dates et se redimensionne
-      // comme les autres.
+      // Barre « enveloppe » : en mode par défaut, une tâche mère s'étend sur ses
+      // filles (fond plus dense). En mode « tri actif » (plat), plus d'agrégat :
+      // chaque tâche montre ses propres dates. Le redimensionnement, lui, est
+      // toujours permis — il agit sur les dates propres (voir appliquerGeste),
+      // que la barre affichée soit l'enveloppe ou non.
       const meta = l.aDesEnfants && !this._plat;
       const fond = svgEl('rect', {
         x, y, width: w, height: h,
@@ -14619,14 +14620,14 @@ class MoteurFrise {
 
       fond.addEventListener('pointerdown', (e) => this.saisir(e, groupe, l, 'deplacer', { x, w }));
       groupe.addEventListener('contextmenu', (e) => this.menuTache(e, l));
-      if (!meta) {
-        for (const cote of ['gauche', 'droite']) {
-          const p = svgEl('rect', {
-            x: cote === 'gauche' ? x : x + w - 7, y, width: 7, height: h,
-            class: 'zfa-gantt-poignee' });
-          p.addEventListener('pointerdown', (ev) => this.saisir(ev, groupe, l, cote, { x, w }));
-          groupe.appendChild(p);
-        }
+      // Poignées de redimensionnement sur toutes les barres, mères comprises :
+      // elles éditent les dates propres de la tâche.
+      for (const cote of ['gauche', 'droite']) {
+        const p = svgEl('rect', {
+          x: cote === 'gauche' ? x : x + w - 7, y, width: 7, height: h,
+          class: 'zfa-gantt-poignee' });
+        p.addEventListener('pointerdown', (ev) => this.saisir(ev, groupe, l, cote, { x, w }));
+        groupe.appendChild(p);
       }
       // Pastilles de liaison, hors de la barre pour ne pas gêner l'étirement.
       // On tire depuis celle de droite vers la tâche que l'on veut bloquer.
