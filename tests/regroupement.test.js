@@ -124,45 +124,38 @@ test('sans marqueurs de groupe, placerLignes se comporte comme visibles + y', ()
   assert.deepEqual(r.lignes.map((x) => x.y), [30, 70]);
 });
 
-/* --------------------- repartirSansDate ------------------------------ */
+/* --------------------- tâches sans date : marquage inline ------------- */
 
-test('repartirSansDate : groupes et tâches datées à part, sans-date à part', () => {
-  const brut = [
-    { kind: 'groupe', cleGroupe: 'g' },
-    { kind: 'tache', ref: 'A', debut: '2026-09-01', echeance: '' },
-    { kind: 'tache', ref: 'B', debut: '', echeance: '2026-09-10' },
-    { kind: 'tache', ref: 'C', debut: '', echeance: '' },
-  ];
-  const r = Ariane.repartirSansDate(brut);
-  assert.deepEqual(r.avecDates.map((x) => x.ref || x.kind), ['groupe', 'A', 'B']);
-  assert.deepEqual(r.sansDate.map((x) => x.ref), ['C']);
+test('disposerGantt : une ligne sans début ni échéance porte sansDate', () => {
+  const l = Ariane.disposerGantt(
+    [t('A', { echeance: '2026-09-01' }), t('B')], 'date', 1);
+  const parRef = new Map(l.map((x) => [x.ref, x]));
+  assert.equal(parRef.get('A').sansDate, false);
+  assert.equal(parRef.get('B').sansDate, true);
 });
 
-test('repartirSansDate : une tâche sans date vue deux fois n apparaît qu une fois', () => {
-  const brut = [
-    { kind: 'tache', ref: 'C', debut: '', echeance: '' },
-    { kind: 'tache', ref: 'C', debut: '', echeance: '' },
-    { kind: 'tache', ref: 'D', debut: '', echeance: '' },
-  ];
-  const r = Ariane.repartirSansDate(brut);
-  assert.deepEqual(r.sansDate.map((x) => x.ref), ['C', 'D']);
-  assert.equal(r.avecDates.length, 0);
+test('disposerGantt : une mère qui hérite des dates de sa fille n est pas sansDate', () => {
+  const l = Ariane.disposerGantt(
+    [t('M', { ref: 'M' }), t('F', { parent: 'M', echeance: '2026-09-10' })],
+    'date', 1);
+  const parRef = new Map(l.map((x) => [x.ref, x]));
+  assert.equal(parRef.get('M').sansDate, false);
 });
 
-test('repartirSansDate : l ordre est préservé dans les deux listes', () => {
-  const brut = [
-    { kind: 'tache', ref: 'A', debut: '', echeance: '' },
-    { kind: 'tache', ref: 'B', debut: '2026-09-01', echeance: '' },
-    { kind: 'tache', ref: 'C', debut: '', echeance: '' },
-  ];
-  const r = Ariane.repartirSansDate(brut);
-  assert.deepEqual(r.avecDates.map((x) => x.ref), ['B']);
-  assert.deepEqual(r.sansDate.map((x) => x.ref), ['A', 'C']);
+test('disposerGantt : en tri par colonne, une tâche sans date suit le tri (pas reléguée)', () => {
+  const l = Ariane.disposerGantt([
+    t('Z', { _cle: 'aaa' }),
+    t('A', { _cle: 'zzz', echeance: '2026-09-01' }),
+  ], 'cle', 1);
+  // « aaa » avant « zzz » : la tâche sans date passe devant la datée.
+  assert.deepEqual(l.map((x) => x.ref), ['Z', 'A']);
+  assert.equal(l[0].sansDate, true);
 });
 
-test('placerLignes : une tâche sans date en fin de liste reste visible après un groupe replié', () => {
-  const d = [gr('A'), ta('T1'),
-    { kind: 'tache', ref: 'Z', cleLigne: 'Z', niveau: 0, aDesEnfants: false, sansDate: true }];
+test('placerLignes : une tâche sans date obéit au repli de son groupe', () => {
+  const d = [gr('A'),
+    { kind: 'tache', ref: 'Z', cleLigne: 'A Z', niveau: 0, aDesEnfants: false, sansDate: true },
+    gr('B'), ta('T3')];
   const r = Ariane.placerLignes(d, 30, 20, new Set(['groupe:A']));
-  assert.deepEqual(r.lignes.filter((x) => x.kind === 'tache').map((x) => x.ref), ['Z']);
+  assert.deepEqual(r.lignes.filter((x) => x.kind === 'tache').map((x) => x.ref), ['T3']);
 });

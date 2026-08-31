@@ -4913,6 +4913,7 @@ class Ariane extends obsidian.Plugin {
           parent: Ariane.refDeLien(x.parent) || '',
           jalon, aDesEnfants: (enfants.get(x.ref) || []).length > 0, propre,
           debut: propre.debut, echeance: propre.echeance,
+          sansDate: !propre.debut && !propre.echeance,
         };
       });
     }
@@ -4945,6 +4946,9 @@ class Ariane extends obsidian.Plugin {
           ligne.echeance = toutes[toutes.length - 1];
         }
       }
+      // « Sans date » se juge après l'enveloppe : une mère qui hérite des dates
+      // de ses filles a désormais une barre, ce n'est plus une ligne hachurée.
+      ligne.sansDate = !ligne.debut && !ligne.echeance;
       return ligne;
     };
     for (const r of racines.slice().sort(trier)) descendre(r, 0);
@@ -5006,9 +5010,6 @@ class Ariane extends obsidian.Plugin {
         y += hEntete;
         continue;
       }
-      // Les tâches sans date forment un bloc à part, hors de tout groupe : ni un
-      // groupe replié au-dessus ni une méta-tâche repliée ne les masquent.
-      if (it.sansDate) { sautGroupe = false; seuilMeta = -1; }
       if (sautGroupe) continue;
       if (seuilMeta >= 0 && it.niveau > seuilMeta) continue;
       seuilMeta = -1;
@@ -5017,25 +5018,6 @@ class Ariane extends obsidian.Plugin {
       if (it.aDesEnfants && R.has(it.ref)) seuilMeta = it.niveau;
     }
     return { lignes: out, hauteurTotale: y };
-  }
-
-  // Sépare la sortie de disposerFriseGroupee : d'un côté les groupes et les
-  // tâches datées (dans l'ordre), de l'autre les tâches sans début ni échéance,
-  // dédoublonnées par ref (une tâche présente dans plusieurs groupes n'y figure
-  // qu'une fois). La vue pose ce second lot en bloc au bas de la liste, sans
-  // barre : la ligne seule signale qu'il manque une date.
-  static repartirSansDate(brut) {
-    const avecDates = [];
-    const sansDate = [];
-    const vus = new Set();
-    for (const it of brut || []) {
-      if (!it) continue;
-      if (it.kind === 'groupe' || it.debut || it.echeance) { avecDates.push(it); continue; }
-      if (vus.has(it.ref)) continue;
-      vus.add(it.ref);
-      sansDate.push(it);
-    }
-    return { avecDates, sansDate };
   }
 
   // Le sous-arbre d'une ligne, déduit des niveaux : tout ce qui suit et qui est
@@ -15343,7 +15325,9 @@ class MoteurFrise {
     this._basEntete = this._bande + Math.round((this._hEntete - this._bande) / 2) + 1;
 
     // Regroupement (propre à Ariane, faute d'API Bases) : disposition en arbre
-    // par groupe, puis tri des datées / non datées, puis placement en y/h.
+    // par groupe, puis placement en y/h. Une tâche sans date n'est plus mise à
+    // l'écart : elle suit le tri actif comme les autres, seule sa ligne reste
+    // hachurée (voir dessinerBarres).
     const groupes = this.ctx.groupes ? this.ctx.groupes() : null;
     const groupeDesc = this.ctx.sensGroupe ? this.ctx.sensGroupe() === -1 : false;
     // Colonne de gauche = tableau plat. La hiérarchie ne réordonne les lignes
@@ -15352,20 +15336,19 @@ class MoteurFrise {
     const plat = mode !== 'date';
     this._plat = plat;
     const brut = Ariane.disposerFriseGroupee(taches, groupes, mode, sensTri, groupeDesc, plat);
-    const { avecDates, sansDate } = Ariane.repartirSansDate(brut);
-    // Retirer les bandes de groupe devenues vides, compter les datées restantes,
+    // Retirer les bandes de groupe devenues vides, compter les tâches restantes,
     // et résumer l'étalement dans le temps (min, max, une date par tâche) pour
     // l'aperçu dessiné dans le bandeau — utile surtout quand le groupe est replié.
     const dispo = [];
-    for (let i = 0; i < avecDates.length; i++) {
-      const it = avecDates[i];
+    for (let i = 0; i < brut.length; i++) {
+      const it = brut[i];
       if (it.kind === 'groupe') {
         let n = 0;
         let min = '';
         let max = '';
-        for (let j = i + 1; j < avecDates.length && avecDates[j].kind !== 'groupe'; j++) {
+        for (let j = i + 1; j < brut.length && brut[j].kind !== 'groupe'; j++) {
           n += 1;
-          const t = avecDates[j];
+          const t = brut[j];
           const d = t.debut || t.echeance;
           const e = t.echeance || t.debut;
           if (d && (!min || d < min)) min = d;
@@ -15390,19 +15373,12 @@ class MoteurFrise {
       }
     }
 
-    // Les tâches sans date : un bloc de lignes en bas de la liste, hors groupes
-    // et hors arbre (mises à plat : ni retrait ni chevron). On les ajoute après
-    // le calcul des masques : elles n'héritent d'aucun groupe replié.
-    for (const it of sansDate) {
-      dispo.push(Object.assign({}, it, { sansDate: true, niveau: 0, aDesEnfants: false }));
-    }
-
     // Les réglages de la frise passent par « Configurer la vue » de la base ;
     // seule une barre d'outils légère (échelle, aujourd'hui…) reste à l'écran.
     if (this.ctx.echelleReglable) this.dessinerBarreVue(c);
     this.dessinerCascade(c);
 
-    if (!planifiees.length && !sansDate.length) {
+    if (!planifiees.length) {
       c.createDiv({ cls: 'zfa-refs-vide',
         text: tr('Aucune tâche. Créez une tâche pour la voir ici.') });
       return;
