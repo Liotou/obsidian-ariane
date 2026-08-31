@@ -13530,6 +13530,13 @@ class MoteurFrise {
     const ancienne = c.querySelector('.zfa-gantt-droite');
     const memeX = ancienne ? ancienne.scrollLeft : null;
     const memeY = ancienne ? ancienne.scrollTop : null;
+    // Étendre une barre déplace l'origine des dates de la frise (marge / span
+    // minimum recalculés) : un scrollLeft en pixels ne pointe alors plus sur le
+    // même jour. On mémorise le JOUR au bord gauche pour le remettre en place.
+    const cfgAv = this._cfg;
+    const jourAncre = (cfgAv && cfgAv.debut && cfgAv.ppj && memeX != null)
+      ? Ariane.decalerJour(cfgAv.debut, Math.round(memeX / cfgAv.ppj))
+      : null;
     c.empty();
 
     let taches = this.ctx.taches();
@@ -13733,8 +13740,10 @@ class MoteurFrise {
       this.recalerEnteteHaut(droite.scrollLeft);
     });
 
-    droite.scrollLeft = memeX !== null ? memeX
-      : Math.max(0, Ariane.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220);
+    droite.scrollLeft = jourAncre
+      ? Math.max(0, Ariane.ecartJours(cfg.debut, jourAncre) * cfg.ppj)
+      : (memeX !== null ? memeX
+        : Math.max(0, Ariane.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220));
     if (memeY !== null) {
       droite.scrollTop = memeY;
       table.style.top = (-memeY) + 'px';
