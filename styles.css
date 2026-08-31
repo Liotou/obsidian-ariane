@@ -1220,6 +1220,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-gantt-entete-jour { font-size: 10px; }
 .zfa-gantt-entete-semaine { font-size: 10px; font-weight: 600; }
+.zfa-gantt-entete-semaine-haut {
+  text-anchor: start; font-size: 9px; font-weight: 600;
+  fill: var(--text-faint); letter-spacing: 0.02em;
+}
 .zfa-gantt-entete-titre { font-size: 9px; font-weight: 600; fill: var(--text-muted); }
 .zfa-gantt-entete-annee {
   font-size: 10px; font-weight: 700; fill: var(--text-normal);

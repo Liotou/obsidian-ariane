@@ -16881,7 +16881,9 @@ class MoteurFrise {
         // en bas ; en vue année c'est l'année.
         if (this.zoom !== 'trimestre' && x2 - x1 > 34) {
           const t = svgEl('text', { x: x1 + 6, y: this._bande - 5, class: 'zfa-gantt-entete-mois' });
-          t.textContent = MOIS_COURTS[m - 1] + ' ' + String(a).slice(2);
+          // Vue semaine : on préfixe le numéro du mois (09 sept. 26).
+          t.textContent = (this.zoom === 'semaine' ? String(m).padStart(2, '0') + ' ' : '')
+            + MOIS_COURTS[m - 1] + ' ' + String(a).slice(2);
           g.appendChild(t);
           this._enteteHaut.push({ el: t, x1: x1 + 6, x2 });
         }
@@ -16944,20 +16946,34 @@ class MoteurFrise {
 
   enteteSemaines(g, cfg) {
     const mode = this.ctx.lire('libelleSemaine') || 'numero';
-    for (let i = 0; i < cfg.jours; i++) {
+    const lettres = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
+    const avecJour = cfg.ppj >= 16;
+    for (let i = 0; i < cfg.jours; i += 1) {
       const jour = Ariane.decalerJour(cfg.debut, i);
       const [a, m, j] = jour.split('-').map(Number);
-      if (new Date(Date.UTC(a, m - 1, j)).getUTCDay() !== 1) continue;
-      const nb = Math.min(7, cfg.jours - i);
+      const js = new Date(Date.UTC(a, m - 1, j)).getUTCDay();
       const x = i * cfg.ppj;
-      const w = nb * cfg.ppj;
+      // Étage du bas : les jours de la semaine (lettre + quantième), avec la
+      // teinte du week-end, comme en vue jour mais à l'échelle de la semaine.
+      if (js === 0 || js === 6) {
+        g.appendChild(svgEl('rect', { x, y: this._bande, width: cfg.ppj,
+          height: this._hEntete - this._bande, class: 'zfa-gantt-weekend-entete' }));
+      }
+      const tj = svgEl('text', { x: x + cfg.ppj / 2, y: this._basEntete,
+        class: 'zfa-gantt-entete-jour' });
+      tj.textContent = avecJour ? lettres[js] + ' ' + j : lettres[js];
+      g.appendChild(tj);
+      if (js !== 1) continue;
+      // Lundi : trait de semaine + numéro (et/ou plage) dans l'étage du haut.
+      const nb = Math.min(7, cfg.jours - i);
       const fin = Ariane.decalerJour(jour, nb - 1);
       const num = 'S' + Ariane.semaineIso(jour);
       const plage = j + '–' + Number(fin.slice(8, 10));
-      const t = svgEl('text', { x: x + w / 2, y: this._basEntete, class: 'zfa-gantt-entete-semaine' });
-      t.textContent = mode === 'numero' ? num : (mode === 'dates' ? plage : num + ' · ' + plage);
-      g.appendChild(t);
-      g.appendChild(svgEl('line', { x1: x, y1: this._bande, x2: x, y2: this._hEntete,
+      const ts = svgEl('text', { x: x + 3, y: this._bande - 5,
+        class: 'zfa-gantt-entete-semaine zfa-gantt-entete-semaine-haut' });
+      ts.textContent = mode === 'numero' ? num : (mode === 'dates' ? plage : num + ' · ' + plage);
+      g.appendChild(ts);
+      g.appendChild(svgEl('line', { x1: x, y1: 0, x2: x, y2: this._hEntete,
         class: 'zfa-gantt-entete-trait' }));
     }
   }
