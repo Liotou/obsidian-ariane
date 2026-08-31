@@ -4994,6 +4994,39 @@ class Ariane extends obsidian.Plugin {
     return out;
   }
 
+  // Voir spec §2.5. Rend un TABLEAU d'événements. Les créneaux priment : quand
+  // il y en a, la « fenêtre de planning » début→échéance n'est pas émise.
+  static evenementsDeTache(t) {
+    if (!t) return [];
+    const crs = Ariane.creneauxDeTache(t);
+    if (crs.length) {
+      return crs.map((c, i) => ({
+        genre: 'horaire', debut: c.debut, fin: c.fin, allDay: false,
+        source: 'creneau', idx: i, brut: c.brut,
+      }));
+    }
+    const deb = Ariane.jourValide(t.debut);
+    const ech = Ariane.jourValide(t.echeance);
+    if (deb && ech) {
+      return [{ genre: 'jour', debut: deb, fin: Ariane.decalerJour(ech, 1),
+                allDay: true, source: 'dates' }];
+    }
+    if (ech) {
+      const h = String(t.heure || '').match(/^(\d{1,2}):(\d{2})$/);
+      if (h && !t.jalon) {
+        const H = Number(h[1]);
+        const fh = (H + 1) % 24;
+        const jf = H === 23 ? Ariane.decalerJour(ech, 1) : ech;
+        return [{ genre: 'horaire', allDay: false, source: 'dates',
+          debut: ech + 'T' + String(H).padStart(2, '0') + ':' + h[2],
+          fin: jf + 'T' + String(fh).padStart(2, '0') + ':' + h[2] }];
+      }
+      return [{ genre: 'jour', debut: ech, fin: Ariane.decalerJour(ech, 1),
+                allDay: true, source: 'dates' }];
+    }
+    return [];
+  }
+
   // Disposition de la frise : parcours en profondeur, dates remontées sur les
   // méta-tâches. Les dates propres sont conservées à part, le glissé d'une
   // barre devant écrire celles de la note et non celles de sa descendance.

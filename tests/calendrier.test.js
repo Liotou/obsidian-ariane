@@ -57,3 +57,37 @@ test('CONCEPTS_TACHE / PROPS_GENERIQUES portent creneaux', () => {
   assert.ok(Ariane.CONCEPTS_TACHE.includes('creneaux'));
   assert.ok(Ariane.PROPS_GENERIQUES.some((p) => p.cle === 'creneaux'));
 });
+
+const T = (o) => Object.assign(
+  { ref: 'T-1', debut: '', echeance: '', heure: '', creneaux: [], jalon: false }, o);
+
+test('evenementsDeTache : un événement par créneau, avec idx/brut', () => {
+  const evs = Ariane.evenementsDeTache(T({ debut: '2026-09-01', echeance: '2026-09-30',
+    creneaux: ['2026-09-10 09:00-11:00', '2026-09-08 14:00-16:00'] }));
+  assert.deepEqual(evs.map((e) => [e.genre, e.debut, e.idx, e.source]), [
+    ['horaire', '2026-09-08T14:00', 0, 'creneau'],
+    ['horaire', '2026-09-10T09:00', 1, 'creneau'],
+  ]);
+  assert.equal(evs[0].brut, '2026-09-08 14:00-16:00');
+});
+
+test('evenementsDeTache : sans créneau, début+échéance → un jour, borne exclusive', () => {
+  assert.deepEqual(Ariane.evenementsDeTache(T({ debut: '2026-09-01', echeance: '2026-09-03' })),
+    [{ genre: 'jour', debut: '2026-09-01', fin: '2026-09-04', allDay: true, source: 'dates' }]);
+});
+
+test('evenementsDeTache : échéance seule + heure → horaire 1 h', () => {
+  assert.deepEqual(Ariane.evenementsDeTache(T({ echeance: '2026-09-03', heure: '09:30' })),
+    [{ genre: 'horaire', debut: '2026-09-03T09:30', fin: '2026-09-03T10:30', allDay: false, source: 'dates' }]);
+});
+
+test('evenementsDeTache : échéance seule sans heure / jalon → un jour', () => {
+  assert.deepEqual(Ariane.evenementsDeTache(T({ echeance: '2026-09-03' })),
+    [{ genre: 'jour', debut: '2026-09-03', fin: '2026-09-04', allDay: true, source: 'dates' }]);
+  assert.deepEqual(Ariane.evenementsDeTache(T({ echeance: '2026-09-03', jalon: true, heure: '09:00' })),
+    [{ genre: 'jour', debut: '2026-09-03', fin: '2026-09-04', allDay: true, source: 'dates' }]);
+});
+
+test('evenementsDeTache : rien → []', () => {
+  assert.deepEqual(Ariane.evenementsDeTache(T({})), []);
+});
