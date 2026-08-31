@@ -4082,6 +4082,7 @@ class Ariane extends obsidian.Plugin {
       { cle: 'jalon', defaut: 'Jalon', icone: 'diamond' },
       { cle: 'debut', defaut: 'Début', icone: 'calendar' },
       { cle: 'echeance', defaut: 'Échéance', icone: 'calendar-check' },
+      { cle: 'heure', defaut: 'Heure', icone: 'clock' },
       { cle: 'avancement', defaut: 'Avancement', icone: 'percent' },
       { cle: 'parent', defaut: 'Rattachée à', icone: 'git-branch' },
     ];
@@ -4092,7 +4093,7 @@ class Ariane extends obsidian.Plugin {
   // alias). On y ajoute les champs structurels propres aux tâches.
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
-            'debut', 'echeance', 'avancement', 'parent',
+            'debut', 'echeance', 'heure', 'avancement', 'parent',
             'bloque-par', 'termine-le',
             'source', 'livrable', 'fichier', 'liste', 'rappel-id'];
   }
@@ -4103,7 +4104,7 @@ class Ariane extends obsidian.Plugin {
   static get GROUPES_TACHE() {
     return [
       { id: 'etat', nom: 'État & progression', concepts: ['statut', 'terminee', 'priorite', 'avancement'] },
-      { id: 'planning', nom: 'Planning', concepts: ['debut', 'echeance', 'jalon', 'termine-le'] },
+      { id: 'planning', nom: 'Planning', concepts: ['debut', 'echeance', 'heure', 'jalon', 'termine-le'] },
       { id: 'relations', nom: 'Relations', concepts: ['parent', 'bloque-par'] },
       { id: 'rappel', nom: 'Rappel', concepts: ['liste', 'rappel-id'] },
     ];
@@ -4504,6 +4505,7 @@ class Ariane extends obsidian.Plugin {
     l.push(ligne(K('priorite'), c.priorite));
     l.push(ligne(K('debut'), c.debut));
     l.push(ligne(K('echeance'), c.echeance));
+    l.push(ligne(K('heure'), c.heure));
     l.push(K('avancement') + ': ' + (Number(c.avancement) || 0));
     l.push(K('termine-le') + ':');
     l.push(K('jalon') + ': ' + (c.jalon ? 'true' : 'false'));
@@ -11277,6 +11279,7 @@ class Ariane extends obsidian.Plugin {
         bloquePar: [].concat(this._lireT(fm, 'bloque-par') || []).map(String),
         debut: this._lireT(fm, 'debut') || '',
         echeance: this._lireT(fm, 'echeance') || '',
+        heure: String(this._lireT(fm, 'heure') || '').trim(),
         statut: this._lireT(fm, 'statut') || 'à faire',
         priorite: this._lireT(fm, 'priorite') || '',
         avancement: Number(this._lireT(fm, 'avancement')) || 0,
@@ -11297,6 +11300,13 @@ class Ariane extends obsidian.Plugin {
     const liste = Array.isArray(this.settings.famillesTaches) ? this.settings.famillesTaches : [];
     return liste.find((f) => f && f.id === id)
       || { id: id || '', nom: id || tr('(sans famille)'), couleur: '#888888', icone: 'circle', proprietes: [] };
+  }
+
+  // Nom de liste Apple Rappels pour une tâche : celle de sa famille, sinon la
+  // liste par défaut des réglages.
+  listeRappelsDe(familleId) {
+    const f = this.familleDe(familleId);
+    return String((f && f.listeRappels) || this.settings.listeRappelsDefaut || '').trim();
   }
 
   _labelConcept(concept) { return Ariane.libelleConcept(concept); }
@@ -13310,6 +13320,14 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         desc.placeholder = tr('Quelques phrases sur ce que recouvre cette famille : le type d\'action, des exemples de tâches, ce qui la distingue des autres. L\'IA s\'en sert pour classer vos brouillons de tâches.');
         desc.value = f.description || '';
         desc.onchange = async () => { f.description = desc.value.trim(); await maj(); };
+        {
+          const lr = corps.createDiv({ cls: 'zfa-famt-prop' });
+          lr.createEl('label', { text: tr('Liste Apple Rappels'), cls: 'zfa-famt-prop-lbl' });
+          const inp = lr.createEl('input', { type: 'text' });
+          inp.placeholder = this.plugin.settings.listeRappelsDefaut || tr('(liste par défaut)');
+          inp.value = f.listeRappels || '';
+          inp.onchange = async () => { f.listeRappels = inp.value.trim(); await maj(); };
+        }
         corps.createEl('div', { cls: 'zfa-famt-props-titre', text: tr('Propriétés ajoutées') });
         (f.proprietes = Array.isArray(f.proprietes) ? f.proprietes : []).forEach((p, j) => {
           const pr = corps.createDiv({ cls: 'zfa-famt-prop' });
@@ -13919,7 +13937,7 @@ class ModaleTache extends obsidian.Modal {
     this.familles = Array.isArray(greffon.settings.famillesTaches)
       ? greffon.settings.famillesTaches : [];
     this.v = {
-      intitule: '', statut: 'à faire', priorite: '', debut: '', echeance: '',
+      intitule: '', statut: 'à faire', priorite: '', debut: '', echeance: '', heure: '',
       avancement: 0, jalon: false, parent: '', note: '',
       famille: greffon.settings.familleTacheDefaut || 'action',
     };
@@ -13966,6 +13984,7 @@ class ModaleTache extends obsidian.Modal {
     this.v.priorite = L('priorite') || '';
     this.v.debut = L('debut') || '';
     this.v.echeance = L('echeance') || '';
+    this.v.heure = String(L('heure') || '').trim();
     this.v.avancement = Number(L('avancement')) || 0;
     this.v.jalon = L('jalon') === true;
     this.v.parent = Ariane.refDeLien(L('parent') || '') || '';
@@ -14095,6 +14114,13 @@ class ModaleTache extends obsidian.Modal {
       t.inputEl.type = 'date';
       t.setValue(this.v.echeance).onChange((x) => { this.v.echeance = x.trim(); });
     });
+    if (!this.v.jalon && this.v.echeance) {
+      this._settingGen(g, 'heure').setDesc(tr('Facultative — sinon rappel « journée entière ».'))
+        .addText((t) => {
+          t.inputEl.type = 'time';
+          t.setValue(this.v.heure || '').onChange((x) => { this.v.heure = x.trim(); });
+        });
+    }
 
     this._settingGen(c, 'avancement', true)
       .addSlider((sl) => sl.setLimits(0, 100, 5).setDynamicTooltip()
@@ -14210,6 +14236,7 @@ class ModaleTache extends obsidian.Modal {
         priorite: this.v.priorite,
         debut: this.v.debut,
         echeance: this.v.echeance,
+        heure: this.v.jalon ? '' : (this.v.echeance ? this.v.heure : ''),
         avancement: Number(this.v.avancement) || 0,
         jalon: this.v.jalon === true,
         parent: this.v.parent ? '[[' + this.v.parent + ']]' : '',
