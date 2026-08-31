@@ -992,16 +992,21 @@ const DEFAULT_SETTINGS = {
   // organisation, et se peuple à la première ouverture des réglages.
   famillesNotes: [],
   // FAMILLES DE TÂCHES — distinctes des familles de notes ci-dessus. Chaque
-  // ligne : { id, nom, couleur, icone, proprietes:[{cle,libelle,type}] }. La
-  // valeur d'id est celle écrite dans le champ `famille` d'une note de tâche.
+  // ligne : { id, nom, description, couleur, icone, proprietes:[{cle,libelle,type}] }.
+  // La valeur d'id est celle écrite dans le champ `famille` d'une note de tâche.
+  // `description` : texte libre lu par l'IA pour classer les brouillons.
   // Préchargées avec les trois familles historiques pour ne rien casser.
   famillesTaches: [
     { id: 'lecture', nom: 'Lecture', couleur: '#4c78c9', icone: 'book-open',
+      description: 'Lire un texte, un article, un livre, une thèse ; en tirer des notes de lecture. Souvent rattachée à une source Zotero. Ex. : « Lire La théorie générale des systèmes », « Distinguer cybernétique de premier et de second ordre ».',
       proprietes: [{ cle: 'source', libelle: 'Source', type: 'lien' }] },
     { id: 'production', nom: 'Production', couleur: '#e0873d', icone: 'file-pen',
+      description: 'Rédiger ou fabriquer un livrable : chapitre, section, présentation, poster, courrier formalisé. Ex. : « Rédiger l\'introduction du chapitre 3 », « Préparer la présentation PEPR ».',
       proprietes: [{ cle: 'livrable', libelle: 'Livrable', type: 'lien' },
                    { cle: 'fichier', libelle: 'Fichier', type: 'texte' }] },
-    { id: 'action', nom: 'Action', couleur: '#6aa84f', icone: 'zap', proprietes: [] },
+    { id: 'action', nom: 'Action', couleur: '#6aa84f', icone: 'zap',
+      description: 'Démarche concrète, logistique ou administrative : envoyer un mail, prendre un rendez-vous, réserver une salle, relancer quelqu\'un. Ex. : « Envoyer un mail à Karine pour prévoir la date ».',
+      proprietes: [] },
   ],
   familleTacheDefaut: 'action',
   // Anciennes clés, conservées le temps de la migration (voir migrerFamilles).
@@ -3292,6 +3297,15 @@ class Ariane extends obsidian.Plugin {
       }).open(),
     });
     this.addCommand({
+      id: 'structurer-brouillon-taches',
+      name: tr('Tâches : structurer un brouillon (IA)'),
+      callback: () => {
+        const ed = this.app.workspace.activeEditor && this.app.workspace.activeEditor.editor;
+        const sel = ed && ed.getSelection ? ed.getSelection() : '';
+        new ModaleStructurerTaches(this, sel && sel.trim() ? sel : '').open();
+      },
+    });
+    this.addCommand({
       id: 'modifier-tache',
       name: tr('Tâches : modifier une tâche…'),
       callback: () => {
@@ -3825,6 +3839,8 @@ class Ariane extends obsidian.Plugin {
       if (!sel || !sel.trim()) return;
       menu.addItem((it) => it.setTitle(tr('Ariane : suggestions pour ce passage')).setIcon('sparkles')
         .onClick(() => this.suggestionsPourArgument(sel)));
+      menu.addItem((it) => it.setTitle(tr('Ariane : structurer en tâches')).setIcon('list-tree')
+        .onClick(() => new ModaleStructurerTaches(this, sel).open()));
     }));
     // Invalidation de l'index quand une note candidate change.
     const revaliderIndex = (f) => {
@@ -5222,6 +5238,155 @@ class Ariane extends obsidian.Plugin {
     const out = new Map();
     for (const ref of parRef.keys()) out.set(ref, calc(ref, new Set()));
     return out;
+  }
+
+  /* ---- IA : structuration de brouillons de tâches -------------------- */
+
+  // Toutes les dates repérées telles quelles dans un texte, ramenées en ISO.
+  // Sert à n'autoriser à l'import QUE les dates réellement présentes.
+  static datesDansTexte(txt) {
+    const s = String(txt || '');
+    const out = new Set();
+    let m;
+    const iso = /\b(\d{4})-(\d{2})-(\d{2})\b/g;
+    while ((m = iso.exec(s))) out.add(m[1] + '-' + m[2] + '-' + m[3]);
+    const num = /\b(\d{1,2})[/.](\d{1,2})[/.](\d{4})\b/g;
+    while ((m = num.exec(s))) {
+      out.add(m[3] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0'));
+    }
+    return out;
+  }
+
+  // Extrait un objet/tableau JSON d'une réponse LLM (tolère un habillage
+  // ```json … ``` et du bavardage autour). Rend null si rien d'exploitable.
+  static extraireJson(txt) {
+    const s = String(txt || '').trim()
+      .replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    try { return JSON.parse(s); } catch (e) { /* on tente un sous-bloc */ }
+    const a = s.search(/[[{]/);
+    if (a < 0) return null;
+    const ferme = s[a] === '[' ? ']' : '}';
+    const b = s.lastIndexOf(ferme);
+    if (b <= a) return null;
+    try { return JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
+  }
+
+  // Nettoie l'arbre de specs rendu par l'IA : familles bornées aux ids connus,
+  // booléens coercés, priorité normalisée, PROFONDEUR plafonnée, et surtout
+  // AUCUNE date qui ne soit déjà dans le texte source (opts.dates : Set ISO).
+  // opts = { familles: Set|Array, defaut, dates: Set, profMax }.
+  static normaliserSpecsTaches(brut, opts) {
+    const o = opts || {};
+    const familles = o.familles instanceof Set ? o.familles
+      : new Set(Array.isArray(o.familles) ? o.familles : []);
+    const defaut = familles.has(o.defaut) ? o.defaut
+      : (familles.values().next().value || 'action');
+    const dates = o.dates instanceof Set ? o.dates : new Set();
+    const profMax = Number.isFinite(o.profMax) ? o.profMax : 8;
+    const PRIOS = {
+      haute: 'haute', high: 'haute', urgent: 'haute', urgente: 'haute',
+      moyenne: 'moyenne', medium: 'moyenne', normale: 'moyenne', normal: 'moyenne',
+      basse: 'basse', low: 'basse', bonus: 'basse', optionnel: 'basse',
+      optionnelle: 'basse', 'si le temps': 'basse',
+    };
+    const racine = Array.isArray(brut) ? brut
+      : (brut && Array.isArray(brut.taches) ? brut.taches
+        : (brut && Array.isArray(brut.tasks) ? brut.tasks : []));
+    const dateOk = (v) => {
+      const s = String(v == null ? '' : v).trim().slice(0, 10);
+      return (/^\d{4}-\d{2}-\d{2}$/.test(s) && dates.has(s)) ? s : '';
+    };
+    const vrai = (v) => v === true || /^(true|oui|yes|1)$/i.test(String(v == null ? '' : v));
+    const un = (n, prof) => {
+      if (!n || typeof n !== 'object') return null;
+      const titre = String(n.titre || n.title || n.intitule || n.nom || n.name || '').trim();
+      if (!titre) return null;
+      const fam = String(n.famille || n.family || '').trim().toLowerCase();
+      const prio = PRIOS[String(n.priorite || n.priority || '').trim().toLowerCase()] || '';
+      const brutEnf = n.enfants || n.children || n.sous || n.sousTaches || n.subtasks || [];
+      const enfants = (prof < profMax && Array.isArray(brutEnf))
+        ? brutEnf.map((e) => un(e, prof + 1)).filter(Boolean) : [];
+      return {
+        titre,
+        famille: familles.has(fam) ? fam : defaut,
+        jalon: vrai(n.jalon != null ? n.jalon : n.milestone),
+        priorite: prio,
+        debut: dateOk(n.debut != null ? n.debut : n.start),
+        echeance: dateOk(n.echeance != null ? n.echeance : (n.due != null ? n.due : n.deadline)),
+        note: String(n.note || n.remarque || n.commentaire || n.comment || '').trim(),
+        source: String(n.source || n.source_pressentie || n.sourcePressentie || '').trim(),
+        enfants,
+      };
+    };
+    return racine.map((n) => un(n, 0)).filter(Boolean);
+  }
+
+  // Ajoute des cartes au plan d'une vue « ariane-articulation » dans le TEXTE
+  // brut d'un .base, sans re-sérialiser le reste. `nomVue` cible la vue par son
+  // name ; à défaut, la première vue articulation. Rend le texte modifié, ou
+  // null si aucune vue articulation ou rien à ajouter.
+  static majPlanArticulationTexte(texte, nomVue, refs) {
+    const aAjouter = [...new Set((refs || []).filter(Boolean))];
+    if (!aAjouter.length) return null;
+    const eol = texte.includes('\r\n') ? '\r\n' : '\n';
+    const lignes = texte.split(/\r?\n/);
+    const iViews = lignes.findIndex((l) => /^views:\s*$/.test(l));
+    if (iViews === -1) return null;
+    // Découpe le bloc views: en entrées (chaque « - type: … » à 2 espaces).
+    let debut = -1;
+    let fin = lignes.length;
+    let dansArticulation = false;
+    let nomCourant = '';
+    let iPlan = -1;
+    let iEntree = -1;
+    for (let k = iViews + 1; k < lignes.length; k += 1) {
+      const l = lignes[k];
+      if (/^\S/.test(l) && l.trim() !== '') { fin = k; break; }
+      const mType = l.match(/^ {2}-\s*type:\s*(.+?)\s*$/);
+      if (mType) {
+        if (dansArticulation && (nomVue == null || nomCourant === nomVue)) { debut = iEntree; break; }
+        dansArticulation = /ariane-articulation/.test(mType[1]);
+        nomCourant = '';
+        iPlan = -1;
+        iEntree = k;
+        continue;
+      }
+      const mNom = l.match(/^ {4}name:\s*(.+?)\s*$/);
+      if (mNom) nomCourant = mNom[1].replace(/^["']|["']$/g, '');
+      if (/^ {4}arianeArtPlan:/.test(l)) iPlan = k;
+    }
+    if (debut === -1 && dansArticulation && (nomVue == null || nomCourant === nomVue)) {
+      debut = iEntree;
+    }
+    if (debut === -1) return null;
+    // Fin de l'entrée ciblée : prochaine « - type: » à 2 espaces, ou fin du bloc.
+    let finEntree = fin;
+    for (let k = debut + 1; k < fin; k += 1) {
+      if (/^ {2}-\s*type:/.test(lignes[k])) { finEntree = k; break; }
+    }
+    let planLigne = -1;
+    for (let k = debut; k < finEntree; k += 1) {
+      if (/^ {4}arianeArtPlan:/.test(lignes[k])) { planLigne = k; break; }
+    }
+    let plan = { cartes: [] };
+    if (planLigne !== -1) {
+      const m = lignes[planLigne].match(/^ {4}arianeArtPlan:\s*'(.*)'\s*$/)
+        || lignes[planLigne].match(/^ {4}arianeArtPlan:\s*"(.*)"\s*$/);
+      if (m) { try { plan = JSON.parse(m[1]) || plan; } catch (e) { plan = { cartes: [] }; } }
+    }
+    if (!Array.isArray(plan.cartes)) plan.cartes = [];
+    const deja = new Set(plan.cartes.map((c) => c && c.ref));
+    let n = 0;
+    for (const r of aAjouter) {
+      if (deja.has(r)) continue;
+      plan.cartes.push({ ref: r, x: null, y: null, replie: false });
+      n += 1;
+    }
+    if (!n) return null;
+    const nouvelle = "    arianeArtPlan: '" + JSON.stringify(plan) + "'";
+    if (planLigne !== -1) lignes.splice(planLigne, 1, nouvelle);
+    else lignes.splice(debut + 1, 0, nouvelle);
+    return lignes.join(eol);
   }
 
   // Place les nœuds SANS position (x/y non finis). Ceux qui en ont sont laissés
@@ -11119,6 +11284,120 @@ class Ariane extends obsidian.Plugin {
     return this.majTache(enfantRef, { parent: parentRef ? '[[' + parentRef + ']]' : '' });
   }
 
+  /* ---- IA : structuration de tâches -------------------------------- */
+
+  // Appel LLM (fournisseur configuré dans les réglages) qui rend du JSON parsé.
+  async genererIA(prompt, jetons) {
+    const brut = await this.genererJsonRefs(prompt, jetons || 1800);
+    if (!brut) { new obsidian.Notice(tr('L\'IA n\'a rien renvoyé. Vérifiez le fournisseur dans les réglages.')); return null; }
+    const j = Ariane.extraireJson(brut);
+    if (!j) new obsidian.Notice(tr('Réponse de l\'IA illisible (JSON attendu).'));
+    return j;
+  }
+
+  famillesIA() {
+    return (Array.isArray(this.settings.famillesTaches) ? this.settings.famillesTaches : [])
+      .filter((f) => f && f.id);
+  }
+
+  // Bloc de contexte « familles » commun à toutes les invites tâches.
+  _blocFamilles() {
+    const l = ['Familles de tâches disponibles (choisir l\'id EXACT) :'];
+    for (const f of this.famillesIA()) {
+      l.push('- ' + f.id + ' (« ' + (f.nom || f.id) + ' ») : '
+        + (String(f.description || '').replace(/\s+/g, ' ').trim() || 'pas de description.'));
+    }
+    l.push('Famille par défaut si hésitation : ' + (this.settings.familleTacheDefaut || 'action') + '.');
+    return l.join('\n');
+  }
+
+  promptStructuration(texte) {
+    return [
+      'Tu structures un brouillon de tâches en un arbre JSON pour un doctorant.',
+      this._blocFamilles(),
+      '',
+      'RÈGLES :',
+      '- L\'indentation du brouillon = hiérarchie parent/enfant (champ "enfants").',
+      '- « Jalon : … », ou une échéance de type présentation / soutenance / rendu → "jalon": true.',
+      '- « BONUS », « si le temps », « optionnel » → "priorite": "basse" et le mets aussi en "note".',
+      '- Une parenthèse ou une remarque (ex. « pas le temps pour X ») → "note", ne la perds jamais.',
+      '- « Lire <ouvrage> » → famille lecture, et mets le titre de l\'ouvrage dans "source".',
+      '- N\'INVENTE AUCUNE DATE. "debut"/"echeance" uniquement si une date explicite est écrite dans le brouillon, au format AAAA-MM-JJ, sinon "".',
+      '- Reformule les intitulés en style bref, verbe à l\'infinitif, sans redondance.',
+      '',
+      'Réponds UNIQUEMENT par un tableau JSON. Chaque nœud :',
+      '{"titre": "...", "famille": "id", "jalon": false, "priorite": "", "debut": "", "echeance": "", "note": "", "source": "", "enfants": []}',
+      '',
+      'BROUILLON :',
+      String(texte || '').trim(),
+    ].join('\n');
+  }
+
+  // Insère un texte de note sous « ## Note de travail » d'une tâche.
+  async ajouterNoteTache(ref, texte) {
+    const t = String(texte || '').trim();
+    if (!t) return;
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    if (!f) return;
+    this.marquerEcriture(f.path);
+    const lignes = (await this.app.vault.read(f)).split('\n');
+    const i = lignes.findIndex((l) => /^##\s+Note de travail\s*$/.test(l));
+    if (i >= 0) lignes.splice(i + 1, 0, '', t);
+    else { lignes.push('', t); }
+    await this.app.vault.modify(f, lignes.join('\n'));
+  }
+
+  // Crée un arbre de specs (déjà normalisées). Renvoie la liste des réfs créées.
+  // opts.vue = { fichier, nom } d'une vue articulation où poser les cartes.
+  async creerArbreTaches(specs, opts) {
+    const o = opts || {};
+    const crees = [];
+    const poser = async (spec, parentRef) => {
+      const chemin = await this.creerTache({
+        intitule: spec.titre,
+        famille: spec.famille,
+        jalon: spec.jalon,
+        priorite: spec.priorite,
+        debut: spec.debut,
+        echeance: spec.echeance,
+        source: spec.famille === 'lecture' ? spec.source : undefined,
+      });
+      const ref = this.refDeChemin(chemin);
+      if (!ref) return;
+      crees.push(ref);
+      if (spec.note) { try { await this.ajouterNoteTache(ref, spec.note); } catch (e) { /* rien */ } }
+      if (parentRef) { try { await this.rattacher(ref, parentRef); } catch (e) { /* rien */ } }
+      for (const e of spec.enfants || []) await poser(e, ref);
+    };
+    for (const s of specs || []) await poser(s, null);
+    if (o.vue && o.vue.fichier && crees.length) {
+      try {
+        const fv = this.app.vault.getAbstractFileByPath(o.vue.fichier);
+        if (fv) {
+          const txt = await this.app.vault.read(fv);
+          const out = Ariane.majPlanArticulationTexte(txt, o.vue.nom || null, crees);
+          if (out && out !== txt) await this.app.vault.modify(fv, out);
+        }
+      } catch (e) { console.debug('[Ariane] pose sur vue', e); }
+    }
+    return crees;
+  }
+
+  // Vues « ariane-articulation » trouvées dans les .base du coffre.
+  async vuesArticulation() {
+    const out = [];
+    for (const f of this.app.vault.getFiles().filter((x) => x && x.extension === 'base')) {
+      let base;
+      try { base = obsidian.parseYaml(await this.app.vault.read(f)) || {}; } catch (e) { continue; }
+      for (const v of (Array.isArray(base.views) ? base.views : [])) {
+        if (v && v.type === 'ariane-articulation') {
+          out.push({ fichier: f.path, nom: v.name || f.basename });
+        }
+      }
+    }
+    return out;
+  }
+
   // Dernier état SAIN de « parent » / « bloque-par » par tâche, pour pouvoir y
   // revenir si une modif manuelle ferme un cycle.
   _rattachDe(ref) {
@@ -12618,6 +12897,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         suppr.onclick = async () => { familles.splice(i, 1); await maj(); rendre(); };
 
         const corps = ligne.createDiv({ cls: 'zfa-famt-props' });
+        corps.createEl('div', { cls: 'zfa-famt-props-titre', text: tr('Description (pour l\'IA)') });
+        const desc = corps.createEl('textarea', { cls: 'zfa-famt-desc' });
+        desc.rows = 3;
+        desc.placeholder = tr('Quelques phrases sur ce que recouvre cette famille : le type d\'action, des exemples de tâches, ce qui la distingue des autres. L\'IA s\'en sert pour classer vos brouillons de tâches.');
+        desc.value = f.description || '';
+        desc.onchange = async () => { f.description = desc.value.trim(); await maj(); };
         corps.createEl('div', { cls: 'zfa-famt-props-titre', text: tr('Propriétés ajoutées') });
         (f.proprietes = Array.isArray(f.proprietes) ? f.proprietes : []).forEach((p, j) => {
           const pr = corps.createDiv({ cls: 'zfa-famt-prop' });
@@ -13539,6 +13824,132 @@ class ModaleDaterTache extends obsidian.Modal {
       this.close();
       await this.sur({ debut, echeance });
     };
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+/* ---- Structurer un brouillon de tâches (IA) ------------------------- */
+
+class ModaleStructurerTaches extends obsidian.Modal {
+  constructor(greffon, texteInitial) {
+    super(greffon.app);
+    this.greffon = greffon;
+    this.texteInitial = texteInitial || '';
+    this.arbre = null;
+    this.vues = [];
+  }
+
+  async onOpen() {
+    const c = this.contentEl;
+    c.addClass('zfa-struct');
+    c.createEl('h3', { text: tr('Structurer un brouillon de tâches') });
+
+    this.zone = c.createEl('textarea', { cls: 'zfa-struct-zone' });
+    this.zone.rows = 12;
+    this.zone.placeholder = tr('Collez ici votre brouillon. L\'indentation devient la hiérarchie. Exemple :\n\nApprofondir les approches systémiques\n\tLire La théorie générale des systèmes\n\tLire Morin (pas le temps pour La méthode)\n\tJalon : présentation PEPR\n\t\tEnvoyer un mail à Karine');
+    this.zone.value = this.texteInitial;
+
+    const opt = c.createDiv({ cls: 'zfa-struct-opt' });
+    opt.createSpan({ text: tr('Poser les tâches sur : ') });
+    this.selVue = opt.createEl('select');
+    this.selVue.createEl('option', { value: '', text: tr('— notes seulement —') });
+    try {
+      this.vues = await this.greffon.vuesArticulation();
+      for (let i = 0; i < this.vues.length; i += 1) {
+        this.selVue.createEl('option', { value: String(i),
+          text: this.vues[i].nom + '  (' + this.vues[i].fichier + ')' });
+      }
+    } catch (e) { /* pas grave */ }
+
+    this.pied = c.createDiv({ cls: 'zfa-struct-pied' });
+    this.btnAnalyse = this.pied.createEl('button', { cls: 'mod-cta', text: tr('Analyser') });
+    this.btnAnalyse.onclick = () => this._analyser();
+
+    this.apercu = c.createDiv({ cls: 'zfa-struct-apercu' });
+  }
+
+  async _analyser() {
+    const texte = this.zone.value.trim();
+    if (!texte) { new obsidian.Notice(tr('Rien à analyser.')); return; }
+    this.btnAnalyse.disabled = true;
+    this.btnAnalyse.setText(tr('Analyse…'));
+    try {
+      const brut = await this.greffon.genererIA(this.greffon.promptStructuration(texte), 2400);
+      const specs = Ariane.normaliserSpecsTaches(brut, {
+        familles: new Set(this.greffon.famillesIA().map((f) => f.id)),
+        defaut: this.greffon.settings.familleTacheDefaut || 'action',
+        dates: Ariane.datesDansTexte(texte),
+      });
+      if (!specs.length) { new obsidian.Notice(tr('L\'IA n\'a produit aucune tâche exploitable.')); return; }
+      const marquer = (n) => { n.inclus = true; (n.enfants || []).forEach(marquer); };
+      specs.forEach(marquer);
+      this.arbre = specs;
+      this._rendreApercu();
+    } finally {
+      this.btnAnalyse.disabled = false;
+      this.btnAnalyse.setText(tr('Ré-analyser'));
+    }
+  }
+
+  _rendreApercu() {
+    this.apercu.empty();
+    const familles = this.greffon.famillesIA();
+    const rangee = (n, prof) => {
+      const d = this.apercu.createDiv({ cls: 'zfa-struct-noeud' });
+      d.style.marginLeft = (prof * 18) + 'px';
+      const inc = d.createEl('input', { type: 'checkbox' });
+      inc.checked = n.inclus !== false;
+      inc.onchange = () => { n.inclus = inc.checked; };
+      const titre = d.createEl('input', { type: 'text', cls: 'zfa-struct-titre' });
+      titre.value = n.titre;
+      titre.onchange = () => { n.titre = titre.value.trim() || n.titre; };
+      const fam = d.createEl('select', { cls: 'zfa-struct-fam' });
+      for (const f of familles) fam.createEl('option', { value: f.id, text: f.nom || f.id });
+      fam.value = n.famille;
+      fam.onchange = () => { n.famille = fam.value; };
+      const jal = d.createEl('label', { cls: 'zfa-struct-jal' });
+      const jc = jal.createEl('input', { type: 'checkbox' });
+      jc.checked = !!n.jalon;
+      jc.onchange = () => { n.jalon = jc.checked; };
+      jal.createSpan({ text: tr('jalon') });
+      if (n.priorite) d.createSpan({ cls: 'zfa-struct-prio', text: n.priorite });
+      if (n.note) d.createSpan({ cls: 'zfa-struct-note', text: '✎ ' + n.note });
+      for (const e of n.enfants || []) rangee(e, prof + 1);
+    };
+    this.arbre.forEach((n) => rangee(n, 0));
+
+    const pied = this.apercu.createDiv({ cls: 'zfa-struct-pied' });
+    const compte = pied.createSpan();
+    const compter = (l) => l.reduce((s, n) => s + (n.inclus !== false ? 1 + compter(n.enfants || []) : 0), 0);
+    compte.setText(tr('≈ ') + compter(this.arbre) + tr(' tâche(s)'));
+    const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Créer les tâches') });
+    b.onclick = () => this._creer();
+  }
+
+  _elaguer(liste) {
+    return (liste || []).filter((n) => n.inclus !== false).map((n) => ({
+      titre: n.titre, famille: n.famille, jalon: n.jalon, priorite: n.priorite,
+      debut: n.debut, echeance: n.echeance, note: n.note, source: n.source,
+      enfants: this._elaguer(n.enfants),
+    }));
+  }
+
+  async _creer() {
+    const specs = this._elaguer(this.arbre);
+    if (!specs.length) { new obsidian.Notice(tr('Aucune tâche sélectionnée.')); return; }
+    const vue = this.selVue.value ? this.vues[Number(this.selVue.value)] : null;
+    this.close();
+    const avis = new obsidian.Notice(tr('Création des tâches…'), 0);
+    try {
+      const refs = await this.greffon.creerArbreTaches(specs, { vue });
+      avis.hide();
+      new obsidian.Notice(refs.length + tr(' tâche(s) créée(s).'));
+    } catch (e) {
+      avis.hide();
+      console.error('[Ariane] structuration', e);
+      new obsidian.Notice(tr('Échec de la création : ') + (e && e.message ? e.message : e));
+    }
   }
 
   onClose() { this.contentEl.empty(); }
