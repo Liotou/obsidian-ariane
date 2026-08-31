@@ -3295,16 +3295,6 @@ views:
         - note["⟦K:statut⟧"] != "abandonnée"
 `;
 
-// Bloc de vue Articulation, ajouté aux bases de tâches déjà créées qui ne
-// l'ont pas encore (assurerBaseTaches).
-const VUE_ARTICULATION_BASE = `  - type: ariane-articulation
-    name: 6. Articulation
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["⟦K:statut⟧"] != "abandonnée"
-`;
-
 const ZFA_TACHE_DEBUT = '%% ariane:tache %%';
 const ZFA_TACHE_FIN = '%% /ariane:tache %%';
 
@@ -3383,6 +3373,11 @@ class Ariane extends obsidian.Plugin {
       id: 'incoherences-taches',
       name: tr('Tâches : incohérences'),
       callback: () => this.ouvrirVueIncoherences(),
+    });
+    this.addCommand({
+      id: 'creer-base-taches',
+      name: tr('Tâches : créer le fichier « Tâches.base » (vues par défaut)'),
+      callback: () => this.creerBaseTaches(),
     });
     this.addCommand({
       id: 'relire-incoherences-taches',
@@ -11401,23 +11396,20 @@ class Ariane extends obsidian.Plugin {
     el.textContent = css;
   }
 
-  async assurerBaseTaches() {
+  // Crée un « Tâches.base » de démarrage (vues par défaut) UNIQUEMENT sur
+  // demande explicite (commande). Ne touche jamais un fichier déjà là :
+  // l'utilisateur reste maître de ses vues.
+  async creerBaseTaches() {
+    await this.assurerDossier(this.dossierT);
     const chemin = this.dossierT + '/Tâches.base';
     const f = this.app.vault.getAbstractFileByPath(chemin);
-    if (!f) {
-      this.marquerEcriture(chemin);
-      await this.app.vault.create(chemin, this.gabaritBaseTaches());
+    if (f) {
+      new obsidian.Notice(tr('« Tâches.base » existe déjà — inchangé.'));
       return chemin;
     }
-    // Base déjà là mais sans vue Articulation : on l'ajoute (source déjà
-    // restreinte aux tâches, contrairement à une vue posée à la main).
-    if (f instanceof obsidian.TFile) {
-      const t = await this.app.vault.read(f);
-      if (!/type:\s*ariane-articulation/.test(t)) {
-        this.marquerEcriture(chemin);
-        await this.app.vault.modify(f, t.replace(/\s*$/, '\n') + this.gabaritBaseTaches(VUE_ARTICULATION_BASE));
-      }
-    }
+    this.marquerEcriture(chemin);
+    await this.app.vault.create(chemin, this.gabaritBaseTaches());
+    new obsidian.Notice(tr('« Tâches.base » créé.'));
     return chemin;
   }
 
@@ -11446,7 +11438,6 @@ class Ariane extends obsidian.Plugin {
   async creerTache(champs) {
     const dossier = this.dossierT;
     await this.assurerDossier(dossier);
-    await this.assurerBaseTaches();
     const noms = this.app.vault.getMarkdownFiles()
       .filter((f) => f.path.startsWith(dossier + '/'))
       .map((f) => f.basename);
