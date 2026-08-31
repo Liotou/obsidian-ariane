@@ -4900,6 +4900,58 @@ class Ariane extends obsidian.Plugin {
     return out;
   }
 
+  // Plan de travail de l'articulation : outils purs.
+
+  // Les arêtes dont les DEUX extrémités sont dans l'ensemble de refs.
+  static aretesEntre(aretes, refs) {
+    const s = refs instanceof Set ? refs : new Set(refs || []);
+    return (aretes || []).filter((a) => a && s.has(a.de) && s.has(a.vers));
+  }
+
+  // Relatifs d'une tâche qui NE SONT PAS sur le plan :
+  //  - sousTaches : enfants de `ref` (arête hier `de === ref`) hors plan
+  //  - bloquantes : tâches qui bloquent `ref` (arête bloque `vers === ref`) hors plan
+  static relativesHorsPlan(ref, aretes, refsPlan) {
+    const s = refsPlan instanceof Set ? refsPlan : new Set(refsPlan || []);
+    const sousTaches = [];
+    const bloquantes = [];
+    for (const a of aretes || []) {
+      if (!a) continue;
+      if (a.type === 'hier' && a.de === ref && !s.has(a.vers)) sousTaches.push(a.vers);
+      if (a.type === 'bloque' && a.vers === ref && !s.has(a.de)) bloquantes.push(a.de);
+    }
+    return { sousTaches, bloquantes };
+  }
+
+  // Positions en grille pour poser N cartes, en sautant les cellules qui
+  // chevaucheraient une boîte déjà occupée. `occupe` : [{ x, y, w, h }].
+  static grillePlacement(n, opts) {
+    const o = opts || {};
+    const ox = (o.origine && o.origine.x) || 0;
+    const oy = (o.origine && o.origine.y) || 0;
+    const px = (o.pas && o.pas.x) || 240;
+    const py = (o.pas && o.pas.y) || 150;
+    const w = o.carte && o.carte.w ? o.carte.w : 210;
+    const h = o.carte && o.carte.h ? o.carte.h : 58;
+    const occupe = o.occupe || [];
+    const chevauche = (x, y) => occupe.some((b) =>
+      x < b.x + b.w && x + w > b.x && y < b.y + b.h && y + h > b.y);
+    const out = [];
+    let col = 0;
+    let ligne = 0;
+    const parLigne = Math.max(1, o.parLigne || 4);
+    let garde = 0;
+    while (out.length < n && garde < 10000) {
+      garde++;
+      const x = ox + col * px;
+      const y = oy + ligne * py;
+      if (!chevauche(x, y) && !out.some((p) => p.x === x && p.y === y)) out.push({ x, y });
+      col++;
+      if (col >= parLigne) { col = 0; ligne++; }
+    }
+    return out;
+  }
+
   // Détection des cycles par parcours en profondeur. Le tableau « chemin »
   // garde la branche courante : y retomber, c'est boucler.
   // Un cycle n'est retenu qu'une fois, quel que soit le sommet par lequel on y
