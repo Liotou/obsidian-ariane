@@ -931,6 +931,117 @@ const TEXTES = {
     "Ordre des tâches": "Task order",
     "Largeur de la colonne des tâches": "Width of the task column",
     "La frise n a pas pu se dessiner : ": "The timeline could not be drawn: ",
+
+    "Description (pour l'IA)": "Description (for the AI)",
+    "Quelques phrases : ce que recouvre la famille, des exemples, ce qui la distingue. Utilisé par l'IA pour classer les brouillons.": "A few sentences: what the family covers, some examples, what sets it apart. Used by the AI to sort drafts.",
+    "Liste Apple Rappels": "Apple Reminders list",
+    "(liste par défaut)": "(default list)",
+    "Heure": "Time",
+    "Facultative — sinon rappel « journée entière ».": "Optional — otherwise an all-day reminder.",
+
+    "Assistant IA": "AI assistant",
+    "Structurer un brouillon, découper une tâche, normaliser les intitulés, vérifier les familles, ajouter en langage naturel, résoudre les sources — via les commandes « Tâches : … (IA) » et les menus contextuels. Chaque proposition est revue avant d'être appliquée. Le classement s'appuie sur la « Description » de chaque famille (onglet Dossiers & familles).": "Structure a draft, split a task, normalise titles, check families, add in plain language, resolve sources — through the “Tasks: … (AI)” commands and context menus. Every proposal is reviewed before it is applied. Sorting relies on each family's “Description” (Folders & families tab).",
+    "Fournisseur": "Provider",
+    "Partagé avec le découpage des bibliographies. Adresse du service locale : onglet Suggestions.": "Shared with bibliography splitting. Local service address: Suggestions tab.",
+    "Claude en ligne de commande": "Claude command line",
+    "Modèle": "Model",
+    "Ex. « mistral-small-latest ».": "E.g. “mistral-small-latest”.",
+    "Nom exact du modèle installé.": "Exact name of the installed model.",
+    "Tester la connexion": "Test the connection",
+    "Tester": "Test",
+    "Test…": "Testing…",
+    "Le fournisseur répond.": "The provider responds.",
+    "Clé Mistral": "Mistral key",
+    "Conservée localement, dans les réglages du greffon.": "Kept locally, in the plugin settings.",
+    "Commande": "Command",
+    "Chemin du binaire, si « claude » ne suffit pas.": "Path to the binary, if “claude” is not enough.",
+
+    "Apple Rappels": "Apple Reminders",
+    "macOS. Chaque tâche datée devient un rappel dans la liste de sa famille. Synchronisation bidirectionnelle : cocher un rappel termine la tâche, un rappel ajouté à la main devient une tâche. La première synchronisation demande l'accès à Rappels.": "macOS. Every dated task becomes a reminder in its family's list. Two-way sync: checking a reminder completes the task, a reminder added by hand becomes a task. The first sync asks for Reminders access.",
+    "Activer": "Enable",
+    "Synchroniser automatiquement": "Sync automatically",
+    "Intervalle de relève (minutes)": "Poll interval (minutes)",
+    "Synchroniser maintenant": "Sync now",
+    "Pousser": "Push",
+    "Relever": "Pull",
+    "Recharger la liste des listes": "Reload the list of lists",
+    "Recharge les noms de listes proposés pour les familles (groupes inclus).": "Reloads the list names offered for families (groups included).",
+    "Synchronisation Apple Rappels…": "Syncing Apple Reminders…",
+    "Relève Apple Rappels…": "Pulling Apple Reminders…",
+    " rappel(s) synchronisé(s).": " reminder(s) synced.",
+    " tâche(s) mise(s) à jour depuis Rappels.": " task(s) updated from Reminders.",
+    "Aucune tâche à synchroniser.": "No task to sync.",
+    "Apple Rappels a refusé (autorisation d'automatisation dans Réglages système ?).": "Apple Reminders refused (automation permission in System Settings?).",
+    "Apple Rappels : disponible sur macOS uniquement.": "Apple Reminders: available on macOS only.",
+
+    "Tâches : synchroniser vers Apple Rappels": "Tasks: sync to Apple Reminders",
+    "Tâches : relever les rappels (terminés, échéances)": "Tasks: pull reminders (done, due dates)",
+    "Tâches : structurer un brouillon (IA)": "Tasks: structure a draft (AI)",
+    "Tâches : découper la tâche active (IA)": "Tasks: split the active task (AI)",
+    "Tâches : normaliser les intitulés (IA)": "Tasks: normalise titles (AI)",
+    "Tâches : vérifier les familles (IA)": "Tasks: check families (AI)",
+    "Tâches : ajouter (langage naturel, IA)": "Tasks: add (plain language, AI)",
+    "Tâches : résoudre les sources des tâches de lecture": "Tasks: resolve sources of reading tasks",
+
+    "Structurer un brouillon de tâches": "Structure a task draft",
+    "Découper : ": "Split: ",
+    "Brouillon": "Draft",
+    "Consignes (facultatif)": "Instructions (optional)",
+    "Analyser le brouillon": "Analyse the draft",
+    "Proposer des sous-tâches": "Suggest subtasks",
+    "Ré-analyser": "Re-analyse",
+    "Reproposer": "Suggest again",
+    "Analyse…": "Analysing…",
+    "Poser les tâches sur": "Place tasks on",
+    "Une vue articulation reçoit les cartes ; sinon les notes sont seulement créées.": "An articulation view receives the cards; otherwise only the notes are created.",
+    "— notes seulement —": "— notes only —",
+    " tâche(s) à créer": " task(s) to create",
+    "Créer les tâches": "Create the tasks",
+    "L'IA n'a produit aucune tâche exploitable.": "The AI produced no usable task.",
+    "Création des tâches…": "Creating tasks…",
+    " tâche(s) créée(s).": " task(s) created.",
+    "Échec de la création : ": "Creation failed: ",
+    "Découper la tâche (IA)…": "Split the task (AI)…",
+    "Ouvrez d'abord une note de tâche.": "Open a task note first.",
+    "L'indentation du texte devient la hiérarchie. « Jalon : » marque un jalon, « BONUS / si le temps » une priorité basse. Aucune date n'est créée sauf si elle figure dans le texte.": "Text indentation becomes the hierarchy. “Jalon:” marks a milestone, “BONUS / if there's time” a low priority. No date is created unless it appears in the text.",
+    "L'IA propose des sous-tâches ; vous les revoyez avant création.": "The AI suggests subtasks; you review them before creation.",
+
+    "Normaliser les intitulés": "Normalise titles",
+    "Décochez ce que vous ne voulez pas ; le texte reste modifiable.": "Untick what you don't want; the text stays editable.",
+    "Vérifier les familles": "Check families",
+    "L'IA propose une famille différente pour ces tâches.": "The AI suggests a different family for these tasks.",
+    "Rien à changer.": "Nothing to change.",
+    "Rien à changer — tout semble déjà en ordre.": "Nothing to change — everything looks in order.",
+    " changement(s) proposé(s)": " change(s) proposed",
+    "Appliquer la sélection": "Apply the selection",
+    " modification(s) appliquée(s).": " change(s) applied.",
+    "Normalisation… ": "Normalising… ",
+    "Vérification… ": "Checking… ",
+    "Ajouter une tâche (langage naturel)": "Add a task (plain language)",
+    "Une phrase → une tâche : famille devinée, dates prises seulement si écrites, blocage rattaché si vous nommez une tâche existante.": "One sentence → one task: family guessed, dates only if written, blocker linked if you name an existing task.",
+    "Créer": "Create",
+    "Création…": "Creating…",
+    "Rien n'a pu être créé.": "Nothing could be created.",
+    "Tâche créée : ": "Task created: ",
+    "Résoudre les sources (lecture)": "Resolve sources (reading)",
+    "Rapprochement d'une source en clair d'une fiche @citekey du coffre.": "Matches a plain-text source to a @citekey note in the vault.",
+    "Recherche des sources…": "Searching sources…",
+    "L'IA n'a rien renvoyé. Vérifiez le fournisseur dans les réglages.": "The AI returned nothing. Check the provider in settings.",
+    "Réponse de l'IA illisible (JSON attendu) : ": "Unreadable AI response (JSON expected): ",
+
+    "Révéler la lignée au survol": "Reveal lineage on hover",
+    "Survoler une barre met en valeur ses parents et ses sous-tâches, reliés par un trait.": "Hovering a bar highlights its parents and subtasks, joined by a line.",
+    "Modifier la propriété…": "Edit property…",
+    "Modifier ": "Edit ",
+    "Nom d'affichage": "Display name",
+    "Type de propriété": "Property type",
+    "Rétablir le nom d'origine": "Restore the original name",
+    "Ce rattachement fermerait un cycle : il n’a pas été appliqué.": "This parent link would close a cycle: it was not applied.",
+    "Modification annulée : ce lien fermait un cycle (rattachements + blocages).": "Change reverted: that link closed a cycle (links + blockers).",
+    "bloquée": "blocked",
+
+    "Note de travail": "Working note",
+    "Ce que vous voulez garder sous la main pour cette tâche (Markdown accepté).": "Anything to keep at hand for this task (Markdown allowed).",
   },
 };
 let LANGUE = 'fr';
@@ -1001,14 +1112,14 @@ const DEFAULT_SETTINGS = {
   // Préchargées avec les trois familles historiques pour ne rien casser.
   famillesTaches: [
     { id: 'lecture', nom: 'Lecture', couleur: '#4c78c9', icone: 'book-open',
-      description: 'Lire un texte, un article, un livre, une thèse ; en tirer des notes de lecture. Souvent rattachée à une source Zotero. Ex. : « Lire La théorie générale des systèmes », « Distinguer cybernétique de premier et de second ordre ».',
+      description: 'Lire un texte, un article, un livre ; en tirer des notes. Souvent rattachée à une source Zotero.',
       proprietes: [{ cle: 'source', libelle: 'Source', type: 'lien' }] },
     { id: 'production', nom: 'Production', couleur: '#e0873d', icone: 'file-pen',
-      description: 'Rédiger ou fabriquer un livrable : chapitre, section, présentation, poster, courrier formalisé. Ex. : « Rédiger l\'introduction du chapitre 3 », « Préparer la présentation PEPR ».',
+      description: 'Rédiger ou fabriquer un livrable : document, section, présentation, courrier formalisé.',
       proprietes: [{ cle: 'livrable', libelle: 'Livrable', type: 'lien' },
                    { cle: 'fichier', libelle: 'Fichier', type: 'texte' }] },
     { id: 'action', nom: 'Action', couleur: '#6aa84f', icone: 'zap',
-      description: 'Démarche concrète, logistique ou administrative : envoyer un mail, prendre un rendez-vous, réserver une salle, relancer quelqu\'un. Ex. : « Envoyer un mail à Karine pour prévoir la date ».',
+      description: 'Démarche concrète : envoyer un message, prendre un rendez-vous, relancer, réserver.',
       proprietes: [] },
   ],
   familleTacheDefaut: 'action',
@@ -11793,7 +11904,7 @@ class Ariane extends obsidian.Plugin {
 
   promptStructuration(texte) {
     return [
-      'Tu structures un brouillon de tâches en un arbre JSON pour un doctorant.',
+      'Tu structures un brouillon de tâches en un arbre JSON.',
       this._blocFamilles(),
       '',
       'RÈGLES :',
@@ -13359,21 +13470,20 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           .onChange(async (v) => { s.listeRappelsDefaut = v.trim(); await maj(); });
       });
 
-    this._section(c, tr('Apple Rappels (macOS)'));
-    this._aide(c, tr("Chaque tâche datée devient un rappel dans la liste de sa famille : titre « [T26-001] - Intitulé », échéance (avec l'heure si renseignée), priorité, lien retour vers la note. Bidirectionnel : cocher un rappel termine la tâche, changer son échéance la reporte (sauf si la note a bougé, elle fait alors foi), et un rappel ajouté à la main dans une liste surveillée devient une nouvelle tâche. Via EventKit — toutes les listes sont vues, y compris celles rangées dans un groupe. La première synchronisation demande l'accès à Rappels dans les Réglages système."));
+    this._section(c, tr('Apple Rappels'));
+    this._aide(c, tr("macOS. Chaque tâche datée devient un rappel dans la liste de sa famille. Synchronisation bidirectionnelle : cocher un rappel termine la tâche, un rappel ajouté à la main devient une tâche. La première synchronisation demande l'accès à Rappels."));
     new obsidian.Setting(c)
-      .setName(tr('Activer l\'intégration'))
+      .setName(tr('Activer'))
       .addToggle((t) => t.setValue(s.rappelsActif === true)
         .onChange(async (v) => { s.rappelsActif = v; await maj(); this.display(); }));
     if (s.rappelsActif) {
       new obsidian.Setting(c)
         .setName(tr('Synchroniser automatiquement'))
-        .setDesc(tr('Pousser dès qu\'une tâche change, relever régulièrement.'))
         .addToggle((t) => t.setValue(s.rappelsAuto !== false)
           .onChange(async (v) => { s.rappelsAuto = v; await maj(); this.display(); }));
       if (s.rappelsAuto !== false) {
         new obsidian.Setting(c)
-          .setName(tr('Intervalle de relève (min)'))
+          .setName(tr('Intervalle de relève (minutes)'))
           .addText((t) => t.setValue(String(s.rappelsReleveMin || 10))
             .onChange(async (v) => {
               const n = parseInt(v, 10);
@@ -13384,11 +13494,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       new obsidian.Setting(c)
         .setName(tr('Synchroniser maintenant'))
         .addButton((b) => b.setButtonText(tr('Pousser')).onClick(() => this.plugin.pousserRappels(false)))
-        .addButton((b) => b.setButtonText(tr('Relever')).onClick(() => this.plugin.releverRappels(false)));
-      new obsidian.Setting(c)
-        .setName(tr('Listes disponibles'))
-        .setDesc(tr('Recharge les noms de listes proposés pour les familles (groupes inclus).'))
-        .addButton((b) => b.setButtonText(tr('Rafraîchir'))
+        .addButton((b) => b.setButtonText(tr('Relever')).onClick(() => this.plugin.releverRappels(false)))
+        .addExtraButton((b) => b.setIcon('refresh-cw').setTooltip(tr('Recharger la liste des listes'))
           .onClick(async () => { await this.plugin.chargerListesRappels(); this.display(); }));
     }
 
@@ -13405,7 +13512,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       });
 
     this._section(c, tr('Clés des propriétés de tâche'));
-    this._aide(c, tr("Chaque propriété de tâche est écrite « préfixe + nom lisible » (« Tâche - Échéance »). Le préfixe évite les collisions avec des propriétés de même nom sur d'autres notes. Tu peux remplacer le nom lisible d'une propriété ci-dessous ; le préfixe reste ajouté devant. Après un changement, « Renommer dans les notes » reporte l'ancien nom sur le nouveau."));
+    this._aide(c, tr("Chaque propriété est écrite « préfixe + nom lisible » (« Tâche - Échéance »). Le préfixe évite les collisions avec d'autres notes. Le nom lisible se remplace ci-dessous ; le préfixe reste devant. « Renommer dans les notes » reporte ensuite l'ancien nom sur le nouveau."));
     // Les lignes « Clé : … » se rafraîchissent en direct, sans redessiner.
     const lignesCles = [];
     const rafraichirCles = () => {
@@ -13423,14 +13530,9 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         }));
     new obsidian.Setting(c)
       .setName(tr('Masquer le préfixe à l\'affichage'))
-      .setDesc(tr("Les colonnes de la frise et les propriétés des cartes d'articulation montrent le nom sans le préfixe. Dans les bases normales, Ariane pose un nom de colonne sans préfixe directement dans le fichier .base (une fois, sans écraser vos renommages)."))
+      .setDesc(tr('Colonnes de frise, cartes d\'articulation et colonnes des bases affichent le nom sans le préfixe.'))
       .addToggle((t) => t.setValue(s.masquerPrefixeAffichage !== false)
         .onChange(async (v) => { s.masquerPrefixeAffichage = v; await maj(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Harmoniser les noms de colonnes des bases'))
-      .setDesc(tr("Repasse maintenant sur tous les fichiers .base pour poser les noms de colonnes de tâche sans préfixe."))
-      .addButton((b) => b.setButtonText(tr('Harmoniser'))
-        .onClick(() => { this.plugin.harmoniserNomsColonnesBases().catch(() => {}); }));
     {
       const ct = s.clesTaches || (s.clesTaches = {});
       const iconeAutre = {
@@ -13553,7 +13655,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._section(c, tr('Note de tâche'));
     new obsidian.Setting(c)
       .setName(tr('Habillage de la note de tâche'))
-      .setDesc(tr('Dans une note de tâche ouverte : propriétés en grille ordonnée (libellés sans préfixe si « Masquer le préfixe à l\'affichage », icônes du formulaire de création) et contenu aéré. Purement visuel.'))
+      .setDesc(tr('Dans une note de tâche : propriétés en grille ordonnée avec icônes, contenu aéré. Purement visuel.'))
       .addToggle((t) => t.setValue(s.styleNoteTache === true)
         .onChange(async (v) => { s.styleNoteTache = v; await maj(); this.plugin.habillerNotesTache(); }));
     new obsidian.Setting(c)
@@ -13584,7 +13686,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .onChange(async (v) => { s.friseBarreCouleur = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Révéler la lignée au survol'))
-      .setDesc(tr("Survoler une barre atténue le reste et met en valeur ses parents et ses sous-tâches, reliés par un trait. Rien de permanent : la hiérarchie n'encombre pas la vue."))
+      .setDesc(tr('Survoler une barre met en valeur ses parents et ses sous-tâches, reliés par un trait.'))
       .addToggle((t) => t.setValue(s.friseLignageSurvol !== false)
         .onChange(async (v) => { s.friseLignageSurvol = v; await maj(); }));
 
@@ -13625,12 +13727,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           .onChange(async (v) => { s.articulationSeuilAimant = v; await maj(); }));
     }
 
-    this._section(c, tr('Assistant IA (tâches)'));
-    this._aide(c, tr("Structurer un brouillon de tâches, découper une tâche, normaliser les intitulés, vérifier les familles, ajouter une tâche en langage naturel, résoudre les sources de lecture — via les commandes « Tâches : … (IA) » et les menus contextuels. Chaque proposition passe par une revue avant d'être appliquée ; rien n'est écrit sans validation."));
-    this._aide(c, tr("Pour que l'IA classe bien vos brouillons, remplissez la « Description » de chaque famille dans l'onglet « Dossiers & familles »."));
+    this._section(c, tr('Assistant IA'));
+    this._aide(c, tr("Structurer un brouillon, découper une tâche, normaliser les intitulés, vérifier les familles, ajouter en langage naturel, résoudre les sources — via les commandes « Tâches : … (IA) » et les menus contextuels. Chaque proposition est revue avant d'être appliquée. Le classement s'appuie sur la « Description » de chaque famille (onglet Dossiers & familles)."));
     new obsidian.Setting(c)
       .setName(tr('Fournisseur'))
-      .setDesc(tr('Partagé avec le découpage des bibliographies (onglet Suggestions). URL Ollama / LM Studio dans l\'onglet Suggestions.'))
+      .setDesc(tr('Partagé avec le découpage des bibliographies. Adresse du service locale : onglet Suggestions.'))
       .addDropdown((d) => d
         .addOption('ollama', 'Ollama')
         .addOption('lmstudio', 'LM Studio')
@@ -13654,25 +13755,23 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       new obsidian.Setting(c)
         .setName(tr('Modèle'))
         .setDesc(s.refsFournisseur === 'mistral'
-          ? tr('Nom d\'un modèle Mistral, ex. « mistral-small-latest ».')
-          : tr('Nom exact du modèle installé (ollama list). Un modèle un peu capable aide pour la structuration.'))
+          ? tr('Ex. « mistral-small-latest ».')
+          : tr('Nom exact du modèle installé.'))
         .addText((t) => t.setValue(s.refsModele || 'llama3.2')
           .onChange(async (v) => { s.refsModele = v.trim() || 'llama3.2'; await maj(); }));
     }
     new obsidian.Setting(c)
-      .setName(tr('Vérifier la connexion'))
-      .setDesc(tr('Un mini-appel de test ; en cas d\'échec, le message dit ce qui coince.'))
+      .setName(tr('Tester la connexion'))
       .addButton((b) => b.setButtonText(tr('Tester')).onClick(async () => {
-        const avis = new obsidian.Notice(tr('Test en cours…'), 0);
+        const avis = new obsidian.Notice(tr('Test…'), 0);
         const r = await this.plugin.genererIA('Réponds exactement ceci : {"ok":true}', 60);
         avis.hide();
-        if (r && r.ok) new obsidian.Notice(tr('IA : le fournisseur répond correctement.'));
-        else if (r) new obsidian.Notice(tr('IA : le fournisseur répond, mais pas au format attendu (ça peut suffire).'));
+        if (r) new obsidian.Notice(tr('Le fournisseur répond.'));
       }));
     if (s.refsFournisseur === 'mistral') {
       new obsidian.Setting(c)
         .setName(tr('Clé Mistral'))
-        .setDesc(tr('Conservée dans les réglages du greffon, sur votre machine.'))
+        .setDesc(tr('Conservée localement, dans les réglages du greffon.'))
         .addText((t) => {
           t.setValue(s.refsCleMistral || '')
             .onChange(async (v) => { s.refsCleMistral = v.trim(); await maj(); });
@@ -13686,11 +13785,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addText((t) => t.setValue(s.refsCheminClaude || 'claude')
           .onChange(async (v) => { s.refsCheminClaude = v.trim() || 'claude'; await maj(); }));
     }
-    new obsidian.Setting(c)
-      .setName(tr('Rapprochement des titres'))
-      .setDesc(tr("Pour retrouver « la tâche du chapitre 3 » ou une source de lecture : sémantique (embeddings du moteur de suggestions) si le moteur n'est pas « lexical », sinon repli sur les mots en commun."))
-      .addButton((b) => b.setButtonText(tr('Ouvrir l\'onglet Suggestions'))
-        .onClick(() => { this._ongletActif = 4; this.display(); }));
   }
 
   // Éditeur des familles de tâches. Même esprit que _tableFamilles (familles
@@ -13760,7 +13854,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         corps.createEl('div', { cls: 'zfa-famt-props-titre', text: tr('Description (pour l\'IA)') });
         const desc = corps.createEl('textarea', { cls: 'zfa-famt-desc' });
         desc.rows = 3;
-        desc.placeholder = tr('Quelques phrases sur ce que recouvre cette famille : le type d\'action, des exemples de tâches, ce qui la distingue des autres. L\'IA s\'en sert pour classer vos brouillons de tâches.');
+        desc.placeholder = tr('Quelques phrases : ce que recouvre la famille, des exemples, ce qui la distingue. Utilisé par l\'IA pour classer les brouillons.');
         desc.value = f.description || '';
         desc.onchange = async () => { f.description = desc.value.trim(); await maj(); };
         {
@@ -14785,7 +14879,7 @@ class ModaleStructurerTaches extends obsidian.Modal {
     this.zone.rows = this.decouper ? 3 : 13;
     this.zone.placeholder = this.decouper
       ? tr('Ex. : privilégier des étapes courtes, une par séance de travail.')
-      : 'Approfondir les approches systémiques\n\tLire La théorie générale des systèmes\n\tLire Morin (pas le temps pour La méthode)\n\tJalon : présentation PEPR\n\t\tEnvoyer un mail à Karine';
+      : 'Préparer la réunion trimestrielle\n\tRelire les comptes rendus précédents\n\tRédiger l\'ordre du jour (pas le temps pour les annexes)\n\tJalon : présentation aux partenaires\n\t\tEnvoyer un message pour fixer la date';
     this.zone.value = this.texteInitial;
 
     if (!this.decouper) {
