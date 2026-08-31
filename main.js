@@ -5844,8 +5844,8 @@ class Ariane extends obsidian.Plugin {
   }
 
   async genererJsonAvec(prompt, max, lm, modele) {
+    const url = this.urlInference(lm) + (lm ? '/v1/chat/completions' : '/api/generate');
     try {
-      const url = this.urlInference(lm) + (lm ? '/v1/chat/completions' : '/api/generate');
       const corps = lm
         // LM Studio refuse « response_format: json_object » — il n'accepte que
         // « json_schema » ou « text », et cela varie d'une version à l'autre.
@@ -5860,14 +5860,25 @@ class Ariane extends obsidian.Plugin {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(corps),
       });
-      if (!rep || rep.status < 200 || rep.status >= 300) return null;
+      if (!rep || rep.status < 200 || rep.status >= 300) {
+        this._diagIA = 'HTTP ' + (rep ? rep.status : '?') + ' — ' + url
+          + (rep && rep.text ? ' : ' + String(rep.text).replace(/\s+/g, ' ').slice(0, 180) : '')
+          + tr(' (modèle « ') + modele + tr(' » installé ? service lancé ?)');
+        return null;
+      }
       const j = rep.json !== undefined ? rep.json : JSON.parse(rep.text);
       if (lm) {
         const c = j && j.choices && j.choices[0];
-        return c && c.message ? String(c.message.content || '') : null;
+        const t = c && c.message ? String(c.message.content || '') : '';
+        if (!t) this._diagIA = tr('Réponse vide de LM Studio (modèle chargé ?).');
+        return t || null;
       }
-      return j && typeof j.response === 'string' ? j.response : (rep.text || null);
+      const r = (j && typeof j.response === 'string') ? j.response : (rep.text || '');
+      if (!r) this._diagIA = tr('Réponse vide d\'Ollama (essayez un autre modèle).');
+      else this._diagIA = '';
+      return r || null;
     } catch (e) {
+      this._diagIA = url + tr(' injoignable : ') + (e && e.message ? e.message : e);
       console.debug('[Ariane] génération indisponible', e);
       return null;
     }
@@ -5891,24 +5902,40 @@ class Ariane extends obsidian.Plugin {
 
   async genererMistral(prompt, max, modele) {
     const cle = (this.settings.refsCleMistral || '').trim();
-    if (!cle) { new obsidian.Notice(tr('Clé Mistral absente des réglages.')); return null; }
+    if (!cle) {
+      this._diagIA = tr('Clé Mistral absente des réglages.');
+      new obsidian.Notice(this._diagIA);
+      return null;
+    }
+    // Un nom de modèle local (llama…, qwen…, …:tag) ne veut rien dire pour
+    // Mistral : on retombe alors sur un modèle Mistral valide.
+    let m = String(modele || '').trim();
+    if (!/^(mistral|ministral|magistral|codestral|pixtral|open-)/i.test(m)) m = 'mistral-small-latest';
     try {
       const rep = await obsidian.requestUrl({
         url: 'https://api.mistral.ai/v1/chat/completions',
         method: 'POST', throw: false,
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cle },
         body: JSON.stringify({
-          model: modele || this.settings.refsModele || 'mistral-small-latest',
+          model: m,
           messages: [{ role: 'user', content: prompt }],
           temperature: 0, max_tokens: max,
           response_format: { type: 'json_object' },
         }),
       });
-      if (!rep || rep.status < 200 || rep.status >= 300) return null;
+      if (!rep || rep.status < 200 || rep.status >= 300) {
+        this._diagIA = 'Mistral HTTP ' + (rep ? rep.status : '?')
+          + (rep && rep.text ? ' : ' + String(rep.text).replace(/\s+/g, ' ').slice(0, 180) : '')
+          + tr(' (clé valide ? modèle « ') + m + ' » ?)';
+        return null;
+      }
       const j = rep.json !== undefined ? rep.json : JSON.parse(rep.text);
       const c = j && j.choices && j.choices[0];
-      return c && c.message ? String(c.message.content || '') : null;
+      const t = c && c.message ? String(c.message.content || '') : '';
+      this._diagIA = t ? '' : tr('Réponse vide de Mistral.');
+      return t || null;
     } catch (e) {
+      this._diagIA = tr('Mistral injoignable : ') + (e && e.message ? e.message : e);
       console.debug('[Ariane] Mistral indisponible', e);
       return null;
     }
@@ -5929,6 +5956,9 @@ class Ariane extends obsidian.Plugin {
         (err, sortie) => {
           if (fini) return;
           fini = true;
+          if (err) this._diagIA = tr('CLI Claude : ') + (err.message || err)
+            + tr(' (« ') + bin + tr(' » dans le PATH ?)');
+          else this._diagIA = '';
           resoudre(err ? null : String(sortie || '').trim());
         });
       // Sans cela le CLI attend trois secondes une entrée standard qui ne
@@ -11378,10 +11408,19 @@ class Ariane extends obsidian.Plugin {
 
   // Appel LLM (fournisseur configuré dans les réglages) qui rend du JSON parsé.
   async genererIA(prompt, jetons) {
+    this._diagIA = '';
     const brut = await this.genererJsonRefs(prompt, jetons || 1800);
-    if (!brut) { new obsidian.Notice(tr('L\'IA n\'a rien renvoyé. Vérifiez le fournisseur dans les réglages.')); return null; }
+    if (!brut) {
+      const f = this.settings.refsFournisseur || 'ollama';
+      new obsidian.Notice(tr('IA (') + f + ') : ' + (this._diagIA
+        || tr('aucune réponse. Réglages → Tâches → Assistant IA.')), 10000);
+      return null;
+    }
     const j = Ariane.extraireJson(brut);
-    if (!j) new obsidian.Notice(tr('Réponse de l\'IA illisible (JSON attendu).'));
+    if (!j) {
+      new obsidian.Notice(tr('Réponse de l\'IA illisible (JSON attendu) : ')
+        + String(brut).replace(/\s+/g, ' ').slice(0, 160), 10000);
+    }
     return j;
   }
 
@@ -13100,21 +13139,45 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._aide(c, tr("Pour que l'IA classe bien vos brouillons, remplissez la « Description » de chaque famille dans l'onglet « Dossiers & familles »."));
     new obsidian.Setting(c)
       .setName(tr('Fournisseur'))
-      .setDesc(tr('Partagé avec le découpage des bibliographies (onglet Suggestions).'))
+      .setDesc(tr('Partagé avec le découpage des bibliographies (onglet Suggestions). URL Ollama / LM Studio dans l\'onglet Suggestions.'))
       .addDropdown((d) => d
         .addOption('ollama', 'Ollama')
         .addOption('lmstudio', 'LM Studio')
         .addOption('mistral', 'Mistral')
         .addOption('claude', tr('Claude en ligne de commande'))
         .setValue(s.refsFournisseur || 'ollama')
-        .onChange(async (v) => { s.refsFournisseur = v; await maj(); this.display(); }));
+        .onChange(async (v) => {
+          s.refsFournisseur = v;
+          // Aligner le nom du modèle sur le fournisseur : un modèle local ne
+          // veut rien dire pour Mistral, et inversement.
+          const m = String(s.refsModele || '').toLowerCase();
+          if (v === 'mistral' && !/mistral|ministral|magistral|codestral|pixtral/.test(m)) {
+            s.refsModele = 'mistral-small-latest';
+          } else if ((v === 'ollama' || v === 'lmstudio')
+            && /mistral|ministral|magistral|codestral|pixtral/.test(m)) {
+            s.refsModele = 'llama3.2';
+          }
+          await maj(); this.display();
+        }));
     if (s.refsFournisseur !== 'claude') {
       new obsidian.Setting(c)
         .setName(tr('Modèle'))
-        .setDesc(tr('Un modèle un peu capable aide pour la structuration (arbres imbriqués).'))
+        .setDesc(s.refsFournisseur === 'mistral'
+          ? tr('Nom d\'un modèle Mistral, ex. « mistral-small-latest ».')
+          : tr('Nom exact du modèle installé (ollama list). Un modèle un peu capable aide pour la structuration.'))
         .addText((t) => t.setValue(s.refsModele || 'llama3.2')
           .onChange(async (v) => { s.refsModele = v.trim() || 'llama3.2'; await maj(); }));
     }
+    new obsidian.Setting(c)
+      .setName(tr('Vérifier la connexion'))
+      .setDesc(tr('Un mini-appel de test ; en cas d\'échec, le message dit ce qui coince.'))
+      .addButton((b) => b.setButtonText(tr('Tester')).onClick(async () => {
+        const avis = new obsidian.Notice(tr('Test en cours…'), 0);
+        const r = await this.plugin.genererIA('Réponds exactement ceci : {"ok":true}', 60);
+        avis.hide();
+        if (r && r.ok) new obsidian.Notice(tr('IA : le fournisseur répond correctement.'));
+        else if (r) new obsidian.Notice(tr('IA : le fournisseur répond, mais pas au format attendu (ça peut suffire).'));
+      }));
     if (s.refsFournisseur === 'mistral') {
       new obsidian.Setting(c)
         .setName(tr('Clé Mistral'))
