@@ -1134,7 +1134,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 
 .zfa-gantt-fleche {
   fill: none; stroke: var(--interactive-accent); stroke-width: 1.5;
-  stroke-dasharray: 4 3; opacity: 0.45; pointer-events: none;
+  stroke-dasharray: 4 3; opacity: 0.75; pointer-events: none;
 }
 .zfa-gantt-pointe { fill: var(--interactive-accent); opacity: 0.55; }
 /* Trait large invisible : la cible cliquable d'une flèche fine. */
