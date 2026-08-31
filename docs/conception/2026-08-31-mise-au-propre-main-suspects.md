@@ -183,3 +183,22 @@ sens (il ouvre la série de méthodes d'instance « tâches » qui suit) ; les t
 autres sont désormais redondants. Non touché ici : retirer/déplacer un séparateur
 de section relève du rangement des méthodes d'instance par domaine (lot suivant),
 pas de ce commit. Aucun impact : ce sont des commentaires.
+
+## Commentaire mal placé au-dessus de `ficheConcorde` (region 11, sous-région « références en attente »)
+
+`main.js`, sous-région `Ariane · références en attente`. Le commentaire
+« Le verdict d'ensemble : les sources arbitrées désignent-elles la même œuvre ? »
+est suivi de deux lignes vides puis d'une méthode qu'il ne décrit pas (il
+décrivait `ficheConcorde` avant un remaniement antérieur au reshuffle).
+Identique dans `taches-par-dossier` — pré-existant, déplacé tel quel. Même
+famille que les commentaires fusionnés déjà consignés ; pas de chirurgie de
+commentaire dans l'étape 1. Relevé par la relecture finale (Opus).
+
+## Sous-régions par onglet de `ArianeSettingTab` — reportées
+
+La spec liste « 12 · ArianeSettingTab (une sous-région par onglet) » et sa
+définition de « terminé » demande `ArianeSettingTab` sous-régionnée. Seule la
+region 12 de premier niveau a été posée à l'étape 1 ; les sous-régions
+`SettingTab · onglet …` (une par `ongletXxx`) restent à faire. Insertion pure,
+faible risque — à traiter en étape 1b ou avec l'étape 2 (esbuild). La carte du
+fichier a été corrigée pour ne pas les annoncer comme faites.
