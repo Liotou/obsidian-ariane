@@ -15112,7 +15112,6 @@ class MoteurArticulation {
     // courant (rétracté montre compact ; détaillé montre les propriétés).
     this._cartesInversees = this._cartesInversees || new Set();
     this._plan = { cartes: [] }; // plan de travail (rempli par dessinerVraiment)
-    this._repliesNoeuds = new Set(); // (résidu, retiré en même temps que l'arbre)
     racine.addClass('zfa-artic');
     racine.tabIndex = -1;
     racine.addEventListener('keydown', (e) => this.touche(e));
@@ -15153,8 +15152,9 @@ class MoteurArticulation {
     this.boutonBarre(barre, 'maximize-2', tr('Ajuster'), () => this.ajuster());
     this.boutonBarre(barre, 'zoom-out', tr('Zoom arrière'), () => this._zoomVers(1 / 1.2));
     this.boutonBarre(barre, 'zoom-in', tr('Zoom avant'), () => this._zoomVers(1.2));
-    this.boutonBarre(barre, 'minus', tr('Replier un niveau'), () => this._replierNiveau());
-    this.boutonBarre(barre, 'plus', tr('Déplier un niveau'), () => this._deplierNiveau());
+    this.boutonBarre(barre, 'list-plus', tr('Ajouter au plan les tâches du filtre'),
+      () => this._ajouterDuFiltre());
+    this.boutonBarre(barre, 'eraser', tr('Nettoyer le canvas'), () => this._nettoyerPlan());
 
     const mode = (this.ctx.lire && this.ctx.lire('modeCarte')) || 'retracte';
     this._mode = mode;
@@ -15165,52 +15165,75 @@ class MoteurArticulation {
         this.dessiner();
       });
 
-    if (!taches.length) {
-      c.createDiv({ cls: 'zfa-refs-vide', text: tr('Aucune tâche dans cette base.') });
-      return;
+    // --- Plan de travail : on ne dessine QUE les cartes posées. ---
+    this._plan = this.ctx.lirePlan ? this.ctx.lirePlan() : { cartes: [] };
+    if (this.ctx.migrerCanvasXY && !this._plan._migre && !this._migrationEnCours) {
+      this._migrationEnCours = true;
+      Promise.resolve(this.ctx.migrerCanvasXY((taches || []).map((t) => t.ref)))
+        .then(() => { this._migrationEnCours = false; this.dessiner(); })
+        .catch(() => { this._migrationEnCours = false; });
     }
 
-    // Arbre de parenté sur TOUT le jeu, puis masquage des descendants des
-    // nœuds repliés. La suite ne dessine que les tâches visibles.
-    const arbre = this._calculerArbre(taches);
-    this._arbre = arbre;
-    const aretesTotales = Ariane.grapheArticulation(taches).aretes;
-    taches = taches.filter((t) => arbre.refsVisibles.has(t.ref));
+    const toutes = this.greffon.tachesPourGantt();
+    const parRef = new Map(toutes.map((t) => [t.ref, t]));
 
-    // Le décompte réel de cartes dessinées (l'en-tête de la base compte, lui,
-    // toutes les entrées de la source, pas seulement les tâches).
+    // Purge des cartes dont la note n'existe plus.
+    const nAvant = this._plan.cartes.length;
+    this._plan.cartes = this._plan.cartes.filter((cc) => parRef.has(cc.ref));
+    if (this._plan.cartes.length !== nAvant && this.ctx.ecrirePlan) this.ctx.ecrirePlan(this._plan);
+
+    const posDe = new Map(this._plan.cartes.map((cc) => [cc.ref, cc]));
+    const refsPlan = new Set(posDe.keys());
+    this._filtre = new Set((taches || []).map((t) => t.ref)); // loupe
+
+    const grapheAll = Ariane.grapheArticulation(toutes);
+    this._aretesToutes = grapheAll.aretes;
+    const aretes = Ariane.aretesEntre(grapheAll.aretes, refsPlan);
+    const sousSet = toutes.filter((t) => refsPlan.has(t.ref));
+    const { noeuds } = Ariane.grapheArticulation(sousSet);
+    this._aretes = aretes;
+    this._loupe = !!(this.ctx.filtreActif && this.ctx.filtreActif());
+
     barre.createSpan({ cls: 'zfa-artic-compte',
-      text: taches.length + ' ' + (taches.length > 1 ? tr('tâches') : tr('tâche')) });
+      text: refsPlan.size + ' ' + (refsPlan.size > 1 ? tr('cartes') : tr('carte')) });
 
-    // Nombre d'arêtes de blocage dont l'autre bout est masqué, par tâche visible.
+    // Relatifs HORS PLAN, par carte : bloquantes (badge accent) et sous-tâches
+    // (badge numéroté). Cliquer un badge les ajoute au plan.
     this._bloqueCaches = new Map();
-    for (const a of aretesTotales) {
-      if (a.type !== 'bloque') continue;
-      const vd = arbre.refsVisibles.has(a.de);
-      const vv = arbre.refsVisibles.has(a.vers);
-      if (vd && !vv) this._bloqueCaches.set(a.de, (this._bloqueCaches.get(a.de) || 0) + 1);
-      else if (!vd && vv) this._bloqueCaches.set(a.vers, (this._bloqueCaches.get(a.vers) || 0) + 1);
+    this._enfantsHorsPlan = new Map();
+    for (const ref of refsPlan) {
+      const rel = Ariane.relativesHorsPlan(ref, grapheAll.aretes, refsPlan);
+      if (rel.bloquantes.length) this._bloqueCaches.set(ref, rel.bloquantes.length);
+      if (rel.sousTaches.length) this._enfantsHorsPlan.set(ref, rel.sousTaches);
     }
 
     this._dates = {};
-    for (const t of taches) this._dates[t.ref] = { debut: t.debut || '', echeance: t.echeance || '' };
-    const { noeuds, aretes } = Ariane.grapheArticulation(taches);
-    this._aretes = aretes;
+    for (const n of noeuds) {
+      const t = parRef.get(n.ref) || {};
+      this._dates[n.ref] = { debut: t.debut || '', echeance: t.echeance || '' };
+    }
 
-    // Hauteur effective par nœud selon le mode et le nombre de propriétés.
     const cols = (this.ctx.ordre && this.ctx.ordre()) || [];
     const hDe = (n) => (this._estDeplie(n.ref)
-      ? ARTIC_H + Math.max(0, cols.length) * 18 + 22 // rangées + pied famille
-      : ARTIC_H);
+      ? ARTIC_H + Math.max(0, cols.length) * 18 + 22 : ARTIC_H);
     for (const n of noeuds) n.h = hDe(n);
     this._noeudsParRef = new Map(noeuds.map((n) => [n.ref, n]));
 
-    this._pos = Ariane.placerGraphe(noeuds, aretes,
-      { dx: 300, dy: 130, ordre: ordreTri.length ? ordreTri : null,
-        hauteur: (ref) => {
-          const n = this._noeudsParRef.get(ref);
-          return n && n.h ? n.h : ARTIC_H;
-        } });
+    // Positions : depuis le plan. Cascade au centre pour une carte non fixée.
+    this._pos = new Map();
+    let casc = 0;
+    let cascEcrit = false;
+    for (const n of noeuds) {
+      const cc = posDe.get(n.ref);
+      let x = cc && Number.isFinite(cc.x) ? cc.x : null;
+      let y = cc && Number.isFinite(cc.y) ? cc.y : null;
+      if (x == null || y == null) {
+        x = 60 + casc * 34; y = 60 + casc * 34; casc++;
+        if (cc) { cc.x = x; cc.y = y; cascEcrit = true; }
+      }
+      this._pos.set(n.ref, { x, y });
+    }
+    if (cascEcrit && this.ctx.ecrirePlan) this.ctx.ecrirePlan(this._plan);
 
     const svg = svgEl('svg', { class: 'zfa-artic-svg' });
     c.appendChild(svg);
@@ -15270,13 +15293,40 @@ class MoteurArticulation {
           ? tr('Coller ') + pp.taches.length + tr(' tâches')
           : tr('Coller la tâche')).setIcon('clipboard-paste').onClick(() => this._coller(p)));
       }
+      if (this._plan && this._plan.cartes.length) {
+        n++;
+        m.addSeparator();
+        m.addItem((i) => i.setTitle(tr('Nettoyer le canvas')).setIcon('eraser')
+          .onClick(() => this._nettoyerPlan()));
+      }
       if (n) m.showAtMouseEvent(e);
     });
     // Dernière position du curseur sur le fond : cible du collage au clavier.
     svg.addEventListener('pointermove', (e) => { this._dernierePosFond = this._versScene(e); });
 
-    // Cadrer la vue la première fois seulement.
-    if (!svgAncien) this.ajuster(); else this.appliquerVue();
+    // Glisser une note de tâche depuis l'explorateur (ou un lien) -> la poser.
+    svg.addEventListener('dragover', (e) => {
+      if (!this._refTacheGlissee(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      this.racine.addClass('zfa-artic-survol-drop');
+    });
+    svg.addEventListener('dragleave', () => this.racine.removeClass('zfa-artic-survol-drop'));
+    svg.addEventListener('drop', (e) => {
+      this.racine.removeClass('zfa-artic-survol-drop');
+      const ref = this._refTacheGlissee(e);
+      if (!ref) { new obsidian.Notice(tr("Ce n'est pas une note de tâche.")); return; }
+      e.preventDefault();
+      const p = this._versScene(e);
+      this._poserRef(ref, p.x, p.y);
+    });
+
+    if (!refsPlan.size) {
+      c.createDiv({ cls: 'zfa-artic-vide', text: tr('Plan de travail vide. Glissez des notes de tâche ici, ou « Ajouter au plan les tâches du filtre ».') });
+    }
+
+    // Cadrer la vue la première fois seulement (si le plan a des cartes).
+    if (!svgAncien && refsPlan.size) this.ajuster(); else this.appliquerVue();
   }
 
   // Boutons de la barre : icône seule, l'intitulé passe en infobulle.
@@ -15303,7 +15353,8 @@ class MoteurArticulation {
     if (this._selNoeuds.has(n.ref)) gn.classList.add('est-selectionne');
     const fo = svgEl('foreignObject', { width: ARTIC_W, height: n.h || ARTIC_H });
     gn.appendChild(fo);
-    const carte = fo.createDiv({ cls: 'zfa-artic-carte' + (n.jalon ? ' est-jalon' : '') });
+    const carte = fo.createDiv({ cls: 'zfa-artic-carte' + (n.jalon ? ' est-jalon' : '')
+      + (this._loupe && this._filtre && !this._filtre.has(n.ref) ? ' zfa-artic-hors-filtre' : '') });
     carte.dataset.statut = n.statut;
     const fam = this.greffon.familleDe(n.famille);
     carte.style.setProperty('--zfa-fam-couleur', fam.couleur || '#888888');
@@ -15355,6 +15406,8 @@ class MoteurArticulation {
           .setIcon('clipboard-paste').onClick(() => this._coller()));
       }
       m.addSeparator();
+      m.addItem((i) => i.setTitle(plur ? tr('Retirer les ') + sel.length + tr(' du plan') : tr('Retirer du plan'))
+        .setIcon('minus-circle').onClick(() => this._retirerDuPlan(sel)));
       m.addItem((i) => i.setTitle(plur ? tr('Supprimer les ') + sel.length + tr(' tâches…') : tr('Supprimer la tâche…'))
         .setIcon('trash-2').onClick(() => this._supprimerNoeuds(sel)));
       m.showAtMouseEvent(e);
@@ -15451,50 +15504,39 @@ class MoteurArticulation {
       gn.appendChild(ga);
     }
 
-    // Repli des sous-tâches : bouton « − » au survol si la tâche a des enfants
-    // visibles ; pastille numérotée toujours visible si elle est repliée.
-    const arbre = this._arbre;
-    if (arbre) {
-      const aEnfantsVisibles = (arbre.enfants.get(n.ref) || [])
-        .some((c) => arbre.refsVisibles.has(c));
-      const repliee = this._repliesNoeuds.has(n.ref);
-      if (repliee || aEnfantsVisibles) {
-        const gb = svgEl('g', {
-          class: 'zfa-artic-repli zfa-artic-repli-hier'
-            + (repliee ? ' est-repliee' : ''),
-          transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, 'hier') + ')' });
-        gb.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-repli-fond' }));
-        const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
-        tx.textContent = repliee ? String(this._compteSousArbre(n.ref)) : '–';
-        gb.appendChild(tx);
-        const ti = svgEl('title', {});
-        ti.textContent = repliee ? tr('Afficher les sous-tâches')
-          : tr('Masquer les sous-tâches');
-        gb.appendChild(ti);
-        gb.addEventListener('pointerdown', (e) => e.stopPropagation());
-        gb.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (this._repliesNoeuds.has(n.ref)) this._repliesNoeuds.delete(n.ref);
-          else this._repliesNoeuds.add(n.ref);
-          this.dessiner();
-        });
-        gn.appendChild(gb);
-      }
-      // Blocages dont l'autre bout est masqué : pastille accent, informative.
-      const nbBloc = (this._bloqueCaches && this._bloqueCaches.get(n.ref)) || 0;
-      if (nbBloc > 0) {
-        const gv = svgEl('g', {
-          class: 'zfa-artic-repli zfa-artic-repli-bloque est-repliee',
-          transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, 'bloque') + ')' });
-        gv.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-repli-fond' }));
-        const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
-        tx.textContent = String(nbBloc);
-        gv.appendChild(tx);
-        const ti = svgEl('title', {});
-        ti.textContent = tr('Blocages vers des tâches masquées');
-        gv.appendChild(ti);
-        gn.appendChild(gv);
-      }
+    // Badges de relatifs HORS PLAN : sous-tâches (numéroté) et bloquantes
+    // (accent). Cliquer un badge ajoute ces relatifs au plan.
+    const sousHP = (this._enfantsHorsPlan && this._enfantsHorsPlan.get(n.ref)) || [];
+    if (sousHP.length) {
+      const gb = svgEl('g', {
+        class: 'zfa-artic-repli zfa-artic-repli-hier est-repliee',
+        transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, 'hier') + ')' });
+      gb.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-repli-fond' }));
+      const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
+      tx.textContent = String(sousHP.length);
+      gb.appendChild(tx);
+      const ti = svgEl('title', {});
+      ti.textContent = tr('Ajouter les sous-tâches au plan');
+      gb.appendChild(ti);
+      gb.addEventListener('pointerdown', (e) => e.stopPropagation());
+      gb.addEventListener('click', (e) => { e.stopPropagation(); this._deplierRelatifs(n.ref, 'hier'); });
+      gn.appendChild(gb);
+    }
+    const nbBloc = (this._bloqueCaches && this._bloqueCaches.get(n.ref)) || 0;
+    if (nbBloc > 0) {
+      const gv = svgEl('g', {
+        class: 'zfa-artic-repli zfa-artic-repli-bloque est-repliee',
+        transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, 'bloque') + ')' });
+      gv.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-repli-fond' }));
+      const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
+      tx.textContent = String(nbBloc);
+      gv.appendChild(tx);
+      const ti = svgEl('title', {});
+      ti.textContent = tr('Ajouter les tâches bloquantes au plan');
+      gv.appendChild(ti);
+      gv.addEventListener('pointerdown', (e) => e.stopPropagation());
+      gv.addEventListener('click', (e) => { e.stopPropagation(); this._deplierRelatifs(n.ref, 'bloque'); });
+      gn.appendChild(gv);
     }
     g.appendChild(gn);
   }
@@ -15620,6 +15662,11 @@ class MoteurArticulation {
     }
     this._selNoeuds = new Set();
     for (const ref of refs) await this.greffon.supprimerTache(ref);
+    if (this._plan) {
+      const s = new Set(refs);
+      this._plan.cartes = this._plan.cartes.filter((c) => !s.has(c.ref));
+      this.ctx.ecrirePlan(this._plan);
+    }
     this.dessiner();
   }
 
@@ -15658,7 +15705,7 @@ class MoteurArticulation {
     }
     if (this._selNoeuds.size) {
       e.preventDefault();
-      await this._supprimerNoeuds([...this._selNoeuds]);
+      this._retirerDuPlan([...this._selNoeuds]); // ⌫ = retirer du plan, pas supprimer
     }
   }
 
@@ -15991,47 +16038,21 @@ class MoteurArticulation {
     this.appliquerVue();
   }
 
-  async redisposer() {
-    for (const ref of this._pos.keys()) await this.ctx.poserPosition(ref, null, null);
-    new obsidian.Notice(tr('Disposition recalculée.'));
-    this.dessiner();
-  }
-
-  // Arbre de parenté du jeu : enfants, profondeur (calculée sur TOUT l'arbre),
-  // et l'ensemble des refs visibles une fois masquée la descendance des nœuds
-  // repliés (this._repliesNoeuds).
-  _calculerArbre(taches) {
-    const refs = new Set((taches || []).map((t) => t.ref));
-    const enfants = new Map();
-    const parent = new Map();
-    for (const t of taches || []) {
-      const p = Ariane.refDeLien(t.parent || '');
-      if (p && refs.has(p) && p !== t.ref) {
-        parent.set(t.ref, p);
-        if (!enfants.has(p)) enfants.set(p, []);
-        enfants.get(p).push(t.ref);
-      }
+  // Re-disposer : relance placerGraphe sur le plan et écrit les positions.
+  redisposer() {
+    if (!this._plan || !this._plan.cartes.length) return;
+    const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
+    const sousSet = this.greffon.tachesPourGantt().filter((t) => refsPlan.has(t.ref));
+    const { noeuds, aretes } = Ariane.grapheArticulation(sousSet);
+    for (const n of noeuds) n.h = n.h || ARTIC_H;
+    const pos = Ariane.placerGraphe(noeuds, aretes, { dx: 300, dy: 130 });
+    for (const cc of this._plan.cartes) {
+      const p = pos.get ? pos.get(cc.ref) : (pos[cc.ref]);
+      if (p) { cc.x = Math.round(p.x); cc.y = Math.round(p.y); }
     }
-    const prof = new Map();
-    const calc = (ref, d, vus) => {
-      if (vus.has(ref)) return;
-      vus.add(ref);
-      prof.set(ref, d);
-      for (const cc of enfants.get(ref) || []) calc(cc, d + 1, vus);
-    };
-    for (const t of taches || []) if (!parent.has(t.ref)) calc(t.ref, 0, new Set());
-    for (const t of taches || []) if (!prof.has(t.ref)) prof.set(t.ref, 0);
-    const caches = new Set();
-    const masquer = (ref) => {
-      for (const cc of enfants.get(ref) || []) {
-        if (caches.has(cc)) continue;
-        caches.add(cc);
-        masquer(cc);
-      }
-    };
-    for (const ref of this._repliesNoeuds) if (refs.has(ref)) masquer(ref);
-    const refsVisibles = new Set([...refs].filter((r) => !caches.has(r)));
-    return { enfants, parent, prof, caches, refsVisibles };
+    this.ctx.ecrirePlan(this._plan);
+    this.dessiner();
+    new obsidian.Notice(tr('Disposition recalculée.'));
   }
 
   // Les propriétés de cette carte sont-elles montrées ? Le mode de la vue
@@ -16041,47 +16062,134 @@ class MoteurArticulation {
     return this._cartesInversees.has(ref) ? !parDefaut : parDefaut;
   }
 
-  _compteSousArbre(ref) {
-    const e = this._arbre && this._arbre.enfants;
-    if (!e) return 0;
-    let n = 0;
-    for (const c of e.get(ref) || []) n += 1 + this._compteSousArbre(c);
-    return n;
+  // --- Plan de travail : ajout / retrait / dépliage ---
+
+  // Ajoute une ref au plan à (x, y) scène. Si déjà là : recentre + sélectionne.
+  _poserRef(ref, x, y) {
+    if (!this._plan) this._plan = this.ctx.lirePlan();
+    const i = this._plan.cartes.findIndex((c) => c.ref === ref);
+    if (i >= 0) {
+      const cc = this._plan.cartes[i];
+      const b = this._svg.getBoundingClientRect();
+      this._vue.x = b.width / 2 - cc.x * this._vue.k;
+      this._vue.y = b.height / 2 - cc.y * this._vue.k;
+      this.appliquerVue();
+      this._appliquerSelection(new Set([ref]));
+      return;
+    }
+    const grapheAll = Ariane.grapheArticulation(this.greffon.tachesPourGantt());
+    const refsFin = new Set(this._plan.cartes.map((c) => c.ref).concat(ref));
+    const rel = Ariane.relativesHorsPlan(ref, grapheAll.aretes, refsFin);
+    this._plan.cartes.push({ ref, x: Math.round(x), y: Math.round(y),
+      replie: rel.sousTaches.length > 0 || rel.bloquantes.length > 0 });
+    this.ctx.ecrirePlan(this._plan);
+    this.dessiner();
+    this._appliquerSelection(new Set([ref]));
   }
 
-  // « − » : replie le niveau de parents visibles le plus profond dont des
-  // enfants sont encore montrés.
-  _replierNiveau() {
-    const a = this._arbre;
-    if (!a) return;
-    let dMax = -1;
-    for (const ref of a.refsVisibles) {
-      if ((a.enfants.get(ref) || []).some((c) => a.refsVisibles.has(c))) {
-        dMax = Math.max(dMax, a.prof.get(ref) || 0);
-      }
+  _retirerDuPlan(refs) {
+    const s = new Set((refs || []).filter(Boolean));
+    if (!s.size || !this._plan) return;
+    this._plan.cartes = this._plan.cartes.filter((c) => !s.has(c.ref));
+    this.ctx.ecrirePlan(this._plan);
+    this._selNoeuds = new Set();
+    this.dessiner();
+    new obsidian.Notice(s.size + tr(' carte(s) retirée(s) du plan'));
+  }
+
+  // Clic sur un badge : ajoute au plan les relatifs hors plan de `ref`.
+  _deplierRelatifs(ref, type) {
+    if (!this._plan) return;
+    const grapheAll = Ariane.grapheArticulation(this.greffon.tachesPourGantt());
+    const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
+    const rel = Ariane.relativesHorsPlan(ref, grapheAll.aretes, refsPlan);
+    const cibles = type === 'hier' ? rel.sousTaches : rel.bloquantes;
+    if (!cibles.length) return;
+    const src = this._pt(ref);
+    const occupe = this._plan.cartes.map((c) => ({ x: c.x, y: c.y, w: ARTIC_W, h: ARTIC_H }));
+    const base = type === 'hier'
+      ? { x: src.x - ((cibles.length - 1) * 120), y: src.y + 150 }
+      : { x: src.x - 260, y: src.y - ((cibles.length - 1) * 40) };
+    const pos = Ariane.grillePlacement(cibles.length, {
+      origine: { x: Math.round(base.x), y: Math.round(base.y) },
+      pas: { x: 240, y: 120 }, carte: { w: ARTIC_W, h: ARTIC_H }, occupe, parLigne: 3 });
+    cibles.forEach((r, k) => this._plan.cartes.push({
+      ref: r, x: pos[k].x, y: pos[k].y, replie: false }));
+    const ic = this._plan.cartes.findIndex((c) => c.ref === ref);
+    if (ic >= 0) {
+      const apres = Ariane.relativesHorsPlan(ref, grapheAll.aretes,
+        new Set(this._plan.cartes.map((c) => c.ref)));
+      this._plan.cartes[ic].replie = apres.sousTaches.length > 0 || apres.bloquantes.length > 0;
     }
-    if (dMax < 0) return;
-    for (const ref of a.refsVisibles) {
-      if ((a.prof.get(ref) || 0) === dMax
-        && (a.enfants.get(ref) || []).some((c) => a.refsVisibles.has(c))) {
-        this._repliesNoeuds.add(ref);
-      }
-    }
+    this.ctx.ecrirePlan(this._plan);
     this.dessiner();
   }
 
-  // « + » : déplie le niveau replié le plus profond.
-  _deplierNiveau() {
-    const a = this._arbre;
-    if (!a || !this._repliesNoeuds.size) return;
-    let dMax = -1;
-    for (const ref of this._repliesNoeuds) {
-      dMax = Math.max(dMax, a.prof.has(ref) ? a.prof.get(ref) : 0);
-    }
-    for (const ref of [...this._repliesNoeuds]) {
-      if ((a.prof.has(ref) ? a.prof.get(ref) : 0) === dMax) this._repliesNoeuds.delete(ref);
-    }
+  // Pose d'un coup toutes les tâches du filtre absentes du plan.
+  _ajouterDuFiltre() {
+    if (!this._plan) return;
+    const filtrees = ((this.ctx.taches && this.ctx.taches()) || []).map((t) => t.ref);
+    const dejaLa = new Set(this._plan.cartes.map((c) => c.ref));
+    const aPoser = filtrees.filter((r) => !dejaLa.has(r));
+    if (!aPoser.length) { new obsidian.Notice(tr('Toutes les tâches du filtre sont déjà sur le plan.')); return; }
+    const b = this._svg.getBoundingClientRect();
+    const centre = { x: (b.width / 2 - this._vue.x) / this._vue.k,
+      y: (b.height / 2 - this._vue.y) / this._vue.k };
+    const occupe = this._plan.cartes.map((c) => ({ x: c.x, y: c.y, w: ARTIC_W, h: ARTIC_H }));
+    const pos = Ariane.grillePlacement(aPoser.length, {
+      origine: { x: Math.round(centre.x - 360), y: Math.round(centre.y - 200) },
+      pas: { x: 240, y: 150 }, carte: { w: ARTIC_W, h: ARTIC_H }, occupe, parLigne: 4 });
+    const grapheAll = Ariane.grapheArticulation(this.greffon.tachesPourGantt());
+    const refsFin = new Set(this._plan.cartes.map((c) => c.ref).concat(aPoser));
+    aPoser.forEach((ref, k) => {
+      const rel = Ariane.relativesHorsPlan(ref, grapheAll.aretes, refsFin);
+      this._plan.cartes.push({ ref, x: pos[k].x, y: pos[k].y,
+        replie: rel.sousTaches.length > 0 || rel.bloquantes.length > 0 });
+    });
+    this.ctx.ecrirePlan(this._plan);
     this.dessiner();
+    new obsidian.Notice(aPoser.length + tr(' tâche(s) ajoutée(s) au plan'));
+  }
+
+  async _nettoyerPlan() {
+    if (!this._plan || !this._plan.cartes.length) return;
+    const n = this._plan.cartes.length;
+    const ok = await new Promise((res) => new ConfirmationRattachement(this.app,
+      tr('Vider le plan de travail ? Les ') + n
+        + tr(' cartes sont retirées du canvas. Les notes de tâche ne sont pas supprimées.'),
+      res).open());
+    if (!ok) return;
+    this._plan = { cartes: [], _migre: true };
+    this.ctx.ecrirePlan(this._plan);
+    this._selNoeuds = new Set();
+    this.dessiner();
+    new obsidian.Notice(tr('Plan de travail vidé.'));
+  }
+
+  // Résout la note de tâche portée par un évènement de glisser (dragManager
+  // d'Obsidian ou texte [[…]] du presse-papier). Renvoie la ref ou null.
+  _refTacheGlissee(e) {
+    const g = this.greffon;
+    const estTache = (f) => f && f.extension === 'md' && !!g.refDeChemin(f.path);
+    const viaTexte = (txt) => {
+      if (!txt) return null;
+      const cible = txt.replace(/^\[\[|\]\]$/g, '').split('|')[0].split('#')[0].trim();
+      const f = this.app.metadataCache.getFirstLinkpathDest(cible, '');
+      return estTache(f) ? g.refDeChemin(f.path) : null;
+    };
+    const dm = this.app.dragManager;
+    const d = dm && dm.draggable;
+    if (d) {
+      if (estTache(d.file)) return g.refDeChemin(d.file.path);
+      for (const arr of [d.files, d.items]) {
+        if (Array.isArray(arr)) for (const f of arr) if (estTache(f)) return g.refDeChemin(f.path);
+      }
+      for (const k of ['linktext', 'link', 'title', 'name']) {
+        const r = typeof d[k] === 'string' ? viaTexte(d[k]) : null;
+        if (r) return r;
+      }
+    }
+    return viaTexte(e && e.dataTransfer && e.dataTransfer.getData('text/plain'));
   }
 
   // Accrochage magnétique d'un nœud en cours de glissé : à la grille, et aux
@@ -16176,6 +16284,16 @@ function fabriquerVueArticulationBase(greffon) {
           this.config.set('arianeArtPlan', JSON.stringify(plan || { cartes: [] }));
         },
         migrerCanvasXY: (refsFiltre) => this.migrerCanvasXY(refsFiltre),
+        filtreActif: () => {
+          try {
+            const f = (this.config.serialize() || {}).filters;
+            if (!f) return false;
+            if (Array.isArray(f)) return f.length > 0;
+            if (Array.isArray(f.and)) return f.and.length > 0;
+            if (Array.isArray(f.or)) return f.or.length > 0;
+            return typeof f === 'object' && Object.keys(f).length > 0;
+          } catch (e) { return false; }
+        },
         poserPosition: async (ref, x, y) => {
           const plan = this.moteur ? this.moteur._plan : null;
           if (!plan) return;
@@ -16224,6 +16342,33 @@ function fabriquerVueArticulationBase(greffon) {
       if (this.greffon.settings.famillesTaches && this.greffon.settings.famillesTaches.length) {
         try { await this.greffon.rattraperProprietesFamilles(); } catch (e) { /* sans gravité */ }
       }
+      // Pose auto d'une tâche qui vient d'être créée PENDANT que cette vue est
+      // active (bouton natif « Nouveau », commande) : nouvelle ref, absente du
+      // plan, note créée il y a moins de 4 s.
+      try {
+        const refsMaint = new Set();
+        for (const e of (this.data && this.data.data) || []) {
+          const r = e && e.file ? this.greffon.refDeChemin(e.file.path) : null;
+          if (r) refsMaint.add(r);
+        }
+        const al = this.greffon.app.workspace.activeLeaf;
+        const active = al && this.conteneur && this.conteneur.closest
+          && al.containerEl && this.conteneur.closest('.workspace-leaf') === al.containerEl;
+        if (active && this._refsConnues && this.moteur && this.moteur._plan) {
+          const plan = this.moteur._plan;
+          const surPlan = new Set(plan.cartes.map((c) => c.ref));
+          let ajout = false;
+          for (const r of refsMaint) {
+            if (this._refsConnues.has(r) || surPlan.has(r)) continue;
+            const f = this.greffon.app.vault.getMarkdownFiles().find((z) => z.basename === r);
+            if (!(f && f.stat && Date.now() - f.stat.ctime < 4000)) continue;
+            plan.cartes.push({ ref: r, x: null, y: null, replie: false });
+            ajout = true;
+          }
+          if (ajout) this.config.set('arianeArtPlan', JSON.stringify(plan));
+        }
+        this._refsConnues = refsMaint;
+      } catch (e) { /* sans gravité */ }
       if (this.moteur) this.moteur.dessiner();
     }
     onResize() { if (this.moteur) this.moteur.dessiner(); }

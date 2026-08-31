@@ -1360,8 +1360,20 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-noeud:hover .zfa-artic-repli { opacity: 1; }
 .zfa-artic-repli-fond { stroke: var(--background-primary); stroke-width: 1.5; }
 .zfa-artic-repli-hier .zfa-artic-repli-fond { fill: var(--text-muted); }
-.zfa-artic-repli-bloque .zfa-artic-repli-fond { fill: var(--interactive-accent); cursor: default; }
-.zfa-artic-repli-bloque { cursor: default; }
+.zfa-artic-repli-bloque .zfa-artic-repli-fond { fill: var(--interactive-accent); }
+
+/* Carte du plan hors du filtre courant (loupe). */
+.zfa-artic-carte.zfa-artic-hors-filtre { opacity: 0.4; }
+/* Survol de dépôt d'une note sur le canvas. */
+.zfa-artic.zfa-artic-survol-drop .zfa-artic-svg {
+  outline: 2px dashed var(--interactive-accent); outline-offset: -6px;
+}
+/* Message : plan de travail vide. */
+.zfa-artic-vide {
+  position: absolute; inset: var(--zfa-artic-barre-h, 34px) 0 0 0;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 24px; color: var(--text-muted); pointer-events: none;
+}
 .zfa-artic-repli-txt {
   fill: var(--background-primary); font-size: 9px; font-weight: 700;
   text-anchor: middle; dominant-baseline: central; pointer-events: none;
