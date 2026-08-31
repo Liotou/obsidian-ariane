@@ -603,9 +603,11 @@ Une tâche dont l'échéance est passée et qui n'est pas terminée reçoit un
 Survoler une barre révèle sa **lignée** — parents et sous-tâches, reliés par un
 trait — sans rien de permanent à l'écran. Le bouton **Exporter** de la barre
 d'outils écrit la frise telle qu'affichée — mêmes colonnes, même ordre de
-lignes — dans un `.xlsx` du dossier de pièces jointes (en-tête figée en gras,
-filtre automatique, vraies dates, cellule de famille teintée, échéance dépassée
-en rouge) et l'ouvre.
+lignes — dans un `.xlsx` du dossier de pièces jointes, et l'ouvre : les colonnes
+de données, puis un **damier Gantt** (une colonne par période, l'échelle suit le
+zoom courant), barres à la couleur de la famille, en retard en rouge, jalons
+marqués ; en-tête et colonnes de données figées, filtre automatique, vraies
+dates Excel.
 
 L'**articulation** dessine le graphe des liens. Un trait **gris** est une
 composition (parent → sous-tâche), un trait **d'accent** un blocage ; les flèches

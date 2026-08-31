@@ -586,8 +586,10 @@ has passed and is not done gets a **warning mark** on its bar, with a count in
 the toolbar. Hovering a bar reveals its **lineage** — parents and subtasks,
 joined by a line — with nothing permanent on screen. The toolbar's **Export**
 button writes the timeline exactly as shown — same columns, same row order — to
-an `.xlsx` in the attachments folder (frozen bold header, autofilter, real
-dates, the family cell tinted, an overdue due date in red) and opens it.
+an `.xlsx` in the attachments folder and opens it: the data columns, then a
+**cell-grid Gantt** (one column per period, the scale following the current
+zoom), bars painted in the family colour, overdue in red, milestones marked;
+frozen header and data columns, autofilter, real Excel dates.
 
 The **articulation** draws the graph of links. A **grey** line is composition
 (parent → subtask), an **accent** line is blocking; arrows route around the
