@@ -5043,6 +5043,9 @@ class Ariane extends obsidian.Plugin {
 
   //#endregion Ariane · static · articulation
 
+  //#region Ariane · suggestions locales
+  // ── suggestions locales ──────────────────────────────────────────────────
+
   /* --------------------- Moteur de suggestions -------------------------- */
 
   // Fichiers markdown appartenant aux dossiers candidats configurés.
@@ -5694,6 +5697,12 @@ class Ariane extends obsidian.Plugin {
     this.majSuggestions();
   }
 
+
+  //#endregion Ariane · suggestions locales
+
+  //#region Ariane · doublons d'auteurs
+  // ── doublons d'auteurs ───────────────────────────────────────────────────
+
   /* ------------------- Fusion des doublons d'auteurs -------------------- */
 
   baseSansConflit(n) {
@@ -5753,6 +5762,12 @@ class Ariane extends obsidian.Plugin {
       if (f instanceof obsidian.TFile) await this.app.fileManager.trashFile(f);
     }
   }
+
+
+  //#endregion Ariane · doublons d'auteurs
+
+  //#region Ariane · schémas draw.io
+  // ── schémas draw.io ──────────────────────────────────────────────────────
 
   /* ----------------------- Module Cartes (Canvas) ------------------------ */
 
@@ -5927,6 +5942,12 @@ class Ariane extends obsidian.Plugin {
       new VoisinageModal(this.app, c.valeur, sortants, entrants, this).open();
     }).open();
   }
+
+
+  //#endregion Ariane · schémas draw.io
+
+  //#region Ariane · export Word / Pandoc
+  // ── export Word / Pandoc ─────────────────────────────────────────────────
 
   /* ------------- Export Word avec citations Zotero vivantes -------------- */
 
@@ -6222,6 +6243,9 @@ class Ariane extends obsidian.Plugin {
       try { fs.unlinkSync(ordres); } catch (e) { /* */ }
     }
   }
+
+
+  //#endregion Ariane · export Word / Pandoc
 
   // La référence de la note pour l'en-tête principal. On cherche, dans
   // l'ordre, les propriétés que l'utilisateur a désignées ; à défaut, et s'il
