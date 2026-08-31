@@ -4257,6 +4257,7 @@ class Ariane extends obsidian.Plugin {
       { cle: 'echeance', defaut: 'Échéance', icone: 'calendar-check' },
       { cle: 'heure', defaut: 'Heure', icone: 'clock' },
       { cle: 'sans-echeance', defaut: 'Sans échéance', icone: 'calendar-off' },
+      { cle: 'creneaux', defaut: 'Créneaux', icone: 'calendar-clock' },
       { cle: 'avancement', defaut: 'Avancement', icone: 'percent' },
       { cle: 'parent', defaut: 'Rattachée à', icone: 'git-branch' },
     ];
@@ -4267,7 +4268,7 @@ class Ariane extends obsidian.Plugin {
   // alias). On y ajoute les champs structurels propres aux tâches.
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
-            'debut', 'echeance', 'heure', 'sans-echeance', 'avancement', 'parent',
+            'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'avancement', 'parent',
             'bloque-par', 'termine-le',
             'source', 'livrable', 'fichier', 'liste', 'rappel-id'];
   }
@@ -4278,7 +4279,7 @@ class Ariane extends obsidian.Plugin {
   static get GROUPES_TACHE() {
     return [
       { id: 'etat', nom: 'État & progression', concepts: ['statut', 'terminee', 'priorite', 'avancement'] },
-      { id: 'planning', nom: 'Planning', concepts: ['debut', 'echeance', 'heure', 'jalon', 'termine-le'] },
+      { id: 'planning', nom: 'Planning', concepts: ['debut', 'echeance', 'heure', 'creneaux', 'jalon', 'termine-le'] },
       { id: 'relations', nom: 'Relations', concepts: ['parent', 'bloque-par'] },
       { id: 'rappel', nom: 'Rappel', concepts: ['liste', 'rappel-id'] },
     ];
@@ -4749,6 +4750,7 @@ class Ariane extends obsidian.Plugin {
     l.push(ligne(K('heure'), c.heure));
     // Dérivé, tenu à jour par Ariane : vrai tant qu'il n'y a pas d'échéance.
     l.push(K('sans-echeance') + ': ' + (c.echeance ? 'false' : 'true'));
+    l.push(K('creneaux') + ': []');
     l.push(K('avancement') + ': ' + (Number(c.avancement) || 0));
     l.push(K('termine-le') + ':');
     l.push(K('jalon') + ': ' + (c.jalon ? 'true' : 'false'));
@@ -4939,6 +4941,56 @@ class Ariane extends obsidian.Plugin {
       const e = Ariane.jourValide(t.echeance);
       if (e && e < auj && t.statut !== 'terminée' && t.statut !== 'abandonnée') out.add(t.ref);
     }
+    return out;
+  }
+
+  // Une plage texte -> { debut, fin } ISO « YYYY-MM-DDTHH:MM », ou null.
+  // « 2026-09-08 14:00-16:00 » (même jour) ; « 2026-09-08 22:00 / 2026-09-09 01:30 »
+  // (minuit explicite). Séparateurs : - – — / « à ». Heures H:MM ou HH:MM.
+  static parseCreneau(str) {
+    const s = String(str == null ? '' : str).trim();
+    if (!s) return null;
+    const jhm = (d, h) => {
+      const m = String(h).match(/^(\d{1,2}):(\d{2})$/);
+      if (!m || Number(m[1]) > 23 || Number(m[2]) > 59 || !Ariane.jourValide(d)) return null;
+      return d + 'T' + String(Number(m[1])).padStart(2, '0') + ':' + m[2];
+    };
+    let m = s.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s*(?:[-–—/]|à)\s*(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})$/);
+    if (m) {
+      const a = jhm(m[1], m[2]);
+      const b = jhm(m[3], m[4]);
+      return (a && b && b > a) ? { debut: a, fin: b } : null;
+    }
+    m = s.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s*(?:[-–—/]|à)\s*(\d{1,2}:\d{2})$/);
+    if (!m) return null;
+    const a = jhm(m[1], m[2]);
+    let b = jhm(m[1], m[3]);
+    if (!a || !b) return null;
+    if (b <= a) b = jhm(Ariane.decalerJour(m[1], 1), m[3]);
+    return b > a ? { debut: a, fin: b } : null;
+  }
+
+  static formatCreneau(debut, fin) {
+    const d = String(debut || '');
+    const f = String(fin || '');
+    const [jd, hd] = [d.slice(0, 10), d.slice(11, 16)];
+    const [jf, hf] = [f.slice(0, 10), f.slice(11, 16)];
+    if (!jd || !hd || !jf || !hf) return '';
+    return jd === jf ? jd + ' ' + hd + '-' + hf : jd + ' ' + hd + ' / ' + jf + ' ' + hf;
+  }
+
+  // Liste de créneaux d'une valeur (tableau, chaîne, ou tâche avec `.creneaux`).
+  // Trié par début, entrées invalides écartées, `brut` = chaîne d'origine.
+  static creneauxDeTache(v) {
+    let brut = v;
+    if (v && !Array.isArray(v) && typeof v === 'object') brut = v.creneaux;
+    const arr = Array.isArray(brut) ? brut : (brut ? [brut] : []);
+    const out = [];
+    for (const s of arr) {
+      const p = Ariane.parseCreneau(s);
+      if (p) out.push({ debut: p.debut, fin: p.fin, brut: String(s) });
+    }
+    out.sort((a, b) => (a.debut < b.debut ? -1 : a.debut > b.debut ? 1 : 0));
     return out;
   }
 
@@ -11975,6 +12027,7 @@ class Ariane extends obsidian.Plugin {
         debut: this._lireT(fm, 'debut') || '',
         echeance: this._lireT(fm, 'echeance') || '',
         heure: String(this._lireT(fm, 'heure') || '').trim(),
+        creneaux: [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean),
         statut: this._lireT(fm, 'statut') || 'à faire',
         priorite: this._lireT(fm, 'priorite') || '',
         avancement: Number(this._lireT(fm, 'avancement')) || 0,
