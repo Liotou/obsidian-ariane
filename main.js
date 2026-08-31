@@ -4244,6 +4244,14 @@ class Ariane extends obsidian.Plugin {
     return prefixe + String(max + 1).padStart(3, '0');
   }
 
+  // Nom de fichier encore générique (« Sans titre », « Untitled 3 ») : c'est
+  // qu'Obsidian l'a créé sans que l'utilisateur le nomme. On peut alors lui
+  // attribuer une référence. Un nom choisi (même s'il commence par ces mots)
+  // est respecté.
+  static estNomTacheGenerique(nom) {
+    return /^(sans titre|untitled)( \d+)?$/i.test(String(nom || '').trim());
+  }
+
   //#endregion Ariane · static · références
 
   //#region Ariane · static · dates & jours
@@ -10592,18 +10600,38 @@ class Ariane extends obsidian.Plugin {
       if (this._lireT(fm, 'statut') || this._lireT(fm, 'debut')
         || this._lireT(fm, 'echeance') || this._lireT(fm, 'parent')
         || this._lireT(fm, 'avancement') != null) return;
-      // Le nom de fichier est libre : on n'en impose plus. On ne fait qu'amorcer
-      // l'entête pour que la frise et l'articulation aient de quoi travailler.
-      const titre = /^(sans titre|untitled)\b/i.test(f.basename) ? '' : f.basename;
+      // Nom de fichier générique (« Sans titre ») : on lui attribue une
+      // référence T<AA>-<NNN>, comme la commande de création. Un nom choisi
+      // par l'utilisateur est respecté (identité par dossier, pas par nom).
+      let cible = f;
+      let intitule = f.basename;
+      if (Ariane.estNomTacheGenerique(f.basename)) {
+        intitule = '';
+        const noms = this.app.vault.getMarkdownFiles()
+          .filter((x) => x.path.startsWith(dossier + '/'))
+          .map((x) => x.basename);
+        let ref = Ariane.referenceTacheSuivante(noms, new Date().getFullYear());
+        // Rafale de créations : sauter les noms déjà pris.
+        while (this.app.vault.getAbstractFileByPath(dossier + '/' + ref + '.md')) {
+          const m = ref.match(/^(T\d{2}-)(\d+)$/);
+          ref = m ? m[1] + String(parseInt(m[2], 10) + 1).padStart(String(m[2].length), '0') : ref + '-2';
+        }
+        const nouveau = dossier + '/' + ref + '.md';
+        this.marquerEcriture(f.path);
+        this.marquerEcriture(nouveau);
+        await this.app.fileManager.renameFile(f, nouveau);
+        cible = this.app.vault.getAbstractFileByPath(nouveau);
+        if (!(cible instanceof obsidian.TFile)) return;
+      }
       const jour = new Date().toISOString().slice(0, 10);
       const cles = {};
       for (const con of Ariane.CONCEPTS_TACHE) cles[con] = this.cleT(con);
-      this.marquerEcriture(f.path);
-      await this.app.vault.modify(f, Ariane.corpsNouvelleTache({
-        intitule: titre, aujourdhui: jour, cles,
+      this.marquerEcriture(cible.path);
+      await this.app.vault.modify(cible, Ariane.corpsNouvelleTache({
+        intitule, aujourdhui: jour, cles,
         liste: this.settings.listeRappelsDefaut,
       }));
-      new obsidian.Notice(tr('Tâche initialisée : ') + f.basename);
+      new obsidian.Notice(tr('Tâche créée : ') + cible.basename);
     }, 450);
   }
 

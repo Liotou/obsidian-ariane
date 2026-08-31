@@ -61,3 +61,21 @@ test('sans dossier configuré, seule la forme T26 est reconnue', () => {
   assert.equal(rc('n importe où/T26-003.md', ''), 'T26-003');
   assert.equal(rc('n importe où/Note.md', ''), null);
 });
+
+test('un nom générique « Sans titre » (avec ou sans numéro) appelle une référence', () => {
+  const g = (n) => Ariane.estNomTacheGenerique(n);
+  assert.equal(g('Sans titre'), true);
+  assert.equal(g('sans titre'), true);
+  assert.equal(g('Sans titre 1'), true);
+  assert.equal(g('Untitled'), true);
+  assert.equal(g('Untitled 12'), true);
+  assert.equal(g('  Sans titre  '), true);
+});
+
+test('un nom choisi par l utilisateur est respecté, même s il commence par « Sans titre »', () => {
+  const g = (n) => Ariane.estNomTacheGenerique(n);
+  assert.equal(g('Sans titre du chapitre'), false);
+  assert.equal(g('T26-004'), false);
+  assert.equal(g('Rédiger l intro'), false);
+  assert.equal(g(''), false);
+});
