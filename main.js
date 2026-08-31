@@ -4112,6 +4112,18 @@ class Ariane extends obsidian.Plugin {
             'source', 'livrable', 'fichier', 'liste', 'rappel-id'];
   }
 
+  // Regroupement classique des propriétés d'une tâche (habillage de la note).
+  static get GROUPES_TACHE() {
+    return [
+      { id: 'etat', nom: 'État & progression', concepts: ['statut', 'terminee', 'priorite', 'avancement'] },
+      { id: 'planning', nom: 'Planning', concepts: ['debut', 'echeance', 'jalon', 'termine-le'] },
+      { id: 'classement', nom: 'Classement', concepts: ['famille'] },
+      { id: 'relations', nom: 'Relations', concepts: ['parent', 'bloque-par'] },
+      { id: 'sources', nom: 'Sources & livrables', concepts: ['source', 'livrable', 'fichier'] },
+      { id: 'rappel', nom: 'Rappel', concepts: ['liste', 'rappel-id'] },
+    ];
+  }
+
   static get COULEURS_GANTT() {
     return {
       'à faire': 'var(--text-faint)',
@@ -11299,7 +11311,42 @@ class Ariane extends obsidian.Plugin {
           icEl.dataset.zfaIc = con;
         }
       }
+      if (skin) {
+        const conteneurs = vue.contentEl.querySelectorAll('.metadata-properties');
+        for (const cont of conteneurs) {
+          try { this._grouperProprietes(cont); } catch (e) { /* rien */ }
+        }
+      }
     }
+  }
+
+  // Range les lignes de propriétés en groupes (via `order`) et insère un
+  // en-tête par groupe présent.
+  _grouperProprietes(cont) {
+    const groupes = Ariane.GROUPES_TACHE;
+    const rang = new Map();
+    groupes.forEach((g, gi) => g.concepts.forEach((cpt, ci) => rang.set(cpt, (gi + 1) * 100 + ci)));
+    const presents = new Set();
+    for (const row of cont.querySelectorAll('.metadata-property[data-zfa-concept]')) {
+      const cpt = row.dataset.zfaConcept;
+      row.style.order = String(rang.has(cpt) ? rang.get(cpt) : 899);
+      const g = groupes.find((x) => x.concepts.includes(cpt));
+      if (g) presents.add(g.id);
+    }
+    for (const row of cont.querySelectorAll('.metadata-property:not([data-zfa-concept])')) {
+      row.style.order = '950';
+    }
+    const vus = new Set();
+    for (const h of cont.querySelectorAll(':scope > .zfa-note-tache-groupe')) {
+      if (!presents.has(h.dataset.zfaGroupe)) h.remove();
+      else vus.add(h.dataset.zfaGroupe);
+    }
+    groupes.forEach((g, gi) => {
+      if (!presents.has(g.id) || vus.has(g.id)) return;
+      const h = cont.createDiv({ cls: 'zfa-note-tache-groupe', text: tr(g.nom) });
+      h.dataset.zfaGroupe = g.id;
+      h.style.order = String((gi + 1) * 100 - 1);
+    });
   }
 
   // Feuille de style personnelle (réglage). Injectée / mise à jour dans <head>.

@@ -1574,23 +1574,20 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-note-tache-skin .metadata-property-value {
   flex: 1 1 auto; min-width: 0; font-size: var(--font-ui-medium);
 }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="famille"]    { order: 1; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="statut"]     { order: 2; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="priorite"]   { order: 3; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="jalon"]      { order: 4; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="terminee"]   { order: 5; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="debut"]      { order: 6; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="echeance"]   { order: 7; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="avancement"] { order: 8; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="termine-le"] { order: 9; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="parent"]     { order: 20; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="bloque-par"] { order: 21; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="source"]     { order: 22; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="livrable"]   { order: 23; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="fichier"]    { order: 24; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="liste"]      { order: 30; }
-.zfa-note-tache-skin .metadata-property[data-zfa-concept="rappel-id"]  { order: 31; }
 .zfa-note-tache-skin .metadata-add-button { opacity: 0.4; font-size: var(--font-ui-smaller); margin-top: 6px; }
+
+/* En-tête de groupe de propriétés (injecté par habillerNotesTache). */
+.zfa-note-tache-skin .zfa-note-tache-groupe {
+  grid-column: 1 / -1;
+  margin: 16px 0 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-smaller);
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text-faint);
+}
+.zfa-note-tache-skin .zfa-note-tache-groupe[style*="order: 99"] { margin-top: 16px; }
+.zfa-note-tache-skin .metadata-properties > .zfa-note-tache-groupe:first-child { margin-top: 0; }
 
 .zfa-note-tache-skin .markdown-preview-view,
 .zfa-note-tache-skin .markdown-source-view.mod-cm6 .cm-content {
