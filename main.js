@@ -16915,12 +16915,12 @@ class MoteurFrise {
   }
 
   // Même idée pour les libellés portés par les barres : le titre (et, selon la
-  // hauteur de ligne, les dates et le statut) reste calé au bord gauche visible
-  // tant qu'une part de la barre est à l'écran — sans jamais déborder à droite.
+  // hauteur de ligne, les dates et le statut) reste calé au bord gauche visible,
+  // glisse avec le défilement et finit par disparaître dans l'extrémité droite
+  // de la barre (détourage par la barre, voir dessinerBarres).
   recalerEtiquettes(sx) {
     for (const it of this._etiquettesMobiles || []) {
-      const xmax = Math.max(it.x1, it.x2 - it.approxW - 8);
-      it.el.setAttribute('x', Math.min(xmax, Math.max(it.x1, sx + 9)));
+      it.el.setAttribute('x', Math.min(it.x2, Math.max(it.x1, sx + 9)));
     }
   }
 
@@ -17074,7 +17074,12 @@ class MoteurFrise {
   dessinerBarres(svg, cfg, lignes) {
     const g = svgEl('g', {});
     // Libellés qui « collent » au bord gauche visible pendant le défilement.
+    // Chaque libellé est détouré par la barre : en défilant, il glisse et
+    // finit par disparaître dans l'extrémité droite.
     this._etiquettesMobiles = [];
+    const defsEt = svgEl('defs', {});
+    g.appendChild(defsEt);
+    let clipN = 0;
     lignes.forEach((l) => {
       if (l.kind === 'groupe') return;
       const yLigne = l.y;
@@ -17183,6 +17188,12 @@ class MoteurFrise {
         }
         const hauteurTexte = 13;
         const depart = y + h / 2 - ((textes.length - 1) * hauteurTexte) / 2;
+        const clipId = 'zfa-et-clip-' + (clipN += 1);
+        const cp = svgEl('clipPath', { id: clipId });
+        cp.appendChild(svgEl('rect', { x, y, width: w, height: h }));
+        defsEt.appendChild(cp);
+        const grpEt = svgEl('g', { 'clip-path': 'url(#' + clipId + ')' });
+        groupe.appendChild(grpEt);
         textes.forEach((texte, i) => {
           const max = Math.max(4, Math.floor((w - 18) / (i ? 6.4 : 7.2)));
           if (texte.length > max && i) return;
@@ -17190,10 +17201,8 @@ class MoteurFrise {
             class: 'zfa-gantt-etiquette' + (i ? ' zfa-gantt-etiquette-menue' : '') });
           const contenu = texte.length > max ? texte.slice(0, max - 1) + '…' : texte;
           t.textContent = contenu;
-          groupe.appendChild(t);
-          this._etiquettesMobiles.push({
-            el: t, x1: x + 9, x2: x + w, approxW: contenu.length * (i ? 6 : 6.6),
-          });
+          grpEt.appendChild(t);
+          this._etiquettesMobiles.push({ el: t, x1: x + 9, x2: x + w });
         });
       }
       const bulle = svgEl('title', {});
