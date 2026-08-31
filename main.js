@@ -12674,21 +12674,74 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       [tr('Avancé'), 'wrench', (c) => this.ongletAvance(c, s, maj)],
     ];
     if (typeof this._ongletActif !== 'number' || this._ongletActif >= onglets.length) this._ongletActif = 0;
+    this._sousOngletActif = this._sousOngletActif || {};
 
-    const barre = containerEl.createDiv({ cls: 'zfa-onglets' });
-    const corps = containerEl.createDiv();
+    // Rangée 1 : onglets primaires en icônes seules (le titre est l'infobulle).
+    const barre = containerEl.createDiv({ cls: 'zfa-onglets zfa-onglets-primaire' });
+    // Rangée 2 : sous-onglets, un par section (titre en gras) de l'onglet actif.
+    const sousBarre = containerEl.createDiv({ cls: 'zfa-sous-onglets' });
+    const corps = containerEl.createDiv({ cls: 'zfa-reglages-corps' });
+
+    // Coupe le contenu d'un onglet en tranches délimitées par ses titres de
+    // section (Setting.setHeading -> .setting-item-heading).
+    const decouper = (hote) => {
+      const chunks = [];
+      let cur = { titre: null, els: [] };
+      for (const el of Array.from(hote.children)) {
+        if (el.classList && el.classList.contains('setting-item-heading')) {
+          if (cur.els.length || cur.titre !== null) chunks.push(cur);
+          const nomEl = el.querySelector('.setting-item-name');
+          cur = { titre: nomEl ? nomEl.textContent : '', els: [] };
+          el.addClass('zfa-sous-titre');
+        }
+        cur.els.push(el);
+      }
+      if (cur.els.length) chunks.push(cur);
+      // Un préambule sans titre est rattaché à la première section titrée.
+      if (chunks.length > 1 && chunks[0].titre === null) {
+        chunks[1].els = chunks[0].els.concat(chunks[1].els);
+        chunks.shift();
+      }
+      return chunks;
+    };
+
+    const rendreSous = (chunks, prim) => {
+      sousBarre.empty();
+      corps.empty();
+      if (chunks.length <= 1) {
+        sousBarre.style.display = 'none';
+        for (const ch of chunks) for (const el of ch.els) corps.appendChild(el);
+        return;
+      }
+      sousBarre.style.display = '';
+      let sel = this._sousOngletActif[prim] || 0;
+      if (sel >= chunks.length) sel = 0;
+      chunks.forEach((ch, k) => {
+        const b = sousBarre.createEl('button', { cls: 'zfa-sous-onglet',
+          text: ch.titre || tr('Général') });
+        b.toggleClass('is-active', k === sel);
+        b.onclick = () => { this._sousOngletActif[prim] = k; rendreSous(chunks, prim); };
+      });
+      for (const el of chunks[sel].els) corps.appendChild(el);
+    };
+
     const rendre = (i) => {
       this._ongletActif = i;
-      corps.empty();
       Array.from(barre.children).forEach((b, k) => b.toggleClass('is-active', k === i));
-      onglets[i][2](corps);
+      const tmp = containerEl.createDiv();
+      tmp.style.display = 'none';
+      onglets[i][2](tmp);
+      const chunks = decouper(tmp);
+      rendreSous(chunks, i);
+      tmp.remove();
     };
+
     onglets.forEach(([nom, icone], i) => {
       const b = barre.createEl('button', { cls: 'zfa-onglet' });
       const ic = b.createSpan({ cls: 'zfa-onglet-icone' });
       obsidian.setIcon(ic, icone);
-      b.createSpan({ cls: 'zfa-onglet-nom', text: nom });
       b.setAttribute('aria-label', nom);
+      b.title = nom;
       b.onclick = () => rendre(i);
     });
     rendre(this._ongletActif);

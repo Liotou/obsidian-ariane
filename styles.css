@@ -247,6 +247,42 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   border-bottom: 1px solid var(--background-modifier-border);
   margin: 6px 0 16px;
 }
+/* Rangée 1 : onglets primaires en icônes seules, sur une seule ligne. */
+.zfa-onglets-primaire {
+  flex-wrap: nowrap;
+  gap: 0;
+  overflow-x: auto;
+  margin-bottom: 0;
+}
+.zfa-onglets-primaire .zfa-onglet { padding: 6px 10px; }
+.zfa-onglets-primaire .zfa-onglet-icone svg { width: 17px; height: 17px; }
+/* Rangée 2 : sous-onglets (sections) de l'onglet actif. */
+.zfa-sous-onglets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin: 0 0 16px;
+  padding-top: 4px;
+}
+.zfa-sous-onglet {
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  border-radius: 0; box-shadow: none;
+  padding: 5px 10px; cursor: pointer;
+  color: var(--text-muted); font-size: var(--font-ui-small);
+}
+.zfa-sous-onglet:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.zfa-sous-onglet.is-active {
+  color: var(--text-normal); border-bottom-color: var(--interactive-accent); font-weight: 600;
+}
+.zfa-reglages-corps { margin-top: 12px; }
+/* Un titre de section devenu panneau : discret, sans double marge. */
+.zfa-reglages-corps .setting-item-heading.zfa-sous-titre {
+  margin-top: 0; padding-top: 4px; border: none;
+}
+.zfa-reglages-corps .setting-item-heading.zfa-sous-titre .setting-item-name {
+  font-size: var(--font-ui-medium);
+}
 .zfa-onglet {
   background: transparent;
   border: none;
