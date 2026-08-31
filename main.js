@@ -875,6 +875,11 @@ const TEXTES = {
     "Tâche": "Task",
     "Aucune tâche. Créez une tâche pour la voir ici.": "No task. Create a task to see it here.",
     "sans date": "no date",
+    "Sans date": "No date",
+    "Ajouter la colonne « Sans date »": "Add the “No date” column",
+    "Retirer la colonne": "Remove the column",
+    "Oui": "Yes",
+    "Non": "No",
     "cliquez pour dater": "click to set dates",
     "Dater la tâche": "Set task dates",
     "Enregistrer": "Save",
@@ -15742,6 +15747,7 @@ class MoteurFrise {
   }
 
   iconeColonne(id) {
+    if (id === '__sansdate') return 'calendar-off';
     if (String(id).startsWith('file.')) return 'info';
     if (String(id).startsWith('formula.')) return 'variable';
     const type = Ariane.typeProprieteBase(this.app.metadataTypeManager, id);
@@ -15862,6 +15868,7 @@ class MoteurFrise {
   // (glisser-déposer d'en-tête, comme dans un tableau Bases).
   async reordonnerColonnes(src, cible) {
     if (!this.ctx.reordonner || !this.ctx.ordreColonnes) return;
+    if (String(src).startsWith('__')) return; // colonne dérivée : hors ordre natif
     const ordre = this.ctx.ordreColonnes();
     if (!ordre.includes(src)) return;
     const sans = ordre.filter((x) => x !== src);
@@ -15879,6 +15886,7 @@ class MoteurFrise {
     e.preventDefault();
     e.stopPropagation();
     const cle = String(col.cle || '');
+    const synth = cle.startsWith('__');
     const fichier = cle.startsWith('file.') || cle.startsWith('formula.');
     const type = this.typeColonne(cle);
     const paires = {
@@ -15891,11 +15899,14 @@ class MoteurFrise {
     const groupeActif = this.ctx.groupeActuel && this.ctx.groupeActuel() === cle;
 
     const menu = new obsidian.Menu();
-    if (!fichier && this.ctx.masquerColonne) {
+    if (synth) {
+      menu.addItem((i) => i.setTitle(tr('Retirer la colonne')).setIcon('eye-off')
+        .onClick(async () => { await this.ctx.ecrire('colSansDate', false); this.dessiner(); }));
+    } else if (!fichier && this.ctx.masquerColonne) {
       menu.addItem((i) => i.setTitle(tr('Masquer la colonne')).setIcon('eye-off')
         .onClick(async () => { await this.ctx.masquerColonne(cle); this.dessiner(); }));
     }
-    if (this.ctx.poserGroupe) {
+    if (!synth && this.ctx.poserGroupe) {
       menu.addItem((i) => i
         .setTitle(groupeActif ? tr('Ne plus regrouper par cette propriété')
                               : tr('Regrouper par cette propriété'))
@@ -15904,6 +15915,10 @@ class MoteurFrise {
           this.ctx.poserGroupe(groupeActif ? null : cle);
           this.dessiner();
         }));
+    }
+    if (!synth && !this.ctx.lire('colSansDate')) {
+      menu.addItem((i) => i.setTitle(tr('Ajouter la colonne « Sans date »')).setIcon('calendar-off')
+        .onClick(async () => { await this.ctx.ecrire('colSansDate', true); this.dessiner(); }));
     }
 
     menu.addSeparator();
@@ -15916,9 +15931,11 @@ class MoteurFrise {
         .onClick(async () => { await this.ctx.ecrire('triColonne', null); this.dessiner(); }));
     }
 
-    menu.addSeparator();
-    menu.addItem((i) => i.setTitle(tr('Modifier la propriété…')).setIcon('pencil')
-      .onClick(() => this._popoverColonne(cle, col, e)));
+    if (!synth) {
+      menu.addSeparator();
+      menu.addItem((i) => i.setTitle(tr('Modifier la propriété…')).setIcon('pencil')
+        .onClick(() => this._popoverColonne(cle, col, e)));
+    }
     menu.showAtMouseEvent(e);
   }
 
@@ -17379,6 +17396,33 @@ function fabriquerVueFriseBase(greffon) {
             if (typeof v === 'object' && 'data' in v && v.data != null) return v.data;
             return VueFriseBase.texteValeur(v);
           },
+        });
+      }
+
+      // Colonne dérivée « Sans date » (Oui/Non) : jamais écrite, calculée depuis
+      // les dates de la tâche. Optionnelle, posée par le menu d'en-tête ; elle
+      // n'entre pas dans getOrder (clé sentinelle « __sansdate »).
+      let colSD = false;
+      try { colSD = !!this.config.get('colSansDate'); } catch (e) { colSD = false; }
+      if (colSD) {
+        let sd = null;
+        const jeu = () => {
+          if (!sd) {
+            sd = new Set();
+            for (const t of this.greffon.tachesPourGantt()) {
+              if (!Ariane.jourValide(t.debut) && !Ariane.jourValide(t.echeance)) sd.add(t.ref);
+            }
+          }
+          return sd;
+        };
+        out.push({
+          cle: '__sansdate',
+          nom: tr('Sans date'),
+          synth: true,
+          chemin: () => '',
+          valeurBase: () => null,
+          valeur: (ref) => (jeu().has(ref) ? tr('Oui') : tr('Non')),
+          valeurBrute: (ref) => (jeu().has(ref) ? '1' : '0'),
         });
       }
       return out;
