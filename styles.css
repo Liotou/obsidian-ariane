@@ -1554,6 +1554,17 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   background: transparent; border: 0; padding: 0; font: inherit; color: inherit;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* Préfixe masqué : on affiche le libellé posé par habillerNotesTache
+   (data-zfa-label) et on cache la vraie clé. */
+.zfa-note-tache .metadata-property-key[data-zfa-label] .metadata-property-key-input,
+.zfa-note-tache .metadata-property-key[data-zfa-label] > *:not(.metadata-property-icon) {
+  display: none;
+}
+.zfa-note-tache .metadata-property-key[data-zfa-label]::after {
+  content: attr(data-zfa-label);
+  font: inherit; color: inherit;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .zfa-note-tache .metadata-property-value {
   flex: 1 1 auto; min-width: 0; font-size: var(--font-ui-small);
   overflow: hidden;
@@ -1614,3 +1625,8 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   text-decoration: none; font-size: var(--font-ui-smaller);
 }
 .zfa-note-tache .markdown-preview-view ul:has(> li > a.internal-link:only-child) { padding-left: 0; }
+
+/* Réglage : zone de CSS personnalisé pleine largeur. */
+.zfa-css-perso-reglage { display: block; }
+.zfa-css-perso-reglage .setting-item-control { width: 100%; margin-top: 6px; }
+.zfa-css-perso-reglage textarea { width: 100%; min-height: 160px; resize: vertical; }

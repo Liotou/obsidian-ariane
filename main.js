@@ -969,6 +969,7 @@ const DEFAULT_SETTINGS = {
   masquerPrefixeAffichage: true, // cacher le préfixe dans les en-têtes de colonnes / cartes
   masquerPrefixeBases: true,     // idem dans les en-têtes de colonnes de TOUTE base (cosmétique DOM)
   styleNoteTache: false,         // habillage CSS des notes de tâche ouvertes
+  cssPersonnalise: '',           // feuille de style de l'utilisateur, injectée globalement
   clesTaches: {},
   libellesTaches: {}, // ancien réglage, plus utilisé
   _clesTachesNettoye: 0,
@@ -3324,6 +3325,7 @@ class Ariane extends obsidian.Plugin {
     this.appliquerStyleAparte();
     this.installerVerrouLecture();
     this.installerAffichageTaches();
+    this.appliquerCssPersonnalise();
     this.ecrituresRecentes = new Map();
     this.antirebonds = new Map();
     this.rattachementsIgnores = new Set();
@@ -4249,6 +4251,17 @@ class Ariane extends obsidian.Plugin {
       if (m) max = Math.max(max, parseInt(m[1], 10));
     }
     return prefixe + String(max + 1).padStart(3, '0');
+  }
+
+  // Icône (nom lucide) d'un concept de tâche — la même variété que le
+  // formulaire de création. Défaut « tag » pour l'inconnu.
+  static iconeConcept(concept) {
+    const d = Ariane.PROPS_GENERIQUES.find((p) => p.cle === concept);
+    if (d) return d.icone;
+    return ({
+      'bloque-par': 'ban', 'termine-le': 'calendar-check', source: 'book-marked',
+      livrable: 'package', fichier: 'file', liste: 'list-checks', 'rappel-id': 'bell',
+    })[concept] || 'tag';
   }
 
   // Substitution des jetons du gabarit « Tâches.base » : ⟦K:concept⟧ → clé
@@ -11247,6 +11260,7 @@ class Ariane extends obsidian.Plugin {
   // pour l'habillage CSS optionnel des propriétés + contenu.
   habillerNotesTache() {
     const actif = this.settings.styleNoteTache === true;
+    const masquer = this.settings.masquerPrefixeAffichage !== false;
     const conceptParCle = new Map();
     for (const con of Ariane.CONCEPTS_TACHE) conceptParCle.set(this.cleT(con), con);
     for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
@@ -11255,14 +11269,39 @@ class Ariane extends obsidian.Plugin {
       const estTache = actif && vue.file && !!this.refDeChemin(vue.file.path);
       vue.contentEl.toggleClass('zfa-note-tache', !!estTache);
       if (!estTache) continue;
-      // Étiquette chaque ligne de propriété avec son concept (indépendamment
-      // du préfixe / de la clé réelle) pour que le CSS puisse la placer.
       for (const row of vue.contentEl.querySelectorAll('.metadata-property')) {
         const con = conceptParCle.get(row.dataset.propertyKey);
-        if (con) row.dataset.zfaConcept = con;
-        else if (row.dataset.zfaConcept) delete row.dataset.zfaConcept;
+        if (!con) { if (row.dataset.zfaConcept) delete row.dataset.zfaConcept; continue; }
+        // Concept -> placement CSS, indépendamment du préfixe.
+        row.dataset.zfaConcept = con;
+        // Libellé affiché sans préfixe (si l'option est active).
+        const cleEl = row.querySelector('.metadata-property-key');
+        if (cleEl) {
+          if (masquer) cleEl.dataset.zfaLabel = this.libelleColonne(this.cleT(con));
+          else if (cleEl.dataset.zfaLabel) delete cleEl.dataset.zfaLabel;
+        }
+        // Icône du concept (la variété du formulaire de création).
+        const icEl = row.querySelector('.metadata-property-icon');
+        if (icEl && icEl.dataset.zfaIc !== con) {
+          try { obsidian.setIcon(icEl, Ariane.iconeConcept(con)); } catch (e) { /* rien */ }
+          icEl.dataset.zfaIc = con;
+        }
       }
     }
+  }
+
+  // Feuille de style personnelle (réglage). Injectée / mise à jour dans <head>.
+  appliquerCssPersonnalise() {
+    let el = document.getElementById('zfa-css-perso');
+    const css = this.settings.cssPersonnalise || '';
+    if (!css.trim()) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('style');
+      el.id = 'zfa-css-perso';
+      document.head.appendChild(el);
+      this.register(() => el && el.remove());
+    }
+    el.textContent = css;
   }
 
   async assurerBaseTaches() {
@@ -12133,9 +12172,25 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._section(c, tr('Note de tâche'));
     new obsidian.Setting(c)
       .setName(tr('Habillage de la note de tâche'))
-      .setDesc(tr('Dans une note de tâche ouverte, présente les propriétés en grille compacte et aère le contenu (Note de travail, Journal). Purement visuel.'))
+      .setDesc(tr('Dans une note de tâche ouverte : propriétés en grille ordonnée (libellés sans préfixe si « Masquer le préfixe à l\'affichage », icônes du formulaire de création) et contenu aéré. Purement visuel.'))
       .addToggle((t) => t.setValue(s.styleNoteTache === true)
         .onChange(async (v) => { s.styleNoteTache = v; await maj(); this.plugin.habillerNotesTache(); }));
+    new obsidian.Setting(c)
+      .setName(tr('CSS personnalisé'))
+      .setDesc(tr("Injecté globalement dans Obsidian. Vise entre autres « .zfa-note-tache » (note de tâche), « .zfa-artic-* » (articulation), « .zfa-gantt-* » (frise). Laisser vide pour ne rien injecter."))
+      .setClass('zfa-css-perso-reglage')
+      .addTextArea((t) => {
+        t.setPlaceholder('.zfa-note-tache .metadata-container { ... }')
+          .setValue(s.cssPersonnalise || '')
+          .onChange(async (v) => {
+            s.cssPersonnalise = v;
+            await maj();
+            this.plugin.appliquerCssPersonnalise();
+          });
+        t.inputEl.rows = 10;
+        t.inputEl.style.width = '100%';
+        t.inputEl.style.fontFamily = 'var(--font-monospace)';
+      });
 
     this._section(c, tr('Vue Frise'));
     new obsidian.Setting(c)
