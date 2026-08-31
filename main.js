@@ -5367,8 +5367,59 @@ class Ariane extends obsidian.Plugin {
     return sortie;
   }
 
+  // Lundi (ISO) de la semaine contenant `iso`.
+  static _lundiDe(iso) {
+    const dow = new Date(iso + 'T00:00:00Z').getUTCDay(); // 0 = dimanche
+    return Ariane.decalerJour(iso, -((dow + 6) % 7));
+  }
+
+  // Découpe [debutISO, finISO] en périodes selon `unite` ('jour'|'semaine'|
+  // 'mois'). Si le nombre de colonnes dépasse `maxCols`, l'unité s'élargit
+  // (jour -> semaine -> mois). Chaque période : { debut, fin, label }.
+  static periodesGantt(debutISO, finISO, unite, maxCols) {
+    const MC = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.',
+      'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    const max = maxCols || 400;
+    const d0 = Ariane.jourValide(debutISO);
+    const f0 = Ariane.jourValide(finISO);
+    if (!d0 || !f0 || d0 > f0) return { unite: unite || 'mois', periodes: [] };
+    const ordre = ['jour', 'semaine', 'mois'];
+    let u = ordre.indexOf(unite) >= 0 ? unite : 'mois';
+    for (;;) {
+      const periodes = [];
+      const jj = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7);
+      if (u === 'jour') {
+        let j = d0;
+        while (j <= f0 && periodes.length <= max) {
+          periodes.push({ debut: j, fin: j, label: jj(j) });
+          j = Ariane.decalerJour(j, 1);
+        }
+      } else if (u === 'semaine') {
+        let j = Ariane._lundiDe(d0);
+        while (j <= f0 && periodes.length <= max) {
+          periodes.push({ debut: j, fin: Ariane.decalerJour(j, 6), label: jj(j) });
+          j = Ariane.decalerJour(j, 7);
+        }
+      } else {
+        let y = Number(d0.slice(0, 4));
+        let m = Number(d0.slice(5, 7));
+        const ey = Number(f0.slice(0, 4));
+        const em = Number(f0.slice(5, 7));
+        while ((y < ey || (y === ey && m <= em)) && periodes.length <= max) {
+          const deb = y + '-' + String(m).padStart(2, '0') + '-01';
+          const fin = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+          periodes.push({ debut: deb, fin, label: (MC[m - 1] || m) + ' ' + String(y).slice(2) });
+          m += 1;
+          if (m > 12) { m = 1; y += 1; }
+        }
+      }
+      if (periodes.length <= max || u === 'mois') return { unite: u, periodes };
+      u = ordre[ordre.indexOf(u) + 1];
+    }
+  }
+
   // Construit un .xlsx d'une feuille. `feuille` :
-  //   { nom, colonnes:[{ titre, largeur? }], lignes:[ [cellule, …] ] }
+  //   { nom, colonnes:[{ titre, largeur? }], lignes:[ [cellule, …] ], figerColonnes? }
   // cellule : { v, t?:'s'|'n'|'d'|'b', s?:{ b?, fill?:'RRGGBB', color?:'RRGGBB', fmt?:'date' } }
   // En-tête figée, filtre automatique, largeurs, dates réelles, teintes.
   static classeurXlsx(feuille) {
@@ -5468,10 +5519,16 @@ class Ariane extends obsidian.Plugin {
         + '" width="' + (Math.max(6, Math.min(80, c.largeur || 16))) + '" customWidth="1"/>').join('') + '</cols>'
       : '';
     const dernRef = Ariane._colLettre(Math.max(1, cols.length)) + (lignes.length + 1);
+    const xSplit = Math.max(0, Math.min(f.figerColonnes || 0, cols.length));
+    const pane = xSplit
+      ? '<pane xSplit="' + xSplit + '" ySplit="1" topLeftCell="'
+        + Ariane._colLettre(xSplit + 1) + '2" activePane="bottomRight" state="frozen"/>'
+        + '<selection pane="bottomRight"/>'
+      : '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>'
+        + '<selection pane="bottomLeft"/>';
     const sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
       + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-      + '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2"'
-      + ' activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft"/></sheetView></sheetViews>'
+      + '<sheetViews><sheetView workbookViewId="0">' + pane + '</sheetView></sheetViews>'
       + '<sheetFormatPr defaultRowHeight="15"/>'
       + colsXml
       + '<sheetData>' + rangs.join('') + '</sheetData>'
@@ -16037,7 +16094,12 @@ class MoteurFrise {
         return t === 'date' || t === 'datetime';
       });
       const finalCle = (col) => String(col.cle || '').replace(/^note\./, '');
+      const hexFamille = (fam) => {
+        const h = String((this.greffon.familleDe(fam) || {}).couleur || '').replace('#', '').slice(0, 6);
+        return /^[0-9a-fA-F]{6}$/.test(h) ? h.toUpperCase() : '';
+      };
       const lignesXlsx = [];
+      const tachesRangee = [];       // objet ligne en regard de chaque rangée
       let groupeCourant = '';
       for (const l of lignes) {
         if (l.kind === 'groupe') { groupeCourant = l.libelle || ''; continue; }
@@ -16054,19 +16116,60 @@ class MoteurFrise {
               c.s = { fmt: 'date', color: 'C0392B' };
             }
           } else if (finalCle(col) === cleFam && brut) {
-            const coul = (this.greffon.familleDe(l.famille) || {}).couleur || '';
-            const hex = String(coul).replace('#', '').slice(0, 6);
-            if (/^[0-9a-fA-F]{6}$/.test(hex)) c.s = { fill: hex.toUpperCase() };
+            const hx = hexFamille(l.famille);
+            if (hx) c.s = { fill: hx };
           }
           rangee.push(c);
         });
         lignesXlsx.push(rangee);
+        tachesRangee.push(l);
+      }
+
+      // Damier Gantt : une colonne par période (échelle = zoom de la frise),
+      // cellules peintes entre début et échéance. Jalon = une cellule marquée,
+      // tâche sans date = rien, tâche en retard = rouge.
+      const figerColonnes = colonnes.length;
+      let dMin = '';
+      let dMax = '';
+      for (const l of tachesRangee) {
+        for (const v of [l.debut, l.echeance]) {
+          const j = Ariane.jourValide(v);
+          if (!j) continue;
+          if (!dMin || j < dMin) dMin = j;
+          if (!dMax || j > dMax) dMax = j;
+        }
+      }
+      if (dMin && dMax) {
+        const unite = this.zoom === 'jour' ? 'jour'
+          : (this.zoom === 'semaine' ? 'semaine' : 'mois');
+        const { periodes } = Ariane.periodesGantt(dMin, dMax, unite, 400);
+        for (const p of periodes) colonnes.push({ titre: p.label, largeur: 4 });
+        tachesRangee.forEach((l, r) => {
+          const a = Ariane.jourValide(l.debut) || Ariane.jourValide(l.echeance);
+          const b = Ariane.jourValide(l.echeance) || Ariane.jourValide(l.debut);
+          const enRetard = this._enRetard && this._enRetard.has(l.ref);
+          const fill = enRetard ? 'E0533D' : (hexFamille(l.famille) || 'B0B0B0');
+          for (const p of periodes) {
+            let cell = { v: '' };
+            if (a && b && a <= p.fin && b >= p.debut) {
+              if (l.jalon) {
+                cell = (l.echeance >= p.debut && l.echeance <= p.fin)
+                  ? { v: '◆', s: { fill, color: 'FFFFFF', b: true } } : { v: '' };
+              } else {
+                cell = { v: '', s: { fill } };
+              }
+            }
+            lignesXlsx[r].push(cell);
+          }
+        });
       }
 
       const nomVue = (this.ctx.nomVue && this.ctx.nomVue()) || tr('Frise');
       const jour = new Date().toISOString().slice(0, 10);
       const base = (nomVue + ' — ' + jour).replace(/[\\/:*?"<>|]+/g, ' ').trim();
-      const octets = Ariane.classeurXlsx({ nom: nomVue, colonnes, lignes: lignesXlsx });
+      const octets = Ariane.classeurXlsx({
+        nom: nomVue, colonnes, lignes: lignesXlsx, figerColonnes,
+      });
       let chemin = base + '.xlsx';
       try {
         if (this.app.fileManager.getAvailablePathForAttachment) {
