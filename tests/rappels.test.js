@@ -15,14 +15,15 @@ test('genererJXARappels : script JS valide, données embarquées', () => {
   assert.ok(s.includes('T26-001'));
   assert.ok(s.includes('x-apple-reminder://ABC'));
   assert.ok(s.includes('"heure":"14:30"'));
-  assert.ok(s.includes('Application("Reminders")'));
+  assert.ok(s.includes('EKEventStore'));            // moteur EventKit
+  assert.ok(s.includes('saveReminderCommitError'));
   assert.ok(s.includes('function run()'));
 });
 
-test('genererJXAListes : script JS valide', () => {
+test('genererJXAListes : script JS valide (EventKit)', () => {
   const s = Ariane.genererJXAListes();
   new vm.Script(s);
-  assert.ok(s.includes('R.lists()'));
+  assert.ok(s.includes('calendarsForEntityType'));
 });
 
 test('genererJXAReleve : script JS valide, paires + listes surveillées', () => {

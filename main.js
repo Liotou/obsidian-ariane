@@ -5341,133 +5341,98 @@ class Ariane extends obsidian.Plugin {
     return out;
   }
 
-  /* ---- Apple Rappels : script JXA (macOS) --------------------------- */
+  /* ---- Apple Rappels via EventKit (JXA, macOS) --------------------- */
 
-  // Script JavaScript-for-Automation qui crée / met à jour un rappel par tâche
-  // et rend, ligne à ligne, « ref \t id-du-rappel ». Un seul osascript par passe.
+  // Préambule commun : accès EventKit + utilitaires. EventKit voit TOUTES les
+  // listes (y compris celles rangées dans un groupe, invisibles à l'AppleScript
+  // de Rappels) — c'est l'approche des ponts type « Reminders Calendar Bridge ».
+  static _jxaEK() {
+    return [
+      'ObjC.import("EventKit"); ObjC.import("CoreFoundation");',
+      'var ST = $.EKEventStore.alloc.init;',
+      'function pompe(ms){ var t=Date.now(); while(Date.now()-t<ms){ $.CFRunLoopRunInMode($.kCFRunLoopDefaultMode,0.03,false); } }',
+      'function acces(){ var d=false; try{ ST.requestFullAccessToRemindersWithCompletion(function(g,e){d=true;}); }catch(e){ try{ ST.requestAccessToEntityTypeCompletion(1,function(g,e){d=true;}); }catch(e2){} } var t=Date.now(); while(!d && Date.now()-t<20000){ $.CFRunLoopRunInMode($.kCFRunLoopDefaultMode,0.05,false); } }',
+      'function norm(x){ return String(x==null?"":x).trim().toLowerCase().replace(/\\s+/g," "); }',
+      'function net(x){ return String(x==null?"":x).replace(/[\\t\\r\\n]+/g," "); }',
+      'function listes(){ try{ return ST.calendarsForEntityType(1); }catch(e){ return $([]); } }',
+      'function titre(c){ try{ return ObjC.unwrap(c.title()); }catch(e){ try{ return ObjC.unwrap(c.title); }catch(e2){ return ""; } } }',
+      'function listeParNom(nom){ if(!nom) { try{ return ST.defaultCalendarForNewReminders; }catch(e){ return null; } } var L=listes(); for(var i=0;i<L.count;i++){ var c=L.objectAtIndex(i); if(titre(c)===nom) return c; } for(var j=0;j<L.count;j++){ var c2=L.objectAtIndex(j); if(norm(titre(c2))===norm(nom)) return c2; } return null; }',
+      'function remById(id){ if(!id) return null; try{ var it=ST.calendarItemWithIdentifier(id); if(it && it.isKindOfClass($.EKReminder)) return it; }catch(e){} return null; }',
+      'function fetchListe(cal){ var pred=ST.predicateForRemindersInCalendars($([cal])); var res=null,d=false; ST.fetchRemindersMatchingPredicateCompletion(pred,function(a){res=a;d=true;}); var t=Date.now(); while(!d && Date.now()-t<15000){ $.CFRunLoopRunInMode($.kCFRunLoopDefaultMode,0.05,false); } return res; }',
+      'function comps(iso,heure){ var p=String(iso).split("-"); var c=$.NSDateComponents.alloc.init; c.year=parseInt(p[0],10); c.month=parseInt(p[1],10); c.day=parseInt(p[2],10); if(heure){ var q=String(heure).split(":"); c.hour=parseInt(q[0],10)||0; c.minute=parseInt(q[1],10)||0; } return c; }',
+      'function isoDe(dc){ if(!dc) return ""; var y,mo,da; try{ y=dc.year; mo=dc.month; da=dc.day; }catch(e){ return ""; } if(!(y>0)) return ""; var z=function(n){return (n<10?"0":"")+n;}; var s=y+"-"+z(mo)+"-"+z(da); var h,mi; try{ h=dc.hour; mi=dc.minute; }catch(e){ h=-1; } if(h>=0 && h<24) s+="T"+z(h)+":"+z(mi>=0?mi:0); return s; }',
+    ].join('\n');
+  }
+
+  // Crée / met à jour un rappel par tâche. Rend « ref \t id » (id vide si échec).
   // `taches` : [{ ref, id, titre, notes, liste, echeance, heure, priorite, termine }].
   static genererJXARappels(taches) {
     const IN = JSON.stringify({ taches: Array.isArray(taches) ? taches : [] });
     return [
-      'function run() {',
-      '  var IN = ' + IN + ';',
-      '  var R = Application("Reminders");',
-      '  function norm(x) { return String(x == null ? "" : x).trim().toLowerCase().replace(/\\s+/g, " "); }',
-      '  var _listes = null;',
-      '  function toutesListes() { if (!_listes) { try { _listes = R.lists(); } catch (e) { _listes = []; } } return _listes; }',
-      '  function trouverListe(nom) {',
-      '    if (!nom) { try { return R.defaultList(); } catch (e) {} }',
-      '    var L = toutesListes();',           // inclut celles rangées dans un groupe
-      '    for (var i = 0; i < L.length; i++) { try { if (L[i].name() === nom) return L[i]; } catch (e) {} }',
-      '    for (var j = 0; j < L.length; j++) { try { if (norm(L[j].name()) === norm(nom)) return L[j]; } catch (e) {} }',
-      '    var nl = R.List({ name: nom });',
-      '    R.lists.push(nl);',
-      '    _listes = null;',
-      '    return nl;',
-      '  }',
-      '  function memeListe(r, nom) {',
-      '    try { return norm(r.container().name()) === norm(nom); } catch (e) { return true; }',
-      '  }',
-      '  function parId(id) {',
-      '    if (!id) return null;',
-      '    try { var r = R.reminders.byId(id); r.name(); return r; } catch (e) { return null; }',
-      '  }',
-      '  function dateDe(iso, heure) {',
-      '    var p = String(iso).split("-");',
-      '    var h = 0, m = 0;',
-      '    if (heure) { var q = String(heure).split(":"); h = parseInt(q[0], 10) || 0; m = parseInt(q[1], 10) || 0; }',
-      '    return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), h, m, 0);',
-      '  }',
-      '  var PRIO = { haute: 1, moyenne: 5, basse: 9 };',
-      '  var out = [];',
-      '  for (var i = 0; i < IN.taches.length; i++) {',
-      '    var t = IN.taches[i];',
-      '    var r = parId(t.id);',
-      '    if (r && t.liste && !memeListe(r, t.liste)) { try { r.delete(); } catch (e) {} r = null; }',
-      '    if (!r) {',
-      '      r = R.Reminder({ name: t.titre });',
-      '      trouverListe(t.liste).reminders.push(r);',
-      '    }',
-      '    r.name = t.titre;',
-      '    r.body = t.notes || "";',
-      '    r.completed = !!t.termine;',
-      '    r.priority = PRIO[t.priorite] || 0;',
-      '    try {',
-      '      if (t.echeance) {',
-      '        var d = dateDe(t.echeance, t.heure);',
-      '        if (t.heure) { r.dueDate = d; } else { r.alldayDueDate = d; }',
-      '      } else { try { r.dueDate = null; } catch (e) {} }',
-      '    } catch (e) {}',
-      '    var nid = "";',
-      '    try { nid = r.id(); } catch (e) {}',
-      '    out.push(t.ref + "\\t" + nid);',
+      Ariane._jxaEK(),
+      'function run(){',
+      '  var IN=' + IN + '; acces();',
+      '  var PRIO={haute:1,moyenne:5,basse:9};',
+      '  var out=[];',
+      '  for(var i=0;i<IN.taches.length;i++){',
+      '    var t=IN.taches[i];',
+      '    var r=remById(t.id);',
+      '    var cal=listeParNom(t.liste);',
+      '    if(r && cal){ try{ if(ObjC.unwrap(r.calendar.calendarIdentifier)!==ObjC.unwrap(cal.calendarIdentifier)){ ST.removeReminderCommitError(r,true,null); r=null; } }catch(e){} }',
+      '    if(!r){ r=$.EKReminder.reminderWithEventStore(ST); if(cal) r.calendar=cal; }',
+      '    try{ r.title=t.titre; }catch(e){}',
+      '    try{ r.notes=t.notes||""; }catch(e){}',
+      '    try{ r.completed=!!t.termine; }catch(e){}',
+      '    try{ r.priority=PRIO[t.priorite]||0; }catch(e){}',
+      '    try{ if(t.echeance){ r.dueDateComponents=comps(t.echeance,t.heure); } else { r.dueDateComponents=false; } }catch(e){}',
+      '    var ok=false; try{ ok=ST.saveReminderCommitError(r,true,null); }catch(e){}',
+      '    var nid=""; try{ nid=ObjC.unwrap(r.calendarItemIdentifier); }catch(e){}',
+      '    out.push(t.ref+"\\t"+(ok?nid:""));',
       '  }',
       '  return out.join("\\n");',
       '}',
     ].join('\n');
   }
 
-  // Noms des listes Apple Rappels, une par ligne. Deux chemins (listes directes
-  // + listes par compte) : l'API ne donne pas les groupes, mais couvre le reste.
-  // On NE parcourt PAS les rappels (trop lent sur une grosse bibliothèque).
+  // Titres de toutes les listes (groupes inclus), une par ligne.
   static genererJXAListes() {
     return [
-      'function run() {',
-      '  var R = Application("Reminders");',
-      '  var vus = {}; var out = [];',
-      '  function add(n) { n = String(n || "").trim(); if (n && !vus[n]) { vus[n] = 1; out.push(n); } }',
-      '  try { var L = R.lists(); for (var i = 0; i < L.length; i++) { try { add(L[i].name()); } catch (e) {} } } catch (e) {}',
-      '  try { var A = R.accounts(); for (var j = 0; j < A.length; j++) {',
-      '    try { var AL = A[j].lists(); for (var k = 0; k < AL.length; k++) { try { add(AL[k].name()); } catch (e) {} } } catch (e) {}',
-      '  } } catch (e) {}',
-      '  out.sort();',
-      '  return out.join("\\n");',
-      '}',
+      Ariane._jxaEK(),
+      'function run(){ acces(); var L=listes(); var out=[]; for(var i=0;i<L.count;i++){ var n=net(titre(L.objectAtIndex(i))); if(n) out.push(n); } out.sort(); return out.join("\\n"); }',
     ].join('\n');
   }
 
-  // Relève : (1) état des rappels liés « ref \t completed \t dueISO » ;
-  // (2) rappels NOUVEAUX dans les listes surveillées, absents de `paires` :
-  //     « NOUVEAU \t id \t nom \t completed \t dueISO \t nomListe ».
+  // Relève : (1) « ref \t completed \t dueISO » pour les rappels liés ;
+  // (2) « NOUVEAU \t id \t nom \t completed \t dueISO \t nomListe » pour ceux
+  //     ajoutés à la main dans une liste surveillée, sans référence connue.
   static genererJXAReleve(paires, listes) {
     const IN = JSON.stringify({
       paires: Array.isArray(paires) ? paires : [],
       listes: [...new Set((Array.isArray(listes) ? listes : []).filter(Boolean))],
     });
     return [
-      'function run() {',
-      '  var IN = ' + IN + ';',
-      '  var R = Application("Reminders");',
-      '  function norm(x) { return String(x == null ? "" : x).trim().toLowerCase().replace(/\\s+/g, " "); }',
-      '  function net(x) { return String(x == null ? "" : x).replace(/[\\t\\r\\n]+/g, " "); }',
-      '  function parId(id) { try { var r = R.reminders.byId(id); r.name(); return r; } catch (e) { return null; } }',
-      '  function iso(d) {',
-      '    if (!d) return "";',
-      '    var z = function (n) { return (n < 10 ? "0" : "") + n; };',
-      '    return d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate())',
-      '      + "T" + z(d.getHours()) + ":" + z(d.getMinutes());',
+      Ariane._jxaEK(),
+      'function run(){',
+      '  var IN=' + IN + '; acces();',
+      '  var connus={}; for(var i=0;i<IN.paires.length;i++) connus[IN.paires[i].id]=1;',
+      '  var out=[];',
+      '  for(var j=0;j<IN.paires.length;j++){',
+      '    var p=IN.paires[j]; var r=remById(p.id);',
+      '    if(!r){ out.push(p.ref+"\\tMANQUANT\\t"); continue; }',
+      '    var comp=false; try{ comp=r.completed; }catch(e){}',
+      '    out.push(p.ref+"\\t"+(comp?"1":"0")+"\\t"+isoDe(r.dueDateComponents));',
       '  }',
-      '  function due(r) { var d = null; try { d = r.dueDate(); } catch (e) {} if (!d) { try { d = r.alldayDueDate(); } catch (e) {} } return d; }',
-      '  var connus = {};',
-      '  for (var i = 0; i < IN.paires.length; i++) connus[IN.paires[i].id] = 1;',
-      '  var out = [];',
-      '  for (var j = 0; j < IN.paires.length; j++) {',
-      '    var p = IN.paires[j]; var r = parId(p.id);',
-      '    if (!r) { out.push(p.ref + "\\tMANQUANT\\t"); continue; }',
-      '    out.push(p.ref + "\\t" + (r.completed() ? "1" : "0") + "\\t" + iso(due(r)));',
-      '  }',
-      '  var L; try { L = R.lists(); } catch (e) { L = []; }',
-      '  for (var k = 0; k < L.length; k++) {',
-      '    var ln; try { ln = L[k].name(); } catch (e) { continue; }',
-      '    var surv = false;',
-      '    for (var w = 0; w < IN.listes.length; w++) { if (norm(IN.listes[w]) === norm(ln)) { surv = true; break; } }',
-      '    if (!surv) continue;',
-      '    var rs; try { rs = L[k].reminders(); } catch (e) { continue; }',
-      '    for (var m = 0; m < rs.length; m++) {',
-      '      var rr = rs[m]; var rid; try { rid = rr.id(); } catch (e) { continue; }',
-      '      if (connus[rid]) continue;',
-      '      out.push("NOUVEAU\\t" + rid + "\\t" + net(rr.name()) + "\\t" + (rr.completed() ? "1" : "0")',
-      '        + "\\t" + iso(due(rr)) + "\\t" + net(ln));',
+      '  var L=listes();',
+      '  for(var k=0;k<L.count;k++){',
+      '    var cal=L.objectAtIndex(k); var ln=titre(cal); var surv=false;',
+      '    for(var w=0;w<IN.listes.length;w++){ if(norm(IN.listes[w])===norm(ln)){ surv=true; break; } }',
+      '    if(!surv) continue;',
+      '    var rs=fetchListe(cal); if(!rs) continue;',
+      '    for(var m=0;m<rs.count;m++){',
+      '      var rr=rs.objectAtIndex(m); var rid=""; try{ rid=ObjC.unwrap(rr.calendarItemIdentifier); }catch(e){ continue; }',
+      '      if(connus[rid]) continue;',
+      '      var comp2=false; try{ comp2=rr.completed; }catch(e){}',
+      '      out.push("NOUVEAU\\t"+rid+"\\t"+net(ObjC.unwrap(rr.title))+"\\t"+(comp2?"1":"0")+"\\t"+isoDe(rr.dueDateComponents)+"\\t"+net(ln));',
       '    }',
       '  }',
       '  return out.join("\\n");',
@@ -11505,7 +11470,7 @@ class Ariane extends obsidian.Plugin {
   // Charge (et met en cache) les noms de listes Apple Rappels connus de l'API.
   async chargerListesRappels() {
     if (!obsidian.Platform.isMacOS) { this._listesRappels = []; return []; }
-    const s = await this._osascriptJXA(Ariane.genererJXAListes(), 20000);
+    const s = await this._osascriptJXA(Ariane.genererJXAListes(), 30000);
     this._listesRappels = (s == null ? [] : s.split('\n').map((x) => x.trim()).filter(Boolean));
     return this._listesRappels;
   }
@@ -13342,7 +13307,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       });
 
     this._section(c, tr('Apple Rappels (macOS)'));
-    this._aide(c, tr("Chaque tâche datée devient un rappel dans la liste de sa famille : titre « [T26-001] - Intitulé », échéance (avec l'heure si renseignée), priorité, lien retour vers la note. Bidirectionnel : cocher le rappel termine la tâche, changer l'échéance dans Rappels la reporte — sauf si la note a bougé de son côté, elle fait alors foi. La première synchronisation demande l'autorisation d'automatisation dans les Réglages système."));
+    this._aide(c, tr("Chaque tâche datée devient un rappel dans la liste de sa famille : titre « [T26-001] - Intitulé », échéance (avec l'heure si renseignée), priorité, lien retour vers la note. Bidirectionnel : cocher un rappel termine la tâche, changer son échéance la reporte (sauf si la note a bougé, elle fait alors foi), et un rappel ajouté à la main dans une liste surveillée devient une nouvelle tâche. Via EventKit — toutes les listes sont vues, y compris celles rangées dans un groupe. La première synchronisation demande l'accès à Rappels dans les Réglages système."));
     new obsidian.Setting(c)
       .setName(tr('Activer l\'intégration'))
       .addToggle((t) => t.setValue(s.rappelsActif === true)
@@ -13369,7 +13334,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addButton((b) => b.setButtonText(tr('Relever')).onClick(() => this.plugin.releverRappels(false)));
       new obsidian.Setting(c)
         .setName(tr('Listes disponibles'))
-        .setDesc(tr('Recharge les noms de listes proposés dans les familles. Les listes rangées dans un groupe peuvent manquer (limite de l\'API Rappels) : dans ce cas, tapez le nom exact à la main.'))
+        .setDesc(tr('Recharge les noms de listes proposés pour les familles (groupes inclus).'))
         .addButton((b) => b.setButtonText(tr('Rafraîchir'))
           .onClick(async () => { await this.plugin.chargerListesRappels(); this.display(); }));
     }
