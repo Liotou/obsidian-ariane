@@ -880,6 +880,8 @@ const TEXTES = {
     "Enregistrer": "Save",
     "Indiquez au moins une date.": "Enter at least one date.",
     "Aujourd'hui": "Today",
+    "Ramener sur aujourd'hui": "Back to today",
+    "en retard": "overdue",
     "jour": "day",
     "Masquer les terminées": "Hide completed",
     "nº de semaine": "week no.",
@@ -4816,6 +4818,21 @@ class Ariane extends obsidian.Plugin {
 
   //#region Ariane · static · frise / gantt
   // ── static · frise / gantt ───────────────────────────────────────────────
+
+  // Réfs des tâches en retard : une échéance valide, antérieure à `aujourdhui`,
+  // sur une tâche ni terminée ni abandonnée. Rien n'est écrit : c'est un état
+  // dérivé, relu à chaque dessin.
+  static tachesEnRetard(taches, aujourdhui) {
+    const out = new Set();
+    const auj = Ariane.jourValide(aujourdhui);
+    if (!auj) return out;
+    for (const t of taches || []) {
+      if (!t || !t.ref) continue;
+      const e = Ariane.jourValide(t.echeance);
+      if (e && e < auj && t.statut !== 'terminée' && t.statut !== 'abandonnée') out.add(t.ref);
+    }
+    return out;
+  }
 
   // Disposition de la frise : parcours en profondeur, dates remontées sur les
   // méta-tâches. Les dates propres sont conservées à part, le glissé d'une
@@ -15335,6 +15352,11 @@ class MoteurFrise {
     // filles ne sont plus regroupées sous leur mère.
     const plat = mode !== 'date';
     this._plat = plat;
+    // Tâches en retard : échéance passée, pas encore terminées ni abandonnées.
+    // Calculé avant la barre d'outils (qui en montre le compte) et relu par
+    // dessinerBarres / dessinerJalon pour le repère sur la barre.
+    const aujourdhui = new Date().toISOString().slice(0, 10);
+    this._enRetard = Ariane.tachesEnRetard(taches, aujourdhui);
     const brut = Ariane.disposerFriseGroupee(taches, groupes, mode, sensTri, groupeDesc, plat);
     // Retirer les bandes de groupe devenues vides, compter les tâches restantes,
     // et résumer l'étalement dans le temps (min, max, une date par tâche) pour
@@ -15384,7 +15406,6 @@ class MoteurFrise {
       return;
     }
 
-    const aujourdhui = new Date().toISOString().slice(0, 10);
     const cfg = this.calculerEtendue(planifiees, aujourdhui);
     const place = Ariane.placerLignes(dispo, this._hEntete, this._H, this.replies);
     const lignes = place.lignes;
@@ -15582,6 +15603,18 @@ class MoteurFrise {
         await this.ctx.ecrire('zoom', z);
         this.dessiner();
       });
+    }
+
+    // Compte des tâches en retard : un repère discret, cliquable pour ramener la
+    // frise sur aujourd'hui. Absent quand il n'y a rien à signaler.
+    const nRetard = this._enRetard ? this._enRetard.size : 0;
+    if (nRetard) {
+      const badge = b.createEl('button', {
+        cls: 'zfa-gantt-bv-bouton zfa-gantt-retard-badge',
+        attr: { type: 'button', title: tr('Ramener sur aujourd\'hui') } });
+      obsidian.setIcon(badge.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'alert-triangle');
+      badge.createSpan({ text: nRetard + ' ' + tr('en retard') });
+      badge.addEventListener('click', () => this.recentrerAujourdhui());
     }
   }
 
@@ -16472,6 +16505,12 @@ class MoteurFrise {
           rx: geo.rayon, ry: geo.rayon, class: 'zfa-gantt-bloquee-voile',
           fill: 'url(#zfa-gantt-hachures)' }));
       }
+      // Tâche en retard (échéance passée, pas terminée) : liseré et pastille « ! »
+      // au bord droit de la barre.
+      if (this._enRetard && this._enRetard.has(l.ref)) {
+        groupe.classList.add('zfa-gantt-retard');
+        this._marqueRetard(groupe, Math.min(cfg.largeur - 3, x + w), y - 1);
+      }
       // Plus la ligne est haute, plus la barre en dit. À une ligne, l'intitulé
       // seul ; à deux, les dates ; à trois, le statut et l'avancement. On
       // n'écrit jamais ce qui ne tient pas, la troncature étant plus pénible
@@ -16634,6 +16673,18 @@ class MoteurFrise {
     m.showAtMouseEvent(e);
   }
 
+  // Pastille « ! » sur fond triangulaire, posée au coin haut-droit d'une barre
+  // (ou d'un losange) pour signaler une tâche en retard.
+  _marqueRetard(hote, ax, ay) {
+    hote.appendChild(svgEl('path', {
+      d: 'M ' + ax + ' ' + (ay - 11) + ' L ' + (ax + 6) + ' ' + (ay + 1)
+         + ' L ' + (ax - 6) + ' ' + (ay + 1) + ' Z',
+      class: 'zfa-gantt-retard-alerte' }));
+    const bang = svgEl('text', { x: ax, y: ay, class: 'zfa-gantt-retard-bang' });
+    bang.textContent = '!';
+    hote.appendChild(bang);
+  }
+
   dessinerJalon(g, cfg, l) {
     if (!l.echeance) return;
     const x = this.x(cfg, l.echeance) + cfg.ppj / 2;
@@ -16654,6 +16705,10 @@ class MoteurFrise {
     d.addEventListener('pointerenter', () => this._montrerLignage(l.ref));
     d.addEventListener('pointerleave', () => this._effacerLignage());
     g.appendChild(d);
+    if (this._enRetard && this._enRetard.has(l.ref)) {
+      d.classList.add('zfa-gantt-retard');
+      this._marqueRetard(g, x + 11, y - 6);
+    }
     if (cfg.ppj >= 8) {
       const t = svgEl('text', { x: x + 14, y: y + 4, class: 'zfa-gantt-jalon-titre' });
       t.textContent = l.intitule;

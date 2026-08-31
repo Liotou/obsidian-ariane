@@ -166,3 +166,25 @@ test('la famille (et la priorité) de la tâche survit à la disposition', () =>
   // défaut sûr quand la note n'en porte pas
   assert.equal(Ariane.disposerGantt([t('T26-009')])[0].famille, '');
 });
+
+/* --------------------- tachesEnRetard -------------------------------- */
+
+test('tachesEnRetard : échéance passée et pas terminée → en retard', () => {
+  const r = Ariane.tachesEnRetard([
+    t('A', { echeance: '2026-08-01' }),
+    t('B', { echeance: '2026-08-01', statut: 'terminée' }),
+    t('C', { echeance: '2026-08-01', statut: 'abandonnée' }),
+    t('D', { echeance: '2026-12-01' }),
+    t('E', {}),
+  ], '2026-09-15');
+  assert.deepEqual([...r].sort(), ['A']);
+});
+
+test('tachesEnRetard : une échéance au jour même n est pas en retard', () => {
+  const r = Ariane.tachesEnRetard([t('A', { echeance: '2026-09-15' })], '2026-09-15');
+  assert.equal(r.size, 0);
+});
+
+test('tachesEnRetard : sans date de référence, ensemble vide', () => {
+  assert.equal(Ariane.tachesEnRetard([t('A', { echeance: '2026-08-01' })], '').size, 0);
+});
