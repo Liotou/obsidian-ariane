@@ -15284,35 +15284,6 @@ class MoteurFrise {
     this.dessiner();
   }
 
-  // Renommage en ligne d'un en-tête de colonne : le libellé devient un champ,
-  // Entrée / perte de focus valide, Échap annule. Comme un tableau Bases.
-  _renommerColonneEnLigne(cle) {
-    const nomEl = this.racine.querySelector(
-      '.zfa-gantt-table .bases-thead .bases-td[data-colonne="' + (window.CSS && CSS.escape
-        ? CSS.escape(cle) : cle.replace(/"/g, '\\"')) + '"] .bases-table-header-name');
-    if (!nomEl) return;
-    const actuel = (this.ctx.renomColonne && this.ctx.renomColonne(cle)) || nomEl.textContent || '';
-    const inp = createEl('input', { type: 'text', cls: 'zfa-gantt-col-renom' });
-    inp.value = actuel;
-    nomEl.replaceWith(inp);
-    inp.focus();
-    inp.select();
-    let fini = false;
-    const clore = async (garder) => {
-      if (fini) return;
-      fini = true;
-      if (garder && this.ctx.renommer) await this.ctx.renommer(cle, inp.value.trim());
-      this.dessiner();
-    };
-    inp.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter') { ev.preventDefault(); clore(true); }
-      else if (ev.key === 'Escape') { ev.preventDefault(); clore(false); }
-    });
-    inp.addEventListener('blur', () => clore(true));
-    inp.addEventListener('click', (ev) => ev.stopPropagation());
-    inp.addEventListener('pointerdown', (ev) => ev.stopPropagation());
-  }
-
   // Déplace la colonne `src` juste avant `cible` dans l'ordre natif de la base
   // (glisser-déposer d'en-tête, comme dans un tableau Bases).
   async reordonnerColonnes(src, cible) {
@@ -15372,33 +15343,71 @@ class MoteurFrise {
     }
 
     menu.addSeparator();
-    menu.addItem((i) => i.setTitle(tr('Renommer…')).setIcon('pencil')
-      .onClick(() => this._renommerColonneEnLigne(cle)));
-    if (this.ctx.renomColonne && this.ctx.renomColonne(cle)) {
-      menu.addItem((i) => i.setTitle(tr('Rétablir le nom d\'origine')).setIcon('rotate-ccw')
-        .onClick(async () => { await this.ctx.renommer(cle, ''); this.dessiner(); }));
+    menu.addItem((i) => i.setTitle(tr('Modifier la propriété…')).setIcon('pencil')
+      .onClick(() => this._popoverColonne(cle, col, e)));
+    menu.showAtMouseEvent(e);
+  }
+
+  // Popover « Modifier la propriété », calqué sur celui des bases natives :
+  // nom d'affichage (propre à cette frise) + type de propriété.
+  _popoverColonne(cle, col, evt) {
+    if (this._colPop) { this._colPop.remove(); this._colPop = null; }
+    const fichier = cle.startsWith('file.') || cle.startsWith('formula.');
+    const nomProp = cle.replace(/^note\./, '');
+    const cible = evt && evt.target && evt.target.closest
+      ? evt.target.closest('.bases-td') : null;
+
+    const pop = document.body.createDiv({ cls: 'zfa-col-pop' });
+    this._colPop = pop;
+    pop.createDiv({ cls: 'zfa-col-pop-titre', text: tr('Modifier ') + nomProp });
+
+    pop.createDiv({ cls: 'zfa-col-pop-lbl', text: tr('Nom d\'affichage') });
+    const inp = pop.createEl('input', { type: 'text' });
+    inp.value = (col && col.nom) || nomProp;
+
+    const mtm = this.app.metadataTypeManager;
+    let sel = null;
+    if (!fichier && mtm && typeof mtm.setType === 'function') {
+      pop.createDiv({ cls: 'zfa-col-pop-lbl', text: tr('Type de propriété') });
+      sel = pop.createEl('select', { cls: 'dropdown' });
+      const TYPES = [['text', tr('Texte')], ['number', tr('Nombre')], ['date', tr('Date')],
+        ['datetime', tr('Date & heure')], ['checkbox', tr('Case à cocher')], ['multitext', tr('Liste')]];
+      for (const [t, lib] of TYPES) sel.createEl('option', { value: t, text: lib });
+      sel.value = this.typeColonne(cle) || 'text';
+      sel.onchange = async () => { try { await mtm.setType(nomProp, sel.value); } catch (e) { /* rien */ } };
     }
 
-    if (!fichier) {
-      const nomProp = cle.replace(/^note\./, '');
-      const mtm = this.app.metadataTypeManager;
-      if (mtm && typeof mtm.setType === 'function') {
-        // Les six types visibles d'une base, avec leurs libellés français.
-        const TYPES = [['checkbox', tr('Case à cocher')], ['date', tr('Date')],
-          ['datetime', tr('Date & heure')], ['multitext', tr('Liste')],
-          ['number', tr('Nombre')], ['text', tr('Texte')]];
-        menu.addSeparator();
-        menu.addItem((i) => {
-          i.setTitle(tr('Type de propriété')).setIcon('type');
-          const sous = i.setSubmenu();
-          for (const [t, libelle] of TYPES) {
-            sous.addItem((si) => si.setTitle(libelle).setChecked(type === t)
-              .onClick(async () => { await mtm.setType(nomProp, t); this.dessiner(); }));
-          }
-        });
-      }
-    }
-    menu.showAtMouseEvent(e);
+    const r = pop.getBoundingClientRect();
+    const b = cible ? cible.getBoundingClientRect() : null;
+    let x = b ? b.left : (evt ? evt.clientX : 120);
+    let y = b ? b.bottom + 4 : (evt ? evt.clientY : 120);
+    x = Math.max(8, Math.min(x, window.innerWidth - r.width - 8));
+    y = Math.max(8, Math.min(y, window.innerHeight - r.height - 8));
+    pop.style.left = x + 'px';
+    pop.style.top = y + 'px';
+
+    let clos = false;
+    const fermer = async () => {
+      if (clos) return;
+      clos = true;
+      document.removeEventListener('pointerdown', hors, true);
+      document.removeEventListener('keydown', touche, true);
+      if (this.ctx.renommer) await this.ctx.renommer(cle, inp.value.trim());
+      pop.remove();
+      this._colPop = null;
+      this.dessiner();
+    };
+    const hors = (ev) => { if (!pop.contains(ev.target)) fermer(); };
+    const touche = (ev) => {
+      if (ev.key === 'Escape') { ev.preventDefault(); fermer(); }
+      else if (ev.key === 'Enter' && ev.target === inp) { ev.preventDefault(); fermer(); }
+    };
+    setTimeout(() => {
+      document.addEventListener('pointerdown', hors, true);
+      document.addEventListener('keydown', touche, true);
+      inp.focus();
+      inp.select();
+    }, 0);
   }
 
   // La partie gauche est un vrai tableau de base : mêmes classes, même
@@ -16578,7 +16587,10 @@ class MoteurFrise {
     this._cascade = fautives.length ? { ref, jours: n, bloquants } : null;
   }
 
-  detruire() { this.racine.empty(); }
+  detruire() {
+    if (this._colPop) { this._colPop.remove(); this._colPop = null; }
+    this.racine.empty();
+  }
 }
 
 /* ---- La frise comme vue d'une base ----------------------------------- */
