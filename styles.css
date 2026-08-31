@@ -1273,13 +1273,13 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-artic-bouton {
   display: inline-flex; align-items: center; justify-content: center;
-  padding: 5px; cursor: pointer;
+  width: 26px; height: 26px; padding: 0; flex: 0 0 auto; cursor: pointer;
   color: var(--text-muted); background: transparent;
   border: none; box-shadow: none; border-radius: var(--radius-s);
 }
 .zfa-artic-bouton:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .zfa-artic-bouton-ic { display: inline-flex; }
-.zfa-artic-bouton-ic svg { width: 14px; height: 14px; }
+.zfa-artic-bouton-ic svg { width: 15px; height: 15px; display: block; }
 
 .zfa-artic-svg {
   flex: 1; width: 100%; display: block;
