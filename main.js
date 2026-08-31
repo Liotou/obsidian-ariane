@@ -17728,7 +17728,7 @@ class MoteurFrise {
     if (lignee.size < 2) {
       const seul = this._elLignee(ref);
       if (seul) seul.classList.add('zfa-gantt-lignee-focus');
-      this._lignage = { ref, gl: null, liens: [] };
+      this._lignage = { ref, gl: null, brackets: [] };
       return;
     }
     this._svg.classList.add('zfa-gantt-lignage-actif');
@@ -17736,24 +17736,66 @@ class MoteurFrise {
       const el = this._elLignee(r);
       if (el) el.classList.add(r === ref ? 'zfa-gantt-lignee-focus' : 'zfa-gantt-lignee');
     }
-    // Liens parent -> enfant internes à la lignée (aucun si tâche isolée).
+    // Liens parent -> enfants en accolade orthogonale (variante B) : une épine
+    // verticale calée sur le début de la première fille, des branches
+    // horizontales arrondies vers le devant de chaque fille. Un bracket par
+    // parent présent dans la lignée.
     const gl = svgEl('g', { class: 'zfa-gantt-lignage' });
-    const liens = [];
+    const demi = (this._geo ? this._geo.epaisseur : 14) / 2;
+    const R = Math.min(9, Math.max(3, Math.round(this._H / 3)));
+    const parParent = new Map();
     for (const r of lignee) {
       const l = parRef.get(r);
-      const p = l && l.parent && lignee.has(l.parent) ? parRef.get(l.parent) : null;
+      if (!l || !l.parent || !lignee.has(l.parent)) continue;
+      const p = parRef.get(l.parent);
       if (!p || !p._anc || !l._anc) continue;
-      const x1 = p._anc.xd;
-      const y1 = p._anc.cy;
-      const x2 = l._anc.xg;
-      const y2 = l._anc.cy;
-      const path = svgEl('path', { d: Ariane._cheminFleche(x1, y1, x2, y2),
+      if (!parParent.has(l.parent)) parParent.set(l.parent, []);
+      parParent.get(l.parent).push(r);
+    }
+    const brackets = [];
+    for (const [pr, kidsRefs] of parParent) {
+      const p = parRef.get(pr);
+      const kids = kidsRefs.map((kr) => ({
+        ref: kr, xg: parRef.get(kr)._anc.xg, cy: parRef.get(kr)._anc.cy,
+      }));
+      const b = { parentRef: pr, pBottom: p._anc.cy + demi, kids, R };
+      const path = svgEl('path', { d: this._cheminBracket(b, 0, null),
         class: 'zfa-gantt-lignage-lien' });
       gl.appendChild(path);
-      liens.push({ de: l.parent, vers: r, path, x1, y1, x2, y2 });
+      b.path = path;
+      const sx = Math.min.apply(null, kids.map((k) => k.xg));
+      b.dots = [b.pBottom].concat(kids.map((k) => k.cy)).map((cy) => {
+        const c = svgEl('circle', { cx: sx, cy, r: 2.4, class: 'zfa-gantt-lignage-noeud' });
+        gl.appendChild(c);
+        return { el: c };
+      });
+      brackets.push(b);
     }
     (this._svgLignage || this._svg).appendChild(gl);
-    this._lignage = { ref, gl, liens };
+    this._lignage = { ref, gl, brackets };
+  }
+
+  // `d` d'une accolade : épine verticale à x = début de la 1re fille, branches
+  // arrondies vers le devant de chaque fille. `dx` décale la fille `refBouge`
+  // (glissé en direct).
+  _cheminBracket(b, dx, refBouge) {
+    const off = dx || 0;
+    const kx = (k) => k.xg + (k.ref === refBouge ? off : 0);
+    const sx = Math.min.apply(null, b.kids.map(kx));
+    const bot = Math.max.apply(null, b.kids.map((k) => k.cy));
+    let d = 'M ' + sx + ' ' + b.pBottom + ' L ' + sx + ' ' + bot;
+    for (const k of b.kids) {
+      const xg = kx(k);
+      if (xg <= sx + 0.5) {
+        d += ' M ' + sx + ' ' + k.cy + ' L ' + xg + ' ' + k.cy;
+      } else {
+        const r = Math.min(b.R, Math.max(1, k.cy - b.pBottom), xg - sx);
+        d += ' M ' + sx + ' ' + (k.cy - r)
+          + ' Q ' + sx + ' ' + k.cy + ' ' + (sx + r) + ' ' + k.cy
+          + ' L ' + xg + ' ' + k.cy;
+      }
+    }
+    return d;
   }
 
   _elLignee(ref) {
@@ -17774,14 +17816,14 @@ class MoteurFrise {
     this._lignage = null;
   }
 
-  // Fait suivre les traits de lignée quand on glisse une des barres reliées.
+  // Fait suivre les accolades de lignée quand on glisse une des barres reliées.
   _bougerLignage(ref, dx) {
-    if (!this._lignage) return;
-    for (const li of this._lignage.liens) {
-      if (li.de !== ref && li.vers !== ref) continue;
-      const x1 = li.x1 + (li.de === ref ? dx : 0);
-      const x2 = li.x2 + (li.vers === ref ? dx : 0);
-      li.path.setAttribute('d', Ariane._cheminFleche(x1, li.y1, x2, li.y2));
+    if (!this._lignage || !this._lignage.brackets) return;
+    for (const b of this._lignage.brackets) {
+      if (b.parentRef !== ref && !b.kids.some((k) => k.ref === ref)) continue;
+      b.path.setAttribute('d', this._cheminBracket(b, dx, ref));
+      const sx = Math.min.apply(null, b.kids.map((k) => k.xg + (k.ref === ref ? dx : 0)));
+      for (const dot of b.dots || []) dot.el.setAttribute('cx', sx);
     }
   }
 
