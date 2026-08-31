@@ -6247,6 +6247,9 @@ class Ariane extends obsidian.Plugin {
 
   //#endregion Ariane · export Word / Pandoc
 
+  //#region Ariane · notes & citations — rendu
+  // ── notes & citations — rendu ────────────────────────────────────────────
+
   // La référence de la note pour l'en-tête principal. On cherche, dans
   // l'ordre, les propriétés que l'utilisateur a désignées ; à défaut, et s'il
   // l'a demandé, le nom du fichier fait office de référence — c'est le cas des
@@ -6558,6 +6561,12 @@ class Ariane extends obsidian.Plugin {
     new obsidian.Notice(tr('Ariane : ') + modifs + ' lien(s) nettoyé(s).');
   }
 
+
+  //#endregion Ariane · notes & citations — rendu
+
+  //#region Ariane · glisser-déposer & clés d'annotation
+  // ── glisser-déposer & clés d'annotation ──────────────────────────────────
+
   /* ------------- Glisser une annotation sur un paragraphe --------------- */
 
   // Éditeur CodeMirror situé sous un point de l'écran (quel que soit le
@@ -6865,6 +6874,12 @@ class Ariane extends obsidian.Plugin {
       .filter((f) => !exclus.some((d) => f.path.startsWith(d)));
   }
 
+
+  //#endregion Ariane · glisser-déposer & clés d'annotation
+
+  //#region Ariane · temps de travail
+  // ── temps de travail ─────────────────────────────────────────────────────
+
   /* ----------------------------- Temps passé ----------------------------- */
 
   demarrerCompteurTemps() {
@@ -7106,6 +7121,12 @@ class Ariane extends obsidian.Plugin {
     return retires;
   }
 
+
+  //#endregion Ariane · temps de travail
+
+  //#region Ariane · citations repliables
+  // ── citations repliables ─────────────────────────────────────────────────
+
   /* --------------------- Citations repliables ---------------------------- */
 
   // En lecture, la citation est rendue par un « ( », des liens internes, des
@@ -7226,6 +7247,12 @@ class Ariane extends obsidian.Plugin {
     this.appliquerEtatCitations();
     this.saveSettings().catch((e) => console.error('[Ariane] réglages non enregistrés :', e));
   }
+
+
+  //#endregion Ariane · citations repliables
+
+  //#region Ariane · lecteurs ZotFlow & liens Zotero
+  // ── lecteurs ZotFlow & liens Zotero ──────────────────────────────────────
 
   /* --------------------- Notes de lecture (notes-filles) ---------------- */
 
@@ -7463,6 +7490,12 @@ class Ariane extends obsidian.Plugin {
       new obsidian.Notice(tr('Ouverture dans Zotero impossible : ') + (e && e.message ? e.message : e));
     }
   }
+
+
+  //#endregion Ariane · lecteurs ZotFlow & liens Zotero
+
+  //#region Ariane · bibliographie en note & citations dynamiques
+  // ── bibliographie en note & citations dynamiques ─────────────────────────
 
   /* -------------------------- Bibliographie ----------------------------- */
 
@@ -7839,6 +7872,12 @@ class Ariane extends obsidian.Plugin {
     return true;
   }
 
+
+  //#endregion Ariane · bibliographie en note & citations dynamiques
+
+  //#region Ariane · panier d'annotations & dépôt paragraphe
+  // ── panier d'annotations & dépôt paragraphe ──────────────────────────────
+
   attacherAnnotationParagraphe(cm, lineNumber, cles, insertOffset) {
     cles = (Array.isArray(cles) ? cles : [cles]).filter(Boolean);
     if (!cles.length) return false;
@@ -8176,6 +8215,9 @@ class Ariane extends obsidian.Plugin {
       await this.appliquerTagOrpheline(f, false);
     }
   }
+
+
+  //#endregion Ariane · panier d'annotations & dépôt paragraphe
 
   async loadSettings() {
     const charge = await this.loadData();
