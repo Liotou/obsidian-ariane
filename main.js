@@ -14150,35 +14150,42 @@ class ModaleStructurerTaches extends obsidian.Modal {
 
   async onOpen() {
     const c = this.contentEl;
+    if (this.modalEl) this.modalEl.addClass('zfa-struct-modal');
     c.addClass('zfa-struct');
-    c.createEl('h3', { text: this.decouper
+    this.titleEl.setText(this.decouper
       ? tr('Découper : ') + this.decouper.titre
-      : tr('Structurer un brouillon de tâches') });
+      : tr('Structurer un brouillon de tâches'));
+    c.createEl('p', { cls: 'zfa-struct-intro', text: this.decouper
+      ? tr('L\'IA propose des sous-tâches ; vous les revoyez avant création.')
+      : tr('L\'indentation du texte devient la hiérarchie. « Jalon : » marque un jalon, « BONUS / si le temps » une priorité basse. Aucune date n\'est créée sauf si elle figure dans le texte.') });
 
-    this.zone = c.createEl('textarea', { cls: 'zfa-struct-zone' });
-    this.zone.rows = this.decouper ? 4 : 12;
+    const champ = c.createDiv({ cls: 'zfa-struct-champ' });
+    champ.createEl('label', { cls: 'zfa-struct-label',
+      text: this.decouper ? tr('Consignes (facultatif)') : tr('Brouillon') });
+    this.zone = champ.createEl('textarea', { cls: 'zfa-struct-zone' });
+    this.zone.rows = this.decouper ? 3 : 13;
     this.zone.placeholder = this.decouper
-      ? tr('Consignes ou contexte pour le découpage (facultatif).')
-      : tr('Collez ici votre brouillon. L\'indentation devient la hiérarchie. Exemple :\n\nApprofondir les approches systémiques\n\tLire La théorie générale des systèmes\n\tLire Morin (pas le temps pour La méthode)\n\tJalon : présentation PEPR\n\t\tEnvoyer un mail à Karine');
+      ? tr('Ex. : privilégier des étapes courtes, une par séance de travail.')
+      : 'Approfondir les approches systémiques\n\tLire La théorie générale des systèmes\n\tLire Morin (pas le temps pour La méthode)\n\tJalon : présentation PEPR\n\t\tEnvoyer un mail à Karine';
     this.zone.value = this.texteInitial;
 
     if (!this.decouper) {
-      const opt = c.createDiv({ cls: 'zfa-struct-opt' });
-      opt.createSpan({ text: tr('Poser les tâches sur : ') });
-      this.selVue = opt.createEl('select');
-      this.selVue.createEl('option', { value: '', text: tr('— notes seulement —') });
-      try {
-        this.vues = await this.greffon.vuesArticulation();
-        for (let i = 0; i < this.vues.length; i += 1) {
-          this.selVue.createEl('option', { value: String(i),
-            text: this.vues[i].nom + '  (' + this.vues[i].fichier + ')' });
-        }
-      } catch (e) { /* pas grave */ }
+      const reg = new obsidian.Setting(c)
+        .setName(tr('Poser les tâches sur'))
+        .setDesc(tr('Une vue articulation reçoit les cartes ; sinon les notes sont seulement créées.'));
+      reg.addDropdown(async (d) => {
+        d.addOption('', tr('— notes seulement —'));
+        try {
+          this.vues = await this.greffon.vuesArticulation();
+          for (let i = 0; i < this.vues.length; i += 1) d.addOption(String(i), this.vues[i].nom);
+        } catch (e) { /* pas grave */ }
+        d.onChange((v) => { this._vueChoisie = v; });
+      });
     }
 
-    this.pied = c.createDiv({ cls: 'zfa-struct-pied' });
+    this.pied = c.createDiv({ cls: 'zfa-struct-actions' });
     this.btnAnalyse = this.pied.createEl('button', { cls: 'mod-cta',
-      text: this.decouper ? tr('Proposer des sous-tâches') : tr('Analyser') });
+      text: this.decouper ? tr('Proposer des sous-tâches') : tr('Analyser le brouillon') });
     this.btnAnalyse.onclick = () => this._analyser();
 
     this.apercu = c.createDiv({ cls: 'zfa-struct-apercu' });
@@ -14206,23 +14213,31 @@ class ModaleStructurerTaches extends obsidian.Modal {
       this._rendreApercu();
     } finally {
       this.btnAnalyse.disabled = false;
-      this.btnAnalyse.setText(tr('Ré-analyser'));
+      this.btnAnalyse.setText(this.decouper ? tr('Reproposer') : tr('Ré-analyser'));
     }
   }
 
   _rendreApercu() {
     this.apercu.empty();
     const familles = this.greffon.famillesIA();
+    const compter = (l) => l.reduce((s, n) => s + (n.inclus !== false ? 1 + compter(n.enfants || []) : 0), 0);
+
+    const tete = this.apercu.createDiv({ cls: 'zfa-struct-apercu-tete' });
+    const compteEl = tete.createSpan({ cls: 'zfa-struct-compte' });
+    const majCompte = () => compteEl.setText(compter(this.arbre) + tr(' tâche(s) à créer'));
+    majCompte();
+
+    const liste = this.apercu.createDiv({ cls: 'zfa-struct-liste' });
     const rangee = (n, prof) => {
-      const d = this.apercu.createDiv({ cls: 'zfa-struct-noeud' });
-      d.style.marginLeft = (prof * 18) + 'px';
-      const inc = d.createEl('input', { type: 'checkbox' });
+      const d = liste.createDiv({ cls: 'zfa-struct-noeud' });
+      d.dataset.prof = String(Math.min(prof, 6));
+      const inc = d.createEl('input', { type: 'checkbox', cls: 'zfa-struct-inc' });
       inc.checked = n.inclus !== false;
-      inc.onchange = () => { n.inclus = inc.checked; };
+      inc.onchange = () => { n.inclus = inc.checked; d.toggleClass('est-exclu', !inc.checked); majCompte(); };
       const titre = d.createEl('input', { type: 'text', cls: 'zfa-struct-titre' });
       titre.value = n.titre;
       titre.onchange = () => { n.titre = titre.value.trim() || n.titre; };
-      const fam = d.createEl('select', { cls: 'zfa-struct-fam' });
+      const fam = d.createEl('select', { cls: 'zfa-struct-fam dropdown' });
       for (const f of familles) fam.createEl('option', { value: f.id, text: f.nom || f.id });
       fam.value = n.famille;
       fam.onchange = () => { n.famille = fam.value; };
@@ -14232,15 +14247,12 @@ class ModaleStructurerTaches extends obsidian.Modal {
       jc.onchange = () => { n.jalon = jc.checked; };
       jal.createSpan({ text: tr('jalon') });
       if (n.priorite) d.createSpan({ cls: 'zfa-struct-prio', text: n.priorite });
-      if (n.note) d.createSpan({ cls: 'zfa-struct-note', text: '✎ ' + n.note });
+      if (n.note) d.createEl('div', { cls: 'zfa-struct-note', text: n.note });
       for (const e of n.enfants || []) rangee(e, prof + 1);
     };
     this.arbre.forEach((n) => rangee(n, 0));
 
-    const pied = this.apercu.createDiv({ cls: 'zfa-struct-pied' });
-    const compte = pied.createSpan();
-    const compter = (l) => l.reduce((s, n) => s + (n.inclus !== false ? 1 + compter(n.enfants || []) : 0), 0);
-    compte.setText(tr('≈ ') + compter(this.arbre) + tr(' tâche(s)'));
+    const pied = this.apercu.createDiv({ cls: 'zfa-struct-actions' });
     const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Créer les tâches') });
     b.onclick = () => this._creer();
   }
@@ -14256,8 +14268,8 @@ class ModaleStructurerTaches extends obsidian.Modal {
   async _creer() {
     const specs = this._elaguer(this.arbre);
     if (!specs.length) { new obsidian.Notice(tr('Aucune tâche sélectionnée.')); return; }
-    const vue = (!this.decouper && this.selVue && this.selVue.value)
-      ? this.vues[Number(this.selVue.value)] : null;
+    const vue = (!this.decouper && this._vueChoisie)
+      ? this.vues[Number(this._vueChoisie)] : null;
     this.close();
     const avis = new obsidian.Notice(tr('Création des tâches…'), 0);
     try {
@@ -14282,14 +14294,15 @@ class ModaleRevueLot extends obsidian.Modal {
   constructor(app, opts) { super(app); this.o = opts || {}; }
   onOpen() {
     const c = this.contentEl;
+    if (this.modalEl) this.modalEl.addClass('zfa-struct-modal');
     c.addClass('zfa-revue');
-    c.createEl('h3', { text: this.o.titre || tr('Revue') });
-    if (this.o.aide) c.createEl('p', { cls: 'zfa-dedup-info', text: this.o.aide });
+    this.titleEl.setText(this.o.titre || tr('Revue'));
+    if (this.o.aide) c.createEl('p', { cls: 'zfa-struct-intro', text: this.o.aide });
     const lignes = this.o.lignes || [];
     if (!lignes.length) {
-      c.createEl('p', { text: tr('Rien à changer.') });
-      const p0 = c.createDiv({ cls: 'zfa-struct-pied' });
-      p0.createEl('button', { text: tr('Fermer') }).onclick = () => this.close();
+      c.createEl('p', { cls: 'zfa-struct-vide', text: tr('Rien à changer — tout semble déjà en ordre.') });
+      const p0 = c.createDiv({ cls: 'zfa-struct-actions' });
+      p0.createEl('button', { cls: 'mod-cta', text: tr('Fermer') }).onclick = () => this.close();
       return;
     }
     this.rows = lignes.map((l) => Object.assign({ garder: true }, l));
@@ -14310,8 +14323,8 @@ class ModaleRevueLot extends obsidian.Modal {
       }
       if (r.titre) d.createSpan({ cls: 'zfa-revue-ctx', text: r.titre });
     }
-    const pied = c.createDiv({ cls: 'zfa-struct-pied' });
-    pied.createSpan({ text: this.rows.length + tr(' changement(s) proposé(s)') });
+    const pied = c.createDiv({ cls: 'zfa-struct-actions' });
+    pied.createSpan({ cls: 'zfa-struct-compte', text: this.rows.length + tr(' changement(s) proposé(s)') });
     const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Appliquer la sélection') });
     b.onclick = async () => {
       const sel = this.rows.filter((r) => r.garder);
@@ -14329,12 +14342,16 @@ class ModaleAjoutLN extends obsidian.Modal {
   constructor(greffon) { super(greffon.app); this.greffon = greffon; }
   onOpen() {
     const c = this.contentEl;
+    if (this.modalEl) this.modalEl.addClass('zfa-struct-modal');
     c.addClass('zfa-struct');
-    c.createEl('h3', { text: tr('Ajouter une tâche (langage naturel)') });
+    this.titleEl.setText(tr('Ajouter une tâche (langage naturel)'));
+    c.createEl('p', { cls: 'zfa-struct-intro', text: tr('Une phrase → une tâche : famille devinée, dates prises seulement si écrites, blocage rattaché si vous nommez une tâche existante.') });
     const inp = c.createEl('textarea', { cls: 'zfa-struct-zone' });
     inp.rows = 3;
+    inp.style.minHeight = '4.5em';
+    inp.style.fontFamily = 'var(--font-text)';
     inp.placeholder = tr('Ex. : lire la thèse de Roussignol avant le 30/09/2026, ça bloque la rédaction du chapitre 3');
-    const pied = c.createDiv({ cls: 'zfa-struct-pied' });
+    const pied = c.createDiv({ cls: 'zfa-struct-actions' });
     const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Créer') });
     b.onclick = async () => {
       const p = inp.value.trim();

@@ -388,38 +388,132 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-voisin-cible { font-weight: 600; }
 
-/* Structurer un brouillon de tâches (IA) */
-.zfa-struct { min-width: min(760px, 86vw); }
-.zfa-struct-zone { width: 100%; resize: vertical; line-height: 1.5; }
-.zfa-struct-opt { display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
-.zfa-struct-opt select { flex: 1 1 260px; min-width: 0; }
-.zfa-struct-pied { display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-top: 12px; }
-.zfa-struct-apercu { margin-top: 14px; max-height: 46vh; overflow: auto; }
+/* ── Assistant IA des tâches : structuration & revue ─────────────────── */
+.modal.zfa-struct-modal {
+  width: 720px;
+  max-width: min(92vw, 860px);
+}
+.modal.zfa-struct-modal .modal-content { padding-top: var(--size-4-2); }
+
+.zfa-struct-intro {
+  margin: 0 0 var(--size-4-3);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.45;
+}
+.zfa-struct-champ { display: flex; flex-direction: column; gap: var(--size-4-1); }
+.zfa-struct-label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.zfa-struct-zone {
+  width: 100%;
+  resize: vertical;
+  min-height: 8em;
+  line-height: 1.55;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+  tab-size: 2;
+}
+.zfa-struct .setting-item { border-top-color: var(--background-modifier-border); }
+
+.zfa-struct-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  justify-content: flex-end;
+  margin-top: var(--size-4-4);
+}
+.zfa-struct-compte { margin-right: auto; color: var(--text-muted); font-size: var(--font-ui-small); }
+.zfa-struct-vide { color: var(--text-muted); text-align: center; padding: var(--size-4-4) 0; }
+
+/* Aperçu de l'arbre proposé */
+.zfa-struct-apercu {
+  margin-top: var(--size-4-4);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+.zfa-struct-apercu-tete {
+  padding: var(--size-4-2) var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.zfa-struct-liste {
+  max-height: 42vh;
+  overflow-y: auto;
+  padding: var(--size-4-1) 0;
+}
 .zfa-struct-noeud {
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  padding: 3px 0; border-bottom: 1px solid var(--background-modifier-border);
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-1) var(--size-4-3);
+  border-left: 2px solid transparent;
 }
-.zfa-struct-titre { flex: 1 1 220px; min-width: 120px; }
-.zfa-struct-fam { flex: 0 0 auto; }
-.zfa-struct-jal { display: inline-flex; align-items: center; gap: 3px; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.zfa-struct-noeud:hover { background: var(--background-modifier-hover); }
+.zfa-struct-noeud[data-prof="1"] { padding-left: calc(var(--size-4-3) + 20px); border-left-color: var(--background-modifier-border); }
+.zfa-struct-noeud[data-prof="2"] { padding-left: calc(var(--size-4-3) + 40px); border-left-color: var(--background-modifier-border); }
+.zfa-struct-noeud[data-prof="3"] { padding-left: calc(var(--size-4-3) + 60px); border-left-color: var(--background-modifier-border); }
+.zfa-struct-noeud[data-prof="4"] { padding-left: calc(var(--size-4-3) + 80px); border-left-color: var(--background-modifier-border); }
+.zfa-struct-noeud[data-prof="5"] { padding-left: calc(var(--size-4-3) + 100px); border-left-color: var(--background-modifier-border); }
+.zfa-struct-noeud[data-prof="6"] { padding-left: calc(var(--size-4-3) + 120px); border-left-color: var(--background-modifier-border); }
+.zfa-struct-noeud.est-exclu { opacity: 0.45; }
+.zfa-struct-noeud.est-exclu .zfa-struct-titre { text-decoration: line-through; }
+.zfa-struct-inc { margin: 0; }
+.zfa-struct-titre {
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  font-size: var(--font-ui-small);
+}
+.zfa-struct-titre:hover { border-color: var(--background-modifier-border); }
+.zfa-struct-titre:focus { border-color: var(--interactive-accent); background: var(--background-primary); }
+.zfa-struct-fam { font-size: var(--font-ui-smaller); }
+.zfa-struct-jal {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--font-ui-smaller); color: var(--text-muted); white-space: nowrap;
+}
+.zfa-struct-jal input { margin: 0; }
 .zfa-struct-prio {
-  font-size: var(--font-ui-smaller); text-transform: uppercase; letter-spacing: 0.04em;
+  font-size: var(--font-ui-smaller); font-weight: var(--font-medium);
+  text-transform: uppercase; letter-spacing: 0.04em;
   color: var(--text-on-accent); background: var(--interactive-accent);
-  border-radius: 4px; padding: 0 5px;
+  border-radius: var(--radius-s); padding: 1px 6px;
 }
-.zfa-struct-note { flex: 1 1 100%; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.zfa-struct-note {
+  grid-column: 2 / -1;
+  font-size: var(--font-ui-smaller); color: var(--text-faint); font-style: italic;
+}
 
 /* Revue d'un lot avant / après */
-.zfa-revue { min-width: min(720px, 86vw); }
-.zfa-revue-liste { max-height: 52vh; overflow: auto; margin-top: 8px; }
-.zfa-revue-l {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding: 4px 0; border-bottom: 1px solid var(--background-modifier-border);
+.zfa-revue-liste {
+  max-height: 48vh; overflow-y: auto;
+  margin-top: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
 }
-.zfa-revue-av { color: var(--text-muted); text-decoration: line-through; flex: 1 1 200px; min-width: 120px; }
-.zfa-revue-fl { color: var(--text-faint); flex: 0 0 auto; }
-.zfa-revue-ap { flex: 1 1 220px; min-width: 140px; }
-.zfa-revue-ctx { flex: 1 1 100%; font-size: var(--font-ui-smaller); color: var(--text-faint); }
+.zfa-revue-l {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+}
+.zfa-revue-l:not(:last-child) { border-bottom: 1px solid var(--background-modifier-border); }
+.zfa-revue-l:hover { background: var(--background-modifier-hover); }
+.zfa-revue-l input[type="checkbox"] { margin: 0; }
+.zfa-revue-av { color: var(--text-muted); text-decoration: line-through; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.zfa-revue-fl { color: var(--text-faint); }
+.zfa-revue-ap { min-width: 0; font-size: var(--font-ui-small); }
+.zfa-revue-ctx { grid-column: 2 / -1; font-size: var(--font-ui-smaller); color: var(--text-faint); }
 
 /* Liste des styles du modèle Word */
 .zfa-style-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 4px; border-bottom: 1px solid var(--background-modifier-border); }
