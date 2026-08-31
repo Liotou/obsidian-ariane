@@ -15820,24 +15820,44 @@ class MoteurArticulation {
   }
 
   // Tracé d'une arête : courbe (défaut) ou angulaire selon le réglage.
-  _chemin(x1, y1, x2, y2) {
-    if ((this.greffon.settings.articulationFleches || 'courbe') === 'angulaire') {
+  // `entreeGauche === false` : on entre par le bord DROIT de la cible (la sortie
+  // de la source est à sa droite, la cible n'est pas assez à droite pour laisser
+  // passer le trait dans l'entre-deux). Le tracé longe alors la carte par
+  // l'extérieur au lieu de disparaître derrière.
+  _chemin(x1, y1, x2, y2, entreeGauche) {
+    const ang = (this.greffon.settings.articulationFleches || 'courbe') === 'angulaire';
+    if (entreeGauche === false) {
+      const mx = Math.max(x1, x2) + 26;
+      return ang
+        ? 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + y2 + ' H ' + x2
+        : 'M ' + x1 + ' ' + y1 + ' C ' + mx + ' ' + y1 + ', ' + mx + ' ' + y2 + ', ' + x2 + ' ' + y2;
+    }
+    if (ang) {
       const mx = Math.max(x1 + 16, (x1 + x2) / 2);
       return 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + y2 + ' H ' + x2;
     }
     return Ariane._cheminFleche(x1, y1, x2, y2);
   }
 
-  dessinerArete(g, a) {
-    const s = this._pt(a.de);
-    const t = this._pt(a.vers);
-    const hs = ((this._noeudsParRef && this._noeudsParRef.get(a.de)) || {}).h || ARTIC_H;
-    const ht = ((this._noeudsParRef && this._noeudsParRef.get(a.vers)) || {}).h || ARTIC_H;
+  // Géométrie complète d'une arête : points d'accroche et tracé. Le bord
+  // d'entrée sur la cible est choisi pour que le trait CONTOURNE la carte
+  // plutôt que de passer derrière (bug visible quand la cible est à gauche
+  // ou à l'aplomb de la source).
+  _traceArete(deRef, versRef, type) {
+    const s = this._pt(deRef);
+    const t = this._pt(versRef);
+    const hs = ((this._noeudsParRef && this._noeudsParRef.get(deRef)) || {}).h || ARTIC_H;
+    const ht = ((this._noeudsParRef && this._noeudsParRef.get(versRef)) || {}).h || ARTIC_H;
     const x1 = s.x + ARTIC_W;
-    const y1 = s.y + ancreY(hs, a.type);
-    const x2 = t.x;
-    const y2 = t.y + ancreY(ht, a.type);
-    const d = this._chemin(x1, y1, x2, y2);
+    const y1 = s.y + ancreY(hs, type);
+    const y2 = t.y + ancreY(ht, type);
+    const entreeGauche = x1 <= t.x - 24;
+    const x2 = entreeGauche ? t.x : t.x + ARTIC_W;
+    return { x1, y1, x2, y2, d: this._chemin(x1, y1, x2, y2, entreeGauche) };
+  }
+
+  dessinerArete(g, a) {
+    const { x1, y1, x2, y2, d } = this._traceArete(a.de, a.vers, a.type);
     const gr = svgEl('g', { class: 'zfa-artic-arete-groupe' });
     gr.dataset.de = a.de; gr.dataset.vers = a.vers; gr.dataset.type = a.type;
     gr.appendChild(svgEl('path', { d, class: 'zfa-artic-arete-cible' }));
@@ -16214,13 +16234,7 @@ class MoteurArticulation {
   majAretesDe(ref) {
     for (const gr of this._svg.querySelectorAll('.zfa-artic-arete-groupe')) {
       if (gr.dataset.de !== ref && gr.dataset.vers !== ref) continue;
-      const s = this._pt(gr.dataset.de);
-      const t = this._pt(gr.dataset.vers);
-      const hs = ((this._noeudsParRef && this._noeudsParRef.get(gr.dataset.de)) || {}).h || ARTIC_H;
-      const ht = ((this._noeudsParRef && this._noeudsParRef.get(gr.dataset.vers)) || {}).h || ARTIC_H;
-      const ty = gr.dataset.type;
-      const d = this._chemin(
-        s.x + ARTIC_W, s.y + ancreY(hs, ty), t.x, t.y + ancreY(ht, ty));
+      const { d } = this._traceArete(gr.dataset.de, gr.dataset.vers, gr.dataset.type);
       for (const p of gr.querySelectorAll('path')) p.setAttribute('d', d);
     }
   }
