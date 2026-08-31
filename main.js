@@ -3306,6 +3306,55 @@ class Ariane extends obsidian.Plugin {
       },
     });
     this.addCommand({
+      id: 'decouper-tache-active',
+      name: tr('Tâches : découper la tâche active (IA)'),
+      callback: () => {
+        const f = this.app.workspace.getActiveFile();
+        const ref = f && this.refDeChemin(f.path);
+        if (!ref) { new obsidian.Notice(tr('Ouvrez d\'abord une note de tâche.')); return; }
+        this.ouvrirDecoupage(ref);
+      },
+    });
+    this.addCommand({
+      id: 'normaliser-intitules-taches',
+      name: tr('Tâches : normaliser les intitulés (IA)'),
+      callback: async () => {
+        const lignes = await this.normaliserIntitules(null);
+        new ModaleRevueLot(this.app, {
+          titre: tr('Normaliser les intitulés'),
+          aide: tr('Décochez ce que vous ne voulez pas ; le texte reste modifiable.'),
+          lignes, editable: true,
+          appliquer: async (sel) => {
+            let n = 0;
+            for (const r of sel) { if (await this.renommerTitreTache(r.ref, r.apres)) n += 1; }
+            return n;
+          },
+        }).open();
+      },
+    });
+    this.addCommand({
+      id: 'verifier-familles-taches',
+      name: tr('Tâches : vérifier les familles (IA)'),
+      callback: async () => {
+        const lignes = await this.verifierFamilles(null);
+        new ModaleRevueLot(this.app, {
+          titre: tr('Vérifier les familles'),
+          aide: tr('L\'IA propose une famille différente pour ces tâches.'),
+          lignes,
+          appliquer: async (sel) => {
+            let n = 0;
+            for (const r of sel) { if (await this.majTache(r.ref, { famille: r.apres })) n += 1; }
+            return n;
+          },
+        }).open();
+      },
+    });
+    this.addCommand({
+      id: 'ajouter-tache-langage-naturel',
+      name: tr('Tâches : ajouter (langage naturel, IA)'),
+      callback: () => new ModaleAjoutLN(this).open(),
+    });
+    this.addCommand({
       id: 'modifier-tache',
       name: tr('Tâches : modifier une tâche…'),
       callback: () => {
@@ -5319,6 +5368,28 @@ class Ariane extends obsidian.Plugin {
       };
     };
     return racine.map((n) => un(n, 0)).filter(Boolean);
+  }
+
+  // Meilleure correspondance d'un titre approximatif parmi des candidats
+  // {ref, titre} : recouvrement de mots (minuscule, sans accents ni ponctuation),
+  // pondéré par la longueur du plus court. Rend { ref, score } ou null si trop
+  // faible (< seuil, défaut 0,34).
+  static meilleurTitre(cible, candidats, seuil) {
+    const mots = (s) => new Set(String(s || '')
+      .toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length > 2));
+    const mc = mots(cible);
+    if (!mc.size) return null;
+    let best = null;
+    for (const c of candidats || []) {
+      const m = mots(c && c.titre);
+      if (!m.size) continue;
+      let inter = 0;
+      for (const w of mc) if (m.has(w)) inter += 1;
+      const score = inter / Math.min(mc.size, m.size);
+      if (!best || score > best.score) best = { ref: c.ref, score };
+    }
+    return (best && best.score >= (seuil == null ? 0.34 : seuil)) ? best : null;
   }
 
   // Ajoute des cartes au plan d'une vue « ariane-articulation » dans le TEXTE
@@ -11369,7 +11440,7 @@ class Ariane extends obsidian.Plugin {
       if (parentRef) { try { await this.rattacher(ref, parentRef); } catch (e) { /* rien */ } }
       for (const e of spec.enfants || []) await poser(e, ref);
     };
-    for (const s of specs || []) await poser(s, null);
+    for (const s of specs || []) await poser(s, o.parentRef || null);
     if (o.vue && o.vue.fichier && crees.length) {
       try {
         const fv = this.app.vault.getAbstractFileByPath(o.vue.fichier);
@@ -11396,6 +11467,133 @@ class Ariane extends obsidian.Plugin {
       }
     }
     return out;
+  }
+
+  // Ouvre la modale de découpage pour une tâche donnée.
+  ouvrirDecoupage(ref) {
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    if (!t) { new obsidian.Notice(tr('Tâche introuvable.')); return; }
+    const enfants = this.tachesPourGantt()
+      .filter((x) => Ariane.refDeLien(x.parent) === ref)
+      .map((x) => x.intitule);
+    new ModaleStructurerTaches(this, {
+      decouper: { ref, titre: t.intitule, famille: t.famille || (this.settings.familleTacheDefaut || 'action'), enfants },
+    }).open();
+  }
+
+  promptDecoupage(tache, contexte) {
+    return [
+      'Propose des sous-tâches concrètes pour découper la tâche ci-dessous, en JSON.',
+      this._blocFamilles(),
+      'Tâche à découper : « ' + tache.titre + ' » (famille ' + tache.famille + ').',
+      (tache.enfants && tache.enfants.length)
+        ? 'Sous-tâches déjà présentes (ne pas répéter) : ' + tache.enfants.join(' ; ') + '.' : '',
+      contexte ? ('Consignes : ' + contexte) : '',
+      'RÈGLES : 3 à 8 sous-tâches, intitulés brefs à l\'infinitif, pas de dates, "jalon" seulement pour une étape de validation. Imbrication possible via "enfants".',
+      'Réponds UNIQUEMENT par un tableau JSON de nœuds {"titre","famille","jalon":false,"priorite":"","note":"","source":"","enfants":[]}.',
+    ].filter(Boolean).join('\n');
+  }
+
+  // Passe en lots : réécrit les intitulés en style cohérent. Rend
+  // [{ ref, avant, apres }] pour les seuls qui changent.
+  async normaliserIntitules(refs) {
+    const g = this.tachesPourGantt();
+    const parRef = new Map(g.map((t) => [t.ref, t]));
+    const cibles = ((refs && refs.length) ? refs : g.map((t) => t.ref))
+      .map((r) => parRef.get(r)).filter(Boolean);
+    const out = [];
+    const LOT = 35;
+    for (let i = 0; i < cibles.length; i += LOT) {
+      const bout = cibles.slice(i, i + LOT);
+      const avis = new obsidian.Notice(tr('Normalisation… ') + (i + bout.length) + '/' + cibles.length, 0);
+      const prompt = [
+        'Réécris ces intitulés de tâches en style cohérent : verbe à l\'infinitif en tête, bref, sans redondance ni article superflu. Garde le sens et les noms propres, ne traduis pas.',
+        'Réponds par un tableau JSON [{"ref":"...","titre":"..."}] ; n\'inclus QUE les intitulés qui changent.',
+        '',
+        bout.map((t) => t.ref + ' :: ' + t.intitule).join('\n'),
+      ].join('\n');
+      let j;
+      try { j = await this.genererIA(prompt, 1400); } finally { avis.hide(); }
+      const arr = Array.isArray(j) ? j : (j && Array.isArray(j.taches) ? j.taches : []);
+      for (const e of arr) {
+        const ref = String((e && (e.ref || e.id)) || '').trim();
+        const titre = String((e && (e.titre || e.title)) || '').trim();
+        const t = parRef.get(ref);
+        if (t && titre && titre !== t.intitule) out.push({ ref, avant: t.intitule, apres: titre });
+      }
+    }
+    return out;
+  }
+
+  // Passe en lots : famille la mieux adaptée d'après l'intitulé + descriptions.
+  // Rend [{ ref, avant, apres, titre }] pour les seuls écarts.
+  async verifierFamilles(refs) {
+    const g = this.tachesPourGantt();
+    const parRef = new Map(g.map((t) => [t.ref, t]));
+    const ids = new Set(this.famillesIA().map((f) => f.id));
+    const cibles = ((refs && refs.length) ? refs : g.map((t) => t.ref))
+      .map((r) => parRef.get(r)).filter(Boolean);
+    const out = [];
+    const LOT = 35;
+    for (let i = 0; i < cibles.length; i += LOT) {
+      const bout = cibles.slice(i, i + LOT);
+      const avis = new obsidian.Notice(tr('Vérification… ') + (i + bout.length) + '/' + cibles.length, 0);
+      const prompt = [
+        'Pour chaque tâche, indique la famille la plus adaptée d\'après son intitulé et les descriptions ci-dessous.',
+        this._blocFamilles(),
+        'Réponds par un tableau JSON [{"ref":"...","famille":"id"}], UNIQUEMENT les tâches où ta famille diffère de celle entre crochets.',
+        '',
+        bout.map((t) => t.ref + ' :: [' + t.famille + '] ' + t.intitule).join('\n'),
+      ].join('\n');
+      let j;
+      try { j = await this.genererIA(prompt, 1200); } finally { avis.hide(); }
+      const arr = Array.isArray(j) ? j : [];
+      for (const e of arr) {
+        const ref = String((e && (e.ref || e.id)) || '').trim();
+        const fam = String((e && (e.famille || e.family)) || '').trim().toLowerCase();
+        const t = parRef.get(ref);
+        if (t && ids.has(fam) && fam !== t.famille) {
+          out.push({ ref, avant: t.famille, apres: fam, titre: t.intitule });
+        }
+      }
+    }
+    return out;
+  }
+
+  // Une phrase -> une tâche créée (famille + dates si écrites + blocage déduit).
+  async ajouterTacheLN(phrase) {
+    const p = String(phrase || '').trim();
+    if (!p) return null;
+    const prompt = [
+      'Extrais UNE tâche de cette phrase, en JSON : {"titre","famille","debut","echeance","bloque_par"}.',
+      this._blocFamilles(),
+      '- debut / echeance : AAAA-MM-JJ, uniquement si une date ou une échéance explicite est donnée, sinon "".',
+      '- bloque_par : le titre approximatif d\'une tâche existante à finir avant celle-ci, sinon "".',
+      '- titre : bref, verbe à l\'infinitif.',
+      'Phrase : ' + p,
+    ].join('\n');
+    const j = await this.genererIA(prompt, 500);
+    if (!j) return null;
+    const specs = Ariane.normaliserSpecsTaches([j], {
+      familles: new Set(this.famillesIA().map((f) => f.id)),
+      defaut: this.settings.familleTacheDefaut || 'action',
+      dates: Ariane.datesDansTexte(p),
+    });
+    if (!specs.length) return null;
+    const s = specs[0];
+    const chemin = await this.creerTache({
+      intitule: s.titre, famille: s.famille, debut: s.debut, echeance: s.echeance,
+      source: s.famille === 'lecture' ? s.source : undefined,
+    });
+    const ref = this.refDeChemin(chemin);
+    const bp = String((j.bloque_par || j.bloquePar || '')).trim();
+    if (ref && bp) {
+      const cand = this.tachesPourGantt().filter((t) => t.ref !== ref)
+        .map((t) => ({ ref: t.ref, titre: t.intitule }));
+      const m = Ariane.meilleurTitre(bp, cand);
+      if (m) await this.creerBlocage(m.ref, ref);
+    }
+    return ref;
   }
 
   // Dernier état SAIN de « parent » / « bloque-par » par tâche, pour pouvoir y
@@ -13832,10 +14030,12 @@ class ModaleDaterTache extends obsidian.Modal {
 /* ---- Structurer un brouillon de tâches (IA) ------------------------- */
 
 class ModaleStructurerTaches extends obsidian.Modal {
-  constructor(greffon, texteInitial) {
+  constructor(greffon, opts) {
     super(greffon.app);
     this.greffon = greffon;
-    this.texteInitial = texteInitial || '';
+    const o = (typeof opts === 'string') ? { texte: opts } : (opts || {});
+    this.texteInitial = o.texte || '';
+    this.decouper = o.decouper || null;   // { ref, titre, famille, enfants:[] }
     this.arbre = null;
     this.vues = [];
   }
@@ -13843,27 +14043,34 @@ class ModaleStructurerTaches extends obsidian.Modal {
   async onOpen() {
     const c = this.contentEl;
     c.addClass('zfa-struct');
-    c.createEl('h3', { text: tr('Structurer un brouillon de tâches') });
+    c.createEl('h3', { text: this.decouper
+      ? tr('Découper : ') + this.decouper.titre
+      : tr('Structurer un brouillon de tâches') });
 
     this.zone = c.createEl('textarea', { cls: 'zfa-struct-zone' });
-    this.zone.rows = 12;
-    this.zone.placeholder = tr('Collez ici votre brouillon. L\'indentation devient la hiérarchie. Exemple :\n\nApprofondir les approches systémiques\n\tLire La théorie générale des systèmes\n\tLire Morin (pas le temps pour La méthode)\n\tJalon : présentation PEPR\n\t\tEnvoyer un mail à Karine');
+    this.zone.rows = this.decouper ? 4 : 12;
+    this.zone.placeholder = this.decouper
+      ? tr('Consignes ou contexte pour le découpage (facultatif).')
+      : tr('Collez ici votre brouillon. L\'indentation devient la hiérarchie. Exemple :\n\nApprofondir les approches systémiques\n\tLire La théorie générale des systèmes\n\tLire Morin (pas le temps pour La méthode)\n\tJalon : présentation PEPR\n\t\tEnvoyer un mail à Karine');
     this.zone.value = this.texteInitial;
 
-    const opt = c.createDiv({ cls: 'zfa-struct-opt' });
-    opt.createSpan({ text: tr('Poser les tâches sur : ') });
-    this.selVue = opt.createEl('select');
-    this.selVue.createEl('option', { value: '', text: tr('— notes seulement —') });
-    try {
-      this.vues = await this.greffon.vuesArticulation();
-      for (let i = 0; i < this.vues.length; i += 1) {
-        this.selVue.createEl('option', { value: String(i),
-          text: this.vues[i].nom + '  (' + this.vues[i].fichier + ')' });
-      }
-    } catch (e) { /* pas grave */ }
+    if (!this.decouper) {
+      const opt = c.createDiv({ cls: 'zfa-struct-opt' });
+      opt.createSpan({ text: tr('Poser les tâches sur : ') });
+      this.selVue = opt.createEl('select');
+      this.selVue.createEl('option', { value: '', text: tr('— notes seulement —') });
+      try {
+        this.vues = await this.greffon.vuesArticulation();
+        for (let i = 0; i < this.vues.length; i += 1) {
+          this.selVue.createEl('option', { value: String(i),
+            text: this.vues[i].nom + '  (' + this.vues[i].fichier + ')' });
+        }
+      } catch (e) { /* pas grave */ }
+    }
 
     this.pied = c.createDiv({ cls: 'zfa-struct-pied' });
-    this.btnAnalyse = this.pied.createEl('button', { cls: 'mod-cta', text: tr('Analyser') });
+    this.btnAnalyse = this.pied.createEl('button', { cls: 'mod-cta',
+      text: this.decouper ? tr('Proposer des sous-tâches') : tr('Analyser') });
     this.btnAnalyse.onclick = () => this._analyser();
 
     this.apercu = c.createDiv({ cls: 'zfa-struct-apercu' });
@@ -13871,14 +14078,17 @@ class ModaleStructurerTaches extends obsidian.Modal {
 
   async _analyser() {
     const texte = this.zone.value.trim();
-    if (!texte) { new obsidian.Notice(tr('Rien à analyser.')); return; }
+    if (!this.decouper && !texte) { new obsidian.Notice(tr('Rien à analyser.')); return; }
     this.btnAnalyse.disabled = true;
     this.btnAnalyse.setText(tr('Analyse…'));
     try {
-      const brut = await this.greffon.genererIA(this.greffon.promptStructuration(texte), 2400);
+      const prompt = this.decouper
+        ? this.greffon.promptDecoupage(this.decouper, texte)
+        : this.greffon.promptStructuration(texte);
+      const brut = await this.greffon.genererIA(prompt, 2400);
       const specs = Ariane.normaliserSpecsTaches(brut, {
         familles: new Set(this.greffon.famillesIA().map((f) => f.id)),
-        defaut: this.greffon.settings.familleTacheDefaut || 'action',
+        defaut: this.decouper ? this.decouper.famille : (this.greffon.settings.familleTacheDefaut || 'action'),
         dates: Ariane.datesDansTexte(texte),
       });
       if (!specs.length) { new obsidian.Notice(tr('L\'IA n\'a produit aucune tâche exploitable.')); return; }
@@ -13938,11 +14148,14 @@ class ModaleStructurerTaches extends obsidian.Modal {
   async _creer() {
     const specs = this._elaguer(this.arbre);
     if (!specs.length) { new obsidian.Notice(tr('Aucune tâche sélectionnée.')); return; }
-    const vue = this.selVue.value ? this.vues[Number(this.selVue.value)] : null;
+    const vue = (!this.decouper && this.selVue && this.selVue.value)
+      ? this.vues[Number(this.selVue.value)] : null;
     this.close();
     const avis = new obsidian.Notice(tr('Création des tâches…'), 0);
     try {
-      const refs = await this.greffon.creerArbreTaches(specs, { vue });
+      const refs = await this.greffon.creerArbreTaches(specs, {
+        vue, parentRef: this.decouper ? this.decouper.ref : null,
+      });
       avis.hide();
       new obsidian.Notice(refs.length + tr(' tâche(s) créée(s).'));
     } catch (e) {
@@ -13952,6 +14165,86 @@ class ModaleStructurerTaches extends obsidian.Modal {
     }
   }
 
+  onClose() { this.contentEl.empty(); }
+}
+
+// Revue d'un lot de changements « avant -> après » (intitulés, familles…).
+// opts = { titre, aide, lignes:[{ref, avant, apres, titre?}], editable, appliquer }
+class ModaleRevueLot extends obsidian.Modal {
+  constructor(app, opts) { super(app); this.o = opts || {}; }
+  onOpen() {
+    const c = this.contentEl;
+    c.addClass('zfa-revue');
+    c.createEl('h3', { text: this.o.titre || tr('Revue') });
+    if (this.o.aide) c.createEl('p', { cls: 'zfa-dedup-info', text: this.o.aide });
+    const lignes = this.o.lignes || [];
+    if (!lignes.length) {
+      c.createEl('p', { text: tr('Rien à changer.') });
+      const p0 = c.createDiv({ cls: 'zfa-struct-pied' });
+      p0.createEl('button', { text: tr('Fermer') }).onclick = () => this.close();
+      return;
+    }
+    this.rows = lignes.map((l) => Object.assign({ garder: true }, l));
+    const liste = c.createDiv({ cls: 'zfa-revue-liste' });
+    for (const r of this.rows) {
+      const d = liste.createDiv({ cls: 'zfa-revue-l' });
+      const cb = d.createEl('input', { type: 'checkbox' });
+      cb.checked = true;
+      cb.onchange = () => { r.garder = cb.checked; };
+      d.createSpan({ cls: 'zfa-revue-av', text: r.avant });
+      d.createSpan({ cls: 'zfa-revue-fl', text: '→' });
+      if (this.o.editable) {
+        const inp = d.createEl('input', { type: 'text', cls: 'zfa-revue-ap' });
+        inp.value = r.apres;
+        inp.onchange = () => { r.apres = inp.value.trim() || r.apres; };
+      } else {
+        d.createSpan({ cls: 'zfa-revue-ap', text: r.apres });
+      }
+      if (r.titre) d.createSpan({ cls: 'zfa-revue-ctx', text: r.titre });
+    }
+    const pied = c.createDiv({ cls: 'zfa-struct-pied' });
+    pied.createSpan({ text: this.rows.length + tr(' changement(s) proposé(s)') });
+    const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Appliquer la sélection') });
+    b.onclick = async () => {
+      const sel = this.rows.filter((r) => r.garder);
+      this.close();
+      let n = 0;
+      try { n = await this.o.appliquer(sel); } catch (e) { console.error('[Ariane] revue', e); }
+      new obsidian.Notice((n || 0) + tr(' modification(s) appliquée(s).'));
+    };
+  }
+  onClose() { this.contentEl.empty(); }
+}
+
+// Petite invite « ajouter une tâche en langage naturel ».
+class ModaleAjoutLN extends obsidian.Modal {
+  constructor(greffon) { super(greffon.app); this.greffon = greffon; }
+  onOpen() {
+    const c = this.contentEl;
+    c.addClass('zfa-struct');
+    c.createEl('h3', { text: tr('Ajouter une tâche (langage naturel)') });
+    const inp = c.createEl('textarea', { cls: 'zfa-struct-zone' });
+    inp.rows = 3;
+    inp.placeholder = tr('Ex. : lire la thèse de Roussignol avant le 30/09/2026, ça bloque la rédaction du chapitre 3');
+    const pied = c.createDiv({ cls: 'zfa-struct-pied' });
+    const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Créer') });
+    b.onclick = async () => {
+      const p = inp.value.trim();
+      if (!p) return;
+      b.disabled = true; b.setText(tr('…'));
+      this.close();
+      const avis = new obsidian.Notice(tr('Création…'), 0);
+      try {
+        const ref = await this.greffon.ajouterTacheLN(p);
+        avis.hide();
+        if (!ref) { new obsidian.Notice(tr('Rien n\'a pu être créé.')); return; }
+        new obsidian.Notice(tr('Tâche créée : ') + ref);
+        const f = this.greffon.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+        if (f) this.greffon.app.workspace.getLeaf(true).openFile(f);
+      } catch (e) { avis.hide(); new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e)); }
+    };
+    setTimeout(() => inp.focus(), 30);
+  }
   onClose() { this.contentEl.empty(); }
 }
 
@@ -15400,6 +15693,8 @@ class MoteurFrise {
       .onClick(() => new ModaleTache(this.app, this.greffon, {
         ref: ligne.ref, apres: () => this.dessiner(),
       }).open()));
+    m.addItem((i) => i.setTitle(tr('Découper la tâche (IA)…')).setIcon('list-tree')
+      .onClick(() => this.greffon.ouvrirDecoupage(ligne.ref)));
     m.addSeparator();
 
     for (const st of ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée']) {
@@ -16497,6 +16792,10 @@ class MoteurArticulation {
       m.addItem((i) => i.setTitle(tr('Modifier la tâche…')).setIcon('pencil')
         .onClick(() => new ModaleTache(this.app, this.greffon,
           { ref: n.ref, apres: () => this.dessiner() }).open()));
+      if (!plur) {
+        m.addItem((i) => i.setTitle(tr('Découper la tâche (IA)…')).setIcon('list-tree')
+          .onClick(() => this.greffon.ouvrirDecoupage(n.ref)));
+      }
       m.addSeparator();
       m.addItem((i) => i.setTitle(plur ? tr('Copier les ') + sel.length + tr(' tâches') : tr('Copier la tâche'))
         .setIcon('copy').onClick(() => this._copier()));

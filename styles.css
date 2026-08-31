@@ -409,6 +409,18 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-struct-note { flex: 1 1 100%; font-size: var(--font-ui-smaller); color: var(--text-muted); }
 
+/* Revue d'un lot avant / après */
+.zfa-revue { min-width: min(720px, 86vw); }
+.zfa-revue-liste { max-height: 52vh; overflow: auto; margin-top: 8px; }
+.zfa-revue-l {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 4px 0; border-bottom: 1px solid var(--background-modifier-border);
+}
+.zfa-revue-av { color: var(--text-muted); text-decoration: line-through; flex: 1 1 200px; min-width: 120px; }
+.zfa-revue-fl { color: var(--text-faint); flex: 0 0 auto; }
+.zfa-revue-ap { flex: 1 1 220px; min-width: 140px; }
+.zfa-revue-ctx { flex: 1 1 100%; font-size: var(--font-ui-smaller); color: var(--text-faint); }
+
 /* Liste des styles du modèle Word */
 .zfa-style-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 4px; border-bottom: 1px solid var(--background-modifier-border); }
 .zfa-style-row button { font-size: 0.8em; padding: 2px 8px; }

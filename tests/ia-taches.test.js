@@ -54,6 +54,23 @@ test('normaliserSpecsTaches : nœuds sans titre ignorés, {taches:[…]} accept�
   assert.deepEqual(s.map((x) => x.titre), ['A']);
 });
 
+/* --------------------------- meilleurTitre ------------------------ */
+
+test('meilleurTitre : trouve la tâche par recouvrement de mots', () => {
+  const cand = [
+    { ref: 'A', titre: 'Rédiger le chapitre 3' },
+    { ref: 'B', titre: 'Lire Morin' },
+    { ref: 'C', titre: 'Envoyer le mail à Karine' },
+  ];
+  assert.equal(Ariane.meilleurTitre('rédaction du chapitre 3', cand).ref, 'A');
+  assert.equal(Ariane.meilleurTitre('le mail pour karine', cand).ref, 'C');
+});
+
+test('meilleurTitre : rien de probant -> null', () => {
+  assert.equal(Ariane.meilleurTitre('acheter du café', [{ ref: 'A', titre: 'Rédiger le chapitre' }]), null);
+  assert.equal(Ariane.meilleurTitre('', [{ ref: 'A', titre: 'x' }]), null);
+});
+
 /* ------------------- majPlanArticulationTexte -------------------- */
 
 const BASE = [
