@@ -14028,38 +14028,24 @@ class ModaleTache extends obsidian.Modal {
       .addText((t) => t.setValue(this.v.intitule)
         .onChange((x) => { this.v.intitule = x; }));
 
-    // Note de travail : bascule édition / aperçu Markdown formaté, comme une note.
+    // Note de travail : édition + aperçu Markdown formaté en temps réel.
     const nb = c.createDiv({ cls: 'zfa-tache-note' });
     const nl = nb.createEl('div', { cls: 'zfa-tache-note-tete' });
     const ni = nl.createSpan({ cls: 'zfa-tache-ic' });
     obsidian.setIcon(ni, 'text');
     nl.createSpan({ text: tr('Note de travail') });
-    const bMode = nl.createEl('button', { cls: 'zfa-tache-note-mode' });
     const na = nb.createEl('textarea', { cls: 'zfa-tache-note-zone' });
-    na.rows = 6;
+    na.rows = 5;
     na.placeholder = tr('Ce que vous voulez garder sous la main pour cette tâche. Markdown : **gras**, listes, [[liens]]…');
     na.value = this.v.note || '';
-    na.oninput = () => { this.v.note = na.value; };
     const nap = nb.createEl('div', { cls: 'zfa-tache-note-apercu markdown-rendered' });
-    const appliquerMode = () => {
-      nb.toggleClass('est-apercu', !!this._notePreview);
-      bMode.setText(this._notePreview ? tr('Éditer') : tr('Aperçu'));
-      if (this._notePreview) this._rendreMarkdown(nap, this.v.note);
+    this._rendreMarkdown(nap, this.v.note);
+    clearTimeout(this._noteDeb);
+    na.oninput = () => {
+      this.v.note = na.value;
+      clearTimeout(this._noteDeb);
+      this._noteDeb = setTimeout(() => this._rendreMarkdown(nap, this.v.note), 250);
     };
-    bMode.onclick = (e) => {
-      e.preventDefault();
-      this._notePreview = !this._notePreview;
-      appliquerMode();
-      if (!this._notePreview) na.focus();
-    };
-    // Double-clic sur l'aperçu = repasser en édition (réflexe d'Obsidian).
-    nap.addEventListener('dblclick', () => {
-      if (!this._notePreview) return;
-      this._notePreview = false;
-      appliquerMode();
-      na.focus();
-    });
-    appliquerMode();
 
     // Le reste des champs génériques, sur deux colonnes.
     const g = c.createDiv({ cls: 'zfa-tache-grille' });
