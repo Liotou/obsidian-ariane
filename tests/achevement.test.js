@@ -27,3 +27,26 @@ test('une tâche abandonnée n est pas une tâche achevée', () => {
 test('une note qui n est pas une tâche est laissée tranquille', () => {
   assert.equal(a({ type: 'conceptuelle', statut: 'terminée' }), null);
 });
+
+/* --------------------- sansEcheanceAEcrire -------------------------- */
+
+const se = (ech, actuel) => Ariane.sansEcheanceAEcrire(ech, actuel);
+
+test('sans échéance et propriété absente : écrire true', () => {
+  assert.equal(se('', undefined), true);
+  assert.equal(se(null, undefined), true);
+});
+
+test('avec échéance et propriété absente : écrire false', () => {
+  assert.equal(se('2026-09-30', undefined), false);
+});
+
+test('déjà en phase : ne rien réécrire', () => {
+  assert.equal(se('', true), null);
+  assert.equal(se('2026-09-30', false), null);
+});
+
+test('valeur divergente : corriger', () => {
+  assert.equal(se('2026-09-30', true), false);
+  assert.equal(se('  ', false), true); // espaces = pas d'échéance
+});

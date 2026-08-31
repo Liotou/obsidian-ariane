@@ -810,6 +810,7 @@ const TEXTES = {
     "Source Zotero": "Zotero source",
     "Début": "Start",
     "Échéance": "Due",
+    "Sans échéance": "No due date",
     "Priorité": "Priority",
     "(aucune)": "(none)",
     "haute": "high",
@@ -875,11 +876,6 @@ const TEXTES = {
     "Tâche": "Task",
     "Aucune tâche. Créez une tâche pour la voir ici.": "No task. Create a task to see it here.",
     "sans date": "no date",
-    "Sans date": "No date",
-    "Ajouter la colonne « Sans date »": "Add the “No date” column",
-    "Retirer la colonne": "Remove the column",
-    "Oui": "Yes",
-    "Non": "No",
     "cliquez pour dater": "click to set dates",
     "Dater la tâche": "Set task dates",
     "Enregistrer": "Save",
@@ -4076,6 +4072,20 @@ class Ariane extends obsidian.Plugin {
       });
     }));
 
+    // « Sans échéance » (case dérivée) suit l'échéance : vrai tant qu'il n'y en
+    // a pas. Écrite pour être sélectionnable comme n'importe quelle propriété
+    // dans les bases. On ne réécrit que si la valeur change vraiment.
+    this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _d, cacheNote) => {
+      if (!this.refDeChemin(fichier.path)) return;
+      const fm = (cacheNote && cacheNote.frontmatter) || {};
+      const kSE = this.cleT('sans-echeance');
+      const v = Ariane.sansEcheanceAEcrire(this._lireT(fm, 'echeance'), this._lireT(fm, 'sans-echeance'));
+      if (v === null) return;
+      const jour = new Date().toISOString().slice(0, 10);
+      this.marquerEcriture(fichier.path);
+      await this.app.fileManager.processFrontMatter(fichier, (x) => { x[kSE] = v; x.modifie = jour; });
+    }));
+
     // « terminee » (case) et « statut » restent en phase, dans les deux sens :
     // celui des deux qui vient de changer entraîne l'autre.
     this._etatTermine = this._etatTermine || new Map();
@@ -4132,6 +4142,9 @@ class Ariane extends obsidian.Plugin {
       this.antirebond('rattach:' + fichier.path, () => this.veillerRattachements(fichier, ref), 400);
     }));
     this.app.workspace.onLayoutReady(() => this.semerRattachOk());
+    this.app.workspace.onLayoutReady(() => {
+      setTimeout(() => this.semerSansEcheance(), 3000);
+    });
 
     // Apple Rappels : poussée automatique quand une tâche change, et relève
     // régulière tant qu'Obsidian est ouvert. Tout est inerte hors macOS ou si
@@ -4243,6 +4256,7 @@ class Ariane extends obsidian.Plugin {
       { cle: 'debut', defaut: 'Début', icone: 'calendar' },
       { cle: 'echeance', defaut: 'Échéance', icone: 'calendar-check' },
       { cle: 'heure', defaut: 'Heure', icone: 'clock' },
+      { cle: 'sans-echeance', defaut: 'Sans échéance', icone: 'calendar-off' },
       { cle: 'avancement', defaut: 'Avancement', icone: 'percent' },
       { cle: 'parent', defaut: 'Rattachée à', icone: 'git-branch' },
     ];
@@ -4253,7 +4267,7 @@ class Ariane extends obsidian.Plugin {
   // alias). On y ajoute les champs structurels propres aux tâches.
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
-            'debut', 'echeance', 'heure', 'avancement', 'parent',
+            'debut', 'echeance', 'heure', 'sans-echeance', 'avancement', 'parent',
             'bloque-par', 'termine-le',
             'source', 'livrable', 'fichier', 'liste', 'rappel-id'];
   }
@@ -4733,6 +4747,8 @@ class Ariane extends obsidian.Plugin {
     l.push(ligne(K('debut'), c.debut));
     l.push(ligne(K('echeance'), c.echeance));
     l.push(ligne(K('heure'), c.heure));
+    // Dérivé, tenu à jour par Ariane : vrai tant qu'il n'y a pas d'échéance.
+    l.push(K('sans-echeance') + ': ' + (c.echeance ? 'false' : 'true'));
     l.push(K('avancement') + ': ' + (Number(c.avancement) || 0));
     l.push(K('termine-le') + ':');
     l.push(K('jalon') + ': ' + (c.jalon ? 'true' : 'false'));
@@ -4834,6 +4850,15 @@ class Ariane extends obsidian.Plugin {
     const dejaPosee = String(fm['termine-le'] == null ? '' : fm['termine-le']).trim();
     if (fm.statut === 'terminée') return dejaPosee ? null : aujourdhui;
     return dejaPosee ? '' : null;
+  }
+
+  // « Sans échéance » est une vraie propriété (case) mais elle ne se saisit
+  // pas : elle vaut vrai tant que la tâche n'a pas d'échéance. Rendre null veut
+  // dire « ne rien réécrire » — sinon l'écoute de modification tournerait en
+  // boucle. `actuel` est la valeur déjà dans la note (true/false/undefined).
+  static sansEcheanceAEcrire(echeance, actuel) {
+    const attendu = !String(echeance == null ? '' : echeance).trim();
+    return actuel === attendu ? null : attendu;
   }
 
   // Contenu du bloc d'accès, sans ses marques. Une action n'en a pas besoin :
@@ -12305,6 +12330,26 @@ class Ariane extends obsidian.Plugin {
     }
   }
 
+  // Rattrape « Sans échéance » sur les tâches qui ne l'ont pas encore (coffres
+  // d'avant l'introduction de la propriété) ou dont la valeur a divergé. Après
+  // un premier passage, tout est en phase et la boucle n'écrit plus rien.
+  async semerSansEcheance() {
+    const kSE = this.cleT('sans-echeance');
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!this.refDeChemin(f.path)) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      const v = Ariane.sansEcheanceAEcrire(this._lireT(fm, 'echeance'), this._lireT(fm, 'sans-echeance'));
+      if (v === null) continue;
+      this.marquerEcriture(f.path);
+      try {
+        await this.app.fileManager.processFrontMatter(f, (x) => {
+          x[kSE] = v;
+          x.modifie = new Date().toISOString().slice(0, 10);
+        });
+      } catch (e) { /* note verrouillée : au prochain passage */ }
+    }
+  }
+
   async veillerRattachements(fichier, ref) {
     const actuel = this._rattachDe(ref);
     // Écriture du greffon (déjà validée) : on mémorise et on sort.
@@ -15874,7 +15919,6 @@ class MoteurFrise {
   }
 
   iconeColonne(id) {
-    if (id === '__sansdate') return 'calendar-off';
     if (String(id).startsWith('file.')) return 'info';
     if (String(id).startsWith('formula.')) return 'variable';
     const type = Ariane.typeProprieteBase(this.app.metadataTypeManager, id);
@@ -15995,7 +16039,6 @@ class MoteurFrise {
   // (glisser-déposer d'en-tête, comme dans un tableau Bases).
   async reordonnerColonnes(src, cible) {
     if (!this.ctx.reordonner || !this.ctx.ordreColonnes) return;
-    if (String(src).startsWith('__')) return; // colonne dérivée : hors ordre natif
     const ordre = this.ctx.ordreColonnes();
     if (!ordre.includes(src)) return;
     const sans = ordre.filter((x) => x !== src);
@@ -16013,8 +16056,6 @@ class MoteurFrise {
     e.preventDefault();
     e.stopPropagation();
     const cle = String(col.cle || '');
-    const synth = cle.startsWith('__');
-    const fichier = cle.startsWith('file.') || cle.startsWith('formula.');
     const type = this.typeColonne(cle);
     const paires = {
       number: ['1 → 9', '9 → 1'],
@@ -16026,14 +16067,11 @@ class MoteurFrise {
     const groupeActif = this.ctx.groupeActuel && this.ctx.groupeActuel() === cle;
 
     const menu = new obsidian.Menu();
-    if (synth) {
-      menu.addItem((i) => i.setTitle(tr('Retirer la colonne')).setIcon('eye-off')
-        .onClick(async () => { await this.ctx.ecrire('colSansDate', false); this.dessiner(); }));
-    } else if (!fichier && this.ctx.masquerColonne) {
+    if (this.ctx.masquerColonne) {
       menu.addItem((i) => i.setTitle(tr('Masquer la colonne')).setIcon('eye-off')
         .onClick(async () => { await this.ctx.masquerColonne(cle); this.dessiner(); }));
     }
-    if (!synth && this.ctx.poserGroupe) {
+    if (this.ctx.poserGroupe) {
       menu.addItem((i) => i
         .setTitle(groupeActif ? tr('Ne plus regrouper par cette propriété')
                               : tr('Regrouper par cette propriété'))
@@ -16042,10 +16080,6 @@ class MoteurFrise {
           this.ctx.poserGroupe(groupeActif ? null : cle);
           this.dessiner();
         }));
-    }
-    if (!synth && !this.ctx.lire('colSansDate')) {
-      menu.addItem((i) => i.setTitle(tr('Ajouter la colonne « Sans date »')).setIcon('calendar-off')
-        .onClick(async () => { await this.ctx.ecrire('colSansDate', true); this.dessiner(); }));
     }
 
     menu.addSeparator();
@@ -16058,11 +16092,9 @@ class MoteurFrise {
         .onClick(async () => { await this.ctx.ecrire('triColonne', null); this.dessiner(); }));
     }
 
-    if (!synth) {
-      menu.addSeparator();
-      menu.addItem((i) => i.setTitle(tr('Modifier la propriété…')).setIcon('pencil')
-        .onClick(() => this._popoverColonne(cle, col, e)));
-    }
+    menu.addSeparator();
+    menu.addItem((i) => i.setTitle(tr('Modifier la propriété…')).setIcon('pencil')
+      .onClick(() => this._popoverColonne(cle, col, e)));
     menu.showAtMouseEvent(e);
   }
 
@@ -17526,32 +17558,6 @@ function fabriquerVueFriseBase(greffon) {
         });
       }
 
-      // Colonne dérivée « Sans date » (Oui/Non) : jamais écrite, calculée depuis
-      // les dates de la tâche. Optionnelle, posée par le menu d'en-tête ; elle
-      // n'entre pas dans getOrder (clé sentinelle « __sansdate »).
-      let colSD = false;
-      try { colSD = !!this.config.get('colSansDate'); } catch (e) { colSD = false; }
-      if (colSD) {
-        let sd = null;
-        const jeu = () => {
-          if (!sd) {
-            sd = new Set();
-            for (const t of this.greffon.tachesPourGantt()) {
-              if (!Ariane.jourValide(t.debut) && !Ariane.jourValide(t.echeance)) sd.add(t.ref);
-            }
-          }
-          return sd;
-        };
-        out.push({
-          cle: '__sansdate',
-          nom: tr('Sans date'),
-          synth: true,
-          chemin: () => '',
-          valeurBase: () => null,
-          valeur: (ref) => (jeu().has(ref) ? tr('Oui') : tr('Non')),
-          valeurBrute: (ref) => (jeu().has(ref) ? '1' : '0'),
-        });
-      }
       return out;
     }
 
