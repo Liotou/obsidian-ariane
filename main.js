@@ -8219,6 +8219,9 @@ class Ariane extends obsidian.Plugin {
 
   //#endregion Ariane · panier d'annotations & dépôt paragraphe
 
+  //#region Ariane · réglages & profils
+  // ── réglages & profils ───────────────────────────────────────────────────
+
   async loadSettings() {
     const charge = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, charge || {});
@@ -8333,6 +8336,12 @@ class Ariane extends obsidian.Plugin {
     await this.saveSettings();
     return { poses: n, version: j && j.ariane };
   }
+
+
+  //#endregion Ariane · réglages & profils
+
+  //#region Ariane · familles de notes & routage de dossier
+  // ── familles de notes & routage de dossier ───────────────────────────────
 
   /* ------------------------ Familles de notes --------------------------- */
 
@@ -8506,6 +8515,12 @@ class Ariane extends obsidian.Plugin {
     return this.settings.famillesNotes.length;
   }
 
+
+  //#endregion Ariane · familles de notes & routage de dossier
+
+  //#region Ariane · dossiers & garde-fous d'écriture
+  // ── dossiers & garde-fous d'écriture ─────────────────────────────────────
+
   get dossierA() {
     return this.settings.dossierAnnotations;
   }
@@ -8584,6 +8599,12 @@ class Ariane extends obsidian.Plugin {
     return map;
   }
 
+
+  //#endregion Ariane · dossiers & garde-fous d'écriture
+
+  //#region Ariane · index Zotero
+  // ── index Zotero ─────────────────────────────────────────────────────────
+
   /* ------------------------------ Index Zotero ------------------------------ */
 
   // Construit une entrée d'index Zotero à partir du frontmatter d'un fichier.
@@ -8629,6 +8650,12 @@ class Ariane extends obsidian.Plugin {
     const fm = cache ? cache.frontmatter : null;
     return !!((fm && fm.citationKey) || file.basename.startsWith('@'));
   }
+
+
+  //#endregion Ariane · index Zotero
+
+  //#region Ariane · atomisation (orchestration)
+  // ── atomisation (orchestration) ──────────────────────────────────────────
 
   /* --------------------------- Atomisation source --------------------------- */
 
@@ -8751,6 +8778,12 @@ class Ariane extends obsidian.Plugin {
       );
     }
   }
+
+
+  //#endregion Ariane · atomisation (orchestration)
+
+  //#region Ariane · références en attente
+  // ── références en attente ────────────────────────────────────────────────
 
   // Nom canonique par clé de libellé. Deux écritures qui ne diffèrent que par
   // une conjonction, un accent, un trait d'union ou une virgule désignent la
@@ -9590,6 +9623,12 @@ class Ariane extends obsidian.Plugin {
     await feuille.setViewState({ type: TYPE_VUE_INCOHERENCES, active: true });
     this.app.workspace.revealLeaf(feuille);
   }
+
+
+  //#endregion Ariane · références en attente
+
+  //#region Ariane · bibliographie — index & génération
+  // ── bibliographie — index & génération ───────────────────────────────────
 
   cheminBibliographies() {
     const rel = this.app.vault.configDir + '/plugins/' + this.manifest.id + '/bibliographies.json';
@@ -10473,6 +10512,12 @@ class Ariane extends obsidian.Plugin {
       + ', ' + tr('sur ') + i + '. ' + reseau + ' ' + tr('appel(s) réseau') + '.', 12000);
   }
 
+
+  //#endregion Ariane · bibliographie — index & génération
+
+  //#region Ariane · événements vault & métadonnées
+  // ── événements vault & métadonnées ───────────────────────────────────────
+
   /* -------------------------------- Événements ------------------------------- */
 
   surModification(file) {
@@ -10560,13 +10605,11 @@ class Ariane extends obsidian.Plugin {
     }
   }
 
-  /* ============================== Tâches =============================== */
 
-  /* ----------------------------- Frise Gantt ----------------------------- */
+  //#endregion Ariane · événements vault & métadonnées
 
-  /* --------------------- Cohérence des tâches -------------------------- */
-
-  /* ---------------------- Vue « Articulation » ------------------------ */
+  //#region Ariane · tâches
+  // ── tâches ───────────────────────────────────────────────────────────────
 
   // Les tâches du coffre, dans la forme qu'attend disposerGantt.
   tachesPourGantt() {
@@ -11031,6 +11074,8 @@ class Ariane extends obsidian.Plugin {
     })));
     return chemin;
   }
+
+  //#endregion Ariane · tâches
 }
 
 //#endregion 11 · class Ariane
