@@ -15111,7 +15111,8 @@ class MoteurArticulation {
     // Cartes dont l'affichage des propriétés est INVERSÉ par rapport au mode
     // courant (rétracté montre compact ; détaillé montre les propriétés).
     this._cartesInversees = this._cartesInversees || new Set();
-    this._repliesNoeuds = new Set(); // tâches dont on masque la descendance
+    this._plan = { cartes: [] }; // plan de travail (rempli par dessinerVraiment)
+    this._repliesNoeuds = new Set(); // (résidu, retiré en même temps que l'arbre)
     racine.addClass('zfa-artic');
     racine.tabIndex = -1;
     racine.addEventListener('keydown', (e) => this.touche(e));
@@ -16162,13 +16163,27 @@ function fabriquerVueArticulationBase(greffon) {
         ecrire: async (cle, v) => { this.config.set(cle, v); },
         poserFamille: async (ref, id) => { await this.greffon.majTache(ref, { famille: id }); },
         poserTitre: async (ref, titre) => { await this.greffon.renommerTitreTache(ref, titre); },
+        // Le plan de travail (quelles cartes, où, replié) vit dans la config de
+        // CETTE vue, en chaîne JSON. Les entêtes des notes n'en portent rien.
+        lirePlan: () => {
+          let p = null;
+          try { p = JSON.parse(this.config.get('arianeArtPlan') || 'null'); } catch (e) { p = null; }
+          if (!p || typeof p !== 'object') p = {};
+          if (!Array.isArray(p.cartes)) p.cartes = [];
+          return p;
+        },
+        ecrirePlan: (plan) => {
+          this.config.set('arianeArtPlan', JSON.stringify(plan || { cartes: [] }));
+        },
+        migrerCanvasXY: (refsFiltre) => this.migrerCanvasXY(refsFiltre),
         poserPosition: async (ref, x, y) => {
-          const f = this.greffon.app.vault.getMarkdownFiles().find((z) => z.basename === ref);
-          if (!f) return;
-          await this.greffon.app.fileManager.processFrontMatter(f, (fm) => {
-            if (x == null) { delete fm['canvas-x']; delete fm['canvas-y']; }
-            else { fm['canvas-x'] = x; fm['canvas-y'] = y; }
-          });
+          const plan = this.moteur ? this.moteur._plan : null;
+          if (!plan) return;
+          const i = plan.cartes.findIndex((c) => c.ref === ref);
+          if (x == null) { if (i >= 0) plan.cartes.splice(i, 1); }
+          else if (i >= 0) { plan.cartes[i].x = Math.round(x); plan.cartes[i].y = Math.round(y); }
+          else { plan.cartes.push({ ref, x: Math.round(x), y: Math.round(y), replie: false }); }
+          this.config.set('arianeArtPlan', JSON.stringify(plan));
         },
         poserParent: async (ref, parentRef) => {
           await this.greffon.majTache(ref, { parent: parentRef ? '[[' + parentRef + ']]' : '' });
@@ -16177,6 +16192,34 @@ function fabriquerVueArticulationBase(greffon) {
     }
 
     onunload() { if (this.moteur) this.moteur.detruire(); }
+
+    // Reprise unique des positions canvas-x / canvas-y (jeu filtré courant) vers
+    // le plan de la vue, puis nettoyage des entêtes concernés.
+    async migrerCanvasXY(refsFiltre) {
+      const plan = this.moteur && this.moteur._plan;
+      if (!plan || plan._migre) return;
+      const dejaLa = new Set(plan.cartes.map((c) => c.ref));
+      let reprises = 0;
+      for (const ref of (refsFiltre || [])) {
+        if (dejaLa.has(ref)) continue;
+        const f = this.greffon.app.vault.getMarkdownFiles().find((z) => z.basename === ref);
+        if (!f) continue;
+        const fm = (this.greffon.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+        const x = Number(fm['canvas-x']);
+        const y = Number(fm['canvas-y']);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        plan.cartes.push({ ref, x, y, replie: false });
+        reprises++;
+        this.greffon.marquerEcriture(f.path);
+        await this.greffon.app.fileManager.processFrontMatter(f, (m) => {
+          delete m['canvas-x']; delete m['canvas-y'];
+        });
+      }
+      plan._migre = true;
+      this.config.set('arianeArtPlan', JSON.stringify(plan));
+      if (reprises) console.log('[Ariane] articulation : ' + reprises + ' position(s) canvas reprises dans la vue');
+    }
+
     async onDataUpdated() {
       if (this.greffon.settings.famillesTaches && this.greffon.settings.famillesTaches.length) {
         try { await this.greffon.rattraperProprietesFamilles(); } catch (e) { /* sans gravité */ }
