@@ -15187,6 +15187,8 @@ class MoteurArticulation {
         && !e.target.closest('.zfa-artic-arete-groupe')));
     svg.addEventListener('pointerdown', (e) => {
       if (!surFond(e)) return;
+      // Prendre le focus clavier pour que la barre d'espace (pan) réponde.
+      if (this.racine.focus) this.racine.focus({ preventScroll: true });
       // Clic milieu, ou Espace + clic gauche : pan. Sinon clic gauche : lasso.
       if (e.button === 1 || (e.button === 0 && this._espace)) { this.panDepart(e); return; }
       if (e.button !== 0) return;
