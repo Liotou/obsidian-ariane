@@ -34,6 +34,38 @@
  *
  * ATTENTION : agit automatiquement, peut supprimer des notes et retirer
  * des liens. Sauvegardez votre coffre.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * CARTE DU FICHIER
+ * ─────────────────────────────────────────────────────────────────────────
+ * Un seul fichier, AUCUN build : Obsidian charge ce main.js tel quel.
+ * Copie vers le coffre : cp main.js styles.css manifest.json <dossier-plugin>/
+ * Chaque section est délimitée par  //#region N · Titre … //#endregion.
+ * class Ariane (11) porte en plus des sous-régions  //#region Ariane · …
+ *
+ *    1 · Constantes & i18n
+ *    2 · Utilitaires génériques
+ *    3 · Références Zotero — parsing & appariement
+ *    4 · Similarité locale (TF-IDF & vecteurs)
+ *    5 · Notes atomiques
+ *    6 · Bibliographie
+ *    7 · Export Pandoc / Word
+ *    8 · Schémas mxgraph / draw.io
+ *    9 · Doublons d'auteurs
+ *   10 · Modèles de bases & marqueurs de tâche
+ *   11 · class Ariane   (cycle de vie · commandes/événements dans onload ·
+ *        static par domaine · méthodes d'instance par domaine)
+ *   12 · ArianeSettingTab   (une sous-section par onglet)
+ *   13 · Modales de tâche
+ *   14 · Vue Frise
+ *   15 · Vue Articulation
+ *   16 · Vues latérales (ItemView)
+ *   17 · Modales secondaires
+ *   18 · Exports
+ *
+ * Conception : docs/superpowers/specs/2026-08-31-mise-au-propre-main-design.md
+ * Suspects relevés : docs/conception/2026-08-31-mise-au-propre-main-suspects.md
+ * ─────────────────────────────────────────────────────────────────────────
  */
 
 const obsidian = require('obsidian');
@@ -3265,10 +3297,6 @@ const ZFA_TACHE_DEBUT = '%% ariane:tache %%';
 const ZFA_TACHE_FIN = '%% /ariane:tache %%';
 
 //#endregion 10 · Modèles de bases & marqueurs de tâche
-
-/* =========================================================================
- * Plugin
- * ========================================================================= */
 
 //#region 11 · class Ariane
 // ═══════════════════════════════════════════════════════════════════════════
@@ -10604,7 +10632,6 @@ class Ariane extends obsidian.Plugin {
       this.antirebond('delsrc:' + file.path, () => this.surSuppressionSource(file.basename));
     }
   }
-
 
   //#endregion Ariane · événements vault & métadonnées
 
