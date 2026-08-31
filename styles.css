@@ -964,17 +964,12 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-table .bases-tr:hover {
   background-color: var(--bases-table-row-background-hover, var(--background-modifier-hover));
 }
-.zfa-gantt-cellule-arbre { gap: 0; }
-/* Le chevron et sa cale tiennent dans la zone de marge de la cellule, sans
-   s'y ajouter : une référence de premier niveau démarre donc au même retrait
-   qu'une cellule ordinaire (et que le tableau des bases), pas 13 px plus loin. */
+/* Chevron de repli des bandeaux de groupe (le seul repli restant dans la
+   colonne de gauche ; les tâches, elles, sont toutes traitées à l'identique). */
 .zfa-gantt-chevron {
   flex: 0 0 auto; width: var(--bases-table-cell-edge-padding, 8px);
   color: var(--text-faint); font-size: 9px; cursor: pointer;
 }
-.zfa-gantt-cale { flex: 0 0 auto; width: var(--bases-table-cell-edge-padding, 8px); }
-.zfa-gantt-cellule-arbre .zfa-gantt-liens,
-.zfa-gantt-cellule-arbre .zfa-gantt-valeur { padding-left: 0; }
 
 /* Séparateur liste / frise. Enfant de .zfa-gantt-enveloppe (positionnée),
    calé par le script sur le bord droit du panneau, hauteur = contenu (il
@@ -1172,15 +1167,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   pointer-events: none;
 }
 
-.zfa-gantt-groupe-bande {
-  fill: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
-  pointer-events: none;
-}
-.zfa-gantt-groupe-trait {
-  stroke: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
-  stroke-width: 1;
-}
-
 /* Bandes d'en-tête de groupe : surcouche pleine largeur (panneau gauche +
    frise), au-dessus du tableau (z 5) et du SVG. La piste défile avec la frise
    via transform ; le cadre est calé sous l'en-tête fixe et masque le débord. */
@@ -1244,7 +1230,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   padding: 0 var(--bases-table-cell-edge-padding, 4px);
 }
-.zfa-gantt-cellule-arbre { gap: 0; }
 
 /* =====================================================================
    Vue « Articulation » — le graphe des tâches

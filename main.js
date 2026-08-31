@@ -4577,7 +4577,7 @@ class Ariane extends obsidian.Plugin {
   // barre devant écrire celles de la note et non celles de sa descendance.
   // Un parent inconnu ou un cycle ne fait pas disparaître la tâche : elle
   // remonte à la racine, ce qui la rend visible plutôt que perdue.
-  static disposerGantt(taches, tri, sens) {
+  static disposerGantt(taches, tri, sens, plat) {
     const liste = (taches || []).filter((x) => x && x.ref);
     const parRef = new Map(liste.map((x) => [x.ref, x]));
     const enfants = new Map();
@@ -4651,6 +4651,25 @@ class Ariane extends obsidian.Plugin {
       }
       return parDate(a, b);
     };
+    // Mode « selon le tri actif » : la frise n'impose plus le regroupement d'une
+    // fille sous sa mère. Chaque tâche est une ligne comme les autres, classée
+    // par le seul critère de tri. `niveau` reste 0 partout.
+    if (plat) {
+      return liste.slice().sort(trier).map((x) => {
+        const jalon = !!x.jalon;
+        const propre = {
+          debut: jalon ? '' : Ariane.jourValide(x.debut),
+          echeance: Ariane.jourValide(x.echeance),
+        };
+        return {
+          ref: x.ref, intitule: x.intitule || x.ref, niveau: 0,
+          statut: x.statut || 'à faire', avancement: Number(x.avancement) || 0,
+          famille: x.famille || '', priorite: x.priorite || '',
+          jalon, aDesEnfants: (enfants.get(x.ref) || []).length > 0, propre,
+          debut: propre.debut, echeance: propre.echeance,
+        };
+      });
+    }
     const lignes = [];
     const descendre = (x, niveau) => {
       const fils = (enfants.get(x.ref) || []).slice().sort(trier);
@@ -4691,9 +4710,9 @@ class Ariane extends obsidian.Plugin {
   // groupe redevient racine, comme pour un parent inconnu. Une tâche
   // multi-valeur est reprise dans chaque groupe, avec une cleLigne distincte
   // mais le même ref pour l'écriture.
-  static disposerFriseGroupee(taches, groupes, tri, sens, groupeDesc) {
+  static disposerFriseGroupee(taches, groupes, tri, sens, groupeDesc, plat) {
     if (!groupes) {
-      return Ariane.disposerGantt(taches, tri, sens)
+      return Ariane.disposerGantt(taches, tri, sens, plat)
         .map((l) => Object.assign(l, { kind: 'tache', cleLigne: l.ref }));
     }
     const SEP = ' ';
@@ -4715,7 +4734,7 @@ class Ariane extends obsidian.Plugin {
       const tachesG = (taches || []).filter((t) => grDe(t.ref).includes(g));
       if (!tachesG.length) continue;
       out.push({ kind: 'groupe', libelle: g, cleGroupe: 'groupe:' + g });
-      for (const l of Ariane.disposerGantt(tachesG, tri, sens)) {
+      for (const l of Ariane.disposerGantt(tachesG, tri, sens, plat)) {
         out.push(Object.assign(l, { kind: 'tache', cleLigne: g + SEP + l.ref }));
       }
     }
@@ -13533,7 +13552,11 @@ class MoteurFrise {
     // par groupe, puis tri des datées / non datées, puis placement en y/h.
     const groupes = this.ctx.groupes ? this.ctx.groupes() : null;
     const groupeDesc = this.ctx.sensGroupe ? this.ctx.sensGroupe() === -1 : false;
-    const brut = Ariane.disposerFriseGroupee(taches, groupes, mode, sensTri, groupeDesc);
+    // Colonne de gauche = tableau plat. La hiérarchie ne réordonne les lignes
+    // que par défaut (axe chronologique) ; dès qu'un autre tri est actif, les
+    // filles ne sont plus regroupées sous leur mère.
+    const plat = mode !== 'date';
+    const brut = Ariane.disposerFriseGroupee(taches, groupes, mode, sensTri, groupeDesc, plat);
     const { avecDates, sansDate } = Ariane.repartirSansDate(brut);
     // Retirer les bandes de groupe devenues vides, compter les datées restantes,
     // et résumer l'étalement dans le temps (min, max, une date par tâche) pour
@@ -13632,7 +13655,6 @@ class MoteurFrise {
     });
 
     this.dessinerFond(svg, cfg, lignes);
-    this.dessinerRegroupements(svg, cfg, lignes);
     // Les flèches d'abord : les barres et leurs pastilles de liaison passent
     // ainsi par-dessus, et rester cliquables malgré la cible large des flèches.
     this.dessinerFleches(svg, cfg, lignes);
@@ -14154,29 +14176,13 @@ class MoteurFrise {
         td.style.height = l.h + 'px';
         const cellule = td.createDiv({ cls: 'bases-table-cell' });
         if (c.type) cellule.dataset.propertyType = c.type;
-        if (!c.arbre) {
-          this.contenuCellule(cellule, c, l);
-          td.title = c.nom + ' : ' + String(c.valeur(l.ref) || '');
-          continue;
-        }
-        // La hiérarchie s'accroche à la première colonne : retrait et chevron.
-        // Le contenu reste celui de la propriété.
-        cellule.addClass('zfa-gantt-cellule-arbre');
-        cellule.style.paddingLeft = (l.niveau * 15) + 'px';
-        if (l.aDesEnfants) {
-          const chev = cellule.createSpan({ cls: 'zfa-gantt-chevron',
-            text: this.replies.has(l.ref) ? '▸' : '▾' });
-          chev.onclick = (e) => {
-            e.stopPropagation();
-            if (this.replies.has(l.ref)) this.replies.delete(l.ref);
-            else this.replies.add(l.ref);
-            this.dessiner();
-          };
-        } else {
-          cellule.createSpan({ cls: 'zfa-gantt-cale' });
-        }
         this.contenuCellule(cellule, c, l);
-        td.title = l.ref + ' · ' + l.intitule;
+        // Colonne de gauche = tableau plat : toutes les lignes traitées pareil,
+        // aucun retrait ni chevron de repli. La hiérarchie et les blocages se
+        // lisent à droite (sur le graphe) ou via les tris et filtres.
+        td.title = c.arbre
+          ? l.ref + ' · ' + l.intitule
+          : c.nom + ' : ' + String(c.valeur(l.ref) || '');
       }
     });
 
@@ -14493,32 +14499,6 @@ class MoteurFrise {
   }
 
   /* ------------------------------ Les barres ----------------------------- */
-
-  // Une méta-tâche se lit mal si rien ne dit où commence et où finit ce qu'elle
-  // contient. Une bande teintée couvre ses lignes, et les bandes s'assombrissent
-  // en s'imbriquant, ce qui donne la profondeur sans avoir à compter les
-  // indentations.
-  dessinerRegroupements(svg, cfg, lignes) {
-    const g = svgEl('g', {});
-    lignes.forEach((l, rang) => {
-      if (l.kind === 'groupe' || !l.aDesEnfants) return;
-      let dernier = rang;
-      for (let k = rang + 1; k < lignes.length
-        && lignes[k].kind === 'tache' && lignes[k].niveau > l.niveau; k++) dernier = k;
-      if (dernier === rang) return;
-      const y = l.y;
-      const h = (lignes[dernier].y + lignes[dernier].h) - l.y;
-      const bande = svgEl('rect', { x: 0, y, width: cfg.largeur, height: h,
-        class: 'zfa-gantt-groupe-bande' });
-      bande.style.opacity = String(Math.min(0.5, 0.16 + l.niveau * 0.08));
-      g.appendChild(bande);
-      g.appendChild(svgEl('line', { x1: 0, y1: y, x2: cfg.largeur, y2: y,
-        class: 'zfa-gantt-groupe-trait' }));
-      g.appendChild(svgEl('line', { x1: 0, y1: y + h, x2: cfg.largeur, y2: y + h,
-        class: 'zfa-gantt-groupe-trait' }));
-    });
-    svg.appendChild(g);
-  }
 
   dessinerBarres(svg, cfg, lignes) {
     const g = svgEl('g', {});

@@ -101,6 +101,18 @@ test('une liste vide rend une liste vide', () => {
   assert.deepEqual(Ariane.disposerGantt(null), []);
 });
 
+test('mode plat : plus de regroupement sous le parent, tout au niveau 0', () => {
+  const l = Ariane.disposerGantt([
+    t('T26-002', { parent: '[[T26-001]]', priorite: 'basse', debut: '2026-09-10' }),
+    t('T26-001', { priorite: 'haute', debut: '2026-09-20' })],
+    'priorite', 1, true);
+  assert.deepEqual(l.map((x) => x.ref), ['T26-001', 'T26-002']); // tri prioritaire, pas l'arbre
+  assert.deepEqual(l.map((x) => x.niveau), [0, 0]);
+  assert.equal(l[0].aDesEnfants, true);   // l'info reste, pour le style de la barre
+  // une méta-tâche montre SES dates, pas l'enveloppe de ses filles
+  assert.equal(l[0].debut, '2026-09-20');
+});
+
 test('la famille (et la priorité) de la tâche survit à la disposition', () => {
   const l = Ariane.disposerGantt([
     t('T26-001', { famille: 'lecture', priorite: 'haute' }),
