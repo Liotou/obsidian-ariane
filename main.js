@@ -4662,6 +4662,7 @@ class Ariane extends obsidian.Plugin {
       const ligne = {
         ref: x.ref, intitule: x.intitule || x.ref, niveau,
         statut: x.statut || 'à faire', avancement: Number(x.avancement) || 0,
+        famille: x.famille || '', priorite: x.priorite || '',
         jalon, aDesEnfants: fils.length > 0, propre,
         debut: propre.debut, echeance: propre.echeance,
       };
@@ -11217,7 +11218,8 @@ class Ariane extends obsidian.Plugin {
   }
 
   // Ajoute la classe zfa-note-tache au conteneur d'une note de tâche ouverte,
-  // pour l'habillage CSS optionnel des propriétés + contenu.
+  // pour l'habillage CSS optionnel des propriétés + contenu. Vaut aussi pour
+  // les fenêtres de survol (« page preview »), qui ne sont pas des vues.
   habillerNotesTache() {
     const masquer = this.settings.masquerPrefixeAffichage !== false;
     const skin = this.settings.styleNoteTache === true;
@@ -11231,44 +11233,77 @@ class Ariane extends obsidian.Plugin {
         if (v) parCle.set(String(v).toLowerCase(), con);
       }
     }
+    const clesFamille = new Set();
+    for (const f of (this.settings.famillesTaches || [])) {
+      for (const p of (f && f.proprietes) || []) {
+        if (p && p.cle) clesFamille.add(String(p.cle).toLowerCase());
+      }
+    }
+    const ctx = { masquer, skin, parCle, clesFamille };
+
     for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
       const vue = leaf && leaf.view;
       if (!vue || !vue.contentEl) continue;
       const estTache = !!(vue.file && this.refDeChemin(vue.file.path));
-      vue.contentEl.toggleClass('zfa-note-tache', estTache);
-      vue.contentEl.toggleClass('zfa-note-tache-skin', estTache && skin);
-      if (!estTache) continue;
-      for (const row of vue.contentEl.querySelectorAll('.metadata-property')) {
-        let cle = String(row.dataset.propertyKey || '').toLowerCase();
-        if (!parCle.has(cle)) {
-          const kel = row.querySelector('.metadata-property-key-input, .metadata-property-key');
-          const txt = kel ? String(kel.value || kel.textContent || '').trim().toLowerCase() : '';
-          if (txt && parCle.has(txt)) cle = txt;
-        }
-        const con = parCle.get(cle);
-        if (!con) { if (row.dataset.zfaConcept) delete row.dataset.zfaConcept; continue; }
-        row.dataset.zfaConcept = con;
-        const cleEl = row.querySelector('.metadata-property-key');
-        if (cleEl) {
-          if (masquer) cleEl.dataset.zfaLabel = this.libelleColonne(this.cleT(con));
-          else if (cleEl.dataset.zfaLabel) delete cleEl.dataset.zfaLabel;
-        }
-        const icEl = row.querySelector('.metadata-property-icon');
-        if (icEl && icEl.dataset.zfaIc !== con) {
-          try { obsidian.setIcon(icEl, Ariane.iconeConcept(con)); } catch (e) { /* rien */ }
-          icEl.dataset.zfaIc = con;
-        }
+      this._habillerConteneur(vue.contentEl, estTache, ctx);
+    }
+    // Fenêtres de survol : pas de fichier accessible, on reconnaît la tâche à
+    // son entête (type: tache, ou au moins deux propriétés de tâche).
+    for (const pop of document.querySelectorAll('.hover-popover, .popover')) {
+      const cont = pop.querySelector(
+        '.markdown-reading-view, .markdown-preview-view, .markdown-source-view') || pop;
+      this._habillerConteneur(cont, this._conteneurEstTache(cont, parCle), ctx);
+    }
+  }
+
+  // Le conteneur ressemble-t-il à une note de tâche ? (utilisé quand on n'a
+  // pas le chemin du fichier, p. ex. une fenêtre de survol.)
+  _conteneurEstTache(el, parCle) {
+    const rows = el.querySelectorAll('.metadata-property');
+    if (!rows.length) return false;
+    let n = 0;
+    for (const row of rows) {
+      const k = String(row.dataset.propertyKey || '').toLowerCase();
+      if (k === 'type') {
+        const v = row.querySelector('.metadata-property-value');
+        const t = v ? String(v.textContent || '').trim().toLowerCase() : '';
+        if (t === 'tache' || t === 'tâche') return true;
       }
-      if (skin) {
-        const clesFamille = new Set();
-        for (const f of (this.settings.famillesTaches || [])) {
-          for (const p of (f && f.proprietes) || []) {
-            if (p && p.cle) clesFamille.add(String(p.cle).toLowerCase());
-          }
-        }
-        for (const cont of vue.contentEl.querySelectorAll('.metadata-properties')) {
-          try { this._grouperProprietes(cont, clesFamille); } catch (e) { /* rien */ }
-        }
+      if (parCle.has(k)) { n += 1; if (n >= 2) return true; }
+    }
+    return false;
+  }
+
+  // Applique (ou retire) l'habillage tâche sur un conteneur : classes, tags de
+  // concept sur les lignes de propriété, icônes, regroupement en zones.
+  _habillerConteneur(contEl, estTache, ctx) {
+    contEl.toggleClass('zfa-note-tache', estTache);
+    contEl.toggleClass('zfa-note-tache-skin', estTache && ctx.skin);
+    if (!estTache) return;
+    for (const row of contEl.querySelectorAll('.metadata-property')) {
+      let cle = String(row.dataset.propertyKey || '').toLowerCase();
+      if (!ctx.parCle.has(cle)) {
+        const kel = row.querySelector('.metadata-property-key-input, .metadata-property-key');
+        const txt = kel ? String(kel.value || kel.textContent || '').trim().toLowerCase() : '';
+        if (txt && ctx.parCle.has(txt)) cle = txt;
+      }
+      const con = ctx.parCle.get(cle);
+      if (!con) { if (row.dataset.zfaConcept) delete row.dataset.zfaConcept; continue; }
+      row.dataset.zfaConcept = con;
+      const cleEl = row.querySelector('.metadata-property-key');
+      if (cleEl) {
+        if (ctx.masquer) cleEl.dataset.zfaLabel = this.libelleColonne(this.cleT(con));
+        else if (cleEl.dataset.zfaLabel) delete cleEl.dataset.zfaLabel;
+      }
+      const icEl = row.querySelector('.metadata-property-icon');
+      if (icEl && icEl.dataset.zfaIc !== con) {
+        try { obsidian.setIcon(icEl, Ariane.iconeConcept(con)); } catch (e) { /* rien */ }
+        icEl.dataset.zfaIc = con;
+      }
+    }
+    if (ctx.skin) {
+      for (const cont of contEl.querySelectorAll('.metadata-properties')) {
+        try { this._grouperProprietes(cont, ctx.clesFamille); } catch (e) { /* rien */ }
       }
     }
   }

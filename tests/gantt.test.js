@@ -100,3 +100,14 @@ test('une liste vide rend une liste vide', () => {
   assert.deepEqual(Ariane.disposerGantt([]), []);
   assert.deepEqual(Ariane.disposerGantt(null), []);
 });
+
+test('la famille (et la priorité) de la tâche survit à la disposition', () => {
+  const l = Ariane.disposerGantt([
+    t('T26-001', { famille: 'lecture', priorite: 'haute' }),
+    t('T26-002', { parent: '[[T26-001]]', famille: 'production' })]);
+  assert.equal(l[0].famille, 'lecture');
+  assert.equal(l[0].priorite, 'haute');
+  assert.equal(l[1].famille, 'production');
+  // défaut sûr quand la note n'en porte pas
+  assert.equal(Ariane.disposerGantt([t('T26-009')])[0].famille, '');
+});
