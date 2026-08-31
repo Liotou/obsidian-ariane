@@ -13094,6 +13094,49 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           .setValue(Number.isFinite(s.articulationSeuilAimant) ? s.articulationSeuilAimant : 7)
           .onChange(async (v) => { s.articulationSeuilAimant = v; await maj(); }));
     }
+
+    this._section(c, tr('Assistant IA (tâches)'));
+    this._aide(c, tr("Structurer un brouillon de tâches, découper une tâche, normaliser les intitulés, vérifier les familles, ajouter une tâche en langage naturel, résoudre les sources de lecture — via les commandes « Tâches : … (IA) » et les menus contextuels. Chaque proposition passe par une revue avant d'être appliquée ; rien n'est écrit sans validation."));
+    this._aide(c, tr("Pour que l'IA classe bien vos brouillons, remplissez la « Description » de chaque famille dans l'onglet « Dossiers & familles »."));
+    new obsidian.Setting(c)
+      .setName(tr('Fournisseur'))
+      .setDesc(tr('Partagé avec le découpage des bibliographies (onglet Suggestions).'))
+      .addDropdown((d) => d
+        .addOption('ollama', 'Ollama')
+        .addOption('lmstudio', 'LM Studio')
+        .addOption('mistral', 'Mistral')
+        .addOption('claude', tr('Claude en ligne de commande'))
+        .setValue(s.refsFournisseur || 'ollama')
+        .onChange(async (v) => { s.refsFournisseur = v; await maj(); this.display(); }));
+    if (s.refsFournisseur !== 'claude') {
+      new obsidian.Setting(c)
+        .setName(tr('Modèle'))
+        .setDesc(tr('Un modèle un peu capable aide pour la structuration (arbres imbriqués).'))
+        .addText((t) => t.setValue(s.refsModele || 'llama3.2')
+          .onChange(async (v) => { s.refsModele = v.trim() || 'llama3.2'; await maj(); }));
+    }
+    if (s.refsFournisseur === 'mistral') {
+      new obsidian.Setting(c)
+        .setName(tr('Clé Mistral'))
+        .setDesc(tr('Conservée dans les réglages du greffon, sur votre machine.'))
+        .addText((t) => {
+          t.setValue(s.refsCleMistral || '')
+            .onChange(async (v) => { s.refsCleMistral = v.trim(); await maj(); });
+          t.inputEl.type = 'password';
+        });
+    }
+    if (s.refsFournisseur === 'claude') {
+      new obsidian.Setting(c)
+        .setName(tr('Commande'))
+        .setDesc(tr('Chemin du binaire, si « claude » ne suffit pas.'))
+        .addText((t) => t.setValue(s.refsCheminClaude || 'claude')
+          .onChange(async (v) => { s.refsCheminClaude = v.trim() || 'claude'; await maj(); }));
+    }
+    new obsidian.Setting(c)
+      .setName(tr('Rapprochement des titres'))
+      .setDesc(tr("Pour retrouver « la tâche du chapitre 3 » ou une source de lecture : sémantique (embeddings du moteur de suggestions) si le moteur n'est pas « lexical », sinon repli sur les mots en commun."))
+      .addButton((b) => b.setButtonText(tr('Ouvrir l\'onglet Suggestions'))
+        .onClick(() => { this._ongletActif = 4; this.display(); }));
   }
 
   // Éditeur des familles de tâches. Même esprit que _tableFamilles (familles
