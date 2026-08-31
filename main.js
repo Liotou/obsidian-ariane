@@ -5407,26 +5407,39 @@ class Ariane extends obsidian.Plugin {
     ].join('\n');
   }
 
-  // Noms de toutes les listes Apple Rappels, une par ligne (groupes inclus).
+  // Noms des listes Apple Rappels, une par ligne. Deux chemins (listes directes
+  // + listes par compte) : l'API ne donne pas les groupes, mais couvre le reste.
+  // On NE parcourt PAS les rappels (trop lent sur une grosse bibliothèque).
   static genererJXAListes() {
     return [
       'function run() {',
       '  var R = Application("Reminders");',
-      '  var L = []; try { L = R.lists(); } catch (e) {}',
-      '  var out = [];',
-      '  for (var i = 0; i < L.length; i++) { try { out.push(L[i].name()); } catch (e) {} }',
+      '  var vus = {}; var out = [];',
+      '  function add(n) { n = String(n || "").trim(); if (n && !vus[n]) { vus[n] = 1; out.push(n); } }',
+      '  try { var L = R.lists(); for (var i = 0; i < L.length; i++) { try { add(L[i].name()); } catch (e) {} } } catch (e) {}',
+      '  try { var A = R.accounts(); for (var j = 0; j < A.length; j++) {',
+      '    try { var AL = A[j].lists(); for (var k = 0; k < AL.length; k++) { try { add(AL[k].name()); } catch (e) {} } } catch (e) {}',
+      '  } } catch (e) {}',
+      '  out.sort();',
       '  return out.join("\\n");',
       '}',
     ].join('\n');
   }
 
-  // Lit l\'état de rappels existants : rend « ref \t completed \t dueISO ».
-  static genererJXAReleve(paires) {
-    const IN = JSON.stringify({ paires: Array.isArray(paires) ? paires : [] });
+  // Relève : (1) état des rappels liés « ref \t completed \t dueISO » ;
+  // (2) rappels NOUVEAUX dans les listes surveillées, absents de `paires` :
+  //     « NOUVEAU \t id \t nom \t completed \t dueISO \t nomListe ».
+  static genererJXAReleve(paires, listes) {
+    const IN = JSON.stringify({
+      paires: Array.isArray(paires) ? paires : [],
+      listes: [...new Set((Array.isArray(listes) ? listes : []).filter(Boolean))],
+    });
     return [
       'function run() {',
       '  var IN = ' + IN + ';',
       '  var R = Application("Reminders");',
+      '  function norm(x) { return String(x == null ? "" : x).trim().toLowerCase().replace(/\\s+/g, " "); }',
+      '  function net(x) { return String(x == null ? "" : x).replace(/[\\t\\r\\n]+/g, " "); }',
       '  function parId(id) { try { var r = R.reminders.byId(id); r.name(); return r; } catch (e) { return null; } }',
       '  function iso(d) {',
       '    if (!d) return "";',
@@ -5434,15 +5447,28 @@ class Ariane extends obsidian.Plugin {
       '    return d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate())',
       '      + "T" + z(d.getHours()) + ":" + z(d.getMinutes());',
       '  }',
+      '  function due(r) { var d = null; try { d = r.dueDate(); } catch (e) {} if (!d) { try { d = r.alldayDueDate(); } catch (e) {} } return d; }',
+      '  var connus = {};',
+      '  for (var i = 0; i < IN.paires.length; i++) connus[IN.paires[i].id] = 1;',
       '  var out = [];',
-      '  for (var i = 0; i < IN.paires.length; i++) {',
-      '    var p = IN.paires[i];',
-      '    var r = parId(p.id);',
+      '  for (var j = 0; j < IN.paires.length; j++) {',
+      '    var p = IN.paires[j]; var r = parId(p.id);',
       '    if (!r) { out.push(p.ref + "\\tMANQUANT\\t"); continue; }',
-      '    var d = null;',
-      '    try { d = r.dueDate(); } catch (e) {}',
-      '    if (!d) { try { d = r.alldayDueDate(); } catch (e) {} }',
-      '    out.push(p.ref + "\\t" + (r.completed() ? "1" : "0") + "\\t" + iso(d));',
+      '    out.push(p.ref + "\\t" + (r.completed() ? "1" : "0") + "\\t" + iso(due(r)));',
+      '  }',
+      '  var L; try { L = R.lists(); } catch (e) { L = []; }',
+      '  for (var k = 0; k < L.length; k++) {',
+      '    var ln; try { ln = L[k].name(); } catch (e) { continue; }',
+      '    var surv = false;',
+      '    for (var w = 0; w < IN.listes.length; w++) { if (norm(IN.listes[w]) === norm(ln)) { surv = true; break; } }',
+      '    if (!surv) continue;',
+      '    var rs; try { rs = L[k].reminders(); } catch (e) { continue; }',
+      '    for (var m = 0; m < rs.length; m++) {',
+      '      var rr = rs[m]; var rid; try { rid = rr.id(); } catch (e) { continue; }',
+      '      if (connus[rid]) continue;',
+      '      out.push("NOUVEAU\\t" + rid + "\\t" + net(rr.name()) + "\\t" + (rr.completed() ? "1" : "0")',
+      '        + "\\t" + iso(due(rr)) + "\\t" + net(ln));',
+      '    }',
       '  }',
       '  return out.join("\\n");',
       '}',
@@ -11448,6 +11474,26 @@ class Ariane extends obsidian.Plugin {
     return String((f && f.listeRappels) || this.settings.listeRappelsDefaut || '').trim();
   }
 
+  // Toutes les listes Apple Rappels surveillées (familles + défaut).
+  _listesSurveillees() {
+    const s = new Set();
+    for (const f of (Array.isArray(this.settings.famillesTaches) ? this.settings.famillesTaches : [])) {
+      if (f && f.id) { const l = this.listeRappelsDe(f.id); if (l) s.add(l); }
+    }
+    const d = String(this.settings.listeRappelsDefaut || '').trim();
+    if (d) s.add(d);
+    return [...s];
+  }
+
+  // Famille dont la liste Apple Rappels correspond à `nom` (sinon défaut).
+  _familleParListe(nom) {
+    const n = String(nom || '').trim().toLowerCase();
+    for (const f of (Array.isArray(this.settings.famillesTaches) ? this.settings.famillesTaches : [])) {
+      if (f && f.id && String(this.listeRappelsDe(f.id)).trim().toLowerCase() === n) return f.id;
+    }
+    return this.settings.familleTacheDefaut || 'action';
+  }
+
   _osascriptJXA(script, ms) {
     return new Promise((res) => {
       require('child_process').execFile('osascript', ['-l', 'JavaScript', '-e', script],
@@ -11456,14 +11502,12 @@ class Ariane extends obsidian.Plugin {
     });
   }
 
-  async listerListesRappels() {
-    if (!obsidian.Platform.isMacOS) { new obsidian.Notice(tr('macOS uniquement.')); return; }
+  // Charge (et met en cache) les noms de listes Apple Rappels connus de l'API.
+  async chargerListesRappels() {
+    if (!obsidian.Platform.isMacOS) { this._listesRappels = []; return []; }
     const s = await this._osascriptJXA(Ariane.genererJXAListes(), 20000);
-    if (s == null) { new obsidian.Notice(tr('Rappels n\'a pas répondu (autorisation ?).')); return; }
-    const noms = s.split('\n').map((x) => x.trim()).filter(Boolean);
-    new obsidian.Notice(noms.length
-      ? tr('Listes Apple Rappels :\n• ') + noms.join('\n• ')
-      : tr('Aucune liste trouvée.'), 12000);
+    this._listesRappels = (s == null ? [] : s.split('\n').map((x) => x.trim()).filter(Boolean));
+    return this._listesRappels;
   }
 
   // Instantané « dernier état synchronisé » d'une tâche, pour arbitrer les
@@ -11540,25 +11584,68 @@ class Ariane extends obsidian.Plugin {
   }
 
   // Relève : un rappel coché → tâche terminée ; échéance changée dans Rappels →
-  // répercutée — SAUF si la note a bougé de son côté (la note fait alors foi).
+  // répercutée (sauf si la note a bougé, elle fait foi) ; un rappel ajouté à la
+  // main dans une liste surveillée, sans référence connue → nouvelle tâche.
   async releverRappels(silencieux) {
     if (!obsidian.Platform.isMacOS || this.settings.rappelsActif === false) return 0;
+    const listes = this._listesSurveillees();
     const avecId = [];
+    const idsConnus = new Set();
     for (const t of this.tachesPourGantt()) {
       const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
       const rid = String(this._lireT(fm, 'rappel-id') || '').trim();
-      if (rid) avecId.push(Object.assign({}, t, { _rid: rid, _snap: String(fm['rappel-sync'] || '') }));
+      if (rid) {
+        idsConnus.add(rid);
+        avecId.push(Object.assign({}, t, { _rid: rid, _snap: String(fm['rappel-sync'] || '') }));
+      }
     }
-    if (!avecId.length) return 0;
+    if (!avecId.length && !listes.length) return 0;
     const avis = silencieux ? null : new obsidian.Notice(tr('Relève Apple Rappels…'), 0);
     const sortie = await this._osascriptJXA(
-      Ariane.genererJXAReleve(avecId.map((t) => ({ ref: t.ref, id: t._rid }))));
+      Ariane.genererJXAReleve(avecId.map((t) => ({ ref: t.ref, id: t._rid })), listes));
     if (avis) avis.hide();
     if (sortie == null) return 0;
     const parRef = new Map(avecId.map((t) => [t.ref, t]));
+    const refsTaches = new Set(this.tachesPourGantt().map((x) => x.ref));
     let n = 0;
     for (const l of sortie.split('\n')) {
       const parts = l.split('\t');
+      if (parts[0] === 'NOUVEAU') {
+        const id = parts[1];
+        const nom = String(parts[2] || '').trim();
+        const coche = parts[3] === '1';
+        const dueIso = parts[4] || '';
+        const listeNom = parts[5] || '';
+        if (!id || idsConnus.has(id)) continue;
+        // Nom « [T26-001] - … » d'une tâche existante : on relie au lieu de recréer.
+        const mref = nom.match(/^\[(T\d+-\d+)\]/);
+        if (mref && refsTaches.has(mref[1])) {
+          await this.majTache(mref[1], { 'rappel-id': id });
+          idsConnus.add(id); n += 1; continue;
+        }
+        const d = dueIso.slice(0, 10);
+        const h = dueIso.length > 10 ? dueIso.slice(11, 16) : '';
+        const chemin = await this.creerTache({
+          intitule: nom || tr('Sans titre'),
+          echeance: d, heure: h === '00:00' ? '' : h,
+          statut: coche ? 'terminée' : 'à faire',
+          liste: listeNom,
+          famille: this._familleParListe(listeNom),
+        });
+        const ref = this.refDeChemin(chemin);
+        if (ref) {
+          await this.majTache(ref, { 'rappel-id': id });
+          const f2 = this.app.vault.getMarkdownFiles().find((z) => z.basename === ref);
+          if (f2) {
+            this.marquerEcriture(f2.path);
+            await this.app.fileManager.processFrontMatter(f2, (x) => {
+              x['rappel-sync'] = [d, h === '00:00' ? '' : h, coche ? 'terminée' : 'à faire'].join('|');
+            });
+          }
+          idsConnus.add(id); n += 1;
+        }
+        continue;
+      }
       const t = parts[0] && parRef.get(parts[0]);
       if (!t) continue;
       if (parts[1] === 'MANQUANT') continue;
@@ -12496,6 +12583,9 @@ class Ariane extends obsidian.Plugin {
       if (cpt === 'famille') { row.style.order = '0'; continue; }
       if (rang.has(cpt)) {
         row.style.order = String(rang.get(cpt));
+        // L'heure est l'heure de l'échéance : on la rattache visuellement
+        // juste sous elle, en ligne fine.
+        row.classList.toggle('zfa-note-tache-sous', cpt === 'heure');
         const g = groupes.find((x) => x.concepts.includes(cpt));
         if (g) presents.add(g.id);
         continue;
@@ -13232,11 +13322,24 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setValue(s.dossierTaches || '').setPlaceholder(tr('chemin dans le coffre'))
         .onChange(async (v) => { s.dossierTaches = v.trim().replace(/^\/+|\/+$/g, ''); await maj(); }));
 
+    // Suggestions de listes Apple Rappels, partagées par la liste par défaut et
+    // les familles. Chargées à la volée sur macOS.
+    {
+      const dl = c.createEl('datalist');
+      dl.id = 'zfa-dl-listes-rappels';
+      for (const nom of (this.plugin._listesRappels || [])) dl.createEl('option', { value: nom });
+      if (obsidian.Platform && obsidian.Platform.isMacOS && this.plugin._listesRappels === undefined) {
+        this.plugin.chargerListesRappels().then(() => this.display());
+      }
+    }
     new obsidian.Setting(c)
       .setName(tr('Liste de rappels par défaut'))
       .setDesc(tr("Liste Apple Rappels d'une tâche quand sa famille n'en précise pas."))
-      .addText((t) => t.setValue(s.listeRappelsDefaut || '')
-        .onChange(async (v) => { s.listeRappelsDefaut = v.trim(); await maj(); }));
+      .addText((t) => {
+        t.inputEl.setAttribute('list', 'zfa-dl-listes-rappels');
+        t.setValue(s.listeRappelsDefaut || '')
+          .onChange(async (v) => { s.listeRappelsDefaut = v.trim(); await maj(); });
+      });
 
     this._section(c, tr('Apple Rappels (macOS)'));
     this._aide(c, tr("Chaque tâche datée devient un rappel dans la liste de sa famille : titre « [T26-001] - Intitulé », échéance (avec l'heure si renseignée), priorité, lien retour vers la note. Bidirectionnel : cocher le rappel termine la tâche, changer l'échéance dans Rappels la reporte — sauf si la note a bougé de son côté, elle fait alors foi. La première synchronisation demande l'autorisation d'automatisation dans les Réglages système."));
@@ -13265,9 +13368,10 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addButton((b) => b.setButtonText(tr('Pousser')).onClick(() => this.plugin.pousserRappels(false)))
         .addButton((b) => b.setButtonText(tr('Relever')).onClick(() => this.plugin.releverRappels(false)));
       new obsidian.Setting(c)
-        .setName(tr('Listes existantes'))
-        .setDesc(tr('Affiche le nom exact de chaque liste (groupes inclus) — à recopier tel quel.'))
-        .addButton((b) => b.setButtonText(tr('Voir')).onClick(() => this.plugin.listerListesRappels()));
+        .setName(tr('Listes disponibles'))
+        .setDesc(tr('Recharge les noms de listes proposés dans les familles. Les listes rangées dans un groupe peuvent manquer (limite de l\'API Rappels) : dans ce cas, tapez le nom exact à la main.'))
+        .addButton((b) => b.setButtonText(tr('Rafraîchir'))
+          .onClick(async () => { await this.plugin.chargerListesRappels(); this.display(); }));
     }
 
     this._section(c, tr('Familles de tâches'));
@@ -13645,6 +13749,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           const lr = corps.createDiv({ cls: 'zfa-famt-prop' });
           lr.createEl('label', { text: tr('Liste Apple Rappels'), cls: 'zfa-famt-prop-lbl' });
           const inp = lr.createEl('input', { type: 'text' });
+          inp.setAttribute('list', 'zfa-dl-listes-rappels');
           inp.placeholder = this.plugin.settings.listeRappelsDefaut || tr('(liste par défaut)');
           inp.value = f.listeRappels || '';
           inp.onchange = async () => { f.listeRappels = inp.value.trim(); await maj(); };

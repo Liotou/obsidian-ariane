@@ -25,11 +25,15 @@ test('genererJXAListes : script JS valide', () => {
   assert.ok(s.includes('R.lists()'));
 });
 
-test('genererJXAReleve : script JS valide, paires embarquées', () => {
-  const s = Ariane.genererJXAReleve([{ ref: 'T26-001', id: 'x-apple-reminder://A' }]);
+test('genererJXAReleve : script JS valide, paires + listes surveillées', () => {
+  const s = Ariane.genererJXAReleve(
+    [{ ref: 'T26-001', id: 'x-apple-reminder://A' }],
+    ['Doctorat - Tâches', 'Doctorat - Tâches', '']);
   new vm.Script(s);
   assert.ok(s.includes('x-apple-reminder://A'));
-  assert.ok(s.includes('r.completed()'));
+  assert.ok(s.includes('"Doctorat - Tâches"'));
+  assert.ok(!/"listes":\[[^\]]*,""/.test(s));  // vides filtrés
+  assert.ok(s.includes('NOUVEAU'));            // détection des rappels ajoutés à la main
 });
 
 test('genererJXARappels : entrée vide reste un script valide', () => {

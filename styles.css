@@ -1860,6 +1860,14 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-note-tache-skin .zfa-note-tache-groupe[style*="order: 99"] { margin-top: 11px; }
 .zfa-note-tache-skin .metadata-properties > .zfa-note-tache-groupe:first-child { margin-top: 0; }
 
+/* L'heure : ligne fine juste sous l'échéance. */
+.zfa-note-tache-skin .metadata-property.zfa-note-tache-sous {
+  grid-column: 1 / -1;
+  margin-top: -2px;
+  font-size: var(--font-ui-smaller);
+  opacity: 0.8;
+}
+
 .zfa-note-tache-skin .markdown-preview-view,
 .zfa-note-tache-skin .markdown-source-view.mod-cm6 .cm-content {
   max-width: 44rem; margin-inline: auto;
