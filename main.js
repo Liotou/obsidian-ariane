@@ -3355,6 +3355,25 @@ class Ariane extends obsidian.Plugin {
       callback: () => new ModaleAjoutLN(this).open(),
     });
     this.addCommand({
+      id: 'resoudre-sources-lecture',
+      name: tr('Tâches : résoudre les sources des tâches de lecture'),
+      callback: async () => {
+        const avis = new obsidian.Notice(tr('Recherche des sources…'), 0);
+        let lignes = [];
+        try { lignes = await this.resoudreSourcesLecture(null); } finally { avis.hide(); }
+        new ModaleRevueLot(this.app, {
+          titre: tr('Résoudre les sources (lecture)'),
+          aide: tr('Rapprochement d\'une source en clair d\'une fiche @citekey du coffre.'),
+          lignes, editable: true,
+          appliquer: async (sel) => {
+            let n = 0;
+            for (const r of sel) { if (await this.majTache(r.ref, { source: r.apres })) n += 1; }
+            return n;
+          },
+        }).open();
+      },
+    });
+    this.addCommand({
       id: 'modifier-tache',
       name: tr('Tâches : modifier une tâche…'),
       callback: () => {
@@ -11590,10 +11609,56 @@ class Ariane extends obsidian.Plugin {
     if (ref && bp) {
       const cand = this.tachesPourGantt().filter((t) => t.ref !== ref)
         .map((t) => ({ ref: t.ref, titre: t.intitule }));
-      const m = Ariane.meilleurTitre(bp, cand);
+      const m = (await this.meilleurTitreSem(bp, cand)) || Ariane.meilleurTitre(bp, cand);
       if (m) await this.creerBlocage(m.ref, ref);
     }
     return ref;
+  }
+
+  // Résout les sources en clair des tâches « lecture » vers un [[@citekey]] du
+  // coffre. Rend [{ ref, avant, apres, titre }] à passer à ModaleRevueLot.
+  async resoudreSourcesLecture(refs) {
+    const g = this.tachesPourGantt();
+    const parRef = new Map(g.map((t) => [t.ref, t]));
+    const cibles = ((refs && refs.length) ? refs : g.map((t) => t.ref))
+      .map((r) => parRef.get(r))
+      .filter((t) => t && t.famille === 'lecture');
+    // Candidats : notes du coffre dont le nom commence par « @ ».
+    const cand = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.basename.startsWith('@')) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      const al = [].concat(fm.aliases || []).map(String).filter(Boolean);
+      cand.push({ ref: f.basename, titre: (al[0] || f.basename) + ' ' + f.basename });
+    }
+    if (!cand.length) return [];
+    const out = [];
+    for (const t of cibles) {
+      const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+      const src = String(this._lireT(fm, 'source') || '').trim();
+      if (!src || /\[\[.*\]\]/.test(src)) continue;
+      const m = (await this.meilleurTitreSem(src, cand, 0.5)) || Ariane.meilleurTitre(src, cand, 0.3);
+      if (m) out.push({ ref: t.ref, avant: src, apres: '[[' + m.ref + ']]', titre: t.intitule });
+    }
+    return out;
+  }
+
+  // Correspondance SÉMANTIQUE d'un titre parmi des candidats {ref, titre}, via
+  // le moteur d'embeddings déjà en place. Encodage à la demande (pas d'index
+  // persistant pour l'instant). Rend { ref, score } ou null.
+  async meilleurTitreSem(cible, candidats, seuil) {
+    if (!candidats || !candidats.length) return null;
+    if ((this.settings.suggMoteur || 'hybride') === 'lexical') return null;
+    let vs;
+    try { vs = await this.encoderTextes([cible].concat(candidats.map((c) => c.titre))); }
+    catch (e) { return null; }
+    if (!vs || vs.length !== candidats.length + 1) return null;
+    let best = null;
+    for (let i = 0; i < candidats.length; i += 1) {
+      const s = cosinusVecteurs(vs[0], vs[i + 1]);
+      if (!best || s > best.score) best = { ref: candidats[i].ref, score: s };
+    }
+    return (best && best.score >= (seuil == null ? 0.55 : seuil)) ? best : null;
   }
 
   // Dernier état SAIN de « parent » / « bloque-par » par tâche, pour pouvoir y
