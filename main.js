@@ -883,8 +883,12 @@ const TEXTES = {
     "Aujourd'hui": "Today",
     "Ramener sur aujourd'hui": "Back to today",
     "en retard": "overdue",
+    "Exporter la frise (Excel)": "Export the timeline (Excel)",
+    "Groupe": "Group",
+    "Rien à exporter.": "Nothing to export.",
+    "Frise exportée : ": "Timeline exported: ",
+    "Export impossible : ": "Export failed: ",
     "jour": "day",
-    "Masquer les terminées": "Hide completed",
     "nº de semaine": "week no.",
     "dates": "dates",
     "les deux": "both",
@@ -3694,10 +3698,6 @@ class Ariane extends obsidian.Plugin {
                        'les-deux': tr('les deux') },
             shouldHide: () => config.get('zoom') !== 'semaine',
           },
-          {
-            type: 'toggle', key: 'masquerTerminees',
-            displayName: tr('Masquer les terminées'), default: false,
-          },
         ],
       });
       const VueArtic = fabriquerVueArticulationBase(this);
@@ -5276,6 +5276,238 @@ class Ariane extends obsidian.Plugin {
   static _sansAccentMinuscule(v) {
     return String(v == null ? '' : v)
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  }
+
+  /* ---- Export XLSX (généré à la main, sans dépendance) ---------------- */
+
+  // CRC-32 (polynôme 0xEDB88320), sur un Uint8Array. Sert au conteneur ZIP.
+  static crc32(octets) {
+    if (!Ariane._crcTable) {
+      const t = new Uint32Array(256);
+      for (let n = 0; n < 256; n += 1) {
+        let c = n;
+        for (let k = 0; k < 8; k += 1) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        t[n] = c >>> 0;
+      }
+      Ariane._crcTable = t;
+    }
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < octets.length; i += 1) {
+      crc = (crc >>> 8) ^ Ariane._crcTable[(crc ^ octets[i]) & 0xFF];
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  // Colonne 1 -> « A », 27 -> « AA ». Pour les références de cellule XLSX.
+  static _colLettre(n) {
+    let s = '';
+    let x = n;
+    while (x > 0) { const r = (x - 1) % 26; s = String.fromCharCode(65 + r) + s; x = Math.floor((x - 1) / 26); }
+    return s || 'A';
+  }
+
+  // Numéro de série Excel d'une date ISO (jours depuis le 1899-12-30).
+  static dateSerieExcel(iso) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return null;
+    const d = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+    return Math.round((d - Date.UTC(1899, 11, 30)) / 86400000);
+  }
+
+  static _echapXml(v) {
+    return String(v == null ? '' : v)
+      .replace(/[ --]/g, '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // Conteneur ZIP « stored » (aucune compression) : suffisant pour un XLSX,
+  // et sans dépendance. `entrees` = [{ nom, donnees: Uint8Array | string }].
+  static zipStored(entrees) {
+    const enc = new TextEncoder();
+    const u16 = (n) => [n & 0xFF, (n >>> 8) & 0xFF];
+    const u32 = (n) => [n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF];
+    const morceaux = [];
+    const centrale = [];
+    let position = 0;
+    for (const e of entrees || []) {
+      const nom = enc.encode(e.nom);
+      const data = e.donnees instanceof Uint8Array ? e.donnees : enc.encode(String(e.donnees));
+      const crc = Ariane.crc32(data);
+      const enTete = Uint8Array.from([].concat(
+        u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0),
+        u32(crc), u32(data.length), u32(data.length),
+        u16(nom.length), u16(0)));
+      morceaux.push(enTete, nom, data);
+      centrale.push({ nom, crc, taille: data.length, position });
+      position += enTete.length + nom.length + data.length;
+    }
+    const debutCentrale = position;
+    const cd = [];
+    for (const c of centrale) {
+      const rec = Uint8Array.from([].concat(
+        u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0),
+        u32(c.crc), u32(c.taille), u32(c.taille),
+        u16(c.nom.length), u16(0), u16(0), u16(0), u16(0),
+        u32(0), u32(c.position)));
+      cd.push(rec, c.nom);
+      position += rec.length + c.nom.length;
+    }
+    const tailleCentrale = position - debutCentrale;
+    const fin = Uint8Array.from([].concat(
+      u32(0x06054b50), u16(0), u16(0),
+      u16(centrale.length), u16(centrale.length),
+      u32(tailleCentrale), u32(debutCentrale), u16(0)));
+    const tout = [...morceaux, ...cd, fin];
+    let total = 0;
+    for (const p of tout) total += p.length;
+    const sortie = new Uint8Array(total);
+    let pos = 0;
+    for (const p of tout) { sortie.set(p, pos); pos += p.length; }
+    return sortie;
+  }
+
+  // Construit un .xlsx d'une feuille. `feuille` :
+  //   { nom, colonnes:[{ titre, largeur? }], lignes:[ [cellule, …] ] }
+  // cellule : { v, t?:'s'|'n'|'d'|'b', s?:{ b?, fill?:'RRGGBB', color?:'RRGGBB', fmt?:'date' } }
+  // En-tête figée, filtre automatique, largeurs, dates réelles, teintes.
+  static classeurXlsx(feuille) {
+    const f = feuille || {};
+    const cols = f.colonnes || [];
+    const lignes = f.lignes || [];
+    const nomFeuille = (Ariane._echapXml(f.nom || 'Frise').slice(0, 31)) || 'Frise';
+
+    const cleStyle = (s) => JSON.stringify({
+      b: s && s.b ? 1 : 0, color: (s && s.color) || '', fill: (s && s.fill) || '',
+      fmt: (s && s.fmt) || '' });
+    const styles = new Map();
+    styles.set(cleStyle({}), 0);
+    const enteteStyle = { b: true, fill: 'ECECEC' };
+    const noter = (s) => {
+      const k = cleStyle(s);
+      if (!styles.has(k)) styles.set(k, styles.size);
+      return styles.get(k);
+    };
+    noter(enteteStyle);
+    for (const rangee of lignes) {
+      for (const c of rangee) if (c && c.s) noter(c.s);
+    }
+
+    const fonts = ['<font><sz val="11"/><name val="Calibri"/></font>'];
+    const fontIndex = new Map([['0|', 0]]);
+    const fillsHex = [];
+    const numDate = 164;
+    let besoinDate = false;
+    const xfs = [];
+    for (const [k] of styles) {
+      const s = JSON.parse(k);
+      const fk = s.b + '|' + s.color;
+      if (!fontIndex.has(fk)) {
+        fontIndex.set(fk, fonts.length);
+        fonts.push('<font>' + (s.b ? '<b/>' : '')
+          + (s.color ? '<color rgb="FF' + s.color + '"/>' : '')
+          + '<sz val="11"/><name val="Calibri"/></font>');
+      }
+      let fillId = 0;
+      if (s.fill) {
+        let idx = fillsHex.indexOf(s.fill);
+        if (idx < 0) { fillsHex.push(s.fill); idx = fillsHex.length - 1; }
+        fillId = 2 + idx;
+      }
+      if (s.fmt === 'date') besoinDate = true;
+      const numFmtId = s.fmt === 'date' ? numDate : 0;
+      xfs.push('<xf numFmtId="' + numFmtId + '" fontId="' + fontIndex.get(fk)
+        + '" fillId="' + fillId + '" borderId="0" xfId="0"'
+        + (numFmtId ? ' applyNumberFormat="1"' : '')
+        + (s.b || s.color ? ' applyFont="1"' : '')
+        + (fillId ? ' applyFill="1"' : '') + '/>');
+    }
+    const fills = ['<fill><patternFill patternType="none"/></fill>',
+      '<fill><patternFill patternType="gray125"/></fill>']
+      .concat(fillsHex.map((h) => '<fill><patternFill patternType="solid"><fgColor rgb="FF'
+        + h + '"/><bgColor indexed="64"/></patternFill></fill>'));
+
+    const styleXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+      + (besoinDate ? '<numFmts count="1"><numFmt numFmtId="' + numDate
+        + '" formatCode="yyyy\\-mm\\-dd"/></numFmts>' : '')
+      + '<fonts count="' + fonts.length + '">' + fonts.join('') + '</fonts>'
+      + '<fills count="' + fills.length + '">' + fills.join('') + '</fills>'
+      + '<borders count="1"><border/></borders>'
+      + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+      + '<cellXfs count="' + xfs.length + '">' + xfs.join('') + '</cellXfs>'
+      + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+      + '<dxfs count="0"/>'
+      + '</styleSheet>';
+
+    const cellule = (colNum, ligNum, c) => {
+      const ref = Ariane._colLettre(colNum) + ligNum;
+      const si = c && c.s ? styles.get(cleStyle(c.s)) : 0;
+      const attrS = si ? ' s="' + si + '"' : '';
+      if (!c || c.v == null || c.v === '') return '<c r="' + ref + '"' + attrS + '/>';
+      if (c.t === 'n') return '<c r="' + ref + '"' + attrS + '><v>' + Number(c.v) + '</v></c>';
+      if (c.t === 'b') return '<c r="' + ref + '"' + attrS + ' t="b"><v>' + (c.v ? 1 : 0) + '</v></c>';
+      if (c.t === 'd') {
+        const serie = Ariane.dateSerieExcel(c.v);
+        return serie == null
+          ? '<c r="' + ref + '"' + attrS + ' t="inlineStr"><is><t>' + Ariane._echapXml(c.v) + '</t></is></c>'
+          : '<c r="' + ref + '"' + attrS + '><v>' + serie + '</v></c>';
+      }
+      return '<c r="' + ref + '"' + attrS + ' t="inlineStr"><is><t xml:space="preserve">'
+        + Ariane._echapXml(c.v) + '</t></is></c>';
+    };
+    const rangs = [];
+    rangs.push('<row r="1">' + cols.map((c, i) =>
+      cellule(i + 1, 1, { v: c.titre, t: 's', s: enteteStyle })).join('') + '</row>');
+    lignes.forEach((rangee, r) => {
+      rangs.push('<row r="' + (r + 2) + '">'
+        + rangee.map((c, i) => cellule(i + 1, r + 2, c)).join('') + '</row>');
+    });
+    const colsXml = cols.length
+      ? '<cols>' + cols.map((c, i) => '<col min="' + (i + 1) + '" max="' + (i + 1)
+        + '" width="' + (Math.max(6, Math.min(80, c.largeur || 16))) + '" customWidth="1"/>').join('') + '</cols>'
+      : '';
+    const dernRef = Ariane._colLettre(Math.max(1, cols.length)) + (lignes.length + 1);
+    const sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+      + '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2"'
+      + ' activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft"/></sheetView></sheetViews>'
+      + '<sheetFormatPr defaultRowHeight="15"/>'
+      + colsXml
+      + '<sheetData>' + rangs.join('') + '</sheetData>'
+      + '<autoFilter ref="A1:' + dernRef + '"/>'
+      + '</worksheet>';
+
+    const contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+      + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+      + '<Default Extension="xml" ContentType="application/xml"/>'
+      + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+      + '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+      + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+      + '</Types>';
+    const rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+      + '</Relationships>';
+    const workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+      + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+      + '<sheets><sheet name="' + nomFeuille + '" sheetId="1" r:id="rId1"/></sheets></workbook>';
+    const workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+      + '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+      + '</Relationships>';
+
+    return Ariane.zipStored([
+      { nom: '[Content_Types].xml', donnees: contentTypes },
+      { nom: '_rels/.rels', donnees: rels },
+      { nom: 'xl/workbook.xml', donnees: workbook },
+      { nom: 'xl/_rels/workbook.xml.rels', donnees: workbookRels },
+      { nom: 'xl/styles.xml', donnees: styleXml },
+      { nom: 'xl/worksheets/sheet1.xml', donnees: sheetXml },
+    ]);
   }
 
   //#endregion Ariane · static · frise / gantt
@@ -15279,7 +15511,7 @@ const TYPE_VUE_BASE_ARTIC = 'ariane-articulation';
 // Valeurs par défaut des réglages d'une frise de base. Ils ne passent plus par
 // les réglages d'Ariane : chaque vue d'une base porte les siens.
 const DEFAUTS_FRISE = {
-  zoom: 'mois', masquerTerminees: false, libelleSemaine: 'numero',
+  zoom: 'mois', libelleSemaine: 'numero',
   tri: 'date', rowHeight: 'medium', columnSize: null,
   triColonne: null, triColonneSens: 1,
 };
@@ -15485,8 +15717,6 @@ class MoteurFrise {
         t.echeance = p.echeance;
       }
     }
-    const nTotal = taches.length;
-    if (this.ctx.lire('masquerTerminees')) taches = this.sansLesCloses(taches);
     // Priorité : un tri posé sur un en-tête (geste le plus explicite), sinon le
     // tri natif de la base (menu Trier, multi-critères), sinon le repli par date.
     const colTri = this.ctx.lire('triColonne');
@@ -15590,6 +15820,9 @@ class MoteurFrise {
     // ces objets que dessinerBarres pose les points d'accroche _anc, et c'est la
     // source du lignage au survol.
     this._lignesRendu = lignes.filter((l) => l.kind === 'tache');
+    // Suite complète (bandes de groupe comprises), dans l'ordre affiché : source
+    // de l'export XLSX.
+    this._lignesExport = lignes;
     this._hauteurTotale = place.hauteurTotale;
     // On pose la variable des bases sur la racine : tout le balisage repris du
     // tableau s'y accroche, et le thème de Monsieur reste maître du reste.
@@ -15695,16 +15928,6 @@ class MoteurFrise {
     this.recalerEnteteHaut(droite.scrollLeft);
   }
 
-  // Masquer une méta-tâche close masquerait sa descendance encore vive : on
-  // n'écarte donc que les feuilles closes et les méta-tâches entièrement closes.
-  sansLesCloses(taches) {
-    const clos = (t) => t.statut === 'terminée' || t.statut === 'abandonnée';
-    const vif = (ref, vus) => taches.some((x) =>
-      Ariane.refDeLien(x.parent) === ref && !vus.has(x.ref)
-      && (!clos(x) || vif(x.ref, new Set([...vus, x.ref]))));
-    return taches.filter((t) => !clos(t) || vif(t.ref, new Set([t.ref])));
-  }
-
   // L'étendue part de la première date et va à la dernière, élargie jusqu'au
   // minimum du cran, et calée sur un début de mois hors du cran « jour » pour
   // que les bandes de mois tombent juste.
@@ -15746,22 +15969,10 @@ class MoteurFrise {
     return b;
   }
 
-  // Barre d'outils légère pour la vue de base : choix de l'échelle (segmenté)
-  // et retour à aujourd'hui. Le reste des réglages est dans « Configurer la vue ».
+  // Barre d'outils légère pour la vue de base : choix de l'échelle (segmenté),
+  // retour à aujourd'hui, export. Le reste des réglages est dans « Configurer la vue ».
   dessinerBarreVue(c) {
     const b = c.createDiv({ cls: 'zfa-gantt-barre-vue' });
-
-    const masque = !!this.ctx.lire('masquerTerminees');
-    const mt = b.createEl('button', {
-      cls: 'zfa-gantt-bv-bouton zfa-gantt-bv-bascule' + (masque ? ' is-active' : ''),
-      attr: { type: 'button', 'aria-pressed': masque ? 'true' : 'false' } });
-    obsidian.setIcon(mt.createSpan({ cls: 'zfa-gantt-bv-ic' }),
-      masque ? 'eye-off' : 'eye');
-    mt.createSpan({ text: tr('Masquer les terminées') });
-    mt.addEventListener('click', async () => {
-      await this.ctx.ecrire('masquerTerminees', !this.ctx.lire('masquerTerminees'));
-      this.dessiner();
-    });
 
     const auj = b.createEl('button', { cls: 'zfa-gantt-bv-bouton', attr: { type: 'button' } });
     obsidian.setIcon(auj.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'locate-fixed');
@@ -15792,6 +16003,87 @@ class MoteurFrise {
       obsidian.setIcon(badge.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'alert-triangle');
       badge.createSpan({ text: nRetard + ' ' + tr('en retard') });
       badge.addEventListener('click', () => this.recentrerAujourdhui());
+    }
+
+    const exp = b.createEl('button', {
+      cls: 'zfa-gantt-bv-bouton zfa-gantt-bv-export',
+      attr: { type: 'button', title: tr('Exporter la frise (Excel)') } });
+    obsidian.setIcon(exp.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'file-spreadsheet');
+    exp.createSpan({ text: tr('Exporter') });
+    exp.addEventListener('click', () => this.exporterXlsx());
+  }
+
+  // Exporte la frise TELLE QU'ELLE EST À L'ÉCRAN dans un .xlsx : mêmes
+  // colonnes, même ordre de lignes (tri, regroupement, replis actifs). Écrit
+  // dans le dossier de pièces jointes, puis ouvre avec l'application par défaut.
+  async exporterXlsx() {
+    try {
+      const rendu = this._colsRendu || [];
+      const lignes = this._lignesExport || [];
+      if (!rendu.length || !lignes.length) {
+        new obsidian.Notice(tr('Rien à exporter.'));
+        return;
+      }
+      const grouper = !!(this.ctx.groupeActuel && this.ctx.groupeActuel());
+      const cleFam = String(this.greffon.cleT('famille') || '').replace(/^note\./, '');
+      const cleEch = String(this.greffon.cleT('echeance') || '').replace(/^note\./, '');
+      const colonnes = [];
+      if (grouper) colonnes.push({ titre: tr('Groupe'), largeur: 18 });
+      for (const col of rendu) {
+        colonnes.push({ titre: col.nom || col.cle, largeur: Math.round((col.largeur || 160) / 7) });
+      }
+      const estDate = rendu.map((col) => {
+        const t = this.typeColonne(col.cle);
+        return t === 'date' || t === 'datetime';
+      });
+      const finalCle = (col) => String(col.cle || '').replace(/^note\./, '');
+      const lignesXlsx = [];
+      let groupeCourant = '';
+      for (const l of lignes) {
+        if (l.kind === 'groupe') { groupeCourant = l.libelle || ''; continue; }
+        if (l.kind && l.kind !== 'tache') continue;
+        const rangee = [];
+        if (grouper) rangee.push({ v: groupeCourant });
+        rendu.forEach((col, i) => {
+          const brut = col.valeur ? String(col.valeur(l.ref) || '') : '';
+          const c = { v: brut };
+          if (estDate[i] && /^\d{4}-\d{2}-\d{2}/.test(brut)) {
+            c.t = 'd';
+            c.s = { fmt: 'date' };
+            if (finalCle(col) === cleEch && this._enRetard && this._enRetard.has(l.ref)) {
+              c.s = { fmt: 'date', color: 'C0392B' };
+            }
+          } else if (finalCle(col) === cleFam && brut) {
+            const coul = (this.greffon.familleDe(l.famille) || {}).couleur || '';
+            const hex = String(coul).replace('#', '').slice(0, 6);
+            if (/^[0-9a-fA-F]{6}$/.test(hex)) c.s = { fill: hex.toUpperCase() };
+          }
+          rangee.push(c);
+        });
+        lignesXlsx.push(rangee);
+      }
+
+      const nomVue = (this.ctx.nomVue && this.ctx.nomVue()) || tr('Frise');
+      const jour = new Date().toISOString().slice(0, 10);
+      const base = (nomVue + ' — ' + jour).replace(/[\\/:*?"<>|]+/g, ' ').trim();
+      const octets = Ariane.classeurXlsx({ nom: nomVue, colonnes, lignes: lignesXlsx });
+      let chemin = base + '.xlsx';
+      try {
+        if (this.app.fileManager.getAvailablePathForAttachment) {
+          chemin = await this.app.fileManager.getAvailablePathForAttachment(base + '.xlsx', '');
+        }
+      } catch (e) { /* repli : racine du coffre */ }
+      while (this.app.vault.getAbstractFileByPath(chemin)) {
+        chemin = chemin.replace(/(\.xlsx)$/, ' ~' + Date.now() + '$1');
+      }
+      await this.app.vault.createBinary(chemin, octets.buffer);
+      new obsidian.Notice(tr('Frise exportée : ') + chemin);
+      if (this.app.openWithDefaultApp) {
+        try { this.app.openWithDefaultApp(chemin); } catch (e) { /* mobile / pas d'appli */ }
+      }
+    } catch (e) {
+      console.error('[Ariane] export frise :', e);
+      new obsidian.Notice(tr('Export impossible : ') + (e && e.message ? e.message : e));
     }
   }
 
@@ -16185,6 +16477,7 @@ class MoteurFrise {
       valeurBase: c.valeurBase, valeurBrute: c.valeurBrute, chemin: c.chemin,
       arbre: i === 0,
     }));
+    this._colsRendu = cols;                 // repris tel quel par l'export XLSX
     if (!cols.length) { gauche.style.width = '0px'; gauche.addClass('zfa-gantt-sans-colonnes'); return; }
     let total = 0;
     for (const c of cols) { c.gauche = total; total += c.largeur; }
@@ -17384,6 +17677,13 @@ function fabriquerVueFriseBase(greffon) {
         echelleReglable: true,
         colonnes: () => this.colonnes(),
         taches: () => this.tachesDeLaBase(),
+        nomVue: () => {
+          try {
+            const s = this.config.serialize ? this.config.serialize() : null;
+            return (s && s.name) || (this.controller && this.controller.file
+              && this.controller.file.basename) || tr('Frise');
+          } catch (e) { return tr('Frise'); }
+        },
         lire: (cle) => {
           const v = this.config.get(cle);
           return v === undefined || v === null ? DEFAUTS_FRISE[cle] : v;
