@@ -19,6 +19,12 @@ test('genererJXARappels : script JS valide, données embarquées', () => {
   assert.ok(s.includes('function run()'));
 });
 
+test('genererJXAListes : script JS valide', () => {
+  const s = Ariane.genererJXAListes();
+  new vm.Script(s);
+  assert.ok(s.includes('R.lists()'));
+});
+
 test('genererJXAReleve : script JS valide, paires embarquées', () => {
   const s = Ariane.genererJXAReleve([{ ref: 'T26-001', id: 'x-apple-reminder://A' }]);
   new vm.Script(s);

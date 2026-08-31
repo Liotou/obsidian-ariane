@@ -5352,13 +5352,21 @@ class Ariane extends obsidian.Plugin {
       'function run() {',
       '  var IN = ' + IN + ';',
       '  var R = Application("Reminders");',
+      '  function norm(x) { return String(x == null ? "" : x).trim().toLowerCase().replace(/\\s+/g, " "); }',
+      '  var _listes = null;',
+      '  function toutesListes() { if (!_listes) { try { _listes = R.lists(); } catch (e) { _listes = []; } } return _listes; }',
       '  function trouverListe(nom) {',
       '    if (!nom) { try { return R.defaultList(); } catch (e) {} }',
-      '    var ex = R.lists.whose({ name: nom })();',
-      '    if (ex.length) return ex[0];',
+      '    var L = toutesListes();',           // inclut celles rangées dans un groupe
+      '    for (var i = 0; i < L.length; i++) { try { if (L[i].name() === nom) return L[i]; } catch (e) {} }',
+      '    for (var j = 0; j < L.length; j++) { try { if (norm(L[j].name()) === norm(nom)) return L[j]; } catch (e) {} }',
       '    var nl = R.List({ name: nom });',
       '    R.lists.push(nl);',
+      '    _listes = null;',
       '    return nl;',
+      '  }',
+      '  function memeListe(r, nom) {',
+      '    try { return norm(r.container().name()) === norm(nom); } catch (e) { return true; }',
       '  }',
       '  function parId(id) {',
       '    if (!id) return null;',
@@ -5375,9 +5383,7 @@ class Ariane extends obsidian.Plugin {
       '  for (var i = 0; i < IN.taches.length; i++) {',
       '    var t = IN.taches[i];',
       '    var r = parId(t.id);',
-      '    if (r && t.liste) {',
-      '      try { if (r.container().name() !== t.liste) { r.delete(); r = null; } } catch (e) {}',
-      '    }',
+      '    if (r && t.liste && !memeListe(r, t.liste)) { try { r.delete(); } catch (e) {} r = null; }',
       '    if (!r) {',
       '      r = R.Reminder({ name: t.titre });',
       '      trouverListe(t.liste).reminders.push(r);',
@@ -5396,6 +5402,19 @@ class Ariane extends obsidian.Plugin {
       '    try { nid = r.id(); } catch (e) {}',
       '    out.push(t.ref + "\\t" + nid);',
       '  }',
+      '  return out.join("\\n");',
+      '}',
+    ].join('\n');
+  }
+
+  // Noms de toutes les listes Apple Rappels, une par ligne (groupes inclus).
+  static genererJXAListes() {
+    return [
+      'function run() {',
+      '  var R = Application("Reminders");',
+      '  var L = []; try { L = R.lists(); } catch (e) {}',
+      '  var out = [];',
+      '  for (var i = 0; i < L.length; i++) { try { out.push(L[i].name()); } catch (e) {} }',
       '  return out.join("\\n");',
       '}',
     ].join('\n');
@@ -11437,6 +11456,16 @@ class Ariane extends obsidian.Plugin {
     });
   }
 
+  async listerListesRappels() {
+    if (!obsidian.Platform.isMacOS) { new obsidian.Notice(tr('macOS uniquement.')); return; }
+    const s = await this._osascriptJXA(Ariane.genererJXAListes(), 20000);
+    if (s == null) { new obsidian.Notice(tr('Rappels n\'a pas répondu (autorisation ?).')); return; }
+    const noms = s.split('\n').map((x) => x.trim()).filter(Boolean);
+    new obsidian.Notice(noms.length
+      ? tr('Listes Apple Rappels :\n• ') + noms.join('\n• ')
+      : tr('Aucune liste trouvée.'), 12000);
+  }
+
   // Instantané « dernier état synchronisé » d'une tâche, pour arbitrer les
   // conflits à la relève : échéance|heure|statut.
   _instantRappel(t) { return [t.echeance || '', t.heure || '', t.statut || ''].join('|'); }
@@ -13235,6 +13264,10 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setName(tr('Synchroniser maintenant'))
         .addButton((b) => b.setButtonText(tr('Pousser')).onClick(() => this.plugin.pousserRappels(false)))
         .addButton((b) => b.setButtonText(tr('Relever')).onClick(() => this.plugin.releverRappels(false)));
+      new obsidian.Setting(c)
+        .setName(tr('Listes existantes'))
+        .setDesc(tr('Affiche le nom exact de chaque liste (groupes inclus) — à recopier tel quel.'))
+        .addButton((b) => b.setButtonText(tr('Voir')).onClick(() => this.plugin.listerListesRappels()));
     }
 
     this._section(c, tr('Familles de tâches'));
