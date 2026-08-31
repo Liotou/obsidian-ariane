@@ -17036,6 +17036,14 @@ class MoteurFrise {
       rangee.style.top = (l.y - this._hEntete) + 'px';
       rangee.style.height = l.h + 'px';
       rangee.addEventListener('contextmenu', (e) => this.menuTache(e, l));
+      // Source de glissé vers le calendrier : déposer la ligne sur un jour de la
+      // vue semaine y pose un créneau, sur la vue mois y cale les dates.
+      rangee.setAttribute('draggable', 'true');
+      rangee.addEventListener('dragstart', (ev) => {
+        ev.dataTransfer.setData('text/x-ariane-tache', l.ref);
+        ev.dataTransfer.setData('text/plain', '[[' + l.ref + ']]');
+        ev.dataTransfer.effectAllowed = 'copy';
+      });
 
       for (const c of cols) {
         const td = rangee.createDiv({ cls: 'bases-td' });
@@ -17546,6 +17554,16 @@ class MoteurFrise {
 
       fond.addEventListener('pointerdown', (e) => this.saisir(e, groupe, l, 'deplacer', { x, w }));
       groupe.addEventListener('contextmenu', (e) => this.menuTache(e, l));
+      // Source de glissé vers le calendrier (mêmes charges utiles que la ligne du
+      // tableau). On laisse passer les gestes sur les poignées et connecteurs :
+      // ceux-là restent au glissé-pointeur de la frise (dates, liens de lignée).
+      groupe.setAttribute('draggable', 'true');
+      groupe.addEventListener('dragstart', (ev) => {
+        if (ev.target.closest('.zfa-gantt-poignee, .zfa-gantt-connecteur')) { ev.preventDefault(); return; }
+        ev.dataTransfer.setData('text/x-ariane-tache', l.ref);
+        ev.dataTransfer.setData('text/plain', '[[' + l.ref + ']]');
+        ev.dataTransfer.effectAllowed = 'copy';
+      });
       // Poignées de redimensionnement sur toutes les barres, mères comprises :
       // elles éditent les dates propres de la tâche.
       for (const cote of ['gauche', 'droite']) {
@@ -20224,6 +20242,38 @@ class MoteurCalendrier {
     this.dessiner();
   }
 
+  // Résout la tâche déposée depuis l'extérieur : charge utile propre de la frise,
+  // sinon lien wiki « [[T-…]] », sinon nom de fichier « …/T-….md », sinon chemin
+  // de note reconnu comme tâche. Rend '' si rien ne colle.
+  _refDepuisDrop(dt) {
+    const direct = dt.getData('text/x-ariane-tache');
+    if (direct) return direct.trim();
+    const txt = (dt.getData('text/plain') || '').trim();
+    if (!txt) return '';
+    const lien = Ariane.refDeLien(txt);
+    if (this._taches.some((t) => t.ref === lien)) return lien;
+    const m = txt.match(/([^/\\]+)\.md/);
+    if (m && this._taches.some((t) => t.ref === m[1])) return m[1];
+    return this.greffon.refDeChemin ? (this.greffon.refDeChemin(txt) || '') : '';
+  }
+
+  async _dropExterne(ev, jourISO, mode) {
+    const ref = this._refDepuisDrop(ev.dataTransfer);
+    if (!ref) return;
+    ev.preventDefault();
+    if (mode === 'mois') {
+      await this.greffon.ecrireDatesTaches([{ ref, debut: jourISO, echeance: jourISO }]);
+      this._apres(ref, { debut: jourISO, echeance: jourISO, cible: [jourISO, jourISO, []] });
+      return;
+    }
+    const r = ev.currentTarget.getBoundingClientRect();
+    const cr = Ariane.creneauDepuisDrop({ yRel: ev.clientY - r.top,
+      hauteurHeure: this._pxHeure, heureDebut: this._hDeb, jourISO });
+    if (!cr) return;
+    await this.greffon.majCreneau(ref, { avant: '', debut: cr.debut, fin: cr.fin });
+    this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
+  }
+
   _saisirBloc(e, bloc, ref, brut, jourCol, mode) {
     if (e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
@@ -20285,7 +20335,7 @@ class MoteurCalendrier {
         cell.addEventListener('drop', async (de) => {
           cell.removeClass('zfa-cal-cible');
           const brut = de.dataTransfer.getData('text/x-ariane-cal');
-          if (!brut) return;
+          if (!brut) return this._dropExterne(de, cell.dataset.jour, 'mois');
           de.preventDefault();
           const d = JSON.parse(brut);
           const n = Ariane.ecartJours(d.jour, cell.dataset.jour);
@@ -20389,6 +20439,9 @@ class MoteurCalendrier {
       const col = corps.createDiv({ cls: 'zfa-cal-col' + (j === auj ? ' est-aujourdhui' : '') });
       col.dataset.jour = j;
       col.style.height = ((hFin - hDeb) * PXH) + 'px';
+      col.addEventListener('dragover', (de) => { de.preventDefault(); col.addClass('zfa-cal-cible'); });
+      col.addEventListener('dragleave', () => col.removeClass('zfa-cal-cible'));
+      col.addEventListener('drop', (de) => { col.removeClass('zfa-cal-cible'); this._dropExterne(de, col.dataset.jour, 'semaine'); });
       for (let h = Math.ceil(hDeb); h < hFin; h += 1) {
         const tr = col.createDiv({ cls: 'zfa-cal-trait' });
         tr.style.top = ((h - hDeb) * PXH) + 'px';
