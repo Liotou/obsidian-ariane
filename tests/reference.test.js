@@ -79,3 +79,14 @@ test('un nom choisi par l utilisateur est respecté, même s il commence par « 
   assert.equal(g('Rédiger l intro'), false);
   assert.equal(g(''), false);
 });
+
+test('sousDossier : chemin dans un dossier listé ou un sous-dossier', () => {
+  const D = ['8 - Tâches', ' 9 - Journal/ '];
+  assert.equal(Ariane.sousDossier('8 - Tâches/T26-001.md', D), true);
+  assert.equal(Ariane.sousDossier('8 - Tâches/2026/T26-050.md', D), true);
+  assert.equal(Ariane.sousDossier('9 - Journal/2026-08-31.md', D), true);
+  assert.equal(Ariane.sousDossier('Lectures/Latour.md', D), false);
+  assert.equal(Ariane.sousDossier('8 - Tâchesbis/x.md', D), false); // pas un préfixe de segment
+  assert.equal(Ariane.sousDossier('x.md', []), false);
+  assert.equal(Ariane.sousDossier('x.md', ['', '  ']), false);
+});

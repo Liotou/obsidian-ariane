@@ -1023,6 +1023,7 @@ const DEFAULT_SETTINGS = {
   tempsInactiviteSec: 120,              // pause après ce silence
   tempsEcritureSec: 300,                // report en propriété, au plus tous les…
   tempsIgnorerVerrouillees: true,       // ne pas chronométrer « locked: true »
+  tempsDossiersExclus: '',              // dossiers non chronométrés (sous-dossiers compris)
   tempsBarreEtat: true,
   tempsInfobulleExplorateur: true,
   tempsDossierJournal: '',      // rôle : où écrire le journal du compteur
@@ -4265,6 +4266,18 @@ class Ariane extends obsidian.Plugin {
     return prefixe + String(max + 1).padStart(3, '0');
   }
 
+  // Un chemin est-il dans l'un des dossiers listés (ou un de leurs
+  // sous-dossiers) ? Les entrées sont normalisées (sans / de tête/queue).
+  static sousDossier(chemin, dossiers) {
+    const p = String(chemin || '');
+    for (let d of dossiers || []) {
+      d = String(d || '').trim().replace(/^\/+|\/+$/g, '');
+      if (!d) continue;
+      if (p === d || p.startsWith(d + '/')) return true;
+    }
+    return false;
+  }
+
   // Icône (nom lucide) d'un concept de tâche — la même variété que le
   // formulaire de création. Défaut « tag » pour l'inconnu.
   static iconeConcept(concept) {
@@ -7149,6 +7162,9 @@ class Ariane extends obsidian.Plugin {
     const f = vue.file;
     if (!f || f.extension !== 'md') return '';
 
+    if (Ariane.sousDossier(f.path, String(this.settings.tempsDossiersExclus || '').split(/[\n,]+/))) {
+      return '';
+    }
     if (this.settings.tempsIgnorerVerrouillees !== false) {
       const fm = ((this.app.metadataCache.getFileCache(f) || {}).frontmatter) || {};
       if (fm.locked === true) return '';
@@ -12011,6 +12027,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Ignorer les notes verrouillées'))
       .setDesc(tr("Les notes portant « locked: true » ne sont pas chronométrées."))
       .addToggle((t) => t.setValue(s.tempsIgnorerVerrouillees !== false).onChange(async (v) => { s.tempsIgnorerVerrouillees = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Dossiers exclus du compteur'))
+      .setDesc(tr("Un chemin de dossier par ligne. Les notes de ces dossiers — et de leurs sous-dossiers — ne sont pas chronométrées."))
+      .addTextArea((t) => {
+        t.setPlaceholder('8 - Tâches\n9 - Journal du temps')
+          .setValue(s.tempsDossiersExclus || '')
+          .onChange(async (v) => { s.tempsDossiersExclus = v; await maj(); });
+        t.inputEl.rows = 3;
+        t.inputEl.style.width = '100%';
+      });
 
     this._section(c, tr('Affichage'));
     new obsidian.Setting(c)
