@@ -5419,45 +5419,82 @@ class Ariane extends obsidian.Plugin {
   }
 
   // Construit un .xlsx d'une feuille. `feuille` :
-  //   { nom, colonnes:[{ titre, largeur? }], lignes:[ [cellule, …] ], figerColonnes? }
-  // cellule : { v, t?:'s'|'n'|'d'|'b', s?:{ b?, fill?:'RRGGBB', color?:'RRGGBB', fmt?:'date' } }
-  // En-tête figée, filtre automatique, largeurs, dates réelles, teintes.
+  //   { nom, titre?, colonnes:[{ titre, largeur? }], lignes:[ [cellule, …] ], figerColonnes? }
+  // cellule : { v, t?:'s'|'n'|'d'|'b',
+  //             s?:{ b?, color?:'RRGGBB', fill?:'RRGGBB', sz?, fmt?:'date'|'pourcent',
+  //                  bord?:'grille'|'entete'|'today', align?:'center' } }
+  // Titre fusionné, en-tête figée + colorée, quadrillage discret, filtre auto,
+  // largeurs, dates réelles, teintes.
   static classeurXlsx(feuille) {
     const f = feuille || {};
     const cols = f.colonnes || [];
     const lignes = f.lignes || [];
     const nomFeuille = (Ariane._echapXml(f.nom || 'Frise').slice(0, 31)) || 'Frise';
+    const titre = f.titre ? String(f.titre) : '';
+    const decal = titre ? 1 : 0;            // décalage des lignes si titre
+    const ligEntete = 1 + decal;
 
-    const cleStyle = (s) => JSON.stringify({
+    const norm = (s) => ({
       b: s && s.b ? 1 : 0, color: (s && s.color) || '', fill: (s && s.fill) || '',
-      fmt: (s && s.fmt) || '' });
+      sz: (s && s.sz) || 11, fmt: (s && s.fmt) || '',
+      bord: (s && s.bord) || '', align: (s && s.align) || '' });
+    const cleStyle = (s) => JSON.stringify(norm(s));
     const styles = new Map();
     styles.set(cleStyle({}), 0);
-    const enteteStyle = { b: true, fill: 'ECECEC' };
+    const enteteStyle = { b: true, color: 'FFFFFF', fill: '44546A', bord: 'entete', align: 'center' };
+    const titreStyle = { b: true, color: 'FFFFFF', fill: '44546A', sz: 14, align: 'center' };
     const noter = (s) => {
       const k = cleStyle(s);
       if (!styles.has(k)) styles.set(k, styles.size);
       return styles.get(k);
     };
+    // Style effectif d'une cellule de données : quadrillage discret par défaut,
+    // sauf si la cellule impose déjà une bordure.
+    const effData = (c) => Object.assign({ bord: 'grille' }, (c && c.s) || {});
     noter(enteteStyle);
+    if (titre) noter(titreStyle);
+    for (const c of cols) if (c && c.sEntete) noter(c.sEntete);
     for (const rangee of lignes) {
-      for (const c of rangee) if (c && c.s) noter(c.s);
+      for (let i = 0; i < cols.length; i += 1) noter(effData(rangee[i]));
     }
 
     const fonts = ['<font><sz val="11"/><name val="Calibri"/></font>'];
-    const fontIndex = new Map([['0|', 0]]);
+    const fontIndex = new Map([['0||11', 0]]);
     const fillsHex = [];
+    const bordSet = new Set([''].concat([...styles.keys()].map((k) => JSON.parse(k).bord)));
+    const bordListe = [...bordSet];
+    const bordIndex = new Map(bordListe.map((n, i) => [n, i]));
+    const bordXml = (n) => {
+      const thin = (c) => '<' + c + ' style="thin"><color rgb="FFD9D9D9"/></' + c + '>';
+      if (n === 'grille') {
+        return '<border>' + thin('left') + thin('right') + thin('top') + thin('bottom') + '<diagonal/></border>';
+      }
+      if (n === 'entete') {
+        return '<border><left style="thin"><color rgb="FF8EA9DB"/></left>'
+          + '<right style="thin"><color rgb="FF8EA9DB"/></right>'
+          + '<top style="thin"><color rgb="FF8EA9DB"/></top>'
+          + '<bottom style="medium"><color rgb="FF44546A"/></bottom><diagonal/></border>';
+      }
+      if (n === 'today') {
+        return '<border><left style="medium"><color rgb="FFC55A11"/></left>'
+          + thin('right') + thin('top') + thin('bottom') + '<diagonal/></border>';
+      }
+      return '<border><left/><right/><top/><bottom/><diagonal/></border>';
+    };
     const numDate = 164;
+    const numPct = 165;
     let besoinDate = false;
+    let besoinPct = false;
     const xfs = [];
     for (const [k] of styles) {
       const s = JSON.parse(k);
-      const fk = s.b + '|' + s.color;
+      const fk = s.b + '|' + s.color + '|' + s.sz;
       if (!fontIndex.has(fk)) {
         fontIndex.set(fk, fonts.length);
         fonts.push('<font>' + (s.b ? '<b/>' : '')
+          + '<sz val="' + s.sz + '"/>'
           + (s.color ? '<color rgb="FF' + s.color + '"/>' : '')
-          + '<sz val="11"/><name val="Calibri"/></font>');
+          + '<name val="Calibri"/></font>');
       }
       let fillId = 0;
       if (s.fill) {
@@ -5466,34 +5503,44 @@ class Ariane extends obsidian.Plugin {
         fillId = 2 + idx;
       }
       if (s.fmt === 'date') besoinDate = true;
-      const numFmtId = s.fmt === 'date' ? numDate : 0;
+      if (s.fmt === 'pourcent') besoinPct = true;
+      const numFmtId = s.fmt === 'date' ? numDate : (s.fmt === 'pourcent' ? numPct : 0);
+      const borderId = bordIndex.get(s.bord) || 0;
+      const align = s.align === 'center'
+        ? '<alignment horizontal="center" vertical="center"/>' : '';
       xfs.push('<xf numFmtId="' + numFmtId + '" fontId="' + fontIndex.get(fk)
-        + '" fillId="' + fillId + '" borderId="0" xfId="0"'
+        + '" fillId="' + fillId + '" borderId="' + borderId + '" xfId="0"'
         + (numFmtId ? ' applyNumberFormat="1"' : '')
-        + (s.b || s.color ? ' applyFont="1"' : '')
-        + (fillId ? ' applyFill="1"' : '') + '/>');
+        + (s.b || s.color || s.sz !== 11 ? ' applyFont="1"' : '')
+        + (fillId ? ' applyFill="1"' : '')
+        + (borderId ? ' applyBorder="1"' : '')
+        + (align ? ' applyAlignment="1"' : '') + '>'
+        + align + '</xf>');
     }
     const fills = ['<fill><patternFill patternType="none"/></fill>',
       '<fill><patternFill patternType="gray125"/></fill>']
       .concat(fillsHex.map((h) => '<fill><patternFill patternType="solid"><fgColor rgb="FF'
         + h + '"/><bgColor indexed="64"/></patternFill></fill>'));
+    const numFmts = [];
+    if (besoinDate) numFmts.push('<numFmt numFmtId="' + numDate + '" formatCode="yyyy\\-mm\\-dd"/>');
+    if (besoinPct) numFmts.push('<numFmt numFmtId="' + numPct + '" formatCode="0&quot;%&quot;"/>');
 
     const styleXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
       + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-      + (besoinDate ? '<numFmts count="1"><numFmt numFmtId="' + numDate
-        + '" formatCode="yyyy\\-mm\\-dd"/></numFmts>' : '')
+      + (numFmts.length ? '<numFmts count="' + numFmts.length + '">' + numFmts.join('') + '</numFmts>' : '')
       + '<fonts count="' + fonts.length + '">' + fonts.join('') + '</fonts>'
       + '<fills count="' + fills.length + '">' + fills.join('') + '</fills>'
-      + '<borders count="1"><border/></borders>'
+      + '<borders count="' + bordListe.length + '">' + bordListe.map(bordXml).join('') + '</borders>'
       + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
       + '<cellXfs count="' + xfs.length + '">' + xfs.join('') + '</cellXfs>'
       + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
       + '<dxfs count="0"/>'
       + '</styleSheet>';
 
-    const cellule = (colNum, ligNum, c) => {
+    const cellule = (colNum, ligNum, c, sForce) => {
       const ref = Ariane._colLettre(colNum) + ligNum;
-      const si = c && c.s ? styles.get(cleStyle(c.s)) : 0;
+      const s = sForce || (c && c.s) || null;
+      const si = s ? styles.get(cleStyle(s)) : 0;
       const attrS = si ? ' s="' + si + '"' : '';
       if (!c || c.v == null || c.v === '') return '<c r="' + ref + '"' + attrS + '/>';
       if (c.t === 'n') return '<c r="' + ref + '"' + attrS + '><v>' + Number(c.v) + '</v></c>';
@@ -5508,31 +5555,42 @@ class Ariane extends obsidian.Plugin {
         + Ariane._echapXml(c.v) + '</t></is></c>';
     };
     const rangs = [];
-    rangs.push('<row r="1">' + cols.map((c, i) =>
-      cellule(i + 1, 1, { v: c.titre, t: 's', s: enteteStyle })).join('') + '</row>');
+    if (titre) {
+      rangs.push('<row r="1" ht="26" customHeight="1">'
+        + cols.map((c, i) => cellule(i + 1, 1, i === 0 ? { v: titre, t: 's' } : { v: '' }, titreStyle)).join('')
+        + '</row>');
+    }
+    rangs.push('<row r="' + ligEntete + '" ht="20" customHeight="1">' + cols.map((c, i) =>
+      cellule(i + 1, ligEntete, { v: c.titre, t: 's' }, (c && c.sEntete) || enteteStyle)).join('') + '</row>');
     lignes.forEach((rangee, r) => {
-      rangs.push('<row r="' + (r + 2) + '">'
-        + rangee.map((c, i) => cellule(i + 1, r + 2, c)).join('') + '</row>');
+      const y = ligEntete + 1 + r;
+      rangs.push('<row r="' + y + '">'
+        + cols.map((_, i) => cellule(i + 1, y, rangee[i], effData(rangee[i]))).join('') + '</row>');
     });
     const colsXml = cols.length
       ? '<cols>' + cols.map((c, i) => '<col min="' + (i + 1) + '" max="' + (i + 1)
-        + '" width="' + (Math.max(6, Math.min(80, c.largeur || 16))) + '" customWidth="1"/>').join('') + '</cols>'
+        + '" width="' + (Math.max(4, Math.min(80, c.largeur || 16))) + '" customWidth="1"/>').join('') + '</cols>'
       : '';
-    const dernRef = Ariane._colLettre(Math.max(1, cols.length)) + (lignes.length + 1);
+    const derniere = Ariane._colLettre(Math.max(1, cols.length));
+    const dernRef = derniere + (ligEntete + lignes.length);
     const xSplit = Math.max(0, Math.min(f.figerColonnes || 0, cols.length));
+    const hautGele = ligEntete;             // en-tête (et titre) figés
+    const coinBR = Ariane._colLettre(xSplit + 1) + (hautGele + 1);
     const pane = xSplit
-      ? '<pane xSplit="' + xSplit + '" ySplit="1" topLeftCell="'
-        + Ariane._colLettre(xSplit + 1) + '2" activePane="bottomRight" state="frozen"/>'
-        + '<selection pane="bottomRight"/>'
-      : '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>'
-        + '<selection pane="bottomLeft"/>';
+      ? '<pane xSplit="' + xSplit + '" ySplit="' + hautGele + '" topLeftCell="' + coinBR
+        + '" activePane="bottomRight" state="frozen"/><selection pane="bottomRight"/>'
+      : '<pane ySplit="' + hautGele + '" topLeftCell="A' + (hautGele + 1)
+        + '" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft"/>';
+    const merge = titre
+      ? '<mergeCells count="1"><mergeCell ref="A1:' + derniere + '1"/></mergeCells>' : '';
     const sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
       + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-      + '<sheetViews><sheetView workbookViewId="0">' + pane + '</sheetView></sheetViews>'
-      + '<sheetFormatPr defaultRowHeight="15"/>'
+      + '<sheetViews><sheetView showGridLines="0" workbookViewId="0">' + pane + '</sheetView></sheetViews>'
+      + '<sheetFormatPr defaultRowHeight="17"/>'
       + colsXml
       + '<sheetData>' + rangs.join('') + '</sheetData>'
-      + '<autoFilter ref="A1:' + dernRef + '"/>'
+      + '<autoFilter ref="A' + ligEntete + ':' + dernRef + '"/>'
+      + merge
       + '</worksheet>';
 
     const contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -16084,6 +16142,7 @@ class MoteurFrise {
       const grouper = !!(this.ctx.groupeActuel && this.ctx.groupeActuel());
       const cleFam = String(this.greffon.cleT('famille') || '').replace(/^note\./, '');
       const cleEch = String(this.greffon.cleT('echeance') || '').replace(/^note\./, '');
+      const cleAv = String(this.greffon.cleT('avancement') || '').replace(/^note\./, '');
       const colonnes = [];
       if (grouper) colonnes.push({ titre: tr('Groupe'), largeur: 18 });
       for (const col of rendu) {
@@ -16108,16 +16167,21 @@ class MoteurFrise {
         if (grouper) rangee.push({ v: groupeCourant });
         rendu.forEach((col, i) => {
           const brut = col.valeur ? String(col.valeur(l.ref) || '') : '';
+          const cle = finalCle(col);
           const c = { v: brut };
           if (estDate[i] && /^\d{4}-\d{2}-\d{2}/.test(brut)) {
             c.t = 'd';
             c.s = { fmt: 'date' };
-            if (finalCle(col) === cleEch && this._enRetard && this._enRetard.has(l.ref)) {
-              c.s = { fmt: 'date', color: 'C0392B' };
+            if (cle === cleEch && this._enRetard && this._enRetard.has(l.ref)) {
+              c.s = { fmt: 'date', color: 'C0392B', b: true };
             }
-          } else if (finalCle(col) === cleFam && brut) {
+          } else if (cle === cleAv && brut !== '' && !Number.isNaN(Number(brut))) {
+            c.v = Number(brut);
+            c.t = 'n';
+            c.s = { fmt: 'pourcent' };
+          } else if (cle === cleFam && brut) {
             const hx = hexFamille(l.famille);
-            if (hx) c.s = { fill: hx };
+            if (hx) c.s = { fill: hx, b: true };
           }
           rangee.push(c);
         });
@@ -16139,36 +16203,46 @@ class MoteurFrise {
           if (!dMax || j > dMax) dMax = j;
         }
       }
+      const jour = new Date().toISOString().slice(0, 10);
       if (dMin && dMax) {
         const unite = this.zoom === 'jour' ? 'jour'
           : (this.zoom === 'semaine' ? 'semaine' : 'mois');
         const { periodes } = Ariane.periodesGantt(dMin, dMax, unite, 400);
-        for (const p of periodes) colonnes.push({ titre: p.label, largeur: 4 });
+        const idxAuj = periodes.findIndex((p) => jour >= p.debut && jour <= p.fin);
+        periodes.forEach((p, i) => {
+          const col = { titre: p.label, largeur: 4.5 };
+          if (i === idxAuj) {
+            col.sEntete = { b: true, color: 'FFFFFF', fill: 'C55A11', bord: 'entete', align: 'center' };
+          }
+          colonnes.push(col);
+        });
         tachesRangee.forEach((l, r) => {
           const a = Ariane.jourValide(l.debut) || Ariane.jourValide(l.echeance);
           const b = Ariane.jourValide(l.echeance) || Ariane.jourValide(l.debut);
           const enRetard = this._enRetard && this._enRetard.has(l.ref);
           const fill = enRetard ? 'E0533D' : (hexFamille(l.famille) || 'B0B0B0');
-          for (const p of periodes) {
-            let cell = { v: '' };
+          periodes.forEach((p, i) => {
+            const bord = i === idxAuj ? 'today' : undefined;
+            let cell = bord ? { v: '', s: { bord } } : { v: '' };
             if (a && b && a <= p.fin && b >= p.debut) {
               if (l.jalon) {
-                cell = (l.echeance >= p.debut && l.echeance <= p.fin)
-                  ? { v: '◆', s: { fill, color: 'FFFFFF', b: true } } : { v: '' };
+                if (l.echeance >= p.debut && l.echeance <= p.fin) {
+                  cell = { v: '◆', s: bord ? { fill, color: 'FFFFFF', b: true, bord } : { fill, color: 'FFFFFF', b: true } };
+                }
               } else {
-                cell = { v: '', s: { fill } };
+                cell = { v: '', s: bord ? { fill, bord } : { fill } };
               }
             }
             lignesXlsx[r].push(cell);
-          }
+          });
         });
       }
 
       const nomVue = (this.ctx.nomVue && this.ctx.nomVue()) || tr('Frise');
-      const jour = new Date().toISOString().slice(0, 10);
       const base = (nomVue + ' — ' + jour).replace(/[\\/:*?"<>|]+/g, ' ').trim();
       const octets = Ariane.classeurXlsx({
-        nom: nomVue, colonnes, lignes: lignesXlsx, figerColonnes,
+        nom: nomVue, titre: nomVue + '  ·  ' + jour,
+        colonnes, lignes: lignesXlsx, figerColonnes,
       });
       let chemin = base + '.xlsx';
       try {
