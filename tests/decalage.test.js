@@ -65,6 +65,44 @@ test('une branche aval déjà à l écart n est pas oubliée pour autant', () =>
   assert.equal(r.find((x) => x.ref === 'B').debut, '2027-01-06');
 });
 
+/* ------------------------- propagerBlocage --------------------------- */
+
+const N = (ref, statut) => ({ ref, statut: statut || 'à faire' });
+const H = (de, vers) => ({ de, vers, type: 'hier' });
+const Bk = (de, vers) => ({ de, vers, type: 'bloque' });
+
+test('blocage direct : la cible est bloquée si le bloqueur n est pas clos', () => {
+  const b = Ariane.propagerBlocage([N('A'), N('B')], [Bk('A', 'B')]);
+  assert.ok(b.has('B'));
+  assert.ok(!b.has('A'));
+});
+
+test('un bloqueur terminé ou abandonné ne bloque plus', () => {
+  assert.ok(!Ariane.propagerBlocage([N('A', 'terminée'), N('B')], [Bk('A', 'B')]).has('B'));
+  assert.ok(!Ariane.propagerBlocage([N('A', 'abandonnée'), N('B')], [Bk('A', 'B')]).has('B'));
+});
+
+test('gel descendant : le sous-arbre d une tâche à blocage direct est gelé', () => {
+  const b = Ariane.propagerBlocage(
+    [N('X'), N('M'), N('F1'), N('F2')],
+    [Bk('X', 'M'), H('M', 'F1'), H('F1', 'F2')]);
+  assert.deepEqual([...b].sort(), ['F1', 'F2', 'M']);
+});
+
+test('héritage montant : la mère est bloquée, mais pas la sœur de la fille bloquée', () => {
+  const b = Ariane.propagerBlocage(
+    [N('X'), N('M'), N('F'), N('S')],
+    [Bk('X', 'F'), H('M', 'F'), H('M', 'S')]);
+  assert.ok(b.has('F'));
+  assert.ok(b.has('M'));      // héritée
+  assert.ok(!b.has('S'));     // sœur non gelée : le montant ne redéclenche pas le descendant
+});
+
+test('propagerBlocage : entrées vides', () => {
+  assert.equal(Ariane.propagerBlocage([], []).size, 0);
+  assert.equal(Ariane.propagerBlocage(null, null).size, 0);
+});
+
 test('la cascade emporte aussi la descendance de ce qu elle décale', () => {
   const l = [
     { ref: 'A', niveau: 0, propre: { debut: '2026-09-01', echeance: '2026-09-10' } },

@@ -5090,6 +5090,57 @@ class Ariane extends obsidian.Plugin {
     return { noeuds, aretes };
   }
 
+  // Statut « bloquée » DÉRIVÉ (jamais écrit dans le frontmatter).
+  //  - blocage direct : au moins un bloqueur non clos (terminé/abandonné) ;
+  //  - gel descendant : tout le sous-arbre d'une tâche à blocage direct ;
+  //  - héritage montant : les ascendants d'une tâche bloquée (visibilité).
+  // Le montant ne redéclenche pas le descendant : une sœur d'une tâche bloquée
+  // n'est pas gelée. `noeuds` : [{ref, statut}] ; `aretes` : [{de, vers, type}]
+  // avec type 'hier' (de = parent) ou 'bloque' (de = bloqueur).
+  static propagerBlocage(noeuds, aretes) {
+    const parRef = new Map();
+    for (const n of noeuds || []) if (n && n.ref && !parRef.has(n.ref)) parRef.set(n.ref, n);
+    const parentDe = new Map();
+    const enfants = new Map();
+    const bloqueursDe = new Map();
+    for (const a of aretes || []) {
+      if (!a || !a.de || !a.vers || !parRef.has(a.de) || !parRef.has(a.vers)) continue;
+      if (a.type === 'hier') {
+        parentDe.set(a.vers, a.de);
+        if (!enfants.has(a.de)) enfants.set(a.de, []);
+        enfants.get(a.de).push(a.vers);
+      } else if (a.type === 'bloque') {
+        if (!bloqueursDe.has(a.vers)) bloqueursDe.set(a.vers, []);
+        bloqueursDe.get(a.vers).push(a.de);
+      }
+    }
+    const clos = (ref) => {
+      const s = String((parRef.get(ref) || {}).statut || '');
+      return s === 'terminée' || s === 'abandonnée';
+    };
+    const direct = new Set();
+    for (const [ref, bs] of bloqueursDe) {
+      if (bs.some((b) => !clos(b))) direct.add(ref);
+    }
+    const bloquee = new Set(direct);
+    const descendre = (ref) => {
+      for (const c of enfants.get(ref) || []) {
+        if (!bloquee.has(c)) { bloquee.add(c); descendre(c); }
+      }
+    };
+    for (const ref of direct) descendre(ref);
+    for (const ref of [...bloquee]) {
+      let cur = parentDe.get(ref);
+      const vus = new Set([ref]);
+      while (cur && parRef.has(cur) && !vus.has(cur)) {
+        vus.add(cur);
+        bloquee.add(cur);
+        cur = parentDe.get(cur);
+      }
+    }
+    return bloquee;
+  }
+
   // Place les nœuds SANS position (x/y non finis). Ceux qui en ont sont laissés
   // tels quels. Rang = profondeur dans le DAG (hiérarchie ∪ blocage) par un
   // parcours de Kahn ; les nœuds d'un cycle retombent au rang 0. Dans un rang,
@@ -13674,6 +13725,20 @@ class MoteurFrise {
     this._lignes = [...new Map(planifiees.map((l) => [l.ref, l])).values()];
     this._cfg = cfg;
     this._taches = taches;
+    // Statut « bloquée » dérivé (jamais écrit) : blocage direct, gel descendant,
+    // héritage montant. Voir spec 2026-08-31-rattachements-taches-design.md §3.
+    {
+      const ar = [];
+      for (const t of taches) {
+        const p = Ariane.refDeLien(t.parent);
+        if (p) ar.push({ de: p, vers: t.ref, type: 'hier' });
+        for (const b of t.bloquePar || []) {
+          const x = Ariane.refDeLien(b);
+          if (x) ar.push({ de: x, vers: t.ref, type: 'bloque' });
+        }
+      }
+      this._bloquees = Ariane.propagerBlocage(taches, ar);
+    }
 
     const env = c.createDiv({ cls: 'zfa-gantt-enveloppe' });
     const gauche = env.createDiv({ cls: 'zfa-gantt-gauche' });
@@ -14600,6 +14665,7 @@ class MoteurFrise {
         : (this.greffon.familleDe(l.famille).couleur || this.couleur(l.statut));
       const groupe = svgEl('g', { class: 'zfa-gantt-groupe' });
       groupe.dataset.ref = l.ref;
+      if (this._bloquees && this._bloquees.has(l.ref)) groupe.classList.add('zfa-gantt-bloquee');
       // Points d'accroche pour les liens de lignée (survol).
       l._anc = { xg: x, xd: x + w, cy: y + h / 2 };
       // Géométrie des dates PROPRES (pour recalculer l'enveloppe d'une mère en
@@ -14637,6 +14703,12 @@ class MoteurFrise {
         rempli.style.opacity = '0.9';
         groupe.appendChild(rempli);
       }
+      // Tâche bloquée (dérivé) : voile hachuré par-dessus la barre.
+      if (this._bloquees && this._bloquees.has(l.ref)) {
+        groupe.appendChild(svgEl('rect', { x, y, width: w, height: h,
+          rx: geo.rayon, ry: geo.rayon, class: 'zfa-gantt-bloquee-voile',
+          fill: 'url(#zfa-gantt-hachures)' }));
+      }
       // Plus la ligne est haute, plus la barre en dit. À une ligne, l'intitulé
       // seul ; à deux, les dates ; à trois, le statut et l'avancement. On
       // n'écrit jamais ce qui ne tient pas, la troncature étant plus pénible
@@ -14660,7 +14732,8 @@ class MoteurFrise {
       }
       const bulle = svgEl('title', {});
       bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + debut + ' → ' + fin
-        + (l.avancement ? '  ·  ' + l.avancement + ' %' : '');
+        + (l.avancement ? '  ·  ' + l.avancement + ' %' : '')
+        + (this._bloquees && this._bloquees.has(l.ref) ? '\n' + tr('bloquée') : '');
       groupe.appendChild(bulle);
 
       fond.addEventListener('pointerdown', (e) => this.saisir(e, groupe, l, 'deplacer', { x, w }));
@@ -15631,6 +15704,7 @@ class MoteurArticulation {
 
     const grapheAll = Ariane.grapheArticulation(toutes);
     this._aretesToutes = grapheAll.aretes;
+    this._bloquees = Ariane.propagerBlocage(grapheAll.noeuds, grapheAll.aretes);
     const aretes = Ariane.aretesEntre(grapheAll.aretes, refsPlan);
     const sousSet = toutes.filter((t) => refsPlan.has(t.ref));
     const { noeuds } = Ariane.grapheArticulation(sousSet);
@@ -15799,6 +15873,7 @@ class MoteurArticulation {
     const gn = svgEl('g', { class: 'zfa-artic-noeud', transform: 'translate(' + p.x + ',' + p.y + ')' });
     gn.dataset.ref = n.ref;
     if (this._selNoeuds.has(n.ref)) gn.classList.add('est-selectionne');
+    if (this._bloquees && this._bloquees.has(n.ref)) gn.classList.add('est-bloquee');
     const fo = svgEl('foreignObject', { width: ARTIC_W, height: n.h || ARTIC_H });
     gn.appendChild(fo);
     const carte = fo.createDiv({ cls: 'zfa-artic-carte' + (n.jalon ? ' est-jalon' : '')
