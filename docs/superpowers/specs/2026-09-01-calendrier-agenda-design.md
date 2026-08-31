@@ -136,7 +136,7 @@ enregistrée sous `TYPE_VUE_BASE_CALENDRIER` (`'ariane-calendrier'`), icône
 - Barre d'outils légère : bascule mois/semaine, « Aujourd'hui », bouton
   « Synchroniser » (si `agendaActif`).
 
-### 3.3 Gestes
+### 3.3 Gestes internes
 
 | Geste | Effet |
 |---|---|
@@ -150,6 +150,35 @@ enregistrée sous `TYPE_VUE_BASE_CALENDRIER` (`'ariane-calendrier'`), icône
 Écritures via un `greffon.ecrireCreneau(ref, debut, fin)` (efface `creneau` si
 `debut`/`fin` nuls) et le `ecrireDatesTaches` existant. Après écriture :
 `_enAttente` (report d'index) comme la frise, puis `dessiner()`.
+
+### 3.4 Glisser-déposer entre vues (frise → calendrier)
+
+L'utilisateur empile lui-même les deux vues via la disposition native
+d'Obsidian (scinder un volet : frise au-dessus, calendrier en dessous). Ariane
+ne fabrique pas de volet fusionné — mais **rend le glisser-déposer HTML5
+possible d'une vue à l'autre** (même fenêtre) :
+
+- **Source (frise)** : chaque barre / ligne devient `draggable="true"` ; au
+  `dragstart`, `dataTransfer.setData('text/x-ariane-tache', ref)` (+ un
+  `text/plain` avec `[[ref]]` pour les cibles génériques). Le geste de
+  redimensionnement / déplacement horizontal existant reste prioritaire :
+  le `draggable` ne s'arme que si le `pointerdown` n'a pas touché une poignée.
+- **Cible (calendrier)** : `dragover` / `drop` sur la grille. Au `drop` :
+  - `getData('text/x-ariane-tache')`, sinon un lien de note (`text/plain`
+    `[[…]]` ou un chemin `.md`, ou l'URI `obsidian://open`) résolu en `ref`
+    via `greffon.refDeChemin` ;
+  - `ref` inconnu comme tâche → ignoré ;
+  - **vue semaine** : `Ariane.creneauDepuisDrop({ x, y, jourColonne, heureAxe })`
+    → `{ debut, fin }` (fin = début + 1 h, minutes calées sur 15) →
+    `greffon.ecrireCreneau(ref, debut, fin)` ;
+  - **vue mois** : `drop` sur une cellule-jour → `ecrireDatesTaches` pour caler
+    `début` **et** `échéance` sur ce jour (reprogrammation, comme la frise) ;
+    pas de `creneau`.
+- Accepte aussi un **lien de note glissé depuis n'importe où** (explorateur,
+  `[[wikilink]]`) : même résolution `text/plain` → `ref`.
+- `Ariane.creneauDepuisDrop(opts)` est un **helper pur testable** : position
+  du curseur + géométrie de la grille (origine, `pxParJour`, `pxParHeure`,
+  `heureDebut`) → `{ debut, fin }` ISO. Aucune dépendance DOM.
 
 ---
 
@@ -261,8 +290,10 @@ choix par famille. `_familleParCalendrier(nom)` : réciproque, pour la relève.
   dans leurs notes et pas d'`agenda-id` ; `releverAgenda` les ignore (test §4.3).
   Un événement poussé par Ariane n'a pas de lien de rappel → le pont ne le
   touche pas non plus. Les deux coexistent.
-- **Frise** : `creneau` n'entre pas dans `disposerGantt`. La frise ignore le
-  concept. Aucun impact.
+- **Frise** : `creneau` n'entre pas dans `disposerGantt` — la frise ignore le
+  concept dans son rendu. Seul ajout : ses barres deviennent **source de
+  glisser-déposer** (`text/x-ariane-tache`), sans gêner les gestes existants
+  (voir §3.4).
 - **`heure`** : conservé ; sert au cas « échéance seule + heure ».
 
 ---
@@ -274,22 +305,28 @@ choix par famille. `_familleParCalendrier(nom)` : réciproque, pour la relève.
 2. **Vue mois (lecture)** — `MoteurCalendrier`, grille mois, rendu des tâches,
    toolbar, ouverture au clic. Pas d'agenda de fond, pas de gestes.
 3. **Vue semaine (lecture)** — axe horaire, bandeau journée entière.
-4. **Gestes** — glisser/redimensionner → `ecrireCreneau` / `ecrireDatesTaches`.
-5. **Agenda de fond** — `_jxaEKEvents`, `genererJXAEvenements`, rendu grisé.
-6. **Push** — `evenementDeTache` → `genererJXAEvenements` (push), `agenda-id` /
+4. **Gestes internes** — glisser/redimensionner → `ecrireCreneau` / `ecrireDatesTaches`.
+5. **Glisser-déposer inter-vues** — `Ariane.creneauDepuisDrop` (pur, testé) ;
+   frise : barres `draggable` + `dragstart` ; calendrier : `drop` → `ecrireCreneau`
+   (semaine) ou `ecrireDatesTaches` (mois) ; résolution d'un lien de note glissé.
+6. **Agenda de fond** — `_jxaEKEvents`, `genererJXAEvenements`, rendu grisé.
+7. **Push** — `evenementDeTache` → `genererJXAEvenements` (push), `agenda-id` /
    `agenda-sync`, carte `ref → calendrier`, réglages, câblage sauvegarde.
-7. **Relève** — `genererJXAReleveAgenda`, réconciliation, `NOUVEAU`, minuterie.
-8. **README** FR + EN.
+8. **Relève** — `genererJXAReleveAgenda`, réconciliation, `NOUVEAU`, minuterie.
+9. **README** FR + EN.
 
 Chaque tranche : `node --check`, `node --test`, déploiement coffre, commit.
 
 ## 8 · Tests
 
-- `parseCreneau` : formats, séparateurs, fin < début, minuit.
+- `parseCreneau` / `formatCreneau` : formats, séparateurs, fin < début, minuit,
+  aller-retour.
 - `evenementDeTache` : les six lignes du tableau §2.4, bornes allDay (échéance +1).
+- `creneauDepuisDrop` : position + géométrie → `{ debut, fin }`, calage 15 min,
+  jour hors grille rejeté.
 - `_instantAgenda` : stabilité, sensibilité à chaque champ.
 - `genererJXAEvenements` (push + relève) : `vm.Script` valide, présence de
-  `EKEvent`, `saveEventSpanThisEventCommitError`, `calendarsForEntityType(0)`,
+  `EKEvent`, `saveEventSpanCommitError`, `calendarsForEntityType(0)`,
   `predicateForEventsWithStartDateEndDateCalendars`, filtrage lien-de-rappel,
   quoting d'un nom de calendrier avec espaces.
 - `_familleParCalendrier`, carte `ref → calendrier` sur des `.base` factices.
