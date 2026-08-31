@@ -542,81 +542,88 @@ where exports land, and so on.
 
 ## ✅ Tasks
 
-A task and back-planning system, of which this is the **first stage**: creating
-tasks, describing them, finding them again. Canvas-based articulation and the
-Gantt chart come later.
-
 A task is **a note** in your tasks folder, named `T26-042`: the letter `T`, the
 year, the rank within the year. Its title goes into `aliases`, as in your other
 note families. The counter restarts every January.
 
-Its **kind is never declared**, it follows from whichever field is filled in:
+Every property is written as **prefix + readable name** (`Tâche - Échéance`), so
+task fields never collide with same-named properties on other notes. The prefix
+and the readable names are set in the **Tasks** settings tab; "Masquer le préfixe
+à l'affichage" drops it from timeline columns, articulation cards and base column
+headers without touching the data.
 
-| Field filled | Kind | What the note additionally shows |
-| --- | --- | --- |
-| `source` | reading | links to the entry, to the ZotFlow reader and to Zotero |
-| `livrable` | output | a link to the note produced |
-| `fichier` | output | the document's last change and last opening |
-| none | action | nothing |
+The **Tasks: create a task** form carries a **working note** field, written into
+the note's *## Note de travail* section, and every planning field including an
+optional **time** on the due date. `termine-le` is written when the status turns
+`terminée` and cleared if it goes back.
 
-The **Tasks: create a task** command opens a form. The Zotero source is searched
-by author, title, year or key, since nobody remembers a citation key by heart.
-Dates go through the system calendar. For an output, a single field: an absolute
-path means a file on disk, anything else a note in the vault.
+### Families
 
-Nothing else needs a command. `termine-le` is written as soon as the status
-becomes `terminée`, and cleared if it goes back. The **access block** follows the
-note's fields and rewrites itself, never touching the file when nothing changed.
+A task carries a `famille` field. Families live in the **Folders and families**
+settings tab: a name, a colour, a Lucide icon, the extra properties the family
+adds to the header, a **description** used by the AI assistant, and an **Apple
+Reminders list**. Reading, output and action come preloaded.
 
-Your **first task** also drops a four-view base into the folder; a versioned copy
-lives in [`docs/taches.base`](docs/taches.base). The **Débloquées** view is the
-daily one: it shows only the tasks nothing is holding back any more. An existing
-base is never replaced, so your own views are safe.
+### Timeline (Gantt) and Articulation
 
-### Articulating tasks in a canvas
+Both are **base views** (`ariane-frise`, `ariane-articulation`): they obey Bases'
+native filter, sort and grouping, and each view of a `.base` keeps its own
+settings.
 
-Dependencies are drawn **with the mouse**, in an ordinary Obsidian canvas. Any
-canvas with at least one node pointing at a task note counts as a task canvas: no
-agreed folder, no setting, and as many canvases as you have strands of work.
+The **timeline** left column is a flat table — every task treated the same,
+whatever its links. Order follows the active sort (tasks nest under their parent
+only in the default date order). Columns are drag-reordered by their header and
+renamed per-view through *Edit property…*. Bars carry the family colour, are
+resizable at either edge, and dragging a child that leaves its parent's span
+stretches the parent. Hovering a bar reveals its **lineage** — parents and
+subtasks, joined by a line — with nothing permanent on screen.
 
-Authority is split **by kind of information**, never by file, which is the only
-way to go both ways safely.
+The **articulation** draws the graph of links. A **grey** line is composition
+(parent → subtask), an **accent** line is blocking; arrows route around the
+target card. Cards created while the view is open drop onto it; blocking and
+hierarchy relatives collapse into badges you expand into the plan.
 
-| Information | Owner |
-| --- | --- |
-| A node's position and size | the canvas, and nothing copies it elsewhere |
-| Arrows and their labels | **the canvas**, carried into `parent` and `bloque-par` |
-| Existence, title, status, dates | **the note**, carried back as node colour |
+### Links between tasks
 
-An arrow with **no colour** means blocking, a **purple** arrow means composition,
-that is, the link from a meta-task to what makes it up. The colour is
-configurable. **Red is reserved** for Ariane's warnings. Whatever you name an
-arrow becomes the link's alias: `[[T26-038|data delivered]]`, still a real link
-in your graph.
+`Rattachement` gives a task **one parent**; `Bloquée par` lists its blockers.
+Both are set from the forms, the articulation, or by hand in a base cell.
 
-One task may appear in several canvases. Arrows **add up** across them, so
-deleting an arrow somewhere only removes the link if no other canvas carries it.
-You can open a partial canvas without losing what you drew elsewhere.
+- **Cycles are refused** as you create them, on the *merged* graph — a task that
+  would end up parent *and* blocked by the same branch is turned down, with a
+  message, wherever the link comes from.
+- A parent shows a **derived "blocked" status** when one of its subtasks is
+  blocked, and freezes its subtree when it is blocked itself. Never written.
+- A parent's **progress** is the duration-weighted mean of its subtasks
+  (recursively). Never written.
+- A parent's bar spans the **union** of its own dates and its subtasks'.
 
-Three checks run on every re-read, and whatever they find goes to the **Tasks:
-inconsistencies** panel: **cycles**, where tasks block one another in a ring and
-none can start; **contradicted dates**, when a task starts before the end of what
-blocks it, in which case the arrow turns red in the canvas; and **competing
-parents**, when two canvases give one task two parents.
+Milestones cannot be parents. Deleting a parent re-attaches its subtasks to the
+grandparent, or leaves them as roots.
 
-Obsidian offers no way to intercept the drawing of an arrow: Ariane cannot stop
-you from making an inconsistent one, it reports it a second later.
+### AI assistant
 
-### Task families and the Articulation view
+Local (Ollama / LM Studio) or cloud (Mistral, Claude CLI) — the provider is the
+one already set for bibliography splitting. Every proposal is **reviewed before
+it is applied**. Commands and context-menu entries:
 
-A task can now carry a `famille` field. Families are described in the plugin's
-**Tâches** settings tab, under "Familles de tâches": a name, a colour, a Lucide
-icon and the properties the family adds to the note's header; reading, output and
-action come preloaded. The **Articulation** view is a base view: it colours and
-marks each card by its family, shows only the properties ticked under the
-"Propriétés" button, and honours Bases' native filter and sort. The bar toggles
-between two card modes, **Rétracté** and **Détaillé**, the latter unfolding cards
-one at a time.
+| Feature | What it does |
+|---|---|
+| Structure a draft | an indented outline → a tree of tasks (indentation = hierarchy, "Jalon:" → milestone, "BONUS" → low priority, parentheses kept as a note, no invented dates) |
+| Split a task | proposes subtasks for the task under the cursor |
+| Normalise titles | rewrites titles to a consistent style, batch, row by row |
+| Check families | flags tasks whose family looks wrong |
+| Add in plain language | one sentence → one task, with a blocker linked by name |
+| Resolve sources | matches a reading task's plain-text source to a `@citekey` |
+
+### Apple Reminders (macOS)
+
+Two-way sync through **EventKit**, so every list is visible, including those
+filed inside a group. Each dated task becomes a reminder in its family's list:
+title `[T26-001] - Title`, due date and time, priority, a link back to the note.
+Checking a reminder completes the task; a reminder added by hand in a watched
+list becomes a new task. When both sides changed, the note wins. Runs on save
+and on a timer when enabled in the **Apple Reminders** settings section; the
+first sync asks for Reminders access.
 
 ## ⌨️ Commands
 
@@ -638,9 +645,13 @@ one at a time.
 | Time: write today's journal, write it into the notes now | the timer |
 | Annotation basket: show or hide | for drag and drop |
 | Annotation suggestions: open the panel, rebuild the index | the side panel |
-| Tasks: create a task | form, reference computed for you |
-| Tasks: read the canvases again | carries the arrows into the notes |
+| Tasks: create a task, modify a task | form with a working-note field |
 | Tasks: inconsistencies | cycles, contradicted dates, competing parents |
+| Tasks: structure a draft, split the active task (AI) | outline → task tree |
+| Tasks: normalise titles, check families (AI) | batch review |
+| Tasks: add (plain language, AI) | one sentence → one task |
+| Tasks: resolve sources of reading tasks | plain text → `@citekey` |
+| Tasks: sync to Apple Reminders, pull reminders | two-way, macOS |
 
 ---
 
@@ -649,11 +660,12 @@ one at a time.
 Obsidian's automated review flags three kinds of access. They are real, they are
 needed, and you deserve to know why.
 
-**Running commands** (`child_process`). For the Word export only: Ariane calls
-`pandoc`, its Better BibTeX filter and a Python script shipped in `pandoc/`, all
-three installed by you. No other program is launched, nothing is downloaded. If
-you never export to Word, that path is never taken. On mobile it is refused up
-front, with a message.
+**Running commands** (`child_process`). Three opt-in paths, each idle until you
+use it: the **Word export** calls `pandoc`, its Better BibTeX filter and a Python
+script shipped in `pandoc/`, all installed by you; the **task AI** may call the
+`claude` command line if you pick it as provider; **Apple Reminders** sync runs
+`osascript` against EventKit. No program is launched otherwise, nothing is
+downloaded. On mobile these paths are refused up front.
 
 **Direct filesystem access** (`fs`). Same reason: pandoc works on real files,
 outside the vault. The document lands in the export folder you named, and the
@@ -661,10 +673,10 @@ Word template is read where you put it. Everything else goes through Obsidian's
 own API.
 
 **Vault enumeration.** Atomising, the suggestion index and the bibliographies
-need to know which notes exist. Nothing is sent anywhere: there is **no network
-call** in the plugin, apart from the optional reference lookup on Crossref and
-OpenAlex, which you trigger yourself, and the local models of Ollama or LM
-Studio, which run on your own machine.
+need to know which notes exist. Network calls are all **opt-in and named**: the
+reference lookup on Crossref and OpenAlex; local models on Ollama or LM Studio,
+on your own machine; and, if you configure it, Mistral's API for the task AI or
+bibliography splitting. Nothing else leaves your machine.
 
 **Clipboard.** Write only, and only when you click a "copy" button. The plugin
 never reads what you copied elsewhere.

@@ -555,88 +555,94 @@ tombent les exports, et ainsi de suite.
 
 ## ✅ Tâches
 
-Un système de gestion des tâches et de rétroplanning, dont voici la **première
-étape** : créer des tâches, les décrire, les retrouver. L'articulation par
-canvas et la frise Gantt viendront ensuite.
-
 Une tâche est **une note** de votre dossier de tâches, nommée `T26-042` : la
 lettre `T`, l'année, le rang dans l'année. Son intitulé va en `aliases`, comme
 dans vos autres familles de notes. Le compteur repart chaque janvier.
 
-Sa **famille ne se déclare pas**, elle se déduit du champ rempli :
+Chaque propriété s'écrit **préfixe + nom lisible** (`Tâche - Échéance`), pour
+qu'un champ de tâche n'entre jamais en collision avec une propriété de même nom
+sur une autre note. Le préfixe et les noms lisibles se règlent dans l'onglet
+**Tâches** ; « Masquer le préfixe à l'affichage » le retire des colonnes de
+frise, des cartes d'articulation et des en-têtes de colonnes des bases, sans
+toucher aux données.
 
-| Champ rempli | Famille | Ce que la note montre en plus |
-| --- | --- | --- |
-| `source` | lecture | des liens vers la fiche, vers le lecteur ZotFlow et vers Zotero |
-| `livrable` | production | un lien vers la note produite |
-| `fichier` | production | la dernière modification et la dernière ouverture du document |
-| aucun | action | rien |
+Le formulaire **« Tâches : créer une tâche »** porte un champ **note de travail**,
+écrit dans la section *## Note de travail* de la note, et tous les champs de
+planning dont une **heure** facultative sur l'échéance. `termine-le` s'inscrit
+quand le statut passe à `terminée`, et s'efface s'il en revient.
 
-La commande **« Tâches : créer une tâche »** ouvre un formulaire. La source
-Zotero s'y cherche par auteur, titre, année ou clé, personne ne retenant une clé
-de citation par cœur. Les dates passent par le calendrier du système. Pour une
-production, un seul champ : un chemin absolu désigne un fichier du disque, tout
-le reste une note du coffre.
+### Familles
 
-Rien d'autre ne se commande. `termine-le` s'inscrit dès que le statut passe à
-`terminée`, et s'efface s'il en revient. Le **bloc d'accès** suit les champs de
-la note et se réécrit tout seul, sans jamais toucher au fichier quand rien n'a
-changé.
+Une tâche porte un champ `famille`. Les familles vivent dans l'onglet **Dossiers
+& familles** : un nom, une couleur, une icône Lucide, les propriétés qu'elles
+ajoutent à l'en-tête, une **description** utilisée par l'assistant IA et une
+**liste Apple Rappels**. Lecture, production et action sont préchargées.
 
-Votre **première tâche** dépose aussi une base à quatre vues dans le dossier,
-dont un exemplaire versionné se trouve dans
-[`docs/taches.base`](docs/taches.base). La vue **Débloquées** est celle du
-quotidien : elle ne montre que les tâches dont plus rien n'empêche l'exécution.
-Une base déjà présente n'est jamais remplacée, vos propres vues ne risquent donc
-rien.
+### Frise (Gantt) et Articulation
 
-### Articuler les tâches dans un canvas
+Ce sont des **vues de base** (`ariane-frise`, `ariane-articulation`) : elles
+respectent le filtre, le tri et le regroupement natifs de Bases, et chaque vue
+d'un `.base` garde ses propres réglages.
 
-Les dépendances se tracent **à la souris**, dans un canvas Obsidian ordinaire.
-Est canvas de tâches tout canvas dont au moins un nœud vise une note de tâche :
-aucun dossier convenu, aucun réglage, et autant de canvas que de chantiers.
+La colonne de gauche de la **frise** est un tableau à plat — toutes les tâches
+traitées pareil, quels que soient leurs liens. L'ordre suit le tri actif (les
+tâches ne se rangent sous leur parent qu'en tri par date). Les colonnes se
+réordonnent en glissant leur en-tête et se renomment par vue via *Modifier la
+propriété…*. Les barres prennent la couleur de la famille, se redimensionnent aux
+deux bords, et glisser une fille qui sort des bornes de sa mère étend la mère.
+Survoler une barre révèle sa **lignée** — parents et sous-tâches, reliés par un
+trait — sans rien de permanent à l'écran.
 
-L'autorité se partage **par nature d'information**, jamais par fichier, ce qui
-est la seule façon d'aller dans les deux sens sans risque.
+L'**articulation** dessine le graphe des liens. Un trait **gris** est une
+composition (parent → sous-tâche), un trait **d'accent** un blocage ; les flèches
+contournent la carte cible. Les cartes créées pendant que la vue est ouverte s'y
+posent ; les relatives bloquantes et hiérarchiques se replient en badges qu'on
+déplie dans le plan.
 
-| Information | Propriétaire |
-| --- | --- |
-| Position, taille d'un nœud | le canvas, et rien ne la recopie ailleurs |
-| Flèches et leurs libellés | **le canvas**, reporté dans `parent` et `bloque-par` |
-| Existence, intitulé, statut, dates | **la note**, reportés en couleur de nœud |
+### Liens entre tâches
 
-Une flèche **sans couleur** exprime un blocage, une flèche **violette** une
-composition, c'est-à-dire le lien d'une méta-tâche à ce qui la constitue. La
-couleur se règle. Le **rouge est réservé** aux signalements d'Ariane. Le nom que
-vous donnez à une flèche devient l'alias du lien : `[[T26-038|données livrées]]`,
-qui reste un vrai lien dans votre graphe.
+`Rattachement` donne **un parent** à une tâche ; `Bloquée par` liste ses
+bloqueurs. Les deux se posent depuis les formulaires, l'articulation, ou à la
+main dans une cellule de base.
 
-Une même tâche peut figurer dans plusieurs canvas. Les flèches **s'additionnent**
-de l'un à l'autre, si bien qu'effacer une flèche quelque part ne supprime le lien
-que si aucun autre canvas ne le porte. Vous pouvez donc ouvrir un canvas partiel
-sans perdre ce que vous avez tracé ailleurs.
+- **Les cycles sont refusés** au moment où on les crée, sur le graphe *fusionné*
+  — une tâche qui se retrouverait parent *et* bloquée par la même branche est
+  écartée, avec un message, quelle que soit l'origine du lien.
+- Une mère affiche un **statut « bloquée » dérivé** quand une de ses sous-tâches
+  l'est, et gèle son sous-arbre quand elle est elle-même bloquée. Jamais écrit.
+- L'**avancement** d'une mère est la moyenne de ses sous-tâches pondérée par leur
+  durée (récursif). Jamais écrit.
+- La barre d'une mère couvre l'**union** de ses dates propres et de celles de ses
+  sous-tâches.
 
-Trois contrôles tournent à chaque relecture, et ce qu'ils trouvent va dans le
-volet **Tâches : incohérences** : les **cycles**, où des tâches se bloquent en
-rond et où aucune ne peut commencer ; les **dates contredites**, quand une tâche
-commence avant la fin de ce qui la bloque, auquel cas la flèche rougit dans le
-canvas ; et les **parents concurrents**, quand deux canvas donnent deux parents
-à une même tâche.
+Un jalon ne peut pas être parent. Supprimer une mère rattache ses sous-tâches au
+grand-parent, ou les laisse racines.
 
-Obsidian ne permet pas d'intercepter le tracé d'une flèche : Ariane ne peut pas
-vous empêcher d'en poser une incohérente, elle la signale dans la seconde qui
-suit.
+### Assistant IA
 
-### Familles de tâches et vue Articulation
+Local (Ollama / LM Studio) ou distant (Mistral, CLI Claude) — le fournisseur est
+celui déjà réglé pour le découpage des bibliographies. Chaque proposition est
+**revue avant d'être appliquée**. Commandes et entrées de menu contextuel :
 
-Une tâche peut désormais porter un champ `famille`. Les familles se décrivent
-dans l'onglet de réglages **Tâches**, section « Familles de tâches » : un nom,
-une couleur, une icône Lucide et les propriétés que la famille ajoute à
-l'en-tête ; lecture, production et action sont préchargées. La vue **Articulation**
-est une vue de base : elle colore et illustre chaque carte par sa famille,
-n'affiche que les propriétés cochées sous le bouton « Propriétés », et respecte
-le filtre et le tri natifs de Bases. La barre bascule entre deux présentations de
-carte, **Rétracté** et **Détaillé**, la seconde dépliant les cartes une à une.
+| Fonction | Ce qu'elle fait |
+|---|---|
+| Structurer un brouillon | un plan indenté → un arbre de tâches (indentation = hiérarchie, « Jalon : » → jalon, « BONUS » → priorité basse, parenthèses gardées en note, aucune date inventée) |
+| Découper une tâche | propose des sous-tâches pour la tâche sous le curseur |
+| Normaliser les intitulés | réécrit les intitulés dans un style cohérent, en lot, ligne à ligne |
+| Vérifier les familles | signale les tâches dont la famille paraît mal choisie |
+| Ajouter en langage naturel | une phrase → une tâche, avec un bloqueur rattaché par son nom |
+| Résoudre les sources | rapproche la source en clair d'une tâche de lecture d'un `@citekey` |
+
+### Apple Rappels (macOS)
+
+Synchronisation bidirectionnelle via **EventKit**, si bien que toutes les listes
+sont vues, y compris celles rangées dans un groupe. Chaque tâche datée devient un
+rappel dans la liste de sa famille : titre `[T26-001] - Intitulé`, date et heure
+d'échéance, priorité, un lien retour vers la note. Cocher un rappel termine la
+tâche ; un rappel ajouté à la main dans une liste surveillée devient une nouvelle
+tâche. Quand les deux côtés ont changé, la note fait foi. Tourne à la sauvegarde
+et sur minuterie quand la section **Apple Rappels** des réglages l'active ; la
+première synchronisation demande l'accès à Rappels.
 
 ## ⌨️ Commandes
 
@@ -658,9 +664,13 @@ carte, **Rétracté** et **Détaillé**, la seconde dépliant les cartes une à 
 | Temps : écrire le journal du jour, reporter dans les notes | le compteur |
 | Panier d'annotations : afficher ou masquer | pour le glisser-déposer |
 | Suggestions : ouvrir le panneau, reconstruire l'index | le panneau latéral |
-| Tâches : créer une tâche | formulaire, référence calculée |
-| Tâches : relire les canvas | reporte les flèches dans les notes |
+| Tâches : créer une tâche, modifier une tâche | formulaire avec note de travail |
 | Tâches : incohérences | cycles, dates contredites, parents concurrents |
+| Tâches : structurer un brouillon, découper la tâche active (IA) | plan → arbre de tâches |
+| Tâches : normaliser les intitulés, vérifier les familles (IA) | revue en lot |
+| Tâches : ajouter (langage naturel, IA) | une phrase → une tâche |
+| Tâches : résoudre les sources des tâches de lecture | texte → `@citekey` |
+| Tâches : synchroniser vers Apple Rappels, relever les rappels | bidirectionnel, macOS |
 
 ---
 
