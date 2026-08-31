@@ -142,3 +142,24 @@ test('un lien sain est autorisé', () => {
     { de: 'A', vers: 'C', type: 'bloque' });
   assert.equal(r.ok, true);
 });
+
+test('rectSelection : touche = chevauchement, pas seulement inclusion', () => {
+  const B = [
+    { ref: 'A', x: 0, y: 0, w: 100, h: 50 },
+    { ref: 'B', x: 200, y: 0, w: 100, h: 50 },
+    { ref: 'C', x: 0, y: 200, w: 100, h: 50 },
+  ];
+  // rectangle qui englobe A et effleure B
+  assert.deepEqual(
+    Ariane.rectSelection(B, { x: -10, y: -10, w: 230, h: 80 }).sort(),
+    ['A', 'B']);
+  // entièrement dans A
+  assert.deepEqual(Ariane.rectSelection(B, { x: 10, y: 10, w: 20, h: 20 }), ['A']);
+  // ne touche personne
+  assert.deepEqual(Ariane.rectSelection(B, { x: 500, y: 500, w: 10, h: 10 }), []);
+  // le bord qui affleure ne compte pas (contact strict)
+  assert.deepEqual(Ariane.rectSelection(B, { x: 100, y: 0, w: 50, h: 50 }), []);
+  // rectangle nul, entrées vides
+  assert.deepEqual(Ariane.rectSelection([], { x: 0, y: 0, w: 10, h: 10 }), []);
+  assert.deepEqual(Ariane.rectSelection(B, {}), []);
+});

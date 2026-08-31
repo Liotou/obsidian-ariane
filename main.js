@@ -973,6 +973,7 @@ const DEFAULT_SETTINGS = {
   // Vue Articulation : accrochage magnétique des cartes au glissé.
   articulationAimant: true,
   articulationFleches: 'courbe', // 'courbe' | 'angulaire'
+  articulationConfirmerSuppression: true, // demander avant de supprimer une carte
   friseBarreCouleur: 'famille', // 'famille' | 'statut'
   articulationGrille: 20,       // pas de la grille (0 = pas de grille)
   articulationSeuilAimant: 7,   // distance d'accrochage aux voisins (px)
@@ -4882,6 +4883,22 @@ class Ariane extends obsidian.Plugin {
 
   //#region Ariane · static · articulation
   // ── static · articulation ────────────────────────────────────────────────
+
+  // Refs des boîtes qu'un rectangle de sélection TOUCHE (chevauchement, pas
+  // seulement inclusion). `boites` : [{ ref, x, y, w, h }] ; `rect` : { x, y, w, h }.
+  static rectSelection(boites, rect) {
+    const r = rect || {};
+    const rx = r.x || 0;
+    const ry = r.y || 0;
+    const rw = r.w || 0;
+    const rh = r.h || 0;
+    const out = [];
+    for (const b of boites || []) {
+      if (!b) continue;
+      if (b.x < rx + rw && b.x + b.w > rx && b.y < ry + rh && b.y + b.h > ry) out.push(b.ref);
+    }
+    return out;
+  }
 
   // Détection des cycles par parcours en profondeur. Le tableau « chemin »
   // garde la branche courante : y retomber, c'est boucler.
@@ -11955,6 +11972,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setValue(s.articulationFleches || 'courbe')
         .onChange(async (v) => { s.articulationFleches = v; await maj(); }));
     new obsidian.Setting(c)
+      .setName(tr('Confirmer avant de supprimer une carte'))
+      .setDesc(tr("Demander une validation quand on supprime une tâche depuis l'articulation (clavier ou clic droit)."))
+      .addToggle((t) => t.setValue(s.articulationConfirmerSuppression !== false)
+        .onChange(async (v) => { s.articulationConfirmerSuppression = v; await maj(); }));
+    new obsidian.Setting(c)
       .setName(tr("Accrochage magnétique"))
       .setDesc(tr("Au glissé d'une carte, l'accrocher à une grille et aux bords / centres des cartes voisines."))
       .addToggle((t) => t.setValue(s.articulationAimant !== false)
@@ -15031,7 +15053,8 @@ class MoteurArticulation {
     this.ctx = ctx;
     this._vue = { x: 40, y: 40, k: 1 };
     this._selArete = null;
-    this._selNoeud = null;
+    this._selNoeuds = new Set(); // sélection multiple de cartes (refs)
+    this._espace = false;        // barre d'espace tenue -> le glissé du fond fait un pan
     this._mode = 'retracte';
     // Cartes dont l'affichage des propriétés est INVERSÉ par rapport au mode
     // courant (rétracté montre compact ; détaillé montre les propriétés).
@@ -15040,6 +15063,10 @@ class MoteurArticulation {
     racine.addClass('zfa-artic');
     racine.tabIndex = -1;
     racine.addEventListener('keydown', (e) => this.touche(e));
+    racine.addEventListener('keyup', (e) => {
+      if (e.key === ' ' || e.code === 'Space') { this._espace = false; this.racine.removeClass('est-espace'); }
+    });
+    racine.addEventListener('blur', () => { this._espace = false; this.racine.removeClass('est-espace'); });
   }
 
   detruire() { this.racine.empty(); }
@@ -15154,14 +15181,42 @@ class MoteurArticulation {
     for (const n of noeuds) this.dessinerNoeud(g, n);
 
     svg.addEventListener('wheel', (e) => this.zoomer(e), { passive: false });
+    const surFond = (e) => (e.target === svg
+      || (e.target.closest('.zfa-artic-scene') === g
+        && !e.target.closest('.zfa-artic-noeud')
+        && !e.target.closest('.zfa-artic-arete-groupe')));
     svg.addEventListener('pointerdown', (e) => {
-      if (e.target === svg || e.target.closest('.zfa-artic-scene') === g
-        && !e.target.closest('.zfa-artic-noeud') && !e.target.closest('.zfa-artic-arete-groupe')) {
-        this._deselectionnerArete();
-        this._deselectionnerNoeud();
-        this.panDepart(e);
-      }
+      if (!surFond(e)) return;
+      // Clic milieu, ou Espace + clic gauche : pan. Sinon clic gauche : lasso.
+      if (e.button === 1 || (e.button === 0 && this._espace)) { this.panDepart(e); return; }
+      if (e.button !== 0) return;
+      this._deselectionnerArete();
+      if (!e.shiftKey && !e.metaKey && !e.ctrlKey) this._toutDeselectionner();
+      this.rubberBand(e);
     });
+    svg.addEventListener('contextmenu', (e) => {
+      if (!surFond(e)) return;
+      e.preventDefault();
+      const p = this._versScene(e);
+      const m = new obsidian.Menu();
+      let n = 0;
+      if (this._selNoeuds.size) {
+        n++;
+        m.addItem((i) => i.setTitle(this._selNoeuds.size > 1
+          ? tr('Copier les ') + this._selNoeuds.size + tr(' tâches')
+          : tr('Copier la tâche')).setIcon('copy').onClick(() => this._copier()));
+      }
+      const pp = this.greffon._presseArtic;
+      if (pp && pp.taches && pp.taches.length) {
+        n++;
+        m.addItem((i) => i.setTitle(pp.taches.length > 1
+          ? tr('Coller ') + pp.taches.length + tr(' tâches')
+          : tr('Coller la tâche')).setIcon('clipboard-paste').onClick(() => this._coller(p)));
+      }
+      if (n) m.showAtMouseEvent(e);
+    });
+    // Dernière position du curseur sur le fond : cible du collage au clavier.
+    svg.addEventListener('pointermove', (e) => { this._dernierePosFond = this._versScene(e); });
 
     // Cadrer la vue la première fois seulement.
     if (!svgAncien) this.ajuster(); else this.appliquerVue();
@@ -15186,7 +15241,7 @@ class MoteurArticulation {
     const p = this._pt(n.ref);
     const gn = svgEl('g', { class: 'zfa-artic-noeud', transform: 'translate(' + p.x + ',' + p.y + ')' });
     gn.dataset.ref = n.ref;
-    if (this._selNoeud === n.ref) gn.classList.add('est-selectionne');
+    if (this._selNoeuds.has(n.ref)) gn.classList.add('est-selectionne');
     const fo = svgEl('foreignObject', { width: ARTIC_W, height: n.h || ARTIC_H });
     gn.appendChild(fo);
     const carte = fo.createDiv({ cls: 'zfa-artic-carte' + (n.jalon ? ' est-jalon' : '') });
@@ -15221,6 +15276,10 @@ class MoteurArticulation {
     carte.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      // Le clic droit sélectionne la carte si elle ne l'est pas déjà.
+      if (!this._selNoeuds.has(n.ref)) this.selectionnerNoeud(n.ref, gn, null);
+      const sel = [...this._selNoeuds];
+      const plur = sel.length > 1;
       const m = new obsidian.Menu();
       m.addItem((i) => i.setTitle(tr('Ouvrir la note')).setIcon('file-text')
         .onClick(() => this.greffon.ouvrir(n.ref)));
@@ -15228,8 +15287,17 @@ class MoteurArticulation {
         .onClick(() => new ModaleTache(this.app, this.greffon,
           { ref: n.ref, apres: () => this.dessiner() }).open()));
       m.addSeparator();
-      m.addItem((i) => i.setTitle(tr('Supprimer la tâche…')).setIcon('trash-2')
-        .onClick(() => this._supprimerNoeud(n.ref)));
+      m.addItem((i) => i.setTitle(plur ? tr('Copier les ') + sel.length + tr(' tâches') : tr('Copier la tâche'))
+        .setIcon('copy').onClick(() => this._copier()));
+      const pp = this.greffon._presseArtic;
+      if (pp && pp.taches && pp.taches.length) {
+        m.addItem((i) => i.setTitle(pp.taches.length > 1
+          ? tr('Coller ') + pp.taches.length + tr(' tâches') : tr('Coller la tâche'))
+          .setIcon('clipboard-paste').onClick(() => this._coller()));
+      }
+      m.addSeparator();
+      m.addItem((i) => i.setTitle(plur ? tr('Supprimer les ') + sel.length + tr(' tâches…') : tr('Supprimer la tâche…'))
+        .setIcon('trash-2').onClick(() => this._supprimerNoeuds(sel)));
       m.showAtMouseEvent(e);
     });
 
@@ -15290,12 +15358,12 @@ class MoteurArticulation {
       if (e.button !== 0 || e.target.closest('.zfa-artic-accroche')) return;
       this.glisserNoeud(e, n.ref, gn);
     });
-    // Clic simple : sélectionne la carte (⌫ pour la supprimer).
-    // Double-clic : formulaire de modification. Le titre garde son propre
-    // double-clic (renommage en place).
+    // Clic simple : sélectionne la carte. Shift / Cmd / Ctrl + clic :
+    // ajoute ou retire de la sélection. ⌫ supprime la sélection.
+    // Double-clic : formulaire de modification (le titre garde le sien).
     carte.addEventListener('click', (e) => {
       if (gn.dataset.aGlisse) { delete gn.dataset.aGlisse; return; }
-      this.selectionnerNoeud(n.ref, gn);
+      this.selectionnerNoeud(n.ref, gn, e);
     });
     carte.addEventListener('dblclick', (e) => {
       if (e.target.closest('.zfa-artic-titre')) return;
@@ -15452,46 +15520,73 @@ class MoteurArticulation {
     }
   }
 
-  selectionnerNoeud(ref, gn) {
+  // Sélection multiple. `e` porte les modificateurs : Shift / Cmd / Ctrl +
+  // clic bascule une carte dans la sélection ; un clic nu la remplace.
+  selectionnerNoeud(ref, gn, e) {
     this._deselectionnerArete();
-    this._deselectionnerNoeud();
-    this._selNoeud = ref;
-    if (gn) gn.classList.add('est-selectionne');
+    const multi = e && (e.shiftKey || e.metaKey || e.ctrlKey);
+    if (multi) {
+      if (this._selNoeuds.has(ref)) this._selNoeuds.delete(ref);
+      else this._selNoeuds.add(ref);
+    } else {
+      this._selNoeuds = new Set([ref]);
+    }
+    this._appliquerSelection(this._selNoeuds);
     if (this.racine.focus) this.racine.focus({ preventScroll: true });
   }
 
-  _deselectionnerNoeud() {
-    this._selNoeud = null;
-    if (this._svg) {
-      for (const el of this._svg.querySelectorAll('.zfa-artic-noeud.est-selectionne')) {
-        el.classList.remove('est-selectionne');
-      }
+  // Reflète un ensemble de refs sur les classes CSS des cartes.
+  _appliquerSelection(refs) {
+    this._selNoeuds = refs instanceof Set ? refs : new Set(refs);
+    if (!this._svg) return;
+    for (const el of this._svg.querySelectorAll('.zfa-artic-noeud')) {
+      el.classList.toggle('est-selectionne', this._selNoeuds.has(el.dataset.ref));
     }
   }
 
-  async _supprimerNoeud(ref) {
-    if (!ref) return;
-    const n = (this._noeudsParRef && this._noeudsParRef.get(ref)) || {};
-    const ok = await new Promise((res) => {
-      new ConfirmationRattachement(this.app,
-        tr('Supprimer la tâche « ') + (n.intitule || ref)
-          + tr(' » ? Sa note ira à la corbeille.'),
-        res).open();
-    });
-    if (!ok) return;
-    this._selNoeud = null;
-    await this.greffon.supprimerTache(ref);
+  _toutDeselectionner() { this._appliquerSelection(new Set()); }
+
+  async _supprimerNoeud(ref) { return this._supprimerNoeuds([ref]); }
+
+  async _supprimerNoeuds(refs) {
+    refs = [...new Set((refs || []).filter(Boolean))];
+    if (!refs.length) return;
+    if (this.greffon.settings.articulationConfirmerSuppression !== false) {
+      const n0 = (this._noeudsParRef && this._noeudsParRef.get(refs[0])) || {};
+      const msg = refs.length === 1
+        ? tr('Supprimer la tâche « ') + (n0.intitule || refs[0]) + tr(' » ? Sa note ira à la corbeille.')
+        : tr('Supprimer ') + refs.length + tr(' tâches ? Leurs notes iront à la corbeille.');
+      const ok = await new Promise((res) => new ConfirmationRattachement(this.app, msg, res).open());
+      if (!ok) return;
+    }
+    this._selNoeuds = new Set();
+    for (const ref of refs) await this.greffon.supprimerTache(ref);
     this.dessiner();
   }
 
   async touche(e) {
     const cible = e.target;
     if (cible && (cible.matches('input, textarea, select') || cible.isContentEditable)) return;
-    if (e.key === 'Escape') {
-      this._deselectionnerArete();
-      this._deselectionnerNoeud();
+    if (e.key === ' ' || e.code === 'Space') {
+      e.preventDefault();
+      this._espace = true;
+      this.racine.addClass('est-espace');
       return;
     }
+    const mod = e.metaKey || e.ctrlKey;
+    const k = (e.key || '').toLowerCase();
+    if (e.key === 'Escape') {
+      this._deselectionnerArete();
+      this._toutDeselectionner();
+      return;
+    }
+    if (mod && k === 'a') {
+      e.preventDefault();
+      this._appliquerSelection(new Set(this._noeudsParRef ? this._noeudsParRef.keys() : []));
+      return;
+    }
+    if (mod && k === 'c') { e.preventDefault(); this._copier(); return; }
+    if (mod && k === 'v') { e.preventDefault(); await this._coller(this._dernierePosFond); return; }
     if (e.key !== 'Backspace' && e.key !== 'Delete') return;
     if (this._selArete) {
       e.preventDefault();
@@ -15502,10 +15597,105 @@ class MoteurArticulation {
       this.dessiner();
       return;
     }
-    if (this._selNoeud) {
+    if (this._selNoeuds.size) {
       e.preventDefault();
-      await this._supprimerNoeud(this._selNoeud);
+      await this._supprimerNoeuds([...this._selNoeuds]);
     }
+  }
+
+  // Rectangle de sélection au glissé du fond. Sélectionne toute carte que le
+  // rectangle touche (pas seulement celles entièrement dedans).
+  rubberBand(ev) {
+    ev.preventDefault();
+    const base = (ev.shiftKey || ev.metaKey || ev.ctrlKey)
+      ? new Set(this._selNoeuds) : new Set();
+    const d0 = this._versScene(ev);
+    const rect = svgEl('rect', { class: 'zfa-artic-lasso',
+      x: d0.x, y: d0.y, width: 0, height: 0 });
+    this._scene.appendChild(rect);
+    const boites = [...(this._noeudsParRef ? this._noeudsParRef.values() : [])].map((n) => {
+      const p = this._pt(n.ref);
+      return { ref: n.ref, x: p.x, y: p.y, w: ARTIC_W, h: n.h || ARTIC_H };
+    });
+    const bouger = (e) => {
+      const d = this._versScene(e);
+      const r = { x: Math.min(d0.x, d.x), y: Math.min(d0.y, d.y),
+        w: Math.abs(d.x - d0.x), h: Math.abs(d.y - d0.y) };
+      rect.setAttribute('x', r.x); rect.setAttribute('y', r.y);
+      rect.setAttribute('width', r.w); rect.setAttribute('height', r.h);
+      const sel = new Set(base);
+      for (const ref of Ariane.rectSelection(boites, r)) sel.add(ref);
+      this._appliquerSelection(sel);
+    };
+    const lacher = () => {
+      document.removeEventListener('pointermove', bouger);
+      document.removeEventListener('pointerup', lacher);
+      rect.remove();
+    };
+    document.addEventListener('pointermove', bouger);
+    document.addEventListener('pointerup', lacher);
+  }
+
+  // Copie la sélection : entêtes + positions + liens internes, sur le greffon
+  // (le moteur est recréé à chaque dessin), + miroir texte du presse-papier.
+  _copier() {
+    const refs = [...this._selNoeuds];
+    if (!refs.length) return;
+    const set = new Set(refs);
+    const taches = refs.map((r) => {
+      const n = (this._noeudsParRef && this._noeudsParRef.get(r)) || {};
+      const f = this.app.vault.getMarkdownFiles().find((z) => z.basename === r);
+      const fm = f ? Object.assign({}, (this.app.metadataCache.getFileCache(f) || {}).frontmatter) : {};
+      const p = this._pt(r);
+      return { cle: r, intitule: n.intitule || '', fm, x: p.x, y: p.y };
+    });
+    const liens = (this._aretes || [])
+      .filter((a) => set.has(a.de) && set.has(a.vers))
+      .map((a) => ({ de: a.de, vers: a.vers, type: a.type }));
+    this.greffon._presseArtic = { taches, liens };
+    try { navigator.clipboard.writeText(refs.map((r) => '[[' + r + ']]').join(' ')); } catch (e2) {}
+    new obsidian.Notice(refs.length + tr(' tâche(s) copiée(s)'));
+  }
+
+  // Colle le presse-papier : une nouvelle tâche par entrée, décalée, avec les
+  // liens hier/bloque entre tâches collées reconstitués.
+  async _coller(pos) {
+    const snap = this.greffon._presseArtic;
+    if (!snap || !snap.taches || !snap.taches.length) return;
+    const L = (fm, con) => this.greffon._lireT(fm, con);
+    const minX = Math.min(...snap.taches.map((t) => t.x));
+    const minY = Math.min(...snap.taches.map((t) => t.y));
+    const ox = pos ? pos.x - minX : 44;
+    const oy = pos ? pos.y - minY : 44;
+    const map = new Map();
+    for (const t of snap.taches) {
+      const chemin = await this.greffon.creerTache({
+        intitule: t.intitule || L(t.fm, 'intitule') || '',
+        famille: L(t.fm, 'famille') || '',
+      });
+      const nouv = this.greffon.refDeChemin(chemin);
+      if (!nouv) continue;
+      map.set(t.cle, nouv);
+      const champs = {};
+      for (const con of ['statut', 'priorite', 'jalon', 'avancement', 'debut',
+        'echeance', 'source', 'livrable', 'fichier']) {
+        const v = L(t.fm, con);
+        if (v != null && v !== '') champs[con] = v;
+      }
+      if (Object.keys(champs).length) await this.greffon.majTache(nouv, champs);
+      await this.ctx.poserPosition(nouv, Math.round(t.x + ox), Math.round(t.y + oy));
+    }
+    for (const li of (snap.liens || [])) {
+      const de = map.get(li.de);
+      const vers = map.get(li.vers);
+      if (!de || !vers) continue;
+      if (li.type === 'hier') await this.ctx.poserParent(vers, de);
+      else await this.greffon.creerBlocage(de, vers);
+    }
+    this._selNoeuds = new Set(map.values());
+    this.dessiner();
+    this._appliquerSelection(this._selNoeuds);
+    new obsidian.Notice(map.size + tr(' tâche(s) collée(s)'));
   }
 
   // Coordonnées scène à partir d'un évènement pointeur.
@@ -15518,7 +15708,9 @@ class MoteurArticulation {
   }
 
   panDepart(ev) {
-    if (ev.button !== 0) return;
+    if (ev.button !== 0 && ev.button !== 1) return;
+    ev.preventDefault();
+    this.racine.addClass('est-pan');
     const x0 = ev.clientX;
     const y0 = ev.clientY;
     const vx = this._vue.x;
@@ -15531,6 +15723,7 @@ class MoteurArticulation {
     const lacher = () => {
       document.removeEventListener('pointermove', bouger);
       document.removeEventListener('pointerup', lacher);
+      this.racine.removeClass('est-pan');
     };
     document.addEventListener('pointermove', bouger);
     document.addEventListener('pointerup', lacher);
@@ -15553,19 +15746,39 @@ class MoteurArticulation {
   glisserNoeud(ev, ref, gn) {
     ev.preventDefault();
     ev.stopPropagation();
+    // Empoigner une carte hors sélection en fait la nouvelle sélection —
+    // sauf avec un modificateur (là c'est le clic qui gère l'ajout/retrait).
+    const modif = ev.shiftKey || ev.metaKey || ev.ctrlKey;
+    if (!this._selNoeuds.has(ref) && !modif) this.selectionnerNoeud(ref, gn, null);
+    const refs = (this._selNoeuds.has(ref) && this._selNoeuds.size > 1)
+      ? [...this._selNoeuds] : [ref];
+    const multi = refs.length > 1;
     const dep = this._versScene(ev);
-    const p0 = { ...this._pt(ref) };
+    const p0 = new Map(refs.map((r) => [r, { ...this._pt(r) }]));
+    const gnPar = new Map();
+    for (const el of this._svg.querySelectorAll('.zfa-artic-noeud')) gnPar.set(el.dataset.ref, el);
     let bouge = false;
     const bouger = (e) => {
       const s = this._versScene(e);
       if (Math.abs(s.x - dep.x) > 2 || Math.abs(s.y - dep.y) > 2) bouge = true;
-      const brutX = p0.x + (s.x - dep.x);
-      const brutY = p0.y + (s.y - dep.y);
-      const a = this._aimanter(ref, brutX, brutY);
-      this._pos.set(ref, { x: a.x, y: a.y });
-      gn.setAttribute('transform', 'translate(' + a.x + ',' + a.y + ')');
-      this.majAretesDe(ref);
-      this._tracerReperes(bouge ? a.repères : null);
+      const dx = s.x - dep.x;
+      const dy = s.y - dep.y;
+      if (!multi) {
+        // Aimantation seulement pour une carte seule.
+        const a = this._aimanter(ref, p0.get(ref).x + dx, p0.get(ref).y + dy);
+        this._pos.set(ref, { x: a.x, y: a.y });
+        gn.setAttribute('transform', 'translate(' + a.x + ',' + a.y + ')');
+        this.majAretesDe(ref);
+        this._tracerReperes(bouge ? a.repères : null);
+        return;
+      }
+      for (const r of refs) {
+        const np = { x: Math.round(p0.get(r).x + dx), y: Math.round(p0.get(r).y + dy) };
+        this._pos.set(r, np);
+        const el = gnPar.get(r);
+        if (el) el.setAttribute('transform', 'translate(' + np.x + ',' + np.y + ')');
+        this.majAretesDe(r);
+      }
     };
     const lacher = async () => {
       document.removeEventListener('pointermove', bouger);
@@ -15573,8 +15786,10 @@ class MoteurArticulation {
       this._tracerReperes(null);
       if (!bouge) return;
       gn.dataset.aGlisse = '1';
-      const p = this._pt(ref);
-      await this.ctx.poserPosition(ref, Math.round(p.x), Math.round(p.y));
+      for (const r of refs) {
+        const p = this._pt(r);
+        await this.ctx.poserPosition(r, Math.round(p.x), Math.round(p.y));
+      }
     };
     document.addEventListener('pointermove', bouger);
     document.addEventListener('pointerup', lacher);
