@@ -11084,6 +11084,13 @@ class Ariane extends obsidian.Plugin {
  * Onglet de réglages
  * ========================================================================= */
 
+//#region 12 · ArianeSettingTab
+// ═══════════════════════════════════════════════════════════════════════════
+//  12 · ARIANESETTINGTAB
+//  L'onglet de réglages du greffon : une méthode par onglet (ongletGeneral,
+//  ongletDossiers, ongletTaches…), plus les fabriques de tableaux de familles.
+// ═══════════════════════════════════════════════════════════════════════════
+
 class ArianeSettingTab extends obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -12471,6 +12478,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
  * Fenêtre de confirmation d'un rattachement (anti-homonymie)
  * ========================================================================= */
 
+
+//#endregion 12 · ArianeSettingTab
+
+//#region 13 · Modales de tâche
+// ═══════════════════════════════════════════════════════════════════════════
+//  13 · MODALES DE TÂCHE
+//  Confirmation de rattachement (anti-homonymie), choix de source Zotero,
+//  formulaire de tâche (création + édition), saisie de dates.
+// ═══════════════════════════════════════════════════════════════════════════
+
 class ConfirmationRattachement extends obsidian.Modal {
   constructor(app, texte, onChoix) {
     super(app);
@@ -12881,6 +12898,16 @@ class ModaleDaterTache extends obsidian.Modal {
 /* =========================================================================
  * Volet d'arbitrage des références en attente
  * ========================================================================= */
+
+
+//#endregion 13 · Modales de tâche
+
+//#region 14 · Vue Frise
+// ═══════════════════════════════════════════════════════════════════════════
+//  14 · VUE FRISE
+//  Constantes de type de vue, géométrie Gantt, svgEl, MoteurFrise et la
+//  fabrique de la vue Bases « ariane-frise ».
+// ═══════════════════════════════════════════════════════════════════════════
 
 const TYPE_VUE_REFS = 'zfa-references';
 const TYPE_VUE_INCOHERENCES = 'zfa-taches-incoherences';
@@ -14915,6 +14942,16 @@ function fabriquerVueFriseBase(greffon) {
  * Vue « Articulation » — le graphe des tâches
  * ========================================================================= */
 
+
+//#endregion 14 · Vue Frise
+
+//#region 15 · Vue Articulation
+// ═══════════════════════════════════════════════════════════════════════════
+//  15 · VUE ARTICULATION
+//  Constantes de carte, ancrage magnétique, MoteurArticulation et la
+//  fabrique de la vue Bases « ariane-articulation ».
+// ═══════════════════════════════════════════════════════════════════════════
+
 const ARTIC_W = 210;
 const ARTIC_H = 58;
 const GRILLE_ARTIC = 20;   // pas de la grille magnétique
@@ -15907,6 +15944,16 @@ function fabriquerVueArticulationBase(greffon) {
 // Ce volet ne liste que ce qu'Ariane ne peut pas trancher seule. Tout ce qui
 // est déterministe est déjà fait au moment où il s'ouvre : il reste les
 // contradictions, qui appellent une décision.
+
+//#endregion 15 · Vue Articulation
+
+//#region 16 · Vues latérales (ItemView)
+// ═══════════════════════════════════════════════════════════════════════════
+//  16 · VUES LATÉRALES (ITEMVIEW)
+//  Volets latéraux : incohérences de tâches, références en attente,
+//  suggestions de voisinage local.
+// ═══════════════════════════════════════════════════════════════════════════
+
 class VueIncoherencesTaches extends obsidian.ItemView {
   constructor(feuille, greffon) {
     super(feuille);
@@ -16575,6 +16622,16 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
 /* --------------------- Fenêtres du module Cartes ------------------------ */
 
 // Sélecteur générique à filtre (relations, types, concepts).
+
+//#endregion 16 · Vues latérales (ItemView)
+
+//#region 17 · Modales secondaires
+// ═══════════════════════════════════════════════════════════════════════════
+//  17 · MODALES SECONDAIRES
+//  Choix de liste, rapport de carte, texte, voisinage, styles de modèle,
+//  fusion d'auteurs.
+// ═══════════════════════════════════════════════════════════════════════════
+
 class ChoixListeModal extends obsidian.FuzzySuggestModal {
   constructor(app, titre, items, onChoix) {
     super(app);
@@ -16740,6 +16797,16 @@ class FusionAuteursModal extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+
+//#endregion 17 · Modales secondaires
+
+//#region 18 · Exports
+// ═══════════════════════════════════════════════════════════════════════════
+//  18 · EXPORTS
+//  Points d'entrée CommonJS : la classe du greffon et la surface _test
+//  des fonctions pures pour la suite de tests.
+// ═══════════════════════════════════════════════════════════════════════════
+
 module.exports = Ariane;
 
 // Exposition des fonctions pures pour les tests.
@@ -16779,3 +16846,5 @@ module.exports._test = {
   clustersDoublons,
   meilleurCanonique,
 };
+
+//#endregion 18 · Exports
