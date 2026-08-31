@@ -1518,7 +1518,27 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
    Habillage optionnel d'une note de tâche ouverte (réglage « Habillage de la
    note de tâche »). Purement visuel, ne touche pas au contenu.
    ───────────────────────────────────────────────────────────────────────── */
-.zfa-note-tache .metadata-container {
+/* --- Base (toute note de tâche) : icônes de concept, préfixe masqué. --- */
+.zfa-note-tache .metadata-property-icon {
+  display: inline-flex; opacity: 0.85; color: var(--text-accent);
+}
+.zfa-note-tache .metadata-property-icon svg { width: 15px; height: 15px; }
+/* Préfixe masqué : afficher le libellé (data-zfa-label) et cacher la vraie clé. */
+.zfa-note-tache .metadata-property-key[data-zfa-label] .metadata-property-key-input,
+.zfa-note-tache .metadata-property-key[data-zfa-label] > *:not(.metadata-property-icon) {
+  display: none !important;
+}
+.zfa-note-tache .metadata-property-key[data-zfa-label]::after {
+  content: attr(data-zfa-label);
+  font: inherit; color: var(--text-muted); font-weight: 600;
+}
+.zfa-note-tache .metadata-property[data-property-key="type"],
+.zfa-note-tache .metadata-property[data-property-key="cree"],
+.zfa-note-tache .metadata-property[data-property-key="modifie"],
+.zfa-note-tache .metadata-property[data-property-key="aliases"] { display: none; }
+
+/* --- Habillage complet (réglage « Habillage de la note de tâche »). --- */
+.zfa-note-tache-skin .metadata-container {
   container-type: inline-size;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
@@ -1526,105 +1546,80 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   padding: 8px 12px;
   margin-bottom: 1.4em;
 }
-.zfa-note-tache .metadata-properties {
+.zfa-note-tache-skin .metadata-properties {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 26px;
   row-gap: 1px;
 }
 @container (max-width: 560px) {
-  .zfa-note-tache .metadata-properties { grid-template-columns: 1fr; }
+  .zfa-note-tache-skin .metadata-properties { grid-template-columns: 1fr; }
 }
-/* Une propriété = une ligne : icône · libellé (largeur fixe) · valeur. */
-.zfa-note-tache .metadata-property {
+.zfa-note-tache-skin .metadata-property {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 4px; border: 0; border-radius: var(--radius-s);
-  min-width: 0;
+  min-width: 0; order: 90;
 }
-.zfa-note-tache .metadata-property:hover { background: var(--background-modifier-hover); }
-.zfa-note-tache .metadata-property-key {
+.zfa-note-tache-skin .metadata-property:hover { background: var(--background-modifier-hover); }
+.zfa-note-tache-skin .metadata-property-key {
   flex: 0 0 auto; width: 8.5em;
   display: flex; align-items: center; gap: 6px;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller); font-weight: 600; letter-spacing: 0.01em;
 }
-.zfa-note-tache .metadata-property-icon { display: inline-flex; opacity: 0.85; color: var(--text-accent); }
-.zfa-note-tache .metadata-property-icon svg { width: 15px; height: 15px; }
-.zfa-note-tache .metadata-property-key-input {
+.zfa-note-tache-skin .metadata-property-key-input {
   background: transparent; border: 0; padding: 0; font: inherit; color: inherit;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* Préfixe masqué : on affiche le libellé posé par habillerNotesTache
-   (data-zfa-label) et on cache la vraie clé. */
-.zfa-note-tache .metadata-property-key[data-zfa-label] .metadata-property-key-input,
-.zfa-note-tache .metadata-property-key[data-zfa-label] > *:not(.metadata-property-icon) {
-  display: none;
+.zfa-note-tache-skin .metadata-property-value {
+  flex: 1 1 auto; min-width: 0; font-size: var(--font-ui-small); overflow: hidden;
 }
-.zfa-note-tache .metadata-property-key[data-zfa-label]::after {
-  content: attr(data-zfa-label);
-  font: inherit; color: inherit;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.zfa-note-tache .metadata-property-value {
-  flex: 1 1 auto; min-width: 0; font-size: var(--font-ui-small);
-  overflow: hidden;
-}
-/* Masquer ce qui n'a pas sa place dans la fiche. */
-.zfa-note-tache .metadata-property[data-property-key="type"],
-.zfa-note-tache .metadata-property[data-property-key="cree"],
-.zfa-note-tache .metadata-property[data-property-key="modifie"],
-.zfa-note-tache .metadata-property[data-property-key="aliases"] { display: none; }
-/* Ordre voulu (indépendant du préfixe grâce à data-zfa-concept). */
-.zfa-note-tache .metadata-property { order: 90; }
-.zfa-note-tache .metadata-property[data-zfa-concept="famille"]    { order: 1; }
-.zfa-note-tache .metadata-property[data-zfa-concept="statut"]     { order: 2; }
-.zfa-note-tache .metadata-property[data-zfa-concept="priorite"]   { order: 3; }
-.zfa-note-tache .metadata-property[data-zfa-concept="jalon"]      { order: 4; }
-.zfa-note-tache .metadata-property[data-zfa-concept="terminee"]   { order: 5; }
-.zfa-note-tache .metadata-property[data-zfa-concept="debut"]      { order: 6; }
-.zfa-note-tache .metadata-property[data-zfa-concept="echeance"]   { order: 7; }
-.zfa-note-tache .metadata-property[data-zfa-concept="avancement"] { order: 8; }
-.zfa-note-tache .metadata-property[data-zfa-concept="termine-le"] { order: 9; }
-.zfa-note-tache .metadata-property[data-zfa-concept="parent"]     { order: 20; }
-.zfa-note-tache .metadata-property[data-zfa-concept="bloque-par"] { order: 21; }
-.zfa-note-tache .metadata-property[data-zfa-concept="source"]     { order: 22; }
-.zfa-note-tache .metadata-property[data-zfa-concept="livrable"]   { order: 23; }
-.zfa-note-tache .metadata-property[data-zfa-concept="fichier"]    { order: 24; }
-.zfa-note-tache .metadata-property[data-zfa-concept="liste"]      { order: 30; }
-.zfa-note-tache .metadata-property[data-zfa-concept="rappel-id"]  { order: 31; }
-/* Les propriétés « longues » (liens, chemins) occupent toute la largeur. */
-.zfa-note-tache .metadata-property[data-zfa-concept="parent"],
-.zfa-note-tache .metadata-property[data-zfa-concept="bloque-par"],
-.zfa-note-tache .metadata-property[data-zfa-concept="source"],
-.zfa-note-tache .metadata-property[data-zfa-concept="livrable"],
-.zfa-note-tache .metadata-property[data-zfa-concept="fichier"] { grid-column: 1 / -1; }
-.zfa-note-tache .metadata-add-button { opacity: 0.4; font-size: var(--font-ui-smaller); margin-top: 6px; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="famille"]    { order: 1; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="statut"]     { order: 2; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="priorite"]   { order: 3; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="jalon"]      { order: 4; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="terminee"]   { order: 5; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="debut"]      { order: 6; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="echeance"]   { order: 7; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="avancement"] { order: 8; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="termine-le"] { order: 9; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="parent"]     { order: 20; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="bloque-par"] { order: 21; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="source"]     { order: 22; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="livrable"]   { order: 23; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="fichier"]    { order: 24; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="liste"]      { order: 30; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="rappel-id"]  { order: 31; }
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="parent"],
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="bloque-par"],
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="source"],
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="livrable"],
+.zfa-note-tache-skin .metadata-property[data-zfa-concept="fichier"] { grid-column: 1 / -1; }
+.zfa-note-tache-skin .metadata-add-button { opacity: 0.4; font-size: var(--font-ui-smaller); margin-top: 6px; }
 
-/* Contenu : mesure confortable, titres de section nets. */
-.zfa-note-tache .markdown-preview-view,
-.zfa-note-tache .markdown-source-view.mod-cm6 .cm-content {
+.zfa-note-tache-skin .markdown-preview-view,
+.zfa-note-tache-skin .markdown-source-view.mod-cm6 .cm-content {
   max-width: 44rem; margin-inline: auto;
 }
-.zfa-note-tache .markdown-preview-view h1,
-.zfa-note-tache .cm-content .HyperMD-header-1 { font-size: 1.55em; line-height: 1.2; }
-.zfa-note-tache .markdown-preview-view h2,
-.zfa-note-tache .cm-content .HyperMD-header-2 {
+.zfa-note-tache-skin .markdown-preview-view h1,
+.zfa-note-tache-skin .cm-content .HyperMD-header-1 { font-size: 1.55em; line-height: 1.2; }
+.zfa-note-tache-skin .markdown-preview-view h2,
+.zfa-note-tache-skin .cm-content .HyperMD-header-2 {
   margin-top: 1.7em; padding-bottom: 0.25em;
   border-bottom: 2px solid var(--background-modifier-border);
   font-size: 1.05em; text-transform: uppercase;
   letter-spacing: 0.04em; color: var(--text-muted);
 }
-/* Listes de liens (notes liées, sous-tâches…) rendues en puces-pastilles. */
-.zfa-note-tache .markdown-preview-view li:has(> a.internal-link:only-child) {
+.zfa-note-tache-skin .markdown-preview-view li:has(> a.internal-link:only-child) {
   list-style: none; display: inline-flex; margin: 3px 6px 3px 0;
 }
-.zfa-note-tache .markdown-preview-view li:has(> a.internal-link:only-child) > a.internal-link {
+.zfa-note-tache-skin .markdown-preview-view li:has(> a.internal-link:only-child) > a.internal-link {
   padding: 2px 9px; border-radius: 999px;
   background: var(--background-modifier-hover);
   border: 1px solid var(--background-modifier-border);
   text-decoration: none; font-size: var(--font-ui-smaller);
 }
-.zfa-note-tache .markdown-preview-view ul:has(> li > a.internal-link:only-child) { padding-left: 0; }
+.zfa-note-tache-skin .markdown-preview-view ul:has(> li > a.internal-link:only-child) { padding-left: 0; }
 
 /* Réglage : zone de CSS personnalisé pleine largeur. */
 .zfa-css-perso-reglage { display: block; }

@@ -11259,28 +11259,40 @@ class Ariane extends obsidian.Plugin {
   // Ajoute la classe zfa-note-tache au conteneur d'une note de tâche ouverte,
   // pour l'habillage CSS optionnel des propriétés + contenu.
   habillerNotesTache() {
-    const actif = this.settings.styleNoteTache === true;
     const masquer = this.settings.masquerPrefixeAffichage !== false;
-    const conceptParCle = new Map();
-    for (const con of Ariane.CONCEPTS_TACHE) conceptParCle.set(this.cleT(con), con);
+    const skin = this.settings.styleNoteTache === true;
+    // Toutes les formes possibles d'une clé de propriété -> concept (minuscule,
+    // Obsidian normalise data-property-key en minuscule).
+    const pre = this.settings.prefixeTaches || '';
+    const parCle = new Map();
+    for (const con of Ariane.CONCEPTS_TACHE) {
+      const lab = Ariane.libelleConcept(con);
+      for (const v of [this.cleT(con), con, lab, pre + con, pre + lab]) {
+        if (v) parCle.set(String(v).toLowerCase(), con);
+      }
+    }
     for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
       const vue = leaf && leaf.view;
       if (!vue || !vue.contentEl) continue;
-      const estTache = actif && vue.file && !!this.refDeChemin(vue.file.path);
-      vue.contentEl.toggleClass('zfa-note-tache', !!estTache);
+      const estTache = !!(vue.file && this.refDeChemin(vue.file.path));
+      vue.contentEl.toggleClass('zfa-note-tache', estTache);
+      vue.contentEl.toggleClass('zfa-note-tache-skin', estTache && skin);
       if (!estTache) continue;
       for (const row of vue.contentEl.querySelectorAll('.metadata-property')) {
-        const con = conceptParCle.get(row.dataset.propertyKey);
+        let cle = String(row.dataset.propertyKey || '').toLowerCase();
+        if (!parCle.has(cle)) {
+          const kel = row.querySelector('.metadata-property-key-input, .metadata-property-key');
+          const txt = kel ? String(kel.value || kel.textContent || '').trim().toLowerCase() : '';
+          if (txt && parCle.has(txt)) cle = txt;
+        }
+        const con = parCle.get(cle);
         if (!con) { if (row.dataset.zfaConcept) delete row.dataset.zfaConcept; continue; }
-        // Concept -> placement CSS, indépendamment du préfixe.
         row.dataset.zfaConcept = con;
-        // Libellé affiché sans préfixe (si l'option est active).
         const cleEl = row.querySelector('.metadata-property-key');
         if (cleEl) {
           if (masquer) cleEl.dataset.zfaLabel = this.libelleColonne(this.cleT(con));
           else if (cleEl.dataset.zfaLabel) delete cleEl.dataset.zfaLabel;
         }
-        // Icône du concept (la variété du formulaire de création).
         const icEl = row.querySelector('.metadata-property-icon');
         if (icEl && icEl.dataset.zfaIc !== con) {
           try { obsidian.setIcon(icEl, Ariane.iconeConcept(con)); } catch (e) { /* rien */ }
