@@ -615,6 +615,21 @@ contournent la carte cible. Les cartes créées pendant que la vue est ouverte s
 posent ; les relatives bloquantes et hiérarchiques se replient en badges qu'on
 déplie dans le plan.
 
+### Vue calendrier
+
+Une troisième vue de base, `ariane-calendrier` : grille **mois** ou **semaine**.
+Les tâches s'y posent sur leurs dates — plage `début → échéance` en journée
+entière, ou un **bloc par créneau** si la tâche porte des `Créneaux`. `Créneaux`
+est une **liste** (`2026-09-08 14:00-16:00`, …) : une tâche se travaille en
+plusieurs sessions. Ariane entretient dans la note un tableau `## Créneaux` avec
+les statistiques de durée (sessions, temps planifié, à venir), pour que
+l'information reste **autoportée par la note**.
+
+Glisser une pastille la reprogramme ; en vue semaine, glisser ou redimensionner
+un bloc réécrit ce créneau, Suppr le retire. **Glisser une barre depuis la
+frise** (ou un lien `[[T26-001]]` depuis n'importe où) sur le calendrier ajoute
+un créneau à l'heure du lâcher. Empilez frise et calendrier en scindant un volet.
+
 ### Liens entre tâches
 
 `Rattachement` donne **un parent** à une tâche ; `Bloquée par` liste ses

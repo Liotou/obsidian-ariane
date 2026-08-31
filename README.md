@@ -596,6 +596,20 @@ The **articulation** draws the graph of links. A **grey** line is composition
 target card. Cards created while the view is open drop onto it; blocking and
 hierarchy relatives collapse into badges you expand into the plan.
 
+### Calendar view
+
+A third base view, `ariane-calendrier`: a **month** or **week** grid. Tasks land
+on their dates — a `début → échéance` span shown all-day, or **one block per
+créneau** if the task carries `Créneaux`. `Créneaux` is a **list**
+(`2026-09-08 14:00-16:00`, …): a task is worked over several sessions. Ariane
+keeps a `## Créneaux` table in the note with duration stats (sessions, planned
+time, upcoming), so the information stays **self-contained in the note**.
+
+Drag a chip to reschedule it; in week view, drag or resize a block to rewrite
+that créneau, Delete to remove it. **Dragging a bar from the timeline** (or a
+`[[T26-001]]` link from anywhere) onto the calendar adds a créneau at the drop
+time. Stack the timeline and the calendar by splitting a pane.
+
 ### Links between tasks
 
 `Rattachement` gives a task **one parent**; `Bloquée par` lists its blockers.
