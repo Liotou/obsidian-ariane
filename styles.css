@@ -2052,3 +2052,5 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   background: color-mix(in srgb, var(--zfa-cal-coul) 22%, var(--background-primary));
   border-left: 3px solid var(--zfa-cal-coul);
 }
+.zfa-cal-poignee { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
+.zfa-cal-bloc:focus { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }

@@ -20224,6 +20224,37 @@ class MoteurCalendrier {
     this.dessiner();
   }
 
+  _saisirBloc(e, bloc, ref, brut, jourCol, mode) {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const PXH = this._pxHeure;
+    const y0 = e.clientY;
+    const topDep = parseFloat(bloc.style.top) || 0;
+    const hDep = parseFloat(bloc.style.height) || 20;
+    let bouge = false;
+    const cal = (v) => Math.round(v / (PXH / 4)) * (PXH / 4);
+    const bouger = (mv) => {
+      const d = mv.clientY - y0;
+      if (Math.abs(d) > 3) bouge = true;
+      if (mode === 'fin') bloc.style.height = Math.max(PXH / 4, cal(hDep + d)) + 'px';
+      else bloc.style.top = Math.max(0, cal(topDep + d)) + 'px';
+    };
+    const lacher = async () => {
+      document.removeEventListener('pointermove', bouger);
+      document.removeEventListener('pointerup', lacher);
+      if (!bouge) return;
+      const top = parseFloat(bloc.style.top) || 0;
+      const haut = parseFloat(bloc.style.height) || PXH;
+      const cr = Ariane.creneauDepuisDrop({ yRel: top, hauteurHeure: PXH,
+        heureDebut: this._hDeb, jourISO: jourCol, dureeMin: Math.max(15, (haut / PXH) * 60) });
+      if (!cr) { this.dessiner(); return; }
+      await this.greffon.majCreneau(ref, { avant: brut, debut: cr.debut, fin: cr.fin });
+      this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
+    };
+    document.addEventListener('pointermove', bouger);
+    document.addEventListener('pointerup', lacher);
+  }
+
   dessinerMois(hote) {
     const g = Ariane.grilleMois(this._ancre);
     const auj = new Date().toISOString().slice(0, 10);
@@ -20249,6 +20280,33 @@ class MoteurCalendrier {
       for (const jour of semaine) {
         const cell = grille.createDiv({ cls: 'zfa-cal-cellule' });
         cell.dataset.jour = jour;
+        cell.addEventListener('dragover', (de) => { de.preventDefault(); cell.addClass('zfa-cal-cible'); });
+        cell.addEventListener('dragleave', () => cell.removeClass('zfa-cal-cible'));
+        cell.addEventListener('drop', async (de) => {
+          cell.removeClass('zfa-cal-cible');
+          const brut = de.dataTransfer.getData('text/x-ariane-cal');
+          if (!brut) return;
+          de.preventDefault();
+          const d = JSON.parse(brut);
+          const n = Ariane.ecartJours(d.jour, cell.dataset.jour);
+          if (!n) return;
+          const t = this._taches.find((x) => x.ref === d.ref);
+          if (!t) return;
+          if (d.brut) {
+            const cr = Ariane.parseCreneau(d.brut);
+            if (cr) await this.greffon.majCreneau(d.ref, { avant: d.brut,
+              debut: Ariane.decalerJour(cr.debut.slice(0, 10), n) + 'T' + cr.debut.slice(11),
+              fin: Ariane.decalerJour(cr.fin.slice(0, 10), n) + 'T' + cr.fin.slice(11) });
+            this._apres(d.ref, { cible: [t.debut, t.echeance, null], creneaux: undefined });
+            return;
+          }
+          const nd = t.debut ? Ariane.decalerJour(t.debut, n) : '';
+          const ne = t.echeance ? Ariane.decalerJour(t.echeance, n) : '';
+          if (nd || ne) {
+            await this.greffon.ecrireDatesTaches([{ ref: d.ref, debut: nd, echeance: ne }]);
+            this._apres(d.ref, { debut: nd, echeance: ne, cible: [nd, ne, []] });
+          }
+        });
         if (jour === auj) cell.addClass('est-aujourdhui');
         if (jour.slice(0, 7) !== g.moisDebut.slice(0, 7)) cell.addClass('hors-mois');
         cell.createDiv({ cls: 'zfa-cal-quantieme', text: String(Number(jour.slice(8, 10))) });
@@ -20263,6 +20321,12 @@ class MoteurCalendrier {
           p.title = t.ref + ' · ' + (t.intitule || '');
           p.addEventListener('click', (e) => { e.stopPropagation();
             this.ouvrir(t.ref, e.metaKey || e.ctrlKey); });
+          p.setAttribute('draggable', 'true');
+          p.addEventListener('dragstart', (de) => {
+            de.dataTransfer.setData('text/x-ariane-cal',
+              JSON.stringify({ ref: t.ref, jour, brut: ev.source === 'creneau' ? ev.brut : '' }));
+            de.dataTransfer.effectAllowed = 'move';
+          });
         }
       }
     }
@@ -20339,7 +20403,19 @@ class MoteurCalendrier {
         bloc.style.height = Math.max(14, y1 - y0) + 'px';
         bloc.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
         bloc.dataset.ref = t.ref;
-        if (ev.source === 'creneau') bloc.dataset.brut = ev.brut;
+        if (ev.source === 'creneau') {
+          bloc.dataset.brut = ev.brut;
+          bloc.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j));
+          const poi = bloc.createDiv({ cls: 'zfa-cal-poignee' });
+          poi.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j, 'fin'));
+          bloc.tabIndex = 0;
+          bloc.addEventListener('keydown', async (de) => {
+            if (de.key === 'Delete' || de.key === 'Backspace') {
+              await this.greffon.majCreneau(t.ref, { avant: ev.brut, debut: '', fin: '' });
+              this._apres(t.ref, { cible: [t.debut, t.echeance, null], creneaux: undefined });
+            }
+          });
+        }
         bloc.createSpan({ text: ev.debut.slice(11, 16) + ' ' + (t.intitule || t.ref) });
         bloc.addEventListener('click', (e) => { e.stopPropagation();
           this.ouvrir(t.ref, e.metaKey || e.ctrlKey); });
