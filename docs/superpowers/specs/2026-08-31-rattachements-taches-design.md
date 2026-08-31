@@ -71,14 +71,15 @@ Le statut **« bloqué »** se propage automatiquement dans les deux sens :
 
 ---
 
-## Points encore à confirmer
+## Points confirmés (2026-08-31)
 
-1. **Refus vs signalement à l'ajout.** Q1 du questionnaire dit « validation à chaque
-   ajout » (⇒ refus). L'échange dit « signaler sans interdire ». Résolution proposée
-   ci-dessus : **refuser le vrai cycle**, **signaler** le reste. À valider.
-2. **« Gelée » descendante (Q3)** : gel = les filles passent en statut « bloquée »
-   dérivé (comme la mère), OU un simple voile visuel sans toucher au statut ?
-   Proposé : **dérivé, non écrit**, cohérent avec la propagation montante.
+1. **À l'ajout d'une relation** : un **vrai cycle** du graphe fusionné est **refusé** ;
+   les contradictions plus molles (A parent de B *et* A bloquée par B, blocage
+   redondant avec une contrainte de composition) sont **autorisées mais signalées**
+   dans la vue « Incohérences ».
+2. **« Gelée » descendante (Q3)** : les filles d'une mère bloquée passent en statut
+   **« bloquée » dérivé** (non écrit dans le frontmatter), cohérent avec la
+   propagation montante.
 
 ---
 
