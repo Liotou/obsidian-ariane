@@ -15098,6 +15098,8 @@ class MoteurArticulation {
     const barre = c.createDiv({ cls: 'zfa-artic-barre' });
     this.boutonBarre(barre, 'layout-grid', tr('Re-disposer'), () => this.redisposer());
     this.boutonBarre(barre, 'maximize-2', tr('Ajuster'), () => this.ajuster());
+    this.boutonBarre(barre, 'zoom-out', tr('Zoom arrière'), () => this._zoomVers(1 / 1.2));
+    this.boutonBarre(barre, 'zoom-in', tr('Zoom avant'), () => this._zoomVers(1.2));
     this.boutonBarre(barre, 'minus', tr('Replier un niveau'), () => this._replierNiveau());
     this.boutonBarre(barre, 'plus', tr('Déplier un niveau'), () => this._deplierNiveau());
 
@@ -15734,11 +15736,16 @@ class MoteurArticulation {
   zoomer(ev) {
     ev.preventDefault();
     const b = this._svg.getBoundingClientRect();
-    const cx = ev.clientX - b.left;
-    const cy = ev.clientY - b.top;
-    const facteur = ev.deltaY < 0 ? 1.1 : 1 / 1.1;
+    this._zoomVers(ev.deltaY < 0 ? 1.1 : 1 / 1.1, ev.clientX - b.left, ev.clientY - b.top);
+  }
+
+  // Zoom d'un facteur, autour d'un point de l'écran (défaut : centre de la vue).
+  // Utilisé par la molette et par les boutons de la barre d'outils.
+  _zoomVers(facteur, cx, cy) {
+    const b = this._svg.getBoundingClientRect();
+    if (cx == null) cx = b.width / 2;
+    if (cy == null) cy = b.height / 2;
     const k = Math.max(0.25, Math.min(2.5, this._vue.k * facteur));
-    // garder le point sous le curseur fixe
     this._vue.x = cx - (cx - this._vue.x) * (k / this._vue.k);
     this._vue.y = cy - (cy - this._vue.y) * (k / this._vue.k);
     this._vue.k = k;
