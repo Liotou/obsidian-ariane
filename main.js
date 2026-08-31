@@ -13932,15 +13932,32 @@ class ModaleTache extends obsidian.Modal {
     contentEl.addClass('zfa-tache-modale');
     if (this.modalEl) this.modalEl.addClass('zfa-tache-fenetre');
     titleEl.setText(this.ref ? tr('Modifier la tâche') : tr('Nouvelle tâche'));
+    this._comp = new obsidian.Component();
+    this._comp.load();
     if (this.ref) await this._chargerDepuisNote();
     else this._synchroniserProps();
     this.corps = contentEl.createDiv();
     this._dessiner();
   }
 
+  // Rend un aperçu Markdown formaté (comme dans une note) dans `el`.
+  _rendreMarkdown(el, md) {
+    el.empty();
+    const texte = String(md || '').trim();
+    if (!texte) { el.createEl('span', { cls: 'zfa-tache-note-vide', text: tr('L\'aperçu formaté apparaît ici.') }); return; }
+    const src = this._cheminNote || (this.greffon.dossierT + '/_.md');
+    try {
+      const R = obsidian.MarkdownRenderer;
+      if (R && typeof R.render === 'function') R.render(this.app, texte, el, src, this._comp);
+      else if (R && typeof R.renderMarkdown === 'function') R.renderMarkdown(texte, el, src, this._comp);
+      else el.setText(texte);
+    } catch (e) { el.setText(texte); }
+  }
+
   async _chargerDepuisNote() {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === this.ref);
     if (!f) return;
+    this._cheminNote = f.path;
     const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
     const L = (con) => this.greffon._lireT(fm, con);
     const alias = [].concat(fm.aliases || []).map(String).filter(Boolean);
@@ -14011,17 +14028,38 @@ class ModaleTache extends obsidian.Modal {
       .addText((t) => t.setValue(this.v.intitule)
         .onChange((x) => { this.v.intitule = x; }));
 
-    // Note de travail : éditable directement, sans ouvrir la fiche.
+    // Note de travail : bascule édition / aperçu Markdown formaté, comme une note.
     const nb = c.createDiv({ cls: 'zfa-tache-note' });
     const nl = nb.createEl('div', { cls: 'zfa-tache-note-tete' });
     const ni = nl.createSpan({ cls: 'zfa-tache-ic' });
     obsidian.setIcon(ni, 'text');
     nl.createSpan({ text: tr('Note de travail') });
+    const bMode = nl.createEl('button', { cls: 'zfa-tache-note-mode' });
     const na = nb.createEl('textarea', { cls: 'zfa-tache-note-zone' });
-    na.rows = 5;
-    na.placeholder = tr('Ce que vous voulez garder sous la main pour cette tâche (Markdown accepté).');
+    na.rows = 6;
+    na.placeholder = tr('Ce que vous voulez garder sous la main pour cette tâche. Markdown : **gras**, listes, [[liens]]…');
     na.value = this.v.note || '';
     na.oninput = () => { this.v.note = na.value; };
+    const nap = nb.createEl('div', { cls: 'zfa-tache-note-apercu markdown-rendered' });
+    const appliquerMode = () => {
+      nb.toggleClass('est-apercu', !!this._notePreview);
+      bMode.setText(this._notePreview ? tr('Éditer') : tr('Aperçu'));
+      if (this._notePreview) this._rendreMarkdown(nap, this.v.note);
+    };
+    bMode.onclick = (e) => {
+      e.preventDefault();
+      this._notePreview = !this._notePreview;
+      appliquerMode();
+      if (!this._notePreview) na.focus();
+    };
+    // Double-clic sur l'aperçu = repasser en édition (réflexe d'Obsidian).
+    nap.addEventListener('dblclick', () => {
+      if (!this._notePreview) return;
+      this._notePreview = false;
+      appliquerMode();
+      na.focus();
+    });
+    appliquerMode();
 
     // Le reste des champs génériques, sur deux colonnes.
     const g = c.createDiv({ cls: 'zfa-tache-grille' });
@@ -14207,7 +14245,10 @@ class ModaleTache extends obsidian.Modal {
     if (this.apres && ref) this.apres(ref);
   }
 
-  onClose() { this.contentEl.empty(); }
+  onClose() {
+    if (this._comp) { try { this._comp.unload(); } catch (e) { /* rien */ } }
+    this.contentEl.empty();
+  }
 }
 
 /* ---------------- Dater une tâche sans date (depuis la frise) --------- */

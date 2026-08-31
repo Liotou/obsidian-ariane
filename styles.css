@@ -1680,10 +1680,29 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   display: flex; align-items: center;
   font-size: var(--font-ui-smaller); color: var(--text-muted); margin-bottom: 4px;
 }
+.zfa-tache-note-mode {
+  margin-left: auto; padding: 2px 10px;
+  font-size: var(--font-ui-smaller);
+  box-shadow: none; background: var(--background-modifier-hover);
+}
 .zfa-tache-note-zone {
-  width: 100%; resize: vertical; min-height: 5.5em; line-height: 1.5;
+  width: 100%; resize: vertical; min-height: 6.5em; line-height: 1.55;
   font-size: var(--font-ui-small);
 }
+.zfa-tache-note-apercu {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: 8px 12px;
+  min-height: 6.5em; max-height: 40vh; overflow-y: auto;
+  background: var(--background-primary);
+  font-size: var(--font-ui-small); line-height: 1.55;
+  cursor: text;
+}
+.zfa-tache-note-apercu > :first-child { margin-top: 0; }
+.zfa-tache-note-apercu > :last-child { margin-bottom: 0; }
+.zfa-tache-note-vide { color: var(--text-faint); font-style: italic; }
+.zfa-tache-note:not(.est-apercu) .zfa-tache-note-apercu { display: none; }
+.zfa-tache-note.est-apercu .zfa-tache-note-zone { display: none; }
 
 .zfa-tache-grille {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
