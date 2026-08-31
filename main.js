@@ -270,7 +270,7 @@ const TEXTES = {
     "Glisser pour réordonner": "Drag to reorder",
     "Glisser un lien de note sur un paragraphe l'ajoute à sa note de bas de page. Déposer ailleurs reste normal.": "Dragging a note link onto a paragraph adds it to that paragraph's citation. Dropping anywhere else behaves as usual.",
     "Glisser-déposer & notes de bas de page": "Drag and drop, footnotes",
-    "Glissez des annotations ici…": "Drag annotations here…",
+    "Glissez des notes ici…": "Drag notes here…",
     "Graphe": "Graph",
     "Groupe 1 = clé stable, groupe 2 = contenu.": "Group 1 is the stable key, group 2 is the content.",
     "Général": "General",
@@ -373,8 +373,8 @@ const TEXTES = {
     "Ouvrir dans Zotero (lecteur ZotFlow, annotation ou source)": "Open in Zotero (ZotFlow reader, annotation or source)",
     "Où afficher les suggestions déclenchées par clic droit sur une sélection.": "Where to show suggestions triggered by right clicking a selection.",
     "Pandoc écrit sa propre section et laisse les en-têtes orphelins. Désactiver ne se justifie qu'en cas de difficulté.": "Pandoc writes its own section and leaves the headers orphaned. Turning this off is only worth trying if something goes wrong.",
-    "Panier d'annotations": "Annotation basket",
-    "Panier d'annotations : afficher / masquer": "Annotation basket: show or hide",
+    "Panier de notes": "Note basket",
+    "Panier de notes : afficher / masquer": "Note basket: show or hide",
     "Panneau latéral (ancré)": "Side panel (docked)",
     "Part du score sémantique dans l’hybride (le reste est lexical).": "Share of the semantic score in the hybrid engine. The rest is lexical.",
     "Pause après ce silence": "Pause after this much silence",
@@ -455,7 +455,7 @@ const TEXTES = {
     "Atomiser : la note source active": "Atomise: the active source note",
     "Atomiser : toutes les sources": "Atomise: every source",
     "Atomiser : les notes-filles Zotero": "Atomise: Zotero child notes",
-    "Annotations : afficher ou masquer le panier": "Annotations: show or hide the basket",
+    "Panier de notes : afficher ou masquer": "Note basket: show or hide",
     "Annotations : ouvrir le panneau de suggestions": "Annotations: open the suggestions panel",
     "Annotations : reconstruire l’index des suggestions": "Annotations: rebuild the suggestions index",
     "Annotations : ouvrir dans Zotero": "Annotations: open in Zotero",
@@ -3333,7 +3333,7 @@ class Ariane extends obsidian.Plugin {
 
     this.addSettingTab(new ArianeSettingTab(this.app, this));
 
-    this.addRibbonIcon('layers', "Panier d'annotations (Ariane)", () => this.basculerPanier());
+    this.addRibbonIcon('layers', "Panier de notes (Ariane)", () => this.basculerPanier());
 
     this.addCommand({
       id: 'atomise-active',
@@ -3357,7 +3357,7 @@ class Ariane extends obsidian.Plugin {
     });
     this.addCommand({
       id: 'panier-annotations',
-      name: tr('Annotations : afficher ou masquer le panier'),
+      name: tr("Panier de notes : afficher ou masquer"),
       callback: () => this.basculerPanier(),
     });
     this.addCommand({
@@ -6864,6 +6864,37 @@ class Ariane extends obsidian.Plugin {
   // Récupère la clé de l'annotation glissée, en priorité via le
   // gestionnaire de glisser interne d'Obsidian (dragManager), sinon via
   // les données du presse-papier.
+  // Toutes les notes markdown portées par un glisser (tâches ou non) :
+  // fichier(s) du dragManager d'Obsidian, panier de notes, ou liens [[…]] du
+  // presse-papier. Renvoie une liste de basenames, dédoublonnée.
+  notesGlissees(e) {
+    const noms = new Set();
+    const add = (f) => { if (f && f.extension === 'md') noms.add(f.basename); };
+    const parNom = (v) => {
+      const cible = String(v || '').replace(/^\[\[|\]\]$/g, '').split('|')[0].split('#')[0].trim();
+      if (!cible || cible === 'zfa-panier') return;
+      add(this.app.metadataCache.getFirstLinkpathDest(cible, '')
+        || this.app.vault.getMarkdownFiles().find((z) => z.basename === cible || z.path === cible));
+    };
+    if (this.glisseDepuisPanier && Array.isArray(this.panier)) this.panier.forEach(parNom);
+    const d = this.app.dragManager && this.app.dragManager.draggable;
+    if (d) {
+      add(d.file);
+      for (const arr of [d.files, d.items]) if (Array.isArray(arr)) arr.forEach(add);
+      for (const k of ['linktext', 'link', 'title', 'name']) {
+        const s = typeof d[k] === 'string' ? d[k] : '';
+        if (s.includes('[[')) for (const m of s.matchAll(/\[\[([^\]|#\n]+)/g)) parNom(m[1]);
+        else if (s) parNom(s);
+      }
+    }
+    if (!noms.size && e && e.dataTransfer) {
+      const t = e.dataTransfer.getData('text/plain') || '';
+      if (t.includes('[[')) for (const m of t.matchAll(/\[\[([^\]|#\n]+)/g)) parNom(m[1]);
+      else t.split(/\r?\n/).forEach(parNom);
+    }
+    return [...noms];
+  }
+
   obtenirCleGlissee(e) {
     const toutes = this.settings.dropToutesNotes;
     // Un fichier est-il acceptable comme appui ? Toute note markdown si
@@ -8158,7 +8189,7 @@ class Ariane extends obsidian.Plugin {
     el.style.right = '30px';
 
     const header = el.createDiv({ cls: 'zfa-panier-header' });
-    this.panierTitre = header.createSpan({ cls: 'zfa-panier-titre', text: tr("Panier d'annotations") });
+    this.panierTitre = header.createSpan({ cls: 'zfa-panier-titre', text: tr("Panier de notes") });
     const fermer = header.createSpan({ cls: 'zfa-panier-fermer', text: tr('✕') });
     fermer.onclick = () => this.fermerPanier();
 
@@ -8184,7 +8215,7 @@ class Ariane extends obsidian.Plugin {
 
     this.rendreDeplacable(el, header);
 
-    // Recevoir des annotations glissées dans le panier.
+    // Recevoir des notes / tâches glissées dans le panier (une ou plusieurs).
     el.addEventListener('dragover', (e) => {
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
@@ -8194,11 +8225,11 @@ class Ariane extends obsidian.Plugin {
     el.addEventListener('drop', (e) => {
       el.classList.remove('zfa-panier-survol');
       if (this.glisseDepuisPanier) return; // ne pas s'auto-recevoir
-      const cle = this.obtenirCleGlissee(e);
-      if (cle) {
+      const noms = this.notesGlissees(e);
+      if (noms.length) {
         e.preventDefault();
         e.stopPropagation();
-        this.ajouterAuPanier(cle);
+        for (const n of noms) this.ajouterAuPanier(n);
       }
     });
 
@@ -8251,12 +8282,12 @@ class Ariane extends obsidian.Plugin {
 
   rendrePanier() {
     if (this.panierTitre) {
-      this.panierTitre.textContent = "Panier d'annotations (" + this.panier.length + ')';
+      this.panierTitre.textContent = tr("Panier de notes") + " (" + this.panier.length + ")";
     }
     if (!this.panierListe) return;
     this.panierListe.empty();
     if (!this.panier.length) {
-      this.panierListe.createDiv({ cls: 'zfa-panier-vide', text: tr('Glissez des annotations ici…') });
+      this.panierListe.createDiv({ cls: 'zfa-panier-vide', text: tr("Glissez des notes ici…") });
       return;
     }
     for (const cle of this.panier) {
@@ -15294,21 +15325,38 @@ class MoteurArticulation {
     // Dernière position du curseur sur le fond : cible du collage au clavier.
     svg.addEventListener('pointermove', (e) => { this._dernierePosFond = this._versScene(e); });
 
-    // Glisser une note de tâche depuis l'explorateur (ou un lien) -> la poser.
+    // Glisser des notes sur le canvas : les notes de tâche sont posées telles
+    // quelles ; les autres notes deviennent une nouvelle tâche qui les lie.
+    // Accepte le glisser multiple (explorateur, panier de notes).
     svg.addEventListener('dragover', (e) => {
-      if (!this._refTacheGlissee(e)) return;
+      const d = this.app.dragManager && this.app.dragManager.draggable;
+      const okTxt = e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('text/plain');
+      if (!d && !okTxt && !this.greffon.glisseDepuisPanier) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
       this.racine.addClass('zfa-artic-survol-drop');
     });
     svg.addEventListener('dragleave', () => this.racine.removeClass('zfa-artic-survol-drop'));
-    svg.addEventListener('drop', (e) => {
+    svg.addEventListener('drop', async (e) => {
       this.racine.removeClass('zfa-artic-survol-drop');
-      const ref = this._refTacheGlissee(e);
-      if (!ref) { new obsidian.Notice(tr("Ce n'est pas une note de tâche.")); return; }
+      const noms = this.greffon.notesGlissees(e);
+      if (!noms.length) { new obsidian.Notice(tr('Aucune note reconnue dans ce glisser.')); return; }
       e.preventDefault();
       const p = this._versScene(e);
-      this._poserRef(ref, p.x, p.y);
+      const taches = [];
+      const autres = [];
+      for (const nom of noms) {
+        const f = this.app.metadataCache.getFirstLinkpathDest(nom, '')
+          || this.app.vault.getMarkdownFiles().find((z) => z.basename === nom);
+        if (!f) continue;
+        const ref = this.greffon.refDeChemin(f.path);
+        if (ref) taches.push(ref); else autres.push(f);
+      }
+      if (taches.length) this._poserRefs(taches, p.x, p.y);
+      if (autres.length) {
+        await this._creerTacheAvecNotes(autres,
+          { x: p.x + taches.length * 26, y: p.y + taches.length * 26 });
+      }
     });
 
     if (!refsPlan.size) {
@@ -16293,30 +16341,51 @@ class MoteurArticulation {
     new obsidian.Notice(tr('Plan de travail vidé.'));
   }
 
-  // Résout la note de tâche portée par un évènement de glisser (dragManager
-  // d'Obsidian ou texte [[…]] du presse-papier). Renvoie la ref ou null.
-  _refTacheGlissee(e) {
-    const g = this.greffon;
-    const estTache = (f) => f && f.extension === 'md' && !!g.refDeChemin(f.path);
-    const viaTexte = (txt) => {
-      if (!txt) return null;
-      const cible = txt.replace(/^\[\[|\]\]$/g, '').split('|')[0].split('#')[0].trim();
-      const f = this.app.metadataCache.getFirstLinkpathDest(cible, '');
-      return estTache(f) ? g.refDeChemin(f.path) : null;
-    };
-    const dm = this.app.dragManager;
-    const d = dm && dm.draggable;
-    if (d) {
-      if (estTache(d.file)) return g.refDeChemin(d.file.path);
-      for (const arr of [d.files, d.items]) {
-        if (Array.isArray(arr)) for (const f of arr) if (estTache(f)) return g.refDeChemin(f.path);
-      }
-      for (const k of ['linktext', 'link', 'title', 'name']) {
-        const r = typeof d[k] === 'string' ? viaTexte(d[k]) : null;
-        if (r) return r;
-      }
+  // Pose un lot de refs de tâche sur le plan, décalées, en un seul redessin.
+  // Celles déjà présentes sont ignorées (une seule -> recentre via _poserRef).
+  _poserRefs(refs, x, y) {
+    if (!this._plan) this._plan = this.ctx.lirePlan();
+    const grapheAll = Ariane.grapheArticulation(this.greffon.tachesPourGantt());
+    const surPlan = new Set(this._plan.cartes.map((c) => c.ref));
+    const ajoutees = [];
+    for (const ref of refs) {
+      if (surPlan.has(ref) || ajoutees.includes(ref)) continue;
+      const k = ajoutees.length;
+      const refsFin = new Set([...surPlan, ...ajoutees, ref]);
+      const rel = Ariane.relativesHorsPlan(ref, grapheAll.aretes, refsFin);
+      this._plan.cartes.push({ ref, x: Math.round(x + k * 26), y: Math.round(y + k * 26),
+        replie: rel.sousTaches.length > 0 || rel.bloquantes.length > 0 });
+      ajoutees.push(ref);
     }
-    return viaTexte(e && e.dataTransfer && e.dataTransfer.getData('text/plain'));
+    if (ajoutees.length) {
+      this.ctx.ecrirePlan(this._plan);
+      this.dessiner();
+      this._appliquerSelection(new Set(ajoutees));
+    } else if (refs.length === 1) {
+      this._poserRef(refs[0], x, y);
+    }
+    return ajoutees;
+  }
+
+  // Crée une tâche qui LIE les notes glissées (dans son corps), et la pose.
+  async _creerTacheAvecNotes(files, pos) {
+    const noms = files.map((f) => f.basename);
+    const chemin = await this.greffon.creerTache(
+      { intitule: noms.length === 1 ? noms[0] : '' });
+    const ref = this.greffon.refDeChemin(chemin);
+    if (!ref) return;
+    const f = this.app.vault.getAbstractFileByPath(chemin);
+    if (f instanceof obsidian.TFile) {
+      this.greffon.marquerEcriture(chemin);
+      const bloc = tr('Notes liées :') + '\n' + noms.map((n) => '- [[' + n + ']]').join('\n') + '\n';
+      const brut = await this.app.vault.read(f);
+      const nouv = brut.includes('## Note de travail\n')
+        ? brut.replace('## Note de travail\n', '## Note de travail\n\n' + bloc)
+        : brut.replace(/\s*$/, '\n\n' + bloc);
+      await this.app.vault.modify(f, nouv);
+    }
+    this._poserRef(ref, pos.x, pos.y);
+    new obsidian.Notice(tr('Tâche créée avec ') + noms.length + tr(' note(s) liée(s)'));
   }
 
   // Accrochage magnétique d'un nœud en cours de glissé : à la grille, et aux
