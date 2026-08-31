@@ -3183,28 +3183,31 @@ function titreSansNumerotation(txt) {
 
 // Base de travail des tâches. Le contenu est celui de docs/taches.base, dont
 // c'est l'exemplaire versionné : les deux doivent rester identiques.
+// Gabarit du fichier « Tâches.base ». Les jetons ⟦K:x⟧ (clé de frontmatter
+// réelle du concept x) et ⟦L:x⟧ (nom affiché de la colonne) sont substitués
+// par greffon.gabaritBaseTaches() selon le préfixe / les clés personnalisées.
 const BASE_TACHES = `formulas:
-  bloquantes: note["bloque-par"].filter(value.asFile().properties["statut"] != "terminée").length
-  famille: if(note["source"], "lecture", if(note["livrable"], "production", if(note["fichier"], "production", "action")))
+  bloquantes: note["⟦K:bloque-par⟧"].filter(value.asFile().properties["⟦K:statut⟧"] != "terminée").length
+  famille: if(note["⟦K:source⟧"], "lecture", if(note["⟦K:livrable⟧"], "production", if(note["⟦K:fichier⟧"], "production", "action")))
 properties:
   file.name:
     displayName: Réf.
   note.aliases:
     displayName: Intitulé
-  note.statut:
-    displayName: Statut
-  note.priorite:
-    displayName: Priorité
-  note.debut:
-    displayName: Début
-  note.echeance:
-    displayName: Échéance
-  note.avancement:
-    displayName: Avancement
-  note.parent:
-    displayName: Rattachée à
-  note.termine-le:
-    displayName: Terminée le
+  "note.⟦K:statut⟧":
+    displayName: ⟦L:statut⟧
+  "note.⟦K:priorite⟧":
+    displayName: ⟦L:priorite⟧
+  "note.⟦K:debut⟧":
+    displayName: ⟦L:debut⟧
+  "note.⟦K:echeance⟧":
+    displayName: ⟦L:echeance⟧
+  "note.⟦K:avancement⟧":
+    displayName: ⟦L:avancement⟧
+  "note.⟦K:parent⟧":
+    displayName: ⟦L:parent⟧
+  "note.⟦K:termine-le⟧":
+    displayName: ⟦L:termine-le⟧
   formula.famille:
     displayName: Famille
   formula.bloquantes:
@@ -3215,77 +3218,77 @@ views:
     filters:
       and:
         - note["type"] == "tache"
-        - note["statut"] != "terminée"
-        - note["statut"] != "abandonnée"
+        - note["⟦K:statut⟧"] != "terminée"
+        - note["⟦K:statut⟧"] != "abandonnée"
         - formula.bloquantes == 0
     order:
       - file.name
       - aliases
-      - echeance
-      - priorite
-      - avancement
+      - "⟦K:echeance⟧"
+      - "⟦K:priorite⟧"
+      - "⟦K:avancement⟧"
       - formula.famille
     sort:
-      - property: echeance
+      - property: "⟦K:echeance⟧"
         direction: ASC
   - type: table
     name: 2. Cette semaine
     filters:
       and:
         - note["type"] == "tache"
-        - note["statut"] != "terminée"
-        - note["statut"] != "abandonnée"
-        - note["echeance"] <= now() + "7 days"
+        - note["⟦K:statut⟧"] != "terminée"
+        - note["⟦K:statut⟧"] != "abandonnée"
+        - note["⟦K:echeance⟧"] <= now() + "7 days"
     order:
       - file.name
       - aliases
-      - echeance
-      - priorite
+      - "⟦K:echeance⟧"
+      - "⟦K:priorite⟧"
       - formula.bloquantes
     sort:
-      - property: echeance
+      - property: "⟦K:echeance⟧"
         direction: ASC
   - type: table
     name: 3. Par famille
     filters:
       and:
         - note["type"] == "tache"
-        - note["statut"] != "terminée"
+        - note["⟦K:statut⟧"] != "terminée"
     groupBy:
       property: formula.famille
       direction: ASC
     order:
       - file.name
       - aliases
-      - statut
-      - echeance
-      - avancement
+      - "⟦K:statut⟧"
+      - "⟦K:echeance⟧"
+      - "⟦K:avancement⟧"
   - type: table
     name: 4. Terminées
     filters:
       and:
         - note["type"] == "tache"
-        - note["statut"] == "terminée"
+        - note["⟦K:statut⟧"] == "terminée"
     order:
       - file.name
       - aliases
-      - termine-le
+      - "⟦K:termine-le⟧"
       - formula.famille
     sort:
-      - property: termine-le
+      - property: "⟦K:termine-le⟧"
         direction: DESC
   - type: ariane-frise
     name: 5. Frise
     filters:
       and:
         - note["type"] == "tache"
-        - note["statut"] != "abandonnée"
+        - note["⟦K:statut⟧"] != "abandonnée"
   - type: ariane-articulation
     name: 6. Articulation
     filters:
       and:
         - note["type"] == "tache"
-        - note["statut"] != "abandonnée"
+        - note["⟦K:statut⟧"] != "abandonnée"
 `;
 
 // Bloc de vue Articulation, ajouté aux bases de tâches déjà créées qui ne
@@ -3295,7 +3298,7 @@ const VUE_ARTICULATION_BASE = `  - type: ariane-articulation
     filters:
       and:
         - note["type"] == "tache"
-        - note["statut"] != "abandonnée"
+        - note["⟦K:statut⟧"] != "abandonnée"
 `;
 
 const ZFA_TACHE_DEBUT = '%% ariane:tache %%';
@@ -4243,6 +4246,14 @@ class Ariane extends obsidian.Plugin {
       if (m) max = Math.max(max, parseInt(m[1], 10));
     }
     return prefixe + String(max + 1).padStart(3, '0');
+  }
+
+  // Substitution des jetons du gabarit « Tâches.base » : ⟦K:concept⟧ → clé
+  // réelle, ⟦L:concept⟧ → nom de colonne.
+  static substituerBase(texte, cleFn, labelFn) {
+    return String(texte || '')
+      .replace(/⟦K:([a-z-]+)⟧/g, (_, c) => cleFn(c))
+      .replace(/⟦L:([a-z-]+)⟧/g, (_, c) => labelFn(c));
   }
 
   // Nom de fichier encore générique (« Sans titre », « Untitled 3 ») : c'est
@@ -11172,12 +11183,19 @@ class Ariane extends obsidian.Plugin {
   // Une base existante n'est jamais remplacée : Monsieur y ajoutera ses propres
   // vues, et les perdre à chaque mise à jour du greffon serait pire que de ne
   // pas fournir la base du tout.
+  // Substitue les jetons ⟦K:x⟧ / ⟦L:x⟧ du gabarit .base par la clé réelle du
+  // concept x et son nom de colonne (préfixe retiré si « masquer le préfixe »).
+  gabaritBaseTaches(texte) {
+    return Ariane.substituerBase(texte == null ? BASE_TACHES : texte,
+      (c) => this.cleT(c), (c) => this.libelleColonne(this.cleT(c)));
+  }
+
   async assurerBaseTaches() {
     const chemin = this.dossierT + '/Tâches.base';
     const f = this.app.vault.getAbstractFileByPath(chemin);
     if (!f) {
       this.marquerEcriture(chemin);
-      await this.app.vault.create(chemin, BASE_TACHES);
+      await this.app.vault.create(chemin, this.gabaritBaseTaches());
       return chemin;
     }
     // Base déjà là mais sans vue Articulation : on l'ajoute (source déjà
@@ -11186,9 +11204,22 @@ class Ariane extends obsidian.Plugin {
       const t = await this.app.vault.read(f);
       if (!/type:\s*ariane-articulation/.test(t)) {
         this.marquerEcriture(chemin);
-        await this.app.vault.modify(f, t.replace(/\s*$/, '\n') + VUE_ARTICULATION_BASE);
+        await this.app.vault.modify(f, t.replace(/\s*$/, '\n') + this.gabaritBaseTaches(VUE_ARTICULATION_BASE));
       }
     }
+    return chemin;
+  }
+
+  // Réécrit entièrement « Tâches.base » avec la config de clés courante
+  // (préfixe, clés personnalisées, affichage sans préfixe).
+  async regenererBaseTaches() {
+    const chemin = this.dossierT + '/Tâches.base';
+    await this.assurerDossier(this.dossierT);
+    const f = this.app.vault.getAbstractFileByPath(chemin);
+    this.marquerEcriture(chemin);
+    const contenu = this.gabaritBaseTaches();
+    if (f instanceof obsidian.TFile) await this.app.vault.modify(f, contenu);
+    else await this.app.vault.create(chemin, contenu);
     return chemin;
   }
 
@@ -12032,7 +12063,13 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         avis.hide();
         new obsidian.Notice(total + tr(' clé(s) résiduelle(s) supprimée(s).'));
       }));
-    this._aide(c, tr("Les colonnes et filtres du fichier « Tâches.base » lui-même restent écrits avec les noms par défaut : adaptez-les à la main si vous vous servez de ses tableaux."));
+    new obsidian.Setting(c)
+      .setName(tr('Régénérer « Tâches.base »'))
+      .setDesc(tr("Réécrit le fichier « Tâches.base » (colonnes, filtres, tris) avec les clés courantes. Les noms de colonnes suivent l'option « Masquer le préfixe à l'affichage ». Écrase toute personnalisation manuelle de ce fichier."))
+      .addButton((b) => b.setButtonText(tr('Régénérer')).setWarning().onClick(async () => {
+        await this.plugin.regenererBaseTaches();
+        new obsidian.Notice(tr('« Tâches.base » régénéré.'));
+      }));
 
     this._section(c, tr('Vue Frise'));
     new obsidian.Setting(c)
