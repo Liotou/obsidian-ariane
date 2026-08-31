@@ -1057,6 +1057,12 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
    au même sous-pixel, quel que soit le thème. En surcouche du SVG, sans capter
    les clics. */
 .zfa-gantt-bordures { position: absolute; top: 0; left: 0; z-index: 6; pointer-events: none; }
+/* Calque du lignage : au-dessus des bordures HTML (z 6) et des bandeaux de
+   groupe (z 7), pour que le trait ne passe pas derrière la grille. */
+.zfa-gantt-svg-lignage {
+  position: absolute; top: 0; left: 0; z-index: 8; pointer-events: none;
+  overflow: visible;
+}
 .zfa-gantt-bordure-entete,
 .zfa-gantt-bordure-ligne,
 .zfa-gantt-bordure-groupe {

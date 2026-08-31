@@ -13564,6 +13564,7 @@ class MoteurFrise {
     // que par défaut (axe chronologique) ; dès qu'un autre tri est actif, les
     // filles ne sont plus regroupées sous leur mère.
     const plat = mode !== 'date';
+    this._plat = plat;
     const brut = Ariane.disposerFriseGroupee(taches, groupes, mode, sensTri, groupeDesc, plat);
     const { avecDates, sansDate } = Ariane.repartirSansDate(brut);
     // Retirer les bandes de groupe devenues vides, compter les datées restantes,
@@ -13651,6 +13652,7 @@ class MoteurFrise {
     const svg = svgEl('svg', { class: 'zfa-gantt-svg', width: cfg.largeur, height: hauteur });
     droite.appendChild(svg);
     this._svg = svg;
+    this._svgLignage = null;
     this._lignage = null;
     // Motif de hachures pour les lignes des tâches sans date.
     {
@@ -13676,6 +13678,12 @@ class MoteurFrise {
     this.dessinerAujourdhui(svg, cfg, aujourdhui);
     this.dessinerEntete(svg, cfg);
     this.dessinerBorduresFrise(droite, lignes, cfg.largeur);
+    // Calque du lignage : un SVG à part, empilé AU-DESSUS des bordures HTML de
+    // la frise (z-index) — sinon les traits passeraient derrière la grille.
+    const svgL = svgEl('svg', { class: 'zfa-gantt-svg-lignage',
+      width: cfg.largeur, height: hauteur });
+    droite.appendChild(svgL);
+    this._svgLignage = svgL;
     const piste = this.dessinerEntetesGroupes(env, lignes);
 
     // Les deux colonnes défilent ensemble : sans cet accord, l'arbre et les
@@ -14562,10 +14570,11 @@ class MoteurFrise {
       groupe.addEventListener('pointerenter', () => this._montrerLignage(l.ref));
       groupe.addEventListener('pointerleave', () => this._effacerLignage());
 
-      // Une méta-tâche (qui a des sous-tâches) se dessine comme n'importe quelle
-      // barre : même forme, même hauteur. Elle reste seulement non
-      // redimensionnable directement (sa durée vient de ses filles).
-      const meta = l.aDesEnfants;
+      // Une méta-tâche (qui a des sous-tâches) n'est pas redimensionnable :
+      // sa durée vient de ses filles. Mais en mode « tri actif » (plat), la
+      // frise n'agrège plus : chaque tâche montre SES dates et se redimensionne
+      // comme les autres.
+      const meta = l.aDesEnfants && !this._plat;
       const fond = svgEl('rect', {
         x, y, width: w, height: h,
         rx: geo.rayon, ry: geo.rayon,
@@ -15057,7 +15066,7 @@ class MoteurFrise {
       gl.appendChild(path);
       liens.push({ de: l.parent, vers: r, path, x1, y1, x2, y2 });
     }
-    this._svg.appendChild(gl);
+    (this._svgLignage || this._svg).appendChild(gl);
     this._lignage = { ref, gl, liens };
   }
 
