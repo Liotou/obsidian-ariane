@@ -16783,7 +16783,6 @@ class FusionAuteursModal extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
-
 //#endregion 17 · Modales secondaires
 
 //#region 18 · Exports
