@@ -52,7 +52,7 @@
  *    7 · Export Pandoc / Word
  *    8 · Schémas mxgraph / draw.io
  *    9 · Doublons d'auteurs
- *   10 · Modèles de bases & marqueurs de tâche
+ *   10 · Marqueurs de tâche
  *   11 · class Ariane   (cycle de vie · commandes/événements dans onload ·
  *        static par domaine · méthodes d'instance par domaine)
  *   12 · ArianeSettingTab   (une méthode par onglet)
@@ -3178,127 +3178,16 @@ function titreSansNumerotation(txt) {
 
 //#endregion 9 · Doublons d'auteurs
 
-//#region 10 · Modèles de bases & marqueurs de tâche
+//#region 10 · Marqueurs de tâche
 // ═══════════════════════════════════════════════════════════════════════════
-//  10 · MODÈLES DE BASES & MARQUEURS DE TÂCHE
-//  Gabarits `Tâches.base` et vue articulation, marqueurs de bloc
-//  `%% ariane:tache %%`.
+//  10 · MARQUEURS DE TÂCHE
+//  Délimiteurs du bloc géré par Ariane dans une note de tâche.
 // ═══════════════════════════════════════════════════════════════════════════
-
-// Base de travail des tâches. Le contenu est celui de docs/taches.base, dont
-// c'est l'exemplaire versionné : les deux doivent rester identiques.
-// Gabarit du fichier « Tâches.base ». Les jetons ⟦K:x⟧ (clé de frontmatter
-// réelle du concept x) et ⟦L:x⟧ (nom affiché de la colonne) sont substitués
-// par greffon.gabaritBaseTaches() selon le préfixe / les clés personnalisées.
-const BASE_TACHES = `formulas:
-  bloquantes: note["⟦K:bloque-par⟧"].filter(value.asFile().properties["⟦K:statut⟧"] != "terminée").length
-  famille: if(note["⟦K:source⟧"], "lecture", if(note["⟦K:livrable⟧"], "production", if(note["⟦K:fichier⟧"], "production", "action")))
-properties:
-  file.name:
-    displayName: Réf.
-  note.aliases:
-    displayName: Intitulé
-  "note.⟦K:statut⟧":
-    displayName: ⟦L:statut⟧
-  "note.⟦K:priorite⟧":
-    displayName: ⟦L:priorite⟧
-  "note.⟦K:debut⟧":
-    displayName: ⟦L:debut⟧
-  "note.⟦K:echeance⟧":
-    displayName: ⟦L:echeance⟧
-  "note.⟦K:avancement⟧":
-    displayName: ⟦L:avancement⟧
-  "note.⟦K:parent⟧":
-    displayName: ⟦L:parent⟧
-  "note.⟦K:termine-le⟧":
-    displayName: ⟦L:termine-le⟧
-  formula.famille:
-    displayName: Famille
-  formula.bloquantes:
-    displayName: Bloquantes
-views:
-  - type: table
-    name: 1. Débloquées
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["⟦K:statut⟧"] != "terminée"
-        - note["⟦K:statut⟧"] != "abandonnée"
-        - formula.bloquantes == 0
-    order:
-      - file.name
-      - aliases
-      - "⟦K:echeance⟧"
-      - "⟦K:priorite⟧"
-      - "⟦K:avancement⟧"
-      - formula.famille
-    sort:
-      - property: "⟦K:echeance⟧"
-        direction: ASC
-  - type: table
-    name: 2. Cette semaine
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["⟦K:statut⟧"] != "terminée"
-        - note["⟦K:statut⟧"] != "abandonnée"
-        - note["⟦K:echeance⟧"] <= now() + "7 days"
-    order:
-      - file.name
-      - aliases
-      - "⟦K:echeance⟧"
-      - "⟦K:priorite⟧"
-      - formula.bloquantes
-    sort:
-      - property: "⟦K:echeance⟧"
-        direction: ASC
-  - type: table
-    name: 3. Par famille
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["⟦K:statut⟧"] != "terminée"
-    groupBy:
-      property: formula.famille
-      direction: ASC
-    order:
-      - file.name
-      - aliases
-      - "⟦K:statut⟧"
-      - "⟦K:echeance⟧"
-      - "⟦K:avancement⟧"
-  - type: table
-    name: 4. Terminées
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["⟦K:statut⟧"] == "terminée"
-    order:
-      - file.name
-      - aliases
-      - "⟦K:termine-le⟧"
-      - formula.famille
-    sort:
-      - property: "⟦K:termine-le⟧"
-        direction: DESC
-  - type: ariane-frise
-    name: 5. Frise
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["⟦K:statut⟧"] != "abandonnée"
-  - type: ariane-articulation
-    name: 6. Articulation
-    filters:
-      and:
-        - note["type"] == "tache"
-        - note["⟦K:statut⟧"] != "abandonnée"
-`;
 
 const ZFA_TACHE_DEBUT = '%% ariane:tache %%';
 const ZFA_TACHE_FIN = '%% /ariane:tache %%';
 
-//#endregion 10 · Modèles de bases & marqueurs de tâche
+//#endregion 10 · Marqueurs de tâche
 
 //#region 11 · class Ariane
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3373,11 +3262,6 @@ class Ariane extends obsidian.Plugin {
       id: 'incoherences-taches',
       name: tr('Tâches : incohérences'),
       callback: () => this.ouvrirVueIncoherences(),
-    });
-    this.addCommand({
-      id: 'creer-base-taches',
-      name: tr('Tâches : créer le fichier « Tâches.base » (vues par défaut)'),
-      callback: () => this.creerBaseTaches(),
     });
     this.addCommand({
       id: 'relire-incoherences-taches',
@@ -4282,14 +4166,6 @@ class Ariane extends obsidian.Plugin {
       'bloque-par': 'ban', 'termine-le': 'calendar-check', source: 'book-marked',
       livrable: 'package', fichier: 'file', liste: 'list-checks', 'rappel-id': 'bell',
     })[concept] || 'tag';
-  }
-
-  // Substitution des jetons du gabarit « Tâches.base » : ⟦K:concept⟧ → clé
-  // réelle, ⟦L:concept⟧ → nom de colonne.
-  static substituerBase(texte, cleFn, labelFn) {
-    return String(texte || '')
-      .replace(/⟦K:([a-z-]+)⟧/g, (_, c) => cleFn(c))
-      .replace(/⟦L:([a-z-]+)⟧/g, (_, c) => labelFn(c));
   }
 
   // Nom de fichier encore générique (« Sans titre », « Untitled 3 ») : c'est
@@ -11216,19 +11092,6 @@ class Ariane extends obsidian.Plugin {
     return true;
   }
 
-  // Pose la base de travail si elle manque. Appelée à la création d'une tâche,
-  // ce qui la rend inutile en tant que commande : elle n'a lieu qu'une fois, et
-  // une commande à usage unique encombre la palette pour rien.
-  // Une base existante n'est jamais remplacée : Monsieur y ajoutera ses propres
-  // vues, et les perdre à chaque mise à jour du greffon serait pire que de ne
-  // pas fournir la base du tout.
-  // Substitue les jetons ⟦K:x⟧ / ⟦L:x⟧ du gabarit .base par la clé réelle du
-  // concept x et son nom de colonne (préfixe retiré si « masquer le préfixe »).
-  gabaritBaseTaches(texte) {
-    return Ariane.substituerBase(texte == null ? BASE_TACHES : texte,
-      (c) => this.cleT(c), (c) => this.libelleColonne(this.cleT(c)));
-  }
-
   // --- Affichage des tâches : préfixe masqué dans les colonnes de TOUTE base,
   // et habillage des notes de tâche ouvertes. Purement visuel. ---
   installerAffichageTaches() {
@@ -11394,23 +11257,6 @@ class Ariane extends obsidian.Plugin {
       this.register(() => el && el.remove());
     }
     el.textContent = css;
-  }
-
-  // Crée un « Tâches.base » de démarrage (vues par défaut) UNIQUEMENT sur
-  // demande explicite (commande). Ne touche jamais un fichier déjà là :
-  // l'utilisateur reste maître de ses vues.
-  async creerBaseTaches() {
-    await this.assurerDossier(this.dossierT);
-    const chemin = this.dossierT + '/Tâches.base';
-    const f = this.app.vault.getAbstractFileByPath(chemin);
-    if (f) {
-      new obsidian.Notice(tr('« Tâches.base » existe déjà — inchangé.'));
-      return chemin;
-    }
-    this.marquerEcriture(chemin);
-    await this.app.vault.create(chemin, this.gabaritBaseTaches());
-    new obsidian.Notice(tr('« Tâches.base » créé.'));
-    return chemin;
   }
 
   // Les notes que Monsieur peut désigner comme livrable. On écarte ce qui est

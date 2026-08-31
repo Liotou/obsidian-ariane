@@ -53,13 +53,3 @@ test('libelleConcept couvre tous les concepts de tâche', () => {
   }
 });
 
-test('substituerBase remplace ⟦K:x⟧ et ⟦L:x⟧', () => {
-  const t = 'note["⟦K:statut⟧"] != "x"\n  "note.⟦K:parent⟧":\n    displayName: ⟦L:parent⟧';
-  const out = Ariane.substituerBase(t,
-    (c) => ({ statut: 'Tâche - Statut', parent: 'Tâche - Rattachement' }[c] || c),
-    (c) => ({ parent: 'Rattachement' }[c] || c));
-  assert.ok(out.includes('note["Tâche - Statut"] != "x"'));
-  assert.ok(out.includes('"note.Tâche - Rattachement":'));
-  assert.ok(out.includes('displayName: Rattachement'));
-  assert.ok(!out.includes('⟦'));
-});
