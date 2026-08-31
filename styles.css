@@ -1244,6 +1244,8 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-grille-v {
   stroke: var(--background-modifier-border); stroke-width: 1; stroke-dasharray: 3 4;
 }
+.zfa-gantt-grille-v-jour { opacity: 0.35; }
+.zfa-gantt-entete-trait-jour { opacity: 0.4; }
 
 /* Bordures horizontales de la frise : de vraies bordures HTML reprenant, à la
    déclaration près, le CSS des lignes du tableau de gauche. Elles tombent donc

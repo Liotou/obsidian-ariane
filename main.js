@@ -16800,11 +16800,15 @@ class MoteurFrise {
         g.appendChild(svgEl('rect', { x, y: haut, width: cfg.ppj,
           height: bas - haut, class: 'zfa-gantt-weekend' }));
       }
-      const trait = this.zoom === 'jour' ? true
+      const fort = this.zoom === 'jour' ? true
         : (this.zoom === 'semaine' ? js === 1 : j === 1);
-      if (trait) {
+      if (fort) {
         g.appendChild(svgEl('line', { x1: x, y1: haut, x2: x, y2: bas,
           class: 'zfa-gantt-grille-v' }));
+      } else if (this.zoom === 'semaine') {
+        // Vue semaine : un quadrillage plus léger pour chaque jour.
+        g.appendChild(svgEl('line', { x1: x, y1: haut, x2: x, y2: bas,
+          class: 'zfa-gantt-grille-v zfa-gantt-grille-v-jour' }));
       }
     }
     // Fond des bandes de groupe, sous les barres et les flèches (qui passent
@@ -16961,9 +16965,14 @@ class MoteurFrise {
       }
       const tj = svgEl('text', { x: x + cfg.ppj / 2, y: this._basEntete,
         class: 'zfa-gantt-entete-jour' });
-      tj.textContent = avecJour ? lettres[js] + ' ' + j : lettres[js];
+      tj.textContent = avecJour ? lettres[js] + j : lettres[js];
       g.appendChild(tj);
-      if (js !== 1) continue;
+      // Filet de jour dans l'étage du bas (le lundi porte déjà le trait plein).
+      if (js !== 1) {
+        g.appendChild(svgEl('line', { x1: x, y1: this._bande, x2: x, y2: this._hEntete,
+          class: 'zfa-gantt-entete-trait zfa-gantt-entete-trait-jour' }));
+        continue;
+      }
       // Lundi : trait de semaine + numéro (et/ou plage) dans l'étage du haut.
       const nb = Math.min(7, cfg.jours - i);
       const fin = Ariane.decalerJour(jour, nb - 1);
