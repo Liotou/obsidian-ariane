@@ -14237,38 +14237,6 @@ class ModaleTache extends obsidian.Modal {
   }
 }
 
-/* ---------------- Petite invite texte (renommer une colonne…) -------- */
-
-class InviteTexte extends obsidian.Modal {
-  constructor(app, titre, valeur, sur) {
-    super(app);
-    this.titre = titre;
-    this.valeur = valeur == null ? '' : String(valeur);
-    this.sur = sur;
-    this._ok = false;
-  }
-  onOpen() {
-    const c = this.contentEl;
-    this.titleEl.setText(this.titre);
-    this._inp = c.createEl('input', { type: 'text' });
-    this._inp.value = this.valeur;
-    this._inp.style.width = '100%';
-    this._inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { this._ok = true; this.close(); }
-      if (e.key === 'Escape') this.close();
-    });
-    const p = c.createDiv({ cls: 'zfa-struct-actions' });
-    p.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
-    p.createEl('button', { cls: 'mod-cta', text: tr('OK') }).onclick = () => { this._ok = true; this.close(); };
-    setTimeout(() => { this._inp.focus(); this._inp.select(); }, 20);
-  }
-  onClose() {
-    const v = this._ok ? this._inp.value.trim() : null;
-    this.contentEl.empty();
-    if (this.sur) this.sur(v);
-  }
-}
-
 /* ---------------- Dater une tâche sans date (depuis la frise) --------- */
 
 class ModaleDaterTache extends obsidian.Modal {
@@ -15316,6 +15284,35 @@ class MoteurFrise {
     this.dessiner();
   }
 
+  // Renommage en ligne d'un en-tête de colonne : le libellé devient un champ,
+  // Entrée / perte de focus valide, Échap annule. Comme un tableau Bases.
+  _renommerColonneEnLigne(cle) {
+    const nomEl = this.racine.querySelector(
+      '.zfa-gantt-table .bases-thead .bases-td[data-colonne="' + (window.CSS && CSS.escape
+        ? CSS.escape(cle) : cle.replace(/"/g, '\\"')) + '"] .bases-table-header-name');
+    if (!nomEl) return;
+    const actuel = (this.ctx.renomColonne && this.ctx.renomColonne(cle)) || nomEl.textContent || '';
+    const inp = createEl('input', { type: 'text', cls: 'zfa-gantt-col-renom' });
+    inp.value = actuel;
+    nomEl.replaceWith(inp);
+    inp.focus();
+    inp.select();
+    let fini = false;
+    const clore = async (garder) => {
+      if (fini) return;
+      fini = true;
+      if (garder && this.ctx.renommer) await this.ctx.renommer(cle, inp.value.trim());
+      this.dessiner();
+    };
+    inp.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); clore(true); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); clore(false); }
+    });
+    inp.addEventListener('blur', () => clore(true));
+    inp.addEventListener('click', (ev) => ev.stopPropagation());
+    inp.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+  }
+
   // Déplace la colonne `src` juste avant `cible` dans l'ordre natif de la base
   // (glisser-déposer d'en-tête, comme dans un tableau Bases).
   async reordonnerColonnes(src, cible) {
@@ -15375,25 +15372,14 @@ class MoteurFrise {
     }
 
     menu.addSeparator();
-    menu.addItem((i) => i.setTitle(tr('Renommer la colonne (cette vue)…')).setIcon('pencil')
-      .onClick(() => {
-        const actuel = (this.ctx.renomColonne && this.ctx.renomColonne(cle)) || col.nom || '';
-        new InviteTexte(this.app, tr('Nom de la colonne dans cette frise'), actuel, async (v) => {
-          if (v == null || !this.ctx.renommer) return;
-          await this.ctx.renommer(cle, v);
-          this.dessiner();
-        }).open();
-      }));
+    menu.addItem((i) => i.setTitle(tr('Renommer…')).setIcon('pencil')
+      .onClick(() => this._renommerColonneEnLigne(cle)));
     if (this.ctx.renomColonne && this.ctx.renomColonne(cle)) {
       menu.addItem((i) => i.setTitle(tr('Rétablir le nom d\'origine')).setIcon('rotate-ccw')
         .onClick(async () => { await this.ctx.renommer(cle, ''); this.dessiner(); }));
     }
 
     if (!fichier) {
-      menu.addSeparator();
-      menu.addItem((i) => i.setTitle(tr('Éditer la propriété (coffre)…')).setIcon('settings-2')
-        .onClick(() => this.app.commands.executeCommandById('properties:open-local')));
-
       const nomProp = cle.replace(/^note\./, '');
       const mtm = this.app.metadataTypeManager;
       if (mtm && typeof mtm.setType === 'function') {

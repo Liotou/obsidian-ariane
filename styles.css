@@ -1391,6 +1391,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-table .bases-thead .bases-td.zfa-gantt-col-cible {
   box-shadow: inset 2px 0 0 var(--interactive-accent);
 }
+.zfa-gantt-table .bases-thead input.zfa-gantt-col-renom {
+  width: 100%; min-width: 0; height: 1.7em; padding: 0 4px; margin: 0;
+  font: inherit; box-shadow: 0 0 0 1px var(--interactive-accent);
+}
 
 .zfa-gantt-sans-colonnes { border-right: none; }
 
