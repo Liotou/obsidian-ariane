@@ -967,6 +967,8 @@ const DEFAULT_SETTINGS = {
   prefixeTaches: '',
   prefixeTachesApplique: '',
   masquerPrefixeAffichage: true, // cacher le préfixe dans les en-têtes de colonnes / cartes
+  masquerPrefixeBases: true,     // idem dans les en-têtes de colonnes de TOUTE base (cosmétique DOM)
+  styleNoteTache: false,         // habillage CSS des notes de tâche ouvertes
   clesTaches: {},
   libellesTaches: {}, // ancien réglage, plus utilisé
   _clesTachesNettoye: 0,
@@ -3321,6 +3323,7 @@ class Ariane extends obsidian.Plugin {
     await this.loadSettings();
     this.appliquerStyleAparte();
     this.installerVerrouLecture();
+    this.installerAffichageTaches();
     this.ecrituresRecentes = new Map();
     this.antirebonds = new Map();
     this.rattachementsIgnores = new Set();
@@ -11190,6 +11193,68 @@ class Ariane extends obsidian.Plugin {
       (c) => this.cleT(c), (c) => this.libelleColonne(this.cleT(c)));
   }
 
+  // --- Affichage des tâches : préfixe masqué dans les colonnes de TOUTE base,
+  // et habillage des notes de tâche ouvertes. Purement visuel. ---
+  installerAffichageTaches() {
+    let minuteur = null;
+    const planifier = () => {
+      clearTimeout(minuteur);
+      minuteur = setTimeout(() => {
+        try { this.masquerPrefixeColonnesBases(); } catch (e) { /* sans gravité */ }
+        try { this.habillerNotesTache(); } catch (e) { /* sans gravité */ }
+      }, 150);
+    };
+    for (const ev of ['layout-change', 'active-leaf-change', 'file-open']) {
+      this.registerEvent(this.app.workspace.on(ev, planifier));
+    }
+    this.registerEvent(this.app.metadataCache.on('resolved', planifier));
+    const cont = this.app.workspace.containerEl;
+    if (cont && typeof MutationObserver !== 'undefined') {
+      const obs = new MutationObserver(planifier);
+      obs.observe(cont, { childList: true, subtree: true });
+      this.register(() => obs.disconnect());
+    }
+    this.app.workspace.onLayoutReady(planifier);
+  }
+
+  // Retire le préfixe de tâche des EN-TÊTES de colonnes des vues Bases, sans
+  // toucher aux données ni aux fichiers .base. Cosmétique, réversible.
+  masquerPrefixeColonnesBases() {
+    const pre = this.settings.prefixeTaches || '';
+    if (!pre || this.settings.masquerPrefixeBases === false) return;
+    // Rien à faire s'il n'y a aucune vue Bases affichée (cas courant).
+    const bases = document.querySelectorAll('[class*="bases"], .bases-view');
+    if (!bases.length) return;
+    for (const racine of bases) {
+      const entetes = racine.querySelectorAll(
+        '[role="columnheader"], th, [class*="header-cell"], [class*="col-name"], [class*="column-name"], [class*="header-title"]');
+      for (const el of entetes) {
+        const cible = el.childElementCount
+          ? el.querySelector('[class*="name"], [class*="label"], span, div') || el
+          : el;
+        if (cible.childElementCount) continue;
+        const t = cible.textContent;
+        if (!t || t.length > 64 || !t.startsWith(pre) || t === pre) continue;
+        if (cible.dataset.zfaSansPrefixe) continue;
+        cible.dataset.zfaSansPrefixe = t;
+        cible.textContent = t.slice(pre.length);
+        if (!cible.title) cible.title = t;
+      }
+    }
+  }
+
+  // Ajoute la classe zfa-note-tache au conteneur d'une note de tâche ouverte,
+  // pour l'habillage CSS optionnel des propriétés + contenu.
+  habillerNotesTache() {
+    const actif = this.settings.styleNoteTache === true;
+    for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+      const vue = leaf && leaf.view;
+      if (!vue || !vue.contentEl) continue;
+      const estTache = actif && vue.file && !!this.refDeChemin(vue.file.path);
+      vue.contentEl.toggleClass('zfa-note-tache', !!estTache);
+    }
+  }
+
   async assurerBaseTaches() {
     const chemin = this.dossierT + '/Tâches.base';
     const f = this.app.vault.getAbstractFileByPath(chemin);
@@ -11944,6 +12009,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Les colonnes de la frise et les propriétés des cartes d'articulation montrent le nom sans le préfixe."))
       .addToggle((t) => t.setValue(s.masquerPrefixeAffichage !== false)
         .onChange(async (v) => { s.masquerPrefixeAffichage = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Masquer le préfixe dans toutes les bases'))
+      .setDesc(tr("Retire le préfixe des en-têtes de colonnes de n'importe quelle vue Bases (tables incluses). Purement visuel : les données et les fichiers .base ne changent pas. Choisissez vos colonnes normalement dans Bases, même avec le préfixe."))
+      .addToggle((t) => t.setValue(s.masquerPrefixeBases !== false)
+        .onChange(async (v) => { s.masquerPrefixeBases = v; await maj(); this.plugin.masquerPrefixeColonnesBases(); }));
     {
       const ct = s.clesTaches || (s.clesTaches = {});
       const iconeAutre = {
@@ -12070,6 +12140,13 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         await this.plugin.regenererBaseTaches();
         new obsidian.Notice(tr('« Tâches.base » régénéré.'));
       }));
+
+    this._section(c, tr('Note de tâche'));
+    new obsidian.Setting(c)
+      .setName(tr('Habillage de la note de tâche'))
+      .setDesc(tr('Dans une note de tâche ouverte, présente les propriétés en grille compacte et aère le contenu (Note de travail, Journal). Purement visuel.'))
+      .addToggle((t) => t.setValue(s.styleNoteTache === true)
+        .onChange(async (v) => { s.styleNoteTache = v; await maj(); this.plugin.habillerNotesTache(); }));
 
     this._section(c, tr('Vue Frise'));
     new obsidian.Setting(c)

@@ -1513,3 +1513,53 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   stroke: var(--interactive-accent); stroke-width: 1; stroke-dasharray: 4 3;
   opacity: 0.7; pointer-events: none;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Habillage optionnel d'une note de tâche ouverte (réglage « Habillage de la
+   note de tâche »). Purement visuel, ne touche pas au contenu.
+   ───────────────────────────────────────────────────────────────────────── */
+.zfa-note-tache .metadata-container {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: 10px 12px;
+  margin-bottom: 1.2em;
+}
+.zfa-note-tache .metadata-properties {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 2px 18px;
+}
+.zfa-note-tache .metadata-property {
+  display: grid;
+  grid-template-columns: minmax(90px, 34%) 1fr;
+  align-items: baseline;
+  padding: 3px 0;
+  border: 0;
+}
+.zfa-note-tache .metadata-property-key,
+.zfa-note-tache .metadata-property-key-input {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: 500;
+}
+.zfa-note-tache .metadata-property-key .metadata-property-icon { display: none; }
+.zfa-note-tache .metadata-property-value { font-size: var(--font-ui-small); }
+.zfa-note-tache .metadata-add-button { opacity: 0.5; font-size: var(--font-ui-smaller); }
+
+/* Contenu : mesure confortable, sections « ## » nettes. */
+.zfa-note-tache .markdown-preview-view,
+.zfa-note-tache .markdown-source-view.mod-cm6 .cm-content {
+  max-width: 46rem;
+  margin-inline: auto;
+}
+.zfa-note-tache .markdown-preview-view h2,
+.zfa-note-tache .cm-content .HyperMD-header-2 {
+  margin-top: 1.6em;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: 1.1em;
+  color: var(--text-normal);
+}
+.zfa-note-tache .markdown-preview-view h1,
+.zfa-note-tache .cm-content .HyperMD-header-1 { font-size: 1.5em; }
