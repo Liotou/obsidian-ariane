@@ -11247,11 +11247,21 @@ class Ariane extends obsidian.Plugin {
   // pour l'habillage CSS optionnel des propriétés + contenu.
   habillerNotesTache() {
     const actif = this.settings.styleNoteTache === true;
+    const conceptParCle = new Map();
+    for (const con of Ariane.CONCEPTS_TACHE) conceptParCle.set(this.cleT(con), con);
     for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
       const vue = leaf && leaf.view;
       if (!vue || !vue.contentEl) continue;
       const estTache = actif && vue.file && !!this.refDeChemin(vue.file.path);
       vue.contentEl.toggleClass('zfa-note-tache', !!estTache);
+      if (!estTache) continue;
+      // Étiquette chaque ligne de propriété avec son concept (indépendamment
+      // du préfixe / de la clé réelle) pour que le CSS puisse la placer.
+      for (const row of vue.contentEl.querySelectorAll('.metadata-property')) {
+        const con = conceptParCle.get(row.dataset.propertyKey);
+        if (con) row.dataset.zfaConcept = con;
+        else if (row.dataset.zfaConcept) delete row.dataset.zfaConcept;
+      }
     }
   }
 
