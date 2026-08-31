@@ -896,6 +896,9 @@ const TEXTES = {
     "Faire un jalon": "Make it a milestone",
     "Retirer les dates": "Remove the dates",
     "Ce lien fermerait un cycle : les deux tâches se bloqueraient.": "This link would close a cycle: the two tasks would block each other.",
+    "Ce lien fermerait un cycle (rattachements + blocages) : refusé.": "This link would close a cycle (links + blockers): refused.",
+    "Ce rattachement fermerait un cycle (rattachements + blocages) : refusé.": "This parent link would close a cycle (links + blockers): refused.",
+    "Ce rattachement fermerait un cycle : il n’a pas été appliqué.": "This parent link would close a cycle: it was not applied.",
     "Retirer le blocage par ": "Remove the blocking link from ",
     "Chercher un intitulé ou une référence…": "Search a title or a reference…",
     "Tous les statuts": "All statuses",
@@ -11068,6 +11071,41 @@ class Ariane extends obsidian.Plugin {
 
   // Écrit un blocage dans l'entête de la tâche bloquée. Le frontmatter est la
   // seule source : plus de registre canvas. Un cycle est refusé avant écriture.
+  // Toutes les arêtes de rattachement du coffre : composition (parent -> fille)
+  // ET blocage (bloqueur -> bloquée), pour valider un nouveau lien contre le
+  // graphe FUSIONNÉ (un cycle peut n'apparaître qu'en mêlant les deux).
+  _aretesRattachement() {
+    const ar = [];
+    for (const t of this.tachesPourGantt()) {
+      const p = Ariane.refDeLien(t.parent);
+      if (p) ar.push({ de: p, vers: t.ref, type: 'hier' });
+      for (const b of t.bloquePar || []) {
+        const x = Ariane.refDeLien(b);
+        if (x) ar.push({ de: x, vers: t.ref, type: 'bloque' });
+      }
+    }
+    return ar;
+  }
+
+  // Le lien `ajout` ({de, vers, type}) fermerait-il un cycle du graphe fusionné ?
+  _lienFermeCycle(ajout) {
+    const r = Ariane.lienValide(this._aretesRattachement(), new Map(), ajout);
+    return !r.ok && (r.raison === 'cycle' || r.raison === 'soi');
+  }
+
+  // Rattache une tâche à une mère (ou détache si parentRef vide). Un
+  // rattachement qui fermerait un cycle (rattachements + blocages) est refusé
+  // d'emblée — aucune vue d'incohérences à consulter ensuite.
+  async rattacher(enfantRef, parentRef) {
+    if (!enfantRef) return false;
+    if (parentRef && parentRef !== enfantRef
+      && this._lienFermeCycle({ de: parentRef, vers: enfantRef, type: 'hier' })) {
+      new obsidian.Notice(tr('Ce rattachement fermerait un cycle (rattachements + blocages) : refusé.'));
+      return false;
+    }
+    return this.majTache(enfantRef, { parent: parentRef ? '[[' + parentRef + ']]' : '' });
+  }
+
   async creerBlocage(deRef, versRef) {
     if (!deRef || !versRef || deRef === versRef) return false;
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === versRef);
@@ -11076,14 +11114,8 @@ class Ariane extends obsidian.Plugin {
     const kBP = this.cleT('bloque-par');
     const deja = [].concat(this._lireT(fm, 'bloque-par') || []).map(String);
     if (deja.some((v) => Ariane.refDeLien(v) === deRef)) return false;
-    const aretes = [{ de: deRef, vers: versRef }];
-    for (const t of this.tachesPourGantt()) {
-      for (const b of t.bloquePar || []) {
-        aretes.push({ de: Ariane.refDeLien(b), vers: t.ref });
-      }
-    }
-    if (Ariane.cyclesDe(aretes).length) {
-      new obsidian.Notice(tr('Ce lien fermerait un cycle : les deux tâches se bloqueraient.'));
+    if (this._lienFermeCycle({ de: deRef, vers: versRef, type: 'bloque' })) {
+      new obsidian.Notice(tr('Ce lien fermerait un cycle (rattachements + blocages) : refusé.'));
       return false;
     }
     await this.app.fileManager.processFrontMatter(f, (x) => {
@@ -13395,6 +13427,12 @@ class ModaleTache extends obsidian.Modal {
         parent: this.v.parent ? '[[' + this.v.parent + ']]' : '',
         famille: this.v.famille,
       };
+      // Un rattachement qui fermerait un cycle n'est pas appliqué (le reste l'est).
+      if (this.v.parent && this.v.parent !== ref
+        && this.greffon._lienFermeCycle({ de: this.v.parent, vers: ref, type: 'hier' })) {
+        new obsidian.Notice(tr('Ce rattachement fermerait un cycle : il n’a pas été appliqué.'));
+        delete champs.parent;
+      }
       for (const [k, val] of Object.entries(this.props)) champs[k] = val;
       await this.greffon.majTache(ref, champs);
     }
@@ -17075,7 +17113,7 @@ function fabriquerVueArticulationBase(greffon) {
           this.config.set('arianeArtPlan', JSON.stringify(plan));
         },
         poserParent: async (ref, parentRef) => {
-          await this.greffon.majTache(ref, { parent: parentRef ? '[[' + parentRef + ']]' : '' });
+          await this.greffon.rattacher(ref, parentRef);
         },
       });
     }

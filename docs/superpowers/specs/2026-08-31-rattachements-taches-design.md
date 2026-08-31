@@ -62,11 +62,18 @@ Le statut **« bloqué »** se propage automatiquement dans les deux sens :
 
 - **Détection unifiée (Q1)** : l'acyclicité se vérifie sur le **graphe fusionné**
   (arbre de composition + arcs de blocage), pas sur chaque structure isolément.
-- **Ordre topologique (Q5)** : recalculé à **chaque modification** de structure.
-- **À l'ajout d'une relation** : un vrai **cycle** du graphe fusionné est **refusé**.
-- **Contradictions plus molles** (ex. A parent de B *et* A bloquée par B ; blocage
-  redondant avec une contrainte de composition) : **autorisées mais signalées**
-  dans une **vue « Incohérences »** enrichie, avec des actions de correction.
+- **Interdiction immédiate** : tout lien (rattachement ou blocage) qui fermerait
+  un cycle du graphe fusionné est **refusé au moment où on l'ajoute**, avec un
+  message. Pas de vue d'incohérences à consulter après coup — on ne laisse pas
+  l'incohérence s'installer. `Ariane.lienValide(arêtes fusionnées, {}, ajout)` ;
+  points d'entrée : `greffon.rattacher`, `greffon.creerBlocage`, la modale de
+  tâche. Le combo « A parent de B *et* A bloquée par B » EST un cycle fusionné,
+  donc couvert.
+- Un lien **redondant mais cohérent** (A parent de B *et* A bloque B) reste permis :
+  il n'est pas contradictoire.
+- La **vue « Incohérences » existante** est conservée telle quelle : elle attrape
+  ce que le greffon ne peut pas empêcher (édition manuelle du frontmatter,
+  références mortes, conflits de dates). Elle n'est **pas enrichie**.
 - **Chemin critique (Q7)** : **hors périmètre** de la première version.
 
 ---
@@ -90,5 +97,5 @@ Le statut **« bloqué »** se propage automatiquement dans les deux sens :
 - **Tranche B — Blocage propagé (§3).** Statut « bloquée » dérivé montant/descendant.
   Touche frise + articulation + calcul d'incohérences.
 - **Tranche C — Avancement dérivé (§4).** Moyenne pondérée en lecture seule.
-- **Tranche D — Incohérences unifiées (§5).** Graphe fusionné, refus de cycle à
-  l'ajout, vue « Incohérences » enrichie avec corrections.
+- **Tranche D — Refus de cycle à l'ajout (§5).** Graphe fusionné, `lienValide` sur
+  `rattacher` / `creerBlocage` / modale. Pas de vue enrichie. **Fait.**

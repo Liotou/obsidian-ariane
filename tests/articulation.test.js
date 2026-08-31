@@ -111,6 +111,15 @@ test('un lien qui referme un cycle est refusé', () => {
   assert.equal(r.raison, 'cycle');
 });
 
+test('cycle du graphe FUSIONNÉ : une mère bloquée par sa propre fille est refusée', () => {
+  // M est mère de F (arête hier M->F) ; on tente « F bloque M » (arête F->M).
+  const r = Ariane.lienValide(
+    [{ de: 'M', vers: 'F', type: 'hier' }], D({}),
+    { de: 'F', vers: 'M', type: 'bloque' });
+  assert.equal(r.ok, false);
+  assert.equal(r.raison, 'cycle');
+});
+
 test('un blocage dont l amont finit après le début de l aval est refusé', () => {
   const r = Ariane.lienValide([], D({
     A: { debut: '2026-09-01', echeance: '2026-09-20' },
