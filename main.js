@@ -932,6 +932,13 @@ const TEXTES = {
     "Jour": "Day",
     "Semaine": "Week",
     "Mois": "Month",
+    "Lun": "Mon",
+    "Mar": "Tue",
+    "Mer": "Wed",
+    "Jeu": "Thu",
+    "Ven": "Fri",
+    "Sam": "Sat",
+    "Dim": "Sun",
     "Trimestre": "Quarter",
     "Année": "Year",
     "Libellé des semaines": "Week labels",
@@ -20217,7 +20224,49 @@ class MoteurCalendrier {
     this.dessiner();
   }
 
-  dessinerMois(g) { g.createDiv({ cls: 'zfa-cal-vide', text: '…' }); }   // Task 6
+  dessinerMois(hote) {
+    const g = Ariane.grilleMois(this._ancre);
+    const auj = new Date().toISOString().slice(0, 10);
+    const enRetard = Ariane.tachesEnRetard(this._taches, auj);
+    const parJour = new Map();
+    for (const t of this._taches) {
+      for (const ev of Ariane.evenementsDeTache(t)) {
+        let j = ev.debut.slice(0, 10);
+        const finEx = ev.allDay ? ev.fin.slice(0, 10) : Ariane.decalerJour(ev.fin.slice(0, 10), 1);
+        let garde = 0;
+        while (j < finEx && garde < 400) {
+          if (!parJour.has(j)) parJour.set(j, []);
+          parJour.get(j).push({ t, ev });
+          j = Ariane.decalerJour(j, 1); garde += 1;
+        }
+      }
+    }
+    const grille = hote.createDiv({ cls: 'zfa-cal-mois-grille' });
+    for (const d of ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']) {
+      grille.createDiv({ cls: 'zfa-cal-jour-entete', text: tr(d) });
+    }
+    for (const semaine of g.semaines) {
+      for (const jour of semaine) {
+        const cell = grille.createDiv({ cls: 'zfa-cal-cellule' });
+        cell.dataset.jour = jour;
+        if (jour === auj) cell.addClass('est-aujourdhui');
+        if (jour.slice(0, 7) !== g.moisDebut.slice(0, 7)) cell.addClass('hors-mois');
+        cell.createDiv({ cls: 'zfa-cal-quantieme', text: String(Number(jour.slice(8, 10))) });
+        for (const { t, ev } of (parJour.get(jour) || [])) {
+          const p = cell.createDiv({
+            cls: 'zfa-cal-pastille ' + (ev.allDay ? 'est-jour' : 'est-horaire')
+              + (enRetard.has(t.ref) ? ' est-retard' : '') });
+          p.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
+          p.dataset.ref = t.ref;
+          if (ev.source === 'creneau') p.dataset.brut = ev.brut;
+          p.createSpan({ text: (ev.allDay ? '' : ev.debut.slice(11, 16) + ' ') + (t.intitule || t.ref) });
+          p.title = t.ref + ' · ' + (t.intitule || '');
+          p.addEventListener('click', (e) => { e.stopPropagation();
+            this.ouvrir(t.ref, e.metaKey || e.ctrlKey); });
+        }
+      }
+    }
+  }
   dessinerSemaine(g) { g.createDiv({ cls: 'zfa-cal-vide', text: '…' }); } // Task 7
 }
 

@@ -2011,3 +2011,28 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-grille { flex: 1 1 auto; overflow: auto; }
 .zfa-cal-vide { color: var(--text-faint); padding: 24px; text-align: center; }
 .zfa-cal-cible { box-shadow: inset 0 0 0 2px var(--interactive-accent); }
+
+.zfa-cal-mois-grille {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: minmax(92px, 1fr); min-height: 100%;
+}
+.zfa-cal-jour-entete {
+  text-align: center; font-size: var(--font-ui-smaller); color: var(--text-muted);
+  padding: 4px 0; border-bottom: 1px solid var(--background-modifier-border);
+}
+.zfa-cal-cellule {
+  border-right: 1px solid var(--background-modifier-border);
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 3px 4px; overflow: hidden; display: flex; flex-direction: column; gap: 2px;
+}
+.zfa-cal-cellule.hors-mois { background: var(--background-secondary); }
+.zfa-cal-cellule.est-aujourdhui { box-shadow: inset 0 0 0 2px var(--interactive-accent); }
+.zfa-cal-quantieme { font-size: var(--font-ui-smaller); color: var(--text-muted); align-self: flex-end; }
+.zfa-cal-pastille {
+  font-size: var(--font-ui-smaller); line-height: 1.3; border-radius: var(--radius-s);
+  padding: 1px 5px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-left: 3px solid var(--zfa-cal-coul, var(--text-faint));
+  background: color-mix(in srgb, var(--zfa-cal-coul, var(--text-faint)) 16%, transparent);
+}
+.zfa-cal-pastille.est-horaire { border-left-style: dashed; }
+.zfa-cal-pastille.est-retard { outline: 1px solid var(--color-red); }
