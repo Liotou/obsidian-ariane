@@ -1167,6 +1167,30 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   pointer-events: none;
 }
 
+/* Lignée révélée au survol d'une barre (option « Révéler la lignée »). Rien
+   de permanent : au repos la frise reste un tableau. L'opacité des barres est
+   posée en style inline par le script, d'où les !important ici. */
+.zfa-gantt-lignage { pointer-events: none; }
+.zfa-gantt-lignage-lien {
+  fill: none; stroke: var(--text-accent); stroke-width: 1.6; opacity: 0.9;
+}
+.zfa-gantt-lignage-actif .zfa-gantt-barre-tache,
+.zfa-gantt-lignage-actif .zfa-gantt-rempli { opacity: 0.12 !important; }
+.zfa-gantt-lignage-actif .zfa-gantt-losange { opacity: 0.12; }
+.zfa-gantt-lignage-actif .zfa-gantt-etiquette,
+.zfa-gantt-lignage-actif .zfa-gantt-jalon-titre { opacity: 0.18; }
+.zfa-gantt-lignage-actif .zfa-gantt-lignee .zfa-gantt-barre-tache,
+.zfa-gantt-lignage-actif .zfa-gantt-lignee .zfa-gantt-rempli { opacity: 0.7 !important; }
+.zfa-gantt-lignage-actif .zfa-gantt-lignee-focus .zfa-gantt-barre-tache,
+.zfa-gantt-lignage-actif .zfa-gantt-lignee-focus .zfa-gantt-rempli { opacity: 0.92 !important; }
+.zfa-gantt-lignage-actif .zfa-gantt-lignee.zfa-gantt-losange,
+.zfa-gantt-lignage-actif .zfa-gantt-lignee-focus.zfa-gantt-losange { opacity: 1; }
+.zfa-gantt-lignage-actif .zfa-gantt-lignee .zfa-gantt-etiquette,
+.zfa-gantt-lignage-actif .zfa-gantt-lignee-focus .zfa-gantt-etiquette { opacity: 0.9; }
+.zfa-gantt-lignee-focus .zfa-gantt-barre-tache {
+  stroke: var(--interactive-accent); stroke-width: 1.5;
+}
+
 /* Bandes d'en-tête de groupe : surcouche pleine largeur (panneau gauche +
    frise), au-dessus du tableau (z 5) et du SVG. La piste défile avec la frise
    via transform ; le cadre est calé sous l'en-tête fixe et masque le débord. */

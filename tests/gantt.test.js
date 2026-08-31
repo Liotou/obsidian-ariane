@@ -101,6 +101,16 @@ test('une liste vide rend une liste vide', () => {
   assert.deepEqual(Ariane.disposerGantt(null), []);
 });
 
+test('chaque ligne porte le parent (réf. résolue), en mode arbre comme à plat', () => {
+  const t2 = { ref: 'T26-002', intitule: 'T26-002', parent: '[[T26-001|Mère]]',
+    debut: '', echeance: '', statut: 'à faire', avancement: 0, jalon: false };
+  const arbre = Ariane.disposerGantt([t('T26-001'), t2]);
+  assert.equal(arbre.find((l) => l.ref === 'T26-002').parent, 'T26-001');
+  assert.equal(arbre.find((l) => l.ref === 'T26-001').parent, '');
+  const plat = Ariane.disposerGantt([t('T26-001'), t2], 'intitule', 1, true);
+  assert.equal(plat.find((l) => l.ref === 'T26-002').parent, 'T26-001');
+});
+
 test('mode plat : plus de regroupement sous le parent, tout au niveau 0', () => {
   const l = Ariane.disposerGantt([
     t('T26-002', { parent: '[[T26-001]]', priorite: 'basse', debut: '2026-09-10' }),

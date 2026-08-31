@@ -977,6 +977,7 @@ const DEFAULT_SETTINGS = {
   articulationFleches: 'courbe', // 'courbe' | 'angulaire'
   articulationConfirmerSuppression: true, // demander avant de supprimer une carte
   friseBarreCouleur: 'famille', // 'famille' | 'statut'
+  friseLignageSurvol: true,     // survol d'une barre : révéler ascendants + descendants
   articulationGrille: 20,       // pas de la grille (0 = pas de grille)
   articulationSeuilAimant: 7,   // distance d'accrochage aux voisins (px)
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
@@ -4665,6 +4666,7 @@ class Ariane extends obsidian.Plugin {
           ref: x.ref, intitule: x.intitule || x.ref, niveau: 0,
           statut: x.statut || 'à faire', avancement: Number(x.avancement) || 0,
           famille: x.famille || '', priorite: x.priorite || '',
+          parent: Ariane.refDeLien(x.parent) || '',
           jalon, aDesEnfants: (enfants.get(x.ref) || []).length > 0, propre,
           debut: propre.debut, echeance: propre.echeance,
         };
@@ -4682,6 +4684,7 @@ class Ariane extends obsidian.Plugin {
         ref: x.ref, intitule: x.intitule || x.ref, niveau,
         statut: x.statut || 'à faire', avancement: Number(x.avancement) || 0,
         famille: x.famille || '', priorite: x.priorite || '',
+        parent: Ariane.refDeLien(x.parent) || '',
         jalon, aDesEnfants: fils.length > 0, propre,
         debut: propre.debut, echeance: propre.echeance,
       };
@@ -12276,6 +12279,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addOption('statut', tr('Statut'))
         .setValue(s.friseBarreCouleur || 'famille')
         .onChange(async (v) => { s.friseBarreCouleur = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Révéler la lignée au survol'))
+      .setDesc(tr("Survoler une barre atténue le reste et met en valeur ses parents et ses sous-tâches, reliés par un trait. Rien de permanent : la hiérarchie n'encombre pas la vue."))
+      .addToggle((t) => t.setValue(s.friseLignageSurvol !== false)
+        .onChange(async (v) => { s.friseLignageSurvol = v; await maj(); }));
 
     this._section(c, tr('Vue Articulation'));
     this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue »."));
@@ -13617,6 +13625,10 @@ class MoteurFrise {
     const cfg = this.calculerEtendue(planifiees, aujourdhui);
     const place = Ariane.placerLignes(dispo, this._hEntete, this._H, this.replies);
     const lignes = place.lignes;
+    // Lignes réellement rendues (avec y/h, sans les bandes de groupe) : c'est sur
+    // ces objets que dessinerBarres pose les points d'accroche _anc, et c'est la
+    // source du lignage au survol.
+    this._lignesRendu = lignes.filter((l) => l.kind === 'tache');
     this._hauteurTotale = place.hauteurTotale;
     // On pose la variable des bases sur la racine : tout le balisage repris du
     // tableau s'y accroche, et le thème de Monsieur reste maître du reste.
@@ -13639,6 +13651,7 @@ class MoteurFrise {
     const svg = svgEl('svg', { class: 'zfa-gantt-svg', width: cfg.largeur, height: hauteur });
     droite.appendChild(svg);
     this._svg = svg;
+    this._lignage = null;
     // Motif de hachures pour les lignes des tâches sans date.
     {
       const defs = svgEl('defs', {});
@@ -14544,6 +14557,10 @@ class MoteurFrise {
         : (this.greffon.familleDe(l.famille).couleur || this.couleur(l.statut));
       const groupe = svgEl('g', { class: 'zfa-gantt-groupe' });
       groupe.dataset.ref = l.ref;
+      // Points d'accroche pour les liens de lignée (survol).
+      l._anc = { xg: x, xd: x + w, cy: y + h / 2 };
+      groupe.addEventListener('pointerenter', () => this._montrerLignage(l.ref));
+      groupe.addEventListener('pointerleave', () => this._effacerLignage());
 
       // Une méta-tâche (qui a des sous-tâches) se dessine comme n'importe quelle
       // barre : même forme, même hauteur. Elle reste seulement non
@@ -14728,6 +14745,7 @@ class MoteurFrise {
     if (!l.echeance) return;
     const x = this.x(cfg, l.echeance) + cfg.ppj / 2;
     const y = l.y + l.h / 2;
+    l._anc = { xg: x - 9, xd: x + 9, cy: y };
     g.appendChild(svgEl('line', { x1: x, y1: this._hEntete, x2: x,
       y2: this._hauteurTotale,
       class: 'zfa-gantt-jalon-trait' }));
@@ -14735,10 +14753,13 @@ class MoteurFrise {
       d: 'M ' + x + ' ' + (y - 9) + ' L ' + (x + 9) + ' ' + y
          + ' L ' + x + ' ' + (y + 9) + ' L ' + (x - 9) + ' ' + y + ' Z',
       class: 'zfa-gantt-losange' });
+    d.dataset.ref = l.ref;
     const bulle = svgEl('title', {});
     bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + l.echeance;
     d.appendChild(bulle);
     d.addEventListener('contextmenu', (e) => this.menuTache(e, l));
+    d.addEventListener('pointerenter', () => this._montrerLignage(l.ref));
+    d.addEventListener('pointerleave', () => this._effacerLignage());
     g.appendChild(d);
     if (cfg.ppj >= 8) {
       const t = svgEl('text', { x: x + 14, y: y + 4, class: 'zfa-gantt-jalon-titre' });
@@ -14978,6 +14999,97 @@ class MoteurFrise {
     }
   }
 
+  /* ------------------------ Lignée révélée au survol -------------------- */
+
+  // Survol d'une barre : on atténue le reste, on met en valeur la chaîne des
+  // parents et toutes les sous-tâches, reliées par un trait plein. Rien n'est
+  // écrit ni permanent : _effacerLignage remet tout en place.
+  _montrerLignage(ref) {
+    if (this.greffon.settings.friseLignageSurvol === false) return;
+    if (!this._svg || (this._lignage && this._lignage.ref === ref)) return;
+    // Pas pendant qu'on glisse une barre : le lignage en cours suit déjà.
+    if (this._svg.querySelector('.zfa-gantt-glisse')) return;
+    const parRef = new Map();
+    for (const l of this._lignesRendu || []) {
+      if (!parRef.has(l.ref)) parRef.set(l.ref, l); // 1re occurrence (multi-groupe)
+    }
+    const enfants = new Map();
+    for (const l of parRef.values()) {
+      if (!l.parent) continue;
+      if (!enfants.has(l.parent)) enfants.set(l.parent, []);
+      enfants.get(l.parent).push(l.ref);
+    }
+    if (!parRef.has(ref)) return;
+    const lignee = new Set([ref]);
+    let cur = parRef.get(ref).parent;
+    while (cur && parRef.has(cur) && !lignee.has(cur)) { lignee.add(cur); cur = parRef.get(cur).parent; }
+    const file = [ref];
+    while (file.length) {
+      for (const e of enfants.get(file.shift()) || []) {
+        if (!lignee.has(e)) { lignee.add(e); file.push(e); }
+      }
+    }
+    // Ni parent ni enfant : on ne fait presque rien, juste un léger focus.
+    if (lignee.size < 2) {
+      const seul = this._elLignee(ref);
+      if (seul) seul.classList.add('zfa-gantt-lignee-focus');
+      this._lignage = { ref, gl: null, liens: [] };
+      return;
+    }
+    this._svg.classList.add('zfa-gantt-lignage-actif');
+    for (const r of lignee) {
+      const el = this._elLignee(r);
+      if (el) el.classList.add(r === ref ? 'zfa-gantt-lignee-focus' : 'zfa-gantt-lignee');
+    }
+    // Liens parent -> enfant internes à la lignée (aucun si tâche isolée).
+    const gl = svgEl('g', { class: 'zfa-gantt-lignage' });
+    const liens = [];
+    for (const r of lignee) {
+      const l = parRef.get(r);
+      const p = l && l.parent && lignee.has(l.parent) ? parRef.get(l.parent) : null;
+      if (!p || !p._anc || !l._anc) continue;
+      const x1 = p._anc.xd;
+      const y1 = p._anc.cy;
+      const x2 = l._anc.xg;
+      const y2 = l._anc.cy;
+      const path = svgEl('path', { d: Ariane._cheminFleche(x1, y1, x2, y2),
+        class: 'zfa-gantt-lignage-lien' });
+      gl.appendChild(path);
+      liens.push({ de: l.parent, vers: r, path, x1, y1, x2, y2 });
+    }
+    this._svg.appendChild(gl);
+    this._lignage = { ref, gl, liens };
+  }
+
+  _elLignee(ref) {
+    return this._svg.querySelector(
+      '.zfa-gantt-groupe[data-ref="' + ref + '"], .zfa-gantt-losange[data-ref="' + ref + '"]');
+  }
+
+  _effacerLignage() {
+    if (!this._svg || !this._lignage) return;
+    // Pendant le glissé d'une barre reliée, on garde la lignée affichée : ses
+    // traits suivent le mouvement (voir _bougerLignage). Le lâcher redessine.
+    if (this._svg.querySelector('.zfa-gantt-glisse')) return;
+    if (this._lignage.gl) this._lignage.gl.remove();
+    this._svg.classList.remove('zfa-gantt-lignage-actif');
+    for (const el of this._svg.querySelectorAll('.zfa-gantt-lignee, .zfa-gantt-lignee-focus')) {
+      el.classList.remove('zfa-gantt-lignee', 'zfa-gantt-lignee-focus');
+    }
+    this._lignage = null;
+  }
+
+  // Fait suivre les traits de lignée quand on glisse une des barres reliées.
+  _bougerLignage(ref, dx) {
+    if (!this._lignage) return;
+    for (const li of this._lignage.liens) {
+      if (li.de !== ref && li.vers !== ref) continue;
+      const x1 = li.x1 + (li.de === ref ? dx : 0);
+      const x2 = li.x2 + (li.vers === ref ? dx : 0);
+      li.path.setAttribute('d', Ariane._cheminFleche(x1, li.y1, x2, li.y2));
+    }
+  }
+
   /* ------------------------------- Les gestes ---------------------------- */
 
   // Un seul geste, trois modes. L'écriture n'a lieu qu'au lâcher : écrire
@@ -15003,6 +15115,7 @@ class MoteurFrise {
       if (mode === 'deplacer') {
         groupe.setAttribute('transform', 'translate(' + d + ',0)');
         this._bougerFleches(ligne.ref, d);
+        this._bougerLignage(ligne.ref, d);
       } else if (mode === 'gauche') {
         const w = Math.max(ppj, geo.w - d);
         const nx = geo.x + geo.w - w;
