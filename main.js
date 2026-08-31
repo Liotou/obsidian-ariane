@@ -14237,6 +14237,38 @@ class ModaleTache extends obsidian.Modal {
   }
 }
 
+/* ---------------- Petite invite texte (renommer une colonne…) -------- */
+
+class InviteTexte extends obsidian.Modal {
+  constructor(app, titre, valeur, sur) {
+    super(app);
+    this.titre = titre;
+    this.valeur = valeur == null ? '' : String(valeur);
+    this.sur = sur;
+    this._ok = false;
+  }
+  onOpen() {
+    const c = this.contentEl;
+    this.titleEl.setText(this.titre);
+    this._inp = c.createEl('input', { type: 'text' });
+    this._inp.value = this.valeur;
+    this._inp.style.width = '100%';
+    this._inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { this._ok = true; this.close(); }
+      if (e.key === 'Escape') this.close();
+    });
+    const p = c.createDiv({ cls: 'zfa-struct-actions' });
+    p.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    p.createEl('button', { cls: 'mod-cta', text: tr('OK') }).onclick = () => { this._ok = true; this.close(); };
+    setTimeout(() => { this._inp.focus(); this._inp.select(); }, 20);
+  }
+  onClose() {
+    const v = this._ok ? this._inp.value.trim() : null;
+    this.contentEl.empty();
+    if (this.sur) this.sur(v);
+  }
+}
+
 /* ---------------- Dater une tâche sans date (depuis la frise) --------- */
 
 class ModaleDaterTache extends obsidian.Modal {
@@ -15284,6 +15316,20 @@ class MoteurFrise {
     this.dessiner();
   }
 
+  // Déplace la colonne `src` juste avant `cible` dans l'ordre natif de la base
+  // (glisser-déposer d'en-tête, comme dans un tableau Bases).
+  async reordonnerColonnes(src, cible) {
+    if (!this.ctx.reordonner || !this.ctx.ordreColonnes) return;
+    const ordre = this.ctx.ordreColonnes();
+    if (!ordre.includes(src)) return;
+    const sans = ordre.filter((x) => x !== src);
+    let b = sans.indexOf(cible);
+    if (b < 0) b = sans.length;
+    sans.splice(b, 0, src);
+    await this.ctx.reordonner(sans);
+    this.dessiner();
+  }
+
   // Menu contextuel d'un en-tête de colonne, à l'image de celui du tableau des
   // bases. Bases ne l'expose pas ; on le reconstruit sur ce qui est réellement
   // câblable. Les libellés de tri suivent le type de la colonne.
@@ -15328,9 +15374,24 @@ class MoteurFrise {
         .onClick(async () => { await this.ctx.ecrire('triColonne', null); this.dessiner(); }));
     }
 
+    menu.addSeparator();
+    menu.addItem((i) => i.setTitle(tr('Renommer la colonne (cette vue)…')).setIcon('pencil')
+      .onClick(() => {
+        const actuel = (this.ctx.renomColonne && this.ctx.renomColonne(cle)) || col.nom || '';
+        new InviteTexte(this.app, tr('Nom de la colonne dans cette frise'), actuel, async (v) => {
+          if (v == null || !this.ctx.renommer) return;
+          await this.ctx.renommer(cle, v);
+          this.dessiner();
+        }).open();
+      }));
+    if (this.ctx.renomColonne && this.ctx.renomColonne(cle)) {
+      menu.addItem((i) => i.setTitle(tr('Rétablir le nom d\'origine')).setIcon('rotate-ccw')
+        .onClick(async () => { await this.ctx.renommer(cle, ''); this.dessiner(); }));
+    }
+
     if (!fichier) {
       menu.addSeparator();
-      menu.addItem((i) => i.setTitle(tr('Modifier la propriété…')).setIcon('pencil')
+      menu.addItem((i) => i.setTitle(tr('Éditer la propriété (coffre)…')).setIcon('settings-2')
         .onClick(() => this.app.commands.executeCommandById('properties:open-local')));
 
       const nomProp = cle.replace(/^note\./, '');
@@ -15412,6 +15473,29 @@ class MoteurFrise {
       });
       td.addEventListener('contextmenu', (e) => this.menuEntete(e, c));
       this.poserResizer(td, c, cols, gauche, table);
+
+      // Glisser l'en-tête pour réordonner (via setOrder de la base).
+      label.setAttribute('draggable', 'true');
+      label.addEventListener('dragstart', (ev) => {
+        ev.dataTransfer.setData('text/x-zfa-col', c.cle);
+        ev.dataTransfer.effectAllowed = 'move';
+        td.addClass('zfa-gantt-col-glisse');
+      });
+      label.addEventListener('dragend', () => td.removeClass('zfa-gantt-col-glisse'));
+      td.addEventListener('dragover', (ev) => {
+        if (!ev.dataTransfer.types.includes('text/x-zfa-col')) return;
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = 'move';
+        td.addClass('zfa-gantt-col-cible');
+      });
+      td.addEventListener('dragleave', () => td.removeClass('zfa-gantt-col-cible'));
+      td.addEventListener('drop', (ev) => {
+        td.removeClass('zfa-gantt-col-cible');
+        const src = ev.dataTransfer.getData('text/x-zfa-col');
+        if (!src) return;
+        ev.preventDefault();
+        if (src !== c.cle) this.reordonnerColonnes(src, c.cle);
+      });
     }
 
     const tbody = table.createDiv({ cls: 'bases-tbody zfa-gantt-gauche-corps' });
@@ -16540,6 +16624,22 @@ function fabriquerVueFriseBase(greffon) {
           try { ordre = this.config.getOrder() || []; } catch (e) { ordre = []; }
           this.config.setOrder(ordre.filter((x) => x !== id));
         },
+        ordreColonnes: () => {
+          try { return this.config.getOrder() || []; } catch (e) { return []; }
+        },
+        reordonner: async (arr) => {
+          try { this.config.setOrder(arr); } catch (e) { /* setOrder absent */ }
+        },
+        renomColonne: (id) => {
+          try { return (this.config.get('renoms') || {})[id] || ''; } catch (e) { return ''; }
+        },
+        renommer: async (id, nom) => {
+          let r = {};
+          try { r = Object.assign({}, this.config.get('renoms') || {}); } catch (e) { r = {}; }
+          if (nom && String(nom).trim()) r[id] = String(nom).trim();
+          else delete r[id];
+          try { this.config.set('renoms', r); } catch (e) { /* rien */ }
+        },
         groupes: () => this.groupesParTache(),
         sensGroupe: () => (this.groupeNatif() || {}).desc ? -1 : 1,
         nomGroupe: () => {
@@ -16649,10 +16749,15 @@ function fabriquerVueFriseBase(greffon) {
       let props = [];
       try { props = this.config.getOrder() || []; } catch (e) { props = []; }
       if (!props.length) props = (this.data && this.data.properties) || [];
+      let renoms = {};
+      try { renoms = this.config.get('renoms') || {}; } catch (e) { renoms = {}; }
       const out = [];
       for (const id of props) {
-        let nom = id;
-        try { nom = this.greffon.libelleColonne(this.config.getDisplayName(id) || id); } catch (e) { /* laisse l'identifiant */ }
+        let nom = renoms[id] || '';
+        if (!nom) {
+          try { nom = this.greffon.libelleColonne(this.config.getDisplayName(id) || id); } catch (e) { nom = id; }
+        }
+        if (!nom) nom = id;
         const valeurDe = (ref) => {
           const e = this._parRef ? this._parRef.get(ref) : null;
           if (!e) return null;
