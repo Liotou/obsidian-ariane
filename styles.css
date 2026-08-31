@@ -1519,47 +1519,72 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
    note de tâche »). Purement visuel, ne touche pas au contenu.
    ───────────────────────────────────────────────────────────────────────── */
 .zfa-note-tache .metadata-container {
-  background: var(--background-secondary);
+  background: var(--background-secondary-alt, var(--background-secondary));
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
-  padding: 10px 12px;
-  margin-bottom: 1.2em;
+  padding: 6px 10px;
+  margin-bottom: 1.4em;
 }
-.zfa-note-tache .metadata-properties {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 2px 18px;
-}
+.zfa-note-tache .metadata-properties { display: block; }
+/* Une propriété = une ligne : icône · libellé (largeur fixe) · valeur.
+   Toujours une seule colonne. */
 .zfa-note-tache .metadata-property {
-  display: grid;
-  grid-template-columns: minmax(90px, 34%) 1fr;
-  align-items: baseline;
-  padding: 3px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px;
   border: 0;
+  border-radius: var(--radius-s);
 }
-.zfa-note-tache .metadata-property-key,
-.zfa-note-tache .metadata-property-key-input {
+.zfa-note-tache .metadata-property + .metadata-property {
+  border-top: 1px solid var(--background-modifier-border);
+}
+.zfa-note-tache .metadata-property:hover { background: var(--background-modifier-hover); }
+.zfa-note-tache .metadata-property-key {
+  flex: 0 0 auto; width: 11em;
+  display: flex; align-items: center; gap: 6px;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  font-weight: 500;
+  font-size: var(--font-ui-smaller); font-weight: 600; letter-spacing: 0.01em;
 }
-.zfa-note-tache .metadata-property-key .metadata-property-icon { display: none; }
-.zfa-note-tache .metadata-property-value { font-size: var(--font-ui-small); }
-.zfa-note-tache .metadata-add-button { opacity: 0.5; font-size: var(--font-ui-smaller); }
+.zfa-note-tache .metadata-property-icon {
+  display: inline-flex; opacity: 0.85; color: var(--text-accent);
+}
+.zfa-note-tache .metadata-property-icon svg { width: 15px; height: 15px; }
+.zfa-note-tache .metadata-property-key-input {
+  background: transparent; border: 0; padding: 0;
+  font: inherit; color: inherit;
+}
+.zfa-note-tache .metadata-property-value {
+  flex: 1 1 auto; min-width: 0; font-size: var(--font-ui-small);
+}
+.zfa-note-tache .metadata-property[data-property-key="aliases"],
+.zfa-note-tache .metadata-property[data-property-key="type"],
+.zfa-note-tache .metadata-property[data-property-key="cree"],
+.zfa-note-tache .metadata-property[data-property-key="modifie"] { display: none; }
+.zfa-note-tache .metadata-add-button { opacity: 0.45; font-size: var(--font-ui-smaller); margin-top: 4px; }
 
-/* Contenu : mesure confortable, sections « ## » nettes. */
+/* Contenu : mesure confortable, titres de section nets. */
 .zfa-note-tache .markdown-preview-view,
 .zfa-note-tache .markdown-source-view.mod-cm6 .cm-content {
-  max-width: 46rem;
-  margin-inline: auto;
-}
-.zfa-note-tache .markdown-preview-view h2,
-.zfa-note-tache .cm-content .HyperMD-header-2 {
-  margin-top: 1.6em;
-  padding-bottom: 0.2em;
-  border-bottom: 1px solid var(--background-modifier-border);
-  font-size: 1.1em;
-  color: var(--text-normal);
+  max-width: 44rem; margin-inline: auto;
 }
 .zfa-note-tache .markdown-preview-view h1,
-.zfa-note-tache .cm-content .HyperMD-header-1 { font-size: 1.5em; }
+.zfa-note-tache .cm-content .HyperMD-header-1 { font-size: 1.55em; line-height: 1.2; }
+.zfa-note-tache .markdown-preview-view h2,
+.zfa-note-tache .cm-content .HyperMD-header-2 {
+  margin-top: 1.7em; padding-bottom: 0.25em;
+  border-bottom: 2px solid var(--background-modifier-border);
+  font-size: 1.05em; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--text-muted);
+}
+/* Listes de liens (notes liées, sous-tâches…) rendues en puces-pastilles. */
+.zfa-note-tache .markdown-preview-view li:has(> a.internal-link:only-child) {
+  list-style: none; display: inline-flex; margin: 3px 6px 3px 0;
+}
+.zfa-note-tache .markdown-preview-view li:has(> a.internal-link:only-child) > a.internal-link {
+  padding: 2px 9px; border-radius: 999px;
+  background: var(--background-modifier-hover);
+  border: 1px solid var(--background-modifier-border);
+  text-decoration: none; font-size: var(--font-ui-smaller);
+}
+.zfa-note-tache .markdown-preview-view ul:has(> li > a.internal-link:only-child) { padding-left: 0; }
