@@ -967,7 +967,6 @@ const DEFAULT_SETTINGS = {
   prefixeTaches: '',
   prefixeTachesApplique: '',
   masquerPrefixeAffichage: true, // cacher le préfixe dans les en-têtes de colonnes / cartes
-  masquerPrefixeBases: true,     // idem dans les en-têtes de colonnes de TOUTE base (cosmétique DOM)
   styleNoteTache: false,         // habillage CSS des notes de tâche ouvertes
   cssPersonnalise: '',           // feuille de style de l'utilisateur, injectée globalement
   clesTaches: {},
@@ -3264,6 +3263,11 @@ class Ariane extends obsidian.Plugin {
       callback: () => this.ouvrirVueIncoherences(),
     });
     this.addCommand({
+      id: 'harmoniser-colonnes-bases',
+      name: tr('Tâches : harmoniser les noms de colonnes des bases'),
+      callback: () => this.harmoniserNomsColonnesBases().catch(() => {}),
+    });
+    this.addCommand({
       id: 'relire-incoherences-taches',
       name: tr('Tâches : relire les incohérences'),
       callback: () => {
@@ -4155,6 +4159,78 @@ class Ariane extends obsidian.Plugin {
       if (p === d || p.startsWith(d + '/')) return true;
     }
     return false;
+  }
+
+  // Décrit ce qu'il faut ajouter à un fichier .base (objet déjà analysé) pour
+  // que les colonnes de tâche s'affichent sans le préfixe : un `displayName`
+  // dépréfixé pour chaque propriété préfixée citée qui n'en a pas déjà un.
+  // Ne propose jamais d'écraser un displayName choisi à la main.
+  static planHarmonisationBase(base, prefixe) {
+    const pre = String(prefixe || '');
+    const vide = { ajouts: [] };
+    if (!pre || !base || typeof base !== 'object') return vide;
+    const cites = new Set();
+    const noter = (n) => {
+      if (typeof n !== 'string') return;
+      const brut = n.startsWith('note.') ? n.slice(5) : n;
+      if (brut.length > pre.length && brut.startsWith(pre)) cites.add(brut);
+    };
+    const scan = (v) => {
+      if (!v || typeof v !== 'object') return;
+      if (Array.isArray(v.order)) v.order.forEach(noter);
+      if (Array.isArray(v.sort)) v.sort.forEach((s) => noter(s && s.property));
+      if (v.groupBy) noter(v.groupBy.property);
+      for (const k of Object.keys(v.columnSize || {})) noter(k);
+      for (const k of Object.keys(v.properties || {})) noter(k);
+    };
+    scan(base);
+    if (Array.isArray(base.views)) base.views.forEach(scan);
+    if (!cites.size) return vide;
+    const props = (base.properties && typeof base.properties === 'object') ? base.properties : {};
+    const aDejaNom = (brut) => {
+      const e = props['note.' + brut] || props[brut];
+      return !!(e && typeof e === 'object'
+        && typeof e.displayName === 'string' && e.displayName.trim());
+    };
+    const ajouts = [];
+    for (const brut of cites) {
+      if (aDejaNom(brut)) continue;
+      ajouts.push({ cle: 'note.' + brut, nom: brut.slice(pre.length) });
+    }
+    return { ajouts };
+  }
+
+  // Insère (ou complète) le bloc `properties:` de niveau racine dans le TEXTE
+  // d'un .base sans re-sérialiser le reste : on préserve tel quel les chaînes
+  // fragiles (p. ex. arianeArtPlan, que stringifyYaml couperait sur 80 col).
+  static insererProprietesBase(texte, ajouts) {
+    if (!ajouts || !ajouts.length) return texte;
+    const eol = texte.includes('\r\n') ? '\r\n' : '\n';
+    const lignes = texte.split(/\r?\n/);
+    const entrees = [];
+    for (const a of ajouts) {
+      entrees.push('  ' + JSON.stringify(a.cle) + ':');
+      entrees.push('    displayName: ' + JSON.stringify(a.nom));
+    }
+    const iProps = lignes.findIndex((l) => /^properties:[ \t]*$/.test(l));
+    if (iProps !== -1) {
+      let fin = iProps + 1;
+      while (fin < lignes.length && (lignes[fin] === '' || /^[ \t]/.test(lignes[fin]))) fin++;
+      lignes.splice(fin, 0, ...entrees);
+      return lignes.join(eol);
+    }
+    // Un `properties:` en ligne (« properties: {} ») : on n'ose pas créer un
+    // second bloc (clé dupliquée). On laisse le fichier tel quel.
+    if (lignes.some((l) => /^properties:/.test(l))) return texte;
+    const bloc = ['properties:', ...entrees];
+    const iViews = lignes.findIndex((l) => /^views:[ \t]*$/.test(l));
+    if (iViews !== -1) {
+      lignes.splice(iViews, 0, ...bloc);
+    } else {
+      if (lignes.length && lignes[lignes.length - 1] !== '') lignes.push('');
+      lignes.push(...bloc);
+    }
+    return lignes.join(eol);
   }
 
   // Icône (nom lucide) d'un concept de tâche — la même variété que le
@@ -11092,14 +11168,13 @@ class Ariane extends obsidian.Plugin {
     return true;
   }
 
-  // --- Affichage des tâches : préfixe masqué dans les colonnes de TOUTE base,
-  // et habillage des notes de tâche ouvertes. Purement visuel. ---
+  // --- Affichage des tâches : habillage des notes de tâche ouvertes (visuel),
+  // et harmonisation ponctuelle des noms de colonnes dans les .base. ---
   installerAffichageTaches() {
     let minuteur = null;
     const planifier = () => {
       clearTimeout(minuteur);
       minuteur = setTimeout(() => {
-        try { this.masquerPrefixeColonnesBases(); } catch (e) { /* sans gravité */ }
         try { this.habillerNotesTache(); } catch (e) { /* sans gravité */ }
       }, 150);
     };
@@ -11114,31 +11189,30 @@ class Ariane extends obsidian.Plugin {
       this.register(() => obs.disconnect());
     }
     this.app.workspace.onLayoutReady(planifier);
+    this.app.workspace.onLayoutReady(() => {
+      this.harmoniserNomsColonnesBases().catch(() => { /* sans gravité */ });
+    });
   }
 
-  // Retire le préfixe de tâche des EN-TÊTES de colonnes des vues Bases, sans
-  // toucher aux données ni aux fichiers .base. Cosmétique, réversible.
-  masquerPrefixeColonnesBases() {
+  // Pose, dans chaque fichier .base du coffre, un `displayName` sans préfixe
+  // pour les colonnes de propriété de tâche préfixées. Écrit le fichier une
+  // seule fois (idempotent), n'écrase jamais un displayName choisi à la main,
+  // et ne touche qu'au bloc `properties:` (le reste du .base reste octet pour
+  // octet — indispensable pour arianeArtPlan et consorts).
+  async harmoniserNomsColonnesBases() {
     const pre = this.settings.prefixeTaches || '';
-    if (!pre || this.settings.masquerPrefixeBases === false) return;
-    // Rien à faire s'il n'y a aucune vue Bases affichée (cas courant).
-    const bases = document.querySelectorAll('[class*="bases"], .bases-view');
-    if (!bases.length) return;
-    for (const racine of bases) {
-      const entetes = racine.querySelectorAll(
-        '[role="columnheader"], th, [class*="header-cell"], [class*="col-name"], [class*="column-name"], [class*="header-title"]');
-      for (const el of entetes) {
-        const cible = el.childElementCount
-          ? el.querySelector('[class*="name"], [class*="label"], span, div') || el
-          : el;
-        if (cible.childElementCount) continue;
-        const t = cible.textContent;
-        if (!t || t.length > 64 || !t.startsWith(pre) || t === pre) continue;
-        if (cible.dataset.zfaSansPrefixe) continue;
-        cible.dataset.zfaSansPrefixe = t;
-        cible.textContent = t.slice(pre.length);
-        if (!cible.title) cible.title = t;
-      }
+    if (!pre) return;
+    const fichiers = this.app.vault.getFiles().filter((f) => f && f.extension === 'base');
+    for (const f of fichiers) {
+      let texte;
+      try { texte = await this.app.vault.read(f); } catch (e) { continue; }
+      let base;
+      try { base = obsidian.parseYaml(texte) || {}; } catch (e) { continue; }
+      const plan = Ariane.planHarmonisationBase(base, pre);
+      if (!plan.ajouts.length) continue;
+      const sortie = Ariane.insererProprietesBase(texte, plan.ajouts);
+      if (!sortie || sortie === texte) continue;
+      try { await this.app.vault.modify(f, sortie); } catch (e) { /* sans gravité */ }
     }
   }
 
@@ -11983,17 +12057,20 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Préfixe'))
       .setDesc(tr('Vide = pas de préfixe. L\'espace final compte : « Tâche - ».'))
       .addText((t) => t.setPlaceholder('Tâche - ').setValue(s.prefixeTaches || '')
-        .onChange(async (v) => { s.prefixeTaches = v; await maj(); rafraichirCles(); }));
+        .onChange(async (v) => {
+          s.prefixeTaches = v; await maj(); rafraichirCles();
+          this.plugin.harmoniserNomsColonnesBases().catch(() => {});
+        }));
     new obsidian.Setting(c)
       .setName(tr('Masquer le préfixe à l\'affichage'))
-      .setDesc(tr("Les colonnes de la frise et les propriétés des cartes d'articulation montrent le nom sans le préfixe."))
+      .setDesc(tr("Les colonnes de la frise et les propriétés des cartes d'articulation montrent le nom sans le préfixe. Dans les bases normales, Ariane pose un nom de colonne sans préfixe directement dans le fichier .base (une fois, sans écraser vos renommages)."))
       .addToggle((t) => t.setValue(s.masquerPrefixeAffichage !== false)
         .onChange(async (v) => { s.masquerPrefixeAffichage = v; await maj(); }));
     new obsidian.Setting(c)
-      .setName(tr('Masquer le préfixe dans toutes les bases'))
-      .setDesc(tr("Retire le préfixe des en-têtes de colonnes de n'importe quelle vue Bases (tables incluses). Purement visuel : les données et les fichiers .base ne changent pas. Choisissez vos colonnes normalement dans Bases, même avec le préfixe."))
-      .addToggle((t) => t.setValue(s.masquerPrefixeBases !== false)
-        .onChange(async (v) => { s.masquerPrefixeBases = v; await maj(); this.plugin.masquerPrefixeColonnesBases(); }));
+      .setName(tr('Harmoniser les noms de colonnes des bases'))
+      .setDesc(tr("Repasse maintenant sur tous les fichiers .base pour poser les noms de colonnes de tâche sans préfixe."))
+      .addButton((b) => b.setButtonText(tr('Harmoniser'))
+        .onClick(() => { this.plugin.harmoniserNomsColonnesBases().catch(() => {}); }));
     {
       const ct = s.clesTaches || (s.clesTaches = {});
       const iconeAutre = {
