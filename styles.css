@@ -1293,7 +1293,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-noeud:hover .zfa-artic-carte {
   background: var(--background-primary);
   border-color: var(--background-modifier-border-hover);
-  box-shadow: var(--shadow-l);
 }
 .zfa-artic-carte:active { cursor: grabbing; }
 .zfa-artic-carte[data-statut="abandonnée"] { opacity: 0.55; }
