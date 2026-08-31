@@ -960,12 +960,12 @@ const DEFAULT_SETTINGS = {
   dossierReferences: '',        // rôle : où déposer les références en attente
   dossierTaches: '',            // rôle : où déposer les notes de tâche
   listeRappelsDefaut: 'Doctorat - Tâches',
-  // Clés de frontmatter des propriétés de tâche. « prefixeTaches » s'ajoute
-  // devant chaque concept (« Tâche - echeance ») ; « clesTaches » permet en
-  // plus de fixer la clé complète d'une propriété précise (concept -> clé).
+  // Clés de frontmatter des propriétés de tâche. Chaque clé = « prefixeTaches »
+  // + nom lisible du concept (« Tâche - Échéance »). « clesTaches » remplace le
+  // nom lisible d'une propriété précise (concept -> label) ; le préfixe reste
+  // ajouté devant.
   prefixeTaches: '',
   prefixeTachesApplique: '',
-  nomsTachesLisibles: false, // « Tâche - Échéance » plutôt que « Tâche - echeance »
   masquerPrefixeAffichage: true, // cacher le préfixe dans les en-têtes de colonnes / cartes
   clesTaches: {},
   libellesTaches: {}, // ancien réglage, plus utilisé
@@ -4305,21 +4305,31 @@ class Ariane extends obsidian.Plugin {
   //#region Ariane · static · tâches
   // ── static · tâches ──────────────────────────────────────────────────────
 
-  // Clé de frontmatter d'un concept de tâche. Règle unique et prévisible :
-  //   - `cles[concept]` rempli  → cette chaîne, telle quelle (l'utilisateur
-  //     maîtrise la clé, préfixe compris ou non — c'est son choix) ;
-  //   - sinon                   → `prefixe` + (nom lisible si `nomsLisibles`,
-  //                                sinon le concept nu).
-  // `libelle` est une fonction concept → nom lisible (défaut : identité).
+  // Nom lisible d'un concept de tâche. C'est TOUJOURS ce nom qui sert de base
+  // à la clé de frontmatter (« Échéance », pas « echeance ») ; l'utilisateur
+  // n'a pas à choisir.
+  static libelleConcept(concept) {
+    const d = Ariane.PROPS_GENERIQUES.find((p) => p.cle === concept);
+    if (d) return tr(d.defaut);
+    return ({
+      'bloque-par': 'Bloquée par', 'termine-le': 'Terminée le',
+      source: 'Source', livrable: 'Livrable', fichier: 'Fichier',
+      liste: 'Liste', 'rappel-id': 'Rappel ID',
+    })[concept] || concept;
+  }
+
+  // Clé de frontmatter d'un concept de tâche. Règle UNIQUE :
+  //   clé = `prefixe` + label
+  //   label = `cles[concept]` si l'utilisateur l'a personnalisé,
+  //           sinon le nom lisible par défaut.
+  // Le préfixe s'applique TOUJOURS, à toutes les propriétés de la même façon.
+  // (`intitule` reste à part : il vit dans `aliases`.)
   static cleTache(concept, opts) {
     if (concept === 'intitule') return 'intitule';
     const o = opts || {};
     const perso = String((o.cles || {})[concept] || '').trim();
-    if (perso) return perso;
-    const pre = o.prefixe || '';
-    const base = o.nomsLisibles && typeof o.libelle === 'function'
-      ? o.libelle(concept) : concept;
-    return pre ? pre + base : base;
+    const label = perso || Ariane.libelleConcept(concept);
+    return (o.prefixe || '') + label;
   }
 
   // La famille d'une tâche n'est pas déclarée, elle se déduit du champ rempli.
@@ -8274,17 +8284,21 @@ class Ariane extends obsidian.Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, charge || {});
     this.settings.correspondancesSuffixe = migrerCorrespondances(this.settings.correspondancesSuffixe);
 
-    // Nettoyage unique : d'anciens intitulés d'affichage s'étaient retrouvés
-    // dans clesTaches et servaient de clés de frontmatter par erreur. On repart
-    // d'une table vide ; l'utilisateur redéfinit ses clés précises s'il le veut.
-    let aEnregistrer = false;
-    if ((this.settings._clesTachesNettoye || 0) < 3) {
-      this.settings.clesTaches = {};
-      this.settings.libellesTaches = {};
-      this.settings._clesTachesNettoye = 3;
-      aEnregistrer = true;
+    // clesTaches ne contient plus que de VRAIES personnalisations de label.
+    // On enlève : un préfixe redondant collé dedans (ancien réglage), et les
+    // entrées qui répètent juste le concept ou son nom lisible par défaut.
+    {
+      const ct = this.settings.clesTaches;
+      if (ct && typeof ct === 'object') {
+        const pre = this.settings.prefixeTaches || '';
+        for (const k of Object.keys(ct)) {
+          let v = String(ct[k] || '').trim();
+          if (pre && v.startsWith(pre)) v = v.slice(pre.length);
+          if (!v || v === k || v === Ariane.libelleConcept(k)) delete ct[k];
+          else ct[k] = v;
+        }
+      }
     }
-    if (aEnregistrer) await this.saveSettings();
     if (!Array.isArray(this.settings.profils) || this.settings.profils.length === 0) {
       this.settings.profils = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.profils));
     }
@@ -10715,23 +10729,12 @@ class Ariane extends obsidian.Plugin {
       || { id: id || '', nom: id || tr('(sans famille)'), couleur: '#888888', icone: 'circle', proprietes: [] };
   }
 
-  // Nom lisible d'un concept (pour la forme « Tâche - Échéance »).
-  _labelConcept(concept) {
-    const d = Ariane.PROPS_GENERIQUES.find((p) => p.cle === concept);
-    if (d) return tr(d.defaut);
-    return ({
-      'bloque-par': 'Bloquée par', 'termine-le': 'Terminée le',
-      source: 'Source', livrable: 'Livrable', fichier: 'Fichier',
-      liste: 'Liste', 'rappel-id': 'Rappel ID',
-    })[concept] || concept;
-  }
+  _labelConcept(concept) { return Ariane.libelleConcept(concept); }
 
   cleT(concept) {
     return Ariane.cleTache(concept, {
       prefixe: this.settings.prefixeTaches || '',
       cles: this.settings.clesTaches,
-      nomsLisibles: this.settings.nomsTachesLisibles,
-      libelle: (c) => this._labelConcept(c),
     });
   }
 
@@ -10750,11 +10753,14 @@ class Ariane extends obsidian.Plugin {
     if (!fm) return undefined;
     const k = this.cleT(concept);
     if (k in fm) return fm[k];
-    // Repli sur d'autres formes le temps que les notes soient migrées.
+    // Repli sur d'autres formes le temps que les notes soient migrées :
+    // concept nu, nom lisible, clé personnalisée — chacun avec/sans préfixe.
     const pre = this.settings.prefixeTaches || '';
-    for (const alt of [concept, pre + concept,
-      this._labelConcept(concept), pre + this._labelConcept(concept)]) {
-      if (alt in fm) return fm[alt];
+    const perso = String((this.settings.clesTaches || {})[concept] || '').trim();
+    for (const base of [concept, Ariane.libelleConcept(concept), perso]) {
+      if (!base) continue;
+      if (base in fm) return fm[base];
+      if (pre && (pre + base) in fm) return fm[pre + base];
     }
     return undefined;
   }
@@ -11789,15 +11795,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       });
 
     this._section(c, tr('Clés des propriétés de tâche'));
-    this._aide(c, tr("Ariane peut nommer les propriétés des tâches à sa façon, pour ne pas entrer en collision avec une propriété de même nom sur des notes qui ne sont pas des tâches. Un préfixe s'ajoute devant chaque propriété, et chaque propriété peut aussi recevoir une clé précise. La frise, l'articulation, le formulaire et les nouvelles écritures suivent ces clés."));
-    // Les lignes « Clé : … » se rafraîchissent en direct (préfixe, noms
-    // lisibles, ou une clé précise), sans redessiner l'onglet.
+    this._aide(c, tr("Chaque propriété de tâche est écrite « préfixe + nom lisible » (« Tâche - Échéance »). Le préfixe évite les collisions avec des propriétés de même nom sur d'autres notes. Tu peux remplacer le nom lisible d'une propriété ci-dessous ; le préfixe reste ajouté devant. Après un changement, « Renommer dans les notes » reporte l'ancien nom sur le nouveau."));
+    // Les lignes « Clé : … » se rafraîchissent en direct, sans redessiner.
     const lignesCles = [];
     const rafraichirCles = () => {
-      const px = s.prefixeTaches || '';
-      for (const { st, p, champ } of lignesCles) {
-        st.setDesc(tr('Clé : ') + this.plugin.cleT(p.cle));
-        if (champ) champ.inputEl.placeholder = px ? px + p.cle : p.cle;
+      for (const { st, cle } of lignesCles) {
+        st.setDesc(tr('Clé : ') + this.plugin.cleT(cle));
       }
     };
     new obsidian.Setting(c)
@@ -11806,38 +11809,36 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setPlaceholder('Tâche - ').setValue(s.prefixeTaches || '')
         .onChange(async (v) => { s.prefixeTaches = v; await maj(); rafraichirCles(); }));
     new obsidian.Setting(c)
-      .setName(tr('Noms lisibles'))
-      .setDesc(tr("« Tâche - Échéance » plutôt que « Tâche - echeance ». Après changement, « Renommer dans les notes »."))
-      .addToggle((t) => t.setValue(s.nomsTachesLisibles === true)
-        .onChange(async (v) => { s.nomsTachesLisibles = v; await maj(); rafraichirCles(); }));
-    new obsidian.Setting(c)
       .setName(tr('Masquer le préfixe à l\'affichage'))
       .setDesc(tr("Les colonnes de la frise et les propriétés des cartes d'articulation montrent le nom sans le préfixe."))
       .addToggle((t) => t.setValue(s.masquerPrefixeAffichage !== false)
         .onChange(async (v) => { s.masquerPrefixeAffichage = v; await maj(); }));
     {
       const ct = s.clesTaches || (s.clesTaches = {});
-      const pre = s.prefixeTaches || '';
-      for (const p of Ariane.PROPS_GENERIQUES) {
-        if (p.cle === 'intitule') continue;
-        const st = new obsidian.Setting(c).setName(tr(p.defaut));
+      const iconeAutre = {
+        'bloque-par': 'ban', 'termine-le': 'calendar-check', source: 'book-marked',
+        livrable: 'package', fichier: 'file', liste: 'list', 'rappel-id': 'bell',
+      };
+      const genPar = {};
+      for (const p of Ariane.PROPS_GENERIQUES) genPar[p.cle] = p;
+      for (const cle of Ariane.CONCEPTS_TACHE) {
+        if (cle === 'intitule') continue;
+        const g = genPar[cle];
+        const st = new obsidian.Setting(c).setName(g ? tr(g.defaut) : Ariane.libelleConcept(cle));
         const ic = createSpan({ cls: 'zfa-tache-ic' });
-        obsidian.setIcon(ic, p.icone);
+        obsidian.setIcon(ic, g ? g.icone : (iconeAutre[cle] || 'tag'));
         st.nameEl.prepend(ic);
-        st.setDesc(tr('Clé : ') + this.plugin.cleT(p.cle));
-        let champRef = null;
-        st.addText((t) => {
-          champRef = t;
-          t.setPlaceholder(pre ? pre + p.cle : p.cle)
-            .setValue(ct[p.cle] || '')
-            .onChange(async (v) => {
-              const t2 = v.trim();
-              if (t2) ct[p.cle] = t2; else delete ct[p.cle];
-              await maj();
-              rafraichirCles();
-            });
-        });
-        lignesCles.push({ st, p, champ: champRef });
+        st.setDesc(tr('Clé : ') + this.plugin.cleT(cle));
+        st.addText((t) => t
+          .setPlaceholder(Ariane.libelleConcept(cle))
+          .setValue(ct[cle] || '')
+          .onChange(async (v) => {
+            const t2 = v.trim();
+            if (t2 && t2 !== Ariane.libelleConcept(cle)) ct[cle] = t2; else delete ct[cle];
+            await maj();
+            rafraichirCles();
+          }));
+        lignesCles.push({ st, cle });
       }
     }
     new obsidian.Setting(c)
@@ -11859,15 +11860,18 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           for (const con of Ariane.CONCEPTS_TACHE) {
             const nk = g.cleT(con);
             if (nk in fm) continue;
-            const lab = g._labelConcept(con);
+            const lab = Ariane.libelleConcept(con);
+            const perso = String((s.clesTaches || {})[con] || '').trim();
             const candidats = new Set([con, lab]);
-            for (const p of [pa, s.prefixeTaches]) {
-              if (p) { candidats.add(p + con); candidats.add(p + lab); }
+            for (const base of [con, lab, perso, stale[con] && String(stale[con]).trim()]) {
+              if (!base) continue;
+              candidats.add(base);
+              for (const p of [pa, s.prefixeTaches]) if (p) candidats.add(p + base);
             }
-            if (stale[con]) candidats.add(String(stale[con]).trim());
             // Toute clé « <préfixe finissant par un séparateur><concept ou libellé> ».
             const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const re = new RegExp('^.*[\\s\\-–—](?:' + esc(con) + '|' + esc(lab) + ')$', 'i');
+            const alts = [con, lab, perso].filter(Boolean).map(esc).join('|');
+            const re = new RegExp('^.*[\\s\\-–—](?:' + alts + ')$', 'i');
             for (const k of cles) if (re.test(k)) candidats.add(k);
             for (const ancien of candidats) {
               if (ancien && ancien !== nk && (ancien in fm)) { aFaire.push([ancien, nk]); break; }
@@ -11903,12 +11907,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           for (const con of Ariane.CONCEPTS_TACHE) {
             const nk = g.cleT(con);
             if (!(nk in fm)) continue; // clé actuelle absente : on n'y touche pas
-            const lab = g._labelConcept(con);
-            const variantes = new Set([con, lab]);
-            for (const p of [pa, s.prefixeTaches]) {
-              if (p) { variantes.add(p + con); variantes.add(p + lab); }
+            const lab = Ariane.libelleConcept(con);
+            const perso = String((s.clesTaches || {})[con] || '').trim();
+            const variantes = new Set();
+            for (const base of [con, lab, perso]) {
+              if (!base) continue;
+              variantes.add(base);
+              for (const p of [pa, s.prefixeTaches]) if (p) variantes.add(p + base);
             }
-            const re = new RegExp('^.*[\\s\\-–—](?:' + esc(con) + '|' + esc(lab) + ')$', 'i');
+            const alts = [con, lab, perso].filter(Boolean).map(esc).join('|');
+            const re = new RegExp('^.*[\\s\\-–—](?:' + alts + ')$', 'i');
             for (const k of cles) {
               if (k === nk) continue;
               if (variantes.has(k) || re.test(k)) aSupprimer.add(k);
