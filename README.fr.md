@@ -555,9 +555,13 @@ tombent les exports, et ainsi de suite.
 
 ## ✅ Tâches
 
-Une tâche est **une note** de votre dossier de tâches, nommée `T26-042` : la
-lettre `T`, l'année, le rang dans l'année. Son intitulé va en `aliases`, comme
-dans vos autres familles de notes. Le compteur repart chaque janvier.
+Une tâche est **une note** de votre dossier de tâches, nommée d'après un
+compteur incrémental habillé par un gabarit — `T-{n:3}` par défaut, soit
+`T-001`, `T-002`… Le gabarit se règle dans l'onglet **Tâches** (`{n}` = le
+numéro, `{n:3}` = sur trois chiffres, le reste littéral) ; un aperçu montre le
+résultat en direct, et un coffre déjà numéroté à l'ancienne (`T26-041`) reprend
+la série là où elle en était. Son intitulé va en `aliases`, comme dans vos
+autres familles de notes.
 
 Chaque propriété s'écrit **préfixe + nom lisible** (`Tâche - Échéance`), pour
 qu'un champ de tâche n'entre jamais en collision avec une propriété de même nom
@@ -586,12 +590,16 @@ d'un `.base` garde ses propres réglages.
 
 La colonne de gauche de la **frise** est un tableau à plat — toutes les tâches
 traitées pareil, quels que soient leurs liens. L'ordre suit le tri actif (les
-tâches ne se rangent sous leur parent qu'en tri par date). Les colonnes se
-réordonnent en glissant leur en-tête et se renomment par vue via *Modifier la
-propriété…*. Les barres prennent la couleur de la famille, se redimensionnent aux
-deux bords, et glisser une fille qui sort des bornes de sa mère étend la mère.
-Survoler une barre révèle sa **lignée** — parents et sous-tâches, reliés par un
-trait — sans rien de permanent à l'écran.
+tâches ne se rangent sous leur parent qu'en tri par date) ; une **tâche sans
+date suit le tri comme les autres**, sa ligne simplement hachurée. Le menu d'un
+en-tête ajoute une colonne dérivée **Sans date** (Oui/Non), triable. Les
+colonnes se réordonnent en glissant leur en-tête et se renomment par vue via
+*Modifier la propriété…*. Les barres prennent la couleur de la famille, se
+redimensionnent aux deux bords, et glisser une fille qui sort des bornes de sa
+mère étend la mère. Une tâche dont l'échéance est passée et qui n'est pas
+terminée reçoit un **repère d'alerte** sur sa barre, avec un compte dans la
+barre d'outils. Survoler une barre révèle sa **lignée** — parents et
+sous-tâches, reliés par un trait — sans rien de permanent à l'écran.
 
 L'**articulation** dessine le graphe des liens. Un trait **gris** est une
 composition (parent → sous-tâche), un trait **d'accent** un blocage ; les flèches
@@ -637,12 +645,14 @@ celui déjà réglé pour le découpage des bibliographies. Chaque proposition e
 
 Synchronisation bidirectionnelle via **EventKit**, si bien que toutes les listes
 sont vues, y compris celles rangées dans un groupe. Chaque tâche datée devient un
-rappel dans la liste de sa famille : titre `[T26-001] - Intitulé`, date et heure
-d'échéance, priorité, un lien retour vers la note. Cocher un rappel termine la
-tâche ; un rappel ajouté à la main dans une liste surveillée devient une nouvelle
-tâche. Quand les deux côtés ont changé, la note fait foi. Tourne à la sauvegarde
-et sur minuterie quand la section **Apple Rappels** des réglages l'active ; la
-première synchronisation demande l'accès à Rappels.
+rappel dans la liste de sa famille : titre selon un gabarit (`[{ref}] - {intitule}`
+par défaut, jetons `{ref}`, `{intitule}`, `{famille}`), date et heure d'échéance,
+priorité, un lien retour vers la note. Cocher un rappel termine la tâche ; un
+rappel ajouté à la main dans une liste surveillée devient une nouvelle tâche — ou
+se rattache à une tâche existante si son titre en porte la référence. Quand les
+deux côtés ont changé, la note fait foi. Tourne à la sauvegarde et sur minuterie
+quand la section **Apple Rappels** des réglages l'active ; la première
+synchronisation demande l'accès à Rappels.
 
 ## ⌨️ Commandes
 

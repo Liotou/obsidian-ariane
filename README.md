@@ -542,9 +542,12 @@ where exports land, and so on.
 
 ## ✅ Tasks
 
-A task is **a note** in your tasks folder, named `T26-042`: the letter `T`, the
-year, the rank within the year. Its title goes into `aliases`, as in your other
-note families. The counter restarts every January.
+A task is **a note** in your tasks folder, named from an incremental counter
+dressed by a template — `T-{n:3}` by default, giving `T-001`, `T-002`… Change
+the template in the **Tasks** settings tab (`{n}` = the number, `{n:3}` = padded
+to three digits, the rest literal); a live preview shows the result, and a vault
+already numbered the old way (`T26-041`) keeps counting from there. Its title
+goes into `aliases`, as in your other note families.
 
 Every property is written as **prefix + readable name** (`Tâche - Échéance`), so
 task fields never collide with same-named properties on other notes. The prefix
@@ -572,11 +575,14 @@ settings.
 
 The **timeline** left column is a flat table — every task treated the same,
 whatever its links. Order follows the active sort (tasks nest under their parent
-only in the default date order). Columns are drag-reordered by their header and
-renamed per-view through *Edit property…*. Bars carry the family colour, are
-resizable at either edge, and dragging a child that leaves its parent's span
-stretches the parent. Hovering a bar reveals its **lineage** — parents and
-subtasks, joined by a line — with nothing permanent on screen.
+only in the default date order); an **undated task follows the sort like any
+other**, its row simply hatched. A header menu adds a derived **No date** column
+(Yes/No) you can sort on. Columns are drag-reordered by their header and renamed
+per-view through *Edit property…*. Bars carry the family colour, are resizable at
+either edge, and dragging a child that leaves its parent's span stretches the
+parent. A task whose due date has passed and is not done gets a **warning mark**
+on its bar, with a count in the toolbar. Hovering a bar reveals its **lineage** —
+parents and subtasks, joined by a line — with nothing permanent on screen.
 
 The **articulation** draws the graph of links. A **grey** line is composition
 (parent → subtask), an **accent** line is blocking; arrows route around the
@@ -619,11 +625,13 @@ it is applied**. Commands and context-menu entries:
 
 Two-way sync through **EventKit**, so every list is visible, including those
 filed inside a group. Each dated task becomes a reminder in its family's list:
-title `[T26-001] - Title`, due date and time, priority, a link back to the note.
+title from a template (`[{ref}] - {intitule}` by default, tokens `{ref}`,
+`{intitule}`, `{famille}`), due date and time, priority, a link back to the note.
 Checking a reminder completes the task; a reminder added by hand in a watched
-list becomes a new task. When both sides changed, the note wins. Runs on save
-and on a timer when enabled in the **Apple Reminders** settings section; the
-first sync asks for Reminders access.
+list becomes a new task — or links to an existing one if its title carries that
+task's reference. When both sides changed, the note wins. Runs on save and on a
+timer when enabled in the **Apple Reminders** settings section; the first sync
+asks for Reminders access.
 
 ## ⌨️ Commands
 
