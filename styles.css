@@ -1258,10 +1258,9 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
-/* Curseur : main quand la barre d'espace est tenue, ou pendant un pan. */
-.zfa-artic.est-espace .zfa-artic-svg { cursor: grab; }
-.zfa-artic.est-espace.est-pan .zfa-artic-svg,
-.zfa-artic.est-pan .zfa-artic-svg { cursor: grabbing; }
+/* Curseur : la main (fermée) UNIQUEMENT pendant un déplacement du canvas. */
+.zfa-artic.est-pan .zfa-artic-svg,
+.zfa-artic.est-pan .zfa-artic-svg * { cursor: grabbing; }
 
 .zfa-artic-barre {
   display: flex; align-items: center; gap: 8px;
@@ -1281,18 +1280,17 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 
 .zfa-artic-svg {
   flex: 1; width: 100%; display: block;
-  cursor: grab; touch-action: none;
+  cursor: default; touch-action: none;
   background:
     radial-gradient(var(--background-modifier-border) 0.5px, transparent 0.5px) 0 0 / 26px 26px;
   background-color: var(--background-primary);
 }
-.zfa-artic-svg:active { cursor: grabbing; }
 
 .zfa-artic-noeud foreignObject { overflow: visible; }
 .zfa-artic-carte {
   box-sizing: border-box; width: 100%; height: 100%;
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 9px; cursor: grab;
+  padding: 6px 9px; cursor: default;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-left: 3px solid var(--zfa-fam-couleur, var(--background-modifier-border));
@@ -1305,7 +1303,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   background: var(--background-primary);
   border-color: var(--background-modifier-border-hover);
 }
-.zfa-artic-carte:active { cursor: grabbing; }
 .zfa-artic-carte[data-statut="abandonnée"] { opacity: 0.55; }
 .zfa-artic-carte.est-jalon { border-style: dashed; }
 
@@ -1317,7 +1314,8 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   flex: 0 0 auto;
 }
 .zfa-artic-coche {
-  width: 13px; height: 13px; margin: 0; cursor: pointer; flex: 0 0 auto;
+  width: 12px; height: 12px; margin: 0; cursor: pointer; flex: 0 0 auto;
+  accent-color: var(--interactive-accent);
 }
 .zfa-artic-titre {
   font-weight: 600; color: var(--text-normal); padding-right: 38px;
