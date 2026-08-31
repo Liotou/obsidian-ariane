@@ -55,7 +55,7 @@
  *   10 · Modèles de bases & marqueurs de tâche
  *   11 · class Ariane   (cycle de vie · commandes/événements dans onload ·
  *        static par domaine · méthodes d'instance par domaine)
- *   12 · ArianeSettingTab   (une sous-section par onglet)
+ *   12 · ArianeSettingTab   (une méthode par onglet)
  *   13 · Modales de tâche
  *   14 · Vue Frise
  *   15 · Vue Articulation
@@ -2542,6 +2542,10 @@ function composerCitation(docStr, pos, entrees, sep) {
 
 const ZFA_RE_CIT_GROUPE = /\((\s*\[\[[^[\]\n]+\]\](?:\s*;\s*\[\[[^[\]\n]+\]\])*\s*)\)/g;
 
+// Les notes n'emploient plus de notes de bas de page mais des citations en
+// ligne « ([[CLE|Auteur, année, p. 12]]) ». Sans conversion, pandoc n'y voit
+// que du texte : c'est pourquoi le document sortait sans le moindre champ
+// Zotero. On les rend ici sous la forme attendue par le filtre : « [@clé, p. 12] ».
 function citationsEnLigneVersPandoc(texte, resoudre, connecteur) {
   return String(texte).replace(ZFA_RE_CIT_GROUPE, (tout, dedans) => {
     const cles = [...dedans.matchAll(/\[\[([^\]|#\n]+)(?:\|[^\]\n]*)?\]\]/g)].map((x) => cleDeLien(x[1]));
@@ -5725,7 +5729,6 @@ class Ariane extends obsidian.Plugin {
     this.majSuggestions();
   }
 
-
   //#endregion Ariane · suggestions locales
 
   //#region Ariane · doublons d'auteurs
@@ -5790,7 +5793,6 @@ class Ariane extends obsidian.Plugin {
       if (f instanceof obsidian.TFile) await this.app.fileManager.trashFile(f);
     }
   }
-
 
   //#endregion Ariane · doublons d'auteurs
 
@@ -5970,7 +5972,6 @@ class Ariane extends obsidian.Plugin {
       new VoisinageModal(this.app, c.valeur, sortants, entrants, this).open();
     }).open();
   }
-
 
   //#endregion Ariane · schémas draw.io
 
@@ -6271,7 +6272,6 @@ class Ariane extends obsidian.Plugin {
       try { fs.unlinkSync(ordres); } catch (e) { /* */ }
     }
   }
-
 
   //#endregion Ariane · export Word / Pandoc
 
@@ -6589,7 +6589,6 @@ class Ariane extends obsidian.Plugin {
     new obsidian.Notice(tr('Ariane : ') + modifs + ' lien(s) nettoyé(s).');
   }
 
-
   //#endregion Ariane · notes & citations — rendu
 
   //#region Ariane · glisser-déposer & clés d'annotation
@@ -6902,14 +6901,14 @@ class Ariane extends obsidian.Plugin {
       .filter((f) => !exclus.some((d) => f.path.startsWith(d)));
   }
 
-
   //#endregion Ariane · glisser-déposer & clés d'annotation
 
   //#region Ariane · temps de travail
   // ── temps de travail ─────────────────────────────────────────────────────
 
-  /* ----------------------------- Temps passé ----------------------------- */
-
+  // Le compteur s'appuie sur la note active et sur l'activité du clavier et de
+  // la souris. Il ne mesure donc pas la présence devant l'écran, mais le temps
+  // de travail effectif, ce qui est plus honnête pour un journal de thèse.
   demarrerCompteurTemps() {
     if (!this.settings.tempsActif) return;
 
@@ -7149,7 +7148,6 @@ class Ariane extends obsidian.Plugin {
     return retires;
   }
 
-
   //#endregion Ariane · temps de travail
 
   //#region Ariane · citations repliables
@@ -7275,7 +7273,6 @@ class Ariane extends obsidian.Plugin {
     this.appliquerEtatCitations();
     this.saveSettings().catch((e) => console.error('[Ariane] réglages non enregistrés :', e));
   }
-
 
   //#endregion Ariane · citations repliables
 
@@ -7518,7 +7515,6 @@ class Ariane extends obsidian.Plugin {
       new obsidian.Notice(tr('Ouverture dans Zotero impossible : ') + (e && e.message ? e.message : e));
     }
   }
-
 
   //#endregion Ariane · lecteurs ZotFlow & liens Zotero
 
@@ -7900,7 +7896,6 @@ class Ariane extends obsidian.Plugin {
     return true;
   }
 
-
   //#endregion Ariane · bibliographie en note & citations dynamiques
 
   //#region Ariane · panier d'annotations & dépôt paragraphe
@@ -8244,7 +8239,6 @@ class Ariane extends obsidian.Plugin {
     }
   }
 
-
   //#endregion Ariane · panier d'annotations & dépôt paragraphe
 
   //#region Ariane · réglages & profils
@@ -8364,7 +8358,6 @@ class Ariane extends obsidian.Plugin {
     await this.saveSettings();
     return { poses: n, version: j && j.ariane };
   }
-
 
   //#endregion Ariane · réglages & profils
 
@@ -8543,7 +8536,6 @@ class Ariane extends obsidian.Plugin {
     return this.settings.famillesNotes.length;
   }
 
-
   //#endregion Ariane · familles de notes & routage de dossier
 
   //#region Ariane · dossiers & garde-fous d'écriture
@@ -8627,7 +8619,6 @@ class Ariane extends obsidian.Plugin {
     return map;
   }
 
-
   //#endregion Ariane · dossiers & garde-fous d'écriture
 
   //#region Ariane · index Zotero
@@ -8678,7 +8669,6 @@ class Ariane extends obsidian.Plugin {
     const fm = cache ? cache.frontmatter : null;
     return !!((fm && fm.citationKey) || file.basename.startsWith('@'));
   }
-
 
   //#endregion Ariane · index Zotero
 
@@ -8806,7 +8796,6 @@ class Ariane extends obsidian.Plugin {
       );
     }
   }
-
 
   //#endregion Ariane · atomisation (orchestration)
 
@@ -9651,7 +9640,6 @@ class Ariane extends obsidian.Plugin {
     await feuille.setViewState({ type: TYPE_VUE_INCOHERENCES, active: true });
     this.app.workspace.revealLeaf(feuille);
   }
-
 
   //#endregion Ariane · références en attente
 
@@ -10540,7 +10528,6 @@ class Ariane extends obsidian.Plugin {
       + ', ' + tr('sur ') + i + '. ' + reseau + ' ' + tr('appel(s) réseau') + '.', 12000);
   }
 
-
   //#endregion Ariane · bibliographie — index & génération
 
   //#region Ariane · événements vault & métadonnées
@@ -11106,10 +11093,6 @@ class Ariane extends obsidian.Plugin {
 }
 
 //#endregion 11 · class Ariane
-
-/* =========================================================================
- * Onglet de réglages
- * ========================================================================= */
 
 //#region 12 · ArianeSettingTab
 // ═══════════════════════════════════════════════════════════════════════════
@@ -12501,11 +12484,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
   }
 }
 
-/* =========================================================================
- * Fenêtre de confirmation d'un rattachement (anti-homonymie)
- * ========================================================================= */
-
-
 //#endregion 12 · ArianeSettingTab
 
 //#region 13 · Modales de tâche
@@ -12920,12 +12898,6 @@ class ModaleDaterTache extends obsidian.Modal {
 
   onClose() { this.contentEl.empty(); }
 }
-
-/* ---------------- Vue latérale : Suggestions ZotFlow ------------------- */
-/* =========================================================================
- * Volet d'arbitrage des références en attente
- * ========================================================================= */
-
 
 //#endregion 13 · Modales de tâche
 
@@ -14965,11 +14937,6 @@ function fabriquerVueFriseBase(greffon) {
   };
 }
 
-/* =========================================================================
- * Vue « Articulation » — le graphe des tâches
- * ========================================================================= */
-
-
 //#endregion 14 · Vue Frise
 
 //#region 15 · Vue Articulation
@@ -15964,14 +15931,6 @@ function fabriquerVueArticulationBase(greffon) {
   };
 }
 
-/* =========================================================================
- * Volet des incohérences des tâches
- * ========================================================================= */
-
-// Ce volet ne liste que ce qu'Ariane ne peut pas trancher seule. Tout ce qui
-// est déterministe est déjà fait au moment où il s'ouvre : il reste les
-// contradictions, qui appellent une décision.
-
 //#endregion 15 · Vue Articulation
 
 //#region 16 · Vues latérales (ItemView)
@@ -15981,6 +15940,9 @@ function fabriquerVueArticulationBase(greffon) {
 //  suggestions de voisinage local.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Ce volet ne liste que ce qu'Ariane ne peut pas trancher seule. Tout ce qui
+// est déterministe est déjà fait au moment où il s'ouvre : il reste les
+// contradictions, qui appellent une décision.
 class VueIncoherencesTaches extends obsidian.ItemView {
   constructor(feuille, greffon) {
     super(feuille);
@@ -16646,10 +16608,6 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
   async onClose() { this.contentEl.empty(); }
 }
 
-/* --------------------- Fenêtres du module Cartes ------------------------ */
-
-// Sélecteur générique à filtre (relations, types, concepts).
-
 //#endregion 16 · Vues latérales (ItemView)
 
 //#region 17 · Modales secondaires
@@ -16659,6 +16617,7 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
 //  fusion d'auteurs.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Sélecteur générique à filtre (relations, types, concepts).
 class ChoixListeModal extends obsidian.FuzzySuggestModal {
   constructor(app, titre, items, onChoix) {
     super(app);
