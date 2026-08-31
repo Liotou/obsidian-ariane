@@ -939,6 +939,12 @@ const TEXTES = {
     "Largeur de la colonne des tâches": "Width of the task column",
     "La frise n a pas pu se dessiner : ": "The timeline could not be drawn: ",
 
+    "Calendrier": "Calendar",
+    "Le calendrier n’a pas pu se dessiner : ": "The calendar could not be drawn: ",
+    "Heure de début (semaine)": "Start hour (week)",
+    "Heure de fin (semaine)": "End hour (week)",
+    "Vue": "View",
+
     "Description (pour l'IA)": "Description (for the AI)",
     "Quelques phrases : ce que recouvre la famille, des exemples, ce qui la distingue. Utilisé par l'IA pour classer les brouillons.": "A few sentences: what the family covers, some examples, what sets it apart. Used by the AI to sort drafts.",
     "Liste Apple Rappels": "Apple Reminders list",
@@ -3713,6 +3719,18 @@ class Ariane extends obsidian.Plugin {
             default: 'retracte',
             options: { retracte: tr('Rétracté'), detaille: tr('Détaillé') },
           },
+        ],
+      });
+      const VueCal = fabriquerVueCalendrierBase(this);
+      this.registerBasesView(TYPE_VUE_BASE_CALENDRIER, {
+        name: tr('Calendrier'),
+        icon: 'calendar-days',
+        factory: (controleur, conteneur) => new VueCal(controleur, conteneur),
+        options: () => [
+          { type: 'dropdown', key: 'calMode', displayName: tr('Vue'), default: 'mois',
+            options: { mois: tr('Mois'), semaine: tr('Semaine') } },
+          { type: 'text', key: 'calHeureDebut', displayName: tr('Heure de début (semaine)'), default: '07:00' },
+          { type: 'text', key: 'calHeureFin', displayName: tr('Heure de fin (semaine)'), default: '21:00' },
         ],
       });
     }
@@ -15895,6 +15913,7 @@ const TYPE_VUE_REFS = 'zfa-references';
 const TYPE_VUE_INCOHERENCES = 'zfa-taches-incoherences';
 const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 const TYPE_VUE_BASE_ARTIC = 'ariane-articulation';
+const TYPE_VUE_BASE_CALENDRIER = 'ariane-calendrier';
 
 // Valeurs par défaut des réglages d'une frise de base. Ils ne passent plus par
 // les réglages d'Ariane : chaque vue d'une base porte les siens.
@@ -15902,6 +15921,15 @@ const DEFAUTS_FRISE = {
   zoom: 'mois', libelleSemaine: 'numero',
   tri: 'date', rowHeight: 'medium', columnSize: null,
   triColonne: null, triColonneSens: 1,
+};
+
+// Valeurs par défaut des réglages d'une vue calendrier de base.
+const DEFAUTS_CALENDRIER = {
+  calMode: 'mois',
+  agendaCalendrier: '',
+  agendaFond: true,
+  calHeureDebut: '07:00',
+  calHeureFin: '21:00',
 };
 
 /* =========================================================================
@@ -20082,6 +20110,151 @@ function fabriquerVueArticulationBase(greffon) {
             valeur: (ref) => { const en = parRef.get(ref);
               try { return en ? en.getValue(id) : null; } catch (e) { return null; } } };
         });
+    }
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Vue calendrier
+//
+// Squelette : barre d'outils (navigation, bascule mois/semaine) et une grille
+// vide. Le tracé du mois et de la semaine est branché ensuite (dessinerMois /
+// dessinerSemaine restent des jalons ici).
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MoteurCalendrier {
+  constructor(greffon, racine, contexte) {
+    this.greffon = greffon;
+    this.app = greffon.app;
+    this.racine = racine;
+    this.ctx = contexte;
+    this._ancre = new Date().toISOString().slice(0, 10);
+    racine.addClass('zfa-cal');
+  }
+
+  lire(cle) {
+    const v = this.ctx.lire ? this.ctx.lire(cle) : undefined;
+    return v === undefined || v === null ? DEFAUTS_CALENDRIER[cle] : v;
+  }
+  get mode() { return this.lire('calMode') === 'semaine' ? 'semaine' : 'mois'; }
+
+  detruire() { this.racine.empty(); }
+
+  dessiner() {
+    try { this.dessinerVraiment(); } catch (e) {
+      console.error('[Ariane] calendrier :', e);
+      this.racine.empty();
+      this.racine.createDiv({ cls: 'zfa-refs-vide',
+        text: tr('Le calendrier n’a pas pu se dessiner : ') + (e && e.message ? e.message : e) });
+    }
+  }
+
+  dessinerVraiment() {
+    const c = this.racine;
+    c.empty();
+    this._taches = (this.ctx.taches && this.ctx.taches()) || [];
+    if (this._enAttente && this._enAttente.size) {
+      for (const t of this._taches) {
+        const p = this._enAttente.get(t.ref);
+        if (!p) continue;
+        const cle = JSON.stringify([t.debut, t.echeance, (t.creneaux || []).slice().sort()]);
+        if (cle === JSON.stringify(p.cible)) this._enAttente.delete(t.ref);
+        else {
+          if (p.debut !== undefined) t.debut = p.debut;
+          if (p.echeance !== undefined) t.echeance = p.echeance;
+          if (p.creneaux !== undefined) t.creneaux = p.creneaux;
+        }
+      }
+    }
+    this.dessinerBarreOutils(c);
+    const grille = c.createDiv({ cls: 'zfa-cal-grille zfa-cal-' + this.mode });
+    if (this.mode === 'semaine') this.dessinerSemaine(grille);
+    else this.dessinerMois(grille);
+  }
+
+  dessinerBarreOutils(c) {
+    const b = c.createDiv({ cls: 'zfa-cal-barre' });
+    const nav = (d) => {
+      this._ancre = this.mode === 'mois'
+        ? Ariane.moisSuivantN(this._ancre, d) : Ariane.decalerJour(this._ancre, d * 7);
+      this.dessiner();
+    };
+    b.createEl('button', { cls: 'zfa-cal-nav', text: '‹' }).onclick = () => nav(-1);
+    b.createEl('button', { cls: 'zfa-cal-nav', text: tr('Aujourd\'hui') }).onclick = () => {
+      this._ancre = new Date().toISOString().slice(0, 10); this.dessiner();
+    };
+    b.createEl('button', { cls: 'zfa-cal-nav', text: '›' }).onclick = () => nav(1);
+    b.createSpan({ cls: 'zfa-cal-titre', text: this.titrePeriode() });
+    for (const m of ['mois', 'semaine']) {
+      const o = b.createEl('button', {
+        cls: 'zfa-cal-mode' + (this.mode === m ? ' is-active' : ''),
+        text: m === 'mois' ? tr('Mois') : tr('Semaine') });
+      o.onclick = async () => { await this.ctx.ecrire('calMode', m); this.dessiner(); };
+    }
+  }
+
+  titrePeriode() {
+    const [a, m] = this._ancre.split('-').map(Number);
+    if (this.mode === 'mois') return (MOIS_COURTS[m - 1] || m) + ' ' + a;
+    const g = Ariane.grilleSemaine(this._ancre);
+    return Number(g.jours[0].slice(8)) + '–' + Number(g.jours[6].slice(8))
+      + ' ' + (MOIS_COURTS[m - 1] || '') + ' ' + a;
+  }
+
+  ouvrir(ref, nouveau) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    if (f) this.app.workspace.getLeaf(!!nouveau).openFile(f);
+  }
+  couleurTache(t) {
+    if ((this.greffon.settings.friseBarreCouleur || 'famille') === 'statut') {
+      return Ariane.COULEURS_GANTT[t.statut] || 'var(--text-faint)';
+    }
+    return (this.greffon.familleDe(t.famille) || {}).couleur || 'var(--text-faint)';
+  }
+  async _apres(ref, apercu) {
+    if (!this._enAttente) this._enAttente = new Map();
+    if (apercu) this._enAttente.set(ref, apercu);
+    this.dessiner();
+  }
+
+  dessinerMois(g) { g.createDiv({ cls: 'zfa-cal-vide', text: '…' }); }   // Task 6
+  dessinerSemaine(g) { g.createDiv({ cls: 'zfa-cal-vide', text: '…' }); } // Task 7
+}
+
+function fabriquerVueCalendrierBase(greffon) {
+  return class VueCalendrierBase extends obsidian.BasesView {
+    constructor(controleur, conteneur) {
+      super(controleur);
+      this.type = TYPE_VUE_BASE_CALENDRIER;
+      this.greffon = greffon;
+      this.conteneur = conteneur;
+    }
+    onload() {
+      this.moteur = new MoteurCalendrier(this.greffon, this.conteneur, {
+        taches: () => this.tachesDeLaBase(),
+        lire: (cle) => {
+          const v = this.config.get(cle);
+          return v === undefined || v === null ? DEFAUTS_CALENDRIER[cle] : v;
+        },
+        ecrire: async (cle, v) => { this.config.set(cle, v); },
+      });
+    }
+    tachesDeLaBase() {
+      const dedans = new Set();
+      for (const e of (this.data && this.data.data) || []) {
+        const ref = e && e.file ? this.greffon.refDeChemin(e.file.path) : null;
+        if (ref) dedans.add(ref);
+      }
+      if (!dedans.size) return [];
+      return this.greffon.tachesPourGantt().filter((t) => dedans.has(t.ref));
+    }
+    onunload() { if (this.moteur) this.moteur.detruire(); }
+    onResize() { if (this.moteur) this.moteur.dessiner(); }
+    async onDataUpdated() {
+      if (this.greffon.settings.famillesTaches && this.greffon.settings.famillesTaches.length) {
+        try { await this.greffon.rattraperProprietesFamilles(); } catch (e) { /* rien */ }
+      }
+      if (this.moteur) this.moteur.dessiner();
     }
   };
 }

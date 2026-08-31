@@ -1994,3 +1994,20 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-css-perso-reglage { display: block; }
 .zfa-css-perso-reglage .setting-item-control { width: 100%; margin-top: 6px; }
 .zfa-css-perso-reglage textarea { width: 100%; min-height: 160px; resize: vertical; }
+
+/* ===================== Vue calendrier ============================== */
+.zfa-cal { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.zfa-cal-barre {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; flex: none;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.zfa-cal-nav, .zfa-cal-mode {
+  background: transparent; border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s); padding: 2px 8px; cursor: pointer;
+  color: var(--text-muted); font-size: var(--font-ui-smaller);
+}
+.zfa-cal-mode.is-active { color: var(--text-normal); border-color: var(--interactive-accent); }
+.zfa-cal-titre { font-weight: 600; margin: 0 6px; }
+.zfa-cal-grille { flex: 1 1 auto; overflow: auto; }
+.zfa-cal-vide { color: var(--text-faint); padding: 24px; text-align: center; }
+.zfa-cal-cible { box-shadow: inset 0 0 0 2px var(--interactive-accent); }
