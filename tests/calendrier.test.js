@@ -122,3 +122,41 @@ test('blocCreneaux : markdown stable, contient le résumé', () => {
 test('blocCreneaux : aucune ligne → chaîne vide', () => {
   assert.equal(Ariane.blocCreneaux([], Ariane.statsCreneaux([], '2026-09-01T00:00')), '');
 });
+
+test('grilleMois : 6×7, lundi en tête, contient le mois', () => {
+  const g = Ariane.grilleMois('2026-09-15');
+  assert.equal(g.semaines.length, 6);
+  assert.ok(g.semaines.every((s) => s.length === 7));
+  assert.equal(g.semaines[0][0], '2026-08-31'); // 1er sept. = mardi
+  assert.ok(g.semaines.flat().includes('2026-09-15'));
+  assert.equal(g.moisDebut, '2026-09-01');
+  assert.equal(g.moisFin, '2026-09-30');
+});
+
+test('grilleSemaine : lundi + 7 jours', () => {
+  const g = Ariane.grilleSemaine('2026-09-03');
+  assert.equal(g.lundi, '2026-08-31');
+  assert.equal(g.jours.length, 7);
+  assert.equal(g.jours[6], '2026-09-06');
+});
+
+test('moisSuivantN : avance / recule sur l’année', () => {
+  assert.equal(Ariane.moisSuivantN('2026-11-10', 3), '2027-02-01');
+  assert.equal(Ariane.moisSuivantN('2026-02-10', -3), '2025-11-01');
+});
+
+test('creneauDepuisDrop : yRel → heure calée 15 min, +1 h', () => {
+  assert.deepEqual(Ariane.creneauDepuisDrop({
+    yRel: 130, hauteurHeure: 40, heureDebut: 8, jourISO: '2026-09-08' }),
+    { debut: '2026-09-08T11:15', fin: '2026-09-08T12:15' });
+});
+
+test('creneauDepuisDrop : durée réglable, minuit franchi', () => {
+  assert.deepEqual(Ariane.creneauDepuisDrop({
+    yRel: 15.5 * 40, hauteurHeure: 40, heureDebut: 8, jourISO: '2026-09-08', dureeMin: 90 }),
+    { debut: '2026-09-08T23:30', fin: '2026-09-09T01:00' });
+});
+
+test('creneauDepuisDrop : jour invalide → null', () => {
+  assert.equal(Ariane.creneauDepuisDrop({ yRel: 40, hauteurHeure: 40, heureDebut: 8, jourISO: 'x' }), null);
+});

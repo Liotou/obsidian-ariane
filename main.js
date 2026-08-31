@@ -5102,6 +5102,60 @@ class Ariane extends obsidian.Plugin {
       ...lignes, '', resume].join('\n');
   }
 
+  static lundiDeSemaine(iso) {
+    const j = Ariane.jourValide(iso);
+    if (!j) return null;
+    const dow = new Date(j + 'T00:00:00Z').getUTCDay();
+    return Ariane.decalerJour(j, -((dow + 6) % 7));
+  }
+
+  static grilleMois(ancreISO) {
+    const j = Ariane.jourValide(ancreISO) || new Date().toISOString().slice(0, 10);
+    const moisDebut = j.slice(0, 8) + '01';
+    const [a, m] = moisDebut.split('-').map(Number);
+    const moisFin = new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10);
+    let cur = Ariane.lundiDeSemaine(moisDebut);
+    const semaines = [];
+    for (let s = 0; s < 6; s += 1) {
+      const ligne = [];
+      for (let d = 0; d < 7; d += 1) { ligne.push(cur); cur = Ariane.decalerJour(cur, 1); }
+      semaines.push(ligne);
+    }
+    return { moisDebut, moisFin, semaines };
+  }
+
+  static grilleSemaine(ancreISO) {
+    const lundi = Ariane.lundiDeSemaine(ancreISO)
+      || Ariane.lundiDeSemaine(new Date().toISOString().slice(0, 10));
+    const jours = [];
+    for (let d = 0; d < 7; d += 1) jours.push(Ariane.decalerJour(lundi, d));
+    return { lundi, jours };
+  }
+
+  static moisSuivantN(iso, n) {
+    let [a, m] = String(iso).slice(0, 7).split('-').map(Number);
+    m += n;
+    a += Math.floor((m - 1) / 12);
+    m = ((m - 1) % 12 + 12) % 12 + 1;
+    return a + '-' + String(m).padStart(2, '0') + '-01';
+  }
+
+  static creneauDepuisDrop(opts) {
+    const o = opts || {};
+    const jour = Ariane.jourValide(o.jourISO);
+    if (!jour || !(o.hauteurHeure > 0)) return null;
+    const minutes = Math.max(0, (o.yRel / o.hauteurHeure) + (o.heureDebut || 0)) * 60;
+    const cale = Math.round(minutes / 15) * 15;
+    const duree = o.dureeMin || 60;
+    const iso = (base, min) => {
+      const dec = Math.floor(min / 1440);
+      const r = min - dec * 1440;
+      return (dec ? Ariane.decalerJour(base, dec) : base) + 'T'
+        + String(Math.floor(r / 60)).padStart(2, '0') + ':' + String(r % 60).padStart(2, '0');
+    };
+    return { debut: iso(jour, cale), fin: iso(jour, cale + duree) };
+  }
+
   // Disposition de la frise : parcours en profondeur, dates remontées sur les
   // méta-tâches. Les dates propres sont conservées à part, le glissé d'une
   // barre devant écrire celles de la note et non celles de sa descendance.
