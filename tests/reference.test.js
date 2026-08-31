@@ -2,34 +2,85 @@ const test = require('node:test');
 const assert = require('node:assert');
 const Ariane = require('./obsidian-factice.js');
 
-const suivante = (noms, annee) => Ariane.referenceTacheSuivante(noms, annee);
+const DEF = 'T-{n:3}';
+const suivante = (noms, gabarit) => Ariane.referenceTacheSuivante(noms, gabarit || DEF);
 
-test('la première tâche de l année porte le rang 001', () => {
-  assert.equal(suivante([], 2026), 'T26-001');
+/* --------------------- formatModele -------------------------------- */
+
+test('formatModele : {n} et {n:3}', () => {
+  assert.equal(Ariane.formatModele('T-{n:3}', { n: 7 }), 'T-007');
+  assert.equal(Ariane.formatModele('#{n}', { n: 42 }), '#42');
+  assert.equal(Ariane.formatModele('{n:2}', { n: 1234 }), '1234'); // jamais tronqué
+});
+
+test('formatModele : jetons de texte et jeton inconnu', () => {
+  assert.equal(
+    Ariane.formatModele('[{ref}] - {intitule}', { ref: 'T-001', intitule: 'Lire' }),
+    '[T-001] - Lire');
+  assert.equal(Ariane.formatModele('{ref} {absent}', { ref: 'X' }), 'X {absent}');
+});
+
+test('analyserGabaritRef : un seul jeton {n} obligatoire', () => {
+  assert.deepEqual(Ariane.analyserGabaritRef('T-{n:3}'),
+    { prefixe: 'T-', suffixe: '', largeur: 3 });
+  assert.deepEqual(Ariane.analyserGabaritRef('{n:4}'),
+    { prefixe: '', suffixe: '', largeur: 4 });
+  assert.equal(Ariane.analyserGabaritRef('rien'), null);
+  assert.equal(Ariane.analyserGabaritRef('{n}-{n}'), null);
+});
+
+/* --------------------- referenceTacheSuivante --------------------- */
+
+test('la première tâche porte le rang 001 (gabarit par défaut)', () => {
+  assert.equal(suivante([]), 'T-001');
 });
 
 test('le rang suit le plus grand déjà employé', () => {
-  assert.equal(suivante(['T26-001', 'T26-002'], 2026), 'T26-003');
+  assert.equal(suivante(['T-001', 'T-002']), 'T-003');
 });
 
 test('un trou dans la numérotation ne réattribue pas le rang libéré', () => {
-  assert.equal(suivante(['T26-001', 'T26-004'], 2026), 'T26-005');
+  assert.equal(suivante(['T-001', 'T-004']), 'T-005');
 });
 
-test('le compteur repart à chaque année', () => {
-  assert.equal(suivante(['T25-999'], 2026), 'T26-001');
+test('un coffre déjà numéroté à l ancienne continue sa série', () => {
+  assert.equal(suivante(['T26-041', 'T26-040']), 'T-042');
 });
 
-test('au delà de 999 la référence passe à quatre chiffres', () => {
-  assert.equal(suivante(['T26-999'], 2026), 'T26-1000');
+test('au delà de 999 la référence garde tous ses chiffres', () => {
+  assert.equal(suivante(['T-999']), 'T-1000');
 });
 
 test('un nom qui ne suit pas la convention est ignoré', () => {
-  assert.equal(suivante(['Brouillon', 'T26-abc', 'T26-'], 2026), 'T26-001');
+  assert.equal(suivante(['Brouillon', 'T-abc', 'T-']), 'T-001');
 });
 
-test('un rang écrit sans zéros de tête est tout de même compté', () => {
-  assert.equal(suivante(['T26-7'], 2026), 'T26-008');
+test('gabarit personnalisé sans préfixe', () => {
+  assert.equal(suivante(['0007'], '{n:4}'), '0008');
+});
+
+test('gabarit personnalisé avec préfixe et sans largeur', () => {
+  assert.equal(suivante(['TASK-7'], 'TASK-{n}'), 'TASK-8');
+});
+
+test('gabarit invalide : repli sur T-{n:3}', () => {
+  assert.equal(suivante(['T-005'], 'sans jeton'), 'T-006');
+});
+
+/* --------------------- incrementerRef & refDansTexte ------------- */
+
+test('incrementerRef : derniers chiffres, largeur conservée', () => {
+  assert.equal(Ariane.incrementerRef('T-007'), 'T-008');
+  assert.equal(Ariane.incrementerRef('T-099'), 'T-100');
+  assert.equal(Ariane.incrementerRef('Sans titre'), 'Sans titre-2');
+});
+
+test('refDansTexte : jeton entre crochets puis sous-chaîne', () => {
+  const refs = new Set(['T-001', 'T26-014', 'AB']);
+  assert.equal(Ariane.refDansTexte('[T-001] - Lire', refs), 'T-001');
+  assert.equal(Ariane.refDansTexte('T26-014. Rédiger', refs), 'T26-014');
+  assert.equal(Ariane.refDansTexte('rien de connu', refs), '');
+  assert.equal(Ariane.refDansTexte('AB truc', refs), ''); // trop court, ignoré
 });
 
 /* --------------------- refDepuisChemin ------------------------------ */

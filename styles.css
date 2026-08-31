@@ -711,6 +711,14 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-famt-prop-plus:hover { color: var(--text-normal); border-color: var(--interactive-accent); }
 
+/* Aperçu en direct d'un gabarit (référence de tâche, titre du rappel). */
+.zfa-gabarit-apercu {
+  margin-top: 4px;
+  font-family: var(--font-monospace); font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+.zfa-gabarit-apercu.est-invalide { color: var(--text-error); }
+
 /* ===================== Arbitrage des références en attente ================= */
 
 .zfa-refs { padding: 8px 10px 16px; }

@@ -963,8 +963,17 @@ const TEXTES = {
     "Commande": "Command",
     "Chemin du binaire, si « claude » ne suffit pas.": "Path to the binary, if “claude” is not enough.",
 
+    "Forme de la référence": "Reference format",
+    "Numérotation incrémentale. {n} = le numéro, {n:3} = sur 3 chiffres. Le reste est littéral. Ne change que les tâches créées ensuite.": "Incremental numbering. {n} = the number, {n:3} = padded to 3 digits. Everything else is literal. Only affects tasks created afterwards.",
+    "Aperçu : ": "Preview: ",
+    "Il faut exactement un jeton {n} ou {n:3}.": "Exactly one {n} or {n:3} token is required.",
+    "Titre du rappel": "Reminder title",
+    "Jetons : {ref}, {intitule}, {famille}. Le reste est littéral.": "Tokens: {ref}, {intitule}, {famille}. Everything else is literal.",
+    "Relire le chapitre 2": "Reread chapter 2",
+
     "Apple Rappels": "Apple Reminders",
     "macOS. Chaque tâche datée devient un rappel dans la liste de sa famille. Synchronisation bidirectionnelle : cocher un rappel termine la tâche, un rappel ajouté à la main devient une tâche. La première synchronisation demande l'accès à Rappels.": "macOS. Every dated task becomes a reminder in its family's list. Two-way sync: checking a reminder completes the task, a reminder added by hand becomes a task. The first sync asks for Reminders access.",
+    "Ariane crée une note par tâche (référence selon la forme réglée ci-dessous), lit les liens entre tâches pour en déduire compositions et blocages, et affiche le rétroplanning dans la frise.": "Ariane creates one note per task (reference in the format set below), reads the links between tasks to derive composition and blocking, and shows the back-planning in the timeline.",
     "Activer": "Enable",
     "Synchroniser automatiquement": "Sync automatically",
     "Intervalle de relève (minutes)": "Poll interval (minutes)",
@@ -1081,10 +1090,12 @@ const DEFAULT_SETTINGS = {
   atomiserNotesLecture: true,
   dossierReferences: '',        // rôle : où déposer les références en attente
   dossierTaches: '',            // rôle : où déposer les notes de tâche
+  refGabarit: 'T-{n:3}',        // forme de la référence : {n} = compteur, {n:3} = sur 3 chiffres
   listeRappelsDefaut: 'Doctorat - Tâches',
   rappelsActif: false,          // intégration Apple Rappels (macOS)
   rappelsAuto: true,            // pousser à la sauvegarde d'une tâche + relever régulièrement
   rappelsReleveMin: 10,         // minutes entre deux relèves automatiques
+  rappelsFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un rappel Apple
   // Clés de frontmatter des propriétés de tâche. Chaque clé = « prefixeTaches »
   // + nom lisible du concept (« Tâche - Échéance »). « clesTaches » remplace le
   // nom lisible d'une propriété précise (concept -> label) ; le préfixe reste
@@ -4384,20 +4395,87 @@ class Ariane extends obsidian.Plugin {
     return String(v == null ? '' : v).trim();
   }
 
-  // Référence d'une tâche : T, l'année sur deux chiffres, le rang dans l'année.
-  // Le rang ne réemploie jamais un numéro libéré : une référence est définitive,
-  // et deux tâches distinctes ne doivent jamais avoir porté le même nom.
-  // L'horodatage employé par les notes conceptuelles est écarté à dessein, un
-  // lot importé produisant plusieurs objets dans la même minute.
-  static referenceTacheSuivante(noms, annee) {
-    const prefixe = 'T' + String(annee % 100).padStart(2, '0') + '-';
+  // Moteur de gabarit à jetons, partagé par la référence de tâche et le titre
+  // du rappel Apple. `{n}` → vars.n ; `{n:3}` → vars.n complété de zéros à
+  // gauche sur 3 chiffres (au moins) ; `{clé}` → vars.clé si défini, sinon le
+  // jeton reste verbatim ; le reste est littéral.
+  static formatModele(modele, vars) {
+    const v = vars || {};
+    return String(modele == null ? '' : modele).replace(
+      /\{(\w+)(?::(\d+))?\}/g,
+      (jeton, cle, largeur) => {
+        if (cle === 'n' && v.n != null) {
+          const s = String(Math.trunc(Number(v.n)) || 0);
+          return largeur ? s.padStart(Number(largeur), '0') : s;
+        }
+        return v[cle] != null ? String(v[cle]) : jeton;
+      });
+  }
+
+  // Décompose un gabarit de référence en { prefixe, suffixe, largeur } autour de
+  // son unique jeton `{n}` / `{n:W}`. Rend null si le jeton manque ou apparaît
+  // plus d'une fois (gabarit refusé).
+  static analyserGabaritRef(gabarit) {
+    const g = String(gabarit == null ? '' : gabarit);
+    const re = /\{n(?::(\d+))?\}/g;
+    const trouves = [...g.matchAll(re)];
+    if (trouves.length !== 1) return null;
+    const m = trouves[0];
+    return {
+      prefixe: g.slice(0, m.index),
+      suffixe: g.slice(m.index + m[0].length),
+      largeur: m[1] ? Number(m[1]) : 1,
+    };
+  }
+
+  // Référence d'une tâche : un compteur incrémental habillé par `gabarit`
+  // (défaut « T-{n:3} » → T-001). Le rang ne réemploie jamais un numéro libéré ;
+  // une référence est définitive, deux tâches distinctes ne portent jamais le
+  // même nom. Le plus grand rang déjà pris est cherché à la fois sur le gabarit
+  // courant ET sur la forme héritée « T26-041 » (seule forme jamais produite
+  // avant) : un coffre déjà numéroté continue sa série au lieu de repartir à 1.
+  static referenceTacheSuivante(noms, gabarit) {
+    const spec = Ariane.analyserGabaritRef(gabarit) || { prefixe: 'T-', suffixe: '', largeur: 3 };
+    const reExact = new RegExp(
+      '^' + Ariane._echapRe(spec.prefixe) + '(\\d+)' + Ariane._echapRe(spec.suffixe) + '$');
+    const reHerite = /^T\d{2}-(\d+)$/;
     let max = 0;
     for (const nom of noms || []) {
-      if (typeof nom !== 'string' || !nom.startsWith(prefixe)) continue;
-      const m = nom.slice(prefixe.length).match(/^(\d+)$/);
+      if (typeof nom !== 'string') continue;
+      const m = nom.match(reExact) || nom.match(reHerite);
       if (m) max = Math.max(max, parseInt(m[1], 10));
     }
-    return prefixe + String(max + 1).padStart(3, '0');
+    return spec.prefixe + String(max + 1).padStart(spec.largeur, '0') + spec.suffixe;
+  }
+
+  static _echapRe(s) {
+    return String(s == null ? '' : s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  // Incrémente les derniers chiffres d'une référence en gardant leur largeur
+  // (« T-007 » → « T-008 », « TASK9 » → « TASK10 »). Sans chiffres, suffixe -2.
+  static incrementerRef(ref) {
+    const r = String(ref == null ? '' : ref);
+    if (!/\d(?!.*\d)/.test(r)) return r + '-2';
+    return r.replace(/(\d+)(?!.*\d)/, (d) => String(parseInt(d, 10) + 1).padStart(d.length, '0'));
+  }
+
+  // Cherche dans `texte` (un titre de rappel Apple) la référence d'une tâche
+  // connue (`refs` : Set de réfs), sans supposer de forme : d'abord un jeton
+  // entre crochets, puis n'importe quelle réf (longueur ≥ 3) en sous-chaîne.
+  // Rend la réf trouvée ou ''.
+  static refDansTexte(texte, refs) {
+    const s = String(texte == null ? '' : texte);
+    const jeu = refs instanceof Set ? refs : new Set(refs || []);
+    const crochet = s.match(/\[([^\]]+)\]/);
+    if (crochet && jeu.has(crochet[1].trim())) return crochet[1].trim();
+    let trouve = '';
+    for (const r of jeu) {
+      if (typeof r === 'string' && r.length >= 3 && s.includes(r) && r.length > trouve.length) {
+        trouve = r;
+      }
+    }
+    return trouve;
   }
 
   // Un chemin est-il dans l'un des dossiers listés (ou un de leurs
@@ -11458,11 +11536,11 @@ class Ariane extends obsidian.Plugin {
         const noms = this.app.vault.getMarkdownFiles()
           .filter((x) => x.path.startsWith(dossier + '/'))
           .map((x) => x.basename);
-        let ref = Ariane.referenceTacheSuivante(noms, new Date().getFullYear());
-        // Rafale de créations : sauter les noms déjà pris.
+        let ref = Ariane.referenceTacheSuivante(noms, this.settings.refGabarit);
+        // Rafale de créations : sauter les noms déjà pris en incrémentant les
+        // chiffres de fin de la référence, quelle que soit sa forme.
         while (this.app.vault.getAbstractFileByPath(dossier + '/' + ref + '.md')) {
-          const m = ref.match(/^(T\d{2}-)(\d+)$/);
-          ref = m ? m[1] + String(parseInt(m[2], 10) + 1).padStart(String(m[2].length), '0') : ref + '-2';
+          ref = Ariane.incrementerRef(ref);
         }
         const nouveau = dossier + '/' + ref + '.md';
         this.marquerEcriture(f.path);
@@ -11627,7 +11705,9 @@ class Ariane extends obsidian.Plugin {
         + '&file=' + encodeURIComponent(t.fichier.path.replace(/\.md$/, ''));
       charge.push({
         ref: t.ref, id: t._rid,
-        titre: '[' + t.ref + '] - ' + t.intitule,
+        titre: Ariane.formatModele(
+          this.settings.rappelsFormatTitre || '[{ref}] - {intitule}',
+          { ref: t.ref, intitule: t.intitule, famille: (this.familleDe(t.famille) || {}).nom || '' }),
         notes: (note ? note.slice(0, 500).trim() + '\n\n' : '') + lien,
         liste: this.listeRappelsDe(t.famille),
         echeance: t.echeance || '', heure: t.heure || '',
@@ -11697,10 +11777,12 @@ class Ariane extends obsidian.Plugin {
         const dueIso = parts[4] || '';
         const listeNom = parts[5] || '';
         if (!id || idsConnus.has(id)) continue;
-        // Nom « [T26-001] - … » d'une tâche existante : on relie au lieu de recréer.
-        const mref = nom.match(/^\[(T\d+-\d+)\]/);
-        if (mref && refsTaches.has(mref[1])) {
-          await this.majTache(mref[1], { 'rappel-id': id });
+        // Le titre du rappel porte-t-il la référence d'une tâche existante ? On
+        // relie au lieu de recréer. Sans supposer de forme : un jeton entre
+        // crochets qui est une réf connue, sinon une réf connue en sous-chaîne.
+        const refLiee = Ariane.refDansTexte(nom, refsTaches);
+        if (refLiee) {
+          await this.majTache(refLiee, { 'rappel-id': id });
           idsConnus.add(id); n += 1; continue;
         }
         const d = dueIso.slice(0, 10);
@@ -12737,7 +12819,10 @@ class Ariane extends obsidian.Plugin {
     const noms = this.app.vault.getMarkdownFiles()
       .filter((f) => f.path.startsWith(dossier + '/'))
       .map((f) => f.basename);
-    const reference = Ariane.referenceTacheSuivante(noms, new Date().getFullYear());
+    let reference = Ariane.referenceTacheSuivante(noms, this.settings.refGabarit);
+    while (this.app.vault.getAbstractFileByPath(dossier + '/' + reference + '.md')) {
+      reference = Ariane.incrementerRef(reference);
+    }
     const chemin = dossier + '/' + reference + '.md';
     const jour = new Date().toISOString().slice(0, 10);
     const cles = {};
@@ -13447,13 +13532,35 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
 
   ongletTaches(c, s, maj) {
     this._section(c, tr('Tâches'));
-    this._aide(c, tr("Ariane crée une note par tâche (référence T26-001, T26-002…), lit les canvas de tâches pour en déduire compositions et blocages, et affiche le rétroplanning dans la frise."));
+    this._aide(c, tr("Ariane crée une note par tâche (référence selon la forme réglée ci-dessous), lit les liens entre tâches pour en déduire compositions et blocages, et affiche le rétroplanning dans la frise."));
 
     new obsidian.Setting(c)
       .setName(tr('Dossier des tâches'))
       .setDesc(tr("Où Ariane crée les nouvelles tâches et où elle les cherche. Vide : « 8 - Tâches »."))
       .addText((t) => t.setValue(s.dossierTaches || '').setPlaceholder(tr('chemin dans le coffre'))
         .onChange(async (v) => { s.dossierTaches = v.trim().replace(/^\/+|\/+$/g, ''); await maj(); }));
+
+    {
+      const reg = new obsidian.Setting(c)
+        .setName(tr('Forme de la référence'))
+        .setDesc(tr("Numérotation incrémentale. {n} = le numéro, {n:3} = sur 3 chiffres. Le reste est littéral. Ne change que les tâches créées ensuite."));
+      const apercu = reg.descEl.createDiv({ cls: 'zfa-gabarit-apercu' });
+      const rendreApercu = (val) => {
+        const ok = !!Ariane.analyserGabaritRef(val);
+        apercu.setText(ok
+          ? tr('Aperçu : ') + Ariane.referenceTacheSuivante([], val)
+          : tr('Il faut exactement un jeton {n} ou {n:3}.'));
+        apercu.toggleClass('est-invalide', !ok);
+      };
+      reg.addText((t) => {
+        t.setValue(s.refGabarit || 'T-{n:3}').setPlaceholder('T-{n:3}');
+        rendreApercu(t.getValue());
+        t.onChange(async (v) => {
+          rendreApercu(v);
+          if (Ariane.analyserGabaritRef(v)) { s.refGabarit = v.trim(); await maj(); }
+        });
+      });
+    }
 
     // Suggestions de listes Apple Rappels, partagées par la liste par défaut et
     // les familles. Chargées à la volée sur macOS.
@@ -13481,6 +13588,26 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.rappelsActif === true)
         .onChange(async (v) => { s.rappelsActif = v; await maj(); this.display(); }));
     if (s.rappelsActif) {
+      {
+        const reg = new obsidian.Setting(c)
+          .setName(tr('Titre du rappel'))
+          .setDesc(tr("Jetons : {ref}, {intitule}, {famille}. Le reste est littéral."));
+        const apercu = reg.descEl.createDiv({ cls: 'zfa-gabarit-apercu' });
+        const echRef = Ariane.referenceTacheSuivante([], s.refGabarit);
+        const rendreApercu = (val) => apercu.setText(tr('Aperçu : ') + Ariane.formatModele(
+          val || '[{ref}] - {intitule}',
+          { ref: echRef, intitule: tr('Relire le chapitre 2'), famille: tr('Lecture') }));
+        reg.addText((t) => {
+          t.setValue(s.rappelsFormatTitre || '[{ref}] - {intitule}')
+            .setPlaceholder('[{ref}] - {intitule}');
+          rendreApercu(t.getValue());
+          t.onChange(async (v) => {
+            rendreApercu(v);
+            s.rappelsFormatTitre = v.trim() || '[{ref}] - {intitule}';
+            await maj();
+          });
+        });
+      }
       new obsidian.Setting(c)
         .setName(tr('Synchroniser automatiquement'))
         .addToggle((t) => t.setValue(s.rappelsAuto !== false)
