@@ -1328,7 +1328,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-jalon-trait {
   stroke: var(--interactive-accent); stroke-width: 1; stroke-dasharray: 2 4; opacity: 0.4;
 }
-.zfa-gantt-losange { fill: var(--interactive-accent); }
+.zfa-gantt-losange { fill: var(--interactive-accent); cursor: grab; }
+.zfa-gantt-losange:hover { fill: color-mix(in srgb, var(--interactive-accent) 80%, white); }
+.zfa-gantt-jalon-groupe.zfa-gantt-glisse { opacity: 0.85; }
+.zfa-gantt-jalon-groupe.zfa-gantt-glisse .zfa-gantt-losange { cursor: grabbing; }
 .zfa-gantt-jalon-titre {
   font-size: 11px; fill: var(--text-muted); dominant-baseline: central;
   pointer-events: none;

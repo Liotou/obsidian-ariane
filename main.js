@@ -17336,7 +17336,11 @@ class MoteurFrise {
     const x = this.x(cfg, l.echeance) + cfg.ppj / 2;
     const y = l.y + l.h / 2;
     l._anc = { xg: x - 9, xd: x + 9, cy: y };
-    g.appendChild(svgEl('line', { x1: x, y1: this._hEntete, x2: x,
+    // Tout le jalon (trait, losange, titre) dans un même groupe : c'est lui
+    // qu'on translate pendant le glissé.
+    const grp = svgEl('g', { class: 'zfa-gantt-jalon-groupe' });
+    grp.dataset.ref = l.ref;
+    grp.appendChild(svgEl('line', { x1: x, y1: this._hEntete, x2: x,
       y2: this._hauteurTotale,
       class: 'zfa-gantt-jalon-trait' }));
     const d = svgEl('path', {
@@ -17350,16 +17354,56 @@ class MoteurFrise {
     d.addEventListener('contextmenu', (e) => this.menuTache(e, l));
     d.addEventListener('pointerenter', () => this._montrerLignage(l.ref));
     d.addEventListener('pointerleave', () => this._effacerLignage());
-    g.appendChild(d);
+    d.addEventListener('pointerdown', (e) => this.saisirJalon(e, grp, l, x, y));
+    grp.appendChild(d);
     if (this._enRetard && this._enRetard.has(l.ref)) {
       d.classList.add('zfa-gantt-retard');
-      this._marqueRetard(g, x + 11, y - 6);
+      this._marqueRetard(grp, x + 11, y - 6);
     }
     if (cfg.ppj >= 8) {
       const t = svgEl('text', { x: x + 14, y: y + 4, class: 'zfa-gantt-jalon-titre' });
       t.textContent = l.intitule;
-      g.appendChild(t);
+      grp.appendChild(t);
     }
+    g.appendChild(grp);
+  }
+
+  // Glisser un losange de jalon le long de la frise : n'écrit que l'échéance
+  // (un jalon n'a pas de durée). Un appui sans mouvement reste un clic qui
+  // ouvre la note.
+  saisirJalon(e, grp, ligne, x, y) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const ppj = this._cfg.ppj;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let bouge = false;
+    grp.classList.add('zfa-gantt-glisse');
+    const jours = (ev) => Math.round((ev.clientX - x0) / ppj);
+    const bouger = (ev) => {
+      if (Math.abs(ev.clientX - x0) > 3 || Math.abs(ev.clientY - y0) > 3) bouge = true;
+      const dx = jours(ev) * ppj;
+      grp.setAttribute('transform', 'translate(' + dx + ',0)');
+      this._bougerFleches(ligne.ref, dx);
+      this._bougerLignage(ligne.ref, dx);
+      this._apercuAscendants(ligne.ref, x + dx, x + dx);
+    };
+    const lacher = async (ev) => {
+      document.removeEventListener('pointermove', bouger);
+      document.removeEventListener('pointerup', lacher);
+      grp.classList.remove('zfa-gantt-glisse');
+      const n = jours(ev);
+      if (!bouge) {
+        this.ouvrir(ligne.ref, ev.metaKey || ev.ctrlKey);
+        this.dessiner();
+        return;
+      }
+      if (!n) { this.dessiner(); return; }
+      await this.appliquerGeste(ligne, 'jalon', n);
+    };
+    document.addEventListener('pointermove', bouger);
+    document.addEventListener('pointerup', lacher);
   }
 
   dessinerAujourdhui(svg, cfg, aujourdhui) {
@@ -17791,6 +17835,8 @@ class MoteurFrise {
     let changements;
     if (mode === 'deplacer') {
       changements = J.decalerSousArbre(this._lignes, ligne.ref, n);
+    } else if (mode === 'jalon') {
+      changements = [{ ref: ligne.ref, debut: '', echeance: J.decalerJour(ligne.echeance, n) }];
     } else if (mode === 'gauche') {
       const fin = ligne.propre.echeance || ligne.propre.debut;
       let debut = J.decalerJour(ligne.propre.debut || fin, n);
