@@ -103,6 +103,56 @@ test('propagerBlocage : entrées vides', () => {
   assert.equal(Ariane.propagerBlocage(null, null).size, 0);
 });
 
+/* ------------------------ avancementsDerives ------------------------- */
+
+const T = (o) => Object.assign(
+  { parent: '', statut: 'à faire', avancement: 0, debut: '', echeance: '' }, o);
+
+test('feuille : avancement propre ; terminée = 100 ; abandonnée = 0', () => {
+  const m = Ariane.avancementsDerives([
+    T({ ref: 'A', avancement: 42 }),
+    T({ ref: 'B', statut: 'terminée', avancement: 10 }),
+    T({ ref: 'C', statut: 'abandonnée', avancement: 90 }),
+  ]);
+  assert.equal(m.get('A'), 42);
+  assert.equal(m.get('B'), 100);
+  assert.equal(m.get('C'), 0);
+});
+
+test('mère : moyenne des filles pondérée par la durée', () => {
+  const m = Ariane.avancementsDerives([
+    T({ ref: 'M' }),
+    // 2 jours, 100 %  +  8 jours, 0 %  ->  (2*100 + 8*0) / 10 = 20
+    T({ ref: 'F1', parent: '[[M]]', avancement: 100, debut: '2026-09-01', echeance: '2026-09-02' }),
+    T({ ref: 'F2', parent: '[[M]]', avancement: 0, debut: '2026-09-03', echeance: '2026-09-10' }),
+  ]);
+  assert.equal(m.get('M'), 20);
+});
+
+test('mère : filles non datées -> moyenne simple ; fille abandonnée exclue', () => {
+  const m = Ariane.avancementsDerives([
+    T({ ref: 'M' }),
+    T({ ref: 'F1', parent: '[[M]]', avancement: 30 }),
+    T({ ref: 'F2', parent: '[[M]]', avancement: 70 }),
+    T({ ref: 'F3', parent: '[[M]]', statut: 'abandonnée', avancement: 0 }),
+  ]);
+  assert.equal(m.get('M'), 50);
+});
+
+test('avancement dérivé récursif : grand-mère agrège des mères', () => {
+  const m = Ariane.avancementsDerives([
+    T({ ref: 'GM' }),
+    T({ ref: 'M1', parent: '[[GM]]', debut: '2026-09-01', echeance: '2026-09-10' }),
+    T({ ref: 'M2', parent: '[[GM]]', debut: '2026-09-01', echeance: '2026-09-10' }),
+    T({ ref: 'a', parent: '[[M1]]', statut: 'terminée' }),
+    T({ ref: 'b', parent: '[[M1]]', avancement: 0 }),   // M1 -> 50
+    T({ ref: 'c', parent: '[[M2]]', avancement: 0 }),   // M2 -> 0
+  ]);
+  assert.equal(m.get('M1'), 50);
+  assert.equal(m.get('M2'), 0);
+  assert.equal(m.get('GM'), 25);   // durées M1 = M2 -> moyenne simple de 50 et 0
+});
+
 test('la cascade emporte aussi la descendance de ce qu elle décale', () => {
   const l = [
     { ref: 'A', niveau: 0, propre: { debut: '2026-09-01', echeance: '2026-09-10' } },

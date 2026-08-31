@@ -5141,6 +5141,73 @@ class Ariane extends obsidian.Plugin {
     return bloquee;
   }
 
+  // Avancement EFFECTIF de chaque tâche (dérivé, jamais écrit) :
+  //  - feuille : son propre % (terminée = 100, abandonnée = 0) ;
+  //  - mère : moyenne des filles pondérée par leur durée en jours. Une fille
+  //    abandonnée sort de la moyenne ; si aucune fille n'est datée, moyenne
+  //    simple ; si toutes sont abandonnées, on retombe sur le % propre.
+  // `taches` : [{ref, parent, statut, avancement, debut, echeance}].
+  static avancementsDerives(taches) {
+    const parRef = new Map();
+    for (const t of taches || []) if (t && t.ref && !parRef.has(t.ref)) parRef.set(t.ref, t);
+    const enfants = new Map();
+    for (const t of parRef.values()) {
+      const p = Ariane.refDeLien(t.parent);
+      if (p && parRef.has(p) && p !== t.ref) {
+        if (!enfants.has(p)) enfants.set(p, []);
+        enfants.get(p).push(t.ref);
+      }
+    }
+    const propre = (t) => {
+      const s = String(t.statut || '');
+      if (s === 'terminée') return 100;
+      if (s === 'abandonnée') return 0;
+      return Math.max(0, Math.min(100, Number(t.avancement) || 0));
+    };
+    const duree = (t) => {
+      const d = Ariane.jourValide(t.debut);
+      const e = Ariane.jourValide(t.echeance);
+      return (d && e) ? Math.max(1, Ariane.ecartJours(d, e) + 1) : 0;
+    };
+    const cache = new Map();
+    const calc = (ref, pile) => {
+      if (cache.has(ref)) return cache.get(ref);
+      const t = parRef.get(ref);
+      if (!t) return 0;
+      const kids = enfants.get(ref);
+      let v;
+      if (!kids || !kids.length || pile.has(ref)) {
+        v = propre(t);
+      } else {
+        const p2 = new Set(pile);
+        p2.add(ref);
+        let sPoids = 0;
+        let sVal = 0;
+        let sSimple = 0;
+        let n = 0;
+        for (const c of kids) {
+          const ct = parRef.get(c);
+          if (ct && String(ct.statut || '') === 'abandonnée') continue;
+          const cv = calc(c, p2);
+          const w = ct ? duree(ct) : 0;
+          sPoids += w;
+          sVal += w * cv;
+          sSimple += cv;
+          n += 1;
+        }
+        if (!n) v = propre(t);
+        else if (sPoids > 0) v = sVal / sPoids;
+        else v = sSimple / n;
+      }
+      v = Math.round(v);
+      cache.set(ref, v);
+      return v;
+    };
+    const out = new Map();
+    for (const ref of parRef.keys()) out.set(ref, calc(ref, new Set()));
+    return out;
+  }
+
   // Place les nœuds SANS position (x/y non finis). Ceux qui en ont sont laissés
   // tels quels. Rang = profondeur dans le DAG (hiérarchie ∪ blocage) par un
   // parcours de Kahn ; les nœuds d'un cycle retombent au rang 0. Dans un rang,
@@ -13739,6 +13806,8 @@ class MoteurFrise {
       }
       this._bloquees = Ariane.propagerBlocage(taches, ar);
     }
+    // Avancement dérivé : une mère montre la moyenne pondérée de ses filles.
+    this._avDeriv = Ariane.avancementsDerives(taches);
 
     const env = c.createDiv({ cls: 'zfa-gantt-enveloppe' });
     const gauche = env.createDiv({ cls: 'zfa-gantt-gauche' });
@@ -14687,6 +14756,10 @@ class MoteurFrise {
       // toujours permis — il agit sur les dates propres (voir appliquerGeste),
       // que la barre affichée soit l'enveloppe ou non.
       const meta = l.aDesEnfants && !this._plat;
+      // Avancement affiché : dérivé (moyenne pondérée des filles) pour une mère,
+      // propre pour une feuille.
+      const av = (this._avDeriv && this._avDeriv.has(l.ref))
+        ? this._avDeriv.get(l.ref) : (Number(l.avancement) || 0);
       const fond = svgEl('rect', {
         x, y, width: w, height: h,
         rx: geo.rayon, ry: geo.rayon,
@@ -14695,9 +14768,9 @@ class MoteurFrise {
       fond.style.opacity = meta ? '0.5' : '0.35';
       groupe.appendChild(fond);
 
-      if (l.avancement > 0) {
+      if (av > 0) {
         const rempli = svgEl('rect', { x, y,
-          width: Math.max(2, w * Math.min(100, l.avancement) / 100), height: h,
+          width: Math.max(2, w * Math.min(100, av) / 100), height: h,
           rx: geo.rayon, ry: geo.rayon, class: 'zfa-gantt-rempli' });
         rempli.style.fill = couleur;
         rempli.style.opacity = '0.9';
@@ -14717,7 +14790,7 @@ class MoteurFrise {
         const textes = [l.intitule];
         if (geo.lignes >= 2) textes.push(debut + '  →  ' + fin);
         if (geo.lignes >= 3) {
-          textes.push(l.statut + (l.avancement ? '  ·  ' + l.avancement + ' %' : ''));
+          textes.push(l.statut + (av ? '  ·  ' + av + ' %' : ''));
         }
         const hauteurTexte = 13;
         const depart = y + h / 2 - ((textes.length - 1) * hauteurTexte) / 2;
@@ -14732,7 +14805,7 @@ class MoteurFrise {
       }
       const bulle = svgEl('title', {});
       bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + debut + ' → ' + fin
-        + (l.avancement ? '  ·  ' + l.avancement + ' %' : '')
+        + (av ? '  ·  ' + av + ' %' : '')
         + (this._bloquees && this._bloquees.has(l.ref) ? '\n' + tr('bloquée') : '');
       groupe.appendChild(bulle);
 
@@ -15705,6 +15778,7 @@ class MoteurArticulation {
     const grapheAll = Ariane.grapheArticulation(toutes);
     this._aretesToutes = grapheAll.aretes;
     this._bloquees = Ariane.propagerBlocage(grapheAll.noeuds, grapheAll.aretes);
+    this._avDeriv = Ariane.avancementsDerives(toutes);
     const aretes = Ariane.aretesEntre(grapheAll.aretes, refsPlan);
     const sousSet = toutes.filter((t) => refsPlan.has(t.ref));
     const { noeuds } = Ariane.grapheArticulation(sousSet);
@@ -15964,9 +16038,11 @@ class MoteurArticulation {
     const bas = corps.createDiv({ cls: 'zfa-artic-bas' });
     bas.createSpan({ cls: 'zfa-artic-pastille', text: n.statut });
     if (n.echeance) bas.createSpan({ cls: 'zfa-artic-ech', text: n.echeance });
-    if (n.avancement > 0) {
+    const av = (this._avDeriv && this._avDeriv.has(n.ref))
+      ? this._avDeriv.get(n.ref) : (Number(n.avancement) || 0);
+    if (av > 0) {
       const j = corps.createDiv({ cls: 'zfa-artic-jauge' });
-      j.createDiv({ cls: 'zfa-artic-jauge-in' }).style.width = Math.min(100, n.avancement) + '%';
+      j.createDiv({ cls: 'zfa-artic-jauge-in' }).style.width = Math.min(100, av) + '%';
     }
 
     if (deplie) {
