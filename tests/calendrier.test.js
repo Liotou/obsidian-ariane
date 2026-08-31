@@ -91,3 +91,34 @@ test('evenementsDeTache : échéance seule sans heure / jalon → un jour', () =
 test('evenementsDeTache : rien → []', () => {
   assert.deepEqual(Ariane.evenementsDeTache(T({})), []);
 });
+
+test('statsCreneaux : compte, total, passé/futur, premier/dernier', () => {
+  const s = Ariane.statsCreneaux(
+    ['2026-09-08 14:00-16:00', '2026-09-10 09:00-11:00', '2026-09-20 08:00-12:00'],
+    '2026-09-12T00:00');
+  assert.equal(s.nb, 3);
+  assert.equal(s.totalMin, 120 + 120 + 240);
+  assert.equal(s.passeMin, 240);          // les deux premiers
+  assert.equal(s.futurMin, 240);          // le dernier
+  assert.equal(s.premier, '2026-09-08T14:00');
+  assert.equal(s.dernier, '2026-09-20T12:00');
+});
+
+test('statsCreneaux : liste vide', () => {
+  const s = Ariane.statsCreneaux([], '2026-09-12T00:00');
+  assert.deepEqual([s.nb, s.totalMin, s.passeMin, s.futurMin], [0, 0, 0, 0]);
+});
+
+test('blocCreneaux : markdown stable, contient le résumé', () => {
+  const cr = ['2026-09-08 14:00-16:00', '2026-09-10 09:00-11:00'];
+  const a = Ariane.blocCreneaux(cr, Ariane.statsCreneaux(cr, '2026-09-01T00:00'));
+  const b = Ariane.blocCreneaux(cr, Ariane.statsCreneaux(cr, '2026-09-01T00:00'));
+  assert.equal(a, b);
+  assert.ok(a.startsWith('## Créneaux'));
+  assert.ok(/2 sessions/.test(a));
+  assert.ok(/4 h 00/.test(a));            // total planifié
+});
+
+test('blocCreneaux : aucune ligne → chaîne vide', () => {
+  assert.equal(Ariane.blocCreneaux([], Ariane.statsCreneaux([], '2026-09-01T00:00')), '');
+});

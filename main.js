@@ -3327,6 +3327,8 @@ function titreSansNumerotation(txt) {
 
 const ZFA_TACHE_DEBUT = '%% ariane:tache %%';
 const ZFA_TACHE_FIN = '%% /ariane:tache %%';
+const ZFA_CRENEAUX_DEBUT = '<!-- ariane:creneaux -->';
+const ZFA_CRENEAUX_FIN = '<!-- /ariane:creneaux -->';
 
 //#endregion 10 · Marqueurs de tâche
 
@@ -4129,6 +4131,14 @@ class Ariane extends obsidian.Plugin {
     this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
       if (!this.refDeChemin(fichier.path)) return;
       this.antirebond('tache:' + fichier.path, () => this.majBlocTache(fichier));
+    }));
+
+    // Même principe pour la section « ## Créneaux » : elle suit « Tâche -
+    // Créneaux » de la note, sans commande à lancer, et ne se réécrit que si
+    // elle change vraiment (garde-fou anti-cycle dans majBlocCreneaux).
+    this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
+      if (!this.refDeChemin(fichier.path)) return;
+      this.antirebond('creneaux:' + fichier.path, () => this.majBlocCreneaux(fichier), 600);
     }));
 
     // Les mêmes règles anti-cycle quand on modifie « Rattachement » ou « Bloquée
@@ -5025,6 +5035,71 @@ class Ariane extends obsidian.Plugin {
                 allDay: true, source: 'dates' }];
     }
     return [];
+  }
+
+  // Statistiques d'une liste de créneaux. `maintenantISO` sert de coupe
+  // passé / futur ; les durées sont en minutes. Accepte un tableau de chaînes
+  // ou de { debut, fin }. Les entrées invalides sont écartées (creneauxDeTache).
+  static statsCreneaux(creneaux, maintenantISO) {
+    const now = String(maintenantISO || new Date().toISOString());
+    const list = Ariane.creneauxDeTache(Array.isArray(creneaux) ? creneaux
+      : (creneaux ? [creneaux] : []));
+    let total = 0;
+    let passe = 0;
+    let futur = 0;
+    for (const c of list) {
+      const min = (Date.parse(c.fin + ':00') - Date.parse(c.debut + ':00')) / 60000;
+      total += min;
+      if (c.fin < now) passe += min;
+      else if (c.debut >= now) futur += min;
+      else { passe += (Date.parse(now) - Date.parse(c.debut + ':00')) / 60000;
+             futur += (Date.parse(c.fin + ':00') - Date.parse(now)) / 60000; }
+    }
+    return {
+      nb: list.length, totalMin: Math.round(total),
+      passeMin: Math.round(passe), futurMin: Math.round(futur),
+      premier: list.length ? list[0].debut : '',
+      dernier: list.length ? list[list.length - 1].fin : '',
+    };
+  }
+
+  static _dureeHumaine(min) {
+    const h = Math.floor(min / 60);
+    return h + ' h ' + String(min % 60).padStart(2, '0');
+  }
+
+  static _jourHumain(iso) {
+    // « lun. 8 sept. » — sans dépendance à la locale de la machine.
+    const JS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+    const MS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.',
+      'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    const d = String(iso).slice(0, 10);
+    if (!Ariane.jourValide(d)) return d;
+    const [a, m, j] = d.split('-').map(Number);
+    const dow = new Date(Date.UTC(a, m - 1, j)).getUTCDay();
+    return JS[dow] + ' ' + j + ' ' + MS[m - 1];
+  }
+
+  // Rend le corps markdown de la section « ## Créneaux » (sans les marqueurs).
+  // Chaîne vide quand aucun créneau valide.
+  static blocCreneaux(creneaux, stats) {
+    const list = Ariane.creneauxDeTache(Array.isArray(creneaux) ? creneaux
+      : (creneaux ? [creneaux] : []));
+    if (!list.length) return '';
+    const s = stats || Ariane.statsCreneaux(list, new Date().toISOString());
+    const lignes = list.map((c, i) => {
+      const min = Math.round((Date.parse(c.fin + ':00') - Date.parse(c.debut + ':00')) / 60000);
+      return '| ' + (i + 1) + ' | ' + Ariane._jourHumain(c.debut) + ' | '
+        + c.debut.slice(11, 16) + ' – ' + c.fin.slice(11, 16) + ' | '
+        + Ariane._dureeHumaine(min) + ' |';
+    });
+    const resume = '**' + s.nb + ' session' + (s.nb > 1 ? 's' : '')
+      + ' · ' + Ariane._dureeHumaine(s.totalMin) + ' planifiées'
+      + (s.futurMin ? ' · ' + Ariane._dureeHumaine(s.futurMin) + ' à venir' : '')
+      + (s.dernier ? ' · dernière : ' + Ariane._jourHumain(s.dernier) : '') + '**';
+    return ['## Créneaux', '',
+      '| Session | Date | Heures | Durée |', '|---|---|---|---|',
+      ...lignes, '', resume].join('\n');
   }
 
   // Disposition de la frise : parcours en profondeur, dates remontées sur les
@@ -13063,6 +13138,64 @@ class Ariane extends obsidian.Plugin {
     // Ne rien écrire quand rien ne change : c'est ce qui empêche l'écoute qui
     // appelle cette méthode de se rappeler elle-même sans fin.
     if (texte === avant) return false;
+    await this.app.vault.modify(file, texte);
+    return true;
+  }
+
+  // Édite la liste des créneaux d'une tâche. { avant } = chaîne de l'entrée
+  // ciblée (vide = ajout). { debut, fin } nuls = suppression de `avant`.
+  async majCreneau(ref, { avant, debut, fin }) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    if (!f) return false;
+    const cle = this.cleT('creneaux');
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    let liste = [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean);
+    const nouv = (debut && fin) ? Ariane.formatCreneau(debut, fin) : '';
+    if (avant) {
+      liste = liste.filter((x) => x.trim() !== String(avant).trim());
+      if (nouv) liste.push(nouv);
+    } else if (nouv) {
+      liste.push(nouv);
+    }
+    // Dédoublonnage + tri par début.
+    liste = Ariane.creneauxDeTache(liste).map((c) => c.brut);
+    this.marquerEcriture(f.path);
+    await this.app.fileManager.processFrontMatter(f, (x) => {
+      if (liste.length) x[cle] = liste; else delete x[cle];
+      x.modifie = new Date().toISOString().slice(0, 10);
+    });
+    await this.majBlocCreneaux(f);
+    return true;
+  }
+
+  // Réécrit la section « ## Créneaux » balisée de la note (idempotent, sur le
+  // modèle de majBlocTache). Se pose sous le bloc d'accès s'il existe, sinon
+  // sous le # Titre ; disparaît quand la tâche n'a plus de créneau.
+  async majBlocCreneaux(file) {
+    if (!this.refDeChemin(file.path)) return false;
+    const fm = (this.app.metadataCache.getFileCache(file) || {}).frontmatter || {};
+    const liste = [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean);
+    const stats = Ariane.statsCreneaux(liste, new Date().toISOString());
+    const interieur = Ariane.blocCreneaux(liste, stats);
+    const bloc = interieur ? ZFA_CRENEAUX_DEBUT + '\n' + interieur + '\n' + ZFA_CRENEAUX_FIN : '';
+    const avant = await this.app.vault.read(file);
+    let texte = avant;
+    const d = texte.indexOf(ZFA_CRENEAUX_DEBUT);
+    const f = texte.indexOf(ZFA_CRENEAUX_FIN);
+    if (d !== -1 && f > d) {
+      texte = texte.slice(0, d) + bloc + texte.slice(f + ZFA_CRENEAUX_FIN.length);
+      // Bloc vidé : retirer aussi la ligne blanche résiduelle.
+      if (!bloc) texte = texte.replace(/\n{3,}/g, '\n\n');
+    } else if (bloc) {
+      // Après le bloc d'accès s'il existe, sinon après le # Titre.
+      if (texte.indexOf(ZFA_TACHE_FIN) !== -1) {
+        texte = texte.replace(ZFA_TACHE_FIN, ZFA_TACHE_FIN + '\n\n' + bloc);
+      } else {
+        texte = texte.replace(/^(# .*\n)/m, '$1\n' + bloc + '\n');
+      }
+    }
+    if (texte === avant) return false;
+    this.marquerEcriture(file.path);
     await this.app.vault.modify(file, texte);
     return true;
   }
