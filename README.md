@@ -557,8 +557,10 @@ headers without touching the data.
 
 The **Tasks: create a task** form carries a **working note** field, written into
 the note's *## Note de travail* section, and every planning field including an
-optional **time** on the due date. `termine-le` is written when the status turns
-`terminée` and cleared if it goes back.
+optional **time** on the due date. Two properties are kept up to date for you and
+not meant to be typed: `Terminée le` follows the status, and `Sans échéance` (a
+checkbox) is true while the task has no due date — so you can filter or sort a
+base on it like any real property.
 
 ### Families
 
@@ -576,13 +578,16 @@ settings.
 The **timeline** left column is a flat table — every task treated the same,
 whatever its links. Order follows the active sort (tasks nest under their parent
 only in the default date order); an **undated task follows the sort like any
-other**, its row simply hatched. A header menu adds a derived **No date** column
-(Yes/No) you can sort on. Columns are drag-reordered by their header and renamed
-per-view through *Edit property…*. Bars carry the family colour, are resizable at
-either edge, and dragging a child that leaves its parent's span stretches the
-parent. A task whose due date has passed and is not done gets a **warning mark**
-on its bar, with a count in the toolbar. Hovering a bar reveals its **lineage** —
-parents and subtasks, joined by a line — with nothing permanent on screen.
+other**, its row simply hatched. Columns match the base view — drag-reorder them
+by their header, rename per-view through *Edit property…*, hide from the header
+menu. Bars carry the family colour, are resizable at either edge, and dragging a
+child that leaves its parent's span stretches the parent. A task whose due date
+has passed and is not done gets a **warning mark** on its bar, with a count in
+the toolbar. Hovering a bar reveals its **lineage** — parents and subtasks,
+joined by a line — with nothing permanent on screen. The toolbar's **Export**
+button writes the timeline exactly as shown — same columns, same row order — to
+an `.xlsx` in the attachments folder (frozen bold header, autofilter, real
+dates, the family cell tinted, an overdue due date in red) and opens it.
 
 The **articulation** draws the graph of links. A **grey** line is composition
 (parent → subtask), an **accent** line is blocking; arrows route around the

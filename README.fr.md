@@ -572,8 +572,10 @@ toucher aux données.
 
 Le formulaire **« Tâches : créer une tâche »** porte un champ **note de travail**,
 écrit dans la section *## Note de travail* de la note, et tous les champs de
-planning dont une **heure** facultative sur l'échéance. `termine-le` s'inscrit
-quand le statut passe à `terminée`, et s'efface s'il en revient.
+planning dont une **heure** facultative sur l'échéance. Deux propriétés sont
+tenues à jour toutes seules, sans se saisir : `Terminée le` suit le statut, et
+`Sans échéance` (une case) vaut vrai tant que la tâche n'a pas d'échéance — de
+quoi filtrer ou trier une base dessus comme sur n'importe quelle propriété.
 
 ### Familles
 
@@ -591,15 +593,19 @@ d'un `.base` garde ses propres réglages.
 La colonne de gauche de la **frise** est un tableau à plat — toutes les tâches
 traitées pareil, quels que soient leurs liens. L'ordre suit le tri actif (les
 tâches ne se rangent sous leur parent qu'en tri par date) ; une **tâche sans
-date suit le tri comme les autres**, sa ligne simplement hachurée. Le menu d'un
-en-tête ajoute une colonne dérivée **Sans date** (Oui/Non), triable. Les
-colonnes se réordonnent en glissant leur en-tête et se renomment par vue via
-*Modifier la propriété…*. Les barres prennent la couleur de la famille, se
-redimensionnent aux deux bords, et glisser une fille qui sort des bornes de sa
-mère étend la mère. Une tâche dont l'échéance est passée et qui n'est pas
-terminée reçoit un **repère d'alerte** sur sa barre, avec un compte dans la
-barre d'outils. Survoler une barre révèle sa **lignée** — parents et
-sous-tâches, reliés par un trait — sans rien de permanent à l'écran.
+date suit le tri comme les autres**, sa ligne simplement hachurée. Les colonnes
+sont celles de la vue de base : on les réordonne en glissant leur en-tête, on
+les renomme par vue via *Modifier la propriété…*, on les masque depuis le menu
+d'en-tête. Les barres prennent la couleur de la famille, se redimensionnent aux
+deux bords, et glisser une fille qui sort des bornes de sa mère étend la mère.
+Une tâche dont l'échéance est passée et qui n'est pas terminée reçoit un
+**repère d'alerte** sur sa barre, avec un compte dans la barre d'outils.
+Survoler une barre révèle sa **lignée** — parents et sous-tâches, reliés par un
+trait — sans rien de permanent à l'écran. Le bouton **Exporter** de la barre
+d'outils écrit la frise telle qu'affichée — mêmes colonnes, même ordre de
+lignes — dans un `.xlsx` du dossier de pièces jointes (en-tête figée en gras,
+filtre automatique, vraies dates, cellule de famille teintée, échéance dépassée
+en rouge) et l'ouvre.
 
 L'**articulation** dessine le graphe des liens. Un trait **gris** est une
 composition (parent → sous-tâche), un trait **d'accent** un blocage ; les flèches
