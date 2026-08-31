@@ -69,6 +69,11 @@ Le statut **« bloqué »** se propage automatiquement dans les deux sens :
   points d'entrée : `greffon.rattacher`, `greffon.creerBlocage`, la modale de
   tâche. Le combo « A parent de B *et* A bloquée par B » EST un cycle fusionné,
   donc couvert.
+- **Modification manuelle** de « Rattachement » ou « Bloquée par » — dans la note
+  de tâche **ou dans une base normale** (même événement `metadataCache.changed`) :
+  si le graphe fusionné contient alors un cycle passant par cette tâche, l'entête
+  **revient aussitôt** à son dernier état sain (`greffon.veillerRattachements`,
+  baseline `_rattachOk` semée au chargement). L'utilisateur voit un message.
 - Un lien **redondant mais cohérent** (A parent de B *et* A bloque B) reste permis :
   il n'est pas contradictoire.
 - La **vue « Incohérences » existante** est conservée telle quelle : elle attrape

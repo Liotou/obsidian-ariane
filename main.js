@@ -899,6 +899,7 @@ const TEXTES = {
     "Ce lien fermerait un cycle (rattachements + blocages) : refusé.": "This link would close a cycle (links + blockers): refused.",
     "Ce rattachement fermerait un cycle (rattachements + blocages) : refusé.": "This parent link would close a cycle (links + blockers): refused.",
     "Ce rattachement fermerait un cycle : il n’a pas été appliqué.": "This parent link would close a cycle: it was not applied.",
+    "Modification annulée : ce lien fermait un cycle (rattachements + blocages).": "Change reverted: that link closed a cycle (links + blockers).",
     "Retirer le blocage par ": "Remove the blocking link from ",
     "Chercher un intitulé ou une référence…": "Search a title or a reference…",
     "Tous les statuts": "All statuses",
@@ -3893,6 +3894,18 @@ class Ariane extends obsidian.Plugin {
       if (!this.refDeChemin(fichier.path)) return;
       this.antirebond('tache:' + fichier.path, () => this.majBlocTache(fichier));
     }));
+
+    // Les mêmes règles anti-cycle quand on modifie « Rattachement » ou « Bloquée
+    // par » à la main — dans la note de tâche comme dans une base normale
+    // (même événement). Un lien qui ferme un cycle du graphe fusionné est
+    // aussitôt annulé, l'entête revenant à son dernier état sain.
+    this._rattachOk = this._rattachOk || new Map();
+    this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
+      const ref = this.refDeChemin(fichier.path);
+      if (!ref) return;
+      this.antirebond('rattach:' + fichier.path, () => this.veillerRattachements(fichier, ref), 400);
+    }));
+    this.app.workspace.onLayoutReady(() => this.semerRattachOk());
 
     this.registerEvent(this.app.vault.on('modify', revaliderIndex));
     this.registerEvent(this.app.vault.on('create', revaliderIndex));
@@ -11104,6 +11117,48 @@ class Ariane extends obsidian.Plugin {
       return false;
     }
     return this.majTache(enfantRef, { parent: parentRef ? '[[' + parentRef + ']]' : '' });
+  }
+
+  // Dernier état SAIN de « parent » / « bloque-par » par tâche, pour pouvoir y
+  // revenir si une modif manuelle ferme un cycle.
+  _rattachDe(ref) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const fm = f ? ((this.app.metadataCache.getFileCache(f) || {}).frontmatter || {}) : {};
+    return {
+      parent: this._lireT(fm, 'parent') || '',
+      bloque: [].concat(this._lireT(fm, 'bloque-par') || []),
+    };
+  }
+
+  semerRattachOk() {
+    this._rattachOk = new Map();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const ref = this.refDeChemin(f.path);
+      if (ref) this._rattachOk.set(ref, this._rattachDe(ref));
+    }
+  }
+
+  async veillerRattachements(fichier, ref) {
+    const actuel = this._rattachDe(ref);
+    // Écriture du greffon (déjà validée) : on mémorise et on sort.
+    if (this.ecritePlugin(fichier.path)) { this._rattachOk.set(ref, actuel); return; }
+    const cycles = Ariane.cyclesDe(this._aretesRattachement());
+    const enCycle = cycles.some((c) => c.includes(ref));
+    const bon = this._rattachOk.get(ref);
+    if (enCycle && bon
+      && JSON.stringify([bon.parent, bon.bloque]) !== JSON.stringify([actuel.parent, actuel.bloque])) {
+      this.marquerEcriture(fichier.path);
+      const kP = this.cleT('parent');
+      const kB = this.cleT('bloque-par');
+      await this.app.fileManager.processFrontMatter(fichier, (x) => {
+        x[kP] = bon.parent;
+        x[kB] = bon.bloque;
+        x.modifie = new Date().toISOString().slice(0, 10);
+      });
+      new obsidian.Notice(tr('Modification annulée : ce lien fermait un cycle (rattachements + blocages).'));
+      return;
+    }
+    if (!enCycle) this._rattachOk.set(ref, actuel);
   }
 
   async creerBlocage(deRef, versRef) {
