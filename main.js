@@ -17141,6 +17141,11 @@ class MoteurFrise {
     racine.addEventListener('keydown', (e) => this.toucheFrise(e));
   }
 
+  // Le document de la vue (≠ document global dans une 2ᵉ fenêtre Obsidian) :
+  // les écouteurs de glisser pointermove/pointerup doivent s'y poser, sinon le
+  // glisser ne « suit » pas sur un écran secondaire.
+  _doc() { return (this.racine && this.racine.ownerDocument) || document; }
+
   // Sélection d'une flèche de dépendance au clic. Une seule à la fois.
   selectionnerFleche(de, vers, groupeEl) {
     this._deselectionnerFleche();
@@ -17488,12 +17493,28 @@ class MoteurFrise {
       if (piste) piste.style.transform = 'translateY(' + y + 'px)';
       this.recalerEnteteHaut(droite.scrollLeft);
       this.recalerEtiquettes(droite.scrollLeft);
+      // Mémorise le jour au bord gauche, par vue, pour y revenir à la
+      // réouverture (2ᵉ fenêtre, retour de focus…).
+      clearTimeout(this._minSauveJour);
+      this._minSauveJour = setTimeout(() => {
+        try {
+          if (this._cfg && this._cfg.debut && this._cfg.ppj) {
+            const j = Ariane.decalerJour(this._cfg.debut, Math.round(droite.scrollLeft / this._cfg.ppj));
+            if (j) this.ctx.ecrire('friseJour', j);
+          }
+        } catch (e) { /* vue fermée */ }
+      }, 400);
     });
 
+    // À froid (pas d'ancien scrollLeft) : reprendre au jour mémorisé, sinon
+    // cadrer sur aujourd'hui.
+    const jourMem = Ariane.jourValide && Ariane.jourValide(this.ctx.lire('friseJour'));
     droite.scrollLeft = jourAncre
       ? Math.max(0, Ariane.ecartJours(cfg.debut, jourAncre) * cfg.ppj)
       : (memeX !== null ? memeX
-        : Math.max(0, Ariane.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220));
+        : jourMem
+          ? Math.max(0, Ariane.ecartJours(cfg.debut, jourMem) * cfg.ppj)
+          : Math.max(0, Ariane.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220));
     if (memeY !== null) {
       droite.scrollTop = memeY;
       table.style.top = (-memeY) + 'px';
@@ -17904,14 +17925,14 @@ class MoteurFrise {
       if (this._placerSeparateur) this._placerSeparateur();
     };
     const lacher = async () => {
-      document.removeEventListener('pointermove', bouger);
-      document.removeEventListener('pointerup', lacher);
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
       if (marqueur) marqueur.removeClass('is-active');
       await this.poserLargeurColonne(col.cle, col.largeur);
       this.dessiner();
     };
-    document.addEventListener('pointermove', bouger);
-    document.addEventListener('pointerup', lacher);
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
   }
 
   // Poignée de redimensionnement, au même endroit et de la même classe que
@@ -18759,8 +18780,8 @@ class MoteurFrise {
       if (cible && g) g.classList.add('zfa-gantt-cible');
     };
     const lacher = async () => {
-      document.removeEventListener('pointermove', bouger);
-      document.removeEventListener('pointerup', lacher);
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
       trait.remove();
       const marque = svg.querySelector('.zfa-gantt-cible');
       if (marque) marque.classList.remove('zfa-gantt-cible');
@@ -18772,8 +18793,8 @@ class MoteurFrise {
         : await this.greffon.creerBlocage(cible, ligne.ref);
       if (fait) this.dessiner();
     };
-    document.addEventListener('pointermove', bouger);
-    document.addEventListener('pointerup', lacher);
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
   }
 
   // Le clic droit donne accès à ce qui se règle sans ouvrir la note. Les
@@ -18920,8 +18941,8 @@ class MoteurFrise {
       this._apercuAscendants(ligne.ref, x + dx, x + dx);
     };
     const lacher = async (ev) => {
-      document.removeEventListener('pointermove', bouger);
-      document.removeEventListener('pointerup', lacher);
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
       grp.classList.remove('zfa-gantt-glisse');
       const n = jours(ev);
       if (!bouge) {
@@ -18932,8 +18953,8 @@ class MoteurFrise {
       if (!n) { this.dessiner(); return; }
       await this.appliquerGeste(ligne, 'jalon', n);
     };
-    document.addEventListener('pointermove', bouger);
-    document.addEventListener('pointerup', lacher);
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
   }
 
   dessinerAujourdhui(svg, cfg, aujourdhui) {
@@ -19132,8 +19153,8 @@ class MoteurFrise {
       if (cible && gg) gg.classList.add('zfa-gantt-cible');
     };
     const lacher = async () => {
-      document.removeEventListener('pointermove', bouger);
-      document.removeEventListener('pointerup', lacher);
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
       trait.remove();
       const marque = svg.querySelector('.zfa-gantt-cible');
       if (marque) marque.classList.remove('zfa-gantt-cible');
@@ -19149,8 +19170,8 @@ class MoteurFrise {
       }
       this.dessiner();
     };
-    document.addEventListener('pointermove', bouger);
-    document.addEventListener('pointerup', lacher);
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
   }
 
   _cheminFleche(x1, y1, x2, y2) { return Ariane._cheminFleche(x1, y1, x2, y2); }
@@ -19379,8 +19400,8 @@ class MoteurFrise {
       }
     };
     const lacher = async (ev) => {
-      document.removeEventListener('pointermove', bouger);
-      document.removeEventListener('pointerup', lacher);
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
       groupe.classList.remove('zfa-gantt-glisse');
       const n = jours(ev);
       // Un appui qui n'a pas bougé est un clic, et un clic sur une barre ouvre
@@ -19393,8 +19414,8 @@ class MoteurFrise {
       if (!n) { this.dessiner(); return; }
       await this.appliquerGeste(ligne, mode, n);
     };
-    document.addEventListener('pointermove', bouger);
-    document.addEventListener('pointerup', lacher);
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
   }
 
   // Une fille sortie des bornes de sa mère fait s'étendre la mère (dates
@@ -19756,6 +19777,10 @@ class MoteurArticulation {
     });
     racine.addEventListener('blur', () => { this._espace = false; this.racine.removeClass('est-espace'); });
   }
+
+  // Document de la vue (≠ document global dans une 2ᵉ fenêtre) : cible des
+  // écouteurs de glisser pointermove/pointerup.
+  _doc() { return (this.racine && this.racine.ownerDocument) || document; }
 
   detruire() { this.racine.empty(); }
 
@@ -20406,12 +20431,12 @@ class MoteurArticulation {
       this._appliquerSelection(sel);
     };
     const lacher = () => {
-      document.removeEventListener('pointermove', bouger);
-      document.removeEventListener('pointerup', lacher);
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
       rect.remove();
     };
-    document.addEventListener('pointermove', bouger);
-    document.addEventListener('pointerup', lacher);
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
   }
 
   // Copie la sélection : entêtes + positions + liens internes, sur le greffon
@@ -20499,12 +20524,12 @@ class MoteurArticulation {
       this.appliquerVue();
     };
     const lacher = () => {
-      document.removeEventListener('pointermove', bouger);
-      document.removeEventListener('pointerup', lacher);
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
       this.racine.removeClass('est-pan');
     };
-    document.addEventListener('pointermove', bouger);
-    document.addEventListener('pointerup', lacher);
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
   }
 
   // Bouton droit sur le fond : glisser = pan ; clic net (sans déplacement)
@@ -20524,13 +20549,13 @@ class MoteurArticulation {
       this.appliquerVue();
     };
     const lacher = (e) => {
-      document.removeEventListener('pointermove', bouger);
-      document.removeEventListener('pointerup', lacher);
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
       this.racine.removeClass('est-pan');
       if (!bouge) this._menuFond(e);
     };
-    document.addEventListener('pointermove', bouger);
-    document.addEventListener('pointerup', lacher);
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
   }
 
   _menuFond(ev) {
@@ -20616,8 +20641,8 @@ class MoteurArticulation {
       }
     };
     const lacher = async () => {
-      document.removeEventListener('pointermove', bouger);
-      document.removeEventListener('pointerup', lacher);
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
       this._tracerReperes(null);
       if (!bouge) return;
       gn.dataset.aGlisse = '1';
@@ -20626,8 +20651,8 @@ class MoteurArticulation {
         await this.ctx.poserPosition(r, Math.round(p.x), Math.round(p.y));
       }
     };
-    document.addEventListener('pointermove', bouger);
-    document.addEventListener('pointerup', lacher);
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
   }
 
   // Redessine les chemins des arêtes touchant un nœud déplacé.
@@ -20713,8 +20738,8 @@ class MoteurArticulation {
       if (cible && gn) gn.classList.add('est-cible');
     };
     const lacher = async () => {
-      document.removeEventListener('pointermove', bouger);
-      document.removeEventListener('pointerup', lacher);
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
       trait.remove();
       const m = this._svg.querySelector('.zfa-artic-noeud.est-cible');
       if (m) m.classList.remove('est-cible');
@@ -20736,8 +20761,8 @@ class MoteurArticulation {
       else await this.greffon.creerBlocage(ref, cible);
       this.dessiner();
     };
-    document.addEventListener('pointermove', bouger);
-    document.addEventListener('pointerup', lacher);
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
   }
 
   ajuster() {
@@ -21303,6 +21328,10 @@ class MoteurCalendrier {
     (greffon._moteursCalendrier || (greffon._moteursCalendrier = new Set())).add(this);
   }
 
+  // Document de la vue (≠ document global dans une 2ᵉ fenêtre) : cible des
+  // écouteurs de glisser pointermove/pointerup.
+  _doc() { return (this.racine && this.racine.ownerDocument) || document; }
+
   lire(cle) {
     const v = this.ctx.lire ? this.ctx.lire(cle) : undefined;
     return v === undefined || v === null ? DEFAUTS_CALENDRIER[cle] : v;
@@ -21572,12 +21601,12 @@ class MoteurCalendrier {
         if (bouge) { this._decalGeste = d; appliquer(); }
       };
       const up = () => {
-        document.removeEventListener('pointermove', move);
-        document.removeEventListener('pointerup', up);
+        this._doc().removeEventListener('pointermove', move);
+        this._doc().removeEventListener('pointerup', up);
         if (bouge) finDeGeste();
       };
-      document.addEventListener('pointermove', move);
-      document.addEventListener('pointerup', up);
+      this._doc().addEventListener('pointermove', move);
+      this._doc().addEventListener('pointerup', up);
     });
   }
 
@@ -21930,8 +21959,8 @@ class MoteurCalendrier {
       poserGuide(topSnap, idxDep + dJ);
     };
     const lacher = async (up) => {
-      document.removeEventListener('pointermove', bouger);
-      document.removeEventListener('pointerup', lacher);
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
       nettoyerGuide();
       if (!bouge) {
         bloc.classList.remove('zfa-cal-bloc-flotte');
@@ -21972,8 +22001,8 @@ class MoteurCalendrier {
       await this.greffon.majCreneau(ref, { avant: brut, debut: cr.debut, fin: cr.fin });
       this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
     };
-    document.addEventListener('pointermove', bouger);
-    document.addEventListener('pointerup', lacher);
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
   }
 
   // Câble dragover/drop sur une cellule de la vue mois : lien externe → créneau
