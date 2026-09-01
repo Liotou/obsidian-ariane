@@ -2194,18 +2194,15 @@ input[type="checkbox"].zfa-cal-carte-coche {
   position: relative;
 }
 input[type="checkbox"].zfa-cal-carte-coche:hover { border-color: var(--text-muted); }
+/* Un <input> ne prend pas ::after de façon fiable → la coche est une image de
+   fond (SVG en ligne, trait blanc), comme le fait le thème d'Obsidian. */
 input[type="checkbox"].zfa-cal-carte-coche:checked {
-  background: var(--checkbox-color, var(--interactive-accent));
+  background-color: var(--checkbox-color, var(--interactive-accent));
   border-color: var(--checkbox-color, var(--interactive-accent));
-}
-input[type="checkbox"].zfa-cal-carte-coche:checked::after {
-  content: "";
-  position: absolute;
-  left: 0.3em; top: 0.08em;
-  width: 0.28em; height: 0.55em;
-  border: solid var(--checkbox-marker-color, #fff);
-  border-width: 0 0.14em 0.14em 0;
-  transform: rotate(45deg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23ffffff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round' d='M3.5 8.5 6.5 11.5 12.5 4.5'/%3E%3C/svg%3E");
+  background-size: 84%;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 .zfa-cal-carte-titre { flex: 1 1 auto; min-width: 0; font-weight: var(--font-medium);
   color: var(--text-normal); white-space: normal; overflow-wrap: anywhere;
