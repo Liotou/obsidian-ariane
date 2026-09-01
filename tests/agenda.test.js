@@ -7,12 +7,15 @@ const Ariane = require('./obsidian-factice.js');
 
 test('genererJXAEvenementsPush : script valide, save/remove, données embarquées', () => {
   const s = Ariane.genererJXAEvenementsPush([
-    { ref: 'T26-001', idx: 0, id: '', titre: '[T26-001] - Lire (session 1)', notes: 'lien',
+    { ref: 'T26-001', idx: 0, id: '', titre: '[T26-001] - Lire (session 1)', notes: 'extrait',
+      lien: 'obsidian://open?vault=V&file=T26-001',
       calendrier: 'Doctorat', debut: '2026-09-08T14:00', fin: '2026-09-08T16:00' },
     { ref: 'T26-001', idx: 1, id: 'ABC', supprimer: true },
   ]);
   new vm.Script(s);
   assert.ok(s.includes('T26-001'));
+  assert.ok(s.includes('e.url='));                 // lien dans le champ URL de l'événement
+  assert.ok(s.includes('NSURL.URLWithString'));
   assert.ok(s.includes('EKEvent'));
   assert.ok(s.includes('saveEventSpanCommitError'));
   assert.ok(s.includes('removeEventSpanCommitError'));

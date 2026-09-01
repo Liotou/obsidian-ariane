@@ -6520,6 +6520,7 @@ class Ariane extends obsidian.Plugin {
       '    if(!e){ e=$.EKEvent.eventWithEventStore(ST); if(cal) e.calendar=cal; }',
       '    try{ e.title=v.titre; }catch(er3){}',
       '    try{ e.notes=v.notes||""; }catch(er4){}',
+      '    try{ if(v.lien){ var u=$.NSURL.URLWithString(v.lien); if(u) e.url=u; } }catch(erU){}',
       '    try{ e.isAllDay=false; }catch(er5){}',
       '    try{ e.startDate=fmtDate(comps(String(v.debut).slice(0,10),String(v.debut).slice(11,16))); }catch(er6){}',
       '    try{ e.endDate=fmtDate(comps(String(v.fin).slice(0,10),String(v.fin).slice(11,16))); }catch(er7){}',
@@ -12931,7 +12932,9 @@ class Ariane extends obsidian.Plugin {
       try { note = await this.lireNoteTache(t.ref); } catch (e) { /* rien */ }
       const lien = 'obsidian://open?vault=' + encodeURIComponent(vault)
         + '&file=' + encodeURIComponent(t.fichier.path.replace(/\.md$/, ''));
-      const notes = (note ? note.slice(0, 500).trim() + '\n\n' : '') + lien;
+      // Le lien vers la note va dans le champ « URL » de l'événement (pas dans
+      // les notes) ; les notes ne portent que l'extrait de la note de travail.
+      const notes = note ? note.slice(0, 500).trim() : '';
       const titreBase = Ariane.formatModele(
         this.settings.agendaFormatTitre || '[{ref}] - {intitule}',
         { ref: t.ref, intitule: t.intitule, famille: (this.familleDe(t.famille) || {}).nom || '' });
@@ -12943,7 +12946,7 @@ class Ariane extends obsidian.Plugin {
           charge.push({
             ref: t.ref, idx: i, id: t._ids[i] || '',
             titre: prefixe + titreBase + (plusieurs ? ' (session ' + (i + 1) + ')' : ''),
-            notes, calendrier: t._cal, debut: c.debut, fin: c.fin,
+            notes, lien, calendrier: t._cal, debut: c.debut, fin: c.fin,
           });
         });
       }

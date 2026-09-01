@@ -98,8 +98,9 @@ elle fait foi (on ne touche pas la note, on repoussera au prochain `pousserAgend
   suffixe ` (session N)` (N = `idx+1`) si la tâche a plus d'un créneau ; préfixe
   `✅ ` si `statut === 'terminée'`. Événement **jamais supprimé** pour cause de
   complétion (historique visible).
-- **Notes** : extrait de la note (500 car.) + lien `obsidian://open?vault=…&file=…`
-  (identique à `pousserRappels`).
+- **Notes** : extrait de la note (500 car.). Le lien `obsidian://open?vault=…&file=…`
+  va dans le champ **URL** de l'EKEvent (`e.url = NSURL.URLWithString(…)`), pas
+  dans les notes. *(Amendement 2026-09-01.)*
 - **Horaires** : `comps(debut)` → `comps(fin)`, `isAllDay = false`.
 - **Calendrier cible** : `agendaCalendrierDe(t.famille)`. EKEvent trouvé dans un
   autre calendrier → on le déplace (`ev.calendar = cal`).
