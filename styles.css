@@ -2188,14 +2188,21 @@ input[type="checkbox"].zfa-cal-carte-coche {
   padding: 0;
   border: max(1px, 0.07em) solid var(--checkbox-border-color, var(--background-modifier-border-hover));
   border-radius: 0.22em;
-  background: var(--background-primary);
+  background-color: var(--background-primary);
+  background-image: none;
   box-shadow: none;
+  outline: none;
+  color: transparent;
+  -webkit-mask: none;
+  mask: none;
   cursor: pointer;
   position: relative;
 }
+/* Neutralise la coche que le thème d'Obsidian dessine (pseudo-élément / masque
+   au gabarit --checkbox-size) : c'est elle qui laissait un résidu au coin. */
+input[type="checkbox"].zfa-cal-carte-coche::before,
+input[type="checkbox"].zfa-cal-carte-coche::after { content: none; display: none; }
 input[type="checkbox"].zfa-cal-carte-coche:hover { border-color: var(--text-muted); }
-/* Un <input> ne prend pas ::after de façon fiable → la coche est une image de
-   fond (SVG en ligne, trait blanc), comme le fait le thème d'Obsidian. */
 input[type="checkbox"].zfa-cal-carte-coche:checked {
   background-color: var(--checkbox-color, var(--interactive-accent));
   border-color: var(--checkbox-color, var(--interactive-accent));
@@ -2203,6 +2210,8 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   background-size: 84%;
   background-position: center;
   background-repeat: no-repeat;
+  -webkit-mask: none;
+  mask: none;
 }
 .zfa-cal-carte-titre { flex: 1 1 auto; min-width: 0; font-weight: var(--font-medium);
   color: var(--text-normal); white-space: normal; overflow-wrap: anywhere;
