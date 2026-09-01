@@ -693,6 +693,24 @@ deux côtés ont changé, la note fait foi. Tourne à la sauvegarde et sur minut
 quand la section **Apple Rappels** des réglages l'active ; la première
 synchronisation demande l'accès à Rappels.
 
+### Apple Agenda (macOS)
+
+Aussi via **EventKit**, en parallèle et sans se croiser avec les rappels. Chaque
+famille peut viser un **calendrier Apple** (plusieurs familles peuvent partager
+le même, ou en avoir chacune un) ; une famille sans calendrier n'est pas
+synchronisée. Chaque **créneau** d'une tâche devient un **événement** dans ce
+calendrier — titre selon un gabarit, un suffixe `(session N)` si la tâche a
+plusieurs créneaux, un lien retour vers la note. Déplacer ou redimensionner
+l'événement dans Calendar réécrit le créneau (la durée réelle revient dans les
+stats) ; le supprimer retire le créneau. La note fait foi si elle a bougé depuis
+la dernière synchro. Les événements des calendriers surveillés — y compris ceux
+qui ne viennent pas d'Ariane — s'affichent **en fond** de la vue calendrier :
+une **barre verticale gauche à la couleur du calendrier**, un clic les ouvre
+dans Calendar.app ; un événement et un créneau au même horaire scindent la
+colonne. Tourne à la sauvegarde et sur minuterie quand la section **Apple
+Agenda** des réglages l'active ; la première synchronisation demande l'accès à
+Calendrier.
+
 ## ⌨️ Commandes
 
 | Commande | Ce qu'elle fait |
@@ -720,6 +738,7 @@ synchronisation demande l'accès à Rappels.
 | Tâches : ajouter (langage naturel, IA) | une phrase → une tâche |
 | Tâches : résoudre les sources des tâches de lecture | texte → `@citekey` |
 | Tâches : synchroniser vers Apple Rappels, relever les rappels | bidirectionnel, macOS |
+| Tâches : synchroniser vers Apple Agenda, relever Apple Agenda | créneaux ↔ événements, macOS |
 
 ---
 
@@ -728,11 +747,13 @@ synchronisation demande l'accès à Rappels.
 La revue automatique d'Obsidian signale trois accès. Ils sont réels, ils sont
 nécessaires, et vous méritez de savoir pourquoi.
 
-**Exécution de commandes** (`child_process`). Uniquement pour l'export Word :
-Ariane appelle `pandoc`, son filtre Better BibTeX et un script Python livré dans
-`pandoc/`, tous trois installés par vous. Aucun autre programme n'est lancé,
-rien n'est téléchargé. Si vous n'exportez jamais vers Word, cette voie n'est
-jamais empruntée. Sur mobile elle est refusée d'emblée, avec un message.
+**Exécution de commandes** (`child_process`). Trois voies optionnelles, inertes
+tant que vous ne les utilisez pas : l'**export Word** appelle `pandoc`, son
+filtre Better BibTeX et un script Python livré dans `pandoc/`, tous installés par
+vous ; l'**IA des tâches** peut appeler la ligne de commande `claude` si vous la
+choisissez comme fournisseur ; la synchro **Apple Rappels** et **Apple Agenda**
+lance `osascript` sur EventKit. Aucun autre programme n'est lancé, rien n'est
+téléchargé. Sur mobile ces voies sont refusées d'emblée.
 
 **Accès direct au système de fichiers** (`fs`). Même raison : pandoc travaille
 sur de vrais fichiers, hors du coffre. Le document produit va dans le dossier

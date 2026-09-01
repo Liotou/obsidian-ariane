@@ -668,6 +668,22 @@ task's reference. When both sides changed, the note wins. Runs on save and on a
 timer when enabled in the **Apple Reminders** settings section; the first sync
 asks for Reminders access.
 
+### Apple Calendar (macOS)
+
+Also through **EventKit**, running alongside reminders without overlap. Each
+family can target an **Apple calendar** (several families may share one, or each
+get its own); a family with no calendar is not synced. Every **créneau** of a
+task becomes an **event** in that calendar — title from a template, a
+`(session N)` suffix when the task has several créneaux, a link back to the note.
+Moving or resizing the event in Calendar rewrites the créneau (the real duration
+flows back into the stats); deleting it removes the créneau. The note wins if it
+moved since the last sync. Events from watched calendars — including ones that do
+not come from Ariane — show as **background** in the calendar view: a **left
+vertical bar in the calendar's colour**, a click opens them in Calendar.app; an
+event and a créneau at the same time split the column. Runs on save and on a
+timer when enabled in the **Apple Calendar** settings section; the first sync
+asks for Calendar access.
+
 ## ⌨️ Commands
 
 | Command | What it does |
@@ -695,6 +711,7 @@ asks for Reminders access.
 | Tasks: add (plain language, AI) | one sentence → one task |
 | Tasks: resolve sources of reading tasks | plain text → `@citekey` |
 | Tasks: sync to Apple Reminders, pull reminders | two-way, macOS |
+| Tasks: sync to Apple Calendar, pull Apple Calendar | créneaux ↔ events, macOS |
 
 ---
 
@@ -706,9 +723,9 @@ needed, and you deserve to know why.
 **Running commands** (`child_process`). Three opt-in paths, each idle until you
 use it: the **Word export** calls `pandoc`, its Better BibTeX filter and a Python
 script shipped in `pandoc/`, all installed by you; the **task AI** may call the
-`claude` command line if you pick it as provider; **Apple Reminders** sync runs
-`osascript` against EventKit. No program is launched otherwise, nothing is
-downloaded. On mobile these paths are refused up front.
+`claude` command line if you pick it as provider; **Apple Reminders** and
+**Apple Calendar** sync run `osascript` against EventKit. No program is launched
+otherwise, nothing is downloaded. On mobile these paths are refused up front.
 
 **Direct filesystem access** (`fs`). Same reason: pandoc works on real files,
 outside the vault. The document lands in the export folder you named, and the
