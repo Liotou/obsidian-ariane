@@ -1016,6 +1016,7 @@ const TEXTES = {
     "Aucune tâche à synchroniser : il faut au moins un créneau ET un calendrier Apple sur la famille (ou le calendrier par défaut).": "No task to sync: a task needs at least one slot AND an Apple calendar on its family (or the default calendar).",
     "Rien à pousser vers Apple Agenda.": "Nothing to push to Apple Calendar.",
     "Rien à annuler.": "Nothing to undo.",
+    "Rien à rétablir.": "Nothing to redo.",
     "Aucun événement lié à relever (lancez d'abord la synchro vers Apple Agenda).": "No linked event to pull (run the sync to Apple Calendar first).",
     " événement(s) liés dans Apple Agenda": " event(s) linked in Apple Calendar",
     ", ": ", ",
@@ -17120,22 +17121,36 @@ function svgEl(nom, attrs) {
   return e;
 }
 
-// Annulation partagée par la frise, l'articulation et le calendrier : chaque
-// geste qui écrit pousse une fonction qui sait revenir à l'état d'avant ; Ctrl/⌘
-// + Z (sans Maj) la rejoue. Pile locale au moteur (survit aux redessins, pas à
-// la fermeture de la vue).
+// Annulation et rétablissement partagés par la frise, l'articulation et le
+// calendrier : chaque geste qui écrit pousse une PAIRE de fonctions — `annule`
+// revient à l'état d'avant, `retablit` rejoue le geste. Ctrl/⌘+Z (sans Maj)
+// annule ; ⌘⇧Z ou Ctrl+Y rétablit. Deux piles locales au moteur (survivent aux
+// redessins, pas à la fermeture de la vue) ; un geste neuf vide le rétablir.
 function _toucheAnnuler(e) {
   return (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey
     && (e.key === 'z' || e.key === 'Z' || e.code === 'KeyZ');
 }
-function poserAnnulation(moteur, fn) {
-  (moteur._undo || (moteur._undo = [])).push(fn);
+function _toucheRetablir(e) {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return false;
+  if (e.key === 'y' || e.key === 'Y' || e.code === 'KeyY') return true;
+  return e.shiftKey && (e.key === 'z' || e.key === 'Z' || e.code === 'KeyZ');
+}
+function poserAnnulation(moteur, fn, fr) {
+  (moteur._undo || (moteur._undo = [])).push({ annule: fn, retablit: fr });
   if (moteur._undo.length > 60) moteur._undo.shift();
+  moteur._redo = [];
 }
 async function annulerDernier(moteur) {
-  const fn = moteur._undo && moteur._undo.pop();
-  if (!fn) { new obsidian.Notice(tr('Rien à annuler.')); return; }
-  try { await fn(); } catch (e) { console.error('[Ariane] annulation :', e); }
+  const e = moteur._undo && moteur._undo.pop();
+  if (!e) { new obsidian.Notice(tr('Rien à annuler.')); return; }
+  (moteur._redo || (moteur._redo = [])).push(e);
+  try { await e.annule(); } catch (err) { console.error('[Ariane] annulation :', err); }
+}
+async function refaireDernier(moteur) {
+  const e = moteur._redo && moteur._redo.pop();
+  if (!e || !e.retablit) { new obsidian.Notice(tr('Rien à rétablir.')); return; }
+  (moteur._undo || (moteur._undo = [])).push(e);
+  try { await e.retablit(); } catch (err) { console.error('[Ariane] rétablissement :', err); }
 }
 
 // Instrument de planification, à l'échelle du trimestre. Ce n'est pas la vue du
@@ -17187,6 +17202,7 @@ class MoteurFrise {
   async toucheFrise(e) {
     const t = e.target;
     if (t && (t.matches('input, textarea, select') || t.isContentEditable)) return;
+    if (_toucheRetablir(e)) { e.preventDefault(); e.stopPropagation(); await refaireDernier(this); return; }
     if (_toucheAnnuler(e)) { e.preventDefault(); e.stopPropagation(); await annulerDernier(this); return; }
     if (e.key === 'Escape') { this._deselectionnerFleche(); return; }
     if (e.key !== 'Backspace' || !this._flecheSelectionnee) return;
@@ -19546,6 +19562,12 @@ class MoteurFrise {
       for (const a of avant) this._enAttente.set(a.ref, { debut: a.debut, echeance: a.echeance });
       this._cascade = null;
       this.dessiner();
+    }, async () => {
+      await this.greffon.ecrireDatesTaches(changements);
+      if (!this._enAttente) this._enAttente = new Map();
+      for (const c of changements) this._enAttente.set(c.ref, { debut: c.debut, echeance: c.echeance });
+      this._cascade = null;
+      this.dessiner();
     });
     this.proposerCascade(ligne.ref, n);
     this.dessiner();
@@ -20477,6 +20499,7 @@ class MoteurArticulation {
   async touche(e) {
     const cible = e.target;
     if (cible && (cible.matches('input, textarea, select') || cible.isContentEditable)) return;
+    if (_toucheRetablir(e)) { e.preventDefault(); e.stopPropagation(); await refaireDernier(this); return; }
     if (_toucheAnnuler(e)) { e.preventDefault(); e.stopPropagation(); await annulerDernier(this); return; }
     if (e.key === ' ' || e.code === 'Space') {
       e.preventDefault();
@@ -20759,10 +20782,18 @@ class MoteurArticulation {
         await this.ctx.poserPosition(r, Math.round(p.x), Math.round(p.y));
       }
       if (this.racine && this.racine.focus) this.racine.focus({ preventScroll: true });
-      // Annulation : replacer chaque carte où elle était avant le glissé.
+      // Annulation / rétablissement : replacer chaque carte où elle était
+      // avant le glissé, puis la rejouer vers sa position d'arrivée.
       const depart = [...p0.entries()].map(([r, p]) => [r, { x: Math.round(p.x), y: Math.round(p.y) }]);
+      const arrivee = refs.map((r) => { const p = this._pt(r); return [r, { x: Math.round(p.x), y: Math.round(p.y) }]; });
       poserAnnulation(this, async () => {
         for (const [r, p] of depart) {
+          this._pos.set(r, { x: p.x, y: p.y });
+          await this.ctx.poserPosition(r, p.x, p.y);
+        }
+        this.dessiner();
+      }, async () => {
+        for (const [r, p] of arrivee) {
           this._pos.set(r, { x: p.x, y: p.y });
           await this.ctx.poserPosition(r, p.x, p.y);
         }
@@ -21447,6 +21478,7 @@ class MoteurCalendrier {
     racine.addEventListener('keydown', (e) => {
       const t = e.target;
       if (t && (t.matches && (t.matches('input, textarea, select') || t.isContentEditable))) return;
+      if (_toucheRetablir(e)) { e.preventDefault(); e.stopPropagation(); refaireDernier(this); return; }
       if (_toucheAnnuler(e)) { e.preventDefault(); e.stopPropagation(); annulerDernier(this); }
     });
     (greffon._moteursCalendrier || (greffon._moteursCalendrier = new Set())).add(this);
@@ -21471,6 +21503,9 @@ class MoteurCalendrier {
         avant: nv, debut: anc ? anc.debut : '', fin: anc ? anc.fin : '',
       });
       this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
+    }, async () => {
+      await this.greffon.majCreneau(ref, chg);
+      this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
     });
   }
 
@@ -21486,6 +21521,10 @@ class MoteurCalendrier {
       await this.greffon.ecrireDatesTaches(avant);
       const cible = avant[0] ? { cible: [avant[0].debut, avant[0].echeance, []] } : { cible: [undefined, undefined, null] };
       this._apres(avant[0] ? avant[0].ref : (changements[0] && changements[0].ref), cible);
+    }, async () => {
+      await this.greffon.ecrireDatesTaches(changements);
+      const cible = changements[0] ? { cible: [changements[0].debut, changements[0].echeance, []] } : { cible: [undefined, undefined, null] };
+      this._apres(changements[0] ? changements[0].ref : null, cible);
     });
   }
 
@@ -23696,6 +23735,11 @@ module.exports._test = {
   memePersonne,
   clustersDoublons,
   meilleurCanonique,
+  _toucheAnnuler,
+  _toucheRetablir,
+  poserAnnulation,
+  annulerDernier,
+  refaireDernier,
 };
 
 //#endregion 18 · Exports
