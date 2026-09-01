@@ -820,6 +820,10 @@ const TEXTES = {
     "Repère de calendrier : seule l'échéance est retenue.": "Calendar marker: only the due date is kept.",
     "Liste Apple Rappels": "Apple Reminders list",
     "Créer": "Create",
+    "Nouvelle zone": "New zone",
+    "Nom de la zone": "Zone name",
+    "Renommer la zone": "Rename zone",
+    "Supprimer la zone": "Delete zone",
     "Tâches : créer une tâche": "Tasks: create a task",
     "Une tâche sans intitulé ne se retrouve pas.": "A task without a title cannot be found again.",
     "Production": "Output",
@@ -4416,6 +4420,7 @@ class Ariane extends obsidian.Plugin {
       { cle: 'creneaux', defaut: 'Créneaux', icone: 'calendar-clock' },
       { cle: 'avancement', defaut: 'Avancement', icone: 'percent' },
       { cle: 'parent', defaut: 'Rattachée à', icone: 'git-branch' },
+      { cle: 'thematique', defaut: 'Thématique', icone: 'folder-tree' },
     ];
   }
 
@@ -4426,7 +4431,35 @@ class Ariane extends obsidian.Plugin {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
             'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'avancement', 'parent',
             'bloque-par', 'termine-le',
-            'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id'];
+            'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id', 'thematique'];
+  }
+
+  // Zones thématiques de l'articulation : une zone nommée couvre un rectangle
+  // de l'espace scène ; la thématique d'une carte est le nom de la DERNIÈRE
+  // zone (ordre du plan) contenant son centre, sinon ''. La géométrie fait
+  // foi : c'est la même règle après un glissé de carte qu'après une
+  // modification de zone.
+  static thematiqueDe(zones, x, y) {
+    let nom = '';
+    for (const z of zones || []) {
+      if (!z || !Number.isFinite(z.x) || !Number.isFinite(z.y)
+        || !Number.isFinite(z.w) || !Number.isFinite(z.h)) continue;
+      if (x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h) nom = z.nom || '';
+    }
+    return nom;
+  }
+
+  // Les seules cartes dont la thématique calculée diffère de la valeur portée
+  // — on n'écrit jamais une note pour rien. `cartes` = [{ ref, x, y,
+  // thematique }], la valeur actuelle lue par le moteur (cache ou note).
+  static changementsThematique(zones, cartes) {
+    const out = [];
+    for (const c of cartes || []) {
+      if (!c || !c.ref) continue;
+      const nv = Ariane.thematiqueDe(zones, c.x, c.y);
+      if ((c.thematique || '') !== nv) out.push({ ref: c.ref, thematique: nv });
+    }
+    return out;
   }
 
   // Regroupement des propriétés d'une tâche (habillage de la note). `famille`
@@ -14068,6 +14101,17 @@ class Ariane extends obsidian.Plugin {
     return true;
   }
 
+  // Valeur ACTUELLE d'un concept de tâche, lue dans le frontmatter (chaîne,
+  // '' si absente). Sert aux thématiques des zones d'articulation, qui doivent
+  // connaître la valeur d'avant un geste pour l'annulation.
+  lireConceptTache(ref, concept) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    if (!f) return '';
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    const v = this._lireT(fm, concept);
+    return v == null ? '' : String(v);
+  }
+
   // Le titre d'une tâche EST son premier alias (c'est ce qu'affichent la frise
   // et l'articulation). On aligne aussi le titre H1 du corps s'il existe, pour
   // que la note ne se contredise pas.
@@ -16814,6 +16858,41 @@ class ModaleDaterTache extends obsidian.Modal {
       this.close();
       await this.sur({ debut, echeance });
     };
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+/* ---- Nommer une zone thématique de l'articulation -------------------- */
+
+class ModaleNomZone extends obsidian.Modal {
+  constructor(app, opts, sur) {
+    super(app);
+    this.opts = opts || {};
+    this.sur = sur;
+  }
+
+  onOpen() {
+    const { contentEl, titleEl } = this;
+    titleEl.setText(this.opts.titre || tr('Nom de la zone'));
+    const l = contentEl.createEl('label', { cls: 'zfa-gantt-modale-champ' });
+    l.createSpan({ text: tr('Nom de la zone') });
+    const i = l.createEl('input', { type: 'text', value: this.opts.valeur || '' });
+    setTimeout(() => { i.focus(); i.select(); }, 0);
+    const valider = () => {
+      const nom = i.value.trim();
+      if (!nom) return;
+      this.close();
+      this.sur(nom);
+    };
+    i.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); valider(); }
+    });
+    const pied = contentEl.createDiv({ cls: 'zfa-gantt-modale-pied' });
+    const annuler = pied.createEl('button', { text: tr('Annuler') });
+    annuler.onclick = () => this.close();
+    const ok = pied.createEl('button', { cls: 'mod-cta', text: this.opts.bouton || tr('Créer') });
+    ok.onclick = valider;
   }
 
   onClose() { this.contentEl.empty(); }
@@ -19898,6 +19977,8 @@ class MoteurArticulation {
     // courant (rétracté montre compact ; détaillé montre les propriétés).
     this._cartesInversees = this._cartesInversees || new Set();
     this._plan = { cartes: [] }; // plan de travail (rempli par dessinerVraiment)
+    this._themes = new Map();    // thématiques écrites par les zones (cache de geste)
+    this._modeZone = false;      // tracé d'une nouvelle zone en cours
     racine.addClass('zfa-artic');
     racine.tabIndex = -1;
     this._surTouche = (e) => this.touche(e);
@@ -19950,6 +20031,9 @@ class MoteurArticulation {
     this.boutonBarre(barre, 'plus', tr('Ajouter un niveau de sous-tâches'), () => this._deplierNiveau());
     this.boutonBarre(barre, 'list-plus', tr('Ajouter au plan les tâches du filtre'),
       () => this._ajouterDuFiltre());
+    this._boutonZone = this.boutonBarre(barre, 'frame', tr('Nouvelle zone'),
+      () => this._basculerModeZone());
+    this._boutonZone.classList.toggle('est-active', !!this._modeZone);
     this.boutonBarre(barre, 'eraser', tr('Nettoyer le canvas'), () => this._nettoyerPlan());
 
     const mode = (this.ctx.lire && this.ctx.lire('modeCarte')) || 'retracte';
@@ -20053,6 +20137,7 @@ class MoteurArticulation {
     this._scene = g;
     this._reperes = null;
 
+    this.dessinerZones(g); // sous les cartes et les arêtes
     for (const a of aretes) this.dessinerArete(g, a);
     for (const n of noeuds) this.dessinerNoeud(g, n);
 
@@ -20065,6 +20150,11 @@ class MoteurArticulation {
       if (!surFond(e)) return;
       // Prendre le focus clavier pour que la barre d'espace (pan) réponde.
       if (this.racine.focus) this.racine.focus({ preventScroll: true });
+      // Mode « nouvelle zone » : le glisser trace le rect au lieu de sélectionner.
+      if (this._modeZone) {
+        if (e.button === 0) { e.preventDefault(); this.tracerZone(e); }
+        return;
+      }
       // Clic milieu, Espace + gauche, ou bouton droit : pan.
       if (e.button === 1 || (e.button === 0 && this._espace)) { this.panDepart(e); return; }
       if (e.button === 2) { this._panDroit(e); return; }
@@ -20139,6 +20229,295 @@ class MoteurArticulation {
       attr: { type: 'button', 'aria-label': texte, title: texte } });
     obsidian.setIcon(b.createSpan({ cls: 'zfa-artic-bouton-ic' }), icone);
     b.addEventListener('click', action);
+    return b;
+  }
+
+  // ── Zones thématiques ────────────────────────────────────────────────────
+  // Zones nommées du plan : une carte posée dans une zone reçoit son nom
+  // comme propriété « thematique ». La géométrie fait foi : tout geste qui
+  // change la disposition (carte ou zone) recalcule les thématiques.
+
+  // Zones utilisables du plan (tolérant : zones absent ou rect incomplet).
+  _zones() {
+    const zs = (this._plan && Array.isArray(this._plan.zones)) ? this._plan.zones : [];
+    return zs.filter((z) => z && z.id && z.nom != null
+      && Number.isFinite(z.x) && Number.isFinite(z.y)
+      && Number.isFinite(z.w) && z.w > 0 && Number.isFinite(z.h) && z.h > 0);
+  }
+
+  // Thématique actuelle d'une carte : cache du geste, sinon la note.
+  _theme(ref) {
+    if (this._themes && this._themes.has(ref)) return this._themes.get(ref) || '';
+    return this.greffon.lireConceptTache
+      ? this.greffon.lireConceptTache(ref, 'thematique') : '';
+  }
+
+  // Centre de la carte dans l'espace scène : le point qui décide de la zone.
+  _centreCarte(ref) {
+    const p = this._pt(ref);
+    const n = (this._noeudsParRef && this._noeudsParRef.get(ref)) || {};
+    return { x: p.x + ARTIC_W / 2, y: p.y + (n.h || ARTIC_H) / 2 };
+  }
+
+  // Diff thématiques pour les cartes données (toutes si refs absent).
+  _recalculThematiques(refs) {
+    const cibles = [...(refs || (this._pos ? this._pos.keys() : []))];
+    return Ariane.changementsThematique(this._zones(), cibles.map((r) => {
+      const c = this._centreCarte(r);
+      return { ref: r, x: c.x, y: c.y, thematique: this._theme(r) };
+    }));
+  }
+
+  // Écrire les thématiques (cache + notes). Valeur vide → clé sans valeur.
+  async _ecrireThematiques(changements) {
+    for (const ch of changements || []) {
+      if (!this._themes) this._themes = new Map();
+      this._themes.set(ch.ref, ch.thematique || '');
+      await this.greffon.majTache(ch.ref, { thematique: ch.thematique ? ch.thematique : null });
+    }
+  }
+
+  _ecrireThematiquesValeurs(paires) {
+    return this._ecrireThematiques((paires || []).map(([ref, thematique]) => ({ ref, thematique })));
+  }
+
+  // Toutes les thématiques actuelles, pour capturer « avant » un geste.
+  _themesToutes() {
+    return [...(this._pos ? this._pos.keys() : [])].map((r) => [r, this._theme(r)]);
+  }
+
+  _basculerModeZone(forcer) {
+    const actif = forcer === undefined ? !this._modeZone : !!forcer;
+    this._modeZone = actif;
+    this.racine.classList.toggle('est-zone', actif);
+    if (this._boutonZone) this._boutonZone.classList.toggle('est-active', actif);
+  }
+
+  // Coin d'une zone (nw/ne/sw/se) → point scène.
+  _coinZone(z, coin) {
+    return {
+      x: coin.includes('e') ? z.x + z.w : z.x,
+      y: coin.includes('s') ? z.y + z.h : z.y,
+    };
+  }
+
+  // Mettre à jour les éléments SVG d'une zone pendant le glissé.
+  _majElsZone(z) {
+    const els = this._zoneEls && this._zoneEls.get(z.id);
+    if (!els) return;
+    els.rect.setAttribute('x', z.x);
+    els.rect.setAttribute('y', z.y);
+    els.rect.setAttribute('width', z.w);
+    els.rect.setAttribute('height', z.h);
+    els.txt.setAttribute('x', z.x + 10);
+    els.txt.setAttribute('y', z.y + 20);
+    for (const [coin, el] of els.ph) {
+      const p = this._coinZone(z, coin);
+      el.setAttribute('x', p.x - 4);
+      el.setAttribute('y', p.y - 4);
+    }
+  }
+
+  dessinerZones(g) {
+    const gz = svgEl('g', { class: 'zfa-artic-zones' });
+    g.appendChild(gz);
+    this._zoneEls = new Map();
+    for (const z of this._zones()) {
+      const gr = svgEl('g', { class: 'zfa-artic-zone-groupe', 'data-id': z.id });
+      const rect = svgEl('rect', {
+        class: 'zfa-artic-zone', x: z.x, y: z.y, width: z.w, height: z.h });
+      gr.appendChild(rect);
+      const txt = svgEl('text', { class: 'zfa-artic-zone-nom', x: z.x + 10, y: z.y + 20 });
+      txt.textContent = z.nom;
+      gr.appendChild(txt);
+      const ph = new Map();
+      for (const coin of ['nw', 'ne', 'sw', 'se']) {
+        const p = this._coinZone(z, coin);
+        const el = svgEl('rect', {
+          class: 'zfa-artic-poignee zfa-artic-poignee-' + coin,
+          x: p.x - 4, y: p.y - 4, width: 8, height: 8 });
+        el.addEventListener('pointerdown', (e) => this.glisserZone(e, z, coin));
+        gr.appendChild(el);
+        ph.set(coin, el);
+      }
+      rect.addEventListener('pointerdown', (e) => {
+        // Le bouton droit ne déplace pas : le menu contextuel s'en charge.
+        if (e.button === 2) { e.stopPropagation(); return; }
+        this.glisserZone(e, z, null);
+      });
+      gr.addEventListener('contextmenu', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        this._menuZone(e, z);
+      });
+      gz.appendChild(gr);
+      this._zoneEls.set(z.id, { gr, rect, txt, ph });
+    }
+  }
+
+  glisserZone(ev, z, coin) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const d0 = this._versScene(ev);
+    const z0 = { x: z.x, y: z.y, w: z.w, h: z.h };
+    const themes0 = this._themesToutes();
+    let bouge = false;
+    const bouger = (e) => {
+      const d = this._versScene(e);
+      const dx = d.x - d0.x;
+      const dy = d.y - d0.y;
+      if (!bouge && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+      bouge = true;
+      if (!coin) {
+        z.x = z0.x + dx; z.y = z0.y + dy;
+      } else {
+        if (coin.includes('w')) { z.x = z0.x + dx; z.w = Math.max(80, z0.w - dx); }
+        if (coin.includes('e')) z.w = Math.max(80, z0.w + dx);
+        if (coin.includes('n')) { z.y = z0.y + dy; z.h = Math.max(60, z0.h - dy); }
+        if (coin.includes('s')) z.h = Math.max(60, z0.h + dy);
+      }
+      this._majElsZone(z);
+    };
+    const lacher = async () => {
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
+      if (!bouge) return;
+      const z1 = { x: z.x, y: z.y, w: z.w, h: z.h };
+      this.ctx.ecrirePlan(this._plan);
+      if (this.racine.focus) this.racine.focus({ preventScroll: true });
+      poserAnnulation(this, async () => {
+        const zz = (this._plan.zones || []).find((x) => x.id === z.id);
+        if (zz) { zz.x = z0.x; zz.y = z0.y; zz.w = z0.w; zz.h = z0.h; }
+        this.ctx.ecrirePlan(this._plan);
+        await this._ecrireThematiquesValeurs(themes0);
+        this.dessiner();
+      }, async () => {
+        const zz = (this._plan.zones || []).find((x) => x.id === z.id);
+        if (zz) Object.assign(zz, z1);
+        this.ctx.ecrirePlan(this._plan);
+        await this._ecrireThematiques(this._recalculThematiques());
+        this.dessiner();
+      });
+      await this._ecrireThematiques(this._recalculThematiques());
+      this.dessiner();
+    };
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
+  }
+
+  tracerZone(ev) {
+    ev.preventDefault();
+    const d0 = this._versScene(ev);
+    const rect = svgEl('rect', {
+      class: 'zfa-artic-zone-trace', x: d0.x, y: d0.y, width: 0, height: 0 });
+    this._scene.appendChild(rect);
+    const bouger = (e) => {
+      const d = this._versScene(e);
+      rect.setAttribute('x', Math.min(d0.x, d.x));
+      rect.setAttribute('y', Math.min(d0.y, d.y));
+      rect.setAttribute('width', Math.abs(d.x - d0.x));
+      rect.setAttribute('height', Math.abs(d.y - d0.y));
+    };
+    const lacher = (e) => {
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
+      const d = this._versScene(e);
+      const r = {
+        x: Math.min(d0.x, d.x), y: Math.min(d0.y, d.y),
+        w: Math.abs(d.x - d0.x), h: Math.abs(d.y - d0.y) };
+      rect.remove();
+      this._basculerModeZone(false);
+      if (r.w < 8 || r.h < 8) return; // simple clic : on abandonne
+      new ModaleNomZone(this.app,
+        { titre: tr('Nouvelle zone'), bouton: tr('Créer') },
+        (nom) => this._creerZone(r, nom));
+    };
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
+  }
+
+  async _creerZone(rect, nom) {
+    nom = String(nom || '').trim();
+    if (!nom || !this._plan) return;
+    const zones0 = JSON.parse(JSON.stringify(this._plan.zones || []));
+    const themes0 = this._themesToutes();
+    const zone = {
+      id: 'z' + Date.now().toString(36), nom,
+      x: Math.round(rect.x), y: Math.round(rect.y),
+      w: Math.round(rect.w), h: Math.round(rect.h) };
+    if (!Array.isArray(this._plan.zones)) this._plan.zones = [];
+    this._plan.zones.push(zone);
+    this.ctx.ecrirePlan(this._plan);
+    const zones1 = JSON.parse(JSON.stringify(this._plan.zones));
+    poserAnnulation(this, async () => {
+      this._plan.zones = zones0.map((x) => ({ ...x }));
+      this.ctx.ecrirePlan(this._plan);
+      await this._ecrireThematiquesValeurs(themes0);
+      this.dessiner();
+    }, async () => {
+      this._plan.zones = zones1.map((x) => ({ ...x }));
+      this.ctx.ecrirePlan(this._plan);
+      await this._ecrireThematiques(this._recalculThematiques());
+      this.dessiner();
+    });
+    await this._ecrireThematiques(this._recalculThematiques());
+    this.dessiner();
+  }
+
+  async _supprimerZone(z) {
+    const i = (this._plan.zones || []).indexOf(z);
+    if (i < 0) return;
+    const zones0 = JSON.parse(JSON.stringify(this._plan.zones));
+    this._plan.zones.splice(i, 1);
+    this.ctx.ecrirePlan(this._plan);
+    const zones1 = JSON.parse(JSON.stringify(this._plan.zones));
+    poserAnnulation(this, async () => {
+      this._plan.zones = zones0.map((x) => ({ ...x }));
+      this.ctx.ecrirePlan(this._plan);
+      await this._ecrireThematiques(this._recalculThematiques());
+      this.dessiner();
+    }, async () => {
+      this._plan.zones = zones1.map((x) => ({ ...x }));
+      this.ctx.ecrirePlan(this._plan);
+      await this._ecrireThematiques(this._recalculThematiques());
+      this.dessiner();
+    });
+    await this._ecrireThematiques(this._recalculThematiques());
+    this.dessiner();
+  }
+
+  async _renommerZone(z, nom) {
+    nom = String(nom || '').trim();
+    if (!nom || nom === z.nom) return;
+    const nom0 = z.nom;
+    const themes0 = this._themesToutes();
+    z.nom = nom;
+    this.ctx.ecrirePlan(this._plan);
+    poserAnnulation(this, async () => {
+      const zz = (this._plan.zones || []).find((x) => x.id === z.id);
+      if (zz) zz.nom = nom0;
+      this.ctx.ecrirePlan(this._plan);
+      await this._ecrireThematiquesValeurs(themes0);
+      this.dessiner();
+    }, async () => {
+      const zz = (this._plan.zones || []).find((x) => x.id === z.id);
+      if (zz) zz.nom = nom;
+      this.ctx.ecrirePlan(this._plan);
+      await this._ecrireThematiques(this._recalculThematiques());
+      this.dessiner();
+    });
+    await this._ecrireThematiques(this._recalculThematiques());
+    this.dessiner();
+  }
+
+  _menuZone(ev, z) {
+    const m = new obsidian.Menu();
+    m.addItem((i) => i.setTitle(tr('Renommer la zone')).setIcon('pencil')
+      .onClick(() => new ModaleNomZone(this.app,
+        { titre: tr('Renommer la zone'), bouton: tr('Renommer'), valeur: z.nom },
+        (nom) => this._renommerZone(z, nom))));
+    m.addItem((i) => i.setTitle(tr('Supprimer la zone')).setIcon('trash-2')
+      .onClick(() => this._supprimerZone(z)));
+    m.showAtMouseEvent(ev);
   }
 
   appliquerVue() {
@@ -20514,6 +20893,7 @@ class MoteurArticulation {
     const mod = e.metaKey || e.ctrlKey;
     const k = (e.key || '').toLowerCase();
     if (e.key === 'Escape') {
+      if (this._modeZone) { this._basculerModeZone(false); return; }
       this._deselectionnerArete();
       this._toutDeselectionner();
       return;
@@ -20790,19 +21170,26 @@ class MoteurArticulation {
       // avant le glissé, puis la rejouer vers sa position d'arrivée.
       const depart = [...p0.entries()].map(([r, p]) => [r, { x: Math.round(p.x), y: Math.round(p.y) }]);
       const arrivee = refs.map((r) => { const p = this._pt(r); return [r, { x: Math.round(p.x), y: Math.round(p.y) }]; });
+      // Les zones thématiques suivent la géométrie : valeurs d'avant pour
+      // l'annulation, recalcul après l'écriture des positions.
+      const themes0 = refs.map((r) => [r, this._theme(r)]);
+      const chgTheme = this._recalculThematiques(refs);
       poserAnnulation(this, async () => {
         for (const [r, p] of depart) {
           this._pos.set(r, { x: p.x, y: p.y });
           await this.ctx.poserPosition(r, p.x, p.y);
         }
+        await this._ecrireThematiquesValeurs(themes0);
         this.dessiner();
       }, async () => {
         for (const [r, p] of arrivee) {
           this._pos.set(r, { x: p.x, y: p.y });
           await this.ctx.poserPosition(r, p.x, p.y);
         }
+        await this._ecrireThematiques(this._recalculThematiques(refs));
         this.dessiner();
       });
+      await this._ecrireThematiques(chgTheme);
     };
     this._doc().addEventListener('pointermove', bouger);
     this._doc().addEventListener('pointerup', lacher);
