@@ -2015,8 +2015,8 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-vide { color: var(--text-faint); padding: 24px; text-align: center; }
 .zfa-cal-cible { box-shadow: inset 0 0 0 2px var(--interactive-accent); }
 
-.zfa-cal-ruban { display: flex; width: 300%; overflow: hidden; will-change: transform; }
-.zfa-cal-ruban > .zfa-cal-grille { flex: 0 0 33.3333%; width: 33.3333%; }
+.zfa-cal-ruban { display: flex; width: 300%; overflow: hidden; will-change: transform; flex: 1 1 auto; min-height: 0; }
+.zfa-cal-ruban > .zfa-cal-grille { flex: 0 0 33.3333%; width: 33.3333%; min-height: 0; }
 
 .zfa-cal-mois-grille {
   display: grid; grid-template-columns: repeat(7, 1fr);
