@@ -20297,6 +20297,43 @@ class MoteurCalendrier {
     }
     return (this.greffon.familleDe(t.famille) || {}).couleur || 'var(--text-faint)';
   }
+  // Une carte d'événement : ligne 1 = heure + intitulé ; lignes suivantes =
+  // propriétés visibles de la base (Task 3), coupées à opts.maxLignes selon la
+  // hauteur disponible. Survol → aperçu de page natif. Retour : l'élément.
+  rendreCarte(hote, t, ev, opts) {
+    const o = opts || {};
+    const carte = hote.createDiv({ cls: 'zfa-cal-carte'
+      + (ev.allDay ? ' est-jour' : ' est-horaire')
+      + (o.enRetard ? ' est-retard' : '') });
+    carte.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
+    carte.dataset.ref = t.ref;
+    if (ev.source === 'creneau') carte.dataset.brut = ev.brut;
+
+    const titre = (o.avecHeure && !ev.allDay ? ev.debut.slice(11, 16) + ' ' : '')
+      + (t.intitule || t.ref);
+    carte.createDiv({ cls: 'zfa-cal-carte-titre', text: titre });
+
+    const lignes = Ariane.lignesProprietes(
+      this._pairesProps(t.ref), t.intitule, Math.max(0, (o.maxLignes || 1) - 1));
+    for (const li of lignes) {
+      const row = carte.createDiv({ cls: 'zfa-cal-carte-prop' });
+      row.createSpan({ cls: 'zfa-cal-carte-prop-nom', text: li.nom + ' ' });
+      row.createSpan({ cls: 'zfa-cal-carte-prop-val', text: li.valeur });
+    }
+
+    // title= = toutes les propriétés, même quand la carte n'en montre qu'une.
+    const toutes = Ariane.lignesProprietes(this._pairesProps(t.ref), t.intitule, 99);
+    carte.title = t.ref + ' · ' + (t.intitule || '')
+      + (toutes.length ? '\n' + toutes.map((x) => x.nom + ' : ' + x.valeur).join('\n') : '');
+
+    carte.addEventListener('mouseover', (e) => {
+      this.app.workspace.trigger('hover-link', { event: e, source: 'zfa-calendrier',
+        hoverParent: this, targetEl: carte, linktext: t.ref, sourcePath: '' });
+    });
+    carte.addEventListener('click', (e) => { e.stopPropagation();
+      this.ouvrir(t.ref, e.metaKey || e.ctrlKey); });
+    return carte;
+  }
   // Paires { cle, nom, valeur } d'une tâche, pour rendreCarte (Task 4).
   _pairesProps(ref) {
     return (this._colonnes || []).map((c) => ({
@@ -20427,19 +20464,12 @@ class MoteurCalendrier {
         if (jour === auj) cell.addClass('est-aujourdhui');
         if (jour.slice(0, 7) !== g.moisDebut.slice(0, 7)) cell.addClass('hors-mois');
         cell.createDiv({ cls: 'zfa-cal-quantieme', text: String(Number(jour.slice(8, 10))) });
-        for (const { t, ev } of (parJour.get(jour) || [])) {
-          const p = cell.createDiv({
-            cls: 'zfa-cal-pastille ' + (ev.allDay ? 'est-jour' : 'est-horaire')
-              + (enRetard.has(t.ref) ? ' est-retard' : '') });
-          p.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
-          p.dataset.ref = t.ref;
-          if (ev.source === 'creneau') p.dataset.brut = ev.brut;
-          p.createSpan({ text: (ev.allDay ? '' : ev.debut.slice(11, 16) + ' ') + (t.intitule || t.ref) });
-          p.title = t.ref + ' · ' + (t.intitule || '');
-          p.addEventListener('click', (e) => { e.stopPropagation();
-            this.ouvrir(t.ref, e.metaKey || e.ctrlKey); });
-          p.setAttribute('draggable', 'true');
-          p.addEventListener('dragstart', (de) => {
+        const evs = (parJour.get(jour) || []).slice().sort(Ariane.comparerEmpilement);
+        for (const { t, ev } of evs) {
+          const carte = this.rendreCarte(cell, t, ev, { maxLignes: 1, avecHeure: true,
+            enRetard: enRetard.has(t.ref) });
+          carte.setAttribute('draggable', 'true');
+          carte.addEventListener('dragstart', (de) => {
             de.dataTransfer.setData('text/x-ariane-cal',
               JSON.stringify({ ref: t.ref, jour, brut: ev.source === 'creneau' ? ev.brut : '' }));
             de.dataTransfer.effectAllowed = 'move';
@@ -20462,6 +20492,7 @@ class MoteurCalendrier {
   dessinerSemaine(hote) {
     const g = Ariane.grilleSemaine(this._ancre);
     const auj = new Date().toISOString().slice(0, 10);
+    const enRetard = Ariane.tachesEnRetard(this._taches, auj);
     const { debut: hDeb, fin: hFin } = this._plageHoraire();
     const PXH = 42;
     this._pxHeure = PXH; this._hDeb = hDeb; this._joursSemaine = g.jours;
@@ -20513,32 +20544,33 @@ class MoteurCalendrier {
         const tr = col.createDiv({ cls: 'zfa-cal-trait' });
         tr.style.top = ((h - hDeb) * PXH) + 'px';
       }
-      for (const { t, ev } of horaire.get(j)) {
+      for (const { t, ev } of horaire.get(j).slice().sort(Ariane.comparerEmpilement)) {
         const y0 = (Number(ev.debut.slice(11, 13)) + Number(ev.debut.slice(14, 16)) / 60 - hDeb) * PXH;
         const finH = ev.fin.slice(0, 10) === j
           ? Number(ev.fin.slice(11, 13)) + Number(ev.fin.slice(14, 16)) / 60 : 24;
         const y1 = (finH - hDeb) * PXH;
-        const bloc = col.createDiv({ cls: 'zfa-cal-bloc' });
+        const haut = Math.max(14, y1 - Math.max(0, y0));
+        const maxLignes = Math.max(1, Math.floor((haut - 6) / 16));
+        const bloc = this.rendreCarte(col, t, ev,
+          { maxLignes, avecHeure: true, enRetard: enRetard.has(t.ref) });
+        bloc.classList.add('zfa-cal-bloc');
         bloc.style.top = Math.max(0, y0) + 'px';
-        bloc.style.height = Math.max(14, y1 - y0) + 'px';
-        bloc.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
-        bloc.dataset.ref = t.ref;
+        bloc.style.height = haut + 'px';
+        if (y0 < 0) bloc.classList.add('zfa-cal-bloc-tronque-haut');
+        if (y1 > (hFin - hDeb) * PXH) bloc.classList.add('zfa-cal-bloc-tronque-bas');
         if (ev.source === 'creneau') {
-          bloc.dataset.brut = ev.brut;
           bloc.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j));
           const poi = bloc.createDiv({ cls: 'zfa-cal-poignee' });
           poi.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j, 'fin'));
           bloc.tabIndex = 0;
           bloc.addEventListener('keydown', async (de) => {
             if (de.key === 'Delete' || de.key === 'Backspace') {
+              de.preventDefault();
               await this.greffon.majCreneau(t.ref, { avant: ev.brut, debut: '', fin: '' });
               this._apres(t.ref, { cible: [t.debut, t.echeance, null], creneaux: undefined });
             }
           });
         }
-        bloc.createSpan({ text: ev.debut.slice(11, 16) + ' ' + (t.intitule || t.ref) });
-        bloc.addEventListener('click', (e) => { e.stopPropagation();
-          this.ouvrir(t.ref, e.metaKey || e.ctrlKey); });
       }
     }
   }
