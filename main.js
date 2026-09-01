@@ -21367,31 +21367,48 @@ class MoteurCalendrier {
     if (e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
     const PXH = this._pxHeure;
+    const x0 = e.clientX;
     const y0 = e.clientY;
     const topDep = parseFloat(bloc.style.top) || 0;
     const hDep = parseFloat(bloc.style.height) || 20;
+    // Déplacement horizontal (jour) : autorisé seulement pour le geste « bouger »
+    // (pas pour le redimensionnement de la fin), et seulement en vue semaine où
+    // l'on connaît la largeur d'une colonne et la bande de jours.
+    const colW = this._semColW || 0;
+    const strip = Array.isArray(this._semStrip) ? this._semStrip : [];
+    const idxDep = strip.indexOf(jourCol);
+    const peutChangerJour = mode !== 'fin' && colW > 0 && idxDep >= 0;
+    let dJours = 0;
     let bouge = false;
     const cal = (v) => Math.round(v / (PXH / 4)) * (PXH / 4);
     const bouger = (mv) => {
       const d = mv.clientY - y0;
-      if (Math.abs(d) > 3 && !bouge) {
+      const dx = mv.clientX - x0;
+      if ((Math.abs(d) > 3 || Math.abs(dx) > 3) && !bouge) {
         bouge = true;
         // Après un glissé, le navigateur émet un « click » de synthèse sur le
         // bloc → ça ouvrait la note. On l'absorbe une fois, en capture.
         bloc.addEventListener('click', (ce) => { ce.stopPropagation(); ce.preventDefault(); },
           { capture: true, once: true });
       }
-      if (mode === 'fin') bloc.style.height = Math.max(PXH / 4, cal(hDep + d)) + 'px';
-      else bloc.style.top = Math.max(0, cal(topDep + d)) + 'px';
+      if (mode === 'fin') { bloc.style.height = Math.max(PXH / 4, cal(hDep + d)) + 'px'; return; }
+      bloc.style.top = Math.max(0, cal(topDep + d)) + 'px';
+      if (peutChangerJour) {
+        dJours = Math.max(-idxDep, Math.min(strip.length - 1 - idxDep, Math.round(dx / colW)));
+        bloc.style.transform = dJours ? 'translateX(' + (dJours * colW) + 'px)' : '';
+        bloc.classList.toggle('zfa-cal-bloc-migre', dJours !== 0);
+      }
     };
     const lacher = async () => {
       document.removeEventListener('pointermove', bouger);
       document.removeEventListener('pointerup', lacher);
+      bloc.style.transform = '';
       if (!bouge) return;
       const top = parseFloat(bloc.style.top) || 0;
       const haut = parseFloat(bloc.style.height) || PXH;
+      const jourCible = (peutChangerJour && dJours) ? strip[idxDep + dJours] : jourCol;
       const cr = Ariane.creneauDepuisDrop({ yRel: top, hauteurHeure: PXH,
-        heureDebut: this._hDeb, jourISO: jourCol, dureeMin: Math.max(15, (haut / PXH) * 60) });
+        heureDebut: this._hDeb, jourISO: jourCible, dureeMin: Math.max(15, (haut / PXH) * 60) });
       if (!cr) { this.dessiner(); return; }
       await this.greffon.majCreneau(ref, { avant: brut, debut: cr.debut, fin: cr.fin });
       this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
@@ -21593,6 +21610,7 @@ class MoteurCalendrier {
     this._pxHeure = PXH; this._hDeb = hDeb; this._joursSemaine = jours.slice(CENTRE, CENTRE + 7);
     const dispo = hote.clientWidth || this.racine.clientWidth || 900;
     const colW = Math.max(64, Math.floor((dispo - AXE) / 7));
+    this._semStrip = jours; this._semColW = colW;
     const jourNom = (j) => tr(['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'][
       (new Date(j + 'T12:00:00').getDay() + 6) % 7]).toLowerCase() + '.';
 
