@@ -176,3 +176,69 @@ test('creneauDepuisDrop : durée réglable, minuit franchi', () => {
 test('creneauDepuisDrop : jour invalide → null', () => {
   assert.equal(Ariane.creneauDepuisDrop({ yRel: 40, hauteurHeure: 40, heureDebut: 8, jourISO: 'x' }), null);
 });
+
+// --- Task 1 : statiques purs de la refonte calendrier ---
+
+test('comparerMulti : critère unique ASC / DESC, vide en dernier', () => {
+  assert.ok(Ariane.comparerMulti([{ v: 'b', s: 1 }], [{ v: 'a', s: 1 }]) > 0);
+  assert.ok(Ariane.comparerMulti([{ v: 'b', s: -1 }], [{ v: 'a', s: -1 }]) < 0);
+  assert.ok(Ariane.comparerMulti([{ v: '', s: 1 }], [{ v: 'a', s: 1 }]) > 0);
+  assert.equal(Ariane.comparerMulti([{ v: 'a', s: 1 }], [{ v: 'a', s: 1 }]), 0);
+});
+
+test('comparerMulti : le 2e critère départage le 1er égal', () => {
+  const a = [{ v: 'x', s: 1 }, { v: '2', s: 1 }];
+  const b = [{ v: 'x', s: 1 }, { v: '10', s: 1 }];
+  assert.ok(Ariane.comparerMulti(a, b) < 0); // numeric: 2 < 10
+});
+
+test('comparerEmpilement : tout-le-jour avant horaire, puis heure, puis ref', () => {
+  const jour = { ev: { allDay: true, debut: '2026-09-08' }, t: { ref: 'T-002' } };
+  const tot = { ev: { allDay: false, debut: '2026-09-08T09:00' }, t: { ref: 'T-001' } };
+  assert.ok(Ariane.comparerEmpilement(jour, tot) < 0);
+  const a = { ev: { allDay: false, debut: '2026-09-08T09:00' }, t: { ref: 'T-002' } };
+  const b = { ev: { allDay: false, debut: '2026-09-08T11:00' }, t: { ref: 'T-001' } };
+  assert.ok(Ariane.comparerEmpilement(a, b) < 0);
+  const m = { ev: { allDay: false, debut: '2026-09-08T09:00' }, t: { ref: 'T-002' } };
+  const n = { ev: { allDay: false, debut: '2026-09-08T09:00' }, t: { ref: 'T-001' } };
+  assert.ok(Ariane.comparerEmpilement(m, n) > 0); // T-002 après T-001
+});
+
+test('comparerEmpilement : respecte le tri natif (_multi) avant la ref', () => {
+  const a = { ev: { allDay: false, debut: '2026-09-08T09:00' },
+    t: { ref: 'T-001', _multi: [{ v: 'z', s: 1 }] } };
+  const b = { ev: { allDay: false, debut: '2026-09-08T09:00' },
+    t: { ref: 'T-999', _multi: [{ v: 'a', s: 1 }] } };
+  assert.ok(Ariane.comparerEmpilement(a, b) > 0); // 'z' après 'a' malgré T-001 < T-999
+});
+
+test('ancreCarrousel : mois ±1, semaine ±1, sens 0', () => {
+  assert.equal(Ariane.ancreCarrousel('2026-12-15', 'mois', 1), '2027-01-01');
+  assert.equal(Ariane.ancreCarrousel('2026-01-15', 'mois', -1), '2025-12-01');
+  assert.equal(Ariane.ancreCarrousel('2026-09-01', 'semaine', 1), '2026-09-08');
+  assert.equal(Ariane.ancreCarrousel('2026-09-01', 'semaine', -1), '2026-08-25');
+  assert.equal(Ariane.ancreCarrousel('2026-09-01', 'mois', 0), '2026-09-01');
+});
+
+test('jourSeme : jourSel > aujourd-dans-période > premier jour', () => {
+  assert.equal(Ariane.jourSeme('2026-09-10', '2026-09-01', '2026-09-30', '2026-09-15'), '2026-09-10');
+  assert.equal(Ariane.jourSeme('', '2026-09-01', '2026-09-30', '2026-09-15'), '2026-09-15');
+  assert.equal(Ariane.jourSeme('', '2026-10-01', '2026-10-31', '2026-09-15'), '2026-10-01');
+  assert.equal(Ariane.jourSeme('', '2026-09-01', '2026-09-30', '2026-09-01'), '2026-09-01');
+});
+
+test('lignesProprietes : écarte file*, vide, doublon du titre ; garde l\'ordre ; coupe', () => {
+  const paires = [
+    { cle: 'file.name', nom: 'Nom', valeur: 'T-001' },
+    { cle: 'note.intitule', nom: 'Intitulé', valeur: 'Rédiger le rapport' },
+    { cle: 'note.statut', nom: 'Statut', valeur: 'en cours' },
+    { cle: 'note.priorite', nom: 'Priorité', valeur: '' },
+    { cle: 'note.famille', nom: 'Famille', valeur: 'Édition' },
+  ];
+  assert.deepEqual(
+    Ariane.lignesProprietes(paires, 'Rédiger le rapport', 5),
+    [{ nom: 'Statut', valeur: 'en cours' }, { nom: 'Famille', valeur: 'Édition' }]);
+  assert.deepEqual(Ariane.lignesProprietes(paires, 'Rédiger le rapport', 1),
+    [{ nom: 'Statut', valeur: 'en cours' }]);
+  assert.deepEqual(Ariane.lignesProprietes(paires, 'x', 0), []);
+});

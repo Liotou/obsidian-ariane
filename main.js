@@ -5035,6 +5035,67 @@ class Ariane extends obsidian.Plugin {
     });
   }
 
+  // Compare deux listes de critères de tri natif Bases : { v, s(ens 1|-1) }.
+  // Valeur vide toujours après, quel que soit le sens. 0 si tout égal.
+  // Reprend, en le mutualisant, le corps de la branche « multi » de disposerGantt.
+  static comparerMulti(ma, mb) {
+    const a = ma || [];
+    const b = mb || [];
+    for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+      const ka = String(a[i] && a[i].v != null ? a[i].v : '');
+      const kb = String(b[i] && b[i].v != null ? b[i].v : '');
+      if (!ka !== !kb) return ka ? -1 : 1;
+      const c = ka.localeCompare(kb, 'fr', { sensitivity: 'base', numeric: true });
+      if (c) return c * ((a[i] && a[i].s === -1) ? -1 : 1);
+    }
+    return 0;
+  }
+
+  // Ordre d'empilement des événements dans une cellule/colonne du calendrier :
+  // tout-le-jour d'abord, puis heure de début, puis tri natif de la base, puis ref.
+  static comparerEmpilement(x, y) {
+    const ax = x.ev.allDay ? 0 : 1;
+    const ay = y.ev.allDay ? 0 : 1;
+    if (ax !== ay) return ax - ay;
+    if (x.ev.debut !== y.ev.debut) return x.ev.debut < y.ev.debut ? -1 : 1;
+    const r = Ariane.comparerMulti(x.t._multi, y.t._multi);
+    if (r) return r;
+    return String(x.t.ref).localeCompare(String(y.t.ref), 'fr', { numeric: true });
+  }
+
+  // Ancre voisine pour le carrousel : ±1 mois ou ±1 semaine. sens 0 = sur place.
+  static ancreCarrousel(ancre, mode, sens) {
+    if (!sens) return ancre;
+    return mode === 'mois'
+      ? Ariane.moisSuivantN(ancre, sens)
+      : Ariane.decalerJour(ancre, sens * 7);
+  }
+
+  // Jour à pré-dater pour « + Nouveau » : le jour sélectionné s'il existe,
+  // sinon aujourd'hui s'il tombe dans la période affichée, sinon son 1er jour.
+  static jourSeme(jourSel, periodeDebut, periodeFin, aujourd) {
+    if (jourSel) return jourSel;
+    if (aujourd >= periodeDebut && aujourd <= periodeFin) return aujourd;
+    return periodeDebut;
+  }
+
+  // Lignes de propriété à écrire sur une carte : on saute la colonne fichier,
+  // les valeurs vides et celle qui répète l'intitulé ; on coupe à maxLignes.
+  static lignesProprietes(paires, intitule, maxLignes) {
+    if (!Array.isArray(paires) || maxLignes <= 0) return [];
+    const exclues = new Set(['file', 'file.name', 'file.link', 'file.path']);
+    const titre = String(intitule || '').trim();
+    const out = [];
+    for (const p of paires) {
+      if (!p || exclues.has(p.cle)) continue;
+      const v = p.valeur == null ? '' : String(p.valeur).trim();
+      if (!v || v === titre) continue;
+      out.push({ nom: p.nom, valeur: v });
+      if (out.length >= maxLignes) break;
+    }
+    return out;
+  }
+
   // Voir spec §2.5. Rend un TABLEAU d'événements. Les créneaux priment : quand
   // il y en a, la « fenêtre de planning » début→échéance n'est pas émise.
   static evenementsDeTache(t) {
@@ -5252,17 +5313,9 @@ class Ariane extends obsidian.Plugin {
           .localeCompare(String(b.intitule || b.ref), 'fr', { sensitivity: 'base' });
         if (c) return c;
       } else if (tri === 'multi') {
-        // Tri natif de la base : plusieurs critères { v, s(ens) } préparés par
-        // la vue, comparés dans l'ordre. Une valeur vide passe toujours après.
-        const ma = a._multi || [];
-        const mb = b._multi || [];
-        for (let i = 0; i < ma.length; i += 1) {
-          const ka = String(ma[i] && ma[i].v != null ? ma[i].v : '');
-          const kb = String(mb[i] && mb[i].v != null ? mb[i].v : '');
-          if (!ka !== !kb) return ka ? -1 : 1;
-          const c = ka.localeCompare(kb, 'fr', { sensitivity: 'base', numeric: true });
-          if (c) return c * (ma[i].s === -1 ? -1 : 1);
-        }
+        // Tri natif de la base : critères { v, s } préparés par la vue.
+        const r = Ariane.comparerMulti(a._multi, b._multi);
+        if (r) return r;
       }
       return parDate(a, b);
     };
