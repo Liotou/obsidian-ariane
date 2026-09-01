@@ -2126,7 +2126,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-sem-axe-inner { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
 .zfa-cal-sem-corps { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; position: relative;
   scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
-.zfa-cal-sem-inner { position: relative; }
+/* La grille s'étire jusqu'au bas du volet même si les 24 h n'y suffisent pas
+   (les colonnes-jour continuent), avec un trait de fin net. */
+.zfa-cal-sem-inner { position: relative; min-height: 100%;
+  border-bottom: 1px solid var(--background-modifier-border); }
 .zfa-cal-axe-heure { position: absolute; right: 4px; font-size: 10px; color: var(--text-faint);
   transform: translateY(-50%); }
 .zfa-cal-col { position: absolute; top: 0; bottom: 0; scroll-snap-align: start;
@@ -2168,16 +2171,16 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   overflow-wrap: anywhere;
   cursor: pointer;
 }
-.zfa-cal-carte-l1 { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
-/* Coche : rendu plat proportionné au texte de la carte (1 em), comme une case
-   « - [ ] » à côté de son texte dans une note — pas la coche native, épaisse. */
+.zfa-cal-carte-l1 { display: flex; align-items: flex-start; gap: 5px; min-width: 0; }
+/* Coche : petite case plate (14 px), calée sur la 1re ligne du titre, comme
+   une case « - [ ] » de note — pas la coche native, épaisse et désalignée. */
 .zfa-cal-carte-coche {
   flex: none;
   appearance: none;
   -webkit-appearance: none;
   box-sizing: border-box;
-  width: 1em; height: 1em;
-  margin: 0.15em 3px 0 0;
+  width: 14px; height: 14px;
+  margin: 1px 0 0;
   padding: 0;
   border: 1px solid var(--checkbox-border-color, var(--text-faint));
   border-radius: 3px;
@@ -2192,10 +2195,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-carte-coche:checked::after {
   content: "";
   position: absolute;
-  left: 32%; top: 8%;
-  width: 30%; height: 58%;
+  left: 4px; top: 1px;
+  width: 4px; height: 8px;
   border: solid var(--checkbox-marker-color, #fff);
-  border-width: 0 0.12em 0.12em 0;
+  border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
 .zfa-cal-carte-titre { flex: 1 1 auto; min-width: 0; font-weight: var(--font-medium);
