@@ -177,6 +177,17 @@ test('creneauDepuisDrop : jour invalide → null', () => {
   assert.equal(Ariane.creneauDepuisDrop({ yRel: 40, hauteurHeure: 40, heureDebut: 8, jourISO: 'x' }), null);
 });
 
+test('clampHauteurBandeau : borne 24–320, repli 66, arrondi entier', () => {
+  assert.equal(Ariane.clampHauteurBandeau(66), 66);
+  assert.equal(Ariane.clampHauteurBandeau(10), 24);
+  assert.equal(Ariane.clampHauteurBandeau(999), 320);
+  assert.equal(Ariane.clampHauteurBandeau('80'), 80);
+  assert.equal(Ariane.clampHauteurBandeau(120.7), 121);
+  for (const v of [undefined, null, NaN, 'x', '', 0, -5]) {
+    assert.equal(Ariane.clampHauteurBandeau(v), 66, JSON.stringify(v));
+  }
+});
+
 // --- Task 1 : statiques purs de la refonte calendrier ---
 
 test('comparerMulti : critère unique ASC / DESC, vide en dernier', () => {

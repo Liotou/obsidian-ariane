@@ -1996,6 +1996,13 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-css-perso-reglage textarea { width: 100%; min-height: 160px; resize: vertical; }
 
 /* ===================== Vue calendrier ============================== */
+/* Le calendrier occupe toute la hauteur du volet : on neutralise le
+   rembourrage qu'Obsidian met autour d'une vue Bases en plein onglet, mais
+   UNIQUEMENT quand ce volet héberge notre calendrier (`:has(.zfa-cal)`) — la
+   frise et l'articulation, mêmes vues Bases, ne sont pas touchées. */
+.workspace-leaf-content[data-type="bases"] .view-content:has(.zfa-cal) {
+  padding: 0; min-height: 0;
+}
 .zfa-cal { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .zfa-cal-barre { display: flex; align-items: center; gap: var(--size-4-2); flex: none;
   padding: var(--size-2-2) var(--size-4-2); font-size: var(--font-ui-small);
@@ -2082,15 +2089,23 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-sem-jour-num { font-size: var(--font-ui-small); font-weight: var(--font-medium);
   color: var(--text-normal); font-variant-numeric: tabular-nums; }
 .zfa-cal-sem-jour.est-aujourdhui .zfa-cal-sem-jour-num {
-  background: var(--color-red); color: #fff; border-radius: 999px;
+  background: var(--interactive-accent); color: var(--text-on-accent); border-radius: 999px;
   min-width: 1.5em; height: 1.5em; padding: 0 3px;
   display: inline-flex; align-items: center; justify-content: center; }
 .zfa-cal-sem-jour.est-selection { box-shadow: inset 0 -2px 0 0 var(--interactive-accent); }
 
-.zfa-cal-bandeau { display: flex; flex: none; min-height: 22px; max-height: 18vh;
-  overflow: hidden; position: relative; z-index: 3;
+.zfa-cal-bandeau { display: flex; flex: none; min-height: 24px;
+  box-sizing: border-box; overflow: hidden; position: relative; z-index: 3;
   border-bottom: 2px solid var(--background-modifier-border-hover, var(--background-modifier-border));
   box-shadow: 0 7px 12px -5px rgba(0, 0, 0, 0.5), 0 2px 0 rgba(0, 0, 0, 0.12); }
+/* Poignée de redimensionnement du bandeau : bande fine sur son bord bas,
+   grip visible à gauche (au-dessus de la gouttière de l'axe des heures). */
+.zfa-cal-bandeau-poignee { position: absolute; left: 0; right: 0; bottom: 0;
+  height: 8px; cursor: ns-resize; z-index: 5; }
+.zfa-cal-bandeau-poignee::before { content: ""; position: absolute; left: 16px; top: 2px;
+  width: 22px; height: 3px; border-radius: 999px;
+  background: var(--background-modifier-border-hover); }
+.zfa-cal-bandeau-poignee:hover::before { background: var(--interactive-accent); }
 .zfa-cal-bandeau-jour { flex: none; display: flex; flex-direction: column; gap: 2px;
   padding: 2px 3px; min-width: 0;
   border-left: 1px solid var(--background-modifier-border); }
@@ -2133,9 +2148,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-zoom { display: flex; gap: 2px; }
 .zfa-cal-zoom .zfa-cal-nav { padding: 2px 5px; }
 .zfa-cal-now { position: absolute; left: 0; right: 0; height: 0;
-  border-top: 2px solid var(--color-red); z-index: 2; pointer-events: none; }
-.zfa-cal-now::before { content: ""; position: absolute; left: -4px; top: -4px;
-  width: 8px; height: 8px; border-radius: 999px; background: var(--color-red); }
+  border-top: 2px solid var(--interactive-accent); z-index: 2; pointer-events: none; }
 .zfa-cal-bloc { position: absolute; overflow: hidden; z-index: 1; }
 .zfa-cal-poignee { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
 .zfa-cal-bloc:focus { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }

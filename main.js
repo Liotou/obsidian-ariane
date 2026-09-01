@@ -5337,6 +5337,15 @@ class Ariane extends obsidian.Plugin {
     return { debut: iso(jour, cale), fin: iso(jour, cale + duree) };
   }
 
+  // Hauteur (px) du bandeau « journée entière » de la vue semaine, ajustée par
+  // la poignée de redimensionnement : borne 24–320, repli sur 66 si la valeur
+  // stockée est absente ou aberrante.
+  static clampHauteurBandeau(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) return 66;
+    return Math.max(24, Math.min(320, Math.round(n)));
+  }
+
   // Disposition de la frise : parcours en profondeur, dates remontées sur les
   // méta-tâches. Les dates propres sont conservées à part, le glissé d'une
   // barre devant écrire celles de la note et non celles de sa descendance.
@@ -16112,6 +16121,7 @@ const DEFAUTS_CALENDRIER = {
   calHeureDebut: '07:00',
   calHeureFin: '21:00',
   calPxHeure: 42,   // hauteur d'une heure en vue semaine (zoom)
+  calBandeauH: 66,  // hauteur du bandeau « journée entière » (poignée, vue semaine)
 };
 
 /* =========================================================================
@@ -20470,6 +20480,10 @@ class MoteurCalendrier {
     return Math.max(20, Math.min(160, Number(this.lire('calPxHeure')) || 42));
   }
 
+  _hBandeauCourant() {
+    return Ariane.clampHauteurBandeau(this.lire('calBandeauH'));
+  }
+
   async _zoomerSemaine(delta) {
     const cur = this._pxHeureCourant();
     const nv = Math.max(20, Math.min(160, cur + delta));
@@ -21070,6 +21084,7 @@ class MoteurCalendrier {
 
     // --- Bandeau « tout le jour » (toujours présent, sans repli) ---
     const bandeau = hote.createDiv({ cls: 'zfa-cal-bandeau' });
+    bandeau.style.height = this._hBandeauCourant() + 'px';
     bandeau.createDiv({ cls: 'zfa-cal-sem-gout' });
     const bDefil = bandeau.createDiv({ cls: 'zfa-cal-sem-defil' });
     const bPiste = bDefil.createDiv({ cls: 'zfa-cal-sem-piste' });
@@ -21118,6 +21133,29 @@ class MoteurCalendrier {
       };
       rendre();
     }
+
+    // Poignée de redimensionnement : bande fine sur le bord bas du bandeau, grip
+    // visible à gauche (au-dessus de la gouttière). ownerDocument → fonctionne
+    // aussi dans une 2ᵉ fenêtre Obsidian.
+    const poignee = bandeau.createDiv({ cls: 'zfa-cal-bandeau-poignee' });
+    poignee.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const doc = poignee.ownerDocument;
+      const h0 = bandeau.getBoundingClientRect().height;
+      const y0 = e.clientY;
+      const bouger = (mv) => {
+        bandeau.style.height = Ariane.clampHauteurBandeau(h0 + (mv.clientY - y0)) + 'px';
+      };
+      const lacher = () => {
+        doc.removeEventListener('pointermove', bouger);
+        doc.removeEventListener('pointerup', lacher);
+        this.ctx.ecrire('calBandeauH',
+          Ariane.clampHauteurBandeau(bandeau.getBoundingClientRect().height));
+      };
+      doc.addEventListener('pointermove', bouger);
+      doc.addEventListener('pointerup', lacher);
+    });
 
     // --- Bas : axe des heures (fixe) + grille des jours (défilement X + Y) ---
     const hauteurInner = (hFin - hDeb) * PXH;
@@ -21186,8 +21224,10 @@ class MoteurCalendrier {
         bloc.classList.add('zfa-cal-bloc');
         bloc.style.top = Math.max(0, y0) + 'px';
         bloc.style.height = haut + 'px';
-        bloc.style.left = (lay[k].col / lay[k].ncols * 100) + '%';
-        bloc.style.width = 'calc(' + (100 / lay[k].ncols) + '% - 2px)';
+        // Léger retrait (3 px de chaque côté) : les blocs ne touchent pas les
+        // filets de colonne, comme dans obsidian-day-planner.
+        bloc.style.left = 'calc(' + (lay[k].col / lay[k].ncols * 100) + '% + 3px)';
+        bloc.style.width = 'calc(' + (100 / lay[k].ncols) + '% - 6px)';
         if (y0 < 0) bloc.classList.add('zfa-cal-bloc-tronque-haut');
         if (y1 > hauteurInner) bloc.classList.add('zfa-cal-bloc-tronque-bas');
         if (ev.source === 'creneau') {
