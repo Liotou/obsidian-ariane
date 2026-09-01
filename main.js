@@ -20845,8 +20845,10 @@ class MoteurCalendrier {
     this._fondCle = cle;
     this.greffon.evenementsFond(b.debut, b.fin).then((data) => {
       if (this._detruit || cle !== this._fondCle) return;
-      this._fond = data || [];
-      this.dessiner();
+      const nv = data || [];
+      const avant = this._fond || [];
+      this._fond = nv;
+      if (nv.length || avant.length) this.dessiner();
     }).catch(() => { /* macOS indisponible */ });
   }
 
