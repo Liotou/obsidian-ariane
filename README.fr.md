@@ -626,9 +626,25 @@ les statistiques de durée (sessions, temps planifié, à venir), pour que
 l'information reste **autoportée par la note**.
 
 Glisser une pastille la reprogramme ; en vue semaine, glisser ou redimensionner
-un bloc réécrit ce créneau, Suppr le retire. **Glisser une barre depuis la
-frise** (ou un lien `[[T26-001]]` depuis n'importe où) sur le calendrier ajoute
-un créneau à l'heure du lâcher. Empilez frise et calendrier en scindant un volet.
+un bloc réécrit ce créneau, Suppr le retire. **Glisser le lien d'une ligne
+depuis la colonne de gauche de la frise** (ou un lien `[[T26-001]]` depuis
+n'importe où) sur un jour du calendrier ajoute un créneau à l'heure du lâcher.
+Empilez frise et calendrier en scindant un volet.
+
+Les cartes reprennent les **propriétés visibles de la base** (comme la frise) :
+intitulé, heure, puis une ligne par propriété selon la hauteur du bloc. La
+**barre d'outils** est réduite (flèches en icônes, titre cliquable qui ramène à
+aujourd'hui, segment Mois/Semaine, bouton **« + Nouveau »**). On **navigue au
+trackpad** : deux doigts à l'horizontale font glisser la grille d'une période à
+l'autre, calage au relâchement. Le **bandeau « tout le jour »** de la vue
+semaine se replie et disparaît quand il est vide. **Clic droit** sur une carte
+(statut, priorité, supprimer le créneau, retirer du calendrier) ou sur une case
+vide (nouvelle tâche ce jour, coller un lien en créneau). Un clic sur un jour le
+sélectionne : « + Nouveau » date alors la tâche sur ce jour.
+
+Pour poser un créneau depuis la frise, on **glisse le lien de la colonne de
+gauche** d'une ligne vers un jour du calendrier (les barres SVG ne sont plus
+elles-mêmes glissables).
 
 ### Liens entre tâches
 

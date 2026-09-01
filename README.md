@@ -606,9 +606,23 @@ keeps a `## Créneaux` table in the note with duration stats (sessions, planned
 time, upcoming), so the information stays **self-contained in the note**.
 
 Drag a chip to reschedule it; in week view, drag or resize a block to rewrite
-that créneau, Delete to remove it. **Dragging a bar from the timeline** (or a
-`[[T26-001]]` link from anywhere) onto the calendar adds a créneau at the drop
-time. Stack the timeline and the calendar by splitting a pane.
+that créneau, Delete to remove it. **Dragging a row's left-column link from the
+timeline** (or a `[[T26-001]]` link from anywhere) onto a calendar day adds a
+créneau at the drop time. Stack the timeline and the calendar by splitting a
+pane.
+
+Cards carry the **base's visible properties** (like the timeline): title, time,
+then one line per property as the block's height allows. The **toolbar** is
+slimmed down (icon arrows, a clickable title that jumps to today, a Month/Week
+segment, a **"+ New"** button). **Trackpad navigation**: a two-finger
+horizontal swipe slides the grid from one period to the next, snapping on
+release. The week view's **all-day band** collapses and disappears when empty.
+**Right-click** a card (status, priority, delete the créneau, remove from the
+calendar) or an empty cell (new task that day, paste a link as a créneau).
+Clicking a day selects it: "+ New" then dates the task on that day.
+
+To drop a créneau from the timeline, **drag the left-column link** of a row
+onto a calendar day (the SVG bars themselves are no longer draggable).
 
 ### Links between tasks
 
