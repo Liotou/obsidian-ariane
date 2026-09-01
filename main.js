@@ -1015,8 +1015,6 @@ const TEXTES = {
     "Apple Agenda est désactivé (Réglages → Tâches → Apple Agenda → Activer).": "Apple Calendar is off (Settings → Tasks → Apple Calendar → Enable).",
     "Aucune tâche à synchroniser : il faut au moins un créneau ET un calendrier Apple sur la famille (ou le calendrier par défaut).": "No task to sync: a task needs at least one slot AND an Apple calendar on its family (or the default calendar).",
     "Rien à pousser vers Apple Agenda.": "Nothing to push to Apple Calendar.",
-    "Rien à annuler.": "Nothing to undo.",
-    "Rien à rétablir.": "Nothing to redo.",
     "Aucun événement lié à relever (lancez d'abord la synchro vers Apple Agenda).": "No linked event to pull (run the sync to Apple Calendar first).",
     " événement(s) liés dans Apple Agenda": " event(s) linked in Apple Calendar",
     ", ": ", ",
@@ -17142,13 +17140,13 @@ function poserAnnulation(moteur, fn, fr) {
 }
 async function annulerDernier(moteur) {
   const e = moteur._undo && moteur._undo.pop();
-  if (!e) { new obsidian.Notice(tr('Rien à annuler.')); return; }
+  if (!e) return;
   (moteur._redo || (moteur._redo = [])).push(e);
   try { await e.annule(); } catch (err) { console.error('[Ariane] annulation :', err); }
 }
 async function refaireDernier(moteur) {
   const e = moteur._redo && moteur._redo.pop();
-  if (!e || !e.retablit) { new obsidian.Notice(tr('Rien à rétablir.')); return; }
+  if (!e || !e.retablit) return;
   (moteur._undo || (moteur._undo = [])).push(e);
   try { await e.retablit(); } catch (err) { console.error('[Ariane] rétablissement :', err); }
 }
@@ -17172,7 +17170,8 @@ class MoteurFrise {
     racine.addClass('zfa-gantt');
     // La frise capte le clavier pour supprimer une flèche sélectionnée.
     racine.tabIndex = -1;
-    racine.addEventListener('keydown', (e) => this.toucheFrise(e));
+    this._surTouche = (e) => this.toucheFrise(e);
+    racine.addEventListener('keydown', this._surTouche);
   }
 
   // Le document de la vue (≠ document global dans une 2ᵉ fenêtre Obsidian) :
@@ -19592,6 +19591,7 @@ class MoteurFrise {
   detruire() {
     if (this._colPop) { this._colPop.remove(); this._colPop = null; }
     if (this._ioFrise) { try { this._ioFrise.disconnect(); } catch (e) { /* rien */ } this._ioFrise = null; }
+    if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
     clearTimeout(this._minSauveJour);
     this.racine.empty();
   }
@@ -19900,7 +19900,8 @@ class MoteurArticulation {
     this._plan = { cartes: [] }; // plan de travail (rempli par dessinerVraiment)
     racine.addClass('zfa-artic');
     racine.tabIndex = -1;
-    racine.addEventListener('keydown', (e) => this.touche(e));
+    this._surTouche = (e) => this.touche(e);
+    racine.addEventListener('keydown', this._surTouche);
     racine.addEventListener('keyup', (e) => {
       if (e.key === ' ' || e.code === 'Space') { this._espace = false; this.racine.removeClass('est-espace'); }
     });
@@ -19911,7 +19912,10 @@ class MoteurArticulation {
   // écouteurs de glisser pointermove/pointerup.
   _doc() { return (this.racine && this.racine.ownerDocument) || document; }
 
-  detruire() { this.racine.empty(); }
+  detruire() {
+    if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
+    this.racine.empty();
+  }
 
   dessiner() {
     try { this.dessinerVraiment(); } catch (e) {
@@ -21475,12 +21479,13 @@ class MoteurCalendrier {
     this._fond = [];
     racine.addClass('zfa-cal');
     racine.tabIndex = -1;
-    racine.addEventListener('keydown', (e) => {
+    this._surTouche = (e) => {
       const t = e.target;
       if (t && (t.matches && (t.matches('input, textarea, select') || t.isContentEditable))) return;
       if (_toucheRetablir(e)) { e.preventDefault(); e.stopPropagation(); refaireDernier(this); return; }
       if (_toucheAnnuler(e)) { e.preventDefault(); e.stopPropagation(); annulerDernier(this); }
-    });
+    };
+    racine.addEventListener('keydown', this._surTouche);
     (greffon._moteursCalendrier || (greffon._moteursCalendrier = new Set())).add(this);
   }
 
@@ -21540,6 +21545,7 @@ class MoteurCalendrier {
     clearTimeout(this._wheelMinuterie);
     clearTimeout(this._calageMinuterie);
     clearTimeout(this._semScrollMinuterie);
+    if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
     if (this.greffon._moteursCalendrier) this.greffon._moteursCalendrier.delete(this);
     this.racine.empty();
   }

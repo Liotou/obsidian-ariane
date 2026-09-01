@@ -96,7 +96,7 @@ test('un geste neuf vide le rétablissement', async () => {
   assert.equal(m.ecrits.length, 3);
 });
 
-test('piles vides : notice, pas d écriture ni de levée', async () => {
+test('piles vides : aucun effet, pas de levée', async () => {
   const m = fauxMoteur();
   await annulerDernier(m);
   await refaireDernier(m);
