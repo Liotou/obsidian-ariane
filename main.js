@@ -1008,6 +1008,13 @@ const TEXTES = {
     "Tâches : synchroniser vers Apple Agenda": "Tasks: sync to Apple Calendar",
     "Tâches : relever Apple Agenda": "Tasks: pull Apple Calendar",
     "Tâches : diagnostiquer Apple Agenda": "Tasks: diagnose Apple Calendar",
+    "Apple Agenda est désactivé (Réglages → Tâches → Apple Agenda → Activer).": "Apple Calendar is off (Settings → Tasks → Apple Calendar → Enable).",
+    "Aucune tâche à synchroniser : il faut au moins un créneau ET un calendrier Apple sur la famille (ou le calendrier par défaut).": "No task to sync: a task needs at least one slot AND an Apple calendar on its family (or the default calendar).",
+    "Rien à pousser vers Apple Agenda.": "Nothing to push to Apple Calendar.",
+    "Aucun événement lié à relever (lancez d'abord la synchro vers Apple Agenda).": "No linked event to pull (run the sync to Apple Calendar first).",
+    " événement(s) liés dans Apple Agenda": " event(s) linked in Apple Calendar",
+    ", ": ", ",
+    " échec(s) — voir la console": " failure(s) — see the console",
     "Apple Agenda : ": "Apple Calendar: ",
     "Autorisez « Calendriers » pour Obsidian dans Réglages système → Confidentialité et sécurité.": "Allow “Calendars” for Obsidian in System Settings → Privacy & Security.",
     "Diagnostic Apple Agenda…": "Apple Calendar diagnostic…",
@@ -13005,11 +13012,15 @@ class Ariane extends obsidian.Plugin {
   // créneau), supprime les événements des créneaux disparus, mémorise agenda-id
   // (liste alignée sur les créneaux) et agenda-sync dans la note.
   async pousserAgenda(silencieux) {
+    if (!silencieux) console.info('[Ariane] Apple Agenda — push manuel demandé.');
     if (!obsidian.Platform.isMacOS) {
       if (!silencieux) new obsidian.Notice(tr('Apple Agenda : disponible sur macOS uniquement.'));
       return 0;
     }
-    if (!this.settings.agendaActif) return 0;
+    if (!this.settings.agendaActif) {
+      if (!silencieux) new obsidian.Notice(tr("Apple Agenda est désactivé (Réglages → Tâches → Apple Agenda → Activer)."), 8000);
+      return 0;
+    }
     const vault = this.app.vault.getName();
     const cibles = [];
     for (const t of this.tachesPourGantt()) {
@@ -13021,7 +13032,9 @@ class Ariane extends obsidian.Plugin {
       cibles.push(Object.assign({}, t, { _fm: fm, _ids: ids, _crs: crs, _cal: cal }));
     }
     if (!cibles.length) {
-      if (!silencieux) new obsidian.Notice(tr('Aucune tâche à synchroniser.'));
+      if (!silencieux) {
+        new obsidian.Notice(tr("Aucune tâche à synchroniser : il faut au moins un créneau ET un calendrier Apple sur la famille (ou le calendrier par défaut)."), 9000);
+      }
       return 0;
     }
     const charge = [];
@@ -13055,7 +13068,10 @@ class Ariane extends obsidian.Plugin {
         if (id && i >= garde) charge.push({ ref: t.ref, idx: i, id, supprimer: true });
       });
     }
-    if (!charge.length) return 0;
+    if (!charge.length) {
+      if (!silencieux) new obsidian.Notice(tr('Rien à pousser vers Apple Agenda.'));
+      return 0;
+    }
     const avis = silencieux ? null : new obsidian.Notice(tr('Synchronisation Apple Agenda…'), 0);
     const sortie = await this._osascriptJXA(Ariane.genererJXAEvenementsPush(charge));
     if (avis) avis.hide();
@@ -13065,7 +13081,11 @@ class Ariane extends obsidian.Plugin {
     }
     if (sortie.startsWith('__ACCES__')) {
       this._agendaStatut = Number(sortie.split('\t')[1]);
-      this._avertirAccesAgenda();
+      if (silencieux) this._avertirAccesAgenda();
+      else {
+        new obsidian.Notice(tr('Apple Agenda : ') + this._libelleStatutAgenda(this._agendaStatut)
+          + '. ' + tr("Autorisez « Calendriers » pour Obsidian dans Réglages système → Confidentialité et sécurité."), 10000);
+      }
       return 0;
     }
     const recu = new Map();
@@ -13152,7 +13172,14 @@ class Ariane extends obsidian.Plugin {
   // de l'entrée de créneau ; événement supprimé → retrait du créneau. Aucun
   // import d'événement inconnu. La note fait foi si elle a bougé (agenda-sync).
   async releverAgenda(silencieux) {
-    if (!obsidian.Platform.isMacOS || !this.settings.agendaActif) return 0;
+    if (!obsidian.Platform.isMacOS) {
+      if (!silencieux) new obsidian.Notice(tr('Apple Agenda : disponible sur macOS uniquement.'));
+      return 0;
+    }
+    if (!this.settings.agendaActif) {
+      if (!silencieux) new obsidian.Notice(tr("Apple Agenda est désactivé (Réglages → Tâches → Apple Agenda → Activer)."), 8000);
+      return 0;
+    }
     const avecId = [];
     for (const t of this.tachesPourGantt()) {
       const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
@@ -13161,7 +13188,10 @@ class Ariane extends obsidian.Plugin {
       avecId.push(Object.assign({}, t, { _ids: ids,
         _crs: Ariane.creneauxDeTache(t), _snap: String(fm['agenda-sync'] || '') }));
     }
-    if (!avecId.length) return 0;
+    if (!avecId.length) {
+      if (!silencieux) new obsidian.Notice(tr("Aucun événement lié à relever (lancez d'abord la synchro vers Apple Agenda)."), 8000);
+      return 0;
+    }
     const paires = [];
     for (const t of avecId) t._ids.forEach((id, i) => { if (id) paires.push({ ref: t.ref, idx: i, id }); });
     const avis = silencieux ? null : new obsidian.Notice(tr('Relève Apple Agenda…'), 0);
