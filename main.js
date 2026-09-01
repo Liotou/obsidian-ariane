@@ -5096,6 +5096,14 @@ class Ariane extends obsidian.Plugin {
     return out;
   }
 
+  // Coupe une liste à `plafond` éléments et dit combien restent cachés.
+  // plafond <= 0 → aucun repli.
+  static replierListe(items, plafond) {
+    const arr = Array.isArray(items) ? items : [];
+    if (plafond <= 0 || arr.length <= plafond) return { montres: arr.slice(), reste: 0 };
+    return { montres: arr.slice(0, plafond), reste: arr.length - plafond };
+  }
+
   // Voir spec §2.5. Rend un TABLEAU d'événements. Les créneaux priment : quand
   // il y en a, la « fenêtre de planning » début→échéance n'est pas émise.
   static evenementsDeTache(t) {
@@ -15994,6 +16002,7 @@ const DEFAUTS_CALENDRIER = {
   calMode: 'mois',
   calHeureDebut: '07:00',
   calHeureFin: '21:00',
+  calBandeauReplie: false,
 };
 
 /* =========================================================================
@@ -20634,8 +20643,18 @@ class MoteurCalendrier {
         }
       }
     }
-    const bandeau = hote.createDiv({ cls: 'zfa-cal-bandeau' });
-    bandeau.createDiv({ cls: 'zfa-cal-gouttiere' });
+    const total = [...toutJour.values()].reduce((n, l) => n + l.length, 0);
+    const replie = !!this.ctx.lire('calBandeauReplie');
+    const bandeau = hote.createDiv({ cls: 'zfa-cal-bandeau' + (replie ? ' est-replie' : '')
+      + (total ? '' : ' est-vide') });
+    const goutt = bandeau.createDiv({ cls: 'zfa-cal-gouttiere' });
+    const chev = goutt.createEl('button', { cls: 'zfa-cal-bandeau-chevron',
+      attr: { 'aria-label': tr('Replier / déplier') } });
+    obsidian.setIcon(chev, replie ? 'chevron-right' : 'chevron-down');
+    chev.onclick = async () => { await this.ctx.ecrire('calBandeauReplie', !replie); this.dessiner(); };
+    if (replie && total) goutt.createSpan({ cls: 'zfa-cal-bandeau-compte', text: String(total) });
+
+    const PLAFOND = 2;
     for (const j of g.jours) {
       const col = bandeau.createDiv({ cls: 'zfa-cal-bandeau-jour' + (j === auj ? ' est-aujourdhui' : '') });
       col.dataset.jour = j;
@@ -20645,13 +20664,21 @@ class MoteurCalendrier {
         this._jourSel = (this._jourSel === j) ? '' : j;
         this.dessiner();
       });
-      for (const { t } of toutJour.get(j)) {
-        const p = col.createDiv({ cls: 'zfa-cal-pastille est-jour' });
-        p.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
-        p.textContent = t.intitule || t.ref;
-        p.dataset.ref = t.ref;
-        p.addEventListener('click', (e) => this.ouvrir(t.ref, e.metaKey || e.ctrlKey));
-      }
+      if (replie) continue;
+      const liste = toutJour.get(j).slice().sort(Ariane.comparerEmpilement);
+      let deplie = false;
+      const rendre = () => {
+        col.findAll('.zfa-cal-carte, .zfa-cal-bandeau-plus').forEach((n) => n.remove());
+        const { montres, reste } = deplie
+          ? { montres: liste, reste: 0 }
+          : Ariane.replierListe(liste, PLAFOND);
+        for (const { t, ev } of montres) this.rendreCarte(col, t, ev, { maxLignes: 1, avecHeure: false });
+        if (reste) {
+          const plus = col.createDiv({ cls: 'zfa-cal-bandeau-plus', text: '+' + reste });
+          plus.onclick = (e) => { e.stopPropagation(); deplie = true; rendre(); };
+        }
+      };
+      rendre();
     }
     const corps = hote.createDiv({ cls: 'zfa-cal-corps' });
     const axe = corps.createDiv({ cls: 'zfa-cal-axe' });

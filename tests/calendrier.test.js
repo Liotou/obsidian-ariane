@@ -242,3 +242,10 @@ test('lignesProprietes : écarte file*, vide, doublon du titre ; garde l\'ordre 
     [{ nom: 'Statut', valeur: 'en cours' }]);
   assert.deepEqual(Ariane.lignesProprietes(paires, 'x', 0), []);
 });
+
+test('replierListe : sous le plafond → tout ; au-dessus → coupé + reste', () => {
+  assert.deepEqual(Ariane.replierListe([1, 2], 3), { montres: [1, 2], reste: 0 });
+  assert.deepEqual(Ariane.replierListe([1, 2, 3, 4, 5], 2), { montres: [1, 2], reste: 3 });
+  assert.deepEqual(Ariane.replierListe([], 2), { montres: [], reste: 0 });
+  assert.deepEqual(Ariane.replierListe([1, 2, 3], 0), { montres: [1, 2, 3], reste: 0 });
+});

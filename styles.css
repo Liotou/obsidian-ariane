@@ -2047,9 +2047,17 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-pastille.est-horaire { border-left-style: dashed; }
 .zfa-cal-pastille.est-retard { outline: 1px solid var(--color-red); }
 
-.zfa-cal-bandeau, .zfa-cal-corps { display: grid; grid-template-columns: 52px repeat(7, 1fr); }
-.zfa-cal-bandeau { border-bottom: 1px solid var(--background-modifier-border); }
-.zfa-cal-bandeau-jour { border-left: 1px solid var(--background-modifier-border); padding: 2px; min-height: 20px; display: flex; flex-direction: column; gap: 2px; }
+.zfa-cal-corps { display: grid; grid-template-columns: 52px repeat(7, 1fr); }
+.zfa-cal-bandeau { display: flex; border-bottom: 1px solid var(--background-modifier-border); }
+.zfa-cal-bandeau.est-vide { display: none; }
+.zfa-cal-bandeau.est-replie { min-height: 0; }
+.zfa-cal-gouttiere { flex: 0 0 var(--zfa-cal-gouttiere-w, 44px); display: flex; align-items: flex-start;
+  gap: 2px; padding: 2px; }
+.zfa-cal-bandeau-chevron { padding: 0 2px; box-shadow: none; background: transparent; }
+.zfa-cal-bandeau-compte { font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.zfa-cal-bandeau-jour { flex: 1 1 0; display: flex; flex-direction: column; gap: 2px; padding: 2px;
+  min-width: 0; border-left: 1px solid var(--background-modifier-border); }
+.zfa-cal-bandeau-plus { font-size: var(--font-ui-smaller); color: var(--text-muted); cursor: pointer; }
 .zfa-cal-corps { position: relative; }
 .zfa-cal-axe { position: relative; }
 .zfa-cal-axe-heure { position: absolute; right: 4px; font-size: 10px; color: var(--text-faint); transform: translateY(-50%); }
