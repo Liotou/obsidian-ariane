@@ -1031,7 +1031,7 @@ const TEXTES = {
     "non": "no",
 
     "Apple Agenda": "Apple Calendar",
-    "macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchronisation bidirectionnelle : déplacer ou redimensionner l'événement dans Calendar réécrit le créneau, le supprimer retire le créneau. Les événements des calendriers surveillés s'affichent en fond dans la vue calendrier.": "macOS. Every task slot becomes an event in its family's calendar. Two-way sync: moving or resizing the event in Calendar rewrites the slot, deleting it removes the slot. Events from watched calendars show as background in the calendar view.",
+    "macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchro bidirectionnelle automatique : à chaque modif d'un côté (et au changement de fenêtre), déplacer/redimensionner l'événement dans Calendar réécrit le créneau. Les calendriers cochés s'affichent en fond de la vue calendrier.": "macOS. Every task slot becomes an event in its family's calendar. Automatic two-way sync: on any change on either side (and on window switch), moving/resizing the event in Calendar rewrites the slot. Ticked calendars show as background in the calendar view.",
     "Calendrier par défaut": "Default calendar",
     "Calendrier Apple d'une tâche quand sa famille n'en précise pas.": "A task's Apple calendar when its family sets none.",
     "Calendriers à afficher": "Calendars to show",
@@ -4305,6 +4305,16 @@ class Ariane extends obsidian.Plugin {
         }, Math.max(2, Number(this.settings.agendaReleveMin) || 10) * 60000));
       }
     });
+    // Synchro au changement de fenêtre : en revenant sur Obsidian on relève
+    // (modifs faites dans Calendar) ; en quittant Obsidian on pousse tout de
+    // suite ce qui est en attente (Calendar à jour quand on y bascule).
+    this.registerDomEvent(window, 'focus', () => this._relancerReleveAgenda(700));
+    this.registerDomEvent(window, 'blur', () => {
+      if (!this._agendaAutoActif() || !this.antirebonds.has('agenda:push')) return;
+      clearTimeout(this.antirebonds.get('agenda:push'));
+      this.antirebonds.delete('agenda:push');
+      Promise.resolve(this.pousserAgenda(true)).finally(() => { this._agendaPushEnAttente = false; });
+    });
 
     this.registerEvent(this.app.vault.on('modify', revaliderIndex));
     this.registerEvent(this.app.vault.on('create', revaliderIndex));
@@ -6677,7 +6687,8 @@ class Ariane extends obsidian.Plugin {
 
   // Événements réels des calendriers surveillés, pour l'affichage en fond.
   // Rend, une ligne par événement :
-  //   « id \t titre \t isoDebut \t isoFin \t allDay(0/1) \t #rrggbb \t nomCalendrier »
+  //   « id \t titre \t isoDebut \t isoFin \t allDay(0/1) \t nomCalendrier »
+  //   (la couleur du calendrier est relevée à part, en AppleScript)
   static genererJXAEvenementsFond(calendriers, debutISO, finISO) {
     const IN = JSON.stringify({
       calendriers: [...new Set((Array.isArray(calendriers) ? calendriers : []).filter(Boolean))],
@@ -6704,7 +6715,7 @@ class Ariane extends obsidian.Plugin {
       '    var cn=""; try{ cn=norm(titre(e.calendar)); }catch(ecn){} if(!want[cn]) continue;',
       '    var id=evId(e); if(!id) continue;',
       '    var ad=false; try{ ad=e.isAllDay; }catch(er2){}',
-      '    out.push(id+"\\t"+net(ObjC.unwrap(e.title))+"\\t"+isoDeDate(e.startDate)+"\\t"+isoDeDate(e.endDate)+"\\t"+(ad?"1":"0")+"\\t\\t"+net(titre(e.calendar)));',
+      '    out.push(id+"\\t"+net(ObjC.unwrap(e.title))+"\\t"+isoDeDate(e.startDate)+"\\t"+isoDeDate(e.endDate)+"\\t"+(ad?"1":"0")+"\\t"+net(titre(e.calendar)));',
       '  } }',
       '  return out.join("\\n");',
       '}',
@@ -12799,7 +12810,6 @@ class Ariane extends obsidian.Plugin {
     try { d = s ? JSON.parse(s) : null; } catch (e) { d = null; }
     this._agendaStatut = d ? Number(d.statut) : (s == null ? -2 : -1);
     this._agendas = (d && Array.isArray(d.calendriers)) ? d.calendriers.filter(Boolean) : [];
-    this._agendaDefaut = (d && d.defaut) || '';
     this._agendasChargeLe = Date.now();
     if (this._agendaStatut === 2 || this._agendaStatut === 1) this._avertirAccesAgenda();
     // Couleurs des calendriers via AppleScript (impossible en JXA — SIGBUS).
@@ -12876,9 +12886,9 @@ class Ariane extends obsidian.Plugin {
     const couleurs = this._agendaCouleurs || {};
     const data = (s == null ? [] : s.split('\n').filter(Boolean).map((l) => {
       const p = l.split('\t');
-      const cal = p[6] || '';
+      const cal = p[5] || '';
       return { id: p[0], titre: p[1] || '', debut: p[2] || '', fin: p[3] || '',
-               allDay: p[4] === '1', couleur: couleurs[cal] || p[5] || '', calendrier: cal };
+               allDay: p[4] === '1', couleur: couleurs[cal] || '', calendrier: cal };
     })).filter((e) => e.id && e.debut && !aNous(e));
     if (s == null) return [];              // échec dur : ne pas cacher, ne pas marquer l'accès OK
     this._agendaStatut = 3;
@@ -12896,12 +12906,8 @@ class Ariane extends obsidian.Plugin {
   }
 
   // Instantané « dernier état synchronisé » d'une tâche, pour arbitrer les
-  // conflits à la relève : échéance|heure|statut.
+  // conflits à la relève : échéance|heure|statut. (Côté Agenda : Ariane.instantAgenda.)
   _instantRappel(t) { return [t.echeance || '', t.heure || '', t.statut || ''].join('|'); }
-
-  // Idem côté Apple Agenda : seuls les créneaux poussent, l'instantané est donc
-  // la liste des créneaux canoniques + le statut.
-  _instantAgenda(t) { return Ariane.instantAgenda(t); }
 
   // Tâches concernées par un rappel : une échéance, ou déjà un rappel-id.
   _tachesRappel() {
@@ -13079,6 +13085,25 @@ class Ariane extends obsidian.Plugin {
   }
 
   /* ---- Apple Agenda : orchestration -------------------------------- */
+
+  // La synchro automatique Agenda doit-elle tourner ? (macOS, activée, auto, et
+  // l'accès Calendriers n'est pas refusé/restreint.)
+  _agendaAutoActif() {
+    return obsidian.Platform.isMacOS && !!this.settings.agendaActif
+      && this.settings.agendaAuto !== false
+      && this._agendaStatut !== 2 && this._agendaStatut !== 1;
+  }
+
+  // Programme une relève automatique (retour de focus, ouverture de la vue…),
+  // antirebondie et espacée d'au moins 15 s des précédentes.
+  _relancerReleveAgenda(delai) {
+    if (!this._agendaAutoActif() || this._agendaPushEnAttente) return;
+    if (this._agendaDerniereReleve && Date.now() - this._agendaDerniereReleve < 15000) return;
+    this.antirebond('agenda:releve', async () => {
+      this._agendaDerniereReleve = Date.now();
+      await this.releverAgenda(true);
+    }, delai || 800);
+  }
 
   // Pousse les créneaux des tâches éligibles vers Apple Calendar (un EKEvent par
   // créneau), supprime les événements des créneaux disparus, mémorise agenda-id
@@ -15213,7 +15238,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       }
     }
     this._section(c, tr('Apple Agenda'));
-    this._aide(c, tr("macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchronisation bidirectionnelle : déplacer ou redimensionner l'événement dans Calendar réécrit le créneau, le supprimer retire le créneau. Les événements des calendriers surveillés s'affichent en fond dans la vue calendrier."));
+    this._aide(c, tr("macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchro bidirectionnelle automatique : à chaque modif d'un côté (et au changement de fenêtre), déplacer/redimensionner l'événement dans Calendar réécrit le créneau. Les calendriers cochés s'affichent en fond de la vue calendrier."));
     new obsidian.Setting(c)
       .setName(tr('Activer'))
       .addToggle((t) => t.setValue(s.agendaActif === true)
@@ -21250,6 +21275,7 @@ class MoteurCalendrier {
   dessinerVraiment() {
     if (this._detruit) return;
     this._chargerFond();
+    if (this.greffon && this.greffon._relancerReleveAgenda) this.greffon._relancerReleveAgenda(1500);
     const c = this.racine;
     c.empty();
     this._taches = (this.ctx.taches && this.ctx.taches()) || [];
