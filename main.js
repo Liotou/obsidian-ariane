@@ -20229,6 +20229,9 @@ class MoteurCalendrier {
     const c = this.racine;
     c.empty();
     this._taches = (this.ctx.taches && this.ctx.taches()) || [];
+    this._colonnes = (this.ctx.colonnes && this.ctx.colonnes()) || [];
+    const tn = this.ctx.triNatif && this.ctx.triNatif();
+    if (tn && tn.preparer) { try { tn.preparer(this._taches); } catch (e) { /* tri optionnel */ } }
     if (this._enAttente && this._enAttente.size) {
       for (const t of this._taches) {
         const p = this._enAttente.get(t.ref);
@@ -20293,6 +20296,12 @@ class MoteurCalendrier {
       return Ariane.COULEURS_GANTT[t.statut] || 'var(--text-faint)';
     }
     return (this.greffon.familleDe(t.famille) || {}).couleur || 'var(--text-faint)';
+  }
+  // Paires { cle, nom, valeur } d'une tâche, pour rendreCarte (Task 4).
+  _pairesProps(ref) {
+    return (this._colonnes || []).map((c) => ({
+      cle: c.cle, nom: c.nom, valeur: c.valeur ? c.valeur(ref) : '',
+    }));
   }
   async _apres(ref, apercu) {
     if (!this._enAttente) this._enAttente = new Map();
@@ -20546,6 +20555,33 @@ function fabriquerVueCalendrierBase(greffon) {
     onload() {
       this.moteur = new MoteurCalendrier(this.greffon, this.conteneur, {
         taches: () => this.tachesDeLaBase(),
+        colonnes: () => this.colonnes(),
+        nomVue: () => {
+          try {
+            const s = this.config.serialize ? this.config.serialize() : null;
+            return (s && s.name) || (this.controller && this.controller.file
+              && this.controller.file.basename) || tr('Calendrier');
+          } catch (e) { return tr('Calendrier'); }
+        },
+        triNatif: () => {
+          const criteres = this.sortNatif();
+          if (!criteres.length) return null;
+          return {
+            criteres,
+            preparer: (taches) => {
+              for (const t of taches) {
+                const e = this._parRef && this._parRef.get(t.ref);
+                t._multi = criteres.map((c) => {
+                  let v = null;
+                  try { v = e ? e.getValue(c.property) : null; } catch (err) { v = null; }
+                  const brut = (v && typeof v === 'object' && 'data' in v && v.data != null)
+                    ? v.data : v;
+                  return { v: brut == null ? '' : brut, s: c.desc ? -1 : 1 };
+                });
+              }
+            },
+          };
+        },
         lire: (cle) => {
           const v = this.config.get(cle);
           return v === undefined || v === null ? DEFAUTS_CALENDRIER[cle] : v;
@@ -20553,11 +20589,79 @@ function fabriquerVueCalendrierBase(greffon) {
         ecrire: async (cle, v) => { this.config.set(cle, v); },
       });
     }
+
+    static texteValeur(v) {
+      if (v === null || v === undefined) return '';
+      if (Array.isArray(v)) return v.map((x) => VueCalendrierBase.texteValeur(x)).filter(Boolean).join(', ');
+      if (typeof v === 'object') {
+        if (typeof v.toString === 'function') {
+          const t = v.toString();
+          return t === '[object Object]' ? '' : t;
+        }
+        return '';
+      }
+      return String(v);
+    }
+
+    sortNatif() {
+      let s = [];
+      try { s = (this.config.serialize() || {}).sort || this.config.getSort() || []; }
+      catch (e) { s = []; }
+      return (Array.isArray(s) ? s : [])
+        .filter((x) => x && x.property)
+        .map((x) => ({ property: String(x.property),
+          desc: String(x.direction || 'ASC').toUpperCase() === 'DESC' }));
+    }
+
+    colonnes() {
+      let props = [];
+      try { props = this.config.getOrder() || []; } catch (e) { props = []; }
+      if (!props.length) props = (this.data && this.data.properties) || [];
+      let renoms = {};
+      try { renoms = this.config.get('renoms') || {}; } catch (e) { renoms = {}; }
+      const out = [];
+      for (const id of props) {
+        let nom = renoms[id] || '';
+        if (!nom) {
+          try { nom = this.greffon.libelleColonne(this.config.getDisplayName(id) || id); } catch (e) { nom = id; }
+        }
+        if (!nom) nom = id;
+        const valeurDe = (ref) => {
+          const e = this._parRef ? this._parRef.get(ref) : null;
+          if (!e) return null;
+          try { return e.getValue(id); } catch (err) { return null; }
+        };
+        out.push({
+          cle: id,
+          nom,
+          chemin: (ref) => {
+            const e = this._parRef ? this._parRef.get(ref) : null;
+            return e && e.file ? e.file.path : '';
+          },
+          valeurBase: (ref) => valeurDe(ref),
+          valeur: (ref) => {
+            try { return VueCalendrierBase.texteValeur(valeurDe(ref)); } catch (err) { return ''; }
+          },
+          valeurBrute: (ref) => {
+            const v = valeurDe(ref);
+            if (v == null) return '';
+            if (typeof v === 'object' && 'data' in v && v.data != null) return v.data;
+            return VueCalendrierBase.texteValeur(v);
+          },
+        });
+      }
+      return out;
+    }
+
     tachesDeLaBase() {
       const dedans = new Set();
+      this._parRef = new Map();
       for (const e of (this.data && this.data.data) || []) {
-        const ref = e && e.file ? this.greffon.refDeChemin(e.file.path) : null;
-        if (ref) dedans.add(ref);
+        const chemin = e && e.file ? e.file.path : null;
+        const ref = chemin ? this.greffon.refDeChemin(chemin) : null;
+        if (!ref) continue;
+        dedans.add(ref);
+        this._parRef.set(ref, e);
       }
       if (!dedans.size) return [];
       return this.greffon.tachesPourGantt().filter((t) => dedans.has(t.ref));
