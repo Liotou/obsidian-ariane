@@ -20624,19 +20624,26 @@ class MoteurCalendrier {
 
     const fini = t.statut === 'terminée' || t.terminee === true;
     if (fini) carte.addClass('est-terminee');
+
+    // Ligne 1 : coche + intitulé, sur une rangée (façon day-planner).
+    const l1 = carte.createDiv({ cls: 'zfa-cal-carte-l1' });
     if (o.avecCoche) {
-      const cb = carte.createEl('input', { type: 'checkbox', cls: 'zfa-cal-carte-coche' });
+      const cb = l1.createEl('input', { type: 'checkbox', cls: 'zfa-cal-carte-coche' });
       cb.checked = fini;
       cb.addEventListener('click', (e) => e.stopPropagation());
+      cb.addEventListener('pointerdown', (e) => e.stopPropagation());
       cb.addEventListener('change', async () => {
         await this.greffon.majTache(t.ref, { statut: cb.checked ? 'terminée' : 'à faire' });
         this.dessiner();
       });
     }
-
-    const titre = (o.avecHeure && !ev.allDay ? ev.debut.slice(11, 16) + ' ' : '')
-      + (t.intitule || t.ref);
-    carte.createDiv({ cls: 'zfa-cal-carte-titre', text: titre });
+    const heureAPart = o.avecHeure && !ev.allDay && ev.fin && (o.maxLignes || 1) >= 2;
+    const prefixe = (o.avecHeure && !ev.allDay && !heureAPart) ? ev.debut.slice(11, 16) + '  ' : '';
+    l1.createSpan({ cls: 'zfa-cal-carte-titre', text: prefixe + (t.intitule || t.ref) });
+    if (heureAPart) {
+      carte.createDiv({ cls: 'zfa-cal-carte-heure',
+        text: ev.debut.slice(11, 16) + ' – ' + ev.fin.slice(11, 16) });
+    }
 
     const paires = this._pairesProps(t.ref);
     const lignes = Ariane.lignesProprietes(
@@ -21039,7 +21046,11 @@ class MoteurCalendrier {
   dessinerSemaine(hote) {
     const auj = new Date().toISOString().slice(0, 10);
     const enRetard = Ariane.tachesEnRetard(this._taches, auj);
-    const { debut: hDeb, fin: hFin } = this._plageHoraire();
+    // Journée entière (0 h → 24 h) comme Apple Calendar : le défilement vertical
+    // parcourt toutes les heures ; on se place au début de la plage réglée.
+    const hDeb = 0;
+    const hFin = 24;
+    const hVue = this._plageHoraire().debut;
     const PXH = 42;
     const AXE = 52;
     const jours = Array.from({ length: 21 }, (_, i) => Ariane.decalerJour(this._ancre, i - 7));
@@ -21216,7 +21227,11 @@ class MoteurCalendrier {
       }
     });
 
-    // --- Synchronisation du défilement + calage au jour ---
+    // --- Synchronisation du défilement + recalage discret au bord du tampon ---
+    // Le tampon de 21 jours couvre ±7 jours autour de _ancre : tant que le jour
+    // de gauche reste à ±4, aucun redessin (défilement 100 % fluide). Ce n'est
+    // qu'en approchant du bord qu'on recale, sans saut visible (les mêmes jours
+    // restent affichés), et sans reconstruire la barre d'outils.
     const sync = () => {
       const sl = corps.scrollLeft;
       tetePiste.style.transform = 'translateX(' + (-sl) + 'px)';
@@ -21229,14 +21244,28 @@ class MoteurCalendrier {
       clearTimeout(this._semScrollMinuterie);
       this._semScrollMinuterie = setTimeout(() => {
         if (this._detruit) return;
-        const shift = Math.round(corps.scrollLeft / colW) - 7;
-        if (shift !== 0) { this._ancre = Ariane.decalerJour(this._ancre, shift); this.dessiner(); }
-      }, 130);
+        const idxG = corps.scrollLeft / colW;
+        if (idxG < 3 || idxG > 11) {
+          const shift = Math.round(idxG) - 7;
+          if (shift !== 0) this._recalerSemaine(hote, shift);
+        }
+      }, 200);
     });
     sync();
     corps.scrollLeft = 7 * colW;
-    corps.scrollTop = this._semScrollTop != null
-      ? this._semScrollTop : Math.max(0, (8 - hDeb) * PXH);
+    corps.scrollTop = this._semScrollTop != null ? this._semScrollTop : (hVue * PXH);
+  }
+
+  // Recale la bande de 21 jours quand on approche de son bord, sans repasser par
+  // dessinerVraiment (donc sans vider ni reconstruire la barre d'outils). Les
+  // 7 jours visibles restent les mêmes ⇒ pas de saut.
+  _recalerSemaine(hote, shift) {
+    if (this._detruit || !hote.isConnected) return;
+    this._ancre = Ariane.decalerJour(this._ancre, shift);
+    const nv = document.createElement('div');
+    nv.className = 'zfa-cal-grille zfa-cal-semaine';
+    hote.replaceWith(nv);
+    this.dessinerSemaine(nv);
   }
 }
 

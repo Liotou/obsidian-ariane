@@ -2133,26 +2133,34 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   --zfa-cal-coul: var(--text-faint);
   overflow: hidden;
   border-radius: var(--radius-s);
-  border: 1px solid color-mix(in srgb, var(--zfa-cal-coul) 55%, transparent);
-  background: color-mix(in srgb, var(--zfa-cal-coul) 14%, var(--background-primary));
+  border: 1px solid color-mix(in srgb, var(--zfa-cal-coul) 40%, transparent);
+  background: color-mix(in srgb, var(--zfa-cal-coul) 16%, var(--background-primary));
   padding: 2px 5px;
   font-size: var(--font-ui-smaller);
   line-height: 1.25;
+  color: var(--text-normal);
   cursor: pointer;
 }
-.zfa-cal-carte-titre { font-weight: var(--font-medium); white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis; }
-.zfa-cal-carte-coche { float: left; margin: 1px 4px 0 0; width: 13px; height: 13px;
-  cursor: pointer; }
+.zfa-cal-carte-l1 { display: flex; align-items: center; gap: 4px; }
+.zfa-cal-carte-coche { flex: none; width: 13px; height: 13px; margin: 0; cursor: pointer; }
+.zfa-cal-carte-titre { flex: 1 1 auto; min-width: 0; font-weight: var(--font-medium);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zfa-cal-carte-heure { color: var(--text-muted); font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums; }
 .zfa-cal-carte.est-terminee .zfa-cal-carte-titre { text-decoration: line-through;
   color: var(--text-faint); }
-.zfa-cal-carte.est-terminee { opacity: 0.75; }
+.zfa-cal-carte.est-terminee { opacity: 0.7; }
 .zfa-cal-carte-prop { display: flex; gap: 3px; color: var(--text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .zfa-cal-carte-prop-nom { color: var(--text-faint); }
 .zfa-cal-carte.est-retard { border-color: var(--text-error);
   box-shadow: inset 2px 0 0 0 var(--text-error); }
-.zfa-cal-carte.est-horaire { border-left: 3px solid var(--zfa-cal-coul); }
+.zfa-cal-carte.est-horaire {
+  border: 1px solid color-mix(in srgb, var(--zfa-cal-coul) 45%, transparent);
+  border-left: 3px solid var(--zfa-cal-coul);
+  background: color-mix(in srgb, var(--zfa-cal-coul) 20%, var(--background-primary));
+  box-shadow: var(--shadow-s, 0 1px 2px rgba(0, 0, 0, 0.12));
+}
 .zfa-cal-bloc-tronque-bas { border-bottom-style: dashed; border-bottom-width: 2px;
   border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .zfa-cal-bloc-tronque-haut { border-top-style: dashed; border-top-width: 2px;
