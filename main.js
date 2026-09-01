@@ -20682,27 +20682,39 @@ class MoteurCalendrier {
   // calendrier ne l'affiche pas (frise et calendrier = deux bases).
   _refDepuisDrop(dt) {
     const g = this.greffon;
-    const direct = (dt && dt.getData('text/x-ariane-tache') || '').trim();
-    if (direct) return direct;
-    const parCandidats = (txt) => {
-      const cands = [];
-      const lien = Ariane.refDeLien(txt);
-      if (lien) cands.push(lien);
-      const m = txt.match(/([^/\\]+)\.md(?:$|[?#])/);
-      if (m) cands.push(m[1]);
-      for (const c of cands) {
+    const essais = [];
+    if (dt) {
+      const d = (dt.getData('text/x-ariane-tache') || '').trim();
+      if (d) return d;
+      for (const type of ['text/plain', 'text/uri-list', 'text/x-moz-url']) {
+        const v = (dt.getData(type) || '').trim();
+        if (v) essais.push(v);
+      }
+    }
+    if (g._sourceGlissee) essais.push(String(g._sourceGlissee).trim());
+
+    // Résout une chaîne quelconque : lien wiki, chemin de coffre, nom de note,
+    // ou URL Obsidian « obsidian://open?…&file=<chemin sans extension> ».
+    const resoudre = (brut) => {
+      if (!brut) return '';
+      let s = brut.split(/[\r\n]/)[0].trim();
+      const mf = s.match(/[?&]file=([^&]+)/);
+      if (mf) { try { s = decodeURIComponent(mf[1]); } catch (e) { s = mf[1]; } }
+      s = s.replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').replace(/^\/+/, '').trim();
+      if (!s) return '';
+      const base = s.split(/[/\\]/).pop().replace(/\.md$/i, '');
+      for (const c of [base, s, s + '.md']) {
         if (this._taches.some((t) => t.ref === c)) return c;
         let f = null;
         try { f = this.app.metadataCache.getFirstLinkpathDest(c, ''); } catch (e) { f = null; }
-        if (!f) f = this.app.vault.getMarkdownFiles().find((x) => x.basename === c) || null;
+        if (!f) f = this.app.vault.getMarkdownFiles()
+          .find((x) => x.basename === c || x.path === c || x.path === c + '.md') || null;
         if (f && g.refDeChemin && g.refDeChemin(f.path)) return g.refDeChemin(f.path);
       }
-      return (g.refDeChemin && g.refDeChemin(txt)) || '';
+      return (g.refDeChemin && (g.refDeChemin(s + '.md') || g.refDeChemin(s))) || '';
     };
-    const txt = (dt && (dt.getData('text/plain') || dt.getData('text/uri-list')) || '').trim();
-    if (txt) { const r = parCandidats(txt); if (r) return r; }
-    const src = String(g._sourceGlissee || '').trim();
-    if (src) { const r = parCandidats(src); if (r) return r; }
+
+    for (const e of essais) { const r = resoudre(e); if (r) return r; }
     return '';
   }
 
@@ -20998,6 +21010,12 @@ class MoteurCalendrier {
         if (e.target.closest('.zfa-cal-carte')) return;
         this._jourSel = (this._jourSel === j) ? '' : j;
         this.dessiner();
+      });
+      col.addEventListener('dragover', (de) => { de.preventDefault(); col.addClass('zfa-cal-cible'); });
+      col.addEventListener('dragleave', () => col.removeClass('zfa-cal-cible'));
+      col.addEventListener('drop', (de) => {
+        col.removeClass('zfa-cal-cible');
+        this._dropExterne(de, col.dataset.jour, 'mois');
       });
       if (replie) continue;
       const liste = toutJour.get(j).slice().sort(Ariane.comparerEmpilement);
