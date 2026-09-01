@@ -21,7 +21,7 @@ test('le frontmatter porte tous les champs du schéma, même vides', () => {
   const s = Ariane.corpsNouvelleTache(base);
   for (const cle of ['type', 'statut', 'priorite', 'debut', 'echeance',
                      'avancement', 'termine-le', 'jalon', 'parent', 'bloque-par',
-                     'source', 'livrable', 'fichier', 'liste', 'rappel-id',
+                     'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id',
                      'cree', 'modifie']) {
     assert.ok(new RegExp('^' + cle + ':', 'm').test(s), 'champ manquant : ' + cle);
   }
@@ -94,10 +94,11 @@ test('defautsNoyau : le jeu de concepts et leurs valeurs par défaut', () => {
   assert.equal(d['termine-le'], null);
 });
 
-test('defautsNoyau : n\'inclut aucun concept du groupe « rappel »', () => {
+test('defautsNoyau : n\'inclut aucun concept des groupes « rappel » / « agenda »', () => {
   const d = Ariane.defautsNoyau();
   assert.equal('liste' in d, false);
   assert.equal('rappel-id' in d, false);
+  assert.equal('agenda-id' in d, false);
 });
 
 test('conceptsAAmorcer : seules les clés absentes, valeurs par défaut, clé réelle', () => {

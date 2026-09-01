@@ -177,6 +177,29 @@ test('creneauDepuisDrop : jour invalide → null', () => {
   assert.equal(Ariane.creneauDepuisDrop({ yRel: 40, hauteurHeure: 40, heureDebut: 8, jourISO: 'x' }), null);
 });
 
+test('instantAgenda : liste des créneaux canoniques + statut, stable', () => {
+  const t = { statut: 'en cours', creneaux: ['2026-09-10 09:00-11:00', '2026-09-08 14:00-16:00'] };
+  const a = Ariane.instantAgenda(t);
+  // créneaux triés par début, forme canonique
+  assert.equal(a, '2026-09-08 14:00-16:00;2026-09-10 09:00-11:00|en cours');
+  assert.equal(Ariane.instantAgenda(t), a); // idempotent
+});
+
+test('instantAgenda : sensible au statut et à chaque créneau', () => {
+  const base = { statut: 'à faire', creneaux: ['2026-09-08 14:00-16:00'] };
+  assert.notEqual(Ariane.instantAgenda(base),
+    Ariane.instantAgenda({ ...base, statut: 'terminée' }));
+  assert.notEqual(Ariane.instantAgenda(base),
+    Ariane.instantAgenda({ ...base, creneaux: ['2026-09-08 14:00-17:00'] }));
+  assert.notEqual(Ariane.instantAgenda(base),
+    Ariane.instantAgenda({ ...base, creneaux: [] }));
+});
+
+test('instantAgenda : sans créneau ni statut → "|"', () => {
+  assert.equal(Ariane.instantAgenda({}), '|');
+  assert.equal(Ariane.instantAgenda(null), '|');
+});
+
 test('clampHauteurBandeau : borne 24–320, repli 66, arrondi entier', () => {
   assert.equal(Ariane.clampHauteurBandeau(66), 66);
   assert.equal(Ariane.clampHauteurBandeau(10), 24);

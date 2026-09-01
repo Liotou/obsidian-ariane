@@ -4320,7 +4320,7 @@ class Ariane extends obsidian.Plugin {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
             'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'avancement', 'parent',
             'bloque-par', 'termine-le',
-            'source', 'livrable', 'fichier', 'liste', 'rappel-id'];
+            'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id'];
   }
 
   // Regroupement des propriétés d'une tâche (habillage de la note). `famille`
@@ -4332,6 +4332,7 @@ class Ariane extends obsidian.Plugin {
       { id: 'planning', nom: 'Planning', concepts: ['debut', 'echeance', 'heure', 'creneaux', 'jalon', 'termine-le'] },
       { id: 'relations', nom: 'Relations', concepts: ['parent', 'bloque-par'] },
       { id: 'rappel', nom: 'Rappel', concepts: ['liste', 'rappel-id'] },
+      { id: 'agenda', nom: 'Agenda', concepts: ['agenda-id'] },
     ];
   }
 
@@ -4348,7 +4349,7 @@ class Ariane extends obsidian.Plugin {
     };
     const out = {};
     for (const g of Ariane.GROUPES_TACHE) {
-      if (g.id === 'rappel') continue;
+      if (g.id === 'rappel' || g.id === 'agenda') continue;
       for (const c of g.concepts) out[c] = (c in typees) ? typees[c] : null;
     }
     out['sans-echeance'] = false;
@@ -4845,6 +4846,7 @@ class Ariane extends obsidian.Plugin {
     l.push(ligne(K('fichier'), q(c.fichier)));
     l.push(ligne(K('liste'), q(c.liste)));
     l.push(K('rappel-id') + ':');
+    l.push(K('agenda-id') + ': []');
     l.push(ligne('cree', jour));
     l.push(ligne('modifie', jour));
     l.push('---');
@@ -5185,6 +5187,16 @@ class Ariane extends obsidian.Plugin {
                 allDay: true, source: 'dates' }];
     }
     return [];
+  }
+
+  // Instantané note ↔ Apple Agenda : seuls les créneaux deviennent des EKEvent,
+  // l'instantané est donc « <créneaux canoniques joints par ';'>|<statut> ».
+  // Comparé à `agenda-sync` de la note à la relève : différent → la note a bougé
+  // depuis le dernier push, elle fait foi (on repoussera, on ne l'écrase pas).
+  static instantAgenda(t) {
+    const crs = Ariane.creneauxDeTache(t)
+      .map((c) => Ariane.formatCreneau(c.debut, c.fin)).join(';');
+    return crs + '|' + ((t && t.statut) || '');
   }
 
   // Répartit en colonnes les blocs horaires d'UN jour qui se chevauchent ; les
@@ -12461,6 +12473,10 @@ class Ariane extends obsidian.Plugin {
   // Instantané « dernier état synchronisé » d'une tâche, pour arbitrer les
   // conflits à la relève : échéance|heure|statut.
   _instantRappel(t) { return [t.echeance || '', t.heure || '', t.statut || ''].join('|'); }
+
+  // Idem côté Apple Agenda : seuls les créneaux poussent, l'instantané est donc
+  // la liste des créneaux canoniques + le statut.
+  _instantAgenda(t) { return Ariane.instantAgenda(t); }
 
   // Tâches concernées par un rappel : une échéance, ou déjà un rappel-id.
   _tachesRappel() {
