@@ -20869,8 +20869,8 @@ class MoteurCalendrier {
       const nLanes = Math.min(MAX_LANES,
         barres.reduce((m, b) => Math.max(m, b.lane + 1), 0));
       const reserve = nLanes * LANE_H;
-      const wk = grille.createDiv({ cls: 'zfa-cal-semaine' });
-      const cells = wk.createDiv({ cls: 'zfa-cal-semaine-cells' });
+      const wk = grille.createDiv({ cls: 'zfa-cal-msem' });
+      const cells = wk.createDiv({ cls: 'zfa-cal-msem-cells' });
 
       semaine.forEach((jour, di) => {
         const cell = cells.createDiv({ cls: 'zfa-cal-cellule' });
