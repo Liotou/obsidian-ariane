@@ -20376,7 +20376,24 @@ class MoteurCalendrier {
     else setTimeout(apres, 190);
   }
 
-  _surNouveau() { /* rempli en Task 7 */ }
+  _bornesPeriode() {
+    if (this.mode === 'semaine') {
+      const g = Ariane.grilleSemaine(this._ancre);
+      return { debut: g.jours[0], fin: g.jours[6] };
+    }
+    const g = Ariane.grilleMois(this._ancre);
+    // moisDebut = 1er du mois ; fin = dernier jour du mois courant
+    const dernier = Ariane.decalerJour(Ariane.moisSuivantN(g.moisDebut, 1), -1);
+    return { debut: g.moisDebut, fin: dernier };
+  }
+
+  async _surNouveau() {
+    const auj = new Date().toISOString().slice(0, 10);
+    const { debut, fin } = this._bornesPeriode();
+    const jour = Ariane.jourSeme(this._jourSel || '', debut, fin, auj);
+    const chemin = await this.greffon.creerTache({ debut: jour, echeance: jour });
+    if (chemin) this.ouvrir(chemin.split('/').pop().replace(/\.md$/, ''), false);
+  }
 
   titrePeriode() {
     const [a, m] = this._ancre.split('-').map(Number);
@@ -20563,6 +20580,12 @@ class MoteurCalendrier {
         if (jour === auj) cell.addClass('est-aujourdhui');
         if (jour.slice(0, 7) !== g.moisDebut.slice(0, 7)) cell.addClass('hors-mois');
         cell.createDiv({ cls: 'zfa-cal-quantieme', text: String(Number(jour.slice(8, 10))) });
+        if (this._jourSel === jour) cell.addClass('est-selection');
+        cell.addEventListener('click', (e) => {
+          if (e.target.closest('.zfa-cal-carte')) return;
+          this._jourSel = (this._jourSel === jour) ? '' : jour;
+          this.dessiner();
+        });
         const evs = (parJour.get(jour) || []).slice().sort(Ariane.comparerEmpilement);
         for (const { t, ev } of evs) {
           const carte = this.rendreCarte(cell, t, ev, { maxLignes: 1, avecHeure: true,
@@ -20616,6 +20639,12 @@ class MoteurCalendrier {
     for (const j of g.jours) {
       const col = bandeau.createDiv({ cls: 'zfa-cal-bandeau-jour' + (j === auj ? ' est-aujourdhui' : '') });
       col.dataset.jour = j;
+      if (this._jourSel === j) col.addClass('est-selection');
+      col.addEventListener('click', (e) => {
+        if (e.target.closest('.zfa-cal-carte')) return;
+        this._jourSel = (this._jourSel === j) ? '' : j;
+        this.dessiner();
+      });
       for (const { t } of toutJour.get(j)) {
         const p = col.createDiv({ cls: 'zfa-cal-pastille est-jour' });
         p.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
