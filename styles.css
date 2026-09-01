@@ -2169,9 +2169,35 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   cursor: pointer;
 }
 .zfa-cal-carte-l1 { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
-/* Coche : exactement la taille d'une case « - [ ] » d'une note Obsidian
-   (variable de thème --checkbox-size), sans surcharge de dimension. */
-.zfa-cal-carte-coche { flex: none; margin: 1px 2px 0 0; cursor: pointer; }
+/* Coche : rendu plat proportionné au texte de la carte (1 em), comme une case
+   « - [ ] » à côté de son texte dans une note — pas la coche native, épaisse. */
+.zfa-cal-carte-coche {
+  flex: none;
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  width: 1em; height: 1em;
+  margin: 0.15em 3px 0 0;
+  padding: 0;
+  border: 1px solid var(--checkbox-border-color, var(--text-faint));
+  border-radius: 3px;
+  background: var(--background-primary);
+  cursor: pointer;
+  position: relative;
+}
+.zfa-cal-carte-coche:checked {
+  background: var(--checkbox-color, var(--interactive-accent));
+  border-color: var(--checkbox-color, var(--interactive-accent));
+}
+.zfa-cal-carte-coche:checked::after {
+  content: "";
+  position: absolute;
+  left: 32%; top: 8%;
+  width: 30%; height: 58%;
+  border: solid var(--checkbox-marker-color, #fff);
+  border-width: 0 0.12em 0.12em 0;
+  transform: rotate(45deg);
+}
 .zfa-cal-carte-titre { flex: 1 1 auto; min-width: 0; font-weight: var(--font-medium);
   color: var(--text-normal); white-space: normal; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
