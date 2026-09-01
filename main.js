@@ -3425,6 +3425,14 @@ class Ariane extends obsidian.Plugin {
       callback: () => this.harmoniserNomsColonnesBases().catch(() => {}),
     });
     this.addCommand({
+      id: 'completer-concepts-taches',
+      name: tr('Tâches : compléter les propriétés manquantes'),
+      callback: async () => {
+        const n = await this.semerConceptsTache();
+        new obsidian.Notice(n + tr(' note(s) de tâche complétée(s).'));
+      },
+    });
+    this.addCommand({
       id: 'relire-incoherences-taches',
       name: tr('Tâches : relire les incohérences'),
       callback: () => {
@@ -4178,7 +4186,14 @@ class Ariane extends obsidian.Plugin {
     }));
     this.app.workspace.onLayoutReady(() => this.semerRattachOk());
     this.app.workspace.onLayoutReady(() => {
-      setTimeout(() => this.semerSansEcheance(), 3000);
+      // D'abord compléter les propriétés de tâche manquantes (toute nouvelle
+      // propriété du plugin est ainsi rattrapée au démarrage), puis corriger
+      // « sans-echeance » selon l'échéance courante.
+      setTimeout(() => {
+        Promise.resolve(this.semerConceptsTache())
+          .then(() => this.semerSansEcheance())
+          .catch(() => {});
+      }, 3000);
     });
 
     // Apple Rappels : poussée automatique quand une tâche change, et relève
@@ -4318,6 +4333,40 @@ class Ariane extends obsidian.Plugin {
       { id: 'relations', nom: 'Relations', concepts: ['parent', 'bloque-par'] },
       { id: 'rappel', nom: 'Rappel', concepts: ['liste', 'rappel-id'] },
     ];
+  }
+
+  // Concepts du « noyau » d'une tâche (états + planning + relations, hors
+  // rappel) et leur valeur d'amorçage. Dérivé de GROUPES_TACHE pour rester la
+  // seule source de vérité ; « sans-echeance » n'est dans aucun groupe (dérivé
+  // de l'échéance), on l'ajoute à la main. Les scalaires vides valent `null` :
+  // processFrontMatter écrit alors « clé: » sans valeur, comme corpsNouvelleTache.
+  static defautsNoyau() {
+    const typees = {
+      terminee: false, jalon: false,
+      creneaux: [], 'bloque-par': [],
+      avancement: 0, statut: 'à faire',
+    };
+    const out = {};
+    for (const g of Ariane.GROUPES_TACHE) {
+      if (g.id === 'rappel') continue;
+      for (const c of g.concepts) out[c] = (c in typees) ? typees[c] : null;
+    }
+    out['sans-echeance'] = false;
+    return out;
+  }
+
+  // Parmi les concepts de `defauts`, ceux absents d'une note selon `lire`
+  // (callback : concept → valeur lue, `undefined` si la note ne la porte sous
+  // aucune forme). Renvoie `{ cléRéelle: valeur }` prêt pour processFrontMatter,
+  // la clé venant de `cleDe`. « sans-echeance » prend la valeur dérivée de
+  // l'échéance lue. N'écrase jamais : une valeur déjà présente est ignorée.
+  static conceptsAAmorcer(defauts, lire, cleDe) {
+    const out = {};
+    for (const c of Object.keys(defauts)) {
+      if (lire(c) !== undefined) continue;
+      out[cleDe(c)] = c === 'sans-echeance' ? !lire('echeance') : defauts[c];
+    }
+    return out;
   }
 
   static get COULEURS_GANTT() {
@@ -13003,6 +13052,34 @@ class Ariane extends obsidian.Plugin {
         });
       } catch (e) { /* note verrouillée : au prochain passage */ }
     }
+  }
+
+  // Complète les propriétés du « noyau » (Ariane.defautsNoyau) sur les notes de
+  // tâches qui n'en portent pas encore la clé. Une seule passe, silencieuse,
+  // idempotente : jamais d'écriture si rien ne manque, jamais d'écrasement d'une
+  // valeur existante, pas de bump de « modifie » (c'est un rattrapage de schéma,
+  // pas une modification de sens). Lancée au démarrage — donc toute propriété
+  // ajoutée au plugin est rattrapée — et via la commande dédiée. Renvoie le
+  // nombre de notes complétées.
+  async semerConceptsTache() {
+    const defauts = Ariane.defautsNoyau();
+    let touchees = 0;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!this.refDeChemin(f.path)) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      const manque = Ariane.conceptsAAmorcer(defauts,
+        (c) => this._lireT(fm, c), (c) => this.cleT(c));
+      const cles = Object.keys(manque);
+      if (!cles.length) continue;
+      this.marquerEcriture(f.path);
+      try {
+        await this.app.fileManager.processFrontMatter(f, (x) => {
+          for (const k of cles) if (!(k in x)) x[k] = manque[k];
+        });
+        touchees += 1;
+      } catch (e) { /* note verrouillée : au prochain passage */ }
+    }
+    return touchees;
   }
 
   async veillerRattachements(fichier, ref) {

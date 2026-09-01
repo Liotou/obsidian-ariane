@@ -72,3 +72,61 @@ test('yamlChaine rend la chaîne vide pour une valeur absente', () => {
   assert.equal(Ariane.yamlChaine(null), '');
   assert.equal(Ariane.yamlChaine(''), '');
 });
+
+// --- P0 : complétion des propriétés du noyau sur les notes existantes ---
+
+test('defautsNoyau : le jeu de concepts et leurs valeurs par défaut', () => {
+  const d = Ariane.defautsNoyau();
+  assert.deepEqual(Object.keys(d).sort(), [
+    'avancement', 'bloque-par', 'creneaux', 'debut', 'echeance', 'heure',
+    'jalon', 'parent', 'priorite', 'sans-echeance', 'statut', 'termine-le',
+    'terminee',
+  ]);
+  assert.deepEqual(d.creneaux, []);
+  assert.deepEqual(d['bloque-par'], []);
+  assert.equal(d.avancement, 0);
+  assert.equal(d.terminee, false);
+  assert.equal(d.jalon, false);
+  assert.equal(d.statut, 'à faire');
+  assert.equal(d['sans-echeance'], false);
+  assert.equal(d.priorite, null);
+  assert.equal(d.debut, null);
+  assert.equal(d['termine-le'], null);
+});
+
+test('defautsNoyau : n\'inclut aucun concept du groupe « rappel »', () => {
+  const d = Ariane.defautsNoyau();
+  assert.equal('liste' in d, false);
+  assert.equal('rappel-id' in d, false);
+});
+
+test('conceptsAAmorcer : seules les clés absentes, valeurs par défaut, clé réelle', () => {
+  const present = { statut: 'en cours', echeance: '2026-10-01', creneaux: ['x'] };
+  const lire = (c) => (c in present ? present[c] : undefined);
+  const cleDe = (c) => 'T - ' + c; // simule un préfixe / renommage
+  const out = Ariane.conceptsAAmorcer(Ariane.defautsNoyau(), lire, cleDe);
+  // statut / echeance / creneaux déjà là → absents du résultat
+  assert.equal('T - statut' in out, false);
+  assert.equal('T - echeance' in out, false);
+  assert.equal('T - creneaux' in out, false);
+  // les manquants, avec la clé réelle et le défaut
+  assert.deepEqual(out['T - bloque-par'], []);
+  assert.equal(out['T - avancement'], 0);
+  assert.equal(out['T - jalon'], false);
+  assert.equal(out['T - priorite'], null);
+});
+
+test('conceptsAAmorcer : sans-echeance dérivé de l\'échéance lue', () => {
+  const avec = Ariane.conceptsAAmorcer(Ariane.defautsNoyau(),
+    (c) => (c === 'echeance' ? '2026-10-01' : undefined), (c) => c);
+  assert.equal(avec['sans-echeance'], false); // échéance présente → pas "sans échéance"
+  const sans = Ariane.conceptsAAmorcer(Ariane.defautsNoyau(),
+    () => undefined, (c) => c);
+  assert.equal(sans['sans-echeance'], true); // aucune échéance → "sans échéance"
+});
+
+test('conceptsAAmorcer : note déjà complète → résultat vide', () => {
+  const d = Ariane.defautsNoyau();
+  const out = Ariane.conceptsAAmorcer(d, (c) => (c in d ? 'x' : undefined), (c) => c);
+  assert.deepEqual(out, {});
+});
