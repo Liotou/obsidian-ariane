@@ -21389,10 +21389,38 @@ class MoteurCalendrier {
     const strip = Array.isArray(this._semStrip) ? this._semStrip : [];
     const idxDep = strip.indexOf(jourCol);
     const peutChangerJour = mode !== 'fin' && colW > 0 && idxDep >= 0;
+    const inner = bloc.closest('.zfa-cal-sem-inner');
     let bouge = false;
     let dxDer = 0;
     let dyDer = 0;
+    let guide = null;
+    let colCible = null;
     const cal = (v) => Math.round(v / (PXH / 4)) * (PXH / 4);
+    // Guide de placement : rectangle calé sur le jour + le quart d'heure visés,
+    // qui glisse par crans (animation courte) pendant que le bloc, lui, suit
+    // librement le curseur. Surligne aussi la colonne du jour d'arrivée.
+    const poserGuide = (topSnap, idxJour) => {
+      if (!inner) return;
+      if (!guide) {
+        guide = inner.createDiv({ cls: 'zfa-cal-bloc-guide' });
+        guide.style.transition = 'none';
+        window.requestAnimationFrame(() => { if (guide) guide.style.transition = ''; });
+      }
+      guide.style.left = (idxJour * colW) + 'px';
+      guide.style.width = colW + 'px';
+      guide.style.top = topSnap + 'px';
+      guide.style.height = (parseFloat(bloc.style.height) || PXH) + 'px';
+      const nvColCible = inner.querySelector('.zfa-cal-col[data-jour="' + strip[idxJour] + '"]');
+      if (nvColCible !== colCible) {
+        if (colCible) colCible.classList.remove('zfa-cal-col-cible-jour');
+        colCible = nvColCible;
+        if (colCible) colCible.classList.add('zfa-cal-col-cible-jour');
+      }
+    };
+    const nettoyerGuide = () => {
+      if (guide) { guide.remove(); guide = null; }
+      if (colCible) { colCible.classList.remove('zfa-cal-col-cible-jour'); colCible = null; }
+    };
     const bouger = (mv) => {
       const d = mv.clientY - y0;
       const dx = mv.clientX - x0;
@@ -21406,16 +21434,23 @@ class MoteurCalendrier {
       }
       if (mode === 'fin') { bloc.style.height = Math.max(PXH / 4, cal(hDep + d)) + 'px'; return; }
       // Geste « bouger » : le bloc se décroche et suit librement le curseur sur
-      // les deux axes (sans calage). Le recalage sur le jour + le quart d'heure
-      // se fait au lâcher.
+      // les deux axes (sans calage). Un guide par crans montre où il se posera ;
+      // le recalage effectif se fait au lâcher.
       bloc.classList.add('zfa-cal-bloc-flotte');
       bloc.style.transform = 'translate(' + dx + 'px,' + d + 'px)';
+      const topSnap = Math.max(0, cal(topDep + d));
+      let dJ = 0;
+      if (peutChangerJour) {
+        dJ = Math.max(-idxDep, Math.min(strip.length - 1 - idxDep, Math.round(dx / colW)));
+      }
+      poserGuide(topSnap, idxDep + dJ);
     };
     const lacher = async (up) => {
       document.removeEventListener('pointermove', bouger);
       document.removeEventListener('pointerup', lacher);
       bloc.classList.remove('zfa-cal-bloc-flotte');
       bloc.style.transform = '';
+      nettoyerGuide();
       if (!bouge) return;
       const dx = (up && up.clientX != null) ? up.clientX - x0 : dxDer;
       const dy = (up && up.clientY != null) ? up.clientY - y0 : dyDer;

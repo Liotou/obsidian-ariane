@@ -2163,6 +2163,17 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   z-index: 30; opacity: 0.95; cursor: grabbing; pointer-events: none;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
 }
+/* Guide de placement : là où le bloc se posera. Glisse par crans (transition
+   courte sur left/top) ; la colonne du jour visé est surlignée. */
+.zfa-cal-bloc-guide {
+  position: absolute; z-index: 15; pointer-events: none; box-sizing: border-box;
+  border: 2px dashed var(--interactive-accent); border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+  transition: left 90ms ease, top 90ms ease, height 90ms ease;
+}
+.zfa-cal-col.zfa-cal-col-cible-jour {
+  background: color-mix(in srgb, var(--interactive-accent) 9%, transparent);
+}
 .zfa-cal-poignee { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
 .zfa-cal-bloc:focus { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 
