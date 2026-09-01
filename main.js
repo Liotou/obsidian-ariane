@@ -12647,6 +12647,42 @@ class Ariane extends obsidian.Plugin {
     return this._agendas;
   }
 
+  // Événements réels des calendriers surveillés, pour l'affichage en fond de la
+  // vue calendrier. Cache mémoire 60 s, clé sur la fenêtre demandée. Exclut les
+  // événements déjà représentés par un créneau (leur id figure dans un
+  // agenda-id de tâche) pour ne pas les afficher deux fois.
+  async evenementsFond(debutISO, finISO) {
+    if (!obsidian.Platform.isMacOS || !this.settings.agendaActif) return [];
+    const cle = String(debutISO) + '|' + String(finISO);
+    const c = this._fondCache;
+    if (c && c.cle === cle && Date.now() - c.le < 60000) return c.data;
+    const cals = this._agendasSurveilles();
+    if (!cals.length) { this._fondCache = { cle, le: Date.now(), data: [] }; return []; }
+    const connus = new Set();
+    for (const t of this.tachesPourGantt()) {
+      const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+      for (const id of [].concat(this._lireT(fm, 'agenda-id') || [])) if (id) connus.add(String(id));
+    }
+    const s = await this._osascriptJXA(
+      Ariane.genererJXAEvenementsFond(cals, debutISO, finISO), 30000);
+    const data = (s == null ? [] : s.split('\n').filter(Boolean).map((l) => {
+      const p = l.split('\t');
+      return { id: p[0], titre: p[1] || '', debut: p[2] || '', fin: p[3] || '',
+               allDay: p[4] === '1', couleur: p[5] || '', calendrier: p[6] || '' };
+    })).filter((e) => e.id && e.debut && !connus.has(e.id));
+    this._fondCache = { cle, le: Date.now(), data };
+    return data;
+  }
+
+  // Invalide le cache de l'agenda de fond et redemande à chaque vue calendrier
+  // ouverte de le recharger (après un push, ou un changement de réglage).
+  _rafraichirFond() {
+    this._fondCache = null;
+    for (const m of (this._moteursCalendrier || [])) {
+      try { m._fondCle = null; if (m._chargerFond) m._chargerFond(); } catch (e) { /* vue fermée */ }
+    }
+  }
+
   // Instantané « dernier état synchronisé » d'une tâche, pour arbitrer les
   // conflits à la relève : échéance|heure|statut.
   _instantRappel(t) { return [t.echeance || '', t.heure || '', t.statut || ''].join('|'); }
@@ -12916,7 +12952,7 @@ class Ariane extends obsidian.Plugin {
       }
       n += 1;
     }
-    if (this._invaliderFondAgenda) this._invaliderFondAgenda();
+    this._rafraichirFond();
     if (!silencieux) new obsidian.Notice(n + tr(' tâche(s) synchronisée(s) vers Apple Agenda.'));
     return n;
   }
@@ -20768,7 +20804,9 @@ class MoteurCalendrier {
     this.racine = racine;
     this.ctx = contexte;
     this._ancre = new Date().toISOString().slice(0, 10);
+    this._fond = [];
     racine.addClass('zfa-cal');
+    (greffon._moteursCalendrier || (greffon._moteursCalendrier = new Set())).add(this);
   }
 
   lire(cle) {
@@ -20783,7 +20821,74 @@ class MoteurCalendrier {
     clearTimeout(this._wheelMinuterie);
     clearTimeout(this._calageMinuterie);
     clearTimeout(this._semScrollMinuterie);
+    if (this.greffon._moteursCalendrier) this.greffon._moteursCalendrier.delete(this);
     this.racine.empty();
+  }
+
+  // Fenêtre large autour de la période visible pour l'agenda de fond.
+  _bornesFond() {
+    if (this.mode === 'semaine') {
+      return { debut: Ariane.decalerJour(this._ancre, -21),
+               fin: Ariane.decalerJour(this._ancre, 28) };
+    }
+    const g = Ariane.grilleMois(this._ancre);
+    const sem = g.semaines;
+    return { debut: sem[0][0], fin: sem[sem.length - 1][6] };
+  }
+
+  // Charge l'agenda de fond une fois par (mode, fenêtre) ; au retour, redessine.
+  _chargerFond() {
+    if (!this.greffon || !this.greffon.evenementsFond) { this._fond = this._fond || []; return; }
+    const b = this._bornesFond();
+    const cle = this.mode + '|' + b.debut + '|' + b.fin;
+    if (cle === this._fondCle) return;
+    this._fondCle = cle;
+    this.greffon.evenementsFond(b.debut, b.fin).then((data) => {
+      if (this._detruit || cle !== this._fondCle) return;
+      this._fond = data || [];
+      this.dessiner();
+    }).catch(() => { /* macOS indisponible */ });
+  }
+
+  // Événements de fond d'un jour ISO : horaires (démarrant ce jour) et journée
+  // entière, prêts à fusionner avec les créneaux.
+  _fondDuJour(jourISO) {
+    const horaires = [];
+    const jour = [];
+    for (const e of (this._fond || [])) {
+      if (e.allDay) {
+        if (e.debut.slice(0, 10) <= jourISO && jourISO < (e.fin || e.debut).slice(0, 10)) jour.push(e);
+        else if (e.debut.slice(0, 10) === jourISO) jour.push(e);
+      } else if (e.debut.slice(0, 10) === jourISO) {
+        horaires.push(e);
+      }
+    }
+    return { horaires, jour };
+  }
+
+  _ouvrirEvenement(id) {
+    if (!id) return;
+    const url = 'ical://ekevent/' + encodeURIComponent(id) + '?method=show&options=more';
+    try {
+      const shell = require('electron').shell;
+      if (shell && shell.openExternal) { shell.openExternal(url); return; }
+    } catch (e) { /* pas d'accès electron */ }
+    try { window.open(url); } catch (e2) { /* schéma indisponible */ }
+  }
+
+  // Carte d'un événement Apple réel (agenda de fond) : barre verticale gauche à
+  // la couleur du calendrier, pas de coche, non déplaçable, clic → Calendar.app.
+  _rendreEvenement(hote, e, maxLignes) {
+    const el = hote.createDiv({ cls: 'zfa-cal-evt' });
+    if (e.couleur) el.style.setProperty('--zfa-cal-coul', e.couleur);
+    if (!e.allDay && e.debut && e.debut.length > 15) {
+      el.createDiv({ cls: 'zfa-cal-evt-h', text: e.debut.slice(11, 16) });
+    }
+    const tt = el.createDiv({ cls: 'zfa-cal-evt-t', text: e.titre || tr('(sans titre)') });
+    if (maxLignes && maxLignes >= 2) tt.style.webkitLineClamp = String(Math.min(maxLignes, 3));
+    el.title = (e.titre || '') + (e.calendrier ? ' · ' + e.calendrier : '');
+    el.addEventListener('click', (ev) => { ev.stopPropagation(); this._ouvrirEvenement(e.id); });
+    return el;
   }
 
   dessiner() {
@@ -20797,6 +20902,7 @@ class MoteurCalendrier {
 
   dessinerVraiment() {
     if (this._detruit) return;
+    this._chargerFond();
     const c = this.racine;
     c.empty();
     this._taches = (this.ctx.taches && this.ctx.taches()) || [];
@@ -21391,7 +21497,7 @@ class MoteurCalendrier {
         if (jour === auj) cell.addClass('est-aujourdhui');
         if (jour.slice(0, 7) !== g.moisDebut.slice(0, 7)) cell.addClass('hors-mois');
         if (this._jourSel === jour) cell.addClass('est-selection');
-        const surCarte = (e) => e.target.closest('.zfa-cal-carte, .zfa-cal-pastille, .zfa-cal-jalon');
+        const surCarte = (e) => e.target.closest('.zfa-cal-carte, .zfa-cal-pastille, .zfa-cal-jalon, .zfa-cal-evt');
         cell.addEventListener('click', (e) => {
           if (surCarte(e)) return;
           this._jourSel = (this._jourSel === jour) ? '' : jour;
@@ -21438,6 +21544,18 @@ class MoteurCalendrier {
               JSON.stringify({ ref: t.ref, jour, brut: ev.brut }));
             de.dataTransfer.effectAllowed = 'move';
           });
+        }
+        // Événements Apple réels du jour → chips zfa-cal-evt, clic → Calendar.app.
+        const fj = this._fondDuJour(jour);
+        for (const e of fj.jour.concat(fj.horaires)) {
+          const ch = corps.createDiv({ cls: 'zfa-cal-evt est-compacte' });
+          if (e.couleur) ch.style.setProperty('--zfa-cal-coul', e.couleur);
+          if (!e.allDay && e.debut && e.debut.length > 15) {
+            ch.createSpan({ cls: 'zfa-cal-evt-h', text: e.debut.slice(11, 16) + ' ' });
+          }
+          ch.createSpan({ text: e.titre || tr('(sans titre)') });
+          ch.title = (e.titre || '') + (e.calendrier ? ' · ' + e.calendrier : '');
+          ch.addEventListener('click', (ev2) => { ev2.stopPropagation(); this._ouvrirEvenement(e.id); });
         }
       }
     }
@@ -21543,7 +21661,7 @@ class MoteurCalendrier {
       const liste = toutJour.get(j).slice().sort(Ariane.comparerEmpilement);
       let deplie = false;
       const rendre = () => {
-        col.findAll('.zfa-cal-carte, .zfa-cal-bjalon, .zfa-cal-bandeau-plus').forEach((n) => n.remove());
+        col.findAll('.zfa-cal-carte, .zfa-cal-bjalon, .zfa-cal-bandeau-plus, .zfa-cal-evt').forEach((n) => n.remove());
         const { montres, reste } = deplie
           ? { montres: liste, reste: 0 } : Ariane.replierListe(liste, PLAFOND);
         for (const { t, ev } of montres) {
@@ -21564,6 +21682,14 @@ class MoteurCalendrier {
         if (reste) {
           const plus = col.createDiv({ cls: 'zfa-cal-bandeau-plus', text: '+' + reste });
           plus.onclick = (e) => { e.stopPropagation(); deplie = true; rendre(); };
+        }
+        // Événements Apple « journée entière » du jour → chips zfa-cal-evt.
+        for (const e of this._fondDuJour(j).jour) {
+          const ch = col.createDiv({ cls: 'zfa-cal-evt est-jour' });
+          if (e.couleur) ch.style.setProperty('--zfa-cal-coul', e.couleur);
+          ch.createDiv({ cls: 'zfa-cal-evt-t', text: e.titre || tr('(sans titre)') });
+          ch.title = (e.titre || '') + (e.calendrier ? ' · ' + e.calendrier : '');
+          ch.addEventListener('click', (ev) => { ev.stopPropagation(); this._ouvrirEvenement(e.id); });
         }
       };
       rendre();
@@ -21639,33 +21765,35 @@ class MoteurCalendrier {
         this.menuCellule(e, col.dataset.jour);
       });
 
-      const evs = horaire.get(j).slice()
-        .sort((a, b) => (a.ev.debut < b.ev.debut ? -1 : a.ev.debut > b.ev.debut ? 1 : 0));
+      const fondJour = this._fondDuJour(j);
+      // Créneaux + événements Apple réels : une même liste, placés côte à côte
+      // par disposerBlocsJour quand ils se chevauchent.
+      const elems = horaire.get(j).map((x) => ({ kind: 'creneau', t: x.t, ev: x.ev,
+        cle: x.ev.debut }))
+        .concat(fondJour.horaires.map((e) => ({ kind: 'evt', e, cle: e.debut })))
+        .sort((a, b) => (a.cle < b.cle ? -1 : a.cle > b.cle ? 1 : 0));
       const mn = (s) => Number(s.slice(11, 13)) * 60 + Number(s.slice(14, 16));
-      const blocs = evs.map(({ ev }) => {
-        const d = mn(ev.debut);
-        let f = ev.fin.slice(0, 10) === j ? mn(ev.fin) : 24 * 60;
+      const blocs = elems.map((it) => {
+        const dISO = it.kind === 'creneau' ? it.ev.debut : it.e.debut;
+        const fISO = it.kind === 'creneau' ? it.ev.fin : it.e.fin;
+        const d = mn(dISO);
+        let f = (fISO && fISO.slice(0, 10) === j) ? mn(fISO) : 24 * 60;
         if (f <= d) f = d + 15;
         return { deb: d, fin: f };
       });
       const lay = Ariane.disposerBlocsJour(blocs);
-      evs.forEach(({ t, ev }, k) => {
+      elems.forEach((it, k) => {
         const y0 = (blocs[k].deb / 60 - hDeb) * PXH;
         const y1 = (blocs[k].fin / 60 - hDeb) * PXH;
         const haut = Math.max(16, y1 - Math.max(0, y0));
         const maxLignes = Math.max(1, Math.floor((haut - 6) / 16));
-        const bloc = this.rendreCarte(col, t, ev,
-          { maxLignes, avecHeure: true, avecCoche: true, enRetard: enRetard.has(t.ref) });
-        bloc.classList.add('zfa-cal-bloc');
-        bloc.style.top = Math.max(0, y0) + 'px';
-        bloc.style.height = haut + 'px';
-        // Léger retrait (3 px de chaque côté) : les blocs ne touchent pas les
-        // filets de colonne, comme dans obsidian-day-planner.
-        bloc.style.left = 'calc(' + (lay[k].col / lay[k].ncols * 100) + '% + 3px)';
-        bloc.style.width = 'calc(' + (100 / lay[k].ncols) + '% - 6px)';
-        if (y0 < 0) bloc.classList.add('zfa-cal-bloc-tronque-haut');
-        if (y1 > hauteurInner) bloc.classList.add('zfa-cal-bloc-tronque-bas');
-        if (ev.source === 'creneau') {
+        let bloc;
+        if (it.kind === 'creneau') {
+          const t = it.t;
+          const ev = it.ev;
+          bloc = this.rendreCarte(col, t, ev,
+            { maxLignes, avecHeure: true, avecCoche: true, enRetard: enRetard.has(t.ref) });
+          bloc.classList.add('zfa-cal-bloc');
           bloc.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j));
           const poi = bloc.createDiv({ cls: 'zfa-cal-poignee' });
           poi.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j, 'fin'));
@@ -21677,7 +21805,18 @@ class MoteurCalendrier {
               this._apres(t.ref, { cible: [t.debut, t.echeance, null], creneaux: undefined });
             }
           });
+        } else {
+          bloc = this._rendreEvenement(col, it.e, maxLignes);
+          bloc.classList.add('zfa-cal-bloc');
         }
+        bloc.style.top = Math.max(0, y0) + 'px';
+        bloc.style.height = haut + 'px';
+        // Léger retrait (3 px de chaque côté) : les blocs ne touchent pas les
+        // filets de colonne, comme dans obsidian-day-planner.
+        bloc.style.left = 'calc(' + (lay[k].col / lay[k].ncols * 100) + '% + 3px)';
+        bloc.style.width = 'calc(' + (100 / lay[k].ncols) + '% - 6px)';
+        if (y0 < 0) bloc.classList.add('zfa-cal-bloc-tronque-haut');
+        if (y1 > hauteurInner) bloc.classList.add('zfa-cal-bloc-tronque-bas');
       });
 
       if (j === auj) {

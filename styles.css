@@ -2236,8 +2236,9 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-cal-carte.est-retard { border-color: var(--text-error);
   box-shadow: inset 2px 0 0 0 var(--text-error); }
 .zfa-cal-carte.est-horaire {
+  /* Créneau : fond teinté + fin liseré complet, PAS de barre verticale gauche
+     (celle-ci est réservée aux événements Apple réels, .zfa-cal-evt). */
   border: 1px solid color-mix(in srgb, var(--zfa-cal-coul) 45%, transparent);
-  border-left: 3px solid var(--zfa-cal-coul);
   background: color-mix(in srgb, var(--zfa-cal-coul) 20%, var(--background-primary));
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
@@ -2245,3 +2246,25 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .zfa-cal-bloc-tronque-haut { border-top-style: dashed; border-top-width: 2px;
   border-top-left-radius: 0; border-top-right-radius: 0; }
+
+/* Événement Apple réel (agenda de fond) : barre verticale gauche à la couleur
+   du calendrier, fond discret, pas de coche, non déplaçable. */
+.zfa-cal-evt {
+  --zfa-cal-coul: var(--text-muted);
+  overflow: hidden; border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--zfa-cal-coul);
+  background: var(--background-secondary);
+  padding: var(--size-2-1) var(--size-4-1);
+  font-family: var(--font-interface); font-size: var(--font-ui-smaller);
+  line-height: 1.3; color: var(--text-muted); cursor: pointer;
+}
+.zfa-cal-bloc.zfa-cal-evt { position: absolute; }
+.zfa-cal-evt-h { font-variant-numeric: tabular-nums; color: var(--text-faint); }
+.zfa-cal-evt-t { color: var(--text-normal); overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.zfa-cal-evt.est-jour { display: flex; align-items: center; gap: 4px;
+  padding: 1px 5px; white-space: nowrap; }
+.zfa-cal-evt.est-jour .zfa-cal-evt-t { -webkit-line-clamp: 1; text-overflow: ellipsis; }
+.zfa-cal-evt.est-compacte { display: flex; align-items: baseline; gap: 2px;
+  padding: 1px 4px; white-space: nowrap; text-overflow: ellipsis; }
