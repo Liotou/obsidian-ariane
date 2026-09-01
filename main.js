@@ -6441,10 +6441,12 @@ class Ariane extends obsidian.Plugin {
   static _jxaEKEvenements() {
     return [
       Ariane._jxaEKCommun(),
-      'try{ ObjC.import("AppKit"); }catch(e){}',
       // Statut TCC Calendriers (SYNCHRONE) : 0 indéterminé, 1 restreint,
       // 2 refusé, 3 autorisé (accès complet), 4 écriture seule.
-      'function statutAcces(){ try{ return $.EKEventStore.authorizationStatusForEntityType(0); }catch(e){ return -1; } }',
+      // Number() est INDISPENSABLE : authorizationStatusForEntityType renvoie un
+      // NSInteger ponté qui n\'est pas === à un littéral JS (=> le garde « !== 3 »
+      // se déclenchait toujours et tout renvoyait « __ACCES__ »).
+      'function statutAcces(){ try{ return Number($.EKEventStore.authorizationStatusForEntityType(0)); }catch(e){ return -1; } }',
       // N\'ouvre la demande d\'accès QUE si indéterminé ; sinon renvoie le statut
       // tout de suite (pas d\'attente de 20 s inutile quand c\'est déjà refusé).
       'function acces(){ var st=statutAcces(); if(st!==0) return st; var d=false; try{ ST.requestFullAccessToEventsWithCompletion(function(g,e){d=true;}); }catch(e){ try{ ST.requestAccessToEntityTypeCompletion(0,function(g,e){d=true;}); }catch(e2){} } var t=Date.now(); while(!d && Date.now()-t<15000){ $.CFRunLoopRunInMode($.kCFRunLoopDefaultMode,0.05,false); } return statutAcces(); }',
@@ -6454,8 +6456,46 @@ class Ariane extends obsidian.Plugin {
       'function evId(e){ var s=""; try{ s=ObjC.unwrap(e.eventIdentifier); }catch(x1){} if(!s) try{ s=ObjC.unwrap(e.calendarItemIdentifier); }catch(x2){} return s||""; }',
       'function fmtDate(dc){ try{ return $.NSCalendar.currentCalendar.dateFromComponents(dc); }catch(e){ return null; } }',
       'function isoDeDate(d){ if(!d) return ""; try{ var f=$.NSDateFormatter.alloc.init; f.dateFormat=$("yyyy-MM-dd\'T\'HH:mm"); f.timeZone=$.NSTimeZone.localTimeZone; return ObjC.unwrap(f.stringFromDate(d)); }catch(e){ return ""; } }',
-      'function couleurCal(cal){ try{ var cg=null; try{ cg=cal.color; }catch(e0){} if(!cg) try{ cg=cal.CGColor; }catch(e1){} if(!cg) return ""; var ns=null; try{ ns=$.NSColor.colorWithCGColor(cg); }catch(e2){} if(!ns) return ""; try{ var sp=ns.colorUsingColorSpace($.NSColorSpace.sRGBColorSpace); if(sp) ns=sp; }catch(e3){} var z=function(c){ var v=Math.max(0,Math.min(255,Math.round(c*255))); return (v<16?"0":"")+v.toString(16); }; return "#"+z(ns.redComponent)+z(ns.greenComponent)+z(ns.blueComponent); }catch(e){ return ""; } }',
+      // NB : pas d\'extraction de couleur ici — passer `EKCalendar.color`
+      // (CGColorRef) à NSColor/CIColor fait planter osascript (SIGBUS). Les
+      // couleurs sont relevées à part, en AppleScript (genererASCouleursAgendas).
     ].join('\n');
+  }
+
+  // AppleScript (pas JXA) : « nom \t r,g,b » (composantes 16 bits) par ligne,
+  // pour tous les calendriers. Sert à colorer les événements de fond.
+  static genererASCouleursAgendas() {
+    return [
+      'tell application "Calendar"',
+      'set AppleScript\'s text item delimiters to ","',
+      'set sortie to ""',
+      'repeat with c in calendars',
+      'try',
+      'set sortie to sortie & (name of c) & (ASCII character 9) & ((color of c) as text) & (ASCII character 10)',
+      'end try',
+      'end repeat',
+      'end tell',
+      'return sortie',
+    ].join('\n');
+  }
+
+  // Sortie de genererASCouleursAgendas → { "Nom du calendrier": "#rrggbb" }.
+  // Les composantes AppleScript sont sur 16 bits (0–65535).
+  static parseCouleursAgendas(txt) {
+    const out = {};
+    for (const ligne of String(txt || '').split('\n')) {
+      const i = ligne.indexOf('\t');
+      if (i < 1) continue;
+      const nom = ligne.slice(0, i).trim();
+      const m = ligne.slice(i + 1).trim().match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      if (!nom || !m) continue;
+      const h = (v) => {
+        const n = Math.max(0, Math.min(255, Math.round((Number(v) || 0) * 255 / 65535)));
+        return (n < 16 ? '0' : '') + n.toString(16);
+      };
+      out[nom] = '#' + h(m[1]) + h(m[2]) + h(m[3]);
+    }
+    return out;
   }
 
   // Crée / met à jour un rappel par tâche. Rend « ref \t id » (id vide si échec).
@@ -6546,7 +6586,7 @@ class Ariane extends obsidian.Plugin {
     return [
       Ariane._jxaEKEvenements(),
       'function run(){',
-      '  var IN=' + IN + '; var ACC=acces();',
+      '  var IN=' + IN + '; var ACC=Number(acces());',
       '  if(ACC!==3 && ACC!==4) return "__ACCES__\\t"+ACC;',
       '  var out=[];',
       '  for(var i=0;i<IN.evenements.length;i++){',
@@ -6560,18 +6600,18 @@ class Ariane extends obsidian.Plugin {
       '    var cal=calParNom(v.calendrier);',
       '    if(!cal){ out.push(v.ref+"\\t"+v.idx+"\\tERREUR\\tcalendrier introuvable: "+net(v.calendrier)); continue; }',
       // Identifiant non résolu (churn iCloud) : avant de créer un doublon, on
-      // cherche un événement du même titre dans ce calendrier sur la fenêtre du
-      // créneau (prédicat NULL = tous, filtré côté JS — plus fiable en JXA).
+      // cherche dans le calendrier cible un événement du même titre sur la
+      // fenêtre du créneau ($([cal]) — un null plante le prédicat en JXA).
       '    if(!e){ try{',
       '      var dd0=fmtDate(comps(String(v.debut).slice(0,10),"00:00"));',
       '      var dd1=fmtDate(comps(String(v.fin).slice(0,10),"23:59"));',
-      '      var pr=ST.predicateForEventsWithStartDateEndDateCalendars(dd0,dd1,null);',
+      '      var pr=ST.predicateForEventsWithStartDateEndDateCalendars(dd0,dd1,$([cal]));',
       '      var ex=ST.eventsMatchingPredicate(pr);',
-      '      var cid=ObjC.unwrap(cal.calendarIdentifier);',
+      '      var vu="";',
       '      if(ex){ for(var q=0;q<ex.count;q++){ var ee=ex.objectAtIndex(q);',
-      '        if(String(ObjC.unwrap(ee.title))!==String(v.titre)) continue;',
-      '        try{ if(ObjC.unwrap(ee.calendar.calendarIdentifier)!==cid) continue; }catch(eC){}',
-      '        e=ee; break; } }',
+      '        if(String(ObjC.unwrap(ee.title))===String(v.titre)){ e=ee; break; }',
+      '        try{ vu=String(ObjC.unwrap(ee.URL)); }catch(eu){ vu=""; }',
+      '        if(v.lien && vu && vu===String(v.lien)){ e=ee; break; } } }',
       '    }catch(eDup){} }',
       '    if(e){ try{ if(ObjC.unwrap(e.calendar.calendarIdentifier)!==ObjC.unwrap(cal.calendarIdentifier)) e.calendar=cal; }catch(er2){} }',
       '    else { e=$.EKEvent.eventWithEventStore(ST); e.calendar=cal; }',
@@ -6583,9 +6623,11 @@ class Ariane extends obsidian.Plugin {
       '    var ed=fmtDate(comps(String(v.fin).slice(0,10),String(v.fin).slice(11,16)));',
       '    if(!sd || !ed){ out.push(v.ref+"\\t"+v.idx+"\\tERREUR\\tdate invalide "+net(v.debut)+"/"+net(v.fin)); continue; }',
       '    try{ e.startDate=sd; e.endDate=ed; }catch(er6){}',
-      '    var err=$(); var ok=false;',
-      '    try{ ok=ST.saveEventSpanCommitError(e,0,true,err); }catch(er8){ out.push(v.ref+"\\t"+v.idx+"\\tERREUR\\t"+er8); continue; }',
-      '    if(!ok){ var m=""; try{ m=net(ObjC.unwrap(err[0].localizedDescription)); }catch(eM){} out.push(v.ref+"\\t"+v.idx+"\\tERREUR\\t"+(m||"saveEvent a renvoyé false")); continue; }',
+      // NB : lire un out-param NSError** en JXA fait planter osascript (exit 139).
+      // On passe null et on se contente du booléen de retour.
+      '    var ok=false;',
+      '    try{ ok=ST.saveEventSpanCommitError(e,0,true,null); }catch(er8){ out.push(v.ref+"\\t"+v.idx+"\\tERREUR\\t"+er8); continue; }',
+      '    if(!ok){ out.push(v.ref+"\\t"+v.idx+"\\tERREUR\\tsaveEvent a renvoyé false"); continue; }',
       '    out.push(v.ref+"\\t"+v.idx+"\\t"+evId(e));',
       '  }',
       '  return out.join("\\n");',
@@ -6605,7 +6647,7 @@ class Ariane extends obsidian.Plugin {
     return [
       Ariane._jxaEKEvenements(),
       'function run(){',
-      '  var IN=' + IN + '; var ACC=acces();',
+      '  var IN=' + IN + '; var ACC=Number(acces());',
       '  if(ACC!==3) return "__ACCES__\\t"+ACC;',
       '  var out=[];',
       '  for(var i=0;i<IN.paires.length;i++){',
@@ -6644,22 +6686,25 @@ class Ariane extends obsidian.Plugin {
     return [
       Ariane._jxaEKEvenements(),
       'function run(){',
-      '  var IN=' + IN + '; var ACC=acces();',
+      '  var IN=' + IN + '; var ACC=Number(acces());',
       '  if(ACC!==3) return "__ACCES__\\t"+ACC;',
       '  if(!IN.debut || !IN.fin || !IN.calendriers.length) return "";',
       '  var want={}; for(var w=0;w<IN.calendriers.length;w++) want[norm(IN.calendriers[w])]=1;',
       '  var d0=fmtDate(comps(IN.debut,"00:00")); var d1=fmtDate(comps(IN.fin,"23:59"));',
       '  if(!d0 || !d1) return "";',
-      // NULL = tous les calendriers ; on filtre côté JS par nom. Passer un
-      // NSArray de calendriers à la prédicat est fragile en JXA.
-      '  var pred=ST.predicateForEventsWithStartDateEndDateCalendars(d0,d1,null);',
+      // Tableau d\'EKCalendar filtré par nom, ponté via $() (un tableau JS brut
+      // ou un null plantent le prédicat en JXA — testé).
+      '  var L=cals(); var arr=[];',
+      '  for(var i=0;i<L.count;i++){ var c=L.objectAtIndex(i); if(want[norm(titre(c))]) arr.push(c); }',
+      '  if(!arr.length) return "";',
+      '  var pred=ST.predicateForEventsWithStartDateEndDateCalendars(d0,d1,$(arr));',
       '  var evs=ST.eventsMatchingPredicate(pred); var out=[];',
       '  if(evs){ for(var k=0;k<evs.count;k++){',
       '    var e=evs.objectAtIndex(k);',
       '    var cn=""; try{ cn=norm(titre(e.calendar)); }catch(ecn){} if(!want[cn]) continue;',
       '    var id=evId(e); if(!id) continue;',
       '    var ad=false; try{ ad=e.isAllDay; }catch(er2){}',
-      '    out.push(id+"\\t"+net(ObjC.unwrap(e.title))+"\\t"+isoDeDate(e.startDate)+"\\t"+isoDeDate(e.endDate)+"\\t"+(ad?"1":"0")+"\\t"+couleurCal(e.calendar)+"\\t"+net(titre(e.calendar)));',
+      '    out.push(id+"\\t"+net(ObjC.unwrap(e.title))+"\\t"+isoDeDate(e.startDate)+"\\t"+isoDeDate(e.endDate)+"\\t"+(ad?"1":"0")+"\\t\\t"+net(titre(e.calendar)));',
       '  } }',
       '  return out.join("\\n");',
       '}',
@@ -12725,7 +12770,13 @@ class Ariane extends obsidian.Plugin {
     return new Promise((res) => {
       require('child_process').execFile('osascript', ['-l', 'JavaScript', '-e', script],
         { timeout: ms || 60000, maxBuffer: 1 << 20 },
-        (err, out) => res(err ? null : String(out == null ? '' : out)));
+        (err, out, errOut) => {
+          if (err) {
+            console.warn('[Ariane] osascript a échoué :', err.code, err.killed ? '(timeout)' : '',
+              String(errOut || '').trim());
+          }
+          res(err ? null : String(out == null ? '' : out));
+        });
     });
   }
 
@@ -12751,7 +12802,24 @@ class Ariane extends obsidian.Plugin {
     this._agendaDefaut = (d && d.defaut) || '';
     this._agendasChargeLe = Date.now();
     if (this._agendaStatut === 2 || this._agendaStatut === 1) this._avertirAccesAgenda();
+    // Couleurs des calendriers via AppleScript (impossible en JXA — SIGBUS).
+    // Peut demander l'accès « Automatisation » à Calendar une première fois ;
+    // en cas d'échec, les événements de fond gardent la couleur de repli.
+    if (this._agendaStatut === 3) {
+      try {
+        const cs = await this._osascriptAS(Ariane.genererASCouleursAgendas(), 20000);
+        this._agendaCouleurs = Ariane.parseCouleursAgendas(cs);
+      } catch (e) { /* couleurs indisponibles */ }
+    }
     return this._agendas;
+  }
+
+  _osascriptAS(script, ms) {
+    return new Promise((res) => {
+      require('child_process').execFile('osascript', ['-e', script],
+        { timeout: ms || 30000, maxBuffer: 1 << 20 },
+        (err, out) => res(err ? null : String(out == null ? '' : out)));
+    });
   }
 
   // Statut d'accès Calendriers : chaîne lisible pour un message.
@@ -12778,6 +12846,7 @@ class Ariane extends obsidian.Plugin {
     const cle = String(debutISO) + '|' + String(finISO);
     const c = this._fondCache;
     if (c && c.cle === cle && Date.now() - c.le < 60000) return c.data;
+    if (!this._agendaCouleurs) { try { await this.chargerAgendas(); } catch (e) { /* couleurs plus tard */ } }
     const cals = this._agendasAffiches();
     if (!cals.length) { this._fondCache = { cle, le: Date.now(), data: [] }; return []; }
     const connus = new Set();
@@ -12804,11 +12873,14 @@ class Ariane extends obsidian.Plugin {
       this._fondCache = { cle, le: Date.now(), data: [] };
       return [];
     }
+    const couleurs = this._agendaCouleurs || {};
     const data = (s == null ? [] : s.split('\n').filter(Boolean).map((l) => {
       const p = l.split('\t');
+      const cal = p[6] || '';
       return { id: p[0], titre: p[1] || '', debut: p[2] || '', fin: p[3] || '',
-               allDay: p[4] === '1', couleur: p[5] || '', calendrier: p[6] || '' };
+               allDay: p[4] === '1', couleur: couleurs[cal] || p[5] || '', calendrier: cal };
     })).filter((e) => e.id && e.debut && !aNous(e));
+    if (s == null) return [];              // échec dur : ne pas cacher, ne pas marquer l'accès OK
     this._agendaStatut = 3;
     this._fondCache = { cle, le: Date.now(), data };
     return data;
@@ -13107,6 +13179,7 @@ class Ariane extends obsidian.Plugin {
       for (let i = 0; i < t._crs.length; i += 1) liste.push(arr[i] || t._ids[i] || '');
       liens += liste.filter(Boolean).length;
       if (JSON.stringify(liste) !== JSON.stringify(t._ids)) {
+        if (t.fichier) this.marquerEcriture(t.fichier.path); // pas de push en écho
         await this.majTache(t.ref, { 'agenda-id': liste });
       }
       // agenda-sync n'est écrit QUE si tous les créneaux ont bien un événement
@@ -13198,10 +13271,15 @@ class Ariane extends obsidian.Plugin {
     const sortie = await this._osascriptJXA(
       Ariane.genererJXAEvenementsReleve(paires, this.settings.agendaFenetreJours || 120));
     if (avis) avis.hide();
-    if (sortie == null) return 0;
+    if (sortie == null) {
+      if (!silencieux) new obsidian.Notice(tr('Apple Agenda : la relève a échoué (voir la console).'), 8000);
+      return 0;
+    }
     if (sortie.startsWith('__ACCES__')) {
       this._agendaStatut = Number(sortie.split('\t')[1]);
-      this._avertirAccesAgenda();
+      if (silencieux) this._avertirAccesAgenda();
+      else new obsidian.Notice(tr('Apple Agenda : ') + this._libelleStatutAgenda(this._agendaStatut)
+        + '. ' + tr("Autorisez « Calendriers » pour Obsidian dans Réglages système → Confidentialité et sécurité."), 10000);
       return 0;
     }
     const parRef = new Map(avecId.map((t) => [t.ref, t]));

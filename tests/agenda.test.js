@@ -44,15 +44,33 @@ test('genererJXAEvenementsReleve : script valide, paires, MANQUANT', () => {
   assert.ok(!s.includes('NOUVEAU'));            // pas d'import d'événements inconnus
 });
 
-test('genererJXAEvenementsFond : predicate events, couleur, nom de calendrier quoté', () => {
+test('genererJXAEvenementsFond : predicate events, $(arr), nom de calendrier quoté', () => {
   const s = Ariane.genererJXAEvenementsFond(
     ['Doctorat - Agenda', 'Doctorat - Agenda', ''], '2026-09-01', '2026-09-30');
   new vm.Script(s);
   assert.ok(s.includes('predicateForEventsWithStartDateEndDateCalendars'));
   assert.ok(s.includes('eventsMatchingPredicate'));
-  assert.ok(s.includes('couleurCal'));
+  assert.ok(s.includes('$(arr)'));          // tableau ponté, pas null (SIGBUS)
+  assert.ok(!s.includes('couleurCal'));     // extraction couleur retirée (crash JXA)
   assert.ok(s.includes('"Doctorat - Agenda"'));
   assert.ok(!/"calendriers":\[[^\]]*,""/.test(s));  // vides filtrés
+  assert.ok(s.includes('__ACCES__'));
+});
+
+test('parseCouleursAgendas : « nom \\t r,g,b » 16 bits → #rrggbb', () => {
+  const t = 'Personnel\t64633,3275,17438\nSessions de lecture\t65535,49319,0\nMauvaise ligne\n';
+  const c = Ariane.parseCouleursAgendas(t);
+  assert.equal(c['Personnel'], '#fb0d44');
+  assert.equal(c['Sessions de lecture'], '#ffc000');
+  assert.equal('Mauvaise ligne' in c, false);
+  assert.deepEqual(Ariane.parseCouleursAgendas(''), {});
+});
+
+test('genererASCouleursAgendas : AppleScript (pas JXA), tell Calendar', () => {
+  const s = Ariane.genererASCouleursAgendas();
+  assert.ok(s.includes('tell application "Calendar"'));
+  assert.ok(s.includes('color of c'));
+  assert.ok(!s.includes('ObjC'));
 });
 
 test('genererJXAEvenementsFond : fenêtre absente → script valide quand même', () => {

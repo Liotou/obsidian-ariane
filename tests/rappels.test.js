@@ -64,7 +64,8 @@ test('_jxaEKEvenements : préambule Événements valide, helpers propres à EKEv
   const s = Ariane._jxaEKEvenements();
   new vm.Script(s);
   for (const fn of ['function acces(', 'function cals(', 'function calParNom(',
-                    'function evById(', 'function evId(', 'function fmtDate(', 'function couleurCal(',
+                    'function evById(', 'function evId(', 'function fmtDate(',
+                    'function statutAcces(', 'function isoDeDate(',
                     'function comps(', 'function isoDe(']) {
     assert.ok(s.includes(fn), 'helper manquant : ' + fn);
   }
@@ -72,7 +73,10 @@ test('_jxaEKEvenements : préambule Événements valide, helpers propres à EKEv
   assert.ok(s.includes('calendarsForEntityType(0)'));
   assert.ok(s.includes('EKEvent'));
   assert.ok(s.includes('defaultCalendarForNewEvents'));
+  assert.ok(s.includes('Number($.EKEventStore.authorizationStatusForEntityType'));
   assert.ok(!s.includes('EKReminder'));
+  assert.ok(!s.includes('couleurCal'));   // couleur relevée en AppleScript (SIGBUS en JXA)
+  assert.ok(!s.includes('AppKit'));
 });
 
 test('_jxaEKCommun : ni accès ni entité, juste les utilitaires partagés', () => {
