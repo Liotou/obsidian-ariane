@@ -911,6 +911,8 @@ const TEXTES = {
     "Ce rattachement fermerait un cycle (rattachements + blocages) : refusé.": "This parent link would close a cycle (links + blockers): refused.",
     "Ce rattachement fermerait un cycle : il n’a pas été appliqué.": "This parent link would close a cycle: it was not applied.",
     "Modification annulée : ce lien fermait un cycle (rattachements + blocages).": "Change reverted: that link closed a cycle (links + blockers).",
+    "Blocage dérivé : cette tâche est déjà bloquée par ": "Derived link: this task is already blocked by ",
+    " — les filles d’une mère bloquante bloquent avec elle.": " — a mother’s daughters block with it.",
     "Retirer le blocage par ": "Remove the blocking link from ",
     "Chercher un intitulé ou une référence…": "Search a title or a reference…",
     "Tous les statuts": "All statuses",
@@ -7098,6 +7100,31 @@ class Ariane extends obsidian.Plugin {
     return { ok: true };
   }
 
+  // Un lien bloquant est DÉRIVÉ quand un ancêtre du bloqueur proposé bloque
+  // déjà la même tâche : une mère bloquante bloque avec toutes ses filles, et
+  // la flèche explicite ne ferait que répéter l'héritage. Renvoie la référence
+  // de l'ancêtre bloqueur le plus proche, ou '' si le lien porte une
+  // information propre. `aretes` : arêtes de rattachement ({de, vers, type}),
+  // type 'hier' (de = parent) ou 'bloque' (de = bloqueur).
+  static blocageDerive(aretes, de, vers) {
+    if (!de || !vers) return '';
+    const parentDe = new Map();
+    const bloqueurs = new Set();
+    for (const e of aretes || []) {
+      if (!e || !e.de || !e.vers) continue;
+      if (e.type === 'hier') parentDe.set(e.vers, e.de);
+      else if (e.type === 'bloque' && e.vers === vers) bloqueurs.add(e.de);
+    }
+    let cur = parentDe.get(de);
+    const vus = new Set([de]);
+    while (cur && !vus.has(cur)) {
+      if (bloqueurs.has(cur)) return cur;
+      vus.add(cur);
+      cur = parentDe.get(cur);
+    }
+    return '';
+  }
+
   // Courbe de Bézier entre deux points : elle se suit mieux à l'œil que le coude
   // quand plusieurs liens se croisent. Partagée par la frise et l'articulation.
   static _cheminFleche(x1, y1, x2, y2) {
@@ -7105,6 +7132,223 @@ class Ariane extends obsidian.Plugin {
     return 'M ' + x1 + ' ' + y1
       + ' C ' + (x1 + ecart) + ' ' + y1 + ', ' + (x2 - ecart) + ' ' + y2
       + ', ' + x2 + ' ' + y2;
+  }
+
+  /* ---- Routage des flèches (batch 2, idée n° 8) ------------------------- */
+  // Une flèche ne doit jamais passer sur une carte : dans le SVG, les cartes
+  // sont peintes après les flèches, toute portion qui les chevauche disparaît
+  // derrière. Et le bord droit d'une carte est réservé aux sorties : on n'y
+  // entre jamais. Fonctions pures, éprouvées hors Obsidian ; voir
+  // docs/superpowers/specs/2026-09-01-routage-fleches-design.md.
+
+  // Un segment touche-t-il l'une des cartes, gonflées de `marge` ? Les
+  // segments obliques sont échantillonnés (les tracés de l'articulation sont
+  // sinon verticaux ou horizontaux). Les points posés sur le pourtour ne
+  // comptent pas : c'est là que vivent les ancrages.
+  static segmentFrappe(x1, y1, x2, y2, cartes, marge) {
+    const M = Number(marge) || 0;
+    const oblique = x1 !== x2 && y1 !== y2;
+    const N = 12;
+    for (const c of cartes || []) {
+      if (!c) continue;
+      const g = c.x - M, h = c.y - M;
+      const d = c.x + (c.w || 0) + M, b = c.y + (c.h || 0) + M;
+      if (oblique) {
+        for (let i = 0; i <= N; i++) {
+          const px = x1 + (x2 - x1) * i / N, py = y1 + (y2 - y1) * i / N;
+          if (px > g && px < d && py > h && py < b) return true;
+        }
+      } else if (x1 === x2) {
+        if (x1 > g && x1 < d
+          && Math.max(Math.min(y1, y2), h) < Math.min(Math.max(y1, y2), b)) return true;
+      } else if (y1 > h && y1 < b
+        && Math.max(Math.min(x1, x2), g) < Math.min(Math.max(x1, x2), d)) return true;
+    }
+    return false;
+  }
+
+  // Le tracé simple « courbe » passe-t-il sur une carte ? On échantillonne la
+  // même Bézier que le rendu (contrôles posés à mx, comme _cheminFleche).
+  static flecheEncombee(x1, y1, mx, x2, y2, cartes, marge) {
+    const M = Number(marge) || 0;
+    const N = 16;
+    for (const c of cartes || []) {
+      if (!c) continue;
+      const g = c.x - M, h = c.y - M;
+      const d = c.x + (c.w || 0) + M, b = c.y + (c.h || 0) + M;
+      for (let i = 0; i <= N; i++) {
+        const t = i / N, u = 1 - t;
+        const px = u * u * u * x1 + 3 * u * u * t * mx + 3 * u * t * t * mx + t * t * t * x2;
+        const py = u * u * u * y1 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y2;
+        if (px > g && px < d && py > h && py < b) return true;
+      }
+    }
+    return false;
+  }
+
+  // Polyligne à segments verticaux/horizontaux rendue en `d` SVG. Rayon 0 :
+  // angles vifs ; sinon coins arrondis, bornés à la demi-longueur des côtés.
+  // Les points alignés intermédiaires sont dédupliqués.
+  static cheminPolyligne(points, rayon) {
+    const P = [];
+    for (const p of points || []) {
+      if (p && (P.length === 0 || p.x !== P[P.length - 1].x || p.y !== P[P.length - 1].y)) P.push(p);
+    }
+    if (P.length < 2) return '';
+    const r = Math.max(0, Number(rayon) || 0);
+    let d = 'M ' + P[0].x + ' ' + P[0].y;
+    for (let i = 1; i < P.length - 1; i++) {
+      const a = P[i - 1], b = P[i], c = P[i + 1];
+      const rr = Math.min(r, Math.hypot(b.x - a.x, b.y - a.y) / 2, Math.hypot(c.x - b.x, c.y - b.y) / 2);
+      if (!rr) { d += ' L ' + b.x + ' ' + b.y; continue; }
+      const p1 = { x: b.x - Math.sign(b.x - a.x) * rr, y: b.y - Math.sign(b.y - a.y) * rr };
+      const p2 = { x: b.x + Math.sign(c.x - b.x) * rr, y: b.y + Math.sign(c.y - b.y) * rr };
+      d += ' L ' + p1.x + ' ' + p1.y + ' Q ' + b.x + ' ' + b.y + ' ' + p2.x + ' ' + p2.y;
+    }
+    const f = P[P.length - 1];
+    return d + ' L ' + f.x + ' ' + f.y;
+  }
+
+  // Routage : sortie au bord droit de la source, entrée par la gauche, le haut
+  // ou le bas de la cible — jamais par la droite. Gabarits essayés dans
+  // l'ordre ; le premier dont tous les segments sont libres gagne. Renvoie
+  // { points, cote, x2, y2 }, ou null si aucun chemin n'existe (l'appelant
+  // retombe alors sur le tracé simple).
+  //  sortie    : {x, y} — le point de sortie (bord droit de la source).
+  //  cible     : {x, y, w, h, ancreGauche} — rect de la carte + hauteur
+  //              d'ancre du bord gauche ; l'entrée verticale se fait au centre.
+  //  obstacles : les AUTRES cartes {x, y, w, h}.
+  //  opts      : {marge, ecart, source}.
+  static routeFlecheArticulation(sortie, cible, obstacles, opts) {
+    if (!sortie || !cible) return null;
+    const o = opts || {};
+    const M = Number.isFinite(o.marge) ? o.marge : 12;
+    const E = Number.isFinite(o.ecart) ? o.ecart : 22;
+    const x1 = sortie.x, y1 = sortie.y;
+    const yQ = Number.isFinite(cible.ancreGauche) ? cible.ancreGauche : cible.y + (cible.h || 0) / 2;
+    const cx = cible.x + (cible.w || 0) / 2;
+    const aDroite = cible.x >= x1 + 24;
+    const auDessus = cible.y + (cible.h || 0) / 2 < y1;
+    // La source et la cible entrent dans la validation sans marge : le test
+    // intérieur strict épargne les ancrages posés sur leurs bords.
+    const defence = [o.source, cible].filter(Boolean);
+    const libre = (pts) => {
+      for (let i = 1; i < pts.length; i++) {
+        if (Ariane.segmentFrappe(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, obstacles, M)) return false;
+        if (Ariane.segmentFrappe(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, defence, 0)) return false;
+      }
+      return true;
+    };
+    // Les cartes qui encombrent le passage repoussent le couloir horizontal :
+    // juste au-dessus de la plus haute, ou juste en dessous de la plus basse.
+    // La source y compte (contour à rebours) ; la cible non, ses plafonds
+    // d'entrée suffisent.
+    const passage = (a, b) => [o.source].concat(obstacles || []).filter((c) => c
+      && c.x + (c.w || 0) + M > Math.min(a, b) && c.x - M < Math.max(a, b));
+    const couloirHaut = (a, b, plafond) => {
+      let y = plafond;
+      for (const c of passage(a, b)) y = Math.min(y, c.y - M);
+      return y;
+    };
+    const couloirBas = (a, b, plancher) => {
+      let y = plancher;
+      for (const c of passage(a, b)) y = Math.max(y, c.y + (c.h || 0) + M);
+      return y;
+    };
+    const essais = [];
+    // Entrée par la gauche : direct dans l'entre-deux, sinon couloir au-dessus
+    // ou en dessous des cartes du passage, puis descente / montée d'approche.
+    const parGauche = () => {
+      const mx = Math.max(x1 + 16, (x1 + cible.x) / 2);
+      const direct = [{ x: x1, y: y1 }, { x: mx, y: y1 }, { x: mx, y: yQ }, { x: cible.x, y: yQ }];
+      if (libre(direct)) return direct;
+      for (const couloir of [
+        couloirHaut(x1 + E, cible.x - E, Math.min(y1, yQ)),
+        couloirBas(x1 + E, cible.x - E, Math.max(y1, yQ)),
+      ]) {
+        const pts = [{ x: x1, y: y1 }, { x: x1 + E, y: y1 }, { x: x1 + E, y: couloir },
+          { x: cible.x - E, y: couloir }, { x: cible.x - E, y: yQ }, { x: cible.x, y: yQ }];
+        if (libre(pts)) return pts;
+      }
+      return null;
+    };
+    const parHaut = () => {
+      const couloir = couloirHaut(x1 + E, cx, Math.min(y1, cible.y - M));
+      const pts = [{ x: x1, y: y1 }, { x: x1 + E, y: y1 }, { x: x1 + E, y: couloir },
+        { x: cx, y: couloir }, { x: cx, y: cible.y }];
+      return libre(pts) ? pts : null;
+    };
+    const parBas = () => {
+      const couloir = couloirBas(x1 + E, cx, Math.max(y1, cible.y + (cible.h || 0) + M));
+      const pts = [{ x: x1, y: y1 }, { x: x1 + E, y: y1 }, { x: x1 + E, y: couloir },
+        { x: cx, y: couloir }, { x: cx, y: cible.y + (cible.h || 0) }];
+      return libre(pts) ? pts : null;
+    };
+    essais.push(['gauche', parGauche]);
+    essais.push(auDessus ? ['bas', parBas] : ['haut', parHaut]);
+    essais.push(auDessus ? ['haut', parHaut] : ['bas', parBas]);
+    if (!aDroite) essais.push(['gauche', parGauche]);
+    for (const [cote, essai] of essais) {
+      const pts = essai();
+      if (pts) {
+        const f = pts[pts.length - 1];
+        return { points: pts, cote, x2: f.x, y2: f.y };
+      }
+    }
+    return null;
+  }
+
+  // Décision complète pour une arête : le tracé simple dès qu'il est libre et
+  // qu'il entre à gauche, le routage qui contourne les cartes sinon, le tracé
+  // historique en dernier recours (peut passer derrière une carte). Renvoie
+  // { d, x2, y2, cote, detour, labX, labY }. `o` : { x1, y1,
+  // source:{x,y,w,h}, cible:{x,y,w,h,ancreGauche}, obstacles, mode, marge,
+  // ecart }.
+  static traceFlecheArticulation(o) {
+    const c = o || {};
+    const mode = c.mode === 'angulaire' ? 'angulaire' : 'courbe';
+    const T = c.cible || {};
+    const x1 = c.x1, y1 = c.y1;
+    const yQ = Number.isFinite(T.ancreGauche) ? T.ancreGauche : T.y;
+    const aDroite = T.x >= x1 + 24;
+    const milieux = (x2, y2) => ({ labX: (x1 + x2) / 2, labY: (y1 + y2) / 2 - 4 });
+    // Le tracé d'origine, dès qu'il est libre : aucun changement visible dans
+    // les cas qui marchaient déjà.
+    if (aDroite) {
+      const mx = Math.max(x1 + 16, (x1 + T.x) / 2);
+      const pris = mode === 'angulaire'
+        ? Ariane.segmentFrappe(x1, y1, mx, y1, c.obstacles, c.marge)
+          || Ariane.segmentFrappe(mx, y1, mx, yQ, c.obstacles, c.marge)
+          || Ariane.segmentFrappe(mx, yQ, T.x, yQ, c.obstacles, c.marge)
+        : Ariane.flecheEncombee(x1, y1, mx, T.x, yQ, c.obstacles, c.marge);
+      if (!pris) {
+        const d = mode === 'angulaire'
+          ? 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + yQ + ' H ' + T.x
+          : Ariane._cheminFleche(x1, y1, T.x, yQ);
+        return Object.assign({ d, x2: T.x, y2: yQ, cote: 'gauche', detour: false }, milieux(T.x, yQ));
+      }
+    }
+    // Routage : contourner les cartes.
+    const route = Ariane.routeFlecheArticulation({ x: x1, y: y1 }, T, c.obstacles,
+      { marge: c.marge, ecart: c.ecart, source: c.source });
+    if (route) {
+      const d = Ariane.cheminPolyligne(route.points, mode === 'angulaire' ? 0 : 12);
+      let meilleur = null, long = -1;
+      for (let i = 1; i < route.points.length; i++) {
+        const p = route.points[i - 1], q = route.points[i];
+        const l = Math.abs(q.x - p.x) + Math.abs(q.y - p.y);
+        if (l > long) { long = l; meilleur = { labX: (p.x + q.x) / 2, labY: (p.y + q.y) / 2 - 4 }; }
+      }
+      return Object.assign({ d, x2: route.x2, y2: route.y2, cote: route.cote, detour: true }, meilleur);
+    }
+    // Aucun chemin : le tracé historique, entrée à droite comprise.
+    const x2 = aDroite ? T.x : T.x + (T.w || 0);
+    const mx = aDroite ? Math.max(x1 + 16, (x1 + T.x) / 2) : Math.max(x1, x2) + 26;
+    const d = mode === 'angulaire'
+      ? 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + yQ + ' H ' + x2
+      : 'M ' + x1 + ' ' + y1 + ' C ' + mx + ' ' + y1 + ', ' + mx + ' ' + yQ + ', ' + x2 + ' ' + yQ;
+    return Object.assign({ d, x2, y2: yQ, cote: aDroite ? 'gauche' : 'droite', detour: false },
+      milieux(x2, yQ));
   }
 
   //#endregion Ariane · static · articulation
@@ -14032,6 +14276,12 @@ class Ariane extends obsidian.Plugin {
       new obsidian.Notice(tr('Ce lien fermerait un cycle (rattachements + blocages) : refusé.'));
       return false;
     }
+    const derive = Ariane.blocageDerive(this._aretesRattachement(), deRef, versRef);
+    if (derive) {
+      new obsidian.Notice(tr('Blocage dérivé : cette tâche est déjà bloquée par ')
+        + derive + tr(' — les filles d’une mère bloquante bloquent avec elle.'));
+      return false;
+    }
     await this.app.fileManager.processFrontMatter(f, (x) => {
       x[kBP] = deja.concat(['[[' + deRef + ']]']);
       x.modifie = new Date().toISOString().slice(0, 10);
@@ -20776,10 +21026,10 @@ class MoteurArticulation {
     return Ariane._cheminFleche(x1, y1, x2, y2);
   }
 
-  // Géométrie complète d'une arête : points d'accroche et tracé. Le bord
-  // d'entrée sur la cible est choisi pour que le trait CONTOURNE la carte
-  // plutôt que de passer derrière (bug visible quand la cible est à gauche
-  // ou à l'aplomb de la source).
+  // Géométrie complète d'une arête : points d'accroche et tracé. La décision
+  // est pure (Ariane.traceFlecheArticulation) : tracé simple s'il est libre,
+  // sinon contournement des cartes — le bord droit de la cible n'est plus
+  // jamais une entrée, réservé aux sorties (batch 2, idée n° 8).
   _traceArete(deRef, versRef, type) {
     const s = this._pt(deRef);
     const t = this._pt(versRef);
@@ -20787,21 +21037,34 @@ class MoteurArticulation {
     const ht = ((this._noeudsParRef && this._noeudsParRef.get(versRef)) || {}).h || ARTIC_H;
     const x1 = s.x + ARTIC_W;
     const y1 = s.y + ancreY(hs, type);
-    const y2 = t.y + ancreY(ht, type);
-    const entreeGauche = x1 <= t.x - 24;
-    const x2 = entreeGauche ? t.x : t.x + ARTIC_W;
-    return { x1, y1, x2, y2, d: this._chemin(x1, y1, x2, y2, entreeGauche) };
+    const obstacles = [];
+    for (const n of (this._noeudsParRef ? this._noeudsParRef.values() : [])) {
+      if (!n || n.ref === deRef || n.ref === versRef) continue;
+      const p = this._pt(n.ref);
+      obstacles.push({ x: p.x, y: p.y, w: ARTIC_W, h: n.h || ARTIC_H });
+    }
+    const r = Ariane.traceFlecheArticulation({
+      x1,
+      y1,
+      source: { x: s.x, y: s.y, w: ARTIC_W, h: hs },
+      cible: { x: t.x, y: t.y, w: ARTIC_W, h: ht, ancreGauche: t.y + ancreY(ht, type) },
+      obstacles,
+      mode: (this.greffon.settings.articulationFleches || 'courbe') === 'angulaire' ? 'angulaire' : 'courbe',
+      marge: 12,
+      ecart: 22,
+    });
+    return { x1, y1, x2: r.x2, y2: r.y2, d: r.d, labX: r.labX, labY: r.labY };
   }
 
   dessinerArete(g, a) {
-    const { x1, y1, x2, y2, d } = this._traceArete(a.de, a.vers, a.type);
+    const { x1, y1, x2, y2, d, labX, labY } = this._traceArete(a.de, a.vers, a.type);
     const gr = svgEl('g', { class: 'zfa-artic-arete-groupe' });
     gr.dataset.de = a.de; gr.dataset.vers = a.vers; gr.dataset.type = a.type;
     gr.appendChild(svgEl('path', { d, class: 'zfa-artic-arete-cible' }));
     gr.appendChild(svgEl('path', { d, class: 'zfa-artic-arete zfa-artic-' + a.type,
       'marker-end': 'url(#zfa-artic-pointe-' + a.type + ')' }));
     if (a.libelle) {
-      const lab = svgEl('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 4, class: 'zfa-artic-arete-lab' });
+      const lab = svgEl('text', { x: labX, y: labY, class: 'zfa-artic-arete-lab' });
       lab.textContent = a.libelle;
       gr.appendChild(lab);
     }
