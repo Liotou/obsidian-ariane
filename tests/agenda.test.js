@@ -14,7 +14,7 @@ test('genererJXAEvenementsPush : script valide, save/remove, données embarquée
   ]);
   new vm.Script(s);
   assert.ok(s.includes('T26-001'));
-  assert.ok(s.includes('e.url='));                 // lien dans le champ URL de l'événement
+  assert.ok(s.includes('e.URL='));                 // lien dans le champ URL de l'événement (casse ObjC exacte)
   assert.ok(s.includes('NSURL.URLWithString'));
   assert.ok(s.includes('__ACCES__'));              // court-circuit si accès refusé
   assert.ok(s.includes('eventsMatchingPredicate')); // anti-doublon par titre/fenêtre

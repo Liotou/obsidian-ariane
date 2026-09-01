@@ -4289,19 +4289,14 @@ class Ariane extends obsidian.Plugin {
       }
     });
 
-    // Apple Agenda : même mécanique que Rappels (push antirebondi à la
-    // sauvegarde, relève sur minuterie). Inerte hors macOS, si coupé, ou si
-    // l'accès Calendriers a été refusé. Antirebond plus long (osascript lent) ;
-    // la relève passe son tour si un push est en attente ou en cours.
+    // Apple Agenda : push antirebondi quand une note de tâche change de
+    // l'extérieur (édition manuelle du frontmatter). Les gestes de la vue
+    // calendrier passent par majCreneau → _relancerPushAgenda directement, car
+    // marquerEcriture fait taire cette écoute.
     this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
-      if (!this.settings.agendaActif || this.settings.agendaAuto === false) return;
-      if (this._agendaStatut === 2 || this._agendaStatut === 1) return;
       if (!this.refDeChemin(fichier.path)) return;
       if (this.ecritePlugin(fichier.path)) return;
-      this._agendaPushEnAttente = true;
-      this.antirebond('agenda:push', async () => {
-        try { await this.pousserAgenda(true); } finally { this._agendaPushEnAttente = false; }
-      }, 4000);
+      this._relancerPushAgenda(2500);
     }));
     this.app.workspace.onLayoutReady(() => {
       if (obsidian.Platform.isMacOS && this.settings.agendaActif && this.settings.agendaAuto !== false) {
@@ -6629,14 +6624,14 @@ class Ariane extends obsidian.Plugin {
       '      var vu="";',
       '      if(ex){ for(var q=0;q<ex.count;q++){ var ee=ex.objectAtIndex(q);',
       '        if(String(ObjC.unwrap(ee.title))===String(v.titre)){ e=ee; break; }',
-      '        try{ vu=String(ObjC.unwrap(ee.URL)); }catch(eu){ vu=""; }',
+      '        try{ vu=String(ObjC.unwrap(ee.URL.absoluteString)||""); }catch(eu){ vu=""; }',
       '        if(v.lien && vu && vu===String(v.lien)){ e=ee; break; } } }',
       '    }catch(eDup){} }',
       '    if(e){ try{ if(ObjC.unwrap(e.calendar.calendarIdentifier)!==ObjC.unwrap(cal.calendarIdentifier)) e.calendar=cal; }catch(er2){} }',
       '    else { e=$.EKEvent.eventWithEventStore(ST); e.calendar=cal; }',
       '    try{ e.title=v.titre; }catch(er3){}',
       '    try{ e.notes=v.notes||""; }catch(er4){}',
-      '    try{ if(v.lien){ var u=$.NSURL.URLWithString(v.lien); if(u) e.url=u; } }catch(erU){}',
+      '    try{ if(v.lien){ var u=$.NSURL.URLWithString(v.lien); if(u) e.URL=u; } }catch(erU){}',
       '    try{ e.isAllDay=false; }catch(er5){}',
       '    var sd=fmtDate(comps(String(v.debut).slice(0,10),String(v.debut).slice(11,16)));',
       '    var ed=fmtDate(comps(String(v.fin).slice(0,10),String(v.fin).slice(11,16)));',
@@ -6724,7 +6719,7 @@ class Ariane extends obsidian.Plugin {
       '  var evs=ST.eventsMatchingPredicate(pred); var out=[]; var vus=[];',
       '  if(evs){ for(var k=0;k<evs.count;k++){',
       '    var e=evs.objectAtIndex(k); var id=evId(e); if(!id || IN.ids[id]) continue;',
-      '    var url=""; try{ url=String(ObjC.unwrap(e.URL)||""); }catch(eu){}',
+      '    var url=""; try{ url=String(ObjC.unwrap(e.URL.absoluteString)||""); }catch(eu){}',
       '    var ti=""; try{ ti=String(ObjC.unwrap(e.title)||""); }catch(et){}',
       '    var aNous=(url.indexOf("obsidian://")===0);',
       '    if(!aNous){ var m=ti.match(/\\[([^\\]]+)\\]/); if(m && refset[String(m[1]).trim()]) aNous=true; }',
@@ -13148,6 +13143,17 @@ class Ariane extends obsidian.Plugin {
       && this._agendaStatut !== 2 && this._agendaStatut !== 1;
   }
 
+  // Programme un push automatique (créneau modifié depuis la vue calendrier,
+  // note de tâche sauvegardée…). Antirebondi ; le verrou de pousserAgenda gère
+  // les recouvrements.
+  _relancerPushAgenda(delai) {
+    if (!this._agendaAutoActif()) return;
+    this._agendaPushEnAttente = true;
+    this.antirebond('agenda:push', async () => {
+      try { await this.pousserAgenda(true); } finally { this._agendaPushEnAttente = false; }
+    }, delai || 2000);
+  }
+
   // Programme une relève automatique (retour de focus, ouverture de la vue…),
   // antirebondie et espacée d'au moins 15 s des précédentes.
   _relancerReleveAgenda(delai) {
@@ -13297,6 +13303,8 @@ class Ariane extends obsidian.Plugin {
       n += 1;
     }
     this._rafraichirFond();
+    console.info('[Ariane] Apple Agenda — push ' + (silencieux ? 'auto' : 'manuel')
+      + ' : ' + liens + ' lien(s), ' + erreurs.length + ' échec(s).');
     if (!silencieux) {
       new obsidian.Notice(liens + tr(' événement(s) liés dans Apple Agenda')
         + (erreurs.length ? tr(', ') + erreurs.length + tr(' échec(s) — voir la console') : '') + '.', 8000);
@@ -14263,6 +14271,10 @@ class Ariane extends obsidian.Plugin {
       x.modifie = new Date().toISOString().slice(0, 10);
     });
     await this.majBlocCreneaux(f);
+    // marquerEcriture ci-dessus fait taire l'écoute metadataCache.changed → il
+    // faut relancer le push explicitement pour que les gestes de la vue
+    // calendrier (glisser / redimensionner / créer un créneau) se synchronisent.
+    if (this._relancerPushAgenda) this._relancerPushAgenda(1500);
     return true;
   }
 
