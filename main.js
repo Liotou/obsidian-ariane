@@ -17529,6 +17529,11 @@ class MoteurFrise {
       : (this._aScrolle && memXsain) ? memeX
         : xMem != null ? xMem
           : Math.max(0, Ariane.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220);
+    console.info('[Ariane frise] redraw', {
+      anciennePosee, memeX, aScrolle: !!this._aScrolle,
+      posLire: this.ctx.posLire && this.ctx.posLire(), jourMem, xMem, memXsain,
+      jourAncre, cibleX,
+    });
     const vue = this._doc().defaultView || window;
     const calerX = (essais) => {
       this._scrollProg = true;
@@ -17541,6 +17546,8 @@ class MoteurFrise {
       if (cibleX > 0 && !posee && essais > 0) {
         vue.requestAnimationFrame(() => calerX(essais - 1));
       } else {
+        console.info('[Ariane frise] calerX fini', { essais, cibleX, obtenu: droite.scrollLeft,
+          clientWidth: droite.clientWidth, scrollWidth: droite.scrollWidth });
         vue.requestAnimationFrame(() => { this._scrollProg = false; });
       }
     };
