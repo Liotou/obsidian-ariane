@@ -2097,21 +2097,31 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   display: inline-flex; align-items: center; justify-content: center; }
 .zfa-cal-sem-jour.est-selection { box-shadow: inset 0 -2px 0 0 var(--interactive-accent); }
 
-.zfa-cal-bandeau { display: flex; flex: none; max-height: 22vh;
+.zfa-cal-bandeau { display: flex; flex: none; max-height: 18vh; overflow: hidden;
   border-bottom: 1px solid var(--background-modifier-border); }
 .zfa-cal-bandeau.est-vide { display: none; }
 .zfa-cal-bandeau.est-replie { min-height: 0; }
 .zfa-cal-bandeau-chevron { padding: 0 2px; box-shadow: none; background: transparent; }
 .zfa-cal-bandeau-compte { font-size: var(--font-ui-smaller); color: var(--text-muted); }
-.zfa-cal-bandeau-jour { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 2px;
+.zfa-cal-bandeau-jour { flex: none; display: flex; flex-direction: column; gap: 1px; padding: 2px;
   min-width: 0; border-left: 1px solid var(--background-modifier-border); }
-.zfa-cal-bandeau-plus { font-size: var(--font-ui-smaller); color: var(--text-muted); cursor: pointer; }
+.zfa-cal-bandeau-plus { font-size: var(--font-ui-smaller); color: var(--text-muted);
+  cursor: pointer; padding-left: 3px; }
+.zfa-cal-bjalon { display: flex; align-items: center; gap: 4px; padding: 1px 4px;
+  font-size: var(--font-ui-smaller); color: var(--text-normal); cursor: pointer;
+  white-space: nowrap; overflow: hidden; }
+.zfa-cal-bjalon-ic { display: inline-flex; color: var(--zfa-cal-coul, var(--text-faint)); }
+.zfa-cal-bjalon-ic .svg-icon { width: 11px; height: 11px; }
+.zfa-cal-bjalon-t { overflow: hidden; text-overflow: ellipsis; }
+.zfa-cal-bjalon.est-retard .zfa-cal-bjalon-ic { color: var(--text-error); }
 
-.zfa-cal-sem-corps { flex: 1 1 auto; min-height: 0; overflow: auto; position: relative;
+.zfa-cal-sem-bas { flex: 1 1 auto; min-height: 0; display: flex; }
+.zfa-cal-sem-axe { flex: 0 0 52px; position: relative; overflow: hidden;
+  background: var(--background-primary); }
+.zfa-cal-sem-axe-inner { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
+.zfa-cal-sem-corps { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; position: relative;
   scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
 .zfa-cal-sem-inner { position: relative; }
-.zfa-cal-axe { position: absolute; left: 0; top: 0; z-index: 3; will-change: transform;
-  background: var(--background-primary); }
 .zfa-cal-axe-heure { position: absolute; right: 4px; font-size: 10px; color: var(--text-faint);
   transform: translateY(-50%); }
 .zfa-cal-col { position: absolute; top: 0; bottom: 0; scroll-snap-align: start;
@@ -2120,7 +2130,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-sem-jour.est-aujourdhui {
   background: color-mix(in srgb, var(--interactive-accent) 6%, transparent); }
 .zfa-cal-col.est-selection { background: color-mix(in srgb, var(--interactive-accent) 10%, transparent); }
-.zfa-cal-trait { position: absolute; right: 0; height: 0;
+.zfa-cal-trait { position: absolute; left: 0; right: 0; height: 0;
   border-top: 1px solid var(--background-modifier-border); opacity: 0.6; }
 .zfa-cal-now { position: absolute; left: 0; right: 0; height: 0;
   border-top: 2px solid var(--color-red); z-index: 2; pointer-events: none; }
@@ -2149,12 +2159,19 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   overflow-wrap: anywhere;
   cursor: pointer;
 }
-.zfa-cal-carte-l1 { display: flex; align-items: flex-start; gap: 4px; }
+.zfa-cal-carte-l1 { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
 .zfa-cal-carte-coche { flex: none; width: 14px; height: 14px; margin: 1px 0 0; cursor: pointer; }
 .zfa-cal-carte-titre { flex: 1 1 auto; min-width: 0; font-weight: var(--font-medium);
   color: var(--text-normal); white-space: normal; overflow-wrap: anywhere; }
 .zfa-cal-carte-heure { color: var(--text-muted); font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums; }
+/* Variante compacte : une seule ligne, pour le bandeau « tout le jour ». */
+.zfa-cal-carte.est-compacte { flex-direction: row; align-items: center; gap: 4px;
+  padding: 1px 5px; border-radius: var(--radius-s); }
+.zfa-cal-carte.est-compacte .zfa-cal-carte-l1 { flex: 1 1 auto; align-items: center; }
+.zfa-cal-carte.est-compacte .zfa-cal-carte-titre { white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; font-weight: var(--font-normal); }
+.zfa-cal-carte.est-compacte .zfa-cal-carte-coche { width: 13px; height: 13px; margin: 0; }
 .zfa-cal-carte.est-terminee { color: var(--text-faint); }
 .zfa-cal-carte.est-terminee .zfa-cal-carte-titre { text-decoration: line-through;
   color: var(--text-faint); font-weight: var(--font-normal); }

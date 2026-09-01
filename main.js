@@ -20617,6 +20617,7 @@ class MoteurCalendrier {
     const o = opts || {};
     const carte = hote.createDiv({ cls: 'zfa-cal-carte'
       + (ev.allDay ? ' est-jour' : ' est-horaire')
+      + (o.compact ? ' est-compacte' : '')
       + (o.enRetard ? ' est-retard' : '') });
     carte.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
     carte.dataset.ref = t.ref;
@@ -20637,8 +20638,9 @@ class MoteurCalendrier {
         this.dessiner();
       });
     }
-    const heureAPart = o.avecHeure && !ev.allDay && ev.fin && (o.maxLignes || 1) >= 2;
-    const prefixe = (o.avecHeure && !ev.allDay && !heureAPart) ? ev.debut.slice(11, 16) + '  ' : '';
+    const heureAPart = !o.compact && o.avecHeure && !ev.allDay && ev.fin && (o.maxLignes || 1) >= 2;
+    const prefixe = (!o.compact && o.avecHeure && !ev.allDay && !heureAPart)
+      ? ev.debut.slice(11, 16) + '  ' : '';
     l1.createSpan({ cls: 'zfa-cal-carte-titre', text: prefixe + (t.intitule || t.ref) });
     if (heureAPart) {
       carte.createDiv({ cls: 'zfa-cal-carte-heure',
@@ -20646,12 +20648,14 @@ class MoteurCalendrier {
     }
 
     const paires = this._pairesProps(t.ref);
-    const lignes = Ariane.lignesProprietes(
-      paires, t.intitule, Math.max(0, (o.maxLignes || 1) - 1));
-    for (const li of lignes) {
-      const row = carte.createDiv({ cls: 'zfa-cal-carte-prop' });
-      row.createSpan({ cls: 'zfa-cal-carte-prop-nom', text: li.nom + ' ' });
-      row.createSpan({ cls: 'zfa-cal-carte-prop-val', text: li.valeur });
+    if (!o.compact) {
+      const lignes = Ariane.lignesProprietes(
+        paires, t.intitule, Math.max(0, (o.maxLignes || 1) - 1));
+      for (const li of lignes) {
+        const row = carte.createDiv({ cls: 'zfa-cal-carte-prop' });
+        row.createSpan({ cls: 'zfa-cal-carte-prop-nom', text: li.nom + ' ' });
+        row.createSpan({ cls: 'zfa-cal-carte-prop-val', text: li.valeur });
+      }
     }
 
     // title= = toutes les propriétés, même quand la carte n'en montre qu'une.
@@ -21062,22 +21066,27 @@ class MoteurCalendrier {
     const jourNom = (j) => tr(['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'][
       (new Date(j + 'T12:00:00').getDay() + 6) % 7]).toLowerCase() + '.';
 
+    // Créneaux → blocs horaires. Bandeau « tout le jour » : SEULEMENT les jalons
+    // et les tâches d'une seule journée (pas de début, ou début == échéance).
+    // Les plages multi-jours ne s'affichent pas ici pour l'instant.
     const horaire = new Map(jours.map((j) => [j, []]));
     const toutJour = new Map(jours.map((j) => [j, []]));
     for (const t of this._taches) {
-      for (const ev of Ariane.evenementsDeTache(t)) {
-        if (ev.allDay) {
-          let j = ev.debut.slice(0, 10);
-          const stop = ev.fin.slice(0, 10);
-          let garde = 0;
-          while (j < stop && garde < 40) {
-            if (toutJour.has(j)) toutJour.get(j).push({ t, ev });
-            j = Ariane.decalerJour(j, 1); garde += 1;
-          }
-        } else {
-          const j = ev.debut.slice(0, 10);
-          if (horaire.has(j)) horaire.get(j).push({ t, ev });
+      const crs = Ariane.creneauxDeTache(t);
+      if (crs.length) {
+        for (const c of crs) {
+          const j = c.debut.slice(0, 10);
+          if (horaire.has(j)) horaire.get(j).push({ t, ev: { source: 'creneau',
+            debut: c.debut, fin: c.fin, allDay: false, brut: c.brut } });
         }
+        continue;
+      }
+      const ech = Ariane.jourValide(t.echeance);
+      if (!ech || !toutJour.has(ech)) continue;
+      const deb = Ariane.jourValide(t.debut);
+      if (t.jalon || !deb || deb === ech) {
+        toutJour.get(ech).push({ t, ev: { source: 'dates', debut: ech,
+          fin: Ariane.decalerJour(ech, 1), allDay: true, jalon: !!t.jalon } });
       }
     }
 
@@ -21112,7 +21121,7 @@ class MoteurCalendrier {
     const bDefil = bandeau.createDiv({ cls: 'zfa-cal-sem-defil' });
     const bPiste = bDefil.createDiv({ cls: 'zfa-cal-sem-piste' });
     bPiste.style.width = (jours.length * colW) + 'px';
-    const PLAFOND = 2;
+    const PLAFOND = 3;
     for (const j of jours) {
       const col = bPiste.createDiv({ cls: 'zfa-cal-bandeau-jour'
         + (j === auj ? ' est-aujourdhui' : '') });
@@ -21120,7 +21129,7 @@ class MoteurCalendrier {
       col.style.width = colW + 'px';
       if (this._jourSel === j) col.addClass('est-selection');
       col.addEventListener('click', (e) => {
-        if (e.target.closest('.zfa-cal-carte')) return;
+        if (e.target.closest('.zfa-cal-carte, .zfa-cal-bjalon')) return;
         this._jourSel = (this._jourSel === j) ? '' : j; this.dessiner();
       });
       col.addEventListener('dragover', (de) => { de.preventDefault(); col.addClass('zfa-cal-cible'); });
@@ -21132,11 +21141,22 @@ class MoteurCalendrier {
       const liste = toutJour.get(j).slice().sort(Ariane.comparerEmpilement);
       let deplie = false;
       const rendre = () => {
-        col.findAll('.zfa-cal-carte, .zfa-cal-bandeau-plus').forEach((n) => n.remove());
+        col.findAll('.zfa-cal-carte, .zfa-cal-bjalon, .zfa-cal-bandeau-plus').forEach((n) => n.remove());
         const { montres, reste } = deplie
           ? { montres: liste, reste: 0 } : Ariane.replierListe(liste, PLAFOND);
         for (const { t, ev } of montres) {
-          this.rendreCarte(col, t, ev, { maxLignes: 1, avecHeure: false, avecCoche: true });
+          if (ev.jalon) {
+            const jp = col.createDiv({ cls: 'zfa-cal-bjalon'
+              + (enRetard.has(t.ref) ? ' est-retard' : '') });
+            jp.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
+            const ic = jp.createSpan({ cls: 'zfa-cal-bjalon-ic' });
+            obsidian.setIcon(ic, 'diamond');
+            jp.createSpan({ cls: 'zfa-cal-bjalon-t', text: t.intitule || t.ref });
+            jp.title = t.ref + ' · ' + (t.intitule || '');
+            this._brancherOuvertureCarte(jp, t, ev);
+          } else {
+            this.rendreCarte(col, t, ev, { compact: true, avecCoche: true });
+          }
         }
         if (reste) {
           const plus = col.createDiv({ cls: 'zfa-cal-bandeau-plus', text: '+' + reste });
@@ -21146,29 +21166,29 @@ class MoteurCalendrier {
       rendre();
     }
 
-    // --- Corps : grille des heures (défilement X + Y) ---
+    // --- Bas : axe des heures (fixe) + grille des jours (défilement X + Y) ---
     const hauteurInner = (hFin - hDeb) * PXH;
-    const corps = hote.createDiv({ cls: 'zfa-cal-sem-corps' });
+    const bas = hote.createDiv({ cls: 'zfa-cal-sem-bas' });
+    const axe = bas.createDiv({ cls: 'zfa-cal-sem-axe' });
+    const axeInner = axe.createDiv({ cls: 'zfa-cal-sem-axe-inner' });
+    axeInner.style.height = hauteurInner + 'px';
+    for (let h = Math.ceil(hDeb) + 1; h < hFin; h += 1) {
+      const l = axeInner.createDiv({ cls: 'zfa-cal-axe-heure', text: h + ' h' });
+      l.style.top = ((h - hDeb) * PXH) + 'px';
+    }
+    const corps = bas.createDiv({ cls: 'zfa-cal-sem-corps' });
     const inner = corps.createDiv({ cls: 'zfa-cal-sem-inner' });
-    inner.style.width = (AXE + jours.length * colW) + 'px';
+    inner.style.width = (jours.length * colW) + 'px';
     inner.style.height = hauteurInner + 'px';
-    for (let h = Math.ceil(hDeb); h < hFin; h += 1) {
+    for (let h = Math.ceil(hDeb) + 1; h < hFin; h += 1) {
       const tr2 = inner.createDiv({ cls: 'zfa-cal-trait' });
       tr2.style.top = ((h - hDeb) * PXH) + 'px';
-      tr2.style.left = AXE + 'px';
-    }
-    const axe = inner.createDiv({ cls: 'zfa-cal-axe' });
-    axe.style.width = AXE + 'px';
-    axe.style.height = hauteurInner + 'px';
-    for (let h = Math.ceil(hDeb); h < hFin; h += 1) {
-      const l = axe.createDiv({ cls: 'zfa-cal-axe-heure', text: h + ' h' });
-      l.style.top = ((h - hDeb) * PXH) + 'px';
     }
     jours.forEach((j, di) => {
       const col = inner.createDiv({ cls: 'zfa-cal-col'
         + (j === auj ? ' est-aujourdhui' : '') + (this._jourSel === j ? ' est-selection' : '') });
       col.dataset.jour = j;
-      col.style.left = (AXE + di * colW) + 'px';
+      col.style.left = (di * colW) + 'px';
       col.style.width = colW + 'px';
       col.addEventListener('dragover', (de) => { de.preventDefault(); col.addClass('zfa-cal-cible'); });
       col.addEventListener('dragleave', () => col.removeClass('zfa-cal-cible'));
@@ -21235,10 +21255,9 @@ class MoteurCalendrier {
     // recale l'ancre (reconstruction hors écran, invisible) qu'en approchant
     // vraiment du bord — ce qui n'arrive quasiment jamais en usage normal.
     const sync = () => {
-      const sl = corps.scrollLeft;
-      tetePiste.style.transform = 'translateX(' + (-sl) + 'px)';
-      bPiste.style.transform = 'translateX(' + (-sl) + 'px)';
-      axe.style.transform = 'translateX(' + sl + 'px)';
+      tetePiste.style.transform = 'translateX(' + (-corps.scrollLeft) + 'px)';
+      bPiste.style.transform = 'translateX(' + (-corps.scrollLeft) + 'px)';
+      axeInner.style.transform = 'translateY(' + (-corps.scrollTop) + 'px)';
     };
     corps.addEventListener('scroll', () => {
       sync();
@@ -21264,14 +21283,15 @@ class MoteurCalendrier {
   _recalerSemaine(hote, shift) {
     if (this._detruit || !hote.isConnected || !hote.parentElement) return;
     this._ancre = Ariane.decalerJour(this._ancre, shift);
+    const r = hote.getBoundingClientRect();
     const nv = document.createElement('div');
     nv.className = 'zfa-cal-grille zfa-cal-semaine';
-    nv.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;'
-      + 'width:' + hote.getBoundingClientRect().width + 'px';
-    hote.parentElement.insertBefore(nv, hote);
+    nv.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;'
+      + 'width:' + r.width + 'px;height:' + r.height + 'px;';
+    hote.parentElement.appendChild(nv);
     this.dessinerSemaine(nv);
-    hote.remove();
     nv.style.cssText = '';
+    hote.replaceWith(nv);
   }
 }
 
