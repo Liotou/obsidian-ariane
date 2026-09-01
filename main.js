@@ -1007,6 +1007,21 @@ const TEXTES = {
     "Tâches : relever les rappels (terminés, échéances)": "Tasks: pull reminders (done, due dates)",
     "Tâches : synchroniser vers Apple Agenda": "Tasks: sync to Apple Calendar",
     "Tâches : relever Apple Agenda": "Tasks: pull Apple Calendar",
+    "Tâches : diagnostiquer Apple Agenda": "Tasks: diagnose Apple Calendar",
+    "Apple Agenda : ": "Apple Calendar: ",
+    "Autorisez « Calendriers » pour Obsidian dans Réglages système → Confidentialité et sécurité.": "Allow “Calendars” for Obsidian in System Settings → Privacy & Security.",
+    "Diagnostic Apple Agenda…": "Apple Calendar diagnostic…",
+    "Diagnostic : osascript n'a rien renvoyé (voir la console).": "Diagnostic: osascript returned nothing (see the console).",
+    "Accès Calendriers : ": "Calendars access: ",
+    " (demandé à l'instant)": " (just requested)",
+    "Calendriers vus : ": "Calendars seen: ",
+    "Calendrier par défaut : ": "Default calendar: ",
+    "Calendriers surveillés (synchro) : ": "Watched calendars (sync): ",
+    "Calendriers cochés (affichage) : ": "Ticked calendars (display): ",
+    "Tâches éligibles au push : ": "Tasks eligible for push: ",
+    "Intégration activée : ": "Integration enabled: ",
+    "oui": "yes",
+    "non": "no",
 
     "Apple Agenda": "Apple Calendar",
     "macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchronisation bidirectionnelle : déplacer ou redimensionner l'événement dans Calendar réécrit le créneau, le supprimer retire le créneau. Les événements des calendriers surveillés s'affichent en fond dans la vue calendrier.": "macOS. Every task slot becomes an event in its family's calendar. Two-way sync: moving or resizing the event in Calendar rewrites the slot, deleting it removes the slot. Events from watched calendars show as background in the calendar view.",
@@ -3578,6 +3593,11 @@ class Ariane extends obsidian.Plugin {
       callback: () => this.releverAgenda(false),
     });
     this.addCommand({
+      id: 'agenda-diagnostic',
+      name: tr('Tâches : diagnostiquer Apple Agenda'),
+      callback: () => this.diagnostiquerAgenda(),
+    });
+    this.addCommand({
       id: 'modifier-tache',
       name: tr('Tâches : modifier une tâche…'),
       callback: () => {
@@ -4254,19 +4274,28 @@ class Ariane extends obsidian.Plugin {
     });
 
     // Apple Agenda : même mécanique que Rappels (push antirebondi à la
-    // sauvegarde, relève sur minuterie). Inerte hors macOS ou si coupé.
+    // sauvegarde, relève sur minuterie). Inerte hors macOS, si coupé, ou si
+    // l'accès Calendriers a été refusé. Antirebond plus long (osascript lent) ;
+    // la relève passe son tour si un push est en attente ou en cours.
     this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
       if (!this.settings.agendaActif || this.settings.agendaAuto === false) return;
+      if (this._agendaStatut === 2 || this._agendaStatut === 1) return;
       if (!this.refDeChemin(fichier.path)) return;
       if (this.ecritePlugin(fichier.path)) return;
-      this.antirebond('agenda:push', () => this.pousserAgenda(true), 2500);
+      this._agendaPushEnAttente = true;
+      this.antirebond('agenda:push', async () => {
+        try { await this.pousserAgenda(true); } finally { this._agendaPushEnAttente = false; }
+      }, 4000);
     }));
     this.app.workspace.onLayoutReady(() => {
       if (obsidian.Platform.isMacOS && this.settings.agendaActif && this.settings.agendaAuto !== false) {
-        setTimeout(() => this.releverAgenda(true), 9000);
-        this.registerInterval(window.setInterval(
-          () => { if (this.settings.agendaActif && this.settings.agendaAuto !== false) this.releverAgenda(true); },
-          Math.max(2, Number(this.settings.agendaReleveMin) || 10) * 60000));
+        setTimeout(() => this.releverAgenda(true), 12000);
+        this.registerInterval(window.setInterval(() => {
+          if (!this.settings.agendaActif || this.settings.agendaAuto === false) return;
+          if (this._agendaStatut === 2 || this._agendaStatut === 1) return;
+          if (this._agendaPushEnAttente) return;
+          this.releverAgenda(true);
+        }, Math.max(2, Number(this.settings.agendaReleveMin) || 10) * 60000));
       }
     });
 
@@ -6406,7 +6435,12 @@ class Ariane extends obsidian.Plugin {
     return [
       Ariane._jxaEKCommun(),
       'try{ ObjC.import("AppKit"); }catch(e){}',
-      'function acces(){ var d=false; try{ ST.requestFullAccessToEventsWithCompletion(function(g,e){d=true;}); }catch(e){ try{ ST.requestAccessToEntityTypeCompletion(0,function(g,e){d=true;}); }catch(e2){} } var t=Date.now(); while(!d && Date.now()-t<20000){ $.CFRunLoopRunInMode($.kCFRunLoopDefaultMode,0.05,false); } }',
+      // Statut TCC Calendriers (SYNCHRONE) : 0 indéterminé, 1 restreint,
+      // 2 refusé, 3 autorisé (accès complet), 4 écriture seule.
+      'function statutAcces(){ try{ return $.EKEventStore.authorizationStatusForEntityType(0); }catch(e){ return -1; } }',
+      // N\'ouvre la demande d\'accès QUE si indéterminé ; sinon renvoie le statut
+      // tout de suite (pas d\'attente de 20 s inutile quand c\'est déjà refusé).
+      'function acces(){ var st=statutAcces(); if(st!==0) return st; var d=false; try{ ST.requestFullAccessToEventsWithCompletion(function(g,e){d=true;}); }catch(e){ try{ ST.requestAccessToEntityTypeCompletion(0,function(g,e){d=true;}); }catch(e2){} } var t=Date.now(); while(!d && Date.now()-t<15000){ $.CFRunLoopRunInMode($.kCFRunLoopDefaultMode,0.05,false); } return statutAcces(); }',
       'function cals(){ try{ return ST.calendarsForEntityType(0); }catch(e){ return $([]); } }',
       'function calParNom(nom){ if(!nom) { try{ return ST.defaultCalendarForNewEvents; }catch(e){ return null; } } var L=cals(); for(var i=0;i<L.count;i++){ var c=L.objectAtIndex(i); if(titre(c)===nom) return c; } for(var j=0;j<L.count;j++){ var c2=L.objectAtIndex(j); if(norm(titre(c2))===norm(nom)) return c2; } return null; }',
       'function evById(id){ if(!id) return null; try{ var e=ST.eventWithIdentifier(id); if(e) return e; }catch(e1){} try{ var it=ST.calendarItemWithIdentifier(id); if(it && it.isKindOfClass($.EKEvent)) return it; }catch(e2){} return null; }',
@@ -6505,7 +6539,8 @@ class Ariane extends obsidian.Plugin {
     return [
       Ariane._jxaEKEvenements(),
       'function run(){',
-      '  var IN=' + IN + '; acces();',
+      '  var IN=' + IN + '; var ACC=acces();',
+      '  if(ACC!==3 && ACC!==4) return "__ACCES__\\t"+ACC;',
       '  var out=[];',
       '  for(var i=0;i<IN.evenements.length;i++){',
       '    var v=IN.evenements[i];',
@@ -6516,6 +6551,16 @@ class Ariane extends obsidian.Plugin {
       '    }',
       '    var e=evById(v.id);',
       '    var cal=calParNom(v.calendrier);',
+      // Identifiant non résolu (churn iCloud) : avant de créer un doublon, on
+      // cherche dans le calendrier cible un événement du même titre sur la
+      // fenêtre du créneau et on le réutilise.
+      '    if(!e && cal){ try{',
+      '      var dd0=fmtDate(comps(String(v.debut).slice(0,10),"00:00"));',
+      '      var dd1=fmtDate(comps(String(v.fin).slice(0,10),"23:59"));',
+      '      var pr=ST.predicateForEventsWithStartDateEndDateCalendars(dd0,dd1,$([cal]));',
+      '      var ex=ST.eventsMatchingPredicate(pr);',
+      '      if(ex){ for(var q=0;q<ex.count;q++){ var ee=ex.objectAtIndex(q); if(String(ObjC.unwrap(ee.title))===String(v.titre)){ e=ee; break; } } }',
+      '    }catch(eDup){} }',
       '    if(e && cal){ try{ if(ObjC.unwrap(e.calendar.calendarIdentifier)!==ObjC.unwrap(cal.calendarIdentifier)) e.calendar=cal; }catch(er2){} }',
       '    if(!e){ e=$.EKEvent.eventWithEventStore(ST); if(cal) e.calendar=cal; }',
       '    try{ e.title=v.titre; }catch(er3){}',
@@ -6544,7 +6589,8 @@ class Ariane extends obsidian.Plugin {
     return [
       Ariane._jxaEKEvenements(),
       'function run(){',
-      '  var IN=' + IN + '; acces();',
+      '  var IN=' + IN + '; var ACC=acces();',
+      '  if(ACC!==3) return "__ACCES__\\t"+ACC;',
       '  var out=[];',
       '  for(var i=0;i<IN.paires.length;i++){',
       '    var p=IN.paires[i]; var e=evById(p.id);',
@@ -6552,6 +6598,21 @@ class Ariane extends obsidian.Plugin {
       '    out.push(p.ref+"\\t"+p.idx+"\\t"+isoDeDate(e.startDate)+"\\t"+isoDeDate(e.endDate));',
       '  }',
       '  return out.join("\\n");',
+      '}',
+    ].join('\n');
+  }
+
+  // Diagnostic : statut d'accès Calendriers + liste des calendriers vus.
+  static genererJXAAgendas() {
+    return [
+      Ariane._jxaEKEvenements(),
+      'function run(){',
+      '  var st0=statutAcces(); var st1=acces();',
+      '  var L=cals(); var noms=[];',
+      '  if(L && L.count){ for(var i=0;i<L.count;i++) noms.push(net(titre(L.objectAtIndex(i)))); }',
+      '  noms.sort();',
+      '  var def=""; try{ def=net(titre(ST.defaultCalendarForNewEvents)); }catch(e){}',
+      '  return JSON.stringify({ statutAvant:st0, statut:st1, defaut:def, calendriers:noms });',
       '}',
     ].join('\n');
   }
@@ -6567,7 +6628,8 @@ class Ariane extends obsidian.Plugin {
     return [
       Ariane._jxaEKEvenements(),
       'function run(){',
-      '  var IN=' + IN + '; acces();',
+      '  var IN=' + IN + '; var ACC=acces();',
+      '  if(ACC!==3) return "__ACCES__\\t"+ACC;',
       '  if(!IN.debut || !IN.fin) return "";',
       '  var want={}; for(var w=0;w<IN.calendriers.length;w++) want[norm(IN.calendriers[w])]=1;',
       '  var L=cals(); var arr=[];',
@@ -12658,17 +12720,35 @@ class Ariane extends obsidian.Plugin {
   }
 
   // Noms des calendriers Apple (entité événements) connus de l'API, mis en cache
-  // pour alimenter les datalists des réglages. Garde de 30 s.
+  // pour alimenter la liste à cocher des réglages. Garde de 30 s. Mémorise aussi
+  // le statut d'accès Calendriers (this._agendaStatut : 3 = OK, 2 = refusé, …).
   async chargerAgendas() {
-    if (!obsidian.Platform.isMacOS) { this._agendas = []; return []; }
+    if (!obsidian.Platform.isMacOS) { this._agendas = []; this._agendaStatut = -1; return []; }
     if (this._agendasChargeLe && Date.now() - this._agendasChargeLe < 30000) return this._agendas || [];
-    const s = await this._osascriptJXA(
-      Ariane._jxaEKEvenements() + '\nfunction run(){ acces(); var L=cals(); var out=[];'
-      + ' for(var i=0;i<L.count;i++){ var n=net(titre(L.objectAtIndex(i))); if(n) out.push(n); }'
-      + ' out.sort(); return out.join("\\n"); }', 30000);
-    this._agendas = (s == null ? [] : s.split('\n').map((x) => x.trim()).filter(Boolean));
+    const s = await this._osascriptJXA(Ariane.genererJXAAgendas(), 30000);
+    let d = null;
+    try { d = s ? JSON.parse(s) : null; } catch (e) { d = null; }
+    this._agendaStatut = d ? Number(d.statut) : (s == null ? -2 : -1);
+    this._agendas = (d && Array.isArray(d.calendriers)) ? d.calendriers.filter(Boolean) : [];
+    this._agendaDefaut = (d && d.defaut) || '';
     this._agendasChargeLe = Date.now();
+    if (this._agendaStatut === 2 || this._agendaStatut === 1) this._avertirAccesAgenda();
     return this._agendas;
+  }
+
+  // Statut d'accès Calendriers : chaîne lisible pour un message.
+  _libelleStatutAgenda(st) {
+    return ({ 3: 'accès complet', 4: 'écriture seule (lecture refusée)',
+      2: 'refusé', 1: 'restreint', 0: 'non demandé', '-1': 'erreur',
+      '-2': 'osascript indisponible' })[st] || ('statut ' + st);
+  }
+
+  _avertirAccesAgenda() {
+    const st = this._agendaStatut;
+    if (this._accesAgendaAverti === st) return;
+    this._accesAgendaAverti = st;
+    new obsidian.Notice(tr('Apple Agenda : ') + this._libelleStatutAgenda(st) + '. '
+      + tr("Autorisez « Calendriers » pour Obsidian dans Réglages système → Confidentialité et sécurité."), 8000);
   }
 
   // Événements réels des calendriers surveillés, pour l'affichage en fond de la
@@ -12700,11 +12780,18 @@ class Ariane extends obsidian.Plugin {
     };
     const s = await this._osascriptJXA(
       Ariane.genererJXAEvenementsFond(cals, debutISO, finISO), 30000);
+    if (s && s.startsWith('__ACCES__')) {
+      this._agendaStatut = Number(s.split('\t')[1]);
+      this._avertirAccesAgenda();
+      this._fondCache = { cle, le: Date.now(), data: [] };
+      return [];
+    }
     const data = (s == null ? [] : s.split('\n').filter(Boolean).map((l) => {
       const p = l.split('\t');
       return { id: p[0], titre: p[1] || '', debut: p[2] || '', fin: p[3] || '',
                allDay: p[4] === '1', couleur: p[5] || '', calendrier: p[6] || '' };
     })).filter((e) => e.id && e.debut && !aNous(e));
+    this._agendaStatut = 3;
     this._fondCache = { cle, le: Date.now(), data };
     return data;
   }
@@ -12965,6 +13052,11 @@ class Ariane extends obsidian.Plugin {
       if (!silencieux) new obsidian.Notice(tr('Apple Agenda a refusé (autorisation d\'automatisation dans Réglages système ?).'));
       return 0;
     }
+    if (sortie.startsWith('__ACCES__')) {
+      this._agendaStatut = Number(sortie.split('\t')[1]);
+      this._avertirAccesAgenda();
+      return 0;
+    }
     const parRef = new Map(cibles.map((t) => [t.ref, t]));
     const recu = new Map();
     for (const l of sortie.split('\n')) {
@@ -12994,6 +13086,45 @@ class Ariane extends obsidian.Plugin {
     return n;
   }
 
+  // Diagnostic Apple Agenda : statut d'accès + calendriers vus + comptage des
+  // tâches éligibles. Affiche un résumé et détaille dans la console.
+  async diagnostiquerAgenda() {
+    if (!obsidian.Platform.isMacOS) {
+      new obsidian.Notice(tr('Apple Agenda : disponible sur macOS uniquement.'));
+      return;
+    }
+    const avis = new obsidian.Notice(tr('Diagnostic Apple Agenda…'), 0);
+    const s = await this._osascriptJXA(Ariane.genererJXAAgendas(), 30000);
+    avis.hide();
+    let d = null;
+    try { d = s ? JSON.parse(s) : null; } catch (e) { d = null; }
+    if (!d) {
+      new obsidian.Notice(tr('Diagnostic : osascript n\'a rien renvoyé (voir la console).'), 8000);
+      console.warn('[Ariane] diagnostic agenda — sortie brute :', s);
+      return;
+    }
+    this._agendaStatut = Number(d.statut);
+    this._agendas = Array.isArray(d.calendriers) ? d.calendriers : [];
+    this._agendasChargeLe = Date.now();
+    let elig = 0;
+    for (const t of this.tachesPourGantt()) {
+      const crs = Ariane.creneauxDeTache(t);
+      if (crs.length && this.agendaCalendrierDe(t.famille)) elig += 1;
+    }
+    const lignes = [
+      tr('Accès Calendriers : ') + this._libelleStatutAgenda(d.statut)
+        + (d.statutAvant !== d.statut ? tr(' (demandé à l\'instant)') : ''),
+      tr('Calendriers vus : ') + (d.calendriers.length ? d.calendriers.join(', ') : '—'),
+      tr('Calendrier par défaut : ') + (d.defaut || '—'),
+      tr('Calendriers surveillés (synchro) : ') + (this._agendasSurveilles().join(', ') || '—'),
+      tr('Calendriers cochés (affichage) : ') + (this._agendasCoches().join(', ') || '—'),
+      tr('Tâches éligibles au push : ') + elig,
+      tr('Intégration activée : ') + (this.settings.agendaActif ? tr('oui') : tr('non')),
+    ];
+    console.info('[Ariane] diagnostic Apple Agenda\n' + lignes.join('\n'));
+    new obsidian.Notice(lignes.join('\n'), 15000);
+  }
+
   // Relève : pour chaque EKEvent lié, horaires changés dans Calendar → réécriture
   // de l'entrée de créneau ; événement supprimé → retrait du créneau. Aucun
   // import d'événement inconnu. La note fait foi si elle a bougé (agenda-sync).
@@ -13015,6 +13146,11 @@ class Ariane extends obsidian.Plugin {
       Ariane.genererJXAEvenementsReleve(paires, this.settings.agendaFenetreJours || 120));
     if (avis) avis.hide();
     if (sortie == null) return 0;
+    if (sortie.startsWith('__ACCES__')) {
+      this._agendaStatut = Number(sortie.split('\t')[1]);
+      this._avertirAccesAgenda();
+      return 0;
+    }
     const parRef = new Map(avecId.map((t) => [t.ref, t]));
     let n = 0;
     for (const l of sortie.split('\n')) {
@@ -13022,11 +13158,17 @@ class Ariane extends obsidian.Plugin {
       const t = p[0] && parRef.get(p[0]);
       if (!t) continue;
       if (t._snap && Ariane.instantAgenda(t) !== t._snap) continue; // la note a bougé
-      const cr = t._crs[Number(p[1])];
+      const idx = Number(p[1]);
+      const cr = t._crs[idx];
       if (!cr) continue;
       if (p[2] === 'MANQUANT') {
-        await this.majCreneau(t.ref, { avant: cr.brut, debut: '', fin: '' });
-        n += 1; continue;
+        // Événement introuvable : ça peut être une vraie suppression, mais aussi
+        // un simple raté de résolution d'identifiant (latence iCloud). On NE
+        // supprime PAS le créneau — on efface seulement le lien, le prochain
+        // push recréera l'événement.
+        const ids = t._ids.slice();
+        if (ids[idx]) { ids[idx] = ''; await this.majTache(t.ref, { 'agenda-id': ids }); n += 1; }
+        continue;
       }
       const isoD = p[2] || '';
       const isoF = p[3] || '';
@@ -14966,7 +15108,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           boite.createDiv({ cls: 'zfa-agenda-coches-vide', text: tr('Chargement des calendriers…') });
           if (obsidian.Platform && obsidian.Platform.isMacOS) this.plugin.chargerAgendas().then(() => this.display());
         } else if (!noms.length) {
-          boite.createDiv({ cls: 'zfa-agenda-coches-vide', text: tr('Aucun calendrier détecté.') });
+          const st = this.plugin._agendaStatut;
+          boite.createDiv({ cls: 'zfa-agenda-coches-vide',
+            text: (st === 2 || st === 1 || st === 4)
+              ? tr('Accès Calendriers : ') + this.plugin._libelleStatutAgenda(st) + '. '
+                + tr('Autorisez « Calendriers » pour Obsidian dans Réglages système → Confidentialité et sécurité.')
+              : tr('Aucun calendrier détecté.') });
         } else {
           const coches = new Set(this.plugin._agendasCoches());
           for (const nom of noms) {
