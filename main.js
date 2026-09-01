@@ -6304,24 +6304,45 @@ class Ariane extends obsidian.Plugin {
 
   /* ---- Apple Rappels via EventKit (JXA, macOS) --------------------- */
 
-  // Préambule commun : accès EventKit + utilitaires. EventKit voit TOUTES les
-  // listes (y compris celles rangées dans un groupe, invisibles à l'AppleScript
-  // de Rappels) — c'est l'approche des ponts type « Reminders Calendar Bridge ».
-  static _jxaEK() {
+  // Préambule EventKit commun aux entités Rappels (1) et Événements (0) :
+  // utilitaires qui ne dépendent pas de l'entité. EventKit voit TOUT (y compris
+  // les listes rangées dans un groupe, invisibles à l'AppleScript de Rappels).
+  static _jxaEKCommun() {
     return [
       'ObjC.import("EventKit"); ObjC.import("CoreFoundation");',
       'var ST = $.EKEventStore.alloc.init;',
       'function pompe(ms){ var t=Date.now(); while(Date.now()-t<ms){ $.CFRunLoopRunInMode($.kCFRunLoopDefaultMode,0.03,false); } }',
-      'function acces(){ var d=false; try{ ST.requestFullAccessToRemindersWithCompletion(function(g,e){d=true;}); }catch(e){ try{ ST.requestAccessToEntityTypeCompletion(1,function(g,e){d=true;}); }catch(e2){} } var t=Date.now(); while(!d && Date.now()-t<20000){ $.CFRunLoopRunInMode($.kCFRunLoopDefaultMode,0.05,false); } }',
       'function norm(x){ return String(x==null?"":x).trim().toLowerCase().replace(/\\s+/g," "); }',
       'function net(x){ return String(x==null?"":x).replace(/[\\t\\r\\n]+/g," "); }',
-      'function listes(){ try{ return ST.calendarsForEntityType(1); }catch(e){ return $([]); } }',
       'function titre(c){ try{ return ObjC.unwrap(c.title()); }catch(e){ try{ return ObjC.unwrap(c.title); }catch(e2){ return ""; } } }',
+      'function comps(iso,heure){ var p=String(iso).split("-"); var c=$.NSDateComponents.alloc.init; c.year=parseInt(p[0],10); c.month=parseInt(p[1],10); c.day=parseInt(p[2],10); if(heure){ var q=String(heure).split(":"); c.hour=parseInt(q[0],10)||0; c.minute=parseInt(q[1],10)||0; } return c; }',
+      'function isoDe(dc){ if(!dc) return ""; var y,mo,da; try{ y=dc.year; mo=dc.month; da=dc.day; }catch(e){ return ""; } if(!(y>0)) return ""; var z=function(n){return (n<10?"0":"")+n;}; var s=y+"-"+z(mo)+"-"+z(da); var h,mi; try{ h=dc.hour; mi=dc.minute; }catch(e){ h=-1; } if(h>=0 && h<24) s+="T"+z(h)+":"+z(mi>=0?mi:0); return s; }',
+    ].join('\n');
+  }
+
+  // Préambule Rappels (entité 1). Concatène le commun + les helpers propres à
+  // l'entité. Sortie fonctionnellement identique à l'ancien _jxaEK monolithique.
+  static _jxaEK() {
+    return [
+      Ariane._jxaEKCommun(),
+      'function acces(){ var d=false; try{ ST.requestFullAccessToRemindersWithCompletion(function(g,e){d=true;}); }catch(e){ try{ ST.requestAccessToEntityTypeCompletion(1,function(g,e){d=true;}); }catch(e2){} } var t=Date.now(); while(!d && Date.now()-t<20000){ $.CFRunLoopRunInMode($.kCFRunLoopDefaultMode,0.05,false); } }',
+      'function listes(){ try{ return ST.calendarsForEntityType(1); }catch(e){ return $([]); } }',
       'function listeParNom(nom){ if(!nom) { try{ return ST.defaultCalendarForNewReminders; }catch(e){ return null; } } var L=listes(); for(var i=0;i<L.count;i++){ var c=L.objectAtIndex(i); if(titre(c)===nom) return c; } for(var j=0;j<L.count;j++){ var c2=L.objectAtIndex(j); if(norm(titre(c2))===norm(nom)) return c2; } return null; }',
       'function remById(id){ if(!id) return null; try{ var it=ST.calendarItemWithIdentifier(id); if(it && it.isKindOfClass($.EKReminder)) return it; }catch(e){} return null; }',
       'function fetchListe(cal){ var pred=ST.predicateForRemindersInCalendars($([cal])); var res=null,d=false; ST.fetchRemindersMatchingPredicateCompletion(pred,function(a){res=a;d=true;}); var t=Date.now(); while(!d && Date.now()-t<15000){ $.CFRunLoopRunInMode($.kCFRunLoopDefaultMode,0.05,false); } return res; }',
-      'function comps(iso,heure){ var p=String(iso).split("-"); var c=$.NSDateComponents.alloc.init; c.year=parseInt(p[0],10); c.month=parseInt(p[1],10); c.day=parseInt(p[2],10); if(heure){ var q=String(heure).split(":"); c.hour=parseInt(q[0],10)||0; c.minute=parseInt(q[1],10)||0; } return c; }',
-      'function isoDe(dc){ if(!dc) return ""; var y,mo,da; try{ y=dc.year; mo=dc.month; da=dc.day; }catch(e){ return ""; } if(!(y>0)) return ""; var z=function(n){return (n<10?"0":"")+n;}; var s=y+"-"+z(mo)+"-"+z(da); var h,mi; try{ h=dc.hour; mi=dc.minute; }catch(e){ h=-1; } if(h>=0 && h<24) s+="T"+z(h)+":"+z(mi>=0?mi:0); return s; }',
+    ].join('\n');
+  }
+
+  // Préambule Événements (entité 0). Jumeau de _jxaEK, helpers propres à EKEvent.
+  static _jxaEKEvenements() {
+    return [
+      Ariane._jxaEKCommun(),
+      'function acces(){ var d=false; try{ ST.requestFullAccessToEventsWithCompletion(function(g,e){d=true;}); }catch(e){ try{ ST.requestAccessToEntityTypeCompletion(0,function(g,e){d=true;}); }catch(e2){} } var t=Date.now(); while(!d && Date.now()-t<20000){ $.CFRunLoopRunInMode($.kCFRunLoopDefaultMode,0.05,false); } }',
+      'function cals(){ try{ return ST.calendarsForEntityType(0); }catch(e){ return $([]); } }',
+      'function calParNom(nom){ if(!nom) { try{ return ST.defaultCalendarForNewEvents; }catch(e){ return null; } } var L=cals(); for(var i=0;i<L.count;i++){ var c=L.objectAtIndex(i); if(titre(c)===nom) return c; } for(var j=0;j<L.count;j++){ var c2=L.objectAtIndex(j); if(norm(titre(c2))===norm(nom)) return c2; } return null; }',
+      'function evById(id){ if(!id) return null; try{ var it=ST.calendarItemWithIdentifier(id); if(it && it.isKindOfClass($.EKEvent)) return it; }catch(e){} return null; }',
+      'function fmtDate(dc){ try{ return $.NSCalendar.currentCalendar.dateFromComponents(dc); }catch(e){ return null; } }',
+      'function couleurCal(cal){ try{ var cg=cal.color; if(!cg) return ""; var n=cg.numberOfComponents; var k=cg.components; if(!k || n<3) return ""; var z=function(v){ v=Math.max(0,Math.min(255,Math.round(v*255))); return (v<16?"0":"")+v.toString(16); }; return "#"+z(k[0])+z(k[1])+z(k[2]); }catch(e){ return ""; } }',
     ].join('\n');
   }
 

@@ -42,3 +42,44 @@ test('genererJXARappels : entrée vide reste un script valide', () => {
   new vm.Script(s);
   assert.ok(s.includes('IN.taches'));
 });
+
+// --- SP-4 : refacto du préambule EventKit (approche B) ---
+
+test('_jxaEK : le préambule Rappels garde tous ses helpers après la refacto', () => {
+  const s = Ariane._jxaEK();
+  new vm.Script(s);
+  for (const fn of ['function acces(', 'function listes(', 'function listeParNom(',
+                    'function remById(', 'function fetchListe(', 'function comps(',
+                    'function isoDe(', 'function norm(', 'function net(', 'function titre(',
+                    'function pompe(']) {
+    assert.ok(s.includes(fn), 'helper manquant : ' + fn);
+  }
+  assert.ok(s.includes('requestFullAccessToRemindersWithCompletion'));
+  assert.ok(s.includes('calendarsForEntityType(1)'));
+  assert.ok(s.includes('EKReminder'));
+  assert.ok(s.includes('predicateForRemindersInCalendars'));
+});
+
+test('_jxaEKEvenements : préambule Événements valide, helpers propres à EKEvent', () => {
+  const s = Ariane._jxaEKEvenements();
+  new vm.Script(s);
+  for (const fn of ['function acces(', 'function cals(', 'function calParNom(',
+                    'function evById(', 'function fmtDate(', 'function couleurCal(',
+                    'function comps(', 'function isoDe(']) {
+    assert.ok(s.includes(fn), 'helper manquant : ' + fn);
+  }
+  assert.ok(s.includes('requestFullAccessToEventsWithCompletion'));
+  assert.ok(s.includes('calendarsForEntityType(0)'));
+  assert.ok(s.includes('EKEvent'));
+  assert.ok(s.includes('defaultCalendarForNewEvents'));
+  assert.ok(!s.includes('EKReminder'));
+});
+
+test('_jxaEKCommun : ni accès ni entité, juste les utilitaires partagés', () => {
+  const s = Ariane._jxaEKCommun();
+  new vm.Script(s);
+  assert.ok(s.includes('function comps('));
+  assert.ok(s.includes('function isoDe('));
+  assert.ok(!s.includes('function acces('));
+  assert.ok(!s.includes('calendarsForEntityType'));
+});
