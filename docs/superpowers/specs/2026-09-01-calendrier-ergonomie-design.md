@@ -33,12 +33,14 @@ Redux + build ; ici un seul `main.js` sans build).
 - Tests : `node --test tests/*.test.js`. Base actuelle : **288 verts**.
 - Messages de commit : rédigés dans un fichier puis `git commit -F`, finissant
   par `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`.
-- Les gestes de la **vue semaine** (dépôt d'un lien, glissé/redimensionnement
-  d'un bloc) ne touchent qu'à `Créneaux` via `majCreneau`. Un dépôt en **vue
-  mois** reprogramme `début`/`échéance` via `ecrireDatesTaches` — comportement
-  voulu, hérité de la vue calendrier initiale et documenté au README. Le seul
-  autre point d'écriture de dates est l'item de menu contextuel « Retirer du
-  calendrier » (efface `début`+`échéance`, §7).
+- **Déposer un lien de tâche sur le calendrier crée toujours un `Créneau`**
+  via `majCreneau` : en vue semaine à l'heure du lâcher, en vue mois à 09:00
+  pour 1 h par défaut. Un dépôt ne touche jamais `début`/`échéance`. *(Révisé
+  batch 2 / P5 : la première version reprogrammait les dates en vue mois.)*
+- Décaler une **barre de tâche** ou un **bloc/pastille de créneau** déjà posé
+  sur le calendrier écrit respectivement `début`/`échéance` (`ecrireDatesTaches`)
+  ou le `Créneau` (`majCreneau`). Le seul autre point d'écriture de dates est
+  l'item de menu contextuel « Retirer du calendrier » (efface `début`+`échéance`, §7).
 - Le rendu DOM et la vérification visuelle dans Obsidian sont **différés à
   l'utilisateur** : les sous-agents font `node --check` / `node --test` /
   `cp` de déploiement / relecture de code.
