@@ -39,7 +39,13 @@ SP-4 ajoute la **moitié « événements »** (entité EventKit `0`), calquée s
   différents = calendriers séparés. Famille sans calendrier ni défaut → **jamais
   synchronisée**.
 - **`greffon._agendasSurveilles()`** : union des `agendaCalendrier` de toutes les
-  familles + le défaut (miroir de `_listesSurveillees`).
+  familles + le défaut (miroir de `_listesSurveillees`). Cibles de push, suivis à
+  la relève.
+- **`greffon._agendasAffiches()`** *(amendement 2026-09-01)* : `_agendasSurveilles()`
+  ∪ les noms du réglage **`agendaCalendriersAffiches`** (texte, virgules).
+  Ces calendriers-là sont **seulement affichés en fond** de la vue calendrier
+  (clic → Calendar.app) — jamais poussés, jamais relevés, jamais liés à une
+  tâche. `evenementsFond` s'appuie dessus.
 - **Éligibilité au push** d'une tâche : elle a **≥ 1 créneau valide**
   (`Ariane.creneauxDeTache(t).length > 0`) **ET** `agendaCalendrierDe(t.famille)`
   non vide. Plus toute tâche portant déjà un `agenda-id` non vide (pour permettre

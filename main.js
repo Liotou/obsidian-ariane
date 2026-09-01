@@ -1012,6 +1012,8 @@ const TEXTES = {
     "macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchronisation bidirectionnelle : déplacer ou redimensionner l'événement dans Calendar réécrit le créneau, le supprimer retire le créneau. Les événements des calendriers surveillés s'affichent en fond dans la vue calendrier.": "macOS. Every task slot becomes an event in its family's calendar. Two-way sync: moving or resizing the event in Calendar rewrites the slot, deleting it removes the slot. Events from watched calendars show as background in the calendar view.",
     "Calendrier par défaut": "Default calendar",
     "Calendrier Apple d'une tâche quand sa famille n'en précise pas.": "A task's Apple calendar when its family sets none.",
+    "Calendriers affichés en plus": "Extra calendars to show",
+    "Noms séparés par des virgules. Affichés en fond de la vue calendrier (clic → Calendar.app) sans être synchronisés ni liés à une tâche.": "Comma-separated names. Shown as background in the calendar view (click → Calendar.app), never synced or tied to a task.",
     "Titre de l'événement": "Event title",
     "Fenêtre de relève (jours)": "Pull window (days)",
     "Recharger la liste des calendriers": "Reload the calendar list",
@@ -1132,6 +1134,7 @@ const DEFAULT_SETTINGS = {
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques
   agendaFenetreJours: 120,      // fenêtre de relève / agenda de fond (jours)
   agendaCalendrierDefaut: '',   // calendrier Apple cible par défaut (familles sans réglage)
+  agendaCalendriersAffiches: '', // calendriers en plus affichés en fond (virgules), jamais synchronisés
   agendaFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un événement Apple
   // Clés de frontmatter des propriétés de tâche. Chaque clé = « prefixeTaches »
   // + nom lisible du concept (« Tâche - Échéance »). « clesTaches » remplace le
@@ -12606,7 +12609,8 @@ class Ariane extends obsidian.Plugin {
     return String((f && f.agendaCalendrier) || this.settings.agendaCalendrierDefaut || '').trim();
   }
 
-  // Tous les calendriers Apple surveillés (relève + agenda de fond).
+  // Calendriers Apple liés à la synchro (cibles de push, suivis à la relève) :
+  // union des calendriers de familles + le calendrier par défaut.
   _agendasSurveilles() {
     const s = new Set();
     for (const f of (Array.isArray(this.settings.famillesTaches) ? this.settings.famillesTaches : [])) {
@@ -12614,6 +12618,18 @@ class Ariane extends obsidian.Plugin {
     }
     const d = String(this.settings.agendaCalendrierDefaut || '').trim();
     if (d) s.add(d);
+    return [...s];
+  }
+
+  // Calendriers affichés en fond de la vue calendrier : ceux de la synchro, plus
+  // ceux listés dans « Calendriers affichés en plus » (simple affichage, jamais
+  // synchronisés). Champ texte, noms séparés par des virgules.
+  _agendasAffiches() {
+    const s = new Set(this._agendasSurveilles());
+    for (const n of String(this.settings.agendaCalendriersAffiches || '').split(',')) {
+      const v = n.trim();
+      if (v) s.add(v);
+    }
     return [...s];
   }
 
@@ -12656,7 +12672,7 @@ class Ariane extends obsidian.Plugin {
     const cle = String(debutISO) + '|' + String(finISO);
     const c = this._fondCache;
     if (c && c.cle === cle && Date.now() - c.le < 60000) return c.data;
-    const cals = this._agendasSurveilles();
+    const cals = this._agendasAffiches();
     if (!cals.length) { this._fondCache = { cle, le: Date.now(), data: [] }; return []; }
     const connus = new Set();
     const refsConnues = new Set();
@@ -14927,6 +14943,15 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           t.inputEl.setAttribute('list', 'zfa-dl-agendas');
           t.setValue(s.agendaCalendrierDefaut || '')
             .onChange(async (v) => { s.agendaCalendrierDefaut = v.trim(); await maj(); });
+        });
+      new obsidian.Setting(c)
+        .setName(tr('Calendriers affichés en plus'))
+        .setDesc(tr("Noms séparés par des virgules. Affichés en fond de la vue calendrier (clic → Calendar.app) sans être synchronisés ni liés à une tâche."))
+        .addText((t) => {
+          t.inputEl.setAttribute('list', 'zfa-dl-agendas');
+          t.inputEl.style.width = '18em';
+          t.setValue(s.agendaCalendriersAffiches || '')
+            .onChange(async (v) => { s.agendaCalendriersAffiches = v.trim(); await maj(); });
         });
       {
         const reg = new obsidian.Setting(c)
@@ -21448,10 +21473,12 @@ class MoteurCalendrier {
     const lacher = async (up) => {
       document.removeEventListener('pointermove', bouger);
       document.removeEventListener('pointerup', lacher);
-      bloc.classList.remove('zfa-cal-bloc-flotte');
-      bloc.style.transform = '';
       nettoyerGuide();
-      if (!bouge) return;
+      if (!bouge) {
+        bloc.classList.remove('zfa-cal-bloc-flotte');
+        bloc.style.transform = '';
+        return;
+      }
       const dx = (up && up.clientX != null) ? up.clientX - x0 : dxDer;
       const dy = (up && up.clientY != null) ? up.clientY - y0 : dyDer;
       const haut = parseFloat(bloc.style.height) || PXH;
@@ -21470,6 +21497,15 @@ class MoteurCalendrier {
         dJours = Math.max(-idxDep,
           Math.min(strip.length - 1 - idxDep, Math.round(dx / colW)));
       }
+      // On ne remet PAS le bloc à sa position d'origine : on l'y laisse glisser
+      // doucement jusqu'à l'emplacement visé (mêmes coordonnées que le redraw
+      // qui suivra) et l'ombre / l'opacité de « flottement » se résorbent en
+      // même temps, pour que l'échange soit invisible — pas de saut / clignotement.
+      bloc.style.transition = 'transform 120ms ease, box-shadow 150ms ease, opacity 150ms ease';
+      bloc.classList.remove('zfa-cal-bloc-flotte');
+      bloc.style.zIndex = '25';
+      bloc.style.pointerEvents = 'none';
+      bloc.style.transform = 'translate(' + (dJours * colW) + 'px,' + (top - topDep) + 'px)';
       const jourCible = dJours ? strip[idxDep + dJours] : jourCol;
       const cr = Ariane.creneauDepuisDrop({ yRel: top, hauteurHeure: PXH,
         heureDebut: this._hDeb, jourISO: jourCible, dureeMin: Math.max(15, (haut / PXH) * 60) });
