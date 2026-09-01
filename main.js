@@ -21046,15 +21046,17 @@ class MoteurCalendrier {
   dessinerSemaine(hote) {
     const auj = new Date().toISOString().slice(0, 10);
     const enRetard = Ariane.tachesEnRetard(this._taches, auj);
-    // Journée entière (0 h → 24 h) comme Apple Calendar : le défilement vertical
-    // parcourt toutes les heures ; on se place au début de la plage réglée.
+    // Journée entière (0 h → 24 h) : le défilement vertical parcourt toutes les
+    // heures ; on se place au début de la plage réglée à l'ouverture.
     const hDeb = 0;
     const hFin = 24;
     const hVue = this._plageHoraire().debut;
     const PXH = 42;
     const AXE = 52;
-    const jours = Array.from({ length: 21 }, (_, i) => Ariane.decalerJour(this._ancre, i - 7));
-    this._pxHeure = PXH; this._hDeb = hDeb; this._joursSemaine = jours.slice(7, 14);
+    const TAMPON = 29;   // 7 visibles + 11 jours de marge de chaque côté
+    const CENTRE = 14;   // index de _ancre dans la bande
+    const jours = Array.from({ length: TAMPON }, (_, i) => Ariane.decalerJour(this._ancre, i - CENTRE));
+    this._pxHeure = PXH; this._hDeb = hDeb; this._joursSemaine = jours.slice(CENTRE, CENTRE + 7);
     const dispo = hote.clientWidth || this.racine.clientWidth || 900;
     const colW = Math.max(64, Math.floor((dispo - AXE) / 7));
     const jourNom = (j) => tr(['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'][
@@ -21228,10 +21230,10 @@ class MoteurCalendrier {
     });
 
     // --- Synchronisation du défilement + recalage discret au bord du tampon ---
-    // Le tampon de 21 jours couvre ±7 jours autour de _ancre : tant que le jour
-    // de gauche reste à ±4, aucun redessin (défilement 100 % fluide). Ce n'est
-    // qu'en approchant du bord qu'on recale, sans saut visible (les mêmes jours
-    // restent affichés), et sans reconstruire la barre d'outils.
+    // Le calage sur un jour « au propre » est natif (scroll-snap CSS), fluide au
+    // relâchement. Le tampon de 29 jours laisse ~11 jours de marge : on ne
+    // recale l'ancre (reconstruction hors écran, invisible) qu'en approchant
+    // vraiment du bord — ce qui n'arrive quasiment jamais en usage normal.
     const sync = () => {
       const sl = corps.scrollLeft;
       tetePiste.style.transform = 'translateX(' + (-sl) + 'px)';
@@ -21245,27 +21247,31 @@ class MoteurCalendrier {
       this._semScrollMinuterie = setTimeout(() => {
         if (this._detruit) return;
         const idxG = corps.scrollLeft / colW;
-        if (idxG < 3 || idxG > 11) {
-          const shift = Math.round(idxG) - 7;
+        if (idxG < 4 || idxG > TAMPON - 11) {
+          const shift = Math.round(idxG) - CENTRE;
           if (shift !== 0) this._recalerSemaine(hote, shift);
         }
-      }, 200);
+      }, 220);
     });
     sync();
-    corps.scrollLeft = 7 * colW;
+    corps.scrollLeft = CENTRE * colW;
     corps.scrollTop = this._semScrollTop != null ? this._semScrollTop : (hVue * PXH);
   }
 
-  // Recale la bande de 21 jours quand on approche de son bord, sans repasser par
-  // dessinerVraiment (donc sans vider ni reconstruire la barre d'outils). Les
-  // 7 jours visibles restent les mêmes ⇒ pas de saut.
+  // Recale la bande de jours quand on approche de son bord. Reconstruction HORS
+  // ÉCRAN puis échange atomique : aucune trame vide, les 7 jours visibles ne
+  // bougent pas, la barre d'outils n'est pas touchée.
   _recalerSemaine(hote, shift) {
-    if (this._detruit || !hote.isConnected) return;
+    if (this._detruit || !hote.isConnected || !hote.parentElement) return;
     this._ancre = Ariane.decalerJour(this._ancre, shift);
     const nv = document.createElement('div');
     nv.className = 'zfa-cal-grille zfa-cal-semaine';
-    hote.replaceWith(nv);
+    nv.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;'
+      + 'width:' + hote.getBoundingClientRect().width + 'px';
+    hote.parentElement.insertBefore(nv, hote);
     this.dessinerSemaine(nv);
+    hote.remove();
+    nv.style.cssText = '';
   }
 }
 

@@ -2107,13 +2107,14 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   min-width: 0; border-left: 1px solid var(--background-modifier-border); }
 .zfa-cal-bandeau-plus { font-size: var(--font-ui-smaller); color: var(--text-muted); cursor: pointer; }
 
-.zfa-cal-sem-corps { flex: 1 1 auto; min-height: 0; overflow: auto; position: relative; }
+.zfa-cal-sem-corps { flex: 1 1 auto; min-height: 0; overflow: auto; position: relative;
+  scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
 .zfa-cal-sem-inner { position: relative; }
 .zfa-cal-axe { position: absolute; left: 0; top: 0; z-index: 3; will-change: transform;
   background: var(--background-primary); }
 .zfa-cal-axe-heure { position: absolute; right: 4px; font-size: 10px; color: var(--text-faint);
   transform: translateY(-50%); }
-.zfa-cal-col { position: absolute; top: 0; bottom: 0;
+.zfa-cal-col { position: absolute; top: 0; bottom: 0; scroll-snap-align: start;
   border-left: 1px solid var(--background-modifier-border); }
 .zfa-cal-col.est-aujourdhui, .zfa-cal-bandeau-jour.est-aujourdhui,
 .zfa-cal-sem-jour.est-aujourdhui {
@@ -2129,27 +2130,34 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-poignee { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
 .zfa-cal-bloc:focus { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 
+/* Cartes de créneau : même parti que obsidian-day-planner (contenu qui
+   s'enroule, typo d'interface, fond teinté, bord, ombre, coins arrondis). */
 .zfa-cal-carte {
   --zfa-cal-coul: var(--text-faint);
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
   overflow: hidden;
   border-radius: var(--radius-s);
   border: 1px solid color-mix(in srgb, var(--zfa-cal-coul) 40%, transparent);
   background: color-mix(in srgb, var(--zfa-cal-coul) 16%, var(--background-primary));
-  padding: 2px 5px;
-  font-size: var(--font-ui-smaller);
-  line-height: 1.25;
-  color: var(--text-normal);
+  padding: var(--size-2-1) var(--size-4-1);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small);
+  line-height: 1.3;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
-.zfa-cal-carte-l1 { display: flex; align-items: center; gap: 4px; }
-.zfa-cal-carte-coche { flex: none; width: 13px; height: 13px; margin: 0; cursor: pointer; }
+.zfa-cal-carte-l1 { display: flex; align-items: flex-start; gap: 4px; }
+.zfa-cal-carte-coche { flex: none; width: 14px; height: 14px; margin: 1px 0 0; cursor: pointer; }
 .zfa-cal-carte-titre { flex: 1 1 auto; min-width: 0; font-weight: var(--font-medium);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  color: var(--text-normal); white-space: normal; overflow-wrap: anywhere; }
 .zfa-cal-carte-heure { color: var(--text-muted); font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums; }
+.zfa-cal-carte.est-terminee { color: var(--text-faint); }
 .zfa-cal-carte.est-terminee .zfa-cal-carte-titre { text-decoration: line-through;
-  color: var(--text-faint); }
-.zfa-cal-carte.est-terminee { opacity: 0.7; }
+  color: var(--text-faint); font-weight: var(--font-normal); }
 .zfa-cal-carte-prop { display: flex; gap: 3px; color: var(--text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .zfa-cal-carte-prop-nom { color: var(--text-faint); }
@@ -2159,7 +2167,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   border: 1px solid color-mix(in srgb, var(--zfa-cal-coul) 45%, transparent);
   border-left: 3px solid var(--zfa-cal-coul);
   background: color-mix(in srgb, var(--zfa-cal-coul) 20%, var(--background-primary));
-  box-shadow: var(--shadow-s, 0 1px 2px rgba(0, 0, 0, 0.12));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 .zfa-cal-bloc-tronque-bas { border-bottom-style: dashed; border-bottom-width: 2px;
   border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
