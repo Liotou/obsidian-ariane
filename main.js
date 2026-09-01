@@ -17503,6 +17503,7 @@ class MoteurFrise {
       // par vue, pour y revenir à la réouverture (2ᵉ fenêtre, retour de focus…).
       if (this._scrollProg) return;
       this._aScrolle = true;
+      this._dernierX = droite.scrollLeft;   // position vivante, pour la restauration
       clearTimeout(this._minSauveJour);
       this._minSauveJour = setTimeout(() => {
         try {
@@ -17513,6 +17514,34 @@ class MoteurFrise {
         } catch (e) { /* vue fermée */ }
       }, 400);
     });
+
+    // Le retour sur l'onglet frise ne déclenche PAS toujours un redessin : on
+    // guette donc le passage caché → visible de la vue et on y ré-applique la
+    // dernière position connue (mémoire de session, sinon jour mémorisé).
+    if (this._ioFrise) { try { this._ioFrise.disconnect(); } catch (e) { /* rien */ } }
+    const win = this._doc().defaultView || window;
+    if (win.IntersectionObserver) {
+      this._ioFrise = new win.IntersectionObserver((entrees) => {
+        for (const e of entrees) {
+          if (!e.isIntersecting) continue;
+          const d = this._droite;
+          if (!d || !d.isConnected || d.clientWidth < 1) continue;
+          let cible = (typeof this._dernierX === 'number') ? this._dernierX : null;
+          if (cible == null && this._cfg && this._cfg.debut && this._cfg.ppj && this.ctx.posLire) {
+            const jm = Ariane.jourValide && Ariane.jourValide(this.ctx.posLire());
+            if (jm) cible = Math.max(0, Ariane.ecartJours(this._cfg.debut, jm) * this._cfg.ppj);
+          }
+          if (cible != null && cible > 4 && Math.abs(d.scrollLeft - cible) > 2) {
+            this._scrollProg = true;
+            d.scrollLeft = cible;
+            this.recalerEnteteHaut(d.scrollLeft);
+            this.recalerEtiquettes(d.scrollLeft);
+            win.requestAnimationFrame(() => { this._scrollProg = false; });
+          }
+        }
+      }, { threshold: 0.01 });
+      this._ioFrise.observe(this.racine);
+    }
 
     // Cible du calage horizontal : re-ancrage après glissé de barre ; sinon, si
     // l'utilisateur a déjà scrollé dans cette session, on garde sa position ;
@@ -17529,11 +17558,6 @@ class MoteurFrise {
       : (this._aScrolle && memXsain) ? memeX
         : xMem != null ? xMem
           : Math.max(0, Ariane.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220);
-    console.info('[Ariane frise] redraw', {
-      anciennePosee, memeX, aScrolle: !!this._aScrolle,
-      posLire: this.ctx.posLire && this.ctx.posLire(), jourMem, xMem, memXsain,
-      jourAncre, cibleX,
-    });
     const vue = this._doc().defaultView || window;
     const calerX = (essais) => {
       this._scrollProg = true;
@@ -17546,8 +17570,6 @@ class MoteurFrise {
       if (cibleX > 0 && !posee && essais > 0) {
         vue.requestAnimationFrame(() => calerX(essais - 1));
       } else {
-        console.info('[Ariane frise] calerX fini', { essais, cibleX, obtenu: droite.scrollLeft,
-          clientWidth: droite.clientWidth, scrollWidth: droite.scrollWidth });
         vue.requestAnimationFrame(() => { this._scrollProg = false; });
       }
     };
@@ -19513,6 +19535,8 @@ class MoteurFrise {
 
   detruire() {
     if (this._colPop) { this._colPop.remove(); this._colPop = null; }
+    if (this._ioFrise) { try { this._ioFrise.disconnect(); } catch (e) { /* rien */ } this._ioFrise = null; }
+    clearTimeout(this._minSauveJour);
     this.racine.empty();
   }
 }
