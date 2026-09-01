@@ -2101,7 +2101,8 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 
 .zfa-cal-bandeau { display: flex; flex: none; min-height: 22px; max-height: 18vh;
   overflow: hidden; position: relative; z-index: 3;
-  box-shadow: 0 4px 7px -5px rgba(0, 0, 0, 0.3); }
+  border-bottom: 2px solid var(--background-modifier-border-hover, var(--background-modifier-border));
+  box-shadow: 0 7px 12px -5px rgba(0, 0, 0, 0.5), 0 2px 0 rgba(0, 0, 0, 0.12); }
 .zfa-cal-bandeau-jour { flex: none; display: flex; flex-direction: column; gap: 2px;
   padding: 2px 3px; min-width: 0;
   border-left: 1px solid var(--background-modifier-border); }
