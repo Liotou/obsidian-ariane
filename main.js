@@ -6354,6 +6354,7 @@ class Ariane extends obsidian.Plugin {
       'function calParNom(nom){ if(!nom) { try{ return ST.defaultCalendarForNewEvents; }catch(e){ return null; } } var L=cals(); for(var i=0;i<L.count;i++){ var c=L.objectAtIndex(i); if(titre(c)===nom) return c; } for(var j=0;j<L.count;j++){ var c2=L.objectAtIndex(j); if(norm(titre(c2))===norm(nom)) return c2; } return null; }',
       'function evById(id){ if(!id) return null; try{ var it=ST.calendarItemWithIdentifier(id); if(it && it.isKindOfClass($.EKEvent)) return it; }catch(e){} return null; }',
       'function fmtDate(dc){ try{ return $.NSCalendar.currentCalendar.dateFromComponents(dc); }catch(e){ return null; } }',
+      'function isoDeDate(d){ if(!d) return ""; try{ var f=$.NSDateFormatter.alloc.init; f.dateFormat=$("yyyy-MM-dd\'T\'HH:mm"); f.timeZone=$.NSTimeZone.localTimeZone; return ObjC.unwrap(f.stringFromDate(d)); }catch(e){ return ""; } }',
       'function couleurCal(cal){ try{ var cg=cal.color; if(!cg) return ""; var n=cg.numberOfComponents; var k=cg.components; if(!k || n<3) return ""; var z=function(v){ v=Math.max(0,Math.min(255,Math.round(v*255))); return (v<16?"0":"")+v.toString(16); }; return "#"+z(k[0])+z(k[1])+z(k[2]); }catch(e){ return ""; } }',
     ].join('\n');
   }
@@ -6429,6 +6430,99 @@ class Ariane extends obsidian.Plugin {
       '      out.push("NOUVEAU\\t"+rid+"\\t"+net(ObjC.unwrap(rr.title))+"\\t"+(comp2?"1":"0")+"\\t"+isoDe(rr.dueDateComponents)+"\\t"+net(ln));',
       '    }',
       '  }',
+      '  return out.join("\\n");',
+      '}',
+    ].join('\n');
+  }
+
+  /* ---- Apple Agenda via EventKit (EKEvent, entité 0, macOS) -------- */
+
+  // Crée / met à jour / supprime les EKEvent d'une liste de créneaux.
+  // `evenements` : [{ ref, idx, id, titre, notes, calendrier, debut, fin, supprimer }]
+  // debut / fin = ISO « YYYY-MM-DDTHH:MM ». Rend, une ligne par entrée :
+  //   « ref \t idx \t nouvelId »  (id vide si échec)
+  //   « ref \t idx \t SUPPRIME »  (entrée supprimer:true)
+  static genererJXAEvenementsPush(evenements) {
+    const IN = JSON.stringify({ evenements: Array.isArray(evenements) ? evenements : [] });
+    return [
+      Ariane._jxaEKEvenements(),
+      'function run(){',
+      '  var IN=' + IN + '; acces();',
+      '  var out=[];',
+      '  for(var i=0;i<IN.evenements.length;i++){',
+      '    var v=IN.evenements[i];',
+      '    if(v.supprimer){',
+      '      var er=evById(v.id);',
+      '      if(er){ try{ ST.removeEventSpanCommitError(er,0,true,null); }catch(e){} }',
+      '      out.push(v.ref+"\\t"+v.idx+"\\tSUPPRIME"); continue;',
+      '    }',
+      '    var e=evById(v.id);',
+      '    var cal=calParNom(v.calendrier);',
+      '    if(e && cal){ try{ if(ObjC.unwrap(e.calendar.calendarIdentifier)!==ObjC.unwrap(cal.calendarIdentifier)) e.calendar=cal; }catch(er2){} }',
+      '    if(!e){ e=$.EKEvent.eventWithEventStore(ST); if(cal) e.calendar=cal; }',
+      '    try{ e.title=v.titre; }catch(er3){}',
+      '    try{ e.notes=v.notes||""; }catch(er4){}',
+      '    try{ e.isAllDay=false; }catch(er5){}',
+      '    try{ e.startDate=fmtDate(comps(String(v.debut).slice(0,10),String(v.debut).slice(11,16))); }catch(er6){}',
+      '    try{ e.endDate=fmtDate(comps(String(v.fin).slice(0,10),String(v.fin).slice(11,16))); }catch(er7){}',
+      '    var ok=false; try{ ok=ST.saveEventSpanCommitError(e,0,true,null); }catch(er8){}',
+      '    var nid=""; try{ nid=ObjC.unwrap(e.calendarItemIdentifier); }catch(er9){}',
+      '    out.push(v.ref+"\\t"+v.idx+"\\t"+(ok?nid:""));',
+      '  }',
+      '  return out.join("\\n");',
+      '}',
+    ].join('\n');
+  }
+
+  // Relève des EKEvent liés (pas d'import d'événements inconnus).
+  // `paires` : [{ ref, idx, id }]. Rend :
+  //   « ref \t idx \t isoDebut \t isoFin »   (événement retrouvé)
+  //   « ref \t idx \t MANQUANT »             (supprimé côté Calendar)
+  static genererJXAEvenementsReleve(paires, fenetreJours) {
+    const IN = JSON.stringify({
+      paires: Array.isArray(paires) ? paires : [],
+      fenetreJours: Number(fenetreJours) || 120,
+    });
+    return [
+      Ariane._jxaEKEvenements(),
+      'function run(){',
+      '  var IN=' + IN + '; acces();',
+      '  var out=[];',
+      '  for(var i=0;i<IN.paires.length;i++){',
+      '    var p=IN.paires[i]; var e=evById(p.id);',
+      '    if(!e){ out.push(p.ref+"\\t"+p.idx+"\\tMANQUANT"); continue; }',
+      '    out.push(p.ref+"\\t"+p.idx+"\\t"+isoDeDate(e.startDate)+"\\t"+isoDeDate(e.endDate));',
+      '  }',
+      '  return out.join("\\n");',
+      '}',
+    ].join('\n');
+  }
+
+  // Événements réels des calendriers surveillés, pour l'affichage en fond.
+  // Rend, une ligne par événement :
+  //   « id \t titre \t isoDebut \t isoFin \t allDay(0/1) \t #rrggbb \t nomCalendrier »
+  static genererJXAEvenementsFond(calendriers, debutISO, finISO) {
+    const IN = JSON.stringify({
+      calendriers: [...new Set((Array.isArray(calendriers) ? calendriers : []).filter(Boolean))],
+      debut: String(debutISO || ''), fin: String(finISO || ''),
+    });
+    return [
+      Ariane._jxaEKEvenements(),
+      'function run(){',
+      '  var IN=' + IN + '; acces();',
+      '  if(!IN.debut || !IN.fin) return "";',
+      '  var want={}; for(var w=0;w<IN.calendriers.length;w++) want[norm(IN.calendriers[w])]=1;',
+      '  var L=cals(); var arr=[];',
+      '  for(var i=0;i<L.count;i++){ var c=L.objectAtIndex(i); if(want[norm(titre(c))]) arr.push(c); }',
+      '  if(!arr.length) return "";',
+      '  var d0=fmtDate(comps(IN.debut,"00:00")); var d1=fmtDate(comps(IN.fin,"23:59"));',
+      '  var pred=ST.predicateForEventsWithStartDateEndDateCalendars(d0,d1,$(arr));',
+      '  var evs=ST.eventsMatchingPredicate(pred); var out=[];',
+      '  if(evs){ for(var k=0;k<evs.count;k++){',
+      '    var e=evs.objectAtIndex(k); var id=""; try{ id=ObjC.unwrap(e.calendarItemIdentifier); }catch(er){ continue; }',
+      '    var ad=false; try{ ad=e.isAllDay; }catch(er2){}',
+      '    out.push(id+"\\t"+net(ObjC.unwrap(e.title))+"\\t"+isoDeDate(e.startDate)+"\\t"+isoDeDate(e.endDate)+"\\t"+(ad?"1":"0")+"\\t"+couleurCal(e.calendar)+"\\t"+net(titre(e.calendar)));',
+      '  } }',
       '  return out.join("\\n");',
       '}',
     ].join('\n');
