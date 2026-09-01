@@ -20457,6 +20457,7 @@ class MoteurCalendrier {
     });
     carte.addEventListener('click', (e) => { e.stopPropagation();
       this.ouvrir(t.ref, e.metaKey || e.ctrlKey); });
+    carte.addEventListener('contextmenu', (e) => this.menuCarte(e, t, ev));
     return carte;
   }
   // Paires { cle, nom, valeur } d'une tâche, pour rendreCarte (Task 4).
@@ -20469,6 +20470,68 @@ class MoteurCalendrier {
     if (!this._enAttente) this._enAttente = new Map();
     if (apercu) this._enAttente.set(ref, apercu);
     this.dessiner();
+  }
+
+  menuCarte(e, t, ev) {
+    e.preventDefault(); e.stopPropagation();
+    const m = new obsidian.Menu();
+    const poser = async (champs) => { await this.greffon.majTache(t.ref, champs); this.dessiner(); };
+
+    m.addItem((i) => i.setTitle(tr('Ouvrir')).setIcon('file-text').onClick(() => this.ouvrir(t.ref, false)));
+    m.addItem((i) => i.setTitle(tr('Ouvrir dans un nouveau volet')).setIcon('separator-vertical')
+      .onClick(() => this.ouvrir(t.ref, true)));
+    m.addSeparator();
+
+    for (const st of ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée']) {
+      m.addItem((i) => i.setTitle(tr('Statut : ') + st).setChecked(t.statut === st)
+        .onClick(() => poser({ statut: st })));
+    }
+    m.addItem((i) => i.setTitle(tr('Marquer terminée')).setIcon('check')
+      .onClick(() => poser({ statut: 'terminée' })));
+    m.addSeparator();
+    for (const [lib, val] of [[tr('(aucune)'), ''], [tr('basse'), 'basse'],
+                              [tr('moyenne'), 'moyenne'], [tr('haute'), 'haute']]) {
+      m.addItem((i) => i.setTitle(tr('Priorité : ') + lib).setChecked(String(t.priorite || '') === val)
+        .onClick(() => poser({ priorite: val })));
+    }
+    m.addSeparator();
+
+    if (ev.source === 'creneau') {
+      m.addItem((i) => i.setTitle(tr('Supprimer ce créneau')).setIcon('trash-2')
+        .onClick(async () => {
+          await this.greffon.majCreneau(t.ref, { avant: ev.brut, debut: '', fin: '' });
+          this._apres(t.ref, { cible: [t.debut, t.echeance, null], creneaux: undefined });
+        }));
+    }
+    m.addItem((i) => i.setTitle(tr('Retirer du calendrier')).setIcon('calendar-off')
+      .onClick(async () => {
+        await this.greffon.ecrireDatesTaches([{ ref: t.ref, debut: '', echeance: '' }]);
+        this._apres(t.ref, { debut: '', echeance: '', cible: ['', '', []] });
+      }));
+    m.showAtMouseEvent(e);
+  }
+
+  menuCellule(e, jourISO) {
+    e.preventDefault(); e.stopPropagation();
+    const m = new obsidian.Menu();
+    m.addItem((i) => i.setTitle(tr('Nouvelle tâche ce jour-là')).setIcon('plus')
+      .onClick(async () => {
+        const chemin = await this.greffon.creerTache({ debut: jourISO, echeance: jourISO });
+        if (chemin) this.ouvrir(chemin.split('/').pop().replace(/\.md$/, ''), false);
+      }));
+    m.addItem((i) => i.setTitle(tr('Coller le lien en créneau')).setIcon('clipboard-paste')
+      .onClick(async () => {
+        let txt = '';
+        try { txt = await navigator.clipboard.readText(); } catch (err) { txt = ''; }
+        const ref = this._refDepuisDrop({ getData: (k) => (k === 'text/plain' ? txt : '') });
+        if (!ref) { new obsidian.Notice(tr('Aucun lien de tâche dans le presse-papier.')); return; }
+        const cr = Ariane.creneauDepuisDrop({ yRel: 0, hauteurHeure: this._pxHeure || 42,
+          heureDebut: this._hDeb || 9, jourISO, dureeMin: 60 })
+          || { debut: jourISO + 'T09:00', fin: jourISO + 'T10:00' };
+        await this.greffon.majCreneau(ref, { avant: '', debut: cr.debut, fin: cr.fin });
+        this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
+      }));
+    m.showAtMouseEvent(e);
   }
 
   // Résout la tâche déposée depuis l'extérieur : charge utile propre de la frise,
@@ -20595,6 +20658,10 @@ class MoteurCalendrier {
           this._jourSel = (this._jourSel === jour) ? '' : jour;
           this.dessiner();
         });
+        cell.addEventListener('contextmenu', (e) => {
+          if (e.target.closest('.zfa-cal-carte')) return;
+          this.menuCellule(e, jour);
+        });
         const evs = (parJour.get(jour) || []).slice().sort(Ariane.comparerEmpilement);
         for (const { t, ev } of evs) {
           const carte = this.rendreCarte(cell, t, ev, { maxLignes: 1, avecHeure: true,
@@ -20695,6 +20762,10 @@ class MoteurCalendrier {
       col.addEventListener('dragover', (de) => { de.preventDefault(); col.addClass('zfa-cal-cible'); });
       col.addEventListener('dragleave', () => col.removeClass('zfa-cal-cible'));
       col.addEventListener('drop', (de) => { col.removeClass('zfa-cal-cible'); this._dropExterne(de, col.dataset.jour, 'semaine'); });
+      col.addEventListener('contextmenu', (e) => {
+        if (e.target.closest('.zfa-cal-carte')) return;
+        this.menuCellule(e, col.dataset.jour);
+      });
       for (let h = Math.ceil(hDeb); h < hFin; h += 1) {
         const tr = col.createDiv({ cls: 'zfa-cal-trait' });
         tr.style.top = ((h - hDeb) * PXH) + 'px';
