@@ -1997,17 +1997,20 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 
 /* ===================== Vue calendrier ============================== */
 .zfa-cal { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-.zfa-cal-barre {
-  display: flex; align-items: center; gap: 8px; padding: 6px 8px; flex: none;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-.zfa-cal-nav, .zfa-cal-mode {
-  background: transparent; border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s); padding: 2px 8px; cursor: pointer;
-  color: var(--text-muted); font-size: var(--font-ui-smaller);
-}
-.zfa-cal-mode.is-active { color: var(--text-normal); border-color: var(--interactive-accent); }
-.zfa-cal-titre { font-weight: 600; margin: 0 6px; }
+.zfa-cal-barre { display: flex; align-items: center; gap: var(--size-4-2); flex: none;
+  padding: var(--size-2-2) var(--size-4-2); font-size: var(--font-ui-small);
+  border-bottom: 1px solid var(--background-modifier-border); }
+.zfa-cal-barre-gauche, .zfa-cal-barre-droite { display: flex; align-items: center; gap: var(--size-2-1); }
+.zfa-cal-barre-droite { margin-left: auto; }
+.zfa-cal-titre { font-weight: var(--font-medium); color: var(--text-muted); cursor: pointer; }
+.zfa-cal-nav { padding: 2px 6px; box-shadow: none; }
+.zfa-cal-nav-auj { font-size: var(--font-ui-smaller); }
+.zfa-cal-mode-seg { display: flex; }
+.zfa-cal-mode { padding: 2px 8px; box-shadow: none; border-radius: 0; }
+.zfa-cal-mode:first-child { border-radius: var(--radius-s) 0 0 var(--radius-s); }
+.zfa-cal-mode:last-child { border-radius: 0 var(--radius-s) var(--radius-s) 0; }
+.zfa-cal-mode.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
+.zfa-cal-neuf { display: flex; align-items: center; gap: 4px; padding: 2px 8px; }
 .zfa-cal-grille { flex: 1 1 auto; overflow: auto; }
 .zfa-cal-vide { color: var(--text-faint); padding: 24px; text-align: center; }
 .zfa-cal-cible { box-shadow: inset 0 0 0 2px var(--interactive-accent); }

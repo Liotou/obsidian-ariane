@@ -20260,24 +20260,42 @@ class MoteurCalendrier {
 
   dessinerBarreOutils(c) {
     const b = c.createDiv({ cls: 'zfa-cal-barre' });
-    const nav = (d) => {
-      this._ancre = this.mode === 'mois'
-        ? Ariane.moisSuivantN(this._ancre, d) : Ariane.decalerJour(this._ancre, d * 7);
-      this.dessiner();
-    };
-    b.createEl('button', { cls: 'zfa-cal-nav', text: '‹' }).onclick = () => nav(-1);
-    b.createEl('button', { cls: 'zfa-cal-nav', text: tr('Aujourd\'hui') }).onclick = () => {
-      this._ancre = new Date().toISOString().slice(0, 10); this.dessiner();
-    };
-    b.createEl('button', { cls: 'zfa-cal-nav', text: '›' }).onclick = () => nav(1);
-    b.createSpan({ cls: 'zfa-cal-titre', text: this.titrePeriode() });
+    const nav = (sens) => this.naviguer(sens); // Task 6 fournit naviguer(); ici : voir Step 2
+
+    const gauche = b.createDiv({ cls: 'zfa-cal-barre-gauche' });
+    const bPrec = gauche.createEl('button', { cls: 'zfa-cal-nav', attr: { 'aria-label': tr('Précédent') } });
+    obsidian.setIcon(bPrec, 'chevron-left');
+    bPrec.onclick = () => nav(-1);
+    const bAuj = gauche.createEl('button', { cls: 'zfa-cal-nav zfa-cal-nav-auj', text: tr('Aujourd\'hui') });
+    bAuj.onclick = () => { this._ancre = new Date().toISOString().slice(0, 10); this.dessiner(); };
+    const bSuiv = gauche.createEl('button', { cls: 'zfa-cal-nav', attr: { 'aria-label': tr('Suivant') } });
+    obsidian.setIcon(bSuiv, 'chevron-right');
+    bSuiv.onclick = () => nav(1);
+
+    const titre = b.createSpan({ cls: 'zfa-cal-titre', text: this.titrePeriode() });
+    titre.setAttribute('role', 'button');
+    titre.onclick = () => { this._ancre = new Date().toISOString().slice(0, 10); this.dessiner(); };
+
+    const droite = b.createDiv({ cls: 'zfa-cal-barre-droite' });
+    const seg = droite.createDiv({ cls: 'zfa-cal-mode-seg' });
     for (const m of ['mois', 'semaine']) {
-      const o = b.createEl('button', {
+      const o = seg.createEl('button', {
         cls: 'zfa-cal-mode' + (this.mode === m ? ' is-active' : ''),
         text: m === 'mois' ? tr('Mois') : tr('Semaine') });
       o.onclick = async () => { await this.ctx.ecrire('calMode', m); this.dessiner(); };
     }
+    const neuf = droite.createEl('button', { cls: 'zfa-cal-neuf', attr: { 'aria-label': tr('Nouvelle tâche') } });
+    obsidian.setIcon(neuf, 'plus');
+    neuf.createSpan({ text: tr('Nouveau') });
+    neuf.onclick = () => this._surNouveau();
   }
+
+  naviguer(sens) {
+    this._ancre = Ariane.ancreCarrousel(this._ancre, this.mode, sens);
+    this.dessiner();
+  }
+
+  _surNouveau() { /* rempli en Task 7 */ }
 
   titrePeriode() {
     const [a, m] = this._ancre.split('-').map(Number);
