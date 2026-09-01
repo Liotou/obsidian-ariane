@@ -5,3 +5,6 @@ cache-embeddings.json
 .DS_Store
 node_modules/
 bibliographies.json
+
+# Configuration locale Claude Code (clé API)
+.claude/settings.local.json
