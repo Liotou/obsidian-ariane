@@ -2171,34 +2171,40 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   overflow-wrap: anywhere;
   cursor: pointer;
 }
-.zfa-cal-carte-l1 { display: flex; align-items: flex-start; gap: 5px; min-width: 0; }
-/* Coche : petite case plate (14 px), calée sur la 1re ligne du titre, comme
-   une case « - [ ] » de note — pas la coche native, épaisse et désalignée. */
-.zfa-cal-carte-coche {
+.zfa-cal-carte-l1 { display: flex; align-items: flex-start; gap: 0.4em; min-width: 0; }
+/* Coche : case plate exactement à la hauteur du texte de la carte. Un <input>
+   n'hérite pas de font-size → on le force, puis tout est en `em`. Le sélecteur
+   `input[type=checkbox].xxx` passe DEVANT la règle globale d'Obsidian sur les
+   cases, qui sinon impose sa propre taille. */
+input[type="checkbox"].zfa-cal-carte-coche {
   flex: none;
+  font-size: inherit;
   appearance: none;
   -webkit-appearance: none;
   box-sizing: border-box;
-  width: 14px; height: 14px;
-  margin: 1px 0 0;
+  width: 1em; height: 1em;
+  min-width: 0;
+  margin: 0.15em 0 0;
   padding: 0;
-  border: 1px solid var(--checkbox-border-color, var(--text-faint));
-  border-radius: 3px;
+  border: max(1px, 0.07em) solid var(--checkbox-border-color, var(--background-modifier-border-hover));
+  border-radius: 0.22em;
   background: var(--background-primary);
+  box-shadow: none;
   cursor: pointer;
   position: relative;
 }
-.zfa-cal-carte-coche:checked {
+input[type="checkbox"].zfa-cal-carte-coche:hover { border-color: var(--text-muted); }
+input[type="checkbox"].zfa-cal-carte-coche:checked {
   background: var(--checkbox-color, var(--interactive-accent));
   border-color: var(--checkbox-color, var(--interactive-accent));
 }
-.zfa-cal-carte-coche:checked::after {
+input[type="checkbox"].zfa-cal-carte-coche:checked::after {
   content: "";
   position: absolute;
-  left: 4px; top: 1px;
-  width: 4px; height: 8px;
+  left: 0.3em; top: 0.08em;
+  width: 0.28em; height: 0.55em;
   border: solid var(--checkbox-marker-color, #fff);
-  border-width: 0 2px 2px 0;
+  border-width: 0 0.14em 0.14em 0;
   transform: rotate(45deg);
 }
 .zfa-cal-carte-titre { flex: 1 1 auto; min-width: 0; font-weight: var(--font-medium);
