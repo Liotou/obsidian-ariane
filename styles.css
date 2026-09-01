@@ -2096,6 +2096,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 
 .zfa-cal-bandeau { display: flex; flex: none; min-height: 24px;
   box-sizing: border-box; overflow: hidden; position: relative; z-index: 3;
+  border-top: 2px solid var(--background-modifier-border-hover, var(--background-modifier-border));
   border-bottom: 2px solid var(--background-modifier-border-hover, var(--background-modifier-border));
   box-shadow: 0 7px 12px -5px rgba(0, 0, 0, 0.5), 0 2px 0 rgba(0, 0, 0, 0.12); }
 /* Poignée de redimensionnement du bandeau : bande fine sur son bord bas,
@@ -2150,10 +2151,13 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-now { position: absolute; left: 0; right: 0; height: 0;
   border-top: 2px solid var(--interactive-accent); z-index: 2; pointer-events: none; }
 .zfa-cal-bloc { position: absolute; overflow: hidden; z-index: 1; }
-/* Bloc en cours de migration vers un autre jour : au-dessus des autres,
-   ombre portée pour montrer qu'il « décolle » de sa colonne. */
-.zfa-cal-bloc.zfa-cal-bloc-migre { z-index: 20; opacity: 0.92;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35); }
+/* Bloc décroché du calendrier, qui suit librement le curseur : au-dessus de
+   tout, ombre portée marquée, se recale sur le jour + le quart d'heure au
+   lâcher. */
+.zfa-cal-bloc.zfa-cal-bloc-flotte {
+  z-index: 30; opacity: 0.95; cursor: grabbing; pointer-events: none;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
 .zfa-cal-poignee { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
 .zfa-cal-bloc:focus { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 

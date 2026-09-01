@@ -21378,12 +21378,14 @@ class MoteurCalendrier {
     const strip = Array.isArray(this._semStrip) ? this._semStrip : [];
     const idxDep = strip.indexOf(jourCol);
     const peutChangerJour = mode !== 'fin' && colW > 0 && idxDep >= 0;
-    let dJours = 0;
     let bouge = false;
+    let dxDer = 0;
+    let dyDer = 0;
     const cal = (v) => Math.round(v / (PXH / 4)) * (PXH / 4);
     const bouger = (mv) => {
       const d = mv.clientY - y0;
       const dx = mv.clientX - x0;
+      dxDer = dx; dyDer = d;
       if ((Math.abs(d) > 3 || Math.abs(dx) > 3) && !bouge) {
         bouge = true;
         // Après un glissé, le navigateur émet un « click » de synthèse sur le
@@ -21392,21 +21394,37 @@ class MoteurCalendrier {
           { capture: true, once: true });
       }
       if (mode === 'fin') { bloc.style.height = Math.max(PXH / 4, cal(hDep + d)) + 'px'; return; }
-      bloc.style.top = Math.max(0, cal(topDep + d)) + 'px';
-      if (peutChangerJour) {
-        dJours = Math.max(-idxDep, Math.min(strip.length - 1 - idxDep, Math.round(dx / colW)));
-        bloc.style.transform = dJours ? 'translateX(' + (dJours * colW) + 'px)' : '';
-        bloc.classList.toggle('zfa-cal-bloc-migre', dJours !== 0);
-      }
+      // Geste « bouger » : le bloc se décroche et suit librement le curseur sur
+      // les deux axes (sans calage). Le recalage sur le jour + le quart d'heure
+      // se fait au lâcher.
+      bloc.classList.add('zfa-cal-bloc-flotte');
+      bloc.style.transform = 'translate(' + dx + 'px,' + d + 'px)';
     };
-    const lacher = async () => {
+    const lacher = async (up) => {
       document.removeEventListener('pointermove', bouger);
       document.removeEventListener('pointerup', lacher);
+      bloc.classList.remove('zfa-cal-bloc-flotte');
       bloc.style.transform = '';
       if (!bouge) return;
-      const top = parseFloat(bloc.style.top) || 0;
+      const dx = (up && up.clientX != null) ? up.clientX - x0 : dxDer;
+      const dy = (up && up.clientY != null) ? up.clientY - y0 : dyDer;
       const haut = parseFloat(bloc.style.height) || PXH;
-      const jourCible = (peutChangerJour && dJours) ? strip[idxDep + dJours] : jourCol;
+      if (mode === 'fin') {
+        const top = parseFloat(bloc.style.top) || 0;
+        const cr0 = Ariane.creneauDepuisDrop({ yRel: top, hauteurHeure: PXH,
+          heureDebut: this._hDeb, jourISO: jourCol, dureeMin: Math.max(15, (haut / PXH) * 60) });
+        if (!cr0) { this.dessiner(); return; }
+        await this.greffon.majCreneau(ref, { avant: brut, debut: cr0.debut, fin: cr0.fin });
+        this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
+        return;
+      }
+      const top = Math.max(0, cal(topDep + dy));
+      let dJours = 0;
+      if (peutChangerJour) {
+        dJours = Math.max(-idxDep,
+          Math.min(strip.length - 1 - idxDep, Math.round(dx / colW)));
+      }
+      const jourCible = dJours ? strip[idxDep + dJours] : jourCol;
       const cr = Ariane.creneauDepuisDrop({ yRel: top, hauteurHeure: PXH,
         heureDebut: this._hDeb, jourISO: jourCible, dureeMin: Math.max(15, (haut / PXH) * 60) });
       if (!cr) { this.dessiner(); return; }
