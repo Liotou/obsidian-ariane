@@ -20269,7 +20269,13 @@ class MoteurCalendrier {
       }
     }
     this.dessinerBarreOutils(c);
-    const ruban = c.createDiv({ cls: 'zfa-cal-ruban' });
+    // Cadre fixe (largeur du volet, overflow:hidden) + piste 300 % translatée à
+    // l'intérieur. Le translateX doit porter sur la piste, PAS sur l'élément qui
+    // rogne : un translateX en % se résout sur la propre largeur de l'élément,
+    // donc translater le cadre le sortirait entièrement de la vue.
+    const cadre = c.createDiv({ cls: 'zfa-cal-cadre' });
+    const ruban = cadre.createDiv({ cls: 'zfa-cal-ruban' });
+    this._cadre = cadre;
     this._ruban = ruban;
     this._decalGeste = 0;
     const grilles = {};
@@ -20283,8 +20289,8 @@ class MoteurCalendrier {
     ruban.appendChild(grilles[-1]);
     ruban.appendChild(grilles[0]);
     ruban.appendChild(grilles[1]);
-    ruban.style.transform = 'translateX(-100%)';
-    this._brancherCarrousel(ruban);
+    ruban.style.transform = 'translateX(calc(-100% / 3))';
+    this._brancherCarrousel(cadre, ruban);
   }
 
   _rendreGrille(hote, ancre) {
@@ -20333,18 +20339,18 @@ class MoteurCalendrier {
     else { this._ancre = Ariane.ancreCarrousel(this._ancre, this.mode, sens); this.dessiner(); }
   }
 
-  _brancherCarrousel(ruban) {
-    const largeur = () => ruban.clientWidth || 1;
+  _brancherCarrousel(cadre, ruban) {
+    const largeur = () => cadre.clientWidth || 1;
     const appliquer = () => {
       ruban.style.transition = 'none';
-      ruban.style.transform = 'translateX(calc(-100% + ' + this._decalGeste + 'px))';
+      ruban.style.transform = 'translateX(calc(-100% / 3 + ' + this._decalGeste + 'px))';
     };
     const finDeGeste = () => {
       const w = largeur();
       const sens = this._decalGeste <= -w / 4 ? 1 : (this._decalGeste >= w / 4 ? -1 : 0);
       this._calerCarrousel(sens);
     };
-    ruban.addEventListener('wheel', (e) => {
+    cadre.addEventListener('wheel', (e) => {
       if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // vertical : laisser défiler
       e.preventDefault();
       this._decalGeste -= e.deltaX;
@@ -20353,7 +20359,7 @@ class MoteurCalendrier {
       this._wheelMinuterie = setTimeout(finDeGeste, 140);
     }, { passive: false });
 
-    ruban.addEventListener('pointerdown', (e) => {
+    cadre.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       if (e.target.closest('.zfa-cal-carte, .zfa-cal-cellule, .zfa-cal-bloc, .zfa-cal-poignee, .zfa-cal-bandeau-jour, .zfa-cal-bandeau-plus, .zfa-cal-bandeau-chevron, button')) return;
       const x0 = e.clientX;
@@ -20379,7 +20385,7 @@ class MoteurCalendrier {
     const ruban = this._ruban;
     if (!ruban || this._enCalage) return;
     this._enCalage = true;
-    const cible = sens === 1 ? '-200%' : (sens === -1 ? '0%' : '-100%');
+    const cible = sens === 1 ? 'calc(-200% / 3)' : (sens === -1 ? '0%' : 'calc(-100% / 3)');
     ruban.style.transition = 'transform 180ms ease-out';
     ruban.style.transform = 'translateX(' + cible + ')';
     let fait = false;
