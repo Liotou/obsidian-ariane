@@ -1601,9 +1601,14 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   background-color: var(--background-primary);
 }
 
-.zfa-artic-noeud foreignObject { overflow: visible; }
+/* Le foreignObject ne capte aucun pointeur : sa hauteur estimée (JS) peut
+   différer de la carte rendue (height:auto des cartes dépliées) et laissait
+   sous la carte une bande invisible qui empêchait le pan du canvas. Seule la
+   carte elle-même (sa hauteur visible) reçoit les événements. */
+.zfa-artic-noeud foreignObject { overflow: visible; pointer-events: none; }
 .zfa-artic-carte {
   box-sizing: border-box; width: 100%; height: 100%;
+  pointer-events: auto;
   display: flex; align-items: flex-start; gap: 8px;
   padding: 6px 9px; cursor: default;
   background: var(--background-secondary);

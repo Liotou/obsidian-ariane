@@ -7107,6 +7107,203 @@ class Ariane extends obsidian.Plugin {
       + ', ' + x2 + ' ' + y2;
   }
 
+  // Routage orthogonal d'une flèche autour des cartes : un chemin en angles
+  // droits qui ne traverse AUCUNE carte, calculé par A* sur les lignes
+  // « dégagées » (bords des cartes dilatés de la marge). Renvoie
+  // { pts, cout } — pts va du point de sortie à l'ancre d'arrivée, coudes
+  // et longueur déjà arbitrés — ou null si aucun chemin n'existe (l'appelant
+  // retombe alors sur le tracé direct, seul cas où la flèche peut passer
+  // derrière une carte).
+  // - (x1, y1) : sortie, sur le bord droit de la carte source.
+  // - (x2, y2) : ancre d'arrivée, sur un bord gauche / haut / bas de la cible
+  //   (le bord droit est réservé aux points de connexion de sortie).
+  // - cote : bord de la cible où est posée l'ancre ('gauche' | 'haut' | 'bas').
+  // - obstacles : rectangles de cartes [{ x0, y0, x1, y1 }], source et cible
+  //   comprises : le tracé part du bord de la source et n'entre dans la
+  //   cible que par son ancre, jamais à travers.
+  static routageOrtho(x1, y1, x2, y2, cote, obstacles, marge) {
+    // Le tracé quitte la source par la droite et aborde la cible par la face
+    // de son ancre : ces deux « portes » sont posées à marge du bord.
+    const sx = x1 + marge;
+    const sy = y1;
+    const gx = cote === 'gauche' ? x2 - marge : x2;
+    const gy = cote === 'gauche' ? y2 : (cote === 'haut' ? y2 - marge : y2 + marge);
+    const dilate = (obstacles || []).map((o) => ({
+      x0: o.x0 - marge, y0: o.y0 - marge, x1: o.x1 + marge, y1: o.y1 + marge }));
+    // Fenêtre de recherche : au-delà, aucun détour raisonnable n'a de raison
+    // d'aller ; si le chemin n'est pas dedans, on déclare l'échec.
+    const LIM = 420;
+    const bx0 = Math.min(sx, gx) - LIM, bx1 = Math.max(sx, gx) + LIM;
+    const by0 = Math.min(sy, gy) - LIM, by1 = Math.max(sy, gy) + LIM;
+    const lignes = (vals, a, b) => [...new Set(vals
+      .filter((v) => v > a && v < b)
+      .map((v) => Math.round(v * 2) / 2))].sort((p, q) => p - q);
+    const xs = lignes(dilate.flatMap((o) => [o.x0, o.x1]).concat(sx, gx), bx0, bx1);
+    const ys = lignes(dilate.flatMap((o) => [o.y0, o.y1]).concat(sy, gy), by0, by1);
+    const si = xs.indexOf(sx), sj = ys.indexOf(sy);
+    const gi = xs.indexOf(gx), gj = ys.indexOf(gy);
+    if (si < 0 || sj < 0 || gi < 0 || gj < 0) return null;
+    // Tronçons interdits : ceux qui traversent l'intérieur STRICT d'une carte
+    // dilatée. Longer son bord (sur les lignes dégagées) reste permis.
+    const dansRangee = ys.map((y) => dilate.filter((o) => o.y0 < y && y < o.y1));
+    const dansColonne = xs.map((x) => dilate.filter((o) => o.x0 < x && x < o.x1));
+    const hBloque = (i0, i1, j) => {
+      const a = Math.min(xs[i0], xs[i1]), b = Math.max(xs[i0], xs[i1]);
+      return dansRangee[j].some((o) => a < o.x1 && b > o.x0);
+    };
+    const vBloque = (j0, j1, i) => {
+      const a = Math.min(ys[j0], ys[j1]), b = Math.max(ys[j0], ys[j1]);
+      return dansColonne[i].some((o) => a < o.y1 && b > o.y0);
+    };
+    // A* sur le graphe (ligne x, ligne y, direction d'arrivée) : coût =
+    // longueur + pénalité par coude. Heuristique de Manhattan, admissible.
+    const NX = xs.length, NY = ys.length, NB = 5; // 4 directions + départ
+    const E = 0, S = 1, O = 2, N = 3, DEB = 4;
+    const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
+    const idx = (i, j, d) => (j * NX + i) * NB + d;
+    const dist = new Float64Array(NX * NY * NB).fill(Infinity);
+    const origine = new Int32Array(NX * NY * NB).fill(-1);
+    dist[idx(si, sj, DEB)] = 0;
+    const tas = [[0, 0, si, sj, DEB]];
+    const pousser = (n) => {
+      tas.push(n);
+      let k = tas.length - 1;
+      while (k > 0) {
+        const p = (k - 1) >> 1;
+        if (tas[p][0] <= tas[k][0]) break;
+        [tas[p], tas[k]] = [tas[k], tas[p]]; k = p;
+      }
+    };
+    const retirer = () => {
+      const tete = tas[0], dern = tas.pop();
+      if (tas.length) {
+        tas[0] = dern;
+        let k = 0;
+        for (;;) {
+          const g = 2 * k + 1, d = 2 * k + 2;
+          let m = k;
+          if (g < tas.length && tas[g][0] < tas[m][0]) m = g;
+          if (d < tas.length && tas[d][0] < tas[m][0]) m = d;
+          if (m === k) break;
+          [tas[m], tas[k]] = [tas[k], tas[m]]; k = m;
+        }
+      }
+      return tete;
+    };
+    let but = -1;
+    const CAP = 60000; // garde-fou contre les dispositions pathologiques
+    for (let visites = 0; tas.length && visites < CAP; visites++) {
+      // Chaque entrée porte [f = g + heuristique, g, i, j, dir] : l'entrée
+      // périmée se reconnaît à son g (dist garde le meilleur g).
+      const [, g0, i, j, dir] = retirer();
+      if (g0 > dist[idx(i, j, dir)]) continue;
+      if (i === gi && j === gj) { but = idx(i, j, dir); break; }
+      for (let nd = 0; nd < 4; nd++) {
+        const ni = i + DX[nd], nj = j + DY[nd];
+        if (ni < 0 || ni >= NX || nj < 0 || nj >= NY) continue;
+        const long = (nd === 0 || nd === 2) ? Math.abs(xs[ni] - xs[i])
+          : Math.abs(ys[nj] - ys[j]);
+        if (!long) continue;
+        const bloque = (nd === 0) ? hBloque(i, ni, j)
+          : (nd === 2) ? hBloque(ni, i, j)
+          : (nd === 1) ? vBloque(j, nj, i) : vBloque(nj, j, i);
+        if (bloque) continue;
+        const pen = (dir === DEB || dir === nd) ? 0 : PENALITE_COUD;
+        const cible = idx(ni, nj, nd);
+        const dv = g0 + long + pen;
+        if (dv < dist[cible]) {
+          dist[cible] = dv;
+          origine[cible] = idx(i, j, dir);
+          pousser([dv + Math.abs(xs[ni] - gx) + Math.abs(ys[nj] - gy), dv, ni, nj, nd]);
+        }
+      }
+    }
+    if (but < 0) return null;
+    // Reconstitution, puis sommets alignés supprimés d'un coup.
+    const sommets = [];
+    for (let cur = but; cur >= 0; ) {
+      const d = cur % NB;
+      const ij = (cur - d) / NB;
+      sommets.push([xs[ij % NX], ys[Math.floor(ij / NX)]]);
+      cur = origine[cur];
+    }
+    sommets.reverse();
+    const pts = [[x1, y1], [sx, sy], ...sommets, [gx, gy], [x2, y2]];
+    // Coût réel de la polyligne (le stub de sortie peut ajouter un coude).
+    let long = 0, coudes = 0;
+    for (let i = 1; i < pts.length; i++) {
+      long += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      if (i > 1) {
+        const ax = pts[i - 1][0] - pts[i - 2][0], ay = pts[i - 1][1] - pts[i - 2][1];
+        const bx = pts[i][0] - pts[i - 1][0], by = pts[i][1] - pts[i - 1][1];
+        if (Math.abs(ax * by - ay * bx) > 0.01) coudes++;
+      }
+    }
+    return { pts: Ariane._epurePoly(pts), cout: long + coudes * PENALITE_COUD };
+  }
+
+  // Supprime de la polyligne ses sommets alignés (et les doublons).
+  static _epurePoly(pts) {
+    const P = [];
+    for (const p of pts) {
+      const d = P[P.length - 1];
+      if (d && Math.abs(d[0] - p[0]) < 0.01 && Math.abs(d[1] - p[1]) < 0.01) continue;
+      if (P.length >= 2) {
+        const a = P[P.length - 2], b = P[P.length - 1];
+        const croix = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+        const produit = (p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1]);
+        if (Math.abs(croix) < 0.01 && produit > 0) P.pop();
+      }
+      P.push([p[0], p[1]]);
+    }
+    return P;
+  }
+
+  // Attribut « d » d'une polyligne. rayon > 0 : coudes arrondis par une
+  // courbe quadratique (mode « courbe » — l'arrondi reste sous le rayon, il
+  // ne remonte pas dans la marge tenue autour des cartes) ; rayon 0 : angles
+  // vifs (mode « angulaire »).
+  static cheminPolyligne(pts, rayon) {
+    const P = Ariane._epurePoly(pts || []);
+    if (P.length < 2) return '';
+    const r = Math.max(0, rayon || 0);
+    let d = 'M ' + P[0][0] + ' ' + P[0][1];
+    if (r <= 0 || P.length === 2) {
+      for (let i = 1; i < P.length; i++) d += ' L ' + P[i][0] + ' ' + P[i][1];
+      return d;
+    }
+    for (let i = 1; i < P.length - 1; i++) {
+      const a = P[i - 1], b = P[i], c = P[i + 1];
+      const lab = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const lbc = Math.hypot(c[0] - b[0], c[1] - b[1]);
+      const rr = Math.min(r, lab / 2, lbc / 2);
+      const u = [(b[0] - a[0]) / lab, (b[1] - a[1]) / lab];
+      const v = [(c[0] - b[0]) / lbc, (c[1] - b[1]) / lbc];
+      d += ' L ' + (b[0] - u[0] * rr) + ' ' + (b[1] - u[1] * rr)
+        + ' Q ' + b[0] + ' ' + b[1] + ', ' + (b[0] + v[0] * rr) + ' ' + (b[1] + v[1] * rr);
+    }
+    const f = P[P.length - 1];
+    return d + ' L ' + f[0] + ' ' + f[1];
+  }
+
+  // Point à mi-parcours d'une polyligne (pose du libellé d'arête).
+  static pointMilieu(pts) {
+    const P = Ariane._epurePoly(pts || []);
+    if (!P.length) return { x: 0, y: 0 };
+    let tot = 0;
+    const seg = [];
+    for (let i = 1; i < P.length; i++) {
+      const l = Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]);
+      seg.push(l);
+      tot += l;
+    }
+    if (!tot) return { x: P[0][0], y: P[0][1] };
+    let reste = tot / 2, i = 0;
+    while (i < seg.length - 1 && reste > seg[i]) { reste -= seg[i]; i++; }
+    const t = seg[i] ? reste / seg[i] : 0;
+    return { x: P[i][0] + (P[i + 1][0] - P[i][0]) * t, y: P[i][1] + (P[i + 1][1] - P[i][1]) * t };
+  }
+
   //#endregion Ariane · static · articulation
 
   //#region Ariane · suggestions locales
@@ -19957,6 +20154,13 @@ const SEUIL_AIMANT = 7;    // distance d'accrochage à un bord / centre voisin
 // l'autre, quelle que soit la hauteur de la carte : parenté au-dessus du
 // centre, blocage en dessous.
 const ANCRE_ECART = 22;
+// Routage des flèches autour des cartes : écart tenu entre le tracé et les
+// cartes qu'il contourne, pénalité d'un coude (choix du chemin par A*), et
+// arrondi des coudes en mode « courbe » (l'arrondi coupe le coin vers
+// l'extérieur de l'obstacle, il reste dans la marge).
+const MARGE_FLECHE = 14;
+const PENALITE_COUD = 26;
+const RAYON_COUD = 9;
 function ancreY(h, type) {
   const c = (h || ARTIC_H) / 2;
   return type === 'bloque' ? c + ANCRE_ECART / 2 : c - ANCRE_ECART / 2;
@@ -20140,6 +20344,40 @@ class MoteurArticulation {
     this.dessinerZones(g); // sous les cartes et les arêtes
     for (const a of aretes) this.dessinerArete(g, a);
     for (const n of noeuds) this.dessinerNoeud(g, n);
+
+    // Hauteurs réelles des cartes : la formule n'estime que le prévu
+    // (ARTIC_H + colonnes × 18), mais le CSS décide — les cartes dépliées
+    // sont en height:auto. On mesure une fois posé, on aligne sur la hauteur
+    // VISIBLE le foreignObject, les points d'accroche et les badges de
+    // relatifs, puis on retrace les arêtes : sinon une bande sous les cartes
+    // dépliées ne correspond à rien (zone morte qui ne pan pas) et les
+    // accroches flottent sous la carte.
+    const mesures = [];
+    for (const gn of g.querySelectorAll('.zfa-artic-noeud')) {
+      const carte = gn.querySelector('.zfa-artic-carte');
+      mesures.push([gn, carte ? carte.offsetHeight : 0]);
+    }
+    let hChangee = false;
+    for (const [gn, h] of mesures) {
+      const n = this._noeudsParRef.get(gn.dataset.ref);
+      const h0 = (n && n.h) || ARTIC_H;
+      if (!h || Math.abs(h - h0) <= 1) continue;
+      const hN = Math.max(24, Math.round(h));
+      if (n) n.h = hN;
+      hChangee = true;
+      const fo = gn.querySelector('foreignObject');
+      if (fo) fo.setAttribute('height', hN);
+      for (const ga of gn.querySelectorAll('.zfa-artic-accroche')) {
+        ga.setAttribute('transform',
+          'translate(' + ARTIC_W + ',' + ancreY(hN, ga.dataset.type) + ')');
+      }
+      for (const gb of gn.querySelectorAll('.zfa-artic-repli')) {
+        const typeRepli = gb.classList.contains('zfa-artic-repli-bloque') ? 'bloque' : 'hier';
+        gb.setAttribute('transform',
+          'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, typeRepli) + ')');
+      }
+    }
+    if (hChangee) this._retracerAretes();
 
     svg.addEventListener('wheel', (e) => this.zoomer(e), { passive: false });
     const surFond = (e) => (e.target === svg
@@ -20756,19 +20994,11 @@ class MoteurArticulation {
     return String(v);
   }
 
-  // Tracé d'une arête : courbe (défaut) ou angulaire selon le réglage.
-  // `entreeGauche === false` : on entre par le bord DROIT de la cible (la sortie
-  // de la source est à sa droite, la cible n'est pas assez à droite pour laisser
-  // passer le trait dans l'entre-deux). Le tracé longe alors la carte par
-  // l'extérieur au lieu de disparaître derrière.
-  _chemin(x1, y1, x2, y2, entreeGauche) {
+  // Tracé direct d'une arête : courbe (défaut) ou angulaire selon le réglage.
+  // Réservé à l'aperçu du tiré d'arête et au repli quand aucun chemin ne
+  // contourne les cartes — le routage courant est fait par _traceArete.
+  _chemin(x1, y1, x2, y2) {
     const ang = (this.greffon.settings.articulationFleches || 'courbe') === 'angulaire';
-    if (entreeGauche === false) {
-      const mx = Math.max(x1, x2) + 26;
-      return ang
-        ? 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + y2 + ' H ' + x2
-        : 'M ' + x1 + ' ' + y1 + ' C ' + mx + ' ' + y1 + ', ' + mx + ' ' + y2 + ', ' + x2 + ' ' + y2;
-    }
     if (ang) {
       const mx = Math.max(x1 + 16, (x1 + x2) / 2);
       return 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + y2 + ' H ' + x2;
@@ -20776,10 +21006,12 @@ class MoteurArticulation {
     return Ariane._cheminFleche(x1, y1, x2, y2);
   }
 
-  // Géométrie complète d'une arête : points d'accroche et tracé. Le bord
-  // d'entrée sur la cible est choisi pour que le trait CONTOURNE la carte
-  // plutôt que de passer derrière (bug visible quand la cible est à gauche
-  // ou à l'aplomb de la source).
+  // Géométrie complète d'une arête. La flèche SORT par le bord droit de la
+  // source (les points de connexion de sortie) et ARRIVE sur un bord gauche,
+  // haut ou bas de la cible — jamais le bord droit, réservé aux sorties.
+  // Le tracé est orthogonal et contourne toutes les cartes (source et cible
+  // comprises) : une flèche ne passe jamais sur une carte. Seul cas dérogé,
+  // prévu par la spec : aucun chemin n'existe, on reprend le tracé direct.
   _traceArete(deRef, versRef, type) {
     const s = this._pt(deRef);
     const t = this._pt(versRef);
@@ -20787,21 +21019,50 @@ class MoteurArticulation {
     const ht = ((this._noeudsParRef && this._noeudsParRef.get(versRef)) || {}).h || ARTIC_H;
     const x1 = s.x + ARTIC_W;
     const y1 = s.y + ancreY(hs, type);
-    const y2 = t.y + ancreY(ht, type);
-    const entreeGauche = x1 <= t.x - 24;
-    const x2 = entreeGauche ? t.x : t.x + ARTIC_W;
-    return { x1, y1, x2, y2, d: this._chemin(x1, y1, x2, y2, entreeGauche) };
+    const ang = (this.greffon.settings.articulationFleches || 'courbe') === 'angulaire';
+    // Ancres d'arrivée candidates : bord gauche à la hauteur du type (puis au
+    // centre), bord haut et bord bas au centre. En cas d'égalité de coût, la
+    // première l'emporte (entrée à gauche, la plus horizontale).
+    const candidats = [
+      { x: t.x, y: t.y + ancreY(ht, type), cote: 'gauche' },
+      { x: t.x, y: t.y + ht / 2, cote: 'gauche' },
+      { x: t.x + ARTIC_W / 2, y: t.y, cote: 'haut' },
+      { x: t.x + ARTIC_W / 2, y: t.y + ht, cote: 'bas' },
+    ];
+    const obstacles = [];
+    if (this._noeudsParRef) {
+      for (const [ref, n] of this._noeudsParRef) {
+        const p = this._pt(ref);
+        obstacles.push({ x0: p.x, y0: p.y, x1: p.x + ARTIC_W, y1: p.y + (n.h || ARTIC_H) });
+      }
+    }
+    let meilleur = null;
+    for (const c of candidats) {
+      const r = Ariane.routageOrtho(x1, y1, c.x, c.y, c.cote, obstacles, MARGE_FLECHE);
+      if (r && (!meilleur || r.cout < meilleur.cout)) meilleur = { pts: r.pts, cout: r.cout, c };
+    }
+    if (!meilleur) {
+      const c = candidats[0];
+      return { x1, y1, x2: c.x, y2: c.y, d: this._chemin(x1, y1, c.x, c.y) };
+    }
+    return {
+      x1, y1, x2: meilleur.c.x, y2: meilleur.c.y,
+      d: Ariane.cheminPolyligne(meilleur.pts, ang ? 0 : RAYON_COUD),
+      milieu: Ariane.pointMilieu(meilleur.pts),
+    };
   }
 
   dessinerArete(g, a) {
-    const { x1, y1, x2, y2, d } = this._traceArete(a.de, a.vers, a.type);
+    const tr = this._traceArete(a.de, a.vers, a.type);
+    const { x1, y1, x2, y2, d } = tr;
+    const mi = tr.milieu || { x: (x1 + x2) / 2, y: (y1 + y2) / 2 };
     const gr = svgEl('g', { class: 'zfa-artic-arete-groupe' });
     gr.dataset.de = a.de; gr.dataset.vers = a.vers; gr.dataset.type = a.type;
     gr.appendChild(svgEl('path', { d, class: 'zfa-artic-arete-cible' }));
     gr.appendChild(svgEl('path', { d, class: 'zfa-artic-arete zfa-artic-' + a.type,
       'marker-end': 'url(#zfa-artic-pointe-' + a.type + ')' }));
     if (a.libelle) {
-      const lab = svgEl('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 4, class: 'zfa-artic-arete-lab' });
+      const lab = svgEl('text', { x: mi.x, y: mi.y - 4, class: 'zfa-artic-arete-lab' });
       lab.textContent = a.libelle;
       gr.appendChild(lab);
     }
@@ -21196,11 +21457,21 @@ class MoteurArticulation {
   }
 
   // Redessine les chemins des arêtes touchant un nœud déplacé.
-  majAretesDe(ref) {
+  majAretesDe(ref) { this._retracerAretes(ref); }
+
+  // Retrace les arêtes (celles touchant `ref` s'il est donné) : chemin et
+  // libellé. Aussi appelé sans filtre après la mesure des hauteurs de cartes.
+  _retracerAretes(ref) {
+    if (!this._svg) return;
     for (const gr of this._svg.querySelectorAll('.zfa-artic-arete-groupe')) {
-      if (gr.dataset.de !== ref && gr.dataset.vers !== ref) continue;
-      const { d } = this._traceArete(gr.dataset.de, gr.dataset.vers, gr.dataset.type);
-      for (const p of gr.querySelectorAll('path')) p.setAttribute('d', d);
+      if (ref && gr.dataset.de !== ref && gr.dataset.vers !== ref) continue;
+      const t = this._traceArete(gr.dataset.de, gr.dataset.vers, gr.dataset.type);
+      for (const p of gr.querySelectorAll('path')) p.setAttribute('d', t.d);
+      const lab = gr.querySelector('.zfa-artic-arete-lab');
+      if (lab && t.milieu) {
+        lab.setAttribute('x', t.milieu.x);
+        lab.setAttribute('y', t.milieu.y - 4);
+      }
     }
   }
 
@@ -24095,6 +24366,7 @@ module.exports = Ariane;
 // Exposition des fonctions pures pour les tests.
 module.exports._test = {
   DEFAULT_SETTINGS,
+  MoteurArticulation, // prototype : _traceArete s'éprouve avec un moteur factice
   echapperRegex,
   nomCompletAuteur,
   appliquerModele,
