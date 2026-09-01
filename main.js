@@ -1078,6 +1078,8 @@ const TEXTES = {
     "— notes seulement —": "— notes only —",
     " tâche(s) à créer": " task(s) to create",
     "Créer les tâches": "Create the tasks",
+    "Glissez la poignée : vertical = l’ordre, horizontal = le niveau.": "Drag the handle: vertical = order, horizontal = level.",
+    "Déplacer : vertical = l’ordre, horizontal = le niveau.": "Move: vertical = order, horizontal = level.",
     "L'IA n'a produit aucune tâche exploitable.": "The AI produced no usable task.",
     "Création des tâches…": "Creating tasks…",
     " tâche(s) créée(s).": " task(s) created.",
@@ -6880,6 +6882,70 @@ class Ariane extends obsidian.Plugin {
       };
     };
     return racine.map((n) => un(n, 0)).filter(Boolean);
+  }
+
+  // Aplatit un arbre de specs en liste [{ n, prof }] (parcours préfixe) :
+  // l'ordre des éléments suit l'ordre visuel des lignes de l'aperçu.
+  static aplatirSpecsTaches(arbre) {
+    const out = [];
+    const voir = (liste, prof) => {
+      for (const n of liste || []) { out.push({ n, prof }); voir(n.enfants, prof + 1); }
+    };
+    voir(arbre, 0);
+    return out;
+  }
+
+  // Opération inverse : reconstruit l'arbre depuis une liste plate. Chaque
+  // profondeur sautée est ramenée sous le parent ouvert le plus proche.
+  static reconstruireSpecsTaches(plat) {
+    const racine = [];
+    const pile = [];
+    for (const x of plat) {
+      while (pile.length && pile[pile.length - 1].prof >= x.prof) pile.pop();
+      x.n.enfants = [];
+      (pile.length ? pile[pile.length - 1].n.enfants : racine).push(x.n);
+      pile.push(x);
+    }
+    return racine;
+  }
+
+  // Dépôt du bloc plat[i] (nœud et sa descendance) au trou g — « avant
+  // plat[g] », g ∈ [0..plat.length]. Rend { h, profMax } : position d'insertion
+  // dans la liste amputée du bloc, et profondeur maximale possible là (enfant
+  // de la ligne précédente). Rend null si g tombe dans la propre descendance
+  // du bloc (déplacement impossible).
+  static depotSpecTaches(plat, i, g) {
+    const n = plat.length;
+    if (!n || i < 0 || i >= n || g < 0 || g > n) return null;
+    let fin = i + 1;
+    while (fin < n && plat[fin].prof > plat[i].prof) fin += 1;
+    if (g > i && g <= fin) return null;
+    const h = g <= i ? g : g - (fin - i);
+    // Prédécesseur du trou, en coordonnées de la liste d'origine : jamais
+    // dans le bloc lui-même (h-1 < i, ou h-1 décalé au-delà de fin-1).
+    const j = (h <= i) ? h - 1 : (h - 1) + (fin - i);
+    const profMax = (j >= 0 && j < n) ? plat[j].prof + 1 : 0;
+    return { h, profMax };
+  }
+
+  // Déplace le bloc plat[i] (nœud et toute sa descendance) au trou g, à la
+  // profondeur demandée (bornée au maximum possible là, et à 8 comme le
+  // normaliseur). Les descendants suivent d'autant. Rend la nouvelle liste
+  // plate, ou null si le dépôt est impossible.
+  static deplacerSpecTaches(plat, i, g, prof) {
+    const depot = Ariane.depotSpecTaches(plat, i, g);
+    if (!depot) return null;
+    const n = plat.length;
+    let fin = i + 1;
+    while (fin < n && plat[fin].prof > plat[i].prof) fin += 1;
+    const delta = Math.max(0, Math.min(prof, depot.profMax, 8)) - plat[i].prof;
+    const bloc = [];
+    for (let k = i; k < fin; k += 1) {
+      bloc.push({ n: plat[k].n, prof: Math.max(0, Math.min(8, plat[k].prof + delta)) });
+    }
+    const hors = plat.filter((_, k) => k < i || k >= fin);
+    hors.splice(depot.h, 0, ...bloc);
+    return hors;
   }
 
   // Meilleure correspondance d'un titre approximatif parmi des candidats
@@ -16989,11 +17055,22 @@ class ModaleStructurerTaches extends obsidian.Modal {
     const compteEl = tete.createSpan({ cls: 'zfa-struct-compte' });
     const majCompte = () => compteEl.setText(compter(this.arbre) + tr(' tâche(s) à créer'));
     majCompte();
+    tete.createSpan({ cls: 'zfa-struct-aide',
+      text: tr('Glissez la poignée : vertical = l’ordre, horizontal = le niveau.') });
 
     const liste = this.apercu.createDiv({ cls: 'zfa-struct-liste' });
+    this._depose = liste.createDiv({ cls: 'zfa-struct-depose' });
+    this._depose.hidden = true;
+    let rang = 0;
     const rangee = (n, prof) => {
       const d = liste.createDiv({ cls: 'zfa-struct-noeud' });
-      d.dataset.prof = String(Math.min(prof, 6));
+      d.dataset.rang = String(rang); rang += 1;
+      const profVue = Math.min(prof, 6);
+      d.style.setProperty('--struct-prof', String(profVue));
+      if (prof > 0) d.addClass('est-enfant');
+      const poignee = d.createEl('span', { cls: 'zfa-struct-poignee',
+        attr: { draggable: 'true', title: tr('Déplacer : vertical = l’ordre, horizontal = le niveau.') } });
+      try { obsidian.setIcon(poignee, 'grip-vertical'); } catch (e) { poignee.setText('⠿'); }
       const inc = d.createEl('input', { type: 'checkbox', cls: 'zfa-struct-inc' });
       inc.checked = n.inclus !== false;
       inc.onchange = () => { n.inclus = inc.checked; d.toggleClass('est-exclu', !inc.checked); majCompte(); };
@@ -17014,10 +17091,92 @@ class ModaleStructurerTaches extends obsidian.Modal {
       for (const e of n.enfants || []) rangee(e, prof + 1);
     };
     this.arbre.forEach((n) => rangee(n, 0));
+    this._brancherGlisser(liste);
 
     const pied = this.apercu.createDiv({ cls: 'zfa-struct-actions' });
     const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Créer les tâches') });
     b.onclick = () => this._creer();
+  }
+
+  // Glisser-déposer dans l'aperçu : la poignée saisit la ligne avec toute sa
+  // descendance. Vertical : la place dans la liste. Horizontal : le niveau de
+  // hiérarchie (poussée à droite de la ligne précédente = enfant). Une ligne
+  // d'insertion accentuée suit le curseur ; à la dépose, l'arbre est refait
+  // et l'aperçu rendu à neuf.
+  _brancherGlisser(liste) {
+    const lignes = () => Array.from(liste.querySelectorAll('.zfa-struct-noeud'));
+    const cacher = () => { if (this._depose) this._depose.hidden = true; };
+
+    liste.addEventListener('dragstart', (ev) => {
+      const cible = ev.target && ev.target.closest
+        ? ev.target.closest('.zfa-struct-noeud') : null;
+      if (!cible) { ev.preventDefault(); return; }
+      this._glisse = Number(cible.dataset.rang);
+      if (ev.dataTransfer) {
+        ev.dataTransfer.effectAllowed = 'move';
+        try { ev.dataTransfer.setData('text/plain', cible.dataset.rang); } catch (e) { /* rien */ }
+        // Fantôme à la taille de la rangée : l'image par défaut serait la
+        // seule poignée, trop discrète.
+        const fantome = cible.cloneNode(true);
+        fantome.style.position = 'absolute';
+        fantome.style.top = '-1000px';
+        fantome.style.left = '0';
+        fantome.style.width = cible.offsetWidth + 'px';
+        document.body.appendChild(fantome);
+        try { ev.dataTransfer.setDragImage(fantome, 16, 14); } catch (e) { /* rien */ }
+        setTimeout(() => fantome.remove(), 0);
+      }
+      cible.addClass('est-glisse');
+    });
+
+    liste.addEventListener('dragover', (ev) => {
+      if (this._glisse == null) return;
+      const ls = lignes();
+      let g = ls.length;
+      for (let k = 0; k < ls.length; k += 1) {
+        const r = ls[k].getBoundingClientRect();
+        if (ev.clientY < r.top + r.height / 2) { g = k; break; }
+      }
+      const depot = Ariane.depotSpecTaches(Ariane.aplatirSpecsTaches(this.arbre), this._glisse, g);
+      if (!depot) { this._depot = null; cacher(); return; }
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+      // Niveau visé : la position horizontale du curseur, par pas de retrait.
+      const cs = getComputedStyle(liste);
+      const pas = parseFloat(cs.getPropertyValue('--struct-pas')) || 20;
+      const base = parseFloat(cs.getPropertyValue('--struct-base')) || 12;
+      const x0 = liste.getBoundingClientRect().left + base;
+      const prof = Math.max(0, Math.min(Math.floor((ev.clientX - x0) / pas), depot.profMax, 6));
+      this._depot = { g, prof };
+      this._depose.style.top = (g < ls.length ? ls[g].offsetTop
+        : (ls.length ? ls[ls.length - 1].offsetTop + ls[ls.length - 1].offsetHeight : 0)) + 'px';
+      this._depose.style.setProperty('--struct-prof', String(prof));
+      this._depose.hidden = false;
+    });
+
+    liste.addEventListener('dragleave', (ev) => {
+      if (!ev.relatedTarget || !liste.contains(ev.relatedTarget)) cacher();
+    });
+
+    liste.addEventListener('drop', (ev) => {
+      ev.preventDefault();
+      cacher();
+      if (this._glisse == null || !this._depot) return;
+      const { g, prof } = this._depot;
+      const i = this._glisse;
+      this._glisse = null; this._depot = null;
+      const apres = Ariane.deplacerSpecTaches(Ariane.aplatirSpecsTaches(this.arbre), i, g, prof);
+      if (!apres) return;
+      this.arbre = Ariane.reconstruireSpecsTaches(apres);
+      this._rendreApercu();
+    });
+
+    liste.addEventListener('dragend', () => {
+      this._glisse = null; this._depot = null;
+      cacher();
+      const glissee = liste.querySelector('.est-glisse');
+      if (glissee) glissee.removeClass('est-glisse');
+    });
   }
 
   _elaguer(liste) {
