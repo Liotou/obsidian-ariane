@@ -16,7 +16,7 @@
 - Déploiement : `cp main.js styles.css manifest.json "/Users/equiriconi/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"`. **Ne jamais toucher `data.json`.**
 - Tests : `node --test tests/*.test.js`. Base de départ : **288 verts**. Aucun test ne doit disparaître.
 - Commits : message écrit dans un fichier puis `git commit -F <fichier>`, dernière ligne exactement `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`.
-- Un **dépôt** sur le calendrier crée toujours un `Créneau` ; il ne modifie jamais début/échéance. Les seules écritures de dates viennent des menus contextuels explicites (Task 9).
+- Les gestes de la **vue semaine** (dépôt d'un lien, glissé/redimensionnement d'un bloc) ne touchent qu'à `Créneaux` via `majCreneau`. Un dépôt en **vue mois** reprogramme `début`/`échéance` via `ecrireDatesTaches` — comportement voulu, hérité de la vue calendrier initiale et documenté au README. Le seul autre point d'écriture de dates est l'item de menu contextuel « Retirer du calendrier » (efface `début`+`échéance`, Task 9).
 - Rendu DOM et vérification visuelle dans Obsidian : **différés à l'utilisateur**. Les tâches DOM se valident par `node --check main.js`, `node --test`, `cp` de déploiement, et relecture de code.
 - `tr(...)` = fonction de traduction du greffon. Ne **jamais** nommer une variable locale `tr` (masque la fonction → exception au dessin). Utiliser `jr`, `li`, etc.
 - Nouveaux statiques purs : les ajouter dans la région des statiques créneaux/gantt, juste après `Ariane.creneauxDeTache` (~`main.js:5040`).

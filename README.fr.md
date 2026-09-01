@@ -625,7 +625,7 @@ plusieurs sessions. Ariane entretient dans la note un tableau `## Créneaux` ave
 les statistiques de durée (sessions, temps planifié, à venir), pour que
 l'information reste **autoportée par la note**.
 
-Glisser une pastille la reprogramme ; en vue semaine, glisser ou redimensionner
+Glisser une carte la reprogramme ; en vue semaine, glisser ou redimensionner
 un bloc réécrit ce créneau, Suppr le retire. **Glisser le lien d'une ligne
 depuis la colonne de gauche de la frise** (ou un lien `[[T26-001]]` depuis
 n'importe où) sur un jour du calendrier ajoute un créneau à l'heure du lâcher.

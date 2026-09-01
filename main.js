@@ -5041,6 +5041,7 @@ class Ariane extends obsidian.Plugin {
   static comparerMulti(ma, mb) {
     const a = ma || [];
     const b = mb || [];
+    // Invariant : ma et mb ont la même longueur (une config de vue Bases produit un critère _multi par colonne triée).
     for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
       const ka = String(a[i] && a[i].v != null ? a[i].v : '');
       const kb = String(b[i] && b[i].v != null ? b[i].v : '');
@@ -5082,7 +5083,7 @@ class Ariane extends obsidian.Plugin {
   // Lignes de propriété à écrire sur une carte : on saute la colonne fichier,
   // les valeurs vides et celle qui répète l'intitulé ; on coupe à maxLignes.
   static lignesProprietes(paires, intitule, maxLignes) {
-    if (!Array.isArray(paires) || maxLignes <= 0) return [];
+    if (!Array.isArray(paires) || !(maxLignes > 0)) return [];
     const exclues = new Set(['file', 'file.name', 'file.link', 'file.path']);
     const titre = String(intitule || '').trim();
     const out = [];
@@ -20223,7 +20224,12 @@ class MoteurCalendrier {
   }
   get mode() { return this.lire('calMode') === 'semaine' ? 'semaine' : 'mois'; }
 
-  detruire() { this.racine.empty(); }
+  detruire() {
+    this._detruit = true;
+    clearTimeout(this._wheelMinuterie);
+    clearTimeout(this._calageMinuterie);
+    this.racine.empty();
+  }
 
   dessiner() {
     try { this.dessinerVraiment(); } catch (e) {
@@ -20235,6 +20241,7 @@ class MoteurCalendrier {
   }
 
   dessinerVraiment() {
+    if (this._detruit) return;
     const c = this.racine;
     c.empty();
     this._taches = (this.ctx.taches && this.ctx.taches()) || [];
@@ -20332,7 +20339,6 @@ class MoteurCalendrier {
       ruban.style.transition = 'none';
       ruban.style.transform = 'translateX(calc(-100% + ' + this._decalGeste + 'px))';
     };
-    let minuterie = null;
     const finDeGeste = () => {
       const w = largeur();
       const sens = this._decalGeste <= -w / 4 ? 1 : (this._decalGeste >= w / 4 ? -1 : 0);
@@ -20343,13 +20349,13 @@ class MoteurCalendrier {
       e.preventDefault();
       this._decalGeste -= e.deltaX;
       appliquer();
-      if (minuterie) clearTimeout(minuterie);
-      minuterie = setTimeout(finDeGeste, 140);
+      clearTimeout(this._wheelMinuterie);
+      this._wheelMinuterie = setTimeout(finDeGeste, 140);
     }, { passive: false });
 
     ruban.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      if (e.target.closest('.zfa-cal-carte, .zfa-cal-cellule, .zfa-cal-bloc, .zfa-cal-poignee, button')) return;
+      if (e.target.closest('.zfa-cal-carte, .zfa-cal-cellule, .zfa-cal-bloc, .zfa-cal-poignee, .zfa-cal-bandeau-jour, .zfa-cal-bandeau-plus, .zfa-cal-bandeau-chevron, button')) return;
       const x0 = e.clientX;
       let bouge = false;
       const move = (mv) => {
@@ -20371,18 +20377,26 @@ class MoteurCalendrier {
   // puis réancre et redessine.
   _calerCarrousel(sens) {
     const ruban = this._ruban;
-    if (!ruban) return;
+    if (!ruban || this._enCalage) return;
+    this._enCalage = true;
     const cible = sens === 1 ? '-200%' : (sens === -1 ? '0%' : '-100%');
     ruban.style.transition = 'transform 180ms ease-out';
     ruban.style.transform = 'translateX(' + cible + ')';
-    const apres = () => {
+    let fait = false;
+    const apres = (e) => {
+      if (e && (e.target !== ruban || e.propertyName !== 'transform')) return;
+      if (fait) return;
+      fait = true;
       ruban.removeEventListener('transitionend', apres);
+      clearTimeout(this._calageMinuterie);
+      this._calageMinuterie = null;
+      this._enCalage = false;
       this._decalGeste = 0;
       if (sens) this._ancre = Ariane.ancreCarrousel(this._ancre, this.mode, sens);
       this.dessiner();
     };
-    if (sens) ruban.addEventListener('transitionend', apres);
-    else setTimeout(apres, 190);
+    ruban.addEventListener('transitionend', apres);
+    this._calageMinuterie = setTimeout(() => apres(), 250);
   }
 
   _bornesPeriode() {
@@ -20397,11 +20411,15 @@ class MoteurCalendrier {
   }
 
   async _surNouveau() {
-    const auj = new Date().toISOString().slice(0, 10);
-    const { debut, fin } = this._bornesPeriode();
-    const jour = Ariane.jourSeme(this._jourSel || '', debut, fin, auj);
-    const chemin = await this.greffon.creerTache({ debut: jour, echeance: jour });
-    if (chemin) this.ouvrir(chemin.split('/').pop().replace(/\.md$/, ''), false);
+    try {
+      const auj = new Date().toISOString().slice(0, 10);
+      const { debut, fin } = this._bornesPeriode();
+      const jour = Ariane.jourSeme(this._jourSel || '', debut, fin, auj);
+      const chemin = await this.greffon.creerTache({ debut: jour, echeance: jour });
+      if (chemin) this.ouvrir(chemin.split('/').pop().replace(/\.md$/, ''), false);
+    } catch (e) {
+      new obsidian.Notice(tr('Création impossible : ') + (e && e.message ? e.message : e));
+    }
   }
 
   titrePeriode() {
@@ -20438,8 +20456,9 @@ class MoteurCalendrier {
       + (t.intitule || t.ref);
     carte.createDiv({ cls: 'zfa-cal-carte-titre', text: titre });
 
+    const paires = this._pairesProps(t.ref);
     const lignes = Ariane.lignesProprietes(
-      this._pairesProps(t.ref), t.intitule, Math.max(0, (o.maxLignes || 1) - 1));
+      paires, t.intitule, Math.max(0, (o.maxLignes || 1) - 1));
     for (const li of lignes) {
       const row = carte.createDiv({ cls: 'zfa-cal-carte-prop' });
       row.createSpan({ cls: 'zfa-cal-carte-prop-nom', text: li.nom + ' ' });
@@ -20447,7 +20466,7 @@ class MoteurCalendrier {
     }
 
     // title= = toutes les propriétés, même quand la carte n'en montre qu'une.
-    const toutes = Ariane.lignesProprietes(this._pairesProps(t.ref), t.intitule, 99);
+    const toutes = Ariane.lignesProprietes(paires, t.intitule, 99);
     carte.title = t.ref + ' · ' + (t.intitule || '')
       + (toutes.length ? '\n' + toutes.map((x) => x.nom + ' : ' + x.valeur).join('\n') : '');
 
@@ -20767,8 +20786,8 @@ class MoteurCalendrier {
         this.menuCellule(e, col.dataset.jour);
       });
       for (let h = Math.ceil(hDeb); h < hFin; h += 1) {
-        const tr = col.createDiv({ cls: 'zfa-cal-trait' });
-        tr.style.top = ((h - hDeb) * PXH) + 'px';
+        const trait = col.createDiv({ cls: 'zfa-cal-trait' });
+        trait.style.top = ((h - hDeb) * PXH) + 'px';
       }
       for (const { t, ev } of horaire.get(j).slice().sort(Ariane.comparerEmpilement)) {
         const y0 = (Number(ev.debut.slice(11, 13)) + Number(ev.debut.slice(14, 16)) / 60 - hDeb) * PXH;

@@ -33,9 +33,12 @@ Redux + build ; ici un seul `main.js` sans build).
 - Tests : `node --test tests/*.test.js`. Base actuelle : **288 verts**.
 - Messages de commit : rédigés dans un fichier puis `git commit -F`, finissant
   par `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`.
-- Le `MoteurCalendrier` ne modifie **jamais** les dates début/échéance d'une
-  tâche via un dépôt : un dépôt crée toujours un `Créneau`. Les seules
-  écritures de dates viennent des menus contextuels explicites (§7).
+- Les gestes de la **vue semaine** (dépôt d'un lien, glissé/redimensionnement
+  d'un bloc) ne touchent qu'à `Créneaux` via `majCreneau`. Un dépôt en **vue
+  mois** reprogramme `début`/`échéance` via `ecrireDatesTaches` — comportement
+  voulu, hérité de la vue calendrier initiale et documenté au README. Le seul
+  autre point d'écriture de dates est l'item de menu contextuel « Retirer du
+  calendrier » (efface `début`+`échéance`, §7).
 - Le rendu DOM et la vérification visuelle dans Obsidian sont **différés à
   l'utilisateur** : les sous-agents font `node --check` / `node --test` /
   `cp` de déploiement / relecture de code.
