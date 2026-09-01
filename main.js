@@ -911,6 +911,8 @@ const TEXTES = {
     "Ce rattachement fermerait un cycle (rattachements + blocages) : refusé.": "This parent link would close a cycle (links + blockers): refused.",
     "Ce rattachement fermerait un cycle : il n’a pas été appliqué.": "This parent link would close a cycle: it was not applied.",
     "Modification annulée : ce lien fermait un cycle (rattachements + blocages).": "Change reverted: that link closed a cycle (links + blockers).",
+    "Blocage dérivé : cette tâche est déjà bloquée par ": "Derived link: this task is already blocked by ",
+    " — les filles d’une mère bloquante bloquent avec elle.": " — a mother’s daughters block with it.",
     "Retirer le blocage par ": "Remove the blocking link from ",
     "Chercher un intitulé ou une référence…": "Search a title or a reference…",
     "Tous les statuts": "All statuses",
@@ -7096,6 +7098,31 @@ class Ariane extends obsidian.Plugin {
       return { ok: false, raison: 'dates' };
     }
     return { ok: true };
+  }
+
+  // Un lien bloquant est DÉRIVÉ quand un ancêtre du bloqueur proposé bloque
+  // déjà la même tâche : une mère bloquante bloque avec toutes ses filles, et
+  // la flèche explicite ne ferait que répéter l'héritage. Renvoie la référence
+  // de l'ancêtre bloqueur le plus proche, ou '' si le lien porte une
+  // information propre. `aretes` : arêtes de rattachement ({de, vers, type}),
+  // type 'hier' (de = parent) ou 'bloque' (de = bloqueur).
+  static blocageDerive(aretes, de, vers) {
+    if (!de || !vers) return '';
+    const parentDe = new Map();
+    const bloqueurs = new Set();
+    for (const e of aretes || []) {
+      if (!e || !e.de || !e.vers) continue;
+      if (e.type === 'hier') parentDe.set(e.vers, e.de);
+      else if (e.type === 'bloque' && e.vers === vers) bloqueurs.add(e.de);
+    }
+    let cur = parentDe.get(de);
+    const vus = new Set([de]);
+    while (cur && !vus.has(cur)) {
+      if (bloqueurs.has(cur)) return cur;
+      vus.add(cur);
+      cur = parentDe.get(cur);
+    }
+    return '';
   }
 
   // Courbe de Bézier entre deux points : elle se suit mieux à l'œil que le coude
@@ -14030,6 +14057,12 @@ class Ariane extends obsidian.Plugin {
     if (deja.some((v) => Ariane.refDeLien(v) === deRef)) return false;
     if (this._lienFermeCycle({ de: deRef, vers: versRef, type: 'bloque' })) {
       new obsidian.Notice(tr('Ce lien fermerait un cycle (rattachements + blocages) : refusé.'));
+      return false;
+    }
+    const derive = Ariane.blocageDerive(this._aretesRattachement(), deRef, versRef);
+    if (derive) {
+      new obsidian.Notice(tr('Blocage dérivé : cette tâche est déjà bloquée par ')
+        + derive + tr(' — les filles d’une mère bloquante bloquent avec elle.'));
       return false;
     }
     await this.app.fileManager.processFrontMatter(f, (x) => {
