@@ -250,60 +250,6 @@ test('replierListe : sous le plafond → tout ; au-dessus → coupé + reste', (
   assert.deepEqual(Ariane.replierListe([1, 2, 3], 0), { montres: [1, 2, 3], reste: 0 });
 });
 
-// --- P5 : disposition des barres de tâche en vue mois ---
-
-const SEM = ['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10',
-             '2026-09-11', '2026-09-12', '2026-09-13']; // lundi -> dimanche
-
-test('disposerBarresSemaine : span entièrement dans la semaine', () => {
-  const r = Ariane.disposerBarresSemaine(
-    [{ ref: 'T-1', debut: '2026-09-09', echeance: '2026-09-11' }], SEM);
-  assert.deepEqual(r, [{ ref: 'T-1', col0: 2, col1: 4, lane: 0,
-    arrondiG: true, arrondiD: true }]);
-});
-
-test('disposerBarresSemaine : span qui déborde à gauche et à droite', () => {
-  const r = Ariane.disposerBarresSemaine(
-    [{ ref: 'T-1', debut: '2026-09-01', echeance: '2026-09-20' }], SEM);
-  assert.equal(r[0].col0, 0);
-  assert.equal(r[0].col1, 6);
-  assert.equal(r[0].arrondiG, false);
-  assert.equal(r[0].arrondiD, false);
-});
-
-test('disposerBarresSemaine : span hors semaine → absent', () => {
-  assert.deepEqual(Ariane.disposerBarresSemaine(
-    [{ ref: 'T-1', debut: '2026-10-01', echeance: '2026-10-05' }], SEM), []);
-});
-
-test('disposerBarresSemaine : deux spans qui se chevauchent → lanes 0 et 1', () => {
-  const r = Ariane.disposerBarresSemaine([
-    { ref: 'T-1', debut: '2026-09-07', echeance: '2026-09-10' },
-    { ref: 'T-2', debut: '2026-09-09', echeance: '2026-09-13' },
-  ], SEM);
-  const par = Object.fromEntries(r.map((b) => [b.ref, b.lane]));
-  assert.equal(par['T-1'], 0);
-  assert.equal(par['T-2'], 1);
-});
-
-test('disposerBarresSemaine : deux spans disjoints → même lane', () => {
-  const r = Ariane.disposerBarresSemaine([
-    { ref: 'T-1', debut: '2026-09-07', echeance: '2026-09-08' },
-    { ref: 'T-2', debut: '2026-09-10', echeance: '2026-09-13' },
-  ], SEM);
-  assert.equal(r.find((b) => b.ref === 'T-1').lane, 0);
-  assert.equal(r.find((b) => b.ref === 'T-2').lane, 0);
-});
-
-test('disposerBarresSemaine : chevauchement triple → lanes 0, 1, 2', () => {
-  const r = Ariane.disposerBarresSemaine([
-    { ref: 'T-1', debut: '2026-09-08', echeance: '2026-09-12' },
-    { ref: 'T-2', debut: '2026-09-09', echeance: '2026-09-11' },
-    { ref: 'T-3', debut: '2026-09-10', echeance: '2026-09-13' },
-  ], SEM);
-  assert.deepEqual(r.map((b) => b.lane).sort(), [0, 1, 2]);
-});
-
 // --- P5 : répartition en colonnes des blocs horaires qui se chevauchent ---
 
 test('disposerBlocsJour : liste vide / un seul bloc', () => {

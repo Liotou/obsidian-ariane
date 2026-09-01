@@ -5187,40 +5187,6 @@ class Ariane extends obsidian.Plugin {
     return [];
   }
 
-  // Dispose les spans de tâche (barres) d'UNE ligne-semaine du calendrier mois.
-  // `spans` : [{ ref, debut, echeance }] en jours ISO, debut <= echeance, span
-  // complet de la tâche. `joursSemaine` : 7 jours ISO (lundi -> dimanche).
-  // Rend [{ ref, col0, col1, lane, arrondiG, arrondiD }] pour les spans qui
-  // coupent la semaine : col0/col1 = colonnes 0..6 du segment visible ; arrondiG
-  // vrai si le vrai début tombe dans la semaine (extrémité gauche arrondie),
-  // arrondiD idem à droite ; lane = ligne d'empilement (packing d'intervalles
-  // glouton, sans chevauchement sur une même lane).
-  static disposerBarresSemaine(spans, joursSemaine) {
-    const j0 = joursSemaine[0];
-    const j6 = joursSemaine[6];
-    const idx = (d) => joursSemaine.indexOf(d);
-    const segs = [];
-    for (const s of (spans || [])) {
-      if (!s || !s.debut || !s.echeance) continue;
-      if (s.echeance < j0 || s.debut > j6) continue;
-      const c0 = idx(s.debut < j0 ? j0 : s.debut);
-      const c1 = idx(s.echeance > j6 ? j6 : s.echeance);
-      if (c0 < 0 || c1 < 0) continue;
-      segs.push({ ref: s.ref, col0: c0, col1: c1,
-        arrondiG: s.debut >= j0, arrondiD: s.echeance <= j6 });
-    }
-    segs.sort((a, b) => a.col0 - b.col0 || a.col1 - b.col1
-      || String(a.ref).localeCompare(String(b.ref)));
-    const lanes = [];
-    for (const s of segs) {
-      let k = 0;
-      while (k < lanes.length && lanes[k] >= s.col0) k += 1;
-      s.lane = k;
-      lanes[k] = s.col1;
-    }
-    return segs;
-  }
-
   // Répartit en colonnes les blocs horaires d'UN jour qui se chevauchent ; les
   // groupes disjoints repartent de la colonne 0. `blocs` : [{ deb, fin }] en
   // minutes. Rend, dans l'ordre d'entrée, [{ col, ncols }] : la colonne du bloc
@@ -20927,39 +20893,39 @@ class MoteurCalendrier {
   // l'échéance (packing en lignes, coins arrondis seulement aux vraies
   // extrémités) ; les jalons, un losange dans l'en-tête de la case ; les
   // créneaux, une pastille compacte « HH:MM titre » dans la case.
+  // Vue mois : jalons en losange dans l'en-tête de la case ; tâches d'une seule
+  // journée (pas de début, ou début == échéance) en petites cases ; créneaux en
+  // pastilles. Pas de barre multi-jours.
   dessinerMois(hote) {
     const g = Ariane.grilleMois(this._ancre);
     const auj = new Date().toISOString().slice(0, 10);
     const enRetard = Ariane.tachesEnRetard(this._taches, auj);
-    const tParRef = new Map(this._taches.map((t) => [t.ref, t]));
 
-    const spans = [];
-    const pastilles = new Map();   // jour ISO → [{ t, ev }]
+    const jourTaches = new Map();  // jour ISO → [t]  (tâche d'une journée)
+    const pastilles = new Map();   // jour ISO → [{ t, ev }]  (créneaux)
     const jalons = new Map();      // jour ISO → [t]
+    const pousser = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
     for (const t of this._taches) {
       if (t.jalon) {
         const ech = Ariane.jourValide(t.echeance);
-        if (ech) { if (!jalons.has(ech)) jalons.set(ech, []); jalons.get(ech).push(t); }
+        if (ech) pousser(jalons, ech, t);
         continue;
       }
       const crs = Ariane.creneauxDeTache(t);
       if (crs.length) {
         for (const c of crs) {
-          const j = c.debut.slice(0, 10);
-          if (!pastilles.has(j)) pastilles.set(j, []);
-          pastilles.get(j).push({ t, ev: { genre: 'horaire', debut: c.debut, fin: c.fin,
-            allDay: false, source: 'creneau', brut: c.brut } });
+          pousser(pastilles, c.debut.slice(0, 10), { t, ev: { source: 'creneau',
+            debut: c.debut, fin: c.fin, allDay: false, brut: c.brut } });
         }
         continue;
       }
       const ech = Ariane.jourValide(t.echeance);
       if (!ech) continue;
       const deb = Ariane.jourValide(t.debut);
-      spans.push({ ref: t.ref, debut: (deb && deb <= ech) ? deb : ech, echeance: ech });
+      if (!deb || deb === ech) pousser(jourTaches, ech, t);
+      // début != échéance (plage multi-jours) : non affiché en vue mois.
     }
 
-    const LANE_H = 9;
-    const MAX_LANES = 3;
     const grille = hote.createDiv({ cls: 'zfa-cal-mois-grille' });
     const ent = grille.createDiv({ cls: 'zfa-cal-jour-entete-ligne' });
     for (const d of ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']) {
@@ -20967,21 +20933,16 @@ class MoteurCalendrier {
     }
 
     for (const semaine of g.semaines) {
-      const barres = Ariane.disposerBarresSemaine(spans, semaine);
-      const nLanes = Math.min(MAX_LANES,
-        barres.reduce((m, b) => Math.max(m, b.lane + 1), 0));
-      const reserve = nLanes * LANE_H;
       const wk = grille.createDiv({ cls: 'zfa-cal-msem' });
       const cells = wk.createDiv({ cls: 'zfa-cal-msem-cells' });
-
-      semaine.forEach((jour, di) => {
+      for (const jour of semaine) {
         const cell = cells.createDiv({ cls: 'zfa-cal-cellule' });
         cell.dataset.jour = jour;
         this._brancherDropCellule(cell);
         if (jour === auj) cell.addClass('est-aujourdhui');
         if (jour.slice(0, 7) !== g.moisDebut.slice(0, 7)) cell.addClass('hors-mois');
         if (this._jourSel === jour) cell.addClass('est-selection');
-        const surCarte = (e) => e.target.closest('.zfa-cal-tbar, .zfa-cal-pastille, .zfa-cal-jalon');
+        const surCarte = (e) => e.target.closest('.zfa-cal-carte, .zfa-cal-pastille, .zfa-cal-jalon');
         cell.addEventListener('click', (e) => {
           if (surCarte(e)) return;
           this._jourSel = (this._jourSel === jour) ? '' : jour;
@@ -20998,16 +20959,17 @@ class MoteurCalendrier {
             + (enRetard.has(t.ref) ? ' est-retard' : '') });
           obsidian.setIcon(jd, 'diamond');
           jd.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
+          jd.dataset.ref = t.ref;
           jd.title = t.ref + ' · ' + (t.intitule || '');
           this._brancherOuvertureCarte(jd, t, { source: 'dates', allDay: true });
         }
-        const nCache = barres.filter((b) => b.lane >= MAX_LANES
-          && b.col0 <= di && b.col1 >= di).length;
-        if (nCache) tete.createSpan({ cls: 'zfa-cal-tete-plus', text: '+' + nCache });
         tete.createSpan({ cls: 'zfa-cal-quantieme', text: String(Number(jour.slice(8, 10))) });
 
         const corps = cell.createDiv({ cls: 'zfa-cal-cellule-corps' });
-        corps.style.paddingTop = reserve + 'px';
+        for (const t of (jourTaches.get(jour) || [])) {
+          this.rendreCarte(corps, t, { source: 'dates', allDay: true },
+            { compact: true, avecCoche: true, enRetard: enRetard.has(t.ref) });
+        }
         const pj = (pastilles.get(jour) || []).slice()
           .sort((a, b) => (a.ev.debut < b.ev.debut ? -1 : a.ev.debut > b.ev.debut ? 1 : 0));
         for (const { t, ev } of pj) {
@@ -21028,33 +20990,6 @@ class MoteurCalendrier {
             de.dataTransfer.effectAllowed = 'move';
           });
         }
-      });
-
-      const couche = wk.createDiv({ cls: 'zfa-cal-tbars' });
-      couche.style.height = reserve + 'px';
-      for (const b of barres) {
-        if (b.lane >= MAX_LANES) continue;
-        const t = tParRef.get(b.ref) || { ref: b.ref, intitule: b.ref };
-        const barre = couche.createDiv({ cls: 'zfa-cal-tbar'
-          + (b.arrondiG ? ' arr-g' : '') + (b.arrondiD ? ' arr-d' : '')
-          + (enRetard.has(b.ref) ? ' est-retard' : '') });
-        barre.style.left = (b.col0 / 7 * 100) + '%';
-        barre.style.width = ((b.col1 - b.col0 + 1) / 7 * 100) + '%';
-        barre.style.top = (b.lane * LANE_H) + 'px';
-        barre.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
-        barre.dataset.ref = b.ref;
-        if (b.col1 > b.col0) {
-          barre.createSpan({ cls: 'zfa-cal-tbar-t', text: t.intitule || b.ref });
-        }
-        barre.title = b.ref + ' · ' + (t.intitule || '') + '\n'
-          + (t.debut || '?') + ' → ' + (t.echeance || '?');
-        this._brancherOuvertureCarte(barre, t, { source: 'dates', allDay: true });
-        barre.setAttribute('draggable', 'true');
-        barre.addEventListener('dragstart', (de) => {
-          de.dataTransfer.setData('text/x-ariane-cal', JSON.stringify({
-            ref: b.ref, jour: t.debut || t.echeance || semaine[b.col0], brut: '' }));
-          de.dataTransfer.effectAllowed = 'move';
-        });
       }
     }
   }

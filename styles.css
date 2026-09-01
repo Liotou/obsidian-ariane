@@ -2052,18 +2052,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-cellule-corps {
   flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; overflow: hidden;
 }
-.zfa-cal-tbars { position: absolute; left: 0; right: 0; top: 18px; pointer-events: none; z-index: 2; }
-.zfa-cal-tbar {
-  --zfa-cal-coul: var(--text-faint);
-  position: absolute; height: 7px; box-sizing: border-box;
-  padding: 0 4px; overflow: hidden; white-space: nowrap;
-  font-size: 9px; line-height: 7px; color: var(--text-on-accent, #fff);
-  background: var(--zfa-cal-coul); pointer-events: auto; cursor: pointer;
-}
-.zfa-cal-tbar.arr-g { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
-.zfa-cal-tbar.arr-d { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
-.zfa-cal-tbar.est-retard { box-shadow: inset 0 0 0 1px var(--text-error); }
-.zfa-cal-tbar-t { opacity: 0.95; }
 .zfa-cal-pastille {
   --zfa-cal-coul: var(--text-faint);
   display: flex; align-items: baseline; gap: 2px;
