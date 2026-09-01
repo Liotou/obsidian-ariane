@@ -1012,8 +1012,10 @@ const TEXTES = {
     "macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchronisation bidirectionnelle : déplacer ou redimensionner l'événement dans Calendar réécrit le créneau, le supprimer retire le créneau. Les événements des calendriers surveillés s'affichent en fond dans la vue calendrier.": "macOS. Every task slot becomes an event in its family's calendar. Two-way sync: moving or resizing the event in Calendar rewrites the slot, deleting it removes the slot. Events from watched calendars show as background in the calendar view.",
     "Calendrier par défaut": "Default calendar",
     "Calendrier Apple d'une tâche quand sa famille n'en précise pas.": "A task's Apple calendar when its family sets none.",
-    "Calendriers affichés en plus": "Extra calendars to show",
-    "Noms séparés par des virgules. Affichés en fond de la vue calendrier (clic → Calendar.app) sans être synchronisés ni liés à une tâche.": "Comma-separated names. Shown as background in the calendar view (click → Calendar.app), never synced or tied to a task.",
+    "Calendriers à afficher": "Calendars to show",
+    "Cochez les calendriers Apple à montrer en fond de la vue calendrier (Apple → Obsidian, lecture seule ; clic → Calendar.app). Rien n'y est écrit.": "Tick the Apple calendars to show as background in the calendar view (Apple → Obsidian, read-only; click → Calendar.app). Nothing is written to them.",
+    "Chargement des calendriers…": "Loading calendars…",
+    "Aucun calendrier détecté.": "No calendar detected.",
     "Titre de l'événement": "Event title",
     "Fenêtre de relève (jours)": "Pull window (days)",
     "Recharger la liste des calendriers": "Reload the calendar list",
@@ -1134,7 +1136,7 @@ const DEFAULT_SETTINGS = {
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques
   agendaFenetreJours: 120,      // fenêtre de relève / agenda de fond (jours)
   agendaCalendrierDefaut: '',   // calendrier Apple cible par défaut (familles sans réglage)
-  agendaCalendriersAffiches: '', // calendriers en plus affichés en fond (virgules), jamais synchronisés
+  agendaCalendriersAffiches: [], // calendriers Apple cochés, affichés en fond (lecture seule)
   agendaFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un événement Apple
   // Clés de frontmatter des propriétés de tâche. Chaque clé = « prefixeTaches »
   // + nom lisible du concept (« Tâche - Échéance »). « clesTaches » remplace le
@@ -12623,14 +12625,18 @@ class Ariane extends obsidian.Plugin {
   }
 
   // Calendriers affichés en fond de la vue calendrier : ceux de la synchro, plus
-  // ceux listés dans « Calendriers affichés en plus » (simple affichage, jamais
-  // synchronisés). Champ texte, noms séparés par des virgules.
+  // ceux cochés dans « Calendriers à afficher » (lecture seule, Apple → Obsidian,
+  // jamais poussés ni relevés).
+  _agendasCoches() {
+    const brut = this.settings.agendaCalendriersAffiches;
+    return Array.isArray(brut)
+      ? brut.map((n) => String(n).trim()).filter(Boolean)
+      : String(brut || '').split(',').map((n) => n.trim()).filter(Boolean);
+  }
+
   _agendasAffiches() {
     const s = new Set(this._agendasSurveilles());
-    for (const n of String(this.settings.agendaCalendriersAffiches || '').split(',')) {
-      const v = n.trim();
-      if (v) s.add(v);
-    }
+    for (const n of this._agendasCoches()) s.add(n);
     return [...s];
   }
 
@@ -14945,15 +14951,36 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           t.setValue(s.agendaCalendrierDefaut || '')
             .onChange(async (v) => { s.agendaCalendrierDefaut = v.trim(); await maj(); });
         });
-      new obsidian.Setting(c)
-        .setName(tr('Calendriers affichés en plus'))
-        .setDesc(tr("Noms séparés par des virgules. Affichés en fond de la vue calendrier (clic → Calendar.app) sans être synchronisés ni liés à une tâche."))
-        .addText((t) => {
-          t.inputEl.setAttribute('list', 'zfa-dl-agendas');
-          t.inputEl.style.width = '18em';
-          t.setValue(s.agendaCalendriersAffiches || '')
-            .onChange(async (v) => { s.agendaCalendriersAffiches = v.trim(); await maj(); });
-        });
+      {
+        const reg = new obsidian.Setting(c)
+          .setName(tr('Calendriers à afficher'))
+          .setDesc(tr("Cochez les calendriers Apple à montrer en fond de la vue calendrier (Apple → Obsidian, lecture seule ; clic → Calendar.app). Rien n'y est écrit."));
+        reg.addExtraButton((b) => b.setIcon('refresh-cw').setTooltip(tr('Recharger la liste des calendriers'))
+          .onClick(async () => { this.plugin._agendas = undefined; await this.plugin.chargerAgendas(); this.display(); }));
+        const boite = c.createDiv({ cls: 'zfa-agenda-coches' });
+        const noms = this.plugin._agendas;
+        if (noms === undefined) {
+          boite.createDiv({ cls: 'zfa-agenda-coches-vide', text: tr('Chargement des calendriers…') });
+          if (obsidian.Platform && obsidian.Platform.isMacOS) this.plugin.chargerAgendas().then(() => this.display());
+        } else if (!noms.length) {
+          boite.createDiv({ cls: 'zfa-agenda-coches-vide', text: tr('Aucun calendrier détecté.') });
+        } else {
+          const coches = new Set(this.plugin._agendasCoches());
+          for (const nom of noms) {
+            const l = boite.createEl('label', { cls: 'zfa-agenda-coche' });
+            const cb = l.createEl('input', { type: 'checkbox' });
+            cb.checked = coches.has(nom);
+            l.createSpan({ text: nom });
+            cb.addEventListener('change', async () => {
+              const cur = new Set(this.plugin._agendasCoches());
+              if (cb.checked) cur.add(nom); else cur.delete(nom);
+              s.agendaCalendriersAffiches = [...cur];
+              await maj();
+              this.plugin._rafraichirFond();
+            });
+          }
+        }
+      }
       {
         const reg = new obsidian.Setting(c)
           .setName(tr("Titre de l'événement"))

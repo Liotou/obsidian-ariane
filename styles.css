@@ -1995,6 +1995,16 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-css-perso-reglage .setting-item-control { width: 100%; margin-top: 6px; }
 .zfa-css-perso-reglage textarea { width: 100%; min-height: 160px; resize: vertical; }
 
+/* Réglage : liste à cocher des calendriers Apple à afficher. */
+.zfa-agenda-coches { display: flex; flex-direction: column; gap: 2px;
+  margin: 2px 0 12px; padding: 6px 8px; max-height: 220px; overflow-y: auto;
+  border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s);
+  background: var(--background-secondary); }
+.zfa-agenda-coche { display: flex; align-items: center; gap: 8px;
+  font-size: var(--font-ui-small); cursor: pointer; }
+.zfa-agenda-coche input { margin: 0; }
+.zfa-agenda-coches-vide { font-size: var(--font-ui-smaller); color: var(--text-muted); padding: 2px 0; }
+
 /* ===================== Vue calendrier ============================== */
 /* Le calendrier occupe toute la hauteur du volet : on neutralise le
    rembourrage qu'Obsidian met autour d'une vue Bases en plein onglet, mais

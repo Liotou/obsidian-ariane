@@ -42,10 +42,11 @@ SP-4 ajoute la **moitié « événements »** (entité EventKit `0`), calquée s
   familles + le défaut (miroir de `_listesSurveillees`). Cibles de push, suivis à
   la relève.
 - **`greffon._agendasAffiches()`** *(amendement 2026-09-01)* : `_agendasSurveilles()`
-  ∪ les noms du réglage **`agendaCalendriersAffiches`** (texte, virgules).
-  Ces calendriers-là sont **seulement affichés en fond** de la vue calendrier
-  (clic → Calendar.app) — jamais poussés, jamais relevés, jamais liés à une
-  tâche. `evenementsFond` s'appuie dessus.
+  ∪ **`agendaCalendriersAffiches`** (liste de noms, réglage à **cocher** parmi
+  tous les calendriers Apple détectés — cf. `_agendasCoches()`). Ces calendriers
+  cochés sont **seulement affichés en fond** de la vue calendrier
+  (Apple → Obsidian, lecture seule ; clic → Calendar.app) — jamais poussés,
+  jamais relevés, jamais liés à une tâche. `evenementsFond` s'appuie dessus.
 - **Éligibilité au push** d'une tâche : elle a **≥ 1 créneau valide**
   (`Ariane.creneauxDeTache(t).length > 0`) **ET** `agendaCalendrierDe(t.famille)`
   non vide. Plus toute tâche portant déjà un `agenda-id` non vide (pour permettre
