@@ -1104,10 +1104,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-hachure-trait { stroke: var(--text-faint); stroke-width: 1; }
 .zfa-gantt-sansdate-bande { opacity: 0.4; cursor: pointer; }
 .zfa-gantt-sansdate-bande:hover { opacity: 0.7; }
-.zfa-gantt-sansdate-label {
-  fill: var(--text-muted); font-size: 11px; font-style: italic;
-  pointer-events: auto; cursor: pointer; dominant-baseline: middle;
-}
 
 .zfa-gantt-modale-date .zfa-gantt-modale-sous {
   color: var(--text-muted); font-size: var(--font-ui-smaller); margin: 0 0 12px;

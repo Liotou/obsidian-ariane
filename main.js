@@ -18697,18 +18697,13 @@ class MoteurFrise {
         const bande = svgEl('rect', { x: 0, y: yLigne + 2, width: cfg.largeur,
           height: Math.max(2, l.h - 4), class: 'zfa-gantt-sansdate-bande',
           fill: 'url(#zfa-gantt-hachures)' });
-        const lab = svgEl('text', { x: 10, y: yLigne + l.h / 2 + 4,
-          class: 'zfa-gantt-sansdate-label' });
-        lab.textContent = tr('sans date');
         const ouvrir = (e) => { e.stopPropagation(); this.ouvrirModaleDate(l); };
         bande.addEventListener('click', ouvrir);
-        lab.addEventListener('click', ouvrir);
         const bulle = svgEl('title', {});
         bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + tr('sans date') + ' — '
           + tr('cliquez pour dater');
         bande.appendChild(bulle);
         g.appendChild(bande);
-        g.appendChild(lab);
         return;
       }
       if (l.jalon) { this.dessinerJalon(g, cfg, l); return; }
