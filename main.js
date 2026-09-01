@@ -20253,9 +20253,31 @@ class MoteurCalendrier {
       }
     }
     this.dessinerBarreOutils(c);
-    const grille = c.createDiv({ cls: 'zfa-cal-grille zfa-cal-' + this.mode });
-    if (this.mode === 'semaine') this.dessinerSemaine(grille);
-    else this.dessinerMois(grille);
+    const ruban = c.createDiv({ cls: 'zfa-cal-ruban' });
+    this._ruban = ruban;
+    this._decalGeste = 0;
+    const grilles = {};
+    for (const sens of [-1, 1, 0]) {
+      const g = document.createElement('div');
+      g.className = 'zfa-cal-grille zfa-cal-' + this.mode;
+      g.dataset.sens = String(sens);
+      this._rendreGrille(g, Ariane.ancreCarrousel(this._ancre, this.mode, sens));
+      grilles[sens] = g;
+    }
+    ruban.appendChild(grilles[-1]);
+    ruban.appendChild(grilles[0]);
+    ruban.appendChild(grilles[1]);
+    ruban.style.transform = 'translateX(-100%)';
+    this._brancherCarrousel(ruban);
+  }
+
+  _rendreGrille(hote, ancre) {
+    const prev = this._ancre;
+    this._ancre = ancre;
+    try {
+      if (this.mode === 'semaine') this.dessinerSemaine(hote);
+      else this.dessinerMois(hote);
+    } finally { this._ancre = prev; }
   }
 
   dessinerBarreOutils(c) {
@@ -20291,8 +20313,67 @@ class MoteurCalendrier {
   }
 
   naviguer(sens) {
-    this._ancre = Ariane.ancreCarrousel(this._ancre, this.mode, sens);
-    this.dessiner();
+    if (this._ruban && sens) this._calerCarrousel(sens);
+    else { this._ancre = Ariane.ancreCarrousel(this._ancre, this.mode, sens); this.dessiner(); }
+  }
+
+  _brancherCarrousel(ruban) {
+    const largeur = () => ruban.clientWidth || 1;
+    const appliquer = () => {
+      ruban.style.transition = 'none';
+      ruban.style.transform = 'translateX(calc(-100% + ' + this._decalGeste + 'px))';
+    };
+    let minuterie = null;
+    const finDeGeste = () => {
+      const w = largeur();
+      const sens = this._decalGeste <= -w / 4 ? 1 : (this._decalGeste >= w / 4 ? -1 : 0);
+      this._calerCarrousel(sens);
+    };
+    ruban.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // vertical : laisser défiler
+      e.preventDefault();
+      this._decalGeste -= e.deltaX;
+      appliquer();
+      if (minuterie) clearTimeout(minuterie);
+      minuterie = setTimeout(finDeGeste, 140);
+    }, { passive: false });
+
+    ruban.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest('.zfa-cal-carte, .zfa-cal-cellule, .zfa-cal-bloc, .zfa-cal-poignee, button')) return;
+      const x0 = e.clientX;
+      let bouge = false;
+      const move = (mv) => {
+        const d = mv.clientX - x0;
+        if (Math.abs(d) > 4) bouge = true;
+        if (bouge) { this._decalGeste = d; appliquer(); }
+      };
+      const up = () => {
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', up);
+        if (bouge) finDeGeste();
+      };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', up);
+    });
+  }
+
+  // Anime le ruban jusqu'à la grille voisine (sens ±1) ou le recentre (0),
+  // puis réancre et redessine.
+  _calerCarrousel(sens) {
+    const ruban = this._ruban;
+    if (!ruban) return;
+    const cible = sens === 1 ? '-200%' : (sens === -1 ? '0%' : '-100%');
+    ruban.style.transition = 'transform 180ms ease-out';
+    ruban.style.transform = 'translateX(' + cible + ')';
+    const apres = () => {
+      ruban.removeEventListener('transitionend', apres);
+      this._decalGeste = 0;
+      if (sens) this._ancre = Ariane.ancreCarrousel(this._ancre, this.mode, sens);
+      this.dessiner();
+    };
+    if (sens) ruban.addEventListener('transitionend', apres);
+    else setTimeout(apres, 190);
   }
 
   _surNouveau() { /* rempli en Task 7 */ }
