@@ -20429,7 +20429,7 @@ class MoteurArticulation {
       if (r.w < 8 || r.h < 8) return; // simple clic : on abandonne
       new ModaleNomZone(this.app,
         { titre: tr('Nouvelle zone'), bouton: tr('Créer') },
-        (nom) => this._creerZone(r, nom));
+        (nom) => this._creerZone(r, nom)).open();
     };
     this._doc().addEventListener('pointermove', bouger);
     this._doc().addEventListener('pointerup', lacher);
@@ -20514,7 +20514,7 @@ class MoteurArticulation {
     m.addItem((i) => i.setTitle(tr('Renommer la zone')).setIcon('pencil')
       .onClick(() => new ModaleNomZone(this.app,
         { titre: tr('Renommer la zone'), bouton: tr('Renommer'), valeur: z.nom },
-        (nom) => this._renommerZone(z, nom))));
+        (nom) => this._renommerZone(z, nom)).open()));
     m.addItem((i) => i.setTitle(tr('Supprimer la zone')).setIcon('trash-2')
       .onClick(() => this._supprimerZone(z)));
     m.showAtMouseEvent(ev);
