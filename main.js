@@ -17503,7 +17503,7 @@ class MoteurFrise {
         try {
           if (this._cfg && this._cfg.debut && this._cfg.ppj) {
             const j = Ariane.decalerJour(this._cfg.debut, Math.round(droite.scrollLeft / this._cfg.ppj));
-            if (j) this.ctx.ecrire('friseJour', j);
+            if (j && this.ctx.posEcrire) this.ctx.posEcrire(j);
           }
         } catch (e) { /* vue fermée */ }
       }, 400);
@@ -17512,7 +17512,8 @@ class MoteurFrise {
     // Cible du calage horizontal : re-ancrage après glissé de barre ; sinon, si
     // l'utilisateur a déjà scrollé dans cette session, on garde sa position ;
     // sinon on reprend au jour mémorisé (par vue) ; sinon on cadre aujourd'hui.
-    const jourMem = Ariane.jourValide ? Ariane.jourValide(this.ctx.lire('friseJour')) : null;
+    const jourMem = (Ariane.jourValide && this.ctx.posLire)
+      ? Ariane.jourValide(this.ctx.posLire()) : null;
     const cibleX = jourAncre
       ? Math.max(0, Ariane.ecartJours(cfg.debut, jourAncre) * cfg.ppj)
       : (this._aScrolle && memeX !== null) ? memeX
@@ -19515,6 +19516,9 @@ function fabriquerVueFriseBase(greffon) {
     }
 
     onload() {
+      const clePos = () => 'ariane:friseJour:' + ((this.controller && this.controller.file
+        && this.controller.file.path)
+        || (this.config.serialize && (this.config.serialize() || {}).name) || 'defaut');
       this.moteur = new MoteurFrise(this.greffon, this.conteneur, {
         echelleReglable: true,
         colonnes: () => this.colonnes(),
@@ -19531,6 +19535,15 @@ function fabriquerVueFriseBase(greffon) {
           return v === undefined || v === null ? DEFAUTS_FRISE[cle] : v;
         },
         ecrire: async (cle, v) => { this.config.set(cle, v); },
+        // Position de travail (jour au bord gauche) : stockée dans le
+        // localStorage du coffre, par fichier .base — la config de la vue Bases
+        // ne persiste pas de façon fiable les clés non déclarées.
+        posLire: () => {
+          try { return this.greffon.app.loadLocalStorage(clePos()) || ''; } catch (e) { return ''; }
+        },
+        posEcrire: (jour) => {
+          try { this.greffon.app.saveLocalStorage(clePos(), jour || null); } catch (e) { /* rien */ }
+        },
         masquerColonne: async (id) => {
           let ordre = [];
           try { ordre = this.config.getOrder() || []; } catch (e) { ordre = []; }
