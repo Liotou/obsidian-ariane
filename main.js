@@ -17493,8 +17493,11 @@ class MoteurFrise {
       if (piste) piste.style.transform = 'translateY(' + y + 'px)';
       this.recalerEnteteHaut(droite.scrollLeft);
       this.recalerEtiquettes(droite.scrollLeft);
-      // Mémorise le jour au bord gauche, par vue, pour y revenir à la
-      // réouverture (2ᵉ fenêtre, retour de focus…).
+      // Un scroll VENU DE L'UTILISATEUR (pas le calage programmatique ci-dessous)
+      // marque la session comme « scrollée » et mémorise le jour au bord gauche,
+      // par vue, pour y revenir à la réouverture (2ᵉ fenêtre, retour de focus…).
+      if (this._scrollProg) return;
+      this._aScrolle = true;
       clearTimeout(this._minSauveJour);
       this._minSauveJour = setTimeout(() => {
         try {
@@ -17506,15 +17509,32 @@ class MoteurFrise {
       }, 400);
     });
 
-    // À froid (pas d'ancien scrollLeft) : reprendre au jour mémorisé, sinon
-    // cadrer sur aujourd'hui.
-    const jourMem = Ariane.jourValide && Ariane.jourValide(this.ctx.lire('friseJour'));
-    droite.scrollLeft = jourAncre
+    // Cible du calage horizontal : re-ancrage après glissé de barre ; sinon, si
+    // l'utilisateur a déjà scrollé dans cette session, on garde sa position ;
+    // sinon on reprend au jour mémorisé (par vue) ; sinon on cadre aujourd'hui.
+    const jourMem = Ariane.jourValide ? Ariane.jourValide(this.ctx.lire('friseJour')) : null;
+    const cibleX = jourAncre
       ? Math.max(0, Ariane.ecartJours(cfg.debut, jourAncre) * cfg.ppj)
-      : (memeX !== null ? memeX
+      : (this._aScrolle && memeX !== null) ? memeX
         : jourMem
           ? Math.max(0, Ariane.ecartJours(cfg.debut, jourMem) * cfg.ppj)
-          : Math.max(0, Ariane.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220));
+          : Math.max(0, Ariane.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220);
+    const vue = this._doc().defaultView || window;
+    const calerX = (essais) => {
+      this._scrollProg = true;
+      droite.scrollLeft = cibleX;
+      this.recalerEnteteHaut(droite.scrollLeft);
+      this.recalerEtiquettes(droite.scrollLeft);
+      // Tant que la vue n'a pas de largeur (2ᵉ fenêtre pas encore disposée) ou
+      // rien à faire défiler, scrollLeft reste bloqué à 0 → on réessaie.
+      const posee = droite.clientWidth > 1 && droite.scrollWidth > droite.clientWidth;
+      if (cibleX > 0 && !posee && essais > 0) {
+        vue.requestAnimationFrame(() => calerX(essais - 1));
+      } else {
+        vue.requestAnimationFrame(() => { this._scrollProg = false; });
+      }
+    };
+    calerX(20);
     if (memeY !== null) {
       droite.scrollTop = memeY;
       table.style.top = (-memeY) + 'px';
