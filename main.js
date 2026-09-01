@@ -6551,26 +6551,35 @@ class Ariane extends obsidian.Plugin {
       '    }',
       '    var e=evById(v.id);',
       '    var cal=calParNom(v.calendrier);',
+      '    if(!cal){ out.push(v.ref+"\\t"+v.idx+"\\tERREUR\\tcalendrier introuvable: "+net(v.calendrier)); continue; }',
       // Identifiant non résolu (churn iCloud) : avant de créer un doublon, on
-      // cherche dans le calendrier cible un événement du même titre sur la
-      // fenêtre du créneau et on le réutilise.
-      '    if(!e && cal){ try{',
+      // cherche un événement du même titre dans ce calendrier sur la fenêtre du
+      // créneau (prédicat NULL = tous, filtré côté JS — plus fiable en JXA).
+      '    if(!e){ try{',
       '      var dd0=fmtDate(comps(String(v.debut).slice(0,10),"00:00"));',
       '      var dd1=fmtDate(comps(String(v.fin).slice(0,10),"23:59"));',
-      '      var pr=ST.predicateForEventsWithStartDateEndDateCalendars(dd0,dd1,$([cal]));',
+      '      var pr=ST.predicateForEventsWithStartDateEndDateCalendars(dd0,dd1,null);',
       '      var ex=ST.eventsMatchingPredicate(pr);',
-      '      if(ex){ for(var q=0;q<ex.count;q++){ var ee=ex.objectAtIndex(q); if(String(ObjC.unwrap(ee.title))===String(v.titre)){ e=ee; break; } } }',
+      '      var cid=ObjC.unwrap(cal.calendarIdentifier);',
+      '      if(ex){ for(var q=0;q<ex.count;q++){ var ee=ex.objectAtIndex(q);',
+      '        if(String(ObjC.unwrap(ee.title))!==String(v.titre)) continue;',
+      '        try{ if(ObjC.unwrap(ee.calendar.calendarIdentifier)!==cid) continue; }catch(eC){}',
+      '        e=ee; break; } }',
       '    }catch(eDup){} }',
-      '    if(e && cal){ try{ if(ObjC.unwrap(e.calendar.calendarIdentifier)!==ObjC.unwrap(cal.calendarIdentifier)) e.calendar=cal; }catch(er2){} }',
-      '    if(!e){ e=$.EKEvent.eventWithEventStore(ST); if(cal) e.calendar=cal; }',
+      '    if(e){ try{ if(ObjC.unwrap(e.calendar.calendarIdentifier)!==ObjC.unwrap(cal.calendarIdentifier)) e.calendar=cal; }catch(er2){} }',
+      '    else { e=$.EKEvent.eventWithEventStore(ST); e.calendar=cal; }',
       '    try{ e.title=v.titre; }catch(er3){}',
       '    try{ e.notes=v.notes||""; }catch(er4){}',
       '    try{ if(v.lien){ var u=$.NSURL.URLWithString(v.lien); if(u) e.url=u; } }catch(erU){}',
       '    try{ e.isAllDay=false; }catch(er5){}',
-      '    try{ e.startDate=fmtDate(comps(String(v.debut).slice(0,10),String(v.debut).slice(11,16))); }catch(er6){}',
-      '    try{ e.endDate=fmtDate(comps(String(v.fin).slice(0,10),String(v.fin).slice(11,16))); }catch(er7){}',
-      '    var ok=false; try{ ok=ST.saveEventSpanCommitError(e,0,true,null); }catch(er8){}',
-      '    out.push(v.ref+"\\t"+v.idx+"\\t"+(ok?evId(e):""));',
+      '    var sd=fmtDate(comps(String(v.debut).slice(0,10),String(v.debut).slice(11,16)));',
+      '    var ed=fmtDate(comps(String(v.fin).slice(0,10),String(v.fin).slice(11,16)));',
+      '    if(!sd || !ed){ out.push(v.ref+"\\t"+v.idx+"\\tERREUR\\tdate invalide "+net(v.debut)+"/"+net(v.fin)); continue; }',
+      '    try{ e.startDate=sd; e.endDate=ed; }catch(er6){}',
+      '    var err=$(); var ok=false;',
+      '    try{ ok=ST.saveEventSpanCommitError(e,0,true,err); }catch(er8){ out.push(v.ref+"\\t"+v.idx+"\\tERREUR\\t"+er8); continue; }',
+      '    if(!ok){ var m=""; try{ m=net(ObjC.unwrap(err[0].localizedDescription)); }catch(eM){} out.push(v.ref+"\\t"+v.idx+"\\tERREUR\\t"+(m||"saveEvent a renvoyé false")); continue; }',
+      '    out.push(v.ref+"\\t"+v.idx+"\\t"+evId(e));',
       '  }',
       '  return out.join("\\n");',
       '}',
@@ -6630,16 +6639,18 @@ class Ariane extends obsidian.Plugin {
       'function run(){',
       '  var IN=' + IN + '; var ACC=acces();',
       '  if(ACC!==3) return "__ACCES__\\t"+ACC;',
-      '  if(!IN.debut || !IN.fin) return "";',
+      '  if(!IN.debut || !IN.fin || !IN.calendriers.length) return "";',
       '  var want={}; for(var w=0;w<IN.calendriers.length;w++) want[norm(IN.calendriers[w])]=1;',
-      '  var L=cals(); var arr=[];',
-      '  for(var i=0;i<L.count;i++){ var c=L.objectAtIndex(i); if(want[norm(titre(c))]) arr.push(c); }',
-      '  if(!arr.length) return "";',
       '  var d0=fmtDate(comps(IN.debut,"00:00")); var d1=fmtDate(comps(IN.fin,"23:59"));',
-      '  var pred=ST.predicateForEventsWithStartDateEndDateCalendars(d0,d1,$(arr));',
+      '  if(!d0 || !d1) return "";',
+      // NULL = tous les calendriers ; on filtre côté JS par nom. Passer un
+      // NSArray de calendriers à la prédicat est fragile en JXA.
+      '  var pred=ST.predicateForEventsWithStartDateEndDateCalendars(d0,d1,null);',
       '  var evs=ST.eventsMatchingPredicate(pred); var out=[];',
       '  if(evs){ for(var k=0;k<evs.count;k++){',
-      '    var e=evs.objectAtIndex(k); var id=evId(e); if(!id) continue;',
+      '    var e=evs.objectAtIndex(k);',
+      '    var cn=""; try{ cn=norm(titre(e.calendar)); }catch(ecn){} if(!want[cn]) continue;',
+      '    var id=evId(e); if(!id) continue;',
       '    var ad=false; try{ ad=e.isAllDay; }catch(er2){}',
       '    out.push(id+"\\t"+net(ObjC.unwrap(e.title))+"\\t"+isoDeDate(e.startDate)+"\\t"+isoDeDate(e.endDate)+"\\t"+(ad?"1":"0")+"\\t"+couleurCal(e.calendar)+"\\t"+net(titre(e.calendar)));',
       '  } }',
@@ -13057,23 +13068,32 @@ class Ariane extends obsidian.Plugin {
       this._avertirAccesAgenda();
       return 0;
     }
-    const parRef = new Map(cibles.map((t) => [t.ref, t]));
     const recu = new Map();
+    const erreurs = [];
     for (const l of sortie.split('\n')) {
-      const [ref, idxS, val] = l.split('\t');
+      const p = l.split('\t');
+      const [ref, idxS, val] = p;
       if (!ref || idxS === undefined) continue;
+      if (val === 'ERREUR') { erreurs.push(ref + ' #' + idxS + ' : ' + (p[3] || '?')); continue; }
       if (!recu.has(ref)) recu.set(ref, []);
       recu.get(ref)[Number(idxS)] = (val && val !== 'SUPPRIME') ? val : '';
     }
+    if (erreurs.length) console.warn('[Ariane] Apple Agenda — échecs de push :\n' + erreurs.join('\n'));
     let n = 0;
+    let liens = 0;
     for (const t of cibles) {
       const arr = recu.get(t.ref) || [];
       const liste = [];
       for (let i = 0; i < t._crs.length; i += 1) liste.push(arr[i] || t._ids[i] || '');
+      liens += liste.filter(Boolean).length;
       if (JSON.stringify(liste) !== JSON.stringify(t._ids)) {
         await this.majTache(t.ref, { 'agenda-id': liste });
       }
-      if (t.fichier) {
+      // agenda-sync n'est écrit QUE si tous les créneaux ont bien un événement
+      // lié — sinon la relève pourrait croire la note « à jour » et retirer le
+      // lien d'un créneau que le push n'a pas réussi à créer.
+      const complet = t._crs.length ? liste.every(Boolean) : true;
+      if (t.fichier && complet) {
         this.marquerEcriture(t.fichier.path);
         await this.app.fileManager.processFrontMatter(t.fichier, (x) => {
           x['agenda-sync'] = Ariane.instantAgenda(t);
@@ -13082,7 +13102,10 @@ class Ariane extends obsidian.Plugin {
       n += 1;
     }
     this._rafraichirFond();
-    if (!silencieux) new obsidian.Notice(n + tr(' tâche(s) synchronisée(s) vers Apple Agenda.'));
+    if (!silencieux) {
+      new obsidian.Notice(liens + tr(' événement(s) liés dans Apple Agenda')
+        + (erreurs.length ? tr(', ') + erreurs.length + tr(' échec(s) — voir la console') : '') + '.', 8000);
+    }
     return n;
   }
 
