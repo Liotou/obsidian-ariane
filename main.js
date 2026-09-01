@@ -5026,7 +5026,13 @@ class Ariane extends obsidian.Plugin {
       if (p) out.push({ debut: p.debut, fin: p.fin, brut: String(s) });
     }
     out.sort((a, b) => (a.debut < b.debut ? -1 : a.debut > b.debut ? 1 : 0));
-    return out;
+    const vus = new Set();
+    return out.filter((c) => {
+      const k = c.debut + '|' + c.fin;
+      if (vus.has(k)) return false;
+      vus.add(k);
+      return true;
+    });
   }
 
   // Voir spec §2.5. Rend un TABLEAU d'événements. Les créneaux priment : quand
@@ -15933,8 +15939,6 @@ const DEFAUTS_FRISE = {
 // Valeurs par défaut des réglages d'une vue calendrier de base.
 const DEFAUTS_CALENDRIER = {
   calMode: 'mois',
-  agendaCalendrier: '',
-  agendaFond: true,
   calHeureDebut: '07:00',
   calHeureFin: '21:00',
 };
@@ -20189,6 +20193,13 @@ class MoteurCalendrier {
           if (p.echeance !== undefined) t.echeance = p.echeance;
           if (p.creneaux !== undefined) t.creneaux = p.creneaux;
         }
+        if (p.debut === undefined && p.echeance === undefined && p.creneaux === undefined) {
+          this._enAttente.delete(t.ref);
+        }
+      }
+      const refs = new Set(this._taches.map((t) => t.ref));
+      for (const ref of [...this._enAttente.keys()]) {
+        if (!refs.has(ref)) this._enAttente.delete(ref);
       }
     }
     this.dessinerBarreOutils(c);

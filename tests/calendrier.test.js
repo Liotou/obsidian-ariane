@@ -53,6 +53,15 @@ test('creneauxDeTache : liste triée, invalides écartées, brut conservé', () 
     ['2026-09-08T14:00']);
 });
 
+test('creneauxDeTache : dédoublonnage sur début|fin, formes équivalentes fusionnées', () => {
+  const l = Ariane.creneauxDeTache([
+    '2026-09-08 14:00-16:00',
+    '2026-09-08 14:00 / 2026-09-08 16:00',
+    '2026-09-10 09:00-11:00']);
+  assert.equal(l.length, 2);
+  assert.deepEqual(l.map((c) => c.debut), ['2026-09-08T14:00', '2026-09-10T09:00']);
+});
+
 test('CONCEPTS_TACHE / PROPS_GENERIQUES portent creneaux', () => {
   assert.ok(Ariane.CONCEPTS_TACHE.includes('creneaux'));
   assert.ok(Ariane.PROPS_GENERIQUES.some((p) => p.cle === 'creneaux'));
@@ -102,6 +111,13 @@ test('statsCreneaux : compte, total, passé/futur, premier/dernier', () => {
   assert.equal(s.futurMin, 240);          // le dernier
   assert.equal(s.premier, '2026-09-08T14:00');
   assert.equal(s.dernier, '2026-09-20T12:00');
+});
+
+test('statsCreneaux : créneau dupliqué compté une seule fois', () => {
+  const s = Ariane.statsCreneaux(
+    ['2026-09-08 14:00-16:00', '2026-09-08 14:00-16:00'], '2026-09-01T00:00');
+  assert.equal(s.nb, 1);
+  assert.equal(s.totalMin, 120);
 });
 
 test('statsCreneaux : liste vide', () => {
