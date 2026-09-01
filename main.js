@@ -6403,6 +6403,7 @@ class Ariane extends obsidian.Plugin {
   static _jxaEKEvenements() {
     return [
       Ariane._jxaEKCommun(),
+      'try{ ObjC.import("AppKit"); }catch(e){}',
       'function acces(){ var d=false; try{ ST.requestFullAccessToEventsWithCompletion(function(g,e){d=true;}); }catch(e){ try{ ST.requestAccessToEntityTypeCompletion(0,function(g,e){d=true;}); }catch(e2){} } var t=Date.now(); while(!d && Date.now()-t<20000){ $.CFRunLoopRunInMode($.kCFRunLoopDefaultMode,0.05,false); } }',
       'function cals(){ try{ return ST.calendarsForEntityType(0); }catch(e){ return $([]); } }',
       'function calParNom(nom){ if(!nom) { try{ return ST.defaultCalendarForNewEvents; }catch(e){ return null; } } var L=cals(); for(var i=0;i<L.count;i++){ var c=L.objectAtIndex(i); if(titre(c)===nom) return c; } for(var j=0;j<L.count;j++){ var c2=L.objectAtIndex(j); if(norm(titre(c2))===norm(nom)) return c2; } return null; }',
@@ -6410,7 +6411,7 @@ class Ariane extends obsidian.Plugin {
       'function evId(e){ var s=""; try{ s=ObjC.unwrap(e.eventIdentifier); }catch(x1){} if(!s) try{ s=ObjC.unwrap(e.calendarItemIdentifier); }catch(x2){} return s||""; }',
       'function fmtDate(dc){ try{ return $.NSCalendar.currentCalendar.dateFromComponents(dc); }catch(e){ return null; } }',
       'function isoDeDate(d){ if(!d) return ""; try{ var f=$.NSDateFormatter.alloc.init; f.dateFormat=$("yyyy-MM-dd\'T\'HH:mm"); f.timeZone=$.NSTimeZone.localTimeZone; return ObjC.unwrap(f.stringFromDate(d)); }catch(e){ return ""; } }',
-      'function couleurCal(cal){ try{ var cg=cal.color; if(!cg) return ""; var n=cg.numberOfComponents; var k=cg.components; if(!k || n<3) return ""; var z=function(v){ v=Math.max(0,Math.min(255,Math.round(v*255))); return (v<16?"0":"")+v.toString(16); }; return "#"+z(k[0])+z(k[1])+z(k[2]); }catch(e){ return ""; } }',
+      'function couleurCal(cal){ try{ var cg=null; try{ cg=cal.color; }catch(e0){} if(!cg) try{ cg=cal.CGColor; }catch(e1){} if(!cg) return ""; var ns=null; try{ ns=$.NSColor.colorWithCGColor(cg); }catch(e2){} if(!ns) return ""; try{ var sp=ns.colorUsingColorSpace($.NSColorSpace.sRGBColorSpace); if(sp) ns=sp; }catch(e3){} var z=function(c){ var v=Math.max(0,Math.min(255,Math.round(c*255))); return (v<16?"0":"")+v.toString(16); }; return "#"+z(ns.redComponent)+z(ns.greenComponent)+z(ns.blueComponent); }catch(e){ return ""; } }',
     ].join('\n');
   }
 
