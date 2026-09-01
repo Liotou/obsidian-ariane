@@ -1109,6 +1109,12 @@ const DEFAULT_SETTINGS = {
   rappelsAuto: true,            // pousser à la sauvegarde d'une tâche + relever régulièrement
   rappelsReleveMin: 10,         // minutes entre deux relèves automatiques
   rappelsFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un rappel Apple
+  agendaActif: false,           // intégration Apple Agenda / Calendar (macOS, EKEvent)
+  agendaAuto: true,             // pousser à la sauvegarde + relever régulièrement
+  agendaReleveMin: 10,          // minutes entre deux relèves automatiques
+  agendaFenetreJours: 120,      // fenêtre de relève / agenda de fond (jours)
+  agendaCalendrierDefaut: '',   // calendrier Apple cible par défaut (familles sans réglage)
+  agendaFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un événement Apple
   // Clés de frontmatter des propriétés de tâche. Chaque clé = « prefixeTaches »
   // + nom lisible du concept (« Tâche - Échéance »). « clesTaches » remplace le
   // nom lisible d'une propriété précise (concept -> label) ; le préfixe reste
@@ -12548,6 +12554,24 @@ class Ariane extends obsidian.Plugin {
     return this.settings.familleTacheDefaut || 'action';
   }
 
+  // Nom du calendrier Apple pour une tâche : celui de sa famille, sinon le
+  // calendrier par défaut des réglages. Miroir de listeRappelsDe.
+  agendaCalendrierDe(familleId) {
+    const f = this.familleDe(familleId);
+    return String((f && f.agendaCalendrier) || this.settings.agendaCalendrierDefaut || '').trim();
+  }
+
+  // Tous les calendriers Apple surveillés (relève + agenda de fond).
+  _agendasSurveilles() {
+    const s = new Set();
+    for (const f of (Array.isArray(this.settings.famillesTaches) ? this.settings.famillesTaches : [])) {
+      if (f && f.id) { const c = this.agendaCalendrierDe(f.id); if (c) s.add(c); }
+    }
+    const d = String(this.settings.agendaCalendrierDefaut || '').trim();
+    if (d) s.add(d);
+    return [...s];
+  }
+
   _osascriptJXA(script, ms) {
     return new Promise((res) => {
       require('child_process').execFile('osascript', ['-l', 'JavaScript', '-e', script],
@@ -12562,6 +12586,20 @@ class Ariane extends obsidian.Plugin {
     const s = await this._osascriptJXA(Ariane.genererJXAListes(), 30000);
     this._listesRappels = (s == null ? [] : s.split('\n').map((x) => x.trim()).filter(Boolean));
     return this._listesRappels;
+  }
+
+  // Noms des calendriers Apple (entité événements) connus de l'API, mis en cache
+  // pour alimenter les datalists des réglages. Garde de 30 s.
+  async chargerAgendas() {
+    if (!obsidian.Platform.isMacOS) { this._agendas = []; return []; }
+    if (this._agendasChargeLe && Date.now() - this._agendasChargeLe < 30000) return this._agendas || [];
+    const s = await this._osascriptJXA(
+      Ariane._jxaEKEvenements() + '\nfunction run(){ acces(); var L=cals(); var out=[];'
+      + ' for(var i=0;i<L.count;i++){ var n=net(titre(L.objectAtIndex(i))); if(n) out.push(n); }'
+      + ' out.sort(); return out.join("\\n"); }', 30000);
+    this._agendas = (s == null ? [] : s.split('\n').map((x) => x.trim()).filter(Boolean));
+    this._agendasChargeLe = Date.now();
+    return this._agendas;
   }
 
   // Instantané « dernier état synchronisé » d'une tâche, pour arbitrer les
@@ -12744,6 +12782,143 @@ class Ariane extends obsidian.Plugin {
       }
     }
     if (!silencieux && n) new obsidian.Notice(n + tr(' tâche(s) mise(s) à jour depuis Rappels.'));
+    return n;
+  }
+
+  /* ---- Apple Agenda : orchestration -------------------------------- */
+
+  // Pousse les créneaux des tâches éligibles vers Apple Calendar (un EKEvent par
+  // créneau), supprime les événements des créneaux disparus, mémorise agenda-id
+  // (liste alignée sur les créneaux) et agenda-sync dans la note.
+  async pousserAgenda(silencieux) {
+    if (!obsidian.Platform.isMacOS) {
+      if (!silencieux) new obsidian.Notice(tr('Apple Agenda : disponible sur macOS uniquement.'));
+      return 0;
+    }
+    if (!this.settings.agendaActif) return 0;
+    const vault = this.app.vault.getName();
+    const cibles = [];
+    for (const t of this.tachesPourGantt()) {
+      const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+      const ids = [].concat(this._lireT(fm, 'agenda-id') || []).map(String);
+      const crs = Ariane.creneauxDeTache(t);
+      const cal = this.agendaCalendrierDe(t.famille);
+      if (!(crs.length && cal) && !ids.some((x) => x)) continue;
+      cibles.push(Object.assign({}, t, { _fm: fm, _ids: ids, _crs: crs, _cal: cal }));
+    }
+    if (!cibles.length) {
+      if (!silencieux) new obsidian.Notice(tr('Aucune tâche à synchroniser.'));
+      return 0;
+    }
+    const charge = [];
+    for (const t of cibles) {
+      let note = '';
+      try { note = await this.lireNoteTache(t.ref); } catch (e) { /* rien */ }
+      const lien = 'obsidian://open?vault=' + encodeURIComponent(vault)
+        + '&file=' + encodeURIComponent(t.fichier.path.replace(/\.md$/, ''));
+      const notes = (note ? note.slice(0, 500).trim() + '\n\n' : '') + lien;
+      const titreBase = Ariane.formatModele(
+        this.settings.agendaFormatTitre || '[{ref}] - {intitule}',
+        { ref: t.ref, intitule: t.intitule, famille: (this.familleDe(t.famille) || {}).nom || '' });
+      const prefixe = t.statut === 'terminée' ? '✅ ' : '';
+      const plusieurs = t._crs.length > 1;
+      const relie = t._crs.length && t._cal;
+      if (relie) {
+        t._crs.forEach((c, i) => {
+          charge.push({
+            ref: t.ref, idx: i, id: t._ids[i] || '',
+            titre: prefixe + titreBase + (plusieurs ? ' (session ' + (i + 1) + ')' : ''),
+            notes, calendrier: t._cal, debut: c.debut, fin: c.fin,
+          });
+        });
+      }
+      // agenda-id sans créneau correspondant (créneau retiré, ou tâche devenue
+      // inéligible) → suppression de l'EKEvent.
+      const garde = relie ? t._crs.length : 0;
+      t._ids.forEach((id, i) => {
+        if (id && i >= garde) charge.push({ ref: t.ref, idx: i, id, supprimer: true });
+      });
+    }
+    if (!charge.length) return 0;
+    const avis = silencieux ? null : new obsidian.Notice(tr('Synchronisation Apple Agenda…'), 0);
+    const sortie = await this._osascriptJXA(Ariane.genererJXAEvenementsPush(charge));
+    if (avis) avis.hide();
+    if (sortie == null) {
+      if (!silencieux) new obsidian.Notice(tr('Apple Agenda a refusé (autorisation d\'automatisation dans Réglages système ?).'));
+      return 0;
+    }
+    const parRef = new Map(cibles.map((t) => [t.ref, t]));
+    const recu = new Map();
+    for (const l of sortie.split('\n')) {
+      const [ref, idxS, val] = l.split('\t');
+      if (!ref || idxS === undefined) continue;
+      if (!recu.has(ref)) recu.set(ref, []);
+      recu.get(ref)[Number(idxS)] = (val && val !== 'SUPPRIME') ? val : '';
+    }
+    let n = 0;
+    for (const t of cibles) {
+      const arr = recu.get(t.ref) || [];
+      const liste = [];
+      for (let i = 0; i < t._crs.length; i += 1) liste.push(arr[i] || t._ids[i] || '');
+      if (JSON.stringify(liste) !== JSON.stringify(t._ids)) {
+        await this.majTache(t.ref, { 'agenda-id': liste });
+      }
+      if (t.fichier) {
+        this.marquerEcriture(t.fichier.path);
+        await this.app.fileManager.processFrontMatter(t.fichier, (x) => {
+          x['agenda-sync'] = Ariane.instantAgenda(t);
+        });
+      }
+      n += 1;
+    }
+    if (this._invaliderFondAgenda) this._invaliderFondAgenda();
+    if (!silencieux) new obsidian.Notice(n + tr(' tâche(s) synchronisée(s) vers Apple Agenda.'));
+    return n;
+  }
+
+  // Relève : pour chaque EKEvent lié, horaires changés dans Calendar → réécriture
+  // de l'entrée de créneau ; événement supprimé → retrait du créneau. Aucun
+  // import d'événement inconnu. La note fait foi si elle a bougé (agenda-sync).
+  async releverAgenda(silencieux) {
+    if (!obsidian.Platform.isMacOS || !this.settings.agendaActif) return 0;
+    const avecId = [];
+    for (const t of this.tachesPourGantt()) {
+      const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+      const ids = [].concat(this._lireT(fm, 'agenda-id') || []).map(String);
+      if (!ids.some((x) => x)) continue;
+      avecId.push(Object.assign({}, t, { _ids: ids,
+        _crs: Ariane.creneauxDeTache(t), _snap: String(fm['agenda-sync'] || '') }));
+    }
+    if (!avecId.length) return 0;
+    const paires = [];
+    for (const t of avecId) t._ids.forEach((id, i) => { if (id) paires.push({ ref: t.ref, idx: i, id }); });
+    const avis = silencieux ? null : new obsidian.Notice(tr('Relève Apple Agenda…'), 0);
+    const sortie = await this._osascriptJXA(
+      Ariane.genererJXAEvenementsReleve(paires, this.settings.agendaFenetreJours || 120));
+    if (avis) avis.hide();
+    if (sortie == null) return 0;
+    const parRef = new Map(avecId.map((t) => [t.ref, t]));
+    let n = 0;
+    for (const l of sortie.split('\n')) {
+      const p = l.split('\t');
+      const t = p[0] && parRef.get(p[0]);
+      if (!t) continue;
+      if (t._snap && Ariane.instantAgenda(t) !== t._snap) continue; // la note a bougé
+      const cr = t._crs[Number(p[1])];
+      if (!cr) continue;
+      if (p[2] === 'MANQUANT') {
+        await this.majCreneau(t.ref, { avant: cr.brut, debut: '', fin: '' });
+        n += 1; continue;
+      }
+      const isoD = p[2] || '';
+      const isoF = p[3] || '';
+      if (isoD && isoF && (isoD !== cr.debut || isoF !== cr.fin)) {
+        await this.majCreneau(t.ref, { avant: cr.brut, debut: isoD, fin: isoF });
+        n += 1;
+      }
+    }
+    if (n) this.antirebond('agenda:push', () => this.pousserAgenda(true), 1500);
+    if (!silencieux && n) new obsidian.Notice(n + tr(' créneau(x) mis à jour depuis Apple Agenda.'));
     return n;
   }
 
