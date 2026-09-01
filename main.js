@@ -1008,6 +1008,10 @@ const TEXTES = {
     "Tâches : synchroniser vers Apple Agenda": "Tasks: sync to Apple Calendar",
     "Tâches : relever Apple Agenda": "Tasks: pull Apple Calendar",
     "Tâches : diagnostiquer Apple Agenda": "Tasks: diagnose Apple Calendar",
+    "Tâches : nettoyer les doublons Apple Agenda": "Tasks: clean up Apple Calendar duplicates",
+    "Nettoyage Apple Agenda…": "Cleaning up Apple Calendar…",
+    "Apple Agenda : nettoyage impossible (voir la console).": "Apple Calendar: cleanup failed (see the console).",
+    " doublon(s) supprimé(s) d'Apple Agenda.": " duplicate(s) removed from Apple Calendar.",
     "Apple Agenda est désactivé (Réglages → Tâches → Apple Agenda → Activer).": "Apple Calendar is off (Settings → Tasks → Apple Calendar → Enable).",
     "Aucune tâche à synchroniser : il faut au moins un créneau ET un calendrier Apple sur la famille (ou le calendrier par défaut).": "No task to sync: a task needs at least one slot AND an Apple calendar on its family (or the default calendar).",
     "Rien à pousser vers Apple Agenda.": "Nothing to push to Apple Calendar.",
@@ -3603,6 +3607,11 @@ class Ariane extends obsidian.Plugin {
       id: 'agenda-diagnostic',
       name: tr('Tâches : diagnostiquer Apple Agenda'),
       callback: () => this.diagnostiquerAgenda(),
+    });
+    this.addCommand({
+      id: 'agenda-nettoyer',
+      name: tr('Tâches : nettoyer les doublons Apple Agenda'),
+      callback: () => this.nettoyerAgenda(false),
     });
     this.addCommand({
       id: 'modifier-tache',
@@ -6613,8 +6622,8 @@ class Ariane extends obsidian.Plugin {
       // cherche dans le calendrier cible un événement du même titre sur la
       // fenêtre du créneau ($([cal]) — un null plante le prédicat en JXA).
       '    if(!e){ try{',
-      '      var dd0=fmtDate(comps(String(v.debut).slice(0,10),"00:00"));',
-      '      var dd1=fmtDate(comps(String(v.fin).slice(0,10),"23:59"));',
+      '      var dd0=fmtDate(comps(String(v.scanDebut||v.debut).slice(0,10),"00:00"));',
+      '      var dd1=fmtDate(comps(String(v.scanFin||v.fin).slice(0,10),"23:59"));',
       '      var pr=ST.predicateForEventsWithStartDateEndDateCalendars(dd0,dd1,$([cal]));',
       '      var ex=ST.eventsMatchingPredicate(pr);',
       '      var vu="";',
@@ -6681,6 +6690,48 @@ class Ariane extends obsidian.Plugin {
       '  noms.sort();',
       '  var def=""; try{ def=net(titre(ST.defaultCalendarForNewEvents)); }catch(e){}',
       '  return JSON.stringify({ statutAvant:st0, statut:st1, defaut:def, calendriers:noms });',
+      '}',
+    ].join('\n');
+  }
+
+  // Ménage : dans les calendriers de synchro, supprime les EKEvent « à Ariane »
+  // (URL obsidian:// ou titre « [ref connue] … ») dont l'identifiant n'est PAS
+  // dans la liste des liens légitimes → efface les doublons laissés par une
+  // course entre deux push. `idsLegitimes` : { eventId: 1 }. `refs` : liste des
+  // références de tâche connues.
+  static genererJXAEvenementsMenage(calendriers, idsLegitimes, refs, fenetreJours) {
+    const IN = JSON.stringify({
+      calendriers: [...new Set((Array.isArray(calendriers) ? calendriers : []).filter(Boolean))],
+      ids: idsLegitimes && typeof idsLegitimes === 'object' ? idsLegitimes : {},
+      refs: [...new Set((Array.isArray(refs) ? refs : []).map(String))],
+      fenetreJours: Math.max(7, Number(fenetreJours) || 180),
+    });
+    return [
+      Ariane._jxaEKEvenements(),
+      'function run(){',
+      '  var IN=' + IN + '; var ACC=Number(acces());',
+      '  if(ACC!==3 && ACC!==4) return "__ACCES__\\t"+ACC;',
+      '  if(!IN.calendriers.length) return "";',
+      '  var want={}; for(var w=0;w<IN.calendriers.length;w++) want[norm(IN.calendriers[w])]=1;',
+      '  var refset={}; for(var r=0;r<IN.refs.length;r++) refset[IN.refs[r]]=1;',
+      '  var L=cals(); var arr=[];',
+      '  for(var i=0;i<L.count;i++){ var c=L.objectAtIndex(i); if(want[norm(titre(c))]) arr.push(c); }',
+      '  if(!arr.length) return "";',
+      '  var maintenant=$.NSDate.date;',
+      '  var d0=maintenant.dateByAddingTimeInterval(-IN.fenetreJours*86400);',
+      '  var d1=maintenant.dateByAddingTimeInterval(IN.fenetreJours*86400);',
+      '  var pred=ST.predicateForEventsWithStartDateEndDateCalendars(d0,d1,$(arr));',
+      '  var evs=ST.eventsMatchingPredicate(pred); var out=[]; var vus=[];',
+      '  if(evs){ for(var k=0;k<evs.count;k++){',
+      '    var e=evs.objectAtIndex(k); var id=evId(e); if(!id || IN.ids[id]) continue;',
+      '    var url=""; try{ url=String(ObjC.unwrap(e.URL)||""); }catch(eu){}',
+      '    var ti=""; try{ ti=String(ObjC.unwrap(e.title)||""); }catch(et){}',
+      '    var aNous=(url.indexOf("obsidian://")===0);',
+      '    if(!aNous){ var m=ti.match(/\\[([^\\]]+)\\]/); if(m && refset[String(m[1]).trim()]) aNous=true; }',
+      '    if(!aNous) continue;',
+      '    try{ ST.removeEventSpanCommitError(e,0,true,null); out.push("SUPPRIME\\t"+id+"\\t"+net(ti)); }catch(er){ out.push("ERREUR\\t"+id+"\\t"+net(ti)); }',
+      '  } }',
+      '  return out.join("\\n");',
       '}',
     ].join('\n');
   }
@@ -12771,10 +12822,13 @@ class Ariane extends obsidian.Plugin {
       : String(brut || '').split(',').map((n) => n.trim()).filter(Boolean);
   }
 
+  // Calendriers affichés en fond = UNIQUEMENT ceux cochés dans « Calendriers à
+  // afficher ». Les calendriers de famille sont des cibles d'écriture pour les
+  // créneaux : on n'en relit pas les événements (le créneau les représente déjà
+  // — les relire créait des doublons).
   _agendasAffiches() {
-    const s = new Set(this._agendasSurveilles());
-    for (const n of this._agendasCoches()) s.add(n);
-    return [...s];
+    return this._agendasCoches().filter((n) => !this._agendasSurveilles()
+      .some((c) => c.toLowerCase() === n.toLowerCase()));
   }
 
   _osascriptJXA(script, ms) {
@@ -13108,7 +13162,25 @@ class Ariane extends obsidian.Plugin {
   // Pousse les créneaux des tâches éligibles vers Apple Calendar (un EKEvent par
   // créneau), supprime les événements des créneaux disparus, mémorise agenda-id
   // (liste alignée sur les créneaux) et agenda-sync dans la note.
+  //
+  // Verrou : deux osascript de push concurrents (modif très rapprochée, flush au
+  // blur pendant un push en cours…) créaient des doublons. On sérialise ; si un
+  // push est demandé pendant qu'un autre tourne, on en relance UN seul après.
   async pousserAgenda(silencieux) {
+    if (this._pushEnCours) { this._pushRedemande = true; return 0; }
+    this._pushEnCours = true;
+    try {
+      return await this._pousserAgendaImpl(silencieux);
+    } finally {
+      this._pushEnCours = false;
+      if (this._pushRedemande) {
+        this._pushRedemande = false;
+        setTimeout(() => this.pousserAgenda(true), 400);
+      }
+    }
+  }
+
+  async _pousserAgendaImpl(silencieux) {
     if (!silencieux) console.info('[Ariane] Apple Agenda — push manuel demandé.');
     if (!obsidian.Platform.isMacOS) {
       if (!silencieux) new obsidian.Notice(tr('Apple Agenda : disponible sur macOS uniquement.'));
@@ -13155,6 +13227,11 @@ class Ariane extends obsidian.Plugin {
             ref: t.ref, idx: i, id: t._ids[i] || '',
             titre: prefixe + titreBase + (plusieurs ? ' (session ' + (i + 1) + ')' : ''),
             notes, lien, calendrier: t._cal, debut: c.debut, fin: c.fin,
+            // Fenêtre élargie pour le rattrapage anti-doublon : si un créneau a
+            // été déplacé de quelques jours entre deux push, on retrouve quand
+            // même l'événement existant au lieu d'en créer un nouveau.
+            scanDebut: Ariane.decalerJour(c.debut.slice(0, 10), -3),
+            scanFin: Ariane.decalerJour(c.fin.slice(0, 10), 3),
           });
         });
       }
@@ -13264,6 +13341,41 @@ class Ariane extends obsidian.Plugin {
     ];
     console.info('[Ariane] diagnostic Apple Agenda\n' + lignes.join('\n'));
     new obsidian.Notice(lignes.join('\n'), 15000);
+  }
+
+  // Ménage : supprime des calendriers de synchro les événements « à Ariane »
+  // (URL obsidian:// ou titre « [ref] … ») qui ne sont plus reliés à aucun
+  // créneau — les doublons laissés par une course entre deux push.
+  async nettoyerAgenda(silencieux) {
+    if (!obsidian.Platform.isMacOS) {
+      if (!silencieux) new obsidian.Notice(tr('Apple Agenda : disponible sur macOS uniquement.'));
+      return 0;
+    }
+    if (!this.settings.agendaActif) {
+      if (!silencieux) new obsidian.Notice(tr("Apple Agenda est désactivé (Réglages → Tâches → Apple Agenda → Activer)."), 8000);
+      return 0;
+    }
+    const cals = this._agendasSurveilles();
+    if (!cals.length) return 0;
+    const ids = {};
+    const refs = [];
+    for (const t of this.tachesPourGantt()) {
+      refs.push(t.ref);
+      const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+      for (const id of [].concat(this._lireT(fm, 'agenda-id') || [])) if (id) ids[String(id)] = 1;
+    }
+    const avis = silencieux ? null : new obsidian.Notice(tr('Nettoyage Apple Agenda…'), 0);
+    const sortie = await this._osascriptJXA(Ariane.genererJXAEvenementsMenage(
+      cals, ids, refs, this.settings.agendaFenetreJours || 120));
+    if (avis) avis.hide();
+    if (sortie == null || sortie.startsWith('__ACCES__')) {
+      if (!silencieux) new obsidian.Notice(tr('Apple Agenda : nettoyage impossible (voir la console).'));
+      return 0;
+    }
+    const n = sortie.split('\n').filter((l) => l.startsWith('SUPPRIME')).length;
+    if (n) { console.info('[Ariane] Apple Agenda — doublons supprimés :\n' + sortie); this._rafraichirFond(); }
+    if (!silencieux) new obsidian.Notice(n + tr(' doublon(s) supprimé(s) d\'Apple Agenda.'), 6000);
+    return n;
   }
 
   // Relève : pour chaque EKEvent lié, horaires changés dans Calendar → réécriture

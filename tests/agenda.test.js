@@ -80,6 +80,17 @@ test('genererJXAEvenementsFond : fenêtre absente → script valide quand même'
   assert.ok(s.includes('__ACCES__'));
 });
 
+test('genererJXAEvenementsMenage : script valide, supprime les non-reliés « à nous »', () => {
+  const s = Ariane.genererJXAEvenementsMenage(['Doctorat - Agenda'], { 'ID-OK': 1 }, ['T019'], 120);
+  new vm.Script(s);
+  assert.ok(s.includes('__ACCES__'));
+  assert.ok(s.includes('removeEventSpanCommitError'));
+  assert.ok(s.includes('obsidian://'));      // repérage par l'URL de la note
+  assert.ok(s.includes('"ID-OK":1'));        // liens légitimes préservés
+  assert.ok(s.includes('"refs":["T019"]'));
+  assert.ok(s.includes('SUPPRIME'));
+});
+
 test('genererJXAAgendas : script valide, statut d\'accès + liste des calendriers', () => {
   const s = Ariane.genererJXAAgendas();
   new vm.Script(s);
