@@ -303,3 +303,45 @@ test('disposerBarresSemaine : chevauchement triple → lanes 0, 1, 2', () => {
   ], SEM);
   assert.deepEqual(r.map((b) => b.lane).sort(), [0, 1, 2]);
 });
+
+// --- P5 : répartition en colonnes des blocs horaires qui se chevauchent ---
+
+test('disposerBlocsJour : liste vide / un seul bloc', () => {
+  assert.deepEqual(Ariane.disposerBlocsJour([]), []);
+  assert.deepEqual(Ariane.disposerBlocsJour([{ deb: 540, fin: 600 }]),
+    [{ col: 0, ncols: 1 }]);
+});
+
+test('disposerBlocsJour : deux blocs disjoints → même colonne', () => {
+  assert.deepEqual(
+    Ariane.disposerBlocsJour([{ deb: 540, fin: 600 }, { deb: 600, fin: 660 }]),
+    [{ col: 0, ncols: 1 }, { col: 0, ncols: 1 }]);
+});
+
+test('disposerBlocsJour : deux blocs qui se chevauchent → deux colonnes', () => {
+  assert.deepEqual(
+    Ariane.disposerBlocsJour([{ deb: 540, fin: 660 }, { deb: 600, fin: 720 }]),
+    [{ col: 0, ncols: 2 }, { col: 1, ncols: 2 }]);
+});
+
+test('disposerBlocsJour : chevauchement triple → trois colonnes', () => {
+  const r = Ariane.disposerBlocsJour([
+    { deb: 540, fin: 720 }, { deb: 570, fin: 690 }, { deb: 600, fin: 780 }]);
+  assert.deepEqual(r.map((x) => x.col).sort(), [0, 1, 2]);
+  assert.ok(r.every((x) => x.ncols === 3));
+});
+
+test('disposerBlocsJour : escalier A∩B, B∩C, A∌C → groupe de 3, 2 colonnes', () => {
+  // A 09:00-10:00 (540-600), B 09:30-10:30 (570-630), C 10:00-11:00 (600-660)
+  const r = Ariane.disposerBlocsJour([
+    { deb: 540, fin: 600 }, { deb: 570, fin: 630 }, { deb: 600, fin: 660 }]);
+  assert.deepEqual(r, [
+    { col: 0, ncols: 2 }, { col: 1, ncols: 2 }, { col: 0, ncols: 2 }]);
+});
+
+test('disposerBlocsJour : groupe puis bloc disjoint → le second groupe repart à 0', () => {
+  const r = Ariane.disposerBlocsJour([
+    { deb: 540, fin: 660 }, { deb: 600, fin: 720 }, { deb: 800, fin: 860 }]);
+  assert.deepEqual(r, [
+    { col: 0, ncols: 2 }, { col: 1, ncols: 2 }, { col: 0, ncols: 1 }]);
+});

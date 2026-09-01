@@ -2078,24 +2078,54 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-cal-pastille.est-retard { box-shadow: inset 2px 0 0 0 var(--text-error); }
 
-.zfa-cal-corps { display: grid; grid-template-columns: 52px repeat(7, 1fr); }
-.zfa-cal-bandeau { display: flex; border-bottom: 1px solid var(--background-modifier-border); }
+.zfa-cal-grille.zfa-cal-semaine { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+
+.zfa-cal-sem-tete { display: flex; flex: none;
+  border-bottom: 1px solid var(--background-modifier-border); }
+.zfa-cal-sem-gout { flex: 0 0 52px; display: flex; align-items: flex-start; justify-content: flex-end;
+  gap: 2px; padding: 2px; }
+.zfa-cal-sem-defil { flex: 1 1 auto; overflow: hidden; min-width: 0; }
+.zfa-cal-sem-piste { display: flex; will-change: transform; }
+.zfa-cal-sem-jour { flex: none; display: flex; align-items: baseline; gap: 4px; padding: 3px 6px;
+  border-left: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-smaller); color: var(--text-muted); cursor: pointer; }
+.zfa-cal-sem-jour-num { font-size: var(--font-ui-small); font-weight: var(--font-medium);
+  color: var(--text-normal); font-variant-numeric: tabular-nums; }
+.zfa-cal-sem-jour.est-aujourdhui .zfa-cal-sem-jour-num {
+  background: var(--color-red); color: #fff; border-radius: 999px;
+  min-width: 1.5em; height: 1.5em; padding: 0 3px;
+  display: inline-flex; align-items: center; justify-content: center; }
+.zfa-cal-sem-jour.est-selection { box-shadow: inset 0 -2px 0 0 var(--interactive-accent); }
+
+.zfa-cal-bandeau { display: flex; flex: none; max-height: 22vh;
+  border-bottom: 1px solid var(--background-modifier-border); }
 .zfa-cal-bandeau.est-vide { display: none; }
 .zfa-cal-bandeau.est-replie { min-height: 0; }
-.zfa-cal-gouttiere { flex: 0 0 var(--zfa-cal-gouttiere-w, 52px); display: flex; align-items: flex-start;
-  gap: 2px; padding: 2px; }
 .zfa-cal-bandeau-chevron { padding: 0 2px; box-shadow: none; background: transparent; }
 .zfa-cal-bandeau-compte { font-size: var(--font-ui-smaller); color: var(--text-muted); }
-.zfa-cal-bandeau-jour { flex: 1 1 0; display: flex; flex-direction: column; gap: 2px; padding: 2px;
+.zfa-cal-bandeau-jour { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 2px;
   min-width: 0; border-left: 1px solid var(--background-modifier-border); }
 .zfa-cal-bandeau-plus { font-size: var(--font-ui-smaller); color: var(--text-muted); cursor: pointer; }
-.zfa-cal-corps { position: relative; }
-.zfa-cal-axe { position: relative; }
-.zfa-cal-axe-heure { position: absolute; right: 4px; font-size: 10px; color: var(--text-faint); transform: translateY(-50%); }
-.zfa-cal-col { position: relative; border-left: 1px solid var(--background-modifier-border); }
-.zfa-cal-col.est-aujourdhui, .zfa-cal-bandeau-jour.est-aujourdhui { background: color-mix(in srgb, var(--interactive-accent) 6%, transparent); }
-.zfa-cal-trait { position: absolute; left: 0; right: 0; border-top: 1px solid var(--background-modifier-border); opacity: 0.5; }
-.zfa-cal-bloc { position: absolute; left: 2px; right: 2px; }
+
+.zfa-cal-sem-corps { flex: 1 1 auto; min-height: 0; overflow: auto; position: relative; }
+.zfa-cal-sem-inner { position: relative; }
+.zfa-cal-axe { position: absolute; left: 0; top: 0; z-index: 3; will-change: transform;
+  background: var(--background-primary); }
+.zfa-cal-axe-heure { position: absolute; right: 4px; font-size: 10px; color: var(--text-faint);
+  transform: translateY(-50%); }
+.zfa-cal-col { position: absolute; top: 0; bottom: 0;
+  border-left: 1px solid var(--background-modifier-border); }
+.zfa-cal-col.est-aujourdhui, .zfa-cal-bandeau-jour.est-aujourdhui,
+.zfa-cal-sem-jour.est-aujourdhui {
+  background: color-mix(in srgb, var(--interactive-accent) 6%, transparent); }
+.zfa-cal-col.est-selection { background: color-mix(in srgb, var(--interactive-accent) 10%, transparent); }
+.zfa-cal-trait { position: absolute; right: 0; height: 0;
+  border-top: 1px solid var(--background-modifier-border); opacity: 0.6; }
+.zfa-cal-now { position: absolute; left: 0; right: 0; height: 0;
+  border-top: 2px solid var(--color-red); z-index: 2; pointer-events: none; }
+.zfa-cal-now::before { content: ""; position: absolute; left: -4px; top: -4px;
+  width: 8px; height: 8px; border-radius: 999px; background: var(--color-red); }
+.zfa-cal-bloc { position: absolute; overflow: hidden; z-index: 1; }
 .zfa-cal-poignee { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
 .zfa-cal-bloc:focus { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 
