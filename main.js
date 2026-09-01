@@ -13315,8 +13315,8 @@ class Ariane extends obsidian.Plugin {
       if (String(this._lireT(fm, 'debut') || '') === c.debut
         && String(this._lireT(fm, 'echeance') || '') === c.echeance) continue;
       await this.app.fileManager.processFrontMatter(f, (x) => {
-        if (c.debut) x[kD] = c.debut;
-        if (c.echeance) x[kE] = c.echeance;
+        x[kD] = c.debut ? c.debut : null;
+        x[kE] = c.echeance ? c.echeance : null;
         x.modifie = new Date().toISOString().slice(0, 10);
       });
       n += 1;
@@ -16145,7 +16145,6 @@ const DEFAUTS_CALENDRIER = {
   calMode: 'mois',
   calHeureDebut: '07:00',
   calHeureFin: '21:00',
-  calBandeauReplie: false,
   calPxHeure: 42,   // hauteur d'une heure en vue semaine (zoom)
 };
 
@@ -20733,17 +20732,20 @@ class MoteurCalendrier {
     m.addSeparator();
 
     if (ev.source === 'creneau') {
+      // Bloc horaire : on retire le créneau lui-même (la ligne de « Créneaux »).
       m.addItem((i) => i.setTitle(tr('Supprimer ce créneau')).setIcon('trash-2')
         .onClick(async () => {
           await this.greffon.majCreneau(t.ref, { avant: ev.brut, debut: '', fin: '' });
           this._apres(t.ref, { cible: [t.debut, t.echeance, null], creneaux: undefined });
         }));
+    } else if (t.debut || t.echeance) {
+      // Carte de dates (jalon / tâche d'une journée) : on efface début + échéance.
+      m.addItem((i) => i.setTitle(tr('Effacer début et échéance')).setIcon('calendar-off')
+        .onClick(async () => {
+          await this.greffon.ecrireDatesTaches([{ ref: t.ref, debut: '', echeance: '' }]);
+          this._apres(t.ref, { debut: '', echeance: '', cible: ['', '', []] });
+        }));
     }
-    m.addItem((i) => i.setTitle(tr('Retirer du calendrier')).setIcon('calendar-off')
-      .onClick(async () => {
-        await this.greffon.ecrireDatesTaches([{ ref: t.ref, debut: '', echeance: '' }]);
-        this._apres(t.ref, { debut: '', echeance: '', cible: ['', '', []] });
-      }));
     m.showAtMouseEvent(e);
   }
 
@@ -21131,17 +21133,9 @@ class MoteurCalendrier {
       });
     }
 
-    // --- Bandeau « tout le jour » ---
-    const total = [...toutJour.values()].reduce((n, l) => n + l.length, 0);
-    const replie = !!this.ctx.lire('calBandeauReplie');
-    const bandeau = hote.createDiv({ cls: 'zfa-cal-bandeau'
-      + (replie ? ' est-replie' : '') + (total ? '' : ' est-vide') });
-    const bgout = bandeau.createDiv({ cls: 'zfa-cal-sem-gout' });
-    const chev = bgout.createEl('button', { cls: 'zfa-cal-bandeau-chevron',
-      attr: { 'aria-label': tr('Replier / déplier') } });
-    obsidian.setIcon(chev, replie ? 'chevron-right' : 'chevron-down');
-    chev.onclick = async () => { await this.ctx.ecrire('calBandeauReplie', !replie); this.dessiner(); };
-    if (replie && total) bgout.createSpan({ cls: 'zfa-cal-bandeau-compte', text: String(total) });
+    // --- Bandeau « tout le jour » (toujours présent, sans repli) ---
+    const bandeau = hote.createDiv({ cls: 'zfa-cal-bandeau' });
+    bandeau.createDiv({ cls: 'zfa-cal-sem-gout' });
     const bDefil = bandeau.createDiv({ cls: 'zfa-cal-sem-defil' });
     const bPiste = bDefil.createDiv({ cls: 'zfa-cal-sem-piste' });
     bPiste.style.width = (jours.length * colW) + 'px';
@@ -21161,7 +21155,6 @@ class MoteurCalendrier {
       col.addEventListener('drop', (de) => {
         col.removeClass('zfa-cal-cible'); this._dropExterne(de, col.dataset.jour, 'mois');
       });
-      if (replie) continue;
       const liste = toutJour.get(j).slice().sort(Ariane.comparerEmpilement);
       let deplie = false;
       const rendre = () => {

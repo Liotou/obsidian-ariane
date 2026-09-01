@@ -2080,9 +2080,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 
 .zfa-cal-grille.zfa-cal-semaine { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 
-.zfa-cal-sem-tete { display: flex; flex: none; position: relative; z-index: 4;
-  border-bottom: 1px solid var(--background-modifier-border);
-  box-shadow: 0 3px 6px -4px rgba(0, 0, 0, 0.28); }
+/* En-tête + bandeau : pas de trait horizontal dur (les séparateurs verticaux
+   des jours restent continus de l'en-tête jusqu'à la grille), juste une ombre
+   douce sous le bloc en-tête + bandeau. */
+.zfa-cal-sem-tete { display: flex; flex: none; position: relative; z-index: 4; }
 .zfa-cal-sem-gout { flex: 0 0 52px; display: flex; align-items: flex-start; justify-content: flex-end;
   gap: 2px; padding: 2px; }
 .zfa-cal-sem-defil { flex: 1 1 auto; overflow: hidden; min-width: 0; }
@@ -2098,26 +2099,24 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   display: inline-flex; align-items: center; justify-content: center; }
 .zfa-cal-sem-jour.est-selection { box-shadow: inset 0 -2px 0 0 var(--interactive-accent); }
 
-/* Le bandeau « tout le jour » garde toujours un petit espace, même vide, pour
-   que l'en-tête ne saute pas quand on passe sur une semaine avec des jalons. */
-.zfa-cal-bandeau { display: flex; flex: none; min-height: 24px; max-height: 18vh;
+.zfa-cal-bandeau { display: flex; flex: none; min-height: 22px; max-height: 18vh;
   overflow: hidden; position: relative; z-index: 3;
-  border-bottom: 1px solid var(--background-modifier-border);
-  box-shadow: 0 3px 6px -4px rgba(0, 0, 0, 0.22); }
-.zfa-cal-bandeau.est-vide { min-height: 24px; max-height: 24px; }
-.zfa-cal-bandeau.est-replie { min-height: 24px; max-height: 24px; }
-.zfa-cal-bandeau-chevron { padding: 0 2px; box-shadow: none; background: transparent; }
-.zfa-cal-bandeau-compte { font-size: var(--font-ui-smaller); color: var(--text-muted); }
-.zfa-cal-bandeau-jour { flex: none; display: flex; flex-direction: column; gap: 1px; padding: 2px;
-  min-width: 0; border-left: 1px solid var(--background-modifier-border); }
+  box-shadow: 0 4px 7px -5px rgba(0, 0, 0, 0.3); }
+.zfa-cal-bandeau-jour { flex: none; display: flex; flex-direction: column; gap: 2px;
+  padding: 2px 3px; min-width: 0;
+  border-left: 1px solid var(--background-modifier-border); }
 .zfa-cal-bandeau-plus { font-size: var(--font-ui-smaller); color: var(--text-muted);
   cursor: pointer; padding-left: 3px; }
-.zfa-cal-bjalon { display: flex; align-items: center; gap: 4px; padding: 1px 4px;
-  font-size: var(--font-ui-smaller); color: var(--text-normal); cursor: pointer;
-  white-space: nowrap; overflow: hidden; }
-.zfa-cal-bjalon-ic { display: inline-flex; color: var(--zfa-cal-coul, var(--text-faint)); }
-.zfa-cal-bjalon-ic .svg-icon { width: 11px; height: 11px; }
+/* Jalons + tâches d'une journée : petites cases (chips) dans l'en-tête. */
+.zfa-cal-bjalon { display: flex; align-items: center; gap: 4px; padding: 1px 5px;
+  border-radius: var(--radius-s); font-size: var(--font-ui-smaller);
+  color: var(--text-normal); cursor: pointer; white-space: nowrap; overflow: hidden;
+  background: color-mix(in srgb, var(--zfa-cal-coul, var(--text-faint)) 16%, var(--background-primary));
+  border: 1px solid color-mix(in srgb, var(--zfa-cal-coul, var(--text-faint)) 40%, transparent); }
+.zfa-cal-bjalon-ic { display: inline-flex; flex: none; color: var(--zfa-cal-coul, var(--text-faint)); }
+.zfa-cal-bjalon-ic .svg-icon { width: 10px; height: 10px; }
 .zfa-cal-bjalon-t { overflow: hidden; text-overflow: ellipsis; }
+.zfa-cal-bjalon.est-retard { border-color: var(--text-error); }
 .zfa-cal-bjalon.est-retard .zfa-cal-bjalon-ic { color: var(--text-error); }
 
 .zfa-cal-sem-bas { flex: 1 1 auto; min-height: 0; display: flex; }
@@ -2169,7 +2168,9 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   cursor: pointer;
 }
 .zfa-cal-carte-l1 { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
-.zfa-cal-carte-coche { flex: none; width: 14px; height: 14px; margin: 1px 0 0; cursor: pointer; }
+/* Coche : exactement la taille d'une case « - [ ] » d'une note Obsidian
+   (variable de thème --checkbox-size), sans surcharge de dimension. */
+.zfa-cal-carte-coche { flex: none; margin: 1px 2px 0 0; cursor: pointer; }
 .zfa-cal-carte-titre { flex: 1 1 auto; min-width: 0; font-weight: var(--font-medium);
   color: var(--text-normal); white-space: normal; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
@@ -2179,9 +2180,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-carte.est-compacte { flex-direction: row; align-items: center; gap: 4px;
   padding: 1px 5px; border-radius: var(--radius-s); }
 .zfa-cal-carte.est-compacte .zfa-cal-carte-l1 { flex: 1 1 auto; align-items: center; }
-.zfa-cal-carte.est-compacte .zfa-cal-carte-titre { white-space: nowrap; overflow: hidden;
-  text-overflow: ellipsis; font-weight: var(--font-normal); }
-.zfa-cal-carte.est-compacte .zfa-cal-carte-coche { width: 13px; height: 13px; margin: 0; }
+.zfa-cal-carte.est-compacte .zfa-cal-carte-titre { display: block; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; font-weight: var(--font-normal);
+  -webkit-line-clamp: none; }
+.zfa-cal-carte.est-compacte .zfa-cal-carte-coche { margin: 0; }
 .zfa-cal-carte.est-terminee { color: var(--text-faint); }
 .zfa-cal-carte.est-terminee .zfa-cal-carte-titre { text-decoration: line-through;
   color: var(--text-faint); font-weight: var(--font-normal); }
