@@ -16146,6 +16146,7 @@ const DEFAUTS_CALENDRIER = {
   calHeureDebut: '07:00',
   calHeureFin: '21:00',
   calBandeauReplie: false,
+  calPxHeure: 42,   // hauteur d'une heure en vue semaine (zoom)
 };
 
 /* =========================================================================
@@ -20368,6 +20369,7 @@ class MoteurCalendrier {
 
   detruire() {
     this._detruit = true;
+    this._enRecalage = false;
     clearTimeout(this._wheelMinuterie);
     clearTimeout(this._calageMinuterie);
     clearTimeout(this._semScrollMinuterie);
@@ -20477,6 +20479,15 @@ class MoteurCalendrier {
     titre.onclick = versAujourdhui;
 
     const droite = b.createDiv({ cls: 'zfa-cal-barre-droite' });
+    if (this.mode === 'semaine') {
+      const zoom = droite.createDiv({ cls: 'zfa-cal-zoom' });
+      const bMoins = zoom.createEl('button', { cls: 'zfa-cal-nav', attr: { 'aria-label': tr('Dézoomer') } });
+      obsidian.setIcon(bMoins, 'minus');
+      bMoins.onclick = () => this._zoomerSemaine(-8);
+      const bPlus = zoom.createEl('button', { cls: 'zfa-cal-nav', attr: { 'aria-label': tr('Zoomer') } });
+      obsidian.setIcon(bPlus, 'plus');
+      bPlus.onclick = () => this._zoomerSemaine(8);
+    }
     const seg = droite.createDiv({ cls: 'zfa-cal-mode-seg' });
     for (const m of ['mois', 'semaine']) {
       const o = seg.createEl('button', {
@@ -20488,6 +20499,19 @@ class MoteurCalendrier {
     obsidian.setIcon(neuf, 'plus');
     neuf.createSpan({ text: tr('Nouveau') });
     neuf.onclick = () => this._surNouveau();
+  }
+
+  _pxHeureCourant() {
+    return Math.max(20, Math.min(160, Number(this.lire('calPxHeure')) || 42));
+  }
+
+  async _zoomerSemaine(delta) {
+    const cur = this._pxHeureCourant();
+    const nv = Math.max(20, Math.min(160, cur + delta));
+    if (nv === cur) return;
+    if (this._semScrollTop != null) this._semScrollTop = this._semScrollTop * (nv / cur);
+    await this.ctx.ecrire('calPxHeure', nv);
+    this.dessiner();
   }
 
   naviguer(sens) {
@@ -21055,10 +21079,10 @@ class MoteurCalendrier {
     const hDeb = 0;
     const hFin = 24;
     const hVue = this._plageHoraire().debut;
-    const PXH = 42;
+    const PXH = this._pxHeureCourant();
     const AXE = 52;
-    const TAMPON = 29;   // 7 visibles + 11 jours de marge de chaque côté
-    const CENTRE = 14;   // index de _ancre dans la bande
+    const TAMPON = 43;   // 7 visibles + ~18 jours de marge de chaque côté
+    const CENTRE = 21;   // index de _ancre dans la bande
     const jours = Array.from({ length: TAMPON }, (_, i) => Ariane.decalerJour(this._ancre, i - CENTRE));
     this._pxHeure = PXH; this._hDeb = hDeb; this._joursSemaine = jours.slice(CENTRE, CENTRE + 7);
     const dispo = hote.clientWidth || this.racine.clientWidth || 900;
@@ -21148,6 +21172,7 @@ class MoteurCalendrier {
           if (ev.jalon) {
             const jp = col.createDiv({ cls: 'zfa-cal-bjalon'
               + (enRetard.has(t.ref) ? ' est-retard' : '') });
+            jp.dataset.ref = t.ref;
             jp.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
             const ic = jp.createSpan({ cls: 'zfa-cal-bjalon-ic' });
             obsidian.setIcon(ic, 'diamond');
@@ -21180,10 +21205,23 @@ class MoteurCalendrier {
     const inner = corps.createDiv({ cls: 'zfa-cal-sem-inner' });
     inner.style.width = (jours.length * colW) + 'px';
     inner.style.height = hauteurInner + 'px';
-    for (let h = Math.ceil(hDeb) + 1; h < hFin; h += 1) {
-      const tr2 = inner.createDiv({ cls: 'zfa-cal-trait' });
-      tr2.style.top = ((h - hDeb) * PXH) + 'px';
+    // Quadrillage dynamique : heures pleines, plus les demies quand on est un
+    // peu zoomé, plus les quarts quand on l'est beaucoup.
+    const poserTrait = (heure, cls) => {
+      const tr2 = inner.createDiv({ cls: 'zfa-cal-trait' + (cls ? ' ' + cls : '') });
+      tr2.style.top = ((heure - hDeb) * PXH) + 'px';
+    };
+    for (let h = Math.ceil(hDeb) + 1; h < hFin; h += 1) poserTrait(h, '');
+    if (PXH >= 54) for (let h = Math.ceil(hDeb); h < hFin; h += 1) poserTrait(h + 0.5, 'demi');
+    if (PXH >= 96) {
+      for (let h = Math.ceil(hDeb); h < hFin; h += 1) { poserTrait(h + 0.25, 'quart'); poserTrait(h + 0.75, 'quart'); }
     }
+    // Ctrl/⌘ + molette : zoom vertical de la grille.
+    corps.addEventListener('wheel', (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      this._zoomerSemaine(e.deltaY < 0 ? 8 : -8);
+    }, { passive: false });
     jours.forEach((j, di) => {
       const col = inner.createDiv({ cls: 'zfa-cal-col'
         + (j === auj ? ' est-aujourdhui' : '') + (this._jourSel === j ? ' est-selection' : '') });
@@ -21249,11 +21287,25 @@ class MoteurCalendrier {
       }
     });
 
-    // --- Synchronisation du défilement + recalage discret au bord du tampon ---
+    // Clic droit : un seul gestionnaire délégué sur la grille (fiable même si un
+    // écouteur par élément a été avalé). Carte/jalon → menu de la tâche ;
+    // sinon, la colonne/jour sous le curseur → menu de cellule.
+    hote.addEventListener('contextmenu', (e) => {
+      const carte = e.target.closest('.zfa-cal-carte, .zfa-cal-bjalon');
+      if (carte && carte.dataset.ref) {
+        const t = this._taches.find((x) => x.ref === carte.dataset.ref);
+        if (t) return this.menuCarte(e, t,
+          { source: carte.dataset.brut ? 'creneau' : 'dates', brut: carte.dataset.brut || '' });
+      }
+      const jc = e.target.closest('[data-jour]');
+      if (jc && jc.dataset.jour) this.menuCellule(e, jc.dataset.jour);
+    });
+
+    // --- Synchronisation du défilement + recalage au bord du tampon ---
     // Le calage sur un jour « au propre » est natif (scroll-snap CSS), fluide au
-    // relâchement. Le tampon de 29 jours laisse ~11 jours de marge : on ne
-    // recale l'ancre (reconstruction hors écran, invisible) qu'en approchant
-    // vraiment du bord — ce qui n'arrive quasiment jamais en usage normal.
+    // relâchement. Le tampon de 43 jours laisse ~18 jours de marge : on ne
+    // recale l'ancre (reconstruction hors écran) qu'au vrai bord, avec un
+    // verrou anti-emballement pour ne pas enchaîner les recalages sous l'inertie.
     const sync = () => {
       tetePiste.style.transform = 'translateX(' + (-corps.scrollLeft) + 'px)';
       bPiste.style.transform = 'translateX(' + (-corps.scrollLeft) + 'px)';
@@ -21262,15 +21314,20 @@ class MoteurCalendrier {
     corps.addEventListener('scroll', () => {
       sync();
       this._semScrollTop = corps.scrollTop;
+      if (this._enRecalage) return;
       clearTimeout(this._semScrollMinuterie);
       this._semScrollMinuterie = setTimeout(() => {
-        if (this._detruit) return;
+        if (this._detruit || this._enRecalage) return;
         const idxG = corps.scrollLeft / colW;
         if (idxG < 4 || idxG > TAMPON - 11) {
           const shift = Math.round(idxG) - CENTRE;
-          if (shift !== 0) this._recalerSemaine(hote, shift);
+          if (shift !== 0) {
+            this._enRecalage = true;
+            this._recalerSemaine(hote, shift);
+            setTimeout(() => { this._enRecalage = false; }, 450);
+          }
         }
-      }, 220);
+      }, 320);
     });
     sync();
     corps.scrollLeft = CENTRE * colW;
@@ -21414,8 +21471,13 @@ function fabriquerVueCalendrierBase(greffon) {
         dedans.add(ref);
         this._parRef.set(ref, e);
       }
-      if (!dedans.size) return [];
-      return this.greffon.tachesPourGantt().filter((t) => dedans.has(t.ref));
+      const toutes = this.greffon.tachesPourGantt();
+      // On garde les tâches du filtre de la base, PLUS toute tâche qui porte un
+      // créneau : un créneau posé doit rester visible sur le calendrier même si
+      // la tâche sort du filtre (p. ex. une fois cochée « terminée »).
+      const garde = (t) => dedans.has(t.ref) || (t.creneaux || []).length > 0;
+      if (!dedans.size && !toutes.some((t) => (t.creneaux || []).length > 0)) return [];
+      return toutes.filter(garde);
     }
     onunload() { if (this.moteur) this.moteur.detruire(); }
     onResize() { if (this.moteur) this.moteur.dessiner(); }
