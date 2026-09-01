@@ -1015,6 +1015,7 @@ const TEXTES = {
     "Apple Agenda est désactivé (Réglages → Tâches → Apple Agenda → Activer).": "Apple Calendar is off (Settings → Tasks → Apple Calendar → Enable).",
     "Aucune tâche à synchroniser : il faut au moins un créneau ET un calendrier Apple sur la famille (ou le calendrier par défaut).": "No task to sync: a task needs at least one slot AND an Apple calendar on its family (or the default calendar).",
     "Rien à pousser vers Apple Agenda.": "Nothing to push to Apple Calendar.",
+    "Rien à annuler.": "Nothing to undo.",
     "Aucun événement lié à relever (lancez d'abord la synchro vers Apple Agenda).": "No linked event to pull (run the sync to Apple Calendar first).",
     " événement(s) liés dans Apple Agenda": " event(s) linked in Apple Calendar",
     ", ": ", ",
@@ -17119,6 +17120,24 @@ function svgEl(nom, attrs) {
   return e;
 }
 
+// Annulation partagée par la frise, l'articulation et le calendrier : chaque
+// geste qui écrit pousse une fonction qui sait revenir à l'état d'avant ; Ctrl/⌘
+// + Z (sans Maj) la rejoue. Pile locale au moteur (survit aux redessins, pas à
+// la fermeture de la vue).
+function _toucheAnnuler(e) {
+  return (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey
+    && (e.key === 'z' || e.key === 'Z' || e.code === 'KeyZ');
+}
+function poserAnnulation(moteur, fn) {
+  (moteur._undo || (moteur._undo = [])).push(fn);
+  if (moteur._undo.length > 60) moteur._undo.shift();
+}
+async function annulerDernier(moteur) {
+  const fn = moteur._undo && moteur._undo.pop();
+  if (!fn) { new obsidian.Notice(tr('Rien à annuler.')); return; }
+  try { await fn(); } catch (e) { console.error('[Ariane] annulation :', e); }
+}
+
 // Instrument de planification, à l'échelle du trimestre. Ce n'est pas la vue du
 // quotidien, qui reste la base « Débloquées » : une frise répond à « quand »,
 // pas à « quoi maintenant ».
@@ -17168,6 +17187,7 @@ class MoteurFrise {
   async toucheFrise(e) {
     const t = e.target;
     if (t && (t.matches('input, textarea, select') || t.isContentEditable)) return;
+    if (_toucheAnnuler(e)) { e.preventDefault(); e.stopPropagation(); await annulerDernier(this); return; }
     if (e.key === 'Escape') { this._deselectionnerFleche(); return; }
     if (e.key !== 'Backspace' || !this._flecheSelectionnee) return;
     e.preventDefault();
@@ -19507,12 +19527,26 @@ class MoteurFrise {
       changements = [{ ref: ligne.ref, debut, echeance: fin }];
     }
     this._etendreAscendants(ligne, changements);
+    // État d'avant (dates PROPRES de chaque tâche touchée), pour l'annulation.
+    const avant = changements.map((c) => {
+      const l = (this._lignes || []).find((x) => x.ref === c.ref);
+      const p = (l && l.propre) || {};
+      return { ref: c.ref, debut: p.debut || '', echeance: p.echeance || '' };
+    });
     const ecrites = await this.greffon.ecrireDatesTaches(changements);
     if (!ecrites) { this.dessiner(); return; }
+    if (this.racine && this.racine.focus) this.racine.focus({ preventScroll: true });
     if (!this._enAttente) this._enAttente = new Map();
     for (const c of changements) {
       this._enAttente.set(c.ref, { debut: c.debut || '', echeance: c.echeance || '' });
     }
+    poserAnnulation(this, async () => {
+      await this.greffon.ecrireDatesTaches(avant);
+      if (!this._enAttente) this._enAttente = new Map();
+      for (const a of avant) this._enAttente.set(a.ref, { debut: a.debut, echeance: a.echeance });
+      this._cascade = null;
+      this.dessiner();
+    });
     this.proposerCascade(ligne.ref, n);
     this.dessiner();
   }
@@ -20443,6 +20477,7 @@ class MoteurArticulation {
   async touche(e) {
     const cible = e.target;
     if (cible && (cible.matches('input, textarea, select') || cible.isContentEditable)) return;
+    if (_toucheAnnuler(e)) { e.preventDefault(); e.stopPropagation(); await annulerDernier(this); return; }
     if (e.key === ' ' || e.code === 'Space') {
       e.preventDefault();
       this._espace = true;
@@ -20723,6 +20758,16 @@ class MoteurArticulation {
         const p = this._pt(r);
         await this.ctx.poserPosition(r, Math.round(p.x), Math.round(p.y));
       }
+      if (this.racine && this.racine.focus) this.racine.focus({ preventScroll: true });
+      // Annulation : replacer chaque carte où elle était avant le glissé.
+      const depart = [...p0.entries()].map(([r, p]) => [r, { x: Math.round(p.x), y: Math.round(p.y) }]);
+      poserAnnulation(this, async () => {
+        for (const [r, p] of depart) {
+          this._pos.set(r, { x: p.x, y: p.y });
+          await this.ctx.poserPosition(r, p.x, p.y);
+        }
+        this.dessiner();
+      });
     };
     this._doc().addEventListener('pointermove', bouger);
     this._doc().addEventListener('pointerup', lacher);
@@ -21398,12 +21443,51 @@ class MoteurCalendrier {
     this._ancre = new Date().toISOString().slice(0, 10);
     this._fond = [];
     racine.addClass('zfa-cal');
+    racine.tabIndex = -1;
+    racine.addEventListener('keydown', (e) => {
+      const t = e.target;
+      if (t && (t.matches && (t.matches('input, textarea, select') || t.isContentEditable))) return;
+      if (_toucheAnnuler(e)) { e.preventDefault(); e.stopPropagation(); annulerDernier(this); }
+    });
     (greffon._moteursCalendrier || (greffon._moteursCalendrier = new Set())).add(this);
   }
 
   // Document de la vue (≠ document global dans une 2ᵉ fenêtre) : cible des
   // écouteurs de glisser pointermove/pointerup.
   _doc() { return (this.racine && this.racine.ownerDocument) || document; }
+
+  // Écriture d'un créneau depuis un geste, avec annulation. `chg` = { avant,
+  // debut, fin } comme greffon.majCreneau. L'annulation reconstruit l'état
+  // inverse (déplacement/redim → remettre l'ancien ; création → supprimer ;
+  // suppression → recréer).
+  async _majCreneauU(ref, chg) {
+    const av = chg.avant || '';
+    const nv = (chg.debut && chg.fin) ? Ariane.formatCreneau(chg.debut, chg.fin) : '';
+    const anc = av ? Ariane.parseCreneau(av) : null;
+    await this.greffon.majCreneau(ref, chg);
+    if (this.racine && this.racine.focus) this.racine.focus({ preventScroll: true });
+    poserAnnulation(this, async () => {
+      await this.greffon.majCreneau(ref, {
+        avant: nv, debut: anc ? anc.debut : '', fin: anc ? anc.fin : '',
+      });
+      this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
+    });
+  }
+
+  // Idem pour un geste qui écrit début/échéance (barres « jour » de la vue mois).
+  async _ecrireDatesU(changements) {
+    const avant = (changements || []).map((c) => {
+      const t = (this._taches || []).find((x) => x.ref === c.ref) || {};
+      return { ref: c.ref, debut: t.debut || '', echeance: t.echeance || '' };
+    });
+    await this.greffon.ecrireDatesTaches(changements);
+    if (this.racine && this.racine.focus) this.racine.focus({ preventScroll: true });
+    poserAnnulation(this, async () => {
+      await this.greffon.ecrireDatesTaches(avant);
+      const cible = avant[0] ? { cible: [avant[0].debut, avant[0].echeance, []] } : { cible: [undefined, undefined, null] };
+      this._apres(avant[0] ? avant[0].ref : (changements[0] && changements[0].ref), cible);
+    });
+  }
 
   lire(cle) {
     const v = this.ctx.lire ? this.ctx.lire(cle) : undefined;
@@ -21855,14 +21939,14 @@ class MoteurCalendrier {
       // Bloc horaire : on retire le créneau lui-même (la ligne de « Créneaux »).
       m.addItem((i) => i.setTitle(tr('Supprimer ce créneau')).setIcon('trash-2')
         .onClick(async () => {
-          await this.greffon.majCreneau(t.ref, { avant: ev.brut, debut: '', fin: '' });
+          await this._majCreneauU(t.ref, { avant: ev.brut, debut: '', fin: '' });
           this._apres(t.ref, { cible: [t.debut, t.echeance, null], creneaux: undefined });
         }));
     } else if (t.debut || t.echeance) {
       // Carte de dates (jalon / tâche d'une journée) : on efface début + échéance.
       m.addItem((i) => i.setTitle(tr('Effacer début et échéance')).setIcon('calendar-off')
         .onClick(async () => {
-          await this.greffon.ecrireDatesTaches([{ ref: t.ref, debut: '', echeance: '' }]);
+          await this._ecrireDatesU([{ ref: t.ref, debut: '', echeance: '' }]);
           this._apres(t.ref, { debut: '', echeance: '', cible: ['', '', []] });
         }));
     }
@@ -21886,7 +21970,7 @@ class MoteurCalendrier {
         const cr = Ariane.creneauDepuisDrop({ yRel: 0, hauteurHeure: this._pxHeure || 42,
           heureDebut: this._hDeb || 9, jourISO, dureeMin: 60 })
           || { debut: jourISO + 'T09:00', fin: jourISO + 'T10:00' };
-        await this.greffon.majCreneau(ref, { avant: '', debut: cr.debut, fin: cr.fin });
+        await this._majCreneauU(ref, { avant: '', debut: cr.debut, fin: cr.fin });
         this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
       }));
     m.showAtMouseEvent(e);
@@ -21947,7 +22031,7 @@ class MoteurCalendrier {
     if (mode === 'mois') {
       // Déposer un lien de tâche en vue mois = poser un créneau ce jour-là
       // (09:00, 1 h par défaut). On ne touche jamais début/échéance ici.
-      await this.greffon.majCreneau(ref, { avant: '',
+      await this._majCreneauU(ref, { avant: '',
         debut: jourISO + 'T09:00', fin: jourISO + 'T10:00' });
       this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
       return;
@@ -21956,7 +22040,7 @@ class MoteurCalendrier {
     const cr = Ariane.creneauDepuisDrop({ yRel: ev.clientY - r.top,
       hauteurHeure: this._pxHeure, heureDebut: this._hDeb, jourISO });
     if (!cr) return;
-    await this.greffon.majCreneau(ref, { avant: '', debut: cr.debut, fin: cr.fin });
+    await this._majCreneauU(ref, { avant: '', debut: cr.debut, fin: cr.fin });
     this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
   }
 
@@ -22048,7 +22132,7 @@ class MoteurCalendrier {
         const cr0 = Ariane.creneauDepuisDrop({ yRel: top, hauteurHeure: PXH,
           heureDebut: this._hDeb, jourISO: jourCol, dureeMin: Math.max(15, (haut / PXH) * 60) });
         if (!cr0) { this.dessiner(); return; }
-        await this.greffon.majCreneau(ref, { avant: brut, debut: cr0.debut, fin: cr0.fin });
+        await this._majCreneauU(ref, { avant: brut, debut: cr0.debut, fin: cr0.fin });
         this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
         return;
       }
@@ -22071,7 +22155,7 @@ class MoteurCalendrier {
       const cr = Ariane.creneauDepuisDrop({ yRel: top, hauteurHeure: PXH,
         heureDebut: this._hDeb, jourISO: jourCible, dureeMin: Math.max(15, (haut / PXH) * 60) });
       if (!cr) { this.dessiner(); return; }
-      await this.greffon.majCreneau(ref, { avant: brut, debut: cr.debut, fin: cr.fin });
+      await this._majCreneauU(ref, { avant: brut, debut: cr.debut, fin: cr.fin });
       this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
     };
     this._doc().addEventListener('pointermove', bouger);
@@ -22097,7 +22181,7 @@ class MoteurCalendrier {
       if (!t) return;
       if (d.brut) {
         const cr = Ariane.parseCreneau(d.brut);
-        if (cr) await this.greffon.majCreneau(d.ref, { avant: d.brut,
+        if (cr) await this._majCreneauU(d.ref, { avant: d.brut,
           debut: Ariane.decalerJour(cr.debut.slice(0, 10), n) + 'T' + cr.debut.slice(11),
           fin: Ariane.decalerJour(cr.fin.slice(0, 10), n) + 'T' + cr.fin.slice(11) });
         this._apres(d.ref, { cible: [t.debut, t.echeance, null], creneaux: undefined });
@@ -22106,7 +22190,7 @@ class MoteurCalendrier {
       const nd = t.debut ? Ariane.decalerJour(t.debut, n) : '';
       const ne = t.echeance ? Ariane.decalerJour(t.echeance, n) : '';
       if (nd || ne) {
-        await this.greffon.ecrireDatesTaches([{ ref: d.ref, debut: nd, echeance: ne }]);
+        await this._ecrireDatesU([{ ref: d.ref, debut: nd, echeance: ne }]);
         this._apres(d.ref, { debut: nd, echeance: ne, cible: [nd, ne, []] });
       }
     });
@@ -22482,7 +22566,7 @@ class MoteurCalendrier {
           bloc.addEventListener('keydown', async (de) => {
             if (de.key === 'Delete' || de.key === 'Backspace') {
               de.preventDefault();
-              await this.greffon.majCreneau(t.ref, { avant: ev.brut, debut: '', fin: '' });
+              await this._majCreneauU(t.ref, { avant: ev.brut, debut: '', fin: '' });
               this._apres(t.ref, { cible: [t.debut, t.echeance, null], creneaux: undefined });
             }
           });
