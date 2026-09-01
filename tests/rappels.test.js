@@ -64,7 +64,7 @@ test('_jxaEKEvenements : préambule Événements valide, helpers propres à EKEv
   const s = Ariane._jxaEKEvenements();
   new vm.Script(s);
   for (const fn of ['function acces(', 'function cals(', 'function calParNom(',
-                    'function evById(', 'function fmtDate(', 'function couleurCal(',
+                    'function evById(', 'function evId(', 'function fmtDate(', 'function couleurCal(',
                     'function comps(', 'function isoDe(']) {
     assert.ok(s.includes(fn), 'helper manquant : ' + fn);
   }

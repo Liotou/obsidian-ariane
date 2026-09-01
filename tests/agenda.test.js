@@ -17,6 +17,7 @@ test('genererJXAEvenementsPush : script valide, save/remove, données embarquée
   assert.ok(s.includes('saveEventSpanCommitError'));
   assert.ok(s.includes('removeEventSpanCommitError'));
   assert.ok(s.includes('calendarsForEntityType(0)'));
+  assert.ok(s.includes('eventIdentifier'));      // identité stable des événements
   assert.ok(s.includes('SUPPRIME'));
   assert.ok(s.includes('"calendrier":"Doctorat"'));
   assert.ok(!s.includes('EKReminder'));
@@ -34,6 +35,7 @@ test('genererJXAEvenementsReleve : script valide, paires, MANQUANT', () => {
   assert.ok(s.includes('X1'));
   assert.ok(s.includes('MANQUANT'));
   assert.ok(s.includes('isoDeDate'));
+  assert.ok(s.includes('eventWithIdentifier'));  // relève par identité d'événement
   assert.ok(!s.includes('NOUVEAU'));            // pas d'import d'événements inconnus
 });
 

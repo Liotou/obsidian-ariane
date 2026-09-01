@@ -6403,7 +6403,8 @@ class Ariane extends obsidian.Plugin {
       'function acces(){ var d=false; try{ ST.requestFullAccessToEventsWithCompletion(function(g,e){d=true;}); }catch(e){ try{ ST.requestAccessToEntityTypeCompletion(0,function(g,e){d=true;}); }catch(e2){} } var t=Date.now(); while(!d && Date.now()-t<20000){ $.CFRunLoopRunInMode($.kCFRunLoopDefaultMode,0.05,false); } }',
       'function cals(){ try{ return ST.calendarsForEntityType(0); }catch(e){ return $([]); } }',
       'function calParNom(nom){ if(!nom) { try{ return ST.defaultCalendarForNewEvents; }catch(e){ return null; } } var L=cals(); for(var i=0;i<L.count;i++){ var c=L.objectAtIndex(i); if(titre(c)===nom) return c; } for(var j=0;j<L.count;j++){ var c2=L.objectAtIndex(j); if(norm(titre(c2))===norm(nom)) return c2; } return null; }',
-      'function evById(id){ if(!id) return null; try{ var it=ST.calendarItemWithIdentifier(id); if(it && it.isKindOfClass($.EKEvent)) return it; }catch(e){} return null; }',
+      'function evById(id){ if(!id) return null; try{ var e=ST.eventWithIdentifier(id); if(e) return e; }catch(e1){} try{ var it=ST.calendarItemWithIdentifier(id); if(it && it.isKindOfClass($.EKEvent)) return it; }catch(e2){} return null; }',
+      'function evId(e){ var s=""; try{ s=ObjC.unwrap(e.eventIdentifier); }catch(x1){} if(!s) try{ s=ObjC.unwrap(e.calendarItemIdentifier); }catch(x2){} return s||""; }',
       'function fmtDate(dc){ try{ return $.NSCalendar.currentCalendar.dateFromComponents(dc); }catch(e){ return null; } }',
       'function isoDeDate(d){ if(!d) return ""; try{ var f=$.NSDateFormatter.alloc.init; f.dateFormat=$("yyyy-MM-dd\'T\'HH:mm"); f.timeZone=$.NSTimeZone.localTimeZone; return ObjC.unwrap(f.stringFromDate(d)); }catch(e){ return ""; } }',
       'function couleurCal(cal){ try{ var cg=cal.color; if(!cg) return ""; var n=cg.numberOfComponents; var k=cg.components; if(!k || n<3) return ""; var z=function(v){ v=Math.max(0,Math.min(255,Math.round(v*255))); return (v<16?"0":"")+v.toString(16); }; return "#"+z(k[0])+z(k[1])+z(k[2]); }catch(e){ return ""; } }',
@@ -6517,8 +6518,7 @@ class Ariane extends obsidian.Plugin {
       '    try{ e.startDate=fmtDate(comps(String(v.debut).slice(0,10),String(v.debut).slice(11,16))); }catch(er6){}',
       '    try{ e.endDate=fmtDate(comps(String(v.fin).slice(0,10),String(v.fin).slice(11,16))); }catch(er7){}',
       '    var ok=false; try{ ok=ST.saveEventSpanCommitError(e,0,true,null); }catch(er8){}',
-      '    var nid=""; try{ nid=ObjC.unwrap(e.calendarItemIdentifier); }catch(er9){}',
-      '    out.push(v.ref+"\\t"+v.idx+"\\t"+(ok?nid:""));',
+      '    out.push(v.ref+"\\t"+v.idx+"\\t"+(ok?evId(e):""));',
       '  }',
       '  return out.join("\\n");',
       '}',
@@ -6570,7 +6570,7 @@ class Ariane extends obsidian.Plugin {
       '  var pred=ST.predicateForEventsWithStartDateEndDateCalendars(d0,d1,$(arr));',
       '  var evs=ST.eventsMatchingPredicate(pred); var out=[];',
       '  if(evs){ for(var k=0;k<evs.count;k++){',
-      '    var e=evs.objectAtIndex(k); var id=""; try{ id=ObjC.unwrap(e.calendarItemIdentifier); }catch(er){ continue; }',
+      '    var e=evs.objectAtIndex(k); var id=evId(e); if(!id) continue;',
       '    var ad=false; try{ ad=e.isAllDay; }catch(er2){}',
       '    out.push(id+"\\t"+net(ObjC.unwrap(e.title))+"\\t"+isoDeDate(e.startDate)+"\\t"+isoDeDate(e.endDate)+"\\t"+(ad?"1":"0")+"\\t"+couleurCal(e.calendar)+"\\t"+net(titre(e.calendar)));',
       '  } }',
@@ -12659,17 +12659,28 @@ class Ariane extends obsidian.Plugin {
     const cals = this._agendasSurveilles();
     if (!cals.length) { this._fondCache = { cle, le: Date.now(), data: [] }; return []; }
     const connus = new Set();
+    const refsConnues = new Set();
     for (const t of this.tachesPourGantt()) {
+      refsConnues.add(t.ref);
       const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
       for (const id of [].concat(this._lireT(fm, 'agenda-id') || [])) if (id) connus.add(String(id));
     }
+    // Un événement est « à nous » si son id est un agenda-id connu OU si son
+    // titre porte entre crochets la référence d'une tâche existante ([T010] …).
+    // Le repli par le titre couvre les décalages d'identifiant EventKit et les
+    // événements poussés avant cette correction.
+    const aNous = (e) => {
+      if (connus.has(e.id)) return true;
+      const m = String(e.titre || '').match(/\[([^\]]+)\]/);
+      return !!(m && refsConnues.has(m[1].trim()));
+    };
     const s = await this._osascriptJXA(
       Ariane.genererJXAEvenementsFond(cals, debutISO, finISO), 30000);
     const data = (s == null ? [] : s.split('\n').filter(Boolean).map((l) => {
       const p = l.split('\t');
       return { id: p[0], titre: p[1] || '', debut: p[2] || '', fin: p[3] || '',
                allDay: p[4] === '1', couleur: p[5] || '', calendrier: p[6] || '' };
-    })).filter((e) => e.id && e.debut && !connus.has(e.id));
+    })).filter((e) => e.id && e.debut && !aNous(e));
     this._fondCache = { cle, le: Date.now(), data };
     return data;
   }

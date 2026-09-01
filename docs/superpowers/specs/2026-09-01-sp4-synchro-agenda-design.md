@@ -58,9 +58,15 @@ SP-4 ajoute la **moitié « événements »** (entité EventKit `0`), calquée s
 - `Ariane.defautsNoyau()` saute ce groupe comme il saute `rappel`
   (`if (g.id === 'rappel' || g.id === 'agenda') continue;`) → pas d'amorçage P0.
 - `corpsNouvelleTache` : ligne `agenda-id: []` (comme `bloque-par`).
-- Liste **alignée sur `creneaux` trié** : `agenda-id[i]` = `calendarItemIdentifier`
+- Liste **alignée sur `creneaux` trié** : `agenda-id[i]` = **`eventIdentifier`**
   de l'EKEvent du créneau `i`, ou `''`. Écrite par `pousserAgenda`. Non affichée
   dans l'éditeur de propriétés de famille (usage interne).
+  *(Amendement 2026-09-01 : `eventIdentifier`, pas `calendarItemIdentifier` —
+  ce dernier n'est pas une identité stable pour un EKEvent. Résolution via
+  `ST.eventWithIdentifier(id)` avec repli `calendarItemWithIdentifier`. En plus
+  de l'exclusion par id, l'agenda de fond écarte tout événement dont le titre
+  porte `[<ref connue>]`, pour couvrir un décalage d'identifiant ou les
+  événements poussés avant l'amendement.)*
 
 ### 2.2 `agenda-sync` — clé interne (pas un concept)
 

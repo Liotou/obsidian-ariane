@@ -2107,6 +2107,11 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   width: 22px; height: 3px; border-radius: 999px;
   background: var(--background-modifier-border-hover); }
 .zfa-cal-bandeau-poignee:hover::before { background: var(--interactive-accent); }
+/* Le rail des jours du bandeau occupe toute la hauteur, même quand on étend
+   l'en-tête : les filets verticaux des colonnes continuent alors sans coupure
+   jusqu'à la grille. */
+.zfa-cal-bandeau .zfa-cal-sem-defil { display: flex; }
+.zfa-cal-bandeau .zfa-cal-sem-piste { align-items: stretch; min-height: 100%; }
 .zfa-cal-bandeau-jour { flex: none; display: flex; flex-direction: column; gap: 2px;
   padding: 2px 3px; min-width: 0;
   border-left: 1px solid var(--background-modifier-border); }
