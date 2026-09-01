@@ -17611,16 +17611,10 @@ class MoteurFrise {
 
       fond.addEventListener('pointerdown', (e) => this.saisir(e, groupe, l, 'deplacer', { x, w }));
       groupe.addEventListener('contextmenu', (e) => this.menuTache(e, l));
-      // Source de glissé vers le calendrier (mêmes charges utiles que la ligne du
-      // tableau). On laisse passer les gestes sur les poignées et connecteurs :
-      // ceux-là restent au glissé-pointeur de la frise (dates, liens de lignée).
-      groupe.setAttribute('draggable', 'true');
-      groupe.addEventListener('dragstart', (ev) => {
-        if (ev.target.closest('.zfa-gantt-poignee, .zfa-gantt-connecteur')) { ev.preventDefault(); return; }
-        ev.dataTransfer.setData('text/x-ariane-tache', l.ref);
-        ev.dataTransfer.setData('text/plain', '[[' + l.ref + ']]');
-        ev.dataTransfer.effectAllowed = 'copy';
-      });
+      // Le glissé « frise → calendrier » part de la ligne de la colonne de
+      // gauche (div HTML fiable) ; les barres SVG ne sont plus draggables :
+      // saisir() fait preventDefault sur leur pointerdown, le dragstart ne
+      // partait jamais, et <g draggable> est de toute façon inerte sous Electron.
       // Poignées de redimensionnement sur toutes les barres, mères comprises :
       // elles éditent les dates propres de la tâche.
       for (const cote of ['gauche', 'droite']) {
