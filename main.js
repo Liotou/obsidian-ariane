@@ -1005,6 +1005,24 @@ const TEXTES = {
 
     "Tâches : synchroniser vers Apple Rappels": "Tasks: sync to Apple Reminders",
     "Tâches : relever les rappels (terminés, échéances)": "Tasks: pull reminders (done, due dates)",
+    "Tâches : synchroniser vers Apple Agenda": "Tasks: sync to Apple Calendar",
+    "Tâches : relever Apple Agenda": "Tasks: pull Apple Calendar",
+
+    "Apple Agenda": "Apple Calendar",
+    "macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchronisation bidirectionnelle : déplacer ou redimensionner l'événement dans Calendar réécrit le créneau, le supprimer retire le créneau. Les événements des calendriers surveillés s'affichent en fond dans la vue calendrier.": "macOS. Every task slot becomes an event in its family's calendar. Two-way sync: moving or resizing the event in Calendar rewrites the slot, deleting it removes the slot. Events from watched calendars show as background in the calendar view.",
+    "Calendrier par défaut": "Default calendar",
+    "Calendrier Apple d'une tâche quand sa famille n'en précise pas.": "A task's Apple calendar when its family sets none.",
+    "Titre de l'événement": "Event title",
+    "Fenêtre de relève (jours)": "Pull window (days)",
+    "Recharger la liste des calendriers": "Reload the calendar list",
+    "Synchronisation Apple Agenda…": "Syncing Apple Calendar…",
+    "Relève Apple Agenda…": "Pulling Apple Calendar…",
+    " tâche(s) synchronisée(s) vers Apple Agenda.": " task(s) synced to Apple Calendar.",
+    " créneau(x) mis à jour depuis Apple Agenda.": " slot(s) updated from Apple Calendar.",
+    "Apple Agenda a refusé (autorisation d'automatisation dans Réglages système ?).": "Apple Calendar refused (automation permission in System Settings?).",
+    "Apple Agenda : disponible sur macOS uniquement.": "Apple Calendar: available on macOS only.",
+    "Calendrier Apple": "Apple calendar",
+    "(calendrier par défaut)": "(default calendar)",
     "Tâches : structurer un brouillon (IA)": "Tasks: structure a draft (AI)",
     "Tâches : découper la tâche active (IA)": "Tasks: split the active task (AI)",
     "Tâches : normaliser les intitulés (IA)": "Tasks: normalise titles (AI)",
@@ -3545,6 +3563,16 @@ class Ariane extends obsidian.Plugin {
       callback: () => this.releverRappels(false),
     });
     this.addCommand({
+      id: 'agenda-pousser',
+      name: tr('Tâches : synchroniser vers Apple Agenda'),
+      callback: () => this.pousserAgenda(false),
+    });
+    this.addCommand({
+      id: 'agenda-relever',
+      name: tr('Tâches : relever Apple Agenda'),
+      callback: () => this.releverAgenda(false),
+    });
+    this.addCommand({
       id: 'modifier-tache',
       name: tr('Tâches : modifier une tâche…'),
       callback: () => {
@@ -4217,6 +4245,23 @@ class Ariane extends obsidian.Plugin {
         this.registerInterval(window.setInterval(
           () => { if (this.settings.rappelsActif && this.settings.rappelsAuto) this.releverRappels(true); },
           Math.max(2, Number(this.settings.rappelsReleveMin) || 10) * 60000));
+      }
+    });
+
+    // Apple Agenda : même mécanique que Rappels (push antirebondi à la
+    // sauvegarde, relève sur minuterie). Inerte hors macOS ou si coupé.
+    this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
+      if (!this.settings.agendaActif || this.settings.agendaAuto === false) return;
+      if (!this.refDeChemin(fichier.path)) return;
+      if (this.ecritePlugin(fichier.path)) return;
+      this.antirebond('agenda:push', () => this.pousserAgenda(true), 2500);
+    }));
+    this.app.workspace.onLayoutReady(() => {
+      if (obsidian.Platform.isMacOS && this.settings.agendaActif && this.settings.agendaAuto !== false) {
+        setTimeout(() => this.releverAgenda(true), 9000);
+        this.registerInterval(window.setInterval(
+          () => { if (this.settings.agendaActif && this.settings.agendaAuto !== false) this.releverAgenda(true); },
+          Math.max(2, Number(this.settings.agendaReleveMin) || 10) * 60000));
       }
     });
 
@@ -14811,6 +14856,81 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           .onClick(async () => { await this.plugin.chargerListesRappels(); this.display(); }));
     }
 
+    // Suggestions de calendriers Apple, partagées par le calendrier par défaut
+    // et les familles. Chargées à la volée sur macOS.
+    {
+      const dl = c.createEl('datalist');
+      dl.id = 'zfa-dl-agendas';
+      for (const nom of (this.plugin._agendas || [])) dl.createEl('option', { value: nom });
+      if (obsidian.Platform && obsidian.Platform.isMacOS && this.plugin._agendas === undefined) {
+        this.plugin.chargerAgendas().then(() => this.display());
+      }
+    }
+    this._section(c, tr('Apple Agenda'));
+    this._aide(c, tr("macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchronisation bidirectionnelle : déplacer ou redimensionner l'événement dans Calendar réécrit le créneau, le supprimer retire le créneau. Les événements des calendriers surveillés s'affichent en fond dans la vue calendrier."));
+    new obsidian.Setting(c)
+      .setName(tr('Activer'))
+      .addToggle((t) => t.setValue(s.agendaActif === true)
+        .onChange(async (v) => { s.agendaActif = v; await maj(); this.display(); }));
+    if (s.agendaActif) {
+      new obsidian.Setting(c)
+        .setName(tr('Calendrier par défaut'))
+        .setDesc(tr("Calendrier Apple d'une tâche quand sa famille n'en précise pas."))
+        .addText((t) => {
+          t.inputEl.setAttribute('list', 'zfa-dl-agendas');
+          t.setValue(s.agendaCalendrierDefaut || '')
+            .onChange(async (v) => { s.agendaCalendrierDefaut = v.trim(); await maj(); });
+        });
+      {
+        const reg = new obsidian.Setting(c)
+          .setName(tr("Titre de l'événement"))
+          .setDesc(tr("Jetons : {ref}, {intitule}, {famille}. Le reste est littéral."));
+        const apercu = reg.descEl.createDiv({ cls: 'zfa-gabarit-apercu' });
+        const echRef = Ariane.referenceTacheSuivante([], s.refGabarit);
+        const rendreApercu = (val) => apercu.setText(tr('Aperçu : ') + Ariane.formatModele(
+          val || '[{ref}] - {intitule}',
+          { ref: echRef, intitule: tr('Relire le chapitre 2'), famille: tr('Lecture') }));
+        reg.addText((t) => {
+          t.setValue(s.agendaFormatTitre || '[{ref}] - {intitule}')
+            .setPlaceholder('[{ref}] - {intitule}');
+          rendreApercu(t.getValue());
+          t.onChange(async (v) => {
+            rendreApercu(v);
+            s.agendaFormatTitre = v.trim() || '[{ref}] - {intitule}';
+            await maj();
+          });
+        });
+      }
+      new obsidian.Setting(c)
+        .setName(tr('Synchroniser automatiquement'))
+        .addToggle((t) => t.setValue(s.agendaAuto !== false)
+          .onChange(async (v) => { s.agendaAuto = v; await maj(); this.display(); }));
+      if (s.agendaAuto !== false) {
+        new obsidian.Setting(c)
+          .setName(tr('Intervalle de relève (minutes)'))
+          .addText((t) => t.setValue(String(s.agendaReleveMin || 10))
+            .onChange(async (v) => {
+              const n = parseInt(v, 10);
+              s.agendaReleveMin = Number.isFinite(n) && n >= 2 ? n : 10;
+              await maj();
+            }));
+      }
+      new obsidian.Setting(c)
+        .setName(tr('Fenêtre de relève (jours)'))
+        .addText((t) => t.setValue(String(s.agendaFenetreJours || 120))
+          .onChange(async (v) => {
+            const n = parseInt(v, 10);
+            s.agendaFenetreJours = Number.isFinite(n) && n >= 7 ? n : 120;
+            await maj();
+          }));
+      new obsidian.Setting(c)
+        .setName(tr('Synchroniser maintenant'))
+        .addButton((b) => b.setButtonText(tr('Pousser')).onClick(() => this.plugin.pousserAgenda(false)))
+        .addButton((b) => b.setButtonText(tr('Relever')).onClick(() => this.plugin.releverAgenda(false)))
+        .addExtraButton((b) => b.setIcon('refresh-cw').setTooltip(tr('Recharger la liste des calendriers'))
+          .onClick(async () => { this.plugin._agendas = undefined; await this.plugin.chargerAgendas(); this.display(); }));
+    }
+
     this._section(c, tr('Familles de tâches'));
     this._aide(c, tr("Chaque famille porte une couleur et une icône (cartes de l'articulation) et déclare les propriétés qu'elle ajoute à une tâche. La famille d'une tâche vit dans son champ « famille »."));
     this._tableFamillesTaches(c, s, maj);
@@ -15177,6 +15297,15 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           inp.placeholder = this.plugin.settings.listeRappelsDefaut || tr('(liste par défaut)');
           inp.value = f.listeRappels || '';
           inp.onchange = async () => { f.listeRappels = inp.value.trim(); await maj(); };
+        }
+        {
+          const la = corps.createDiv({ cls: 'zfa-famt-prop' });
+          la.createEl('label', { text: tr('Calendrier Apple'), cls: 'zfa-famt-prop-lbl' });
+          const inp = la.createEl('input', { type: 'text' });
+          inp.setAttribute('list', 'zfa-dl-agendas');
+          inp.placeholder = this.plugin.settings.agendaCalendrierDefaut || tr('(calendrier par défaut)');
+          inp.value = f.agendaCalendrier || '';
+          inp.onchange = async () => { f.agendaCalendrier = inp.value.trim(); await maj(); };
         }
         corps.createEl('div', { cls: 'zfa-famt-props-titre', text: tr('Propriétés ajoutées') });
         (f.proprietes = Array.isArray(f.proprietes) ? f.proprietes : []).forEach((p, j) => {
