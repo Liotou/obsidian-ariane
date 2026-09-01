@@ -20673,33 +20673,48 @@ class MoteurCalendrier {
   // Résout la tâche déposée depuis l'extérieur : charge utile propre de la frise,
   // sinon lien wiki « [[T-…]] », sinon nom de fichier « …/T-….md », sinon chemin
   // de note reconnu comme tâche. Rend '' si rien ne colle.
+  // Résout une réf de tâche depuis une source de glissé. On tente, dans l'ordre :
+  // la charge propre « text/x-ariane-tache », le texte du lien (« [[T…]] » /
+  // « …/T….md »), puis la source de glissé mémorisée par le greffon
+  // (`_sourceGlissee`, posée en capture sur tout `dragstart` de lien interne) —
+  // ce dernier repli survit au passage d'un volet à l'autre, contrairement au
+  // dataTransfer. Le lien peut désigner une tâche du coffre même si le
+  // calendrier ne l'affiche pas (frise et calendrier = deux bases).
   _refDepuisDrop(dt) {
-    const direct = dt.getData('text/x-ariane-tache');
-    if (direct) return direct.trim();
-    const txt = (dt.getData('text/plain') || dt.getData('text/uri-list') || '').trim();
-    if (!txt) return '';
     const g = this.greffon;
-    // Le lien peut désigner une tâche du coffre même si le calendrier ne
-    // l'affiche pas (frise et calendrier = deux bases, deux filtres). On
-    // résout donc contre tout le coffre, pas seulement this._taches.
-    const cands = [];
-    const lien = Ariane.refDeLien(txt);
-    if (lien) cands.push(lien);
-    const m = txt.match(/([^/\\]+)\.md(?:$|[?#])/);
-    if (m) cands.push(m[1]);
-    for (const c of cands) {
-      if (this._taches.some((t) => t.ref === c)) return c;
-      let f = null;
-      try { f = this.app.metadataCache.getFirstLinkpathDest(c, ''); } catch (e) { f = null; }
-      if (!f) f = this.app.vault.getMarkdownFiles().find((x) => x.basename === c) || null;
-      if (f && g.refDeChemin && g.refDeChemin(f.path)) return g.refDeChemin(f.path);
-    }
-    return (g.refDeChemin && g.refDeChemin(txt)) || '';
+    const direct = (dt && dt.getData('text/x-ariane-tache') || '').trim();
+    if (direct) return direct;
+    const parCandidats = (txt) => {
+      const cands = [];
+      const lien = Ariane.refDeLien(txt);
+      if (lien) cands.push(lien);
+      const m = txt.match(/([^/\\]+)\.md(?:$|[?#])/);
+      if (m) cands.push(m[1]);
+      for (const c of cands) {
+        if (this._taches.some((t) => t.ref === c)) return c;
+        let f = null;
+        try { f = this.app.metadataCache.getFirstLinkpathDest(c, ''); } catch (e) { f = null; }
+        if (!f) f = this.app.vault.getMarkdownFiles().find((x) => x.basename === c) || null;
+        if (f && g.refDeChemin && g.refDeChemin(f.path)) return g.refDeChemin(f.path);
+      }
+      return (g.refDeChemin && g.refDeChemin(txt)) || '';
+    };
+    const txt = (dt && (dt.getData('text/plain') || dt.getData('text/uri-list')) || '').trim();
+    if (txt) { const r = parCandidats(txt); if (r) return r; }
+    const src = String(g._sourceGlissee || '').trim();
+    if (src) { const r = parCandidats(src); if (r) return r; }
+    return '';
   }
 
   async _dropExterne(ev, jourISO, mode) {
-    const ref = this._refDepuisDrop(ev.dataTransfer);
-    if (!ref) return;
+    const dt = ev.dataTransfer;
+    const ref = this._refDepuisDrop(dt);
+    console.debug('[Ariane] calendrier drop', { mode, jourISO, ref,
+      types: dt && Array.from(dt.types || []),
+      plain: dt && dt.getData('text/plain'),
+      xtache: dt && dt.getData('text/x-ariane-tache'),
+      source: this.greffon._sourceGlissee });
+    if (!ref) { new obsidian.Notice(tr('Aucune tâche reconnue dans ce glissé.')); return; }
     ev.preventDefault();
     if (mode === 'mois') {
       // Déposer un lien de tâche en vue mois = poser un créneau ce jour-là
@@ -20852,7 +20867,7 @@ class MoteurCalendrier {
         if (jour === auj) cell.addClass('est-aujourdhui');
         if (jour.slice(0, 7) !== g.moisDebut.slice(0, 7)) cell.addClass('hors-mois');
         if (this._jourSel === jour) cell.addClass('est-selection');
-        const surCarte = (e) => e.target.closest('.zfa-cal-barre, .zfa-cal-pastille, .zfa-cal-jalon');
+        const surCarte = (e) => e.target.closest('.zfa-cal-tbar, .zfa-cal-pastille, .zfa-cal-jalon');
         cell.addEventListener('click', (e) => {
           if (surCarte(e)) return;
           this._jourSel = (this._jourSel === jour) ? '' : jour;
@@ -20901,12 +20916,12 @@ class MoteurCalendrier {
         }
       });
 
-      const couche = wk.createDiv({ cls: 'zfa-cal-barres' });
+      const couche = wk.createDiv({ cls: 'zfa-cal-tbars' });
       couche.style.height = reserve + 'px';
       for (const b of barres) {
         if (b.lane >= MAX_LANES) continue;
         const t = tParRef.get(b.ref) || { ref: b.ref, intitule: b.ref };
-        const barre = couche.createDiv({ cls: 'zfa-cal-barre'
+        const barre = couche.createDiv({ cls: 'zfa-cal-tbar'
           + (b.arrondiG ? ' arr-g' : '') + (b.arrondiD ? ' arr-d' : '')
           + (enRetard.has(b.ref) ? ' est-retard' : '') });
         barre.style.left = (b.col0 / 7 * 100) + '%';
@@ -20915,7 +20930,7 @@ class MoteurCalendrier {
         barre.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
         barre.dataset.ref = b.ref;
         if (b.col1 > b.col0) {
-          barre.createSpan({ cls: 'zfa-cal-barre-t', text: t.intitule || b.ref });
+          barre.createSpan({ cls: 'zfa-cal-tbar-t', text: t.intitule || b.ref });
         }
         barre.title = b.ref + ' · ' + (t.intitule || '') + '\n'
           + (t.debut || '?') + ' → ' + (t.echeance || '?');
