@@ -20569,6 +20569,18 @@ class MoteurCalendrier {
     carte.dataset.ref = t.ref;
     if (ev.source === 'creneau') carte.dataset.brut = ev.brut;
 
+    const fini = t.statut === 'terminée' || t.terminee === true;
+    if (fini) carte.addClass('est-terminee');
+    if (o.avecCoche) {
+      const cb = carte.createEl('input', { type: 'checkbox', cls: 'zfa-cal-carte-coche' });
+      cb.checked = fini;
+      cb.addEventListener('click', (e) => e.stopPropagation());
+      cb.addEventListener('change', async () => {
+        await this.greffon.majTache(t.ref, { statut: cb.checked ? 'terminée' : 'à faire' });
+        this.dessiner();
+      });
+    }
+
     const titre = (o.avecHeure && !ev.allDay ? ev.debut.slice(11, 16) + ' ' : '')
       + (t.intitule || t.ref);
     carte.createDiv({ cls: 'zfa-cal-carte-titre', text: titre });
@@ -20719,13 +20731,7 @@ class MoteurCalendrier {
   }
 
   async _dropExterne(ev, jourISO, mode) {
-    const dt = ev.dataTransfer;
-    const ref = this._refDepuisDrop(dt);
-    console.debug('[Ariane] calendrier drop', { mode, jourISO, ref,
-      types: dt && Array.from(dt.types || []),
-      plain: dt && dt.getData('text/plain'),
-      xtache: dt && dt.getData('text/x-ariane-tache'),
-      source: this.greffon._sourceGlissee });
+    const ref = this._refDepuisDrop(ev.dataTransfer);
     if (!ref) { new obsidian.Notice(tr('Aucune tâche reconnue dans ce glissé.')); return; }
     ev.preventDefault();
     if (mode === 'mois') {
@@ -20755,7 +20761,13 @@ class MoteurCalendrier {
     const cal = (v) => Math.round(v / (PXH / 4)) * (PXH / 4);
     const bouger = (mv) => {
       const d = mv.clientY - y0;
-      if (Math.abs(d) > 3) bouge = true;
+      if (Math.abs(d) > 3 && !bouge) {
+        bouge = true;
+        // Après un glissé, le navigateur émet un « click » de synthèse sur le
+        // bloc → ça ouvrait la note. On l'absorbe une fois, en capture.
+        bloc.addEventListener('click', (ce) => { ce.stopPropagation(); ce.preventDefault(); },
+          { capture: true, once: true });
+      }
       if (mode === 'fin') bloc.style.height = Math.max(PXH / 4, cal(hDep + d)) + 'px';
       else bloc.style.top = Math.max(0, cal(topDep + d)) + 'px';
     };
@@ -21025,7 +21037,9 @@ class MoteurCalendrier {
         const { montres, reste } = deplie
           ? { montres: liste, reste: 0 }
           : Ariane.replierListe(liste, PLAFOND);
-        for (const { t, ev } of montres) this.rendreCarte(col, t, ev, { maxLignes: 1, avecHeure: false });
+        for (const { t, ev } of montres) {
+          this.rendreCarte(col, t, ev, { maxLignes: 1, avecHeure: false, avecCoche: true });
+        }
         if (reste) {
           const plus = col.createDiv({ cls: 'zfa-cal-bandeau-plus', text: '+' + reste });
           plus.onclick = (e) => { e.stopPropagation(); deplie = true; rendre(); };
@@ -21064,7 +21078,7 @@ class MoteurCalendrier {
         const haut = Math.max(14, y1 - Math.max(0, y0));
         const maxLignes = Math.max(1, Math.floor((haut - 6) / 16));
         const bloc = this.rendreCarte(col, t, ev,
-          { maxLignes, avecHeure: true, enRetard: enRetard.has(t.ref) });
+          { maxLignes, avecHeure: true, avecCoche: true, enRetard: enRetard.has(t.ref) });
         bloc.classList.add('zfa-cal-bloc');
         bloc.style.top = Math.max(0, y0) + 'px';
         bloc.style.height = haut + 'px';
