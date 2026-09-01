@@ -17267,8 +17267,13 @@ class MoteurFrise {
   dessinerVraiment() {
     const c = this.racine;
     const ancienne = c.querySelector('.zfa-gantt-droite');
-    const memeX = ancienne ? ancienne.scrollLeft : null;
-    const memeY = ancienne ? ancienne.scrollTop : null;
+    // On ne se fie à l'ancien scroll QUE si l'élément était réellement affiché :
+    // un redraw survenu pendant que l'onglet était caché laisse scrollLeft à 0
+    // (Chromium n'applique rien sur un display:none), et ce 0 écrasait la
+    // position au retour sur l'onglet. Caché → on retombe sur le jour mémorisé.
+    const anciennePosee = !!ancienne && ancienne.clientWidth > 1 && ancienne.offsetParent !== null;
+    const memeX = anciennePosee ? ancienne.scrollLeft : null;
+    const memeY = anciennePosee ? ancienne.scrollTop : null;
     // Étendre une barre déplace l'origine des dates de la frise (marge / span
     // minimum recalculés) : un scrollLeft en pixels ne pointe alors plus sur le
     // même jour. On mémorise le JOUR au bord gauche pour le remettre en place.
@@ -17514,11 +17519,15 @@ class MoteurFrise {
     // sinon on reprend au jour mémorisé (par vue) ; sinon on cadre aujourd'hui.
     const jourMem = (Ariane.jourValide && this.ctx.posLire)
       ? Ariane.jourValide(this.ctx.posLire()) : null;
+    const xMem = jourMem ? Math.max(0, Ariane.ecartJours(cfg.debut, jourMem) * cfg.ppj) : null;
+    // Un memeX à exactement 0 alors qu'on a une position mémorisée ailleurs est
+    // presque toujours un artefact (redraw pendant que l'onglet était caché) →
+    // on préfère le jour mémorisé.
+    const memXsain = memeX !== null && !(memeX === 0 && xMem != null && xMem > 4);
     const cibleX = jourAncre
       ? Math.max(0, Ariane.ecartJours(cfg.debut, jourAncre) * cfg.ppj)
-      : (this._aScrolle && memeX !== null) ? memeX
-        : jourMem
-          ? Math.max(0, Ariane.ecartJours(cfg.debut, jourMem) * cfg.ppj)
+      : (this._aScrolle && memXsain) ? memeX
+        : xMem != null ? xMem
           : Math.max(0, Ariane.ecartJours(cfg.debut, aujourdhui) * cfg.ppj - 220);
     const vue = this._doc().defaultView || window;
     const calerX = (essais) => {
