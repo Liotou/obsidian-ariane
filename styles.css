@@ -1930,10 +1930,21 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
    tout l'intérieur est recalé à 100 %. */
 .zfa-tache-note-ed {
   height: 220px;
+  display: flex; flex-direction: column;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
   overflow: hidden;
   background: var(--background-primary);
+}
+/* La feuille détachée amène ses propres enveloppes (workspace-leaf, etc.),
+   dépourvues de hauteur hors workspace : elles s'effondraient à 0 px et leur
+   overflow:hidden rognait tout — boîte vide, aveugle aux clics. Toute la
+   descendance directe remplit donc la boîte, sans rogner. */
+.zfa-tache-note-ed > * {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto !important;
+  overflow: visible !important;
 }
 .zfa-tache-note-ed .workspace-leaf-content,
 .zfa-tache-note-ed .view-content,
