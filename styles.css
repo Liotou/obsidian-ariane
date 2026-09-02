@@ -1324,6 +1324,17 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .theme-dark .zfa-gantt-etiquette { fill: var(--text-normal); }
 .zfa-gantt-poignee { fill: transparent; cursor: col-resize; }
 
+/* Pendant l'étirement d'une barre : le pointillé suit le bord tiré jusqu'à
+   l'en-tête des dates, et la colonne du jour visé s'allume dans cet en-tête.
+   Même accent que les poignées au survol. */
+.zfa-gantt-guide-etir {
+  stroke: var(--interactive-accent); stroke-width: 1;
+  stroke-dasharray: 3 3; opacity: 0.8; pointer-events: none;
+}
+.zfa-gantt-guide-jour {
+  fill: var(--interactive-accent); opacity: 0.14; pointer-events: none;
+}
+
 /* Tâche bloquée (statut dérivé, jamais écrit) : voile hachuré + contour tireté
    dans la couleur de blocage. */
 .zfa-gantt-bloquee-voile { pointer-events: none; opacity: 0.5; }

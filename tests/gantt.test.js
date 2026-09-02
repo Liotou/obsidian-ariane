@@ -188,3 +188,22 @@ test('tachesEnRetard : une échéance au jour même n est pas en retard', () => 
 test('tachesEnRetard : sans date de référence, ensemble vide', () => {
   assert.equal(Ariane.tachesEnRetard([t('A', { echeance: '2026-08-01' })], '').size, 0);
 });
+
+/* --------------------- colonneGuideEtir -------------------------------- */
+
+test('colonneGuideEtir : poignée gauche → colonne du nouveau début', () => {
+  assert.equal(Ariane.colonneGuideEtir(90, 30, 'gauche'), 3);
+});
+
+test('colonneGuideEtir : poignée droite → colonne du dernier jour couvert', () => {
+  // La barre s'étend jusqu'à la fin du jour inclus : son bord droit à 120
+  // (ppj 30) ferme la colonne 3, pas la 4.
+  assert.equal(Ariane.colonneGuideEtir(120, 30, 'droite'), 3);
+  assert.equal(Ariane.colonneGuideEtir(150, 30, 'droite'), 4);
+});
+
+test('colonneGuideEtir : arrondi au jour le plus proche et borne ≥ 0', () => {
+  assert.equal(Ariane.colonneGuideEtir(74, 30, 'gauche'), 2); // 2,47 → 2
+  assert.equal(Ariane.colonneGuideEtir(-8, 30, 'droite'), 0);
+  assert.equal(Ariane.colonneGuideEtir(45, 0, 'gauche'), 45); // ppj invalide → pas de division par 0
+});

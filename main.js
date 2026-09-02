@@ -7648,6 +7648,16 @@ class Ariane extends obsidian.Plugin {
       ax: r2(ax), ay: r2(ay), bx: r2(bx), by: r2(by) };
   }
 
+  // Colonne de jour visée par l'étirement d'une barre de la frise : la date
+  // qui change est celle qui touche le bord tiré — début pour la poignée
+  // gauche (bord gauche de sa colonne), échéance pour la droite (la barre
+  // couvre son dernier jour en entier, donc bord droit = fin de sa colonne).
+  static colonneGuideEtir(x, ppj, cote) {
+    const p = Number(ppj) > 0 ? Number(ppj) : 1;
+    const i = Math.round(Number(x) / p) - (cote === 'droite' ? 1 : 0);
+    return Math.max(0, i);
+  }
+
   // Abscisse de l'épine d'une accolade de lignée : dégagée À GAUCHE de la
   // mère ET de la première fille datée (voir _cheminAccolade). Elle ne
   // traverse donc jamais une barre de la famille, même quand le tri actif ou
@@ -20345,15 +20355,18 @@ class MoteurFrise {
         fond.setAttribute('width', w);
         if (rempli) rempli.setAttribute('x', nx);
         this._apercuAscendants(ligne.ref, nx, nx + w);
+        this._guideEtir(nx, 'gauche');
       } else {
         const w = Math.max(ppj, geo.w + d);
         fond.setAttribute('width', w);
         this._apercuAscendants(ligne.ref, geo.x, geo.x + w);
+        this._guideEtir(geo.x + w, 'droite');
       }
     };
     const lacher = async (ev) => {
       this._doc().removeEventListener('pointermove', bouger);
       this._doc().removeEventListener('pointerup', lacher);
+      this._effacerGuideEtir();
       groupe.classList.remove('zfa-gantt-glisse');
       const n = jours(ev);
       // Un appui qui n'a pas bougé est un clic, et un clic sur une barre ouvre
@@ -20368,6 +20381,36 @@ class MoteurFrise {
     };
     this._doc().addEventListener('pointermove', bouger);
     this._doc().addEventListener('pointerup', lacher);
+  }
+
+  // Pendant l'étirement d'une barre (poignées gauche / droite) : un guide
+  // vertical en pointillé suit le bord tiré, de la barre jusqu'à l'en-tête des
+  // dates, et la colonne du jour visé s'allume dans cet en-tête.
+  _guideEtir(x, cote) {
+    const svg = this._svg;
+    if (!svg) return;
+    if (!this._guideEtirElems) {
+      const ligne = svgEl('line', { y1: 0, class: 'zfa-gantt-guide-etir' });
+      const jour = svgEl('rect', { y: 0, height: this._hEntete,
+        class: 'zfa-gantt-guide-jour' });
+      svg.appendChild(ligne);
+      svg.appendChild(jour);
+      this._guideEtirElems = { ligne, jour };
+    }
+    const e = this._guideEtirElems;
+    e.ligne.setAttribute('x1', x);
+    e.ligne.setAttribute('x2', x);
+    e.ligne.setAttribute('y2', this._hauteurTotale);
+    const i = Ariane.colonneGuideEtir(x, this._cfg.ppj, cote);
+    e.jour.setAttribute('x', i * this._cfg.ppj);
+    e.jour.setAttribute('width', this._cfg.ppj);
+  }
+
+  _effacerGuideEtir() {
+    if (!this._guideEtirElems) return;
+    this._guideEtirElems.ligne.remove();
+    this._guideEtirElems.jour.remove();
+    this._guideEtirElems = null;
   }
 
   // Une fille sortie des bornes de sa mère fait s'étendre la mère (dates
