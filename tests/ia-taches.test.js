@@ -108,3 +108,67 @@ test('majPlanArticulationTexte : pas de vue articulation -> null', () => {
 test('majPlanArticulationTexte : rien à ajouter (déjà présent) -> null', () => {
   assert.equal(Ariane.majPlanArticulationTexte(BASE, 'Articulation', ['T26-001']), null);
 });
+
+/* ------- aplatir / reconstruire / déplacer les specs (hiérarchie) ----- */
+
+const ARBRE = () => ([
+  { titre: 'A', enfants: [
+    { titre: 'A1', enfants: [] },
+    { titre: 'A2', enfants: [] },
+  ] },
+  { titre: 'B', enfants: [] },
+  { titre: 'C', enfants: [{ titre: 'C1', enfants: [] }] },
+]);
+
+const platTxt = (plat) => plat.map((x) => x.n.titre + x.prof).join(' ');
+const titresArbre = (arbre) => Ariane.aplatirSpecsTaches(arbre)
+  .map((x) => x.n.titre + x.prof).join(' ');
+
+test('aplatirSpecsTaches / reconstruireSpecsTaches : aller-retour', () => {
+  const plat = Ariane.aplatirSpecsTaches(ARBRE());
+  assert.equal(platTxt(plat), 'A0 A11 A21 B0 C0 C11');
+  assert.equal(titresArbre(Ariane.reconstruireSpecsTaches(plat)), 'A0 A11 A21 B0 C0 C11');
+});
+
+test('reconstruireSpecsTaches : saut de profondeur ramené sous le parent ouvert', () => {
+  const arbre = Ariane.reconstruireSpecsTaches([
+    { n: { titre: 'A', enfants: [] }, prof: 0 },
+    { n: { titre: 'X', enfants: [] }, prof: 2 },
+  ]);
+  assert.equal(titresArbre(arbre), 'A0 X1');
+});
+
+test('deplacerSpecTaches : remonte une tâche au-dessus d\'un bloc', () => {
+  const plat = Ariane.aplatirSpecsTaches(ARBRE());
+  const apres = Ariane.deplacerSpecTaches(plat, 3, 0, 0); // B tout en haut
+  assert.equal(platTxt(apres), 'B0 A0 A11 A21 C0 C11');
+});
+
+test('deplacerSpecTaches : imbrique C sous A2, la descendance suit', () => {
+  const plat = Ariane.aplatirSpecsTaches(ARBRE());
+  assert.equal(Ariane.depotSpecTaches(plat, 4, 3).profMax, 2); // enfant de A2
+  const apres = Ariane.deplacerSpecTaches(plat, 4, 3, 2);
+  assert.equal(titresArbre(Ariane.reconstruireSpecsTaches(apres)), 'A0 A11 A21 C2 C13 B0');
+});
+
+test('deplacerSpecTaches : remonte un bloc entier avec sa descendance', () => {
+  const plat = Ariane.aplatirSpecsTaches(ARBRE());
+  const apres = Ariane.deplacerSpecTaches(plat, 0, 6, 0); // A (et A1, A2) à la fin
+  assert.equal(titresArbre(Ariane.reconstruireSpecsTaches(apres)), 'B0 C0 C11 A0 A11 A21');
+});
+
+test('deplacerSpecTaches : interdit de se poser dans sa propre descendance', () => {
+  const plat = Ariane.aplatirSpecsTaches(ARBRE());
+  assert.equal(Ariane.depotSpecTaches(plat, 0, 2), null);
+  assert.equal(Ariane.deplacerSpecTaches(plat, 0, 1, 0), null);
+  assert.equal(Ariane.deplacerSpecTaches(plat, 0, 2, 0), null);
+});
+
+test('deplacerSpecTaches : profondeur bornée au voisinage du trou', () => {
+  const plat = Ariane.aplatirSpecsTaches(ARBRE());
+  // tout en haut : profMax = 0, même si l'on demande 3
+  assert.equal(platTxt(Ariane.deplacerSpecTaches(plat, 4, 0, 3)), 'C0 C11 A0 A11 A21 B0');
+  // après B (prof 0) : profMax = 1, C1 suit d'autant
+  const apres = Ariane.deplacerSpecTaches(plat, 4, 4, 5);
+  assert.equal(titresArbre(Ariane.reconstruireSpecsTaches(apres)), 'A0 A11 A21 B0 C1 C12');
+});
