@@ -164,6 +164,34 @@ test('blocCreneaux : aucune ligne → chaîne vide', () => {
   assert.equal(Ariane.blocCreneaux([], Ariane.statsCreneaux([], '2026-09-01T00:00')), '');
 });
 
+test('hierarchiesTaches : chaîne de mères racine → tâche, arbre de filles', () => {
+  const t = (ref, parent) => ({ ref, parent });
+  const h = Ariane.hierarchiesTaches([
+    t('R', ''), t('M', '[[R]]'), t('A', '[[M]]'), t('B', '[[M]]'), t('F', '[[A]]'),
+  ]);
+  assert.deepEqual(h.meres.get('A'), ['R', 'M', 'A']);
+  assert.deepEqual(h.meres.get('R'), ['R']);
+  assert.deepEqual(h.filles.get('M').map((x) => x.ref), ['A', 'B']);
+  assert.deepEqual(h.filles.get('A')[0].ref, 'F');
+  // sous-arbre complet depuis la racine : une entrée par tâche, en profondeur
+  assert.deepEqual(h.filles.get('R')[0].filles.map((x) => x.ref), ['A', 'B']);
+});
+
+test('hierarchiesTaches : parent inconnu, auto-parent, cycle coupé', () => {
+  const t = (ref, parent) => ({ ref, parent });
+  const h = Ariane.hierarchiesTaches([
+    t('X', '[[Fantome]]'), t('Y', '[[Y]]'), t('P', '[[Q]]'), t('Q', '[[P]]'),
+  ]);
+  assert.deepEqual(h.meres.get('X'), ['X']);          // parent inconnu → racine
+  assert.deepEqual(h.meres.get('Y'), ['Y']);          // auto-parent ignoré
+  assert.deepEqual(h.meres.get('P'), ['Q', 'P']);     // cycle : la remontée s'arrête
+  assert.deepEqual(h.meres.get('Q'), ['P', 'Q']);
+  assert.deepEqual(h.filles.get('P').map((x) => x.ref), ['Q']);
+  // le cycle se voit une fois en filles, puis coupe à sa première répétition
+  assert.deepEqual(h.filles.get('P')[0].filles.map((x) => x.ref), ['P']);
+  assert.deepEqual(h.filles.get('P')[0].filles[0].filles, []);
+});
+
 test('grilleMois : 6×7, lundi en tête, contient le mois', () => {
   const g = Ariane.grilleMois('2026-09-15');
   assert.equal(g.semaines.length, 6);

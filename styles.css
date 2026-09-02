@@ -2255,6 +2255,43 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-poignee { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
 /* Poignée haute d'un créneau : on tire le début, la fin reste en place. */
 .zfa-cal-poignee-haut { position: absolute; left: 0; right: 0; top: 0; height: 6px; cursor: ns-resize; }
+
+/* Boutons de lignée d'un créneau (mères / filles), révélés au survol. */
+.zfa-cal-lignee-btns { position: absolute; top: 2px; right: 2px; display: flex;
+  gap: 2px; opacity: 0; transition: opacity 0.12s ease; z-index: 3; }
+.zfa-cal-carte:hover .zfa-cal-lignee-btns { opacity: 1; }
+.zfa-cal-lignee-btn { display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 4px; cursor: pointer;
+  color: var(--text-muted); background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border); }
+.zfa-cal-lignee-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.zfa-cal-lignee-btn.est-active { background: var(--interactive-accent);
+  color: var(--text-on-accent); border-color: var(--interactive-accent); }
+.zfa-cal-lignee-btn .svg-icon { width: 10px; height: 10px; }
+
+/* Panneau flottant de lignée : posé sur le document (position fixe), il survit
+   aux redessins de la vue — on peut en faire glisser plusieurs cartes. */
+.zfa-cal-lignee-panneau { position: fixed; z-index: 60; min-width: 200px; max-width: 320px;
+  max-height: 50vh; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0; transform: translateY(-4px);
+  transition: opacity 0.14s ease, transform 0.14s ease; }
+.zfa-cal-lignee-panneau.est-ouvert { opacity: 1; transform: none; }
+.zfa-cal-lignee-tete { padding: 6px 10px; font-size: var(--font-ui-smaller); font-weight: 600;
+  color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--background-modifier-border); }
+.zfa-cal-lignee-corps { overflow-y: auto; padding: 4px; }
+.zfa-cal-lignee-ligne { display: flex; align-items: center; gap: 5px; padding: 3px 6px;
+  border-radius: var(--radius-s); cursor: pointer; user-select: none; }
+.zfa-cal-lignee-ligne:hover { background: var(--background-modifier-hover); }
+.zfa-cal-lignee-ligne:active { cursor: grabbing; }
+.zfa-cal-lignee-ligne.est-ancre .zfa-cal-lignee-nom { font-weight: 600; color: var(--text-accent); }
+.zfa-cal-lignee-ic { display: inline-flex; flex: 0 0 auto; }
+.zfa-cal-lignee-ic .svg-icon { width: 12px; height: 12px; }
+.zfa-cal-lignee-nom { font-size: var(--font-ui-small); color: var(--text-normal);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .zfa-cal-bloc:focus { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 
 /* Cartes de créneau : même parti que obsidian-day-planner (contenu qui

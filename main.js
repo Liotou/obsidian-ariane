@@ -7493,6 +7493,52 @@ class Ariane extends obsidian.Plugin {
     return lignee;
   }
 
+  // Hiérarchie complète des tâches, pour les boutons et panneaux de lignée du
+  // calendrier. Renvoie { parRef, meres, filles } : parRef = Map ref → tâche ;
+  // meres = Map ref → chaîne [racine, …, mère, ref] ; filles = Map ref →
+  // sous-arbre [{ ref, filles: […] }]. Parent inconnu ou cycle : la remontée
+  // s'arrête, la descendance coupe au chemin déjà parcouru.
+  static hierarchiesTaches(taches) {
+    const liste = (taches || []).filter((t) => t && t.ref);
+    const parRef = new Map(liste.map((t) => [t.ref, t]));
+    const enfants = new Map();
+    for (const t of liste) {
+      const p = Ariane.refDeLien(t.parent);
+      if (!p || !parRef.has(p) || p === t.ref) continue;
+      if (!enfants.has(p)) enfants.set(p, []);
+      enfants.get(p).push(t.ref);
+    }
+    const filles = new Map();
+    const chemin = new Set();
+    // Pas de mémoïsation : un résultat calculé pendant le parcours d'un cycle
+    // serait coupé trop tôt et empoisonnerait ensuite la memo. Les hiérarchies
+    // réelles sont peu profondes — le recalcul ne coûte rien.
+    const sousArbre = (r) => {
+      if (chemin.has(r)) return [];            // cycle : coupe ici
+      chemin.add(r);
+      const out = (enfants.get(r) || []).map((e) => ({ ref: e, filles: sousArbre(e) }));
+      chemin.delete(r);
+      return out;
+    };
+    const meres = new Map();
+    const chaineDe = (r) => {
+      const out = [r];
+      const vus = new Set([r]);
+      let cur = Ariane.refDeLien((parRef.get(r) || {}).parent);
+      while (cur && parRef.has(cur) && !vus.has(cur)) {
+        out.unshift(cur); vus.add(cur);
+        cur = Ariane.refDeLien((parRef.get(cur) || {}).parent);
+      }
+      return out;
+    };
+    for (const t of liste) {
+      chemin.clear();
+      filles.set(t.ref, sousArbre(t.ref));
+      meres.set(t.ref, chaineDe(t.ref));
+    }
+    return { parRef, meres, filles };
+  }
+
   // Abscisse de l'épine d'une accolade de lignée : dégagée À GAUCHE de la
   // mère ET de la première fille datée (voir _cheminAccolade). Elle ne
   // traverse donc jamais une barre de la famille, même quand le tri actif ou
@@ -22615,6 +22661,7 @@ class MoteurCalendrier {
   detruire() {
     this._detruit = true;
     this._enRecalage = false;
+    this._fermerLignee();
     clearTimeout(this._wheelMinuterie);
     clearTimeout(this._calageMinuterie);
     clearTimeout(this._semScrollMinuterie);
@@ -22713,6 +22760,10 @@ class MoteurCalendrier {
     this._tachesBrutes = this._taches;
     const masque = this._masqueFamilles();
     if (masque.size) this._taches = this._taches.filter((t) => !masque.has(t.famille || ''));
+    // Hiérarchie du coffre (boutons de lignée sur les créneaux, panneaux) :
+    // calculée une fois par dessin sur la liste complète.
+    try { this._hier = Ariane.hierarchiesTaches(this.greffon.tachesPourGantt()); }
+    catch (e) { this._hier = { parRef: new Map(), meres: new Map(), filles: new Map() }; }
     const tn = this.ctx.triNatif && this.ctx.triNatif();
     if (tn && tn.preparer) { try { tn.preparer(this._taches); } catch (e) { /* tri optionnel */ } }
     if (this._enAttente && this._enAttente.size) {
@@ -23150,6 +23201,112 @@ class MoteurCalendrier {
         }));
     }
     m.showAtMouseEvent(e);
+  }
+
+  // --- Panneau de lignée d'un créneau -------------------------------------
+  // Un seul panneau ouvert à la fois. Posé sur le document en position fixe,
+  // il SURVIT aux redessins de la vue : on peut y ouvrir la liste et faire
+  // glisser plusieurs cartes vers le calendrier l'une après l'autre. Fermeture
+  // volontairement limitée : re-bascule du même bouton, Échap, perte de focus
+  // de la fenêtre, destruction de la vue — jamais un simple clic ailleurs.
+  _basculeLignee(ref, sens, btn) {
+    const cle = ref + '|' + sens;
+    if (this._panneauLignee && this._panneauLignee.cle === cle) {
+      this._fermerLignee();
+      return;
+    }
+    this._montrerLignee(ref, sens, btn, cle);
+  }
+
+  _montrerLignee(ref, sens, btn, cle) {
+    this._fermerLignee();
+    const hier = this._hier || Ariane.hierarchiesTaches(this.greffon.tachesPourGantt());
+    const parRef = hier.parRef;
+    let arbre = [];
+    if (sens === 'filles') {
+      arbre = hier.filles.get(ref) || [];
+    } else {
+      // La chaîne des mères sans la tâche elle-même, racine en tête ;
+      // l'ancre conclut la liste (repère visuel).
+      arbre = (hier.meres.get(ref) || []).slice(0, -1).map((r) => ({ ref: r, filles: [] }));
+    }
+    if (!arbre.length) return;
+    const doc = btn.ownerDocument || document;
+    const pan = doc.createElement('div');
+    pan.className = 'zfa-cal-lignee-panneau';
+    const tete = doc.createElement('div');
+    tete.className = 'zfa-cal-lignee-tete';
+    tete.textContent = sens === 'filles' ? tr('Tâches filles') : tr('Tâches mères');
+    pan.appendChild(tete);
+    const corps = doc.createElement('div');
+    corps.className = 'zfa-cal-lignee-corps';
+    const ligne = (r, prof, ancre) => {
+      const t = parRef.get(r) || {};
+      const row = doc.createElement('div');
+      row.className = 'zfa-cal-lignee-ligne' + (ancre ? ' est-ancre' : '');
+      row.style.paddingLeft = (4 + prof * 13) + 'px';
+      row.title = r;
+      row.draggable = true;
+      row.addEventListener('dragstart', (e) => {
+        // Payload prioritaire de _refDepuisDrop : la carte se pose comme créneau.
+        e.dataTransfer.setData('text/x-ariane-tache', r);
+        e.dataTransfer.setData('text/plain', '[[' + r + ']]');
+      });
+      const ic = doc.createElement('span');
+      ic.className = 'zfa-cal-lignee-ic';
+      obsidian.setIcon(ic, this.greffon.familleDe(t.famille).icone || 'circle');
+      ic.style.color = this.couleurTache(t);
+      row.appendChild(ic);
+      const nom = doc.createElement('span');
+      nom.className = 'zfa-cal-lignee-nom';
+      nom.textContent = t.intitule || r;
+      row.appendChild(nom);
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.ouvrir(r, e.metaKey || e.ctrlKey);
+      });
+      corps.appendChild(row);
+    };
+    const parcourir = (noeuds, prof) => {
+      for (const nd of noeuds || []) {
+        ligne(nd.ref, prof, false);
+        parcourir(nd.filles, prof + 1);
+      }
+    };
+    parcourir(arbre, 0);
+    if (sens === 'meres') ligne(ref, arbre.length, true);
+    pan.appendChild(corps);
+    doc.body.appendChild(pan);
+    // Place le panneau près du bouton, sans sortir de la fenêtre.
+    const r = btn.getBoundingClientRect();
+    const pw = pan.offsetWidth || 260;
+    const ph = pan.offsetHeight || 180;
+    const vw = doc.documentElement.clientWidth || 1200;
+    const vh = doc.documentElement.clientHeight || 800;
+    const x = (r.right + pw + 8 > vw) ? Math.max(8, r.left - pw - 6) : r.right + 6;
+    pan.style.left = x + 'px';
+    pan.style.top = Math.max(8, Math.min(r.top, vh - ph - 8)) + 'px';
+    const surEchap = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); this._fermerLignee(); }
+    };
+    doc.addEventListener('keydown', surEchap, true);
+    const surFlou = () => this._fermerLignee();
+    const win = doc.defaultView || window;
+    win.addEventListener('blur', surFlou);
+    btn.classList.add('est-active');
+    this._panneauLignee = { cle, el: pan, doc, win, surEchap, surFlou, btn };
+    // Animation d'ouverture (la classe pose opacité + translation finale).
+    window.requestAnimationFrame(() => pan.classList.add('est-ouvert'));
+  }
+
+  _fermerLignee() {
+    const p = this._panneauLignee;
+    if (!p) return;
+    this._panneauLignee = null;
+    p.doc.removeEventListener('keydown', p.surEchap, true);
+    if (p.win) p.win.removeEventListener('blur', p.surFlou);
+    if (p.btn && p.btn.isConnected) p.btn.classList.remove('est-active');
+    if (p.el && p.el.parentNode) p.el.parentNode.removeChild(p.el);
   }
 
   menuCellule(e, jourISO) {
@@ -23785,6 +23942,30 @@ class MoteurCalendrier {
           // Même geste par le haut : on tire le début, la fin reste en place.
           const poiHaut = bloc.createDiv({ cls: 'zfa-cal-poignee-haut' });
           poiHaut.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j, 'debut'));
+          // Lignée : deux boutons (mères / filles) quand la tâche en a, révélés
+          // au survol. Le panneau reste ouvert pour faire glisser plusieurs
+          // cartes à la suite ; il ne ferme que sur un nouveau clic sur le
+          // bouton, Échap, un changement de fenêtre, ou la fermeture de la vue.
+          const infos = this._hier && this._hier.parRef.get(t.ref);
+          const nbMeres = infos ? (this._hier.meres.get(t.ref) || []).length - 1 : 0;
+          const nbFilles = infos ? (this._hier.filles.get(t.ref) || []).length : 0;
+          if (nbMeres > 0 || nbFilles > 0) {
+            const btns = bloc.createDiv({ cls: 'zfa-cal-lignee-btns' });
+            for (const [sens, icone, nb, label] of [
+              ['meres', 'chevrons-up', nbMeres, tr('Tâches mères')],
+              ['filles', 'chevrons-down', nbFilles, tr('Tâches filles')],
+            ]) {
+              if (nb <= 0) continue;
+              const bt = btns.createDiv({ cls: 'zfa-cal-lignee-btn',
+                attr: { 'aria-label': label + ' (' + nb + ')', title: label + ' (' + nb + ')' } });
+              obsidian.setIcon(bt, icone);
+              bt.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
+              bt.addEventListener('click', (e) => {
+                e.stopPropagation(); e.preventDefault();
+                this._basculeLignee(t.ref, sens, bt);
+              });
+            }
+          }
           bloc.tabIndex = 0;
           bloc.addEventListener('keydown', async (de) => {
             if (de.key === 'Delete' || de.key === 'Backspace') {
