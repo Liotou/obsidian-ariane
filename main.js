@@ -17216,6 +17216,7 @@ class ModaleTache extends obsidian.Modal {
     const V = obsidian.MarkdownView, L = obsidian.WorkspaceLeaf;
     const gen = (this._noteEdGen = this._noteEdGen + 1);
     let vue = null;
+    let el = null;
     if (V && L) {
       try {
         // Une vue se construit TOUJOURS dans une feuille : le constructeur de
@@ -17228,11 +17229,18 @@ class ModaleTache extends obsidian.Modal {
         // vit dans l'éditeur, elle n'est écrite qu'au moment d'enregistrer.
         const feuille = new L(this.app);
         vue = new V(feuille);
-        const el = createDiv({ cls: 'zfa-tache-note-ed' });
+        el = createDiv({ cls: 'zfa-tache-note-ed' });
         el.appendChild(feuille.containerEl);
         hote.appendChild(el); // monter d'abord : l'éditeur mesure un DOM vivant
         await vue.load();
-        if (gen !== this._noteEdGen) { try { vue.unload(); } catch (e) { /* rien */ } return; }
+        if (gen !== this._noteEdGen) {
+          // Une construction plus récente a pris le relais : démonter TOUT
+          // (vue ET boîte) — une boîte vide restée montée serait un fantôme
+          // qui avale les clics sans rien éditer.
+          try { vue.unload(); } catch (e) { /* rien */ }
+          el.remove();
+          return;
+        }
         vue.setViewData(String(this.v.note || ''), true);
         this._noteEd = { vue, el, feuille };
         this._sonderEditeurNote(hote, gen); // TEMPORAIRE : diagnostic, à retirer
@@ -17240,6 +17248,7 @@ class ModaleTache extends obsidian.Modal {
       } catch (e) {
         console.warn('[Ariane] éditeur de note : repli', e);
         try { if (vue) vue.unload(); } catch (e2) { /* rien */ }
+        if (el) el.remove();
         if (gen !== this._noteEdGen) return;
         this._noteEd = null;
       }
@@ -17248,29 +17257,51 @@ class ModaleTache extends obsidian.Modal {
     this._repliNote(hote);
   }
 
-  // TEMPORAIRE (diagnostic) : journal cumulatif des clics/sélections sur tout
-  // le document + audit du DOM (combien de boîtes d'éditeur, lesquelles sont
-  // vivantes). À retirer une fois le problème réglé.
+  // TEMPORAIRE (diagnostic) : audit du DOM rejoué à chaque clic (combien de
+  // boîtes d'éditeur, vivantes ou mortes, chaîne des hauteurs) + journal
+  // cumulatif des clics/sélections. À retirer une fois le problème réglé.
   _sonderEditeurNote(hote, gen) {
     setTimeout(() => {
       if (gen !== this._noteEdGen) return;
-      const ed = this._noteEd && this._noteEd.vue && this._noteEd.vue.editor;
-      const cm = ed && ed.cm;
+      const audit = hote.createDiv({ cls: 'zfa-tache-note-debug' });
       const events = hote.createDiv({ cls: 'zfa-tache-note-debug' });
       const journal = [];
       const noter = (t) => {
         journal.unshift(t); // les plus récents d'abord (l'ellipse cache la fin)
-        if (journal.length > 6) journal.length = 6;
+        if (journal.length > 5) journal.length = 5;
         events.setText('DEBUG ' + journal.join(' ¦ '));
       };
       const cls = (n) => !n ? 'null' : (n.nodeType === 1 ?
         (n.className ? String(n.className).trim().split(/\s+/)[0] : n.tagName.toLowerCase())
         : 'texte');
       const dans = (n) => n && hote.contains(n);
+      const dessinerAudit = () => {
+        const mod = this.modalEl || this.contentEl;
+        const boxes = mod ? Array.from(mod.querySelectorAll('.zfa-tache-note-ed')) : [];
+        const parts = ['boites=' + boxes.length + ' dansHote=' +
+          hote.querySelectorAll('.zfa-tache-note-ed').length];
+        boxes.forEach((b, i) => {
+          const r = b.getBoundingClientRect();
+          const cmc = b.querySelector('.cm-content');
+          const chaine = [Math.round(r.height)];
+          let node = cmc;
+          while (node && node !== b) {
+            chaine.unshift(Math.round(node.getBoundingClientRect().height));
+            node = node.parentElement;
+          }
+          parts.push('b' + i + '@' + Math.round(r.left) + ',' + Math.round(r.top) +
+            ' ' + Math.round(r.width) + 'x' + Math.round(r.height) +
+            ' cm=' + (cmc ? chaine.join('/') : 'non') +
+            (b === (this._noteEd && this._noteEd.el) ? ' VIVE' : ' MORTE'));
+        });
+        audit.setText('DEBUG audit ' + parts.join(' ¦ '));
+      };
       this._sondeMdown = (ev) => {
         const boite = ev.target.closest && ev.target.closest('.zfa-tache-note-ed');
+        const dessus = document.elementFromPoint(ev.clientX, ev.clientY);
         noter('clic ' + cls(ev.target) + (dans(ev.target) ? '·ZONE' : '') +
-          (boite ? '·BOITE' : ''));
+          (boite ? '·BOITE' : '') + ' dessus=' + cls(dessus));
+        dessinerAudit();
       };
       document.addEventListener('mousedown', this._sondeMdown, true);
       this._sondeSel = () => {
@@ -17281,27 +17312,8 @@ class ModaleTache extends obsidian.Modal {
       };
       document.addEventListener('selectionchange', this._sondeSel);
       hote.addEventListener('keydown', (ev) => { noter('touche=' + ev.key); }, true);
-      noter('cm=' + (cm ? 'ok' : 'ABSENT'));
-      // Audit du DOM : combien de boîtes, lesquelles vivent, où sont-elles ?
-      setTimeout(() => {
-        if (gen !== this._noteEdGen) return;
-        const mod = this.modalEl || this.contentEl;
-        const boxes = mod ? Array.from(mod.querySelectorAll('.zfa-tache-note-ed')) : [];
-        noter('audit boites=' + boxes.length + ' dansHote=' +
-          hote.querySelectorAll('.zfa-tache-note-ed').length);
-        boxes.forEach((b, i) => {
-          const r = b.getBoundingClientRect();
-          const cmc = b.querySelector('.cm-content');
-          const rc = cmc ? cmc.getBoundingClientRect() : null;
-          noter('boite' + i + ' @' + Math.round(r.left) + ',' + Math.round(r.top) +
-            ' ' + Math.round(r.width) + 'x' + Math.round(r.height) +
-            ' cm=' + (cmc && rc ? Math.round(rc.width) + 'x' + Math.round(rc.height) : 'non') +
-            (b === (this._noteEd && this._noteEd.el) ? ' VIVE' : ' MORTE'));
-        });
-        noter('hote=' + cls(hote) + ' ← ' + cls(hote.parentElement) +
-          ' ← ' + (hote.parentElement && cls(hote.parentElement.parentElement)));
-      }, 600);
-    }, 0);
+      dessinerAudit();
+    }, 600);
   }
 
   // Repli : l'ancien comportement (zone de texte + aperçu formaté dessous).
