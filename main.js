@@ -17653,6 +17653,9 @@ const DEFAUTS_CALENDRIER = {
   calHeureFin: '21:00',
   calPxHeure: 42,   // hauteur d'une heure en vue semaine (zoom)
   calBandeauH: 66,  // hauteur du bandeau « journée entière » (poignée, vue semaine)
+  // Familles de tâches décochées dans le menu « Calendriers à afficher » :
+  // leur contenu (créneaux, jalons, cartes journée) ne se dessine pas.
+  calCalendriersMasques: [],
 };
 
 /* =========================================================================
@@ -22428,6 +22431,9 @@ class MoteurCalendrier {
     const nv = (chg.debut && chg.fin) ? Ariane.formatCreneau(chg.debut, chg.fin) : '';
     const anc = av ? Ariane.parseCreneau(av) : null;
     await this.greffon.majCreneau(ref, chg);
+    // Création d'un créneau : la famille de la tâche redevient affichée
+    // (« recoche » de son calendrier), sinon la carte posée resterait cachée.
+    if (!av) this._montrerFamilleDe(ref);
     if (this.racine && this.racine.focus) this.racine.focus({ preventScroll: true });
     poserAnnulation(this, async () => {
       await this.greffon.majCreneau(ref, {
@@ -22464,6 +22470,24 @@ class MoteurCalendrier {
     return v === undefined || v === null ? DEFAUTS_CALENDRIER[cle] : v;
   }
   get mode() { return this.lire('calMode') === 'semaine' ? 'semaine' : 'mois'; }
+
+  // Familles décochées dans le menu « Calendriers à afficher » (calendriers de
+  // créneaux) : ensemble des ids masqués.
+  _masqueFamilles() {
+    const v = this.lire('calCalendriersMasques');
+    return new Set(Array.isArray(v) ? v.map(String) : []);
+  }
+
+  // Recoche le calendrier d'une tâche : retire sa famille du masque. Sans effet
+  // (et sans écriture) si elle y figure déjà.
+  _montrerFamilleDe(ref) {
+    const t = (this._tachesBrutes || this._taches || []).find((x) => x.ref === ref);
+    const fam = (t && t.famille) || '';
+    const masque = this._masqueFamilles();
+    if (!masque.has(fam)) return;
+    masque.delete(fam);
+    this.ctx.ecrire('calCalendriersMasques', [...masque]);
+  }
 
   detruire() {
     this._detruit = true;
@@ -22561,6 +22585,11 @@ class MoteurCalendrier {
     c.empty();
     this._taches = (this.ctx.taches && this.ctx.taches()) || [];
     this._colonnes = (this.ctx.colonnes && this.ctx.colonnes()) || [];
+    // Masque des familles décochées : filtre du SEUL affichage. La liste brute
+    // reste sous la main (menu « Calendriers », recoche à la création).
+    this._tachesBrutes = this._taches;
+    const masque = this._masqueFamilles();
+    if (masque.size) this._taches = this._taches.filter((t) => !masque.has(t.famille || ''));
     const tn = this.ctx.triNatif && this.ctx.triNatif();
     if (tn && tn.preparer) { try { tn.preparer(this._taches); } catch (e) { /* tri optionnel */ } }
     if (this._enAttente && this._enAttente.size) {
@@ -22658,6 +22687,11 @@ class MoteurCalendrier {
       obsidian.setIcon(bPlus, 'plus');
       bPlus.onclick = () => this._zoomerSemaine(8);
     }
+    // Bouton « Calendriers à afficher » : familles de tâches (calendriers de
+    // créneaux) et, si l'intégration Apple est active, calendriers d'événements.
+    const bCal = droite.createEl('button', { cls: 'zfa-cal-nav', attr: { 'aria-label': tr('Calendriers à afficher') } });
+    obsidian.setIcon(bCal, 'eye');
+    bCal.onclick = (ev) => this._menuCalendriers(ev);
     const seg = droite.createDiv({ cls: 'zfa-cal-mode-seg' });
     for (const m of ['mois', 'semaine']) {
       const o = seg.createEl('button', {
@@ -22673,6 +22707,65 @@ class MoteurCalendrier {
 
   _pxHeureCourant() {
     return Math.max(20, Math.min(160, Number(this.lire('calPxHeure')) || 42));
+  }
+
+  // Menu « Calendriers à afficher » : les calendriers de créneaux (une famille
+  // de tâches = un calendrier) puis, si l'intégration Apple est active, les
+  // calendriers d'événements Apple. Un clic bascule la coche ; le menu se
+  // referme (limite de l'API) — il se rouvre d'un clic sur l'œil.
+  _menuCalendriers(ev) {
+    const menu = new obsidian.Menu();
+    // Familles présentes dans les données (la liste brute, pas le filtrage).
+    const familles = [];
+    const vues = new Set();
+    for (const t of (this._tachesBrutes || this._taches || [])) {
+      const f = t.famille || '';
+      if (!vues.has(f)) { vues.add(f); familles.push(f); }
+    }
+    const masque = this._masqueFamilles();
+    menu.addItem((mi) => { mi.setTitle(tr('Calendriers de tâches')).setDisabled(true); });
+    for (const id of familles) {
+      const f = this.greffon.familleDe(id);
+      const cal = id ? this.greffon.agendaCalendrierDe(id) : '';
+      menu.addItem((mi) => mi
+        .setTitle(cal ? f.nom + '  ·  ' + cal : f.nom)
+        .setIcon(f.icone || 'circle')
+        .setChecked(!masque.has(id))
+        .onClick(async () => {
+          const m = this._masqueFamilles();
+          if (m.has(id)) m.delete(id); else m.add(id);
+          await this.ctx.ecrire('calCalendriersMasques', [...m]);
+          this.dessiner();
+        }));
+    }
+    // Calendriers d'événements Apple (fond, lecture seule).
+    const greffon = this.greffon;
+    if (greffon.settings && greffon.settings.agendaActif) {
+      if (greffon._agendas === undefined && obsidian.Platform.isMacOS) {
+        greffon.chargerAgendas().catch(() => {}); // liste prête au prochain clic
+      }
+      const agendas = Array.isArray(greffon._agendas) ? greffon._agendas : [];
+      if (agendas.length) {
+        menu.addSeparator();
+        menu.addItem((mi) => { mi.setTitle(tr('Événements Apple')).setDisabled(true); });
+        const coches = greffon._agendasCoches().map((c) => c.toLowerCase());
+        for (const nom of agendas) {
+          menu.addItem((mi) => mi
+            .setTitle(nom)
+            .setIcon('calendar')
+            .setChecked(coches.includes(nom.toLowerCase()))
+            .onClick(async () => {
+              const co = greffon._agendasCoches();
+              const i = co.findIndex((c) => c.toLowerCase() === nom.toLowerCase());
+              greffon.settings.agendaCalendriersAffiches =
+                i >= 0 ? co.filter((c) => c.toLowerCase() !== nom.toLowerCase()) : co.concat([nom]);
+              await greffon.saveSettings();
+              greffon._rafraichirFond();
+            }));
+        }
+      }
+    }
+    menu.showAtMouseEvent(ev);
   }
 
   _hBandeauCourant() {
