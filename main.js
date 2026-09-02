@@ -17276,8 +17276,10 @@ class ModaleTache extends obsidian.Modal {
             const rl = ligne1.getBoundingClientRect();
             j.push('ligne1=' + Math.round(rl.width) + 'x' + Math.round(rl.height));
           }
-          const re = ed.editorEl.getBoundingClientRect();
-          j.push('edEl=' + Math.round(re.width) + 'x' + Math.round(re.height));
+          if (ed.editorEl) {
+            const re = ed.editorEl.getBoundingClientRect();
+            j.push('edEl=' + Math.round(re.width) + 'x' + Math.round(re.height));
+          }
         }
         const rh = hote.getBoundingClientRect();
         j.push('hote=' + Math.round(rh.width) + 'x' + Math.round(rh.height));
@@ -17310,21 +17312,41 @@ class ModaleTache extends obsidian.Modal {
             cm.dispatch({ selection: { anchor: 0 } });
             cm.focus();
           }
-          setTimeout(() => {
-            if (gen !== this._noteEdGen) return;
-            const ae = document.activeElement;
-            const info = ae && ae.className ? String(ae.className).split(' ')[0] : (ae && ae.tagName);
+          const compter = () => {
             const curs = hote.querySelectorAll('.cm-cursor');
             const rc = curs[0] ? curs[0].getBoundingClientRect() : null;
+            return 'curseur=' + curs.length +
+              (rc ? ' @' + Math.round(rc.left) + ',' + Math.round(rc.top) : '');
+          };
+          setTimeout(() => {
+            if (gen !== this._noteEdGen) return;
             const sel = document.getSelection();
             const dedans = sel && sel.anchorNode && hote.contains(sel.anchorNode);
-            const resume = 'curseur=' + curs.length +
-              (rc ? ' @' + Math.round(rc.left) + ',' + Math.round(rc.top) + ' ' + Math.round(rc.width) + 'x' + Math.round(rc.height) : '') +
-              ' selDom=' + (dedans ? 'oui' : 'non');
-            console.log('[Ariane][sonde] après focus+sélection :', resume,
-              '| hasFocus=', cm && cm.hasFocus);
+            let coords = '?';
+            try {
+              const c0 = cm.coordsAtPos(0);
+              coords = c0 ? Math.round(c0.left) + ',' + Math.round(c0.top) : 'null';
+            } catch (e3) { coords = 'err'; }
+            const couche = hote.querySelectorAll('.cm-cursorLayer').length;
+            const resume = compter() + ' selDom=' + (dedans ? 'oui' : 'non') +
+              ' couche=' + couche +
+              ' coords0=' + coords +
+              ' vp=' + cm.viewport.from + '-' + cm.viewport.to;
+            console.log('[Ariane][sonde] après focus+sélection :', resume);
             const l = hote.querySelector('.zfa-tache-note-debug:last-child');
             if (l) l.setText(l.getText() + ' · ' + resume);
+            // 2e tentative : cycle de mesure forcé, puis re-comptage
+            try {
+              cm.requestMeasure();
+              cm.update([]);
+            } catch (e4) { console.warn('[Ariane][sonde] update', e4); }
+            setTimeout(() => {
+              if (gen !== this._noteEdGen) return;
+              const resume2 = compter();
+              console.log('[Ariane][sonde] après mesure forcée :', resume2);
+              const l2 = hote.querySelector('.zfa-tache-note-debug:last-child');
+              if (l2) l2.setText(l2.getText() + ' · forcé:' + resume2);
+            }, 250);
           }, 250);
         } catch (e) { console.warn('[Ariane][sonde] focus', e); }
       }, 300);
