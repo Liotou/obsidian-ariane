@@ -7442,20 +7442,27 @@ class Ariane extends obsidian.Plugin {
     return lignee;
   }
 
-  // Abscisse de l'épine d'une accolade de lignée : dégagée à gauche du début
-  // de la première fille (voir _cheminAccolade).
+  // Abscisse de l'épine d'une accolade de lignée : dégagée À GAUCHE de la
+  // mère ET de la première fille datée (voir _cheminAccolade). Elle ne
+  // traverse donc jamais une barre de la famille, même quand le tri actif ou
+  // le regroupement éparpille la mère au milieu de ses filles. Les filles
+  // sans date (accrochées au bord gauche visible) ne tirent pas l'épine.
   static _epineAccolade(b, dx, refBouge) {
     const kx = (k) => k.xg + (k.ref === refBouge ? (dx || 0) : 0);
-    return Math.max(0, Math.min.apply(null, b.kids.map(kx)) - b.degage);
+    const xs = b.kids.filter((k) => !k.sansDate).map(kx);
+    xs.push(b.mx);
+    return Math.max(0, Math.min.apply(null, xs) - b.degage);
   }
 
-  // `d` d'une accolade de lignée : une épine verticale dégagée à gauche des
-  // barres, et pour chaque fille un coude arrondi qui arrive perpendiculaire-
-  // ment au CENTRE de l'extrémité gauche de sa barre. Quand la première fille
-  // démarre en même temps que la mère, l'épine ne longe plus les bords : elle
-  // quitte le coin inférieur gauche de la mère par un petit angle droit, puis
-  // descend à l'écart. `dx` décale la fille `refBouge` (glissé en direct).
-  // b : { mx, pBottom, kids:[{ref,xg,cy}], R, degage }
+  // `d` d'une accolade de lignée : une épine verticale dégagée à gauche de la
+  // mère et des filles datées, et pour chaque fille un coude arrondi qui
+  // arrive perpendiculairement au CENTRE de l'extrémité gauche de sa barre.
+  // Quand la première fille démarre en même temps que la mère, l'épine ne
+  // longe plus les bords : elle quitte le coin inférieur gauche de la mère par
+  // un petit angle droit, puis descend (ou monte) à l'écart. Une fille sans
+  // date rejoint sa bande hachurée en trait direct le long de sa ligne. `dx`
+  // décale la fille `refBouge` (glissé en direct).
+  // b : { mx, pBottom, kids:[{ref,xg,cy,sansDate}], R, degage }
   static _cheminAccolade(b, dx, refBouge) {
     const sx = Ariane._epineAccolade(b, dx, refBouge);
     const kx = (k) => k.xg + (k.ref === refBouge ? (dx || 0) : 0);
@@ -7480,7 +7487,11 @@ class Ariane extends obsidian.Plugin {
     d += ' L ' + sx + ' ' + bas;
     for (const k of b.kids) {
       const xg = kx(k);
-      if (xg <= sx + 0.5) {
+      if (k.sansDate) {
+        // Bande sans date : trait direct le long de SA ligne, jusqu'au bord
+        // gauche visible — xg peut être des deux côtés de l'épine.
+        d += ' M ' + sx + ' ' + k.cy + ' L ' + xg + ' ' + k.cy;
+      } else if (xg <= sx + 0.5) {
         // Fille collée à l'épine (début de frise) : trait direct.
         d += ' M ' + sx + ' ' + k.cy + ' L ' + xg + ' ' + k.cy;
       } else {
@@ -19913,6 +19924,7 @@ class MoteurFrise {
       const p = parRef.get(pr);
       const kids = kidsRefs.map((kr) => ({
         ref: kr, xg: parRef.get(kr)._anc.xg, cy: parRef.get(kr)._anc.cy,
+        sansDate: !!parRef.get(kr).sansDate,
       }));
       const b = { parentRef: pr, mx: p._anc.xg, pBottom: p._anc.cy + demi,
         kids, R, degage: DEGAGE };

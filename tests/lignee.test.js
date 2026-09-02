@@ -56,10 +56,11 @@ test('parent absent du rendu : la lignée s arrête à la racine rendue', () => 
 const R = 8;
 const DEGAGE = 7;
 
-test('épine dégagée à gauche du début de la première fille', () => {
+test('épine dégagée à gauche de la mère ET de la première fille datée', () => {
   const b = { mx: 100, pBottom: 57, degage: DEGAGE, kids: [
     { ref: 'A', xg: 130, cy: 100 }, { ref: 'B', xg: 110, cy: 150 }] };
-  assert.equal(Ariane._epineAccolade(b, 0, null), 110 - DEGAGE);
+  // La mère (100) est plus à gauche que B (110) : c'est elle qui commande.
+  assert.equal(Ariane._epineAccolade(b, 0, null), 100 - DEGAGE);
 });
 
 test('épine jamais négative (début de frise)', () => {
@@ -82,7 +83,7 @@ test('fille au même début que la mère : petit angle droit sous son coin, épi
   assert.ok(d.includes('L ' + mx + ' ' + cy), 'arrivée au centre du bord gauche : ' + d);
 });
 
-test('filles décalées : un coude par fille, arrivée perpendiculaire au bord gauche', () => {
+test('filles décalées : épine à gauche de la mère, un coude par fille', () => {
   const mx = 100, pBottom = 57;
   const kids = [
     { ref: 'A', xg: 130, cy: 100 },
@@ -90,14 +91,40 @@ test('filles décalées : un coude par fille, arrivée perpendiculaire au bord g
   ];
   const b = { mx, pBottom, R, degage: DEGAGE, kids };
   const d = Ariane._cheminAccolade(b, 0, null);
-  const sx = 130 - DEGAGE;
-  // L'épine démarre sous la mère (son début est sous son emprise, pas un coude).
-  assert.ok(d.startsWith('M ' + sx + ' ' + pBottom), 'épine sous la mère : ' + d);
+  const sx = mx - DEGAGE; // la mère est le point le plus à gauche
+  // L'amorce quitte le coin inférieur gauche de la mère vers l'épine dégagée.
+  assert.ok(d.startsWith('M ' + mx + ' ' + pBottom + ' Q ' + sx + ' ' + pBottom),
+    'amorce au coin de la mère : ' + d);
   for (const k of kids) {
     assert.ok(d.includes(' Q ' + sx + ' ' + k.cy + ' '), 'coude arrondi pour ' + k.ref + ' : ' + d);
     assert.ok(d.includes('L ' + k.xg + ' ' + k.cy),
       'arrivée au centre du bord gauche de ' + k.ref + ' : ' + d);
   }
+});
+
+test('mère plus à gauche que ses filles : l épine ne la traverse jamais', () => {
+  // Tri actif ou regroupement : la mère T020 démarre à gauche de ses filles ;
+  // une épine calée sur les seules filles passait EN TRAVERS de sa barre.
+  const b = { mx: 55, pBottom: 150, R, degage: DEGAGE, kids: [
+    { ref: 'F', xg: 130, cy: 45 }, { ref: 'G', xg: 517, cy: 180 }] };
+  const sx = Ariane._epineAccolade(b, 0, null);
+  assert.ok(sx <= b.mx - DEGAGE, 'épine à gauche de la mère : ' + sx);
+  const d = Ariane._cheminAccolade(b, 0, null);
+  assert.ok(d.startsWith('M 55 150 Q ' + sx + ' 150'),
+    'amorce au coin de la mère : ' + d);
+  assert.ok(d.includes('L ' + sx + ' 180'), 'épine jusqu à la fille basse : ' + d);
+});
+
+test('une fille sans date ne tire pas l épine et rejoint sa bande en direct', () => {
+  const b = { mx: 100, pBottom: 150, R, degage: DEGAGE, kids: [
+    { ref: 'D', xg: 300, cy: 100 },
+    { ref: 'S', xg: 0, cy: 130, sansDate: true }] };
+  const sx = Ariane._epineAccolade(b, 0, null);
+  assert.equal(sx, 100 - DEGAGE,
+    'la bande à x=0 ne doit pas attirer l épine (la mère commande)');
+  const d = Ariane._cheminAccolade(b, 0, null);
+  assert.ok(d.includes('M ' + sx + ' 130 L 0 130'),
+    'trait direct vers la bande, à gauche de l épine : ' + d);
 });
 
 test('première fille décalée de moins du dégagement : coude de départ quand même', () => {
