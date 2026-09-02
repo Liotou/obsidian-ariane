@@ -1441,7 +1441,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   fill: none; stroke: var(--text-muted); stroke-width: 1.6; opacity: 0.9;
   stroke-linecap: round; stroke-linejoin: round;
 }
-.zfa-gantt-lignage-noeud { fill: var(--text-muted); opacity: 0.85; }
 .zfa-gantt-lignage-actif .zfa-gantt-barre-tache,
 .zfa-gantt-lignage-actif .zfa-gantt-rempli { opacity: 0.12 !important; }
 .zfa-gantt-lignage-actif .zfa-gantt-losange { opacity: 0.12; }
