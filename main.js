@@ -7454,37 +7454,43 @@ class Ariane extends obsidian.Plugin {
     return Math.max(0, Math.min.apply(null, xs) - b.degage);
   }
 
-  // `d` d'une accolade de lignée : une épine verticale dégagée à gauche de la
-  // mère et des filles datées, et pour chaque fille un coude arrondi qui
-  // arrive perpendiculairement au CENTRE de l'extrémité gauche de sa barre.
-  // Quand la première fille démarre en même temps que la mère, l'épine ne
-  // longe plus les bords : elle quitte le coin inférieur gauche de la mère par
-  // un petit angle droit, puis descend (ou monte) à l'écart. Une fille sans
-  // date rejoint sa bande hachurée en trait direct le long de sa ligne. `dx`
-  // décale la fille `refBouge` (glissé en direct).
+  // `d` d'une accolade de lignée : l'épine est un rail vertical dégagé à
+  // gauche de la mère et des filles datées, couvrant toute la famille. La
+  // mère le rejoint au coin inférieur gauche par un PETIT ANGLE DROIT arrondi,
+  // tourné vers ses filles (ou en trait droit si elles débordent des deux
+  // côtés — tri actif, regroupement). Chaque fille reçoit le MÊME coude
+  // arrondi, arrivant perpendiculairement au CENTRE de l'extrémité gauche de
+  // sa barre ; une fille sans date rejoint sa bande en trait direct le long
+  // de sa ligne. `dx` décale la fille `refBouge` (glissé en direct).
   // b : { mx, pBottom, kids:[{ref,xg,cy,sansDate}], R, degage }
   static _cheminAccolade(b, dx, refBouge) {
     const sx = Ariane._epineAccolade(b, dx, refBouge);
     const kx = (k) => k.xg + (k.ref === refBouge ? (dx || 0) : 0);
-    const haut = Math.min.apply(null, b.kids.map((k) => k.cy));
-    const bas = Math.max(b.pBottom, Math.max.apply(null, b.kids.map((k) => k.cy)));
-    // Sommet de l'épine : sous la mère, sauf si une fille est plus haut —
-    // l'ordre d'affichage ne suit pas toujours l'arbre (tri actif,
-    // regroupement) et l'épine doit alors monter jusqu'à la première fille,
-    // sans quoi son coude flotte déconnecté.
-    const sommet = sx < b.mx
-      ? Math.min(b.pBottom + (b.mx - sx), haut)
-      : Math.min(b.pBottom, haut);
+    const cys = b.kids.map((k) => k.cy);
+    const haut = Math.min.apply(null, cys.concat([b.pBottom]));
+    const bas = Math.max.apply(null, cys.concat([b.pBottom]));
+    const rc = Math.min(b.R, b.mx - sx); // rayon du coude au coin de la mère
+    const dessus = haut < b.pBottom - 0.5; // des filles au-dessus de la mère
+    const dessous = bas > b.pBottom + 0.5; // des filles en dessous
     let d;
-    if (sx < b.mx) {
-      // Fille au même début que la mère : petit coude sous son coin
-      // inférieur gauche pour dégager l'épine à gauche des barres.
+    if (dessus && dessous) {
+      // Famille éparpillée des deux côtés : rail traversant, la mère le
+      // rejoint en trait droit (aucun sens de courbure à privilégier).
+      d = 'M ' + sx + ' ' + haut + ' L ' + sx + ' ' + bas
+        + ' M ' + b.mx + ' ' + b.pBottom + ' L ' + sx + ' ' + b.pBottom;
+    } else if (dessous) {
+      // Filles plus bas : le petit angle droit tourne vers le bas.
       d = 'M ' + b.mx + ' ' + b.pBottom
-        + ' Q ' + sx + ' ' + b.pBottom + ' ' + sx + ' ' + sommet;
+        + (b.mx - rc > sx ? ' L ' + (sx + rc) + ' ' + b.pBottom : '')
+        + ' Q ' + sx + ' ' + b.pBottom + ' ' + sx + ' ' + (b.pBottom + rc)
+        + ' L ' + sx + ' ' + bas;
     } else {
-      d = 'M ' + sx + ' ' + sommet;
+      // Filles plus haut (ou à hauteur) : le même angle droit, vers le haut.
+      d = 'M ' + sx + ' ' + haut
+        + ' L ' + sx + ' ' + (b.pBottom - rc)
+        + ' Q ' + sx + ' ' + b.pBottom + ' ' + (sx + rc) + ' ' + b.pBottom
+        + (b.mx - rc > sx ? ' L ' + b.mx + ' ' + b.pBottom : '');
     }
-    d += ' L ' + sx + ' ' + bas;
     for (const k of b.kids) {
       const xg = kx(k);
       if (k.sansDate) {
@@ -7495,7 +7501,7 @@ class Ariane extends obsidian.Plugin {
         // Fille collée à l'épine (début de frise) : trait direct.
         d += ' M ' + sx + ' ' + k.cy + ' L ' + xg + ' ' + k.cy;
       } else {
-        const r = Math.min(b.R, Math.max(1, k.cy - sommet), xg - sx);
+        const r = Math.min(b.R, Math.max(1, k.cy - haut), xg - sx);
         d += ' M ' + sx + ' ' + (k.cy - r)
           + ' Q ' + sx + ' ' + k.cy + ' ' + (sx + r) + ' ' + k.cy
           + ' L ' + xg + ' ' + k.cy;
