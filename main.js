@@ -21099,7 +21099,7 @@ class MoteurArticulation {
       const plur = sel.length > 1;
       const m = new obsidian.Menu();
       m.addItem((i) => i.setTitle(tr('Ouvrir la note')).setIcon('file-text')
-        .onClick(() => this.greffon.ouvrir(n.ref)));
+        .onClick(() => this.greffon.ouvrirNote(n.ref)));
       m.addItem((i) => i.setTitle(tr('Modifier la tâche…')).setIcon('pencil')
         .onClick(() => new ModaleTache(this.app, this.greffon,
           { ref: n.ref, apres: () => this.dessiner() }).open()));
