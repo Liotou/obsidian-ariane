@@ -7416,6 +7416,76 @@ class Ariane extends obsidian.Plugin {
     return Object.assign({ d, x2, y2: yQ, cote: aDroite ? 'gauche' : 'droite', detour: false },
       milieux(x2, yQ));
   }
+  // Lignée révélée au survol : la famille entière. On remonte la chaîne des
+  // parents rendus jusqu'à la racine, puis on prend tout son sous-arbre.
+  // Qu'on survole la mère ou une de ses filles, le trait se pose alors sur
+  // toutes les filles de chaque mère de la lignée. Renvoie un Set de refs.
+  static ligneeDe(ref, parRef) {
+    const enfants = new Map();
+    for (const l of parRef.values()) {
+      if (!l.parent) continue;
+      if (!enfants.has(l.parent)) enfants.set(l.parent, []);
+      enfants.get(l.parent).push(l.ref);
+    }
+    const lignee = new Set([ref]);
+    let cur = (parRef.get(ref) || {}).parent;
+    let racine = ref;
+    while (cur && parRef.has(cur) && !lignee.has(cur)) {
+      lignee.add(cur); racine = cur; cur = parRef.get(cur).parent;
+    }
+    const file = [racine];
+    while (file.length) {
+      for (const e of enfants.get(file.shift()) || []) {
+        if (!lignee.has(e)) { lignee.add(e); file.push(e); }
+      }
+    }
+    return lignee;
+  }
+
+  // Abscisse de l'épine d'une accolade de lignée : dégagée à gauche du début
+  // de la première fille (voir _cheminAccolade).
+  static _epineAccolade(b, dx, refBouge) {
+    const kx = (k) => k.xg + (k.ref === refBouge ? (dx || 0) : 0);
+    return Math.max(0, Math.min.apply(null, b.kids.map(kx)) - b.degage);
+  }
+
+  // `d` d'une accolade de lignée : une épine verticale dégagée à gauche des
+  // barres, et pour chaque fille un coude arrondi qui arrive perpendiculaire-
+  // ment au CENTRE de l'extrémité gauche de sa barre. Quand la première fille
+  // démarre en même temps que la mère, l'épine ne longe plus les bords : elle
+  // quitte le coin inférieur gauche de la mère par un petit angle droit, puis
+  // descend à l'écart. `dx` décale la fille `refBouge` (glissé en direct).
+  // b : { mx, pBottom, kids:[{ref,xg,cy}], R, degage }
+  static _cheminAccolade(b, dx, refBouge) {
+    const sx = Ariane._epineAccolade(b, dx, refBouge);
+    const kx = (k) => k.xg + (k.ref === refBouge ? (dx || 0) : 0);
+    const haut = Math.min.apply(null, b.kids.map((k) => k.cy));
+    const bas = Math.max(b.pBottom, Math.max.apply(null, b.kids.map((k) => k.cy)));
+    const sommet = sx < b.mx ? b.pBottom + b.mx - sx : Math.min(b.pBottom, haut);
+    let d;
+    if (sx < b.mx) {
+      // Fille au même début que la mère : petit coude sous son coin
+      // inférieur gauche pour dégager l'épine à gauche des barres.
+      d = 'M ' + b.mx + ' ' + b.pBottom
+        + ' Q ' + sx + ' ' + b.pBottom + ' ' + sx + ' ' + sommet;
+    } else {
+      d = 'M ' + sx + ' ' + sommet;
+    }
+    d += ' L ' + sx + ' ' + bas;
+    for (const k of b.kids) {
+      const xg = kx(k);
+      if (xg <= sx + 0.5) {
+        // Fille collée à l'épine (début de frise) : trait direct.
+        d += ' M ' + sx + ' ' + k.cy + ' L ' + xg + ' ' + k.cy;
+      } else {
+        const r = Math.min(b.R, Math.max(1, k.cy - sommet), xg - sx);
+        d += ' M ' + sx + ' ' + (k.cy - r)
+          + ' Q ' + sx + ' ' + k.cy + ' ' + (sx + r) + ' ' + k.cy
+          + ' L ' + xg + ' ' + k.cy;
+      }
+    }
+    return d;
+  }
 
   //#endregion Ariane · static · articulation
 
@@ -19773,9 +19843,9 @@ class MoteurFrise {
 
   /* ------------------------ Lignée révélée au survol -------------------- */
 
-  // Survol d'une barre : on atténue le reste, on met en valeur la chaîne des
-  // parents et toutes les sous-tâches, reliées par un trait plein. Rien n'est
-  // écrit ni permanent : _effacerLignage remet tout en place.
+  // Survol d'une barre : on atténue le reste, on met en valeur la famille
+  // entière (ancêtres, sœurs et sous-tâches), reliée par un trait plein.
+  // Rien n'est écrit ni permanent : _effacerLignage remet tout en place.
   _montrerLignage(ref) {
     if (this.greffon.settings.friseLignageSurvol === false) return;
     if (!this._svg || (this._lignage && this._lignage.ref === ref)) return;
@@ -19785,22 +19855,10 @@ class MoteurFrise {
     for (const l of this._lignesRendu || []) {
       if (!parRef.has(l.ref)) parRef.set(l.ref, l); // 1re occurrence (multi-groupe)
     }
-    const enfants = new Map();
-    for (const l of parRef.values()) {
-      if (!l.parent) continue;
-      if (!enfants.has(l.parent)) enfants.set(l.parent, []);
-      enfants.get(l.parent).push(l.ref);
-    }
     if (!parRef.has(ref)) return;
-    const lignee = new Set([ref]);
-    let cur = parRef.get(ref).parent;
-    while (cur && parRef.has(cur) && !lignee.has(cur)) { lignee.add(cur); cur = parRef.get(cur).parent; }
-    const file = [ref];
-    while (file.length) {
-      for (const e of enfants.get(file.shift()) || []) {
-        if (!lignee.has(e)) { lignee.add(e); file.push(e); }
-      }
-    }
+    // Lignée = la famille entière (Ariane.ligneeDe) : que l'on survole la
+    // mère ou une fille, le trait se pose sur toutes les filles.
+    const lignee = Ariane.ligneeDe(ref, parRef);
     // Ni parent ni enfant : on ne fait presque rien, juste un léger focus.
     if (lignee.size < 2) {
       const seul = this._elLignee(ref);
@@ -19813,13 +19871,14 @@ class MoteurFrise {
       const el = this._elLignee(r);
       if (el) el.classList.add(r === ref ? 'zfa-gantt-lignee-focus' : 'zfa-gantt-lignee');
     }
-    // Liens parent -> enfants en accolade orthogonale (variante B) : une épine
-    // verticale calée sur le début de la première fille, des branches
-    // horizontales arrondies vers le devant de chaque fille. Un bracket par
-    // parent présent dans la lignée.
+    // Liens parent -> enfants en accolade : une épine verticale dégagée à
+    // gauche des barres (géométrie dans Ariane._cheminAccolade), un coude
+    // arrondi par fille, l'arrivée au centre de l'extrémité gauche de chaque
+    // barre. Un bracket par parent présent dans la lignée.
     const gl = svgEl('g', { class: 'zfa-gantt-lignage' });
     const demi = (this._geo ? this._geo.epaisseur : 14) / 2;
     const R = Math.min(9, Math.max(3, Math.round(this._H / 3)));
+    const DEGAGE = 7; // écart latéral entre l'épine et le début des barres
     const parParent = new Map();
     for (const r of lignee) {
       const l = parRef.get(r);
@@ -19835,16 +19894,20 @@ class MoteurFrise {
       const kids = kidsRefs.map((kr) => ({
         ref: kr, xg: parRef.get(kr)._anc.xg, cy: parRef.get(kr)._anc.cy,
       }));
-      const b = { parentRef: pr, pBottom: p._anc.cy + demi, kids, R };
+      const b = { parentRef: pr, mx: p._anc.xg, pBottom: p._anc.cy + demi,
+        kids, R, degage: DEGAGE };
       const path = svgEl('path', { d: this._cheminBracket(b, 0, null),
         class: 'zfa-gantt-lignage-lien' });
       gl.appendChild(path);
       b.path = path;
-      const sx = Math.min.apply(null, kids.map((k) => k.xg));
-      b.dots = [b.pBottom].concat(kids.map((k) => k.cy)).map((cy) => {
-        const c = svgEl('circle', { cx: sx, cy, r: 2.4, class: 'zfa-gantt-lignage-noeud' });
+      const sx = Ariane._epineAccolade(b, 0, null);
+      const points = [[Math.max(sx, b.mx), b.pBottom, true]]
+        .concat(kids.map((k) => [sx, k.cy, false]));
+      b.dots = points.map((pt) => {
+        const c = svgEl('circle', { cx: pt[0], cy: pt[1], r: 2.4,
+          class: 'zfa-gantt-lignage-noeud' });
         gl.appendChild(c);
-        return { el: c };
+        return { el: c, surLaMere: pt[2] };
       });
       brackets.push(b);
     }
@@ -19852,27 +19915,10 @@ class MoteurFrise {
     this._lignage = { ref, gl, brackets };
   }
 
-  // `d` d'une accolade : épine verticale à x = début de la 1re fille, branches
-  // arrondies vers le devant de chaque fille. `dx` décale la fille `refBouge`
-  // (glissé en direct).
+  // `d` de l'accolade de lignée : géométrie pure dans Ariane._cheminAccolade
+  // (éprouvée hors d'Obsidian par les tests).
   _cheminBracket(b, dx, refBouge) {
-    const off = dx || 0;
-    const kx = (k) => k.xg + (k.ref === refBouge ? off : 0);
-    const sx = Math.min.apply(null, b.kids.map(kx));
-    const bot = Math.max.apply(null, b.kids.map((k) => k.cy));
-    let d = 'M ' + sx + ' ' + b.pBottom + ' L ' + sx + ' ' + bot;
-    for (const k of b.kids) {
-      const xg = kx(k);
-      if (xg <= sx + 0.5) {
-        d += ' M ' + sx + ' ' + k.cy + ' L ' + xg + ' ' + k.cy;
-      } else {
-        const r = Math.min(b.R, Math.max(1, k.cy - b.pBottom), xg - sx);
-        d += ' M ' + sx + ' ' + (k.cy - r)
-          + ' Q ' + sx + ' ' + k.cy + ' ' + (sx + r) + ' ' + k.cy
-          + ' L ' + xg + ' ' + k.cy;
-      }
-    }
-    return d;
+    return Ariane._cheminAccolade(b, dx, refBouge);
   }
 
   _elLignee(ref) {
@@ -19899,8 +19945,10 @@ class MoteurFrise {
     for (const b of this._lignage.brackets) {
       if (b.parentRef !== ref && !b.kids.some((k) => k.ref === ref)) continue;
       b.path.setAttribute('d', this._cheminBracket(b, dx, ref));
-      const sx = Math.min.apply(null, b.kids.map((k) => k.xg + (k.ref === ref ? dx : 0)));
-      for (const dot of b.dots || []) dot.el.setAttribute('cx', sx);
+      const sx = Ariane._epineAccolade(b, dx, ref);
+      for (const dot of b.dots || []) {
+        dot.el.setAttribute('cx', dot.surLaMere ? Math.max(sx, b.mx) : sx);
+      }
     }
   }
 
