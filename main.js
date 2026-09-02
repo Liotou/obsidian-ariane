@@ -3505,12 +3505,16 @@ class Ariane extends obsidian.Plugin {
     this.addCommand({
       id: 'creer-tache',
       name: tr('Tâches : créer une tâche'),
-      callback: () => new ModaleTache(this.app, this, {
-        apres: async (ref) => {
-          const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
-          if (f) await this.app.workspace.getLeaf(true).openFile(f);
-        },
-      }).open(),
+      // Création directe : la note s'ouvre tout de suite en mode édition
+      // (Markdown), comme une note qu'on remplit — pas de fenêtre-modale.
+      callback: async () => {
+        const chemin = await this.creerTache({});
+        const f = this.app.vault.getAbstractFileByPath(chemin);
+        if (f instanceof obsidian.TFile) {
+          await this.app.workspace.getLeaf(true)
+            .openFile(f, { state: { mode: 'source' } });
+        }
+      },
     });
     this.addCommand({
       id: 'structurer-brouillon-taches',
