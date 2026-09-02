@@ -17248,91 +17248,68 @@ class ModaleTache extends obsidian.Modal {
     this._repliNote(hote);
   }
 
-  // TEMPORAIRE (diagnostic) : teste chaque maillon de la chaîne d'édition de
-  // l'éditeur embarqué (sélection, édition au niveau état, frappe au niveau
-  // navigateur, boucle de rendu) et journalise les événements réels. À retirer
-  // une fois le problème réglé.
+  // TEMPORAIRE (diagnostic) : trace le chemin clic → placement du caret dans
+  // l'éditeur embarqué (preventDefault, sélections entrantes/sortantes,
+  // sélectionnabilité effective aux points cliqués). À retirer une fois le
+  // problème réglé.
   _sonderEditeurNote(hote, gen) {
     setTimeout(() => {
       if (gen !== this._noteEdGen) return;
-      this._noteAvantSonde = String(this.v.note || '');
       const ed = this._noteEd && this._noteEd.vue && this._noteEd.vue.editor;
       const cm = ed && ed.cm;
-      const tests = hote.createDiv({ cls: 'zfa-tache-note-debug' });
-      tests.setText('DEBUG tests —');
-      const dire = (t) => tests.setText(tests.getText() + ' · ' + t);
-      const etat = () => !cm ? 'pas de cm' :
-        'doc=' + JSON.stringify(cm.state.doc.toString().slice(0, 20)) +
-        ' dom=' + JSON.stringify((cm.contentDOM.textContent || '').slice(0, 20)) +
-        ' sel=' + cm.state.selection.main.anchor;
-      // Événements réels (clic / frappe de Monsieur), sur une 2e ligne.
       const events = hote.createDiv({ cls: 'zfa-tache-note-debug' });
       events.setText('DEBUG events —');
       const noter = (t) => events.setText('DEBUG events ' + t);
-      hote.addEventListener('focusin', (ev) => {
-        const tg = ev.target;
-        noter('focus→' + (tg && tg.className ? String(tg.className).split(' ')[0] : (tg && tg.tagName)));
+      const cls = (n) => !n ? 'null' :
+        (n.className ? String(n.className).split(' ')[0] : (n.tagName || '?'));
+      hote.addEventListener('mousedown', (ev) => {
+        noter('mousedown cible=' + cls(ev.target));
       }, true);
-      hote.addEventListener('keydown', (ev) => { noter('touche=' + ev.key + ' ' + etat()); }, true);
-      hote.addEventListener('input', () => { noter('input ' + etat()); }, true);
+      hote.addEventListener('mousedown', (ev) => {
+        noter('mousedown fin preventDefault=' + ev.defaultPrevented);
+      }, false);
+      hote.addEventListener('click', () => {
+        setTimeout(() => {
+          const sel = document.getSelection();
+          const n = sel && sel.anchorNode;
+          const dans = n && hote.contains(n);
+          noter('postclic ancre=' + (dans ? 'DANS' : cls(n)) +
+            ' off=' + (sel ? sel.anchorOffset : '?') + ' car=' + (sel ? sel.isCollapsed : '?'));
+        }, 0);
+      }, false);
       this._sondeSel = () => {
         const sel = document.getSelection();
-        if (sel && sel.anchorNode && hote.contains(sel.anchorNode)) noter('sélection posée ' + etat());
+        const n = sel && sel.anchorNode;
+        if (!n) return;
+        noter(hote.contains(n) ? 'sélection DANS zone off=' + sel.anchorOffset
+          : 'sélection HORS (' + cls(n) + ')');
       };
       document.addEventListener('selectionchange', this._sondeSel);
-      if (!cm) { dire('cm ABSENT'); return; }
-      // T0 : le caret natif a-t-il bien été rendu par notre CSS ?
+      hote.addEventListener('keydown', (ev) => { noter('touche=' + ev.key); }, true);
+      if (!cm) { noter('cm ABSENT'); return; }
+      // T0 : le navigateur placerait-il un caret aux points qu'on clique ?
       setTimeout(() => {
         if (gen !== this._noteEdGen) return;
-        let cc = '?';
-        try { cc = getComputedStyle(cm.contentDOM).caretColor; } catch (e) { /* rien */ }
-        const sel = document.getSelection();
-        const dedans = sel && sel.anchorNode && hote.contains(sel.anchorNode);
-        dire('T0 caret=' + cc + ' selDom=' + (dedans ? 'oui' : 'non'));
-        try { cm.focus(); cm.dispatch({ selection: { anchor: 0 } }); } catch (e1) { dire('T0 EXC ' + e1.message); return; }
-        // T1 : édition au niveau ÉTAT — le rendu suit-il ?
-        setTimeout(() => {
-          if (gen !== this._noteEdGen) return;
-          let t1 = '';
+        const r = cm.contentDOM.getBoundingClientRect();
+        const auMilieu = (x, y) => {
           try {
-            const avant = cm.state.doc.toString();
-            cm.dispatch({ changes: { from: 0, insert: 'A' } });
-            t1 = 'T1 dispatch ' + (cm.state.doc.toString() !== avant ? 'doc OK' : 'doc INCHANGÉ');
-          } catch (e) { dire('T1 EXC ' + e.message); return; }
-          setTimeout(() => {
-            if (gen !== this._noteEdGen) return;
-            const rendu = (cm.contentDOM.textContent || '').indexOf('A') >= 0 ? 'rendu OK' : 'rendu ABSENT';
-            dire(t1 + ' ' + rendu);
-            // T2 : frappe au niveau NAVIGATEUR (comme une vraie saisie) —
-            // l'état suit-il ?
-            setTimeout(() => {
-              if (gen !== this._noteEdGen) return;
-              let t2 = '';
-              try {
-                cm.dispatch({ selection: { anchor: 0 } });
-                cm.contentDOM.focus();
-                const ok = document.execCommand('insertText', false, 'B');
-                t2 = 'T2 exec=' + ok;
-              } catch (e) { dire('T2 EXC ' + e.message); return; }
-              setTimeout(() => {
-                if (gen !== this._noteEdGen) return;
-                dire(t2 + ' ' + etat());
-                // T3 : la boucle de mise à jour est-elle bloquée ?
-                setTimeout(() => {
-                  if (gen !== this._noteEdGen) return;
-                  let t3 = '';
-                  try { cm.update([]); t3 = 'T3 update ok'; } catch (e) { t3 = 'T3 EXC ' + e.message; }
-                  // Nettoyage : restaurer la note d'origine.
-                  try {
-                    const d = cm.state.doc.toString();
-                    cm.dispatch({ changes: { from: 0, to: d.length, insert: this._noteAvantSonde } });
-                  } catch (e2) { /* rien */ }
-                  dire(t3 + ' · final ' + etat());
-                }, 350);
-              }, 350);
-            }, 350);
-          }, 350);
-        }, 350);
+            const rg = document.caretRangeFromPoint(x, y);
+            return !rg ? 'null'
+              : (hote.contains(rg.startContainer) ? 'dans off=' + rg.startOffset
+                : 'HORS ' + cls(rg.startContainer));
+          } catch (e) { return 'exc'; }
+        };
+        const ligne1 = cm.contentDOM.querySelector('.cm-line');
+        let l1 = '?';
+        if (ligne1) {
+          const rl = ligne1.getBoundingClientRect();
+          l1 = auMilieu(r.left + 10, rl.top + rl.height / 2);
+        }
+        const us = (el) => el ? getComputedStyle(el).userSelect : '?';
+        noter('T0 mil=' + auMilieu(r.left + r.width / 2, r.top + r.height / 2) +
+          ' l1=' + l1 +
+          ' usel[cont=' + us(cm.contentDOM) + ' ligne=' + us(ligne1) +
+          ' scroll=' + us(cm.scrollDOM) + ' hote=' + us(hote) + ']');
       }, 400);
     }, 0);
   }
