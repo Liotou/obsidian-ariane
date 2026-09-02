@@ -129,3 +129,27 @@ test('fille collée à l\'épine (x=0) : trait direct sans coude négatif', () =
   const d = Ariane._cheminAccolade(b, 0, null);
   assert.ok(d.includes('M 0 100 L 0 100'), 'trait direct attendu : ' + d);
 });
+
+test('fille au-dessus de sa mère (frise éparpillée) : l\'épine monte jusqu à elle', () => {
+  // Tri actif ou regroupement : l'ordre d'affichage ne suit plus l'arbre et
+  // une fille peut se retrouver AU-DESSUS de sa mère (cas T010/T020). Le
+  // sommet de l'épine doit atteindre la première fille, sans quoi son coude
+  // flotte déconnecté du trait.
+  const mx = 100, pBottom = 150;
+  const b = { mx, pBottom, R, degage: DEGAGE, kids: [
+    { ref: 'Haute', xg: mx, cy: 45 },     // même début que la mère, plus haut
+    { ref: 'Basse', xg: 560, cy: 180 },   // sous la mère, décalée à droite
+  ] };
+  const d = Ariane._cheminAccolade(b, 0, null);
+  const sx = mx - DEGAGE;
+  // La courbe d'amorce quitte le coin de la mère et grimpe jusqu'à la fille
+  // haute : l'épine démarre à sa hauteur, plus bas elle la laisserait flotte.
+  assert.ok(d.startsWith('M ' + mx + ' ' + pBottom + ' Q ' + sx + ' ' + pBottom
+      + ' ' + sx + ' 45'),
+    'l amorce doit monter jusqu à la fille haute : ' + d);
+  // L'épine redescend jusqu'à la fille la plus basse…
+  assert.ok(d.includes('L ' + sx + ' 180'), 'épine jusqu à la plus basse : ' + d);
+  // …et chaque fille reçoit son arrivée au centre de son bord gauche.
+  assert.ok(d.includes('L ' + mx + ' 45'), 'arrivée fille haute : ' + d);
+  assert.ok(d.includes('L 560 180'), 'arrivée fille basse : ' + d);
+});

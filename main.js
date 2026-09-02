@@ -7461,7 +7461,13 @@ class Ariane extends obsidian.Plugin {
     const kx = (k) => k.xg + (k.ref === refBouge ? (dx || 0) : 0);
     const haut = Math.min.apply(null, b.kids.map((k) => k.cy));
     const bas = Math.max(b.pBottom, Math.max.apply(null, b.kids.map((k) => k.cy)));
-    const sommet = sx < b.mx ? b.pBottom + b.mx - sx : Math.min(b.pBottom, haut);
+    // Sommet de l'épine : sous la mère, sauf si une fille est plus haut —
+    // l'ordre d'affichage ne suit pas toujours l'arbre (tri actif,
+    // regroupement) et l'épine doit alors monter jusqu'à la première fille,
+    // sans quoi son coude flotte déconnecté.
+    const sommet = sx < b.mx
+      ? Math.min(b.pBottom + (b.mx - sx), haut)
+      : Math.min(b.pBottom, haut);
     let d;
     if (sx < b.mx) {
       // Fille au même début que la mère : petit coude sous son coin
