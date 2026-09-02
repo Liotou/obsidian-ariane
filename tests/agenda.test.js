@@ -34,6 +34,27 @@ test('genererJXAEvenementsPush : entrée vide reste valide', () => {
   assert.ok(s.includes('IN.evenements'));
 });
 
+test('genererJXAEvenementsPush : garde « pris » — deux créneaux du même jour, même URL', () => {
+  const lien = 'obsidian://open?vault=V&file=T26-001';
+  const s = Ariane.genererJXAEvenementsPush([
+    { ref: 'T26-001', idx: 0, id: '', titre: '[T26-001] - Lire (session 1)',
+      lien, calendrier: 'Doctorat', debut: '2026-09-08T09:00', fin: '2026-09-08T12:45' },
+    { ref: 'T26-001', idx: 1, id: '', titre: '[T26-001] - Lire (session 2)',
+      lien, calendrier: 'Doctorat', debut: '2026-09-08T15:00', fin: '2026-09-08T17:30' },
+  ]);
+  new vm.Script(s);
+  // Un identifiant revendiqué par un créneau n'est jamais réattribué à un autre
+  // (résolution par id, rattrapage anti-doublon, revendication, suppression).
+  assert.ok(s.includes('var pris={}'));
+  assert.ok(s.includes('pris[ex0]'));
+  assert.ok(s.includes('pris[exq]'));
+  assert.ok(s.includes('pris[exi]=1'));
+  assert.ok(s.includes('pris[exf]=1'));
+  assert.ok(s.includes('pris[String(v.id)]'));
+  // Un événement qui refuse de se sauver est reconstruit à neuf.
+  assert.ok(s.includes('var e2=$.EKEvent.eventWithEventStore(ST)'));
+});
+
 test('genererJXAEvenementsReleve : script valide, paires, MANQUANT', () => {
   const s = Ariane.genererJXAEvenementsReleve([{ ref: 'T26-001', idx: 0, id: 'X1' }], 90);
   new vm.Script(s);

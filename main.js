@@ -6690,15 +6690,21 @@ class Ariane extends obsidian.Plugin {
       'function run(){',
       '  var IN=' + IN + '; var ACC=Number(acces());',
       '  if(ACC!==3 && ACC!==4) return "__ACCES__\\t"+ACC;',
-      '  var out=[];',
+      // `pris` : identifiants déjà attribués à un créneau de CE run. Deux
+      // créneaux d’une même tâche partagent la même URL de note — sans ce
+      // garde, le rattrapage anti-doublon rattachait les deux sessions au
+      // même EKEvent, qui se faisait alors battre d’un push à l’autre.
+      '  var out=[]; var pris={};',
       '  for(var i=0;i<IN.evenements.length;i++){',
       '    var v=IN.evenements[i];',
       '    if(v.supprimer){',
+      '      if(v.id && pris[String(v.id)]){ out.push(v.ref+"\\t"+v.idx+"\\t"+String(v.id)); continue; }',
       '      var er=evById(v.id);',
       '      if(er){ try{ ST.removeEventSpanCommitError(er,0,true,null); }catch(e){} }',
       '      out.push(v.ref+"\\t"+v.idx+"\\tSUPPRIME"); continue;',
       '    }',
       '    var e=evById(v.id);',
+      '    if(e && v.id){ var ex0=evId(e); if(ex0 && pris[ex0]) e=null; }',
       '    var cal=calParNom(v.calendrier);',
       '    if(!cal){ out.push(v.ref+"\\t"+v.idx+"\\tERREUR\\tcalendrier introuvable: "+net(v.calendrier)); continue; }',
       // Identifiant non résolu (churn iCloud) : avant de créer un doublon, on
@@ -6711,12 +6717,14 @@ class Ariane extends obsidian.Plugin {
       '      var ex=ST.eventsMatchingPredicate(pr);',
       '      var vu="";',
       '      if(ex){ for(var q=0;q<ex.count;q++){ var ee=ex.objectAtIndex(q);',
+      '        var exq=evId(ee); if(exq && pris[exq]) continue;',
       '        if(String(ObjC.unwrap(ee.title))===String(v.titre)){ e=ee; break; }',
       '        try{ vu=String(ObjC.unwrap(ee.URL.absoluteString)||""); }catch(eu){ vu=""; }',
       '        if(v.lien && vu && vu===String(v.lien)){ e=ee; break; } } }',
       '    }catch(eDup){} }',
       '    if(e){ try{ if(ObjC.unwrap(e.calendar.calendarIdentifier)!==ObjC.unwrap(cal.calendarIdentifier)) e.calendar=cal; }catch(er2){} }',
       '    else { e=$.EKEvent.eventWithEventStore(ST); e.calendar=cal; }',
+      '    var exi=evId(e); if(exi) pris[exi]=1;',
       '    try{ e.title=v.titre; }catch(er3){}',
       '    try{ e.notes=v.notes||""; }catch(er4){}',
       '    try{ if(v.lien){ var u=$.NSURL.URLWithString(v.lien); if(u) e.URL=u; } }catch(erU){}',
@@ -6728,9 +6736,23 @@ class Ariane extends obsidian.Plugin {
       // NB : lire un out-param NSError** en JXA fait planter osascript (exit 139).
       // On passe null et on se contente du booléen de retour.
       '    var ok=false;',
-      '    try{ ok=ST.saveEventSpanCommitError(e,0,true,null); }catch(er8){ out.push(v.ref+"\\t"+v.idx+"\\tERREUR\\t"+er8); continue; }',
+      '    try{ ok=ST.saveEventSpanCommitError(e,0,true,null); }catch(er8){}',
+      // Un événement dont l’identifiant a été partagé entre deux créneaux peut
+      // refuser de se sauver, même une fois la cause réparée : on le reconstruit
+      // à neuf ; l’ancien est retiré si possible.
+      '    if(!ok && v.id){',
+      '      var e2=$.EKEvent.eventWithEventStore(ST); e2.calendar=cal;',
+      '      try{ e2.title=v.titre; }catch(er9){}',
+      '      try{ e2.notes=v.notes||""; }catch(erA){}',
+      '      try{ if(v.lien){ var u2=$.NSURL.URLWithString(v.lien); if(u2) e2.URL=u2; } }catch(erB){}',
+      '      try{ e2.isAllDay=false; }catch(erC){}',
+      '      try{ e2.startDate=sd; e2.endDate=ed; }catch(erD){}',
+      '      try{ ok=ST.saveEventSpanCommitError(e2,0,true,null); }catch(erE){}',
+      '      if(ok){ try{ ST.removeEventSpanCommitError(e,0,true,null); }catch(erF){} e=e2; }',
+      '    }',
       '    if(!ok){ out.push(v.ref+"\\t"+v.idx+"\\tERREUR\\tsaveEvent a renvoyé false"); continue; }',
-      '    out.push(v.ref+"\\t"+v.idx+"\\t"+evId(e));',
+      '    var exf=evId(e); if(exf) pris[exf]=1;',
+      '    out.push(v.ref+"\\t"+v.idx+"\\t"+exf);',
       '  }',
       '  return out.join("\\n");',
       '}',
@@ -13802,7 +13824,11 @@ class Ariane extends obsidian.Plugin {
     for (const t of cibles) {
       const arr = recu.get(t.ref) || [];
       const liste = [];
-      for (let i = 0; i < t._crs.length; i += 1) liste.push(arr[i] || t._ids[i] || '');
+      let confirme = true; // chaque créneau a reçu un identifiant du push
+      for (let i = 0; i < t._crs.length; i += 1) {
+        if (!arr[i]) confirme = false; // échec : ancien lien conservé, mais pas de « à jour »
+        liste.push(arr[i] || t._ids[i] || '');
+      }
       liens += liste.filter(Boolean).length;
       if (JSON.stringify(liste) !== JSON.stringify(t._ids)) {
         if (t.fichier) this.marquerEcriture(t.fichier.path); // pas de push en écho
@@ -13811,11 +13837,15 @@ class Ariane extends obsidian.Plugin {
       // agenda-sync n'est écrit QUE si tous les créneaux ont bien un événement
       // lié — sinon la relève pourrait croire la note « à jour » et retirer le
       // lien d'un créneau que le push n'a pas réussi à créer.
-      const complet = t._crs.length ? liste.every(Boolean) : true;
-      if (t.fichier && complet) {
+      const complet = t._crs.length ? (confirme && liste.every(Boolean)) : true;
+      // Et il n'est réécrit QUE s'il change : une réécriture à l'identique
+      // relance la file du metadataCache, dont l'écho peut dépasser la fenêtre
+      // d'anti-écho (2,5 s des deux côtés) et déclencher un push sans fin.
+      const instant = Ariane.instantAgenda(t);
+      if (t.fichier && complet && String(t._fm['agenda-sync'] || '') !== instant) {
         this.marquerEcriture(t.fichier.path);
         await this.app.fileManager.processFrontMatter(t.fichier, (x) => {
-          x['agenda-sync'] = Ariane.instantAgenda(t);
+          x['agenda-sync'] = instant;
         });
       }
       n += 1;
