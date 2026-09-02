@@ -17263,9 +17263,19 @@ class ModaleTache extends obsidian.Modal {
         if (cm) {
           const cont = cm.contentDOM;
           const rc = cont.getBoundingClientRect();
+          const cs = getComputedStyle(cont);
           j.push('ce=' + cont.getAttr('contenteditable'));
-          j.push('cont=' + Math.round(rc.width) + 'x' + Math.round(rc.height));
+          j.push('cont=' + Math.round(rc.width) + 'x' + Math.round(rc.height) + ' usel=' + cs.userSelect);
           j.push('txt=' + (cont.textContent || '').length);
+          j.push('docLignes=' + (cm.state && cm.state.doc ? cm.state.doc.lines : '?'));
+          j.push('readOnly=' + (cm.state && cm.state.readOnly));
+          try { j.push('editable=' + cm.editable); } catch (e2) { j.push('editable=?'); }
+          j.push('hasFocus=' + cm.hasFocus);
+          const ligne1 = cont.querySelector('.cm-line');
+          if (ligne1) {
+            const rl = ligne1.getBoundingClientRect();
+            j.push('ligne1=' + Math.round(rl.width) + 'x' + Math.round(rl.height));
+          }
           const re = ed.editorEl.getBoundingClientRect();
           j.push('edEl=' + Math.round(re.width) + 'x' + Math.round(re.height));
         }
@@ -17275,16 +17285,23 @@ class ModaleTache extends obsidian.Modal {
         j.push('mode=' + ((vu && vu.currentMode && vu.currentMode.type) || '?'));
       } catch (e) { j.push('err=' + e.message); }
       console.log('[Ariane][sonde]', j.join(' | '));
-      const ligne = hote.createDiv({ cls: 'zfa-tache-note-debug' });
-      ligne.setText('DEBUG ' + j.join(' | '));
+      const mesures = hote.createDiv({ cls: 'zfa-tache-note-debug' });
+      mesures.setText('DEBUG ' + j.join(' | '));
+      const events = hote.createDiv({ cls: 'zfa-tache-note-debug' });
+      events.setText('DEBUG events —');
       // Qui reçoit réellement le focus quand on clique dans la zone ?
       hote.addEventListener('focusin', (ev) => {
         const t = ev.target;
         const info = t && t.className ? String(t.className).split(' ')[0] : (t && t.tagName);
-        const l = hote.querySelector('.zfa-tache-note-debug');
-        if (l) l.setText('DEBUG focus→' + info);
+        const l = hote.querySelector('.zfa-tache-note-debug:last-child');
+        if (l) l.setText('DEBUG events focus→' + info + ' hasFocus=' + (cm && cm.hasFocus));
       }, true);
-      // Le focus MANUEL marche-t-il ? (si oui, l'éditeur vit ; si non, il est mort)
+      hote.addEventListener('keydown', (ev) => {
+        const l = hote.querySelector('.zfa-tache-note-debug:last-child');
+        if (l) l.setText('DEBUG events touche=' + ev.key + ' cible=' +
+          (ev.target && ev.target.className ? String(ev.target.className).split(' ')[0] : '?'));
+      }, true);
+      // Le focus MANUEL marche-t-il ?
       setTimeout(() => {
         if (gen !== this._noteEdGen) return;
         try {
@@ -17293,9 +17310,11 @@ class ModaleTache extends obsidian.Modal {
             if (gen !== this._noteEdGen) return;
             const ae = document.activeElement;
             const info = ae && ae.className ? String(ae.className).split(' ')[0] : (ae && ae.tagName);
-            console.log('[Ariane][sonde] actif après cm.focus() :', info);
-            const l = hote.querySelector('.zfa-tache-note-debug');
-            if (l) l.setText(l.getText() + ' · focus→' + info);
+            console.log('[Ariane][sonde] actif après cm.focus() :', info,
+              '| hasFocus=', cm && cm.hasFocus,
+              '| sel=', cm && cm.state && cm.state.selection.main.from);
+            const l = hote.querySelector('.zfa-tache-note-debug:last-child');
+            if (l) l.setText(l.getText() + ' · focus→' + info + ' hasFocus=' + (cm && cm.hasFocus));
           }, 200);
         } catch (e) { console.warn('[Ariane][sonde] focus', e); }
       }, 300);
