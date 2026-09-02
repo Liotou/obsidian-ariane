@@ -2337,6 +2337,26 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-cal-carte-prop-nom { color: var(--text-faint); }
 .zfa-cal-carte.est-retard { border-color: var(--text-error);
   box-shadow: inset 2px 0 0 0 var(--text-error); }
+
+/* Effet de survol des créneaux et cartes : la carte « répond » au pointeur
+   (légère élévation + liseré à sa couleur), sans toucher aux états de glisse
+   qui posent leurs propres ombres inline. */
+.zfa-cal-carte,
+.zfa-cal-pastille,
+.zfa-cal-evt { transition: box-shadow 0.12s ease, border-color 0.12s ease,
+  background 0.12s ease, filter 0.12s ease; }
+.zfa-cal-carte:hover {
+  filter: brightness(1.06);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  border-color: color-mix(in srgb, var(--zfa-cal-coul, var(--text-faint)) 65%, transparent);
+}
+.zfa-cal-pastille:hover {
+  background: color-mix(in srgb, var(--zfa-cal-coul, var(--text-faint)) 30%, var(--background-primary));
+}
+.zfa-cal-evt:hover {
+  background: color-mix(in srgb, var(--zfa-cal-coul, var(--text-muted)) 14%, var(--background-secondary));
+  border-color: var(--background-modifier-border-hover);
+}
 .zfa-cal-carte.est-horaire {
   /* Créneau : fond teinté + fin liseré complet, PAS de barre verticale gauche
      (celle-ci est réservée aux événements Apple réels, .zfa-cal-evt). */
