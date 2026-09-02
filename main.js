@@ -18086,6 +18086,9 @@ class MoteurFrise {
 
     const table = gauche.querySelector('.zfa-gantt-table');
     droite.addEventListener('scroll', () => {
+      // Le lignage est posé en coordonnées contenu : au défilement il se
+      // découperait des barres — on l'efface (le survol le reposera).
+      this._effacerLignage();
       const y = -droite.scrollTop;
       table.style.top = y + 'px';
       if (piste) piste.style.transform = 'translateY(' + y + 'px)';
@@ -19261,6 +19264,11 @@ class MoteurFrise {
         bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + tr('sans date') + ' — '
           + tr('cliquez pour dater');
         bande.appendChild(bulle);
+        // Accroche pour la lignée : sans dates, la tâche n'a pas de point dans
+        // le temps — on la retient au bord gauche VISIBLE de la frise (le
+        // calque défile avec le contenu ; _montrerLignage rafraîchit xg).
+        l._anc = { xg: 0, xd: cfg.largeur, cy: yLigne + l.h / 2 };
+        bande.dataset.ref = l.ref;
         g.appendChild(bande);
         return;
       }
@@ -19856,6 +19864,12 @@ class MoteurFrise {
       if (!parRef.has(l.ref)) parRef.set(l.ref, l); // 1re occurrence (multi-groupe)
     }
     if (!parRef.has(ref)) return;
+    // Les tâches sans date sont accrochées au bord gauche VISIBLE de la frise :
+    // leur ancre suit le défilement, on la rafraîchit à chaque survol.
+    const gxBord = this._droite ? this._droite.scrollLeft : 0;
+    for (const l of parRef.values()) {
+      if (l.sansDate && l._anc) l._anc.xg = gxBord;
+    }
     // Lignée = la famille entière (Ariane.ligneeDe) : que l'on survole la
     // mère ou une fille, le trait se pose sur toutes les filles.
     const lignee = Ariane.ligneeDe(ref, parRef);
@@ -19923,7 +19937,8 @@ class MoteurFrise {
 
   _elLignee(ref) {
     return this._svg.querySelector(
-      '.zfa-gantt-groupe[data-ref="' + ref + '"], .zfa-gantt-losange[data-ref="' + ref + '"]');
+      '.zfa-gantt-groupe[data-ref="' + ref + '"], .zfa-gantt-losange[data-ref="' + ref + '"]'
+      + ', .zfa-gantt-sansdate-bande[data-ref="' + ref + '"]');
   }
 
   _effacerLignage() {
@@ -19969,7 +19984,9 @@ class MoteurFrise {
       let xg = mere._ancPropre ? mere._ancPropre.xg : Infinity;
       let xd = mere._ancPropre ? mere._ancPropre.xd : -Infinity;
       for (const k of this._lignesRendu) {
-        if (k.parent !== ref) continue;
+        // Une fille sans date n'a pas de dates : elle ne participe pas à
+        // l'enveloppe de sa mère.
+        if (k.parent !== ref || k.sansDate) continue;
         const g = geoProv.get(k.ref) || (k._anc ? { xg: k._anc.xg, xd: k._anc.xd } : null);
         if (!g) continue;
         if (g.xg < xg) xg = g.xg;
