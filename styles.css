@@ -1910,6 +1910,28 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-tache-note-apercu > :last-child { margin-bottom: 0; }
 .zfa-tache-note-vide { color: var(--text-faint); font-style: italic; }
 
+/* Éditeur embarqué de la note de travail : une vraie vue Markdown Obsidian
+   (mode édition, live preview compris) logée dans la modale — on édite dans
+   le rendu, comme dans une note. Le conteneur reçoit une hauteur fixe ;
+   tout l'intérieur est recalé à 100 %. */
+.zfa-tache-note-ed {
+  height: 220px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  background: var(--background-primary);
+}
+.zfa-tache-note-ed .workspace-leaf-content,
+.zfa-tache-note-ed .view-content,
+.zfa-tache-note-ed .markdown-source-view,
+.zfa-tache-note-ed .markdown-source-view.mod-cm6 .cm-editor,
+.zfa-tache-note-ed .markdown-source-view.mod-cm6 .cm-scroller { height: 100%; }
+.zfa-tache-note-ed .view-content { padding: 0; }
+/* Pas de fichier derrière cette vue : titre inline et propriétés n'ont pas
+   de sens ici. */
+.zfa-tache-note-ed .inline-title,
+.zfa-tache-note-ed .metadata-container { display: none; }
+
 .zfa-tache-grille {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   column-gap: 18px;

@@ -17157,6 +17157,8 @@ class ModaleTache extends obsidian.Modal {
     };
     this.props = {};
     this._noteInitiale = '';
+    this._noteEd = null;      // éditeur embarqué (vue Markdown) : { vue, el }
+    this._noteEdGen = 0;      // jeton des constructions (redessins concurrents)
   }
 
   async onOpen() {
@@ -17184,6 +17186,81 @@ class ModaleTache extends obsidian.Modal {
       else if (R && typeof R.renderMarkdown === 'function') R.renderMarkdown(texte, el, src, this._comp);
       else el.setText(texte);
     } catch (e) { el.setText(texte); }
+  }
+
+  // Note de travail : la section d'en-tête, puis l'éditeur. L'éditeur est une
+  // vraie vue Markdown (MarkdownView en mode édition, la même qu'une note)
+  // construite UNE FOIS pour la vie de la modale et relogée à chaque
+  // redessin — changer famille ou statut reconstruit tout le formulaire,
+  // le texte et le curseur de la note doivent survivre.
+  _dessinerNote(nb) {
+    const nl = nb.createEl('div', { cls: 'zfa-tache-note-tete' });
+    const ni = nl.createSpan({ cls: 'zfa-tache-ic' });
+    obsidian.setIcon(ni, 'text');
+    nl.createSpan({ text: tr('Note de travail') });
+    if (this._noteEd && this._noteEd.el) {
+      nb.appendChild(this._noteEd.el);
+      try { // repriser l'éditeur après son déménagement
+        const cm = this._noteEd.vue && this._noteEd.vue.editor
+          && this._noteEd.vue.editor.cm;
+        if (cm && cm.requestMeasure) cm.requestMeasure();
+      } catch (e) { /* rien */ }
+      return;
+    }
+    this._construireEditeurNote(nb.createDiv({ cls: 'zfa-tache-note-hote' }));
+  }
+
+  // Montage de la vue Markdown embarquée. Toute l'API est optionnelle : au
+  // premier accroc, repli sur l'ancien couple zone de texte + aperçu.
+  async _construireEditeurNote(hote) {
+    const V = obsidian.MarkdownView;
+    const gen = (this._noteEdGen = this._noteEdGen + 1);
+    let vue = null;
+    if (V) {
+      try {
+        vue = new V();
+        if (!vue.app) vue.app = this.app; // hors feuille, personne ne la lui donne
+        await vue.load();
+        await vue.setMode({ source: true });
+        if (gen !== this._noteEdGen) { try { vue.unload(); } catch (e) { /* rien */ } return; }
+        vue.setViewData(String(this.v.note || ''), true);
+        const el = createDiv({ cls: 'zfa-tache-note-ed' });
+        el.appendChild(vue.containerEl);
+        hote.appendChild(el);
+        this._noteEd = { vue, el };
+        return;
+      } catch (e) {
+        try { if (vue) vue.unload(); } catch (e2) { /* rien */ }
+        if (gen !== this._noteEdGen) return;
+        this._noteEd = null;
+      }
+    }
+    if (gen !== this._noteEdGen) return;
+    this._repliNote(hote);
+  }
+
+  // Repli : l'ancien comportement (zone de texte + aperçu formaté dessous).
+  _repliNote(hote) {
+    const na = hote.createEl('textarea', { cls: 'zfa-tache-note-zone' });
+    na.rows = 5;
+    na.placeholder = tr('Ce que vous voulez garder sous la main pour cette tâche. Markdown : **gras**, listes, [[liens]]…');
+    na.value = this.v.note || '';
+    const nap = hote.createEl('div', { cls: 'zfa-tache-note-apercu markdown-rendered' });
+    this._rendreMarkdown(nap, this.v.note);
+    clearTimeout(this._noteDeb);
+    na.oninput = () => {
+      this.v.note = na.value;
+      clearTimeout(this._noteDeb);
+      this._noteDeb = setTimeout(() => this._rendreMarkdown(nap, this.v.note), 250);
+    };
+  }
+
+  // Relit l'éditeur embarqué : le texte de la note y vit entre les redessins,
+  // c'est lui l'original — on le récupère au moment d'enregistrer.
+  _relireNoteEditeur() {
+    if (this._noteEd && this._noteEd.vue) {
+      try { this.v.note = this._noteEd.vue.getViewData(); } catch (e) { /* rien */ }
+    }
   }
 
   async _chargerDepuisNote() {
@@ -17261,24 +17338,10 @@ class ModaleTache extends obsidian.Modal {
       .addText((t) => t.setValue(this.v.intitule)
         .onChange((x) => { this.v.intitule = x; }));
 
-    // Note de travail : édition + aperçu Markdown formaté en temps réel.
+    // Note de travail : on édite DANS le rendu — une vraie vue Markdown
+    // Obsidian embarquée, comme une note en mode édition.
     const nb = c.createDiv({ cls: 'zfa-tache-note' });
-    const nl = nb.createEl('div', { cls: 'zfa-tache-note-tete' });
-    const ni = nl.createSpan({ cls: 'zfa-tache-ic' });
-    obsidian.setIcon(ni, 'text');
-    nl.createSpan({ text: tr('Note de travail') });
-    const na = nb.createEl('textarea', { cls: 'zfa-tache-note-zone' });
-    na.rows = 5;
-    na.placeholder = tr('Ce que vous voulez garder sous la main pour cette tâche. Markdown : **gras**, listes, [[liens]]…');
-    na.value = this.v.note || '';
-    const nap = nb.createEl('div', { cls: 'zfa-tache-note-apercu markdown-rendered' });
-    this._rendreMarkdown(nap, this.v.note);
-    clearTimeout(this._noteDeb);
-    na.oninput = () => {
-      this.v.note = na.value;
-      clearTimeout(this._noteDeb);
-      this._noteDeb = setTimeout(() => this._rendreMarkdown(nap, this.v.note), 250);
-    };
+    this._dessinerNote(nb);
 
     // Le reste des champs génériques, sur deux colonnes.
     const g = c.createDiv({ cls: 'zfa-tache-grille' });
@@ -17436,6 +17499,7 @@ class ModaleTache extends obsidian.Modal {
       return;
     }
     this.repondu = true;
+    this._relireNoteEditeur();
     if (this.v.jalon) this.v.debut = '';
     let ref = this.ref;
     if (!ref) {
@@ -17473,6 +17537,10 @@ class ModaleTache extends obsidian.Modal {
   }
 
   onClose() {
+    if (this._noteEd) {
+      if (this._noteEd.vue) { try { this._noteEd.vue.unload(); } catch (e) { /* rien */ } }
+      this._noteEd = null;
+    }
     if (this._comp) { try { this._comp.unload(); } catch (e) { /* rien */ } }
     this.contentEl.empty();
   }
