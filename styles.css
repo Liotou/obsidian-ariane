@@ -1945,6 +1945,11 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
    de sens ici. */
 .zfa-tache-note-ed .inline-title,
 .zfa-tache-note-ed .metadata-container { display: none; }
+/* Obsidian masque le caret natif (caret-color: transparent, il dessine le sien)
+   ; hors espace de travail, ce curseur dessiné ne vient pas (aucun .cm-cursor
+   créé même focus + sélection valide). On rend donc la main au caret natif du
+   navigateur, qui ne dépend que de la sélection DOM — laquelle fonctionne. */
+.zfa-tache-note-ed .cm-content { caret-color: var(--text-normal) !important; }
 
 .zfa-tache-grille {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

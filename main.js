@@ -17248,109 +17248,32 @@ class ModaleTache extends obsidian.Modal {
     this._repliNote(hote);
   }
 
-  // TEMPORAIRE (diagnostic) : mesure l'état réel de l'éditeur embarqué et
-  // l'affiche dans la modale, pour identifier pourquoi le clic ne fait rien.
-  // À retirer une fois le problème réglé.
+  // TEMPORAIRE (diagnostic) : journal minimal des événements de l'éditeur
+  // embarqué, pour vérifier que clic / sélection / frappe passent. À retirer
+  // une fois le problème réglé.
   _sonderEditeurNote(hote, gen) {
     setTimeout(() => {
       if (gen !== this._noteEdGen) return;
-      const j = [];
-      let cm = null;
-      try {
-        const ed = this._noteEd && this._noteEd.vue && this._noteEd.vue.editor;
-        cm = ed && ed.cm;
-        j.push('cm=' + (cm ? 'ok' : 'ABSENT'));
-        if (cm) {
-          const cont = cm.contentDOM;
-          const rc = cont.getBoundingClientRect();
-          const cs = getComputedStyle(cont);
-          j.push('ce=' + cont.getAttr('contenteditable'));
-          j.push('cont=' + Math.round(rc.width) + 'x' + Math.round(rc.height) + ' usel=' + cs.userSelect);
-          j.push('txt=' + (cont.textContent || '').length);
-          j.push('docLignes=' + (cm.state && cm.state.doc ? cm.state.doc.lines : '?'));
-          j.push('readOnly=' + (cm.state && cm.state.readOnly));
-          try { j.push('editable=' + cm.editable); } catch (e2) { j.push('editable=?'); }
-          j.push('hasFocus=' + cm.hasFocus);
-          const ligne1 = cont.querySelector('.cm-line');
-          if (ligne1) {
-            const rl = ligne1.getBoundingClientRect();
-            j.push('ligne1=' + Math.round(rl.width) + 'x' + Math.round(rl.height));
-          }
-          if (ed.editorEl) {
-            const re = ed.editorEl.getBoundingClientRect();
-            j.push('edEl=' + Math.round(re.width) + 'x' + Math.round(re.height));
-          }
-        }
-        const rh = hote.getBoundingClientRect();
-        j.push('hote=' + Math.round(rh.width) + 'x' + Math.round(rh.height));
-        j.push('note=' + String(this.v.note || '').length);
-        const vu = this._noteEd && this._noteEd.vue;
-        j.push('mode=' + ((vu && vu.currentMode && vu.currentMode.type) || '?'));
-      } catch (e) { j.push('err=' + e.message); }
-      console.log('[Ariane][sonde]', j.join(' | '));
-      const mesures = hote.createDiv({ cls: 'zfa-tache-note-debug' });
-      mesures.setText('DEBUG ' + j.join(' | '));
-      const events = hote.createDiv({ cls: 'zfa-tache-note-debug' });
-      events.setText('DEBUG events —');
-      // Qui reçoit réellement le focus quand on clique dans la zone ?
+      const l = hote.createDiv({ cls: 'zfa-tache-note-debug' });
+      l.setText('DEBUG —');
+      const maj = (t) => l.setText('DEBUG ' + t);
       hote.addEventListener('focusin', (ev) => {
         const t = ev.target;
-        const info = t && t.className ? String(t.className).split(' ')[0] : (t && t.tagName);
-        const l = hote.querySelector('.zfa-tache-note-debug:last-child');
-        if (l) l.setText('DEBUG events focus→' + info + ' hasFocus=' + (cm && cm.hasFocus));
+        maj('focus→' + (t && t.className ? String(t.className).split(' ')[0] : (t && t.tagName)));
       }, true);
-      hote.addEventListener('keydown', (ev) => {
-        const l = hote.querySelector('.zfa-tache-note-debug:last-child');
-        if (l) l.setText('DEBUG events touche=' + ev.key + ' cible=' +
-          (ev.target && ev.target.className ? String(ev.target.className).split(' ')[0] : '?'));
+      hote.addEventListener('keydown', (ev) => { maj('touche=' + ev.key); }, true);
+      hote.addEventListener('input', () => {
+        const ed = this._noteEd && this._noteEd.vue && this._noteEd.vue.editor;
+        const cm = ed && ed.cm;
+        maj('saisi doc=' + (cm ? JSON.stringify(cm.state.doc.toString().slice(0, 30)) : '?') +
+          ' dom=' + (cm ? JSON.stringify((cm.contentDOM.textContent || '').slice(0, 30)) : '?'));
       }, true);
-      // Le focus MANUEL + sélection imposée produisent-ils un curseur dessiné ?
-      setTimeout(() => {
-        if (gen !== this._noteEdGen) return;
-        try {
-          if (cm) {
-            cm.dispatch({ selection: { anchor: 0 } });
-            cm.focus();
-          }
-          const compter = () => {
-            const curs = hote.querySelectorAll('.cm-cursor');
-            const rc = curs[0] ? curs[0].getBoundingClientRect() : null;
-            return 'curseur=' + curs.length +
-              (rc ? ' @' + Math.round(rc.left) + ',' + Math.round(rc.top) : '');
-          };
-          setTimeout(() => {
-            if (gen !== this._noteEdGen) return;
-            const sel = document.getSelection();
-            const dedans = sel && sel.anchorNode && hote.contains(sel.anchorNode);
-            let coords = '?';
-            try {
-              const c0 = cm.coordsAtPos(0);
-              coords = c0 ? Math.round(c0.left) + ',' + Math.round(c0.top) : 'null';
-            } catch (e3) { coords = 'err'; }
-            const couche = hote.querySelectorAll('.cm-cursorLayer').length;
-            const resume = compter() + ' selDom=' + (dedans ? 'oui' : 'non') +
-              ' couche=' + couche +
-              ' coords0=' + coords +
-              ' vp=' + cm.viewport.from + '-' + cm.viewport.to;
-            console.log('[Ariane][sonde] après focus+sélection :', resume);
-            const l = hote.querySelector('.zfa-tache-note-debug:last-child');
-            if (l) l.setText(l.getText() + ' · ' + resume);
-            // 2e tentative : cycle de mesure forcé, puis re-comptage
-            try {
-              cm.requestMeasure();
-              cm.update([]);
-            } catch (e4) { console.warn('[Ariane][sonde] update', e4); }
-            setTimeout(() => {
-              if (gen !== this._noteEdGen) return;
-              const resume2 = compter();
-              console.log('[Ariane][sonde] après mesure forcée :', resume2);
-              const l2 = hote.querySelector('.zfa-tache-note-debug:last-child');
-              if (l2) l2.setText(l2.getText() + ' · forcé:' + resume2);
-            }, 250);
-          }, 250);
-        } catch (e) { console.warn('[Ariane][sonde] focus', e); }
-      }, 300);
-    }, 600);
+      this._sondeSel = (ev) => {
+        const sel = document.getSelection();
+        if (sel && sel.anchorNode && hote.contains(sel.anchorNode)) maj('sélection posée');
+      };
+      document.addEventListener('selectionchange', this._sondeSel);
+    }, 0);
   }
 
   // Repli : l'ancien comportement (zone de texte + aperçu formaté dessous).
@@ -17658,6 +17581,10 @@ class ModaleTache extends obsidian.Modal {
       // est vue.unload() qui retire les écouteurs ; le DOM part avec la modale.
       if (this._noteEd.feuille) { try { this._noteEd.feuille.detach(); } catch (e) { /* rien */ } }
       this._noteEd = null;
+    }
+    if (this._sondeSel) {
+      document.removeEventListener('selectionchange', this._sondeSel); // TEMPORAIRE
+      this._sondeSel = null;
     }
     if (this._comp) { try { this._comp.unload(); } catch (e) { /* rien */ } }
     this.contentEl.empty();
