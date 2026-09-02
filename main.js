@@ -20391,6 +20391,40 @@ class MoteurArticulation {
     for (const a of aretes) this.dessinerArete(g, a);
     for (const n of noeuds) this.dessinerNoeud(g, n);
 
+    // Hauteurs réelles des cartes : la formule n'estime que le prévu
+    // (ARTIC_H + colonnes × 18), mais le CSS décide — les cartes dépliées
+    // sont en height:auto. On mesure une fois posé, on aligne sur la hauteur
+    // VISIBLE le foreignObject, les points d'accroche et les badges de
+    // relatifs, puis on retrace les arêtes : sinon une bande sous les cartes
+    // dépliées ne correspond à rien (zone morte qui ne pan pas) et les
+    // accroches flottent sous la carte.
+    const mesures = [];
+    for (const gn of g.querySelectorAll('.zfa-artic-noeud')) {
+      const carte = gn.querySelector('.zfa-artic-carte');
+      mesures.push([gn, carte ? carte.offsetHeight : 0]);
+    }
+    let hChangee = false;
+    for (const [gn, h] of mesures) {
+      const n = this._noeudsParRef.get(gn.dataset.ref);
+      const h0 = (n && n.h) || ARTIC_H;
+      if (!h || Math.abs(h - h0) <= 1) continue;
+      const hN = Math.max(24, Math.round(h));
+      if (n) n.h = hN;
+      hChangee = true;
+      const fo = gn.querySelector('foreignObject');
+      if (fo) fo.setAttribute('height', hN);
+      for (const ga of gn.querySelectorAll('.zfa-artic-accroche')) {
+        ga.setAttribute('transform',
+          'translate(' + ARTIC_W + ',' + ancreY(hN, ga.dataset.type) + ')');
+      }
+      for (const gb of gn.querySelectorAll('.zfa-artic-repli')) {
+        const typeRepli = gb.classList.contains('zfa-artic-repli-bloque') ? 'bloque' : 'hier';
+        gb.setAttribute('transform',
+          'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, typeRepli) + ')');
+      }
+    }
+    if (hChangee) this._retracerAretes();
+
     svg.addEventListener('wheel', (e) => this.zoomer(e), { passive: false });
     const surFond = (e) => (e.target === svg
       || (e.target.closest('.zfa-artic-scene') === g
@@ -21006,19 +21040,11 @@ class MoteurArticulation {
     return String(v);
   }
 
-  // Tracé d'une arête : courbe (défaut) ou angulaire selon le réglage.
-  // `entreeGauche === false` : on entre par le bord DROIT de la cible (la sortie
-  // de la source est à sa droite, la cible n'est pas assez à droite pour laisser
-  // passer le trait dans l'entre-deux). Le tracé longe alors la carte par
-  // l'extérieur au lieu de disparaître derrière.
-  _chemin(x1, y1, x2, y2, entreeGauche) {
+  // Tracé direct d'une arête : courbe (défaut) ou angulaire selon le réglage.
+  // Réservé à l'aperçu du tiré d'arête et au repli quand aucun chemin ne
+  // contourne les cartes — le routage courant est fait par _traceArete.
+  _chemin(x1, y1, x2, y2) {
     const ang = (this.greffon.settings.articulationFleches || 'courbe') === 'angulaire';
-    if (entreeGauche === false) {
-      const mx = Math.max(x1, x2) + 26;
-      return ang
-        ? 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + y2 + ' H ' + x2
-        : 'M ' + x1 + ' ' + y1 + ' C ' + mx + ' ' + y1 + ', ' + mx + ' ' + y2 + ', ' + x2 + ' ' + y2;
-    }
     if (ang) {
       const mx = Math.max(x1 + 16, (x1 + x2) / 2);
       return 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + y2 + ' H ' + x2;
@@ -21459,11 +21485,21 @@ class MoteurArticulation {
   }
 
   // Redessine les chemins des arêtes touchant un nœud déplacé.
-  majAretesDe(ref) {
+  majAretesDe(ref) { this._retracerAretes(ref); }
+
+  // Retrace les arêtes (celles touchant `ref` s'il est donné) : chemin et
+  // libellé. Aussi appelé sans filtre après la mesure des hauteurs de cartes.
+  _retracerAretes(ref) {
+    if (!this._svg) return;
     for (const gr of this._svg.querySelectorAll('.zfa-artic-arete-groupe')) {
-      if (gr.dataset.de !== ref && gr.dataset.vers !== ref) continue;
-      const { d } = this._traceArete(gr.dataset.de, gr.dataset.vers, gr.dataset.type);
-      for (const p of gr.querySelectorAll('path')) p.setAttribute('d', d);
+      if (ref && gr.dataset.de !== ref && gr.dataset.vers !== ref) continue;
+      const t = this._traceArete(gr.dataset.de, gr.dataset.vers, gr.dataset.type);
+      for (const p of gr.querySelectorAll('path')) p.setAttribute('d', t.d);
+      const lab = gr.querySelector('.zfa-artic-arete-lab');
+      if (lab && t.milieu) {
+        lab.setAttribute('x', t.milieu.x);
+        lab.setAttribute('y', t.milieu.y - 4);
+      }
     }
   }
 
@@ -24358,6 +24394,7 @@ module.exports = Ariane;
 // Exposition des fonctions pures pour les tests.
 module.exports._test = {
   DEFAULT_SETTINGS,
+  MoteurArticulation, // prototype : _traceArete s'éprouve avec un moteur factice
   echapperRegex,
   nomCompletAuteur,
   appliquerModele,
