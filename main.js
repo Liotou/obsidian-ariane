@@ -17235,6 +17235,7 @@ class ModaleTache extends obsidian.Modal {
         if (gen !== this._noteEdGen) { try { vue.unload(); } catch (e) { /* rien */ } return; }
         vue.setViewData(String(this.v.note || ''), true);
         this._noteEd = { vue, el, feuille };
+        this._sonderEditeurNote(hote, gen); // TEMPORAIRE : diagnostic, à retirer
         return;
       } catch (e) {
         console.warn('[Ariane] éditeur de note : repli', e);
@@ -17245,6 +17246,60 @@ class ModaleTache extends obsidian.Modal {
     }
     if (gen !== this._noteEdGen) return;
     this._repliNote(hote);
+  }
+
+  // TEMPORAIRE (diagnostic) : mesure l'état réel de l'éditeur embarqué et
+  // l'affiche dans la modale, pour identifier pourquoi le clic ne fait rien.
+  // À retirer une fois le problème réglé.
+  _sonderEditeurNote(hote, gen) {
+    setTimeout(() => {
+      if (gen !== this._noteEdGen) return;
+      const j = [];
+      let cm = null;
+      try {
+        const ed = this._noteEd && this._noteEd.vue && this._noteEd.vue.editor;
+        cm = ed && ed.cm;
+        j.push('cm=' + (cm ? 'ok' : 'ABSENT'));
+        if (cm) {
+          const cont = cm.contentDOM;
+          const rc = cont.getBoundingClientRect();
+          j.push('ce=' + cont.getAttr('contenteditable'));
+          j.push('cont=' + Math.round(rc.width) + 'x' + Math.round(rc.height));
+          j.push('txt=' + (cont.textContent || '').length);
+          const re = ed.editorEl.getBoundingClientRect();
+          j.push('edEl=' + Math.round(re.width) + 'x' + Math.round(re.height));
+        }
+        const rh = hote.getBoundingClientRect();
+        j.push('hote=' + Math.round(rh.width) + 'x' + Math.round(rh.height));
+        const vu = this._noteEd && this._noteEd.vue;
+        j.push('mode=' + ((vu && vu.currentMode && vu.currentMode.type) || '?'));
+      } catch (e) { j.push('err=' + e.message); }
+      console.log('[Ariane][sonde]', j.join(' | '));
+      const ligne = hote.createDiv({ cls: 'zfa-tache-note-debug' });
+      ligne.setText('DEBUG ' + j.join(' | '));
+      // Qui reçoit réellement le focus quand on clique dans la zone ?
+      hote.addEventListener('focusin', (ev) => {
+        const t = ev.target;
+        const info = t && t.className ? String(t.className).split(' ')[0] : (t && t.tagName);
+        const l = hote.querySelector('.zfa-tache-note-debug');
+        if (l) l.setText('DEBUG focus→' + info);
+      }, true);
+      // Le focus MANUEL marche-t-il ? (si oui, l'éditeur vit ; si non, il est mort)
+      setTimeout(() => {
+        if (gen !== this._noteEdGen) return;
+        try {
+          if (cm) cm.focus();
+          setTimeout(() => {
+            if (gen !== this._noteEdGen) return;
+            const ae = document.activeElement;
+            const info = ae && ae.className ? String(ae.className).split(' ')[0] : (ae && ae.tagName);
+            console.log('[Ariane][sonde] actif après cm.focus() :', info);
+            const l = hote.querySelector('.zfa-tache-note-debug');
+            if (l) l.setText(l.getText() + ' · focus→' + info);
+          }, 200);
+        } catch (e) { console.warn('[Ariane][sonde] focus', e); }
+      }, 300);
+    }, 600);
   }
 
   // Repli : l'ancien comportement (zone de texte + aperçu formaté dessous).

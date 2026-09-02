@@ -1910,6 +1910,20 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-tache-note-apercu > :last-child { margin-bottom: 0; }
 .zfa-tache-note-vide { color: var(--text-faint); font-style: italic; }
 
+/* TEMPORAIRE (diagnostic) : ligne de sonde sous l'éditeur embarqué. À retirer. */
+.zfa-tache-note-debug {
+  margin-top: 4px;
+  padding: 3px 6px;
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  color: var(--text-faint);
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Éditeur embarqué de la note de travail : une vraie vue Markdown Obsidian
    (mode édition, live preview compris) logée dans la modale — on édite dans
    le rendu, comme dans une note. Le conteneur reçoit une hauteur fixe ;
