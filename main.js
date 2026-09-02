@@ -22919,11 +22919,15 @@ class MoteurCalendrier {
         greffon.chargerAgendas().catch(() => {}); // liste prête au prochain clic
       }
       const agendas = Array.isArray(greffon._agendas) ? greffon._agendas : [];
-      if (agendas.length) {
+      // Les calendriers de sessions (cibles de la synchro, déjà proposés dans
+      // « Calendriers de tâches ») ne sont pas listés une seconde fois.
+      const sessions = new Set(greffon._agendasSurveilles().map((c) => c.toLowerCase()));
+      const fond = agendas.filter((n) => !sessions.has(String(n).toLowerCase()));
+      if (fond.length) {
         menu.addSeparator();
         menu.addItem((mi) => { mi.setTitle(tr('Événements Apple')).setDisabled(true); });
         const coches = greffon._agendasCoches().map((c) => c.toLowerCase());
-        for (const nom of agendas) {
+        for (const nom of fond) {
           menu.addItem((mi) => mi
             .setTitle(nom)
             .setIcon('calendar')
