@@ -19921,18 +19921,22 @@ class MoteurFrise {
         class: 'zfa-gantt-lignage-lien' });
       gl.appendChild(path);
       b.path = path;
-      // Nœuds de jonction : un sur chaque fille, posé sur l'épine à sa
-      // hauteur ; celui de la mère au point de raccordement, au CENTRE de
-      // son bord gauche (l'ancien, au coin inférieur, flottait à côté du
-      // coude depuis que la mère se raccorde à mi-hauteur).
+      // Nœuds de jonction : à chaque angle son point, et la connexion se lit
+      // aussi SUR la barre. Trois familles : celui de la mère à son propre
+      // raccordement (centre de son bord gauche) ; un sur l'épine au sommet
+      // de l'angle de chaque fille ; un à l'arrivée, au centre du bord gauche
+      // de la barre fille, pour que le trait se pose visiblement sur elle.
       const sx = Ariane._epineAccolade(b, 0, null);
-      const points = [[b.mx, b.pCy, true]]
-        .concat(kids.map((k) => [sx, k.cy, false]));
+      const points = [[b.mx, b.pCy, { surLaMere: true }]];
+      for (const k of kids) {
+        points.push([sx, k.cy, { surRail: true }]);
+        points.push([k.xg, k.cy, { ref: k.ref, xg: k.xg }]);
+      }
       b.dots = points.map((pt) => {
         const c = svgEl('circle', { cx: pt[0], cy: pt[1], r: 2.4,
           class: 'zfa-gantt-lignage-noeud' });
         gl.appendChild(c);
-        return { el: c, surLaMere: pt[2] };
+        return Object.assign({ el: c }, pt[2]);
       });
       brackets.push(b);
     }
@@ -19973,9 +19977,13 @@ class MoteurFrise {
       b.path.setAttribute('d', this._cheminBracket(b, dx, ref));
       const sx = Ariane._epineAccolade(b, dx, ref);
       for (const dot of b.dots || []) {
-        // La mère ne bouge pas pendant un glissé de fille : seul le point
-        // de celle qui glisse quitte l'épine (son cx suit sx, qui bouge).
-        dot.el.setAttribute('cx', dot.surLaMere ? b.mx : sx);
+        // La mère ne bouge pas pendant un glissé de fille ; le point d'épine
+        // suit le rail (sx bouge) ; celui d'arrivée suit SA barre, et elle
+        // seule — les autres filles restent en place.
+        if (dot.surLaMere) dot.el.setAttribute('cx', b.mx);
+        else if (dot.ref) {
+          dot.el.setAttribute('cx', dot.xg + (dot.ref === ref ? (dx || 0) : 0));
+        } else dot.el.setAttribute('cx', sx);
       }
     }
   }
