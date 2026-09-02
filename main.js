@@ -19936,6 +19936,19 @@ class MoteurFrise {
         class: 'zfa-gantt-lignage-lien' });
       gl.appendChild(path);
       b.path = path;
+      // Nœuds de jonction : un sur chaque fille, posé sur l'épine à sa
+      // hauteur ; celui de la mère au point de raccordement, au CENTRE de
+      // son bord gauche (l'ancien, au coin inférieur, flottait à côté du
+      // coude depuis que la mère se raccorde à mi-hauteur).
+      const sx = Ariane._epineAccolade(b, 0, null);
+      const points = [[b.mx, b.pCy, true]]
+        .concat(kids.map((k) => [sx, k.cy, false]));
+      b.dots = points.map((pt) => {
+        const c = svgEl('circle', { cx: pt[0], cy: pt[1], r: 2.4,
+          class: 'zfa-gantt-lignage-noeud' });
+        gl.appendChild(c);
+        return { el: c, surLaMere: pt[2] };
+      });
       brackets.push(b);
     }
     (this._svgLignage || this._svg).appendChild(gl);
@@ -19973,6 +19986,12 @@ class MoteurFrise {
     for (const b of this._lignage.brackets) {
       if (b.parentRef !== ref && !b.kids.some((k) => k.ref === ref)) continue;
       b.path.setAttribute('d', this._cheminBracket(b, dx, ref));
+      const sx = Ariane._epineAccolade(b, dx, ref);
+      for (const dot of b.dots || []) {
+        // La mère ne bouge pas pendant un glissé de fille : seul le point
+        // de celle qui glisse quitte l'épine (son cx suit sx, qui bouge).
+        dot.el.setAttribute('cx', dot.surLaMere ? b.mx : sx);
+      }
     }
   }
 
