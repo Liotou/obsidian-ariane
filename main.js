@@ -7457,54 +7457,40 @@ class Ariane extends obsidian.Plugin {
   // `d` d'une accolade de lignée : l'épine est un rail vertical dégagé à
   // gauche de la mère et des filles datées, couvrant toute la famille. La mère
   // et chaque fille se raccordent AU CENTRE de l'extrémité gauche de leur
-  // barre, par le même PETIT ANGLE DROIT arrondi — tourné vers les filles
-  // pour la mère (ou en trait droit si elles débordent des deux côtés — tri
-  // actif, regroupement). Une fille sans date rejoint sa bande en trait direct
-  // le long de sa ligne. `dx` décale la fille `refBouge` (glissé en direct).
-  // b : { mx, pCy, kids:[{ref,xg,cy,sansDate}], R, degage }
+  // barre par un ANGLE DROIT dont le sommet est SUR le trait — c'est là que
+  // porte le nœud (la jointure ronde du trait adoucit l'angle, sans courbe
+  // qui s'arrêterait avant le point). Une fille sans date rejoint sa bande en
+  // trait direct le long de sa ligne. `dx` décale la fille `refBouge`
+  // (glissé en direct).
+  // b : { mx, pCy, kids:[{ref,xg,cy,sansDate}], degage }
   static _cheminAccolade(b, dx, refBouge) {
     const sx = Ariane._epineAccolade(b, dx, refBouge);
     const kx = (k) => k.xg + (k.ref === refBouge ? (dx || 0) : 0);
     const cys = b.kids.map((k) => k.cy);
     const haut = Math.min.apply(null, cys.concat([b.pCy]));
     const bas = Math.max.apply(null, cys.concat([b.pCy]));
-    const rc = Math.min(b.R, b.mx - sx); // rayon du coude au bord de la mère
     const dessus = haut < b.pCy - 0.5; // des filles au-dessus de la mère
     const dessous = bas > b.pCy + 0.5; // des filles en dessous
     let d;
     if (dessus && dessous) {
       // Famille éparpillée des deux côtés : rail traversant, la mère le
-      // rejoint en trait droit (aucun sens de courbure à privilégier).
+      // rejoint en trait droit (aucun sens d'angle à privilégier).
       d = 'M ' + sx + ' ' + haut + ' L ' + sx + ' ' + bas
         + ' M ' + b.mx + ' ' + b.pCy + ' L ' + sx + ' ' + b.pCy;
     } else if (dessous) {
-      // Filles plus bas : le petit angle droit tourne vers le bas.
-      d = 'M ' + b.mx + ' ' + b.pCy
-        + (b.mx - rc > sx ? ' L ' + (sx + rc) + ' ' + b.pCy : '')
-        + ' Q ' + sx + ' ' + b.pCy + ' ' + sx + ' ' + (b.pCy + rc)
+      // Filles plus bas : l'angle droit est sous la mère, au ras du rail.
+      d = 'M ' + b.mx + ' ' + b.pCy + ' L ' + sx + ' ' + b.pCy
         + ' L ' + sx + ' ' + bas;
     } else {
-      // Filles plus haut (ou à hauteur) : le même angle droit, vers le haut.
-      d = 'M ' + sx + ' ' + haut
-        + ' L ' + sx + ' ' + (b.pCy - rc)
-        + ' Q ' + sx + ' ' + b.pCy + ' ' + (sx + rc) + ' ' + b.pCy
-        + (b.mx - rc > sx ? ' L ' + b.mx + ' ' + b.pCy : '');
+      // Filles plus haut (ou à hauteur) : le rail descend jusqu'à la mère.
+      d = 'M ' + sx + ' ' + haut + ' L ' + sx + ' ' + b.pCy
+        + ' L ' + b.mx + ' ' + b.pCy;
     }
     for (const k of b.kids) {
+      // Chaque fille part du rail à sa hauteur, en angle droit ; une bande
+      // sans date a son bord gauche des deux côtés possibles de l'épine.
       const xg = kx(k);
-      if (k.sansDate) {
-        // Bande sans date : trait direct le long de SA ligne, jusqu'au bord
-        // gauche visible — xg peut être des deux côtés de l'épine.
-        d += ' M ' + sx + ' ' + k.cy + ' L ' + xg + ' ' + k.cy;
-      } else if (xg <= sx + 0.5) {
-        // Fille collée à l'épine (début de frise) : trait direct.
-        d += ' M ' + sx + ' ' + k.cy + ' L ' + xg + ' ' + k.cy;
-      } else {
-        const r = Math.min(b.R, Math.max(1, k.cy - haut), xg - sx);
-        d += ' M ' + sx + ' ' + (k.cy - r)
-          + ' Q ' + sx + ' ' + k.cy + ' ' + (sx + r) + ' ' + k.cy
-          + ' L ' + xg + ' ' + k.cy;
-      }
+      d += ' M ' + sx + ' ' + k.cy + ' L ' + xg + ' ' + k.cy;
     }
     return d;
   }
@@ -19912,7 +19898,6 @@ class MoteurFrise {
     // chaque fille raccordées AU CENTRE de l'extrémité gauche de leur barre.
     // Un bracket par parent présent dans la lignée.
     const gl = svgEl('g', { class: 'zfa-gantt-lignage' });
-    const R = Math.min(9, Math.max(3, Math.round(this._H / 3)));
     const DEGAGE = 7; // écart latéral entre l'épine et le début des barres
     const parParent = new Map();
     for (const r of lignee) {
@@ -19931,7 +19916,7 @@ class MoteurFrise {
         sansDate: !!parRef.get(kr).sansDate,
       }));
       const b = { parentRef: pr, mx: p._anc.xg, pCy: p._anc.cy,
-        kids, R, degage: DEGAGE };
+        kids, degage: DEGAGE };
       const path = svgEl('path', { d: this._cheminBracket(b, 0, null),
         class: 'zfa-gantt-lignage-lien' });
       gl.appendChild(path);

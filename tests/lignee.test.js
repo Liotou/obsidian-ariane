@@ -70,15 +70,13 @@ test('épine jamais négative (début de frise)', () => {
 
 test('fille au même début que la mère : petit angle droit à son bord gauche, épine dégagée', () => {
   const mx = 100, pCy = 57, cy = 100;
-  const b = { mx, pCy, R, degage: DEGAGE, kids: [{ ref: 'A', xg: mx, cy }] };
+  const b = { mx, pCy, degage: DEGAGE, kids: [{ ref: 'A', xg: mx, cy }] };
   const d = Ariane._cheminAccolade(b, 0, null);
-  // Le trait QUITTE le centre du bord gauche de la mère…
-  assert.ok(d.startsWith('M ' + mx + ' ' + pCy + ' Q'),
-    'doit démarrer au centre du bord gauche de la mère avec un coude : ' + d);
-  // …l'épine est dégagée À GAUCHE des barres (plus de segment vertical collé)…
+  // Le trait QUITTE le centre du bord gauche de la mère et tourne à angle
+  // droit vers l'épine, dégagée À GAUCHE des barres…
   const sx = mx - DEGAGE;
-  assert.ok(d.includes(' Q ' + sx + ' ' + pCy + ' ' + sx + ' ' + (pCy + DEGAGE)),
-    'coude vers l\'épine dégagée attendu : ' + d);
+  assert.ok(d.startsWith('M ' + mx + ' ' + pCy + ' L ' + sx + ' ' + pCy + ' L ' + sx),
+    'angle droit au bord gauche de la mère attendu : ' + d);
   // …et l'arrivée se pose au CENTRE de l'extrémité gauche de la barre fille.
   assert.ok(d.includes('L ' + mx + ' ' + cy), 'arrivée au centre du bord gauche : ' + d);
 });
@@ -89,23 +87,24 @@ test('filles décalées : épine à gauche de la mère, un coude par fille', () 
     { ref: 'A', xg: 130, cy: 100 },
     { ref: 'B', xg: 160, cy: 150 },
   ];
-  const b = { mx, pCy, R, degage: DEGAGE, kids };
+  const b = { mx, pCy, degage: DEGAGE, kids };
   const d = Ariane._cheminAccolade(b, 0, null);
   const sx = mx - DEGAGE; // la mère est le point le plus à gauche
-  // L'amorce quitte le centre du bord gauche de la mère vers l'épine dégagée.
-  assert.ok(d.startsWith('M ' + mx + ' ' + pCy + ' Q ' + sx + ' ' + pCy),
-    'amorce au bord gauche de la mère : ' + d);
+  // Le trait quitte le centre du bord gauche de la mère vers l'épine dégagée.
+  assert.ok(d.startsWith('M ' + mx + ' ' + pCy + ' L ' + sx + ' ' + pCy),
+    'départ au bord gauche de la mère : ' + d);
   for (const k of kids) {
-    assert.ok(d.includes(' Q ' + sx + ' ' + k.cy + ' '), 'coude arrondi pour ' + k.ref + ' : ' + d);
-    assert.ok(d.includes('L ' + k.xg + ' ' + k.cy),
-      'arrivée au centre du bord gauche de ' + k.ref + ' : ' + d);
+    // Chaque fille part du rail À SA HAUTEUR : le sommet de l'angle porte le
+    // nœud, le trait arrive au centre du bord gauche de la barre.
+    assert.ok(d.includes('M ' + sx + ' ' + k.cy + ' L ' + k.xg + ' ' + k.cy),
+      'angle droit au niveau de ' + k.ref + ' : ' + d);
   }
 });
 
 test('mère plus à gauche que ses filles : l épine ne la traverse jamais', () => {
   // Tri actif ou regroupement : la mère T020 démarre à gauche de ses filles ;
   // une épine calée sur les seules filles passait EN TRAVERS de sa barre.
-  const b = { mx: 55, pCy: 150, R, degage: DEGAGE, kids: [
+  const b = { mx: 55, pCy: 150, degage: DEGAGE, kids: [
     { ref: 'F', xg: 130, cy: 45 }, { ref: 'G', xg: 517, cy: 180 }] };
   const sx = Ariane._epineAccolade(b, 0, null);
   assert.ok(sx <= b.mx - DEGAGE, 'épine à gauche de la mère : ' + sx);
@@ -119,7 +118,7 @@ test('mère plus à gauche que ses filles : l épine ne la traverse jamais', () 
 });
 
 test('une fille sans date ne tire pas l épine et rejoint sa bande en direct', () => {
-  const b = { mx: 100, pCy: 150, R, degage: DEGAGE, kids: [
+  const b = { mx: 100, pCy: 150, degage: DEGAGE, kids: [
     { ref: 'D', xg: 300, cy: 100 },
     { ref: 'S', xg: 0, cy: 130, sansDate: true }] };
   const sx = Ariane._epineAccolade(b, 0, null);
@@ -132,11 +131,11 @@ test('une fille sans date ne tire pas l épine et rejoint sa bande en direct', (
 
 test('première fille décalée de moins du dégagement : coude de départ quand même', () => {
   const mx = 100, pCy = 57;
-  const b = { mx, pCy, R, degage: DEGAGE,
+  const b = { mx, pCy, degage: DEGAGE,
     kids: [{ ref: 'A', xg: 103, cy: 100 }] };
   const d = Ariane._cheminAccolade(b, 0, null);
-  assert.ok(d.startsWith('M ' + mx + ' ' + pCy + ' Q'),
-    'la 1re fille démarre presque avec la mère : coude attendu : ' + d);
+  assert.ok(d.startsWith('M ' + mx + ' ' + pCy + ' L ' + (mx - DEGAGE) + ' ' + pCy),
+    'la 1re fille démarre presque avec la mère : angle droit attendu : ' + d);
   assert.ok(d.includes('L 103 100'), 'arrivée au centre du bord gauche : ' + d);
 });
 
@@ -146,15 +145,15 @@ test('glissé : la fille déplacée emporte son coude, l\'épine suit le minimum
     { ref: 'A', xg: 130, cy: 100 },
     { ref: 'B', xg: 160, cy: 150 },
   ];
-  const b = { mx, pCy, R, degage: DEGAGE, kids };
+  const b = { mx, pCy, degage: DEGAGE, kids };
   const d = Ariane._cheminAccolade(b, -60, 'B'); // B repart à gauche
   const sx = 100 - DEGAGE; // B (100) passe devant A (130)
-  assert.ok(d.includes(' Q ' + sx + ' 100 '), 'coude de A suit la nouvelle épine : ' + d);
-  assert.ok(d.includes('L 100 150'), 'arrivée de B déplacée : ' + d);
+  assert.ok(d.includes('M ' + sx + ' 100 L 130 100'), 'branche de A suit la nouvelle épine : ' + d);
+  assert.ok(d.includes('M ' + sx + ' 150 L 100 150'), 'branche de B déplacée : ' + d);
 });
 
 test('fille collée à l\'épine (x=0) : trait direct sans coude négatif', () => {
-  const b = { mx: 0, pCy: 57, R, degage: DEGAGE,
+  const b = { mx: 0, pCy: 57, degage: DEGAGE,
     kids: [{ ref: 'A', xg: 0, cy: 100 }] };
   const d = Ariane._cheminAccolade(b, 0, null);
   assert.ok(d.includes('M 0 100 L 0 100'), 'trait direct attendu : ' + d);
@@ -166,7 +165,7 @@ test('fille au-dessus de sa mère (frise éparpillée) : rail + trait droit, pas
   // doit couvrir toute la famille, mais la LIAISON reste le même petit coude
   // qu'ailleurs : une grande courbe balayée était jugée brouillonne.
   const mx = 100, pCy = 150;
-  const b = { mx, pCy, R, degage: DEGAGE, kids: [
+  const b = { mx, pCy, degage: DEGAGE, kids: [
     { ref: 'Haute', xg: mx, cy: 45 },     // même début que la mère, plus haut
     { ref: 'Basse', xg: 560, cy: 180 },   // sous la mère, décalée à droite
   ] };
@@ -189,22 +188,18 @@ test('fille au-dessus de sa mère (frise éparpillée) : rail + trait droit, pas
   }
 });
 
-test('toutes les filles au-dessus de la mère : le même petit angle droit, tourné vers le haut', () => {
-  // Cas qui produisait la grande courbe balayée : l'amorce ne grimpe plus
-  // jusqu'à la fille haute, elle tourne au bord gauche de la mère comme partout.
+test('toutes les filles au-dessus de la mère : le rail descend jusqu à elle, angles droits partout', () => {
+  // Cas qui produisait la grande courbe balayée : le rail descend simplement
+  // de la fille haute jusqu'à la mère, où il tourne à angle droit vers elle.
   const mx = 100, pCy = 150;
-  const b = { mx, pCy, R, degage: DEGAGE, kids: [
+  const b = { mx, pCy, degage: DEGAGE, kids: [
     { ref: 'Haute', xg: 140, cy: 60 }, { ref: 'Basse', xg: 160, cy: 100 }] };
   const d = Ariane._cheminAccolade(b, 0, null);
   const sx = mx - DEGAGE;
-  const rc = Math.min(R, DEGAGE);
-  // Le rail part de la fille haute et descend jusqu'au bord de la mère…
-  assert.ok(d.startsWith('M ' + sx + ' 60 L ' + sx + ' ' + (pCy - rc)),
-    'rail au-dessus du bord gauche de la mère : ' + d);
-  // …tourne au coin par le MÊME coude arrondi que dans l'autre sens…
-  assert.ok(d.includes(' Q ' + sx + ' ' + pCy + ' ' + (sx + rc) + ' ' + pCy),
-    'coude au bord gauche de la mère, tourné vers le haut : ' + d);
-  // …et chaque fille reçoit son coude habituel.
-  assert.ok(d.includes(' Q ' + sx + ' 100 '), 'coude fille basse : ' + d);
-  assert.ok(d.includes('L 140 60'), 'arrivée fille haute : ' + d);
+  // Rail de la fille haute jusqu'à la mère, puis angle droit vers son bord…
+  assert.ok(d.startsWith('M ' + sx + ' 60 L ' + sx + ' ' + pCy + ' L ' + mx + ' ' + pCy),
+    'rail descendant jusqu à la mère : ' + d);
+  // …et chaque fille part du rail à sa hauteur.
+  assert.ok(d.includes('M ' + sx + ' 60 L 140 60'), 'branche fille haute : ' + d);
+  assert.ok(d.includes('M ' + sx + ' 100 L 160 100'), 'branche fille basse : ' + d);
 });
