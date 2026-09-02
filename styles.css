@@ -2253,6 +2253,8 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   background: color-mix(in srgb, var(--interactive-accent) 9%, transparent);
 }
 .zfa-cal-poignee { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
+/* Poignée haute d'un créneau : on tire le début, la fin reste en place. */
+.zfa-cal-poignee-haut { position: absolute; left: 0; right: 0; top: 0; height: 6px; cursor: ns-resize; }
 .zfa-cal-bloc:focus { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 
 /* Cartes de créneau : même parti que obsidian-day-planner (contenu qui

@@ -23024,12 +23024,13 @@ class MoteurCalendrier {
     const topDep = parseFloat(bloc.style.top) || 0;
     const hDep = parseFloat(bloc.style.height) || 20;
     // Déplacement horizontal (jour) : autorisé seulement pour le geste « bouger »
-    // (pas pour le redimensionnement de la fin), et seulement en vue semaine où
-    // l'on connaît la largeur d'une colonne et la bande de jours.
+    // (pas pour les redimensionnements, qui figent l'autre extrémité), et
+    // seulement en vue semaine où l'on connaît la largeur d'une colonne et la
+    // bande de jours.
     const colW = this._semColW || 0;
     const strip = Array.isArray(this._semStrip) ? this._semStrip : [];
     const idxDep = strip.indexOf(jourCol);
-    const peutChangerJour = mode !== 'fin' && colW > 0 && idxDep >= 0;
+    const peutChangerJour = !mode && colW > 0 && idxDep >= 0;
     const inner = bloc.closest('.zfa-cal-sem-inner');
     let bouge = false;
     let dxDer = 0;
@@ -23074,6 +23075,14 @@ class MoteurCalendrier {
           { capture: true, once: true });
       }
       if (mode === 'fin') { bloc.style.height = Math.max(PXH / 4, cal(hDep + d)) + 'px'; return; }
+      if (mode === 'debut') {
+        // Le haut suit le curseur, le bas reste en place : jamais moins de
+        // 15 min, jamais au-dessus du début de la grille.
+        const nt = Math.max(0, Math.min(topDep + hDep - PXH / 4, cal(topDep + d)));
+        bloc.style.top = nt + 'px';
+        bloc.style.height = (topDep + hDep - nt) + 'px';
+        return;
+      }
       // Geste « bouger » : le bloc se décroche et suit librement le curseur sur
       // les deux axes (sans calage). Un guide par crans montre où il se posera ;
       // le recalage effectif se fait au lâcher.
@@ -23104,6 +23113,18 @@ class MoteurCalendrier {
           heureDebut: this._hDeb, jourISO: jourCol, dureeMin: Math.max(15, (haut / PXH) * 60) });
         if (!cr0) { this.dessiner(); return; }
         await this._majCreneauU(ref, { avant: brut, debut: cr0.debut, fin: cr0.fin });
+        this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
+        return;
+      }
+      if (mode === 'debut') {
+        // Le haut a bougé : nouveau début recalé au quart d'heure ; la fin
+        // d'origine est conservée telle quelle (elle peut être un autre jour).
+        const nt = parseFloat(bloc.style.top) || 0;
+        const cr0 = Ariane.creneauDepuisDrop({ yRel: nt, hauteurHeure: PXH,
+          heureDebut: this._hDeb, jourISO: jourCol, dureeMin: 15 });
+        const fin0 = Ariane.parseCreneau(brut);
+        if (!cr0 || !fin0 || cr0.debut >= fin0.fin) { this.dessiner(); return; }
+        await this._majCreneauU(ref, { avant: brut, debut: cr0.debut, fin: fin0.fin });
         this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
         return;
       }
@@ -23533,6 +23554,9 @@ class MoteurCalendrier {
           bloc.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j));
           const poi = bloc.createDiv({ cls: 'zfa-cal-poignee' });
           poi.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j, 'fin'));
+          // Même geste par le haut : on tire le début, la fin reste en place.
+          const poiHaut = bloc.createDiv({ cls: 'zfa-cal-poignee-haut' });
+          poiHaut.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j, 'debut'));
           bloc.tabIndex = 0;
           bloc.addEventListener('keydown', async (de) => {
             if (de.key === 'Delete' || de.key === 'Backspace') {
