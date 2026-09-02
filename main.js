@@ -17248,69 +17248,59 @@ class ModaleTache extends obsidian.Modal {
     this._repliNote(hote);
   }
 
-  // TEMPORAIRE (diagnostic) : trace le chemin clic → placement du caret dans
-  // l'éditeur embarqué (preventDefault, sélections entrantes/sortantes,
-  // sélectionnabilité effective aux points cliqués). À retirer une fois le
-  // problème réglé.
+  // TEMPORAIRE (diagnostic) : journal cumulatif des clics/sélections sur tout
+  // le document + audit du DOM (combien de boîtes d'éditeur, lesquelles sont
+  // vivantes). À retirer une fois le problème réglé.
   _sonderEditeurNote(hote, gen) {
     setTimeout(() => {
       if (gen !== this._noteEdGen) return;
       const ed = this._noteEd && this._noteEd.vue && this._noteEd.vue.editor;
       const cm = ed && ed.cm;
       const events = hote.createDiv({ cls: 'zfa-tache-note-debug' });
-      events.setText('DEBUG events —');
-      const noter = (t) => events.setText('DEBUG events ' + t);
-      const cls = (n) => !n ? 'null' :
-        (n.className ? String(n.className).split(' ')[0] : (n.tagName || '?'));
-      hote.addEventListener('mousedown', (ev) => {
-        noter('mousedown cible=' + cls(ev.target));
-      }, true);
-      hote.addEventListener('mousedown', (ev) => {
-        noter('mousedown fin preventDefault=' + ev.defaultPrevented);
-      }, false);
-      hote.addEventListener('click', () => {
-        setTimeout(() => {
-          const sel = document.getSelection();
-          const n = sel && sel.anchorNode;
-          const dans = n && hote.contains(n);
-          noter('postclic ancre=' + (dans ? 'DANS' : cls(n)) +
-            ' off=' + (sel ? sel.anchorOffset : '?') + ' car=' + (sel ? sel.isCollapsed : '?'));
-        }, 0);
-      }, false);
+      const journal = [];
+      const noter = (t) => {
+        journal.unshift(t); // les plus récents d'abord (l'ellipse cache la fin)
+        if (journal.length > 6) journal.length = 6;
+        events.setText('DEBUG ' + journal.join(' ¦ '));
+      };
+      const cls = (n) => !n ? 'null' : (n.nodeType === 1 ?
+        (n.className ? String(n.className).trim().split(/\s+/)[0] : n.tagName.toLowerCase())
+        : 'texte');
+      const dans = (n) => n && hote.contains(n);
+      this._sondeMdown = (ev) => {
+        const boite = ev.target.closest && ev.target.closest('.zfa-tache-note-ed');
+        noter('clic ' + cls(ev.target) + (dans(ev.target) ? '·ZONE' : '') +
+          (boite ? '·BOITE' : ''));
+      };
+      document.addEventListener('mousedown', this._sondeMdown, true);
       this._sondeSel = () => {
         const sel = document.getSelection();
         const n = sel && sel.anchorNode;
         if (!n) return;
-        noter(hote.contains(n) ? 'sélection DANS zone off=' + sel.anchorOffset
-          : 'sélection HORS (' + cls(n) + ')');
+        noter('sel ' + cls(n) + (dans(n) ? '·ZONE' : '') + ' off=' + sel.anchorOffset);
       };
       document.addEventListener('selectionchange', this._sondeSel);
       hote.addEventListener('keydown', (ev) => { noter('touche=' + ev.key); }, true);
-      if (!cm) { noter('cm ABSENT'); return; }
-      // T0 : le navigateur placerait-il un caret aux points qu'on clique ?
+      noter('cm=' + (cm ? 'ok' : 'ABSENT'));
+      // Audit du DOM : combien de boîtes, lesquelles vivent, où sont-elles ?
       setTimeout(() => {
         if (gen !== this._noteEdGen) return;
-        const r = cm.contentDOM.getBoundingClientRect();
-        const auMilieu = (x, y) => {
-          try {
-            const rg = document.caretRangeFromPoint(x, y);
-            return !rg ? 'null'
-              : (hote.contains(rg.startContainer) ? 'dans off=' + rg.startOffset
-                : 'HORS ' + cls(rg.startContainer));
-          } catch (e) { return 'exc'; }
-        };
-        const ligne1 = cm.contentDOM.querySelector('.cm-line');
-        let l1 = '?';
-        if (ligne1) {
-          const rl = ligne1.getBoundingClientRect();
-          l1 = auMilieu(r.left + 10, rl.top + rl.height / 2);
-        }
-        const us = (el) => el ? getComputedStyle(el).userSelect : '?';
-        noter('T0 mil=' + auMilieu(r.left + r.width / 2, r.top + r.height / 2) +
-          ' l1=' + l1 +
-          ' usel[cont=' + us(cm.contentDOM) + ' ligne=' + us(ligne1) +
-          ' scroll=' + us(cm.scrollDOM) + ' hote=' + us(hote) + ']');
-      }, 400);
+        const mod = this.modalEl || this.contentEl;
+        const boxes = mod ? Array.from(mod.querySelectorAll('.zfa-tache-note-ed')) : [];
+        noter('audit boites=' + boxes.length + ' dansHote=' +
+          hote.querySelectorAll('.zfa-tache-note-ed').length);
+        boxes.forEach((b, i) => {
+          const r = b.getBoundingClientRect();
+          const cmc = b.querySelector('.cm-content');
+          const rc = cmc ? cmc.getBoundingClientRect() : null;
+          noter('boite' + i + ' @' + Math.round(r.left) + ',' + Math.round(r.top) +
+            ' ' + Math.round(r.width) + 'x' + Math.round(r.height) +
+            ' cm=' + (cmc && rc ? Math.round(rc.width) + 'x' + Math.round(rc.height) : 'non') +
+            (b === (this._noteEd && this._noteEd.el) ? ' VIVE' : ' MORTE'));
+        });
+        noter('hote=' + cls(hote) + ' ← ' + cls(hote.parentElement) +
+          ' ← ' + (hote.parentElement && cls(hote.parentElement.parentElement)));
+      }, 600);
     }, 0);
   }
 
@@ -17623,6 +17613,10 @@ class ModaleTache extends obsidian.Modal {
     if (this._sondeSel) {
       document.removeEventListener('selectionchange', this._sondeSel); // TEMPORAIRE
       this._sondeSel = null;
+    }
+    if (this._sondeMdown) {
+      document.removeEventListener('mousedown', this._sondeMdown, true); // TEMPORAIRE
+      this._sondeMdown = null;
     }
     if (this._comp) { try { this._comp.unload(); } catch (e) { /* rien */ } }
     this.contentEl.empty();
