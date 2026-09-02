@@ -207,3 +207,22 @@ test('colonneGuideEtir : arrondi au jour le plus proche et borne ≥ 0', () => {
   assert.equal(Ariane.colonneGuideEtir(-8, 30, 'droite'), 0);
   assert.equal(Ariane.colonneGuideEtir(45, 0, 'gauche'), 45); // ppj invalide → pas de division par 0
 });
+
+/* --------------------- defileEtiquette --------------------------------- */
+
+test('defileEtiquette : texte qui tient → null', () => {
+  assert.equal(Ariane.defileEtiquette(100, 120), null);
+  assert.equal(Ariane.defileEtiquette(124, 120), null); // dépassement ≤ 4 px : négligeable
+});
+
+test('defileEtiquette : débordement → décalage négatif, durée à ~20 px/s', () => {
+  const d = Ariane.defileEtiquette(220, 120);
+  assert.equal(d.x, -100);
+  assert.equal(d.duree, 5000);
+});
+
+test('defileEtiquette : place disponible minuscule bornée à 10 px', () => {
+  const d = Ariane.defileEtiquette(60, 0);
+  assert.equal(d.x, -50);
+  assert.equal(d.duree, 2500);
+});

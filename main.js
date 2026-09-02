@@ -7658,6 +7658,15 @@ class Ariane extends obsidian.Plugin {
     return Math.max(0, i);
   }
 
+  // Défilement de l'intitulé d'une barre survolée : décalage (en px, négatif —
+  // le texte glisse vers la gauche) et durée d'un aller (vitesse ~20 px/s)
+  // quand le texte dépasse la place disponible, null sinon.
+  static defileEtiquette(mesure, dispo) {
+    const trop = Number(mesure) - Math.max(10, Number(dispo) || 10);
+    if (!(trop > 4)) return null;
+    return { x: Math.round(-trop * 10) / 10, duree: Math.round(trop / 0.02) };
+  }
+
   // Abscisse de l'épine d'une accolade de lignée : dégagée À GAUCHE de la
   // mère ET de la première fille datée (voir _cheminAccolade). Elle ne
   // traverse donc jamais une barre de la famille, même quand le tri actif ou
@@ -19379,6 +19388,32 @@ class MoteurFrise {
     }
   }
 
+  // Intitulé de barre tronqué (« … ») : au survol, le texte complet prend la
+  // place du tronqué et défile doucement en aller-retour dans la barre — le
+  // clipPath posé par dessinerBarres détourne déjà le débord. Le décalage
+  // passe par transform (animation CSS), jamais par x : recalerEtiquettes
+  // écrit x pendant le défilement horizontal, et les deux doivent composer.
+  _survolDefile(groupe, el, contenu, texte, dispo) {
+    const arreter = () => {
+      el.classList.remove('est-defile');
+      el.textContent = contenu;
+      el.style.removeProperty('--defile-x');
+      el.style.removeProperty('--defile-duree');
+    };
+    groupe.addEventListener('mouseenter', () => {
+      arreter();
+      el.textContent = texte;
+      let mesure = 0;
+      try { mesure = el.getComputedTextLength(); } catch (e) { mesure = texte.length * 7.2; }
+      const d = Ariane.defileEtiquette(mesure, dispo);
+      if (!d) return; // l'estimation en caractères était pessimiste : ça tient
+      el.style.setProperty('--defile-x', d.x + 'px');
+      el.style.setProperty('--defile-duree', d.duree + 'ms');
+      el.classList.add('est-defile');
+    });
+    groupe.addEventListener('mouseleave', arreter);
+  }
+
   enteteJours(g, cfg) {
     const lettres = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
     for (let i = 0; i < cfg.jours; i++) {
@@ -19677,6 +19712,10 @@ class MoteurFrise {
           t.textContent = contenu;
           grpEt.appendChild(t);
           this._etiquettesMobiles.push({ el: t, x1: x + 9, x2: x + w });
+          // Intitulé tronqué : au survol, le texte complet défile dans la barre.
+          if (i === 0 && contenu !== texte) {
+            this._survolDefile(groupe, t, contenu, texte, w - 18);
+          }
         });
       }
       const bulle = svgEl('title', {});

@@ -1321,6 +1321,15 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   font-size: 10px; font-weight: 400; fill: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+/* Intitulé de barre trop long : au survol (le script mesure le texte, pose
+   --defile-x / --defile-duree et la classe), le texte complet défile doucement
+   en aller-retour dans la barre ; le délai laisse le curseur se poser d'abord. */
+.zfa-gantt-etiquette.est-defile {
+  animation: zfa-defile var(--defile-duree, 6s) ease-in-out 450ms infinite alternate;
+}
+@keyframes zfa-defile {
+  to { transform: translateX(var(--defile-x, -40px)); }
+}
 .theme-dark .zfa-gantt-etiquette { fill: var(--text-normal); }
 .zfa-gantt-poignee { fill: transparent; cursor: col-resize; }
 
