@@ -5416,25 +5416,76 @@ class Ariane extends obsidian.Plugin {
     return JS[dow] + ' ' + j + ' ' + MS[m - 1];
   }
 
-  // Rend le corps markdown de la section « ## Créneaux » (sans les marqueurs).
-  // Chaîne vide quand aucun créneau valide.
-  static blocCreneaux(creneaux, stats) {
+  // Clé d'un commentaire de session : mois-jour + heure de DÉBUT, sans l'année
+  // (« MM-JJTHH:MM »). Sans année : le commentaire suit le créneau déplacé même
+  // d'une année sur l'autre, et la relecture du bloc (rendu humain, sans année)
+  // retrouve la même clé.
+  static cleCommentaire(cren) {
+    const c = typeof cren === 'string' ? Ariane.parseCreneau(cren) : cren;
+    return c && c.debut ? String(c.debut).slice(5, 16) : '';
+  }
+
+  // Une cellule de tableau markdown : barre verticale masquée, retour à la
+  // ligne rendu comme <br>.
+  static echapperCellule(t) {
+    return String(t || '').replace(/\r?\n/g, '<br>').replace(/\|/g, '\\|').trim();
+  }
+  static desechapperCellule(t) {
+    return String(t || '').replace(/<br\s*\/?>/gi, '\n').replace(/\\\|/g, '|').trim();
+  }
+
+  // Relit les commentaires de session depuis le bloc balisé d'une note.
+  // Rendu humain (date « mer. 2 sept. », heures « 09:45 – 12:45 ») relu vers
+  // la même clé que cleCommentaire — c'est elle qui fait la jointure.
+  static commentairesDuBloc(texte) {
+    const s = String(texte || '');
+    const d = s.indexOf(ZFA_CRENEAUX_DEBUT);
+    const f = s.indexOf(ZFA_CRENEAUX_FIN);
+    if (d === -1 || f <= d) return {};
+    const MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.',
+      'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    const num = new Map(MOIS.map((m, i) => [m, String(i + 1).padStart(2, '0')]));
+    const out = {};
+    for (const ligne of s.slice(d + ZFA_CRENEAUX_DEBUT.length, f).split('\n')) {
+      // Découpe en ignorant les barres échappées (\|) d'un commentaire.
+      const cel = ligne.split(/(?<!\\)\|/);
+      // 5 colonnes rendues → 7 cellules éclatées (bords vides compris).
+      if (cel.length < 7) continue;
+      const dm = (cel[2] || '').trim()
+        .match(/^\S+\s+(\d{1,2})\s+(janv\.|févr\.|mars|avr\.|mai|juin|juil\.|août|sept\.|oct\.|nov\.|déc\.)$/);
+      const hm = (cel[3] || '').trim().match(/^(\d{1,2}:\d{2})\s*[-–—]/);
+      if (!dm || !hm || !num.has(dm[2])) continue;
+      const txt = Ariane.desechapperCellule(cel[5]);
+      if (!txt) continue;
+      out[num.get(dm[2]) + '-' + String(Number(dm[1])).padStart(2, '0') + 'T' + hm[1]] = txt;
+    }
+    return out;
+  }
+
+  // Rend le corps markdown de la section « ## Sessions » (sans les marqueurs).
+  // Chaîne vide quand aucun créneau valide. Les commentaires (clé
+  // cleCommentaire) complètent la 5ᵉ colonne ; seuls ceux des sessions
+  // présentes s'écrivent — une session supprimée emporte le sien.
+  static blocCreneaux(creneaux, stats, commentaires) {
     const list = Ariane.creneauxDeTache(Array.isArray(creneaux) ? creneaux
       : (creneaux ? [creneaux] : []));
     if (!list.length) return '';
     const s = stats || Ariane.statsCreneaux(list, new Date().toISOString());
+    const coms = commentaires || {};
     const lignes = list.map((c, i) => {
       const min = Math.round((Date.parse(c.fin + ':00') - Date.parse(c.debut + ':00')) / 60000);
+      const cle = Ariane.cleCommentaire(c);
+      const com = (cle && coms[cle]) ? Ariane.echapperCellule(coms[cle]) : '';
       return '| ' + (i + 1) + ' | ' + Ariane._jourHumain(c.debut) + ' | '
         + c.debut.slice(11, 16) + ' – ' + c.fin.slice(11, 16) + ' | '
-        + Ariane._dureeHumaine(min) + ' |';
+        + Ariane._dureeHumaine(min) + ' | ' + com + ' |';
     });
     const resume = '**' + s.nb + ' session' + (s.nb > 1 ? 's' : '')
       + ' · ' + Ariane._dureeHumaine(s.totalMin) + ' planifiées'
       + (s.futurMin ? ' · ' + Ariane._dureeHumaine(s.futurMin) + ' à venir' : '')
       + (s.dernier ? ' · dernière : ' + Ariane._jourHumain(s.dernier) : '') + '**';
-    return ['## Créneaux', '',
-      '| Session | Date | Heures | Durée |', '|---|---|---|---|',
+    return ['## Sessions', '',
+      '| Session | Date | Heures | Durée | Commentaire |', '|---|---|---|---|---|',
       ...lignes, '', resume].join('\n');
   }
 
@@ -14708,7 +14759,9 @@ class Ariane extends obsidian.Plugin {
       if (liste.length) x[cle] = liste; else delete x[cle];
       x.modifie = new Date().toISOString().slice(0, 10);
     });
-    await this.majBlocCreneaux(f);
+    // Le commentaire d'une session déplacée la suit ; celui d'une session
+    // supprimée disparaît (majBlocCreneaux recueille et re-place).
+    await this.majBlocCreneaux(f, { de: avant, vers: nouv });
     // marquerEcriture ci-dessus fait taire l'écoute metadataCache.changed → il
     // faut relancer le push explicitement pour que les gestes de la vue
     // calendrier (glisser / redimensionner / créer un créneau) se synchronisent.
@@ -14716,17 +14769,35 @@ class Ariane extends obsidian.Plugin {
     return true;
   }
 
-  // Réécrit la section « ## Créneaux » balisée de la note (idempotent, sur le
+  // Réécrit la section « ## Sessions » balisée de la note (idempotent, sur le
   // modèle de majBlocTache). Se pose sous le bloc d'accès s'il existe, sinon
   // sous le # Titre ; disparaît quand la tâche n'a plus de créneau.
-  async majBlocCreneaux(file) {
+  // opts : { de, vers } fait suivre le commentaire d'une session déplacée
+  // (vers vide = session supprimée) ; { coms } remplace la carte complète.
+  async majBlocCreneaux(file, opts) {
     if (!this.refDeChemin(file.path)) return false;
     const fm = (this.app.metadataCache.getFileCache(file) || {}).frontmatter || {};
     const liste = [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean);
     const stats = Ariane.statsCreneaux(liste, new Date().toISOString());
-    const interieur = Ariane.blocCreneaux(liste, stats);
-    const bloc = interieur ? ZFA_CRENEAUX_DEBUT + '\n' + interieur + '\n' + ZFA_CRENEAUX_FIN : '';
+    // Commentaires relus de l'ancien bloc AVANT réécriture, puis ajustés.
     const avant = await this.app.vault.read(file);
+    const coms = Ariane.commentairesDuBloc(avant);
+    const o = opts || {};
+    if (o.coms) {
+      for (const k of Object.keys(coms)) delete coms[k];
+      Object.assign(coms, o.coms);
+    }
+    if (o.de) {
+      const deCle = Ariane.cleCommentaire(o.de);
+      const versCle = o.vers ? Ariane.cleCommentaire(o.vers) : '';
+      if (deCle && deCle !== versCle && coms[deCle] !== undefined) {
+        const txt = coms[deCle];
+        delete coms[deCle];
+        if (versCle) coms[versCle] = txt;
+      }
+    }
+    const interieur = Ariane.blocCreneaux(liste, stats, coms);
+    const bloc = interieur ? ZFA_CRENEAUX_DEBUT + '\n' + interieur + '\n' + ZFA_CRENEAUX_FIN : '';
     let texte = avant;
     const d = texte.indexOf(ZFA_CRENEAUX_DEBUT);
     const f = texte.indexOf(ZFA_CRENEAUX_FIN);
@@ -14746,6 +14817,20 @@ class Ariane extends obsidian.Plugin {
     this.marquerEcriture(file.path);
     await this.app.vault.modify(file, texte);
     return true;
+  }
+
+  // Écrit le commentaire d'une session (cleCommentaire), ou l'efface quand le
+  // texte est vide. Ne touche qu'au bloc balisé, pas au frontmatter.
+  async majCommentaireCreneau(ref, brut, texte) {
+    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    if (!f) return false;
+    const cle = Ariane.cleCommentaire(brut);
+    if (!cle) return false;
+    const avant = await this.app.vault.read(f);
+    const coms = Ariane.commentairesDuBloc(avant);
+    const t = String(texte || '').trim();
+    if (t) coms[cle] = t; else delete coms[cle];
+    return this.majBlocCreneaux(f, { coms });
   }
 
   // --- Affichage des tâches : habillage des notes de tâche ouvertes (visuel),
@@ -17286,6 +17371,44 @@ class ModaleNomZone extends obsidian.Modal {
     const annuler = pied.createEl('button', { text: tr('Annuler') });
     annuler.onclick = () => this.close();
     const ok = pied.createEl('button', { cls: 'mod-cta', text: this.opts.bouton || tr('Créer') });
+    ok.onclick = valider;
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+/* ---- Commentaire d'une session (créneau) ---------------------------- */
+
+// Saisie du commentaire d'une session : stocké dans le bloc balisé
+// <!-- ariane:creneaux --> de la note, colonne « Commentaire ».
+class ModaleCommentaire extends obsidian.Modal {
+  constructor(app, opts, sur) {
+    super(app);
+    this.opts = opts || {};
+    this.sur = sur;
+  }
+
+  onOpen() {
+    const { contentEl, titleEl } = this;
+    titleEl.setText(this.opts.titre || tr('Commentaire de la session'));
+    const l = contentEl.createEl('label', { cls: 'zfa-gantt-modale-champ' });
+    l.createSpan({ text: tr('Commentaire') });
+    const i = l.createEl('textarea', { cls: 'zfa-dsl-zone', text: this.opts.valeur || '' });
+    i.rows = 3;
+    setTimeout(() => { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 0);
+    const valider = () => {
+      this.close();
+      this.sur(i.value.trim());
+    };
+    i.addEventListener('keydown', (e) => {
+      // ⌘/Ctrl+Entrée valide (Entrée seul fait un retour à la ligne).
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); valider(); }
+      e.stopPropagation();
+    });
+    const pied = contentEl.createDiv({ cls: 'zfa-gantt-modale-pied' });
+    const annuler = pied.createEl('button', { text: tr('Annuler') });
+    annuler.onclick = () => this.close();
+    const ok = pied.createEl('button', { cls: 'mod-cta', text: this.opts.bouton || tr('Enregistrer') });
     ok.onclick = valider;
   }
 
@@ -23000,6 +23123,18 @@ class MoteurCalendrier {
     m.addSeparator();
 
     if (ev.source === 'creneau') {
+      // Commentaire de session : stocké dans le bloc balisé de la note.
+      m.addItem((i) => i.setTitle(tr('Commentaire…')).setIcon('message-square')
+        .onClick(async () => {
+          const fich = this.app.vault.getMarkdownFiles().find((x) => x.basename === t.ref);
+          const coms = fich ? Ariane.commentairesDuBloc(await this.app.vault.cachedRead(fich)) : {};
+          new ModaleCommentaire(this.app, {
+            valeur: coms[Ariane.cleCommentaire(ev.brut)] || '',
+          }, async (txt) => {
+            await this.greffon.majCommentaireCreneau(t.ref, ev.brut, txt);
+            this.dessiner();
+          }).open();
+        }));
       // Bloc horaire : on retire le créneau lui-même (la ligne de « Créneaux »).
       m.addItem((i) => i.setTitle(tr('Supprimer ce créneau')).setIcon('trash-2')
         .onClick(async () => {

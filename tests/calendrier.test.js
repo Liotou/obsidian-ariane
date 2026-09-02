@@ -130,9 +130,34 @@ test('blocCreneaux : markdown stable, contient le résumé', () => {
   const a = Ariane.blocCreneaux(cr, Ariane.statsCreneaux(cr, '2026-09-01T00:00'));
   const b = Ariane.blocCreneaux(cr, Ariane.statsCreneaux(cr, '2026-09-01T00:00'));
   assert.equal(a, b);
-  assert.ok(a.startsWith('## Créneaux'));
+  assert.ok(a.startsWith('## Sessions'));
+  assert.ok(/Commentaire/.test(a));       // colonne de commentaires
   assert.ok(/2 sessions/.test(a));
   assert.ok(/4 h 00/.test(a));            // total planifié
+});
+
+test('commentaires : écrits dans le bloc puis relus (clé mois-jour + heure)', () => {
+  const cr = ['2026-09-08 14:00-16:00', '2026-09-10 09:00-11:00'];
+  const bloc = Ariane.blocCreneaux(cr, null, {
+    [Ariane.cleCommentaire(cr[0])]: 'Préparer les slides | relire\nversion 2',
+  });
+  const texte = ['<!-- ariane:creneaux -->', bloc, '<!-- /ariane:creneaux -->'].join('\n');
+  const coms = Ariane.commentairesDuBloc(texte);
+  assert.deepEqual(coms, { '09-08T14:00': 'Préparer les slides | relire\nversion 2' });
+  // clé sans l'année : la même session replanifiée l'an suivant garde son commentaire
+  assert.equal(Ariane.cleCommentaire('2027-09-08 14:00-16:00'), '09-08T14:00');
+});
+
+test('commentaires : ancien bloc à 4 colonnes → aucune clé, session supprimée → rien', () => {
+  const ancien = ['<!-- ariane:creneaux -->', '## Créneaux', '',
+    '| Session | Date | Heures | Durée |', '|---|---|---|---|',
+    '| 1 | mar. 8 sept. | 14:00 – 16:00 | 2 h 00 |', '', '**1 session**',
+    '<!-- /ariane:creneaux -->'].join('\n');
+  assert.deepEqual(Ariane.commentairesDuBloc(ancien), {});
+  // Un commentaire dont la session n'existe plus ne se rend pas dans le bloc.
+  const cr = ['2026-09-10 09:00-11:00'];
+  const bloc = Ariane.blocCreneaux(cr, null, { '09-08T14:00': 'orphelin' });
+  assert.ok(!/orphelin/.test(bloc));
 });
 
 test('blocCreneaux : aucune ligne → chaîne vide', () => {
