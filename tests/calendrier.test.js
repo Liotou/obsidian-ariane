@@ -413,7 +413,7 @@ test('pairesLigneeCalendrier : bloqueur hors vue → rien ; doublons dédupliqu�
     [{ de: 'B', vers: 'A', genre: 'bloque' }]);
 });
 
-test('liensLigneeCalendrier : chaque créneau aval vers l\'amont le plus proche', () => {
+test('liensLigneeCalendrier : plusieurs créneaux de part et d\'autre → tous reliés', () => {
   const points = [
     { ref: 'M', quand: '2026-09-02T09:00' },
     { ref: 'M', quand: '2026-09-04T14:00' },
@@ -423,6 +423,8 @@ test('liensLigneeCalendrier : chaque créneau aval vers l\'amont le plus proche'
   assert.deepEqual(Ariane.liensLigneeCalendrier(points,
     [{ de: 'M', vers: 'F', genre: 'hier' }]), [
     { a: 0, b: 2, genre: 'hier' },
+    { a: 0, b: 3, genre: 'hier' },
+    { a: 1, b: 2, genre: 'hier' },
     { a: 1, b: 3, genre: 'hier' },
   ]);
 });

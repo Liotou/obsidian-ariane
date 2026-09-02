@@ -7586,10 +7586,11 @@ class Ariane extends obsidian.Plugin {
     return out;
   }
 
-  // Associe aux paires de tâches les créneaux rendus (points) : chaque créneau
-  // aval rejoint le créneau amont LE PLUS PROCHE dans le temps ; au-delà de
-  // `portee` jours d'écart (largeur de la vue), pas de trait. Renvoie
-  // [{ a, b, genre }] — indices dans points, a = amont.
+  // Associe aux paires de tâches les créneaux rendus (points) : TOUS les
+  // créneaux amont sont reliés à TOUS les créneaux aval (une tâche avec
+  // plusieurs sessions affiche un trait par paire), mais seulement dans la
+  // `portee` — écart en jours, la largeur de la vue. Renvoie [{ a, b, genre }]
+  // — indices dans points, a = amont.
   static liensLigneeCalendrier(points, paires, portee) {
     const pts = points || [];
     const temps = (q) => {
@@ -7608,20 +7609,13 @@ class Ariane extends obsidian.Plugin {
       const cote = (ref) => (parRef.get(ref) || [])
         .map((i) => ({ i, q: String(pts[i].quand || '') }))
         .sort((x, y) => (x.q < y.q ? -1 : x.q > y.q ? 1 : 0));
-      const amont = cote(paire.de);
-      const aval = cote(paire.vers);
-      for (const v of aval) {
-        let meilleur = null;
-        let ecart = Infinity;
-        for (const u of amont) {
-          const d = Math.abs(temps(u.q) - temps(v.q));
-          if (d < ecart) { ecart = d; meilleur = u; }
+      for (const u of cote(paire.de)) {
+        for (const v of cote(paire.vers)) {
+          const jours = Math.abs(temps(u.q.slice(0, 10))
+            - temps(v.q.slice(0, 10))) / 86400000;
+          if (jours > maxJours) continue;
+          out.push({ a: u.i, b: v.i, genre: paire.genre });
         }
-        if (!meilleur) continue;
-        const jours = Math.abs(temps(meilleur.q.slice(0, 10))
-          - temps(v.q.slice(0, 10))) / 86400000;
-        if (jours > maxJours) continue;
-        out.push({ a: meilleur.i, b: v.i, genre: paire.genre });
       }
     }
     return out;
@@ -24110,10 +24104,11 @@ class MoteurCalendrier {
         }
         bloc.style.top = Math.max(0, y0) + 'px';
         bloc.style.height = haut + 'px';
-        // Léger retrait (3 px de chaque côté) : les blocs ne touchent pas les
-        // filets de colonne, comme dans obsidian-day-planner.
-        bloc.style.left = 'calc(' + (lay[k].col / lay[k].ncols * 100) + '% + 3px)';
-        bloc.style.width = 'calc(' + (100 / lay[k].ncols) + '% - 6px)';
+        // Retrait (6 px de chaque côté) : les blocs ne touchent pas les filets
+        // de colonne, comme dans obsidian-day-planner — et il reste de l'air
+        // entre deux colonnes pour que les courbes de lignée respirent.
+        bloc.style.left = 'calc(' + (lay[k].col / lay[k].ncols * 100) + '% + 6px)';
+        bloc.style.width = 'calc(' + (100 / lay[k].ncols) + '% - 12px)';
         if (y0 < 0) bloc.classList.add('zfa-cal-bloc-tronque-haut');
         if (y1 > hauteurInner) bloc.classList.add('zfa-cal-bloc-tronque-bas');
       });
@@ -24128,10 +24123,23 @@ class MoteurCalendrier {
       }
     });
 
-    // Traits de lignée : relient les créneaux de tâches liées (mère/fille,
-    // bloquante/bloquée) présents ensemble sur la vue, dans le langage de la
-    // frise (gris = parenté, accent = blocage, nœuds aux extrémités).
-    this._dessinerLigneeSemaine(inner);
+    // Traits de lignée au survol : passer la souris sur un créneau révèle les
+    // traits qui relient TOUS ses créneaux à ceux des tâches liées (mère/fille,
+    // bloquante/bloquée) présentes sur la vue — gris = parenté, accent =
+    // blocage, nœuds aux extrémités, comme la lignée de la frise. Rien au
+    // repos. Délégation sur la grille : les blocs sont reconstruits à chaque
+    // rendu, inutile de poser un écouteur sur chacun.
+    inner.addEventListener('mouseover', (e) => {
+      const c = e.target.closest('.zfa-cal-bloc.est-horaire');
+      if (c && c.dataset.ref) this._montrerLigneeSemaine(inner, c.dataset.ref);
+    });
+    inner.addEventListener('mouseout', (e) => {
+      const c = e.target.closest('.zfa-cal-bloc.est-horaire');
+      const v = e.relatedTarget;
+      if (c && !(v && v.closest && v.closest('.zfa-cal-bloc.est-horaire') === c)) {
+        this._effacerLigneeSemaine(inner);
+      }
+    });
 
     // Clic droit : un seul gestionnaire délégué sur la grille (fiable même si un
     // écouteur par élément a été avalé). Carte/jalon → menu de la tâche ;
@@ -24180,36 +24188,47 @@ class MoteurCalendrier {
     corps.scrollTop = this._semScrollTop != null ? this._semScrollTop : (hVue * PXH);
   }
 
-  // Traits de lignée de la vue semaine : une surcouche SVG sur la grille
-  // relie les créneaux de tâches liées — mère→fille en gris, bloqueur→bloquée
-  // en accent — quand les DEUX bouts sont rendus (portée d'une vue de 7 jours).
-  // Même langage que la lignée de la frise ; permanents ici, la grille n'a pas
-  // de survol de barre pour les révéler. La surcouche ne capte aucun pointeur :
-  // colonnes, menus et glissés restent intacts.
-  _dessinerLigneeSemaine(inner) {
-    if (this._detruit || !this._hier) return;
+  // Traits de lignée de la vue semaine, révélés au survol d'un créneau : une
+  // surcouche SVG sur la grille relie TOUS les créneaux de la tâche survolée à
+  // TOUS ceux de chaque tâche liée directe — mère→fille en gris,
+  // bloqueur→bloquée en accent — présents sur la vue (portée d'une vue de
+  // 7 jours). Même langage que la lignée de la frise ; rien au repos. La
+  // surcouche ne capte aucun pointeur : colonnes, menus et glissés restent
+  // intacts.
+  _montrerLigneeSemaine(inner, ref) {
+    if (this._detruit || !this._hier || !ref) return;
+    // Déjà affiché pour cette tâche : ne pas reconstruire (le survol balade le
+    // pointeur à l'intérieur d'une même carte).
+    if (this._ligneeRef === ref && inner.querySelector('.zfa-cal-lignee-svg')) return;
+    this._effacerLigneeSemaine(inner);
     const rect = inner.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     // Un point par bloc de créneau (les événements Apple, sans lignée, ne
     // portent pas est-horaire). Coordonnées relatives à la grille, en pixels.
     const points = [];
+    const parPoint = new Map();
     for (const el of inner.findAll('.zfa-cal-bloc.est-horaire')) {
-      const ref = el.dataset.ref;
+      const r = el.dataset.ref;
       const debut = String(el.dataset.debut || '');
-      if (!ref || debut.length < 16) continue;
-      const r = el.getBoundingClientRect();
-      points.push({ ref, quand: debut,
-        x: r.left - rect.left, y: r.top - rect.top, w: r.width, h: r.height });
+      if (!r || debut.length < 16) continue;
+      const b = el.getBoundingClientRect();
+      const i = points.push({ ref: r, quand: debut,
+        x: b.left - rect.left, y: b.top - rect.top, w: b.width, h: b.height }) - 1;
+      if (!parPoint.has(r)) parPoint.set(r, []);
+      parPoint.get(r).push(i);
     }
     if (points.length < 2) return;
     const connus = new Map(this._taches.map((t) => [t.ref, t]));
     const avecBlocs = [];
-    for (const ref of new Set(points.map((p) => p.ref))) {
-      const t = connus.get(ref);
+    for (const r of parPoint.keys()) {
+      const t = connus.get(r);
       if (t) avecBlocs.push(t);
     }
-    const liens = Ariane.liensLigneeCalendrier(points,
-      Ariane.pairesLigneeCalendrier(avecBlocs, this._hier), 6);
+    // Seules les paires qui touchent la tâche survolée sont tracées.
+    const paires = Ariane.pairesLigneeCalendrier(avecBlocs, this._hier)
+      .filter((p) => p.de === ref || p.vers === ref);
+    if (!paires.length) return;
+    const liens = Ariane.liensLigneeCalendrier(points, paires, 6);
     if (!liens.length) return;
     const svg = svgEl('svg', { class: 'zfa-cal-lignee-svg',
       width: Math.round(rect.width), height: Math.round(rect.height) });
@@ -24223,6 +24242,14 @@ class MoteurCalendrier {
       svg.appendChild(g);
     }
     inner.appendChild(svg);
+    this._ligneeRef = ref;
+  }
+
+  // Efface la surcouche de lignée (sortie du survol, redraw, destruction).
+  _effacerLigneeSemaine(inner) {
+    this._ligneeRef = '';
+    const ancien = inner.querySelector('.zfa-cal-lignee-svg');
+    if (ancien) ancien.remove();
   }
 
   // Recale la bande de jours quand on approche de son bord. Reconstruction HORS
