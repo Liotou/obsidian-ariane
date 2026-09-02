@@ -17248,31 +17248,92 @@ class ModaleTache extends obsidian.Modal {
     this._repliNote(hote);
   }
 
-  // TEMPORAIRE (diagnostic) : journal minimal des événements de l'éditeur
-  // embarqué, pour vérifier que clic / sélection / frappe passent. À retirer
+  // TEMPORAIRE (diagnostic) : teste chaque maillon de la chaîne d'édition de
+  // l'éditeur embarqué (sélection, édition au niveau état, frappe au niveau
+  // navigateur, boucle de rendu) et journalise les événements réels. À retirer
   // une fois le problème réglé.
   _sonderEditeurNote(hote, gen) {
     setTimeout(() => {
       if (gen !== this._noteEdGen) return;
-      const l = hote.createDiv({ cls: 'zfa-tache-note-debug' });
-      l.setText('DEBUG —');
-      const maj = (t) => l.setText('DEBUG ' + t);
+      this._noteAvantSonde = String(this.v.note || '');
+      const ed = this._noteEd && this._noteEd.vue && this._noteEd.vue.editor;
+      const cm = ed && ed.cm;
+      const tests = hote.createDiv({ cls: 'zfa-tache-note-debug' });
+      tests.setText('DEBUG tests —');
+      const dire = (t) => tests.setText(tests.getText() + ' · ' + t);
+      const etat = () => !cm ? 'pas de cm' :
+        'doc=' + JSON.stringify(cm.state.doc.toString().slice(0, 20)) +
+        ' dom=' + JSON.stringify((cm.contentDOM.textContent || '').slice(0, 20)) +
+        ' sel=' + cm.state.selection.main.anchor;
+      // Événements réels (clic / frappe de Monsieur), sur une 2e ligne.
+      const events = hote.createDiv({ cls: 'zfa-tache-note-debug' });
+      events.setText('DEBUG events —');
+      const noter = (t) => events.setText('DEBUG events ' + t);
       hote.addEventListener('focusin', (ev) => {
-        const t = ev.target;
-        maj('focus→' + (t && t.className ? String(t.className).split(' ')[0] : (t && t.tagName)));
+        const tg = ev.target;
+        noter('focus→' + (tg && tg.className ? String(tg.className).split(' ')[0] : (tg && tg.tagName)));
       }, true);
-      hote.addEventListener('keydown', (ev) => { maj('touche=' + ev.key); }, true);
-      hote.addEventListener('input', () => {
-        const ed = this._noteEd && this._noteEd.vue && this._noteEd.vue.editor;
-        const cm = ed && ed.cm;
-        maj('saisi doc=' + (cm ? JSON.stringify(cm.state.doc.toString().slice(0, 30)) : '?') +
-          ' dom=' + (cm ? JSON.stringify((cm.contentDOM.textContent || '').slice(0, 30)) : '?'));
-      }, true);
-      this._sondeSel = (ev) => {
+      hote.addEventListener('keydown', (ev) => { noter('touche=' + ev.key + ' ' + etat()); }, true);
+      hote.addEventListener('input', () => { noter('input ' + etat()); }, true);
+      this._sondeSel = () => {
         const sel = document.getSelection();
-        if (sel && sel.anchorNode && hote.contains(sel.anchorNode)) maj('sélection posée');
+        if (sel && sel.anchorNode && hote.contains(sel.anchorNode)) noter('sélection posée ' + etat());
       };
       document.addEventListener('selectionchange', this._sondeSel);
+      if (!cm) { dire('cm ABSENT'); return; }
+      // T0 : le caret natif a-t-il bien été rendu par notre CSS ?
+      setTimeout(() => {
+        if (gen !== this._noteEdGen) return;
+        let cc = '?';
+        try { cc = getComputedStyle(cm.contentDOM).caretColor; } catch (e) { /* rien */ }
+        const sel = document.getSelection();
+        const dedans = sel && sel.anchorNode && hote.contains(sel.anchorNode);
+        dire('T0 caret=' + cc + ' selDom=' + (dedans ? 'oui' : 'non'));
+        try { cm.focus(); cm.dispatch({ selection: { anchor: 0 } }); } catch (e1) { dire('T0 EXC ' + e1.message); return; }
+        // T1 : édition au niveau ÉTAT — le rendu suit-il ?
+        setTimeout(() => {
+          if (gen !== this._noteEdGen) return;
+          let t1 = '';
+          try {
+            const avant = cm.state.doc.toString();
+            cm.dispatch({ changes: { from: 0, insert: 'A' } });
+            t1 = 'T1 dispatch ' + (cm.state.doc.toString() !== avant ? 'doc OK' : 'doc INCHANGÉ');
+          } catch (e) { dire('T1 EXC ' + e.message); return; }
+          setTimeout(() => {
+            if (gen !== this._noteEdGen) return;
+            const rendu = (cm.contentDOM.textContent || '').indexOf('A') >= 0 ? 'rendu OK' : 'rendu ABSENT';
+            dire(t1 + ' ' + rendu);
+            // T2 : frappe au niveau NAVIGATEUR (comme une vraie saisie) —
+            // l'état suit-il ?
+            setTimeout(() => {
+              if (gen !== this._noteEdGen) return;
+              let t2 = '';
+              try {
+                cm.dispatch({ selection: { anchor: 0 } });
+                cm.contentDOM.focus();
+                const ok = document.execCommand('insertText', false, 'B');
+                t2 = 'T2 exec=' + ok;
+              } catch (e) { dire('T2 EXC ' + e.message); return; }
+              setTimeout(() => {
+                if (gen !== this._noteEdGen) return;
+                dire(t2 + ' ' + etat());
+                // T3 : la boucle de mise à jour est-elle bloquée ?
+                setTimeout(() => {
+                  if (gen !== this._noteEdGen) return;
+                  let t3 = '';
+                  try { cm.update([]); t3 = 'T3 update ok'; } catch (e) { t3 = 'T3 EXC ' + e.message; }
+                  // Nettoyage : restaurer la note d'origine.
+                  try {
+                    const d = cm.state.doc.toString();
+                    cm.dispatch({ changes: { from: 0, to: d.length, insert: this._noteAvantSonde } });
+                  } catch (e2) { /* rien */ }
+                  dire(t3 + ' · final ' + etat());
+                }, 350);
+              }, 350);
+            }, 350);
+          }, 350);
+        }, 350);
+      }, 400);
     }, 0);
   }
 
