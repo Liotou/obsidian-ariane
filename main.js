@@ -7561,6 +7561,99 @@ class Ariane extends obsidian.Plugin {
     return { parRef, meres, filles };
   }
 
+  // Paires de tâches à relier dans la vue semaine du calendrier : mère DIRECTE
+  // → fille (parenté) et bloqueur → bloquée. Seules sortent les paires dont
+  // les deux bouts figurent dans `taches` (celles qui ont un créneau rendu) ;
+  // la grand-mère n'est pas reliée à la petite-fille — la chaîne des traits
+  // passe par la mère. Renvoie [{ de, vers, genre }] (de = amont).
+  static pairesLigneeCalendrier(taches, hier) {
+    const liste = (taches || []).filter((t) => t && t.ref);
+    const la = new Set(liste.map((t) => t.ref));
+    const vus = new Set();
+    const out = [];
+    const pousser = (de, vers, genre) => {
+      if (!de || de === vers || !la.has(de) || !la.has(vers)) return;
+      const cle = de + ' ' + vers + ' ' + genre;
+      if (vus.has(cle)) return;
+      vus.add(cle);
+      out.push({ de, vers, genre });
+    };
+    for (const t of liste) {
+      const chaine = hier && hier.meres ? hier.meres.get(t.ref) : null;
+      if (chaine && chaine.length >= 2) pousser(chaine[chaine.length - 2], t.ref, 'hier');
+      for (const b of t.bloquePar || []) pousser(Ariane.refDeLien(b), t.ref, 'bloque');
+    }
+    return out;
+  }
+
+  // Associe aux paires de tâches les créneaux rendus (points) : chaque créneau
+  // aval rejoint le créneau amont LE PLUS PROCHE dans le temps ; au-delà de
+  // `portee` jours d'écart (largeur de la vue), pas de trait. Renvoie
+  // [{ a, b, genre }] — indices dans points, a = amont.
+  static liensLigneeCalendrier(points, paires, portee) {
+    const pts = points || [];
+    const temps = (q) => {
+      const n = Date.parse(String(q || '').replace(' ', 'T'));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const parRef = new Map();
+    pts.forEach((p, i) => {
+      if (!p || !p.ref) return;
+      if (!parRef.has(p.ref)) parRef.set(p.ref, []);
+      parRef.get(p.ref).push(i);
+    });
+    const maxJours = Number.isFinite(portee) ? portee : 7;
+    const out = [];
+    for (const paire of paires || []) {
+      const cote = (ref) => (parRef.get(ref) || [])
+        .map((i) => ({ i, q: String(pts[i].quand || '') }))
+        .sort((x, y) => (x.q < y.q ? -1 : x.q > y.q ? 1 : 0));
+      const amont = cote(paire.de);
+      const aval = cote(paire.vers);
+      for (const v of aval) {
+        let meilleur = null;
+        let ecart = Infinity;
+        for (const u of amont) {
+          const d = Math.abs(temps(u.q) - temps(v.q));
+          if (d < ecart) { ecart = d; meilleur = u; }
+        }
+        if (!meilleur) continue;
+        const jours = Math.abs(temps(meilleur.q.slice(0, 10))
+          - temps(v.q.slice(0, 10))) / 86400000;
+        if (jours > maxJours) continue;
+        out.push({ a: meilleur.i, b: v.i, genre: paire.genre });
+      }
+    }
+    return out;
+  }
+
+  // Géométrie d'un trait entre deux créneaux rendus (rects relatifs au SVG) :
+  // colonnes différentes → courbe horizontale bord à bord ; même colonne →
+  // courbe verticale du bas de l'un au haut de l'autre ; chevauchement
+  // horizontal (blocs côte à côte) → court trait bord à bord. Renvoie
+  // { d, ax, ay, bx, by } — d pour le path, a/b pour les nœuds d'extrémité.
+  static cheminLienCalendrier(ra, rb) {
+    const r2 = (v) => Math.round(v * 100) / 100;
+    const siHorizontal = (ra.x + ra.w) <= rb.x || (rb.x + rb.w) <= ra.x;
+    if (siHorizontal) {
+      const [g, dr] = ra.x <= rb.x ? [ra, rb] : [rb, ra];
+      const ax = g.x + g.w, ay = g.y + g.h / 2;
+      const bx = dr.x, by = dr.y + dr.h / 2;
+      const mx = r2((ax + bx) / 2);
+      return { d: 'M ' + r2(ax) + ' ' + r2(ay) + ' C ' + mx + ' ' + r2(ay)
+        + ' ' + mx + ' ' + r2(by) + ' ' + r2(bx) + ' ' + r2(by),
+        ax: r2(ax), ay: r2(ay), bx: r2(bx), by: r2(by) };
+    }
+    const haut = ra.y <= rb.y ? ra : rb;
+    const bas = haut === ra ? rb : ra;
+    const ax = haut.x + haut.w / 2, ay = haut.y + haut.h;
+    const bx = bas.x + bas.w / 2, by = bas.y;
+    const my = r2((ay + by) / 2);
+    return { d: 'M ' + r2(ax) + ' ' + r2(ay) + ' C ' + r2(ax) + ' ' + my
+      + ' ' + r2(bx) + ' ' + my + ' ' + r2(bx) + ' ' + r2(by),
+      ax: r2(ax), ay: r2(ay), bx: r2(bx), by: r2(by) };
+  }
+
   // Abscisse de l'épine d'une accolade de lignée : dégagée À GAUCHE de la
   // mère ET de la première fille datée (voir _cheminAccolade). Elle ne
   // traverse donc jamais une barre de la famille, même quand le tri actif ou
@@ -23970,6 +24063,9 @@ class MoteurCalendrier {
           bloc = this.rendreCarte(col, t, ev,
             { maxLignes, avecHeure: true, avecCoche: true, enRetard: enRetard.has(t.ref) });
           bloc.classList.add('zfa-cal-bloc');
+          // Début canonique du créneau : sert aux traits de lignée (reliage
+          // des tâches parentes / bloquantes présentes sur la vue).
+          bloc.dataset.debut = ev.debut;
           bloc.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j));
           const poi = bloc.createDiv({ cls: 'zfa-cal-poignee' });
           poi.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j, 'fin'));
@@ -24032,6 +24128,11 @@ class MoteurCalendrier {
       }
     });
 
+    // Traits de lignée : relient les créneaux de tâches liées (mère/fille,
+    // bloquante/bloquée) présents ensemble sur la vue, dans le langage de la
+    // frise (gris = parenté, accent = blocage, nœuds aux extrémités).
+    this._dessinerLigneeSemaine(inner);
+
     // Clic droit : un seul gestionnaire délégué sur la grille (fiable même si un
     // écouteur par élément a été avalé). Carte/jalon → menu de la tâche ;
     // sinon, la colonne/jour sous le curseur → menu de cellule.
@@ -24077,6 +24178,51 @@ class MoteurCalendrier {
     sync();
     corps.scrollLeft = CENTRE * colW;
     corps.scrollTop = this._semScrollTop != null ? this._semScrollTop : (hVue * PXH);
+  }
+
+  // Traits de lignée de la vue semaine : une surcouche SVG sur la grille
+  // relie les créneaux de tâches liées — mère→fille en gris, bloqueur→bloquée
+  // en accent — quand les DEUX bouts sont rendus (portée d'une vue de 7 jours).
+  // Même langage que la lignée de la frise ; permanents ici, la grille n'a pas
+  // de survol de barre pour les révéler. La surcouche ne capte aucun pointeur :
+  // colonnes, menus et glissés restent intacts.
+  _dessinerLigneeSemaine(inner) {
+    if (this._detruit || !this._hier) return;
+    const rect = inner.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    // Un point par bloc de créneau (les événements Apple, sans lignée, ne
+    // portent pas est-horaire). Coordonnées relatives à la grille, en pixels.
+    const points = [];
+    for (const el of inner.findAll('.zfa-cal-bloc.est-horaire')) {
+      const ref = el.dataset.ref;
+      const debut = String(el.dataset.debut || '');
+      if (!ref || debut.length < 16) continue;
+      const r = el.getBoundingClientRect();
+      points.push({ ref, quand: debut,
+        x: r.left - rect.left, y: r.top - rect.top, w: r.width, h: r.height });
+    }
+    if (points.length < 2) return;
+    const connus = new Map(this._taches.map((t) => [t.ref, t]));
+    const avecBlocs = [];
+    for (const ref of new Set(points.map((p) => p.ref))) {
+      const t = connus.get(ref);
+      if (t) avecBlocs.push(t);
+    }
+    const liens = Ariane.liensLigneeCalendrier(points,
+      Ariane.pairesLigneeCalendrier(avecBlocs, this._hier), 6);
+    if (!liens.length) return;
+    const svg = svgEl('svg', { class: 'zfa-cal-lignee-svg',
+      width: Math.round(rect.width), height: Math.round(rect.height) });
+    for (const l of liens) {
+      const c = Ariane.cheminLienCalendrier(points[l.a], points[l.b]);
+      const g = svgEl('g', { class: l.genre === 'bloque'
+        ? 'zfa-cal-lignee-bloque' : 'zfa-cal-lignee-hier' });
+      g.appendChild(svgEl('path', { d: c.d, class: 'zfa-cal-lignee-lien' }));
+      g.appendChild(svgEl('circle', { cx: c.ax, cy: c.ay, r: 2.4, class: 'zfa-cal-lignee-noeud' }));
+      g.appendChild(svgEl('circle', { cx: c.bx, cy: c.by, r: 2.4, class: 'zfa-cal-lignee-noeud' }));
+      svg.appendChild(g);
+    }
+    inner.appendChild(svg);
   }
 
   // Recale la bande de jours quand on approche de son bord. Reconstruction HORS

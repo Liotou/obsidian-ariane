@@ -378,3 +378,81 @@ test('disposerBlocsJour : groupe puis bloc disjoint → le second groupe repart 
   assert.deepEqual(r, [
     { col: 0, ncols: 2 }, { col: 1, ncols: 2 }, { col: 0, ncols: 1 }]);
 });
+
+// --- Traits de lignée de la vue semaine (calendrier) ---
+
+test('pairesLigneeCalendrier : mère directe + bloqueur ; parent inconnu écarté', () => {
+  const taches = [
+    { ref: 'M', parent: '' },
+    { ref: 'F', parent: '[[M]]' },
+    { ref: 'B', bloquePar: ['[[F]]'] },
+    { ref: 'X', parent: '[[Fantome]]' },
+  ];
+  const hier = Ariane.hierarchiesTaches(taches);
+  assert.deepEqual(Ariane.pairesLigneeCalendrier(taches, hier), [
+    { de: 'M', vers: 'F', genre: 'hier' },
+    { de: 'F', vers: 'B', genre: 'bloque' },
+  ]);
+});
+
+test('pairesLigneeCalendrier : la grand-mère n\'est pas reliée à la petite-fille', () => {
+  const taches = [
+    { ref: 'R', parent: '' }, { ref: 'M', parent: '[[R]]' }, { ref: 'F', parent: '[[M]]' },
+  ];
+  const hier = Ariane.hierarchiesTaches(taches);
+  assert.deepEqual(Ariane.pairesLigneeCalendrier(taches, hier), [
+    { de: 'R', vers: 'M', genre: 'hier' },
+    { de: 'M', vers: 'F', genre: 'hier' },
+  ]);
+});
+
+test('pairesLigneeCalendrier : bloqueur hors vue → rien ; doublons dédupliqués', () => {
+  const taches = [{ ref: 'A', bloquePar: ['[[Fantome]]', '[[B]]', '[[B]]'] }, { ref: 'B' }];
+  const hier = Ariane.hierarchiesTaches(taches);
+  assert.deepEqual(Ariane.pairesLigneeCalendrier(taches, hier),
+    [{ de: 'B', vers: 'A', genre: 'bloque' }]);
+});
+
+test('liensLigneeCalendrier : chaque créneau aval vers l\'amont le plus proche', () => {
+  const points = [
+    { ref: 'M', quand: '2026-09-02T09:00' },
+    { ref: 'M', quand: '2026-09-04T14:00' },
+    { ref: 'F', quand: '2026-09-02T15:00' },
+    { ref: 'F', quand: '2026-09-04T09:00' },
+  ];
+  assert.deepEqual(Ariane.liensLigneeCalendrier(points,
+    [{ de: 'M', vers: 'F', genre: 'hier' }]), [
+    { a: 0, b: 2, genre: 'hier' },
+    { a: 1, b: 3, genre: 'hier' },
+  ]);
+});
+
+test('liensLigneeCalendrier : au-delà de la portée (largeur de la vue), pas de trait', () => {
+  const points = [
+    { ref: 'M', quand: '2026-09-01T09:00' },
+    { ref: 'F', quand: '2026-09-15T09:00' },
+  ];
+  assert.deepEqual(Ariane.liensLigneeCalendrier(points,
+    [{ de: 'M', vers: 'F', genre: 'hier' }], 6), []);
+});
+
+test('cheminLienCalendrier : jours différents → courbe bord à bord', () => {
+  const c = Ariane.cheminLienCalendrier(
+    { x: 100, y: 50, w: 60, h: 40 }, { x: 300, y: 90, w: 60, h: 40 });
+  assert.deepEqual([c.ax, c.ay, c.bx, c.by], [160, 70, 300, 110]);
+  assert.ok(c.d.startsWith('M 160 70'));
+  assert.ok(c.d.endsWith('300 110'));
+  assert.ok(c.d.includes('C '));
+});
+
+test('cheminLienCalendrier : même colonne, créneaux décalés → courbe verticale', () => {
+  const c = Ariane.cheminLienCalendrier(
+    { x: 100, y: 50, w: 60, h: 40 }, { x: 100, y: 200, w: 60, h: 40 });
+  assert.deepEqual([c.ax, c.ay, c.bx, c.by], [130, 90, 130, 200]);
+});
+
+test('cheminLienCalendrier : blocs côte à côte → court trait horizontal', () => {
+  const c = Ariane.cheminLienCalendrier(
+    { x: 100, y: 50, w: 60, h: 40 }, { x: 170, y: 50, w: 60, h: 40 });
+  assert.deepEqual([c.ax, c.ay, c.bx, c.by], [160, 70, 170, 70]);
+});

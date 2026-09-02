@@ -2294,6 +2294,22 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .zfa-cal-bloc:focus { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 
+/* Traits de lignée de la vue semaine : surcouche SVG sans pointeur, au-dessus
+   des blocs (z 1) et du trait « maintenant » (z 2), sous le guide de glisse
+   (z 15) et le bloc décroché (z 30). Parenté en gris, blocage en accent —
+   le même langage que la lignée de la frise et les arêtes de l'articulation. */
+.zfa-cal-lignee-svg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  z-index: 4; pointer-events: none; overflow: visible;
+}
+.zfa-cal-lignee-lien {
+  fill: none; stroke: var(--text-muted); stroke-width: 1.6; opacity: 0.9;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.zfa-cal-lignee-noeud { fill: var(--text-muted); opacity: 0.85; }
+.zfa-cal-lignee-bloque .zfa-cal-lignee-lien { stroke: var(--interactive-accent); }
+.zfa-cal-lignee-bloque .zfa-cal-lignee-noeud { fill: var(--interactive-accent); }
+
 /* Cartes de créneau : même parti que obsidian-day-planner (contenu qui
    s'enroule, typo d'interface, fond teinté, bord, ombre, coins arrondis). */
 .zfa-cal-carte {
