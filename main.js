@@ -17281,6 +17281,7 @@ class ModaleTache extends obsidian.Modal {
         }
         const rh = hote.getBoundingClientRect();
         j.push('hote=' + Math.round(rh.width) + 'x' + Math.round(rh.height));
+        j.push('note=' + String(this.v.note || '').length);
         const vu = this._noteEd && this._noteEd.vue;
         j.push('mode=' + ((vu && vu.currentMode && vu.currentMode.type) || '?'));
       } catch (e) { j.push('err=' + e.message); }
@@ -17301,21 +17302,30 @@ class ModaleTache extends obsidian.Modal {
         if (l) l.setText('DEBUG events touche=' + ev.key + ' cible=' +
           (ev.target && ev.target.className ? String(ev.target.className).split(' ')[0] : '?'));
       }, true);
-      // Le focus MANUEL marche-t-il ?
+      // Le focus MANUEL + sélection imposée produisent-ils un curseur dessiné ?
       setTimeout(() => {
         if (gen !== this._noteEdGen) return;
         try {
-          if (cm) cm.focus();
+          if (cm) {
+            cm.dispatch({ selection: { anchor: 0 } });
+            cm.focus();
+          }
           setTimeout(() => {
             if (gen !== this._noteEdGen) return;
             const ae = document.activeElement;
             const info = ae && ae.className ? String(ae.className).split(' ')[0] : (ae && ae.tagName);
-            console.log('[Ariane][sonde] actif après cm.focus() :', info,
-              '| hasFocus=', cm && cm.hasFocus,
-              '| sel=', cm && cm.state && cm.state.selection.main.from);
+            const curs = hote.querySelectorAll('.cm-cursor');
+            const rc = curs[0] ? curs[0].getBoundingClientRect() : null;
+            const sel = document.getSelection();
+            const dedans = sel && sel.anchorNode && hote.contains(sel.anchorNode);
+            const resume = 'curseur=' + curs.length +
+              (rc ? ' @' + Math.round(rc.left) + ',' + Math.round(rc.top) + ' ' + Math.round(rc.width) + 'x' + Math.round(rc.height) : '') +
+              ' selDom=' + (dedans ? 'oui' : 'non');
+            console.log('[Ariane][sonde] après focus+sélection :', resume,
+              '| hasFocus=', cm && cm.hasFocus);
             const l = hote.querySelector('.zfa-tache-note-debug:last-child');
-            if (l) l.setText(l.getText() + ' · focus→' + info + ' hasFocus=' + (cm && cm.hasFocus));
-          }, 200);
+            if (l) l.setText(l.getText() + ' · ' + resume);
+          }, 250);
         } catch (e) { console.warn('[Ariane][sonde] focus', e); }
       }, 300);
     }, 600);
