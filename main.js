@@ -17213,23 +17213,31 @@ class ModaleTache extends obsidian.Modal {
   // Montage de la vue Markdown embarquée. Toute l'API est optionnelle : au
   // premier accroc, repli sur l'ancien couple zone de texte + aperçu.
   async _construireEditeurNote(hote) {
-    const V = obsidian.MarkdownView;
+    const V = obsidian.MarkdownView, L = obsidian.WorkspaceLeaf;
     const gen = (this._noteEdGen = this._noteEdGen + 1);
     let vue = null;
-    if (V) {
+    if (V && L) {
       try {
-        vue = new V();
-        if (!vue.app) vue.app = this.app; // hors feuille, personne ne la lui donne
+        // Une vue se construit TOUJOURS dans une feuille : le constructeur de
+        // View lit leaf.app (le scope de l'éditeur en découle) et crée son DOM
+        // DANS leaf.containerEl. Une feuille détachée — jamais accrochée au
+        // workspace — suffit à l'héberger dans la modale. Le constructeur de
+        // MarkdownView bascule déjà dans le mode d'édition par défaut du coffre
+        // (source ou aperçu actif) : pas de setMode, qui exige une instance de
+        // mode interne. TextFileView.save() sans fichier ne fait rien : la note
+        // vit dans l'éditeur, elle n'est écrite qu'au moment d'enregistrer.
+        const feuille = new L(this.app);
+        vue = new V(feuille);
+        const el = createDiv({ cls: 'zfa-tache-note-ed' });
+        el.appendChild(feuille.containerEl);
+        hote.appendChild(el); // monter d'abord : l'éditeur mesure un DOM vivant
         await vue.load();
-        await vue.setMode({ source: true });
         if (gen !== this._noteEdGen) { try { vue.unload(); } catch (e) { /* rien */ } return; }
         vue.setViewData(String(this.v.note || ''), true);
-        const el = createDiv({ cls: 'zfa-tache-note-ed' });
-        el.appendChild(vue.containerEl);
-        hote.appendChild(el);
-        this._noteEd = { vue, el };
+        this._noteEd = { vue, el, feuille };
         return;
       } catch (e) {
+        console.warn('[Ariane] éditeur de note : repli', e);
         try { if (vue) vue.unload(); } catch (e2) { /* rien */ }
         if (gen !== this._noteEdGen) return;
         this._noteEd = null;
@@ -17539,6 +17547,10 @@ class ModaleTache extends obsidian.Modal {
   onClose() {
     if (this._noteEd) {
       if (this._noteEd.vue) { try { this._noteEd.vue.unload(); } catch (e) { /* rien */ } }
+      // La feuille détachée n'a jamais eu de parent dans le workspace :
+      // detach() n'a rien à défaire (ou lève) — tenté par prudence, l'essentiel
+      // est vue.unload() qui retire les écouteurs ; le DOM part avec la modale.
+      if (this._noteEd.feuille) { try { this._noteEd.feuille.detach(); } catch (e) { /* rien */ } }
       this._noteEd = null;
     }
     if (this._comp) { try { this._comp.unload(); } catch (e) { /* rien */ } }
