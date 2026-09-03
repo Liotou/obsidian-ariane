@@ -17301,13 +17301,35 @@ class ModaleTache extends obsidian.Modal {
           const chaine = [Math.round(r.height)];
           let node = cmc;
           while (node && node !== b) {
-            chaine.unshift(Math.round(node.getBoundingClientRect().height));
+            chaine.unshift(cls(node) + ':' + Math.round(node.getBoundingClientRect().height));
             node = node.parentElement;
           }
           parts.push('b' + i + '@' + Math.round(r.left) + ',' + Math.round(r.top) +
             ' ' + Math.round(r.width) + 'x' + Math.round(r.height) +
-            ' cm=' + (cmc ? chaine.join('/') : 'non') +
-            (b === (this._noteEd && this._noteEd.el) ? ' VIVE' : ' MORTE'));
+            ' cm=' + (cmc ? chaine.join('/') : 'non'));
+          if (cmc) {
+            const pc = getComputedStyle(cmc);
+            parts.push('police=' + pc.fontSize + '/' + String(pc.fontFamily).split(',')[0]);
+            const l0 = cmc.querySelector('.cm-line');
+            if (l0) {
+              const rl = l0.getBoundingClientRect();
+              const pl = getComputedStyle(l0);
+              parts.push('l0=' + Math.round(rl.top - r.top) + '+' + Math.round(rl.height) +
+                'px/' + pl.fontSize);
+            }
+            const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+            const dessus = document.elementFromPoint(cx, cy);
+            const qui = [];
+            let n2 = dessus;
+            for (let k = 0; k < 3 && n2 && n2 !== b; k++) {
+              const rn = n2.getBoundingClientRect();
+              qui.push(cls(n2) + ':' + Math.round(rn.top - r.top) + '+' +
+                Math.round(rn.height) + '/' + getComputedStyle(n2).fontSize);
+              n2 = n2.parentElement;
+            }
+            parts.push('centre=' + (qui.join('>') || 'hors'));
+          }
+          parts.push(b === (this._noteEd && this._noteEd.el) ? 'VIVE' : 'MORTE');
         });
         audit.setText('DEBUG audit ' + parts.join(' ¦ '));
       };

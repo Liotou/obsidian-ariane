@@ -1960,6 +1960,21 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 /* Cliquer sous la dernière ligne doit poser le caret : le contenu remplit le
    défileur, comme dans une note normale. */
 .zfa-tache-note-ed .markdown-source-view .cm-content { min-height: 100%; }
+/* Apparence d'un éditeur normal : pleine largeur (la « largeur de ligne
+   lisible » d'Obsidian réduisait le contenu à une colonne étroite centrée) et
+   respiration régulière. */
+.zfa-tache-note-ed .cm-sizer,
+.zfa-tache-note-ed .cm-contentContainer,
+.zfa-tache-note-ed .markdown-source-view .cm-content {
+  max-width: none !important;
+  margin: 0 !important;
+}
+.zfa-tache-note-ed .markdown-source-view .cm-content {
+  padding: 10px 14px;
+  font-family: var(--font-text);
+  font-size: var(--font-text-size, 16px);
+  line-height: 1.55;
+}
 .zfa-tache-note-ed .view-content { padding: 0; }
 /* Pas de fichier derrière cette vue : titre inline, propriétés, en-tête de
    feuille (« Nouvel onglet ») et écran « Pas de fichier » (.empty-state) n'ont
