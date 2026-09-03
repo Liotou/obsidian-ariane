@@ -1188,7 +1188,7 @@ const DEFAULT_SETTINGS = {
   articulationAimant: true,
   articulationFleches: 'courbe', // 'courbe' | 'angulaire'
   articulationConfirmerSuppression: true, // demander avant de supprimer une carte
-  friseBarreCouleur: 'famille', // 'famille' | 'statut'
+  friseBarreCouleur: 'famille', // 'famille' | 'statut' | 'racine' | 'priorite' | 'avancement'
   friseLignageSurvol: true,     // survol d'une barre : révéler ascendants + descendants
   articulationGrille: 20,       // pas de la grille (0 = pas de grille)
   articulationSeuilAimant: 7,   // distance d'accrochage aux voisins (px)
@@ -4536,6 +4536,80 @@ class Ariane extends obsidian.Plugin {
 
   static get ZOOMS_GANTT() {
     return { jour: 44, semaine: 22, mois: 8, trimestre: 3, 'année': 1 };
+  }
+
+  // Modes de couleur des barres de la frise (réglage friseBarreCouleur) :
+  // même liste pour la barre d'outils de la vue et la page Réglages.
+  static get MODES_COULEUR_FRISE() {
+    return [
+      ['famille', 'Famille'],
+      ['statut', 'Statut'],
+      ['racine', 'Tâche parente (arborescence)'],
+      ['priorite', 'Priorité'],
+      ['avancement', 'Avancement'],
+    ];
+  }
+
+  // Palette « par arborescence » : couleurs moyennement saturées, lisibles sur
+  // les deux thèmes (le libellé des barres reste en couleur de texte normale).
+  static get COULEURS_RACINES() {
+    return ['#e0533d', '#d9832b', '#e0ac00', '#59b07a', '#2f9fe0', '#38c0c7',
+      '#6c7df0', '#c666e0', '#ec7cb4', '#8a6f4b', '#7c8aa0', '#4b9e6f'];
+  }
+
+  // Indice stable d'une chaîne dans la palette (hachage FNV-1a 32 bits) :
+  // même ref → même couleur, quel que soit l'ordre des lignes ou la session.
+  static indiceRacine(ref) {
+    const s = String(ref || '');
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h % Ariane.COULEURS_RACINES.length;
+  }
+
+  static couleurRacine(ref) {
+    return Ariane.COULEURS_RACINES[Ariane.indiceRacine(ref)];
+  }
+
+  // Racine de chaque arborescence : ref → ref de l'ancêtre le plus haut.
+  // Un parent absent des lignes (hors filtre, note supprimée) met fin à la
+  // montée : la tâche devient sa propre racine. Un cycle s'arrête de lui-même.
+  static racinesArborescence(lignes) {
+    const parRef = new Map();
+    for (const l of lignes || []) if (l && l.ref) parRef.set(l.ref, l);
+    const out = new Map();
+    for (const l of parRef.values()) {
+      const vues = new Set();
+      let cur = l;
+      while (cur && !vues.has(cur.ref)) {
+        vues.add(cur.ref);
+        out.set(l.ref, cur.ref);
+        cur = (cur.parent && parRef.get(cur.parent)) || null;
+      }
+    }
+    return out;
+  }
+
+  // Couleur de barre « par priorité » : les mêmes teintes que les badges.
+  static get COULEURS_PRIORITE() {
+    return {
+      haute: 'var(--color-red)',
+      moyenne: 'var(--color-orange)',
+      basse: 'var(--color-blue)',
+    };
+  }
+
+  // Couleur de barre « par avancement » : dégradé gris-bleu (0 %) → vert
+  // (100 %), reprenant le « à faire » et le « terminée » de la frise.
+  static couleurAvancement(p) {
+    const x = Math.max(0, Math.min(100, Number(p) || 0));
+    if (!x) return 'var(--text-faint)';
+    const a = [138, 148, 164];
+    const b = [47, 158, 91];
+    const c = a.map((v, i) => Math.round(v + (b[i] - v) * (x / 100)));
+    return 'rgb(' + c[0] + ', ' + c[1] + ', ' + c[2] + ')';
   }
 
   // Sentinelle du groupe « sans valeur » : impossible à confondre avec un
@@ -16444,12 +16518,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._section(c, tr('Vue Frise'));
     new obsidian.Setting(c)
       .setName(tr('Couleur des barres'))
-      .setDesc(tr('Selon la famille de la tâche, ou selon son statut.'))
-      .addDropdown((d) => d
-        .addOption('famille', tr('Famille'))
-        .addOption('statut', tr('Statut'))
-        .setValue(s.friseBarreCouleur || 'famille')
-        .onChange(async (v) => { s.friseBarreCouleur = v; await maj(); }));
+      .setDesc(tr('Famille, statut, arborescence (une couleur par tâche racine), priorité ou avancement. Réglable aussi dans la barre de la vue.'))
+      .addDropdown((d) => {
+        for (const [v, lib] of Ariane.MODES_COULEUR_FRISE) d.addOption(v, tr(lib));
+        return d.setValue(s.friseBarreCouleur || 'famille')
+          .onChange(async (v) => { s.friseBarreCouleur = v; await maj(); });
+      });
     new obsidian.Setting(c)
       .setName(tr('Révéler la lignée au survol'))
       .setDesc(tr('Survoler une barre met en valeur ses parents et ses sous-tâches, reliés par un trait.'))
@@ -18274,6 +18348,22 @@ class MoteurFrise {
     return c[statut] || c['à faire'];
   }
 
+  // Couleur d'une barre selon le mode choisi (réglage friseBarreCouleur).
+  // « racine » lit this._racines (ref → ref racine), calculé à chaque dessin.
+  couleurBarre(l) {
+    const mode = this.greffon.settings.friseBarreCouleur || 'famille';
+    if (mode === 'statut') return this.couleur(l.statut);
+    if (mode === 'priorite') {
+      return Ariane.COULEURS_PRIORITE[l.priorite] || 'var(--text-faint)';
+    }
+    if (mode === 'avancement') return Ariane.couleurAvancement(l.avancement);
+    if (mode === 'racine') {
+      const rac = this._racines && this._racines.get(l.ref);
+      return Ariane.couleurRacine(rac || l.ref);
+    }
+    return this.greffon.familleDe(l.famille).couleur || this.couleur(l.statut);
+  }
+
   /* ------------------------------ Ossature ------------------------------ */
 
   dessiner() {
@@ -18440,6 +18530,8 @@ class MoteurFrise {
     this._geo = this.geometrieBarre(this._H);
     // decalerSousArbre travaille par ref : on déduplique les tâches multi-groupe.
     this._lignes = [...new Map(planifiees.map((l) => [l.ref, l])).values()];
+    // Racine de chaque arborescence, pour le mode de couleur « Tâche parente ».
+    this._racines = Ariane.racinesArborescence(this._lignes);
     this._cfg = cfg;
     this._taches = taches;
     // Statut « bloquée » dérivé (jamais écrit) : blocage direct, gel descendant,
@@ -18677,6 +18769,51 @@ class MoteurFrise {
         this.dessiner();
       });
     }
+
+    // Réinitialise tous les tris (colonne d'en-tête, tri natif de la base,
+    // regroupement natif) pour retrouver la disposition par défaut : la
+    // hiérarchie par tâche parente, classée par date.
+    const raz = b.createEl('button', { cls: 'zfa-gantt-bv-bouton', attr: {
+      type: 'button',
+      title: tr('Réinitialiser les tris (hiérarchie par tâche parente)') } });
+    obsidian.setIcon(raz.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'rotate-ccw');
+    raz.createSpan({ text: tr('Réinitialiser les tris') });
+    raz.addEventListener('click', async () => {
+      let actif = !!this.ctx.lire('triColonne');
+      const tn = this.ctx.triNatif ? this.ctx.triNatif() : null;
+      if (tn && tn.criteres.length) actif = true;
+      if (this.ctx.groupeActuel && this.ctx.groupeActuel()) actif = true;
+      if (!actif) return;
+      await this.ctx.ecrire('triColonne', null);
+      await this.ctx.ecrire('triColonneSens', 1);
+      // Soigne un vieux réglage « Ordre des tâches » resté dans le .base.
+      if (this.ctx.lire('tri') !== 'date') await this.ctx.ecrire('tri', null);
+      const natif = this.ctx.triNatif ? this.ctx.triNatif() : null;
+      if (natif) for (const c of natif.criteres) {
+        // 'NONE' retire le critère (tout ce qui n'est pas ASC/DESC épure).
+        try { this.config.setSortProperty(c.property, 'NONE'); } catch (e) { /* absent */ }
+      }
+      if (this.ctx.poserGroupe) this.ctx.poserGroupe(null);
+      new obsidian.Notice(tr('Tris réinitialisés.'));
+      this.dessiner();
+    });
+
+    // Mode de couleur des barres : le même réglage que la page Réglages, posé
+    // ici pour changer d'un clic (l'écriture passe par saveSettings, partagé
+    // par toutes les vues).
+    const ctr = b.createDiv({ cls: 'zfa-gantt-bv-couleur' });
+    obsidian.setIcon(ctr.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'palette');
+    const sel = ctr.createEl('select', { attr: {
+      title: tr('Couleur des barres') } });
+    for (const [v, lib] of Ariane.MODES_COULEUR_FRISE) {
+      sel.createEl('option', { text: tr(lib), attr: { value: v } });
+    }
+    sel.value = this.greffon.settings.friseBarreCouleur || 'famille';
+    sel.addEventListener('change', async () => {
+      this.greffon.settings.friseBarreCouleur = sel.value;
+      await this.greffon.saveSettings();
+      this.dessiner();
+    });
 
     // Compte des tâches en retard : un repère discret, cliquable pour ramener la
     // frise sur aujourd'hui. Absent quand il n'y a rien à signaler.
@@ -19778,9 +19915,7 @@ class MoteurFrise {
       const geo = this._geo;
       const y = yLigne + geo.marge;
       const h = geo.epaisseur;
-      const couleur = (this.greffon.settings.friseBarreCouleur || 'famille') === 'statut'
-        ? this.couleur(l.statut)
-        : (this.greffon.familleDe(l.famille).couleur || this.couleur(l.statut));
+      const couleur = this.couleurBarre(l);
       const groupe = svgEl('g', { class: 'zfa-gantt-groupe' });
       groupe.dataset.ref = l.ref;
       if (this._bloquees && this._bloquees.has(l.ref)) groupe.classList.add('zfa-gantt-bloquee');
@@ -23536,6 +23671,9 @@ class MoteurCalendrier {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
     if (f) this.app.workspace.getLeaf(!!nouveau).openFile(f);
   }
+  // Couleur d'un créneau : suit le réglage de la frise pour les modes
+  // « statut » et « famille » ; les autres modes (racine, priorité,
+  // avancement) retombent sur la couleur de famille, faute de place.
   couleurTache(t) {
     if ((this.greffon.settings.friseBarreCouleur || 'famille') === 'statut') {
       return Ariane.COULEURS_GANTT[t.statut] || 'var(--text-faint)';
