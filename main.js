@@ -19046,23 +19046,47 @@ class MoteurFrise {
     const nomProp = cle.replace(/^note\./, '');
     const cible = evt && evt.target && evt.target.closest
       ? evt.target.closest('.bases-td') : null;
+    // Document DE LA FENÊTRE de la vue : en volet détaché, le popover doit
+    // vivre, se placer et se fermer dans le document de la frise — pas dans
+    // celui de la fenêtre principale. DOM standard (createElement), car les
+    // aides createDiv/createEl d'Obsidian ne sont garanties que dans le
+    // royaume principal (même parti que le panneau de lignée du calendrier).
+    const doc = this._doc();
 
-    const pop = document.body.createDiv({ cls: 'zfa-col-pop' });
+    const pop = doc.createElement('div');
+    pop.className = 'zfa-col-pop';
+    doc.body.appendChild(pop);
     this._colPop = pop;
-    pop.createDiv({ cls: 'zfa-col-pop-titre', text: tr('Modifier ') + nomProp });
+    const titre = doc.createElement('div');
+    titre.className = 'zfa-col-pop-titre';
+    titre.textContent = tr('Modifier ') + nomProp;
+    pop.appendChild(titre);
 
-    pop.createDiv({ cls: 'zfa-col-pop-lbl', text: tr('Nom d\'affichage') });
-    const inp = pop.createEl('input', { type: 'text' });
+    const lbl = (txt) => {
+      const d = doc.createElement('div');
+      d.className = 'zfa-col-pop-lbl';
+      d.textContent = txt;
+      pop.appendChild(d);
+    };
+    lbl(tr('Nom d\'affichage'));
+    const inp = doc.createElement('input');
+    inp.type = 'text';
     inp.value = (col && col.nom) || nomProp;
+    pop.appendChild(inp);
 
     const mtm = this.app.metadataTypeManager;
     let sel = null;
     if (!fichier && mtm && typeof mtm.setType === 'function') {
-      pop.createDiv({ cls: 'zfa-col-pop-lbl', text: tr('Type de propriété') });
-      sel = pop.createEl('select', { cls: 'dropdown' });
+      lbl(tr('Type de propriété'));
+      sel = doc.createElement('select');
+      sel.className = 'dropdown';
       const TYPES = [['text', tr('Texte')], ['number', tr('Nombre')], ['date', tr('Date')],
         ['datetime', tr('Date & heure')], ['checkbox', tr('Case à cocher')], ['multitext', tr('Liste')]];
-      for (const [t, lib] of TYPES) sel.createEl('option', { value: t, text: lib });
+      for (const [t, lib] of TYPES) {
+        const o = doc.createElement('option');
+        o.value = t; o.textContent = lib;
+        sel.appendChild(o);
+      }
       sel.value = this.typeColonne(cle) || 'text';
       sel.onchange = async () => { try { await mtm.setType(nomProp, sel.value); } catch (e) { /* rien */ } };
     }
@@ -19071,8 +19095,11 @@ class MoteurFrise {
     const b = cible ? cible.getBoundingClientRect() : null;
     let x = b ? b.left : (evt ? evt.clientX : 120);
     let y = b ? b.bottom + 4 : (evt ? evt.clientY : 120);
-    x = Math.max(8, Math.min(x, window.innerWidth - r.width - 8));
-    y = Math.max(8, Math.min(y, window.innerHeight - r.height - 8));
+    // Viewport de la fenêtre qui héberge la vue (clientWidth == innerWidth).
+    const vw = doc.documentElement.clientWidth || window.innerWidth;
+    const vh = doc.documentElement.clientHeight || window.innerHeight;
+    x = Math.max(8, Math.min(x, vw - r.width - 8));
+    y = Math.max(8, Math.min(y, vh - r.height - 8));
     pop.style.left = x + 'px';
     pop.style.top = y + 'px';
 
@@ -19080,8 +19107,8 @@ class MoteurFrise {
     const fermer = async () => {
       if (clos) return;
       clos = true;
-      document.removeEventListener('pointerdown', hors, true);
-      document.removeEventListener('keydown', touche, true);
+      doc.removeEventListener('pointerdown', hors, true);
+      doc.removeEventListener('keydown', touche, true);
       if (this.ctx.renommer) await this.ctx.renommer(cle, inp.value.trim());
       pop.remove();
       this._colPop = null;
@@ -19093,8 +19120,8 @@ class MoteurFrise {
       else if (ev.key === 'Enter' && ev.target === inp) { ev.preventDefault(); fermer(); }
     };
     setTimeout(() => {
-      document.addEventListener('pointerdown', hors, true);
-      document.addEventListener('keydown', touche, true);
+      doc.addEventListener('pointerdown', hors, true);
+      doc.addEventListener('keydown', touche, true);
       inp.focus();
       inp.select();
     }, 0);
@@ -19788,7 +19815,10 @@ class MoteurFrise {
       const py = ev.clientY - boite.top;
       trait.setAttribute('d', 'M ' + cx + ' ' + cy + ' C ' + (cx + sens * 40) + ' ' + cy
         + ', ' + (px - sens * 40) + ' ' + py + ', ' + px + ' ' + py);
-      const sous = document.elementFromPoint(ev.clientX, ev.clientY);
+      // Le document DE LA FENÊTRE de la vue : dans un volet détaché sur un
+      // autre écran, le document global est celui de la fenêtre principale,
+      // où nos barres n'existent pas — le lien ne trouvait jamais de cible.
+      const sous = this._doc().elementFromPoint(ev.clientX, ev.clientY);
       const g = sous && sous.closest
         ? sous.closest('.zfa-gantt-groupe, .zfa-gantt-jalon-groupe') : null;
       const ref = g && g.dataset ? g.dataset.ref : null;
@@ -20164,7 +20194,7 @@ class MoteurFrise {
       trait.setAttribute('d', 'M ' + ancre.x + ' ' + ancre.y + ' C '
         + (ancre.x + sens * 40) + ' ' + ancre.y + ', ' + (px - sens * 40) + ' ' + py
         + ', ' + px + ' ' + py);
-      const sous = document.elementFromPoint(ev.clientX, ev.clientY);
+      const sous = this._doc().elementFromPoint(ev.clientX, ev.clientY);
       const gg = sous && sous.closest ? sous.closest('.zfa-gantt-groupe') : null;
       const ref = gg && gg.dataset ? gg.dataset.ref : null;
       const anc = svg.querySelector('.zfa-gantt-cible');
@@ -22198,7 +22228,10 @@ class MoteurArticulation {
       const s = this._versScene(e);
       if (Math.abs(s.x - dep.x) > 4 || Math.abs(s.y - dep.y) > 4) bouge = true;
       trait.setAttribute('d', this._chemin(x1, y1, s.x, s.y));
-      const sous = document.elementFromPoint(e.clientX, e.clientY);
+      // Document de la fenêtre de la vue : en volet détaché, le document
+      // global est celui de la fenêtre principale, où les cartes du graphe
+      // n'existent pas — le reliage n'y trouvait jamais sa cible.
+      const sous = this._doc().elementFromPoint(e.clientX, e.clientY);
       const gn = sous && sous.closest ? sous.closest('.zfa-artic-noeud') : null;
       const r = gn && gn.dataset ? gn.dataset.ref : null;
       const anc = this._svg.querySelector('.zfa-artic-noeud.est-cible');
