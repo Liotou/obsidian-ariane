@@ -18858,8 +18858,10 @@ class MoteurFrise {
     this.bouton(d, tr('Laisser'), () => { this._cascade = null; this.dessiner(); });
   }
 
-  // Clic sur la ligne d'une tâche sans date : une petite modale pour saisir
-  // début et/ou échéance. À l'enregistrement, la tâche reprend sa place datée.
+  // Clic droit sur la ligne d'une tâche sans date : une petite modale pour
+  // saisir début et/ou échéance (le glisser direct sur la bande hachurée trace
+  // la barre sans fenêtre — voir saisirSansDate). À l'enregistrement, la tâche
+  // reprend sa place datée.
   ouvrirModaleDate(ligne) {
     new ModaleDaterTache(this.app, ligne, async ({ debut, echeance }) => {
       await this.greffon.ecrireDatesTaches([{ ref: ligne.ref, debut, echeance }]);
@@ -19739,17 +19741,22 @@ class MoteurFrise {
       const yLigne = l.y;
       g.appendChild(svgEl('rect', { x: 0, y: yLigne, width: cfg.largeur,
         height: l.h, class: 'zfa-gantt-survol' }));
-      // Tâche sans date : pas de barre, une bande hachurée cliquable qui ouvre
-      // la saisie des dates.
+      // Tâche sans date : pas de barre, une bande hachurée. Un glisser y trace
+      // la barre (dates posées au relâcher) ; le clic droit garde la saisie par
+      // fenêtre ; un simple clic ouvre la note, comme sur une barre.
       if (l.sansDate) {
         const bande = svgEl('rect', { x: 0, y: yLigne + 2, width: cfg.largeur,
           height: Math.max(2, l.h - 4), class: 'zfa-gantt-sansdate-bande',
           fill: 'url(#zfa-gantt-hachures)' });
-        const ouvrir = (e) => { e.stopPropagation(); this.ouvrirModaleDate(l); };
-        bande.addEventListener('click', ouvrir);
+        bande.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.ouvrirModaleDate(l);
+        });
+        bande.addEventListener('pointerdown', (e) => this.saisirSansDate(e, l, cfg));
         const bulle = svgEl('title', {});
         bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + tr('sans date') + ' — '
-          + tr('cliquez pour dater');
+          + tr('glissez pour dater · clic droit pour saisir les dates');
         bande.appendChild(bulle);
         // Accroche pour la lignée : sans dates, la tâche n'a pas de point dans
         // le temps — on la retient au bord gauche VISIBLE de la frise (le
@@ -20565,6 +20572,105 @@ class MoteurFrise {
       }
       if (!n) { this.dessiner(); return; }
       await this.appliquerGeste(ligne, mode, n);
+    };
+    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointerup', lacher);
+  }
+
+  // Glisser sur la bande hachurée d'une tâche sans date : un aperçu de barre
+  // suit la souris, du jour d'appui au jour visé (guide d'étirement sur le bord
+  // qui bouge) ; au relâcher, la tâche est datée — début = premier jour,
+  // échéance = dernier. Un appui immobile reste un clic et ouvre la note, comme
+  // sur une barre. Même cheminement d'écriture qu'appliquerGeste (ascendants
+  // étendus, annulation posée, dates anticipées).
+  saisirSansDate(e, ligne, cfg) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const svg = this._svg;
+    if (!svg) return;
+    const ppj = cfg.ppj;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    // Jour sous le pointeur : la bande vit dans l'espace du SVG, qui défile
+    // avec le contenu — rect.left est déjà décalé du défilement.
+    const jourDe = (clientX) => {
+      const rect = svg.getBoundingClientRect();
+      const i = Math.max(0, Math.min(Math.round(cfg.largeur / ppj) - 1,
+        Math.floor((clientX - rect.left) / ppj)));
+      return Ariane.decalerJour(cfg.debut, i);
+    };
+    let apercu = null;
+    let bouge = false;
+    const tracer = (d1, d2) => {
+      const x1 = Math.max(0, this.x(cfg, d1));
+      const x2 = Math.min(cfg.largeur, this.x(cfg, Ariane.decalerJour(d2, 1)));
+      const geo = this._geo;
+      if (!apercu) {
+        apercu = svgEl('rect', { class: 'zfa-gantt-apercu-cree',
+          rx: geo.rayon, ry: geo.rayon });
+        svg.appendChild(apercu);
+      }
+      apercu.setAttribute('x', Math.min(x1, x2));
+      apercu.setAttribute('width', Math.max(ppj, Math.abs(x2 - x1)));
+      apercu.setAttribute('y', (ligne.y || 0) + geo.marge);
+      apercu.setAttribute('height', geo.epaisseur);
+      return { x1, x2 };
+    };
+    const bouger = (ev) => {
+      if (Math.abs(ev.clientX - x0) > 3 || Math.abs(ev.clientY - y0) > 3) bouge = true;
+      if (!bouge) return;
+      const a = jourDe(x0);
+      const b = jourDe(ev.clientX);
+      if (!a || !b) return;
+      const { x1, x2 } = tracer(a < b ? a : b, a < b ? b : a);
+      // Le guide suit le bord qui bouge, comme pour l'étirement d'une barre.
+      if (a < b) this._guideEtir(x2, 'droite'); else this._guideEtir(x1, 'gauche');
+    };
+    const lacher = async (ev) => {
+      this._doc().removeEventListener('pointermove', bouger);
+      this._doc().removeEventListener('pointerup', lacher);
+      this._effacerGuideEtir();
+      if (apercu) { apercu.remove(); apercu = null; }
+      if (!bouge) {
+        this.ouvrir(ligne.ref, ev.metaKey || ev.ctrlKey);
+        this.dessiner();
+        return;
+      }
+      const a = jourDe(x0);
+      const b = jourDe(ev.clientX);
+      const debut = a && b && a < b ? a : b;
+      const echeance = a && b && a < b ? b : a;
+      if (!debut || !echeance) { this.dessiner(); return; }
+      const changements = [{ ref: ligne.ref, debut, echeance }];
+      this._etendreAscendants(ligne, changements);
+      // État d'avant (dates PROPRES de chaque tâche touchée), pour l'annulation.
+      const avant = changements.map((c) => {
+        const l = (this._lignes || []).find((x) => x.ref === c.ref);
+        const p = (l && l.propre) || {};
+        return { ref: c.ref, debut: p.debut || '', echeance: p.echeance || '' };
+      });
+      const ecrites = await this.greffon.ecrireDatesTaches(changements);
+      if (!ecrites) { this.dessiner(); return; }
+      if (this.racine && this.racine.focus) this.racine.focus({ preventScroll: true });
+      if (!this._enAttente) this._enAttente = new Map();
+      for (const c of changements) {
+        this._enAttente.set(c.ref, { debut: c.debut || '', echeance: c.echeance || '' });
+      }
+      poserAnnulation(this, async () => {
+        await this.greffon.ecrireDatesTaches(avant);
+        if (!this._enAttente) this._enAttente = new Map();
+        for (const c of avant) this._enAttente.set(c.ref, { debut: c.debut, echeance: c.echeance });
+        this._cascade = null;
+        this.dessiner();
+      }, async () => {
+        await this.greffon.ecrireDatesTaches(changements);
+        if (!this._enAttente) this._enAttente = new Map();
+        for (const c of changements) this._enAttente.set(c.ref, { debut: c.debut, echeance: c.echeance });
+        this._cascade = null;
+        this.dessiner();
+      });
+      this.dessiner();
     };
     this._doc().addEventListener('pointermove', bouger);
     this._doc().addEventListener('pointerup', lacher);

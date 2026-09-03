@@ -1132,10 +1132,19 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
-/* Ligne d'une tâche sans date : bande hachurée cliquable, pas de barre. */
+/* Ligne d'une tâche sans date : bande hachurée où l'on trace la barre au
+   glisser (curseur réticule) ; le clic droit ouvre la saisie par fenêtre. */
 .zfa-gantt-hachure-trait { stroke: var(--text-faint); stroke-width: 1; }
-.zfa-gantt-sansdate-bande { opacity: 0.4; cursor: pointer; }
+.zfa-gantt-sansdate-bande { opacity: 0.4; cursor: crosshair; }
 .zfa-gantt-sansdate-bande:hover { opacity: 0.7; }
+
+/* Aperçu de la barre tracée à la main sur une ligne sans date : voile accent
+   tant que le glissé dure, au-dessus du SVG mais sans capter le pointeur. */
+.zfa-gantt-apercu-cree {
+  fill: var(--interactive-accent);
+  opacity: 0.3;
+  pointer-events: none;
+}
 
 .zfa-gantt-modale-date .zfa-gantt-modale-sous {
   color: var(--text-muted); font-size: var(--font-ui-smaller); margin: 0 0 12px;
