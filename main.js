@@ -22883,6 +22883,10 @@ class MoteurCalendrier {
     clearTimeout(this._wheelMinuterie);
     clearTimeout(this._calageMinuterie);
     clearTimeout(this._semScrollMinuterie);
+    clearTimeout(this._figeMinuterie);
+    this._coalesce = false;
+    this._redessinDiffere = false;
+    this._gesteCal = false;
     if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
     if (this.greffon._moteursCalendrier) this.greffon._moteursCalendrier.delete(this);
     this.racine.empty();
@@ -22957,6 +22961,9 @@ class MoteurCalendrier {
   }
 
   dessiner() {
+    // Pendant la retombée d'un geste (écriture d'un créneau), les demandes de
+    // redessin sont mémorisées au lieu d'être exécutées : voir _coalesceRedessin.
+    if (this._coalesce) { this._redessinDiffere = true; return; }
     try { this.dessinerVraiment(); } catch (e) {
       console.error('[Ariane] calendrier :', e);
       this.racine.empty();
@@ -23365,6 +23372,51 @@ class MoteurCalendrier {
       cle: c.cle, nom: c.nom, valeur: c.valeur ? c.valeur(ref) : '',
     }));
   }
+  // Une écriture de geste (déplacement / redimensionnement d'un créneau) fait
+  // réagir Bases à CHAQUE écriture de la note (frontmatter, puis bloc
+  // « Sessions ») : onDataUpdated → dessiner, plusieurs fois en quelques
+  // dizaines de ms, dont au moins une avec les données d'avant — le bloc
+  // clignotait et repassait brièvement à son ancienne place. Pendant la
+  // fenêtre, les demandes ne font que lever un drapeau (voir dessiner) et un
+  // seul dessin repart quand ça retombe — nourri du créneau anticipé de
+  // _creneauxAnticipes, donc à la bonne place même si les données de la base
+  // n'ont pas encore suivi. Un geste en cours repousse la retombée : jamais de
+  // reconstruction pendant qu'on tient un bloc.
+  _coalesceRedessin(ms) {
+    this._coalesce = true;
+    // Le DOM du bloc a été retaillé à la main pendant le geste : un dessin est
+    // dû quoi qu'il arrive (le bloc glissé garde transform + pointer-events:none).
+    this._redessinDiffere = true;
+    clearTimeout(this._figeMinuterie);
+    const retombee = () => {
+      if (this._gesteCal) {
+        this._figeMinuterie = setTimeout(retombee, 200);
+        return;
+      }
+      this._coalesce = false;
+      if (this._redessinDiffere) {
+        this._redessinDiffere = false;
+        this.dessiner();
+      }
+    };
+    this._figeMinuterie = setTimeout(retombee, ms || 450);
+  }
+
+  // Liste de créneaux attendue APRÈS l'écriture d'un geste (l'ancien retiré,
+  // le nouveau ajouté, triés et dédoublonnés comme majCreneau les range) :
+  // sert de valeur anticipée dans _enAttente, pour que les redessins qui
+  // partent avant la propagation de l'écriture affichent déjà la nouvelle
+  // géométrie au lieu de revenir à l'ancienne.
+  _creneauxAnticipes(ref, avant, debut, fin) {
+    const t = (this._tachesBrutes || this._taches || []).find((x) => x.ref === ref);
+    const liste = [].concat((t && t.creneaux) || []).map(String)
+      .filter((x) => x.trim() !== String(avant || '').trim());
+    const nv = (debut && fin) ? Ariane.formatCreneau(debut, fin) : '';
+    if (nv) liste.push(nv);
+    // Même ordre que la comparaison de _enAttente (tri lexicographique du brut).
+    return Ariane.creneauxDeTache(liste).map((c) => c.brut).sort();
+  }
+
   async _apres(ref, apercu) {
     if (!this._enAttente) this._enAttente = new Map();
     if (apercu) this._enAttente.set(ref, apercu);
@@ -23625,6 +23677,9 @@ class MoteurCalendrier {
   _saisirBloc(e, bloc, ref, brut, jourCol, mode) {
     if (e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
+    // Geste en cours : la retombée d'un dessin coalescé l'attend (jamais de
+    // reconstruction du DOM pendant qu'on tient un bloc).
+    this._gesteCal = true;
     const PXH = this._pxHeure;
     const x0 = e.clientX;
     const y0 = e.clientY;
@@ -23705,6 +23760,8 @@ class MoteurCalendrier {
     const lacher = async (up) => {
       this._doc().removeEventListener('pointermove', bouger);
       this._doc().removeEventListener('pointerup', lacher);
+      this._doc().removeEventListener('pointercancel', lacher);
+      this._gesteCal = false;
       nettoyerGuide();
       if (!bouge) {
         bloc.classList.remove('zfa-cal-bloc-flotte');
@@ -23719,8 +23776,13 @@ class MoteurCalendrier {
         const cr0 = Ariane.creneauDepuisDrop({ yRel: top, hauteurHeure: PXH,
           heureDebut: this._hDeb, jourISO: jourCol, dureeMin: Math.max(15, (haut / PXH) * 60) });
         if (!cr0) { this.dessiner(); return; }
+        // Fenêtre de coalescence + valeur anticipée : pas de rafale de
+        // redessins ni de retour bref à l'ancienne place pendant que
+        // l'écriture se propage (voir _coalesceRedessin).
+        this._coalesceRedessin();
+        const prevu = this._creneauxAnticipes(ref, brut, cr0.debut, cr0.fin);
         await this._majCreneauU(ref, { avant: brut, debut: cr0.debut, fin: cr0.fin });
-        this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
+        this._apres(ref, { cible: [undefined, undefined, prevu], creneaux: prevu });
         return;
       }
       if (mode === 'debut') {
@@ -23731,8 +23793,10 @@ class MoteurCalendrier {
           heureDebut: this._hDeb, jourISO: jourCol, dureeMin: 15 });
         const fin0 = Ariane.parseCreneau(brut);
         if (!cr0 || !fin0 || cr0.debut >= fin0.fin) { this.dessiner(); return; }
+        this._coalesceRedessin();
+        const prevu = this._creneauxAnticipes(ref, brut, cr0.debut, fin0.fin);
         await this._majCreneauU(ref, { avant: brut, debut: cr0.debut, fin: fin0.fin });
-        this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
+        this._apres(ref, { cible: [undefined, undefined, prevu], creneaux: prevu });
         return;
       }
       const top = Math.max(0, cal(topDep + dy));
@@ -23754,11 +23818,14 @@ class MoteurCalendrier {
       const cr = Ariane.creneauDepuisDrop({ yRel: top, hauteurHeure: PXH,
         heureDebut: this._hDeb, jourISO: jourCible, dureeMin: Math.max(15, (haut / PXH) * 60) });
       if (!cr) { this.dessiner(); return; }
+      this._coalesceRedessin();
+      const prevu = this._creneauxAnticipes(ref, brut, cr.debut, cr.fin);
       await this._majCreneauU(ref, { avant: brut, debut: cr.debut, fin: cr.fin });
-      this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
+      this._apres(ref, { cible: [undefined, undefined, prevu], creneaux: prevu });
     };
     this._doc().addEventListener('pointermove', bouger);
     this._doc().addEventListener('pointerup', lacher);
+    this._doc().addEventListener('pointercancel', lacher);
   }
 
   // Câble dragover/drop sur une cellule de la vue mois : lien externe → créneau
