@@ -17157,8 +17157,6 @@ class ModaleTache extends obsidian.Modal {
     };
     this.props = {};
     this._noteInitiale = '';
-    this._noteEd = null;      // éditeur embarqué (vue Markdown) : { vue, el }
-    this._noteEdGen = 0;      // jeton des constructions (redessins concurrents)
   }
 
   async onOpen() {
@@ -17188,172 +17186,22 @@ class ModaleTache extends obsidian.Modal {
     } catch (e) { el.setText(texte); }
   }
 
-  // Note de travail : la section d'en-tête, puis l'éditeur. L'éditeur est une
-  // vraie vue Markdown (MarkdownView en mode édition, la même qu'une note)
-  // construite UNE FOIS pour la vie de la modale et relogée à chaque
-  // redessin — changer famille ou statut reconstruit tout le formulaire,
-  // le texte et le curseur de la note doivent survivre.
+  // Note de travail : la section d'en-tête, puis la zone de texte avec son
+  // aperçu formaté dessous (redessiné à la frappe, avec un léger délai).
   _dessinerNote(nb) {
     const nl = nb.createEl('div', { cls: 'zfa-tache-note-tete' });
     const ni = nl.createSpan({ cls: 'zfa-tache-ic' });
     obsidian.setIcon(ni, 'text');
     nl.createSpan({ text: tr('Note de travail') });
-    if (this._noteEd && this._noteEd.el) {
-      nb.appendChild(this._noteEd.el);
-      try { // repriser l'éditeur après son déménagement
-        const cm = this._noteEd.vue && this._noteEd.vue.editor
-          && this._noteEd.vue.editor.cm;
-        if (cm && cm.requestMeasure) cm.requestMeasure();
-      } catch (e) { /* rien */ }
-      return;
-    }
-    this._construireEditeurNote(nb.createDiv({ cls: 'zfa-tache-note-hote' }));
+    this._repliNote(nb.createDiv({ cls: 'zfa-tache-note-hote' }));
   }
 
-  // Montage de la vue Markdown embarquée. Toute l'API est optionnelle : au
-  // premier accroc, repli sur l'ancien couple zone de texte + aperçu.
-  async _construireEditeurNote(hote) {
-    const V = obsidian.MarkdownView, L = obsidian.WorkspaceLeaf;
-    const gen = (this._noteEdGen = this._noteEdGen + 1);
-    let vue = null;
-    let el = null;
-    if (V && L) {
-      try {
-        // Une vue se construit TOUJOURS dans une feuille : le constructeur de
-        // View lit leaf.app (le scope de l'éditeur en découle) et crée son DOM
-        // DANS leaf.containerEl. Une feuille détachée — jamais accrochée au
-        // workspace — suffit à l'héberger dans la modale. Le constructeur de
-        // MarkdownView bascule déjà dans le mode d'édition par défaut du coffre
-        // (source ou aperçu actif) : pas de setMode, qui exige une instance de
-        // mode interne. TextFileView.save() sans fichier ne fait rien : la note
-        // vit dans l'éditeur, elle n'est écrite qu'au moment d'enregistrer.
-        const feuille = new L(this.app);
-        vue = new V(feuille);
-        el = createDiv({ cls: 'zfa-tache-note-ed' });
-        el.appendChild(feuille.containerEl);
-        hote.appendChild(el); // monter d'abord : l'éditeur mesure un DOM vivant
-        await vue.load();
-        if (gen !== this._noteEdGen) {
-          // Une construction plus récente a pris le relais : démonter TOUT
-          // (vue ET boîte) — une boîte vide restée montée serait un fantôme
-          // qui avale les clics sans rien éditer.
-          try { vue.unload(); } catch (e) { /* rien */ }
-          el.remove();
-          return;
-        }
-        vue.setViewData(String(this.v.note || ''), true);
-        this._noteEd = { vue, el, feuille };
-        // Clic dans la boîte hors du contenu (sous la dernière ligne, gouttes
-        // internes…) : CodeMirror n'y pose rien. On met le caret en fin de note
-        // pour que la zone réponde toujours, comme une note normale.
-        el.addEventListener('mousedown', (ev) => {
-          const ed = this._noteEd && this._noteEd.vue && this._noteEd.vue.editor;
-          const cm2 = ed && ed.cm;
-          const cont = cm2 && cm2.contentDOM;
-          if (!cont || cont.contains(ev.target)) return; // CM gère le clic
-          setTimeout(() => {
-            try {
-              cm2.dispatch({ selection: { anchor: cm2.state.doc.length } });
-              cm2.focus();
-            } catch (e) { /* rien */ }
-          }, 0);
-        });
-        this._sonderEditeurNote(hote, gen); // TEMPORAIRE : diagnostic, à retirer
-        return;
-      } catch (e) {
-        console.warn('[Ariane] éditeur de note : repli', e);
-        try { if (vue) vue.unload(); } catch (e2) { /* rien */ }
-        if (el) el.remove();
-        if (gen !== this._noteEdGen) return;
-        this._noteEd = null;
-      }
-    }
-    if (gen !== this._noteEdGen) return;
-    this._repliNote(hote);
-  }
-
-  // TEMPORAIRE (diagnostic) : audit du DOM rejoué à chaque clic (combien de
-  // boîtes d'éditeur, vivantes ou mortes, chaîne des hauteurs) + journal
-  // cumulatif des clics/sélections. À retirer une fois le problème réglé.
-  _sonderEditeurNote(hote, gen) {
-    setTimeout(() => {
-      if (gen !== this._noteEdGen) return;
-      const audit = hote.createDiv({ cls: 'zfa-tache-note-debug' });
-      const events = hote.createDiv({ cls: 'zfa-tache-note-debug' });
-      const journal = [];
-      const noter = (t) => {
-        journal.unshift(t); // les plus récents d'abord (l'ellipse cache la fin)
-        if (journal.length > 5) journal.length = 5;
-        events.setText('DEBUG ' + journal.join(' ¦ '));
-      };
-      const cls = (n) => !n ? 'null' : (n.nodeType === 1 ?
-        (n.className ? String(n.className).trim().split(/\s+/)[0] : n.tagName.toLowerCase())
-        : 'texte');
-      const dans = (n) => n && hote.contains(n);
-      const dessinerAudit = () => {
-        const mod = this.modalEl || this.contentEl;
-        const boxes = mod ? Array.from(mod.querySelectorAll('.zfa-tache-note-ed')) : [];
-        const parts = ['boites=' + boxes.length + ' dansHote=' +
-          hote.querySelectorAll('.zfa-tache-note-ed').length];
-        boxes.forEach((b, i) => {
-          const r = b.getBoundingClientRect();
-          const cmc = b.querySelector('.cm-content');
-          const chaine = [Math.round(r.height)];
-          let node = cmc;
-          while (node && node !== b) {
-            chaine.unshift(cls(node) + ':' + Math.round(node.getBoundingClientRect().height));
-            node = node.parentElement;
-          }
-          parts.push('b' + i + '@' + Math.round(r.left) + ',' + Math.round(r.top) +
-            ' ' + Math.round(r.width) + 'x' + Math.round(r.height) +
-            ' cm=' + (cmc ? chaine.join('/') : 'non'));
-          if (cmc) {
-            const pc = getComputedStyle(cmc);
-            parts.push('police=' + pc.fontSize + '/' + String(pc.fontFamily).split(',')[0]);
-            const l0 = cmc.querySelector('.cm-line');
-            if (l0) {
-              const rl = l0.getBoundingClientRect();
-              const pl = getComputedStyle(l0);
-              parts.push('l0=' + Math.round(rl.top - r.top) + '+' + Math.round(rl.height) +
-                'px/' + pl.fontSize);
-            }
-            const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-            const dessus = document.elementFromPoint(cx, cy);
-            const qui = [];
-            let n2 = dessus;
-            for (let k = 0; k < 3 && n2 && n2 !== b; k++) {
-              const rn = n2.getBoundingClientRect();
-              qui.push(cls(n2) + ':' + Math.round(rn.top - r.top) + '+' +
-                Math.round(rn.height) + '/' + getComputedStyle(n2).fontSize);
-              n2 = n2.parentElement;
-            }
-            parts.push('centre=' + (qui.join('>') || 'hors'));
-          }
-          parts.push(b === (this._noteEd && this._noteEd.el) ? 'VIVE' : 'MORTE');
-        });
-        audit.setText('DEBUG audit ' + parts.join(' ¦ '));
-      };
-      this._sondeMdown = (ev) => {
-        const boite = ev.target.closest && ev.target.closest('.zfa-tache-note-ed');
-        const dessus = document.elementFromPoint(ev.clientX, ev.clientY);
-        noter('clic ' + cls(ev.target) + (dans(ev.target) ? '·ZONE' : '') +
-          (boite ? '·BOITE' : '') + ' dessus=' + cls(dessus));
-        dessinerAudit();
-      };
-      document.addEventListener('mousedown', this._sondeMdown, true);
-      this._sondeSel = () => {
-        const sel = document.getSelection();
-        const n = sel && sel.anchorNode;
-        if (!n) return;
-        noter('sel ' + cls(n) + (dans(n) ? '·ZONE' : '') + ' off=' + sel.anchorOffset);
-      };
-      document.addEventListener('selectionchange', this._sondeSel);
-      hote.addEventListener('keydown', (ev) => { noter('touche=' + ev.key); }, true);
-      dessinerAudit();
-    }, 600);
-  }
-
-  // Repli : l'ancien comportement (zone de texte + aperçu formaté dessous).
+  // La note de travail : une zone de texte et, dessous, l'aperçu formaté
+  // (Markdown rendu comme dans une note), retouché à la frappe avec un léger
+  // délai. C'est le comportement d'origine : l'essai d'un éditeur Markdown
+  // embarqué (vraie MarkdownView dans la modale) a été abandonné —
+  // l'éditeur hors espace de travail restait bancal (géométrie, caret,
+  // habillage), voir la note du 2026-09-03 dans les mémoires du chantier.
   _repliNote(hote) {
     const na = hote.createEl('textarea', { cls: 'zfa-tache-note-zone' });
     na.rows = 5;
@@ -17367,14 +17215,6 @@ class ModaleTache extends obsidian.Modal {
       clearTimeout(this._noteDeb);
       this._noteDeb = setTimeout(() => this._rendreMarkdown(nap, this.v.note), 250);
     };
-  }
-
-  // Relit l'éditeur embarqué : le texte de la note y vit entre les redessins,
-  // c'est lui l'original — on le récupère au moment d'enregistrer.
-  _relireNoteEditeur() {
-    if (this._noteEd && this._noteEd.vue) {
-      try { this.v.note = this._noteEd.vue.getViewData(); } catch (e) { /* rien */ }
-    }
   }
 
   async _chargerDepuisNote() {
@@ -17613,7 +17453,6 @@ class ModaleTache extends obsidian.Modal {
       return;
     }
     this.repondu = true;
-    this._relireNoteEditeur();
     if (this.v.jalon) this.v.debut = '';
     let ref = this.ref;
     if (!ref) {
@@ -17651,22 +17490,6 @@ class ModaleTache extends obsidian.Modal {
   }
 
   onClose() {
-    if (this._noteEd) {
-      if (this._noteEd.vue) { try { this._noteEd.vue.unload(); } catch (e) { /* rien */ } }
-      // La feuille détachée n'a jamais eu de parent dans le workspace :
-      // detach() n'a rien à défaire (ou lève) — tenté par prudence, l'essentiel
-      // est vue.unload() qui retire les écouteurs ; le DOM part avec la modale.
-      if (this._noteEd.feuille) { try { this._noteEd.feuille.detach(); } catch (e) { /* rien */ } }
-      this._noteEd = null;
-    }
-    if (this._sondeSel) {
-      document.removeEventListener('selectionchange', this._sondeSel); // TEMPORAIRE
-      this._sondeSel = null;
-    }
-    if (this._sondeMdown) {
-      document.removeEventListener('mousedown', this._sondeMdown, true); // TEMPORAIRE
-      this._sondeMdown = null;
-    }
     if (this._comp) { try { this._comp.unload(); } catch (e) { /* rien */ } }
     this.contentEl.empty();
   }
