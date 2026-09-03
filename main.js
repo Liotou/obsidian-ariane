@@ -18408,14 +18408,16 @@ class MoteurFrise {
     // pistes se décalent dès la trentième ligne et la frise devient illisible.
     // Le tableau de gauche défile avec la frise : c'est le conteneur qui bouge,
     // les lignes étant en position absolue comme chez Bases.
-    // La frise ne descend pas jusqu'au bas du volet : sa hauteur suit le
-    // contenu (barre de défilement horizontale juste sous le Gantt), plafonnée
-    // à la place disponible pour que les listes longues gardent leur défilement.
+    // La frise joint le bas du volet : quand le contenu est plus court que la
+    // place, les deux colonnes s'étalent quand même jusqu'en bas (les barres
+    // de défilement restent au bord du volet) ; quand il est plus long, la
+    // place disponible garde son défilement interne — même valeur dans les
+    // deux cas, donc.
     const dispoH = env.clientHeight || hauteur;
     droite.style.alignSelf = 'flex-start';
-    droite.style.height = Math.min(hauteur + 14, dispoH) + 'px';
+    droite.style.height = dispoH + 'px';
     gauche.style.alignSelf = 'flex-start';
-    gauche.style.height = Math.min(this._hauteurTotale, dispoH) + 'px';
+    gauche.style.height = dispoH + 'px';
 
     const table = gauche.querySelector('.zfa-gantt-table');
     droite.addEventListener('scroll', () => {

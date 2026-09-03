@@ -2094,12 +2094,15 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-agenda-coches-vide { font-size: var(--font-ui-smaller); color: var(--text-muted); padding: 2px 0; }
 
 /* ===================== Vue calendrier ============================== */
-/* Le calendrier occupe toute la hauteur du volet : on neutralise le
-   rembourrage qu'Obsidian met autour d'une vue Bases en plein onglet, mais
-   UNIQUEMENT quand ce volet héberge notre calendrier (`:has(.zfa-cal)`) — la
-   frise et l'articulation, mêmes vues Bases, ne sont pas touchées. */
-.workspace-leaf-content[data-type="bases"] .view-content:has(.zfa-cal) {
-  padding: 0; min-height: 0;
+/* Nos vues de base portent leur classe SUR la racine .bases-view que Bases
+   nous confie (frise, calendrier, articulation). Or Bases réserve à ses
+   propres tableaux un padding bas de 60px (--bases-view-padding: 0 0 60px),
+   qui sur nos vues ne fait qu'une bande morte sous le contenu — on l'annule
+   pour que la vue joigne le bas du volet, même scindé en deux. */
+.bases-view.zfa-gantt,
+.bases-view.zfa-cal,
+.bases-view.zfa-artic {
+  padding-bottom: 0;
 }
 .zfa-cal { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .zfa-cal-barre { display: flex; align-items: center; gap: var(--size-4-2); flex: none;
