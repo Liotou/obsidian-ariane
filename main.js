@@ -4281,12 +4281,12 @@ class Ariane extends obsidian.Plugin {
 
     // Apple Rappels : poussée automatique quand une tâche change, et relève
     // régulière tant qu'Obsidian est ouvert. Tout est inerte hors macOS ou si
-    // l'intégration est coupée.
+    // l'intégration est coupée. Les gestes des vues passent par majTache
+    // (jamais marquée écriture) → cette écoute les couvre aussi.
     this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
-      if (!this.settings.rappelsActif || !this.settings.rappelsAuto) return;
       if (!this.refDeChemin(fichier.path)) return;
       if (this.ecritePlugin(fichier.path)) return;
-      this.antirebond('rappels:push', () => this.pousserRappels(true), 2500);
+      this._relancerPushRappels(2500);
     }));
     this.app.workspace.onLayoutReady(() => {
       if (obsidian.Platform.isMacOS && this.settings.rappelsActif && this.settings.rappelsAuto) {
@@ -4326,6 +4326,17 @@ class Ariane extends obsidian.Plugin {
       clearTimeout(this.antirebonds.get('agenda:push'));
       this.antirebonds.delete('agenda:push');
       Promise.resolve(this.pousserAgenda(true)).finally(() => { this._agendaPushEnAttente = false; });
+    });
+    // Même parti pour Apple Rappels : en revenant sur Obsidian on relève
+    // (cases cochées, échéances changées dans Rappels) ; en quittant Obsidian
+    // on pousse tout de suite ce qui est en attente (Rappels à jour quand on
+    // y bascule).
+    this.registerDomEvent(window, 'focus', () => this._relancerReleveRappels(700));
+    this.registerDomEvent(window, 'blur', () => {
+      if (!this._rappelsAutoActif() || !this.antirebonds.has('rappels:push')) return;
+      clearTimeout(this.antirebonds.get('rappels:push'));
+      this.antirebonds.delete('rappels:push');
+      Promise.resolve(this.pousserRappels(true)).finally(() => { this._rappelsPushEnAttente = false; });
     });
 
     this.registerEvent(this.app.vault.on('modify', revaliderIndex));
@@ -6601,7 +6612,14 @@ class Ariane extends obsidian.Plugin {
   }
 
   // Crée / met à jour un rappel par tâche. Rend « ref \t id » (id vide si échec).
-  // `taches` : [{ ref, id, titre, notes, liste, echeance, heure, priorite, termine }].
+  // `taches` : [{ ref, id, titre, notes, liste, echeance, heure, priorite,
+  //               termine, dedup }].
+  // Dédoublonnage (dedup, calculé côté JS quand la référence se lit dans le
+  // titre) : un rappel-id perdu faisait créer une copie à chaque push, sans
+  // jamais reprendre l'ancienne — d'où les doublons à l'identique dans Rappels.
+  // On scanne la liste cible : le premier homonyme est REPRIS (son id rendu,
+  // donc re-mémorisé dans la note), les suivants supprimés ; quand le rappel
+  // lié est vivant, les homonymes restants sont de simples restes → supprimés.
   static genererJXARappels(taches) {
     const IN = JSON.stringify({ taches: Array.isArray(taches) ? taches : [] });
     return [
@@ -6609,12 +6627,30 @@ class Ariane extends obsidian.Plugin {
       'function run(){',
       '  var IN=' + IN + '; acces();',
       '  var PRIO={haute:1,moyenne:5,basse:9};',
+      '  var cacheL={};',
+      '  function listeDe(cal){ try{ var k=ObjC.unwrap(cal.calendarIdentifier); if(!cacheL[k]) cacheL[k]=fetchListe(cal); return cacheL[k]; }catch(e){ return null; } }',
       '  var out=[];',
       '  for(var i=0;i<IN.taches.length;i++){',
       '    var t=IN.taches[i];',
       '    var r=remById(t.id);',
       '    var cal=listeParNom(t.liste);',
       '    if(r && cal){ try{ if(ObjC.unwrap(r.calendar.calendarIdentifier)!==ObjC.unwrap(cal.calendarIdentifier)){ ST.removeReminderCommitError(r,true,null); r=null; } }catch(e){} }',
+      '    if(t.dedup && cal){',
+      '      var L2=listeDe(cal);',
+      '      if(L2){',
+      '        var mon=""; try{ if(r) mon=ObjC.unwrap(r.calendarItemIdentifier); }catch(e){}',
+      '        var prem=null;',
+      '        for(var k=0;k<L2.count;k++){',
+      '          var rk=L2.objectAtIndex(k);',
+      '          if(net(titre(rk))!==t.titre) continue;',
+      '          var idr=""; try{ idr=ObjC.unwrap(rk.calendarItemIdentifier); }catch(e){}',
+      '          if(mon && idr===mon) continue;',
+      '          if(!prem && !mon){ prem=rk; continue; }',
+      '          try{ ST.removeReminderCommitError(rk,true,null); }catch(e){}',
+      '        }',
+      '        if(!r && prem) r=prem;',
+      '      }',
+      '    }',
       '    if(!r){ r=$.EKReminder.reminderWithEventStore(ST); if(cal) r.calendar=cal; }',
       '    try{ r.title=t.titre; }catch(e){}',
       '    try{ r.notes=t.notes||""; }catch(e){}',
@@ -13620,7 +13656,27 @@ class Ariane extends obsidian.Plugin {
 
   // Pousse toutes les tâches éligibles vers Apple Rappels (création / mise à
   // jour), puis mémorise le rappel-id et l'instantané dans chaque note.
+  //
+  // Verrou : deux osascript de push concurrents (modifs très rapprochées, flush
+  // au blur pendant qu'un push tourne…) créaient des DOUBLONS — le rappel-id
+  // pas encore écrit relu vide par le second push, qui recrée. Même piège et
+  // même parti qu'Apple Agenda : on sérialise ; si un push est demandé pendant
+  // qu'un autre tourne, on en relance UN seul après.
   async pousserRappels(silencieux) {
+    if (this._rappelsPushEnCours) { this._rappelsPushRedemande = true; return 0; }
+    this._rappelsPushEnCours = true;
+    try {
+      return await this._pousserRappelsImpl(silencieux);
+    } finally {
+      this._rappelsPushEnCours = false;
+      if (this._rappelsPushRedemande) {
+        this._rappelsPushRedemande = false;
+        setTimeout(() => this.pousserRappels(true), 400);
+      }
+    }
+  }
+
+  async _pousserRappelsImpl(silencieux) {
     if (!obsidian.Platform.isMacOS) {
       if (!silencieux) new obsidian.Notice(tr('Apple Rappels : disponible sur macOS uniquement.'));
       return 0;
@@ -13635,11 +13691,15 @@ class Ariane extends obsidian.Plugin {
       try { note = await this.lireNoteTache(t.ref); } catch (e) { /* rien */ }
       const lien = 'obsidian://open?vault=' + encodeURIComponent(vault)
         + '&file=' + encodeURIComponent(t.fichier.path.replace(/\.md$/, ''));
+      const titre = Ariane.formatModele(
+        this.settings.rappelsFormatTitre || '[{ref}] - {intitule}',
+        { ref: t.ref, intitule: t.intitule, famille: (this.familleDe(t.famille) || {}).nom || '' });
       charge.push({
-        ref: t.ref, id: t._rid,
-        titre: Ariane.formatModele(
-          this.settings.rappelsFormatTitre || '[{ref}] - {intitule}',
-          { ref: t.ref, intitule: t.intitule, famille: (this.familleDe(t.famille) || {}).nom || '' }),
+        ref: t.ref, id: t._rid, titre,
+        // Le dédoublonnage JXA ne balaie que si la référence se lit dans le
+        // titre du rappel : sans {ref} dans le gabarit, impossible d'identifier
+        // un homonyme sans risque d'en supprimer un legitime.
+        dedup: titre.indexOf(t.ref) >= 0,
         notes: (note ? note.slice(0, 500).trim() + '\n\n' : '') + lien,
         liste: this.listeRappelsDe(t.famille),
         echeance: t.echeance || '', heure: t.heure || '',
@@ -13660,10 +13720,17 @@ class Ariane extends obsidian.Plugin {
       const t = ref && parRef.get(ref);
       if (!t || !id) continue;
       const champs = {};
-      if (id !== t._rid) champs['rappel-id'] = id;
-      await this.majTache(ref, champs);
+      if (id && id !== t._rid) champs['rappel-id'] = id;
       const f = t.fichier;
-      if (f) {
+      if (Object.keys(champs).length) {
+        // marquerEcriture fait taire l'écoute metadataCache : sans lui, chaque
+        // push qui re-mémorise un rappel-id relançait un push (echo).
+        if (f) this.marquerEcriture(f.path);
+        await this.majTache(ref, champs);
+      }
+      // L'instantané ne s'écrit que s'il change : réécrire à l'identique fait
+      // un écho metadataCache au-delà de la fenêtre d'anti-écho (parti Agenda).
+      if (f && this._instantRappel(t) !== t._snap) {
         this.marquerEcriture(f.path);
         await this.app.fileManager.processFrontMatter(f, (x) => {
           x['rappel-sync'] = this._instantRappel(t);
@@ -13777,6 +13844,34 @@ class Ariane extends obsidian.Plugin {
     }
     if (!silencieux && n) new obsidian.Notice(n + tr(' tâche(s) mise(s) à jour depuis Rappels.'));
     return n;
+  }
+
+  /* ---- Apple Rappels : orchestration -------------------------------- */
+
+  // La synchro automatique Rappels doit-elle tourner ? (macOS, activée, auto.)
+  _rappelsAutoActif() {
+    return obsidian.Platform.isMacOS && !!this.settings.rappelsActif && !!this.settings.rappelsAuto;
+  }
+
+  // Programme un push automatique (note de tâche modifiée, nouvelle tâche…).
+  // Antirebondi ; le verrou de pousserRappels gère les recouvrements.
+  _relancerPushRappels(delai) {
+    if (!this._rappelsAutoActif()) return;
+    this._rappelsPushEnAttente = true;
+    this.antirebond('rappels:push', async () => {
+      try { await this.pousserRappels(true); } finally { this._rappelsPushEnAttente = false; }
+    }, delai || 2000);
+  }
+
+  // Programme une relève automatique (retour de focus…), antirebondie et
+  // espacée d'au moins 15 s des précédentes ; sautée si un push est en attente.
+  _relancerReleveRappels(delai) {
+    if (!this._rappelsAutoActif() || this._rappelsPushEnAttente) return;
+    if (this._rappelsDerniereReleve && Date.now() - this._rappelsDerniereReleve < 15000) return;
+    this.antirebond('rappels:releve', async () => {
+      this._rappelsDerniereReleve = Date.now();
+      await this.releverRappels(true);
+    }, delai || 700);
   }
 
   /* ---- Apple Agenda : orchestration -------------------------------- */
@@ -15257,6 +15352,10 @@ class Ariane extends obsidian.Plugin {
       aujourdhui: jour, cles,
       liste: (champs && champs.liste) || this.settings.listeRappelsDefaut,
     })));
+    // ecrire() marque l'écriture : l'écoute metadataCache est muette → relancer
+    // le push explicitement, pour qu'une tâche créée avec une échéance parte
+    // vers Rappels sans attendre la relève périodique.
+    this._relancerPushRappels(1500);
     return chemin;
   }
 
