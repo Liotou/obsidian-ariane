@@ -1949,8 +1949,17 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-tache-note-ed .workspace-leaf-content,
 .zfa-tache-note-ed .view-content,
 .zfa-tache-note-ed .markdown-source-view,
-.zfa-tache-note-ed .markdown-source-view.mod-cm6 .cm-editor,
-.zfa-tache-note-ed .markdown-source-view.mod-cm6 .cm-scroller { height: 100%; }
+.zfa-tache-note-ed .markdown-source-view .cm-editor,
+.zfa-tache-note-ed .markdown-source-view .cm-scroller,
+.zfa-tache-note-ed .markdown-source-view .cm-sizer {
+  height: 100% !important;
+}
+/* Obsidian rogne .view-content de la hauteur d'en-tête (calc), même quand
+   l'en-tête est masqué : ici il n'y a pas d'en-tête, la chaîne remplit tout. */
+.zfa-tache-note-ed .view-content { height: 100% !important; padding: 0; }
+/* Cliquer sous la dernière ligne doit poser le caret : le contenu remplit le
+   défileur, comme dans une note normale. */
+.zfa-tache-note-ed .markdown-source-view .cm-content { min-height: 100%; }
 .zfa-tache-note-ed .view-content { padding: 0; }
 /* Pas de fichier derrière cette vue : titre inline, propriétés, en-tête de
    feuille (« Nouvel onglet ») et écran « Pas de fichier » (.empty-state) n'ont

@@ -17243,6 +17243,21 @@ class ModaleTache extends obsidian.Modal {
         }
         vue.setViewData(String(this.v.note || ''), true);
         this._noteEd = { vue, el, feuille };
+        // Clic dans la boîte hors du contenu (sous la dernière ligne, gouttes
+        // internes…) : CodeMirror n'y pose rien. On met le caret en fin de note
+        // pour que la zone réponde toujours, comme une note normale.
+        el.addEventListener('mousedown', (ev) => {
+          const ed = this._noteEd && this._noteEd.vue && this._noteEd.vue.editor;
+          const cm2 = ed && ed.cm;
+          const cont = cm2 && cm2.contentDOM;
+          if (!cont || cont.contains(ev.target)) return; // CM gère le clic
+          setTimeout(() => {
+            try {
+              cm2.dispatch({ selection: { anchor: cm2.state.doc.length } });
+              cm2.focus();
+            } catch (e) { /* rien */ }
+          }, 0);
+        });
         this._sonderEditeurNote(hote, gen); // TEMPORAIRE : diagnostic, à retirer
         return;
       } catch (e) {
