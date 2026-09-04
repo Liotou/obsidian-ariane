@@ -104,3 +104,27 @@ Le statut **« bloqué »** se propage automatiquement dans les deux sens :
 - **Tranche C — Avancement dérivé (§4).** Moyenne pondérée en lecture seule.
 - **Tranche D — Refus de cycle à l'ajout (§5).** Graphe fusionné, `lienValide` sur
   `rattacher` / `creerBlocage` / modale. Pas de vue enrichie. **Fait.**
+
+---
+
+## Révision 2026-09-04 (R2) — distinguer « bloquée » et « impactée »
+
+Le retour d'usage a montré que la propagation **montante** telle que définie en
+§3 (Q2) est trop invasive : enchâîner des lectures par des liens bloquants au
+sein d'un même niveau gelait l'arborescence entière de la tâche mère, alors
+qu'on ne veut signaler qu'un enchaînement de processus entre sœurs.
+
+Décision — le statut dérivé est scindé en deux états **disjoints**, calculés par
+`Ariane.propagerBlocage` (désormais `{ bloquee, impactee }`) :
+
+- **« bloquée »** (opérationnel) : cible directe d'un lien bloquant non clos,
+  **plus** le gel descendant (tout le sous-arbre sous une tâche bloquée).
+  **L'héritage montante de §3/Q2 disparaît de cet état.**
+- **« impactée »** (attentionnel, nouveau) : toute tâche ayant une descendante
+  bloquée (transitif), sans être bloquée elle-même. Signalé plus légèrement :
+  contour pointillé gris discret sur la barre/jalon de la frise (pas de voile
+  hachuré, pas d'héritage du gel) ; bordure pointillée grise sur la carte
+  d'articulation. Ligne « impactée » au survol.
+
+Le gel descendant reste le seul mécanisme qui *bloque* ; l'impactée n'est
+qu'une remontée d'information vers les mères. Tranche B est révisée en ce sens.

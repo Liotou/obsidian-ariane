@@ -1124,6 +1124,7 @@ const TEXTES = {
     "Ce rattachement fermerait un cycle : il n’a pas été appliqué.": "This parent link would close a cycle: it was not applied.",
     "Modification annulée : ce lien fermait un cycle (rattachements + blocages).": "Change reverted: that link closed a cycle (links + blockers).",
     "bloquée": "blocked",
+    "impactée": "impacted",
 
     "Note de travail": "Working note",
     "Ce que vous voulez garder sous la main pour cette tâche (Markdown accepté).": "Anything to keep at hand for this task (Markdown allowed).",
@@ -6475,13 +6476,16 @@ class Ariane extends obsidian.Plugin {
     return { noeuds, aretes };
   }
 
-  // Statut « bloquée » DÉRIVÉ (jamais écrit dans le frontmatter).
-  //  - blocage direct : au moins un bloqueur non clos (terminé/abandonné) ;
-  //  - gel descendant : tout le sous-arbre d'une tâche à blocage direct ;
-  //  - héritage montant : les ascendants d'une tâche bloquée (visibilité).
-  // Le montant ne redéclenche pas le descendant : une sœur d'une tâche bloquée
-  // n'est pas gelée. `noeuds` : [{ref, statut}] ; `aretes` : [{de, vers, type}]
-  // avec type 'hier' (de = parent) ou 'bloque' (de = bloqueur).
+  // Statut « bloquée » et « impactée » DÉRIVÉS (jamais écrits dans le frontmatter),
+  // renvoyés en deux ensembles disjoints { bloquee, impactee }.
+  //  - bloquée (opérationnel) : blocage direct (au moins un bloqueur non clos,
+  //    terminé/abandonné) PLUS gel descendant (tout le sous-arbre d'une tâche
+  //    à blocage direct) ;
+  //  - impactée (attentionnel) : toute tâche ayant une descendante bloquée,
+  //    sans être bloquée elle-même — simple remontée d'information vers les
+  //    mères, elle ne gèle rien et une sœur d'une tâche bloquée n'est pas gelée.
+  // `noeuds` : [{ref, statut}] ; `aretes` : [{de, vers, type}] avec type 'hier'
+  // (de = parent) ou 'bloque' (de = bloqueur).
   static propagerBlocage(noeuds, aretes) {
     const parRef = new Map();
     for (const n of noeuds || []) if (n && n.ref && !parRef.has(n.ref)) parRef.set(n.ref, n);
@@ -6514,16 +6518,18 @@ class Ariane extends obsidian.Plugin {
       }
     };
     for (const ref of direct) descendre(ref);
-    for (const ref of [...bloquee]) {
+    const impactee = new Set();
+    for (const ref of bloquee) {
       let cur = parentDe.get(ref);
       const vus = new Set([ref]);
       while (cur && parRef.has(cur) && !vus.has(cur)) {
         vus.add(cur);
-        bloquee.add(cur);
+        impactee.add(cur);
         cur = parentDe.get(cur);
       }
     }
-    return bloquee;
+    for (const ref of bloquee) impactee.delete(ref);
+    return { bloquee, impactee };
   }
 
   // Avancement EFFECTIF de chaque tâche (dérivé, jamais écrit) :
@@ -18534,8 +18540,9 @@ class MoteurFrise {
     this._racines = Ariane.racinesArborescence(this._lignes);
     this._cfg = cfg;
     this._taches = taches;
-    // Statut « bloquée » dérivé (jamais écrit) : blocage direct, gel descendant,
-    // héritage montant. Voir spec 2026-08-31-rattachements-taches-design.md §3.
+    // Statuts dérivés (jamais écrits) : « bloquée » = blocage direct + gel
+    // descendant ; « impactée » = a une descendante bloquée (remontée d'info).
+    // Voir spec 2026-08-31-rattachements-taches-design.md §3 (rév. 2026-09-04).
     {
       const ar = [];
       for (const t of taches) {
@@ -18546,7 +18553,9 @@ class MoteurFrise {
           if (x) ar.push({ de: x, vers: t.ref, type: 'bloque' });
         }
       }
-      this._bloquees = Ariane.propagerBlocage(taches, ar);
+      const prop = Ariane.propagerBlocage(taches, ar);
+      this._bloquees = prop.bloquee;
+      this._impactees = prop.impactee;
     }
     // Avancement dérivé : une mère montre la moyenne pondérée de ses filles.
     this._avDeriv = Ariane.avancementsDerives(taches);
@@ -19920,6 +19929,7 @@ class MoteurFrise {
       const groupe = svgEl('g', { class: 'zfa-gantt-groupe' });
       groupe.dataset.ref = l.ref;
       if (this._bloquees && this._bloquees.has(l.ref)) groupe.classList.add('zfa-gantt-bloquee');
+      else if (this._impactees && this._impactees.has(l.ref)) groupe.classList.add('zfa-gantt-impactee');
       // Points d'accroche pour les liens de lignée (survol).
       l._anc = { xg: x, xd: x + w, cy: y + h / 2 };
       // Géométrie des dates PROPRES (pour recalculer l'enveloppe d'une mère en
@@ -20009,7 +20019,8 @@ class MoteurFrise {
       const bulle = svgEl('title', {});
       bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + debut + ' → ' + fin
         + (av ? '  ·  ' + av + ' %' : '')
-        + (this._bloquees && this._bloquees.has(l.ref) ? '\n' + tr('bloquée') : '');
+        + (this._bloquees && this._bloquees.has(l.ref) ? '\n' + tr('bloquée')
+          : this._impactees && this._impactees.has(l.ref) ? '\n' + tr('impactée') : '');
       groupe.appendChild(bulle);
 
       fond.addEventListener('pointerdown', (e) => this.saisir(e, groupe, l, 'deplacer', { x, w }));
@@ -20176,6 +20187,8 @@ class MoteurFrise {
     // qu'on translate pendant le glissé.
     const grp = svgEl('g', { class: 'zfa-gantt-jalon-groupe' });
     grp.dataset.ref = l.ref;
+    if (this._bloquees && this._bloquees.has(l.ref)) grp.classList.add('zfa-gantt-bloquee');
+    else if (this._impactees && this._impactees.has(l.ref)) grp.classList.add('zfa-gantt-impactee');
     grp.appendChild(svgEl('line', { x1: x, y1: this._hEntete, x2: x,
       y2: this._hauteurTotale,
       class: 'zfa-gantt-jalon-trait' }));
@@ -20185,7 +20198,9 @@ class MoteurFrise {
       class: 'zfa-gantt-losange' });
     d.dataset.ref = l.ref;
     const bulle = svgEl('title', {});
-    bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + l.echeance;
+    bulle.textContent = l.ref + ' · ' + l.intitule + '\n' + l.echeance
+      + (this._bloquees && this._bloquees.has(l.ref) ? '\n' + tr('bloquée')
+        : this._impactees && this._impactees.has(l.ref) ? '\n' + tr('impactée') : '');
     d.appendChild(bulle);
     d.addEventListener('contextmenu', (e) => this.menuTache(e, l));
     d.addEventListener('pointerenter', () => this._montrerLignage(l.ref));
@@ -21319,7 +21334,9 @@ class MoteurArticulation {
 
     const grapheAll = Ariane.grapheArticulation(toutes);
     this._aretesToutes = grapheAll.aretes;
-    this._bloquees = Ariane.propagerBlocage(grapheAll.noeuds, grapheAll.aretes);
+    const propAll = Ariane.propagerBlocage(grapheAll.noeuds, grapheAll.aretes);
+    this._bloquees = propAll.bloquee;
+    this._impactees = propAll.impactee;
     this._avDeriv = Ariane.avancementsDerives(toutes);
     const aretes = Ariane.aretesEntre(grapheAll.aretes, refsPlan);
     const sousSet = toutes.filter((t) => refsPlan.has(t.ref));
@@ -21819,6 +21836,7 @@ class MoteurArticulation {
     gn.dataset.ref = n.ref;
     if (this._selNoeuds.has(n.ref)) gn.classList.add('est-selectionne');
     if (this._bloquees && this._bloquees.has(n.ref)) gn.classList.add('est-bloquee');
+    else if (this._impactees && this._impactees.has(n.ref)) gn.classList.add('est-impactee');
     const fo = svgEl('foreignObject', { width: ARTIC_W, height: n.h || ARTIC_H });
     gn.appendChild(fo);
     const carte = fo.createDiv({ cls: 'zfa-artic-carte' + (n.jalon ? ' est-jalon' : '')

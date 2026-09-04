@@ -72,35 +72,54 @@ const H = (de, vers) => ({ de, vers, type: 'hier' });
 const Bk = (de, vers) => ({ de, vers, type: 'bloque' });
 
 test('blocage direct : la cible est bloquée si le bloqueur n est pas clos', () => {
-  const b = Ariane.propagerBlocage([N('A'), N('B')], [Bk('A', 'B')]);
+  const { bloquee: b } = Ariane.propagerBlocage([N('A'), N('B')], [Bk('A', 'B')]);
   assert.ok(b.has('B'));
   assert.ok(!b.has('A'));
 });
 
 test('un bloqueur terminé ou abandonné ne bloque plus', () => {
-  assert.ok(!Ariane.propagerBlocage([N('A', 'terminée'), N('B')], [Bk('A', 'B')]).has('B'));
-  assert.ok(!Ariane.propagerBlocage([N('A', 'abandonnée'), N('B')], [Bk('A', 'B')]).has('B'));
+  assert.ok(!Ariane.propagerBlocage([N('A', 'terminée'), N('B')], [Bk('A', 'B')]).bloquee.has('B'));
+  assert.ok(!Ariane.propagerBlocage([N('A', 'abandonnée'), N('B')], [Bk('A', 'B')]).bloquee.has('B'));
 });
 
 test('gel descendant : le sous-arbre d une tâche à blocage direct est gelé', () => {
-  const b = Ariane.propagerBlocage(
+  const { bloquee: b } = Ariane.propagerBlocage(
     [N('X'), N('M'), N('F1'), N('F2')],
     [Bk('X', 'M'), H('M', 'F1'), H('F1', 'F2')]);
   assert.deepEqual([...b].sort(), ['F1', 'F2', 'M']);
 });
 
-test('héritage montant : la mère est bloquée, mais pas la sœur de la fille bloquée', () => {
-  const b = Ariane.propagerBlocage(
+test('impactée : les ascendants d une bloquée sont impactés, pas bloqués', () => {
+  const r = Ariane.propagerBlocage(
     [N('X'), N('M'), N('F'), N('S')],
     [Bk('X', 'F'), H('M', 'F'), H('M', 'S')]);
-  assert.ok(b.has('F'));
-  assert.ok(b.has('M'));      // héritée
-  assert.ok(!b.has('S'));     // sœur non gelée : le montant ne redéclenche pas le descendant
+  assert.ok(r.bloquee.has('F'));
+  assert.ok(r.impactee.has('M'));   // remontée d information vers la mère
+  assert.ok(!r.bloquee.has('M'));   // la mère n est pas gelée
+  assert.ok(!r.impactee.has('S'));  // la sœur ne reçoit rien
+  assert.ok(!r.bloquee.has('S'));
+});
+
+test('impactée : transitive jusqu à la racine, disjointe de bloquée', () => {
+  const r = Ariane.propagerBlocage(
+    [N('X'), N('G'), N('M'), N('F'), N('S')],
+    [Bk('X', 'F'), H('M', 'F'), H('G', 'M'), H('G', 'S')]);
+  assert.deepEqual([...r.impactee].sort(), ['G', 'M']);
+  for (const ref of r.impactee) assert.ok(!r.bloquee.has(ref));
+});
+
+test('impactée : un bloqueur clos ne laisse ni bloquée ni impactée', () => {
+  const r = Ariane.propagerBlocage(
+    [N('A', 'terminée'), N('M'), N('F')],
+    [Bk('A', 'F'), H('M', 'F')]);
+  assert.equal(r.bloquee.size, 0);
+  assert.equal(r.impactee.size, 0);
 });
 
 test('propagerBlocage : entrées vides', () => {
-  assert.equal(Ariane.propagerBlocage([], []).size, 0);
-  assert.equal(Ariane.propagerBlocage(null, null).size, 0);
+  assert.equal(Ariane.propagerBlocage([], []).bloquee.size, 0);
+  assert.equal(Ariane.propagerBlocage([], []).impactee.size, 0);
+  assert.equal(Ariane.propagerBlocage(null, null).bloquee.size, 0);
 });
 
 /* ------------------------ avancementsDerives ------------------------- */
