@@ -4592,6 +4592,21 @@ class Ariane extends obsidian.Plugin {
     return out;
   }
 
+  // Regroupement « par tâche mère » : ref → [intitulé de la racine de son
+  // arborescence] (la plus grande mère possible). Une tâche sans mère forme
+  // son propre groupe. Même sémantique que racinesArborescence : un parent
+  // absent des lignes met fin à la montée, un cycle s'arrête de lui-même.
+  static groupesParRacine(taches) {
+    const lignes = (taches || []).map((t) => ({
+      ref: t.ref, parent: Ariane.refDeLien(t.parent) || '' }));
+    const racines = Ariane.racinesArborescence(lignes);
+    const noms = new Map();
+    for (const t of taches || []) noms.set(t.ref, t.intitule || t.ref);
+    const out = new Map();
+    for (const [ref, rac] of racines) out.set(ref, [noms.get(rac) || rac]);
+    return out;
+  }
+
   // Couleur de barre « par priorité » : les mêmes teintes que les badges.
   static get COULEURS_PRIORITE() {
     return {
@@ -18138,7 +18153,7 @@ const TYPE_VUE_BASE_CALENDRIER = 'ariane-calendrier';
 const DEFAUTS_FRISE = {
   zoom: 'mois', libelleSemaine: 'numero',
   tri: 'date', rowHeight: 'medium', columnSize: null,
-  triColonne: null, triColonneSens: 1,
+  triColonne: null, triColonneSens: 1, groupeMere: false,
 };
 
 // Valeurs par défaut des réglages d'une vue calendrier de base.
@@ -18450,7 +18465,10 @@ class MoteurFrise {
     // par groupe, puis placement en y/h. Une tâche sans date n'est plus mise à
     // l'écart : elle suit le tri actif comme les autres, seule sa ligne reste
     // hachurée (voir dessinerBarres).
-    const groupes = this.ctx.groupes ? this.ctx.groupes() : null;
+    let groupes = this.ctx.groupes ? this.ctx.groupes() : null;
+    // Regroupement par tâche mère : chaque arborescence sous la bannière de sa
+    // racine. Prend le pas sur le regroupement natif tant qu'il est actif.
+    if (this.ctx.lire('groupeMere')) groupes = Ariane.groupesParRacine(taches);
     const groupeDesc = this.ctx.sensGroupe ? this.ctx.sensGroupe() === -1 : false;
     // Colonne de gauche = tableau plat. La hiérarchie ne réordonne les lignes
     // que par défaut (axe chronologique) ; dès qu'un autre tri est actif, les
@@ -18783,9 +18801,11 @@ class MoteurFrise {
       const tn = this.ctx.triNatif ? this.ctx.triNatif() : null;
       if (tn && tn.criteres.length) actif = true;
       if (this.ctx.groupeActuel && this.ctx.groupeActuel()) actif = true;
+      if (this.ctx.lire('groupeMere')) actif = true;
       if (!actif) return;
       await this.ctx.ecrire('triColonne', null);
       await this.ctx.ecrire('triColonneSens', 1);
+      if (this.ctx.lire('groupeMere')) await this.ctx.ecrire('groupeMere', false);
       // Soigne un vieux réglage « Ordre des tâches » resté dans le .base.
       if (this.ctx.lire('tri') !== 'date') await this.ctx.ecrire('tri', null);
       const natif = this.ctx.triNatif ? this.ctx.triNatif() : null;
@@ -18813,6 +18833,20 @@ class MoteurFrise {
     sel.addEventListener('change', async () => {
       this.greffon.settings.friseBarreCouleur = sel.value;
       await this.greffon.saveSettings();
+      this.dessiner();
+    });
+
+    // Regrouper par tâche mère : une bande par arborescence, sous le nom de sa
+    // racine (la plus grande mère possible). Prend le pas sur le regroupement
+    // natif tant que la bascule est active.
+    const gm = b.createEl('button', { cls: 'zfa-gantt-bv-bouton zfa-gantt-bv-bascule'
+      + (this.ctx.lire('groupeMere') ? ' is-active' : ''), attr: {
+      type: 'button',
+      title: tr('Grouper par tâche mère (une bande par arborescence)') } });
+    obsidian.setIcon(gm.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'git-branch');
+    gm.createSpan({ text: tr('Mères') });
+    gm.addEventListener('click', async () => {
+      await this.ctx.ecrire('groupeMere', !this.ctx.lire('groupeMere'));
       this.dessiner();
     });
 
@@ -18847,7 +18881,8 @@ class MoteurFrise {
         new obsidian.Notice(tr('Rien à exporter.'));
         return;
       }
-      const grouper = !!(this.ctx.groupeActuel && this.ctx.groupeActuel());
+      const grouper = !!(this.ctx.groupeActuel && this.ctx.groupeActuel())
+        || !!this.ctx.lire('groupeMere');
       const cleFam = String(this.greffon.cleT('famille') || '').replace(/^note\./, '');
       const cleEch = String(this.greffon.cleT('echeance') || '').replace(/^note\./, '');
       const cleAv = String(this.greffon.cleT('avancement') || '').replace(/^note\./, '');

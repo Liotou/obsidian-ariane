@@ -60,3 +60,33 @@ test('MODES_COULEUR_FRISE : les cinq modes, défauts compris', () => {
   assert.ok(Ariane.COULEURS_PRIORITE.moyenne);
   assert.ok(Ariane.COULEURS_PRIORITE.basse);
 });
+
+test('groupesParRacine : une bande par arborescence, libellé = intitulé racine', () => {
+  const taches = [
+    { ref: 'A', parent: '', intitule: 'Chantier' },
+    { ref: 'B', parent: '[[A]]', intitule: 'Sous-task' },
+    { ref: 'C', parent: '[[B]]', intitule: 'Bricole' },
+    { ref: 'D', parent: '', intitule: 'Solitaire' },
+  ];
+  const g = Ariane.groupesParRacine(taches);
+  assert.deepEqual(g.get('A'), ['Chantier']);
+  assert.deepEqual(g.get('B'), ['Chantier']);
+  assert.deepEqual(g.get('C'), ['Chantier']);
+  assert.deepEqual(g.get('D'), ['Solitaire']);
+});
+
+test('groupesParRacine : parent absent des tâches → propre groupe', () => {
+  const g = Ariane.groupesParRacine([
+    { ref: 'X', parent: '[[NULLE PART]]', intitule: 'Orpheline' },
+  ]);
+  assert.deepEqual(g.get('X'), ['Orpheline']);
+});
+
+test('groupesParRacine : cycle sans boucle infinie', () => {
+  const g = Ariane.groupesParRacine([
+    { ref: 'A', parent: '[[B]]', intitule: 'Alpha' },
+    { ref: 'B', parent: '[[A]]', intitule: 'Boucle' },
+  ]);
+  assert.deepEqual(g.get('A'), ['Boucle']);
+  assert.deepEqual(g.get('B'), ['Alpha']);
+});
