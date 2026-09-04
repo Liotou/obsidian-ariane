@@ -19020,7 +19020,10 @@ class MoteurFrise {
           const ch = col.chemin, va = col.valeur, vb = col.valeurBrute;
           try { col.chemin[ref] = ch ? String(ch(ref) || '') : ''; } catch (e) { col.chemin[ref] = ''; }
           try { col.valeur[ref] = va ? String(va(ref) == null ? '' : va(ref)) : ''; } catch (e) { col.valeur[ref] = ''; }
-          try { col.valeurBrute[ref] = vb ? vb(ref) : col.valeur[ref]; } catch (e) { col.valeurBrute[ref] = col.valeur[ref]; }
+          try {
+            const b = vb ? vb(ref) : col.valeur[ref];
+            col.valeurBrute[ref] = (b == null || typeof b !== 'object') ? b : String(b);
+          } catch (e) { col.valeurBrute[ref] = col.valeur[ref]; }
         }
       }
 
@@ -19033,7 +19036,7 @@ class MoteurFrise {
             try { tn.preparer(taches); } catch (e) { /* _multi absent : tri de repli */ }
             const multi = {};
             for (const t of taches) multi[t.ref] = t._multi || null;
-            triNatif = { criteres: tn.criteres, multi };
+            triNatif = { criteres: tn.criteres, multi: multiPourExport(multi) };
           }
         } catch (e) { triNatif = null; }
       }
@@ -19042,7 +19045,7 @@ class MoteurFrise {
       let groupes = null;
       try {
         const g = ctx.groupes && ctx.groupes();
-        if (g) groupes = Object.fromEntries(g);
+        if (g) groupes = JSON.parse(JSON.stringify(Object.fromEntries(g)));
       } catch (e) { groupes = null; }
       const grp = {
         actuel: (ctx.groupeActuel && ctx.groupeActuel()) || null,
@@ -19134,11 +19137,15 @@ class MoteurFrise {
       // apparaît ici, il faut l'ajouter à ce dictionnaire ET au socle).
       const constantes = { JOURS_MINIMUM_GANTT, MOIS_COURTS, MOIS_LETTRES };
 
+      // Copie blanche : les tâches vivantes portent le TFile (circulaire) et
+      // ne doivent jamais partir telles quelles dans le fichier HTML.
+      const tachesFigees = tachesPourExport(taches);
+
       const d = {
         langue: LANGUE, textes: TEXTES, defauts: DEFAUTS_FRISE, typeVue: TYPE_VUE_BASE_FRISE,
         constantes,
         nomVue, jour, moteur: srcMoteur, ariane, icones, css, vars,
-        taches, colonnes, valeurs, renoms, pos, triNatif, groupes, grp,
+        taches: tachesFigees, colonnes, valeurs, renoms, pos, triNatif, groupes, grp,
         cleT, familles, chemins,
         coffre: (this.app.vault.getName && this.app.vault.getName()) || '',
         barreCouleur: (this.greffon.settings || {}).friseBarreCouleur,
@@ -21394,6 +21401,42 @@ function fabriquerVueFriseBase(greffon) {
       return toutes.filter((t) => gardes.has(t.ref));
     }
   };
+}
+
+// ── Figage des données de l'export HTML ────────────────────────────────────
+// Les tâches vivantes portent le TFile du coffre (fichier) : structure
+// circulaire (parent → children → …) qui fait échouer JSON.stringify. L'export
+// ne part jamais avec les objets bruts — copie blanche des champs que la page
+// lit, tous primitifs ou listes de primitifs.
+const CHAMPS_TACHE_EXPORT = ['ref', 'intitule', 'parent', 'bloquePar', 'debut', 'echeance',
+  'heure', 'creneaux', 'statut', 'priorite', 'avancement', 'jalon', 'famille', 'x', 'y'];
+
+function tachesPourExport(taches) {
+  return (taches || []).map((t) => {
+    const o = {};
+    for (const k of CHAMPS_TACHE_EXPORT) {
+      const v = t[k];
+      if (v == null || typeof v !== 'object') o[k] = v == null ? null : v;
+      else { try { o[k] = JSON.parse(JSON.stringify(v)); } catch (e) { /* valeur vivante : perdue */ } }
+    }
+    return o;
+  });
+}
+
+// Valeurs du tri natif multi-critères ({ ref : [{ v, s }] }) relevées sur les
+// tâches vivantes : la donnée brute peut être un objet Bases — figé en texte.
+function multiPourExport(multi) {
+  const out = {};
+  for (const ref of Object.keys(multi || {})) {
+    const liste = multi[ref];
+    out[ref] = Array.isArray(liste)
+      ? liste.map((m) => ({
+          v: m && typeof m.v === 'object' ? String(m.v) : (m ? m.v : ''),
+          s: m && m.s ? m.s : 1,
+        }))
+      : null;
+  }
+  return out;
 }
 
 // ── Page HTML autonome (« frise vivante ») ──────────────────────────────────
@@ -26442,6 +26485,8 @@ module.exports._test = {
   annulerDernier,
   refaireDernier,
   pageFriseHtml,
+  tachesPourExport,
+  multiPourExport,
 };
 
 //#endregion 18 · Exports

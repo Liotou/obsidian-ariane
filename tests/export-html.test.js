@@ -193,3 +193,34 @@ test('export HTML : le socle embarque et évalue le vrai moteur', () => {
   // coquille, sinon les en-têtes s'empilent verticalement.
   assert.ok(page.includes('#frise .bases-td'));
 });
+
+test('export HTML : tâches vivantes figées en données pures', () => {
+  const { tachesPourExport, multiPourExport } = Ariane._test;
+  // Le TFile du coffre : circulaire (parent → children → le fichier).
+  const f = { basename: 'A' };
+  f.parent = { children: [f] };
+  f.file = f;
+  const taches = [{
+    ref: 'A', intitule: 'A', parent: '', bloquePar: ['[[B]]'], debut: '2026-09-01',
+    echeance: '', heure: '', creneaux: [], statut: 'à faire', priorite: '',
+    avancement: 0, jalon: false, famille: '', x: null, y: null,
+    fichier: f, _cle: '9', _multi: [{ v: 'x', s: 1 }],
+  }];
+  const figees = tachesPourExport(taches);
+  const tour = JSON.parse(JSON.stringify(figees)); // ne doit pas lancer
+  assert.equal(tour[0].ref, 'A');
+  assert.equal(tour[0].bloquePar[0], '[[B]]');
+  assert.equal(tour[0].avancement, 0);
+  assert.equal('fichier' in tour[0], false);
+  assert.equal('_cle' in tour[0], false);
+  assert.equal('_multi' in tour[0], false);
+  // Valeurs du tri natif : objet Bases figé en texte, liste absente → null.
+  const multi = multiPourExport({
+    A: [{ v: { toString() { return '9'; } }, s: -1 }],
+    B: null,
+  });
+  assert.equal(multi.A[0].v, '9');
+  assert.equal(multi.A[0].s, -1);
+  assert.equal(multi.B, null);
+  assert.deepEqual(JSON.parse(JSON.stringify(multi)), multi);
+});
