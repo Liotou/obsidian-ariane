@@ -4539,14 +4539,14 @@ class Ariane extends obsidian.Plugin {
   }
 
   // Modes de couleur des barres de la frise (réglage friseBarreCouleur) :
-  // même liste pour la barre d'outils de la vue et la page Réglages.
+  // [valeur, libellé de la page Réglages, libellé court de la barre de vue].
   static get MODES_COULEUR_FRISE() {
     return [
-      ['famille', 'Famille'],
-      ['statut', 'Statut'],
-      ['racine', 'Tâche parente (arborescence)'],
-      ['priorite', 'Priorité'],
-      ['avancement', 'Avancement'],
+      ['famille', 'Famille', 'Famille'],
+      ['statut', 'Statut', 'Statut'],
+      ['racine', 'Tâche parente (arborescence)', 'Arborescence'],
+      ['priorite', 'Priorité', 'Priorité'],
+      ['avancement', 'Avancement', 'Avancement'],
     ];
   }
 
@@ -18772,12 +18772,12 @@ class MoteurFrise {
 
     // Réinitialise tous les tris (colonne d'en-tête, tri natif de la base,
     // regroupement natif) pour retrouver la disposition par défaut : la
-    // hiérarchie par tâche parente, classée par date.
-    const raz = b.createEl('button', { cls: 'zfa-gantt-bv-bouton', attr: {
-      type: 'button',
-      title: tr('Réinitialiser les tris (hiérarchie par tâche parente)') } });
+    // hiérarchie par tâche parente, classée par date. Bouton icône seul :
+    // le libellé complet est dans l'info-bulle, la barre reste légère.
+    const raz = b.createEl('button', { cls: 'zfa-gantt-bv-bouton zfa-gantt-bv-icone',
+      attr: { type: 'button', 'aria-label': tr('Réinitialiser les tris'),
+        title: tr('Réinitialiser les tris (hiérarchie par tâche parente)') } });
     obsidian.setIcon(raz.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'rotate-ccw');
-    raz.createSpan({ text: tr('Réinitialiser les tris') });
     raz.addEventListener('click', async () => {
       let actif = !!this.ctx.lire('triColonne');
       const tn = this.ctx.triNatif ? this.ctx.triNatif() : null;
@@ -18800,13 +18800,14 @@ class MoteurFrise {
 
     // Mode de couleur des barres : le même réglage que la page Réglages, posé
     // ici pour changer d'un clic (l'écriture passe par saveSettings, partagé
-    // par toutes les vues).
+    // par toutes les vues). Même gabarit que le contrôle d'échelle : un
+    // conteneur bordé, l'icône à l'intérieur, libellés courts.
     const ctr = b.createDiv({ cls: 'zfa-gantt-bv-couleur' });
     obsidian.setIcon(ctr.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'palette');
     const sel = ctr.createEl('select', { attr: {
       title: tr('Couleur des barres') } });
-    for (const [v, lib] of Ariane.MODES_COULEUR_FRISE) {
-      sel.createEl('option', { text: tr(lib), attr: { value: v } });
+    for (const [v, , court] of Ariane.MODES_COULEUR_FRISE) {
+      sel.createEl('option', { text: tr(court), attr: { value: v } });
     }
     sel.value = this.greffon.settings.friseBarreCouleur || 'famille';
     sel.addEventListener('change', async () => {

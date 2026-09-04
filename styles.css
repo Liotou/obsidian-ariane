@@ -1106,25 +1106,33 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-gantt-bv-ic { display: inline-flex; }
 .zfa-gantt-bv-ic svg { width: 14px; height: 14px; }
 
-/* Choix du mode de couleur des barres, posé dans la barre de la vue : un
-   select discret dans le ton des autres commandes (pas le dropdown Obsidian,
-   trop lourd pour une barre d'outils fine). */
+/* Bouton icône seule (réinitialisation des tris) : même gabarit que les
+   autres commandes, en plus compact — le libellé vit dans l'info-bulle. */
+.zfa-gantt-bv-bouton.zfa-gantt-bv-icone { padding: 4px 7px; }
+
+/* Choix du mode de couleur des barres : même gabarit que le contrôle
+   d'échelle (conteneur bordé, coins arrondis), l'icône palette à
+   l'intérieur et un select transparent — la barre reste homogène. */
 .zfa-gantt-bv-couleur {
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: stretch;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s); overflow: hidden;
   color: var(--text-muted);
 }
-.zfa-gantt-bv-couleur .zfa-gantt-bv-ic { color: var(--text-faint); }
+.zfa-gantt-bv-couleur .zfa-gantt-bv-ic {
+  align-items: center; padding-left: 8px; color: var(--text-faint);
+}
 .zfa-gantt-bv-couleur select {
-  height: auto; min-height: 0; width: auto; margin: 0; padding: 2px 6px;
+  height: auto; min-height: 0; width: auto; margin: 0; padding: 4px 8px 4px 6px;
   font-size: var(--font-ui-smaller); color: var(--text-muted);
-  background: transparent;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s); box-shadow: none; cursor: pointer;
+  background: transparent; border: none; border-radius: 0; box-shadow: none;
+  cursor: pointer;
 }
 .zfa-gantt-bv-couleur select:hover {
   color: var(--text-normal);
   background: var(--background-modifier-hover);
 }
+.zfa-gantt-bv-couleur:hover .zfa-gantt-bv-ic { color: var(--text-muted); }
 
 .zfa-gantt-echelle {
   display: inline-flex; align-items: stretch;
