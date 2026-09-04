@@ -18843,21 +18843,26 @@ class MoteurFrise {
       badge.addEventListener('click', () => this.recentrerAujourdhui());
     }
 
-    const exp = b.createEl('button', {
-      cls: 'zfa-gantt-bv-bouton zfa-gantt-bv-export',
-      attr: { type: 'button', title: tr('Exporter la frise (Excel)') } });
-    obsidian.setIcon(exp.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'file-spreadsheet');
-    exp.createSpan({ text: tr('Exporter') });
-    exp.addEventListener('click', () => this.exporterXlsx());
+    // Les boutons d'export n'ont de sens que dans Obsidian : le greffon factice
+    // de la page exportée pose estExportHtml pour ne jamais les créer (ils
+    // réapparaîtraient à chaque redessin, et leur clic n'y veut rien dire).
+    if (!this.greffon.estExportHtml) {
+      const exp = b.createEl('button', {
+        cls: 'zfa-gantt-bv-bouton zfa-gantt-bv-export',
+        attr: { type: 'button', title: tr('Exporter la frise (Excel)') } });
+      obsidian.setIcon(exp.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'file-spreadsheet');
+      exp.createSpan({ text: tr('Exporter') });
+      exp.addEventListener('click', () => this.exporterXlsx());
 
-    // Export HTML « frise vivante » : un fichier autonome qui embarque le
-    // vrai moteur — même zoom, mêmes replis, mêmes bulles que la frise.
-    const expH = b.createEl('button', {
-      cls: 'zfa-gantt-bv-bouton zfa-gantt-bv-export-html',
-      attr: { type: 'button', title: tr('Exporter la frise (HTML interactif)') } });
-    obsidian.setIcon(expH.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'file-code');
-    expH.createSpan({ text: tr('HTML') });
-    expH.addEventListener('click', () => this.exporterHtml());
+      // Export HTML « frise vivante » : un fichier autonome qui embarque le
+      // vrai moteur — même zoom, mêmes replis, mêmes bulles que la frise.
+      const expH = b.createEl('button', {
+        cls: 'zfa-gantt-bv-bouton zfa-gantt-bv-export-html',
+        attr: { type: 'button', title: tr('Exporter la frise (HTML interactif)') } });
+      obsidian.setIcon(expH.createSpan({ cls: 'zfa-gantt-bv-ic' }), 'file-code');
+      expH.createSpan({ text: tr('HTML') });
+      expH.addEventListener('click', () => this.exporterHtml());
+    }
   }
 
   // Exporte la frise TELLE QU'ELLE EST À L'ÉCRAN dans un .xlsx : mêmes
@@ -19102,9 +19107,12 @@ class MoteurFrise {
       }
 
       // Styles du greffon + variables de thème résolues au moment de l'export.
+      // Le manifeste est celui du GREFFON (exporterHtml vit sur le moteur,
+      // qui n'a pas de manifest) — sinon aucune feuille de style dans la page.
       let css = '';
       try {
-        const dir = this.manifest && this.manifest.dir;
+        const dir = (this.greffon && this.greffon.manifest && this.greffon.manifest.dir)
+          || (this.manifest && this.manifest.dir);
         css = await this.app.vault.adapter.read(dir + '/styles.css');
       } catch (e) { css = ''; }
       const nomsVars = new Set(['--bases-table-row-height', '--font-ui-smaller', '--font-ui-small',
@@ -19113,11 +19121,6 @@ class MoteurFrise {
         '--background-modifier-hover', '--text-normal', '--text-muted', '--text-faint',
         '--text-accent', '--interactive-accent']);
       for (const m of css.matchAll(/--[A-Za-z][\w-]*/g)) nomsVars.add(m[0]);
-      const vars = {};
-      try {
-        const cs = getComputedStyle(document.body);
-        for (const v of nomsVars) { const x = cs.getPropertyValue(v).trim(); if (x) vars[v] = x; }
-      } catch (e) { /* pas grave : replis CSS */ }
 
       // Le moteur tel quel + les fonctions pures (statiques de la classe).
       const ariane = { fns: {}, data: {} };
@@ -19131,6 +19134,18 @@ class MoteurFrise {
           try { ariane.data[k] = JSON.parse(JSON.stringify(v)); } catch (e) { /* non sérialisable */ }
         }
       }
+      // Les couleurs du moteur (barres selon le statut, avancement…) sont des
+      // variables du THÈME d'Obsidian (var(--color-green)…) — absentes de
+      // styles.css : les relever ici aussi, sinon barres et repères invisibles.
+      for (const m of srcMoteur.matchAll(/var\((--[A-Za-z][\w-]*)/g)) nomsVars.add(m[1]);
+      for (const k in ariane.fns) {
+        for (const m of ariane.fns[k].matchAll(/var\((--[A-Za-z][\w-]*)/g)) nomsVars.add(m[1]);
+      }
+      const vars = {};
+      try {
+        const cs = getComputedStyle(document.body);
+        for (const v of nomsVars) { const x = cs.getPropertyValue(v).trim(); if (x) vars[v] = x; }
+      } catch (e) { /* pas grave : replis CSS */ }
 
       // Constantes de module que le moteur lit directement (la garde des
       // tests énumère les identifiants libres du moteur — si un nouveau nom
@@ -21641,6 +21656,9 @@ const MoteurFrise = (Function('return (' + D.moteur + ')'))();
 class GreffonFactice {
   constructor(donnees) {
     this.d = donnees;
+    // Les boutons d'export d'Obsidian ne se construisent pas dans la page
+    // (dessinerBarreVue consulte ce drapeau à chaque dessin).
+    this.estExportHtml = true;
     this.settings = {
       friseBarreCouleur: donnees.barreCouleur,
       friseLignageSurvol: donnees.lignageSurvol,

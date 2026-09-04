@@ -192,6 +192,17 @@ test('export HTML : le socle embarque et évalue le vrai moteur', () => {
   // page (normalement fourni par le coeur d'Obsidian) doit rester dans la
   // coquille, sinon les en-têtes s'empilent verticalement.
   assert.ok(page.includes('#frise .bases-td'));
+  // Les boutons d'export ne se construisent pas dans la page : le drapeau est
+  // posé par le greffon factice et consulté par dessinerBarreVue (un redessin
+  // ne doit jamais les faire revenir).
+  assert.ok(page.includes('this.estExportHtml = true'));
+  assert.ok(sourceMoteur().includes('estExportHtml'));
+  // Styles du greffon : lus depuis le manifeste du GREFFON (la méthode vit
+  // sur le moteur, qui n'a pas de manifest), sinon page sans styles.css.
+  assert.ok(sourceMoteur().includes('greffon.manifest.dir'));
+  // Couleurs du thème d'Obsidian (var(--color-green)…) relevées dans le
+  // moteur et les statiques, sinon barres invisibles sur thème sombre.
+  assert.ok(sourceMoteur().includes('srcMoteur.matchAll(/var\\((--[A-Za-z][\\w-]*)/g)'));
 });
 
 test('export HTML : tâches vivantes figées en données pures', () => {
