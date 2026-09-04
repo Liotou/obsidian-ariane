@@ -19983,6 +19983,11 @@ class MoteurFrise {
         groupe.classList.add('zfa-gantt-retard');
         this._marqueRetard(groupe, Math.min(cfg.largeur - 3, x + w), y - 1);
       }
+      // Tâche impactée (dérivé) : une descendante est bloquée — pastille
+      // discrète au-dessus du coin gauche de la barre.
+      if (this._impactees && this._impactees.has(l.ref)) {
+        this._marqueImpactee(groupe, Math.max(9, x + 7), y - 7);
+      }
       // Plus la ligne est haute, plus la barre en dit. À une ligne, l'intitulé
       // seul ; à deux, les dates ; à trois, le statut et l'avancement. On
       // n'écrit jamais ce qui ne tient pas, la troncature étant plus pénible
@@ -20178,6 +20183,22 @@ class MoteurFrise {
     hote.appendChild(bang);
   }
 
+  // Pastille « impactée » : une descendante est bloquée. Petit disque à flèche
+  // descendante, posé au-dessus du coin gauche de la barre ou du losange —
+  // loin du « ! » des retards (bord droit) et des accroches de liens (milieu
+  // des extrémités).
+  _marqueImpactee(hote, cx, cy) {
+    const g = svgEl('g', { class: 'zfa-gantt-impactee-marque' });
+    g.appendChild(svgEl('circle', { cx, cy, r: 7 }));
+    const ic = svgEl('svg', {
+      x: cx - 5.5, y: cy - 5.5, width: 11, height: 11, viewBox: '0 0 24 24' });
+    ic.appendChild(svgEl('path', { d: 'M12 2v14' }));
+    ic.appendChild(svgEl('path', { d: 'm19 9-7 7-7-7' }));
+    ic.appendChild(svgEl('circle', { cx: 12, cy: 21, r: 1 }));
+    g.appendChild(ic);
+    hote.appendChild(g);
+  }
+
   dessinerJalon(g, cfg, l) {
     if (!l.echeance) return;
     const x = this.x(cfg, l.echeance) + cfg.ppj / 2;
@@ -20217,6 +20238,11 @@ class MoteurFrise {
     if (this._enRetard && this._enRetard.has(l.ref)) {
       d.classList.add('zfa-gantt-retard');
       this._marqueRetard(grp, x + 11, y - 6);
+    }
+    // Impactée : pastille au-dessus à gauche du losange, à l'écart du
+    // connecteur de liaison gauche (x − 16, y) et du « ! » des retards.
+    if (this._impactees && this._impactees.has(l.ref)) {
+      this._marqueImpactee(grp, x - 13, y - 13);
     }
     if (cfg.ppj >= 8) {
       const t = svgEl('text', { x: x + 14, y: y + 4, class: 'zfa-gantt-jalon-titre' });
@@ -21213,7 +21239,7 @@ function fabriquerVueFriseBase(greffon) {
 //  fabrique de la vue Bases « ariane-articulation ».
 // ═══════════════════════════════════════════════════════════════════════════
 
-const ARTIC_W = 210;
+const ARTIC_W = 240;
 const ARTIC_H = 58;
 const GRILLE_ARTIC = 20;   // pas de la grille magnétique
 const SEUIL_AIMANT = 7;    // distance d'accrochage à un bord / centre voisin
@@ -21860,15 +21886,8 @@ class MoteurArticulation {
     ic.setAttribute('aria-label', fam.nom || n.famille || '');
     obsidian.setIcon(ic, fam.icone || 'circle');
 
-    // Crayon (au survol) : ouvre le formulaire de propriétés de la tâche.
-    const crayon = carte.createSpan({ cls: 'zfa-artic-crayon' });
-    crayon.setAttribute('aria-label', tr('Modifier la tâche'));
-    obsidian.setIcon(crayon, 'pencil');
-    crayon.addEventListener('pointerdown', (e) => e.stopPropagation());
-    crayon.addEventListener('click', (e) => {
-      e.stopPropagation();
-      new ModaleTache(this.app, this.greffon, { ref: n.ref, apres: () => this.dessiner() }).open();
-    });
+    // Crayon et chevron vivent dans la rangée du bas (cf. plus bas), pour
+    // laisser le titre occuper toute la largeur sur deux lignes.
     carte.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -21903,22 +21922,9 @@ class MoteurArticulation {
       m.showAtMouseEvent(e);
     });
 
-    // Le chevron est toujours là : il montre / masque les propriétés de CETTE
-    // carte, quel que soit le mode par défaut de la vue.
+    // Déplié ou non par carte (inversion du mode de la vue) : le chevron,
+    // dans la rangée du bas, montre / masque les propriétés de CETTE carte.
     const deplie = this._estDeplie(n.ref);
-    {
-      const chev = carte.createSpan({ cls: 'zfa-artic-chevron' });
-      obsidian.setIcon(chev, deplie ? 'chevron-down' : 'chevron-right');
-      chev.setAttribute('aria-label', deplie
-        ? tr('Masquer les propriétés') : tr('Afficher les propriétés'));
-      chev.addEventListener('pointerdown', (e) => e.stopPropagation());
-      chev.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (this._cartesInversees.has(n.ref)) this._cartesInversees.delete(n.ref);
-        else this._cartesInversees.add(n.ref);
-        this.dessiner();
-      });
-    }
     const corps = carte.createDiv({ cls: 'zfa-artic-corps' });
     const titreEl = corps.createDiv({ cls: 'zfa-artic-titre', text: n.intitule });
     titreEl.setAttribute('title', tr('Double-clic pour renommer'));
@@ -21929,8 +21935,35 @@ class MoteurArticulation {
       this._editerTitre(titreEl, n);
     });
     const bas = corps.createDiv({ cls: 'zfa-artic-bas' });
+    // Impactée (dérivé) : une descendante est bloquée — icône discrète devant
+    // le statut.
+    if (this._impactees && this._impactees.has(n.ref)) {
+      const imp = bas.createSpan({ cls: 'zfa-artic-impactee' });
+      imp.setAttribute('aria-label', tr('impactée'));
+      obsidian.setIcon(imp, 'arrow-down-to-dot');
+    }
     bas.createSpan({ cls: 'zfa-artic-pastille', text: n.statut });
     if (n.echeance) bas.createSpan({ cls: 'zfa-artic-ech', text: n.echeance });
+    // Crayon (au survol) : ouvre le formulaire de propriétés de la tâche.
+    const crayon = bas.createSpan({ cls: 'zfa-artic-crayon' });
+    crayon.setAttribute('aria-label', tr('Modifier la tâche'));
+    obsidian.setIcon(crayon, 'pencil');
+    crayon.addEventListener('pointerdown', (e) => e.stopPropagation());
+    crayon.addEventListener('click', (e) => {
+      e.stopPropagation();
+      new ModaleTache(this.app, this.greffon, { ref: n.ref, apres: () => this.dessiner() }).open();
+    });
+    const chev = bas.createSpan({ cls: 'zfa-artic-chevron' });
+    obsidian.setIcon(chev, deplie ? 'chevron-down' : 'chevron-right');
+    chev.setAttribute('aria-label', deplie
+      ? tr('Masquer les propriétés') : tr('Afficher les propriétés'));
+    chev.addEventListener('pointerdown', (e) => e.stopPropagation());
+    chev.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this._cartesInversees.has(n.ref)) this._cartesInversees.delete(n.ref);
+      else this._cartesInversees.add(n.ref);
+      this.dessiner();
+    });
     const av = (this._avDeriv && this._avDeriv.has(n.ref))
       ? this._avDeriv.get(n.ref) : (Number(n.avancement) || 0);
     if (av > 0) {
