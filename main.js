@@ -19983,11 +19983,6 @@ class MoteurFrise {
         groupe.classList.add('zfa-gantt-retard');
         this._marqueRetard(groupe, Math.min(cfg.largeur - 3, x + w), y - 1);
       }
-      // Tâche impactée (dérivé) : une descendante est bloquée — pastille
-      // discrète au-dessus du coin gauche de la barre.
-      if (this._impactees && this._impactees.has(l.ref)) {
-        this._marqueImpactee(groupe, Math.max(9, x + 7), y - 7);
-      }
       // Plus la ligne est haute, plus la barre en dit. À une ligne, l'intitulé
       // seul ; à deux, les dates ; à trois, le statut et l'avancement. On
       // n'écrit jamais ce qui ne tient pas, la troncature étant plus pénible
@@ -20183,21 +20178,9 @@ class MoteurFrise {
     hote.appendChild(bang);
   }
 
-  // Pastille « impactée » : une descendante est bloquée. Petit disque à flèche
-  // descendante, posé au-dessus du coin gauche de la barre ou du losange —
-  // loin du « ! » des retards (bord droit) et des accroches de liens (milieu
-  // des extrémités).
-  _marqueImpactee(hote, cx, cy) {
-    const g = svgEl('g', { class: 'zfa-gantt-impactee-marque' });
-    g.appendChild(svgEl('circle', { cx, cy, r: 7 }));
-    const ic = svgEl('svg', {
-      x: cx - 5.5, y: cy - 5.5, width: 11, height: 11, viewBox: '0 0 24 24' });
-    ic.appendChild(svgEl('path', { d: 'M12 2v14' }));
-    ic.appendChild(svgEl('path', { d: 'm19 9-7 7-7-7' }));
-    ic.appendChild(svgEl('circle', { cx: 12, cy: 21, r: 1 }));
-    g.appendChild(ic);
-    hote.appendChild(g);
-  }
+  // Pas de marque visuelle « impactée » sur la frise (demande de Monsieur) :
+  // l'état ne se lit qu'au survol (bulle) ; la classe zfa-gantt-impactee
+  // reste posée sur le groupe comme crochet de style utilisateur.
 
   dessinerJalon(g, cfg, l) {
     if (!l.echeance) return;
@@ -20238,11 +20221,6 @@ class MoteurFrise {
     if (this._enRetard && this._enRetard.has(l.ref)) {
       d.classList.add('zfa-gantt-retard');
       this._marqueRetard(grp, x + 11, y - 6);
-    }
-    // Impactée : pastille au-dessus à gauche du losange, à l'écart du
-    // connecteur de liaison gauche (x − 16, y) et du « ! » des retards.
-    if (this._impactees && this._impactees.has(l.ref)) {
-      this._marqueImpactee(grp, x - 13, y - 13);
     }
     if (cfg.ppj >= 8) {
       const t = svgEl('text', { x: x + 14, y: y + 4, class: 'zfa-gantt-jalon-titre' });
