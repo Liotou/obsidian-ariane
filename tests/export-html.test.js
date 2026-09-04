@@ -235,3 +235,30 @@ test('export HTML : tâches vivantes figées en données pures', () => {
   assert.equal(multi.B, null);
   assert.deepEqual(JSON.parse(JSON.stringify(multi)), multi);
 });
+
+test('export HTML : colonnes figées depuis les fermetures vivantes', () => {
+  const { colonnesPourExport } = Ariane._test;
+  const vivantes = [{
+    cle: 'note.libelle', nom: 'Libellé',
+    chemin: (r) => r + '.md',
+    valeur: (r) => 'Libellé de ' + r,
+    valeurBrute: (r) => ({ toString() { return 'brut ' + r; } }),
+  }, {
+    cle: 'note.vide', nom: 'Vide',
+    valeur: () => null,
+  }];
+  const out = colonnesPourExport(vivantes, ['A', 'B']);
+  assert.equal(out[0].valeur.A, 'Libellé de A');
+  assert.equal(out[0].valeur.B, 'Libellé de B');
+  assert.equal(out[0].chemin.A, 'A.md');
+  assert.equal(out[0].valeurBrute.A, 'brut A'); // objet Bases figé en texte
+  assert.equal(out[0].valeurBrute.B, 'brut B');
+  assert.equal(out[1].valeur.A, '');
+  assert.equal(out[1].valeurBrute.A, '');
+  assert.deepEqual(JSON.parse(JSON.stringify(out)), out); // part tel quel dans le fichier
+  // Régression : exporterHtml doit passer par ce figeage — le premier jet
+  // créait les dictionnaires vides puis appelait les fermetures dessus
+  // (col.valeur n'y était plus une fonction) : tout le tableau de gauche
+  // sortait vide, file.name seule à retomber sur la référence.
+  assert.ok(sourceMoteur().includes('colonnesPourExport('));
+});

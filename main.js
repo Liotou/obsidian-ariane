@@ -19017,20 +19017,10 @@ class MoteurFrise {
 
       // Colonnes : les fermetures de la vue ne peuvent pas partir dans le
       // fichier — valeurs figées par tâche, relues ensuite par dictionnaire.
-      const colonnes = (this._colsRendu || ctx.colonnes()).map((col) => ({
-        cle: col.cle, nom: col.nom || col.cle, chemin: {}, valeur: {}, valeurBrute: {},
-      }));
-      for (const col of colonnes) {
-        for (const ref of refs) {
-          const ch = col.chemin, va = col.valeur, vb = col.valeurBrute;
-          try { col.chemin[ref] = ch ? String(ch(ref) || '') : ''; } catch (e) { col.chemin[ref] = ''; }
-          try { col.valeur[ref] = va ? String(va(ref) == null ? '' : va(ref)) : ''; } catch (e) { col.valeur[ref] = ''; }
-          try {
-            const b = vb ? vb(ref) : col.valeur[ref];
-            col.valeurBrute[ref] = (b == null || typeof b !== 'object') ? b : String(b);
-          } catch (e) { col.valeurBrute[ref] = col.valeur[ref]; }
-        }
-      }
+      // (Régression : le premier jet créait les dictionnaires vides PUIS
+      // appelait les fermetures dessus — chaque cellule de propriété partait
+      // vide, seule file.name s'en tirant avec la référence en repli.)
+      const colonnes = colonnesPourExport(this._colsRendu || ctx.colonnes(), refs);
 
       // Tri natif de la base : critères + valeur multi-critères précalculée.
       let triNatif = null;
@@ -21452,6 +21442,25 @@ function multiPourExport(multi) {
       : null;
   }
   return out;
+}
+
+// Colonnes du tableau de gauche : les fermetures vivantes de la vue (chemin,
+// valeur, valeurBrute) sont appelées ICI, avant d'être remplacées par les
+// dictionnaires figés que la page relit — l'ordre compte, sinon cellules vides.
+function colonnesPourExport(vivantes, refs) {
+  return (vivantes || []).map((col) => {
+    const out = { cle: col.cle, nom: col.nom || col.cle, chemin: {}, valeur: {}, valeurBrute: {} };
+    const ch = col.chemin, va = col.valeur, vb = col.valeurBrute;
+    for (const ref of (refs || [])) {
+      try { out.chemin[ref] = ch ? String(ch(ref) || '') : ''; } catch (e) { out.chemin[ref] = ''; }
+      try { out.valeur[ref] = va ? String(va(ref) == null ? '' : va(ref)) : ''; } catch (e) { out.valeur[ref] = ''; }
+      try {
+        const b = vb ? vb(ref) : out.valeur[ref];
+        out.valeurBrute[ref] = (b == null || typeof b !== 'object') ? b : String(b);
+      } catch (e) { out.valeurBrute[ref] = out.valeur[ref]; }
+    }
+    return out;
+  });
 }
 
 // ── Page HTML autonome (« frise vivante ») ──────────────────────────────────
@@ -26505,6 +26514,7 @@ module.exports._test = {
   pageFriseHtml,
   tachesPourExport,
   multiPourExport,
+  colonnesPourExport,
 };
 
 //#endregion 18 · Exports
