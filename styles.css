@@ -1382,10 +1382,11 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 
 /* Tâche bloquée (statut dérivé, jamais écrit) : voile hachuré + contour tireté
-   dans la couleur de blocage. */
+   dans la couleur de blocage. Le losange de jalon n'y a pas droit : le tireté
+   y dessinait un cercle pointillé autour du marqueur (demande de Monsieur) —
+   l'état d'un jalon bloquée se lit à la bulle, comme celui d'impactée. */
 .zfa-gantt-bloquee-voile { pointer-events: none; opacity: 0.5; }
-.zfa-gantt-bloquee .zfa-gantt-barre-tache,
-.zfa-gantt-bloquee .zfa-gantt-losange {
+.zfa-gantt-bloquee .zfa-gantt-barre-tache {
   stroke: var(--interactive-accent); stroke-width: 1.4; stroke-dasharray: 3 2;
 }
 /* Tâche impactée (dérivé) : a une descendante bloquée — aucun marquage
