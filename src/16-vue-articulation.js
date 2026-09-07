@@ -7,6 +7,17 @@
 
 const ARTIC_W = 240;
 const ARTIC_H = 58;
+// Décalage de la pastille indicatrice de repli au-delà du bord droit. Elle
+// n'est plus cliquable (le point d'accroche gère tout) — c'est un simple
+// compteur / témoin, posé juste à côté de l'accroche.
+const REPLI_DX = 14;
+// Fenêtre du « double tap » sur un point d'accroche, et délai avant l'action
+// du tap simple (le temps de voir venir un second tap).
+const DELAI_TAP = 280;
+// Rayon des coudes en mode « angulaire » : les tracés gardent des segments
+// droits mais les virages sont légèrement adoucis. Lu à l'exécution par les
+// statiques de routage de la section 11j (comme ARTIC_H), jamais au chargement.
+const R_COUDE_ARTIC = 6;
 const GRILLE_ARTIC = 20;   // pas de la grille magnétique
 const SEUIL_AIMANT = 7;    // distance d'accrochage à un bord / centre voisin
 // Hauteur relative des points d'accroche (et donc des extrémités d'arête)
@@ -46,6 +57,7 @@ class MoteurArticulation extends MoteurVue {
   }
   detruire() {
     if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
+    if (this._tapAccroche) { clearTimeout(this._tapAccroche.timer); this._tapAccroche = null; }
     this.racine.empty();
   }
 
@@ -136,10 +148,16 @@ class MoteurArticulation extends MoteurVue {
     // (badge numéroté). Cliquer un badge les ajoute au plan.
     this._bloqueCaches = new Map();
     this._enfantsHorsPlan = new Map();
+    // Relatifs repliables (déjà sur le plan, retirables via le badge « − »).
+    this._replierPossible = new Map();
     for (const ref of refsPlan) {
       const rel = Ariane.relativesHorsPlan(ref, grapheAll.aretes, refsPlan);
       if (rel.bloquantes.length) this._bloqueCaches.set(ref, rel.bloquantes.length);
       if (rel.sousTaches.length) this._enfantsHorsPlan.set(ref, rel.sousTaches);
+      for (const type of ['hier', 'bloque']) {
+        const nb = Ariane.replierRelatifs(ref, grapheAll.aretes, refsPlan, type).length;
+        if (nb) this._replierPossible.set(ref + '|' + type, nb);
+      }
     }
 
     this._dates = {};
@@ -223,10 +241,24 @@ class MoteurArticulation extends MoteurVue {
       for (const gb of gn.querySelectorAll('.zfa-artic-repli')) {
         const typeRepli = gb.classList.contains('zfa-artic-repli-bloque') ? 'bloque' : 'hier';
         gb.setAttribute('transform',
-          'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, typeRepli) + ')');
+          'translate(' + (ARTIC_W + REPLI_DX) + ',' + ancreY(hN, typeRepli) + ')');
       }
     }
     if (hChangee) this._retracerAretes();
+    this._tracerPonts(g, aretes);
+
+    // Survol d'une carte → ses connexions directes en avant (délégué : les
+    // groupes d'arêtes sont reconstruits à chaque retracé).
+    g.addEventListener('mouseover', (e) => {
+      const gn = e.target.closest && e.target.closest('.zfa-artic-noeud');
+      if (gn && gn.dataset.ref) this._survolLiens(gn.dataset.ref);
+    });
+    g.addEventListener('mouseout', (e) => {
+      const gn = e.target.closest && e.target.closest('.zfa-artic-noeud');
+      const versDehors = !(e.relatedTarget && e.relatedTarget.closest
+        && e.relatedTarget.closest('.zfa-artic-noeud') === gn);
+      if (gn && versDehors) this._finSurvolLiens();
+    });
 
     svg.addEventListener('wheel', (e) => this.zoomer(e), { passive: false });
     const surFond = (e) => (e.target === svg
@@ -785,49 +817,36 @@ class MoteurArticulation extends MoteurVue {
       ga.appendChild(svgEl('circle', { r: 11, class: 'zfa-artic-accroche-cible' }));
       ga.appendChild(svgEl('path', {
         d: 'M 0 -5 A 5 5 0 0 1 0 5 Z', class: 'zfa-artic-accroche-pastille' }));
+      const nom = type === 'hier' ? tr('sous-tâches') : tr('tâches bloquantes');
       const t = svgEl('title', {});
-      t.textContent = type === 'hier'
-        ? tr('Clic : nouvelle sous-tâche. Maintenir et tirer : relier une tâche existante.')
-        : tr('Clic : nouvelle tâche bloquée. Maintenir et tirer : relier une tâche existante.');
+      t.textContent = tr('Clic : afficher / masquer les ') + nom
+        + tr(" (ou en créer une s'il n'y en a pas). Double-clic : nouvelle ")
+        + nom + tr('. Maintenir et tirer : relier une tâche existante.');
       ga.appendChild(t);
       ga.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.tirerArete(e, n.ref, type); });
       gn.appendChild(ga);
     }
 
-    // Badges de relatifs HORS PLAN : sous-tâches (numéroté) et bloquantes
-    // (accent). Cliquer un badge ajoute ces relatifs au plan.
-    const sousHP = (this._enfantsHorsPlan && this._enfantsHorsPlan.get(n.ref)) || [];
-    if (sousHP.length) {
+    // Témoin de repli (NON cliquable — le point d'accroche gère tout) : « n »
+    // quand des relatifs sont cachés, « − » quand ils sont dépliés et pliables.
+    const temoinRepli = (type) => {
+      const caches = type === 'hier'
+        ? ((this._enfantsHorsPlan && this._enfantsHorsPlan.get(n.ref)) || []).length
+        : ((this._bloqueCaches && this._bloqueCaches.get(n.ref)) || 0);
+      const surPlan = (this._replierPossible && this._replierPossible.get(n.ref + '|' + type)) || 0;
+      if (!caches && !surPlan) return;
       const gb = svgEl('g', {
-        class: 'zfa-artic-repli zfa-artic-repli-hier est-repliee',
-        transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, 'hier') + ')' });
+        class: 'zfa-artic-repli zfa-artic-repli-' + type
+          + (caches ? ' est-repliee' : ' est-depliee'),
+        transform: 'translate(' + (ARTIC_W + REPLI_DX) + ',' + ancreY(hN, type) + ')' });
       gb.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-repli-fond' }));
       const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
-      tx.textContent = String(sousHP.length);
+      tx.textContent = caches ? String(caches) : '−';
       gb.appendChild(tx);
-      const ti = svgEl('title', {});
-      ti.textContent = tr('Ajouter les sous-tâches au plan');
-      gb.appendChild(ti);
-      gb.addEventListener('pointerdown', (e) => e.stopPropagation());
-      gb.addEventListener('click', (e) => { e.stopPropagation(); this._deplierRelatifs(n.ref, 'hier'); });
       gn.appendChild(gb);
-    }
-    const nbBloc = (this._bloqueCaches && this._bloqueCaches.get(n.ref)) || 0;
-    if (nbBloc > 0) {
-      const gv = svgEl('g', {
-        class: 'zfa-artic-repli zfa-artic-repli-bloque est-repliee',
-        transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, 'bloque') + ')' });
-      gv.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-repli-fond' }));
-      const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
-      tx.textContent = String(nbBloc);
-      gv.appendChild(tx);
-      const ti = svgEl('title', {});
-      ti.textContent = tr('Ajouter les tâches bloquantes au plan');
-      gv.appendChild(ti);
-      gv.addEventListener('pointerdown', (e) => e.stopPropagation());
-      gv.addEventListener('click', (e) => { e.stopPropagation(); this._deplierRelatifs(n.ref, 'bloque'); });
-      gn.appendChild(gv);
-    }
+    };
+    temoinRepli('hier');
+    temoinRepli('bloque');
     g.appendChild(gn);
   }
 
@@ -864,7 +883,8 @@ class MoteurArticulation extends MoteurVue {
     const ang = (this.greffon.settings.articulationFleches || 'courbe') === 'angulaire';
     if (ang) {
       const mx = Math.max(x1 + 16, (x1 + x2) / 2);
-      return 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + y2 + ' H ' + x2;
+      return Ariane.cheminPolyligne([{ x: x1, y: y1 }, { x: mx, y: y1 },
+        { x: mx, y: y2 }, { x: x2, y: y2 }], R_COUDE_ARTIC);
     }
     return Ariane._cheminFleche(x1, y1, x2, y2);
   }
@@ -918,6 +938,70 @@ class MoteurArticulation extends MoteurVue {
       this.selectionnerArete(a.de, a.vers, a.type, gr);
     });
     g.appendChild(gr);
+  }
+
+  // Survol d'une carte : ses arêtes DIRECTES (amont + aval) et les cartes à
+  // l'autre bout passent en avant, tout le reste s'estompe. Purement visuel —
+  // ne touche ni à la sélection ni aux statuts dérivés (bloquée / impactée).
+  _survolLiens(ref) {
+    if (!this._scene || this._survolRef === ref) return;
+    this._finSurvolLiens();
+    this._survolRef = ref;
+    this._scene.classList.add('a-un-survol');
+    const lies = new Set([ref]);
+    for (const gr of this._scene.querySelectorAll('.zfa-artic-arete-groupe')) {
+      if (gr.dataset.de === ref || gr.dataset.vers === ref) {
+        gr.classList.add('est-lie');
+        lies.add(gr.dataset.de);
+        lies.add(gr.dataset.vers);
+      }
+    }
+    for (const gn of this._scene.querySelectorAll('.zfa-artic-noeud')) {
+      if (lies.has(gn.dataset.ref)) gn.classList.add('est-lie');
+    }
+  }
+
+  _finSurvolLiens() {
+    this._survolRef = null;
+    if (!this._scene) return;
+    this._scene.classList.remove('a-un-survol');
+    for (const el of this._scene.querySelectorAll('.est-lie')) el.classList.remove('est-lie');
+  }
+
+  // Ponts aux croisements d'arêtes : on échantillonne chaque tracé rendu, on
+  // cherche les intersections et on pose un petit arc « saut » sur l'arête du
+  // dessus. Couche de rendu seule, refaite à chaque redessin complet ; passée
+  // au-delà d'un certain nombre d'arêtes (trop dense pour aider).
+  _tracerPonts(g, aretes) {
+    const anc = g.querySelector('.zfa-artic-ponts');
+    if (anc) anc.remove();
+    if (!aretes || aretes.length > 140) return;
+    const polys = [];
+    for (const gr of g.querySelectorAll('.zfa-artic-arete-groupe')) {
+      const path = gr.querySelector('path.zfa-artic-arete');
+      if (!path || !path.getTotalLength) continue;
+      let L = 0;
+      try { L = path.getTotalLength(); } catch (e) { L = 0; }
+      if (!L) continue;
+      const pts = [];
+      for (let d = 0; d <= L; d += 9) {
+        const pt = path.getPointAtLength(Math.min(d, L));
+        pts.push({ x: pt.x, y: pt.y });
+      }
+      polys.push({ type: gr.dataset.type || 'hier', pts });
+    }
+    const ponts = Ariane.pontsAretes(polys, { max: 300 });
+    if (!ponts.length) return;
+    const gp = svgEl('g', { class: 'zfa-artic-ponts' });
+    const R = 5;
+    for (const c of ponts) {
+      const d = 'M ' + (c.x - c.dx * R).toFixed(1) + ' ' + (c.y - c.dy * R).toFixed(1)
+        + ' A ' + R + ' ' + R + ' 0 0 1 '
+        + (c.x + c.dx * R).toFixed(1) + ' ' + (c.y + c.dy * R).toFixed(1);
+      gp.appendChild(svgEl('path', { d, class: 'zfa-artic-pont-fond' }));
+      gp.appendChild(svgEl('path', { d, class: 'zfa-artic-pont zfa-artic-' + c.type }));
+    }
+    g.appendChild(gp);
   }
 
   //#endregion Articulation · cartes & arêtes
@@ -1326,9 +1410,29 @@ class MoteurArticulation extends MoteurVue {
     }
   }
 
+  // Tap simple sur un point d'accroche : s'il y a des relatifs de ce type,
+  // on les replie ou les déplie ; sinon on crée une tâche reliée. Si les
+  // relatifs existent mais sont tous déjà montrés et partagés (rien à replier
+  // sans arracher une autre carte), le tap ne fait rien.
+  _actionAccrocheSimple(ref, type, s0) {
+    if (!this._plan) { this._nouvelleTacheReliee(ref, type, s0); return; }
+    const graphe = Ariane.grapheArticulation(this.greffon.tachesPourGantt());
+    const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
+    const rel = Ariane.relativesHorsPlan(ref, graphe.aretes, refsPlan);
+    const nbCaches = type === 'hier' ? rel.sousTaches.length : rel.bloquantes.length;
+    if (nbCaches) { this._deplierRelatifs(ref, type); return; }
+    if (Ariane.replierRelatifs(ref, graphe.aretes, refsPlan, type).length) {
+      this._replierRelatifs(ref, type);
+      return;
+    }
+    const aDesRelatifs = (graphe.aretes || []).some((a) => a.type === type
+      && (type === 'hier' ? a.de === ref : a.vers === ref));
+    if (!aDesRelatifs) this._nouvelleTacheReliee(ref, type, s0);
+  }
+
   // Crée une tâche vierge reliée au nœud « ref » selon le bouton : sous-tâche
-  // pour « hier », tâche bloquée pour « bloque ». Utilisé au clic simple sur
-  // un point d'accroche.
+  // pour « hier », tâche bloquée pour « bloque ». Utilisé au double tap sur
+  // un point d'accroche, ou au tap simple s'il n'y a aucun relatif.
   async _nouvelleTacheReliee(ref, type, s0) {
     const chemin = await this.greffon.creerTache({});
     const nouv = this.greffon.refDeChemin(chemin);
@@ -1408,8 +1512,26 @@ class MoteurArticulation extends MoteurVue {
       trait.remove();
       const m = this._svg.querySelector('.zfa-artic-noeud.est-cible');
       if (m) m.classList.remove('est-cible');
-      // Clic simple (sans glisser) : nouvelle tâche vierge reliée.
-      if (!bouge) { await this._nouvelleTacheReliee(ref, type, s0); return; }
+      // Sans glisser : un « tap » sur le point d'accroche.
+      //  · double tap rapide → nouvelle tâche reliée, quoi qu'il arrive ;
+      //  · tap simple → replier / déplier les relatifs s'il y en a, sinon
+      //    créer une tâche reliée. Différé pour laisser passer le double.
+      if (!bouge) {
+        const now = Date.now();
+        const t = this._tapAccroche;
+        if (t && t.ref === ref && t.type === type && now - t.t < DELAI_TAP) {
+          clearTimeout(t.timer);
+          this._tapAccroche = null;
+          await this._nouvelleTacheReliee(ref, type, s0);
+          return;
+        }
+        const timer = setTimeout(() => {
+          this._tapAccroche = null;
+          this._actionAccrocheSimple(ref, type, s0);
+        }, DELAI_TAP);
+        this._tapAccroche = { ref, type, t: now, timer };
+        return;
+      }
       if (!cible) return;
       const ajout = { de: ref, vers: cible, type };
       const v = Ariane.lienValide(this._aretes, this._dates, ajout);
@@ -1449,16 +1571,18 @@ class MoteurArticulation extends MoteurVue {
     this.appliquerVue();
   }
 
-  // Re-disposer : relance placerGraphe sur le plan et écrit les positions.
+  // Re-disposer : disposition « au propre » complète (couches + réduction des
+  // croisements + redressement + anti-chevauchement + bandes par composante).
+  // Les positions manuelles sont ignorées — on replace TOUT.
   redisposer() {
     if (!this._plan || !this._plan.cartes.length) return;
     const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
     const sousSet = this.greffon.tachesPourGantt().filter((t) => refsPlan.has(t.ref));
     const { noeuds, aretes } = Ariane.grapheArticulation(sousSet);
-    for (const n of noeuds) n.h = n.h || ARTIC_H;
-    const pos = Ariane.placerGraphe(noeuds, aretes, { dx: 300, dy: 130 });
+    const hDe = (ref) => ((this._noeudsParRef && this._noeudsParRef.get(ref)) || {}).h || ARTIC_H;
+    const pos = Ariane.disposerArticulation(noeuds, aretes, { dx: 300, gapY: 36, hauteur: hDe });
     for (const cc of this._plan.cartes) {
-      const p = pos.get ? pos.get(cc.ref) : (pos[cc.ref]);
+      const p = pos.get(cc.ref);
       if (p) { cc.x = Math.round(p.x); cc.y = Math.round(p.y); }
     }
     this.ctx.ecrirePlan(this._plan);
@@ -1546,6 +1670,25 @@ class MoteurArticulation extends MoteurVue {
       const apres = Ariane.relativesHorsPlan(ref, grapheAll.aretes,
         new Set(this._plan.cartes.map((c) => c.ref)));
       this._plan.cartes[ic].replie = apres.sousTaches.length > 0 || apres.bloquantes.length > 0;
+    }
+    this.ctx.ecrirePlan(this._plan);
+    this.dessiner();
+  }
+
+  // Clic sur un badge « − » : retire du plan les relatifs de `ref` d'un type
+  // (sous-arbre hiérarchique, ou chaîne de bloqueurs) qui n'y sont QUE par lui.
+  _replierRelatifs(ref, type) {
+    if (!this._plan) return;
+    const grapheAll = Ariane.grapheArticulation(this.greffon.tachesPourGantt());
+    const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
+    const aRetirer = new Set(Ariane.replierRelatifs(ref, grapheAll.aretes, refsPlan, type));
+    if (!aRetirer.size) return;
+    this._plan.cartes = this._plan.cartes.filter((c) => !aRetirer.has(c.ref));
+    this._selNoeuds = new Set([...this._selNoeuds].filter((r) => !aRetirer.has(r)));
+    const refsFin = new Set(this._plan.cartes.map((c) => c.ref));
+    for (const c of this._plan.cartes) {
+      const rel = Ariane.relativesHorsPlan(c.ref, grapheAll.aretes, refsFin);
+      c.replie = rel.sousTaches.length > 0 || rel.bloquantes.length > 0;
     }
     this.ctx.ecrirePlan(this._plan);
     this.dessiner();

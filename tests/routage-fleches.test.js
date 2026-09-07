@@ -32,7 +32,8 @@ test('sans obstacle, le tracé simple est gardé tel quel (courbe)', () => {
 test('sans obstacle, le tracé simple est gardé tel quel (angulaire)', () => {
   const r = Ariane.traceFlecheArticulation(TRACE({ mode: 'angulaire' }));
   assert.equal(r.detour, false);
-  assert.equal(r.d, 'M 210 29 H 305 V 29 H 400');
+  // Source et cible sur la même ligne : segment droit, coude aligné supprimé.
+  assert.equal(r.d, 'M 210 29 L 400 29');
 });
 
 test('une carte dans l entre-deux détourne et passe par-dessus', () => {
@@ -98,12 +99,13 @@ test('aucun chemin possible : repli sur le tracé historique', () => {
     { marge: 12, ecart: 22, source: SOURCE }), null);
 });
 
-test('le tracé routé en mode angulaire n a que des angles vifs', () => {
+test('le tracé routé en mode angulaire garde des segments droits, coudes adoucis', () => {
   const obst = carte(280, 14, 60, 30);
   const r = Ariane.traceFlecheArticulation(TRACE({ obstacles: [obst], mode: 'angulaire' }));
   assert.equal(r.detour, true);
-  assert.doesNotMatch(r.d, /[CQ]/);
-  assert.match(r.d, /L/);
+  assert.doesNotMatch(r.d, /C/, 'pas de Bézier cubique : le détour reste orthogonal');
+  assert.match(r.d, /L/, 'des segments droits');
+  assert.match(r.d, /Q/, 'les virages sont légèrement arrondis (R_COUDE_ARTIC)');
 });
 
 test('segmentFrappe : jambes horizontales, verticales, obliques et marge', () => {
@@ -125,6 +127,32 @@ test('flecheEncombee : la Bézier échantillonnée voit la carte', () => {
   assert.equal(Ariane.flecheEncombee(210, 29, 305, 400, 29, [carte(280, 14, 60, 30)], 0), true);
   assert.equal(Ariane.flecheEncombee(210, 29, 305, 400, 29, [carte(280, 60, 60, 30)], 0), false);
   assert.equal(Ariane.flecheEncombee(210, 29, 305, 400, 29, [], 0), false);
+});
+
+test('pontsAretes : croisement franc, le plus horizontal saute', () => {
+  const h = { type: 'hier', pts: [{ x: 0, y: 50 }, { x: 100, y: 50 }] };   // horizontale
+  const v = { type: 'bloque', pts: [{ x: 50, y: 0 }, { x: 50, y: 100 }] }; // verticale
+  const p = Ariane.pontsAretes([v, h]);
+  assert.equal(p.length, 1);
+  assert.ok(Math.abs(p[0].x - 50) < 0.5 && Math.abs(p[0].y - 50) < 0.5);
+  assert.equal(p[0].type, 'hier', 'l arête horizontale saute');
+  assert.ok(Math.abs(Math.abs(p[0].dx) - 1) < 1e-6, 'direction du saut ~ horizontale');
+});
+
+test('pontsAretes : pas de pont si les tracés ne se croisent pas', () => {
+  const a = { type: 'hier', pts: [{ x: 0, y: 0 }, { x: 100, y: 0 }] };
+  const b = { type: 'hier', pts: [{ x: 0, y: 40 }, { x: 100, y: 40 }] };
+  assert.deepEqual(Ariane.pontsAretes([a, b]), []);
+  // Contact par une extrémité : pas un croisement.
+  const c = { type: 'hier', pts: [{ x: 100, y: 0 }, { x: 100, y: 80 }] };
+  assert.deepEqual(Ariane.pontsAretes([a, c]), []);
+});
+
+test('pontsAretes : plafonné', () => {
+  const segs = [];
+  for (let i = 0; i < 6; i++) segs.push({ type: 'hier', pts: [{ x: -10, y: i * 10 }, { x: 110, y: i * 10 }] });
+  for (let i = 0; i < 6; i++) segs.push({ type: 'hier', pts: [{ x: i * 10, y: -10 }, { x: i * 10, y: 60 }] });
+  assert.ok(Ariane.pontsAretes(segs, { max: 5 }).length <= 5);
 });
 
 test('cheminPolyligne : déduplication, coins arrondis, rayon borné', () => {

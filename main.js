@@ -10826,6 +10826,41 @@ const avecArticulationStatiques = (Base) => class extends Base {
     return { sousTaches, bloquantes };
   }
 
+  // Refs à RETIRER du plan pour « replier » les relatifs de `ref` d'un type :
+  //  - 'hier'   : le sous-arbre des sous-tâches sur le plan ;
+  //  - 'bloque' : la chaîne des tâches bloquantes sur le plan.
+  // Une carte reliée aussi à une AUTRE carte gardée (autre parent / bloque une
+  // autre carte du plan) n'est jamais retirée : on ne replie que ce qui
+  // n'existe sur le plan QUE par `ref`. Miroir de _deplierRelatifs.
+  static replierRelatifs(ref, aretes, refsPlan, type) {
+    const plan = refsPlan instanceof Set ? refsPlan : new Set(refsPlan || []);
+    if (!plan.has(ref) || (type !== 'hier' && type !== 'bloque')) return [];
+    const suivants = new Map();   // r -> relatifs directs « en aval du repli »
+    const retenants = new Map();  // r -> cartes du plan qui le retiennent
+    for (const a of aretes || []) {
+      if (!a || a.type !== type) continue;
+      // hier : parent (de) -> enfant (vers), on descend.
+      // bloque : bloqué (vers) -> bloqueur (de), on remonte vers les bloqueurs.
+      const amont = type === 'hier' ? a.de : a.vers;
+      const aval = type === 'hier' ? a.vers : a.de;
+      if (!plan.has(amont) || !plan.has(aval) || amont === aval) continue;
+      if (!suivants.has(amont)) suivants.set(amont, []);
+      suivants.get(amont).push(aval);
+      if (!retenants.has(aval)) retenants.set(aval, []);
+      retenants.get(aval).push(amont);
+    }
+    const retrait = new Set();
+    const file = (suivants.get(ref) || []).slice();
+    while (file.length) {
+      const r = file.shift();
+      if (r === ref || retrait.has(r)) continue;
+      if (!(retenants.get(r) || []).every((p) => p === ref || retrait.has(p))) continue;
+      retrait.add(r);
+      for (const s of suivants.get(r) || []) file.push(s);
+    }
+    return [...retrait];
+  }
+
   // Positions en grille pour poser N cartes, en sautant les cellules qui
   // chevaucheraient une boîte déjà occupée. `occupe` : [{ x, y, w, h }].
   static grillePlacement(n, opts) {
@@ -11791,6 +11826,226 @@ const avecArticulationStatiques = (Base) => class extends Base {
     return pos;
   }
 
+  // Disposition « au propre » du graphe d'articulation. Couches par plus-long
+  // chemin ; ordre intra-couche par médiane des voisins (réduction des
+  // croisements, balayages alternés) ; Y redressé vers la moyenne des voisins
+  // puis séparé pour qu'AUCUNE carte n'en chevauche une autre ; composantes non
+  // connectées empilées en bandes. Les positions manuelles ne sont pas lues :
+  // c'est le vrai « re-disposer ».
+  //   noeuds : [{ref, echeance}]      aretes : [{de, vers, type}]
+  //   opts   : { dx, gapY, gapBande, hauteur:(ref)=>number, passes }
+  // Renvoie Map<ref,{x,y}>.
+  static disposerArticulation(noeuds, aretes, opts) {
+    const o = opts || {};
+    const DX = Number.isFinite(o.dx) ? o.dx : 300;
+    const GY = Number.isFinite(o.gapY) ? o.gapY : 36;
+    const GB = Number.isFinite(o.gapBande) ? o.gapBande : 90;
+    const PASSES = Number.isFinite(o.passes) ? o.passes : 6;
+    const H = typeof o.hauteur === 'function' ? o.hauteur : () => ARTIC_H;
+    const refs = (noeuds || []).map((n) => n && n.ref).filter(Boolean);
+    const set = new Set(refs);
+    const ech = new Map((noeuds || [])
+      .map((n) => [n.ref, Ariane.jourValide(n.echeance) || '~']));
+
+    const E = [];
+    for (const a of aretes || []) {
+      if (a && set.has(a.de) && set.has(a.vers) && a.de !== a.vers) E.push([a.de, a.vers]);
+    }
+    const out = new Map(refs.map((r) => [r, []]));
+    const inn = new Map(refs.map((r) => [r, []]));
+    for (const [u, v] of E) { out.get(u).push(v); inn.get(v).push(u); }
+
+    // 1. Composantes faiblement connectées (union-find sur les deux types).
+    const parent = new Map(refs.map((r) => [r, r]));
+    const find = (r) => {
+      while (parent.get(r) !== r) { parent.set(r, parent.get(parent.get(r))); r = parent.get(r); }
+      return r;
+    };
+    for (const [u, v] of E) {
+      const a = find(u); const b = find(v);
+      if (a !== b) parent.set(a, b);
+    }
+    const comps = new Map();
+    for (const r of refs) {
+      const c = find(r);
+      if (!comps.has(c)) comps.set(c, []);
+      comps.get(c).push(r);
+    }
+    const echMin = (g) => g.reduce((m, r) => (ech.get(r) < m ? ech.get(r) : m), '~~');
+    const groupes = [...comps.values()].sort((A, B) => B.length - A.length
+      || echMin(A).localeCompare(echMin(B)));
+
+    const pos = new Map();
+    let bande = 0;
+    for (const groupe of groupes) {
+      const gset = new Set(groupe);
+      const dedans = (r) => gset.has(r);
+      // 2. Rangs : Kahn, plus-long chemin ; cycles rattrapés à max(pred)+1.
+      const reste = new Map(groupe.map((r) => [r, inn.get(r).filter(dedans).length]));
+      const rang = new Map(groupe.map((r) => [r, 0]));
+      const file = groupe.filter((r) => reste.get(r) === 0);
+      const vus = new Set(file);
+      for (let i = 0; i < file.length; i++) {
+        const u = file[i];
+        for (const v of out.get(u)) {
+          if (!dedans(v)) continue;
+          if (rang.get(v) < rang.get(u) + 1) rang.set(v, rang.get(u) + 1);
+          reste.set(v, reste.get(v) - 1);
+          if (reste.get(v) <= 0 && !vus.has(v)) { vus.add(v); file.push(v); }
+        }
+      }
+      for (const r of groupe) {
+        if (vus.has(r)) continue;
+        let m = 0;
+        for (const u of inn.get(r)) if (dedans(u) && vus.has(u)) m = Math.max(m, rang.get(u) + 1);
+        rang.set(r, m);
+      }
+      const rmax = groupe.reduce((m, r) => Math.max(m, rang.get(r)), 0);
+      const parRang = [];
+      for (let k = 0; k <= rmax; k++) parRang.push([]);
+      for (const r of groupe) parRang[rang.get(r)].push(r);
+      for (const col of parRang) {
+        col.sort((a, b) => ech.get(a).localeCompare(ech.get(b)) || a.localeCompare(b));
+      }
+
+      // 3. Réduction des croisements : médiane des voisins, balayages alternés.
+      const indices = () => {
+        const m = new Map();
+        for (const col of parRang) col.forEach((r, i) => m.set(r, i));
+        return m;
+      };
+      const mediane = (arr) => {
+        if (!arr.length) return -1;
+        const s = arr.slice().sort((x, y) => x - y);
+        const h = s.length >> 1;
+        return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2;
+      };
+      const croisements = () => {
+        let n = 0;
+        for (let k = 1; k <= rmax; k++) {
+          const gi = indices();
+          const paires = [];
+          for (const v of parRang[k]) {
+            for (const u of inn.get(v)) {
+              if (gi.has(u) && rang.get(u) === k - 1) paires.push([gi.get(u), gi.get(v)]);
+            }
+          }
+          for (let a = 0; a < paires.length; a++) {
+            for (let b = a + 1; b < paires.length; b++) {
+              if ((paires[a][0] - paires[b][0]) * (paires[a][1] - paires[b][1]) < 0) n++;
+            }
+          }
+        }
+        return n;
+      };
+      let best = parRang.map((c) => c.slice());
+      let bestC = croisements();
+      for (let p = 0; p < PASSES; p++) {
+        const desc = p % 2 === 0;
+        const ks = [];
+        for (let k = 0; k <= rmax; k++) ks.push(desc ? k : rmax - k);
+        for (const k of ks) {
+          const rref = desc ? k - 1 : k + 1;
+          if (rref < 0 || rref > rmax) continue;
+          const gi = indices();
+          const vois = desc ? inn : out;
+          parRang[k].sort((a, b) => {
+            const ma = mediane(vois.get(a).filter((r) => gi.has(r) && rang.get(r) === rref).map((r) => gi.get(r)));
+            const mb = mediane(vois.get(b).filter((r) => gi.has(r) && rang.get(r) === rref).map((r) => gi.get(r)));
+            return (ma < 0 ? gi.get(a) : ma) - (mb < 0 ? gi.get(b) : mb) || gi.get(a) - gi.get(b);
+          });
+        }
+        const c = croisements();
+        if (c < bestC) { bestC = c; best = parRang.map((col) => col.slice()); }
+      }
+      for (let k = 0; k <= rmax; k++) parRang[k] = best[k];
+
+      // 4. Y : empilement, redressement vers la moyenne des voisins, séparation.
+      const y = new Map();
+      for (const col of parRang) {
+        let cy = 0;
+        for (const r of col) { y.set(r, cy); cy += H(r) + GY; }
+      }
+      const separer = (col) => {
+        col.sort((a, b) => y.get(a) - y.get(b));
+        for (let i = 1; i < col.length; i++) {
+          const min = y.get(col[i - 1]) + H(col[i - 1]) + GY;
+          if (y.get(col[i]) < min) y.set(col[i], min);
+        }
+      };
+      for (let it = 0; it < 4; it++) {
+        for (let k = 0; k <= rmax; k++) {
+          for (const r of parRang[k]) {
+            const vs = out.get(r).concat(inn.get(r)).filter(dedans);
+            if (!vs.length) continue;
+            const moy = vs.reduce((s, v) => s + y.get(v), 0) / vs.length;
+            y.set(r, (y.get(r) + moy) / 2);
+          }
+          separer(parRang[k]);
+        }
+      }
+      let ymin = Infinity; let ymax = -Infinity;
+      for (const r of groupe) { ymin = Math.min(ymin, y.get(r)); ymax = Math.max(ymax, y.get(r) + H(r)); }
+      for (const r of groupe) {
+        pos.set(r, { x: rang.get(r) * DX, y: Math.round(y.get(r) - ymin + bande) });
+      }
+      bande += (ymax - ymin) + GB;
+    }
+    return pos;
+  }
+
+  // Croisements entre tracés d'arêtes (polylignes déjà échantillonnées). Pour
+  // chaque intersection franche, renvoie le point et la direction unitaire du
+  // segment qui « saute » — le plus horizontal des deux (convention schéma :
+  // les fils horizontaux passent par-dessus), sinon celui dessiné au-dessus.
+  //   segments : [{ type, pts: [{x,y}, …] }]   (ordre = ordre de rendu)
+  // Renvoie [{ x, y, dx, dy, type }], plafonné à opts.max (défaut 300).
+  static pontsAretes(segments, opts) {
+    const S = (segments || []).filter((s) => s && Array.isArray(s.pts) && s.pts.length > 1);
+    const MAX = (opts && Number.isFinite(opts.max)) ? opts.max : 300;
+    const B = S.map((s) => {
+      let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+      for (const p of s.pts) {
+        x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y);
+        x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+      }
+      return { x0, y0, x1, y1 };
+    });
+    const inter = (p1, p2, p3, p4) => {
+      const ax = p2.x - p1.x; const ay = p2.y - p1.y;
+      const bx = p4.x - p3.x; const by = p4.y - p3.y;
+      const den = ax * by - ay * bx;
+      if (Math.abs(den) < 1e-9) return null;
+      const t = ((p3.x - p1.x) * by - (p3.y - p1.y) * bx) / den;
+      const u = ((p3.x - p1.x) * ay - (p3.y - p1.y) * ax) / den;
+      if (t <= 0.03 || t >= 0.97 || u <= 0.03 || u >= 0.97) return null;
+      return { x: p1.x + ax * t, y: p1.y + ay * t, ax, ay, bx, by };
+    };
+    const out = [];
+    for (let i = 0; i < S.length && out.length < MAX; i++) {
+      for (let j = i + 1; j < S.length && out.length < MAX; j++) {
+        if (B[i].x1 < B[j].x0 || B[j].x1 < B[i].x0
+          || B[i].y1 < B[j].y0 || B[j].y1 < B[i].y0) continue;
+        const a = S[i]; const b = S[j];
+        for (let m = 1; m < a.pts.length && out.length < MAX; m++) {
+          for (let n = 1; n < b.pts.length && out.length < MAX; n++) {
+            const r = inter(a.pts[m - 1], a.pts[m], b.pts[n - 1], b.pts[n]);
+            if (!r) continue;
+            const ha = Math.abs(r.ax) - Math.abs(r.ay);
+            const hb = Math.abs(r.bx) - Math.abs(r.by);
+            const sauteA = ha > hb;            // égalité → b (au-dessus) saute
+            const dx = sauteA ? r.ax : r.bx;
+            const dy = sauteA ? r.ay : r.by;
+            const L = Math.hypot(dx, dy) || 1;
+            out.push({ x: r.x, y: r.y, dx: dx / L, dy: dy / L,
+              type: (sauteA ? a.type : b.type) || 'hier' });
+          }
+        }
+      }
+    }
+    return out;
+  }
+
   // Un lien proposé est-il licite ? Refus si (a) il referme un cycle sur
   // l'union des arêtes, (b) les dates se contredisent : un blocage dont
   // l'amont s'achève après le début de l'aval ; une hiérarchie dont la mère
@@ -11912,11 +12167,19 @@ const avecArticulationStatiques = (Base) => class extends Base {
 
   // Polyligne à segments verticaux/horizontaux rendue en `d` SVG. Rayon 0 :
   // angles vifs ; sinon coins arrondis, bornés à la demi-longueur des côtés.
-  // Les points alignés intermédiaires sont dédupliqués.
+  // Les points identiques ET les points intermédiaires alignés (aucun vrai
+  // virage) sont retirés — sinon un coude « arrondi » apparaît sur une droite.
   static cheminPolyligne(points, rayon) {
-    const P = [];
+    const D = [];
     for (const p of points || []) {
-      if (p && (P.length === 0 || p.x !== P[P.length - 1].x || p.y !== P[P.length - 1].y)) P.push(p);
+      if (p && (D.length === 0 || p.x !== D[D.length - 1].x || p.y !== D[D.length - 1].y)) D.push(p);
+    }
+    const P = [];
+    for (let i = 0; i < D.length; i++) {
+      const a = P[P.length - 1], b = D[i], c = D[i + 1];
+      if (a && c && (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x) === 0
+        && (b.x - a.x) * (c.x - b.x) >= 0 && (b.y - a.y) * (c.y - b.y) >= 0) continue;
+      P.push(b);
     }
     if (P.length < 2) return '';
     const r = Math.max(0, Number(rayon) || 0);
@@ -12047,7 +12310,8 @@ const avecArticulationStatiques = (Base) => class extends Base {
         : Ariane.flecheEncombee(x1, y1, mx, T.x, yQ, c.obstacles, c.marge);
       if (!pris) {
         const d = mode === 'angulaire'
-          ? 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + yQ + ' H ' + T.x
+          ? Ariane.cheminPolyligne([{ x: x1, y: y1 }, { x: mx, y: y1 },
+            { x: mx, y: yQ }, { x: T.x, y: yQ }], R_COUDE_ARTIC)
           : Ariane._cheminFleche(x1, y1, T.x, yQ);
         return Object.assign({ d, x2: T.x, y2: yQ, cote: 'gauche', detour: false }, milieux(T.x, yQ));
       }
@@ -12056,7 +12320,7 @@ const avecArticulationStatiques = (Base) => class extends Base {
     const route = Ariane.routeFlecheArticulation({ x: x1, y: y1 }, T, c.obstacles,
       { marge: c.marge, ecart: c.ecart, source: c.source });
     if (route) {
-      const d = Ariane.cheminPolyligne(route.points, mode === 'angulaire' ? 0 : 12);
+      const d = Ariane.cheminPolyligne(route.points, mode === 'angulaire' ? R_COUDE_ARTIC : 12);
       let meilleur = null, long = -1;
       for (let i = 1; i < route.points.length; i++) {
         const p = route.points[i - 1], q = route.points[i];
@@ -12069,7 +12333,8 @@ const avecArticulationStatiques = (Base) => class extends Base {
     const x2 = aDroite ? T.x : T.x + (T.w || 0);
     const mx = aDroite ? Math.max(x1 + 16, (x1 + T.x) / 2) : Math.max(x1, x2) + 26;
     const d = mode === 'angulaire'
-      ? 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + yQ + ' H ' + x2
+      ? Ariane.cheminPolyligne([{ x: x1, y: y1 }, { x: mx, y: y1 },
+        { x: mx, y: yQ }, { x: x2, y: yQ }], R_COUDE_ARTIC)
       : 'M ' + x1 + ' ' + y1 + ' C ' + mx + ' ' + y1 + ', ' + mx + ' ' + yQ + ', ' + x2 + ' ' + yQ;
     return Object.assign({ d, x2, y2: yQ, cote: aDroite ? 'gauche' : 'droite', detour: false },
       milieux(x2, yQ));
@@ -22069,6 +22334,17 @@ try {
 
 const ARTIC_W = 240;
 const ARTIC_H = 58;
+// Décalage de la pastille indicatrice de repli au-delà du bord droit. Elle
+// n'est plus cliquable (le point d'accroche gère tout) — c'est un simple
+// compteur / témoin, posé juste à côté de l'accroche.
+const REPLI_DX = 14;
+// Fenêtre du « double tap » sur un point d'accroche, et délai avant l'action
+// du tap simple (le temps de voir venir un second tap).
+const DELAI_TAP = 280;
+// Rayon des coudes en mode « angulaire » : les tracés gardent des segments
+// droits mais les virages sont légèrement adoucis. Lu à l'exécution par les
+// statiques de routage de la section 11j (comme ARTIC_H), jamais au chargement.
+const R_COUDE_ARTIC = 6;
 const GRILLE_ARTIC = 20;   // pas de la grille magnétique
 const SEUIL_AIMANT = 7;    // distance d'accrochage à un bord / centre voisin
 // Hauteur relative des points d'accroche (et donc des extrémités d'arête)
@@ -22108,6 +22384,7 @@ class MoteurArticulation extends MoteurVue {
   }
   detruire() {
     if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
+    if (this._tapAccroche) { clearTimeout(this._tapAccroche.timer); this._tapAccroche = null; }
     this.racine.empty();
   }
 
@@ -22198,10 +22475,16 @@ class MoteurArticulation extends MoteurVue {
     // (badge numéroté). Cliquer un badge les ajoute au plan.
     this._bloqueCaches = new Map();
     this._enfantsHorsPlan = new Map();
+    // Relatifs repliables (déjà sur le plan, retirables via le badge « − »).
+    this._replierPossible = new Map();
     for (const ref of refsPlan) {
       const rel = Ariane.relativesHorsPlan(ref, grapheAll.aretes, refsPlan);
       if (rel.bloquantes.length) this._bloqueCaches.set(ref, rel.bloquantes.length);
       if (rel.sousTaches.length) this._enfantsHorsPlan.set(ref, rel.sousTaches);
+      for (const type of ['hier', 'bloque']) {
+        const nb = Ariane.replierRelatifs(ref, grapheAll.aretes, refsPlan, type).length;
+        if (nb) this._replierPossible.set(ref + '|' + type, nb);
+      }
     }
 
     this._dates = {};
@@ -22285,10 +22568,24 @@ class MoteurArticulation extends MoteurVue {
       for (const gb of gn.querySelectorAll('.zfa-artic-repli')) {
         const typeRepli = gb.classList.contains('zfa-artic-repli-bloque') ? 'bloque' : 'hier';
         gb.setAttribute('transform',
-          'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, typeRepli) + ')');
+          'translate(' + (ARTIC_W + REPLI_DX) + ',' + ancreY(hN, typeRepli) + ')');
       }
     }
     if (hChangee) this._retracerAretes();
+    this._tracerPonts(g, aretes);
+
+    // Survol d'une carte → ses connexions directes en avant (délégué : les
+    // groupes d'arêtes sont reconstruits à chaque retracé).
+    g.addEventListener('mouseover', (e) => {
+      const gn = e.target.closest && e.target.closest('.zfa-artic-noeud');
+      if (gn && gn.dataset.ref) this._survolLiens(gn.dataset.ref);
+    });
+    g.addEventListener('mouseout', (e) => {
+      const gn = e.target.closest && e.target.closest('.zfa-artic-noeud');
+      const versDehors = !(e.relatedTarget && e.relatedTarget.closest
+        && e.relatedTarget.closest('.zfa-artic-noeud') === gn);
+      if (gn && versDehors) this._finSurvolLiens();
+    });
 
     svg.addEventListener('wheel', (e) => this.zoomer(e), { passive: false });
     const surFond = (e) => (e.target === svg
@@ -22847,49 +23144,36 @@ class MoteurArticulation extends MoteurVue {
       ga.appendChild(svgEl('circle', { r: 11, class: 'zfa-artic-accroche-cible' }));
       ga.appendChild(svgEl('path', {
         d: 'M 0 -5 A 5 5 0 0 1 0 5 Z', class: 'zfa-artic-accroche-pastille' }));
+      const nom = type === 'hier' ? tr('sous-tâches') : tr('tâches bloquantes');
       const t = svgEl('title', {});
-      t.textContent = type === 'hier'
-        ? tr('Clic : nouvelle sous-tâche. Maintenir et tirer : relier une tâche existante.')
-        : tr('Clic : nouvelle tâche bloquée. Maintenir et tirer : relier une tâche existante.');
+      t.textContent = tr('Clic : afficher / masquer les ') + nom
+        + tr(" (ou en créer une s'il n'y en a pas). Double-clic : nouvelle ")
+        + nom + tr('. Maintenir et tirer : relier une tâche existante.');
       ga.appendChild(t);
       ga.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.tirerArete(e, n.ref, type); });
       gn.appendChild(ga);
     }
 
-    // Badges de relatifs HORS PLAN : sous-tâches (numéroté) et bloquantes
-    // (accent). Cliquer un badge ajoute ces relatifs au plan.
-    const sousHP = (this._enfantsHorsPlan && this._enfantsHorsPlan.get(n.ref)) || [];
-    if (sousHP.length) {
+    // Témoin de repli (NON cliquable — le point d'accroche gère tout) : « n »
+    // quand des relatifs sont cachés, « − » quand ils sont dépliés et pliables.
+    const temoinRepli = (type) => {
+      const caches = type === 'hier'
+        ? ((this._enfantsHorsPlan && this._enfantsHorsPlan.get(n.ref)) || []).length
+        : ((this._bloqueCaches && this._bloqueCaches.get(n.ref)) || 0);
+      const surPlan = (this._replierPossible && this._replierPossible.get(n.ref + '|' + type)) || 0;
+      if (!caches && !surPlan) return;
       const gb = svgEl('g', {
-        class: 'zfa-artic-repli zfa-artic-repli-hier est-repliee',
-        transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, 'hier') + ')' });
+        class: 'zfa-artic-repli zfa-artic-repli-' + type
+          + (caches ? ' est-repliee' : ' est-depliee'),
+        transform: 'translate(' + (ARTIC_W + REPLI_DX) + ',' + ancreY(hN, type) + ')' });
       gb.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-repli-fond' }));
       const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
-      tx.textContent = String(sousHP.length);
+      tx.textContent = caches ? String(caches) : '−';
       gb.appendChild(tx);
-      const ti = svgEl('title', {});
-      ti.textContent = tr('Ajouter les sous-tâches au plan');
-      gb.appendChild(ti);
-      gb.addEventListener('pointerdown', (e) => e.stopPropagation());
-      gb.addEventListener('click', (e) => { e.stopPropagation(); this._deplierRelatifs(n.ref, 'hier'); });
       gn.appendChild(gb);
-    }
-    const nbBloc = (this._bloqueCaches && this._bloqueCaches.get(n.ref)) || 0;
-    if (nbBloc > 0) {
-      const gv = svgEl('g', {
-        class: 'zfa-artic-repli zfa-artic-repli-bloque est-repliee',
-        transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, 'bloque') + ')' });
-      gv.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-repli-fond' }));
-      const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
-      tx.textContent = String(nbBloc);
-      gv.appendChild(tx);
-      const ti = svgEl('title', {});
-      ti.textContent = tr('Ajouter les tâches bloquantes au plan');
-      gv.appendChild(ti);
-      gv.addEventListener('pointerdown', (e) => e.stopPropagation());
-      gv.addEventListener('click', (e) => { e.stopPropagation(); this._deplierRelatifs(n.ref, 'bloque'); });
-      gn.appendChild(gv);
-    }
+    };
+    temoinRepli('hier');
+    temoinRepli('bloque');
     g.appendChild(gn);
   }
 
@@ -22926,7 +23210,8 @@ class MoteurArticulation extends MoteurVue {
     const ang = (this.greffon.settings.articulationFleches || 'courbe') === 'angulaire';
     if (ang) {
       const mx = Math.max(x1 + 16, (x1 + x2) / 2);
-      return 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + y2 + ' H ' + x2;
+      return Ariane.cheminPolyligne([{ x: x1, y: y1 }, { x: mx, y: y1 },
+        { x: mx, y: y2 }, { x: x2, y: y2 }], R_COUDE_ARTIC);
     }
     return Ariane._cheminFleche(x1, y1, x2, y2);
   }
@@ -22980,6 +23265,70 @@ class MoteurArticulation extends MoteurVue {
       this.selectionnerArete(a.de, a.vers, a.type, gr);
     });
     g.appendChild(gr);
+  }
+
+  // Survol d'une carte : ses arêtes DIRECTES (amont + aval) et les cartes à
+  // l'autre bout passent en avant, tout le reste s'estompe. Purement visuel —
+  // ne touche ni à la sélection ni aux statuts dérivés (bloquée / impactée).
+  _survolLiens(ref) {
+    if (!this._scene || this._survolRef === ref) return;
+    this._finSurvolLiens();
+    this._survolRef = ref;
+    this._scene.classList.add('a-un-survol');
+    const lies = new Set([ref]);
+    for (const gr of this._scene.querySelectorAll('.zfa-artic-arete-groupe')) {
+      if (gr.dataset.de === ref || gr.dataset.vers === ref) {
+        gr.classList.add('est-lie');
+        lies.add(gr.dataset.de);
+        lies.add(gr.dataset.vers);
+      }
+    }
+    for (const gn of this._scene.querySelectorAll('.zfa-artic-noeud')) {
+      if (lies.has(gn.dataset.ref)) gn.classList.add('est-lie');
+    }
+  }
+
+  _finSurvolLiens() {
+    this._survolRef = null;
+    if (!this._scene) return;
+    this._scene.classList.remove('a-un-survol');
+    for (const el of this._scene.querySelectorAll('.est-lie')) el.classList.remove('est-lie');
+  }
+
+  // Ponts aux croisements d'arêtes : on échantillonne chaque tracé rendu, on
+  // cherche les intersections et on pose un petit arc « saut » sur l'arête du
+  // dessus. Couche de rendu seule, refaite à chaque redessin complet ; passée
+  // au-delà d'un certain nombre d'arêtes (trop dense pour aider).
+  _tracerPonts(g, aretes) {
+    const anc = g.querySelector('.zfa-artic-ponts');
+    if (anc) anc.remove();
+    if (!aretes || aretes.length > 140) return;
+    const polys = [];
+    for (const gr of g.querySelectorAll('.zfa-artic-arete-groupe')) {
+      const path = gr.querySelector('path.zfa-artic-arete');
+      if (!path || !path.getTotalLength) continue;
+      let L = 0;
+      try { L = path.getTotalLength(); } catch (e) { L = 0; }
+      if (!L) continue;
+      const pts = [];
+      for (let d = 0; d <= L; d += 9) {
+        const pt = path.getPointAtLength(Math.min(d, L));
+        pts.push({ x: pt.x, y: pt.y });
+      }
+      polys.push({ type: gr.dataset.type || 'hier', pts });
+    }
+    const ponts = Ariane.pontsAretes(polys, { max: 300 });
+    if (!ponts.length) return;
+    const gp = svgEl('g', { class: 'zfa-artic-ponts' });
+    const R = 5;
+    for (const c of ponts) {
+      const d = 'M ' + (c.x - c.dx * R).toFixed(1) + ' ' + (c.y - c.dy * R).toFixed(1)
+        + ' A ' + R + ' ' + R + ' 0 0 1 '
+        + (c.x + c.dx * R).toFixed(1) + ' ' + (c.y + c.dy * R).toFixed(1);
+      gp.appendChild(svgEl('path', { d, class: 'zfa-artic-pont-fond' }));
+      gp.appendChild(svgEl('path', { d, class: 'zfa-artic-pont zfa-artic-' + c.type }));
+    }
+    g.appendChild(gp);
   }
 
   //#endregion Articulation · cartes & arêtes
@@ -23388,9 +23737,29 @@ class MoteurArticulation extends MoteurVue {
     }
   }
 
+  // Tap simple sur un point d'accroche : s'il y a des relatifs de ce type,
+  // on les replie ou les déplie ; sinon on crée une tâche reliée. Si les
+  // relatifs existent mais sont tous déjà montrés et partagés (rien à replier
+  // sans arracher une autre carte), le tap ne fait rien.
+  _actionAccrocheSimple(ref, type, s0) {
+    if (!this._plan) { this._nouvelleTacheReliee(ref, type, s0); return; }
+    const graphe = Ariane.grapheArticulation(this.greffon.tachesPourGantt());
+    const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
+    const rel = Ariane.relativesHorsPlan(ref, graphe.aretes, refsPlan);
+    const nbCaches = type === 'hier' ? rel.sousTaches.length : rel.bloquantes.length;
+    if (nbCaches) { this._deplierRelatifs(ref, type); return; }
+    if (Ariane.replierRelatifs(ref, graphe.aretes, refsPlan, type).length) {
+      this._replierRelatifs(ref, type);
+      return;
+    }
+    const aDesRelatifs = (graphe.aretes || []).some((a) => a.type === type
+      && (type === 'hier' ? a.de === ref : a.vers === ref));
+    if (!aDesRelatifs) this._nouvelleTacheReliee(ref, type, s0);
+  }
+
   // Crée une tâche vierge reliée au nœud « ref » selon le bouton : sous-tâche
-  // pour « hier », tâche bloquée pour « bloque ». Utilisé au clic simple sur
-  // un point d'accroche.
+  // pour « hier », tâche bloquée pour « bloque ». Utilisé au double tap sur
+  // un point d'accroche, ou au tap simple s'il n'y a aucun relatif.
   async _nouvelleTacheReliee(ref, type, s0) {
     const chemin = await this.greffon.creerTache({});
     const nouv = this.greffon.refDeChemin(chemin);
@@ -23470,8 +23839,26 @@ class MoteurArticulation extends MoteurVue {
       trait.remove();
       const m = this._svg.querySelector('.zfa-artic-noeud.est-cible');
       if (m) m.classList.remove('est-cible');
-      // Clic simple (sans glisser) : nouvelle tâche vierge reliée.
-      if (!bouge) { await this._nouvelleTacheReliee(ref, type, s0); return; }
+      // Sans glisser : un « tap » sur le point d'accroche.
+      //  · double tap rapide → nouvelle tâche reliée, quoi qu'il arrive ;
+      //  · tap simple → replier / déplier les relatifs s'il y en a, sinon
+      //    créer une tâche reliée. Différé pour laisser passer le double.
+      if (!bouge) {
+        const now = Date.now();
+        const t = this._tapAccroche;
+        if (t && t.ref === ref && t.type === type && now - t.t < DELAI_TAP) {
+          clearTimeout(t.timer);
+          this._tapAccroche = null;
+          await this._nouvelleTacheReliee(ref, type, s0);
+          return;
+        }
+        const timer = setTimeout(() => {
+          this._tapAccroche = null;
+          this._actionAccrocheSimple(ref, type, s0);
+        }, DELAI_TAP);
+        this._tapAccroche = { ref, type, t: now, timer };
+        return;
+      }
       if (!cible) return;
       const ajout = { de: ref, vers: cible, type };
       const v = Ariane.lienValide(this._aretes, this._dates, ajout);
@@ -23511,16 +23898,18 @@ class MoteurArticulation extends MoteurVue {
     this.appliquerVue();
   }
 
-  // Re-disposer : relance placerGraphe sur le plan et écrit les positions.
+  // Re-disposer : disposition « au propre » complète (couches + réduction des
+  // croisements + redressement + anti-chevauchement + bandes par composante).
+  // Les positions manuelles sont ignorées — on replace TOUT.
   redisposer() {
     if (!this._plan || !this._plan.cartes.length) return;
     const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
     const sousSet = this.greffon.tachesPourGantt().filter((t) => refsPlan.has(t.ref));
     const { noeuds, aretes } = Ariane.grapheArticulation(sousSet);
-    for (const n of noeuds) n.h = n.h || ARTIC_H;
-    const pos = Ariane.placerGraphe(noeuds, aretes, { dx: 300, dy: 130 });
+    const hDe = (ref) => ((this._noeudsParRef && this._noeudsParRef.get(ref)) || {}).h || ARTIC_H;
+    const pos = Ariane.disposerArticulation(noeuds, aretes, { dx: 300, gapY: 36, hauteur: hDe });
     for (const cc of this._plan.cartes) {
-      const p = pos.get ? pos.get(cc.ref) : (pos[cc.ref]);
+      const p = pos.get(cc.ref);
       if (p) { cc.x = Math.round(p.x); cc.y = Math.round(p.y); }
     }
     this.ctx.ecrirePlan(this._plan);
@@ -23608,6 +23997,25 @@ class MoteurArticulation extends MoteurVue {
       const apres = Ariane.relativesHorsPlan(ref, grapheAll.aretes,
         new Set(this._plan.cartes.map((c) => c.ref)));
       this._plan.cartes[ic].replie = apres.sousTaches.length > 0 || apres.bloquantes.length > 0;
+    }
+    this.ctx.ecrirePlan(this._plan);
+    this.dessiner();
+  }
+
+  // Clic sur un badge « − » : retire du plan les relatifs de `ref` d'un type
+  // (sous-arbre hiérarchique, ou chaîne de bloqueurs) qui n'y sont QUE par lui.
+  _replierRelatifs(ref, type) {
+    if (!this._plan) return;
+    const grapheAll = Ariane.grapheArticulation(this.greffon.tachesPourGantt());
+    const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
+    const aRetirer = new Set(Ariane.replierRelatifs(ref, grapheAll.aretes, refsPlan, type));
+    if (!aRetirer.size) return;
+    this._plan.cartes = this._plan.cartes.filter((c) => !aRetirer.has(c.ref));
+    this._selNoeuds = new Set([...this._selNoeuds].filter((r) => !aRetirer.has(r)));
+    const refsFin = new Set(this._plan.cartes.map((c) => c.ref));
+    for (const c of this._plan.cartes) {
+      const rel = Ariane.relativesHorsPlan(c.ref, grapheAll.aretes, refsFin);
+      c.replie = rel.sousTaches.length > 0 || rel.bloquantes.length > 0;
     }
     this.ctx.ecrirePlan(this._plan);
     this.dessiner();
