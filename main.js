@@ -1,6 +1,14 @@
 'use strict';
 
 /*
+ * ╔═══════════════════════════════════════════════════════════════════════╗
+ * ║  FICHIER PRODUIT — NE PAS ÉDITER ICI.                                 ║
+ * ║  main.js est la CONCATÉNATION des fragments de src/, dans l'ordre de   ║
+ * ║  src/ordre.json. Éditer le fragment, puis : npm run build             ║
+ * ║  Une édition faite ici est perdue à la construction suivante.         ║
+ * ║  Correspondance : la section N ci-dessous vit dans src/NN-*.js        ║
+ * ╚═══════════════════════════════════════════════════════════════════════╝
+ *
  * Ariane
  * ================
  * Plugin Obsidian sur mesure et PARAMÉTRABLE. Transforme les
@@ -38,7 +46,8 @@
  * ─────────────────────────────────────────────────────────────────────────
  * CARTE DU FICHIER
  * ─────────────────────────────────────────────────────────────────────────
- * Un seul fichier, AUCUN build : Obsidian charge ce main.js tel quel.
+ * Obsidian charge ce main.js tel quel ; il est produit par npm run build à
+ * partir de src/. Chaque section ci-dessous est un fragment src/NN-*.js.
  * Copie vers le coffre : cp main.js styles.css manifest.json <dossier-plugin>/
  *
  *    1 · Constantes & i18n
@@ -91,6 +100,13 @@
  * ─────────────────────────────────────────────────────────────────────────
  * CONVENTIONS — à respecter par toute personne (ou IA) qui édite ce fichier
  * ─────────────────────────────────────────────────────────────────────────
+ * OÙ ÉDITER. Dans src/, jamais dans main.js. Un fragment = une section de la
+ * carte ci-dessous : la section 15 est src/15-vue-frise.js, et ainsi de suite.
+ * La construction est une concaténation d'octets — pas un empaquetage : les
+ * fragments partagent UNE SEULE PORTÉE (ni import ni export, noms de premier
+ * niveau uniques), et chacun doit rester du JavaScript valide au premier
+ * niveau. scripts/build.mjs dit pourquoi ce choix plutôt qu'esbuild.
+ *
  * BALISAGE. Deux niveaux, tous deux repliables dans l'éditeur :
  *   · niveau 1, en colonne 0 :  //#region N · Titre  …  //#endregion N · Titre
  *     Les deux bornes portent le MÊME numéro et le MÊME titre. Ajouter une
@@ -117,11 +133,13 @@
  * requestAnimationFrame lié à la vue. Ne jamais réintroduire un `_doc()` local :
  * c'est la duplication qui a déjà fait rater une correction sur un moteur.
  *
- * VÉRIFICATION. Aucun build : node --check main.js  puis  node --test tests/*.test.js
+ * VÉRIFICATION.  npm test  (construit main.js, puis lance les tests).
+ * npm run verifier  échoue si main.js diverge de src/ sans reconstruction.
  * Déploiement : cp main.js styles.css manifest.json vers le dossier du greffon
  * du coffre — JAMAIS data.json (ce sont les réglages de l'utilisateur).
  *
  * Conception : docs/superpowers/specs/2026-08-31-mise-au-propre-main-design.md
+ * Scission (en cours) : docs/superpowers/specs/2026-09-07-scission-revue-design.md
  * Suspects relevés : docs/conception/2026-08-31-mise-au-propre-main-suspects.md
  * ─────────────────────────────────────────────────────────────────────────
  */

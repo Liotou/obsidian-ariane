@@ -1,0 +1,13 @@
+{
+  "name": "obsidian-ariane",
+  "version": "2.78.0",
+  "private": true,
+  "description": "Ariane — greffon Obsidian. main.js est produit par scripts/build.mjs depuis src/.",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "verifier": "node scripts/build.mjs --verifier",
+    "check": "for f in src/*.js; do node --check \"$f\" || exit 1; done",
+    "test": "npm run build && node --test tests/*.test.js"
+  }
+}

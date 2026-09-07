@@ -1,0 +1,23 @@
+[
+  "00-entete.js",
+  "01-constantes-i18n.js",
+  "02-utilitaires.js",
+  "03-zotero-references.js",
+  "04-similarite-locale.js",
+  "05-notes-atomiques.js",
+  "06-bibliographie.js",
+  "07-export-pandoc.js",
+  "08-schemas-drawio.js",
+  "09-doublons-auteurs.js",
+  "10-marqueurs-tache.js",
+  "11-ariane.js",
+  "12-reglages.js",
+  "13-modales-tache.js",
+  "14-socle-vues.js",
+  "15-vue-frise.js",
+  "16-vue-articulation.js",
+  "17-vue-calendrier.js",
+  "18-vues-laterales.js",
+  "19-modales-secondaires.js",
+  "20-exports.js"
+]
