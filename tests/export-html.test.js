@@ -39,9 +39,9 @@ const FIXTURE = {
 // socle de la page exportée.
 function sourceMoteur() {
   const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
-  const debut = source.indexOf('class MoteurFrise {');
+  const debut = source.indexOf('class MoteurVue {');
   const fin = source.indexOf('// ── Page HTML autonome');
-  assert.ok(debut > 0 && fin > debut, 'main.js doit contenir MoteurFrise puis le socle');
+  assert.ok(debut > 0 && fin > debut, 'main.js doit contenir MoteurVue/MoteurFrise puis le socle');
   return source.slice(debut, fin);
 }
 
@@ -176,7 +176,7 @@ test('export HTML : identifiants externes du moteur définis dans le socle', () 
 
 test('export HTML : le socle embarque et évalue le vrai moteur', () => {
   const page = pageFriseHtml(Object.assign({}, FIXTURE, { moteur: sourceMoteur() }));
-  assert.ok(page.includes("Function('return (' + D.moteur + ')')"));
+  assert.ok(page.includes("Function(D.moteur + '; return MoteurFrise;')"));
   assert.ok(page.includes('new MoteurFrise(greffon, racine, ctx)'));
   assert.ok(page.includes('class GreffonFactice'));
   assert.ok(page.includes('class CtxFactice'));

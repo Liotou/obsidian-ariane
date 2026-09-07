@@ -88,6 +88,17 @@ test('la carte de l\'en-tête liste exactement les régions du fichier', () => {
   }
 });
 
+test('les trois moteurs de vue héritent du socle, sans _doc() local', () => {
+  for (const c of ['MoteurFrise', 'MoteurArticulation', 'MoteurCalendrier']) {
+    assert.ok(SRC.includes('class ' + c + ' extends MoteurVue {'),
+      c + ' doit hériter de MoteurVue : c\'est là que vivent _doc() et _win()');
+  }
+  // Un seul _doc() dans tout le fichier : celui du socle. Le redéfinir dans un
+  // moteur, c'est reprendre le risque qu'une correction en oublie un.
+  const defs = LIGNES.filter((l) => /^ {2}_doc\(\)/.test(l)).length;
+  assert.equal(defs, 1, 'un _doc() local est réapparu : il doit rester dans MoteurVue seul');
+});
+
 test('pas de document/window global pour les gestes des vues', () => {
   // Dans un volet détaché, le document global est celui de la fenêtre
   // principale : les moteurs de vue doivent passer par _doc().
