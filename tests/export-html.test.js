@@ -96,7 +96,7 @@ const FAUX_POSITIFS = new Set([
   'defauts', 'degage', 'event', 'fmt', 'gcle', 'hoverParent', 'href', 'jj',
   'kidsRefs', 'langue', 'lib', 'lignageSurvol', 'linktext', 'medium', 'moteur',
   'multitext', 'number', 'onChange', 'pageFriseHtml', 'patternTransform',
-  'patternUnits', 'periodes', 'pr', 'preventScroll', 'role', 'rx', 'ry',
+  'patternUnits', 'passive', 'periodes', 'pr', 'preventScroll', 'role', 'rx', 'ry',
   'semaine', 'short', 'source', 'sourcePath', 'surRail', 'tags', 'targetEl',
   'text', 'threshold', 'trimestre', 'tall', 'typeVue', 'va', 'vb',
 ]);

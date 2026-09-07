@@ -434,6 +434,19 @@ class MoteurFrise extends MoteurVue {
     gauche.style.height = dispoH + 'px';
 
     const table = gauche.querySelector('.zfa-gantt-table');
+
+    // La colonne de gauche est en `overflow: hidden` (ses lignes sont bougées à
+    // la main au défilement de la droite). La molette passée dessus ne trouvait
+    // donc aucun conteneur défilant et ne faisait rien : on la réachemine vers
+    // la colonne graphique, seule à défiler, qui recale la gauche via son propre
+    // écouteur `scroll`.
+    gauche.addEventListener('wheel', (ev) => {
+      const k = ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? droite.clientHeight : 1;
+      if (ev.deltaY) droite.scrollTop += ev.deltaY * k;
+      if (ev.deltaX) droite.scrollLeft += ev.deltaX * k;
+      ev.preventDefault();
+    }, { passive: false });
+
     droite.addEventListener('scroll', () => {
       // Le lignage est posé en coordonnées contenu : au défilement il se
       // découperait des barres — on l'efface (le survol le reposera).
