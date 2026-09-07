@@ -3501,6 +3501,21 @@ class Ariane extends obsidian.Plugin {
 
     this.addRibbonIcon('layers', "Panier de notes (Ariane)", () => this.basculerPanier());
 
+    // Le reste du démarrage, dans l'ordre : ce que le greffon OFFRE (commandes,
+    // vues, interface), puis ce à quoi il RÉAGIT (extensions d'éditeur, écoutes),
+    // puis ce qui attend la disposition. Chaque étape est une méthode juste
+    // en dessous : y ajouter une commande ou une écoute, pas ici.
+    this._enregistrerCommandes();
+    this._enregistrerVues();
+    this._brancherInterface();
+    this._installerExtensionsEditeur();
+    this._brancherEvenements();
+    this._demarrerMinuteries();
+  }
+
+  // Toutes les commandes de la palette. Un seul endroit où chercher
+  // « pourquoi cette commande fait ça » — et où en ajouter une.
+  _enregistrerCommandes() {
     this.addCommand({
       id: 'atomise-active',
       name: tr('Atomiser : la note source active'),
@@ -3828,7 +3843,11 @@ class Ariane extends obsidian.Plugin {
         this.majSuggestions();
       },
     });
+  }
 
+  // Volets latéraux et vues de base (frise, articulation, calendrier).
+  // Les vues de base n'existent que si Bases est actif.
+  _enregistrerVues() {
     // Panneau de suggestions dynamiques (moteur lexical local).
     this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
@@ -3900,6 +3919,11 @@ class Ariane extends obsidian.Plugin {
         mtm.setType('famille', 'text');
       }
     } catch (e) { /* metadataTypeManager indisponible : sans gravité */ }
+  }
+
+  // Icônes du ruban, aperçu au survol, glisser-déposer d'annotations et
+  // post-traitements Markdown.
+  _brancherInterface() {
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
     this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
@@ -3990,7 +4014,12 @@ class Ariane extends obsidian.Plugin {
     });
     this._citVersion = 0;
     this.app.workspace.onLayoutReady(() => this.appliquerEtatCitations());
+  }
 
+  // Extensions CodeMirror (aparté en Live Preview, surlignage de phrase).
+  // Chaque bloc est gardé : une API absente ne doit pas empêcher le
+  // greffon de démarrer.
+  _installerExtensionsEditeur() {
     // Même aparté en mode édition (Live Preview), via une extension CodeMirror.
     try {
       const { ViewPlugin, Decoration, WidgetType } = require('@codemirror/view');
@@ -4185,7 +4214,12 @@ class Ariane extends obsidian.Plugin {
     } catch (e) {
       console.error('[Ariane] Surlignage de phrase indisponible :', e);
     }
+  }
 
+  // Écoutes du coffre et de l'index de métadonnées. Les fermetures locales
+  // (estCandidat, revaliderIndex, surTache…) restent volontairement ici :
+  // elles ne servent qu'à ce câblage.
+  _brancherEvenements() {
     // Suggestions : recalcul à la pause de frappe et au changement de note.
     const estCandidat = (f) => {
       if (!f || !f.path) return false;
@@ -4409,7 +4443,11 @@ class Ariane extends obsidian.Plugin {
     for (const ev of ['create', 'delete', 'rename']) {
       this.registerEvent(this.app.vault.on(ev, () => this._invaliderIndexTaches()));
     }
+  }
 
+  // Ce qui ne démarre qu'une fois la disposition prête : écoutes tardives,
+  // reprises différées, minuteries.
+  _demarrerMinuteries() {
     this.app.workspace.onLayoutReady(() => {
       this.registerEvent(this.app.vault.on('modify', (f) => this.surModification(f)));
 
