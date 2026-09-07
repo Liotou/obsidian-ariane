@@ -7,11 +7,11 @@
 //  mêmes appels « this.machin() », mêmes statiques « Ariane.machin() », que
 //  l'héritage résout le long de la chaîne.
 //
-//  L'ordre de composition ci-dessous est aussi la carte de la scission à
-//  venir : socle et IA iront dans le paquet « core », les mixins « note »
-//  dans ariane-note, les mixins « taches / frise / articulation » dans
-//  ariane-task. Chaque greffon composera sa propre chaîne.
-//  Conception : docs/superpowers/specs/2026-09-07-scission-revue-design.md
+//  ARIANE RESTE UN SEUL GREFFON (décision du 2026-09-07). Le découpage en
+//  mixins n'est donc pas la préparation d'une scission : il existe pour
+//  lui-même, parce qu'une classe de 12 000 lignes ne se tient pas en tête —
+//  ni celle d'un humain, ni le contexte d'une IA. La conception qui visait
+//  trois greffons est archivée, marquée abandonnée.
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Applique les mixins de gauche à droite : le dernier gagne en cas de méthode

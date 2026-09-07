@@ -1,6 +1,6 @@
 
 // ── avecNoteSchemas ───────────────────────────────────────────────────────
-// Phase 2 : ariane-note.
+// Domaine : notes (Zotero, biblio, schémas).
 // Schémas draw.io : synchronisation vers la note, index des cartes. Le produit
 // « graphes » a été retiré ; ce qui reste convertit un schéma en texte.
 const avecNoteSchemas = (Base) => class extends Base {

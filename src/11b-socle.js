@@ -1,6 +1,6 @@
 
 // ── avecSocle ─────────────────────────────────────────────────────────────
-// Phase 2 : core.
+// Domaine : socle — utilisé par tous les autres mixins.
 // Réglages, dates, chemins, garde-fous d'écriture, aiguillage des événements
 // du coffre. Tout ce dont les deux greffons auront besoin.
 const avecSocle = (Base) => class extends Base {

@@ -70,20 +70,20 @@
  *   10 · Marqueurs de tâche
  *          balises des blocs de note entretenus par Ariane
  *   11 · class Ariane
- *          LE greffon, assemblé de mixins — un fragment src/11*.js chacun, un
- *          domaine chacun, et déjà rangés selon la scission à venir :
+ *          LE greffon, assemblé de mixins — un fragment src/11*.js chacun,
+ *          un domaine chacun :
  *            11a  composition   composer(), en-tête de la section
- *            11b  avecSocle     réglages, dates, chemins, garde-fous,   → core
+ *            11b  avecSocle     réglages, dates, chemins, garde-fous,
  *                               aiguillage des événements du coffre
- *            11c  avecIa        voisinage, encodage, fournisseurs LLM   → core
- *            11d  avecNoteReferences        Zotero, familles, attente   → note
- *            11e  avecNoteAtomes            atomisation, panier         → note
- *            11f  avecNoteBiblio            biblio, Pandoc, doublons    → note
- *            11g  avecNoteSchemas           draw.io                     → note
- *            11h  avecTachesStatiques       fonctions pures des tâches  → task
- *            11i  avecFriseStatiques        Gantt, périodes, tri        → task
- *            11j  avecArticulationStatiques plan, arêtes, zones         → task
- *            11k  avecTaches     notes de tâche, temps, synchro Apple   → task
+ *            11c  avecIa        voisinage, encodage, fournisseurs LLM
+ *            11d  avecNoteReferences        Zotero, familles, attente
+ *            11e  avecNoteAtomes            atomisation, panier
+ *            11f  avecNoteBiblio            biblio, Pandoc, doublons
+ *            11g  avecNoteSchemas           draw.io
+ *            11h  avecTachesStatiques       fonctions pures des tâches
+ *            11i  avecFriseStatiques        Gantt, périodes, tri
+ *            11j  avecArticulationStatiques plan, arêtes, zones
+ *            11k  avecTaches     notes de tâche, temps, synchro Apple
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -154,8 +154,11 @@
  * Déploiement : cp main.js styles.css manifest.json vers le dossier du greffon
  * du coffre — JAMAIS data.json (ce sont les réglages de l'utilisateur).
  *
+ * UN SEUL GREFFON. La scission en plusieurs greffons a été étudiée deux fois
+ * puis abandonnée le 2026-09-07 : les deux specs sont archivées avec la raison.
+ * Le découpage de src/ et des mixins reste — il vaut pour lui-même.
+ *
  * Conception : docs/superpowers/specs/2026-08-31-mise-au-propre-main-design.md
- * Scission (en cours) : docs/superpowers/specs/2026-09-07-scission-revue-design.md
  * Suspects relevés : docs/conception/2026-08-31-mise-au-propre-main-suspects.md
  * ─────────────────────────────────────────────────────────────────────────
  */

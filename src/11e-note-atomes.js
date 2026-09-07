@@ -1,6 +1,6 @@
 
 // ── avecNoteAtomes ────────────────────────────────────────────────────────
-// Phase 2 : ariane-note.
+// Domaine : notes (Zotero, biblio, schémas).
 // Découpe d'une note source en notes atomiques, rendu des citations, panier.
 const avecNoteAtomes = (Base) => class extends Base {
   //#region Ariane · atomisation (orchestration)

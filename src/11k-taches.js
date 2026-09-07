@@ -1,6 +1,6 @@
 
 // ── avecTaches ────────────────────────────────────────────────────────────
-// Phase 2 : ariane-task.
+// Domaine : tâches (frise, articulation, calendrier).
 // Lecture et écriture des notes de tâche, index ref→fichier, temps de travail,
 // synchronisation Apple (Rappels et Agenda).
 const avecTaches = (Base) => class extends Base {

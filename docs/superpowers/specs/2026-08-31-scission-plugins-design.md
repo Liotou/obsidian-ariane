@@ -1,6 +1,12 @@
 # Scission d'Ariane en 4 plugins — conception
 
-> ⚠️ **CADUQUE — remplacée par `2026-09-07-scission-revue-design.md`.**
+> ⚠️ **ABANDONNÉE. Ariane reste un seul greffon** (décision du 2026-09-07).
+> Ce document a d'abord été remplacé par `2026-09-07-scission-revue-design.md`,
+> lui-même abandonné le même jour : l'utilisateur ne veut qu'un greffon. Les
+> deux sont conservés pour qu'une éventuelle troisième étude ne reparte pas de
+> zéro. Ne rien échafauder sans relance explicite de sa part.
+>
+> **Caduque, en outre, sur le fond — remplacée par `2026-09-07-scission-revue-design.md`.**
 > Ce document a été écrit sur un `main.js` de 16 800 lignes / 18 régions,
 > avant la vue calendrier, la synchro EventKit et l'export HTML. La cible est
 > désormais **trois** paquets (`core` non publié, `ariane-note`,

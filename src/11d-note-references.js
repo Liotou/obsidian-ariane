@@ -1,6 +1,6 @@
 
 // ── avecNoteReferences ────────────────────────────────────────────────────
-// Phase 2 : ariane-note.
+// Domaine : notes (Zotero, biblio, schémas).
 // Reconnaissance des références citées, index Zotero, routage par famille, et
 // la file des références en attente de rattachement.
 const avecNoteReferences = (Base) => class extends Base {

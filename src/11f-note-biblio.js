@@ -1,6 +1,6 @@
 
 // ── avecNoteBiblio ────────────────────────────────────────────────────────
-// Phase 2 : ariane-note.
+// Domaine : notes (Zotero, biblio, schémas).
 // Bibliographie en note, index bibliographique, export Pandoc/Word, fusion des
 // variantes de nom d'auteur.
 const avecNoteBiblio = (Base) => class extends Base {

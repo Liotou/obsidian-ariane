@@ -1,6 +1,6 @@
 
 // ── avecIa ────────────────────────────────────────────────────────────────
-// Phase 2 : core.
+// Domaine : socle — utilisé par tous les autres mixins.
 // Index de voisinage, encodage, fournisseurs LLM. C'est un SERVICE : la biblio
 // s'en sert autant que les tâches — d'où sa place dans le socle et non dans un
 // greffon (cf. spec du 2026-09-07, §1.b).

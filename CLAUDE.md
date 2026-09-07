@@ -98,11 +98,17 @@ numérotation saute, si la carte diverge, ou si un garde-fou multi-fenêtre
 retombe sur le `document` global. Il a déjà rattrapé plusieurs erreurs réelles :
 le réparer, pas le contourner.
 
-## Chantier en cours
+## Ariane est UN SEUL greffon
 
-Scission en trois paquets — `core` (non publié), `ariane-note`, `ariane-task`.
-Conception : `docs/superpowers/specs/2026-09-07-scission-revue-design.md`
-(elle remplace celle du 2026-08-31, qui visait quatre greffons).
+La scission en plusieurs greffons a été étudiée deux fois — quatre paquets en
+août, trois en septembre — puis **abandonnée le 2026-09-07** : l'utilisateur ne
+veut qu'un greffon. Les deux specs sont archivées dans `docs/superpowers/specs/`
+avec la raison, pour qu'une troisième étude ne reparte pas de zéro.
+
+Le découpage de `src/` et les mixins de `class Ariane` **restent** : ils ne
+préparaient pas la scission, ils existaient pour eux-mêmes. Ne pas les défaire
+sous prétexte que la scission est annulée, et ne rien échafouder du côté
+`packages/` sans relance explicite de l'utilisateur.
 
 ## Ne pas toucher
 

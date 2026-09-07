@@ -1,5 +1,29 @@
 # Scission d'Ariane — conception révisée (2026-09-07)
 
+> ## ⚠️ ABANDONNÉE le 2026-09-07 — Ariane reste UN SEUL GREFFON
+>
+> L'utilisateur a tranché après avoir vu la phase 1 tourner : « je ne veux
+> qu'un seul plugin ». La **phase 2 (§4) n'aura pas lieu** — pas de
+> `packages/`, pas de `ariane-note` ni `ariane-task`, pas de migration de
+> `data.json`, et §6 est sans objet.
+>
+> **La phase 1 est faite et reste** : `main.js` est produit par
+> `scripts/build.mjs` depuis les fragments de `src/`, et `class Ariane` est
+> assemblée de dix mixins. Ce découpage ne préparait pas la scission — il
+> valait par lui-même, et c'est pour cela qu'il survit à son abandon : une
+> classe de 12 000 lignes ne se tient ni dans une tête ni dans un contexte
+> d'IA.
+>
+> **Ce que la décision confirme, a posteriori** : avoir séparé la
+> modularisation de la scission (§4) était le bon découpage du chantier. La
+> phase qui apportait le bénéfice n'imposait rien à l'utilisateur ; celle qui
+> lui imposait deux greffons et une migration est celle qu'il a refusée. Le
+> document est conservé pour cette raison, et pour éviter qu'une troisième
+> étude reparte de zéro : §1 et §2 mesurent ce qui existe, §5 énonce des
+> contraintes toujours en vigueur.
+>
+> Une relance explicite de l'utilisateur est nécessaire pour rouvrir le sujet.
+
 > **Remplace** `2026-08-31-scission-plugins-design.md`, écrit quand `main.js`
 > faisait 16 800 lignes et 18 régions — avant la vue calendrier, la synchro
 > EventKit et l'export HTML. Les décisions D1–D9 de ce document restent

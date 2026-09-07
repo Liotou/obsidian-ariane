@@ -70,20 +70,20 @@
  *   10 · Marqueurs de tâche
  *          balises des blocs de note entretenus par Ariane
  *   11 · class Ariane
- *          LE greffon, assemblé de mixins — un fragment src/11*.js chacun, un
- *          domaine chacun, et déjà rangés selon la scission à venir :
+ *          LE greffon, assemblé de mixins — un fragment src/11*.js chacun,
+ *          un domaine chacun :
  *            11a  composition   composer(), en-tête de la section
- *            11b  avecSocle     réglages, dates, chemins, garde-fous,   → core
+ *            11b  avecSocle     réglages, dates, chemins, garde-fous,
  *                               aiguillage des événements du coffre
- *            11c  avecIa        voisinage, encodage, fournisseurs LLM   → core
- *            11d  avecNoteReferences        Zotero, familles, attente   → note
- *            11e  avecNoteAtomes            atomisation, panier         → note
- *            11f  avecNoteBiblio            biblio, Pandoc, doublons    → note
- *            11g  avecNoteSchemas           draw.io                     → note
- *            11h  avecTachesStatiques       fonctions pures des tâches  → task
- *            11i  avecFriseStatiques        Gantt, périodes, tri        → task
- *            11j  avecArticulationStatiques plan, arêtes, zones         → task
- *            11k  avecTaches     notes de tâche, temps, synchro Apple   → task
+ *            11c  avecIa        voisinage, encodage, fournisseurs LLM
+ *            11d  avecNoteReferences        Zotero, familles, attente
+ *            11e  avecNoteAtomes            atomisation, panier
+ *            11f  avecNoteBiblio            biblio, Pandoc, doublons
+ *            11g  avecNoteSchemas           draw.io
+ *            11h  avecTachesStatiques       fonctions pures des tâches
+ *            11i  avecFriseStatiques        Gantt, périodes, tri
+ *            11j  avecArticulationStatiques plan, arêtes, zones
+ *            11k  avecTaches     notes de tâche, temps, synchro Apple
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -154,8 +154,11 @@
  * Déploiement : cp main.js styles.css manifest.json vers le dossier du greffon
  * du coffre — JAMAIS data.json (ce sont les réglages de l'utilisateur).
  *
+ * UN SEUL GREFFON. La scission en plusieurs greffons a été étudiée deux fois
+ * puis abandonnée le 2026-09-07 : les deux specs sont archivées avec la raison.
+ * Le découpage de src/ et des mixins reste — il vaut pour lui-même.
+ *
  * Conception : docs/superpowers/specs/2026-08-31-mise-au-propre-main-design.md
- * Scission (en cours) : docs/superpowers/specs/2026-09-07-scission-revue-design.md
  * Suspects relevés : docs/conception/2026-08-31-mise-au-propre-main-suspects.md
  * ─────────────────────────────────────────────────────────────────────────
  */
@@ -3516,11 +3519,11 @@ const ZFA_CRENEAUX_FIN = '<!-- /ariane:creneaux -->';
 //  mêmes appels « this.machin() », mêmes statiques « Ariane.machin() », que
 //  l'héritage résout le long de la chaîne.
 //
-//  L'ordre de composition ci-dessous est aussi la carte de la scission à
-//  venir : socle et IA iront dans le paquet « core », les mixins « note »
-//  dans ariane-note, les mixins « taches / frise / articulation » dans
-//  ariane-task. Chaque greffon composera sa propre chaîne.
-//  Conception : docs/superpowers/specs/2026-09-07-scission-revue-design.md
+//  ARIANE RESTE UN SEUL GREFFON (décision du 2026-09-07). Le découpage en
+//  mixins n'est donc pas la préparation d'une scission : il existe pour
+//  lui-même, parce qu'une classe de 12 000 lignes ne se tient pas en tête —
+//  ni celle d'un humain, ni le contexte d'une IA. La conception qui visait
+//  trois greffons est archivée, marquée abandonnée.
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Applique les mixins de gauche à droite : le dernier gagne en cas de méthode
@@ -3528,7 +3531,7 @@ const ZFA_CRENEAUX_FIN = '<!-- /ariane:creneaux -->';
 const composer = (Base, ...mixins) => mixins.reduce((C, m) => m(C), Base);
 
 // ── avecSocle ─────────────────────────────────────────────────────────────
-// Phase 2 : core.
+// Domaine : socle — utilisé par tous les autres mixins.
 // Réglages, dates, chemins, garde-fous d'écriture, aiguillage des événements
 // du coffre. Tout ce dont les deux greffons auront besoin.
 const avecSocle = (Base) => class extends Base {
@@ -4129,7 +4132,7 @@ const avecSocle = (Base) => class extends Base {
 };
 
 // ── avecIa ────────────────────────────────────────────────────────────────
-// Phase 2 : core.
+// Domaine : socle — utilisé par tous les autres mixins.
 // Index de voisinage, encodage, fournisseurs LLM. C'est un SERVICE : la biblio
 // s'en sert autant que les tâches — d'où sa place dans le socle et non dans un
 // greffon (cf. spec du 2026-09-07, §1.b).
@@ -4822,7 +4825,7 @@ const avecIa = (Base) => class extends Base {
 };
 
 // ── avecNoteReferences ────────────────────────────────────────────────────
-// Phase 2 : ariane-note.
+// Domaine : notes (Zotero, biblio, schémas).
 // Reconnaissance des références citées, index Zotero, routage par famille, et
 // la file des références en attente de rattachement.
 const avecNoteReferences = (Base) => class extends Base {
@@ -6435,7 +6438,7 @@ const avecNoteReferences = (Base) => class extends Base {
 };
 
 // ── avecNoteAtomes ────────────────────────────────────────────────────────
-// Phase 2 : ariane-note.
+// Domaine : notes (Zotero, biblio, schémas).
 // Découpe d'une note source en notes atomiques, rendu des citations, panier.
 const avecNoteAtomes = (Base) => class extends Base {
   //#region Ariane · atomisation (orchestration)
@@ -7695,7 +7698,7 @@ const avecNoteAtomes = (Base) => class extends Base {
 };
 
 // ── avecNoteBiblio ────────────────────────────────────────────────────────
-// Phase 2 : ariane-note.
+// Domaine : notes (Zotero, biblio, schémas).
 // Bibliographie en note, index bibliographique, export Pandoc/Word, fusion des
 // variantes de nom d'auteur.
 const avecNoteBiblio = (Base) => class extends Base {
@@ -9333,7 +9336,7 @@ const avecNoteBiblio = (Base) => class extends Base {
 };
 
 // ── avecNoteSchemas ───────────────────────────────────────────────────────
-// Phase 2 : ariane-note.
+// Domaine : notes (Zotero, biblio, schémas).
 // Schémas draw.io : synchronisation vers la note, index des cartes. Le produit
 // « graphes » a été retiré ; ce qui reste convertit un schéma en texte.
 const avecNoteSchemas = (Base) => class extends Base {
@@ -9518,7 +9521,7 @@ const avecNoteSchemas = (Base) => class extends Base {
 };
 
 // ── avecTachesStatiques ───────────────────────────────────────────────────
-// Phase 2 : ariane-task.
+// Domaine : tâches (frise, articulation, calendrier).
 // Fonctions pures des tâches : clés, statuts, familles, cohérence.
 const avecTachesStatiques = (Base) => class extends Base {
   //#region Ariane · static · tâches
@@ -9755,7 +9758,7 @@ const avecTachesStatiques = (Base) => class extends Base {
 };
 
 // ── avecFriseStatiques ────────────────────────────────────────────────────
-// Phase 2 : ariane-task.
+// Domaine : tâches (frise, articulation, calendrier).
 // Fonctions pures de la frise : disposition Gantt, périodes, regroupement, tri.
 const avecFriseStatiques = (Base) => class extends Base {
   //#region Ariane · static · frise / gantt
@@ -10778,7 +10781,7 @@ const avecFriseStatiques = (Base) => class extends Base {
 };
 
 // ── avecArticulationStatiques ─────────────────────────────────────────────
-// Phase 2 : ariane-task.
+// Domaine : tâches (frise, articulation, calendrier).
 // Fonctions pures de l'articulation : plan, arêtes, routage, zones thématiques.
 const avecArticulationStatiques = (Base) => class extends Base {
   //#region Ariane · static · articulation
@@ -12306,7 +12309,7 @@ const avecArticulationStatiques = (Base) => class extends Base {
 };
 
 // ── avecTaches ────────────────────────────────────────────────────────────
-// Phase 2 : ariane-task.
+// Domaine : tâches (frise, articulation, calendrier).
 // Lecture et écriture des notes de tâche, index ref→fichier, temps de travail,
 // synchronisation Apple (Rappels et Agenda).
 const avecTaches = (Base) => class extends Base {

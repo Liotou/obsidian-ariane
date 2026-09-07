@@ -1,6 +1,6 @@
 
 // ── avecTachesStatiques ───────────────────────────────────────────────────
-// Phase 2 : ariane-task.
+// Domaine : tâches (frise, articulation, calendrier).
 // Fonctions pures des tâches : clés, statuts, familles, cohérence.
 const avecTachesStatiques = (Base) => class extends Base {
   //#region Ariane · static · tâches
