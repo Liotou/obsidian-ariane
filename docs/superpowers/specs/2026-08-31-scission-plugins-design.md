@@ -1,5 +1,14 @@
 # Scission d'Ariane en 4 plugins — conception
 
+> ⚠️ **CADUQUE — remplacée par `2026-09-07-scission-revue-design.md`.**
+> Ce document a été écrit sur un `main.js` de 16 800 lignes / 18 régions,
+> avant la vue calendrier, la synchro EventKit et l'export HTML. La cible est
+> désormais **trois** paquets (`core` non publié, `ariane-note`,
+> `ariane-task`) : `assistant` s'est révélé être un service consommé par les
+> deux domaines, et `graph` a été retiré du produit. Les décisions D1, D6 et
+> D9 sont annulées ou corrigées ; les autres restent valables. Conservé pour
+> l'historique et pour les décisions encore en vigueur.
+
 **Date** : 2026-08-31
 **Statut** : brainstorm terminé en autonomie (utilisateur absent). **À valider avant tout plan / implémentation.**
 **Prérequis** : la branche `mise-au-propre-main` (main.js balisé en 18 régions + 27 sous-régions) sert de base — c'est elle qui rend la scission mécanique.
