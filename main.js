@@ -95,8 +95,11 @@
  *          pile d'annulation / rétablissement, et la classe MoteurVue dont
  *          héritent les trois moteurs (contexte, _doc(), _win())
  *   15 · Vue Frise
- *          Gantt : MoteurFrise, vue Bases « ariane-frise », export HTML
- *          autonome. Sous-régions « Frise · … ».
+ *          Gantt. Sous-régions « Frise · … ».
+ *            15a  MoteurFrise — reste une SEULE classe : l'export la sérialise
+ *                 par toString(), des mixins l'ampute (voir l'en-tête de 15a)
+ *            15b  fabriquerVueFriseBase — la vue Bases « ariane-frise »
+ *            15c  figage des données + pageFriseHtml (page autonome)
  *   16 · Vue Articulation
  *          graphe : MoteurArticulation, vue Bases « ariane-articulation ».
  *          Sous-régions « Articulation · … ».
@@ -18384,6 +18387,17 @@ class MoteurVue {
 //  15 · VUE FRISE
 //  Gantt des tâches : géométrie et parti graphique, MoteurFrise, fabrique de
 //  la vue Bases « ariane-frise » et export d'une page HTML autonome.
+//    15a  MoteurFrise         (ce fichier)
+//    15b  fabriquerVueFriseBase
+//    15c  figage des données + pageFriseHtml
+//
+//  MOTEURFRISE RESTE UNE SEULE CLASSE, contrairement à class Ariane qui est
+//  assemblée de mixins. L'export « frise vivante » sérialise cette classe par
+//  MoteurFrise.toString() et réévalue ce texte dans la page produite (15c) :
+//  découpée en mixins, seule la classe composée serait sérialisée, et l'export
+//  partirait amputé de ses méthodes — sans erreur ici, seulement une page
+//  cassée chez l'utilisateur. Les sous-régions « Frise · … » tiennent lieu de
+//  découpage. Même raison pour MoteurVue (section 14).
 // ═══════════════════════════════════════════════════════════════════════════
 
 /* =========================================================================
