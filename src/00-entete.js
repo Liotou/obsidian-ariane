@@ -70,9 +70,22 @@
  *   10 · Marqueurs de tâche
  *          balises des blocs de note entretenus par Ariane
  *   11 · class Ariane
- *          LE greffon. Cycle de vie et enregistrement des commandes et des
- *          événements (onload), puis statiques pures par domaine, puis
- *          méthodes d'instance par domaine. Sous-régions « Ariane · … ».
+ *          LE greffon, assemblé de mixins — un fragment src/11*.js chacun, un
+ *          domaine chacun, et déjà rangés selon la scission à venir :
+ *            11a  composition   composer(), en-tête de la section
+ *            11b  avecSocle     réglages, dates, chemins, garde-fous,   → core
+ *                               aiguillage des événements du coffre
+ *            11c  avecIa        voisinage, encodage, fournisseurs LLM   → core
+ *            11d  avecNoteReferences        Zotero, familles, attente   → note
+ *            11e  avecNoteAtomes            atomisation, panier         → note
+ *            11f  avecNoteBiblio            biblio, Pandoc, doublons    → note
+ *            11g  avecNoteSchemas           draw.io                     → note
+ *            11h  avecTachesStatiques       fonctions pures des tâches  → task
+ *            11i  avecFriseStatiques        Gantt, périodes, tri        → task
+ *            11j  avecArticulationStatiques plan, arêtes, zones         → task
+ *            11k  avecTaches     notes de tâche, temps, synchro Apple   → task
+ *            11z  class Ariane   composition + cycle de vie (onload)
+ *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
  *          réglages : une méthode par onglet
  *   13 · Modales de tâche

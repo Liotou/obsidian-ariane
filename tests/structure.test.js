@@ -99,6 +99,56 @@ test('les trois moteurs de vue héritent du socle, sans _doc() local', () => {
   assert.equal(defs, 1, 'un _doc() local est réapparu : il doit rester dans MoteurVue seul');
 });
 
+// class Ariane est assemblée par composer(obsidian.Plugin, avecSocle, …) :
+// chaque mixin vit dans son src/11*.js. La composition applique les mixins de
+// gauche à droite, donc deux mixins qui définiraient la même méthode se
+// masqueraient l'un l'autre — en silence, et le vainqueur dépendrait de
+// l'ordre de src/ordre.json.
+function mixinsAriane() {
+  const dir = path.join(__dirname, '..', 'src');
+  const out = new Map(); // fichier -> Set de noms de membres
+  for (const f of fs.readdirSync(dir).sort()) {
+    if (!/^11[b-z]-.*\.js$/.test(f)) continue;
+    const membres = new Set();
+    for (const l of fs.readFileSync(path.join(dir, f), 'utf8').split('\n')) {
+      const m = l.match(/^ {2}(?:static\s+)?(?:async\s+)?(?:get\s+|set\s+)?([A-Za-z_$][\w$]*)\s*\(/);
+      if (m && m[1] !== 'if' && m[1] !== 'for' && m[1] !== 'while'
+        && m[1] !== 'switch' && m[1] !== 'catch' && m[1] !== 'return') membres.add(m[1]);
+    }
+    out.set(f, membres);
+  }
+  return out;
+}
+
+test('les mixins de class Ariane ne se masquent pas entre eux', () => {
+  const parFichier = mixinsAriane();
+  assert.ok(parFichier.size >= 10, 'les fragments src/11*.js sont introuvables');
+  const vu = new Map(); // nom -> premier fichier qui le définit
+  const collisions = [];
+  for (const [f, membres] of parFichier) {
+    for (const nom of membres) {
+      if (vu.has(nom)) collisions.push(nom + ' : ' + vu.get(nom) + ' et ' + f);
+      else vu.set(nom, f);
+    }
+  }
+  assert.deepEqual(collisions, [],
+    'membres définis dans deux mixins — le dernier composé gagne en silence :\n  '
+    + collisions.join('\n  '));
+});
+
+test('chaque mixin de class Ariane est déclaré dans la composition', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const declares = [...src.matchAll(/^const (avec[A-Za-z]+) = \(Base\) => class extends Base \{$/gm)]
+    .map((m) => m[1]);
+  assert.ok(declares.length >= 10, 'aucun mixin déclaré : le découpage a été défait');
+  const compo = src.match(/class Ariane extends composer\(obsidian\.Plugin,\n([\s\S]*?)\) \{/);
+  assert.ok(compo, 'class Ariane n\'est plus assemblée par composer()');
+  const composes = compo[1].split(',').map((s) => s.trim()).filter(Boolean);
+  assert.deepEqual(composes, declares,
+    'un mixin est déclaré mais pas composé (ou dans un autre ordre) : ses méthodes '
+    + 'seraient absentes du greffon');
+});
+
 test('pas de document/window global pour les gestes des vues', () => {
   // Dans un volet détaché, le document global est celui de la fenêtre
   // principale : les moteurs de vue doivent passer par _doc().

@@ -30,6 +30,24 @@ Conséquences pratiques : les fragments partagent **une seule portée** — ni
 Chaque fragment doit être du JavaScript valide au premier niveau (`npm run
 check`), sinon une coupure mal placée ne se voit qu'au chargement du greffon.
 
+## class Ariane est assemblée de mixins
+
+`class Ariane extends composer(obsidian.Plugin, avecSocle, avecIa, …)`. Chaque
+mixin est une fonction `(Base) => class extends Base { … }` dans son propre
+`src/11*.js`, un par domaine. Rien ne change côté appel : `this.machin()` et
+`Ariane.machin()` se résolvent le long de la chaîne d'héritage.
+
+Deux règles, chacune tenue par un test de `tests/structure.test.js` :
+
+- **Un membre n'est défini que dans un seul mixin.** La composition applique
+  de gauche à droite : deux définitions du même nom se masqueraient en
+  silence, et le vainqueur dépendrait de `src/ordre.json`.
+- **Tout mixin déclaré est composé**, dans le même ordre. Un mixin oublié dans
+  la liste, ce sont ses méthodes absentes du greffon — sans erreur au chargement.
+
+Une méthode nouvelle va dans le mixin de son domaine, et dans la sous-région
+`//#region Ariane · …` qui la concerne — pas en fin de fichier.
+
 ## Pièges déjà payés
 
 - **Octets NUL.** `main.js` en contient (chaînes sentinelles : `SANS_GROUPE`
