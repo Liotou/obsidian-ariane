@@ -100,6 +100,73 @@ test('placerGraphe : hauteur variable espace les nœuds d un même rang', () => 
   assert.ok(pos.get('B').y - pos.get('A').y >= 200);
 });
 
+/* --------------------- disposerArticulation ------------------------ */
+
+const nn = (ref, ech) => ({ ref, echeance: ech || '' });
+const ee = (de, vers, type) => ({ de, vers, type: type || 'hier' });
+const chevauchent = (a, b, h) => a.x === b.x && Math.abs(a.y - b.y) < (h || 58);
+
+test('disposerArticulation : une chaîne s étage par rang, alignée', () => {
+  const p = Ariane.disposerArticulation(
+    [nn('A'), nn('B'), nn('C'), nn('D')],
+    [ee('A', 'B'), ee('B', 'C'), ee('C', 'D')], { dx: 300, gapY: 36 });
+  assert.deepEqual(['A', 'B', 'C', 'D'].map((r) => p.get(r).x), [0, 300, 600, 900]);
+  const ys = ['A', 'B', 'C', 'D'].map((r) => p.get(r).y);
+  assert.ok(ys.every((y) => y === ys[0]), 'un seul nœud par rang → chaîne droite');
+});
+
+test('disposerArticulation : un éventail ne se chevauche pas et centre le parent', () => {
+  const p = Ariane.disposerArticulation(
+    [nn('P'), nn('X'), nn('Y'), nn('Z')],
+    [ee('P', 'X'), ee('P', 'Y'), ee('P', 'Z')], { dx: 300, gapY: 36 });
+  assert.equal(p.get('X').x, 300);
+  assert.equal(p.get('Y').x, 300);
+  assert.equal(p.get('Z').x, 300);
+  const ys = ['X', 'Y', 'Z'].map((r) => p.get(r).y).sort((a, b) => a - b);
+  assert.ok(ys[1] - ys[0] >= 58 + 36 && ys[2] - ys[1] >= 58 + 36, 'enfants séparés');
+  assert.ok(p.get('P').y > ys[0] && p.get('P').y < ys[2], 'parent entre ses enfants');
+});
+
+test('disposerArticulation : deux parents croisés sont remis en ordre', () => {
+  // P1 pointe C2, P2 pointe C1 : l ordre initial (par ref) croise ; la
+  // réduction doit aligner C sur l ordre de P.
+  const p = Ariane.disposerArticulation(
+    [nn('P1'), nn('P2'), nn('C1'), nn('C2')],
+    [ee('P1', 'C2'), ee('P2', 'C1')], { dx: 300, gapY: 36 });
+  const hautP1 = p.get('P1').y < p.get('P2').y;
+  const hautC2 = p.get('C2').y < p.get('C1').y;
+  assert.equal(hautP1, hautC2, 'C2 (enfant de P1) du même côté que P1');
+});
+
+test('disposerArticulation : composantes séparées empilées, sans recouvrement', () => {
+  const p = Ariane.disposerArticulation(
+    [nn('A'), nn('B'), nn('M'), nn('N')],
+    [ee('A', 'B'), ee('M', 'N')], { dx: 300, gapY: 36 });
+  const bas1 = Math.max(p.get('A').y, p.get('B').y) + 58;
+  assert.ok(Math.min(p.get('M').y, p.get('N').y) >= bas1, '2e composante sous la 1re');
+});
+
+test('disposerArticulation : aucune carte n en chevauche une autre', () => {
+  const noeuds = 'ABCDEFGH'.split('').map((r) => nn(r));
+  const aretes = [ee('A', 'B'), ee('A', 'C'), ee('B', 'D'), ee('C', 'D'),
+    ee('A', 'E'), ee('E', 'F'), ee('D', 'F'), ee('C', 'G'), ee('G', 'H'), ee('B', 'H')];
+  const p = Ariane.disposerArticulation(noeuds, aretes, { dx: 300, gapY: 36 });
+  const refs = [...p.keys()];
+  for (let i = 0; i < refs.length; i++) {
+    for (let j = i + 1; j < refs.length; j++) {
+      assert.ok(!chevauchent(p.get(refs[i]), p.get(refs[j]), 58 + 36),
+        refs[i] + ' et ' + refs[j] + ' se chevauchent');
+    }
+  }
+});
+
+test('disposerArticulation : un cycle ne boucle pas', () => {
+  const p = Ariane.disposerArticulation(
+    [nn('A'), nn('B'), nn('C')],
+    [ee('A', 'B'), ee('B', 'C'), ee('C', 'A')], {});
+  assert.equal(p.size, 3);
+});
+
 /* -------------------------- lienValide ------------------------------ */
 
 const D = (obj) => new Map(Object.entries(obj));

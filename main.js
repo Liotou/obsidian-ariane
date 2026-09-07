@@ -11826,6 +11826,174 @@ const avecArticulationStatiques = (Base) => class extends Base {
     return pos;
   }
 
+  // Disposition « au propre » du graphe d'articulation. Couches par plus-long
+  // chemin ; ordre intra-couche par médiane des voisins (réduction des
+  // croisements, balayages alternés) ; Y redressé vers la moyenne des voisins
+  // puis séparé pour qu'AUCUNE carte n'en chevauche une autre ; composantes non
+  // connectées empilées en bandes. Les positions manuelles ne sont pas lues :
+  // c'est le vrai « re-disposer ».
+  //   noeuds : [{ref, echeance}]      aretes : [{de, vers, type}]
+  //   opts   : { dx, gapY, gapBande, hauteur:(ref)=>number, passes }
+  // Renvoie Map<ref,{x,y}>.
+  static disposerArticulation(noeuds, aretes, opts) {
+    const o = opts || {};
+    const DX = Number.isFinite(o.dx) ? o.dx : 300;
+    const GY = Number.isFinite(o.gapY) ? o.gapY : 36;
+    const GB = Number.isFinite(o.gapBande) ? o.gapBande : 90;
+    const PASSES = Number.isFinite(o.passes) ? o.passes : 6;
+    const H = typeof o.hauteur === 'function' ? o.hauteur : () => ARTIC_H;
+    const refs = (noeuds || []).map((n) => n && n.ref).filter(Boolean);
+    const set = new Set(refs);
+    const ech = new Map((noeuds || [])
+      .map((n) => [n.ref, Ariane.jourValide(n.echeance) || '~']));
+
+    const E = [];
+    for (const a of aretes || []) {
+      if (a && set.has(a.de) && set.has(a.vers) && a.de !== a.vers) E.push([a.de, a.vers]);
+    }
+    const out = new Map(refs.map((r) => [r, []]));
+    const inn = new Map(refs.map((r) => [r, []]));
+    for (const [u, v] of E) { out.get(u).push(v); inn.get(v).push(u); }
+
+    // 1. Composantes faiblement connectées (union-find sur les deux types).
+    const parent = new Map(refs.map((r) => [r, r]));
+    const find = (r) => {
+      while (parent.get(r) !== r) { parent.set(r, parent.get(parent.get(r))); r = parent.get(r); }
+      return r;
+    };
+    for (const [u, v] of E) {
+      const a = find(u); const b = find(v);
+      if (a !== b) parent.set(a, b);
+    }
+    const comps = new Map();
+    for (const r of refs) {
+      const c = find(r);
+      if (!comps.has(c)) comps.set(c, []);
+      comps.get(c).push(r);
+    }
+    const echMin = (g) => g.reduce((m, r) => (ech.get(r) < m ? ech.get(r) : m), '~~');
+    const groupes = [...comps.values()].sort((A, B) => B.length - A.length
+      || echMin(A).localeCompare(echMin(B)));
+
+    const pos = new Map();
+    let bande = 0;
+    for (const groupe of groupes) {
+      const gset = new Set(groupe);
+      const dedans = (r) => gset.has(r);
+      // 2. Rangs : Kahn, plus-long chemin ; cycles rattrapés à max(pred)+1.
+      const reste = new Map(groupe.map((r) => [r, inn.get(r).filter(dedans).length]));
+      const rang = new Map(groupe.map((r) => [r, 0]));
+      const file = groupe.filter((r) => reste.get(r) === 0);
+      const vus = new Set(file);
+      for (let i = 0; i < file.length; i++) {
+        const u = file[i];
+        for (const v of out.get(u)) {
+          if (!dedans(v)) continue;
+          if (rang.get(v) < rang.get(u) + 1) rang.set(v, rang.get(u) + 1);
+          reste.set(v, reste.get(v) - 1);
+          if (reste.get(v) <= 0 && !vus.has(v)) { vus.add(v); file.push(v); }
+        }
+      }
+      for (const r of groupe) {
+        if (vus.has(r)) continue;
+        let m = 0;
+        for (const u of inn.get(r)) if (dedans(u) && vus.has(u)) m = Math.max(m, rang.get(u) + 1);
+        rang.set(r, m);
+      }
+      const rmax = groupe.reduce((m, r) => Math.max(m, rang.get(r)), 0);
+      const parRang = [];
+      for (let k = 0; k <= rmax; k++) parRang.push([]);
+      for (const r of groupe) parRang[rang.get(r)].push(r);
+      for (const col of parRang) {
+        col.sort((a, b) => ech.get(a).localeCompare(ech.get(b)) || a.localeCompare(b));
+      }
+
+      // 3. Réduction des croisements : médiane des voisins, balayages alternés.
+      const indices = () => {
+        const m = new Map();
+        for (const col of parRang) col.forEach((r, i) => m.set(r, i));
+        return m;
+      };
+      const mediane = (arr) => {
+        if (!arr.length) return -1;
+        const s = arr.slice().sort((x, y) => x - y);
+        const h = s.length >> 1;
+        return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2;
+      };
+      const croisements = () => {
+        let n = 0;
+        for (let k = 1; k <= rmax; k++) {
+          const gi = indices();
+          const paires = [];
+          for (const v of parRang[k]) {
+            for (const u of inn.get(v)) {
+              if (gi.has(u) && rang.get(u) === k - 1) paires.push([gi.get(u), gi.get(v)]);
+            }
+          }
+          for (let a = 0; a < paires.length; a++) {
+            for (let b = a + 1; b < paires.length; b++) {
+              if ((paires[a][0] - paires[b][0]) * (paires[a][1] - paires[b][1]) < 0) n++;
+            }
+          }
+        }
+        return n;
+      };
+      let best = parRang.map((c) => c.slice());
+      let bestC = croisements();
+      for (let p = 0; p < PASSES; p++) {
+        const desc = p % 2 === 0;
+        const ks = [];
+        for (let k = 0; k <= rmax; k++) ks.push(desc ? k : rmax - k);
+        for (const k of ks) {
+          const rref = desc ? k - 1 : k + 1;
+          if (rref < 0 || rref > rmax) continue;
+          const gi = indices();
+          const vois = desc ? inn : out;
+          parRang[k].sort((a, b) => {
+            const ma = mediane(vois.get(a).filter((r) => gi.has(r) && rang.get(r) === rref).map((r) => gi.get(r)));
+            const mb = mediane(vois.get(b).filter((r) => gi.has(r) && rang.get(r) === rref).map((r) => gi.get(r)));
+            return (ma < 0 ? gi.get(a) : ma) - (mb < 0 ? gi.get(b) : mb) || gi.get(a) - gi.get(b);
+          });
+        }
+        const c = croisements();
+        if (c < bestC) { bestC = c; best = parRang.map((col) => col.slice()); }
+      }
+      for (let k = 0; k <= rmax; k++) parRang[k] = best[k];
+
+      // 4. Y : empilement, redressement vers la moyenne des voisins, séparation.
+      const y = new Map();
+      for (const col of parRang) {
+        let cy = 0;
+        for (const r of col) { y.set(r, cy); cy += H(r) + GY; }
+      }
+      const separer = (col) => {
+        col.sort((a, b) => y.get(a) - y.get(b));
+        for (let i = 1; i < col.length; i++) {
+          const min = y.get(col[i - 1]) + H(col[i - 1]) + GY;
+          if (y.get(col[i]) < min) y.set(col[i], min);
+        }
+      };
+      for (let it = 0; it < 4; it++) {
+        for (let k = 0; k <= rmax; k++) {
+          for (const r of parRang[k]) {
+            const vs = out.get(r).concat(inn.get(r)).filter(dedans);
+            if (!vs.length) continue;
+            const moy = vs.reduce((s, v) => s + y.get(v), 0) / vs.length;
+            y.set(r, (y.get(r) + moy) / 2);
+          }
+          separer(parRang[k]);
+        }
+      }
+      let ymin = Infinity; let ymax = -Infinity;
+      for (const r of groupe) { ymin = Math.min(ymin, y.get(r)); ymax = Math.max(ymax, y.get(r) + H(r)); }
+      for (const r of groupe) {
+        pos.set(r, { x: rang.get(r) * DX, y: Math.round(y.get(r) - ymin + bande) });
+      }
+      bande += (ymax - ymin) + GB;
+    }
+    return pos;
+  }
+
   // Un lien proposé est-il licite ? Refus si (a) il referme un cycle sur
   // l'union des arêtes, (b) les dates se contredisent : un blocage dont
   // l'amont s'achève après le début de l'aval ; une hiérarchie dont la mère
@@ -23593,16 +23761,18 @@ class MoteurArticulation extends MoteurVue {
     this.appliquerVue();
   }
 
-  // Re-disposer : relance placerGraphe sur le plan et écrit les positions.
+  // Re-disposer : disposition « au propre » complète (couches + réduction des
+  // croisements + redressement + anti-chevauchement + bandes par composante).
+  // Les positions manuelles sont ignorées — on replace TOUT.
   redisposer() {
     if (!this._plan || !this._plan.cartes.length) return;
     const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
     const sousSet = this.greffon.tachesPourGantt().filter((t) => refsPlan.has(t.ref));
     const { noeuds, aretes } = Ariane.grapheArticulation(sousSet);
-    for (const n of noeuds) n.h = n.h || ARTIC_H;
-    const pos = Ariane.placerGraphe(noeuds, aretes, { dx: 300, dy: 130 });
+    const hDe = (ref) => ((this._noeudsParRef && this._noeudsParRef.get(ref)) || {}).h || ARTIC_H;
+    const pos = Ariane.disposerArticulation(noeuds, aretes, { dx: 300, gapY: 36, hauteur: hDe });
     for (const cc of this._plan.cartes) {
-      const p = pos.get ? pos.get(cc.ref) : (pos[cc.ref]);
+      const p = pos.get(cc.ref);
       if (p) { cc.x = Math.round(p.x); cc.y = Math.round(p.y); }
     }
     this.ctx.ecrirePlan(this._plan);

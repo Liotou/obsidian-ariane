@@ -1499,16 +1499,18 @@ class MoteurArticulation extends MoteurVue {
     this.appliquerVue();
   }
 
-  // Re-disposer : relance placerGraphe sur le plan et écrit les positions.
+  // Re-disposer : disposition « au propre » complète (couches + réduction des
+  // croisements + redressement + anti-chevauchement + bandes par composante).
+  // Les positions manuelles sont ignorées — on replace TOUT.
   redisposer() {
     if (!this._plan || !this._plan.cartes.length) return;
     const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
     const sousSet = this.greffon.tachesPourGantt().filter((t) => refsPlan.has(t.ref));
     const { noeuds, aretes } = Ariane.grapheArticulation(sousSet);
-    for (const n of noeuds) n.h = n.h || ARTIC_H;
-    const pos = Ariane.placerGraphe(noeuds, aretes, { dx: 300, dy: 130 });
+    const hDe = (ref) => ((this._noeudsParRef && this._noeudsParRef.get(ref)) || {}).h || ARTIC_H;
+    const pos = Ariane.disposerArticulation(noeuds, aretes, { dx: 300, gapY: 36, hauteur: hDe });
     for (const cc of this._plan.cartes) {
-      const p = pos.get ? pos.get(cc.ref) : (pos[cc.ref]);
+      const p = pos.get(cc.ref);
       if (p) { cc.x = Math.round(p.x); cc.y = Math.round(p.y); }
     }
     this.ctx.ecrirePlan(this._plan);
