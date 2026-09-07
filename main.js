@@ -40,28 +40,80 @@
  * ─────────────────────────────────────────────────────────────────────────
  * Un seul fichier, AUCUN build : Obsidian charge ce main.js tel quel.
  * Copie vers le coffre : cp main.js styles.css manifest.json <dossier-plugin>/
- * Chaque section est délimitée par  //#region N · Titre … //#endregion.
- * class Ariane (11) porte en plus des sous-régions  //#region Ariane · …
  *
  *    1 · Constantes & i18n
+ *          réglages par défaut, dictionnaire anglais
  *    2 · Utilitaires génériques
+ *          chaînes, dates, DOM, antirebond
  *    3 · Références Zotero — parsing & appariement
+ *          reconnaissance auteur/année, rattachement aux sources
  *    4 · Similarité locale (TF-IDF & vecteurs)
+ *          moteur des suggestions de voisinage
  *    5 · Notes atomiques
+ *          découpe d'une note source en notes filles réactives
  *    6 · Bibliographie
+ *          index, rendu, citations dynamiques
  *    7 · Export Pandoc / Word
+ *          chaîne pandoc + champs Zotero rafraîchissables
  *    8 · Schémas mxgraph / draw.io
  *    9 · Doublons d'auteurs
+ *          détection et fusion des variantes de nom
  *   10 · Marqueurs de tâche
- *   11 · class Ariane   (cycle de vie · commandes/événements dans onload ·
- *        static par domaine · méthodes d'instance par domaine)
- *   12 · ArianeSettingTab   (une méthode par onglet)
+ *          balises des blocs de note entretenus par Ariane
+ *   11 · class Ariane
+ *          LE greffon. Cycle de vie et enregistrement des commandes et des
+ *          événements (onload), puis statiques pures par domaine, puis
+ *          méthodes d'instance par domaine. Sous-régions « Ariane · … ».
+ *   12 · ArianeSettingTab
+ *          réglages : une méthode par onglet
  *   13 · Modales de tâche
+ *          création, datation, structuration assistée
  *   14 · Vue Frise
+ *          Gantt : MoteurFrise, vue Bases « ariane-frise », export HTML
+ *          autonome. Sous-régions « Frise · … ».
  *   15 · Vue Articulation
- *   16 · Vues latérales (ItemView)
- *   17 · Modales secondaires
- *   18 · Exports
+ *          graphe : MoteurArticulation, vue Bases « ariane-articulation ».
+ *          Sous-régions « Articulation · … ».
+ *   16 · Vue Calendrier
+ *          mois et semaine : MoteurCalendrier, vue Bases « ariane-calendrier »,
+ *          agenda Apple en fond. Sous-régions « Calendrier · … ».
+ *   17 · Vues latérales (ItemView)
+ *          incohérences de tâches, références en attente, suggestions
+ *   18 · Modales secondaires
+ *          choix, rapports, fusion d'auteurs
+ *   19 · Exports
+ *          module.exports et surface _test des fonctions pures
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * CONVENTIONS — à respecter par toute personne (ou IA) qui édite ce fichier
+ * ─────────────────────────────────────────────────────────────────────────
+ * BALISAGE. Deux niveaux, tous deux repliables dans l'éditeur :
+ *   · niveau 1, en colonne 0 :  //#region N · Titre  …  //#endregion N · Titre
+ *     Les deux bornes portent le MÊME numéro et le MÊME titre. Ajouter une
+ *     section = renuméroter les suivantes ET cette carte. tests/structure.test.js
+ *     échoue si l'un des trois diverge : il est la garantie que cette carte ne
+ *     ment pas.
+ *   · niveau 2, indenté de 2 espaces, à l'intérieur des grosses classes :
+ *       //#region Ariane · <domaine>          (class Ariane, section 11)
+ *       //#region Frise · <domaine>           (MoteurFrise, section 14)
+ *       //#region Articulation · <domaine>    (MoteurArticulation, 15)
+ *       //#region Calendrier · <domaine>      (MoteurCalendrier, 16)
+ *     Une méthode nouvelle se range DANS le groupe qui la concerne, pas en fin
+ *     de classe : c'est ce qui garde le fichier lisible malgré sa taille.
+ *
+ * OCTETS NUL. Le fichier en contient quelques-uns (chaînes de gabarit). `grep`
+ * le traite alors comme binaire : utiliser `grep -a`. Éviter `sed -i`, qui les
+ * mange ; `perl -0pi` et les outils d'édition les préservent. Contrôle après
+ * toute réécriture globale :  tr -cd '\000' < main.js | wc -c
+ *
+ * MULTI-FENÊTRE. Dans un volet détaché, `document` et `window` globaux sont
+ * ceux de la fenêtre PRINCIPALE. Les trois moteurs de vue exposent `_doc()` :
+ * l'utiliser pour tout createElement, addEventListener de glisser
+ * (pointermove/pointerup) et requestAnimationFrame liés à la vue.
+ *
+ * VÉRIFICATION. Aucun build : node --check main.js  puis  node --test tests/*.test.js
+ * Déploiement : cp main.js styles.css manifest.json vers le dossier du greffon
+ * du coffre — JAMAIS data.json (ce sont les réglages de l'utilisateur).
  *
  * Conception : docs/superpowers/specs/2026-08-31-mise-au-propre-main-design.md
  * Suspects relevés : docs/conception/2026-08-31-mise-au-propre-main-suspects.md
@@ -5927,24 +5979,6 @@ class Ariane extends obsidian.Plugin {
       }
     }
     return out;
-  }
-
-  // Étendue de la frise : de la première date à la dernière, avec une marge de
-  // part et d'autre. Sans aucune date, on montre le mois autour d'aujourd'hui
-  // plutôt qu'une frise vide.
-  static etendueGantt(lignes, aujourdhui) {
-    const dates = [];
-    for (const l of lignes || []) {
-      if (l.debut) dates.push(l.debut);
-      if (l.echeance) dates.push(l.echeance);
-    }
-    if (!dates.length) {
-      return { debut: Ariane.decalerJour(aujourdhui, -7),
-               fin: Ariane.decalerJour(aujourdhui, 30) };
-    }
-    dates.sort();
-    return { debut: Ariane.decalerJour(dates[0], -3),
-             fin: Ariane.decalerJour(dates[dates.length - 1], 3) };
   }
 
   // Type d'une propriété de base, à la source, sans deviner d'après le nom :
@@ -18177,9 +18211,9 @@ const DEFAUTS_CALENDRIER = {
  * droit d'auteur figure dans le fichier LICENSE.
  * ========================================================================= */
 
-// La hauteur de ligne n'est plus une constante : elle suit le réglage rowHeight
-// de la base, comme la vue en tableau. Voir MoteurFrise.hauteurLigne.
-const HAUTEUR_ENTETE_GANTT = 56;
+// La hauteur de ligne n'est pas une constante : elle suit le réglage rowHeight
+// de la base, comme la vue en tableau. Voir MoteurFrise.hauteurLigne et
+// MoteurFrise.hauteurEntete.
 
 // Étendue minimale par cran, pour qu'une frise de trois tâches ne se réduise
 // pas à trois traits collés dans un coin.
@@ -18235,6 +18269,7 @@ async function refaireDernier(moteur) {
 // dit d'où viennent les tâches et où se rangent les réglages, ce qui permet à
 // la vue de base de les ranger dans le fichier .base, par vue.
 class MoteurFrise {
+  //#region Frise · cycle de vie & état
   constructor(greffon, racine, contexte) {
     this.greffon = greffon;
     this.app = greffon.app;
@@ -18378,6 +18413,9 @@ class MoteurFrise {
 
   /* ------------------------------ Ossature ------------------------------ */
 
+  //#endregion Frise · cycle de vie & état
+
+  //#region Frise · dessin & étendue
   dessiner() {
     try {
       this.dessinerVraiment();
@@ -18754,6 +18792,9 @@ class MoteurFrise {
 
   /* ------------------------------- Réglages ------------------------------ */
 
+  //#endregion Frise · dessin & étendue
+
+  //#region Frise · barre d'outils & exports
   bouton(parent, texte, action, actif) {
     const b = parent.createEl('button', {
       cls: 'zfa-ref-action' + (actif ? ' mod-cta' : ''), text: texte });
@@ -19221,6 +19262,9 @@ class MoteurFrise {
   // Icône d'en-tête selon le type de la propriété, comme le fait le tableau
   // des bases. On interroge le gestionnaire de types d'Obsidian plutôt que de
   // deviner d'après le nom.
+  //#endregion Frise · barre d'outils & exports
+
+  //#region Frise · colonne gauche (tableau)
   typeColonne(id) {
     return Ariane.typeProprieteBase(this.app.metadataTypeManager, id);
   }
@@ -19739,6 +19783,9 @@ class MoteurFrise {
 
   /* ------------------------------- Le fond ------------------------------- */
 
+  //#endregion Frise · colonne gauche (tableau)
+
+  //#region Frise · grille & en-têtes de temps
   dessinerFond(svg, cfg, lignes) {
     const g = svgEl('g', {});
     const haut = this._hEntete;
@@ -20074,6 +20121,9 @@ class MoteurFrise {
 
   /* ------------------------------ Les barres ----------------------------- */
 
+  //#endregion Frise · grille & en-têtes de temps
+
+  //#region Frise · barres, jalons, flèches, lignage
   dessinerBarres(svg, cfg, lignes) {
     const g = svgEl('g', {});
     // Libellés qui « collent » au bord gauche visible pendant le défilement.
@@ -20874,6 +20924,9 @@ class MoteurFrise {
 
   // Un seul geste, trois modes. L'écriture n'a lieu qu'au lâcher : écrire
   // pendant le glissé ferait cent passes de frontmatter pour un déplacement.
+  //#endregion Frise · barres, jalons, flèches, lignage
+
+  //#region Frise · gestes d'édition
   saisir(e, groupe, ligne, mode, geo) {
     // Seul le bouton principal saisit. Sans ce garde-fou, un clic droit
     // installait le glissé, et comme le menu contextuel avale le relâchement,
@@ -21144,6 +21197,7 @@ class MoteurFrise {
     clearTimeout(this._minSauveJour);
     this.racine.empty();
   }
+  //#endregion Frise · gestes d'édition
 }
 
 /* ---- La frise comme vue d'une base ----------------------------------- */
@@ -21857,6 +21911,7 @@ function ancreY(h, type) {
 }
 
 class MoteurArticulation {
+  //#region Articulation · cycle de vie & dessin
   constructor(greffon, racine, ctx) {
     this.greffon = greffon;
     this.app = greffon.app;
@@ -22168,6 +22223,9 @@ class MoteurArticulation {
   // change la disposition (carte ou zone) recalcule les thématiques.
 
   // Zones utilisables du plan (tolérant : zones absent ou rect incomplet).
+  //#endregion Articulation · cycle de vie & dessin
+
+  //#region Articulation · zones & thématiques
   _zones() {
     const zs = (this._plan && Array.isArray(this._plan.zones)) ? this._plan.zones : [];
     return zs.filter((z) => z && z.id && z.nom != null
@@ -22450,6 +22508,9 @@ class MoteurArticulation {
     m.showAtMouseEvent(ev);
   }
 
+  //#endregion Articulation · zones & thématiques
+
+  //#region Articulation · cartes & arêtes
   appliquerVue() {
     const v = this._vue;
     this._scene.setAttribute('transform',
@@ -22757,6 +22818,9 @@ class MoteurArticulation {
     g.appendChild(gr);
   }
 
+  //#endregion Articulation · cartes & arêtes
+
+  //#region Articulation · sélection & presse-papiers
   selectionnerArete(de, vers, type, gr) {
     this._deselectionnerArete();
     this._selArete = { de, vers, type };
@@ -22960,6 +23024,9 @@ class MoteurArticulation {
   }
 
   // Coordonnées scène à partir d'un évènement pointeur.
+  //#endregion Articulation · sélection & presse-papiers
+
+  //#region Articulation · navigation (pan, zoom, glisser)
   _versScene(ev) {
     const b = this._svg.getBoundingClientRect();
     return {
@@ -23261,6 +23328,9 @@ class MoteurArticulation {
     this._doc().addEventListener('pointerup', lacher);
   }
 
+  //#endregion Articulation · navigation (pan, zoom, glisser)
+
+  //#region Articulation · disposition du plan
   ajuster() {
     if (!this._pos || !this._pos.size) return;
     let minx = Infinity; let miny = Infinity; let maxx = -Infinity; let maxy = -Infinity;
@@ -23593,6 +23663,7 @@ class MoteurArticulation {
     this._scene.appendChild(g);
     this._reperes = g;
   }
+  //#endregion Articulation · disposition du plan
 }
 
 function fabriquerVueArticulationBase(greffon) {
@@ -23804,15 +23875,19 @@ function fabriquerVueArticulationBase(greffon) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Vue calendrier
-//
-// Squelette : barre d'outils (navigation, bascule mois/semaine) et une grille
-// vide. Le tracé du mois et de la semaine est branché ensuite (dessinerMois /
-// dessinerSemaine restent des jalons ici).
-// ─────────────────────────────────────────────────────────────────────────────
+//#endregion 15 · Vue Articulation
+
+//#region 16 · Vue Calendrier
+// ═══════════════════════════════════════════════════════════════════════════
+//  16 · VUE CALENDRIER
+//  Grille mois (ruban à trois volets) et grille semaine (bande de 43 jours à
+//  défilement libre), créneaux horaires déplaçables, jalons et tâches d'un
+//  jour dans le bandeau, agenda Apple affiché en fond. MoteurCalendrier et la
+//  fabrique de la vue Bases « ariane-calendrier ».
+// ═══════════════════════════════════════════════════════════════════════════
 
 class MoteurCalendrier {
+  //#region Calendrier · cycle de vie & écritures annulables
   constructor(greffon, racine, contexte) {
     this.greffon = greffon;
     this.app = greffon.app;
@@ -23920,6 +23995,9 @@ class MoteurCalendrier {
   }
 
   // Fenêtre large autour de la période visible pour l'agenda de fond.
+  //#endregion Calendrier · cycle de vie & écritures annulables
+
+  //#region Calendrier · agenda Apple en fond
   _bornesFond() {
     if (this.mode === 'semaine') {
       return { debut: Ariane.decalerJour(this._ancre, -21),
@@ -23987,6 +24065,9 @@ class MoteurCalendrier {
     return el;
   }
 
+  //#endregion Calendrier · agenda Apple en fond
+
+  //#region Calendrier · dessin & barre d'outils
   dessiner() {
     // Pendant la retombée d'un geste (écriture d'un créneau), les demandes de
     // redessin sont mémorisées au lieu d'être exécutées : voir _coalesceRedessin.
@@ -24057,7 +24138,9 @@ class MoteurCalendrier {
     this._decalGeste = 0;
     const grilles = {};
     for (const sens of [-1, 1, 0]) {
-      const gg = document.createElement('div');
+      // _doc() et non `document` : dans un volet détaché, la grille doit naître
+      // dans le document de SA fenêtre, sinon on greffe un nœud étranger.
+      const gg = this._doc().createElement('div');
       gg.className = 'zfa-cal-grille zfa-cal-mois';
       gg.dataset.sens = String(sens);
       this._rendreGrille(gg, Ariane.ancreCarrousel(this._ancre, this.mode, sens));
@@ -24287,6 +24370,9 @@ class MoteurCalendrier {
     this._calageMinuterie = setTimeout(() => apres(), 250);
   }
 
+  //#endregion Calendrier · dessin & barre d'outils
+
+  //#region Calendrier · cartes, menus & lignée
   _bornesPeriode() {
     if (this.mode === 'semaine') {
       return { debut: this._ancre, fin: Ariane.decalerJour(this._ancre, 6) };
@@ -24646,6 +24732,9 @@ class MoteurCalendrier {
   // ce dernier repli survit au passage d'un volet à l'autre, contrairement au
   // dataTransfer. Le lien peut désigner une tâche du coffre même si le
   // calendrier ne l'affiche pas (frise et calendrier = deux bases).
+  //#endregion Calendrier · cartes, menus & lignée
+
+  //#region Calendrier · glisser-déposer & gestes
   _refDepuisDrop(dt) {
     const g = this.greffon;
     const essais = [];
@@ -24911,6 +25000,9 @@ class MoteurCalendrier {
   // Vue mois : jalons en losange dans l'en-tête de la case ; tâches d'une seule
   // journée (pas de début, ou début == échéance) en petites cases ; créneaux en
   // pastilles. Pas de barre multi-jours.
+  //#endregion Calendrier · glisser-déposer & gestes
+
+  //#region Calendrier · grilles mois & semaine
   dessinerMois(hote) {
     const g = Ariane.grilleMois(this._ancre);
     const auj = new Date().toISOString().slice(0, 10);
@@ -25457,7 +25549,9 @@ class MoteurCalendrier {
     if (this._detruit || !hote.isConnected || !hote.parentElement) return;
     this._ancre = Ariane.decalerJour(this._ancre, shift);
     const r = hote.getBoundingClientRect();
-    const nv = document.createElement('div');
+    // _doc() et non `document` : le recalage tourne à chaque bord de bande, et
+    // dans un volet détaché un nœud du document principal se greffe mal.
+    const nv = this._doc().createElement('div');
     nv.className = 'zfa-cal-grille zfa-cal-semaine';
     nv.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;'
       + 'width:' + r.width + 'px;height:' + r.height + 'px;';
@@ -25466,6 +25560,7 @@ class MoteurCalendrier {
     nv.style.cssText = '';
     hote.replaceWith(nv);
   }
+  //#endregion Calendrier · grilles mois & semaine
 }
 
 function fabriquerVueCalendrierBase(greffon) {
@@ -25606,11 +25701,11 @@ function fabriquerVueCalendrierBase(greffon) {
   };
 }
 
-//#endregion 15 · Vue Articulation
+//#endregion 16 · Vue Calendrier
 
-//#region 16 · Vues latérales (ItemView)
+//#region 17 · Vues latérales (ItemView)
 // ═══════════════════════════════════════════════════════════════════════════
-//  16 · VUES LATÉRALES (ITEMVIEW)
+//  17 · VUES LATÉRALES (ITEMVIEW)
 //  Volets latéraux : incohérences de tâches, références en attente,
 //  suggestions de voisinage local.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -26283,11 +26378,11 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
   async onClose() { this.contentEl.empty(); }
 }
 
-//#endregion 16 · Vues latérales (ItemView)
+//#endregion 17 · Vues latérales (ItemView)
 
-//#region 17 · Modales secondaires
+//#region 18 · Modales secondaires
 // ═══════════════════════════════════════════════════════════════════════════
-//  17 · MODALES SECONDAIRES
+//  18 · MODALES SECONDAIRES
 //  Choix de liste, rapport de carte, texte, voisinage, styles de modèle,
 //  fusion d'auteurs.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -26458,11 +26553,11 @@ class FusionAuteursModal extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
-//#endregion 17 · Modales secondaires
+//#endregion 18 · Modales secondaires
 
-//#region 18 · Exports
+//#region 19 · Exports
 // ═══════════════════════════════════════════════════════════════════════════
-//  18 · EXPORTS
+//  19 · EXPORTS
 //  Points d'entrée CommonJS : la classe du greffon et la surface _test
 //  des fonctions pures pour la suite de tests.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -26517,4 +26612,4 @@ module.exports._test = {
   colonnesPourExport,
 };
 
-//#endregion 18 · Exports
+//#endregion 19 · Exports
