@@ -24,6 +24,27 @@ test('relativesHorsPlan : enfants et bloquantes absents du plan', () => {
   assert.deepEqual(r2.bloquantes, []);
 });
 
+test('replierRelatifs : sous-arbre hier privé, garde les enfants partagés', () => {
+  const ar = [A('P', 'C1', 'hier'), A('C1', 'G1', 'hier'),
+    A('P', 'C2', 'hier'), A('Q', 'C2', 'hier')];        // C2 a aussi Q pour parent
+  const plan = new Set(['P', 'C1', 'G1', 'C2', 'Q']);
+  const r = Ariane.replierRelatifs('P', ar, plan, 'hier').sort();
+  assert.deepEqual(r, ['C1', 'G1']);                    // C2 reste (retenu par Q)
+  assert.deepEqual(Ariane.replierRelatifs('P', ar, new Set(['P']), 'hier'), []);
+  assert.deepEqual(Ariane.replierRelatifs('Z', ar, plan, 'hier'), []); // hors plan
+});
+
+test('replierRelatifs : chaîne de bloqueurs, s arrête à un bloqueur partagé', () => {
+  const ar = [A('B1', 'T', 'bloque'), A('B2', 'B1', 'bloque'), A('B1', 'U', 'bloque')];
+  const plan = new Set(['T', 'U', 'B1', 'B2']);
+  // B1 bloque aussi U (gardé) → on ne retire rien.
+  assert.deepEqual(Ariane.replierRelatifs('T', ar, plan, 'bloque'), []);
+  // Sans U dans le plan, B1 puis B2 se replient.
+  assert.deepEqual(
+    Ariane.replierRelatifs('T', ar, new Set(['T', 'B1', 'B2']), 'bloque').sort(),
+    ['B1', 'B2']);
+});
+
 test('grillePlacement : N positions, saute l occupé, respecte parLigne', () => {
   const g = Ariane.grillePlacement(3, { origine: { x: 0, y: 0 },
     pas: { x: 100, y: 100 }, carte: { w: 50, h: 50 }, parLigne: 2 });

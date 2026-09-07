@@ -1796,11 +1796,15 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 
 /* Pastille de repli / compteur de sous-tâches masquées, au point de connexion. */
 .zfa-artic-repli { cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+/* Repliée (relatifs cachés → bouton « n » pour afficher) : toujours visible.
+   Dépliée (relatifs sur le plan → bouton « − » pour masquer) : au survol. */
 .zfa-artic-repli.est-repliee { opacity: 1; }
 .zfa-artic-noeud:hover .zfa-artic-repli { opacity: 1; }
 .zfa-artic-repli-fond { stroke: var(--background-primary); stroke-width: 1.5; }
 .zfa-artic-repli-hier .zfa-artic-repli-fond { fill: var(--text-muted); }
 .zfa-artic-repli-bloque .zfa-artic-repli-fond { fill: var(--interactive-accent); }
+.zfa-artic-repli.est-depliee .zfa-artic-repli-fond { fill: var(--background-modifier-border); }
+.zfa-artic-repli.est-depliee .zfa-artic-repli-txt { fill: var(--text-muted); }
 
 /* Carte du plan hors du filtre courant (loupe). */
 .zfa-artic-carte.zfa-artic-hors-filtre { opacity: 0.4; }
@@ -1854,6 +1858,17 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-arete-lab {
   font-size: 10px; fill: var(--text-muted); text-anchor: middle; pointer-events: none;
 }
+/* Survol d'une carte : la scène s'estompe, ses connexions directes (amont +
+   aval) et les cartes à l'autre bout ressortent. */
+.zfa-artic-scene.a-un-survol .zfa-artic-noeud,
+.zfa-artic-scene.a-un-survol .zfa-artic-arete-groupe {
+  opacity: 0.28; transition: opacity 0.1s ease;
+}
+.zfa-artic-scene.a-un-survol .zfa-artic-noeud.est-lie,
+.zfa-artic-scene.a-un-survol .zfa-artic-arete-groupe.est-lie { opacity: 1; }
+.zfa-artic-arete-groupe.est-lie .zfa-artic-arete { stroke-width: 2.75; }
+.zfa-artic-arete-groupe.est-lie .zfa-artic-arete.zfa-artic-hier { stroke: var(--text-normal); }
+.zfa-artic-arete-groupe.est-lie .zfa-artic-arete.zfa-artic-bloque { filter: brightness(1.15); }
 .zfa-artic-lien-en-cours { fill: none; stroke-width: 2; pointer-events: none; }
 /* Le tracé provisoire reprend le langage de l'arête qu'il va poser. */
 .zfa-artic-lien-en-cours-hier { stroke: var(--text-muted); stroke-dasharray: 2 3; }

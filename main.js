@@ -10826,6 +10826,41 @@ const avecArticulationStatiques = (Base) => class extends Base {
     return { sousTaches, bloquantes };
   }
 
+  // Refs à RETIRER du plan pour « replier » les relatifs de `ref` d'un type :
+  //  - 'hier'   : le sous-arbre des sous-tâches sur le plan ;
+  //  - 'bloque' : la chaîne des tâches bloquantes sur le plan.
+  // Une carte reliée aussi à une AUTRE carte gardée (autre parent / bloque une
+  // autre carte du plan) n'est jamais retirée : on ne replie que ce qui
+  // n'existe sur le plan QUE par `ref`. Miroir de _deplierRelatifs.
+  static replierRelatifs(ref, aretes, refsPlan, type) {
+    const plan = refsPlan instanceof Set ? refsPlan : new Set(refsPlan || []);
+    if (!plan.has(ref) || (type !== 'hier' && type !== 'bloque')) return [];
+    const suivants = new Map();   // r -> relatifs directs « en aval du repli »
+    const retenants = new Map();  // r -> cartes du plan qui le retiennent
+    for (const a of aretes || []) {
+      if (!a || a.type !== type) continue;
+      // hier : parent (de) -> enfant (vers), on descend.
+      // bloque : bloqué (vers) -> bloqueur (de), on remonte vers les bloqueurs.
+      const amont = type === 'hier' ? a.de : a.vers;
+      const aval = type === 'hier' ? a.vers : a.de;
+      if (!plan.has(amont) || !plan.has(aval) || amont === aval) continue;
+      if (!suivants.has(amont)) suivants.set(amont, []);
+      suivants.get(amont).push(aval);
+      if (!retenants.has(aval)) retenants.set(aval, []);
+      retenants.get(aval).push(amont);
+    }
+    const retrait = new Set();
+    const file = (suivants.get(ref) || []).slice();
+    while (file.length) {
+      const r = file.shift();
+      if (r === ref || retrait.has(r)) continue;
+      if (!(retenants.get(r) || []).every((p) => p === ref || retrait.has(p))) continue;
+      retrait.add(r);
+      for (const s of suivants.get(r) || []) file.push(s);
+    }
+    return [...retrait];
+  }
+
   // Positions en grille pour poser N cartes, en sautant les cellules qui
   // chevaucheraient une boîte déjà occupée. `occupe` : [{ x, y, w, h }].
   static grillePlacement(n, opts) {
@@ -11912,11 +11947,19 @@ const avecArticulationStatiques = (Base) => class extends Base {
 
   // Polyligne à segments verticaux/horizontaux rendue en `d` SVG. Rayon 0 :
   // angles vifs ; sinon coins arrondis, bornés à la demi-longueur des côtés.
-  // Les points alignés intermédiaires sont dédupliqués.
+  // Les points identiques ET les points intermédiaires alignés (aucun vrai
+  // virage) sont retirés — sinon un coude « arrondi » apparaît sur une droite.
   static cheminPolyligne(points, rayon) {
-    const P = [];
+    const D = [];
     for (const p of points || []) {
-      if (p && (P.length === 0 || p.x !== P[P.length - 1].x || p.y !== P[P.length - 1].y)) P.push(p);
+      if (p && (D.length === 0 || p.x !== D[D.length - 1].x || p.y !== D[D.length - 1].y)) D.push(p);
+    }
+    const P = [];
+    for (let i = 0; i < D.length; i++) {
+      const a = P[P.length - 1], b = D[i], c = D[i + 1];
+      if (a && c && (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x) === 0
+        && (b.x - a.x) * (c.x - b.x) >= 0 && (b.y - a.y) * (c.y - b.y) >= 0) continue;
+      P.push(b);
     }
     if (P.length < 2) return '';
     const r = Math.max(0, Number(rayon) || 0);
@@ -12047,7 +12090,8 @@ const avecArticulationStatiques = (Base) => class extends Base {
         : Ariane.flecheEncombee(x1, y1, mx, T.x, yQ, c.obstacles, c.marge);
       if (!pris) {
         const d = mode === 'angulaire'
-          ? 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + yQ + ' H ' + T.x
+          ? Ariane.cheminPolyligne([{ x: x1, y: y1 }, { x: mx, y: y1 },
+            { x: mx, y: yQ }, { x: T.x, y: yQ }], R_COUDE_ARTIC)
           : Ariane._cheminFleche(x1, y1, T.x, yQ);
         return Object.assign({ d, x2: T.x, y2: yQ, cote: 'gauche', detour: false }, milieux(T.x, yQ));
       }
@@ -12056,7 +12100,7 @@ const avecArticulationStatiques = (Base) => class extends Base {
     const route = Ariane.routeFlecheArticulation({ x: x1, y: y1 }, T, c.obstacles,
       { marge: c.marge, ecart: c.ecart, source: c.source });
     if (route) {
-      const d = Ariane.cheminPolyligne(route.points, mode === 'angulaire' ? 0 : 12);
+      const d = Ariane.cheminPolyligne(route.points, mode === 'angulaire' ? R_COUDE_ARTIC : 12);
       let meilleur = null, long = -1;
       for (let i = 1; i < route.points.length; i++) {
         const p = route.points[i - 1], q = route.points[i];
@@ -12069,7 +12113,8 @@ const avecArticulationStatiques = (Base) => class extends Base {
     const x2 = aDroite ? T.x : T.x + (T.w || 0);
     const mx = aDroite ? Math.max(x1 + 16, (x1 + T.x) / 2) : Math.max(x1, x2) + 26;
     const d = mode === 'angulaire'
-      ? 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + yQ + ' H ' + x2
+      ? Ariane.cheminPolyligne([{ x: x1, y: y1 }, { x: mx, y: y1 },
+        { x: mx, y: yQ }, { x: x2, y: yQ }], R_COUDE_ARTIC)
       : 'M ' + x1 + ' ' + y1 + ' C ' + mx + ' ' + y1 + ', ' + mx + ' ' + yQ + ', ' + x2 + ' ' + yQ;
     return Object.assign({ d, x2, y2: yQ, cote: aDroite ? 'gauche' : 'droite', detour: false },
       milieux(x2, yQ));
@@ -22056,6 +22101,10 @@ try {
 
 const ARTIC_W = 240;
 const ARTIC_H = 58;
+// Rayon des coudes en mode « angulaire » : les tracés gardent des segments
+// droits mais les virages sont légèrement adoucis. Lu à l'exécution par les
+// statiques de routage de la section 11j (comme ARTIC_H), jamais au chargement.
+const R_COUDE_ARTIC = 6;
 const GRILLE_ARTIC = 20;   // pas de la grille magnétique
 const SEUIL_AIMANT = 7;    // distance d'accrochage à un bord / centre voisin
 // Hauteur relative des points d'accroche (et donc des extrémités d'arête)
@@ -22185,10 +22234,16 @@ class MoteurArticulation extends MoteurVue {
     // (badge numéroté). Cliquer un badge les ajoute au plan.
     this._bloqueCaches = new Map();
     this._enfantsHorsPlan = new Map();
+    // Relatifs repliables (déjà sur le plan, retirables via le badge « − »).
+    this._replierPossible = new Map();
     for (const ref of refsPlan) {
       const rel = Ariane.relativesHorsPlan(ref, grapheAll.aretes, refsPlan);
       if (rel.bloquantes.length) this._bloqueCaches.set(ref, rel.bloquantes.length);
       if (rel.sousTaches.length) this._enfantsHorsPlan.set(ref, rel.sousTaches);
+      for (const type of ['hier', 'bloque']) {
+        const nb = Ariane.replierRelatifs(ref, grapheAll.aretes, refsPlan, type).length;
+        if (nb) this._replierPossible.set(ref + '|' + type, nb);
+      }
     }
 
     this._dates = {};
@@ -22276,6 +22331,19 @@ class MoteurArticulation extends MoteurVue {
       }
     }
     if (hChangee) this._retracerAretes();
+
+    // Survol d'une carte → ses connexions directes en avant (délégué : les
+    // groupes d'arêtes sont reconstruits à chaque retracé).
+    g.addEventListener('mouseover', (e) => {
+      const gn = e.target.closest && e.target.closest('.zfa-artic-noeud');
+      if (gn && gn.dataset.ref) this._survolLiens(gn.dataset.ref);
+    });
+    g.addEventListener('mouseout', (e) => {
+      const gn = e.target.closest && e.target.closest('.zfa-artic-noeud');
+      const versDehors = !(e.relatedTarget && e.relatedTarget.closest
+        && e.relatedTarget.closest('.zfa-artic-noeud') === gn);
+      if (gn && versDehors) this._finSurvolLiens();
+    });
 
     svg.addEventListener('wheel', (e) => this.zoomer(e), { passive: false });
     const surFond = (e) => (e.target === svg
@@ -22843,40 +22911,38 @@ class MoteurArticulation extends MoteurVue {
       gn.appendChild(ga);
     }
 
-    // Badges de relatifs HORS PLAN : sous-tâches (numéroté) et bloquantes
-    // (accent). Cliquer un badge ajoute ces relatifs au plan.
-    const sousHP = (this._enfantsHorsPlan && this._enfantsHorsPlan.get(n.ref)) || [];
-    if (sousHP.length) {
+    // Connecteur de repli, un par type : « n » quand des relatifs sont cachés
+    // (clic = afficher), « − » quand ils sont sur le plan (clic = masquer).
+    // Le clic droit passe par la commande globale ; ici c'est par carte.
+    const badgeRepli = (type) => {
+      const caches = type === 'hier'
+        ? ((this._enfantsHorsPlan && this._enfantsHorsPlan.get(n.ref)) || []).length
+        : ((this._bloqueCaches && this._bloqueCaches.get(n.ref)) || 0);
+      const surPlan = (this._replierPossible && this._replierPossible.get(n.ref + '|' + type)) || 0;
+      if (!caches && !surPlan) return;
       const gb = svgEl('g', {
-        class: 'zfa-artic-repli zfa-artic-repli-hier est-repliee',
-        transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, 'hier') + ')' });
+        class: 'zfa-artic-repli zfa-artic-repli-' + type
+          + (caches ? ' est-repliee' : ' est-depliee'),
+        transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, type) + ')' });
       gb.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-repli-fond' }));
       const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
-      tx.textContent = String(sousHP.length);
+      tx.textContent = caches ? String(caches) : '−';
       gb.appendChild(tx);
       const ti = svgEl('title', {});
-      ti.textContent = tr('Ajouter les sous-tâches au plan');
+      ti.textContent = caches
+        ? (type === 'hier' ? tr('Afficher les sous-tâches') : tr('Afficher les tâches bloquantes'))
+        : (type === 'hier' ? tr('Masquer les sous-tâches') : tr('Masquer les tâches bloquantes'));
       gb.appendChild(ti);
       gb.addEventListener('pointerdown', (e) => e.stopPropagation());
-      gb.addEventListener('click', (e) => { e.stopPropagation(); this._deplierRelatifs(n.ref, 'hier'); });
+      gb.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (caches) this._deplierRelatifs(n.ref, type);
+        else this._replierRelatifs(n.ref, type);
+      });
       gn.appendChild(gb);
-    }
-    const nbBloc = (this._bloqueCaches && this._bloqueCaches.get(n.ref)) || 0;
-    if (nbBloc > 0) {
-      const gv = svgEl('g', {
-        class: 'zfa-artic-repli zfa-artic-repli-bloque est-repliee',
-        transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, 'bloque') + ')' });
-      gv.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-repli-fond' }));
-      const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
-      tx.textContent = String(nbBloc);
-      gv.appendChild(tx);
-      const ti = svgEl('title', {});
-      ti.textContent = tr('Ajouter les tâches bloquantes au plan');
-      gv.appendChild(ti);
-      gv.addEventListener('pointerdown', (e) => e.stopPropagation());
-      gv.addEventListener('click', (e) => { e.stopPropagation(); this._deplierRelatifs(n.ref, 'bloque'); });
-      gn.appendChild(gv);
-    }
+    };
+    badgeRepli('hier');
+    badgeRepli('bloque');
     g.appendChild(gn);
   }
 
@@ -22913,7 +22979,8 @@ class MoteurArticulation extends MoteurVue {
     const ang = (this.greffon.settings.articulationFleches || 'courbe') === 'angulaire';
     if (ang) {
       const mx = Math.max(x1 + 16, (x1 + x2) / 2);
-      return 'M ' + x1 + ' ' + y1 + ' H ' + mx + ' V ' + y2 + ' H ' + x2;
+      return Ariane.cheminPolyligne([{ x: x1, y: y1 }, { x: mx, y: y1 },
+        { x: mx, y: y2 }, { x: x2, y: y2 }], R_COUDE_ARTIC);
     }
     return Ariane._cheminFleche(x1, y1, x2, y2);
   }
@@ -22967,6 +23034,34 @@ class MoteurArticulation extends MoteurVue {
       this.selectionnerArete(a.de, a.vers, a.type, gr);
     });
     g.appendChild(gr);
+  }
+
+  // Survol d'une carte : ses arêtes DIRECTES (amont + aval) et les cartes à
+  // l'autre bout passent en avant, tout le reste s'estompe. Purement visuel —
+  // ne touche ni à la sélection ni aux statuts dérivés (bloquée / impactée).
+  _survolLiens(ref) {
+    if (!this._scene || this._survolRef === ref) return;
+    this._finSurvolLiens();
+    this._survolRef = ref;
+    this._scene.classList.add('a-un-survol');
+    const lies = new Set([ref]);
+    for (const gr of this._scene.querySelectorAll('.zfa-artic-arete-groupe')) {
+      if (gr.dataset.de === ref || gr.dataset.vers === ref) {
+        gr.classList.add('est-lie');
+        lies.add(gr.dataset.de);
+        lies.add(gr.dataset.vers);
+      }
+    }
+    for (const gn of this._scene.querySelectorAll('.zfa-artic-noeud')) {
+      if (lies.has(gn.dataset.ref)) gn.classList.add('est-lie');
+    }
+  }
+
+  _finSurvolLiens() {
+    this._survolRef = null;
+    if (!this._scene) return;
+    this._scene.classList.remove('a-un-survol');
+    for (const el of this._scene.querySelectorAll('.est-lie')) el.classList.remove('est-lie');
   }
 
   //#endregion Articulation · cartes & arêtes
@@ -23595,6 +23690,25 @@ class MoteurArticulation extends MoteurVue {
       const apres = Ariane.relativesHorsPlan(ref, grapheAll.aretes,
         new Set(this._plan.cartes.map((c) => c.ref)));
       this._plan.cartes[ic].replie = apres.sousTaches.length > 0 || apres.bloquantes.length > 0;
+    }
+    this.ctx.ecrirePlan(this._plan);
+    this.dessiner();
+  }
+
+  // Clic sur un badge « − » : retire du plan les relatifs de `ref` d'un type
+  // (sous-arbre hiérarchique, ou chaîne de bloqueurs) qui n'y sont QUE par lui.
+  _replierRelatifs(ref, type) {
+    if (!this._plan) return;
+    const grapheAll = Ariane.grapheArticulation(this.greffon.tachesPourGantt());
+    const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
+    const aRetirer = new Set(Ariane.replierRelatifs(ref, grapheAll.aretes, refsPlan, type));
+    if (!aRetirer.size) return;
+    this._plan.cartes = this._plan.cartes.filter((c) => !aRetirer.has(c.ref));
+    this._selNoeuds = new Set([...this._selNoeuds].filter((r) => !aRetirer.has(r)));
+    const refsFin = new Set(this._plan.cartes.map((c) => c.ref));
+    for (const c of this._plan.cartes) {
+      const rel = Ariane.relativesHorsPlan(c.ref, grapheAll.aretes, refsFin);
+      c.replie = rel.sousTaches.length > 0 || rel.bloquantes.length > 0;
     }
     this.ctx.ecrirePlan(this._plan);
     this.dessiner();

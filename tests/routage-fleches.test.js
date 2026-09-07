@@ -32,7 +32,8 @@ test('sans obstacle, le tracé simple est gardé tel quel (courbe)', () => {
 test('sans obstacle, le tracé simple est gardé tel quel (angulaire)', () => {
   const r = Ariane.traceFlecheArticulation(TRACE({ mode: 'angulaire' }));
   assert.equal(r.detour, false);
-  assert.equal(r.d, 'M 210 29 H 305 V 29 H 400');
+  // Source et cible sur la même ligne : segment droit, coude aligné supprimé.
+  assert.equal(r.d, 'M 210 29 L 400 29');
 });
 
 test('une carte dans l entre-deux détourne et passe par-dessus', () => {
@@ -98,12 +99,13 @@ test('aucun chemin possible : repli sur le tracé historique', () => {
     { marge: 12, ecart: 22, source: SOURCE }), null);
 });
 
-test('le tracé routé en mode angulaire n a que des angles vifs', () => {
+test('le tracé routé en mode angulaire garde des segments droits, coudes adoucis', () => {
   const obst = carte(280, 14, 60, 30);
   const r = Ariane.traceFlecheArticulation(TRACE({ obstacles: [obst], mode: 'angulaire' }));
   assert.equal(r.detour, true);
-  assert.doesNotMatch(r.d, /[CQ]/);
-  assert.match(r.d, /L/);
+  assert.doesNotMatch(r.d, /C/, 'pas de Bézier cubique : le détour reste orthogonal');
+  assert.match(r.d, /L/, 'des segments droits');
+  assert.match(r.d, /Q/, 'les virages sont légèrement arrondis (R_COUDE_ARTIC)');
 });
 
 test('segmentFrappe : jambes horizontales, verticales, obliques et marge', () => {
