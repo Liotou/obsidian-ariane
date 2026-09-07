@@ -133,6 +133,9 @@ class MoteurCalendrier extends MoteurVue {
       const nv = data || [];
       const avant = this._fond || [];
       this._fond = nv;
+      // Jalons liés à un événement : réaligner sur l'événement fraîchement lu
+      // (le redessin suit, déclenché par les écritures ou par la ligne ci-dessous).
+      this._reconcilierJalonsEvenements().catch(() => { /* rien */ });
       if (nv.length || avant.length) this.dessiner();
     }).catch(() => { /* macOS indisponible */ });
   }
@@ -163,6 +166,66 @@ class MoteurCalendrier extends MoteurVue {
     try { window.open(url); } catch (e2) { /* schéma indisponible */ }
   }
 
+  // Clic (ouvre dans Calendrier) + clic droit (menu) sur un bloc d'événement
+  // Apple. Posé par les trois endroits qui rendent un événement (vue semaine et
+  // les deux formats de la vue mois).
+  _brancherEvenement(el, e) {
+    el.addEventListener('click', (ev) => { ev.stopPropagation(); this._ouvrirEvenement(e.id); });
+    el.addEventListener('contextmenu', (ev) => this.menuEvenement(ev, e));
+  }
+
+  // Menu contextuel d'un événement Apple : l'ouvrir dans Calendrier, ou en
+  // dériver un jalon (même titre, premier jour de l'événement) lié dynamiquement
+  // à l'événement d'origine (`evenement-id` dans la note).
+  menuEvenement(ev, e) {
+    ev.preventDefault(); ev.stopPropagation();
+    const jour = String(e.debut || '').slice(0, 10);
+    const m = new obsidian.Menu();
+    if (e.id) {
+      m.addItem((i) => i.setTitle(tr('Ouvrir dans Calendrier')).setIcon('external-link')
+        .onClick(() => this._ouvrirEvenement(e.id)));
+    }
+    m.addItem((i) => i.setTitle(tr('Créer un jalon à partir de cet événement')).setIcon('diamond')
+      .onClick(async () => {
+        if (!jour) { new obsidian.Notice(tr('Événement sans date exploitable.')); return; }
+        const nom = String(e.titre || '').trim() || (tr('Jalon ') + jour);
+        const chemin = await this.greffon.creerTache({
+          jalon: true, famille: 'action', debut: jour, echeance: jour, intitule: nom });
+        if (!chemin) return;
+        const ref = chemin.split('/').pop().replace(/\.md$/, '');
+        if (e.id) await this.greffon.majTache(ref, { 'evenement-id': e.id });
+        this.dessiner();
+        this.ouvrir(ref, false);
+      }));
+    m.showAtMouseEvent(ev);
+  }
+
+  // Aligne les jalons liés à un événement Apple (clé `evenement-id`) sur cet
+  // événement : premier jour et titre. Tourne quand l'agenda de fond vient
+  // d'être (re)chargé ; n'écrit que sur un vrai écart, et ne supprime jamais un
+  // jalon dont l'événement est absent (il peut simplement être hors fenêtre).
+  async _reconcilierJalonsEvenements() {
+    const parId = new Map();
+    for (const e of (this._fond || [])) if (e && e.id) parId.set(String(e.id), e);
+    if (!parId.size || !this.greffon.tachesPourGantt) return;
+    for (const t of this.greffon.tachesPourGantt()) {
+      if (!t.jalon || !t.fichier) continue;
+      const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+      const eid = String(fm['evenement-id'] || '').trim();
+      if (!eid) continue;
+      const e = parId.get(eid);
+      if (!e) continue;
+      const jour = String(e.debut || '').slice(0, 10);
+      const titre = String(e.titre || '').trim();
+      if (jour && (t.echeance || '') !== jour) {
+        await this.greffon.majTache(t.ref, { debut: jour, echeance: jour });
+      }
+      if (titre && (t.intitule || '') !== titre) {
+        await this.greffon.renommerTitreTache(t.ref, titre);
+      }
+    }
+  }
+
   // Carte d'un événement Apple réel (agenda de fond) : barre verticale gauche à
   // la couleur du calendrier, pas de coche, non déplaçable, clic → Calendar.app.
   _rendreEvenement(hote, e, maxLignes) {
@@ -174,7 +237,7 @@ class MoteurCalendrier extends MoteurVue {
     const tt = el.createDiv({ cls: 'zfa-cal-evt-t', text: e.titre || tr('(sans titre)') });
     if (maxLignes && maxLignes >= 2) tt.style.webkitLineClamp = String(Math.min(maxLignes, 3));
     el.title = (e.titre || '') + (e.calendrier ? ' · ' + e.calendrier : '');
-    el.addEventListener('click', (ev) => { ev.stopPropagation(); this._ouvrirEvenement(e.id); });
+    this._brancherEvenement(el, e);
     return el;
   }
 
@@ -696,6 +759,15 @@ class MoteurCalendrier extends MoteurVue {
           this._apres(t.ref, { cible: [t.debut, t.echeance, null], creneaux: undefined });
         }));
     } else if (t.debut || t.echeance) {
+      // Jalon lié à un événement Apple (créé depuis un clic droit sur l'événement) :
+      // raccourci pour rouvrir cet événement dans Calendrier.
+      const fj = this.greffon.fichierDeRef && this.greffon.fichierDeRef(t.ref);
+      const eid = fj ? String(((this.app.metadataCache.getFileCache(fj) || {}).frontmatter
+        || {})['evenement-id'] || '').trim() : '';
+      if (eid) {
+        m.addItem((i) => i.setTitle(tr('Ouvrir l\'événement Apple')).setIcon('external-link')
+          .onClick(() => this._ouvrirEvenement(eid)));
+      }
       // Carte de dates (jalon / tâche d'une journée) : on efface début + échéance.
       m.addItem((i) => i.setTitle(tr('Effacer début et échéance')).setIcon('calendar-off')
         .onClick(async () => {
@@ -1220,7 +1292,7 @@ class MoteurCalendrier extends MoteurVue {
           }
           ch.createSpan({ text: e.titre || tr('(sans titre)') });
           ch.title = (e.titre || '') + (e.calendrier ? ' · ' + e.calendrier : '');
-          ch.addEventListener('click', (ev2) => { ev2.stopPropagation(); this._ouvrirEvenement(e.id); });
+          this._brancherEvenement(ch, e);
         }
       }
     }
@@ -1355,7 +1427,7 @@ class MoteurCalendrier extends MoteurVue {
           if (e.couleur) ch.style.setProperty('--zfa-cal-coul', e.couleur);
           ch.createDiv({ cls: 'zfa-cal-evt-t', text: e.titre || tr('(sans titre)') });
           ch.title = (e.titre || '') + (e.calendrier ? ' · ' + e.calendrier : '');
-          ch.addEventListener('click', (ev) => { ev.stopPropagation(); this._ouvrirEvenement(e.id); });
+          this._brancherEvenement(ch, e);
         }
       };
       rendre();
