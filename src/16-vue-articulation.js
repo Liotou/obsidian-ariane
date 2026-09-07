@@ -7,6 +7,9 @@
 
 const ARTIC_W = 240;
 const ARTIC_H = 58;
+// Décalage du badge de repli au-delà du bord droit : assez loin du point
+// d'accroche (rayon 9) pour qu'un clic ne parte pas créer une tâche reliée.
+const REPLI_DX = 26;
 // Rayon des coudes en mode « angulaire » : les tracés gardent des segments
 // droits mais les virages sont légèrement adoucis. Lu à l'exécution par les
 // statiques de routage de la section 11j (comme ARTIC_H), jamais au chargement.
@@ -233,7 +236,7 @@ class MoteurArticulation extends MoteurVue {
       for (const gb of gn.querySelectorAll('.zfa-artic-repli')) {
         const typeRepli = gb.classList.contains('zfa-artic-repli-bloque') ? 'bloque' : 'hier';
         gb.setAttribute('transform',
-          'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, typeRepli) + ')');
+          'translate(' + (ARTIC_W + REPLI_DX) + ',' + ancreY(hN, typeRepli) + ')');
       }
     }
     if (hChangee) this._retracerAretes();
@@ -806,7 +809,7 @@ class MoteurArticulation extends MoteurVue {
       ga.dataset.type = type;
       // Cible large invisible pour viser à la souris, puis le demi-cercle
       // toujours visible qui marque le point de connexion, sur le bord de la carte.
-      ga.appendChild(svgEl('circle', { r: 11, class: 'zfa-artic-accroche-cible' }));
+      ga.appendChild(svgEl('circle', { r: 9, class: 'zfa-artic-accroche-cible' }));
       ga.appendChild(svgEl('path', {
         d: 'M 0 -5 A 5 5 0 0 1 0 5 Z', class: 'zfa-artic-accroche-pastille' }));
       const t = svgEl('title', {});
@@ -830,7 +833,7 @@ class MoteurArticulation extends MoteurVue {
       const gb = svgEl('g', {
         class: 'zfa-artic-repli zfa-artic-repli-' + type
           + (caches ? ' est-repliee' : ' est-depliee'),
-        transform: 'translate(' + (ARTIC_W + 16) + ',' + ancreY(hN, type) + ')' });
+        transform: 'translate(' + (ARTIC_W + REPLI_DX) + ',' + ancreY(hN, type) + ')' });
       gb.appendChild(svgEl('circle', { r: 8, class: 'zfa-artic-repli-fond' }));
       const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
       tx.textContent = caches ? String(caches) : '−';

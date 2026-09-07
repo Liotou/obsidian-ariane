@@ -1803,6 +1803,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-repli-fond { stroke: var(--background-primary); stroke-width: 1.5; }
 .zfa-artic-repli-hier .zfa-artic-repli-fond { fill: var(--text-muted); }
 .zfa-artic-repli-bloque .zfa-artic-repli-fond { fill: var(--interactive-accent); }
+/* Bouton « − » (relatifs sur le plan → masquer) : discret mais toujours
+   visible, pour qu'on le vise sans tomber sur le point d'accroche voisin. */
+.zfa-artic-repli.est-depliee { opacity: 0.5; }
+.zfa-artic-noeud:hover .zfa-artic-repli.est-depliee { opacity: 1; }
 .zfa-artic-repli.est-depliee .zfa-artic-repli-fond { fill: var(--background-modifier-border); }
 .zfa-artic-repli.est-depliee .zfa-artic-repli-txt { fill: var(--text-muted); }
 
