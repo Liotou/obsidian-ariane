@@ -24050,6 +24050,15 @@ function fabriquerVueArticulationBase(greffon) {
 //  fabrique de la vue Bases « ariane-calendrier ».
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Durée pendant laquelle un créneau que l'on vient de déplacer ou de
+// redimensionner garde sa géométrie ANTICIPÉE à chaque redessin, quoi que dise
+// encore la base. Une écriture de créneau touche deux fois la note (entête, puis
+// bloc « Sessions ») ; Bases émet alors une rafale de onDataUpdated, dont
+// certains tombent APRÈS la fenêtre de coalescence, pendant que le cache de
+// métadonnées est un bref instant en retard. Sans ce verrou, le bloc repassait à
+// son ancienne place pendant quelques images avant de se recaler.
+const MS_PIN_CRENEAU = 1800;
+
 class MoteurCalendrier extends MoteurVue {
   //#region Calendrier · cycle de vie & écritures annulables
   constructor(greffon, racine, contexte) {
@@ -24256,23 +24265,42 @@ class MoteurCalendrier extends MoteurVue {
     const tn = this.ctx.triNatif && this.ctx.triNatif();
     if (tn && tn.preparer) { try { tn.preparer(this._taches); } catch (e) { /* tri optionnel */ } }
     if (this._enAttente && this._enAttente.size) {
+      const maintenant = Date.now();
+      const dessinees = new Set((this._tachesBrutes || this._taches).map((x) => x.ref));
       for (const t of this._taches) {
         const p = this._enAttente.get(t.ref);
         if (!p) continue;
-        const cle = JSON.stringify([t.debut, t.echeance, (t.creneaux || []).slice().sort()]);
-        if (cle === JSON.stringify(p.cible)) this._enAttente.delete(t.ref);
-        else {
-          if (p.debut !== undefined) t.debut = p.debut;
-          if (p.echeance !== undefined) t.echeance = p.echeance;
-          if (p.creneaux !== undefined) t.creneaux = p.creneaux;
-        }
-        if (p.debut === undefined && p.echeance === undefined && p.creneaux === undefined) {
+        const age = maintenant - (p._t0 || 0);
+        // Comparaison SÉLECTIVE : on ne confronte à la base que les champs
+        // réellement anticipés. Un créneau posé sur une tâche datée garde son
+        // échéance — la comparer ici empêchait l'entrée de retomber (fuite).
+        const memeCr = p.creneaux === undefined
+          || JSON.stringify((t.creneaux || []).slice().sort())
+             === JSON.stringify((p.creneaux || []).slice().sort());
+        const memeDeb = p.debut === undefined || (t.debut || '') === (p.debut || '');
+        const memeEch = p.echeance === undefined || (t.echeance || '') === (p.echeance || '');
+        const rien = p.creneaux === undefined && p.debut === undefined && p.echeance === undefined;
+        const aJour = memeCr && memeDeb && memeEch;
+        // On lâche l'anticipation quand : rien à anticiper ; ou la base a
+        // rattrapé ET le geste est retombé depuis assez longtemps pour qu'aucun
+        // onDataUpdated en retard ne puisse plus repeindre l'ancienne géométrie ;
+        // ou, garde-fou anti-fantôme, l'entrée traîne depuis bien trop longtemps
+        // (écriture qui a échoué).
+        if (rien || (aJour && age > MS_PIN_CRENEAU) || age > MS_PIN_CRENEAU * 4) {
           this._enAttente.delete(t.ref);
+          continue;
         }
+        // Dans la fenêtre : on impose la géométrie anticipée à CHAQUE redessin,
+        // même si la base semble déjà d'accord — c'est ce qui neutralise le
+        // redessin tardif nourri d'un cache de métadonnées un instant périmé.
+        if (p.creneaux !== undefined) t.creneaux = p.creneaux;
+        if (p.debut !== undefined) t.debut = p.debut;
+        if (p.echeance !== undefined) t.echeance = p.echeance;
       }
-      const refs = new Set(this._taches.map((t) => t.ref));
       for (const ref of [...this._enAttente.keys()]) {
-        if (!refs.has(ref)) this._enAttente.delete(ref);
+        if (dessinees.has(ref)) continue;
+        const p = this._enAttente.get(ref);
+        if (maintenant - (p._t0 || 0) > MS_PIN_CRENEAU) this._enAttente.delete(ref);
       }
     }
     this.dessinerBarreOutils(c);
@@ -24691,7 +24719,10 @@ class MoteurCalendrier extends MoteurVue {
 
   async _apres(ref, apercu) {
     if (!this._enAttente) this._enAttente = new Map();
-    if (apercu) this._enAttente.set(ref, apercu);
+    // _t0 : instant du geste. dessinerVraiment maintient la géométrie anticipée
+    // jusqu'à MS_PIN_CRENEAU après cet instant (voir là-bas). Un nouveau geste
+    // sur le même créneau réarme la fenêtre.
+    if (apercu) this._enAttente.set(ref, Object.assign({ _t0: Date.now() }, apercu));
     this.dessiner();
   }
 
@@ -25057,7 +25088,7 @@ class MoteurCalendrier extends MoteurVue {
         this._coalesceRedessin();
         const prevu = this._creneauxAnticipes(ref, brut, cr0.debut, cr0.fin);
         await this._majCreneauU(ref, { avant: brut, debut: cr0.debut, fin: cr0.fin });
-        this._apres(ref, { cible: [undefined, undefined, prevu], creneaux: prevu });
+        this._apres(ref, { creneaux: prevu });
         return;
       }
       if (mode === 'debut') {
@@ -25071,7 +25102,7 @@ class MoteurCalendrier extends MoteurVue {
         this._coalesceRedessin();
         const prevu = this._creneauxAnticipes(ref, brut, cr0.debut, fin0.fin);
         await this._majCreneauU(ref, { avant: brut, debut: cr0.debut, fin: fin0.fin });
-        this._apres(ref, { cible: [undefined, undefined, prevu], creneaux: prevu });
+        this._apres(ref, { creneaux: prevu });
         return;
       }
       const top = Math.max(0, cal(topDep + dy));
@@ -25096,7 +25127,7 @@ class MoteurCalendrier extends MoteurVue {
       this._coalesceRedessin();
       const prevu = this._creneauxAnticipes(ref, brut, cr.debut, cr.fin);
       await this._majCreneauU(ref, { avant: brut, debut: cr.debut, fin: cr.fin });
-      this._apres(ref, { cible: [undefined, undefined, prevu], creneaux: prevu });
+      this._apres(ref, { creneaux: prevu });
     };
     this._doc().addEventListener('pointermove', bouger);
     this._doc().addEventListener('pointerup', lacher);
@@ -25122,10 +25153,13 @@ class MoteurCalendrier extends MoteurVue {
       if (!t) return;
       if (d.brut) {
         const cr = Ariane.parseCreneau(d.brut);
-        if (cr) await this._majCreneauU(d.ref, { avant: d.brut,
-          debut: Ariane.decalerJour(cr.debut.slice(0, 10), n) + 'T' + cr.debut.slice(11),
-          fin: Ariane.decalerJour(cr.fin.slice(0, 10), n) + 'T' + cr.fin.slice(11) });
-        this._apres(d.ref, { cible: [t.debut, t.echeance, null], creneaux: undefined });
+        if (!cr) return;
+        const nDeb = Ariane.decalerJour(cr.debut.slice(0, 10), n) + 'T' + cr.debut.slice(11);
+        const nFin = Ariane.decalerJour(cr.fin.slice(0, 10), n) + 'T' + cr.fin.slice(11);
+        this._coalesceRedessin();
+        const prevu = this._creneauxAnticipes(d.ref, d.brut, nDeb, nFin);
+        await this._majCreneauU(d.ref, { avant: d.brut, debut: nDeb, fin: nFin });
+        this._apres(d.ref, { creneaux: prevu });
         return;
       }
       const nd = t.debut ? Ariane.decalerJour(t.debut, n) : '';
