@@ -1,0 +1,7 @@
+# main.js et certains fragments de src/ contiennent des octets NUL (chaînes
+# sentinelles : SANS_GROUPE vaut '\0sans', plus la clé d'arête d'articulation).
+# Git les prend alors pour des binaires et n'affiche plus aucun diff : c'est
+# arrivé à src/11j-articulation-statiques.js, dont la fusion s'est affichée
+# « Bin 0 -> 74202 bytes ». L'attribut « diff » force la comparaison textuelle.
+main.js diff
+src/*.js diff
