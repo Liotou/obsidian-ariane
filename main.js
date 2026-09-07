@@ -3568,7 +3568,7 @@ class Ariane extends obsidian.Plugin {
       name: tr('Tâches : créer une tâche'),
       callback: () => new ModaleTache(this.app, this, {
         apres: async (ref) => {
-          const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+          const f = this.fichierDeRef(ref);
           if (f) await this.app.workspace.getLeaf(true).openFile(f);
         },
       }).open(),
@@ -4403,6 +4403,13 @@ class Ariane extends obsidian.Plugin {
     this.registerEvent(this.app.vault.on('delete', revaliderIndex));
     this.registerEvent(this.app.vault.on('rename', (f) => revaliderIndex(f)));
 
+    // L'index des tâches se lit sur les chemins : seul un chemin qui bouge le
+    // périme. Une modification de contenu n'y change rien, d'où l'absence de
+    // « modify » ici — c'est ce qui rend le cache rentable.
+    for (const ev of ['create', 'delete', 'rename']) {
+      this.registerEvent(this.app.vault.on(ev, () => this._invaliderIndexTaches()));
+    }
+
     this.app.workspace.onLayoutReady(() => {
       this.registerEvent(this.app.vault.on('modify', (f) => this.surModification(f)));
 
@@ -5147,21 +5154,6 @@ class Ariane extends obsidian.Plugin {
     return l.join('\n');
   }
 
-  // Une production porte soit une note du coffre, soit un fichier du disque.
-  // Monsieur ne veut pas trancher au moment de créer la tâche : la forme de ce
-  // qu'il saisit suffit à décider. Seul un chemin absolu désigne le disque, ce
-  // qui laisse « 3 - Notes conceptuelles/NC-… » du côté des notes malgré ses
-  // barres obliques.
-  static livrableOuFichier(saisie) {
-    const v = String(saisie == null ? '' : saisie).trim();
-    if (!v) return { champ: null, valeur: '' };
-    if (v.startsWith('/') || v.startsWith('~/') || v.startsWith('file://')) {
-      return { champ: 'fichier', valeur: v };
-    }
-    const nu = v.replace(/^\[\[|\]\]$/g, '');
-    return { champ: 'livrable', valeur: '[[' + nu + ']]' };
-  }
-
   // Référence nue d'un lien, alias compris : « [[T26-001|partie 2]] » rend
   // « T26-001 ».
   static refDeLien(v) {
@@ -5180,40 +5172,6 @@ class Ariane extends obsidian.Plugin {
     if (d && p.startsWith(d + '/')) return base;
     const m = p.match(/(?:^|\/)(T\d{2}-\d{3,4})\.md$/);
     return m ? m[1] : null;
-  }
-
-  // Filtre les tâches avant disposition. Les ancêtres d'une tâche retenue sont
-  // conservés : sans eux, une sous-tâche apparaîtrait à la racine, détachée du
-  // chantier auquel elle appartient, et on ne saurait plus de quoi il s'agit.
-  static filtrerTaches(taches, filtre) {
-    const liste = (taches || []).filter((x) => x && x.ref);
-    const f = filtre || {};
-    const texte = Ariane._sansAccentMinuscule(f.texte || '');
-    if (!f.statut && !f.priorite && !texte) return liste;
-    const parRef = new Map(liste.map((x) => [x.ref, x]));
-    const retenu = (x) => {
-      if (f.statut && String(x.statut || '') !== f.statut) return false;
-      if (f.priorite && String(x.priorite || '') !== f.priorite) return false;
-      if (texte) {
-        const cible = Ariane._sansAccentMinuscule(
-          String(x.intitule || '') + ' ' + x.ref);
-        if (!cible.includes(texte)) return false;
-      }
-      return true;
-    };
-    const gardes = new Set();
-    for (const x of liste) {
-      if (!retenu(x)) continue;
-      gardes.add(x.ref);
-      let p = Ariane.refDeLien(x.parent);
-      const vus = new Set([x.ref]);
-      while (p && parRef.has(p) && !vus.has(p)) {
-        gardes.add(p);
-        vus.add(p);
-        p = Ariane.refDeLien(parRef.get(p).parent);
-      }
-    }
-    return liste.filter((x) => gardes.has(x.ref));
   }
 
   // La date d'achèvement se déduit du statut, elle ne se saisit pas. Rendre
@@ -5441,39 +5399,6 @@ class Ariane extends obsidian.Plugin {
     const arr = Array.isArray(items) ? items : [];
     if (plafond <= 0 || arr.length <= plafond) return { montres: arr.slice(), reste: 0 };
     return { montres: arr.slice(0, plafond), reste: arr.length - plafond };
-  }
-
-  // Voir spec §2.5. Rend un TABLEAU d'événements. Les créneaux priment : quand
-  // il y en a, la « fenêtre de planning » début→échéance n'est pas émise.
-  static evenementsDeTache(t) {
-    if (!t) return [];
-    const crs = Ariane.creneauxDeTache(t);
-    if (crs.length) {
-      return crs.map((c, i) => ({
-        genre: 'horaire', debut: c.debut, fin: c.fin, allDay: false,
-        source: 'creneau', idx: i, brut: c.brut,
-      }));
-    }
-    const deb = Ariane.jourValide(t.debut);
-    const ech = Ariane.jourValide(t.echeance);
-    if (deb && ech) {
-      return [{ genre: 'jour', debut: deb, fin: Ariane.decalerJour(ech, 1),
-                allDay: true, source: 'dates' }];
-    }
-    if (ech) {
-      const h = String(t.heure || '').match(/^(\d{1,2}):(\d{2})$/);
-      if (h && !t.jalon) {
-        const H = Number(h[1]);
-        const fh = (H + 1) % 24;
-        const jf = H === 23 ? Ariane.decalerJour(ech, 1) : ech;
-        return [{ genre: 'horaire', allDay: false, source: 'dates',
-          debut: ech + 'T' + String(H).padStart(2, '0') + ':' + h[2],
-          fin: jf + 'T' + String(fh).padStart(2, '0') + ':' + h[2] }];
-      }
-      return [{ genre: 'jour', debut: ech, fin: Ariane.decalerJour(ech, 1),
-                allDay: true, source: 'dates' }];
-    }
-    return [];
   }
 
   // Instantané note ↔ Apple Agenda : seuls les créneaux deviennent des EKEvent,
@@ -11146,6 +11071,9 @@ class Ariane extends obsidian.Plugin {
   }
 
   async saveSettings() {
+    // Le dossier des tâches peut avoir changé : l'index « référence → fichier »
+    // se lit dessus, on le laisse se reconstruire.
+    this._invaliderIndexTaches();
     await this.saveData(this.settings);
   }
 
@@ -13516,10 +13444,46 @@ class Ariane extends obsidian.Plugin {
   //#region Ariane · tâches
   // ── tâches ───────────────────────────────────────────────────────────────
 
-  // Les tâches du coffre, dans la forme qu'attend disposerGantt.
+  // Index « référence → fichier » des notes de tâche.
+  //
+  // Sans lui, chaque accès aux tâches balayait TOUT le coffre : sur un coffre
+  // de quatre mille notes pour quarante tâches, c'est cent fois trop de travail,
+  // et tachesPourGantt() est appelée depuis une trentaine d'endroits, dont le
+  // redessin de chaque vue. L'appartenance d'une note aux tâches se lit sur son
+  // seul CHEMIN (voir Ariane.refDepuisChemin) : l'index ne dépend donc pas du
+  // contenu et ne se périme qu'à la création, la suppression ou le renommage
+  // d'un fichier — ni à chaque frappe, ni à chaque écriture d'entête.
+  _indexTaches() {
+    if (this._idxTaches) return this._idxTaches;
+    const m = new Map();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const ref = this.refDeChemin(f.path);
+      if (ref) m.set(ref, f);
+    }
+    this._idxTaches = m;
+    return m;
+  }
+
+  // À appeler dès qu'un chemin bouge, ou que le dossier des tâches change.
+  _invaliderIndexTaches() { this._idxTaches = null; }
+
+  // Le fichier d'une référence de tâche, en temps constant. Remplace les
+  // « getMarkdownFiles().find(x => x.basename === ref) » qui parcouraient tout
+  // le coffre — et vise la vraie note de tâche plutôt que le premier homonyme
+  // rencontré ailleurs dans le coffre.
+  fichierDeRef(ref) {
+    const r = String(ref == null ? '' : ref).trim();
+    if (!r) return null;
+    const f = this._indexTaches().get(r);
+    return (f && !f.deleted) ? f : null;
+  }
+
+  // Les tâches du coffre, dans la forme qu'attend disposerGantt. Les objets
+  // sont reconstruits à chaque appel : plusieurs vues les annotent au vol
+  // (aperçu d'un glissé), un objet partagé ferait fuiter ces retouches.
   tachesPourGantt() {
     const out = [];
-    for (const f of this.app.vault.getMarkdownFiles()) {
+    for (const f of this._indexTaches().values()) {
       const ref = this.refDeChemin(f.path);
       if (!ref) continue;
       const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
@@ -13916,7 +13880,7 @@ class Ariane extends obsidian.Plugin {
         const ref = this.refDeChemin(chemin);
         if (ref) {
           await this.majTache(ref, { 'rappel-id': id });
-          const f2 = this.app.vault.getMarkdownFiles().find((z) => z.basename === ref);
+          const f2 = this.fichierDeRef(ref);
           if (f2) {
             this.marquerEcriture(f2.path);
             await this.app.fileManager.processFrontMatter(f2, (x) => {
@@ -14494,7 +14458,7 @@ class Ariane extends obsidian.Plugin {
   async ajouterNoteTache(ref, texte) {
     const t = String(texte || '').trim();
     if (!t) return;
-    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const f = this.fichierDeRef(ref);
     if (!f) return;
     this.marquerEcriture(f.path);
     const lignes = (await this.app.vault.read(f)).split('\n');
@@ -14506,7 +14470,7 @@ class Ariane extends obsidian.Plugin {
 
   // Corps (sans le titre) de la section « ## Note de travail » d'une tâche.
   async lireNoteTache(ref) {
-    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const f = this.fichierDeRef(ref);
     if (!f) return '';
     const lignes = (await this.app.vault.read(f)).split('\n');
     const i = lignes.findIndex((l) => /^##\s+Note de travail\s*$/.test(l));
@@ -14518,7 +14482,7 @@ class Ariane extends obsidian.Plugin {
 
   // Remplace le corps de « ## Note de travail » (crée la section si absente).
   async ecrireNoteTache(ref, texte) {
-    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const f = this.fichierDeRef(ref);
     if (!f) return false;
     const corps = String(texte == null ? '' : texte).replace(/\s+$/, '');
     const lignes = (await this.app.vault.read(f)).split('\n');
@@ -14769,7 +14733,7 @@ class Ariane extends obsidian.Plugin {
   // Dernier état SAIN de « parent » / « bloque-par » par tâche, pour pouvoir y
   // revenir si une modif manuelle ferme un cycle.
   _rattachDe(ref) {
-    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const f = this.fichierDeRef(ref);
     const fm = f ? ((this.app.metadataCache.getFileCache(f) || {}).frontmatter || {}) : {};
     return {
       parent: this._lireT(fm, 'parent') || '',
@@ -14931,7 +14895,7 @@ class Ariane extends obsidian.Plugin {
 
   // Écrit quelques propriétés d'une tâche, sans toucher au reste.
   async majTache(ref, champs) {
-    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const f = this.fichierDeRef(ref);
     if (!f) return false;
     const conc = new Set(Ariane.CONCEPTS_TACHE);
     await this.app.fileManager.processFrontMatter(f, (x) => {
@@ -14947,7 +14911,7 @@ class Ariane extends obsidian.Plugin {
   // '' si absente). Sert aux thématiques des zones d'articulation, qui doivent
   // connaître la valeur d'avant un geste pour l'annulation.
   lireConceptTache(ref, concept) {
-    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const f = this.fichierDeRef(ref);
     if (!f) return '';
     const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
     const v = this._lireT(fm, concept);
@@ -14960,7 +14924,7 @@ class Ariane extends obsidian.Plugin {
   async renommerTitreTache(ref, titre) {
     const t = String(titre == null ? '' : titre).trim();
     if (!t) return false;
-    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const f = this.fichierDeRef(ref);
     if (!f) return false;
     this.marquerEcriture(f.path);
     await this.app.fileManager.processFrontMatter(f, (x) => {
@@ -14990,7 +14954,7 @@ class Ariane extends obsidian.Plugin {
   // Met la note d'une tâche à la corbeille et nettoie les renvois des autres
   // tâches vers elle (parent, bloque-par) pour ne pas laisser de liens morts.
   async supprimerTache(ref) {
-    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const f = this.fichierDeRef(ref);
     if (!f) return false;
     for (const t of this.tachesPourGantt()) {
       if (t.ref === ref) continue;
@@ -15137,7 +15101,7 @@ class Ariane extends obsidian.Plugin {
   // Édite la liste des créneaux d'une tâche. { avant } = chaîne de l'entrée
   // ciblée (vide = ajout). { debut, fin } nuls = suppression de `avant`.
   async majCreneau(ref, { avant, debut, fin }) {
-    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const f = this.fichierDeRef(ref);
     if (!f) return false;
     const cle = this.cleT('creneaux');
     const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
@@ -15219,7 +15183,7 @@ class Ariane extends obsidian.Plugin {
   // Écrit le commentaire d'une session (cleCommentaire), ou l'efface quand le
   // texte est vide. Ne touche qu'au bloc balisé, pas au frontmatter.
   async majCommentaireCreneau(ref, brut, texte) {
-    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const f = this.fichierDeRef(ref);
     if (!f) return false;
     const cle = Ariane.cleCommentaire(brut);
     if (!cle) return false;
@@ -18155,7 +18119,7 @@ class ModaleAjoutLN extends obsidian.Modal {
         avis.hide();
         if (!ref) { new obsidian.Notice(tr('Rien n\'a pu être créé.')); return; }
         new obsidian.Notice(tr('Tâche créée : ') + ref);
-        const f = this.greffon.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+        const f = this.greffon.fichierDeRef(ref);
         if (f) this.greffon.app.workspace.getLeaf(true).openFile(f);
       } catch (e) { avis.hide(); new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e)); }
     };
@@ -18386,7 +18350,7 @@ class MoteurFrise {
   }
 
   ouvrir(ref, nouvelOnglet) {
-    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const f = this.greffon.fichierDeRef(ref);
     if (f) this.app.workspace.getLeaf(nouvelOnglet === undefined ? true : nouvelOnglet).openFile(f);
   }
 
@@ -23736,7 +23700,7 @@ function fabriquerVueArticulationBase(greffon) {
       let reprises = 0;
       for (const ref of (refsFiltre || [])) {
         if (dejaLa.has(ref)) continue;
-        const f = this.greffon.app.vault.getMarkdownFiles().find((z) => z.basename === ref);
+        const f = this.greffon.fichierDeRef(ref);
         if (!f) continue;
         const fm = (this.greffon.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
         const x = Number(fm['canvas-x']);
@@ -24408,7 +24372,7 @@ class MoteurCalendrier {
   }
 
   ouvrir(ref, nouveau) {
-    const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const f = this.greffon.fichierDeRef(ref);
     if (f) this.app.workspace.getLeaf(!!nouveau).openFile(f);
   }
   // Couleur d'un créneau : suit le réglage de la frise pour les modes
@@ -25744,7 +25708,7 @@ class VueIncoherencesTaches extends obsidian.ItemView {
   }
 
   ouvrir(ref) {
-    const f = this.greffon.app.vault.getMarkdownFiles().find((x) => x.basename === ref);
+    const f = this.greffon.fichierDeRef(ref);
     if (f) this.app.workspace.getLeaf(true).openFile(f);
     else new obsidian.Notice(tr('Note introuvable : ') + ref);
   }
