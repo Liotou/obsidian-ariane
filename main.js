@@ -5970,11 +5970,6 @@ class Ariane extends obsidian.Plugin {
     } catch (e) { return ''; }
   }
 
-  static _sansAccentMinuscule(v) {
-    return String(v == null ? '' : v)
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-  }
-
   /* ---- Export XLSX (généré à la main, sans dépendance) ---------------- */
 
   // CRC-32 (polynôme 0xEDB88320), sur un Uint8Array. Sert au conteneur ZIP.
