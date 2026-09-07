@@ -237,6 +237,7 @@ class MoteurArticulation extends MoteurVue {
       }
     }
     if (hChangee) this._retracerAretes();
+    this._tracerPonts(g, aretes);
 
     // Survol d'une carte → ses connexions directes en avant (délégué : les
     // groupes d'arêtes sont reconstruits à chaque retracé).
@@ -968,6 +969,42 @@ class MoteurArticulation extends MoteurVue {
     if (!this._scene) return;
     this._scene.classList.remove('a-un-survol');
     for (const el of this._scene.querySelectorAll('.est-lie')) el.classList.remove('est-lie');
+  }
+
+  // Ponts aux croisements d'arêtes : on échantillonne chaque tracé rendu, on
+  // cherche les intersections et on pose un petit arc « saut » sur l'arête du
+  // dessus. Couche de rendu seule, refaite à chaque redessin complet ; passée
+  // au-delà d'un certain nombre d'arêtes (trop dense pour aider).
+  _tracerPonts(g, aretes) {
+    const anc = g.querySelector('.zfa-artic-ponts');
+    if (anc) anc.remove();
+    if (!aretes || aretes.length > 140) return;
+    const polys = [];
+    for (const gr of g.querySelectorAll('.zfa-artic-arete-groupe')) {
+      const path = gr.querySelector('path.zfa-artic-arete');
+      if (!path || !path.getTotalLength) continue;
+      let L = 0;
+      try { L = path.getTotalLength(); } catch (e) { L = 0; }
+      if (!L) continue;
+      const pts = [];
+      for (let d = 0; d <= L; d += 9) {
+        const pt = path.getPointAtLength(Math.min(d, L));
+        pts.push({ x: pt.x, y: pt.y });
+      }
+      polys.push({ type: gr.dataset.type || 'hier', pts });
+    }
+    const ponts = Ariane.pontsAretes(polys, { max: 300 });
+    if (!ponts.length) return;
+    const gp = svgEl('g', { class: 'zfa-artic-ponts' });
+    const R = 5;
+    for (const c of ponts) {
+      const d = 'M ' + (c.x - c.dx * R).toFixed(1) + ' ' + (c.y - c.dy * R).toFixed(1)
+        + ' A ' + R + ' ' + R + ' 0 0 1 '
+        + (c.x + c.dx * R).toFixed(1) + ' ' + (c.y + c.dy * R).toFixed(1);
+      gp.appendChild(svgEl('path', { d, class: 'zfa-artic-pont-fond' }));
+      gp.appendChild(svgEl('path', { d, class: 'zfa-artic-pont zfa-artic-' + c.type }));
+    }
+    g.appendChild(gp);
   }
 
   //#endregion Articulation · cartes & arêtes
