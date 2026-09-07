@@ -22321,9 +22321,13 @@ try {
 
 const ARTIC_W = 240;
 const ARTIC_H = 58;
-// Décalage du badge de repli au-delà du bord droit : assez loin du point
-// d'accroche (rayon 9) pour qu'un clic ne parte pas créer une tâche reliée.
-const REPLI_DX = 26;
+// Décalage de la pastille indicatrice de repli au-delà du bord droit. Elle
+// n'est plus cliquable (le point d'accroche gère tout) — c'est un simple
+// compteur / témoin, posé juste à côté de l'accroche.
+const REPLI_DX = 14;
+// Fenêtre du « double tap » sur un point d'accroche, et délai avant l'action
+// du tap simple (le temps de voir venir un second tap).
+const DELAI_TAP = 280;
 // Rayon des coudes en mode « angulaire » : les tracés gardent des segments
 // droits mais les virages sont légèrement adoucis. Lu à l'exécution par les
 // statiques de routage de la section 11j (comme ARTIC_H), jamais au chargement.
@@ -22367,6 +22371,7 @@ class MoteurArticulation extends MoteurVue {
   }
   detruire() {
     if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
+    if (this._tapAccroche) { clearTimeout(this._tapAccroche.timer); this._tapAccroche = null; }
     this.racine.empty();
   }
 
@@ -23123,22 +23128,22 @@ class MoteurArticulation extends MoteurVue {
       ga.dataset.type = type;
       // Cible large invisible pour viser à la souris, puis le demi-cercle
       // toujours visible qui marque le point de connexion, sur le bord de la carte.
-      ga.appendChild(svgEl('circle', { r: 9, class: 'zfa-artic-accroche-cible' }));
+      ga.appendChild(svgEl('circle', { r: 11, class: 'zfa-artic-accroche-cible' }));
       ga.appendChild(svgEl('path', {
         d: 'M 0 -5 A 5 5 0 0 1 0 5 Z', class: 'zfa-artic-accroche-pastille' }));
+      const nom = type === 'hier' ? tr('sous-tâches') : tr('tâches bloquantes');
       const t = svgEl('title', {});
-      t.textContent = type === 'hier'
-        ? tr('Clic : nouvelle sous-tâche. Maintenir et tirer : relier une tâche existante.')
-        : tr('Clic : nouvelle tâche bloquée. Maintenir et tirer : relier une tâche existante.');
+      t.textContent = tr('Clic : afficher / masquer les ') + nom
+        + tr(" (ou en créer une s'il n'y en a pas). Double-clic : nouvelle ")
+        + nom + tr('. Maintenir et tirer : relier une tâche existante.');
       ga.appendChild(t);
       ga.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.tirerArete(e, n.ref, type); });
       gn.appendChild(ga);
     }
 
-    // Connecteur de repli, un par type : « n » quand des relatifs sont cachés
-    // (clic = afficher), « − » quand ils sont sur le plan (clic = masquer).
-    // Le clic droit passe par la commande globale ; ici c'est par carte.
-    const badgeRepli = (type) => {
+    // Témoin de repli (NON cliquable — le point d'accroche gère tout) : « n »
+    // quand des relatifs sont cachés, « − » quand ils sont dépliés et pliables.
+    const temoinRepli = (type) => {
       const caches = type === 'hier'
         ? ((this._enfantsHorsPlan && this._enfantsHorsPlan.get(n.ref)) || []).length
         : ((this._bloqueCaches && this._bloqueCaches.get(n.ref)) || 0);
@@ -23152,21 +23157,10 @@ class MoteurArticulation extends MoteurVue {
       const tx = svgEl('text', { x: 0, y: 0, class: 'zfa-artic-repli-txt' });
       tx.textContent = caches ? String(caches) : '−';
       gb.appendChild(tx);
-      const ti = svgEl('title', {});
-      ti.textContent = caches
-        ? (type === 'hier' ? tr('Afficher les sous-tâches') : tr('Afficher les tâches bloquantes'))
-        : (type === 'hier' ? tr('Masquer les sous-tâches') : tr('Masquer les tâches bloquantes'));
-      gb.appendChild(ti);
-      gb.addEventListener('pointerdown', (e) => e.stopPropagation());
-      gb.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (caches) this._deplierRelatifs(n.ref, type);
-        else this._replierRelatifs(n.ref, type);
-      });
       gn.appendChild(gb);
     };
-    badgeRepli('hier');
-    badgeRepli('bloque');
+    temoinRepli('hier');
+    temoinRepli('bloque');
     g.appendChild(gn);
   }
 
@@ -23730,9 +23724,29 @@ class MoteurArticulation extends MoteurVue {
     }
   }
 
+  // Tap simple sur un point d'accroche : s'il y a des relatifs de ce type,
+  // on les replie ou les déplie ; sinon on crée une tâche reliée. Si les
+  // relatifs existent mais sont tous déjà montrés et partagés (rien à replier
+  // sans arracher une autre carte), le tap ne fait rien.
+  _actionAccrocheSimple(ref, type, s0) {
+    if (!this._plan) { this._nouvelleTacheReliee(ref, type, s0); return; }
+    const graphe = Ariane.grapheArticulation(this.greffon.tachesPourGantt());
+    const refsPlan = new Set(this._plan.cartes.map((c) => c.ref));
+    const rel = Ariane.relativesHorsPlan(ref, graphe.aretes, refsPlan);
+    const nbCaches = type === 'hier' ? rel.sousTaches.length : rel.bloquantes.length;
+    if (nbCaches) { this._deplierRelatifs(ref, type); return; }
+    if (Ariane.replierRelatifs(ref, graphe.aretes, refsPlan, type).length) {
+      this._replierRelatifs(ref, type);
+      return;
+    }
+    const aDesRelatifs = (graphe.aretes || []).some((a) => a.type === type
+      && (type === 'hier' ? a.de === ref : a.vers === ref));
+    if (!aDesRelatifs) this._nouvelleTacheReliee(ref, type, s0);
+  }
+
   // Crée une tâche vierge reliée au nœud « ref » selon le bouton : sous-tâche
-  // pour « hier », tâche bloquée pour « bloque ». Utilisé au clic simple sur
-  // un point d'accroche.
+  // pour « hier », tâche bloquée pour « bloque ». Utilisé au double tap sur
+  // un point d'accroche, ou au tap simple s'il n'y a aucun relatif.
   async _nouvelleTacheReliee(ref, type, s0) {
     const chemin = await this.greffon.creerTache({});
     const nouv = this.greffon.refDeChemin(chemin);
@@ -23812,8 +23826,26 @@ class MoteurArticulation extends MoteurVue {
       trait.remove();
       const m = this._svg.querySelector('.zfa-artic-noeud.est-cible');
       if (m) m.classList.remove('est-cible');
-      // Clic simple (sans glisser) : nouvelle tâche vierge reliée.
-      if (!bouge) { await this._nouvelleTacheReliee(ref, type, s0); return; }
+      // Sans glisser : un « tap » sur le point d'accroche.
+      //  · double tap rapide → nouvelle tâche reliée, quoi qu'il arrive ;
+      //  · tap simple → replier / déplier les relatifs s'il y en a, sinon
+      //    créer une tâche reliée. Différé pour laisser passer le double.
+      if (!bouge) {
+        const now = Date.now();
+        const t = this._tapAccroche;
+        if (t && t.ref === ref && t.type === type && now - t.t < DELAI_TAP) {
+          clearTimeout(t.timer);
+          this._tapAccroche = null;
+          await this._nouvelleTacheReliee(ref, type, s0);
+          return;
+        }
+        const timer = setTimeout(() => {
+          this._tapAccroche = null;
+          this._actionAccrocheSimple(ref, type, s0);
+        }, DELAI_TAP);
+        this._tapAccroche = { ref, type, t: now, timer };
+        return;
+      }
       if (!cible) return;
       const ajout = { de: ref, vers: cible, type };
       const v = Ariane.lienValide(this._aretes, this._dates, ajout);

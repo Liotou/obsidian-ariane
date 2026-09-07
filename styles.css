@@ -1795,18 +1795,14 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-artic-accroche-bloque .zfa-artic-accroche-pastille { fill: var(--interactive-accent); }
 
 /* Pastille de repli / compteur de sous-tâches masquées, au point de connexion. */
-.zfa-artic-repli { cursor: pointer; opacity: 0; transition: opacity 0.12s; }
-/* Repliée (relatifs cachés → bouton « n » pour afficher) : toujours visible.
-   Dépliée (relatifs sur le plan → bouton « − » pour masquer) : au survol. */
+/* Témoin de repli : purement indicatif, le point d'accroche gère les clics. */
+.zfa-artic-repli { pointer-events: none; opacity: 0; transition: opacity 0.12s; }
+/* « n » (relatifs cachés) : toujours visible. « − » (dépliés, pliables) : au survol. */
 .zfa-artic-repli.est-repliee { opacity: 1; }
 .zfa-artic-noeud:hover .zfa-artic-repli { opacity: 1; }
 .zfa-artic-repli-fond { stroke: var(--background-primary); stroke-width: 1.5; }
 .zfa-artic-repli-hier .zfa-artic-repli-fond { fill: var(--text-muted); }
 .zfa-artic-repli-bloque .zfa-artic-repli-fond { fill: var(--interactive-accent); }
-/* Bouton « − » (relatifs sur le plan → masquer) : discret mais toujours
-   visible, pour qu'on le vise sans tomber sur le point d'accroche voisin. */
-.zfa-artic-repli.est-depliee { opacity: 0.5; }
-.zfa-artic-noeud:hover .zfa-artic-repli.est-depliee { opacity: 1; }
 .zfa-artic-repli.est-depliee .zfa-artic-repli-fond { fill: var(--background-modifier-border); }
 .zfa-artic-repli.est-depliee .zfa-artic-repli-txt { fill: var(--text-muted); }
 
