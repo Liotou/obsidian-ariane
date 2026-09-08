@@ -2341,13 +2341,33 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-col.zfa-cal-col-cible-jour {
   background: color-mix(in srgb, var(--interactive-accent) 9%, transparent);
 }
-.zfa-cal-poignee { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
-/* Poignée haute d'un créneau : on tire le début, la fin reste en place. */
-.zfa-cal-poignee-haut { position: absolute; left: 0; right: 0; top: 0; height: 6px; cursor: ns-resize; }
+/* Poignées de redimensionnement d'un créneau (bord bas = fin, bord haut =
+   début). Cible large : 12 px, plafonnée à 40 % de la hauteur du bloc pour
+   qu'un court créneau garde de quoi être saisi en son centre pour un
+   déplacement. Un grip apparaît au survol du bloc pour montrer où viser. */
+.zfa-cal-poignee,
+.zfa-cal-poignee-haut {
+  position: absolute; left: 0; right: 0; height: 12px; max-height: 40%;
+  cursor: ns-resize; z-index: 3; touch-action: none;
+}
+.zfa-cal-poignee { bottom: 0; }
+.zfa-cal-poignee-haut { top: 0; }
+.zfa-cal-poignee::after,
+.zfa-cal-poignee-haut::after {
+  content: ""; position: absolute; left: 50%; transform: translateX(-50%);
+  width: 22px; height: 3px; border-radius: 999px;
+  background: var(--text-faint); opacity: 0; transition: opacity 0.1s ease;
+}
+.zfa-cal-poignee::after { bottom: 2px; }
+.zfa-cal-poignee-haut::after { top: 2px; }
+.zfa-cal-bloc:hover .zfa-cal-poignee::after,
+.zfa-cal-bloc:hover .zfa-cal-poignee-haut::after { opacity: 0.65; }
+.zfa-cal-poignee:hover::after,
+.zfa-cal-poignee-haut:hover::after { opacity: 1; background: var(--interactive-accent); }
 
 /* Boutons de lignée d'un créneau (mères / filles), révélés au survol. */
 .zfa-cal-lignee-btns { position: absolute; top: 2px; right: 2px; display: flex;
-  gap: 2px; opacity: 0; transition: opacity 0.12s ease; z-index: 3; }
+  gap: 2px; opacity: 0; transition: opacity 0.12s ease; z-index: 5; }
 .zfa-cal-carte:hover .zfa-cal-lignee-btns { opacity: 1; }
 .zfa-cal-lignee-btn { display: inline-flex; align-items: center; justify-content: center;
   width: 16px; height: 16px; border-radius: 4px; cursor: pointer;
@@ -2433,6 +2453,9 @@ input[type="checkbox"].zfa-cal-carte-coche {
   min-width: 0;
   margin: 0.15em 0 0;
   padding: 0;
+  /* Reste cliquable au-dessus de la poignée haute (z 3) qui recouvre le bord
+     supérieur du bloc. */
+  position: relative; z-index: 4;
   border: max(1px, 0.07em) solid var(--checkbox-border-color, var(--background-modifier-border-hover));
   border-radius: 0.22em;
   background-color: var(--background-primary);
