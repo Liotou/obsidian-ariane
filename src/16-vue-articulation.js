@@ -983,7 +983,7 @@ class MoteurArticulation extends MoteurVue {
       try { L = path && path.getTotalLength ? path.getTotalLength() : 0; } catch (e) { L = 0; }
       if (!L) continue;
       const pts = [];
-      for (let s = 0; s <= L; s += 8) {
+      for (let s = 0; s <= L; s += 6) {
         const p = path.getPointAtLength(Math.min(s, L));
         pts.push({ x: p.x, y: p.y });
       }

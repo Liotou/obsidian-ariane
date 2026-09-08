@@ -1392,10 +1392,14 @@ const avecArticulationStatiques = (Base) => class extends Base {
       if (Math.abs(den) < 1e-9) return null;
       const t = ((p3.x - p1.x) * by - (p3.y - p1.y) * bx) / den;
       const u = ((p3.x - p1.x) * ay - (p3.y - p1.y) * ax) / den;
-      if (t <= 0.03 || t >= 0.97 || u <= 0.03 || u >= 0.97) return null;
+      // Segments consécutifs partagent un sommet : on garde toute la plage
+      // [0,1] (la déduplication plus bas absorbe le doublon au sommet).
+      if (t < -1e-6 || t > 1 + 1e-6 || u < -1e-6 || u > 1 + 1e-6) return null;
       return { x: p1.x + ax * t, y: p1.y + ay * t, ax, ay, bx, by };
     };
     const out = [];
+    const proche = (x, y, s) => out.some((c) => c.sur === s
+      && Math.abs(c.x - x) < 4 && Math.abs(c.y - y) < 4);
     for (let i = 0; i < S.length && out.length < MAX; i++) {
       for (let j = i + 1; j < S.length && out.length < MAX; j++) {
         if (B[i].x1 < B[j].x0 || B[j].x1 < B[i].x0
@@ -1405,9 +1409,9 @@ const avecArticulationStatiques = (Base) => class extends Base {
             const r = inter(S[i].pts[m - 1], S[i].pts[m], S[j].pts[n - 1], S[j].pts[n]);
             if (!r) continue;
             const sauteA = (Math.abs(r.ax) - Math.abs(r.ay)) > (Math.abs(r.bx) - Math.abs(r.by));
-            out.push({ x: r.x, y: r.y,
-              type: (sauteA ? S[i].type : S[j].type) || 'hier',
-              sur: sauteA ? i : j });
+            const sur = sauteA ? i : j;
+            if (proche(r.x, r.y, sur)) continue;
+            out.push({ x: r.x, y: r.y, type: (sauteA ? S[i].type : S[j].type) || 'hier', sur });
           }
         }
       }
@@ -1474,9 +1478,11 @@ const avecArticulationStatiques = (Base) => class extends Base {
     const ts = [];
     for (const Q of cs) {
       const t = tNear(P, Q);
-      if (!(t > 0.03 && t < 0.97)) continue;
+      if (!(t > 0.02 && t < 0.98)) continue;
       const q = pt(P, t);
-      if (Math.hypot(q.x - Q.x, q.y - Q.y) > 4) continue;   // pas SUR la courbe
+      // Q vient d'une polyligne échantillonnée : tolérance large, on ne veut
+      // que rejeter les points franchement hors du tracé.
+      if (Math.hypot(q.x - Q.x, q.y - Q.y) > 16) continue;
       ts.push(t);
     }
     ts.sort((a, b) => a - b);
@@ -1537,11 +1543,11 @@ const avecArticulationStatiques = (Base) => class extends Base {
         const tt = (Q.x - a.x) * ux + (Q.y - a.y) * uy;
         const perp = Math.abs((Q.x - a.x) * uy - (Q.y - a.y) * ux);
         return { tt, perp };
-      }).filter((o) => o.perp < 4 && o.tt > R + 2 && o.tt < segL - R - 2)
+      }).filter((o) => o.perp < 16 && o.tt > R && o.tt < segL - R)
         .sort((p, q) => p.tt - q.tt);
       let cur2 = 0;
       for (const { tt } of hits) {
-        if (tt - cur2 < 2 * R + 2) continue;
+        if (tt - cur2 < 2 * R) continue;
         out += ' L ' + nb(a.x + ux * (tt - R)) + ' ' + nb(a.y + uy * (tt - R))
           + ' A ' + R + ' ' + R + ' 0 0 1 '
           + nb(a.x + ux * (tt + R)) + ' ' + nb(a.y + uy * (tt + R));
