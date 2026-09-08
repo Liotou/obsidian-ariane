@@ -245,6 +245,7 @@ class MoteurArticulation extends MoteurVue {
       }
     }
     if (hChangee) this._retracerAretes();
+    this._poserPonts(g, aretes);
 
     // Survol d'une carte → ses connexions directes en avant (délégué : les
     // groupes d'arêtes sont reconstruits à chaque retracé).
@@ -965,6 +966,45 @@ class MoteurArticulation extends MoteurVue {
     if (!this._scene) return;
     this._scene.classList.remove('a-un-survol');
     for (const el of this._scene.querySelectorAll('.est-lie')) el.classList.remove('est-lie');
+  }
+
+  // Ponts aux croisements : détection des intersections sur les tracés rendus
+  // (échantillonnage léger), puis pour l'arête qui saute on réécrit son `d` via
+  // Ariane.cheminAvecPonts — qui coupe le tracé D'ORIGINE et recolle par un
+  // demi-cercle, sans jamais ré-échantillonner (donc sans escalier). Refait à
+  // chaque redessin complet ; ignoré au-delà de 140 arêtes.
+  _poserPonts(g, aretes) {
+    if (!aretes || aretes.length > 140) return;
+    const grs = [...g.querySelectorAll('.zfa-artic-arete-groupe')];
+    const echant = [];
+    for (let i = 0; i < grs.length; i++) {
+      const path = grs[i].querySelector('path.zfa-artic-arete');
+      let L = 0;
+      try { L = path && path.getTotalLength ? path.getTotalLength() : 0; } catch (e) { L = 0; }
+      if (!L) continue;
+      const pts = [];
+      for (let s = 0; s <= L; s += 8) {
+        const p = path.getPointAtLength(Math.min(s, L));
+        pts.push({ x: p.x, y: p.y });
+      }
+      echant.push({ _i: i, type: grs[i].dataset.type || 'hier', pts });
+    }
+    const ponts = Ariane.pontsAretes(echant, { max: 300 });
+    if (!ponts.length) return;
+    const parArete = new Map();
+    for (const c of ponts) {
+      const e = echant[c.sur];
+      if (!e) continue;
+      if (!parArete.has(e._i)) parArete.set(e._i, []);
+      parArete.get(e._i).push({ x: c.x, y: c.y });
+    }
+    for (const [i, cs] of parArete) {
+      const paths = grs[i].querySelectorAll('path');
+      const d0 = paths[paths.length - 1] && paths[paths.length - 1].getAttribute('d');
+      if (!d0) continue;
+      const d1 = Ariane.cheminAvecPonts(d0, cs, 5);
+      if (d1) for (const p of paths) p.setAttribute('d', d1);
+    }
   }
 
   //#endregion Articulation · cartes & arêtes

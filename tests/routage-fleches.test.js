@@ -129,6 +129,39 @@ test('flecheEncombee : la Bézier échantillonnée voit la carte', () => {
   assert.equal(Ariane.flecheEncombee(210, 29, 305, 400, 29, [], 0), false);
 });
 
+test('pontsAretes : croisement franc, le plus horizontal saute', () => {
+  const h = { type: 'hier', pts: [{ x: 0, y: 50 }, { x: 100, y: 50 }] };
+  const v = { type: 'bloque', pts: [{ x: 50, y: 0 }, { x: 50, y: 100 }] };
+  const p = Ariane.pontsAretes([v, h]);
+  assert.equal(p.length, 1);
+  assert.ok(Math.abs(p[0].x - 50) < 0.5 && Math.abs(p[0].y - 50) < 0.5);
+  assert.equal(p[0].type, 'hier');
+  assert.equal(p[0].sur, 1, 'sur = indice de l arête horizontale (position 1)');
+  assert.deepEqual(Ariane.pontsAretes([
+    { type: 'hier', pts: [{ x: 0, y: 0 }, { x: 100, y: 0 }] },
+    { type: 'hier', pts: [{ x: 0, y: 40 }, { x: 100, y: 40 }] }]), [], 'pas de croisement');
+});
+
+test('cheminAvecPonts : cubique coupée et recollée par un demi-cercle', () => {
+  const d = Ariane.cheminAvecPonts('M 0 50 C 60 50, 140 50, 200 50', [{ x: 100, y: 50 }], 5);
+  assert.match(d, /^M 0 50 C .* A 5 5 0 0 1 .* C .* 200 50$/);
+  assert.equal((d.match(/A /g) || []).length, 1, 'un seul pont');
+  // Deux croisements → deux ponts, tracé toujours du départ à l arrivée.
+  const d2 = Ariane.cheminAvecPonts('M 0 50 C 60 50, 140 50, 200 50',
+    [{ x: 70, y: 50 }, { x: 130, y: 50 }], 5);
+  assert.equal((d2.match(/A /g) || []).length, 2);
+});
+
+test('cheminAvecPonts : rien quand le point n est pas sur le tracé', () => {
+  assert.equal(Ariane.cheminAvecPonts('M 0 50 C 60 50, 140 50, 200 50', [{ x: 100, y: 200 }], 5), null);
+  assert.equal(Ariane.cheminAvecPonts('M 0 0 L 0 40 L 120 40 L 120 90', [{ x: 60, y: 80 }], 5), null);
+});
+
+test('cheminAvecPonts : polyligne — pont inséré dans le bon segment', () => {
+  const d = Ariane.cheminAvecPonts('M 0 0 L 0 40 L 120 40 L 120 90', [{ x: 60, y: 40 }], 5);
+  assert.match(d, /L 55 40 A 5 5 0 0 1 65 40 L 120 40/);
+});
+
 test('cheminPolyligne : déduplication, coins arrondis, rayon borné', () => {
   assert.equal(Ariane.cheminPolyligne([{ x: 0, y: 0 }, { x: 100, y: 0 }], 12),
     'M 0 0 L 100 0');

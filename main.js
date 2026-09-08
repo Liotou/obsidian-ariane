@@ -12144,6 +12144,196 @@ const avecArticulationStatiques = (Base) => class extends Base {
     return d + ' L ' + f.x + ' ' + f.y;
   }
 
+  /* ---- Ponts aux croisements (batch articulation) --------------------- */
+  // Là où deux arêtes se croisent, l'une enjambe l'autre. L'astuce « propre » :
+  // on ne pose RIEN par-dessus et on ne ré-échantillonne PAS. On coupe le tracé
+  // de l'arête qui saute à l'endroit exact du croisement (subdivision de Bézier
+  // par De Casteljau, ou coupe de segment pour les tracés orthogonaux) et on
+  // recolle les deux morceaux par un petit demi-cercle. Les morceaux sont
+  // l'EXACTE reproduction du tracé d'origine : aucun escalier.
+
+  // Croisements entre polylignes échantillonnées (détection seule, côté vue).
+  // Renvoie [{ x, y, type, sur }] : `sur` = indice de la polyligne qui saute
+  // (la plus horizontale des deux, sinon celle dessinée au-dessus).
+  static pontsAretes(segments, opts) {
+    const S = (segments || []).filter((s) => s && Array.isArray(s.pts) && s.pts.length > 1);
+    const MAX = (opts && Number.isFinite(opts.max)) ? opts.max : 300;
+    const B = S.map((s) => {
+      let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+      for (const p of s.pts) {
+        x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y);
+        x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+      }
+      return { x0, y0, x1, y1 };
+    });
+    const inter = (p1, p2, p3, p4) => {
+      const ax = p2.x - p1.x; const ay = p2.y - p1.y;
+      const bx = p4.x - p3.x; const by = p4.y - p3.y;
+      const den = ax * by - ay * bx;
+      if (Math.abs(den) < 1e-9) return null;
+      const t = ((p3.x - p1.x) * by - (p3.y - p1.y) * bx) / den;
+      const u = ((p3.x - p1.x) * ay - (p3.y - p1.y) * ax) / den;
+      if (t <= 0.03 || t >= 0.97 || u <= 0.03 || u >= 0.97) return null;
+      return { x: p1.x + ax * t, y: p1.y + ay * t, ax, ay, bx, by };
+    };
+    const out = [];
+    for (let i = 0; i < S.length && out.length < MAX; i++) {
+      for (let j = i + 1; j < S.length && out.length < MAX; j++) {
+        if (B[i].x1 < B[j].x0 || B[j].x1 < B[i].x0
+          || B[i].y1 < B[j].y0 || B[j].y1 < B[i].y0) continue;
+        for (let m = 1; m < S[i].pts.length && out.length < MAX; m++) {
+          for (let n = 1; n < S[j].pts.length && out.length < MAX; n++) {
+            const r = inter(S[i].pts[m - 1], S[i].pts[m], S[j].pts[n - 1], S[j].pts[n]);
+            if (!r) continue;
+            const sauteA = (Math.abs(r.ax) - Math.abs(r.ay)) > (Math.abs(r.bx) - Math.abs(r.by));
+            out.push({ x: r.x, y: r.y,
+              type: (sauteA ? S[i].type : S[j].type) || 'hier',
+              sur: sauteA ? i : j });
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  // Réécrit un `d` SVG (cubique unique « M .. C .. » OU polyligne « M/L/Q ») en
+  // y insérant un demi-cercle à chaque point de `croisements` situé sur le
+  // tracé. `r` = demi-largeur du pont. Renvoie le nouveau `d`, ou null si rien
+  // à faire. Fonction pure — la vue lit le `d` rendu et pousse le résultat.
+  static cheminAvecPonts(d, croisements, r) {
+    const R = Math.max(2, Number(r) || 5);
+    const cs = (croisements || []).filter((c) => c && Number.isFinite(c.x) && Number.isFinite(c.y));
+    if (!cs.length || typeof d !== 'string') return null;
+    const nb = (v) => Number(v.toFixed(2));
+    const cub = d.trim().match(
+      /^M\s*(-?[\d.]+)[ ,]+(-?[\d.]+)\s*C\s*(-?[\d.]+)[ ,]+(-?[\d.]+)[ ,]+(-?[\d.]+)[ ,]+(-?[\d.]+)[ ,]+(-?[\d.]+)[ ,]+(-?[\d.]+)\s*$/);
+    if (cub) {
+      const P = [{ x: +cub[1], y: +cub[2] }, { x: +cub[3], y: +cub[4] },
+        { x: +cub[5], y: +cub[6] }, { x: +cub[7], y: +cub[8] }];
+      return Ariane._cubiqueAvecPonts(P, cs, R, nb);
+    }
+    return Ariane._polyligneAvecPonts(d, cs, R, nb);
+  }
+
+  static _cubiqueAvecPonts(P, cs, R, nb) {
+    const lerp = (a, b, u) => ({ x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u });
+    const pt = (c, t) => {
+      const u = 1 - t;
+      return {
+        x: u * u * u * c[0].x + 3 * u * u * t * c[1].x + 3 * u * t * t * c[2].x + t * t * t * c[3].x,
+        y: u * u * u * c[0].y + 3 * u * u * t * c[1].y + 3 * u * t * t * c[2].y + t * t * t * c[3].y,
+      };
+    };
+    const speed = (c, t) => {
+      const u = 1 - t;
+      const dx = 3 * u * u * (c[1].x - c[0].x) + 6 * u * t * (c[2].x - c[1].x) + 3 * t * t * (c[3].x - c[2].x);
+      const dy = 3 * u * u * (c[1].y - c[0].y) + 6 * u * t * (c[2].y - c[1].y) + 3 * t * t * (c[3].y - c[2].y);
+      return Math.hypot(dx, dy);
+    };
+    const split = (c, t) => {
+      const ab = lerp(c[0], c[1], t); const bc = lerp(c[1], c[2], t); const cd = lerp(c[2], c[3], t);
+      const abbc = lerp(ab, bc, t); const bccd = lerp(bc, cd, t);
+      const f = lerp(abbc, bccd, t);
+      return { left: [c[0], ab, abbc, f], right: [f, bccd, cd, c[3]] };
+    };
+    const tNear = (c, Q) => {
+      let bt = 0; let bd = Infinity;
+      for (let i = 0; i <= 160; i++) {
+        const q = pt(c, i / 160);
+        const dd = (q.x - Q.x) ** 2 + (q.y - Q.y) ** 2;
+        if (dd < bd) { bd = dd; bt = i / 160; }
+      }
+      let lo = Math.max(0, bt - 1 / 160); let hi = Math.min(1, bt + 1 / 160);
+      for (let k = 0; k < 24; k++) {
+        const m1 = lo + (hi - lo) / 3; const m2 = hi - (hi - lo) / 3;
+        const d1 = (pt(c, m1).x - Q.x) ** 2 + (pt(c, m1).y - Q.y) ** 2;
+        const d2 = (pt(c, m2).x - Q.x) ** 2 + (pt(c, m2).y - Q.y) ** 2;
+        if (d1 < d2) hi = m2; else lo = m1;
+      }
+      return (lo + hi) / 2;
+    };
+    const ts = [];
+    for (const Q of cs) {
+      const t = tNear(P, Q);
+      if (!(t > 0.03 && t < 0.97)) continue;
+      const q = pt(P, t);
+      if (Math.hypot(q.x - Q.x, q.y - Q.y) > 4) continue;   // pas SUR la courbe
+      ts.push(t);
+    }
+    ts.sort((a, b) => a - b);
+    if (!ts.length) return null;
+    let cur = P; let consomme = 0;
+    let d = 'M ' + nb(P[0].x) + ' ' + nb(P[0].y);
+    for (const t of ts) {
+      const tl = (t - consomme) / (1 - consomme);
+      if (!(tl > 0.03 && tl < 0.97)) continue;
+      const dt = Math.min(0.45, R / Math.max(1, speed(cur, tl)));
+      const t1 = Math.max(0.01, tl - dt); const t2 = Math.min(0.98, tl + dt);
+      if (t2 - t1 < 0.02) continue;
+      const s1 = split(cur, t1);
+      const s2 = split(s1.right, (t2 - t1) / (1 - t1));
+      const f1 = s1.left[3];
+      d += ' C ' + nb(s1.left[1].x) + ' ' + nb(s1.left[1].y) + ', '
+        + nb(s1.left[2].x) + ' ' + nb(s1.left[2].y) + ', ' + nb(f1.x) + ' ' + nb(f1.y);
+      const S2 = s2.right[0];
+      const rArc = Math.max(2, Math.hypot(S2.x - f1.x, S2.y - f1.y) / 2);
+      d += ' A ' + nb(rArc) + ' ' + nb(rArc) + ' 0 0 1 ' + nb(S2.x) + ' ' + nb(S2.y);
+      cur = s2.right; consomme = t2;
+    }
+    d += ' C ' + nb(cur[1].x) + ' ' + nb(cur[1].y) + ', '
+      + nb(cur[2].x) + ' ' + nb(cur[2].y) + ', ' + nb(cur[3].x) + ' ' + nb(cur[3].y);
+    return d;
+  }
+
+  static _polyligneAvecPonts(d, cs, R, nb) {
+    // Tokenise « M x y | L x y | Q cx cy x y » en pas.
+    const toks = d.trim().match(/[MLQ]|-?[\d.]+/g) || [];
+    const pas = [];
+    let i = 0; let cur = null;
+    while (i < toks.length) {
+      const cmd = toks[i++];
+      if (cmd === 'M' || cmd === 'L') {
+        const p = { x: +toks[i++], y: +toks[i++] };
+        pas.push({ cmd, p }); cur = p;
+      } else if (cmd === 'Q') {
+        const cp = { x: +toks[i++], y: +toks[i++] };
+        const p = { x: +toks[i++], y: +toks[i++] };
+        pas.push({ cmd, cp, p }); cur = p;
+      } else { return null; }
+    }
+    if (pas.length < 2 || pas[0].cmd !== 'M') return null;
+    let touche = false;
+    let out = 'M ' + nb(pas[0].p.x) + ' ' + nb(pas[0].p.y);
+    let prev = pas[0].p;
+    for (let k = 1; k < pas.length; k++) {
+      const st = pas[k];
+      if (st.cmd !== 'L') {
+        out += ' Q ' + nb(st.cp.x) + ' ' + nb(st.cp.y) + ' ' + nb(st.p.x) + ' ' + nb(st.p.y);
+        prev = st.p; continue;
+      }
+      const a = prev; const b = st.p;
+      const segL = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const ux = (b.x - a.x) / segL; const uy = (b.y - a.y) / segL;
+      const hits = cs.map((Q) => {
+        const tt = (Q.x - a.x) * ux + (Q.y - a.y) * uy;
+        const perp = Math.abs((Q.x - a.x) * uy - (Q.y - a.y) * ux);
+        return { tt, perp };
+      }).filter((o) => o.perp < 4 && o.tt > R + 2 && o.tt < segL - R - 2)
+        .sort((p, q) => p.tt - q.tt);
+      let cur2 = 0;
+      for (const { tt } of hits) {
+        if (tt - cur2 < 2 * R + 2) continue;
+        out += ' L ' + nb(a.x + ux * (tt - R)) + ' ' + nb(a.y + uy * (tt - R))
+          + ' A ' + R + ' ' + R + ' 0 0 1 '
+          + nb(a.x + ux * (tt + R)) + ' ' + nb(a.y + uy * (tt + R));
+        cur2 = tt + R; touche = true;
+      }
+      out += ' L ' + nb(b.x) + ' ' + nb(b.y);
+      prev = b;
+    }
+    return touche ? out : null;
+  }
+
   // Routage : sortie au bord droit de la source, entrée par la gauche, le haut
   // ou le bas de la cible — jamais par la droite. Gabarits essayés dans
   // l'ordre ; le premier dont tous les segments sont libres gagne. Renvoie
@@ -22520,6 +22710,7 @@ class MoteurArticulation extends MoteurVue {
       }
     }
     if (hChangee) this._retracerAretes();
+    this._poserPonts(g, aretes);
 
     // Survol d'une carte → ses connexions directes en avant (délégué : les
     // groupes d'arêtes sont reconstruits à chaque retracé).
@@ -23240,6 +23431,45 @@ class MoteurArticulation extends MoteurVue {
     if (!this._scene) return;
     this._scene.classList.remove('a-un-survol');
     for (const el of this._scene.querySelectorAll('.est-lie')) el.classList.remove('est-lie');
+  }
+
+  // Ponts aux croisements : détection des intersections sur les tracés rendus
+  // (échantillonnage léger), puis pour l'arête qui saute on réécrit son `d` via
+  // Ariane.cheminAvecPonts — qui coupe le tracé D'ORIGINE et recolle par un
+  // demi-cercle, sans jamais ré-échantillonner (donc sans escalier). Refait à
+  // chaque redessin complet ; ignoré au-delà de 140 arêtes.
+  _poserPonts(g, aretes) {
+    if (!aretes || aretes.length > 140) return;
+    const grs = [...g.querySelectorAll('.zfa-artic-arete-groupe')];
+    const echant = [];
+    for (let i = 0; i < grs.length; i++) {
+      const path = grs[i].querySelector('path.zfa-artic-arete');
+      let L = 0;
+      try { L = path && path.getTotalLength ? path.getTotalLength() : 0; } catch (e) { L = 0; }
+      if (!L) continue;
+      const pts = [];
+      for (let s = 0; s <= L; s += 8) {
+        const p = path.getPointAtLength(Math.min(s, L));
+        pts.push({ x: p.x, y: p.y });
+      }
+      echant.push({ _i: i, type: grs[i].dataset.type || 'hier', pts });
+    }
+    const ponts = Ariane.pontsAretes(echant, { max: 300 });
+    if (!ponts.length) return;
+    const parArete = new Map();
+    for (const c of ponts) {
+      const e = echant[c.sur];
+      if (!e) continue;
+      if (!parArete.has(e._i)) parArete.set(e._i, []);
+      parArete.get(e._i).push({ x: c.x, y: c.y });
+    }
+    for (const [i, cs] of parArete) {
+      const paths = grs[i].querySelectorAll('path');
+      const d0 = paths[paths.length - 1] && paths[paths.length - 1].getAttribute('d');
+      if (!d0) continue;
+      const d1 = Ariane.cheminAvecPonts(d0, cs, 5);
+      if (d1) for (const p of paths) p.setAttribute('d', d1);
+    }
   }
 
   //#endregion Articulation · cartes & arêtes
