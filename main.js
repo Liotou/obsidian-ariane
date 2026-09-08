@@ -20308,6 +20308,11 @@ class MoteurFrise extends MoteurVue {
         ev.dataTransfer.setData('text/x-ariane-tache', l.ref);
         ev.dataTransfer.setData('text/plain', '[[' + l.ref + ']]');
         ev.dataTransfer.effectAllowed = 'copy';
+        // Repli pour le dépôt dans un calendrier d'une fenêtre détachée :
+        // Electron y vide le dataTransfer, seul _sourceGlissee franchit la
+        // frontière. noterSourceGlissee ne capte que les liens <a> ; cette
+        // ligne de frise est un <div>, on l'alimente donc à la main.
+        if (this.greffon) this.greffon._sourceGlissee = l.ref;
       });
 
       for (const c of cols) {
@@ -24643,7 +24648,14 @@ class MoteurCalendrier extends MoteurVue {
     const av = chg.avant || '';
     const nv = (chg.debut && chg.fin) ? Ariane.formatCreneau(chg.debut, chg.fin) : '';
     const anc = av ? Ariane.parseCreneau(av) : null;
-    await this.greffon.majCreneau(ref, chg);
+    const ok = await this.greffon.majCreneau(ref, chg);
+    // majCreneau rend false quand la réf ne retombe sur aucune note de tâche
+    // (index pas encore à jour, ou glissé cross-fenêtre dont on n'a pu tirer
+    // qu'un identifiant approché) : sans ce garde-fou l'échec était muet.
+    if (ok === false) {
+      new obsidian.Notice(tr('Créneau : tâche « {r} » introuvable.').replace('{r}', String(ref)));
+      return;
+    }
     // Création d'un créneau : la famille de la tâche redevient affichée
     // (« recoche » de son calendrier), sinon la carte posée resterait cachée.
     if (!av) this._montrerFamilleDe(ref);
@@ -25459,6 +25471,9 @@ class MoteurCalendrier extends MoteurVue {
         // Payload prioritaire de _refDepuisDrop : la carte se pose comme créneau.
         e.dataTransfer.setData('text/x-ariane-tache', r);
         e.dataTransfer.setData('text/plain', '[[' + r + ']]');
+        // Repli quand ce dépôt vise un calendrier d'une autre fenêtre (le
+        // dataTransfer n'y survit pas) : voir la même ligne côté frise.
+        if (this.greffon) this.greffon._sourceGlissee = r;
       });
       const ic = doc.createElement('span');
       ic.className = 'zfa-cal-lignee-ic';

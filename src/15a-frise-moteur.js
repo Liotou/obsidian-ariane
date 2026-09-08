@@ -1508,6 +1508,11 @@ class MoteurFrise extends MoteurVue {
         ev.dataTransfer.setData('text/x-ariane-tache', l.ref);
         ev.dataTransfer.setData('text/plain', '[[' + l.ref + ']]');
         ev.dataTransfer.effectAllowed = 'copy';
+        // Repli pour le dépôt dans un calendrier d'une fenêtre détachée :
+        // Electron y vide le dataTransfer, seul _sourceGlissee franchit la
+        // frontière. noterSourceGlissee ne capte que les liens <a> ; cette
+        // ligne de frise est un <div>, on l'alimente donc à la main.
+        if (this.greffon) this.greffon._sourceGlissee = l.ref;
       });
 
       for (const c of cols) {
