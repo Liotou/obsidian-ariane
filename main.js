@@ -12171,6 +12171,10 @@ const avecArticulationStatiques = (Base) => class extends Base {
       const bx = p4.x - p3.x; const by = p4.y - p3.y;
       const den = ax * by - ay * bx;
       if (Math.abs(den) < 1e-9) return null;
+      // Angle entre les deux segments : deux tracés quasi parallèles qui se
+      // superposent ne « se croisent » pas — pas de pont là-dessus.
+      const na = Math.hypot(ax, ay) || 1; const nb = Math.hypot(bx, by) || 1;
+      if (Math.abs((ax * bx + ay * by) / (na * nb)) > 0.96) return null;
       const t = ((p3.x - p1.x) * by - (p3.y - p1.y) * bx) / den;
       const u = ((p3.x - p1.x) * ay - (p3.y - p1.y) * ax) / den;
       // Segments consécutifs partagent un sommet : on garde toute la plage
