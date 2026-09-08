@@ -1218,7 +1218,9 @@ const avecArticulationStatiques = (Base) => class extends Base {
   // segment qui « saute » — le plus horizontal des deux (convention schéma :
   // les fils horizontaux passent par-dessus), sinon celui dessiné au-dessus.
   //   segments : [{ type, pts: [{x,y}, …] }]   (ordre = ordre de rendu)
-  // Renvoie [{ x, y, dx, dy, type }], plafonné à opts.max (défaut 300).
+  // Renvoie [{ x, y, dx, dy, type, sur }] où `sur` = indice, dans `segments`,
+  // de la polyligne qui saute (celle dont l'appelant retaille le tracé).
+  // Plafonné à opts.max (défaut 300).
   static pontsAretes(segments, opts) {
     const S = (segments || []).filter((s) => s && Array.isArray(s.pts) && s.pts.length > 1);
     const MAX = (opts && Number.isFinite(opts.max)) ? opts.max : 300;
@@ -1257,7 +1259,8 @@ const avecArticulationStatiques = (Base) => class extends Base {
             const dy = sauteA ? r.ay : r.by;
             const L = Math.hypot(dx, dy) || 1;
             out.push({ x: r.x, y: r.y, dx: dx / L, dy: dy / L,
-              type: (sauteA ? a.type : b.type) || 'hier' });
+              type: (sauteA ? a.type : b.type) || 'hier',
+              sur: sauteA ? i : j });
           }
         }
       }

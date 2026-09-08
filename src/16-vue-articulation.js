@@ -245,7 +245,7 @@ class MoteurArticulation extends MoteurVue {
       }
     }
     if (hChangee) this._retracerAretes();
-    this._tracerPonts(g, aretes);
+    this._poserPonts(g, aretes);
 
     // Survol d'une carte → ses connexions directes en avant (délégué : les
     // groupes d'arêtes sont reconstruits à chaque retracé).
@@ -968,40 +968,78 @@ class MoteurArticulation extends MoteurVue {
     for (const el of this._scene.querySelectorAll('.est-lie')) el.classList.remove('est-lie');
   }
 
-  // Ponts aux croisements d'arêtes : on échantillonne chaque tracé rendu, on
-  // cherche les intersections et on pose un petit arc « saut » sur l'arête du
-  // dessus. Couche de rendu seule, refaite à chaque redessin complet ; passée
-  // au-delà d'un certain nombre d'arêtes (trop dense pour aider).
-  _tracerPonts(g, aretes) {
-    const anc = g.querySelector('.zfa-artic-ponts');
-    if (anc) anc.remove();
+  _distPointSeg(px, py, a, b) {
+    const dx = b.x - a.x; const dy = b.y - a.y;
+    const l2 = dx * dx + dy * dy || 1;
+    let t = ((px - a.x) * dx + (py - a.y) * dy) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (a.x + t * dx), py - (a.y + t * dy));
+  }
+
+  // Ponts aux croisements d'arêtes : là où deux tracés se croisent, l'arête du
+  // dessus (la plus horizontale) enjambe l'autre par un petit arc. On ne pose
+  // PAS de calque par-dessus — on retaille le `d` de l'arête qui saute, à
+  // partir de son tracé rendu échantillonné, en y insérant l'arc. Refait à
+  // chaque redessin complet ; ignoré au-delà de 140 arêtes.
+  _poserPonts(g, aretes) {
     if (!aretes || aretes.length > 140) return;
-    const polys = [];
-    for (const gr of g.querySelectorAll('.zfa-artic-arete-groupe')) {
+    const grs = [...g.querySelectorAll('.zfa-artic-arete-groupe')];
+    const polys = grs.map((gr) => {
       const path = gr.querySelector('path.zfa-artic-arete');
-      if (!path || !path.getTotalLength) continue;
       let L = 0;
-      try { L = path.getTotalLength(); } catch (e) { L = 0; }
-      if (!L) continue;
+      try { L = path && path.getTotalLength ? path.getTotalLength() : 0; } catch (e) { L = 0; }
+      if (!L) return null;
       const pts = [];
-      for (let d = 0; d <= L; d += 9) {
-        const pt = path.getPointAtLength(Math.min(d, L));
-        pts.push({ x: pt.x, y: pt.y });
+      for (let d = 0; d <= L; d += 7) {
+        const p = path.getPointAtLength(Math.min(d, L));
+        pts.push({ x: p.x, y: p.y });
       }
-      polys.push({ type: gr.dataset.type || 'hier', pts });
-    }
-    const ponts = Ariane.pontsAretes(polys, { max: 300 });
+      return { type: gr.dataset.type || 'hier', pts };
+    });
+    const valides = [];
+    polys.forEach((p, i) => { if (p) valides.push(Object.assign({ _i: i }, p)); });
+    const ponts = Ariane.pontsAretes(valides, { max: 300 });
     if (!ponts.length) return;
-    const gp = svgEl('g', { class: 'zfa-artic-ponts' });
-    const R = 5;
+    const parArete = new Map();
     for (const c of ponts) {
-      const d = 'M ' + (c.x - c.dx * R).toFixed(1) + ' ' + (c.y - c.dy * R).toFixed(1)
-        + ' A ' + R + ' ' + R + ' 0 0 1 '
-        + (c.x + c.dx * R).toFixed(1) + ' ' + (c.y + c.dy * R).toFixed(1);
-      gp.appendChild(svgEl('path', { d, class: 'zfa-artic-pont-fond' }));
-      gp.appendChild(svgEl('path', { d, class: 'zfa-artic-pont zfa-artic-' + c.type }));
+      const idx = valides[c.sur] && valides[c.sur]._i;
+      if (idx == null) continue;
+      if (!parArete.has(idx)) parArete.set(idx, []);
+      parArete.get(idx).push(c);
     }
-    g.appendChild(gp);
+    const R = 5;
+    for (const [idx, cs] of parArete) {
+      const poly = polys[idx].pts;
+      const parSeg = poly.map(() => []);
+      for (const c of cs) {
+        let best = 1; let bd = Infinity;
+        for (let s = 1; s < poly.length; s++) {
+          const dd = this._distPointSeg(c.x, c.y, poly[s - 1], poly[s]);
+          if (dd < bd) { bd = dd; best = s; }
+        }
+        if (bd < 3) parSeg[best].push(c);
+      }
+      let d = 'M ' + poly[0].x.toFixed(1) + ' ' + poly[0].y.toFixed(1);
+      for (let s = 1; s < poly.length; s++) {
+        const a = poly[s - 1]; const b = poly[s];
+        const segL = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+        const ux = (b.x - a.x) / segL; const uy = (b.y - a.y) / segL;
+        const list = parSeg[s]
+          .map((c) => ({ t: (c.x - a.x) * ux + (c.y - a.y) * uy }))
+          .filter((o) => o.t > R + 1 && o.t < segL - R - 1)
+          .sort((p, q) => p.t - q.t);
+        let cur = 0;
+        for (const { t } of list) {
+          if (t - cur < 2 * R) continue;
+          d += ' L ' + (a.x + ux * (t - R)).toFixed(1) + ' ' + (a.y + uy * (t - R)).toFixed(1)
+            + ' A ' + R + ' ' + R + ' 0 0 1 '
+            + (a.x + ux * (t + R)).toFixed(1) + ' ' + (a.y + uy * (t + R)).toFixed(1);
+          cur = t + R;
+        }
+        d += ' L ' + b.x.toFixed(1) + ' ' + b.y.toFixed(1);
+      }
+      for (const p of grs[idx].querySelectorAll('path')) p.setAttribute('d', d);
+    }
   }
 
   //#endregion Articulation · cartes & arêtes

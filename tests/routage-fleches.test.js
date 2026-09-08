@@ -136,6 +136,7 @@ test('pontsAretes : croisement franc, le plus horizontal saute', () => {
   assert.equal(p.length, 1);
   assert.ok(Math.abs(p[0].x - 50) < 0.5 && Math.abs(p[0].y - 50) < 0.5);
   assert.equal(p[0].type, 'hier', 'l arête horizontale saute');
+  assert.equal(p[0].sur, 1, 'sur = indice de l arête qui saute (h, en position 1)');
   assert.ok(Math.abs(Math.abs(p[0].dx) - 1) < 1e-6, 'direction du saut ~ horizontale');
 });
 
