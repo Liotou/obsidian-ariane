@@ -37,7 +37,23 @@ const avecTaches = (Base) => class extends Base {
   fichierDeRef(ref) {
     const r = String(ref == null ? '' : ref).trim();
     if (!r) return null;
-    const f = this._indexTaches().get(r);
+    let f = this._indexTaches().get(r);
+    if (!f || f.deleted) {
+      // L'index ne se rebâtit qu'aux mouvements de chemin ; une tâche tout
+      // juste créée peut n'y être pas encore (événement vault en vol, ou geste
+      // venu d'une fenêtre détachée). On résout alors en direct et, si ça
+      // tombe sur une vraie note de tâche, on répare l'index au passage.
+      const p = this.dossierT + '/' + r + '.md';
+      let cand = this.app.vault.getAbstractFileByPath(p);
+      if (!cand) {
+        const l = this.app.metadataCache.getFirstLinkpathDest(r, '');
+        if (l && this.refDeChemin(l.path) === r) cand = l;
+      }
+      if (cand && !cand.deleted && cand.extension === 'md' && this.refDeChemin(cand.path) === r) {
+        if (this._idxTaches) this._idxTaches.set(r, cand);
+        f = cand;
+      }
+    }
     return (f && !f.deleted) ? f : null;
   }
 

@@ -972,6 +972,20 @@ class MoteurCalendrier extends MoteurVue {
         if (v) essais.push(v);
       }
     }
+    // Glisser natif d'Obsidian (vue Bases, explorateur, résultats de
+    // recherche) : le dragManager est porté par l'objet `app` partagé entre
+    // toutes les fenêtres, il franchit donc la frontière là où le dataTransfer
+    // se vide. C'est la voie fiable quand la cible est un calendrier détaché.
+    const dm = this.app.dragManager && this.app.dragManager.draggable;
+    if (dm) {
+      if (dm.file && dm.file.path) essais.push(dm.file.path);
+      for (const arr of [dm.files, dm.items]) {
+        if (Array.isArray(arr)) for (const f of arr) if (f && f.path) essais.push(f.path);
+      }
+      for (const k of ['linktext', 'link', 'title', 'name']) {
+        if (typeof dm[k] === 'string' && dm[k]) essais.push(dm[k]);
+      }
+    }
     if (g._sourceGlissee) essais.push(String(g._sourceGlissee).trim());
 
     // Résout une chaîne quelconque : lien wiki, chemin de coffre, nom de note,

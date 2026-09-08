@@ -12759,7 +12759,23 @@ const avecTaches = (Base) => class extends Base {
   fichierDeRef(ref) {
     const r = String(ref == null ? '' : ref).trim();
     if (!r) return null;
-    const f = this._indexTaches().get(r);
+    let f = this._indexTaches().get(r);
+    if (!f || f.deleted) {
+      // L'index ne se rebâtit qu'aux mouvements de chemin ; une tâche tout
+      // juste créée peut n'y être pas encore (événement vault en vol, ou geste
+      // venu d'une fenêtre détachée). On résout alors en direct et, si ça
+      // tombe sur une vraie note de tâche, on répare l'index au passage.
+      const p = this.dossierT + '/' + r + '.md';
+      let cand = this.app.vault.getAbstractFileByPath(p);
+      if (!cand) {
+        const l = this.app.metadataCache.getFirstLinkpathDest(r, '');
+        if (l && this.refDeChemin(l.path) === r) cand = l;
+      }
+      if (cand && !cand.deleted && cand.extension === 'md' && this.refDeChemin(cand.path) === r) {
+        if (this._idxTaches) this._idxTaches.set(r, cand);
+        f = cand;
+      }
+    }
     return (f && !f.deleted) ? f : null;
   }
 
@@ -25577,6 +25593,20 @@ class MoteurCalendrier extends MoteurVue {
       for (const type of ['text/plain', 'text/uri-list', 'text/x-moz-url']) {
         const v = (dt.getData(type) || '').trim();
         if (v) essais.push(v);
+      }
+    }
+    // Glisser natif d'Obsidian (vue Bases, explorateur, résultats de
+    // recherche) : le dragManager est porté par l'objet `app` partagé entre
+    // toutes les fenêtres, il franchit donc la frontière là où le dataTransfer
+    // se vide. C'est la voie fiable quand la cible est un calendrier détaché.
+    const dm = this.app.dragManager && this.app.dragManager.draggable;
+    if (dm) {
+      if (dm.file && dm.file.path) essais.push(dm.file.path);
+      for (const arr of [dm.files, dm.items]) {
+        if (Array.isArray(arr)) for (const f of arr) if (f && f.path) essais.push(f.path);
+      }
+      for (const k of ['linktext', 'link', 'title', 'name']) {
+        if (typeof dm[k] === 'string' && dm[k]) essais.push(dm[k]);
       }
     }
     if (g._sourceGlissee) essais.push(String(g._sourceGlissee).trim());
