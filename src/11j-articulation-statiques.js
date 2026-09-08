@@ -1213,61 +1213,6 @@ const avecArticulationStatiques = (Base) => class extends Base {
     return pos;
   }
 
-  // Croisements entre tracés d'arêtes (polylignes déjà échantillonnées). Pour
-  // chaque intersection franche, renvoie le point et la direction unitaire du
-  // segment qui « saute » — le plus horizontal des deux (convention schéma :
-  // les fils horizontaux passent par-dessus), sinon celui dessiné au-dessus.
-  //   segments : [{ type, pts: [{x,y}, …] }]   (ordre = ordre de rendu)
-  // Renvoie [{ x, y, dx, dy, type, sur }] où `sur` = indice, dans `segments`,
-  // de la polyligne qui saute (celle dont l'appelant retaille le tracé).
-  // Plafonné à opts.max (défaut 300).
-  static pontsAretes(segments, opts) {
-    const S = (segments || []).filter((s) => s && Array.isArray(s.pts) && s.pts.length > 1);
-    const MAX = (opts && Number.isFinite(opts.max)) ? opts.max : 300;
-    const B = S.map((s) => {
-      let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
-      for (const p of s.pts) {
-        x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y);
-        x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
-      }
-      return { x0, y0, x1, y1 };
-    });
-    const inter = (p1, p2, p3, p4) => {
-      const ax = p2.x - p1.x; const ay = p2.y - p1.y;
-      const bx = p4.x - p3.x; const by = p4.y - p3.y;
-      const den = ax * by - ay * bx;
-      if (Math.abs(den) < 1e-9) return null;
-      const t = ((p3.x - p1.x) * by - (p3.y - p1.y) * bx) / den;
-      const u = ((p3.x - p1.x) * ay - (p3.y - p1.y) * ax) / den;
-      if (t <= 0.03 || t >= 0.97 || u <= 0.03 || u >= 0.97) return null;
-      return { x: p1.x + ax * t, y: p1.y + ay * t, ax, ay, bx, by };
-    };
-    const out = [];
-    for (let i = 0; i < S.length && out.length < MAX; i++) {
-      for (let j = i + 1; j < S.length && out.length < MAX; j++) {
-        if (B[i].x1 < B[j].x0 || B[j].x1 < B[i].x0
-          || B[i].y1 < B[j].y0 || B[j].y1 < B[i].y0) continue;
-        const a = S[i]; const b = S[j];
-        for (let m = 1; m < a.pts.length && out.length < MAX; m++) {
-          for (let n = 1; n < b.pts.length && out.length < MAX; n++) {
-            const r = inter(a.pts[m - 1], a.pts[m], b.pts[n - 1], b.pts[n]);
-            if (!r) continue;
-            const ha = Math.abs(r.ax) - Math.abs(r.ay);
-            const hb = Math.abs(r.bx) - Math.abs(r.by);
-            const sauteA = ha > hb;            // égalité → b (au-dessus) saute
-            const dx = sauteA ? r.ax : r.bx;
-            const dy = sauteA ? r.ay : r.by;
-            const L = Math.hypot(dx, dy) || 1;
-            out.push({ x: r.x, y: r.y, dx: dx / L, dy: dy / L,
-              type: (sauteA ? a.type : b.type) || 'hier',
-              sur: sauteA ? i : j });
-          }
-        }
-      }
-    }
-    return out;
-  }
-
   // Un lien proposé est-il licite ? Refus si (a) il referme un cycle sur
   // l'union des arêtes, (b) les dates se contredisent : un blocage dont
   // l'amont s'achève après le début de l'aval ; une hiérarchie dont la mère
