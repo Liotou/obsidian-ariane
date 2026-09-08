@@ -24655,6 +24655,9 @@ class MoteurCalendrier extends MoteurVue {
     };
     racine.addEventListener('keydown', this._surTouche);
     (greffon._moteursCalendrier || (greffon._moteursCalendrier = new Set())).add(this);
+    // La barre « maintenant » est posée au rendu : sans ce battement elle
+    // resterait figée tant que la vue reste ouverte sans interaction.
+    this._horloge = this._win().setInterval(() => this._tickMaintenant(), 30000);
   }
   // Écriture d'un créneau depuis un geste, avec annulation. `chg` = { avant,
   // debut, fin } comme greffon.majCreneau. L'annulation reconstruit l'état
@@ -24738,12 +24741,32 @@ class MoteurCalendrier extends MoteurVue {
     clearTimeout(this._calageMinuterie);
     clearTimeout(this._semScrollMinuterie);
     clearTimeout(this._figeMinuterie);
+    if (this._horloge) { this._win().clearInterval(this._horloge); this._horloge = null; }
     this._coalesce = false;
     this._redessinDiffere = false;
     this._gesteCal = false;
     if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
     if (this.greffon._moteursCalendrier) this.greffon._moteursCalendrier.delete(this);
     this.racine.empty();
+  }
+
+  // Battement de la barre « maintenant » (vue semaine) : on la reglisse sans
+  // rien reconstruire. Si le jour a changé depuis le dernier rendu, la colonne
+  // du jour et le surlignage « aujourd'hui » du mois sont périmés : là, on
+  // redessine. Un geste en cours (déplacement / redimensionnement) est laissé
+  // tranquille.
+  _tickMaintenant() {
+    if (this._detruit || this._gesteCal) return;
+    const auj = new Date().toISOString().slice(0, 10);
+    if (auj !== this._jourRendu) { this.dessiner(); return; }
+    if (this.mode !== 'semaine') return;
+    const barres = this.racine.querySelectorAll('.zfa-cal-now');
+    if (!barres.length) return;
+    const now = new Date();
+    const nowH = now.getHours() + now.getMinutes() / 60;
+    const pxh = this._pxHeure || 42;
+    const hDeb = this._hDeb || 0;
+    barres.forEach((nl) => { nl.style.top = ((nowH - hDeb) * pxh) + 'px'; });
   }
 
   // Fenêtre large autour de la période visible pour l'agenda de fond.
@@ -24897,6 +24920,7 @@ class MoteurCalendrier extends MoteurVue {
 
   dessinerVraiment() {
     if (this._detruit) return;
+    this._jourRendu = new Date().toISOString().slice(0, 10);
     this._chargerFond();
     if (this.greffon && this.greffon._relancerReleveAgenda) this.greffon._relancerReleveAgenda(1500);
     const c = this.racine;
