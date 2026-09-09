@@ -92,7 +92,7 @@ const IDENTIFIANTS_DU_MOTEUR = [
 // dans la page exportée — la référence reste donc dormante.
 const FAUX_POSITIFS = new Set([
   'aa', 'aliases', 'align', 'apres', 'attr', 'barreCouleur', 'behavior', 'blur',
-  'checkbox', 'cls', 'coffre', 'color', 'court', 'd1', 'd2', 'date', 'datetime',
+  'checkbox', 'childList', 'cls', 'coffre', 'color', 'court', 'd1', 'd2', 'date', 'datetime',
   'defauts', 'degage', 'event', 'fmt', 'gcle', 'hoverParent', 'href', 'jj',
   'kidsRefs', 'langue', 'lib', 'lignageSurvol', 'linktext', 'medium', 'moteur',
   'multitext', 'number', 'onChange', 'pageFriseHtml', 'patternTransform',

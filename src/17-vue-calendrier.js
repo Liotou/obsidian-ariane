@@ -1839,16 +1839,18 @@ function fabriquerVueCalendrierBase(greffon) {
       this.conteneur = conteneur;
     }
     onload() {
+      const nomVue = () => {
+        try {
+          const s = this.config.serialize ? this.config.serialize() : null;
+          return (s && s.name) || (this.controller && this.controller.file
+            && this.controller.file.basename) || tr('Calendrier');
+        } catch (e) { return tr('Calendrier'); }
+      };
+      this._nettoyerOnglet = marquerOngletVueBase(this.greffon.app, this.conteneur, nomVue);
       this.moteur = new MoteurCalendrier(this.greffon, this.conteneur, {
         taches: () => this.tachesDeLaBase(),
         colonnes: () => this.colonnes(),
-        nomVue: () => {
-          try {
-            const s = this.config.serialize ? this.config.serialize() : null;
-            return (s && s.name) || (this.controller && this.controller.file
-              && this.controller.file.basename) || tr('Calendrier');
-          } catch (e) { return tr('Calendrier'); }
-        },
+        nomVue,
         triNatif: () => {
           const criteres = this.sortNatif();
           if (!criteres.length) return null;
@@ -1957,7 +1959,10 @@ function fabriquerVueCalendrierBase(greffon) {
       if (!dedans.size && !toutes.some((t) => (t.creneaux || []).length > 0)) return [];
       return toutes.filter(garde);
     }
-    onunload() { if (this.moteur) this.moteur.detruire(); }
+    onunload() {
+      if (this._nettoyerOnglet) { this._nettoyerOnglet(); this._nettoyerOnglet = null; }
+      if (this.moteur) this.moteur.detruire();
+    }
     onResize() { if (this.moteur) this.moteur.dessiner(); }
     async onDataUpdated() {
       if (this.greffon.settings.famillesTaches && this.greffon.settings.famillesTaches.length) {

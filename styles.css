@@ -11,6 +11,22 @@
   text-overflow: ellipsis;
 }
 
+/* Nom de la vue Bases active, greffé en discret dans le titre de l'onglet
+   (frise / articulation / calendrier d'Ariane) pour distinguer deux onglets
+   d'une même base. */
+.workspace-tab-header-inner-title .zfa-onglet-vue {
+  margin-left: 0.45em;
+  font-size: 0.82em;
+  font-weight: normal;
+  opacity: 0.55;
+  white-space: nowrap;
+}
+.workspace-tab-header-inner-title .zfa-onglet-vue::before {
+  content: "·";
+  margin-right: 0.45em;
+  opacity: 0.75;
+}
+
 /* Noms codés (NR-, NC-, CR-…) en police monospace, pour alignement à largeur fixe */
 .nav-file-title.zfa-nom-mono .nav-file-title-content {
   font-family: var(--zfa-nom-mono-font, var(--font-monospace));

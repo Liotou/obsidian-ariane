@@ -18812,6 +18812,84 @@ class MoteurVue {
   _win() { return this._doc().defaultView || window; }
 }
 
+// Suffixe discret sur l'onglet qui héberge une vue Bases d'Ariane : le nom du
+// fichier .base reste, celui de la VUE active (« Calendrier », « Frise »…)
+// s'ajoute à côté, plus petit et grisé (CSS .zfa-onglet-vue), pour distinguer
+// deux onglets d'une même base. Obsidian réécrit le titre de l'onglet à chaque
+// updateHeader() en posant un textContent brut, ce qui balaie notre span : un
+// MutationObserver le repose. `nomVue` est une fonction (relue à chaque pose,
+// donc un renommage de la vue se répercute). Rend la fonction de nettoyage à
+// appeler au onunload de la vue.
+function marquerOngletVueBase(app, conteneur, nomVue) {
+  const vide = () => {};
+  if (!app || !conteneur) return vide;
+  const nom = typeof nomVue === 'function' ? nomVue : () => String(nomVue || '');
+  const CLASSE = 'zfa-onglet-vue';
+  let obs = null;
+  let titreEl = null;
+  let vivant = true;
+  let essais = 0;
+
+  const trouverLeaf = () => {
+    let leaf = null;
+    try {
+      app.workspace.iterateAllLeaves((l) => {
+        if (leaf) return;
+        const c = l && l.view && l.view.containerEl;
+        if (c && c.contains(conteneur)) leaf = l;
+      });
+    } catch (e) { /* rien */ }
+    return leaf;
+  };
+
+  const poser = () => {
+    if (!vivant || !titreEl || !titreEl.isConnected) return;
+    const txt = nom() || '';
+    let span = titreEl.querySelector('.' + CLASSE);
+    if (!txt) { if (span) span.remove(); return; }
+    if (span && span.textContent === txt) return;
+    if (!span) {
+      span = titreEl.ownerDocument.createElement('span');
+      span.className = CLASSE;
+      titreEl.appendChild(span);
+    }
+    span.textContent = txt;
+  };
+
+  const demarrer = () => {
+    if (!vivant) return;
+    const leaf = trouverLeaf();
+    titreEl = leaf && leaf.tabHeaderInnerTitleEl;
+    if (!titreEl) {
+      if (++essais < 6) {
+        try {
+          (conteneur.ownerDocument.defaultView || window).requestAnimationFrame(demarrer);
+        } catch (e) { /* rien */ }
+      }
+      return;
+    }
+    try {
+      const MO = (titreEl.ownerDocument.defaultView || window).MutationObserver;
+      obs = new MO(() => poser());
+      // childList seul, sans subtree : notre appendChild déclenche le callback,
+      // qui retrouve le span en place et ne fait rien — pas de boucle.
+      obs.observe(titreEl, { childList: true });
+    } catch (e) { obs = null; }
+    poser();
+  };
+
+  demarrer();
+
+  return () => {
+    vivant = false;
+    if (obs) { try { obs.disconnect(); } catch (e) { /* rien */ } obs = null; }
+    if (titreEl) {
+      try { const s = titreEl.querySelector('.' + CLASSE); if (s) s.remove(); }
+      catch (e) { /* rien */ }
+    }
+  };
+}
+
 //#endregion 14 · Socle des vues
 
 //#region 15 · Vue Frise
@@ -21824,17 +21902,19 @@ function fabriquerVueFriseBase(greffon) {
       const clePos = () => 'ariane:friseJour:' + ((this.controller && this.controller.file
         && this.controller.file.path)
         || (this.config.serialize && (this.config.serialize() || {}).name) || 'defaut');
+      const nomVue = () => {
+        try {
+          const s = this.config.serialize ? this.config.serialize() : null;
+          return (s && s.name) || (this.controller && this.controller.file
+            && this.controller.file.basename) || tr('Frise');
+        } catch (e) { return tr('Frise'); }
+      };
+      this._nettoyerOnglet = marquerOngletVueBase(this.greffon.app, this.conteneur, nomVue);
       this.moteur = new MoteurFrise(this.greffon, this.conteneur, {
         echelleReglable: true,
         colonnes: () => this.colonnes(),
         taches: () => this.tachesDeLaBase(),
-        nomVue: () => {
-          try {
-            const s = this.config.serialize ? this.config.serialize() : null;
-            return (s && s.name) || (this.controller && this.controller.file
-              && this.controller.file.basename) || tr('Frise');
-          } catch (e) { return tr('Frise'); }
-        },
+        nomVue,
         lire: (cle) => {
           const v = this.config.get(cle);
           return v === undefined || v === null ? DEFAUTS_FRISE[cle] : v;
@@ -21959,7 +22039,10 @@ function fabriquerVueFriseBase(greffon) {
       return out;
     }
 
-    onunload() { if (this.moteur) this.moteur.detruire(); }
+    onunload() {
+      if (this._nettoyerOnglet) { this._nettoyerOnglet(); this._nettoyerOnglet = null; }
+      if (this.moteur) this.moteur.detruire();
+    }
 
     async onDataUpdated() {
       if (this.greffon.settings.famillesTaches && this.greffon.settings.famillesTaches.length) {
@@ -24420,6 +24503,14 @@ function fabriquerVueArticulationBase(greffon) {
     }
 
     onload() {
+      const nomVue = () => {
+        try {
+          const s = this.config.serialize ? this.config.serialize() : null;
+          return (s && s.name) || (this.controller && this.controller.file
+            && this.controller.file.basename) || tr('Articulation');
+        } catch (e) { return tr('Articulation'); }
+      };
+      this._nettoyerOnglet = marquerOngletVueBase(this.greffon.app, this.conteneur, nomVue);
       this.moteur = new MoteurArticulation(this.greffon, this.conteneur, {
         taches: () => this.tachesDuGraphe(),
         ordre: () => this.colonnesArtic(),
@@ -24469,7 +24560,10 @@ function fabriquerVueArticulationBase(greffon) {
       });
     }
 
-    onunload() { if (this.moteur) this.moteur.detruire(); }
+    onunload() {
+      if (this._nettoyerOnglet) { this._nettoyerOnglet(); this._nettoyerOnglet = null; }
+      if (this.moteur) this.moteur.detruire();
+    }
 
     // Reprise unique des positions canvas-x / canvas-y (jeu filtré courant) vers
     // le plan de la vue, puis nettoyage des entêtes concernés.
@@ -26462,16 +26556,18 @@ function fabriquerVueCalendrierBase(greffon) {
       this.conteneur = conteneur;
     }
     onload() {
+      const nomVue = () => {
+        try {
+          const s = this.config.serialize ? this.config.serialize() : null;
+          return (s && s.name) || (this.controller && this.controller.file
+            && this.controller.file.basename) || tr('Calendrier');
+        } catch (e) { return tr('Calendrier'); }
+      };
+      this._nettoyerOnglet = marquerOngletVueBase(this.greffon.app, this.conteneur, nomVue);
       this.moteur = new MoteurCalendrier(this.greffon, this.conteneur, {
         taches: () => this.tachesDeLaBase(),
         colonnes: () => this.colonnes(),
-        nomVue: () => {
-          try {
-            const s = this.config.serialize ? this.config.serialize() : null;
-            return (s && s.name) || (this.controller && this.controller.file
-              && this.controller.file.basename) || tr('Calendrier');
-          } catch (e) { return tr('Calendrier'); }
-        },
+        nomVue,
         triNatif: () => {
           const criteres = this.sortNatif();
           if (!criteres.length) return null;
@@ -26580,7 +26676,10 @@ function fabriquerVueCalendrierBase(greffon) {
       if (!dedans.size && !toutes.some((t) => (t.creneaux || []).length > 0)) return [];
       return toutes.filter(garde);
     }
-    onunload() { if (this.moteur) this.moteur.detruire(); }
+    onunload() {
+      if (this._nettoyerOnglet) { this._nettoyerOnglet(); this._nettoyerOnglet = null; }
+      if (this.moteur) this.moteur.detruire();
+    }
     onResize() { if (this.moteur) this.moteur.dessiner(); }
     async onDataUpdated() {
       if (this.greffon.settings.famillesTaches && this.greffon.settings.famillesTaches.length) {

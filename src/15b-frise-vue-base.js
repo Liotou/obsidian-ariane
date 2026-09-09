@@ -16,17 +16,19 @@ function fabriquerVueFriseBase(greffon) {
       const clePos = () => 'ariane:friseJour:' + ((this.controller && this.controller.file
         && this.controller.file.path)
         || (this.config.serialize && (this.config.serialize() || {}).name) || 'defaut');
+      const nomVue = () => {
+        try {
+          const s = this.config.serialize ? this.config.serialize() : null;
+          return (s && s.name) || (this.controller && this.controller.file
+            && this.controller.file.basename) || tr('Frise');
+        } catch (e) { return tr('Frise'); }
+      };
+      this._nettoyerOnglet = marquerOngletVueBase(this.greffon.app, this.conteneur, nomVue);
       this.moteur = new MoteurFrise(this.greffon, this.conteneur, {
         echelleReglable: true,
         colonnes: () => this.colonnes(),
         taches: () => this.tachesDeLaBase(),
-        nomVue: () => {
-          try {
-            const s = this.config.serialize ? this.config.serialize() : null;
-            return (s && s.name) || (this.controller && this.controller.file
-              && this.controller.file.basename) || tr('Frise');
-          } catch (e) { return tr('Frise'); }
-        },
+        nomVue,
         lire: (cle) => {
           const v = this.config.get(cle);
           return v === undefined || v === null ? DEFAUTS_FRISE[cle] : v;
@@ -151,7 +153,10 @@ function fabriquerVueFriseBase(greffon) {
       return out;
     }
 
-    onunload() { if (this.moteur) this.moteur.detruire(); }
+    onunload() {
+      if (this._nettoyerOnglet) { this._nettoyerOnglet(); this._nettoyerOnglet = null; }
+      if (this.moteur) this.moteur.detruire();
+    }
 
     async onDataUpdated() {
       if (this.greffon.settings.famillesTaches && this.greffon.settings.famillesTaches.length) {

@@ -1924,6 +1924,14 @@ function fabriquerVueArticulationBase(greffon) {
     }
 
     onload() {
+      const nomVue = () => {
+        try {
+          const s = this.config.serialize ? this.config.serialize() : null;
+          return (s && s.name) || (this.controller && this.controller.file
+            && this.controller.file.basename) || tr('Articulation');
+        } catch (e) { return tr('Articulation'); }
+      };
+      this._nettoyerOnglet = marquerOngletVueBase(this.greffon.app, this.conteneur, nomVue);
       this.moteur = new MoteurArticulation(this.greffon, this.conteneur, {
         taches: () => this.tachesDuGraphe(),
         ordre: () => this.colonnesArtic(),
@@ -1973,7 +1981,10 @@ function fabriquerVueArticulationBase(greffon) {
       });
     }
 
-    onunload() { if (this.moteur) this.moteur.detruire(); }
+    onunload() {
+      if (this._nettoyerOnglet) { this._nettoyerOnglet(); this._nettoyerOnglet = null; }
+      if (this.moteur) this.moteur.detruire();
+    }
 
     // Reprise unique des positions canvas-x / canvas-y (jeu filtré courant) vers
     // le plan de la vue, puis nettoyage des entêtes concernés.
