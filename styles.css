@@ -2381,8 +2381,9 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-poignee:hover::after,
 .zfa-cal-poignee-haut:hover::after { opacity: 1; background: var(--interactive-accent); }
 
-/* Boutons de lignée d'un créneau (mères / filles), révélés au survol. */
-.zfa-cal-lignee-btns { position: absolute; top: 2px; right: 2px; display: flex;
+/* Bandeau d'actions d'un créneau (commentaire, lignée mères / filles), révélé
+   au survol. En bas à droite : en haut ça recouvrait le titre de la carte. */
+.zfa-cal-lignee-btns { position: absolute; bottom: 2px; right: 2px; display: flex;
   gap: 2px; opacity: 0; transition: opacity 0.12s ease; z-index: 5; }
 .zfa-cal-carte:hover .zfa-cal-lignee-btns { opacity: 1; }
 .zfa-cal-lignee-btn { display: inline-flex; align-items: center; justify-content: center;
