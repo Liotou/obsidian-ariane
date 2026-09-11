@@ -6898,9 +6898,16 @@ const avecNoteAtomes = (Base) => class extends Base {
       document;
   }
 
-  cmSousPoint(x, y, doc) {
+  // `e.target` : le navigateur l'a déjà résolu pour distribuer l'événement.
+  // Repasser par `elementFromPoint` force un recalcul de mise en page
+  // SYNCHRONE — à chaque tick d'un `dragover`, c'est ce qui faisait ramer le
+  // glisser tant que le curseur restait au-dessus d'une base (table large,
+  // frise/calendrier denses) : elementFromPoint n'était coûteux que là où la
+  // mise en page était la plus lourde à recalculer.
+  cmSousPoint(e, doc) {
     const d = doc || document;
-    const el = d.elementFromPoint(x, y);
+    let el = e && e.target && e.target.nodeType === 1 ? e.target : null;
+    if (!el) el = d.elementFromPoint(e ? e.clientX : NaN, e ? e.clientY : NaN);
     const editeur = el && el.closest ? el.closest('.cm-editor') : null;
     if (!editeur) return null;
     for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
@@ -7019,7 +7026,7 @@ const avecNoteAtomes = (Base) => class extends Base {
     if (!e || e.clientX == null) return '';
     let cm = null;
     try {
-      cm = this.cmSousPoint(e.clientX, e.clientY, this.docDeEvenement(e));
+      cm = this.cmSousPoint(e, this.docDeEvenement(e));
     } catch (err) { return ''; }
     if (!cm) return '';
 
@@ -7380,7 +7387,7 @@ const avecNoteAtomes = (Base) => class extends Base {
   surDragOverParagraphe(e) {
     if (!this.settings.dropSurParagraphe) return;
     const doc = this.docDeEvenement(e);
-    const cm = this.cmSousPoint(e.clientX, e.clientY, doc);
+    const cm = this.cmSousPoint(e, doc);
     if (!cm) { this.nettoyerZoneDrop(); return; }
     const pos = cm.posAtCoords({ x: e.clientX, y: e.clientY });
     if (pos == null || !this.ligneEstParagraphe(cm.state.doc, cm.state.doc.lineAt(pos).number)) {
@@ -7406,7 +7413,8 @@ const avecNoteAtomes = (Base) => class extends Base {
   // Détermine le mode de dépôt selon la position du survol : sur le texte
   // (au-dessus d'une .cm-line) -> « phrase » ; dans la marge gauche -> « paragraphe ».
   modeDrop(e, doc) {
-    const el = doc.elementFromPoint(e.clientX, e.clientY);
+    const el = (e.target && e.target.nodeType === 1)
+      ? e.target : doc.elementFromPoint(e.clientX, e.clientY);
     const surTexte = el && el.closest && el.closest('.cm-line');
     return surTexte ? 'phrase' : 'paragraphe';
   }
@@ -7451,7 +7459,7 @@ const avecNoteAtomes = (Base) => class extends Base {
   surDropParagraphe(e) {
     if (!this.settings.dropSurParagraphe) return;
     const doc = this.docDeEvenement(e);
-    const cm = this.cmSousPoint(e.clientX, e.clientY, doc);
+    const cm = this.cmSousPoint(e, doc);
     if (!cm) { this.nettoyerZoneDrop(); return; }
     const pos = cm.posAtCoords({ x: e.clientX, y: e.clientY });
     if (pos == null) { this.nettoyerZoneDrop(); return; }
