@@ -777,6 +777,20 @@ class MoteurCalendrier extends MoteurVue {
     this.dessiner();
   }
 
+  // Ouvre la modale de commentaire d'un créneau (bouton de survol et menu
+  // contextuel partagent ce chemin). Le commentaire vit dans le bloc « ##
+  // Sessions » balisé de la note, indexé par le brut du créneau.
+  async _ouvrirCommentaire(t, ev) {
+    const fich = this.greffon.fichierDeRef ? this.greffon.fichierDeRef(t.ref) : null;
+    const coms = fich ? Ariane.commentairesDuBloc(await this.app.vault.cachedRead(fich)) : {};
+    new ModaleCommentaire(this.app, {
+      valeur: coms[Ariane.cleCommentaire(ev.brut)] || '',
+    }, async (txt) => {
+      await this.greffon.majCommentaireCreneau(t.ref, ev.brut, txt);
+      this.dessiner();
+    }).open();
+  }
+
   menuCarte(e, t, ev) {
     e.preventDefault(); e.stopPropagation();
     const m = new obsidian.Menu();
@@ -804,16 +818,7 @@ class MoteurCalendrier extends MoteurVue {
     if (ev.source === 'creneau') {
       // Commentaire de session : stocké dans le bloc balisé de la note.
       m.addItem((i) => i.setTitle(tr('Commentaire…')).setIcon('message-square')
-        .onClick(async () => {
-          const fich = this.app.vault.getMarkdownFiles().find((x) => x.basename === t.ref);
-          const coms = fich ? Ariane.commentairesDuBloc(await this.app.vault.cachedRead(fich)) : {};
-          new ModaleCommentaire(this.app, {
-            valeur: coms[Ariane.cleCommentaire(ev.brut)] || '',
-          }, async (txt) => {
-            await this.greffon.majCommentaireCreneau(t.ref, ev.brut, txt);
-            this.dessiner();
-          }).open();
-        }));
+        .onClick(() => this._ouvrirCommentaire(t, ev)));
       // Bloc horaire : on retire le créneau lui-même (la ligne de « Créneaux »).
       m.addItem((i) => i.setTitle(tr('Supprimer ce créneau')).setIcon('trash-2')
         .onClick(async () => {
@@ -1623,29 +1628,36 @@ class MoteurCalendrier extends MoteurVue {
           // Même geste par le haut : on tire le début, la fin reste en place.
           const poiHaut = bloc.createDiv({ cls: 'zfa-cal-poignee-haut' });
           poiHaut.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j, 'debut'));
-          // Lignée : deux boutons (mères / filles) quand la tâche en a, révélés
-          // au survol. Le panneau reste ouvert pour faire glisser plusieurs
-          // cartes à la suite ; il ne ferme que sur un nouveau clic sur le
-          // bouton, Échap, un changement de fenêtre, ou la fermeture de la vue.
+          // Bandeau d'actions révélé au survol : commentaire (toujours), puis
+          // lignée (mères / filles) quand la tâche en a. Le panneau de lignée
+          // reste ouvert pour faire glisser plusieurs cartes à la suite ; il ne
+          // ferme que sur un nouveau clic sur le bouton, Échap, un changement
+          // de fenêtre, ou la fermeture de la vue.
+          const btns = bloc.createDiv({ cls: 'zfa-cal-lignee-btns' });
+          const btCom = btns.createDiv({ cls: 'zfa-cal-lignee-btn',
+            attr: { 'aria-label': tr('Commentaire…'), title: tr('Commentaire…') } });
+          obsidian.setIcon(btCom, 'message-square');
+          btCom.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
+          btCom.addEventListener('click', (e) => {
+            e.stopPropagation(); e.preventDefault();
+            this._ouvrirCommentaire(t, ev);
+          });
           const infos = this._hier && this._hier.parRef.get(t.ref);
           const nbMeres = infos ? (this._hier.meres.get(t.ref) || []).length - 1 : 0;
           const nbFilles = infos ? (this._hier.filles.get(t.ref) || []).length : 0;
-          if (nbMeres > 0 || nbFilles > 0) {
-            const btns = bloc.createDiv({ cls: 'zfa-cal-lignee-btns' });
-            for (const [sens, icone, nb, label] of [
-              ['meres', 'chevrons-up', nbMeres, tr('Tâches mères')],
-              ['filles', 'chevrons-down', nbFilles, tr('Tâches filles')],
-            ]) {
-              if (nb <= 0) continue;
-              const bt = btns.createDiv({ cls: 'zfa-cal-lignee-btn',
-                attr: { 'aria-label': label + ' (' + nb + ')', title: label + ' (' + nb + ')' } });
-              obsidian.setIcon(bt, icone);
-              bt.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
-              bt.addEventListener('click', (e) => {
-                e.stopPropagation(); e.preventDefault();
-                this._basculeLignee(t.ref, sens, bt);
-              });
-            }
+          for (const [sens, icone, nb, label] of [
+            ['meres', 'chevrons-up', nbMeres, tr('Tâches mères')],
+            ['filles', 'chevrons-down', nbFilles, tr('Tâches filles')],
+          ]) {
+            if (nb <= 0) continue;
+            const bt = btns.createDiv({ cls: 'zfa-cal-lignee-btn',
+              attr: { 'aria-label': label + ' (' + nb + ')', title: label + ' (' + nb + ')' } });
+            obsidian.setIcon(bt, icone);
+            bt.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
+            bt.addEventListener('click', (e) => {
+              e.stopPropagation(); e.preventDefault();
+              this._basculeLignee(t.ref, sens, bt);
+            });
           }
           bloc.tabIndex = 0;
           bloc.addEventListener('keydown', async (de) => {
