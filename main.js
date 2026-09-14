@@ -84,6 +84,7 @@
  *            11i  avecFriseStatiques        Gantt, périodes, tri
  *            11j  avecArticulationStatiques plan, arêtes, zones
  *            11k  avecTaches     notes de tâche, temps, synchro Apple
+ *            11l  avecPublicationSite   miroir vault -> content/, commit, push
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -1517,6 +1518,14 @@ const DEFAULT_SETTINGS = {
   // Dossier de données de Zotero. Vide : détection automatique (~/Zotero).
   dossierZotero: '',
   suggRerankTopN: 12,
+
+  // --- Publication du site (Quartz) ---
+  // Miroir intégral : tout ce que contient publicationDossierVault se
+  // retrouve dans content/ du dépôt, et rien d'autre — pas de frontmatter
+  // à ajouter, le dossier EST la sélection.
+  publicationDepot: '',                          // chemin absolu du dépôt Git du site
+  publicationDossierVault: '95 - Dépôt public',  // dossier du coffre miroité vers content/
+  publicationBranche: 'main',
 };
 
 //#endregion 1 · Constantes & i18n
@@ -13069,12 +13078,30 @@ const avecTaches = (Base) => class extends Base {
     }
   }
 
+  // Le dossier des tâches configuré existe-t-il vraiment sur le disque ? Un
+  // réglage devenu obsolète (dossier renommé pendant qu'Ariane tournait, avec
+  // les réglages encore en mémoire) fait lire un index VIDE plutôt qu'une
+  // erreur — la relève prend alors chaque rappel existant pour un nouveau et
+  // le recrée, et le push suivant, croyant reconnaître des doublons de titre,
+  // peut supprimer les rappels d'origine. Un dossier introuvable coupe la
+  // synchro net plutôt que de la laisser tourner sur un index qui ment.
+  _dossierTachesValide(silencieux) {
+    const d = this.app.vault.getAbstractFileByPath(this.dossierT);
+    if (d instanceof obsidian.TFolder) return true;
+    if (!silencieux) {
+      new obsidian.Notice(tr('Apple Rappels : dossier des tâches introuvable (« ')
+        + this.dossierT + tr(' »). Rechargez Ariane si vous venez de le renommer.'), 8000);
+    }
+    return false;
+  }
+
   async _pousserRappelsImpl(silencieux) {
     if (!obsidian.Platform.isMacOS) {
       if (!silencieux) new obsidian.Notice(tr('Apple Rappels : disponible sur macOS uniquement.'));
       return 0;
     }
     if (this.settings.rappelsActif === false) return 0;
+    if (!this._dossierTachesValide(silencieux)) return 0;
     const vault = this.app.vault.getName();
     const cibles = this._tachesRappel();
     if (!cibles.length) { if (!silencieux) new obsidian.Notice(tr('Aucune tâche à synchroniser.')); return 0; }
@@ -13140,6 +13167,7 @@ const avecTaches = (Base) => class extends Base {
   // main dans une liste surveillée, sans référence connue → nouvelle tâche.
   async releverRappels(silencieux) {
     if (!obsidian.Platform.isMacOS || this.settings.rappelsActif === false) return 0;
+    if (!this._dossierTachesValide(silencieux)) return 0;
     const listes = this._listesSurveillees();
     const avecId = [];
     const idsConnus = new Set();
@@ -15005,6 +15033,107 @@ const avecTaches = (Base) => class extends Base {
   //#endregion Ariane · temps de travail
 };
 
+// ── avecPublicationSite ──────────────────────────────────────────────────
+// Domaine : publication du site (Quartz). Miroir intégral d'un dossier du
+// coffre vers content/ d'un dépôt Git, puis commit + push. Remplace le
+// plugin communautaire Quartz Syncer, dont le bouton « Publish to remote »
+// s'est révélé cassé (case cochée ignorée par sa propre logique de
+// sélection) — voir docs/superpowers/notes du 2026-09-13.
+const avecPublicationSite = (Base) => class extends Base {
+  //#region Ariane · publication du site
+
+  get cheminDepotSite() {
+    return (this.settings.publicationDepot || '').trim();
+  }
+
+  get dossierPublicVault() {
+    return (this.settings.publicationDossierVault || '95 - Dépôt public').trim();
+  }
+
+  // Miroir récursif source -> cible : copie ce qui est nouveau ou modifié,
+  // retire de la cible ce qui n'existe plus côté source. C'est la sélection
+  // ELLE-MÊME : être dans dossierPublicVault, c'est être publié — aucun
+  // frontmatter à poser sur chaque note.
+  _miroiterDossierPublication(source, cible) {
+    const fs = require('fs');
+    const path = require('path');
+    fs.mkdirSync(cible, { recursive: true });
+    const nomsSource = new Set();
+    for (const entree of fs.readdirSync(source, { withFileTypes: true })) {
+      if (entree.name === '.obsidian' || entree.name === '.DS_Store') continue;
+      nomsSource.add(entree.name);
+      const src = path.join(source, entree.name);
+      const dst = path.join(cible, entree.name);
+      if (entree.isDirectory()) {
+        this._miroiterDossierPublication(src, dst);
+      } else {
+        fs.copyFileSync(src, dst);
+      }
+    }
+    if (!fs.existsSync(cible)) return;
+    for (const entree of fs.readdirSync(cible, { withFileTypes: true })) {
+      if (nomsSource.has(entree.name)) continue;
+      fs.rmSync(path.join(cible, entree.name), { recursive: true, force: true });
+    }
+  }
+
+  _executerGit(depot, args) {
+    const { execFile } = require('child_process');
+    return new Promise((resolve, reject) => {
+      execFile('git', args, { cwd: depot }, (err, stdout, stderr) => {
+        if (err) reject(new Error((stderr || err.message || '').trim() || ('git ' + args.join(' '))));
+        else resolve(stdout);
+      });
+    });
+  }
+
+  // Commande unique : synchronise dossierPublicVault vers content/, commit,
+  // pousse. Silencieux (Notice seule) si rien n'a changé.
+  async publierSite() {
+    const depot = this.cheminDepotSite;
+    if (!depot) {
+      new obsidian.Notice(tr('Publication du site : renseigne le chemin du dépôt dans les réglages Ariane (onglet Publication).'));
+      return;
+    }
+    const fs = require('fs');
+    const path = require('path');
+
+    if (!fs.existsSync(depot)) {
+      new obsidian.Notice(tr('Publication du site : dépôt introuvable — ') + depot);
+      return;
+    }
+    const basePath = this.app.vault.adapter.basePath;
+    const dossierVaultAbs = path.join(basePath, this.dossierPublicVault);
+    if (!fs.existsSync(dossierVaultAbs)) {
+      new obsidian.Notice(tr('Publication du site : dossier introuvable dans le coffre — ') + this.dossierPublicVault);
+      return;
+    }
+
+    const notice = new obsidian.Notice(tr('Publication du site : synchronisation…'), 0);
+    try {
+      this._miroiterDossierPublication(dossierVaultAbs, path.join(depot, 'content'));
+
+      await this._executerGit(depot, ['add', 'content']);
+      const statut = await this._executerGit(depot, ['status', '--porcelain', '--', 'content']);
+      if (!statut.trim()) {
+        notice.hide();
+        new obsidian.Notice(tr('Publication du site : déjà à jour, rien à publier.'));
+        return;
+      }
+      await this._executerGit(depot, ['commit', '-m', 'Publication depuis Obsidian (Ariane)']);
+      await this._executerGit(depot, ['push', 'origin', this.settings.publicationBranche || 'main']);
+      notice.hide();
+      new obsidian.Notice(tr('✓ Site publié — le déploiement démarre automatiquement.'));
+    } catch (e) {
+      notice.hide();
+      console.error('[Ariane] publication du site :', e);
+      new obsidian.Notice(tr('Échec de la publication du site : ') + e.message, 10000);
+    }
+  }
+
+  //#endregion Ariane · publication du site
+}
+
 // ── class Ariane ──────────────────────────────────────────────────────────
 // Le point d'assemblage. Ne porte que le cycle de vie : onload, et les
 // enregistrements qu'il délègue. À la scission, chaque greffon aura le sien.
@@ -15018,7 +15147,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecTachesStatiques,
   avecFriseStatiques,
   avecArticulationStatiques,
-  avecTaches) {
+  avecTaches,
+  avecPublicationSite) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -15386,6 +15516,11 @@ class Ariane extends composer(obsidian.Plugin,
         new obsidian.Notice(tr('Index de suggestions reconstruit (') + n + ' notes).');
         this.majSuggestions();
       },
+    });
+    this.addCommand({
+      id: 'publier-site',
+      name: tr('Site : publier'),
+      callback: () => this.publierSite(),
     });
   }
 
@@ -16075,6 +16210,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       [tr('Temps passé'), 'timer', (c) => this.ongletTemps(c, s, maj)],
       [tr('Schémas'), 'git-branch', (c) => this.ongletSchemas(c, s, maj)],
       [tr('Export Word'), 'file-output', (c) => this.ongletExport(c, s, maj)],
+      [tr('Publication du site'), 'upload-cloud', (c) => this.ongletPublication(c, s, maj)],
       [tr('Avancé'), 'wrench', (c) => this.ongletAvance(c, s, maj)],
     ];
     if (typeof this._ongletActif !== 'number' || this._ongletActif >= onglets.length) this._ongletActif = 0;
@@ -17722,6 +17858,28 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.exportBibliographie !== false).onChange(async (v) => { s.exportBibliographie = v; await maj(); }));
   }
 
+
+  ongletPublication(c, s, maj) {
+    this._aide(c, tr("Miroir intégral d'un dossier du coffre vers content/ d'un dépôt Git (site Quartz) : tout ce que contient ce dossier est publié, et rien d'autre. La commande « Site : publier » (palette de commandes) synchronise, commit et pousse en un geste."));
+    new obsidian.Setting(c)
+      .setName(tr('Dépôt du site'))
+      .setDesc(tr('Chemin absolu, sur ce Mac, du dépôt Git déjà cloné (ex. liotou.github.io).'))
+      .addText((t) => t.setValue(s.publicationDepot || '').setPlaceholder('/Users/…/liotou.github.io')
+        .onChange(async (v) => { s.publicationDepot = v.trim(); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Dossier du coffre à publier'))
+      .setDesc(tr('Chemin dans le coffre. Son contenu entier devient content/ du dépôt — le dossier EST la sélection.'))
+      .addText((t) => t.setValue(s.publicationDossierVault || '').setPlaceholder('95 - Dépôt public')
+        .onChange(async (v) => { s.publicationDossierVault = v.trim().replace(/^\/+|\/+$/g, '') || '95 - Dépôt public'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Branche'))
+      .addText((t) => t.setValue(s.publicationBranche || 'main')
+        .onChange(async (v) => { s.publicationBranche = v.trim() || 'main'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Publier maintenant'))
+      .setDesc(tr('Synchronise, commit et pousse — sans attendre un raccourci.'))
+      .addButton((b) => b.setButtonText(tr('Publier le site')).setCta().onClick(() => this.plugin.publierSite()));
+  }
 
   ongletAvance(c, s, maj) {
     this._section(c, tr('Analyse (expressions régulières)'), tr("À ne modifier qu'en connaissance de cause."));

@@ -1350,6 +1350,14 @@ const DEFAULT_SETTINGS = {
   // Dossier de données de Zotero. Vide : détection automatique (~/Zotero).
   dossierZotero: '',
   suggRerankTopN: 12,
+
+  // --- Publication du site (Quartz) ---
+  // Miroir intégral : tout ce que contient publicationDossierVault se
+  // retrouve dans content/ du dépôt, et rien d'autre — pas de frontmatter
+  // à ajouter, le dossier EST la sélection.
+  publicationDepot: '',                          // chemin absolu du dépôt Git du site
+  publicationDossierVault: '95 - Dépôt public',  // dossier du coffre miroité vers content/
+  publicationBranche: 'main',
 };
 
 //#endregion 1 · Constantes & i18n

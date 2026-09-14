@@ -30,6 +30,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       [tr('Temps passé'), 'timer', (c) => this.ongletTemps(c, s, maj)],
       [tr('Schémas'), 'git-branch', (c) => this.ongletSchemas(c, s, maj)],
       [tr('Export Word'), 'file-output', (c) => this.ongletExport(c, s, maj)],
+      [tr('Publication du site'), 'upload-cloud', (c) => this.ongletPublication(c, s, maj)],
       [tr('Avancé'), 'wrench', (c) => this.ongletAvance(c, s, maj)],
     ];
     if (typeof this._ongletActif !== 'number' || this._ongletActif >= onglets.length) this._ongletActif = 0;
@@ -1677,6 +1678,28 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.exportBibliographie !== false).onChange(async (v) => { s.exportBibliographie = v; await maj(); }));
   }
 
+
+  ongletPublication(c, s, maj) {
+    this._aide(c, tr("Miroir intégral d'un dossier du coffre vers content/ d'un dépôt Git (site Quartz) : tout ce que contient ce dossier est publié, et rien d'autre. La commande « Site : publier » (palette de commandes) synchronise, commit et pousse en un geste."));
+    new obsidian.Setting(c)
+      .setName(tr('Dépôt du site'))
+      .setDesc(tr('Chemin absolu, sur ce Mac, du dépôt Git déjà cloné (ex. liotou.github.io).'))
+      .addText((t) => t.setValue(s.publicationDepot || '').setPlaceholder('/Users/…/liotou.github.io')
+        .onChange(async (v) => { s.publicationDepot = v.trim(); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Dossier du coffre à publier'))
+      .setDesc(tr('Chemin dans le coffre. Son contenu entier devient content/ du dépôt — le dossier EST la sélection.'))
+      .addText((t) => t.setValue(s.publicationDossierVault || '').setPlaceholder('95 - Dépôt public')
+        .onChange(async (v) => { s.publicationDossierVault = v.trim().replace(/^\/+|\/+$/g, '') || '95 - Dépôt public'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Branche'))
+      .addText((t) => t.setValue(s.publicationBranche || 'main')
+        .onChange(async (v) => { s.publicationBranche = v.trim() || 'main'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Publier maintenant'))
+      .setDesc(tr('Synchronise, commit et pousse — sans attendre un raccourci.'))
+      .addButton((b) => b.setButtonText(tr('Publier le site')).setCta().onClick(() => this.plugin.publierSite()));
+  }
 
   ongletAvance(c, s, maj) {
     this._section(c, tr('Analyse (expressions régulières)'), tr("À ne modifier qu'en connaissance de cause."));

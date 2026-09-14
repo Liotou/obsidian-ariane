@@ -339,12 +339,30 @@ const avecTaches = (Base) => class extends Base {
     }
   }
 
+  // Le dossier des tâches configuré existe-t-il vraiment sur le disque ? Un
+  // réglage devenu obsolète (dossier renommé pendant qu'Ariane tournait, avec
+  // les réglages encore en mémoire) fait lire un index VIDE plutôt qu'une
+  // erreur — la relève prend alors chaque rappel existant pour un nouveau et
+  // le recrée, et le push suivant, croyant reconnaître des doublons de titre,
+  // peut supprimer les rappels d'origine. Un dossier introuvable coupe la
+  // synchro net plutôt que de la laisser tourner sur un index qui ment.
+  _dossierTachesValide(silencieux) {
+    const d = this.app.vault.getAbstractFileByPath(this.dossierT);
+    if (d instanceof obsidian.TFolder) return true;
+    if (!silencieux) {
+      new obsidian.Notice(tr('Apple Rappels : dossier des tâches introuvable (« ')
+        + this.dossierT + tr(' »). Rechargez Ariane si vous venez de le renommer.'), 8000);
+    }
+    return false;
+  }
+
   async _pousserRappelsImpl(silencieux) {
     if (!obsidian.Platform.isMacOS) {
       if (!silencieux) new obsidian.Notice(tr('Apple Rappels : disponible sur macOS uniquement.'));
       return 0;
     }
     if (this.settings.rappelsActif === false) return 0;
+    if (!this._dossierTachesValide(silencieux)) return 0;
     const vault = this.app.vault.getName();
     const cibles = this._tachesRappel();
     if (!cibles.length) { if (!silencieux) new obsidian.Notice(tr('Aucune tâche à synchroniser.')); return 0; }
@@ -410,6 +428,7 @@ const avecTaches = (Base) => class extends Base {
   // main dans une liste surveillée, sans référence connue → nouvelle tâche.
   async releverRappels(silencieux) {
     if (!obsidian.Platform.isMacOS || this.settings.rappelsActif === false) return 0;
+    if (!this._dossierTachesValide(silencieux)) return 0;
     const listes = this._listesSurveillees();
     const avecId = [];
     const idsConnus = new Set();

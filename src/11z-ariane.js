@@ -12,7 +12,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecTachesStatiques,
   avecFriseStatiques,
   avecArticulationStatiques,
-  avecTaches) {
+  avecTaches,
+  avecPublicationSite) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -380,6 +381,11 @@ class Ariane extends composer(obsidian.Plugin,
         new obsidian.Notice(tr('Index de suggestions reconstruit (') + n + ' notes).');
         this.majSuggestions();
       },
+    });
+    this.addCommand({
+      id: 'publier-site',
+      name: tr('Site : publier'),
+      callback: () => this.publierSite(),
     });
   }
 
