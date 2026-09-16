@@ -62,13 +62,16 @@ const avecTachesStatiques = (Base) => class extends Base {
   }
 
   // Les propriétés qu'une famille ajoute à une tâche et qui n'existent pas
-  // encore dans son entête. « Existe » = la clé est présente, même vide.
-  static proprietesManquantes(fm, famille) {
+  // encore dans son entête. « Existe » = la clé est présente, même vide, sous
+  // sa forme nue OU préfixée (une famille peut nommer « Source » quand la
+  // tâche porte déjà « Tâche - Source » : ne pas dupliquer).
+  static proprietesManquantes(fm, famille, prefixe) {
     const props = (famille && Array.isArray(famille.proprietes)) ? famille.proprietes : [];
     const cles = new Set(Object.keys(fm || {}));
+    const pre = prefixe || '';
     return props
-      .filter((p) => p && p.cle && !cles.has(p.cle))
-      .map((p) => ({ cle: p.cle, type: p.type || 'texte' }));
+      .filter((p) => p && p.cle && !cles.has(p.cle) && !(pre && cles.has(pre + p.cle)))
+      .map((p) => ({ cle: pre ? pre + p.cle : p.cle, type: p.type || 'texte' }));
   }
 
   // Une valeur YAML citée. Les intitulés portent des apostrophes, des deux

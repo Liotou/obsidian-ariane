@@ -947,7 +947,7 @@ const avecTaches = (Base) => class extends Base {
       if (!id) continue;
       const fam = liste.find((x) => x && x.id === id);
       if (!fam) continue;
-      const manquantes = Ariane.proprietesManquantes(fm, fam);
+      const manquantes = Ariane.proprietesManquantes(fm, fam, this.settings.prefixeTaches || '');
       if (!manquantes.length) continue;
       await this.app.fileManager.processFrontMatter(f, (m) => {
         for (const p of manquantes) if (!(p.cle in m)) m[p.cle] = '';
