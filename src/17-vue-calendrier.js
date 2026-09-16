@@ -215,7 +215,7 @@ class MoteurCalendrier extends MoteurVue {
 
   // Menu contextuel d'un événement Apple : l'ouvrir dans Calendrier, ou en
   // dériver un jalon (même titre, premier jour de l'événement) lié dynamiquement
-  // à l'événement d'origine (`evenement-id` dans la note).
+  // à l'événement d'origine (`Événement ID` dans la note).
   menuEvenement(ev, e) {
     ev.preventDefault(); ev.stopPropagation();
     const jour = String(e.debut || '').slice(0, 10);
@@ -232,7 +232,7 @@ class MoteurCalendrier extends MoteurVue {
           jalon: true, famille: 'action', debut: jour, echeance: jour, intitule: nom });
         if (!chemin) return;
         const ref = chemin.split('/').pop().replace(/\.md$/, '');
-        if (e.id) await this.greffon.majTache(ref, { 'evenement-id': e.id });
+        if (e.id) await this.greffon.majTache(ref, { 'Événement ID': e.id });
         this.dessiner();
         this.ouvrir(ref, false);
       }));
@@ -247,7 +247,7 @@ class MoteurCalendrier extends MoteurVue {
     m.showAtMouseEvent(ev);
   }
 
-  // Aligne les jalons liés à un événement Apple (clé `evenement-id`) sur cet
+  // Aligne les jalons liés à un événement Apple (clé `Événement ID`) sur cet
   // événement : premier jour et titre. Tourne quand l'agenda de fond vient
   // d'être (re)chargé ; n'écrit que sur un vrai écart, et ne supprime jamais un
   // jalon dont l'événement est absent (il peut simplement être hors fenêtre).
@@ -258,7 +258,7 @@ class MoteurCalendrier extends MoteurVue {
     for (const t of this.greffon.tachesPourGantt()) {
       if (!t.jalon || !t.fichier) continue;
       const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
-      const eid = String(fm['evenement-id'] || '').trim();
+      const eid = String(fm['Événement ID'] || '').trim();
       if (!eid) continue;
       const e = parId.get(eid);
       if (!e) continue;
@@ -838,7 +838,7 @@ class MoteurCalendrier extends MoteurVue {
       // raccourci pour rouvrir cet événement dans Calendrier.
       const fj = this.greffon.fichierDeRef && this.greffon.fichierDeRef(t.ref);
       const eid = fj ? String(((this.app.metadataCache.getFileCache(fj) || {}).frontmatter
-        || {})['evenement-id'] || '').trim() : '';
+        || {})['Événement ID'] || '').trim() : '';
       if (eid) {
         m.addItem((i) => i.setTitle(tr('Ouvrir l\'événement Apple')).setIcon('external-link')
           .onClick(() => this._ouvrirEvenement(eid)));

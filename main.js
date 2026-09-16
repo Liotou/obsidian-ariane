@@ -9681,7 +9681,7 @@ const avecTachesStatiques = (Base) => class extends Base {
   // Le corps d'une note neuve associée à un événement Apple Calendrier (clic
   // droit sur un événement de la vue calendrier — pas un créneau de tâche :
   // ça reste un événement, pas quelque chose à faire). Note libre, sans
-  // frontmatter de tâche ; `evenement-id` la relie à l'événement d'origine
+  // frontmatter de tâche ; `Événement ID` la relie à l'événement d'origine
   // pour qui veut le retrouver, sans les synchros d'un jalon — une note n'a
   // pas de date à tenir à jour.
   static corpsNouvelleNoteEvenement(champs) {
@@ -9693,7 +9693,7 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push('aliases:');
     l.push('  - ' + q(titre));
     l.push('Type: evenement');
-    l.push('evenement-id:' + (c.evenementId ? ' ' + q(c.evenementId) : ''));
+    l.push('Événement ID:' + (c.evenementId ? ' ' + q(c.evenementId) : ''));
     l.push('Date:' + (c.date ? ' ' + c.date : ''));
     l.push('tags:');
     l.push('---');
@@ -13081,7 +13081,7 @@ const avecTaches = (Base) => class extends Base {
     for (const t of this.tachesPourGantt()) {
       const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
       const rid = String(this._lireT(fm, 'rappel-id') || '').trim();
-      const snap = String(fm['rappel-sync'] || '');
+      const snap = String(fm['Tâche - Synchro Rappels'] || '');
       if (!t.echeance && !rid) continue;
       if ((t.statut === 'terminée' || t.statut === 'abandonnée') && !rid) continue;
       out.push(Object.assign({}, t, { _rid: rid, _snap: snap, _fm: fm }));
@@ -13186,7 +13186,7 @@ const avecTaches = (Base) => class extends Base {
       if (f && this._instantRappel(t) !== t._snap) {
         this.marquerEcriture(f.path);
         await this.app.fileManager.processFrontMatter(f, (x) => {
-          x['rappel-sync'] = this._instantRappel(t);
+          x['Tâche - Synchro Rappels'] = this._instantRappel(t);
         });
       }
       n += 1;
@@ -13209,7 +13209,7 @@ const avecTaches = (Base) => class extends Base {
       const rid = String(this._lireT(fm, 'rappel-id') || '').trim();
       if (rid) {
         idsConnus.add(rid);
-        avecId.push(Object.assign({}, t, { _rid: rid, _snap: String(fm['rappel-sync'] || '') }));
+        avecId.push(Object.assign({}, t, { _rid: rid, _snap: String(fm['Tâche - Synchro Rappels'] || '') }));
       }
     }
     if (!avecId.length && !listes.length) return 0;
@@ -13254,7 +13254,7 @@ const avecTaches = (Base) => class extends Base {
           if (f2) {
             this.marquerEcriture(f2.path);
             await this.app.fileManager.processFrontMatter(f2, (x) => {
-              x['rappel-sync'] = [d, h === '00:00' ? '' : h, coche ? 'terminée' : 'à faire'].join('|');
+              x['Tâche - Synchro Rappels'] = [d, h === '00:00' ? '' : h, coche ? 'terminée' : 'à faire'].join('|');
             });
           }
           idsConnus.add(id); n += 1;
@@ -13290,7 +13290,7 @@ const avecTaches = (Base) => class extends Base {
           const maj2 = Object.assign({ echeance: t.echeance, heure: t.heure, statut: t.statut }, champs);
           this.marquerEcriture(t.fichier.path);
           await this.app.fileManager.processFrontMatter(t.fichier, (x) => {
-            x['rappel-sync'] = [maj2.echeance || '', maj2.heure || '', maj2.statut || ''].join('|');
+            x['Tâche - Synchro Rappels'] = [maj2.echeance || '', maj2.heure || '', maj2.statut || ''].join('|');
           });
         }
         n += 1;
@@ -13362,7 +13362,7 @@ const avecTaches = (Base) => class extends Base {
 
   // Pousse les créneaux des tâches éligibles vers Apple Calendar (un EKEvent par
   // créneau), supprime les événements des créneaux disparus, mémorise agenda-id
-  // (liste alignée sur les créneaux) et agenda-sync dans la note.
+  // (liste alignée sur les créneaux) et Tâche - Synchro Agenda dans la note.
   //
   // Verrou : deux osascript de push concurrents (modif très rapprochée, flush au
   // blur pendant un push en cours…) créaient des doublons. On sérialise ; si un
@@ -13489,7 +13489,7 @@ const avecTaches = (Base) => class extends Base {
         if (t.fichier) this.marquerEcriture(t.fichier.path); // pas de push en écho
         await this.majTache(t.ref, { 'agenda-id': liste });
       }
-      // agenda-sync n'est écrit QUE si tous les créneaux ont bien un événement
+      // Tâche - Synchro Agenda n'est écrit QUE si tous les créneaux ont bien un événement
       // lié — sinon la relève pourrait croire la note « à jour » et retirer le
       // lien d'un créneau que le push n'a pas réussi à créer.
       const complet = t._crs.length ? (confirme && liste.every(Boolean)) : true;
@@ -13497,10 +13497,10 @@ const avecTaches = (Base) => class extends Base {
       // relance la file du metadataCache, dont l'écho peut dépasser la fenêtre
       // d'anti-écho (2,5 s des deux côtés) et déclencher un push sans fin.
       const instant = Ariane.instantAgenda(t);
-      if (t.fichier && complet && String(t._fm['agenda-sync'] || '') !== instant) {
+      if (t.fichier && complet && String(t._fm['Tâche - Synchro Agenda'] || '') !== instant) {
         this.marquerEcriture(t.fichier.path);
         await this.app.fileManager.processFrontMatter(t.fichier, (x) => {
-          x['agenda-sync'] = instant;
+          x['Tâche - Synchro Agenda'] = instant;
         });
       }
       n += 1;
@@ -13591,7 +13591,7 @@ const avecTaches = (Base) => class extends Base {
 
   // Relève : pour chaque EKEvent lié, horaires changés dans Calendar → réécriture
   // de l'entrée de créneau ; événement supprimé → retrait du créneau. Aucun
-  // import d'événement inconnu. La note fait foi si elle a bougé (agenda-sync).
+  // import d'événement inconnu. La note fait foi si elle a bougé (Tâche - Synchro Agenda).
   async releverAgenda(silencieux) {
     if (!obsidian.Platform.isMacOS) {
       if (!silencieux) new obsidian.Notice(tr('Apple Agenda : disponible sur macOS uniquement.'));
@@ -13607,7 +13607,7 @@ const avecTaches = (Base) => class extends Base {
       const ids = [].concat(this._lireT(fm, 'agenda-id') || []).map(String);
       if (!ids.some((x) => x)) continue;
       avecId.push(Object.assign({}, t, { _ids: ids,
-        _crs: Ariane.creneauxDeTache(t), _snap: String(fm['agenda-sync'] || '') }));
+        _crs: Ariane.creneauxDeTache(t), _snap: String(fm['Tâche - Synchro Agenda'] || '') }));
     }
     if (!avecId.length) {
       if (!silencieux) new obsidian.Notice(tr("Aucun événement lié à relever (lancez d'abord la synchro vers Apple Agenda)."), 8000);
@@ -25150,7 +25150,7 @@ class MoteurCalendrier extends MoteurVue {
 
   // Menu contextuel d'un événement Apple : l'ouvrir dans Calendrier, ou en
   // dériver un jalon (même titre, premier jour de l'événement) lié dynamiquement
-  // à l'événement d'origine (`evenement-id` dans la note).
+  // à l'événement d'origine (`Événement ID` dans la note).
   menuEvenement(ev, e) {
     ev.preventDefault(); ev.stopPropagation();
     const jour = String(e.debut || '').slice(0, 10);
@@ -25167,7 +25167,7 @@ class MoteurCalendrier extends MoteurVue {
           jalon: true, famille: 'action', debut: jour, echeance: jour, intitule: nom });
         if (!chemin) return;
         const ref = chemin.split('/').pop().replace(/\.md$/, '');
-        if (e.id) await this.greffon.majTache(ref, { 'evenement-id': e.id });
+        if (e.id) await this.greffon.majTache(ref, { 'Événement ID': e.id });
         this.dessiner();
         this.ouvrir(ref, false);
       }));
@@ -25182,7 +25182,7 @@ class MoteurCalendrier extends MoteurVue {
     m.showAtMouseEvent(ev);
   }
 
-  // Aligne les jalons liés à un événement Apple (clé `evenement-id`) sur cet
+  // Aligne les jalons liés à un événement Apple (clé `Événement ID`) sur cet
   // événement : premier jour et titre. Tourne quand l'agenda de fond vient
   // d'être (re)chargé ; n'écrit que sur un vrai écart, et ne supprime jamais un
   // jalon dont l'événement est absent (il peut simplement être hors fenêtre).
@@ -25193,7 +25193,7 @@ class MoteurCalendrier extends MoteurVue {
     for (const t of this.greffon.tachesPourGantt()) {
       if (!t.jalon || !t.fichier) continue;
       const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
-      const eid = String(fm['evenement-id'] || '').trim();
+      const eid = String(fm['Événement ID'] || '').trim();
       if (!eid) continue;
       const e = parId.get(eid);
       if (!e) continue;
@@ -25773,7 +25773,7 @@ class MoteurCalendrier extends MoteurVue {
       // raccourci pour rouvrir cet événement dans Calendrier.
       const fj = this.greffon.fichierDeRef && this.greffon.fichierDeRef(t.ref);
       const eid = fj ? String(((this.app.metadataCache.getFileCache(fj) || {}).frontmatter
-        || {})['evenement-id'] || '').trim() : '';
+        || {})['Événement ID'] || '').trim() : '';
       if (eid) {
         m.addItem((i) => i.setTitle(tr('Ouvrir l\'événement Apple')).setIcon('external-link')
           .onClick(() => this._ouvrirEvenement(eid)));

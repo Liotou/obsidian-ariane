@@ -138,7 +138,7 @@ const avecTachesStatiques = (Base) => class extends Base {
   // Le corps d'une note neuve associée à un événement Apple Calendrier (clic
   // droit sur un événement de la vue calendrier — pas un créneau de tâche :
   // ça reste un événement, pas quelque chose à faire). Note libre, sans
-  // frontmatter de tâche ; `evenement-id` la relie à l'événement d'origine
+  // frontmatter de tâche ; `Événement ID` la relie à l'événement d'origine
   // pour qui veut le retrouver, sans les synchros d'un jalon — une note n'a
   // pas de date à tenir à jour.
   static corpsNouvelleNoteEvenement(champs) {
@@ -150,7 +150,7 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push('aliases:');
     l.push('  - ' + q(titre));
     l.push('Type: evenement');
-    l.push('evenement-id:' + (c.evenementId ? ' ' + q(c.evenementId) : ''));
+    l.push('Événement ID:' + (c.evenementId ? ' ' + q(c.evenementId) : ''));
     l.push('Date:' + (c.date ? ' ' + c.date : ''));
     l.push('tags:');
     l.push('---');
