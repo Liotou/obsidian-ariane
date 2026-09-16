@@ -19,7 +19,7 @@ const base = {
 
 test('le frontmatter porte tous les champs du schéma, même vides', () => {
   const s = Ariane.corpsNouvelleTache(base);
-  for (const cle of ['type', 'statut', 'priorite', 'debut', 'echeance',
+  for (const cle of ['Type', 'statut', 'priorite', 'debut', 'echeance',
                      'avancement', 'termine-le', 'jalon', 'parent', 'bloque-par',
                      'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id',
                      'cree', 'modifie']) {

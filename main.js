@@ -6615,7 +6615,7 @@ const avecNoteAtomes = (Base) => class extends Base {
   // Date de création : la propriété « date » de la note si elle est lisible,
   // sinon la date de création du fichier.
   dateDeNote(fichier, fm) {
-    const brute = fm && fm.date ? String(fm.date) : '';
+    const brute = fm && (fm.date || fm.Date) ? String(fm.date || fm.Date) : '';
     const d = brute ? new Date(brute) : null;
     if (d && !isNaN(d.getTime())) return d;
     const ctime = fichier.stat && fichier.stat.ctime;
@@ -9643,7 +9643,7 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push('---');
     l.push('aliases:');
     l.push('  - ' + q(intitule));
-    l.push('type: tache');
+    l.push('Type: tache');
     l.push(ligne(K('famille'), c.famille));
     l.push(ligne(K('statut'), c.statut || 'à faire'));
     l.push(K('terminee') + ': ' + ((c.statut || '') === 'terminée' ? 'true' : 'false'));
@@ -9692,9 +9692,9 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push('---');
     l.push('aliases:');
     l.push('  - ' + q(titre));
-    l.push('type: evenement');
+    l.push('Type: evenement');
     l.push('evenement-id:' + (c.evenementId ? ' ' + q(c.evenementId) : ''));
-    l.push('date:' + (c.date ? ' ' + c.date : ''));
+    l.push('Date:' + (c.date ? ' ' + c.date : ''));
     l.push('tags:');
     l.push('---');
     l.push('');
@@ -9728,7 +9728,7 @@ const avecTachesStatiques = (Base) => class extends Base {
   // relancerait l'événement de modification et ferait tourner la boucle.
   // Une tâche abandonnée n'est pas une tâche achevée, elle ne reçoit pas de date.
   static achevementAEcrire(fm, aujourdhui) {
-    if (!fm || fm.type !== 'tache') return null;
+    if (!fm || (fm.Type || fm.type) !== 'tache') return null;
     const dejaPosee = String(fm['termine-le'] == null ? '' : fm['termine-le']).trim();
     if (fm.statut === 'terminée') return dejaPosee ? null : aujourdhui;
     return dejaPosee ? '' : null;
@@ -15040,7 +15040,7 @@ const avecTaches = (Base) => class extends Base {
     }
 
     const total = lignes.reduce((s, [, m]) => s + m, 0);
-    const out = ['---', 'type: journal-temps', 'date: ' + j,
+    const out = ['---', 'Type: journal-temps', 'Date: ' + j,
       'Journal - Minutes totales: ' + Math.round(total), '---',
       '# Temps de travail du ' + j, '',
       '**Total : ' + dureeLisible(total) + '** sur ' + lignes.length + ' note(s).', '',

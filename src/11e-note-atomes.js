@@ -163,7 +163,7 @@ const avecNoteAtomes = (Base) => class extends Base {
   // Date de création : la propriété « date » de la note si elle est lisible,
   // sinon la date de création du fichier.
   dateDeNote(fichier, fm) {
-    const brute = fm && fm.date ? String(fm.date) : '';
+    const brute = fm && (fm.date || fm.Date) ? String(fm.date || fm.Date) : '';
     const d = brute ? new Date(brute) : null;
     if (d && !isNaN(d.getTime())) return d;
     const ctime = fichier.stat && fichier.stat.ctime;
