@@ -9558,7 +9558,7 @@ const avecTachesStatiques = (Base) => class extends Base {
     return ({
       'bloque-par': 'Bloquée par', 'termine-le': 'Terminée le',
       source: 'Source', livrable: 'Livrable', fichier: 'Fichier',
-      liste: 'Liste', 'rappel-id': 'Rappel ID',
+      liste: 'Liste', 'rappel-id': 'Rappel ID', 'agenda-id': 'Agenda ID',
     })[concept] || concept;
   }
 
@@ -15038,7 +15038,7 @@ const avecTaches = (Base) => class extends Base {
 
     const total = lignes.reduce((s, [, m]) => s + m, 0);
     const out = ['---', 'type: journal-temps', 'date: ' + j,
-      'total-minutes: ' + Math.round(total), '---',
+      'Journal - Minutes totales: ' + Math.round(total), '---',
       '# Temps de travail du ' + j, '',
       '**Total : ' + dureeLisible(total) + '** sur ' + lignes.length + ' note(s).', '',
       '| Note | Temps |', '| --- | --- |'];

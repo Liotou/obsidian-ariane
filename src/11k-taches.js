@@ -2269,7 +2269,7 @@ const avecTaches = (Base) => class extends Base {
 
     const total = lignes.reduce((s, [, m]) => s + m, 0);
     const out = ['---', 'type: journal-temps', 'date: ' + j,
-      'total-minutes: ' + Math.round(total), '---',
+      'Journal - Minutes totales: ' + Math.round(total), '---',
       '# Temps de travail du ' + j, '',
       '**Total : ' + dureeLisible(total) + '** sur ' + lignes.length + ' note(s).', '',
       '| Note | Temps |', '| --- | --- |'];
