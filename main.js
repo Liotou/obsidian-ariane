@@ -1258,6 +1258,7 @@ const DEFAULT_SETTINGS = {
   // --- Dossiers ---
   dossierAnnotations: '',       // rôle : où atomiser les annotations
   dossierNotesLecture: '',      // rôle : où atomiser les notes-filles Zotero
+  dossierNotesEvenements: '',   // rôle : notes créées depuis un événement du calendrier
   sourcesExclues: [],           // clés de citation à ne jamais atomiser
   atomiserNotesLecture: true,
   dossierReferences: '',        // rôle : où déposer les références en attente
@@ -3559,7 +3560,7 @@ const avecSocle = (Base) => class extends Base {
     return ['tempsTotalSecondes', 'tempsHistorique', 'rattachementsIgnores',
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
-            'dossierTaches', 'tempsDossierJournal'];
+            'dossierTaches', 'tempsDossierJournal', 'dossierNotesEvenements'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
@@ -3956,6 +3957,10 @@ const avecSocle = (Base) => class extends Base {
 
   get dossierT() {
     return this.settings.dossierTaches || '8 - Tâches';
+  }
+
+  get dossierNE() {
+    return this.settings.dossierNotesEvenements || "10 - Notes d'événements";
   }
 
   /* ------------------------- Utilitaires d'écriture ------------------------- */
@@ -9670,6 +9675,31 @@ const avecTachesStatiques = (Base) => class extends Base {
     return l.join('\n');
   }
 
+  // Le corps d'une note neuve associée à un événement Apple Calendrier (clic
+  // droit sur un événement de la vue calendrier — pas un créneau de tâche :
+  // ça reste un événement, pas quelque chose à faire). Note libre, sans
+  // frontmatter de tâche ; `evenement-id` la relie à l'événement d'origine
+  // pour qui veut le retrouver, sans les synchros d'un jalon — une note n'a
+  // pas de date à tenir à jour.
+  static corpsNouvelleNoteEvenement(champs) {
+    const c = champs || {};
+    const q = Ariane.yamlChaine;
+    const titre = c.intitule || 'Sans titre';
+    const l = [];
+    l.push('---');
+    l.push('aliases:');
+    l.push('  - ' + q(titre));
+    l.push('type: evenement');
+    l.push('evenement-id:' + (c.evenementId ? ' ' + q(c.evenementId) : ''));
+    l.push('date:' + (c.date ? ' ' + c.date : ''));
+    l.push('tags:');
+    l.push('---');
+    l.push('');
+    l.push('# ' + titre);
+    l.push('');
+    return l.join('\n');
+  }
+
   // Référence nue d'un lien, alias compris : « [[T26-001|partie 2]] » rend
   // « T26-001 ».
   static refDeLien(v) {
@@ -14780,6 +14810,24 @@ const avecTaches = (Base) => class extends Base {
     return chemin;
   }
 
+  // Crée une note libre associée à un événement Apple Calendrier (clic droit
+  // sur un événement de la vue calendrier, pas un créneau de tâche). Dossier
+  // dédié, séparé de celui des tâches — voir Ariane.corpsNouvelleNoteEvenement.
+  async creerNoteEvenement(champs) {
+    const dossier = this.dossierNE;
+    await this.assurerDossier(dossier);
+    const base = 'EV-' + new Date().toISOString().replace(/[^\d]/g, '').slice(0, 12);
+    let ref = base;
+    let n = 1;
+    while (this.app.vault.getAbstractFileByPath(dossier + '/' + ref + '.md')) {
+      n += 1;
+      ref = base + '-' + n;
+    }
+    const chemin = dossier + '/' + ref + '.md';
+    await this.ecrire(chemin, Ariane.corpsNouvelleNoteEvenement(champs));
+    return chemin;
+  }
+
   //#endregion Ariane · tâches
 
   //#region Ariane · temps de travail
@@ -16567,6 +16615,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     role(tr('Bibliographies citées'), 'dossierBibliographies', tr("Une note de bibliographie par source."));
     role(tr('Documents exportés'), 'exportDossier', tr("Sortie de l'export Word."));
     role(tr('Journal du temps'), 'tempsDossierJournal', tr("Journaux quotidiens du compteur de temps."));
+    role(tr("Notes d'événements"), 'dossierNotesEvenements', tr("Notes créées depuis un clic droit sur un événement de la vue calendrier (pas les tâches)."));
     new obsidian.Setting(c)
       .setName(tr('Sources à ne jamais atomiser'))
       .setDesc(tr("Une clé de citation par ligne. Certains modules de Zotero rangent leurs réglages dans un élément de la bibliothèque, qui remonte alors comme une source : « AddonItem » en est le cas le plus courant. Les notes sans prose sont déjà écartées d'elles-mêmes."))
@@ -25118,6 +25167,14 @@ class MoteurCalendrier extends MoteurVue {
         if (e.id) await this.greffon.majTache(ref, { 'evenement-id': e.id });
         this.dessiner();
         this.ouvrir(ref, false);
+      }));
+    m.addItem((i) => i.setTitle(tr('Créer une note associée à cet événement')).setIcon('file-plus')
+      .onClick(async () => {
+        const nom = String(e.titre || '').trim() || (tr('Événement ') + (jour || ''));
+        const chemin = await this.greffon.creerNoteEvenement({
+          intitule: nom, date: jour, evenementId: e.id || '' });
+        const f = this.app.vault.getAbstractFileByPath(chemin);
+        if (f) this.app.workspace.getLeaf(false).openFile(f);
       }));
     m.showAtMouseEvent(ev);
   }

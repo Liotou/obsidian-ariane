@@ -236,6 +236,14 @@ class MoteurCalendrier extends MoteurVue {
         this.dessiner();
         this.ouvrir(ref, false);
       }));
+    m.addItem((i) => i.setTitle(tr('Créer une note associée à cet événement')).setIcon('file-plus')
+      .onClick(async () => {
+        const nom = String(e.titre || '').trim() || (tr('Événement ') + (jour || ''));
+        const chemin = await this.greffon.creerNoteEvenement({
+          intitule: nom, date: jour, evenementId: e.id || '' });
+        const f = this.app.vault.getAbstractFileByPath(chemin);
+        if (f) this.app.workspace.getLeaf(false).openFile(f);
+      }));
     m.showAtMouseEvent(ev);
   }
 

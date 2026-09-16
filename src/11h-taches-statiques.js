@@ -132,6 +132,31 @@ const avecTachesStatiques = (Base) => class extends Base {
     return l.join('\n');
   }
 
+  // Le corps d'une note neuve associée à un événement Apple Calendrier (clic
+  // droit sur un événement de la vue calendrier — pas un créneau de tâche :
+  // ça reste un événement, pas quelque chose à faire). Note libre, sans
+  // frontmatter de tâche ; `evenement-id` la relie à l'événement d'origine
+  // pour qui veut le retrouver, sans les synchros d'un jalon — une note n'a
+  // pas de date à tenir à jour.
+  static corpsNouvelleNoteEvenement(champs) {
+    const c = champs || {};
+    const q = Ariane.yamlChaine;
+    const titre = c.intitule || 'Sans titre';
+    const l = [];
+    l.push('---');
+    l.push('aliases:');
+    l.push('  - ' + q(titre));
+    l.push('type: evenement');
+    l.push('evenement-id:' + (c.evenementId ? ' ' + q(c.evenementId) : ''));
+    l.push('date:' + (c.date ? ' ' + c.date : ''));
+    l.push('tags:');
+    l.push('---');
+    l.push('');
+    l.push('# ' + titre);
+    l.push('');
+    return l.join('\n');
+  }
+
   // Référence nue d'un lien, alias compris : « [[T26-001|partie 2]] » rend
   // « T26-001 ».
   static refDeLien(v) {

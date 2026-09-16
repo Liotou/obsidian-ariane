@@ -19,7 +19,7 @@ const avecSocle = (Base) => class extends Base {
     return ['tempsTotalSecondes', 'tempsHistorique', 'rattachementsIgnores',
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
-            'dossierTaches', 'tempsDossierJournal'];
+            'dossierTaches', 'tempsDossierJournal', 'dossierNotesEvenements'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
@@ -416,6 +416,10 @@ const avecSocle = (Base) => class extends Base {
 
   get dossierT() {
     return this.settings.dossierTaches || '8 - Tâches';
+  }
+
+  get dossierNE() {
+    return this.settings.dossierNotesEvenements || "10 - Notes d'événements";
   }
 
   /* ------------------------- Utilitaires d'écriture ------------------------- */

@@ -1090,6 +1090,7 @@ const DEFAULT_SETTINGS = {
   // --- Dossiers ---
   dossierAnnotations: '',       // rôle : où atomiser les annotations
   dossierNotesLecture: '',      // rôle : où atomiser les notes-filles Zotero
+  dossierNotesEvenements: '',   // rôle : notes créées depuis un événement du calendrier
   sourcesExclues: [],           // clés de citation à ne jamais atomiser
   atomiserNotesLecture: true,
   dossierReferences: '',        // rôle : où déposer les références en attente

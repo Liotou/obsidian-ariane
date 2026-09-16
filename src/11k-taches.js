@@ -2041,6 +2041,24 @@ const avecTaches = (Base) => class extends Base {
     return chemin;
   }
 
+  // Crée une note libre associée à un événement Apple Calendrier (clic droit
+  // sur un événement de la vue calendrier, pas un créneau de tâche). Dossier
+  // dédié, séparé de celui des tâches — voir Ariane.corpsNouvelleNoteEvenement.
+  async creerNoteEvenement(champs) {
+    const dossier = this.dossierNE;
+    await this.assurerDossier(dossier);
+    const base = 'EV-' + new Date().toISOString().replace(/[^\d]/g, '').slice(0, 12);
+    let ref = base;
+    let n = 1;
+    while (this.app.vault.getAbstractFileByPath(dossier + '/' + ref + '.md')) {
+      n += 1;
+      ref = base + '-' + n;
+    }
+    const chemin = dossier + '/' + ref + '.md';
+    await this.ecrire(chemin, Ariane.corpsNouvelleNoteEvenement(champs));
+    return chemin;
+  }
+
   //#endregion Ariane · tâches
 
   //#region Ariane · temps de travail
