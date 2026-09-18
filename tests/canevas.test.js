@@ -184,3 +184,27 @@ test('inserer : canevas en lecture seule → rien n\'est posé', async () => {
   assert.deepEqual(await surface.inserer(['T1'], { x: 0, y: 0 }, {}), []);
   assert.equal(canvas.nodes.size, 0);
 });
+
+test('canevasDepuisPlan : le plan d\'articulation devient un canevas, relations comprises', () => {
+  const { integration } = monter([
+    tache('T1'), tache('T2', { parent: '[[T1]]' }), tache('T3', { bloquePar: ['[[T2]]'] }),
+  ]);
+  const plan = [
+    { ref: 'T1', x: 0, y: 0 }, { ref: 'T2', x: 300, y: 0 }, { ref: 'T3', x: 300, y: 100 },
+    { ref: 'T2', x: 900, y: 900 },     // doublon : ignoré
+    { ref: 'T99', x: 50, y: 50 },      // tâche disparue : ignorée
+  ];
+  const { nodes, edges } = integration.canevasDepuisPlan(plan);
+  assert.deepEqual(nodes.map((n) => n[CANEVAS_CLE].ref), ['T1', 'T2', 'T3']);
+  assert.ok(nodes.every((n) => n.type === 'text' && n.text === '[[' + n[CANEVAS_CLE].ref + ']]'));
+  const [n1, n2, n3] = nodes;
+  assert.ok(n2.x > n1.x, 'l\'ordre gauche-droite est conservé');
+  assert.ok(n3.y - n2.y >= 150, 'les écarts verticaux s\'agrandissent : les cartes ne se chevauchent pas');
+  assert.equal(edges.length, 2);
+  const hier = edges.find((e) => e.fromNode === n1.id);
+  assert.equal(hier.toNode, n2.id);
+  assert.equal(hier.color, undefined);
+  const bloc = edges.find((e) => e.fromNode === n2.id);
+  assert.equal(bloc.toNode, n3.id);
+  assert.equal(bloc.color, '1');
+});

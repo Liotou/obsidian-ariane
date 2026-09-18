@@ -15589,6 +15589,11 @@ class Ariane extends composer(obsidian.Plugin,
       checkCallback: surCanevas((s) => s.basculerPanneau()),
     });
     this.addCommand({
+      id: 'canevas-depuis-articulation',
+      name: tr('Canevas : convertir un plan d’articulation en canevas'),
+      callback: () => this.canevas && this.canevas.convertirArticulation(),
+    });
+    this.addCommand({
       id: 'canevas-tracer-relations',
       name: tr('Canevas : tracer les relations entre les tâches'),
       checkCallback: surCanevas((s) => s.tracerTout()),
@@ -24891,6 +24896,87 @@ class IntegrationCanevas extends obsidian.Component {
     const f = await this.app.vault.create(chemin, JSON.stringify({ nodes: [], edges: [] }, null, '\t'));
     await this.app.workspace.getLeaf('tab').openFile(f);
     return f;
+  }
+
+  // Plans des vues « Articulation » enregistrés dans les fichiers .base :
+  // [{ fichier, vue, cartes: [{ref, x, y}] }].
+  async plansArticulation() {
+    const out = [];
+    for (const f of this.app.vault.getFiles()) {
+      if (f.extension !== 'base') continue;
+      let conf = null;
+      try { conf = obsidian.parseYaml(await this.app.vault.cachedRead(f)); } catch (e) { conf = null; }
+      for (const v of (conf && Array.isArray(conf.views)) ? conf.views : []) {
+        if (!v || v.type !== TYPE_VUE_BASE_ARTIC || !v.arianeArtPlan) continue;
+        let plan = null;
+        try { plan = typeof v.arianeArtPlan === 'string' ? JSON.parse(v.arianeArtPlan) : v.arianeArtPlan; }
+        catch (e) { plan = null; }
+        const cartes = (plan && Array.isArray(plan.cartes) ? plan.cartes : [])
+          .filter((c) => c && c.ref && Number.isFinite(c.x) && Number.isFinite(c.y));
+        if (cartes.length) out.push({ fichier: f, vue: v.name || tr('Articulation'), cartes });
+      }
+    }
+    return out;
+  }
+
+  // Contenu .canvas d'un plan d'articulation : une carte par tâche à la même
+  // disposition (écarts agrandis — les cartes du canevas sont plus hautes),
+  // et une arête par relation entre les tâches du plan.
+  canevasDepuisPlan(cartes) {
+    const d = this.donnees();
+    const larg = Number(this.greffon.settings.canevasLargeurCarte) || CANEVAS_LARGEUR_DEFAUT;
+    const haut = 110;
+    const sx = (larg + 60) / 300;
+    const sy = 2;
+    const nodes = [];
+    const parRef = new Map();
+    for (const c of cartes) {
+      if (!d.parRef.has(c.ref) || parRef.has(c.ref)) continue;
+      const n = { id: canevasNouvelId(), type: 'text', text: '[[' + c.ref + ']]',
+        x: Math.round(c.x * sx), y: Math.round(c.y * sy), width: larg, height: haut,
+        [CANEVAS_CLE]: { v: 1, ref: c.ref } };
+      nodes.push(n);
+      parRef.set(c.ref, n);
+    }
+    const edges = [];
+    const refs = [...parRef.keys()];
+    for (const a of refs) {
+      for (const b of refs) {
+        if (a === b) continue;
+        const bloc = this.relation(d, a, b, 'bloque');
+        if (!bloc && !this.relation(d, a, b, 'hier')) continue;
+        const na = parRef.get(a);
+        const nb = parRef.get(b);
+        const cotes = canevasCotes(na, nb);
+        const e = { id: canevasNouvelId(), fromNode: na.id, fromSide: cotes.de, fromEnd: 'none',
+          toNode: nb.id, toSide: cotes.vers, toEnd: 'arrow' };
+        if (bloc) e.color = CANEVAS_COULEUR_BLOCAGE;
+        edges.push(e);
+      }
+    }
+    return { nodes, edges };
+  }
+
+  async convertirArticulation() {
+    const plans = await this.plansArticulation();
+    if (!plans.length) { new obsidian.Notice(tr('Aucun plan d’articulation à convertir.')); return; }
+    const faire = async (p) => {
+      const contenu = this.canevasDepuisPlan(p.cartes);
+      const dossier = p.fichier.parent && p.fichier.parent.path !== '/' ? p.fichier.parent.path + '/' : '';
+      const base = (p.fichier.basename + ' - ' + p.vue).replace(/[\\/:*?"<>|#^[\]]/g, '-');
+      let chemin = obsidian.normalizePath(dossier + base + '.canvas');
+      for (let n = 2; this.app.vault.getAbstractFileByPath(chemin); n += 1) {
+        chemin = obsidian.normalizePath(dossier + base + ' ' + n + '.canvas');
+      }
+      const f = await this.app.vault.create(chemin, JSON.stringify(contenu, null, '\t'));
+      await this.app.workspace.getLeaf('tab').openFile(f);
+      new obsidian.Notice(contenu.nodes.length + ' ' + tr('carte(s) et ') + contenu.edges.length
+        + ' ' + tr('lien(s) repris dans « ') + f.basename + ' »');
+    };
+    if (plans.length === 1) { await faire(plans[0]); return; }
+    new ChoixListeModal(this.app, tr('Plan d’articulation à convertir…'),
+      plans.map((p, i) => ({ cle: i, nom: p.fichier.basename + ' · ' + p.vue + ' (' + p.cartes.length + ')' })),
+      (it) => { if (it) faire(plans[it.cle]); }).open();
   }
   //#endregion Canevas · intégration
 }

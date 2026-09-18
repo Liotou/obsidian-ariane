@@ -416,6 +416,11 @@ class Ariane extends composer(obsidian.Plugin,
       checkCallback: surCanevas((s) => s.basculerPanneau()),
     });
     this.addCommand({
+      id: 'canevas-depuis-articulation',
+      name: tr('Canevas : convertir un plan d’articulation en canevas'),
+      callback: () => this.canevas && this.canevas.convertirArticulation(),
+    });
+    this.addCommand({
       id: 'canevas-tracer-relations',
       name: tr('Canevas : tracer les relations entre les tâches'),
       checkCallback: surCanevas((s) => s.tracerTout()),
