@@ -1505,17 +1505,6 @@ const avecTaches = (Base) => class extends Base {
     return true;
   }
 
-  // Valeur ACTUELLE d'un concept de tâche, lue dans le frontmatter (chaîne,
-  // '' si absente). Sert aux thématiques des zones d'articulation, qui doivent
-  // connaître la valeur d'avant un geste pour l'annulation.
-  lireConceptTache(ref, concept) {
-    const f = this.fichierDeRef(ref);
-    if (!f) return '';
-    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-    const v = this._lireT(fm, concept);
-    return v == null ? '' : String(v);
-  }
-
   // Le titre d'une tâche EST son premier alias (c'est ce qu'affichent la frise
   // et l'articulation). On aligne aussi le titre H1 du corps s'il existe, pour
   // que la note ne se contredise pas.

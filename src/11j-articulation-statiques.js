@@ -1,7 +1,7 @@
 
 // ── avecArticulationStatiques ─────────────────────────────────────────────
 // Domaine : tâches (frise, articulation, calendrier).
-// Fonctions pures de l'articulation : plan, arêtes, routage, zones thématiques.
+// Fonctions pures de l'articulation : plan, arêtes, routage.
 const avecArticulationStatiques = (Base) => class extends Base {
   //#region Ariane · static · articulation
   // ── static · articulation ────────────────────────────────────────────────

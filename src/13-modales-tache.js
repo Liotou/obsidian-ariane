@@ -490,41 +490,6 @@ class ModaleDaterTache extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
-/* ---- Nommer une zone thématique de l'articulation -------------------- */
-
-class ModaleNomZone extends obsidian.Modal {
-  constructor(app, opts, sur) {
-    super(app);
-    this.opts = opts || {};
-    this.sur = sur;
-  }
-
-  onOpen() {
-    const { contentEl, titleEl } = this;
-    titleEl.setText(this.opts.titre || tr('Nom de la zone'));
-    const l = contentEl.createEl('label', { cls: 'zfa-gantt-modale-champ' });
-    l.createSpan({ text: tr('Nom de la zone') });
-    const i = l.createEl('input', { type: 'text', value: this.opts.valeur || '' });
-    setTimeout(() => { i.focus(); i.select(); }, 0);
-    const valider = () => {
-      const nom = i.value.trim();
-      if (!nom) return;
-      this.close();
-      this.sur(nom);
-    };
-    i.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); valider(); }
-    });
-    const pied = contentEl.createDiv({ cls: 'zfa-gantt-modale-pied' });
-    const annuler = pied.createEl('button', { text: tr('Annuler') });
-    annuler.onclick = () => this.close();
-    const ok = pied.createEl('button', { cls: 'mod-cta', text: this.opts.bouton || tr('Créer') });
-    ok.onclick = valider;
-  }
-
-  onClose() { this.contentEl.empty(); }
-}
-
 /* ---- Commentaire d'une session (créneau) ---------------------------- */
 
 // Saisie du commentaire d'une session : stocké dans le bloc balisé

@@ -46,7 +46,6 @@ const avecSocle = (Base) => class extends Base {
       { cle: 'creneaux', defaut: 'Créneaux', icone: 'calendar-clock' },
       { cle: 'avancement', defaut: 'Avancement', icone: 'percent' },
       { cle: 'parent', defaut: 'Rattachée à', icone: 'git-branch' },
-      { cle: 'thematique', defaut: 'Thématique', icone: 'folder-tree' },
     ];
   }
 
@@ -57,35 +56,7 @@ const avecSocle = (Base) => class extends Base {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
             'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'avancement', 'parent',
             'bloque-par', 'termine-le',
-            'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id', 'thematique'];
-  }
-
-  // Zones thématiques de l'articulation : une zone nommée couvre un rectangle
-  // de l'espace scène ; la thématique d'une carte est le nom de la DERNIÈRE
-  // zone (ordre du plan) contenant son centre, sinon ''. La géométrie fait
-  // foi : c'est la même règle après un glissé de carte qu'après une
-  // modification de zone.
-  static thematiqueDe(zones, x, y) {
-    let nom = '';
-    for (const z of zones || []) {
-      if (!z || !Number.isFinite(z.x) || !Number.isFinite(z.y)
-        || !Number.isFinite(z.w) || !Number.isFinite(z.h)) continue;
-      if (x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h) nom = z.nom || '';
-    }
-    return nom;
-  }
-
-  // Les seules cartes dont la thématique calculée diffère de la valeur portée
-  // — on n'écrit jamais une note pour rien. `cartes` = [{ ref, x, y,
-  // thematique }], la valeur actuelle lue par le moteur (cache ou note).
-  static changementsThematique(zones, cartes) {
-    const out = [];
-    for (const c of cartes || []) {
-      if (!c || !c.ref) continue;
-      const nv = Ariane.thematiqueDe(zones, c.x, c.y);
-      if ((c.thematique || '') !== nv) out.push({ ref: c.ref, thematique: nv });
-    }
-    return out;
+            'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id'];
   }
 
   // Regroupement des propriétés d'une tâche (habillage de la note). `famille`
