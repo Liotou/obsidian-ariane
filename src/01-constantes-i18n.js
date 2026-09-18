@@ -1128,6 +1128,9 @@ const DEFAULT_SETTINGS = {
   friseLignageSurvol: true,     // survol d'une barre : révéler ascendants + descendants
   articulationGrille: 20,       // pas de la grille (0 = pas de grille)
   articulationSeuilAimant: 7,   // distance d'accrochage aux voisins (px)
+  // Canevas (section 16b) : cartes de tâches sur le canevas natif.
+  canevasLargeurCarte: 280,     // largeur d'une carte posée (px)
+  canevasRelierAuto: true,      // poser une carte trace ses relations avec les cartes déjà là
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes
   // (« notes conceptuelles ») et les listes de dossiers éparpillées. Chaque

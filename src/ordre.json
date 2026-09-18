@@ -30,6 +30,7 @@
   "15b-frise-vue-base.js",
   "15c-frise-export.js",
   "16-vue-articulation.js",
+  "16b-canevas.js",
   "17-vue-calendrier.js",
   "18-vues-laterales.js",
   "19-modales-secondaires.js",

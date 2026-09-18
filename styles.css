@@ -2547,3 +2547,178 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-cal-evt.est-jour .zfa-cal-evt-t { -webkit-line-clamp: 1; text-overflow: ellipsis; }
 .zfa-cal-evt.est-compacte { display: flex; align-items: baseline; gap: 2px;
   padding: 1px 4px; white-space: nowrap; text-overflow: ellipsis; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Canevas (section 16b) : cartes de tâches sur le canevas natif
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Le rendu natif du nœud (texte « [[T021]] », aperçu d'une note de tâche)
+   laisse toute la place à la carte. */
+.canvas-node.zfa-cnv-noeud .canvas-node-content { padding: 0; overflow: hidden; }
+.canvas-node.zfa-cnv-noeud .canvas-node-content > :not(.zfa-cnv-racine) { display: none !important; }
+.zfa-cnv-racine { width: 100%; }
+
+.zfa-cnv-carte {
+  box-sizing: border-box; width: 100%;
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 8px 10px 9px 11px;
+  border-left: 4px solid var(--zfa-fam-couleur, var(--background-modifier-border));
+  font-size: var(--font-ui-small); line-height: 1.35;
+  color: var(--text-normal);
+  cursor: default;
+}
+.zfa-cnv-carte.est-abandonnee { opacity: 0.55; }
+.zfa-cnv-carte.est-bloquee {
+  background-image: repeating-linear-gradient(45deg,
+    color-mix(in srgb, var(--text-error) 9%, transparent) 0 6px, transparent 6px 12px);
+}
+.zfa-cnv-carte.est-introuvable {
+  color: var(--text-faint); font-style: italic;
+  border-left-color: var(--background-modifier-border);
+}
+
+.zfa-cnv-tete { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.zfa-cnv-tete input.zfa-cnv-coche[type="checkbox"] {
+  width: 14px !important; height: 14px !important;
+  min-width: 0 !important; min-height: 0 !important;
+  margin: 0 !important; padding: 0 !important;
+  flex: 0 0 auto; cursor: pointer; border-radius: 4px;
+  accent-color: var(--interactive-accent);
+}
+.zfa-cnv-fam { flex: 0 0 auto; display: inline-flex; color: var(--zfa-fam-couleur, var(--text-muted)); }
+.zfa-cnv-fam svg { width: 15px; height: 15px; }
+.zfa-cnv-ref { color: var(--text-faint); font-size: 0.85em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.zfa-cnv-etat { flex: 0 0 auto; display: inline-flex; color: var(--text-muted); }
+.zfa-cnv-etat svg { width: 13px; height: 13px; }
+.zfa-cnv-etat.est-alerte { color: var(--text-error); }
+.zfa-cnv-actions {
+  margin-left: auto; display: flex; gap: 1px;
+  opacity: 0; transition: opacity 0.12s ease;
+}
+.canvas-node.zfa-cnv-noeud:hover .zfa-cnv-actions,
+.canvas-node.zfa-cnv-noeud.is-focused .zfa-cnv-actions { opacity: 1; }
+.zfa-cnv-actions .clickable-icon { padding: 2px; }
+.zfa-cnv-actions svg { width: 14px; height: 14px; }
+
+.zfa-cnv-titre {
+  font-weight: 600; font-size: 1.05em; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4; overflow: hidden;
+}
+.zfa-cnv-carte.est-terminee .zfa-cnv-titre { text-decoration: line-through; color: var(--text-muted); }
+
+.zfa-cnv-pied {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+  color: var(--text-muted); font-size: 0.85em;
+}
+.zfa-cnv-pastille {
+  padding: 0 7px; border-radius: 9px; white-space: nowrap;
+  background: var(--background-modifier-hover);
+}
+.zfa-cnv-priorite {
+  padding: 0 6px; border-radius: 9px; white-space: nowrap;
+  border: 1px solid var(--background-modifier-border);
+}
+.zfa-cnv-date, .zfa-cnv-compte {
+  display: inline-flex; align-items: center; gap: 3px;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.zfa-cnv-date-ic { display: inline-flex; }
+.zfa-cnv-date-ic svg { width: 12px; height: 12px; }
+.zfa-cnv-date.est-depassee { color: var(--text-error); font-weight: 600; }
+.zfa-cnv-jauge {
+  height: 4px; border-radius: 2px; overflow: hidden;
+  background: var(--background-modifier-border);
+}
+.zfa-cnv-jauge-in { height: 100%; background: var(--zfa-fam-couleur, var(--interactive-accent)); }
+
+/* Calque des relations : une pastille sur chaque arête qui porte une
+   relation — du côté de la mère, du côté de la bloquante. */
+.zfa-cnv-calque {
+  position: absolute; left: 0; top: 0; width: 0; height: 0;
+  overflow: visible; pointer-events: none;
+}
+.zfa-cnv-marque {
+  position: absolute; display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s);
+  color: var(--text-muted);
+  transform: translate(-50%, -50%) scale(var(--zfa-cnv-echelle, 1));
+}
+.zfa-cnv-marque svg { width: 14px; height: 14px; }
+.zfa-cnv-marque-hier { color: var(--interactive-accent); }
+.zfa-cnv-marque-bloque.est-actif {
+  color: var(--text-error);
+  border-color: color-mix(in srgb, var(--text-error) 45%, transparent);
+}
+.zfa-cnv-marque-bloque.est-resolu { color: var(--text-faint); }
+
+/* Contrôles greffés dans la barre native du canevas. */
+.zfa-cnv-controles {
+  display: flex; align-items: center; gap: 1px;
+  margin-left: 4px; padding-left: 4px;
+  border-left: 1px solid var(--background-modifier-border);
+}
+.canvas-menu .zfa-cnv-controles button { box-shadow: none; }
+.zfa-cnv-relation { display: inline-flex; align-items: center; gap: 2px; }
+.zfa-cnv-relation-ic { display: inline-flex; }
+.zfa-cnv-relation-sens { font-size: 11px; font-weight: 700; line-height: 1; }
+.canvas-menu .zfa-cnv-relation.is-active {
+  color: var(--interactive-accent); background: var(--background-modifier-hover);
+}
+
+/* Panneau « Tâches Ariane » (flottant). */
+.zfa-cnv-panneau {
+  position: fixed; z-index: var(--layer-popover);
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px; box-sizing: border-box;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l); box-shadow: var(--shadow-l);
+  font-size: var(--font-ui-small);
+}
+.zfa-cnv-panneau-tete { display: flex; align-items: center; gap: 4px; cursor: grab; user-select: none; }
+.zfa-cnv-panneau-titre { flex: 1; font-weight: 600; }
+.zfa-cnv-panneau-tete .clickable-icon.is-active { color: var(--interactive-accent); }
+.zfa-cnv-panneau-modes { display: flex; flex-wrap: wrap; gap: 4px; }
+.zfa-cnv-mode {
+  height: auto; padding: 2px 9px; border-radius: 12px; box-shadow: none;
+  font-size: 0.9em; background: var(--background-secondary);
+}
+.zfa-cnv-mode.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
+.zfa-cnv-panneau-recherche { width: 100%; }
+.zfa-cnv-panneau-liste {
+  flex: 1 1 auto; min-height: 60px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.zfa-cnv-ligne {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 6px; border-radius: var(--radius-s);
+  border-left: 3px solid var(--zfa-fam-couleur, var(--background-modifier-border));
+  cursor: grab; user-select: none;
+}
+.zfa-cnv-ligne.is-selected { background: var(--background-modifier-hover); }
+.zfa-cnv-ligne.est-present { opacity: 0.55; }
+.zfa-cnv-ligne.est-glisse { opacity: 0.35; }
+.zfa-cnv-ligne-fam { flex: 0 0 auto; display: inline-flex; color: var(--zfa-fam-couleur, var(--text-muted)); }
+.zfa-cnv-ligne-fam svg { width: 14px; height: 14px; }
+.zfa-cnv-ligne-texte { flex: 1; min-width: 0; }
+.zfa-cnv-ligne-titre { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zfa-cnv-ligne-meta { font-size: 0.85em; color: var(--text-muted); }
+.zfa-cnv-ligne-meta.est-depassee { color: var(--text-error); }
+.zfa-cnv-ligne-bouton { flex: 0 0 auto; }
+.zfa-cnv-panneau-vide { padding: 12px; text-align: center; color: var(--text-faint); }
+.zfa-cnv-panneau-pied {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  color: var(--text-muted); font-size: 0.9em;
+}
+.zfa-cnv-fantome {
+  position: fixed; z-index: var(--layer-tooltip); pointer-events: none;
+  max-width: 260px; padding: 4px 10px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: var(--background-primary);
+  border: 1px solid var(--interactive-accent); border-radius: var(--radius-m);
+  box-shadow: var(--shadow-l); font-size: var(--font-ui-small);
+}

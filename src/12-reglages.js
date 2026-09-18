@@ -1092,6 +1092,20 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.friseLignageSurvol !== false)
         .onChange(async (v) => { s.friseLignageSurvol = v; await maj(); }));
 
+    this._section(c, tr('Canevas'));
+    this._aide(c, tr("Les tâches se posent sur n'importe quel canevas Obsidian (fichier .canvas) : clic droit sur le fond, connexion tirée d'une carte, ou panneau « Tâches Ariane » dans les commandes du canevas. Sélectionner une arête entre deux tâches propose, dans la barre du canevas, d'en faire une relation mère / sous-tâche ou un blocage. Un canevas par thème, ou un seul : à votre guise."));
+    new obsidian.Setting(c)
+      .setName(tr('Largeur des cartes (px)'))
+      .setDesc(tr('Largeur d’une carte à sa pose. Chaque carte reste redimensionnable ; sa hauteur suit son contenu.'))
+      .addSlider((sl) => sl.setLimits(200, 420, 10).setDynamicTooltip()
+        .setValue(Number.isFinite(s.canevasLargeurCarte) ? s.canevasLargeurCarte : 280)
+        .onChange(async (v) => { s.canevasLargeurCarte = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Tracer les relations à la pose'))
+      .setDesc(tr('Poser une carte trace aussitôt ses liens (mère, sous-tâches, blocages) avec les cartes déjà présentes.'))
+      .addToggle((t) => t.setValue(s.canevasRelierAuto !== false)
+        .onChange(async (v) => { s.canevasRelierAuto = v; await maj(); }));
+
     this._section(c, tr('Vue Articulation'));
     this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue »."));
     new obsidian.Setting(c)

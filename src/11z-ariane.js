@@ -387,6 +387,39 @@ class Ariane extends composer(obsidian.Plugin,
       name: tr('Site : publier'),
       callback: () => this.publierSite(),
     });
+    // Canevas : les commandes qui agissent sur un canevas n'apparaissent que
+    // lorsqu'un canevas est actif.
+    const surCanevas = (action) => (verifier) => {
+      const s = this.canevas && this.canevas.surfaceActive();
+      if (!s) return false;
+      if (!verifier) action(s);
+      return true;
+    };
+    this.addCommand({
+      id: 'canevas-nouveau',
+      name: tr('Canevas : nouveau canevas de tâches'),
+      callback: () => this.canevas && this.canevas.creerCanevas(),
+    });
+    this.addCommand({
+      id: 'canevas-ajouter-tache',
+      name: tr('Canevas : poser une tâche existante…'),
+      checkCallback: surCanevas((s) => s.choisirTache(s._centre())),
+    });
+    this.addCommand({
+      id: 'canevas-nouvelle-tache',
+      name: tr('Canevas : nouvelle tâche…'),
+      checkCallback: surCanevas((s) => s.nouvelleTache(s._centre())),
+    });
+    this.addCommand({
+      id: 'canevas-panneau',
+      name: tr('Canevas : panneau des tâches'),
+      checkCallback: surCanevas((s) => s.basculerPanneau()),
+    });
+    this.addCommand({
+      id: 'canevas-tracer-relations',
+      name: tr('Canevas : tracer les relations entre les tâches'),
+      checkCallback: surCanevas((s) => s.tracerTout()),
+    });
   }
 
   // Volets latéraux et vues de base (frise, articulation, calendrier).
@@ -396,6 +429,10 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
     this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
+    // Le canevas natif d'Obsidian reçoit les cartes de tâches (section 16b) :
+    // pas une vue à nous, une intégration qui suit les .canvas ouverts.
+    this.canevas = new IntegrationCanevas(this);
+    this.addChild(this.canevas);
     // La frise est une vue de base : elle n'existe que si Bases est actif.
     if (typeof this.registerBasesView === 'function') {
       const Vue = fabriquerVueFriseBase(this);

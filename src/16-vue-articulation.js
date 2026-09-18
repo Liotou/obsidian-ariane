@@ -1,4 +1,4 @@
-//#region 16 · Vue Articulation
+//#region 16 · Articulation & Canevas
 // ═══════════════════════════════════════════════════════════════════════════
 //  16 · VUE ARTICULATION
 //  Constantes de carte, ancrage magnétique, MoteurArticulation et la
@@ -1824,5 +1824,4 @@ function fabriquerVueArticulationBase(greffon) {
   };
 }
 
-//#endregion 16 · Vue Articulation
 

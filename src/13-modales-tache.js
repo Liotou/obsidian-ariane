@@ -90,7 +90,10 @@ class ChoixSourceModal extends obsidian.Modal {
 /* ---------------- Formulaire de tâche (création et modification) ------- */
 
 class ModaleTache extends obsidian.Modal {
-  // opts : { ref?, apres?(ref) }. Sans ref → création ; avec ref → édition.
+  // opts : { ref?, apres?(ref), defauts? }. Sans ref → création ; avec ref →
+  // édition. `defauts` pré-remplit une création (intitule, parent, famille,
+  // note…) : le canevas s'en sert pour créer une sous-tâche depuis une
+  // connexion tirée d'une carte.
   constructor(app, greffon, opts) {
     super(app);
     this.greffon = greffon;
@@ -104,6 +107,11 @@ class ModaleTache extends obsidian.Modal {
       avancement: 0, jalon: false, parent: '', note: '',
       famille: greffon.settings.familleTacheDefaut || 'action',
     };
+    if (!this.ref && opts && opts.defauts) {
+      for (const [k, val] of Object.entries(opts.defauts)) {
+        if (val != null && val !== '' && Object.prototype.hasOwnProperty.call(this.v, k)) this.v[k] = val;
+      }
+    }
     this.props = {};
     this._noteInitiale = '';
   }

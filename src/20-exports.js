@@ -11,6 +11,13 @@ module.exports = Ariane;
 module.exports._test = {
   DEFAULT_SETTINGS,
   MoteurArticulation, // prototype : _traceArete s'éprouve avec un moteur factice
+  // Canevas : logique éprouvée sur un faux canevas (nœuds, arêtes, importData).
+  CANEVAS_CLE,
+  canevasCotes,
+  canevasRefDuNoeud,
+  canevasNouvelId,
+  IntegrationCanevas,
+  SurfaceCanevas,
   echapperRegex,
   nomCompletAuteur,
   appliquerModele,

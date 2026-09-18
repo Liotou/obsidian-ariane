@@ -101,9 +101,12 @@
  *                 par toString(), des mixins l'ampute (voir l'en-tête de 15a)
  *            15b  fabriquerVueFriseBase — la vue Bases « ariane-frise »
  *            15c  figage des données + pageFriseHtml (page autonome)
- *   16 · Vue Articulation
- *          graphe : MoteurArticulation, vue Bases « ariane-articulation ».
- *          Sous-régions « Articulation · … ».
+ *   16 · Articulation & Canevas
+ *          16   graphe : MoteurArticulation, vue Bases « ariane-articulation ».
+ *               Sous-régions « Articulation · … ».
+ *          16b  canevas natif : IntegrationCanevas (suit les .canvas ouverts),
+ *               SurfaceCanevas (cartes de tâches, relations sur les arêtes,
+ *               menus), PanneauTachesCanevas. Sous-régions « Canevas · … ».
  *   17 · Vue Calendrier
  *          mois et semaine : MoteurCalendrier, vue Bases « ariane-calendrier »,
  *          agenda Apple en fond. Sous-régions « Calendrier · … ».

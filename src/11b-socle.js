@@ -290,6 +290,8 @@ const avecSocle = (Base) => class extends Base {
     // se lit dessus, on le laisse se reconstruire.
     this._invaliderIndexTaches();
     await this.saveData(this.settings);
+    // Familles, préfixe, largeur des cartes… : les cartes du canevas se redessinent.
+    if (this.canevas) this.canevas.invalider();
   }
 
   /* --------------------- Renommage d'une propriété ---------------------- */
