@@ -1698,9 +1698,28 @@ const avecTaches = (Base) => class extends Base {
 
   // Édite la liste des créneaux d'une tâche. { avant } = chaîne de l'entrée
   // ciblée (vide = ajout). { debut, fin } nuls = suppression de `avant`.
-  async majCreneau(ref, { avant, debut, fin }) {
+  //
+  // Sérialisé PAR FICHIER : la fonction lit `metadataCache` puis retire
+  // `avant` par égalité de chaîne. Deux appels rapprochés sur la même tâche
+  // (un glissé suivi d'un redimensionnement avant que le premier n'ait fini
+  // d'écrire, ou un geste qui chevauche la relève Apple Agenda) lisaient
+  // chacun le même instantané pas encore à jour : le second ne retrouvait
+  // plus `avant` dans une liste déjà modifiée par le premier, le filtre ne
+  // retirait rien, et le créneau se retrouvait dédoublé au lieu de se
+  // déplacer. En chaînant sur une promesse par chemin de fichier, chaque
+  // appel ne lit le cache qu'une fois le précédent réellement retombé.
+  async majCreneau(ref, chg) {
     const f = this.fichierDeRef(ref);
     if (!f) return false;
+    if (!this._creneauxEnCours) this._creneauxEnCours = new Map();
+    const chemin = f.path;
+    const precedente = this._creneauxEnCours.get(chemin) || Promise.resolve();
+    const suite = precedente.then(() => this._majCreneauImpl(f, chg), () => this._majCreneauImpl(f, chg));
+    this._creneauxEnCours.set(chemin, suite.catch(() => {}));
+    return suite;
+  }
+
+  async _majCreneauImpl(f, { avant, debut, fin }) {
     const cle = this.cleT('creneaux');
     const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
     let liste = [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean);

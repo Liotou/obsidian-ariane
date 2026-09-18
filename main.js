@@ -14470,9 +14470,28 @@ const avecTaches = (Base) => class extends Base {
 
   // Édite la liste des créneaux d'une tâche. { avant } = chaîne de l'entrée
   // ciblée (vide = ajout). { debut, fin } nuls = suppression de `avant`.
-  async majCreneau(ref, { avant, debut, fin }) {
+  //
+  // Sérialisé PAR FICHIER : la fonction lit `metadataCache` puis retire
+  // `avant` par égalité de chaîne. Deux appels rapprochés sur la même tâche
+  // (un glissé suivi d'un redimensionnement avant que le premier n'ait fini
+  // d'écrire, ou un geste qui chevauche la relève Apple Agenda) lisaient
+  // chacun le même instantané pas encore à jour : le second ne retrouvait
+  // plus `avant` dans une liste déjà modifiée par le premier, le filtre ne
+  // retirait rien, et le créneau se retrouvait dédoublé au lieu de se
+  // déplacer. En chaînant sur une promesse par chemin de fichier, chaque
+  // appel ne lit le cache qu'une fois le précédent réellement retombé.
+  async majCreneau(ref, chg) {
     const f = this.fichierDeRef(ref);
     if (!f) return false;
+    if (!this._creneauxEnCours) this._creneauxEnCours = new Map();
+    const chemin = f.path;
+    const precedente = this._creneauxEnCours.get(chemin) || Promise.resolve();
+    const suite = precedente.then(() => this._majCreneauImpl(f, chg), () => this._majCreneauImpl(f, chg));
+    this._creneauxEnCours.set(chemin, suite.catch(() => {}));
+    return suite;
+  }
+
+  async _majCreneauImpl(f, { avant, debut, fin }) {
     const cle = this.cleT('creneaux');
     const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
     let liste = [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean);
@@ -25717,6 +25736,18 @@ class MoteurCalendrier extends MoteurVue {
     // jusqu'à MS_PIN_CRENEAU après cet instant (voir là-bas). Un nouveau geste
     // sur le même créneau réarme la fenêtre.
     if (apercu) this._enAttente.set(ref, Object.assign({ _t0: Date.now() }, apercu));
+    // L'écriture est FINIE ici (on est après le await qui la précède toujours) :
+    // c'est le bon moment pour lever la coalescence, pas le minuteur à durée
+    // fixe de _coalesceRedessin. Ce minuteur ne reste qu'un filet de sécurité
+    // si _apres n'est jamais atteint (écriture qui lève une exception) ; le
+    // laisser seul décider faisait courir deux horloges différentes — la
+    // sienne et la vraie durée de l'écriture (entête + bloc « Sessions ») —
+    // et quand l'écriture dépassait les 450 ms, le minuteur redessinait le
+    // premier avec un cache de métadonnées pas encore à jour : un clignotement
+    // visible avant que le recalage (voir _enAttente) ne rattrape l'affichage.
+    clearTimeout(this._figeMinuterie);
+    this._coalesce = false;
+    this._redessinDiffere = false;
     this.dessiner();
   }
 
@@ -26030,10 +26061,14 @@ class MoteurCalendrier extends MoteurVue {
     let dyDer = 0;
     let guide = null;
     let colCible = null;
+    let idxJourGuide = null;
     const cal = (v) => Math.round(v / (PXH / 4)) * (PXH / 4);
     // Guide de placement : rectangle calé sur le jour + le quart d'heure visés,
     // qui glisse par crans (animation courte) pendant que le bloc, lui, suit
     // librement le curseur. Surligne aussi la colonne du jour d'arrivée.
+    // La recherche de colonne (querySelector) ne coûte qu'au changement DE
+    // JOUR, pas à chaque pointermove : sur un geste vertical pur (la grande
+    // majorité), idxJour ne bouge jamais et on ne la refait donc jamais.
     const poserGuide = (topSnap, idxJour) => {
       if (!inner) return;
       if (!guide) {
@@ -26045,11 +26080,14 @@ class MoteurCalendrier extends MoteurVue {
       guide.style.width = colW + 'px';
       guide.style.top = topSnap + 'px';
       guide.style.height = (parseFloat(bloc.style.height) || PXH) + 'px';
-      const nvColCible = inner.querySelector('.zfa-cal-col[data-jour="' + strip[idxJour] + '"]');
-      if (nvColCible !== colCible) {
-        if (colCible) colCible.classList.remove('zfa-cal-col-cible-jour');
-        colCible = nvColCible;
-        if (colCible) colCible.classList.add('zfa-cal-col-cible-jour');
+      if (idxJour !== idxJourGuide) {
+        idxJourGuide = idxJour;
+        const nvColCible = inner.querySelector('.zfa-cal-col[data-jour="' + strip[idxJour] + '"]');
+        if (nvColCible !== colCible) {
+          if (colCible) colCible.classList.remove('zfa-cal-col-cible-jour');
+          colCible = nvColCible;
+          if (colCible) colCible.classList.add('zfa-cal-col-cible-jour');
+        }
       }
     };
     const nettoyerGuide = () => {
@@ -26088,8 +26126,30 @@ class MoteurCalendrier extends MoteurVue {
       }
       poserGuide(topSnap, idxDep + dJ);
     };
+    // Le navigateur peut livrer bien plus d'un pointermove par image (souris
+    // haute fréquence, trackpad) ; sans throttle, chaque geste rejouait tout
+    // le travail de bouger() (styles, guide) plusieurs fois par frame pour un
+    // résultat identique à l'œil — la source du geste peu réactif. On ne
+    // garde que le DERNIER événement reçu et on l'applique une fois par
+    // requestAnimationFrame.
+    let mvEnAttente = null;
+    let rafId = null;
+    const appliquerMouvementEnAttente = () => {
+      rafId = null;
+      if (mvEnAttente) { bouger(mvEnAttente); mvEnAttente = null; }
+    };
+    const bougerThrottle = (mv) => {
+      mvEnAttente = mv;
+      if (rafId == null) rafId = this._win().requestAnimationFrame(appliquerMouvementEnAttente);
+    };
     const lacher = async (up) => {
-      this._doc().removeEventListener('pointermove', bouger);
+      // Un dernier pointermove peut être encore en attente d'image quand le
+      // pointeur se relâche : on l'applique tout de suite pour que dxDer/dyDer
+      // et la géométrie du bloc reflètent bien la position au lâcher, pas
+      // celle d'une image en retard.
+      if (rafId != null) { this._win().cancelAnimationFrame(rafId); rafId = null; }
+      appliquerMouvementEnAttente();
+      this._doc().removeEventListener('pointermove', bougerThrottle);
       this._doc().removeEventListener('pointerup', lacher);
       this._doc().removeEventListener('pointercancel', lacher);
       this._gesteCal = false;
@@ -26154,7 +26214,7 @@ class MoteurCalendrier extends MoteurVue {
       await this._majCreneauU(ref, { avant: brut, debut: cr.debut, fin: cr.fin });
       this._apres(ref, { creneaux: prevu });
     };
-    this._doc().addEventListener('pointermove', bouger);
+    this._doc().addEventListener('pointermove', bougerThrottle);
     this._doc().addEventListener('pointerup', lacher);
     this._doc().addEventListener('pointercancel', lacher);
   }
