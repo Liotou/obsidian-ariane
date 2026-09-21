@@ -113,7 +113,12 @@ func relire(_ texte: String, _ langue: String, _ fini: @escaping ([[String: Any]
         let pl = v.rangeValue
         let abs = NSRange(location: r.range.location + pl.location, length: pl.length)
         guard abs.location >= 0, abs.location + abs.length <= ns.length, abs.length > 0 else { continue }
-        items.append(["from": abs.location, "length": abs.length, "kind": "grammar",
+        // La relecture range les fautes d'orthographe parmi ses remarques de
+        // grammaire. Sans ce reclassement, un mot mal ecrit serait souligne
+        // comme un accord. La categorie systeme est en anglais, quelle que
+        // soit la langue du texte ; celle montree a l'utilisateur, non.
+        let genre = (d["NSGrammarSystemCategory"] as? String) == "Spelling" ? "spelling" : "grammar"
+        items.append(["from": abs.location, "length": abs.length, "kind": genre,
           "word": ns.substring(with: abs),
           "replace": (d["NSGrammarCorrections"] as? [String]) ?? [],
           "message": (d["NSGrammarUserDescription"] as? String) ?? "",
@@ -131,15 +136,15 @@ func verifier(_ brut: String, _ fini: @escaping ([[String: Any]]) -> Void) {
   guard texte.rangeOfCharacter(from: .letters) != nil else { fini([]); return }
   let langue = langueDe(texte)
   let orth = orthographe(texte, langue)
-  relire(texte, langue) { gram in
+  relire(texte, langue) { revue in
     let couvert: (Int, Int) -> Bool = { de, longueur in
-      gram.contains { g in
+      revue.contains { g in
         let gd = g["from"] as! Int, gl = g["length"] as! Int
         return de < gd + gl && gd < de + longueur
       }
     }
     let restant = orth.filter { !couvert($0["from"] as! Int, $0["length"] as! Int) }
-    fini((gram + restant).sorted { ($0["from"] as! Int) < ($1["from"] as! Int) })
+    fini((revue + restant).sorted { ($0["from"] as! Int) < ($1["from"] as! Int) })
   }
 }
 
@@ -404,9 +409,20 @@ class CorrecteurApple extends obsidian.Component {
     this.cache = new Map();      // texte de ligne masqué → fautes
     this.ignores = new Set();    // fautes écartées pour cette session
     this.suivis = new Set();     // les vues d'éditeur qui nous écoutent
+    this.guidee = new RelectureGuidee(this);
   }
 
-  onunload() { this.assistant.arreter(); }
+  onunload() { this.guidee.fermer(); this.assistant.arreter(); }
+
+  // Force un tour de vérification sur une vue précise, sans attendre le délai.
+  reveiller(vue) { for (const s of this.suivis) if (s.vue === vue) s.planifier(0); }
+
+  // Les fautes qu'une vue affiche en ce moment, dans l'ordre du texte.
+  fautesDe(vue) {
+    if (!this._champ) return [];
+    const etat = vue.state.field(this._champ, false);
+    return etat ? etat.fautes.slice().sort((a, b) => a.from - b.from) : [];
+  }
 
   // Ce qui est demandé, d'après les réglages.
   genres() {
@@ -476,7 +492,9 @@ class CorrecteurApple extends obsidian.Component {
     const { Decoration, EditorView, ViewPlugin, hoverTooltip } = require('@codemirror/view');
     const centre = this;
     const poser = StateEffect.define();
+    const viser = StateEffect.define();
     const marque = { grammar: Decoration.mark({ class: 'zfa-corr-gram' }), spelling: Decoration.mark({ class: 'zfa-corr-orth' }) };
+    const marqueVisee = Decoration.mark({ class: 'zfa-corr-visee' });
 
     const champ = StateField.define({
       create() { return { fautes: [] }; },
@@ -497,6 +515,29 @@ class CorrecteurApple extends obsidian.Component {
       provide: (f) => EditorView.decorations.from(f, (etat) =>
         Decoration.set(etat.fautes.map((x) => marque[x.kind].range(x.from, x.to)), true)),
     });
+
+    // La faute que la relecture guidée examine : surlignée le temps qu'on
+    // s'en occupe, pour la retrouver d'un coup d'oeil dans la page.
+    const champVisee = StateField.define({
+      create() { return Decoration.none; },
+      update(deco, tr) {
+        deco = deco.map(tr.changes);
+        for (const ef of tr.effects) {
+          if (ef.is(viser)) {
+            deco = ef.value && ef.value.to > ef.value.from
+              ? Decoration.set([marqueVisee.range(ef.value.from, ef.value.to)])
+              : Decoration.none;
+          }
+        }
+        return deco;
+      },
+      provide: (f) => EditorView.decorations.from(f),
+    });
+
+    this._champ = champ;
+    this._poser = poser;
+    this._viser = viser;
+    this._scroller = EditorView.scrollIntoView;
 
     const suivi = ViewPlugin.fromClass(class {
       constructor(vue) {
@@ -546,7 +587,7 @@ class CorrecteurApple extends obsidian.Component {
       };
     }, { hideOnChange: true, hoverTime: 200 });
 
-    return [champ, suivi, bulle];
+    return [champ, champVisee, suivi, bulle];
   }
 
   // La bulle : catégorie, explication, propositions, actions. Elle reprend
@@ -603,6 +644,255 @@ class CorrecteurApple extends obsidian.Component {
       this.relancer(false);
     });
     return racine;
+  }
+}
+
+//  La relecture guidée : les fautes une par une, comme la fenêtre de Mail.
+
+// Un panneau flottant posé près de la faute examinée. Il ne garde aucun état
+// qui lui soit propre : les fautes restent dans l'éditeur, le panneau n'est
+// qu'un curseur qui s'y promène. Une frappe qui efface une faute la retire
+// donc aussi d'ici, sans rien à synchroniser.
+class RelectureGuidee {
+  constructor(centre) {
+    this.centre = centre;
+    this.vue = null;
+    this.el = null;
+    this.index = 0;
+    this.session = 0;
+  }
+
+  _document() { return this.vue.dom.ownerDocument; }
+
+  _fenetre() { return this._document().defaultView; }
+
+  fautes() { return this.vue ? this.centre.fautesDe(this.vue) : []; }
+
+  // Ouvre le panneau sur la vue donnée. Si la note n'a pas encore été relue,
+  // le panneau patiente en le disant, plutôt que d'annoncer « aucune faute ».
+  async ouvrir(vue) {
+    if (!vue) return;
+    this.fermer();
+    if (!this.centre.actif()) {
+      new obsidian.Notice(tr('Le correcteur Apple est désactivé dans les réglages.'));
+      return;
+    }
+    const session = ++this.session;
+    this.vue = vue;
+    this.index = 0;
+    this._construire();
+    this.centre.reveiller(vue);
+    const debut = Date.now();
+    while (this.el && this.session === session && !this.fautes().length && Date.now() - debut < 120000) {
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    if (!this.el || this.session !== session) return;
+    if (!this.fautes().length) {
+      new obsidian.Notice(tr('Relecture : rien à signaler dans cette note.'));
+      this.fermer();
+      return;
+    }
+    this.afficher();
+  }
+
+  fermer() {
+    this.session += 1;
+    if (this._debrancher) { this._debrancher(); this._debrancher = null; }
+    if (this.vue && this.centre._viser) {
+      try { this.vue.dispatch({ effects: this.centre._viser.of(null) }); } catch (e) { /* vue partie */ }
+    }
+    if (this.el && this.el.parentNode) this.el.parentNode.removeChild(this.el);
+    this.el = null;
+    this.vue = null;
+  }
+
+  _construire() {
+    const doc = this._document();
+    const el = (parent, tag, classe, texte) => {
+      const e = doc.createElement(tag);
+      if (classe) e.className = classe;
+      if (texte) e.textContent = texte;
+      parent.appendChild(e);
+      return e;
+    };
+    const racine = doc.createElement('div');
+    racine.className = 'zfa-relecture';
+
+    const tete = el(racine, 'div', 'zfa-relecture-tete');
+    el(tete, 'span', 'zfa-relecture-titre', tr('Relecture'));
+    this.elCompte = el(tete, 'span', 'zfa-relecture-compte', tr('en cours…'));
+    const fermer = el(tete, 'button', 'zfa-relecture-icone');
+    obsidian.setIcon(fermer, 'x');
+    canevasInfobulle(fermer, tr('Fermer (Échap)'));
+    fermer.addEventListener('click', () => this.fermer());
+
+    const corps = el(racine, 'div', 'zfa-relecture-corps');
+    el(corps, 'div', 'zfa-relecture-etiquette', tr('Original'));
+    this.elMot = el(corps, 'div', 'zfa-relecture-mot', '…');
+    this.elEtiquetteSug = el(corps, 'div', 'zfa-relecture-etiquette', tr('Suggestion'));
+    this.elSuggestion = el(corps, 'div', 'zfa-relecture-suggestion');
+    this.elTexte = el(corps, 'div', 'zfa-relecture-texte');
+
+    const pied = el(racine, 'div', 'zfa-relecture-pied');
+    const nav = el(pied, 'div', 'zfa-relecture-nav');
+    const prec = el(nav, 'button', 'zfa-relecture-icone');
+    obsidian.setIcon(prec, 'chevron-left');
+    canevasInfobulle(prec, tr('Faute précédente (flèche gauche)'));
+    prec.addEventListener('click', () => this.aller(-1));
+    const suiv = el(nav, 'button', 'zfa-relecture-icone');
+    obsidian.setIcon(suiv, 'chevron-right');
+    canevasInfobulle(suiv, tr('Faute suivante (flèche droite)'));
+    suiv.addEventListener('click', () => this.aller(1));
+    const tout = el(nav, 'button', 'zfa-relecture-icone');
+    obsidian.setIcon(tout, 'check-check');
+    canevasInfobulle(tout, tr('Tout accepter'));
+    tout.addEventListener('click', () => this.toutAccepter());
+
+    const ignorer = el(pied, 'button', 'zfa-relecture-bouton', tr('Ignorer'));
+    canevasInfobulle(ignorer, tr('Laisser ce passage tel quel'));
+    ignorer.addEventListener('click', () => this.ignorer());
+    this.elAccepter = el(pied, 'button', 'zfa-relecture-bouton mod-cta', tr('Accepter'));
+    canevasInfobulle(this.elAccepter, tr('Appliquer la correction (Entrée)'));
+    this.elAccepter.addEventListener('click', () => this.accepter());
+
+    doc.body.appendChild(racine);
+    this.el = racine;
+
+    const fen = this._fenetre();
+    const touche = (e) => {
+      if (!this.el) return;
+      const dans = this.el.contains(e.target);
+      const editeur = this.vue && this.vue.dom.contains(e.target);
+      if (!dans && !editeur) return;
+      if (e.key === 'Escape') { e.preventDefault(); this.fermer(); return; }
+      if (!dans) return; // dans le texte, les flèches et Entrée restent à l'écriture
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); this.aller(1); }
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); this.aller(-1); }
+      else if (e.key === 'Enter') { e.preventDefault(); this.accepter(); }
+    };
+    const replacer = () => this._placer();
+    fen.addEventListener('keydown', touche, true);
+    fen.addEventListener('resize', replacer);
+    this.vue.scrollDOM.addEventListener('scroll', replacer);
+    this._debrancher = () => {
+      fen.removeEventListener('keydown', touche, true);
+      fen.removeEventListener('resize', replacer);
+      this.vue.scrollDOM.removeEventListener('scroll', replacer);
+    };
+    this.el.addEventListener('mousedown', (e) => {
+      // Cliquer le panneau ne doit pas voler le curseur à l'éditeur.
+      if (e.target.tagName !== 'BUTTON') e.preventDefault();
+    });
+  }
+
+  aller(pas) {
+    const n = this.fautes().length;
+    if (!n) { this.fermer(); return; }
+    this.index = ((this.index + pas) % n + n) % n;
+    this.afficher();
+  }
+
+  // Met le panneau à jour sur la faute courante, et va la montrer dans le texte.
+  afficher() {
+    const fautes = this.fautes();
+    if (!this.el) return;
+    if (!fautes.length) {
+      new obsidian.Notice(tr('Relecture terminée.'));
+      this.fermer();
+      return;
+    }
+    if (this.index >= fautes.length) this.index = fautes.length - 1;
+    const f = fautes[this.index];
+    this.elCompte.textContent = (this.index + 1) + tr(' sur ') + fautes.length;
+    this.elMot.textContent = this.vue.state.doc.sliceString(f.from, f.to);
+    const propose = f.replace[0] || '';
+    this.elEtiquetteSug.style.display = propose ? '' : 'none';
+    this.elSuggestion.textContent = '';
+    if (propose) {
+      const doc = this._document();
+      const mot = doc.createElement('span');
+      mot.className = 'zfa-relecture-mot-propose';
+      mot.textContent = propose;
+      this.elSuggestion.appendChild(mot);
+      if (f.category) {
+        const cat = doc.createElement('span');
+        cat.className = 'zfa-relecture-cat';
+        cat.textContent = ' (' + f.category + ')';
+        this.elSuggestion.appendChild(cat);
+      }
+    }
+    const explique = this.centre.greffon.settings.correcteurExplication !== false;
+    this.elTexte.textContent = explique ? (f.message || '') : '';
+    this.elAccepter.disabled = !propose;
+    this.elAccepter.classList.toggle('est-inerte', !propose);
+
+    this.vue.dispatch({
+      effects: [this.centre._viser.of({ from: f.from, to: f.to }),
+        this.centre._scroller(f.from, { y: 'center' })],
+    });
+    this._placer();
+  }
+
+  // Le panneau se pose sous la faute, ou au-dessus s'il déborderait.
+  _placer() {
+    if (!this.el || !this.vue) return;
+    const fautes = this.fautes();
+    const f = fautes[this.index];
+    if (!f) return;
+    let c = null;
+    try { c = this.vue.coordsAtPos(f.from); } catch (e) { c = null; }
+    const fen = this._fenetre();
+    const marge = 8;
+    const large = this.el.offsetWidth || 260;
+    const haut = this.el.offsetHeight || 180;
+    if (!c) {
+      this.el.style.left = Math.max(marge, fen.innerWidth - large - 24) + 'px';
+      this.el.style.top = Math.max(marge, fen.innerHeight - haut - 24) + 'px';
+      return;
+    }
+    let x = c.left - 24;
+    let y = c.bottom + marge;
+    if (y + haut > fen.innerHeight - marge) y = Math.max(marge, c.top - haut - marge);
+    x = Math.min(Math.max(marge, x), Math.max(marge, fen.innerWidth - large - marge));
+    this.el.style.left = x + 'px';
+    this.el.style.top = y + 'px';
+  }
+
+  accepter() {
+    const fautes = this.fautes();
+    const f = fautes[this.index];
+    if (!f || !f.replace.length) return;
+    this.vue.dispatch({
+      changes: { from: f.from, to: f.to, insert: f.replace[0] },
+      effects: this.centre._viser.of(null),
+    });
+    this.afficher(); // la faute corrigée a quitté la liste : l'index vise la suivante
+  }
+
+  ignorer() {
+    const fautes = this.fautes();
+    const f = fautes[this.index];
+    if (!f) return;
+    this.centre.ignores.add(correcteurCleIgnore(f));
+    this.vue.dispatch({ effects: this.centre._poser.of(fautes.filter((x) => x !== f)) });
+    this.afficher();
+  }
+
+  // Toutes les corrections d'un coup. Les passages qui se chevauchent sont
+  // écartés : deux remplacements sur le même texte se contrediraient.
+  toutAccepter() {
+    const fautes = this.fautes().filter((f) => f.replace.length);
+    const changements = [];
+    let fin = -1;
+    for (const f of fautes) {
+      if (f.from < fin) continue;
+      changements.push({ from: f.from, to: f.to, insert: f.replace[0] });
+      fin = f.to;
+    }
+    if (!changements.length) { this.fermer(); return; }
+    this.vue.dispatch({ changes: changements, effects: this.centre._viser.of(null) });
+    new obsidian.Notice(changements.length + tr(' correction(s) appliquée(s).'));
+    this.fermer();
   }
 }
 

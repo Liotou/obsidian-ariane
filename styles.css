@@ -2805,3 +2805,91 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 }
 .zfa-corr-action:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .zfa-corr-action .svg-icon { width: 15px; height: 15px; }
+
+/* Relecture guidée : le panneau qui parcourt les fautes une par une. */
+.cm-content .zfa-corr-visee {
+  background: var(--text-selection);
+  border-radius: var(--radius-s, 4px);
+}
+.zfa-relecture {
+  position: fixed;
+  z-index: var(--layer-popover, 30);
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  max-width: calc(100vw - 16px);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border-hover, var(--background-modifier-border));
+  border-radius: var(--radius-m, 8px);
+  box-shadow: var(--shadow-l, 0 8px 24px rgba(0, 0, 0, 0.3));
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-smaller, 13px);
+  color: var(--text-normal);
+  overflow: hidden;
+}
+.zfa-relecture-tete {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.zfa-relecture-titre { font-weight: var(--font-semibold, 600); }
+.zfa-relecture-compte { margin-left: auto; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+.zfa-relecture-corps { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; }
+.zfa-relecture-etiquette {
+  font-size: calc(var(--font-ui-smaller, 13px) - 2px);
+  font-weight: var(--font-semibold, 600);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.zfa-relecture-mot { font-weight: var(--font-medium, 500); word-break: break-word; }
+.zfa-relecture-suggestion { margin-bottom: 2px; word-break: break-word; }
+.zfa-relecture-suggestion:empty { display: none; }
+.zfa-relecture-mot-propose { font-weight: var(--font-semibold, 600); color: var(--text-accent); }
+.zfa-relecture-cat { color: var(--text-faint); }
+.zfa-relecture-etiquette + .zfa-relecture-etiquette,
+.zfa-relecture-mot + .zfa-relecture-etiquette { margin-top: 8px; }
+.zfa-relecture-texte { margin-top: 4px; color: var(--text-muted); line-height: 1.45; }
+.zfa-relecture-texte:empty { display: none; }
+
+.zfa-relecture-pied {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-primary-alt, var(--background-secondary));
+}
+.zfa-relecture-nav { display: flex; align-items: center; gap: 2px; margin-right: auto; }
+.zfa-relecture-icone {
+  all: unset;
+  box-sizing: border-box;
+  cursor: var(--cursor, pointer);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-s, 4px);
+  color: var(--text-faint);
+}
+.zfa-relecture-icone:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.zfa-relecture-icone .svg-icon { width: 15px; height: 15px; }
+.zfa-relecture-bouton {
+  all: unset;
+  box-sizing: border-box;
+  cursor: var(--cursor, pointer);
+  padding: 4px 12px;
+  border-radius: var(--radius-s, 4px);
+  color: var(--text-normal);
+  font-weight: var(--font-medium, 500);
+  white-space: nowrap;
+}
+.zfa-relecture-bouton:hover { background: var(--background-modifier-hover); }
+.zfa-relecture-bouton.mod-cta { background: var(--interactive-accent); color: var(--text-on-accent); }
+.zfa-relecture-bouton.mod-cta:hover { background: var(--interactive-accent-hover); }
+.zfa-relecture-bouton.est-inerte { opacity: 0.4; cursor: default; }
+.zfa-relecture-bouton.est-inerte:hover { background: none; }

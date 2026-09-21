@@ -437,6 +437,13 @@ class Ariane extends composer(obsidian.Plugin,
       },
     });
     this.addCommand({
+      id: 'correcteur-relire',
+      name: tr('Correcteur Apple : relire la note, faute par faute'),
+      editorCallback: (editeur) => {
+        if (this.correcteur && editeur && editeur.cm) this.correcteur.guidee.ouvrir(editeur.cm);
+      },
+    });
+    this.addCommand({
       id: 'correcteur-tester',
       name: tr('Correcteur Apple : tester le démon et la grammaire'),
       callback: () => this.correcteur && this.correcteur.diagnostiquer(),

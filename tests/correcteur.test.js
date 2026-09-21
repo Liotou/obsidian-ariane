@@ -82,13 +82,29 @@ test('fautes : une ligne que le démon n\'a pas encore vue ne produit rien', () 
 // Un document minimal : le strict nécessaire à construireBulle, pour éprouver
 // la bulle sans dépendre d'un vrai navigateur.
 function faussesBalises() {
-  const creer = (tag) => ({
-    tag, className: '', textContent: '', enfants: [], attributs: {}, ecoutes: {},
-    appendChild(e) { this.enfants.push(e); return e; },
-    setAttribute(k, v) { this.attributs[k] = v; },
-    addEventListener(nom, f) { (this.ecoutes[nom] = this.ecoutes[nom] || []).push(f); },
-  });
-  return { createElement: creer };
+  const creer = (tag) => {
+    const e = {
+      tag, className: '', textContent: '', enfants: [], attributs: {}, ecoutes: {}, style: {},
+      appendChild(x) { this.enfants.push(x); x.parent = this; return x; },
+      setAttribute(k, v) { this.attributs[k] = v; },
+      addEventListener(nom, f) { (this.ecoutes[nom] = this.ecoutes[nom] || []).push(f); },
+      contains() { return false; },
+      classList: {
+        toggle(c, oui) {
+          const l = String(e.className).split(' ').filter((x) => x && x !== c);
+          if (oui) l.push(c);
+          e.className = l.join(' ');
+        },
+      },
+    };
+    return e;
+  };
+  const corps = creer('body');
+  const fenetre = {
+    innerWidth: 1200, innerHeight: 800,
+    addEventListener() {}, removeEventListener() {},
+  };
+  return { createElement: creer, body: corps, defaultView: fenetre };
 }
 
 function bulleDe(faute, reglages) {
@@ -147,4 +163,127 @@ test('bulle : l\'explication se coupe par réglage, la correction reste', () => 
   assert.equal(parClasse(racine, 'zfa-corr-texte').length, 0, 'plus une ligne d\'explication');
   assert.equal(parClasse(racine, 'zfa-corr-categorie')[0].textContent, 'Pronom', 'la catégorie reste');
   assert.deepEqual(parClasse(racine, 'zfa-corr-choix').map((b) => b.textContent), ['elles']);
+});
+
+// ── Relecture guidée ────────────────────────────────────────────────────────
+// Le panneau ne garde pas de liste à lui : il lit celle de l'éditeur. On lui
+// donne donc un faux éditeur, dont l'état change vraiment quand il l'édite.
+function fauxEditeur(texte, fautes) {
+  const vue = {
+    _texte: texte,
+    _fautes: fautes.slice(),
+    _visee: undefined,
+    _montre: [],
+    dom: { ownerDocument: faussesBalises(), contains: () => false },
+    scrollDOM: { addEventListener() {}, removeEventListener() {} },
+    coordsAtPos: () => null,
+    state: { doc: { sliceString: (a, b) => vue._texte.slice(a, b) } },
+    dispatch(spec) {
+      if (spec.changes) {
+        const cs = [].concat(spec.changes).sort((a, b) => b.from - a.from);
+        for (const ch of cs) {
+          const ecart = ch.insert.length - (ch.to - ch.from);
+          vue._texte = vue._texte.slice(0, ch.from) + ch.insert + vue._texte.slice(ch.to);
+          // Comme CodeMirror : la faute touchée disparaît, les suivantes suivent.
+          vue._fautes = vue._fautes
+            .filter((f) => !(ch.from <= f.to && ch.to >= f.from))
+            .map((f) => (f.from >= ch.to ? Object.assign({}, f, { from: f.from + ecart, to: f.to + ecart }) : f));
+        }
+      }
+      for (const ef of [].concat(spec.effects || [])) {
+        if (ef && ef.genre === 'poser') vue._fautes = ef.valeur;
+        if (ef && ef.genre === 'viser') vue._visee = ef.valeur;
+        if (ef && ef.genre === 'montrer') vue._montre.push(ef.valeur);
+      }
+    },
+  };
+  return vue;
+}
+
+function guideeSur(texte, fautes, reglages) {
+  const centre = new (Ariane._test.CorrecteurApple)({ settings: reglages || {} });
+  const vue = fauxEditeur(texte, fautes);
+  centre._champ = true;
+  centre._poser = { of: (v) => ({ genre: 'poser', valeur: v }) };
+  centre._viser = { of: (v) => ({ genre: 'viser', valeur: v }) };
+  centre._scroller = (p) => ({ genre: 'montrer', valeur: p });
+  centre.fautesDe = (v) => v._fautes.slice().sort((a, b) => a.from - b.from);
+  centre.actif = () => true;
+  centre.guidee.vue = vue;
+  centre.guidee._construire();
+  centre.guidee.afficher();
+  return { centre, vue, g: centre.guidee, lire: (c) => parClasse(centre.guidee.el, c).map((e) => e.textContent) };
+}
+
+const PHRASE = 'Ceci est une note pour testé la validité du correceur qui marchaient bien.';
+const FAUTES = () => [
+  { from: 23, to: 28, kind: 'grammar', word: 'testé', replace: ['tester'], message: 'Le verbe tester.', category: 'Verbe' },
+  { from: 44, to: 53, kind: 'spelling', word: 'correceur', replace: ['correcteur'], message: '', category: 'Orthographe' },
+  { from: 58, to: 68, kind: 'grammar', word: 'marchaient', replace: ['marchait'], message: 'Le verbe marchait.', category: 'Forme du verbe' },
+];
+
+test('relecture guidée : compte, original, suggestion, passage visé', () => {
+  const { g, vue, lire } = guideeSur(PHRASE, FAUTES());
+  assert.deepEqual(lire('zfa-relecture-compte'), ['1 sur 3']);
+  assert.deepEqual(lire('zfa-relecture-mot'), ['testé']);
+  assert.deepEqual(lire('zfa-relecture-mot-propose'), ['tester']);
+  assert.deepEqual(lire('zfa-relecture-cat'), [' (Verbe)']);
+  assert.deepEqual(lire('zfa-relecture-texte'), ['Le verbe tester.']);
+  assert.deepEqual(vue._visee, { from: 23, to: 28 }, 'la faute est surlignée dans le texte');
+  assert.deepEqual(vue._montre, [23], 'et amenée sous les yeux');
+  void g;
+});
+
+test('relecture guidée : navigation en boucle, dans l\'ordre du texte', () => {
+  const { g, lire } = guideeSur(PHRASE, FAUTES());
+  g.aller(1);
+  assert.deepEqual(lire('zfa-relecture-compte'), ['2 sur 3']);
+  assert.deepEqual(lire('zfa-relecture-mot'), ['correceur']);
+  g.aller(1); g.aller(1);
+  assert.deepEqual(lire('zfa-relecture-compte'), ['1 sur 3'], 'après la dernière, on revient à la première');
+  g.aller(-1);
+  assert.deepEqual(lire('zfa-relecture-mot'), ['marchaient'], 'et en arrière depuis la première');
+});
+
+test('relecture guidée : accepter corrige le texte et passe à la suivante', () => {
+  const { g, vue, lire } = guideeSur(PHRASE, FAUTES());
+  g.accepter();
+  assert.match(vue._texte, /pour tester la validité/);
+  assert.deepEqual(lire('zfa-relecture-compte'), ['1 sur 2']);
+  assert.deepEqual(lire('zfa-relecture-mot'), ['correceur'], 'la suivante prend la place, décalée par la correction');
+  g.accepter();
+  assert.match(vue._texte, /du correcteur qui/);
+  assert.deepEqual(lire('zfa-relecture-mot'), ['marchaient']);
+});
+
+test('relecture guidée : ignorer retire la faute sans toucher au texte', () => {
+  const { g, vue, centre, lire } = guideeSur(PHRASE, FAUTES());
+  g.ignorer();
+  assert.equal(vue._texte, PHRASE, 'le texte est intact');
+  assert.deepEqual(lire('zfa-relecture-compte'), ['1 sur 2']);
+  assert.equal(centre.ignores.size, 1, 'et la remarque ne reviendra pas');
+});
+
+test('relecture guidée : tout accepter applique chaque correction, une seule fois', () => {
+  const { g, vue } = guideeSur(PHRASE, FAUTES());
+  g.toutAccepter();
+  assert.equal(vue._texte, 'Ceci est une note pour tester la validité du correcteur qui marchait bien.');
+  assert.equal(g.el, null, 'le panneau se referme quand il n\'y a plus rien à voir');
+});
+
+test('relecture guidée : une faute sans proposition se montre, mais ne s\'accepte pas', () => {
+  const { g, vue, lire } = guideeSur('Le mot xyzzyque ici.', [
+    { from: 7, to: 15, kind: 'spelling', word: 'xyzzyque', replace: [], message: '', category: 'Orthographe' },
+  ]);
+  assert.deepEqual(lire('zfa-relecture-mot'), ['xyzzyque']);
+  assert.deepEqual(lire('zfa-relecture-mot-propose'), []);
+  g.accepter();
+  assert.equal(vue._texte, 'Le mot xyzzyque ici.', 'rien ne bouge');
+});
+
+test('relecture guidée : sans explication, le panneau garde le mot et la suggestion', () => {
+  const { lire } = guideeSur(PHRASE, FAUTES(), { correcteurExplication: false });
+  assert.deepEqual(lire('zfa-relecture-texte'), ['']);
+  assert.deepEqual(lire('zfa-relecture-mot'), ['testé']);
+  assert.deepEqual(lire('zfa-relecture-mot-propose'), ['tester']);
 });
