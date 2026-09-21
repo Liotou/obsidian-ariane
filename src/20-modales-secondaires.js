@@ -1,6 +1,6 @@
-//#region 19 · Modales secondaires
+//#region 20 · Modales secondaires
 // ═══════════════════════════════════════════════════════════════════════════
-//  19 · MODALES SECONDAIRES
+//  20 · MODALES SECONDAIRES
 //  Choix de liste, rapport de carte, texte, voisinage, styles de modèle,
 //  fusion d'auteurs.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -171,5 +171,5 @@ class FusionAuteursModal extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
-//#endregion 19 · Modales secondaires
+//#endregion 20 · Modales secondaires
 

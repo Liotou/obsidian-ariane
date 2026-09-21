@@ -110,11 +110,15 @@
  *   17 · Vue Calendrier
  *          mois et semaine : MoteurCalendrier, vue Bases « ariane-calendrier »,
  *          agenda Apple en fond. Sous-régions « Calendrier · … ».
- *   18 · Vues latérales (ItemView)
+ *   18 · Correcteur Apple
+ *          orthographe et grammaire du système (NSSpellChecker) soulignées dans
+ *          l'éditeur, bulle de correction ; démon Swift compilé à la première
+ *          utilisation. Mac seulement.
+ *   19 · Vues latérales (ItemView)
  *          incohérences de tâches, références en attente, suggestions
- *   19 · Modales secondaires
+ *   20 · Modales secondaires
  *          choix, rapports, fusion d'auteurs
- *   20 · Exports
+ *   21 · Exports
  *          module.exports et surface _test des fonctions pures
  *
  * ─────────────────────────────────────────────────────────────────────────

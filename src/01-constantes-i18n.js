@@ -1130,6 +1130,10 @@ const DEFAULT_SETTINGS = {
   articulationSeuilAimant: 7,   // distance d'accrochage aux voisins (px)
   // Canevas (section 16b) : cartes de tâches sur le canevas natif.
   canevasLargeurCarte: 280,     // largeur d'une carte posée (px)
+  correcteurApple: true,        // correcteur du système dans l'éditeur (Mac)
+  correcteurGrammaire: true,    // grammaire contextuelle : pointillés bleus
+  correcteurOrthographe: false, // orthographe : Obsidian souligne déjà en rouge de son côté
+  correcteurDelai: 700,         // ms après la dernière frappe
   canevasRelierAuto: true,      // poser une carte trace ses relations avec les cartes déjà là
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes

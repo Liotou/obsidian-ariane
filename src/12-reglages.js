@@ -1092,6 +1092,30 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.friseLignageSurvol !== false)
         .onChange(async (v) => { s.friseLignageSurvol = v; await maj(); }));
 
+    this._section(c, tr('Correcteur Apple'));
+    this._aide(c, tr("Le correcteur du système (orthographe et grammaire contextuelle, celui de Mail et de Pages) souligne vos notes en pointillés : bleus pour la grammaire, rouges pour l'orthographe. Survolez une faute pour lire l'explication et la corriger d'un clic. Mac seulement. La première fois, le greffon prépare un petit programme (environ une minute) ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). La commande « Correcteur Apple : tester » vérifie que tout répond."));
+    const relancerCorrecteur = (vider) => { if (this.plugin.correcteur) this.plugin.correcteur.relancer(vider); };
+    new obsidian.Setting(c)
+      .setName(tr('Activer le correcteur Apple'))
+      .addToggle((t) => t.setValue(s.correcteurApple !== false)
+        .onChange(async (v) => { s.correcteurApple = v; await maj(); relancerCorrecteur(false); }));
+    new obsidian.Setting(c)
+      .setName(tr('Grammaire (pointillés bleus)'))
+      .setDesc(tr('Accords, formes du verbe, tournures : le moteur de grammaire du système.'))
+      .addToggle((t) => t.setValue(s.correcteurGrammaire !== false)
+        .onChange(async (v) => { s.correcteurGrammaire = v; await maj(); relancerCorrecteur(false); }));
+    new obsidian.Setting(c)
+      .setName(tr('Orthographe (pointillés rouges)'))
+      .setDesc(tr("Obsidian souligne déjà l'orthographe en rouge avec le même correcteur. Activez ceci pour avoir en plus la bulle de propositions ; désactivez alors « Correction orthographique » dans les réglages d'Obsidian pour éviter le double soulignement."))
+      .addToggle((t) => t.setValue(s.correcteurOrthographe === true)
+        .onChange(async (v) => { s.correcteurOrthographe = v; await maj(); relancerCorrecteur(false); }));
+    new obsidian.Setting(c)
+      .setName(tr('Délai avant vérification (ms)'))
+      .setDesc(tr('Attente après la dernière frappe avant de souligner.'))
+      .addSlider((sl) => sl.setLimits(300, 2000, 100).setDynamicTooltip()
+        .setValue(Number.isFinite(s.correcteurDelai) ? s.correcteurDelai : 700)
+        .onChange(async (v) => { s.correcteurDelai = v; await maj(); }));
+
     this._section(c, tr('Canevas'));
     this._aide(c, tr("Les tâches se posent sur n'importe quel canevas Obsidian (fichier .canvas) : clic droit sur le fond, connexion tirée d'une carte, ou panneau « Tâches Ariane » dans les commandes du canevas. Sélectionner une arête entre deux tâches propose, dans la barre du canevas, d'en faire une relation mère / sous-tâche ou un blocage. Un canevas par thème, ou un seul : à votre guise."));
     new obsidian.Setting(c)

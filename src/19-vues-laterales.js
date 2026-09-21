@@ -1,6 +1,6 @@
-//#region 18 · Vues latérales (ItemView)
+//#region 19 · Vues latérales (ItemView)
 // ═══════════════════════════════════════════════════════════════════════════
-//  18 · VUES LATÉRALES (ITEMVIEW)
+//  19 · VUES LATÉRALES (ITEMVIEW)
 //  Volets latéraux : incohérences de tâches, références en attente,
 //  suggestions de voisinage local.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -673,5 +673,5 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
   async onClose() { this.contentEl.empty(); }
 }
 
-//#endregion 18 · Vues latérales (ItemView)
+//#endregion 19 · Vues latérales (ItemView)
 

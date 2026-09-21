@@ -1,6 +1,6 @@
-//#region 20 · Exports
+//#region 21 · Exports
 // ═══════════════════════════════════════════════════════════════════════════
-//  20 · EXPORTS
+//  21 · EXPORTS
 //  Points d'entrée CommonJS : la classe du greffon et la surface _test
 //  des fonctions pures pour la suite de tests.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -18,6 +18,12 @@ module.exports._test = {
   canevasNouvelId,
   IntegrationCanevas,
   SurfaceCanevas,
+  // Correcteur Apple : découpage, masquage et assemblage des fautes.
+  correcteurMasquer,
+  correcteurBlocs,
+  correcteurFautes,
+  correcteurCleIgnore,
+  CorrecteurApple,
   echapperRegex,
   nomCompletAuteur,
   appliquerModele,
@@ -62,4 +68,4 @@ module.exports._test = {
   colonnesPourExport,
 };
 
-//#endregion 20 · Exports
+//#endregion 21 · Exports

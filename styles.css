@@ -2722,3 +2722,34 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   border: 1px solid var(--interactive-accent); border-radius: var(--radius-m);
   box-shadow: var(--shadow-l); font-size: var(--font-ui-small);
 }
+
+/* ── Correcteur Apple (section 18) ──────────────────────────────────────── */
+.cm-content .zfa-corr-gram,
+.cm-content .zfa-corr-orth {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  text-decoration-skip-ink: none;
+}
+.cm-content .zfa-corr-gram { text-decoration-color: var(--color-blue, #3b82f6); }
+.cm-content .zfa-corr-orth { text-decoration-color: var(--color-red, #e5484d); }
+
+.zfa-corr-bulle {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 6px 8px; max-width: 340px;
+  font-size: var(--font-ui-small);
+}
+.zfa-corr-explication { color: var(--text-muted); line-height: 1.35; }
+.zfa-corr-explication strong { color: var(--text-normal); font-weight: 600; }
+.zfa-corr-rang { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.zfa-corr-choix, .zfa-corr-action {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  padding: 2px 8px; border-radius: var(--radius-s, 4px);
+  color: var(--text-normal); line-height: 1.4;
+}
+.zfa-corr-choix { background: var(--interactive-accent); color: var(--text-on-accent); font-weight: 500; }
+.zfa-corr-choix:hover { background: var(--interactive-accent-hover); }
+.zfa-corr-action { color: var(--text-muted); }
+.zfa-corr-action:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.zfa-corr-aucune { color: var(--text-faint); font-style: italic; }

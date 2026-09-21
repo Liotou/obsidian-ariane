@@ -425,6 +425,22 @@ class Ariane extends composer(obsidian.Plugin,
       name: tr('Canevas : tracer les relations entre les tâches'),
       checkCallback: surCanevas((s) => s.tracerTout()),
     });
+    this.addCommand({
+      id: 'correcteur-basculer',
+      name: tr('Correcteur Apple : activer ou désactiver'),
+      callback: async () => {
+        this.settings.correcteurApple = this.settings.correcteurApple === false;
+        await this.saveSettings();
+        if (this.correcteur) this.correcteur.relancer(false);
+        new obsidian.Notice(this.settings.correcteurApple === false
+          ? tr('Correcteur Apple désactivé.') : tr('Correcteur Apple activé.'));
+      },
+    });
+    this.addCommand({
+      id: 'correcteur-tester',
+      name: tr('Correcteur Apple : tester le démon et la grammaire'),
+      callback: () => this.correcteur && this.correcteur.diagnostiquer(),
+    });
   }
 
   // Volets latéraux et vues de base (frise, articulation, calendrier).
@@ -438,6 +454,10 @@ class Ariane extends composer(obsidian.Plugin,
     // pas une vue à nous, une intégration qui suit les .canvas ouverts.
     this.canevas = new IntegrationCanevas(this);
     this.addChild(this.canevas);
+    // Le correcteur du système dans l'éditeur (Mac) : l'extension CodeMirror
+    // est enregistrée avec les autres, dans _installerExtensionsEditeur.
+    this.correcteur = new CorrecteurApple(this);
+    this.addChild(this.correcteur);
     // La frise est une vue de base : elle n'existe que si Bases est actif.
     if (typeof this.registerBasesView === 'function') {
       const Vue = fabriquerVueFriseBase(this);
@@ -799,6 +819,14 @@ class Ariane extends composer(obsidian.Plugin,
       this.registerEditorExtension(champPhrase);
     } catch (e) {
       console.error('[Ariane] Surlignage de phrase indisponible :', e);
+    }
+
+    // Correcteur du système : soulignements et bulle de correction (Mac).
+    try {
+      const extCorrecteur = this.correcteur && this.correcteur.extension();
+      if (extCorrecteur) this.registerEditorExtension(extCorrecteur);
+    } catch (e) {
+      console.error('[Ariane] Correcteur Apple indisponible :', e);
     }
   }
 
