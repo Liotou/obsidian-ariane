@@ -112,7 +112,7 @@
  *          agenda Apple en fond. Sous-régions « Calendrier · … ».
  *   18 · Correcteur Apple
  *          la relecture du système (celle de Mail) soulignée dans l'éditeur,
- *          bulle de correction au survol, panneau de relecture guidée ;
+ *          bulle au survol, relecture guidée en fenêtre, volet latéral ;
  *          démon Swift compilé à la première utilisation. Mac seulement.
  *   19 · Vues latérales (ItemView)
  *          incohérences de tâches, références en attente, suggestions
@@ -15626,9 +15626,9 @@ class Ariane extends composer(obsidian.Plugin,
       },
     });
     this.addCommand({
-      id: 'correcteur-tester',
-      name: tr('Correcteur Apple : tester le démon et la grammaire'),
-      callback: () => this.correcteur && this.correcteur.diagnostiquer(),
+      id: 'correcteur-volet',
+      name: tr('Correcteur Apple : ouvrir le volet de relecture'),
+      callback: () => this.correcteur && this.correcteur.ouvrirVolet(),
     });
   }
 
@@ -15639,6 +15639,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
     this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
+    this.registerView(TYPE_VUE_RELECTURE, (leaf) => new VueRelecture(leaf, this));
     // Le canevas natif d'Obsidian reçoit les cartes de tâches (section 16b) :
     // pas une vue à nous, une intégration qui suit les .canvas ouverts.
     this.canevas = new IntegrationCanevas(this);
@@ -16665,7 +16666,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       }));
 
     this._section(c, tr('Correcteur Apple'));
-    this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). La commande « Correcteur Apple : relire la note, faute par faute » ouvre un panneau qui les parcourt une à une, à accepter ou à laisser. Celle qui s'appelle « tester » dit ce qui répond."));
+    this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral."));
     const relancerCorrecteur = (vider) => { if (this.plugin.correcteur) this.plugin.correcteur.relancer(vider); };
     new obsidian.Setting(c)
       .setName(tr('Activer le correcteur Apple'))
@@ -19034,6 +19035,7 @@ class ModaleAjoutLN extends obsidian.Modal {
 
 const TYPE_VUE_REFS = 'zfa-references';
 const TYPE_VUE_INCOHERENCES = 'zfa-taches-incoherences';
+const TYPE_VUE_RELECTURE = 'zfa-relecture';
 const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 const TYPE_VUE_BASE_ARTIC = 'ariane-articulation';
 const TYPE_VUE_BASE_CALENDRIER = 'ariane-calendrier';
@@ -28365,9 +28367,8 @@ import NaturalLanguage
 //   - le correcteur orthographique classique (NSSpellChecker), synchrone,
 //     pour les mots isoles que la relecture ne couvre pas.
 //
-// Entree  : {"id":1,"cmd":"check","text":"..."}
-//           {"id":1,"cmd":"checkMany","texts":["...","..."]}
-//           {"cmd":"learn","word":"..."} | {"cmd":"ignore","word":"..."}
+// Entree  : {"id":1,"cmd":"checkMany","texts":["...","..."]}
+//           {"cmd":"learn","word":"..."}  -> apprend un mot au dictionnaire
 //           {"cmd":"ping"}  -> dit quels moteurs repondent
 // Sortie  : {"id":1,"items":[{"from":23,"length":8,"kind":"grammar",
 //            "word":"explique","replace":["expliquer"],"message":"...",
@@ -28493,8 +28494,6 @@ func repondre(_ o: [String: Any]) {
 func traiter(_ m: [String: Any]) {
   let id = m["id"] ?? NSNull()
   switch m["cmd"] as? String ?? "" {
-  case "check":
-    verifier(m["text"] as? String ?? "") { repondre(["id": id, "items": $0]) }
   case "checkMany":
     let textes = m["texts"] as? [String] ?? []
     var resultats = [[[String: Any]]](repeating: [], count: textes.count)
@@ -28506,9 +28505,6 @@ func traiter(_ m: [String: Any]) {
     groupe.notify(queue: .main) { repondre(["id": id, "results": resultats]) }
   case "learn":
     verificateur.learnWord(m["word"] as? String ?? "")
-    repondre(["id": id, "ok": true])
-  case "ignore":
-    verificateur.ignoreWord(m["word"] as? String ?? "", inSpellDocumentWithTag: balise)
     repondre(["id": id, "ok": true])
   case "ping":
     repondre(["id": id, "ok": true, "relecture": relectureDispo,
@@ -28631,6 +28627,7 @@ class AssistantApple {
     this.attentes = new Map();
     this.pret = null;        // promesse du démarrage en cours
     this.indisponible = '';  // raison, quand le démon ne peut pas exister
+    this.relecture = true;   // la relecture contextuelle répond (faux : orthographe seule)
   }
 
   static disponible() { return process.platform === 'darwin'; }
@@ -28695,6 +28692,9 @@ class AssistantApple {
           enfant.on('error', fin);
           enfant.stdin.on('error', () => { /* le démon est parti : 'exit' suit */ });
           this.enfant = enfant;
+          // Un salut d'emblée : le greffon saura dire, sans qu'on le lui
+          // demande, si la relecture contextuelle manque à ce système.
+          this.demander({ cmd: 'ping' }, 120000).then((r) => { this.relecture = !r || r.relecture !== false; });
           return enfant;
         } catch (e) {
           this.indisponible = String((e && e.message) || e);
@@ -28745,12 +28745,80 @@ class CorrecteurApple extends obsidian.Component {
     this.ignores = new Set();    // fautes écartées pour cette session
     this.suivis = new Set();     // les vues d'éditeur qui nous écoutent
     this.guidee = new RelectureGuidee(this);
+    this.abonnes = new Set();    // les volets à prévenir quand la liste change
+    this._plainte = false;       // la relecture manquante n'est dite qu'une fois
   }
 
   onunload() { this.guidee.fermer(); this.assistant.arreter(); }
 
   // Force un tour de vérification sur une vue précise, sans attendre le délai.
   reveiller(vue) { for (const s of this.suivis) if (s.vue === vue) s.planifier(0); }
+
+  // Vrai tant qu'un tour de relecture est en cours sur cette vue : le volet
+  // dit « en cours » plutôt que d'annoncer à tort qu'il n'y a rien.
+  occupeSur(vue) {
+    for (const s of this.suivis) if (s.vue === vue) return s.occupe;
+    return false;
+  }
+
+  // Ouvre le volet latéral, ou le ramène au premier plan s'il est déjà là.
+  async ouvrirVolet() {
+    const espace = this.greffon.app.workspace;
+    const deja = espace.getLeavesOfType(TYPE_VUE_RELECTURE);
+    if (deja.length) { espace.revealLeaf(deja[0]); return; }
+    const feuille = espace.getRightLeaf(false);
+    if (!feuille) return;
+    await feuille.setViewState({ type: TYPE_VUE_RELECTURE, active: true });
+    espace.revealLeaf(feuille);
+  }
+
+  // Prévient les volets ouverts que la liste des fautes a bougé.
+  _prevenir() { for (const f of this.abonnes) { try { f(); } catch (e) { /* volet fermé */ } } }
+
+  // Amène la faute sous les yeux et la surligne le temps qu'on s'en occupe.
+  viser(vue, faute) {
+    if (!this._viser) return;
+    vue.dispatch({
+      effects: faute
+        ? [this._viser.of({ from: faute.from, to: faute.to }), this._scroller(faute.from, { y: 'center' })]
+        : [this._viser.of(null)],
+    });
+  }
+
+  // Applique la première proposition. Rend false si la faute n'en a pas.
+  accepter(vue, faute) {
+    if (!faute || !faute.replace.length) return false;
+    vue.dispatch({
+      changes: { from: faute.from, to: faute.to, insert: faute.replace[0] },
+      effects: this._viser.of(null),
+    });
+    this._prevenir();
+    return true;
+  }
+
+  // Écarte la remarque pour cette session, sans toucher au texte.
+  ignorer(vue, faute) {
+    if (!faute) return;
+    this.ignores.add(correcteurCleIgnore(faute));
+    vue.dispatch({ effects: this._poser.of(this.fautesDe(vue).filter((x) => x !== faute)) });
+    this._prevenir();
+  }
+
+  // Toutes les corrections d'un coup. Les passages qui se chevauchent sont
+  // écartés : deux remplacements sur le même texte se contrediraient.
+  accepterTout(vue) {
+    const changements = [];
+    let fin = -1;
+    for (const f of this.fautesDe(vue)) {
+      if (!f.replace.length || f.from < fin) continue;
+      changements.push({ from: f.from, to: f.to, insert: f.replace[0] });
+      fin = f.to;
+    }
+    if (!changements.length) return 0;
+    vue.dispatch({ changes: changements, effects: this._viser.of(null) });
+    this._prevenir();
+    return changements.length;
+  }
 
   // Les fautes qu'une vue affiche en ce moment, dans l'ordre du texte.
   fautesDe(vue) {
@@ -28796,28 +28864,6 @@ class CorrecteurApple extends obsidian.Component {
       for (const k of [...this.cache.keys()].slice(0, this.cache.size - 3000)) this.cache.delete(k);
     }
     return true;
-  }
-
-  // Une phrase d'essai : dit quels moteurs répondent, et ce qu'ils trouvent.
-  async diagnostiquer() {
-    if (!AssistantApple.disponible()) { new obsidian.Notice(tr('Le correcteur Apple ne fonctionne que sur Mac.')); return; }
-    new obsidian.Notice(tr('Correcteur Apple : essai en cours…'), 4000);
-    const salut = await this.assistant.demander({ cmd: 'ping' }, 120000);
-    if (!salut) {
-      new obsidian.Notice(tr('Correcteur Apple : aucune réponse du démon. ') + (this.assistant.indisponible || ''), 12000);
-      return;
-    }
-    const essai = 'Ceci est une note pour testé la validité du correcteur qui marchaient bien.';
-    const res = await this.assistant.verifier([essai]);
-    const f = (res && res[0]) || [];
-    const lignes = [
-      tr('Correcteur Apple'),
-      tr('Relecture contextuelle : ') + (salut.relecture ? tr('disponible.') : tr('absente de ce système.')),
-      tr('Phrase d’essai : ') + f.length + tr(' faute(s) sur 2 attendues.'),
-    ];
-    for (const x of f) lignes.push('   « ' + x.word +' » → ' + (x.replace[0] || '?'));
-    if (!f.length) lignes.push(tr('Le moteur du système ne rend rien pour le moment.'));
-    new obsidian.Notice(lignes.join('\n'), 15000);
   }
 
   // L'extension à enregistrer auprès de l'éditeur, ou null hors Mac.
@@ -28879,6 +28925,7 @@ class CorrecteurApple extends obsidian.Component {
         this.vue = vue;
         this.minuteur = null;
         this.tour = 0;
+        this.occupe = false;
         centre.suivis.add(this);
         this.planifier(400);
       }
@@ -28890,6 +28937,8 @@ class CorrecteurApple extends obsidian.Component {
       }
       async cycle() {
         const tour = ++this.tour;
+        this.occupe = true;
+        centre._prevenir();
         const vue = this.vue;
         if (!centre.actif()) {
           if (vue.state.field(champ).fautes.length) vue.dispatch({ effects: poser.of([]) });
@@ -28901,10 +28950,19 @@ class CorrecteurApple extends obsidian.Component {
         const poserCourant = () => {
           if (tour !== this.tour || vue.state.doc !== doc) return false;
           vue.dispatch({ effects: poser.of(correcteurFautes(blocs, centre.cache, centre.ignores, centre.genres())) });
+          centre._prevenir();
+          if (!centre.assistant.relecture && !centre._plainte) {
+            centre._plainte = true;
+            new obsidian.Notice(tr("Correcteur Apple : ce système ne propose pas la relecture contextuelle. Seule l'orthographe sera signalée."), 12000);
+          }
           return true;
         };
-        if (await centre._resoudre(blocs, poserCourant) === false) return;
-        poserCourant();
+        try {
+          if (await centre._resoudre(blocs, poserCourant) === false) return;
+          poserCourant();
+        } finally {
+          if (tour === this.tour) { this.occupe = false; centre._prevenir(); }
+        }
       }
     });
 
@@ -29161,10 +29219,7 @@ class RelectureGuidee {
     this.elAccepter.disabled = !propose;
     this.elAccepter.classList.toggle('est-inerte', !propose);
 
-    this.vue.dispatch({
-      effects: [this.centre._viser.of({ from: f.from, to: f.to }),
-        this.centre._scroller(f.from, { y: 'center' })],
-    });
+    this.centre.viser(this.vue, f);
     this._placer();
   }
 
@@ -29194,40 +29249,125 @@ class RelectureGuidee {
   }
 
   accepter() {
-    const fautes = this.fautes();
-    const f = fautes[this.index];
-    if (!f || !f.replace.length) return;
-    this.vue.dispatch({
-      changes: { from: f.from, to: f.to, insert: f.replace[0] },
-      effects: this.centre._viser.of(null),
-    });
-    this.afficher(); // la faute corrigée a quitté la liste : l'index vise la suivante
+    // La faute corrigée quitte la liste : l'index vise alors la suivante.
+    if (this.centre.accepter(this.vue, this.fautes()[this.index])) this.afficher();
   }
 
   ignorer() {
-    const fautes = this.fautes();
-    const f = fautes[this.index];
-    if (!f) return;
-    this.centre.ignores.add(correcteurCleIgnore(f));
-    this.vue.dispatch({ effects: this.centre._poser.of(fautes.filter((x) => x !== f)) });
+    this.centre.ignorer(this.vue, this.fautes()[this.index]);
     this.afficher();
   }
 
-  // Toutes les corrections d'un coup. Les passages qui se chevauchent sont
-  // écartés : deux remplacements sur le même texte se contrediraient.
   toutAccepter() {
-    const fautes = this.fautes().filter((f) => f.replace.length);
-    const changements = [];
-    let fin = -1;
-    for (const f of fautes) {
-      if (f.from < fin) continue;
-      changements.push({ from: f.from, to: f.to, insert: f.replace[0] });
-      fin = f.to;
-    }
-    if (!changements.length) { this.fermer(); return; }
-    this.vue.dispatch({ changes: changements, effects: this.centre._viser.of(null) });
-    new obsidian.Notice(changements.length + tr(' correction(s) appliquée(s).'));
+    const n = this.centre.accepterTout(this.vue);
+    if (n) new obsidian.Notice(n + tr(' correction(s) appliquée(s).'));
     this.fermer();
+  }
+}
+
+//  Le volet de relecture : la même chose en fenêtre, à la manière de Word.
+
+// Toutes les remarques d'un coup, rangées par nature, dans un volet latéral
+// qui reste ouvert pendant qu'on écrit. Il ne détient rien non plus : il lit
+// les fautes de l'éditeur actif et redessine quand elles changent.
+class VueRelecture extends obsidian.ItemView {
+  constructor(feuille, greffon) {
+    super(feuille);
+    this.greffon = greffon;
+    this.derniereVue = null;
+  }
+
+  getViewType() { return TYPE_VUE_RELECTURE; }
+  getDisplayText() { return tr('Relecture'); }
+  getIcon() { return 'spell-check'; }
+
+  async onOpen() {
+    this.contentEl.addClass('zfa-rel-volet');
+    this.majLiee = () => this.rafraichir();
+    if (this.greffon.correcteur) this.greffon.correcteur.abonnes.add(this.majLiee);
+    this.registerEvent(this.app.workspace.on('active-leaf-change', this.majLiee));
+    this.registerEvent(this.app.workspace.on('file-open', this.majLiee));
+    this.rafraichir();
+    const vue = this.editeur();
+    if (vue && this.greffon.correcteur) this.greffon.correcteur.reveiller(vue);
+  }
+
+  async onClose() {
+    if (this.greffon.correcteur) this.greffon.correcteur.abonnes.delete(this.majLiee);
+  }
+
+  // L'éditeur relu : celui qui a le focus, ou le dernier vu — car cliquer
+  // dans le volet lui prend le focus, et l'éditeur n'est alors plus « actif ».
+  editeur() {
+    const active = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+    if (active && active.editor && active.editor.cm) this.derniereVue = active.editor.cm;
+    else if (this.derniereVue && this.derniereVue.dom && !this.derniereVue.dom.isConnected) this.derniereVue = null;
+    return this.derniereVue;
+  }
+
+  _mot(parent, classe, texte) { return parent.createSpan({ cls: classe, text: texte }); }
+
+  _rien(parent, texte) { parent.createDiv({ cls: 'zfa-rel-rien', text: texte }); }
+
+  rafraichir() {
+    const c = this.contentEl;
+    c.empty();
+    const correcteur = this.greffon.correcteur;
+    if (!correcteur || !correcteur.actif()) { this._rien(c, tr('Le correcteur Apple est désactivé dans les réglages.')); return; }
+    const vue = this.editeur();
+    if (!vue) { this._rien(c, tr('Ouvrez une note pour la relire.')); return; }
+
+    const fautes = correcteur.fautesDe(vue);
+    const tete = c.createDiv({ cls: 'zfa-rel-tete' });
+    tete.createSpan({
+      cls: 'zfa-rel-compte',
+      text: fautes.length ? fautes.length + tr(' remarque(s)') : (correcteur.occupeSur(vue) ? tr('Relecture en cours…') : tr('Rien à signaler')),
+    });
+    if (fautes.length) {
+      const tout = tete.createEl('button', { cls: 'zfa-rel-tout', text: tr('Tout accepter') });
+      canevasInfobulle(tout, tr('Appliquer toutes les corrections proposées'));
+      tout.onclick = () => {
+        const n = correcteur.accepterTout(vue);
+        if (n) new obsidian.Notice(n + tr(' correction(s) appliquée(s).'));
+      };
+    }
+    if (!fautes.length) {
+      this._rien(c, correcteur.occupeSur(vue)
+        ? tr('Le système relit la note. Les remarques apparaîtront ici.')
+        : tr('Cette note ne soulève aucune remarque.'));
+      return;
+    }
+    for (const [genre, titre] of [['grammar', tr('Grammaire')], ['spelling', tr('Orthographe')]]) {
+      const lot = fautes.filter((f) => f.kind === genre);
+      if (!lot.length) continue;
+      c.createEl('h4', { cls: 'zfa-rel-groupe', text: titre + ' (' + lot.length + ')' });
+      for (const f of lot) this._ligne(c, vue, f, correcteur);
+    }
+  }
+
+  _ligne(parent, vue, faute, correcteur) {
+    const ligne = parent.createDiv({ cls: 'zfa-rel-ligne zfa-rel-' + faute.kind });
+    const mots = ligne.createDiv({ cls: 'zfa-rel-mots' });
+    this._mot(mots, 'zfa-rel-avant', vue.state.doc.sliceString(faute.from, faute.to));
+    if (faute.replace.length) {
+      this._mot(mots, 'zfa-rel-fleche', '→');
+      this._mot(mots, 'zfa-rel-apres', faute.replace[0]);
+    }
+    if (faute.category) ligne.createDiv({ cls: 'zfa-rel-cat', text: faute.category });
+    if (faute.message && this.greffon.settings.correcteurExplication !== false) {
+      ligne.createDiv({ cls: 'zfa-rel-texte', text: faute.message });
+    }
+
+    const actions = ligne.createDiv({ cls: 'zfa-rel-actions' });
+    if (faute.replace.length) {
+      const ok = actions.createEl('button', { cls: 'zfa-rel-bouton mod-cta', text: tr('Accepter') });
+      ok.onclick = (e) => { e.stopPropagation(); correcteur.accepter(vue, faute); };
+    }
+    const non = actions.createEl('button', { cls: 'zfa-rel-bouton', text: tr('Ignorer') });
+    non.onclick = (e) => { e.stopPropagation(); correcteur.ignorer(vue, faute); };
+
+    // Cliquer la ligne va montrer le passage dans la note, sans rien changer.
+    ligne.onclick = () => { correcteur.viser(vue, faute); vue.focus(); };
   }
 }
 

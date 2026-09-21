@@ -112,7 +112,7 @@
  *          agenda Apple en fond. Sous-régions « Calendrier · … ».
  *   18 · Correcteur Apple
  *          la relecture du système (celle de Mail) soulignée dans l'éditeur,
- *          bulle de correction au survol, panneau de relecture guidée ;
+ *          bulle au survol, relecture guidée en fenêtre, volet latéral ;
  *          démon Swift compilé à la première utilisation. Mac seulement.
  *   19 · Vues latérales (ItemView)
  *          incohérences de tâches, références en attente, suggestions

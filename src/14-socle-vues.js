@@ -8,6 +8,7 @@
 
 const TYPE_VUE_REFS = 'zfa-references';
 const TYPE_VUE_INCOHERENCES = 'zfa-taches-incoherences';
+const TYPE_VUE_RELECTURE = 'zfa-relecture';
 const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 const TYPE_VUE_BASE_ARTIC = 'ariane-articulation';
 const TYPE_VUE_BASE_CALENDRIER = 'ariane-calendrier';

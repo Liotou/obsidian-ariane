@@ -444,9 +444,9 @@ class Ariane extends composer(obsidian.Plugin,
       },
     });
     this.addCommand({
-      id: 'correcteur-tester',
-      name: tr('Correcteur Apple : tester le démon et la grammaire'),
-      callback: () => this.correcteur && this.correcteur.diagnostiquer(),
+      id: 'correcteur-volet',
+      name: tr('Correcteur Apple : ouvrir le volet de relecture'),
+      callback: () => this.correcteur && this.correcteur.ouvrirVolet(),
     });
   }
 
@@ -457,6 +457,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
     this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
+    this.registerView(TYPE_VUE_RELECTURE, (leaf) => new VueRelecture(leaf, this));
     // Le canevas natif d'Obsidian reçoit les cartes de tâches (section 16b) :
     // pas une vue à nous, une intégration qui suit les .canvas ouverts.
     this.canevas = new IntegrationCanevas(this);

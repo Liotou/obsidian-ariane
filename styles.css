@@ -2893,3 +2893,70 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-relecture-bouton.mod-cta:hover { background: var(--interactive-accent-hover); }
 .zfa-relecture-bouton.est-inerte { opacity: 0.4; cursor: default; }
 .zfa-relecture-bouton.est-inerte:hover { background: none; }
+
+/* Volet de relecture : toutes les remarques d'une note, rangées par nature. */
+.zfa-rel-volet { padding: 0 12px 12px; }
+.zfa-rel-tete {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  position: sticky;
+  top: 0;
+  background: var(--background-secondary);
+  z-index: 1;
+}
+.zfa-rel-compte { font-weight: var(--font-semibold, 600); }
+.zfa-rel-tout {
+  all: unset;
+  box-sizing: border-box;
+  cursor: var(--cursor, pointer);
+  margin-left: auto;
+  padding: 3px 10px;
+  border-radius: var(--radius-s, 4px);
+  font-size: var(--font-ui-smaller, 13px);
+  color: var(--text-muted);
+}
+.zfa-rel-tout:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.zfa-rel-rien { padding: 8px 0; color: var(--text-muted); line-height: 1.5; }
+
+.zfa-rel-groupe {
+  margin: 14px 0 6px;
+  font-size: calc(var(--font-ui-smaller, 13px) - 1px);
+  font-weight: var(--font-semibold, 600);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.zfa-rel-ligne {
+  cursor: var(--cursor, pointer);
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-s, 4px);
+  border-left: 2px solid var(--color-blue, #3b82f6);
+  background: var(--background-primary);
+  font-size: var(--font-ui-smaller, 13px);
+  line-height: 1.45;
+}
+.zfa-rel-ligne.zfa-rel-spelling { border-left-color: var(--color-red, #e5484d); }
+.zfa-rel-ligne:hover { background: var(--background-modifier-hover); }
+.zfa-rel-mots { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.zfa-rel-avant { color: var(--text-muted); text-decoration: line-through; word-break: break-word; }
+.zfa-rel-fleche { color: var(--text-faint); }
+.zfa-rel-apres { font-weight: var(--font-semibold, 600); word-break: break-word; }
+.zfa-rel-cat { margin-top: 2px; color: var(--text-faint); }
+.zfa-rel-texte { margin-top: 4px; color: var(--text-muted); }
+
+.zfa-rel-actions { display: flex; gap: 4px; margin-top: 8px; }
+.zfa-rel-bouton {
+  all: unset;
+  box-sizing: border-box;
+  cursor: var(--cursor, pointer);
+  padding: 3px 10px;
+  border-radius: var(--radius-s, 4px);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller, 13px);
+}
+.zfa-rel-bouton:hover { background: var(--background-modifier-hover); }
+.zfa-rel-bouton.mod-cta { background: var(--interactive-accent); color: var(--text-on-accent); }
+.zfa-rel-bouton.mod-cta:hover { background: var(--interactive-accent-hover); }

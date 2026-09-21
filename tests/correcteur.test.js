@@ -177,7 +177,8 @@ function fauxEditeur(texte, fautes) {
     dom: { ownerDocument: faussesBalises(), contains: () => false },
     scrollDOM: { addEventListener() {}, removeEventListener() {} },
     coordsAtPos: () => null,
-    state: { doc: { sliceString: (a, b) => vue._texte.slice(a, b) } },
+    // Comme CodeMirror : la liste des fautes est un champ d'état.
+    state: { doc: { sliceString: (a, b) => vue._texte.slice(a, b) }, field: () => ({ fautes: vue._fautes }) },
     dispatch(spec) {
       if (spec.changes) {
         const cs = [].concat(spec.changes).sort((a, b) => b.from - a.from);
@@ -207,7 +208,6 @@ function guideeSur(texte, fautes, reglages) {
   centre._poser = { of: (v) => ({ genre: 'poser', valeur: v }) };
   centre._viser = { of: (v) => ({ genre: 'viser', valeur: v }) };
   centre._scroller = (p) => ({ genre: 'montrer', valeur: p });
-  centre.fautesDe = (v) => v._fautes.slice().sort((a, b) => a.from - b.from);
   centre.actif = () => true;
   centre.guidee.vue = vue;
   centre.guidee._construire();
@@ -286,4 +286,62 @@ test('relecture guidée : sans explication, le panneau garde le mot et la sugges
   assert.deepEqual(lire('zfa-relecture-texte'), ['']);
   assert.deepEqual(lire('zfa-relecture-mot'), ['testé']);
   assert.deepEqual(lire('zfa-relecture-mot-propose'), ['tester']);
+});
+
+// Les actions partagées par le panneau flottant et le volet latéral.
+function centreSur(texte, fautes, reglages) {
+  const centre = new (Ariane._test.CorrecteurApple)({ settings: reglages || {} });
+  const vue = fauxEditeur(texte, fautes);
+  centre._champ = true;
+  centre._poser = { of: (v) => ({ genre: 'poser', valeur: v }) };
+  centre._viser = { of: (v) => ({ genre: 'viser', valeur: v }) };
+  centre._scroller = (p) => ({ genre: 'montrer', valeur: p });
+  return { centre, vue };
+}
+
+test('actions : accepter rend vrai, et faux sans proposition', () => {
+  const { centre, vue } = centreSur(PHRASE, FAUTES());
+  assert.equal(centre.accepter(vue, centre.fautesDe(vue)[0]), true);
+  assert.match(vue._texte, /pour tester la/);
+  assert.equal(centre.accepter(vue, { from: 0, to: 4, replace: [] }), false, 'rien à appliquer');
+  assert.equal(centre.accepter(vue, null), false);
+});
+
+test('actions : les volets sont prévenus à chaque changement', () => {
+  const { centre, vue } = centreSur(PHRASE, FAUTES());
+  let appels = 0;
+  centre.abonnes.add(() => { appels += 1; });
+  centre.accepter(vue, centre.fautesDe(vue)[0]);
+  centre.ignorer(vue, centre.fautesDe(vue)[0]);
+  assert.equal(appels, 2);
+  // Un volet qui lève une erreur n'empêche pas les autres d'être prévenus.
+  centre.abonnes.add(() => { throw new Error('volet cassé'); });
+  centre.accepterTout(vue);
+  assert.equal(appels, 3);
+});
+
+test('actions : viser surligne et fait défiler, viser rien efface le surlignage', () => {
+  const { centre, vue } = centreSur(PHRASE, FAUTES());
+  const f = centre.fautesDe(vue)[2];
+  centre.viser(vue, f);
+  assert.deepEqual(vue._visee, { from: f.from, to: f.to });
+  assert.deepEqual(vue._montre, [f.from]);
+  centre.viser(vue, null);
+  assert.equal(vue._visee, null);
+});
+
+test('actions : tout accepter rend le nombre appliqué, zéro s\'il n\'y a rien', () => {
+  const { centre, vue } = centreSur(PHRASE, FAUTES());
+  assert.equal(centre.accepterTout(vue), 3);
+  assert.equal(vue._texte, 'Ceci est une note pour tester la validité du correcteur qui marchait bien.');
+  assert.equal(centre.accepterTout(vue), 0);
+});
+
+test('actions : tout accepter écarte un passage qui en chevauche un autre', () => {
+  const { centre, vue } = centreSur('Les acteur public agissent.', [
+    { from: 4, to: 17, kind: 'grammar', word: 'acteur public', replace: ['acteurs publics'], message: '', category: '' },
+    { from: 11, to: 17, kind: 'spelling', word: 'public', replace: ['publics'], message: '', category: '' },
+  ]);
+  assert.equal(centre.accepterTout(vue), 1, 'la seconde recouvre la première : écartée');
+  assert.equal(vue._texte, 'Les acteurs publics agissent.');
 });
