@@ -9,6 +9,7 @@ const factice = new Proxy({}, {
   get(_, nom) {
     if (nom === 'Platform') return { isMacOS: true, isDesktopApp: true };
     if (nom === 'setIcon') return () => {};
+    if (nom === 'setTooltip') return () => {};
     if (!classes[nom]) classes[nom] = class { constructor() {} };
     return classes[nom];
   },

@@ -2735,21 +2735,79 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .cm-content .zfa-corr-gram { text-decoration-color: var(--color-blue, #3b82f6); }
 .cm-content .zfa-corr-orth { text-decoration-color: var(--color-red, #e5484d); }
 
+/* La coque de CodeMirror : on lui donne l'allure d'un menu d'Obsidian. */
+.cm-tooltip:has(> .zfa-corr-bulle) {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border-hover, var(--background-modifier-border));
+  border-radius: var(--radius-m, 8px);
+  box-shadow: var(--shadow-s, 0 2px 8px rgba(0, 0, 0, 0.25));
+  overflow: hidden;
+  max-width: min(320px, 90vw);
+}
+
 .zfa-corr-bulle {
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 6px 8px; max-width: 340px;
-  font-size: var(--font-ui-small);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px 8px;
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-smaller, 13px);
+  line-height: 1.45;
+  color: var(--text-normal);
 }
-.zfa-corr-explication { color: var(--text-muted); line-height: 1.35; }
-.zfa-corr-explication strong { color: var(--text-normal); font-weight: 600; }
-.zfa-corr-rang { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.zfa-corr-choix, .zfa-corr-action {
-  all: unset; box-sizing: border-box; cursor: pointer;
-  padding: 2px 8px; border-radius: var(--radius-s, 4px);
-  color: var(--text-normal); line-height: 1.4;
+.zfa-corr-categorie {
+  font-size: calc(var(--font-ui-smaller, 13px) - 2px);
+  font-weight: var(--font-semibold, 600);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-accent);
 }
-.zfa-corr-choix { background: var(--interactive-accent); color: var(--text-on-accent); font-weight: 500; }
+.zfa-corr-texte { color: var(--text-muted); }
+.zfa-corr-texte:empty { display: none; }
+
+.zfa-corr-rang {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.zfa-corr-choix {
+  all: unset;
+  box-sizing: border-box;
+  cursor: var(--cursor, pointer);
+  padding: 3px 10px;
+  border-radius: var(--radius-s, 4px);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: var(--font-medium, 500);
+  line-height: 1.4;
+  white-space: nowrap;
+}
 .zfa-corr-choix:hover { background: var(--interactive-accent-hover); }
-.zfa-corr-action { color: var(--text-muted); }
-.zfa-corr-action:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+/* Les propositions suivantes restent en retrait : une seule est la bonne. */
+.zfa-corr-choix.est-secondaire {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  font-weight: normal;
+}
+.zfa-corr-choix.est-secondaire:hover { background: var(--background-modifier-active-hover, var(--background-modifier-hover)); }
 .zfa-corr-aucune { color: var(--text-faint); font-style: italic; }
+
+.zfa-corr-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.zfa-corr-action {
+  all: unset;
+  box-sizing: border-box;
+  cursor: var(--cursor, pointer);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-s, 4px);
+  color: var(--text-faint);
+}
+.zfa-corr-action:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.zfa-corr-action .svg-icon { width: 15px; height: 15px; }

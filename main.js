@@ -28857,57 +28857,70 @@ class CorrecteurApple extends obsidian.Component {
     const bulle = hoverTooltip((vue, pos) => {
       const f = vue.state.field(champ).fautes.find((x) => pos >= x.from && pos <= x.to);
       if (!f) return null;
-      return { pos: f.from, end: f.to, above: true, create: () => ({ dom: centre.construireBulle(vue, f) }) };
+      return {
+        pos: f.from,
+        end: f.to,
+        above: true,
+        // La coque que pose CodeMirror autour porte le fond, le liseré et
+        // l'ombre des menus d'Obsidian ; styles.css la reconnaît à son
+        // contenu, ce qui évite d'aller la marquer après coup.
+        create: () => ({ dom: centre.construireBulle(vue, f) }),
+      };
     }, { hideOnChange: true, hoverTime: 200 });
 
     return [champ, suivi, bulle];
   }
 
-  // La bulle : explication, propositions, ignorer, ajouter au dictionnaire.
+  // La bulle : catégorie, explication, propositions, actions. Elle reprend
+  // les teintes, les rayons et l'ombre des menus d'Obsidian, pour qu'elle
+  // passe pour une fenêtre du logiciel et non pour une pièce rapportée.
   construireBulle(vue, faute) {
     const doc = vue.dom.ownerDocument;
-    const el = (tag, classe, texte) => {
+    const el = (parent, tag, classe, texte) => {
       const e = doc.createElement(tag);
       if (classe) e.className = classe;
       if (texte) e.textContent = texte;
+      parent.appendChild(e);
       return e;
     };
-    const racine = el('div', 'zfa-corr-bulle');
-    if (faute.category || faute.message) {
-      const tete = el('div', 'zfa-corr-explication');
-      if (faute.category) tete.appendChild(el('strong', '', faute.category + (faute.message ? ' : ' : '')));
-      if (faute.message) tete.appendChild(doc.createTextNode(faute.message));
-      racine.appendChild(tete);
-    }
-    const rang = el('div', 'zfa-corr-rang');
-    for (const r of faute.replace.slice(0, 5)) {
-      const b = el('button', 'zfa-corr-choix', r);
+    const racine = doc.createElement('div');
+    racine.className = 'zfa-corr-bulle';
+
+    el(racine, 'div', 'zfa-corr-categorie',
+      faute.category || (faute.kind === 'spelling' ? tr('Orthographe') : tr('Relecture')));
+    el(racine, 'div', 'zfa-corr-texte', faute.message
+      || (faute.kind === 'spelling' ? tr('Ce mot ne figure pas dans le dictionnaire.') : ''));
+
+    const rang = el(racine, 'div', 'zfa-corr-rang');
+    faute.replace.slice(0, 4).forEach((r, i) => {
+      const b = el(rang, 'button', 'zfa-corr-choix' + (i ? ' est-secondaire' : ''), r);
+      canevasInfobulle(b, tr('Remplacer « ') + faute.word + tr(' » par « ') + r + ' »');
       b.addEventListener('mousedown', (e) => {
         e.preventDefault();
         vue.dispatch({ changes: { from: faute.from, to: faute.to, insert: r } });
       });
-      rang.appendChild(b);
+    });
+    if (!faute.replace.length) el(rang, 'span', 'zfa-corr-aucune', tr('Aucune proposition'));
+
+    const actions = el(rang, 'div', 'zfa-corr-actions');
+    if (faute.kind === 'spelling') {
+      const ajouter = el(actions, 'button', 'zfa-corr-action');
+      obsidian.setIcon(ajouter, 'book-plus');
+      canevasInfobulle(ajouter, tr('Ajouter « ') + faute.word + tr(' » au dictionnaire'));
+      ajouter.addEventListener('mousedown', async (e) => {
+        e.preventDefault();
+        await this.assistant.demander({ cmd: 'learn', word: faute.word });
+        this.relancer(true);
+      });
     }
-    if (!faute.replace.length) rang.appendChild(el('span', 'zfa-corr-aucune', tr('Aucune proposition')));
-    const ignorer = el('button', 'zfa-corr-action', '×');
-    ignorer.setAttribute('aria-label', tr('Ignorer cette remarque'));
+    const ignorer = el(actions, 'button', 'zfa-corr-action');
+    obsidian.setIcon(ignorer, 'x');
+    canevasInfobulle(ignorer, tr('Ignorer cette remarque jusqu’à la prochaine session'));
     ignorer.addEventListener('mousedown', (e) => {
       e.preventDefault();
       this.ignores.add(correcteurCleIgnore(faute));
       this.relancer(false);
     });
-    rang.appendChild(ignorer);
-    if (faute.kind === 'spelling') {
-      const ajouter = el('button', 'zfa-corr-action', tr('Ajouter au dictionnaire'));
-      ajouter.addEventListener('mousedown', async (e) => {
-        e.preventDefault();
-        await this.assistant.demander({ cmd: 'learn', word: faute.word });
-        this.cache.clear();
-        this.relancer(true);
-      });
-      rang.appendChild(ajouter);
-    }
-    racine.appendChild(rang);
     return racine;
   }
 }

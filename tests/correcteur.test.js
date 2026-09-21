@@ -78,3 +78,64 @@ test('fautes : une ligne que le démon n\'a pas encore vue ne produit rien', () 
   const blocs = [{ from: 0, texte: 'jamais vue' }];
   assert.deepEqual(correcteurFautes(blocs, new Map(), new Set(), { grammar: true, spelling: true }), []);
 });
+
+// Un document minimal : le strict nécessaire à construireBulle, pour éprouver
+// la bulle sans dépendre d'un vrai navigateur.
+function faussesBalises() {
+  const creer = (tag) => ({
+    tag, className: '', textContent: '', enfants: [], attributs: {}, ecoutes: {},
+    appendChild(e) { this.enfants.push(e); return e; },
+    setAttribute(k, v) { this.attributs[k] = v; },
+    addEventListener(nom, f) { (this.ecoutes[nom] = this.ecoutes[nom] || []).push(f); },
+  });
+  return { createElement: creer };
+}
+
+function bulleDe(faute) {
+  const centre = new (Ariane._test.CorrecteurApple)({ settings: {} });
+  const envois = [];
+  const vue = { dom: { ownerDocument: faussesBalises() }, dispatch: (s) => envois.push(s) };
+  return { racine: centre.construireBulle(vue, faute), envois };
+}
+
+const parClasse = (el, classe) => {
+  const trouves = [];
+  const descendre = (e) => { if (String(e.className).split(' ').includes(classe)) trouves.push(e); e.enfants.forEach(descendre); };
+  descendre(el);
+  return trouves;
+};
+
+test('bulle : catégorie, explication, propositions, actions', () => {
+  const { racine, envois } = bulleDe({
+    from: 34, to: 38, kind: 'grammar', word: 'elle', replace: ['elles'],
+    message: 'Ici, le pronom « elles » doit être utilisé à la place de « elle ».', category: 'Pronom',
+  });
+  assert.equal(parClasse(racine, 'zfa-corr-categorie')[0].textContent, 'Pronom');
+  assert.match(parClasse(racine, 'zfa-corr-texte')[0].textContent, /pronom « elles »/);
+  const choix = parClasse(racine, 'zfa-corr-choix');
+  assert.deepEqual(choix.map((b) => b.textContent), ['elles']);
+  assert.match(choix[0].attributs['aria-label'], /Remplacer/);
+  // Une seule action pour la grammaire : ignorer. Pas de dictionnaire.
+  assert.equal(parClasse(racine, 'zfa-corr-action').length, 1);
+  choix[0].ecoutes.mousedown[0]({ preventDefault() {} });
+  assert.deepEqual(envois, [{ changes: { from: 34, to: 38, insert: 'elles' } }]);
+});
+
+test('bulle : orthographe, propositions en retrait après la première', () => {
+  const { racine } = bulleDe({ from: 0, to: 8, kind: 'spelling', word: 'xyzzyque',
+    replace: ['xyloque', 'xystique', 'xyste', 'xyris', 'de trop'], message: '', category: '' });
+  assert.equal(parClasse(racine, 'zfa-corr-categorie')[0].textContent, 'Orthographe');
+  assert.match(parClasse(racine, 'zfa-corr-texte')[0].textContent, /dictionnaire/);
+  const choix = parClasse(racine, 'zfa-corr-choix');
+  assert.equal(choix.length, 4, 'quatre propositions au plus');
+  assert.equal(choix[0].className, 'zfa-corr-choix');
+  assert.ok(choix.slice(1).every((b) => b.className.includes('est-secondaire')));
+  // Orthographe : dictionnaire et ignorer.
+  assert.equal(parClasse(racine, 'zfa-corr-action').length, 2);
+});
+
+test('bulle : sans proposition, la rangée le dit au lieu de rester vide', () => {
+  const { racine } = bulleDe({ from: 0, to: 3, kind: 'spelling', word: 'zzz', replace: [], message: '', category: '' });
+  assert.equal(parClasse(racine, 'zfa-corr-choix').length, 0);
+  assert.equal(parClasse(racine, 'zfa-corr-aucune')[0].textContent, 'Aucune proposition');
+});
