@@ -241,6 +241,7 @@ function correcteurMasquer(ligne) {
   t = t.replace(/<\/?[A-Za-z][^>\n]*>/g, correcteurBlanc);
   t = t.replace(/(^|[\s(])(#[\p{L}\p{N}_\/-]+)/gu, (m, a, b) => a + correcteurBlanc(b));
   t = t.replace(/\s\^[\w-]+\s*$/, correcteurBlanc);
+  t = t.replace(/\|/g, correcteurBlanc);
   t = t.replace(/\*+|~~|==/g, correcteurBlanc);
   t = t.replace(/(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu, correcteurBlanc);
   return t;
@@ -278,6 +279,7 @@ function correcteurZonesExclues(reglage) {
 function correcteurBlocs(texte, zones) {
   const paires = (zones && zones.paires) || [];
   const titres = (zones && zones.titres) || [];
+  const tableaux = !zones || zones.tableaux !== false;
   const blocs = [];
   const lignes = texte.split('\n');
   let pos = 0;
@@ -309,6 +311,11 @@ function correcteurBlocs(texte, zones) {
       exclu = { rang: titre[1].length };
       continue;
     }
+    // Une ligne de tableau : la barre en tête suffit à la reconnaître, c'est
+    // ainsi qu'Obsidian les écrit. Un tableau bilingue ferait lire de
+    // l'anglais à la note entière, et un tableau rendu n'accueille pas nos
+    // soulignements : d'où le réglage qui, par défaut, les laisse de côté.
+    if (!tableaux && /^\s*\|/.test(ligne)) continue;
     const cloture = /^\s*(```|~~~)/.exec(ligne);
     if (clos) {
       if (cloture && cloture[1] === clos) clos = null;
@@ -576,7 +583,7 @@ class CorrecteurApple extends obsidian.Component {
   zones() {
     const brut = this.greffon.settings.correcteurZonesExclues || '';
     if (this._zonesBrut !== brut) { this._zonesBrut = brut; this._zones = correcteurZonesExclues(brut); }
-    return this._zones;
+    return Object.assign({ tableaux: this.greffon.settings.correcteurTableaux === true }, this._zones);
   }
 
   actif() {

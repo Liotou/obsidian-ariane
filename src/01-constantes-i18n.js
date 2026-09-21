@@ -1138,6 +1138,7 @@ const DEFAULT_SETTINGS = {
   // « début -> fin », ou un titre de section. La bibliographie d'Ariane y est
   // d'office : ses références sont souvent en anglais et fausseraient tout.
   correcteurZonesExclues: '%% ariane:biblio %% -> %% /ariane:biblio %%',
+  correcteurTableaux: false,    // les tableaux sont laissés de côté (voir le réglage)
   correcteurExplication: true,  // la bulle dit pourquoi, ou se borne à corriger
   correcteurDelai: 700,         // ms après la dernière frappe
   canevasRelierAuto: true,      // poser une carte trace ses relations avec les cartes déjà là

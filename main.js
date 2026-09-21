@@ -1313,6 +1313,7 @@ const DEFAULT_SETTINGS = {
   // « début -> fin », ou un titre de section. La bibliographie d'Ariane y est
   // d'office : ses références sont souvent en anglais et fausseraient tout.
   correcteurZonesExclues: '%% ariane:biblio %% -> %% /ariane:biblio %%',
+  correcteurTableaux: false,    // les tableaux sont laissés de côté (voir le réglage)
   correcteurExplication: true,  // la bulle dit pourquoi, ou se borne à corriger
   correcteurDelai: 700,         // ms après la dernière frappe
   canevasRelierAuto: true,      // poser une carte trace ses relations avec les cartes déjà là
@@ -16702,6 +16703,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setValue(s.correcteurLangue || 'auto')
         .onChange(async (v) => { s.correcteurLangue = v; await maj(); relancerCorrecteur(true); }));
     new obsidian.Setting(c)
+      .setName(tr('Relire aussi les tableaux'))
+      .setDesc(tr("Laissés de côté par défaut, pour deux raisons : un tableau bilingue, un glossaire par exemple, fait lire de l'anglais à la note entière ; et en aperçu, Obsidian dessine le tableau lui-même, si bien que les soulignements n'y apparaissent pas. En mode source, ils s'affichent normalement."))
+      .addToggle((t) => t.setValue(s.correcteurTableaux === true)
+        .onChange(async (v) => { s.correcteurTableaux = v; await maj(); relancerCorrecteur(true); }));
+    new obsidian.Setting(c)
       .setName(tr('Zones exclues'))
       .setDesc(tr("Une par ligne. Soit une paire de balises « début -> fin », soit un titre de section (« ## Bibliographie », ou « Bibliographie » à tout niveau), auquel cas la section est sautée jusqu'au titre de rang égal ou supérieur qui suit. La bibliographie d'Ariane y figure d'office : ses références, souvent en anglais, fausseraient la langue de toute la note."))
       .addTextArea((t) => {
@@ -28606,6 +28612,7 @@ function correcteurMasquer(ligne) {
   t = t.replace(/<\/?[A-Za-z][^>\n]*>/g, correcteurBlanc);
   t = t.replace(/(^|[\s(])(#[\p{L}\p{N}_\/-]+)/gu, (m, a, b) => a + correcteurBlanc(b));
   t = t.replace(/\s\^[\w-]+\s*$/, correcteurBlanc);
+  t = t.replace(/\|/g, correcteurBlanc);
   t = t.replace(/\*+|~~|==/g, correcteurBlanc);
   t = t.replace(/(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu, correcteurBlanc);
   return t;
@@ -28643,6 +28650,7 @@ function correcteurZonesExclues(reglage) {
 function correcteurBlocs(texte, zones) {
   const paires = (zones && zones.paires) || [];
   const titres = (zones && zones.titres) || [];
+  const tableaux = !zones || zones.tableaux !== false;
   const blocs = [];
   const lignes = texte.split('\n');
   let pos = 0;
@@ -28674,6 +28682,11 @@ function correcteurBlocs(texte, zones) {
       exclu = { rang: titre[1].length };
       continue;
     }
+    // Une ligne de tableau : la barre en tête suffit à la reconnaître, c'est
+    // ainsi qu'Obsidian les écrit. Un tableau bilingue ferait lire de
+    // l'anglais à la note entière, et un tableau rendu n'accueille pas nos
+    // soulignements : d'où le réglage qui, par défaut, les laisse de côté.
+    if (!tableaux && /^\s*\|/.test(ligne)) continue;
     const cloture = /^\s*(```|~~~)/.exec(ligne);
     if (clos) {
       if (cloture && cloture[1] === clos) clos = null;
@@ -28941,7 +28954,7 @@ class CorrecteurApple extends obsidian.Component {
   zones() {
     const brut = this.greffon.settings.correcteurZonesExclues || '';
     if (this._zonesBrut !== brut) { this._zonesBrut = brut; this._zones = correcteurZonesExclues(brut); }
-    return this._zones;
+    return Object.assign({ tableaux: this.greffon.settings.correcteurTableaux === true }, this._zones);
   }
 
   actif() {

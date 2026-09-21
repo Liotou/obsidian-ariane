@@ -387,6 +387,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setValue(s.correcteurLangue || 'auto')
         .onChange(async (v) => { s.correcteurLangue = v; await maj(); relancerCorrecteur(true); }));
     new obsidian.Setting(c)
+      .setName(tr('Relire aussi les tableaux'))
+      .setDesc(tr("Laissés de côté par défaut, pour deux raisons : un tableau bilingue, un glossaire par exemple, fait lire de l'anglais à la note entière ; et en aperçu, Obsidian dessine le tableau lui-même, si bien que les soulignements n'y apparaissent pas. En mode source, ils s'affichent normalement."))
+      .addToggle((t) => t.setValue(s.correcteurTableaux === true)
+        .onChange(async (v) => { s.correcteurTableaux = v; await maj(); relancerCorrecteur(true); }));
+    new obsidian.Setting(c)
       .setName(tr('Zones exclues'))
       .setDesc(tr("Une par ligne. Soit une paire de balises « début -> fin », soit un titre de section (« ## Bibliographie », ou « Bibliographie » à tout niveau), auquel cas la section est sautée jusqu'au titre de rang égal ou supérieur qui suit. La bibliographie d'Ariane y figure d'office : ses références, souvent en anglais, fausseraient la langue de toute la note."))
       .addTextArea((t) => {

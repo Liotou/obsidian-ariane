@@ -416,3 +416,30 @@ test('zones exclues : les positions restent celles du texte entier', () => {
   const blocs = correcteurBlocs(note, correcteurZonesExclues('%% a %% -> %% /a %%'));
   assert.equal(note.substr(blocs[1].from, 6), 'Après.');
 });
+
+test('tableaux : laissés de côté par défaut, relus si on le demande', () => {
+  const note = [
+    'Une phrase avant le tableau.',
+    '',
+    '| Terme | Traduction |',
+    '| --- | --- |',
+    '| institutionnelle | institutional |',
+    '| confiance | confidence |',
+    '',
+    'Une phrase après le tableau.',
+  ].join('\n');
+  assert.deepEqual(correcteurBlocs(note, { tableaux: false }).map((b) => b.texte.trim()),
+    ['Une phrase avant le tableau.', 'Une phrase après le tableau.']);
+  const avec = correcteurBlocs(note, { tableaux: true }).map((b) => b.texte.trim());
+  assert.equal(avec.length, 5, 'les quatre lignes de contenu, plus les deux phrases, moins le séparateur');
+  assert.ok(avec.some((t) => t.includes('institutionnelle')));
+  assert.ok(!avec.some((t) => t.includes('---')), 'la ligne de séparation n\'est pas de la prose');
+});
+
+test('tableaux : les barres deviennent des espaces, les positions tiennent', () => {
+  const ligne = '| institutionnelle | institutional |';
+  const m = correcteurMasquer(ligne);
+  assert.equal(m.length, ligne.length);
+  assert.ok(!m.includes('|'));
+  assert.equal(m.indexOf('institutionnelle'), ligne.indexOf('institutionnelle'));
+});
