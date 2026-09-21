@@ -1,7 +1,16 @@
 /* Ariane — styles du plugin */
 
 /* Alias affiché dans l'explorateur de fichiers (annotations, notes conceptuelles) */
+/* La ligne est une boîte flexible : sans consigne, le nom du fichier et
+   l'alias se partagent la place et le nom cède le premier — une référence
+   se retrouvait coupée en « T0… ». La référence passe donc avant : elle ne
+   se laisse pas rogner, c'est l'alias qui s'efface quand la place manque. */
+.nav-file-title:has(> .zfa-explorer-alias) > .nav-file-title-content {
+  flex: 0 0 auto;
+}
 .zfa-explorer-alias {
+  flex: 0 1 auto;
+  min-width: 0;
   margin-left: 6px;
   color: var(--text-faint);
   font-size: 0.85em;
