@@ -660,6 +660,15 @@ class CorrecteurApple extends obsidian.Component {
       create() { return Decoration.none; },
       update(deco, tr) {
         deco = deco.map(tr.changes);
+        // Le curseur qui s'en va emporte le surlignage : il ne vaut que pour
+        // la remarque qu'on examine. L'effet posé dans la même transaction
+        // passe après, de sorte que viser une autre faute la surligne bien.
+        if (tr.selection && deco.size) {
+          const tete = tr.selection.main.head;
+          let dedans = false;
+          deco.between(0, tr.newDoc.length, (de, a) => { if (tete >= de && tete <= a) dedans = true; });
+          if (!dedans) deco = Decoration.none;
+        }
         for (const ef of tr.effects) {
           if (ef.is(viser)) {
             deco = ef.value && ef.value.to > ef.value.from
