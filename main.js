@@ -1308,6 +1308,7 @@ const DEFAULT_SETTINGS = {
   correcteurApple: true,        // correcteur du système dans l'éditeur (Mac)
   correcteurGrammaire: true,    // relecture contextuelle : pointillés bleus
   correcteurOrthographe: true,  // mots isolés hors relecture : pointillés rouges
+  correcteurExplication: true,  // la bulle dit pourquoi, ou se borne à corriger
   correcteurDelai: 700,         // ms après la dernière frappe
   canevasRelierAuto: true,      // poser une carte trace ses relations avec les cartes déjà là
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
@@ -16674,6 +16675,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.correcteurOrthographe === true)
         .onChange(async (v) => { s.correcteurOrthographe = v; await maj(); relancerCorrecteur(false); }));
     new obsidian.Setting(c)
+      .setName(tr('Expliquer la faute dans la bulle'))
+      .setDesc(tr("Sans cela, la bulle se borne à nommer la catégorie et à proposer la correction."))
+      .addToggle((t) => t.setValue(s.correcteurExplication !== false)
+        .onChange(async (v) => { s.correcteurExplication = v; await maj(); }));
+    new obsidian.Setting(c)
       .setName(tr('Délai avant vérification (ms)'))
       .setDesc(tr('Attente après la dernière frappe avant de souligner.'))
       .addSlider((sl) => sl.setLimits(300, 2000, 100).setDynamicTooltip()
@@ -28888,8 +28894,11 @@ class CorrecteurApple extends obsidian.Component {
 
     el(racine, 'div', 'zfa-corr-categorie',
       faute.category || (faute.kind === 'spelling' ? tr('Orthographe') : tr('Relecture')));
-    el(racine, 'div', 'zfa-corr-texte', faute.message
-      || (faute.kind === 'spelling' ? tr('Ce mot ne figure pas dans le dictionnaire.') : ''));
+    // L'explication se lit vite une fois, puis encombre : elle se coupe.
+    if (this.greffon.settings.correcteurExplication !== false) {
+      el(racine, 'div', 'zfa-corr-texte', faute.message
+        || (faute.kind === 'spelling' ? tr('Ce mot ne figure pas dans le dictionnaire.') : ''));
+    }
 
     const rang = el(racine, 'div', 'zfa-corr-rang');
     faute.replace.slice(0, 4).forEach((r, i) => {

@@ -91,8 +91,8 @@ function faussesBalises() {
   return { createElement: creer };
 }
 
-function bulleDe(faute) {
-  const centre = new (Ariane._test.CorrecteurApple)({ settings: {} });
+function bulleDe(faute, reglages) {
+  const centre = new (Ariane._test.CorrecteurApple)({ settings: reglages || {} });
   const envois = [];
   const vue = { dom: { ownerDocument: faussesBalises() }, dispatch: (s) => envois.push(s) };
   return { racine: centre.construireBulle(vue, faute), envois };
@@ -138,4 +138,14 @@ test('bulle : sans proposition, la rangée le dit au lieu de rester vide', () =>
   const { racine } = bulleDe({ from: 0, to: 3, kind: 'spelling', word: 'zzz', replace: [], message: '', category: '' });
   assert.equal(parClasse(racine, 'zfa-corr-choix').length, 0);
   assert.equal(parClasse(racine, 'zfa-corr-aucune')[0].textContent, 'Aucune proposition');
+});
+
+test('bulle : l\'explication se coupe par réglage, la correction reste', () => {
+  const faute = { from: 34, to: 38, kind: 'grammar', word: 'elle', replace: ['elles'],
+    message: 'Ici, le pronom « elles » doit être utilisé à la place de « elle ».', category: 'Pronom' };
+  assert.equal(parClasse(bulleDe(faute).racine, 'zfa-corr-texte').length, 1);
+  const { racine } = bulleDe(faute, { correcteurExplication: false });
+  assert.equal(parClasse(racine, 'zfa-corr-texte').length, 0, 'plus une ligne d\'explication');
+  assert.equal(parClasse(racine, 'zfa-corr-categorie')[0].textContent, 'Pronom', 'la catégorie reste');
+  assert.deepEqual(parClasse(racine, 'zfa-corr-choix').map((b) => b.textContent), ['elles']);
 });

@@ -378,6 +378,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.correcteurOrthographe === true)
         .onChange(async (v) => { s.correcteurOrthographe = v; await maj(); relancerCorrecteur(false); }));
     new obsidian.Setting(c)
+      .setName(tr('Expliquer la faute dans la bulle'))
+      .setDesc(tr("Sans cela, la bulle se borne à nommer la catégorie et à proposer la correction."))
+      .addToggle((t) => t.setValue(s.correcteurExplication !== false)
+        .onChange(async (v) => { s.correcteurExplication = v; await maj(); }));
+    new obsidian.Setting(c)
       .setName(tr('Délai avant vérification (ms)'))
       .setDesc(tr('Attente après la dernière frappe avant de souligner.'))
       .addSlider((sl) => sl.setLimits(300, 2000, 100).setDynamicTooltip()

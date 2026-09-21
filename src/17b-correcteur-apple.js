@@ -566,8 +566,11 @@ class CorrecteurApple extends obsidian.Component {
 
     el(racine, 'div', 'zfa-corr-categorie',
       faute.category || (faute.kind === 'spelling' ? tr('Orthographe') : tr('Relecture')));
-    el(racine, 'div', 'zfa-corr-texte', faute.message
-      || (faute.kind === 'spelling' ? tr('Ce mot ne figure pas dans le dictionnaire.') : ''));
+    // L'explication se lit vite une fois, puis encombre : elle se coupe.
+    if (this.greffon.settings.correcteurExplication !== false) {
+      el(racine, 'div', 'zfa-corr-texte', faute.message
+        || (faute.kind === 'spelling' ? tr('Ce mot ne figure pas dans le dictionnaire.') : ''));
+    }
 
     const rang = el(racine, 'div', 'zfa-corr-rang');
     faute.replace.slice(0, 4).forEach((r, i) => {
