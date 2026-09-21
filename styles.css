@@ -2816,9 +2816,13 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-corr-action .svg-icon { width: 15px; height: 15px; }
 
 /* Relecture guidée : le panneau qui parcourt les fautes une par une. */
+/* La faute qu'on examine : surlignée franchement, pour la retrouver d'un
+   coup d'oeil au milieu de la page. Elle s'efface dès qu'on en vise une
+   autre, ou que l'on referme le panneau. */
 .cm-content .zfa-corr-visee {
-  background: var(--text-selection);
+  background: var(--text-highlight-bg, rgba(255, 208, 0, 0.35));
   border-radius: var(--radius-s, 4px);
+  box-shadow: 0 0 0 2px var(--text-highlight-bg, rgba(255, 208, 0, 0.35));
 }
 .zfa-relecture {
   position: fixed;
@@ -2949,6 +2953,7 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 }
 .zfa-rel-ligne.zfa-rel-spelling { border-left-color: var(--color-red, #e5484d); }
 .zfa-rel-ligne:hover { background: var(--background-modifier-hover); }
+.zfa-rel-ligne.est-visee { background: var(--background-modifier-active-hover, var(--background-modifier-hover)); }
 .zfa-rel-mots { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
 .zfa-rel-avant { color: var(--text-muted); text-decoration: line-through; word-break: break-word; }
 .zfa-rel-fleche { color: var(--text-faint); }

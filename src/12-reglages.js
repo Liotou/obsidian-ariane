@@ -378,6 +378,24 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.correcteurOrthographe === true)
         .onChange(async (v) => { s.correcteurOrthographe = v; await maj(); relancerCorrecteur(false); }));
     new obsidian.Setting(c)
+      .setName(tr('Langue de relecture'))
+      .setDesc(tr("Devinée sur la note entière, ce qui convient à un coffre mêlant les langues. Imposez-la si une note courte ou très citée est mal reconnue."))
+      .addDropdown((d) => d
+        .addOption('auto', tr('Automatique'))
+        .addOption('fr', tr('Français'))
+        .addOption('en', tr('Anglais'))
+        .setValue(s.correcteurLangue || 'auto')
+        .onChange(async (v) => { s.correcteurLangue = v; await maj(); relancerCorrecteur(true); }));
+    new obsidian.Setting(c)
+      .setName(tr('Zones exclues'))
+      .setDesc(tr("Une par ligne. Soit une paire de balises « début -> fin », soit un titre de section (« ## Bibliographie », ou « Bibliographie » à tout niveau), auquel cas la section est sautée jusqu'au titre de rang égal ou supérieur qui suit. La bibliographie d'Ariane y figure d'office : ses références, souvent en anglais, fausseraient la langue de toute la note."))
+      .addTextArea((t) => {
+        t.inputEl.rows = 4;
+        t.setPlaceholder('%% ariane:biblio %% -> %% /ariane:biblio %%\n## Bibliographie')
+          .setValue(s.correcteurZonesExclues || '')
+          .onChange(async (v) => { s.correcteurZonesExclues = v; await maj(); relancerCorrecteur(true); });
+      });
+    new obsidian.Setting(c)
       .setName(tr('Expliquer la faute dans la bulle'))
       .setDesc(tr("Sans cela, la bulle se borne à nommer la catégorie et à proposer la correction."))
       .addToggle((t) => t.setValue(s.correcteurExplication !== false)

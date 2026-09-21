@@ -1308,6 +1308,11 @@ const DEFAULT_SETTINGS = {
   correcteurApple: true,        // correcteur du système dans l'éditeur (Mac)
   correcteurGrammaire: true,    // relecture contextuelle : pointillés bleus
   correcteurOrthographe: true,  // mots isolés hors relecture : pointillés rouges
+  correcteurLangue: 'auto',     // 'auto' : devinée sur la note entière ; sinon 'fr', 'en'…
+  // Zones de note que la relecture saute. Une par ligne : une paire de balises
+  // « début -> fin », ou un titre de section. La bibliographie d'Ariane y est
+  // d'office : ses références sont souvent en anglais et fausseraient tout.
+  correcteurZonesExclues: '%% ariane:biblio %% -> %% /ariane:biblio %%',
   correcteurExplication: true,  // la bulle dit pourquoi, ou se borne à corriger
   correcteurDelai: 700,         // ms après la dernière frappe
   canevasRelierAuto: true,      // poser une carte trace ses relations avec les cartes déjà là
@@ -16688,6 +16693,24 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.correcteurOrthographe === true)
         .onChange(async (v) => { s.correcteurOrthographe = v; await maj(); relancerCorrecteur(false); }));
     new obsidian.Setting(c)
+      .setName(tr('Langue de relecture'))
+      .setDesc(tr("Devinée sur la note entière, ce qui convient à un coffre mêlant les langues. Imposez-la si une note courte ou très citée est mal reconnue."))
+      .addDropdown((d) => d
+        .addOption('auto', tr('Automatique'))
+        .addOption('fr', tr('Français'))
+        .addOption('en', tr('Anglais'))
+        .setValue(s.correcteurLangue || 'auto')
+        .onChange(async (v) => { s.correcteurLangue = v; await maj(); relancerCorrecteur(true); }));
+    new obsidian.Setting(c)
+      .setName(tr('Zones exclues'))
+      .setDesc(tr("Une par ligne. Soit une paire de balises « début -> fin », soit un titre de section (« ## Bibliographie », ou « Bibliographie » à tout niveau), auquel cas la section est sautée jusqu'au titre de rang égal ou supérieur qui suit. La bibliographie d'Ariane y figure d'office : ses références, souvent en anglais, fausseraient la langue de toute la note."))
+      .addTextArea((t) => {
+        t.inputEl.rows = 4;
+        t.setPlaceholder('%% ariane:biblio %% -> %% /ariane:biblio %%\n## Bibliographie')
+          .setValue(s.correcteurZonesExclues || '')
+          .onChange(async (v) => { s.correcteurZonesExclues = v; await maj(); relancerCorrecteur(true); });
+      });
+    new obsidian.Setting(c)
       .setName(tr('Expliquer la faute dans la bulle'))
       .setDesc(tr("Sans cela, la bulle se borne à nommer la catégorie et à proposer la correction."))
       .addToggle((t) => t.setValue(s.correcteurExplication !== false)
@@ -28402,16 +28425,39 @@ let TAILLE_MAX = 4000
 // Le modele de langue prend quelques secondes ; au-dela, on rend ce qu'on a.
 let DELAI_RELECTURE = 20.0
 
-func langueDe(_ texte: String) -> String {
-  let r = NLLanguageRecognizer()
-  r.languageHints = [.french: 0.7, .english: 0.3]
-  r.processString(texte)
-  guard let l = r.dominantLanguage else { return "fr" }
+// La langue se devine sur la note entiere, jamais sur la ligne seule : un
+// titre de trois mots, une puce, un nom propre, et le systeme croit lire de
+// l'anglais — il corrigeait alors « institutionnelle » en « institutional ».
+func code(_ l: NLLanguage) -> String {
   switch l {
   case .english: return "en"
   case .french: return "fr"
   default: return l.rawValue
   }
+}
+
+// La langue de la note entiere : l'echantillon que le greffon joint.
+func langueDe(_ texte: String) -> String {
+  let r = NLLanguageRecognizer()
+  r.languageHints = [.french: 0.7, .english: 0.3]
+  r.processString(texte)
+  guard let l = r.dominantLanguage else { return "fr" }
+  return code(l)
+}
+
+// La langue d'une ligne. Elle ne s'ecarte de celle de la note que si elle est
+// assez longue ET que le systeme en est sur : sur trois mots, un titre ou un
+// nom propre, il se trompe, et « institutionnelle » devenait « institutional ».
+func langueLigne(_ texte: String, _ defaut: String) -> String {
+  let mots = texte.split(whereSeparator: { !$0.isLetter && $0 != "'" && $0 != "\u{2019}" && $0 != "-" }).count
+  if mots < 8 { return defaut }
+  let r = NLLanguageRecognizer()
+  r.languageHints = [.french: 0.7, .english: 0.3]
+  r.processString(texte)
+  guard let l = r.dominantLanguage else { return defaut }
+  let hypotheses = r.languageHypotheses(withMaximum: 3)
+  if (hypotheses[l] ?? 0) < 0.9 { return defaut }
+  return code(l)
 }
 
 // L'orthographe, mot a mot : synchrone, et rapide.
@@ -28472,10 +28518,9 @@ func relire(_ texte: String, _ langue: String, _ fini: @escaping ([[String: Any]
 
 // Les deux moteurs reunis. La relecture prime : quand elle signale deja un
 // passage, la faute d'orthographe qui s'y trouve ferait un double soulignement.
-func verifier(_ brut: String, _ fini: @escaping ([[String: Any]]) -> Void) {
+func verifier(_ brut: String, _ langue: String, _ fini: @escaping ([[String: Any]]) -> Void) {
   let texte = brut.count > TAILLE_MAX ? String(brut.prefix(TAILLE_MAX)) : brut
   guard texte.rangeOfCharacter(from: .letters) != nil else { fini([]); return }
-  let langue = langueDe(texte)
   let orth = orthographe(texte, langue)
   relire(texte, langue) { revue in
     let couvert: (Int, Int) -> Bool = { de, longueur in
@@ -28501,13 +28546,18 @@ func traiter(_ m: [String: Any]) {
   switch m["cmd"] as? String ?? "" {
   case "checkMany":
     let textes = m["texts"] as? [String] ?? []
+    // La langue vient du reglage quand il en impose une, sinon de l'echantillon
+    // que le greffon joint : toute la note, et non le paquet de lignes en cours.
+    let imposee = (m["language"] as? String) ?? ""
+    let echantillon = (m["sample"] as? String) ?? textes.joined(separator: " ")
+    let langue = imposee.isEmpty ? langueDe(echantillon) : imposee
     var resultats = [[[String: Any]]](repeating: [], count: textes.count)
     let groupe = DispatchGroup()
     for (i, t) in textes.enumerated() {
       groupe.enter()
-      verifier(t) { resultats[i] = $0; groupe.leave() }
+      verifier(t, langueLigne(t, langue)) { resultats[i] = $0; groupe.leave() }
     }
-    groupe.notify(queue: .main) { repondre(["id": id, "results": resultats]) }
+    groupe.notify(queue: .main) { repondre(["id": id, "results": resultats, "langue": langue]) }
   case "learn":
     verificateur.learnWord(m["word"] as? String ?? "")
     repondre(["id": id, "ok": true])
@@ -28561,11 +28611,38 @@ function correcteurMasquer(ligne) {
   return t;
 }
 
+// Le réglage des zones exclues, tel que l'utilisateur l'écrit, une par ligne :
+//   « %% ariane:biblio %% -> %% /ariane:biblio %% »  une paire de balises ;
+//   « ## Bibliographie » ou « Bibliographie »        une section, jusqu'au
+//                                                    titre de rang égal ou
+//                                                    supérieur qui la suit.
+// Rend { paires: [{debut, fin}], titres: [{texte, rang}] }.
+function correcteurZonesExclues(reglage) {
+  const paires = [];
+  const titres = [];
+  for (const brute of String(reglage || '').split('\n')) {
+    const ligne = brute.trim();
+    if (!ligne || ligne.startsWith('//')) continue;
+    const coupe = ligne.split(/\s*(?:->|→)\s*/);
+    if (coupe.length === 2 && coupe[0] && coupe[1]) {
+      paires.push({ debut: coupe[0], fin: coupe[1] });
+      continue;
+    }
+    const diese = /^(#{1,6})\s+(.*)$/.exec(ligne);
+    titres.push(diese
+      ? { texte: diese[2].trim().toLowerCase(), rang: diese[1].length }
+      : { texte: ligne.toLowerCase(), rang: 0 });
+  }
+  return { paires, titres };
+}
+
 // Les lignes à vérifier d'un texte de note : [{ from, texte }], `from` étant
 // la position absolue du début de la ligne, `texte` la ligne masquée. Sont
-// ignorés : l'entête YAML, les blocs de code, les blocs de formule, et les
-// lignes sans deux lettres consécutives.
-function correcteurBlocs(texte) {
+// ignorés : l'entête YAML, les blocs de code, les blocs de formule, les zones
+// que l'utilisateur exclut, et les lignes sans deux lettres consécutives.
+function correcteurBlocs(texte, zones) {
+  const paires = (zones && zones.paires) || [];
+  const titres = (zones && zones.titres) || [];
   const blocs = [];
   const lignes = texte.split('\n');
   let pos = 0;
@@ -28577,11 +28654,26 @@ function correcteurBlocs(texte) {
       for (; i <= j; i += 1) pos += lignes[i].length + 1;
     }
   }
-  let clos = null; // marque du bloc de code ou de formule en cours
+  let clos = null;   // marque du bloc de code ou de formule en cours
+  let exclu = null;  // zone exclue en cours : { fin } ou { rang }
   for (; i < lignes.length; i += 1) {
     const ligne = lignes[i];
     const debut = pos;
     pos += ligne.length + 1;
+    const titre = /^(#{1,6})\s+(.*)$/.exec(ligne);
+    if (exclu) {
+      // Une paire se ferme sur sa balise ; une section, sur le titre suivant
+      // de rang égal ou supérieur — celui qui la clôt est lui aussi relu.
+      if (exclu.fin !== undefined) { if (ligne.trim() === exclu.fin) exclu = null; continue; }
+      if (titre && titre[1].length <= exclu.rang) exclu = null;
+      else continue;
+    }
+    const paire = paires.find((x) => ligne.trim() === x.debut);
+    if (paire) { exclu = { fin: paire.fin }; continue; }
+    if (titre && titres.some((t) => t.texte === titre[2].trim().toLowerCase() && (!t.rang || t.rang === titre[1].length))) {
+      exclu = { rang: titre[1].length };
+      continue;
+    }
     const cloture = /^\s*(```|~~~)/.exec(ligne);
     if (clos) {
       if (cloture && cloture[1] === clos) clos = null;
@@ -28728,8 +28820,12 @@ class AssistantApple {
   // Les fautes de plusieurs lignes : un tableau de tableaux, ou null.
   // La relecture appelle un modèle de langue : quelques secondes par ligne
   // inédite, rien du tout pour une ligne déjà vue. D'où la longue patience.
-  async verifier(textes) {
-    const r = await this.demander({ cmd: 'checkMany', texts: textes }, 120000);
+  async verifier(textes, echantillon, langue) {
+    const msg = { cmd: 'checkMany', texts: textes };
+    if (echantillon) msg.sample = echantillon;
+    if (langue && langue !== 'auto') msg.language = langue;
+    const r = await this.demander(msg, 120000);
+    if (r && r.langue) this.derniereLangue = r.langue;
     return r && Array.isArray(r.results) ? r.results : null;
   }
 
@@ -28781,12 +28877,14 @@ class CorrecteurApple extends obsidian.Component {
   _prevenir() { for (const f of this.abonnes) { try { f(); } catch (e) { /* volet fermé */ } } }
 
   // Amène la faute sous les yeux et la surligne le temps qu'on s'en occupe.
+  // Le curseur va s'y poser : sans cela, rendre le focus à l'éditeur le
+  // ramènerait aussitôt là où il était, et le défilement serait perdu.
   viser(vue, faute) {
     if (!this._viser) return;
+    if (!faute) { vue.dispatch({ effects: [this._viser.of(null)] }); return; }
     vue.dispatch({
-      effects: faute
-        ? [this._viser.of({ from: faute.from, to: faute.to }), this._scroller(faute.from, { y: 'center' })]
-        : [this._viser.of(null)],
+      selection: { anchor: faute.from },
+      effects: [this._viser.of({ from: faute.from, to: faute.to }), this._scroller(faute.from, { y: 'center' })],
     });
   }
 
@@ -28838,6 +28936,14 @@ class CorrecteurApple extends obsidian.Component {
     return { grammar: s.correcteurGrammaire !== false, spelling: s.correcteurOrthographe === true };
   }
 
+  // Les zones exclues, analysées une fois pour toutes tant que le réglage
+  // ne bouge pas : la relecture les redemande à chaque frappe.
+  zones() {
+    const brut = this.greffon.settings.correcteurZonesExclues || '';
+    if (this._zonesBrut !== brut) { this._zonesBrut = brut; this._zones = correcteurZonesExclues(brut); }
+    return this._zones;
+  }
+
   actif() {
     const s = this.greffon.settings;
     return AssistantApple.disponible() && s.correcteurApple !== false;
@@ -28858,9 +28964,13 @@ class CorrecteurApple extends obsidian.Component {
     for (const b of blocs) {
       if (!this.cache.has(b.texte) && !vus.has(b.texte)) { vus.add(b.texte); manque.push(b.texte); }
     }
+    // L'échantillon dit au système quelle langue il lit : la note entière,
+    // et non le paquet de lignes en cours, dont une seule suffirait à l'égarer.
+    const echantillon = blocs.map((b) => b.texte).join(' ').slice(0, 4000);
+    const langue = this.greffon.settings.correcteurLangue || 'auto';
     for (let i = 0; i < manque.length; i += 12) {
       const lot = manque.slice(i, i + 12);
-      const res = await this.assistant.verifier(lot);
+      const res = await this.assistant.verifier(lot, echantillon, langue);
       if (!res) return false;
       lot.forEach((t, k) => this.cache.set(t, res[k] || []));
       if (surLot && surLot() === false) return false;
@@ -28950,7 +29060,7 @@ class CorrecteurApple extends obsidian.Component {
           return;
         }
         const doc = vue.state.doc;
-        const blocs = correcteurBlocs(doc.toString());
+        const blocs = correcteurBlocs(doc.toString(), centre.zones());
         // Le texte a bougé pendant l'attente : un autre cycle est déjà prévu.
         const poserCourant = () => {
           if (tour !== this.tour || vue.state.doc !== doc) return false;
@@ -29371,8 +29481,15 @@ class VueRelecture extends obsidian.ItemView {
     const non = actions.createEl('button', { cls: 'zfa-rel-bouton', text: tr('Ignorer') });
     non.onclick = (e) => { e.stopPropagation(); correcteur.ignorer(vue, faute); };
 
+    if (this.viseeDebut === faute.from) ligne.addClass('est-visee');
     // Cliquer la ligne va montrer le passage dans la note, sans rien changer.
-    ligne.onclick = () => { correcteur.viser(vue, faute); vue.focus(); };
+    ligne.onclick = () => {
+      this.viseeDebut = faute.from;
+      correcteur.viser(vue, faute);
+      vue.focus();
+      for (const autre of Array.from(this.contentEl.querySelectorAll('.zfa-rel-ligne'))) autre.removeClass('est-visee');
+      ligne.addClass('est-visee');
+    };
   }
 }
 
@@ -30251,6 +30368,7 @@ module.exports._test = {
   SurfaceCanevas,
   // Correcteur Apple : découpage, masquage et assemblage des fautes.
   correcteurMasquer,
+  correcteurZonesExclues,
   correcteurBlocs,
   correcteurFautes,
   correcteurCleIgnore,

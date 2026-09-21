@@ -1133,6 +1133,11 @@ const DEFAULT_SETTINGS = {
   correcteurApple: true,        // correcteur du système dans l'éditeur (Mac)
   correcteurGrammaire: true,    // relecture contextuelle : pointillés bleus
   correcteurOrthographe: true,  // mots isolés hors relecture : pointillés rouges
+  correcteurLangue: 'auto',     // 'auto' : devinée sur la note entière ; sinon 'fr', 'en'…
+  // Zones de note que la relecture saute. Une par ligne : une paire de balises
+  // « début -> fin », ou un titre de section. La bibliographie d'Ariane y est
+  // d'office : ses références sont souvent en anglais et fausseraient tout.
+  correcteurZonesExclues: '%% ariane:biblio %% -> %% /ariane:biblio %%',
   correcteurExplication: true,  // la bulle dit pourquoi, ou se borne à corriger
   correcteurDelai: 700,         // ms après la dernière frappe
   canevasRelierAuto: true,      // poser une carte trace ses relations avec les cartes déjà là

@@ -20,6 +20,7 @@ module.exports._test = {
   SurfaceCanevas,
   // Correcteur Apple : découpage, masquage et assemblage des fautes.
   correcteurMasquer,
+  correcteurZonesExclues,
   correcteurBlocs,
   correcteurFautes,
   correcteurCleIgnore,

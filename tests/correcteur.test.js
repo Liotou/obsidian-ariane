@@ -2,7 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert');
 const Ariane = require('./obsidian-factice.js');
 
-const { correcteurMasquer, correcteurBlocs, correcteurFautes, correcteurCleIgnore } = Ariane._test;
+const { correcteurMasquer, correcteurBlocs, correcteurFautes, correcteurCleIgnore,
+  correcteurZonesExclues } = Ariane._test;
 
 test('masquer : la longueur ne change jamais, les positions restent exactes', () => {
   const lignes = [
@@ -344,4 +345,74 @@ test('actions : tout accepter écarte un passage qui en chevauche un autre', () 
   ]);
   assert.equal(centre.accepterTout(vue), 1, 'la seconde recouvre la première : écartée');
   assert.equal(vue._texte, 'Les acteurs publics agissent.');
+});
+
+// ── Zones exclues ───────────────────────────────────────────────────────────
+
+test('zones exclues : paires de balises, titres avec ou sans dièses', () => {
+  const z = correcteurZonesExclues([
+    '%% ariane:biblio %% -> %% /ariane:biblio %%',
+    '## Bibliographie',
+    'Annexes',
+    '  ',
+    '// une remarque, pas une zone',
+    'debut → fin',
+  ].join('\n'));
+  assert.deepEqual(z.paires, [
+    { debut: '%% ariane:biblio %%', fin: '%% /ariane:biblio %%' },
+    { debut: 'debut', fin: 'fin' },
+  ]);
+  assert.deepEqual(z.titres, [{ texte: 'bibliographie', rang: 2 }, { texte: 'annexes', rang: 0 }]);
+});
+
+test('zones exclues : la bibliographie d\'Ariane est sautée, le reste est relu', () => {
+  const note = [
+    'Une phrase avant.',
+    '%% ariane:biblio %%',
+    '',
+    '---',
+    '## Bibliographie',
+    '- Gill, J. C. Hazard interactions in natural hazard assessment.',
+    '%% /ariane:biblio %%',
+    'Une phrase après.',
+  ].join('\n');
+  const zones = correcteurZonesExclues('%% ariane:biblio %% -> %% /ariane:biblio %%');
+  assert.deepEqual(correcteurBlocs(note, zones).map((b) => b.texte.trim()),
+    ['Une phrase avant.', 'Une phrase après.']);
+  // Sans le réglage, tout est relu, bibliographie comprise.
+  assert.equal(correcteurBlocs(note).length, 4);
+});
+
+test('zones exclues : une section va jusqu\'au titre de rang égal ou supérieur', () => {
+  const note = [
+    '# Note',
+    'Texte du début.',
+    '## Bibliographie',
+    'Une référence anglaise.',
+    '### Sous-partie de la bibliographie',
+    'Encore une référence.',
+    '## Suite',
+    'Texte de la suite.',
+    '# Autre partie',
+    'Dernier texte.',
+  ].join('\n');
+  const vus = correcteurBlocs(note, correcteurZonesExclues('## Bibliographie')).map((b) => b.texte.trim());
+  assert.deepEqual(vus, ['Note', 'Texte du début.', 'Suite', 'Texte de la suite.', 'Autre partie', 'Dernier texte.']);
+});
+
+test('zones exclues : un titre sans dièse vaut à tous les niveaux', () => {
+  const note = ['### Annexes', 'À ne pas relire.', '### Après', 'À relire.'].join('\n');
+  assert.deepEqual(correcteurBlocs(note, correcteurZonesExclues('Annexes')).map((b) => b.texte.trim()),
+    ['Après', 'À relire.']);
+});
+
+test('zones exclues : une paire jamais refermée coupe jusqu\'à la fin', () => {
+  const note = ['Avant.', 'DEBUT', 'Dedans.', 'Encore dedans.'].join('\n');
+  assert.deepEqual(correcteurBlocs(note, correcteurZonesExclues('DEBUT -> FIN')).map((b) => b.texte.trim()), ['Avant.']);
+});
+
+test('zones exclues : les positions restent celles du texte entier', () => {
+  const note = ['Avant.', '%% a %%', 'Caché.', '%% /a %%', 'Après.'].join('\n');
+  const blocs = correcteurBlocs(note, correcteurZonesExclues('%% a %% -> %% /a %%'));
+  assert.equal(note.substr(blocs[1].from, 6), 'Après.');
 });
