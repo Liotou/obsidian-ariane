@@ -361,20 +361,20 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       }));
 
     this._section(c, tr('Correcteur Apple'));
-    this._aide(c, tr("Le correcteur du système (orthographe et grammaire contextuelle, celui de Mail et de Pages) souligne vos notes en pointillés : bleus pour la grammaire, rouges pour l'orthographe. Survolez une faute pour lire l'explication et la corriger d'un clic. Mac seulement. La première fois, le greffon prépare un petit programme (environ une minute) ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). La commande « Correcteur Apple : tester » vérifie que tout répond."));
+    this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). La commande « Correcteur Apple : tester » dit ce qui répond."));
     const relancerCorrecteur = (vider) => { if (this.plugin.correcteur) this.plugin.correcteur.relancer(vider); };
     new obsidian.Setting(c)
       .setName(tr('Activer le correcteur Apple'))
       .addToggle((t) => t.setValue(s.correcteurApple !== false)
         .onChange(async (v) => { s.correcteurApple = v; await maj(); relancerCorrecteur(false); }));
     new obsidian.Setting(c)
-      .setName(tr('Grammaire (pointillés bleus)'))
-      .setDesc(tr('Accords, formes du verbe, tournures : le moteur de grammaire du système.'))
+      .setName(tr('Relecture contextuelle (pointillés bleus)'))
+      .setDesc(tr('Accords, conjugaisons, participes passés, accents, mots erronés : le moteur de relecture du système, celui de Mail.'))
       .addToggle((t) => t.setValue(s.correcteurGrammaire !== false)
         .onChange(async (v) => { s.correcteurGrammaire = v; await maj(); relancerCorrecteur(false); }));
     new obsidian.Setting(c)
-      .setName(tr('Orthographe (pointillés rouges)'))
-      .setDesc(tr("Obsidian souligne déjà l'orthographe en rouge avec le même correcteur. Activez ceci pour avoir en plus la bulle de propositions ; désactivez alors « Correction orthographique » dans les réglages d'Obsidian pour éviter le double soulignement."))
+      .setName(tr('Orthographe seule (pointillés rouges)'))
+      .setDesc(tr("Les mots que la relecture ne signale pas et que le dictionnaire ne connaît pas. Obsidian sait aussi le faire de son côté : désactivez sa « Correction orthographique » pour éviter le double soulignement."))
       .addToggle((t) => t.setValue(s.correcteurOrthographe === true)
         .onChange(async (v) => { s.correcteurOrthographe = v; await maj(); relancerCorrecteur(false); }));
     new obsidian.Setting(c)

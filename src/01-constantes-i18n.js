@@ -1131,8 +1131,8 @@ const DEFAULT_SETTINGS = {
   // Canevas (section 16b) : cartes de tâches sur le canevas natif.
   canevasLargeurCarte: 280,     // largeur d'une carte posée (px)
   correcteurApple: true,        // correcteur du système dans l'éditeur (Mac)
-  correcteurGrammaire: true,    // grammaire contextuelle : pointillés bleus
-  correcteurOrthographe: false, // orthographe : Obsidian souligne déjà en rouge de son côté
+  correcteurGrammaire: true,    // relecture contextuelle : pointillés bleus
+  correcteurOrthographe: true,  // mots isolés hors relecture : pointillés rouges
   correcteurDelai: 700,         // ms après la dernière frappe
   canevasRelierAuto: true,      // poser une carte trace ses relations avec les cartes déjà là
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle

@@ -1,12 +1,14 @@
 //#region 18 · Correcteur Apple
 // ═══════════════════════════════════════════════════════════════════════════
 //  18 · CORRECTEUR APPLE
-//  Le correcteur du système (NSSpellChecker : orthographe et grammaire
-//  contextuelle) mis à la portée de l'éditeur d'Obsidian. Un petit programme
-//  Swift, compilé une fois à la première utilisation, sert de démon : il
-//  reçoit du texte en JSON et rend les fautes avec leurs corrections. Le
-//  greffon les souligne en pointillés bleus (grammaire) ou rouges
-//  (orthographe) et ouvre une bulle de correction au survol, comme Mail.
+//  Le correcteur du système mis à la portée de l'éditeur d'Obsidian : la
+//  relecture contextuelle de Mail (accords, conjugaisons, participes passés,
+//  mots erronés, avec l'explication en français) et, en complément, le
+//  correcteur orthographique classique pour les mots isolés. Un petit
+//  programme Swift, compilé une fois à la première utilisation, sert de
+//  démon : il reçoit du texte en JSON et rend les fautes avec leurs
+//  corrections. Le greffon les souligne en pointillés bleus (relecture) ou
+//  rouges (orthographe) et ouvre une bulle de correction au survol.
 //  Mac uniquement ; sans effet ailleurs.
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -16,77 +18,177 @@
 const CORRECTEUR_SWIFT = String.raw`import AppKit
 import NaturalLanguage
 
-// Correcteur d'Ariane : un démon qui parle en JSON, une ligne par message,
-// et met le correcteur du système (NSSpellChecker) à la portée d'Obsidian.
-// Entrée  : {"id":1,"cmd":"check","text":"..."} | {"cmd":"checkMany","texts":["..."]} | {"cmd":"learn","word":"..."} | {"cmd":"ignore","word":"..."}
-// Sortie  : {"id":1,"items":[{"from":23,"length":8,"kind":"grammar","replace":["expliquer"],"message":"...","category":"..."}]}
-// Les positions sont en unités UTF-16, comme les indices d'une chaîne JavaScript.
+// Correcteur d'Ariane : un demon qui parle en JSON, une ligne par message,
+// et met le correcteur du systeme a la portee d'Obsidian.
+//
+// Deux moteurs, tous deux d'Apple :
+//   - la relecture contextuelle (celle de Mail et de Pages) : accords,
+//     conjugaisons, participes passes, mots errones, avec une explication
+//     en francais. Elle passe par requestProofreadingReviewOfString:, que
+//     AppKit n'expose pas dans ses entetes : le demon verifie donc sa
+//     presence avant de s'en servir, et s'en passe si elle disparait.
+//   - le correcteur orthographique classique (NSSpellChecker), synchrone,
+//     pour les mots isoles que la relecture ne couvre pas.
+//
+// Entree  : {"id":1,"cmd":"check","text":"..."}
+//           {"id":1,"cmd":"checkMany","texts":["...","..."]}
+//           {"cmd":"learn","word":"..."} | {"cmd":"ignore","word":"..."}
+//           {"cmd":"ping"}  -> dit quels moteurs repondent
+// Sortie  : {"id":1,"items":[{"from":23,"length":8,"kind":"grammar",
+//            "word":"explique","replace":["expliquer"],"message":"...",
+//            "category":"Forme du verbe"}]}
+//
+// Les positions sont en unites UTF-16, comme les indices d'une chaine
+// JavaScript : elles se reportent telles quelles dans l'editeur.
 
 let verificateur = NSSpellChecker.shared
 verificateur.automaticallyIdentifiesLanguages = true
 let balise = NSSpellChecker.uniqueSpellDocumentTag()
-let types = NSTextCheckingTypes(NSTextCheckingResult.CheckingType.spelling.rawValue
-  | NSTextCheckingResult.CheckingType.grammar.rawValue)
 
-func langueDe(_ phrase: String) -> String {
+// La relecture contextuelle, si ce systeme la propose.
+@objc protocol RelectureApple {
+  @objc(requestProofreadingReviewOfString:range:language:options:completionHandler:)
+  func demander(_ texte: NSString, range: NSRange, language: NSString?, options: NSDictionary,
+                completionHandler: @escaping (Int, NSArray?) -> Void) -> Int
+}
+let selRelecture = NSSelectorFromString(
+  "requestProofreadingReviewOfString:range:language:options:completionHandler:")
+let relectureDispo = verificateur.responds(to: selRelecture)
+let relecteur = unsafeBitCast(verificateur, to: RelectureApple.self)
+
+// Au-dela, la relecture n'apporte plus rien et le systeme peine : on tronque.
+let TAILLE_MAX = 4000
+// Le modele de langue prend quelques secondes ; au-dela, on rend ce qu'on a.
+let DELAI_RELECTURE = 20.0
+
+func langueDe(_ texte: String) -> String {
   let r = NLLanguageRecognizer()
-  r.languageHints = [.french: 0.6, .english: 0.4]
-  r.processString(phrase)
+  r.languageHints = [.french: 0.7, .english: 0.3]
+  r.processString(texte)
   guard let l = r.dominantLanguage else { return "fr" }
-  switch l { case .english: return "en"; case .french: return "fr"; default: return l.rawValue }
+  switch l {
+  case .english: return "en"
+  case .french: return "fr"
+  default: return l.rawValue
+  }
 }
 
-func verifier(_ texte: String) -> [[String: Any]] {
+// L'orthographe, mot a mot : synchrone, et rapide.
+func orthographe(_ texte: String, _ langue: String) -> [[String: Any]] {
   var items: [[String: Any]] = []
   let ns = texte as NSString
-  ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length), options: .bySentences) { sous, plage, _, _ in
-    guard let phrase = sous, phrase.rangeOfCharacter(from: .letters) != nil else { return }
-    let nsPhrase = phrase as NSString
-    let langue = langueDe(phrase)
-    let resultats = verificateur.check(phrase, range: NSRange(location: 0, length: nsPhrase.length),
-      types: types, options: nil, inSpellDocumentWithTag: balise, orthography: nil, wordCount: nil)
-    for r in resultats {
-      if r.resultType == .spelling {
-        let mot = nsPhrase.substring(with: r.range)
-        let propositions = verificateur.guesses(forWordRange: r.range, in: phrase, language: langue,
-          inSpellDocumentWithTag: balise) ?? []
-        items.append(["from": plage.location + r.range.location, "length": r.range.length, "kind": "spelling",
-          "word": mot, "replace": Array(propositions.prefix(6)), "message": "", "category": ""])
-      } else if r.resultType == .grammar {
-        for d in r.grammarDetails ?? [] {
-          guard let v = d["NSGrammarRange"] as? NSValue else { continue }
-          let pl = v.rangeValue
-          items.append(["from": plage.location + r.range.location + pl.location, "length": pl.length,
-            "kind": "grammar", "word": nsPhrase.substring(with: NSRange(location: r.range.location + pl.location, length: pl.length)),
-            "replace": (d["NSGrammarCorrections"] as? [String]) ?? [],
-            "message": (d["NSGrammarUserDescription"] as? String) ?? "",
-            "category": (d["NSGrammarUserCategory"] as? String) ?? ""])
-        }
-      }
-    }
+  var depart = 0
+  while depart < ns.length {
+    let plage = verificateur.checkSpelling(of: texte, startingAt: depart, language: langue,
+      wrap: false, inSpellDocumentWithTag: balise, wordCount: nil)
+    if plage.location == NSNotFound || plage.length == 0 { break }
+    let mot = ns.substring(with: plage)
+    let propositions = verificateur.guesses(forWordRange: plage, in: texte, language: langue,
+      inSpellDocumentWithTag: balise) ?? []
+    items.append(["from": plage.location, "length": plage.length, "kind": "spelling",
+      "word": mot, "replace": Array(propositions.prefix(6)), "message": "", "category": ""])
+    depart = plage.location + max(plage.length, 1)
   }
   return items
 }
 
-func repondre(_ o: [String: Any]) {
-  if let d = try? JSONSerialization.data(withJSONObject: o), let s = String(data: d, encoding: .utf8) {
-    print(s); fflush(stdout)
+// La relecture contextuelle : asynchrone, un appel par bloc de texte.
+func relire(_ texte: String, _ langue: String, _ fini: @escaping ([[String: Any]]) -> Void) {
+  guard relectureDispo else { fini([]); return }
+  let ns = texte as NSString
+  var rendu = false
+  let rendre: ([[String: Any]]) -> Void = { items in
+    if rendu { return }
+    rendu = true
+    fini(items)
+  }
+  DispatchQueue.main.asyncAfter(deadline: .now() + DELAI_RELECTURE) { rendre([]) }
+  _ = relecteur.demander(ns, range: NSRange(location: 0, length: ns.length),
+    language: langue as NSString, options: [:]) { _, resultats in
+    var items: [[String: Any]] = []
+    for r in (resultats as? [NSTextCheckingResult]) ?? [] {
+      guard r.resultType == .grammar else { continue }
+      for d in r.grammarDetails ?? [] {
+        guard let v = d["NSGrammarRange"] as? NSValue else { continue }
+        let pl = v.rangeValue
+        let abs = NSRange(location: r.range.location + pl.location, length: pl.length)
+        guard abs.location >= 0, abs.location + abs.length <= ns.length, abs.length > 0 else { continue }
+        items.append(["from": abs.location, "length": abs.length, "kind": "grammar",
+          "word": ns.substring(with: abs),
+          "replace": (d["NSGrammarCorrections"] as? [String]) ?? [],
+          "message": (d["NSGrammarUserDescription"] as? String) ?? "",
+          "category": (d["NSGrammarUserCategory"] as? String) ?? ""])
+      }
+    }
+    DispatchQueue.main.async { rendre(items) }
   }
 }
 
-while let ligne = readLine() {
-  guard let d = ligne.data(using: .utf8),
-        let m = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { continue }
+// Les deux moteurs reunis. La relecture prime : quand elle signale deja un
+// passage, la faute d'orthographe qui s'y trouve ferait un double soulignement.
+func verifier(_ brut: String, _ fini: @escaping ([[String: Any]]) -> Void) {
+  let texte = brut.count > TAILLE_MAX ? String(brut.prefix(TAILLE_MAX)) : brut
+  guard texte.rangeOfCharacter(from: .letters) != nil else { fini([]); return }
+  let langue = langueDe(texte)
+  let orth = orthographe(texte, langue)
+  relire(texte, langue) { gram in
+    let couvert: (Int, Int) -> Bool = { de, longueur in
+      gram.contains { g in
+        let gd = g["from"] as! Int, gl = g["length"] as! Int
+        return de < gd + gl && gd < de + longueur
+      }
+    }
+    let restant = orth.filter { !couvert($0["from"] as! Int, $0["length"] as! Int) }
+    fini((gram + restant).sorted { ($0["from"] as! Int) < ($1["from"] as! Int) })
+  }
+}
+
+func repondre(_ o: [String: Any]) {
+  if let d = try? JSONSerialization.data(withJSONObject: o), let s = String(data: d, encoding: .utf8) {
+    print(s)
+    fflush(stdout)
+  }
+}
+
+func traiter(_ m: [String: Any]) {
   let id = m["id"] ?? NSNull()
   switch m["cmd"] as? String ?? "" {
-  case "check": repondre(["id": id, "items": verifier(m["text"] as? String ?? "")])
-  case "checkMany": repondre(["id": id, "results": (m["texts"] as? [String] ?? []).map { verifier($0) }])
-  case "learn": verificateur.learnWord(m["word"] as? String ?? ""); repondre(["id": id, "ok": true])
-  case "ignore": verificateur.ignoreWord(m["word"] as? String ?? "", inSpellDocumentWithTag: balise); repondre(["id": id, "ok": true])
-  case "ping": repondre(["id": id, "ok": true])
-  default: repondre(["id": id, "erreur": "commande inconnue"])
+  case "check":
+    verifier(m["text"] as? String ?? "") { repondre(["id": id, "items": $0]) }
+  case "checkMany":
+    let textes = m["texts"] as? [String] ?? []
+    var resultats = [[[String: Any]]](repeating: [], count: textes.count)
+    let groupe = DispatchGroup()
+    for (i, t) in textes.enumerated() {
+      groupe.enter()
+      verifier(t) { resultats[i] = $0; groupe.leave() }
+    }
+    groupe.notify(queue: .main) { repondre(["id": id, "results": resultats]) }
+  case "learn":
+    verificateur.learnWord(m["word"] as? String ?? "")
+    repondre(["id": id, "ok": true])
+  case "ignore":
+    verificateur.ignoreWord(m["word"] as? String ?? "", inSpellDocumentWithTag: balise)
+    repondre(["id": id, "ok": true])
+  case "ping":
+    repondre(["id": id, "ok": true, "relecture": relectureDispo,
+              "langues": verificateur.availableLanguages])
+  default:
+    repondre(["id": id, "erreur": "commande inconnue"])
   }
-}`;
+}
+
+// L'entree standard est lue a part : le fil principal tient la boucle
+// d'evenements, sans laquelle les reponses du modele de langue n'arrivent pas.
+DispatchQueue.global(qos: .userInitiated).async {
+  while let ligne = readLine() {
+    guard let d = ligne.data(using: .utf8),
+          let m = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { continue }
+    DispatchQueue.main.async { traiter(m) }
+  }
+  DispatchQueue.main.async { exit(0) }
+}
+RunLoop.main.run()`;
 
 //  Découpage & masquage : quelles parties d'une note sont du texte à corriger.
 //  Les fonctions de ce bloc sont pures (éprouvées par tests/correcteur.test.js).
@@ -279,8 +381,10 @@ class AssistantApple {
   }
 
   // Les fautes de plusieurs lignes : un tableau de tableaux, ou null.
+  // La relecture appelle un modèle de langue : quelques secondes par ligne
+  // inédite, rien du tout pour une ligne déjà vue. D'où la longue patience.
   async verifier(textes) {
-    const r = await this.demander({ cmd: 'checkMany', texts: textes });
+    const r = await this.demander({ cmd: 'checkMany', texts: textes }, 120000);
     return r && Array.isArray(r.results) ? r.results : null;
   }
 
@@ -322,17 +426,20 @@ class CorrecteurApple extends obsidian.Component {
   }
 
   // Les fautes des lignes données : le cache d'abord, le démon pour le reste.
-  async _resoudre(blocs) {
+  // `surLot` est appelé après chaque paquet, pour souligner au fur et à
+  // mesure plutôt que d'attendre toute une note ; s'il rend false, on arrête.
+  async _resoudre(blocs, surLot) {
     const manque = [];
     const vus = new Set();
     for (const b of blocs) {
       if (!this.cache.has(b.texte) && !vus.has(b.texte)) { vus.add(b.texte); manque.push(b.texte); }
     }
-    for (let i = 0; i < manque.length; i += 40) {
-      const lot = manque.slice(i, i + 40);
+    for (let i = 0; i < manque.length; i += 12) {
+      const lot = manque.slice(i, i + 12);
       const res = await this.assistant.verifier(lot);
       if (!res) return false;
       lot.forEach((t, k) => this.cache.set(t, res[k] || []));
+      if (surLot && surLot() === false) return false;
     }
     if (this.cache.size > 4000) {
       for (const k of [...this.cache.keys()].slice(0, this.cache.size - 3000)) this.cache.delete(k);
@@ -340,17 +447,26 @@ class CorrecteurApple extends obsidian.Component {
     return true;
   }
 
-  // Une phrase d'essai : dit si le système répond, et ce qu'il trouve.
+  // Une phrase d'essai : dit quels moteurs répondent, et ce qu'ils trouvent.
   async diagnostiquer() {
     if (!AssistantApple.disponible()) { new obsidian.Notice(tr('Le correcteur Apple ne fonctionne que sur Mac.')); return; }
-    const essai = ['Ceci est une note pour expliqué si le correcteur d’orthographe fonctionnent bien. Un mot mal ecrit.'];
-    const res = await this.assistant.verifier(essai);
-    if (!res) { new obsidian.Notice(tr('Correcteur Apple : aucune réponse du démon.') + ' ' + (this.assistant.indisponible || '')); return; }
-    const f = res[0] || [];
-    const g = f.filter((x) => x.kind === 'grammar').length;
-    const o = f.filter((x) => x.kind === 'spelling').length;
-    new obsidian.Notice(tr('Correcteur Apple : le démon répond. Orthographe : ') + o + tr(' faute(s) trouvée(s) sur 1. Grammaire : ')
-      + g + tr(' sur 2 attendues.') + (g === 0 ? ' ' + tr('Le moteur de grammaire du système ne répond pas pour le moment.') : ''), 12000);
+    new obsidian.Notice(tr('Correcteur Apple : essai en cours…'), 4000);
+    const salut = await this.assistant.demander({ cmd: 'ping' }, 120000);
+    if (!salut) {
+      new obsidian.Notice(tr('Correcteur Apple : aucune réponse du démon. ') + (this.assistant.indisponible || ''), 12000);
+      return;
+    }
+    const essai = 'Ceci est une note pour testé la validité du correcteur qui marchaient bien.';
+    const res = await this.assistant.verifier([essai]);
+    const f = (res && res[0]) || [];
+    const lignes = [
+      tr('Correcteur Apple'),
+      tr('Relecture contextuelle : ') + (salut.relecture ? tr('disponible.') : tr('absente de ce système.')),
+      tr('Phrase d’essai : ') + f.length + tr(' faute(s) sur 2 attendues.'),
+    ];
+    for (const x of f) lignes.push('   « ' + x.word +' » → ' + (x.replace[0] || '?'));
+    if (!f.length) lignes.push(tr('Le moteur du système ne rend rien pour le moment.'));
+    new obsidian.Notice(lignes.join('\n'), 15000);
   }
 
   // L'extension à enregistrer auprès de l'éditeur, ou null hors Mac.
@@ -405,10 +521,14 @@ class CorrecteurApple extends obsidian.Component {
         }
         const doc = vue.state.doc;
         const blocs = correcteurBlocs(doc.toString());
-        const ok = await centre._resoudre(blocs);
         // Le texte a bougé pendant l'attente : un autre cycle est déjà prévu.
-        if (!ok || tour !== this.tour || vue.state.doc !== doc) return;
-        vue.dispatch({ effects: poser.of(correcteurFautes(blocs, centre.cache, centre.ignores, centre.genres())) });
+        const poserCourant = () => {
+          if (tour !== this.tour || vue.state.doc !== doc) return false;
+          vue.dispatch({ effects: poser.of(correcteurFautes(blocs, centre.cache, centre.ignores, centre.genres())) });
+          return true;
+        };
+        if (await centre._resoudre(blocs, poserCourant) === false) return;
+        poserCourant();
       }
     });
 

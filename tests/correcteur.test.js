@@ -62,3 +62,19 @@ test('fautes : positions absolues, genres demandés, fautes ignorées', () => {
   const ign = correcteurFautes(blocs, cache, new Set([correcteurCleIgnore(cache.get('a')[0])]), { grammar: true, spelling: true });
   assert.deepEqual(ign.map((f) => f.kind), ['spelling']);
 });
+
+test('fautes : la relecture prime, une même ligne répétée est signalée partout', () => {
+  // Deux lignes de même texte : le cache ne sert qu'une fois, les deux
+  // soulignements se posent quand même, chacun à sa place.
+  const blocs = [{ from: 0, texte: 'x' }, { from: 100, texte: 'x' }];
+  const cache = new Map([['x', [{ from: 2, length: 5, kind: 'grammar', word: 'testé', replace: ['tester'], message: 'm', category: 'Forme du verbe' }]]]);
+  const f = correcteurFautes(blocs, cache, new Set(), { grammar: true, spelling: true });
+  assert.deepEqual(f.map((x) => x.from), [2, 102]);
+  assert.deepEqual(f[0].replace, ['tester']);
+  assert.equal(f[1].category, 'Forme du verbe');
+});
+
+test('fautes : une ligne que le démon n\'a pas encore vue ne produit rien', () => {
+  const blocs = [{ from: 0, texte: 'jamais vue' }];
+  assert.deepEqual(correcteurFautes(blocs, new Map(), new Set(), { grammar: true, spelling: true }), []);
+});
