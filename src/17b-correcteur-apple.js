@@ -784,6 +784,13 @@ class CorrecteurApple extends obsidian.Component {
     if (!faute.replace.length) el(rang, 'span', 'zfa-corr-aucune', tr('Aucune proposition'));
 
     const actions = el(rang, 'div', 'zfa-corr-actions');
+    const parcourir = el(actions, 'button', 'zfa-corr-action');
+    obsidian.setIcon(parcourir, 'chevrons-right');
+    canevasInfobulle(parcourir, tr('Reprendre la note à partir d’ici, faute après faute'));
+    parcourir.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      this.guidee.ouvrir(vue, faute);
+    });
     if (faute.kind === 'spelling') {
       const ajouter = el(actions, 'button', 'zfa-corr-action');
       obsidian.setIcon(ajouter, 'book-plus');
@@ -827,9 +834,10 @@ class RelectureGuidee {
 
   fautes() { return this.vue ? this.centre.fautesDe(this.vue) : []; }
 
-  // Ouvre le panneau sur la vue donnée. Si la note n'a pas encore été relue,
-  // le panneau patiente en le disant, plutôt que d'annoncer « aucune faute ».
-  async ouvrir(vue) {
+  // Ouvre le panneau sur la vue donnée, à la première faute ou à celle qu'on
+  // désigne. Si la note n'a pas encore été relue, le panneau patiente en le
+  // disant, plutôt que d'annoncer « aucune faute ».
+  async ouvrir(vue, depart) {
     if (!vue) return;
     this.fermer();
     if (!this.centre.actif()) {
@@ -846,10 +854,15 @@ class RelectureGuidee {
       await new Promise((r) => setTimeout(r, 250));
     }
     if (!this.el || this.session !== session) return;
-    if (!this.fautes().length) {
+    const fautes = this.fautes();
+    if (!fautes.length) {
       new obsidian.Notice(tr('Relecture : rien à signaler dans cette note.'));
       this.fermer();
       return;
+    }
+    if (depart) {
+      const i = fautes.findIndex((f) => f.from === depart.from && f.to === depart.to);
+      if (i >= 0) this.index = i;
     }
     this.afficher();
   }
@@ -1131,6 +1144,10 @@ class VueRelecture extends obsidian.ItemView {
     }
     const non = actions.createEl('button', { cls: 'zfa-rel-bouton', text: tr('Ignorer') });
     non.onclick = (e) => { e.stopPropagation(); correcteur.ignorer(vue, faute); };
+    const parcourir = actions.createEl('button', { cls: 'zfa-rel-icone' });
+    obsidian.setIcon(parcourir, 'chevrons-right');
+    canevasInfobulle(parcourir, tr('Reprendre la note à partir d’ici, faute après faute'));
+    parcourir.onclick = (e) => { e.stopPropagation(); correcteur.guidee.ouvrir(vue, faute); };
 
     if (this.viseeDebut === faute.from) ligne.addClass('est-visee');
     // Cliquer la ligne va montrer le passage dans la note, sans rien changer.

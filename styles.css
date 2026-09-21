@@ -2974,3 +2974,18 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-rel-bouton:hover { background: var(--background-modifier-hover); }
 .zfa-rel-bouton.mod-cta { background: var(--interactive-accent); color: var(--text-on-accent); }
 .zfa-rel-bouton.mod-cta:hover { background: var(--interactive-accent-hover); }
+.zfa-rel-icone {
+  all: unset;
+  box-sizing: border-box;
+  cursor: var(--cursor, pointer);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  border-radius: var(--radius-s, 4px);
+  color: var(--text-faint);
+}
+.zfa-rel-icone:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.zfa-rel-icone .svg-icon { width: 15px; height: 15px; }

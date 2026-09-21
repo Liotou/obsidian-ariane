@@ -132,8 +132,8 @@ test('bulle : catégorie, explication, propositions, actions', () => {
   const choix = parClasse(racine, 'zfa-corr-choix');
   assert.deepEqual(choix.map((b) => b.textContent), ['elles']);
   assert.match(choix[0].attributs['aria-label'], /Remplacer/);
-  // Une seule action pour la grammaire : ignorer. Pas de dictionnaire.
-  assert.equal(parClasse(racine, 'zfa-corr-action').length, 1);
+  // Grammaire : parcourir et ignorer. Pas de dictionnaire.
+  assert.equal(parClasse(racine, 'zfa-corr-action').length, 2);
   choix[0].ecoutes.mousedown[0]({ preventDefault() {} });
   assert.deepEqual(envois, [{ changes: { from: 34, to: 38, insert: 'elles' } }]);
 });
@@ -146,8 +146,8 @@ test('bulle : orthographe, propositions en retrait après la première', () => {
   const choix = parClasse(racine, 'zfa-corr-choix');
   assert.equal(choix.length, 4, 'quatre propositions au plus');
   assert.ok(choix.every((b) => b.className === 'zfa-corr-choix'), 'toutes de même allure');
-  // Orthographe : dictionnaire et ignorer.
-  assert.equal(parClasse(racine, 'zfa-corr-action').length, 2);
+  // Orthographe : parcourir, dictionnaire et ignorer.
+  assert.equal(parClasse(racine, 'zfa-corr-action').length, 3);
 });
 
 test('bulle : sans proposition, la rangée le dit au lieu de rester vide', () => {
@@ -442,4 +442,28 @@ test('tableaux : les barres deviennent des espaces, les positions tiennent', () 
   assert.equal(m.length, ligne.length);
   assert.ok(!m.includes('|'));
   assert.equal(m.indexOf('institutionnelle'), ligne.indexOf('institutionnelle'));
+});
+
+test('navigateur : il démarre sur la faute désignée, pas sur la première', async () => {
+  const centre = new (Ariane._test.CorrecteurApple)({ settings: {} });
+  const vue = fauxEditeur(PHRASE, FAUTES());
+  centre._champ = true;
+  centre._poser = { of: (v) => ({ genre: 'poser', valeur: v }) };
+  centre._viser = { of: (v) => ({ genre: 'viser', valeur: v }) };
+  centre._scroller = (p) => ({ genre: 'montrer', valeur: p });
+  centre.actif = () => true;
+  const lire = (c) => parClasse(centre.guidee.el, c).map((e) => e.textContent);
+
+  await centre.guidee.ouvrir(vue, centre.fautesDe(vue)[2]);
+  assert.deepEqual(lire('zfa-relecture-compte'), ['3 sur 3']);
+  assert.deepEqual(lire('zfa-relecture-mot'), ['marchaient']);
+
+  // Sans faute désignée, on repart du début.
+  await centre.guidee.ouvrir(vue);
+  assert.deepEqual(lire('zfa-relecture-compte'), ['1 sur 3']);
+
+  // Une faute qui n'est plus là ne fait pas dérailler : on repart du début.
+  await centre.guidee.ouvrir(vue, { from: 999, to: 1002 });
+  assert.deepEqual(lire('zfa-relecture-compte'), ['1 sur 3']);
+  centre.guidee.fermer();
 });
