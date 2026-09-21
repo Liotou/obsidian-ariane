@@ -2774,26 +2774,20 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   padding-top: 8px;
   border-top: 1px solid var(--background-modifier-border);
 }
+/* Une proposition se comporte comme une entrée de menu d'Obsidian : rien au
+   repos, un fond discret sous la souris. */
 .zfa-corr-choix {
   all: unset;
   box-sizing: border-box;
   cursor: var(--cursor, pointer);
-  padding: 3px 10px;
+  padding: 3px 8px;
   border-radius: var(--radius-s, 4px);
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
+  color: var(--text-normal);
   font-weight: var(--font-medium, 500);
   line-height: 1.4;
   white-space: nowrap;
 }
-.zfa-corr-choix:hover { background: var(--interactive-accent-hover); }
-/* Les propositions suivantes restent en retrait : une seule est la bonne. */
-.zfa-corr-choix.est-secondaire {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
-  font-weight: normal;
-}
-.zfa-corr-choix.est-secondaire:hover { background: var(--background-modifier-active-hover, var(--background-modifier-hover)); }
+.zfa-corr-choix:hover { background: var(--background-modifier-hover); }
 .zfa-corr-aucune { color: var(--text-faint); font-style: italic; }
 
 .zfa-corr-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; }

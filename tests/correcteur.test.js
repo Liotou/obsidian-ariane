@@ -128,8 +128,7 @@ test('bulle : orthographe, propositions en retrait après la première', () => {
   assert.match(parClasse(racine, 'zfa-corr-texte')[0].textContent, /dictionnaire/);
   const choix = parClasse(racine, 'zfa-corr-choix');
   assert.equal(choix.length, 4, 'quatre propositions au plus');
-  assert.equal(choix[0].className, 'zfa-corr-choix');
-  assert.ok(choix.slice(1).every((b) => b.className.includes('est-secondaire')));
+  assert.ok(choix.every((b) => b.className === 'zfa-corr-choix'), 'toutes de même allure');
   // Orthographe : dictionnaire et ignorer.
   assert.equal(parClasse(racine, 'zfa-corr-action').length, 2);
 });

@@ -28901,8 +28901,8 @@ class CorrecteurApple extends obsidian.Component {
     }
 
     const rang = el(racine, 'div', 'zfa-corr-rang');
-    faute.replace.slice(0, 4).forEach((r, i) => {
-      const b = el(rang, 'button', 'zfa-corr-choix' + (i ? ' est-secondaire' : ''), r);
+    faute.replace.slice(0, 4).forEach((r) => {
+      const b = el(rang, 'button', 'zfa-corr-choix', r);
       canevasInfobulle(b, tr('Remplacer « ') + faute.word + tr(' » par « ') + r + ' »');
       b.addEventListener('mousedown', (e) => {
         e.preventDefault();
