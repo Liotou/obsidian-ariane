@@ -542,6 +542,11 @@ class Ariane extends composer(obsidian.Plugin,
       () => this.basculerCitations(!this.settings.citationsRepliees));
     this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
     this.addRibbonIcon('scale', tr('Références en attente (Ariane)'), () => this.ouvrirVueReferences());
+    // Le correcteur n'existe que sur Mac : ailleurs, l'icône n'aurait rien
+    // à ouvrir. La bascule du ruban se cale donc sur ce que le système offre.
+    if (this.correcteur && AssistantApple.disponible()) {
+      this.addRibbonIcon('spell-check', tr('Relecture (Ariane)'), () => this.correcteur.ouvrirVolet());
+    }
     // Déclare le panneau comme source d'aperçu au survol (« Page preview »).
     if (this.registerHoverLinkSource) {
       this.registerHoverLinkSource('zfa-suggestions', { display: tr('Suggestions (Ariane)'), defaultMod: false });
