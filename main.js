@@ -28727,6 +28727,15 @@ function correcteurFautes(blocs, parTexte, ignores, genres) {
 
 function correcteurCleIgnore(it) { return it.kind + '|' + it.word + '|' + (it.message || ''); }
 
+// Le nom de la langue dans laquelle la note a été relue. Le volet l'affiche :
+// une note relue dans la mauvaise langue produit des remarques absurdes, et
+// c'est le premier endroit où l'on pense à regarder.
+function correcteurNomLangue(code) {
+  const noms = { fr: 'français', en: 'anglais', es: 'espagnol', de: 'allemand', it: 'italien', pt: 'portugais', nl: 'néerlandais' };
+  const court = String(code || '').slice(0, 2).toLowerCase();
+  return noms[court] || court;
+}
+
 //  Le démon : compilation, dialogue, redémarrage.
 
 class AssistantApple {
@@ -28851,6 +28860,7 @@ class AssistantApple {
 //  L'intégration : l'extension CodeMirror et la bulle de correction.
 
 class CorrecteurApple extends obsidian.Component {
+  //#region Correcteur · cycle de vie
   constructor(greffon) {
     super();
     this.greffon = greffon;
@@ -28865,6 +28875,9 @@ class CorrecteurApple extends obsidian.Component {
 
   onunload() { this.guidee.fermer(); this.assistant.arreter(); }
 
+  //#endregion Correcteur · cycle de vie
+
+  //#region Correcteur · volets ouverts
   // Force un tour de vérification sur une vue précise, sans attendre le délai.
   reveiller(vue) { for (const s of this.suivis) if (s.vue === vue) s.planifier(0); }
 
@@ -28889,6 +28902,9 @@ class CorrecteurApple extends obsidian.Component {
   // Prévient les volets ouverts que la liste des fautes a bougé.
   _prevenir() { for (const f of this.abonnes) { try { f(); } catch (e) { /* volet fermé */ } } }
 
+  //#endregion Correcteur · volets ouverts
+
+  //#region Correcteur · actions sur une faute
   // Amène la faute sous les yeux et la surligne le temps qu'on s'en occupe.
   // Le curseur va s'y poser : sans cela, rendre le focus à l'éditeur le
   // ramènerait aussitôt là où il était, et le défilement serait perdu.
@@ -28943,6 +28959,9 @@ class CorrecteurApple extends obsidian.Component {
     return etat ? etat.fautes.slice().sort((a, b) => a.from - b.from) : [];
   }
 
+  //#endregion Correcteur · actions sur une faute
+
+  //#region Correcteur · réglages & vérification
   // Ce qui est demandé, d'après les réglages.
   genres() {
     const s = this.greffon.settings;
@@ -28994,6 +29013,9 @@ class CorrecteurApple extends obsidian.Component {
     return true;
   }
 
+  //#endregion Correcteur · réglages & vérification
+
+  //#region Correcteur · éditeur
   // L'extension à enregistrer auprès de l'éditeur, ou null hors Mac.
   extension() {
     if (!AssistantApple.disponible()) return null;
@@ -29182,6 +29204,8 @@ class CorrecteurApple extends obsidian.Component {
     });
     return racine;
   }
+
+  //#endregion Correcteur · éditeur
 }
 
 //  La relecture guidée : les fautes une par une, comme la fenêtre de Mail.
@@ -29473,6 +29497,11 @@ class VueRelecture extends obsidian.ItemView {
       cls: 'zfa-rel-compte',
       text: fautes.length ? fautes.length + tr(' remarque(s)') : (correcteur.occupeSur(vue) ? tr('Relecture en cours…') : tr('Rien à signaler')),
     });
+    const langue = correcteur.assistant.derniereLangue;
+    if (langue) {
+      const el = tete.createSpan({ cls: 'zfa-rel-langue', text: correcteurNomLangue(langue) });
+      canevasInfobulle(el, tr('Langue dans laquelle la note a été relue. Elle se règle dans les réglages du correcteur.'));
+    }
     if (fautes.length) {
       const tout = tete.createEl('button', { cls: 'zfa-rel-tout', text: tr('Tout accepter') });
       canevasInfobulle(tout, tr('Appliquer toutes les corrections proposées'));
@@ -30408,6 +30437,7 @@ module.exports._test = {
   // Correcteur Apple : découpage, masquage et assemblage des fautes.
   correcteurMasquer,
   correcteurZonesExclues,
+  correcteurNomLangue,
   correcteurBlocs,
   correcteurFautes,
   correcteurCleIgnore,

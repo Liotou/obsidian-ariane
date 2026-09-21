@@ -21,6 +21,7 @@ module.exports._test = {
   // Correcteur Apple : découpage, masquage et assemblage des fautes.
   correcteurMasquer,
   correcteurZonesExclues,
+  correcteurNomLangue,
   correcteurBlocs,
   correcteurFautes,
   correcteurCleIgnore,

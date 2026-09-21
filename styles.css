@@ -2920,6 +2920,7 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   z-index: 1;
 }
 .zfa-rel-compte { font-weight: var(--font-semibold, 600); }
+.zfa-rel-langue { color: var(--text-faint); }
 .zfa-rel-tout {
   all: unset;
   box-sizing: border-box;
@@ -2974,6 +2975,7 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-rel-bouton:hover { background: var(--background-modifier-hover); }
 .zfa-rel-bouton.mod-cta { background: var(--interactive-accent); color: var(--text-on-accent); }
 .zfa-rel-bouton.mod-cta:hover { background: var(--interactive-accent-hover); }
+/* Le chevron qui reprend la note à partir de cette remarque-là. */
 .zfa-rel-icone {
   all: unset;
   box-sizing: border-box;
