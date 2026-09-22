@@ -2991,3 +2991,27 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 }
 .zfa-rel-icone:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .zfa-rel-icone .svg-icon { width: 15px; height: 15px; }
+
+/* Icône d'une vue de base : aperçu dans la modale et dans les réglages. */
+.zfa-modale-icone .zfa-icone-rang { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.zfa-modale-icone .zfa-icone-rang input { flex: 1; }
+.zfa-icone-apercu {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-s, 4px);
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.zfa-icone-apercu.est-vide { background: var(--background-modifier-error-hover, var(--background-modifier-hover)); }
+.zfa-icone-apercu.est-en-ligne {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  margin-inline-end: 6px;
+  vertical-align: -4px;
+  background: none;
+  color: var(--text-muted);
+}

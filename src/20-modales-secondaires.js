@@ -171,5 +171,51 @@ class FusionAuteursModal extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// Choix de l'icône d'une vue de base. Un nom lucide se tape à la main, comme
+// pour les familles de notes ; l'aperçu à côté dit tout de suite si le nom
+// existe, ce qu'une liste déroulante de mille entrées dirait moins bien.
+class ModaleIconeVue extends obsidian.Modal {
+  constructor(app, cible, valeur, onValider) {
+    super(app);
+    this.cible = cible;
+    this.valeur = String(valeur || '');
+    this.onValider = onValider;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass('zfa-modale-icone');
+    contentEl.createEl('h3', { text: tr('Icône de la vue') });
+    contentEl.createEl('p', { cls: 'zfa-aide', text: this.cible.nom });
+
+    const rang = contentEl.createDiv({ cls: 'zfa-icone-rang' });
+    const apercu = rang.createDiv({ cls: 'zfa-icone-apercu' });
+    const champ = rang.createEl('input', { type: 'text' });
+    champ.placeholder = tr('nom lucide : book-open, users, flask-conical…');
+    champ.value = this.valeur;
+
+    const rafraichir = () => {
+      apercu.empty();
+      const nom = champ.value.trim();
+      if (nom) { try { obsidian.setIcon(apercu, nom); } catch (e) { /* nom inconnu */ } }
+      apercu.toggleClass('est-vide', !apercu.querySelector('svg'));
+    };
+    champ.addEventListener('input', rafraichir);
+    champ.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); valider(); } });
+    rafraichir();
+
+    contentEl.createEl('p', { cls: 'zfa-aide',
+      text: tr('Les noms sont ceux de lucide.dev. Laissez vide pour rendre à la vue son icône d’origine.') });
+
+    const boutons = contentEl.createDiv({ cls: 'modal-button-container' });
+    const valider = () => { this.close(); this.onValider(champ.value.trim()); };
+    boutons.createEl('button', { cls: 'mod-cta', text: tr('Valider') }).onclick = valider;
+    boutons.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    window.setTimeout(() => champ.focus(), 0);
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 //#endregion 20 · Modales secondaires
 

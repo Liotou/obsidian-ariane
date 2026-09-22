@@ -71,6 +71,151 @@ async function refaireDernier(moteur) {
   try { await e.retablit(); } catch (err) { console.error('[Ariane] rétablissement :', err); }
 }
 
+// ── Icônes des vues de base ────────────────────────────────────────────────
+// Obsidian n'attache qu'une icône par TYPE de vue : toutes les vues « tableau »
+// d'une base portent donc la même. Le code du noyau la lit sur l'inscription du
+// greffon (« lucide-table » à défaut) au moment de dessiner la barre d'outils
+// et le menu des vues. Pour en donner une à chaque vue nommée, il faut la poser
+// après lui : d'où l'observateur ci-dessous, qui repeint ce qu'Obsidian vient
+// de dessiner. Rien n'est écrit dans le fichier .base, qui reste au noyau.
+
+// La clé d'un réglage d'icône : la base et le nom de la vue.
+function basesCleIcone(chemin, nom) {
+  return String(chemin || '') + '::' + String(nom || '').trim();
+}
+
+// Le nom lucide que porte une icône déjà dessinée, pour savoir la remettre.
+function basesIconeOrigine(el) {
+  const svg = el && el.querySelector ? el.querySelector('svg') : null;
+  const classe = svg ? String(svg.getAttribute('class') || '') : '';
+  const m = /lucide-[a-z0-9-]+/.exec(classe);
+  return m ? m[0] : '';
+}
+
+// Un élément de menu qui désigne bien une VUE. Le même habillage sert aux
+// propriétés (qui portent une case à cocher) et aux formules (qui affichent
+// une valeur) : sans ce tri, une propriété homonyme d'une vue changerait
+// d'icône elle aussi.
+function basesEstItemVue(item) {
+  if (!item || !item.querySelector) return false;
+  if (item.querySelector('input[type="checkbox"]')) return false;
+  if (item.querySelector('.bases-toolbar-menu-item-value')) return false;
+  return true;
+}
+
+class IconesVuesBases extends obsidian.Component {
+  constructor(greffon) {
+    super();
+    this.greffon = greffon;
+    this.observateurs = new Map();
+    this.derniereBase = '';   // la base dont le menu vient d'être ouvert
+  }
+
+  onload() {
+    const espace = this.greffon.app.workspace;
+    this.suivre(document);
+    this.registerEvent(espace.on('window-open', (_, fenetre) => {
+      if (fenetre && fenetre.document) this.suivre(fenetre.document);
+    }));
+    this.registerEvent(espace.on('window-close', (_, fenetre) => {
+      if (fenetre && fenetre.document) this.oublier(fenetre.document);
+    }));
+    espace.onLayoutReady(() => this.peindre(document));
+  }
+
+  onunload() {
+    for (const doc of Array.from(this.observateurs.keys())) this.oublier(doc);
+  }
+
+  suivre(doc) {
+    if (!doc || !doc.body || this.observateurs.has(doc)) return;
+    const fenetre = doc.defaultView || window;
+    let attendu = false;
+    const obs = new fenetre.MutationObserver(() => {
+      if (attendu) return;
+      attendu = true;
+      fenetre.requestAnimationFrame(() => { attendu = false; this.peindre(doc); });
+    });
+    obs.observe(doc.body, { childList: true, subtree: true });
+    this.observateurs.set(doc, obs);
+    this.peindre(doc);
+  }
+
+  oublier(doc) {
+    const obs = this.observateurs.get(doc);
+    if (obs) { try { obs.disconnect(); } catch (e) { /* fenêtre partie */ } }
+    this.observateurs.delete(doc);
+  }
+
+  table() { return this.greffon.settings.basesIcones || {}; }
+
+  // Le volet qui contient un élément, pour retrouver le fichier .base affiché.
+  cheminDe(el) {
+    let trouve = '';
+    try {
+      this.greffon.app.workspace.iterateAllLeaves((l) => {
+        if (trouve) return;
+        const c = l && l.view && l.view.containerEl;
+        if (c && c.contains(el) && l.view.file) trouve = l.view.file.path;
+      });
+    } catch (e) { /* rien */ }
+    return trouve;
+  }
+
+  // Pose une icône, ou remet celle d'Obsidian quand le réglage a disparu.
+  poser(el, nom) {
+    if (!el) return;
+    if (nom) {
+      if (el.dataset.zfaIcone === nom) return;
+      if (el.dataset.zfaIconeOrigine === undefined) el.dataset.zfaIconeOrigine = basesIconeOrigine(el);
+      obsidian.setIcon(el, nom);
+      el.dataset.zfaIcone = nom;
+    } else if (el.dataset.zfaIcone !== undefined) {
+      const origine = el.dataset.zfaIconeOrigine;
+      if (origine) obsidian.setIcon(el, origine); else el.empty();
+      delete el.dataset.zfaIcone;
+      delete el.dataset.zfaIconeOrigine;
+    }
+  }
+
+  peindre(doc) {
+    const table = this.table();
+    if (!doc || !doc.querySelectorAll) return;
+    for (const barre of Array.from(doc.querySelectorAll('.bases-toolbar-views-menu'))) {
+      const chemin = this.cheminDe(barre);
+      if (chemin) this.derniereBase = chemin;
+      const etiquette = barre.querySelector('.text-button-label');
+      const nom = etiquette ? etiquette.textContent : '';
+      this.poser(barre.querySelector('.text-button-icon'), table[basesCleIcone(chemin, nom)]);
+    }
+    for (const nomEl of Array.from(doc.querySelectorAll('.bases-toolbar-menu-item-name'))) {
+      const item = nomEl.closest ? nomEl.closest('.bases-toolbar-menu-item') || nomEl.parentElement : nomEl.parentElement;
+      if (!basesEstItemVue(item)) continue;
+      const icone = item.querySelector('.bases-toolbar-menu-item-info-icon');
+      this.poser(icone, table[basesCleIcone(this.derniereBase, nomEl.textContent)]);
+    }
+  }
+
+  // La base et la vue sous les yeux, d'après la barre d'outils du volet actif.
+  vueActive() {
+    const vue = this.greffon.app.workspace.activeLeaf && this.greffon.app.workspace.activeLeaf.view;
+    const conteneur = vue && vue.containerEl;
+    const barre = conteneur ? conteneur.querySelector('.bases-toolbar-views-menu .text-button-label') : null;
+    if (!barre || !vue.file) return null;
+    return { chemin: vue.file.path, nom: barre.textContent || '' };
+  }
+
+  // Enregistre (ou retire, si l'icône est vide) et repeint aussitôt.
+  async definir(chemin, nom, icone) {
+    const table = Object.assign({}, this.table());
+    const cle = basesCleIcone(chemin, nom);
+    if (icone) table[cle] = icone; else delete table[cle];
+    this.greffon.settings.basesIcones = table;
+    await this.greffon.saveSettings();
+    for (const doc of this.observateurs.keys()) this.peindre(doc);
+  }
+}
+
 // Socle des trois moteurs de vue (frise, articulation, calendrier).
 //
 // Ce qu'ils partagent vraiment : le même quatuor greffon/app/racine/contexte, et

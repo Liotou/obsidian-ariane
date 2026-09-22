@@ -685,6 +685,32 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr("Infobulle dans l'explorateur"))
       .addToggle((t) => t.setValue(s.tempsInfobulleExplorateur !== false).onChange(async (v) => { s.tempsInfobulleExplorateur = v; await maj(); }));
 
+    this._section(c, tr('Icônes des vues de base'));
+    this._aide(c, tr("Obsidian n'attache qu'une icône par type de vue : toutes les vues « tableau » d'une base portent la même. Ouvrez une vue, puis lancez « Bases : icône de la vue affichée… » pour lui en donner une à elle. Les icônes posées se retrouvent ici."));
+    const icones = s.basesIcones || {};
+    const cles = Object.keys(icones).sort();
+    if (!cles.length) {
+      this._aide(c, tr('Aucune icône posée pour le moment.'));
+    } else {
+      for (const cle of cles) {
+        const coupe = cle.split('::');
+        const nom = coupe.pop();
+        const base = coupe.join('::').split('/').pop().replace(/\.base$/, '');
+        const reglage = new obsidian.Setting(c).setName(nom).setDesc(base);
+        const apercu = reglage.nameEl.createSpan({ cls: 'zfa-icone-apercu est-en-ligne' });
+        try { obsidian.setIcon(apercu, icones[cle]); } catch (e) { /* nom inconnu */ }
+        reglage.addExtraButton((b) => b.setIcon('trash-2').setTooltip(tr('Retirer'))
+          .onClick(async () => {
+            const table = Object.assign({}, s.basesIcones || {});
+            delete table[cle];
+            s.basesIcones = table;
+            await maj();
+            if (this.plugin.iconesBases) this.plugin.iconesBases.definir('', '', '');
+            this.display();
+          }));
+      }
+    }
+
     this._section(c, tr('Journal quotidien'));
     new obsidian.Setting(c)
       .setName(tr('Dossier du journal'))

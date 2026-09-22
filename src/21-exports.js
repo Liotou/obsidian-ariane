@@ -11,6 +11,12 @@ module.exports = Ariane;
 module.exports._test = {
   DEFAULT_SETTINGS,
   MoteurArticulation, // prototype : _traceArete s'éprouve avec un moteur factice
+  // Icônes des vues de base : clé de réglage, lecture de l'icône en place, tri
+  // des éléments de menu.
+  basesCleIcone,
+  basesIconeOrigine,
+  basesEstItemVue,
+  IconesVuesBases,
   // Canevas : logique éprouvée sur un faux canevas (nœuds, arêtes, importData).
   CANEVAS_CLE,
   canevasCotes,

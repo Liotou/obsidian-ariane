@@ -444,6 +444,23 @@ class Ariane extends composer(obsidian.Plugin,
       },
     });
     this.addCommand({
+      id: 'bases-icone-vue',
+      name: tr('Bases : icône de la vue affichée…'),
+      checkCallback: (verif) => {
+        const cible = this.iconesBases && this.iconesBases.vueActive();
+        if (!cible) return false;
+        if (verif) return true;
+        const actuelle = (this.settings.basesIcones || {})[basesCleIcone(cible.chemin, cible.nom)] || '';
+        new ModaleIconeVue(this.app, cible, actuelle, (icone) => {
+          this.iconesBases.definir(cible.chemin, cible.nom, icone);
+          new obsidian.Notice(icone
+            ? tr('Icône posée sur « ') + cible.nom + ' ».'
+            : tr('Icône retirée de « ') + cible.nom + ' ».');
+        }).open();
+        return true;
+      },
+    });
+    this.addCommand({
       id: 'correcteur-volet',
       name: tr('Correcteur Apple : ouvrir le volet de relecture'),
       callback: () => this.correcteur && this.correcteur.ouvrirVolet(),
@@ -458,6 +475,10 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
     this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
     this.registerView(TYPE_VUE_RELECTURE, (leaf) => new VueRelecture(leaf, this));
+    // Les icônes des vues de base : posées après Obsidian, qui n'en connaît
+    // qu'une par type de vue.
+    this.iconesBases = new IconesVuesBases(this);
+    this.addChild(this.iconesBases);
     // Le canevas natif d'Obsidian reçoit les cartes de tâches (section 16b) :
     // pas une vue à nous, une intégration qui suit les .canvas ouverts.
     this.canevas = new IntegrationCanevas(this);

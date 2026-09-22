@@ -1305,6 +1305,8 @@ const DEFAULT_SETTINGS = {
   articulationSeuilAimant: 7,   // distance d'accrochage aux voisins (px)
   // Canevas (section 16b) : cartes de tâches sur le canevas natif.
   canevasLargeurCarte: 280,     // largeur d'une carte posée (px)
+  // Icône par vue de base : « chemin.base::Nom de la vue » -> nom lucide.
+  basesIcones: {},
   correcteurApple: true,        // correcteur du système dans l'éditeur (Mac)
   correcteurGrammaire: true,    // relecture contextuelle : pointillés bleus
   correcteurOrthographe: true,  // mots isolés hors relecture : pointillés rouges
@@ -15632,6 +15634,23 @@ class Ariane extends composer(obsidian.Plugin,
       },
     });
     this.addCommand({
+      id: 'bases-icone-vue',
+      name: tr('Bases : icône de la vue affichée…'),
+      checkCallback: (verif) => {
+        const cible = this.iconesBases && this.iconesBases.vueActive();
+        if (!cible) return false;
+        if (verif) return true;
+        const actuelle = (this.settings.basesIcones || {})[basesCleIcone(cible.chemin, cible.nom)] || '';
+        new ModaleIconeVue(this.app, cible, actuelle, (icone) => {
+          this.iconesBases.definir(cible.chemin, cible.nom, icone);
+          new obsidian.Notice(icone
+            ? tr('Icône posée sur « ') + cible.nom + ' ».'
+            : tr('Icône retirée de « ') + cible.nom + ' ».');
+        }).open();
+        return true;
+      },
+    });
+    this.addCommand({
       id: 'correcteur-volet',
       name: tr('Correcteur Apple : ouvrir le volet de relecture'),
       callback: () => this.correcteur && this.correcteur.ouvrirVolet(),
@@ -15646,6 +15665,10 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
     this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
     this.registerView(TYPE_VUE_RELECTURE, (leaf) => new VueRelecture(leaf, this));
+    // Les icônes des vues de base : posées après Obsidian, qui n'en connaît
+    // qu'une par type de vue.
+    this.iconesBases = new IconesVuesBases(this);
+    this.addChild(this.iconesBases);
     // Le canevas natif d'Obsidian reçoit les cartes de tâches (section 16b) :
     // pas une vue à nous, une intégration qui suit les .canvas ouverts.
     this.canevas = new IntegrationCanevas(this);
@@ -17000,6 +17023,32 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     new obsidian.Setting(c)
       .setName(tr("Infobulle dans l'explorateur"))
       .addToggle((t) => t.setValue(s.tempsInfobulleExplorateur !== false).onChange(async (v) => { s.tempsInfobulleExplorateur = v; await maj(); }));
+
+    this._section(c, tr('Icônes des vues de base'));
+    this._aide(c, tr("Obsidian n'attache qu'une icône par type de vue : toutes les vues « tableau » d'une base portent la même. Ouvrez une vue, puis lancez « Bases : icône de la vue affichée… » pour lui en donner une à elle. Les icônes posées se retrouvent ici."));
+    const icones = s.basesIcones || {};
+    const cles = Object.keys(icones).sort();
+    if (!cles.length) {
+      this._aide(c, tr('Aucune icône posée pour le moment.'));
+    } else {
+      for (const cle of cles) {
+        const coupe = cle.split('::');
+        const nom = coupe.pop();
+        const base = coupe.join('::').split('/').pop().replace(/\.base$/, '');
+        const reglage = new obsidian.Setting(c).setName(nom).setDesc(base);
+        const apercu = reglage.nameEl.createSpan({ cls: 'zfa-icone-apercu est-en-ligne' });
+        try { obsidian.setIcon(apercu, icones[cle]); } catch (e) { /* nom inconnu */ }
+        reglage.addExtraButton((b) => b.setIcon('trash-2').setTooltip(tr('Retirer'))
+          .onClick(async () => {
+            const table = Object.assign({}, s.basesIcones || {});
+            delete table[cle];
+            s.basesIcones = table;
+            await maj();
+            if (this.plugin.iconesBases) this.plugin.iconesBases.definir('', '', '');
+            this.display();
+          }));
+      }
+    }
 
     this._section(c, tr('Journal quotidien'));
     new obsidian.Setting(c)
@@ -19130,6 +19179,151 @@ async function refaireDernier(moteur) {
   if (!e || !e.retablit) return;
   (moteur._undo || (moteur._undo = [])).push(e);
   try { await e.retablit(); } catch (err) { console.error('[Ariane] rétablissement :', err); }
+}
+
+// ── Icônes des vues de base ────────────────────────────────────────────────
+// Obsidian n'attache qu'une icône par TYPE de vue : toutes les vues « tableau »
+// d'une base portent donc la même. Le code du noyau la lit sur l'inscription du
+// greffon (« lucide-table » à défaut) au moment de dessiner la barre d'outils
+// et le menu des vues. Pour en donner une à chaque vue nommée, il faut la poser
+// après lui : d'où l'observateur ci-dessous, qui repeint ce qu'Obsidian vient
+// de dessiner. Rien n'est écrit dans le fichier .base, qui reste au noyau.
+
+// La clé d'un réglage d'icône : la base et le nom de la vue.
+function basesCleIcone(chemin, nom) {
+  return String(chemin || '') + '::' + String(nom || '').trim();
+}
+
+// Le nom lucide que porte une icône déjà dessinée, pour savoir la remettre.
+function basesIconeOrigine(el) {
+  const svg = el && el.querySelector ? el.querySelector('svg') : null;
+  const classe = svg ? String(svg.getAttribute('class') || '') : '';
+  const m = /lucide-[a-z0-9-]+/.exec(classe);
+  return m ? m[0] : '';
+}
+
+// Un élément de menu qui désigne bien une VUE. Le même habillage sert aux
+// propriétés (qui portent une case à cocher) et aux formules (qui affichent
+// une valeur) : sans ce tri, une propriété homonyme d'une vue changerait
+// d'icône elle aussi.
+function basesEstItemVue(item) {
+  if (!item || !item.querySelector) return false;
+  if (item.querySelector('input[type="checkbox"]')) return false;
+  if (item.querySelector('.bases-toolbar-menu-item-value')) return false;
+  return true;
+}
+
+class IconesVuesBases extends obsidian.Component {
+  constructor(greffon) {
+    super();
+    this.greffon = greffon;
+    this.observateurs = new Map();
+    this.derniereBase = '';   // la base dont le menu vient d'être ouvert
+  }
+
+  onload() {
+    const espace = this.greffon.app.workspace;
+    this.suivre(document);
+    this.registerEvent(espace.on('window-open', (_, fenetre) => {
+      if (fenetre && fenetre.document) this.suivre(fenetre.document);
+    }));
+    this.registerEvent(espace.on('window-close', (_, fenetre) => {
+      if (fenetre && fenetre.document) this.oublier(fenetre.document);
+    }));
+    espace.onLayoutReady(() => this.peindre(document));
+  }
+
+  onunload() {
+    for (const doc of Array.from(this.observateurs.keys())) this.oublier(doc);
+  }
+
+  suivre(doc) {
+    if (!doc || !doc.body || this.observateurs.has(doc)) return;
+    const fenetre = doc.defaultView || window;
+    let attendu = false;
+    const obs = new fenetre.MutationObserver(() => {
+      if (attendu) return;
+      attendu = true;
+      fenetre.requestAnimationFrame(() => { attendu = false; this.peindre(doc); });
+    });
+    obs.observe(doc.body, { childList: true, subtree: true });
+    this.observateurs.set(doc, obs);
+    this.peindre(doc);
+  }
+
+  oublier(doc) {
+    const obs = this.observateurs.get(doc);
+    if (obs) { try { obs.disconnect(); } catch (e) { /* fenêtre partie */ } }
+    this.observateurs.delete(doc);
+  }
+
+  table() { return this.greffon.settings.basesIcones || {}; }
+
+  // Le volet qui contient un élément, pour retrouver le fichier .base affiché.
+  cheminDe(el) {
+    let trouve = '';
+    try {
+      this.greffon.app.workspace.iterateAllLeaves((l) => {
+        if (trouve) return;
+        const c = l && l.view && l.view.containerEl;
+        if (c && c.contains(el) && l.view.file) trouve = l.view.file.path;
+      });
+    } catch (e) { /* rien */ }
+    return trouve;
+  }
+
+  // Pose une icône, ou remet celle d'Obsidian quand le réglage a disparu.
+  poser(el, nom) {
+    if (!el) return;
+    if (nom) {
+      if (el.dataset.zfaIcone === nom) return;
+      if (el.dataset.zfaIconeOrigine === undefined) el.dataset.zfaIconeOrigine = basesIconeOrigine(el);
+      obsidian.setIcon(el, nom);
+      el.dataset.zfaIcone = nom;
+    } else if (el.dataset.zfaIcone !== undefined) {
+      const origine = el.dataset.zfaIconeOrigine;
+      if (origine) obsidian.setIcon(el, origine); else el.empty();
+      delete el.dataset.zfaIcone;
+      delete el.dataset.zfaIconeOrigine;
+    }
+  }
+
+  peindre(doc) {
+    const table = this.table();
+    if (!doc || !doc.querySelectorAll) return;
+    for (const barre of Array.from(doc.querySelectorAll('.bases-toolbar-views-menu'))) {
+      const chemin = this.cheminDe(barre);
+      if (chemin) this.derniereBase = chemin;
+      const etiquette = barre.querySelector('.text-button-label');
+      const nom = etiquette ? etiquette.textContent : '';
+      this.poser(barre.querySelector('.text-button-icon'), table[basesCleIcone(chemin, nom)]);
+    }
+    for (const nomEl of Array.from(doc.querySelectorAll('.bases-toolbar-menu-item-name'))) {
+      const item = nomEl.closest ? nomEl.closest('.bases-toolbar-menu-item') || nomEl.parentElement : nomEl.parentElement;
+      if (!basesEstItemVue(item)) continue;
+      const icone = item.querySelector('.bases-toolbar-menu-item-info-icon');
+      this.poser(icone, table[basesCleIcone(this.derniereBase, nomEl.textContent)]);
+    }
+  }
+
+  // La base et la vue sous les yeux, d'après la barre d'outils du volet actif.
+  vueActive() {
+    const vue = this.greffon.app.workspace.activeLeaf && this.greffon.app.workspace.activeLeaf.view;
+    const conteneur = vue && vue.containerEl;
+    const barre = conteneur ? conteneur.querySelector('.bases-toolbar-views-menu .text-button-label') : null;
+    if (!barre || !vue.file) return null;
+    return { chemin: vue.file.path, nom: barre.textContent || '' };
+  }
+
+  // Enregistre (ou retire, si l'icône est vide) et repeint aussitôt.
+  async definir(chemin, nom, icone) {
+    const table = Object.assign({}, this.table());
+    const cle = basesCleIcone(chemin, nom);
+    if (icone) table[cle] = icone; else delete table[cle];
+    this.greffon.settings.basesIcones = table;
+    await this.greffon.saveSettings();
+    for (const doc of this.observateurs.keys()) this.peindre(doc);
+  }
 }
 
 // Socle des trois moteurs de vue (frise, articulation, calendrier).
@@ -30412,6 +30606,52 @@ class FusionAuteursModal extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// Choix de l'icône d'une vue de base. Un nom lucide se tape à la main, comme
+// pour les familles de notes ; l'aperçu à côté dit tout de suite si le nom
+// existe, ce qu'une liste déroulante de mille entrées dirait moins bien.
+class ModaleIconeVue extends obsidian.Modal {
+  constructor(app, cible, valeur, onValider) {
+    super(app);
+    this.cible = cible;
+    this.valeur = String(valeur || '');
+    this.onValider = onValider;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass('zfa-modale-icone');
+    contentEl.createEl('h3', { text: tr('Icône de la vue') });
+    contentEl.createEl('p', { cls: 'zfa-aide', text: this.cible.nom });
+
+    const rang = contentEl.createDiv({ cls: 'zfa-icone-rang' });
+    const apercu = rang.createDiv({ cls: 'zfa-icone-apercu' });
+    const champ = rang.createEl('input', { type: 'text' });
+    champ.placeholder = tr('nom lucide : book-open, users, flask-conical…');
+    champ.value = this.valeur;
+
+    const rafraichir = () => {
+      apercu.empty();
+      const nom = champ.value.trim();
+      if (nom) { try { obsidian.setIcon(apercu, nom); } catch (e) { /* nom inconnu */ } }
+      apercu.toggleClass('est-vide', !apercu.querySelector('svg'));
+    };
+    champ.addEventListener('input', rafraichir);
+    champ.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); valider(); } });
+    rafraichir();
+
+    contentEl.createEl('p', { cls: 'zfa-aide',
+      text: tr('Les noms sont ceux de lucide.dev. Laissez vide pour rendre à la vue son icône d’origine.') });
+
+    const boutons = contentEl.createDiv({ cls: 'modal-button-container' });
+    const valider = () => { this.close(); this.onValider(champ.value.trim()); };
+    boutons.createEl('button', { cls: 'mod-cta', text: tr('Valider') }).onclick = valider;
+    boutons.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    window.setTimeout(() => champ.focus(), 0);
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 //#endregion 20 · Modales secondaires
 
 //#region 21 · Exports
@@ -30427,6 +30667,12 @@ module.exports = Ariane;
 module.exports._test = {
   DEFAULT_SETTINGS,
   MoteurArticulation, // prototype : _traceArete s'éprouve avec un moteur factice
+  // Icônes des vues de base : clé de réglage, lecture de l'icône en place, tri
+  // des éléments de menu.
+  basesCleIcone,
+  basesIconeOrigine,
+  basesEstItemVue,
+  IconesVuesBases,
   // Canevas : logique éprouvée sur un faux canevas (nœuds, arêtes, importData).
   CANEVAS_CLE,
   canevasCotes,
