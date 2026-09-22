@@ -1307,6 +1307,7 @@ const DEFAULT_SETTINGS = {
   canevasLargeurCarte: 280,     // largeur d'une carte posée (px)
   // Icône par vue de base : « chemin.base::Nom de la vue » -> nom lucide.
   basesIcones: {},
+  basesIconesDossiers: true,    // à défaut, la vue reprend l'icône Iconize de son dossier
   correcteurApple: true,        // correcteur du système dans l'éditeur (Mac)
   correcteurGrammaire: true,    // relecture contextuelle : pointillés bleus
   correcteurOrthographe: true,  // mots isolés hors relecture : pointillés rouges
@@ -17020,6 +17021,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
 
     this._section(c, tr('Icônes des vues de base'));
     this._aide(c, tr("Obsidian n'attache qu'une icône par type de vue : toutes les vues « tableau » d'une base portent la même. Clic droit sur l'icône d'une vue, dans la barre d'outils de la base ou dans son menu déroulant, pour en choisir une autre. La commande « Bases : icône de la vue affichée… » fait la même chose. Les icônes posées se retrouvent ici."));
+    new obsidian.Setting(c)
+      .setName(tr('Reprendre les icônes de dossier'))
+      .setDesc(tr("Une vue qui filtre sur un dossier prend l'icône que vous avez donnée à ce dossier avec Iconize. Une icône posée à la main sur la vue reste prioritaire. Les jeux d'icônes autres que Lucide, et les emojis mis à part, ne se dessinent pas ici."))
+      .addToggle((t) => t.setValue(s.basesIconesDossiers !== false)
+        .onChange(async (v) => {
+          s.basesIconesDossiers = v;
+          await maj();
+          if (this.plugin.iconesBases) this.plugin.iconesBases.repeindreTout();
+        }));
+
     const icones = s.basesIcones || {};
     const cles = Object.keys(icones).sort();
     if (!cles.length) {
@@ -19207,12 +19218,76 @@ function basesEstItemVue(item) {
   return true;
 }
 
+// L'identifiant d'icône que range Iconize, rendu au vocabulaire d'Obsidian.
+// Son jeu Lucide s'écrit « LiBookTemplate » ; les emojis se posent tels quels ;
+// les autres jeux (Font Awesome, Remix…) ne se dessinent pas avec setIcon, on
+// les laisse donc à Iconize plutôt que d'afficher un carré vide.
+function basesIconeIconize(valeur) {
+  const v = String(valeur || '').trim();
+  if (!v) return '';
+  const m = /^Li([A-Z][A-Za-z0-9]*)$/.exec(v);
+  if (m) {
+    return m[1]
+      .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+      .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+      .toLowerCase();
+  }
+  return /^\p{Extended_Pictographic}/u.test(v) ? v : '';
+}
+
+// L'icône d'un dossier, ou à défaut celle du dossier qui le contient : une
+// vue sur « 04 - Livrables/Comptes-rendus de réunions » reprend ainsi l'icône
+// de « 04 - Livrables », comme le fait l'explorateur de fichiers à l'oeil.
+function basesIconeDeDossier(table, dossier) {
+  let d = String(dossier || '');
+  while (d) {
+    const ic = basesIconeIconize((table || {})[d]);
+    if (ic) return ic;
+    const i = d.lastIndexOf('/');
+    if (i < 0) break;
+    d = d.slice(0, i);
+  }
+  return '';
+}
+
+// Les dossiers qu'un filtre de base désigne. Les filtres s'imbriquent en
+// and / or / not ; seules les chaînes portent un chemin, on les ramasse
+// toutes sans se soucier de la logique : il ne s'agit que de deviner à quel
+// dossier une vue se rapporte, pas de rejouer le filtre.
+function basesDossiersDepuisFiltres(filtres) {
+  const trouves = [];
+  const visiter = (n) => {
+    if (!n) return;
+    if (Array.isArray(n)) { n.forEach(visiter); return; }
+    if (typeof n === 'object') { Object.values(n).forEach(visiter); return; }
+    if (typeof n !== 'string') return;
+    const motifs = [
+      /file\.folder\s*==\s*"([^"]+)"/g,
+      /file\.folder\.startsWith\(\s*"([^"]+)"/g,
+      /file\.path\.startsWith\(\s*"([^"]+)"/g,
+      /file\.inFolder\(\s*"([^"]+)"/g,
+    ];
+    for (const re of motifs) {
+      let m;
+      while ((m = re.exec(n)) !== null) {
+        const d = m[1].replace(/\/+$/, '');
+        if (d && !trouves.includes(d)) trouves.push(d);
+      }
+    }
+  };
+  visiter(filtres);
+  return trouves;
+}
+
 class IconesVuesBases extends obsidian.Component {
   constructor(greffon) {
     super();
     this.greffon = greffon;
     this.observateurs = new Map();
-    this.derniereBase = '';   // la base dont le menu vient d'être ouvert
+    this.derniereBase = '';       // la base dont le menu vient d'être ouvert
+    this.iconesDossiers = {};     // ce qu'Iconize a retenu, par chemin
+    this.iconizeLu = 0;           // horodatage de cette lecture
+    this.basesConnues = new Map();// chemin de base -> dossiers, par vue
   }
 
   onload() {
@@ -19224,7 +19299,12 @@ class IconesVuesBases extends obsidian.Component {
     this.registerEvent(espace.on('window-close', (_, fenetre) => {
       if (fenetre && fenetre.document) this.oublier(fenetre.document);
     }));
-    espace.onLayoutReady(() => this.peindre(document));
+    // Le fichier .base dit à quel dossier chaque vue se rapporte : il faut
+    // donc le relire quand il change.
+    this.registerEvent(this.greffon.app.vault.on('modify', (f) => {
+      if (f && f.extension === 'base') this.basesConnues.delete(f.path);
+    }));
+    espace.onLayoutReady(() => { this.lireIconize(); this.peindre(document); });
   }
 
   onunload() {
@@ -19292,6 +19372,66 @@ class IconesVuesBases extends obsidian.Component {
 
   table() { return this.greffon.settings.basesIcones || {}; }
 
+  herite() { return this.greffon.settings.basesIconesDossiers !== false; }
+
+  repeindreTout() { for (const doc of this.observateurs.keys()) this.peindre(doc); }
+
+  // Les icônes de dossier d'Iconize, relues de loin en loin : ce sont les
+  // réglages d'un autre greffon, qu'Ariane ne fait que consulter.
+  async lireIconize() {
+    if (Date.now() - this.iconizeLu < 10000) return;
+    this.iconizeLu = Date.now();
+    const chemin = String(this.greffon.manifest.dir || '')
+      .replace(/[^/]+$/, 'obsidian-icon-folder') + '/data.json';
+    try {
+      const brut = await this.greffon.app.vault.adapter.read(chemin);
+      const donnees = JSON.parse(brut) || {};
+      const table = {};
+      for (const [cle, val] of Object.entries(donnees)) {
+        if (cle !== 'settings' && typeof val === 'string') table[cle] = val;
+      }
+      this.iconesDossiers = table;
+    } catch (e) {
+      this.iconesDossiers = {};  // Iconize absent : rien à hériter
+    }
+    this.repeindreTout();
+  }
+
+  // Le fichier .base : pour chaque vue, les dossiers de ses filtres, et à
+  // défaut ceux du filtre général de la base.
+  async lireBase(chemin) {
+    if (this.basesConnues.has(chemin)) return;
+    this.basesConnues.set(chemin, { vues: new Map(), communs: [] });
+    const f = this.greffon.app.vault.getAbstractFileByPath(chemin);
+    if (!f) return;
+    let base;
+    try { base = obsidian.parseYaml(await this.greffon.app.vault.cachedRead(f)) || {}; }
+    catch (e) { return; }
+    const info = { vues: new Map(), communs: basesDossiersDepuisFiltres(base.filters) };
+    for (const v of (base.views || [])) {
+      if (v && v.name) info.vues.set(String(v.name).trim(), basesDossiersDepuisFiltres(v.filters));
+    }
+    this.basesConnues.set(chemin, info);
+    this.repeindreTout();
+  }
+
+  // L'icône d'une vue : celle qu'on lui a posée, sinon celle de son dossier.
+  iconeDeVue(chemin, nom) {
+    const propre = String(nom || '').trim();
+    const explicite = this.table()[basesCleIcone(chemin, propre)];
+    if (explicite) return explicite;
+    if (!this.herite() || !chemin) return '';
+    this.lireIconize();
+    if (!this.basesConnues.has(chemin)) { this.lireBase(chemin); return ''; }
+    const info = this.basesConnues.get(chemin);
+    const dossiers = info.vues.get(propre);
+    for (const d of (dossiers && dossiers.length ? dossiers : info.communs)) {
+      const ic = basesIconeDeDossier(this.iconesDossiers, d);
+      if (ic) return ic;
+    }
+    return '';
+  }
+
   // Le volet qui contient un élément, pour retrouver le fichier .base affiché.
   cheminDe(el) {
     let trouve = '';
@@ -19311,31 +19451,32 @@ class IconesVuesBases extends obsidian.Component {
     if (nom) {
       if (el.dataset.zfaIcone === nom) return;
       if (el.dataset.zfaIconeOrigine === undefined) el.dataset.zfaIconeOrigine = basesIconeOrigine(el);
-      obsidian.setIcon(el, nom);
+      el.empty();
+      if (/^[a-z0-9-]+$/.test(nom)) obsidian.setIcon(el, nom); else el.textContent = nom;
       el.dataset.zfaIcone = nom;
     } else if (el.dataset.zfaIcone !== undefined) {
       const origine = el.dataset.zfaIconeOrigine;
-      if (origine) obsidian.setIcon(el, origine); else el.empty();
+      el.empty();
+      if (origine) obsidian.setIcon(el, origine);
       delete el.dataset.zfaIcone;
       delete el.dataset.zfaIconeOrigine;
     }
   }
 
   peindre(doc) {
-    const table = this.table();
     if (!doc || !doc.querySelectorAll) return;
     for (const barre of Array.from(doc.querySelectorAll('.bases-toolbar-views-menu'))) {
       const chemin = this.cheminDe(barre);
       if (chemin) this.derniereBase = chemin;
       const etiquette = barre.querySelector('.text-button-label');
       const nom = etiquette ? etiquette.textContent : '';
-      this.poser(barre.querySelector('.text-button-icon'), table[basesCleIcone(chemin, nom)]);
+      this.poser(barre.querySelector('.text-button-icon'), this.iconeDeVue(chemin, nom));
     }
     for (const nomEl of Array.from(doc.querySelectorAll('.bases-toolbar-menu-item-name'))) {
       const item = nomEl.closest ? nomEl.closest('.bases-toolbar-menu-item') || nomEl.parentElement : nomEl.parentElement;
       if (!basesEstItemVue(item)) continue;
       const icone = item.querySelector('.bases-toolbar-menu-item-info-icon');
-      this.poser(icone, table[basesCleIcone(this.derniereBase, nomEl.textContent)]);
+      this.poser(icone, this.iconeDeVue(this.derniereBase, nomEl.textContent));
     }
   }
 
@@ -30727,6 +30868,9 @@ module.exports._test = {
   // Icônes des vues de base : clé de réglage, lecture de l'icône en place, tri
   // des éléments de menu.
   basesCleIcone,
+  basesIconeIconize,
+  basesIconeDeDossier,
+  basesDossiersDepuisFiltres,
   basesIconeOrigine,
   basesEstItemVue,
   IconesVuesBases,

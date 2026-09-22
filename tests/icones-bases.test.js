@@ -90,3 +90,78 @@ test('liste des icônes : le préfixe lucide tombe, sans doublon ni désordre', 
   // confondent une fois « lucide- » retiré.
   assert.deepEqual(ModaleChoixIcone.disponibles(), ['book-open', 'table', 'users']);
 });
+
+// ── Héritage depuis Iconize ─────────────────────────────────────────────────
+
+test('icône Iconize : le jeu Lucide se traduit, l\'emoji passe, le reste non', () => {
+  const { basesIconeIconize } = Ariane._test;
+  assert.equal(basesIconeIconize('LiArchive'), 'archive');
+  assert.equal(basesIconeIconize('LiBookTemplate'), 'book-template');
+  assert.equal(basesIconeIconize('LiChartBarStacked'), 'chart-bar-stacked');
+  assert.equal(basesIconeIconize('LiQrCode'), 'qr-code');
+  assert.equal(basesIconeIconize('📚'), '📚', 'un emoji se pose tel quel');
+  assert.equal(basesIconeIconize('FaBook'), '', 'un autre jeu ne se dessine pas ici');
+  assert.equal(basesIconeIconize(''), '');
+  assert.equal(basesIconeIconize(null), '');
+});
+
+test('dossiers d\'une vue : les formes de filtre qu\'Obsidian accepte', () => {
+  const { basesDossiersDepuisFiltres } = Ariane._test;
+  const filtres = {
+    and: [
+      'file.folder == "03 - Notes conceptuelles"',
+      'file.ext == "md"',
+      { or: ['file.folder.startsWith("02 - Annotations")', 'file.inFolder("09 - Divers")'] },
+    ],
+  };
+  assert.deepEqual(basesDossiersDepuisFiltres(filtres),
+    ['03 - Notes conceptuelles', '02 - Annotations', '09 - Divers']);
+  // Deux dossiers dans un même filtre, et la barre finale en trop.
+  assert.deepEqual(basesDossiersDepuisFiltres(['file.folder == "04 - Livrables/Réunions/"']),
+    ['04 - Livrables/Réunions']);
+  assert.deepEqual(basesDossiersDepuisFiltres(['note["Tâche - Terminée"] == false']), []);
+  assert.deepEqual(basesDossiersDepuisFiltres(null), []);
+});
+
+test('icône d\'une vue : la sienne d\'abord, celle de son dossier ensuite', () => {
+  const { IconesVuesBases, basesCleIcone } = Ariane._test;
+  const reglages = {
+    basesIcones: { [basesCleIcone('Base.base', 'Réunions')]: 'users' },
+    basesIconesDossiers: true,
+  };
+  const centre = new IconesVuesBases({ app: { workspace: {} }, manifest: { dir: 'x/y' }, settings: reglages });
+  centre.lireIconize = () => {};
+  centre.lireBase = () => {};
+  centre.iconesDossiers = { '03 - Notes conceptuelles': 'LiBookText', '06 - Réflexions': '💭' };
+  centre.basesConnues.set('Base.base', {
+    communs: ['03 - Notes conceptuelles'],
+    vues: new Map([
+      ['Notes conceptuelles', ['03 - Notes conceptuelles']],
+      ['Réunions', ['04 - Sans icône']],
+      ['Réflexives', ['06 - Réflexions']],
+      ['Sans filtre', []],
+    ]),
+  });
+  assert.equal(centre.iconeDeVue('Base.base', 'Notes conceptuelles'), 'book-text', 'héritée du dossier');
+  assert.equal(centre.iconeDeVue('Base.base', 'Réunions'), 'users', 'la sienne l\'emporte');
+  assert.equal(centre.iconeDeVue('Base.base', 'Réflexives'), '💭');
+  assert.equal(centre.iconeDeVue('Base.base', 'Sans filtre'), 'book-text',
+    'sans filtre propre, le dossier commun de la base');
+  assert.equal(centre.iconeDeVue('Base.base', 'Inconnue'), 'book-text');
+  assert.equal(centre.iconeDeVue('', 'Notes conceptuelles'), '', 'sans base, rien à hériter');
+
+  reglages.basesIconesDossiers = false;
+  assert.equal(centre.iconeDeVue('Base.base', 'Notes conceptuelles'), '', 'héritage coupé');
+  assert.equal(centre.iconeDeVue('Base.base', 'Réunions'), 'users', 'la sienne reste');
+});
+
+test('icône d\'un dossier : à défaut, celle du dossier qui le contient', () => {
+  const { basesIconeDeDossier } = Ariane._test;
+  const table = { '04 - Livrables': 'LiNotebookText', '04 - Livrables/Notes': 'LiPenBox' };
+  assert.equal(basesIconeDeDossier(table, '04 - Livrables/Notes'), 'pen-box', 'la sienne d\'abord');
+  assert.equal(basesIconeDeDossier(table, '04 - Livrables/Comptes-rendus/2026'), 'notebook-text',
+    'on remonte de deux crans s\'il le faut');
+  assert.equal(basesIconeDeDossier(table, '09 - Ailleurs'), '');
+  assert.equal(basesIconeDeDossier(table, ''), '');
+  assert.equal(basesIconeDeDossier(null, '04 - Livrables'), '');
+});

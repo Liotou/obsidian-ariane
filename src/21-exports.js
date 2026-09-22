@@ -14,6 +14,9 @@ module.exports._test = {
   // Icônes des vues de base : clé de réglage, lecture de l'icône en place, tri
   // des éléments de menu.
   basesCleIcone,
+  basesIconeIconize,
+  basesIconeDeDossier,
+  basesDossiersDepuisFiltres,
   basesIconeOrigine,
   basesEstItemVue,
   IconesVuesBases,

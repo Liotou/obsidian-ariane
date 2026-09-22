@@ -687,6 +687,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
 
     this._section(c, tr('Icônes des vues de base'));
     this._aide(c, tr("Obsidian n'attache qu'une icône par type de vue : toutes les vues « tableau » d'une base portent la même. Clic droit sur l'icône d'une vue, dans la barre d'outils de la base ou dans son menu déroulant, pour en choisir une autre. La commande « Bases : icône de la vue affichée… » fait la même chose. Les icônes posées se retrouvent ici."));
+    new obsidian.Setting(c)
+      .setName(tr('Reprendre les icônes de dossier'))
+      .setDesc(tr("Une vue qui filtre sur un dossier prend l'icône que vous avez donnée à ce dossier avec Iconize. Une icône posée à la main sur la vue reste prioritaire. Les jeux d'icônes autres que Lucide, et les emojis mis à part, ne se dessinent pas ici."))
+      .addToggle((t) => t.setValue(s.basesIconesDossiers !== false)
+        .onChange(async (v) => {
+          s.basesIconesDossiers = v;
+          await maj();
+          if (this.plugin.iconesBases) this.plugin.iconesBases.repeindreTout();
+        }));
+
     const icones = s.basesIcones || {};
     const cles = Object.keys(icones).sort();
     if (!cles.length) {

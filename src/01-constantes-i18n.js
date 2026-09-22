@@ -1132,6 +1132,7 @@ const DEFAULT_SETTINGS = {
   canevasLargeurCarte: 280,     // largeur d'une carte posée (px)
   // Icône par vue de base : « chemin.base::Nom de la vue » -> nom lucide.
   basesIcones: {},
+  basesIconesDossiers: true,    // à défaut, la vue reprend l'icône Iconize de son dossier
   correcteurApple: true,        // correcteur du système dans l'éditeur (Mac)
   correcteurGrammaire: true,    // relecture contextuelle : pointillés bleus
   correcteurOrthographe: true,  // mots isolés hors relecture : pointillés rouges
