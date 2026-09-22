@@ -171,45 +171,69 @@ class FusionAuteursModal extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
-// Choix de l'icône d'une vue de base. Un nom lucide se tape à la main, comme
-// pour les familles de notes ; l'aperçu à côté dit tout de suite si le nom
-// existe, ce qu'une liste déroulante de mille entrées dirait moins bien.
-class ModaleIconeVue extends obsidian.Modal {
-  constructor(app, cible, valeur, onValider) {
+// Choix de l'icône d'une vue de base : une grille de toutes les icônes
+// qu'Obsidian connaît, filtrée au fil de la frappe. La liste vient du
+// logiciel (getIconIds), pas d'un catalogue recopié ici : les icônes
+// qu'un autre greffon ajoute s'y trouvent donc aussi.
+class ModaleChoixIcone extends obsidian.Modal {
+  constructor(app, sujet, valeur, onChoix) {
     super(app);
-    this.cible = cible;
+    this.sujet = String(sujet || '');
     this.valeur = String(valeur || '');
-    this.onValider = onValider;
+    this.onChoix = onChoix;
+    this.PLAFOND = 240;
+  }
+
+  // Les noms d'icônes, « lucide- » retiré : c'est ainsi qu'on les écrit.
+  static disponibles() {
+    const brut = typeof obsidian.getIconIds === 'function' ? obsidian.getIconIds() : [];
+    const noms = new Set();
+    for (const id of brut) noms.add(String(id).replace(/^lucide-/, ''));
+    return [...noms].sort();
   }
 
   onOpen() {
     const { contentEl } = this;
-    contentEl.addClass('zfa-modale-icone');
+    contentEl.addClass('zfa-icones');
     contentEl.createEl('h3', { text: tr('Icône de la vue') });
-    contentEl.createEl('p', { cls: 'zfa-aide', text: this.cible.nom });
+    contentEl.createEl('p', { cls: 'zfa-aide', text: this.sujet });
 
-    const rang = contentEl.createDiv({ cls: 'zfa-icone-rang' });
-    const apercu = rang.createDiv({ cls: 'zfa-icone-apercu' });
-    const champ = rang.createEl('input', { type: 'text' });
-    champ.placeholder = tr('nom lucide : book-open, users, flask-conical…');
-    champ.value = this.valeur;
+    const champ = contentEl.createEl('input', { cls: 'zfa-icones-recherche', type: 'text' });
+    champ.placeholder = tr('Chercher une icône : livre, users, flask…');
+    const compte = contentEl.createDiv({ cls: 'zfa-aide zfa-icones-compte' });
+    const grille = contentEl.createDiv({ cls: 'zfa-icones-grille' });
 
-    const rafraichir = () => {
-      apercu.empty();
-      const nom = champ.value.trim();
-      if (nom) { try { obsidian.setIcon(apercu, nom); } catch (e) { /* nom inconnu */ } }
-      apercu.toggleClass('est-vide', !apercu.querySelector('svg'));
+    const tous = ModaleChoixIcone.disponibles();
+    const choisir = (nom) => { this.close(); this.onChoix(nom); };
+
+    const dessiner = () => {
+      grille.empty();
+      const q = champ.value.trim().toLowerCase();
+      const trouves = q ? tous.filter((n) => n.includes(q)) : tous;
+      for (const nom of trouves.slice(0, this.PLAFOND)) {
+        const b = grille.createEl('button', { cls: 'zfa-icone-case' });
+        obsidian.setIcon(b, nom);
+        b.setAttribute('aria-label', nom);
+        if (typeof obsidian.setTooltip === 'function') obsidian.setTooltip(b, nom);
+        b.toggleClass('est-choisie', nom === this.valeur);
+        b.onclick = () => choisir(nom);
+      }
+      compte.textContent = trouves.length > this.PLAFOND
+        ? trouves.length + tr(' icônes trouvées, les ') + this.PLAFOND + tr(' premières sont montrées.')
+        : trouves.length + tr(' icône(s).');
     };
-    champ.addEventListener('input', rafraichir);
-    champ.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); valider(); } });
-    rafraichir();
-
-    contentEl.createEl('p', { cls: 'zfa-aide',
-      text: tr('Les noms sont ceux de lucide.dev. Laissez vide pour rendre à la vue son icône d’origine.') });
+    champ.addEventListener('input', dessiner);
+    champ.addEventListener('keydown', (e) => {
+      // Entrée sur une recherche qui ne laisse qu'une icône : on la prend.
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const seule = grille.querySelector('.zfa-icone-case');
+      if (seule && grille.children.length === 1) choisir(seule.getAttribute('aria-label'));
+    });
+    dessiner();
 
     const boutons = contentEl.createDiv({ cls: 'modal-button-container' });
-    const valider = () => { this.close(); this.onValider(champ.value.trim()); };
-    boutons.createEl('button', { cls: 'mod-cta', text: tr('Valider') }).onclick = valider;
+    boutons.createEl('button', { text: tr('Rendre l’icône d’origine') }).onclick = () => choisir('');
     boutons.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
     window.setTimeout(() => champ.focus(), 0);
   }

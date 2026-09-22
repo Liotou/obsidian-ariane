@@ -2992,9 +2992,34 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-rel-icone:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .zfa-rel-icone .svg-icon { width: 15px; height: 15px; }
 
-/* Icône d'une vue de base : aperçu dans la modale et dans les réglages. */
-.zfa-modale-icone .zfa-icone-rang { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
-.zfa-modale-icone .zfa-icone-rang input { flex: 1; }
+/* Icône d'une vue de base : la grille de choix, et l'aperçu des réglages. */
+.zfa-icones .zfa-icones-recherche { width: 100%; margin: 8px 0 4px; }
+.zfa-icones-compte { margin: 0 0 8px; }
+.zfa-icones-grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 4px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+}
+.zfa-icone-case {
+  all: unset;
+  box-sizing: border-box;
+  cursor: var(--cursor, pointer);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border-radius: var(--radius-s, 4px);
+  color: var(--text-muted);
+}
+.zfa-icone-case:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.zfa-icone-case.est-choisie { background: var(--interactive-accent); color: var(--text-on-accent); }
+.zfa-icone-case .svg-icon { width: 18px; height: 18px; }
+
 .zfa-icone-apercu {
   display: flex;
   align-items: center;
@@ -3005,7 +3030,6 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
-.zfa-icone-apercu.est-vide { background: var(--background-modifier-error-hover, var(--background-modifier-hover)); }
 .zfa-icone-apercu.est-en-ligne {
   display: inline-flex;
   width: 20px;

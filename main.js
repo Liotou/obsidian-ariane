@@ -15640,13 +15640,7 @@ class Ariane extends composer(obsidian.Plugin,
         const cible = this.iconesBases && this.iconesBases.vueActive();
         if (!cible) return false;
         if (verif) return true;
-        const actuelle = (this.settings.basesIcones || {})[basesCleIcone(cible.chemin, cible.nom)] || '';
-        new ModaleIconeVue(this.app, cible, actuelle, (icone) => {
-          this.iconesBases.definir(cible.chemin, cible.nom, icone);
-          new obsidian.Notice(icone
-            ? tr('Icône posée sur « ') + cible.nom + ' ».'
-            : tr('Icône retirée de « ') + cible.nom + ' ».');
-        }).open();
+        this.iconesBases.ouvrirChoix(cible.chemin, cible.nom);
         return true;
       },
     });
@@ -17025,7 +17019,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.tempsInfobulleExplorateur !== false).onChange(async (v) => { s.tempsInfobulleExplorateur = v; await maj(); }));
 
     this._section(c, tr('Icônes des vues de base'));
-    this._aide(c, tr("Obsidian n'attache qu'une icône par type de vue : toutes les vues « tableau » d'une base portent la même. Ouvrez une vue, puis lancez « Bases : icône de la vue affichée… » pour lui en donner une à elle. Les icônes posées se retrouvent ici."));
+    this._aide(c, tr("Obsidian n'attache qu'une icône par type de vue : toutes les vues « tableau » d'une base portent la même. Clic droit sur l'icône d'une vue, dans la barre d'outils de la base ou dans son menu déroulant, pour en choisir une autre. La commande « Bases : icône de la vue affichée… » fait la même chose. Les icônes posées se retrouvent ici."));
     const icones = s.basesIcones || {};
     const cles = Object.keys(icones).sort();
     if (!cles.length) {
@@ -19247,14 +19241,53 @@ class IconesVuesBases extends obsidian.Component {
       fenetre.requestAnimationFrame(() => { attendu = false; this.peindre(doc); });
     });
     obs.observe(doc.body, { childList: true, subtree: true });
-    this.observateurs.set(doc, obs);
+    // Un seul écouteur pour tout le document : les barres d'outils et les
+    // menus sont redessinés sans cesse, y accrocher des écouteurs un par un
+    // reviendrait à les empiler.
+    const surContexte = (e) => this.surClicDroit(e);
+    doc.addEventListener('contextmenu', surContexte, true);
+    this.observateurs.set(doc, { obs, surContexte, doc });
     this.peindre(doc);
   }
 
   oublier(doc) {
-    const obs = this.observateurs.get(doc);
-    if (obs) { try { obs.disconnect(); } catch (e) { /* fenêtre partie */ } }
+    const suivi = this.observateurs.get(doc);
+    if (suivi) {
+      try { suivi.obs.disconnect(); } catch (e) { /* fenêtre partie */ }
+      try { doc.removeEventListener('contextmenu', suivi.surContexte, true); } catch (e) { /* idem */ }
+    }
     this.observateurs.delete(doc);
+  }
+
+  // Clic droit sur l'icône d'une vue : dans le menu déroulant comme dans la
+  // barre d'outils. Le menu contextuel d'Obsidian est écarté, celui-ci ne
+  // proposerait rien d'utile sur une icône.
+  surClicDroit(evt) {
+    const cible = evt.target;
+    if (!cible || !cible.closest) return;
+    const item = cible.closest('.bases-toolbar-menu-item');
+    if (item && basesEstItemVue(item)) {
+      const nomEl = item.querySelector('.bases-toolbar-menu-item-name');
+      if (!nomEl) return;
+      evt.preventDefault();
+      evt.stopPropagation();
+      this.ouvrirChoix(this.derniereBase, nomEl.textContent);
+      return;
+    }
+    const barre = cible.closest('.bases-toolbar-views-menu');
+    if (!barre) return;
+    const etiquette = barre.querySelector('.text-button-label');
+    evt.preventDefault();
+    evt.stopPropagation();
+    this.ouvrirChoix(this.cheminDe(barre), etiquette ? etiquette.textContent : '');
+  }
+
+  ouvrirChoix(chemin, nom) {
+    const propre = String(nom || '').trim();
+    if (!propre) return;
+    const actuelle = this.table()[basesCleIcone(chemin, propre)] || '';
+    new ModaleChoixIcone(this.greffon.app, propre, actuelle,
+      (icone) => this.definir(chemin, propre, icone)).open();
   }
 
   table() { return this.greffon.settings.basesIcones || {}; }
@@ -30606,45 +30639,69 @@ class FusionAuteursModal extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
-// Choix de l'icône d'une vue de base. Un nom lucide se tape à la main, comme
-// pour les familles de notes ; l'aperçu à côté dit tout de suite si le nom
-// existe, ce qu'une liste déroulante de mille entrées dirait moins bien.
-class ModaleIconeVue extends obsidian.Modal {
-  constructor(app, cible, valeur, onValider) {
+// Choix de l'icône d'une vue de base : une grille de toutes les icônes
+// qu'Obsidian connaît, filtrée au fil de la frappe. La liste vient du
+// logiciel (getIconIds), pas d'un catalogue recopié ici : les icônes
+// qu'un autre greffon ajoute s'y trouvent donc aussi.
+class ModaleChoixIcone extends obsidian.Modal {
+  constructor(app, sujet, valeur, onChoix) {
     super(app);
-    this.cible = cible;
+    this.sujet = String(sujet || '');
     this.valeur = String(valeur || '');
-    this.onValider = onValider;
+    this.onChoix = onChoix;
+    this.PLAFOND = 240;
+  }
+
+  // Les noms d'icônes, « lucide- » retiré : c'est ainsi qu'on les écrit.
+  static disponibles() {
+    const brut = typeof obsidian.getIconIds === 'function' ? obsidian.getIconIds() : [];
+    const noms = new Set();
+    for (const id of brut) noms.add(String(id).replace(/^lucide-/, ''));
+    return [...noms].sort();
   }
 
   onOpen() {
     const { contentEl } = this;
-    contentEl.addClass('zfa-modale-icone');
+    contentEl.addClass('zfa-icones');
     contentEl.createEl('h3', { text: tr('Icône de la vue') });
-    contentEl.createEl('p', { cls: 'zfa-aide', text: this.cible.nom });
+    contentEl.createEl('p', { cls: 'zfa-aide', text: this.sujet });
 
-    const rang = contentEl.createDiv({ cls: 'zfa-icone-rang' });
-    const apercu = rang.createDiv({ cls: 'zfa-icone-apercu' });
-    const champ = rang.createEl('input', { type: 'text' });
-    champ.placeholder = tr('nom lucide : book-open, users, flask-conical…');
-    champ.value = this.valeur;
+    const champ = contentEl.createEl('input', { cls: 'zfa-icones-recherche', type: 'text' });
+    champ.placeholder = tr('Chercher une icône : livre, users, flask…');
+    const compte = contentEl.createDiv({ cls: 'zfa-aide zfa-icones-compte' });
+    const grille = contentEl.createDiv({ cls: 'zfa-icones-grille' });
 
-    const rafraichir = () => {
-      apercu.empty();
-      const nom = champ.value.trim();
-      if (nom) { try { obsidian.setIcon(apercu, nom); } catch (e) { /* nom inconnu */ } }
-      apercu.toggleClass('est-vide', !apercu.querySelector('svg'));
+    const tous = ModaleChoixIcone.disponibles();
+    const choisir = (nom) => { this.close(); this.onChoix(nom); };
+
+    const dessiner = () => {
+      grille.empty();
+      const q = champ.value.trim().toLowerCase();
+      const trouves = q ? tous.filter((n) => n.includes(q)) : tous;
+      for (const nom of trouves.slice(0, this.PLAFOND)) {
+        const b = grille.createEl('button', { cls: 'zfa-icone-case' });
+        obsidian.setIcon(b, nom);
+        b.setAttribute('aria-label', nom);
+        if (typeof obsidian.setTooltip === 'function') obsidian.setTooltip(b, nom);
+        b.toggleClass('est-choisie', nom === this.valeur);
+        b.onclick = () => choisir(nom);
+      }
+      compte.textContent = trouves.length > this.PLAFOND
+        ? trouves.length + tr(' icônes trouvées, les ') + this.PLAFOND + tr(' premières sont montrées.')
+        : trouves.length + tr(' icône(s).');
     };
-    champ.addEventListener('input', rafraichir);
-    champ.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); valider(); } });
-    rafraichir();
-
-    contentEl.createEl('p', { cls: 'zfa-aide',
-      text: tr('Les noms sont ceux de lucide.dev. Laissez vide pour rendre à la vue son icône d’origine.') });
+    champ.addEventListener('input', dessiner);
+    champ.addEventListener('keydown', (e) => {
+      // Entrée sur une recherche qui ne laisse qu'une icône : on la prend.
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const seule = grille.querySelector('.zfa-icone-case');
+      if (seule && grille.children.length === 1) choisir(seule.getAttribute('aria-label'));
+    });
+    dessiner();
 
     const boutons = contentEl.createDiv({ cls: 'modal-button-container' });
-    const valider = () => { this.close(); this.onValider(champ.value.trim()); };
-    boutons.createEl('button', { cls: 'mod-cta', text: tr('Valider') }).onclick = valider;
+    boutons.createEl('button', { text: tr('Rendre l’icône d’origine') }).onclick = () => choisir('');
     boutons.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
     window.setTimeout(() => champ.focus(), 0);
   }
@@ -30673,6 +30730,7 @@ module.exports._test = {
   basesIconeOrigine,
   basesEstItemVue,
   IconesVuesBases,
+  ModaleChoixIcone,
   // Canevas : logique éprouvée sur un faux canevas (nœuds, arêtes, importData).
   CANEVAS_CLE,
   canevasCotes,

@@ -17,6 +17,7 @@ module.exports._test = {
   basesIconeOrigine,
   basesEstItemVue,
   IconesVuesBases,
+  ModaleChoixIcone,
   // Canevas : logique éprouvée sur un faux canevas (nœuds, arêtes, importData).
   CANEVAS_CLE,
   canevasCotes,

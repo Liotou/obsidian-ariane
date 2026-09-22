@@ -10,6 +10,9 @@ const factice = new Proxy({}, {
     if (nom === 'Platform') return { isMacOS: true, isDesktopApp: true };
     if (nom === 'setIcon') return () => {};
     if (nom === 'setTooltip') return () => {};
+    // Le catalogue d'icônes : quelques entrées, dont un doublon une fois le
+    // préfixe retiré, et un désordre volontaire.
+    if (nom === 'getIconIds') return () => ['lucide-users', 'lucide-book-open', 'book-open', 'lucide-table'];
     if (!classes[nom]) classes[nom] = class { constructor() {} };
     return classes[nom];
   },

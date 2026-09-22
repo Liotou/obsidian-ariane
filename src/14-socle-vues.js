@@ -137,14 +137,53 @@ class IconesVuesBases extends obsidian.Component {
       fenetre.requestAnimationFrame(() => { attendu = false; this.peindre(doc); });
     });
     obs.observe(doc.body, { childList: true, subtree: true });
-    this.observateurs.set(doc, obs);
+    // Un seul écouteur pour tout le document : les barres d'outils et les
+    // menus sont redessinés sans cesse, y accrocher des écouteurs un par un
+    // reviendrait à les empiler.
+    const surContexte = (e) => this.surClicDroit(e);
+    doc.addEventListener('contextmenu', surContexte, true);
+    this.observateurs.set(doc, { obs, surContexte, doc });
     this.peindre(doc);
   }
 
   oublier(doc) {
-    const obs = this.observateurs.get(doc);
-    if (obs) { try { obs.disconnect(); } catch (e) { /* fenêtre partie */ } }
+    const suivi = this.observateurs.get(doc);
+    if (suivi) {
+      try { suivi.obs.disconnect(); } catch (e) { /* fenêtre partie */ }
+      try { doc.removeEventListener('contextmenu', suivi.surContexte, true); } catch (e) { /* idem */ }
+    }
     this.observateurs.delete(doc);
+  }
+
+  // Clic droit sur l'icône d'une vue : dans le menu déroulant comme dans la
+  // barre d'outils. Le menu contextuel d'Obsidian est écarté, celui-ci ne
+  // proposerait rien d'utile sur une icône.
+  surClicDroit(evt) {
+    const cible = evt.target;
+    if (!cible || !cible.closest) return;
+    const item = cible.closest('.bases-toolbar-menu-item');
+    if (item && basesEstItemVue(item)) {
+      const nomEl = item.querySelector('.bases-toolbar-menu-item-name');
+      if (!nomEl) return;
+      evt.preventDefault();
+      evt.stopPropagation();
+      this.ouvrirChoix(this.derniereBase, nomEl.textContent);
+      return;
+    }
+    const barre = cible.closest('.bases-toolbar-views-menu');
+    if (!barre) return;
+    const etiquette = barre.querySelector('.text-button-label');
+    evt.preventDefault();
+    evt.stopPropagation();
+    this.ouvrirChoix(this.cheminDe(barre), etiquette ? etiquette.textContent : '');
+  }
+
+  ouvrirChoix(chemin, nom) {
+    const propre = String(nom || '').trim();
+    if (!propre) return;
+    const actuelle = this.table()[basesCleIcone(chemin, propre)] || '';
+    new ModaleChoixIcone(this.greffon.app, propre, actuelle,
+      (icone) => this.definir(chemin, propre, icone)).open();
   }
 
   table() { return this.greffon.settings.basesIcones || {}; }

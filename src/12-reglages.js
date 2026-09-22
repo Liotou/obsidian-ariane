@@ -686,7 +686,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.tempsInfobulleExplorateur !== false).onChange(async (v) => { s.tempsInfobulleExplorateur = v; await maj(); }));
 
     this._section(c, tr('Icônes des vues de base'));
-    this._aide(c, tr("Obsidian n'attache qu'une icône par type de vue : toutes les vues « tableau » d'une base portent la même. Ouvrez une vue, puis lancez « Bases : icône de la vue affichée… » pour lui en donner une à elle. Les icônes posées se retrouvent ici."));
+    this._aide(c, tr("Obsidian n'attache qu'une icône par type de vue : toutes les vues « tableau » d'une base portent la même. Clic droit sur l'icône d'une vue, dans la barre d'outils de la base ou dans son menu déroulant, pour en choisir une autre. La commande « Bases : icône de la vue affichée… » fait la même chose. Les icônes posées se retrouvent ici."));
     const icones = s.basesIcones || {};
     const cles = Object.keys(icones).sort();
     if (!cles.length) {

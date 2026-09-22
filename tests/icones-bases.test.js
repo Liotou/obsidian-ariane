@@ -83,3 +83,10 @@ test('pose : une icône jamais posée ne se retire pas non plus', () => {
   centre.poser(porteur, '');
   assert.deepEqual(porteur.dataset, {}, 'l\'icône d\'Obsidian est laissée intacte');
 });
+
+test('liste des icônes : le préfixe lucide tombe, sans doublon ni désordre', () => {
+  const { ModaleChoixIcone } = Ariane._test;
+  // Le catalogue vient d'Obsidian ; le faux en rend quatre, dont deux qui se
+  // confondent une fois « lucide- » retiré.
+  assert.deepEqual(ModaleChoixIcone.disponibles(), ['book-open', 'table', 'users']);
+});

@@ -450,13 +450,7 @@ class Ariane extends composer(obsidian.Plugin,
         const cible = this.iconesBases && this.iconesBases.vueActive();
         if (!cible) return false;
         if (verif) return true;
-        const actuelle = (this.settings.basesIcones || {})[basesCleIcone(cible.chemin, cible.nom)] || '';
-        new ModaleIconeVue(this.app, cible, actuelle, (icone) => {
-          this.iconesBases.definir(cible.chemin, cible.nom, icone);
-          new obsidian.Notice(icone
-            ? tr('Icône posée sur « ') + cible.nom + ' ».'
-            : tr('Icône retirée de « ') + cible.nom + ' ».');
-        }).open();
+        this.iconesBases.ouvrirChoix(cible.chemin, cible.nom);
         return true;
       },
     });
