@@ -173,6 +173,9 @@ class IconesVuesBases extends obsidian.Component {
     this.iconesDossiers = {};     // ce qu'Iconize a retenu, par chemin
     this.iconizeLu = 0;           // horodatage de cette lecture
     this.basesConnues = new Map();// chemin de base -> dossiers, par vue
+    this.basesEnCours = new Set();// lectures en vol, pour ne pas les doubler
+    this.iconizeEtat = '';        // ce que la dernière lecture d'Iconize a donné
+    this.vuesPeintes = 0;         // ce que la dernière passe a vu, pour le diagnostic
   }
 
   onload() {
@@ -261,11 +264,19 @@ class IconesVuesBases extends obsidian.Component {
 
   repeindreTout() { for (const doc of this.observateurs.keys()) this.peindre(doc); }
 
+  // Tout relire : le .base, Iconize, et repeindre.
+  oublierCaches() {
+    this.basesConnues.clear();
+    this.iconizeLu = 0;
+    this.lireIconize();
+    this.repeindreTout();
+  }
+
   // Les icônes de dossier d'Iconize, relues de loin en loin : ce sont les
   // réglages d'un autre greffon, qu'Ariane ne fait que consulter.
   async lireIconize() {
-    if (Date.now() - this.iconizeLu < 10000) return;
-    this.iconizeLu = Date.now();
+    if (this.iconizeEnCours || Date.now() - this.iconizeLu < 10000) return;
+    this.iconizeEnCours = true;
     const chemin = String(this.greffon.manifest.dir || '')
       .replace(/[^/]+$/, 'obsidian-icon-folder') + '/data.json';
     try {
@@ -276,28 +287,40 @@ class IconesVuesBases extends obsidian.Component {
         if (cle !== 'settings' && typeof val === 'string') table[cle] = val;
       }
       this.iconesDossiers = table;
+      this.iconizeEtat = Object.keys(table).length + tr(' icônes lues dans Iconize.');
+      this.iconizeLu = Date.now();
     } catch (e) {
-      this.iconesDossiers = {};  // Iconize absent : rien à hériter
+      // Iconize absent, ou pas encore écrit ses réglages : on retentera.
+      this.iconesDossiers = {};
+      this.iconizeEtat = tr('Iconize introuvable : ') + chemin;
+      this.iconizeLu = 0;
     }
+    this.iconizeEnCours = false;
     this.repeindreTout();
   }
 
   // Le fichier .base : pour chaque vue, les dossiers de ses filtres, et à
   // défaut ceux du filtre général de la base.
   async lireBase(chemin) {
-    if (this.basesConnues.has(chemin)) return;
-    this.basesConnues.set(chemin, { vues: new Map(), communs: [] });
-    const f = this.greffon.app.vault.getAbstractFileByPath(chemin);
-    if (!f) return;
-    let base;
-    try { base = obsidian.parseYaml(await this.greffon.app.vault.cachedRead(f)) || {}; }
-    catch (e) { return; }
-    const info = { vues: new Map(), communs: basesDossiersDepuisFiltres(base.filters) };
-    for (const v of (base.views || [])) {
-      if (v && v.name) info.vues.set(String(v.name).trim(), basesDossiersDepuisFiltres(v.filters));
+    if (this.basesConnues.has(chemin) || this.basesEnCours.has(chemin)) return;
+    // Un « en cours » séparé du cache : un échec laissait jusqu'ici un cache
+    // vide en place, et plus aucune icône ne se posait, pour toujours.
+    this.basesEnCours.add(chemin);
+    try {
+      const f = this.greffon.app.vault.getAbstractFileByPath(chemin);
+      if (!f) return;
+      const base = obsidian.parseYaml(await this.greffon.app.vault.cachedRead(f)) || {};
+      const info = { vues: new Map(), communs: basesDossiersDepuisFiltres(base.filters) };
+      for (const v of (base.views || [])) {
+        if (v && v.name) info.vues.set(String(v.name).trim(), basesDossiersDepuisFiltres(v.filters));
+      }
+      this.basesConnues.set(chemin, info);
+      this.repeindreTout();
+    } catch (e) {
+      console.error('[Ariane] base illisible pour les icônes de vue : ' + chemin, e);
+    } finally {
+      this.basesEnCours.delete(chemin);
     }
-    this.basesConnues.set(chemin, info);
-    this.repeindreTout();
   }
 
   // L'icône d'une vue : celle qu'on lui a posée, sinon celle de son dossier.
@@ -348,21 +371,40 @@ class IconesVuesBases extends obsidian.Component {
     }
   }
 
+  // Chaque icône est posée à part : une qui résiste ne doit pas emporter les
+  // suivantes, faute de quoi une seule ligne fautive laisse tout le menu nu.
   peindre(doc) {
     if (!doc || !doc.querySelectorAll) return;
+    let vues = 0;
     for (const barre of Array.from(doc.querySelectorAll('.bases-toolbar-views-menu'))) {
-      const chemin = this.cheminDe(barre);
-      if (chemin) this.derniereBase = chemin;
-      const etiquette = barre.querySelector('.text-button-label');
-      const nom = etiquette ? etiquette.textContent : '';
-      this.poser(barre.querySelector('.text-button-icon'), this.iconeDeVue(chemin, nom));
+      try {
+        const chemin = this.cheminDe(barre) || this.baseActive();
+        if (chemin) this.derniereBase = chemin;
+        const etiquette = barre.querySelector('.text-button-label');
+        const nom = etiquette ? etiquette.textContent : '';
+        this.poser(barre.querySelector('.text-button-icon'), this.iconeDeVue(chemin, nom));
+      } catch (e) { console.error('[Ariane] icône de barre de base :', e); }
     }
     for (const nomEl of Array.from(doc.querySelectorAll('.bases-toolbar-menu-item-name'))) {
-      const item = nomEl.closest ? nomEl.closest('.bases-toolbar-menu-item') || nomEl.parentElement : nomEl.parentElement;
-      if (!basesEstItemVue(item)) continue;
-      const icone = item.querySelector('.bases-toolbar-menu-item-info-icon');
-      this.poser(icone, this.iconeDeVue(this.derniereBase, nomEl.textContent));
+      try {
+        const item = nomEl.closest ? nomEl.closest('.bases-toolbar-menu-item') : null;
+        if (item && !basesEstItemVue(item)) continue;
+        // L'icône est le frère aîné du nom, tous deux dans « …-item-info ».
+        const cadre = item || nomEl.parentElement;
+        const icone = (cadre && cadre.querySelector('.bases-toolbar-menu-item-info-icon'))
+          || nomEl.previousElementSibling;
+        if (!icone) continue;
+        vues += 1;
+        this.poser(icone, this.iconeDeVue(this.derniereBase || this.baseActive(), nomEl.textContent));
+      } catch (e) { console.error('[Ariane] icône de menu de base :', e); }
     }
+    if (vues) this.vuesPeintes = vues;
+  }
+
+  // La base sous les yeux, quand le menu flottant n'appartient à aucun volet.
+  baseActive() {
+    const f = this.greffon.app.workspace.getActiveFile();
+    return f && f.extension === 'base' ? f.path : '';
   }
 
   // La base et la vue sous les yeux, d'après la barre d'outils du volet actif.

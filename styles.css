@@ -3039,3 +3039,14 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   background: none;
   color: var(--text-muted);
 }
+.zfa-icones-etat { margin: 4px 0 12px; }
+.zfa-icones-base { margin: 10px 0 4px; color: var(--text-muted); }
+.zfa-icones-ligne {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: var(--font-ui-smaller, 13px);
+}
+.zfa-icones-nom { color: var(--text-normal); }
+.zfa-icones-source { margin-left: auto; color: var(--text-faint); text-align: right; }

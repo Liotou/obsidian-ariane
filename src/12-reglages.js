@@ -424,6 +424,35 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       );
   }
 
+  // Le tableau de résolution des icônes de vue : une ligne par vue, avec le
+  // dossier retenu et l'origine de l'icône.
+  async _etatIcones(hote) {
+    const centre = this.plugin.iconesBases;
+    hote.empty();
+    if (!centre) { hote.createDiv({ cls: 'zfa-aide', text: tr('Les vues de base ne sont pas actives.') }); return; }
+    await centre.lireIconize();
+    hote.createDiv({ cls: 'zfa-aide', text: centre.iconizeEtat || tr('Iconize : rien lu pour le moment.') });
+    const bases = this.plugin.app.vault.getFiles().filter((f) => f && f.extension === 'base');
+    if (!bases.length) { hote.createDiv({ cls: 'zfa-aide', text: tr('Aucun fichier .base dans le coffre.') }); return; }
+    for (const f of bases) {
+      await centre.lireBase(f.path);
+      const info = centre.basesConnues.get(f.path);
+      if (!info || !info.vues.size) continue;
+      hote.createEl('h5', { cls: 'zfa-icones-base', text: f.basename });
+      for (const [nom, dossiers] of info.vues) {
+        const ligne = hote.createDiv({ cls: 'zfa-icones-ligne' });
+        const pastille = ligne.createSpan({ cls: 'zfa-icone-apercu est-en-ligne' });
+        const icone = centre.iconeDeVue(f.path, nom);
+        if (icone) { try { obsidian.setIcon(pastille, icone); } catch (e) { pastille.setText(icone); } }
+        ligne.createSpan({ cls: 'zfa-icones-nom', text: nom });
+        const liste = dossiers.length ? dossiers : info.communs;
+        const sienne = (this.plugin.settings.basesIcones || {})[basesCleIcone(f.path, nom)];
+        ligne.createSpan({ cls: 'zfa-icones-source', text: sienne ? tr('posée à la main')
+          : (icone ? liste.join(', ') : (liste.length ? tr('dossier sans icône : ') + liste.join(', ') : tr('aucun filtre de dossier'))) });
+      }
+    }
+  }
+
   ongletDossiers(c, s, maj) {
     // ---- Les RÔLES : les emplacements dont Ariane a besoin pour travailler.
     // Ils sont vides par défaut : le greffon ne présume d'aucune organisation.
@@ -696,6 +725,18 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           await maj();
           if (this.plugin.iconesBases) this.plugin.iconesBases.repeindreTout();
         }));
+
+    // Ce que la résolution donne, base par base : d'où vient chaque icône, et
+    // pourquoi une vue n'en a pas. C'est le premier endroit où regarder.
+    const etat = c.createDiv({ cls: 'zfa-icones-etat' });
+    const relire = new obsidian.Setting(c);
+    relire.setName(tr('Vérifier la résolution'))
+      .setDesc(tr('Relit les fichiers .base et les réglages d’Iconize, puis montre ce que chaque vue obtient.'))
+      .addButton((b2) => b2.setButtonText(tr('Relire')).onClick(async () => {
+        if (this.plugin.iconesBases) this.plugin.iconesBases.oublierCaches();
+        await this._etatIcones(etat);
+      }));
+    this._etatIcones(etat);
 
     const icones = s.basesIcones || {};
     const cles = Object.keys(icones).sort();
