@@ -15400,32 +15400,50 @@ const avecPliage = (Base) => class extends Base {
     }));
   }
 
+  // Ce que le dernier clic a donné, pour le diagnostic des réglages : quand
+  // rien ne bouge, c'est ici qu'on lit pourquoi.
+  _pliageTrace(raison, extra) {
+    this._pliageDernier = Object.assign({ raison, quand: Date.now() }, extra || {});
+  }
+
   _pliageSurClic(evt) {
     if (this._pliageRelance) return;               // notre propre clic de relais
     const cible = evt.target;
     if (!cible || !cible.closest) return;
     const fleche = cible.closest('.cm-fold-indicator');
-    if (!fleche) return;
+    if (!fleche) {
+      // Mode lecture : la liste est du HTML, le repli masque le sous-arbre.
+      if (cible.closest('.markdown-preview-view, .markdown-rendered')) this._pliageLecture(evt, cible);
+      return;
+    }
     const ligne = fleche.closest('.cm-line');
-    if (!ligne || !ligne.parentElement) return;
+    if (!ligne || !ligne.parentElement) { this._pliageTrace('flèche hors d’une ligne'); return; }
     const fenetre = ligne.ownerDocument.defaultView;
     const duree = this.pliageDuree(fenetre);
-    if (!duree) return;
+    if (!duree) { this._pliageTrace('animation coupée ou mouvement réduit'); return; }
 
     const soeurs = Array.from(ligne.parentElement.children);
     const depart = soeurs.indexOf(ligne);
     const niveaux = soeurs.map((el) => Ariane.niveauLigneListe(el.className));
-    if (!niveaux[depart]) return;                  // pas une ligne de liste
+    if (!niveaux[depart]) {
+      this._pliageTrace('ligne sans niveau de liste', { classes: String(ligne.className).slice(0, 120) });
+      return;
+    }
 
     // Déplier : les lignes n'existent pas encore. On laisse le clic passer,
     // puis on fait entrer celles qui viennent d'apparaître.
     if (fleche.classList.contains('is-collapsed')) {
+      this._pliageTrace('dépliage animé');
       fenetre.requestAnimationFrame(() => this._pliageOuvrir(ligne, duree));
       return;
     }
 
     const suivantes = Ariane.lignesDuPli(niveaux, depart).map((i) => soeurs[i]);
-    if (!suivantes.length || suivantes.length > 80) return;
+    if (!suivantes.length || suivantes.length > 80) {
+      this._pliageTrace('bloc vide ou trop grand', { lignes: suivantes.length, niveau: niveaux[depart] });
+      return;
+    }
+    this._pliageTrace('repli animé', { lignes: suivantes.length });
     evt.preventDefault();
     evt.stopPropagation();
     this._pliageFermer(suivantes, duree, () => {
@@ -15480,6 +15498,58 @@ const avecPliage = (Base) => class extends Base {
     }
     const fenetre = lignes[0].ownerDocument.defaultView;
     fenetre.setTimeout(() => this._pliageNettoyer(lignes), duree);
+  }
+
+  // En mode lecture, la liste est du HTML et le repli masque « li > ul ».
+  // Rien à intercepter côté CodeMirror : on anime la hauteur du sous-arbre.
+  _pliageLecture(evt, cible) {
+    const bouton = cible.closest('.list-collapse-indicator, .collapse-indicator');
+    if (!bouton) return;
+    const item = bouton.closest('li');
+    const sous = item ? item.querySelector(':scope > ul, :scope > ol') : null;
+    if (!sous) { this._pliageTrace('mode lecture : pas de sous-liste'); return; }
+    const fenetre = item.ownerDocument.defaultView;
+    const duree = this.pliageDuree(fenetre);
+    if (!duree) return;
+    if (item.classList.contains('is-collapsed')) {
+      // Déplié par Obsidian juste après : on le fait monter.
+      this._pliageTrace('mode lecture : dépliage animé');
+      fenetre.requestAnimationFrame(() => this._pliageMonter(sous, duree));
+      return;
+    }
+    this._pliageTrace('mode lecture : repli animé');
+    evt.preventDefault();
+    evt.stopPropagation();
+    this._pliageDescendre(sous, duree, () => {
+      this._pliageRelance = true;
+      try { bouton.dispatchEvent(new fenetre.MouseEvent('click', { bubbles: true, cancelable: true })); }
+      finally { this._pliageRelance = false; }
+    });
+  }
+
+  _pliageDescendre(el, duree, apres) {
+    const h = el.offsetHeight;
+    el.style.overflow = 'hidden';
+    el.style.height = h + 'px';
+    void el.offsetHeight;
+    el.style.transition = 'height ' + duree + 'ms ease, opacity ' + duree + 'ms ease';
+    el.style.height = '0px';
+    el.style.opacity = '0';
+    el.ownerDocument.defaultView.setTimeout(() => { this._pliageNettoyer([el]); apres(); }, duree);
+  }
+
+  _pliageMonter(el, duree) {
+    const h = el.offsetHeight;
+    if (!h) return;
+    el.style.transition = 'none';
+    el.style.overflow = 'hidden';
+    el.style.height = '0px';
+    el.style.opacity = '0';
+    void el.offsetHeight;
+    el.style.transition = 'height ' + duree + 'ms ease, opacity ' + duree + 'ms ease';
+    el.style.height = h + 'px';
+    el.style.opacity = '1';
+    el.ownerDocument.defaultView.setTimeout(() => this._pliageNettoyer([el]), duree);
   }
 
   // Rendre les lignes à CodeMirror : aucune trace de notre passage.
@@ -17219,6 +17289,26 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addSlider((sl) => sl.setLimits(80, 400, 10).setDynamicTooltip()
         .setValue(Number.isFinite(s.pliageDuree) ? s.pliageDuree : 160)
         .onChange(async (v) => { s.pliageDuree = v; await maj(); }));
+
+    // Quand rien ne bouge, c'est ici qu'on lit pourquoi : repliez une puce,
+    // puis revenez voir ce que le greffon a vu du clic.
+    const etat = c.createDiv({ cls: 'zfa-aide' });
+    const direEtat = () => {
+      const d = this.plugin._pliageDernier;
+      if (!d) {
+        etat.setText(tr('Aucun clic sur une flèche de pliage depuis le chargement d’Ariane.'));
+        return;
+      }
+      const details = Object.keys(d)
+        .filter((k) => k !== 'raison' && k !== 'quand')
+        .map((k) => k + ' : ' + d[k]);
+      etat.setText(tr('Dernier clic : ') + d.raison + (details.length ? ' (' + details.join(', ') + ')' : ''));
+    };
+    direEtat();
+    new obsidian.Setting(c)
+      .setName(tr('Vérifier le dernier clic'))
+      .setDesc(tr('Repliez une puce dans une note, puis revenez ici et rafraîchissez.'))
+      .addButton((b2) => b2.setButtonText(tr('Rafraîchir')).onClick(direEtat));
   }
 
   ongletCitations(c, s, maj) {

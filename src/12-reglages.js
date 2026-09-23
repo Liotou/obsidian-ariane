@@ -568,6 +568,26 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addSlider((sl) => sl.setLimits(80, 400, 10).setDynamicTooltip()
         .setValue(Number.isFinite(s.pliageDuree) ? s.pliageDuree : 160)
         .onChange(async (v) => { s.pliageDuree = v; await maj(); }));
+
+    // Quand rien ne bouge, c'est ici qu'on lit pourquoi : repliez une puce,
+    // puis revenez voir ce que le greffon a vu du clic.
+    const etat = c.createDiv({ cls: 'zfa-aide' });
+    const direEtat = () => {
+      const d = this.plugin._pliageDernier;
+      if (!d) {
+        etat.setText(tr('Aucun clic sur une flèche de pliage depuis le chargement d’Ariane.'));
+        return;
+      }
+      const details = Object.keys(d)
+        .filter((k) => k !== 'raison' && k !== 'quand')
+        .map((k) => k + ' : ' + d[k]);
+      etat.setText(tr('Dernier clic : ') + d.raison + (details.length ? ' (' + details.join(', ') + ')' : ''));
+    };
+    direEtat();
+    new obsidian.Setting(c)
+      .setName(tr('Vérifier le dernier clic'))
+      .setDesc(tr('Repliez une puce dans une note, puis revenez ici et rafraîchissez.'))
+      .addButton((b2) => b2.setButtonText(tr('Rafraîchir')).onClick(direEtat));
   }
 
   ongletCitations(c, s, maj) {
