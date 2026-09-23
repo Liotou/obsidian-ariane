@@ -2049,6 +2049,38 @@ const avecTaches = (Base) => class extends Base {
     return chemin;
   }
 
+  // La note déjà écrite pour un événement Apple, s'il y en a une. Le dossier
+  // des notes d'événements est regardé d'abord, mais pas seulement : une note
+  // déplacée à la main doit rester retrouvable.
+  noteDeEvenement(id) {
+    const cle = String(id || '').trim();
+    if (!cle) return null;
+    const dossier = this.dossierNE;
+    const fichiers = this.app.vault.getMarkdownFiles();
+    const dedans = [];
+    const dehors = [];
+    for (const f of fichiers) {
+      (dossier && f.path.startsWith(dossier + '/') ? dedans : dehors).push(f);
+    }
+    for (const f of dedans.concat(dehors)) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      if (Ariane.idEvenementDe(fm) === cle) return f;
+    }
+    return null;
+  }
+
+  // Le jalon déjà créé pour un événement Apple, s'il y en a un.
+  jalonDeEvenement(id) {
+    const cle = String(id || '').trim();
+    if (!cle || !this.tachesPourGantt) return null;
+    for (const t of this.tachesPourGantt()) {
+      if (!t.fichier) continue;
+      const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter;
+      if (Ariane.idEvenementDe(fm) === cle) return t;
+    }
+    return null;
+  }
+
   // Crée une note libre associée à un événement Apple Calendrier (clic droit
   // sur un événement de la vue calendrier, pas un créneau de tâche). Dossier
   // dédié, séparé de celui des tâches — voir Ariane.corpsNouvelleNoteEvenement.

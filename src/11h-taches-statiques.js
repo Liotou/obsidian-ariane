@@ -141,6 +141,12 @@ const avecTachesStatiques = (Base) => class extends Base {
   // frontmatter de tâche ; `Événement ID` la relie à l'événement d'origine
   // pour qui veut le retrouver, sans les synchros d'un jalon — une note n'a
   // pas de date à tenir à jour.
+  // L'identifiant d'événement Apple porté par un frontmatter, s'il y en a un.
+  // C'est ce qui relie une note libre, ou un jalon, à l'événement d'origine.
+  static idEvenementDe(fm) {
+    return String(((fm || {})['Événement ID']) || '').trim();
+  }
+
   static corpsNouvelleNoteEvenement(champs) {
     const c = champs || {};
     const q = Ariane.yamlChaine;

@@ -9681,6 +9681,12 @@ const avecTachesStatiques = (Base) => class extends Base {
   // frontmatter de tâche ; `Événement ID` la relie à l'événement d'origine
   // pour qui veut le retrouver, sans les synchros d'un jalon — une note n'a
   // pas de date à tenir à jour.
+  // L'identifiant d'événement Apple porté par un frontmatter, s'il y en a un.
+  // C'est ce qui relie une note libre, ou un jalon, à l'événement d'origine.
+  static idEvenementDe(fm) {
+    return String(((fm || {})['Événement ID']) || '').trim();
+  }
+
   static corpsNouvelleNoteEvenement(champs) {
     const c = champs || {};
     const q = Ariane.yamlChaine;
@@ -14816,6 +14822,38 @@ const avecTaches = (Base) => class extends Base {
     // vers Rappels sans attendre la relève périodique.
     this._relancerPushRappels(1500);
     return chemin;
+  }
+
+  // La note déjà écrite pour un événement Apple, s'il y en a une. Le dossier
+  // des notes d'événements est regardé d'abord, mais pas seulement : une note
+  // déplacée à la main doit rester retrouvable.
+  noteDeEvenement(id) {
+    const cle = String(id || '').trim();
+    if (!cle) return null;
+    const dossier = this.dossierNE;
+    const fichiers = this.app.vault.getMarkdownFiles();
+    const dedans = [];
+    const dehors = [];
+    for (const f of fichiers) {
+      (dossier && f.path.startsWith(dossier + '/') ? dedans : dehors).push(f);
+    }
+    for (const f of dedans.concat(dehors)) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      if (Ariane.idEvenementDe(fm) === cle) return f;
+    }
+    return null;
+  }
+
+  // Le jalon déjà créé pour un événement Apple, s'il y en a un.
+  jalonDeEvenement(id) {
+    const cle = String(id || '').trim();
+    if (!cle || !this.tachesPourGantt) return null;
+    for (const t of this.tachesPourGantt()) {
+      if (!t.fichier) continue;
+      const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter;
+      if (Ariane.idEvenementDe(fm) === cle) return t;
+    }
+    return null;
   }
 
   // Crée une note libre associée à un événement Apple Calendrier (clic droit
@@ -27008,6 +27046,15 @@ class MoteurCalendrier extends MoteurVue {
       m.addItem((i) => i.setTitle(tr('Ouvrir dans Calendrier')).setIcon('external-link')
         .onClick(() => this._ouvrirEvenement(e.id)));
     }
+    // Ce qui existe déjà s'ouvre ; seul ce qui manque se crée. Sans cela, le
+    // menu proposait de recréer une note ou un jalon à chaque clic droit, et
+    // le coffre se remplissait de doublons.
+    const jalonExistant = e.id ? this.greffon.jalonDeEvenement(e.id) : null;
+    const noteExistante = e.id ? this.greffon.noteDeEvenement(e.id) : null;
+    if (jalonExistant) {
+      m.addItem((i) => i.setTitle(tr('Ouvrir le jalon de cet événement')).setIcon('diamond')
+        .onClick(() => this.ouvrir(jalonExistant.ref, false)));
+    } else {
     m.addItem((i) => i.setTitle(tr('Créer un jalon à partir de cet événement')).setIcon('diamond')
       .onClick(async () => {
         if (!jour) { new obsidian.Notice(tr('Événement sans date exploitable.')); return; }
@@ -27020,14 +27067,20 @@ class MoteurCalendrier extends MoteurVue {
         this.dessiner();
         this.ouvrir(ref, false);
       }));
-    m.addItem((i) => i.setTitle(tr('Créer une note associée à cet événement')).setIcon('file-plus')
-      .onClick(async () => {
-        const nom = String(e.titre || '').trim() || (tr('Événement ') + (jour || ''));
-        const chemin = await this.greffon.creerNoteEvenement({
-          intitule: nom, date: jour, evenementId: e.id || '' });
-        const f = this.app.vault.getAbstractFileByPath(chemin);
-        if (f) this.app.workspace.getLeaf(false).openFile(f);
-      }));
+    }
+    if (noteExistante) {
+      m.addItem((i) => i.setTitle(tr('Ouvrir la note de cet événement')).setIcon('file-text')
+        .onClick(() => this.app.workspace.getLeaf(false).openFile(noteExistante)));
+    } else {
+      m.addItem((i) => i.setTitle(tr('Créer une note associée à cet événement')).setIcon('file-plus')
+        .onClick(async () => {
+          const nom = String(e.titre || '').trim() || (tr('Événement ') + (jour || ''));
+          const chemin = await this.greffon.creerNoteEvenement({
+            intitule: nom, date: jour, evenementId: e.id || '' });
+          const f = this.app.vault.getAbstractFileByPath(chemin);
+          if (f) this.app.workspace.getLeaf(false).openFile(f);
+        }));
+    }
     m.showAtMouseEvent(ev);
   }
 

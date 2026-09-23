@@ -224,6 +224,15 @@ class MoteurCalendrier extends MoteurVue {
       m.addItem((i) => i.setTitle(tr('Ouvrir dans Calendrier')).setIcon('external-link')
         .onClick(() => this._ouvrirEvenement(e.id)));
     }
+    // Ce qui existe déjà s'ouvre ; seul ce qui manque se crée. Sans cela, le
+    // menu proposait de recréer une note ou un jalon à chaque clic droit, et
+    // le coffre se remplissait de doublons.
+    const jalonExistant = e.id ? this.greffon.jalonDeEvenement(e.id) : null;
+    const noteExistante = e.id ? this.greffon.noteDeEvenement(e.id) : null;
+    if (jalonExistant) {
+      m.addItem((i) => i.setTitle(tr('Ouvrir le jalon de cet événement')).setIcon('diamond')
+        .onClick(() => this.ouvrir(jalonExistant.ref, false)));
+    } else {
     m.addItem((i) => i.setTitle(tr('Créer un jalon à partir de cet événement')).setIcon('diamond')
       .onClick(async () => {
         if (!jour) { new obsidian.Notice(tr('Événement sans date exploitable.')); return; }
@@ -236,14 +245,20 @@ class MoteurCalendrier extends MoteurVue {
         this.dessiner();
         this.ouvrir(ref, false);
       }));
-    m.addItem((i) => i.setTitle(tr('Créer une note associée à cet événement')).setIcon('file-plus')
-      .onClick(async () => {
-        const nom = String(e.titre || '').trim() || (tr('Événement ') + (jour || ''));
-        const chemin = await this.greffon.creerNoteEvenement({
-          intitule: nom, date: jour, evenementId: e.id || '' });
-        const f = this.app.vault.getAbstractFileByPath(chemin);
-        if (f) this.app.workspace.getLeaf(false).openFile(f);
-      }));
+    }
+    if (noteExistante) {
+      m.addItem((i) => i.setTitle(tr('Ouvrir la note de cet événement')).setIcon('file-text')
+        .onClick(() => this.app.workspace.getLeaf(false).openFile(noteExistante)));
+    } else {
+      m.addItem((i) => i.setTitle(tr('Créer une note associée à cet événement')).setIcon('file-plus')
+        .onClick(async () => {
+          const nom = String(e.titre || '').trim() || (tr('Événement ') + (jour || ''));
+          const chemin = await this.greffon.creerNoteEvenement({
+            intitule: nom, date: jour, evenementId: e.id || '' });
+          const f = this.app.vault.getAbstractFileByPath(chemin);
+          if (f) this.app.workspace.getLeaf(false).openFile(f);
+        }));
+    }
     m.showAtMouseEvent(ev);
   }
 
