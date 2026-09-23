@@ -13,8 +13,7 @@ class Ariane extends composer(obsidian.Plugin,
   avecFriseStatiques,
   avecArticulationStatiques,
   avecTaches,
-  avecPublicationSite,
-  avecPliage) {
+  avecPublicationSite) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -23,7 +22,6 @@ class Ariane extends composer(obsidian.Plugin,
     this.appliquerStyleAparte();
     this.installerVerrouLecture();
     this.installerAffichageTaches();
-    this.installerPliageAnime();
     this.appliquerCssPersonnalise();
     this.ecrituresRecentes = new Map();
     this.antirebonds = new Map();

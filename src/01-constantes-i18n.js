@@ -1134,8 +1134,6 @@ const DEFAULT_SETTINGS = {
   // Icône par vue de base : « chemin.base::Nom de la vue » -> nom lucide.
   basesIcones: {},
   basesIconesDossiers: true,    // à défaut, la vue reprend l'icône Iconize de son dossier
-  pliageAnime: true,            // replier/déplier une puce se fait en fondu plutôt que d'un coup
-  pliageDuree: 160,             // ms de l'animation (bornée 80-400)
   correcteurApple: true,        // correcteur du système dans l'éditeur (Mac)
   correcteurGrammaire: true,    // relecture contextuelle : pointillés bleus
   correcteurOrthographe: true,  // mots isolés hors relecture : pointillés rouges
