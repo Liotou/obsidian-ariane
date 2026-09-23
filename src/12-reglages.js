@@ -22,6 +22,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       [tr('Général'), 'settings', (c) => this.ongletGeneral(c, s, maj)],
       [tr('Dossiers & familles'), 'folder-tree', (c) => this.ongletDossiers(c, s, maj)],
       [tr('Affichage'), 'eye', (c) => this.ongletAffichage(c, s, maj)],
+      [tr('Esthétique'), 'palette', (c) => this.ongletEsthetique(c, s, maj)],
       [tr('Citations & bibliographie'), 'quote', (c) => this.ongletCitations(c, s, maj)],
       [tr('Suggestions'), 'sparkles', (c) => this.ongletSuggestions(c, s, maj)],
       [tr('Tâches'), 'list-checks', (c) => this.ongletTaches(c, s, maj)],
@@ -550,6 +551,23 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Ex. « 0.8em », « 11px »."))
       .addText((t) => t.setValue(s.aparteTaille).onChange(async (v) => { s.aparteTaille = v.trim() || '0.8em'; await maj(); this.plugin.appliquerStyleAparte(); }));
 
+  }
+
+  // Ce qui relève du confort de l'oeil : mouvements, fondu, rien qui change
+  // le contenu des notes.
+  ongletEsthetique(c, s, maj) {
+    this._section(c, tr('Pliage des puces'));
+    this._aide(c, tr("Replier ou déplier une puce fait disparaître ses lignes d'un coup, et le texte qui suit remonte d'un bloc. Avec l'animation, les lignes s'effacent en descendant, et tout ce qui est en dessous suit le mouvement. Le pli lui-même reste à Obsidian : l'animation ne change jamais ce qui se replie. Elle s'efface d'elle-même si votre système demande d'éviter les animations."));
+    new obsidian.Setting(c)
+      .setName(tr('Animer le pliage'))
+      .addToggle((t) => t.setValue(s.pliageAnime !== false)
+        .onChange(async (v) => { s.pliageAnime = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Durée (ms)'))
+      .setDesc(tr('Court pour un mouvement discret, long pour un geste appuyé.'))
+      .addSlider((sl) => sl.setLimits(80, 400, 10).setDynamicTooltip()
+        .setValue(Number.isFinite(s.pliageDuree) ? s.pliageDuree : 160)
+        .onChange(async (v) => { s.pliageDuree = v; await maj(); }));
   }
 
   ongletCitations(c, s, maj) {
