@@ -115,3 +115,30 @@ test('genererJXARappels : une suppression demandée retire le rappel et le dit',
   assert.ok(s.includes('saveReminderCommitError'));
   assert.ok(s.includes('T26-010'));
 });
+
+test('tâches concernées : échéance, rappel lié, ou synchronisation passée', () => {
+  const c = Ariane.rappelConcerne;
+  assert.equal(c('à faire', '2026-10-01', '', ''), true, 'une échéance suffit');
+  assert.equal(c('à faire', '', 'x-apple://A', ''), true, 'un rappel déjà lié aussi');
+  assert.equal(c('à faire', '', '', ''), false, 'ni l\'un ni l\'autre : rien à synchroniser');
+  assert.equal(c('à faire', '   ', '', ''), false);
+});
+
+test('tâches concernées : revenir d\'« abandonnée » rend son rappel à la tâche', () => {
+  const c = Ariane.rappelConcerne;
+  // Le rappel a été supprimé, la note a perdu son rappel-id ; seul l'instantané
+  // garde trace de la synchronisation passée.
+  assert.equal(c('abandonnée', '', '', '2026-10-01||abandonnée'), false, 'abandonnée : on laisse');
+  assert.equal(c('à faire', '', '', '2026-10-01||abandonnée'), true,
+    'réactivée sans échéance : le rappel est recréé');
+  assert.equal(c('en cours', '', '', '||'), true, 'un instantané, même maigre, vaut mémoire');
+  assert.equal(c('à faire', '', '', '   '), false, 'un instantané vide n\'est pas une mémoire');
+});
+
+test('tâches concernées : terminée ou abandonnée sans rappel, rien à faire', () => {
+  const c = Ariane.rappelConcerne;
+  assert.equal(c('terminée', '2026-10-01', '', ''), false);
+  assert.equal(c('abandonnée', '2026-10-01', '', ''), false);
+  assert.equal(c('terminée', '2026-10-01', 'x-apple://A', ''), true, 'le rappel existant se coche');
+  assert.equal(c('abandonnée', '', 'x-apple://A', ''), true, 'et celui-là se supprime');
+});

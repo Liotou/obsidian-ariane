@@ -303,15 +303,14 @@ const avecTaches = (Base) => class extends Base {
   // conflits à la relève : échéance|heure|statut. (Côté Agenda : Ariane.instantAgenda.)
   _instantRappel(t) { return [t.echeance || '', t.heure || '', t.statut || ''].join('|'); }
 
-  // Tâches concernées par un rappel : une échéance, ou déjà un rappel-id.
+  // Tâches concernées par un rappel : voir Ariane.rappelConcerne.
   _tachesRappel() {
     const out = [];
     for (const t of this.tachesPourGantt()) {
       const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
       const rid = String(this._lireT(fm, 'rappel-id') || '').trim();
       const snap = String(fm['Tâche - Synchro Rappels'] || '');
-      if (!t.echeance && !rid) continue;
-      if ((t.statut === 'terminée' || t.statut === 'abandonnée') && !rid) continue;
+      if (!Ariane.rappelConcerne(t.statut, t.echeance, rid, snap)) continue;
       out.push(Object.assign({}, t, { _rid: rid, _snap: snap, _fm: fm }));
     }
     return out;

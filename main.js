@@ -9726,6 +9726,19 @@ const avecTachesStatiques = (Base) => class extends Base {
   // frontmatter de tâche ; `Événement ID` la relie à l'événement d'origine
   // pour qui veut le retrouver, sans les synchros d'un jalon — une note n'a
   // pas de date à tenir à jour.
+  // Une tâche relève-t-elle d'Apple Rappels ? Une échéance suffit, un rappel
+  // déjà lié aussi. Et une synchronisation passée, enfin : une tâche revenue
+  // d'« abandonnée » n'a plus ni rappel ni, parfois, d'échéance, mais elle
+  // avait bien un rappel avant qu'on le retire, et doit le retrouver.
+  static rappelConcerne(statut, echeance, rappelId, instantane) {
+    const rid = String(rappelId || '').trim();
+    const dejaSynchronisee = !!String(instantane || '').trim();
+    if (!String(echeance || '').trim() && !rid && !dejaSynchronisee) return false;
+    // Terminée ou abandonnée sans rappel : il n'y a rien à créer ni à retirer.
+    if ((statut === 'terminée' || statut === 'abandonnée') && !rid) return false;
+    return true;
+  }
+
   // Une tâche abandonnée n'a plus rien à faire dans Apple Rappels : à la
   // différence d'une tâche terminée, qu'on coche, on retire son rappel. Encore
   // faut-il qu'un rappel existe, et que l'utilisateur n'ait pas coupé cela.
@@ -13161,15 +13174,14 @@ const avecTaches = (Base) => class extends Base {
   // conflits à la relève : échéance|heure|statut. (Côté Agenda : Ariane.instantAgenda.)
   _instantRappel(t) { return [t.echeance || '', t.heure || '', t.statut || ''].join('|'); }
 
-  // Tâches concernées par un rappel : une échéance, ou déjà un rappel-id.
+  // Tâches concernées par un rappel : voir Ariane.rappelConcerne.
   _tachesRappel() {
     const out = [];
     for (const t of this.tachesPourGantt()) {
       const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
       const rid = String(this._lireT(fm, 'rappel-id') || '').trim();
       const snap = String(fm['Tâche - Synchro Rappels'] || '');
-      if (!t.echeance && !rid) continue;
-      if ((t.statut === 'terminée' || t.statut === 'abandonnée') && !rid) continue;
+      if (!Ariane.rappelConcerne(t.statut, t.echeance, rid, snap)) continue;
       out.push(Object.assign({}, t, { _rid: rid, _snap: snap, _fm: fm }));
     }
     return out;
