@@ -285,6 +285,50 @@ const avecSocle = (Base) => class extends Base {
     if (this.settings.modeleNote === ancienModele) this.settings.modeleNote = DEFAULT_SETTINGS.modeleNote;
   }
 
+  // Les réglages qui nomment un dossier. Ceux des familles de notes n'y sont
+  // pas : ils relèvent d'une autre table, que l'utilisateur tient lui-même.
+  static get CLES_DOSSIERS() {
+    return ['dossierAnnotations', 'dossierNotesLecture', 'dossierNotesEvenements',
+      'dossierReferences', 'dossierTaches', 'dossierNotesConceptuelles',
+      'tempsDossierJournal', 'exportDossier', 'dossierBibliographies',
+      'publicationDossierVault'];
+  }
+
+  // Renommer un dossier du coffre ne touche pas aux réglages qui le nomment :
+  // le greffon écrivait alors dans un dossier qu'il recréait à côté du vrai.
+  // Au démarrage, un réglage qui ne désigne plus rien est rapproché du dossier
+  // existant qui lui correspond, à un zéro de tête près. L'utilisateur en est
+  // averti : c'est son réglage qu'on change.
+  reconcilierDossiersReglages() {
+    const existants = this.app.vault.getAllLoadedFiles()
+      .filter((f) => f && f.children && typeof f.path === 'string')
+      .map((f) => f.path);
+    if (!existants.length) return [];
+    const corriges = [];
+    for (const cle of Ariane.CLES_DOSSIERS) {
+      const val = this.settings[cle];
+      if (typeof val !== 'string' || !val.trim()) continue;
+      const vrai = Ariane.dossierEquivalent(val, existants);
+      if (!vrai) continue;
+      this.settings[cle] = vrai;
+      corriges.push(val + ' → ' + vrai);
+    }
+    // Les dossiers exclus du chronomètre sont une liste, une par ligne.
+    const brut = this.settings.tempsDossiersExclus;
+    if (typeof brut === 'string' && brut.trim()) {
+      let change = false;
+      const lignes = brut.split('\n').map((l) => {
+        const vrai = Ariane.dossierEquivalent(l, existants);
+        if (!vrai) return l;
+        change = true;
+        corriges.push(l.trim() + ' → ' + vrai);
+        return vrai;
+      });
+      if (change) this.settings.tempsDossiersExclus = lignes.join('\n');
+    }
+    return corriges;
+  }
+
   async saveSettings() {
     // Le dossier des tâches peut avoir changé : l'index « référence → fichier »
     // se lit dessus, on le laisse se reconstruire.

@@ -141,6 +141,30 @@ const avecTachesStatiques = (Base) => class extends Base {
   // frontmatter de tâche ; `Événement ID` la relie à l'événement d'origine
   // pour qui veut le retrouver, sans les synchros d'un jalon — une note n'a
   // pas de date à tenir à jour.
+  // Un chemin de dossier, réduit à ce qui l'identifie : casse ignorée, et
+  // zéros de tête retirés du numéro qui ouvre chaque segment. « 7 - Journal »
+  // et « 07 - Journal » se ramènent ainsi au même.
+  static normaliserDossier(chemin) {
+    return String(chemin || '').split('/')
+      .map((seg) => seg.trim().replace(/^0+(\d)/, '$1').toLowerCase())
+      .filter(Boolean).join('/');
+  }
+
+  // Le dossier réel que désigne un réglage devenu faux. Rend '' si le dossier
+  // existe tel quel, ou si rien ne lui correspond : renommer les dossiers d'un
+  // coffre (« 7 - X » en « 07 - X ») laissait sinon les réglages en arrière,
+  // et le greffon recréait le dossier disparu à la première écriture.
+  static dossierEquivalent(nom, existants) {
+    const voulu = String(nom || '').trim();
+    if (!voulu) return '';
+    const liste = existants || [];
+    if (liste.includes(voulu)) return '';
+    const cle = Ariane.normaliserDossier(voulu);
+    if (!cle) return '';
+    const candidats = liste.filter((d) => Ariane.normaliserDossier(d) === cle);
+    return candidats.length === 1 ? candidats[0] : '';
+  }
+
   // L'identifiant d'événement Apple porté par un frontmatter, s'il y en a un.
   // C'est ce qui relie une note libre, ou un jalon, à l'événement d'origine.
   static idEvenementDe(fm) {

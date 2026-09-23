@@ -50,6 +50,15 @@ class Ariane extends composer(obsidian.Plugin,
     this._installerExtensionsEditeur();
     this._brancherEvenements();
     this._demarrerMinuteries();
+    // Le coffre n'est lisible qu'une fois la disposition prête : c'est là
+    // qu'on peut voir quels dossiers existent vraiment.
+    this.app.workspace.onLayoutReady(async () => {
+      const corriges = this.reconcilierDossiersReglages();
+      if (!corriges.length) return;
+      await this.saveSettings();
+      new obsidian.Notice(tr('Ariane : dossiers renommés, réglages mis à jour.\n')
+        + corriges.join('\n'), 15000);
+    });
   }
 
   // Toutes les commandes de la palette. Un seul endroit où chercher

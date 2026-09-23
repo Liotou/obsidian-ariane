@@ -3850,6 +3850,50 @@ const avecSocle = (Base) => class extends Base {
     if (this.settings.modeleNote === ancienModele) this.settings.modeleNote = DEFAULT_SETTINGS.modeleNote;
   }
 
+  // Les réglages qui nomment un dossier. Ceux des familles de notes n'y sont
+  // pas : ils relèvent d'une autre table, que l'utilisateur tient lui-même.
+  static get CLES_DOSSIERS() {
+    return ['dossierAnnotations', 'dossierNotesLecture', 'dossierNotesEvenements',
+      'dossierReferences', 'dossierTaches', 'dossierNotesConceptuelles',
+      'tempsDossierJournal', 'exportDossier', 'dossierBibliographies',
+      'publicationDossierVault'];
+  }
+
+  // Renommer un dossier du coffre ne touche pas aux réglages qui le nomment :
+  // le greffon écrivait alors dans un dossier qu'il recréait à côté du vrai.
+  // Au démarrage, un réglage qui ne désigne plus rien est rapproché du dossier
+  // existant qui lui correspond, à un zéro de tête près. L'utilisateur en est
+  // averti : c'est son réglage qu'on change.
+  reconcilierDossiersReglages() {
+    const existants = this.app.vault.getAllLoadedFiles()
+      .filter((f) => f && f.children && typeof f.path === 'string')
+      .map((f) => f.path);
+    if (!existants.length) return [];
+    const corriges = [];
+    for (const cle of Ariane.CLES_DOSSIERS) {
+      const val = this.settings[cle];
+      if (typeof val !== 'string' || !val.trim()) continue;
+      const vrai = Ariane.dossierEquivalent(val, existants);
+      if (!vrai) continue;
+      this.settings[cle] = vrai;
+      corriges.push(val + ' → ' + vrai);
+    }
+    // Les dossiers exclus du chronomètre sont une liste, une par ligne.
+    const brut = this.settings.tempsDossiersExclus;
+    if (typeof brut === 'string' && brut.trim()) {
+      let change = false;
+      const lignes = brut.split('\n').map((l) => {
+        const vrai = Ariane.dossierEquivalent(l, existants);
+        if (!vrai) return l;
+        change = true;
+        corriges.push(l.trim() + ' → ' + vrai);
+        return vrai;
+      });
+      if (change) this.settings.tempsDossiersExclus = lignes.join('\n');
+    }
+    return corriges;
+  }
+
   async saveSettings() {
     // Le dossier des tâches peut avoir changé : l'index « référence → fichier »
     // se lit dessus, on le laisse se reconstruire.
@@ -9681,6 +9725,30 @@ const avecTachesStatiques = (Base) => class extends Base {
   // frontmatter de tâche ; `Événement ID` la relie à l'événement d'origine
   // pour qui veut le retrouver, sans les synchros d'un jalon — une note n'a
   // pas de date à tenir à jour.
+  // Un chemin de dossier, réduit à ce qui l'identifie : casse ignorée, et
+  // zéros de tête retirés du numéro qui ouvre chaque segment. « 7 - Journal »
+  // et « 07 - Journal » se ramènent ainsi au même.
+  static normaliserDossier(chemin) {
+    return String(chemin || '').split('/')
+      .map((seg) => seg.trim().replace(/^0+(\d)/, '$1').toLowerCase())
+      .filter(Boolean).join('/');
+  }
+
+  // Le dossier réel que désigne un réglage devenu faux. Rend '' si le dossier
+  // existe tel quel, ou si rien ne lui correspond : renommer les dossiers d'un
+  // coffre (« 7 - X » en « 07 - X ») laissait sinon les réglages en arrière,
+  // et le greffon recréait le dossier disparu à la première écriture.
+  static dossierEquivalent(nom, existants) {
+    const voulu = String(nom || '').trim();
+    if (!voulu) return '';
+    const liste = existants || [];
+    if (liste.includes(voulu)) return '';
+    const cle = Ariane.normaliserDossier(voulu);
+    if (!cle) return '';
+    const candidats = liste.filter((d) => Ariane.normaliserDossier(d) === cle);
+    return candidats.length === 1 ? candidats[0] : '';
+  }
+
   // L'identifiant d'événement Apple porté par un frontmatter, s'il y en a un.
   // C'est ce qui relie une note libre, ou un jalon, à l'événement d'origine.
   static idEvenementDe(fm) {
@@ -15279,6 +15347,15 @@ class Ariane extends composer(obsidian.Plugin,
     this._installerExtensionsEditeur();
     this._brancherEvenements();
     this._demarrerMinuteries();
+    // Le coffre n'est lisible qu'une fois la disposition prête : c'est là
+    // qu'on peut voir quels dossiers existent vraiment.
+    this.app.workspace.onLayoutReady(async () => {
+      const corriges = this.reconcilierDossiersReglages();
+      if (!corriges.length) return;
+      await this.saveSettings();
+      new obsidian.Notice(tr('Ariane : dossiers renommés, réglages mis à jour.\n')
+        + corriges.join('\n'), 15000);
+    });
   }
 
   // Toutes les commandes de la palette. Un seul endroit où chercher
