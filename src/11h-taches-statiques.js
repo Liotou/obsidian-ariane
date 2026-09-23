@@ -141,6 +141,15 @@ const avecTachesStatiques = (Base) => class extends Base {
   // frontmatter de tâche ; `Événement ID` la relie à l'événement d'origine
   // pour qui veut le retrouver, sans les synchros d'un jalon — une note n'a
   // pas de date à tenir à jour.
+  // Une tâche abandonnée n'a plus rien à faire dans Apple Rappels : à la
+  // différence d'une tâche terminée, qu'on coche, on retire son rappel. Encore
+  // faut-il qu'un rappel existe, et que l'utilisateur n'ait pas coupé cela.
+  static rappelASupprimer(statut, rappelId, reglages) {
+    if (String(statut || '') !== 'abandonnée') return false;
+    if (!String(rappelId || '').trim()) return false;
+    return (reglages || {}).rappelsSupprimerAbandonnees !== false;
+  }
+
   // Un chemin de dossier, réduit à ce qui l'identifie : casse ignorée, et
   // zéros de tête retirés du numéro qui ouvre chaque segment. « 7 - Journal »
   // et « 07 - Journal » se ramènent ainsi au même.

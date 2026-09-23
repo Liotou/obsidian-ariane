@@ -1276,6 +1276,7 @@ const DEFAULT_SETTINGS = {
   rappelsAuto: true,            // pousser à la sauvegarde d'une tâche + relever régulièrement
   rappelsReleveMin: 10,         // minutes entre deux relèves automatiques
   rappelsFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un rappel Apple
+  rappelsSupprimerAbandonnees: true, // une tâche abandonnée quitte Apple Rappels
   agendaActif: false,           // intégration Apple Agenda / Calendar (macOS, EKEvent)
   agendaAuto: true,             // pousser à la sauvegarde + relever régulièrement
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques
@@ -9725,6 +9726,15 @@ const avecTachesStatiques = (Base) => class extends Base {
   // frontmatter de tâche ; `Événement ID` la relie à l'événement d'origine
   // pour qui veut le retrouver, sans les synchros d'un jalon — une note n'a
   // pas de date à tenir à jour.
+  // Une tâche abandonnée n'a plus rien à faire dans Apple Rappels : à la
+  // différence d'une tâche terminée, qu'on coche, on retire son rappel. Encore
+  // faut-il qu'un rappel existe, et que l'utilisateur n'ait pas coupé cela.
+  static rappelASupprimer(statut, rappelId, reglages) {
+    if (String(statut || '') !== 'abandonnée') return false;
+    if (!String(rappelId || '').trim()) return false;
+    return (reglages || {}).rappelsSupprimerAbandonnees !== false;
+  }
+
   // Un chemin de dossier, réduit à ce qui l'identifie : casse ignorée, et
   // zéros de tête retirés du numéro qui ouvre chaque segment. « 7 - Journal »
   // et « 07 - Journal » se ramènent ainsi au même.
@@ -11337,6 +11347,11 @@ const avecArticulationStatiques = (Base) => class extends Base {
       '  var out=[];',
       '  for(var i=0;i<IN.taches.length;i++){',
       '    var t=IN.taches[i];',
+      // Suppression demandée : on retire le rappel et on passe au suivant, sans
+      // rien enregistrer. Un rappel déjà disparu compte comme supprime.
+      '    if(t.supprimer){ var rs=remById(t.id); var okd=true;',
+      '      if(rs){ try{ okd=ST.removeReminderCommitError(rs,true,null); }catch(e){ okd=false; } }',
+      '      out.push(t.ref+"\\t"+(okd?"SUPPRIME":"")); continue; }',
       '    var r=remById(t.id);',
       '    var cal=listeParNom(t.liste);',
       '    if(r && cal){ try{ if(ObjC.unwrap(r.calendar.calendarIdentifier)!==ObjC.unwrap(cal.calendarIdentifier)){ ST.removeReminderCommitError(r,true,null); r=null; } }catch(e){} }',
@@ -13211,6 +13226,11 @@ const avecTaches = (Base) => class extends Base {
     if (!cibles.length) { if (!silencieux) new obsidian.Notice(tr('Aucune tâche à synchroniser.')); return 0; }
     const charge = [];
     for (const t of cibles) {
+      // Une tâche abandonnée quitte Apple Rappels : inutile d'en relire la note.
+      if (Ariane.rappelASupprimer(t.statut, t._rid, this.settings)) {
+        charge.push({ ref: t.ref, id: t._rid, supprimer: true });
+        continue;
+      }
       let note = '';
       try { note = await this.lireNoteTache(t.ref); } catch (e) { /* rien */ }
       const lien = 'obsidian://open?vault=' + encodeURIComponent(vault)
@@ -13243,9 +13263,17 @@ const avecTaches = (Base) => class extends Base {
       const [ref, id] = l.split('\t');
       const t = ref && parRef.get(ref);
       if (!t || !id) continue;
+      const f = t.fichier;
+      // Le rappel a été retiré : la note perd son lien, sans quoi le prochain
+      // push tenterait de supprimer un rappel qui n'existe plus.
+      if (id === 'SUPPRIME') {
+        if (f) this.marquerEcriture(f.path);
+        await this.majTache(ref, { 'rappel-id': '' });
+        n += 1;
+        continue;
+      }
       const champs = {};
       if (id && id !== t._rid) champs['rappel-id'] = id;
-      const f = t.fichier;
       if (Object.keys(champs).length) {
         // marquerEcriture fait taire l'écoute metadataCache : sans lui, chaque
         // push qui re-mémorise un rappel-id relançait un push (echo).
@@ -17379,6 +17407,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         this.plugin.chargerAgendas().then(() => this.display());
       }
     }
+    new obsidian.Setting(c)
+      .setName(tr('Retirer les tâches abandonnées'))
+      .setDesc(tr("Une tâche passée en « abandonnée » voit son rappel supprimé d'Apple Rappels, au lieu d'y rester ouvert. Une tâche terminée, elle, reste cochée."))
+      .addToggle((t) => t.setValue(s.rappelsSupprimerAbandonnees !== false)
+        .onChange(async (v) => { s.rappelsSupprimerAbandonnees = v; await maj(); }));
+
     this._section(c, tr('Apple Agenda'));
     this._aide(c, tr("macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchro bidirectionnelle automatique : à chaque modif d'un côté (et au changement de fenêtre), déplacer/redimensionner l'événement dans Calendar réécrit le créneau. Les calendriers cochés s'affichent en fond de la vue calendrier."));
     new obsidian.Setting(c)

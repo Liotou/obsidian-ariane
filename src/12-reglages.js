@@ -930,6 +930,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         this.plugin.chargerAgendas().then(() => this.display());
       }
     }
+    new obsidian.Setting(c)
+      .setName(tr('Retirer les tâches abandonnées'))
+      .setDesc(tr("Une tâche passée en « abandonnée » voit son rappel supprimé d'Apple Rappels, au lieu d'y rester ouvert. Une tâche terminée, elle, reste cochée."))
+      .addToggle((t) => t.setValue(s.rappelsSupprimerAbandonnees !== false)
+        .onChange(async (v) => { s.rappelsSupprimerAbandonnees = v; await maj(); }));
+
     this._section(c, tr('Apple Agenda'));
     this._aide(c, tr("macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchro bidirectionnelle automatique : à chaque modif d'un côté (et au changement de fenêtre), déplacer/redimensionner l'événement dans Calendar réécrit le créneau. Les calendriers cochés s'affichent en fond de la vue calendrier."));
     new obsidian.Setting(c)

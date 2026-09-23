@@ -87,3 +87,31 @@ test('_jxaEKCommun : ni accès ni entité, juste les utilitaires partagés', () 
   assert.ok(!s.includes('function acces('));
   assert.ok(!s.includes('calendarsForEntityType'));
 });
+
+test('tâche abandonnée : son rappel se supprime, la terminée se coche', () => {
+  const r = {};
+  assert.equal(Ariane.rappelASupprimer('abandonnée', 'x-apple://A', r), true);
+  assert.equal(Ariane.rappelASupprimer('terminée', 'x-apple://A', r), false,
+    'une tâche terminée reste dans Rappels, cochée');
+  assert.equal(Ariane.rappelASupprimer('à faire', 'x-apple://A', r), false);
+  assert.equal(Ariane.rappelASupprimer('abandonnée', '', r), false, 'rien à supprimer sans rappel');
+  assert.equal(Ariane.rappelASupprimer('abandonnée', '   ', r), false);
+  assert.equal(Ariane.rappelASupprimer('abandonnée', 'x', { rappelsSupprimerAbandonnees: false }), false,
+    'le réglage coupé laisse le rappel en place');
+  assert.equal(Ariane.rappelASupprimer('abandonnée', 'x', undefined), true, 'actif par défaut');
+});
+
+test('genererJXARappels : une suppression demandée retire le rappel et le dit', () => {
+  const s = Ariane.genererJXARappels([
+    { ref: 'T26-009', id: 'x-apple-reminder://DEAD', supprimer: true },
+    { ref: 'T26-010', id: '', titre: '[T26-010] - Vivante', notes: '', liste: 'Doctorat',
+      echeance: '2026-10-02', heure: '', priorite: '', termine: false },
+  ]);
+  new vm.Script(s);
+  assert.ok(s.includes('"supprimer":true'));
+  assert.ok(s.includes('removeReminderCommitError(rs'), 'la branche de suppression est là');
+  assert.ok(s.includes('SUPPRIME'), 'et elle rend compte de ce qu\'elle a fait');
+  // La tâche vivante suit le chemin normal, dans le même script.
+  assert.ok(s.includes('saveReminderCommitError'));
+  assert.ok(s.includes('T26-010'));
+});

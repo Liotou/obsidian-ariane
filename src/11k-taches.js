@@ -368,6 +368,11 @@ const avecTaches = (Base) => class extends Base {
     if (!cibles.length) { if (!silencieux) new obsidian.Notice(tr('Aucune tâche à synchroniser.')); return 0; }
     const charge = [];
     for (const t of cibles) {
+      // Une tâche abandonnée quitte Apple Rappels : inutile d'en relire la note.
+      if (Ariane.rappelASupprimer(t.statut, t._rid, this.settings)) {
+        charge.push({ ref: t.ref, id: t._rid, supprimer: true });
+        continue;
+      }
       let note = '';
       try { note = await this.lireNoteTache(t.ref); } catch (e) { /* rien */ }
       const lien = 'obsidian://open?vault=' + encodeURIComponent(vault)
@@ -400,9 +405,17 @@ const avecTaches = (Base) => class extends Base {
       const [ref, id] = l.split('\t');
       const t = ref && parRef.get(ref);
       if (!t || !id) continue;
+      const f = t.fichier;
+      // Le rappel a été retiré : la note perd son lien, sans quoi le prochain
+      // push tenterait de supprimer un rappel qui n'existe plus.
+      if (id === 'SUPPRIME') {
+        if (f) this.marquerEcriture(f.path);
+        await this.majTache(ref, { 'rappel-id': '' });
+        n += 1;
+        continue;
+      }
       const champs = {};
       if (id && id !== t._rid) champs['rappel-id'] = id;
-      const f = t.fichier;
       if (Object.keys(champs).length) {
         // marquerEcriture fait taire l'écoute metadataCache : sans lui, chaque
         // push qui re-mémorise un rappel-id relançait un push (echo).

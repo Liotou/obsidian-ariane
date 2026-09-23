@@ -1101,6 +1101,7 @@ const DEFAULT_SETTINGS = {
   rappelsAuto: true,            // pousser à la sauvegarde d'une tâche + relever régulièrement
   rappelsReleveMin: 10,         // minutes entre deux relèves automatiques
   rappelsFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un rappel Apple
+  rappelsSupprimerAbandonnees: true, // une tâche abandonnée quitte Apple Rappels
   agendaActif: false,           // intégration Apple Agenda / Calendar (macOS, EKEvent)
   agendaAuto: true,             // pousser à la sauvegarde + relever régulièrement
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques

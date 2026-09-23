@@ -435,6 +435,11 @@ const avecArticulationStatiques = (Base) => class extends Base {
       '  var out=[];',
       '  for(var i=0;i<IN.taches.length;i++){',
       '    var t=IN.taches[i];',
+      // Suppression demandée : on retire le rappel et on passe au suivant, sans
+      // rien enregistrer. Un rappel déjà disparu compte comme supprime.
+      '    if(t.supprimer){ var rs=remById(t.id); var okd=true;',
+      '      if(rs){ try{ okd=ST.removeReminderCommitError(rs,true,null); }catch(e){ okd=false; } }',
+      '      out.push(t.ref+"\\t"+(okd?"SUPPRIME":"")); continue; }',
       '    var r=remById(t.id);',
       '    var cal=listeParNom(t.liste);',
       '    if(r && cal){ try{ if(ObjC.unwrap(r.calendar.calendarIdentifier)!==ObjC.unwrap(cal.calendarIdentifier)){ ST.removeReminderCommitError(r,true,null); r=null; } }catch(e){} }',
