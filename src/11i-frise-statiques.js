@@ -358,6 +358,23 @@ const avecFriseStatiques = (Base) => class extends Base {
     return { debut: iso(jour, cale), fin: iso(jour, cale + duree) };
   }
 
+  // L'ordre d'une journée de la vue mois : ce qui dure toute la journée
+  // d'abord (tâches du jour, événements « journée entière »), dans l'ordre
+  // reçu ; puis tout ce qui a une heure, tâches et événements Apple mêlés,
+  // par heure de début. Avant, les tâches passaient toutes devant les
+  // événements : 10:15 s'affichait au-dessus de 09:00.
+  static trierElementsJour(elements) {
+    const avecRang = (elements || []).map((e, i) => ({ e, i }));
+    avecRang.sort((a, b) => {
+      const ja = !a.e.debut || a.e.allDay;
+      const jb = !b.e.debut || b.e.allDay;
+      if (ja !== jb) return ja ? -1 : 1;
+      if (!ja && a.e.debut !== b.e.debut) return a.e.debut < b.e.debut ? -1 : 1;
+      return a.i - b.i;
+    });
+    return avecRang.map((x) => x.e);
+  }
+
   // Durée d'un créneau en minutes, entre deux instants « AAAA-MM-JJTHH:MM ».
   // Compté en temps universel : un changement d'heure ne raccourcit ni
   // n'allonge une copie. Jamais moins d'un quart d'heure ; une heure si les

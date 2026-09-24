@@ -2187,29 +2187,82 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-ruban { display: flex; width: 300%; height: 100%; will-change: transform; }
 .zfa-cal-ruban > .zfa-cal-grille { flex: 0 0 calc(100% / 3); width: calc(100% / 3); min-height: 0; }
 
-.zfa-cal-mois-grille { display: flex; flex-direction: column; min-height: 100%; }
-.zfa-cal-jour-entete-ligne { display: flex; }
-.zfa-cal-jour-entete {
-  flex: 1 1 0; text-align: center; font-size: var(--font-ui-smaller); color: var(--text-muted);
-  padding: 4px 0; border-bottom: 1px solid var(--background-modifier-border);
+/* ── Vue mois ─────────────────────────────────────────────────────────────
+   Une seule grille de 7 colonnes égales pour l'en-tête et toutes les
+   semaines (les enveloppes de rangée s'effacent, display: contents) : les
+   colonnes s'alignent partout, et rien ne déborde à droite. Les semaines se
+   partagent la hauteur ; une case trop pleine se replie en « +N de plus ». */
+.zfa-cal-mois-grille {
+  --zfa-cal-semaines: 6;
+  --zfa-cal-ligne: 20px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: auto repeat(var(--zfa-cal-semaines), minmax(92px, 1fr));
+  height: 100%;
+  min-height: calc(var(--zfa-cal-semaines) * 92px + 28px);
 }
-.zfa-cal-msem { flex: 1 1 0; position: relative; display: flex; min-height: 84px; }
-.zfa-cal-msem-cells { display: flex; flex: 1 1 auto; }
+.zfa-cal-jour-entete-ligne,
+.zfa-cal-msem,
+.zfa-cal-msem-cells { display: contents; }
+.zfa-cal-jour-entete {
+  position: sticky; top: 0; z-index: 2;
+  padding: 6px 8px 5px;
+  text-align: left;
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold, 600);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
 .zfa-cal-cellule {
-  flex: 1 1 0; min-width: 0;
+  min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 4px 4px 3px;
+  overflow: hidden;
   border-right: 1px solid var(--background-modifier-border);
   border-bottom: 1px solid var(--background-modifier-border);
-  padding: 3px 4px; overflow: hidden; display: flex; flex-direction: column;
+  background: var(--background-primary);
 }
-.zfa-cal-cellule.hors-mois { background: var(--background-secondary); }
-.zfa-cal-cellule.est-aujourdhui { box-shadow: inset 0 0 0 2px var(--interactive-accent); }
+.zfa-cal-cellule:nth-child(7n) { border-right: none; }
+.zfa-cal-cellule.est-weekend,
+.zfa-cal-jour-entete.est-weekend {
+  background: color-mix(in srgb, var(--background-secondary) 55%, var(--background-primary));
+}
+/* Les jours des mois voisins restent lisibles, mais passent au second plan. */
+.zfa-cal-cellule.hors-mois .zfa-cal-cellule-corps { opacity: 0.5; }
+.zfa-cal-cellule.hors-mois .zfa-cal-quantieme { color: var(--text-faint); }
 .zfa-cal-cellule.est-selection,
 .zfa-cal-bandeau-jour.est-selection {
   box-shadow: inset 0 0 0 2px var(--interactive-accent);
-  background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+  background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
 }
-.zfa-cal-tete { height: 18px; display: flex; align-items: center; gap: 3px; }
-.zfa-cal-quantieme { margin-left: auto; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.zfa-cal-tete {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 3px;
+  height: 22px; padding: 0 2px;
+}
+/* Le numéro du jour : à droite, cliquable (ouvre la semaine). Aujourd'hui
+   dans une pastille pleine, à la manière de Calendrier. */
+.zfa-cal-quantieme {
+  margin-left: auto;
+  min-width: 22px; height: 22px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 11px;
+  font-size: var(--font-ui-small);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.zfa-cal-quantieme:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.zfa-cal-quantieme.est-premier { font-weight: var(--font-semibold, 600); color: var(--text-normal); }
+.zfa-cal-quantieme.est-aujourdhui {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: var(--font-semibold, 600);
+}
 .zfa-cal-tete-plus { font-size: 10px; color: var(--text-muted); }
 .zfa-cal-jalon {
   --zfa-cal-coul: var(--text-faint);
@@ -2218,21 +2271,100 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-jalon .svg-icon { width: 12px; height: 12px; }
 .zfa-cal-jalon.est-retard { color: var(--text-error); }
 .zfa-cal-cellule-corps {
-  flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; overflow: hidden;
+  flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column; gap: 2px;
+  overflow: hidden;
 }
+
+/* Un élément de journée = une ligne de hauteur fixe : heure, puis titre
+   coupé. Tâches et événements Apple ont la même taille, seule leur marque
+   de couleur les distingue. */
+.zfa-cal-m-el {
+  flex: 0 0 var(--zfa-cal-ligne);
+  height: var(--zfa-cal-ligne);
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex; align-items: center; gap: 5px;
+  padding: 0 6px;
+  white-space: nowrap; overflow: hidden;
+  font-size: var(--font-ui-smaller);
+  line-height: var(--zfa-cal-ligne);
+}
+/* Plus fort que l'affichage propre à chaque genre (.zfa-cal-evt.est-compacte
+   est déclaré plus loin) : sans cela, les événements Apple ne se repliaient
+   jamais et le « +N » tombait hors de la case. */
+.zfa-cal-cellule-corps > .zfa-cal-m-el.est-replie { display: none; }
+.zfa-cal-m-titre { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .zfa-cal-pastille {
   --zfa-cal-coul: var(--text-faint);
-  display: flex; align-items: baseline; gap: 2px;
-  padding: 1px 4px; border-radius: 3px; overflow: hidden;
-  white-space: nowrap; text-overflow: ellipsis;
-  font-size: var(--font-ui-smaller); line-height: 1.3; cursor: pointer;
-  background: color-mix(in srgb, var(--zfa-cal-coul) 20%, var(--background-primary));
-  border-left: 3px solid var(--zfa-cal-coul);
+  display: flex; align-items: center; gap: 5px;
+  padding: 0 6px; border-radius: var(--radius-s, 4px); overflow: hidden;
+  white-space: nowrap;
+  font-size: var(--font-ui-smaller); cursor: pointer;
+  color: var(--text-normal);
+  background: color-mix(in srgb, var(--zfa-cal-coul) 18%, var(--background-primary));
+  box-shadow: inset 3px 0 0 0 var(--zfa-cal-coul);
 }
 .zfa-cal-pastille-h {
-  font-variant-numeric: tabular-nums; font-weight: var(--font-medium); color: var(--text-muted);
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums; font-weight: var(--font-medium);
+  color: var(--text-muted);
 }
-.zfa-cal-pastille.est-retard { box-shadow: inset 2px 0 0 0 var(--text-error); }
+.zfa-cal-pastille.est-retard { box-shadow: inset 3px 0 0 0 var(--text-error); }
+.zfa-cal-cellule .zfa-cal-evt.est-compacte,
+.zfa-cal-jour-bulle .zfa-cal-evt.est-compacte {
+  border: none;
+  border-radius: var(--radius-s, 4px);
+  padding: 0 6px;
+  background: transparent;
+  box-shadow: inset 3px 0 0 0 var(--zfa-cal-coul);
+}
+.zfa-cal-cellule .zfa-cal-evt .zfa-cal-evt-h,
+.zfa-cal-jour-bulle .zfa-cal-evt .zfa-cal-evt-h { flex: 0 0 auto; }
+.zfa-cal-cellule .zfa-cal-evt .zfa-cal-m-titre,
+.zfa-cal-jour-bulle .zfa-cal-evt .zfa-cal-m-titre { color: var(--text-muted); }
+
+/* « +N de plus » : ce qui ne tient pas, à un clic. */
+.zfa-cal-plus {
+  flex: 0 0 auto;
+  height: var(--zfa-cal-ligne);
+  line-height: var(--zfa-cal-ligne);
+  padding: 0 6px;
+  border-radius: var(--radius-s, 4px);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.zfa-cal-plus:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+
+/* La journée entière, posée sur sa case. */
+.zfa-cal-jour-bulle {
+  position: fixed;
+  z-index: var(--layer-popover, 40);
+  max-height: min(70vh, 520px);
+  display: flex; flex-direction: column;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  background: var(--background-primary);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.2);
+  animation: zfa-cal-bulle 140ms cubic-bezier(0.32, 0.72, 0, 1);
+  --zfa-cal-ligne: 24px;
+}
+.zfa-cal-jour-bulle-tete {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px 8px;
+  font-weight: var(--font-semibold, 600);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.zfa-cal-jour-bulle-semaine { margin-left: auto; font-size: var(--font-ui-smaller); }
+.zfa-cal-jour-bulle-corps {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 8px;
+  overflow-y: auto;
+}
+@keyframes zfa-cal-bulle { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+@media (prefers-reduced-motion: reduce) { .zfa-cal-jour-bulle { animation: none; } }
 
 .zfa-cal-grille.zfa-cal-semaine { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 

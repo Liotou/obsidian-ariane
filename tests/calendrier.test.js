@@ -497,3 +497,15 @@ test('suggestions pour un créneau tracé : une échéance dépassée compte enc
   assert.equal(s[0].raison, 'échéance dépassée');
   assert.equal(s[1].raison, '', 'rien à dire sur une tâche sans indice');
 });
+
+test('vue mois : la journée entière d\'abord, puis tout par heure, tâches et événements mêlés', () => {
+  const l = Ariane.trierElementsJour([
+    { id: 'tache 10:15', debut: '2026-09-10T10:15' },
+    { id: 'tâche du jour', allDay: true, debut: '' },
+    { id: 'événement 09:00', debut: '2026-09-10T09:00' },
+    { id: 'événement journée', allDay: true, debut: '2026-09-10T00:00' },
+    { id: 'tache 18:00', debut: '2026-09-10T18:00' },
+  ]);
+  assert.deepEqual(l.map((x) => x.id),
+    ['tâche du jour', 'événement journée', 'événement 09:00', 'tache 10:15', 'tache 18:00']);
+});

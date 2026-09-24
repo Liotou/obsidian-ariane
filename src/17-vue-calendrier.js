@@ -149,6 +149,7 @@ class MoteurCalendrier extends MoteurVue {
     this._redessinDiffere = false;
     this._gesteCal = false;
     if (this._pose) this._pose.finir();
+    this._fermerJourMois();
     if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
     if (this.greffon._moteursCalendrier) this.greffon._moteursCalendrier.delete(this);
     this.racine.empty();
@@ -359,6 +360,8 @@ class MoteurCalendrier extends MoteurVue {
 
   dessinerVraiment() {
     if (this._detruit) return;
+    // Une bulle « +N » ouverte montrerait un contenu périmé après redessin.
+    this._fermerJourMois();
     this._jourRendu = new Date().toISOString().slice(0, 10);
     this._chargerFond();
     if (this.greffon && this.greffon._relancerReleveAgenda) this.greffon._relancerReleveAgenda(1500);
@@ -1713,23 +1716,48 @@ class MoteurCalendrier extends MoteurVue {
       // début != échéance (plage multi-jours) : non affiché en vue mois.
     }
 
+    // Une journée : tâches du jour, créneaux et événements Apple, mêlés dans
+    // un seul ordre (la journée entière d'abord, puis l'heure).
+    const elementsDu = (jour) => {
+      const l = [];
+      for (const t of (jourTaches.get(jour) || [])) l.push({ genre: 'tache', t, allDay: true, debut: '' });
+      for (const x of (pastilles.get(jour) || [])) {
+        l.push({ genre: 'creneau', t: x.t, ev: x.ev, debut: x.ev.debut });
+      }
+      const fj = this._fondDuJour(jour);
+      for (const e of fj.jour) l.push({ genre: 'evt', e, allDay: true, debut: e.debut });
+      for (const e of fj.horaires) l.push({ genre: 'evt', e, debut: e.debut });
+      return Ariane.trierElementsJour(l);
+    };
+    this._enRetardMois = enRetard;
+    this._elementsMois = elementsDu;
+
+    // Une seule grille CSS de 7 colonnes égales : en-tête et semaines partagent
+    // les mêmes pistes, donc tout s'aligne, et rien ne déborde à droite. Les
+    // rangées se partagent la hauteur : une journée chargée ne pousse plus sa
+    // semaine, elle se replie en « +N de plus » (_replierCellulesMois).
     const grille = hote.createDiv({ cls: 'zfa-cal-mois-grille' });
+    grille.style.setProperty('--zfa-cal-semaines', String(g.semaines.length));
     const ent = grille.createDiv({ cls: 'zfa-cal-jour-entete-ligne' });
-    for (const d of ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']) {
-      ent.createDiv({ cls: 'zfa-cal-jour-entete', text: tr(d) });
-    }
+    ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].forEach((d, i) => {
+      ent.createDiv({ cls: 'zfa-cal-jour-entete' + (i >= 5 ? ' est-weekend' : ''), text: tr(d) });
+    });
+    const moisCourt = (jour) => new Date(jour + 'T12:00:00')
+      .toLocaleDateString('fr-FR', { month: 'short' }).replace(/\.$/, '');
 
     for (const semaine of g.semaines) {
       const wk = grille.createDiv({ cls: 'zfa-cal-msem' });
       const cells = wk.createDiv({ cls: 'zfa-cal-msem-cells' });
-      for (const jour of semaine) {
+      semaine.forEach((jour, di) => {
         const cell = cells.createDiv({ cls: 'zfa-cal-cellule' });
         cell.dataset.jour = jour;
         this._brancherDropCellule(cell);
+        if (di >= 5) cell.addClass('est-weekend');
         if (jour === auj) cell.addClass('est-aujourdhui');
         if (jour.slice(0, 7) !== g.moisDebut.slice(0, 7)) cell.addClass('hors-mois');
         if (this._jourSel === jour) cell.addClass('est-selection');
-        const surCarte = (e) => e.target.closest('.zfa-cal-carte, .zfa-cal-pastille, .zfa-cal-jalon, .zfa-cal-evt');
+        const surCarte = (e) => e.target.closest(
+          '.zfa-cal-carte, .zfa-cal-pastille, .zfa-cal-jalon, .zfa-cal-evt, .zfa-cal-plus, .zfa-cal-quantieme');
         cell.addEventListener('click', (e) => {
           if (surCarte(e)) return;
           this._jourSel = (this._jourSel === jour) ? '' : jour;
@@ -1750,48 +1778,149 @@ class MoteurCalendrier extends MoteurVue {
           jd.title = t.ref + ' · ' + (t.intitule || '');
           this._brancherOuvertureCarte(jd, t, { source: 'dates', allDay: true });
         }
-        tete.createSpan({ cls: 'zfa-cal-quantieme', text: String(Number(jour.slice(8, 10))) });
+        // Le numéro du jour ouvre sa semaine. Le 1er porte le nom du mois :
+        // la frontière entre deux mois se lit d'un coup d'œil.
+        const num = Number(jour.slice(8, 10));
+        const q = tete.createSpan({ cls: 'zfa-cal-quantieme'
+          + (jour === auj ? ' est-aujourdhui' : '') + (num === 1 ? ' est-premier' : ''),
+          text: num === 1 ? '1 ' + moisCourt(jour) : String(num) });
+        q.title = tr('Voir cette semaine');
+        q.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          this._ancre = Ariane.grilleSemaine(jour).lundi;
+          await this.ctx.ecrire('calMode', 'semaine');
+          this.dessiner();
+        });
 
         const corps = cell.createDiv({ cls: 'zfa-cal-cellule-corps' });
-        for (const t of (jourTaches.get(jour) || [])) {
-          this.rendreCarte(corps, t, { source: 'dates', allDay: true },
-            { compact: true, avecCoche: true, enRetard: enRetard.has(t.ref) });
-        }
-        const pj = (pastilles.get(jour) || []).slice()
-          .sort((a, b) => (a.ev.debut < b.ev.debut ? -1 : a.ev.debut > b.ev.debut ? 1 : 0));
-        for (const { t, ev } of pj) {
-          const p = corps.createDiv({ cls: 'zfa-cal-pastille'
-            + (enRetard.has(t.ref) ? ' est-retard' : '') });
-          p.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
-          p.dataset.ref = t.ref;
-          p.dataset.brut = ev.brut;
-          p.createSpan({ cls: 'zfa-cal-pastille-h', text: ev.debut.slice(11, 16) });
-          p.createSpan({ text: ' ' + (t.intitule || t.ref) });
-          p.title = t.ref + ' · ' + (t.intitule || '') + '\n'
-            + ev.debut.slice(11, 16) + '–' + ev.fin.slice(11, 16);
-          this._brancherOuvertureCarte(p, t, ev);
-          p.setAttribute('draggable', 'true');
-          p.addEventListener('dragstart', (de) => {
-            de.dataTransfer.setData('text/x-ariane-cal',
-              JSON.stringify({ ref: t.ref, jour, brut: ev.brut }));
-            de.dataTransfer.effectAllowed = 'move';
-          });
-        }
-        // Événements Apple réels du jour → chips zfa-cal-evt, clic → Calendar.app.
-        const fj = this._fondDuJour(jour);
-        for (const e of fj.jour.concat(fj.horaires)) {
-          const ch = corps.createDiv({ cls: 'zfa-cal-evt est-compacte' });
-          if (e.couleur) ch.style.setProperty('--zfa-cal-coul', e.couleur);
-          if (!e.allDay && e.debut && e.debut.length > 15) {
-            ch.createSpan({ cls: 'zfa-cal-evt-h', text: e.debut.slice(11, 16) + ' ' });
-          }
-          ch.createSpan({ text: e.titre || tr('(sans titre)') });
-          ch.title = (e.titre || '') + (e.calendrier ? ' · ' + e.calendrier : '');
-          this._brancherEvenement(ch, e);
-        }
+        for (const x of elementsDu(jour)) this._elementMois(corps, x, jour);
+      });
+    }
+    // Le repli se mesure une fois la grille posée : c'est la hauteur réelle
+    // de chaque case qui dit combien d'éléments y tiennent.
+    this._win().requestAnimationFrame(() => this._replierCellulesMois(grille));
+  }
+
+  // Un élément d'une journée de la vue mois (ou de sa bulle « +N ») : une
+  // ligne, heure en tête, à la couleur de sa tâche ou de son calendrier.
+  _elementMois(hote, x, jour) {
+    const enRetard = this._enRetardMois || new Set();
+    if (x.genre === 'tache') {
+      const c = this.rendreCarte(hote, x.t, { source: 'dates', allDay: true },
+        { compact: true, avecCoche: true, enRetard: enRetard.has(x.t.ref) });
+      if (c) c.classList.add('zfa-cal-m-el');
+      return c;
+    }
+    if (x.genre === 'creneau') {
+      const { t, ev } = x;
+      const p = hote.createDiv({ cls: 'zfa-cal-pastille zfa-cal-m-el'
+        + (enRetard.has(t.ref) ? ' est-retard' : '') });
+      p.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
+      p.dataset.ref = t.ref;
+      p.dataset.brut = ev.brut;
+      p.createSpan({ cls: 'zfa-cal-pastille-h', text: ev.debut.slice(11, 16) });
+      p.createSpan({ cls: 'zfa-cal-m-titre', text: t.intitule || t.ref });
+      p.title = t.ref + ' · ' + (t.intitule || '') + '\n'
+        + ev.debut.slice(11, 16) + ' → ' + ev.fin.slice(11, 16);
+      this._brancherOuvertureCarte(p, t, ev);
+      p.setAttribute('draggable', 'true');
+      p.addEventListener('dragstart', (de) => {
+        de.dataTransfer.setData('text/x-ariane-cal', JSON.stringify({ ref: t.ref, jour, brut: ev.brut }));
+        de.dataTransfer.effectAllowed = 'move';
+        this._fermerJourMois();
+      });
+      return p;
+    }
+    const e = x.e;
+    const ch = hote.createDiv({ cls: 'zfa-cal-evt est-compacte zfa-cal-m-el' });
+    if (e.couleur) ch.style.setProperty('--zfa-cal-coul', e.couleur);
+    if (!e.allDay && e.debut && e.debut.length > 15) {
+      ch.createSpan({ cls: 'zfa-cal-evt-h', text: e.debut.slice(11, 16) });
+    }
+    ch.createSpan({ cls: 'zfa-cal-m-titre', text: e.titre || tr('(sans titre)') });
+    ch.title = (e.titre || '') + (e.calendrier ? ' · ' + e.calendrier : '');
+    this._brancherEvenement(ch, e);
+    return ch;
+  }
+
+  // Une case trop pleine garde ce qui tient et replie le reste derrière
+  // « +N de plus », qui ouvre la journée entière. Rien n'est plus tassé
+  // jusqu'à l'illisible.
+  _replierCellulesMois(grille) {
+    if (this._detruit || !grille.isConnected) return;
+    for (const corps of Array.from(grille.querySelectorAll('.zfa-cal-cellule-corps'))) {
+      corps.querySelectorAll('.zfa-cal-plus').forEach((x) => x.remove());
+      const enfants = Array.from(corps.children);
+      enfants.forEach((c) => c.classList.remove('est-replie'));
+      if (corps.scrollHeight <= corps.clientHeight + 1) continue;
+      const cell = corps.closest('.zfa-cal-cellule');
+      const jour = cell && cell.dataset.jour;
+      const plus = corps.createDiv({ cls: 'zfa-cal-plus' });
+      let caches = 0;
+      for (let i = enfants.length - 1; i >= 0 && corps.scrollHeight > corps.clientHeight + 1; i -= 1) {
+        enfants[i].classList.add('est-replie');
+        caches += 1;
+        plus.textContent = tr('+{n} de plus').replace('{n}', String(caches));
       }
+      plus.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (jour) this._ouvrirJourMois(jour, cell);
+      });
     }
   }
+
+  // La journée entière, dans une bulle posée sur sa case : tout y est, et
+  // chaque élément garde ses gestes (ouvrir, menu, glisser vers un autre jour).
+  _ouvrirJourMois(jour, cell) {
+    this._fermerJourMois();
+    const doc = this._doc();
+    const bulle = doc.createElement('div');
+    bulle.className = 'zfa-cal-jour-bulle';
+    const tete = bulle.createDiv({ cls: 'zfa-cal-jour-bulle-tete' });
+    const lisible = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR',
+      { weekday: 'long', day: 'numeric', month: 'long' });
+    tete.createSpan({ text: lisible.charAt(0).toUpperCase() + lisible.slice(1) });
+    const semaine = tete.createEl('button', { cls: 'zfa-cal-jour-bulle-semaine', text: tr('Semaine') });
+    semaine.addEventListener('click', async () => {
+      this._fermerJourMois();
+      this._ancre = Ariane.grilleSemaine(jour).lundi;
+      await this.ctx.ecrire('calMode', 'semaine');
+      this.dessiner();
+    });
+    const corps = bulle.createDiv({ cls: 'zfa-cal-jour-bulle-corps' });
+    for (const x of (this._elementsMois ? this._elementsMois(jour) : [])) this._elementMois(corps, x, jour);
+    doc.body.appendChild(bulle);
+
+    // Posée sur la case, élargie, et gardée dans la fenêtre.
+    const r = cell.getBoundingClientRect();
+    const larg = Math.max(r.width + 24, 260);
+    const vue = doc.documentElement;
+    const x = Math.min(Math.max(8, r.left - 12), vue.clientWidth - larg - 8);
+    bulle.style.width = larg + 'px';
+    bulle.style.left = x + 'px';
+    const h = bulle.getBoundingClientRect().height;
+    bulle.style.top = Math.max(8, Math.min(r.top - 6, vue.clientHeight - h - 8)) + 'px';
+
+    const dehors = (e) => { if (!bulle.contains(e.target)) this._fermerJourMois(); };
+    const echap = (e) => { if (e.key === 'Escape') this._fermerJourMois(); };
+    this._win().setTimeout(() => {
+      doc.addEventListener('pointerdown', dehors, true);
+      doc.addEventListener('keydown', echap, true);
+    }, 0);
+    this._bulleJour = { bulle, fermer: () => {
+      doc.removeEventListener('pointerdown', dehors, true);
+      doc.removeEventListener('keydown', echap, true);
+      bulle.remove();
+    } };
+  }
+
+  _fermerJourMois() {
+    if (!this._bulleJour) return;
+    const b = this._bulleJour;
+    this._bulleJour = null;
+    try { b.fermer(); } catch (e) { /* fenêtre partie */ }
+  }
+
   _plageHoraire() {
     const h = (s, def) => {
       const m = String(this.lire(s) || '').match(/^(\d{1,2}):(\d{2})$/);
