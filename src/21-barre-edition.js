@@ -1382,7 +1382,7 @@ class BarreOutils {
       if (suite === 'md-pinceau') actif = !!this.chef.pinceau;
       else if (suite === 'citations-basculer') actif = this.greffon.settings.citationsRepliees === true;
       else if (suite === 'correcteur-volet') {
-        actif = this.greffon.app.workspace.getLeavesOfType(TYPE_VUE_RELECTURE).length > 0;
+        actif = !!(this.greffon.correcteur && this.greffon.correcteur.voletVisible());
       } else if (suite === 'note-plein-ecran') {
         actif = !!(this.vue.containerEl && this.vue.containerEl.closest('.zfa-volet-pleine-page'));
       } else if (ed) {

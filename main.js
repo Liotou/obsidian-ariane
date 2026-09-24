@@ -15828,9 +15828,9 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'correcteur-volet',
-      name: tr('Correcteur Apple : ouvrir le volet de relecture'),
+      name: tr('Correcteur Apple : ouvrir ou fermer le volet de relecture'),
       icon: 'spell-check',
-      callback: () => this.correcteur && this.correcteur.ouvrirVolet(),
+      callback: () => this.correcteur && this.correcteur.basculerVolet(),
     });
     this.addCommand({
       id: 'barre-basculer',
@@ -15963,7 +15963,7 @@ class Ariane extends composer(obsidian.Plugin,
     // Le correcteur n'existe que sur Mac : ailleurs, l'icône n'aurait rien
     // à ouvrir. La bascule du ruban se cale donc sur ce que le système offre.
     if (this.correcteur && AssistantApple.disponible()) {
-      this.addRibbonIcon('spell-check', tr('Relecture (Ariane)'), () => this.correcteur.ouvrirVolet());
+      this.addRibbonIcon('spell-check', tr('Relecture (Ariane)'), () => this.correcteur.basculerVolet());
     }
     // Déclare le panneau comme source d'aperçu au survol (« Page preview »).
     if (this.registerHoverLinkSource) {
@@ -29761,6 +29761,28 @@ class CorrecteurApple extends obsidian.Component {
     espace.revealLeaf(feuille);
   }
 
+  // Le volet est-il sous les yeux ? Ouvert ne suffit pas : il peut dormir
+  // dans une barre latérale repliée, ou derrière un autre onglet.
+  voletVisible() {
+    return this.greffon.app.workspace.getLeavesOfType(TYPE_VUE_RELECTURE).some((f) => {
+      const el = f.view && f.view.containerEl;
+      if (!el) return false;
+      return typeof el.isShown === 'function' ? el.isShown() : el.offsetParent !== null;
+    });
+  }
+
+  // Le geste du bouton : visible, il se ferme ; ouvert mais caché, il se
+  // montre ; absent, il s'ouvre. Fermer un volet qu'on ne voit pas serait
+  // un clic pour rien, qu'il faudrait refaire aussitôt.
+  async basculerVolet() {
+    const espace = this.greffon.app.workspace;
+    if (this.voletVisible()) {
+      for (const f of espace.getLeavesOfType(TYPE_VUE_RELECTURE)) f.detach();
+      return;
+    }
+    await this.ouvrirVolet();
+  }
+
   // Prévient les volets ouverts que la liste des fautes a bougé.
   _prevenir() { for (const f of this.abonnes) { try { f(); } catch (e) { /* volet fermé */ } } }
 
@@ -32730,7 +32752,7 @@ class BarreOutils {
       if (suite === 'md-pinceau') actif = !!this.chef.pinceau;
       else if (suite === 'citations-basculer') actif = this.greffon.settings.citationsRepliees === true;
       else if (suite === 'correcteur-volet') {
-        actif = this.greffon.app.workspace.getLeavesOfType(TYPE_VUE_RELECTURE).length > 0;
+        actif = !!(this.greffon.correcteur && this.greffon.correcteur.voletVisible());
       } else if (suite === 'note-plein-ecran') {
         actif = !!(this.vue.containerEl && this.vue.containerEl.closest('.zfa-volet-pleine-page'));
       } else if (ed) {

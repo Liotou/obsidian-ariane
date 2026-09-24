@@ -528,6 +528,28 @@ class CorrecteurApple extends obsidian.Component {
     espace.revealLeaf(feuille);
   }
 
+  // Le volet est-il sous les yeux ? Ouvert ne suffit pas : il peut dormir
+  // dans une barre latérale repliée, ou derrière un autre onglet.
+  voletVisible() {
+    return this.greffon.app.workspace.getLeavesOfType(TYPE_VUE_RELECTURE).some((f) => {
+      const el = f.view && f.view.containerEl;
+      if (!el) return false;
+      return typeof el.isShown === 'function' ? el.isShown() : el.offsetParent !== null;
+    });
+  }
+
+  // Le geste du bouton : visible, il se ferme ; ouvert mais caché, il se
+  // montre ; absent, il s'ouvre. Fermer un volet qu'on ne voit pas serait
+  // un clic pour rien, qu'il faudrait refaire aussitôt.
+  async basculerVolet() {
+    const espace = this.greffon.app.workspace;
+    if (this.voletVisible()) {
+      for (const f of espace.getLeavesOfType(TYPE_VUE_RELECTURE)) f.detach();
+      return;
+    }
+    await this.ouvrirVolet();
+  }
+
   // Prévient les volets ouverts que la liste des fautes a bougé.
   _prevenir() { for (const f of this.abonnes) { try { f(); } catch (e) { /* volet fermé */ } } }
 

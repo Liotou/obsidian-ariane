@@ -480,3 +480,29 @@ test('navigateur : il démarre sur la faute désignée, pas sur la première', a
   assert.deepEqual(lire('zfa-relecture-compte'), ['1 sur 3']);
   centre.guidee.fermer();
 });
+
+test('volet de relecture : le bouton ferme ce qui se voit, montre ce qui est caché', async () => {
+  const { CorrecteurApple } = require('./obsidian-factice.js')._test;
+  const faire = (volets) => {
+    const journal = [];
+    const c = Object.create(CorrecteurApple.prototype);
+    c.greffon = { app: { workspace: { getLeavesOfType: () => volets.filter((v) => !v.parti) } } };
+    c.ouvrirVolet = async () => { journal.push('ouvrir'); };
+    for (const v of volets) v.detach = () => { v.parti = true; journal.push('fermer'); };
+    return { c, journal };
+  };
+  const vu = { view: { containerEl: { isShown: () => true } } };
+  const cache = { view: { containerEl: { isShown: () => false } } };
+
+  let { c, journal } = faire([vu]);
+  await c.basculerVolet();
+  assert.deepEqual(journal, ['fermer'], 'visible : le second clic le ferme');
+
+  ({ c, journal } = faire([cache]));
+  await c.basculerVolet();
+  assert.deepEqual(journal, ['ouvrir'], 'caché (barre repliée) : le clic le montre au lieu de le fermer');
+
+  ({ c, journal } = faire([]));
+  await c.basculerVolet();
+  assert.deepEqual(journal, ['ouvrir'], 'absent : le clic l\'ouvre');
+});
