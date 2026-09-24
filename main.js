@@ -10281,6 +10281,40 @@ const avecFriseStatiques = (Base) => class extends Base {
     return { debut: iso(jour, cale), fin: iso(jour, cale + duree) };
   }
 
+  // Durée d'un créneau en minutes, entre deux instants « AAAA-MM-JJTHH:MM ».
+  // Compté en temps universel : un changement d'heure ne raccourcit ni
+  // n'allonge une copie. Jamais moins d'un quart d'heure ; une heure si les
+  // bornes sont illisibles.
+  static dureeCreneauMin(debut, fin) {
+    const lire = (s) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(s || ''));
+      return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : NaN;
+    };
+    const d = (lire(fin) - lire(debut)) / 60000;
+    if (!Number.isFinite(d)) return 60;
+    return Math.max(15, Math.round(d));
+  }
+
+  // Où tomberait un créneau tenu à la souris, dans la grille de la vue
+  // semaine : colonne du jour et haut calé au quart d'heure. `prise` est la
+  // distance entre le haut de la carte et le pointeur (on la tient par le
+  // haut, pas par le coin). Rend null hors de la grille.
+  static poseCreneau(o) {
+    const p = o || {};
+    const colW = Number(p.colW);
+    const pxH = Number(p.pxHeure);
+    const n = Number(p.nbJours);
+    if (!(colW > 0) || !(pxH > 0) || !(n > 0)) return null;
+    const x = Number(p.xRel);
+    const y = Number(p.yRel);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    if (x < 0 || x >= colW * n || y < 0) return null;
+    if (Number(p.hauteur) > 0 && y > Number(p.hauteur)) return null;
+    const quart = pxH / 4;
+    const top = Math.max(0, Math.round((y - (Number(p.prise) || 0)) / quart) * quart);
+    return { idx: Math.floor(x / colW), top };
+  }
+
   // Hauteur (px) du bandeau « journée entière » de la vue semaine, ajustée par
   // la poignée de redimensionnement : borne 24–320, repli sur 66 si la valeur
   // stockée est absente ou aberrante.
@@ -27290,6 +27324,7 @@ class MoteurCalendrier extends MoteurVue {
     this._coalesce = false;
     this._redessinDiffere = false;
     this._gesteCal = false;
+    if (this._pose) this._pose.finir();
     if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
     if (this.greffon._moteursCalendrier) this.greffon._moteursCalendrier.delete(this);
     this.racine.empty();
@@ -28034,6 +28069,11 @@ class MoteurCalendrier extends MoteurVue {
       // Commentaire de session : stocké dans le bloc balisé de la note.
       m.addItem((i) => i.setTitle(tr('Commentaire…')).setIcon('message-square')
         .onClick(() => this._ouvrirCommentaire(t, ev)));
+      const blocMenu = e.target && e.target.closest ? e.target.closest('.zfa-cal-bloc') : null;
+      if (blocMenu && this.mode === 'semaine') {
+        m.addItem((i) => i.setTitle(tr('Dupliquer ce créneau')).setIcon('copy-plus')
+          .onClick(() => this._dupliquerCreneau(t, ev, blocMenu, e)));
+      }
       // Bloc horaire : on retire le créneau lui-même (la ligne de « Créneaux »).
       m.addItem((i) => i.setTitle(tr('Supprimer ce créneau')).setIcon('trash-2')
         .onClick(async () => {
@@ -28460,6 +28500,166 @@ class MoteurCalendrier extends MoteurVue {
     this._doc().addEventListener('pointercancel', lacher);
   }
 
+  // Duplication d'un créneau (vue semaine). Une copie de la carte se met à
+  // suivre la souris ; le guide du déplacement montre où elle se posera (jour
+  // surligné, haut calé au quart d'heure) ; un clic la pose : c'est un NOUVEAU
+  // créneau de la même tâche, de même durée, l'original ne bouge pas. Échap,
+  // clic droit ou clic hors de la grille : on repose la copie. ⌥ au clic : la
+  // copie reste en main pour en poser une autre.
+  // Le guide et la grille sont relus à chaque image plutôt que retenus : un
+  // redessin (l'horloge, une écriture) peut remplacer la grille en cours de
+  // route, et la copie doit continuer de viser juste.
+  _dupliquerCreneau(t, ev, bloc, e0) {
+    if (this._pose) this._pose.finir();
+    const doc = this._doc();
+    const win = this._win();
+    const PXH = this._pxHeure;
+    const duree = Ariane.dureeCreneauMin(ev.debut, ev.fin);
+    const r0 = bloc.getBoundingClientRect();
+    const larg = r0.width;
+    const haut = Math.max(PXH / 4, (duree / 60) * PXH);
+    // La carte est tenue par le haut, à la façon d'une fiche qu'on prend
+    // entre deux doigts : le pointeur désigne l'heure de début.
+    const PRISE = Math.min(12, haut / 2);
+
+    const fantome = bloc.cloneNode(true);
+    fantome.querySelectorAll('.zfa-cal-lignee-btns, .zfa-cal-poignee, .zfa-cal-poignee-haut')
+      .forEach((x) => x.remove());
+    fantome.classList.remove('zfa-cal-bloc-flotte');
+    fantome.classList.add('zfa-cal-fantome');
+    fantome.removeAttribute('tabindex');
+    fantome.style.left = '0px';
+    fantome.style.top = '0px';
+    fantome.style.width = larg + 'px';
+    fantome.style.height = haut + 'px';
+    doc.body.appendChild(fantome);
+    doc.body.classList.add('zfa-cal-pose-en-cours');
+
+    let x = e0.clientX;
+    let y = e0.clientY;
+    let cible = null;          // { jour, top } sous le pointeur, ou null
+    let guide = null;
+    let innerGuide = null;
+    let colCible = null;
+    let rafId = null;
+    let pose = null;
+
+    const oterGuide = () => {
+      if (guide) { guide.remove(); guide = null; }
+      if (colCible) { colCible.classList.remove('zfa-cal-col-cible-jour'); colCible = null; }
+    };
+    const viser = () => {
+      rafId = null;
+      fantome.style.transform = 'translate(' + Math.round(x - larg / 2) + 'px,'
+        + Math.round(y - PRISE) + 'px)';
+      const inner = this.racine.querySelector('.zfa-cal-sem-inner');
+      if (inner !== innerGuide) { oterGuide(); innerGuide = inner; }
+      const colW = this._semColW || 0;
+      const strip = Array.isArray(this._semStrip) ? this._semStrip : [];
+      // Le pointeur doit être SUR la grille visible, pas seulement dans son
+      // rectangle : la grille déborde, rognée par son défilement.
+      const sous = inner ? doc.elementFromPoint(x, y) : null;
+      const r = inner ? inner.getBoundingClientRect() : null;
+      const p = r && sous && inner.contains(sous) ? Ariane.poseCreneau({
+        xRel: x - r.left, yRel: y - r.top, prise: PRISE, colW,
+        nbJours: strip.length, pxHeure: PXH, hauteur: r.height }) : null;
+      if (!p) {
+        cible = null;
+        oterGuide();
+        fantome.classList.add('est-hors-grille');
+        return;
+      }
+      fantome.classList.remove('est-hors-grille');
+      cible = { jour: strip[p.idx], top: p.top };
+      if (!guide) {
+        guide = inner.createDiv({ cls: 'zfa-cal-bloc-guide' });
+        guide.style.transition = 'none';
+        win.requestAnimationFrame(() => { if (guide) guide.style.transition = ''; });
+      }
+      guide.style.left = (p.idx * colW) + 'px';
+      guide.style.width = colW + 'px';
+      guide.style.top = p.top + 'px';
+      guide.style.height = haut + 'px';
+      const col = inner.querySelector('.zfa-cal-col[data-jour="' + cible.jour + '"]');
+      if (col !== colCible) {
+        if (colCible) colCible.classList.remove('zfa-cal-col-cible-jour');
+        colCible = col;
+        if (colCible) colCible.classList.add('zfa-cal-col-cible-jour');
+      }
+    };
+    const planifier = () => { if (rafId == null) rafId = win.requestAnimationFrame(viser); };
+    const surMouvement = (m) => { x = m.clientX; y = m.clientY; planifier(); };
+    // Le clic qui pose (ou qui abandonne) ne doit rien déclencher d'autre :
+    // ni ouvrir la carte survolée, ni ouvrir le menu de la cellule.
+    const absorber = (a) => { a.stopPropagation(); a.preventDefault(); };
+    const surAppui = (a) => {
+      absorber(a);
+      doc.addEventListener(a.button === 2 ? 'contextmenu' : 'click', absorber,
+        { capture: true, once: true });
+      x = a.clientX; y = a.clientY;
+      if (rafId != null) { win.cancelAnimationFrame(rafId); rafId = null; }
+      viser();
+      if (a.button !== 0 || !cible) { pose.finir(); return; }
+      poser(cible, a.altKey);
+    };
+    const surTouche = (k) => { if (k.key === 'Escape') { absorber(k); pose.finir(); } };
+
+    const poser = async (c, garder) => {
+      const cr = Ariane.creneauDepuisDrop({ yRel: c.top, hauteurHeure: PXH,
+        heureDebut: this._hDeb, jourISO: c.jour, dureeMin: duree });
+      if (!cr) return;
+      // Poser la copie pile sur un créneau existant de la tâche n'ajouterait
+      // rien : on le dit, et la copie reste en main.
+      const nv = Ariane.formatCreneau(cr.debut, cr.fin);
+      const tache = (this._tachesBrutes || this._taches || []).find((x2) => x2.ref === t.ref) || t;
+      if (Ariane.creneauxDeTache([].concat(tache.creneaux || [])).some((c2) => c2.brut === nv)) {
+        new obsidian.Notice(tr('Ce créneau existe déjà à cet endroit.'));
+        return;
+      }
+      if (!garder) pose.finir(true);
+      this._coalesceRedessin();
+      const prevu = this._creneauxAnticipes(t.ref, '', cr.debut, cr.fin);
+      await this._majCreneauU(t.ref, { avant: '', debut: cr.debut, fin: cr.fin });
+      this._apres(t.ref, { creneaux: prevu });
+      // La grille vient d'être redessinée : le guide se recale sans attendre
+      // que la souris bouge.
+      if (garder && this._pose === pose) planifier();
+    };
+
+    pose = {
+      // `pose` vrai : la copie rejoint le guide avant de s'effacer, pour que
+      // l'œil la suive jusqu'à sa place ; sinon elle s'évanouit sur place.
+      finir: (posee) => {
+        if (this._pose !== pose) return;
+        this._pose = null;
+        if (rafId != null) { win.cancelAnimationFrame(rafId); rafId = null; }
+        doc.removeEventListener('pointermove', surMouvement, true);
+        doc.removeEventListener('pointerdown', surAppui, true);
+        doc.removeEventListener('keydown', surTouche, true);
+        doc.removeEventListener('scroll', planifier, true);
+        doc.body.classList.remove('zfa-cal-pose-en-cours');
+        const rg = posee && guide ? guide.getBoundingClientRect() : null;
+        oterGuide();
+        if (rg) {
+          fantome.classList.add('est-posee');
+          fantome.style.width = rg.width - 12 + 'px';
+          fantome.style.transform = 'translate(' + Math.round(rg.left + 6) + 'px,'
+            + Math.round(rg.top) + 'px)';
+        } else {
+          fantome.classList.add('est-lachee');
+        }
+        win.setTimeout(() => fantome.remove(), 220);
+      },
+    };
+    this._pose = pose;
+    doc.addEventListener('pointermove', surMouvement, true);
+    doc.addEventListener('pointerdown', surAppui, true);
+    doc.addEventListener('keydown', surTouche, true);
+    // La molette fait défiler la grille sous la copie : le guide suit.
+    doc.addEventListener('scroll', planifier, true);
+    viser();
+  }
+
   // Câble dragover/drop sur une cellule de la vue mois : lien externe → créneau
   // ce jour ; charge interne « x-ariane-cal » → déplacement du créneau, ou
   // décalage des dates du span de tâche.
@@ -28878,6 +29078,14 @@ class MoteurCalendrier extends MoteurVue {
           // ferme que sur un nouveau clic sur le bouton, Échap, un changement
           // de fenêtre, ou la fermeture de la vue.
           const btns = bloc.createDiv({ cls: 'zfa-cal-lignee-btns' });
+          const btDup = btns.createDiv({ cls: 'zfa-cal-lignee-btn',
+            attr: { 'aria-label': tr('Dupliquer ce créneau'), title: tr('Dupliquer ce créneau') } });
+          obsidian.setIcon(btDup, 'copy-plus');
+          btDup.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
+          btDup.addEventListener('click', (e) => {
+            e.stopPropagation(); e.preventDefault();
+            this._dupliquerCreneau(t, ev, bloc, e);
+          });
           const btCom = btns.createDiv({ cls: 'zfa-cal-lignee-btn',
             attr: { 'aria-label': tr('Commentaire…'), title: tr('Commentaire…') } });
           obsidian.setIcon(btCom, 'message-square');

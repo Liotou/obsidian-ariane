@@ -424,3 +424,25 @@ test('cheminLienCalendrier : blocs côte à côte → court trait horizontal', (
     { x: 100, y: 50, w: 60, h: 40 }, { x: 170, y: 50, w: 60, h: 40 });
   assert.deepEqual([c.ax, c.ay, c.bx, c.by], [160, 70, 170, 70]);
 });
+
+test('dureeCreneauMin : minutes entre deux bornes, changement d\'heure neutre', () => {
+  assert.equal(Ariane.dureeCreneauMin('2026-09-08T09:00', '2026-09-08T10:30'), 90);
+  assert.equal(Ariane.dureeCreneauMin('2026-09-08T23:30', '2026-09-09T01:00'), 90, 'minuit franchi');
+  assert.equal(Ariane.dureeCreneauMin('2026-10-25T01:00', '2026-10-25T04:00'), 180,
+    'la nuit du passage à l\'heure d\'hiver ne change pas la durée affichée');
+  assert.equal(Ariane.dureeCreneauMin('2026-09-08T09:00', '2026-09-08T09:05'), 15, 'jamais moins d\'un quart d\'heure');
+  assert.equal(Ariane.dureeCreneauMin('x', 'y'), 60, 'bornes illisibles : une heure');
+});
+
+test('poseCreneau : colonne visée et haut calé au quart d\'heure', () => {
+  const base = { colW: 100, pxHeure: 40, nbJours: 7, prise: 10 };
+  assert.deepEqual(Ariane.poseCreneau(Object.assign({ xRel: 250, yRel: 95 }, base)), { idx: 2, top: 90 },
+    'tenu 10 px sous son haut : la carte commence à 85 px, calée à 90');
+  assert.deepEqual(Ariane.poseCreneau(Object.assign({ xRel: 0, yRel: 3 }, base)), { idx: 0, top: 0 },
+    'jamais au-dessus du début de la grille');
+  assert.equal(Ariane.poseCreneau(Object.assign({ xRel: 700, yRel: 50 }, base)), null, 'à droite de la grille');
+  assert.equal(Ariane.poseCreneau(Object.assign({ xRel: -1, yRel: 50 }, base)), null, 'à gauche');
+  assert.equal(Ariane.poseCreneau(Object.assign({ xRel: 50, yRel: 500, hauteur: 400 }, base)), null, 'sous la grille');
+  assert.equal(Ariane.poseCreneau({ xRel: 50, yRel: 50, colW: 0, pxHeure: 40, nbJours: 7 }), null,
+    'grille pas encore mesurée');
+});

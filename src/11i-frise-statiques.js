@@ -358,6 +358,40 @@ const avecFriseStatiques = (Base) => class extends Base {
     return { debut: iso(jour, cale), fin: iso(jour, cale + duree) };
   }
 
+  // Durée d'un créneau en minutes, entre deux instants « AAAA-MM-JJTHH:MM ».
+  // Compté en temps universel : un changement d'heure ne raccourcit ni
+  // n'allonge une copie. Jamais moins d'un quart d'heure ; une heure si les
+  // bornes sont illisibles.
+  static dureeCreneauMin(debut, fin) {
+    const lire = (s) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(s || ''));
+      return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : NaN;
+    };
+    const d = (lire(fin) - lire(debut)) / 60000;
+    if (!Number.isFinite(d)) return 60;
+    return Math.max(15, Math.round(d));
+  }
+
+  // Où tomberait un créneau tenu à la souris, dans la grille de la vue
+  // semaine : colonne du jour et haut calé au quart d'heure. `prise` est la
+  // distance entre le haut de la carte et le pointeur (on la tient par le
+  // haut, pas par le coin). Rend null hors de la grille.
+  static poseCreneau(o) {
+    const p = o || {};
+    const colW = Number(p.colW);
+    const pxH = Number(p.pxHeure);
+    const n = Number(p.nbJours);
+    if (!(colW > 0) || !(pxH > 0) || !(n > 0)) return null;
+    const x = Number(p.xRel);
+    const y = Number(p.yRel);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    if (x < 0 || x >= colW * n || y < 0) return null;
+    if (Number(p.hauteur) > 0 && y > Number(p.hauteur)) return null;
+    const quart = pxH / 4;
+    const top = Math.max(0, Math.round((y - (Number(p.prise) || 0)) / quart) * quart);
+    return { idx: Math.floor(x / colW), top };
+  }
+
   // Hauteur (px) du bandeau « journée entière » de la vue semaine, ajustée par
   // la poignée de redimensionnement : borne 24–320, repli sur 66 si la valeur
   // stockée est absente ou aberrante.
