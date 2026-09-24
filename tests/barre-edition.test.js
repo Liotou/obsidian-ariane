@@ -242,9 +242,13 @@ test('catalogue : des identifiants uniques, un nom et une icône chacun', () => 
 
 test('disposition par défaut : des entrées bien formées, et nos commandes existent', () => {
   const connues = new Set(T.BARRE_COMMANDES.map((c) => 'obsidian-ariane:' + c.id));
-  const arianeHorsBarre = new Set(['obsidian-ariane:correcteur-relire',
-    'obsidian-ariane:correcteur-volet', 'obsidian-ariane:creer-tache',
-    'obsidian-ariane:atomise-active', 'obsidian-ariane:biblio-note']);
+  // Les autres commandes d'Ariane sont enregistrées une à une dans
+  // _enregistrerCommandes : on relit leur identifiant à la source, pour
+  // qu'une faute de frappe dans la disposition ne passe pas.
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', '11z-ariane.js'), 'utf8');
+  const arianeHorsBarre = new Set([...src.matchAll(/^ {6}id: '([a-z0-9-]+)',$/gm)]
+    .map((m) => 'obsidian-ariane:' + m[1]));
+  assert.ok(arianeHorsBarre.has('obsidian-ariane:citations-basculer'), 'relecture de la source ratée');
   let boutons = 0;
   const verifier = (liste, profondeur) => {
     for (const e of liste) {

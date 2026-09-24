@@ -868,10 +868,15 @@ function barreDefaut() {
     // Ce qu'Editing toolbar n'avait pas : les gestes d'Ariane, au même rang
     // que la mise en forme, puisqu'ils portent sur la note ouverte.
     { groupe: 'Ariane', icone: 'compass', elements: [
-      { cmd: a('correcteur-relire') }, { cmd: a('correcteur-volet') },
+      { cmd: a('correcteur-relire') },
       { separateur: true },
       { cmd: a('creer-tache') }, { cmd: a('atomise-active') }, { cmd: a('biblio-note') },
     ] },
+    { separateur: true },
+    // Les deux gestes d'Ariane qui servent à chaque relecture : replier les
+    // citations pour lire le texte seul, et ouvrir le volet de relecture.
+    { cmd: a('citations-basculer') },
+    { cmd: a('correcteur-volet') },
     { separateur: true },
     { cmd: a('note-plein-ecran') },
     { cmd: a('espace-plein-ecran') },
@@ -1375,7 +1380,10 @@ class BarreOutils {
       let actif = false;
       const suite = b.id.startsWith(BARRE_PREFIXE) ? b.id.slice(BARRE_PREFIXE.length) : '';
       if (suite === 'md-pinceau') actif = !!this.chef.pinceau;
-      else if (suite === 'note-plein-ecran') {
+      else if (suite === 'citations-basculer') actif = this.greffon.settings.citationsRepliees === true;
+      else if (suite === 'correcteur-volet') {
+        actif = this.greffon.app.workspace.getLeavesOfType(TYPE_VUE_RELECTURE).length > 0;
+      } else if (suite === 'note-plein-ecran') {
         actif = !!(this.vue.containerEl && this.vue.containerEl.closest('.zfa-volet-pleine-page'));
       } else if (ed) {
         const titre = /^md-titre-(\d)$/.exec(suite);

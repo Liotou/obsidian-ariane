@@ -15425,6 +15425,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.addCommand({
       id: 'atomise-active',
       name: tr('Atomiser : la note source active'),
+      icon: 'atom',
       callback: () => this.commandeNoteActive(),
     });
     this.addCommand({
@@ -15487,6 +15488,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.addCommand({
       id: 'creer-tache',
       name: tr('Tâches : créer une tâche'),
+      icon: 'list-plus',
       callback: () => new ModaleTache(this.app, this, {
         apres: async (ref) => {
           const f = this.fichierDeRef(ref);
@@ -15639,6 +15641,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.addCommand({
       id: 'citations-basculer',
       name: tr('Citations : replier ou déplier'),
+      icon: 'quote',
       callback: () => this.basculerCitations(!this.settings.citationsRepliees),
     });
     this.addCommand({
@@ -15652,6 +15655,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.addCommand({
       id: 'biblio-note',
       name: tr('Bibliographie : recomposer celle de la note active'),
+      icon: 'library',
       callback: () => {
         const f = this.app.workspace.getActiveFile();
         if (f) this.majBibliographie(f); else new obsidian.Notice(tr('Ouvrez une note.'));
@@ -15806,6 +15810,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.addCommand({
       id: 'correcteur-relire',
       name: tr('Correcteur Apple : relire la note, faute par faute'),
+      icon: 'scan-search',
       editorCallback: (editeur) => {
         if (this.correcteur && editeur && editeur.cm) this.correcteur.guidee.ouvrir(editeur.cm);
       },
@@ -15824,6 +15829,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.addCommand({
       id: 'correcteur-volet',
       name: tr('Correcteur Apple : ouvrir le volet de relecture'),
+      icon: 'spell-check',
       callback: () => this.correcteur && this.correcteur.ouvrirVolet(),
     });
     this.addCommand({
@@ -32210,10 +32216,15 @@ function barreDefaut() {
     // Ce qu'Editing toolbar n'avait pas : les gestes d'Ariane, au même rang
     // que la mise en forme, puisqu'ils portent sur la note ouverte.
     { groupe: 'Ariane', icone: 'compass', elements: [
-      { cmd: a('correcteur-relire') }, { cmd: a('correcteur-volet') },
+      { cmd: a('correcteur-relire') },
       { separateur: true },
       { cmd: a('creer-tache') }, { cmd: a('atomise-active') }, { cmd: a('biblio-note') },
     ] },
+    { separateur: true },
+    // Les deux gestes d'Ariane qui servent à chaque relecture : replier les
+    // citations pour lire le texte seul, et ouvrir le volet de relecture.
+    { cmd: a('citations-basculer') },
+    { cmd: a('correcteur-volet') },
     { separateur: true },
     { cmd: a('note-plein-ecran') },
     { cmd: a('espace-plein-ecran') },
@@ -32717,7 +32728,10 @@ class BarreOutils {
       let actif = false;
       const suite = b.id.startsWith(BARRE_PREFIXE) ? b.id.slice(BARRE_PREFIXE.length) : '';
       if (suite === 'md-pinceau') actif = !!this.chef.pinceau;
-      else if (suite === 'note-plein-ecran') {
+      else if (suite === 'citations-basculer') actif = this.greffon.settings.citationsRepliees === true;
+      else if (suite === 'correcteur-volet') {
+        actif = this.greffon.app.workspace.getLeavesOfType(TYPE_VUE_RELECTURE).length > 0;
+      } else if (suite === 'note-plein-ecran') {
         actif = !!(this.vue.containerEl && this.vue.containerEl.closest('.zfa-volet-pleine-page'));
       } else if (ed) {
         const titre = /^md-titre-(\d)$/.exec(suite);
