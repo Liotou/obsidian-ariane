@@ -2010,9 +2010,22 @@ class MoteurCalendrier extends MoteurVue {
       bPiste.style.transform = 'translateX(' + (-corps.scrollLeft) + 'px)';
       axeInner.style.transform = 'translateY(' + (-corps.scrollTop) + 'px)';
     };
+    // Le jour de référence (_ancre) suit la PREMIÈRE COLONNE VISIBLE, à chaque
+    // défilement. Il ne bougeait qu'au bord de la bande : un redessin (et toute
+    // modification en provoque un) replaçait alors en tête le jour d'ouverture,
+    // c'est-à-dire aujourd'hui, et renvoyait au présent quiconque travaillait
+    // dans le passé. Précédent / suivant partent aussi de ce que l'on voit.
+    let idxVu = CENTRE;
     corps.addEventListener('scroll', () => {
       sync();
       this._semScrollTop = corps.scrollTop;
+      const idx = Math.max(0, Math.min(TAMPON - 1, Math.round(corps.scrollLeft / colW)));
+      if (idx !== idxVu && !this._detruit) {
+        idxVu = idx;
+        this._ancre = jours[idx];
+        const titre = this.racine.querySelector('.zfa-cal-titre');
+        if (titre) titre.textContent = this.titrePeriode();
+      }
       if (this._enRecalage) return;
       clearTimeout(this._semScrollMinuterie);
       this._semScrollMinuterie = setTimeout(() => {
@@ -2022,7 +2035,7 @@ class MoteurCalendrier extends MoteurVue {
           const shift = Math.round(idxG) - CENTRE;
           if (shift !== 0) {
             this._enRecalage = true;
-            this._recalerSemaine(hote, shift);
+            this._recalerSemaine(hote);
             setTimeout(() => { this._enRecalage = false; }, 450);
           }
         }
@@ -2100,9 +2113,11 @@ class MoteurCalendrier extends MoteurVue {
   // Recale la bande de jours quand on approche de son bord. Reconstruction HORS
   // ÉCRAN puis échange atomique : aucune trame vide, les 7 jours visibles ne
   // bougent pas, la barre d'outils n'est pas touchée.
-  _recalerSemaine(hote, shift) {
+  // L'ancre est déjà la première colonne visible (le défilement la tient à
+  // jour) : la nouvelle bande se centre dessus, et les jours à l'écran restent
+  // les mêmes.
+  _recalerSemaine(hote) {
     if (this._detruit || !hote.isConnected || !hote.parentElement) return;
-    this._ancre = Ariane.decalerJour(this._ancre, shift);
     const r = hote.getBoundingClientRect();
     // _doc() et non `document` : le recalage tourne à chaque bord de bande, et
     // dans un volet détaché un nœud du document principal se greffe mal.
