@@ -9919,6 +9919,73 @@ const avecTachesStatiques = (Base) => class extends Base {
     return bouts.join(' ');
   }
 
+  // Les tâches les plus probables pour un créneau qu'on vient de tracer dans
+  // le calendrier, du plus au moins probable, chacune avec la raison qui l'a
+  // fait monter (affichée à côté du nom). Quatre indices, qui se cumulent :
+  //   · le travail récent : une tâche travaillée la veille est plus probable
+  //     qu'une tâche laissée depuis un mois (décroissance sur une semaine) ;
+  //   · la frise : le jour tombe entre son début et son échéance ;
+  //   · l'échéance qui approche (décroissance sur dix jours), ou dépassée ;
+  //   · le statut et la priorité.
+  // Terminées, abandonnées et jalons sont écartés : on n'y travaille plus, ou
+  // on n'y travaille pas.
+  static suggererTachesCreneau(taches, jour) {
+    const j = Ariane.jourValide(jour);
+    const sortie = [];
+    for (const t of (taches || [])) {
+      if (!t || !t.ref || t.jalon) continue;
+      const st = String(t.statut || 'à faire');
+      if (st === 'terminée' || st === 'abandonnée') continue;
+      let score = st === 'en cours' ? 30 : st === 'en attente' ? -10 : 10;
+      score += t.priorite === 'haute' ? 8 : t.priorite === 'moyenne' ? 4 : 0;
+      const raisons = [];   // [poids, texte] : la plus lourde est affichée
+
+      // Le dernier créneau en date, avant ou le jour même ; à défaut le plus
+      // proche après (une tâche déjà planifiée demain compte aussi).
+      let ecartCreneau = null;
+      for (const c of Ariane.creneauxDeTache([].concat(t.creneaux || []))) {
+        const e = j ? Ariane.ecartJours(c.debut.slice(0, 10), j) : null;
+        if (e === null) continue;
+        if (ecartCreneau === null || Math.abs(e) < Math.abs(ecartCreneau)) ecartCreneau = e;
+      }
+      if (ecartCreneau !== null) {
+        const p = 40 * Math.exp(-Math.abs(ecartCreneau) / 7);
+        score += p;
+        raisons.push([p, ecartCreneau === 0 ? tr('déjà travaillée ce jour-là')
+          : ecartCreneau > 0 ? tr('dernier créneau il y a {n} j').replace('{n}', ecartCreneau)
+            : tr('créneau prévu dans {n} j').replace('{n}', -ecartCreneau)]);
+      }
+
+      const deb = Ariane.jourValide(t.debut);
+      const ech = Ariane.jourValide(t.echeance);
+      if (j && (deb || ech) && (!deb || deb <= j) && (!ech || j <= ech)) {
+        score += 25;
+        // Pèse dans le score, mais s'efface à l'affichage devant une échéance
+        // chiffrée, qui en dit plus.
+        raisons.push([10, tr('en cours sur la frise')]);
+      }
+      if (j && ech) {
+        const reste = Ariane.ecartJours(j, ech);
+        if (reste >= 0) {
+          const p = 30 * Math.exp(-reste / 10);
+          score += p;
+          raisons.push([p, reste === 0 ? tr('échéance ce jour-là')
+            : tr('échéance dans {n} j').replace('{n}', reste)]);
+        } else {
+          score += 15;
+          raisons.push([15, tr('échéance dépassée')]);
+        }
+      }
+      if (st === 'en cours') raisons.push([12, tr('en cours')]);
+      raisons.sort((a, b) => b[0] - a[0]);
+      sortie.push({ t, score, raison: raisons.length ? raisons[0][1] : '' });
+    }
+    // À score égal, l'intitulé départage : l'ordre ne saute pas d'une
+    // ouverture à l'autre.
+    return sortie.sort((a, b) => (b.score - a.score)
+      || String(a.t.intitule || a.t.ref).localeCompare(String(b.t.intitule || b.t.ref), 'fr'));
+  }
+
   //#endregion Ariane · static · tâches
 };
 
@@ -18787,6 +18854,90 @@ class ChoixSourceModal extends obsidian.Modal {
       this.repondu = true;
       this.onChoix(null);
     }
+  }
+}
+
+/* ---------------- Tâche d'un créneau tracé dans le calendrier ----------- */
+
+// On vient de tracer un créneau vierge dans la vue semaine : à quelle tâche
+// l'attacher ? Sans rien taper, la liste s'ouvre sur les tâches les plus
+// probables (Ariane.suggererTachesCreneau : travail récent, frise, échéance),
+// chacune avec la raison de sa place ; la première est présélectionnée, et
+// Entrée suffit. En tapant, on cherche parmi toutes les tâches actives. Le
+// dernier choix crée une nouvelle tâche, nommée d'après la saisie. Échap
+// abandonne le créneau.
+class ModaleTacheDuCreneau extends obsidian.SuggestModal {
+  // o : { taches, jour, horaire, surChoix(ref), surNouvelle(texte), surAbandon() }
+  constructor(app, greffon, o) {
+    super(app);
+    this.greffon = greffon;
+    this.o = o || {};
+    this.classees = Ariane.suggererTachesCreneau(this.o.taches || [], this.o.jour);
+    this.choisi = false;
+    this.limit = 60;
+    this.setPlaceholder(tr('À quelle tâche attacher ce créneau ?'));
+    if (this.setInstructions) {
+      this.setInstructions([
+        { command: '↑↓', purpose: tr('parcourir') },
+        { command: '↵', purpose: tr('attacher') },
+        { command: 'échap', purpose: tr('abandonner le créneau') },
+      ]);
+    }
+    if (this.modalEl) {
+      this.modalEl.addClass('zfa-tc-modale');
+      if (this.o.horaire) {
+        const tete = this.modalEl.createDiv({ cls: 'zfa-tc-tete' });
+        obsidian.setIcon(tete.createSpan({ cls: 'zfa-tc-tete-icone' }), 'calendar-clock');
+        tete.createSpan({ text: this.o.horaire });
+        this.modalEl.prepend(tete);
+      }
+    }
+  }
+
+  getSuggestions(requete) {
+    const q = String(requete || '').trim();
+    const nouvelle = { nouvelle: true, texte: q };
+    if (!q) return this.classees.slice(0, 40).concat([nouvelle]);
+    const cherche = obsidian.prepareFuzzySearch(q);
+    const trouvees = [];
+    for (const c of this.classees) {
+      const m = cherche(String(c.t.intitule || '') + ' ' + c.t.ref);
+      if (m) trouvees.push({ c, m: m.score });
+    }
+    // La correspondance d'abord, la probabilité ensuite : ce qu'on tape prime.
+    trouvees.sort((a, b) => (b.m - a.m) || (b.c.score - a.c.score));
+    return trouvees.map((x) => x.c).concat([nouvelle]);
+  }
+
+  renderSuggestion(item, el) {
+    el.addClass('zfa-tc-item');
+    if (item.nouvelle) {
+      el.addClass('est-nouvelle');
+      obsidian.setIcon(el.createSpan({ cls: 'zfa-tc-icone' }), 'plus');
+      el.createSpan({ cls: 'zfa-tc-titre', text: item.texte
+        ? tr('Nouvelle tâche « {t} »').replace('{t}', item.texte) : tr('Nouvelle tâche…') });
+      return;
+    }
+    const t = item.t;
+    const fam = (this.greffon.familleDe && this.greffon.familleDe(t.famille)) || {};
+    const pastille = el.createSpan({ cls: 'zfa-tc-pastille' });
+    if (fam.couleur) pastille.style.background = fam.couleur;
+    el.createSpan({ cls: 'zfa-tc-titre', text: t.intitule || t.ref });
+    if (item.raison) el.createSpan({ cls: 'zfa-tc-raison', text: item.raison });
+    el.createSpan({ cls: 'zfa-tc-ref', text: t.ref });
+  }
+
+  onChooseSuggestion(item) {
+    this.choisi = true;
+    if (item && item.nouvelle) { if (this.o.surNouvelle) this.o.surNouvelle(item.texte); }
+    else if (item && item.t && this.o.surChoix) this.o.surChoix(item.t.ref);
+  }
+
+  // Obsidian ferme la fenêtre AVANT d'annoncer le choix : on attend un tour
+  // pour savoir si c'était un choix ou un abandon.
+  onClose() {
+    if (super.onClose) super.onClose();
+    setTimeout(() => { if (!this.choisi && this.o.surAbandon) this.o.surAbandon(); }, 0);
   }
 }
 
@@ -28686,6 +28837,146 @@ class MoteurCalendrier extends MoteurVue {
     viser();
   }
 
+  // Ce qui n'est PAS du vide dans une colonne : un créneau, un événement, une
+  // poignée. Tracer ou double-cliquer là ne crée rien.
+  _estVideDeColonne(cible) {
+    return !(cible && cible.closest && cible.closest(
+      '.zfa-cal-carte, .zfa-cal-evt, .zfa-cal-bloc, .zfa-cal-lignee-btns, .zfa-cal-bloc-guide'));
+  }
+
+  // Un créneau vierge dans une colonne : le rectangle qu'on trace, avec ses
+  // heures. Positionné en pixels de colonne (0 = minuit, comme les créneaux).
+  _brouillonCreneau(col, haut, bas) {
+    let el = col.querySelector('.zfa-cal-brouillon');
+    if (!el) {
+      el = col.createDiv({ cls: 'zfa-cal-brouillon' });
+      el.createDiv({ cls: 'zfa-cal-brouillon-heures' });
+    }
+    el.style.top = haut + 'px';
+    el.style.height = (bas - haut) + 'px';
+    const PXH = this._pxHeure;
+    const hm = (px) => {
+      const min = Math.round((px / PXH + (this._hDeb || 0)) * 60);
+      return String(Math.floor(min / 60) % 24).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
+    };
+    el.firstChild.textContent = hm(haut) + ' → ' + hm(bas);
+    return el;
+  }
+
+  // Cliquer-glisser verticalement dans le vide d'une journée : un créneau
+  // vierge se dessine, calé au quart d'heure, dans un sens ou dans l'autre.
+  // Un simple clic ne fait rien (le double-clic a son propre geste).
+  _tracerCreneau(e, col, jour) {
+    if (e.button !== 0 || !this._estVideDeColonne(e.target) || this._pose) return;
+    const PXH = this._pxHeure;
+    const quart = PXH / 4;
+    const doc = this._doc();
+    const win = this._win();
+    const y0 = e.clientY - col.getBoundingClientRect().top;
+    const yc0 = e.clientY;
+    let brouillon = null;
+    let haut = 0;
+    let bas = 0;
+    let rafId = null;
+    let yc = yc0;
+    const suivre = () => {
+      rafId = null;
+      // Relu à chaque image : la molette peut faire défiler la grille pendant
+      // le geste, et la colonne avec.
+      const r = col.getBoundingClientRect();
+      const y = Math.max(0, Math.min(r.height, yc - r.top));
+      haut = Math.floor(Math.min(y0, y) / quart) * quart;
+      bas = Math.max(haut + quart, Math.ceil(Math.max(y0, y) / quart) * quart);
+      brouillon = this._brouillonCreneau(col, haut, bas);
+    };
+    const bouger = (m) => {
+      yc = m.clientY;
+      if (!brouillon && Math.abs(yc - yc0) < 5) return;
+      if (!brouillon) this._gesteCal = true;
+      m.preventDefault();
+      if (rafId == null) rafId = win.requestAnimationFrame(suivre);
+    };
+    const lacher = () => {
+      doc.removeEventListener('pointermove', bouger);
+      doc.removeEventListener('pointerup', lacher);
+      doc.removeEventListener('pointercancel', lacher);
+      if (rafId != null) { win.cancelAnimationFrame(rafId); rafId = null; }
+      if (!brouillon) return;
+      suivre();
+      this._gesteCal = false;
+      // Le « click » de synthèse qui suit un glissé ne doit rien déclencher.
+      doc.addEventListener('click', (c) => { c.stopPropagation(); c.preventDefault(); },
+        { capture: true, once: true });
+      const cr = Ariane.creneauDepuisDrop({ yRel: haut, hauteurHeure: PXH, heureDebut: this._hDeb,
+        jourISO: jour, dureeMin: Math.round(((bas - haut) / PXH) * 60) });
+      if (!cr) { brouillon.remove(); return; }
+      this._associerCreneau(jour, cr, brouillon);
+    };
+    doc.addEventListener('pointermove', bouger);
+    doc.addEventListener('pointerup', lacher);
+    doc.addEventListener('pointercancel', lacher);
+  }
+
+  // Double-clic dans le vide d'une journée : un créneau vierge d'une heure,
+  // qui commence au quart d'heure cliqué.
+  _creneauAuDoubleClic(e, col, jour) {
+    if (!this._estVideDeColonne(e.target) || this._pose) return;
+    e.preventDefault(); e.stopPropagation();
+    const PXH = this._pxHeure;
+    const quart = PXH / 4;
+    const r = col.getBoundingClientRect();
+    const haut = Math.min(Math.floor((e.clientY - r.top) / quart) * quart, r.height - PXH);
+    const brouillon = this._brouillonCreneau(col, Math.max(0, haut), Math.max(0, haut) + PXH);
+    const cr = Ariane.creneauDepuisDrop({ yRel: Math.max(0, haut), hauteurHeure: PXH,
+      heureDebut: this._hDeb, jourISO: jour, dureeMin: 60 });
+    if (!cr) { brouillon.remove(); return; }
+    this._associerCreneau(jour, cr, brouillon);
+  }
+
+  // Le créneau vierge est tracé : on demande sa tâche. Choisie, le créneau
+  // s'écrit (annulable comme tout geste) ; « Nouvelle tâche » ouvre le
+  // formulaire, et le créneau s'attache à la tâche créée ; abandon : le
+  // créneau vierge s'efface.
+  _associerCreneau(jour, cr, brouillon) {
+    brouillon.classList.add('est-en-attente');
+    const oter = () => { if (brouillon.isConnected) brouillon.remove(); };
+    const ecrire = async (ref) => {
+      this._coalesceRedessin();
+      const prevu = this._creneauxAnticipes(ref, '', cr.debut, cr.fin);
+      await this._majCreneauU(ref, { avant: '', debut: cr.debut, fin: cr.fin });
+      this._apres(ref, { creneaux: prevu });
+    };
+    const echec = (err) => {
+      oter();
+      new obsidian.Notice(tr('Créneau non écrit : ') + (err && err.message ? err.message : err));
+    };
+    const jourLisible = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR',
+      { weekday: 'long', day: 'numeric', month: 'long' });
+    const horaire = jourLisible.charAt(0).toUpperCase() + jourLisible.slice(1)
+      + ' · ' + cr.debut.slice(11, 16) + ' → ' + cr.fin.slice(11, 16);
+    // Les tâches de CETTE base, celles que la vue montre : on propose ce sur
+    // quoi l'on travaille ici, pas tout le coffre.
+    const taches = this._tachesBrutes || this._taches
+      || (this.greffon.tachesPourGantt ? this.greffon.tachesPourGantt() : []);
+    new ModaleTacheDuCreneau(this.app, this.greffon, {
+      taches, jour, horaire,
+      surChoix: (ref) => { ecrire(ref).catch(echec); },
+      surAbandon: oter,
+      surNouvelle: (texte) => {
+        let creee = false;
+        const m = new ModaleTache(this.app, this.greffon, {
+          defauts: { intitule: texte },
+          apres: (ref) => { creee = true; ecrire(ref).catch(echec); },
+        });
+        // Le formulaire se ferme puis appelle `apres` : un tour plus tard, on
+        // sait s'il a créé la tâche ou s'il a été abandonné.
+        const fermer = m.onClose.bind(m);
+        m.onClose = () => { fermer(); setTimeout(() => { if (!creee) oter(); }, 0); };
+        m.open();
+      },
+    }).open();
+  }
+
   // Câble dragover/drop sur une cellule de la vue mois : lien externe → créneau
   // ce jour ; charge interne « x-ariane-cal » → déplacement du créneau, ou
   // décalage des dates du span de tâche.
@@ -29059,6 +29350,10 @@ class MoteurCalendrier extends MoteurVue {
         if (e.target.closest('.zfa-cal-carte')) return;
         this.menuCellule(e, col.dataset.jour);
       });
+      // Tracer un créneau vierge : cliquer-glisser dans le vide d'une journée,
+      // ou double-cliquer (une heure). Au lâcher, on choisit sa tâche.
+      col.addEventListener('pointerdown', (e) => this._tracerCreneau(e, col, j));
+      col.addEventListener('dblclick', (e) => this._creneauAuDoubleClic(e, col, j));
 
       const fondJour = this._fondDuJour(j);
       // Créneaux + événements Apple réels : une même liste, placés côte à côte

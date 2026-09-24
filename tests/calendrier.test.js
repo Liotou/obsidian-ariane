@@ -469,3 +469,31 @@ test('calendrier recréé : il retrouve la semaine consultée et le défilement'
   const autre = new MoteurCalendrier(greffon, racine(), cle('Tâches.base::Mois'));
   assert.equal(autre._ancre, auj, 'une autre vue a sa propre mémoire');
 });
+
+test('suggestions pour un créneau tracé : travail récent, frise, échéance', () => {
+  const jour = '2026-09-10';
+  const taches = [
+    { ref: 'T1', intitule: 'Vieille tâche', statut: 'à faire', creneaux: ['2026-07-01 09:00-10:00'] },
+    { ref: 'T2', intitule: 'Travaillée hier', statut: 'en cours', creneaux: ['2026-09-09 09:00-11:00'] },
+    { ref: 'T3', intitule: 'Échéance proche', statut: 'à faire', debut: '2026-09-01', echeance: '2026-09-12' },
+    { ref: 'T4', intitule: 'Finie', statut: 'terminée', creneaux: ['2026-09-10 09:00-10:00'] },
+    { ref: 'T5', intitule: 'Jalon', jalon: true, echeance: '2026-09-10' },
+    { ref: 'T6', intitule: 'Abandonnée', statut: 'abandonnée' },
+  ];
+  const s = Ariane.suggererTachesCreneau(taches, jour);
+  assert.deepEqual(s.map((x) => x.t.ref), ['T2', 'T3', 'T1'],
+    'terminées, abandonnées et jalons écartés ; la tâche d\'hier en tête');
+  assert.equal(s[0].raison, 'dernier créneau il y a 1 j');
+  assert.equal(s[1].raison, 'échéance dans 2 j');
+  assert.ok(s[1].score > s[2].score, 'une échéance proche passe devant un vieux créneau');
+});
+
+test('suggestions pour un créneau tracé : une échéance dépassée compte encore', () => {
+  const s = Ariane.suggererTachesCreneau([
+    { ref: 'A', intitule: 'A', statut: 'à faire', echeance: '2026-09-01' },
+    { ref: 'B', intitule: 'B', statut: 'à faire' },
+  ], '2026-09-10');
+  assert.equal(s[0].t.ref, 'A');
+  assert.equal(s[0].raison, 'échéance dépassée');
+  assert.equal(s[1].raison, '', 'rien à dire sur une tâche sans indice');
+});

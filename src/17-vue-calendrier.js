@@ -1484,6 +1484,146 @@ class MoteurCalendrier extends MoteurVue {
     viser();
   }
 
+  // Ce qui n'est PAS du vide dans une colonne : un créneau, un événement, une
+  // poignée. Tracer ou double-cliquer là ne crée rien.
+  _estVideDeColonne(cible) {
+    return !(cible && cible.closest && cible.closest(
+      '.zfa-cal-carte, .zfa-cal-evt, .zfa-cal-bloc, .zfa-cal-lignee-btns, .zfa-cal-bloc-guide'));
+  }
+
+  // Un créneau vierge dans une colonne : le rectangle qu'on trace, avec ses
+  // heures. Positionné en pixels de colonne (0 = minuit, comme les créneaux).
+  _brouillonCreneau(col, haut, bas) {
+    let el = col.querySelector('.zfa-cal-brouillon');
+    if (!el) {
+      el = col.createDiv({ cls: 'zfa-cal-brouillon' });
+      el.createDiv({ cls: 'zfa-cal-brouillon-heures' });
+    }
+    el.style.top = haut + 'px';
+    el.style.height = (bas - haut) + 'px';
+    const PXH = this._pxHeure;
+    const hm = (px) => {
+      const min = Math.round((px / PXH + (this._hDeb || 0)) * 60);
+      return String(Math.floor(min / 60) % 24).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
+    };
+    el.firstChild.textContent = hm(haut) + ' → ' + hm(bas);
+    return el;
+  }
+
+  // Cliquer-glisser verticalement dans le vide d'une journée : un créneau
+  // vierge se dessine, calé au quart d'heure, dans un sens ou dans l'autre.
+  // Un simple clic ne fait rien (le double-clic a son propre geste).
+  _tracerCreneau(e, col, jour) {
+    if (e.button !== 0 || !this._estVideDeColonne(e.target) || this._pose) return;
+    const PXH = this._pxHeure;
+    const quart = PXH / 4;
+    const doc = this._doc();
+    const win = this._win();
+    const y0 = e.clientY - col.getBoundingClientRect().top;
+    const yc0 = e.clientY;
+    let brouillon = null;
+    let haut = 0;
+    let bas = 0;
+    let rafId = null;
+    let yc = yc0;
+    const suivre = () => {
+      rafId = null;
+      // Relu à chaque image : la molette peut faire défiler la grille pendant
+      // le geste, et la colonne avec.
+      const r = col.getBoundingClientRect();
+      const y = Math.max(0, Math.min(r.height, yc - r.top));
+      haut = Math.floor(Math.min(y0, y) / quart) * quart;
+      bas = Math.max(haut + quart, Math.ceil(Math.max(y0, y) / quart) * quart);
+      brouillon = this._brouillonCreneau(col, haut, bas);
+    };
+    const bouger = (m) => {
+      yc = m.clientY;
+      if (!brouillon && Math.abs(yc - yc0) < 5) return;
+      if (!brouillon) this._gesteCal = true;
+      m.preventDefault();
+      if (rafId == null) rafId = win.requestAnimationFrame(suivre);
+    };
+    const lacher = () => {
+      doc.removeEventListener('pointermove', bouger);
+      doc.removeEventListener('pointerup', lacher);
+      doc.removeEventListener('pointercancel', lacher);
+      if (rafId != null) { win.cancelAnimationFrame(rafId); rafId = null; }
+      if (!brouillon) return;
+      suivre();
+      this._gesteCal = false;
+      // Le « click » de synthèse qui suit un glissé ne doit rien déclencher.
+      doc.addEventListener('click', (c) => { c.stopPropagation(); c.preventDefault(); },
+        { capture: true, once: true });
+      const cr = Ariane.creneauDepuisDrop({ yRel: haut, hauteurHeure: PXH, heureDebut: this._hDeb,
+        jourISO: jour, dureeMin: Math.round(((bas - haut) / PXH) * 60) });
+      if (!cr) { brouillon.remove(); return; }
+      this._associerCreneau(jour, cr, brouillon);
+    };
+    doc.addEventListener('pointermove', bouger);
+    doc.addEventListener('pointerup', lacher);
+    doc.addEventListener('pointercancel', lacher);
+  }
+
+  // Double-clic dans le vide d'une journée : un créneau vierge d'une heure,
+  // qui commence au quart d'heure cliqué.
+  _creneauAuDoubleClic(e, col, jour) {
+    if (!this._estVideDeColonne(e.target) || this._pose) return;
+    e.preventDefault(); e.stopPropagation();
+    const PXH = this._pxHeure;
+    const quart = PXH / 4;
+    const r = col.getBoundingClientRect();
+    const haut = Math.min(Math.floor((e.clientY - r.top) / quart) * quart, r.height - PXH);
+    const brouillon = this._brouillonCreneau(col, Math.max(0, haut), Math.max(0, haut) + PXH);
+    const cr = Ariane.creneauDepuisDrop({ yRel: Math.max(0, haut), hauteurHeure: PXH,
+      heureDebut: this._hDeb, jourISO: jour, dureeMin: 60 });
+    if (!cr) { brouillon.remove(); return; }
+    this._associerCreneau(jour, cr, brouillon);
+  }
+
+  // Le créneau vierge est tracé : on demande sa tâche. Choisie, le créneau
+  // s'écrit (annulable comme tout geste) ; « Nouvelle tâche » ouvre le
+  // formulaire, et le créneau s'attache à la tâche créée ; abandon : le
+  // créneau vierge s'efface.
+  _associerCreneau(jour, cr, brouillon) {
+    brouillon.classList.add('est-en-attente');
+    const oter = () => { if (brouillon.isConnected) brouillon.remove(); };
+    const ecrire = async (ref) => {
+      this._coalesceRedessin();
+      const prevu = this._creneauxAnticipes(ref, '', cr.debut, cr.fin);
+      await this._majCreneauU(ref, { avant: '', debut: cr.debut, fin: cr.fin });
+      this._apres(ref, { creneaux: prevu });
+    };
+    const echec = (err) => {
+      oter();
+      new obsidian.Notice(tr('Créneau non écrit : ') + (err && err.message ? err.message : err));
+    };
+    const jourLisible = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR',
+      { weekday: 'long', day: 'numeric', month: 'long' });
+    const horaire = jourLisible.charAt(0).toUpperCase() + jourLisible.slice(1)
+      + ' · ' + cr.debut.slice(11, 16) + ' → ' + cr.fin.slice(11, 16);
+    // Les tâches de CETTE base, celles que la vue montre : on propose ce sur
+    // quoi l'on travaille ici, pas tout le coffre.
+    const taches = this._tachesBrutes || this._taches
+      || (this.greffon.tachesPourGantt ? this.greffon.tachesPourGantt() : []);
+    new ModaleTacheDuCreneau(this.app, this.greffon, {
+      taches, jour, horaire,
+      surChoix: (ref) => { ecrire(ref).catch(echec); },
+      surAbandon: oter,
+      surNouvelle: (texte) => {
+        let creee = false;
+        const m = new ModaleTache(this.app, this.greffon, {
+          defauts: { intitule: texte },
+          apres: (ref) => { creee = true; ecrire(ref).catch(echec); },
+        });
+        // Le formulaire se ferme puis appelle `apres` : un tour plus tard, on
+        // sait s'il a créé la tâche ou s'il a été abandonné.
+        const fermer = m.onClose.bind(m);
+        m.onClose = () => { fermer(); setTimeout(() => { if (!creee) oter(); }, 0); };
+        m.open();
+      },
+    }).open();
+  }
+
   // Câble dragover/drop sur une cellule de la vue mois : lien externe → créneau
   // ce jour ; charge interne « x-ariane-cal » → déplacement du créneau, ou
   // décalage des dates du span de tâche.
@@ -1857,6 +1997,10 @@ class MoteurCalendrier extends MoteurVue {
         if (e.target.closest('.zfa-cal-carte')) return;
         this.menuCellule(e, col.dataset.jour);
       });
+      // Tracer un créneau vierge : cliquer-glisser dans le vide d'une journée,
+      // ou double-cliquer (une heure). Au lâcher, on choisit sa tâche.
+      col.addEventListener('pointerdown', (e) => this._tracerCreneau(e, col, j));
+      col.addEventListener('dblclick', (e) => this._creneauAuDoubleClic(e, col, j));
 
       const fondJour = this._fondDuJour(j);
       // Créneaux + événements Apple réels : une même liste, placés côte à côte

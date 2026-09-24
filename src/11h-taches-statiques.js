@@ -313,5 +313,72 @@ const avecTachesStatiques = (Base) => class extends Base {
     return bouts.join(' ');
   }
 
+  // Les tâches les plus probables pour un créneau qu'on vient de tracer dans
+  // le calendrier, du plus au moins probable, chacune avec la raison qui l'a
+  // fait monter (affichée à côté du nom). Quatre indices, qui se cumulent :
+  //   · le travail récent : une tâche travaillée la veille est plus probable
+  //     qu'une tâche laissée depuis un mois (décroissance sur une semaine) ;
+  //   · la frise : le jour tombe entre son début et son échéance ;
+  //   · l'échéance qui approche (décroissance sur dix jours), ou dépassée ;
+  //   · le statut et la priorité.
+  // Terminées, abandonnées et jalons sont écartés : on n'y travaille plus, ou
+  // on n'y travaille pas.
+  static suggererTachesCreneau(taches, jour) {
+    const j = Ariane.jourValide(jour);
+    const sortie = [];
+    for (const t of (taches || [])) {
+      if (!t || !t.ref || t.jalon) continue;
+      const st = String(t.statut || 'à faire');
+      if (st === 'terminée' || st === 'abandonnée') continue;
+      let score = st === 'en cours' ? 30 : st === 'en attente' ? -10 : 10;
+      score += t.priorite === 'haute' ? 8 : t.priorite === 'moyenne' ? 4 : 0;
+      const raisons = [];   // [poids, texte] : la plus lourde est affichée
+
+      // Le dernier créneau en date, avant ou le jour même ; à défaut le plus
+      // proche après (une tâche déjà planifiée demain compte aussi).
+      let ecartCreneau = null;
+      for (const c of Ariane.creneauxDeTache([].concat(t.creneaux || []))) {
+        const e = j ? Ariane.ecartJours(c.debut.slice(0, 10), j) : null;
+        if (e === null) continue;
+        if (ecartCreneau === null || Math.abs(e) < Math.abs(ecartCreneau)) ecartCreneau = e;
+      }
+      if (ecartCreneau !== null) {
+        const p = 40 * Math.exp(-Math.abs(ecartCreneau) / 7);
+        score += p;
+        raisons.push([p, ecartCreneau === 0 ? tr('déjà travaillée ce jour-là')
+          : ecartCreneau > 0 ? tr('dernier créneau il y a {n} j').replace('{n}', ecartCreneau)
+            : tr('créneau prévu dans {n} j').replace('{n}', -ecartCreneau)]);
+      }
+
+      const deb = Ariane.jourValide(t.debut);
+      const ech = Ariane.jourValide(t.echeance);
+      if (j && (deb || ech) && (!deb || deb <= j) && (!ech || j <= ech)) {
+        score += 25;
+        // Pèse dans le score, mais s'efface à l'affichage devant une échéance
+        // chiffrée, qui en dit plus.
+        raisons.push([10, tr('en cours sur la frise')]);
+      }
+      if (j && ech) {
+        const reste = Ariane.ecartJours(j, ech);
+        if (reste >= 0) {
+          const p = 30 * Math.exp(-reste / 10);
+          score += p;
+          raisons.push([p, reste === 0 ? tr('échéance ce jour-là')
+            : tr('échéance dans {n} j').replace('{n}', reste)]);
+        } else {
+          score += 15;
+          raisons.push([15, tr('échéance dépassée')]);
+        }
+      }
+      if (st === 'en cours') raisons.push([12, tr('en cours')]);
+      raisons.sort((a, b) => b[0] - a[0]);
+      sortie.push({ t, score, raison: raisons.length ? raisons[0][1] : '' });
+    }
+    // À score égal, l'intitulé départage : l'ordre ne saute pas d'une
+    // ouverture à l'autre.
+    return sortie.sort((a, b) => (b.score - a.score)
+      || String(a.t.intitule || a.t.ref).localeCompare(String(b.t.intitule || b.t.ref), 'fr'));
+  }
+
   //#endregion Ariane · static · tâches
 };

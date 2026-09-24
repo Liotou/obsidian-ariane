@@ -87,6 +87,90 @@ class ChoixSourceModal extends obsidian.Modal {
   }
 }
 
+/* ---------------- Tâche d'un créneau tracé dans le calendrier ----------- */
+
+// On vient de tracer un créneau vierge dans la vue semaine : à quelle tâche
+// l'attacher ? Sans rien taper, la liste s'ouvre sur les tâches les plus
+// probables (Ariane.suggererTachesCreneau : travail récent, frise, échéance),
+// chacune avec la raison de sa place ; la première est présélectionnée, et
+// Entrée suffit. En tapant, on cherche parmi toutes les tâches actives. Le
+// dernier choix crée une nouvelle tâche, nommée d'après la saisie. Échap
+// abandonne le créneau.
+class ModaleTacheDuCreneau extends obsidian.SuggestModal {
+  // o : { taches, jour, horaire, surChoix(ref), surNouvelle(texte), surAbandon() }
+  constructor(app, greffon, o) {
+    super(app);
+    this.greffon = greffon;
+    this.o = o || {};
+    this.classees = Ariane.suggererTachesCreneau(this.o.taches || [], this.o.jour);
+    this.choisi = false;
+    this.limit = 60;
+    this.setPlaceholder(tr('À quelle tâche attacher ce créneau ?'));
+    if (this.setInstructions) {
+      this.setInstructions([
+        { command: '↑↓', purpose: tr('parcourir') },
+        { command: '↵', purpose: tr('attacher') },
+        { command: 'échap', purpose: tr('abandonner le créneau') },
+      ]);
+    }
+    if (this.modalEl) {
+      this.modalEl.addClass('zfa-tc-modale');
+      if (this.o.horaire) {
+        const tete = this.modalEl.createDiv({ cls: 'zfa-tc-tete' });
+        obsidian.setIcon(tete.createSpan({ cls: 'zfa-tc-tete-icone' }), 'calendar-clock');
+        tete.createSpan({ text: this.o.horaire });
+        this.modalEl.prepend(tete);
+      }
+    }
+  }
+
+  getSuggestions(requete) {
+    const q = String(requete || '').trim();
+    const nouvelle = { nouvelle: true, texte: q };
+    if (!q) return this.classees.slice(0, 40).concat([nouvelle]);
+    const cherche = obsidian.prepareFuzzySearch(q);
+    const trouvees = [];
+    for (const c of this.classees) {
+      const m = cherche(String(c.t.intitule || '') + ' ' + c.t.ref);
+      if (m) trouvees.push({ c, m: m.score });
+    }
+    // La correspondance d'abord, la probabilité ensuite : ce qu'on tape prime.
+    trouvees.sort((a, b) => (b.m - a.m) || (b.c.score - a.c.score));
+    return trouvees.map((x) => x.c).concat([nouvelle]);
+  }
+
+  renderSuggestion(item, el) {
+    el.addClass('zfa-tc-item');
+    if (item.nouvelle) {
+      el.addClass('est-nouvelle');
+      obsidian.setIcon(el.createSpan({ cls: 'zfa-tc-icone' }), 'plus');
+      el.createSpan({ cls: 'zfa-tc-titre', text: item.texte
+        ? tr('Nouvelle tâche « {t} »').replace('{t}', item.texte) : tr('Nouvelle tâche…') });
+      return;
+    }
+    const t = item.t;
+    const fam = (this.greffon.familleDe && this.greffon.familleDe(t.famille)) || {};
+    const pastille = el.createSpan({ cls: 'zfa-tc-pastille' });
+    if (fam.couleur) pastille.style.background = fam.couleur;
+    el.createSpan({ cls: 'zfa-tc-titre', text: t.intitule || t.ref });
+    if (item.raison) el.createSpan({ cls: 'zfa-tc-raison', text: item.raison });
+    el.createSpan({ cls: 'zfa-tc-ref', text: t.ref });
+  }
+
+  onChooseSuggestion(item) {
+    this.choisi = true;
+    if (item && item.nouvelle) { if (this.o.surNouvelle) this.o.surNouvelle(item.texte); }
+    else if (item && item.t && this.o.surChoix) this.o.surChoix(item.t.ref);
+  }
+
+  // Obsidian ferme la fenêtre AVANT d'annoncer le choix : on attend un tour
+  // pour savoir si c'était un choix ou un abandon.
+  onClose() {
+    if (super.onClose) super.onClose();
+    setTimeout(() => { if (!this.choisi && this.o.surAbandon) this.o.surAbandon(); }, 0);
+  }
+}
+
 /* ---------------- Formulaire de tâche (création et modification) ------- */
 
 class ModaleTache extends obsidian.Modal {
