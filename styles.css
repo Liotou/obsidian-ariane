@@ -2310,14 +2310,52 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   font-variant-numeric: tabular-nums; font-weight: var(--font-medium);
   color: var(--text-muted);
 }
-.zfa-cal-pastille.est-retard { box-shadow: inset 3px 0 0 0 var(--text-error); }
+/* Le retard ne repeint pas le liseré : un liseré rouge sur un fond teinté
+   de la famille donnait deux couleurs pour un seul élément. Il devient une
+   pastille rouge en bout de ligne (voir .zfa-cal-m-el.est-retard). */
+/* Couleurs de la vue mois : UNE couleur par élément.
+   · tâche (créneau, tâche du jour) : liseré et fond teinté de sa famille ;
+   · événement Apple : pas de fond, un point à la couleur de son calendrier,
+     comme dans Calendrier. Deux formes distinctes : même quand les couleurs
+     se ressemblent, on ne confond pas une tâche et un rendez-vous ;
+   · en retard : une pastille rouge en bout de ligne, qui ne se mêle à rien. */
 .zfa-cal-cellule .zfa-cal-evt.est-compacte,
 .zfa-cal-jour-bulle .zfa-cal-evt.est-compacte {
   border: none;
   border-radius: var(--radius-s, 4px);
   padding: 0 6px;
   background: transparent;
-  box-shadow: inset 3px 0 0 0 var(--zfa-cal-coul);
+  box-shadow: none;
+}
+.zfa-cal-cellule .zfa-cal-evt.est-compacte::before,
+.zfa-cal-jour-bulle .zfa-cal-evt.est-compacte::before {
+  content: '';
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--zfa-cal-coul);
+}
+.zfa-cal-cellule .zfa-cal-evt.est-compacte:hover,
+.zfa-cal-jour-bulle .zfa-cal-evt.est-compacte:hover {
+  background: var(--background-modifier-hover);
+  border-color: transparent;
+  box-shadow: none;
+}
+.zfa-cal-cellule .zfa-cal-carte.est-retard,
+.zfa-cal-jour-bulle .zfa-cal-carte.est-retard {
+  border-color: color-mix(in srgb, var(--zfa-cal-coul) 40%, transparent);
+  box-shadow: none;
+}
+.zfa-cal-m-titre { flex: 1 1 auto; }
+.zfa-cal-m-el.est-retard::after {
+  content: '';
+  flex: 0 0 6px;
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--text-error);
 }
 .zfa-cal-cellule .zfa-cal-evt .zfa-cal-evt-h,
 .zfa-cal-jour-bulle .zfa-cal-evt .zfa-cal-evt-h { flex: 0 0 auto; }
