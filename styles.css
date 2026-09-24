@@ -3256,8 +3256,3 @@ body.zfa-pleine-page-active .workspace-leaf:not(.zfa-volet-pleine-page) { visibi
   font-size: var(--font-ui-smaller, 12px);
   color: var(--text-faint);
 }
-
-/* Un bouton qui attend une sélection : éteint, mais toujours survolable pour
-   que son infobulle dise ce qu'il attend. */
-.zfa-barre-bouton.est-inactif { opacity: 0.35; cursor: default; }
-.zfa-barre-bouton.est-inactif:hover { background: transparent; color: var(--text-muted); }

@@ -765,45 +765,12 @@ const BARRE_COMMANDES = [
   { id: 'md-pinceau', nom: 'Mise en forme : pinceau (relever, puis reposer)', icone: 'paintbrush',
     sur: (ed, vue, greffon) => greffon.barre.pinceauBasculer(ed) },
 
-  // Apple Intelligence : les outils d'écriture du système, sur la sélection.
-  // Mac seulement, et seulement quand un passage est sélectionné : c'est sur
-  // lui que macOS travaille.
-  { id: 'ai-relecture', nom: 'Apple Intelligence : relecture de la sélection', icone: 'wand-sparkles',
-    mac: true, selection: true,
-    sur: (ed) => barreOutilsEcritureApple(ed) },
-
   // Pleine page. La note seule (les panneaux s'effacent) ou toute la fenêtre.
   { id: 'note-plein-ecran', nom: 'Volet : la note seule, en pleine page', icone: 'maximize',
     sur: (ed, vue, greffon) => greffon.barre.basculerPleinePage(vue) },
   { id: 'espace-plein-ecran', nom: 'Fenêtre : plein écran', icone: 'expand',
     sur: (ed, vue, greffon) => greffon.barre.basculerPleinEcran(vue) },
 ];
-
-// Les outils d'écriture d'Apple Intelligence. AppKit les range tous sous une
-// seule action, showWritingTools:, et c'est l'étiquette de l'élément de menu
-// qui choisit l'outil (1 : relecture). Obsidian n'y accède qu'à travers le
-// menu contextuel natif, où macOS les ajoute lui-même. Un greffon ne peut
-// qu'envoyer l'action au répondeur actif, sans étiquette : selon macOS, la
-// relecture démarre, ou le panneau des outils s'ouvre sur la sélection.
-function barreOutilsEcritureApple(ed) {
-  if (!ed.somethingSelected()) {
-    new obsidian.Notice(tr('Sélectionnez d’abord le passage à relire.'));
-    return false;
-  }
-  let remote = null;
-  try {
-    const el = require('electron');
-    remote = el.remote || (window.electron && window.electron.remote) || null;
-  } catch (e) { remote = null; }
-  if (!remote || !remote.Menu || typeof remote.Menu.sendActionToFirstResponder !== 'function') {
-    new obsidian.Notice(tr('Les outils d’écriture d’Apple ne sont pas accessibles depuis cette version d’Obsidian.'));
-    return false;
-  }
-  // Le texte doit avoir le focus : c'est lui, le répondeur qui reçoit l'action.
-  try { ed.focus(); } catch (e) { /* volet parti */ }
-  remote.Menu.sendActionToFirstResponder('showWritingTools:');
-  return true;
-}
 
 // Le presse-papiers, en deux fonctions qui ne supposent rien de l'hôte :
 // l'API moderne d'abord, l'ancienne commande d'édition en secours.
@@ -910,7 +877,6 @@ function barreDefaut() {
     // citations pour lire le texte seul, et ouvrir le volet de relecture.
     { cmd: a('citations-basculer') },
     { cmd: a('correcteur-volet') },
-    { cmd: a('ai-relecture') },
     { separateur: true },
     { cmd: a('note-plein-ecran') },
     { cmd: a('espace-plein-ecran') },
@@ -1388,18 +1354,15 @@ class BarreOutils {
     const mienne = barreCommandeAriane(id);
     const cmd = this.greffon.app.commands.commands[id];
     if (!cmd && !mienne) return null;
-    if (mienne && mienne.mac && !obsidian.Platform.isMacOS) return null;
     const nom = cmd ? cmd.name : tr(mienne.nom);
     const icone = (mienne && mienne.icone) || BARRE_ICONES_OBSIDIAN[id]
       || (cmd && cmd.icon) || 'dot';
-    return { nom, icone, marque: (mienne && mienne.marque) || BARRE_MARQUES_OBSIDIAN[id] || '',
-             selection: !!(mienne && mienne.selection) };
+    return { nom, icone, marque: (mienne && mienne.marque) || BARRE_MARQUES_OBSIDIAN[id] || '' };
   }
 
   // Les couleurs ouvrent leur palette sous le bouton ; tout le reste passe
   // par la commande, pour que la barre ne double jamais un comportement.
   lancer(id, bouton) {
-    if (bouton && bouton.classList.contains('est-inactif')) return;
     const suite = id.startsWith(BARRE_PREFIXE) ? id.slice(BARRE_PREFIXE.length) : '';
     if (suite === 'md-couleur-texte' || suite === 'md-couleur-fond') {
       const ed = this.editeur;
@@ -1434,14 +1397,6 @@ class BarreOutils {
         }
       }
       b.el.classList.toggle('est-actif', actif);
-      // Un bouton qui travaille sur la sélection s'éteint sans elle. Il reste
-      // survolable : son infobulle dit ce qu'il attend.
-      const def = this.definition(b.id);
-      if (def && def.selection) {
-        const inactif = !ed || !ed.somethingSelected();
-        b.el.classList.toggle('est-inactif', inactif);
-        b.el.setAttribute('aria-disabled', inactif ? 'true' : 'false');
-      }
     }
   }
 }

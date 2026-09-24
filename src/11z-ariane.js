@@ -487,15 +487,11 @@ class Ariane extends composer(obsidian.Plugin,
       this.addCommand({
         id: c.id,
         name: tr(c.nom),
-        editorCheckCallback: (verif, editeur, vue) => {
-          if (c.mac && !obsidian.Platform.isMacOS) return false;
-          if (c.selection && !editeur.somethingSelected()) return false;
-          if (verif) return true;
+        editorCallback: (editeur, vue) => {
           try {
             const r = c.sur(editeur, vue, this);
             if (r && typeof r.catch === 'function') r.catch((e) => this._barreEchec(c, e));
           } catch (e) { this._barreEchec(c, e); }
-          return true;
         },
       });
     }
