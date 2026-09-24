@@ -27537,6 +27537,8 @@ class MoteurCalendrier extends MoteurVue {
     this._gesteCal = false;
     if (this._pose) this._pose.finir();
     this._fermerJourMois();
+    for (const o of (this._observateursMois || [])) { try { o.disconnect(); } catch (e) { /* rien */ } }
+    this._observateursMois = [];
     if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
     if (this.greffon._moteursCalendrier) this.greffon._moteursCalendrier.delete(this);
     this.racine.empty();
@@ -27749,6 +27751,8 @@ class MoteurCalendrier extends MoteurVue {
     if (this._detruit) return;
     // Une bulle « +N » ouverte montrerait un contenu périmé après redessin.
     this._fermerJourMois();
+    for (const o of (this._observateursMois || [])) { try { o.disconnect(); } catch (e) { /* rien */ } }
+    this._observateursMois = [];
     this._jourRendu = new Date().toISOString().slice(0, 10);
     this._chargerFond();
     if (this.greffon && this.greffon._relancerReleveAgenda) this.greffon._relancerReleveAgenda(1500);
@@ -29184,8 +29188,23 @@ class MoteurCalendrier extends MoteurVue {
       });
     }
     // Le repli se mesure une fois la grille posée : c'est la hauteur réelle
-    // de chaque case qui dit combien d'éléments y tiennent.
-    this._win().requestAnimationFrame(() => this._replierCellulesMois(grille));
+    // de chaque case qui dit combien d'éléments y tiennent. Et il se remesure
+    // à chaque changement de taille : une grille dessinée cachée (onglet en
+    // arrière-plan, volet pas encore affiché) mesure zéro, et n'aurait jamais
+    // eu son « +N » une fois montrée.
+    const win = this._win();
+    win.requestAnimationFrame(() => this._replierCellulesMois(grille));
+    if (win.ResizeObserver) {
+      let attendu = false;
+      const obs = new win.ResizeObserver(() => {
+        if (!grille.isConnected) { obs.disconnect(); return; }
+        if (attendu) return;
+        attendu = true;
+        win.requestAnimationFrame(() => { attendu = false; this._replierCellulesMois(grille); });
+      });
+      obs.observe(grille);
+      (this._observateursMois || (this._observateursMois = [])).push(obs);
+    }
   }
 
   // Un élément d'une journée de la vue mois (ou de sa bulle « +N ») : une
