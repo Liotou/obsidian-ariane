@@ -293,3 +293,12 @@ test('repli : un seul réglage, appliqué à toutes les barres, avec animation',
   await chef.basculerRepli();
   assert.equal(chef.greffon.settings.barreRepliee, false, 'la seconde bascule déplie');
 });
+
+test('relecture Apple Intelligence : Mac seulement, et seulement sur une sélection', () => {
+  const c = T.BARRE_COMMANDES.find((x) => x.id === 'ai-relecture');
+  assert.ok(c, 'la commande a disparu du catalogue');
+  assert.equal(c.mac, true, 'hors Mac, les outils d\'écriture n\'existent pas');
+  assert.equal(c.selection, true, 'sans sélection, macOS n\'a rien à relire');
+  const dispo = JSON.stringify(T.barreDefaut());
+  assert.ok(dispo.includes('obsidian-ariane:ai-relecture'), 'le bouton n\'est plus dans la barre');
+});
