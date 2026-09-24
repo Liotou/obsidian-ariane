@@ -3069,23 +3069,84 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 }
 .view-content.zfa-avec-barre > .zfa-barre { flex: 0 0 auto; }
 
+/* Le repli, en trois étages : la grille (.zfa-barre) passe d'une rangée
+   « 1fr » à « 0fr », le cadre rogne, la rangée de boutons garde sa hauteur.
+   Aucune hauteur mesurée en JavaScript : le navigateur interpole tout seul,
+   y compris quand la barre passe sur deux lignes.
+
+   Le mouvement : la hauteur suit une courbe de ressort amorti (départ vif,
+   arrivée douce) ; les boutons, eux, partent vite et ensemble, mais arrivent
+   en cascade de gauche à droite, un peu après que la place s'est ouverte. */
 .zfa-barre {
   --zfa-barre-icone: 17px;
+  --zfa-barre-duree: 340ms;
+  --zfa-barre-ressort: cubic-bezier(0.32, 0.72, 0, 1);
+  display: grid;
+  grid-template-rows: 1fr;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  transition:
+    grid-template-rows var(--zfa-barre-duree) var(--zfa-barre-ressort),
+    border-bottom-color 200ms ease;
+}
+.zfa-barre.est-repliee {
+  grid-template-rows: 0fr;
+  border-bottom-color: transparent;
+}
+.zfa-barre-cadre { min-height: 0; overflow: hidden; }
+
+.zfa-barre-boutons {
   display: flex;
   align-items: center;
   gap: 1px;
   padding: 4px 8px;
-  border-bottom: 1px solid var(--background-modifier-border);
-  background: var(--background-primary);
 }
-.zfa-barre.est-enroulee { flex-wrap: wrap; row-gap: 2px; }
-.zfa-barre:not(.est-enroulee) {
+.zfa-barre.est-enroulee .zfa-barre-boutons { flex-wrap: wrap; row-gap: 2px; }
+.zfa-barre:not(.est-enroulee) .zfa-barre-boutons {
   flex-wrap: nowrap;
   overflow-x: auto;
   scrollbar-width: none;
 }
-.zfa-barre:not(.est-enroulee)::-webkit-scrollbar { display: none; }
-.zfa-barre.est-compacte { padding: 2px 6px; gap: 0; }
+.zfa-barre:not(.est-enroulee) .zfa-barre-boutons::-webkit-scrollbar { display: none; }
+.zfa-barre.est-compacte .zfa-barre-boutons { padding: 2px 6px; gap: 0; }
+
+/* Les éléments de la rangée. À l'ouverture : chacun attend son tour (--zfa-rang,
+   posé par le dessin), plafonné pour qu'une longue barre ne traîne pas. */
+.zfa-barre-boutons > * {
+  transition:
+    opacity 220ms ease-out,
+    transform 320ms var(--zfa-barre-ressort),
+    background-color 120ms ease,
+    color 120ms ease;
+  transition-delay: calc(60ms + min(var(--zfa-rang, 0), 24) * 9ms);
+}
+/* À la fermeture : tous ensemble, vite, en glissant vers le haut, avant que
+   la place ne se referme sur eux. */
+.zfa-barre.est-repliee .zfa-barre-boutons > * {
+  opacity: 0;
+  transform: translateY(-7px) scale(0.96);
+  transition-duration: 140ms, 200ms, 120ms, 120ms;
+  transition-delay: 0ms;
+}
+/* Survol et clic : réponse immédiate, sans le délai de cascade. */
+.zfa-barre:not(.est-repliee) .zfa-barre-boutons > *:hover,
+.zfa-barre:not(.est-repliee) .zfa-barre-boutons > *:active { transition-delay: 0ms; }
+
+/* Pose d'un état sans l'animer (ouverture d'une note, redessin). */
+.zfa-barre.sans-transition,
+.zfa-barre.sans-transition .zfa-barre-boutons > * { transition: none !important; }
+
+/* Le bouton de l'en-tête du volet : le chevron se retourne avec la barre. */
+.zfa-barre-interrupteur .svg-icon {
+  transition: transform var(--zfa-barre-duree, 340ms) cubic-bezier(0.32, 0.72, 0, 1);
+}
+.zfa-barre-interrupteur.est-repliee .svg-icon { transform: rotate(180deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .zfa-barre,
+  .zfa-barre-boutons > *,
+  .zfa-barre-interrupteur .svg-icon { transition: none !important; }
+}
 
 .zfa-barre-bouton {
   display: inline-flex;

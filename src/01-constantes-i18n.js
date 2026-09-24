@@ -1149,6 +1149,7 @@ const DEFAULT_SETTINGS = {
   // d'onglets. `barreBoutons` vide veut dire « la disposition d'origine » :
   // le réglage ne fige la liste que le jour où l'utilisateur la modifie.
   barreActive: true,
+  barreRepliee: false,          // repliée par le bouton de l'en-tête du volet
   barreEnLecture: false,        // la barre suit-elle en mode lecture ?
   barreCompacte: false,         // boutons resserrés
   barreDefilement: 'enrouler',  // 'enrouler' (plusieurs rangées) | 'defiler'

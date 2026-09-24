@@ -269,3 +269,23 @@ test('disposition par défaut : des entrées bien formées, et nos commandes exi
   verifier(T.barreDefaut(), 0);
   assert.ok(boutons >= 30, 'la disposition par défaut s\'est vidée');
 });
+
+// ── Repli de la barre ────────────────────────────────────────────────────
+
+test('repli : un seul réglage, appliqué à toutes les barres, avec animation', async () => {
+  const appels = [];
+  let sauvegardes = 0;
+  const chef = Object.create(T.BarreEdition.prototype);
+  chef.greffon = { settings: { barreRepliee: false }, saveSettings: async () => { sauvegardes += 1; } };
+  chef.barres = new Map([
+    ['volet gauche', { appliquerRepli: (anime) => appels.push(['gauche', anime]) }],
+    ['volet droit', { appliquerRepli: (anime) => appels.push(['droit', anime]) }],
+  ]);
+  await chef.basculerRepli();
+  assert.equal(chef.greffon.settings.barreRepliee, true);
+  assert.deepEqual(appels, [['gauche', true], ['droit', true]],
+    'chaque barre ouverte se replie, et en s\'animant');
+  assert.equal(sauvegardes, 1, 'l\'état est retenu pour les notes ouvertes ensuite');
+  await chef.basculerRepli();
+  assert.equal(chef.greffon.settings.barreRepliee, false, 'la seconde bascule déplie');
+});

@@ -470,12 +470,8 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'barre-basculer',
-      name: tr('Barre d’édition : afficher ou masquer'),
-      callback: async () => {
-        this.settings.barreActive = this.settings.barreActive === false;
-        await this.saveSettings();
-        if (this.barre) this.barre.redessiner();
-      },
+      name: tr('Barre d’édition : replier ou déplier'),
+      callback: () => this.barre && this.barre.basculerRepli(),
     });
     // La barre d'édition (section 21) : chaque bouton est l'une de ces
     // commandes, et chacune reste accessible depuis la palette et par

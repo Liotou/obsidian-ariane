@@ -1330,6 +1330,7 @@ const DEFAULT_SETTINGS = {
   // d'onglets. `barreBoutons` vide veut dire « la disposition d'origine » :
   // le réglage ne fige la liste que le jour où l'utilisateur la modifie.
   barreActive: true,
+  barreRepliee: false,          // repliée par le bouton de l'en-tête du volet
   barreEnLecture: false,        // la barre suit-elle en mode lecture ?
   barreCompacte: false,         // boutons resserrés
   barreDefilement: 'enrouler',  // 'enrouler' (plusieurs rangées) | 'defiler'
@@ -15827,12 +15828,8 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'barre-basculer',
-      name: tr('Barre d’édition : afficher ou masquer'),
-      callback: async () => {
-        this.settings.barreActive = this.settings.barreActive === false;
-        await this.saveSettings();
-        if (this.barre) this.barre.redessiner();
-      },
+      name: tr('Barre d’édition : replier ou déplier'),
+      callback: () => this.barre && this.barre.basculerRepli(),
     });
     // La barre d'édition (section 21) : chaque bouton est l'une de ces
     // commandes, et chacune reste accessible depuis la palette et par
@@ -32294,6 +32291,16 @@ class BarreEdition extends obsidian.Component {
     for (const barre of Array.from(this.barres.values())) barre.majEtats();
   }
 
+  // Replier ou déplier : un réglage retenu, appliqué à toutes les barres
+  // ouvertes d'un coup, avec l'animation. Une note ouverte ensuite retrouve
+  // la barre dans l'état où on l'a laissée.
+  async basculerRepli() {
+    const s = this.reglages;
+    s.barreRepliee = s.barreRepliee !== true;
+    for (const barre of Array.from(this.barres.values())) barre.appliquerRepli(true);
+    await this.greffon.saveSettings();
+  }
+
   // ── Exécution d'une commande depuis un bouton ──────────────────────────
   // Le volet qui porte le bouton devient actif AVANT l'exécution : une
   // commande d'éditeur agit sur l'éditeur actif, et cliquer la barre du
@@ -32501,21 +32508,82 @@ class BarreOutils {
       this.majEtats();
       return;
     }
-    if (!this.el) this.el = this.doc.createElement('div');
+    if (!this.el) {
+      // Trois étages, pour que le repli s'anime sans mesurer quoi que ce soit :
+      // la grille passe d'une rangée « 1fr » à « 0fr », le cadre rogne ce qui
+      // dépasse, et la rangée garde sa hauteur naturelle pendant ce temps.
+      this.el = this.doc.createElement('div');
+      this.cadre = this.doc.createElement('div');
+      this.cadre.className = 'zfa-barre-cadre';
+      this.rangee = this.doc.createElement('div');
+      this.rangee.className = 'zfa-barre-boutons';
+      this.cadre.appendChild(this.rangee);
+      this.el.appendChild(this.cadre);
+    }
     this.el.className = 'zfa-barre';
     hote.classList.add('zfa-avec-barre');
     hote.insertBefore(this.el, hote.firstChild);
     this.brancherSuivi();
+    this.poserInterrupteur();
     this.dessiner();
+    // Première apparition : l'état est posé tel quel, sans animation. Le repli
+    // ne s'anime que lorsqu'on le demande, jamais à l'ouverture d'une note.
+    this.appliquerRepli(false);
   }
 
   demonter() {
     this.debrancherSuivi();
+    if (this.interrupteur && this.interrupteur.parentElement) {
+      this.interrupteur.parentElement.removeChild(this.interrupteur);
+    }
+    this.interrupteur = null;
     if (this.el && this.el.parentElement) this.el.parentElement.removeChild(this.el);
     const hote = this.vue && this.vue.contentEl;
     if (hote) hote.classList.remove('zfa-avec-barre');
     this.el = null;
+    this.cadre = null;
+    this.rangee = null;
     this.boutons = [];
+  }
+
+  // Le bouton qui replie et déplie la barre, dans l'en-tête du volet (à côté
+  // du livre et des trois points). Il appartient au volet comme la barre :
+  // une fenêtre détachée a donc le sien.
+  poserInterrupteur() {
+    if (this.interrupteur && this.interrupteur.isConnected) return;
+    if (typeof this.vue.addAction !== 'function') return;
+    this.interrupteur = this.vue.addAction('chevron-up', tr('Replier la barre d’édition'),
+      () => this.chef.basculerRepli());
+    this.interrupteur.classList.add('zfa-barre-interrupteur');
+  }
+
+  // Replie ou déplie. `anime` faux : l'état est posé sans transition (montage,
+  // redessin), pour ne pas voir la barre se refermer à chaque note ouverte.
+  appliquerRepli(anime) {
+    if (!this.el) return;
+    const repliee = this.greffon.settings.barreRepliee === true;
+    const fenetre = this.doc.defaultView || window;
+    if (!anime) {
+      this.el.classList.add('sans-transition');
+      this.el.classList.toggle('est-repliee', repliee);
+      // Deux images plus tard, la mise en page est faite : on peut rendre les
+      // transitions sans qu'elles rejouent l'état qu'on vient de poser.
+      fenetre.requestAnimationFrame(() => fenetre.requestAnimationFrame(() => {
+        if (this.el) this.el.classList.remove('sans-transition');
+      }));
+    } else {
+      this.el.classList.toggle('est-repliee', repliee);
+    }
+    // Barre repliée : ses boutons sortent de l'ordre de tabulation et des
+    // lecteurs d'écran, sinon on y entrerait sans les voir.
+    this.el.setAttribute('aria-hidden', repliee ? 'true' : 'false');
+    if ('inert' in this.cadre) this.cadre.inert = repliee;
+    if (this.interrupteur) {
+      this.interrupteur.classList.toggle('est-repliee', repliee);
+      const libelle = repliee ? tr('Déplier la barre d’édition') : tr('Replier la barre d’édition');
+      this.interrupteur.setAttribute('aria-label', libelle);
+      if (obsidian.setTooltip) obsidian.setTooltip(this.interrupteur, libelle, { placement: 'bottom' });
+    }
   }
 
   // Le curseur bouge : les boutons de mise en forme se rallument ou
@@ -32543,7 +32611,7 @@ class BarreOutils {
 
   dessiner() {
     if (!this.el) return;
-    this.el.textContent = '';
+    this.rangee.textContent = '';
     this.boutons = [];
     const s = this.greffon.settings;
     this.el.classList.toggle('est-compacte', s.barreCompacte === true);
@@ -32553,7 +32621,10 @@ class BarreOutils {
     }
     const entrees = Array.isArray(s.barreBoutons) && s.barreBoutons.length
       ? s.barreBoutons : barreDefaut();
-    for (const e of entrees) this.poser(this.el, e);
+    for (const e of entrees) this.poser(this.rangee, e);
+    // Le rang de chaque élément règle son délai d'entrée : à l'ouverture, les
+    // boutons arrivent de gauche à droite, en cascade.
+    Array.from(this.rangee.children).forEach((x, i) => x.style.setProperty('--zfa-rang', String(i)));
     this.majEtats();
   }
 
