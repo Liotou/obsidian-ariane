@@ -27150,11 +27150,31 @@ class MoteurCalendrier extends MoteurVue {
     try { window.open(url); } catch (e2) { /* schéma indisponible */ }
   }
 
-  // Clic (ouvre dans Calendrier) + clic droit (menu) sur un bloc d'événement
+  // Note d'un événement Apple : celle qui existe s'ouvre, sinon elle se crée
+  // puis s'ouvre. Un seul geste, qu'on soit passé là pour la première fois ou
+  // pour la dixième.
+  async _noteEvenement(e) {
+    const existante = e && e.id ? this.greffon.noteDeEvenement(e.id) : null;
+    if (existante) { await this.app.workspace.getLeaf(false).openFile(existante); return; }
+    const jour = String((e && e.debut) || '').slice(0, 10);
+    const nom = String((e && e.titre) || '').trim() || (tr('Événement ') + (jour || ''));
+    const chemin = await this.greffon.creerNoteEvenement({
+      intitule: nom, date: jour, evenementId: (e && e.id) || '' });
+    const f = this.app.vault.getAbstractFileByPath(chemin);
+    if (f) await this.app.workspace.getLeaf(false).openFile(f);
+  }
+
+  // Clic (note de l'événement) + clic droit (menu) sur un bloc d'événement
   // Apple. Posé par les trois endroits qui rendent un événement (vue semaine et
-  // les deux formats de la vue mois).
+  // les deux formats de la vue mois). Calendar.app est passé au clic droit : le
+  // geste courant, c'est la note, pas le retour vers l'application d'origine.
   _brancherEvenement(el, e) {
-    el.addEventListener('click', (ev) => { ev.stopPropagation(); this._ouvrirEvenement(e.id); });
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      this._noteEvenement(e).catch((err) => {
+        new obsidian.Notice(tr('Note d’événement impossible : ') + (err && err.message ? err.message : err));
+      });
+    });
     el.addEventListener('contextmenu', (ev) => this.menuEvenement(ev, e));
   }
 
@@ -27191,19 +27211,11 @@ class MoteurCalendrier extends MoteurVue {
         this.ouvrir(ref, false);
       }));
     }
-    if (noteExistante) {
-      m.addItem((i) => i.setTitle(tr('Ouvrir la note de cet événement')).setIcon('file-text')
-        .onClick(() => this.app.workspace.getLeaf(false).openFile(noteExistante)));
-    } else {
-      m.addItem((i) => i.setTitle(tr('Créer une note associée à cet événement')).setIcon('file-plus')
-        .onClick(async () => {
-          const nom = String(e.titre || '').trim() || (tr('Événement ') + (jour || ''));
-          const chemin = await this.greffon.creerNoteEvenement({
-            intitule: nom, date: jour, evenementId: e.id || '' });
-          const f = this.app.vault.getAbstractFileByPath(chemin);
-          if (f) this.app.workspace.getLeaf(false).openFile(f);
-        }));
-    }
+    m.addItem((i) => i
+      .setTitle(noteExistante ? tr('Ouvrir la note de cet événement')
+                              : tr('Créer une note associée à cet événement'))
+      .setIcon(noteExistante ? 'file-text' : 'file-plus')
+      .onClick(() => { this._noteEvenement(e).catch(() => { /* rien */ }); }));
     m.showAtMouseEvent(ev);
   }
 
