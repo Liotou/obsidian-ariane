@@ -3361,6 +3361,19 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
   font-size: var(--font-ui-smaller, 12px);
 }
 .zfa-tc-ref { flex: 0 0 auto; color: var(--text-faint); font-size: var(--font-ui-smaller, 12px); }
-.zfa-tc-item.est-nouvelle { color: var(--text-accent); }
+.zfa-tc-tete-horaire { flex: 1 1 auto; min-width: 0; }
+/* Toujours visible, quelle que soit la longueur de la liste. */
+.zfa-tc-nouvelle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  max-width: 55%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--text-accent);
+}
 .zfa-tc-icone { display: inline-flex; }
 .zfa-tc-icone .svg-icon { width: 14px; height: 14px; }
