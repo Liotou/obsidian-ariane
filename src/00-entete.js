@@ -118,7 +118,13 @@
  *          incohérences de tâches, références en attente, suggestions
  *   20 · Modales secondaires
  *          choix, rapports, fusion d'auteurs
- *   21 · Exports
+ *   21 · Barre d'édition
+ *          une barre de mise en forme par volet, sous la barre d'onglets et
+ *          au-dessus du titre : fonctions pures de transformation de texte,
+ *          commandes Ariane qui les appliquent, BarreEdition (le chef) et
+ *          BarreOutils (une par volet). Un bouton n'est jamais qu'un
+ *          raccourci vers une commande de la palette.
+ *   22 · Exports
  *          module.exports et surface _test des fonctions pures
  *
  * ─────────────────────────────────────────────────────────────────────────

@@ -1145,6 +1145,20 @@ const DEFAULT_SETTINGS = {
   correcteurTableaux: false,    // les tableaux sont laissés de côté (voir le réglage)
   correcteurExplication: true,  // la bulle dit pourquoi, ou se borne à corriger
   correcteurDelai: 700,         // ms après la dernière frappe
+  // BARRE D'ÉDITION (section 21). Une barre par volet, sous la barre
+  // d'onglets. `barreBoutons` vide veut dire « la disposition d'origine » :
+  // le réglage ne fige la liste que le jour où l'utilisateur la modifie.
+  barreActive: true,
+  barreEnLecture: false,        // la barre suit-elle en mode lecture ?
+  barreCompacte: false,         // boutons resserrés
+  barreDefilement: 'enrouler',  // 'enrouler' (plusieurs rangées) | 'defiler'
+  barreTailleIcone: 17,         // px
+  barreBoutons: [],
+  barreCouleursTexte: ['#D83931', '#DE7802', '#245BDB', '#6425D0', '#646A73',
+                       'var(--color-red)', 'var(--color-orange)', 'var(--color-green)',
+                       'var(--color-blue)', 'var(--color-purple)'],
+  barreCouleursFond: ['#FFB78B8C', '#CDF4698C', '#A0CCF68C', '#F0A7D88C', '#ADEFEF8C',
+                      'var(--text-highlight-bg)'],
   canevasRelierAuto: true,      // poser une carte trace ses relations avec les cartes déjà là
   // FAMILLES DE NOTES — la table que l'utilisateur remplit lui-même. Elle
   // remplace les réglages qui nommaient en dur des types de notes

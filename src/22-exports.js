@@ -1,6 +1,6 @@
-//#region 21 · Exports
+//#region 22 · Exports
 // ═══════════════════════════════════════════════════════════════════════════
-//  21 · EXPORTS
+//  22 · EXPORTS
 //  Points d'entrée CommonJS : la classe du greffon et la surface _test
 //  des fonctions pures pour la suite de tests.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -36,6 +36,40 @@ module.exports._test = {
   correcteurFautes,
   correcteurCleIgnore,
   CorrecteurApple,
+  // Barre d'édition : toutes les transformations de texte sont pures, et
+  // c'est là que la suite les éprouve. Le DOM de la barre, lui, ne s'éprouve
+  // qu'à l'usage.
+  barreEntourer,
+  barreTitreLigne,
+  barreCitationLigne,
+  barreLireLigneListe,
+  barreCyclerListe,
+  barreRenumeroter,
+  barreLignesVides,
+  barreScinderLignes,
+  barreFusionnerLignes,
+  barreDedoublonnerLignes,
+  barreEnvelopperLignes,
+  barreNumeroterLignes,
+  barreEspaces,
+  barreTrierLignes,
+  barreCasse,
+  barreCasseSuivante,
+  barreTranchesTypo,
+  barreTypographieFr,
+  barreTypographieNeutre,
+  barreEffacerFormat,
+  barreTexteBrut,
+  barreAligner,
+  barreColorer,
+  barreListeVersTableau,
+  barreTableauVersListe,
+  barreExtraireEntre,
+  barreMarquesAutour,
+  barreDefaut,
+  BARRE_COMMANDES,
+  BarreEdition,
+  BarreOutils,
   echapperRegex,
   nomCompletAuteur,
   appliquerModele,
@@ -80,4 +114,4 @@ module.exports._test = {
   colonnesPourExport,
 };
 
-//#endregion 21 · Exports
+//#endregion 22 · Exports

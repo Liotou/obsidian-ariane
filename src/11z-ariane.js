@@ -468,6 +468,36 @@ class Ariane extends composer(obsidian.Plugin,
       name: tr('Correcteur Apple : ouvrir le volet de relecture'),
       callback: () => this.correcteur && this.correcteur.ouvrirVolet(),
     });
+    this.addCommand({
+      id: 'barre-basculer',
+      name: tr('Barre d’édition : afficher ou masquer'),
+      callback: async () => {
+        this.settings.barreActive = this.settings.barreActive === false;
+        await this.saveSettings();
+        if (this.barre) this.barre.redessiner();
+      },
+    });
+    // La barre d'édition (section 21) : chaque bouton est l'une de ces
+    // commandes, et chacune reste accessible depuis la palette et par
+    // raccourci clavier. Elles sont déclarées en un seul endroit, le
+    // catalogue BARRE_COMMANDES, pour que barre et palette ne divergent pas.
+    for (const c of BARRE_COMMANDES) {
+      this.addCommand({
+        id: c.id,
+        name: tr(c.nom),
+        editorCallback: (editeur, vue) => {
+          try {
+            const r = c.sur(editeur, vue, this);
+            if (r && typeof r.catch === 'function') r.catch((e) => this._barreEchec(c, e));
+          } catch (e) { this._barreEchec(c, e); }
+        },
+      });
+    }
+  }
+
+  _barreEchec(c, e) {
+    console.error('[Ariane] barre d’édition, ' + c.id + ' :', e);
+    new obsidian.Notice(tr('L’opération a échoué : ') + (e && e.message ? e.message : e));
   }
 
   // Volets latéraux et vues de base (frise, articulation, calendrier).
@@ -490,6 +520,10 @@ class Ariane extends composer(obsidian.Plugin,
     // est enregistrée avec les autres, dans _installerExtensionsEditeur.
     this.correcteur = new CorrecteurApple(this);
     this.addChild(this.correcteur);
+    // La barre d'édition : une par volet de note, posée sous la barre
+    // d'onglets. Elle n'a aucun geste à elle, elle appelle des commandes.
+    this.barre = new BarreEdition(this);
+    this.addChild(this.barre);
     // La frise est une vue de base : elle n'existe que si Bases est actif.
     if (typeof this.registerBasesView === 'function') {
       const Vue = fabriquerVueFriseBase(this);

@@ -22,6 +22,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       [tr('Général'), 'settings', (c) => this.ongletGeneral(c, s, maj)],
       [tr('Dossiers & familles'), 'folder-tree', (c) => this.ongletDossiers(c, s, maj)],
       [tr('Affichage'), 'eye', (c) => this.ongletAffichage(c, s, maj)],
+      [tr('Barre d’édition'), 'pilcrow', (c) => this.ongletBarre(c, s, maj)],
       [tr('Citations & bibliographie'), 'quote', (c) => this.ongletCitations(c, s, maj)],
       [tr('Suggestions'), 'sparkles', (c) => this.ongletSuggestions(c, s, maj)],
       [tr('Tâches'), 'list-checks', (c) => this.ongletTaches(c, s, maj)],
@@ -550,6 +551,171 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Ex. « 0.8em », « 11px »."))
       .addText((t) => t.setValue(s.aparteTaille).onChange(async (v) => { s.aparteTaille = v.trim() || '0.8em'; await maj(); this.plugin.appliquerStyleAparte(); }));
 
+  }
+
+  // ── Barre d'édition (section 21) ─────────────────────────────────────
+  //  La disposition est une simple liste : un bouton, un séparateur ou un
+  //  groupe. Tant que l'utilisateur n'y touche pas, `barreBoutons` reste
+  //  vide et la barre suit la disposition d'origine, qui peut donc évoluer
+  //  avec le greffon. Le premier changement la fige.
+  ongletBarre(c, s, maj) {
+    const redessiner = async () => { await maj(); if (this.plugin.barre) this.plugin.barre.redessiner(); };
+
+    this._section(c, tr('La barre'));
+    this._aide(c, tr("Une barre de mise en forme par volet de note, posée sous la barre d’onglets et au-dessus du titre. Chaque bouton lance une commande de la palette : celles d’Ariane, celles d’Obsidian, ou celles d’un autre greffon. Un volet détaché a la sienne."));
+    new obsidian.Setting(c)
+      .setName(tr('Afficher la barre'))
+      .addToggle((t) => t.setValue(s.barreActive !== false)
+        .onChange(async (v) => { s.barreActive = v; await redessiner(); this.display(); }));
+    if (s.barreActive === false) return;
+
+    new obsidian.Setting(c)
+      .setName(tr('Aussi en mode lecture'))
+      .setDesc(tr("En lecture il n’y a pas d’éditeur : seuls les boutons qui portent sur le volet (pleine page) restent utiles."))
+      .addToggle((t) => t.setValue(s.barreEnLecture === true)
+        .onChange(async (v) => { s.barreEnLecture = v; await redessiner(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Boutons resserrés'))
+      .setDesc(tr('Moins d’air autour des icônes : la barre tient sur une rangée plus souvent.'))
+      .addToggle((t) => t.setValue(s.barreCompacte === true)
+        .onChange(async (v) => { s.barreCompacte = v; await redessiner(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Quand la barre est trop longue'))
+      .addDropdown((d) => d
+        .addOption('enrouler', tr('Passer à la ligne'))
+        .addOption('defiler', tr('Défiler horizontalement'))
+        .setValue(s.barreDefilement === 'defiler' ? 'defiler' : 'enrouler')
+        .onChange(async (v) => { s.barreDefilement = v; await redessiner(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Taille des icônes'))
+      .setDesc(tr('En pixels. 17 par défaut.'))
+      .addSlider((sl) => sl.setLimits(12, 26, 1).setDynamicTooltip()
+        .setValue(Number(s.barreTailleIcone) || 17)
+        .onChange(async (v) => { s.barreTailleIcone = v; await redessiner(); }));
+
+    this._section(c, tr('Les boutons'));
+    this._aide(c, tr("L’ordre ici est l’ordre dans la barre. Un groupe rassemble plusieurs commandes derrière un seul bouton, qui ouvre un menu."));
+    this._aide(c, tr("Les commandes qui travaillent par lignes (trier, dédoublonner, nettoyer les espaces) portent sur la sélection ; sans sélection, elles portent sur la note entière. Un ⌘Z les annule."));
+    this._listeBarre(c, s, redessiner);
+
+    this._section(c, tr('Couleurs proposées'));
+    this._aide(c, tr("Les pastilles des deux boutons de couleur. Une couleur choisie librement vient s’ajouter en tête. Les valeurs « var(--…) » suivent le thème."));
+    this._couleursBarre(c, s, 'barreCouleursTexte', tr('Couleur du texte'), maj);
+    this._couleursBarre(c, s, 'barreCouleursFond', tr('Couleur de fond'), maj);
+  }
+
+  // La liste modifiable des boutons, groupes compris.
+  //  Tant que l'utilisateur n'a rien changé, `barreBoutons` reste vide et la
+  //  barre suit la disposition d'origine, qui peut donc évoluer avec le
+  //  greffon. Les réglages travaillent sur une copie de cette disposition :
+  //  le premier changement l'enregistre, et la fige par le fait même.
+  _listeBarre(c, s, redessiner) {
+    const hote = c.createDiv({ cls: 'zfa-barre-reglage' });
+    const travail = Array.isArray(s.barreBoutons) && s.barreBoutons.length
+      ? s.barreBoutons : barreDefaut();
+    let rendre = () => {};
+    // Deux gestes : « enregistrer » écrit et redessine les barres des volets ;
+    // « appliquer » fait cela puis reconstruit la liste ci-dessous. Renommer
+    // un groupe ne passe que par le premier, sinon le champ de saisie perdrait
+    // le focus à chaque lettre.
+    const enregistrer = async () => { s.barreBoutons = travail; await redessiner(); };
+    const appliquer = async () => { await enregistrer(); rendre(); };
+    const ctx = { appliquer, enregistrer };
+    rendre = () => {
+      hote.empty();
+      this._rangeesBarre(hote, travail, 0, ctx);
+      const pied = new obsidian.Setting(hote);
+      pied.addButton((b) => b.setButtonText(tr('Ajouter une commande')).onClick(() => {
+        new ModaleChoixCommande(this.app, async (id) => {
+          travail.push({ cmd: id });
+          await appliquer();
+        }).open();
+      }));
+      pied.addButton((b) => b.setButtonText(tr('Séparateur')).onClick(async () => {
+        travail.push({ separateur: true });
+        await appliquer();
+      }));
+      pied.addButton((b) => b.setButtonText(tr('Groupe')).onClick(async () => {
+        travail.push({ groupe: tr('Nouveau groupe'), icone: 'folder', elements: [] });
+        await appliquer();
+      }));
+      pied.addButton((b) => b.setButtonText(tr('Disposition d’origine')).setWarning()
+        .onClick(async () => {
+          s.barreBoutons = [];
+          await redessiner();
+          this.display();
+        }));
+    };
+    rendre();
+  }
+
+  // Une rangée par entrée, et les enfants d'un groupe juste en dessous.
+  _rangeesBarre(hote, liste, profondeur, ctx) {
+    const appliquer = ctx.appliquer;
+    const differer = () => {
+      if (this._barreMinuterie) clearTimeout(this._barreMinuterie);
+      this._barreMinuterie = setTimeout(() => { this._barreMinuterie = null; ctx.enregistrer(); }, 500);
+    };
+    liste.forEach((e, i) => {
+      const r = new obsidian.Setting(hote);
+      r.settingEl.addClass('zfa-barre-rangee');
+      if (profondeur) r.settingEl.addClass('est-enfant');
+      if (e.separateur) r.setName(tr('· séparateur ·'));
+      else if (e.groupe) {
+        r.setName(tr(e.groupe));
+        r.setDesc((e.elements || []).length + ' ' + tr('commande(s)'));
+        r.addText((t) => t.setValue(e.groupe).setPlaceholder(tr('Nom du groupe'))
+          .onChange((v) => { e.groupe = v; differer(); }));
+        r.addText((t) => t.setValue(e.icone || '').setPlaceholder(tr('icône lucide'))
+          .onChange((v) => { e.icone = v.trim(); differer(); }));
+        r.addButton((b) => b.setIcon('plus').setTooltip(tr('Ajouter dans ce groupe')).onClick(() => {
+          new ModaleChoixCommande(this.app, async (id) => {
+            if (!Array.isArray(e.elements)) e.elements = [];
+            e.elements.push({ cmd: id });
+            await appliquer();
+          }).open();
+        }));
+      } else {
+        const cmd = this.app.commands.commands[e.cmd];
+        const mienne = barreCommandeAriane(e.cmd);
+        r.setName(cmd ? cmd.name : (mienne ? tr(mienne.nom) : e.cmd));
+        if (!cmd && !mienne) {
+          r.setDesc(tr('Commande absente : le greffon qui la fournit est peut-être désactivé.'));
+          r.settingEl.addClass('est-absente');
+        } else r.setDesc(e.cmd);
+      }
+      r.addExtraButton((b) => b.setIcon('arrow-up').setTooltip(tr('Monter')).onClick(async () => {
+        if (!i) return;
+        const [x] = liste.splice(i, 1);
+        liste.splice(i - 1, 0, x);
+        await appliquer();
+      }));
+      r.addExtraButton((b) => b.setIcon('arrow-down').setTooltip(tr('Descendre')).onClick(async () => {
+        if (i >= liste.length - 1) return;
+        const [x] = liste.splice(i, 1);
+        liste.splice(i + 1, 0, x);
+        await appliquer();
+      }));
+      r.addExtraButton((b) => b.setIcon('trash-2').setTooltip(tr('Retirer')).onClick(async () => {
+        liste.splice(i, 1);
+        await appliquer();
+      }));
+      if (e.groupe) this._rangeesBarre(hote, e.elements || [], profondeur + 1, ctx);
+    });
+  }
+
+  _couleursBarre(c, s, cle, titre, maj) {
+    const liste = Array.isArray(s[cle]) && s[cle].length ? s[cle] : DEFAULT_SETTINGS[cle];
+    new obsidian.Setting(c)
+      .setName(titre)
+      .setDesc(tr('Une couleur CSS par ligne.'))
+      .addTextArea((t) => {
+        t.inputEl.rows = 4;
+        t.setValue(liste.join('\n')).onChange(async (v) => {
+          s[cle] = v.split('\n').map((x) => x.trim()).filter((x) => x !== '');
+          await maj();
+        });
+      });
   }
 
   ongletCitations(c, s, maj) {
