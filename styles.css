@@ -2314,8 +2314,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
    de la famille donnait deux couleurs pour un seul élément. Il devient une
    pastille rouge en bout de ligne (voir .zfa-cal-m-el.est-retard). */
 /* Couleurs de la vue mois : UNE couleur par élément.
-   · tâche (créneau, tâche du jour) : un encadré à la couleur de sa famille,
-     sans remplissage ;
+   · tâche (créneau, tâche du jour) : liseré et fond teinté de sa famille ;
    · événement Apple : un encadré à la couleur de son calendrier, sans
      remplissage. Deux formes distinctes (plein / creux) : même quand les
      couleurs se ressemblent, on ne confond pas une tâche et un rendez-vous ;
@@ -2334,22 +2333,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   border-color: var(--zfa-cal-coul);
   box-shadow: none;
 }
-.zfa-cal-cellule .zfa-cal-pastille,
-.zfa-cal-jour-bulle .zfa-cal-pastille,
-.zfa-cal-cellule .zfa-cal-carte,
-.zfa-cal-jour-bulle .zfa-cal-carte {
-  border: 1px solid var(--zfa-cal-coul);
-  background: transparent;
+.zfa-cal-cellule .zfa-cal-carte.est-retard,
+.zfa-cal-jour-bulle .zfa-cal-carte.est-retard {
+  border-color: color-mix(in srgb, var(--zfa-cal-coul) 40%, transparent);
   box-shadow: none;
-}
-.zfa-cal-cellule .zfa-cal-pastille:hover,
-.zfa-cal-jour-bulle .zfa-cal-pastille:hover,
-.zfa-cal-cellule .zfa-cal-carte:hover,
-.zfa-cal-jour-bulle .zfa-cal-carte:hover {
-  background: color-mix(in srgb, var(--zfa-cal-coul) 12%, transparent);
-  box-shadow: none;
-  filter: none;
-  transform: none;
 }
 .zfa-cal-m-titre { flex: 1 1 auto; }
 .zfa-cal-m-el.est-retard::after {
