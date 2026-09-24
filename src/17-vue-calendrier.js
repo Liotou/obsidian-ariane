@@ -20,7 +20,11 @@ class MoteurCalendrier extends MoteurVue {
   //#region Calendrier · cycle de vie & écritures annulables
   constructor(greffon, racine, contexte) {
     super(greffon, racine, contexte);
-    this._ancre = new Date().toISOString().slice(0, 10);
+    // La semaine (ou le mois) consultée et le défilement des heures vivent
+    // dans une mémoire du greffon, par vue : voir _memoire. Ici, on ne pose
+    // aujourd'hui que si cette vue n'a encore rien retenu.
+    this._cleMemoire = (contexte && typeof contexte.cle === 'function' && contexte.cle()) || '';
+    if (!this._memoire().ancre) this._ancre = new Date().toISOString().slice(0, 10);
     this._fond = [];
     racine.addClass('zfa-cal');
     racine.tabIndex = -1;
@@ -36,6 +40,28 @@ class MoteurCalendrier extends MoteurVue {
     // resterait figée tant que la vue reste ouverte sans interaction.
     this._horloge = this._win().setInterval(() => this._tickMaintenant(), 30000);
   }
+  // Mémoire de la vue, hors du moteur. Obsidian recrée la vue Bases, et donc
+  // ce moteur, dès que le fichier .base change ; or plusieurs gestes du
+  // calendrier y écrivent (réafficher la famille d'une tâche qu'on vient de
+  // poser, le zoom, les calendriers cochés). Rangées dans le moteur, la
+  // période consultée et la position de défilement repartaient alors de zéro :
+  // chaque modification dans le passé ramenait sur la semaine du jour. Clé :
+  // le fichier .base et le nom de la vue ; la mémoire dure le temps de la
+  // session, et une réouverture d'Obsidian repart d'aujourd'hui.
+  _memoire() {
+    const g = this.greffon;
+    if (!g) return this._memoireLocale || (this._memoireLocale = {});
+    const toutes = g._memoireCalendriers || (g._memoireCalendriers = new Map());
+    let m = toutes.get(this._cleMemoire || '');
+    if (!m) { m = {}; toutes.set(this._cleMemoire || '', m); }
+    return m;
+  }
+
+  get _ancre() { return this._memoire().ancre; }
+  set _ancre(v) { this._memoire().ancre = v; }
+  get _semScrollTop() { return this._memoire().defilement; }
+  set _semScrollTop(v) { this._memoire().defilement = v; }
+
   // Écriture d'un créneau depuis un geste, avec annulation. `chg` = { avant,
   // debut, fin } comme greffon.majCreneau. L'annulation reconstruit l'état
   // inverse (déplacement/redim → remettre l'ancien ; création → supprimer ;
@@ -2113,6 +2139,10 @@ function fabriquerVueCalendrierBase(greffon) {
         taches: () => this.tachesDeLaBase(),
         colonnes: () => this.colonnes(),
         nomVue,
+        // Identité de la vue pour la mémoire du moteur (période consultée,
+        // défilement) : elle doit survivre à la recréation de la vue.
+        cle: () => ((this.controller && this.controller.file && this.controller.file.path) || '')
+          + '::' + nomVue(),
         triNatif: () => {
           const criteres = this.sortNatif();
           if (!criteres.length) return null;

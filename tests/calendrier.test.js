@@ -446,3 +446,26 @@ test('poseCreneau : colonne visée et haut calé au quart d\'heure', () => {
   assert.equal(Ariane.poseCreneau({ xRel: 50, yRel: 50, colW: 0, pxHeure: 40, nbJours: 7 }), null,
     'grille pas encore mesurée');
 });
+
+// Obsidian recrée la vue Bases (donc le moteur) à chaque écriture dans le
+// fichier .base : la période consultée ne doit pas repartir d'aujourd'hui.
+test('calendrier recréé : il retrouve la semaine consultée et le défilement', () => {
+  const { MoteurCalendrier } = require('./obsidian-factice.js')._test;
+  const greffon = { app: {} };
+  const fenetre = { setInterval: () => 1, clearInterval: () => {} };
+  const racine = () => ({ ownerDocument: { defaultView: fenetre }, addClass() {}, addEventListener() {} });
+  const cle = (c) => ({ cle: () => c });
+
+  const a = new MoteurCalendrier(greffon, racine(), cle('Tâches.base::Semaine'));
+  const auj = new Date().toISOString().slice(0, 10);
+  assert.equal(a._ancre, auj, 'une vue neuve s\'ouvre sur aujourd\'hui');
+  a._ancre = '2026-03-02';
+  a._semScrollTop = 420;
+
+  const b = new MoteurCalendrier(greffon, racine(), cle('Tâches.base::Semaine'));
+  assert.equal(b._ancre, '2026-03-02', 'la vue recréée reste sur la semaine consultée');
+  assert.equal(b._semScrollTop, 420, 'et sur la même heure');
+
+  const autre = new MoteurCalendrier(greffon, racine(), cle('Tâches.base::Mois'));
+  assert.equal(autre._ancre, auj, 'une autre vue a sa propre mémoire');
+});

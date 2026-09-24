@@ -11,6 +11,7 @@ module.exports = Ariane;
 module.exports._test = {
   DEFAULT_SETTINGS,
   MoteurArticulation, // prototype : _traceArete s'éprouve avec un moteur factice
+  MoteurCalendrier,   // mémoire de la période consultée, par vue
   // Icônes des vues de base : clé de réglage, lecture de l'icône en place, tri
   // des éléments de menu.
   basesCleIcone,
