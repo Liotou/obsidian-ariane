@@ -2316,31 +2316,22 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 /* Couleurs de la vue mois : UNE couleur par élément.
    · tâche (créneau, tâche du jour) : un encadré à la couleur de sa famille,
      sans remplissage ;
-   · événement Apple : pas de fond, un point à la couleur de son calendrier,
-     comme dans Calendrier. Deux formes distinctes : même quand les couleurs
-     se ressemblent, on ne confond pas une tâche et un rendez-vous ;
+   · événement Apple : un encadré à la couleur de son calendrier, sans
+     remplissage. Deux formes distinctes (plein / creux) : même quand les
+     couleurs se ressemblent, on ne confond pas une tâche et un rendez-vous ;
    · en retard : une pastille rouge en bout de ligne, qui ne se mêle à rien. */
 .zfa-cal-cellule .zfa-cal-evt.est-compacte,
 .zfa-cal-jour-bulle .zfa-cal-evt.est-compacte {
-  border: none;
+  border: 1px solid color-mix(in srgb, var(--zfa-cal-coul) 75%, transparent);
   border-radius: var(--radius-s, 4px);
   padding: 0 6px;
   background: transparent;
   box-shadow: none;
 }
-.zfa-cal-cellule .zfa-cal-evt.est-compacte::before,
-.zfa-cal-jour-bulle .zfa-cal-evt.est-compacte::before {
-  content: '';
-  flex: 0 0 7px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--zfa-cal-coul);
-}
 .zfa-cal-cellule .zfa-cal-evt.est-compacte:hover,
 .zfa-cal-jour-bulle .zfa-cal-evt.est-compacte:hover {
-  background: var(--background-modifier-hover);
-  border-color: transparent;
+  background: color-mix(in srgb, var(--zfa-cal-coul) 10%, transparent);
+  border-color: var(--zfa-cal-coul);
   box-shadow: none;
 }
 .zfa-cal-cellule .zfa-cal-pastille,
