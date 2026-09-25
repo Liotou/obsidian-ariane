@@ -59,3 +59,14 @@ test('jalon d\'un événement : retrouvé parmi les tâches, sinon rien', () => 
   sansTaches.tachesPourGantt = null;
   assert.equal(sansTaches.jalonDeEvenement('ABC-123'), null);
 });
+
+// Pas de ligne vide entre les propriétés et le titre : Obsidian l'affiche
+// comme un blanc sous l'en-tête de chaque note créée par Ariane.
+test('notes créées par Ariane : le titre suit directement les propriétés', () => {
+  const ev = Ariane.corpsNouvelleNoteEvenement({ intitule: 'Séminaire', date: '2026-09-25' });
+  assert.match(ev, /\n---\n# Séminaire\n/, 'note d\'événement');
+  assert.doesNotMatch(ev, /---\n\n#/);
+  const t = Ariane.corpsNouvelleTache({ intitule: 'Relire le chapitre 2' });
+  assert.match(t, /\n---\n# Relire le chapitre 2\n/, 'note de tâche');
+  assert.doesNotMatch(t, /---\n\n#/);
+});

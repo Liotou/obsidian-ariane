@@ -9730,8 +9730,9 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push(K('agenda-id') + ': []');
     l.push(ligne('cree', jour));
     l.push(ligne('modifie', jour));
+    // Le titre suit directement les propriétés : pas de ligne vide entre
+    // les deux, qu'Obsidian affiche comme un blanc sous l'en-tête.
     l.push('---');
-    l.push('');
     l.push('# ' + intitule);
     l.push('');
     l.push('## Note de travail');
@@ -9811,8 +9812,9 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push('Événement ID:' + (c.evenementId ? ' ' + q(c.evenementId) : ''));
     l.push('Date:' + (c.date ? ' ' + c.date : ''));
     l.push('tags:');
+    // Le titre suit directement les propriétés : pas de ligne vide entre
+    // les deux, qu'Obsidian affiche comme un blanc sous l'en-tête.
     l.push('---');
-    l.push('');
     l.push('# ' + titre);
     l.push('');
     return l.join('\n');
