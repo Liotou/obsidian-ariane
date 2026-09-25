@@ -1196,6 +1196,8 @@ class BarreOutils {
 
   demonter() {
     this.debrancherSuivi();
+    if (this._obsLargeur) { try { this._obsLargeur.disconnect(); } catch (e) { /* rien */ } }
+    this._obsLargeur = null;
     if (this.interrupteur && this.interrupteur.parentElement) {
       this.interrupteur.parentElement.removeChild(this.interrupteur);
     }
@@ -1289,6 +1291,48 @@ class BarreOutils {
     // boutons arrivent de gauche à droite, en cascade.
     Array.from(this.rangee.children).forEach((x, i) => x.style.setProperty('--zfa-rang', String(i)));
     this.majEtats();
+    this._largeurNaturelle = null;
+    this.observerLargeur();
+    this.ajusterEtalement();
+  }
+
+  // Étalement : quand toute la barre tient sur une ligne, les boutons se
+  // répartissent sur toute la largeur du volet ; quand elle ne tient plus,
+  // elle repasse à la ligne, boutons serrés comme avant. Le seuil est la
+  // largeur naturelle de la rangée (boutons à leur taille, sans étirement),
+  // mesurée une fois par dessin : au-delà, étaler reviendrait à écraser.
+  ajusterEtalement() {
+    if (!this.el || !this.rangee) return;
+    if (!this.el.classList.contains('est-enroulee')) {
+      this.el.classList.remove('est-etalee');
+      return;
+    }
+    const dispo = this.rangee.clientWidth;
+    if (!dispo) return;   // volet caché : on attendra qu'il ait une taille
+    if (this._largeurNaturelle == null) {
+      // Rangée à la largeur de son contenu, le temps de la lire. scrollWidth ne
+      // convient pas : quand tout tient, il rend la largeur du volet, et la
+      // valeur retenue deviendrait fausse dès que le volet rétrécit.
+      this.el.classList.add('est-mesure');
+      this._largeurNaturelle = Math.ceil(this.rangee.getBoundingClientRect().width);
+      this.el.classList.remove('est-mesure');
+    }
+    this.el.classList.toggle('est-etalee', this._largeurNaturelle <= dispo);
+  }
+
+  // Le volet change de largeur (barre latérale ouverte, fenêtre redimensionnée,
+  // volet partagé) : on refait la comparaison, sans rien redessiner.
+  observerLargeur() {
+    if (this._obsLargeur || !this.el) return;
+    const fenetre = this.doc.defaultView || window;
+    if (!fenetre.ResizeObserver) return;
+    let attendu = false;
+    this._obsLargeur = new fenetre.ResizeObserver(() => {
+      if (attendu) return;
+      attendu = true;
+      fenetre.requestAnimationFrame(() => { attendu = false; this.ajusterEtalement(); });
+    });
+    this._obsLargeur.observe(this.el);
   }
 
   // Une entrée de la disposition devient un élément de la barre.

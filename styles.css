@@ -3270,6 +3270,18 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 }
 .zfa-barre:not(.est-enroulee) .zfa-barre-boutons::-webkit-scrollbar { display: none; }
 .zfa-barre.est-compacte .zfa-barre-boutons { padding: 2px 6px; gap: 0; }
+/* Tout tient sur une ligne : les boutons occupent toute la largeur. */
+.zfa-barre.est-enroulee.est-etalee .zfa-barre-boutons {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+}
+/* Le temps d'une mesure : la rangée à la largeur de son contenu, sans
+   étirement ni retour à la ligne. */
+.zfa-barre.est-mesure .zfa-barre-boutons {
+  width: max-content !important;
+  flex-wrap: nowrap !important;
+  justify-content: flex-start !important;
+}
 
 /* Les éléments de la rangée. À l'ouverture : chacun attend son tour (--zfa-rang,
    posé par le dessin), plafonné pour qu'une longue barre ne traîne pas. */
