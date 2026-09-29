@@ -329,6 +329,27 @@ const avecSocle = (Base) => class extends Base {
     return corriges;
   }
 
+  // Les familles de notes sont la table de Monsieur : Ariane ne la réécrit
+  // jamais. Elle signale seulement les dossiers de famille qui n'existent plus,
+  // avec le dossier réel probable, pour qu'il corrige lui-même (sans cela, une
+  // famille « Annotations » restée sur un ancien nom sortait ses notes des
+  // suggestions et de l'index sémantique, sans rien dire).
+  famillesDossiersPerimes() {
+    const existants = this.app.vault.getAllLoadedFiles()
+      .filter((f) => f && f.children && typeof f.path === 'string')
+      .map((f) => f.path);
+    if (!existants.length) return [];
+    const out = [];
+    for (const fam of (this.settings.famillesNotes || [])) {
+      for (const d of [].concat((fam && fam.dossiers) || [])) {
+        const v = String(d || '').trim();
+        if (!v || existants.includes(v)) continue;
+        out.push({ famille: fam.nom || '', dossier: v, probable: Ariane.dossierEquivalent(v, existants) });
+      }
+    }
+    return out;
+  }
+
   async saveSettings() {
     // Le dossier des tâches peut avoir changé : l'index « référence → fichier »
     // se lit dessus, on le laisse se reconstruire.

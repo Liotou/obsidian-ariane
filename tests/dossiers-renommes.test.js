@@ -71,3 +71,28 @@ test('reconciliation : un coffre pas encore lu ne fait rien changer', () => {
   assert.deepEqual(greffon.reconcilierDossiersReglages(), []);
   assert.equal(greffon.settings.dossierTaches, '8 - Tâches');
 });
+
+test('dossier équivalent : un dossier renuméroté est retrouvé par son nom', () => {
+  assert.equal(Ariane.dossierEquivalent('1 - Annotations', DOSSIERS), '02 - Annotations');
+  assert.equal(Ariane.dossierEquivalent('01 - Annotations', DOSSIERS), '02 - Annotations');
+  assert.equal(Ariane.dossierEquivalent('3 - Livrables/Réunions', DOSSIERS), '04 - Livrables/Réunions');
+  assert.equal(Ariane.dossierEquivalent('5 - Annotations', ['02 - Annotations', '09 - Annotations']), '',
+    'deux dossiers du même nom : on ne choisit pas');
+  assert.equal(Ariane.dossierEquivalent('Annotations', ['Archives/02 - Annotations']), '',
+    'pas d\'un niveau à l\'autre');
+  assert.equal(Ariane.dossierEquivalent('2 - Notes de lecture', DOSSIERS), '', 'aucun dossier de ce nom');
+});
+
+test('familles : les dossiers disparus sont signalés, jamais réécrits', () => {
+  const greffon = Object.create(Ariane.prototype);
+  const familles = [{ nom: 'Annotations', dossiers: ['01 - Annotations'] },
+                    { nom: 'Tâches', dossiers: ['08 - Tâches'] },
+                    { nom: 'Lecture', dossiers: ['02 - Notes de lecture'] }];
+  greffon.settings = { famillesNotes: familles };
+  greffon.app = { vault: { getAllLoadedFiles: () => DOSSIERS.map((p) => ({ path: p, children: [] })) } };
+  assert.deepEqual(greffon.famillesDossiersPerimes(), [
+    { famille: 'Annotations', dossier: '01 - Annotations', probable: '02 - Annotations' },
+    { famille: 'Lecture', dossier: '02 - Notes de lecture', probable: '' },
+  ]);
+  assert.deepEqual(greffon.settings.famillesNotes[0].dossiers, ['01 - Annotations'], 'la table n\'est pas touchée');
+});

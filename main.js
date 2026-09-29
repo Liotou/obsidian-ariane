@@ -3916,6 +3916,27 @@ const avecSocle = (Base) => class extends Base {
     return corriges;
   }
 
+  // Les familles de notes sont la table de Monsieur : Ariane ne la réécrit
+  // jamais. Elle signale seulement les dossiers de famille qui n'existent plus,
+  // avec le dossier réel probable, pour qu'il corrige lui-même (sans cela, une
+  // famille « Annotations » restée sur un ancien nom sortait ses notes des
+  // suggestions et de l'index sémantique, sans rien dire).
+  famillesDossiersPerimes() {
+    const existants = this.app.vault.getAllLoadedFiles()
+      .filter((f) => f && f.children && typeof f.path === 'string')
+      .map((f) => f.path);
+    if (!existants.length) return [];
+    const out = [];
+    for (const fam of (this.settings.famillesNotes || [])) {
+      for (const d of [].concat((fam && fam.dossiers) || [])) {
+        const v = String(d || '').trim();
+        if (!v || existants.includes(v)) continue;
+        out.push({ famille: fam.nom || '', dossier: v, probable: Ariane.dossierEquivalent(v, existants) });
+      }
+    }
+    return out;
+  }
+
   async saveSettings() {
     // Le dossier des tâches peut avoir changé : l'index « référence → fichier »
     // se lit dessus, on le laisse se reconstruire.
@@ -9791,7 +9812,22 @@ const avecTachesStatiques = (Base) => class extends Base {
     const cle = Ariane.normaliserDossier(voulu);
     if (!cle) return '';
     const candidats = liste.filter((d) => Ariane.normaliserDossier(d) === cle);
-    return candidats.length === 1 ? candidats[0] : '';
+    if (candidats.length === 1) return candidats[0];
+    if (candidats.length > 1) return '';
+    // Renumérotation : même nom, autre numéro (« 1 - Annotations » devenu
+    // « 02 - Annotations »). Retenu seulement si un seul dossier existant
+    // porte ce nom, au même niveau : en cas de doute, on ne choisit pas.
+    const seul = Ariane.dossierSansNumero(voulu);
+    if (!seul || seul === cle) return '';
+    const parNom = liste.filter((d) => Ariane.dossierSansNumero(d) === seul);
+    return parNom.length === 1 ? parNom[0] : '';
+  }
+
+  // Un chemin de dossier sans les numéros de tête de ses segments, en
+  // minuscules : « 04 - Livrables/1 - Réunions » donne « livrables/réunions ».
+  static dossierSansNumero(chemin) {
+    return Ariane.normaliserDossier(chemin).split('/')
+      .map((seg) => seg.replace(/^\d+\s*-\s*/, '')).join('/');
   }
 
   // L'identifiant d'événement Apple porté par un frontmatter, s'il y en a un.
@@ -15560,10 +15596,17 @@ class Ariane extends composer(obsidian.Plugin,
     // qu'on peut voir quels dossiers existent vraiment.
     this.app.workspace.onLayoutReady(async () => {
       const corriges = this.reconcilierDossiersReglages();
-      if (!corriges.length) return;
-      await this.saveSettings();
-      new obsidian.Notice(tr('Ariane : dossiers renommés, réglages mis à jour.\n')
-        + corriges.join('\n'), 15000);
+      if (corriges.length) {
+        await this.saveSettings();
+        new obsidian.Notice(tr('Ariane : dossiers renommés, réglages mis à jour.\n')
+          + corriges.join('\n'), 15000);
+      }
+      const perimes = this.famillesDossiersPerimes();
+      if (perimes.length) {
+        new obsidian.Notice(tr('Ariane : dossiers de familles introuvables, à corriger dans Réglages → Dossiers & familles.\n')
+          + perimes.map((p) => p.famille + ' : « ' + p.dossier + ' »'
+            + (p.probable ? tr(' (peut-être « ') + p.probable + ' »)' : '')).join('\n'), 20000);
+      }
     });
   }
 

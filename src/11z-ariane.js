@@ -54,10 +54,17 @@ class Ariane extends composer(obsidian.Plugin,
     // qu'on peut voir quels dossiers existent vraiment.
     this.app.workspace.onLayoutReady(async () => {
       const corriges = this.reconcilierDossiersReglages();
-      if (!corriges.length) return;
-      await this.saveSettings();
-      new obsidian.Notice(tr('Ariane : dossiers renommés, réglages mis à jour.\n')
-        + corriges.join('\n'), 15000);
+      if (corriges.length) {
+        await this.saveSettings();
+        new obsidian.Notice(tr('Ariane : dossiers renommés, réglages mis à jour.\n')
+          + corriges.join('\n'), 15000);
+      }
+      const perimes = this.famillesDossiersPerimes();
+      if (perimes.length) {
+        new obsidian.Notice(tr('Ariane : dossiers de familles introuvables, à corriger dans Réglages → Dossiers & familles.\n')
+          + perimes.map((p) => p.famille + ' : « ' + p.dossier + ' »'
+            + (p.probable ? tr(' (peut-être « ') + p.probable + ' »)' : '')).join('\n'), 20000);
+      }
     });
   }
 

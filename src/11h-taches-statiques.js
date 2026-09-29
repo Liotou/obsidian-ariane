@@ -185,7 +185,22 @@ const avecTachesStatiques = (Base) => class extends Base {
     const cle = Ariane.normaliserDossier(voulu);
     if (!cle) return '';
     const candidats = liste.filter((d) => Ariane.normaliserDossier(d) === cle);
-    return candidats.length === 1 ? candidats[0] : '';
+    if (candidats.length === 1) return candidats[0];
+    if (candidats.length > 1) return '';
+    // Renumérotation : même nom, autre numéro (« 1 - Annotations » devenu
+    // « 02 - Annotations »). Retenu seulement si un seul dossier existant
+    // porte ce nom, au même niveau : en cas de doute, on ne choisit pas.
+    const seul = Ariane.dossierSansNumero(voulu);
+    if (!seul || seul === cle) return '';
+    const parNom = liste.filter((d) => Ariane.dossierSansNumero(d) === seul);
+    return parNom.length === 1 ? parNom[0] : '';
+  }
+
+  // Un chemin de dossier sans les numéros de tête de ses segments, en
+  // minuscules : « 04 - Livrables/1 - Réunions » donne « livrables/réunions ».
+  static dossierSansNumero(chemin) {
+    return Ariane.normaliserDossier(chemin).split('/')
+      .map((seg) => seg.replace(/^\d+\s*-\s*/, '')).join('/');
   }
 
   // L'identifiant d'événement Apple porté par un frontmatter, s'il y en a un.
