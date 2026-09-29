@@ -482,6 +482,11 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.correcteur && this.correcteur.basculerVolet(),
     });
     this.addCommand({
+      id: 'claude-annuler',
+      name: tr('Claude : annuler les derniers changements acceptés'),
+      callback: () => this.pont && this.pont.annulerDerniereProposition(),
+    });
+    this.addCommand({
       id: 'barre-basculer',
       name: tr('Barre d’édition : replier ou déplier'),
       callback: () => this.barre && this.barre.basculerRepli(),

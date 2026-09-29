@@ -218,3 +218,61 @@ test('revue : chaque rubrique rassemble ce qui la concerne', () => {
   assert.deepEqual(r.importantPasUrgent.map((y) => y.tache.ref), ['I']);
   assert.ok(!JSON.stringify(r).includes('"F"'), 'les tâches finies n\'y figurent pas');
 });
+
+// ── Propositions de Claude ───────────────────────────────────────────────
+
+test('propositions : un changement valide devient une liste d\'opérations', () => {
+  const taches = [tache({ ref: 'T001', echeance: '2026-10-01', creneaux: ['2026-10-02 09:00-11:00'] }),
+    tache({ ref: 'T002', intitule: 'Mère' })];
+  const r = Ariane.validerPropositions([{
+    ref: 'T001', justification: 'Trois reports : une échéance réaliste.',
+    champs: { echeance: '2026-10-20', statut: 'en cours', parent: 'T002', priorite: '' },
+    ajouter_creneaux: [{ debut: '2026-10-06T14:00', fin: '2026-10-06T16:00' }],
+    retirer_creneaux: ['2026-10-02 09:00-11:00'],
+  }], taches);
+  assert.deepEqual(r.erreurs, []);
+  assert.equal(r.valides[0].justification, 'Trois reports : une échéance réaliste.');
+  assert.deepEqual(r.valides[0].operations, [
+    { genre: 'champ', champ: 'echeance', avant: '2026-10-01', apres: '2026-10-20' },
+    { genre: 'champ', champ: 'statut', avant: 'à faire', apres: 'en cours' },
+    { genre: 'champ', champ: 'parent', avant: '', apres: '[[T002]]' },
+    { genre: 'creneau+', debut: '2026-10-06T14:00', fin: '2026-10-06T16:00', brut: '2026-10-06 14:00-16:00' },
+    { genre: 'creneau-', brut: '2026-10-02 09:00-11:00' },
+  ], 'la priorité déjà vide n\'est pas une opération');
+});
+
+test('propositions : une seule valeur invalide écarte le changement entier', () => {
+  const taches = [tache({ ref: 'T001' })];
+  const r = Ariane.validerPropositions([
+    { ref: 'T001', champs: { echeance: '2026-02-31', statut: 'en cours' } },
+    { ref: 'T001', champs: { chemin: 'ailleurs' } },
+    { ref: 'T404', champs: { statut: 'en cours' } },
+    { ref: 'T001', champs: { statut: 'à faire' } },
+    { ref: 'T001', ajouter_creneaux: [{ debut: '2026-10-06T16:00', fin: '2026-10-06T14:00' }] },
+    { ref: 'T001', retirer_creneaux: ['2026-10-02 09:00-11:00'] },
+    { ref: 'T001', champs: { parent: 'T001' } },
+  ], taches);
+  assert.deepEqual(r.valides, []);
+  assert.deepEqual(r.erreurs.map((e) => e.erreur), [
+    'echeance invalide : 2026-02-31',
+    'champ non modifiable : chemin',
+    'tâche introuvable : T404',
+    'rien à changer',
+    'créneau invalide : {"debut":"2026-10-06T16:00","fin":"2026-10-06T14:00"}',
+    'créneau à retirer introuvable : "2026-10-02 09:00-11:00"',
+    'une tâche ne peut être sa propre mère',
+  ]);
+});
+
+test('propositions : créer une tâche, avec ses créneaux', () => {
+  const r = Ariane.validerPropositions([{
+    creer: { intitule: 'Relire le chapitre 2', famille: 'production', echeance: '2026-10-30' },
+    ajouter_creneaux: [{ debut: '2026-10-07T09:00', fin: '2026-10-07T11:00' }],
+    justification: 'Découpe de T002.',
+  }], []);
+  assert.deepEqual(r.erreurs, []);
+  assert.equal(r.valides[0].intitule, 'Relire le chapitre 2');
+  assert.deepEqual(r.valides[0].operations.map((o) => o.genre), ['creation', 'creneau+']);
+  const sans = Ariane.validerPropositions([{ creer: { famille: 'production' } }], []);
+  assert.equal(sans.erreurs[0].erreur, 'création sans intitulé');
+});

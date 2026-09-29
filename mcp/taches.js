@@ -68,6 +68,34 @@ const OUTILS = [
     },
   },
   {
+    name: 'proposer_modifications',
+    description: "LE SEUL MOYEN de modifier les tâches : ne jamais éditer une note de tâche directement. Propose une liste de changements ; Ariane les vérifie, les montre à Monsieur dans Obsidian (avant → après, avec ta justification) et n'applique que ce qu'il accepte. L'appel attend sa décision (dix minutes au plus) et rend ce qui a été accepté, refusé ou écarté (avec la raison). Chaque changement porte sur une tâche existante (ref) ou en crée une (creer). Champs modifiables : intitule, statut (à faire, en cours, en attente, terminée, abandonnée), priorite (vide, basse, moyenne, haute), debut, echeance (AAAA-MM-JJ, vide pour retirer), heure (HH:MM), avancement (0 à 100), jalon (booléen), parent (référence de la tâche mère), famille. Un changement dont une valeur est invalide est écarté en entier.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        motif: { type: 'string', description: "Ce que tu proposes et pourquoi, en une ou deux phrases, pour Monsieur" },
+        changements: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              ref: { type: 'string', description: 'Tâche existante à modifier (omettre si creer)' },
+              justification: { type: 'string', description: 'Pourquoi ce changement, en une phrase' },
+              champs: { type: 'object', description: 'Champs à modifier et leur nouvelle valeur' },
+              ajouter_creneaux: { type: 'array', items: { type: 'object', properties: {
+                debut: { type: 'string', description: 'AAAA-MM-JJTHH:MM' }, fin: { type: 'string', description: 'AAAA-MM-JJTHH:MM' } },
+                required: ['debut', 'fin'] } },
+              retirer_creneaux: { type: 'array', items: { type: 'string' },
+                description: 'Créneaux à retirer, tels que detail_tache les rend (« AAAA-MM-JJ HH:MM-HH:MM »)' },
+              creer: { type: 'object', description: 'Nouvelle tâche : intitule (obligatoire), famille, statut, priorite, debut, echeance, parent' },
+            },
+          },
+        },
+      },
+      required: ['changements'],
+    },
+  },
+  {
     name: 'revue',
     description: "La revue prête à l'emploi : tâches en retard, sous-planifiées, qui s'étirent (échéance repoussée plusieurs fois), abandons probables, cette semaine, urgentes et importantes, importantes mais pas urgentes. Point de départ d'un « qu'est-ce qui dérape ? ».",
     inputSchema: { type: 'object', properties: {} },
@@ -131,7 +159,9 @@ async function traiter(msg) {
     const outil = OUTILS.find((o) => o.name === params.name);
     if (!outil) return envoyer({ jsonrpc: '2.0', id, error: { code: -32601, message: 'Outil inconnu' } });
     try {
-      const res = await appelerPont(outil.name, params.arguments || {});
+      // Une proposition attend la décision de Monsieur : jusqu'à dix minutes.
+      const delai = outil.name === 'proposer_modifications' ? 11 * 60000 : 60000;
+      const res = await appelerPont(outil.name, params.arguments || {}, delai);
       return envoyer({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(res, null, 1) }] } });
     } catch (e) {
       return envoyer({ jsonrpc: '2.0', id, result: { isError: true,

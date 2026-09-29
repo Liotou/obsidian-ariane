@@ -3538,3 +3538,23 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 }
 .zfa-tc-icone { display: inline-flex; }
 .zfa-tc-icone .svg-icon { width: 14px; height: 14px; }
+
+/* ── Claude : validation des changements proposés (section 22) ─────────── */
+.zfa-claude-modale { width: min(640px, 92vw); }
+.zfa-claude-motif { margin: 0 0 12px; color: var(--text-muted); }
+.zfa-claude-liste { display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; }
+.zfa-claude-changement {
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  background: var(--background-secondary);
+  transition: opacity 0.15s ease;
+}
+.zfa-claude-changement.est-refuse { opacity: 0.5; }
+.zfa-claude-tete { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: var(--font-semibold, 600); }
+.zfa-claude-ref { color: var(--text-faint); font-variant-numeric: tabular-nums; font-weight: normal; }
+.zfa-claude-justif { margin: 6px 0 0 26px; color: var(--text-muted); font-style: italic; font-size: var(--font-ui-small); }
+.zfa-claude-ops { margin: 6px 0 0 26px; padding-left: 16px; font-size: var(--font-ui-small); }
+.zfa-claude-ops li { margin: 2px 0; }
+.zfa-claude-ecartes { margin-top: 12px; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.zfa-claude-ecartes-titre { font-weight: var(--font-semibold, 600); margin-bottom: 4px; }

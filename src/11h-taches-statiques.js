@@ -623,5 +623,111 @@ const avecTachesStatiques = (Base) => class extends Base {
     };
   }
 
+  // Ce que Claude propose (outil proposer_modifications), vérifié avant
+  // d'être montré à Monsieur. Chaque changement porte sur UNE tâche (ou en
+  // crée une) ; s'il contient une seule valeur invalide, il est écarté en
+  // entier avec la raison, plutôt que d'être appliqué à moitié. Les valeurs
+  // identiques à l'existant sont passées sous silence : rien à valider.
+  // Rend { valides: [{ id, ref, intitule, justification, operations }], erreurs }.
+  static validerPropositions(changements, taches) {
+    const parRef = new Map((taches || []).map((t) => [t.ref, t]));
+    const STATUTS = ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée'];
+    const PRIORITES = ['', 'basse', 'moyenne', 'haute'];
+    const CHAMPS = ['intitule', 'statut', 'priorite', 'debut', 'echeance', 'heure',
+      'avancement', 'jalon', 'parent', 'famille'];
+    const valides = [];
+    const erreurs = [];
+    // Une valeur de champ : normalisée si elle est acceptable, sinon une erreur.
+    const verifier = (champ, v) => {
+      if (champ === 'intitule' || champ === 'famille') {
+        const x = String(v == null ? '' : v).trim();
+        return x ? { v: x } : { e: champ + ' vide' };
+      }
+      if (champ === 'statut') return STATUTS.includes(v) ? { v } : { e: 'statut inconnu : ' + v };
+      if (champ === 'priorite') {
+        const x = v == null ? '' : String(v);
+        return PRIORITES.includes(x) ? { v: x } : { e: 'priorité inconnue : ' + v };
+      }
+      if (champ === 'debut' || champ === 'echeance') {
+        const x = v == null ? '' : String(v).trim();
+        if (!x) return { v: '' };
+        return Ariane.jourValide(x) === x ? { v: x } : { e: champ + ' invalide : ' + v };
+      }
+      if (champ === 'heure') {
+        const x = v == null ? '' : String(v).trim();
+        return !x || /^([01]\d|2[0-3]):[0-5]\d$/.test(x) ? { v: x } : { e: 'heure invalide : ' + v };
+      }
+      if (champ === 'avancement') {
+        const n = Number(v);
+        return Number.isInteger(n) && n >= 0 && n <= 100 ? { v: n } : { e: 'avancement invalide : ' + v };
+      }
+      if (champ === 'jalon') return typeof v === 'boolean' ? { v } : { e: 'jalon : vrai ou faux' };
+      if (champ === 'parent') {
+        const x = Ariane.refDeLien(String(v == null ? '' : v));
+        if (!x) return { v: '' };
+        return parRef.has(x) ? { v: '[[' + x + ']]', ref: x } : { e: 'tâche mère introuvable : ' + v };
+      }
+      return { e: 'champ non modifiable : ' + champ };
+    };
+    const instant = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+    (Array.isArray(changements) ? changements : []).forEach((brut, i) => {
+      const x = brut || {};
+      const id = 'p' + (i + 1);
+      const fautes = [];
+      const operations = [];
+      const cree = x.creer && typeof x.creer === 'object' ? x.creer : null;
+      const ref = cree ? '' : String(x.ref || '').trim();
+      const t = cree ? null : parRef.get(ref);
+      if (!cree && !t) {
+        erreurs.push({ id, ref, erreur: ref ? 'tâche introuvable : ' + ref : 'ni référence ni création' });
+        return;
+      }
+      if (cree) {
+        const champs = {};
+        for (const [k, v] of Object.entries(cree)) {
+          if (!CHAMPS.includes(k)) { fautes.push('champ non modifiable : ' + k); continue; }
+          const r = verifier(k, v);
+          if (r.e) fautes.push(r.e); else champs[k] = r.v;
+        }
+        if (!champs.intitule) fautes.push('création sans intitulé');
+        operations.push({ genre: 'creation', champs });
+      }
+      for (const [k, v] of Object.entries((x.champs && typeof x.champs === 'object') ? x.champs : {})) {
+        if (!CHAMPS.includes(k)) { fautes.push('champ non modifiable : ' + k); continue; }
+        const r = verifier(k, v);
+        if (r.e) { fautes.push(r.e); continue; }
+        if (r.ref && r.ref === ref) { fautes.push('une tâche ne peut être sa propre mère'); continue; }
+        const avant = k === 'parent' ? (Ariane.refDeLien(t.parent || '') ? '[[' + Ariane.refDeLien(t.parent) + ']]' : '')
+          : k === 'jalon' ? t.jalon === true
+            : k === 'avancement' ? (Number(t.avancement) || 0)
+              : String(t[k] == null ? '' : t[k]);
+        if (JSON.stringify(avant) === JSON.stringify(r.v)) continue;
+        operations.push({ genre: 'champ', champ: k, avant, apres: r.v });
+      }
+      const existants = new Set(Ariane.creneauxDeTache([].concat((t && t.creneaux) || [])).map((c) => c.brut));
+      for (const c of [].concat(x.ajouter_creneaux || [])) {
+        const d = String((c && c.debut) || '');
+        const f = String((c && c.fin) || '');
+        if (!instant.test(d) || !instant.test(f) || !Ariane.jourValide(d) || f <= d) {
+          fautes.push('créneau invalide : ' + JSON.stringify(c));
+          continue;
+        }
+        const b = Ariane.formatCreneau(d, f);
+        if (!existants.has(b)) operations.push({ genre: 'creneau+', debut: d, fin: f, brut: b });
+      }
+      for (const c of [].concat(x.retirer_creneaux || [])) {
+        const b = typeof c === 'string' ? c.trim()
+          : (c && c.debut && c.fin ? Ariane.formatCreneau(String(c.debut), String(c.fin)) : '');
+        if (!b || !existants.has(b)) { fautes.push('créneau à retirer introuvable : ' + JSON.stringify(c)); continue; }
+        operations.push({ genre: 'creneau-', brut: b });
+      }
+      if (fautes.length) { erreurs.push({ id, ref, erreur: fautes.join(' ; ') }); return; }
+      if (!operations.length) { erreurs.push({ id, ref, erreur: 'rien à changer' }); return; }
+      valides.push({ id, ref, intitule: cree ? operations[0].champs.intitule : t.intitule,
+        justification: String(x.justification || '').trim(), operations });
+    });
+    return { valides, erreurs };
+  }
+
   //#endregion Ariane · static · tâches
 };

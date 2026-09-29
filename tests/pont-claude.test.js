@@ -102,7 +102,7 @@ test('pont : un mauvais jeton est refusé', async () => {
   assert.equal(code, 401);
 });
 
-test('serveur MCP : les quatre outils, de bout en bout', async () => {
+test('serveur MCP : les outils de lecture, de bout en bout', async () => {
   const { pont, annonce } = await demarrerPont();
   try {
     const r = await dialoguer({ ARIANE_PONT: annonce }, [
@@ -116,7 +116,7 @@ test('serveur MCP : les quatre outils, de bout en bout', async () => {
     ]);
     assert.equal(r.get(1).result.serverInfo.name, 'ariane-taches');
     assert.deepEqual(r.get(2).result.tools.map((o) => o.name),
-      ['lister_taches', 'detail_tache', 'charge_calendrier', 'revue']);
+      ['lister_taches', 'detail_tache', 'charge_calendrier', 'proposer_modifications', 'revue']);
 
     const liste = texte(r.get(3));
     assert.deepEqual(liste.taches.map((t) => t.ref), ['T001', 'T002'], 'la terminée est exclue, la plus urgente en tête');
@@ -160,4 +160,52 @@ test('serveur MCP : Obsidian fermé, un message qui le dit', async () => {
 
 test('corps de note : sans propriétés ni blocs entretenus par Ariane', () => {
   assert.equal(pontCorpsNote('---\na: 1\n---\nTexte\n<!-- ariane:acces -->\nx\n<!-- /ariane:acces -->\nFin'), 'Texte\nFin');
+});
+
+test('proposer_modifications : seul ce que Monsieur coche est appliqué, puis annulable', async () => {
+  const { pont, annonce } = await demarrerPont();
+  const g = pont.greffon;
+  const ecrits = [];
+  g.fichierDeRef = (ref) => ({ path: '08 - Tâches/' + ref + '.md' });
+  g.marquerOrigineTache = (chemin, origine) => ecrits.push(['origine', chemin, origine]);
+  g.majTache = async (ref, champs) => { ecrits.push(['maj', ref, champs]); return true; };
+  g.majCreneau = async (ref, chg) => { ecrits.push(['creneau', ref, chg]); return true; };
+  // Monsieur accepte p1, refuse p2 ; p3 est écarté par Ariane avant de lui être montré.
+  let montres = null;
+  pont._demanderValidation = async (motif, valides, erreurs) => {
+    montres = { motif, valides: valides.map((v) => v.id), erreurs: erreurs.map((e) => e.id) };
+    return ['p1'];
+  };
+  try {
+    const r = await dialoguer({ ARIANE_PONT: annonce }, [appel(1, 'proposer_modifications', {
+      motif: 'Replanifier la lecture.',
+      changements: [
+        { ref: 'T001', justification: 'Échéance dépassée.', champs: { echeance: J(10) },
+          ajouter_creneaux: [{ debut: J(4) + 'T09:00', fin: J(4) + 'T11:00' }] },
+        { ref: 'T002', champs: { statut: 'en cours' } },
+        { ref: 'T001', champs: { echeance: 'demain' } },
+      ],
+    })]);
+    const res = texte(r.get(1));
+    assert.deepEqual(montres, { motif: 'Replanifier la lecture.', valides: ['p1', 'p2'], erreurs: ['p3'] });
+    assert.deepEqual(res.acceptes, [{ id: 'p1', ref: 'T001', intitule: 'Lire Bertalanffy' }]);
+    assert.deepEqual(res.refuses.map((x) => x.ref), ['T002']);
+    assert.equal(res.ecartes[0].erreur, 'echeance invalide : demain');
+    assert.deepEqual(ecrits, [
+      ['origine', '08 - Tâches/T001.md', 'claude'],
+      ['maj', 'T001', { echeance: J(10) }],
+      ['origine', '08 - Tâches/T001.md', 'claude'],
+      ['creneau', 'T001', { avant: '', debut: J(4) + 'T09:00', fin: J(4) + 'T11:00' }],
+    ], 'marqué « claude » avant chaque écriture ; rien pour T002');
+
+    ecrits.length = 0;
+    assert.equal(await pont.annulerDerniereProposition(), true);
+    assert.deepEqual(ecrits, [
+      ['creneau', 'T001', { avant: J(4) + ' 09:00-11:00', debut: '', fin: '' }],
+      ['maj', 'T001', { echeance: J(-3) }],
+    ], 'défait dans l\'ordre inverse');
+    assert.equal(await pont.annulerDerniereProposition(), false, 'une seule fois');
+  } finally {
+    pont.arreter();
+  }
 });

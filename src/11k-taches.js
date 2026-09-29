@@ -2136,6 +2136,10 @@ const avecTaches = (Base) => class extends Base {
   // `origine` : 'ariane' par défaut, 'claude' pour une proposition acceptée.
   marquerOrigineTache(chemin, origine) {
     if (!this._originesTaches) this._originesTaches = new Map();
+    // Une origine précise (« claude ») n'est pas écrasée par l'origine par
+    // défaut que majTache pose à chaque écriture, le temps de la fenêtre.
+    const deja = this._originesTaches.get(chemin);
+    if (!origine && deja && deja.origine !== 'ariane' && Date.now() - deja.le < 4000) return;
     this._originesTaches.set(chemin, { origine: origine || 'ariane', le: Date.now() });
   }
 
