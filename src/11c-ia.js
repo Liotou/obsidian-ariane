@@ -375,6 +375,18 @@ const avecIa = (Base) => class extends Base {
   async construireIndexSemantique(entrees) {
     const modele = this.settings.suggModeleEmbed || 'bge-m3';
     const cache = await this.assurerCacheEmbeddings(modele);
+    // Le cache ne garde que les notes indexées aujourd'hui. Sans ce ménage,
+    // une note déplacée (dossiers renumérotés) restait sous son ancien chemin
+    // à côté du nouveau : chaque annotation sortait deux fois de la recherche
+    // du serveur MCP, dont une fois vide, à un chemin qui n'existe plus.
+    const presents = new Set(entrees.map((e) => e.path));
+    let retires = 0;
+    for (const chemin of Object.keys(cache)) {
+      if (presents.has(chemin)) continue;
+      delete cache[chemin];
+      this.suggVecs.delete(chemin);
+      retires += 1;
+    }
     const aEncoder = entrees.filter((e) => {
       const c = cache[e.path];
       return !(c && c.hash === e.hash && Array.isArray(c.vec));
@@ -428,7 +440,7 @@ const avecIa = (Base) => class extends Base {
       docs.push({ path: e.path, basename: e.basename, titre: e.titre, hash: e.hash, vec: v.vec });
     }
     this.suggIndexSem = { model: modele, docs };
-    if (total > 0) this.planifierSauvegardeEmbeddings();
+    if (total > 0 || retires > 0) this.planifierSauvegardeEmbeddings();
   }
 
   async reclasserLLM(noteTexte, candidats) {
