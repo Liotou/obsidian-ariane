@@ -2315,6 +2315,30 @@ const avecTaches = (Base) => class extends Base {
     });
   }
 
+  // Tout ce qu'affiche le tableau de bord (Ariane.tableauOrganisation) :
+  // l'analyse de chaque tâche, complétée du temps passé cette semaine (sa
+  // note et ses notes liées) et de sa date de fin, le journal, et les
+  // événements Apple de la semaine (vides hors Mac ou agenda coupé).
+  async donneesOrganisation() {
+    const auj = jourIsoDe(new Date());
+    const { lundi } = Ariane.grilleSemaine(auj);
+    const analyses = await this.analyseTaches(auj);
+    const journal = await this.lireJournalTaches();
+    const temps = this._tempsDepuis(lundi);
+    const entrees = analyses.map((x) => {
+      const t = x.tache;
+      const fm = (t.fichier && (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter) || {};
+      const chemins = [t.fichier && t.fichier.path].concat(this._cheminsLiesTache(t)).filter(Boolean);
+      return Object.assign({}, x, {
+        tempsSemaineMin: chemins.reduce((s, c) => s + (temps.get(c) || 0), 0),
+        termineLe: Ariane.jourValide(this._lireT(fm, 'termine-le')) || '',
+      });
+    });
+    let evenements = [];
+    try { evenements = (await this.evenementsFond(lundi, Ariane.decalerJour(lundi, 7))) || []; } catch (e) { evenements = []; }
+    return Ariane.tableauOrganisation(entrees, { aujourdhui: auj, journal, evenements });
+  }
+
   // La note « Gestion de l'organisation » : créée au besoin dans le dossier
   // de cadrage (« 00 - Cadrage », à sa renumérotation près), puis ouverte.
   async ouvrirGestionOrganisation() {

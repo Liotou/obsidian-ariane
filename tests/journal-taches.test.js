@@ -277,25 +277,73 @@ test('propositions : créer une tâche, avec ses créneaux', () => {
   assert.equal(sans.erreurs[0].erreur, 'création sans intitulé');
 });
 
-test('organisation : des sections, et chaque tâche une seule fois', () => {
-  const x = (ref, t, ctx) => ({ tache: Object.assign(tache({ ref, intitule: ref }), t),
-    analyse: Ariane.analyseTache(Object.assign(tache({ ref }), t), Object.assign({ aujourdhui: AUJ }, ctx)) });
-  const s = Ariane.sectionsOrganisation([
-    x('J', { creneaux: [AUJ + ' 14:00-16:00'], echeance: '2026-09-20' }),
-    x('R', { echeance: '2026-09-20' }),
-    x('S', { echeance: '2026-10-03', creneaux: ['2026-10-01 09:00-10:00'] }),
-    x('I', { priorite: 'haute' }),
-    x('A', { cree: '2026-07-01' }),
-    x('F', { statut: 'terminée' }),
-  ], AUJ);
-  assert.deepEqual(s.map((y) => [y.cle, y.lignes.map((l) => l.tache.ref)]), [
-    ['aujourdhui', ['J']],
-    ['retard', ['R']],
-    ['semaine', ['S']],
-    ['important', ['I']],
-    ['surveiller', ['A']],
-  ], 'J est en retard aussi, mais n\'apparaît qu\'aujourd\'hui ; les sections vides disparaissent');
-  assert.equal(s[0].lignes[0].raison, '14:00-16:00');
-  assert.equal(s[2].lignes[0].quand, '2026-10-01 09:00');
-  assert.equal(s[4].lignes[0].raison, 'aucune activité depuis 4 semaines');
+
+// ── Tableau de bord « Gestion de l'organisation » ─────────────────────────
+
+test('échéance relative : dite en clair, avec son genre', () => {
+  assert.deepEqual(Ariane.echeanceRelative('2026-09-20', AUJ), { texte: 'dépassée de 9 j', genre: 'retard', jours: -9 });
+  assert.equal(Ariane.echeanceRelative(AUJ, AUJ).texte, 'aujourd’hui');
+  assert.equal(Ariane.echeanceRelative('2026-09-30', AUJ).texte, 'demain');
+  assert.deepEqual(Ariane.echeanceRelative('2026-10-04', AUJ), { texte: 'dans 5 j', genre: 'proche', jours: 5 });
+  assert.equal(Ariane.echeanceRelative('2026-10-09', AUJ).genre, 'loin');
+  assert.equal(Ariane.echeanceRelative('2026-11-10', AUJ).texte, 'dans 6 sem.');
+  assert.equal(Ariane.echeanceRelative('', AUJ), null);
+});
+
+test('journal en phrases', () => {
+  assert.equal(Ariane.phraseJournal({ champ: 'echeance', avant: '2026-10-01', apres: '2026-10-15' }),
+    'échéance repoussée du 2026-10-01 au 2026-10-15');
+  assert.equal(Ariane.phraseJournal({ champ: 'echeance', avant: '2026-10-15', apres: '2026-10-01' }),
+    'échéance avancée du 2026-10-15 au 2026-10-01');
+  assert.equal(Ariane.phraseJournal({ champ: 'echeance', avant: '', apres: '2026-10-01' }), 'échéance fixée au 2026-10-01');
+  assert.equal(Ariane.phraseJournal({ champ: 'creneau', avant: '', apres: '2026-10-02 09:00-11:00' }),
+    'créneau ajouté : 2026-10-02 09:00-11:00');
+  assert.equal(Ariane.phraseJournal({ champ: 'statut', avant: 'à faire', apres: 'en cours' }), 'statut : à faire → en cours');
+  assert.equal(Ariane.phraseJournal({ champ: 'priorite', avant: '', apres: 'haute' }), 'priorité : (aucune) → haute');
+  assert.equal(Ariane.phraseJournal({ champ: 'parent', avant: '', apres: '[[T002]]' }), 'rattachée à T002');
+});
+
+test('tableau : chiffres, semaine, aujourd\'hui, matrice, familles, activité', () => {
+  // AUJ = mardi 2026-09-29 ; semaine du lundi 28 au dimanche 4.
+  const e = (ref, t, extra) => {
+    const tt = Object.assign(tache({ ref, intitule: 'Tâche ' + ref }), t);
+    return Object.assign({ tache: tt, analyse: Ariane.analyseTache(tt, { aujourdhui: AUJ }) }, extra || {});
+  };
+  const d = Ariane.tableauOrganisation([
+    e('A', { echeance: '2026-09-20', famille: 'production', creneaux: [AUJ + ' 14:00-16:00', '2026-09-28 09:00-10:00'] },
+      { tempsSemaineMin: 45 }),
+    e('B', { echeance: '2026-10-02', famille: 'lecture', priorite: 'haute', creneaux: ['2026-10-01 09:00-11:30'] }),
+    e('C', { famille: 'lecture', priorite: 'haute' }),
+    e('D', { statut: 'terminée', famille: 'lecture', creneaux: ['2026-09-28 11:00-12:00'] }, { termineLe: '2026-09-28' }),
+    e('E', { statut: 'abandonnée', famille: 'production' }),
+  ], {
+    aujourdhui: AUJ,
+    evenements: [
+      { titre: 'Séminaire', debut: AUJ + 'T10:00', fin: AUJ + 'T12:00', calendrier: 'Travail', allDay: false },
+      { titre: 'Colloque', debut: '2026-09-29T00:00', fin: '2026-09-30T00:00', allDay: true },
+    ],
+    journal: [
+      { le: '2026-09-29T08:00', ref: 'A', champ: 'echeance', avant: '2026-09-15', apres: '2026-09-20', origine: 'externe' },
+      { le: '2026-09-29T09:00', ref: 'B', champ: 'creneau', avant: '', apres: '2026-10-01 09:00-11:30', origine: 'claude' },
+    ],
+  });
+  assert.equal(d.lundi, '2026-09-28');
+  assert.deepEqual(d.chiffres, { actives: 3, enRetard: 1, echeances7: 1,
+    minutesPlanifieesSemaine: 120 + 60 + 150 + 60, minutesPasseesSemaine: 45, termineesSemaine: 1 });
+  assert.deepEqual(d.semaine.map((j) => j.minutesPlanifiees), [120, 120, 0, 150, 0, 0, 0]);
+  assert.equal(d.semaine[1].aujourdhui, true);
+  assert.equal(d.semaine[1].nbEvenements, 1);
+  assert.deepEqual(d.aujourdhui.map((x) => x.genre + ':' + x.debut.slice(11)), ['evenement:10:00', 'creneau:14:00'],
+    'rendez-vous et créneaux mêlés, dans l\'ordre de l\'heure');
+  assert.deepEqual(d.journeeEntiere.map((x) => x.titre), ['Colloque']);
+  assert.deepEqual(d.matrice.urgentImportant.map((x) => x.tache.ref), ['B']);
+  assert.deepEqual(d.matrice.importantPasUrgent.map((x) => x.tache.ref), ['C']);
+  assert.deepEqual(d.matrice.urgentPasImportant.map((x) => x.tache.ref), ['A']);
+  assert.deepEqual(d.surveiller.map((x) => x.tache.ref), ['A', 'C'],
+    'le retard d\'abord ; B a un créneau avant son échéance ; C, sans aucune activité, est un abandon probable');
+  assert.deepEqual(d.echeances.map((x) => x.tache.ref), ['B']);
+  assert.deepEqual(d.familles.map((f) => [f.famille, f.actives, f.terminees, f.taux, f.minutesSemaine]),
+    [['lecture', 2, 1, 33, 210], ['production', 1, 0, 0, 180]]);
+  assert.deepEqual(d.activite.map((a) => [a.ref, a.origine]), [['B', 'Claude'], ['A', 'vous']]);
+  assert.equal(d.activite[1].phrase, 'échéance repoussée du 2026-09-15 au 2026-09-20');
 });

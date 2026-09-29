@@ -1288,7 +1288,8 @@ const DEFAULT_SETTINGS = {
   rappelsFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un rappel Apple
   rappelsSupprimerAbandonnees: true, // une tâche abandonnée quitte Apple Rappels
   claudePont: true,             // relais local pour le serveur MCP ariane-taches (bureau)
-  tachesSemainesAbandon: 4,     // semaines sans activité avant « abandon probable »
+  tachesSemainesAbandon: 4,
+  organisationReplies: [],      // sections repliées du tableau de bord des tâches     // semaines sans activité avant « abandon probable »
   agendaActif: false,           // intégration Apple Agenda / Calendar (macOS, EKEvent)
   agendaAuto: true,             // pousser à la sauvegarde + relever régulièrement
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques
@@ -10362,50 +10363,169 @@ const avecTachesStatiques = (Base) => class extends Base {
     return { valides, erreurs };
   }
 
-  // Le tableau de bord de la note « Gestion de l'organisation » : des
-  // sections, de la plus pressante à la moins pressante, et chaque tâche UNE
-  // fois, dans la première qui la retient (un tableau qui répète les mêmes
-  // tâches cinq fois ne se lit plus). Chaque ligne : la tâche, la raison de
-  // sa présence, et le « quand » utile (créneau, échéance).
-  static sectionsOrganisation(analyses, aujourdhui) {
-    const auj = Ariane.jourValide(aujourdhui) || new Date().toISOString().slice(0, 10);
-    const r = Ariane.revueTaches(analyses, auj);
-    const vues = new Set();
-    const diag = (x, codes) => (x.analyse.diagnostics.find((d) => codes.includes(d.code)) || {}).raison || '';
-    const quand = (x) => {
-      const p = x.analyse.prochainCreneau;
-      if (p) return p.slice(0, 10) === auj ? p.slice(11, 16) : p.slice(0, 10) + ' ' + p.slice(11, 16);
-      return x.tache.echeance ? tr('échéance ') + x.tache.echeance : '';
-    };
-    const duJour = (analyses || []).filter((x) => x && x.tache
-      && x.tache.statut !== 'terminée' && x.tache.statut !== 'abandonnée'
-      && ((x.tache.creneaux || []).some((c) => String(c).slice(0, 10) === auj) || x.tache.echeance === auj));
-    const creneauDuJour = (x) => {
-      const c = Ariane.creneauxDeTache([].concat(x.tache.creneaux || [])).find((y) => y.debut.slice(0, 10) === auj);
-      return c ? c.debut.slice(11, 16) + '-' + c.fin.slice(11, 16) : tr('échéance aujourd’hui');
-    };
-    const sections = [
-      { cle: 'aujourdhui', titre: tr('Aujourd’hui'), liste: duJour.slice().sort((a, b) =>
-        creneauDuJour(a).localeCompare(creneauDuJour(b))), raison: creneauDuJour, quand: () => '' },
-      { cle: 'retard', titre: tr('En retard'), liste: r.enRetard, raison: (x) => diag(x, ['retard']), quand },
-      { cle: 'semaine', titre: tr('Cette semaine'), liste: r.cetteSemaine, raison: (x) => x.analyse.urgence.raison, quand },
-      { cle: 'urgent', titre: tr('Urgent et important'), liste: r.urgentImportant, raison: (x) => x.analyse.urgence.raison, quand },
-      { cle: 'important', titre: tr('Important, pas urgent'), liste: r.importantPasUrgent, raison: (x) => x.analyse.importance.raison, quand },
-      { cle: 'surveiller', titre: tr('À surveiller'),
-        liste: r.sEtirent.concat(r.sousPlanifiees, r.abandonsProbables),
-        raison: (x) => diag(x, ['etire', 'sous-planifiee', 'abandon']), quand },
-    ];
-    const out = [];
-    for (const s of sections) {
-      const lignes = [];
-      for (const x of s.liste) {
-        if (vues.has(x.tache.ref)) continue;
-        vues.add(x.tache.ref);
-        lignes.push({ tache: x.tache, raison: s.raison(x), quand: s.quand(x) });
+  // Une échéance dite en clair, relativement à aujourd'hui, avec son genre
+  // (retard, proche : sept jours au plus, loin) pour la couleur.
+  static echeanceRelative(echeance, aujourdhui) {
+    const e = Ariane.jourValide(echeance);
+    const auj = Ariane.jourValide(aujourdhui);
+    if (!e || !auj) return null;
+    const n = Ariane.ecartJours(auj, e);
+    if (n < 0) return { texte: tr('dépassée de {n} j').replace('{n}', String(-n)), genre: 'retard', jours: n };
+    if (n === 0) return { texte: tr('aujourd’hui'), genre: 'proche', jours: 0 };
+    if (n === 1) return { texte: tr('demain'), genre: 'proche', jours: 1 };
+    if (n <= 13) return { texte: tr('dans {n} j').replace('{n}', String(n)), genre: n <= 7 ? 'proche' : 'loin', jours: n };
+    return { texte: tr('dans {n} sem.').replace('{n}', String(Math.round(n / 7))), genre: 'loin', jours: n };
+  }
+
+  // Une ligne du journal des tâches, dite en français.
+  static phraseJournal(e) {
+    const x = e || {};
+    const v = (y) => (y === '' || y == null ? tr('(aucune)') : String(y));
+    switch (x.champ) {
+      case 'creation': return tr('tâche créée');
+      case 'suppression': return tr('tâche supprimée');
+      case 'creneau': return x.apres ? tr('créneau ajouté : ') + x.apres : tr('créneau retiré : ') + x.avant;
+      case 'echeance': {
+        const av = Ariane.jourValide(x.avant);
+        const ap = Ariane.jourValide(x.apres);
+        if (av && ap) {
+          return (ap > av ? tr('échéance repoussée du {a} au {b}') : tr('échéance avancée du {a} au {b}'))
+            .replace('{a}', av).replace('{b}', ap);
+        }
+        return ap ? tr('échéance fixée au ') + ap : tr('échéance retirée');
       }
-      if (lignes.length) out.push({ cle: s.cle, titre: s.titre, lignes });
+      case 'debut': return x.apres ? tr('début : ') + x.apres : tr('début retiré');
+      case 'statut': return tr('statut : ') + v(x.avant) + ' → ' + v(x.apres);
+      case 'avancement': return tr('avancement : ') + (Number(x.avant) || 0) + ' % → ' + (Number(x.apres) || 0) + ' %';
+      case 'intitule': return tr('renommée : « ') + x.apres + ' »';
+      case 'priorite': return tr('priorité : ') + v(x.avant) + ' → ' + v(x.apres);
+      case 'jalon': return x.apres === true ? tr('devient un jalon') : tr('n’est plus un jalon');
+      case 'parent': return x.apres ? tr('rattachée à ') + Ariane.refDeLien(String(x.apres)) : tr('détachée de sa mère');
+      case 'bloque-par': return tr('blocages modifiés');
+      case 'famille': return tr('famille : ') + v(x.avant) + ' → ' + v(x.apres);
+      default: return String(x.champ) + ' : ' + v(x.avant) + ' → ' + v(x.apres);
     }
-    return out;
+  }
+
+  static get ORIGINES_JOURNAL() {
+    return { externe: tr('vous'), ariane: 'Ariane', claude: 'Claude' };
+  }
+
+  // Tout ce qu'affiche la note « Gestion de l'organisation ». `entrees` :
+  // { tache, analyse, tempsSemaineMin, termineLe } par tâche (analyseTaches,
+  // complété) ; `ctx` : { aujourdhui, journal, evenements } (événements
+  // Apple de la semaine). Rend des données, jamais du DOM : le bloc les met
+  // en forme, la suite de tests les éprouve.
+  static tableauOrganisation(entrees, ctx) {
+    const c = ctx || {};
+    const auj = Ariane.jourValide(c.aujourdhui) || new Date().toISOString().slice(0, 10);
+    const { lundi, jours } = Ariane.grilleSemaine(auj);
+    const liste = (entrees || []).filter((x) => x && x.tache);
+    const finie = (x) => x.tache.statut === 'terminée' || x.tache.statut === 'abandonnée';
+    const actives = liste.filter((x) => !finie(x));
+    const parUrgence = (a, b) => b.analyse.urgence.score - a.analyse.urgence.score
+      || b.analyse.importance.score - a.analyse.importance.score;
+
+    // Les créneaux de la semaine, toutes tâches confondues (une tâche finie
+    // a pu être travaillée lundi : ses heures comptent).
+    const creneaux = [];
+    for (const x of liste) {
+      for (const cr of Ariane.creneauxDeTache([].concat(x.tache.creneaux || []))) {
+        const j = cr.debut.slice(0, 10);
+        if (j < lundi || j > jours[6]) continue;
+        creneaux.push({ entree: x, jour: j, debut: cr.debut, fin: cr.fin,
+          minutes: Ariane.dureeCreneauMin(cr.debut, cr.fin) });
+      }
+    }
+    const evenements = (c.evenements || []).filter((e) => e && e.debut);
+    const horaires = evenements.filter((e) => !e.allDay);
+
+    const semaine = jours.map((j) => {
+      const cr = creneaux.filter((x) => x.jour === j);
+      const ev = horaires.filter((e) => e.debut.slice(0, 10) === j);
+      return {
+        jour: j,
+        aujourdhui: j === auj,
+        minutesPlanifiees: cr.reduce((s, x) => s + x.minutes, 0),
+        nbCreneaux: cr.length,
+        nbEvenements: ev.length,
+        minutesEvenements: ev.reduce((s, e) => s + Ariane.dureeCreneauMin(e.debut, e.fin || e.debut), 0),
+      };
+    });
+
+    const dans7 = Ariane.decalerJour(auj, 7);
+    const ilYa7 = Ariane.decalerJour(auj, -6);
+    const chiffres = {
+      actives: actives.length,
+      enRetard: actives.filter((x) => x.analyse.diagnostics.some((d) => d.code === 'retard')).length,
+      echeances7: actives.filter((x) => {
+        const e = Ariane.jourValide(x.tache.echeance);
+        return e && e >= auj && e <= dans7;
+      }).length,
+      minutesPlanifieesSemaine: semaine.reduce((s, j) => s + j.minutesPlanifiees, 0),
+      minutesPasseesSemaine: Math.round(liste.reduce((s, x) => s + (Number(x.tempsSemaineMin) || 0), 0)),
+      termineesSemaine: liste.filter((x) => x.tache.statut === 'terminée'
+        && Ariane.jourValide(x.termineLe) && x.termineLe >= ilYa7).length,
+    };
+
+    const aujourdhui = creneaux.filter((x) => x.jour === auj)
+      .map((x) => ({ genre: 'creneau', debut: x.debut, fin: x.fin, minutes: x.minutes,
+        tache: x.entree.tache, analyse: x.entree.analyse }))
+      .concat(horaires.filter((e) => e.debut.slice(0, 10) === auj).map((e) => ({
+        genre: 'evenement', debut: e.debut, fin: e.fin || e.debut, titre: e.titre || '',
+        calendrier: e.calendrier || '', couleur: e.couleur || '',
+        minutes: Ariane.dureeCreneauMin(e.debut, e.fin || e.debut) })))
+      .sort((a, b) => (a.debut < b.debut ? -1 : a.debut > b.debut ? 1 : 0));
+    const journeeEntiere = evenements.filter((e) => e.allDay
+      && e.debut.slice(0, 10) <= auj && String(e.fin || e.debut).slice(0, 10) >= auj)
+      .map((e) => ({ titre: e.titre || '', calendrier: e.calendrier || '', couleur: e.couleur || '' }));
+
+    // Matrice : urgent et important à partir de la moitié de l'échelle.
+    const matrice = { urgentImportant: [], importantPasUrgent: [], urgentPasImportant: [], niUnNiAutre: [] };
+    for (const x of actives) {
+      const u = x.analyse.urgence.score >= 50;
+      const i = x.analyse.importance.score >= 50;
+      matrice[u && i ? 'urgentImportant' : i ? 'importantPasUrgent' : u ? 'urgentPasImportant' : 'niUnNiAutre'].push(x);
+    }
+    for (const k of Object.keys(matrice)) matrice[k].sort(parUrgence);
+
+    const gravite = { retard: 0, 'sous-planifiee': 1, etire: 2, abandon: 3 };
+    const rang = (x) => Math.min(...x.analyse.diagnostics.map((d) => (d.code in gravite ? gravite[d.code] : 9)));
+    const surveiller = actives.filter((x) => x.analyse.diagnostics.length)
+      .sort((a, b) => rang(a) - rang(b) || parUrgence(a, b));
+
+    const dans30 = Ariane.decalerJour(auj, 30);
+    const echeances = actives.filter((x) => {
+      const e = Ariane.jourValide(x.tache.echeance);
+      return e && e >= auj && e <= dans30;
+    }).sort((a, b) => (a.tache.echeance < b.tache.echeance ? -1 : a.tache.echeance > b.tache.echeance ? 1 : parUrgence(a, b)));
+
+    const parFamille = new Map();
+    for (const x of liste) {
+      const f = x.tache.famille || '';
+      if (!parFamille.has(f)) {
+        parFamille.set(f, { famille: f, actives: 0, terminees: 0, abandonnees: 0, total: 0, minutesSemaine: 0 });
+      }
+      const g = parFamille.get(f);
+      g.total += 1;
+      if (x.tache.statut === 'terminée') g.terminees += 1;
+      else if (x.tache.statut === 'abandonnée') g.abandonnees += 1;
+      else g.actives += 1;
+    }
+    for (const x of creneaux) parFamille.get(x.entree.tache.famille || '').minutesSemaine += x.minutes;
+    const familles = Array.from(parFamille.values()).map((g) => Object.assign(g, {
+      taux: g.total - g.abandonnees > 0 ? Math.round(100 * g.terminees / (g.total - g.abandonnees)) : 0,
+    })).sort((a, b) => b.actives - a.actives || b.total - a.total);
+
+    const intitules = new Map(liste.map((x) => [x.tache.ref, x.tache.intitule]));
+    const activite = (c.journal || []).slice()
+      .sort((a, b) => (a.le < b.le ? 1 : a.le > b.le ? -1 : 0))
+      .slice(0, 12)
+      .map((e) => ({ le: e.le, ref: e.ref, intitule: intitules.get(e.ref) || '',
+        phrase: Ariane.phraseJournal(e), origine: Ariane.ORIGINES_JOURNAL[e.origine] || e.origine || '' }));
+
+    return { aujourdhuiISO: auj, lundi, chiffres, semaine, aujourdhui, journeeEntiere,
+      matrice, surveiller, echeances, familles, activite };
   }
 
   //#endregion Ariane · static · tâches
@@ -15778,6 +15898,30 @@ const avecTaches = (Base) => class extends Base {
         }),
       };
     });
+  }
+
+  // Tout ce qu'affiche le tableau de bord (Ariane.tableauOrganisation) :
+  // l'analyse de chaque tâche, complétée du temps passé cette semaine (sa
+  // note et ses notes liées) et de sa date de fin, le journal, et les
+  // événements Apple de la semaine (vides hors Mac ou agenda coupé).
+  async donneesOrganisation() {
+    const auj = jourIsoDe(new Date());
+    const { lundi } = Ariane.grilleSemaine(auj);
+    const analyses = await this.analyseTaches(auj);
+    const journal = await this.lireJournalTaches();
+    const temps = this._tempsDepuis(lundi);
+    const entrees = analyses.map((x) => {
+      const t = x.tache;
+      const fm = (t.fichier && (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter) || {};
+      const chemins = [t.fichier && t.fichier.path].concat(this._cheminsLiesTache(t)).filter(Boolean);
+      return Object.assign({}, x, {
+        tempsSemaineMin: chemins.reduce((s, c) => s + (temps.get(c) || 0), 0),
+        termineLe: Ariane.jourValide(this._lireT(fm, 'termine-le')) || '',
+      });
+    });
+    let evenements = [];
+    try { evenements = (await this.evenementsFond(lundi, Ariane.decalerJour(lundi, 7))) || []; } catch (e) { evenements = []; }
+    return Ariane.tableauOrganisation(entrees, { aujourdhui: auj, journal, evenements });
   }
 
   // La note « Gestion de l'organisation » : créée au besoin dans le dossier
@@ -32612,10 +32756,15 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
 
 // ── Bloc « ariane-organisation » : le tableau de bord des tâches ──────────
 //  Un bloc de code ```ariane-organisation``` dans une note ordinaire (par
-//  défaut « 00 - Cadrage/Gestion de l'organisation »), rendu par Ariane :
-//  Aujourd'hui, En retard, Cette semaine, Urgent et important, Important
-//  pas urgent, À surveiller. Rien n'y est écrit : c'est une vue, qui se
-//  redessine quand une tâche change. Monsieur écrit ce qu'il veut autour.
+//  défaut « 00 - Cadrage/Gestion de l'organisation »), rendu par Ariane à
+//  partir de Ariane.tableauOrganisation : chiffres clés, la semaine jour par
+//  jour, aujourd'hui heure par heure, la matrice urgent / important, ce qui
+//  est à surveiller, les échéances à venir, les familles, l'activité récente.
+//  Rien n'y est écrit : c'est une vue, qui se redessine quand une tâche
+//  change. Chaque section se replie d'un clic ; Ariane retient lesquelles.
+
+const ORGA_JOURS = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+const ORGA_DIAGNOSTICS = { retard: 'en retard', etire: 's’étire', 'sous-planifiee': 'sous-planifiée', abandon: 'abandon ?' };
 
 class BlocOrganisation extends obsidian.MarkdownRenderChild {
   constructor(greffon, el) {
@@ -32631,59 +32780,288 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
       clearTimeout(this._minuteur);
       this._minuteur = setTimeout(() => this.rendre(), 1500);
     }));
-    // Le jour change : « aujourd'hui » et « cette semaine » aussi.
-    this.registerInterval(window.setInterval(() => this.rendre(), 30 * 60000));
+    // Le jour et l'heure changent : aujourd'hui, la semaine aussi.
+    this.registerInterval(window.setInterval(() => this.rendre(), 15 * 60000));
   }
 
   onunload() { clearTimeout(this._minuteur); }
 
+  // ── Petits outils de mise en forme ─────────────────────────────────────
+  _jourCourt(iso) {
+    const d = new Date(iso.slice(0, 10) + 'T12:00:00');
+    return ORGA_JOURS[(d.getDay() + 6) % 7] + ' ' + d.getDate() + ' '
+      + d.toLocaleDateString('fr-FR', { month: 'short' }).replace(/\.$/, '');
+  }
+
+  _duree(min) { return min > 0 ? dureeLisible(min) : '0 min'; }
+
+  _couleur(t) {
+    const f = (this.greffon.familleDe && this.greffon.familleDe(t.famille)) || {};
+    return f.couleur || '';
+  }
+
+  _nomFamille(id) {
+    const f = (this.greffon.familleDe && this.greffon.familleDe(id)) || {};
+    return f.nom || id || tr('(sans famille)');
+  }
+
+  _lien(hote, t, cls) {
+    const cible = t.fichier ? t.fichier.path : t.ref;
+    const a = hote.createEl('a', { cls: 'internal-link ' + (cls || 'zfa-orga-intitule'), text: t.intitule || t.ref,
+      attr: { 'data-href': cible, href: cible } });
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const nouveau = obsidian.Keymap && obsidian.Keymap.isModEvent ? obsidian.Keymap.isModEvent(e) : false;
+      this.greffon.app.workspace.openLinkText(cible, '', nouveau);
+    });
+    return a;
+  }
+
+  _pastille(hote, texte, genre, titre) {
+    const p = hote.createSpan({ cls: 'zfa-orga-pastille' + (genre ? ' est-' + genre : ''), text: texte });
+    if (titre) p.setAttribute('title', titre);
+    return p;
+  }
+
+  // Une tâche, avec tout ce qui la situe : famille, statut, avancement,
+  // échéance en clair, prochain créneau, diagnostics. `compacte` : sans
+  // échéance ni diagnostics (sous un en-tête de date, ils se répéteraient).
+  _ligneRiche(hote, x, auj, compacte) {
+    const t = x.tache;
+    const a = x.analyse;
+    const l = hote.createDiv({ cls: 'zfa-orga-ligne' });
+    const point = l.createSpan({ cls: 'zfa-orga-point' });
+    const c = this._couleur(t);
+    if (c) point.style.background = c;
+    l.createSpan({ cls: 'zfa-orga-ref', text: t.ref });
+    const corps = l.createDiv({ cls: 'zfa-orga-corps' });
+    this._lien(corps, t);
+    const meta = corps.createDiv({ cls: 'zfa-orga-meta' });
+    if (t.statut && t.statut !== 'à faire') this._pastille(meta, t.statut, 'statut');
+    const av = Number(t.avancement) || 0;
+    if (av > 0) {
+      const b = meta.createSpan({ cls: 'zfa-orga-avancement', attr: { title: av + ' %' } });
+      b.createSpan().style.width = Math.min(100, av) + '%';
+      meta.createSpan({ cls: 'zfa-orga-discret', text: av + ' %' });
+    }
+    const ech = compacte ? null : Ariane.echeanceRelative(t.echeance, auj);
+    if (ech) this._pastille(meta, tr('échéance ') + ech.texte, ech.genre, t.echeance);
+    if (a.prochainCreneau) {
+      meta.createSpan({ cls: 'zfa-orga-discret',
+        text: tr('prochain créneau ') + this._jourCourt(a.prochainCreneau) + ' ' + a.prochainCreneau.slice(11, 16) });
+    } else if (a.dernierCreneau) {
+      meta.createSpan({ cls: 'zfa-orga-discret', text: tr('dernier créneau ') + this._jourCourt(a.dernierCreneau) });
+    }
+    if (a.reports) meta.createSpan({ cls: 'zfa-orga-discret', text: a.reports + ' ' + tr('report(s)') });
+    if (compacte) return l;
+    for (const d of a.diagnostics) this._pastille(meta, tr(ORGA_DIAGNOSTICS[d.code] || d.code), 'diag-' + d.code, d.raison);
+    if (a.diagnostics.length) {
+      corps.createDiv({ cls: 'zfa-orga-raisons', text: a.diagnostics.map((d) => d.raison).join(' · ') });
+    }
+    return l;
+  }
+
+  // Une section repliable ; l'état est retenu dans les réglages.
+  _section(hote, cle, titre, nombre, remplir) {
+    const s = this.greffon.settings;
+    const replies = new Set(Array.isArray(s.organisationReplies) ? s.organisationReplies : []);
+    const bloc = hote.createDiv({ cls: 'zfa-orga-section est-' + cle + (replies.has(cle) ? ' est-repliee' : '') });
+    const h = bloc.createDiv({ cls: 'zfa-orga-titre' });
+    const chevron = h.createSpan({ cls: 'zfa-orga-chevron' });
+    obsidian.setIcon(chevron, 'chevron-down');
+    h.createSpan({ text: titre });
+    if (nombre != null) h.createSpan({ cls: 'zfa-orga-nombre', text: String(nombre) });
+    h.addEventListener('click', async () => {
+      const repliee = !bloc.hasClass('est-repliee');
+      bloc.toggleClass('est-repliee', repliee);
+      const liste = new Set(Array.isArray(s.organisationReplies) ? s.organisationReplies : []);
+      if (repliee) liste.add(cle); else liste.delete(cle);
+      s.organisationReplies = Array.from(liste);
+      await this.greffon.saveSettings();
+    });
+    remplir(bloc.createDiv({ cls: 'zfa-orga-contenu' }));
+    return bloc;
+  }
+
+  // ── Le rendu ───────────────────────────────────────────────────────────
   async rendre() {
     const el = this.containerEl;
-    const auj = jourIsoDe(new Date());
-    let analyses;
-    try { analyses = await this.greffon.analyseTaches(auj); } catch (e) {
+    let d;
+    try { d = await this.greffon.donneesOrganisation(); } catch (e) {
       el.empty();
       el.createDiv({ cls: 'zfa-orga-vide', text: tr('Le tableau n’a pas pu se calculer : ') + (e && e.message ? e.message : e) });
       return;
     }
-    const sections = Ariane.sectionsOrganisation(analyses, auj);
-    const actives = analyses.filter((x) => x.tache.statut !== 'terminée' && x.tache.statut !== 'abandonnée');
+    const auj = d.aujourdhuiISO;
     el.empty();
     el.addClass('zfa-orga');
+
     const tete = el.createDiv({ cls: 'zfa-orga-tete' });
     const jour = new Date(auj + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     tete.createSpan({ cls: 'zfa-orga-date', text: jour.charAt(0).toUpperCase() + jour.slice(1) });
-    tete.createSpan({ cls: 'zfa-orga-compte', text: actives.length + ' ' + tr('tâches actives') });
-    if (!sections.length) {
-      el.createDiv({ cls: 'zfa-orga-vide', text: tr('Rien à signaler : aucune tâche en retard, rien de pressant cette semaine.') });
-    }
-    for (const s of sections) {
-      const bloc = el.createDiv({ cls: 'zfa-orga-section est-' + s.cle });
-      const h = bloc.createDiv({ cls: 'zfa-orga-titre' });
-      h.createSpan({ text: s.titre });
-      h.createSpan({ cls: 'zfa-orga-nombre', text: String(s.lignes.length) });
-      for (const l of s.lignes) this._ligne(bloc, l);
-    }
+    tete.createSpan({ cls: 'zfa-orga-discret', text: tr('semaine du ') + this._jourCourt(d.lundi) });
+
+    // Chiffres clés.
+    const k = d.chiffres;
+    const pave = (hote, valeur, libelle, genre) => {
+      const p = hote.createDiv({ cls: 'zfa-orga-pave' + (genre ? ' est-' + genre : '') });
+      p.createDiv({ cls: 'zfa-orga-pave-valeur', text: valeur });
+      p.createDiv({ cls: 'zfa-orga-pave-libelle', text: libelle });
+    };
+    const paves = el.createDiv({ cls: 'zfa-orga-paves' });
+    pave(paves, String(k.actives), tr('tâches actives'));
+    pave(paves, String(k.enRetard), tr('en retard'), k.enRetard ? 'retard' : '');
+    pave(paves, String(k.echeances7), tr('échéances sous 7 j'), k.echeances7 ? 'proche' : '');
+    pave(paves, this._duree(k.minutesPlanifieesSemaine), tr('planifiées cette semaine'));
+    pave(paves, this._duree(k.minutesPasseesSemaine), tr('passées (indicatif)'));
+    pave(paves, String(k.termineesSemaine), tr('terminées en 7 j'), k.termineesSemaine ? 'bien' : '');
+
+    // La semaine.
+    this._section(el, 'semaine', tr('La semaine'), null, (c) => {
+      const max = Math.max(8 * 60, ...d.semaine.map((j) => j.minutesPlanifiees + j.minutesEvenements));
+      const g = c.createDiv({ cls: 'zfa-orga-semaine' });
+      d.semaine.forEach((j, i) => {
+        const col = g.createDiv({ cls: 'zfa-orga-jour' + (j.aujourdhui ? ' est-aujourdhui' : '')
+          + (j.jour < auj ? ' est-passe' : '') + (i >= 5 ? ' est-weekend' : '') });
+        col.createDiv({ cls: 'zfa-orga-jour-nom', text: this._jourCourt(j.jour) });
+        const barre = col.createDiv({ cls: 'zfa-orga-jour-barre',
+          attr: { title: this._duree(j.minutesPlanifiees) + tr(' de créneaux, ') + this._duree(j.minutesEvenements) + tr(' de rendez-vous') } });
+        const ev = barre.createDiv({ cls: 'zfa-orga-jour-evt' });
+        ev.style.height = Math.round(100 * j.minutesEvenements / max) + '%';
+        const cr = barre.createDiv({ cls: 'zfa-orga-jour-cr' });
+        cr.style.height = Math.round(100 * j.minutesPlanifiees / max) + '%';
+        col.createDiv({ cls: 'zfa-orga-jour-heures', text: j.minutesPlanifiees ? this._duree(j.minutesPlanifiees) : '·' });
+        col.createDiv({ cls: 'zfa-orga-discret', text: j.nbEvenements ? j.nbEvenements + ' ' + tr('rdv') : '' });
+      });
+      const legende = c.createDiv({ cls: 'zfa-orga-legende' });
+      legende.createSpan({ cls: 'zfa-orga-cle est-cr', text: tr('créneaux de tâches') });
+      legende.createSpan({ cls: 'zfa-orga-cle est-evt', text: tr('rendez-vous') });
+    });
+
+    // Aujourd'hui.
+    this._section(el, 'aujourdhui', tr('Aujourd’hui'), d.aujourdhui.length, (c) => {
+      if (d.journeeEntiere.length) {
+        const j = c.createDiv({ cls: 'zfa-orga-journee' });
+        for (const e of d.journeeEntiere) this._pastille(j, e.titre, 'evt', e.calendrier);
+      }
+      if (!d.aujourdhui.length) {
+        c.createDiv({ cls: 'zfa-orga-vide', text: tr('Aucun créneau ni rendez-vous aujourd’hui.') });
+        return;
+      }
+      const maintenant = new Date();
+      const hm = String(maintenant.getHours()).padStart(2, '0') + ':' + String(maintenant.getMinutes()).padStart(2, '0');
+      for (const x of d.aujourdhui) {
+        const passe = x.fin.slice(11, 16) <= hm;
+        const encours = !passe && x.debut.slice(11, 16) <= hm;
+        const l = c.createDiv({ cls: 'zfa-orga-agenda est-' + x.genre + (passe ? ' est-passe' : '') + (encours ? ' est-encours' : '') });
+        l.createSpan({ cls: 'zfa-orga-heure', text: x.debut.slice(11, 16) + ' → ' + x.fin.slice(11, 16) });
+        const barre = l.createSpan({ cls: 'zfa-orga-agenda-barre' });
+        const coul = x.genre === 'creneau' ? this._couleur(x.tache) : x.couleur;
+        if (coul) barre.style.background = coul;
+        const corps = l.createDiv({ cls: 'zfa-orga-corps' });
+        if (x.genre === 'creneau') {
+          const ligne = corps.createDiv();
+          ligne.createSpan({ cls: 'zfa-orga-ref', text: x.tache.ref + ' ' });
+          this._lien(ligne, x.tache);
+        } else {
+          corps.createDiv({ cls: 'zfa-orga-evt-titre', text: x.titre });
+          if (x.calendrier) corps.createDiv({ cls: 'zfa-orga-discret', text: x.calendrier });
+        }
+        l.createSpan({ cls: 'zfa-orga-discret', text: this._duree(x.minutes) });
+      }
+    });
+
+    // Matrice urgent / important.
+    const m = d.matrice;
+    this._section(el, 'matrice', tr('Urgence et importance'), null, (c) => {
+      const g = c.createDiv({ cls: 'zfa-orga-matrice' });
+      const case_ = (cle, titre, sous, liste) => {
+        const b = g.createDiv({ cls: 'zfa-orga-case est-' + cle });
+        const h = b.createDiv({ cls: 'zfa-orga-case-titre' });
+        h.createSpan({ text: titre });
+        h.createSpan({ cls: 'zfa-orga-nombre', text: String(liste.length) });
+        b.createDiv({ cls: 'zfa-orga-discret', text: sous });
+        for (const x of liste.slice(0, 5)) {
+          const l = b.createDiv({ cls: 'zfa-orga-mini' });
+          const point = l.createSpan({ cls: 'zfa-orga-point' });
+          const coul = this._couleur(x.tache);
+          if (coul) point.style.background = coul;
+          this._lien(l, x.tache);
+          const ech = Ariane.echeanceRelative(x.tache.echeance, auj);
+          if (ech) this._pastille(l, ech.texte, ech.genre, x.tache.echeance);
+        }
+        if (liste.length > 5) b.createDiv({ cls: 'zfa-orga-discret', text: '+ ' + (liste.length - 5) + ' ' + tr('autres') });
+      };
+      case_('ui', tr('Urgent et important'), tr('à faire maintenant'), m.urgentImportant);
+      case_('i', tr('Important, pas urgent'), tr('à planifier'), m.importantPasUrgent);
+      case_('u', tr('Urgent, moins prioritaire'), tr('à expédier'), m.urgentPasImportant);
+      case_('n', tr('Sans urgence ni priorité'), tr('à reconsidérer à l’occasion'), m.niUnNiAutre);
+    });
+
+    // À surveiller.
+    this._section(el, 'surveiller', tr('À surveiller'), d.surveiller.length, (c) => {
+      if (!d.surveiller.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('Rien d’inquiétant.') }); return; }
+      for (const x of d.surveiller) this._ligneRiche(c, x, auj);
+    });
+
+    // Échéances à venir.
+    this._section(el, 'echeances', tr('Échéances des 30 prochains jours'), d.echeances.length, (c) => {
+      if (!d.echeances.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('Aucune échéance dans les 30 jours.') }); return; }
+      const frise = c.createDiv({ cls: 'zfa-orga-frise' });
+      let courant = '';
+      for (const x of d.echeances) {
+        if (x.tache.echeance !== courant) {
+          courant = x.tache.echeance;
+          const ech = Ariane.echeanceRelative(courant, auj);
+          const date = frise.createDiv({ cls: 'zfa-orga-frise-date' + (ech ? ' est-' + ech.genre : '') });
+          date.createSpan({ text: this._jourCourt(courant) });
+          if (ech) date.createSpan({ cls: 'zfa-orga-discret', text: ech.texte });
+        }
+        this._ligneRiche(frise, x, auj, true);
+      }
+    });
+
+    // Familles.
+    this._section(el, 'familles', tr('Par famille'), null, (c) => {
+      for (const f of d.familles) {
+        const l = c.createDiv({ cls: 'zfa-orga-famille' });
+        const point = l.createSpan({ cls: 'zfa-orga-point' });
+        const fam = (this.greffon.familleDe && this.greffon.familleDe(f.famille)) || {};
+        if (fam.couleur) point.style.background = fam.couleur;
+        l.createSpan({ cls: 'zfa-orga-famille-nom', text: this._nomFamille(f.famille) });
+        l.createSpan({ cls: 'zfa-orga-discret zfa-orga-famille-actives', text: f.actives + ' ' + tr('actives') });
+        const b = l.createSpan({ cls: 'zfa-orga-avancement est-large', attr: { title: f.terminees + ' / ' + (f.total - f.abandonnees) } });
+        b.createSpan().style.width = f.taux + '%';
+        l.createSpan({ cls: 'zfa-orga-discret', text: f.taux + ' % ' + tr('terminées') });
+        l.createSpan({ cls: 'zfa-orga-discret est-droite', text: this._duree(f.minutesSemaine) + tr(' cette semaine') });
+      }
+    });
+
+    // Activité récente.
+    this._section(el, 'activite', tr('Activité récente'), null, (c) => {
+      if (!d.activite.length) {
+        c.createDiv({ cls: 'zfa-orga-vide', text: tr('Le journal des modifications commence le 29 septembre 2026 : il se remplit au fil des jours.') });
+        return;
+      }
+      const hier = Ariane.decalerJour(auj, -1);
+      for (const a of d.activite) {
+        const l = c.createDiv({ cls: 'zfa-orga-activite' });
+        const jourE = String(a.le).slice(0, 10);
+        const quand = jourE === auj ? tr('aujourd’hui') : jourE === hier ? tr('hier') : this._jourCourt(jourE);
+        l.createSpan({ cls: 'zfa-orga-heure', text: quand + ' ' + String(a.le).slice(11, 16) });
+        const corps = l.createDiv({ cls: 'zfa-orga-corps' });
+        const t = this.greffon.fichierDeRef && this.greffon.fichierDeRef(a.ref);
+        const ligne = corps.createDiv();
+        ligne.createSpan({ cls: 'zfa-orga-ref', text: a.ref + ' ' });
+        if (t) this._lien(ligne, { ref: a.ref, intitule: a.intitule || a.ref, fichier: t });
+        else ligne.createSpan({ text: a.intitule || '' });
+        corps.createDiv({ cls: 'zfa-orga-discret', text: a.phrase });
+        if (a.origine) this._pastille(l, a.origine, 'origine');
+      }
+    });
+
     el.createDiv({ cls: 'zfa-orga-aide',
       text: tr('Pour aller plus loin, demandez à Claude, dans Claudian : « Fais le point sur mes tâches ».') });
-  }
-
-  _ligne(hote, l) {
-    const t = l.tache;
-    const ligne = hote.createDiv({ cls: 'zfa-orga-ligne' });
-    const fam = (this.greffon.familleDe && this.greffon.familleDe(t.famille)) || {};
-    const point = ligne.createSpan({ cls: 'zfa-orga-point' });
-    if (fam.couleur) point.style.background = fam.couleur;
-    ligne.createSpan({ cls: 'zfa-orga-ref', text: t.ref });
-    const lien = ligne.createEl('a', { cls: 'zfa-orga-intitule internal-link', text: t.intitule || t.ref,
-      attr: { 'data-href': t.fichier ? t.fichier.path : t.ref, href: t.fichier ? t.fichier.path : t.ref } });
-    lien.addEventListener('click', (e) => {
-      e.preventDefault();
-      const nouveau = obsidian.Keymap && obsidian.Keymap.isModEvent ? obsidian.Keymap.isModEvent(e) : false;
-      this.greffon.app.workspace.openLinkText(t.fichier ? t.fichier.path : t.ref, '', nouveau);
-    });
-    if (l.raison) ligne.createSpan({ cls: 'zfa-orga-raison', text: l.raison });
-    if (l.quand) ligne.createSpan({ cls: 'zfa-orga-quand', text: l.quand });
   }
 }
 
@@ -35187,6 +35565,7 @@ module.exports._test = {
   BarreEdition,
   // Pont Claude : les outils de lecture s'éprouvent avec un greffon factice.
   PontClaude,
+  BlocOrganisation, // tableau de bord : son rendu s'éprouve sur un DOM factice
   pontCorpsNote,
   BarreOutils,
   echapperRegex,

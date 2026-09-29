@@ -3559,43 +3559,138 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-claude-ecartes { margin-top: 12px; font-size: var(--font-ui-smaller); color: var(--text-muted); }
 .zfa-claude-ecartes-titre { font-weight: var(--font-semibold, 600); margin-bottom: 4px; }
 
-/* ── Tableau de bord des tâches : bloc ariane-organisation (section 19) ─── */
-.zfa-orga { display: flex; flex-direction: column; gap: 14px; margin: 8px 0; }
-.zfa-orga-tete { display: flex; align-items: baseline; gap: 10px; }
-.zfa-orga-date { font-size: 1.15em; font-weight: var(--font-semibold, 600); }
-.zfa-orga-compte { color: var(--text-muted); font-size: var(--font-ui-small); }
-.zfa-orga-section {
-  padding: 8px 10px 6px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m, 8px);
-  background: var(--background-secondary);
-}
-.zfa-orga-section.est-retard { border-color: color-mix(in srgb, var(--text-error) 45%, var(--background-modifier-border)); }
-.zfa-orga-titre {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
-  font-size: var(--font-ui-small); font-weight: var(--font-semibold, 600);
-  letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted);
-}
-.zfa-orga-section.est-retard .zfa-orga-titre { color: var(--text-error); }
-.zfa-orga-nombre {
-  min-width: 18px; padding: 0 6px; border-radius: 9px; text-align: center;
-  background: var(--background-modifier-hover); color: var(--text-muted);
-  font-variant-numeric: tabular-nums; letter-spacing: 0;
-}
-.zfa-orga-ligne {
-  display: flex; align-items: center; gap: 8px; padding: 4px 2px;
-  border-top: 1px solid var(--background-modifier-border);
+/* ── Tableau de bord des tâches : bloc ariane-organisation (section 19) ───
+   Des sections repliables sur le fond de la note ; des pavés pour les
+   chiffres, des barres pour la charge, une grille 2 × 2 pour la matrice.
+   Couleurs d'état : retard (erreur), proche (avertissement), bien (succès). */
+.zfa-orga {
+  --zfa-orga-retard: var(--color-red, #e5534b);
+  --zfa-orga-proche: var(--color-orange, #d98a2b);
+  --zfa-orga-bien: var(--color-green, #57a55a);
+  --zfa-orga-cr: var(--interactive-accent);
+  --zfa-orga-evt: color-mix(in srgb, var(--text-muted) 45%, transparent);
+  display: flex; flex-direction: column; gap: 12px; margin: 6px 0 12px;
   font-size: var(--font-ui-small);
 }
-.zfa-orga-titre + .zfa-orga-ligne { border-top: none; }
-.zfa-orga-point { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
-.zfa-orga-ref { flex: 0 0 auto; color: var(--text-faint); font-variant-numeric: tabular-nums; }
-.zfa-orga-intitule { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.zfa-orga-raison {
-  flex: 0 0 auto; padding: 1px 8px; border-radius: 10px;
-  background: var(--background-modifier-hover); color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+.zfa-orga-tete { display: flex; align-items: baseline; gap: 10px; }
+.zfa-orga-date { font-size: 1.25em; font-weight: var(--font-semibold, 600); color: var(--text-normal); }
+.zfa-orga-discret { color: var(--text-faint); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
+.zfa-orga-discret.est-droite { margin-left: auto; }
+
+/* Chiffres clés */
+.zfa-orga-paves { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.zfa-orga-pave {
+  padding: 10px 12px 8px; border-radius: var(--radius-m, 8px);
+  background: var(--background-secondary); border: 1px solid var(--background-modifier-border);
 }
-.zfa-orga-quand { flex: 0 0 auto; color: var(--text-faint); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
-.zfa-orga-vide, .zfa-orga-aide { color: var(--text-muted); font-size: var(--font-ui-small); }
-.zfa-orga-aide { font-style: italic; }
+.zfa-orga-pave-valeur { font-size: 1.55em; font-weight: var(--font-semibold, 600); line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--text-normal); }
+.zfa-orga-pave-libelle { margin-top: 2px; color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.zfa-orga-pave.est-retard .zfa-orga-pave-valeur { color: var(--zfa-orga-retard); }
+.zfa-orga-pave.est-proche .zfa-orga-pave-valeur { color: var(--zfa-orga-proche); }
+.zfa-orga-pave.est-bien .zfa-orga-pave-valeur { color: var(--zfa-orga-bien); }
+
+/* Sections repliables */
+.zfa-orga-section { border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m, 8px); background: var(--background-secondary); }
+.zfa-orga-titre {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; user-select: none;
+  font-size: var(--font-ui-smaller); font-weight: var(--font-semibold, 600);
+  letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted);
+}
+.zfa-orga-titre:hover { color: var(--text-normal); }
+.zfa-orga-chevron { display: inline-flex; transition: transform 0.18s ease; }
+.zfa-orga-chevron .svg-icon { width: 14px; height: 14px; }
+.zfa-orga-section.est-repliee .zfa-orga-chevron { transform: rotate(-90deg); }
+.zfa-orga-section.est-repliee .zfa-orga-contenu { display: none; }
+.zfa-orga-contenu { padding: 0 12px 10px; }
+.zfa-orga-nombre {
+  min-width: 18px; padding: 0 6px; border-radius: 9px; text-align: center; letter-spacing: 0;
+  background: var(--background-modifier-hover); color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.zfa-orga-section.est-surveiller .zfa-orga-titre { color: var(--zfa-orga-retard); }
+
+/* La semaine */
+.zfa-orga-semaine { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.zfa-orga-jour { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; border-radius: var(--radius-s, 4px); }
+.zfa-orga-jour.est-weekend { background: color-mix(in srgb, var(--background-primary) 40%, transparent); }
+.zfa-orga-jour.est-aujourdhui { background: color-mix(in srgb, var(--interactive-accent) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 50%, transparent); }
+.zfa-orga-jour.est-passe { opacity: 0.6; }
+.zfa-orga-jour-nom { font-size: var(--font-ui-smaller); color: var(--text-muted); white-space: nowrap; }
+.zfa-orga-jour.est-aujourdhui .zfa-orga-jour-nom { color: var(--text-accent); font-weight: var(--font-semibold, 600); }
+.zfa-orga-jour-barre {
+  position: relative; width: 22px; height: 64px; display: flex; flex-direction: column-reverse;
+  border-radius: 4px; background: var(--background-modifier-border); overflow: hidden;
+}
+.zfa-orga-jour-cr { background: var(--zfa-orga-cr); }
+.zfa-orga-jour-evt { background: var(--zfa-orga-evt); }
+.zfa-orga-jour-heures { font-variant-numeric: tabular-nums; color: var(--text-normal); font-size: var(--font-ui-smaller); }
+.zfa-orga-legende { display: flex; gap: 14px; justify-content: flex-end; margin-top: 6px; }
+.zfa-orga-cle { display: inline-flex; align-items: center; gap: 5px; color: var(--text-faint); font-size: var(--font-ui-smaller); }
+.zfa-orga-cle::before { content: ''; width: 9px; height: 9px; border-radius: 2px; }
+.zfa-orga-cle.est-cr::before { background: var(--zfa-orga-cr); }
+.zfa-orga-cle.est-evt::before { background: var(--zfa-orga-evt); }
+
+/* Aujourd'hui */
+.zfa-orga-journee { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.zfa-orga-agenda { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-top: 1px solid var(--background-modifier-border); }
+.zfa-orga-agenda:first-child, .zfa-orga-journee + .zfa-orga-agenda { border-top: none; }
+.zfa-orga-agenda.est-passe { opacity: 0.5; }
+.zfa-orga-agenda.est-encours .zfa-orga-heure { color: var(--text-accent); font-weight: var(--font-semibold, 600); }
+.zfa-orga-heure { flex: 0 0 auto; min-width: 104px; font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.zfa-orga-agenda-barre { flex: 0 0 3px; align-self: stretch; border-radius: 2px; background: var(--text-faint); }
+.zfa-orga-agenda.est-evenement .zfa-orga-agenda-barre { opacity: 0.6; }
+.zfa-orga-evt-titre { color: var(--text-muted); }
+
+/* Lignes de tâches */
+.zfa-orga-ligne { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-top: 1px solid var(--background-modifier-border); }
+.zfa-orga-contenu > .zfa-orga-ligne:first-child, .zfa-orga-frise-date + .zfa-orga-ligne { border-top: none; }
+.zfa-orga-point { flex: 0 0 8px; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--text-faint); }
+.zfa-orga-ref { flex: 0 0 auto; color: var(--text-faint); font-variant-numeric: tabular-nums; font-size: var(--font-ui-smaller); margin-top: 1px; }
+.zfa-orga-corps { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.zfa-orga-intitule { overflow: hidden; text-overflow: ellipsis; }
+.zfa-orga-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.zfa-orga-raisons { color: var(--text-muted); font-size: var(--font-ui-smaller); font-style: italic; }
+.zfa-orga-pastille {
+  display: inline-flex; align-items: center; padding: 0 7px; border-radius: 9px; line-height: 17px;
+  font-size: var(--font-ui-smaller); background: var(--background-modifier-hover); color: var(--text-muted); white-space: nowrap;
+}
+.zfa-orga-pastille.est-retard, .zfa-orga-pastille.est-diag-retard { background: color-mix(in srgb, var(--zfa-orga-retard) 18%, transparent); color: var(--zfa-orga-retard); }
+.zfa-orga-pastille.est-proche, .zfa-orga-pastille.est-diag-sous-planifiee { background: color-mix(in srgb, var(--zfa-orga-proche) 18%, transparent); color: var(--zfa-orga-proche); }
+.zfa-orga-pastille.est-diag-etire { background: color-mix(in srgb, var(--color-purple, #a371f7) 18%, transparent); color: var(--color-purple, #a371f7); }
+.zfa-orga-pastille.est-statut { background: color-mix(in srgb, var(--interactive-accent) 16%, transparent); color: var(--text-accent); }
+.zfa-orga-pastille.est-evt { background: transparent; border: 1px solid var(--background-modifier-border); }
+.zfa-orga-pastille.est-origine { margin-left: auto; }
+.zfa-orga-avancement { display: inline-block; width: 44px; height: 5px; border-radius: 3px; background: var(--background-modifier-border); overflow: hidden; }
+.zfa-orga-avancement.est-large { width: 90px; }
+.zfa-orga-avancement > span { display: block; height: 100%; background: var(--zfa-orga-bien); }
+
+/* Matrice */
+.zfa-orga-matrice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.zfa-orga-case { padding: 8px 10px; border-radius: var(--radius-s, 4px); background: var(--background-primary); border-top: 3px solid var(--text-faint); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.zfa-orga-case.est-ui { border-top-color: var(--zfa-orga-retard); }
+.zfa-orga-case.est-i { border-top-color: var(--zfa-orga-bien); }
+.zfa-orga-case.est-u { border-top-color: var(--zfa-orga-proche); }
+.zfa-orga-case-titre { display: flex; align-items: center; gap: 6px; font-weight: var(--font-semibold, 600); color: var(--text-normal); }
+.zfa-orga-mini { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.zfa-orga-mini .zfa-orga-point { margin-top: 0; }
+.zfa-orga-mini .zfa-orga-intitule { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+
+/* Échéances */
+.zfa-orga-frise { border-left: 2px solid var(--background-modifier-border); margin-left: 4px; padding-left: 12px; }
+.zfa-orga-frise-date { position: relative; display: flex; gap: 8px; align-items: baseline; margin-top: 8px; font-weight: var(--font-semibold, 600); color: var(--text-normal); }
+.zfa-orga-frise-date::before { content: ''; position: absolute; left: -18px; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: var(--background-secondary); border: 2px solid var(--text-faint); }
+.zfa-orga-frise-date.est-proche::before { border-color: var(--zfa-orga-proche); }
+
+/* Familles */
+.zfa-orga-famille { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-top: 1px solid var(--background-modifier-border); }
+.zfa-orga-famille:first-child { border-top: none; }
+.zfa-orga-famille .zfa-orga-point { margin-top: 0; }
+.zfa-orga-famille-nom { min-width: 110px; color: var(--text-normal); }
+.zfa-orga-famille-actives { min-width: 62px; }
+
+/* Activité */
+.zfa-orga-activite { display: flex; align-items: flex-start; gap: 10px; padding: 5px 0; border-top: 1px solid var(--background-modifier-border); }
+.zfa-orga-activite:first-child { border-top: none; }
+
+.zfa-orga-vide { color: var(--text-muted); padding: 2px 0 4px; }
+.zfa-orga-aide { color: var(--text-faint); font-style: italic; font-size: var(--font-ui-smaller); }
+@media (prefers-reduced-motion: reduce) { .zfa-orga-chevron { transition: none; } }

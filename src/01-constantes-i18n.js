@@ -1103,7 +1103,8 @@ const DEFAULT_SETTINGS = {
   rappelsFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un rappel Apple
   rappelsSupprimerAbandonnees: true, // une tâche abandonnée quitte Apple Rappels
   claudePont: true,             // relais local pour le serveur MCP ariane-taches (bureau)
-  tachesSemainesAbandon: 4,     // semaines sans activité avant « abandon probable »
+  tachesSemainesAbandon: 4,
+  organisationReplies: [],      // sections repliées du tableau de bord des tâches     // semaines sans activité avant « abandon probable »
   agendaActif: false,           // intégration Apple Agenda / Calendar (macOS, EKEvent)
   agendaAuto: true,             // pousser à la sauvegarde + relever régulièrement
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques

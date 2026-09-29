@@ -675,10 +675,15 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
 
 // ── Bloc « ariane-organisation » : le tableau de bord des tâches ──────────
 //  Un bloc de code ```ariane-organisation``` dans une note ordinaire (par
-//  défaut « 00 - Cadrage/Gestion de l'organisation »), rendu par Ariane :
-//  Aujourd'hui, En retard, Cette semaine, Urgent et important, Important
-//  pas urgent, À surveiller. Rien n'y est écrit : c'est une vue, qui se
-//  redessine quand une tâche change. Monsieur écrit ce qu'il veut autour.
+//  défaut « 00 - Cadrage/Gestion de l'organisation »), rendu par Ariane à
+//  partir de Ariane.tableauOrganisation : chiffres clés, la semaine jour par
+//  jour, aujourd'hui heure par heure, la matrice urgent / important, ce qui
+//  est à surveiller, les échéances à venir, les familles, l'activité récente.
+//  Rien n'y est écrit : c'est une vue, qui se redessine quand une tâche
+//  change. Chaque section se replie d'un clic ; Ariane retient lesquelles.
+
+const ORGA_JOURS = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+const ORGA_DIAGNOSTICS = { retard: 'en retard', etire: 's’étire', 'sous-planifiee': 'sous-planifiée', abandon: 'abandon ?' };
 
 class BlocOrganisation extends obsidian.MarkdownRenderChild {
   constructor(greffon, el) {
@@ -694,59 +699,288 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
       clearTimeout(this._minuteur);
       this._minuteur = setTimeout(() => this.rendre(), 1500);
     }));
-    // Le jour change : « aujourd'hui » et « cette semaine » aussi.
-    this.registerInterval(window.setInterval(() => this.rendre(), 30 * 60000));
+    // Le jour et l'heure changent : aujourd'hui, la semaine aussi.
+    this.registerInterval(window.setInterval(() => this.rendre(), 15 * 60000));
   }
 
   onunload() { clearTimeout(this._minuteur); }
 
+  // ── Petits outils de mise en forme ─────────────────────────────────────
+  _jourCourt(iso) {
+    const d = new Date(iso.slice(0, 10) + 'T12:00:00');
+    return ORGA_JOURS[(d.getDay() + 6) % 7] + ' ' + d.getDate() + ' '
+      + d.toLocaleDateString('fr-FR', { month: 'short' }).replace(/\.$/, '');
+  }
+
+  _duree(min) { return min > 0 ? dureeLisible(min) : '0 min'; }
+
+  _couleur(t) {
+    const f = (this.greffon.familleDe && this.greffon.familleDe(t.famille)) || {};
+    return f.couleur || '';
+  }
+
+  _nomFamille(id) {
+    const f = (this.greffon.familleDe && this.greffon.familleDe(id)) || {};
+    return f.nom || id || tr('(sans famille)');
+  }
+
+  _lien(hote, t, cls) {
+    const cible = t.fichier ? t.fichier.path : t.ref;
+    const a = hote.createEl('a', { cls: 'internal-link ' + (cls || 'zfa-orga-intitule'), text: t.intitule || t.ref,
+      attr: { 'data-href': cible, href: cible } });
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const nouveau = obsidian.Keymap && obsidian.Keymap.isModEvent ? obsidian.Keymap.isModEvent(e) : false;
+      this.greffon.app.workspace.openLinkText(cible, '', nouveau);
+    });
+    return a;
+  }
+
+  _pastille(hote, texte, genre, titre) {
+    const p = hote.createSpan({ cls: 'zfa-orga-pastille' + (genre ? ' est-' + genre : ''), text: texte });
+    if (titre) p.setAttribute('title', titre);
+    return p;
+  }
+
+  // Une tâche, avec tout ce qui la situe : famille, statut, avancement,
+  // échéance en clair, prochain créneau, diagnostics. `compacte` : sans
+  // échéance ni diagnostics (sous un en-tête de date, ils se répéteraient).
+  _ligneRiche(hote, x, auj, compacte) {
+    const t = x.tache;
+    const a = x.analyse;
+    const l = hote.createDiv({ cls: 'zfa-orga-ligne' });
+    const point = l.createSpan({ cls: 'zfa-orga-point' });
+    const c = this._couleur(t);
+    if (c) point.style.background = c;
+    l.createSpan({ cls: 'zfa-orga-ref', text: t.ref });
+    const corps = l.createDiv({ cls: 'zfa-orga-corps' });
+    this._lien(corps, t);
+    const meta = corps.createDiv({ cls: 'zfa-orga-meta' });
+    if (t.statut && t.statut !== 'à faire') this._pastille(meta, t.statut, 'statut');
+    const av = Number(t.avancement) || 0;
+    if (av > 0) {
+      const b = meta.createSpan({ cls: 'zfa-orga-avancement', attr: { title: av + ' %' } });
+      b.createSpan().style.width = Math.min(100, av) + '%';
+      meta.createSpan({ cls: 'zfa-orga-discret', text: av + ' %' });
+    }
+    const ech = compacte ? null : Ariane.echeanceRelative(t.echeance, auj);
+    if (ech) this._pastille(meta, tr('échéance ') + ech.texte, ech.genre, t.echeance);
+    if (a.prochainCreneau) {
+      meta.createSpan({ cls: 'zfa-orga-discret',
+        text: tr('prochain créneau ') + this._jourCourt(a.prochainCreneau) + ' ' + a.prochainCreneau.slice(11, 16) });
+    } else if (a.dernierCreneau) {
+      meta.createSpan({ cls: 'zfa-orga-discret', text: tr('dernier créneau ') + this._jourCourt(a.dernierCreneau) });
+    }
+    if (a.reports) meta.createSpan({ cls: 'zfa-orga-discret', text: a.reports + ' ' + tr('report(s)') });
+    if (compacte) return l;
+    for (const d of a.diagnostics) this._pastille(meta, tr(ORGA_DIAGNOSTICS[d.code] || d.code), 'diag-' + d.code, d.raison);
+    if (a.diagnostics.length) {
+      corps.createDiv({ cls: 'zfa-orga-raisons', text: a.diagnostics.map((d) => d.raison).join(' · ') });
+    }
+    return l;
+  }
+
+  // Une section repliable ; l'état est retenu dans les réglages.
+  _section(hote, cle, titre, nombre, remplir) {
+    const s = this.greffon.settings;
+    const replies = new Set(Array.isArray(s.organisationReplies) ? s.organisationReplies : []);
+    const bloc = hote.createDiv({ cls: 'zfa-orga-section est-' + cle + (replies.has(cle) ? ' est-repliee' : '') });
+    const h = bloc.createDiv({ cls: 'zfa-orga-titre' });
+    const chevron = h.createSpan({ cls: 'zfa-orga-chevron' });
+    obsidian.setIcon(chevron, 'chevron-down');
+    h.createSpan({ text: titre });
+    if (nombre != null) h.createSpan({ cls: 'zfa-orga-nombre', text: String(nombre) });
+    h.addEventListener('click', async () => {
+      const repliee = !bloc.hasClass('est-repliee');
+      bloc.toggleClass('est-repliee', repliee);
+      const liste = new Set(Array.isArray(s.organisationReplies) ? s.organisationReplies : []);
+      if (repliee) liste.add(cle); else liste.delete(cle);
+      s.organisationReplies = Array.from(liste);
+      await this.greffon.saveSettings();
+    });
+    remplir(bloc.createDiv({ cls: 'zfa-orga-contenu' }));
+    return bloc;
+  }
+
+  // ── Le rendu ───────────────────────────────────────────────────────────
   async rendre() {
     const el = this.containerEl;
-    const auj = jourIsoDe(new Date());
-    let analyses;
-    try { analyses = await this.greffon.analyseTaches(auj); } catch (e) {
+    let d;
+    try { d = await this.greffon.donneesOrganisation(); } catch (e) {
       el.empty();
       el.createDiv({ cls: 'zfa-orga-vide', text: tr('Le tableau n’a pas pu se calculer : ') + (e && e.message ? e.message : e) });
       return;
     }
-    const sections = Ariane.sectionsOrganisation(analyses, auj);
-    const actives = analyses.filter((x) => x.tache.statut !== 'terminée' && x.tache.statut !== 'abandonnée');
+    const auj = d.aujourdhuiISO;
     el.empty();
     el.addClass('zfa-orga');
+
     const tete = el.createDiv({ cls: 'zfa-orga-tete' });
     const jour = new Date(auj + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     tete.createSpan({ cls: 'zfa-orga-date', text: jour.charAt(0).toUpperCase() + jour.slice(1) });
-    tete.createSpan({ cls: 'zfa-orga-compte', text: actives.length + ' ' + tr('tâches actives') });
-    if (!sections.length) {
-      el.createDiv({ cls: 'zfa-orga-vide', text: tr('Rien à signaler : aucune tâche en retard, rien de pressant cette semaine.') });
-    }
-    for (const s of sections) {
-      const bloc = el.createDiv({ cls: 'zfa-orga-section est-' + s.cle });
-      const h = bloc.createDiv({ cls: 'zfa-orga-titre' });
-      h.createSpan({ text: s.titre });
-      h.createSpan({ cls: 'zfa-orga-nombre', text: String(s.lignes.length) });
-      for (const l of s.lignes) this._ligne(bloc, l);
-    }
+    tete.createSpan({ cls: 'zfa-orga-discret', text: tr('semaine du ') + this._jourCourt(d.lundi) });
+
+    // Chiffres clés.
+    const k = d.chiffres;
+    const pave = (hote, valeur, libelle, genre) => {
+      const p = hote.createDiv({ cls: 'zfa-orga-pave' + (genre ? ' est-' + genre : '') });
+      p.createDiv({ cls: 'zfa-orga-pave-valeur', text: valeur });
+      p.createDiv({ cls: 'zfa-orga-pave-libelle', text: libelle });
+    };
+    const paves = el.createDiv({ cls: 'zfa-orga-paves' });
+    pave(paves, String(k.actives), tr('tâches actives'));
+    pave(paves, String(k.enRetard), tr('en retard'), k.enRetard ? 'retard' : '');
+    pave(paves, String(k.echeances7), tr('échéances sous 7 j'), k.echeances7 ? 'proche' : '');
+    pave(paves, this._duree(k.minutesPlanifieesSemaine), tr('planifiées cette semaine'));
+    pave(paves, this._duree(k.minutesPasseesSemaine), tr('passées (indicatif)'));
+    pave(paves, String(k.termineesSemaine), tr('terminées en 7 j'), k.termineesSemaine ? 'bien' : '');
+
+    // La semaine.
+    this._section(el, 'semaine', tr('La semaine'), null, (c) => {
+      const max = Math.max(8 * 60, ...d.semaine.map((j) => j.minutesPlanifiees + j.minutesEvenements));
+      const g = c.createDiv({ cls: 'zfa-orga-semaine' });
+      d.semaine.forEach((j, i) => {
+        const col = g.createDiv({ cls: 'zfa-orga-jour' + (j.aujourdhui ? ' est-aujourdhui' : '')
+          + (j.jour < auj ? ' est-passe' : '') + (i >= 5 ? ' est-weekend' : '') });
+        col.createDiv({ cls: 'zfa-orga-jour-nom', text: this._jourCourt(j.jour) });
+        const barre = col.createDiv({ cls: 'zfa-orga-jour-barre',
+          attr: { title: this._duree(j.minutesPlanifiees) + tr(' de créneaux, ') + this._duree(j.minutesEvenements) + tr(' de rendez-vous') } });
+        const ev = barre.createDiv({ cls: 'zfa-orga-jour-evt' });
+        ev.style.height = Math.round(100 * j.minutesEvenements / max) + '%';
+        const cr = barre.createDiv({ cls: 'zfa-orga-jour-cr' });
+        cr.style.height = Math.round(100 * j.minutesPlanifiees / max) + '%';
+        col.createDiv({ cls: 'zfa-orga-jour-heures', text: j.minutesPlanifiees ? this._duree(j.minutesPlanifiees) : '·' });
+        col.createDiv({ cls: 'zfa-orga-discret', text: j.nbEvenements ? j.nbEvenements + ' ' + tr('rdv') : '' });
+      });
+      const legende = c.createDiv({ cls: 'zfa-orga-legende' });
+      legende.createSpan({ cls: 'zfa-orga-cle est-cr', text: tr('créneaux de tâches') });
+      legende.createSpan({ cls: 'zfa-orga-cle est-evt', text: tr('rendez-vous') });
+    });
+
+    // Aujourd'hui.
+    this._section(el, 'aujourdhui', tr('Aujourd’hui'), d.aujourdhui.length, (c) => {
+      if (d.journeeEntiere.length) {
+        const j = c.createDiv({ cls: 'zfa-orga-journee' });
+        for (const e of d.journeeEntiere) this._pastille(j, e.titre, 'evt', e.calendrier);
+      }
+      if (!d.aujourdhui.length) {
+        c.createDiv({ cls: 'zfa-orga-vide', text: tr('Aucun créneau ni rendez-vous aujourd’hui.') });
+        return;
+      }
+      const maintenant = new Date();
+      const hm = String(maintenant.getHours()).padStart(2, '0') + ':' + String(maintenant.getMinutes()).padStart(2, '0');
+      for (const x of d.aujourdhui) {
+        const passe = x.fin.slice(11, 16) <= hm;
+        const encours = !passe && x.debut.slice(11, 16) <= hm;
+        const l = c.createDiv({ cls: 'zfa-orga-agenda est-' + x.genre + (passe ? ' est-passe' : '') + (encours ? ' est-encours' : '') });
+        l.createSpan({ cls: 'zfa-orga-heure', text: x.debut.slice(11, 16) + ' → ' + x.fin.slice(11, 16) });
+        const barre = l.createSpan({ cls: 'zfa-orga-agenda-barre' });
+        const coul = x.genre === 'creneau' ? this._couleur(x.tache) : x.couleur;
+        if (coul) barre.style.background = coul;
+        const corps = l.createDiv({ cls: 'zfa-orga-corps' });
+        if (x.genre === 'creneau') {
+          const ligne = corps.createDiv();
+          ligne.createSpan({ cls: 'zfa-orga-ref', text: x.tache.ref + ' ' });
+          this._lien(ligne, x.tache);
+        } else {
+          corps.createDiv({ cls: 'zfa-orga-evt-titre', text: x.titre });
+          if (x.calendrier) corps.createDiv({ cls: 'zfa-orga-discret', text: x.calendrier });
+        }
+        l.createSpan({ cls: 'zfa-orga-discret', text: this._duree(x.minutes) });
+      }
+    });
+
+    // Matrice urgent / important.
+    const m = d.matrice;
+    this._section(el, 'matrice', tr('Urgence et importance'), null, (c) => {
+      const g = c.createDiv({ cls: 'zfa-orga-matrice' });
+      const case_ = (cle, titre, sous, liste) => {
+        const b = g.createDiv({ cls: 'zfa-orga-case est-' + cle });
+        const h = b.createDiv({ cls: 'zfa-orga-case-titre' });
+        h.createSpan({ text: titre });
+        h.createSpan({ cls: 'zfa-orga-nombre', text: String(liste.length) });
+        b.createDiv({ cls: 'zfa-orga-discret', text: sous });
+        for (const x of liste.slice(0, 5)) {
+          const l = b.createDiv({ cls: 'zfa-orga-mini' });
+          const point = l.createSpan({ cls: 'zfa-orga-point' });
+          const coul = this._couleur(x.tache);
+          if (coul) point.style.background = coul;
+          this._lien(l, x.tache);
+          const ech = Ariane.echeanceRelative(x.tache.echeance, auj);
+          if (ech) this._pastille(l, ech.texte, ech.genre, x.tache.echeance);
+        }
+        if (liste.length > 5) b.createDiv({ cls: 'zfa-orga-discret', text: '+ ' + (liste.length - 5) + ' ' + tr('autres') });
+      };
+      case_('ui', tr('Urgent et important'), tr('à faire maintenant'), m.urgentImportant);
+      case_('i', tr('Important, pas urgent'), tr('à planifier'), m.importantPasUrgent);
+      case_('u', tr('Urgent, moins prioritaire'), tr('à expédier'), m.urgentPasImportant);
+      case_('n', tr('Sans urgence ni priorité'), tr('à reconsidérer à l’occasion'), m.niUnNiAutre);
+    });
+
+    // À surveiller.
+    this._section(el, 'surveiller', tr('À surveiller'), d.surveiller.length, (c) => {
+      if (!d.surveiller.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('Rien d’inquiétant.') }); return; }
+      for (const x of d.surveiller) this._ligneRiche(c, x, auj);
+    });
+
+    // Échéances à venir.
+    this._section(el, 'echeances', tr('Échéances des 30 prochains jours'), d.echeances.length, (c) => {
+      if (!d.echeances.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('Aucune échéance dans les 30 jours.') }); return; }
+      const frise = c.createDiv({ cls: 'zfa-orga-frise' });
+      let courant = '';
+      for (const x of d.echeances) {
+        if (x.tache.echeance !== courant) {
+          courant = x.tache.echeance;
+          const ech = Ariane.echeanceRelative(courant, auj);
+          const date = frise.createDiv({ cls: 'zfa-orga-frise-date' + (ech ? ' est-' + ech.genre : '') });
+          date.createSpan({ text: this._jourCourt(courant) });
+          if (ech) date.createSpan({ cls: 'zfa-orga-discret', text: ech.texte });
+        }
+        this._ligneRiche(frise, x, auj, true);
+      }
+    });
+
+    // Familles.
+    this._section(el, 'familles', tr('Par famille'), null, (c) => {
+      for (const f of d.familles) {
+        const l = c.createDiv({ cls: 'zfa-orga-famille' });
+        const point = l.createSpan({ cls: 'zfa-orga-point' });
+        const fam = (this.greffon.familleDe && this.greffon.familleDe(f.famille)) || {};
+        if (fam.couleur) point.style.background = fam.couleur;
+        l.createSpan({ cls: 'zfa-orga-famille-nom', text: this._nomFamille(f.famille) });
+        l.createSpan({ cls: 'zfa-orga-discret zfa-orga-famille-actives', text: f.actives + ' ' + tr('actives') });
+        const b = l.createSpan({ cls: 'zfa-orga-avancement est-large', attr: { title: f.terminees + ' / ' + (f.total - f.abandonnees) } });
+        b.createSpan().style.width = f.taux + '%';
+        l.createSpan({ cls: 'zfa-orga-discret', text: f.taux + ' % ' + tr('terminées') });
+        l.createSpan({ cls: 'zfa-orga-discret est-droite', text: this._duree(f.minutesSemaine) + tr(' cette semaine') });
+      }
+    });
+
+    // Activité récente.
+    this._section(el, 'activite', tr('Activité récente'), null, (c) => {
+      if (!d.activite.length) {
+        c.createDiv({ cls: 'zfa-orga-vide', text: tr('Le journal des modifications commence le 29 septembre 2026 : il se remplit au fil des jours.') });
+        return;
+      }
+      const hier = Ariane.decalerJour(auj, -1);
+      for (const a of d.activite) {
+        const l = c.createDiv({ cls: 'zfa-orga-activite' });
+        const jourE = String(a.le).slice(0, 10);
+        const quand = jourE === auj ? tr('aujourd’hui') : jourE === hier ? tr('hier') : this._jourCourt(jourE);
+        l.createSpan({ cls: 'zfa-orga-heure', text: quand + ' ' + String(a.le).slice(11, 16) });
+        const corps = l.createDiv({ cls: 'zfa-orga-corps' });
+        const t = this.greffon.fichierDeRef && this.greffon.fichierDeRef(a.ref);
+        const ligne = corps.createDiv();
+        ligne.createSpan({ cls: 'zfa-orga-ref', text: a.ref + ' ' });
+        if (t) this._lien(ligne, { ref: a.ref, intitule: a.intitule || a.ref, fichier: t });
+        else ligne.createSpan({ text: a.intitule || '' });
+        corps.createDiv({ cls: 'zfa-orga-discret', text: a.phrase });
+        if (a.origine) this._pastille(l, a.origine, 'origine');
+      }
+    });
+
     el.createDiv({ cls: 'zfa-orga-aide',
       text: tr('Pour aller plus loin, demandez à Claude, dans Claudian : « Fais le point sur mes tâches ».') });
-  }
-
-  _ligne(hote, l) {
-    const t = l.tache;
-    const ligne = hote.createDiv({ cls: 'zfa-orga-ligne' });
-    const fam = (this.greffon.familleDe && this.greffon.familleDe(t.famille)) || {};
-    const point = ligne.createSpan({ cls: 'zfa-orga-point' });
-    if (fam.couleur) point.style.background = fam.couleur;
-    ligne.createSpan({ cls: 'zfa-orga-ref', text: t.ref });
-    const lien = ligne.createEl('a', { cls: 'zfa-orga-intitule internal-link', text: t.intitule || t.ref,
-      attr: { 'data-href': t.fichier ? t.fichier.path : t.ref, href: t.fichier ? t.fichier.path : t.ref } });
-    lien.addEventListener('click', (e) => {
-      e.preventDefault();
-      const nouveau = obsidian.Keymap && obsidian.Keymap.isModEvent ? obsidian.Keymap.isModEvent(e) : false;
-      this.greffon.app.workspace.openLinkText(t.fichier ? t.fichier.path : t.ref, '', nouveau);
-    });
-    if (l.raison) ligne.createSpan({ cls: 'zfa-orga-raison', text: l.raison });
-    if (l.quand) ligne.createSpan({ cls: 'zfa-orga-quand', text: l.quand });
   }
 }
 

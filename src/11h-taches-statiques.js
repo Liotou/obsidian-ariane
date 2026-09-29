@@ -729,50 +729,169 @@ const avecTachesStatiques = (Base) => class extends Base {
     return { valides, erreurs };
   }
 
-  // Le tableau de bord de la note « Gestion de l'organisation » : des
-  // sections, de la plus pressante à la moins pressante, et chaque tâche UNE
-  // fois, dans la première qui la retient (un tableau qui répète les mêmes
-  // tâches cinq fois ne se lit plus). Chaque ligne : la tâche, la raison de
-  // sa présence, et le « quand » utile (créneau, échéance).
-  static sectionsOrganisation(analyses, aujourdhui) {
-    const auj = Ariane.jourValide(aujourdhui) || new Date().toISOString().slice(0, 10);
-    const r = Ariane.revueTaches(analyses, auj);
-    const vues = new Set();
-    const diag = (x, codes) => (x.analyse.diagnostics.find((d) => codes.includes(d.code)) || {}).raison || '';
-    const quand = (x) => {
-      const p = x.analyse.prochainCreneau;
-      if (p) return p.slice(0, 10) === auj ? p.slice(11, 16) : p.slice(0, 10) + ' ' + p.slice(11, 16);
-      return x.tache.echeance ? tr('échéance ') + x.tache.echeance : '';
-    };
-    const duJour = (analyses || []).filter((x) => x && x.tache
-      && x.tache.statut !== 'terminée' && x.tache.statut !== 'abandonnée'
-      && ((x.tache.creneaux || []).some((c) => String(c).slice(0, 10) === auj) || x.tache.echeance === auj));
-    const creneauDuJour = (x) => {
-      const c = Ariane.creneauxDeTache([].concat(x.tache.creneaux || [])).find((y) => y.debut.slice(0, 10) === auj);
-      return c ? c.debut.slice(11, 16) + '-' + c.fin.slice(11, 16) : tr('échéance aujourd’hui');
-    };
-    const sections = [
-      { cle: 'aujourdhui', titre: tr('Aujourd’hui'), liste: duJour.slice().sort((a, b) =>
-        creneauDuJour(a).localeCompare(creneauDuJour(b))), raison: creneauDuJour, quand: () => '' },
-      { cle: 'retard', titre: tr('En retard'), liste: r.enRetard, raison: (x) => diag(x, ['retard']), quand },
-      { cle: 'semaine', titre: tr('Cette semaine'), liste: r.cetteSemaine, raison: (x) => x.analyse.urgence.raison, quand },
-      { cle: 'urgent', titre: tr('Urgent et important'), liste: r.urgentImportant, raison: (x) => x.analyse.urgence.raison, quand },
-      { cle: 'important', titre: tr('Important, pas urgent'), liste: r.importantPasUrgent, raison: (x) => x.analyse.importance.raison, quand },
-      { cle: 'surveiller', titre: tr('À surveiller'),
-        liste: r.sEtirent.concat(r.sousPlanifiees, r.abandonsProbables),
-        raison: (x) => diag(x, ['etire', 'sous-planifiee', 'abandon']), quand },
-    ];
-    const out = [];
-    for (const s of sections) {
-      const lignes = [];
-      for (const x of s.liste) {
-        if (vues.has(x.tache.ref)) continue;
-        vues.add(x.tache.ref);
-        lignes.push({ tache: x.tache, raison: s.raison(x), quand: s.quand(x) });
+  // Une échéance dite en clair, relativement à aujourd'hui, avec son genre
+  // (retard, proche : sept jours au plus, loin) pour la couleur.
+  static echeanceRelative(echeance, aujourdhui) {
+    const e = Ariane.jourValide(echeance);
+    const auj = Ariane.jourValide(aujourdhui);
+    if (!e || !auj) return null;
+    const n = Ariane.ecartJours(auj, e);
+    if (n < 0) return { texte: tr('dépassée de {n} j').replace('{n}', String(-n)), genre: 'retard', jours: n };
+    if (n === 0) return { texte: tr('aujourd’hui'), genre: 'proche', jours: 0 };
+    if (n === 1) return { texte: tr('demain'), genre: 'proche', jours: 1 };
+    if (n <= 13) return { texte: tr('dans {n} j').replace('{n}', String(n)), genre: n <= 7 ? 'proche' : 'loin', jours: n };
+    return { texte: tr('dans {n} sem.').replace('{n}', String(Math.round(n / 7))), genre: 'loin', jours: n };
+  }
+
+  // Une ligne du journal des tâches, dite en français.
+  static phraseJournal(e) {
+    const x = e || {};
+    const v = (y) => (y === '' || y == null ? tr('(aucune)') : String(y));
+    switch (x.champ) {
+      case 'creation': return tr('tâche créée');
+      case 'suppression': return tr('tâche supprimée');
+      case 'creneau': return x.apres ? tr('créneau ajouté : ') + x.apres : tr('créneau retiré : ') + x.avant;
+      case 'echeance': {
+        const av = Ariane.jourValide(x.avant);
+        const ap = Ariane.jourValide(x.apres);
+        if (av && ap) {
+          return (ap > av ? tr('échéance repoussée du {a} au {b}') : tr('échéance avancée du {a} au {b}'))
+            .replace('{a}', av).replace('{b}', ap);
+        }
+        return ap ? tr('échéance fixée au ') + ap : tr('échéance retirée');
       }
-      if (lignes.length) out.push({ cle: s.cle, titre: s.titre, lignes });
+      case 'debut': return x.apres ? tr('début : ') + x.apres : tr('début retiré');
+      case 'statut': return tr('statut : ') + v(x.avant) + ' → ' + v(x.apres);
+      case 'avancement': return tr('avancement : ') + (Number(x.avant) || 0) + ' % → ' + (Number(x.apres) || 0) + ' %';
+      case 'intitule': return tr('renommée : « ') + x.apres + ' »';
+      case 'priorite': return tr('priorité : ') + v(x.avant) + ' → ' + v(x.apres);
+      case 'jalon': return x.apres === true ? tr('devient un jalon') : tr('n’est plus un jalon');
+      case 'parent': return x.apres ? tr('rattachée à ') + Ariane.refDeLien(String(x.apres)) : tr('détachée de sa mère');
+      case 'bloque-par': return tr('blocages modifiés');
+      case 'famille': return tr('famille : ') + v(x.avant) + ' → ' + v(x.apres);
+      default: return String(x.champ) + ' : ' + v(x.avant) + ' → ' + v(x.apres);
     }
-    return out;
+  }
+
+  static get ORIGINES_JOURNAL() {
+    return { externe: tr('vous'), ariane: 'Ariane', claude: 'Claude' };
+  }
+
+  // Tout ce qu'affiche la note « Gestion de l'organisation ». `entrees` :
+  // { tache, analyse, tempsSemaineMin, termineLe } par tâche (analyseTaches,
+  // complété) ; `ctx` : { aujourdhui, journal, evenements } (événements
+  // Apple de la semaine). Rend des données, jamais du DOM : le bloc les met
+  // en forme, la suite de tests les éprouve.
+  static tableauOrganisation(entrees, ctx) {
+    const c = ctx || {};
+    const auj = Ariane.jourValide(c.aujourdhui) || new Date().toISOString().slice(0, 10);
+    const { lundi, jours } = Ariane.grilleSemaine(auj);
+    const liste = (entrees || []).filter((x) => x && x.tache);
+    const finie = (x) => x.tache.statut === 'terminée' || x.tache.statut === 'abandonnée';
+    const actives = liste.filter((x) => !finie(x));
+    const parUrgence = (a, b) => b.analyse.urgence.score - a.analyse.urgence.score
+      || b.analyse.importance.score - a.analyse.importance.score;
+
+    // Les créneaux de la semaine, toutes tâches confondues (une tâche finie
+    // a pu être travaillée lundi : ses heures comptent).
+    const creneaux = [];
+    for (const x of liste) {
+      for (const cr of Ariane.creneauxDeTache([].concat(x.tache.creneaux || []))) {
+        const j = cr.debut.slice(0, 10);
+        if (j < lundi || j > jours[6]) continue;
+        creneaux.push({ entree: x, jour: j, debut: cr.debut, fin: cr.fin,
+          minutes: Ariane.dureeCreneauMin(cr.debut, cr.fin) });
+      }
+    }
+    const evenements = (c.evenements || []).filter((e) => e && e.debut);
+    const horaires = evenements.filter((e) => !e.allDay);
+
+    const semaine = jours.map((j) => {
+      const cr = creneaux.filter((x) => x.jour === j);
+      const ev = horaires.filter((e) => e.debut.slice(0, 10) === j);
+      return {
+        jour: j,
+        aujourdhui: j === auj,
+        minutesPlanifiees: cr.reduce((s, x) => s + x.minutes, 0),
+        nbCreneaux: cr.length,
+        nbEvenements: ev.length,
+        minutesEvenements: ev.reduce((s, e) => s + Ariane.dureeCreneauMin(e.debut, e.fin || e.debut), 0),
+      };
+    });
+
+    const dans7 = Ariane.decalerJour(auj, 7);
+    const ilYa7 = Ariane.decalerJour(auj, -6);
+    const chiffres = {
+      actives: actives.length,
+      enRetard: actives.filter((x) => x.analyse.diagnostics.some((d) => d.code === 'retard')).length,
+      echeances7: actives.filter((x) => {
+        const e = Ariane.jourValide(x.tache.echeance);
+        return e && e >= auj && e <= dans7;
+      }).length,
+      minutesPlanifieesSemaine: semaine.reduce((s, j) => s + j.minutesPlanifiees, 0),
+      minutesPasseesSemaine: Math.round(liste.reduce((s, x) => s + (Number(x.tempsSemaineMin) || 0), 0)),
+      termineesSemaine: liste.filter((x) => x.tache.statut === 'terminée'
+        && Ariane.jourValide(x.termineLe) && x.termineLe >= ilYa7).length,
+    };
+
+    const aujourdhui = creneaux.filter((x) => x.jour === auj)
+      .map((x) => ({ genre: 'creneau', debut: x.debut, fin: x.fin, minutes: x.minutes,
+        tache: x.entree.tache, analyse: x.entree.analyse }))
+      .concat(horaires.filter((e) => e.debut.slice(0, 10) === auj).map((e) => ({
+        genre: 'evenement', debut: e.debut, fin: e.fin || e.debut, titre: e.titre || '',
+        calendrier: e.calendrier || '', couleur: e.couleur || '',
+        minutes: Ariane.dureeCreneauMin(e.debut, e.fin || e.debut) })))
+      .sort((a, b) => (a.debut < b.debut ? -1 : a.debut > b.debut ? 1 : 0));
+    const journeeEntiere = evenements.filter((e) => e.allDay
+      && e.debut.slice(0, 10) <= auj && String(e.fin || e.debut).slice(0, 10) >= auj)
+      .map((e) => ({ titre: e.titre || '', calendrier: e.calendrier || '', couleur: e.couleur || '' }));
+
+    // Matrice : urgent et important à partir de la moitié de l'échelle.
+    const matrice = { urgentImportant: [], importantPasUrgent: [], urgentPasImportant: [], niUnNiAutre: [] };
+    for (const x of actives) {
+      const u = x.analyse.urgence.score >= 50;
+      const i = x.analyse.importance.score >= 50;
+      matrice[u && i ? 'urgentImportant' : i ? 'importantPasUrgent' : u ? 'urgentPasImportant' : 'niUnNiAutre'].push(x);
+    }
+    for (const k of Object.keys(matrice)) matrice[k].sort(parUrgence);
+
+    const gravite = { retard: 0, 'sous-planifiee': 1, etire: 2, abandon: 3 };
+    const rang = (x) => Math.min(...x.analyse.diagnostics.map((d) => (d.code in gravite ? gravite[d.code] : 9)));
+    const surveiller = actives.filter((x) => x.analyse.diagnostics.length)
+      .sort((a, b) => rang(a) - rang(b) || parUrgence(a, b));
+
+    const dans30 = Ariane.decalerJour(auj, 30);
+    const echeances = actives.filter((x) => {
+      const e = Ariane.jourValide(x.tache.echeance);
+      return e && e >= auj && e <= dans30;
+    }).sort((a, b) => (a.tache.echeance < b.tache.echeance ? -1 : a.tache.echeance > b.tache.echeance ? 1 : parUrgence(a, b)));
+
+    const parFamille = new Map();
+    for (const x of liste) {
+      const f = x.tache.famille || '';
+      if (!parFamille.has(f)) {
+        parFamille.set(f, { famille: f, actives: 0, terminees: 0, abandonnees: 0, total: 0, minutesSemaine: 0 });
+      }
+      const g = parFamille.get(f);
+      g.total += 1;
+      if (x.tache.statut === 'terminée') g.terminees += 1;
+      else if (x.tache.statut === 'abandonnée') g.abandonnees += 1;
+      else g.actives += 1;
+    }
+    for (const x of creneaux) parFamille.get(x.entree.tache.famille || '').minutesSemaine += x.minutes;
+    const familles = Array.from(parFamille.values()).map((g) => Object.assign(g, {
+      taux: g.total - g.abandonnees > 0 ? Math.round(100 * g.terminees / (g.total - g.abandonnees)) : 0,
+    })).sort((a, b) => b.actives - a.actives || b.total - a.total);
+
+    const intitules = new Map(liste.map((x) => [x.tache.ref, x.tache.intitule]));
+    const activite = (c.journal || []).slice()
+      .sort((a, b) => (a.le < b.le ? 1 : a.le > b.le ? -1 : 0))
+      .slice(0, 12)
+      .map((e) => ({ le: e.le, ref: e.ref, intitule: intitules.get(e.ref) || '',
+        phrase: Ariane.phraseJournal(e), origine: Ariane.ORIGINES_JOURNAL[e.origine] || e.origine || '' }));
+
+    return { aujourdhuiISO: auj, lundi, chiffres, semaine, aujourdhui, journeeEntiere,
+      matrice, surveiller, echeances, familles, activite };
   }
 
   //#endregion Ariane · static · tâches
