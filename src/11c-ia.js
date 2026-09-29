@@ -340,8 +340,11 @@ const avecIa = (Base) => class extends Base {
         PATH: process.env.HOME + '/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:'
           + (process.env.PATH || ''),
       });
+      // Le modèle choisi dans les réglages ; sans choix, celui de Claude Code.
+      const modele = String(this.settings.refsModeleClaude || '').trim();
+      const args = modele ? ['--model', modele, '-p', prompt] : ['-p', prompt];
       const enfant = require('child_process').execFile(
-        bin, ['-p', prompt], { env, timeout: 60000, maxBuffer: 1 << 20 },
+        bin, args, { env, timeout: 60000, maxBuffer: 1 << 20 },
         (err, sortie) => {
           if (fini) return;
           fini = true;

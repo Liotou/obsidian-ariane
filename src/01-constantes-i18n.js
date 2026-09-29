@@ -1384,6 +1384,7 @@ const DEFAULT_SETTINGS = {
   refsModele: 'llama3.2',
   refsCleMistral: '',
   refsCheminClaude: 'claude',
+  refsModeleClaude: '',         // --model du CLI Claude ; vide = son modèle par défaut
   // Dossier de données de Zotero. Vide : détection automatique (~/Zotero).
   dossierZotero: '',
   suggRerankTopN: 12,

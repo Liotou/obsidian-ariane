@@ -243,6 +243,39 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     rendre();
   }
 
+  // Le modèle du fournisseur « Claude en ligne de commande » (option --model).
+  // Fable, Opus, Sonnet et Haiku sont des alias : ils suivent la dernière version de
+  // leur famille. « Autre » accepte un identifiant exact.
+  _modeleClaude(c, s, maj) {
+    const PRESETS = ['', 'fable', 'opus', 'sonnet', 'haiku'];
+    const actuel = String(s.refsModeleClaude || '').trim();
+    const autre = !PRESETS.includes(actuel) || this._claudeAutre === true;
+    new obsidian.Setting(c)
+      .setName(tr('Modèle'))
+      .setDesc(tr('Les alias suivent la dernière version de chaque modèle. Plus capable = plus lent et plus coûteux en quota : Haiku suffit pour découper des bibliographies.'))
+      .addDropdown((d) => d
+        .addOption('', tr('Par défaut (celui de Claude Code)'))
+        .addOption('fable', 'Fable')
+        .addOption('opus', 'Opus')
+        .addOption('sonnet', tr('Sonnet : équilibré'))
+        .addOption('haiku', tr('Haiku : le plus rapide'))
+        .addOption('__autre', tr('Autre identifiant…'))
+        .setValue(autre ? '__autre' : actuel)
+        .onChange(async (v) => {
+          this._claudeAutre = v === '__autre';
+          if (v !== '__autre') s.refsModeleClaude = v;
+          await maj();
+          this.display();
+        }));
+    if (autre) {
+      new obsidian.Setting(c)
+        .setName(tr('Identifiant du modèle'))
+        .setDesc(tr('Tel que « claude --model » l’accepte, par exemple « claude-opus-5-5 ».'))
+        .addText((t) => t.setPlaceholder('claude-opus-5-5').setValue(PRESETS.includes(actuel) ? '' : actuel)
+          .onChange(async (v) => { s.refsModeleClaude = v.trim(); await maj(); }));
+    }
+  }
+
   _section(parent, titre, desc) {
     const st = new obsidian.Setting(parent).setName(titre).setHeading();
     if (desc) st.setDesc(desc);
@@ -1519,6 +1552,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setDesc(tr('Chemin du binaire, si « claude » ne suffit pas.'))
         .addText((t) => t.setValue(s.refsCheminClaude || 'claude')
           .onChange(async (v) => { s.refsCheminClaude = v.trim() || 'claude'; await maj(); }));
+      this._modeleClaude(c, s, maj);
     }
   }
 
@@ -1707,6 +1741,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setDesc(tr('Chemin du binaire, si « claude » ne suffit pas.'))
         .addText((t) => t.setValue(s.refsCheminClaude || 'claude')
           .onChange(async (v) => { s.refsCheminClaude = v.trim() || 'claude'; await maj(); }));
+      this._modeleClaude(c, s, maj);
     }
     new obsidian.Setting(c)
       .setName(tr('Lancer le découpage'))
