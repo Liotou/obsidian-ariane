@@ -1283,6 +1283,7 @@ const DEFAULT_SETTINGS = {
   rappelsReleveMin: 10,         // minutes entre deux relèves automatiques
   rappelsFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un rappel Apple
   rappelsSupprimerAbandonnees: true, // une tâche abandonnée quitte Apple Rappels
+  tachesSemainesAbandon: 4,     // semaines sans activité avant « abandon probable »
   agendaActif: false,           // intégration Apple Agenda / Calendar (macOS, EKEvent)
   agendaAuto: true,             // pousser à la sauvegarde + relever régulièrement
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques
@@ -10051,6 +10052,173 @@ const avecTachesStatiques = (Base) => class extends Base {
       : { terminee: fini };
   }
 
+  // ── Journal des modifications et analyse des tâches ────────────────────
+  //  Fonctions pures du journal (spec 2026-09-29, lot 1) : ce qu'on retient
+  //  d'une tâche, ce qui a changé entre deux instantanés, et l'analyse
+  //  (urgence, importance, diagnostics) qu'en tirent le tableau de bord et
+  //  les outils de Claude. Rien de tout cela n'est écrit dans les notes.
+
+  // Les champs dont on garde l'historique, en concepts Ariane (le journal
+  // survit ainsi à un renommage des clés de propriétés).
+  static get CHAMPS_JOURNAL() {
+    return ['intitule', 'statut', 'priorite', 'debut', 'echeance', 'heure',
+      'avancement', 'jalon', 'parent', 'bloque-par', 'famille'];
+  }
+
+  // L'instantané d'une tâche (objet de tachesPourGantt) : valeurs simples,
+  // listes triées, pour que deux instantanés se comparent à l'identique.
+  static instantaneTache(t) {
+    const x = t || {};
+    const liste = (v) => [].concat(v || []).map(String).filter(Boolean).sort();
+    return {
+      intitule: String(x.intitule || ''),
+      statut: String(x.statut || ''),
+      priorite: String(x.priorite || ''),
+      debut: String(x.debut || ''),
+      echeance: String(x.echeance || ''),
+      heure: String(x.heure || ''),
+      avancement: Number(x.avancement) || 0,
+      jalon: x.jalon === true,
+      parent: String(x.parent || ''),
+      'bloque-par': liste(x.bloquePar),
+      famille: String(x.famille || ''),
+      creneaux: liste(x.creneaux),
+    };
+  }
+
+  // Ce qui a changé entre deux instantanés : une entrée par champ, et une par
+  // créneau ajouté ou retiré (la liste entière ne dirait pas lequel).
+  static differencesTache(avant, apres) {
+    const a = avant || {};
+    const b = apres || {};
+    const out = [];
+    const egal = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+    for (const champ of Ariane.CHAMPS_JOURNAL) {
+      if (egal(a[champ], b[champ])) continue;
+      out.push({ champ, avant: a[champ] === undefined ? '' : a[champ],
+                 apres: b[champ] === undefined ? '' : b[champ] });
+    }
+    const ca = new Set(a.creneaux || []);
+    const cb = new Set(b.creneaux || []);
+    for (const c of cb) if (!ca.has(c)) out.push({ champ: 'creneau', avant: '', apres: c });
+    for (const c of ca) if (!cb.has(c)) out.push({ champ: 'creneau', avant: c, apres: '' });
+    return out;
+  }
+
+  // Combien de fois l'échéance a été repoussée plus tard, d'après le journal.
+  static reportsEcheance(entrees) {
+    let n = 0;
+    for (const e of (entrees || [])) {
+      if (e.champ !== 'echeance') continue;
+      const av = Ariane.jourValide(e.avant);
+      const ap = Ariane.jourValide(e.apres);
+      if (av && ap && ap > av) n += 1;
+    }
+    return n;
+  }
+
+  // L'analyse d'une tâche. `ctx` :
+  //   aujourdhui      'AAAA-MM-JJ'
+  //   journal         entrées du journal de CETTE tâche
+  //   bloquees        nombre de tâches non finies qu'elle bloque
+  //   filles          nombre de tâches filles non finies
+  //   tempsRecentMin  minutes passées (sa note et les notes liées) sur la période
+  //   semainesAbandon seuil de l'abandon probable (4 par défaut)
+  // Rend { urgence, importance, diagnostics, dernierCreneau, prochainCreneau,
+  // reports } ; urgence et importance : { score 0-100, niveau, raison }.
+  static analyseTache(t, ctx) {
+    const c = ctx || {};
+    const auj = Ariane.jourValide(c.aujourdhui) || new Date().toISOString().slice(0, 10);
+    const fini = t.statut === 'terminée' || t.statut === 'abandonnée';
+    const semaines = Number(c.semainesAbandon) > 0 ? Number(c.semainesAbandon) : 4;
+    const creneaux = Ariane.creneauxDeTache([].concat(t.creneaux || []));
+    const passes = creneaux.map((x) => x.debut.slice(0, 10)).filter((j) => j <= auj).sort();
+    const avenir = creneaux.map((x) => x.debut).filter((d) => d.slice(0, 10) >= auj).sort();
+    const dernierCreneau = passes.length ? passes[passes.length - 1] : '';
+    const prochainCreneau = avenir.length ? avenir[0] : '';
+    const ech = Ariane.jourValide(t.echeance);
+    const reste = ech ? Ariane.ecartJours(auj, ech) : null;
+    const journal = c.journal || [];
+    const reports = Ariane.reportsEcheance(journal);
+    const bloquees = Number(c.bloquees) || 0;
+    const niveau = (s) => (s >= 60 ? 'haute' : s >= 30 ? 'moyenne' : 'basse');
+
+    // Urgence : l'échéance d'abord, puis ce que la tâche retient.
+    let urg = 0;
+    let rUrg = '';
+    if (!fini && reste !== null) {
+      if (reste < 0) {
+        urg = 100;
+        rUrg = tr('échéance dépassée de {n} j').replace('{n}', String(-reste));
+      } else {
+        urg = Math.round(100 * Math.exp(-reste / 7));
+        rUrg = reste === 0 ? tr('échéance aujourd’hui')
+          : tr('échéance dans {n} j').replace('{n}', String(reste));
+      }
+    }
+    if (!fini && bloquees) {
+      urg = Math.min(100, urg + 12 * bloquees);
+      if (!rUrg) rUrg = tr('bloque {n} tâche(s)').replace('{n}', String(bloquees));
+    }
+
+    // Importance : la priorité si Monsieur l'a donnée, sinon déduite.
+    let imp;
+    let rImp;
+    const prio = { haute: 85, moyenne: 55, basse: 20 }[t.priorite];
+    if (prio !== undefined) {
+      imp = prio;
+      rImp = tr('priorité ') + t.priorite;
+    } else {
+      imp = 30;
+      const raisons = [];
+      if (t.livrable) { imp += 25; raisons.push(tr('rattachée à un livrable')); }
+      if (bloquees) {
+        imp += 10 * Math.min(bloquees, 3);
+        raisons.push(tr('débloque {n} tâche(s)').replace('{n}', String(bloquees)));
+      }
+      if (Number(c.filles) > 0) {
+        imp += 8 * Math.min(Number(c.filles), 3);
+        raisons.push(tr('mère de {n} tâche(s)').replace('{n}', String(c.filles)));
+      }
+      if (t.jalon) { imp += 15; raisons.push(tr('jalon')); }
+      imp = Math.min(100, imp);
+      rImp = raisons.length ? raisons.join(', ') : tr('rien ne la distingue');
+    }
+
+    // Diagnostics : des règles qu'on peut expliquer, chacune avec sa raison.
+    const diagnostics = [];
+    if (!fini) {
+      if (reste !== null && reste < 0) {
+        diagnostics.push({ code: 'retard',
+          raison: tr('échéance dépassée depuis {n} j').replace('{n}', String(-reste)) });
+      }
+      if (reports >= 2) {
+        diagnostics.push({ code: 'etire',
+          raison: tr('échéance repoussée {n} fois').replace('{n}', String(reports)) });
+      }
+      if (reste !== null && reste >= 0 && reste <= 14 && !prochainCreneau && !t.jalon) {
+        diagnostics.push({ code: 'sous-planifiee',
+          raison: tr('échéance dans {n} j, aucun créneau prévu').replace('{n}', String(reste)) });
+      }
+      const seuil = Ariane.decalerJour(auj, -7 * semaines);
+      const cree = Ariane.jourValide(t.cree) || '';
+      const activiteJournal = journal.some((e) => String(e.le || '').slice(0, 10) >= seuil);
+      const actif = (dernierCreneau && dernierCreneau >= seuil) || prochainCreneau
+        || activiteJournal || Number(c.tempsRecentMin) > 0;
+      if (!actif && (!cree || cree < seuil) && t.statut !== 'en attente') {
+        diagnostics.push({ code: 'abandon',
+          raison: dernierCreneau
+            ? tr('aucune activité depuis le {d}').replace('{d}', dernierCreneau)
+            : tr('aucune activité depuis {n} semaines').replace('{n}', String(semaines)) });
+      }
+    }
+    return {
+      urgence: { score: urg, niveau: niveau(urg), raison: rUrg },
+      importance: { score: imp, niveau: niveau(imp), raison: rImp },
+      diagnostics, dernierCreneau, prochainCreneau, reports,
+    };
+  }
+
   //#endregion Ariane · static · tâches
 };
 
@@ -14584,6 +14752,7 @@ const avecTaches = (Base) => class extends Base {
     if (!f) return false;
     const conc = new Set(Ariane.CONCEPTS_TACHE);
     const enPhase = Ariane.champsTacheEnPhase(champs);
+    this.marquerOrigineTache(f.path);
     await this.app.fileManager.processFrontMatter(f, (x) => {
       for (const [k, v] of Object.entries(enPhase)) {
         x[conc.has(k) ? this.cleT(k) : k] = v;
@@ -15188,6 +15357,204 @@ const avecTaches = (Base) => class extends Base {
   }
 
   //#endregion Ariane · tâches
+
+  //#region Ariane · journal des tâches
+  // ── journal des tâches ───────────────────────────────────────────────────
+  //  Spec 2026-09-29, lot 1. Chaque changement d'une tâche (champ suivi,
+  //  créneau ajouté ou retiré, création, suppression) est noté, avec son
+  //  origine, dans un fichier caché du greffon : une ligne JSON par changement,
+  //  jamais réécrite. Sans lui, impossible de dire qu'une échéance a été
+  //  repoussée trois fois : les notes ne gardent que la dernière valeur.
+  //  L'historique commence à la mise en service ; le passé ne se reconstitue
+  //  pas.
+
+  get cheminJournalTaches() {
+    const dossier = (this.manifest && this.manifest.dir) || '.obsidian/plugins/obsidian-ariane';
+    return dossier + '/journal-taches.jsonl';
+  }
+
+  // Une écriture d'Ariane sur une tâche (majTache, créneaux…). Marqueur à
+  // part de marquerEcriture : celui-là fait taire les synchronisations Rappels
+  // et Agenda, et les gestes des vues doivent justement les déclencher.
+  // `origine` : 'ariane' par défaut, 'claude' pour une proposition acceptée.
+  marquerOrigineTache(chemin, origine) {
+    if (!this._originesTaches) this._originesTaches = new Map();
+    this._originesTaches.set(chemin, { origine: origine || 'ariane', le: Date.now() });
+  }
+
+  _origineTache(chemin) {
+    const m = this._originesTaches && this._originesTaches.get(chemin);
+    if (m && Date.now() - m.le < 4000) return m.origine;
+    return this.ecritePlugin(chemin) ? 'ariane' : 'externe';
+  }
+
+  // Branché au démarrage : un instantané de chaque tâche, puis une écoute qui
+  // compare chaque nouvelle version à l'instantané.
+  demarrerJournalTaches() {
+    this._instantanesTaches = new Map();
+    this._journalPret = false;
+    this._journalTampon = [];
+    const photographier = () => {
+      for (const t of this.tachesPourGantt()) {
+        if (t.fichier) this._instantanesTaches.set(t.fichier.path, Ariane.instantaneTache(t));
+      }
+      this._journalPret = true;
+    };
+    // Une seule passe, quand le cache des métadonnées est prêt : avant, les
+    // tâches ne sont pas toutes lues, et chacune passerait pour une création.
+    this.app.workspace.onLayoutReady(() => {
+      const cache = this.app.metadataCache;
+      if (cache.resolved) { photographier(); return; }
+      const ref = cache.on('resolved', () => { cache.offref(ref); photographier(); });
+      this.registerEvent(ref);
+    });
+    this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
+      if (!this._journalPret || !this.refDeChemin(fichier.path)) return;
+      const t = this.tachesPourGantt().find((x) => x.fichier && x.fichier.path === fichier.path);
+      if (!t) return;
+      const apres = Ariane.instantaneTache(t);
+      const avant = this._instantanesTaches.get(fichier.path);
+      this._instantanesTaches.set(fichier.path, apres);
+      const origine = this._origineTache(fichier.path);
+      if (!avant) {
+        this._journalNoter(t.ref, [{ champ: 'creation', avant: '', apres: apres.intitule }], origine);
+        return;
+      }
+      const diff = Ariane.differencesTache(avant, apres);
+      if (diff.length) this._journalNoter(t.ref, diff, origine);
+    }));
+    this.registerEvent(this.app.vault.on('delete', (f) => {
+      if (!this._journalPret || !f || !this._instantanesTaches.has(f.path)) return;
+      const av = this._instantanesTaches.get(f.path);
+      this._instantanesTaches.delete(f.path);
+      const ref = this.refDeChemin(f.path) || String(f.path).split('/').pop().replace(/\.md$/, '');
+      this._journalNoter(ref, [{ champ: 'suppression', avant: av.intitule, apres: '' }],
+        this._origineTache(f.path));
+    }));
+    this.registerEvent(this.app.vault.on('rename', (f, ancien) => {
+      if (!this._instantanesTaches || !this._instantanesTaches.has(ancien)) return;
+      this._instantanesTaches.set(f.path, this._instantanesTaches.get(ancien));
+      this._instantanesTaches.delete(ancien);
+    }));
+  }
+
+  _journalNoter(ref, changements, origine) {
+    const d = new Date();
+    const p2 = (n) => String(n).padStart(2, '0');
+    const le = jourIsoDe(d) + 'T' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+    for (const c of changements) {
+      this._journalTampon.push({ le, ref, champ: c.champ, avant: c.avant, apres: c.apres, origine });
+    }
+    // Groupé : une rafale d'écritures (un geste qui touche plusieurs champs,
+    // une synchronisation) ne fait qu'un ajout au fichier.
+    this.antirebond('journal-taches', () => this._viderJournalTaches(), 2000);
+  }
+
+  async _viderJournalTaches() {
+    if (!this._journalTampon || !this._journalTampon.length) return;
+    const lignes = this._journalTampon.splice(0).map((e) => JSON.stringify(e)).join('\n') + '\n';
+    const a = this.app.vault.adapter;
+    try {
+      if (await a.exists(this.cheminJournalTaches)) await a.append(this.cheminJournalTaches, lignes);
+      else await a.write(this.cheminJournalTaches, lignes);
+    } catch (e) {
+      console.error('[Ariane] journal des tâches :', e);
+    }
+  }
+
+  // Tout le journal, tampon pas encore écrit compris. Une ligne illisible est
+  // passée, pas fatale.
+  async lireJournalTaches() {
+    const a = this.app.vault.adapter;
+    let brut = '';
+    try {
+      if (await a.exists(this.cheminJournalTaches)) brut = await a.read(this.cheminJournalTaches);
+    } catch (e) { brut = ''; }
+    const out = [];
+    for (const l of brut.split('\n')) {
+      if (!l.trim()) continue;
+      try { out.push(JSON.parse(l)); } catch (e) { /* ligne abîmée : passée */ }
+    }
+    return out.concat(this._journalTampon || []);
+  }
+
+  // Minutes passées par note depuis `seuil` (jour ISO), d'après le relevé du
+  // compteur de temps (settings.tempsHistorique : jour → chemin → secondes).
+  _tempsDepuis(seuil) {
+    const out = new Map();
+    const h = this.settings.tempsHistorique || {};
+    for (const jour of Object.keys(h)) {
+      if (jour < seuil) continue;
+      for (const [chemin, sec] of Object.entries(h[jour] || {})) {
+        out.set(chemin, (out.get(chemin) || 0) + (Number(sec) || 0) / 60);
+      }
+    }
+    return out;
+  }
+
+  // Les notes que désigne une tâche (livrable, fichier, source) : le travail
+  // se fait souvent là, pas dans la note de la tâche.
+  _cheminsLiesTache(t) {
+    const out = [];
+    if (!t || !t.fichier) return out;
+    // Lus dans les propriétés : dans l'objet tâche, `fichier` est la note
+    // elle-même et masque la propriété « fichier » de la tâche.
+    const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+    for (const v of [this._lireT(fm, 'livrable'), this._lireT(fm, 'fichier'), this._lireT(fm, 'source')]) {
+      for (const brut of [].concat(v || [])) {
+        const lien = String(brut || '').trim().replace(/^!?\[\[/, '').replace(/\]\]$/, '')
+          .split('|')[0].split('#')[0].trim();
+        if (!lien) continue;
+        const cible = this.app.metadataCache.getFirstLinkpathDest(lien, t.fichier.path);
+        if (cible && !out.includes(cible.path)) out.push(cible.path);
+      }
+    }
+    return out;
+  }
+
+  // L'analyse de toutes les tâches, prête pour le tableau de bord et pour
+  // les outils de Claude : { tache, tempsRecentMin, analyse } par tâche.
+  async analyseTaches(aujourdhui) {
+    const auj = aujourdhui || jourIsoDe(new Date());
+    const semaines = Number(this.settings.tachesSemainesAbandon) > 0
+      ? Number(this.settings.tachesSemainesAbandon) : 4;
+    const taches = this.tachesPourGantt();
+    const journal = await this.lireJournalTaches();
+    const parRef = new Map();
+    for (const e of journal) {
+      if (!parRef.has(e.ref)) parRef.set(e.ref, []);
+      parRef.get(e.ref).push(e);
+    }
+    const fini = (t) => t.statut === 'terminée' || t.statut === 'abandonnée';
+    const bloquees = new Map();
+    const filles = new Map();
+    for (const t of taches) {
+      if (fini(t)) continue;
+      for (const b of (t.bloquePar || [])) {
+        const r = Ariane.refDeLien(b);
+        if (r) bloquees.set(r, (bloquees.get(r) || 0) + 1);
+      }
+      const p = Ariane.refDeLien(t.parent || '');
+      if (p) filles.set(p, (filles.get(p) || 0) + 1);
+    }
+    const temps = this._tempsDepuis(Ariane.decalerJour(auj, -7 * semaines));
+    return taches.map((t) => {
+      const fm = (t.fichier && (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter) || {};
+      const x = Object.assign({}, t, { cree: fm.cree ? String(fm.cree).slice(0, 10) : '' });
+      const chemins = [t.fichier && t.fichier.path].concat(this._cheminsLiesTache(t)).filter(Boolean);
+      const tempsRecentMin = Math.round(chemins.reduce((s, c) => s + (temps.get(c) || 0), 0));
+      return {
+        tache: t,
+        tempsRecentMin,
+        analyse: Ariane.analyseTache(x, {
+          aujourdhui: auj, journal: parRef.get(t.ref) || [], semainesAbandon: semaines,
+          bloquees: bloquees.get(t.ref) || 0, filles: filles.get(t.ref) || 0, tempsRecentMin,
+        }),
+      };
+    });
+  }
+
+  //#endregion Ariane · journal des tâches
 
   //#region Ariane · temps de travail
   // ── temps de travail ─────────────────────────────────────────────────────
@@ -16456,6 +16823,8 @@ class Ariane extends composer(obsidian.Plugin,
   // (estCandidat, revaliderIndex, surTache…) restent volontairement ici :
   // elles ne servent qu'à ce câblage.
   _brancherEvenements() {
+    // Journal des modifications des tâches (section 11k, spec 2026-09-29).
+    this.demarrerJournalTaches();
     // Suggestions : recalcul à la pause de frappe et au changement de note.
     const estCandidat = (f) => {
       if (!f || !f.path) return false;
@@ -16749,6 +17118,9 @@ class Ariane extends composer(obsidian.Plugin,
     // Dernier report : sans cela, les minutes de la session en cours seraient
     // perdues à la fermeture d'Obsidian ou au rechargement du greffon.
     this.reporterTemps().catch(() => { /* fermeture en cours */ });
+    // Les derniers changements des tâches attendaient leur écriture groupée,
+    // dont le minuteur vient d'être annulé : on les pose maintenant.
+    if (this._viderJournalTaches) this._viderJournalTaches().catch(() => { /* fermeture en cours */ });
   }
 
   //#endregion Ariane · cycle de vie

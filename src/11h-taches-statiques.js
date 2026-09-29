@@ -424,5 +424,172 @@ const avecTachesStatiques = (Base) => class extends Base {
       : { terminee: fini };
   }
 
+  // ── Journal des modifications et analyse des tâches ────────────────────
+  //  Fonctions pures du journal (spec 2026-09-29, lot 1) : ce qu'on retient
+  //  d'une tâche, ce qui a changé entre deux instantanés, et l'analyse
+  //  (urgence, importance, diagnostics) qu'en tirent le tableau de bord et
+  //  les outils de Claude. Rien de tout cela n'est écrit dans les notes.
+
+  // Les champs dont on garde l'historique, en concepts Ariane (le journal
+  // survit ainsi à un renommage des clés de propriétés).
+  static get CHAMPS_JOURNAL() {
+    return ['intitule', 'statut', 'priorite', 'debut', 'echeance', 'heure',
+      'avancement', 'jalon', 'parent', 'bloque-par', 'famille'];
+  }
+
+  // L'instantané d'une tâche (objet de tachesPourGantt) : valeurs simples,
+  // listes triées, pour que deux instantanés se comparent à l'identique.
+  static instantaneTache(t) {
+    const x = t || {};
+    const liste = (v) => [].concat(v || []).map(String).filter(Boolean).sort();
+    return {
+      intitule: String(x.intitule || ''),
+      statut: String(x.statut || ''),
+      priorite: String(x.priorite || ''),
+      debut: String(x.debut || ''),
+      echeance: String(x.echeance || ''),
+      heure: String(x.heure || ''),
+      avancement: Number(x.avancement) || 0,
+      jalon: x.jalon === true,
+      parent: String(x.parent || ''),
+      'bloque-par': liste(x.bloquePar),
+      famille: String(x.famille || ''),
+      creneaux: liste(x.creneaux),
+    };
+  }
+
+  // Ce qui a changé entre deux instantanés : une entrée par champ, et une par
+  // créneau ajouté ou retiré (la liste entière ne dirait pas lequel).
+  static differencesTache(avant, apres) {
+    const a = avant || {};
+    const b = apres || {};
+    const out = [];
+    const egal = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+    for (const champ of Ariane.CHAMPS_JOURNAL) {
+      if (egal(a[champ], b[champ])) continue;
+      out.push({ champ, avant: a[champ] === undefined ? '' : a[champ],
+                 apres: b[champ] === undefined ? '' : b[champ] });
+    }
+    const ca = new Set(a.creneaux || []);
+    const cb = new Set(b.creneaux || []);
+    for (const c of cb) if (!ca.has(c)) out.push({ champ: 'creneau', avant: '', apres: c });
+    for (const c of ca) if (!cb.has(c)) out.push({ champ: 'creneau', avant: c, apres: '' });
+    return out;
+  }
+
+  // Combien de fois l'échéance a été repoussée plus tard, d'après le journal.
+  static reportsEcheance(entrees) {
+    let n = 0;
+    for (const e of (entrees || [])) {
+      if (e.champ !== 'echeance') continue;
+      const av = Ariane.jourValide(e.avant);
+      const ap = Ariane.jourValide(e.apres);
+      if (av && ap && ap > av) n += 1;
+    }
+    return n;
+  }
+
+  // L'analyse d'une tâche. `ctx` :
+  //   aujourdhui      'AAAA-MM-JJ'
+  //   journal         entrées du journal de CETTE tâche
+  //   bloquees        nombre de tâches non finies qu'elle bloque
+  //   filles          nombre de tâches filles non finies
+  //   tempsRecentMin  minutes passées (sa note et les notes liées) sur la période
+  //   semainesAbandon seuil de l'abandon probable (4 par défaut)
+  // Rend { urgence, importance, diagnostics, dernierCreneau, prochainCreneau,
+  // reports } ; urgence et importance : { score 0-100, niveau, raison }.
+  static analyseTache(t, ctx) {
+    const c = ctx || {};
+    const auj = Ariane.jourValide(c.aujourdhui) || new Date().toISOString().slice(0, 10);
+    const fini = t.statut === 'terminée' || t.statut === 'abandonnée';
+    const semaines = Number(c.semainesAbandon) > 0 ? Number(c.semainesAbandon) : 4;
+    const creneaux = Ariane.creneauxDeTache([].concat(t.creneaux || []));
+    const passes = creneaux.map((x) => x.debut.slice(0, 10)).filter((j) => j <= auj).sort();
+    const avenir = creneaux.map((x) => x.debut).filter((d) => d.slice(0, 10) >= auj).sort();
+    const dernierCreneau = passes.length ? passes[passes.length - 1] : '';
+    const prochainCreneau = avenir.length ? avenir[0] : '';
+    const ech = Ariane.jourValide(t.echeance);
+    const reste = ech ? Ariane.ecartJours(auj, ech) : null;
+    const journal = c.journal || [];
+    const reports = Ariane.reportsEcheance(journal);
+    const bloquees = Number(c.bloquees) || 0;
+    const niveau = (s) => (s >= 60 ? 'haute' : s >= 30 ? 'moyenne' : 'basse');
+
+    // Urgence : l'échéance d'abord, puis ce que la tâche retient.
+    let urg = 0;
+    let rUrg = '';
+    if (!fini && reste !== null) {
+      if (reste < 0) {
+        urg = 100;
+        rUrg = tr('échéance dépassée de {n} j').replace('{n}', String(-reste));
+      } else {
+        urg = Math.round(100 * Math.exp(-reste / 7));
+        rUrg = reste === 0 ? tr('échéance aujourd’hui')
+          : tr('échéance dans {n} j').replace('{n}', String(reste));
+      }
+    }
+    if (!fini && bloquees) {
+      urg = Math.min(100, urg + 12 * bloquees);
+      if (!rUrg) rUrg = tr('bloque {n} tâche(s)').replace('{n}', String(bloquees));
+    }
+
+    // Importance : la priorité si Monsieur l'a donnée, sinon déduite.
+    let imp;
+    let rImp;
+    const prio = { haute: 85, moyenne: 55, basse: 20 }[t.priorite];
+    if (prio !== undefined) {
+      imp = prio;
+      rImp = tr('priorité ') + t.priorite;
+    } else {
+      imp = 30;
+      const raisons = [];
+      if (t.livrable) { imp += 25; raisons.push(tr('rattachée à un livrable')); }
+      if (bloquees) {
+        imp += 10 * Math.min(bloquees, 3);
+        raisons.push(tr('débloque {n} tâche(s)').replace('{n}', String(bloquees)));
+      }
+      if (Number(c.filles) > 0) {
+        imp += 8 * Math.min(Number(c.filles), 3);
+        raisons.push(tr('mère de {n} tâche(s)').replace('{n}', String(c.filles)));
+      }
+      if (t.jalon) { imp += 15; raisons.push(tr('jalon')); }
+      imp = Math.min(100, imp);
+      rImp = raisons.length ? raisons.join(', ') : tr('rien ne la distingue');
+    }
+
+    // Diagnostics : des règles qu'on peut expliquer, chacune avec sa raison.
+    const diagnostics = [];
+    if (!fini) {
+      if (reste !== null && reste < 0) {
+        diagnostics.push({ code: 'retard',
+          raison: tr('échéance dépassée depuis {n} j').replace('{n}', String(-reste)) });
+      }
+      if (reports >= 2) {
+        diagnostics.push({ code: 'etire',
+          raison: tr('échéance repoussée {n} fois').replace('{n}', String(reports)) });
+      }
+      if (reste !== null && reste >= 0 && reste <= 14 && !prochainCreneau && !t.jalon) {
+        diagnostics.push({ code: 'sous-planifiee',
+          raison: tr('échéance dans {n} j, aucun créneau prévu').replace('{n}', String(reste)) });
+      }
+      const seuil = Ariane.decalerJour(auj, -7 * semaines);
+      const cree = Ariane.jourValide(t.cree) || '';
+      const activiteJournal = journal.some((e) => String(e.le || '').slice(0, 10) >= seuil);
+      const actif = (dernierCreneau && dernierCreneau >= seuil) || prochainCreneau
+        || activiteJournal || Number(c.tempsRecentMin) > 0;
+      if (!actif && (!cree || cree < seuil) && t.statut !== 'en attente') {
+        diagnostics.push({ code: 'abandon',
+          raison: dernierCreneau
+            ? tr('aucune activité depuis le {d}').replace('{d}', dernierCreneau)
+            : tr('aucune activité depuis {n} semaines').replace('{n}', String(semaines)) });
+      }
+    }
+    return {
+      urgence: { score: urg, niveau: niveau(urg), raison: rUrg },
+      importance: { score: imp, niveau: niveau(imp), raison: rImp },
+      diagnostics, dernierCreneau, prochainCreneau, reports,
+    };
+  }
+
   //#endregion Ariane · static · tâches
 };

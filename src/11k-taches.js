@@ -1509,6 +1509,7 @@ const avecTaches = (Base) => class extends Base {
     if (!f) return false;
     const conc = new Set(Ariane.CONCEPTS_TACHE);
     const enPhase = Ariane.champsTacheEnPhase(champs);
+    this.marquerOrigineTache(f.path);
     await this.app.fileManager.processFrontMatter(f, (x) => {
       for (const [k, v] of Object.entries(enPhase)) {
         x[conc.has(k) ? this.cleT(k) : k] = v;
@@ -2113,6 +2114,204 @@ const avecTaches = (Base) => class extends Base {
   }
 
   //#endregion Ariane · tâches
+
+  //#region Ariane · journal des tâches
+  // ── journal des tâches ───────────────────────────────────────────────────
+  //  Spec 2026-09-29, lot 1. Chaque changement d'une tâche (champ suivi,
+  //  créneau ajouté ou retiré, création, suppression) est noté, avec son
+  //  origine, dans un fichier caché du greffon : une ligne JSON par changement,
+  //  jamais réécrite. Sans lui, impossible de dire qu'une échéance a été
+  //  repoussée trois fois : les notes ne gardent que la dernière valeur.
+  //  L'historique commence à la mise en service ; le passé ne se reconstitue
+  //  pas.
+
+  get cheminJournalTaches() {
+    const dossier = (this.manifest && this.manifest.dir) || '.obsidian/plugins/obsidian-ariane';
+    return dossier + '/journal-taches.jsonl';
+  }
+
+  // Une écriture d'Ariane sur une tâche (majTache, créneaux…). Marqueur à
+  // part de marquerEcriture : celui-là fait taire les synchronisations Rappels
+  // et Agenda, et les gestes des vues doivent justement les déclencher.
+  // `origine` : 'ariane' par défaut, 'claude' pour une proposition acceptée.
+  marquerOrigineTache(chemin, origine) {
+    if (!this._originesTaches) this._originesTaches = new Map();
+    this._originesTaches.set(chemin, { origine: origine || 'ariane', le: Date.now() });
+  }
+
+  _origineTache(chemin) {
+    const m = this._originesTaches && this._originesTaches.get(chemin);
+    if (m && Date.now() - m.le < 4000) return m.origine;
+    return this.ecritePlugin(chemin) ? 'ariane' : 'externe';
+  }
+
+  // Branché au démarrage : un instantané de chaque tâche, puis une écoute qui
+  // compare chaque nouvelle version à l'instantané.
+  demarrerJournalTaches() {
+    this._instantanesTaches = new Map();
+    this._journalPret = false;
+    this._journalTampon = [];
+    const photographier = () => {
+      for (const t of this.tachesPourGantt()) {
+        if (t.fichier) this._instantanesTaches.set(t.fichier.path, Ariane.instantaneTache(t));
+      }
+      this._journalPret = true;
+    };
+    // Une seule passe, quand le cache des métadonnées est prêt : avant, les
+    // tâches ne sont pas toutes lues, et chacune passerait pour une création.
+    this.app.workspace.onLayoutReady(() => {
+      const cache = this.app.metadataCache;
+      if (cache.resolved) { photographier(); return; }
+      const ref = cache.on('resolved', () => { cache.offref(ref); photographier(); });
+      this.registerEvent(ref);
+    });
+    this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
+      if (!this._journalPret || !this.refDeChemin(fichier.path)) return;
+      const t = this.tachesPourGantt().find((x) => x.fichier && x.fichier.path === fichier.path);
+      if (!t) return;
+      const apres = Ariane.instantaneTache(t);
+      const avant = this._instantanesTaches.get(fichier.path);
+      this._instantanesTaches.set(fichier.path, apres);
+      const origine = this._origineTache(fichier.path);
+      if (!avant) {
+        this._journalNoter(t.ref, [{ champ: 'creation', avant: '', apres: apres.intitule }], origine);
+        return;
+      }
+      const diff = Ariane.differencesTache(avant, apres);
+      if (diff.length) this._journalNoter(t.ref, diff, origine);
+    }));
+    this.registerEvent(this.app.vault.on('delete', (f) => {
+      if (!this._journalPret || !f || !this._instantanesTaches.has(f.path)) return;
+      const av = this._instantanesTaches.get(f.path);
+      this._instantanesTaches.delete(f.path);
+      const ref = this.refDeChemin(f.path) || String(f.path).split('/').pop().replace(/\.md$/, '');
+      this._journalNoter(ref, [{ champ: 'suppression', avant: av.intitule, apres: '' }],
+        this._origineTache(f.path));
+    }));
+    this.registerEvent(this.app.vault.on('rename', (f, ancien) => {
+      if (!this._instantanesTaches || !this._instantanesTaches.has(ancien)) return;
+      this._instantanesTaches.set(f.path, this._instantanesTaches.get(ancien));
+      this._instantanesTaches.delete(ancien);
+    }));
+  }
+
+  _journalNoter(ref, changements, origine) {
+    const d = new Date();
+    const p2 = (n) => String(n).padStart(2, '0');
+    const le = jourIsoDe(d) + 'T' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+    for (const c of changements) {
+      this._journalTampon.push({ le, ref, champ: c.champ, avant: c.avant, apres: c.apres, origine });
+    }
+    // Groupé : une rafale d'écritures (un geste qui touche plusieurs champs,
+    // une synchronisation) ne fait qu'un ajout au fichier.
+    this.antirebond('journal-taches', () => this._viderJournalTaches(), 2000);
+  }
+
+  async _viderJournalTaches() {
+    if (!this._journalTampon || !this._journalTampon.length) return;
+    const lignes = this._journalTampon.splice(0).map((e) => JSON.stringify(e)).join('\n') + '\n';
+    const a = this.app.vault.adapter;
+    try {
+      if (await a.exists(this.cheminJournalTaches)) await a.append(this.cheminJournalTaches, lignes);
+      else await a.write(this.cheminJournalTaches, lignes);
+    } catch (e) {
+      console.error('[Ariane] journal des tâches :', e);
+    }
+  }
+
+  // Tout le journal, tampon pas encore écrit compris. Une ligne illisible est
+  // passée, pas fatale.
+  async lireJournalTaches() {
+    const a = this.app.vault.adapter;
+    let brut = '';
+    try {
+      if (await a.exists(this.cheminJournalTaches)) brut = await a.read(this.cheminJournalTaches);
+    } catch (e) { brut = ''; }
+    const out = [];
+    for (const l of brut.split('\n')) {
+      if (!l.trim()) continue;
+      try { out.push(JSON.parse(l)); } catch (e) { /* ligne abîmée : passée */ }
+    }
+    return out.concat(this._journalTampon || []);
+  }
+
+  // Minutes passées par note depuis `seuil` (jour ISO), d'après le relevé du
+  // compteur de temps (settings.tempsHistorique : jour → chemin → secondes).
+  _tempsDepuis(seuil) {
+    const out = new Map();
+    const h = this.settings.tempsHistorique || {};
+    for (const jour of Object.keys(h)) {
+      if (jour < seuil) continue;
+      for (const [chemin, sec] of Object.entries(h[jour] || {})) {
+        out.set(chemin, (out.get(chemin) || 0) + (Number(sec) || 0) / 60);
+      }
+    }
+    return out;
+  }
+
+  // Les notes que désigne une tâche (livrable, fichier, source) : le travail
+  // se fait souvent là, pas dans la note de la tâche.
+  _cheminsLiesTache(t) {
+    const out = [];
+    if (!t || !t.fichier) return out;
+    // Lus dans les propriétés : dans l'objet tâche, `fichier` est la note
+    // elle-même et masque la propriété « fichier » de la tâche.
+    const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+    for (const v of [this._lireT(fm, 'livrable'), this._lireT(fm, 'fichier'), this._lireT(fm, 'source')]) {
+      for (const brut of [].concat(v || [])) {
+        const lien = String(brut || '').trim().replace(/^!?\[\[/, '').replace(/\]\]$/, '')
+          .split('|')[0].split('#')[0].trim();
+        if (!lien) continue;
+        const cible = this.app.metadataCache.getFirstLinkpathDest(lien, t.fichier.path);
+        if (cible && !out.includes(cible.path)) out.push(cible.path);
+      }
+    }
+    return out;
+  }
+
+  // L'analyse de toutes les tâches, prête pour le tableau de bord et pour
+  // les outils de Claude : { tache, tempsRecentMin, analyse } par tâche.
+  async analyseTaches(aujourdhui) {
+    const auj = aujourdhui || jourIsoDe(new Date());
+    const semaines = Number(this.settings.tachesSemainesAbandon) > 0
+      ? Number(this.settings.tachesSemainesAbandon) : 4;
+    const taches = this.tachesPourGantt();
+    const journal = await this.lireJournalTaches();
+    const parRef = new Map();
+    for (const e of journal) {
+      if (!parRef.has(e.ref)) parRef.set(e.ref, []);
+      parRef.get(e.ref).push(e);
+    }
+    const fini = (t) => t.statut === 'terminée' || t.statut === 'abandonnée';
+    const bloquees = new Map();
+    const filles = new Map();
+    for (const t of taches) {
+      if (fini(t)) continue;
+      for (const b of (t.bloquePar || [])) {
+        const r = Ariane.refDeLien(b);
+        if (r) bloquees.set(r, (bloquees.get(r) || 0) + 1);
+      }
+      const p = Ariane.refDeLien(t.parent || '');
+      if (p) filles.set(p, (filles.get(p) || 0) + 1);
+    }
+    const temps = this._tempsDepuis(Ariane.decalerJour(auj, -7 * semaines));
+    return taches.map((t) => {
+      const fm = (t.fichier && (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter) || {};
+      const x = Object.assign({}, t, { cree: fm.cree ? String(fm.cree).slice(0, 10) : '' });
+      const chemins = [t.fichier && t.fichier.path].concat(this._cheminsLiesTache(t)).filter(Boolean);
+      const tempsRecentMin = Math.round(chemins.reduce((s, c) => s + (temps.get(c) || 0), 0));
+      return {
+        tache: t,
+        tempsRecentMin,
+        analyse: Ariane.analyseTache(x, {
+          aujourdhui: auj, journal: parRef.get(t.ref) || [], semainesAbandon: semaines,
+          bloquees: bloquees.get(t.ref) || 0, filles: filles.get(t.ref) || 0, tempsRecentMin,
+        }),
+      };
+    });
+  }
+
+  //#endregion Ariane · journal des tâches
 
   //#region Ariane · temps de travail
   // ── temps de travail ─────────────────────────────────────────────────────

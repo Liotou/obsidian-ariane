@@ -914,6 +914,8 @@ class Ariane extends composer(obsidian.Plugin,
   // (estCandidat, revaliderIndex, surTache…) restent volontairement ici :
   // elles ne servent qu'à ce câblage.
   _brancherEvenements() {
+    // Journal des modifications des tâches (section 11k, spec 2026-09-29).
+    this.demarrerJournalTaches();
     // Suggestions : recalcul à la pause de frappe et au changement de note.
     const estCandidat = (f) => {
       if (!f || !f.path) return false;
@@ -1207,6 +1209,9 @@ class Ariane extends composer(obsidian.Plugin,
     // Dernier report : sans cela, les minutes de la session en cours seraient
     // perdues à la fermeture d'Obsidian ou au rechargement du greffon.
     this.reporterTemps().catch(() => { /* fermeture en cours */ });
+    // Les derniers changements des tâches attendaient leur écriture groupée,
+    // dont le minuteur vient d'être annulé : on les pose maintenant.
+    if (this._viderJournalTaches) this._viderJournalTaches().catch(() => { /* fermeture en cours */ });
   }
 
   //#endregion Ariane · cycle de vie
