@@ -276,3 +276,26 @@ test('propositions : créer une tâche, avec ses créneaux', () => {
   const sans = Ariane.validerPropositions([{ creer: { famille: 'production' } }], []);
   assert.equal(sans.erreurs[0].erreur, 'création sans intitulé');
 });
+
+test('organisation : des sections, et chaque tâche une seule fois', () => {
+  const x = (ref, t, ctx) => ({ tache: Object.assign(tache({ ref, intitule: ref }), t),
+    analyse: Ariane.analyseTache(Object.assign(tache({ ref }), t), Object.assign({ aujourdhui: AUJ }, ctx)) });
+  const s = Ariane.sectionsOrganisation([
+    x('J', { creneaux: [AUJ + ' 14:00-16:00'], echeance: '2026-09-20' }),
+    x('R', { echeance: '2026-09-20' }),
+    x('S', { echeance: '2026-10-03', creneaux: ['2026-10-01 09:00-10:00'] }),
+    x('I', { priorite: 'haute' }),
+    x('A', { cree: '2026-07-01' }),
+    x('F', { statut: 'terminée' }),
+  ], AUJ);
+  assert.deepEqual(s.map((y) => [y.cle, y.lignes.map((l) => l.tache.ref)]), [
+    ['aujourdhui', ['J']],
+    ['retard', ['R']],
+    ['semaine', ['S']],
+    ['important', ['I']],
+    ['surveiller', ['A']],
+  ], 'J est en retard aussi, mais n\'apparaît qu\'aujourd\'hui ; les sections vides disparaissent');
+  assert.equal(s[0].lignes[0].raison, '14:00-16:00');
+  assert.equal(s[2].lignes[0].quand, '2026-10-01 09:00');
+  assert.equal(s[4].lignes[0].raison, 'aucune activité depuis 4 semaines');
+});

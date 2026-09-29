@@ -10362,6 +10362,52 @@ const avecTachesStatiques = (Base) => class extends Base {
     return { valides, erreurs };
   }
 
+  // Le tableau de bord de la note « Gestion de l'organisation » : des
+  // sections, de la plus pressante à la moins pressante, et chaque tâche UNE
+  // fois, dans la première qui la retient (un tableau qui répète les mêmes
+  // tâches cinq fois ne se lit plus). Chaque ligne : la tâche, la raison de
+  // sa présence, et le « quand » utile (créneau, échéance).
+  static sectionsOrganisation(analyses, aujourdhui) {
+    const auj = Ariane.jourValide(aujourdhui) || new Date().toISOString().slice(0, 10);
+    const r = Ariane.revueTaches(analyses, auj);
+    const vues = new Set();
+    const diag = (x, codes) => (x.analyse.diagnostics.find((d) => codes.includes(d.code)) || {}).raison || '';
+    const quand = (x) => {
+      const p = x.analyse.prochainCreneau;
+      if (p) return p.slice(0, 10) === auj ? p.slice(11, 16) : p.slice(0, 10) + ' ' + p.slice(11, 16);
+      return x.tache.echeance ? tr('échéance ') + x.tache.echeance : '';
+    };
+    const duJour = (analyses || []).filter((x) => x && x.tache
+      && x.tache.statut !== 'terminée' && x.tache.statut !== 'abandonnée'
+      && ((x.tache.creneaux || []).some((c) => String(c).slice(0, 10) === auj) || x.tache.echeance === auj));
+    const creneauDuJour = (x) => {
+      const c = Ariane.creneauxDeTache([].concat(x.tache.creneaux || [])).find((y) => y.debut.slice(0, 10) === auj);
+      return c ? c.debut.slice(11, 16) + '-' + c.fin.slice(11, 16) : tr('échéance aujourd’hui');
+    };
+    const sections = [
+      { cle: 'aujourdhui', titre: tr('Aujourd’hui'), liste: duJour.slice().sort((a, b) =>
+        creneauDuJour(a).localeCompare(creneauDuJour(b))), raison: creneauDuJour, quand: () => '' },
+      { cle: 'retard', titre: tr('En retard'), liste: r.enRetard, raison: (x) => diag(x, ['retard']), quand },
+      { cle: 'semaine', titre: tr('Cette semaine'), liste: r.cetteSemaine, raison: (x) => x.analyse.urgence.raison, quand },
+      { cle: 'urgent', titre: tr('Urgent et important'), liste: r.urgentImportant, raison: (x) => x.analyse.urgence.raison, quand },
+      { cle: 'important', titre: tr('Important, pas urgent'), liste: r.importantPasUrgent, raison: (x) => x.analyse.importance.raison, quand },
+      { cle: 'surveiller', titre: tr('À surveiller'),
+        liste: r.sEtirent.concat(r.sousPlanifiees, r.abandonsProbables),
+        raison: (x) => diag(x, ['etire', 'sous-planifiee', 'abandon']), quand },
+    ];
+    const out = [];
+    for (const s of sections) {
+      const lignes = [];
+      for (const x of s.liste) {
+        if (vues.has(x.tache.ref)) continue;
+        vues.add(x.tache.ref);
+        lignes.push({ tache: x.tache, raison: s.raison(x), quand: s.quand(x) });
+      }
+      if (lignes.length) out.push({ cle: s.cle, titre: s.titre, lignes });
+    }
+    return out;
+  }
+
   //#endregion Ariane · static · tâches
 };
 
@@ -15734,6 +15780,25 @@ const avecTaches = (Base) => class extends Base {
     });
   }
 
+  // La note « Gestion de l'organisation » : créée au besoin dans le dossier
+  // de cadrage (« 00 - Cadrage », à sa renumérotation près), puis ouverte.
+  async ouvrirGestionOrganisation() {
+    const dossiers = this.app.vault.getAllLoadedFiles()
+      .filter((f) => f && f.children && typeof f.path === 'string').map((f) => f.path);
+    const cadrage = dossiers.includes('00 - Cadrage') ? '00 - Cadrage'
+      : (Ariane.dossierEquivalent('00 - Cadrage', dossiers) || '');
+    const chemin = (cadrage ? cadrage + '/' : '') + "Gestion de l'organisation.md";
+    let f = this.app.vault.getAbstractFileByPath(chemin);
+    if (!f) {
+      f = await this.app.vault.create(chemin, [
+        "# Gestion de l'organisation", '',
+        '```ariane-organisation', '```', '',
+      ].join('\n'));
+    }
+    await this.app.workspace.getLeaf(false).openFile(f);
+    return f;
+  }
+
   //#endregion Ariane · journal des tâches
 
   //#region Ariane · temps de travail
@@ -16571,6 +16636,11 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.correcteur && this.correcteur.basculerVolet(),
     });
     this.addCommand({
+      id: 'organisation-ouvrir',
+      name: tr('Tâches : ouvrir la gestion de l’organisation'),
+      callback: () => this.ouvrirGestionOrganisation(),
+    });
+    this.addCommand({
       id: 'claude-installer',
       name: tr('Claude : installer ou mettre à jour la compétence et les outils des tâches'),
       callback: () => {
@@ -16637,6 +16707,9 @@ class Ariane extends composer(obsidian.Plugin,
     // est enregistrée avec les autres, dans _installerExtensionsEditeur.
     this.correcteur = new CorrecteurApple(this);
     this.addChild(this.correcteur);
+    // Le tableau de bord des tâches, dans une note ordinaire (section 19).
+    this.registerMarkdownCodeBlockProcessor('ariane-organisation',
+      (_src, el, ctx) => ctx.addChild(new BlocOrganisation(this, el)));
     // La barre d'édition : une par volet de note, posée sous la barre
     // d'onglets. Elle n'a aucun geste à elle, elle appelle des commandes.
     this.barre = new BarreEdition(this);
@@ -32535,6 +32608,83 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
   }
 
   async onClose() { this.contentEl.empty(); }
+}
+
+// ── Bloc « ariane-organisation » : le tableau de bord des tâches ──────────
+//  Un bloc de code ```ariane-organisation``` dans une note ordinaire (par
+//  défaut « 00 - Cadrage/Gestion de l'organisation »), rendu par Ariane :
+//  Aujourd'hui, En retard, Cette semaine, Urgent et important, Important
+//  pas urgent, À surveiller. Rien n'y est écrit : c'est une vue, qui se
+//  redessine quand une tâche change. Monsieur écrit ce qu'il veut autour.
+
+class BlocOrganisation extends obsidian.MarkdownRenderChild {
+  constructor(greffon, el) {
+    super(el);
+    this.greffon = greffon;
+    this._minuteur = null;
+  }
+
+  onload() {
+    this.rendre();
+    this.registerEvent(this.greffon.app.metadataCache.on('changed', (f) => {
+      if (!f || !this.greffon.refDeChemin(f.path)) return;
+      clearTimeout(this._minuteur);
+      this._minuteur = setTimeout(() => this.rendre(), 1500);
+    }));
+    // Le jour change : « aujourd'hui » et « cette semaine » aussi.
+    this.registerInterval(window.setInterval(() => this.rendre(), 30 * 60000));
+  }
+
+  onunload() { clearTimeout(this._minuteur); }
+
+  async rendre() {
+    const el = this.containerEl;
+    const auj = jourIsoDe(new Date());
+    let analyses;
+    try { analyses = await this.greffon.analyseTaches(auj); } catch (e) {
+      el.empty();
+      el.createDiv({ cls: 'zfa-orga-vide', text: tr('Le tableau n’a pas pu se calculer : ') + (e && e.message ? e.message : e) });
+      return;
+    }
+    const sections = Ariane.sectionsOrganisation(analyses, auj);
+    const actives = analyses.filter((x) => x.tache.statut !== 'terminée' && x.tache.statut !== 'abandonnée');
+    el.empty();
+    el.addClass('zfa-orga');
+    const tete = el.createDiv({ cls: 'zfa-orga-tete' });
+    const jour = new Date(auj + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    tete.createSpan({ cls: 'zfa-orga-date', text: jour.charAt(0).toUpperCase() + jour.slice(1) });
+    tete.createSpan({ cls: 'zfa-orga-compte', text: actives.length + ' ' + tr('tâches actives') });
+    if (!sections.length) {
+      el.createDiv({ cls: 'zfa-orga-vide', text: tr('Rien à signaler : aucune tâche en retard, rien de pressant cette semaine.') });
+    }
+    for (const s of sections) {
+      const bloc = el.createDiv({ cls: 'zfa-orga-section est-' + s.cle });
+      const h = bloc.createDiv({ cls: 'zfa-orga-titre' });
+      h.createSpan({ text: s.titre });
+      h.createSpan({ cls: 'zfa-orga-nombre', text: String(s.lignes.length) });
+      for (const l of s.lignes) this._ligne(bloc, l);
+    }
+    el.createDiv({ cls: 'zfa-orga-aide',
+      text: tr('Pour aller plus loin, demandez à Claude, dans Claudian : « Fais le point sur mes tâches ».') });
+  }
+
+  _ligne(hote, l) {
+    const t = l.tache;
+    const ligne = hote.createDiv({ cls: 'zfa-orga-ligne' });
+    const fam = (this.greffon.familleDe && this.greffon.familleDe(t.famille)) || {};
+    const point = ligne.createSpan({ cls: 'zfa-orga-point' });
+    if (fam.couleur) point.style.background = fam.couleur;
+    ligne.createSpan({ cls: 'zfa-orga-ref', text: t.ref });
+    const lien = ligne.createEl('a', { cls: 'zfa-orga-intitule internal-link', text: t.intitule || t.ref,
+      attr: { 'data-href': t.fichier ? t.fichier.path : t.ref, href: t.fichier ? t.fichier.path : t.ref } });
+    lien.addEventListener('click', (e) => {
+      e.preventDefault();
+      const nouveau = obsidian.Keymap && obsidian.Keymap.isModEvent ? obsidian.Keymap.isModEvent(e) : false;
+      this.greffon.app.workspace.openLinkText(t.fichier ? t.fichier.path : t.ref, '', nouveau);
+    });
+    if (l.raison) ligne.createSpan({ cls: 'zfa-orga-raison', text: l.raison });
+    if (l.quand) ligne.createSpan({ cls: 'zfa-orga-quand', text: l.quand });
+  }
 }
 
 //#endregion 19 · Vues latérales (ItemView)

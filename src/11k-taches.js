@@ -2315,6 +2315,25 @@ const avecTaches = (Base) => class extends Base {
     });
   }
 
+  // La note « Gestion de l'organisation » : créée au besoin dans le dossier
+  // de cadrage (« 00 - Cadrage », à sa renumérotation près), puis ouverte.
+  async ouvrirGestionOrganisation() {
+    const dossiers = this.app.vault.getAllLoadedFiles()
+      .filter((f) => f && f.children && typeof f.path === 'string').map((f) => f.path);
+    const cadrage = dossiers.includes('00 - Cadrage') ? '00 - Cadrage'
+      : (Ariane.dossierEquivalent('00 - Cadrage', dossiers) || '');
+    const chemin = (cadrage ? cadrage + '/' : '') + "Gestion de l'organisation.md";
+    let f = this.app.vault.getAbstractFileByPath(chemin);
+    if (!f) {
+      f = await this.app.vault.create(chemin, [
+        "# Gestion de l'organisation", '',
+        '```ariane-organisation', '```', '',
+      ].join('\n'));
+    }
+    await this.app.workspace.getLeaf(false).openFile(f);
+    return f;
+  }
+
   //#endregion Ariane · journal des tâches
 
   //#region Ariane · temps de travail

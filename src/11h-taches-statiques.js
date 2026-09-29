@@ -729,5 +729,51 @@ const avecTachesStatiques = (Base) => class extends Base {
     return { valides, erreurs };
   }
 
+  // Le tableau de bord de la note « Gestion de l'organisation » : des
+  // sections, de la plus pressante à la moins pressante, et chaque tâche UNE
+  // fois, dans la première qui la retient (un tableau qui répète les mêmes
+  // tâches cinq fois ne se lit plus). Chaque ligne : la tâche, la raison de
+  // sa présence, et le « quand » utile (créneau, échéance).
+  static sectionsOrganisation(analyses, aujourdhui) {
+    const auj = Ariane.jourValide(aujourdhui) || new Date().toISOString().slice(0, 10);
+    const r = Ariane.revueTaches(analyses, auj);
+    const vues = new Set();
+    const diag = (x, codes) => (x.analyse.diagnostics.find((d) => codes.includes(d.code)) || {}).raison || '';
+    const quand = (x) => {
+      const p = x.analyse.prochainCreneau;
+      if (p) return p.slice(0, 10) === auj ? p.slice(11, 16) : p.slice(0, 10) + ' ' + p.slice(11, 16);
+      return x.tache.echeance ? tr('échéance ') + x.tache.echeance : '';
+    };
+    const duJour = (analyses || []).filter((x) => x && x.tache
+      && x.tache.statut !== 'terminée' && x.tache.statut !== 'abandonnée'
+      && ((x.tache.creneaux || []).some((c) => String(c).slice(0, 10) === auj) || x.tache.echeance === auj));
+    const creneauDuJour = (x) => {
+      const c = Ariane.creneauxDeTache([].concat(x.tache.creneaux || [])).find((y) => y.debut.slice(0, 10) === auj);
+      return c ? c.debut.slice(11, 16) + '-' + c.fin.slice(11, 16) : tr('échéance aujourd’hui');
+    };
+    const sections = [
+      { cle: 'aujourdhui', titre: tr('Aujourd’hui'), liste: duJour.slice().sort((a, b) =>
+        creneauDuJour(a).localeCompare(creneauDuJour(b))), raison: creneauDuJour, quand: () => '' },
+      { cle: 'retard', titre: tr('En retard'), liste: r.enRetard, raison: (x) => diag(x, ['retard']), quand },
+      { cle: 'semaine', titre: tr('Cette semaine'), liste: r.cetteSemaine, raison: (x) => x.analyse.urgence.raison, quand },
+      { cle: 'urgent', titre: tr('Urgent et important'), liste: r.urgentImportant, raison: (x) => x.analyse.urgence.raison, quand },
+      { cle: 'important', titre: tr('Important, pas urgent'), liste: r.importantPasUrgent, raison: (x) => x.analyse.importance.raison, quand },
+      { cle: 'surveiller', titre: tr('À surveiller'),
+        liste: r.sEtirent.concat(r.sousPlanifiees, r.abandonsProbables),
+        raison: (x) => diag(x, ['etire', 'sous-planifiee', 'abandon']), quand },
+    ];
+    const out = [];
+    for (const s of sections) {
+      const lignes = [];
+      for (const x of s.liste) {
+        if (vues.has(x.tache.ref)) continue;
+        vues.add(x.tache.ref);
+        lignes.push({ tache: x.tache, raison: s.raison(x), quand: s.quand(x) });
+      }
+      if (lignes.length) out.push({ cle: s.cle, titre: s.titre, lignes });
+    }
+    return out;
+  }
+
   //#endregion Ariane · static · tâches
 };

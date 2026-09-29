@@ -482,6 +482,11 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.correcteur && this.correcteur.basculerVolet(),
     });
     this.addCommand({
+      id: 'organisation-ouvrir',
+      name: tr('Tâches : ouvrir la gestion de l’organisation'),
+      callback: () => this.ouvrirGestionOrganisation(),
+    });
+    this.addCommand({
       id: 'claude-installer',
       name: tr('Claude : installer ou mettre à jour la compétence et les outils des tâches'),
       callback: () => {
@@ -548,6 +553,9 @@ class Ariane extends composer(obsidian.Plugin,
     // est enregistrée avec les autres, dans _installerExtensionsEditeur.
     this.correcteur = new CorrecteurApple(this);
     this.addChild(this.correcteur);
+    // Le tableau de bord des tâches, dans une note ordinaire (section 19).
+    this.registerMarkdownCodeBlockProcessor('ariane-organisation',
+      (_src, el, ctx) => ctx.addChild(new BlocOrganisation(this, el)));
     // La barre d'édition : une par volet de note, posée sous la barre
     // d'onglets. Elle n'a aucun geste à elle, elle appelle des commandes.
     this.barre = new BarreEdition(this);

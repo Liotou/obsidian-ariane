@@ -3558,3 +3558,44 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-claude-ops li { margin: 2px 0; }
 .zfa-claude-ecartes { margin-top: 12px; font-size: var(--font-ui-smaller); color: var(--text-muted); }
 .zfa-claude-ecartes-titre { font-weight: var(--font-semibold, 600); margin-bottom: 4px; }
+
+/* ── Tableau de bord des tâches : bloc ariane-organisation (section 19) ─── */
+.zfa-orga { display: flex; flex-direction: column; gap: 14px; margin: 8px 0; }
+.zfa-orga-tete { display: flex; align-items: baseline; gap: 10px; }
+.zfa-orga-date { font-size: 1.15em; font-weight: var(--font-semibold, 600); }
+.zfa-orga-compte { color: var(--text-muted); font-size: var(--font-ui-small); }
+.zfa-orga-section {
+  padding: 8px 10px 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  background: var(--background-secondary);
+}
+.zfa-orga-section.est-retard { border-color: color-mix(in srgb, var(--text-error) 45%, var(--background-modifier-border)); }
+.zfa-orga-titre {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+  font-size: var(--font-ui-small); font-weight: var(--font-semibold, 600);
+  letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted);
+}
+.zfa-orga-section.est-retard .zfa-orga-titre { color: var(--text-error); }
+.zfa-orga-nombre {
+  min-width: 18px; padding: 0 6px; border-radius: 9px; text-align: center;
+  background: var(--background-modifier-hover); color: var(--text-muted);
+  font-variant-numeric: tabular-nums; letter-spacing: 0;
+}
+.zfa-orga-ligne {
+  display: flex; align-items: center; gap: 8px; padding: 4px 2px;
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-small);
+}
+.zfa-orga-titre + .zfa-orga-ligne { border-top: none; }
+.zfa-orga-point { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
+.zfa-orga-ref { flex: 0 0 auto; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.zfa-orga-intitule { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zfa-orga-raison {
+  flex: 0 0 auto; padding: 1px 8px; border-radius: 10px;
+  background: var(--background-modifier-hover); color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+.zfa-orga-quand { flex: 0 0 auto; color: var(--text-faint); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
+.zfa-orga-vide, .zfa-orga-aide { color: var(--text-muted); font-size: var(--font-ui-small); }
+.zfa-orga-aide { font-style: italic; }

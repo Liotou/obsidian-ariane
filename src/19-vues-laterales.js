@@ -673,5 +673,82 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
   async onClose() { this.contentEl.empty(); }
 }
 
+// ── Bloc « ariane-organisation » : le tableau de bord des tâches ──────────
+//  Un bloc de code ```ariane-organisation``` dans une note ordinaire (par
+//  défaut « 00 - Cadrage/Gestion de l'organisation »), rendu par Ariane :
+//  Aujourd'hui, En retard, Cette semaine, Urgent et important, Important
+//  pas urgent, À surveiller. Rien n'y est écrit : c'est une vue, qui se
+//  redessine quand une tâche change. Monsieur écrit ce qu'il veut autour.
+
+class BlocOrganisation extends obsidian.MarkdownRenderChild {
+  constructor(greffon, el) {
+    super(el);
+    this.greffon = greffon;
+    this._minuteur = null;
+  }
+
+  onload() {
+    this.rendre();
+    this.registerEvent(this.greffon.app.metadataCache.on('changed', (f) => {
+      if (!f || !this.greffon.refDeChemin(f.path)) return;
+      clearTimeout(this._minuteur);
+      this._minuteur = setTimeout(() => this.rendre(), 1500);
+    }));
+    // Le jour change : « aujourd'hui » et « cette semaine » aussi.
+    this.registerInterval(window.setInterval(() => this.rendre(), 30 * 60000));
+  }
+
+  onunload() { clearTimeout(this._minuteur); }
+
+  async rendre() {
+    const el = this.containerEl;
+    const auj = jourIsoDe(new Date());
+    let analyses;
+    try { analyses = await this.greffon.analyseTaches(auj); } catch (e) {
+      el.empty();
+      el.createDiv({ cls: 'zfa-orga-vide', text: tr('Le tableau n’a pas pu se calculer : ') + (e && e.message ? e.message : e) });
+      return;
+    }
+    const sections = Ariane.sectionsOrganisation(analyses, auj);
+    const actives = analyses.filter((x) => x.tache.statut !== 'terminée' && x.tache.statut !== 'abandonnée');
+    el.empty();
+    el.addClass('zfa-orga');
+    const tete = el.createDiv({ cls: 'zfa-orga-tete' });
+    const jour = new Date(auj + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    tete.createSpan({ cls: 'zfa-orga-date', text: jour.charAt(0).toUpperCase() + jour.slice(1) });
+    tete.createSpan({ cls: 'zfa-orga-compte', text: actives.length + ' ' + tr('tâches actives') });
+    if (!sections.length) {
+      el.createDiv({ cls: 'zfa-orga-vide', text: tr('Rien à signaler : aucune tâche en retard, rien de pressant cette semaine.') });
+    }
+    for (const s of sections) {
+      const bloc = el.createDiv({ cls: 'zfa-orga-section est-' + s.cle });
+      const h = bloc.createDiv({ cls: 'zfa-orga-titre' });
+      h.createSpan({ text: s.titre });
+      h.createSpan({ cls: 'zfa-orga-nombre', text: String(s.lignes.length) });
+      for (const l of s.lignes) this._ligne(bloc, l);
+    }
+    el.createDiv({ cls: 'zfa-orga-aide',
+      text: tr('Pour aller plus loin, demandez à Claude, dans Claudian : « Fais le point sur mes tâches ».') });
+  }
+
+  _ligne(hote, l) {
+    const t = l.tache;
+    const ligne = hote.createDiv({ cls: 'zfa-orga-ligne' });
+    const fam = (this.greffon.familleDe && this.greffon.familleDe(t.famille)) || {};
+    const point = ligne.createSpan({ cls: 'zfa-orga-point' });
+    if (fam.couleur) point.style.background = fam.couleur;
+    ligne.createSpan({ cls: 'zfa-orga-ref', text: t.ref });
+    const lien = ligne.createEl('a', { cls: 'zfa-orga-intitule internal-link', text: t.intitule || t.ref,
+      attr: { 'data-href': t.fichier ? t.fichier.path : t.ref, href: t.fichier ? t.fichier.path : t.ref } });
+    lien.addEventListener('click', (e) => {
+      e.preventDefault();
+      const nouveau = obsidian.Keymap && obsidian.Keymap.isModEvent ? obsidian.Keymap.isModEvent(e) : false;
+      this.greffon.app.workspace.openLinkText(t.fichier ? t.fichier.path : t.ref, '', nouveau);
+    });
+    if (l.raison) ligne.createSpan({ cls: 'zfa-orga-raison', text: l.raison });
+    if (l.quand) ligne.createSpan({ cls: 'zfa-orga-quand', text: l.quand });
+  }
+}
+
 //#endregion 19 · Vues latérales (ItemView)
 
