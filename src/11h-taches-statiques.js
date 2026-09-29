@@ -846,6 +846,33 @@ const avecTachesStatiques = (Base) => class extends Base {
       && e.debut.slice(0, 10) <= auj && String(e.fin || e.debut).slice(0, 10) >= auj)
       .map((e) => ({ titre: e.titre || '', calendrier: e.calendrier || '', couleur: e.couleur || '' }));
 
+    // Tâches suggérées : ce qui mérite l'attention maintenant, classé, chacune
+    // avec un conseil. Celles déjà au programme d'aujourd'hui n'y figurent
+    // pas (elles sont dans « Aujourd'hui »), ni les jalons, ni ce qui est « en
+    // attente » (un choix de Monsieur). Le conseil est rendu en données
+    // ({ genre, date }) : le bloc le formule.
+    const auProgramme = new Set(aujourdhui.filter((x) => x.genre === 'creneau').map((x) => x.tache.ref));
+    const a_ = (x, code) => x.analyse.diagnostics.some((d) => d.code === code);
+    const conseil = (x) => {
+      if (a_(x, 'retard')) return { genre: 'retard', date: x.tache.echeance };
+      if (a_(x, 'sous-planifiee')) return { genre: 'planifier-avant', date: x.tache.echeance };
+      if (a_(x, 'etire')) return { genre: 'decouper', date: '' };
+      if (a_(x, 'abandon')) return { genre: 'relancer', date: '' };
+      if (x.analyse.prochainCreneau) return { genre: 'prevue', date: x.analyse.prochainCreneau };
+      return { genre: 'a-planifier', date: '' };
+    };
+    const poids = (x) => x.analyse.urgence.score * 0.6 + x.analyse.importance.score * 0.4
+      + (a_(x, 'retard') ? 30 : 0) + (a_(x, 'sous-planifiee') ? 20 : 0)
+      - (x.analyse.prochainCreneau ? 10 : 0);   // déjà planifiée : moins pressante
+    const suggestions = actives
+      .filter((x) => !auProgramme.has(x.tache.ref) && !x.tache.jalon && x.tache.statut !== 'en attente'
+        && (x.analyse.urgence.score >= 30 || x.analyse.importance.score >= 50
+          || a_(x, 'retard') || a_(x, 'sous-planifiee') || a_(x, 'etire')))
+      .map((x) => Object.assign({}, x, { conseil: conseil(x), poids: poids(x) }))
+      .sort((a, b) => b.poids - a.poids || parUrgence(a, b))
+      .slice(0, 8);
+    const suggerees = new Set(suggestions.map((x) => x.tache.ref));
+
     // Matrice : urgent et important à partir de la moitié de l'échelle.
     const matrice = { urgentImportant: [], importantPasUrgent: [], urgentPasImportant: [], niUnNiAutre: [] };
     for (const x of actives) {
@@ -857,7 +884,8 @@ const avecTachesStatiques = (Base) => class extends Base {
 
     const gravite = { retard: 0, 'sous-planifiee': 1, etire: 2, abandon: 3 };
     const rang = (x) => Math.min(...x.analyse.diagnostics.map((d) => (d.code in gravite ? gravite[d.code] : 9)));
-    const surveiller = actives.filter((x) => x.analyse.diagnostics.length)
+    // À surveiller : les signaux qui restent une fois les suggestions faites.
+    const surveiller = actives.filter((x) => x.analyse.diagnostics.length && !suggerees.has(x.tache.ref))
       .sort((a, b) => rang(a) - rang(b) || parUrgence(a, b));
 
     const dans30 = Ariane.decalerJour(auj, 30);
@@ -890,7 +918,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       .map((e) => ({ le: e.le, ref: e.ref, intitule: intitules.get(e.ref) || '',
         phrase: Ariane.phraseJournal(e), origine: Ariane.ORIGINES_JOURNAL[e.origine] || e.origine || '' }));
 
-    return { aujourdhuiISO: auj, lundi, chiffres, semaine, aujourdhui, journeeEntiere,
+    return { aujourdhuiISO: auj, lundi, chiffres, semaine, aujourdhui, journeeEntiere, suggestions,
       matrice, surveiller, echeances, familles, activite };
   }
 

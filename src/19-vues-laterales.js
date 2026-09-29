@@ -743,9 +743,11 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
   }
 
   // Une tâche, avec tout ce qui la situe : famille, statut, avancement,
-  // échéance en clair, prochain créneau, diagnostics. `compacte` : sans
-  // échéance ni diagnostics (sous un en-tête de date, ils se répéteraient).
-  _ligneRiche(hote, x, auj, compacte) {
+  // échéance en clair, prochain créneau, diagnostics. `mode` :
+  //   'compacte'   sans échéance ni diagnostics (sous un en-tête de date) ;
+  //   'suggestion' sans diagnostics (le conseil, ajouté ensuite, les dit).
+  _ligneRiche(hote, x, auj, mode) {
+    const compacte = mode === 'compacte';
     const t = x.tache;
     const a = x.analyse;
     const l = hote.createDiv({ cls: 'zfa-orga-ligne' });
@@ -754,6 +756,7 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
     if (c) point.style.background = c;
     l.createSpan({ cls: 'zfa-orga-ref', text: t.ref });
     const corps = l.createDiv({ cls: 'zfa-orga-corps' });
+    l.zfaCorps = corps;   // pour qui veut y ajouter une ligne (le conseil)
     this._lien(corps, t);
     const meta = corps.createDiv({ cls: 'zfa-orga-meta' });
     if (t.statut && t.statut !== 'à faire') this._pastille(meta, t.statut, 'statut');
@@ -772,7 +775,7 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
       meta.createSpan({ cls: 'zfa-orga-discret', text: tr('dernier créneau ') + this._jourCourt(a.dernierCreneau) });
     }
     if (a.reports) meta.createSpan({ cls: 'zfa-orga-discret', text: a.reports + ' ' + tr('report(s)') });
-    if (compacte) return l;
+    if (compacte || mode === 'suggestion') return l;
     for (const d of a.diagnostics) this._pastille(meta, tr(ORGA_DIAGNOSTICS[d.code] || d.code), 'diag-' + d.code, d.raison);
     if (a.diagnostics.length) {
       corps.createDiv({ cls: 'zfa-orga-raisons', text: a.diagnostics.map((d) => d.raison).join(' · ') });
@@ -820,6 +823,119 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
     tete.createSpan({ cls: 'zfa-orga-date', text: jour.charAt(0).toUpperCase() + jour.slice(1) });
     tete.createSpan({ cls: 'zfa-orga-discret', text: tr('semaine du ') + this._jourCourt(d.lundi) });
 
+    el.createDiv({ cls: 'zfa-orga-partie', text: tr('Pour s’organiser') });
+
+    // Aujourd'hui.
+    this._section(el, 'aujourdhui', tr('Aujourd’hui'), d.aujourdhui.length, (c) => {
+      if (d.journeeEntiere.length) {
+        const j = c.createDiv({ cls: 'zfa-orga-journee' });
+        for (const e of d.journeeEntiere) this._pastille(j, e.titre, 'evt', e.calendrier);
+      }
+      if (!d.aujourdhui.length) {
+        c.createDiv({ cls: 'zfa-orga-vide', text: tr('Aucun créneau ni rendez-vous aujourd’hui.') });
+        return;
+      }
+      const maintenant = new Date();
+      const hm = String(maintenant.getHours()).padStart(2, '0') + ':' + String(maintenant.getMinutes()).padStart(2, '0');
+      for (const x of d.aujourdhui) {
+        const passe = x.fin.slice(11, 16) <= hm;
+        const encours = !passe && x.debut.slice(11, 16) <= hm;
+        const l = c.createDiv({ cls: 'zfa-orga-agenda est-' + x.genre + (passe ? ' est-passe' : '') + (encours ? ' est-encours' : '') });
+        l.createSpan({ cls: 'zfa-orga-heure', text: x.debut.slice(11, 16) + ' → ' + x.fin.slice(11, 16) });
+        const barre = l.createSpan({ cls: 'zfa-orga-agenda-barre' });
+        const coul = x.genre === 'creneau' ? this._couleur(x.tache) : x.couleur;
+        if (coul) barre.style.background = coul;
+        const corps = l.createDiv({ cls: 'zfa-orga-corps' });
+        if (x.genre === 'creneau') {
+          const ligne = corps.createDiv();
+          ligne.createSpan({ cls: 'zfa-orga-ref', text: x.tache.ref + ' ' });
+          this._lien(ligne, x.tache);
+        } else {
+          corps.createDiv({ cls: 'zfa-orga-evt-titre', text: x.titre });
+          if (x.calendrier) corps.createDiv({ cls: 'zfa-orga-discret', text: x.calendrier });
+        }
+        l.createSpan({ cls: 'zfa-orga-discret', text: this._duree(x.minutes) });
+      }
+    });
+
+    // Tâches suggérées : ce qui mérite l'attention maintenant, avec un conseil.
+    this._section(el, 'suggestions', tr('Tâches suggérées'), d.suggestions.length, (c) => {
+      if (!d.suggestions.length) {
+        c.createDiv({ cls: 'zfa-orga-vide', text: tr('Rien de pressant en dehors du programme du jour.') });
+        return;
+      }
+      d.suggestions.forEach((x, i) => {
+        const l = this._ligneRiche(c, x, auj, 'suggestion');
+        l.addClass('est-suggestion');
+        // Créé dans la ligne (donc dans le bon document, volet détaché
+        // compris), puis mis en tête.
+        l.prepend(l.createSpan({ cls: 'zfa-orga-rang', text: String(i + 1) }));
+        const k = x.conseil;
+        const quand = k.date ? this._jourCourt(k.date) + (k.date.length > 10 ? ' ' + k.date.slice(11, 16) : '') : '';
+        const texte = {
+          retard: tr('Échéance dépassée : replanifier ou clore'),
+          'planifier-avant': tr('Poser un créneau avant le ') + quand,
+          decouper: tr('Repoussée plusieurs fois : découper, ou fixer une échéance réaliste'),
+          relancer: tr('Sans activité récente : la relancer ou l’abandonner'),
+          prevue: tr('Prévue ') + quand,
+          'a-planifier': tr('À planifier : aucun créneau prévu'),
+        }[k.genre] || '';
+        if (l.zfaCorps && texte) l.zfaCorps.createDiv({ cls: 'zfa-orga-conseil est-' + k.genre, text: texte });
+      });
+    });
+
+    // À surveiller.
+    this._section(el, 'surveiller', tr('À surveiller'), d.surveiller.length, (c) => {
+      if (!d.surveiller.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('Rien d’inquiétant.') }); return; }
+      for (const x of d.surveiller) this._ligneRiche(c, x, auj);
+    });
+
+    // Matrice urgent / important.
+    const m = d.matrice;
+    this._section(el, 'matrice', tr('Urgence et importance'), null, (c) => {
+      const g = c.createDiv({ cls: 'zfa-orga-matrice' });
+      const case_ = (cle, titre, sous, liste) => {
+        const b = g.createDiv({ cls: 'zfa-orga-case est-' + cle });
+        const h = b.createDiv({ cls: 'zfa-orga-case-titre' });
+        h.createSpan({ text: titre });
+        h.createSpan({ cls: 'zfa-orga-nombre', text: String(liste.length) });
+        b.createDiv({ cls: 'zfa-orga-discret', text: sous });
+        for (const x of liste.slice(0, 5)) {
+          const l = b.createDiv({ cls: 'zfa-orga-mini' });
+          const point = l.createSpan({ cls: 'zfa-orga-point' });
+          const coul = this._couleur(x.tache);
+          if (coul) point.style.background = coul;
+          this._lien(l, x.tache);
+          const ech = Ariane.echeanceRelative(x.tache.echeance, auj);
+          if (ech) this._pastille(l, ech.texte, ech.genre, x.tache.echeance);
+        }
+        if (liste.length > 5) b.createDiv({ cls: 'zfa-orga-discret', text: '+ ' + (liste.length - 5) + ' ' + tr('autres') });
+      };
+      case_('ui', tr('Urgent et important'), tr('à faire maintenant'), m.urgentImportant);
+      case_('i', tr('Important, pas urgent'), tr('à planifier'), m.importantPasUrgent);
+      case_('u', tr('Urgent, moins prioritaire'), tr('à expédier'), m.urgentPasImportant);
+      case_('n', tr('Sans urgence ni priorité'), tr('à reconsidérer à l’occasion'), m.niUnNiAutre);
+    });
+
+    // Échéances à venir.
+    this._section(el, 'echeances', tr('Échéances des 30 prochains jours'), d.echeances.length, (c) => {
+      if (!d.echeances.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('Aucune échéance dans les 30 jours.') }); return; }
+      const frise = c.createDiv({ cls: 'zfa-orga-frise' });
+      let courant = '';
+      for (const x of d.echeances) {
+        if (x.tache.echeance !== courant) {
+          courant = x.tache.echeance;
+          const ech = Ariane.echeanceRelative(courant, auj);
+          const date = frise.createDiv({ cls: 'zfa-orga-frise-date' + (ech ? ' est-' + ech.genre : '') });
+          date.createSpan({ text: this._jourCourt(courant) });
+          if (ech) date.createSpan({ cls: 'zfa-orga-discret', text: ech.texte });
+        }
+        this._ligneRiche(frise, x, auj, 'compacte');
+      }
+    });
+
+    el.createDiv({ cls: 'zfa-orga-partie', text: tr('En chiffres') });
+
     // Chiffres clés.
     const k = d.chiffres;
     const pave = (hote, valeur, libelle, genre) => {
@@ -855,89 +971,6 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
       const legende = c.createDiv({ cls: 'zfa-orga-legende' });
       legende.createSpan({ cls: 'zfa-orga-cle est-cr', text: tr('créneaux de tâches') });
       legende.createSpan({ cls: 'zfa-orga-cle est-evt', text: tr('rendez-vous') });
-    });
-
-    // Aujourd'hui.
-    this._section(el, 'aujourdhui', tr('Aujourd’hui'), d.aujourdhui.length, (c) => {
-      if (d.journeeEntiere.length) {
-        const j = c.createDiv({ cls: 'zfa-orga-journee' });
-        for (const e of d.journeeEntiere) this._pastille(j, e.titre, 'evt', e.calendrier);
-      }
-      if (!d.aujourdhui.length) {
-        c.createDiv({ cls: 'zfa-orga-vide', text: tr('Aucun créneau ni rendez-vous aujourd’hui.') });
-        return;
-      }
-      const maintenant = new Date();
-      const hm = String(maintenant.getHours()).padStart(2, '0') + ':' + String(maintenant.getMinutes()).padStart(2, '0');
-      for (const x of d.aujourdhui) {
-        const passe = x.fin.slice(11, 16) <= hm;
-        const encours = !passe && x.debut.slice(11, 16) <= hm;
-        const l = c.createDiv({ cls: 'zfa-orga-agenda est-' + x.genre + (passe ? ' est-passe' : '') + (encours ? ' est-encours' : '') });
-        l.createSpan({ cls: 'zfa-orga-heure', text: x.debut.slice(11, 16) + ' → ' + x.fin.slice(11, 16) });
-        const barre = l.createSpan({ cls: 'zfa-orga-agenda-barre' });
-        const coul = x.genre === 'creneau' ? this._couleur(x.tache) : x.couleur;
-        if (coul) barre.style.background = coul;
-        const corps = l.createDiv({ cls: 'zfa-orga-corps' });
-        if (x.genre === 'creneau') {
-          const ligne = corps.createDiv();
-          ligne.createSpan({ cls: 'zfa-orga-ref', text: x.tache.ref + ' ' });
-          this._lien(ligne, x.tache);
-        } else {
-          corps.createDiv({ cls: 'zfa-orga-evt-titre', text: x.titre });
-          if (x.calendrier) corps.createDiv({ cls: 'zfa-orga-discret', text: x.calendrier });
-        }
-        l.createSpan({ cls: 'zfa-orga-discret', text: this._duree(x.minutes) });
-      }
-    });
-
-    // Matrice urgent / important.
-    const m = d.matrice;
-    this._section(el, 'matrice', tr('Urgence et importance'), null, (c) => {
-      const g = c.createDiv({ cls: 'zfa-orga-matrice' });
-      const case_ = (cle, titre, sous, liste) => {
-        const b = g.createDiv({ cls: 'zfa-orga-case est-' + cle });
-        const h = b.createDiv({ cls: 'zfa-orga-case-titre' });
-        h.createSpan({ text: titre });
-        h.createSpan({ cls: 'zfa-orga-nombre', text: String(liste.length) });
-        b.createDiv({ cls: 'zfa-orga-discret', text: sous });
-        for (const x of liste.slice(0, 5)) {
-          const l = b.createDiv({ cls: 'zfa-orga-mini' });
-          const point = l.createSpan({ cls: 'zfa-orga-point' });
-          const coul = this._couleur(x.tache);
-          if (coul) point.style.background = coul;
-          this._lien(l, x.tache);
-          const ech = Ariane.echeanceRelative(x.tache.echeance, auj);
-          if (ech) this._pastille(l, ech.texte, ech.genre, x.tache.echeance);
-        }
-        if (liste.length > 5) b.createDiv({ cls: 'zfa-orga-discret', text: '+ ' + (liste.length - 5) + ' ' + tr('autres') });
-      };
-      case_('ui', tr('Urgent et important'), tr('à faire maintenant'), m.urgentImportant);
-      case_('i', tr('Important, pas urgent'), tr('à planifier'), m.importantPasUrgent);
-      case_('u', tr('Urgent, moins prioritaire'), tr('à expédier'), m.urgentPasImportant);
-      case_('n', tr('Sans urgence ni priorité'), tr('à reconsidérer à l’occasion'), m.niUnNiAutre);
-    });
-
-    // À surveiller.
-    this._section(el, 'surveiller', tr('À surveiller'), d.surveiller.length, (c) => {
-      if (!d.surveiller.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('Rien d’inquiétant.') }); return; }
-      for (const x of d.surveiller) this._ligneRiche(c, x, auj);
-    });
-
-    // Échéances à venir.
-    this._section(el, 'echeances', tr('Échéances des 30 prochains jours'), d.echeances.length, (c) => {
-      if (!d.echeances.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('Aucune échéance dans les 30 jours.') }); return; }
-      const frise = c.createDiv({ cls: 'zfa-orga-frise' });
-      let courant = '';
-      for (const x of d.echeances) {
-        if (x.tache.echeance !== courant) {
-          courant = x.tache.echeance;
-          const ech = Ariane.echeanceRelative(courant, auj);
-          const date = frise.createDiv({ cls: 'zfa-orga-frise-date' + (ech ? ' est-' + ech.genre : '') });
-          date.createSpan({ text: this._jourCourt(courant) });
-          if (ech) date.createSpan({ cls: 'zfa-orga-discret', text: ech.texte });
-        }
-        this._ligneRiche(frise, x, auj, true);
-      }
     });
 
     // Familles.

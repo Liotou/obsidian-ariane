@@ -339,11 +339,36 @@ test('tableau : chiffres, semaine, aujourd\'hui, matrice, familles, activité', 
   assert.deepEqual(d.matrice.urgentImportant.map((x) => x.tache.ref), ['B']);
   assert.deepEqual(d.matrice.importantPasUrgent.map((x) => x.tache.ref), ['C']);
   assert.deepEqual(d.matrice.urgentPasImportant.map((x) => x.tache.ref), ['A']);
-  assert.deepEqual(d.surveiller.map((x) => x.tache.ref), ['A', 'C'],
-    'le retard d\'abord ; B a un créneau avant son échéance ; C, sans aucune activité, est un abandon probable');
+  // A a un créneau aujourd'hui : elle est dans « Aujourd'hui », pas dans les
+  // suggestions. B (urgente, importante, déjà planifiée) et C (importante,
+  // à planifier) sont suggérées, avec leur conseil.
+  assert.deepEqual(d.suggestions.map((x) => [x.tache.ref, x.conseil.genre]),
+    [['B', 'prevue'], ['C', 'relancer']]);
+  assert.deepEqual(d.surveiller.map((x) => x.tache.ref), ['A'],
+    'à surveiller : ce que les suggestions ne couvrent pas (A, en retard, déjà au programme du jour)');
   assert.deepEqual(d.echeances.map((x) => x.tache.ref), ['B']);
   assert.deepEqual(d.familles.map((f) => [f.famille, f.actives, f.terminees, f.taux, f.minutesSemaine]),
     [['lecture', 2, 1, 33, 210], ['production', 1, 0, 0, 180]]);
   assert.deepEqual(d.activite.map((a) => [a.ref, a.origine]), [['B', 'Claude'], ['A', 'vous']]);
   assert.equal(d.activite[1].phrase, 'échéance repoussée du 2026-09-15 au 2026-09-20');
+});
+
+test('suggestions : le plus pressant d\'abord, avec son conseil ; ni attente ni jalon', () => {
+  const e = (ref, t) => {
+    const tt = Object.assign(tache({ ref, cree: '2026-09-25' }), t);
+    return { tache: tt, analyse: Ariane.analyseTache(tt, { aujourdhui: AUJ }) };
+  };
+  const d = Ariane.tableauOrganisation([
+    e('PLAN', { echeance: '2026-10-20', priorite: 'haute', creneaux: ['2026-10-05 09:00-11:00'] }),
+    e('SOUS', { echeance: '2026-10-03' }),
+    e('RET', { echeance: '2026-09-25' }),
+    e('ATT', { echeance: '2026-09-20', statut: 'en attente' }),
+    e('JAL', { echeance: '2026-10-01', jalon: true }),
+    e('CALME', {}),
+  ], { aujourdhui: AUJ });
+  assert.deepEqual(d.suggestions.map((x) => [x.tache.ref, x.conseil.genre, x.conseil.date]), [
+    ['RET', 'retard', '2026-09-25'],
+    ['SOUS', 'planifier-avant', '2026-10-03'],
+    ['PLAN', 'prevue', '2026-10-05T09:00'],
+  ]);
 });
