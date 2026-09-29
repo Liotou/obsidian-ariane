@@ -124,7 +124,11 @@
  *          commandes Ariane qui les appliquent, BarreEdition (le chef) et
  *          BarreOutils (une par volet). Un bouton n'est jamais qu'un
  *          raccourci vers une commande de la palette.
- *   22 · Exports
+ *   22 · Pont Claude
+ *          le relais local (127.0.0.1, jeton) par lequel le serveur MCP
+ *          ariane-taches (mcp/taches.js) interroge Ariane pour Claude :
+ *          liste, détail, charge du calendrier, revue des tâches
+ *   23 · Exports
  *          module.exports et surface _test des fonctions pures
  *
  * ─────────────────────────────────────────────────────────────────────────

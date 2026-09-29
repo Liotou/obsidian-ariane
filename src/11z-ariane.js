@@ -533,6 +533,10 @@ class Ariane extends composer(obsidian.Plugin,
     // d'onglets. Elle n'a aucun geste à elle, elle appelle des commandes.
     this.barre = new BarreEdition(this);
     this.addChild(this.barre);
+    // Le pont vers Claude (section 22) : le serveur MCP ariane-taches passe
+    // par lui pour lire les tâches avec la logique d'Ariane.
+    this.pont = new PontClaude(this);
+    this.addChild(this.pont);
     // La frise est une vue de base : elle n'existe que si Bases est actif.
     if (typeof this.registerBasesView === 'function') {
       const Vue = fabriquerVueFriseBase(this);

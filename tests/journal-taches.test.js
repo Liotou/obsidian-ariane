@@ -181,3 +181,40 @@ test('journal : un changement est noté avec son origine, puis écrit', async ()
   const fin = await g.lireJournalTaches();
   assert.deepEqual(fin.slice(2).map((e) => [e.ref, e.champ]), [['T002', 'creation'], ['T001', 'suppression']]);
 });
+
+// ── Charge et revue ──────────────────────────────────────────────────────
+
+test('plages libres : ce qui reste entre les occupations, au-delà d\'une demi-heure', () => {
+  const l = Ariane.plagesLibres('2026-10-01', [
+    { debut: '2026-10-01T09:00', fin: '2026-10-01T10:30' },
+    { debut: '2026-10-01T10:45', fin: '2026-10-01T12:00' },
+    { debut: '2026-10-01T14:00', fin: '2026-10-01T15:00' },
+    { debut: '2026-09-30T18:00', fin: '2026-10-01T08:30' },
+  ], '08:00', '19:00');
+  assert.deepEqual(l, [
+    { debut: '08:30', fin: '09:00', minutes: 30 },
+    { debut: '12:00', fin: '14:00', minutes: 120 },
+    { debut: '15:00', fin: '19:00', minutes: 240 },
+  ], 'le quart d\'heure 10:30-10:45 est écarté ; la nuit de la veille déborde jusqu\'à 08:30');
+  assert.deepEqual(Ariane.plagesLibres('2026-10-01', [], '09:00', '12:00'),
+    [{ debut: '09:00', fin: '12:00', minutes: 180 }]);
+  assert.deepEqual(Ariane.plagesLibres('2026-10-01', [
+    { debut: '2026-10-01T07:00', fin: '2026-10-01T20:00' }], '08:00', '19:00'), [], 'journée pleine');
+});
+
+test('revue : chaque rubrique rassemble ce qui la concerne', () => {
+  const x = (ref, t, ctx) => ({ tache: Object.assign(tache({ ref }), t),
+    analyse: Ariane.analyseTache(Object.assign(tache({ ref }), t), Object.assign({ aujourdhui: AUJ }, ctx)) });
+  const r = Ariane.revueTaches([
+    x('R', { echeance: '2026-09-20' }),
+    x('S', { echeance: '2026-10-03' }),
+    x('P', { echeance: '2026-10-20', creneaux: ['2026-10-01 09:00-10:00'] }),
+    x('I', { priorite: 'haute' }),
+    x('F', { statut: 'terminée', echeance: '2026-09-01' }),
+  ], AUJ);
+  assert.deepEqual(r.enRetard.map((y) => y.tache.ref), ['R']);
+  assert.deepEqual(r.sousPlanifiees.map((y) => y.tache.ref), ['S']);
+  assert.deepEqual(r.cetteSemaine.map((y) => y.tache.ref), ['S', 'P'], 'échéance ou créneau dans les 7 jours');
+  assert.deepEqual(r.importantPasUrgent.map((y) => y.tache.ref), ['I']);
+  assert.ok(!JSON.stringify(r).includes('"F"'), 'les tâches finies n\'y figurent pas');
+});

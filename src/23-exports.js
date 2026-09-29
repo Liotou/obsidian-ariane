@@ -1,6 +1,6 @@
-//#region 22 · Exports
+//#region 23 · Exports
 // ═══════════════════════════════════════════════════════════════════════════
-//  22 · EXPORTS
+//  23 · EXPORTS
 //  Points d'entrée CommonJS : la classe du greffon et la surface _test
 //  des fonctions pures pour la suite de tests.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -70,6 +70,9 @@ module.exports._test = {
   barreDefaut,
   BARRE_COMMANDES,
   BarreEdition,
+  // Pont Claude : les outils de lecture s'éprouvent avec un greffon factice.
+  PontClaude,
+  pontCorpsNote,
   BarreOutils,
   echapperRegex,
   nomCompletAuteur,
@@ -115,4 +118,4 @@ module.exports._test = {
   colonnesPourExport,
 };
 
-//#endregion 22 · Exports
+//#endregion 23 · Exports

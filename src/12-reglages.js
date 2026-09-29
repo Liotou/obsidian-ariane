@@ -452,6 +452,24 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           : (icone ? liste.join(', ') : (liste.length ? tr('dossier sans icône : ') + liste.join(', ') : tr('aucun filtre de dossier'))) });
       }
     }
+
+    this._section(c, tr('Claude'));
+    this._aide(c, tr("Claude, dans Claudian, lit vos tâches par le serveur MCP « ariane-taches », qui passe par un relais local d’Ariane : il n’écoute que sur cette machine, derrière un jeton renouvelé à chaque démarrage. Coupé, Claude n’a plus accès aux tâches."));
+    new obsidian.Setting(c)
+      .setName(tr('Relais pour Claude'))
+      .setDesc(tr('Bureau seulement.'))
+      .addToggle((t) => t.setValue(s.claudePont !== false).onChange(async (v) => {
+        s.claudePont = v;
+        await maj();
+        if (!this.plugin.pont) return;
+        if (v) this.plugin.pont.demarrer(); else this.plugin.pont.arreter();
+      }));
+    new obsidian.Setting(c)
+      .setName(tr('Abandon probable après'))
+      .setDesc(tr('Semaines sans créneau, sans modification ni temps passé, avant qu’une tâche soit signalée comme probablement abandonnée.'))
+      .addSlider((sl) => sl.setLimits(2, 12, 1).setDynamicTooltip()
+        .setValue(Number(s.tachesSemainesAbandon) || 4)
+        .onChange(async (v) => { s.tachesSemainesAbandon = v; await maj(); }));
   }
 
   ongletDossiers(c, s, maj) {

@@ -591,5 +591,37 @@ const avecTachesStatiques = (Base) => class extends Base {
     };
   }
 
+  // La revue : les analyses (analyseTaches) rangées en ce qui demande
+  // l'attention, du plus pressant au moins pressant. Chaque tâche y porte la
+  // raison de sa place. Une tâche peut figurer dans plusieurs rubriques.
+  static revueTaches(analyses, aujourdhui) {
+    const auj = Ariane.jourValide(aujourdhui) || new Date().toISOString().slice(0, 10);
+    const dans7 = Ariane.decalerJour(auj, 7);
+    const actives = (analyses || []).filter((x) => x && x.tache
+      && x.tache.statut !== 'terminée' && x.tache.statut !== 'abandonnée');
+    const avec = (code) => actives.filter((x) => x.analyse.diagnostics.some((d) => d.code === code));
+    const parUrgence = (l) => l.slice().sort((a, b) => b.analyse.urgence.score - a.analyse.urgence.score
+      || b.analyse.importance.score - a.analyse.importance.score);
+    const cetteSemaine = actives.filter((x) => {
+      const ech = Ariane.jourValide(x.tache.echeance);
+      const pro = String(x.analyse.prochainCreneau || '').slice(0, 10);
+      return (ech && ech >= auj && ech <= dans7) || (pro && pro <= dans7);
+    });
+    const urgentImportant = actives.filter((x) => x.analyse.urgence.niveau === 'haute'
+      && x.analyse.importance.niveau !== 'basse');
+    const importantPasUrgent = actives.filter((x) => x.analyse.importance.niveau === 'haute'
+      && x.analyse.urgence.niveau === 'basse');
+    return {
+      aujourdhui: auj,
+      enRetard: parUrgence(avec('retard')),
+      sousPlanifiees: parUrgence(avec('sous-planifiee')),
+      sEtirent: parUrgence(avec('etire')),
+      abandonsProbables: avec('abandon'),
+      cetteSemaine: parUrgence(cetteSemaine),
+      urgentImportant: parUrgence(urgentImportant),
+      importantPasUrgent: parUrgence(importantPasUrgent),
+    };
+  }
+
   //#endregion Ariane · static · tâches
 };

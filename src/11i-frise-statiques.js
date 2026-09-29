@@ -375,6 +375,39 @@ const avecFriseStatiques = (Base) => class extends Base {
     return avecRang.map((x) => x.e);
   }
 
+  // Les plages libres d'une journée, entre deux heures (« HH:MM »), une fois
+  // retirées les occupations (créneaux, événements) données en instants
+  // « AAAA-MM-JJTHH:MM ». Les plages de moins de `minMin` minutes sont
+  // écartées : un quart d'heure entre deux rendez-vous n'est pas un créneau.
+  static plagesLibres(jour, occupations, debutJournee, finJournee, minMin) {
+    const mn = (hm) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(hm || '')); return m ? +m[1] * 60 + +m[2] : null; };
+    const d0 = mn(debutJournee || '08:00');
+    const f0 = mn(finJournee || '19:00');
+    const min = Number(minMin) > 0 ? Number(minMin) : 30;
+    if (d0 === null || f0 === null || f0 <= d0) return [];
+    const occ = [];
+    for (const o of (occupations || [])) {
+      const od = String(o.debut || '');
+      const of = String(o.fin || '');
+      if (!od) continue;
+      const a = od.slice(0, 10) < jour ? 0 : od.slice(0, 10) > jour ? null : mn(od.slice(11));
+      const b = !of ? a + 60 : of.slice(0, 10) > jour ? 24 * 60 : of.slice(0, 10) < jour ? null : mn(of.slice(11));
+      if (a === null || b === null || b <= a) continue;
+      occ.push([Math.max(a, d0), Math.min(b, f0)]);
+    }
+    occ.sort((x, y) => x[0] - y[0]);
+    const libres = [];
+    let curseur = d0;
+    for (const [a, b] of occ) {
+      if (b <= curseur) continue;
+      if (a > curseur) libres.push([curseur, a]);
+      curseur = Math.max(curseur, b);
+    }
+    if (curseur < f0) libres.push([curseur, f0]);
+    const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    return libres.filter(([a, b]) => b - a >= min).map(([a, b]) => ({ debut: hm(a), fin: hm(b), minutes: b - a }));
+  }
+
   // Durée d'un créneau en minutes, entre deux instants « AAAA-MM-JJTHH:MM ».
   // Compté en temps universel : un changement d'heure ne raccourcit ni
   // n'allonge une copie. Jamais moins d'un quart d'heure ; une heure si les
