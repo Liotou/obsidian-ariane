@@ -884,6 +884,30 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
       });
     });
 
+    // Temps libre cette semaine : où poser les créneaux que les suggestions
+    // réclament.
+    const tl = d.tempsLibre;
+    this._section(el, 'libre', tr('Temps libre cette semaine'), null, (c) => {
+      const tete = c.createDiv({ cls: 'zfa-orga-libre-tete' });
+      tete.createSpan({ cls: 'zfa-orga-libre-total', text: this._duree(tl.minutes) });
+      tete.createSpan({ cls: 'zfa-orga-discret', text: tr('libres en ') + tl.nbPlages + ' ' + tr('plage(s), sur ')
+        + this._duree(tl.capacite) + tr(' de plage de travail restante (') + tl.heureDebut + ' → ' + tl.heureFin + ')' });
+      if (tl.capacite > 0) {
+        const jauge = c.createDiv({ cls: 'zfa-orga-jauge', attr: { title: Math.round(100 * (1 - tl.minutes / tl.capacite)) + ' % ' + tr('occupé') } });
+        jauge.createSpan().style.width = Math.round(100 * (1 - tl.minutes / tl.capacite)) + '%';
+      }
+      if (!tl.jours.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('La semaine de travail est terminée.') }); return; }
+      for (const j of tl.jours) {
+        const l = c.createDiv({ cls: 'zfa-orga-libre-jour' + (j.aujourdhui ? ' est-aujourdhui' : '') });
+        l.createSpan({ cls: 'zfa-orga-libre-nom', text: (j.aujourdhui ? tr('aujourd’hui') : this._jourCourt(j.jour)) });
+        l.createSpan({ cls: 'zfa-orga-libre-duree', text: j.minutes ? this._duree(j.minutes) : tr('complet') });
+        const plages = l.createDiv({ cls: 'zfa-orga-libre-plages' });
+        for (const p of j.plages) {
+          this._pastille(plages, p.debut + ' → ' + p.fin, p.minutes >= 120 ? 'long' : '', this._duree(p.minutes));
+        }
+      }
+    });
+
     // À surveiller.
     this._section(el, 'surveiller', tr('À surveiller'), d.surveiller.length, (c) => {
       if (!d.surveiller.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('Rien d’inquiétant.') }); return; }
@@ -967,6 +991,7 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
         cr.style.height = Math.round(100 * j.minutesPlanifiees / max) + '%';
         col.createDiv({ cls: 'zfa-orga-jour-heures', text: j.minutesPlanifiees ? this._duree(j.minutesPlanifiees) : '·' });
         col.createDiv({ cls: 'zfa-orga-discret', text: j.nbEvenements ? j.nbEvenements + ' ' + tr('rdv') : '' });
+        if (j.libre) col.createDiv({ cls: 'zfa-orga-jour-libre', text: this._duree(j.libre.minutes) + ' ' + tr('libres') });
       });
       const legende = c.createDiv({ cls: 'zfa-orga-legende' });
       legende.createSpan({ cls: 'zfa-orga-cle est-cr', text: tr('créneaux de tâches') });

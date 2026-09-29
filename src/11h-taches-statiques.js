@@ -806,10 +806,34 @@ const avecTachesStatiques = (Base) => class extends Base {
     const evenements = (c.evenements || []).filter((e) => e && e.debut);
     const horaires = evenements.filter((e) => !e.allDay);
 
-    const semaine = jours.map((j) => {
+    // Temps libre : dans la plage de travail (9 h - 18 h par défaut) de chaque
+    // jour ouvré qui reste, une fois retirés les créneaux de tâches et les
+    // rendez-vous. Aujourd'hui ne compte qu'à partir de maintenant, arrondi au
+    // quart d'heure suivant. Les événements « journée entière » ne bloquent
+    // rien (un colloque d'un jour n'occupe pas forcément toute la plage).
+    const mn = (hm) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(hm || '')); return m ? +m[1] * 60 + +m[2] : null; };
+    const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    const hDeb = mn(c.heureDebut) != null ? mn(c.heureDebut) : 9 * 60;
+    const hFin = mn(c.heureFin) != null ? mn(c.heureFin) : 18 * 60;
+    const maintenant = mn(c.maintenant);
+    const ouvre = (i) => c.weekend === true || i < 5;
+    const libreDu = (j, i) => {
+      if (j < auj || !ouvre(i) || hFin <= hDeb) return null;
+      let debut = hDeb;
+      if (j === auj && maintenant != null) debut = Math.max(hDeb, Math.ceil(maintenant / 15) * 15);
+      if (debut >= hFin) return { plages: [], minutes: 0, capacite: 0 };
+      const occ = creneaux.filter((x) => x.jour === j).map((x) => ({ debut: x.debut, fin: x.fin }))
+        .concat(horaires.filter((e) => e.debut.slice(0, 10) === j).map((e) => ({ debut: e.debut, fin: e.fin || e.debut })));
+      const plages = Ariane.plagesLibres(j, occ, hm(debut), hm(hFin), 30);
+      return { plages, minutes: plages.reduce((s, p) => s + p.minutes, 0), capacite: hFin - debut };
+    };
+
+    const semaine = jours.map((j, i) => {
       const cr = creneaux.filter((x) => x.jour === j);
       const ev = horaires.filter((e) => e.debut.slice(0, 10) === j);
+      const libre = libreDu(j, i);
       return {
+        libre,
         jour: j,
         aujourdhui: j === auj,
         minutesPlanifiees: cr.reduce((s, x) => s + x.minutes, 0),
@@ -918,7 +942,16 @@ const avecTachesStatiques = (Base) => class extends Base {
       .map((e) => ({ le: e.le, ref: e.ref, intitule: intitules.get(e.ref) || '',
         phrase: Ariane.phraseJournal(e), origine: Ariane.ORIGINES_JOURNAL[e.origine] || e.origine || '' }));
 
-    return { aujourdhuiISO: auj, lundi, chiffres, semaine, aujourdhui, journeeEntiere, suggestions,
+    const joursLibres = semaine.filter((j) => j.libre);
+    const tempsLibre = {
+      heureDebut: hm(hDeb),
+      heureFin: hm(hFin),
+      minutes: joursLibres.reduce((s, j) => s + j.libre.minutes, 0),
+      capacite: joursLibres.reduce((s, j) => s + j.libre.capacite, 0),
+      nbPlages: joursLibres.reduce((s, j) => s + j.libre.plages.length, 0),
+      jours: joursLibres.map((j) => ({ jour: j.jour, aujourdhui: j.aujourdhui, plages: j.libre.plages, minutes: j.libre.minutes })),
+    };
+    return { aujourdhuiISO: auj, lundi, chiffres, semaine, aujourdhui, journeeEntiere, suggestions, tempsLibre,
       matrice, surveiller, echeances, familles, activite };
   }
 

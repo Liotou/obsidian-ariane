@@ -3717,3 +3717,18 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-orga-vide { color: var(--text-muted); padding: 2px 0 4px; }
 .zfa-orga-aide { color: var(--text-faint); font-style: italic; font-size: var(--font-ui-smaller); }
 @media (prefers-reduced-motion: reduce) { .zfa-orga-chevron { transition: none; } }
+
+/* Temps libre cette semaine */
+.zfa-orga-libre-tete { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.zfa-orga-libre-total { font-size: 1.4em; font-weight: var(--font-semibold, 600); color: var(--zfa-orga-bien); font-variant-numeric: tabular-nums; }
+.zfa-orga-jauge { height: 6px; margin: 8px 0 6px; border-radius: 3px; background: color-mix(in srgb, var(--zfa-orga-bien) 30%, transparent); overflow: hidden; }
+.zfa-orga-jauge > span { display: block; height: 100%; background: var(--zfa-orga-cr); }
+.zfa-orga-libre-jour { display: flex; align-items: flex-start; gap: 10px; padding: 5px 0; border-top: 1px solid var(--background-modifier-border); }
+.zfa-orga-jauge + .zfa-orga-libre-jour,
+.zfa-orga-libre-tete + .zfa-orga-libre-jour { border-top: none; }
+.zfa-orga-libre-jour.est-aujourdhui .zfa-orga-libre-nom { color: var(--text-accent); font-weight: var(--font-semibold, 600); }
+.zfa-orga-libre-nom { flex: 0 0 96px; color: var(--text-normal); }
+.zfa-orga-libre-duree { flex: 0 0 64px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.zfa-orga-libre-plages { display: flex; flex-wrap: wrap; gap: 5px; }
+.zfa-orga-pastille.est-long { background: color-mix(in srgb, var(--zfa-orga-bien) 18%, transparent); color: var(--zfa-orga-bien); }
+.zfa-orga-jour-libre { font-size: var(--font-ui-smaller); color: var(--zfa-orga-bien); font-variant-numeric: tabular-nums; }

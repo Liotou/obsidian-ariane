@@ -372,3 +372,30 @@ test('suggestions : le plus pressant d\'abord, avec son conseil ; ni attente ni 
     ['PLAN', 'prevue', '2026-10-05T09:00'],
   ]);
 });
+
+test('temps libre : 9 h - 18 h des jours ouvrés restants, moins créneaux et rendez-vous', () => {
+  // AUJ = mardi 29 ; il reste mardi (à partir de 14:05), mercredi, jeudi, vendredi.
+  const t = Object.assign(tache({ ref: 'A' }), { creneaux: [AUJ + ' 15:00-16:00', '2026-10-01 09:00-12:00', '2026-10-03 10:00-12:00'] });
+  const d = Ariane.tableauOrganisation([{ tache: t, analyse: Ariane.analyseTache(t, { aujourdhui: AUJ }) }], {
+    aujourdhui: AUJ, maintenant: '14:05',
+    evenements: [
+      { titre: 'Réunion', debut: '2026-09-30T10:00', fin: '2026-09-30T11:30', allDay: false },
+      { titre: 'Colloque', debut: '2026-10-02T00:00', fin: '2026-10-03T00:00', allDay: true },
+    ],
+  });
+  const l = d.tempsLibre;
+  assert.deepEqual(l.jours.map((j) => j.jour), ['2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02'],
+    'lundi est passé, le week-end n\'est pas compté');
+  assert.deepEqual(l.jours[0].plages.map((p) => p.debut + '-' + p.fin), ['14:15-15:00', '16:00-18:00'],
+    'aujourd\'hui : à partir du quart d\'heure suivant maintenant (14:15), le créneau de 15:00 retiré');
+  assert.deepEqual(l.jours[1].plages.map((p) => p.debut + '-' + p.fin), ['09:00-10:00', '11:30-18:00']);
+  assert.deepEqual(l.jours[2].plages.map((p) => p.debut + '-' + p.fin), ['12:00-18:00']);
+  assert.equal(l.jours[3].minutes, 540, 'une journée entière ne bloque rien');
+  assert.equal(l.minutes, (45 + 120) + (60 + 390) + 360 + 540);
+  assert.equal(l.nbPlages, 2 + 2 + 1 + 1);
+  assert.equal(d.semaine[5].libre, null, 'samedi : pas de temps libre compté');
+  const avecWeekend = Ariane.tableauOrganisation([], { aujourdhui: AUJ, maintenant: '14:05', weekend: true,
+    heureDebut: '10:00', heureFin: '12:00' });
+  assert.deepEqual(avecWeekend.tempsLibre.jours.map((j) => j.jour).slice(-2), ['2026-10-03', '2026-10-04']);
+  assert.equal(avecWeekend.tempsLibre.jours[0].minutes, 0, 'aujourd\'hui, la plage 10-12 est déjà passée');
+});

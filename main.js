@@ -1289,7 +1289,10 @@ const DEFAULT_SETTINGS = {
   rappelsSupprimerAbandonnees: true, // une tâche abandonnée quitte Apple Rappels
   claudePont: true,             // relais local pour le serveur MCP ariane-taches (bureau)
   tachesSemainesAbandon: 4,
-  organisationReplies: [],      // sections repliées du tableau de bord des tâches     // semaines sans activité avant « abandon probable »
+  organisationReplies: [],
+  organisationHeureDebut: '09:00', // plage de travail pour le temps libre du tableau de bord
+  organisationHeureFin: '18:00',
+  organisationWeekend: false,   // le week-end compte-t-il dans le temps libre ?      // sections repliées du tableau de bord des tâches     // semaines sans activité avant « abandon probable »
   agendaActif: false,           // intégration Apple Agenda / Calendar (macOS, EKEvent)
   agendaAuto: true,             // pousser à la sauvegarde + relever régulièrement
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques
@@ -10456,10 +10459,34 @@ const avecTachesStatiques = (Base) => class extends Base {
     const evenements = (c.evenements || []).filter((e) => e && e.debut);
     const horaires = evenements.filter((e) => !e.allDay);
 
-    const semaine = jours.map((j) => {
+    // Temps libre : dans la plage de travail (9 h - 18 h par défaut) de chaque
+    // jour ouvré qui reste, une fois retirés les créneaux de tâches et les
+    // rendez-vous. Aujourd'hui ne compte qu'à partir de maintenant, arrondi au
+    // quart d'heure suivant. Les événements « journée entière » ne bloquent
+    // rien (un colloque d'un jour n'occupe pas forcément toute la plage).
+    const mn = (hm) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(hm || '')); return m ? +m[1] * 60 + +m[2] : null; };
+    const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    const hDeb = mn(c.heureDebut) != null ? mn(c.heureDebut) : 9 * 60;
+    const hFin = mn(c.heureFin) != null ? mn(c.heureFin) : 18 * 60;
+    const maintenant = mn(c.maintenant);
+    const ouvre = (i) => c.weekend === true || i < 5;
+    const libreDu = (j, i) => {
+      if (j < auj || !ouvre(i) || hFin <= hDeb) return null;
+      let debut = hDeb;
+      if (j === auj && maintenant != null) debut = Math.max(hDeb, Math.ceil(maintenant / 15) * 15);
+      if (debut >= hFin) return { plages: [], minutes: 0, capacite: 0 };
+      const occ = creneaux.filter((x) => x.jour === j).map((x) => ({ debut: x.debut, fin: x.fin }))
+        .concat(horaires.filter((e) => e.debut.slice(0, 10) === j).map((e) => ({ debut: e.debut, fin: e.fin || e.debut })));
+      const plages = Ariane.plagesLibres(j, occ, hm(debut), hm(hFin), 30);
+      return { plages, minutes: plages.reduce((s, p) => s + p.minutes, 0), capacite: hFin - debut };
+    };
+
+    const semaine = jours.map((j, i) => {
       const cr = creneaux.filter((x) => x.jour === j);
       const ev = horaires.filter((e) => e.debut.slice(0, 10) === j);
+      const libre = libreDu(j, i);
       return {
+        libre,
         jour: j,
         aujourdhui: j === auj,
         minutesPlanifiees: cr.reduce((s, x) => s + x.minutes, 0),
@@ -10568,7 +10595,16 @@ const avecTachesStatiques = (Base) => class extends Base {
       .map((e) => ({ le: e.le, ref: e.ref, intitule: intitules.get(e.ref) || '',
         phrase: Ariane.phraseJournal(e), origine: Ariane.ORIGINES_JOURNAL[e.origine] || e.origine || '' }));
 
-    return { aujourdhuiISO: auj, lundi, chiffres, semaine, aujourdhui, journeeEntiere, suggestions,
+    const joursLibres = semaine.filter((j) => j.libre);
+    const tempsLibre = {
+      heureDebut: hm(hDeb),
+      heureFin: hm(hFin),
+      minutes: joursLibres.reduce((s, j) => s + j.libre.minutes, 0),
+      capacite: joursLibres.reduce((s, j) => s + j.libre.capacite, 0),
+      nbPlages: joursLibres.reduce((s, j) => s + j.libre.plages.length, 0),
+      jours: joursLibres.map((j) => ({ jour: j.jour, aujourdhui: j.aujourdhui, plages: j.libre.plages, minutes: j.libre.minutes })),
+    };
+    return { aujourdhuiISO: auj, lundi, chiffres, semaine, aujourdhui, journeeEntiere, suggestions, tempsLibre,
       matrice, surveiller, echeances, familles, activite };
   }
 
@@ -15965,7 +16001,15 @@ const avecTaches = (Base) => class extends Base {
     });
     let evenements = [];
     try { evenements = (await this.evenementsFond(lundi, Ariane.decalerJour(lundi, 7))) || []; } catch (e) { evenements = []; }
-    return Ariane.tableauOrganisation(entrees, { aujourdhui: auj, journal, evenements });
+    const d = new Date();
+    const s = this.settings;
+    return Ariane.tableauOrganisation(entrees, {
+      aujourdhui: auj, journal, evenements,
+      maintenant: String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'),
+      heureDebut: s.organisationHeureDebut || '09:00',
+      heureFin: s.organisationHeureFin || '18:00',
+      weekend: s.organisationWeekend === true,
+    });
   }
 
   // La note « Gestion de l'organisation » : créée au besoin dans le dossier
@@ -18090,6 +18134,20 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         if (!this.plugin.pont) return;
         if (v) this.plugin.pont.demarrer(); else this.plugin.pont.arreter();
       }));
+    this._section(c, tr('Tableau de bord des tâches'));
+    this._aide(c, tr("La note « Gestion de l’organisation » compte le temps libre qui reste dans la semaine : la plage de travail de chaque jour, moins vos créneaux et vos rendez-vous."));
+    const heure = (v, defaut) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '').trim()) ? String(v).trim() : defaut);
+    new obsidian.Setting(c)
+      .setName(tr('Plage de travail'))
+      .setDesc(tr('Début et fin de journée, HH:MM.'))
+      .addText((t) => t.setPlaceholder('09:00').setValue(s.organisationHeureDebut || '09:00')
+        .onChange(async (v) => { s.organisationHeureDebut = heure(v, '09:00'); await maj(); }))
+      .addText((t) => t.setPlaceholder('18:00').setValue(s.organisationHeureFin || '18:00')
+        .onChange(async (v) => { s.organisationHeureFin = heure(v, '18:00'); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Compter le week-end'))
+      .addToggle((t) => t.setValue(s.organisationWeekend === true)
+        .onChange(async (v) => { s.organisationWeekend = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Abandon probable après'))
       .setDesc(tr('Semaines sans créneau, sans modification ni temps passé, avant qu’une tâche soit signalée comme probablement abandonnée.'))
@@ -33044,6 +33102,30 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
       });
     });
 
+    // Temps libre cette semaine : où poser les créneaux que les suggestions
+    // réclament.
+    const tl = d.tempsLibre;
+    this._section(el, 'libre', tr('Temps libre cette semaine'), null, (c) => {
+      const tete = c.createDiv({ cls: 'zfa-orga-libre-tete' });
+      tete.createSpan({ cls: 'zfa-orga-libre-total', text: this._duree(tl.minutes) });
+      tete.createSpan({ cls: 'zfa-orga-discret', text: tr('libres en ') + tl.nbPlages + ' ' + tr('plage(s), sur ')
+        + this._duree(tl.capacite) + tr(' de plage de travail restante (') + tl.heureDebut + ' → ' + tl.heureFin + ')' });
+      if (tl.capacite > 0) {
+        const jauge = c.createDiv({ cls: 'zfa-orga-jauge', attr: { title: Math.round(100 * (1 - tl.minutes / tl.capacite)) + ' % ' + tr('occupé') } });
+        jauge.createSpan().style.width = Math.round(100 * (1 - tl.minutes / tl.capacite)) + '%';
+      }
+      if (!tl.jours.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('La semaine de travail est terminée.') }); return; }
+      for (const j of tl.jours) {
+        const l = c.createDiv({ cls: 'zfa-orga-libre-jour' + (j.aujourdhui ? ' est-aujourdhui' : '') });
+        l.createSpan({ cls: 'zfa-orga-libre-nom', text: (j.aujourdhui ? tr('aujourd’hui') : this._jourCourt(j.jour)) });
+        l.createSpan({ cls: 'zfa-orga-libre-duree', text: j.minutes ? this._duree(j.minutes) : tr('complet') });
+        const plages = l.createDiv({ cls: 'zfa-orga-libre-plages' });
+        for (const p of j.plages) {
+          this._pastille(plages, p.debut + ' → ' + p.fin, p.minutes >= 120 ? 'long' : '', this._duree(p.minutes));
+        }
+      }
+    });
+
     // À surveiller.
     this._section(el, 'surveiller', tr('À surveiller'), d.surveiller.length, (c) => {
       if (!d.surveiller.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('Rien d’inquiétant.') }); return; }
@@ -33127,6 +33209,7 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
         cr.style.height = Math.round(100 * j.minutesPlanifiees / max) + '%';
         col.createDiv({ cls: 'zfa-orga-jour-heures', text: j.minutesPlanifiees ? this._duree(j.minutesPlanifiees) : '·' });
         col.createDiv({ cls: 'zfa-orga-discret', text: j.nbEvenements ? j.nbEvenements + ' ' + tr('rdv') : '' });
+        if (j.libre) col.createDiv({ cls: 'zfa-orga-jour-libre', text: this._duree(j.libre.minutes) + ' ' + tr('libres') });
       });
       const legende = c.createDiv({ cls: 'zfa-orga-legende' });
       legende.createSpan({ cls: 'zfa-orga-cle est-cr', text: tr('créneaux de tâches') });

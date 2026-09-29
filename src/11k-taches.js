@@ -2336,7 +2336,15 @@ const avecTaches = (Base) => class extends Base {
     });
     let evenements = [];
     try { evenements = (await this.evenementsFond(lundi, Ariane.decalerJour(lundi, 7))) || []; } catch (e) { evenements = []; }
-    return Ariane.tableauOrganisation(entrees, { aujourdhui: auj, journal, evenements });
+    const d = new Date();
+    const s = this.settings;
+    return Ariane.tableauOrganisation(entrees, {
+      aujourdhui: auj, journal, evenements,
+      maintenant: String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'),
+      heureDebut: s.organisationHeureDebut || '09:00',
+      heureFin: s.organisationHeureFin || '18:00',
+      weekend: s.organisationWeekend === true,
+    });
   }
 
   // La note « Gestion de l'organisation » : créée au besoin dans le dossier

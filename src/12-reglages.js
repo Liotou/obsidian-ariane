@@ -497,6 +497,20 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         if (!this.plugin.pont) return;
         if (v) this.plugin.pont.demarrer(); else this.plugin.pont.arreter();
       }));
+    this._section(c, tr('Tableau de bord des tâches'));
+    this._aide(c, tr("La note « Gestion de l’organisation » compte le temps libre qui reste dans la semaine : la plage de travail de chaque jour, moins vos créneaux et vos rendez-vous."));
+    const heure = (v, defaut) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '').trim()) ? String(v).trim() : defaut);
+    new obsidian.Setting(c)
+      .setName(tr('Plage de travail'))
+      .setDesc(tr('Début et fin de journée, HH:MM.'))
+      .addText((t) => t.setPlaceholder('09:00').setValue(s.organisationHeureDebut || '09:00')
+        .onChange(async (v) => { s.organisationHeureDebut = heure(v, '09:00'); await maj(); }))
+      .addText((t) => t.setPlaceholder('18:00').setValue(s.organisationHeureFin || '18:00')
+        .onChange(async (v) => { s.organisationHeureFin = heure(v, '18:00'); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Compter le week-end'))
+      .addToggle((t) => t.setValue(s.organisationWeekend === true)
+        .onChange(async (v) => { s.organisationWeekend = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Abandon probable après'))
       .setDesc(tr('Semaines sans créneau, sans modification ni temps passé, avant qu’une tâche soit signalée comme probablement abandonnée.'))
