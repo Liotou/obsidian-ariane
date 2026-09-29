@@ -492,3 +492,26 @@ test('répartition : un reste court est fait d\'une traite, pas laissé au lende
     { jours, candidats: [{ ref: 'P', echeance: '2026-10-02', joursRestants: 3 }], heureDebut: '09:00', maxJourMin: 360, reserve: 0 });
   assert.deepEqual(r.placements.map((p) => p.debut + '-' + p.fin.slice(11)), ['2026-09-30T09:00-11:30']);
 });
+
+test('pseudo-calendrier : la grille de la semaine, et les propositions devenues caduques', () => {
+  const t = Object.assign(tache({ ref: 'A', intitule: 'Lire', famille: 'lecture' }), { creneaux: ['2026-09-30 10:00-11:00'] });
+  const d = Ariane.tableauOrganisation([{ tache: t, analyse: Ariane.analyseTache(t, { aujourdhui: AUJ }) }], {
+    aujourdhui: AUJ, maintenant: '08:00', pauseDebut: '12:00', pauseFin: '13:00',
+    evenements: [{ titre: 'Réunion', debut: '2026-10-01T14:00', fin: '2026-10-01T15:00', allDay: false, calendrier: 'Travail' }],
+  });
+  assert.deepEqual(d.grille.jours.map((j) => j.jour), ['2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02']);
+  assert.equal(d.grille.jours[0].passe, true);
+  assert.deepEqual(d.grille.jours[2].occupations.map((o) => [o.genre, o.ref, o.debut]), [['creneau', 'A', '2026-09-30T10:00']]);
+  assert.equal(d.grille.pauseDebut, '12:00');
+  const props = [
+    { id: 1, ref: 'A', debut: '2026-09-30T14:00', fin: '2026-09-30T15:00' },
+    { id: 2, ref: 'A', debut: '2026-09-30T10:30', fin: '2026-09-30T11:30' },
+    { id: 3, ref: 'A', debut: '2026-09-29T07:00', fin: '2026-09-29T07:30' },
+    { id: 4, ref: 'Z', debut: '2026-10-02T09:00', fin: '2026-10-02T10:00' },
+    { id: 5, ref: 'A', debut: '2026-10-01T14:30', fin: '2026-10-01T16:00' },
+  ];
+  const n = Ariane.nettoyerPropositions(props, d.grille, AUJ + 'T08:00', ['A']);
+  assert.deepEqual(n.gardees.map((p) => p.id), [1]);
+  assert.deepEqual(n.retirees.map((p) => p.id), [2, 3, 4, 5],
+    'chevauche un créneau ; déjà passée ; tâche disparue ; chevauche un rendez-vous');
+});

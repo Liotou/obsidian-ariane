@@ -3733,3 +3733,59 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-orga-pastille.est-long { background: color-mix(in srgb, var(--zfa-orga-bien) 18%, transparent); color: var(--zfa-orga-bien); }
 .zfa-orga-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 8px; }
 .zfa-orga-jour-libre { font-size: var(--font-ui-smaller); color: var(--zfa-orga-bien); font-variant-numeric: tabular-nums; }
+
+/* ── Pseudo-calendrier de la semaine (tableau de bord, section 19) ─────────
+   Une copie de la semaine : l'existant en fond, les créneaux proposés en
+   fantômes (pointillés), à valider, écarter, déplacer ou étirer. */
+.zfa-orga-cal { --zfa-orga-axe: 38px; margin-top: 8px; user-select: none; }
+.zfa-orga-cal-barre { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.zfa-orga-cal-compte { font-weight: var(--font-semibold, 600); color: var(--text-accent); }
+.zfa-orga-cal-barre .zfa-orga-discret { flex: 1 1 auto; }
+.zfa-orga-cal-tete, .zfa-orga-cal-corps { display: flex; }
+.zfa-orga-cal-coin { flex: 0 0 var(--zfa-orga-axe); }
+.zfa-orga-cal-nom { flex: 1 1 0; min-width: 0; text-align: center; padding: 3px 0 5px; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.zfa-orga-cal-nom.est-aujourdhui { color: var(--text-accent); font-weight: var(--font-semibold, 600); }
+.zfa-orga-cal-nom.est-passe { opacity: 0.5; }
+.zfa-orga-cal-corps { position: relative; }
+.zfa-orga-cal-axe { position: relative; flex: 0 0 var(--zfa-orga-axe); }
+.zfa-orga-cal-heure { position: absolute; right: 6px; transform: translateY(-50%); font-size: 10px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.zfa-orga-cal-cols { flex: 1 1 auto; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border-left: 1px solid var(--background-modifier-border); }
+.zfa-orga-cal-col { position: relative; border-right: 1px solid var(--background-modifier-border); background: var(--background-primary); }
+.zfa-orga-cal-col.est-aujourdhui { background: color-mix(in srgb, var(--interactive-accent) 5%, var(--background-primary)); }
+.zfa-orga-cal-col.est-passe { background: repeating-linear-gradient(135deg, transparent 0 6px, var(--background-modifier-hover) 6px 7px); }
+.zfa-orga-cal-ligne { position: absolute; left: 0; right: 0; border-top: 1px solid color-mix(in srgb, var(--background-modifier-border) 60%, transparent); }
+.zfa-orga-cal-pause { position: absolute; left: 0; right: 0; background: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--text-faint) 14%, transparent) 5px 6px); }
+.zfa-orga-cal-maintenant { position: absolute; left: 0; right: 0; height: 2px; background: var(--color-red, #e5534b); z-index: 3; }
+.zfa-orga-cal-bloc {
+  --zfa-orga-coul: var(--text-faint);
+  position: absolute; left: 3px; right: 3px; z-index: 1; overflow: hidden;
+  padding: 1px 5px; border-radius: 4px; font-size: 11px; line-height: 1.25;
+}
+.zfa-orga-cal-bloc.est-creneau { background: color-mix(in srgb, var(--zfa-orga-coul) 22%, var(--background-primary)); box-shadow: inset 3px 0 0 var(--zfa-orga-coul); color: var(--text-normal); }
+.zfa-orga-cal-bloc.est-evenement { border: 1px solid color-mix(in srgb, var(--zfa-orga-coul, var(--text-muted)) 70%, transparent); color: var(--text-muted); background: var(--background-primary); }
+.zfa-orga-cal-titre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zfa-orga-fantome {
+  --zfa-orga-coul: var(--interactive-accent);
+  position: absolute; left: 3px; right: 3px; z-index: 2; overflow: hidden; cursor: grab;
+  padding: 2px 5px 6px; border-radius: 5px; font-size: 11px; line-height: 1.25;
+  border: 1.5px dashed var(--zfa-orga-coul);
+  background: color-mix(in srgb, var(--zfa-orga-coul) 12%, var(--background-primary));
+  color: var(--text-normal);
+  transition: box-shadow 0.12s ease;
+}
+.zfa-orga-fantome:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28); z-index: 4; }
+.zfa-orga-fantome.est-saisi { cursor: grabbing; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4); z-index: 5; opacity: 0.95; }
+.zfa-orga-fantome.est-conflit { border-color: var(--color-red, #e5534b); border-style: solid; }
+.zfa-orga-fantome-heures { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 10px; }
+.zfa-orga-fantome-actions { position: absolute; top: 2px; right: 2px; display: flex; gap: 2px; opacity: 0; transition: opacity 0.12s ease; }
+.zfa-orga-fantome:hover .zfa-orga-fantome-actions { opacity: 1; }
+.zfa-orga-fantome-actions button {
+  width: 20px; height: 20px; padding: 0; border-radius: 4px; font-size: 12px; line-height: 1;
+  box-shadow: none; cursor: pointer; background: var(--background-secondary);
+}
+.zfa-orga-fantome-ok { color: var(--zfa-orga-bien, #57a55a); }
+.zfa-orga-fantome-ko { color: var(--text-muted); }
+.zfa-orga-fantome-ok:hover { background: var(--zfa-orga-bien, #57a55a); color: #fff; }
+.zfa-orga-fantome-ko:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.zfa-orga-fantome-poignee { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
+@media (prefers-reduced-motion: reduce) { .zfa-orga-fantome, .zfa-orga-fantome-actions { transition: none; } }

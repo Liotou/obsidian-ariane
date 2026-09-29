@@ -946,6 +946,20 @@ const avecTachesStatiques = (Base) => class extends Base {
       .map((e) => ({ le: e.le, ref: e.ref, intitule: intitules.get(e.ref) || '',
         phrase: Ariane.phraseJournal(e), origine: Ariane.ORIGINES_JOURNAL[e.origine] || e.origine || '' }));
 
+    // La grille de la semaine, pour le pseudo-calendrier du tableau de bord :
+    // ce qui occupe chaque jour ouvré, avec ses heures. Les créneaux portent
+    // leur tâche (couleur de famille), les rendez-vous leur calendrier.
+    const grille = {
+      heureDebut: hm(hDeb), heureFin: hm(hFin),
+      pauseDebut: mn(c.pauseDebut) != null && mn(c.pauseFin) != null ? hm(mn(c.pauseDebut)) : '',
+      pauseFin: mn(c.pauseDebut) != null && mn(c.pauseFin) != null ? hm(mn(c.pauseFin)) : '',
+      jours: jours.map((j, i) => ({ jour: j, index: i, aujourdhui: j === auj, passe: j < auj, ouvre: ouvre(i),
+        occupations: creneaux.filter((x) => x.jour === j).map((x) => ({ genre: 'creneau', debut: x.debut, fin: x.fin,
+          ref: x.entree.tache.ref, titre: x.entree.tache.intitule || x.entree.tache.ref, famille: x.entree.tache.famille || '' }))
+          .concat(horaires.filter((e) => e.debut.slice(0, 10) === j).map((e) => ({ genre: 'evenement', debut: e.debut,
+            fin: e.fin || e.debut, titre: e.titre || '', couleur: e.couleur || '', calendrier: e.calendrier || '' }))) }))
+        .filter((j) => j.ouvre),
+    };
     const joursLibres = semaine.filter((j) => j.libre);
     const tempsLibre = {
       heureDebut: hm(hDeb),
@@ -955,7 +969,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       nbPlages: joursLibres.reduce((s, j) => s + j.libre.plages.length, 0),
       jours: joursLibres.map((j) => ({ jour: j.jour, aujourdhui: j.aujourdhui, plages: j.libre.plages, minutes: j.libre.minutes })),
     };
-    return { aujourdhuiISO: auj, lundi, chiffres, semaine, aujourdhui, journeeEntiere, suggestions, tempsLibre,
+    return { aujourdhuiISO: auj, lundi, chiffres, semaine, aujourdhui, journeeEntiere, suggestions, tempsLibre, grille,
       matrice, surveiller, echeances, familles, activite };
   }
 
@@ -1164,6 +1178,25 @@ const avecTachesStatiques = (Base) => class extends Base {
         justification: [taille, e.raison].filter(Boolean).join(' : ') });
     }
     return out;
+  }
+
+  // Les propositions de répartition en attente, débarrassées de celles qui
+  // n'ont plus lieu d'être : heure passée (ou déjà commencée), place prise
+  // entre-temps par un créneau ou un rendez-vous, tâche finie ou disparue.
+  // Rend { gardees, retirees }.
+  static nettoyerPropositions(propositions, grille, maintenant, refsActives) {
+    const actives = refsActives instanceof Set ? refsActives : new Set(refsActives || []);
+    const occ = [];
+    for (const j of ((grille && grille.jours) || [])) for (const o of j.occupations) occ.push(o);
+    const chevauche = (a, b) => a.debut < b.fin && b.debut < a.fin;
+    const gardees = [];
+    const retirees = [];
+    for (const p of (propositions || [])) {
+      const perimee = !p || !p.debut || !p.fin || p.debut <= String(maintenant || '')
+        || !actives.has(p.ref) || occ.some((o) => chevauche(p, o));
+      (perimee ? retirees : gardees).push(p);
+    }
+    return { gardees, retirees };
   }
 
   //#endregion Ariane · static · tâches

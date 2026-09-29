@@ -693,6 +693,10 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
   }
 
   onload() {
+    // Inscrit auprès du greffon : une répartition proposée redessine les
+    // tableaux ouverts (rafraichirOrganisation).
+    if (!this.greffon._blocsOrganisation) this.greffon._blocsOrganisation = new Set();
+    this.greffon._blocsOrganisation.add(this);
     this.rendre();
     this.registerEvent(this.greffon.app.metadataCache.on('changed', (f) => {
       if (!f || !this.greffon.refDeChemin(f.path)) return;
@@ -703,7 +707,10 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
     this.registerInterval(window.setInterval(() => this.rendre(), 15 * 60000));
   }
 
-  onunload() { clearTimeout(this._minuteur); }
+  onunload() {
+    clearTimeout(this._minuteur);
+    if (this.greffon._blocsOrganisation) this.greffon._blocsOrganisation.delete(this);
+  }
 
   // ── Petits outils de mise en forme ─────────────────────────────────────
   _jourCourt(iso) {
@@ -803,6 +810,185 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
     });
     remplir(bloc.createDiv({ cls: 'zfa-orga-contenu' }));
     return bloc;
+  }
+
+  // ── Le pseudo-calendrier de la semaine ─────────────────────────────────
+  //  Une copie de la semaine (jours ouvrés, plage de travail) : ce qui existe
+  //  en fond, non modifiable ; les créneaux proposés par la répartition en
+  //  fantômes, à valider (✓), écarter (✕), déplacer ou étirer à la souris.
+  //  Validé, un créneau s'écrit dans sa tâche au même jour, à la même heure :
+  //  il apparaît dans le vrai calendrier. Tout le DOM et les écouteurs vivent
+  //  dans le document de la note (volet détaché compris).
+  _pseudoCalendrier(hote, d) {
+    const g = d.grille;
+    const props = d.propositions || [];
+    if (!g || !g.jours.length) return;
+    const mn = (h) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(h || '')); return m ? +m[1] * 60 + +m[2] : 0; };
+    const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    const hDeb = mn(g.heureDebut);
+    const hFin = mn(g.heureFin);
+    const PXH = 44;
+    const y = (m) => ((Math.max(hDeb, Math.min(hFin, m)) - hDeb) / 60) * PXH;
+    const cal = hote.createDiv({ cls: 'zfa-orga-cal' });
+
+    if (props.length) {
+      const barre = cal.createDiv({ cls: 'zfa-orga-cal-barre' });
+      barre.createSpan({ cls: 'zfa-orga-cal-compte', text: props.length + ' ' + tr('créneau(x) proposé(s)') });
+      barre.createSpan({ cls: 'zfa-orga-discret', text: tr('glisser pour déplacer, tirer le bas pour allonger') });
+      const tout = barre.createEl('button', { cls: 'mod-cta', text: tr('Tout valider') });
+      tout.addEventListener('click', () => this.greffon.validerPropositionsOrganisation(props.map((p) => p.id)));
+      const rien = barre.createEl('button', { text: tr('Tout écarter') });
+      rien.addEventListener('click', () => this.greffon.ecarterPropositionsOrganisation(props.map((p) => p.id)));
+    }
+
+    const tete = cal.createDiv({ cls: 'zfa-orga-cal-tete' });
+    tete.createDiv({ cls: 'zfa-orga-cal-coin' });
+    for (const j of g.jours) {
+      tete.createDiv({ cls: 'zfa-orga-cal-nom' + (j.aujourdhui ? ' est-aujourdhui' : '') + (j.passe ? ' est-passe' : ''),
+        text: this._jourCourt(j.jour) });
+    }
+    const corps = cal.createDiv({ cls: 'zfa-orga-cal-corps' });
+    corps.style.height = Math.round(((hFin - hDeb) / 60) * PXH) + 'px';
+    const axe = corps.createDiv({ cls: 'zfa-orga-cal-axe' });
+    for (let h = Math.ceil(hDeb / 60); h * 60 < hFin; h += 1) {
+      axe.createDiv({ cls: 'zfa-orga-cal-heure', text: h + ' h' }).style.top = y(h * 60) + 'px';
+    }
+    const grilleCols = corps.createDiv({ cls: 'zfa-orga-cal-cols' });
+    const cols = g.jours.map((j) => {
+      const col = grilleCols.createDiv({ cls: 'zfa-orga-cal-col' + (j.aujourdhui ? ' est-aujourdhui' : '') + (j.passe ? ' est-passe' : '') });
+      for (let h = Math.ceil(hDeb / 60); h * 60 < hFin; h += 1) {
+        col.createDiv({ cls: 'zfa-orga-cal-ligne' }).style.top = y(h * 60) + 'px';
+      }
+      if (g.pauseDebut && g.pauseFin) {
+        const p = col.createDiv({ cls: 'zfa-orga-cal-pause', attr: { title: tr('Pause déjeuner') } });
+        p.style.top = y(mn(g.pauseDebut)) + 'px';
+        p.style.height = (y(mn(g.pauseFin)) - y(mn(g.pauseDebut))) + 'px';
+      }
+      for (const o of j.occupations) {
+        const a = mn(o.debut.slice(11));
+        const b = o.fin.slice(0, 10) > j.jour ? hFin : mn(o.fin.slice(11));
+        if (b <= hDeb || a >= hFin) continue;
+        const bloc = col.createDiv({ cls: 'zfa-orga-cal-bloc est-' + o.genre });
+        bloc.style.top = y(a) + 'px';
+        bloc.style.height = Math.max(14, y(b) - y(a) - 2) + 'px';
+        const coul = o.genre === 'creneau' ? this._couleur({ famille: o.famille }) : o.couleur;
+        if (coul) bloc.style.setProperty('--zfa-orga-coul', coul);
+        bloc.createDiv({ cls: 'zfa-orga-cal-titre', text: o.titre });
+        bloc.setAttribute('title', o.debut.slice(11, 16) + ' → ' + o.fin.slice(11, 16) + ' · ' + o.titre
+          + (o.calendrier ? ' (' + o.calendrier + ')' : ''));
+      }
+      if (j.aujourdhui) {
+        const n = new Date();
+        const m = n.getHours() * 60 + n.getMinutes();
+        if (m > hDeb && m < hFin) col.createDiv({ cls: 'zfa-orga-cal-maintenant' }).style.top = y(m) + 'px';
+      }
+      return col;
+    });
+    const ctx = { g, cols, props, hDeb, hFin, PXH, y, mn, hm };
+    for (const p of props) this._fantome(ctx, p);
+    this._marquerConflits(ctx);
+  }
+
+  _fantome(ctx, p) {
+    const i = ctx.g.jours.findIndex((j) => j.jour === p.debut.slice(0, 10));
+    if (i < 0) return;
+    const el = ctx.cols[i].createDiv({ cls: 'zfa-orga-fantome' });
+    el.zfaProposition = p;
+    const coul = this._couleur({ famille: (this.greffon.tachesPourGantt().find((t) => t.ref === p.ref) || {}).famille });
+    if (coul) el.style.setProperty('--zfa-orga-coul', coul);
+    const place = () => {
+      const a = ctx.mn(p.debut.slice(11));
+      const b = ctx.mn(p.fin.slice(11));
+      el.style.top = ctx.y(a) + 'px';
+      el.style.height = Math.max(18, ctx.y(b) - ctx.y(a) - 2) + 'px';
+      heures.textContent = p.debut.slice(11, 16) + ' → ' + p.fin.slice(11, 16);
+    };
+    const titre = el.createDiv({ cls: 'zfa-orga-cal-titre', text: p.ref + ' · ' + p.intitule });
+    const heures = el.createDiv({ cls: 'zfa-orga-fantome-heures' });
+    const taille = { petite: tr('petite tâche'), moyenne: tr('tâche moyenne'), grosse: tr('gros travail') }[p.taille] || '';
+    el.setAttribute('title', [p.intitule, [taille, p.raison].filter(Boolean).join(' : ')].filter(Boolean).join('\n'));
+    const act = el.createDiv({ cls: 'zfa-orga-fantome-actions' });
+    const ok = act.createEl('button', { cls: 'zfa-orga-fantome-ok', text: '✓', attr: { 'aria-label': tr('Valider ce créneau') } });
+    const ko = act.createEl('button', { cls: 'zfa-orga-fantome-ko', text: '✕', attr: { 'aria-label': tr('Écarter ce créneau') } });
+    for (const b of [ok, ko]) b.addEventListener('pointerdown', (e) => e.stopPropagation());
+    ok.addEventListener('click', (e) => { e.stopPropagation(); this.greffon.validerPropositionsOrganisation([p.id]); });
+    ko.addEventListener('click', (e) => { e.stopPropagation(); this.greffon.ecarterPropositionsOrganisation([p.id]); });
+    const poignee = el.createDiv({ cls: 'zfa-orga-fantome-poignee' });
+    place();
+    titre.setAttribute('draggable', 'false');
+    el.addEventListener('pointerdown', (e) => this._saisirFantome(e, ctx, el, p, place, 'bouger'));
+    poignee.addEventListener('pointerdown', (e) => { e.stopPropagation(); this._saisirFantome(e, ctx, el, p, place, 'etirer'); });
+  }
+
+  // Déplacer (au quart d'heure, d'un jour à l'autre) ou étirer un fantôme.
+  // Jamais hors de la plage de travail, jamais dans un jour passé.
+  _saisirFantome(e, ctx, el, p, place, mode) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const doc = el.ownerDocument;
+    const win = doc.defaultView || window;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const a0 = ctx.mn(p.debut.slice(11));
+    const b0 = ctx.mn(p.fin.slice(11));
+    const duree = b0 - a0;
+    const i0 = ctx.g.jours.findIndex((j) => j.jour === p.debut.slice(0, 10));
+    const colW = ctx.cols[0].getBoundingClientRect().width || 100;
+    let i = i0;
+    el.classList.add('est-saisi');
+    const bouger = (m) => {
+      const dmin = Math.round(((m.clientY - y0) / ctx.PXH) * 60 / 15) * 15;
+      if (mode === 'etirer') {
+        const b = Math.max(a0 + 15, Math.min(ctx.hFin, b0 + dmin));
+        p.fin = p.debut.slice(0, 10) + 'T' + ctx.hm(b);
+      } else {
+        const a = Math.max(ctx.hDeb, Math.min(ctx.hFin - duree, a0 + dmin));
+        let ni = Math.max(0, Math.min(ctx.cols.length - 1, i0 + Math.round((m.clientX - x0) / colW)));
+        if (ctx.g.jours[ni].passe) ni = i;
+        if (ni !== i) { i = ni; ctx.cols[i].appendChild(el); }
+        const jour = ctx.g.jours[i].jour;
+        p.debut = jour + 'T' + ctx.hm(a);
+        p.fin = jour + 'T' + ctx.hm(a + duree);
+      }
+      place();
+      this._marquerConflits(ctx);
+    };
+    const lacher = async () => {
+      doc.removeEventListener('pointermove', bouger);
+      doc.removeEventListener('pointerup', lacher);
+      el.classList.remove('est-saisi');
+      if (p.debut.slice(11) !== ctx.hm(a0) || p.fin.slice(11) !== ctx.hm(b0) || i !== i0) {
+        await this.greffon.deplacerPropositionOrganisation(p.id, p.debut, p.fin);
+      }
+    };
+    doc.addEventListener('pointermove', bouger);
+    doc.addEventListener('pointerup', lacher);
+    win.getSelection && win.getSelection().removeAllRanges();
+  }
+
+  // Un fantôme qui chevauche un créneau, un rendez-vous, la pause ou un autre
+  // fantôme est signalé (liseré rouge) : on peut encore le valider, mais on
+  // le voit.
+  _marquerConflits(ctx) {
+    const pause = ctx.g.pauseDebut && ctx.g.pauseFin ? [ctx.mn(ctx.g.pauseDebut), ctx.mn(ctx.g.pauseFin)] : null;
+    for (const col of ctx.cols) {
+      for (const el of Array.from(col.querySelectorAll('.zfa-orga-fantome'))) {
+        const p = el.zfaProposition;
+        const jour = ctx.g.jours.find((j) => j.jour === p.debut.slice(0, 10));
+        const a = ctx.mn(p.debut.slice(11));
+        const b = ctx.mn(p.fin.slice(11));
+        const heurte = (x, z) => a < z && x < b;
+        let conflit = !!(pause && heurte(pause[0], pause[1]));
+        for (const o of (jour ? jour.occupations : [])) {
+          if (heurte(ctx.mn(o.debut.slice(11)), o.fin.slice(0, 10) > jour.jour ? ctx.hFin : ctx.mn(o.fin.slice(11)))) conflit = true;
+        }
+        for (const q of ctx.props) {
+          if (q !== p && q.debut.slice(0, 10) === p.debut.slice(0, 10)
+            && heurte(ctx.mn(q.debut.slice(11)), ctx.mn(q.fin.slice(11)))) conflit = true;
+        }
+        el.classList.toggle('est-conflit', conflit);
+      }
+    }
   }
 
   // ── Le rendu ───────────────────────────────────────────────────────────
@@ -909,15 +1095,7 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
         });
         barre.createSpan({ cls: 'zfa-orga-discret', text: tr('Claude estime la taille de vos tâches ; Ariane pose les créneaux ; vous validez.') });
       }
-      for (const j of tl.jours) {
-        const l = c.createDiv({ cls: 'zfa-orga-libre-jour' + (j.aujourdhui ? ' est-aujourdhui' : '') });
-        l.createSpan({ cls: 'zfa-orga-libre-nom', text: (j.aujourdhui ? tr('aujourd’hui') : this._jourCourt(j.jour)) });
-        l.createSpan({ cls: 'zfa-orga-libre-duree', text: j.minutes ? this._duree(j.minutes) : tr('complet') });
-        const plages = l.createDiv({ cls: 'zfa-orga-libre-plages' });
-        for (const p of j.plages) {
-          this._pastille(plages, p.debut + ' → ' + p.fin, p.minutes >= 120 ? 'long' : '', this._duree(p.minutes));
-        }
-      }
+      this._pseudoCalendrier(c, d);
     });
 
     // À surveiller.

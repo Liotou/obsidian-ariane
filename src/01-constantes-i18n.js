@@ -1112,7 +1112,8 @@ const DEFAULT_SETTINGS = {
   organisationPauseFin: '13:00',
   organisationModeleClaude: 'sonnet', // modèle Claude de la répartition de la semaine par l'IA
   organisationMaxJourH: 6,      // plafond d'heures de tâches par jour, répartition comprise
-  organisationReserve: 20,      // % du temps libre que la répartition laisse vide      // sections repliées du tableau de bord des tâches     // semaines sans activité avant « abandon probable »
+  organisationReserve: 20,      // % du temps libre que la répartition laisse vide
+  organisationPropositions: [], // créneaux proposés par la répartition, en attente de validation      // sections repliées du tableau de bord des tâches     // semaines sans activité avant « abandon probable »
   agendaActif: false,           // intégration Apple Agenda / Calendar (macOS, EKEvent)
   agendaAuto: true,             // pousser à la sauvegarde + relever régulièrement
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques

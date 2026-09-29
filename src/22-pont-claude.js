@@ -443,8 +443,8 @@ class PontClaude extends obsidian.Component {
     return { appliques, echecs };
   }
 
-  _annoncerAnnulation(n) {
-    const texte = tr('Claude : {n} changement(s) appliqué(s). ').replace('{n}', String(n));
+  _annoncerAnnulation(n, prefixe) {
+    const texte = (prefixe || tr('Claude : ')) + tr('{n} changement(s) appliqué(s). ').replace('{n}', String(n));
     // Le lien « Annuler » dans la notification ; la commande « Claude :
     // annuler les derniers changements acceptés » fait la même chose.
     const doc = typeof activeDocument !== 'undefined' ? activeDocument

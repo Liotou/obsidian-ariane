@@ -2338,15 +2338,26 @@ const avecTaches = (Base) => class extends Base {
     try { evenements = (await this.evenementsFond(lundi, Ariane.decalerJour(lundi, 7))) || []; } catch (e) { evenements = []; }
     const d = new Date();
     const s = this.settings;
-    return Ariane.tableauOrganisation(entrees, {
-      aujourdhui: auj, journal, evenements,
-      maintenant: String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'),
+    const maintenant = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    const tab = Ariane.tableauOrganisation(entrees, {
+      aujourdhui: auj, journal, evenements, maintenant,
       heureDebut: s.organisationHeureDebut || '09:00',
       heureFin: s.organisationHeureFin || '18:00',
       weekend: s.organisationWeekend === true,
       pauseDebut: s.organisationPauseDebut || '',
       pauseFin: s.organisationPauseFin || '',
     });
+    // Les propositions de répartition en attente, sans celles devenues
+    // caduques (heure passée, place prise, tâche finie) : retirées pour de bon.
+    const actives = analyses.filter((x) => x.tache.statut !== 'terminée' && x.tache.statut !== 'abandonnée')
+      .map((x) => x.tache.ref);
+    const n = Ariane.nettoyerPropositions(s.organisationPropositions, tab.grille, auj + 'T' + maintenant, actives);
+    if (n.retirees.length) {
+      s.organisationPropositions = n.gardees;
+      await this.saveSettings();
+    }
+    tab.propositions = n.gardees;
+    return tab;
   }
 
   // Répartir la semaine (spec : conversation du 2026-09-29) : l'IA estime les
@@ -2404,13 +2415,71 @@ const avecTaches = (Base) => class extends Base {
       motif += ' ' + tr('Sans place cette semaine : ') + r.nonPlaces
         .map((x) => (titres.get(x.ref) || x.ref) + ' (' + h(x.manqueMin) + ')').join(', ') + '.';
     }
-    const { valides, erreurs } = Ariane.validerPropositions(
-      Ariane.propositionsRepartition(r, estimations, candidats), this.tachesPourGantt());
-    if (!this.pont) return;
-    const choix = await this.pont._demanderValidation(motif, valides, erreurs,
-      tr('Répartition de la semaine'));
-    if (!choix || !choix.length) return;
-    await this.pont._appliquer(valides.filter((v) => choix.includes(v.id)), 'ia');
+    // Les créneaux proposés vont sur le pseudo-calendrier du tableau de bord,
+    // où Monsieur les valide un par un, les déplace ou les écarte. Une
+    // nouvelle répartition remplace les propositions encore en attente.
+    const est = new Map(estimations.map((e) => [e.ref, e]));
+    s.organisationPropositions = r.placements.map((p, i) => ({
+      id: Date.now().toString(36) + '-' + i,
+      ref: p.ref,
+      intitule: titres.get(p.ref) || p.ref,
+      debut: p.debut,
+      fin: p.fin,
+      taille: (est.get(p.ref) || {}).taille || '',
+      raison: (est.get(p.ref) || {}).raison || '',
+    }));
+    await this.saveSettings();
+    new obsidian.Notice(motif + ' ' + tr('À valider sur le calendrier du tableau de bord.'), 12000);
+    if (!this._blocsOrganisation || !this._blocsOrganisation.size) await this.ouvrirGestionOrganisation();
+    else this.rafraichirOrganisation();
+  }
+
+  // Les tableaux de bord ouverts se redessinent (propositions changées).
+  rafraichirOrganisation() {
+    for (const b of Array.from(this._blocsOrganisation || [])) {
+      try { b.rendre(); } catch (e) { /* bloc fermé */ }
+    }
+  }
+
+  // Valide des créneaux proposés : ils s'écrivent dans leur tâche, au jour et
+  // à l'heure où ils sont sur le pseudo-calendrier, et quittent la liste.
+  // Annulables d'un coup (lien « Annuler », commande « Claude : annuler… »).
+  async validerPropositionsOrganisation(ids) {
+    const liste = Array.isArray(this.settings.organisationPropositions) ? this.settings.organisationPropositions : [];
+    const choisies = liste.filter((p) => ids.includes(p.id));
+    const inverse = [];
+    for (const p of choisies) {
+      const f = this.fichierDeRef(p.ref);
+      if (!f) continue;
+      this.marquerOrigineTache(f.path, 'ia');
+      const ok = await this.majCreneau(p.ref, { avant: '', debut: p.debut, fin: p.fin });
+      if (ok !== false) inverse.push({ genre: 'creneau-', ref: p.ref, brut: Ariane.formatCreneau(p.debut, p.fin) });
+    }
+    this.settings.organisationPropositions = liste.filter((p) => !ids.includes(p.id));
+    await this.saveSettings();
+    if (inverse.length && this.pont) {
+      this.pont.derniereProposition = { inverse, le: Date.now() };
+      this.pont._annoncerAnnulation(inverse.length, tr('Répartition : '));
+    }
+    this.rafraichirOrganisation();
+    return inverse.length;
+  }
+
+  async ecarterPropositionsOrganisation(ids) {
+    const liste = Array.isArray(this.settings.organisationPropositions) ? this.settings.organisationPropositions : [];
+    this.settings.organisationPropositions = liste.filter((p) => !ids.includes(p.id));
+    await this.saveSettings();
+    this.rafraichirOrganisation();
+  }
+
+  // Un créneau proposé, déplacé ou étiré à la souris : sa nouvelle place est
+  // retenue (sans redessiner : le geste l'a déjà posée à l'écran).
+  async deplacerPropositionOrganisation(id, debut, fin) {
+    const p = (this.settings.organisationPropositions || []).find((x) => x.id === id);
+    if (!p) return;
+    p.debut = debut;
+    p.fin = fin;
+    await this.saveSettings();
   }
 
   // La note « Gestion de l'organisation » : créée au besoin dans le dossier
