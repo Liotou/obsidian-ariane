@@ -399,3 +399,96 @@ test('temps libre : 9 h - 18 h des jours ouvrés restants, moins créneaux et re
   assert.deepEqual(avecWeekend.tempsLibre.jours.map((j) => j.jour).slice(-2), ['2026-10-03', '2026-10-04']);
   assert.equal(avecWeekend.tempsLibre.jours[0].minutes, 0, 'aujourd\'hui, la plage 10-12 est déjà passée');
 });
+
+// ── Répartition de la semaine par l'IA ────────────────────────────────────
+
+test('répartition : candidats, les plus pressantes d\'abord, avec leurs indices de taille', () => {
+  const e = (ref, t) => { const tt = Object.assign(tache({ ref }), t); return { tache: tt, analyse: Ariane.analyseTache(tt, { aujourdhui: AUJ }) }; };
+  const c = Ariane.candidatsRepartition([
+    e('FOND', { debut: '2026-07-01', echeance: '2026-12-20', creneaux: ['2026-09-10 09:00-12:00'] }),
+    e('MAIL', { echeance: '2026-09-30' }),
+    e('ATT', { statut: 'en attente', echeance: '2026-09-30' }),
+    e('JAL', { jalon: true, echeance: '2026-10-01' }),
+  ], AUJ);
+  assert.deepEqual(c.map((x) => x.ref), ['MAIL', 'FOND'], 'ni attente ni jalon ; l\'échéance de demain en tête');
+  const fond = c.find((x) => x.ref === 'FOND');
+  assert.equal(fond.dureeVieJours, 172);
+  assert.equal(fond.minutesPasseesPlanifiees, 180);
+  const p = Ariane.promptRepartition(c, { heureDebut: '09:00', heureFin: '18:00', minutes: 1200, nbPlages: 4 }, AUJ,
+    [{ id: 'production', nom: 'Production', description: 'Travail de fond' }]);
+  assert.match(p, /FOND \| Lire Bertalanffy \| famille : Production \(Travail de fond\)/);
+  assert.match(p, /durée de vie 172 j/);
+  assert.match(p, /Réponds UNIQUEMENT par un tableau JSON/);
+});
+
+test('répartition : la réponse de l\'IA est vérifiée et bornée', () => {
+  const c = [{ ref: 'A' }, { ref: 'B' }];
+  const e = Ariane.lireEstimations([
+    { ref: 'A', taille: 'grosse', effort_restant_min: 900, cette_semaine_min: 5000, bloc_min: 999, moment: 'matin', raison: 'Ouvrage de 400 pages.' },
+    { ref: 'A', taille: 'petite' },
+    { ref: 'Z', taille: 'petite' },
+    { ref: 'B', taille: 'énorme', cette_semaine_min: 'beaucoup' },
+  ], c);
+  assert.deepEqual(e[0], { ref: 'A', taille: 'grosse', effort: 900, semaine: 900, bloc: 240, moment: 'matin', raison: 'Ouvrage de 400 pages.' },
+    'la part de la semaine ne dépasse pas l\'effort ; le bloc est plafonné à 4 h');
+  assert.deepEqual(e.map((x) => x.ref), ['A', 'B'], 'doublon et tâche inconnue écartés');
+  assert.equal(e[1].taille, 'moyenne');
+  assert.equal(e[1].semaine, 60);
+});
+
+test('répartition : placement dans les plages libres, par règles fixes', () => {
+  // Mercredi 30 : 09:00-10:00 (entre deux choses, courte) et 11:30-18:00 ;
+  // jeudi 1er : 09:00-18:00. Échéance de PETITE : mercredi.
+  const jours = [
+    { jour: '2026-09-30', plages: [{ debut: '09:00', fin: '10:00' }, { debut: '11:30', fin: '18:00' }] },
+    { jour: '2026-10-01', plages: [{ debut: '09:00', fin: '18:00' }] },
+  ];
+  const candidats = [
+    { ref: 'PETITE', echeance: '2026-09-30', joursRestants: 1 },
+    { ref: 'GROSSE', echeance: '2026-12-20', joursRestants: 82 },
+  ];
+  const est = [
+    { ref: 'GROSSE', taille: 'grosse', semaine: 360, bloc: 180, moment: 'matin', raison: '' },
+    { ref: 'PETITE', taille: 'petite', semaine: 45, bloc: 45, moment: 'indifferent', raison: '' },
+  ];
+  const r = Ariane.placerRepartition(est, { jours, candidats, heureDebut: '09:00', maxJourMin: 360, reserve: 0 });
+  assert.deepEqual(r.placements.map((p) => [p.ref, p.debut, p.fin]), [
+    ['PETITE', '2026-09-30T09:00', '2026-09-30T09:45'],
+    ['GROSSE', '2026-10-01T09:00', '2026-10-01T12:00'],
+    ['GROSSE', '2026-09-30T11:45', '2026-09-30T14:45'],
+  ], 'la petite d\'abord, avant son échéance, dans la plage courte ; le gros travail le matin, un bloc par jour, un quart d\'heure après ce qui précède');
+  assert.deepEqual(r.nonPlaces, []);
+});
+
+test('répartition : plafond par jour, réserve et échéance respectés ; ce qui ne tient pas est dit', () => {
+  const jours = [{ jour: '2026-09-30', plages: [{ debut: '09:00', fin: '18:00' }] }];
+  const r = Ariane.placerRepartition(
+    [{ ref: 'A', taille: 'moyenne', semaine: 600, bloc: 120, moment: 'indifferent', raison: '' }],
+    { jours, candidats: [{ ref: 'A', echeance: '2026-09-29', joursRestants: 0 }], heureDebut: '09:00',
+      maxJourMin: 360, reserve: 0.2, dejaParJour: { '2026-09-30': 120 } });
+  assert.deepEqual(r.placements, [], 'échéance aujourd\'hui : rien après elle');
+  const r2 = Ariane.placerRepartition(
+    [{ ref: 'A', taille: 'petite', semaine: 600, bloc: 60, moment: 'indifferent', raison: '' }],
+    { jours, candidats: [{ ref: 'A', echeance: '2026-10-10', joursRestants: 11 }], heureDebut: '09:00',
+      maxJourMin: 360, reserve: 0.2, dejaParJour: { '2026-09-30': 120 } });
+  assert.equal(r2.placeMin, 240, 'plafond : 360 min par jour, dont 120 déjà planifiées');
+  assert.deepEqual(r2.nonPlaces, [{ ref: 'A', manqueMin: 360 }]);
+  const props = Ariane.propositionsRepartition(r2, [{ ref: 'A', taille: 'petite', raison: 'Courriels.' }], [{ ref: 'A', intitule: 'Répondre' }]);
+  assert.equal(props.length, 1);
+  assert.equal(props[0].justification, 'petite tâche : Courriels.');
+  assert.equal(props[0].ajouter_creneaux.length, 4);
+});
+
+test('temps libre : la pause déjeuner réglée n\'en fait pas partie', () => {
+  const d = Ariane.tableauOrganisation([], { aujourdhui: AUJ, maintenant: '08:00', pauseDebut: '12:00', pauseFin: '13:00' });
+  assert.deepEqual(d.tempsLibre.jours[0].plages.map((p) => p.debut + '-' + p.fin), ['09:00-12:00', '13:00-18:00']);
+  assert.equal(d.tempsLibre.jours[0].minutes, 480);
+});
+
+test('répartition : un reste court est fait d\'une traite, pas laissé au lendemain', () => {
+  const jours = [{ jour: '2026-09-30', plages: [{ debut: '09:00', fin: '12:00' }] },
+                 { jour: '2026-10-01', plages: [{ debut: '09:00', fin: '12:00' }] }];
+  const r = Ariane.placerRepartition([{ ref: 'P', taille: 'moyenne', semaine: 150, bloc: 120, moment: 'matin', raison: '' }],
+    { jours, candidats: [{ ref: 'P', echeance: '2026-10-02', joursRestants: 3 }], heureDebut: '09:00', maxJourMin: 360, reserve: 0 });
+  assert.deepEqual(r.placements.map((p) => p.debut + '-' + p.fin.slice(11)), ['2026-09-30T09:00-11:30']);
+});

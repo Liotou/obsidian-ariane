@@ -380,9 +380,9 @@ class PontClaude extends obsidian.Component {
     return { acceptes: appliques, refuses, ecartes: erreurs.concat(echecs), sans_reponse: false };
   }
 
-  _demanderValidation(motif, valides, erreurs) {
+  _demanderValidation(motif, valides, erreurs, titre) {
     return new Promise((resolve) => {
-      const m = new ModaleValidationClaude(this.greffon.app, { motif, valides, erreurs, surFin: resolve });
+      const m = new ModaleValidationClaude(this.greffon.app, { motif, valides, erreurs, titre, surFin: resolve });
       const minuteur = setTimeout(() => m.expirer(), 10 * 60000);
       m.surFermeture = () => clearTimeout(minuteur);
       m.open();
@@ -393,7 +393,10 @@ class PontClaude extends obsidian.Component {
   // tout défaire : une écriture de propriétés ne passe pas par l'annulation
   // de l'éditeur, ⌘Z n'y peut rien. Chaque écriture est marquée d'origine
   // « claude » dans le journal.
-  async _appliquer(retenus) {
+  // `origine` : « claude » (proposition de Claude) ou « ia » (répartition de
+  // la semaine par l'assistant d'Ariane), pour le journal.
+  async _appliquer(retenus, origine) {
+    const orig = origine || 'claude';
     const g = this.greffon;
     const inverse = [];
     const appliques = [];
@@ -405,7 +408,7 @@ class PontClaude extends obsidian.Component {
           if (op.genre === 'creation') {
             const chemin = await g.creerTache(op.champs);
             if (!chemin) throw new Error('création impossible');
-            g.marquerOrigineTache(chemin, 'claude');
+            g.marquerOrigineTache(chemin, orig);
             ref = chemin.split('/').pop().replace(/\.md$/, '');
             inverse.push({ genre: 'supprimer', chemin });
             // Le gabarit d'une tâche neuve ne porte pas de mère : on la pose.
@@ -414,7 +417,7 @@ class PontClaude extends obsidian.Component {
           }
           const f = g.fichierDeRef(ref);
           if (!f) throw new Error('tâche introuvable : ' + ref);
-          g.marquerOrigineTache(f.path, 'claude');
+          g.marquerOrigineTache(f.path, orig);
           if (op.genre === 'champ') {
             if (op.champ === 'intitule') await g.renommerTitreTache(ref, op.apres);
             else await g.majTache(ref, { [op.champ]: op.apres });
@@ -533,7 +536,7 @@ class ModaleValidationClaude extends obsidian.Modal {
   onOpen() {
     const { contentEl, titleEl } = this;
     this.modalEl.addClass('zfa-claude-modale');
-    titleEl.setText(tr('Claude propose des modifications'));
+    titleEl.setText(this.o.titre || tr('Claude propose des modifications'));
     if (this.o.motif) contentEl.createEl('p', { cls: 'zfa-claude-motif', text: this.o.motif });
     const liste = contentEl.createDiv({ cls: 'zfa-claude-liste' });
     let bouton = null;

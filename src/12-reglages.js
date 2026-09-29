@@ -246,15 +246,19 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
   // Le modèle du fournisseur « Claude en ligne de commande » (option --model).
   // Fable, Opus, Sonnet et Haiku sont des alias : ils suivent la dernière version de
   // leur famille. « Autre » accepte un identifiant exact.
-  _modeleClaude(c, s, maj) {
-    const PRESETS = ['', 'fable', 'opus', 'sonnet', 'haiku'];
-    const actuel = String(s.refsModeleClaude || '').trim();
-    const autre = !PRESETS.includes(actuel) || this._claudeAutre === true;
+  // `cle` : le réglage visé (refsModeleClaude par défaut) ; `o` : { nom,
+  // desc, sansDefaut } pour un autre usage (la répartition de la semaine).
+  _modeleClaude(c, s, maj, cle, o) {
+    const k = cle || 'refsModeleClaude';
+    const opt = o || {};
+    const PRESETS = (opt.sansDefaut ? [] : ['']).concat(['fable', 'opus', 'sonnet', 'haiku']);
+    const actuel = String(s[k] || '').trim();
+    if (!this._claudeAutre || typeof this._claudeAutre !== 'object') this._claudeAutre = {};
+    const autre = !PRESETS.includes(actuel) || this._claudeAutre[k] === true;
     new obsidian.Setting(c)
-      .setName(tr('Modèle'))
-      .setDesc(tr('Les alias suivent la dernière version de chaque modèle. Plus capable = plus lent et plus coûteux en quota : Haiku suffit pour découper des bibliographies.'))
-      .addDropdown((d) => d
-        .addOption('', tr('Par défaut (celui de Claude Code)'))
+      .setName(opt.nom || tr('Modèle'))
+      .setDesc(opt.desc || tr('Les alias suivent la dernière version de chaque modèle. Plus capable = plus lent et plus coûteux en quota : Haiku suffit pour découper des bibliographies.'))
+      .addDropdown((d) => { if (!opt.sansDefaut) d.addOption('', tr('Par défaut (celui de Claude Code)')); return d
         .addOption('fable', 'Fable')
         .addOption('opus', 'Opus')
         .addOption('sonnet', tr('Sonnet : équilibré'))
@@ -262,17 +266,17 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addOption('__autre', tr('Autre identifiant…'))
         .setValue(autre ? '__autre' : actuel)
         .onChange(async (v) => {
-          this._claudeAutre = v === '__autre';
-          if (v !== '__autre') s.refsModeleClaude = v;
+          this._claudeAutre[k] = v === '__autre';
+          if (v !== '__autre') s[k] = v;
           await maj();
           this.display();
-        }));
+        }); });
     if (autre) {
       new obsidian.Setting(c)
         .setName(tr('Identifiant du modèle'))
         .setDesc(tr('Tel que « claude --model » l’accepte, par exemple « claude-opus-5-5 ».'))
         .addText((t) => t.setPlaceholder('claude-opus-5-5').setValue(PRESETS.includes(actuel) ? '' : actuel)
-          .onChange(async (v) => { s.refsModeleClaude = v.trim(); await maj(); }));
+          .onChange(async (v) => { s[k] = v.trim(); await maj(); }));
     }
   }
 
@@ -508,9 +512,33 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setPlaceholder('18:00').setValue(s.organisationHeureFin || '18:00')
         .onChange(async (v) => { s.organisationHeureFin = heure(v, '18:00'); await maj(); }));
     new obsidian.Setting(c)
+      .setName(tr('Pause déjeuner'))
+      .setDesc(tr('Retirée du temps libre, et jamais occupée par la répartition. Videz les deux champs pour n’en compter aucune.'))
+      .addText((t) => t.setPlaceholder('12:00').setValue(s.organisationPauseDebut || '')
+        .onChange(async (v) => { s.organisationPauseDebut = v.trim() ? heure(v, '12:00') : ''; await maj(); }))
+      .addText((t) => t.setPlaceholder('13:00').setValue(s.organisationPauseFin || '')
+        .onChange(async (v) => { s.organisationPauseFin = v.trim() ? heure(v, '13:00') : ''; await maj(); }));
+    new obsidian.Setting(c)
       .setName(tr('Compter le week-end'))
       .addToggle((t) => t.setValue(s.organisationWeekend === true)
         .onChange(async (v) => { s.organisationWeekend = v; await maj(); }));
+    this._aide(c, tr("« Répartir sur la semaine » : Claude estime la taille de vos tâches (titre, famille, échéance, durée de vie, ce qui est déjà fait), puis Ariane place leurs créneaux dans vos plages libres. Rien n’est appliqué sans votre accord."));
+    this._modeleClaude(c, s, maj, 'organisationModeleClaude', {
+      nom: tr('Modèle de la répartition'), sansDefaut: true,
+      desc: tr('Toujours Claude en ligne de commande, quel que soit le fournisseur de l’assistant IA. Sonnet par défaut ; Opus ou Fable jugent plus finement la taille des tâches, plus lentement.'),
+    });
+    new obsidian.Setting(c)
+      .setName(tr('Au plus, par jour'))
+      .setDesc(tr('Heures de tâches par jour, créneaux déjà posés compris.'))
+      .addSlider((sl) => sl.setLimits(2, 9, 0.5).setDynamicTooltip()
+        .setValue(Number(s.organisationMaxJourH) || 6)
+        .onChange(async (v) => { s.organisationMaxJourH = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Temps laissé libre'))
+      .setDesc(tr('Part du temps libre que la répartition ne remplit pas, pour l’imprévu (%).'))
+      .addSlider((sl) => sl.setLimits(0, 50, 5).setDynamicTooltip()
+        .setValue(Number.isFinite(Number(s.organisationReserve)) ? Number(s.organisationReserve) : 20)
+        .onChange(async (v) => { s.organisationReserve = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Abandon probable après'))
       .setDesc(tr('Semaines sans créneau, sans modification ni temps passé, avant qu’une tâche soit signalée comme probablement abandonnée.'))

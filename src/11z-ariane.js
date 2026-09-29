@@ -482,6 +482,12 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.correcteur && this.correcteur.basculerVolet(),
     });
     this.addCommand({
+      id: 'organisation-repartir',
+      name: tr('Tâches : répartir sur la semaine (IA)'),
+      callback: () => this.repartirSemaineIA().catch((e) => new obsidian.Notice(
+        tr('Répartition impossible : ') + (e && e.message ? e.message : e), 10000)),
+    });
+    this.addCommand({
       id: 'organisation-ouvrir',
       name: tr('Tâches : ouvrir la gestion de l’organisation'),
       callback: () => this.ouvrirGestionOrganisation(),

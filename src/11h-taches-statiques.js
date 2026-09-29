@@ -774,7 +774,7 @@ const avecTachesStatiques = (Base) => class extends Base {
   }
 
   static get ORIGINES_JOURNAL() {
-    return { externe: tr('vous'), ariane: 'Ariane', claude: 'Claude' };
+    return { externe: tr('vous'), ariane: 'Ariane', claude: 'Claude', ia: tr('IA (répartition)') };
   }
 
   // Tout ce qu'affiche la note « Gestion de l'organisation ». `entrees` :
@@ -824,6 +824,10 @@ const avecTachesStatiques = (Base) => class extends Base {
       if (debut >= hFin) return { plages: [], minutes: 0, capacite: 0 };
       const occ = creneaux.filter((x) => x.jour === j).map((x) => ({ debut: x.debut, fin: x.fin }))
         .concat(horaires.filter((e) => e.debut.slice(0, 10) === j).map((e) => ({ debut: e.debut, fin: e.fin || e.debut })));
+      // La pause déjeuner, si elle est réglée, n'est pas du temps libre.
+      if (mn(c.pauseDebut) != null && mn(c.pauseFin) != null && mn(c.pauseFin) > mn(c.pauseDebut)) {
+        occ.push({ debut: j + 'T' + hm(mn(c.pauseDebut)), fin: j + 'T' + hm(mn(c.pauseFin)) });
+      }
       const plages = Ariane.plagesLibres(j, occ, hm(debut), hm(hFin), 30);
       return { plages, minutes: plages.reduce((s, p) => s + p.minutes, 0), capacite: hFin - debut };
     };
@@ -953,6 +957,213 @@ const avecTachesStatiques = (Base) => class extends Base {
     };
     return { aujourdhuiISO: auj, lundi, chiffres, semaine, aujourdhui, journeeEntiere, suggestions, tempsLibre,
       matrice, surveiller, echeances, familles, activite };
+  }
+
+  // ── Répartition de la semaine par l'IA ─────────────────────────────────
+  //  L'IA estime chaque tâche (taille, temps restant, part de la semaine, bloc
+  //  idéal) ; Ariane place les créneaux par des règles fixes, dans les seules
+  //  plages libres. Ainsi aucun créneau ne peut tomber sur un rendez-vous ni
+  //  déborder de la journée, quoi que réponde le modèle.
+
+  // Les tâches à considérer, les plus pressantes d'abord, avec ce qui aide à
+  // juger leur taille : durée de vie (début → échéance), temps restant avant
+  // l'échéance, heures déjà planifiées, avancement, signaux.
+  static candidatsRepartition(entrees, aujourdhui, max) {
+    const auj = Ariane.jourValide(aujourdhui) || new Date().toISOString().slice(0, 10);
+    const out = [];
+    for (const x of (entrees || [])) {
+      if (!x || !x.tache) continue;
+      const t = x.tache;
+      if (t.statut === 'terminée' || t.statut === 'abandonnée' || t.statut === 'en attente' || t.jalon) continue;
+      const a = x.analyse;
+      const crs = Ariane.creneauxDeTache([].concat(t.creneaux || []));
+      const somme = (l) => l.reduce((s, c) => s + Ariane.dureeCreneauMin(c.debut, c.fin), 0);
+      const deb = Ariane.jourValide(t.debut);
+      const ech = Ariane.jourValide(t.echeance);
+      const codes = a.diagnostics.map((d) => d.code);
+      out.push({
+        ref: t.ref, intitule: t.intitule || t.ref, famille: t.famille || '', statut: t.statut || 'à faire',
+        avancement: Number(t.avancement) || 0, debut: deb, echeance: ech,
+        dureeVieJours: deb && ech ? Ariane.ecartJours(deb, ech) : null,
+        joursRestants: ech ? Ariane.ecartJours(auj, ech) : null,
+        minutesPasseesPlanifiees: somme(crs.filter((c) => c.debut.slice(0, 10) < auj)),
+        minutesAVenirPlanifiees: somme(crs.filter((c) => c.debut.slice(0, 10) >= auj)),
+        diagnostics: codes,
+        rang: a.urgence.score * 0.6 + a.importance.score * 0.4
+          + (codes.includes('retard') ? 30 : 0) + (codes.includes('sous-planifiee') ? 20 : 0),
+      });
+    }
+    return out.sort((p, q) => q.rang - p.rang).slice(0, Number(max) > 0 ? Number(max) : 30);
+  }
+
+  // La consigne donnée à l'IA : le contexte de la semaine, les tâches, et la
+  // façon de juger. Elle ne place rien : elle estime, en JSON.
+  static promptRepartition(candidats, tempsLibre, aujourdhui, familles) {
+    const h = (m) => (m >= 60 ? Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + String(m % 60).padStart(2, '0') : '') : m + ' min');
+    const noms = new Map((familles || []).map((f) => [f.id, f]));
+    const lignes = (candidats || []).map((c) => {
+      const f = noms.get(c.famille);
+      const bouts = [c.ref, c.intitule,
+        'famille : ' + (f ? f.nom + (f.description ? ' (' + String(f.description).slice(0, 120) + ')' : '') : (c.famille || '?')),
+        'statut : ' + c.statut + ', avancement ' + c.avancement + ' %'];
+      if (c.echeance) {
+        bouts.push('échéance ' + c.echeance + ' (' + (c.joursRestants < 0 ? 'dépassée de ' + (-c.joursRestants) + ' j' : 'dans ' + c.joursRestants + ' j') + ')');
+      } else bouts.push('sans échéance');
+      if (c.dureeVieJours != null) bouts.push('durée de vie ' + c.dureeVieJours + ' j (début ' + c.debut + ')');
+      bouts.push('déjà planifié : ' + h(c.minutesPasseesPlanifiees) + ' passées, ' + h(c.minutesAVenirPlanifiees) + ' à venir');
+      if (c.diagnostics.length) bouts.push('signaux : ' + c.diagnostics.join(', '));
+      return '- ' + bouts.join(' | ');
+    });
+    return [
+      'Tu aides un doctorant en sciences de gestion à répartir ses tâches sur ses plages libres de la semaine.',
+      'Nous sommes le ' + aujourdhui + '. Temps libre restant cette semaine (' + tempsLibre.heureDebut + ' - ' + tempsLibre.heureFin
+        + ', jours ouvrés) : ' + h(tempsLibre.minutes) + ', en ' + tempsLibre.nbPlages + ' plage(s).',
+      '',
+      'Pour CHAQUE tâche ci-dessous, estime :',
+      '- taille : « petite » (15 à 45 min : envoyer, répondre, réserver, faire un retour court), « moyenne » (1 à 4 h : lire un article, préparer une réunion, rédiger une note) ou « grosse » (plus de 4 h : lire un ouvrage, rédiger un chapitre, théoriser, construire un cadre).',
+      '- effort_restant_min : le temps total qu\'il reste à y passer, en minutes, compte tenu de l\'avancement et des heures déjà planifiées.',
+      '- cette_semaine_min : la part à faire CETTE semaine. Échéance cette semaine ou dépassée : tout le reste. Échéance lointaine : une part proportionnelle (effort restant divisé par les semaines restantes), au moins un bloc si la tâche est importante ou qu\'elle s\'étire. 0 si rien ne presse et que la tâche peut attendre.',
+      '- bloc_min : la durée idéale d\'un bloc de travail (petite : 15 à 45 ; moyenne : 60 à 120 ; grosse : 120 à 180, travail de concentration).',
+      '- moment : « matin » pour un travail de concentration, « apres-midi » pour du travail léger ou relationnel, sinon « indifferent ».',
+      '- raison : une phrase courte, en français, qui justifie ta taille et ta part de la semaine (elle sera montrée au doctorant).',
+      '',
+      'Indices à croiser : le verbe et l\'objet du titre ; la famille ; une longue durée de vie (plusieurs mois entre début et échéance) signale un travail de fond, à faire par blocs réguliers ; une échéance proche avec un titre bref signale une petite tâche urgente ; les heures déjà planifiées et l\'avancement réduisent ce qui reste ; le signal « etire » (échéance repoussée plusieurs fois) appelle au moins un bloc cette semaine.',
+      'Ne propose pas de dates ni d\'heures : le placement est fait ensuite.',
+      '',
+      'Tâches :',
+      lignes.join('\n'),
+      '',
+      'Réponds UNIQUEMENT par un tableau JSON, un objet par tâche, dans cet ordre de champs :',
+      '[{"ref":"T000","taille":"moyenne","effort_restant_min":120,"cette_semaine_min":90,"bloc_min":90,"moment":"matin","raison":"..."}]',
+    ].join('\n');
+  }
+
+  // La réponse de l'IA, vérifiée et bornée. Une tâche inconnue est ignorée ;
+  // une valeur absurde est ramenée dans des bornes raisonnables.
+  static lireEstimations(reponse, candidats) {
+    const refs = new Set((candidats || []).map((c) => c.ref));
+    const liste = Array.isArray(reponse) ? reponse
+      : (reponse && Array.isArray(reponse.taches) ? reponse.taches : []);
+    const borne = (v, min, max, def) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : def; };
+    const quart = (n) => Math.round(n / 15) * 15;
+    const out = [];
+    const vus = new Set();
+    for (const e of liste) {
+      const ref = String((e && e.ref) || '').trim();
+      if (!refs.has(ref) || vus.has(ref)) continue;
+      vus.add(ref);
+      const taille = ['petite', 'moyenne', 'grosse'].includes(e.taille) ? e.taille : 'moyenne';
+      const effort = borne(e.effort_restant_min, 15, 6000, taille === 'petite' ? 30 : taille === 'grosse' ? 600 : 120);
+      const semaine = quart(borne(e.cette_semaine_min, 0, effort, Math.min(effort, 60)));
+      const bloc = Math.max(15, quart(borne(e.bloc_min, 15, 240, taille === 'petite' ? 30 : taille === 'grosse' ? 150 : 90)));
+      const moment = ['matin', 'apres-midi'].includes(e.moment) ? e.moment : 'indifferent';
+      out.push({ ref, taille, effort, semaine, bloc, moment, raison: String(e.raison || '').trim().slice(0, 240) });
+    }
+    return out;
+  }
+
+  // Le placement, par règles fixes. `ctx` :
+  //   jours        tempsLibre.jours ({ jour, plages: [{ debut, fin }] })
+  //   dejaParJour  { jour: minutes de créneaux déjà planifiés }
+  //   candidats    ceux de candidatsRepartition (ordre de passage, échéances)
+  //   heureDebut   début de la plage de travail
+  //   maxJourMin   plafond de tâches par jour, déjà planifié compris (360)
+  //   reserve      part du temps libre laissée vide (0,2)
+  // Règles : les plus pressantes d'abord ; jamais après l'échéance (sauf
+  // retard : au plus tôt) ; gros travaux dans les longues plages, le matin
+  // s'ils le demandent, un seul bloc par jour ; petites tâches dans la plage
+  // qui leur va le mieux, à la suite l'une de l'autre ; un quart d'heure
+  // d'air après un rendez-vous ou un autre bloc.
+  static placerRepartition(estimations, ctx) {
+    const c = ctx || {};
+    const mn = (hm) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(hm || '')); return m ? +m[1] * 60 + +m[2] : 0; };
+    const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    const debutJournee = mn(c.heureDebut || '09:00');
+    const maxJour = Number(c.maxJourMin) > 0 ? Number(c.maxJourMin) : 360;
+    const reserve = Number.isFinite(Number(c.reserve)) ? Math.max(0, Math.min(0.9, Number(c.reserve))) : 0.2;
+    const plages = [];
+    for (const j of (c.jours || [])) {
+      for (const p of (j.plages || [])) {
+        let d = mn(p.debut);
+        const f = mn(p.fin);
+        if (d > debutJournee) d += 15;   // de l'air après ce qui précède
+        if (f - d >= 30) plages.push({ jour: j.jour, debut: d, fin: f });
+      }
+    }
+    const libreTotal = plages.reduce((s, p) => s + p.fin - p.debut, 0);
+    let budget = Math.floor(libreTotal * (1 - reserve) / 15) * 15;
+    const charge = Object.assign({}, c.dejaParJour || {});
+    const infos = new Map((c.candidats || []).map((x, i) => [x.ref, Object.assign({ ordre: i }, x)]));
+    const ordre = (estimations || []).slice().sort((a, b) =>
+      ((infos.get(a.ref) || {}).ordre ?? 999) - ((infos.get(b.ref) || {}).ordre ?? 999));
+    const placements = [];
+    const nonPlaces = [];
+    for (const e of ordre) {
+      const info = infos.get(e.ref) || {};
+      let besoin = e.semaine;
+      if (besoin <= 0) continue;
+      const pressee = info.joursRestants != null && info.joursRestants <= 7;
+      const limite = info.echeance && info.joursRestants >= 0 ? info.echeance : null;
+      const joursPris = new Set();
+      while (besoin > 0 && budget >= 15) {
+        const possibles = plages.filter((p) => p.fin - p.debut >= Math.min(30, besoin)
+          && (!limite || p.jour <= limite)
+          && (e.taille === 'petite' || !joursPris.has(p.jour))
+          && (charge[p.jour] || 0) + Math.min(30, besoin) <= maxJour);
+        if (!possibles.length) break;
+        // Un reste court ne se laisse pas traîner au lendemain : jusqu'à une
+        // fois et demie le bloc, on le fait d'une traite.
+        const voulu = besoin <= e.bloc * 1.5 ? besoin : e.bloc;
+        const cle = (p) => {
+          const lg = p.fin - p.debut;
+          const ajustement = e.taille === 'petite' ? Math.abs(lg - voulu) : (lg >= voulu ? 0 : voulu - lg);
+          // « Matin » : un bloc qui commence avant 11 h (commencé à 11 h 45,
+          // un bloc de trois heures se passe surtout l'après-midi).
+          const moment = e.moment === 'matin' ? (p.debut < 660 ? 0 : 1) : e.moment === 'apres-midi' ? (p.debut >= 720 ? 0 : 1) : 0;
+          return [pressee ? p.jour : '', e.taille === 'petite' ? ajustement : moment, e.taille === 'petite' ? moment : ajustement, p.jour, p.debut];
+        };
+        possibles.sort((a, b) => {
+          const ka = cle(a);
+          const kb = cle(b);
+          for (let i = 0; i < ka.length; i += 1) if (ka[i] !== kb[i]) return ka[i] < kb[i] ? -1 : 1;
+          return 0;
+        });
+        const p = possibles[0];
+        const duree = Math.floor(Math.min(voulu, p.fin - p.debut, maxJour - (charge[p.jour] || 0), budget) / 15) * 15;
+        if (duree < 15) break;
+        placements.push({ ref: e.ref, jour: p.jour, debut: p.jour + 'T' + hm(p.debut),
+          fin: p.jour + 'T' + hm(p.debut + duree), minutes: duree });
+        p.debut += duree + (e.taille === 'petite' ? 0 : 15);
+        if (p.fin - p.debut < 30) plages.splice(plages.indexOf(p), 1);
+        besoin -= duree;
+        budget -= duree;
+        charge[p.jour] = (charge[p.jour] || 0) + duree;
+        joursPris.add(p.jour);
+      }
+      if (besoin > 0) nonPlaces.push({ ref: e.ref, manqueMin: besoin });
+    }
+    return { placements, nonPlaces, libreMin: libreTotal,
+      placeMin: placements.reduce((s, x) => s + x.minutes, 0) };
+  }
+
+  // Les placements, dits comme des propositions (le format de
+  // proposer_modifications) : une par tâche, ses créneaux, sa justification.
+  static propositionsRepartition(placement, estimations, candidats) {
+    const est = new Map((estimations || []).map((e) => [e.ref, e]));
+    const titres = new Map((candidats || []).map((c) => [c.ref, c.intitule]));
+    const parRef = new Map();
+    for (const p of (placement.placements || [])) {
+      if (!parRef.has(p.ref)) parRef.set(p.ref, []);
+      parRef.get(p.ref).push({ debut: p.debut, fin: p.fin });
+    }
+    const out = [];
+    for (const [ref, creneaux] of parRef) {
+      const e = est.get(ref) || {};
+      const taille = { petite: 'petite tâche', moyenne: 'tâche moyenne', grosse: 'gros travail' }[e.taille] || '';
+      out.push({ ref, intitule: titres.get(ref) || ref, ajouter_creneaux: creneaux,
+        justification: [taille, e.raison].filter(Boolean).join(' : ') });
+    }
+    return out;
   }
 
   //#endregion Ariane · static · tâches

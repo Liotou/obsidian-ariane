@@ -1009,9 +1009,9 @@ const avecTaches = (Base) => class extends Base {
   /* ---- IA : structuration de tâches -------------------------------- */
 
   // Appel LLM (fournisseur configuré dans les réglages) qui rend du JSON parsé.
-  async genererIA(prompt, jetons) {
+  async genererIA(prompt, jetons, opts) {
     this._diagIA = '';
-    const brut = await this.genererJsonRefs(prompt, jetons || 1800);
+    const brut = await this.genererJsonRefs(prompt, jetons || 1800, opts);
     if (!brut) {
       const f = this.settings.refsFournisseur || 'ollama';
       new obsidian.Notice(tr('IA (') + f + ') : ' + (this._diagIA
@@ -2344,7 +2344,73 @@ const avecTaches = (Base) => class extends Base {
       heureDebut: s.organisationHeureDebut || '09:00',
       heureFin: s.organisationHeureFin || '18:00',
       weekend: s.organisationWeekend === true,
+      pauseDebut: s.organisationPauseDebut || '',
+      pauseFin: s.organisationPauseFin || '',
     });
+  }
+
+  // Répartir la semaine (spec : conversation du 2026-09-29) : l'IA estime les
+  // tâches candidates, Ariane place leurs créneaux dans les plages libres par
+  // des règles fixes (Ariane.placerRepartition), et la proposition passe par
+  // la même fenêtre de validation que celles de Claude.
+  async repartirSemaineIA() {
+    const s = this.settings;
+    const d = await this.donneesOrganisation();
+    const auj = d.aujourdhuiISO;
+    if (!d.tempsLibre.minutes) {
+      new obsidian.Notice(tr('Plus de temps libre cette semaine : rien à répartir.'));
+      return;
+    }
+    const candidats = Ariane.candidatsRepartition(await this.analyseTaches(auj), auj, 30);
+    if (!candidats.length) { new obsidian.Notice(tr('Aucune tâche à répartir.')); return; }
+    const prompt = Ariane.promptRepartition(candidats, d.tempsLibre, auj, this.famillesIA());
+    const avis = new obsidian.Notice(tr('Répartition : l’IA estime vos tâches (') + candidats.length + ')…', 0);
+    // Toujours Claude en ligne de commande, quel que soit le fournisseur de
+    // l'assistant IA (Mistral, Ollama…) : c'est le modèle choisi pour la
+    // répartition, Sonnet par défaut, avec quatre minutes pour répondre.
+    let brut;
+    this._diagIA = '';
+    try {
+      brut = await this.genererClaude(prompt, 6000, {
+        modeleClaude: s.organisationModeleClaude || 'sonnet', delai: 240000 });
+    } finally { avis.hide(); }
+    if (!brut) {
+      new obsidian.Notice(tr('Claude n’a pas répondu : ') + (this._diagIA || tr('raison inconnue')), 10000);
+      return;
+    }
+    const reponse = Ariane.extraireJson(brut);
+    if (!reponse) {
+      new obsidian.Notice(tr('Réponse de Claude illisible (JSON attendu).'), 8000);
+      return;
+    }
+    const estimations = Ariane.lireEstimations(reponse, candidats);
+    if (!estimations.length) { new obsidian.Notice(tr('L’IA n’a rendu aucune estimation exploitable.')); return; }
+    const dejaParJour = {};
+    for (const j of d.semaine) dejaParJour[j.jour] = j.minutesPlanifiees;
+    const r = Ariane.placerRepartition(estimations, {
+      jours: d.tempsLibre.jours, dejaParJour, candidats, heureDebut: d.tempsLibre.heureDebut,
+      maxJourMin: Math.round((Number(s.organisationMaxJourH) || 6) * 60),
+      reserve: (Number.isFinite(Number(s.organisationReserve)) ? Number(s.organisationReserve) : 20) / 100,
+    });
+    if (!r.placements.length) {
+      new obsidian.Notice(tr('Rien à placer : aucune tâche ne demande de temps cette semaine, ou aucune plage ne convient.'), 8000);
+      return;
+    }
+    const h = (m) => dureeLisible(m);
+    const titres = new Map(candidats.map((c) => [c.ref, c.intitule]));
+    let motif = tr('Répartition proposée pour la semaine : ') + h(r.placeMin) + tr(' de travail sur ')
+      + h(d.tempsLibre.minutes) + tr(' libres, une part gardée en réserve.');
+    if (r.nonPlaces.length) {
+      motif += ' ' + tr('Sans place cette semaine : ') + r.nonPlaces
+        .map((x) => (titres.get(x.ref) || x.ref) + ' (' + h(x.manqueMin) + ')').join(', ') + '.';
+    }
+    const { valides, erreurs } = Ariane.validerPropositions(
+      Ariane.propositionsRepartition(r, estimations, candidats), this.tachesPourGantt());
+    if (!this.pont) return;
+    const choix = await this.pont._demanderValidation(motif, valides, erreurs,
+      tr('Répartition de la semaine'));
+    if (!choix || !choix.length) return;
+    await this.pont._appliquer(valides.filter((v) => choix.includes(v.id)), 'ia');
   }
 
   // La note « Gestion de l'organisation » : créée au besoin dans le dossier

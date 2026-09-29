@@ -276,16 +276,18 @@ const avecIa = (Base) => class extends Base {
   // Le découpage bibliographique passe par son propre moteur. Les quatre
   // dialectes se rejoignent ici, pour qu'il n'existe qu'un seul endroit où
   // borner la génération et rattraper les erreurs.
-  async genererJsonRefs(prompt, jetons) {
+  // `opts` (facultatif) : { modeleClaude, delai } pour un appel qui veut son
+  // propre modèle Claude ou plus de temps (la répartition de la semaine).
+  async genererJsonRefs(prompt, jetons, opts) {
     return this.genererAvecFournisseur(prompt, jetons || 300,
-      this.settings.refsFournisseur || 'ollama', this.settings.refsModele || 'llama3.2');
+      this.settings.refsFournisseur || 'ollama', this.settings.refsModele || 'llama3.2', opts);
   }
 
 
 
-  async genererAvecFournisseur(prompt, max, f, modele) {
+  async genererAvecFournisseur(prompt, max, f, modele, opts) {
     if (f === 'mistral') return this.genererMistral(prompt, max, modele);
-    if (f === 'claude') return this.genererClaude(prompt, max);
+    if (f === 'claude') return this.genererClaude(prompt, max, opts);
     return this.genererJsonAvec(prompt, max, f === 'lmstudio', modele);
   }
 
@@ -332,8 +334,10 @@ const avecIa = (Base) => class extends Base {
 
   // Le CLI de Claude ne demande ni clé ni serveur. On le borne dans le temps :
   // un processus qui ne rend pas la main bloquerait tout le lot.
-  genererClaude(prompt, max) {
+  genererClaude(prompt, max, opts) {
+    const o = opts || {};
     const bin = (this.settings.refsCheminClaude || 'claude').trim() || 'claude';
+    const delai = Number(o.delai) > 0 ? Number(o.delai) : 60000;
     return new Promise((resoudre) => {
       let fini = false;
       const env = Object.assign({}, process.env, {
@@ -341,10 +345,10 @@ const avecIa = (Base) => class extends Base {
           + (process.env.PATH || ''),
       });
       // Le modèle choisi dans les réglages ; sans choix, celui de Claude Code.
-      const modele = String(this.settings.refsModeleClaude || '').trim();
+      const modele = String(o.modeleClaude || this.settings.refsModeleClaude || '').trim();
       const args = modele ? ['--model', modele, '-p', prompt] : ['-p', prompt];
       const enfant = require('child_process').execFile(
-        bin, args, { env, timeout: 60000, maxBuffer: 1 << 20 },
+        bin, args, { env, timeout: delai, maxBuffer: 1 << 20 },
         (err, sortie) => {
           if (fini) return;
           fini = true;
@@ -356,7 +360,7 @@ const avecIa = (Base) => class extends Base {
       // Sans cela le CLI attend trois secondes une entrée standard qui ne
       // viendra jamais, à chaque appel.
       try { if (enfant.stdin) enfant.stdin.end(); } catch (e) { /* déjà fermée */ }
-      setTimeout(() => { if (!fini) { try { enfant.kill('SIGKILL'); } catch (e) { /* déjà mort */ } } }, 61000);
+      setTimeout(() => { if (!fini) { try { enfant.kill('SIGKILL'); } catch (e) { /* déjà mort */ } } }, delai + 1000);
     });
   }
 

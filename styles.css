@@ -3731,4 +3731,5 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-orga-libre-duree { flex: 0 0 64px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .zfa-orga-libre-plages { display: flex; flex-wrap: wrap; gap: 5px; }
 .zfa-orga-pastille.est-long { background: color-mix(in srgb, var(--zfa-orga-bien) 18%, transparent); color: var(--zfa-orga-bien); }
+.zfa-orga-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 8px; }
 .zfa-orga-jour-libre { font-size: var(--font-ui-smaller); color: var(--zfa-orga-bien); font-variant-numeric: tabular-nums; }

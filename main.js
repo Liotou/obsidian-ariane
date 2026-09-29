@@ -1292,7 +1292,12 @@ const DEFAULT_SETTINGS = {
   organisationReplies: [],
   organisationHeureDebut: '09:00', // plage de travail pour le temps libre du tableau de bord
   organisationHeureFin: '18:00',
-  organisationWeekend: false,   // le week-end compte-t-il dans le temps libre ?      // sections repliées du tableau de bord des tâches     // semaines sans activité avant « abandon probable »
+  organisationWeekend: false,   // le week-end compte-t-il dans le temps libre ?
+  organisationPauseDebut: '12:00', // pause déjeuner, retirée du temps libre (vide : aucune)
+  organisationPauseFin: '13:00',
+  organisationModeleClaude: 'sonnet', // modèle Claude de la répartition de la semaine par l'IA
+  organisationMaxJourH: 6,      // plafond d'heures de tâches par jour, répartition comprise
+  organisationReserve: 20,      // % du temps libre que la répartition laisse vide      // sections repliées du tableau de bord des tâches     // semaines sans activité avant « abandon probable »
   agendaActif: false,           // intégration Apple Agenda / Calendar (macOS, EKEvent)
   agendaAuto: true,             // pousser à la sauvegarde + relever régulièrement
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques
@@ -4517,16 +4522,18 @@ const avecIa = (Base) => class extends Base {
   // Le découpage bibliographique passe par son propre moteur. Les quatre
   // dialectes se rejoignent ici, pour qu'il n'existe qu'un seul endroit où
   // borner la génération et rattraper les erreurs.
-  async genererJsonRefs(prompt, jetons) {
+  // `opts` (facultatif) : { modeleClaude, delai } pour un appel qui veut son
+  // propre modèle Claude ou plus de temps (la répartition de la semaine).
+  async genererJsonRefs(prompt, jetons, opts) {
     return this.genererAvecFournisseur(prompt, jetons || 300,
-      this.settings.refsFournisseur || 'ollama', this.settings.refsModele || 'llama3.2');
+      this.settings.refsFournisseur || 'ollama', this.settings.refsModele || 'llama3.2', opts);
   }
 
 
 
-  async genererAvecFournisseur(prompt, max, f, modele) {
+  async genererAvecFournisseur(prompt, max, f, modele, opts) {
     if (f === 'mistral') return this.genererMistral(prompt, max, modele);
-    if (f === 'claude') return this.genererClaude(prompt, max);
+    if (f === 'claude') return this.genererClaude(prompt, max, opts);
     return this.genererJsonAvec(prompt, max, f === 'lmstudio', modele);
   }
 
@@ -4573,8 +4580,10 @@ const avecIa = (Base) => class extends Base {
 
   // Le CLI de Claude ne demande ni clé ni serveur. On le borne dans le temps :
   // un processus qui ne rend pas la main bloquerait tout le lot.
-  genererClaude(prompt, max) {
+  genererClaude(prompt, max, opts) {
+    const o = opts || {};
     const bin = (this.settings.refsCheminClaude || 'claude').trim() || 'claude';
+    const delai = Number(o.delai) > 0 ? Number(o.delai) : 60000;
     return new Promise((resoudre) => {
       let fini = false;
       const env = Object.assign({}, process.env, {
@@ -4582,10 +4591,10 @@ const avecIa = (Base) => class extends Base {
           + (process.env.PATH || ''),
       });
       // Le modèle choisi dans les réglages ; sans choix, celui de Claude Code.
-      const modele = String(this.settings.refsModeleClaude || '').trim();
+      const modele = String(o.modeleClaude || this.settings.refsModeleClaude || '').trim();
       const args = modele ? ['--model', modele, '-p', prompt] : ['-p', prompt];
       const enfant = require('child_process').execFile(
-        bin, args, { env, timeout: 60000, maxBuffer: 1 << 20 },
+        bin, args, { env, timeout: delai, maxBuffer: 1 << 20 },
         (err, sortie) => {
           if (fini) return;
           fini = true;
@@ -4597,7 +4606,7 @@ const avecIa = (Base) => class extends Base {
       // Sans cela le CLI attend trois secondes une entrée standard qui ne
       // viendra jamais, à chaque appel.
       try { if (enfant.stdin) enfant.stdin.end(); } catch (e) { /* déjà fermée */ }
-      setTimeout(() => { if (!fini) { try { enfant.kill('SIGKILL'); } catch (e) { /* déjà mort */ } } }, 61000);
+      setTimeout(() => { if (!fini) { try { enfant.kill('SIGKILL'); } catch (e) { /* déjà mort */ } } }, delai + 1000);
     });
   }
 
@@ -10427,7 +10436,7 @@ const avecTachesStatiques = (Base) => class extends Base {
   }
 
   static get ORIGINES_JOURNAL() {
-    return { externe: tr('vous'), ariane: 'Ariane', claude: 'Claude' };
+    return { externe: tr('vous'), ariane: 'Ariane', claude: 'Claude', ia: tr('IA (répartition)') };
   }
 
   // Tout ce qu'affiche la note « Gestion de l'organisation ». `entrees` :
@@ -10477,6 +10486,10 @@ const avecTachesStatiques = (Base) => class extends Base {
       if (debut >= hFin) return { plages: [], minutes: 0, capacite: 0 };
       const occ = creneaux.filter((x) => x.jour === j).map((x) => ({ debut: x.debut, fin: x.fin }))
         .concat(horaires.filter((e) => e.debut.slice(0, 10) === j).map((e) => ({ debut: e.debut, fin: e.fin || e.debut })));
+      // La pause déjeuner, si elle est réglée, n'est pas du temps libre.
+      if (mn(c.pauseDebut) != null && mn(c.pauseFin) != null && mn(c.pauseFin) > mn(c.pauseDebut)) {
+        occ.push({ debut: j + 'T' + hm(mn(c.pauseDebut)), fin: j + 'T' + hm(mn(c.pauseFin)) });
+      }
       const plages = Ariane.plagesLibres(j, occ, hm(debut), hm(hFin), 30);
       return { plages, minutes: plages.reduce((s, p) => s + p.minutes, 0), capacite: hFin - debut };
     };
@@ -10606,6 +10619,213 @@ const avecTachesStatiques = (Base) => class extends Base {
     };
     return { aujourdhuiISO: auj, lundi, chiffres, semaine, aujourdhui, journeeEntiere, suggestions, tempsLibre,
       matrice, surveiller, echeances, familles, activite };
+  }
+
+  // ── Répartition de la semaine par l'IA ─────────────────────────────────
+  //  L'IA estime chaque tâche (taille, temps restant, part de la semaine, bloc
+  //  idéal) ; Ariane place les créneaux par des règles fixes, dans les seules
+  //  plages libres. Ainsi aucun créneau ne peut tomber sur un rendez-vous ni
+  //  déborder de la journée, quoi que réponde le modèle.
+
+  // Les tâches à considérer, les plus pressantes d'abord, avec ce qui aide à
+  // juger leur taille : durée de vie (début → échéance), temps restant avant
+  // l'échéance, heures déjà planifiées, avancement, signaux.
+  static candidatsRepartition(entrees, aujourdhui, max) {
+    const auj = Ariane.jourValide(aujourdhui) || new Date().toISOString().slice(0, 10);
+    const out = [];
+    for (const x of (entrees || [])) {
+      if (!x || !x.tache) continue;
+      const t = x.tache;
+      if (t.statut === 'terminée' || t.statut === 'abandonnée' || t.statut === 'en attente' || t.jalon) continue;
+      const a = x.analyse;
+      const crs = Ariane.creneauxDeTache([].concat(t.creneaux || []));
+      const somme = (l) => l.reduce((s, c) => s + Ariane.dureeCreneauMin(c.debut, c.fin), 0);
+      const deb = Ariane.jourValide(t.debut);
+      const ech = Ariane.jourValide(t.echeance);
+      const codes = a.diagnostics.map((d) => d.code);
+      out.push({
+        ref: t.ref, intitule: t.intitule || t.ref, famille: t.famille || '', statut: t.statut || 'à faire',
+        avancement: Number(t.avancement) || 0, debut: deb, echeance: ech,
+        dureeVieJours: deb && ech ? Ariane.ecartJours(deb, ech) : null,
+        joursRestants: ech ? Ariane.ecartJours(auj, ech) : null,
+        minutesPasseesPlanifiees: somme(crs.filter((c) => c.debut.slice(0, 10) < auj)),
+        minutesAVenirPlanifiees: somme(crs.filter((c) => c.debut.slice(0, 10) >= auj)),
+        diagnostics: codes,
+        rang: a.urgence.score * 0.6 + a.importance.score * 0.4
+          + (codes.includes('retard') ? 30 : 0) + (codes.includes('sous-planifiee') ? 20 : 0),
+      });
+    }
+    return out.sort((p, q) => q.rang - p.rang).slice(0, Number(max) > 0 ? Number(max) : 30);
+  }
+
+  // La consigne donnée à l'IA : le contexte de la semaine, les tâches, et la
+  // façon de juger. Elle ne place rien : elle estime, en JSON.
+  static promptRepartition(candidats, tempsLibre, aujourdhui, familles) {
+    const h = (m) => (m >= 60 ? Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + String(m % 60).padStart(2, '0') : '') : m + ' min');
+    const noms = new Map((familles || []).map((f) => [f.id, f]));
+    const lignes = (candidats || []).map((c) => {
+      const f = noms.get(c.famille);
+      const bouts = [c.ref, c.intitule,
+        'famille : ' + (f ? f.nom + (f.description ? ' (' + String(f.description).slice(0, 120) + ')' : '') : (c.famille || '?')),
+        'statut : ' + c.statut + ', avancement ' + c.avancement + ' %'];
+      if (c.echeance) {
+        bouts.push('échéance ' + c.echeance + ' (' + (c.joursRestants < 0 ? 'dépassée de ' + (-c.joursRestants) + ' j' : 'dans ' + c.joursRestants + ' j') + ')');
+      } else bouts.push('sans échéance');
+      if (c.dureeVieJours != null) bouts.push('durée de vie ' + c.dureeVieJours + ' j (début ' + c.debut + ')');
+      bouts.push('déjà planifié : ' + h(c.minutesPasseesPlanifiees) + ' passées, ' + h(c.minutesAVenirPlanifiees) + ' à venir');
+      if (c.diagnostics.length) bouts.push('signaux : ' + c.diagnostics.join(', '));
+      return '- ' + bouts.join(' | ');
+    });
+    return [
+      'Tu aides un doctorant en sciences de gestion à répartir ses tâches sur ses plages libres de la semaine.',
+      'Nous sommes le ' + aujourdhui + '. Temps libre restant cette semaine (' + tempsLibre.heureDebut + ' - ' + tempsLibre.heureFin
+        + ', jours ouvrés) : ' + h(tempsLibre.minutes) + ', en ' + tempsLibre.nbPlages + ' plage(s).',
+      '',
+      'Pour CHAQUE tâche ci-dessous, estime :',
+      '- taille : « petite » (15 à 45 min : envoyer, répondre, réserver, faire un retour court), « moyenne » (1 à 4 h : lire un article, préparer une réunion, rédiger une note) ou « grosse » (plus de 4 h : lire un ouvrage, rédiger un chapitre, théoriser, construire un cadre).',
+      '- effort_restant_min : le temps total qu\'il reste à y passer, en minutes, compte tenu de l\'avancement et des heures déjà planifiées.',
+      '- cette_semaine_min : la part à faire CETTE semaine. Échéance cette semaine ou dépassée : tout le reste. Échéance lointaine : une part proportionnelle (effort restant divisé par les semaines restantes), au moins un bloc si la tâche est importante ou qu\'elle s\'étire. 0 si rien ne presse et que la tâche peut attendre.',
+      '- bloc_min : la durée idéale d\'un bloc de travail (petite : 15 à 45 ; moyenne : 60 à 120 ; grosse : 120 à 180, travail de concentration).',
+      '- moment : « matin » pour un travail de concentration, « apres-midi » pour du travail léger ou relationnel, sinon « indifferent ».',
+      '- raison : une phrase courte, en français, qui justifie ta taille et ta part de la semaine (elle sera montrée au doctorant).',
+      '',
+      'Indices à croiser : le verbe et l\'objet du titre ; la famille ; une longue durée de vie (plusieurs mois entre début et échéance) signale un travail de fond, à faire par blocs réguliers ; une échéance proche avec un titre bref signale une petite tâche urgente ; les heures déjà planifiées et l\'avancement réduisent ce qui reste ; le signal « etire » (échéance repoussée plusieurs fois) appelle au moins un bloc cette semaine.',
+      'Ne propose pas de dates ni d\'heures : le placement est fait ensuite.',
+      '',
+      'Tâches :',
+      lignes.join('\n'),
+      '',
+      'Réponds UNIQUEMENT par un tableau JSON, un objet par tâche, dans cet ordre de champs :',
+      '[{"ref":"T000","taille":"moyenne","effort_restant_min":120,"cette_semaine_min":90,"bloc_min":90,"moment":"matin","raison":"..."}]',
+    ].join('\n');
+  }
+
+  // La réponse de l'IA, vérifiée et bornée. Une tâche inconnue est ignorée ;
+  // une valeur absurde est ramenée dans des bornes raisonnables.
+  static lireEstimations(reponse, candidats) {
+    const refs = new Set((candidats || []).map((c) => c.ref));
+    const liste = Array.isArray(reponse) ? reponse
+      : (reponse && Array.isArray(reponse.taches) ? reponse.taches : []);
+    const borne = (v, min, max, def) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : def; };
+    const quart = (n) => Math.round(n / 15) * 15;
+    const out = [];
+    const vus = new Set();
+    for (const e of liste) {
+      const ref = String((e && e.ref) || '').trim();
+      if (!refs.has(ref) || vus.has(ref)) continue;
+      vus.add(ref);
+      const taille = ['petite', 'moyenne', 'grosse'].includes(e.taille) ? e.taille : 'moyenne';
+      const effort = borne(e.effort_restant_min, 15, 6000, taille === 'petite' ? 30 : taille === 'grosse' ? 600 : 120);
+      const semaine = quart(borne(e.cette_semaine_min, 0, effort, Math.min(effort, 60)));
+      const bloc = Math.max(15, quart(borne(e.bloc_min, 15, 240, taille === 'petite' ? 30 : taille === 'grosse' ? 150 : 90)));
+      const moment = ['matin', 'apres-midi'].includes(e.moment) ? e.moment : 'indifferent';
+      out.push({ ref, taille, effort, semaine, bloc, moment, raison: String(e.raison || '').trim().slice(0, 240) });
+    }
+    return out;
+  }
+
+  // Le placement, par règles fixes. `ctx` :
+  //   jours        tempsLibre.jours ({ jour, plages: [{ debut, fin }] })
+  //   dejaParJour  { jour: minutes de créneaux déjà planifiés }
+  //   candidats    ceux de candidatsRepartition (ordre de passage, échéances)
+  //   heureDebut   début de la plage de travail
+  //   maxJourMin   plafond de tâches par jour, déjà planifié compris (360)
+  //   reserve      part du temps libre laissée vide (0,2)
+  // Règles : les plus pressantes d'abord ; jamais après l'échéance (sauf
+  // retard : au plus tôt) ; gros travaux dans les longues plages, le matin
+  // s'ils le demandent, un seul bloc par jour ; petites tâches dans la plage
+  // qui leur va le mieux, à la suite l'une de l'autre ; un quart d'heure
+  // d'air après un rendez-vous ou un autre bloc.
+  static placerRepartition(estimations, ctx) {
+    const c = ctx || {};
+    const mn = (hm) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(hm || '')); return m ? +m[1] * 60 + +m[2] : 0; };
+    const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    const debutJournee = mn(c.heureDebut || '09:00');
+    const maxJour = Number(c.maxJourMin) > 0 ? Number(c.maxJourMin) : 360;
+    const reserve = Number.isFinite(Number(c.reserve)) ? Math.max(0, Math.min(0.9, Number(c.reserve))) : 0.2;
+    const plages = [];
+    for (const j of (c.jours || [])) {
+      for (const p of (j.plages || [])) {
+        let d = mn(p.debut);
+        const f = mn(p.fin);
+        if (d > debutJournee) d += 15;   // de l'air après ce qui précède
+        if (f - d >= 30) plages.push({ jour: j.jour, debut: d, fin: f });
+      }
+    }
+    const libreTotal = plages.reduce((s, p) => s + p.fin - p.debut, 0);
+    let budget = Math.floor(libreTotal * (1 - reserve) / 15) * 15;
+    const charge = Object.assign({}, c.dejaParJour || {});
+    const infos = new Map((c.candidats || []).map((x, i) => [x.ref, Object.assign({ ordre: i }, x)]));
+    const ordre = (estimations || []).slice().sort((a, b) =>
+      ((infos.get(a.ref) || {}).ordre ?? 999) - ((infos.get(b.ref) || {}).ordre ?? 999));
+    const placements = [];
+    const nonPlaces = [];
+    for (const e of ordre) {
+      const info = infos.get(e.ref) || {};
+      let besoin = e.semaine;
+      if (besoin <= 0) continue;
+      const pressee = info.joursRestants != null && info.joursRestants <= 7;
+      const limite = info.echeance && info.joursRestants >= 0 ? info.echeance : null;
+      const joursPris = new Set();
+      while (besoin > 0 && budget >= 15) {
+        const possibles = plages.filter((p) => p.fin - p.debut >= Math.min(30, besoin)
+          && (!limite || p.jour <= limite)
+          && (e.taille === 'petite' || !joursPris.has(p.jour))
+          && (charge[p.jour] || 0) + Math.min(30, besoin) <= maxJour);
+        if (!possibles.length) break;
+        // Un reste court ne se laisse pas traîner au lendemain : jusqu'à une
+        // fois et demie le bloc, on le fait d'une traite.
+        const voulu = besoin <= e.bloc * 1.5 ? besoin : e.bloc;
+        const cle = (p) => {
+          const lg = p.fin - p.debut;
+          const ajustement = e.taille === 'petite' ? Math.abs(lg - voulu) : (lg >= voulu ? 0 : voulu - lg);
+          // « Matin » : un bloc qui commence avant 11 h (commencé à 11 h 45,
+          // un bloc de trois heures se passe surtout l'après-midi).
+          const moment = e.moment === 'matin' ? (p.debut < 660 ? 0 : 1) : e.moment === 'apres-midi' ? (p.debut >= 720 ? 0 : 1) : 0;
+          return [pressee ? p.jour : '', e.taille === 'petite' ? ajustement : moment, e.taille === 'petite' ? moment : ajustement, p.jour, p.debut];
+        };
+        possibles.sort((a, b) => {
+          const ka = cle(a);
+          const kb = cle(b);
+          for (let i = 0; i < ka.length; i += 1) if (ka[i] !== kb[i]) return ka[i] < kb[i] ? -1 : 1;
+          return 0;
+        });
+        const p = possibles[0];
+        const duree = Math.floor(Math.min(voulu, p.fin - p.debut, maxJour - (charge[p.jour] || 0), budget) / 15) * 15;
+        if (duree < 15) break;
+        placements.push({ ref: e.ref, jour: p.jour, debut: p.jour + 'T' + hm(p.debut),
+          fin: p.jour + 'T' + hm(p.debut + duree), minutes: duree });
+        p.debut += duree + (e.taille === 'petite' ? 0 : 15);
+        if (p.fin - p.debut < 30) plages.splice(plages.indexOf(p), 1);
+        besoin -= duree;
+        budget -= duree;
+        charge[p.jour] = (charge[p.jour] || 0) + duree;
+        joursPris.add(p.jour);
+      }
+      if (besoin > 0) nonPlaces.push({ ref: e.ref, manqueMin: besoin });
+    }
+    return { placements, nonPlaces, libreMin: libreTotal,
+      placeMin: placements.reduce((s, x) => s + x.minutes, 0) };
+  }
+
+  // Les placements, dits comme des propositions (le format de
+  // proposer_modifications) : une par tâche, ses créneaux, sa justification.
+  static propositionsRepartition(placement, estimations, candidats) {
+    const est = new Map((estimations || []).map((e) => [e.ref, e]));
+    const titres = new Map((candidats || []).map((c) => [c.ref, c.intitule]));
+    const parRef = new Map();
+    for (const p of (placement.placements || [])) {
+      if (!parRef.has(p.ref)) parRef.set(p.ref, []);
+      parRef.get(p.ref).push({ debut: p.debut, fin: p.fin });
+    }
+    const out = [];
+    for (const [ref, creneaux] of parRef) {
+      const e = est.get(ref) || {};
+      const taille = { petite: 'petite tâche', moyenne: 'tâche moyenne', grosse: 'gros travail' }[e.taille] || '';
+      out.push({ ref, intitule: titres.get(ref) || ref, ajouter_creneaux: creneaux,
+        justification: [taille, e.raison].filter(Boolean).join(' : ') });
+    }
+    return out;
   }
 
   //#endregion Ariane · static · tâches
@@ -14674,9 +14894,9 @@ const avecTaches = (Base) => class extends Base {
   /* ---- IA : structuration de tâches -------------------------------- */
 
   // Appel LLM (fournisseur configuré dans les réglages) qui rend du JSON parsé.
-  async genererIA(prompt, jetons) {
+  async genererIA(prompt, jetons, opts) {
     this._diagIA = '';
-    const brut = await this.genererJsonRefs(prompt, jetons || 1800);
+    const brut = await this.genererJsonRefs(prompt, jetons || 1800, opts);
     if (!brut) {
       const f = this.settings.refsFournisseur || 'ollama';
       new obsidian.Notice(tr('IA (') + f + ') : ' + (this._diagIA
@@ -16009,7 +16229,73 @@ const avecTaches = (Base) => class extends Base {
       heureDebut: s.organisationHeureDebut || '09:00',
       heureFin: s.organisationHeureFin || '18:00',
       weekend: s.organisationWeekend === true,
+      pauseDebut: s.organisationPauseDebut || '',
+      pauseFin: s.organisationPauseFin || '',
     });
+  }
+
+  // Répartir la semaine (spec : conversation du 2026-09-29) : l'IA estime les
+  // tâches candidates, Ariane place leurs créneaux dans les plages libres par
+  // des règles fixes (Ariane.placerRepartition), et la proposition passe par
+  // la même fenêtre de validation que celles de Claude.
+  async repartirSemaineIA() {
+    const s = this.settings;
+    const d = await this.donneesOrganisation();
+    const auj = d.aujourdhuiISO;
+    if (!d.tempsLibre.minutes) {
+      new obsidian.Notice(tr('Plus de temps libre cette semaine : rien à répartir.'));
+      return;
+    }
+    const candidats = Ariane.candidatsRepartition(await this.analyseTaches(auj), auj, 30);
+    if (!candidats.length) { new obsidian.Notice(tr('Aucune tâche à répartir.')); return; }
+    const prompt = Ariane.promptRepartition(candidats, d.tempsLibre, auj, this.famillesIA());
+    const avis = new obsidian.Notice(tr('Répartition : l’IA estime vos tâches (') + candidats.length + ')…', 0);
+    // Toujours Claude en ligne de commande, quel que soit le fournisseur de
+    // l'assistant IA (Mistral, Ollama…) : c'est le modèle choisi pour la
+    // répartition, Sonnet par défaut, avec quatre minutes pour répondre.
+    let brut;
+    this._diagIA = '';
+    try {
+      brut = await this.genererClaude(prompt, 6000, {
+        modeleClaude: s.organisationModeleClaude || 'sonnet', delai: 240000 });
+    } finally { avis.hide(); }
+    if (!brut) {
+      new obsidian.Notice(tr('Claude n’a pas répondu : ') + (this._diagIA || tr('raison inconnue')), 10000);
+      return;
+    }
+    const reponse = Ariane.extraireJson(brut);
+    if (!reponse) {
+      new obsidian.Notice(tr('Réponse de Claude illisible (JSON attendu).'), 8000);
+      return;
+    }
+    const estimations = Ariane.lireEstimations(reponse, candidats);
+    if (!estimations.length) { new obsidian.Notice(tr('L’IA n’a rendu aucune estimation exploitable.')); return; }
+    const dejaParJour = {};
+    for (const j of d.semaine) dejaParJour[j.jour] = j.minutesPlanifiees;
+    const r = Ariane.placerRepartition(estimations, {
+      jours: d.tempsLibre.jours, dejaParJour, candidats, heureDebut: d.tempsLibre.heureDebut,
+      maxJourMin: Math.round((Number(s.organisationMaxJourH) || 6) * 60),
+      reserve: (Number.isFinite(Number(s.organisationReserve)) ? Number(s.organisationReserve) : 20) / 100,
+    });
+    if (!r.placements.length) {
+      new obsidian.Notice(tr('Rien à placer : aucune tâche ne demande de temps cette semaine, ou aucune plage ne convient.'), 8000);
+      return;
+    }
+    const h = (m) => dureeLisible(m);
+    const titres = new Map(candidats.map((c) => [c.ref, c.intitule]));
+    let motif = tr('Répartition proposée pour la semaine : ') + h(r.placeMin) + tr(' de travail sur ')
+      + h(d.tempsLibre.minutes) + tr(' libres, une part gardée en réserve.');
+    if (r.nonPlaces.length) {
+      motif += ' ' + tr('Sans place cette semaine : ') + r.nonPlaces
+        .map((x) => (titres.get(x.ref) || x.ref) + ' (' + h(x.manqueMin) + ')').join(', ') + '.';
+    }
+    const { valides, erreurs } = Ariane.validerPropositions(
+      Ariane.propositionsRepartition(r, estimations, candidats), this.tachesPourGantt());
+    if (!this.pont) return;
+    const choix = await this.pont._demanderValidation(motif, valides, erreurs,
+      tr('Répartition de la semaine'));
+    if (!choix || !choix.length) return;
+    await this.pont._appliquer(valides.filter((v) => choix.includes(v.id)), 'ia');
   }
 
   // La note « Gestion de l'organisation » : créée au besoin dans le dossier
@@ -16866,6 +17152,12 @@ class Ariane extends composer(obsidian.Plugin,
       name: tr('Correcteur Apple : ouvrir ou fermer le volet de relecture'),
       icon: 'spell-check',
       callback: () => this.correcteur && this.correcteur.basculerVolet(),
+    });
+    this.addCommand({
+      id: 'organisation-repartir',
+      name: tr('Tâches : répartir sur la semaine (IA)'),
+      callback: () => this.repartirSemaineIA().catch((e) => new obsidian.Notice(
+        tr('Répartition impossible : ') + (e && e.message ? e.message : e), 10000)),
     });
     this.addCommand({
       id: 'organisation-ouvrir',
@@ -17883,15 +18175,19 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
   // Le modèle du fournisseur « Claude en ligne de commande » (option --model).
   // Fable, Opus, Sonnet et Haiku sont des alias : ils suivent la dernière version de
   // leur famille. « Autre » accepte un identifiant exact.
-  _modeleClaude(c, s, maj) {
-    const PRESETS = ['', 'fable', 'opus', 'sonnet', 'haiku'];
-    const actuel = String(s.refsModeleClaude || '').trim();
-    const autre = !PRESETS.includes(actuel) || this._claudeAutre === true;
+  // `cle` : le réglage visé (refsModeleClaude par défaut) ; `o` : { nom,
+  // desc, sansDefaut } pour un autre usage (la répartition de la semaine).
+  _modeleClaude(c, s, maj, cle, o) {
+    const k = cle || 'refsModeleClaude';
+    const opt = o || {};
+    const PRESETS = (opt.sansDefaut ? [] : ['']).concat(['fable', 'opus', 'sonnet', 'haiku']);
+    const actuel = String(s[k] || '').trim();
+    if (!this._claudeAutre || typeof this._claudeAutre !== 'object') this._claudeAutre = {};
+    const autre = !PRESETS.includes(actuel) || this._claudeAutre[k] === true;
     new obsidian.Setting(c)
-      .setName(tr('Modèle'))
-      .setDesc(tr('Les alias suivent la dernière version de chaque modèle. Plus capable = plus lent et plus coûteux en quota : Haiku suffit pour découper des bibliographies.'))
-      .addDropdown((d) => d
-        .addOption('', tr('Par défaut (celui de Claude Code)'))
+      .setName(opt.nom || tr('Modèle'))
+      .setDesc(opt.desc || tr('Les alias suivent la dernière version de chaque modèle. Plus capable = plus lent et plus coûteux en quota : Haiku suffit pour découper des bibliographies.'))
+      .addDropdown((d) => { if (!opt.sansDefaut) d.addOption('', tr('Par défaut (celui de Claude Code)')); return d
         .addOption('fable', 'Fable')
         .addOption('opus', 'Opus')
         .addOption('sonnet', tr('Sonnet : équilibré'))
@@ -17899,17 +18195,17 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addOption('__autre', tr('Autre identifiant…'))
         .setValue(autre ? '__autre' : actuel)
         .onChange(async (v) => {
-          this._claudeAutre = v === '__autre';
-          if (v !== '__autre') s.refsModeleClaude = v;
+          this._claudeAutre[k] = v === '__autre';
+          if (v !== '__autre') s[k] = v;
           await maj();
           this.display();
-        }));
+        }); });
     if (autre) {
       new obsidian.Setting(c)
         .setName(tr('Identifiant du modèle'))
         .setDesc(tr('Tel que « claude --model » l’accepte, par exemple « claude-opus-5-5 ».'))
         .addText((t) => t.setPlaceholder('claude-opus-5-5').setValue(PRESETS.includes(actuel) ? '' : actuel)
-          .onChange(async (v) => { s.refsModeleClaude = v.trim(); await maj(); }));
+          .onChange(async (v) => { s[k] = v.trim(); await maj(); }));
     }
   }
 
@@ -18145,9 +18441,33 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setPlaceholder('18:00').setValue(s.organisationHeureFin || '18:00')
         .onChange(async (v) => { s.organisationHeureFin = heure(v, '18:00'); await maj(); }));
     new obsidian.Setting(c)
+      .setName(tr('Pause déjeuner'))
+      .setDesc(tr('Retirée du temps libre, et jamais occupée par la répartition. Videz les deux champs pour n’en compter aucune.'))
+      .addText((t) => t.setPlaceholder('12:00').setValue(s.organisationPauseDebut || '')
+        .onChange(async (v) => { s.organisationPauseDebut = v.trim() ? heure(v, '12:00') : ''; await maj(); }))
+      .addText((t) => t.setPlaceholder('13:00').setValue(s.organisationPauseFin || '')
+        .onChange(async (v) => { s.organisationPauseFin = v.trim() ? heure(v, '13:00') : ''; await maj(); }));
+    new obsidian.Setting(c)
       .setName(tr('Compter le week-end'))
       .addToggle((t) => t.setValue(s.organisationWeekend === true)
         .onChange(async (v) => { s.organisationWeekend = v; await maj(); }));
+    this._aide(c, tr("« Répartir sur la semaine » : Claude estime la taille de vos tâches (titre, famille, échéance, durée de vie, ce qui est déjà fait), puis Ariane place leurs créneaux dans vos plages libres. Rien n’est appliqué sans votre accord."));
+    this._modeleClaude(c, s, maj, 'organisationModeleClaude', {
+      nom: tr('Modèle de la répartition'), sansDefaut: true,
+      desc: tr('Toujours Claude en ligne de commande, quel que soit le fournisseur de l’assistant IA. Sonnet par défaut ; Opus ou Fable jugent plus finement la taille des tâches, plus lentement.'),
+    });
+    new obsidian.Setting(c)
+      .setName(tr('Au plus, par jour'))
+      .setDesc(tr('Heures de tâches par jour, créneaux déjà posés compris.'))
+      .addSlider((sl) => sl.setLimits(2, 9, 0.5).setDynamicTooltip()
+        .setValue(Number(s.organisationMaxJourH) || 6)
+        .onChange(async (v) => { s.organisationMaxJourH = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Temps laissé libre'))
+      .setDesc(tr('Part du temps libre que la répartition ne remplit pas, pour l’imprévu (%).'))
+      .addSlider((sl) => sl.setLimits(0, 50, 5).setDynamicTooltip()
+        .setValue(Number.isFinite(Number(s.organisationReserve)) ? Number(s.organisationReserve) : 20)
+        .onChange(async (v) => { s.organisationReserve = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Abandon probable après'))
       .setDesc(tr('Semaines sans créneau, sans modification ni temps passé, avant qu’une tâche soit signalée comme probablement abandonnée.'))
@@ -33115,6 +33435,18 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
         jauge.createSpan().style.width = Math.round(100 * (1 - tl.minutes / tl.capacite)) + '%';
       }
       if (!tl.jours.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('La semaine de travail est terminée.') }); return; }
+      if (tl.minutes > 0) {
+        const barre = c.createDiv({ cls: 'zfa-orga-actions' });
+        const b = barre.createEl('button', { cls: 'mod-cta', text: tr('Proposer une répartition (IA)') });
+        b.setAttribute('title', tr('Claude estime vos tâches, Ariane place leurs créneaux ; vous validez.'));
+        b.addEventListener('click', async () => {
+          b.disabled = true;
+          try { await this.greffon.repartirSemaineIA(); } catch (e) {
+            new obsidian.Notice(tr('Répartition impossible : ') + (e && e.message ? e.message : e), 10000);
+          } finally { b.disabled = false; }
+        });
+        barre.createSpan({ cls: 'zfa-orga-discret', text: tr('Claude estime la taille de vos tâches ; Ariane pose les créneaux ; vous validez.') });
+      }
       for (const j of tl.jours) {
         const l = c.createDiv({ cls: 'zfa-orga-libre-jour' + (j.aujourdhui ? ' est-aujourdhui' : '') });
         l.createSpan({ cls: 'zfa-orga-libre-nom', text: (j.aujourdhui ? tr('aujourd’hui') : this._jourCourt(j.jour)) });
@@ -35480,9 +35812,9 @@ class PontClaude extends obsidian.Component {
     return { acceptes: appliques, refuses, ecartes: erreurs.concat(echecs), sans_reponse: false };
   }
 
-  _demanderValidation(motif, valides, erreurs) {
+  _demanderValidation(motif, valides, erreurs, titre) {
     return new Promise((resolve) => {
-      const m = new ModaleValidationClaude(this.greffon.app, { motif, valides, erreurs, surFin: resolve });
+      const m = new ModaleValidationClaude(this.greffon.app, { motif, valides, erreurs, titre, surFin: resolve });
       const minuteur = setTimeout(() => m.expirer(), 10 * 60000);
       m.surFermeture = () => clearTimeout(minuteur);
       m.open();
@@ -35493,7 +35825,10 @@ class PontClaude extends obsidian.Component {
   // tout défaire : une écriture de propriétés ne passe pas par l'annulation
   // de l'éditeur, ⌘Z n'y peut rien. Chaque écriture est marquée d'origine
   // « claude » dans le journal.
-  async _appliquer(retenus) {
+  // `origine` : « claude » (proposition de Claude) ou « ia » (répartition de
+  // la semaine par l'assistant d'Ariane), pour le journal.
+  async _appliquer(retenus, origine) {
+    const orig = origine || 'claude';
     const g = this.greffon;
     const inverse = [];
     const appliques = [];
@@ -35505,7 +35840,7 @@ class PontClaude extends obsidian.Component {
           if (op.genre === 'creation') {
             const chemin = await g.creerTache(op.champs);
             if (!chemin) throw new Error('création impossible');
-            g.marquerOrigineTache(chemin, 'claude');
+            g.marquerOrigineTache(chemin, orig);
             ref = chemin.split('/').pop().replace(/\.md$/, '');
             inverse.push({ genre: 'supprimer', chemin });
             // Le gabarit d'une tâche neuve ne porte pas de mère : on la pose.
@@ -35514,7 +35849,7 @@ class PontClaude extends obsidian.Component {
           }
           const f = g.fichierDeRef(ref);
           if (!f) throw new Error('tâche introuvable : ' + ref);
-          g.marquerOrigineTache(f.path, 'claude');
+          g.marquerOrigineTache(f.path, orig);
           if (op.genre === 'champ') {
             if (op.champ === 'intitule') await g.renommerTitreTache(ref, op.apres);
             else await g.majTache(ref, { [op.champ]: op.apres });
@@ -35633,7 +35968,7 @@ class ModaleValidationClaude extends obsidian.Modal {
   onOpen() {
     const { contentEl, titleEl } = this;
     this.modalEl.addClass('zfa-claude-modale');
-    titleEl.setText(tr('Claude propose des modifications'));
+    titleEl.setText(this.o.titre || tr('Claude propose des modifications'));
     if (this.o.motif) contentEl.createEl('p', { cls: 'zfa-claude-motif', text: this.o.motif });
     const liste = contentEl.createDiv({ cls: 'zfa-claude-liste' });
     let bouton = null;

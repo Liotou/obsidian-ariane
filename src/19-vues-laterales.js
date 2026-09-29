@@ -897,6 +897,18 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
         jauge.createSpan().style.width = Math.round(100 * (1 - tl.minutes / tl.capacite)) + '%';
       }
       if (!tl.jours.length) { c.createDiv({ cls: 'zfa-orga-vide', text: tr('La semaine de travail est terminée.') }); return; }
+      if (tl.minutes > 0) {
+        const barre = c.createDiv({ cls: 'zfa-orga-actions' });
+        const b = barre.createEl('button', { cls: 'mod-cta', text: tr('Proposer une répartition (IA)') });
+        b.setAttribute('title', tr('Claude estime vos tâches, Ariane place leurs créneaux ; vous validez.'));
+        b.addEventListener('click', async () => {
+          b.disabled = true;
+          try { await this.greffon.repartirSemaineIA(); } catch (e) {
+            new obsidian.Notice(tr('Répartition impossible : ') + (e && e.message ? e.message : e), 10000);
+          } finally { b.disabled = false; }
+        });
+        barre.createSpan({ cls: 'zfa-orga-discret', text: tr('Claude estime la taille de vos tâches ; Ariane pose les créneaux ; vous validez.') });
+      }
       for (const j of tl.jours) {
         const l = c.createDiv({ cls: 'zfa-orga-libre-jour' + (j.aujourdhui ? ' est-aujourdhui' : '') });
         l.createSpan({ cls: 'zfa-orga-libre-nom', text: (j.aujourdhui ? tr('aujourd’hui') : this._jourCourt(j.jour)) });

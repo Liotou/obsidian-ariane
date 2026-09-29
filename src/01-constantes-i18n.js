@@ -1107,7 +1107,12 @@ const DEFAULT_SETTINGS = {
   organisationReplies: [],
   organisationHeureDebut: '09:00', // plage de travail pour le temps libre du tableau de bord
   organisationHeureFin: '18:00',
-  organisationWeekend: false,   // le week-end compte-t-il dans le temps libre ?      // sections repliées du tableau de bord des tâches     // semaines sans activité avant « abandon probable »
+  organisationWeekend: false,   // le week-end compte-t-il dans le temps libre ?
+  organisationPauseDebut: '12:00', // pause déjeuner, retirée du temps libre (vide : aucune)
+  organisationPauseFin: '13:00',
+  organisationModeleClaude: 'sonnet', // modèle Claude de la répartition de la semaine par l'IA
+  organisationMaxJourH: 6,      // plafond d'heures de tâches par jour, répartition comprise
+  organisationReserve: 20,      // % du temps libre que la répartition laisse vide      // sections repliées du tableau de bord des tâches     // semaines sans activité avant « abandon probable »
   agendaActif: false,           // intégration Apple Agenda / Calendar (macOS, EKEvent)
   agendaAuto: true,             // pousser à la sauvegarde + relever régulièrement
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques
