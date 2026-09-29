@@ -985,8 +985,32 @@ class Ariane extends composer(obsidian.Plugin,
     }));
 
     // « terminee » (case) et « statut » restent en phase, dans les deux sens :
-    // celui des deux qui vient de changer entraîne l'autre.
+    // celui des deux qui vient de changer entraîne l'autre (accordTermine).
+    // Pour savoir lequel a changé, il faut l'état d'avant : la mémoire est
+    // remplie au démarrage pour toutes les tâches. Vide, elle faisait croire
+    // à la case au premier changement de chaque tâche, et « Statut :
+    // terminée » ne prenait qu'au second essai.
     this._etatTermine = this._etatTermine || new Map();
+    const memoriserTermine = () => {
+      for (const t of this.tachesPourGantt()) {
+        if (!t.fichier || this._etatTermine.has(t.fichier.path)) continue;
+        const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+        this._etatTermine.set(t.fichier.path, {
+          coche: this._lireT(fm, 'terminee') === true,
+          fini: this._lireT(fm, 'statut') === 'terminée',
+        });
+      }
+    };
+    // Une seule passe : quand le cache des métadonnées est prêt (tout de suite
+    // s'il l'est déjà, sinon à sa première résolution). Les tâches créées
+    // ensuite naissent en phase et entrent dans la mémoire à leur premier
+    // changement.
+    this.app.workspace.onLayoutReady(() => {
+      const cache = this.app.metadataCache;
+      if (cache.resolved) { memoriserTermine(); return; }
+      const ref = cache.on('resolved', () => { cache.offref(ref); memoriserTermine(); });
+      this.registerEvent(ref);
+    });
     this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _d, cacheNote) => {
       if (!this.refDeChemin(fichier.path)) return;
       const fm = (cacheNote && cacheNote.frontmatter) || {};
@@ -994,12 +1018,8 @@ class Ariane extends composer(obsidian.Plugin,
       const kTe = this.cleT('terminee');
       const coche = this._lireT(fm, 'terminee') === true;
       const fini = this._lireT(fm, 'statut') === 'terminée';
-      if (coche === fini) { this._etatTermine.set(fichier.path, { coche, fini }); return; }
-      const av = this._etatTermine.get(fichier.path) || { coche: fini, fini };
-      const caseModifiee = av.coche !== coche;
-      const cible = caseModifiee
-        ? { statut: coche ? 'terminée' : 'à faire' }   // la case pilote le statut
-        : { terminee: fini };                           // le statut pilote la case
+      const cible = Ariane.accordTermine(this._etatTermine.get(fichier.path), coche, fini);
+      if (!cible) { this._etatTermine.set(fichier.path, { coche, fini }); return; }
       this._etatTermine.set(fichier.path,
         { coche: cible.terminee != null ? cible.terminee : coche,
           fini: cible.statut ? cible.statut === 'terminée' : fini });

@@ -382,5 +382,32 @@ const avecTachesStatiques = (Base) => class extends Base {
       || String(a.t.intitule || a.t.ref).localeCompare(String(b.t.intitule || b.t.ref), 'fr'));
   }
 
+  // Case « terminee » et statut vont ensemble. Quand Ariane écrit un statut
+  // sans la case, on ajoute la case assortie : les deux arrivent en phase, et
+  // la règle qui les accorde (accordTermine) n'a rien à arbitrer. Sans cela,
+  // le menu de la frise écrivait « terminée » case décochée, et la règle,
+  // faute de savoir lequel avait bougé, rendait raison à la case.
+  static champsTacheEnPhase(champs) {
+    const c = Object.assign({}, champs || {});
+    if (Object.prototype.hasOwnProperty.call(c, 'statut')
+      && !Object.prototype.hasOwnProperty.call(c, 'terminee')) {
+      c.terminee = c.statut === 'terminée';
+    }
+    return c;
+  }
+
+  // Accorde la case et le statut quand ils se contredisent : celui des deux
+  // qui a changé depuis l'état mémorisé (`avant`) entraîne l'autre. Rend les
+  // champs à écrire, ou null s'ils sont déjà d'accord. Sans état mémorisé, on
+  // ne peut pas savoir lequel a bougé : on rend raison au statut, que la
+  // plupart des gestes modifient (menus, formulaire, synchronisations).
+  static accordTermine(avant, coche, fini) {
+    if (coche === fini) return null;
+    const caseModifiee = avant ? avant.coche !== coche : false;
+    return caseModifiee
+      ? { statut: coche ? 'terminée' : 'à faire' }
+      : { terminee: fini };
+  }
+
   //#endregion Ariane · static · tâches
 };

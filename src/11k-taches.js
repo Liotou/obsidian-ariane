@@ -1508,8 +1508,9 @@ const avecTaches = (Base) => class extends Base {
     const f = this.fichierDeRef(ref);
     if (!f) return false;
     const conc = new Set(Ariane.CONCEPTS_TACHE);
+    const enPhase = Ariane.champsTacheEnPhase(champs);
     await this.app.fileManager.processFrontMatter(f, (x) => {
-      for (const [k, v] of Object.entries(champs)) {
+      for (const [k, v] of Object.entries(enPhase)) {
         x[conc.has(k) ? this.cleT(k) : k] = v;
       }
       x.modifie = new Date().toISOString().slice(0, 10);

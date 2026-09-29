@@ -50,3 +50,24 @@ test('valeur divergente : corriger', () => {
   assert.equal(se('2026-09-30', true), false);
   assert.equal(se('  ', false), true); // espaces = pas d'échéance
 });
+
+// « Statut : terminée » depuis le menu de la frise ne prenait qu'au second
+// essai : la règle d'accord, sans mémoire de la tâche, rendait raison à la
+// case décochée et remettait le statut à « à faire ».
+test('statut et case : Ariane écrit les deux ensemble', () => {
+  assert.deepEqual(Ariane.champsTacheEnPhase({ statut: 'terminée' }), { statut: 'terminée', terminee: true });
+  assert.deepEqual(Ariane.champsTacheEnPhase({ statut: 'en cours' }), { statut: 'en cours', terminee: false });
+  assert.deepEqual(Ariane.champsTacheEnPhase({ statut: 'à faire', terminee: true }),
+    { statut: 'à faire', terminee: true }, 'une case écrite explicitement n\'est pas touchée');
+  assert.deepEqual(Ariane.champsTacheEnPhase({ priorite: 'haute' }), { priorite: 'haute' });
+});
+
+test('statut et case : celui qui a bougé entraîne l\'autre', () => {
+  // Le statut vient de passer à « terminée », la case était décochée.
+  assert.deepEqual(Ariane.accordTermine({ coche: false, fini: false }, false, true), { terminee: true });
+  // La case vient d'être cochée, le statut était « à faire ».
+  assert.deepEqual(Ariane.accordTermine({ coche: false, fini: false }, true, false), { statut: 'terminée' });
+  // Sans mémoire : le statut l'emporte (c'était la case, d'où le bug).
+  assert.deepEqual(Ariane.accordTermine(undefined, false, true), { terminee: true });
+  assert.equal(Ariane.accordTermine(undefined, true, true), null, 'd\'accord : rien à écrire');
+});
