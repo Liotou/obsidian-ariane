@@ -209,3 +209,38 @@ test('proposer_modifications : seul ce que Monsieur coche est appliqué, puis an
     pont.arreter();
   }
 });
+
+test('installation pour Claude : compétence, serveurs et configuration, sans rien écraser d\'autre', () => {
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'ariane-install-'));
+  const coffre = path.join(racine, 'coffre');
+  const maison = path.join(racine, 'maison');
+  const greffonDir = path.join(coffre, '.obsidian/plugins/obsidian-ariane');
+  fs.mkdirSync(path.join(greffonDir, 'competence/ariane-taches'), { recursive: true });
+  fs.mkdirSync(path.join(greffonDir, 'mcp'), { recursive: true });
+  fs.writeFileSync(path.join(greffonDir, 'competence/ariane-taches/SKILL.md'), '---\nname: ariane-taches\n---\n');
+  fs.writeFileSync(path.join(greffonDir, 'mcp/taches.js'), '// taches');
+  fs.writeFileSync(path.join(greffonDir, 'mcp/serveur.js'), '// serveur');
+  fs.mkdirSync(path.join(coffre, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(coffre, '.claude/mcp.json'), JSON.stringify({
+    mcpServers: { autre: { command: 'x' }, 'ariane-annotations': { command: '/bin/sh', args: ['vieux'], env: { OLLAMA_URL: 'http://ailleurs:1' } } },
+    _claudian: { servers: { autre: { contextSaving: true } } },
+  }));
+  const pont = new PontClaude({ manifest: { dir: '.obsidian/plugins/obsidian-ariane' },
+    app: { vault: { adapter: { getBasePath: () => coffre } } } });
+  const home = process.env.HOME;
+  process.env.HOME = maison;
+  try {
+    pont.installerPourClaude();
+  } finally { process.env.HOME = home; }
+  assert.equal(fs.readFileSync(path.join(coffre, '.claude/skills/ariane-taches/SKILL.md'), 'utf8'), '---\nname: ariane-taches\n---\n');
+  assert.equal(fs.readFileSync(path.join(maison, '.ariane-mcp/taches.js'), 'utf8'), '// taches');
+  const d = JSON.parse(fs.readFileSync(path.join(coffre, '.claude/mcp.json'), 'utf8'));
+  assert.deepEqual(d.mcpServers.autre, { command: 'x' }, 'un autre serveur n\'est pas touché');
+  assert.deepEqual(d.mcpServers['ariane-taches'].args, [path.join(maison, '.ariane-mcp/taches.js')]);
+  assert.equal(d.mcpServers['ariane-taches'].env.ARIANE_VAULT, coffre);
+  assert.match(d.mcpServers['ariane-taches'].command, /(^|\/)node$/, 'jamais le /bin/sh configuré ailleurs');
+  assert.equal(d.mcpServers['ariane-annotations'].env.OLLAMA_URL, 'http://ailleurs:1', 'un réglage de Monsieur est gardé');
+  assert.equal(d.mcpServers['ariane-annotations'].env.ARIANE_CACHE, path.join(greffonDir, 'cache-embeddings.json'));
+  assert.deepEqual(d._claudian.servers.autre, { contextSaving: true });
+  assert.deepEqual(d._claudian.servers['ariane-taches'], { contextSaving: false });
+});

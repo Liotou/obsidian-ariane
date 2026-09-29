@@ -79,6 +79,14 @@ Une méthode nouvelle va dans le mixin de son domaine, et dans la sous-région
 cp main.js styles.css manifest.json "$HOME/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"
 ```
 
+Et, quand `mcp/` ou `competence/` ont changé (serveurs MCP et compétence
+Claude, que la commande « Claude : installer ou mettre à jour… » va chercher
+dans le dossier du greffon) :
+
+```bash
+cp -R mcp competence "$HOME/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"
+```
+
 **Jamais `data.json`** : ce sont les réglages de l'utilisateur. Et ne pas
 synchroniser le coffre sans que Monsieur l'ait demandé — il teste lui-même.
 

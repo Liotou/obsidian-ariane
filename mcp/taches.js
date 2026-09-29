@@ -38,6 +38,7 @@ const OUTILS = [
       properties: {
         statut: { type: 'string', description: "Filtrer sur un statut : à faire, en cours, en attente, terminée, abandonnée" },
         famille: { type: 'string', description: 'Filtrer sur une famille de tâches (identifiant)' },
+        liste: { type: 'string', description: "Filtrer sur la liste Apple Rappels d'origine, par exemple la boîte de réception" },
         diagnostic: { type: 'string', enum: ['retard', 'etire', 'sous-planifiee', 'abandon'], description: 'Ne garder que les tâches portant ce diagnostic' },
         echeance_avant: { type: 'string', description: 'Ne garder que les échéances au plus tard ce jour (AAAA-MM-JJ)' },
         inclure_finies: { type: 'boolean', description: 'Inclure les tâches terminées et abandonnées' },

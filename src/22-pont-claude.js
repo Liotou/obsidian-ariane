@@ -158,6 +158,7 @@ class PontClaude extends obsidian.Component {
       intitule: t.intitule,
       statut: t.statut,
       famille: t.famille,
+      liste: this._listeDe(t),
       priorite: t.priorite || '',
       debut: t.debut || '',
       echeance: t.echeance || '',
@@ -175,6 +176,15 @@ class PontClaude extends obsidian.Component {
     };
   }
 
+  // La liste Apple Rappels d'une tâche : c'est ce qui distingue une tâche
+  // tout juste importée de la boîte de réception, à mettre au propre.
+  _listeDe(t) {
+    try {
+      const fm = (this.greffon.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+      return String(this.greffon._lireT(fm, 'liste') || '');
+    } catch (e) { return ''; }
+  }
+
   async listerTaches(a) {
     const o = a || {};
     const auj = jourIsoDe(new Date());
@@ -182,6 +192,7 @@ class PontClaude extends obsidian.Component {
     if (!o.inclure_finies) l = l.filter((x) => x.tache.statut !== 'terminée' && x.tache.statut !== 'abandonnée');
     if (o.statut) l = l.filter((x) => x.tache.statut === o.statut);
     if (o.famille) l = l.filter((x) => x.tache.famille === o.famille);
+    if (o.liste) l = l.filter((x) => this._listeDe(x.tache) === o.liste);
     if (o.diagnostic) l = l.filter((x) => x.analyse.diagnostics.some((d) => d.code === o.diagnostic));
     if (o.echeance_avant) {
       l = l.filter((x) => Ariane.jourValide(x.tache.echeance) && x.tache.echeance <= o.echeance_avant);
@@ -273,6 +284,77 @@ class PontClaude extends obsidian.Component {
     };
   }
   //#endregion Pont · outils de lecture
+
+  //#region Pont · installation
+  // Installe ou met à jour ce dont Claude, dans Claudian, a besoin : la
+  // compétence dans le coffre (.claude/skills/ariane-taches), les deux
+  // serveurs MCP dans ~/.ariane-mcp, et leurs entrées dans .claude/mcp.json,
+  // le fichier de Claudian, dont les autres serveurs sont laissés tels quels.
+  // Les sources viennent du dossier du greffon, où elles sont déployées avec
+  // lui (mcp/, competence/).
+  installerPourClaude() {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    const coffre = this.coffre;
+    if (!coffre) throw new Error('Coffre introuvable sur le disque.');
+    const greffon = path.join(coffre, (this.greffon.manifest && this.greffon.manifest.dir) || '.obsidian/plugins/obsidian-ariane');
+    const faits = [];
+
+    const skillSrc = path.join(greffon, 'competence', 'ariane-taches', 'SKILL.md');
+    if (!fs.existsSync(skillSrc)) throw new Error('Compétence absente du dossier du greffon : ' + skillSrc);
+    const skillDst = path.join(coffre, '.claude', 'skills', 'ariane-taches', 'SKILL.md');
+    fs.mkdirSync(path.dirname(skillDst), { recursive: true });
+    fs.copyFileSync(skillSrc, skillDst);
+    faits.push(tr('compétence ariane-taches'));
+
+    const mcp = path.join(os.homedir(), '.ariane-mcp');
+    fs.mkdirSync(mcp, { recursive: true, mode: 0o700 });
+    for (const f of ['taches.js', 'serveur.js']) {
+      const src = path.join(greffon, 'mcp', f);
+      if (!fs.existsSync(src)) continue;
+      fs.copyFileSync(src, path.join(mcp, f));
+      faits.push(f);
+    }
+
+    const conf = path.join(coffre, '.claude', 'mcp.json');
+    let d = {};
+    try { d = JSON.parse(fs.readFileSync(conf, 'utf8')) || {}; } catch (e) { d = {}; }
+    if (!d.mcpServers || typeof d.mcpServers !== 'object') d.mcpServers = {};
+    const avant = d.mcpServers['ariane-taches'] || d.mcpServers['ariane-annotations'] || {};
+    const node = this._cheminNode(avant.command);
+    d.mcpServers['ariane-taches'] = { command: node, args: [path.join(mcp, 'taches.js')],
+      env: { ARIANE_VAULT: coffre } };
+    const ann = d.mcpServers['ariane-annotations'] || {};
+    d.mcpServers['ariane-annotations'] = { command: ann.command || node, args: [path.join(mcp, 'serveur.js')],
+      env: Object.assign({ OLLAMA_URL: 'http://localhost:11434' }, ann.env || {}, {
+        ARIANE_VAULT: coffre,
+        ARIANE_CACHE: path.join(greffon, 'cache-embeddings.json'),
+      }) };
+    if (!d._claudian || typeof d._claudian !== 'object') d._claudian = {};
+    if (!d._claudian.servers || typeof d._claudian.servers !== 'object') d._claudian.servers = {};
+    for (const nom of ['ariane-taches', 'ariane-annotations']) {
+      if (!d._claudian.servers[nom]) d._claudian.servers[nom] = { contextSaving: false };
+    }
+    fs.mkdirSync(path.dirname(conf), { recursive: true });
+    fs.writeFileSync(conf, JSON.stringify(d, null, 2));
+    faits.push(tr('configuration MCP de Claudian'));
+    return faits;
+  }
+
+  // Node, pour lancer les serveurs : celui déjà configuré s'il existe, sinon
+  // les emplacements usuels. Obsidian lui-même ne convient pas (Electron).
+  _cheminNode(prefere) {
+    const fs = require('fs');
+    const path = require('path');
+    for (const c of [prefere, '/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node']) {
+      // Seulement un exécutable « node » : une commande configurée à la main
+      // pourrait être autre chose (un shell, un lanceur).
+      if (c && c.startsWith('/') && path.basename(c) === 'node' && fs.existsSync(c)) return c;
+    }
+    return 'node';
+  }
+  //#endregion Pont · installation
 
   //#region Pont · propositions
   // Le seul outil qui écrit. Claude propose ; Ariane vérifie

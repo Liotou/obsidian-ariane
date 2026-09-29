@@ -482,6 +482,20 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.correcteur && this.correcteur.basculerVolet(),
     });
     this.addCommand({
+      id: 'claude-installer',
+      name: tr('Claude : installer ou mettre à jour la compétence et les outils des tâches'),
+      callback: () => {
+        if (!this.pont) return;
+        try {
+          const faits = this.pont.installerPourClaude();
+          new obsidian.Notice(tr('Claude : installé ou mis à jour : ') + faits.join(', ')
+            + tr('.\nOuvrez une nouvelle conversation dans Claudian pour en profiter.'), 12000);
+        } catch (e) {
+          new obsidian.Notice(tr('Installation pour Claude impossible : ') + (e && e.message ? e.message : e), 12000);
+        }
+      },
+    });
+    this.addCommand({
       id: 'claude-annuler',
       name: tr('Claude : annuler les derniers changements acceptés'),
       callback: () => this.pont && this.pont.annulerDerniereProposition(),
