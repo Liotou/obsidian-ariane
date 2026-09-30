@@ -1006,6 +1006,30 @@ const avecTaches = (Base) => class extends Base {
     return this.majTache(enfantRef, { parent: parentRef ? '[[' + parentRef + ']]' : '' });
   }
 
+  // Un jalon rattaché à une tâche (elle devient sa mère), posé sur son
+  // échéance : seul le nom se demande, le reste se déduit de la tâche.
+  ajouterJalonLie(ref, apres) {
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    const echeance = String((t && t.echeance) || '').slice(0, 10);
+    if (!echeance) {
+      new obsidian.Notice(tr('Cette tâche n’a pas d’échéance : le jalon n’aurait pas de date.'));
+      return;
+    }
+    ModaleBarreTexte.demander(this, {
+      titre: 'Nouveau jalon', bouton: 'Créer',
+      champs: [{ cle: 'nom', nom: 'Nom du jalon', aide: tr('Échéance : ') + echeance }],
+    }, async (v) => {
+      const nom = String(v.nom || '').trim();
+      if (!nom) return;
+      const chemin = await this.creerTache({ intitule: nom, jalon: true, echeance,
+        famille: (t && t.famille) || '' });
+      const nouv = chemin && this.refDeChemin(chemin);
+      if (!nouv) return;
+      await this.rattacher(nouv, ref);
+      if (apres) apres();
+    });
+  }
+
   /* ---- IA : structuration de tâches -------------------------------- */
 
   // Appel LLM (fournisseur configuré dans les réglages) qui rend du JSON parsé.

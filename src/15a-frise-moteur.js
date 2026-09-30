@@ -2187,6 +2187,10 @@ class MoteurFrise extends MoteurVue {
     m.addItem((i) => i.setTitle(ligne.jalon ? tr('Redevenir une tâche') : tr('Faire un jalon'))
       .setIcon('diamond')
       .onClick(() => poser(ligne.jalon ? { jalon: false } : { jalon: true, debut: '' })));
+    if (!ligne.jalon) {
+      m.addItem((i) => i.setTitle(tr('Ajouter un jalon lié à la tâche…')).setIcon('milestone')
+        .onClick(() => this.greffon.ajouterJalonLie(ligne.ref, () => this.dessiner())));
+    }
     m.addItem((i) => i.setTitle(tr('Retirer les dates')).setIcon('calendar-off')
       .onClick(() => poser({ debut: '', echeance: '' })));
 

@@ -1550,7 +1550,7 @@ class ModaleBarreTexte extends obsidian.Modal {
     }
     new obsidian.Setting(contentEl)
       .addButton((b) => b.setButtonText(tr('Annuler')).onClick(() => this.close()))
-      .addButton((b) => b.setButtonText(tr('Appliquer')).setCta().onClick(() => this.valider()));
+      .addButton((b) => b.setButtonText(tr(this.o.bouton || 'Appliquer')).setCta().onClick(() => this.valider()));
     if (premier) premier.focus();
   }
 

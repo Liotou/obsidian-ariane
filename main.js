@@ -1024,6 +1024,12 @@ const TEXTES = {
     "Priorité : ": "Priority: ",
     "Redevenir une tâche": "Back to a task",
     "Faire un jalon": "Make it a milestone",
+    "Ajouter un jalon lié à la tâche…": "Add a milestone linked to the task…",
+    "Nouveau jalon": "New milestone",
+    "Nom du jalon": "Milestone name",
+    "Échéance : ": "Due: ",
+    "Créer": "Create",
+    "Cette tâche n’a pas d’échéance : le jalon n’aurait pas de date.": "This task has no due date: the milestone would have no date.",
     "Retirer les dates": "Remove the dates",
     "Ce lien fermerait un cycle : les deux tâches se bloqueraient.": "This link would close a cycle: the two tasks would block each other.",
     "Ce lien fermerait un cycle (rattachements + blocages) : refusé.": "This link would close a cycle (links + blockers): refused.",
@@ -14925,6 +14931,30 @@ const avecTaches = (Base) => class extends Base {
     return this.majTache(enfantRef, { parent: parentRef ? '[[' + parentRef + ']]' : '' });
   }
 
+  // Un jalon rattaché à une tâche (elle devient sa mère), posé sur son
+  // échéance : seul le nom se demande, le reste se déduit de la tâche.
+  ajouterJalonLie(ref, apres) {
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    const echeance = String((t && t.echeance) || '').slice(0, 10);
+    if (!echeance) {
+      new obsidian.Notice(tr('Cette tâche n’a pas d’échéance : le jalon n’aurait pas de date.'));
+      return;
+    }
+    ModaleBarreTexte.demander(this, {
+      titre: 'Nouveau jalon', bouton: 'Créer',
+      champs: [{ cle: 'nom', nom: 'Nom du jalon', aide: tr('Échéance : ') + echeance }],
+    }, async (v) => {
+      const nom = String(v.nom || '').trim();
+      if (!nom) return;
+      const chemin = await this.creerTache({ intitule: nom, jalon: true, echeance,
+        famille: (t && t.famille) || '' });
+      const nouv = chemin && this.refDeChemin(chemin);
+      if (!nouv) return;
+      await this.rattacher(nouv, ref);
+      if (apres) apres();
+    });
+  }
+
   /* ---- IA : structuration de tâches -------------------------------- */
 
   // Appel LLM (fournisseur configuré dans les réglages) qui rend du JSON parsé.
@@ -23941,6 +23971,10 @@ class MoteurFrise extends MoteurVue {
     m.addItem((i) => i.setTitle(ligne.jalon ? tr('Redevenir une tâche') : tr('Faire un jalon'))
       .setIcon('diamond')
       .onClick(() => poser(ligne.jalon ? { jalon: false } : { jalon: true, debut: '' })));
+    if (!ligne.jalon) {
+      m.addItem((i) => i.setTitle(tr('Ajouter un jalon lié à la tâche…')).setIcon('milestone')
+        .onClick(() => this.greffon.ajouterJalonLie(ligne.ref, () => this.dessiner())));
+    }
     m.addItem((i) => i.setTitle(tr('Retirer les dates')).setIcon('calendar-off')
       .onClick(() => poser({ debut: '', echeance: '' })));
 
@@ -35672,7 +35706,7 @@ class ModaleBarreTexte extends obsidian.Modal {
     }
     new obsidian.Setting(contentEl)
       .addButton((b) => b.setButtonText(tr('Annuler')).onClick(() => this.close()))
-      .addButton((b) => b.setButtonText(tr('Appliquer')).setCta().onClick(() => this.valider()));
+      .addButton((b) => b.setButtonText(tr(this.o.bouton || 'Appliquer')).setCta().onClick(() => this.valider()));
     if (premier) premier.focus();
   }
 
