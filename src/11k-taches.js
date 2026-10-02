@@ -2600,6 +2600,11 @@ const avecTaches = (Base) => class extends Base {
       if (win && win.document) ecouter(win.document);
     }));
 
+    this.chargerSessionsTravail();
+    this.registerEvent(this.app.vault.on('rename', (f, ancien) => this._renommerSessions(ancien, f.path)));
+    // Le travail réel du calendrier suit la session en cours, sans redessin.
+    this.registerInterval(window.setInterval(() => this._peindreTravailCalendriers(), 60000));
+
     // Un battement court : la précision du compte vaut mieux qu'une économie
     // de quelques réveils, et le calcul se résume à une comparaison de dates.
     this.registerInterval(window.setInterval(() => this.battementTemps(), 5000));
@@ -2616,6 +2621,103 @@ const avecTaches = (Base) => class extends Base {
       () => this.reporterTemps(),
       Math.max(60, this.settings.tempsEcritureSec || 300) * 1000
     ));
+  }
+
+  // ── sessions de travail réel ─────────────────────────────────────────
+  //  Le compteur dit combien ; les sessions disent quand. Une ligne par
+  //  session close dans un fichier caché du greffon, jamais réécrit : un
+  //  renommage s'y note aussi, et se rejoue à la lecture.
+
+  get cheminSessionsTravail() {
+    const dossier = (this.manifest && this.manifest.dir) || '.obsidian/plugins/obsidian-ariane';
+    return dossier + '/sessions-travail.jsonl';
+  }
+
+  async chargerSessionsTravail() {
+    const a = this.app.vault.adapter;
+    let brut = '';
+    try {
+      if (await a.exists(this.cheminSessionsTravail)) brut = await a.read(this.cheminSessionsTravail);
+    } catch (e) { brut = ''; }
+    const lues = [];
+    for (const l of brut.split('\n')) {
+      if (!l.trim()) continue;
+      let x;
+      try { x = JSON.parse(l); } catch (e) { continue; }
+      if (x && x.renomme) {
+        for (const y of lues) if (y.chemin === x.renomme) y.chemin = x.vers;
+      } else if (x && x.chemin) {
+        lues.push(x);
+      }
+    }
+    // Ce qui a été clos pendant la lecture n'est pas perdu.
+    this._sessionsTravail = lues.concat(this._sessionsTravail || []);
+    this._peindreTravailCalendriers();
+  }
+
+  _ecrireLigneSessions(obj) {
+    const a = this.app.vault.adapter;
+    const ligne = JSON.stringify(obj) + '\n';
+    const p = this.cheminSessionsTravail;
+    (async () => {
+      if (await a.exists(p)) await a.append(p, ligne);
+      else await a.write(p, ligne);
+    })().catch((e) => console.error('[Ariane] sessions de travail :', e));
+  }
+
+  // Un battement actif. La session continue tant que c'est la même note et
+  // que le silence n'a pas dépassé cinq minutes ; elle est close et écrite
+  // tous les quarts d'heure, pour qu'une fermeture brutale perde peu.
+  _noterSession(chemin) {
+    const now = Date.now();
+    const s = this._sessionEnCours;
+    if (s && s.chemin === chemin && now - s.finMs <= 5 * 60000) {
+      if (now - s.debutMs < 15 * 60000) { s.finMs = now; return; }
+      const reprise = s.finMs;
+      this._cloreSession();
+      this._sessionEnCours = { chemin, debutMs: reprise, finMs: now };
+      return;
+    }
+    this._cloreSession();
+    this._sessionEnCours = { chemin, debutMs: now - 5000, finMs: now };
+    this._peindreTravailCalendriers();
+  }
+
+  _cloreSession() {
+    const s = this._sessionEnCours;
+    this._sessionEnCours = null;
+    if (!s || s.finMs - s.debutMs < 60000) return;
+    const rec = { chemin: s.chemin, debut: Ariane.instantSession(new Date(s.debutMs)),
+      fin: Ariane.instantSession(new Date(s.finMs)) };
+    (this._sessionsTravail || (this._sessionsTravail = [])).push(rec);
+    this._ecrireLigneSessions(rec);
+  }
+
+  _renommerSessions(ancien, nouveau) {
+    if (!ancien || !nouveau || ancien === nouveau) return;
+    const touche = (this._sessionsTravail || []).some((x) => x.chemin === ancien)
+      || (this._sessionEnCours && this._sessionEnCours.chemin === ancien);
+    if (!touche) return;
+    for (const x of (this._sessionsTravail || [])) if (x.chemin === ancien) x.chemin = nouveau;
+    if (this._sessionEnCours && this._sessionEnCours.chemin === ancien) this._sessionEnCours.chemin = nouveau;
+    this._ecrireLigneSessions({ renomme: ancien, vers: nouveau });
+  }
+
+  // Toutes les sessions, celle en cours comprise, fusionnées.
+  sessionsTravail() {
+    const toutes = (this._sessionsTravail || []).slice();
+    const s = this._sessionEnCours;
+    if (s) {
+      toutes.push({ chemin: s.chemin, debut: Ariane.instantSession(new Date(s.debutMs)),
+        fin: Ariane.instantSession(new Date(s.finMs)) });
+    }
+    return Ariane.fusionnerSessions(toutes, 5);
+  }
+
+  _peindreTravailCalendriers() {
+    for (const m of (this._moteursCalendrier || [])) {
+      try { if (m._peindreTravailReel) m._peindreTravailReel(); } catch (e) { /* vue fermée */ }
+    }
   }
 
   // La note actuellement chronométrée, ou '' si aucune ne l'est.
@@ -2661,6 +2763,7 @@ const avecTaches = (Base) => class extends Base {
     const enPause = !chemin || inactifDepuis > seuil || !this.fenetreNoteActive();
 
     if (!enPause) {
+      this._noterSession(chemin);
       this._tempsSecondes.set(chemin, (this._tempsSecondes.get(chemin) || 0) + 5);
       // Le relevé cumule des SECONDES : arrondir en minutes à chaque battement
       // accumulait une erreur de plusieurs pour cent sur une journée.

@@ -970,6 +970,13 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Temps de la note en cours. Le point est plein quand le compteur tourne, vide en pause. Un clic ouvre le journal du jour."))
       .addToggle((t) => t.setValue(s.tempsBarreEtat !== false).onChange(async (v) => { s.tempsBarreEtat = v; await maj(); }));
     new obsidian.Setting(c)
+      .setName(tr('Travail réel sur le calendrier'))
+      .setDesc(tr('Dans la vue semaine : chaque créneau entamé se remplit du temps réellement passé sur sa tâche, et un liseré au bord de chaque jour montre quand vous avez travaillé, à la couleur de la tâche. Les heures sont relevées à partir de l’activation de cette version.'))
+      .addToggle((t) => t.setValue(s.calTravailReel !== false).onChange(async (v) => {
+        s.calTravailReel = v; await maj();
+        if (this.plugin._peindreTravailCalendriers) this.plugin._peindreTravailCalendriers();
+      }));
+    new obsidian.Setting(c)
       .setName(tr("Infobulle dans l'explorateur"))
       .addToggle((t) => t.setValue(s.tempsInfobulleExplorateur !== false).onChange(async (v) => { s.tempsInfobulleExplorateur = v; await maj(); }));
 

@@ -1027,6 +1027,9 @@ const TEXTES = {
     "Ajouter un jalon lié à la tâche…": "Add a milestone linked to the task…",
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
+    "Travail réel : ": "Actual work: ",
+    "Travail réel sur le calendrier": "Actual work on the calendar",
+    "Dans la vue semaine : chaque créneau entamé se remplit du temps réellement passé sur sa tâche, et un liseré au bord de chaque jour montre quand vous avez travaillé, à la couleur de la tâche. Les heures sont relevées à partir de l’activation de cette version.": "In week view: each started slot fills with the time actually spent on its task, and a thin strip along each day shows when you worked, in the task's color. Times are recorded from the activation of this version.",
     "Créer une tâche fille…": "Create a child task…",
     "Créer une tâche mère…": "Create a parent task…",
     "Nouvelle tâche fille": "New child task",
@@ -1416,6 +1419,7 @@ const DEFAULT_SETTINGS = {
   citationsMarqueEmprunt: '⟨{{n}}⟩',
   // --- Temps passé sur les notes ----------------------------------------
   tempsActif: true,
+  calTravailReel: true,                 // vue semaine : jauge des créneaux et liseré de présence
   tempsPropriete: 'temps-passe',        // en minutes, dans le frontmatter
   tempsInactiviteSec: 120,              // pause après ce silence
   tempsEcritureSec: 300,                // report en propriété, au plus tous les…
@@ -11302,6 +11306,88 @@ const avecFriseStatiques = (Base) => class extends Base {
     return Math.max(15, Math.round(d));
   }
 
+  // ── Sessions de travail réel ───────────────────────────────────────────
+  //  Une session : { chemin, debut, fin }, instants locaux
+  //  « AAAA-MM-JJTHH:MM:SS » relevés par le compteur de temps. Lus comme des
+  //  dates UTC pour que les écarts ne dépendent pas du fuseau.
+
+  static msSession(s) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(s || ''));
+    return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) : NaN;
+  }
+
+  static instantSession(d) {
+    const p2 = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate())
+      + 'T' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
+  }
+
+  // Deux sessions successives de la même note, séparées de moins de
+  // `ecartMin` minutes, n'en font qu'une : une pause café ne coupe pas le
+  // travail. Rend des copies triées par début.
+  static fusionnerSessions(sessions, ecartMin) {
+    const ecart = (Number(ecartMin) >= 0 ? Number(ecartMin) : 5) * 60000;
+    const tri = (sessions || [])
+      .filter((x) => x && x.chemin && Number.isFinite(Ariane.msSession(x.debut))
+        && Number.isFinite(Ariane.msSession(x.fin)))
+      .map((x) => ({ chemin: x.chemin, debut: x.debut, fin: x.fin }))
+      .sort((a, b) => (a.debut < b.debut ? -1 : a.debut > b.debut ? 1 : 0));
+    const out = [];
+    for (const x of tri) {
+      const der = out[out.length - 1];
+      if (der && der.chemin === x.chemin
+        && Ariane.msSession(x.debut) - Ariane.msSession(der.fin) <= ecart) {
+        if (x.fin > der.fin) der.fin = x.fin;
+      } else {
+        out.push(x);
+      }
+    }
+    return out;
+  }
+
+  // Minutes réellement travaillées pendant [debut, fin] dans l'une des notes
+  // `chemins` : la jauge d'un créneau. Les recouvrements ne comptent qu'une fois.
+  static minutesTravaillees(debut, fin, sessions, chemins) {
+    const a0 = Ariane.msSession(debut);
+    const b0 = Ariane.msSession(fin);
+    if (!Number.isFinite(a0) || !Number.isFinite(b0) || b0 <= a0) return 0;
+    const notes = new Set(chemins || []);
+    const morceaux = [];
+    for (const x of (sessions || [])) {
+      if (!x || !notes.has(x.chemin)) continue;
+      const a = Math.max(a0, Ariane.msSession(x.debut));
+      const b = Math.min(b0, Ariane.msSession(x.fin));
+      if (b > a) morceaux.push([a, b]);
+    }
+    morceaux.sort((p, q) => p[0] - q[0]);
+    let total = 0;
+    let curseur = -Infinity;
+    for (const [a, b] of morceaux) {
+      const d = Math.max(a, curseur);
+      if (b > d) total += b - d;
+      curseur = Math.max(curseur, b);
+    }
+    return Math.round(total / 60000);
+  }
+
+  // Les sessions d'un jour, rognées à minuit, en minutes depuis 0 h : le
+  // liseré de présence. Celles de moins de `minMin` minutes sont du bruit.
+  static sessionsDuJour(jour, sessions, minMin) {
+    const min = Number(minMin) >= 0 ? Number(minMin) : 3;
+    const j0 = Ariane.msSession(jour + 'T00:00');
+    if (!Number.isFinite(j0)) return [];
+    const j1 = j0 + 24 * 3600000;
+    const out = [];
+    for (const x of (sessions || [])) {
+      const a = Math.max(j0, Ariane.msSession(x.debut));
+      const b = Math.min(j1, Ariane.msSession(x.fin));
+      if (!(b > a) || (b - a) / 60000 < min) continue;
+      out.push({ chemin: x.chemin, debut: x.debut, fin: x.fin,
+        a: (a - j0) / 60000, b: (b - j0) / 60000 });
+    }
+    return out;
+  }
+
   // Où tomberait un créneau tenu à la souris, dans la grille de la vue
   // semaine : colonne du jour et haut calé au quart d'heure. `prise` est la
   // distance entre le haut de la carte et le pointeur (on la tient par le
@@ -16533,6 +16619,11 @@ const avecTaches = (Base) => class extends Base {
       if (win && win.document) ecouter(win.document);
     }));
 
+    this.chargerSessionsTravail();
+    this.registerEvent(this.app.vault.on('rename', (f, ancien) => this._renommerSessions(ancien, f.path)));
+    // Le travail réel du calendrier suit la session en cours, sans redessin.
+    this.registerInterval(window.setInterval(() => this._peindreTravailCalendriers(), 60000));
+
     // Un battement court : la précision du compte vaut mieux qu'une économie
     // de quelques réveils, et le calcul se résume à une comparaison de dates.
     this.registerInterval(window.setInterval(() => this.battementTemps(), 5000));
@@ -16549,6 +16640,103 @@ const avecTaches = (Base) => class extends Base {
       () => this.reporterTemps(),
       Math.max(60, this.settings.tempsEcritureSec || 300) * 1000
     ));
+  }
+
+  // ── sessions de travail réel ─────────────────────────────────────────
+  //  Le compteur dit combien ; les sessions disent quand. Une ligne par
+  //  session close dans un fichier caché du greffon, jamais réécrit : un
+  //  renommage s'y note aussi, et se rejoue à la lecture.
+
+  get cheminSessionsTravail() {
+    const dossier = (this.manifest && this.manifest.dir) || '.obsidian/plugins/obsidian-ariane';
+    return dossier + '/sessions-travail.jsonl';
+  }
+
+  async chargerSessionsTravail() {
+    const a = this.app.vault.adapter;
+    let brut = '';
+    try {
+      if (await a.exists(this.cheminSessionsTravail)) brut = await a.read(this.cheminSessionsTravail);
+    } catch (e) { brut = ''; }
+    const lues = [];
+    for (const l of brut.split('\n')) {
+      if (!l.trim()) continue;
+      let x;
+      try { x = JSON.parse(l); } catch (e) { continue; }
+      if (x && x.renomme) {
+        for (const y of lues) if (y.chemin === x.renomme) y.chemin = x.vers;
+      } else if (x && x.chemin) {
+        lues.push(x);
+      }
+    }
+    // Ce qui a été clos pendant la lecture n'est pas perdu.
+    this._sessionsTravail = lues.concat(this._sessionsTravail || []);
+    this._peindreTravailCalendriers();
+  }
+
+  _ecrireLigneSessions(obj) {
+    const a = this.app.vault.adapter;
+    const ligne = JSON.stringify(obj) + '\n';
+    const p = this.cheminSessionsTravail;
+    (async () => {
+      if (await a.exists(p)) await a.append(p, ligne);
+      else await a.write(p, ligne);
+    })().catch((e) => console.error('[Ariane] sessions de travail :', e));
+  }
+
+  // Un battement actif. La session continue tant que c'est la même note et
+  // que le silence n'a pas dépassé cinq minutes ; elle est close et écrite
+  // tous les quarts d'heure, pour qu'une fermeture brutale perde peu.
+  _noterSession(chemin) {
+    const now = Date.now();
+    const s = this._sessionEnCours;
+    if (s && s.chemin === chemin && now - s.finMs <= 5 * 60000) {
+      if (now - s.debutMs < 15 * 60000) { s.finMs = now; return; }
+      const reprise = s.finMs;
+      this._cloreSession();
+      this._sessionEnCours = { chemin, debutMs: reprise, finMs: now };
+      return;
+    }
+    this._cloreSession();
+    this._sessionEnCours = { chemin, debutMs: now - 5000, finMs: now };
+    this._peindreTravailCalendriers();
+  }
+
+  _cloreSession() {
+    const s = this._sessionEnCours;
+    this._sessionEnCours = null;
+    if (!s || s.finMs - s.debutMs < 60000) return;
+    const rec = { chemin: s.chemin, debut: Ariane.instantSession(new Date(s.debutMs)),
+      fin: Ariane.instantSession(new Date(s.finMs)) };
+    (this._sessionsTravail || (this._sessionsTravail = [])).push(rec);
+    this._ecrireLigneSessions(rec);
+  }
+
+  _renommerSessions(ancien, nouveau) {
+    if (!ancien || !nouveau || ancien === nouveau) return;
+    const touche = (this._sessionsTravail || []).some((x) => x.chemin === ancien)
+      || (this._sessionEnCours && this._sessionEnCours.chemin === ancien);
+    if (!touche) return;
+    for (const x of (this._sessionsTravail || [])) if (x.chemin === ancien) x.chemin = nouveau;
+    if (this._sessionEnCours && this._sessionEnCours.chemin === ancien) this._sessionEnCours.chemin = nouveau;
+    this._ecrireLigneSessions({ renomme: ancien, vers: nouveau });
+  }
+
+  // Toutes les sessions, celle en cours comprise, fusionnées.
+  sessionsTravail() {
+    const toutes = (this._sessionsTravail || []).slice();
+    const s = this._sessionEnCours;
+    if (s) {
+      toutes.push({ chemin: s.chemin, debut: Ariane.instantSession(new Date(s.debutMs)),
+        fin: Ariane.instantSession(new Date(s.finMs)) });
+    }
+    return Ariane.fusionnerSessions(toutes, 5);
+  }
+
+  _peindreTravailCalendriers() {
+    for (const m of (this._moteursCalendrier || [])) {
+      try { if (m._peindreTravailReel) m._peindreTravailReel(); } catch (e) { /* vue fermée */ }
+    }
   }
 
   // La note actuellement chronométrée, ou '' si aucune ne l'est.
@@ -16594,6 +16782,7 @@ const avecTaches = (Base) => class extends Base {
     const enPause = !chemin || inactifDepuis > seuil || !this.fenetreNoteActive();
 
     if (!enPause) {
+      this._noterSession(chemin);
       this._tempsSecondes.set(chemin, (this._tempsSecondes.get(chemin) || 0) + 5);
       // Le relevé cumule des SECONDES : arrondir en minutes à chaque battement
       // accumulait une erreur de plusieurs pour cent sur une journée.
@@ -18088,6 +18277,7 @@ class Ariane extends composer(obsidian.Plugin,
     // Dernier report : sans cela, les minutes de la session en cours seraient
     // perdues à la fermeture d'Obsidian ou au rechargement du greffon.
     this.reporterTemps().catch(() => { /* fermeture en cours */ });
+    if (this._cloreSession) this._cloreSession();
     // Les derniers changements des tâches attendaient leur écriture groupée,
     // dont le minuteur vient d'être annulé : on les pose maintenant.
     if (this._viderJournalTaches) this._viderJournalTaches().catch(() => { /* fermeture en cours */ });
@@ -19068,6 +19258,13 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr("Barre d'état"))
       .setDesc(tr("Temps de la note en cours. Le point est plein quand le compteur tourne, vide en pause. Un clic ouvre le journal du jour."))
       .addToggle((t) => t.setValue(s.tempsBarreEtat !== false).onChange(async (v) => { s.tempsBarreEtat = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Travail réel sur le calendrier'))
+      .setDesc(tr('Dans la vue semaine : chaque créneau entamé se remplit du temps réellement passé sur sa tâche, et un liseré au bord de chaque jour montre quand vous avez travaillé, à la couleur de la tâche. Les heures sont relevées à partir de l’activation de cette version.'))
+      .addToggle((t) => t.setValue(s.calTravailReel !== false).onChange(async (v) => {
+        s.calTravailReel = v; await maj();
+        if (this.plugin._peindreTravailCalendriers) this.plugin._peindreTravailCalendriers();
+      }));
     new obsidian.Setting(c)
       .setName(tr("Infobulle dans l'explorateur"))
       .addToggle((t) => t.setValue(s.tempsInfobulleExplorateur !== false).onChange(async (v) => { s.tempsInfobulleExplorateur = v; await maj(); }));
@@ -31131,6 +31328,7 @@ class MoteurCalendrier extends MoteurVue {
           // Début canonique du créneau : sert aux traits de lignée (reliage
           // des tâches parentes / bloquantes présentes sur la vue).
           bloc.dataset.debut = ev.debut;
+          bloc.dataset.fin = ev.fin || '';
           bloc.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j));
           const poi = bloc.createDiv({ cls: 'zfa-cal-poignee' });
           poi.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j, 'fin'));
@@ -31227,6 +31425,8 @@ class MoteurCalendrier extends MoteurVue {
       }
     });
 
+    this._peindreTravailReel(inner);
+
     // Clic droit : un seul gestionnaire délégué sur la grille (fiable même si un
     // écouteur par élément a été avalé). Carte/jalon → menu de la tâche ;
     // sinon, la colonne/jour sous le curseur → menu de cellule.
@@ -31294,6 +31494,84 @@ class MoteurCalendrier extends MoteurVue {
   // 7 jours). Même langage que la lignée de la frise ; rien au repos. La
   // surcouche ne capte aucun pointeur : colonnes, menus et glissés restent
   // intacts.
+  // Le travail réel, relevé par le compteur de temps, peint par-dessus la
+  // vue semaine sans la reconstruire : une jauge dans chaque créneau entamé
+  // (le temps passé sur sa tâche pendant sa durée), et un liseré au bord de
+  // chaque jour (toutes les sessions, à la couleur de la tâche travaillée).
+  // Repeint chaque minute par le greffon, et à chaque dessin.
+  // `inner` : la grille à peindre ; sans elle, toutes celles de la vue (un
+  // recalage en construit une seconde hors écran avant l'échange).
+  _peindreTravailReel(inner) {
+    if (this._detruit || this.mode !== 'semaine') return;
+    if (!inner) {
+      for (const i of this.racine.querySelectorAll('.zfa-cal-sem-inner')) this._peindreTravailReel(i);
+      return;
+    }
+    for (const x of inner.querySelectorAll('.zfa-cal-presence, .zfa-cal-jauge, .zfa-cal-jauge-val')) x.remove();
+    const g = this.greffon;
+    if (g.settings.calTravailReel === false || !g.sessionsTravail) return;
+    const sessions = g.sessionsTravail();
+    if (!sessions.length) return;
+    const PXH = this._pxHeure;
+    const hDeb = this._hDeb || 0;
+    const parRef = new Map(this._taches.map((t) => [t.ref, t]));
+    const cheminsDe = new Map();
+    const refsDeChemin = new Map();
+    for (const t of this._taches) {
+      const f = t.fichier || (g.fichierDeRef && g.fichierDeRef(t.ref));
+      if (!f) continue;
+      const ch = [f.path].concat(g._cheminsLiesTache(Object.assign({}, t, { fichier: f })));
+      cheminsDe.set(t.ref, ch);
+      for (const c of ch) {
+        if (!refsDeChemin.has(c)) refsDeChemin.set(c, []);
+        refsDeChemin.get(c).push(t.ref);
+      }
+    }
+    const duree = (m) => (m < 60 ? m + ' min'
+      : Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + String(m % 60).padStart(2, '0') : ''));
+    const maintenant = Ariane.instantSession(new Date());
+
+    // B · la jauge des créneaux entamés.
+    const creneaux = [];
+    for (const bloc of inner.querySelectorAll('.zfa-cal-bloc[data-ref][data-brut]')) {
+      const { ref, debut, fin } = bloc.dataset;
+      if (!debut || !fin) continue;
+      creneaux.push({ ref, debut, fin });
+      if (debut > maintenant) continue;
+      const fait = Ariane.minutesTravaillees(debut, fin, sessions, cheminsDe.get(ref) || []);
+      if (fait <= 0) continue;
+      const prevu = Ariane.dureeCreneauMin(debut, fin);
+      const j = bloc.createDiv({ cls: 'zfa-cal-jauge' });
+      j.style.height = Math.min(100, Math.round(fait / prevu * 100)) + '%';
+      const lib = duree(fait) + ' / ' + duree(prevu);
+      j.setAttribute('aria-label', tr('Travail réel : ') + lib);
+      if (bloc.offsetHeight >= 34) bloc.createDiv({ cls: 'zfa-cal-jauge-val', text: lib });
+    }
+
+    // D · le liseré de présence.
+    for (const col of inner.querySelectorAll('.zfa-cal-col[data-jour]')) {
+      for (const x of Ariane.sessionsDuJour(col.dataset.jour, sessions, 3)) {
+        const refs = refsDeChemin.get(x.chemin) || [];
+        // Une note partagée par plusieurs tâches va à celle qui avait un
+        // créneau à ce moment-là, sinon à la première.
+        const ref = refs.find((r) => creneaux.some((c) => c.ref === r
+          && c.debut < x.fin && c.fin > x.debut)) || refs[0];
+        const t = ref ? parRef.get(ref) : null;
+        const el = col.createDiv({ cls: 'zfa-cal-presence' + (t ? '' : ' est-hors-tache') });
+        el.style.top = ((x.a / 60 - hDeb) * PXH) + 'px';
+        el.style.height = Math.max(3, (x.b - x.a) / 60 * PXH) + 'px';
+        if (t) el.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
+        const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.round(m % 60)).padStart(2, '0');
+        el.setAttribute('aria-label', hm(x.a) + ' → ' + hm(x.b) + ' · ' + duree(Math.round(x.b - x.a))
+          + '\n' + String(x.chemin).split('/').pop().replace(/\.md$/, '')
+          + (t ? '\n' + t.ref + ' · ' + (t.intitule || '') : ''));
+        el.setAttribute('data-tooltip-position', 'left');
+        el.addEventListener('pointerdown', (e) => e.stopPropagation());
+        el.addEventListener('dblclick', (e) => e.stopPropagation());
+      }
+    }
+  }
+
   // Pose (ref non vide) ou retire la classe de survol partagé. Seulement
   // s'il existe au moins un autre créneau de la tâche sur la vue.
   _marquerSoeurs(ref) {

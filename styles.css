@@ -3791,3 +3791,24 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-orga-fantome-ko:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .zfa-orga-fantome-poignee { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
 @media (prefers-reduced-motion: reduce) { .zfa-orga-fantome, .zfa-orga-fantome-actions { transition: none; } }
+
+/* Travail réel (compteur de temps) sur la vue semaine. La jauge monte du bas
+   du créneau, à sa couleur, sous le texte (z-index négatif dans le contexte
+   d'empilement du bloc) ; le liseré longe le bord droit du jour. */
+.zfa-cal-jauge {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: color-mix(in srgb, var(--zfa-cal-coul, var(--text-faint)) 30%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--zfa-cal-coul, var(--text-faint)) 70%, transparent);
+  pointer-events: none; z-index: -1;
+}
+.zfa-cal-jauge-val {
+  position: absolute; left: 6px; bottom: 2px;
+  font-size: 10px; font-variant-numeric: tabular-nums;
+  color: var(--text-muted); pointer-events: none;
+}
+.zfa-cal-presence {
+  position: absolute; right: 1px; width: 4px; border-radius: 2px;
+  background: var(--zfa-cal-coul, var(--text-faint)); opacity: 0.85; z-index: 3;
+}
+.zfa-cal-presence.est-hors-tache { background: var(--text-faint); opacity: 0.5; }
+.zfa-cal-presence:hover { opacity: 1; width: 6px; }

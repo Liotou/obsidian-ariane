@@ -422,6 +422,88 @@ const avecFriseStatiques = (Base) => class extends Base {
     return Math.max(15, Math.round(d));
   }
 
+  // ── Sessions de travail réel ───────────────────────────────────────────
+  //  Une session : { chemin, debut, fin }, instants locaux
+  //  « AAAA-MM-JJTHH:MM:SS » relevés par le compteur de temps. Lus comme des
+  //  dates UTC pour que les écarts ne dépendent pas du fuseau.
+
+  static msSession(s) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(s || ''));
+    return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) : NaN;
+  }
+
+  static instantSession(d) {
+    const p2 = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate())
+      + 'T' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
+  }
+
+  // Deux sessions successives de la même note, séparées de moins de
+  // `ecartMin` minutes, n'en font qu'une : une pause café ne coupe pas le
+  // travail. Rend des copies triées par début.
+  static fusionnerSessions(sessions, ecartMin) {
+    const ecart = (Number(ecartMin) >= 0 ? Number(ecartMin) : 5) * 60000;
+    const tri = (sessions || [])
+      .filter((x) => x && x.chemin && Number.isFinite(Ariane.msSession(x.debut))
+        && Number.isFinite(Ariane.msSession(x.fin)))
+      .map((x) => ({ chemin: x.chemin, debut: x.debut, fin: x.fin }))
+      .sort((a, b) => (a.debut < b.debut ? -1 : a.debut > b.debut ? 1 : 0));
+    const out = [];
+    for (const x of tri) {
+      const der = out[out.length - 1];
+      if (der && der.chemin === x.chemin
+        && Ariane.msSession(x.debut) - Ariane.msSession(der.fin) <= ecart) {
+        if (x.fin > der.fin) der.fin = x.fin;
+      } else {
+        out.push(x);
+      }
+    }
+    return out;
+  }
+
+  // Minutes réellement travaillées pendant [debut, fin] dans l'une des notes
+  // `chemins` : la jauge d'un créneau. Les recouvrements ne comptent qu'une fois.
+  static minutesTravaillees(debut, fin, sessions, chemins) {
+    const a0 = Ariane.msSession(debut);
+    const b0 = Ariane.msSession(fin);
+    if (!Number.isFinite(a0) || !Number.isFinite(b0) || b0 <= a0) return 0;
+    const notes = new Set(chemins || []);
+    const morceaux = [];
+    for (const x of (sessions || [])) {
+      if (!x || !notes.has(x.chemin)) continue;
+      const a = Math.max(a0, Ariane.msSession(x.debut));
+      const b = Math.min(b0, Ariane.msSession(x.fin));
+      if (b > a) morceaux.push([a, b]);
+    }
+    morceaux.sort((p, q) => p[0] - q[0]);
+    let total = 0;
+    let curseur = -Infinity;
+    for (const [a, b] of morceaux) {
+      const d = Math.max(a, curseur);
+      if (b > d) total += b - d;
+      curseur = Math.max(curseur, b);
+    }
+    return Math.round(total / 60000);
+  }
+
+  // Les sessions d'un jour, rognées à minuit, en minutes depuis 0 h : le
+  // liseré de présence. Celles de moins de `minMin` minutes sont du bruit.
+  static sessionsDuJour(jour, sessions, minMin) {
+    const min = Number(minMin) >= 0 ? Number(minMin) : 3;
+    const j0 = Ariane.msSession(jour + 'T00:00');
+    if (!Number.isFinite(j0)) return [];
+    const j1 = j0 + 24 * 3600000;
+    const out = [];
+    for (const x of (sessions || [])) {
+      const a = Math.max(j0, Ariane.msSession(x.debut));
+      const b = Math.min(j1, Ariane.msSession(x.fin));
+      if (!(b > a) || (b - a) / 60000 < min) continue;
+      out.push({ chemin: x.chemin, debut: x.debut, fin: x.fin,
+        a: (a - j0) / 60000, b: (b - j0) / 60000 });
+    }
+    return out;
+  }
+
   // Où tomberait un créneau tenu à la souris, dans la grille de la vue
   // semaine : colonne du jour et haut calé au quart d'heure. `prise` est la
   // distance entre le haut de la carte et le pointeur (on la tient par le

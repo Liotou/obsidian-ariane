@@ -1246,6 +1246,7 @@ class Ariane extends composer(obsidian.Plugin,
     // Dernier report : sans cela, les minutes de la session en cours seraient
     // perdues à la fermeture d'Obsidian ou au rechargement du greffon.
     this.reporterTemps().catch(() => { /* fermeture en cours */ });
+    if (this._cloreSession) this._cloreSession();
     // Les derniers changements des tâches attendaient leur écriture groupée,
     // dont le minuteur vient d'être annulé : on les pose maintenant.
     if (this._viderJournalTaches) this._viderJournalTaches().catch(() => { /* fermeture en cours */ });

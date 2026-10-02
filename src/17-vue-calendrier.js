@@ -2206,6 +2206,7 @@ class MoteurCalendrier extends MoteurVue {
           // Début canonique du créneau : sert aux traits de lignée (reliage
           // des tâches parentes / bloquantes présentes sur la vue).
           bloc.dataset.debut = ev.debut;
+          bloc.dataset.fin = ev.fin || '';
           bloc.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j));
           const poi = bloc.createDiv({ cls: 'zfa-cal-poignee' });
           poi.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j, 'fin'));
@@ -2302,6 +2303,8 @@ class MoteurCalendrier extends MoteurVue {
       }
     });
 
+    this._peindreTravailReel(inner);
+
     // Clic droit : un seul gestionnaire délégué sur la grille (fiable même si un
     // écouteur par élément a été avalé). Carte/jalon → menu de la tâche ;
     // sinon, la colonne/jour sous le curseur → menu de cellule.
@@ -2369,6 +2372,84 @@ class MoteurCalendrier extends MoteurVue {
   // 7 jours). Même langage que la lignée de la frise ; rien au repos. La
   // surcouche ne capte aucun pointeur : colonnes, menus et glissés restent
   // intacts.
+  // Le travail réel, relevé par le compteur de temps, peint par-dessus la
+  // vue semaine sans la reconstruire : une jauge dans chaque créneau entamé
+  // (le temps passé sur sa tâche pendant sa durée), et un liseré au bord de
+  // chaque jour (toutes les sessions, à la couleur de la tâche travaillée).
+  // Repeint chaque minute par le greffon, et à chaque dessin.
+  // `inner` : la grille à peindre ; sans elle, toutes celles de la vue (un
+  // recalage en construit une seconde hors écran avant l'échange).
+  _peindreTravailReel(inner) {
+    if (this._detruit || this.mode !== 'semaine') return;
+    if (!inner) {
+      for (const i of this.racine.querySelectorAll('.zfa-cal-sem-inner')) this._peindreTravailReel(i);
+      return;
+    }
+    for (const x of inner.querySelectorAll('.zfa-cal-presence, .zfa-cal-jauge, .zfa-cal-jauge-val')) x.remove();
+    const g = this.greffon;
+    if (g.settings.calTravailReel === false || !g.sessionsTravail) return;
+    const sessions = g.sessionsTravail();
+    if (!sessions.length) return;
+    const PXH = this._pxHeure;
+    const hDeb = this._hDeb || 0;
+    const parRef = new Map(this._taches.map((t) => [t.ref, t]));
+    const cheminsDe = new Map();
+    const refsDeChemin = new Map();
+    for (const t of this._taches) {
+      const f = t.fichier || (g.fichierDeRef && g.fichierDeRef(t.ref));
+      if (!f) continue;
+      const ch = [f.path].concat(g._cheminsLiesTache(Object.assign({}, t, { fichier: f })));
+      cheminsDe.set(t.ref, ch);
+      for (const c of ch) {
+        if (!refsDeChemin.has(c)) refsDeChemin.set(c, []);
+        refsDeChemin.get(c).push(t.ref);
+      }
+    }
+    const duree = (m) => (m < 60 ? m + ' min'
+      : Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + String(m % 60).padStart(2, '0') : ''));
+    const maintenant = Ariane.instantSession(new Date());
+
+    // B · la jauge des créneaux entamés.
+    const creneaux = [];
+    for (const bloc of inner.querySelectorAll('.zfa-cal-bloc[data-ref][data-brut]')) {
+      const { ref, debut, fin } = bloc.dataset;
+      if (!debut || !fin) continue;
+      creneaux.push({ ref, debut, fin });
+      if (debut > maintenant) continue;
+      const fait = Ariane.minutesTravaillees(debut, fin, sessions, cheminsDe.get(ref) || []);
+      if (fait <= 0) continue;
+      const prevu = Ariane.dureeCreneauMin(debut, fin);
+      const j = bloc.createDiv({ cls: 'zfa-cal-jauge' });
+      j.style.height = Math.min(100, Math.round(fait / prevu * 100)) + '%';
+      const lib = duree(fait) + ' / ' + duree(prevu);
+      j.setAttribute('aria-label', tr('Travail réel : ') + lib);
+      if (bloc.offsetHeight >= 34) bloc.createDiv({ cls: 'zfa-cal-jauge-val', text: lib });
+    }
+
+    // D · le liseré de présence.
+    for (const col of inner.querySelectorAll('.zfa-cal-col[data-jour]')) {
+      for (const x of Ariane.sessionsDuJour(col.dataset.jour, sessions, 3)) {
+        const refs = refsDeChemin.get(x.chemin) || [];
+        // Une note partagée par plusieurs tâches va à celle qui avait un
+        // créneau à ce moment-là, sinon à la première.
+        const ref = refs.find((r) => creneaux.some((c) => c.ref === r
+          && c.debut < x.fin && c.fin > x.debut)) || refs[0];
+        const t = ref ? parRef.get(ref) : null;
+        const el = col.createDiv({ cls: 'zfa-cal-presence' + (t ? '' : ' est-hors-tache') });
+        el.style.top = ((x.a / 60 - hDeb) * PXH) + 'px';
+        el.style.height = Math.max(3, (x.b - x.a) / 60 * PXH) + 'px';
+        if (t) el.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
+        const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.round(m % 60)).padStart(2, '0');
+        el.setAttribute('aria-label', hm(x.a) + ' → ' + hm(x.b) + ' · ' + duree(Math.round(x.b - x.a))
+          + '\n' + String(x.chemin).split('/').pop().replace(/\.md$/, '')
+          + (t ? '\n' + t.ref + ' · ' + (t.intitule || '') : ''));
+        el.setAttribute('data-tooltip-position', 'left');
+        el.addEventListener('pointerdown', (e) => e.stopPropagation());
+        el.addEventListener('dblclick', (e) => e.stopPropagation());
+      }
+    }
+  }
+
   // Pose (ref non vide) ou retire la classe de survol partagé. Seulement
   // s'il existe au moins un autre créneau de la tâche sur la vue.
   _marquerSoeurs(ref) {
