@@ -2721,7 +2721,11 @@ const avecTaches = (Base) => class extends Base {
   }
 
   // La note actuellement chronométrée, ou '' si aucune ne l'est.
-  noteChronometrable() {
+  // `pourSessions` : les dossiers exclus ne valent que pour la propriété de
+  // temps écrite dans les notes ; les sessions du calendrier les ignorent
+  // (le dossier des tâches est souvent exclu, et c'est justement là qu'on
+  // travaille sur une tâche).
+  noteChronometrable(pourSessions) {
     const feuille = this.app.workspace.activeLeaf;
     const vue = feuille && feuille.view;
     if (!vue || vue.getViewType() !== 'markdown') return '';
@@ -2730,7 +2734,8 @@ const avecTaches = (Base) => class extends Base {
     const f = vue.file;
     if (!f || f.extension !== 'md') return '';
 
-    if (Ariane.sousDossier(f.path, String(this.settings.tempsDossiersExclus || '').split(/[\n,]+/))) {
+    if (!pourSessions
+      && Ariane.sousDossier(f.path, String(this.settings.tempsDossiersExclus || '').split(/[\n,]+/))) {
       return '';
     }
     if (this.settings.tempsIgnorerVerrouillees !== false) {
@@ -2762,8 +2767,10 @@ const avecTaches = (Base) => class extends Base {
     // une fenêtre détachée, sur un second écran par exemple.
     const enPause = !chemin || inactifDepuis > seuil || !this.fenetreNoteActive();
 
+    const noteSession = this.noteChronometrable(true);
+    if (noteSession && inactifDepuis <= seuil && this.fenetreNoteActive()) this._noterSession(noteSession);
+
     if (!enPause) {
-      this._noterSession(chemin);
       this._tempsSecondes.set(chemin, (this._tempsSecondes.get(chemin) || 0) + 5);
       // Le relevé cumule des SECONDES : arrondir en minutes à chaque battement
       // accumulait une erreur de plusieurs pour cent sur une journée.

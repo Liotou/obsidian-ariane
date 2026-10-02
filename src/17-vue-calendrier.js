@@ -2428,7 +2428,7 @@ class MoteurCalendrier extends MoteurVue {
 
     // D · le liseré de présence.
     for (const col of inner.querySelectorAll('.zfa-cal-col[data-jour]')) {
-      for (const x of Ariane.sessionsDuJour(col.dataset.jour, sessions, 3)) {
+      for (const x of Ariane.sessionsDuJour(col.dataset.jour, sessions, 1)) {
         const refs = refsDeChemin.get(x.chemin) || [];
         // Une note partagée par plusieurs tâches va à celle qui avait un
         // créneau à ce moment-là, sinon à la première.
