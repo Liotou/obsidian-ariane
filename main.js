@@ -23981,6 +23981,10 @@ class MoteurFrise extends MoteurVue {
       }).open()));
     m.addItem((i) => i.setTitle(tr('Découper la tâche (IA)…')).setIcon('list-tree')
       .onClick(() => this.greffon.ouvrirDecoupage(ligne.ref)));
+    m.addItem((i) => i.setTitle(tr('Créer une tâche fille…')).setIcon('corner-down-right')
+      .onClick(() => this.greffon.ajouterTacheLiee(ligne.ref, 'fille', () => this.dessiner())));
+    m.addItem((i) => i.setTitle(tr('Créer une tâche mère…')).setIcon('corner-left-up')
+      .onClick(() => this.greffon.ajouterTacheLiee(ligne.ref, 'mere', () => this.dessiner())));
     m.addSeparator();
 
     for (const st of ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée']) {
