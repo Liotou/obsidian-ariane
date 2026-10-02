@@ -10,6 +10,9 @@ module.exports = Ariane;
 // Exposition des fonctions pures pour les tests.
 module.exports._test = {
   DEFAULT_SETTINGS,
+  // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
+  construireBibliographie,
+  injecterBibliographie,
   MoteurArticulation, // prototype : _traceArete s'éprouve avec un moteur factice
   MoteurCalendrier,   // mémoire de la période consultée, par vue
   // Icônes des vues de base : clé de réglage, lecture de l'icône en place, tri

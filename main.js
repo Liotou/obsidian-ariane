@@ -2833,14 +2833,13 @@ function entreeCliquable(texte, cle, marqueur) {
   return t + ' [[' + cle + '|' + m + ']]';
 }
 
-// Bloc complet, encadré par des marqueurs pour un remplacement idempotent.
+// Bloc complet : le filet et le titre d'abord, puis les marqueurs autour des
+// seules entrées. Placés avant le titre, les marqueurs s'affichaient au bout
+// de la section précédente (souvent « Journal »), comme s'ils lui
+// appartenaient. Le filet n'a plus besoin d'une ligne vide après le
+// marqueur : c'est le texte d'avant qui la fournit (injecterBibliographie).
 function construireBibliographie(entrees, titre) {
-  const out = [ZFA_BIBLIO_DEBUT];
-  // Ligne vide indispensable : sans elle, « texte + --- » forme un titre
-  // souligné (syntaxe setext) et le marqueur serait rendu comme un titre.
-  out.push('');
-  out.push('---');
-  out.push('## ' + (titre || 'Bibliographie'));
+  const out = ['---', '## ' + (titre || 'Bibliographie'), ZFA_BIBLIO_DEBUT];
   if (entrees.length) {
     for (const e of entrees) out.push('- ' + e);
   } else {
@@ -2850,13 +2849,22 @@ function construireBibliographie(entrees, titre) {
   return out.join('\n');
 }
 
-// Remplace le bloc s'il existe, sinon l'ajoute en fin de note.
+// Remplace le bloc s'il existe, sinon l'ajoute en fin de note. Le filet et
+// le titre qui précèdent le marqueur (forme actuelle) sont repris dans le
+// remplacement ; un bloc de l'ancienne forme (marqueur, filet, titre) est
+// réécrit dans la nouvelle.
 function injecterBibliographie(contenu, bloc) {
   const texte = String(contenu == null ? '' : contenu);
-  const i = texte.indexOf(ZFA_BIBLIO_DEBUT);
+  let i = texte.indexOf(ZFA_BIBLIO_DEBUT);
   const j = texte.indexOf(ZFA_BIBLIO_FIN);
   if (i !== -1 && j !== -1 && j > i) {
-    return texte.slice(0, i) + bloc + texte.slice(j + ZFA_BIBLIO_FIN.length);
+    const tete = /(^|\n)---[ \t]*\n#{1,6}[ \t][^\n]*\n$/.exec(texte.slice(0, i));
+    if (tete) i -= tete[0].length - tete[1].length;
+    let avant = texte.slice(0, i);
+    // Le filet doit suivre une ligne vide : collé à du texte, il en ferait un
+    // titre souligné (syntaxe setext).
+    if (avant && !/\n\n$/.test(avant)) avant = avant.replace(/\n*$/, '') + '\n\n';
+    return avant + bloc + texte.slice(j + ZFA_BIBLIO_FIN.length);
   }
   return texte.replace(/\s*$/, '') + '\n\n' + bloc + '\n';
 }
@@ -36887,6 +36895,9 @@ module.exports = Ariane;
 // Exposition des fonctions pures pour les tests.
 module.exports._test = {
   DEFAULT_SETTINGS,
+  // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
+  construireBibliographie,
+  injecterBibliographie,
   MoteurArticulation, // prototype : _traceArete s'éprouve avec un moteur factice
   MoteurCalendrier,   // mémoire de la période consultée, par vue
   // Icônes des vues de base : clé de réglage, lecture de l'icône en place, tri
