@@ -1315,21 +1315,25 @@ const avecTaches = (Base) => class extends Base {
   async ajouterTacheLN(phrase) {
     const p = String(phrase || '').trim();
     if (!p) return null;
-    // Les dates relatives (« vendredi prochain ») sont résolues ici, pas par
-    // l'IA : elle choisit seulement laquelle est le début, laquelle l'échéance.
-    const auj = jourIsoDe(new Date());
-    const relatives = Ariane.datesRelativesFr(p, auj);
+    // C'est l'IA qui comprend les dates (« vendredi prochain », « dans deux
+    // semaines », « le 30/10 ») : elle reçoit la date du jour et le calendrier
+    // des semaines à venir, pour ne pas avoir à compter les jours elle-même.
     const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+    const now = new Date();
+    const auj = jourIsoDe(now);
+    const calendrier = [];
+    for (let i = 0; i < 28; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+      calendrier.push(JOURS[d.getDay()] + ' ' + jourIsoDe(d));
+    }
     const prompt = [
       'Extrais UNE tâche de cette phrase, en JSON : {"titre","famille","debut","echeance","bloque_par"}.',
       this._blocFamilles(),
-      'Nous sommes le ' + JOURS[new Date().getDay()] + ' ' + auj + '.',
-      relatives.length
-        ? 'Dates déjà calculées dans la phrase : ' + relatives.map((d) => '« ' + d.expr + ' » = ' + d.iso).join(', ') + '.'
-        : '',
-      '- debut / echeance : AAAA-MM-JJ, uniquement si la phrase donne une date (explicite ou relative), sinon "". « pour », « avant », « d\'ici » annoncent une échéance ; « à partir de », « dès » un début.',
+      'Nous sommes le ' + JOURS[now.getDay()] + ' ' + auj + '. Les 4 semaines qui viennent : '
+        + calendrier.join(', ') + '.',
+      '- debut / echeance : AAAA-MM-JJ. Résous toute date de la phrase, explicite (« 30/10 », « 15 novembre ») ou relative (« demain », « vendredi prochain », « dans deux semaines », « fin du mois ») à partir de la date du jour. « pour », « avant », « d\'ici » annoncent une échéance ; « à partir de », « dès » un début. Une date seule est l\'échéance. Sans aucune date dans la phrase : "".',
       '- bloque_par : le titre approximatif d\'une tâche existante à finir avant celle-ci, sinon "".',
-      '- titre : bref, verbe à l\'infinitif.',
+      '- titre : bref, verbe à l\'infinitif, sans la date.',
       'Phrase : ' + p,
     ].join('\n');
     const j = await this.genererIA(prompt, 500);
@@ -1337,17 +1341,10 @@ const avecTaches = (Base) => class extends Base {
     const specs = Ariane.normaliserSpecsTaches([j], {
       familles: new Set(this.famillesIA().map((f) => f.id)),
       defaut: this.settings.familleTacheDefaut || 'action',
-      dates: Ariane.datesDansTexte(p, auj),
+      datesLibres: true,
     });
     if (!specs.length) return null;
     const s = specs[0];
-    // Une seule date dans la phrase, que l'IA n'a pas placée : c'est presque
-    // toujours l'échéance, sauf si elle est annoncée comme un début.
-    const toutes = [...Ariane.datesDansTexte(p, auj)];
-    if (!s.debut && !s.echeance && toutes.length === 1) {
-      if (/(?:^|\s)(?:à|a) partir d|(?:^|\s)dès\s|\bcommencer\b/i.test(p)) s.debut = toutes[0];
-      else s.echeance = toutes[0];
-    }
     const chemin = await this.creerTache({
       intitule: s.titre, famille: s.famille, debut: s.debut, echeance: s.echeance,
       source: s.famille === 'lecture' ? s.source : undefined,

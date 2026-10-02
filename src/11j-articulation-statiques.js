@@ -726,14 +726,9 @@ const avecArticulationStatiques = (Base) => class extends Base {
 
   // Toutes les dates repérées telles quelles dans un texte, ramenées en ISO.
   // Sert à n'autoriser à l'import QUE les dates réellement présentes.
-  // `aujourdhui` (AAAA-MM-JJ, facultatif) : les dates relatives écrites en
-  // français (« vendredi prochain », « demain », « dans 2 semaines »,
-  // « le 30/10 », « 15 novembre ») sont alors résolues et autorisées aussi.
-  // Elles sont calculées ici, pas par l'IA : aucune date inventée ne passe.
-  static datesDansTexte(txt, aujourdhui) {
+  static datesDansTexte(txt) {
     const s = String(txt || '');
     const out = new Set();
-    if (aujourdhui) for (const d of Ariane.datesRelativesFr(s, aujourdhui)) out.add(d.iso);
     let m;
     const iso = /\b(\d{4})-(\d{2})-(\d{2})\b/g;
     while ((m = iso.exec(s))) out.add(m[1] + '-' + m[2] + '-' + m[3]);
@@ -742,80 +737,6 @@ const avecArticulationStatiques = (Base) => class extends Base {
       out.add(m[3] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0'));
     }
     return out;
-  }
-
-  // Les dates relatives d'un texte français, résolues depuis `aujourdhui`,
-  // dans l'ordre du texte : [{ expr, iso }]. Un jour de la semaine nommé seul,
-  // « ce » ou « prochain » désigne sa prochaine occurrence APRÈS aujourd'hui
-  // (vendredi prochain, dit un vendredi, c'est dans sept jours) ; « en huit »
-  // ajoute une semaine. Une date sans année prend la prochaine occurrence.
-  static datesRelativesFr(txt, aujourdhui) {
-    const auj = String(aujourdhui || '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(auj)) return [];
-    const t = String(txt || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[’']/g, "'");
-    const D = Ariane.decalerJour;
-    const p2 = (n) => String(n).padStart(2, '0');
-    const [aa, mm, jj] = auj.split('-').map(Number);
-    const jsem = (new Date(Date.UTC(aa, mm - 1, jj)).getUTCDay() + 6) % 7; // lundi = 0
-    const valide = (a, m, j) => {
-      const d = new Date(Date.UTC(a, m - 1, j));
-      return d.getUTCFullYear() === a && d.getUTCMonth() === m - 1 && d.getUTCDate() === j;
-    };
-    // Sans année : cette année si la date n'est pas passée, sinon l'an prochain.
-    const sansAnnee = (m, j) => {
-      for (const a of [aa, aa + 1]) {
-        if (!valide(a, m, j)) continue;
-        const iso = a + '-' + p2(m) + '-' + p2(j);
-        if (iso >= auj) return iso;
-      }
-      return '';
-    };
-    const JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
-    const MOIS = { janvier: 1, janv: 1, fevrier: 2, fevr: 2, fev: 2, mars: 3, avril: 4, avr: 4,
-      mai: 5, juin: 6, juillet: 7, juil: 7, aout: 8, septembre: 9, sept: 9, octobre: 10, oct: 10,
-      novembre: 11, nov: 11, decembre: 12, dec: 12 };
-    const trouves = [];
-    const noter = (re, f) => {
-      let m;
-      while ((m = re.exec(t))) {
-        const iso = f(m);
-        if (iso) trouves.push({ at: m.index, expr: m[0].trim(), iso });
-      }
-    };
-    noter(/\bapres[- ]demain\b/g, () => D(auj, 2));
-    noter(/\b(?<!apres[- ])demain\b/g, () => D(auj, 1));
-    noter(/\baujourd'hui\b|\bce soir\b/g, () => auj);
-    noter(/\bdans (\d{1,3}|un|une|deux|trois|quatre|cinq|six|huit|dix|quinze) (jours?|semaines?|mois)\b/g, (m) => {
-      const MOTS = { un: 1, une: 1, deux: 2, trois: 3, quatre: 4, cinq: 5, six: 6, huit: 8, dix: 10, quinze: 15 };
-      const n = MOTS[m[1]] || Number(m[1]);
-      if (m[2].startsWith('jour')) return D(auj, n);
-      if (m[2].startsWith('semaine')) return D(auj, 7 * n);
-      const cible = new Date(Date.UTC(aa, mm - 1 + n, 1));
-      const a = cible.getUTCFullYear();
-      const mo = cible.getUTCMonth() + 1;
-      const fin = new Date(Date.UTC(a, mo, 0)).getUTCDate();
-      return a + '-' + p2(mo) + '-' + p2(Math.min(jj, fin));
-    });
-    noter(/\b(?:(ce|cette) )?(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)( prochain| en huit)?\b/g, (m) => {
-      const cible = JOURS.indexOf(m[2]);
-      let n = (cible - jsem + 7) % 7;
-      if (n === 0) n = 7;
-      if (m[3] === ' en huit') n += 7;
-      return D(auj, n);
-    });
-    noter(/\bfin (?:de (?:la )?)?semaine\b/g, () => D(auj, (4 - jsem + 7) % 7));
-    noter(/\bsemaine prochaine\b/g, () => D(auj, 7 - jsem));
-    noter(/\bfin (?:du |de )?mois\b/g, () => auj.slice(0, 8) + p2(new Date(Date.UTC(aa, mm, 0)).getUTCDate()));
-    // « le 30/10 », sans année (avec année, datesDansTexte s'en charge).
-    noter(/\b(\d{1,2})\/(\d{1,2})\b(?!\/\d)/g, (m) => sansAnnee(Number(m[2]), Number(m[1])));
-    noter(/\b(\d{1,2}|1er) (janvier|janv|fevrier|fevr|fev|mars|avril|avr|mai|juin|juillet|juil|aout|septembre|sept|octobre|oct|novembre|nov|decembre|dec)\.?(?: (\d{4}))?\b/g, (m) => {
-      const j = m[1] === '1er' ? 1 : Number(m[1]);
-      const mo = MOIS[m[2]];
-      if (m[3]) return valide(Number(m[3]), mo, j) ? m[3] + '-' + p2(mo) + '-' + p2(j) : '';
-      return sansAnnee(mo, j);
-    });
-    return trouves.sort((a, b) => a.at - b.at).map(({ expr, iso }) => ({ expr, iso }));
   }
 
   // Extrait un objet/tableau JSON d'une réponse LLM (tolère un habillage
@@ -835,7 +756,9 @@ const avecArticulationStatiques = (Base) => class extends Base {
   // Nettoie l'arbre de specs rendu par l'IA : familles bornées aux ids connus,
   // booléens coercés, priorité normalisée, PROFONDEUR plafonnée, et surtout
   // AUCUNE date qui ne soit déjà dans le texte source (opts.dates : Set ISO).
-  // opts = { familles: Set|Array, defaut, dates: Set, profMax }.
+  // opts.datesLibres : toute date valide passe (l'IA a reçu la date du jour et
+  // résout elle-même « vendredi prochain »).
+  // opts = { familles: Set|Array, defaut, dates: Set, datesLibres, profMax }.
   static normaliserSpecsTaches(brut, opts) {
     const o = opts || {};
     const familles = o.familles instanceof Set ? o.familles
@@ -855,7 +778,13 @@ const avecArticulationStatiques = (Base) => class extends Base {
         : (brut && Array.isArray(brut.tasks) ? brut.tasks : []));
     const dateOk = (v) => {
       const s = String(v == null ? '' : v).trim().slice(0, 10);
-      return (/^\d{4}-\d{2}-\d{2}$/.test(s) && dates.has(s)) ? s : '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+      if (o.datesLibres) {
+        const [a, m, j] = s.split('-').map(Number);
+        const d = new Date(Date.UTC(a, m - 1, j));
+        return d.getUTCMonth() === m - 1 && d.getUTCDate() === j ? s : '';
+      }
+      return dates.has(s) ? s : '';
     };
     const vrai = (v) => v === true || /^(true|oui|yes|1)$/i.test(String(v == null ? '' : v));
     const un = (n, prof) => {
