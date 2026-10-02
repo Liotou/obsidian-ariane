@@ -895,6 +895,11 @@ class MoteurCalendrier extends MoteurVue {
         .onClick(() => poser({ priorite: val })));
     }
     m.addSeparator();
+    m.addItem((i) => i.setTitle(tr('Créer une tâche fille…')).setIcon('corner-down-right')
+      .onClick(() => this.greffon.ajouterTacheLiee(t.ref, 'fille', () => this.dessiner())));
+    m.addItem((i) => i.setTitle(tr('Créer une tâche mère…')).setIcon('corner-left-up')
+      .onClick(() => this.greffon.ajouterTacheLiee(t.ref, 'mere', () => this.dessiner())));
+    m.addSeparator();
 
     if (ev.source === 'creneau') {
       // Commentaire de session : stocké dans le bloc balisé de la note.

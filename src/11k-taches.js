@@ -1030,6 +1030,35 @@ const avecTaches = (Base) => class extends Base {
     });
   }
 
+  // Une tâche fille ou mère créée autour d'une tâche existante. Seul
+  // l'intitulé se demande ; la famille suit. Une mère s'insère entre la
+  // tâche et son ancienne mère, pour que la hiérarchie ne perde aucun étage.
+  ajouterTacheLiee(ref, sens, apres) {
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    if (!t) return;
+    const fille = sens === 'fille';
+    ModaleBarreTexte.demander(this, {
+      titre: fille ? 'Nouvelle tâche fille' : 'Nouvelle tâche mère', bouton: 'Créer',
+      champs: [{ cle: 'nom', nom: 'Intitulé',
+        aide: (fille ? tr('Fille de : ') : tr('Mère de : ')) + (t.intitule || ref) }],
+    }, async (v) => {
+      const nom = String(v.nom || '').trim();
+      if (!nom) return;
+      const chemin = await this.creerTache({ intitule: nom, famille: t.famille || '' });
+      const nouv = chemin && this.refDeChemin(chemin);
+      if (!nouv) return;
+      if (fille) {
+        await this.rattacher(nouv, ref);
+      } else {
+        const ancienne = Ariane.refDeLien(t.parent || '');
+        if (ancienne) await this.rattacher(nouv, ancienne);
+        await this.rattacher(ref, nouv);
+      }
+      new obsidian.Notice((fille ? tr('Tâche fille créée : ') : tr('Tâche mère créée : ')) + nouv);
+      if (apres) apres();
+    });
+  }
+
   /* ---- IA : structuration de tâches -------------------------------- */
 
   // Appel LLM (fournisseur configuré dans les réglages) qui rend du JSON parsé.

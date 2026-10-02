@@ -1027,6 +1027,14 @@ const TEXTES = {
     "Ajouter un jalon lié à la tâche…": "Add a milestone linked to the task…",
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
+    "Créer une tâche fille…": "Create a child task…",
+    "Créer une tâche mère…": "Create a parent task…",
+    "Nouvelle tâche fille": "New child task",
+    "Nouvelle tâche mère": "New parent task",
+    "Fille de : ": "Child of: ",
+    "Mère de : ": "Parent of: ",
+    "Tâche fille créée : ": "Child task created: ",
+    "Tâche mère créée : ": "Parent task created: ",
     "Échéance : ": "Due: ",
     "Créer": "Create",
     "Cette tâche n’a pas d’échéance : le jalon n’aurait pas de date.": "This task has no due date: the milestone would have no date.",
@@ -14951,6 +14959,35 @@ const avecTaches = (Base) => class extends Base {
       const nouv = chemin && this.refDeChemin(chemin);
       if (!nouv) return;
       await this.rattacher(nouv, ref);
+      if (apres) apres();
+    });
+  }
+
+  // Une tâche fille ou mère créée autour d'une tâche existante. Seul
+  // l'intitulé se demande ; la famille suit. Une mère s'insère entre la
+  // tâche et son ancienne mère, pour que la hiérarchie ne perde aucun étage.
+  ajouterTacheLiee(ref, sens, apres) {
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    if (!t) return;
+    const fille = sens === 'fille';
+    ModaleBarreTexte.demander(this, {
+      titre: fille ? 'Nouvelle tâche fille' : 'Nouvelle tâche mère', bouton: 'Créer',
+      champs: [{ cle: 'nom', nom: 'Intitulé',
+        aide: (fille ? tr('Fille de : ') : tr('Mère de : ')) + (t.intitule || ref) }],
+    }, async (v) => {
+      const nom = String(v.nom || '').trim();
+      if (!nom) return;
+      const chemin = await this.creerTache({ intitule: nom, famille: t.famille || '' });
+      const nouv = chemin && this.refDeChemin(chemin);
+      if (!nouv) return;
+      if (fille) {
+        await this.rattacher(nouv, ref);
+      } else {
+        const ancienne = Ariane.refDeLien(t.parent || '');
+        if (ancienne) await this.rattacher(nouv, ancienne);
+        await this.rattacher(ref, nouv);
+      }
+      new obsidian.Notice((fille ? tr('Tâche fille créée : ') : tr('Tâche mère créée : ')) + nouv);
       if (apres) apres();
     });
   }
@@ -29778,6 +29815,11 @@ class MoteurCalendrier extends MoteurVue {
       m.addItem((i) => i.setTitle(tr('Priorité : ') + lib).setChecked(String(t.priorite || '') === val)
         .onClick(() => poser({ priorite: val })));
     }
+    m.addSeparator();
+    m.addItem((i) => i.setTitle(tr('Créer une tâche fille…')).setIcon('corner-down-right')
+      .onClick(() => this.greffon.ajouterTacheLiee(t.ref, 'fille', () => this.dessiner())));
+    m.addItem((i) => i.setTitle(tr('Créer une tâche mère…')).setIcon('corner-left-up')
+      .onClick(() => this.greffon.ajouterTacheLiee(t.ref, 'mere', () => this.dessiner())));
     m.addSeparator();
 
     if (ev.source === 'creneau') {
