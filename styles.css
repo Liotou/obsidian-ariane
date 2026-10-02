@@ -2668,13 +2668,15 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-cal-pastille,
 .zfa-cal-evt { transition: box-shadow 0.12s ease, border-color 0.12s ease,
   background 0.12s ease, filter 0.12s ease, transform 0.12s ease; }
-.zfa-cal-carte:hover {
+.zfa-cal-carte:hover,
+.zfa-cal-carte.est-survol-soeur {
   filter: brightness(1.1);
   box-shadow: 0 7px 20px rgba(0, 0, 0, 0.35);
   border-color: color-mix(in srgb, var(--zfa-cal-coul, var(--text-faint)) 85%, transparent);
   transform: translateY(-1px);
 }
-.zfa-cal-pastille:hover {
+.zfa-cal-pastille:hover,
+.zfa-cal-pastille.est-survol-soeur {
   background: color-mix(in srgb, var(--zfa-cal-coul, var(--text-faint)) 42%, var(--background-primary));
   filter: brightness(1.06);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);

@@ -28960,6 +28960,23 @@ class MoteurCalendrier extends MoteurVue {
       if (_toucheAnnuler(e)) { e.preventDefault(); e.stopPropagation(); annulerDernier(this); }
     };
     racine.addEventListener('keydown', this._surTouche);
+    // Survoler un créneau met en avant tous les créneaux visibles de la même
+    // tâche, comme s'ils étaient survolés ensemble. Délégation sur la racine :
+    // elle survit aux redessins, qui reconstruisent les cartes.
+    this._surSurvol = (e) => {
+      const c = e.target.closest && e.target.closest('[data-ref][data-brut]');
+      const ref = c ? c.dataset.ref : '';
+      if (ref === this._refSurvolee) return;
+      this._marquerSoeurs('');
+      if (ref) this._marquerSoeurs(ref);
+    };
+    this._surSortie = (e) => {
+      const v = e.relatedTarget;
+      const c = v && v.closest ? v.closest('[data-ref][data-brut]') : null;
+      if (!c || c.dataset.ref !== this._refSurvolee) this._marquerSoeurs('');
+    };
+    racine.addEventListener('mouseover', this._surSurvol);
+    racine.addEventListener('mouseout', this._surSortie);
     (greffon._moteursCalendrier || (greffon._moteursCalendrier = new Set())).add(this);
     // La barre « maintenant » est posée au rendu : sans ce battement elle
     // resterait figée tant que la vue reste ouverte sans interaction.
@@ -29078,6 +29095,8 @@ class MoteurCalendrier extends MoteurVue {
     for (const o of (this._observateursMois || [])) { try { o.disconnect(); } catch (e) { /* rien */ } }
     this._observateursMois = [];
     if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
+    if (this._surSurvol) this.racine.removeEventListener('mouseover', this._surSurvol);
+    if (this._surSortie) this.racine.removeEventListener('mouseout', this._surSortie);
     if (this.greffon._moteursCalendrier) this.greffon._moteursCalendrier.delete(this);
     this.racine.empty();
   }
@@ -31275,6 +31294,21 @@ class MoteurCalendrier extends MoteurVue {
   // 7 jours). Même langage que la lignée de la frise ; rien au repos. La
   // surcouche ne capte aucun pointeur : colonnes, menus et glissés restent
   // intacts.
+  // Pose (ref non vide) ou retire la classe de survol partagé. Seulement
+  // s'il existe au moins un autre créneau de la tâche sur la vue.
+  _marquerSoeurs(ref) {
+    for (const el of this.racine.querySelectorAll('.est-survol-soeur')) {
+      el.classList.remove('est-survol-soeur');
+    }
+    this._refSurvolee = '';
+    if (!ref) return;
+    const soeurs = [...this.racine.querySelectorAll('[data-ref][data-brut]')]
+      .filter((el) => el.dataset.ref === ref);
+    this._refSurvolee = ref;
+    if (soeurs.length < 2) return;
+    for (const el of soeurs) el.classList.add('est-survol-soeur');
+  }
+
   _montrerLigneeSemaine(inner, ref) {
     if (this._detruit || !this._hier || !ref) return;
     // Déjà affiché pour cette tâche : ne pas reconstruire (le survol balade le
