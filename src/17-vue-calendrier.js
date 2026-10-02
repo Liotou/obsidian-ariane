@@ -2423,7 +2423,10 @@ class MoteurCalendrier extends MoteurVue {
       j.style.height = Math.min(100, Math.round(fait / prevu * 100)) + '%';
       const lib = duree(fait) + ' / ' + duree(prevu);
       j.setAttribute('aria-label', tr('Travail réel : ') + lib);
-      if (bloc.offsetHeight >= 34) bloc.createDiv({ cls: 'zfa-cal-jauge-val', text: lib });
+      // Au bout de la ligne des heures, jamais par-dessus : un créneau trop
+      // court pour montrer ses heures ne montre que la jauge.
+      const heure = bloc.querySelector('.zfa-cal-carte-heure');
+      if (heure) heure.createSpan({ cls: 'zfa-cal-jauge-val', text: ' · ' + duree(fait) + tr(' faites') });
     }
 
     // D · le liseré de présence.

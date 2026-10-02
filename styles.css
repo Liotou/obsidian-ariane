@@ -3806,11 +3806,7 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
   border-top: 1px solid color-mix(in srgb, var(--zfa-cal-coul, var(--text-faint)) 70%, transparent);
   pointer-events: none; z-index: -1;
 }
-.zfa-cal-jauge-val {
-  position: absolute; left: 6px; bottom: 2px;
-  font-size: 10px; font-variant-numeric: tabular-nums;
-  color: var(--text-muted); pointer-events: none;
-}
+.zfa-cal-jauge-val { font-variant-numeric: tabular-nums; color: var(--text-muted); }
 .zfa-cal-presence {
   position: absolute; right: 1px; width: 4px; border-radius: 2px;
   background: var(--zfa-cal-coul, var(--text-faint)); opacity: 0.85; z-index: 3;
