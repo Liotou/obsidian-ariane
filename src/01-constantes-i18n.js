@@ -843,6 +843,7 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Travail réel : ": "Actual work: ",
+    "Tâche supprimée : son rappel est retiré d’Apple Rappels.": "Task deleted: its reminder was removed from Apple Reminders.",
     " faites": " done",
     "Travail réel sur le calendrier": "Actual work on the calendar",
     "Dans la vue semaine : chaque créneau entamé se remplit du temps réellement passé sur sa tâche, et un liseré au bord de chaque jour montre quand vous avez travaillé, à la couleur de la tâche. Les heures sont relevées à partir de l’activation de cette version.": "In week view: each started slot fills with the time actually spent on its task, and a thin strip along each day shows when you worked, in the task's color. Times are recorded from the activation of this version.",
@@ -1129,6 +1130,7 @@ const DEFAULT_SETTINGS = {
   rappelsReleveMin: 10,         // minutes entre deux relèves automatiques
   rappelsFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un rappel Apple
   rappelsSupprimerAbandonnees: true, // une tâche abandonnée quitte Apple Rappels
+  rappelsIgnores: [],                // ids des rappels de tâches supprimées : jamais réimportés
   claudePont: true,             // relais local pour le serveur MCP ariane-taches (bureau)
   tachesSemainesAbandon: 4,
   organisationReplies: [],

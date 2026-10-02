@@ -1028,6 +1028,7 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Travail réel : ": "Actual work: ",
+    "Tâche supprimée : son rappel est retiré d’Apple Rappels.": "Task deleted: its reminder was removed from Apple Reminders.",
     " faites": " done",
     "Travail réel sur le calendrier": "Actual work on the calendar",
     "Dans la vue semaine : chaque créneau entamé se remplit du temps réellement passé sur sa tâche, et un liseré au bord de chaque jour montre quand vous avez travaillé, à la couleur de la tâche. Les heures sont relevées à partir de l’activation de cette version.": "In week view: each started slot fills with the time actually spent on its task, and a thin strip along each day shows when you worked, in the task's color. Times are recorded from the activation of this version.",
@@ -1314,6 +1315,7 @@ const DEFAULT_SETTINGS = {
   rappelsReleveMin: 10,         // minutes entre deux relèves automatiques
   rappelsFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un rappel Apple
   rappelsSupprimerAbandonnees: true, // une tâche abandonnée quitte Apple Rappels
+  rappelsIgnores: [],                // ids des rappels de tâches supprimées : jamais réimportés
   claudePont: true,             // relais local pour le serveur MCP ariane-taches (bureau)
   tachesSemainesAbandon: 4,
   organisationReplies: [],
@@ -14543,7 +14545,7 @@ const avecTaches = (Base) => class extends Base {
         const coche = parts[3] === '1';
         const dueIso = parts[4] || '';
         const listeNom = parts[5] || '';
-        if (!id || idsConnus.has(id)) continue;
+        if (!id || idsConnus.has(id) || this._rappelIgnore(id)) continue;
         // Le titre du rappel porte-t-il la référence d'une tâche existante ? On
         // relie au lieu de recréer. Sans supposer de forme : un jeton entre
         // crochets qui est une réf connue, sinon une réf connue en sous-chaîne.
@@ -14612,6 +14614,41 @@ const avecTaches = (Base) => class extends Base {
     }
     if (!silencieux && n) new obsidian.Notice(n + tr(' tâche(s) mise(s) à jour depuis Rappels.'));
     return n;
+  }
+
+  /* ---- Apple Rappels : tâches supprimées ---------------------------- */
+
+  // Supprimer la note d'une tâche ne touchait pas à son rappel : à la relève
+  // suivante, ce rappel inconnu d'une liste surveillée revenait en tâche
+  // neuve (« T061 - T058 - … »). Désormais, l'identifiant du rappel est lu
+  // dans le dernier état connu de la note, mis de côté pour toujours, et le
+  // rappel est retiré d'Apple Rappels.
+  ecouterSuppressionTaches() {
+    this.registerEvent(this.app.metadataCache.on('deleted', (f, ancien) => {
+      if (!f || !this.refDeChemin(f.path)) return;
+      const fm = (ancien && ancien.frontmatter) || {};
+      const rid = String(this._lireT(fm, 'rappel-id') || '').trim();
+      if (rid) this.oublierRappel(rid);
+    }));
+  }
+
+  _rappelIgnore(id) {
+    return (this.settings.rappelsIgnores || []).includes(String(id || '').trim());
+  }
+
+  async oublierRappel(rid) {
+    const id = String(rid || '').trim();
+    if (!id) return;
+    const l = (this.settings.rappelsIgnores || []).filter((x) => x !== id);
+    l.push(id);
+    // Les plus anciens finissent par sortir : un rappel effacé depuis
+    // longtemps n'a plus de chance de revenir.
+    this.settings.rappelsIgnores = l.slice(-500);
+    await this.saveSettings();
+    if (!obsidian.Platform.isMacOS || this.settings.rappelsActif === false) return;
+    const sortie = await this._osascriptJXA(
+      Ariane.genererJXARappels([{ ref: 'supprime', id, supprimer: true }]), 30000);
+    if (sortie && /SUPPRIME/.test(sortie)) new obsidian.Notice(tr('Tâche supprimée : son rappel est retiré d’Apple Rappels.'));
   }
 
   /* ---- Apple Rappels : orchestration -------------------------------- */
@@ -18088,6 +18125,9 @@ class Ariane extends composer(obsidian.Plugin,
   _brancherEvenements() {
     // Journal des modifications des tâches (section 11k, spec 2026-09-29).
     this.demarrerJournalTaches();
+    // Une note de tâche supprimée emporte son rappel (sinon la relève le
+    // réimporterait en tâche neuve).
+    this.ecouterSuppressionTaches();
     // Suggestions : recalcul à la pause de frappe et au changement de note.
     const estCandidat = (f) => {
       if (!f || !f.path) return false;

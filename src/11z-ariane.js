@@ -953,6 +953,9 @@ class Ariane extends composer(obsidian.Plugin,
   _brancherEvenements() {
     // Journal des modifications des tâches (section 11k, spec 2026-09-29).
     this.demarrerJournalTaches();
+    // Une note de tâche supprimée emporte son rappel (sinon la relève le
+    // réimporterait en tâche neuve).
+    this.ecouterSuppressionTaches();
     // Suggestions : recalcul à la pause de frappe et au changement de note.
     const estCandidat = (f) => {
       if (!f || !f.path) return false;

@@ -469,7 +469,7 @@ const avecTaches = (Base) => class extends Base {
         const coche = parts[3] === '1';
         const dueIso = parts[4] || '';
         const listeNom = parts[5] || '';
-        if (!id || idsConnus.has(id)) continue;
+        if (!id || idsConnus.has(id) || this._rappelIgnore(id)) continue;
         // Le titre du rappel porte-t-il la référence d'une tâche existante ? On
         // relie au lieu de recréer. Sans supposer de forme : un jeton entre
         // crochets qui est une réf connue, sinon une réf connue en sous-chaîne.
@@ -538,6 +538,41 @@ const avecTaches = (Base) => class extends Base {
     }
     if (!silencieux && n) new obsidian.Notice(n + tr(' tâche(s) mise(s) à jour depuis Rappels.'));
     return n;
+  }
+
+  /* ---- Apple Rappels : tâches supprimées ---------------------------- */
+
+  // Supprimer la note d'une tâche ne touchait pas à son rappel : à la relève
+  // suivante, ce rappel inconnu d'une liste surveillée revenait en tâche
+  // neuve (« T061 - T058 - … »). Désormais, l'identifiant du rappel est lu
+  // dans le dernier état connu de la note, mis de côté pour toujours, et le
+  // rappel est retiré d'Apple Rappels.
+  ecouterSuppressionTaches() {
+    this.registerEvent(this.app.metadataCache.on('deleted', (f, ancien) => {
+      if (!f || !this.refDeChemin(f.path)) return;
+      const fm = (ancien && ancien.frontmatter) || {};
+      const rid = String(this._lireT(fm, 'rappel-id') || '').trim();
+      if (rid) this.oublierRappel(rid);
+    }));
+  }
+
+  _rappelIgnore(id) {
+    return (this.settings.rappelsIgnores || []).includes(String(id || '').trim());
+  }
+
+  async oublierRappel(rid) {
+    const id = String(rid || '').trim();
+    if (!id) return;
+    const l = (this.settings.rappelsIgnores || []).filter((x) => x !== id);
+    l.push(id);
+    // Les plus anciens finissent par sortir : un rappel effacé depuis
+    // longtemps n'a plus de chance de revenir.
+    this.settings.rappelsIgnores = l.slice(-500);
+    await this.saveSettings();
+    if (!obsidian.Platform.isMacOS || this.settings.rappelsActif === false) return;
+    const sortie = await this._osascriptJXA(
+      Ariane.genererJXARappels([{ ref: 'supprime', id, supprimer: true }]), 30000);
+    if (sortie && /SUPPRIME/.test(sortie)) new obsidian.Notice(tr('Tâche supprimée : son rappel est retiré d’Apple Rappels.'));
   }
 
   /* ---- Apple Rappels : orchestration -------------------------------- */
