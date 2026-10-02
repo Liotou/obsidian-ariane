@@ -1315,10 +1315,19 @@ const avecTaches = (Base) => class extends Base {
   async ajouterTacheLN(phrase) {
     const p = String(phrase || '').trim();
     if (!p) return null;
+    // Les dates relatives (« vendredi prochain ») sont résolues ici, pas par
+    // l'IA : elle choisit seulement laquelle est le début, laquelle l'échéance.
+    const auj = jourIsoDe(new Date());
+    const relatives = Ariane.datesRelativesFr(p, auj);
+    const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
     const prompt = [
       'Extrais UNE tâche de cette phrase, en JSON : {"titre","famille","debut","echeance","bloque_par"}.',
       this._blocFamilles(),
-      '- debut / echeance : AAAA-MM-JJ, uniquement si une date ou une échéance explicite est donnée, sinon "".',
+      'Nous sommes le ' + JOURS[new Date().getDay()] + ' ' + auj + '.',
+      relatives.length
+        ? 'Dates déjà calculées dans la phrase : ' + relatives.map((d) => '« ' + d.expr + ' » = ' + d.iso).join(', ') + '.'
+        : '',
+      '- debut / echeance : AAAA-MM-JJ, uniquement si la phrase donne une date (explicite ou relative), sinon "". « pour », « avant », « d\'ici » annoncent une échéance ; « à partir de », « dès » un début.',
       '- bloque_par : le titre approximatif d\'une tâche existante à finir avant celle-ci, sinon "".',
       '- titre : bref, verbe à l\'infinitif.',
       'Phrase : ' + p,
@@ -1328,10 +1337,17 @@ const avecTaches = (Base) => class extends Base {
     const specs = Ariane.normaliserSpecsTaches([j], {
       familles: new Set(this.famillesIA().map((f) => f.id)),
       defaut: this.settings.familleTacheDefaut || 'action',
-      dates: Ariane.datesDansTexte(p),
+      dates: Ariane.datesDansTexte(p, auj),
     });
     if (!specs.length) return null;
     const s = specs[0];
+    // Une seule date dans la phrase, que l'IA n'a pas placée : c'est presque
+    // toujours l'échéance, sauf si elle est annoncée comme un début.
+    const toutes = [...Ariane.datesDansTexte(p, auj)];
+    if (!s.debut && !s.echeance && toutes.length === 1) {
+      if (/(?:^|\s)(?:à|a) partir d|(?:^|\s)dès\s|\bcommencer\b/i.test(p)) s.debut = toutes[0];
+      else s.echeance = toutes[0];
+    }
     const chemin = await this.creerTache({
       intitule: s.titre, famille: s.famille, debut: s.debut, echeance: s.echeance,
       source: s.famille === 'lecture' ? s.source : undefined,

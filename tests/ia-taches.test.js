@@ -172,3 +172,44 @@ test('deplacerSpecTaches : profondeur bornée au voisinage du trou', () => {
   const apres = Ariane.deplacerSpecTaches(plat, 4, 4, 5);
   assert.equal(titresArbre(Ariane.reconstruireSpecsTaches(apres)), 'A0 A11 A21 B0 C1 C12');
 });
+
+/* ------------------------ datesRelativesFr ------------------------- */
+
+// Le 2026-10-02 est un vendredi.
+const rel = (txt) => Ariane.datesRelativesFr(txt, '2026-10-02').map((d) => d.iso);
+
+test('dates relatives : jours de la semaine, prochain, en huit', () => {
+  assert.deepEqual(rel('pour vendredi prochain'), ['2026-10-09']);
+  assert.deepEqual(rel('avant lundi'), ['2026-10-05']);
+  assert.deepEqual(rel('ce mercredi'), ['2026-10-07']);
+  assert.deepEqual(rel('mardi en huit'), ['2026-10-13']);
+});
+
+test('dates relatives : demain, après-demain, dans N jours/semaines/mois', () => {
+  assert.deepEqual(rel('demain'), ['2026-10-03']);
+  assert.deepEqual(rel('après-demain'), ['2026-10-04']);
+  assert.deepEqual(rel('dans 3 jours'), ['2026-10-05']);
+  assert.deepEqual(rel('dans deux semaines'), ['2026-10-16']);
+  assert.deepEqual(rel('dans un mois'), ['2026-11-02']);
+});
+
+test('dates relatives : sans année, prochaine occurrence ; avec année, telle quelle', () => {
+  assert.deepEqual(rel('le 30/10'), ['2026-10-30']);
+  assert.deepEqual(rel('le 15/01'), ['2027-01-15']);
+  assert.deepEqual(rel('le 1er novembre'), ['2026-11-01']);
+  assert.deepEqual(rel('15 mars 2027'), ['2027-03-15']);
+  assert.deepEqual(rel('le 31/02'), []);
+  assert.deepEqual(rel('rendu le 30/10/2026'), []);
+});
+
+test('dates relatives : fin de semaine, fin du mois, ordre du texte', () => {
+  assert.deepEqual(rel('fin de semaine'), ['2026-10-02']);
+  assert.deepEqual(rel('fin du mois'), ['2026-10-31']);
+  assert.deepEqual(rel('à partir de lundi, pour vendredi prochain'), ['2026-10-05', '2026-10-09']);
+});
+
+test('datesDansTexte : avec la date du jour, les relatives sont autorisées', () => {
+  const s = Ariane.datesDansTexte('relire le chapitre pour vendredi prochain', '2026-10-02');
+  assert.ok(s.has('2026-10-09'));
+  assert.equal(Ariane.datesDansTexte('relire pour vendredi prochain').size, 0);
+});
