@@ -181,3 +181,23 @@ test('normaliserSpecsTaches : datesLibres accepte toute date valide rendue par l
   const garde = Ariane.normaliserSpecsTaches(brut, { familles: ['action'], dates: new Set() });
   assert.equal(garde[0].echeance, '');
 });
+
+test('lireTachesLN : plusieurs tâches, dépendance par rang, rangs recalculés', () => {
+  const l = Ariane.lireTachesLN([
+    { titre: 'Rédiger le résumé du webinaire', famille: 'production', echeance: '2026-10-05', apres: null },
+    { titre: '' },
+    { titre: 'Envoyer le résumé à Karine', famille: 'action', echeance: '2026-10-05', apres: 0 },
+    { titre: 'Relire', apres: 9, bloque_par: 'Chapitre 2' },
+  ], { familles: ['action', 'production'] });
+  assert.deepEqual(l.map((x) => x.titre), ['Rédiger le résumé du webinaire', 'Envoyer le résumé à Karine', 'Relire']);
+  assert.equal(l[1].apres, 0);
+  assert.equal(l[1].echeance, '2026-10-05');
+  assert.equal(l[2].apres, null);
+  assert.equal(l[2].bloquePar, 'Chapitre 2');
+});
+
+test('lireTachesLN : un objet seul ou { taches } sont acceptés', () => {
+  assert.equal(Ariane.lireTachesLN({ titre: 'Lire X' }, { familles: ['action'] }).length, 1);
+  assert.equal(Ariane.lireTachesLN({ taches: [{ titre: 'A' }, { titre: 'B', apres: 0 }] },
+    { familles: ['action'] })[1].apres, 0);
+});

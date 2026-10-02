@@ -947,47 +947,110 @@ class ModaleRevueLot extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
-// Petite invite « ajouter une tâche en langage naturel ».
+// Invite « créer en langage naturel » : une description, une ou plusieurs
+// tâches. Comme pour « Structurer un brouillon », tout passe par un aperçu où
+// l'on décoche, renomme, change la famille ou l'échéance avant de créer.
 class ModaleAjoutLN extends obsidian.Modal {
-  // opts : { texte?, apres?(ref) } ; `texte` amorce la phrase (ouverture
+  // opts : { texte?, apres?(ref) } ; `texte` amorce la description (ouverture
   // depuis la fenêtre de création), `apres` prévient la vue qui l'a ouverte.
   constructor(greffon, opts) { super(greffon.app); this.greffon = greffon; this.o = opts || {}; }
   onOpen() {
     const c = this.contentEl;
     if (this.modalEl) this.modalEl.addClass('zfa-struct-modal');
     c.addClass('zfa-struct');
-    this.titleEl.setText(tr('Ajouter une tâche (langage naturel)'));
-    c.createEl('p', { cls: 'zfa-struct-intro', text: tr('Une phrase → une tâche : famille devinée, dates prises seulement si écrites, blocage rattaché si vous nommez une tâche existante.') });
+    this.titleEl.setText(tr('Créer des tâches en langage naturel'));
+    c.createEl('p', { cls: 'zfa-struct-intro', text: tr('Décrivez ce qu’il y a à faire, en une phrase ou plusieurs : une tâche par action, famille devinée, dates comprises (« lundi prochain », « le 30/10 »), dépendances rattachées.') });
     const inp = c.createEl('textarea', { cls: 'zfa-struct-zone' });
-    inp.rows = 3;
-    inp.style.minHeight = '4.5em';
+    inp.rows = 4;
+    inp.style.minHeight = '6em';
     inp.style.fontFamily = 'var(--font-text)';
-    inp.placeholder = tr('Ex. : lire la thèse de Roussignol avant le 30/09/2026, ça bloque la rédaction du chapitre 3');
+    inp.placeholder = tr('Ex. : rédiger le résumé du webinaire pour lundi prochain, puis l’envoyer à Karine.');
     if (this.o.texte) inp.value = this.o.texte;
     const pied = c.createDiv({ cls: 'zfa-struct-actions' });
-    const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Créer') });
+    const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Analyser') });
+    this.apercu = c.createDiv({ cls: 'zfa-struct-apercu' });
     b.onclick = async () => {
       const p = inp.value.trim();
-      if (!p) return;
-      b.disabled = true; b.setText(tr('…'));
-      this.close();
-      const avis = new obsidian.Notice(tr('Création…'), 0);
+      if (!p || b.disabled) return;
+      b.disabled = true; b.setText(tr('Analyse…'));
+      let specs = [];
       try {
-        const ref = await this.greffon.ajouterTacheLN(p);
-        avis.hide();
-        if (!ref) { new obsidian.Notice(tr('Rien n\'a pu être créé.')); return; }
-        new obsidian.Notice(tr('Tâche créée : ') + ref);
-        if (this.o.apres) { try { this.o.apres(ref); } catch (e) { /* vue fermée */ } }
-        const f = this.greffon.fichierDeRef(ref);
-        if (f) this.greffon.app.workspace.getLeaf(true).openFile(f);
-      } catch (e) { avis.hide(); new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e)); }
+        specs = await this.greffon.analyserTachesLN(p);
+      } catch (e) {
+        new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
+      } finally {
+        b.disabled = false; b.setText(tr('Ré-analyser'));
+      }
+      if (!specs.length) {
+        if (!this.apercu.childElementCount) new obsidian.Notice(tr('Rien n\'a pu être créé.'));
+        return;
+      }
+      this._apercu(specs);
     };
-    // ⌘↵ crée sans quitter le clavier.
+    // ⌘↵ analyse sans quitter le clavier.
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); b.click(); }
     });
     setTimeout(() => { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }, 30);
   }
+
+  _apercu(specs) {
+    const ap = this.apercu;
+    ap.empty();
+    const familles = this.greffon.famillesIA();
+    const tete = ap.createDiv({ cls: 'zfa-struct-apercu-tete' });
+    const compte = tete.createSpan({ cls: 'zfa-struct-compte' });
+    const majCompte = () => compte.setText(specs.filter((s) => s.inclus !== false).length
+      + tr(' tâche(s) à créer'));
+    majCompte();
+    const liste = ap.createDiv({ cls: 'zfa-struct-liste' });
+    specs.forEach((n) => {
+      const d = liste.createDiv({ cls: 'zfa-struct-noeud zfa-ln-noeud' });
+      const inc = d.createEl('input', { type: 'checkbox', cls: 'zfa-struct-inc' });
+      inc.checked = n.inclus !== false;
+      inc.onchange = () => { n.inclus = inc.checked; d.toggleClass('est-exclu', !inc.checked); majCompte(); };
+      const titre = d.createEl('input', { type: 'text', cls: 'zfa-struct-titre' });
+      titre.value = n.titre;
+      titre.onchange = () => { n.titre = titre.value.trim() || n.titre; };
+      const fam = d.createEl('select', { cls: 'zfa-struct-fam dropdown' });
+      for (const f of familles) fam.createEl('option', { value: f.id, text: f.nom || f.id });
+      fam.value = n.famille;
+      fam.onchange = () => { n.famille = fam.value; };
+      const ech = d.createEl('input', { type: 'date', cls: 'zfa-ln-date',
+        attr: { title: tr('Échéance') } });
+      ech.value = n.echeance || '';
+      ech.onchange = () => { n.echeance = ech.value; };
+      const liens = [];
+      if (n.apres != null && specs[n.apres]) liens.push(tr('après « ') + specs[n.apres].titre + ' »');
+      if (n.bloquePar) liens.push(tr('bloquée par « ') + n.bloquePar + ' »');
+      if (n.debut) liens.push(tr('début ') + n.debut);
+      if (liens.length) d.createDiv({ cls: 'zfa-struct-note', text: liens.join(' · ') });
+      if (n.note) d.createDiv({ cls: 'zfa-struct-note', text: n.note });
+    });
+    const pied = ap.createDiv({ cls: 'zfa-struct-actions' });
+    const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Créer les tâches') });
+    b.onclick = () => this._creer(specs);
+  }
+
+  async _creer(specs) {
+    if (!specs.some((s) => s.inclus !== false)) { new obsidian.Notice(tr('Aucune tâche sélectionnée.')); return; }
+    this.close();
+    const avis = new obsidian.Notice(tr('Création…'), 0);
+    try {
+      const refs = await this.greffon.creerTachesLN(specs);
+      avis.hide();
+      if (!refs.length) { new obsidian.Notice(tr('Rien n\'a pu être créé.')); return; }
+      new obsidian.Notice(refs.length === 1 ? tr('Tâche créée : ') + refs[0]
+        : refs.length + tr(' tâche(s) créée(s) : ') + refs.join(', '));
+      if (this.o.apres) { try { this.o.apres(refs[0]); } catch (e) { /* vue fermée */ } }
+      const f = this.greffon.fichierDeRef(refs[0]);
+      if (f) this.greffon.app.workspace.getLeaf(true).openFile(f);
+    } catch (e) {
+      avis.hide();
+      new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
+    }
+  }
+
   onClose() { this.contentEl.empty(); }
 }
 

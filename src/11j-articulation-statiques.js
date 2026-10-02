@@ -811,6 +811,35 @@ const avecArticulationStatiques = (Base) => class extends Base {
     return racine.map((n) => un(n, 0)).filter(Boolean);
   }
 
+  // La réponse de l'IA à une description en langage naturel : une ou
+  // plusieurs tâches, chacune normalisée comme un brouillon (dates libres :
+  // l'IA les a résolues), plus ses dépendances. `apres` désigne, par son
+  // rang dans la liste rendue, une tâche de la même phrase à finir avant ;
+  // `bloquePar`, le titre approximatif d'une tâche existante. Les rangs sont
+  // recalculés quand une entrée illisible tombe.
+  static lireTachesLN(brut, opts) {
+    const liste = Array.isArray(brut) ? brut
+      : (brut && Array.isArray(brut.taches) ? brut.taches
+        : (brut && typeof brut === 'object' ? [brut] : []));
+    const o = Object.assign({}, opts || {}, { datesLibres: true });
+    const gardees = [];
+    const rang = new Map();
+    liste.forEach((n, i) => {
+      const spec = Ariane.normaliserSpecsTaches([n], o)[0];
+      if (!spec) return;
+      rang.set(i, gardees.length);
+      gardees.push({ n, spec });
+    });
+    return gardees.map(({ n, spec }, k) => {
+      const a = n.apres != null ? n.apres : n.after;
+      const brutRang = a === '' || a === null || a === undefined ? NaN : Number(a);
+      const apres = Number.isInteger(brutRang) && rang.has(brutRang) && rang.get(brutRang) !== k
+        ? rang.get(brutRang) : null;
+      return Object.assign(spec, { enfants: [], apres,
+        bloquePar: String(n.bloque_par || n.bloquePar || '').trim() });
+    });
+  }
+
   // Aplatit un arbre de specs en liste [{ n, prof }] (parcours préfixe) :
   // l'ordre des éléments suit l'ordre visuel des lignes de l'aperçu.
   static aplatirSpecsTaches(arbre) {

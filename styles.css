@@ -3817,3 +3817,8 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 }
 .zfa-cal-presence.est-hors-tache { background: var(--text-faint); opacity: 0.5; }
 .zfa-cal-presence:hover { opacity: 1; width: 6px; }
+
+/* Aperçu des tâches en langage naturel : la date d'échéance tient sur la ligne. */
+.zfa-struct-noeud.zfa-ln-noeud { grid-template-columns: auto 1fr auto auto; }
+.zfa-ln-noeud .zfa-struct-note { grid-column: 2 / -1; }
+.zfa-ln-noeud .zfa-ln-date { width: auto; font-size: var(--font-ui-small); }

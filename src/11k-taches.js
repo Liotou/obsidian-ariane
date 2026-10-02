@@ -1312,12 +1312,14 @@ const avecTaches = (Base) => class extends Base {
   }
 
   // Une phrase -> une tâche créée (famille + dates si écrites + blocage déduit).
-  async ajouterTacheLN(phrase) {
+  // Une description en langage naturel → une ou plusieurs tâches, à revoir
+  // avant création (ModaleAjoutLN). C'est l'IA qui comprend les dates
+  // (« vendredi prochain », « dans deux semaines », « le 30/10 ») : elle
+  // reçoit la date du jour et le calendrier des semaines à venir, pour ne pas
+  // avoir à compter les jours elle-même.
+  async analyserTachesLN(phrase) {
     const p = String(phrase || '').trim();
-    if (!p) return null;
-    // C'est l'IA qui comprend les dates (« vendredi prochain », « dans deux
-    // semaines », « le 30/10 ») : elle reçoit la date du jour et le calendrier
-    // des semaines à venir, pour ne pas avoir à compter les jours elle-même.
+    if (!p) return [];
     const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
     const now = new Date();
     const auj = jourIsoDe(now);
@@ -1327,37 +1329,64 @@ const avecTaches = (Base) => class extends Base {
       calendrier.push(JOURS[d.getDay()] + ' ' + jourIsoDe(d));
     }
     const prompt = [
-      'Extrais UNE tâche de cette phrase, en JSON : {"titre","famille","debut","echeance","bloque_par"}.',
+      'Tu transformes une description en tâches, en JSON : un TABLEAU, une entrée par action distincte.',
       this._blocFamilles(),
       'Nous sommes le ' + JOURS[now.getDay()] + ' ' + auj + '. Les 4 semaines qui viennent : '
         + calendrier.join(', ') + '.',
-      '- debut / echeance : AAAA-MM-JJ. Résous toute date de la phrase, explicite (« 30/10 », « 15 novembre ») ou relative (« demain », « vendredi prochain », « dans deux semaines », « fin du mois ») à partir de la date du jour. « pour », « avant », « d\'ici » annoncent une échéance ; « à partir de », « dès » un début. Une date seule est l\'échéance. Sans aucune date dans la phrase : "".',
-      '- bloque_par : le titre approximatif d\'une tâche existante à finir avant celle-ci, sinon "".',
-      '- titre : bref, verbe à l\'infinitif, sans la date.',
-      'Phrase : ' + p,
+      '',
+      'RÈGLES :',
+      '- Une tâche par action distincte (« rédiger X » puis « envoyer X à Y » = deux tâches). Ne découpe pas une action unique en étapes.',
+      '- titre : bref, verbe à l\'infinitif, sans la date ; garde à l\'identique les noms propres et sigles.',
+      '- debut / echeance : AAAA-MM-JJ. Résous toute date de la description, explicite (« 30/10 », « 15 novembre ») ou relative (« demain », « vendredi prochain », « dans deux semaines », « fin du mois ») à partir de la date du jour. « pour », « avant », « d\'ici » annoncent une échéance ; « à partir de », « dès » un début. Une date qui porte sur toute la description vaut pour chaque tâche concernée. Sans date : "".',
+      '- apres : le rang (0, 1, 2…) dans TON tableau d\'une tâche à finir avant celle-ci (envoyer un résumé vient après l\'avoir rédigé), sinon null.',
+      '- bloque_par : le titre approximatif d\'une tâche DÉJÀ EXISTANTE à finir avant, sinon "".',
+      '- note : une précision utile qui ne tient pas dans le titre, sinon "".',
+      '',
+      'Réponds UNIQUEMENT par le tableau JSON. Chaque entrée :',
+      '{"titre": "...", "famille": "id", "debut": "", "echeance": "", "apres": null, "bloque_par": "", "note": ""}',
+      '',
+      'DESCRIPTION :',
+      p,
     ].join('\n');
-    const j = await this.genererIA(prompt, 500);
-    if (!j) return null;
-    const specs = Ariane.normaliserSpecsTaches([j], {
+    const brut = await this.genererIA(prompt, 1500);
+    if (!brut) return [];
+    return Ariane.lireTachesLN(brut, {
       familles: new Set(this.famillesIA().map((f) => f.id)),
       defaut: this.settings.familleTacheDefaut || 'action',
-      datesLibres: true,
     });
-    if (!specs.length) return null;
-    const s = specs[0];
-    const chemin = await this.creerTache({
-      intitule: s.titre, famille: s.famille, debut: s.debut, echeance: s.echeance,
-      source: s.famille === 'lecture' ? s.source : undefined,
-    });
-    const ref = this.refDeChemin(chemin);
-    const bp = String((j.bloque_par || j.bloquePar || '')).trim();
-    if (ref && bp) {
-      const cand = this.tachesPourGantt().filter((t) => t.ref !== ref)
-        .map((t) => ({ ref: t.ref, titre: t.intitule }));
-      const m = (await this.meilleurTitreSem(bp, cand)) || Ariane.meilleurTitre(bp, cand);
-      if (m) await this.creerBlocage(m.ref, ref);
+  }
+
+  // Crée les tâches revues, puis leurs dépendances : entre tâches de la même
+  // description (`apres`, un rang), et vers une tâche existante (`bloquePar`).
+  // Rend les références créées, dans l'ordre.
+  async creerTachesLN(specs) {
+    const refs = [];
+    for (const s of specs || []) {
+      // Une tâche décochée dans l'aperçu garde son rang (les `apres` des
+      // autres y renvoient) mais n'est pas créée.
+      if (s.inclus === false) { refs.push(null); continue; }
+      const chemin = await this.creerTache({
+        intitule: s.titre, famille: s.famille, debut: s.debut, echeance: s.echeance,
+        jalon: s.jalon, priorite: s.priorite,
+        source: s.famille === 'lecture' ? s.source : undefined,
+      });
+      const ref = chemin ? this.refDeChemin(chemin) : null;
+      refs.push(ref);
+      if (ref && s.note) { try { await this.ajouterNoteTache(ref, s.note); } catch (e) { /* rien */ } }
     }
-    return ref;
+    for (let i = 0; i < (specs || []).length; i++) {
+      const s = specs[i];
+      const ref = refs[i];
+      if (!ref) continue;
+      if (s.apres != null && refs[s.apres]) await this.creerBlocage(refs[s.apres], ref);
+      if (s.bloquePar) {
+        const cand = this.tachesPourGantt().filter((t) => !refs.includes(t.ref))
+          .map((t) => ({ ref: t.ref, titre: t.intitule }));
+        const m = (await this.meilleurTitreSem(s.bloquePar, cand)) || Ariane.meilleurTitre(s.bloquePar, cand);
+        if (m) await this.creerBlocage(m.ref, ref);
+      }
+    }
+    return refs.filter(Boolean);
   }
 
   // Résout les sources en clair des tâches « lecture » vers un [[@citekey]] du

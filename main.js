@@ -1240,6 +1240,14 @@ const TEXTES = {
     "Vérification… ": "Checking… ",
     "Ajouter une tâche (langage naturel)": "Add a task (plain language)",
     "Créer en langage naturel…": "Create in plain language…",
+    "Créer des tâches en langage naturel": "Create tasks in plain language",
+    "Décrivez ce qu’il y a à faire, en une phrase ou plusieurs : une tâche par action, famille devinée, dates comprises (« lundi prochain », « le 30/10 »), dépendances rattachées.": "Describe what needs doing, in one or several sentences: one task per action, family guessed, dates understood (“next Monday”, “30/10”), dependencies linked.",
+    "Ex. : rédiger le résumé du webinaire pour lundi prochain, puis l’envoyer à Karine.": "E.g.: write the webinar summary by next Monday, then send it to Karine.",
+    "Analyser": "Analyse",
+    "après « ": "after “",
+    "bloquée par « ": "blocked by “",
+    "début ": "start ",
+    " tâche(s) créée(s) : ": " task(s) created: ",
     "Une phrase → une tâche : famille devinée, dates prises seulement si écrites, blocage rattaché si vous nommez une tâche existante.": "One sentence → one task: family guessed, dates only if written, blocker linked if you name an existing task.",
     "Créer": "Create",
     "Création…": "Creating…",
@@ -12885,6 +12893,35 @@ const avecArticulationStatiques = (Base) => class extends Base {
     return racine.map((n) => un(n, 0)).filter(Boolean);
   }
 
+  // La réponse de l'IA à une description en langage naturel : une ou
+  // plusieurs tâches, chacune normalisée comme un brouillon (dates libres :
+  // l'IA les a résolues), plus ses dépendances. `apres` désigne, par son
+  // rang dans la liste rendue, une tâche de la même phrase à finir avant ;
+  // `bloquePar`, le titre approximatif d'une tâche existante. Les rangs sont
+  // recalculés quand une entrée illisible tombe.
+  static lireTachesLN(brut, opts) {
+    const liste = Array.isArray(brut) ? brut
+      : (brut && Array.isArray(brut.taches) ? brut.taches
+        : (brut && typeof brut === 'object' ? [brut] : []));
+    const o = Object.assign({}, opts || {}, { datesLibres: true });
+    const gardees = [];
+    const rang = new Map();
+    liste.forEach((n, i) => {
+      const spec = Ariane.normaliserSpecsTaches([n], o)[0];
+      if (!spec) return;
+      rang.set(i, gardees.length);
+      gardees.push({ n, spec });
+    });
+    return gardees.map(({ n, spec }, k) => {
+      const a = n.apres != null ? n.apres : n.after;
+      const brutRang = a === '' || a === null || a === undefined ? NaN : Number(a);
+      const apres = Number.isInteger(brutRang) && rang.has(brutRang) && rang.get(brutRang) !== k
+        ? rang.get(brutRang) : null;
+      return Object.assign(spec, { enfants: [], apres,
+        bloquePar: String(n.bloque_par || n.bloquePar || '').trim() });
+    });
+  }
+
   // Aplatit un arbre de specs en liste [{ n, prof }] (parcours préfixe) :
   // l'ordre des éléments suit l'ordre visuel des lignes de l'aperçu.
   static aplatirSpecsTaches(arbre) {
@@ -15340,12 +15377,14 @@ const avecTaches = (Base) => class extends Base {
   }
 
   // Une phrase -> une tâche créée (famille + dates si écrites + blocage déduit).
-  async ajouterTacheLN(phrase) {
+  // Une description en langage naturel → une ou plusieurs tâches, à revoir
+  // avant création (ModaleAjoutLN). C'est l'IA qui comprend les dates
+  // (« vendredi prochain », « dans deux semaines », « le 30/10 ») : elle
+  // reçoit la date du jour et le calendrier des semaines à venir, pour ne pas
+  // avoir à compter les jours elle-même.
+  async analyserTachesLN(phrase) {
     const p = String(phrase || '').trim();
-    if (!p) return null;
-    // C'est l'IA qui comprend les dates (« vendredi prochain », « dans deux
-    // semaines », « le 30/10 ») : elle reçoit la date du jour et le calendrier
-    // des semaines à venir, pour ne pas avoir à compter les jours elle-même.
+    if (!p) return [];
     const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
     const now = new Date();
     const auj = jourIsoDe(now);
@@ -15355,37 +15394,64 @@ const avecTaches = (Base) => class extends Base {
       calendrier.push(JOURS[d.getDay()] + ' ' + jourIsoDe(d));
     }
     const prompt = [
-      'Extrais UNE tâche de cette phrase, en JSON : {"titre","famille","debut","echeance","bloque_par"}.',
+      'Tu transformes une description en tâches, en JSON : un TABLEAU, une entrée par action distincte.',
       this._blocFamilles(),
       'Nous sommes le ' + JOURS[now.getDay()] + ' ' + auj + '. Les 4 semaines qui viennent : '
         + calendrier.join(', ') + '.',
-      '- debut / echeance : AAAA-MM-JJ. Résous toute date de la phrase, explicite (« 30/10 », « 15 novembre ») ou relative (« demain », « vendredi prochain », « dans deux semaines », « fin du mois ») à partir de la date du jour. « pour », « avant », « d\'ici » annoncent une échéance ; « à partir de », « dès » un début. Une date seule est l\'échéance. Sans aucune date dans la phrase : "".',
-      '- bloque_par : le titre approximatif d\'une tâche existante à finir avant celle-ci, sinon "".',
-      '- titre : bref, verbe à l\'infinitif, sans la date.',
-      'Phrase : ' + p,
+      '',
+      'RÈGLES :',
+      '- Une tâche par action distincte (« rédiger X » puis « envoyer X à Y » = deux tâches). Ne découpe pas une action unique en étapes.',
+      '- titre : bref, verbe à l\'infinitif, sans la date ; garde à l\'identique les noms propres et sigles.',
+      '- debut / echeance : AAAA-MM-JJ. Résous toute date de la description, explicite (« 30/10 », « 15 novembre ») ou relative (« demain », « vendredi prochain », « dans deux semaines », « fin du mois ») à partir de la date du jour. « pour », « avant », « d\'ici » annoncent une échéance ; « à partir de », « dès » un début. Une date qui porte sur toute la description vaut pour chaque tâche concernée. Sans date : "".',
+      '- apres : le rang (0, 1, 2…) dans TON tableau d\'une tâche à finir avant celle-ci (envoyer un résumé vient après l\'avoir rédigé), sinon null.',
+      '- bloque_par : le titre approximatif d\'une tâche DÉJÀ EXISTANTE à finir avant, sinon "".',
+      '- note : une précision utile qui ne tient pas dans le titre, sinon "".',
+      '',
+      'Réponds UNIQUEMENT par le tableau JSON. Chaque entrée :',
+      '{"titre": "...", "famille": "id", "debut": "", "echeance": "", "apres": null, "bloque_par": "", "note": ""}',
+      '',
+      'DESCRIPTION :',
+      p,
     ].join('\n');
-    const j = await this.genererIA(prompt, 500);
-    if (!j) return null;
-    const specs = Ariane.normaliserSpecsTaches([j], {
+    const brut = await this.genererIA(prompt, 1500);
+    if (!brut) return [];
+    return Ariane.lireTachesLN(brut, {
       familles: new Set(this.famillesIA().map((f) => f.id)),
       defaut: this.settings.familleTacheDefaut || 'action',
-      datesLibres: true,
     });
-    if (!specs.length) return null;
-    const s = specs[0];
-    const chemin = await this.creerTache({
-      intitule: s.titre, famille: s.famille, debut: s.debut, echeance: s.echeance,
-      source: s.famille === 'lecture' ? s.source : undefined,
-    });
-    const ref = this.refDeChemin(chemin);
-    const bp = String((j.bloque_par || j.bloquePar || '')).trim();
-    if (ref && bp) {
-      const cand = this.tachesPourGantt().filter((t) => t.ref !== ref)
-        .map((t) => ({ ref: t.ref, titre: t.intitule }));
-      const m = (await this.meilleurTitreSem(bp, cand)) || Ariane.meilleurTitre(bp, cand);
-      if (m) await this.creerBlocage(m.ref, ref);
+  }
+
+  // Crée les tâches revues, puis leurs dépendances : entre tâches de la même
+  // description (`apres`, un rang), et vers une tâche existante (`bloquePar`).
+  // Rend les références créées, dans l'ordre.
+  async creerTachesLN(specs) {
+    const refs = [];
+    for (const s of specs || []) {
+      // Une tâche décochée dans l'aperçu garde son rang (les `apres` des
+      // autres y renvoient) mais n'est pas créée.
+      if (s.inclus === false) { refs.push(null); continue; }
+      const chemin = await this.creerTache({
+        intitule: s.titre, famille: s.famille, debut: s.debut, echeance: s.echeance,
+        jalon: s.jalon, priorite: s.priorite,
+        source: s.famille === 'lecture' ? s.source : undefined,
+      });
+      const ref = chemin ? this.refDeChemin(chemin) : null;
+      refs.push(ref);
+      if (ref && s.note) { try { await this.ajouterNoteTache(ref, s.note); } catch (e) { /* rien */ } }
     }
-    return ref;
+    for (let i = 0; i < (specs || []).length; i++) {
+      const s = specs[i];
+      const ref = refs[i];
+      if (!ref) continue;
+      if (s.apres != null && refs[s.apres]) await this.creerBlocage(refs[s.apres], ref);
+      if (s.bloquePar) {
+        const cand = this.tachesPourGantt().filter((t) => !refs.includes(t.ref))
+          .map((t) => ({ ref: t.ref, titre: t.intitule }));
+        const m = (await this.meilleurTitreSem(s.bloquePar, cand)) || Ariane.meilleurTitre(s.bloquePar, cand);
+        if (m) await this.creerBlocage(m.ref, ref);
+      }
+    }
+    return refs.filter(Boolean);
   }
 
   // Résout les sources en clair des tâches « lecture » vers un [[@citekey]] du
@@ -21490,47 +21556,110 @@ class ModaleRevueLot extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
-// Petite invite « ajouter une tâche en langage naturel ».
+// Invite « créer en langage naturel » : une description, une ou plusieurs
+// tâches. Comme pour « Structurer un brouillon », tout passe par un aperçu où
+// l'on décoche, renomme, change la famille ou l'échéance avant de créer.
 class ModaleAjoutLN extends obsidian.Modal {
-  // opts : { texte?, apres?(ref) } ; `texte` amorce la phrase (ouverture
+  // opts : { texte?, apres?(ref) } ; `texte` amorce la description (ouverture
   // depuis la fenêtre de création), `apres` prévient la vue qui l'a ouverte.
   constructor(greffon, opts) { super(greffon.app); this.greffon = greffon; this.o = opts || {}; }
   onOpen() {
     const c = this.contentEl;
     if (this.modalEl) this.modalEl.addClass('zfa-struct-modal');
     c.addClass('zfa-struct');
-    this.titleEl.setText(tr('Ajouter une tâche (langage naturel)'));
-    c.createEl('p', { cls: 'zfa-struct-intro', text: tr('Une phrase → une tâche : famille devinée, dates prises seulement si écrites, blocage rattaché si vous nommez une tâche existante.') });
+    this.titleEl.setText(tr('Créer des tâches en langage naturel'));
+    c.createEl('p', { cls: 'zfa-struct-intro', text: tr('Décrivez ce qu’il y a à faire, en une phrase ou plusieurs : une tâche par action, famille devinée, dates comprises (« lundi prochain », « le 30/10 »), dépendances rattachées.') });
     const inp = c.createEl('textarea', { cls: 'zfa-struct-zone' });
-    inp.rows = 3;
-    inp.style.minHeight = '4.5em';
+    inp.rows = 4;
+    inp.style.minHeight = '6em';
     inp.style.fontFamily = 'var(--font-text)';
-    inp.placeholder = tr('Ex. : lire la thèse de Roussignol avant le 30/09/2026, ça bloque la rédaction du chapitre 3');
+    inp.placeholder = tr('Ex. : rédiger le résumé du webinaire pour lundi prochain, puis l’envoyer à Karine.');
     if (this.o.texte) inp.value = this.o.texte;
     const pied = c.createDiv({ cls: 'zfa-struct-actions' });
-    const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Créer') });
+    const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Analyser') });
+    this.apercu = c.createDiv({ cls: 'zfa-struct-apercu' });
     b.onclick = async () => {
       const p = inp.value.trim();
-      if (!p) return;
-      b.disabled = true; b.setText(tr('…'));
-      this.close();
-      const avis = new obsidian.Notice(tr('Création…'), 0);
+      if (!p || b.disabled) return;
+      b.disabled = true; b.setText(tr('Analyse…'));
+      let specs = [];
       try {
-        const ref = await this.greffon.ajouterTacheLN(p);
-        avis.hide();
-        if (!ref) { new obsidian.Notice(tr('Rien n\'a pu être créé.')); return; }
-        new obsidian.Notice(tr('Tâche créée : ') + ref);
-        if (this.o.apres) { try { this.o.apres(ref); } catch (e) { /* vue fermée */ } }
-        const f = this.greffon.fichierDeRef(ref);
-        if (f) this.greffon.app.workspace.getLeaf(true).openFile(f);
-      } catch (e) { avis.hide(); new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e)); }
+        specs = await this.greffon.analyserTachesLN(p);
+      } catch (e) {
+        new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
+      } finally {
+        b.disabled = false; b.setText(tr('Ré-analyser'));
+      }
+      if (!specs.length) {
+        if (!this.apercu.childElementCount) new obsidian.Notice(tr('Rien n\'a pu être créé.'));
+        return;
+      }
+      this._apercu(specs);
     };
-    // ⌘↵ crée sans quitter le clavier.
+    // ⌘↵ analyse sans quitter le clavier.
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); b.click(); }
     });
     setTimeout(() => { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }, 30);
   }
+
+  _apercu(specs) {
+    const ap = this.apercu;
+    ap.empty();
+    const familles = this.greffon.famillesIA();
+    const tete = ap.createDiv({ cls: 'zfa-struct-apercu-tete' });
+    const compte = tete.createSpan({ cls: 'zfa-struct-compte' });
+    const majCompte = () => compte.setText(specs.filter((s) => s.inclus !== false).length
+      + tr(' tâche(s) à créer'));
+    majCompte();
+    const liste = ap.createDiv({ cls: 'zfa-struct-liste' });
+    specs.forEach((n) => {
+      const d = liste.createDiv({ cls: 'zfa-struct-noeud zfa-ln-noeud' });
+      const inc = d.createEl('input', { type: 'checkbox', cls: 'zfa-struct-inc' });
+      inc.checked = n.inclus !== false;
+      inc.onchange = () => { n.inclus = inc.checked; d.toggleClass('est-exclu', !inc.checked); majCompte(); };
+      const titre = d.createEl('input', { type: 'text', cls: 'zfa-struct-titre' });
+      titre.value = n.titre;
+      titre.onchange = () => { n.titre = titre.value.trim() || n.titre; };
+      const fam = d.createEl('select', { cls: 'zfa-struct-fam dropdown' });
+      for (const f of familles) fam.createEl('option', { value: f.id, text: f.nom || f.id });
+      fam.value = n.famille;
+      fam.onchange = () => { n.famille = fam.value; };
+      const ech = d.createEl('input', { type: 'date', cls: 'zfa-ln-date',
+        attr: { title: tr('Échéance') } });
+      ech.value = n.echeance || '';
+      ech.onchange = () => { n.echeance = ech.value; };
+      const liens = [];
+      if (n.apres != null && specs[n.apres]) liens.push(tr('après « ') + specs[n.apres].titre + ' »');
+      if (n.bloquePar) liens.push(tr('bloquée par « ') + n.bloquePar + ' »');
+      if (n.debut) liens.push(tr('début ') + n.debut);
+      if (liens.length) d.createDiv({ cls: 'zfa-struct-note', text: liens.join(' · ') });
+      if (n.note) d.createDiv({ cls: 'zfa-struct-note', text: n.note });
+    });
+    const pied = ap.createDiv({ cls: 'zfa-struct-actions' });
+    const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Créer les tâches') });
+    b.onclick = () => this._creer(specs);
+  }
+
+  async _creer(specs) {
+    if (!specs.some((s) => s.inclus !== false)) { new obsidian.Notice(tr('Aucune tâche sélectionnée.')); return; }
+    this.close();
+    const avis = new obsidian.Notice(tr('Création…'), 0);
+    try {
+      const refs = await this.greffon.creerTachesLN(specs);
+      avis.hide();
+      if (!refs.length) { new obsidian.Notice(tr('Rien n\'a pu être créé.')); return; }
+      new obsidian.Notice(refs.length === 1 ? tr('Tâche créée : ') + refs[0]
+        : refs.length + tr(' tâche(s) créée(s) : ') + refs.join(', '));
+      if (this.o.apres) { try { this.o.apres(refs[0]); } catch (e) { /* vue fermée */ } }
+      const f = this.greffon.fichierDeRef(refs[0]);
+      if (f) this.greffon.app.workspace.getLeaf(true).openFile(f);
+    } catch (e) {
+      avis.hide();
+      new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
+    }
+  }
+
   onClose() { this.contentEl.empty(); }
 }
 
