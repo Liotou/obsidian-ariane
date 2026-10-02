@@ -1054,6 +1054,7 @@ const TEXTES = {
     "Normalisation… ": "Normalising… ",
     "Vérification… ": "Checking… ",
     "Ajouter une tâche (langage naturel)": "Add a task (plain language)",
+    "Créer en langage naturel…": "Create in plain language…",
     "Une phrase → une tâche : famille devinée, dates prises seulement si écrites, blocage rattaché si vous nommez une tâche existante.": "One sentence → one task: family guessed, dates only if written, blocker linked if you name an existing task.",
     "Créer": "Create",
     "Création…": "Creating…",

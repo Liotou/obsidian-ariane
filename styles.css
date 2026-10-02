@@ -1980,6 +1980,11 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-tache-modale .zfa-tache-modale-pied {
   display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;
 }
+.zfa-tache-modale .zfa-tache-ln {
+  margin-right: auto; display: inline-flex; align-items: center; gap: 6px;
+}
+.zfa-tache-ln-ic { display: inline-flex; color: var(--text-accent); }
+.zfa-tache-ln-ic svg { width: 14px; height: 14px; }
 
 /* Décompte réel de cartes, dans la barre de la vue. */
 .zfa-artic-compte { margin-left: 4px; font-size: 0.8em; color: var(--text-muted); align-self: center; }

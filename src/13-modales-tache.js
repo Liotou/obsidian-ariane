@@ -441,6 +441,21 @@ class ModaleTache extends obsidian.Modal {
     }
 
     const pied = c.createDiv({ cls: 'zfa-tache-modale-pied' });
+    if (!this.ref) {
+      // Décrire la tâche d'une phrase plutôt que remplir les champs : on passe
+      // la main à l'invite en langage naturel, l'intitulé déjà tapé en amorce.
+      const ln = pied.createEl('button', { cls: 'zfa-tache-ln' });
+      const ic = ln.createSpan({ cls: 'zfa-tache-ln-ic' });
+      obsidian.setIcon(ic, 'sparkles');
+      ln.createSpan({ text: tr('Créer en langage naturel…') });
+      ln.onclick = () => {
+        const texte = this.v.intitule || '';
+        const apres = this.apres;
+        this.repondu = true;
+        this.close();
+        new ModaleAjoutLN(this.greffon, { texte, apres }).open();
+      };
+    }
     pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
     const ok = pied.createEl('button', {
       cls: 'mod-cta', text: this.ref ? tr('Enregistrer') : tr('Créer') });
@@ -934,7 +949,9 @@ class ModaleRevueLot extends obsidian.Modal {
 
 // Petite invite « ajouter une tâche en langage naturel ».
 class ModaleAjoutLN extends obsidian.Modal {
-  constructor(greffon) { super(greffon.app); this.greffon = greffon; }
+  // opts : { texte?, apres?(ref) } ; `texte` amorce la phrase (ouverture
+  // depuis la fenêtre de création), `apres` prévient la vue qui l'a ouverte.
+  constructor(greffon, opts) { super(greffon.app); this.greffon = greffon; this.o = opts || {}; }
   onOpen() {
     const c = this.contentEl;
     if (this.modalEl) this.modalEl.addClass('zfa-struct-modal');
@@ -946,6 +963,7 @@ class ModaleAjoutLN extends obsidian.Modal {
     inp.style.minHeight = '4.5em';
     inp.style.fontFamily = 'var(--font-text)';
     inp.placeholder = tr('Ex. : lire la thèse de Roussignol avant le 30/09/2026, ça bloque la rédaction du chapitre 3');
+    if (this.o.texte) inp.value = this.o.texte;
     const pied = c.createDiv({ cls: 'zfa-struct-actions' });
     const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Créer') });
     b.onclick = async () => {
@@ -959,11 +977,16 @@ class ModaleAjoutLN extends obsidian.Modal {
         avis.hide();
         if (!ref) { new obsidian.Notice(tr('Rien n\'a pu être créé.')); return; }
         new obsidian.Notice(tr('Tâche créée : ') + ref);
+        if (this.o.apres) { try { this.o.apres(ref); } catch (e) { /* vue fermée */ } }
         const f = this.greffon.fichierDeRef(ref);
         if (f) this.greffon.app.workspace.getLeaf(true).openFile(f);
       } catch (e) { avis.hide(); new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e)); }
     };
-    setTimeout(() => inp.focus(), 30);
+    // ⌘↵ crée sans quitter le clavier.
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); b.click(); }
+    });
+    setTimeout(() => { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }, 30);
   }
   onClose() { this.contentEl.empty(); }
 }
