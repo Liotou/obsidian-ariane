@@ -974,7 +974,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerEvent(this.app.workspace.on('layout-change', () => this.decorerLecteursZotflow()));
     this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.decorerLecteursZotflow()));
 
-    // Nouvelle note depuis le modèle d'un dossier (double-clic, clic droit).
+    // Nouvelle note depuis le modèle d'un dossier (clic droit).
     this.installerNotesDepuisModele();
 
     // « Ouvrir dans Zotero », au clic droit sur la note comme dans l'éditeur.

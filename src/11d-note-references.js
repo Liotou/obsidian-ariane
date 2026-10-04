@@ -644,7 +644,7 @@ const avecNoteReferences = (Base) => class extends Base {
   //  Un dossier « à format » (06 - Notes réflexives) a son modèle Templater
   //  (Note réflexive). Le lien se lit d'abord dans les modèles de dossier de
   //  Templater, s'il y en a, sinon par le nom : celui de la famille ou du
-  //  dossier, au singulier près. Double-clic sur le dossier ou clic droit.
+  //  dossier, au singulier près. Au clic droit sur le dossier.
 
   // Un nom ramené à ce qui le distingue : sans numéro de tête, sans accents ni
   // casse, chaque mot au singulier (« Comptes-rendus » = « Compte-rendu »).
@@ -730,7 +730,7 @@ const avecNoteReferences = (Base) => class extends Base {
     }
   }
 
-  // Clic droit sur un dossier, et double-clic sur son nom dans l'explorateur.
+  // Clic droit sur un dossier de l'explorateur.
   installerNotesDepuisModele() {
     this.registerEvent(this.app.workspace.on('file-menu', (menu, f) => {
       if (!(f instanceof obsidian.TFolder)) return;
@@ -740,15 +740,6 @@ const avecNoteReferences = (Base) => class extends Base {
         .setSection('action-primary')
         .onClick(() => this.nouvelleNoteDepuisModele(f.path, m)));
     }));
-    this.registerDomEvent(this.app.workspace.containerEl, 'dblclick', (e) => {
-      const titre = e.target && e.target.closest ? e.target.closest('.nav-folder-title[data-path]') : null;
-      if (!titre) return;
-      const chemin = titre.getAttribute('data-path');
-      const m = this.modeleDuDossier(chemin);
-      if (!m) return;
-      e.preventDefault();
-      this.nouvelleNoteDepuisModele(chemin, m);
-    });
   }
 
   // Couleur et icône d'un dossier, portées par sa famille.
