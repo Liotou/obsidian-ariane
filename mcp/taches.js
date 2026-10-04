@@ -6,8 +6,6 @@
  * Donne à Claude (dans Claudian ou Claude Code) les tâches du coffre telles
  * qu'Ariane les comprend : champs, analyse (urgence, importance,
  * diagnostics), journal des modifications, créneaux, charge du calendrier.
- * Et les PDF ouverts dans Obsidian (titre, page affichée, sélection, texte),
- * que Claudian ne transmet pas.
  *
  * Ce script ne contient AUCUNE logique de tâches : il relaie chaque appel au
  * « pont Claude » d'Ariane, qui tourne dans Obsidian (section 22 du greffon).
@@ -99,34 +97,6 @@ const OUTILS = [
     },
   },
   {
-    name: 'document_ouvert',
-    description: "Les PDF ouverts dans Obsidian à côté de la conversation (lecteur PDF du coffre et lecteurs ZotFlow de Zotero), celui consulté en dernier en tête : titre, chemin du fichier, page affichée, nombre de pages, et le texte que Monsieur y a sélectionné. À appeler dès que Monsieur parle « du PDF », « du livre », « de l'article », « de cette page » ou « de ce passage » sans en donner le texte : Claudian ne transmet pas les PDF, seulement les notes.",
-    inputSchema: { type: 'object', properties: {} },
-  },
-  {
-    name: 'lire_pdf',
-    description: "Le texte de pages d'un PDF ouvert dans Obsidian. Sans « pages », la page affichée et la suivante. 30 pages au plus par appel. La première lecture d'un gros livre peut prendre une minute (extraction de tout le texte), les suivantes sont immédiates. Numéros de pages : ceux du fichier (1 = première page du PDF), pas forcément ceux imprimés.",
-    inputSchema: {
-      type: 'object',
-      properties: {
-        pages: { type: 'string', description: 'Pages voulues : « 12 », « 12-15 », « 3, 7, 10-12 »' },
-        document: { type: 'string', description: 'Une partie du titre ou du chemin, si plusieurs PDF sont ouverts (défaut : celui consulté en dernier)' },
-      },
-    },
-  },
-  {
-    name: 'chercher_dans_pdf',
-    description: "Cherche dans tout le texte d'un PDF ouvert les pages qui contiennent tous les mots de la requête (casse et accents ignorés), avec un extrait. Pour trouver où un livre traite d'une notion avant de lire ces pages avec lire_pdf.",
-    inputSchema: {
-      type: 'object',
-      properties: {
-        requete: { type: 'string', description: 'Mots à chercher, par exemple « étude de cas »' },
-        document: { type: 'string', description: 'Une partie du titre ou du chemin, si plusieurs PDF sont ouverts' },
-      },
-      required: ['requete'],
-    },
-  },
-  {
     name: 'revue',
     description: "La revue prête à l'emploi : tâches en retard, sous-planifiées, qui s'étirent (échéance repoussée plusieurs fois), abandons probables, cette semaine, urgentes et importantes, importantes mais pas urgentes. Point de départ d'un « qu'est-ce qui dérape ? ».",
     inputSchema: { type: 'object', properties: {} },
@@ -191,9 +161,7 @@ async function traiter(msg) {
     if (!outil) return envoyer({ jsonrpc: '2.0', id, error: { code: -32601, message: 'Outil inconnu' } });
     try {
       // Une proposition attend la décision de Monsieur : jusqu'à dix minutes.
-      // La première lecture d'un gros PDF extrait tout son texte : trois minutes.
-      const delai = outil.name === 'proposer_modifications' ? 11 * 60000
-        : (outil.name === 'lire_pdf' || outil.name === 'chercher_dans_pdf' || outil.name === 'document_ouvert') ? 180000 : 60000;
+      const delai = outil.name === 'proposer_modifications' ? 11 * 60000 : 60000;
       const res = await appelerPont(outil.name, params.arguments || {}, delai);
       return envoyer({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(res, null, 1) }] } });
     } catch (e) {

@@ -36363,58 +36363,6 @@ function pontCheminAnnonce() {
 
 // Le texte d'une note de tâche, sans ses propriétés ni les blocs qu'Ariane
 // entretient (ils répètent ce que les outils rendent déjà, en mieux rangé).
-// Le texte d'une page pdf.js : les morceaux mis bout à bout, avec un saut de
-// ligne là où pdf.js en signale un.
-function pontTextePage(items) {
-  let t = '';
-  for (const it of (items || [])) {
-    if (!it || typeof it.str !== 'string') continue;
-    t += it.str + (it.hasEOL ? '\n' : '');
-  }
-  return t.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-}
-
-// Les numéros de pages demandés : « 12 », « 12-15 », « 3, 7, 10-12 ». Sans
-// demande, la page affichée et la suivante. Bornés au document, `max` au plus.
-function pontPagesDemandees(spec, total, courante, max) {
-  const n = Number(total) || 0;
-  const plafond = Number(max) || 30;
-  const out = [];
-  const ajouter = (p) => { if (p >= 1 && p <= n && !out.includes(p) && out.length < plafond) out.push(p); };
-  const brut = String(spec == null ? '' : spec).trim();
-  if (!brut) {
-    const c = Number(courante) || 1;
-    ajouter(c); ajouter(c + 1);
-    return out;
-  }
-  for (const morceau of brut.split(/[,;\s]+/)) {
-    const m = /^(\d+)(?:-(\d+))?$/.exec(morceau);
-    if (!m) continue;
-    const a = Number(m[1]);
-    const b = m[2] ? Number(m[2]) : a;
-    for (let p = Math.min(a, b); p <= Math.max(a, b) && out.length < plafond; p++) ajouter(p);
-  }
-  return out;
-}
-
-// Les passages d'un livre qui contiennent tous les mots d'une requête (casse
-// et accents ignorés), page par page, avec un extrait autour du premier mot.
-function pontChercherPages(pages, requete, max) {
-  const norm = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const mots = norm(requete).split(/\s+/).filter((m) => m.length > 1);
-  if (!mots.length) return [];
-  const out = [];
-  (pages || []).forEach((texte, i) => {
-    if (out.length >= (Number(max) || 40)) return;
-    const plat = norm(texte).replace(/\s+/g, ' ');
-    if (!mots.every((m) => plat.includes(m))) return;
-    const k = plat.indexOf(mots[0]);
-    const brut = String(texte).replace(/\s+/g, ' ');
-    out.push({ page: i + 1, extrait: (k > 160 ? '…' : '') + brut.slice(Math.max(0, k - 160), k + 240) + '…' });
-  });
-  return out;
-}
-
 function pontCorpsNote(texte) {
   return String(texte || '')
     .replace(/^---\n[\s\S]*?\n---\n?/, '')
@@ -36534,9 +36482,6 @@ class PontClaude extends obsidian.Component {
       case 'charge_calendrier': return this.chargeCalendrier(a);
       case 'revue': return this.revue(a);
       case 'proposer_modifications': return this.proposerModifications(a);
-      case 'document_ouvert': return this.documentOuvert(a);
-      case 'lire_pdf': return this.lirePdf(a);
-      case 'chercher_dans_pdf': return this.chercherDansPdf(a);
       default: throw new Error('Outil inconnu : ' + nom);
     }
   }
@@ -36677,155 +36622,6 @@ class PontClaude extends obsidian.Component {
     };
   }
   //#endregion Pont · outils de lecture
-
-  //#region Pont · documents ouverts
-  // Claudian ne transmet que la note active, et un PDF n'en est pas une : il
-  // ne « voyait » donc pas le livre ouvert à côté de lui. Ces outils lui
-  // donnent les PDF ouverts dans Obsidian (lecteur natif et lecteurs ZotFlow),
-  // la page affichée, la sélection, et le texte des pages, extrait par le
-  // pdf.js d'Obsidian.
-
-  // Les PDF ouverts, le plus récemment consulté en tête. Claudian occupe la
-  // barre latérale : c'est la zone principale qu'on interroge, pas la feuille
-  // active (qui serait Claudian lui-même).
-  _documentsOuverts() {
-    const g = this.greffon;
-    const ws = g.app.workspace;
-    const recente = (ws.getMostRecentLeaf && ws.getMostRecentLeaf(ws.rootSplit)) || null;
-    const docs = [];
-    ws.iterateAllLeaves((f) => {
-      const vue = f && f.view;
-      if (!vue || typeof vue.getViewType !== 'function') return;
-      let d = null;
-      if (vue.getViewType() === 'pdf' && vue.file) {
-        d = { type: 'pdf', feuille: f, titre: vue.file.basename, vaultChemin: vue.file.path,
-          chemin: g.app.vault.adapter.getFullPath ? g.app.vault.adapter.getFullPath(vue.file.path) : vue.file.path };
-      } else if (g.estLecteurZotflow(vue)) {
-        const c = g.cibleLecteurZotflow(f);
-        if (!c) return;
-        const dossier = require('path').join(g.racineZotero(), 'storage', c.itemKey);
-        let fichier = '';
-        try { fichier = require('fs').readdirSync(dossier).find((x) => /\.pdf$/i.test(x)) || ''; } catch (e) { fichier = ''; }
-        d = { type: 'zotero', feuille: f, cible: c,
-          titre: fichier ? fichier.replace(/\.pdf$/i, '') : (f.getDisplayText ? f.getDisplayText() : c.itemKey),
-          chemin: fichier ? require('path').join(dossier, fichier) : '' };
-      }
-      if (d) { d.recent = f === recente; docs.push(d); }
-    });
-    docs.sort((x, y) => Number(y.recent) - Number(x.recent));
-    return docs;
-  }
-
-  // Le document visé : par son titre ou son chemin (une partie suffit), sinon
-  // le plus récemment consulté.
-  _documentVise(a) {
-    const docs = this._documentsOuverts();
-    if (!docs.length) throw new Error('Aucun PDF ouvert dans Obsidian.');
-    const q = String((a && a.document) || '').trim().toLowerCase();
-    if (!q) return docs[0];
-    const d = docs.find((x) => (x.titre + ' ' + x.chemin).toLowerCase().includes(q));
-    if (!d) throw new Error('Aucun PDF ouvert ne correspond à « ' + a.document + ' ».');
-    return d;
-  }
-
-  // La page affichée, en sondant la vue sans rien supposer de sa structure.
-  async _pageCourante(d) {
-    const vue = d.feuille.view;
-    if (d.type === 'zotero') return this.greffon.pageDuLecteur(vue, d.cible);
-    try {
-      const v = vue.viewer && vue.viewer.child && vue.viewer.child.pdfViewer;
-      const n = v && (v.pdfViewer ? v.pdfViewer.currentPageNumber : v.currentPageNumber);
-      return Number(n) || null;
-    } catch (e) { return null; }
-  }
-
-  // Le texte sélectionné dans le lecteur, iframes comprises (le lecteur
-  // ZotFlow est celui de Zotero, dans un cadre).
-  _selection(d) {
-    const el = d.feuille.view && d.feuille.view.containerEl;
-    if (!el) return '';
-    const docs = [el.ownerDocument];
-    for (const fr of el.querySelectorAll('iframe')) {
-      try { if (fr.contentDocument) docs.push(fr.contentDocument); } catch (e) { /* autre origine */ }
-      try {
-        for (const fr2 of (fr.contentDocument ? fr.contentDocument.querySelectorAll('iframe') : [])) {
-          if (fr2.contentDocument) docs.push(fr2.contentDocument);
-        }
-      } catch (e) { /* autre origine */ }
-    }
-    for (const doc of docs) {
-      try {
-        const sel = doc.getSelection && doc.getSelection();
-        const t = sel ? String(sel.toString()).trim() : '';
-        if (!t) continue;
-        const n = sel.anchorNode;
-        if (doc !== el.ownerDocument || (n && el.contains(n))) return t.slice(0, 20000);
-      } catch (e) { /* rien */ }
-    }
-    return '';
-  }
-
-  // Les pages du PDF, en texte, gardées en mémoire par chemin : un livre de
-  // six cents pages ne se réextrait pas à chaque question.
-  async _pagesPdf(d) {
-    if (!d.chemin) throw new Error('Le fichier PDF de « ' + d.titre + ' » est introuvable sur ce Mac (pièce jointe non téléchargée dans Zotero ?).');
-    if (!this._cachePdf) this._cachePdf = new Map();
-    if (this._cachePdf.has(d.chemin)) return this._cachePdf.get(d.chemin);
-    const promesse = (async () => {
-      const octets = d.vaultChemin
-        ? new Uint8Array(await this.greffon.app.vault.adapter.readBinary(d.vaultChemin))
-        : new Uint8Array(require('fs').readFileSync(d.chemin));
-      const pdfjs = await obsidian.loadPdfJs();
-      const doc = await pdfjs.getDocument({ data: octets }).promise;
-      const pages = [];
-      for (let i = 1; i <= doc.numPages; i++) {
-        const p = await doc.getPage(i);
-        const c = await p.getTextContent();
-        pages.push(pontTextePage(c.items));
-      }
-      try { doc.destroy(); } catch (e) { /* rien */ }
-      return pages;
-    })();
-    this._cachePdf.set(d.chemin, promesse);
-    // Trois livres au plus en mémoire.
-    while (this._cachePdf.size > 3) this._cachePdf.delete(this._cachePdf.keys().next().value);
-    try { return await promesse; } catch (e) { this._cachePdf.delete(d.chemin); throw e; }
-  }
-
-  async documentOuvert() {
-    const docs = this._documentsOuverts();
-    if (!docs.length) return { documents: [], note: 'Aucun PDF ouvert dans Obsidian.' };
-    const out = [];
-    for (const d of docs) {
-      const x = { titre: d.titre, type: d.type === 'zotero' ? 'lecteur ZotFlow (Zotero)' : 'PDF du coffre',
-        chemin: d.chemin || null, page_affichee: await this._pageCourante(d), consulte_en_dernier: d.recent };
-      if (d.recent) {
-        const sel = this._selection(d);
-        if (sel) x.selection = sel;
-        try { x.nombre_de_pages = (await this._pagesPdf(d)).length; } catch (e) { x.erreur = e.message; }
-      }
-      out.push(x);
-    }
-    return { documents: out };
-  }
-
-  async lirePdf(a) {
-    const d = this._documentVise(a);
-    const pages = await this._pagesPdf(d);
-    const courante = await this._pageCourante(d);
-    const liste = pontPagesDemandees(a && a.pages, pages.length, courante, 30);
-    if (!liste.length) throw new Error('Pages hors du document (1 à ' + pages.length + ').');
-    return { titre: d.titre, nombre_de_pages: pages.length, page_affichee: courante,
-      pages: liste.map((n) => ({ page: n, texte: pages[n - 1] })) };
-  }
-
-  async chercherDansPdf(a) {
-    const d = this._documentVise(a);
-    const pages = await this._pagesPdf(d);
-    const trouves = pontChercherPages(pages, a && a.requete, 40);
-    return { titre: d.titre, nombre_de_pages: pages.length, requete: a && a.requete, resultats: trouves };
-  }
-  //#endregion Pont · documents ouverts
 
   //#region Pont · installation
   // Installe ou met à jour ce dont Claude, dans Claudian, a besoin : la
@@ -37146,10 +36942,6 @@ module.exports._test = {
   // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
   construireBibliographie,
   injecterBibliographie,
-  // Pont Claude : pages demandées et recherche dans un PDF.
-  pontTextePage,
-  pontPagesDemandees,
-  pontChercherPages,
   MoteurArticulation, // prototype : _traceArete s'éprouve avec un moteur factice
   MoteurCalendrier,   // mémoire de la période consultée, par vue
   // Icônes des vues de base : clé de réglage, lecture de l'icône en place, tri

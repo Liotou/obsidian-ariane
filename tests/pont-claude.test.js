@@ -116,8 +116,7 @@ test('serveur MCP : les outils de lecture, de bout en bout', async () => {
     ]);
     assert.equal(r.get(1).result.serverInfo.name, 'ariane-taches');
     assert.deepEqual(r.get(2).result.tools.map((o) => o.name),
-      ['lister_taches', 'detail_tache', 'charge_calendrier', 'proposer_modifications',
-        'document_ouvert', 'lire_pdf', 'chercher_dans_pdf', 'revue']);
+      ['lister_taches', 'detail_tache', 'charge_calendrier', 'proposer_modifications', 'revue']);
 
     const liste = texte(r.get(3));
     assert.deepEqual(liste.taches.map((t) => t.ref), ['T001', 'T002'], 'la terminée est exclue, la plus urgente en tête');
