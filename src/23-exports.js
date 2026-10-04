@@ -13,6 +13,10 @@ module.exports._test = {
   // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
   construireBibliographie,
   injecterBibliographie,
+  // Pont Claude : pages demandées et recherche dans un PDF.
+  pontTextePage,
+  pontPagesDemandees,
+  pontChercherPages,
   MoteurArticulation, // prototype : _traceArete s'éprouve avec un moteur factice
   MoteurCalendrier,   // mémoire de la période consultée, par vue
   // Icônes des vues de base : clé de réglage, lecture de l'icône en place, tri
