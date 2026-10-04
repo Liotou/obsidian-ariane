@@ -201,3 +201,17 @@ test('lireTachesLN : un objet seul ou { taches } sont acceptés', () => {
   assert.equal(Ariane.lireTachesLN({ taches: [{ titre: 'A' }, { titre: 'B', apres: 0 }] },
     { familles: ['action'] })[1].apres, 0);
 });
+
+/* ---------------------- modèle d'un dossier ----------------------- */
+
+test('modèle d’un dossier : par le nom, au singulier près, numéro et accents ignorés', () => {
+  const modeles = ['Compte-rendu de réunion', 'Fiche graphique', 'Note conceptuelle',
+    'Note préparatoire de réunion', 'Note réflexive', 'Résumé thèse'].map((b) => ({ basename: b, path: 'M/' + b + '.md' }));
+  const m = (noms) => (Ariane.modelePourNoms(noms, modeles) || {}).basename || null;
+  assert.equal(m(['Notes réflexives', '06 - Notes réflexives']), 'Note réflexive');
+  assert.equal(m(['Comptes-rendus de réunion']), 'Compte-rendu de réunion');
+  assert.equal(m(['Notes préparatoires de réunions']), 'Note préparatoire de réunion');
+  assert.equal(m(['Fiches graphiques']), 'Fiche graphique');
+  assert.equal(m(['03 - Notes conceptuelles']), 'Note conceptuelle');
+  assert.equal(m(['08 - Tâches', 'Tâches']), null);
+});

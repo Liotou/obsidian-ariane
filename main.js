@@ -1027,6 +1027,8 @@ const TEXTES = {
     "Ajouter un jalon lié à la tâche…": "Add a milestone linked to the task…",
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
+    "Nouvelle note : ": "New note: ",
+    "Création impossible : ": "Could not create: ",
     "Travail réel : ": "Actual work: ",
     "Tâche supprimée : son rappel est retiré d’Apple Rappels.": "Task deleted: its reminder was removed from Apple Reminders.",
     " faites": " done",
@@ -5635,6 +5637,117 @@ const avecNoteReferences = (Base) => class extends Base {
       for (const d of f.dossiers) if (!out.includes(d)) out.push(d);
     }
     return out;
+  }
+
+  // ── nouvelle note depuis le modèle d'un dossier ─────────────────────────
+  //  Un dossier « à format » (06 - Notes réflexives) a son modèle Templater
+  //  (Note réflexive). Le lien se lit d'abord dans les modèles de dossier de
+  //  Templater, s'il y en a, sinon par le nom : celui de la famille ou du
+  //  dossier, au singulier près. Double-clic sur le dossier ou clic droit.
+
+  // Un nom ramené à ce qui le distingue : sans numéro de tête, sans accents ni
+  // casse, chaque mot au singulier (« Comptes-rendus » = « Compte-rendu »).
+  static cleNomModele(nom) {
+    return String(nom || '').replace(/\.md$/i, '').replace(/^\s*\d+\s*-\s*/, '')
+      .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .split(/[^a-z0-9]+/).filter(Boolean)
+      .map((m) => (m.length > 3 ? m.replace(/[sx]$/, '') : m)).join(' ');
+  }
+
+  // Le modèle d'un dossier parmi `modeles` ([{ path, basename }]), d'après
+  // les noms candidats (famille, dossier). Rend le modèle ou null.
+  static modelePourNoms(noms, modeles) {
+    const cles = (noms || []).map((n) => Ariane.cleNomModele(n)).filter(Boolean);
+    for (const c of cles) {
+      const m = (modeles || []).find((x) => Ariane.cleNomModele(x.basename) === c);
+      if (m) return m;
+    }
+    return null;
+  }
+
+  _templater() {
+    const p = this.app.plugins && this.app.plugins.plugins && this.app.plugins.plugins['templater-obsidian'];
+    return p && p.templater ? p : null;
+  }
+
+  // Les dossiers de modèles : celui de Templater et celui des modèles natifs.
+  dossiersModeles() {
+    const out = [];
+    const t = this._templater();
+    const dt = t && t.settings && String(t.settings.templates_folder || '').replace(/^\/+|\/+$/g, '');
+    if (dt) out.push(dt);
+    try {
+      const n = this.app.internalPlugins.plugins.templates;
+      const dn = n && n.enabled && n.instance && n.instance.options
+        ? String(n.instance.options.folder || '').replace(/^\/+|\/+$/g, '') : '';
+      if (dn && !out.includes(dn)) out.push(dn);
+    } catch (e) { /* modèles natifs absents */ }
+    return out;
+  }
+
+  estModele(chemin) {
+    const c = String(chemin || '');
+    return this.dossiersModeles().some((d) => c.startsWith(d + '/'));
+  }
+
+  // Le modèle Templater d'un dossier, ou null. Les sous-dossiers héritent.
+  modeleDuDossier(dossier) {
+    const t = this._templater();
+    if (!t) return null;
+    const d = String(dossier || '').replace(/^\/+|\/+$/g, '');
+    if (!d || this.estModele(d + '/x')) return null;
+    const racine = this.dossiersModeles()[0];
+    const modeles = this.app.vault.getMarkdownFiles().filter((f) => racine && f.path.startsWith(racine + '/'));
+    // 1. Les modèles de dossier déclarés dans Templater, le plus précis d'abord.
+    const declares = ((t.settings && t.settings.folder_templates) || [])
+      .filter((x) => x && x.folder && x.template)
+      .filter((x) => d === x.folder || d.startsWith(x.folder + '/'))
+      .sort((a, b) => b.folder.length - a.folder.length);
+    for (const x of declares) {
+      const f = this.app.vault.getAbstractFileByPath(x.template)
+        || this.app.vault.getAbstractFileByPath(x.template + '.md');
+      if (f) return f;
+    }
+    // 2. Par le nom : la famille du dossier, puis le dossier et ses parents.
+    const noms = [];
+    const fam = this.familleDuChemin(d + '/x.md', 'x');
+    if (fam && fam.nom) noms.push(fam.nom);
+    const segs = d.split('/');
+    for (let i = segs.length; i > 0; i--) noms.push(segs[i - 1]);
+    return Ariane.modelePourNoms(noms, modeles);
+  }
+
+  async nouvelleNoteDepuisModele(dossier, modele) {
+    const t = this._templater();
+    if (!t || !modele) return;
+    const cible = this.app.vault.getAbstractFileByPath(dossier) || dossier;
+    try {
+      await t.templater.create_new_note_from_template(modele, cible, undefined, true);
+    } catch (e) {
+      console.error('[Ariane] note depuis un modèle :', e);
+      new obsidian.Notice(tr('Création impossible : ') + (e && e.message ? e.message : e));
+    }
+  }
+
+  // Clic droit sur un dossier, et double-clic sur son nom dans l'explorateur.
+  installerNotesDepuisModele() {
+    this.registerEvent(this.app.workspace.on('file-menu', (menu, f) => {
+      if (!(f instanceof obsidian.TFolder)) return;
+      const m = this.modeleDuDossier(f.path);
+      if (!m) return;
+      menu.addItem((it) => it.setTitle(tr('Nouvelle note : ') + m.basename).setIcon('file-plus')
+        .setSection('action-primary')
+        .onClick(() => this.nouvelleNoteDepuisModele(f.path, m)));
+    }));
+    this.registerDomEvent(this.app.workspace.containerEl, 'dblclick', (e) => {
+      const titre = e.target && e.target.closest ? e.target.closest('.nav-folder-title[data-path]') : null;
+      if (!titre) return;
+      const chemin = titre.getAttribute('data-path');
+      const m = this.modeleDuDossier(chemin);
+      if (!m) return;
+      e.preventDefault();
+      this.nouvelleNoteDepuisModele(chemin, m);
+    });
   }
 
   // Couleur et icône d'un dossier, portées par sa famille.
@@ -16891,6 +17004,11 @@ const avecTaches = (Base) => class extends Base {
       && Ariane.sousDossier(f.path, String(this.settings.tempsDossiersExclus || '').split(/[\n,]+/))) {
       return '';
     }
+    // Un modèle n'est jamais chronométré : la propriété de temps écrite dans
+    // son entête serait recopiée dans chaque note créée, et un entête placé
+    // avant le code de Templater rejette les propriétés du modèle dans le
+    // corps de la note.
+    if (!pourSessions && this.estModele && this.estModele(f.path)) return '';
     if (this.settings.tempsIgnorerVerrouillees !== false) {
       const fm = ((this.app.metadataCache.getFileCache(f) || {}).frontmatter) || {};
       if (fm.locked === true) return '';
@@ -18145,6 +18263,9 @@ class Ariane extends composer(obsidian.Plugin,
     this.app.workspace.onLayoutReady(() => this.decorerLecteursZotflow());
     this.registerEvent(this.app.workspace.on('layout-change', () => this.decorerLecteursZotflow()));
     this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.decorerLecteursZotflow()));
+
+    // Nouvelle note depuis le modèle d'un dossier (double-clic, clic droit).
+    this.installerNotesDepuisModele();
 
     // « Ouvrir dans Zotero », au clic droit sur la note comme dans l'éditeur.
     const entreeZotero = (menu, fichier) => {

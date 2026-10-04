@@ -842,6 +842,8 @@ const TEXTES = {
     "Ajouter un jalon lié à la tâche…": "Add a milestone linked to the task…",
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
+    "Nouvelle note : ": "New note: ",
+    "Création impossible : ": "Could not create: ",
     "Travail réel : ": "Actual work: ",
     "Tâche supprimée : son rappel est retiré d’Apple Rappels.": "Task deleted: its reminder was removed from Apple Reminders.",
     " faites": " done",

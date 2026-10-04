@@ -2815,6 +2815,11 @@ const avecTaches = (Base) => class extends Base {
       && Ariane.sousDossier(f.path, String(this.settings.tempsDossiersExclus || '').split(/[\n,]+/))) {
       return '';
     }
+    // Un modèle n'est jamais chronométré : la propriété de temps écrite dans
+    // son entête serait recopiée dans chaque note créée, et un entête placé
+    // avant le code de Templater rejette les propriétés du modèle dans le
+    // corps de la note.
+    if (!pourSessions && this.estModele && this.estModele(f.path)) return '';
     if (this.settings.tempsIgnorerVerrouillees !== false) {
       const fm = ((this.app.metadataCache.getFileCache(f) || {}).frontmatter) || {};
       if (fm.locked === true) return '';
