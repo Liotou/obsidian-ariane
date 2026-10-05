@@ -1062,6 +1062,29 @@ const TEXTES = {
 
     "Note de travail": "Working note",
     "Ce que vous voulez garder sous la main pour cette tâche (Markdown accepté).": "Anything to keep at hand for this task (Markdown allowed).",
+
+    "Activité hors d'Obsidian (ActivityWatch)": "Activity outside Obsidian (ActivityWatch)",
+    "ActivityWatch, logiciel libre installé à part, relève l'application au premier plan, le titre de sa fenêtre, l'absence du clavier et, avec son extension, l'onglet actif du navigateur. Ariane interroge son serveur local, classe ce relevé selon vos règles et l'affiche en créneaux « réels » dans la vue semaine du calendrier, en mince colonne à gauche de chaque jour. Rien n'est écrit dans le coffre, et rien ne quitte l'ordinateur.": "ActivityWatch, free software installed separately, records the app in the foreground, its window title, when you are away from the keyboard and, with its extension, the active browser tab. Ariane queries its local server, sorts that record with your rules and shows it as \"actual\" slots in the week view of the calendar, as a thin column on the left of each day. Nothing is written to the vault, and nothing leaves the computer.",
+    "Adresse du serveur": "Server address",
+    "Celle d'ActivityWatch sur cette machine. Propre à cette machine : jamais reprise dans un profil exporté.": "ActivityWatch's address on this machine. Specific to this machine, and never carried into an exported profile.",
+    "Règles de classement": "Sorting rules",
+    "Une règle par ligne : « Catégorie #couleur = motif, motif ». La couleur est facultative. Un motif est un fragment de texte, sans égard à la casse, cherché dans l'application, le titre de la fenêtre et l'adresse de la page ; « app: », « titre: » ou « url: » le restreint à ce champ, et /…/ en fait une expression régulière. La première règle qui correspond l'emporte. La catégorie « - » écarte ce qui correspond. Une ligne commençant par # est un commentaire.": "One rule per line: \"Category #colour = pattern, pattern\". The colour is optional. A pattern is a piece of text, case-insensitive, looked for in the app, the window title and the page address; \"app:\", \"titre:\" or \"url:\" limits it to that field, and /…/ makes it a regular expression. The first matching rule wins. The category \"-\" discards what it matches. A line starting with # is a comment.",
+    "Catégorie par défaut": "Default category",
+    "Pour ce qu'aucune règle ne classe. Vide : ce temps n'est pas affiché.": "For what no rule sorts. Empty: that time is not shown.",
+    "Grain": "Grain",
+    "En minutes. La journée est découpée en tranches de cette durée ; chacune prend la catégorie qui l'a le plus occupée. Une interruption plus courte qu'une tranche ne coupe pas un créneau.": "In minutes. The day is cut into slices of this length; each takes the category that filled it most. A break shorter than one slice does not split a slot.",
+    "Durée minimale": "Minimum length",
+    "En minutes de temps actif. Un créneau réel qui en compte moins est écarté, et ses voisins de même catégorie se rejoignent.": "In minutes of active time. An actual slot with less is discarded, and its neighbours of the same category join up.",
+    "Activité réelle (ActivityWatch)": "Actual activity (ActivityWatch)",
+    "Actif : ": "Active: ",
+    "ActivityWatch injoignable : ": "ActivityWatch unreachable: ",
+    "ActivityWatch répond, mais aucun seau de fenêtres n'existe : aw-watcher-window tourne-t-il ?": "ActivityWatch answers, but there is no window bucket: is aw-watcher-window running?",
+    "ActivityWatch joint": "ActivityWatch reached",
+    " seau(x) de fenêtres, ": " window bucket(s), ",
+    "absence détectée, ": "away time detected, ",
+    "pas de seau d'absence, ": "no away bucket, ",
+    " navigateur(s).": " browser(s).",
+    "aucun navigateur.": "no browser.",
   },
 };
 let LANGUE = 'fr';
@@ -1186,6 +1209,22 @@ const DEFAULT_SETTINGS = {
   // arrondie, gonflait le total à chaque écriture.
   tempsTotalSecondes: {},
   tempsRetenirJours: 120,
+  // --- Activité réelle hors d'Obsidian (ActivityWatch) --------------------
+  activiteActif: false,
+  activiteUrl: 'http://localhost:5600',
+  // Une règle par ligne : « Catégorie #couleur = motif, motif ». La première
+  // qui correspond l'emporte ; « - » écarte. Voir compilerReglesActivite.
+  activiteRegles: [
+    'Notes #7c5cbf = app:Obsidian',
+    'Lecture #4f9d69 = app:Zotero, app:Aperçu, app:Preview, app:Skim, app:PDF Expert, .pdf',
+    'Rédaction #4a7fd6 = app:Microsoft Word, app:Pages, app:LibreOffice, docs.google.com',
+    'Recherche #c08a2e = scholar.google, cairn.info, persee.fr, jstor.org, sciencedirect.com, openalex.org, theses.fr, hal.science',
+    'Messagerie #8a8a8a = app:Mail, app:Outlook, app:Messages, app:Slack, app:Teams, mail.google.com, outlook.office',
+    '- = app:loginwindow, app:ScreenSaverEngine',
+  ].join('\n'),
+  activiteAutre: 'Autre',               // catégorie de ce qu'aucune règle ne classe (vide = ignorer)
+  activiteGrainMin: 5,                  // grain d'agrégation, en minutes
+  activiteDureeMin: 10,                 // créneau réel le plus court affiché, en minutes
   dropSignalerRefus: true, // prévenir quand un dépôt n'est pas reconnu
   citationsRepliables: true,
   citationsRepliees: false, // état courant, piloté par les commandes

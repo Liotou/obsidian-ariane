@@ -684,6 +684,47 @@ event and a créneau at the same time split the column. Runs on save and on a
 timer when enabled in the **Apple Calendar** settings section; the first sync
 asks for Calendar access.
 
+### Actual activity outside Obsidian (ActivityWatch)
+
+The timer only sees notes. To know what happens elsewhere on the computer,
+Ariane reads [ActivityWatch](https://activitywatch.net), free software installed
+separately, which records the app in the foreground, its window title, when you
+are away from the keyboard and, with its extension, the active browser tab.
+Ariane queries its local server (`http://localhost:5600`), sorts that record with
+your **rules** and shows it in the calendar's **week view**: a **thin column on
+the left of each day**, in the category's colour, which planned créneaux leave
+free. Hovering gives the category, the times, the active time and what filled it
+(windows, domains). Planned and actual time read side by side.
+
+One rule per line; the first that matches wins:
+
+```text
+Notes #7c5cbf = app:Obsidian
+Reading #4f9d69 = app:Zotero, app:Preview, .pdf
+Writing #4a7fd6 = app:Microsoft Word, docs.google.com
+Research #c08a2e = scholar.google, jstor.org, hal.science
+Messaging = app:Mail, app:Slack, mail.google.com
+- = app:loginwindow
+```
+
+A pattern is a piece of text, case-insensitive, looked for in the app, the
+window title and the page address; `app:`, `titre:` or `url:` limits it to that
+field, and `/…/` makes it a regular expression. The colour is optional. The
+category `-` discards what it matches, and whatever no rule sorts goes to a
+**default category** (empty: not shown).
+
+The day is cut into five-minute **grains**; each takes the category that filled
+it most. An actual slot is bounded by its first and last activity, a break
+shorter than one grain does not split it, and a slot with less than ten active
+minutes is discarded: four minutes of email in the middle of reading do not cut
+it in two. Both lengths are adjustable.
+
+**Nothing is written to the vault.** Raw events stay in memory for the session;
+a past day is read once, the current day every five minutes. Desktop only. The
+column can be hidden per view from the **Calendars to show** menu. Settings:
+**Time spent** tab, **Activity outside Obsidian** section, with a **Test** button that
+says what the server exposes.
+
 ## ⌨️ Commands
 
 | Command | What it does |
@@ -735,8 +776,11 @@ own API.
 **Vault enumeration.** Atomising, the suggestion index and the bibliographies
 need to know which notes exist. Network calls are all **opt-in and named**: the
 reference lookup on Crossref and OpenAlex; local models on Ollama or LM Studio,
-on your own machine; and, if you configure it, Mistral's API for the task AI or
-bibliography splitting. Nothing else leaves your machine.
+on your own machine; if you configure it, Mistral's API for the task AI or
+bibliography splitting; and, if you enable it, the local ActivityWatch server,
+which the plugin reads and never writes to. To pick the records of the right
+machine, it also reads its name (`os.hostname`). Nothing else leaves your
+machine.
 
 **Clipboard.** Write only, and only when you click a "copy" button. The plugin
 never reads what you copied elsewhere.

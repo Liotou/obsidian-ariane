@@ -12,7 +12,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecTachesStatiques,
   avecFriseStatiques,
   avecArticulationStatiques,
-  avecTaches) {
+  avecTaches,
+  avecActivite) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -548,6 +549,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.app.workspace.onLayoutReady(() => {
       this.elaguerHistoriqueTemps();
       this.demarrerCompteurTemps();
+      this.demarrerActivite();
       this.installerInfobulleTemps();
     });
     this._citVersion = 0;
@@ -1024,6 +1026,7 @@ class Ariane extends composer(obsidian.Plugin,
   onunload() {
     for (const t of this.antirebonds.values()) clearTimeout(t);
     this.antirebonds.clear();
+    clearTimeout(this._activiteMinuterie);
     // Le cache d'embeddings n'est plus écrit à chaque frappe : il faut donc le
     // poser au plus tard ici, faute de quoi la session serait perdue.
     if (this.suggEmbMinuteur) { clearTimeout(this.suggEmbMinuteur); this.suggEmbMinuteur = null; }

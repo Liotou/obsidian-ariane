@@ -84,6 +84,7 @@
  *            11i  avecFriseStatiques        Gantt, périodes, tri
  *            11j  avecArticulationStatiques plan, arêtes, zones
  *            11k  avecTaches     notes de tâche, temps, synchro Apple
+ *            11l  avecActivite   activité réelle (ActivityWatch)
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab

@@ -13,6 +13,7 @@ class MoteurCalendrier extends MoteurVue {
     super(greffon, racine, contexte);
     this._ancre = new Date().toISOString().slice(0, 10);
     this._fond = [];
+    this._activite = new Map();   // jour ISO → créneaux réels (ActivityWatch)
     racine.addClass('zfa-cal');
     racine.tabIndex = -1;
     this._surTouche = (e) => {
@@ -180,6 +181,74 @@ class MoteurCalendrier extends MoteurVue {
 
   //#endregion Calendrier · agenda Apple en fond
 
+  //#region Calendrier · activité réelle
+  // Créneaux réels lus par le greffon dans ActivityWatch : une mince colonne
+  // à gauche de chaque jour de la vue semaine, en lecture seule.
+  _activiteVisible() {
+    return this.mode === 'semaine' && !!(this.greffon && this.greffon.activiteDisponible
+      && this.greffon.activiteDisponible()) && this.lire('calActiviteReelle') !== false;
+  }
+
+  // Jours à lire, les plus proches de l'ancre d'abord : la semaine affichée
+  // arrive vite, la marge de défilement suit. Rien après aujourd'hui.
+  _joursActivite() {
+    const auj = jourIsoDe(new Date());
+    const proches = [];
+    const reste = [];
+    for (let i = -18; i <= 18; i++) {
+      const j = Ariane.decalerJour(this._ancre, i);
+      if (!j || j > auj) continue;
+      (i >= -1 && i <= 7 ? proches : reste).push(j);
+    }
+    reste.sort((a, b) => Math.abs(Ariane.ecartJours(this._ancre, a)) - Math.abs(Ariane.ecartJours(this._ancre, b)));
+    return [proches, reste];
+  }
+
+  // Charge les créneaux réels une fois par (fenêtre, tranche de deux minutes) ;
+  // ne redessine que si quelque chose a changé.
+  _chargerActivite() {
+    if (!this._activiteVisible()) return;
+    const vagues = this._joursActivite();
+    const tous = vagues[0].concat(vagues[1]);
+    const cle = tous.slice().sort().join(',') + '|' + Math.floor(Date.now() / 120000);
+    if (cle === this._activiteCle) return;
+    this._activiteCle = cle;
+    (async () => {
+      for (const jours of vagues) {
+        if (!jours.length) continue;
+        const m = await this.greffon.activitePlage(jours);
+        if (this._detruit || cle !== this._activiteCle) return;
+        let change = false;
+        for (const [j, blocs] of m) {
+          if (JSON.stringify(this._activite.get(j) || []) !== JSON.stringify(blocs)) change = true;
+          this._activite.set(j, blocs);
+        }
+        // Un bloc tenu à la main ne doit pas voir le DOM se reconstruire sous
+        // lui : le dessin attend alors la fin du geste.
+        if (change) { if (this._gesteCal) this._coalesceRedessin(200); else this.dessiner(); }
+      }
+    })().catch((e) => console.warn('[Ariane] activité réelle :', e));
+  }
+
+  // Colonne des créneaux réels d'un jour. `mn` convertit « …THH:MM » en
+  // minutes depuis minuit.
+  _rendreActivite(col, jour, hDeb, PXH, mn) {
+    for (const b of (this._activite.get(jour) || [])) {
+      const d = mn(b.debut);
+      const f = b.fin.slice(0, 10) === jour ? mn(b.fin) : 24 * 60;
+      if (f <= d) continue;
+      const el = col.createDiv({ cls: 'zfa-cal-reel' });
+      el.style.top = ((d / 60 - hDeb) * PXH) + 'px';
+      el.style.height = Math.max(3, ((f - d) / 60) * PXH) + 'px';
+      el.style.setProperty('--zfa-cal-coul', b.couleur);
+      el.title = Ariane.infobulleActivite(b);
+      // La colonne réagit au clic (sélection, création) : la piste, non.
+      el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    }
+  }
+
+  //#endregion Calendrier · activité réelle
+
   //#region Calendrier · dessin & barre d'outils
   dessiner() {
     // Pendant la retombée d'un geste (écriture d'un créneau), les demandes de
@@ -196,6 +265,7 @@ class MoteurCalendrier extends MoteurVue {
   dessinerVraiment() {
     if (this._detruit) return;
     this._chargerFond();
+    this._chargerActivite();
     if (this.greffon && this.greffon._relancerReleveAgenda) this.greffon._relancerReleveAgenda(1500);
     const c = this.racine;
     c.empty();
@@ -390,6 +460,19 @@ class MoteurCalendrier extends MoteurVue {
             }));
         }
       }
+    }
+    // Activité réelle (ActivityWatch) : la colonne fine de la vue semaine.
+    if (greffon.activiteDisponible && greffon.activiteDisponible()) {
+      menu.addSeparator();
+      menu.addItem((mi) => mi
+        .setTitle(tr('Activité réelle (ActivityWatch)'))
+        .setIcon('activity')
+        .setChecked(this.lire('calActiviteReelle') !== false)
+        .onClick(async () => {
+          await this.ctx.ecrire('calActiviteReelle', this.lire('calActiviteReelle') === false);
+          this._activiteCle = null;
+          this.dessiner();
+        }));
     }
     menu.showAtMouseEvent(ev);
   }
@@ -1448,6 +1531,11 @@ class MoteurCalendrier extends MoteurVue {
         return { deb: d, fin: f };
       });
       const lay = Ariane.disposerBlocsJour(blocs);
+      // Activité réelle : sa colonne occupe la marge gauche, que les blocs
+      // cèdent pour ne pas la recouvrir.
+      const reel = this._activiteVisible();
+      if (reel) this._rendreActivite(col, j, hDeb, PXH, mn);
+      const mg = reel ? 16 : 6;
       elems.forEach((it, k) => {
         const y0 = (blocs[k].deb / 60 - hDeb) * PXH;
         const y1 = (blocs[k].fin / 60 - hDeb) * PXH;
@@ -1510,8 +1598,8 @@ class MoteurCalendrier extends MoteurVue {
         // Retrait (6 px de chaque côté) : les blocs ne touchent pas les filets
         // de colonne, comme dans obsidian-day-planner — et il reste de l'air
         // entre deux colonnes pour que les courbes de lignée respirent.
-        bloc.style.left = 'calc(' + (lay[k].col / lay[k].ncols * 100) + '% + 6px)';
-        bloc.style.width = 'calc(' + (100 / lay[k].ncols) + '% - 12px)';
+        bloc.style.left = 'calc(' + (lay[k].col / lay[k].ncols * 100) + '% + ' + mg + 'px)';
+        bloc.style.width = 'calc(' + (100 / lay[k].ncols) + '% - ' + (mg + 6) + 'px)';
         if (y0 < 0) bloc.classList.add('zfa-cal-bloc-tronque-haut');
         if (y1 > hauteurInner) bloc.classList.add('zfa-cal-bloc-tronque-bas');
       });
@@ -1661,6 +1749,8 @@ class MoteurCalendrier extends MoteurVue {
   _recalerSemaine(hote, shift) {
     if (this._detruit || !hote.isConnected || !hote.parentElement) return;
     this._ancre = Ariane.decalerJour(this._ancre, shift);
+    // L'ancre a bougé : la marge de jours déjà lus ne couvre plus la bande.
+    this._chargerActivite();
     const r = hote.getBoundingClientRect();
     // _doc() et non `document` : le recalage tourne à chaque bord de bande, et
     // dans un volet détaché un nœud du document principal se greffe mal.

@@ -30,6 +30,8 @@ const DEFAUTS_CALENDRIER = {
   // Familles de tâches décochées dans le menu « Calendriers à afficher » :
   // leur contenu (créneaux, jalons, cartes journée) ne se dessine pas.
   calCalendriersMasques: [],
+  // Colonne des créneaux réels (ActivityWatch) en vue semaine.
+  calActiviteReelle: true,
 };
 
 function svgEl(nom, attrs) {

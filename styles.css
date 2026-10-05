@@ -2306,6 +2306,19 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-now { position: absolute; left: 0; right: 0; height: 0;
   border-top: 2px solid var(--interactive-accent); z-index: 2; pointer-events: none; }
 .zfa-cal-bloc { position: absolute; overflow: hidden; z-index: 1; }
+/* Activité réelle (ActivityWatch) : colonne fine dans la marge gauche du jour,
+   que les blocs de créneaux laissent libre. Lecture seule, infobulle au survol. */
+.zfa-cal-reel {
+  --zfa-cal-coul: var(--text-faint);
+  position: absolute; left: 4px; width: 7px; z-index: 1;
+  border-radius: 3px; cursor: help;
+  background: color-mix(in srgb, var(--zfa-cal-coul) 65%, transparent);
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+.zfa-cal-reel:hover {
+  background: var(--zfa-cal-coul);
+  box-shadow: 0 0 0 1px var(--background-primary), 0 2px 6px rgba(0, 0, 0, 0.25);
+}
 /* Bloc décroché du calendrier, qui suit librement le curseur : au-dessus de
    tout, ombre portée marquée, se recale sur le jour + le quart d'heure au
    lâcher. */

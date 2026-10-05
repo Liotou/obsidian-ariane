@@ -643,6 +643,50 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Conserver le relevé quotidien'))
       .setDesc(tr("En jours. Ce relevé sert au journal ; passé ce délai il est effacé des réglages, les totaux inscrits dans les notes demeurent."))
       .addText((t) => t.setValue(String(s.tempsRetenirJours || 120)).onChange(async (v) => { s.tempsRetenirJours = Math.max(7, parseInt(v, 10) || 120); await maj(); }));
+
+    this._section(c, tr("Activité hors d'Obsidian (ActivityWatch)"));
+    this._aide(c, tr("ActivityWatch, logiciel libre installé à part, relève l'application au premier plan, le titre de sa fenêtre, l'absence du clavier et, avec son extension, l'onglet actif du navigateur. Ariane interroge son serveur local, classe ce relevé selon vos règles et l'affiche en créneaux « réels » dans la vue semaine du calendrier, en mince colonne à gauche de chaque jour. Rien n'est écrit dans le coffre, et rien ne quitte l'ordinateur."));
+    new obsidian.Setting(c)
+      .setName(tr('Activer'))
+      .addToggle((t) => t.setValue(s.activiteActif === true).onChange(async (v) => {
+        s.activiteActif = v; await maj(); this.plugin._rafraichirActivite(true); this.display();
+      }));
+    if (s.activiteActif) {
+      new obsidian.Setting(c)
+        .setName(tr('Adresse du serveur'))
+        .setDesc(tr("Celle d'ActivityWatch sur cette machine. Propre à cette machine : jamais reprise dans un profil exporté."))
+        .addText((t) => t.setPlaceholder('http://localhost:5600').setValue(s.activiteUrl || '')
+          .onChange(async (v) => { s.activiteUrl = v.trim() || 'http://localhost:5600'; await maj(); this.plugin._awBucketsCache = null; }))
+        .addButton((b) => b.setButtonText(tr('Tester')).onClick(async () => {
+          new obsidian.Notice(await this.plugin.testerActivityWatch(), 8000);
+          this.plugin._rafraichirActivite(true);
+        }));
+      new obsidian.Setting(c)
+        .setName(tr('Règles de classement'))
+        .setDesc(tr("Une règle par ligne : « Catégorie #couleur = motif, motif ». La couleur est facultative. Un motif est un fragment de texte, sans égard à la casse, cherché dans l'application, le titre de la fenêtre et l'adresse de la page ; « app: », « titre: » ou « url: » le restreint à ce champ, et /…/ en fait une expression régulière. La première règle qui correspond l'emporte. La catégorie « - » écarte ce qui correspond. Une ligne commençant par # est un commentaire."))
+        .addTextArea((t) => {
+          t.setValue(s.activiteRegles || '')
+            .onChange(async (v) => { s.activiteRegles = v; await maj(); this.plugin._rafraichirActiviteDiffere(); });
+          t.inputEl.rows = 8;
+          t.inputEl.style.width = '100%';
+          t.inputEl.style.fontFamily = 'var(--font-monospace)';
+        });
+      new obsidian.Setting(c)
+        .setName(tr('Catégorie par défaut'))
+        .setDesc(tr("Pour ce qu'aucune règle ne classe. Vide : ce temps n'est pas affiché."))
+        .addText((t) => t.setValue(s.activiteAutre || '')
+          .onChange(async (v) => { s.activiteAutre = v.trim(); await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+      new obsidian.Setting(c)
+        .setName(tr('Grain'))
+        .setDesc(tr("En minutes. La journée est découpée en tranches de cette durée ; chacune prend la catégorie qui l'a le plus occupée. Une interruption plus courte qu'une tranche ne coupe pas un créneau."))
+        .addText((t) => t.setValue(String(s.activiteGrainMin || 5))
+          .onChange(async (v) => { s.activiteGrainMin = Math.min(60, Math.max(1, parseInt(v, 10) || 5)); await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+      new obsidian.Setting(c)
+        .setName(tr('Durée minimale'))
+        .setDesc(tr('En minutes de temps actif. Un créneau réel qui en compte moins est écarté, et ses voisins de même catégorie se rejoignent.'))
+        .addText((t) => t.setValue(String(s.activiteDureeMin == null ? 10 : s.activiteDureeMin))
+          .onChange(async (v) => { const n = parseInt(v, 10); s.activiteDureeMin = Number.isFinite(n) ? Math.max(0, n) : 10; await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+    }
   }
 
   ongletSchemas(c, s, maj) {

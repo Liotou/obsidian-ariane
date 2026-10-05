@@ -711,6 +711,51 @@ colonne. Tourne à la sauvegarde et sur minuterie quand la section **Apple
 Agenda** des réglages l'active ; la première synchronisation demande l'accès à
 Calendrier.
 
+### Activité réelle hors d'Obsidian (ActivityWatch)
+
+Le compteur de temps ne voit que les notes. Pour savoir ce qui se passe
+ailleurs sur l'ordinateur, Ariane lit [ActivityWatch](https://activitywatch.net),
+logiciel libre installé à part, qui relève l'application au premier plan, le
+titre de sa fenêtre, l'absence du clavier et, avec son extension, l'onglet actif
+du navigateur. Ariane interroge son serveur local (`http://localhost:5600`),
+classe ce relevé selon vos **règles** et l'affiche dans la **vue semaine** du
+calendrier : une **mince colonne à gauche de chaque jour**, à la couleur de la
+catégorie, que les créneaux prévus laissent libre. Le survol donne la catégorie,
+les horaires, le temps actif et ce qui l'a occupé (fenêtres, domaines). Le prévu
+et le réel se lisent ainsi côte à côte.
+
+Une règle par ligne, la première qui correspond l'emporte :
+
+```text
+Notes #7c5cbf = app:Obsidian
+Lecture #4f9d69 = app:Zotero, app:Aperçu, .pdf
+Rédaction #4a7fd6 = app:Microsoft Word, docs.google.com
+Recherche #c08a2e = scholar.google, cairn.info, persee.fr, hal.science
+Messagerie = app:Mail, app:Slack, mail.google.com
+- = app:loginwindow
+```
+
+Un motif est un fragment de texte, sans égard à la casse, cherché dans
+l'application, le titre de la fenêtre et l'adresse de la page ; `app:`, `titre:`
+ou `url:` le restreint à ce champ, `/…/` en fait une expression régulière. La
+couleur est facultative. La catégorie `-` écarte ce qui correspond, et ce
+qu'aucune règle ne classe va dans une **catégorie par défaut** (vide : non
+affiché).
+
+La journée est découpée en **grains** de cinq minutes ; chacun prend la
+catégorie qui l'a le plus occupé. Un créneau réel est borné par la première et
+la dernière activité, une interruption plus courte qu'un grain ne le coupe pas,
+et un créneau de moins de dix minutes actives est écarté : quatre minutes de
+courriel au milieu d'une lecture ne la coupent pas en deux. Les deux durées se
+règlent.
+
+**Rien n'est écrit dans le coffre.** Les événements bruts restent en mémoire le
+temps de la session ; un jour passé n'est lu qu'une fois, le jour courant toutes
+les cinq minutes. Ordinateur seulement. La colonne se masque vue par vue depuis
+le menu **Calendriers à afficher**. Réglages : onglet **Temps passé**, section
+**Activité hors d'Obsidian**, avec un bouton **Tester** qui dit ce que le serveur
+expose.
+
 ## ⌨️ Commandes
 
 | Commande | Ce qu'elle fait |
@@ -764,8 +809,10 @@ Tout le reste passe par l'API d'Obsidian.
 bibliographies ont besoin de savoir quelles notes existent. Rien n'est envoyé
 nulle part : il n'y a **aucun appel réseau** dans le greffon, hormis la
 recherche facultative de références sur Crossref et OpenAlex, que vous
-déclenchez vous-même, et les modèles d'IA locaux d'Ollama ou LM Studio, qui
-tournent sur votre machine.
+déclenchez vous-même, les modèles d'IA locaux d'Ollama ou LM Studio, qui
+tournent sur votre machine, et, si vous l'activez, le serveur local
+d'ActivityWatch, que le greffon lit sans jamais y écrire. Pour choisir les
+relevés de la bonne machine, il lit aussi son nom (`os.hostname`).
 
 **Presse-papiers.** En écriture seulement, et seulement quand vous cliquez sur
 un bouton « copier ». Le greffon ne lit jamais ce que vous avez copié ailleurs.

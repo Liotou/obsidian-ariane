@@ -84,6 +84,7 @@
  *            11i  avecFriseStatiques        Gantt, périodes, tri
  *            11j  avecArticulationStatiques plan, arêtes, zones
  *            11k  avecTaches     notes de tâche, temps, synchro Apple
+ *            11l  avecActivite   activité réelle (ActivityWatch)
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -1229,6 +1230,29 @@ const TEXTES = {
 
     "Note de travail": "Working note",
     "Ce que vous voulez garder sous la main pour cette tâche (Markdown accepté).": "Anything to keep at hand for this task (Markdown allowed).",
+
+    "Activité hors d'Obsidian (ActivityWatch)": "Activity outside Obsidian (ActivityWatch)",
+    "ActivityWatch, logiciel libre installé à part, relève l'application au premier plan, le titre de sa fenêtre, l'absence du clavier et, avec son extension, l'onglet actif du navigateur. Ariane interroge son serveur local, classe ce relevé selon vos règles et l'affiche en créneaux « réels » dans la vue semaine du calendrier, en mince colonne à gauche de chaque jour. Rien n'est écrit dans le coffre, et rien ne quitte l'ordinateur.": "ActivityWatch, free software installed separately, records the app in the foreground, its window title, when you are away from the keyboard and, with its extension, the active browser tab. Ariane queries its local server, sorts that record with your rules and shows it as \"actual\" slots in the week view of the calendar, as a thin column on the left of each day. Nothing is written to the vault, and nothing leaves the computer.",
+    "Adresse du serveur": "Server address",
+    "Celle d'ActivityWatch sur cette machine. Propre à cette machine : jamais reprise dans un profil exporté.": "ActivityWatch's address on this machine. Specific to this machine, and never carried into an exported profile.",
+    "Règles de classement": "Sorting rules",
+    "Une règle par ligne : « Catégorie #couleur = motif, motif ». La couleur est facultative. Un motif est un fragment de texte, sans égard à la casse, cherché dans l'application, le titre de la fenêtre et l'adresse de la page ; « app: », « titre: » ou « url: » le restreint à ce champ, et /…/ en fait une expression régulière. La première règle qui correspond l'emporte. La catégorie « - » écarte ce qui correspond. Une ligne commençant par # est un commentaire.": "One rule per line: \"Category #colour = pattern, pattern\". The colour is optional. A pattern is a piece of text, case-insensitive, looked for in the app, the window title and the page address; \"app:\", \"titre:\" or \"url:\" limits it to that field, and /…/ makes it a regular expression. The first matching rule wins. The category \"-\" discards what it matches. A line starting with # is a comment.",
+    "Catégorie par défaut": "Default category",
+    "Pour ce qu'aucune règle ne classe. Vide : ce temps n'est pas affiché.": "For what no rule sorts. Empty: that time is not shown.",
+    "Grain": "Grain",
+    "En minutes. La journée est découpée en tranches de cette durée ; chacune prend la catégorie qui l'a le plus occupée. Une interruption plus courte qu'une tranche ne coupe pas un créneau.": "In minutes. The day is cut into slices of this length; each takes the category that filled it most. A break shorter than one slice does not split a slot.",
+    "Durée minimale": "Minimum length",
+    "En minutes de temps actif. Un créneau réel qui en compte moins est écarté, et ses voisins de même catégorie se rejoignent.": "In minutes of active time. An actual slot with less is discarded, and its neighbours of the same category join up.",
+    "Activité réelle (ActivityWatch)": "Actual activity (ActivityWatch)",
+    "Actif : ": "Active: ",
+    "ActivityWatch injoignable : ": "ActivityWatch unreachable: ",
+    "ActivityWatch répond, mais aucun seau de fenêtres n'existe : aw-watcher-window tourne-t-il ?": "ActivityWatch answers, but there is no window bucket: is aw-watcher-window running?",
+    "ActivityWatch joint": "ActivityWatch reached",
+    " seau(x) de fenêtres, ": " window bucket(s), ",
+    "absence détectée, ": "away time detected, ",
+    "pas de seau d'absence, ": "no away bucket, ",
+    " navigateur(s).": " browser(s).",
+    "aucun navigateur.": "no browser.",
   },
 };
 let LANGUE = 'fr';
@@ -1353,6 +1377,22 @@ const DEFAULT_SETTINGS = {
   // arrondie, gonflait le total à chaque écriture.
   tempsTotalSecondes: {},
   tempsRetenirJours: 120,
+  // --- Activité réelle hors d'Obsidian (ActivityWatch) --------------------
+  activiteActif: false,
+  activiteUrl: 'http://localhost:5600',
+  // Une règle par ligne : « Catégorie #couleur = motif, motif ». La première
+  // qui correspond l'emporte ; « - » écarte. Voir compilerReglesActivite.
+  activiteRegles: [
+    'Notes #7c5cbf = app:Obsidian',
+    'Lecture #4f9d69 = app:Zotero, app:Aperçu, app:Preview, app:Skim, app:PDF Expert, .pdf',
+    'Rédaction #4a7fd6 = app:Microsoft Word, app:Pages, app:LibreOffice, docs.google.com',
+    'Recherche #c08a2e = scholar.google, cairn.info, persee.fr, jstor.org, sciencedirect.com, openalex.org, theses.fr, hal.science',
+    'Messagerie #8a8a8a = app:Mail, app:Outlook, app:Messages, app:Slack, app:Teams, mail.google.com, outlook.office',
+    '- = app:loginwindow, app:ScreenSaverEngine',
+  ].join('\n'),
+  activiteAutre: 'Autre',               // catégorie de ce qu'aucune règle ne classe (vide = ignorer)
+  activiteGrainMin: 5,                  // grain d'agrégation, en minutes
+  activiteDureeMin: 10,                 // créneau réel le plus court affiché, en minutes
   dropSignalerRefus: true, // prévenir quand un dépôt n'est pas reconnu
   citationsRepliables: true,
   citationsRepliees: false, // état courant, piloté par les commandes
@@ -3542,7 +3582,7 @@ const avecSocle = (Base) => class extends Base {
   // Un profil partagé ne doit jamais imposer l'installation de qui l'a écrit.
   static get CLES_MACHINE() {
     return ['exportPandocBin', 'exportFiltreLua', 'exportModeleWord',
-            'suggOllamaUrl', 'suggLmStudioUrl'];
+            'suggOllamaUrl', 'suggLmStudioUrl', 'activiteUrl'];
   }
 
   // Ce qui ne voyage pas non plus : l'état accumulé, propre au coffre.
@@ -14567,6 +14607,465 @@ const avecTaches = (Base) => class extends Base {
 
   //#endregion Ariane · temps de travail
 };
+// ── avecActivite ──────────────────────────────────────────────────────────
+// Domaine : activité réelle hors d'Obsidian (calendrier).
+// Lecture d'ActivityWatch (serveur local), classement des fenêtres par
+// règles, agrégation en créneaux « réels » pour la vue semaine du calendrier.
+//
+// ActivityWatch enregistre l'application au premier plan, le titre de sa
+// fenêtre, l'absence du clavier et, avec son extension, l'adresse de l'onglet
+// actif. Ariane ne stocke rien de tout cela : les événements bruts restent en
+// mémoire le temps de la session, et seuls les créneaux agrégés s'affichent.
+const avecActivite = (Base) => class extends Base {
+  //#region Ariane · static · activité réelle
+  // ── static · activité réelle ─────────────────────────────────────────────
+
+  // Choisit les seaux (« buckets ») utiles parmi ceux du serveur. Fenêtres et
+  // absence doivent venir de la MÊME machine, sinon on croiserait l'activité
+  // d'un ordinateur avec le clavier d'un autre : on prend l'hôte courant s'il
+  // est connu du serveur, sinon celui dont le seau de fenêtres a bougé en
+  // dernier. Les seaux du navigateur portent souvent un hôte « unknown » : on
+  // les prend tous.
+  static choisirBucketsAW(tous, hote) {
+    const liste = Object.values(tous || {}).filter((b) => b && b.id);
+    const deType = (t) => liste.filter((b) => b.type === t);
+    const fen = deType('currentwindow');
+    let h = hote && fen.some((b) => b.hostname === hote) ? hote : '';
+    if (!h && fen.length) {
+      const recent = fen.slice().sort((a, b) =>
+        String(b.last_updated || '').localeCompare(String(a.last_updated || '')))[0];
+      h = recent.hostname || '';
+    }
+    const deHote = (bs) => bs.filter((b) => !h || b.hostname === h).map((b) => b.id);
+    return {
+      hote: h,
+      fenetre: deHote(fen),
+      afk: deHote(deType('afkstatus')),
+      web: deType('web.tab.current').map((b) => b.id),
+    };
+  }
+
+  // Trie et fusionne des intervalles [début, fin] (ms) qui se touchent.
+  static fusionnerIntervalles(iv) {
+    const tri = (iv || []).filter((x) => x[1] > x[0]).sort((a, b) => a[0] - b[0]);
+    const out = [];
+    for (const [a, b] of tri) {
+      const der = out[out.length - 1];
+      if (der && a <= der[1]) der[1] = Math.max(der[1], b);
+      else out.push([a, b]);
+    }
+    return out;
+  }
+
+  // Parties de [a, b] couvertes par une liste d'intervalles triés et fusionnés.
+  static couperParIntervalles(a, b, actifs) {
+    const out = [];
+    for (const [x, y] of actifs) {
+      if (y <= a) continue;
+      if (x >= b) break;
+      out.push([Math.max(a, x), Math.min(b, y)]);
+    }
+    return out;
+  }
+
+  // Segments d'activité d'une journée [d0, d1[ : chaque événement de fenêtre,
+  // rogné à la journée, restreint aux plages où le clavier ou la souris ont
+  // servi, et — pour un navigateur — découpé selon l'onglet actif, dont il
+  // reprend l'adresse. Sans seau d'absence (afk === null), tout compte.
+  static segmentsActivite(fenetres, afk, web, d0, d1) {
+    const iv = (e) => {
+      const a = Date.parse(e && e.timestamp);
+      if (!Number.isFinite(a)) return [0, 0];
+      const b = a + (Number(e.duration) || 0) * 1000;
+      return [Math.max(a, d0), Math.min(b, d1)];
+    };
+    const actifs = afk ? Ariane.fusionnerIntervalles(afk
+      .filter((e) => e && e.data && e.data.status === 'not-afk').map(iv)) : null;
+    const onglets = (web || []).map((e) => {
+      const [a, b] = iv(e);
+      const d = (e && e.data) || {};
+      return { a, b, url: String(d.url || ''), titre: String(d.title || '') };
+    }).filter((w) => w.b > w.a).sort((x, y) => x.a - y.a);
+    const navigateur = /chrome|chromium|safari|firefox|arc\b|brave|edge|vivaldi|opera|orion|zen\b/i;
+    const out = [];
+    for (const e of (fenetres || [])) {
+      const [a, b] = iv(e);
+      if (b <= a) continue;
+      const d = (e && e.data) || {};
+      const app = String(d.app || '');
+      const titre = String(d.title || '');
+      const morceaux = actifs ? Ariane.couperParIntervalles(a, b, actifs) : [[a, b]];
+      for (const [x, y] of morceaux) {
+        if (!onglets.length || !navigateur.test(app)) {
+          out.push({ deb: x, fin: y, app, titre, url: '' });
+          continue;
+        }
+        let cur = x;
+        for (const w of onglets) {
+          if (w.b <= cur) continue;
+          if (w.a >= y) break;
+          const s = Math.max(cur, w.a);
+          const t = Math.min(y, w.b);
+          if (s > cur) out.push({ deb: cur, fin: s, app, titre, url: '' });
+          out.push({ deb: s, fin: t, app, titre: w.titre || titre, url: w.url });
+          cur = t;
+        }
+        if (cur < y) out.push({ deb: cur, fin: y, app, titre, url: '' });
+      }
+    }
+    return out.sort((p, q) => p.deb - q.deb);
+  }
+
+  // Motifs d'une règle, séparés par des virgules. Un motif est un fragment de
+  // texte (casse indifférente) ou une expression /…/ ; un préfixe app:,
+  // titre: ou url: le restreint à ce champ.
+  static motifsActivite(corps) {
+    const s = String(corps || '');
+    const out = [];
+    let i = 0;
+    while (i < s.length) {
+      while (i < s.length && /[\s,]/.test(s[i])) i++;
+      if (i >= s.length) break;
+      let champ = '';
+      const mp = /^(app|titre|title|url)\s*:\s*/i.exec(s.slice(i));
+      if (mp) {
+        champ = mp[1].toLowerCase() === 'title' ? 'titre' : mp[1].toLowerCase();
+        i += mp[0].length;
+      }
+      if (s[i] === '/') {
+        let j = i + 1;
+        let echap = false;
+        while (j < s.length && (echap || s[j] !== '/')) { echap = !echap && s[j] === '\\'; j++; }
+        if (j < s.length) {
+          let k = j + 1;
+          while (k < s.length && /[a-z]/i.test(s[k])) k++;
+          const drapeaux = s.slice(j + 1, k).replace(/[^msu]/g, '') + 'i';
+          try { out.push({ champ, re: new RegExp(s.slice(i + 1, j), drapeaux) }); } catch (e) { /* motif invalide : ignoré */ }
+          i = k;
+          continue;
+        }
+      }
+      let j = s.indexOf(',', i);
+      if (j < 0) j = s.length;
+      const txt = s.slice(i, j).trim().toLowerCase();
+      if (txt) out.push({ champ, txt });
+      i = j;
+    }
+    return out;
+  }
+
+  // Règles de classement, une par ligne : « Catégorie #couleur = motif, … ».
+  // La couleur est facultative. La catégorie « - » écarte ce qui correspond.
+  // Les lignes vides et celles qui commencent par # sont ignorées. La
+  // première règle qui correspond l'emporte.
+  static compilerReglesActivite(texte) {
+    const regles = [];
+    for (const brute of String(texte || '').split('\n')) {
+      const l = brute.trim();
+      if (!l || l.startsWith('#')) continue;
+      const i = l.indexOf('=');
+      if (i <= 0) continue;
+      let tete = l.slice(0, i).trim();
+      let couleur = '';
+      const mc = tete.match(/\s(#[0-9a-fA-F]{3,8})$/);
+      if (mc) { couleur = mc[1]; tete = tete.slice(0, mc.index).trim(); }
+      if (!tete) continue;
+      const motifs = Ariane.motifsActivite(l.slice(i + 1));
+      if (!motifs.length) continue;
+      const ignorer = tete === '-';
+      regles.push({ categorie: ignorer ? '' : tete, couleur, ignorer, motifs });
+    }
+    return regles;
+  }
+
+  // Règle qui s'applique à un segment : la règle, null si elle l'écarte,
+  // undefined si aucune ne correspond.
+  static classerActivite(seg, regles) {
+    const champs = { app: String(seg.app || ''), titre: String(seg.titre || ''), url: String(seg.url || '') };
+    const tout = champs.app + '\n' + champs.titre + '\n' + champs.url;
+    const toutBas = tout.toLowerCase();
+    for (const r of (regles || [])) {
+      for (const m of r.motifs) {
+        const cible = m.champ ? champs[m.champ] : tout;
+        const ok = m.re ? m.re.test(cible)
+          : (m.champ ? cible.toLowerCase() : toutBas).includes(m.txt);
+        if (ok) return r.ignorer ? null : r;
+      }
+    }
+    return undefined;
+  }
+
+  // Ce qui décrit un segment dans l'infobulle : le domaine pour une page web,
+  // sinon l'application et le titre de sa fenêtre.
+  static libelleActivite(seg) {
+    if (seg.url) {
+      const m = String(seg.url).match(/^[a-z][\w+.-]*:\/\/([^/?#]+)/i);
+      if (m) return m[1].replace(/^www\./, '');
+    }
+    const t = String(seg.titre || '').trim();
+    const l = t ? (seg.app ? seg.app + ' · ' + t : t) : String(seg.app || '');
+    return l.length > 80 ? l.slice(0, 79) + '…' : l;
+  }
+
+  // Couleur stable d'une catégorie sans couleur déclarée.
+  static couleurActivite(nom) {
+    const pal = ['#4a7fd6', '#4f9d69', '#c08a2e', '#b5527a', '#7c5cbf', '#2a9d8f', '#d1603d', '#6c8ead'];
+    let h = 0;
+    for (const ch of String(nom || '')) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+    return pal[h % pal.length];
+  }
+
+  // « AAAA-MM-JJTHH:MM » en heure locale, la forme des créneaux du calendrier.
+  static isoLocalMinute(ms) {
+    const d = new Date(ms);
+    const p = (n) => String(n).padStart(2, '0');
+    return jourIsoDe(d) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  // Agrège les segments d'une journée [d0, d1[ en créneaux réels. La journée
+  // est découpée en grains (5 min par défaut) ; chaque grain prend la
+  // catégorie qui l'a le plus occupé, s'il a été actif au moins un cinquième
+  // du temps. Les grains voisins de même catégorie forment un créneau, borné
+  // par la première et la dernière activité réelle ; un trou d'un grain au
+  // plus ne le coupe pas. Les créneaux dont le temps ACTIF est trop court sont
+  // écartés, puis leurs voisins de même catégorie se rejoignent : quatre
+  // minutes de courriel au milieu d'une lecture ne la coupent pas en deux.
+  static agregerActivite(segments, regles, opts) {
+    const o = opts || {};
+    const d0 = Number(o.d0);
+    const d1 = Number(o.d1);
+    const B = Math.max(1, Number(o.grainMin) || 5) * 60000;
+    const tolerance = B;
+    const dureeMin = Math.max(0, Number(o.dureeMin) || 0) * 60000;
+    const autre = String(o.autre || '').trim();
+    const grains = new Map(); // indice → Map(catégorie → { ms, a, b, couleur, det: Map(libellé → ms) })
+    for (const s of (segments || [])) {
+      let r = Ariane.classerActivite(s, regles);
+      if (r === null) continue;
+      if (r === undefined) {
+        if (!autre) continue;
+        r = { categorie: autre, couleur: '#8a8a8a' };
+      }
+      const lib = Ariane.libelleActivite(s);
+      const deb = Math.max(s.deb, d0);
+      const fin = Math.min(s.fin, d1);
+      for (let k = Math.floor((deb - d0) / B); d0 + k * B < fin; k++) {
+        const a = Math.max(deb, d0 + k * B);
+        const b = Math.min(fin, d0 + (k + 1) * B);
+        if (b <= a) continue;
+        if (!grains.has(k)) grains.set(k, new Map());
+        const g = grains.get(k);
+        if (!g.has(r.categorie)) g.set(r.categorie, { ms: 0, a, b, couleur: r.couleur, det: new Map() });
+        const c = g.get(r.categorie);
+        c.ms += b - a;
+        c.a = Math.min(c.a, a);
+        c.b = Math.max(c.b, b);
+        c.det.set(lib, (c.det.get(lib) || 0) + (b - a));
+      }
+    }
+    const fusionnerDet = (m1, m2) => { for (const [l, v] of m2) m1.set(l, (m1.get(l) || 0) + v); };
+    const rejoindre = (liste) => {
+      const out = [];
+      for (const b of liste) {
+        const der = out[out.length - 1];
+        if (der && der.categorie === b.categorie && b.deb - der.fin <= tolerance) {
+          der.fin = b.fin;
+          der.actif += b.actif;
+          fusionnerDet(der.det, b.det);
+        } else {
+          out.push(b);
+        }
+      }
+      return out;
+    };
+    const bruts = [];
+    for (const k of [...grains.keys()].sort((a, b) => a - b)) {
+      const g = grains.get(k);
+      let total = 0;
+      let meilleur = null;
+      for (const [cat, c] of g) {
+        total += c.ms;
+        if (!meilleur || c.ms > meilleur[1].ms) meilleur = [cat, c];
+      }
+      if (total < B / 5) continue;
+      bruts.push({ categorie: meilleur[0], couleur: meilleur[1].couleur, actif: meilleur[1].ms,
+        deb: meilleur[1].a, fin: meilleur[1].b, det: new Map(meilleur[1].det) });
+    }
+    const blocs = rejoindre(rejoindre(bruts).filter((b) => b.actif >= dureeMin));
+    return blocs.map((b) => ({
+      categorie: b.categorie,
+      couleur: b.couleur || Ariane.couleurActivite(b.categorie),
+      debut: Ariane.isoLocalMinute(b.deb),
+      fin: Ariane.isoLocalMinute(b.fin),
+      actifMin: Math.round(b.actif / 60000),
+      details: [...b.det].sort((x, y) => y[1] - x[1]).slice(0, 5)
+        .map(([libelle, ms]) => ({ libelle, min: Math.round(ms / 60000) })),
+    }));
+  }
+
+  // Infobulle d'un créneau réel.
+  static infobulleActivite(b) {
+    const lignes = [b.categorie + ' · ' + b.debut.slice(11, 16) + '–' + b.fin.slice(11, 16),
+      tr('Actif : ') + dureeLisible(b.actifMin)];
+    for (const d of (b.details || [])) {
+      if (d.min > 0) lignes.push('• ' + d.libelle + ' (' + dureeLisible(d.min) + ')');
+    }
+    return lignes.join('\n');
+  }
+
+  //#endregion Ariane · static · activité réelle
+
+  //#region Ariane · activité réelle (ActivityWatch)
+  // ── activité réelle (ActivityWatch) ──────────────────────────────────────
+
+  // ActivityWatch tourne en local : rien à interroger sur mobile.
+  activiteDisponible() {
+    return !!(this.settings.activiteActif && obsidian.Platform.isDesktopApp);
+  }
+
+  async _awGet(chemin) {
+    const base = String(this.settings.activiteUrl || 'http://localhost:5600').trim().replace(/\/+$/, '');
+    const rep = await obsidian.requestUrl({ url: base + chemin, method: 'GET', throw: false });
+    if (rep.status !== 200) throw new Error('HTTP ' + rep.status);
+    return rep.json;
+  }
+
+  // Seaux du serveur, gardés cinq minutes.
+  async _awBuckets(force) {
+    const c = this._awBucketsCache;
+    if (!force && c && Date.now() - c.le < 300000) return c.data;
+    let hote = '';
+    try { hote = require('os').hostname(); } catch (e) { /* pas de module os */ }
+    const data = Ariane.choisirBucketsAW(await this._awGet('/api/0/buckets/'), hote);
+    this._awBucketsCache = { le: Date.now(), data };
+    return data;
+  }
+
+  // Segments bruts d'un jour local. Un jour passé ne change plus : il reste en
+  // mémoire pour la session. Le jour courant est relu au plus toutes les deux
+  // minutes. Un jour futur n'a rien.
+  async _segmentsDuJour(jour) {
+    const auj = jourIsoDe(new Date());
+    if (jour > auj) return [];
+    const cache = this._activiteSegments || (this._activiteSegments = new Map());
+    const c = cache.get(jour);
+    if (c && (jour < auj || Date.now() - c.le < 120000)) return c.segs;
+    const d0 = new Date(jour + 'T00:00:00').getTime();
+    const d1 = new Date(Ariane.decalerJour(jour, 1) + 'T00:00:00').getTime();
+    const b = await this._awBuckets();
+    const plage = '/events?limit=-1&start=' + encodeURIComponent(new Date(d0).toISOString())
+      + '&end=' + encodeURIComponent(new Date(d1).toISOString());
+    const lire = async (ids) => {
+      const lots = await Promise.all(ids.map((id) =>
+        this._awGet('/api/0/buckets/' + encodeURIComponent(id) + plage)));
+      return [].concat(...lots.map((l) => (Array.isArray(l) ? l : [])));
+    };
+    const [fen, afk, web] = await Promise.all([lire(b.fenetre), lire(b.afk), lire(b.web)]);
+    const segs = Ariane.segmentsActivite(fen, b.afk.length ? afk : null, web, d0, d1);
+    cache.set(jour, { le: Date.now(), segs });
+    return segs;
+  }
+
+  // Signature des réglages dont dépend l'agrégation : la changer invalide les
+  // créneaux calculés, pas les segments lus.
+  _signatureActivite() {
+    const s = this.settings;
+    return [s.activiteRegles, s.activiteAutre, s.activiteGrainMin, s.activiteDureeMin].join('\u0001');
+  }
+
+  // Créneaux réels de plusieurs jours : Map(jour → créneaux). Trois jours lus
+  // à la fois. Un serveur injoignable donne une Map vide et un avis, une fois.
+  async activitePlage(jours) {
+    const out = new Map();
+    if (!this.activiteDisponible()) return out;
+    const sig = this._signatureActivite();
+    if (!this._activiteRegles || this._activiteRegles.sig !== sig) {
+      this._activiteRegles = { sig, regles: Ariane.compilerReglesActivite(this.settings.activiteRegles) };
+      this._activiteBlocs = new Map();
+    }
+    const regles = this._activiteRegles.regles;
+    const file = (jours || []).slice();
+    const traiter = async (jour) => {
+      const segs = await this._segmentsDuJour(jour);
+      const memo = this._activiteBlocs.get(jour);
+      if (memo && memo.segs === segs) { out.set(jour, memo.blocs); return; }
+      const d0 = new Date(jour + 'T00:00:00').getTime();
+      const d1 = new Date(Ariane.decalerJour(jour, 1) + 'T00:00:00').getTime();
+      const blocs = Ariane.agregerActivite(segs, regles, {
+        d0, d1,
+        grainMin: this.settings.activiteGrainMin,
+        dureeMin: this.settings.activiteDureeMin,
+        autre: this.settings.activiteAutre,
+      });
+      this._activiteBlocs.set(jour, { segs, blocs });
+      out.set(jour, blocs);
+    };
+    try {
+      while (file.length) await Promise.all(file.splice(0, 3).map(traiter));
+      this._activiteErreur = '';
+    } catch (e) {
+      const msg = (e && e.message) || String(e);
+      if (this._activiteErreur !== msg) {
+        this._activiteErreur = msg;
+        new obsidian.Notice(tr('ActivityWatch injoignable : ') + msg, 6000);
+      }
+    }
+    return out;
+  }
+
+  // Relit le jour courant dans les calendriers ouverts. Les jours passés
+  // restent en mémoire : seul aujourd'hui est redemandé au serveur. Tout
+  // oublier (réglage changé, test) relit tout et réautorise l'avis d'erreur ;
+  // la relecture périodique, elle, ne le répète pas toutes les cinq minutes.
+  _rafraichirActivite(toutOublier) {
+    if (toutOublier) {
+      this._activiteSegments = null;
+      this._awBucketsCache = null;
+      this._activiteErreur = '';
+    }
+    const dispo = this.activiteDisponible();
+    for (const m of (this._moteursCalendrier || [])) {
+      try {
+        m._activiteCle = null;
+        // Désactivée : la colonne déjà dessinée doit disparaître tout de suite.
+        if (!dispo) { m._activite = new Map(); m.dessiner(); } else if (m._chargerActivite) m._chargerActivite();
+      } catch (e) { /* vue fermée */ }
+    }
+  }
+
+  // Une saisie dans les règles ne relance le calcul qu'une fois la frappe
+  // finie : chaque touche ne doit pas redessiner les calendriers.
+  _rafraichirActiviteDiffere() {
+    clearTimeout(this._activiteMinuterie);
+    this._activiteMinuterie = setTimeout(() => this._rafraichirActivite(false), 1200);
+  }
+
+  // Le jour courant avance : toutes les cinq minutes, les calendriers ouverts
+  // relisent aujourd'hui, et ne se redessinent que si quelque chose a changé.
+  demarrerActivite() {
+    this.registerInterval(window.setInterval(() => {
+      if (this.activiteDisponible()) this._rafraichirActivite(false);
+    }, 300000));
+  }
+
+  // Bouton « Tester » des réglages : ce que le serveur expose, en clair.
+  async testerActivityWatch() {
+    try {
+      const b = await this._awBuckets(true);
+      if (!b.fenetre.length) {
+        return tr("ActivityWatch répond, mais aucun seau de fenêtres n'existe : aw-watcher-window tourne-t-il ?");
+      }
+      return tr('ActivityWatch joint') + (b.hote ? ' (' + b.hote + ')' : '') + ' : '
+        + b.fenetre.length + tr(' seau(x) de fenêtres, ')
+        + (b.afk.length ? tr("absence détectée, ") : tr("pas de seau d'absence, "))
+        + (b.web.length ? b.web.length + tr(' navigateur(s).') : tr('aucun navigateur.'));
+    } catch (e) {
+      return tr('ActivityWatch injoignable : ') + ((e && e.message) || String(e));
+    }
+  }
+
+  //#endregion Ariane · activité réelle (ActivityWatch)
+};
 
 // ── class Ariane ──────────────────────────────────────────────────────────
 // Le point d'assemblage. Ne porte que le cycle de vie : onload, et les
@@ -14581,7 +15080,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecTachesStatiques,
   avecFriseStatiques,
   avecArticulationStatiques,
-  avecTaches) {
+  avecTaches,
+  avecActivite) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -15117,6 +15617,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.app.workspace.onLayoutReady(() => {
       this.elaguerHistoriqueTemps();
       this.demarrerCompteurTemps();
+      this.demarrerActivite();
       this.installerInfobulleTemps();
     });
     this._citVersion = 0;
@@ -15593,6 +16094,7 @@ class Ariane extends composer(obsidian.Plugin,
   onunload() {
     for (const t of this.antirebonds.values()) clearTimeout(t);
     this.antirebonds.clear();
+    clearTimeout(this._activiteMinuterie);
     // Le cache d'embeddings n'est plus écrit à chaque frappe : il faut donc le
     // poser au plus tard ici, faute de quoi la session serait perdue.
     if (this.suggEmbMinuteur) { clearTimeout(this.suggEmbMinuteur); this.suggEmbMinuteur = null; }
@@ -16251,6 +16753,50 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Conserver le relevé quotidien'))
       .setDesc(tr("En jours. Ce relevé sert au journal ; passé ce délai il est effacé des réglages, les totaux inscrits dans les notes demeurent."))
       .addText((t) => t.setValue(String(s.tempsRetenirJours || 120)).onChange(async (v) => { s.tempsRetenirJours = Math.max(7, parseInt(v, 10) || 120); await maj(); }));
+
+    this._section(c, tr("Activité hors d'Obsidian (ActivityWatch)"));
+    this._aide(c, tr("ActivityWatch, logiciel libre installé à part, relève l'application au premier plan, le titre de sa fenêtre, l'absence du clavier et, avec son extension, l'onglet actif du navigateur. Ariane interroge son serveur local, classe ce relevé selon vos règles et l'affiche en créneaux « réels » dans la vue semaine du calendrier, en mince colonne à gauche de chaque jour. Rien n'est écrit dans le coffre, et rien ne quitte l'ordinateur."));
+    new obsidian.Setting(c)
+      .setName(tr('Activer'))
+      .addToggle((t) => t.setValue(s.activiteActif === true).onChange(async (v) => {
+        s.activiteActif = v; await maj(); this.plugin._rafraichirActivite(true); this.display();
+      }));
+    if (s.activiteActif) {
+      new obsidian.Setting(c)
+        .setName(tr('Adresse du serveur'))
+        .setDesc(tr("Celle d'ActivityWatch sur cette machine. Propre à cette machine : jamais reprise dans un profil exporté."))
+        .addText((t) => t.setPlaceholder('http://localhost:5600').setValue(s.activiteUrl || '')
+          .onChange(async (v) => { s.activiteUrl = v.trim() || 'http://localhost:5600'; await maj(); this.plugin._awBucketsCache = null; }))
+        .addButton((b) => b.setButtonText(tr('Tester')).onClick(async () => {
+          new obsidian.Notice(await this.plugin.testerActivityWatch(), 8000);
+          this.plugin._rafraichirActivite(true);
+        }));
+      new obsidian.Setting(c)
+        .setName(tr('Règles de classement'))
+        .setDesc(tr("Une règle par ligne : « Catégorie #couleur = motif, motif ». La couleur est facultative. Un motif est un fragment de texte, sans égard à la casse, cherché dans l'application, le titre de la fenêtre et l'adresse de la page ; « app: », « titre: » ou « url: » le restreint à ce champ, et /…/ en fait une expression régulière. La première règle qui correspond l'emporte. La catégorie « - » écarte ce qui correspond. Une ligne commençant par # est un commentaire."))
+        .addTextArea((t) => {
+          t.setValue(s.activiteRegles || '')
+            .onChange(async (v) => { s.activiteRegles = v; await maj(); this.plugin._rafraichirActiviteDiffere(); });
+          t.inputEl.rows = 8;
+          t.inputEl.style.width = '100%';
+          t.inputEl.style.fontFamily = 'var(--font-monospace)';
+        });
+      new obsidian.Setting(c)
+        .setName(tr('Catégorie par défaut'))
+        .setDesc(tr("Pour ce qu'aucune règle ne classe. Vide : ce temps n'est pas affiché."))
+        .addText((t) => t.setValue(s.activiteAutre || '')
+          .onChange(async (v) => { s.activiteAutre = v.trim(); await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+      new obsidian.Setting(c)
+        .setName(tr('Grain'))
+        .setDesc(tr("En minutes. La journée est découpée en tranches de cette durée ; chacune prend la catégorie qui l'a le plus occupée. Une interruption plus courte qu'une tranche ne coupe pas un créneau."))
+        .addText((t) => t.setValue(String(s.activiteGrainMin || 5))
+          .onChange(async (v) => { s.activiteGrainMin = Math.min(60, Math.max(1, parseInt(v, 10) || 5)); await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+      new obsidian.Setting(c)
+        .setName(tr('Durée minimale'))
+        .setDesc(tr('En minutes de temps actif. Un créneau réel qui en compte moins est écarté, et ses voisins de même catégorie se rejoignent.'))
+        .addText((t) => t.setValue(String(s.activiteDureeMin == null ? 10 : s.activiteDureeMin))
+          .onChange(async (v) => { const n = parseInt(v, 10); s.activiteDureeMin = Number.isFinite(n) ? Math.max(0, n) : 10; await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+    }
   }
 
   ongletSchemas(c, s, maj) {
@@ -18320,6 +18866,8 @@ const DEFAUTS_CALENDRIER = {
   // Familles de tâches décochées dans le menu « Calendriers à afficher » :
   // leur contenu (créneaux, jalons, cartes journée) ne se dessine pas.
   calCalendriersMasques: [],
+  // Colonne des créneaux réels (ActivityWatch) en vue semaine.
+  calActiviteReelle: true,
 };
 
 function svgEl(nom, attrs) {
@@ -24043,6 +24591,7 @@ class MoteurCalendrier extends MoteurVue {
     super(greffon, racine, contexte);
     this._ancre = new Date().toISOString().slice(0, 10);
     this._fond = [];
+    this._activite = new Map();   // jour ISO → créneaux réels (ActivityWatch)
     racine.addClass('zfa-cal');
     racine.tabIndex = -1;
     this._surTouche = (e) => {
@@ -24210,6 +24759,74 @@ class MoteurCalendrier extends MoteurVue {
 
   //#endregion Calendrier · agenda Apple en fond
 
+  //#region Calendrier · activité réelle
+  // Créneaux réels lus par le greffon dans ActivityWatch : une mince colonne
+  // à gauche de chaque jour de la vue semaine, en lecture seule.
+  _activiteVisible() {
+    return this.mode === 'semaine' && !!(this.greffon && this.greffon.activiteDisponible
+      && this.greffon.activiteDisponible()) && this.lire('calActiviteReelle') !== false;
+  }
+
+  // Jours à lire, les plus proches de l'ancre d'abord : la semaine affichée
+  // arrive vite, la marge de défilement suit. Rien après aujourd'hui.
+  _joursActivite() {
+    const auj = jourIsoDe(new Date());
+    const proches = [];
+    const reste = [];
+    for (let i = -18; i <= 18; i++) {
+      const j = Ariane.decalerJour(this._ancre, i);
+      if (!j || j > auj) continue;
+      (i >= -1 && i <= 7 ? proches : reste).push(j);
+    }
+    reste.sort((a, b) => Math.abs(Ariane.ecartJours(this._ancre, a)) - Math.abs(Ariane.ecartJours(this._ancre, b)));
+    return [proches, reste];
+  }
+
+  // Charge les créneaux réels une fois par (fenêtre, tranche de deux minutes) ;
+  // ne redessine que si quelque chose a changé.
+  _chargerActivite() {
+    if (!this._activiteVisible()) return;
+    const vagues = this._joursActivite();
+    const tous = vagues[0].concat(vagues[1]);
+    const cle = tous.slice().sort().join(',') + '|' + Math.floor(Date.now() / 120000);
+    if (cle === this._activiteCle) return;
+    this._activiteCle = cle;
+    (async () => {
+      for (const jours of vagues) {
+        if (!jours.length) continue;
+        const m = await this.greffon.activitePlage(jours);
+        if (this._detruit || cle !== this._activiteCle) return;
+        let change = false;
+        for (const [j, blocs] of m) {
+          if (JSON.stringify(this._activite.get(j) || []) !== JSON.stringify(blocs)) change = true;
+          this._activite.set(j, blocs);
+        }
+        // Un bloc tenu à la main ne doit pas voir le DOM se reconstruire sous
+        // lui : le dessin attend alors la fin du geste.
+        if (change) { if (this._gesteCal) this._coalesceRedessin(200); else this.dessiner(); }
+      }
+    })().catch((e) => console.warn('[Ariane] activité réelle :', e));
+  }
+
+  // Colonne des créneaux réels d'un jour. `mn` convertit « …THH:MM » en
+  // minutes depuis minuit.
+  _rendreActivite(col, jour, hDeb, PXH, mn) {
+    for (const b of (this._activite.get(jour) || [])) {
+      const d = mn(b.debut);
+      const f = b.fin.slice(0, 10) === jour ? mn(b.fin) : 24 * 60;
+      if (f <= d) continue;
+      const el = col.createDiv({ cls: 'zfa-cal-reel' });
+      el.style.top = ((d / 60 - hDeb) * PXH) + 'px';
+      el.style.height = Math.max(3, ((f - d) / 60) * PXH) + 'px';
+      el.style.setProperty('--zfa-cal-coul', b.couleur);
+      el.title = Ariane.infobulleActivite(b);
+      // La colonne réagit au clic (sélection, création) : la piste, non.
+      el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    }
+  }
+
+  //#endregion Calendrier · activité réelle
+
   //#region Calendrier · dessin & barre d'outils
   dessiner() {
     // Pendant la retombée d'un geste (écriture d'un créneau), les demandes de
@@ -24226,6 +24843,7 @@ class MoteurCalendrier extends MoteurVue {
   dessinerVraiment() {
     if (this._detruit) return;
     this._chargerFond();
+    this._chargerActivite();
     if (this.greffon && this.greffon._relancerReleveAgenda) this.greffon._relancerReleveAgenda(1500);
     const c = this.racine;
     c.empty();
@@ -24420,6 +25038,19 @@ class MoteurCalendrier extends MoteurVue {
             }));
         }
       }
+    }
+    // Activité réelle (ActivityWatch) : la colonne fine de la vue semaine.
+    if (greffon.activiteDisponible && greffon.activiteDisponible()) {
+      menu.addSeparator();
+      menu.addItem((mi) => mi
+        .setTitle(tr('Activité réelle (ActivityWatch)'))
+        .setIcon('activity')
+        .setChecked(this.lire('calActiviteReelle') !== false)
+        .onClick(async () => {
+          await this.ctx.ecrire('calActiviteReelle', this.lire('calActiviteReelle') === false);
+          this._activiteCle = null;
+          this.dessiner();
+        }));
     }
     menu.showAtMouseEvent(ev);
   }
@@ -25478,6 +26109,11 @@ class MoteurCalendrier extends MoteurVue {
         return { deb: d, fin: f };
       });
       const lay = Ariane.disposerBlocsJour(blocs);
+      // Activité réelle : sa colonne occupe la marge gauche, que les blocs
+      // cèdent pour ne pas la recouvrir.
+      const reel = this._activiteVisible();
+      if (reel) this._rendreActivite(col, j, hDeb, PXH, mn);
+      const mg = reel ? 16 : 6;
       elems.forEach((it, k) => {
         const y0 = (blocs[k].deb / 60 - hDeb) * PXH;
         const y1 = (blocs[k].fin / 60 - hDeb) * PXH;
@@ -25540,8 +26176,8 @@ class MoteurCalendrier extends MoteurVue {
         // Retrait (6 px de chaque côté) : les blocs ne touchent pas les filets
         // de colonne, comme dans obsidian-day-planner — et il reste de l'air
         // entre deux colonnes pour que les courbes de lignée respirent.
-        bloc.style.left = 'calc(' + (lay[k].col / lay[k].ncols * 100) + '% + 6px)';
-        bloc.style.width = 'calc(' + (100 / lay[k].ncols) + '% - 12px)';
+        bloc.style.left = 'calc(' + (lay[k].col / lay[k].ncols * 100) + '% + ' + mg + 'px)';
+        bloc.style.width = 'calc(' + (100 / lay[k].ncols) + '% - ' + (mg + 6) + 'px)';
         if (y0 < 0) bloc.classList.add('zfa-cal-bloc-tronque-haut');
         if (y1 > hauteurInner) bloc.classList.add('zfa-cal-bloc-tronque-bas');
       });
@@ -25691,6 +26327,8 @@ class MoteurCalendrier extends MoteurVue {
   _recalerSemaine(hote, shift) {
     if (this._detruit || !hote.isConnected || !hote.parentElement) return;
     this._ancre = Ariane.decalerJour(this._ancre, shift);
+    // L'ancre a bougé : la marge de jours déjà lus ne couvre plus la bande.
+    this._chargerActivite();
     const r = hote.getBoundingClientRect();
     // _doc() et non `document` : le recalage tourne à chaque bord de bande, et
     // dans un volet détaché un nœud du document principal se greffe mal.
