@@ -33909,24 +33909,23 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
     const c = this.contentEl;
     c.empty();
     c.addClass('zfa-sugg');
+    // En-tête : le titre, puis des boutons-icônes à la manière de ceux
+    // d'Obsidian (explorateur, recherche) : icônes Lucide, bulle au survol.
     const entete = c.createDiv({ cls: 'zfa-sugg-entete' });
     entete.createSpan({ cls: 'zfa-sugg-titre', text: tr('Suggestions') });
-    const rafr = entete.createEl('button', { cls: 'zfa-sugg-refresh', text: tr('⟳') });
-    rafr.setAttribute('aria-label', tr('Rafraîchir les suggestions (sans modèle de langue)'));
-    rafr.onclick = () => this.plugin.majSuggestions(false, true);
-    // Le reclassement par modèle de langue est le poste le plus lourd de tout
-    // le greffon. Il ne part plus tout seul : il attend ce bouton.
-    this.affiner = entete.createEl('button', { cls: 'zfa-sugg-refresh', text: tr('✨') });
-    this.affiner.setAttribute('aria-label', tr('Affiner par le modèle de langue'));
-    this.affiner.onclick = () => this.plugin.majSuggestions(true, true);
+    const outils = entete.createDiv({ cls: 'zfa-sugg-outils' });
+    const bouton = (icone, libelle, action) => {
+      const b = outils.createDiv({ cls: 'clickable-icon zfa-sugg-outil', attr: { 'aria-label': libelle } });
+      obsidian.setIcon(b, icone);
+      b.addEventListener('click', () => { if (!b.hasClass('is-disabled')) action(); });
+      return b;
+    };
     // Le pendant du clic droit « suggestions pour ce passage » : grisé tant
     // qu'aucun passage n'est sélectionné dans la note.
-    this.passage = entete.createEl('button', { cls: 'zfa-sugg-refresh zfa-sugg-passage' });
-    obsidian.setIcon(this.passage, 'text-select');
-    this.passage.onclick = () => {
+    this.passage = bouton('text-select', '', () => {
       const sel = this.plugin.selectionNote();
       if (sel) this.plugin.suggestionsPourArgument(sel);
-    };
+    });
     this.majBoutonPassage();
     let prevu = false;
     const planifier = () => {
@@ -33940,14 +33939,19 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
     }));
     this.registerEvent(this.app.workspace.on('active-leaf-change', planifier));
     this.registerEvent(this.app.workspace.on('editor-change', planifier));
-    this.pause = entete.createEl('button', { cls: 'zfa-sugg-refresh' });
-    this.majBoutonPause();
-    this.pause.onclick = async () => {
+    // Le reclassement par modèle de langue est le poste le plus lourd de tout
+    // le greffon. Il ne part plus tout seul : il attend ce bouton.
+    this.affiner = bouton('sparkles', tr('Affiner par le modèle de langue'),
+      () => this.plugin.majSuggestions(true, true));
+    bouton('refresh-cw', tr('Rafraîchir les suggestions (sans modèle de langue)'),
+      () => this.plugin.majSuggestions(false, true));
+    this.pause = bouton('pause', '', async () => {
       this.plugin.settings.suggActif = !this.plugin.settings.suggActif;
       await this.plugin.saveSettings();
       this.majBoutonPause();
       this.plugin.majSuggestions(false, true);
-    };
+    });
+    this.majBoutonPause();
     this.filtres = c.createDiv({ cls: 'zfa-sugg-filtres' });
     this.construireFiltres();
     this.info = c.createDiv({ cls: 'zfa-sugg-info' });
@@ -33963,8 +33967,7 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
   majBoutonPassage() {
     if (!this.passage) return;
     const actif = !!this.plugin.selectionNote();
-    this.passage.disabled = !actif;
-    this.passage.toggleClass('est-inactif', !actif);
+    this.passage.toggleClass('is-disabled', !actif);
     this.passage.setAttribute('aria-label', actif
       ? tr('Suggestions pour le passage sélectionné')
       : tr('Sélectionnez un passage dans la note pour des suggestions ciblées'));
@@ -33973,7 +33976,8 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
   majBoutonPause() {
     if (!this.pause) return;
     const actif = this.plugin.settings.suggActif;
-    this.pause.setText(actif ? '⏸' : '▶');
+    obsidian.setIcon(this.pause, actif ? 'pause' : 'play');
+    this.pause.toggleClass('is-active', !actif);
     this.pause.setAttribute('aria-label',
       actif ? tr('Suspendre les suggestions') : tr('Reprendre les suggestions'));
   }

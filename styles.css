@@ -143,16 +143,14 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   margin-bottom: 6px;
 }
 .zfa-sugg-titre {
-  font-weight: 600;
+  font-weight: var(--font-semibold);
+  font-size: var(--font-ui-medium);
 }
-.zfa-sugg-refresh {
-  cursor: pointer;
-  padding: 2px 8px;
-  line-height: 1.2;
-}
-.zfa-sugg-passage { display: inline-flex; align-items: center; }
-.zfa-sugg-passage svg { width: 14px; height: 14px; }
-.zfa-sugg-passage.est-inactif { opacity: 0.4; cursor: default; }
+/* Boutons-icônes : ceux d'Obsidian (clickable-icon), serrés à droite. */
+.zfa-sugg-outils { display: flex; align-items: center; gap: 2px; }
+.zfa-sugg-outil.is-disabled { opacity: 0.35; cursor: default; pointer-events: auto; }
+.zfa-sugg-outil.is-disabled:hover { background: transparent; color: var(--icon-color); }
+.zfa-sugg-outil.is-active { color: var(--icon-color-active); background: var(--background-modifier-hover); }
 /* Filtre par type de note dans le panneau de suggestions */
 .zfa-sugg-filtres {
   display: flex;
