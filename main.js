@@ -1027,6 +1027,8 @@ const TEXTES = {
     "Ajouter un jalon lié à la tâche…": "Add a milestone linked to the task…",
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
+    "Suggestions pour le passage sélectionné": "Suggestions for the selected passage",
+    "Sélectionnez un passage dans la note pour des suggestions ciblées": "Select a passage in the note for targeted suggestions",
     "Nouvelle note : ": "New note: ",
     "Création impossible : ": "Could not create: ",
     "Travail réel : ": "Actual work: ",
@@ -4925,7 +4927,27 @@ const avecIa = (Base) => class extends Base {
     }
   }
 
-  // Suggestions ciblées sur un passage sélectionné (clic droit).
+  // Le passage sélectionné dans la note en cours d'écriture, ou ''. La note
+  // est celle de la zone principale : quand on clique dans le panneau de
+  // suggestions, c'est lui qui devient actif, mais la sélection de l'éditeur
+  // demeure.
+  selectionNote() {
+    const ws = this.app.workspace;
+    const feuille = (ws.getMostRecentLeaf && ws.getMostRecentLeaf(ws.rootSplit)) || null;
+    const vue = feuille && feuille.view;
+    // Une note dans une fenêtre détachée n'est pas dans la zone principale :
+    // on se rabat sur le dernier éditeur actif.
+    const editeur = (vue instanceof obsidian.MarkdownView && vue.editor) ? vue.editor
+      : (ws.activeEditor && ws.activeEditor.editor) || null;
+    if (!editeur) return '';
+    try {
+      const sel = editeur.getSelection();
+      return sel && sel.trim() ? sel : '';
+    } catch (e) { return ''; }
+  }
+
+  // Suggestions ciblées sur un passage sélectionné (clic droit, ou bouton du
+  // panneau de suggestions).
   async suggestionsPourArgument(texte) {
     if (!texte || !texte.trim()) return;
     await this.assurerIndexSuggestions();
@@ -33897,6 +33919,27 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
     this.affiner = entete.createEl('button', { cls: 'zfa-sugg-refresh', text: tr('✨') });
     this.affiner.setAttribute('aria-label', tr('Affiner par le modèle de langue'));
     this.affiner.onclick = () => this.plugin.majSuggestions(true, true);
+    // Le pendant du clic droit « suggestions pour ce passage » : grisé tant
+    // qu'aucun passage n'est sélectionné dans la note.
+    this.passage = entete.createEl('button', { cls: 'zfa-sugg-refresh zfa-sugg-passage' });
+    obsidian.setIcon(this.passage, 'text-select');
+    this.passage.onclick = () => {
+      const sel = this.plugin.selectionNote();
+      if (sel) this.plugin.suggestionsPourArgument(sel);
+    };
+    this.majBoutonPassage();
+    let prevu = false;
+    const planifier = () => {
+      if (prevu) return;
+      prevu = true;
+      requestAnimationFrame(() => { prevu = false; this.majBoutonPassage(); });
+    };
+    this.registerDomEvent(document, 'selectionchange', planifier);
+    this.registerEvent(this.app.workspace.on('window-open', (_w, win) => {
+      if (win && win.document) this.registerDomEvent(win.document, 'selectionchange', planifier);
+    }));
+    this.registerEvent(this.app.workspace.on('active-leaf-change', planifier));
+    this.registerEvent(this.app.workspace.on('editor-change', planifier));
     this.pause = entete.createEl('button', { cls: 'zfa-sugg-refresh' });
     this.majBoutonPause();
     this.pause.onclick = async () => {
@@ -33915,6 +33958,16 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
     // À l'ouverture, la vue n'a pas encore ses dimensions : on passe outre le
     // test de visibilité, mais sans lancer le modèle de langue.
     this.plugin.majSuggestions(false, true);
+  }
+
+  majBoutonPassage() {
+    if (!this.passage) return;
+    const actif = !!this.plugin.selectionNote();
+    this.passage.disabled = !actif;
+    this.passage.toggleClass('est-inactif', !actif);
+    this.passage.setAttribute('aria-label', actif
+      ? tr('Suggestions pour le passage sélectionné')
+      : tr('Sélectionnez un passage dans la note pour des suggestions ciblées'));
   }
 
   majBoutonPause() {

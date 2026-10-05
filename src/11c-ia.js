@@ -638,7 +638,27 @@ const avecIa = (Base) => class extends Base {
     }
   }
 
-  // Suggestions ciblées sur un passage sélectionné (clic droit).
+  // Le passage sélectionné dans la note en cours d'écriture, ou ''. La note
+  // est celle de la zone principale : quand on clique dans le panneau de
+  // suggestions, c'est lui qui devient actif, mais la sélection de l'éditeur
+  // demeure.
+  selectionNote() {
+    const ws = this.app.workspace;
+    const feuille = (ws.getMostRecentLeaf && ws.getMostRecentLeaf(ws.rootSplit)) || null;
+    const vue = feuille && feuille.view;
+    // Une note dans une fenêtre détachée n'est pas dans la zone principale :
+    // on se rabat sur le dernier éditeur actif.
+    const editeur = (vue instanceof obsidian.MarkdownView && vue.editor) ? vue.editor
+      : (ws.activeEditor && ws.activeEditor.editor) || null;
+    if (!editeur) return '';
+    try {
+      const sel = editeur.getSelection();
+      return sel && sel.trim() ? sel : '';
+    } catch (e) { return ''; }
+  }
+
+  // Suggestions ciblées sur un passage sélectionné (clic droit, ou bouton du
+  // panneau de suggestions).
   async suggestionsPourArgument(texte) {
     if (!texte || !texte.trim()) return;
     await this.assurerIndexSuggestions();

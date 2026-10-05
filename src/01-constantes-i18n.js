@@ -842,6 +842,8 @@ const TEXTES = {
     "Ajouter un jalon lié à la tâche…": "Add a milestone linked to the task…",
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
+    "Suggestions pour le passage sélectionné": "Suggestions for the selected passage",
+    "Sélectionnez un passage dans la note pour des suggestions ciblées": "Select a passage in the note for targeted suggestions",
     "Nouvelle note : ": "New note: ",
     "Création impossible : ": "Could not create: ",
     "Travail réel : ": "Actual work: ",

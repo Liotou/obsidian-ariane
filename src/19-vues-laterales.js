@@ -519,6 +519,27 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
     this.affiner = entete.createEl('button', { cls: 'zfa-sugg-refresh', text: tr('✨') });
     this.affiner.setAttribute('aria-label', tr('Affiner par le modèle de langue'));
     this.affiner.onclick = () => this.plugin.majSuggestions(true, true);
+    // Le pendant du clic droit « suggestions pour ce passage » : grisé tant
+    // qu'aucun passage n'est sélectionné dans la note.
+    this.passage = entete.createEl('button', { cls: 'zfa-sugg-refresh zfa-sugg-passage' });
+    obsidian.setIcon(this.passage, 'text-select');
+    this.passage.onclick = () => {
+      const sel = this.plugin.selectionNote();
+      if (sel) this.plugin.suggestionsPourArgument(sel);
+    };
+    this.majBoutonPassage();
+    let prevu = false;
+    const planifier = () => {
+      if (prevu) return;
+      prevu = true;
+      requestAnimationFrame(() => { prevu = false; this.majBoutonPassage(); });
+    };
+    this.registerDomEvent(document, 'selectionchange', planifier);
+    this.registerEvent(this.app.workspace.on('window-open', (_w, win) => {
+      if (win && win.document) this.registerDomEvent(win.document, 'selectionchange', planifier);
+    }));
+    this.registerEvent(this.app.workspace.on('active-leaf-change', planifier));
+    this.registerEvent(this.app.workspace.on('editor-change', planifier));
     this.pause = entete.createEl('button', { cls: 'zfa-sugg-refresh' });
     this.majBoutonPause();
     this.pause.onclick = async () => {
@@ -537,6 +558,16 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
     // À l'ouverture, la vue n'a pas encore ses dimensions : on passe outre le
     // test de visibilité, mais sans lancer le modèle de langue.
     this.plugin.majSuggestions(false, true);
+  }
+
+  majBoutonPassage() {
+    if (!this.passage) return;
+    const actif = !!this.plugin.selectionNote();
+    this.passage.disabled = !actif;
+    this.passage.toggleClass('est-inactif', !actif);
+    this.passage.setAttribute('aria-label', actif
+      ? tr('Suggestions pour le passage sélectionné')
+      : tr('Sélectionnez un passage dans la note pour des suggestions ciblées'));
   }
 
   majBoutonPause() {
