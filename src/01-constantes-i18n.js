@@ -1291,6 +1291,7 @@ const DEFAULT_SETTINGS = {
   tempsRetenirJours: 120,
   // --- Activité réelle hors d'Obsidian (ActivityWatch) --------------------
   activiteActif: false,
+  activiteSafari: true,         // onglets de Safari relevés par Ariane (ActivityWatch ne le peut pas)
   activiteUrl: 'http://localhost:5600',
   // Une règle par ligne : « Catégorie #couleur = motif, motif ». La première
   // qui correspond l'emporte ; « - » écarte. Voir compilerReglesActivite.

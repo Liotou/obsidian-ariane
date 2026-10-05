@@ -161,3 +161,30 @@ test('segmentsActivite : sans extension, l’adresse notée par le relevé des f
   assert.equal(s.length, 1);
   assert.equal(s[0].url, 'https://www.cairn.info/revue.htm');
 });
+
+test('relevé Safari : lignes lues, onglets changés en événements de navigateur', () => {
+  assert.deepEqual(Ariane.lireLigneSafari('T\t1000\thttps://a.fr/x\tTitre\tavec tab'),
+    { ms: 1000, url: 'https://a.fr/x', titre: 'Titre\tavec tab' });
+  assert.deepEqual(Ariane.lireLigneSafari('-\t2000'), { ms: 2000, url: '' });
+  assert.deepEqual(Ariane.lireLigneSafari('E\tREFUS'), { erreur: 'REFUS' });
+  assert.equal(Ariane.lireLigneSafari('bruit'), null);
+  const D0 = Date.parse('2026-10-05T00:00:00Z');
+  const ev = Ariane.ongletsEnEvenements([
+    { debut: D0 - 60000, fin: D0 + 60000, url: 'https://a.fr', titre: 'A' },
+    { debut: D0 + 1000, fin: D0 + 1000, url: 'https://vide.fr' },
+    { debut: D0 + 5000, fin: D0 + 9000, url: '' },
+  ], D0, D0 + 86400000);
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0].duration, 60);
+  assert.equal(ev[0].data.url, 'https://a.fr');
+});
+
+test('segmentsActivite : les onglets Safari relevés par Ariane découpent la fenêtre Safari', () => {
+  const D0 = Date.parse('2026-10-05T00:00:00Z');
+  const fen = [{ timestamp: '2026-10-05T09:00:00Z', duration: 600, data: { app: 'Safari', title: 'Cairn', url: '' } }];
+  const web = Ariane.ongletsEnEvenements([{ debut: D0 + 9 * 3600000, fin: D0 + 9 * 3600000 + 300000,
+    url: 'https://www.cairn.info/x', titre: 'Cairn' }], D0, D0 + 86400000);
+  const s = Ariane.segmentsActivite(fen, null, web, D0, D0 + 86400000);
+  assert.equal(s[0].url, 'https://www.cairn.info/x');
+  assert.equal(s[0].fin - s[0].deb, 300000);
+});

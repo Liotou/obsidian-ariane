@@ -1477,6 +1477,7 @@ const DEFAULT_SETTINGS = {
   tempsRetenirJours: 120,
   // --- Activité réelle hors d'Obsidian (ActivityWatch) --------------------
   activiteActif: false,
+  activiteSafari: true,         // onglets de Safari relevés par Ariane (ActivityWatch ne le peut pas)
   activiteUrl: 'http://localhost:5600',
   // Une règle par ligne : « Catégorie #couleur = motif, motif ». La première
   // qui correspond l'emporte ; « - » écarte. Voir compilerReglesActivite.
@@ -17554,6 +17555,34 @@ const avecActivite = (Base) => class extends Base {
   }
 
   // « AAAA-MM-JJTHH:MM » en heure locale, la forme des créneaux du calendrier.
+  // Les onglets de Safari relevés par Ariane ({ debut, fin, url, titre }, en
+  // millisecondes) en événements au format des seaux de navigateur
+  // d'ActivityWatch, rognés à la journée [d0, d1[ : segmentsActivite les
+  // traite alors comme ceux d'une extension.
+  static ongletsEnEvenements(releves, d0, d1) {
+    const out = [];
+    for (const r of (releves || [])) {
+      const a = Math.max(Number(r && r.debut) || 0, d0);
+      const b = Math.min(Number(r && r.fin) || 0, d1);
+      if (!(b > a) || !r.url) continue;
+      out.push({ timestamp: new Date(a).toISOString(), duration: (b - a) / 1000,
+        data: { url: String(r.url), title: String(r.titre || '') } });
+    }
+    return out;
+  }
+
+  // Une ligne du relevé de Safari : « T \t ms \t url \t titre » (onglet vu)
+  // ou « - \t ms » (Safari fermé), « E \t REFUS » (autorisation refusée).
+  static lireLigneSafari(ligne) {
+    const p = String(ligne || '').split('\t');
+    if (p[0] === 'E') return { erreur: p[1] || '' };
+    const ms = Number(p[1]);
+    if (!Number.isFinite(ms)) return null;
+    if (p[0] === '-') return { ms, url: '' };
+    if (p[0] === 'T') return { ms, url: p[2] || '', titre: p.slice(3).join('\t') };
+    return null;
+  }
+
   static isoLocalMinute(ms) {
     const d = new Date(ms);
     const p = (n) => String(n).padStart(2, '0');
@@ -17699,7 +17728,9 @@ const avecActivite = (Base) => class extends Base {
       return [].concat(...lots.map((l) => (Array.isArray(l) ? l : [])));
     };
     const [fen, afk, web] = await Promise.all([lire(b.fenetre), lire(b.afk), lire(b.web)]);
-    const segs = Ariane.segmentsActivite(fen, b.afk.length ? afk : null, web, d0, d1);
+    // Safari n'a pas d'extension : ses onglets viennent du relevé d'Ariane.
+    const safari = Ariane.ongletsEnEvenements(this.ongletsSafari(), d0, d1);
+    const segs = Ariane.segmentsActivite(fen, b.afk.length ? afk : null, web.concat(safari), d0, d1);
     cache.set(jour, { le: Date.now(), segs });
     return segs;
   }
@@ -17783,7 +17814,133 @@ const avecActivite = (Base) => class extends Base {
   demarrerActivite() {
     this.registerInterval(window.setInterval(() => {
       if (this.activiteDisponible()) this._rafraichirActivite(false);
+      this.demarrerReleveSafari();
     }, 300000));
+    this.demarrerReleveSafari();
+    this.register(() => this.arreterReleveSafari());
+  }
+
+  // ── onglets de Safari ──────────────────────────────────────────────────
+  //  ActivityWatch 0.13 sait lire l'adresse de l'onglet Safari, mais il est
+  //  signé sans le droit de piloter une autre application : macOS refuse ses
+  //  demandes en silence, sans jamais rien proposer. Ariane fait donc ce
+  //  relevé elle-même, depuis Obsidian (qui a ce droit) : un petit script
+  //  osascript qui vit à côté d'Obsidian, lit toutes les cinq secondes
+  //  l'onglet actif de Safari quand Safari tourne (jamais il ne le lance),
+  //  et n'écrit qu'aux changements. Les relevés restent sur l'ordinateur,
+  //  dans onglets-safari.jsonl du dossier du greffon.
+
+  get cheminOngletsSafari() {
+    const dossier = (this.manifest && this.manifest.dir) || '.obsidian/plugins/obsidian-ariane';
+    return dossier + '/onglets-safari.jsonl';
+  }
+
+  // Tous les onglets relevés, celui en cours compris (jusqu'à maintenant).
+  ongletsSafari() {
+    const l = (this._ongletsSafari || []).slice();
+    const c = this._ongletSafariCourant;
+    if (c && c.url) l.push({ debut: c.debut, fin: Date.now(), url: c.url, titre: c.titre });
+    return l;
+  }
+
+  async _chargerOngletsSafari() {
+    if (this._ongletsSafari) return;
+    this._ongletsSafari = [];
+    const a = this.app.vault.adapter;
+    let brut = '';
+    try { if (await a.exists(this.cheminOngletsSafari)) brut = await a.read(this.cheminOngletsSafari); } catch (e) { brut = ''; }
+    // Deux mois suffisent au calendrier.
+    const seuil = Date.now() - 62 * 86400000;
+    for (const l of brut.split('\n')) {
+      if (!l.trim()) continue;
+      try {
+        const x = JSON.parse(l);
+        if (x && x.fin > seuil && x.url) this._ongletsSafari.push(x);
+      } catch (e) { /* ligne abîmée : passée */ }
+    }
+  }
+
+  _noterLigneSafari(ligne) {
+    const x = Ariane.lireLigneSafari(ligne);
+    if (!x) return;
+    if (x.erreur) {
+      if (!this._safariRefusSignale) {
+        this._safariRefusSignale = true;
+        new obsidian.Notice(tr('Ariane ne peut pas lire les onglets de Safari : autorisez Obsidian à contrôler Safari (Réglages Système > Confidentialité et sécurité > Automatisation).'), 15000);
+      }
+      return;
+    }
+    const c = this._ongletSafariCourant;
+    if (c && c.url && x.ms - c.debut >= 5000) {
+      const rec = { debut: c.debut, fin: x.ms, url: c.url, titre: c.titre };
+      this._ongletsSafari.push(rec);
+      const a = this.app.vault.adapter;
+      const p = this.cheminOngletsSafari;
+      (async () => {
+        const l = JSON.stringify(rec) + '\n';
+        if (await a.exists(p)) await a.append(p, l); else await a.write(p, l);
+      })().catch((e) => console.warn('[Ariane] onglets Safari :', e));
+    }
+    this._ongletSafariCourant = x.url ? { debut: x.ms, url: x.url, titre: x.titre || '' } : null;
+  }
+
+  async demarrerReleveSafari() {
+    if (this._releveSafari || !this.activiteDisponible() || !obsidian.Platform.isMacOS) return;
+    if (this.settings.activiteSafari === false) return;
+    await this._chargerOngletsSafari();
+    const script = [
+      'var safari = Application("Safari");',
+      'var sortie = $.NSFileHandle.fileHandleWithStandardOutput;',
+      'function ecrire(s) { sortie.writeData($(s + "\\n").dataUsingEncoding($.NSUTF8StringEncoding)); }',
+      'var avant = null;',
+      'while (true) {',
+      '  var cle = "-";',
+      '  try {',
+      '    if (safari.running() && safari.windows.length) {',
+      '      var t = safari.windows[0].currentTab();',
+      '      cle = "T\\t" + (t.url() || "") + "\\t" + String(t.name() || "").replace(/[\\t\\n]/g, " ");',
+      '    }',
+      '  } catch (e) {',
+      '    if (/-1743|not allowed|autoris/i.test(String(e))) { ecrire("E\\tREFUS"); delay(120); continue; }',
+      '  }',
+      '  if (cle !== avant) {',
+      '    var i = cle.indexOf("\\t");',
+      '    ecrire(i < 0 ? cle + "\\t" + Date.now() : cle.slice(0, i) + "\\t" + Date.now() + cle.slice(i));',
+      '    avant = cle;',
+      '  }',
+      '  delay(5);',
+      '}',
+    ].join('\n');
+    let enfant;
+    try {
+      enfant = require('child_process').spawn('osascript', ['-l', 'JavaScript', '-e', script],
+        { stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch (e) { console.warn('[Ariane] relevé Safari :', e); return; }
+    this._releveSafari = enfant;
+    let tampon = '';
+    enfant.stdout.setEncoding('utf8');
+    enfant.stdout.on('data', (morceau) => {
+      tampon += morceau;
+      let i;
+      while ((i = tampon.indexOf('\n')) >= 0) {
+        const l = tampon.slice(0, i);
+        tampon = tampon.slice(i + 1);
+        this._noterLigneSafari(l);
+      }
+    });
+    enfant.on('exit', () => {
+      if (this._releveSafari === enfant) this._releveSafari = null;
+      // L'onglet en cours se clôt ; le relevé repart au prochain battement
+      // de cinq minutes s'il le faut.
+      this._noterLigneSafari('-\t' + Date.now());
+    });
+  }
+
+  arreterReleveSafari() {
+    const e = this._releveSafari;
+    this._releveSafari = null;
+    if (e) { try { e.kill(); } catch (x) { /* déjà fini */ } }
+    this._noterLigneSafari('-\t' + Date.now());
   }
 
   // Bouton « Tester » des réglages : ce que le serveur expose, en clair.
@@ -17807,7 +17964,8 @@ const avecActivite = (Base) => class extends Base {
         }
       } catch (e) { /* relevé illisible : on n'en dit rien */ }
       let web;
-      if (b.web.length) web = b.web.length + tr(' extension(s) de navigateur.');
+      if (this.ongletsSafari().length) web = tr('onglets de Safari relevés par Ariane.');
+      else if (b.web.length) web = b.web.length + tr(' extension(s) de navigateur.');
       else if (avecAdresse) web = tr('adresses des onglets lues par le relevé des fenêtres.');
       else if (nav) web = tr('onglets du navigateur sans adresse : autorisez ActivityWatch à piloter le navigateur (Réglages Système > Confidentialité et sécurité > Automatisation).');
       else web = tr('aucun navigateur relevé.');
