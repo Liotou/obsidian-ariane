@@ -151,3 +151,13 @@ test('couleurActivite : stable et prise dans la palette', () => {
   assert.equal(Ariane.couleurActivite('Lecture'), Ariane.couleurActivite('Lecture'));
   assert.match(Ariane.couleurActivite('Lecture'), /^#[0-9a-f]{6}$/);
 });
+
+test('segmentsActivite : sans extension, l’adresse notée par le relevé des fenêtres est reprise (Safari)', () => {
+  const D0 = Date.parse('2026-10-05T00:00:00Z');
+  const D1 = D0 + 24 * 3600000;
+  const fen = [{ timestamp: '2026-10-05T09:00:00Z', duration: 600,
+    data: { app: 'Safari', title: 'Article', url: 'https://www.cairn.info/revue.htm' } }];
+  const s = Ariane.segmentsActivite(fen, null, [], D0, D1);
+  assert.equal(s.length, 1);
+  assert.equal(s[0].url, 'https://www.cairn.info/revue.htm');
+});

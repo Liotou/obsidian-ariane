@@ -17428,10 +17428,14 @@ const avecActivite = (Base) => class extends Base {
       const d = (e && e.data) || {};
       const app = String(d.app || '');
       const titre = String(d.title || '');
+      // Sur macOS, le relevé des fenêtres lit lui-même l'adresse de l'onglet
+      // de Safari ou de Chrome (avec l'autorisation « Automatisation ») :
+      // c'est la seule source pour Safari, qui n'a pas d'extension.
+      const urlFenetre = String(d.url || '');
       const morceaux = actifs ? Ariane.couperParIntervalles(a, b, actifs) : [[a, b]];
       for (const [x, y] of morceaux) {
         if (!onglets.length || !navigateur.test(app)) {
-          out.push({ deb: x, fin: y, app, titre, url: '' });
+          out.push({ deb: x, fin: y, app, titre, url: urlFenetre });
           continue;
         }
         let cur = x;
@@ -17440,11 +17444,11 @@ const avecActivite = (Base) => class extends Base {
           if (w.a >= y) break;
           const s = Math.max(cur, w.a);
           const t = Math.min(y, w.b);
-          if (s > cur) out.push({ deb: cur, fin: s, app, titre, url: '' });
+          if (s > cur) out.push({ deb: cur, fin: s, app, titre, url: urlFenetre });
           out.push({ deb: s, fin: t, app, titre: w.titre || titre, url: w.url });
           cur = t;
         }
-        if (cur < y) out.push({ deb: cur, fin: y, app, titre, url: '' });
+        if (cur < y) out.push({ deb: cur, fin: y, app, titre, url: urlFenetre });
       }
     }
     return out.sort((p, q) => p.deb - q.deb);
@@ -17789,10 +17793,27 @@ const avecActivite = (Base) => class extends Base {
       if (!b.fenetre.length) {
         return tr("ActivityWatch répond, mais aucun seau de fenêtres n'existe : aw-watcher-window tourne-t-il ?");
       }
+      // Les adresses des onglets peuvent venir du relevé des fenêtres (Safari,
+      // Chrome sur macOS) : on regarde ce qu'il a noté récemment.
+      let nav = 0;
+      let avecAdresse = 0;
+      try {
+        const ev = await this._awGet('/api/0/buckets/' + encodeURIComponent(b.fenetre[0]) + '/events?limit=300');
+        for (const e of (ev || [])) {
+          const d = (e && e.data) || {};
+          if (!/chrome|chromium|safari|firefox|arc\b|brave|edge|vivaldi|opera|orion|zen\b/i.test(String(d.app || ''))) continue;
+          nav += 1;
+          if (String(d.url || '').trim()) avecAdresse += 1;
+        }
+      } catch (e) { /* relevé illisible : on n'en dit rien */ }
+      let web;
+      if (b.web.length) web = b.web.length + tr(' extension(s) de navigateur.');
+      else if (avecAdresse) web = tr('adresses des onglets lues par le relevé des fenêtres.');
+      else if (nav) web = tr('onglets du navigateur sans adresse : autorisez ActivityWatch à piloter le navigateur (Réglages Système > Confidentialité et sécurité > Automatisation).');
+      else web = tr('aucun navigateur relevé.');
       return tr('ActivityWatch joint') + (b.hote ? ' (' + b.hote + ')' : '') + ' : '
         + b.fenetre.length + tr(' seau(x) de fenêtres, ')
-        + (b.afk.length ? tr("absence détectée, ") : tr("pas de seau d'absence, "))
-        + (b.web.length ? b.web.length + tr(' navigateur(s).') : tr('aucun navigateur.'));
+        + (b.afk.length ? tr("absence détectée, ") : tr("pas de seau d'absence, ")) + web;
     } catch (e) {
       return tr('ActivityWatch injoignable : ') + ((e && e.message) || String(e));
     }
