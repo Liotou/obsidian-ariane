@@ -483,6 +483,45 @@ const avecActivite = (Base) => class extends Base {
     return out;
   }
 
+  // Le bilan d'un jour pour le tableau de bord, à partir du rail du réel :
+  // `obs` = [{ a, b, ref }] (Obsidian, minutes depuis minuit), `ext` =
+  // [{ a, b, bloc }] (ActivityWatch). Le temps hors Obsidian d'une pièce est
+  // son temps ACTIF (au prorata du créneau), réparti entre les tâches qui
+  // l'ont reçu en rattachement ; ce qui reste, hors personnel, est « non
+  // rattaché ».
+  static bilanJourReel(obs, ext) {
+    const r = { obsidianMin: 0, externeMin: 0, personnelMin: 0, nonRattacheMin: 0,
+      parCategorie: new Map(), parTache: new Map(), blocsNonRattaches: [] };
+    const ajouter = (m, cle, v, extra) => {
+      const x = m.get(cle) || Object.assign({ min: 0 }, extra || {});
+      x.min += v;
+      m.set(cle, x);
+    };
+    const vus = new Set();
+    for (const p of Ariane.fusionnerRailReel(obs, ext)) {
+      const duree = p.b - p.a;
+      if (p.source === 'obsidian') {
+        r.obsidianMin += duree;
+        if (p.item.ref) ajouter(r.parTache, p.item.ref, duree);
+        continue;
+      }
+      const bl = p.item.bloc;
+      const mur = Math.max(1, p.item.b - p.item.a);
+      const actif = duree * Math.min(1, (Number(bl.actifMin) || 0) / mur);
+      const perso = !!(bl.ia && bl.ia.personnel);
+      if (perso) { r.personnelMin += actif; continue; }
+      r.externeMin += actif;
+      ajouter(r.parCategorie, (bl.ia && bl.ia.categorie) || bl.categorie || '?', actif, { couleur: bl.couleur });
+      const ratt = (bl.rattache || []);
+      const totalRatt = ratt.reduce((sm, x) => sm + (Number(x.min) || 0), 0);
+      const part = Math.min(1, totalRatt / Math.max(1, Number(bl.actifMin) || 1));
+      for (const x of ratt) ajouter(r.parTache, x.ref, actif * part * ((Number(x.min) || 0) / Math.max(1, totalRatt)));
+      r.nonRattacheMin += actif * (1 - part);
+      if (part < 1 && !vus.has(bl)) { vus.add(bl); r.blocsNonRattaches.push(bl); }
+    }
+    return r;
+  }
+
   // ── rattachement à des tâches : fonctions pures ─────────────────────────
 
   // Minutes de recouvrement entre deux intervalles « AAAA-MM-JJTHH:MM ».
@@ -1005,6 +1044,64 @@ const avecActivite = (Base) => class extends Base {
     });
     new obsidian.Notice(deja ? tr('Note déjà liée à ') + ref + '.' : tr('Note liée à ') + ref + '.');
     return true;
+  }
+
+  // Le travail réel de la semaine en cours, pour le tableau de bord : par
+  // jour (Obsidian, hors Obsidian, personnel), par catégorie, par tâche, et
+  // ce qui reste à rattacher. Rend null quand aucune source n'est active.
+  async donneesTempsReel(lundi, auj) {
+    const avecObsidian = this.settings.calTravailReel !== false && !!this.sessionsTravail;
+    const avecExterne = this.activiteDisponible();
+    if (!avecObsidian && !avecExterne) return null;
+    const jours = [];
+    for (let i = 0; i < 7; i++) {
+      const j = Ariane.decalerJour(lundi, i);
+      if (j <= auj) jours.push(j);
+    }
+    const taches = this.tachesPourGantt();
+    const parRef = new Map(taches.map((t) => [t.ref, t]));
+    const refsDeChemin = new Map();
+    for (const t of taches) {
+      if (!t.fichier) continue;
+      for (const c of [t.fichier.path].concat(this._cheminsLiesTache(t))) {
+        if (!refsDeChemin.has(c)) refsDeChemin.set(c, t.ref);
+      }
+    }
+    const sessions = avecObsidian ? this.sessionsTravail() : [];
+    let blocs = new Map();
+    if (avecExterne) { try { blocs = await this.activitePlage(jours); } catch (e) { blocs = new Map(); } }
+    const minutesDe = (iso, jour) => (String(iso).slice(0, 10) < jour ? 0
+      : String(iso).slice(0, 10) > jour ? 24 * 60
+        : Number(String(iso).slice(11, 13)) * 60 + Number(String(iso).slice(14, 16)));
+    const parJour = [];
+    const cats = new Map();
+    const parTache = new Map();
+    const aRattacher = [];
+    for (const jour of jours) {
+      const obs = Ariane.sessionsDuJour(jour, sessions, 1).map((x) => ({ a: x.a, b: x.b, ref: refsDeChemin.get(x.chemin) || '' }));
+      const ext = (blocs.get(jour) || []).map((bl) => ({ a: minutesDe(bl.debut, jour), b: minutesDe(bl.fin, jour), bloc: bl }))
+        .filter((e) => e.b > e.a);
+      const r = Ariane.bilanJourReel(obs, ext);
+      parJour.push({ jour, obsidian: Math.round(r.obsidianMin), externe: Math.round(r.externeMin),
+        personnel: Math.round(r.personnelMin) });
+      for (const [nom, x] of r.parCategorie) {
+        const c = cats.get(nom) || { nom, couleur: x.couleur, min: 0 };
+        c.min += x.min;
+        cats.set(nom, c);
+      }
+      for (const [ref, x] of r.parTache) parTache.set(ref, (parTache.get(ref) || 0) + x.min);
+      if (r.nonRattacheMin >= 5) aRattacher.push({ jour, min: Math.round(r.nonRattacheMin), blocs: r.blocsNonRattaches });
+    }
+    const somme = (k) => parJour.reduce((sm, j) => sm + j[k], 0);
+    return {
+      avecObsidian, avecExterne, parJour,
+      obsidian: somme('obsidian'), externe: somme('externe'), personnel: somme('personnel'),
+      parCategorie: [...cats.values()].map((c) => Object.assign(c, { min: Math.round(c.min) }))
+        .filter((c) => c.min > 0).sort((a, b) => b.min - a.min),
+      parTache: [...parTache].map(([ref, min]) => ({ ref, min: Math.round(min), tache: parRef.get(ref) }))
+        .filter((x) => x.tache && x.min > 0).sort((a, b) => b.min - a.min).slice(0, 8),
+      aRattacher,
+    };
   }
 
   // Tâches actives, pour les suggestions.

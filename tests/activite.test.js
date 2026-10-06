@@ -301,3 +301,20 @@ test('rail du réel : Obsidian prime, ActivityWatch comble le reste, miettes éc
   assert.deepEqual(Ariane.fusionnerRailReel([], []), []);
   assert.deepEqual(Ariane.couperParIntervallesInverses(0, 10, [[2, 4], [6, 12]]), [[0, 2], [4, 6]]);
 });
+
+test('bilan d’un jour : Obsidian, hors Obsidian au temps actif, rattaché, personnel', () => {
+  const blocA = { actifMin: 30, categorie: 'Messagerie', couleur: '#888888', ia: { categorie: 'Enseignement' },
+    rattache: [{ ref: 'T020', min: 15 }] };
+  const blocP = { actifMin: 20, categorie: 'Autre', ia: { categorie: 'Personnel et distraction', personnel: true } };
+  const r = Ariane.bilanJourReel(
+    [{ a: 540, b: 570, ref: 'T012' }],
+    [{ a: 570, b: 630, bloc: blocA }, { a: 700, b: 720, bloc: blocP }]);
+  assert.equal(r.obsidianMin, 30);
+  assert.equal(r.externeMin, 30);
+  assert.equal(r.personnelMin, 20);
+  assert.equal(r.parTache.get('T012').min, 30);
+  assert.equal(r.parTache.get('T020').min, 15);
+  assert.equal(r.nonRattacheMin, 15);
+  assert.equal(r.parCategorie.get('Enseignement').min, 30);
+  assert.deepEqual(r.blocsNonRattaches, [blocA]);
+});

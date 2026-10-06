@@ -4018,3 +4018,22 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 @media (prefers-reduced-motion: reduce) {
   .zfa-cal-reel.est-obsidian, .zfa-cal-reel.est-externe { transition: none; }
 }
+
+/* Tableau de bord : travail réel (Obsidian, hors Obsidian, personnel). */
+.zfa-orga { --zfa-orga-obs: var(--interactive-accent); --zfa-orga-ext: color-mix(in srgb, var(--interactive-accent) 45%, transparent); --zfa-orga-perso: #b5527a; }
+.zfa-orga-reel .zfa-orga-jour.est-futur { opacity: 0.35; }
+.zfa-orga-reel-p.est-obs { background: var(--zfa-orga-obs); }
+.zfa-orga-reel-p.est-ext { background: var(--zfa-orga-ext); }
+.zfa-orga-reel-p.est-perso { background: repeating-linear-gradient(135deg, var(--zfa-orga-perso) 0 3px, color-mix(in srgb, var(--zfa-orga-perso) 35%, transparent) 3px 6px); }
+.zfa-orga-reel-prevu { position: absolute; left: -3px; right: -3px; height: 0; border-top: 2px dashed var(--text-muted); }
+.zfa-orga-reel .zfa-orga-jour-barre { overflow: visible; }
+.zfa-orga-cle.est-obs::before { background: var(--zfa-orga-obs); }
+.zfa-orga-cle.est-ext::before { background: var(--zfa-orga-ext); }
+.zfa-orga-cle.est-perso::before { background: repeating-linear-gradient(135deg, var(--zfa-orga-perso) 0 2px, transparent 2px 4px); }
+.zfa-orga-cle.est-prevu::before { height: 0; border-top: 2px dashed var(--text-muted); border-radius: 0; }
+.zfa-orga-sous-titre { margin: 14px 0 4px; font-size: var(--font-ui-smaller); font-weight: var(--font-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.zfa-orga-ratt { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--background-modifier-border); }
+.zfa-orga-ratt-jour { font-weight: var(--font-medium); }
+.zfa-orga-ratt-bt { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-ui-smaller); }
+.zfa-orga-ratt-ic { display: inline-flex; }
+.zfa-orga-ratt-ic svg { width: 12px; height: 12px; }

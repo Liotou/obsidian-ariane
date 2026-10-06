@@ -2476,6 +2476,9 @@ const avecTaches = (Base) => class extends Base {
     });
     let evenements = [];
     try { evenements = (await this.evenementsFond(lundi, Ariane.decalerJour(lundi, 7))) || []; } catch (e) { evenements = []; }
+    // Le travail réel (dans Obsidian et hors d'Obsidian), s'il est relevé.
+    let reel = null;
+    try { reel = this.donneesTempsReel ? await this.donneesTempsReel(lundi, auj) : null; } catch (e) { reel = null; }
     const d = new Date();
     const s = this.settings;
     const maintenant = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
@@ -2497,6 +2500,7 @@ const avecTaches = (Base) => class extends Base {
       await this.saveSettings();
     }
     tab.propositions = n.gardees;
+    tab.reel = reel;
     return tab;
   }
 
