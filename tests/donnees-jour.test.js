@@ -237,6 +237,7 @@ test('Apple Notes : une note de mot mise en forme pour le coffre', () => {
   assert.equal(m.classe, 'n. f.');
   assert.equal(m.definition, 'Étude des variations relatives.');
   assert.match(m.contenu, /^---\nType: mot\nMot: "Allométrie"\nClasse: "n. f."\nDéfinition: "Étude des variations relatives\."\napple-notes-id: "x-coredata:\/\/A\/ICNote\/p1"/);
+  assert.match(m.contenu, /\nlocked: true\n---\n/, 'la copie est verrouillée dans Obsidian');
   assert.match(m.contenu, /\n# Allométrie\n\n\*\*Allométrie\*\* \(n\. f\.\) : Étude des variations relatives\.\n\n\*\*Exemple\*\* : « Une phrase\. »\n\n\*\*Étymologie\*\* : Du grec allos\.\n/);
   assert.equal(Ariane.noteMotDepuisApple({ nom: 'A/B: c?', texte: '' }).nom, 'A B c');
   const c = Ariane.noteMotDepuisApple({ nom: 'Contingence', texte: 'Contingence\nContingence (épistémologie) (n. f.) : Ce qui aurait pu être autrement.' });

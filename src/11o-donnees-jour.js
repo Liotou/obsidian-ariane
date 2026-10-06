@@ -673,9 +673,9 @@ const avecDonneesJour = (Base) => class extends Base {
     const nom = titre.replace(/[\\/:*?"<>|#^[\]]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Sans titre';
     const fm = ['---', 'Type: mot', 'Mot: ' + JSON.stringify(titre), 'Classe: ' + JSON.stringify(classe),
       'Définition: ' + JSON.stringify(definition), 'apple-notes-id: ' + JSON.stringify(String(n.id || '')),
-      'apple-notes-modifie: ' + JSON.stringify(String(n.modifie || '')), '---'];
+      'apple-notes-modifie: ' + JSON.stringify(String(n.modifie || '')), 'locked: true', '---'];
     return { nom, mot: titre, classe, definition,
-      contenu: fm.concat(['%% Copie d\'Apple Notes (dossier des mots), réécrite à chaque changement : modifiez l\'original. %%', '',
+      contenu: fm.concat(['%% Copie verrouillée d\'Apple Notes (dossier des mots), réécrite à chaque changement : modifiez l\'original. %%', '',
         '# ' + titre, ''], corps.flatMap((p) => [p, '']), []).join('\n') };
   }
 
@@ -705,7 +705,9 @@ const avecDonneesJour = (Base) => class extends Base {
       for (const f of v.getMarkdownFiles()) {
         if (!f.path.startsWith(cible + '/')) continue;
         const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-        if (fm['apple-notes-id']) copies.set(String(fm['apple-notes-id']), { f, modifie: String(fm['apple-notes-modifie'] || '') });
+        if (fm['apple-notes-id']) {
+          copies.set(String(fm['apple-notes-id']), { f, modifie: String(fm['apple-notes-modifie'] || ''), locked: fm.locked === true });
+        }
       }
       let crees = 0;
       let majs = 0;
@@ -716,7 +718,8 @@ const avecDonneesJour = (Base) => class extends Base {
         copies.delete(String(n.id));
         if (ex) {
           pris.add(ex.f.path);
-          if (ex.modifie === String(n.modifie || '')) continue;
+          // Inchangée et déjà verrouillée : rien à faire.
+          if (ex.modifie === String(n.modifie || '') && ex.locked) continue;
           this.marquerEcriture(ex.f.path);
           await v.modify(ex.f, m.contenu);
           majs++;
