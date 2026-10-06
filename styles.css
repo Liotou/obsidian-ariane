@@ -4037,3 +4037,6 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-orga-ratt-bt { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-ui-smaller); }
 .zfa-orga-ratt-ic { display: inline-flex; }
 .zfa-orga-ratt-ic svg { width: 12px; height: 12px; }
+/* Le créneau tenu suit le curseur sans retard : pas de transition sur sa
+   position (celle du survol le faisait traîner derrière la souris). */
+.zfa-cal-bloc.zfa-cal-bloc-flotte { transition: none; }

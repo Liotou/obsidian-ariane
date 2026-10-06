@@ -32074,6 +32074,12 @@ class MoteurCalendrier extends MoteurVue {
     // Pendant la retombée d'un geste (écriture d'un créneau), les demandes de
     // redessin sont mémorisées au lieu d'être exécutées : voir _coalesceRedessin.
     if (this._coalesce) { this._redessinDiffere = true; return; }
+    // Pendant le geste lui-même (un créneau tenu à la souris), un redessin
+    // remplacerait le bloc tenu par un neuf, immobile : le geste continuerait
+    // sur l'ancien, hors de l'écran, et le créneau paraîtrait figé jusqu'au
+    // lâcher. Toute demande (base rafraîchie par Obsidian, relecture
+    // d'ActivityWatch…) attend donc la fin du geste.
+    if (this._gesteCal) { this._coalesceRedessin(200); return; }
     try { this.dessinerVraiment(); } catch (e) {
       console.error('[Ariane] calendrier :', e);
       this.racine.empty();
