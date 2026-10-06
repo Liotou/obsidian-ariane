@@ -11704,6 +11704,19 @@ const avecFriseStatiques = (Base) => class extends Base {
     return out;
   }
 
+  // Le travail fait pendant un créneau de tâche : les minutes dans ses notes
+  // (`chemins`), plus le temps hors Obsidian rattaché à la tâche
+  // (`tempsReel`), au prorata de ce qui tombe dans le créneau. La jauge du
+  // calendrier et le bilan de la journée comptent de la même façon.
+  static minutesFaitesCreneau(debut, fin, sessions, chemins, tempsReel) {
+    let fait = Ariane.minutesTravaillees(debut, fin, sessions, chemins);
+    for (const r of (tempsReel || [])) {
+      const dureeR = Math.max(1, Ariane.recouvrementMin(r.debut, r.fin, r.debut, r.fin));
+      fait += Math.round(r.min * Ariane.recouvrementMin(debut, fin, r.debut, r.fin) / dureeR);
+    }
+    return fait;
+  }
+
   // Minutes réellement travaillées pendant [debut, fin] dans l'une des notes
   // `chemins` : la jauge d'un créneau. Les recouvrements ne comptent qu'une fois.
   static minutesTravaillees(debut, fin, sessions, chemins) {
@@ -20061,21 +20074,72 @@ const avecDonneesJour = (Base) => class extends Base {
         }
       }
     }
-    // Les tâches : terminées, créées, et les créneaux prévus.
-    const o = await this.donneesJour(jour);
-    const terminees = (o.taches || []).filter((x) => x.champ === 'statut' && x.apres === 'terminée');
-    const parRef = new Map(this.tachesPourGantt().map((t) => [t.ref, t]));
-    if (terminees.length) {
-      l.push('', 'TÂCHES TERMINÉES :');
-      for (const x of terminees) l.push('- ' + x.ref + ' : ' + ((parRef.get(x.ref) || {}).intitule || ''));
-    }
-    const prevus = [];
-    for (const t of parRef.values()) {
-      for (const c of Ariane.creneauxDeTache([].concat(t.creneaux || []))) {
-        if (c.debut.slice(0, 10) === jour) prevus.push(c.debut.slice(11, 16) + ' à ' + c.fin.slice(11, 16) + ' : ' + t.intitule);
+    // Les événements du calendrier (Apple Agenda) : cours, réunions,
+    // rendez-vous. Ceux qui portent un créneau de tâche n'y sont pas.
+    let evts = [];
+    try { evts = (await this.evenementsFond(jour, Ariane.decalerJour(jour, 1))) || []; } catch (e) { evts = []; }
+    evts = evts.filter((e) => String(e.debut).slice(0, 10) <= jour && String(e.fin || e.debut).slice(0, 10) >= jour)
+      .sort((a, b) => String(a.debut).localeCompare(String(b.debut)));
+    if (evts.length) {
+      l.push('', 'ÉVÉNEMENTS DU CALENDRIER :');
+      for (const e of evts.slice(0, 15)) {
+        const quand = e.allDay ? 'toute la journée' : String(e.debut).slice(11, 16) + ' à ' + String(e.fin).slice(11, 16);
+        const plus = [e.calendrier ? 'agenda ' + e.calendrier : '', e.lieu ? 'lieu : ' + e.lieu : '',
+          (e.participants || []).length ? (e.participants.length + ' participant' + (e.participants.length > 1 ? 's' : '')) : '']
+          .filter(Boolean).join(', ');
+        l.push('- ' + quand + ' : ' + e.titre + (plus ? ' (' + plus + ')' : ''));
       }
     }
-    if (prevus.length) { l.push('', 'CRÉNEAUX PRÉVUS :'); for (const p of prevus.sort()) l.push('- ' + p); }
+    // Les tâches : terminées, avancées, et les créneaux prévus avec ce qui y
+    // a été fait (même calcul que la jauge du calendrier).
+    const o = await this.donneesJour(jour);
+    const taches = this.tachesPourGantt();
+    const parRef = new Map(taches.map((t) => [t.ref, t]));
+    const nomTache = (ref) => ref + ' ' + ((parRef.get(ref) || {}).intitule || '');
+    const terminees = (o.taches || []).filter((x) => x.champ === 'statut' && x.apres === 'terminée');
+    if (terminees.length) {
+      l.push('', 'TÂCHES TERMINÉES :');
+      for (const x of terminees) l.push('- ' + nomTache(x.ref));
+    }
+    const avancees = new Map();
+    for (const x of (o.taches || [])) {
+      if (x.champ !== 'avancement') continue;
+      const a = avancees.get(x.ref);
+      avancees.set(x.ref, { avant: a ? a.avant : x.avant, apres: x.apres });
+    }
+    const lignesAv = [...avancees].filter(([, v]) => Number(v.apres) !== Number(v.avant))
+      .map(([ref, v]) => '- ' + nomTache(ref) + ' : de ' + (Number(v.avant) || 0) + ' % à ' + (Number(v.apres) || 0) + ' %');
+    if (lignesAv.length) { l.push('', 'AVANCEMENT DÉCLARÉ :'); l.push(...lignesAv); }
+    const sessions = this.sessionsTravail ? this.sessionsTravail() : [];
+    const maintenant = Ariane.instantSession(new Date());
+    const prevus = [];
+    for (const t of taches) {
+      const chemins = t.fichier ? [t.fichier.path].concat(this._cheminsLiesTache(t)) : [];
+      for (const c of Ariane.creneauxDeTache([].concat(t.creneaux || []))) {
+        if (c.debut.slice(0, 10) !== jour) continue;
+        const prevu = Ariane.dureeCreneauMin(c.debut, c.fin);
+        let etat;
+        if (c.debut > maintenant) {
+          etat = 'à venir';
+        } else {
+          const fait = Ariane.minutesFaitesCreneau(c.debut, c.fin, sessions, chemins, t.tempsReel);
+          const part = prevu ? fait / prevu : 0;
+          etat = (c.fin > maintenant ? 'en cours, ' : '')
+            + (fait <= 0 ? 'aucun travail relevé'
+              : dureeLisible(fait) + ' faites sur ' + dureeLisible(prevu)
+                + (part >= 0.8 ? ' (tenu)' : part >= 0.3 ? ' (en partie)' : ' (à peine entamé)'));
+        }
+        prevus.push(c.debut.slice(11, 16) + ' à ' + c.fin.slice(11, 16) + ' : ' + t.ref + ' ' + t.intitule
+          + ' (statut ' + (t.statut || 'à faire') + ') : ' + etat);
+      }
+    }
+    if (prevus.length) { l.push('', 'CRÉNEAUX DE TÂCHES PRÉVUS ET RÉALISÉ :'); for (const p of prevus.sort()) l.push('- ' + p); }
+    // Les échéances du jour restées ouvertes.
+    const dues = taches.filter((t) => t.echeance === jour && t.statut !== 'terminée' && t.statut !== 'abandonnée');
+    if (dues.length) {
+      l.push('', 'ÉCHÉANCES DU JOUR NON TERMINÉES :');
+      for (const t of dues) l.push('- ' + t.ref + ' ' + t.intitule + (t.jalon ? ' (jalon)' : '') + ', statut ' + (t.statut || 'à faire'));
+    }
     // Les ajouts automatiques (synchronisations) réduits à une ligne par lot :
     // ce n'est pas du travail, et des dizaines de titres noieraient le reste.
     const groupes = Ariane.grouperAjoutsAuto((o.chronologie || []).slice().sort((a, b) => b.t - a.t));
@@ -20102,7 +20166,7 @@ const avecDonneesJour = (Base) => class extends Base {
       'CONSIGNES :',
       '- Un texte continu de 120 à 200 mots, en français, qui s\'adresse à lui en le vouvoyant et en l\'appelant « Monsieur », sur un ton posé et bienveillant, comme un majordome qui fait le point du soir.',
       '- Il sera lu à voix haute : pas de liste, pas de titre, pas de markdown, pas de symboles ni d\'abréviations ; les durées en toutes lettres (« deux heures et quart »).',
-      '- Dis d\'abord ce qui a été accompli (tâches terminées, travail de fond, cours, réunions), puis où le temps est allé, puis, avec tact et sans jugement, les moments de distraction s\'il y en a eu. Termine par une phrase brève sur la suite (ce qui reste prévu ou à reprendre).',
+      '- Dis d\'abord ce qui a été accompli (tâches terminées ou avancées, travail de fond, cours, réunions et rendez-vous du calendrier déjà passés), puis où le temps est allé, en rapprochant le prévu du réalisé : les créneaux tenus, ceux faits en partie, ceux laissés de côté. Puis, avec tact et sans jugement, les moments de distraction s\'il y en a eu. Termine par une phrase brève sur la suite (échéances restées ouvertes, créneaux ou événements encore à venir, ce qui est à reprendre).',
       '- Uniquement ce que dit le relevé : n\'invente aucune activité, aucun nom, aucun chiffre.',
       '- Pas de tiret cadratin ni demi-cadratin.',
       '',
@@ -35656,12 +35720,8 @@ class MoteurCalendrier extends MoteurVue {
       // Le travail fait : dans les notes de la tâche, plus le temps hors
       // Obsidian qui lui est rattaché, au prorata de ce qui tombe dans le
       // créneau.
-      let fait = Ariane.minutesTravaillees(debut, fin, sessions, cheminsDe.get(ref) || []);
       const tR = parRef.get(ref);
-      for (const r of ((tR && tR.tempsReel) || [])) {
-        const dureeR = Math.max(1, Ariane.recouvrementMin(r.debut, r.fin, r.debut, r.fin));
-        fait += Math.round(r.min * Ariane.recouvrementMin(debut, fin, r.debut, r.fin) / dureeR);
-      }
+      const fait = Ariane.minutesFaitesCreneau(debut, fin, sessions, cheminsDe.get(ref) || [], tR && tR.tempsReel);
       if (fait <= 0) continue;
       const prevu = Ariane.dureeCreneauMin(debut, fin);
       const j = bloc.createDiv({ cls: 'zfa-cal-jauge' });

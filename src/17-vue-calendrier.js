@@ -2860,12 +2860,8 @@ class MoteurCalendrier extends MoteurVue {
       // Le travail fait : dans les notes de la tâche, plus le temps hors
       // Obsidian qui lui est rattaché, au prorata de ce qui tombe dans le
       // créneau.
-      let fait = Ariane.minutesTravaillees(debut, fin, sessions, cheminsDe.get(ref) || []);
       const tR = parRef.get(ref);
-      for (const r of ((tR && tR.tempsReel) || [])) {
-        const dureeR = Math.max(1, Ariane.recouvrementMin(r.debut, r.fin, r.debut, r.fin));
-        fait += Math.round(r.min * Ariane.recouvrementMin(debut, fin, r.debut, r.fin) / dureeR);
-      }
+      const fait = Ariane.minutesFaitesCreneau(debut, fin, sessions, cheminsDe.get(ref) || [], tR && tR.tempsReel);
       if (fait <= 0) continue;
       const prevu = Ariane.dureeCreneauMin(debut, fin);
       const j = bloc.createDiv({ cls: 'zfa-cal-jauge' });

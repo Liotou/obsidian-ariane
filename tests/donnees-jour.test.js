@@ -154,3 +154,31 @@ test('temps du jour : en minutes, du plus long au plus court, une minute au moin
   const g = greffon(disque, { tempsHistorique: { '2026-10-05': { 'a.md': 900 } } });
   assert.deepEqual(await g.tempsDuJour('2026-10-05'), [{ chemin: 'c.md', min: 30 }, { chemin: 'a.md', min: 15 }]);
 });
+
+test('bilan : événements du calendrier, créneaux tenus ou non, échéances ouvertes', async () => {
+  const jour = '2026-10-05'; // un jour passé : tous les créneaux sont révolus
+  const g = greffon({});
+  g.donneesTempsReel = async () => null;
+  g.activiteDisponible = () => false;
+  g._cheminsLiesTache = () => [];
+  g.sessionsTravail = () => [
+    { chemin: 'T1.md', debut: jour + 'T09:00:00', fin: jour + 'T09:50:00' },
+    { chemin: 'T2.md', debut: jour + 'T14:00:00', fin: jour + 'T14:20:00' },
+  ];
+  g.evenementsFond = async () => [
+    { titre: 'Séminaire', debut: jour + 'T10:00', fin: jour + 'T12:00', calendrier: 'Labo', participants: ['A', 'B'] },
+    { titre: 'Hier', debut: '2026-10-04T10:00', fin: '2026-10-04T11:00' },
+  ];
+  g.tachesPourGantt = () => [
+    { ref: 'T1', intitule: 'Lire', statut: 'en cours', fichier: { path: 'T1.md' }, creneaux: [jour + ' 09:00-10:00'], tempsReel: [] },
+    { ref: 'T2', intitule: 'Écrire', statut: 'à faire', fichier: { path: 'T2.md' }, creneaux: [jour + ' 14:00-16:00'], tempsReel: [] },
+    { ref: 'T3', intitule: 'Rendre', statut: 'à faire', echeance: jour, jalon: true, fichier: { path: 'T3.md' }, creneaux: [jour + ' 17:00-18:00'], tempsReel: [] },
+  ];
+  const m = await g._matiereJournee(jour);
+  assert.match(m, /ÉVÉNEMENTS DU CALENDRIER :\n- 10:00 à 12:00 : Séminaire \(agenda Labo, 2 participants\)/);
+  assert.ok(!/Hier/.test(m), 'un événement d\'un autre jour n\'y est pas');
+  assert.match(m, /09:00 à 10:00 : T1 Lire \(statut en cours\) : 50 min faites sur 1 h \(tenu\)/);
+  assert.match(m, /14:00 à 16:00 : T2 Écrire \(statut à faire\) : 20 min faites sur 2 h \(à peine entamé\)/);
+  assert.match(m, /17:00 à 18:00 : T3 Rendre .* aucun travail relevé/);
+  assert.match(m, /ÉCHÉANCES DU JOUR NON TERMINÉES :\n- T3 Rendre \(jalon\), statut à faire/);
+});

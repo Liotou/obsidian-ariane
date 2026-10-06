@@ -508,6 +508,19 @@ const avecFriseStatiques = (Base) => class extends Base {
     return out;
   }
 
+  // Le travail fait pendant un créneau de tâche : les minutes dans ses notes
+  // (`chemins`), plus le temps hors Obsidian rattaché à la tâche
+  // (`tempsReel`), au prorata de ce qui tombe dans le créneau. La jauge du
+  // calendrier et le bilan de la journée comptent de la même façon.
+  static minutesFaitesCreneau(debut, fin, sessions, chemins, tempsReel) {
+    let fait = Ariane.minutesTravaillees(debut, fin, sessions, chemins);
+    for (const r of (tempsReel || [])) {
+      const dureeR = Math.max(1, Ariane.recouvrementMin(r.debut, r.fin, r.debut, r.fin));
+      fait += Math.round(r.min * Ariane.recouvrementMin(debut, fin, r.debut, r.fin) / dureeR);
+    }
+    return fait;
+  }
+
   // Minutes réellement travaillées pendant [debut, fin] dans l'une des notes
   // `chemins` : la jauge d'un créneau. Les recouvrements ne comptent qu'une fois.
   static minutesTravaillees(debut, fin, sessions, chemins) {
