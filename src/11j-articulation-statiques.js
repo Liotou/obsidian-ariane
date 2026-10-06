@@ -715,7 +715,15 @@ const avecArticulationStatiques = (Base) => class extends Base {
       '    var cn=""; try{ cn=norm(titre(e.calendar)); }catch(ecn){} if(!want[cn]) continue;',
       '    var id=evId(e); if(!id) continue;',
       '    var ad=false; try{ ad=e.isAllDay; }catch(er2){}',
-      '    out.push(id+"\\t"+net(ObjC.unwrap(e.title))+"\\t"+isoDeDate(e.startDate)+"\\t"+isoDeDate(e.endDate)+"\\t"+(ad?"1":"0")+"\\t"+net(titre(e.calendar)));',
+      // Détails pour la carte de survol : lieu, notes (sauts de ligne codés
+      // en \u001f), lien, participants, organisateur. Chaque lecture est
+      // gardée : un champ absent ne doit pas perdre l'événement.
+      '    var lieu=""; try{ lieu=net(ObjC.unwrap(e.location)); }catch(el){}',
+      '    var nts=""; try{ nts=String(ObjC.unwrap(e.notes)||"").slice(0,600).replace(/\\t/g," ").replace(/\\r?\\n/g,"\\u001f"); }catch(en){}',
+      '    var url=""; try{ if(e.URL && !e.URL.isNil()) url=net(ObjC.unwrap(e.URL.absoluteString)); }catch(eu){}',
+      '    var parts=[]; try{ var at=e.attendees; if(at && !at.isNil()){ for(var q=0;q<at.count && q<12;q++){ var nm=ObjC.unwrap(at.objectAtIndex(q).name); if(nm) parts.push(net(nm)); } } }catch(ea){}',
+      '    var org=""; try{ if(e.organizer && !e.organizer.isNil()) org=net(ObjC.unwrap(e.organizer.name)); }catch(eo){}',
+      '    out.push(id+"\\t"+net(ObjC.unwrap(e.title))+"\\t"+isoDeDate(e.startDate)+"\\t"+isoDeDate(e.endDate)+"\\t"+(ad?"1":"0")+"\\t"+net(titre(e.calendar))+"\\t"+lieu+"\\t"+nts+"\\t"+url+"\\t"+parts.join("; ")+"\\t"+org);',
       '  } }',
       '  return out.join("\\n");',
       '}',

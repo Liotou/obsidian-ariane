@@ -283,7 +283,10 @@ const avecTaches = (Base) => class extends Base {
       const p = l.split('\t');
       const cal = p[5] || '';
       return { id: p[0], titre: p[1] || '', debut: p[2] || '', fin: p[3] || '',
-               allDay: p[4] === '1', couleur: couleurs[cal] || '', calendrier: cal };
+               allDay: p[4] === '1', couleur: couleurs[cal] || '', calendrier: cal,
+               lieu: p[6] || '', notes: String(p[7] || '').split('\u001f').join('\n').trim(),
+               url: p[8] || '', participants: p[9] ? p[9].split('; ').filter(Boolean) : [],
+               organisateur: p[10] || '' };
     })).filter((e) => e.id && e.debut && !aNous(e));
     if (s == null) return [];              // échec dur : ne pas cacher, ne pas marquer l'accès OK
     this._agendaStatut = 3;

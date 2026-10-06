@@ -281,7 +281,72 @@ class MoteurCalendrier extends MoteurVue {
         new obsidian.Notice(tr('Note d’événement impossible : ') + (err && err.message ? err.message : err));
       });
     });
-    el.addEventListener('contextmenu', (ev) => this.menuEvenement(ev, e));
+    el.addEventListener('contextmenu', (ev) => { this._cacherCarteActivite(true); this.menuEvenement(ev, e); });
+    // Carte de survol : les détails de l'événement, sans délai, animée comme
+    // celles de l'activité ; on peut y entrer pour suivre un lien.
+    el.addEventListener('mouseenter', () => this._montrerCarteEvenement(el, e));
+    el.addEventListener('mouseleave', () => this._cacherCarteDiffere());
+  }
+
+  _montrerCarteEvenement(el, e) {
+    clearTimeout(this._carteMinuterie);
+    if (this._carteActivite && this._carteActiviteEl === el) return;
+    this._cacherCarteActivite();
+    const doc = el.ownerDocument;
+    const win = doc.defaultView || window;
+    const carte = doc.body.createDiv({ cls: 'zfa-act-survol est-interactive zfa-evt-survol' });
+    this._carteActivite = carte;
+    this._carteActiviteEl = el;
+    this._apparaitre(carte);
+    carte.addEventListener('mouseenter', () => clearTimeout(this._carteMinuterie));
+    carte.addEventListener('mouseleave', () => this._cacherCarteDiffere());
+    if (e.couleur) carte.style.setProperty('--zfa-cal-coul', e.couleur);
+
+    const tete = carte.createDiv({ cls: 'zfa-act-survol-tete' });
+    if (e.calendrier) tete.createSpan({ cls: 'zfa-act-cat', text: e.calendrier });
+    carte.createDiv({ cls: 'zfa-evt-survol-titre', text: e.titre || tr('(sans titre)') });
+    const jour = String(e.debut || '').slice(0, 10);
+    const jl = jour ? new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+    let quand = jl.charAt(0).toUpperCase() + jl.slice(1);
+    if (e.allDay) quand += tr(' · journée entière');
+    else if (String(e.debut).length > 15) {
+      quand += ' · ' + String(e.debut).slice(11, 16) + ' → ' + String(e.fin || '').slice(11, 16);
+      const min = Ariane.dureeCreneauMin(String(e.debut).slice(0, 16), String(e.fin || '').slice(0, 16));
+      if (min) quand += ' (' + dureeLisible(min) + ')';
+    }
+    const ligne = (icone, texte, cls) => {
+      const l = carte.createDiv({ cls: 'zfa-evt-survol-l' + (cls ? ' ' + cls : '') });
+      obsidian.setIcon(l.createSpan({ cls: 'zfa-evt-survol-ic' }), icone);
+      return l.createSpan({ cls: 'zfa-evt-survol-txt', text: texte });
+    };
+    ligne('clock', quand);
+    if (e.lieu) ligne('map-pin', e.lieu);
+    if (e.organisateur) ligne('user', tr('Organisé par ') + e.organisateur);
+    if (e.participants && e.participants.length) {
+      ligne('users', e.participants.slice(0, 6).join(', ')
+        + (e.participants.length > 6 ? tr(' et ') + (e.participants.length - 6) + tr(' autre(s)') : ''));
+    }
+    if (e.url) {
+      const t = ligne('link', e.url.replace(/^https?:\/\//, ''), 'est-lien');
+      t.addEventListener('click', (ev) => { ev.stopPropagation(); window.open(e.url); });
+    }
+    if (e.notes) carte.createDiv({ cls: 'zfa-evt-survol-notes', text: e.notes });
+    const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e.id) : null;
+    const actions = carte.createDiv({ cls: 'zfa-act-survol-actions' });
+    const action = (icone, libelle, faire) => {
+      const bt = actions.createEl('button', { cls: 'zfa-act-survol-bt' });
+      obsidian.setIcon(bt.createSpan({ cls: 'zfa-act-survol-bt-ic' }), icone);
+      bt.createSpan({ text: libelle });
+      bt.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); faire(); });
+    };
+    action('file-text', note ? tr('Ouvrir la note') : tr('Créer la note'), () => this._noteEvenement(e).catch(() => {}));
+    if (e.id) action('external-link', tr('Ouvrir dans Calendrier'), () => this._ouvrirEvenement(e.id));
+
+    const r = el.getBoundingClientRect();
+    let x = r.right + 8;
+    if (x + carte.offsetWidth > win.innerWidth - 8) x = Math.max(8, r.left - carte.offsetWidth - 8);
+    carte.style.left = x + 'px';
+    carte.style.top = Math.max(8, Math.min(r.top, win.innerHeight - carte.offsetHeight - 8)) + 'px';
   }
 
   // Menu contextuel d'un événement Apple : l'ouvrir dans Calendrier, ou en
@@ -361,7 +426,6 @@ class MoteurCalendrier extends MoteurVue {
     }
     const tt = el.createDiv({ cls: 'zfa-cal-evt-t', text: e.titre || tr('(sans titre)') });
     if (maxLignes && maxLignes >= 2) tt.style.webkitLineClamp = String(Math.min(maxLignes, 3));
-    el.title = (e.titre || '') + (e.calendrier ? ' · ' + e.calendrier : '');
     this._brancherEvenement(el, e);
     return el;
   }
@@ -2270,7 +2334,6 @@ class MoteurCalendrier extends MoteurVue {
       ch.createSpan({ cls: 'zfa-cal-evt-h', text: e.debut.slice(11, 16) });
     }
     ch.createSpan({ cls: 'zfa-cal-m-titre', text: e.titre || tr('(sans titre)') });
-    ch.title = (e.titre || '') + (e.calendrier ? ' · ' + e.calendrier : '');
     this._brancherEvenement(ch, e);
     return ch;
   }
@@ -2504,8 +2567,7 @@ class MoteurCalendrier extends MoteurVue {
           const ch = col.createDiv({ cls: 'zfa-cal-evt est-jour' });
           if (e.couleur) ch.style.setProperty('--zfa-cal-coul', e.couleur);
           ch.createDiv({ cls: 'zfa-cal-evt-t', text: e.titre || tr('(sans titre)') });
-          ch.title = (e.titre || '') + (e.calendrier ? ' · ' + e.calendrier : '');
-          this._brancherEvenement(ch, e);
+                this._brancherEvenement(ch, e);
         }
       };
       rendre();
