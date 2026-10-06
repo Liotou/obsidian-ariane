@@ -959,6 +959,44 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Mise à jour automatique'))
       .setDesc(tr('Régénère la bibliographie après une pause dans la frappe.'))
       .addToggle((t) => t.setValue(s.biblioAuto !== false).onChange(async (v) => { s.biblioAuto = v; await maj(); }));
+    {
+      // Dossiers exclus : choisis dans la liste des dossiers du coffre,
+      // retirés d'un clic.
+      const reglage = new obsidian.Setting(c)
+        .setName(tr('Dossiers sans bibliographie'))
+        .setDesc(tr('Les notes de ces dossiers, et de leurs sous-dossiers, ne reçoivent pas de bibliographie de fin de note, ni automatiquement ni par les commandes. Un bloc déjà présent y est laissé tel quel.'));
+      const puces = c.createDiv({ cls: 'zfa-reglage-dossiers' });
+      const dessiner = () => {
+        puces.empty();
+        const liste = s.biblioDossiersExclus || [];
+        if (!liste.length) puces.createSpan({ cls: 'zfa-reglage-dossiers-vide', text: tr('Aucun dossier exclu.') });
+        for (const d of liste) {
+          const p = puces.createSpan({ cls: 'zfa-reglage-dossier' });
+          obsidian.setIcon(p.createSpan({ cls: 'zfa-reglage-dossier-ic' }), 'folder');
+          p.createSpan({ text: d });
+          const x = p.createSpan({ cls: 'zfa-reglage-dossier-x clickable-icon', attr: { 'aria-label': tr('Retirer') } });
+          obsidian.setIcon(x, 'x');
+          x.onclick = async () => {
+            s.biblioDossiersExclus = liste.filter((y) => y !== d);
+            await maj();
+            dessiner();
+          };
+        }
+      };
+      reglage.addButton((b) => b.setButtonText(tr('Ajouter un dossier')).setIcon('folder-plus').onClick(() => {
+        const deja = new Set(s.biblioDossiersExclus || []);
+        const items = this.app.vault.getAllLoadedFiles()
+          .filter((f) => f instanceof obsidian.TFolder && f.path && f.path !== '/' && !deja.has(f.path))
+          .map((f) => ({ nom: f.path }))
+          .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+        new ChoixListeModal(this.app, tr('Ajouter un dossier'), items, async (it) => {
+          s.biblioDossiersExclus = (s.biblioDossiersExclus || []).concat([it.nom]);
+          await maj();
+          dessiner();
+        }).open();
+      }));
+      dessiner();
+    }
     new obsidian.Setting(c)
       .setName(tr('Titre de la section'))
       .addText((t) => t.setValue(s.biblioTitre || '').onChange(async (v) => { s.biblioTitre = v.trim() || 'Bibliographie'; await maj(); }));

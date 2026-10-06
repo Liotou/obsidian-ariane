@@ -1032,6 +1032,12 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
+    "Dossiers sans bibliographie": "Folders without bibliography",
+    "Les notes de ces dossiers, et de leurs sous-dossiers, ne reçoivent pas de bibliographie de fin de note, ni automatiquement ni par les commandes. Un bloc déjà présent y est laissé tel quel.": "Notes in these folders, and their subfolders, get no end-of-note bibliography, neither automatically nor through the commands. A block already there is left as is.",
+    "Ajouter un dossier": "Add a folder",
+    "Aucun dossier exclu.": "No excluded folder.",
+    "Retirer": "Remove",
+    "Bibliographie : cette note est dans un dossier exclu (réglages).": "Bibliography: this note is in an excluded folder (settings).",
     "Ajouts automatiques": "Automatic additions",
     "notes ajoutées": "notes added",
     "en une fois": "all at once",
@@ -1605,6 +1611,7 @@ const DEFAULT_SETTINGS = {
   separateurCitation: ' ; ',
   // Bibliographie de fin de note, régénérée d'après les citations du corps.
   biblioAuto: true,
+  biblioDossiersExclus: [], // dossiers dont les notes n'ont pas de bibliographie de fin
   biblioTitre: 'Bibliographie',
   biblioModele: '{{auteurs}} ({{annee}}). {{titre}}. *{{publication}}*.',
   biblioTri: 'auteur', // 'auteur' | 'apparition'
@@ -8184,8 +8191,17 @@ const avecNoteBiblio = (Base) => class extends Base {
     return [...vues.values()];
   }
 
+  // Les notes des dossiers exclus (réglages) n'ont pas de bibliographie.
+  biblioExclue(chemin) {
+    return Ariane.sousDossier(chemin, this.settings.biblioDossiersExclus || []);
+  }
+
   async majBibliographie(file, silencieux) {
     if (!file || file.extension !== 'md') return false;
+    if (this.biblioExclue(file.path)) {
+      if (!silencieux) new obsidian.Notice(tr('Bibliographie : cette note est dans un dossier exclu (réglages).'));
+      return false;
+    }
     const avant = await this.app.vault.read(file);
     const sources = this.sourcesCitees(avant);
 
@@ -21395,6 +21411,7 @@ class Ariane extends composer(obsidian.Plugin,
         if (!(f instanceof obsidian.TFile) || f.extension !== 'md') return;
         if (this.ecritePlugin(f.path)) return;
         if (f.path.startsWith(this.dossierA + '/') || f.path.startsWith('Références/')) return;
+        if (this.biblioExclue(f.path)) return;
         this.antirebond('biblio:' + f.path, () => this.majBibliographie(f, true), 2500);
       }));
       this.registerEvent(this.app.vault.on('create', majSchema));
@@ -22399,6 +22416,44 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Mise à jour automatique'))
       .setDesc(tr('Régénère la bibliographie après une pause dans la frappe.'))
       .addToggle((t) => t.setValue(s.biblioAuto !== false).onChange(async (v) => { s.biblioAuto = v; await maj(); }));
+    {
+      // Dossiers exclus : choisis dans la liste des dossiers du coffre,
+      // retirés d'un clic.
+      const reglage = new obsidian.Setting(c)
+        .setName(tr('Dossiers sans bibliographie'))
+        .setDesc(tr('Les notes de ces dossiers, et de leurs sous-dossiers, ne reçoivent pas de bibliographie de fin de note, ni automatiquement ni par les commandes. Un bloc déjà présent y est laissé tel quel.'));
+      const puces = c.createDiv({ cls: 'zfa-reglage-dossiers' });
+      const dessiner = () => {
+        puces.empty();
+        const liste = s.biblioDossiersExclus || [];
+        if (!liste.length) puces.createSpan({ cls: 'zfa-reglage-dossiers-vide', text: tr('Aucun dossier exclu.') });
+        for (const d of liste) {
+          const p = puces.createSpan({ cls: 'zfa-reglage-dossier' });
+          obsidian.setIcon(p.createSpan({ cls: 'zfa-reglage-dossier-ic' }), 'folder');
+          p.createSpan({ text: d });
+          const x = p.createSpan({ cls: 'zfa-reglage-dossier-x clickable-icon', attr: { 'aria-label': tr('Retirer') } });
+          obsidian.setIcon(x, 'x');
+          x.onclick = async () => {
+            s.biblioDossiersExclus = liste.filter((y) => y !== d);
+            await maj();
+            dessiner();
+          };
+        }
+      };
+      reglage.addButton((b) => b.setButtonText(tr('Ajouter un dossier')).setIcon('folder-plus').onClick(() => {
+        const deja = new Set(s.biblioDossiersExclus || []);
+        const items = this.app.vault.getAllLoadedFiles()
+          .filter((f) => f instanceof obsidian.TFolder && f.path && f.path !== '/' && !deja.has(f.path))
+          .map((f) => ({ nom: f.path }))
+          .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+        new ChoixListeModal(this.app, tr('Ajouter un dossier'), items, async (it) => {
+          s.biblioDossiersExclus = (s.biblioDossiersExclus || []).concat([it.nom]);
+          await maj();
+          dessiner();
+        }).open();
+      }));
+      dessiner();
+    }
     new obsidian.Setting(c)
       .setName(tr('Titre de la section'))
       .addText((t) => t.setValue(s.biblioTitre || '').onChange(async (v) => { s.biblioTitre = v.trim() || 'Bibliographie'; await maj(); }));

@@ -4195,3 +4195,12 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-chrono-lot-el:hover { background: var(--background-modifier-hover); }
 .zfa-chrono-lot-el.est-disparu { color: var(--text-faint); text-decoration: line-through; cursor: default; }
 .zfa-chrono-lot-plus { padding: 2px 6px; color: var(--text-faint); }
+/* Réglages : liste de dossiers choisis (bibliographie de fin de note). */
+.zfa-reglage-dossiers { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 var(--size-4-3); }
+.zfa-reglage-dossiers-vide { color: var(--text-faint); font-size: var(--font-ui-smaller); }
+.zfa-reglage-dossier { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px;
+  border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s);
+  background: var(--background-secondary); font-size: var(--font-ui-smaller); }
+.zfa-reglage-dossier-ic { display: inline-flex; color: var(--text-muted); }
+.zfa-reglage-dossier-ic svg, .zfa-reglage-dossier-x svg { width: 12px; height: 12px; }
+.zfa-reglage-dossier-x { padding: 2px; }

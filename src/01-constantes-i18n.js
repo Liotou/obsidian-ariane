@@ -843,6 +843,12 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
+    "Dossiers sans bibliographie": "Folders without bibliography",
+    "Les notes de ces dossiers, et de leurs sous-dossiers, ne reçoivent pas de bibliographie de fin de note, ni automatiquement ni par les commandes. Un bloc déjà présent y est laissé tel quel.": "Notes in these folders, and their subfolders, get no end-of-note bibliography, neither automatically nor through the commands. A block already there is left as is.",
+    "Ajouter un dossier": "Add a folder",
+    "Aucun dossier exclu.": "No excluded folder.",
+    "Retirer": "Remove",
+    "Bibliographie : cette note est dans un dossier exclu (réglages).": "Bibliography: this note is in an excluded folder (settings).",
     "Ajouts automatiques": "Automatic additions",
     "notes ajoutées": "notes added",
     "en une fois": "all at once",
@@ -1416,6 +1422,7 @@ const DEFAULT_SETTINGS = {
   separateurCitation: ' ; ',
   // Bibliographie de fin de note, régénérée d'après les citations du corps.
   biblioAuto: true,
+  biblioDossiersExclus: [], // dossiers dont les notes n'ont pas de bibliographie de fin
   biblioTitre: 'Bibliographie',
   biblioModele: '{{auteurs}} ({{annee}}). {{titre}}. *{{publication}}*.',
   biblioTri: 'auteur', // 'auteur' | 'apparition'

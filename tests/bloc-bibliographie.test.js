@@ -26,3 +26,15 @@ test('bloc : la nouvelle forme se remplace sur place, sans doubler le titre', ()
   assert.equal(deux, 'Texte.\n\n' + autre + '\n');
   assert.equal(injecterBibliographie(deux, autre), deux);
 });
+
+test('dossiers sans bibliographie : la note et ses sous-dossiers, pas les voisins', async () => {
+  const Ariane_ = require('./obsidian-factice.js');
+  const g = Object.create(Ariane_.prototype);
+  g.settings = { biblioDossiersExclus: ['Journal', '08 - Tâches/'] };
+  assert.equal(g.biblioExclue('Journal/2026/oct.md'), true);
+  assert.equal(g.biblioExclue('08 - Tâches/T001.md'), true);
+  assert.equal(g.biblioExclue('Journal intime/x.md'), false, 'un préfixe de nom n\'est pas un sous-dossier');
+  assert.equal(g.biblioExclue('Notes/x.md'), false);
+  g.app = { vault: { read: async () => { throw new Error('ne doit pas lire'); } } };
+  assert.equal(await g.majBibliographie({ path: 'Journal/x.md', extension: 'md' }, true), false);
+});

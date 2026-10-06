@@ -34,8 +34,17 @@ const avecNoteBiblio = (Base) => class extends Base {
     return [...vues.values()];
   }
 
+  // Les notes des dossiers exclus (réglages) n'ont pas de bibliographie.
+  biblioExclue(chemin) {
+    return Ariane.sousDossier(chemin, this.settings.biblioDossiersExclus || []);
+  }
+
   async majBibliographie(file, silencieux) {
     if (!file || file.extension !== 'md') return false;
+    if (this.biblioExclue(file.path)) {
+      if (!silencieux) new obsidian.Notice(tr('Bibliographie : cette note est dans un dossier exclu (réglages).'));
+      return false;
+    }
     const avant = await this.app.vault.read(file);
     const sources = this.sourcesCitees(avant);
 

@@ -1260,6 +1260,7 @@ class Ariane extends composer(obsidian.Plugin,
         if (!(f instanceof obsidian.TFile) || f.extension !== 'md') return;
         if (this.ecritePlugin(f.path)) return;
         if (f.path.startsWith(this.dossierA + '/') || f.path.startsWith('Références/')) return;
+        if (this.biblioExclue(f.path)) return;
         this.antirebond('biblio:' + f.path, () => this.majBibliographie(f, true), 2500);
       }));
       this.registerEvent(this.app.vault.on('create', majSchema));
