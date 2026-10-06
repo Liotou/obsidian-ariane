@@ -1570,7 +1570,8 @@ class VueChronologie extends obsidian.ItemView {
         if (!t) { bilan.remove(); return; }
         btBilan.lastChild.setText(tr('Refaire le bilan'));
         obsidian.setIcon(bilan.createSpan({ cls: 'zfa-chrono-bilan-ic' }), 'sunset');
-        bilan.createDiv({ cls: 'zfa-chrono-bilan-texte', text: t });
+        // Justifié, avec la césure du français pour éviter les lézardes.
+        bilan.createDiv({ cls: 'zfa-chrono-bilan-texte', text: t, attr: { lang: 'fr' } });
       }).catch(() => bilan.remove());
       // Le temps passé dans chaque note ce jour-là, replié sur son total.
       const temps = hote.createDiv({ cls: 'zfa-chrono-temps' });
@@ -1735,7 +1736,6 @@ class VueChronologie extends obsidian.ItemView {
     const tete = carte.createDiv({ cls: 'zfa-chrono-carte-tete' });
     tete.createSpan({ cls: 'zfa-chrono-nom', text: (ia && ia.resume) || tr('Activité hors Obsidian') });
     tete.createSpan({ cls: 'zfa-chrono-genre', text: ia ? ia.categorie : b.categorie });
-    if (ia && ia.personnel) tete.createSpan({ cls: 'zfa-chrono-etiquette', text: tr('personnel') });
     const meta = carte.createDiv({ cls: 'zfa-chrono-chemin' });
     meta.createSpan({ text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16) });
     meta.createSpan({ cls: 'zfa-chrono-etiquette', text: dureeLisible(b.actifMin) + tr(' actives') });

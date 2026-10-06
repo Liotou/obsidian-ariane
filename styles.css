@@ -4186,6 +4186,7 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
   font-size: var(--font-ui-small); line-height: 1.55; color: var(--text-normal);
 }
 .zfa-chrono-bilan-ic { display: inline-flex; color: var(--text-accent); padding-top: 2px; }
+.zfa-chrono-bilan-texte { flex: 1; min-width: 0; text-align: justify; hyphens: auto; -webkit-hyphens: auto; text-wrap: pretty; }
 .zfa-chrono-bilan-ic svg { width: 14px; height: 14px; }
 /* Lot d'ajouts automatiques (synchronisations) dans la chronologie. */
 .zfa-chrono-evt.est-auto .zfa-chrono-nom { color: var(--text-muted); }
