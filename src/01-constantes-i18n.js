@@ -843,6 +843,8 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
+    "Portrait pour le bilan": "Portrait for the summary",
+    "Mots du soir": "Evening words",
     "Temps dans Obsidian": "Time in Obsidian",
     "Relevé quotidien": "Daily record",
     "Jours gardés en mémoire": "Days kept in memory",
@@ -1394,6 +1396,8 @@ const DEFAULT_SETTINGS = {
   activiteIAModele: '',                 // modèle Ollama, LM Studio ou Mistral ('' = celui de l'assistant)
   activiteIAModeleClaude: 'haiku',      // modèle si le fournisseur est Claude en ligne de commande
   resumeJourneeHeure: '',               // résumé de la journée par l'IA à cette heure (HH:MM), '' = jamais
+  resumeJourneePortrait: "Monsieur est doctorant, souvent en proie au syndrome de l'imposteur et parfois à la procrastination.",
+  resumeJourneeMots: '',                // note des mots du soir (« mot : définition » par ligne) ; '' = l'IA choisit
   donneesJourVersion: 0,                // 1 : données rangées par jour ; 2 : dans .ariane/jours, sans journal du temps
   activiteIAAuto: false,                // résumer seul les journées passées affichées
   activiteIACouleur: true,              // colorer les créneaux résumés selon leur catégorie IA

@@ -1199,14 +1199,29 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           .onChange(async (v) => { const n = parseInt(v, 10); s.activiteDureeMin = Number.isFinite(n) ? Math.max(0, n) : 10; await maj(); this.plugin._rafraichirActiviteDiffere(); }));
 
       this._section(c, tr('IA de l\'activité'));
-      this._aide(c, tr("Sur chaque créneau réel, l'IA écrit ce qui a été fait et le range dans une de vos catégories, dont une pour la vie privée et les distractions (rayée dans le calendrier). Clic droit sur un créneau réel : résumer ce créneau ou la journée ; commande « Activité réelle : résumer la semaine affichée (IA) ». Les résumés sont gardés dans le dossier du greffon. Avec un fournisseur en ligne (Mistral, Claude), les titres de fenêtres et les sites lui sont envoyés ; Ollama et LM Studio restent sur l'ordinateur."));
+      this._aide(c, tr("Sur chaque créneau réel, l'IA écrit ce qui a été fait et le range dans une de vos catégories, dont une pour la vie privée et les distractions (rayée dans le calendrier). Clic droit sur un créneau réel : résumer ce créneau ou la journée ; commande « Activité réelle : résumer la semaine affichée (IA) ». Les résumés sont gardés dans les fichiers du jour (« .ariane/jours »). Avec un fournisseur en ligne (Mistral, Claude), les titres de fenêtres et les sites lui sont envoyés ; Ollama et LM Studio restent sur l'ordinateur."));
       this._choixIAActivite(c, s, maj, 'synthese', tr('Fournisseur'),
         tr("Résume chaque créneau hors Obsidian et le range dans une catégorie (clic droit, « Résumer la journée », « Résumer la période »), et affine les suggestions de rattachement à la demande. Le premier jet de ces suggestions est local, sans cette IA. Haiku suffit, vite et à peu de frais."));
       new obsidian.Setting(c)
         .setName(tr('Bilan de la journée'))
-        .setDesc(tr("Un résumé de toute la journée par l'IA (accompli, temps, distractions), écrit pour être lu à voix haute. Il se fait à la demande (commande « Journée : résumer ma journée (IA) », bouton de la chronologie) ou chaque jour à l'heure indiquée ici (vide : jamais). On le retrouve sous le jour dans la chronologie, et dans « .ariane/jours/AAAA-MM-JJ.json », clé « resumeJournee »."))
+        .setDesc(tr("Le bilan du soir par l'IA : ce qui a été accompli, le prévu face au réalisé, les distractions, ce qui attend demain, et un mot pour clore ; écrit pour être lu à voix haute. Il se fait à la demande (commande « Journée : résumer ma journée (IA) », bouton de la chronologie) ou chaque jour à l'heure indiquée ici (vide : jamais). On le retrouve sous le jour dans la chronologie, et dans « .ariane/jours/AAAA-MM-JJ.json », clé « resumeJournee »."))
         .addText((t) => t.setPlaceholder('22:30').setValue(s.resumeJourneeHeure || '')
           .onChange(async (v) => { s.resumeJourneeHeure = /^\d{1,2}:\d{2}$/.test(v.trim()) ? v.trim() : ''; await maj(); }));
+      new obsidian.Setting(c)
+        .setName(tr('Portrait pour le bilan'))
+        .setDesc(tr("Qui est Monsieur, pour que le bilan du soir sache rassurer, féliciter ou recadrer avec justesse."))
+        .addTextArea((t) => {
+          t.setValue(s.resumeJourneePortrait || '').onChange(async (v) => { s.resumeJourneePortrait = v; await maj(); });
+          t.inputEl.rows = 2;
+          t.inputEl.style.width = '100%';
+        });
+      new obsidian.Setting(c)
+        .setName(tr('Mots du soir'))
+        .setDesc(tr("Le bilan se clôt sur un mot et sa définition. Une note du coffre, une entrée par ligne (« mot : définition ») : un mot y est tiré chaque soir, sans reprendre ceux du dernier mois. Vide : l'IA choisit le mot."))
+        .addText((t) => {
+          t.setPlaceholder('00 - Cadrage/Mots du soir.md').setValue(s.resumeJourneeMots || '')
+            .onChange(async (v) => { s.resumeJourneeMots = v.trim(); await maj(); });
+        });
       new obsidian.Setting(c)
         .setName(tr('Catégories'))
         .setDesc(tr("Le nom, la couleur, et ce que la catégorie recouvre : cette description guide l'IA, soyez précis. Gardez une catégorie pour la vie privée et les distractions."))

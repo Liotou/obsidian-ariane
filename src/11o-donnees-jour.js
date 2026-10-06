@@ -324,20 +324,8 @@ const avecDonneesJour = (Base) => class extends Base {
     }
     // Les événements du calendrier (Apple Agenda) : cours, réunions,
     // rendez-vous. Ceux qui portent un créneau de tâche n'y sont pas.
-    let evts = [];
-    try { evts = (await this.evenementsFond(jour, Ariane.decalerJour(jour, 1))) || []; } catch (e) { evts = []; }
-    evts = evts.filter((e) => String(e.debut).slice(0, 10) <= jour && String(e.fin || e.debut).slice(0, 10) >= jour)
-      .sort((a, b) => String(a.debut).localeCompare(String(b.debut)));
-    if (evts.length) {
-      l.push('', 'ÉVÉNEMENTS DU CALENDRIER :');
-      for (const e of evts.slice(0, 15)) {
-        const quand = e.allDay ? 'toute la journée' : String(e.debut).slice(11, 16) + ' à ' + String(e.fin).slice(11, 16);
-        const plus = [e.calendrier ? 'agenda ' + e.calendrier : '', e.lieu ? 'lieu : ' + e.lieu : '',
-          (e.participants || []).length ? (e.participants.length + ' participant' + (e.participants.length > 1 ? 's' : '')) : '']
-          .filter(Boolean).join(', ');
-        l.push('- ' + quand + ' : ' + e.titre + (plus ? ' (' + plus + ')' : ''));
-      }
-    }
+    const evts = await this._lignesEvenementsJour(jour);
+    if (evts.length) { l.push('', 'ÉVÉNEMENTS DU CALENDRIER :'); l.push(...evts); }
     // Les tâches : terminées, avancées, et les créneaux prévus avec ce qui y
     // a été fait (même calcul que la jauge du calendrier).
     const o = await this.donneesJour(jour);
@@ -405,23 +393,144 @@ const avecDonneesJour = (Base) => class extends Base {
     return l.join('\n').trim();
   }
 
-  static promptResumeJournee(jour, matiere, contexte) {
-    const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  // Les événements Apple Agenda d'un jour, en lignes lisibles. Ceux qui
+  // portent un créneau de tâche n'y sont pas (evenementsFond les écarte).
+  async _lignesEvenementsJour(jour) {
+    let evts = [];
+    try { evts = (await this.evenementsFond(jour, Ariane.decalerJour(jour, 1))) || []; } catch (e) { evts = []; }
+    return evts.filter((e) => String(e.debut).slice(0, 10) <= jour && String(e.fin || e.debut).slice(0, 10) >= jour)
+      .sort((a, b) => String(a.debut).localeCompare(String(b.debut)))
+      .slice(0, 15)
+      .map((e) => {
+        const quand = e.allDay ? 'toute la journée' : String(e.debut).slice(11, 16) + ' à ' + String(e.fin).slice(11, 16);
+        const plus = [e.calendrier ? 'agenda ' + e.calendrier : '', e.lieu ? 'lieu : ' + e.lieu : '',
+          (e.participants || []).length ? (e.participants.length + ' participant' + (e.participants.length > 1 ? 's' : '')) : '']
+          .filter(Boolean).join(', ');
+        return '- ' + quand + ' : ' + e.titre + (plus ? ' (' + plus + ')' : '');
+      });
+  }
+
+  // Ce qui attend Monsieur le lendemain de `jour` : événements, créneaux de
+  // tâches, échéances, et les échéances des jours suivants.
+  async _matiereDemain(jour) {
+    const demain = Ariane.decalerJour(jour, 1);
+    const l = [];
+    const evts = await this._lignesEvenementsJour(demain);
+    if (evts.length) { l.push('ÉVÉNEMENTS :'); l.push(...evts); }
+    const taches = this.tachesPourGantt();
+    const ouverte = (t) => t.statut !== 'terminée' && t.statut !== 'abandonnée';
+    const creneaux = [];
+    for (const t of taches) {
+      if (!ouverte(t)) continue;
+      for (const c of Ariane.creneauxDeTache([].concat(t.creneaux || []))) {
+        if (c.debut.slice(0, 10) === demain) {
+          creneaux.push(c.debut.slice(11, 16) + ' à ' + c.fin.slice(11, 16) + ' : ' + t.ref + ' ' + t.intitule
+            + ' (statut ' + (t.statut || 'à faire') + (t.avancement ? ', ' + t.avancement + ' %' : '') + ')');
+        }
+      }
+    }
+    if (creneaux.length) { l.push('', 'CRÉNEAUX DE TÂCHES :'); for (const c of creneaux.sort()) l.push('- ' + c); }
+    const dues = taches.filter((t) => ouverte(t) && t.echeance === demain);
+    if (dues.length) {
+      l.push('', 'ÉCHÉANCES :');
+      for (const t of dues) l.push('- ' + t.ref + ' ' + t.intitule + (t.jalon ? ' (jalon)' : '') + ', statut ' + (t.statut || 'à faire'));
+    }
+    const fin = Ariane.decalerJour(jour, 7);
+    const proches = taches.filter((t) => ouverte(t) && t.echeance > demain && t.echeance <= fin)
+      .sort((a, b) => a.echeance.localeCompare(b.echeance)).slice(0, 4);
+    if (proches.length) {
+      l.push('', 'ÉCHÉANCES DES JOURS SUIVANTS :');
+      for (const t of proches) l.push('- ' + t.echeance + ' : ' + t.ref + ' ' + t.intitule + (t.jalon ? ' (jalon)' : ''));
+    }
+    return l.join('\n').trim();
+  }
+
+  // Le mot pour clore la journée : tiré de la note réglée (une entrée par
+  // ligne, « mot : définition »), en évitant ceux des trente derniers soirs.
+  // Le même mot reste au jour si le bilan est refait. Sans note : null, et
+  // l'IA choisit.
+  async _motDuSoir(jour) {
+    const d = await this.donneesJour(jour);
+    if (d.resumeJournee && d.resumeJournee.mot && d.resumeJournee.motDeLaListe) {
+      return { mot: d.resumeJournee.mot, definition: d.resumeJournee.definition || '' };
+    }
+    const chemin = String(this.settings.resumeJourneeMots || '').trim();
+    if (!chemin) return null;
+    const f = this.app.metadataCache.getFirstLinkpathDest(chemin.replace(/\.md$/, ''), '')
+      || this.app.vault.getAbstractFileByPath(chemin);
+    if (!(f instanceof obsidian.TFile)) return null;
+    const entrees = Ariane.motsDuSoir(await this.app.vault.cachedRead(f));
+    if (!entrees.length) return null;
+    const recents = new Set((await this._motsRecents(jour)).map((m) => m.toLowerCase()));
+    const libres = entrees.filter((e) => !recents.has(e.mot.toLowerCase()));
+    const pool = libres.length ? libres : entrees;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  // Les mots des trente soirs précédents.
+  async _motsRecents(jour) {
+    const out = [];
+    for (let i = 1; i <= 30; i++) {
+      const j = Ariane.decalerJour(jour, -i);
+      if (!(await this.joursAvecDonnees()).includes(j)) continue;
+      const r = (await this.donneesJour(j)).resumeJournee;
+      if (r && r.mot) out.push(r.mot);
+    }
+    return out;
+  }
+
+  // Les entrées d'une liste de mots : une par ligne, puces et cases
+  // retirées, « mot : définition » (ou « mot = », « mot, »). Titres, lignes
+  // vides et entête ignorés.
+  static motsDuSoir(texte) {
+    const out = [];
+    for (const brute of Ariane.corpsSansEntete(texte).split('\n')) {
+      const l = brute.replace(/^\s*(?:[-*+]\s+(?:\[.\]\s+)?|\d+[.)]\s+)/, '').trim();
+      if (!l || /^#/.test(l)) continue;
+      const m = l.match(/^(.+?)\s*(?:\s:\s|:|=|,)\s*(.+)$/);
+      const mot = Ariane.texteBrutLigne(m ? m[1] : l).trim();
+      if (!mot || mot.length > 60) continue;
+      out.push({ mot, definition: m ? Ariane.texteBrutLigne(m[2]).trim() : '' });
+    }
+    return out;
+  }
+
+  // La consigne du bilan du soir, inspirée de celle que Monsieur s'était
+  // écrite pour un raccourci Apple : une base tangible, un miroir honnête,
+  // le lendemain, un mot pour clore, une invitation à se déconnecter.
+  static promptResumeJournee(jour, matiere, contexte, opts) {
+    const o = opts || {};
+    const jl = (x) => new Date(x + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    const demain = Ariane.decalerJour(jour, 1);
+    const mot = o.mot && o.mot.mot
+      ? 'Le mot est imposé : « ' + o.mot.mot + ' »' + (o.mot.definition ? ', défini ainsi : « ' + o.mot.definition + ' »' : ' (donne toi-même sa définition exacte)') + '.'
+      : 'Choisis toi-même un mot français précis et peu courant, en résonance discrète avec la journée ou avec le repos, et donne sa définition exacte.'
+        + ((o.motsRecents || []).length ? ' Pas l\'un de ceux-ci, déjà donnés : ' + o.motsRecents.join(', ') + '.' : '');
     return [
-      'Tu écris le bilan de la journée de Monsieur (' + jl + '), à partir du relevé de son travail ci-dessous.',
+      'Agis comme un majordome intellectuel, à la fois philosophe et rationnel. Tu écris le bilan du soir de Monsieur, pour le ' + jl(jour) + ', à partir du relevé ci-dessous.',
+      o.portrait ? 'Portrait : ' + o.portrait : '',
       contexte ? 'Contexte : ' + contexte : '',
       '',
-      'CONSIGNES :',
-      '- Un texte continu de 120 à 200 mots, en français, qui s\'adresse à lui en le vouvoyant et en l\'appelant « Monsieur », sur un ton posé et bienveillant, comme un majordome qui fait le point du soir.',
-      '- Il sera lu à voix haute : pas de liste, pas de titre, pas de markdown, pas de symboles ni d\'abréviations ; les durées en toutes lettres (« deux heures et quart »).',
-      '- Dis d\'abord ce qui a été accompli (tâches terminées ou avancées, travail de fond, cours, réunions et rendez-vous du calendrier déjà passés), puis où le temps est allé, en rapprochant le prévu du réalisé : les créneaux tenus, ceux faits en partie, ceux laissés de côté. Puis, avec tact et sans jugement, les moments de distraction s\'il y en a eu. Termine par une phrase brève sur la suite (échéances restées ouvertes, créneaux ou événements encore à venir, ce qui est à reprendre).',
-      '- Uniquement ce que dit le relevé : n\'invente aucune activité, aucun nom, aucun chiffre.',
+      'DÉROULÉ :',
+      '1. La base tangible de la journée : la synthèse de ce qui a été accompli (tâches terminées ou avancées, travail de fond, cours, réunions et rendez-vous déjà passés).',
+      '2. Un miroir honnête : où le temps est allé, en rapprochant le prévu du réalisé (créneaux tenus, faits en partie, laissés de côté) et en nommant les moments de distraction s\'il y en a eu. Si la journée a été productive, félicite sans excès. Si elle a été dispersée ou si du travail prévu a été repoussé, sois lucide : reconnais l\'écart sans le juger, et invite à tourner la page. Rassure par la logique plutôt que par des formules : une journée ne définit pas une thèse entière.',
+      '3. Demain (' + jl(demain) + ') : ce qui l\'attend, concrètement et sans l\'accabler (le premier rendez-vous, les créneaux prévus, les échéances), en une ou deux phrases qui préparent sans inquiéter. Si rien n\'est prévu, dis-le simplement.',
+      '4. Annonce clairement : « Le mot pour clore cette journée est : » suivi du mot, puis énonce précisément sa définition. ' + mot + ' Improvise ensuite une courte réflexion philosophique, culturelle, scientifique ou poétique sur ce mot (la thématique selon la nature du mot : un mot savant appelle une réflexion savante), en la liant subtilement à l\'état d\'esprit de la journée ou au repos nécessaire.',
+      '5. Termine par une salutation élégante qui invite à la déconnexion immédiate.',
+      '',
+      'FORME :',
+      '- Un texte continu de 220 à 340 mots, en français, qui vouvoie et appelle « Monsieur ».',
+      '- Il sera lu à voix haute : texte brut, pas de liste, pas de titre, pas de markdown, pas de symboles ni d\'abréviations ; les durées et les heures en toutes lettres (« deux heures et quart », « neuf heures et demie »).',
+      '- Uniquement ce que dit le relevé : n\'invente aucune activité, aucun nom, aucun chiffre, aucun rendez-vous.',
       '- Pas de tiret cadratin ni demi-cadratin.',
       '',
-      'Réponds UNIQUEMENT par du JSON : {"resume": "…"}',
+      'Réponds UNIQUEMENT par du JSON : {"resume": "…", "mot": "le mot retenu"}',
       '',
       'RELEVÉ DE LA JOURNÉE :',
       matiere,
+      '',
+      'DEMAIN (' + jl(demain) + ') :',
+      o.demain || 'Rien de prévu au calendrier ni dans les tâches.',
     ].filter((x) => x !== '').join('\n');
   }
 
@@ -432,9 +541,19 @@ const avecDonneesJour = (Base) => class extends Base {
     if (!matiere) { if (!o.silencieux) new obsidian.Notice(tr('Rien de relevé ce jour-là.')); return ''; }
     const avis = o.silencieux ? null : new obsidian.Notice(tr('Résumé de la journée en cours…'), 0);
     let texte = '';
+    let motRetenu = '';
+    let mot = null;
     try {
-      const rep = await this._genererActiviteIA(Ariane.promptResumeJournee(j, matiere, this.settings.activiteIAContexte), 900, 'synthese');
+      mot = await this._motDuSoir(j);
+      const prompt = Ariane.promptResumeJournee(j, matiere, this.settings.activiteIAContexte, {
+        portrait: this.settings.resumeJourneePortrait,
+        demain: await this._matiereDemain(j),
+        mot,
+        motsRecents: mot ? [] : await this._motsRecents(j),
+      });
+      const rep = await this._genererActiviteIA(prompt, 1600, 'synthese');
       texte = String((rep && (rep.resume || rep.texte)) || '').replace(/\s*[\u2014\u2013]\s*/g, ', ').replace(/\s+/g, ' ').trim();
+      motRetenu = String((mot && mot.mot) || (rep && rep.mot) || '').trim();
     } catch (e) {
       if (avis) avis.hide();
       new obsidian.Notice(tr('Résumé de la journée impossible : ') + ((e && e.message) || e), 10000);
@@ -444,6 +563,10 @@ const avecDonneesJour = (Base) => class extends Base {
     if (!texte) return '';
     const d = await this.donneesJour(j);
     d.resumeJournee = { texte, le: new Date().toISOString(), modele: this.settings.activiteIAFournisseur || this.settings.refsFournisseur || '' };
+    if (motRetenu) {
+      d.resumeJournee.mot = motRetenu;
+      if (mot) Object.assign(d.resumeJournee, { motDeLaListe: true, definition: mot.definition || '' });
+    }
     this.marquerJourSale(j);
     await this.ecrireDonneesJours();
     this._signalerResumeJournee();
