@@ -13,7 +13,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecFriseStatiques,
   avecArticulationStatiques,
   avecTaches,
-  avecActivite) {
+  avecActivite,
+  avecChronologie) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -94,6 +95,11 @@ class Ariane extends composer(obsidian.Plugin,
       id: 'incoherences-taches',
       name: tr('Tâches : incohérences'),
       callback: () => this.ouvrirVueIncoherences(),
+    });
+    this.addCommand({
+      id: 'ouvrir-chronologie',
+      name: tr("Ouvrir la chronologie d'activité"),
+      callback: () => this.ouvrirChronologie(),
     });
     this.addCommand({
       id: 'harmoniser-colonnes-bases',
@@ -391,6 +397,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
     this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
+    this.registerView(TYPE_VUE_CHRONOLOGIE, (leaf) => new VueChronologie(leaf, this));
     // La frise est une vue de base : elle n'existe que si Bases est actif.
     if (typeof this.registerBasesView === 'function') {
       const Vue = fabriquerVueFriseBase(this);
@@ -467,6 +474,7 @@ class Ariane extends composer(obsidian.Plugin,
       () => this.basculerCitations(!this.settings.citationsRepliees));
     this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
     this.addRibbonIcon('scale', tr('Références en attente (Ariane)'), () => this.ouvrirVueReferences());
+    this.addRibbonIcon('history', tr("Chronologie d'activité (Ariane)"), () => this.ouvrirChronologie());
     // Déclare le panneau comme source d'aperçu au survol (« Page preview »).
     if (this.registerHoverLinkSource) {
       this.registerHoverLinkSource('zfa-suggestions', { display: tr('Suggestions (Ariane)'), defaultMod: false });
@@ -550,6 +558,7 @@ class Ariane extends composer(obsidian.Plugin,
       this.elaguerHistoriqueTemps();
       this.demarrerCompteurTemps();
       this.demarrerActivite();
+      this.brancherChronologie();
       this.installerInfobulleTemps();
     });
     this._citVersion = 0;
@@ -1027,6 +1036,8 @@ class Ariane extends composer(obsidian.Plugin,
     for (const t of this.antirebonds.values()) clearTimeout(t);
     this.antirebonds.clear();
     clearTimeout(this._activiteMinuterie);
+    // Journal d'activité : ce qui attend encore son écriture.
+    this._chronoEcrire().catch(() => { /* fermeture en cours */ });
     // Le cache d'embeddings n'est plus écrit à chaque frappe : il faut donc le
     // poser au plus tard ici, faute de quoi la session serait perdue.
     if (this.suggEmbMinuteur) { clearTimeout(this.suggEmbMinuteur); this.suggEmbMinuteur = null; }

@@ -19,7 +19,7 @@ const avecSocle = (Base) => class extends Base {
     return ['tempsTotalSecondes', 'tempsHistorique', 'rattachementsIgnores',
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
-            'dossierTaches', 'tempsDossierJournal'];
+            'dossierTaches', 'tempsDossierJournal', 'chronoDepuis'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu

@@ -85,6 +85,7 @@
  *            11j  avecArticulationStatiques plan, arêtes, zones
  *            11k  avecTaches     notes de tâche, temps, synchro Apple
  *            11l  avecActivite   activité réelle (ActivityWatch)
+ *            11m  avecChronologie  journal d'activité du coffre
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -108,7 +109,8 @@
  *          mois et semaine : MoteurCalendrier, vue Bases « ariane-calendrier »,
  *          agenda Apple en fond. Sous-régions « Calendrier · … ».
  *   18 · Vues latérales (ItemView)
- *          incohérences de tâches, références en attente, suggestions
+ *          incohérences de tâches, références en attente, suggestions,
+ *          chronologie d'activité (vue d'onglet « ariane-chronologie »)
  *   19 · Modales secondaires
  *          choix, rapports, fusion d'auteurs
  *   20 · Exports
@@ -1253,6 +1255,51 @@ const TEXTES = {
     "pas de seau d'absence, ": "no away bucket, ",
     " navigateur(s).": " browser(s).",
     "aucun navigateur.": "no browser.",
+
+    "Chronologie d'activité": "Activity timeline",
+    "Chronologie d'activité (Ariane)": "Activity timeline (Ariane)",
+    "Ouvrir la chronologie d'activité": "Open the activity timeline",
+    "Ouvrir la chronologie": "Open the timeline",
+    "Notes modifiées": "Notes edited",
+    "Note modifiée": "Note edited",
+    "Notes créées": "Notes created",
+    "Note créée": "Note created",
+    "Captures": "Captures",
+    "Capture": "Captured",
+    "Tâches terminées": "Tasks completed",
+    "Tâche terminée": "Task completed",
+    "Tâches abandonnées": "Tasks dropped",
+    "Tâche abandonnée": "Task dropped",
+    "Canevas & extraits": "Canvas & snippets",
+    "Canevas": "Canvas",
+    "créé": "created",
+    "modifié": "edited",
+    "Semaine du ": "Week of ",
+    "Précédent": "Previous",
+    "Suivant": "Next",
+    "Tout": "All",
+    "Notes": "Notes",
+    "Le journal d'activité est désactivé (réglages, onglet Temps passé) : seule la reconstitution d'après les dates des fichiers s'affiche.": "The activity log is off (settings, Time spent tab): only the reconstruction from file dates is shown.",
+    "Aucune activité sur cette période.": "No activity in this period.",
+    "événements": "events",
+    "événement": "event",
+    "Afficher plus": "Show more",
+    "Raison : ": "Reason: ",
+    "lignes touchées": "lines changed",
+    "ligne touchée": "line changed",
+    "Reconstitué d'après les dates du fichier : antérieur au journal d'activité.": "Reconstructed from the file's dates: earlier than the activity log.",
+    "Activité · 10 dernières semaines": "Activity · last 10 weeks",
+    "Par type": "By type",
+    "Dossier": "Folder",
+    "Tous les dossiers": "All folders",
+    "Un journal de ce qui se passe dans le coffre : notes créées ou modifiées (avec le début de la modification), captures, tâches terminées ou abandonnées, canevas. Il est tenu par mois dans le dossier du greffon, jamais dans le coffre ni dans les réglages. Une modification qui ne touche que l'entête, ou qu'Ariane fait elle-même, n'est pas une activité. Avant le journal, la chronologie se reconstitue d'après les dates des fichiers.": "A log of what happens in the vault: notes created or edited (with the start of the change), captures, tasks completed or dropped, canvases. It is kept by month in the plugin folder, never in the vault nor in the settings. A change that only touches the frontmatter, or that Ariane makes itself, is not activity. Before the log, the timeline is reconstructed from file dates.",
+    "Tenir le journal d'activité": "Keep the activity log",
+    "Sources de capture": "Capture sources",
+    "Une par ligne : « Nom (icône) = dossier, dossier ». Une note créée dans l'un de ces dossiers est une capture de cette source ; ses mises à jour ultérieures ne comptent pas. L'icône, facultative, est un nom Lucide (bookmark, mic, scissors…).": "One per line: \"Name (icon) = folder, folder\". A note created in one of these folders is a capture from that source; its later updates do not count. The optional icon is a Lucide name (bookmark, mic, scissors…).",
+    "Dossiers des extraits": "Snippet folders",
+    "Un chemin par ligne. Leurs notes sont rangées avec les canevas, sous « Canevas & extraits ».": "One path per line. Their notes are filed with canvases, under \"Canvas & snippets\".",
+    "Dossiers ignorés par la chronologie": "Folders the timeline ignores",
+    "Un chemin par ligne, sous-dossiers compris. Le journal du temps est toujours ignoré.": "One path per line, subfolders included. The time journal is always ignored.",
   },
 };
 let LANGUE = 'fr';
@@ -1393,6 +1440,13 @@ const DEFAULT_SETTINGS = {
   activiteAutre: 'Autre',               // catégorie de ce qu'aucune règle ne classe (vide = ignorer)
   activiteGrainMin: 5,                  // grain d'agrégation, en minutes
   activiteDureeMin: 10,                 // créneau réel le plus court affiché, en minutes
+  // --- Chronologie d'activité du coffre ------------------------------------
+  chronoActif: true,                    // tenir le journal (dossier du greffon, pas data.json)
+  chronoDepuis: 0,                      // début du journal (ms) ; avant, reconstitution
+  // Sources de capture, une par ligne : « Nom (icône) = dossier, dossier ».
+  chronoCaptures: 'Raindrop (bookmark) = Raindrop\nMacWhisper (mic) = Transcripts',
+  chronoExtraits: '',                   // dossiers rangés avec les canevas (« extraits »)
+  chronoDossiersExclus: '',             // dossiers ignorés par la chronologie
   dropSignalerRefus: true, // prévenir quand un dépôt n'est pas reconnu
   citationsRepliables: true,
   citationsRepliees: false, // état courant, piloté par les commandes
@@ -3590,7 +3644,7 @@ const avecSocle = (Base) => class extends Base {
     return ['tempsTotalSecondes', 'tempsHistorique', 'rattachementsIgnores',
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
-            'dossierTaches', 'tempsDossierJournal'];
+            'dossierTaches', 'tempsDossierJournal', 'chronoDepuis'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
@@ -15066,6 +15120,558 @@ const avecActivite = (Base) => class extends Base {
 
   //#endregion Ariane · activité réelle (ActivityWatch)
 };
+// ── avecChronologie ───────────────────────────────────────────────────────
+// Domaine : chronologie d'activité du coffre.
+// Journal des événements (notes créées ou modifiées, captures, tâches
+// terminées ou abandonnées, canevas), tenu par mois dans le dossier du
+// greffon, et reconstitution approximative du passé d'avant le journal à
+// partir des dates des fichiers. La vue « ariane-chronologie » (section 18)
+// le lit.
+//
+// Ce qui n'est PAS une activité : une écriture d'Ariane elle-même, et une
+// modification qui ne touche que l'entête. Le compteur de temps réécrit la
+// propriété « temps-passe » toutes les cinq minutes : sans cette règle, la
+// chronologie ne parlerait que de lui.
+const avecChronologie = (Base) => class extends Base {
+  //#region Ariane · static · chronologie
+  // ── static · chronologie ─────────────────────────────────────────────────
+
+  // Les types d'événement, dans l'ordre des compteurs de la vue. `filtre` est
+  // la pastille qui les montre.
+  static get TYPES_CHRONO() {
+    return [
+      { type: 'note-modifiee', libelle: 'Notes modifiées', etiquette: 'Note modifiée', icone: 'pencil', couleur: 'var(--text-muted)', filtre: 'notes' },
+      { type: 'note-creee', libelle: 'Notes créées', etiquette: 'Note créée', icone: 'file-plus', couleur: 'var(--color-purple)', filtre: 'notes' },
+      { type: 'capture', libelle: 'Captures', etiquette: 'Capture', icone: 'bookmark', couleur: 'var(--color-blue)', filtre: 'captures' },
+      { type: 'tache-terminee', libelle: 'Tâches terminées', etiquette: 'Tâche terminée', icone: 'check', couleur: 'var(--color-cyan)', filtre: 'taches' },
+      { type: 'tache-abandonnee', libelle: 'Tâches abandonnées', etiquette: 'Tâche abandonnée', icone: 'x', couleur: 'var(--color-orange)', filtre: 'taches' },
+      { type: 'canevas', libelle: 'Canevas & extraits', etiquette: 'Canevas', icone: 'layout-dashboard', couleur: 'var(--color-yellow)', filtre: 'canevas' },
+    ];
+  }
+
+  static typeChrono(type) {
+    return Ariane.TYPES_CHRONO.find((d) => d.type === type) || Ariane.TYPES_CHRONO[0];
+  }
+
+  // Sources de capture, une par ligne : « Nom (icône) = dossier, dossier ».
+  // L'icône (Lucide) est facultative.
+  static compilerSourcesCapture(texte) {
+    const out = [];
+    for (const brute of String(texte || '').split('\n')) {
+      const l = brute.trim();
+      if (!l || l.startsWith('#')) continue;
+      const i = l.indexOf('=');
+      if (i <= 0) continue;
+      let nom = l.slice(0, i).trim();
+      let icone = '';
+      const mi = nom.match(/\(([\w-]+)\)\s*$/);
+      if (mi) { icone = mi[1]; nom = nom.slice(0, mi.index).trim(); }
+      const dossiers = l.slice(i + 1).split(',').map((d) => d.trim().replace(/^\/+|\/+$/g, '')).filter(Boolean);
+      if (nom && dossiers.length) out.push({ nom, icone: icone || 'bookmark', dossiers });
+    }
+    return out;
+  }
+
+  // Ce que la chronologie fait d'un chemin : { genre: 'note' | 'capture' |
+  // 'canevas', source } ou null s'il ne la concerne pas. `cfg` = { exclus,
+  // extraits, sources } (dossiers déjà découpés, sources compilées).
+  static genreChrono(chemin, extension, cfg) {
+    const c = cfg || {};
+    const p = String(chemin || '');
+    if (!p || p.startsWith('.') || p.includes('/.')) return null;
+    if (Ariane.sousDossier(p, c.exclus || [])) return null;
+    const ext = String(extension || '').toLowerCase();
+    if (ext === 'canvas') return { genre: 'canevas' };
+    if (ext !== 'md') return null;
+    if (Ariane.sousDossier(p, c.extraits || [])) return { genre: 'canevas' };
+    for (const s of (c.sources || [])) {
+      if (Ariane.sousDossier(p, s.dossiers)) return { genre: 'capture', source: s };
+    }
+    return { genre: 'note' };
+  }
+
+  // Corps d'une note, sans son entête YAML.
+  static corpsSansEntete(texte) {
+    const t = String(texte || '').replace(/\r\n/g, '\n');
+    const m = t.match(/^---\n[\s\S]*?\n---(?:\n|$)/);
+    return m ? t.slice(m[0].length) : t;
+  }
+
+  // Une ligne de Markdown réduite à son texte lisible.
+  static texteBrutLigne(l) {
+    return String(l || '')
+      .replace(/^\s*(?:#{1,6}\s+|>\s?|[-*+]\s+(?:\[.\]\s+)?|\d+[.)]\s+)+/, '')
+      .replace(/!?\[\[([^\]|]*)\|([^\]]*)\]\]/g, '$2')
+      .replace(/!?\[\[([^\]]*)\]\]/g, '$1')
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/(\*\*|__|==|~~|`)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // Les premières lignes lisibles d'un texte, coupées net au-delà de `max`.
+  static extraitLignes(lignes, max) {
+    const garder = [];
+    for (const l of lignes) {
+      const b = Ariane.texteBrutLigne(l);
+      if (!b || /^[-*_=|:\s]+$/.test(b)) continue;
+      garder.push(b);
+      if (garder.length >= 2) break;
+    }
+    const t = garder.join('\n');
+    const m = max || 280;
+    return t.length > m ? t.slice(0, m - 1).trimEnd() + '…' : t;
+  }
+
+  // Début lisible d'une note (capture) : les deux premières lignes du corps
+  // qui ne sont pas des titres.
+  static extraitDebut(texte, max) {
+    const lignes = Ariane.corpsSansEntete(texte).split('\n').filter((l) => !/^\s*#{1,6}\s/.test(l));
+    return Ariane.extraitLignes(lignes, max);
+  }
+
+  // Ce qu'une modification a changé dans le CORPS d'une note : le nombre de
+  // lignes touchées et le début de la zone modifiée (lignes nouvelles, ou
+  // lignes retirées si rien n'a été ajouté). null si le corps n'a pas bougé
+  // (entête seule, ou rien du tout).
+  static extraitModification(avant, apres) {
+    const A = Ariane.corpsSansEntete(avant).split('\n');
+    const B = Ariane.corpsSansEntete(apres).split('\n');
+    let i = 0;
+    while (i < A.length && i < B.length && A[i] === B[i]) i++;
+    let ja = A.length - 1;
+    let jb = B.length - 1;
+    while (ja >= i && jb >= i && A[ja] === B[jb]) { ja--; jb--; }
+    const ajout = B.slice(i, jb + 1);
+    const retrait = A.slice(i, ja + 1);
+    if (!ajout.length && !retrait.length) return null;
+    const plein = (ls) => ls.some((l) => l.trim());
+    if (!plein(ajout) && !plein(retrait)) return null;
+    return {
+      n: Math.max(ajout.length, retrait.length),
+      extrait: Ariane.extraitLignes(plein(ajout) ? ajout : retrait),
+      retrait: !plein(ajout),
+    };
+  }
+
+  // Bornes d'une période autour d'un jour : { debut, fin } en jours ISO, fin
+  // exclue. La semaine commence le lundi.
+  static bornesPeriode(periode, jour) {
+    const j = Ariane.jourValide(jour) || jourIsoDe(new Date());
+    if (periode === 'jour') return { debut: j, fin: Ariane.decalerJour(j, 1) };
+    if (periode === 'mois') {
+      const d = j.slice(0, 8) + '01';
+      const [a, m] = [Number(j.slice(0, 4)), Number(j.slice(5, 7))];
+      const suiv = m === 12 ? (a + 1) + '-01-01' : a + '-' + String(m + 1).padStart(2, '0') + '-01';
+      return { debut: d, fin: suiv };
+    }
+    if (periode === 'annee') {
+      const a = Number(j.slice(0, 4));
+      return { debut: a + '-01-01', fin: (a + 1) + '-01-01' };
+    }
+    const dow = (new Date(j + 'T12:00:00Z').getUTCDay() + 6) % 7;
+    const lundi = Ariane.decalerJour(j, -dow);
+    return { debut: lundi, fin: Ariane.decalerJour(lundi, 7) };
+  }
+
+  // Le jour d'ancrage de la période voisine (sens = -1 ou +1).
+  static decalerPeriode(periode, jour, sens) {
+    const b = Ariane.bornesPeriode(periode, jour);
+    if (sens > 0) return b.fin;
+    if (periode === 'jour') return Ariane.decalerJour(b.debut, -1);
+    if (periode === 'semaine') return Ariane.decalerJour(b.debut, -7);
+    return Ariane.bornesPeriode(periode, Ariane.decalerJour(b.debut, -1)).debut;
+  }
+
+  // Dossier de premier niveau d'un chemin ('' à la racine).
+  static dossierRacine(chemin) {
+    const p = String(chemin || '');
+    const i = p.indexOf('/');
+    return i < 0 ? '' : p.slice(0, i);
+  }
+
+  // Filtre de la vue : pastille (tout, notes, taches, captures, canevas) et
+  // dossier de premier niveau ('' = tous).
+  static filtrerChrono(evts, filtre, dossier) {
+    const f = filtre || 'tout';
+    return (evts || []).filter((e) => {
+      if (f !== 'tout' && Ariane.typeChrono(e.type).filtre !== f) return false;
+      if (dossier && Ariane.dossierRacine(e.chemin) !== dossier) return false;
+      return true;
+    });
+  }
+
+  // Nombre d'événements par type.
+  static comptesChrono(evts) {
+    const c = {};
+    for (const d of Ariane.TYPES_CHRONO) c[d.type] = 0;
+    for (const e of (evts || [])) if (c[e.type] !== undefined) c[e.type]++;
+    return c;
+  }
+
+  // Carte de chaleur : `semaines` colonnes (la dernière contient `aujourdhui`),
+  // sept lignes du lundi au dimanche. Chaque case : { jour, n, niveau 0..4 },
+  // ou null après aujourd'hui. Le niveau se rapporte au jour le plus chargé.
+  static carteChaleur(evts, aujourdhui, semaines) {
+    const nb = semaines || 10;
+    const parJour = new Map();
+    for (const e of (evts || [])) {
+      const j = jourIsoDe(new Date(e.t));
+      parJour.set(j, (parJour.get(j) || 0) + 1);
+    }
+    const lundi = Ariane.bornesPeriode('semaine', aujourdhui).debut;
+    const depart = Ariane.decalerJour(lundi, -7 * (nb - 1));
+    let max = 0;
+    const cols = [];
+    for (let s = 0; s < nb; s++) {
+      const col = [];
+      for (let d = 0; d < 7; d++) {
+        const jour = Ariane.decalerJour(depart, s * 7 + d);
+        if (jour > aujourdhui) { col.push(null); continue; }
+        const n = parJour.get(jour) || 0;
+        if (n > max) max = n;
+        col.push({ jour, n, niveau: 0 });
+      }
+      cols.push(col);
+    }
+    for (const col of cols) {
+      for (const c of col) if (c && c.n) c.niveau = Math.max(1, Math.ceil((c.n / max) * 4));
+    }
+    return { depart, colonnes: cols };
+  }
+
+  //#endregion Ariane · static · chronologie
+
+  //#region Ariane · chronologie (journal & lecture)
+  // ── chronologie (journal & lecture) ──────────────────────────────────────
+
+  // Réglages compilés, recalculés quand le texte des réglages change.
+  _chronoCfg() {
+    const s = this.settings;
+    const sig = [s.chronoCaptures, s.chronoExtraits, s.chronoDossiersExclus, s.tempsDossierJournal].join('\u0001');
+    if (this._chronoCfgCache && this._chronoCfgCache.sig === sig) return this._chronoCfgCache.cfg;
+    const lignes = (t) => String(t || '').split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+    const exclus = lignes(s.chronoDossiersExclus);
+    // Le journal du temps est un produit d'Ariane, pas une activité.
+    exclus.push(String(s.tempsDossierJournal || '9 - Journal du temps'));
+    const cfg = {
+      exclus,
+      extraits: lignes(s.chronoExtraits),
+      sources: Ariane.compilerSourcesCapture(s.chronoCaptures),
+    };
+    this._chronoCfgCache = { sig, cfg };
+    return cfg;
+  }
+
+  _chronoDossier() {
+    const base = (this.manifest && this.manifest.dir) || (this.app.vault.configDir + '/plugins/obsidian-ariane');
+    return base + '/chronologie';
+  }
+
+  // Le journal d'un mois ('AAAA-MM') : { jour: [événements] }. Une seule
+  // lecture par mois et par session ; la promesse est gardée pour que deux
+  // appels simultanés partagent le même objet.
+  _chronoMois(mois) {
+    const cache = this._chronoMoisCache || (this._chronoMoisCache = new Map());
+    if (!cache.has(mois)) {
+      const chemin = this._chronoDossier() + '/' + mois + '.json';
+      cache.set(mois, (async () => {
+        try {
+          const a = this.app.vault.adapter;
+          if (await a.exists(chemin)) {
+            const o = JSON.parse(await a.read(chemin));
+            if (o && typeof o === 'object') return o;
+          }
+        } catch (e) {
+          console.warn('[Ariane] chronologie illisible : ' + chemin, e);
+        }
+        return {};
+      })());
+    }
+    return cache.get(mois);
+  }
+
+  // Les mois touchés attendent un quart de minute avant d'être écrits : une
+  // rafale de modifications ne coûte qu'une écriture.
+  _chronoSale(mois) {
+    (this._chronoSales || (this._chronoSales = new Set())).add(mois);
+    clearTimeout(this._chronoMinuterie);
+    this._chronoMinuterie = setTimeout(() => this._chronoEcrire(), 15000);
+    this._chronoSignaler();
+  }
+
+  async _chronoEcrire() {
+    clearTimeout(this._chronoMinuterie);
+    const sales = [...(this._chronoSales || [])];
+    if (!sales.length) return;
+    this._chronoSales = new Set();
+    const a = this.app.vault.adapter;
+    const dossier = this._chronoDossier();
+    try {
+      if (!(await a.exists(dossier))) await a.mkdir(dossier);
+      for (const mois of sales) {
+        const o = await this._chronoMois(mois);
+        await a.write(dossier + '/' + mois + '.json', JSON.stringify(o));
+      }
+    } catch (e) {
+      console.error('[Ariane] chronologie non écrite', e);
+    }
+  }
+
+  // Prévient les vues ouvertes, sans les redessiner à chaque frappe.
+  _chronoSignaler() {
+    clearTimeout(this._chronoSignalMinuterie);
+    this._chronoSignalMinuterie = setTimeout(() => {
+      for (const f of this.app.workspace.getLeavesOfType(TYPE_VUE_CHRONOLOGIE)) {
+        try { if (f.view && f.view.rafraichir) f.view.rafraichir(); } catch (e) { /* vue fermée */ }
+      }
+    }, 2000);
+  }
+
+  // Consigne un événement. Les modifications d'une même note se fondent en une
+  // séance tant qu'elles se suivent à moins d'une demi-heure.
+  async chronoNoter(e) {
+    if (!this.settings.chronoActif) return;
+    // Journal activé après le démarrage : il commence ici, sans quoi la
+    // reconstitution doublerait ses premiers événements.
+    if (!this.settings.chronoDepuis) {
+      this.settings.chronoDepuis = e.t;
+      this.saveSettings().catch(() => {});
+    }
+    const jour = jourIsoDe(new Date(e.t));
+    const mois = jour.slice(0, 7);
+    const m = await this._chronoMois(mois);
+    const liste = m[jour] || (m[jour] = []);
+    if (e.type === 'note-modifiee' || (e.type === 'canevas' && e.action === 'modifie')) {
+      for (let k = liste.length - 1; k >= 0; k--) {
+        const der = liste[k];
+        if (der.type !== e.type || der.chemin !== e.chemin || der.action !== e.action) continue;
+        if (e.t - (der.fin || der.t) <= 30 * 60000) {
+          der.fin = e.t;
+          if (e.n) der.n = (der.n || 0) + e.n;
+          if (e.extrait) der.extrait = e.extrait;
+          if (e.titre) der.titre = e.titre;
+          this._chronoSale(mois);
+          return;
+        }
+        break;
+      }
+    }
+    liste.push(Object.assign({ fin: e.t }, e));
+    this._chronoSale(mois);
+  }
+
+  // Dernier contenu connu du corps des notes ouvertes : c'est contre lui que
+  // se mesure une modification. Quarante notes au plus.
+  _chronoInstantane(chemin, corps) {
+    const m = this._chronoInstantanes || (this._chronoInstantanes = new Map());
+    m.delete(chemin);
+    m.set(chemin, corps);
+    if (m.size > 40) m.delete(m.keys().next().value);
+  }
+
+  _chronoTitreFichier(f) {
+    const fm = ((this.app.metadataCache.getFileCache(f) || {}).frontmatter) || {};
+    const alias = [].concat(fm.aliases || []).map(String).filter(Boolean);
+    return alias[0] || f.basename;
+  }
+
+  // Écoutes : branchées une fois la disposition prête, sans quoi la création
+  // de chaque fichier au chargement du coffre passerait pour une activité.
+  brancherChronologie() {
+    // Début du journal : avant, la chronologie se reconstitue d'après les
+    // dates des fichiers ; après, elle ne lit que le journal.
+    if (this.settings.chronoActif && !this.settings.chronoDepuis) {
+      this.settings.chronoDepuis = Date.now();
+      this.saveSettings().catch(() => {});
+    }
+    // Statut de chaque tâche, pour reconnaître le passage à « terminée ».
+    this._chronoStatuts = new Map();
+    try {
+      for (const t of this.tachesPourGantt()) this._chronoStatuts.set(t.fichier.path, t.statut);
+    } catch (e) { /* tâches indisponibles */ }
+    this._chronoUtilisateur = new Set();
+
+    this.registerEvent(this.app.workspace.on('file-open', (f) => {
+      if (!this.settings.chronoActif || !(f instanceof obsidian.TFile) || f.extension !== 'md') return;
+      this.app.vault.cachedRead(f).then((t) => {
+        if (!this._chronoInstantanes || !this._chronoInstantanes.has(f.path)) {
+          this._chronoInstantane(f.path, Ariane.corpsSansEntete(t));
+        }
+      }).catch(() => {});
+    }));
+
+    this.registerEvent(this.app.vault.on('create', (f) => {
+      if (!this.settings.chronoActif || !(f instanceof obsidian.TFile)) return;
+      if (this.ecritePlugin(f.path)) return;
+      const g = Ariane.genreChrono(f.path, f.extension, this._chronoCfg());
+      if (!g) return;
+      const t = Date.now();
+      // Le contenu d'une capture arrive souvent juste après sa création
+      // (un greffon crée, puis écrit) : on le lit un peu plus tard.
+      setTimeout(async () => {
+        let texte = '';
+        if (f.extension === 'md') {
+          try { texte = await this.app.vault.read(f); } catch (e) { return; /* déjà supprimé */ }
+          this._chronoInstantane(f.path, Ariane.corpsSansEntete(texte));
+        }
+        const base = { t, chemin: f.path, titre: f.extension === 'md' ? this._chronoTitreFichier(f) : f.basename };
+        if (g.genre === 'capture') {
+          await this.chronoNoter(Object.assign(base, { type: 'capture', source: g.source.nom,
+            icone: g.source.icone, extrait: Ariane.extraitDebut(texte) }));
+        } else if (g.genre === 'canevas') {
+          await this.chronoNoter(Object.assign(base, { type: 'canevas', action: 'cree' }));
+        } else {
+          await this.chronoNoter(Object.assign(base, { type: 'note-creee',
+            extrait: Ariane.extraitDebut(texte) }));
+        }
+      }, 3000);
+    }));
+
+    this.registerEvent(this.app.vault.on('modify', (f) => {
+      if (!this.settings.chronoActif || !(f instanceof obsidian.TFile)) return;
+      const g = Ariane.genreChrono(f.path, f.extension, this._chronoCfg());
+      // Une capture se met à jour par sa propre synchronisation : ce n'est
+      // pas une activité.
+      if (!g || g.genre === 'capture') return;
+      if (!this.ecritePlugin(f.path)) this._chronoUtilisateur.add(f.path);
+      this.antirebond('chrono:' + f.path, () => this._chronoModification(f, g), 4000);
+    }));
+
+    this.registerEvent(this.app.vault.on('rename', (f, ancien) => {
+      const m = this._chronoInstantanes;
+      if (m && m.has(ancien)) { m.set(f.path, m.get(ancien)); m.delete(ancien); }
+      if (this._chronoStatuts && this._chronoStatuts.has(ancien)) {
+        this._chronoStatuts.set(f.path, this._chronoStatuts.get(ancien));
+        this._chronoStatuts.delete(ancien);
+      }
+    }));
+
+    this.registerEvent(this.app.metadataCache.on('changed', (f, _d, cache) => {
+      if (!this.settings.chronoActif || !f || !this.refDeChemin(f.path)) return;
+      const fm = (cache && cache.frontmatter) || {};
+      const statut = String(this._lireT(fm, 'statut') || 'à faire');
+      const avant = this._chronoStatuts.get(f.path);
+      this._chronoStatuts.set(f.path, statut);
+      if (avant === undefined || avant === statut) return;
+      if (statut !== 'terminée' && statut !== 'abandonnée') return;
+      const cleRaison = Object.keys(fm).find((k) => /^(raison|motif)/i.test(k));
+      const alias = [].concat(fm.aliases || []).map(String).filter(Boolean);
+      this.chronoNoter({
+        t: Date.now(), chemin: f.path, titre: alias[0] || f.basename,
+        type: statut === 'terminée' ? 'tache-terminee' : 'tache-abandonnee',
+        de: avant, vers: statut,
+        raison: cleRaison ? String(fm[cleRaison] || '').trim() : '',
+      }).catch((e) => console.error('[Ariane] chronologie', e));
+    }));
+  }
+
+  // Une modification retombée : on relit, on compare au dernier état connu.
+  async _chronoModification(f, g) {
+    const parUtilisateur = this._chronoUtilisateur.delete(f.path);
+    if (g.genre === 'canevas' && f.extension !== 'md') {
+      if (parUtilisateur) await this.chronoNoter({ t: Date.now(), chemin: f.path, titre: f.basename, type: 'canevas', action: 'modifie' });
+      return;
+    }
+    let texte;
+    try { texte = await this.app.vault.read(f); } catch (e) { return; }
+    const corps = Ariane.corpsSansEntete(texte);
+    const avant = this._chronoInstantanes ? this._chronoInstantanes.get(f.path) : undefined;
+    this._chronoInstantane(f.path, corps);
+    if (!parUtilisateur) return;
+    const titre = this._chronoTitreFichier(f);
+    const type = g.genre === 'canevas' ? 'canevas' : 'note-modifiee';
+    const action = g.genre === 'canevas' ? 'modifie' : undefined;
+    if (avant === undefined) {
+      // Note jamais ouverte ici (synchronisation, éditeur externe) : on sait
+      // qu'elle a changé, pas ce qui a changé.
+      await this.chronoNoter({ t: Date.now(), chemin: f.path, titre, type, action });
+      return;
+    }
+    const d = Ariane.extraitModification(avant, corps);
+    if (!d) return;
+    await this.chronoNoter({ t: Date.now(), chemin: f.path, titre, type, action, n: d.n, extrait: d.extrait });
+  }
+
+  // Événements de [d0, d1[ (ms) : le journal, plus, pour ce qui précède le
+  // journal, une reconstitution d'après les dates des fichiers (création,
+  // dernière modification, achèvement des tâches). Ces événements reconstitués
+  // portent `approx: true` : sans heure sûre ni extrait de modification.
+  async evenementsChronologie(d0, d1) {
+    const out = [];
+    const j0 = jourIsoDe(new Date(d0));
+    const j1 = jourIsoDe(new Date(d1 - 1));
+    for (let m = j0.slice(0, 7); m <= j1.slice(0, 7);) {
+      const o = await this._chronoMois(m);
+      for (const jour of Object.keys(o)) {
+        if (jour < j0 || jour > j1) continue;
+        for (const e of (o[jour] || [])) if (e.t >= d0 && e.t < d1) out.push(Object.assign({}, e));
+      }
+      const [a, mm] = [Number(m.slice(0, 4)), Number(m.slice(5, 7))];
+      m = mm === 12 ? (a + 1) + '-01' : a + '-' + String(mm + 1).padStart(2, '0');
+    }
+    const depuis = Number(this.settings.chronoDepuis) || Date.now();
+    const borne = Math.min(d1, depuis);
+    if (d0 < borne) out.push(...this._chronoReconstituer(d0, borne));
+    return out.sort((a, b) => b.t - a.t);
+  }
+
+  _chronoReconstituer(d0, d1) {
+    const out = [];
+    const cfg = this._chronoCfg();
+    const taches = new Set();
+    try {
+      for (const t of this.tachesPourGantt()) {
+        taches.add(t.fichier.path);
+        const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+        const mt = t.fichier.stat.mtime;
+        let quand = null;
+        let approx = true;
+        if (t.statut === 'terminée') {
+          const j = Ariane.jourValide(String(this._lireT(fm, 'termine-le') || '').slice(0, 10));
+          if (j) {
+            if (jourIsoDe(new Date(mt)) === j) { quand = mt; } else { quand = new Date(j + 'T12:00:00').getTime(); approx = 'jour'; }
+          }
+        } else if (t.statut === 'abandonnée') {
+          quand = mt;
+        }
+        if (quand === null || quand < d0 || quand >= d1) continue;
+        out.push({ t: quand, fin: quand, chemin: t.fichier.path, titre: t.intitule, approx,
+          type: t.statut === 'terminée' ? 'tache-terminee' : 'tache-abandonnee', vers: t.statut });
+      }
+    } catch (e) { /* tâches indisponibles */ }
+    for (const f of this.app.vault.getFiles()) {
+      const g = Ariane.genreChrono(f.path, f.extension, cfg);
+      if (!g) continue;
+      const { ctime, mtime } = f.stat;
+      const titre = f.extension === 'md' ? this._chronoTitreFichier(f) : f.basename;
+      if (ctime >= d0 && ctime < d1) {
+        const e = { t: ctime, fin: ctime, chemin: f.path, titre, approx: true };
+        if (g.genre === 'capture') Object.assign(e, { type: 'capture', source: g.source.nom, icone: g.source.icone });
+        else if (g.genre === 'canevas') Object.assign(e, { type: 'canevas', action: 'cree' });
+        else Object.assign(e, { type: 'note-creee' });
+        out.push(e);
+      }
+      // Dernière modification seulement : l'historique n'existait pas.
+      if (g.genre !== 'capture' && !taches.has(f.path) && mtime >= d0 && mtime < d1 && mtime - ctime > 120000) {
+        out.push({ t: mtime, fin: mtime, chemin: f.path, titre, approx: true,
+          type: g.genre === 'canevas' ? 'canevas' : 'note-modifiee',
+          action: g.genre === 'canevas' ? 'modifie' : undefined });
+      }
+    }
+    return out;
+  }
+
+  async ouvrirChronologie() {
+    const ex = this.app.workspace.getLeavesOfType(TYPE_VUE_CHRONOLOGIE);
+    if (ex.length) { this.app.workspace.revealLeaf(ex[0]); return; }
+    const feuille = this.app.workspace.getLeaf('tab');
+    await feuille.setViewState({ type: TYPE_VUE_CHRONOLOGIE, active: true });
+    this.app.workspace.revealLeaf(feuille);
+  }
+
+  //#endregion Ariane · chronologie (journal & lecture)
+};
 
 // ── class Ariane ──────────────────────────────────────────────────────────
 // Le point d'assemblage. Ne porte que le cycle de vie : onload, et les
@@ -15081,7 +15687,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecFriseStatiques,
   avecArticulationStatiques,
   avecTaches,
-  avecActivite) {
+  avecActivite,
+  avecChronologie) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -15162,6 +15769,11 @@ class Ariane extends composer(obsidian.Plugin,
       id: 'incoherences-taches',
       name: tr('Tâches : incohérences'),
       callback: () => this.ouvrirVueIncoherences(),
+    });
+    this.addCommand({
+      id: 'ouvrir-chronologie',
+      name: tr("Ouvrir la chronologie d'activité"),
+      callback: () => this.ouvrirChronologie(),
     });
     this.addCommand({
       id: 'harmoniser-colonnes-bases',
@@ -15459,6 +16071,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
     this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
+    this.registerView(TYPE_VUE_CHRONOLOGIE, (leaf) => new VueChronologie(leaf, this));
     // La frise est une vue de base : elle n'existe que si Bases est actif.
     if (typeof this.registerBasesView === 'function') {
       const Vue = fabriquerVueFriseBase(this);
@@ -15535,6 +16148,7 @@ class Ariane extends composer(obsidian.Plugin,
       () => this.basculerCitations(!this.settings.citationsRepliees));
     this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
     this.addRibbonIcon('scale', tr('Références en attente (Ariane)'), () => this.ouvrirVueReferences());
+    this.addRibbonIcon('history', tr("Chronologie d'activité (Ariane)"), () => this.ouvrirChronologie());
     // Déclare le panneau comme source d'aperçu au survol (« Page preview »).
     if (this.registerHoverLinkSource) {
       this.registerHoverLinkSource('zfa-suggestions', { display: tr('Suggestions (Ariane)'), defaultMod: false });
@@ -15618,6 +16232,7 @@ class Ariane extends composer(obsidian.Plugin,
       this.elaguerHistoriqueTemps();
       this.demarrerCompteurTemps();
       this.demarrerActivite();
+      this.brancherChronologie();
       this.installerInfobulleTemps();
     });
     this._citVersion = 0;
@@ -16095,6 +16710,8 @@ class Ariane extends composer(obsidian.Plugin,
     for (const t of this.antirebonds.values()) clearTimeout(t);
     this.antirebonds.clear();
     clearTimeout(this._activiteMinuterie);
+    // Journal d'activité : ce qui attend encore son écriture.
+    this._chronoEcrire().catch(() => { /* fermeture en cours */ });
     // Le cache d'embeddings n'est plus écrit à chaque frappe : il faut donc le
     // poser au plus tard ici, faute de quoi la session serait perdue.
     if (this.suggEmbMinuteur) { clearTimeout(this.suggEmbMinuteur); this.suggEmbMinuteur = null; }
@@ -16797,6 +17414,38 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addText((t) => t.setValue(String(s.activiteDureeMin == null ? 10 : s.activiteDureeMin))
           .onChange(async (v) => { const n = parseInt(v, 10); s.activiteDureeMin = Number.isFinite(n) ? Math.max(0, n) : 10; await maj(); this.plugin._rafraichirActiviteDiffere(); }));
     }
+
+    this._section(c, tr("Chronologie d'activité"));
+    this._aide(c, tr("Un journal de ce qui se passe dans le coffre : notes créées ou modifiées (avec le début de la modification), captures, tâches terminées ou abandonnées, canevas. Il est tenu par mois dans le dossier du greffon, jamais dans le coffre ni dans les réglages. Une modification qui ne touche que l'entête, ou qu'Ariane fait elle-même, n'est pas une activité. Avant le journal, la chronologie se reconstitue d'après les dates des fichiers."));
+    new obsidian.Setting(c)
+      .setName(tr("Tenir le journal d'activité"))
+      .addToggle((t) => t.setValue(s.chronoActif !== false).onChange(async (v) => { s.chronoActif = v; await maj(); }))
+      .addButton((b) => b.setButtonText(tr('Ouvrir la chronologie')).onClick(() => this.plugin.ouvrirChronologie()));
+    new obsidian.Setting(c)
+      .setName(tr('Sources de capture'))
+      .setDesc(tr("Une par ligne : « Nom (icône) = dossier, dossier ». Une note créée dans l'un de ces dossiers est une capture de cette source ; ses mises à jour ultérieures ne comptent pas. L'icône, facultative, est un nom Lucide (bookmark, mic, scissors…)."))
+      .addTextArea((t) => {
+        t.setValue(s.chronoCaptures || '').onChange(async (v) => { s.chronoCaptures = v; await maj(); });
+        t.inputEl.rows = 3;
+        t.inputEl.style.width = '100%';
+        t.inputEl.style.fontFamily = 'var(--font-monospace)';
+      });
+    new obsidian.Setting(c)
+      .setName(tr('Dossiers des extraits'))
+      .setDesc(tr("Un chemin par ligne. Leurs notes sont rangées avec les canevas, sous « Canevas & extraits »."))
+      .addTextArea((t) => {
+        t.setValue(s.chronoExtraits || '').onChange(async (v) => { s.chronoExtraits = v; await maj(); });
+        t.inputEl.rows = 2;
+        t.inputEl.style.width = '100%';
+      });
+    new obsidian.Setting(c)
+      .setName(tr('Dossiers ignorés par la chronologie'))
+      .setDesc(tr('Un chemin par ligne, sous-dossiers compris. Le journal du temps est toujours ignoré.'))
+      .addTextArea((t) => {
+        t.setValue(s.chronoDossiersExclus || '').onChange(async (v) => { s.chronoDossiersExclus = v; await maj(); });
+        t.inputEl.rows = 2;
+        t.inputEl.style.width = '100%';
+      });
   }
 
   ongletSchemas(c, s, maj) {
@@ -18844,6 +19493,7 @@ class ModaleAjoutLN extends obsidian.Modal {
 
 const TYPE_VUE_REFS = 'zfa-references';
 const TYPE_VUE_INCOHERENCES = 'zfa-taches-incoherences';
+const TYPE_VUE_CHRONOLOGIE = 'ariane-chronologie';
 const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 const TYPE_VUE_BASE_ARTIC = 'ariane-articulation';
 const TYPE_VUE_BASE_CALENDRIER = 'ariane-calendrier';
@@ -26488,7 +27138,7 @@ function fabriquerVueCalendrierBase(greffon) {
 // ═══════════════════════════════════════════════════════════════════════════
 //  18 · VUES LATÉRALES (ITEMVIEW)
 //  Volets latéraux : incohérences de tâches, références en attente,
-//  suggestions de voisinage local.
+//  suggestions de voisinage local. Et la chronologie d'activité, vue d'onglet.
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Ce volet ne liste que ce qu'Ariane ne peut pas trancher seule. Tout ce qui
@@ -27157,6 +27807,272 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
   }
 
   async onClose() { this.contentEl.empty(); }
+}
+
+// Chronologie d'activité du coffre : le journal tenu par avecChronologie, jour
+// par jour, avec une carte de chaleur des dix dernières semaines, les
+// comptes par type et un filtre par dossier. Vue d'onglet, non latérale :
+// elle se lit comme une page.
+class VueChronologie extends obsidian.ItemView {
+  constructor(feuille, greffon) {
+    super(feuille);
+    this.greffon = greffon;
+    this.periode = 'semaine';
+    this.ancre = jourIsoDe(new Date());
+    this.filtre = 'tout';
+    this.dossier = '';
+    this.limite = 200;
+    this._jeton = 0;
+  }
+
+  getViewType() { return TYPE_VUE_CHRONOLOGIE; }
+  getDisplayText() { return tr("Chronologie d'activité"); }
+  getIcon() { return 'history'; }
+
+  getState() {
+    return { periode: this.periode, ancre: this.ancre, filtre: this.filtre, dossier: this.dossier };
+  }
+
+  async setState(etat, resultat) {
+    const e = etat || {};
+    if (['jour', 'semaine', 'mois', 'annee'].includes(e.periode)) this.periode = e.periode;
+    if (Ariane.jourValide(e.ancre)) this.ancre = e.ancre;
+    if (['tout', 'notes', 'taches', 'captures', 'canevas'].includes(e.filtre)) this.filtre = e.filtre;
+    if (typeof e.dossier === 'string') this.dossier = e.dossier;
+    await super.setState(etat, resultat);
+    this.rafraichir();
+  }
+
+  async onOpen() {
+    this.contentEl.addClass('zfa-chrono');
+    await this.rafraichir();
+  }
+
+  async onClose() { this._jeton++; this.contentEl.empty(); }
+
+  // Change un critère, revient en tête de liste et redessine.
+  _changer(maj) {
+    Object.assign(this, maj);
+    this.limite = 200;
+    this.contentEl.scrollTop = 0;
+    this.app.workspace.requestSaveLayout();
+    this.rafraichir();
+  }
+
+  _locale() { return LANGUE === 'fr' ? 'fr-FR' : 'en-GB'; }
+
+  _date(jour, opts) {
+    return new Date(jour + 'T12:00:00').toLocaleDateString(this._locale(), opts);
+  }
+
+  _titrePeriode(b) {
+    if (this.periode === 'jour') return this._date(b.debut, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    if (this.periode === 'mois') return this._date(b.debut, { month: 'long', year: 'numeric' });
+    if (this.periode === 'annee') return b.debut.slice(0, 4);
+    return tr('Semaine du ') + this._date(b.debut, { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  async rafraichir() {
+    const jeton = ++this._jeton;
+    const auj = jourIsoDe(new Date());
+    const b = Ariane.bornesPeriode(this.periode, this.ancre);
+    // Une seule lecture couvre la période ET les dix semaines de la carte.
+    const departChaleur = Ariane.decalerJour(Ariane.bornesPeriode('semaine', auj).debut, -63);
+    const debut = b.debut < departChaleur ? b.debut : departChaleur;
+    const finChaleur = Ariane.decalerJour(auj, 1);
+    const fin = b.fin > finChaleur ? b.fin : finChaleur;
+    let evts = [];
+    try {
+      evts = await this.greffon.evenementsChronologie(
+        new Date(debut + 'T00:00:00').getTime(), new Date(fin + 'T00:00:00').getTime());
+    } catch (e) {
+      console.error('[Ariane] chronologie', e);
+    }
+    if (jeton !== this._jeton) return;
+    this.dessiner(evts, b, auj, departChaleur);
+  }
+
+  dessiner(evts, b, auj, departChaleur) {
+    const c = this.contentEl;
+    // Le journal prévient la vue à chaque nouvel événement : redessiner ne
+    // doit pas ramener la lecture en haut de page.
+    const defil = c.scrollTop;
+    c.empty();
+    const grille = c.createDiv({ cls: 'zfa-chrono-grille' });
+    const princ = grille.createDiv({ cls: 'zfa-chrono-principal' });
+    const cote = grille.createDiv({ cls: 'zfa-chrono-cote' });
+    const t0 = new Date(b.debut + 'T00:00:00').getTime();
+    const t1 = new Date(b.fin + 'T00:00:00').getTime();
+    const dansPeriode = evts.filter((e) => e.t >= t0 && e.t < t1);
+    this._dessinerEntete(princ, b, auj);
+    this._dessinerFlux(princ, Ariane.filtrerChrono(dansPeriode, this.filtre, this.dossier), auj);
+    const t2 = new Date(departChaleur + 'T00:00:00').getTime();
+    this._dessinerChaleur(cote, Ariane.filtrerChrono(evts.filter((e) => e.t >= t2), this.filtre, this.dossier), auj);
+    this._dessinerComptes(cote, Ariane.filtrerChrono(dansPeriode, 'tout', this.dossier));
+    this._dessinerDossier(cote);
+    c.scrollTop = defil;
+  }
+
+  _dessinerEntete(hote, b, auj) {
+    const tete = hote.createDiv({ cls: 'zfa-chrono-tete' });
+    tete.createEl('h1', { cls: 'zfa-chrono-titre', text: tr("Chronologie d'activité") });
+    const seg = tete.createDiv({ cls: 'zfa-chrono-seg' });
+    for (const [p, l] of [['jour', 'Jour'], ['semaine', 'Semaine'], ['mois', 'Mois'], ['annee', 'Année']]) {
+      const o = seg.createEl('button', { cls: 'zfa-chrono-seg-btn' + (this.periode === p ? ' is-active' : ''), text: tr(l) });
+      o.onclick = () => this._changer({ periode: p });
+    }
+
+    const nav = hote.createDiv({ cls: 'zfa-chrono-nav' });
+    const prec = nav.createEl('button', { cls: 'zfa-chrono-nav-btn', attr: { 'aria-label': tr('Précédent') } });
+    obsidian.setIcon(prec, 'chevron-left');
+    prec.onclick = () => this._changer({ ancre: Ariane.decalerPeriode(this.periode, this.ancre, -1) });
+    nav.createSpan({ cls: 'zfa-chrono-periode', text: this._titrePeriode(b) });
+    const suiv = nav.createEl('button', { cls: 'zfa-chrono-nav-btn', attr: { 'aria-label': tr('Suivant') } });
+    obsidian.setIcon(suiv, 'chevron-right');
+    suiv.disabled = b.fin > auj;
+    suiv.onclick = () => this._changer({ ancre: Ariane.decalerPeriode(this.periode, this.ancre, 1) });
+    if (!(auj >= b.debut && auj < b.fin)) {
+      const ici = nav.createEl('button', { cls: 'zfa-chrono-nav-btn zfa-chrono-auj', text: tr("Aujourd'hui") });
+      ici.onclick = () => this._changer({ ancre: auj });
+    }
+
+    const puces = hote.createDiv({ cls: 'zfa-chrono-puces' });
+    for (const [f, l] of [['tout', 'Tout'], ['notes', 'Notes'], ['taches', 'Tâches'],
+      ['captures', 'Captures'], ['canevas', 'Canevas & extraits']]) {
+      const p = puces.createEl('button', { cls: 'zfa-chrono-puce' + (this.filtre === f ? ' is-active' : ''), text: tr(l) });
+      p.onclick = () => this._changer({ filtre: f });
+    }
+    if (!this.greffon.settings.chronoActif) {
+      hote.createDiv({ cls: 'zfa-chrono-avis',
+        text: tr("Le journal d'activité est désactivé (réglages, onglet Temps passé) : seule la reconstitution d'après les dates des fichiers s'affiche.") });
+    }
+  }
+
+  _dessinerFlux(hote, evts, auj) {
+    if (!evts.length) {
+      hote.createDiv({ cls: 'zfa-chrono-vide', text: tr('Aucune activité sur cette période.') });
+      return;
+    }
+    const montres = evts.slice(0, this.limite);
+    const parJour = new Map();
+    for (const e of montres) {
+      const j = jourIsoDe(new Date(e.t));
+      if (!parJour.has(j)) parJour.set(j, []);
+      parJour.get(j).push(e);
+    }
+    const totaux = new Map();
+    for (const e of evts) { const j = jourIsoDe(new Date(e.t)); totaux.set(j, (totaux.get(j) || 0) + 1); }
+    let moisCourant = '';
+    for (const [jour, liste] of parJour) {
+      if (jour.slice(0, 7) !== moisCourant) {
+        moisCourant = jour.slice(0, 7);
+        hote.createDiv({ cls: 'zfa-chrono-mois', text: this._date(jour, { month: 'long', year: 'numeric' }) });
+      }
+      const tj = hote.createDiv({ cls: 'zfa-chrono-jour' });
+      tj.createSpan({ cls: 'zfa-chrono-jour-nom', text: this._date(jour, { weekday: 'short', day: 'numeric', month: 'short' }) });
+      const n = totaux.get(jour) || liste.length;
+      tj.createSpan({ cls: 'zfa-chrono-jour-info',
+        text: ' · ' + (jour === auj ? tr("Aujourd'hui") : n + ' ' + (n > 1 ? tr('événements') : tr('événement'))) });
+      const fil = hote.createDiv({ cls: 'zfa-chrono-fil' });
+      for (const e of liste) this._dessinerEvenement(fil, e);
+    }
+    if (evts.length > montres.length) {
+      const plus = hote.createEl('button', { cls: 'zfa-chrono-plus',
+        text: tr('Afficher plus') + ' (' + (evts.length - montres.length) + ')' });
+      plus.onclick = () => { this.limite += 200; this.rafraichir(); };
+    }
+  }
+
+  _dessinerEvenement(hote, e) {
+    const d = Ariane.typeChrono(e.type);
+    const ligne = hote.createDiv({ cls: 'zfa-chrono-evt' + (e.approx ? ' est-approx' : '') });
+    ligne.style.setProperty('--zfa-chrono-coul', d.couleur);
+    const h = new Date(e.t);
+    const p = (x) => String(x).padStart(2, '0');
+    ligne.createDiv({ cls: 'zfa-chrono-heure', text: e.approx === 'jour' ? '··:··' : p(h.getHours()) + ':' + p(h.getMinutes()) });
+    const rail = ligne.createDiv({ cls: 'zfa-chrono-rail' });
+    const pastille = rail.createDiv({ cls: 'zfa-chrono-pastille' });
+    obsidian.setIcon(pastille, e.type === 'capture' && e.icone ? e.icone : d.icone);
+
+    const carte = ligne.createDiv({ cls: 'zfa-chrono-carte' });
+    let etiquette = tr(d.etiquette);
+    if (e.type === 'capture' && e.source) etiquette += ' · ' + e.source;
+    if (e.type === 'canevas') etiquette += ' · ' + (e.action === 'cree' ? tr('créé') : tr('modifié'));
+    carte.createDiv({ cls: 'zfa-chrono-genre', text: etiquette });
+
+    const f = this.app.vault.getAbstractFileByPath(e.chemin);
+    const existe = f instanceof obsidian.TFile;
+    const titre = existe && f.extension === 'md' ? this.greffon._chronoTitreFichier(f) : (e.titre || e.chemin);
+    carte.createDiv({ cls: 'zfa-chrono-nom' + (existe ? '' : ' est-disparu'), text: titre });
+
+    if (e.type === 'tache-terminee' || e.type === 'tache-abandonnee') {
+      if (e.raison) {
+        const r = carte.createDiv({ cls: 'zfa-chrono-extrait' });
+        r.createSpan({ cls: 'zfa-chrono-raison', text: tr('Raison : ') });
+        r.createSpan({ text: e.raison });
+      }
+      carte.createDiv({ cls: 'zfa-chrono-chemin', text: (e.de ? e.de + ' → ' : '→ ') + (e.vers || '') });
+    } else {
+      const meta = [e.chemin];
+      if (e.n) meta.push(e.n + ' ' + (e.n > 1 ? tr('lignes touchées') : tr('ligne touchée')));
+      carte.createDiv({ cls: 'zfa-chrono-chemin', text: meta.join(' · ') });
+      if (e.extrait) carte.createDiv({ cls: 'zfa-chrono-extrait', text: e.extrait });
+    }
+    if (e.approx) {
+      carte.title = tr("Reconstitué d'après les dates du fichier : antérieur au journal d'activité.");
+    }
+    if (existe) {
+      carte.addClass('est-cliquable');
+      carte.addEventListener('click', (ev) => {
+        this.app.workspace.getLeaf(!!(ev.metaKey || ev.ctrlKey)).openFile(f);
+      });
+    }
+  }
+
+  _dessinerChaleur(hote, evts, auj) {
+    hote.createDiv({ cls: 'zfa-chrono-rubrique', text: tr('Activité · 10 dernières semaines') });
+    const carte = Ariane.carteChaleur(evts, auj, 10);
+    const g = hote.createDiv({ cls: 'zfa-chrono-chaleur' });
+    for (const col of carte.colonnes) {
+      for (const c of col) {
+        const k = g.createDiv({ cls: 'zfa-chrono-case' + (c ? ' niv-' + c.niveau : ' est-futur') });
+        if (!c) continue;
+        if (c.jour === auj) k.addClass('est-aujourdhui');
+        k.title = this._date(c.jour, { weekday: 'short', day: 'numeric', month: 'short' })
+          + ' : ' + c.n + ' ' + (c.n > 1 ? tr('événements') : tr('événement'));
+        k.onclick = () => this._changer({ periode: 'jour', ancre: c.jour });
+      }
+    }
+  }
+
+  _dessinerComptes(hote, evts) {
+    hote.createDiv({ cls: 'zfa-chrono-rubrique', text: tr('Par type') });
+    const comptes = Ariane.comptesChrono(evts);
+    const max = Math.max(1, ...Object.values(comptes));
+    for (const d of Ariane.TYPES_CHRONO) {
+      const l = hote.createDiv({ cls: 'zfa-chrono-compte' + (this.filtre === d.filtre ? ' is-active' : '') });
+      l.style.setProperty('--zfa-chrono-coul', d.couleur);
+      const tete = l.createDiv({ cls: 'zfa-chrono-compte-tete' });
+      tete.createSpan({ text: tr(d.libelle) });
+      tete.createSpan({ cls: 'zfa-chrono-compte-n', text: String(comptes[d.type]) });
+      const barre = l.createDiv({ cls: 'zfa-chrono-barre' });
+      barre.createDiv({ cls: 'zfa-chrono-barre-plein' }).style.width = (comptes[d.type] / max * 100) + '%';
+      l.onclick = () => this._changer({ filtre: this.filtre === d.filtre ? 'tout' : d.filtre });
+    }
+  }
+
+  _dessinerDossier(hote) {
+    hote.createDiv({ cls: 'zfa-chrono-rubrique', text: tr('Dossier') });
+    const sel = hote.createEl('select', { cls: 'dropdown zfa-chrono-dossier' });
+    sel.createEl('option', { value: '', text: tr('Tous les dossiers') });
+    const racine = this.app.vault.getRoot();
+    const noms = (racine.children || []).filter((x) => x instanceof obsidian.TFolder && !x.name.startsWith('.'))
+      .map((x) => x.name).sort((a, b) => a.localeCompare(b));
+    if (this.dossier && !noms.includes(this.dossier)) noms.push(this.dossier);
+    for (const n of noms) sel.createEl('option', { value: n, text: n });
+    sel.value = this.dossier;
+    sel.onchange = () => this._changer({ dossier: sel.value });
+  }
 }
 
 //#endregion 18 · Vues latérales (ItemView)

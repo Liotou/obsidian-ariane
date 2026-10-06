@@ -1085,6 +1085,51 @@ const TEXTES = {
     "pas de seau d'absence, ": "no away bucket, ",
     " navigateur(s).": " browser(s).",
     "aucun navigateur.": "no browser.",
+
+    "Chronologie d'activité": "Activity timeline",
+    "Chronologie d'activité (Ariane)": "Activity timeline (Ariane)",
+    "Ouvrir la chronologie d'activité": "Open the activity timeline",
+    "Ouvrir la chronologie": "Open the timeline",
+    "Notes modifiées": "Notes edited",
+    "Note modifiée": "Note edited",
+    "Notes créées": "Notes created",
+    "Note créée": "Note created",
+    "Captures": "Captures",
+    "Capture": "Captured",
+    "Tâches terminées": "Tasks completed",
+    "Tâche terminée": "Task completed",
+    "Tâches abandonnées": "Tasks dropped",
+    "Tâche abandonnée": "Task dropped",
+    "Canevas & extraits": "Canvas & snippets",
+    "Canevas": "Canvas",
+    "créé": "created",
+    "modifié": "edited",
+    "Semaine du ": "Week of ",
+    "Précédent": "Previous",
+    "Suivant": "Next",
+    "Tout": "All",
+    "Notes": "Notes",
+    "Le journal d'activité est désactivé (réglages, onglet Temps passé) : seule la reconstitution d'après les dates des fichiers s'affiche.": "The activity log is off (settings, Time spent tab): only the reconstruction from file dates is shown.",
+    "Aucune activité sur cette période.": "No activity in this period.",
+    "événements": "events",
+    "événement": "event",
+    "Afficher plus": "Show more",
+    "Raison : ": "Reason: ",
+    "lignes touchées": "lines changed",
+    "ligne touchée": "line changed",
+    "Reconstitué d'après les dates du fichier : antérieur au journal d'activité.": "Reconstructed from the file's dates: earlier than the activity log.",
+    "Activité · 10 dernières semaines": "Activity · last 10 weeks",
+    "Par type": "By type",
+    "Dossier": "Folder",
+    "Tous les dossiers": "All folders",
+    "Un journal de ce qui se passe dans le coffre : notes créées ou modifiées (avec le début de la modification), captures, tâches terminées ou abandonnées, canevas. Il est tenu par mois dans le dossier du greffon, jamais dans le coffre ni dans les réglages. Une modification qui ne touche que l'entête, ou qu'Ariane fait elle-même, n'est pas une activité. Avant le journal, la chronologie se reconstitue d'après les dates des fichiers.": "A log of what happens in the vault: notes created or edited (with the start of the change), captures, tasks completed or dropped, canvases. It is kept by month in the plugin folder, never in the vault nor in the settings. A change that only touches the frontmatter, or that Ariane makes itself, is not activity. Before the log, the timeline is reconstructed from file dates.",
+    "Tenir le journal d'activité": "Keep the activity log",
+    "Sources de capture": "Capture sources",
+    "Une par ligne : « Nom (icône) = dossier, dossier ». Une note créée dans l'un de ces dossiers est une capture de cette source ; ses mises à jour ultérieures ne comptent pas. L'icône, facultative, est un nom Lucide (bookmark, mic, scissors…).": "One per line: \"Name (icon) = folder, folder\". A note created in one of these folders is a capture from that source; its later updates do not count. The optional icon is a Lucide name (bookmark, mic, scissors…).",
+    "Dossiers des extraits": "Snippet folders",
+    "Un chemin par ligne. Leurs notes sont rangées avec les canevas, sous « Canevas & extraits ».": "One path per line. Their notes are filed with canvases, under \"Canvas & snippets\".",
+    "Dossiers ignorés par la chronologie": "Folders the timeline ignores",
+    "Un chemin par ligne, sous-dossiers compris. Le journal du temps est toujours ignoré.": "One path per line, subfolders included. The time journal is always ignored.",
   },
 };
 let LANGUE = 'fr';
@@ -1225,6 +1270,13 @@ const DEFAULT_SETTINGS = {
   activiteAutre: 'Autre',               // catégorie de ce qu'aucune règle ne classe (vide = ignorer)
   activiteGrainMin: 5,                  // grain d'agrégation, en minutes
   activiteDureeMin: 10,                 // créneau réel le plus court affiché, en minutes
+  // --- Chronologie d'activité du coffre ------------------------------------
+  chronoActif: true,                    // tenir le journal (dossier du greffon, pas data.json)
+  chronoDepuis: 0,                      // début du journal (ms) ; avant, reconstitution
+  // Sources de capture, une par ligne : « Nom (icône) = dossier, dossier ».
+  chronoCaptures: 'Raindrop (bookmark) = Raindrop\nMacWhisper (mic) = Transcripts',
+  chronoExtraits: '',                   // dossiers rangés avec les canevas (« extraits »)
+  chronoDossiersExclus: '',             // dossiers ignorés par la chronologie
   dropSignalerRefus: true, // prévenir quand un dépôt n'est pas reconnu
   citationsRepliables: true,
   citationsRepliees: false, // état courant, piloté par les commandes

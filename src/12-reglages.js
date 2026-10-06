@@ -687,6 +687,38 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addText((t) => t.setValue(String(s.activiteDureeMin == null ? 10 : s.activiteDureeMin))
           .onChange(async (v) => { const n = parseInt(v, 10); s.activiteDureeMin = Number.isFinite(n) ? Math.max(0, n) : 10; await maj(); this.plugin._rafraichirActiviteDiffere(); }));
     }
+
+    this._section(c, tr("Chronologie d'activité"));
+    this._aide(c, tr("Un journal de ce qui se passe dans le coffre : notes créées ou modifiées (avec le début de la modification), captures, tâches terminées ou abandonnées, canevas. Il est tenu par mois dans le dossier du greffon, jamais dans le coffre ni dans les réglages. Une modification qui ne touche que l'entête, ou qu'Ariane fait elle-même, n'est pas une activité. Avant le journal, la chronologie se reconstitue d'après les dates des fichiers."));
+    new obsidian.Setting(c)
+      .setName(tr("Tenir le journal d'activité"))
+      .addToggle((t) => t.setValue(s.chronoActif !== false).onChange(async (v) => { s.chronoActif = v; await maj(); }))
+      .addButton((b) => b.setButtonText(tr('Ouvrir la chronologie')).onClick(() => this.plugin.ouvrirChronologie()));
+    new obsidian.Setting(c)
+      .setName(tr('Sources de capture'))
+      .setDesc(tr("Une par ligne : « Nom (icône) = dossier, dossier ». Une note créée dans l'un de ces dossiers est une capture de cette source ; ses mises à jour ultérieures ne comptent pas. L'icône, facultative, est un nom Lucide (bookmark, mic, scissors…)."))
+      .addTextArea((t) => {
+        t.setValue(s.chronoCaptures || '').onChange(async (v) => { s.chronoCaptures = v; await maj(); });
+        t.inputEl.rows = 3;
+        t.inputEl.style.width = '100%';
+        t.inputEl.style.fontFamily = 'var(--font-monospace)';
+      });
+    new obsidian.Setting(c)
+      .setName(tr('Dossiers des extraits'))
+      .setDesc(tr("Un chemin par ligne. Leurs notes sont rangées avec les canevas, sous « Canevas & extraits »."))
+      .addTextArea((t) => {
+        t.setValue(s.chronoExtraits || '').onChange(async (v) => { s.chronoExtraits = v; await maj(); });
+        t.inputEl.rows = 2;
+        t.inputEl.style.width = '100%';
+      });
+    new obsidian.Setting(c)
+      .setName(tr('Dossiers ignorés par la chronologie'))
+      .setDesc(tr('Un chemin par ligne, sous-dossiers compris. Le journal du temps est toujours ignoré.'))
+      .addTextArea((t) => {
+        t.setValue(s.chronoDossiersExclus || '').onChange(async (v) => { s.chronoDossiersExclus = v; await maj(); });
+        t.inputEl.rows = 2;
+        t.inputEl.style.width = '100%';
+      });
   }
 
   ongletSchemas(c, s, maj) {

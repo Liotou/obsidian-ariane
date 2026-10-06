@@ -85,6 +85,7 @@
  *            11j  avecArticulationStatiques plan, arêtes, zones
  *            11k  avecTaches     notes de tâche, temps, synchro Apple
  *            11l  avecActivite   activité réelle (ActivityWatch)
+ *            11m  avecChronologie  journal d'activité du coffre
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -108,7 +109,8 @@
  *          mois et semaine : MoteurCalendrier, vue Bases « ariane-calendrier »,
  *          agenda Apple en fond. Sous-régions « Calendrier · … ».
  *   18 · Vues latérales (ItemView)
- *          incohérences de tâches, références en attente, suggestions
+ *          incohérences de tâches, références en attente, suggestions,
+ *          chronologie d'activité (vue d'onglet « ariane-chronologie »)
  *   19 · Modales secondaires
  *          choix, rapports, fusion d'auteurs
  *   20 · Exports
