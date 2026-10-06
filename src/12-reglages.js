@@ -1022,7 +1022,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.tempsBarreEtat !== false).onChange(async (v) => { s.tempsBarreEtat = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Travail réel sur le calendrier'))
-      .setDesc(tr('Dans la vue semaine : chaque créneau entamé se remplit du temps réellement passé sur sa tâche, et un liseré au bord de chaque jour montre quand vous avez travaillé, à la couleur de la tâche. Les heures sont relevées à partir de l’activation de cette version.'))
+      .setDesc(tr('Dans la vue semaine : chaque créneau entamé se remplit du temps réellement passé sur sa tâche, et le rail à gauche de chaque jour montre quand vous avez travaillé, à la couleur de la tâche (plein dans Obsidian, pâle hors Obsidian avec ActivityWatch).'))
       .addToggle((t) => t.setValue(s.calTravailReel !== false).onChange(async (v) => {
         s.calTravailReel = v; await maj();
         if (this.plugin._peindreTravailCalendriers) this.plugin._peindreTravailCalendriers();

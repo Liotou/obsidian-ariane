@@ -483,13 +483,12 @@ class MoteurCalendrier extends MoteurVue {
 
   // Colonne des créneaux réels d'un jour. `mn` convertit « …THH:MM » en
   // minutes depuis minuit.
-  _rendreActivite(col, jour, hDeb, PXH, mn) {
-    this._cacherCarteActivite(true);
-    for (const b of (this._activite.get(jour) || [])) {
-      const d = mn(b.debut);
-      const f = b.fin.slice(0, 10) === jour ? mn(b.fin) : 24 * 60;
-      if (f <= d) continue;
-      const el = col.createDiv({ cls: 'zfa-cal-reel' });
+  // Une pièce de temps hors d'Obsidian (minutes d à f du jour) dans le rail
+  // du réel : le créneau d'activité `b` d'où elle vient porte la carte, la
+  // fiche et le menu.
+  _poserBandeExterne(col, jour, b, d, f, hDeb, PXH) {
+    {
+      const el = col.createDiv({ cls: 'zfa-cal-reel est-externe' });
       el.style.top = ((d / 60 - hDeb) * PXH) + 'px';
       el.style.height = Math.max(3, ((f - d) / 60) * PXH) + 'px';
       // Rattaché à une tâche : la bande en prend la couleur.
@@ -2668,8 +2667,9 @@ class MoteurCalendrier extends MoteurVue {
       const lay = Ariane.disposerBlocsJour(blocs);
       // Activité réelle : sa colonne occupe la marge gauche, que les blocs
       // cèdent pour ne pas la recouvrir.
-      const reel = this._activiteVisible();
-      if (reel) this._rendreActivite(col, j, hDeb, PXH, mn);
+      // Rail du réel à gauche du jour (Obsidian et ActivityWatch fusionnés,
+      // peint par _peindreTravailReel) : les blocs lui laissent la marge.
+      const reel = this._activiteVisible() || this.greffon.settings.calTravailReel !== false;
       const mg = reel ? 16 : 6;
       elems.forEach((it, k) => {
         const y0 = (blocs[k].deb / 60 - hDeb) * PXH;
@@ -2866,11 +2866,12 @@ class MoteurCalendrier extends MoteurVue {
       for (const i of this.racine.querySelectorAll('.zfa-cal-sem-inner')) this._peindreTravailReel(i);
       return;
     }
-    for (const x of inner.querySelectorAll('.zfa-cal-presence, .zfa-cal-jauge, .zfa-cal-jauge-val')) x.remove();
+    for (const x of inner.querySelectorAll('.zfa-cal-presence, .zfa-cal-reel, .zfa-cal-jauge, .zfa-cal-jauge-val')) x.remove();
     const g = this.greffon;
-    if (g.settings.calTravailReel === false || !g.sessionsTravail) return;
-    const sessions = g.sessionsTravail();
-    if (!sessions.length) return;
+    const avecObsidian = g.settings.calTravailReel !== false && !!g.sessionsTravail;
+    const avecExterne = this._activiteVisible();
+    if (!avecObsidian && !avecExterne) return;
+    const sessions = avecObsidian ? g.sessionsTravail() : [];
     const PXH = this._pxHeure;
     const hDeb = this._hDeb || 0;
     const parRef = new Map(this._taches.map((t) => [t.ref, t]));
@@ -2897,7 +2898,15 @@ class MoteurCalendrier extends MoteurVue {
       if (!debut || !fin) continue;
       creneaux.push({ ref, debut, fin });
       if (debut > maintenant) continue;
-      const fait = Ariane.minutesTravaillees(debut, fin, sessions, cheminsDe.get(ref) || []);
+      // Le travail fait : dans les notes de la tâche, plus le temps hors
+      // Obsidian qui lui est rattaché, au prorata de ce qui tombe dans le
+      // créneau.
+      let fait = Ariane.minutesTravaillees(debut, fin, sessions, cheminsDe.get(ref) || []);
+      const tR = parRef.get(ref);
+      for (const r of ((tR && tR.tempsReel) || [])) {
+        const dureeR = Math.max(1, Ariane.recouvrementMin(r.debut, r.fin, r.debut, r.fin));
+        fait += Math.round(r.min * Ariane.recouvrementMin(debut, fin, r.debut, r.fin) / dureeR);
+      }
       if (fait <= 0) continue;
       const prevu = Ariane.dureeCreneauMin(debut, fin);
       const j = bloc.createDiv({ cls: 'zfa-cal-jauge' });
@@ -2910,22 +2919,37 @@ class MoteurCalendrier extends MoteurVue {
       if (heure) heure.createSpan({ cls: 'zfa-cal-jauge-val', text: ' · ' + duree(fait) + tr(' faites') });
     }
 
-    // D · le liseré de présence.
+    // Le rail du réel : une seule bande à gauche de chaque jour, où le temps
+    // passé dans Obsidian prime, et où ActivityWatch comble le reste (il voit
+    // aussi Obsidian : la fusion évite de compter deux fois).
+    const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.round(m % 60)).padStart(2, '0');
+    const minutesDe = (iso, jour) => (String(iso).slice(0, 10) < jour ? 0
+      : String(iso).slice(0, 10) > jour ? 24 * 60
+        : Number(String(iso).slice(11, 13)) * 60 + Number(String(iso).slice(14, 16)));
     for (const col of inner.querySelectorAll('.zfa-cal-col[data-jour]')) {
-      for (const x of Ariane.sessionsDuJour(col.dataset.jour, sessions, 1)) {
+      const jour = col.dataset.jour;
+      const obs = Ariane.sessionsDuJour(jour, sessions, 1).map((x) => {
         const refs = refsDeChemin.get(x.chemin) || [];
         // Une note partagée par plusieurs tâches va à celle qui avait un
         // créneau à ce moment-là, sinon à la première.
         const ref = refs.find((r) => creneaux.some((c) => c.ref === r
           && c.debut < x.fin && c.fin > x.debut)) || refs[0];
-        const t = ref ? parRef.get(ref) : null;
-        const el = col.createDiv({ cls: 'zfa-cal-presence' + (t ? '' : ' est-hors-tache') });
-        el.style.top = ((x.a / 60 - hDeb) * PXH) + 'px';
-        el.style.height = Math.max(3, (x.b - x.a) / 60 * PXH) + 'px';
+        return { a: x.a, b: x.b, x, t: ref ? parRef.get(ref) : null };
+      });
+      const ext = (avecExterne ? (this._activite.get(jour) || []) : [])
+        .map((bl) => ({ a: minutesDe(bl.debut, jour), b: minutesDe(bl.fin, jour), bloc: bl }))
+        .filter((e) => e.b > e.a);
+      for (const p of Ariane.fusionnerRailReel(obs, ext)) {
+        if (p.source === 'externe') {
+          this._poserBandeExterne(col, jour, p.item.bloc, p.a, p.b, hDeb, PXH);
+          continue;
+        }
+        const { x, t } = p.item;
+        const el = col.createDiv({ cls: 'zfa-cal-reel est-obsidian' + (t ? '' : ' est-hors-tache') });
+        el.style.top = ((p.a / 60 - hDeb) * PXH) + 'px';
+        el.style.height = Math.max(3, (p.b - p.a) / 60 * PXH) + 'px';
         if (t) el.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
-        const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.round(m % 60)).padStart(2, '0');
-        // Carte de survol immédiate, comme pour l'activité hors d'Obsidian ;
-        // un clic ouvre la note travaillée.
+        // Carte de survol immédiate ; un clic ouvre la note travaillée.
         el.addEventListener('mouseenter', () => this._montrerCartePresence(el, {
           horaires: hm(x.a) + ' → ' + hm(x.b), duree: duree(Math.round(x.b - x.a)),
           note: String(x.chemin).split('/').pop().replace(/\.md$/, ''), tache: t,

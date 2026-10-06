@@ -855,7 +855,7 @@ const TEXTES = {
     "Tâche supprimée : son rappel est retiré d’Apple Rappels.": "Task deleted: its reminder was removed from Apple Reminders.",
     " faites": " done",
     "Travail réel sur le calendrier": "Actual work on the calendar",
-    "Dans la vue semaine : chaque créneau entamé se remplit du temps réellement passé sur sa tâche, et un liseré au bord de chaque jour montre quand vous avez travaillé, à la couleur de la tâche. Les heures sont relevées à partir de l’activation de cette version.": "In week view: each started slot fills with the time actually spent on its task, and a thin strip along each day shows when you worked, in the task's color. Times are recorded from the activation of this version.",
+    "Dans la vue semaine : chaque créneau entamé se remplit du temps réellement passé sur sa tâche, et le rail à gauche de chaque jour montre quand vous avez travaillé, à la couleur de la tâche (plein dans Obsidian, pâle hors Obsidian avec ActivityWatch).": "In week view: each started slot fills with the time actually spent on its task, and the strip on the left of each day shows when you worked, in the task's colour (solid in Obsidian, pale outside it with ActivityWatch).",
     "Créer une tâche fille…": "Create a child task…",
     "Créer une tâche mère…": "Create a parent task…",
     "Nouvelle tâche fille": "New child task",

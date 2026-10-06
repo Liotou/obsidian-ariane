@@ -3990,3 +3990,19 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
   background: var(--zfa-cal-coul, var(--text-faint)); flex: 0 0 auto;
 }
 .zfa-act-survol .zfa-act-survol-actions { border-top-color: var(--background-modifier-border); }
+
+/* Rail du réel : une bande à gauche du jour. Plein = dans Obsidian, pâle =
+   hors Obsidian (ActivityWatch), rayé = personnel. Couleur de la tâche quand
+   on la connaît, sinon de la catégorie. */
+.zfa-cal-reel.est-obsidian { background: var(--zfa-cal-coul, var(--text-faint)); }
+.zfa-cal-reel.est-obsidian.est-hors-tache { --zfa-cal-coul: var(--text-faint); }
+.zfa-cal-reel.est-externe { background: color-mix(in srgb, var(--zfa-cal-coul) 45%, transparent); }
+.zfa-cal-reel.est-externe:hover, .zfa-cal-reel.est-obsidian:hover {
+  background: var(--zfa-cal-coul);
+  box-shadow: 0 0 0 1px var(--background-primary), 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+.zfa-cal-reel.est-externe.est-personnel {
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--zfa-cal-coul) 70%, transparent) 0 3px,
+    color-mix(in srgb, var(--zfa-cal-coul) 20%, transparent) 3px 6px);
+}

@@ -289,3 +289,15 @@ test('éditeur des réglages : règles et catégories, aller-retour texte ↔ li
   assert.deepEqual(Ariane.compilerCategoriesIA(Ariane.texteCategoriesIA(c)), c);
   assert.equal(Ariane.texteCategoriesIA([{ nom: 'A: #b', couleur: '#123456', description: '' }, { nom: '', couleur: '#000' }]), 'A b #123456');
 });
+
+test('rail du réel : Obsidian prime, ActivityWatch comble le reste, miettes écartées', () => {
+  const obs = [{ a: 540, b: 600 }, { a: 630, b: 630.5 }];
+  const ext = [{ a: 520, b: 640, bloc: 'X' }, { a: 700, b: 760, bloc: 'Y' }];
+  const r = Ariane.fusionnerRailReel(obs, ext);
+  assert.deepEqual(r.map((p) => [p.source, p.a, p.b]), [
+    ['externe', 520, 540], ['obsidian', 540, 600], ['externe', 600, 630], ['obsidian', 630, 630.5],
+    ['externe', 630.5, 640], ['externe', 700, 760]]);
+  assert.equal(r[0].item.bloc, 'X');
+  assert.deepEqual(Ariane.fusionnerRailReel([], []), []);
+  assert.deepEqual(Ariane.couperParIntervallesInverses(0, 10, [[2, 4], [6, 12]]), [[0, 2], [4, 6]]);
+});

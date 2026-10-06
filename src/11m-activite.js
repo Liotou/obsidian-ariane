@@ -450,6 +450,39 @@ const avecActivite = (Base) => class extends Base {
     return out;
   }
 
+  // Le rail du réel d'un jour : les morceaux du temps passé dans Obsidian
+  // (`obs`, prioritaires) et du temps relevé par ActivityWatch (`ext`), en
+  // minutes depuis minuit. ActivityWatch voit aussi Obsidian : ses créneaux
+  // sont donc coupés là où Obsidian a déjà compté ; les miettes de moins
+  // d'une minute tombent. Rend [{ a, b, source, item }] trié.
+  static fusionnerRailReel(obs, ext) {
+    const out = (obs || []).filter((o) => o.b > o.a)
+      .map((o) => ({ a: o.a, b: o.b, source: 'obsidian', item: o }));
+    const occupe = Ariane.fusionnerIntervalles(out.map((o) => [o.a, o.b]));
+    for (const e of (ext || [])) {
+      for (const [a, b] of Ariane.couperParIntervallesInverses(e.a, e.b, occupe)) {
+        if (b - a >= 1) out.push({ a, b, source: 'externe', item: e });
+      }
+    }
+    return out.sort((x, y) => x.a - y.a || (x.source === 'obsidian' ? -1 : 1));
+  }
+
+  // Ce qui reste de [a, b] une fois retirés les intervalles `pris` (triés,
+  // disjoints).
+  static couperParIntervallesInverses(a, b, pris) {
+    const out = [];
+    let cur = a;
+    for (const [x, y] of (pris || [])) {
+      if (y <= cur) continue;
+      if (x >= b) break;
+      if (x > cur) out.push([cur, Math.min(x, b)]);
+      cur = Math.max(cur, y);
+      if (cur >= b) break;
+    }
+    if (cur < b) out.push([cur, b]);
+    return out;
+  }
+
   // ── rattachement à des tâches : fonctions pures ─────────────────────────
 
   // Minutes de recouvrement entre deux intervalles « AAAA-MM-JJTHH:MM ».
