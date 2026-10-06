@@ -1030,6 +1030,9 @@ const TEXTES = {
     "Ajouter un jalon lié à la tâche…": "Add a milestone linked to the task…",
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
+    "Affiner avec l'IA": "Refine with AI",
+    "proche par le sens": "close in meaning",
+    "semblable à des créneaux déjà rattachés": "similar to slots already attached",
     "IA de l'activité": "Activity AI",
     "Synthèse des créneaux et des journées": "Summaries of slots and days",
     "Suggestions de tâches": "Task suggestions",
@@ -18654,7 +18657,7 @@ const avecActivite = (Base) => class extends Base {
     m.addSeparator();
     m.addItem((i) => i.setTitle(b.rattache && b.rattache.length ? tr('Modifier les rattachements…') : tr('Rattacher à une tâche…'))
       .setIcon('link').onClick(() => this.ouvrirRattachementActivite(jour, [b], hote)));
-    m.addItem((i) => i.setTitle(tr('Rattacher la journée (IA)…')).setIcon('list-checks')
+    m.addItem((i) => i.setTitle(tr('Rattacher la journée…')).setIcon('list-checks')
       .onClick(() => this.ouvrirRattachementActivite(jour, h.blocsDuJour(jour), hote)));
     m.addItem((i) => i.setTitle(tr('Créer une tâche associée…')).setIcon('file-plus')
       .onClick(() => this.creerTacheDepuisTemps(resume, (ref) => this.appliquerRattachements([{ ref, id: b.empreinte,
@@ -18765,6 +18768,139 @@ const avecActivite = (Base) => class extends Base {
       }
     }
     return out;
+  }
+
+  // ── suggestions locales (premier jet, sans IA générative) ──────────────
+  //  Comme les suggestions d'annotations : le sens des textes, encodé en
+  //  local par Ollama (bge-m3), sans rien envoyer au-dehors, en moins d'une
+  //  seconde. Un créneau est comparé à chaque tâche active (intitulé,
+  //  famille, notes liées) et aux créneaux qu'on lui a déjà rattachés :
+  //  plus on rattache, plus le premier jet est juste. L'IA réglée n'est
+  //  appelée qu'à la demande (« Affiner avec l'IA »). Sans Ollama, repli sur
+  //  les mots en commun.
+
+  // Le texte d'un créneau pour le comparer aux tâches : son résumé, puis les
+  // titres de fenêtres et les sites, débarrassés de ce qui les alourdit sans
+  // les éclairer (nom de l'application, « | Microsoft Teams », « - Zotero »).
+  // La catégorie des règles (« Messagerie », « Autre ») n'y entre pas :
+  // elle rapprochait tout de tout.
+  static texteCreneauRattachement(b) {
+    const vus = new Set();
+    const l = [];
+    if (b.ia && b.ia.resume) l.push(b.ia.resume);
+    for (const d of (b.details || [])) {
+      const x = String(d.libelle || '').replace(/^[^:]{1,40} : /, '')
+        .replace(/\s*\|\s*(Microsoft Teams|Microsoft Outlook)\s*$/i, '')
+        .replace(/\s+-\s+(Zotero|Microsoft Excel|Microsoft Word|Microsoft PowerPoint|YouTube|Google Docs)\s*$/i, '')
+        .trim();
+      if (x && !vus.has(x)) { vus.add(x); l.push(x); }
+    }
+    return l.join('\n');
+  }
+
+  _texteTacheRattachement(t) {
+    const lies = (t.fichier ? this._cheminsLiesTache(t) : []).map((c) => c.split('/').pop().replace(/\.md$/, ''));
+    return [t.intitule].concat(lies).filter(Boolean).join('\n');
+  }
+
+  get cheminRattachementsAppris() {
+    const dossier = (this.manifest && this.manifest.dir) || '.obsidian/plugins/obsidian-ariane';
+    return dossier + '/rattachements-appris.json';
+  }
+
+  async _chargerAppris() {
+    if (this._appris) return this._appris;
+    this._appris = {};
+    try {
+      const a = this.app.vault.adapter;
+      if (await a.exists(this.cheminRattachementsAppris)) {
+        const j = JSON.parse(await a.read(this.cheminRattachementsAppris));
+        if (j && typeof j === 'object') this._appris = j;
+      }
+    } catch (e) { /* fichier abîmé : on repart de zéro */ }
+    return this._appris;
+  }
+
+  // Retient qu'un créneau de ce contenu va à cette tâche (30 exemples au
+  // plus par tâche, les plus récents).
+  async apprendreRattachement(ref, texte) {
+    const t = String(texte || '').trim();
+    if (!ref || !t) return;
+    const a = await this._chargerAppris();
+    const l = (a[ref] || []).filter((x) => x !== t);
+    l.push(t);
+    a[ref] = l.slice(-30);
+    this.antirebond('rattachements-appris', async () => {
+      try { await this.app.vault.adapter.write(this.cheminRattachementsAppris, JSON.stringify(this._appris)); } catch (e) { /* rien */ }
+    }, 1500);
+  }
+
+  // Vecteurs des textes, gardés en mémoire pour la session. null si
+  // l'encodage local est indisponible.
+  async _vecteursRattachement(textes) {
+    if (!this._vecRatt) this._vecRatt = new Map();
+    const manque = [...new Set(textes.filter((x) => !this._vecRatt.has(hacherTexte(x))))];
+    for (let i = 0; i < manque.length; i += 64) {
+      const lot = manque.slice(i, i + 64);
+      const v = await this.encoderTextes(lot);
+      if (!v || v.length !== lot.length) return null;
+      lot.forEach((x, k) => this._vecRatt.set(hacherTexte(x), normaliserVecteur(v[k])));
+    }
+    return (x) => this._vecRatt.get(hacherTexte(x));
+  }
+
+  // Rend { parBloc: Map(empreinte → [{ ref, min, raison, score }]), mode }.
+  async suggererRattachementsLocal(blocs) {
+    const taches = this.tachesRattachables();
+    const out = new Map();
+    if (!taches.length || !blocs.length) return { parBloc: out, mode: 'aucun' };
+    const appris = await this._chargerAppris();
+    const tTache = new Map(taches.map((t) => [t.ref, this._texteTacheRattachement(t)]));
+    const tBloc = new Map(blocs.map((b) => [b.empreinte, Ariane.texteCreneauRattachement(b)]));
+    const tous = [...tTache.values(), ...tBloc.values()];
+    for (const t of taches) for (const x of (appris[t.ref] || [])) tous.push(x);
+    let sim;
+    let mode = 'sens';
+    const vec = await this._vecteursRattachement(tous.filter(Boolean));
+    if (vec) {
+      sim = (a, b) => { const va = vec(a); const vb = vec(b); return va && vb ? cosinusVecteurs(va, vb) : 0; };
+    } else {
+      // Repli : les mots en commun (TF-IDF), sans Ollama.
+      mode = 'mots';
+      const docs = tous.map((x) => frequenceTermes(tokeniser(x)));
+      const idf = calculerIdf(docs);
+      const cache = new Map();
+      const v = (x) => { if (!cache.has(x)) cache.set(x, vecteurTfIdf(frequenceTermes(tokeniser(x)), idf)); return cache.get(x); };
+      sim = (a, b) => { const va = v(a); const vb = v(b); return cosinusTfIdf(va.vec, va.norme, vb.vec, vb.norme); };
+    }
+    // Une tâche n'est retenue que si elle se détache nettement des autres
+    // pour ce créneau (le sens d'un intitulé court rapproche un peu tout de
+    // tout), ou si elle a déjà reçu des créneaux très semblables. Seuils
+    // éprouvés sur les créneaux réels de Monsieur avec bge-m3.
+    const S = mode === 'sens'
+      ? { ecart: 0.15, absolu: 0.62, exemple: 0.75 }
+      : { ecart: 0.12, absolu: 0.3, exemple: 0.45 };
+    for (const b of blocs) {
+      const tb = tBloc.get(b.empreinte);
+      if (!tb) continue;
+      const directs = taches.map((t) => sim(tb, tTache.get(t.ref)));
+      const moyenne = directs.reduce((x, y) => x + y, 0) / Math.max(1, directs.length);
+      const scores = taches.map((t, k) => {
+        const direct = directs[k];
+        const exemples = (appris[t.ref] || []).map((x) => sim(tb, x));
+        const vu = exemples.length ? Math.max(...exemples) : 0;
+        const parExemple = vu >= S.exemple && vu >= direct;
+        const retenu = parExemple || direct - moyenne >= S.ecart || direct >= S.absolu;
+        return { ref: t.ref, score: parExemple ? vu : direct, parExemple, retenu };
+      }).filter((x) => x.retenu).sort((x, y) => y.score - x.score);
+      const meilleur = scores.length ? scores[0].score : 0;
+      out.set(b.empreinte, scores.filter((x) => x.score >= meilleur - 0.08).slice(0, 3).map((x) => ({
+        ref: x.ref, min: b.actifMin, score: x.score,
+        raison: (x.parExemple ? tr('semblable à des créneaux déjà rattachés') : tr('proche par le sens'))
+          + ' (' + Math.round(x.score * 100) + ' %)',
+      })));
+    }
+    return { parBloc: out, mode };
   }
 
   // Suggestions de l'IA pour une liste de créneaux d'un même jour. Rend
@@ -24378,17 +24514,44 @@ class ModaleRattacherActivite extends obsidian.Modal {
     const jl = new Date(this.o.jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     this.titleEl.setText(tr('Rattacher le temps réel du ') + jl);
     contentEl.empty();
-    this.etat = contentEl.createDiv({ cls: 'zfa-ratt-etat', text: tr('Suggestions de l\'IA en cours…') });
+    // Premier jet local et immédiat ; l'IA réglée seulement à la demande.
+    const barre = contentEl.createDiv({ cls: 'zfa-ratt-etat' });
+    this.etat = barre.createSpan({ text: tr('Suggestions locales en cours…') });
+    this.btIA = barre.createEl('button', { cls: 'zfa-ratt-ia' });
+    obsidian.setIcon(this.btIA.createSpan({ cls: 'zfa-ratt-ia-ic' }), 'sparkles');
+    this.btIA.createSpan({ text: tr('Affiner avec l\'IA') });
+    this.btIA.onclick = () => this.suggerer();
     this.corps = contentEl.createDiv({ cls: 'zfa-ratt-corps' });
     this.rendre();
     const pied = contentEl.createDiv({ cls: 'zfa-ratt-pied' });
     pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
     this.btValider = pied.createEl('button', { cls: 'mod-cta', text: tr('Rattacher') });
     this.btValider.onclick = () => this.valider();
-    this.suggerer();
+    this.suggererLocal();
+  }
+
+  async suggererLocal() {
+    try {
+      const { parBloc, mode } = await this.greffon.suggererRattachementsLocal(this.parBloc.map((x) => x.b));
+      let n = 0;
+      for (const x of this.parBloc) {
+        for (const s of (parBloc.get(x.b.empreinte) || [])) {
+          if (x.lignes.some((l) => l.ref === s.ref)) continue;
+          x.lignes.push({ ref: s.ref, min: s.min, raison: s.raison, coche: false, local: true });
+          n += 1;
+        }
+      }
+      this.etat.setText(n
+        ? (mode === 'sens' ? tr('Suggestions locales (sens des textes, sur votre Mac). ') : tr('Suggestions locales (mots en commun, Ollama indisponible). '))
+        : tr('Pas de suggestion locale. '));
+    } catch (e) {
+      this.etat.setText(tr('Suggestions locales indisponibles. '));
+    }
+    this.rendre();
   }
 
   async suggerer() {
+    if (this.btIA) { this.btIA.disabled = true; this.btIA.lastChild.setText(tr('IA en cours…')); }
     try {
       const sug = await this.greffon.suggererRattachements(this.o.jour, this.parBloc.map((x) => x.b));
       for (const x of this.parBloc) {
@@ -24398,10 +24561,11 @@ class ModaleRattacherActivite extends obsidian.Modal {
           x.lignes.push({ ref: s.ref, min: s.min, raison: s.raison, coche: false, ia: true });
         }
       }
-      this.etat.setText(tr('Suggestions de l\'IA ajoutées (à cocher).'));
+      this.etat.setText(tr('Suggestions de l\'IA ajoutées (à cocher). '));
     } catch (e) {
-      this.etat.setText(tr('Suggestions de l\'IA indisponibles : ') + ((e && e.message) || e));
+      this.etat.setText(tr('Suggestions de l\'IA indisponibles : ') + ((e && e.message) || e) + ' ');
     }
+    if (this.btIA) this.btIA.remove();
     this.rendre();
   }
 
@@ -24430,7 +24594,7 @@ class ModaleRattacherActivite extends obsidian.Modal {
       if (!x.lignes.length) bloc.createDiv({ cls: 'zfa-act-vide', text: tr('Aucune suggestion pour l\'instant.') });
       for (const l of x.lignes) {
         const t = taches.get(l.ref);
-        const row = bloc.createDiv({ cls: 'zfa-ratt-ligne' + (l.ia ? ' est-ia' : '') });
+        const row = bloc.createDiv({ cls: 'zfa-ratt-ligne' + (l.ia ? ' est-ia' : '') + (l.local ? ' est-local' : '') });
         const cb = row.createEl('input', { type: 'checkbox' });
         cb.checked = !!l.coche;
         cb.onchange = () => { l.coche = cb.checked; majReste(); };
@@ -24476,6 +24640,10 @@ class ModaleRattacherActivite extends obsidian.Modal {
     }
     this.close();
     if (!ops.length) return;
+    // Chaque rattachement apprend au premier jet local ce qui va avec quoi.
+    for (const x of this.parBloc) {
+      for (const l of x.lignes) if (l.coche) this.greffon.apprendreRattachement(l.ref, Ariane.texteCreneauRattachement(x.b));
+    }
     const inverse = await this.greffon.appliquerRattachements(ops);
     const n = ops.filter((o) => o.apres).length;
     new obsidian.Notice(n + tr(' rattachement(s) écrit(s)') + (ops.length - n ? ', ' + (ops.length - n) + tr(' retiré(s)') : '') + '.');
@@ -37666,7 +37834,7 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
           l.createSpan({ cls: 'zfa-orga-discret', text: this._duree(x.min) + tr(' en ') + x.blocs.length + tr(' créneau(x)') });
           const b = l.createEl('button', { cls: 'zfa-orga-ratt-bt' });
           obsidian.setIcon(b.createSpan({ cls: 'zfa-orga-ratt-ic' }), 'link');
-          b.createSpan({ text: tr('Rattacher (IA)…') });
+          b.createSpan({ text: tr('Rattacher…') });
           b.onclick = () => new ModaleRattacherActivite(this.greffon, { jour: x.jour, blocs: x.blocs,
             surFait: () => this.greffon.rafraichirOrganisation && this.greffon.rafraichirOrganisation() }).open();
         }

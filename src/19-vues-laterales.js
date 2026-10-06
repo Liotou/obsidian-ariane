@@ -1147,7 +1147,7 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
           l.createSpan({ cls: 'zfa-orga-discret', text: this._duree(x.min) + tr(' en ') + x.blocs.length + tr(' créneau(x)') });
           const b = l.createEl('button', { cls: 'zfa-orga-ratt-bt' });
           obsidian.setIcon(b.createSpan({ cls: 'zfa-orga-ratt-ic' }), 'link');
-          b.createSpan({ text: tr('Rattacher (IA)…') });
+          b.createSpan({ text: tr('Rattacher…') });
           b.onclick = () => new ModaleRattacherActivite(this.greffon, { jour: x.jour, blocs: x.blocs,
             surFait: () => this.greffon.rafraichirOrganisation && this.greffon.rafraichirOrganisation() }).open();
         }

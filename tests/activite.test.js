@@ -318,3 +318,13 @@ test('bilan d’un jour : Obsidian, hors Obsidian au temps actif, rattaché, per
   assert.equal(r.parCategorie.get('Enseignement').min, 30);
   assert.deepEqual(r.blocsNonRattaches, [blocA]);
 });
+
+test('rattachement local : texte d’un créneau sans le bruit des applications ni la catégorie des règles', () => {
+  const t = Ariane.texteCreneauRattachement({ categorie: 'Messagerie', ia: { resume: 'Animation du TD1' }, details: [
+    { libelle: 'Microsoft Teams : Cours HEG - TD1 | Microsoft Teams', min: 30 },
+    { libelle: 'Zotero : Théorie générale des systèmes - Bertalanffy - 1973 - Zotero', min: 10 },
+    { libelle: 'cairn.info', min: 5 },
+    { libelle: 'Microsoft Teams : Cours HEG - TD1 | Microsoft Teams', min: 2 },
+  ] });
+  assert.equal(t, 'Animation du TD1\nCours HEG - TD1\nThéorie générale des systèmes - Bertalanffy - 1973\ncairn.info');
+});

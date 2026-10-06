@@ -1076,17 +1076,44 @@ class ModaleRattacherActivite extends obsidian.Modal {
     const jl = new Date(this.o.jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     this.titleEl.setText(tr('Rattacher le temps réel du ') + jl);
     contentEl.empty();
-    this.etat = contentEl.createDiv({ cls: 'zfa-ratt-etat', text: tr('Suggestions de l\'IA en cours…') });
+    // Premier jet local et immédiat ; l'IA réglée seulement à la demande.
+    const barre = contentEl.createDiv({ cls: 'zfa-ratt-etat' });
+    this.etat = barre.createSpan({ text: tr('Suggestions locales en cours…') });
+    this.btIA = barre.createEl('button', { cls: 'zfa-ratt-ia' });
+    obsidian.setIcon(this.btIA.createSpan({ cls: 'zfa-ratt-ia-ic' }), 'sparkles');
+    this.btIA.createSpan({ text: tr('Affiner avec l\'IA') });
+    this.btIA.onclick = () => this.suggerer();
     this.corps = contentEl.createDiv({ cls: 'zfa-ratt-corps' });
     this.rendre();
     const pied = contentEl.createDiv({ cls: 'zfa-ratt-pied' });
     pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
     this.btValider = pied.createEl('button', { cls: 'mod-cta', text: tr('Rattacher') });
     this.btValider.onclick = () => this.valider();
-    this.suggerer();
+    this.suggererLocal();
+  }
+
+  async suggererLocal() {
+    try {
+      const { parBloc, mode } = await this.greffon.suggererRattachementsLocal(this.parBloc.map((x) => x.b));
+      let n = 0;
+      for (const x of this.parBloc) {
+        for (const s of (parBloc.get(x.b.empreinte) || [])) {
+          if (x.lignes.some((l) => l.ref === s.ref)) continue;
+          x.lignes.push({ ref: s.ref, min: s.min, raison: s.raison, coche: false, local: true });
+          n += 1;
+        }
+      }
+      this.etat.setText(n
+        ? (mode === 'sens' ? tr('Suggestions locales (sens des textes, sur votre Mac). ') : tr('Suggestions locales (mots en commun, Ollama indisponible). '))
+        : tr('Pas de suggestion locale. '));
+    } catch (e) {
+      this.etat.setText(tr('Suggestions locales indisponibles. '));
+    }
+    this.rendre();
   }
 
   async suggerer() {
+    if (this.btIA) { this.btIA.disabled = true; this.btIA.lastChild.setText(tr('IA en cours…')); }
     try {
       const sug = await this.greffon.suggererRattachements(this.o.jour, this.parBloc.map((x) => x.b));
       for (const x of this.parBloc) {
@@ -1096,10 +1123,11 @@ class ModaleRattacherActivite extends obsidian.Modal {
           x.lignes.push({ ref: s.ref, min: s.min, raison: s.raison, coche: false, ia: true });
         }
       }
-      this.etat.setText(tr('Suggestions de l\'IA ajoutées (à cocher).'));
+      this.etat.setText(tr('Suggestions de l\'IA ajoutées (à cocher). '));
     } catch (e) {
-      this.etat.setText(tr('Suggestions de l\'IA indisponibles : ') + ((e && e.message) || e));
+      this.etat.setText(tr('Suggestions de l\'IA indisponibles : ') + ((e && e.message) || e) + ' ');
     }
+    if (this.btIA) this.btIA.remove();
     this.rendre();
   }
 
@@ -1128,7 +1156,7 @@ class ModaleRattacherActivite extends obsidian.Modal {
       if (!x.lignes.length) bloc.createDiv({ cls: 'zfa-act-vide', text: tr('Aucune suggestion pour l\'instant.') });
       for (const l of x.lignes) {
         const t = taches.get(l.ref);
-        const row = bloc.createDiv({ cls: 'zfa-ratt-ligne' + (l.ia ? ' est-ia' : '') });
+        const row = bloc.createDiv({ cls: 'zfa-ratt-ligne' + (l.ia ? ' est-ia' : '') + (l.local ? ' est-local' : '') });
         const cb = row.createEl('input', { type: 'checkbox' });
         cb.checked = !!l.coche;
         cb.onchange = () => { l.coche = cb.checked; majReste(); };
@@ -1174,6 +1202,10 @@ class ModaleRattacherActivite extends obsidian.Modal {
     }
     this.close();
     if (!ops.length) return;
+    // Chaque rattachement apprend au premier jet local ce qui va avec quoi.
+    for (const x of this.parBloc) {
+      for (const l of x.lignes) if (l.coche) this.greffon.apprendreRattachement(l.ref, Ariane.texteCreneauRattachement(x.b));
+    }
     const inverse = await this.greffon.appliquerRattachements(ops);
     const n = ops.filter((o) => o.apres).length;
     new obsidian.Notice(n + tr(' rattachement(s) écrit(s)') + (ops.length - n ? ', ' + (ops.length - n) + tr(' retiré(s)') : '') + '.');
