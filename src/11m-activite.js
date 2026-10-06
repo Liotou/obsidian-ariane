@@ -691,6 +691,25 @@ const avecActivite = (Base) => class extends Base {
     new obsidian.Notice(n + tr(' créneau(x) résumé(s) sur la semaine.'));
   }
 
+  // Tout ce qui a occupé un créneau réel, pour sa fiche.
+  async contenuBlocActivite(jour, b) {
+    const segs = await this._segmentsDuJour(jour);
+    return Ariane.contenuActivite(segs, new Date(b.debut).getTime(), new Date(b.fin).getTime() + 60000, 25);
+  }
+
+  // Catégorie choisie à la main : gardée comme un résumé, marquée « manuel ».
+  async corrigerCategorieActivite(cle, nom) {
+    await this._chargerResumesActivite();
+    const cat = this.categoriesIA().find((c) => c.nom === nom);
+    if (!cat || !cle) return;
+    const r = this._resumesActivite;
+    const av = r[cle] || {};
+    r[cle] = { categorie: cat.nom, couleur: cat.couleur, resume: av.resume || '',
+      personnel: /personnel|distraction|priv/i.test(cat.nom), manuel: true, le: jourIsoDe(new Date()) };
+    this._sauverResumesActivite();
+    this._rafraichirActivite(false);
+  }
+
   oublierResumesActivite(cle) {
     const r = this._resumesActivite || {};
     if (cle) delete r[cle]; else this._resumesActivite = {};

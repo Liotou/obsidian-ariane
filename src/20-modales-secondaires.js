@@ -241,5 +241,94 @@ class ModaleChoixIcone extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// ── Fiche d'un créneau d'activité réelle (ActivityWatch) ─────────────────
+//  Ouverte d'un clic sur la bande d'activité de la vue semaine : ce qui a
+//  occupé le créneau, son résumé, et ce qu'on peut en faire. Le corriger
+//  (catégorie), le faire résumer, ou le rattacher à une tâche, pour que ce
+//  temps réel devienne un créneau de la tâche.
+//  o : { jour, bloc, surRattacher() }
+
+class ModaleActiviteReelle extends obsidian.Modal {
+  constructor(greffon, o) {
+    super(greffon.app);
+    this.greffon = greffon;
+    this.o = o || {};
+  }
+
+  async onOpen() {
+    const { contentEl } = this;
+    const b = this.o.bloc;
+    const jour = this.o.jour;
+    if (this.modalEl) this.modalEl.addClass('zfa-act-modale');
+    const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    this.titleEl.setText(jl.charAt(0).toUpperCase() + jl.slice(1) + ' · '
+      + b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16));
+    contentEl.empty();
+
+    const tete = contentEl.createDiv({ cls: 'zfa-act-tete' });
+    const ia = b.ia;
+    const puce = tete.createSpan({ cls: 'zfa-act-cat', text: ia ? ia.categorie : b.categorie });
+    puce.style.setProperty('--zfa-cal-coul', b.couleur);
+    tete.createSpan({ cls: 'zfa-act-meta', text: dureeLisible(b.actifMin) + tr(' actives')
+      + (ia ? (ia.manuel ? tr(' · catégorie corrigée') : tr(' · classé par l\'IA')) : tr(' · classé par vos règles')) });
+    if (ia && ia.personnel) tete.createSpan({ cls: 'zfa-act-perso', text: tr('personnel') });
+
+    const res = contentEl.createDiv({ cls: 'zfa-act-resume' });
+    if (ia && ia.resume) res.setText(ia.resume);
+    else res.createSpan({ cls: 'zfa-act-vide', text: tr('Pas encore résumé.') });
+
+    // Corriger la catégorie : le choix est gardé comme un résumé, et l'IA ne
+    // repasse plus dessus.
+    const cats = this.greffon.categoriesIA();
+    if (cats.length) {
+      new obsidian.Setting(contentEl)
+        .setName(tr('Catégorie'))
+        .addDropdown((d) => {
+          d.addOption('', ia ? '' : tr('(celle des règles : ') + b.categorie + ')');
+          for (const c of cats) d.addOption(c.nom, c.nom);
+          d.setValue(ia ? ia.categorie : '');
+          d.onChange(async (v) => {
+            if (!v) return;
+            await this.greffon.corrigerCategorieActivite(b.cle, v);
+            this.close();
+          });
+        });
+    }
+
+    contentEl.createDiv({ cls: 'zfa-act-sous-titre', text: tr('Ce qui a occupé ce créneau') });
+    const liste = contentEl.createDiv({ cls: 'zfa-act-liste' });
+    liste.createDiv({ cls: 'zfa-act-vide', text: tr('Lecture du relevé…') });
+    try {
+      const contenu = await this.greffon.contenuBlocActivite(jour, b);
+      liste.empty();
+      if (!contenu.length) liste.createDiv({ cls: 'zfa-act-vide', text: tr('Rien dans le relevé.') });
+      for (const x of contenu) {
+        const l = liste.createDiv({ cls: 'zfa-act-ligne' });
+        l.createSpan({ cls: 'zfa-act-min', text: x.min + ' min' });
+        l.createSpan({ cls: 'zfa-act-app', text: x.app });
+        const t = l.createSpan({ cls: 'zfa-act-titre', text: x.titre && x.titre !== x.app ? x.titre : '' });
+        if (x.domaine) t.createSpan({ cls: 'zfa-act-domaine', text: x.domaine });
+      }
+    } catch (e) {
+      liste.empty();
+      liste.createDiv({ cls: 'zfa-act-vide', text: tr('Relevé illisible : ') + ((e && e.message) || e) });
+    }
+
+    const pied = contentEl.createDiv({ cls: 'zfa-act-pied' });
+    const btIA = pied.createEl('button', { text: ia ? tr('Résumer à nouveau (IA)') : tr('Résumer (IA)') });
+    btIA.onclick = async () => {
+      btIA.disabled = true; btIA.setText(tr('Résumé…'));
+      await this.greffon.resumerActivite(jour, { cle: b.cle });
+      this.close();
+    };
+    if (this.o.surRattacher) {
+      const btT = pied.createEl('button', { cls: 'mod-cta', text: tr('Rattacher à une tâche…') });
+      btT.onclick = () => { this.close(); this.o.surRattacher(); };
+    }
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 //#endregion 20 · Modales secondaires
 

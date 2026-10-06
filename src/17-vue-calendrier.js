@@ -436,6 +436,14 @@ class MoteurCalendrier extends MoteurVue {
       if (b.ia) el.addClass('est-resume');
       // La colonne réagit au clic (sélection, création) : la piste, non.
       el.addEventListener('pointerdown', (e) => e.stopPropagation());
+      el.addEventListener('dblclick', (e) => e.stopPropagation());
+      // Un clic ouvre la fiche du créneau : contenu, résumé, et de quoi le
+      // rattacher à une tâche.
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        new ModaleActiviteReelle(this.greffon, { jour, bloc: b,
+          surRattacher: () => this._rattacherActivite(jour, b) }).open();
+      });
       el.addEventListener('contextmenu', (e) => {
         e.preventDefault(); e.stopPropagation();
         const m = new obsidian.Menu();
@@ -443,6 +451,8 @@ class MoteurCalendrier extends MoteurVue {
           .setIcon('sparkles').onClick(() => this.greffon.resumerActivite(jour, { cle: b.cle })));
         m.addItem((i) => i.setTitle(tr('Résumer la journée (IA)')).setIcon('calendar-check')
           .onClick(() => this.greffon.resumerActivite(jour)));
+        m.addItem((i) => i.setTitle(tr('Rattacher à une tâche…')).setIcon('link')
+          .onClick(() => this._rattacherActivite(jour, b)));
         if (b.ia) {
           m.addItem((i) => i.setTitle(tr('Oublier ce résumé')).setIcon('eraser')
             .onClick(() => this.greffon.oublierResumesActivite(b.cle)));
@@ -450,6 +460,32 @@ class MoteurCalendrier extends MoteurVue {
         m.showAtMouseEvent(e);
       });
     }
+  }
+
+  // Le temps réel d'un créneau devient un créneau de tâche, aux mêmes bornes :
+  // on choisit la tâche comme pour un créneau tracé à la main.
+  _rattacherActivite(jour, b) {
+    const ecrire = async (ref) => {
+      await this._majCreneauU(ref, { avant: '', debut: b.debut, fin: b.fin });
+      this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
+    };
+    const echec = (err) => new obsidian.Notice(tr('Créneau non écrit : ') + (err && err.message ? err.message : err));
+    const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    const horaire = jl.charAt(0).toUpperCase() + jl.slice(1) + ' · ' + b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16)
+      + (b.ia && b.ia.resume ? ' · ' + b.ia.resume : '');
+    const taches = this._tachesBrutes || this._taches
+      || (this.greffon.tachesPourGantt ? this.greffon.tachesPourGantt() : []);
+    new ModaleTacheDuCreneau(this.app, this.greffon, {
+      taches, jour, horaire,
+      surChoix: (ref) => { ecrire(ref).catch(echec); },
+      surAbandon: () => {},
+      surNouvelle: (texte) => {
+        new ModaleTache(this.app, this.greffon, {
+          defauts: { intitule: texte || (b.ia && b.ia.resume) || '' },
+          apres: (ref) => { ecrire(ref).catch(echec); },
+        }).open();
+      },
+    }).open();
   }
 
   //#endregion Calendrier · activité réelle
