@@ -1169,10 +1169,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
 
       this._section(c, tr('IA de l\'activité'));
       this._aide(c, tr("Sur chaque créneau réel, l'IA écrit ce qui a été fait et le range dans une de vos catégories, dont une pour la vie privée et les distractions (rayée dans le calendrier). Clic droit sur un créneau réel : résumer ce créneau ou la journée ; commande « Activité réelle : résumer la semaine affichée (IA) ». Les résumés sont gardés dans le dossier du greffon. Avec un fournisseur en ligne (Mistral, Claude), les titres de fenêtres et les sites lui sont envoyés ; Ollama et LM Studio restent sur l'ordinateur."));
-      this._choixIAActivite(c, s, maj, 'synthese', tr('Synthèse des créneaux et des journées'),
-        tr("Résume chaque créneau hors Obsidian et le range dans une catégorie (clic droit, « Résumer la journée », « Résumer la période »). Haiku suffit, vite et à peu de frais."));
-      this._choixIAActivite(c, s, maj, 'rattachement', tr('Suggestions de tâches'),
-        tr("Propose à quelles tâches rattacher le temps hors Obsidian. Il faut juger d'après les titres de fenêtres et vos intitulés de tâches : Sonnet s'y trompe moins."));
+      this._choixIAActivite(c, s, maj, 'synthese', tr('Fournisseur'),
+        tr("Résume chaque créneau hors Obsidian et le range dans une catégorie (clic droit, « Résumer la journée », « Résumer la période »), et affine les suggestions de rattachement à la demande. Le premier jet de ces suggestions est local, sans cette IA. Haiku suffit, vite et à peu de frais."));
       new obsidian.Setting(c)
         .setName(tr('Catégories'))
         .setDesc(tr("Le nom, la couleur, et ce que la catégorie recouvre : cette description guide l'IA, soyez précis. Gardez une catégorie pour la vie privée et les distractions."))

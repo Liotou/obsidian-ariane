@@ -1565,9 +1565,6 @@ const DEFAULT_SETTINGS = {
   activiteIAFournisseur: '',            // '' = celui de l'assistant IA ; sinon ollama, lmstudio, mistral, claude
   activiteIAModele: '',                 // modèle Ollama, LM Studio ou Mistral ('' = celui de l'assistant)
   activiteIAModeleClaude: 'haiku',      // modèle si le fournisseur est Claude en ligne de commande
-  activiteRattIAFournisseur: '',        // suggestions de tâches (rattachement) : '' = celui de l'assistant
-  activiteRattIAModele: '',
-  activiteRattIAModeleClaude: 'sonnet',
   activiteIAAuto: false,                // résumer seul les journées passées affichées
   activiteIACouleur: true,              // colorer les créneaux résumés selon leur catégorie IA
   activiteIAContexte: "Monsieur est doctorant en sciences de gestion (risque systémique, accidents NaTech) et enseigne (cours, TD, ateliers). Il travaille surtout dans Obsidian, Zotero, Word, Excel, Teams, Mail et Safari.",
@@ -18310,14 +18307,13 @@ const avecActivite = (Base) => class extends Base {
   }
 
   // L'appel à l'IA choisie pour les résumés (ou celle de l'assistant).
-  // Deux usages, chacun avec son IA (réglages, onglet Temps passé) :
-  //   'synthese'      résumés des créneaux et des journées ;
-  //   'rattachement'  suggestions de tâches pour le temps réel.
-  // Un réglage vide reprend celui de l'assistant IA.
+  // L'IA de l'activité réelle (réglages, onglet Temps passé) : résumés des
+  // créneaux et des journées, et « Affiner avec l'IA » des rattachements (le
+  // premier jet de ceux-ci est local, sans IA générative). Un réglage vide
+  // reprend celui de l'assistant IA.
   static get CLES_IA_ACTIVITE() {
     return {
       synthese: { f: 'activiteIAFournisseur', m: 'activiteIAModele', c: 'activiteIAModeleClaude', defautClaude: 'haiku' },
-      rattachement: { f: 'activiteRattIAFournisseur', m: 'activiteRattIAModele', c: 'activiteRattIAModeleClaude', defautClaude: 'sonnet' },
     };
   }
 
@@ -18912,7 +18908,7 @@ const avecActivite = (Base) => class extends Base {
     const lot = blocs.map((b, k) => Object.assign({}, b, { id: k + 1,
       contenu: Ariane.contenuActivite(segs, new Date(b.debut).getTime(), new Date(b.fin).getTime() + 60000, 12) }));
     const prompt = Ariane.promptRattachement(lot, taches.slice(0, 80), this.settings.activiteIAContexte);
-    const rep = await this._genererActiviteIA(prompt, 200 + 150 * lot.length, 'rattachement');
+    const rep = await this._genererActiviteIA(prompt, 200 + 150 * lot.length, 'synthese');
     const lus = Ariane.lireRattachements(rep, taches.map((t) => t.ref));
     const out = new Map();
     for (const b of lot) {
@@ -22176,10 +22172,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
 
       this._section(c, tr('IA de l\'activité'));
       this._aide(c, tr("Sur chaque créneau réel, l'IA écrit ce qui a été fait et le range dans une de vos catégories, dont une pour la vie privée et les distractions (rayée dans le calendrier). Clic droit sur un créneau réel : résumer ce créneau ou la journée ; commande « Activité réelle : résumer la semaine affichée (IA) ». Les résumés sont gardés dans le dossier du greffon. Avec un fournisseur en ligne (Mistral, Claude), les titres de fenêtres et les sites lui sont envoyés ; Ollama et LM Studio restent sur l'ordinateur."));
-      this._choixIAActivite(c, s, maj, 'synthese', tr('Synthèse des créneaux et des journées'),
-        tr("Résume chaque créneau hors Obsidian et le range dans une catégorie (clic droit, « Résumer la journée », « Résumer la période »). Haiku suffit, vite et à peu de frais."));
-      this._choixIAActivite(c, s, maj, 'rattachement', tr('Suggestions de tâches'),
-        tr("Propose à quelles tâches rattacher le temps hors Obsidian. Il faut juger d'après les titres de fenêtres et vos intitulés de tâches : Sonnet s'y trompe moins."));
+      this._choixIAActivite(c, s, maj, 'synthese', tr('Fournisseur'),
+        tr("Résume chaque créneau hors Obsidian et le range dans une catégorie (clic droit, « Résumer la journée », « Résumer la période »), et affine les suggestions de rattachement à la demande. Le premier jet de ces suggestions est local, sans cette IA. Haiku suffit, vite et à peu de frais."));
       new obsidian.Setting(c)
         .setName(tr('Catégories'))
         .setDesc(tr("Le nom, la couleur, et ce que la catégorie recouvre : cette description guide l'IA, soyez précis. Gardez une catégorie pour la vie privée et les distractions."))

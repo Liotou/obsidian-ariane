@@ -806,14 +806,13 @@ const avecActivite = (Base) => class extends Base {
   }
 
   // L'appel à l'IA choisie pour les résumés (ou celle de l'assistant).
-  // Deux usages, chacun avec son IA (réglages, onglet Temps passé) :
-  //   'synthese'      résumés des créneaux et des journées ;
-  //   'rattachement'  suggestions de tâches pour le temps réel.
-  // Un réglage vide reprend celui de l'assistant IA.
+  // L'IA de l'activité réelle (réglages, onglet Temps passé) : résumés des
+  // créneaux et des journées, et « Affiner avec l'IA » des rattachements (le
+  // premier jet de ceux-ci est local, sans IA générative). Un réglage vide
+  // reprend celui de l'assistant IA.
   static get CLES_IA_ACTIVITE() {
     return {
       synthese: { f: 'activiteIAFournisseur', m: 'activiteIAModele', c: 'activiteIAModeleClaude', defautClaude: 'haiku' },
-      rattachement: { f: 'activiteRattIAFournisseur', m: 'activiteRattIAModele', c: 'activiteRattIAModeleClaude', defautClaude: 'sonnet' },
     };
   }
 
@@ -1408,7 +1407,7 @@ const avecActivite = (Base) => class extends Base {
     const lot = blocs.map((b, k) => Object.assign({}, b, { id: k + 1,
       contenu: Ariane.contenuActivite(segs, new Date(b.debut).getTime(), new Date(b.fin).getTime() + 60000, 12) }));
     const prompt = Ariane.promptRattachement(lot, taches.slice(0, 80), this.settings.activiteIAContexte);
-    const rep = await this._genererActiviteIA(prompt, 200 + 150 * lot.length, 'rattachement');
+    const rep = await this._genererActiviteIA(prompt, 200 + 150 * lot.length, 'synthese');
     const lus = Ariane.lireRattachements(rep, taches.map((t) => t.ref));
     const out = new Map();
     for (const b of lot) {
