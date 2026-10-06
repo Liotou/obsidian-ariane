@@ -1295,7 +1295,6 @@ const DEFAULT_SETTINGS = {
   tempsTotalSecondes: {},
   tempsRetenirJours: 120,
   // --- Activité réelle hors d'Obsidian (ActivityWatch) --------------------
-  tableauxActifs: true,          // tableaux des notes : largeurs à la souris, Maj+Entrée, listes
   activiteActif: false,
   activiteSafari: true,         // onglets de Safari relevés par Ariane (ActivityWatch ne le peut pas)
   activiteUrl: 'http://localhost:5600',

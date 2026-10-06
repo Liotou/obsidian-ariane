@@ -31,8 +31,6 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
 
   // 1. Bibliographie d'Ariane : Zotero produira la sienne.
   s = s.replace(/%%\s*ariane:biblio\s*%%[\s\S]*?%%\s*\/ariane:biblio\s*%%/g, '');
-  // Largeurs de colonnes des tableaux (commentaire d'Ariane) : sans objet hors d'Obsidian.
-  s = s.replace(/^[ \t]*%%\s*ariane-tableau\s*:[^\n]*%%[ \t]*\n(?:[ \t]*\n)?/gm, '');
   s = s.replace(/^\s*---\s*$\n+(?=#{1,6}\s*Bibliographie)/gim, '');
   // « \Z » n'existe pas en JavaScript : il y vaut la lettre Z, si bien que la
   // coupe s'arrêtait au premier Z rencontré. On vise la vraie fin de texte.

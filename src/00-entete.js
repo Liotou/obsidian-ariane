@@ -86,7 +86,6 @@
  *            11k  avecTaches     notes de tâche, temps, synchro Apple
  *            11l  avecPublicationSite   miroir vault -> content/, commit, push
  *            11m  avecActivite   activité réelle (ActivityWatch)
- *            11n  avecTableaux   tableaux des notes (largeurs, listes)
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
