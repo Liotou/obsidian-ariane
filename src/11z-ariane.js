@@ -87,6 +87,18 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.resumerJournee(jourIsoDe(new Date())),
     });
     this.addCommand({
+      id: 'journee-bilan-apple-notes',
+      name: tr('Journée : envoyer le bilan dans Apple Notes'),
+      icon: 'send',
+      callback: () => this.envoyerBilanAppleNotes(jourIsoDe(new Date())),
+    });
+    this.addCommand({
+      id: 'mots-synchroniser',
+      name: tr('Mots du soir : recopier depuis Apple Notes'),
+      icon: 'book-a',
+      callback: () => this.synchroniserMots(false),
+    });
+    this.addCommand({
       id: 'activite-resumer-semaine',
       name: tr('Activité réelle : résumer la semaine affichée (IA)'),
       icon: 'sparkles',
@@ -765,6 +777,7 @@ class Ariane extends composer(obsidian.Plugin,
       this.brancherChronologie();
       this.installerInfobulleTemps();
       this.demarrerResumeJourneeAuto();
+      this.demarrerMotsDuSoir();
     });
     this._citVersion = 0;
     this.app.workspace.onLayoutReady(() => this.appliquerEtatCitations());

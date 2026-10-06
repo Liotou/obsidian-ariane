@@ -454,17 +454,34 @@ const avecDonneesJour = (Base) => class extends Base {
     if (d.resumeJournee && d.resumeJournee.mot && d.resumeJournee.motDeLaListe) {
       return { mot: d.resumeJournee.mot, definition: d.resumeJournee.definition || '' };
     }
-    const chemin = String(this.settings.resumeJourneeMots || '').trim();
-    if (!chemin) return null;
-    const f = this.app.metadataCache.getFirstLinkpathDest(chemin.replace(/\.md$/, ''), '')
-      || this.app.vault.getAbstractFileByPath(chemin);
-    if (!(f instanceof obsidian.TFile)) return null;
-    const entrees = Ariane.motsDuSoir(await this.app.vault.cachedRead(f));
+    const entrees = await this._entreesMotsDuSoir();
     if (!entrees.length) return null;
     const recents = new Set((await this._motsRecents(jour)).map((m) => m.toLowerCase()));
     const libres = entrees.filter((e) => !recents.has(e.mot.toLowerCase()));
     const pool = libres.length ? libres : entrees;
     return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  // Les mots possibles : une note (une entrée par ligne) ou un dossier (une
+  // note par mot, celle de la copie d'Apple Notes : propriétés Mot et
+  // Définition, ou à défaut le nom de la note).
+  async _entreesMotsDuSoir() {
+    const chemin = String(this.settings.resumeJourneeMots || '').trim().replace(/\/+$/, '');
+    if (!chemin) return [];
+    const v = this.app.vault;
+    const lu = v.getAbstractFileByPath(chemin);
+    if (lu instanceof obsidian.TFolder) {
+      const out = [];
+      for (const f of v.getMarkdownFiles()) {
+        if (!f.path.startsWith(lu.path + '/')) continue;
+        const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+        out.push({ mot: String(fm.Mot || f.basename).trim(), definition: String(fm['Définition'] || '').trim() });
+      }
+      return out.filter((e) => e.mot);
+    }
+    const f = this.app.metadataCache.getFirstLinkpathDest(chemin.replace(/\.md$/, ''), '') || lu;
+    if (!(f instanceof obsidian.TFile)) return [];
+    return Ariane.motsDuSoir(await v.cachedRead(f));
   }
 
   // Les mots des trente soirs précédents.
@@ -570,7 +587,12 @@ const avecDonneesJour = (Base) => class extends Base {
     this.marquerJourSale(j);
     await this.ecrireDonneesJours();
     this._signalerResumeJournee();
-    if (!o.silencieux) new obsidian.Notice(tr('Bilan de la journée prêt : il s’affiche dans la chronologie.'));
+    const versNotes = String(this.settings.bilanAppleNotesDossier || '').trim()
+      ? await this.envoyerBilanAppleNotes(j, true) : false;
+    if (!o.silencieux) {
+      new obsidian.Notice(versNotes ? tr('Bilan de la journée prêt : dans la chronologie et dans Apple Notes.')
+        : tr('Bilan de la journée prêt : il s’affiche dans la chronologie.'));
+    }
     return texte;
   }
 
@@ -604,4 +626,181 @@ const avecDonneesJour = (Base) => class extends Base {
   }
 
   //#endregion Ariane · résumé de la journée
+
+  //#region Ariane · mots du soir
+  // ── mots du soir : copie d'Apple Notes ──────────────────────────────────
+  //  Le dossier d'Apple Notes où Monsieur range ses mots (une note par mot :
+  //  « Mot (classe) : définition », exemple, étymologie) est recopié dans le
+  //  coffre, une note par mot, À SENS UNIQUE : Apple Notes fait foi, n'est
+  //  jamais modifié, et la copie est réécrite quand la note d'origine change.
+  //  Les copies portent « apple-notes-id » : seules elles sont réécrites ou
+  //  retirées (corbeille) quand leur note d'origine disparaît.
+
+  static genererJXAMots(dossier) {
+    return [
+      'const N = Application("Notes");',
+      'const f = N.folders.whose({ name: ' + JSON.stringify(dossier) + ' });',
+      'if (!f.length) { "__ABSENT__"; } else {',
+      '  const ns = f[0].notes;',
+      '  const ids = ns.id(), noms = ns.name(), textes = ns.plaintext(), dates = ns.modificationDate();',
+      '  JSON.stringify(ids.map((id, i) => ({ id, nom: noms[i], texte: textes[i], modifie: dates[i] ? dates[i].toISOString() : "" })));',
+      '}',
+    ].join('\n');
+  }
+
+  // Une note d'Apple Notes mise en forme pour le coffre : { nom, mot,
+  // classe, definition, contenu }.
+  static noteMotDepuisApple(n) {
+    const titre = String(n.nom || '').trim();
+    const lignes = String(n.texte || '').replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lignes.length && lignes[0] === titre) lignes.shift();
+    let classe = '';
+    let definition = '';
+    const esc = titre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const corps = lignes.map((l, i) => {
+      // « Mot (domaine) (classe) : définition » : la dernière parenthèse est
+      // la classe grammaticale.
+      const m = i === 0 ? l.match(new RegExp('^' + esc + '\\s*((?:\\([^)]*\\)\\s*)*):\\s*(.+)$', 'i')) : null;
+      if (m) {
+        const parens = [...m[1].matchAll(/\(([^)]*)\)/g)].map((x) => x[1].trim());
+        classe = parens.length ? parens[parens.length - 1] : '';
+        definition = m[2].trim();
+        return '**' + titre + '**' + (m[1].trim() ? ' ' + m[1].trim() : '') + ' : ' + definition;
+      }
+      return l.replace(/^(Exemples?|Étymologie|Synonymes?|Antonymes?|Remarques?|Citation)\s*:/i, '**$1** :');
+    });
+    if (!definition && lignes.length) definition = lignes[0];
+    const nom = titre.replace(/[\\/:*?"<>|#^[\]]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Sans titre';
+    const fm = ['---', 'Type: mot', 'Mot: ' + JSON.stringify(titre), 'Classe: ' + JSON.stringify(classe),
+      'Définition: ' + JSON.stringify(definition), 'apple-notes-id: ' + JSON.stringify(String(n.id || '')),
+      'apple-notes-modifie: ' + JSON.stringify(String(n.modifie || '')), '---'];
+    return { nom, mot: titre, classe, definition,
+      contenu: fm.concat(['%% Copie d\'Apple Notes (dossier des mots), réécrite à chaque changement : modifiez l\'original. %%', '',
+        '# ' + titre, ''], corps.flatMap((p) => [p, '']), []).join('\n') };
+  }
+
+  async synchroniserMots(silencieux) {
+    if (!obsidian.Platform.isMacOS) return;
+    const s = this.settings;
+    const source = String(s.motsAppleNotesDossier || '').trim();
+    const cible = String(s.motsDossier || '').trim().replace(/^\/+|\/+$/g, '');
+    if (!source || !cible) return;
+    if (this._motsEnCours) return;
+    this._motsEnCours = true;
+    try {
+      const sortie = await this._osascriptJXA(Ariane.genererJXAMots(source), 120000);
+      if (sortie == null) {
+        if (!silencieux) new obsidian.Notice(tr("Mots du soir : Apple Notes n'a pas répondu. Autorisez Obsidian à piloter Notes (Réglages système, Confidentialité et sécurité, Automatisation)."), 10000);
+        return;
+      }
+      if (sortie.trim() === '__ABSENT__') {
+        if (!silencieux) new obsidian.Notice(tr('Mots du soir : dossier introuvable dans Apple Notes : ') + source, 8000);
+        return;
+      }
+      const notes = JSON.parse(sortie);
+      const v = this.app.vault;
+      if (!v.getAbstractFileByPath(cible)) { try { await v.createFolder(cible); } catch (e) { /* déjà là */ } }
+      // Les copies existantes, par identifiant d'origine.
+      const copies = new Map();
+      for (const f of v.getMarkdownFiles()) {
+        if (!f.path.startsWith(cible + '/')) continue;
+        const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+        if (fm['apple-notes-id']) copies.set(String(fm['apple-notes-id']), { f, modifie: String(fm['apple-notes-modifie'] || '') });
+      }
+      let crees = 0;
+      let majs = 0;
+      const pris = new Set();
+      for (const n of notes) {
+        const m = Ariane.noteMotDepuisApple(n);
+        const ex = copies.get(String(n.id));
+        copies.delete(String(n.id));
+        if (ex) {
+          pris.add(ex.f.path);
+          if (ex.modifie === String(n.modifie || '')) continue;
+          this.marquerEcriture(ex.f.path);
+          await v.modify(ex.f, m.contenu);
+          majs++;
+          continue;
+        }
+        let chemin = cible + '/' + m.nom + '.md';
+        for (let k = 2; v.getAbstractFileByPath(chemin) || pris.has(chemin); k++) chemin = cible + '/' + m.nom + ' (' + k + ').md';
+        pris.add(chemin);
+        await this.ecrire(chemin, m.contenu);
+        crees++;
+      }
+      // Les mots retirés d'Apple Notes quittent le coffre (corbeille).
+      let retires = 0;
+      for (const { f } of copies.values()) {
+        try { await v.trash(f, true); retires++; } catch (e) { /* déjà parti */ }
+      }
+      s.motsSynchroLe = Date.now();
+      if (!String(s.resumeJourneeMots || '').trim()) s.resumeJourneeMots = cible;
+      await this.saveSettings();
+      if (!silencieux || crees || retires) {
+        new obsidian.Notice(tr('Mots du soir : ') + notes.length + tr(' mots') + (crees ? ', ' + crees + tr(' ajoutés') : '')
+          + (majs ? ', ' + majs + tr(' mis à jour') : '') + (retires ? ', ' + retires + tr(' retirés') : '') + '.');
+      }
+    } catch (e) {
+      console.error('[Ariane] mots du soir', e);
+      if (!silencieux) new obsidian.Notice(tr('Mots du soir : copie impossible : ') + ((e && e.message) || e), 10000);
+    } finally {
+      this._motsEnCours = false;
+    }
+  }
+
+  // Une copie au démarrage, puis toutes les six heures.
+  demarrerMotsDuSoir() {
+    if (!String(this.settings.motsAppleNotesDossier || '').trim()) return;
+    window.setTimeout(() => this.synchroniserMots(true), 20000);
+    this.registerInterval(window.setInterval(() => this.synchroniserMots(true), 6 * 3600000));
+  }
+
+  // ── le bilan vers Apple Notes ──
+  //  Une note par jour, nommée de sa seule date (« 06-10-2026 »), dans le
+  //  dossier réglé (« Bilans du soir »), créé au besoin ; refaire le bilan remplace la note du jour. Sur
+  //  le téléphone, la plus récente est en tête du dossier, prête à être lue.
+
+  static titreBilanAppleNotes(jour) {
+    const [a, m, j] = String(jour).split('-');
+    return j + '-' + m + '-' + a;
+  }
+
+  static genererJXABilan(dossier, titre, texte) {
+    const html = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const corps = '<div><h1>' + html(titre) + '</h1></div>'
+      + String(texte).split(/\n+/).map((p) => '<div>' + html(p) + '</div><div><br></div>').join('');
+    return [
+      'const N = Application("Notes");',
+      'let f = N.folders.whose({ name: ' + JSON.stringify(dossier) + ' });',
+      'let d;',
+      'if (f.length) { d = f[0]; } else { d = N.Folder({ name: ' + JSON.stringify(dossier) + ' }); N.folders.push(d); d = N.folders.whose({ name: ' + JSON.stringify(dossier) + ' })[0]; }',
+      'const ex = d.notes.whose({ name: ' + JSON.stringify(titre) + ' });',
+      'if (ex.length) { ex[0].body = ' + JSON.stringify(corps) + '; "maj"; }',
+      'else { d.notes.push(N.Note({ name: ' + JSON.stringify(titre) + ', body: ' + JSON.stringify(corps) + ' })); "cree"; }',
+    ].join('\n');
+  }
+
+  async envoyerBilanAppleNotes(jour, silencieux) {
+    if (!obsidian.Platform.isMacOS) return false;
+    const dossier = String(this.settings.bilanAppleNotesDossier || '').trim();
+    if (!dossier) {
+      if (!silencieux) new obsidian.Notice(tr('Bilan : choisissez d’abord un dossier Apple Notes dans les réglages (onglet Temps passé).'), 8000);
+      return false;
+    }
+    const j = jour || jourIsoDe(new Date());
+    const texte = await this.resumeDeLaJournee(j);
+    if (!texte) {
+      if (!silencieux) new obsidian.Notice(tr('Pas encore de bilan pour ce jour.'));
+      return false;
+    }
+    const r = await this._osascriptJXA(Ariane.genererJXABilan(dossier, Ariane.titreBilanAppleNotes(j), texte), 60000);
+    if (r == null) {
+      new obsidian.Notice(tr("Bilan : Apple Notes n'a pas répondu. Autorisez Obsidian à piloter Notes (Réglages système, Confidentialité et sécurité, Automatisation)."), 10000);
+      return false;
+    }
+    if (!silencieux) new obsidian.Notice(tr('Bilan envoyé dans Apple Notes, dossier ') + dossier + '.');
+    return true;
+  }
+
+  //#endregion Ariane · mots du soir
 };

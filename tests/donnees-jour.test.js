@@ -219,3 +219,28 @@ test('bilan : la matière de demain', async () => {
     'ÉCHÉANCES DES JOURS SUIVANTS :', '- 2026-10-09 : T3 Rendre (jalon)',
   ].join('\n'));
 });
+
+test('Apple Notes : titre du bilan, script du bilan et des mots', () => {
+  assert.equal(Ariane.titreBilanAppleNotes('2026-10-06'), '06-10-2026');
+  const s = Ariane.genererJXABilan('Bilans du soir', '06-10-2026', 'Bonsoir Monsieur.\nLe mot <est> : Kairos & co.');
+  assert.match(s, /<h1>06-10-2026<\/h1>/);
+  assert.match(s, /Le mot &lt;est&gt; : Kairos &amp; co\./);
+  assert.match(s, /name: "Bilans du soir"/);
+  assert.doesNotThrow(() => new Function(s), 'du JavaScript valide');
+  assert.doesNotThrow(() => new Function(Ariane.genererJXAMots('🖋️ Mots')));
+});
+
+test('Apple Notes : une note de mot mise en forme pour le coffre', () => {
+  const m = Ariane.noteMotDepuisApple({ id: 'x-coredata://A/ICNote/p1', nom: 'Allométrie', modifie: '2026-10-01T10:00:00.000Z',
+    texte: 'Allométrie\nAllométrie (n. f.) : Étude des variations relatives.\nExemple : « Une phrase. »\nÉtymologie : Du grec allos.' });
+  assert.equal(m.nom, 'Allométrie');
+  assert.equal(m.classe, 'n. f.');
+  assert.equal(m.definition, 'Étude des variations relatives.');
+  assert.match(m.contenu, /^---\nType: mot\nMot: "Allométrie"\nClasse: "n. f."\nDéfinition: "Étude des variations relatives\."\napple-notes-id: "x-coredata:\/\/A\/ICNote\/p1"/);
+  assert.match(m.contenu, /\n# Allométrie\n\n\*\*Allométrie\*\* \(n\. f\.\) : Étude des variations relatives\.\n\n\*\*Exemple\*\* : « Une phrase\. »\n\n\*\*Étymologie\*\* : Du grec allos\.\n/);
+  assert.equal(Ariane.noteMotDepuisApple({ nom: 'A/B: c?', texte: '' }).nom, 'A B c');
+  const c = Ariane.noteMotDepuisApple({ nom: 'Contingence', texte: 'Contingence\nContingence (épistémologie) (n. f.) : Ce qui aurait pu être autrement.' });
+  assert.equal(c.classe, 'n. f.');
+  assert.equal(c.definition, 'Ce qui aurait pu être autrement.');
+  assert.match(c.contenu, /\*\*Contingence\*\* \(épistémologie\) \(n\. f\.\) : Ce qui/);
+});

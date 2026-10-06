@@ -1216,12 +1216,27 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           t.inputEl.style.width = '100%';
         });
       new obsidian.Setting(c)
+        .setName(tr('Bilan dans Apple Notes'))
+        .setDesc(tr("Le dossier d'Apple Notes où chaque bilan est aussi déposé (une note par jour, nommée de sa date : « 06-10-2026 »), pour le faire lire sur le téléphone. Créé s'il n'existe pas. Vide : pas d'envoi."))
+        .addText((t) => t.setPlaceholder('Bilans du soir').setValue(s.bilanAppleNotesDossier || '')
+          .onChange(async (v) => { s.bilanAppleNotesDossier = v.trim(); await maj(); }));
+      new obsidian.Setting(c)
         .setName(tr('Mots du soir'))
-        .setDesc(tr("Le bilan se clôt sur un mot et sa définition. Une note du coffre, une entrée par ligne (« mot : définition ») : un mot y est tiré chaque soir, sans reprendre ceux du dernier mois. Vide : l'IA choisit le mot."))
+        .setDesc(tr("Le bilan se clôt sur un mot et sa définition, tiré chaque soir sans reprendre ceux du dernier mois. Un dossier du coffre (une note par mot, comme la copie d'Apple Notes ci-dessous) ou une note (« mot : définition » par ligne). Vide : l'IA choisit le mot."))
         .addText((t) => {
-          t.setPlaceholder('00 - Cadrage/Mots du soir.md').setValue(s.resumeJourneeMots || '')
+          t.setPlaceholder('11 - Mots').setValue(s.resumeJourneeMots || '')
             .onChange(async (v) => { s.resumeJourneeMots = v.trim(); await maj(); });
         });
+      new obsidian.Setting(c)
+        .setName(tr('Copier les mots depuis Apple Notes'))
+        .setDesc(tr("Le dossier d'Apple Notes où vous rangez vos mots (une note par mot). Il est recopié dans le coffre, une note par mot, au démarrage puis toutes les six heures : à sens unique, Apple Notes fait foi et n'est jamais modifié. Vide : pas de copie."))
+        .addText((t) => t.setPlaceholder('🖋️ Mots').setValue(s.motsAppleNotesDossier || '')
+          .onChange(async (v) => { s.motsAppleNotesDossier = v.trim(); await maj(); }))
+        .addButton((b) => b.setButtonText(tr('Copier maintenant')).onClick(() => this.plugin.synchroniserMots(false)));
+      new obsidian.Setting(c)
+        .setName(tr('Dossier des mots dans le coffre'))
+        .addText((t) => t.setPlaceholder('11 - Mots').setValue(s.motsDossier || '')
+          .onChange(async (v) => { s.motsDossier = v.trim().replace(/^\/+|\/+$/g, '') || '11 - Mots'; await maj(); }));
       new obsidian.Setting(c)
         .setName(tr('Catégories'))
         .setDesc(tr("Le nom, la couleur, et ce que la catégorie recouvre : cette description guide l'IA, soyez précis. Gardez une catégorie pour la vie privée et les distractions."))
