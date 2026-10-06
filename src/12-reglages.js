@@ -1083,6 +1083,66 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setDesc(tr('En minutes de temps actif. Un créneau réel qui en compte moins est écarté, et ses voisins de même catégorie se rejoignent.'))
         .addText((t) => t.setValue(String(s.activiteDureeMin == null ? 10 : s.activiteDureeMin))
           .onChange(async (v) => { const n = parseInt(v, 10); s.activiteDureeMin = Number.isFinite(n) ? Math.max(0, n) : 10; await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+
+      this._section(c, tr('Résumés par l\'IA'));
+      this._aide(c, tr("Sur chaque créneau réel, l'IA écrit ce qui a été fait et le range dans une de vos catégories, dont une pour la vie privée et les distractions (rayée dans le calendrier). Clic droit sur un créneau réel : résumer ce créneau ou la journée ; commande « Activité réelle : résumer la semaine affichée (IA) ». Les résumés sont gardés dans le dossier du greffon. Avec un fournisseur en ligne (Mistral, Claude), les titres de fenêtres et les sites lui sont envoyés ; Ollama et LM Studio restent sur l'ordinateur."));
+      new obsidian.Setting(c)
+        .setName(tr('Fournisseur'))
+        .addDropdown((d) => d
+          .addOption('', tr('Celui de l\'assistant IA (') + (s.refsFournisseur || 'ollama') + ')')
+          .addOption('ollama', 'Ollama')
+          .addOption('lmstudio', 'LM Studio')
+          .addOption('mistral', 'Mistral')
+          .addOption('claude', tr('Claude en ligne de commande'))
+          .setValue(s.activiteIAFournisseur || '')
+          .onChange(async (v) => { s.activiteIAFournisseur = v; await maj(); this.display(); }));
+      const fIA = s.activiteIAFournisseur || s.refsFournisseur || 'ollama';
+      if (fIA === 'claude') {
+        this._modeleClaude(c, s, maj, 'activiteIAModeleClaude', {
+          nom: tr('Modèle Claude des résumés'), sansDefaut: true,
+          desc: tr('Haiku suffit à résumer un relevé d\'activité, vite et à peu de frais ; Sonnet nuance mieux les cas douteux.'),
+        });
+      } else {
+        new obsidian.Setting(c)
+          .setName(tr('Modèle'))
+          .setDesc(tr('Vide : celui de l\'assistant IA (') + (s.refsModele || 'llama3.2') + ').')
+          .addText((t) => t.setPlaceholder(fIA === 'mistral' ? 'mistral-small-latest' : 'llama3.2')
+            .setValue(s.activiteIAModele || '')
+            .onChange(async (v) => { s.activiteIAModele = v.trim(); await maj(); }));
+      }
+      new obsidian.Setting(c)
+        .setName(tr('Catégories'))
+        .setDesc(tr("Une par ligne : « Nom #couleur : ce qu'elle recouvre ». La description guide l'IA : soyez précis sur ce qui relève de chaque catégorie. Gardez une catégorie pour la vie privée et les distractions."))
+        .addTextArea((t) => {
+          t.setValue(s.activiteCategoriesIA || '')
+            .onChange(async (v) => { s.activiteCategoriesIA = v; await maj(); this.plugin._rafraichirActiviteDiffere(); });
+          t.inputEl.rows = 10;
+          t.inputEl.style.width = '100%';
+          t.inputEl.style.fontFamily = 'var(--font-monospace)';
+        });
+      new obsidian.Setting(c)
+        .setName(tr('Contexte donné à l\'IA'))
+        .setDesc(tr('Qui vous êtes et sur quoi vous travaillez : de quoi distinguer le travail du reste.'))
+        .addTextArea((t) => {
+          t.setValue(s.activiteIAContexte || '').onChange(async (v) => { s.activiteIAContexte = v; await maj(); });
+          t.inputEl.rows = 3;
+          t.inputEl.style.width = '100%';
+        });
+      new obsidian.Setting(c)
+        .setName(tr('Couleur de la catégorie IA'))
+        .setDesc(tr('Un créneau résumé prend la couleur de sa catégorie IA plutôt que celle des règles.'))
+        .addToggle((t) => t.setValue(s.activiteIACouleur !== false)
+          .onChange(async (v) => { s.activiteIACouleur = v; await maj(); this.plugin._rafraichirActivite(false); }));
+      new obsidian.Setting(c)
+        .setName(tr('Résumer automatiquement'))
+        .setDesc(tr('Les journées passées affichées dans le calendrier sont résumées sans le demander, une fois. La journée en cours, encore ouverte, attend votre demande.'))
+        .addToggle((t) => t.setValue(s.activiteIAAuto === true)
+          .onChange(async (v) => { s.activiteIAAuto = v; await maj(); this.plugin._rafraichirActivite(false); }));
+      new obsidian.Setting(c)
+        .setName(tr('Oublier tous les résumés'))
+        .setDesc(tr('Après un changement de catégories, pour tout faire refaire.'))
+        .addButton((b) => b.setButtonText(tr('Oublier')).setWarning()
+          .onClick(async () => { await this.plugin._chargerResumesActivite(); this.plugin.oublierResumesActivite(); new obsidian.Notice(tr('Résumés oubliés.')); }));
     }
   }
 

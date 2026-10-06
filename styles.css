@@ -2493,6 +2493,13 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   background: color-mix(in srgb, var(--zfa-cal-coul) 65%, transparent);
   transition: background 0.12s ease, box-shadow 0.12s ease;
 }
+/* Créneau réel classé « vie privée ou distraction » par l'IA : rayé, pour se
+   distinguer d'un coup d'œil du temps de travail. */
+.zfa-cal-reel.est-personnel {
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--zfa-cal-coul) 80%, transparent) 0 3px,
+    color-mix(in srgb, var(--zfa-cal-coul) 30%, transparent) 3px 6px);
+}
 .zfa-cal-reel:hover {
   background: var(--zfa-cal-coul);
   box-shadow: 0 0 0 1px var(--background-primary), 0 2px 6px rgba(0, 0, 0, 0.25);

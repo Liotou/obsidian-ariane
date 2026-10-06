@@ -1306,6 +1306,24 @@ const DEFAULT_SETTINGS = {
   activiteAutre: 'Autre',               // catégorie de ce qu'aucune règle ne classe (vide = ignorer)
   activiteGrainMin: 5,                  // grain d'agrégation, en minutes
   activiteDureeMin: 10,                 // créneau réel le plus court affiché, en minutes
+  // Résumés des créneaux réels par l'IA (voir 11m · résumés par l'IA).
+  activiteIAFournisseur: '',            // '' = celui de l'assistant IA ; sinon ollama, lmstudio, mistral, claude
+  activiteIAModele: '',                 // modèle Ollama, LM Studio ou Mistral ('' = celui de l'assistant)
+  activiteIAModeleClaude: 'haiku',      // modèle si le fournisseur est Claude en ligne de commande
+  activiteIAAuto: false,                // résumer seul les journées passées affichées
+  activiteIACouleur: true,              // colorer les créneaux résumés selon leur catégorie IA
+  activiteIAContexte: "Monsieur est doctorant en sciences de gestion (risque systémique, accidents NaTech) et enseigne (cours, TD, ateliers). Il travaille surtout dans Obsidian, Zotero, Word, Excel, Teams, Mail et Safari.",
+  activiteCategoriesIA: [
+    'Rédaction #4a7fd6 : écrire la thèse, des articles, des notes de fond, des documents (Word, Pages, Obsidian en écriture)',
+    'Lecture #4f9d69 : lire des articles, des livres, des PDF (Zotero, lecteur PDF, revues en ligne)',
+    'Recherche documentaire #c08a2e : chercher et collecter des références (Google Scholar, Cairn, catalogues, bases de données, Zotero)',
+    'Enseignement #2a9d8f : préparer ou donner des cours, TD et ateliers, corriger, échanger avec les étudiants',
+    'Réunions #6c8ead : visioconférences, réunions et appels de travail',
+    'Messagerie et administratif #8a8a8a : courriels et messageries de travail, démarches, formulaires',
+    'Organisation #7c5cbf : planifier, gérer tâches et agenda, notes d\'organisation',
+    'Outils et technique #d1603d : configurer des logiciels, programmer, travailler avec des assistants IA',
+    'Personnel et distraction #b5527a : tout ce qui n\'a rien à voir avec le travail : achats en ligne, vidéos de divertissement (YouTube), réseaux sociaux, actualités générales, loisirs, messages privés',
+  ].join('\n'),
   dropSignalerRefus: true, // prévenir quand un dépôt n'est pas reconnu
   citationsRepliables: true,
   citationsRepliees: false, // état courant, piloté par les commandes

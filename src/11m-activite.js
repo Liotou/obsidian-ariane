@@ -326,10 +326,106 @@ const avecActivite = (Base) => class extends Base {
     }));
   }
 
+  // ── résumés par l'IA : fonctions pures ─────────────────────────────────
+
+  // Les catégories de l'IA, une par ligne : « Nom #couleur : description ».
+  // La couleur et la description sont facultatives ; la description dit à
+  // l'IA ce que la catégorie recouvre. Une ligne commençant par # est un
+  // commentaire.
+  static compilerCategoriesIA(texte) {
+    const out = [];
+    for (const brut of String(texte || '').split('\n')) {
+      const l = brut.trim();
+      if (!l || l.startsWith('#')) continue;
+      const m = /^([^#:]+?)\s*(#[0-9a-f]{3,8})?\s*(?::\s*(.*))?$/i.exec(l);
+      if (!m) continue;
+      const nom = m[1].trim();
+      if (!nom || out.some((c) => c.nom === nom)) continue;
+      out.push({ nom, couleur: m[2] || Ariane.couleurActivite(nom), description: (m[3] || '').trim() });
+    }
+    return out;
+  }
+
+  // Ce qui a occupé un créneau [debMs, finMs[, regroupé par application,
+  // titre et site, du plus long au plus court : la matière que l'IA résume.
+  static contenuActivite(segments, debMs, finMs, max) {
+    const parCle = new Map();
+    for (const s of (segments || [])) {
+      const a = Math.max(s.deb, debMs);
+      const b = Math.min(s.fin, finMs);
+      if (!(b > a)) continue;
+      const m = String(s.url || '').match(/^[a-z][\w+.-]*:\/\/([^/?#]+)/i);
+      const domaine = m ? m[1].replace(/^www\./, '') : '';
+      const titre = String(s.titre || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      const cle = s.app + '\u0001' + titre + '\u0001' + domaine;
+      const x = parCle.get(cle) || { app: String(s.app || ''), titre, domaine, ms: 0 };
+      x.ms += b - a;
+      parCle.set(cle, x);
+    }
+    return [...parCle.values()].sort((x, y) => y.ms - x.ms).slice(0, max || 15)
+      .map((x) => ({ app: x.app, titre: x.titre, domaine: x.domaine, min: Math.max(1, Math.round(x.ms / 60000)) }));
+  }
+
+  // L'invite : qui est Monsieur, les catégories avec leur portée, puis les
+  // créneaux avec ce qui les a occupés. L'IA rend, pour chacun, une catégorie
+  // de la liste et un résumé factuel.
+  static promptResumeActivite(blocs, categories, contexte) {
+    const l = [];
+    l.push('Tu résumes le travail réel d\'une journée, créneau par créneau, à partir du relevé automatique d\'ActivityWatch (application au premier plan, titre de la fenêtre, site web).');
+    if (contexte) l.push('Contexte : ' + contexte);
+    l.push('');
+    l.push('CATÉGORIES (choisis le nom EXACT de l\'une d\'elles) :');
+    for (const c of categories) l.push('- ' + c.nom + (c.description ? ' : ' + c.description : ''));
+    l.push('');
+    l.push('RÈGLES :');
+    l.push('- Une seule catégorie par créneau : celle qui domine le temps passé.');
+    l.push('- Vie privée et distractions (la catégorie de la liste qui les recouvre) : tout ce qui n\'a rien à voir avec le travail, même bref s\'il domine : achats en ligne, vidéos de divertissement, réseaux sociaux, actualités générales, loisirs, messages privés. Juge sur le titre et le site, pas sur l\'application : une vidéo YouTube de conférence scientifique est du travail, une vidéo de divertissement non.');
+    l.push('- Un titre de fenêtre Safari commençant par « Personnel — » vient du profil Safari personnel : indice fort, mais pas une preuve, de navigation privée.');
+    l.push('- « loginwindow » est l\'écran verrouillé : ce n\'est pas une activité.');
+    l.push('- resume : une phrase factuelle en français, 140 caractères au plus, qui dit ce qui a été fait (par exemple « Animation du TD1 Atelier IA sur Teams, échanges avec les groupes 1 à 6 »). Reprends les noms propres, sigles et intitulés tels qu\'ils apparaissent. N\'invente rien qui ne soit dans le relevé. Pas de tiret cadratin ni demi-cadratin.');
+    l.push('- personnel : true si le créneau relève de la vie privée ou de la distraction, sinon false.');
+    l.push('');
+    l.push('Réponds UNIQUEMENT par un tableau JSON, une entrée par créneau :');
+    l.push('[{"id": 1, "categorie": "…", "resume": "…", "personnel": false}]');
+    l.push('');
+    l.push('CRÉNEAUX :');
+    for (const b of blocs) {
+      l.push('');
+      l.push('id ' + b.id + ' · ' + b.debut.slice(11, 16) + ' à ' + b.fin.slice(11, 16) + ' · ' + b.actifMin + ' min actives');
+      for (const x of (b.contenu || [])) {
+        l.push('  ' + x.min + ' min | ' + x.app + (x.titre && x.titre !== x.app ? ' | ' + x.titre : '')
+          + (x.domaine ? ' | ' + x.domaine : ''));
+      }
+    }
+    return l.join('\n');
+  }
+
+  // La réponse de l'IA, vérifiée : une catégorie de la liste (casse et accents
+  // près), un résumé nettoyé. Rend Map(id → { categorie, couleur, resume,
+  // personnel }) ; une entrée invalide est ignorée.
+  static lireResumesActivite(reponse, categories) {
+    const norm = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+    const liste = Array.isArray(reponse) ? reponse
+      : (reponse && Array.isArray(reponse.creneaux) ? reponse.creneaux : []);
+    const out = new Map();
+    for (const r of liste) {
+      if (!r || r.id == null) continue;
+      const cat = (categories || []).find((c) => norm(c.nom) === norm(r.categorie));
+      if (!cat) continue;
+      const resume = String(r.resume || '').replace(/\s*[—–]\s*/g, ' : ').replace(/\s+/g, ' ').trim().slice(0, 200);
+      out.set(Number(r.id), { categorie: cat.nom, couleur: cat.couleur, resume,
+        personnel: r.personnel === true || /^true$/i.test(String(r.personnel)) });
+    }
+    return out;
+  }
+
   // Infobulle d'un créneau réel.
   static infobulleActivite(b) {
-    const lignes = [b.categorie + ' · ' + b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16),
+    const ia = b.ia;
+    const lignes = [(ia ? ia.categorie + tr(' (IA)') : b.categorie) + ' · '
+      + b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16),
       tr('Actif : ') + dureeLisible(b.actifMin)];
+    if (ia && ia.resume) lignes.splice(1, 0, ia.resume);
     for (const d of (b.details || [])) {
       if (d.min > 0) lignes.push('• ' + d.libelle + ' (' + dureeLisible(d.min) + ')');
     }
@@ -413,7 +509,7 @@ const avecActivite = (Base) => class extends Base {
     const traiter = async (jour) => {
       const segs = await this._segmentsDuJour(jour);
       const memo = this._activiteBlocs.get(jour);
-      if (memo && memo.segs === segs) { out.set(jour, memo.blocs); return; }
+      if (memo && memo.segs === segs) { out.set(jour, this._decorerResumes(jour, memo.blocs)); return; }
       const d0 = new Date(jour + 'T00:00:00').getTime();
       const d1 = new Date(Ariane.decalerJour(jour, 1) + 'T00:00:00').getTime();
       const blocs = Ariane.agregerActivite(segs, regles, {
@@ -423,11 +519,13 @@ const avecActivite = (Base) => class extends Base {
         autre: this.settings.activiteAutre,
       });
       this._activiteBlocs.set(jour, { segs, blocs });
-      out.set(jour, blocs);
+      out.set(jour, this._decorerResumes(jour, blocs));
     };
+    await this._chargerResumesActivite();
     try {
       while (file.length) await Promise.all(file.splice(0, 3).map(traiter));
       this._activiteErreur = '';
+      if (this.settings.activiteIAAuto) this._resumerAuto(out);
     } catch (e) {
       const msg = (e && e.message) || String(e);
       if (this._activiteErreur !== msg) {
@@ -455,6 +553,163 @@ const avecActivite = (Base) => class extends Base {
         // Désactivée : la colonne déjà dessinée doit disparaître tout de suite.
         if (!dispo) { m._activite = new Map(); m.dessiner(); } else if (m._chargerActivite) m._chargerActivite();
       } catch (e) { /* vue fermée */ }
+    }
+  }
+
+  // ── résumés par l'IA ───────────────────────────────────────────────────
+  //  Chaque créneau réel peut recevoir de l'IA une catégorie (parmi celles des
+  //  réglages, dont une pour la vie privée et les distractions) et une phrase
+  //  qui dit ce qui a été fait. Les résumés sont gardés dans activite-ia.json,
+  //  dans le dossier du greffon, par jour et bornes du créneau : un créneau
+  //  déjà résumé ne repasse pas par l'IA. Avec un fournisseur en ligne
+  //  (Mistral, Claude), titres de fenêtres et sites lui sont envoyés.
+
+  get cheminResumesActivite() {
+    const dossier = (this.manifest && this.manifest.dir) || '.obsidian/plugins/obsidian-ariane';
+    return dossier + '/activite-ia.json';
+  }
+
+  static cleBlocActivite(jour, b) { return jour + '|' + b.debut + '|' + b.fin; }
+
+  async _chargerResumesActivite() {
+    if (this._resumesActivite) return;
+    this._resumesActivite = {};
+    const a = this.app.vault.adapter;
+    try {
+      if (await a.exists(this.cheminResumesActivite)) {
+        const j = JSON.parse(await a.read(this.cheminResumesActivite));
+        if (j && typeof j === 'object') this._resumesActivite = j;
+      }
+    } catch (e) { console.warn('[Ariane] résumés d\'activité illisibles :', e); }
+  }
+
+  _sauverResumesActivite() {
+    this.antirebond('activite-ia', async () => {
+      try {
+        await this.app.vault.adapter.write(this.cheminResumesActivite,
+          JSON.stringify(this._resumesActivite || {}));
+      } catch (e) { console.warn('[Ariane] résumés d\'activité non écrits :', e); }
+    }, 1500);
+  }
+
+  categoriesIA() {
+    return Ariane.compilerCategoriesIA(this.settings.activiteCategoriesIA);
+  }
+
+  // Les créneaux d'un jour, avec leur résumé s'il existe, et la couleur de sa
+  // catégorie (celle des réglages, qui a pu changer depuis).
+  _decorerResumes(jour, blocs) {
+    const r = this._resumesActivite || {};
+    const cats = this.categoriesIA();
+    const colorer = this.settings.activiteIACouleur !== false;
+    return blocs.map((b) => {
+      const cle = Ariane.cleBlocActivite(jour, b);
+      const ia = r[cle];
+      if (!ia) return Object.assign({}, b, { cle });
+      const cat = cats.find((c) => c.nom === ia.categorie);
+      return Object.assign({}, b, { cle, ia,
+        couleur: colorer ? ((cat && cat.couleur) || ia.couleur || b.couleur) : b.couleur });
+    });
+  }
+
+  // L'appel à l'IA choisie pour les résumés (ou celle de l'assistant).
+  async _genererActiviteIA(prompt, max) {
+    const s = this.settings;
+    const f = s.activiteIAFournisseur || s.refsFournisseur || 'ollama';
+    const modele = (s.activiteIAModele || '').trim() || s.refsModele || 'llama3.2';
+    this._diagIA = '';
+    const brut = await this.genererAvecFournisseur(prompt, max, f, modele,
+      { modeleClaude: s.activiteIAModeleClaude || 'haiku', delai: 240000 });
+    if (!brut) {
+      throw new Error((this._diagIA || tr('aucune réponse')) + ' (' + f + ')');
+    }
+    const j = Ariane.extraireJson(brut);
+    if (!j) throw new Error(tr('réponse illisible (JSON attendu)'));
+    return j;
+  }
+
+  // Résume les créneaux d'un jour qui ne l'ont pas encore été (ou celui de
+  // `o.cle`, même déjà résumé). Rend le nombre de créneaux résumés.
+  async resumerActivite(jour, o) {
+    const opt = o || {};
+    if (!this.activiteDisponible()) return 0;
+    await this._chargerResumesActivite();
+    const cats = this.categoriesIA();
+    if (!cats.length) { new obsidian.Notice(tr('Aucune catégorie pour l\'IA : voir Réglages > Temps passé.')); return 0; }
+    const blocs = (await this.activitePlage([jour])).get(jour) || [];
+    const segs = await this._segmentsDuJour(jour);
+    const r = this._resumesActivite;
+    const vises = blocs.filter((b) => (opt.cle ? b.cle === opt.cle : !r[b.cle]));
+    if (!vises.length) {
+      if (!opt.silencieux) new obsidian.Notice(tr('Rien à résumer ce jour-là.'));
+      return 0;
+    }
+    const avis = opt.silencieux ? null
+      : new obsidian.Notice(tr('Résumé de l\'activité (') + vises.length + tr(' créneau(x))…'), 0);
+    let n = 0;
+    try {
+      for (let i = 0; i < vises.length; i += 12) {
+        const lot = vises.slice(i, i + 12).map((b, k) => Object.assign({}, b, { id: k + 1,
+          contenu: Ariane.contenuActivite(segs, new Date(b.debut).getTime(),
+            new Date(b.fin).getTime() + 60000, 15) }));
+        const prompt = Ariane.promptResumeActivite(lot, cats, this.settings.activiteIAContexte);
+        const rep = await this._genererActiviteIA(prompt, 300 + 120 * lot.length);
+        const lus = Ariane.lireResumesActivite(rep, cats);
+        const modele = this.settings.activiteIAFournisseur || this.settings.refsFournisseur || '';
+        for (const b of lot) {
+          const x = lus.get(b.id);
+          if (!x) continue;
+          r[b.cle] = Object.assign(x, { modele, le: jourIsoDe(new Date()) });
+          n += 1;
+        }
+      }
+    } catch (e) {
+      if (avis) avis.hide();
+      new obsidian.Notice(tr('Résumé de l\'activité impossible : ') + ((e && e.message) || e), 10000);
+      return n;
+    }
+    if (avis) avis.hide();
+    this._sauverResumesActivite();
+    this._rafraichirActivite(false);
+    if (!opt.silencieux) new obsidian.Notice(n + tr(' créneau(x) résumé(s).'));
+    return n;
+  }
+
+  // Les jours visibles d'un calendrier ouvert, sinon la semaine en cours.
+  async resumerSemaineAffichee() {
+    let jours = [];
+    for (const m of (this._moteursCalendrier || [])) {
+      if (Array.isArray(m._joursSemaine) && m._joursSemaine.length) { jours = m._joursSemaine; break; }
+    }
+    if (!jours.length) {
+      const lundi = Ariane.grilleSemaine(jourIsoDe(new Date())).lundi;
+      for (let i = 0; i < 7; i++) jours.push(Ariane.decalerJour(lundi, i));
+    }
+    const auj = jourIsoDe(new Date());
+    let n = 0;
+    for (const j of jours) if (j <= auj) n += await this.resumerActivite(j, { silencieux: true });
+    new obsidian.Notice(n + tr(' créneau(x) résumé(s) sur la semaine.'));
+  }
+
+  oublierResumesActivite(cle) {
+    const r = this._resumesActivite || {};
+    if (cle) delete r[cle]; else this._resumesActivite = {};
+    this._sauverResumesActivite();
+    this._rafraichirActivite(false);
+  }
+
+  // Résumé automatique : seulement les journées passées (closes), une à la
+  // fois, une fois par session.
+  _resumerAuto(parJour) {
+    const auj = jourIsoDe(new Date());
+    if (!this._iaJoursTentes) this._iaJoursTentes = new Set();
+    for (const [jour, blocs] of parJour) {
+      if (jour >= auj || this._iaJoursTentes.has(jour)) continue;
+      if (!blocs.some((b) => !b.ia)) continue;
+      this._iaJoursTentes.add(jour);
+      this._iaFile = (this._iaFile || Promise.resolve())
+        .then(() => this.resumerActivite(jour, { silencieux: true }))
+        .catch(() => { /* signalé par resumerActivite */ });
     }
   }
 

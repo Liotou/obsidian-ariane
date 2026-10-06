@@ -432,8 +432,23 @@ class MoteurCalendrier extends MoteurVue {
       const bulle = Ariane.infobulleActivite(b);
       if (obsidian.setTooltip) obsidian.setTooltip(el, bulle, { placement: 'right', classes: ['zfa-bulle-lignes'] });
       else el.setAttribute('aria-label', bulle);
+      if (b.ia && b.ia.personnel) el.addClass('est-personnel');
+      if (b.ia) el.addClass('est-resume');
       // La colonne réagit au clic (sélection, création) : la piste, non.
       el.addEventListener('pointerdown', (e) => e.stopPropagation());
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const m = new obsidian.Menu();
+        m.addItem((i) => i.setTitle(b.ia ? tr('Résumer à nouveau ce créneau (IA)') : tr('Résumer ce créneau (IA)'))
+          .setIcon('sparkles').onClick(() => this.greffon.resumerActivite(jour, { cle: b.cle })));
+        m.addItem((i) => i.setTitle(tr('Résumer la journée (IA)')).setIcon('calendar-check')
+          .onClick(() => this.greffon.resumerActivite(jour)));
+        if (b.ia) {
+          m.addItem((i) => i.setTitle(tr('Oublier ce résumé')).setIcon('eraser')
+            .onClick(() => this.greffon.oublierResumesActivite(b.cle)));
+        }
+        m.showAtMouseEvent(e);
+      });
     }
   }
 

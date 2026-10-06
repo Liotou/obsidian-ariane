@@ -79,6 +79,16 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.commandeNoteActive(),
     });
     this.addCommand({
+      id: 'activite-resumer-semaine',
+      name: tr('Activité réelle : résumer la semaine affichée (IA)'),
+      icon: 'sparkles',
+      checkCallback: (verif) => {
+        if (!this.activiteDisponible()) return false;
+        if (!verif) this.resumerSemaineAffichee();
+        return true;
+      },
+    });
+    this.addCommand({
       id: 'atomise-tout',
       name: tr('Atomiser : toutes les sources'),
       callback: () => this.atomiserTout(),

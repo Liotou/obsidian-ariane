@@ -188,3 +188,50 @@ test('segmentsActivite : les onglets Safari relevés par Ariane découpent la fe
   assert.equal(s[0].url, 'https://www.cairn.info/x');
   assert.equal(s[0].fin - s[0].deb, 300000);
 });
+
+/* -------------------------- résumés par l'IA -------------------------- */
+
+test('catégories IA : nom, couleur, description ; commentaires et doublons écartés', () => {
+  const c = Ariane.compilerCategoriesIA('# commentaire\nLecture #4f9d69 : lire des articles\nPersonnel et distraction : achats, vidéos\nLecture : doublon\n\n');
+  assert.deepEqual(c.map((x) => x.nom), ['Lecture', 'Personnel et distraction']);
+  assert.equal(c[0].couleur, '#4f9d69');
+  assert.equal(c[0].description, 'lire des articles');
+  assert.match(c[1].couleur, /^#[0-9a-f]{6}$/);
+});
+
+test('contenu d’un créneau : regroupé par application, titre et site, du plus long au plus court', () => {
+  const M = 60000;
+  const segs = [
+    { deb: 0, fin: 20 * M, app: 'Microsoft Teams', titre: 'Cours HEG - TD1', url: '' },
+    { deb: 20 * M, fin: 25 * M, app: 'Safari', titre: 'Personnel — Pantalon', url: 'https://www.vinted.fr/x' },
+    { deb: 25 * M, fin: 40 * M, app: 'Microsoft Teams', titre: 'Cours HEG - TD1', url: '' },
+    { deb: 50 * M, fin: 90 * M, app: 'Hors', titre: '', url: '' },
+  ];
+  const c = Ariane.contenuActivite(segs, 0, 45 * M, 10);
+  assert.deepEqual(c, [
+    { app: 'Microsoft Teams', titre: 'Cours HEG - TD1', domaine: '', min: 35 },
+    { app: 'Safari', titre: 'Personnel — Pantalon', domaine: 'vinted.fr', min: 5 },
+  ]);
+});
+
+test('invite : catégories, règles, créneaux avec leur contenu', () => {
+  const p = Ariane.promptResumeActivite([{ id: 1, debut: '2026-10-06T09:00', fin: '2026-10-06T10:00', actifMin: 50,
+    contenu: [{ app: 'Zotero', titre: 'Zotero', domaine: '', min: 50 }] }],
+  [{ nom: 'Lecture', description: 'lire' }], 'Doctorant.');
+  assert.match(p, /- Lecture : lire/);
+  assert.match(p, /id 1 · 09:00 à 10:00 · 50 min actives/);
+  assert.match(p, /50 min \| Zotero$/m);
+  assert.match(p, /Contexte : Doctorant\./);
+});
+
+test('réponse de l’IA : catégorie reconnue sans égard aux accents, inconnue écartée, tirets remplacés', () => {
+  const cats = Ariane.compilerCategoriesIA('Réunions #6c8ead : visios\nPersonnel et distraction #b5527a : loisirs');
+  const r = Ariane.lireResumesActivite([
+    { id: 1, categorie: 'reunions', resume: 'TD1 — échanges avec les groupes', personnel: false },
+    { id: 2, categorie: 'Inconnue', resume: 'x' },
+    { id: 3, categorie: 'Personnel et distraction', resume: 'Achats', personnel: 'true' },
+  ], cats);
+  assert.deepEqual(r.get(1), { categorie: 'Réunions', couleur: '#6c8ead', resume: 'TD1 : échanges avec les groupes', personnel: false });
+  assert.equal(r.has(2), false);
+  assert.equal(r.get(3).personnel, true);
+});
