@@ -168,7 +168,7 @@ class MoteurCalendrier extends MoteurVue {
     this._gesteCal = false;
     if (this._pose) this._pose.finir();
     this._fermerJourMois();
-    this._cacherCarteActivite();
+    this._cacherCarteActivite(true);
     for (const o of (this._observateursMois || [])) { try { o.disconnect(); } catch (e) { /* rien */ } }
     this._observateursMois = [];
     if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
@@ -420,7 +420,7 @@ class MoteurCalendrier extends MoteurVue {
   // Colonne des créneaux réels d'un jour. `mn` convertit « …THH:MM » en
   // minutes depuis minuit.
   _rendreActivite(col, jour, hDeb, PXH, mn) {
-    this._cacherCarteActivite();
+    this._cacherCarteActivite(true);
     for (const b of (this._activite.get(jour) || [])) {
       const d = mn(b.debut);
       const f = b.fin.slice(0, 10) === jour ? mn(b.fin) : 24 * 60;
@@ -458,10 +458,25 @@ class MoteurCalendrier extends MoteurVue {
           .setIcon('sparkles').onClick(() => this.greffon.resumerActivite(jour, { cle: b.cle })));
         m.addItem((i) => i.setTitle(tr('Résumer la journée (IA)')).setIcon('calendar-check')
           .onClick(() => this.greffon.resumerActivite(jour)));
-        m.addItem((i) => i.setTitle(tr('Rattacher à une tâche…')).setIcon('link')
-          .onClick(() => this._rattacherActivite(jour, [b])));
+        m.addItem((i) => i.setTitle(b.rattache && b.rattache.length ? tr('Modifier les rattachements…') : tr('Rattacher à une tâche…'))
+          .setIcon('link').onClick(() => this._rattacherActivite(jour, [b])));
         m.addItem((i) => i.setTitle(tr('Rattacher la journée (IA)…')).setIcon('list-checks')
           .onClick(() => this._rattacherActivite(jour, this._activite.get(jour) || [])));
+        m.addSeparator();
+        m.addItem((i) => i.setTitle(tr('Créer une tâche associée…')).setIcon('file-plus')
+          .onClick(() => this._tacheDepuisTemps(b.ia && b.ia.resume ? b.ia.resume : '', (ref) =>
+            this.greffon.appliquerRattachements([{ ref, id: b.empreinte, apres: Ariane.formatTempsReel({ debut: b.debut,
+              fin: b.fin, min: b.actifMin, quoi: (b.ia ? b.ia.categorie : b.categorie), id: b.empreinte }) }]))));
+        m.addItem((i) => i.setTitle(tr('Poser comme créneau de tâche…')).setIcon('calendar-plus')
+          .onClick(() => this._creneauDepuisTemps(jour, b.debut, b.fin, b.ia && b.ia.resume ? b.ia.resume : '')));
+        m.addItem((i) => i.setTitle(tr('Ouvrir la fiche')).setIcon('panel-top-open')
+          .onClick(() => new ModaleActiviteReelle(this.greffon, { jour, bloc: b,
+            surRattacher: () => this._rattacherActivite(jour, [b]) }).open()));
+        if (b.ia && b.ia.resume) {
+          m.addItem((i) => i.setTitle(tr('Copier le résumé')).setIcon('copy')
+            .onClick(() => { navigator.clipboard.writeText(b.ia.resume); new obsidian.Notice(tr('Résumé copié.')); }));
+        }
+        m.addSeparator();
         if (b.ia) {
           m.addItem((i) => i.setTitle(tr('Oublier ce résumé')).setIcon('eraser')
             .onClick(() => this.greffon.oublierResumesActivite(b.cle)));
@@ -482,6 +497,7 @@ class MoteurCalendrier extends MoteurVue {
     const carte = doc.body.createDiv({ cls: 'zfa-act-survol est-interactive' });
     this._carteActivite = carte;
     this._carteActiviteEl = el;
+    this._apparaitre(carte);
     carte.addEventListener('mouseenter', () => clearTimeout(this._carteMinuterie));
     carte.addEventListener('mouseleave', () => this._cacherCarteDiffere());
     const tete = carte.createDiv({ cls: 'zfa-act-survol-tete' });
@@ -560,6 +576,7 @@ class MoteurCalendrier extends MoteurVue {
     const carte = doc.body.createDiv({ cls: 'zfa-act-survol' });
     this._carteActivite = carte;
     this._carteActiviteEl = el;
+    this._apparaitre(carte);
     const tete = carte.createDiv({ cls: 'zfa-act-survol-tete' });
     const puce = tete.createSpan({ cls: 'zfa-act-cat', text: o.tache ? o.tache.ref : tr('Hors tâche') });
     if (o.couleur) puce.style.setProperty('--zfa-cal-coul', o.couleur);
@@ -578,16 +595,96 @@ class MoteurCalendrier extends MoteurVue {
     carte.style.top = Math.max(8, Math.min(r.top, win.innerHeight - carte.offsetHeight - 8)) + 'px';
   }
 
-  _cacherCarteActivite() {
+  // Entrée en fondu, légère montée : la carte apparaît au tour suivant de
+  // l'affichage pour que la transition parte de l'état caché.
+  _apparaitre(carte) {
+    const win = carte.ownerDocument.defaultView || window;
+    win.requestAnimationFrame(() => win.requestAnimationFrame(() => carte.addClass('est-visible')));
+  }
+
+  // Sortie en fondu : la carte part du document une fois la transition finie
+  // (ou tout de suite si l'on demande `net`, avant un redessin par exemple).
+  _cacherCarteActivite(net) {
     clearTimeout(this._carteMinuterie);
-    if (this._carteActivite) { this._carteActivite.remove(); this._carteActivite = null; }
+    const c = this._carteActivite;
+    this._carteActivite = null;
     this._carteActiviteEl = null;
+    if (!c) return;
+    if (net) { c.remove(); return; }
+    c.removeClass('est-visible');
+    c.addClass('est-sortie');
+    setTimeout(() => c.remove(), 160);
   }
 
   // Un court répit avant de fermer : le temps d'aller de la bande à la carte.
   _cacherCarteDiffere() {
     clearTimeout(this._carteMinuterie);
     this._carteMinuterie = setTimeout(() => this._cacherCarteActivite(), 250);
+  }
+
+  // Clic droit sur le liseré du travail dans Obsidian : la note, et ce qu'on
+  // peut en faire pour les tâches.
+  _menuPresence(e, x, t) {
+    e.preventDefault(); e.stopPropagation();
+    this._cacherCarteActivite(true);
+    const f = this.app.vault.getAbstractFileByPath(x.chemin);
+    const nom = String(x.chemin).split('/').pop().replace(/\.md$/, '');
+    const debut = String(x.debut).slice(0, 16);
+    const fin = String(x.fin).slice(0, 16);
+    const m = new obsidian.Menu();
+    if (f) {
+      m.addItem((i) => i.setTitle(tr('Ouvrir la note')).setIcon('file-text')
+        .onClick(() => this.app.workspace.getLeaf(false).openFile(f)));
+      m.addItem((i) => i.setTitle(tr('Ouvrir dans un nouvel onglet')).setIcon('separator-vertical')
+        .onClick(() => this.app.workspace.getLeaf(true).openFile(f)));
+    }
+    if (t) {
+      m.addItem((i) => i.setTitle(tr('Ouvrir la tâche ') + t.ref).setIcon('check-square')
+        .onClick(() => this.ouvrir(t.ref, false)));
+    }
+    m.addSeparator();
+    m.addItem((i) => i.setTitle(t ? tr('Lier cette note à une autre tâche…') : tr('Lier cette note à une tâche…')).setIcon('link')
+      .onClick(() => this._choisirTache(tr('Lier « ') + nom + tr(' » à quelle tâche ?'), (ref) =>
+        this.greffon.lierNoteATache(ref, x.chemin).then(() => this.dessiner()))));
+    m.addItem((i) => i.setTitle(tr('Créer une tâche associée…')).setIcon('file-plus')
+      .onClick(() => this._tacheDepuisTemps(nom, (ref) => this.greffon.lierNoteATache(ref, x.chemin))));
+    m.addItem((i) => i.setTitle(tr('Poser comme créneau de tâche…')).setIcon('calendar-plus')
+      .onClick(() => this._creneauDepuisTemps(debut.slice(0, 10), debut, fin, nom, t ? t.ref : '')));
+    m.showAtMouseEvent(e);
+  }
+
+  // Choisir une tâche active (recherche floue).
+  _choisirTache(titre, surChoix) {
+    const items = this.greffon.tachesRattachables().map((t) => ({ nom: t.ref + ' · ' + t.intitule, ref: t.ref }));
+    new ChoixListeModal(this.app, titre, items, (it) => surChoix(it.ref)).open();
+  }
+
+  // Créer une tâche (formulaire pré-rempli), puis `apres(ref)`.
+  _tacheDepuisTemps(intitule, apres) {
+    new ModaleTache(this.app, this.greffon, {
+      defauts: { intitule: intitule || '' },
+      apres: async (ref) => { if (ref && apres) await apres(ref); this.dessiner(); },
+    }).open();
+  }
+
+  // Poser un créneau PRÉVU aux mêmes horaires sur une tâche choisie (pour
+  // reporter après coup dans le planning un travail fait hors plan).
+  _creneauDepuisTemps(jour, debut, fin, libelle, refProposee) {
+    const ecrire = async (ref) => {
+      await this._majCreneauU(ref, { avant: '', debut, fin });
+      this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
+    };
+    if (refProposee) { ecrire(refProposee); return; }
+    const taches = this._tachesBrutes || this._taches || [];
+    const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    new ModaleTacheDuCreneau(this.app, this.greffon, {
+      taches, jour,
+      horaire: jl.charAt(0).toUpperCase() + jl.slice(1) + ' · ' + debut.slice(11, 16) + ' → ' + fin.slice(11, 16)
+        + (libelle ? ' · ' + libelle : ''),
+      surChoix: (ref) => { ecrire(ref).catch((e) => new obsidian.Notice(String(e && e.message || e))); },
+      surAbandon: () => {},
+      surNouvelle: (texte) => this._tacheDepuisTemps(texte || libelle, (ref) => ecrire(ref)),
+    }).open();
   }
 
   // Rattacher le temps réel d'un ou plusieurs créneaux d'un jour à des tâches
@@ -2702,7 +2799,7 @@ class MoteurCalendrier extends MoteurVue {
   // recalage en construit une seconde hors écran avant l'échange).
   _peindreTravailReel(inner) {
     if (this._detruit || this.mode !== 'semaine') return;
-    this._cacherCarteActivite();
+    this._cacherCarteActivite(true);
     if (!inner) {
       for (const i of this.racine.querySelectorAll('.zfa-cal-sem-inner')) this._peindreTravailReel(i);
       return;
@@ -2780,6 +2877,7 @@ class MoteurCalendrier extends MoteurVue {
           const f = this.app.vault.getAbstractFileByPath(x.chemin);
           if (f) this.app.workspace.getLeaf(e.metaKey || e.ctrlKey).openFile(f);
         });
+        el.addEventListener('contextmenu', (e) => this._menuPresence(e, x, t));
       }
     }
   }

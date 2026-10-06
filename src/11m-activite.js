@@ -953,6 +953,27 @@ const avecActivite = (Base) => class extends Base {
     return inverse;
   }
 
+  // Une note travaillée devient une des notes de la tâche (propriété
+  // « Fichier », en liste) : le temps qui y est passé compte alors pour elle.
+  async lierNoteATache(ref, chemin) {
+    const f = this.fichierDeRef(ref);
+    const note = this.app.vault.getAbstractFileByPath(chemin);
+    if (!f || !note) return false;
+    const lien = '[[' + this.app.metadataCache.fileToLinktext(note, f.path, true) + ']]';
+    const cle = this.cleT('fichier');
+    this.marquerOrigineTache(f.path);
+    let deja = false;
+    await this.app.fileManager.processFrontMatter(f, (fm) => {
+      const cur = [].concat(this._lireT(fm, 'fichier') || []).map(String).filter(Boolean);
+      deja = cur.some((x) => x.replace(/\|.*\]\]$/, ']]') === lien);
+      if (!deja) cur.push(lien);
+      fm[cle] = cur.length === 1 ? cur[0] : cur;
+      fm.modifie = new Date().toISOString().slice(0, 10);
+    });
+    new obsidian.Notice(deja ? tr('Note déjà liée à ') + ref + '.' : tr('Note liée à ') + ref + '.');
+    return true;
+  }
+
   // Tâches actives, pour les suggestions.
   tachesRattachables() {
     return this.tachesPourGantt()

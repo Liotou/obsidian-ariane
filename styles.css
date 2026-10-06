@@ -3945,3 +3945,14 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-lignes-ajout { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
 .zfa-lignes-ajout-ic { display: inline-flex; }
 .zfa-lignes-ajout-ic svg { width: 14px; height: 14px; }
+
+/* Cartes de survol : entrée en fondu et légère montée, sortie en fondu. */
+.zfa-act-survol {
+  opacity: 0; transform: translateY(4px) scale(0.98); transform-origin: top left;
+  transition: opacity 0.14s ease-out, transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.zfa-act-survol.est-visible { opacity: 1; transform: none; }
+.zfa-act-survol.est-sortie { opacity: 0; transform: translateY(2px) scale(0.99); transition-duration: 0.12s; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .zfa-act-survol, .zfa-act-survol.est-sortie { transition: opacity 0.08s linear; transform: none; }
+}
