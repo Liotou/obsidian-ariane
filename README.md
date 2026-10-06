@@ -44,6 +44,7 @@ carries, Ariane exploits.
 - [👥 Authors](#-authors)
 - [📝 Exporting to Word](#-exporting-to-word)
 - [⏱️ Tracking time](#-tracking-time)
+- [🕰️ Activity timeline](#-activity-timeline)
 - [🧹 Housekeeping tools](#-housekeeping-tools)
 - [🗂️ Fitting your own organisation](#-fitting-your-own-organisation)
 - [✅ Tasks](#-tasks)
@@ -516,6 +517,51 @@ total-minutes: 34
 
 Because every row is a real link, the journal appears in the backlinks of the
 notes it mentions. Opening a note months later tells you how long it took.
+
+## 🕰️ Activity timeline
+
+What happened in the vault, day by day: notes **created** or **edited**,
+**captures**, tasks **completed** or **dropped**, **canvas & snippets**. Run
+*Open the activity timeline*, or click the clock in the ribbon; the view opens
+in a tab.
+
+- **Day, Week, Month, Year**, with arrows to go back in time.
+- **Chips** to keep a single kind: Notes, Tasks, Captures, Canvas & snippets.
+- Each event shows its time, its kind in colour, the note's title and path. An
+  edit shows **the start of what changed** and how many lines it touched; a
+  capture, its first lines; a task, its status change (`en cours → terminée`)
+  and, if the note has a `raison` or `motif` property, why it was dropped. A
+  click opens the note.
+- On the right: a **heatmap of the last ten weeks** (click a day to open it),
+  the period's **counts by type** (click to filter), and a **top-level folder
+  filter**.
+
+The log is kept **as you go**, by month, in the plugin folder
+(`.obsidian/plugins/obsidian-ariane/chronologie/`): never in the vault, never in
+the settings. Two rules keep it readable:
+
+- a change that only touches the **frontmatter** is not activity (the timer
+  rewrites `temps-passe` every five minutes);
+- what **Ariane writes itself** (atomising, bibliographies, the créneaux table)
+  is not activity either.
+
+Edits to the same note merge into **one session** as long as they follow each
+other within half an hour.
+
+**Captures** are recognised by their folder, declared in the settings:
+
+```text
+Raindrop (bookmark) = Raindrop
+MacWhisper (mic) = Transcripts
+```
+
+The icon in brackets is an optional [Lucide](https://lucide.dev) name. Later
+updates to a capture (its own sync) do not count.
+
+**Before the log existed**, the timeline is reconstructed from file dates:
+creation, last change, task completion date. Those events, with no excerpt and an
+approximate time, are drawn **dashed**. Settings: **Time spent** tab,
+**Activity timeline** section.
 
 ## 🧹 Housekeeping tools
 

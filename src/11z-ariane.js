@@ -14,7 +14,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecArticulationStatiques,
   avecTaches,
   avecPublicationSite,
-  avecActivite) {
+  avecActivite,
+  avecChronologie) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -122,6 +123,11 @@ class Ariane extends composer(obsidian.Plugin,
       id: 'incoherences-taches',
       name: tr('Tâches : incohérences'),
       callback: () => this.ouvrirVueIncoherences(),
+    });
+    this.addCommand({
+      id: 'ouvrir-chronologie',
+      name: tr("Ouvrir la chronologie d'activité"),
+      callback: () => this.ouvrirChronologie(),
     });
     this.addCommand({
       id: 'harmoniser-colonnes-bases',
@@ -557,6 +563,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
     this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
+    this.registerView(TYPE_VUE_CHRONOLOGIE, (leaf) => new VueChronologie(leaf, this));
     this.registerView(TYPE_VUE_RELECTURE, (leaf) => new VueRelecture(leaf, this));
     // Les icônes des vues de base : posées après Obsidian, qui n'en connaît
     // qu'une par type de vue.
@@ -657,6 +664,7 @@ class Ariane extends composer(obsidian.Plugin,
       () => this.basculerCitations(!this.settings.citationsRepliees));
     this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
     this.addRibbonIcon('scale', tr('Références en attente (Ariane)'), () => this.ouvrirVueReferences());
+    this.addRibbonIcon('history', tr("Chronologie d'activité (Ariane)"), () => this.ouvrirChronologie());
     // Le correcteur n'existe que sur Mac : ailleurs, l'icône n'aurait rien
     // à ouvrir. La bascule du ruban se cale donc sur ce que le système offre.
     if (this.correcteur && AssistantApple.disponible()) {
@@ -745,6 +753,7 @@ class Ariane extends composer(obsidian.Plugin,
       this.elaguerHistoriqueTemps();
       this.demarrerCompteurTemps();
       this.demarrerActivite();
+      this.brancherChronologie();
       this.installerInfobulleTemps();
     });
     this._citVersion = 0;
@@ -1264,6 +1273,8 @@ class Ariane extends composer(obsidian.Plugin,
     this.sauverCacheEmbeddings().catch(() => { /* fermeture en cours */ });
     // Dernier report : sans cela, les minutes de la session en cours seraient
     // perdues à la fermeture d'Obsidian ou au rechargement du greffon.
+    // Journal d'activité : ce qui attend encore son écriture.
+    if (this._chronoEcrire) this._chronoEcrire().catch(() => { /* fermeture en cours */ });
     this.reporterTemps().catch(() => { /* fermeture en cours */ });
     if (this._cloreSession) this._cloreSession();
     // Les derniers changements des tâches attendaient leur écriture groupée,

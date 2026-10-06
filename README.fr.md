@@ -44,6 +44,7 @@ chaîne : Annota écrit, ZotFlow transporte, Ariane exploite.
 - [👥 Auteurs](#-auteurs)
 - [📝 Exporter vers Word](#-exporter-vers-word)
 - [⏱️ Compter le temps](#-compter-le-temps)
+- [🕰️ Chronologie d'activité](#-chronologie-dactivité)
 - [🧹 Outils d'entretien](#-outils-dentretien)
 - [🗂️ S'adapter à votre organisation](#-sadapter-à-votre-organisation)
 - [✅ Tâches](#-tâches)
@@ -527,6 +528,53 @@ total-minutes: 34
 Chaque ligne étant un vrai lien, le journal apparaît dans les rétroliens des
 notes qu'il cite. Rouvrir une note des mois plus tard vous dit le temps qu'elle
 a coûté.
+
+## 🕰️ Chronologie d'activité
+
+Ce qui s'est passé dans le coffre, jour par jour : notes **créées** ou
+**modifiées**, **captures**, tâches **terminées** ou **abandonnées**,
+**canevas & extraits**. Commande *Ouvrir la chronologie d'activité*, ou l'icône
+d'horloge du ruban ; la vue s'ouvre dans un onglet.
+
+- **Jour, Semaine, Mois, Année**, avec des flèches pour remonter le temps.
+- **Pastilles** pour ne garder qu'un genre : Notes, Tâches, Captures, Canevas &
+  extraits.
+- Chaque événement a son heure, son genre en couleur, le titre et le chemin de
+  la note. Une modification montre **le début de ce qui a changé** et le nombre
+  de lignes touchées ; une capture, ses premières lignes ; une tâche, le passage
+  de statut (`en cours → terminée`) et, si la note porte une propriété
+  `raison` ou `motif`, la raison de l'abandon. Un clic ouvre la note.
+- À droite : une **carte de chaleur des dix dernières semaines** (un clic sur
+  une case ouvre ce jour), les **comptes par type** de la période (un clic
+  filtre), et un **filtre par dossier** de premier niveau.
+
+Le journal est tenu **au fil de l'eau**, par mois, dans le dossier du greffon
+(`.obsidian/plugins/obsidian-ariane/chronologie/`) : jamais dans le coffre, ni
+dans les réglages. Deux règles le gardent lisible :
+
+- une modification qui ne touche que l'**entête** n'est pas une activité (le
+  compteur de temps réécrit `temps-passe` toutes les cinq minutes) ;
+- ce qu'**Ariane écrit elle-même** (atomisation, bibliographies, tableau des
+  créneaux) n'en est pas une non plus.
+
+Les modifications d'une même note se fondent en **une séance** tant qu'elles se
+suivent à moins d'une demi-heure.
+
+Les **captures** se reconnaissent à leur dossier, déclaré dans les réglages :
+
+```text
+Raindrop (bookmark) = Raindrop
+MacWhisper (mic) = Transcripts
+```
+
+L'icône entre parenthèses est un nom [Lucide](https://lucide.dev), facultatif.
+Les mises à jour ultérieures d'une capture (sa propre synchronisation) ne
+comptent pas.
+
+**Avant le journal**, la chronologie se reconstitue d'après les dates des
+fichiers : création, dernière modification, date d'achèvement des tâches. Ces
+événements, sans extrait et à l'heure approximative, s'affichent en **pointillés**.
+Réglages : onglet **Temps passé**, section **Chronologie d'activité**.
 
 ## 🧹 Outils d'entretien
 

@@ -86,6 +86,7 @@
  *            11k  avecTaches     notes de tâche, temps, synchro Apple
  *            11l  avecPublicationSite   miroir vault -> content/, commit, push
  *            11m  avecActivite   activité réelle (ActivityWatch)
+ *            11n  avecChronologie  journal d'activité du coffre
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -116,7 +117,8 @@
  *          bulle au survol, relecture guidée en fenêtre, volet latéral ;
  *          démon Swift compilé à la première utilisation. Mac seulement.
  *   19 · Vues latérales (ItemView)
- *          incohérences de tâches, références en attente, suggestions
+ *          incohérences de tâches, références en attente, suggestions,
+ *          chronologie d'activité (vue d'onglet « ariane-chronologie »)
  *   20 · Modales secondaires
  *          choix, rapports, fusion d'auteurs
  *   21 · Barre d'édition
