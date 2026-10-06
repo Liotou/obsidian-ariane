@@ -806,13 +806,25 @@ const avecActivite = (Base) => class extends Base {
   }
 
   // L'appel à l'IA choisie pour les résumés (ou celle de l'assistant).
-  async _genererActiviteIA(prompt, max) {
+  // Deux usages, chacun avec son IA (réglages, onglet Temps passé) :
+  //   'synthese'      résumés des créneaux et des journées ;
+  //   'rattachement'  suggestions de tâches pour le temps réel.
+  // Un réglage vide reprend celui de l'assistant IA.
+  static get CLES_IA_ACTIVITE() {
+    return {
+      synthese: { f: 'activiteIAFournisseur', m: 'activiteIAModele', c: 'activiteIAModeleClaude', defautClaude: 'haiku' },
+      rattachement: { f: 'activiteRattIAFournisseur', m: 'activiteRattIAModele', c: 'activiteRattIAModeleClaude', defautClaude: 'sonnet' },
+    };
+  }
+
+  async _genererActiviteIA(prompt, max, usage) {
     const s = this.settings;
-    const f = s.activiteIAFournisseur || s.refsFournisseur || 'ollama';
-    const modele = (s.activiteIAModele || '').trim() || s.refsModele || 'llama3.2';
+    const k = Ariane.CLES_IA_ACTIVITE[usage] || Ariane.CLES_IA_ACTIVITE.synthese;
+    const f = s[k.f] || s.refsFournisseur || 'ollama';
+    const modele = String(s[k.m] || '').trim() || s.refsModele || 'llama3.2';
     this._diagIA = '';
     const brut = await this.genererAvecFournisseur(prompt, max, f, modele,
-      { modeleClaude: s.activiteIAModeleClaude || 'haiku', delai: 240000 });
+      { modeleClaude: s[k.c] || k.defautClaude, delai: 240000 });
     if (!brut) {
       throw new Error((this._diagIA || tr('aucune réponse')) + ' (' + f + ')');
     }
@@ -846,7 +858,7 @@ const avecActivite = (Base) => class extends Base {
           contenu: Ariane.contenuActivite(segs, new Date(b.debut).getTime(),
             new Date(b.fin).getTime() + 60000, 15) }));
         const prompt = Ariane.promptResumeActivite(lot, cats, this.settings.activiteIAContexte);
-        const rep = await this._genererActiviteIA(prompt, 300 + 120 * lot.length);
+        const rep = await this._genererActiviteIA(prompt, 300 + 120 * lot.length, 'synthese');
         const lus = Ariane.lireResumesActivite(rep, cats);
         const modele = this.settings.activiteIAFournisseur || this.settings.refsFournisseur || '';
         for (const b of lot) {
@@ -1263,7 +1275,7 @@ const avecActivite = (Base) => class extends Base {
     const lot = blocs.map((b, k) => Object.assign({}, b, { id: k + 1,
       contenu: Ariane.contenuActivite(segs, new Date(b.debut).getTime(), new Date(b.fin).getTime() + 60000, 12) }));
     const prompt = Ariane.promptRattachement(lot, taches.slice(0, 80), this.settings.activiteIAContexte);
-    const rep = await this._genererActiviteIA(prompt, 200 + 150 * lot.length);
+    const rep = await this._genererActiviteIA(prompt, 200 + 150 * lot.length, 'rattachement');
     const lus = Ariane.lireRattachements(rep, taches.map((t) => t.ref));
     const out = new Map();
     for (const b of lot) {

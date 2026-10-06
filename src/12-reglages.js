@@ -331,6 +331,34 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     dessiner();
   }
 
+  // Le fournisseur et le modèle d'IA d'un usage de l'activité réelle (voir
+  // Ariane.CLES_IA_ACTIVITE) : un intertitre, puis les mêmes champs que pour
+  // l'assistant IA. Vide : celui de l'assistant.
+  _choixIAActivite(c, s, maj, usage, titre, desc) {
+    const k = Ariane.CLES_IA_ACTIVITE[usage];
+    new obsidian.Setting(c).setName(titre).setDesc(desc).setClass('zfa-reglage-sous-titre')
+      .addDropdown((d) => d
+        .addOption('', tr('Celui de l\'assistant IA (') + (s.refsFournisseur || 'ollama') + ')')
+        .addOption('ollama', 'Ollama')
+        .addOption('lmstudio', 'LM Studio')
+        .addOption('mistral', 'Mistral')
+        .addOption('claude', tr('Claude en ligne de commande'))
+        .setValue(s[k.f] || '')
+        .onChange(async (v) => { s[k.f] = v; await maj(); this.display(); }));
+    const f = s[k.f] || s.refsFournisseur || 'ollama';
+    if (f === 'claude') {
+      if (!s[k.c]) s[k.c] = k.defautClaude;
+      this._modeleClaude(c, s, maj, k.c, { nom: tr('Modèle Claude'), sansDefaut: true, desc: ' ' });
+    } else {
+      new obsidian.Setting(c)
+        .setName(tr('Modèle'))
+        .setDesc(tr('Vide : celui de l\'assistant IA (') + (s.refsModele || 'llama3.2') + ').')
+        .addText((t) => t.setPlaceholder(f === 'mistral' ? 'mistral-small-latest' : 'llama3.2')
+          .setValue(s[k.m] || '')
+          .onChange(async (v) => { s[k.m] = v.trim(); await maj(); }));
+    }
+  }
+
   _section(parent, titre, desc) {
     const st = new obsidian.Setting(parent).setName(titre).setHeading();
     if (desc) st.setDesc(desc);
@@ -1139,32 +1167,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addText((t) => t.setValue(String(s.activiteDureeMin == null ? 10 : s.activiteDureeMin))
           .onChange(async (v) => { const n = parseInt(v, 10); s.activiteDureeMin = Number.isFinite(n) ? Math.max(0, n) : 10; await maj(); this.plugin._rafraichirActiviteDiffere(); }));
 
-      this._section(c, tr('Résumés par l\'IA'));
+      this._section(c, tr('IA de l\'activité'));
       this._aide(c, tr("Sur chaque créneau réel, l'IA écrit ce qui a été fait et le range dans une de vos catégories, dont une pour la vie privée et les distractions (rayée dans le calendrier). Clic droit sur un créneau réel : résumer ce créneau ou la journée ; commande « Activité réelle : résumer la semaine affichée (IA) ». Les résumés sont gardés dans le dossier du greffon. Avec un fournisseur en ligne (Mistral, Claude), les titres de fenêtres et les sites lui sont envoyés ; Ollama et LM Studio restent sur l'ordinateur."));
-      new obsidian.Setting(c)
-        .setName(tr('Fournisseur'))
-        .addDropdown((d) => d
-          .addOption('', tr('Celui de l\'assistant IA (') + (s.refsFournisseur || 'ollama') + ')')
-          .addOption('ollama', 'Ollama')
-          .addOption('lmstudio', 'LM Studio')
-          .addOption('mistral', 'Mistral')
-          .addOption('claude', tr('Claude en ligne de commande'))
-          .setValue(s.activiteIAFournisseur || '')
-          .onChange(async (v) => { s.activiteIAFournisseur = v; await maj(); this.display(); }));
-      const fIA = s.activiteIAFournisseur || s.refsFournisseur || 'ollama';
-      if (fIA === 'claude') {
-        this._modeleClaude(c, s, maj, 'activiteIAModeleClaude', {
-          nom: tr('Modèle Claude des résumés'), sansDefaut: true,
-          desc: tr('Haiku suffit à résumer un relevé d\'activité, vite et à peu de frais ; Sonnet nuance mieux les cas douteux.'),
-        });
-      } else {
-        new obsidian.Setting(c)
-          .setName(tr('Modèle'))
-          .setDesc(tr('Vide : celui de l\'assistant IA (') + (s.refsModele || 'llama3.2') + ').')
-          .addText((t) => t.setPlaceholder(fIA === 'mistral' ? 'mistral-small-latest' : 'llama3.2')
-            .setValue(s.activiteIAModele || '')
-            .onChange(async (v) => { s.activiteIAModele = v.trim(); await maj(); }));
-      }
+      this._choixIAActivite(c, s, maj, 'synthese', tr('Synthèse des créneaux et des journées'),
+        tr("Résume chaque créneau hors Obsidian et le range dans une catégorie (clic droit, « Résumer la journée », « Résumer la période »). Haiku suffit, vite et à peu de frais."));
+      this._choixIAActivite(c, s, maj, 'rattachement', tr('Suggestions de tâches'),
+        tr("Propose à quelles tâches rattacher le temps hors Obsidian. Il faut juger d'après les titres de fenêtres et vos intitulés de tâches : Sonnet s'y trompe moins."));
       new obsidian.Setting(c)
         .setName(tr('Catégories'))
         .setDesc(tr("Le nom, la couleur, et ce que la catégorie recouvre : cette description guide l'IA, soyez précis. Gardez une catégorie pour la vie privée et les distractions."))
