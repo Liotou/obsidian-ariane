@@ -235,3 +235,47 @@ test('réponse de l’IA : catégorie reconnue sans égard aux accents, inconnue
   assert.equal(r.has(2), false);
   assert.equal(r.get(3).personnel, true);
 });
+
+/* ------------------ temps réel rattaché aux tâches ------------------ */
+
+test('temps réel : empreinte, écriture et relecture d’une ligne', () => {
+  assert.equal(Ariane.empreinteActivite('2026-10-05T17:31'), 'aw-261005-1731');
+  const l = Ariane.formatTempsReel({ debut: '2026-10-05T17:31', fin: '2026-10-05T17:50', min: 19, quoi: 'Enseignement, Teams (TD)' });
+  assert.equal(l, '2026-10-05 17:31-17:50 = 19 min (Enseignement, Teams TD) aw-261005-1731');
+  assert.deepEqual(Ariane.lireTempsReel(l), { debut: '2026-10-05T17:31', fin: '2026-10-05T17:50', min: 19,
+    quoi: 'Enseignement, Teams TD', id: 'aw-261005-1731' });
+  assert.equal(Ariane.lireTempsReel('n’importe quoi'), null);
+  assert.equal(Ariane.tempsReelDeTache([l, 'x', '2026-10-01 09:00-10:00 = 50 min aw-261001-0900'])[0].id, 'aw-261001-0900');
+});
+
+test('temps réel : section « Hors Obsidian » des Sessions, même sans créneau prévu', () => {
+  const r = ['2026-10-05 17:31-17:50 = 19 min (Enseignement) aw-261005-1731'];
+  const sans = Ariane.blocCreneaux([], null, {}, r);
+  assert.match(sans, /^## Sessions\n\n### Hors Obsidian/);
+  assert.match(sans, /17:31 → 17:50 \| 0 h 19 \| Enseignement \|/);
+  assert.match(sans, /1 créneau hors Obsidian/);
+  assert.equal(Ariane.blocCreneaux([], null, {}, []), '');
+  const avec = Ariane.blocCreneaux(['2026-10-06 09:00-10:00'], Ariane.statsCreneaux(['2026-10-06 09:00-10:00'], '2026-10-01T00:00'), {}, r);
+  assert.match(avec, /\| Session \|[\s\S]*### Hors Obsidian/);
+});
+
+test('rattachement : créneau prévu recouvrant, sans IA', () => {
+  const bloc = { debut: '2026-10-05T17:30', fin: '2026-10-05T18:30', actifMin: 50 };
+  const c = Ariane.candidatsParCreneauPrevu(bloc, [
+    { ref: 'T001', creneaux: ['2026-10-05 17:00-18:00'] },
+    { ref: 'T002', creneaux: ['2026-10-05 18:28-19:00'] },
+    { ref: 'T003', creneaux: [] },
+  ]);
+  assert.deepEqual(c.map((x) => [x.ref, x.min]), [['T001', 30]]);
+});
+
+test('rattachement : réponse de l’IA vérifiée (refs connues, parts bornées puis normalisées)', () => {
+  const r = Ariane.lireRattachements([
+    { id: 1, taches: [{ ref: 'T054', part: 0.8, raison: 'document — ASNR' }, { ref: 'T999', part: 0.5 }, { ref: 'T020', part: 0.6 }] },
+    { id: 2, taches: [] },
+  ], ['T054', 'T020']);
+  assert.deepEqual(r.get(1).map((x) => x.ref), ['T054', 'T020']);
+  assert.ok(Math.abs(r.get(1).reduce((s, x) => s + x.part, 0) - 1) < 1e-9);
+  assert.equal(r.get(1)[0].raison, 'document : ASNR');
+  assert.deepEqual(r.get(2), []);
+});

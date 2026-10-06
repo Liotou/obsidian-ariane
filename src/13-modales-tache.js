@@ -1054,5 +1054,134 @@ class ModaleAjoutLN extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// ── Rattacher du temps réel (hors Obsidian) à des tâches ──────────────────
+//  Un ou plusieurs créneaux d'activité d'un même jour. Pour chacun : ses
+//  rattachements actuels, les rapprochements évidents (créneau prévu, note
+//  ouverte), puis les suggestions de l'IA, qui arrivent en cours de route.
+//  Chaque ligne se coche, ses minutes se corrigent ; on ajoute une tâche à la
+//  main. Valider écrit les différences (rattacher, corriger, détacher).
+//  o : { jour, blocs, surFait(inverse) }
+
+class ModaleRattacherActivite extends obsidian.Modal {
+  constructor(greffon, o) {
+    super(greffon.app);
+    this.greffon = greffon;
+    this.o = o || {};
+    this.parBloc = (this.o.blocs || []).map((b) => ({ b, lignes: greffon.candidatsRattachement(b) }));
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    if (this.modalEl) this.modalEl.addClass('zfa-ratt-modale');
+    const jl = new Date(this.o.jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    this.titleEl.setText(tr('Rattacher le temps réel · ') + jl);
+    contentEl.empty();
+    this.etat = contentEl.createDiv({ cls: 'zfa-ratt-etat', text: tr('Suggestions de l\'IA en cours…') });
+    this.corps = contentEl.createDiv({ cls: 'zfa-ratt-corps' });
+    this.rendre();
+    const pied = contentEl.createDiv({ cls: 'zfa-ratt-pied' });
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    this.btValider = pied.createEl('button', { cls: 'mod-cta', text: tr('Rattacher') });
+    this.btValider.onclick = () => this.valider();
+    this.suggerer();
+  }
+
+  async suggerer() {
+    try {
+      const sug = await this.greffon.suggererRattachements(this.o.jour, this.parBloc.map((x) => x.b));
+      for (const x of this.parBloc) {
+        for (const s of (sug.get(x.b.empreinte) || [])) {
+          const deja = x.lignes.find((l) => l.ref === s.ref);
+          if (deja) { if (!deja.raisonIA) deja.raisonIA = s.raison; continue; }
+          x.lignes.push({ ref: s.ref, min: s.min, raison: s.raison, coche: false, ia: true });
+        }
+      }
+      this.etat.setText(tr('Suggestions de l\'IA ajoutées (à cocher).'));
+    } catch (e) {
+      this.etat.setText(tr('Suggestions de l\'IA indisponibles : ') + ((e && e.message) || e));
+    }
+    this.rendre();
+  }
+
+  rendre() {
+    const c = this.corps;
+    c.empty();
+    const taches = new Map(this.greffon.tachesPourGantt().map((t) => [t.ref, t]));
+    for (const x of this.parBloc) {
+      const b = x.b;
+      const bloc = c.createDiv({ cls: 'zfa-ratt-bloc' });
+      const tete = bloc.createDiv({ cls: 'zfa-ratt-tete' });
+      const puce = tete.createSpan({ cls: 'zfa-act-cat', text: b.ia ? b.ia.categorie : b.categorie });
+      puce.style.setProperty('--zfa-cal-coul', b.couleur);
+      tete.createSpan({ cls: 'zfa-act-meta', text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16)
+        + ' · ' + dureeLisible(b.actifMin) + tr(' actives') });
+      if (b.ia && b.ia.resume) bloc.createDiv({ cls: 'zfa-ratt-resume', text: b.ia.resume });
+      const total = () => x.lignes.filter((l) => l.coche).reduce((s, l) => s + (Number(l.min) || 0), 0);
+      const reste = bloc.createDiv({ cls: 'zfa-ratt-reste' });
+      const majReste = () => {
+        const t = total();
+        reste.setText(t > b.actifMin
+          ? tr('Plus que le temps actif : ') + t + ' / ' + b.actifMin + ' min'
+          : t + ' / ' + b.actifMin + tr(' min rattachées'));
+        reste.toggleClass('est-trop', t > b.actifMin);
+      };
+      if (!x.lignes.length) bloc.createDiv({ cls: 'zfa-act-vide', text: tr('Aucune suggestion pour l\'instant.') });
+      for (const l of x.lignes) {
+        const t = taches.get(l.ref);
+        const row = bloc.createDiv({ cls: 'zfa-ratt-ligne' + (l.ia ? ' est-ia' : '') });
+        const cb = row.createEl('input', { type: 'checkbox' });
+        cb.checked = !!l.coche;
+        cb.onchange = () => { l.coche = cb.checked; majReste(); };
+        const txt = row.createDiv({ cls: 'zfa-ratt-txt' });
+        txt.createSpan({ cls: 'zfa-ratt-ref', text: l.ref });
+        txt.createSpan({ cls: 'zfa-ratt-intitule', text: t ? t.intitule : '' });
+        const pourquoi = [l.raison, l.raisonIA && l.raisonIA !== l.raison ? tr('IA : ') + l.raisonIA : ''].filter(Boolean).join(' · ');
+        if (pourquoi) txt.createDiv({ cls: 'zfa-ratt-raison', text: (l.ia ? '✨ ' : '') + pourquoi });
+        const min = row.createEl('input', { type: 'number', cls: 'zfa-ratt-min', attr: { min: '1', max: String(b.actifMin) } });
+        min.value = String(l.min || 1);
+        min.oninput = () => { l.min = Math.max(1, parseInt(min.value, 10) || 1); majReste(); };
+        row.createSpan({ cls: 'zfa-ratt-unite', text: 'min' });
+      }
+      const ajout = bloc.createEl('button', { cls: 'zfa-ratt-ajout', text: tr('+ Autre tâche…') });
+      ajout.onclick = () => {
+        const items = this.greffon.tachesRattachables()
+          .filter((t) => !x.lignes.some((l) => l.ref === t.ref))
+          .map((t) => ({ nom: t.ref + ' · ' + t.intitule, ref: t.ref }));
+        new ChoixListeModal(this.app, tr('Rattacher à quelle tâche ?'), items, (it) => {
+          const libre = Math.max(1, b.actifMin - total());
+          x.lignes.push({ ref: it.ref, min: libre, raison: tr('choisie à la main'), coche: true });
+          this.rendre();
+        }).open();
+      };
+      majReste();
+    }
+  }
+
+  async valider() {
+    const ops = [];
+    for (const x of this.parBloc) {
+      const b = x.b;
+      const actuels = new Map((b.rattache || []).map((r) => [r.ref, r]));
+      const quoi = (b.ia ? b.ia.categorie : b.categorie) + (b.details && b.details[0] ? ', ' + b.details[0].libelle : '');
+      for (const l of x.lignes) {
+        const ligne = l.coche ? Ariane.formatTempsReel({ debut: b.debut, fin: b.fin,
+          min: Math.min(Number(l.min) || 1, b.actifMin), quoi, id: b.empreinte }) : '';
+        const av = actuels.get(l.ref);
+        if (!ligne && !av) continue;
+        if (av && av.ligne === ligne) continue;
+        ops.push({ ref: l.ref, id: b.empreinte, apres: ligne });
+      }
+    }
+    this.close();
+    if (!ops.length) return;
+    const inverse = await this.greffon.appliquerRattachements(ops);
+    const n = ops.filter((o) => o.apres).length;
+    new obsidian.Notice(n + tr(' rattachement(s) écrit(s)') + (ops.length - n ? ', ' + (ops.length - n) + tr(' retiré(s)') : '') + '.');
+    if (this.o.surFait) this.o.surFait(ops, inverse);
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 //#endregion 13 · Modales de tâche
 

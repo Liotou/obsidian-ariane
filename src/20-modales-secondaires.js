@@ -277,6 +277,20 @@ class ModaleActiviteReelle extends obsidian.Modal {
     if (ia && ia.resume) res.setText(ia.resume);
     else res.createSpan({ cls: 'zfa-act-vide', text: tr('Pas encore résumé.') });
 
+    if (b.rattache && b.rattache.length) {
+      contentEl.createDiv({ cls: 'zfa-act-sous-titre', text: tr('Rattaché à') });
+      const rt = contentEl.createDiv({ cls: 'zfa-act-survol-ratt' });
+      for (const r of b.rattache) {
+        const l = rt.createDiv({ cls: 'zfa-act-survol-ratt-l' });
+        obsidian.setIcon(l.createSpan({ cls: 'zfa-act-survol-bt-ic' }), 'link');
+        l.createSpan({ text: r.ref + ' · ' + (r.intitule || '') + ' · ' + dureeLisible(r.min) });
+        l.addEventListener('click', () => {
+          const f = this.greffon.fichierDeRef && this.greffon.fichierDeRef(r.ref);
+          if (f) { this.close(); this.app.workspace.getLeaf(false).openFile(f); }
+        });
+      }
+    }
+
     // Corriger la catégorie : le choix est gardé comme un résumé, et l'IA ne
     // repasse plus dessus.
     const cats = this.greffon.categoriesIA();
@@ -322,7 +336,7 @@ class ModaleActiviteReelle extends obsidian.Modal {
       this.close();
     };
     if (this.o.surRattacher) {
-      const btT = pied.createEl('button', { cls: 'mod-cta', text: tr('Rattacher à une tâche…') });
+      const btT = pied.createEl('button', { cls: 'mod-cta', text: b.rattache && b.rattache.length ? tr('Modifier les rattachements…') : tr('Rattacher à une tâche…') });
       btT.onclick = () => { this.close(); this.o.surRattacher(); };
     }
   }

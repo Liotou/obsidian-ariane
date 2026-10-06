@@ -84,6 +84,7 @@ const avecTaches = (Base) => class extends Base {
         echeance: this._lireT(fm, 'echeance') || '',
         heure: String(this._lireT(fm, 'heure') || '').trim(),
         creneaux: [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean),
+        tempsReel: Ariane.tempsReelDeTache(this._lireT(fm, 'temps-reel')),
         statut: this._lireT(fm, 'statut') || 'à faire',
         priorite: this._lireT(fm, 'priorite') || '',
         avancement: Number(this._lireT(fm, 'avancement')) || 0,
@@ -1907,7 +1908,8 @@ const avecTaches = (Base) => class extends Base {
         if (versCle) coms[versCle] = txt;
       }
     }
-    const interieur = Ariane.blocCreneaux(liste, stats, coms);
+    const interieur = Ariane.blocCreneaux(liste, stats, coms,
+      [].concat(this._lireT(fm, 'temps-reel') || []).map(String));
     const bloc = interieur ? ZFA_CRENEAUX_DEBUT + '\n' + interieur + '\n' + ZFA_CRENEAUX_FIN : '';
     let texte = avant;
     const d = texte.indexOf(ZFA_CRENEAUX_DEBUT);
@@ -2433,7 +2435,11 @@ const avecTaches = (Base) => class extends Base {
       const fm = (t.fichier && (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter) || {};
       const x = Object.assign({}, t, { cree: fm.cree ? String(fm.cree).slice(0, 10) : '' });
       const chemins = [t.fichier && t.fichier.path].concat(this._cheminsLiesTache(t)).filter(Boolean);
-      const tempsRecentMin = Math.round(chemins.reduce((s, c) => s + (temps.get(c) || 0), 0));
+      // Le temps passé hors d'Obsidian et rattaché à la tâche compte aussi.
+      const seuil = Ariane.decalerJour(auj, -7 * semaines);
+      const reel = (t.tempsReel || []).filter((r) => r.debut.slice(0, 10) >= seuil)
+        .reduce((s, r) => s + r.min, 0);
+      const tempsRecentMin = Math.round(chemins.reduce((s, c) => s + (temps.get(c) || 0), 0) + reel);
       return {
         tache: t,
         tempsRecentMin,
@@ -2460,7 +2466,8 @@ const avecTaches = (Base) => class extends Base {
       const fm = (t.fichier && (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter) || {};
       const chemins = [t.fichier && t.fichier.path].concat(this._cheminsLiesTache(t)).filter(Boolean);
       return Object.assign({}, x, {
-        tempsSemaineMin: chemins.reduce((s, c) => s + (temps.get(c) || 0), 0),
+        tempsSemaineMin: chemins.reduce((s, c) => s + (temps.get(c) || 0), 0)
+          + (t.tempsReel || []).filter((r) => r.debut.slice(0, 10) >= lundi).reduce((s, r) => s + r.min, 0),
         termineLe: Ariane.jourValide(this._lireT(fm, 'termine-le')) || '',
       });
     });

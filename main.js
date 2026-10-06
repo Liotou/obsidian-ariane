@@ -9907,6 +9907,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       'bloque-par': 'Bloquée par', 'termine-le': 'Terminée le',
       source: 'Source', livrable: 'Livrable', fichier: 'Fichier',
       liste: 'Liste', 'rappel-id': 'Rappel ID', 'agenda-id': 'Agenda ID',
+      'temps-reel': 'Temps réel',
     })[concept] || concept;
   }
 
@@ -11375,10 +11376,57 @@ const avecFriseStatiques = (Base) => class extends Base {
   // Chaîne vide quand aucun créneau valide. Les commentaires (clé
   // cleCommentaire) complètent la 5ᵉ colonne ; seuls ceux des sessions
   // présentes s'écrivent — une session supprimée emporte le sien.
-  static blocCreneaux(creneaux, stats, commentaires) {
+  // ── temps réel rattaché (hors Obsidian) ───────────────────────────────
+  //  Une ligne de la propriété « Temps réel » d'une tâche : le temps passé
+  //  hors d'Obsidian (relevé par ActivityWatch), rattaché à cette tâche.
+  //    « 2026-10-05 17:31-17:50 = 19 min (Enseignement, Teams) aw-261005-1731 »
+  //  L'empreinte finale (jour et heure de début du créneau d'activité) le
+  //  retrouve dans le calendrier ; elle est stable tant que le créneau commence
+  //  à la même minute.
+
+  static empreinteActivite(debutISO) {
+    const m = /^\d{2}(\d{2})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(debutISO || ''));
+    return m ? 'aw-' + m[1] + m[2] + m[3] + '-' + m[4] + m[5] : '';
+  }
+
+  static formatTempsReel(e) {
+    const quoi = String(e.quoi || '').replace(/[()]/g, '').replace(/\s+/g, ' ').trim();
+    return e.debut.slice(0, 10) + ' ' + e.debut.slice(11, 16) + '-' + e.fin.slice(11, 16)
+      + ' = ' + Math.max(1, Math.round(Number(e.min) || 0)) + ' min'
+      + (quoi ? ' (' + quoi + ')' : '') + ' ' + (e.id || Ariane.empreinteActivite(e.debut));
+  }
+
+  static lireTempsReel(ligne) {
+    const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})-(\d{2}:\d{2}) = (\d+) min(?: \(([^)]*)\))?\s+(aw-\d{6}-\d{4})\s*$/
+      .exec(String(ligne || '').trim());
+    if (!m) return null;
+    return { debut: m[1] + 'T' + m[2], fin: m[1] + 'T' + m[3], min: Number(m[4]), quoi: m[5] || '', id: m[6] };
+  }
+
+  static tempsReelDeTache(liste) {
+    return [].concat(liste || []).map((l) => Ariane.lireTempsReel(l)).filter(Boolean)
+      .sort((a, b) => (a.debut < b.debut ? -1 : a.debut > b.debut ? 1 : 0));
+  }
+
+  // Les lignes « hors Obsidian » de la section Sessions d'une note de tâche.
+  static blocTempsReel(reels) {
+    const l = Ariane.tempsReelDeTache(reels);
+    if (!l.length) return '';
+    const total = l.reduce((s, x) => s + x.min, 0);
+    return ['### Hors Obsidian', '',
+      '| Date | Heures | Durée | Activité |', '|---|---|---|---|',
+      ...l.map((x) => '| ' + Ariane._jourHumain(x.debut) + ' | ' + x.debut.slice(11, 16) + ' → '
+        + x.fin.slice(11, 16) + ' | ' + Ariane._dureeHumaine(x.min) + ' | '
+        + Ariane.echapperCellule(x.quoi) + ' |'),
+      '', '**' + l.length + ' créneau' + (l.length > 1 ? 'x' : '') + ' hors Obsidian · '
+        + Ariane._dureeHumaine(total) + ' rattachées**'].join('\n');
+  }
+
+  static blocCreneaux(creneaux, stats, commentaires, reels) {
     const list = Ariane.creneauxDeTache(Array.isArray(creneaux) ? creneaux
       : (creneaux ? [creneaux] : []));
-    if (!list.length) return '';
+    const horsObsidian = Ariane.blocTempsReel(reels);
+    if (!list.length) return horsObsidian ? '## Sessions\n\n' + horsObsidian : '';
     const s = stats || Ariane.statsCreneaux(list, new Date().toISOString());
     const coms = commentaires || {};
     const lignes = list.map((c, i) => {
@@ -11395,7 +11443,7 @@ const avecFriseStatiques = (Base) => class extends Base {
       + (s.dernier ? ' · dernière : ' + Ariane._jourHumain(s.dernier) : '') + '**';
     return ['## Sessions', '',
       '| Session | Date | Heures | Durée | Commentaire |', '|---|---|---|---|---|',
-      ...lignes, '', resume].join('\n');
+      ...lignes, '', resume].join('\n') + (horsObsidian ? '\n\n' + horsObsidian : '');
   }
 
   static lundiDeSemaine(iso) {
@@ -14350,6 +14398,7 @@ const avecTaches = (Base) => class extends Base {
         echeance: this._lireT(fm, 'echeance') || '',
         heure: String(this._lireT(fm, 'heure') || '').trim(),
         creneaux: [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean),
+        tempsReel: Ariane.tempsReelDeTache(this._lireT(fm, 'temps-reel')),
         statut: this._lireT(fm, 'statut') || 'à faire',
         priorite: this._lireT(fm, 'priorite') || '',
         avancement: Number(this._lireT(fm, 'avancement')) || 0,
@@ -16173,7 +16222,8 @@ const avecTaches = (Base) => class extends Base {
         if (versCle) coms[versCle] = txt;
       }
     }
-    const interieur = Ariane.blocCreneaux(liste, stats, coms);
+    const interieur = Ariane.blocCreneaux(liste, stats, coms,
+      [].concat(this._lireT(fm, 'temps-reel') || []).map(String));
     const bloc = interieur ? ZFA_CRENEAUX_DEBUT + '\n' + interieur + '\n' + ZFA_CRENEAUX_FIN : '';
     let texte = avant;
     const d = texte.indexOf(ZFA_CRENEAUX_DEBUT);
@@ -16699,7 +16749,11 @@ const avecTaches = (Base) => class extends Base {
       const fm = (t.fichier && (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter) || {};
       const x = Object.assign({}, t, { cree: fm.cree ? String(fm.cree).slice(0, 10) : '' });
       const chemins = [t.fichier && t.fichier.path].concat(this._cheminsLiesTache(t)).filter(Boolean);
-      const tempsRecentMin = Math.round(chemins.reduce((s, c) => s + (temps.get(c) || 0), 0));
+      // Le temps passé hors d'Obsidian et rattaché à la tâche compte aussi.
+      const seuil = Ariane.decalerJour(auj, -7 * semaines);
+      const reel = (t.tempsReel || []).filter((r) => r.debut.slice(0, 10) >= seuil)
+        .reduce((s, r) => s + r.min, 0);
+      const tempsRecentMin = Math.round(chemins.reduce((s, c) => s + (temps.get(c) || 0), 0) + reel);
       return {
         tache: t,
         tempsRecentMin,
@@ -16726,7 +16780,8 @@ const avecTaches = (Base) => class extends Base {
       const fm = (t.fichier && (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter) || {};
       const chemins = [t.fichier && t.fichier.path].concat(this._cheminsLiesTache(t)).filter(Boolean);
       return Object.assign({}, x, {
-        tempsSemaineMin: chemins.reduce((s, c) => s + (temps.get(c) || 0), 0),
+        tempsSemaineMin: chemins.reduce((s, c) => s + (temps.get(c) || 0), 0)
+          + (t.tempsReel || []).filter((r) => r.debut.slice(0, 10) >= lundi).reduce((s, r) => s + r.min, 0),
         termineLe: Ariane.jourValide(this._lireT(fm, 'termine-le')) || '',
       });
     });
@@ -17786,6 +17841,87 @@ const avecActivite = (Base) => class extends Base {
     return out;
   }
 
+  // ── rattachement à des tâches : fonctions pures ─────────────────────────
+
+  // Minutes de recouvrement entre deux intervalles « AAAA-MM-JJTHH:MM ».
+  static recouvrementMin(a0, a1, b0, b1) {
+    const ms = (x) => new Date(x).getTime();
+    return Math.max(0, Math.round((Math.min(ms(a1), ms(b1)) - Math.max(ms(a0), ms(b0))) / 60000));
+  }
+
+  // Les tâches dont un créneau PRÉVU recouvre le créneau réel : le
+  // rapprochement évident, sans IA. Rend [{ ref, min, raison }].
+  static candidatsParCreneauPrevu(bloc, taches) {
+    const out = [];
+    for (const t of (taches || [])) {
+      let min = 0;
+      for (const c of Ariane.creneauxDeTache([].concat(t.creneaux || []))) {
+        min += Ariane.recouvrementMin(bloc.debut, bloc.fin, c.debut, c.fin);
+      }
+      if (min >= 5) out.push({ ref: t.ref, min: Math.min(min, bloc.actifMin), raison: tr('créneau prévu à ce moment-là') });
+    }
+    return out.sort((a, b) => b.min - a.min);
+  }
+
+  // L'invite des suggestions de rattachement : les créneaux réels avec leur
+  // contenu, et les tâches actives. L'IA rend, pour chaque créneau, zéro à
+  // trois tâches avec la part du temps qui leur revient.
+  static promptRattachement(blocs, taches, contexte) {
+    const l = [];
+    l.push('Tu rattaches des créneaux de travail réel (relevés hors d\'Obsidian par ActivityWatch) aux tâches de Monsieur.');
+    if (contexte) l.push('Contexte : ' + contexte);
+    l.push('');
+    l.push('RÈGLES :');
+    l.push('- Pour chaque créneau, propose de 0 à 3 tâches de la liste (référence EXACTE), celles auxquelles ce temps a servi.');
+    l.push('- part : la fraction du temps actif du créneau qui revient à cette tâche (entre 0 et 1) ; la somme des parts d\'un créneau ne dépasse pas 1.');
+    l.push('- raison : en quelques mots, l\'indice qui justifie (titre de fenêtre, site, document, intitulé qui correspond).');
+    l.push('- Ne propose une tâche que sur un indice réel. Un créneau de courriels, de messagerie générale ou d\'organisation sans lien net reste sans tâche : rends une liste vide. N\'invente rien.');
+    l.push('');
+    l.push('Réponds UNIQUEMENT par un tableau JSON :');
+    l.push('[{"id": 1, "taches": [{"ref": "T054", "part": 0.6, "raison": "…"}]}]');
+    l.push('');
+    l.push('TÂCHES ACTIVES :');
+    for (const t of taches) {
+      l.push('- ' + t.ref + ' : ' + (t.intitule || '') + (t.famille ? ' [' + t.famille + ']' : '')
+        + (t.echeance ? ' (échéance ' + t.echeance + ')' : ''));
+    }
+    l.push('');
+    l.push('CRÉNEAUX :');
+    for (const b of blocs) {
+      l.push('');
+      l.push('id ' + b.id + ' · ' + b.debut.slice(0, 10) + ' ' + b.debut.slice(11, 16) + ' à ' + b.fin.slice(11, 16)
+        + ' · ' + b.actifMin + ' min actives' + (b.ia && b.ia.resume ? ' · résumé : ' + b.ia.resume : ''));
+      for (const x of (b.contenu || [])) {
+        l.push('  ' + x.min + ' min | ' + x.app + (x.titre && x.titre !== x.app ? ' | ' + x.titre : '')
+          + (x.domaine ? ' | ' + x.domaine : ''));
+      }
+    }
+    return l.join('\n');
+  }
+
+  // La réponse vérifiée : seules les références connues, des parts bornées et
+  // dont la somme ne dépasse pas 1. Rend Map(id → [{ ref, part, raison }]).
+  static lireRattachements(reponse, refsConnues) {
+    const connues = new Set(refsConnues || []);
+    const liste = Array.isArray(reponse) ? reponse
+      : (reponse && Array.isArray(reponse.creneaux) ? reponse.creneaux : []);
+    const out = new Map();
+    for (const r of liste) {
+      if (!r || r.id == null) continue;
+      const vus = new Set();
+      let taches = (Array.isArray(r.taches) ? r.taches : [])
+        .filter((x) => x && connues.has(String(x.ref)) && !vus.has(String(x.ref)) && vus.add(String(x.ref)))
+        .slice(0, 3)
+        .map((x) => ({ ref: String(x.ref), part: Math.min(1, Math.max(0, Number(x.part) || 0)),
+          raison: String(x.raison || '').replace(/\s*[—–]\s*/g, ' : ').trim().slice(0, 140) }))
+        .filter((x) => x.part > 0);
+      const somme = taches.reduce((s, x) => s + x.part, 0);
+      if (somme > 1) taches = taches.map((x) => Object.assign(x, { part: x.part / somme }));
+      out.set(Number(r.id), taches);
+    }
+    return out;
+  }
+
   // Infobulle d'un créneau réel.
   static infobulleActivite(b) {
     const ia = b.ia;
@@ -17969,7 +18105,10 @@ const avecActivite = (Base) => class extends Base {
     const r = this._resumesActivite || {};
     const cats = this.categoriesIA();
     const colorer = this.settings.activiteIACouleur !== false;
-    return blocs.map((b) => {
+    const index = this.indexTempsReel();
+    return blocs.map((b0) => {
+      const empreinte = Ariane.empreinteActivite(b0.debut);
+      const b = Object.assign({}, b0, { empreinte, rattache: index.get(empreinte) || [] });
       const cle = Ariane.cleBlocActivite(jour, b);
       const ia = r[cle];
       if (!ia) return Object.assign({}, b, { cle });
@@ -18151,6 +18290,107 @@ const avecActivite = (Base) => class extends Base {
       parApp.set(x.app, p);
     }
     return [...parApp.values()].sort((x, y) => y.min - x.min);
+  }
+
+  // ── rattachement du temps réel aux tâches ──────────────────────────────
+  //  La note de tâche porte la référence (« Temps réel », une ligne par
+  //  créneau rattaché, terminée par l'empreinte du créneau) : c'est elle qui
+  //  fait foi. Le calendrier en tire l'index inverse à chaque lecture.
+
+  indexTempsReel() {
+    const idx = new Map();
+    for (const t of this.tachesPourGantt()) {
+      for (const r of (t.tempsReel || [])) {
+        if (!idx.has(r.id)) idx.set(r.id, []);
+        idx.get(r.id).push({ ref: t.ref, intitule: t.intitule, min: r.min, ligne: Ariane.formatTempsReel(r) });
+      }
+    }
+    return idx;
+  }
+
+  // Écrit (ou retire, `ligne` vide) la ligne de l'empreinte `id` dans la
+  // propriété « Temps réel » d'une tâche. Rend la ligne qui s'y trouvait.
+  async ecrireTempsReel(ref, id, ligne) {
+    const f = this.fichierDeRef(ref);
+    if (!f) return null;
+    const cle = this.cleT('temps-reel');
+    let avant = null;
+    this.marquerEcriture(f.path);
+    if (this.marquerOrigineTache) this.marquerOrigineTache(f.path);
+    await this.app.fileManager.processFrontMatter(f, (fm) => {
+      const brut = [].concat(this._lireT(fm, 'temps-reel') || []).map(String).filter(Boolean);
+      const garde = [];
+      for (const l of brut) {
+        const x = Ariane.lireTempsReel(l);
+        if (x && x.id === id) { avant = l; continue; }
+        garde.push(l);
+      }
+      if (ligne) garde.push(ligne);
+      garde.sort();
+      fm[cle] = garde;
+    });
+    return avant;
+  }
+
+  // Applique une liste d'opérations { ref, id, apres } et rend celles qui les
+  // annulent (pour ⌘Z).
+  async appliquerRattachements(ops) {
+    const inverse = [];
+    for (const o of (ops || [])) {
+      const avant = await this.ecrireTempsReel(o.ref, o.id, o.apres || '');
+      inverse.push({ ref: o.ref, id: o.id, apres: avant || '' });
+    }
+    this._rafraichirActivite(false);
+    return inverse;
+  }
+
+  // Tâches actives, pour les suggestions.
+  tachesRattachables() {
+    return this.tachesPourGantt()
+      .filter((t) => t.statut !== 'terminée' && t.statut !== 'abandonnée' && !t.jalon);
+  }
+
+  // Les candidats d'un créneau réel : ses rattachements actuels, puis les
+  // tâches au créneau prévu à ce moment-là, puis celles dont la note a été
+  // ouverte pendant ce temps dans Obsidian.
+  candidatsRattachement(bloc) {
+    const taches = this.tachesRattachables();
+    const out = [];
+    const ajouter = (c) => { if (!out.some((x) => x.ref === c.ref)) out.push(c); };
+    for (const r of (bloc.rattache || [])) ajouter({ ref: r.ref, min: r.min, raison: tr('déjà rattaché'), coche: true });
+    for (const c of Ariane.candidatsParCreneauPrevu(bloc, taches)) ajouter(Object.assign(c, { coche: !bloc.rattache || !bloc.rattache.length }));
+    if (this.sessionsTravail) {
+      const sessions = this.sessionsTravail();
+      for (const t of taches) {
+        const chemins = [t.fichier && t.fichier.path].concat(this._cheminsLiesTache(t)).filter(Boolean);
+        let min = 0;
+        for (const x of sessions) {
+          if (!chemins.includes(x.chemin)) continue;
+          min += Ariane.recouvrementMin(bloc.debut, bloc.fin, x.debut.slice(0, 16), x.fin.slice(0, 16));
+        }
+        if (min >= 2) ajouter({ ref: t.ref, min: Math.min(bloc.actifMin, min), raison: tr('sa note était ouverte dans Obsidian'), coche: false });
+      }
+    }
+    return out;
+  }
+
+  // Suggestions de l'IA pour une liste de créneaux d'un même jour. Rend
+  // Map(empreinte → [{ ref, min, raison }]).
+  async suggererRattachements(jour, blocs) {
+    const taches = this.tachesRattachables();
+    if (!taches.length || !blocs.length) return new Map();
+    const segs = await this._segmentsDuJour(jour);
+    const lot = blocs.map((b, k) => Object.assign({}, b, { id: k + 1,
+      contenu: Ariane.contenuActivite(segs, new Date(b.debut).getTime(), new Date(b.fin).getTime() + 60000, 12) }));
+    const prompt = Ariane.promptRattachement(lot, taches.slice(0, 80), this.settings.activiteIAContexte);
+    const rep = await this._genererActiviteIA(prompt, 200 + 150 * lot.length);
+    const lus = Ariane.lireRattachements(rep, taches.map((t) => t.ref));
+    const out = new Map();
+    for (const b of lot) {
+      out.set(b.empreinte, (lus.get(b.id) || []).map((x) => ({ ref: x.ref,
+        min: Math.max(1, Math.round(x.part * b.actifMin)), raison: x.raison })));
+    }
+    return out;
   }
 
   // Tout ce qui a occupé un créneau réel, pour sa fiche.
@@ -23028,6 +23268,135 @@ class ModaleAjoutLN extends obsidian.Modal {
       avis.hide();
       new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
     }
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+// ── Rattacher du temps réel (hors Obsidian) à des tâches ──────────────────
+//  Un ou plusieurs créneaux d'activité d'un même jour. Pour chacun : ses
+//  rattachements actuels, les rapprochements évidents (créneau prévu, note
+//  ouverte), puis les suggestions de l'IA, qui arrivent en cours de route.
+//  Chaque ligne se coche, ses minutes se corrigent ; on ajoute une tâche à la
+//  main. Valider écrit les différences (rattacher, corriger, détacher).
+//  o : { jour, blocs, surFait(inverse) }
+
+class ModaleRattacherActivite extends obsidian.Modal {
+  constructor(greffon, o) {
+    super(greffon.app);
+    this.greffon = greffon;
+    this.o = o || {};
+    this.parBloc = (this.o.blocs || []).map((b) => ({ b, lignes: greffon.candidatsRattachement(b) }));
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    if (this.modalEl) this.modalEl.addClass('zfa-ratt-modale');
+    const jl = new Date(this.o.jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    this.titleEl.setText(tr('Rattacher le temps réel · ') + jl);
+    contentEl.empty();
+    this.etat = contentEl.createDiv({ cls: 'zfa-ratt-etat', text: tr('Suggestions de l\'IA en cours…') });
+    this.corps = contentEl.createDiv({ cls: 'zfa-ratt-corps' });
+    this.rendre();
+    const pied = contentEl.createDiv({ cls: 'zfa-ratt-pied' });
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    this.btValider = pied.createEl('button', { cls: 'mod-cta', text: tr('Rattacher') });
+    this.btValider.onclick = () => this.valider();
+    this.suggerer();
+  }
+
+  async suggerer() {
+    try {
+      const sug = await this.greffon.suggererRattachements(this.o.jour, this.parBloc.map((x) => x.b));
+      for (const x of this.parBloc) {
+        for (const s of (sug.get(x.b.empreinte) || [])) {
+          const deja = x.lignes.find((l) => l.ref === s.ref);
+          if (deja) { if (!deja.raisonIA) deja.raisonIA = s.raison; continue; }
+          x.lignes.push({ ref: s.ref, min: s.min, raison: s.raison, coche: false, ia: true });
+        }
+      }
+      this.etat.setText(tr('Suggestions de l\'IA ajoutées (à cocher).'));
+    } catch (e) {
+      this.etat.setText(tr('Suggestions de l\'IA indisponibles : ') + ((e && e.message) || e));
+    }
+    this.rendre();
+  }
+
+  rendre() {
+    const c = this.corps;
+    c.empty();
+    const taches = new Map(this.greffon.tachesPourGantt().map((t) => [t.ref, t]));
+    for (const x of this.parBloc) {
+      const b = x.b;
+      const bloc = c.createDiv({ cls: 'zfa-ratt-bloc' });
+      const tete = bloc.createDiv({ cls: 'zfa-ratt-tete' });
+      const puce = tete.createSpan({ cls: 'zfa-act-cat', text: b.ia ? b.ia.categorie : b.categorie });
+      puce.style.setProperty('--zfa-cal-coul', b.couleur);
+      tete.createSpan({ cls: 'zfa-act-meta', text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16)
+        + ' · ' + dureeLisible(b.actifMin) + tr(' actives') });
+      if (b.ia && b.ia.resume) bloc.createDiv({ cls: 'zfa-ratt-resume', text: b.ia.resume });
+      const total = () => x.lignes.filter((l) => l.coche).reduce((s, l) => s + (Number(l.min) || 0), 0);
+      const reste = bloc.createDiv({ cls: 'zfa-ratt-reste' });
+      const majReste = () => {
+        const t = total();
+        reste.setText(t > b.actifMin
+          ? tr('Plus que le temps actif : ') + t + ' / ' + b.actifMin + ' min'
+          : t + ' / ' + b.actifMin + tr(' min rattachées'));
+        reste.toggleClass('est-trop', t > b.actifMin);
+      };
+      if (!x.lignes.length) bloc.createDiv({ cls: 'zfa-act-vide', text: tr('Aucune suggestion pour l\'instant.') });
+      for (const l of x.lignes) {
+        const t = taches.get(l.ref);
+        const row = bloc.createDiv({ cls: 'zfa-ratt-ligne' + (l.ia ? ' est-ia' : '') });
+        const cb = row.createEl('input', { type: 'checkbox' });
+        cb.checked = !!l.coche;
+        cb.onchange = () => { l.coche = cb.checked; majReste(); };
+        const txt = row.createDiv({ cls: 'zfa-ratt-txt' });
+        txt.createSpan({ cls: 'zfa-ratt-ref', text: l.ref });
+        txt.createSpan({ cls: 'zfa-ratt-intitule', text: t ? t.intitule : '' });
+        const pourquoi = [l.raison, l.raisonIA && l.raisonIA !== l.raison ? tr('IA : ') + l.raisonIA : ''].filter(Boolean).join(' · ');
+        if (pourquoi) txt.createDiv({ cls: 'zfa-ratt-raison', text: (l.ia ? '✨ ' : '') + pourquoi });
+        const min = row.createEl('input', { type: 'number', cls: 'zfa-ratt-min', attr: { min: '1', max: String(b.actifMin) } });
+        min.value = String(l.min || 1);
+        min.oninput = () => { l.min = Math.max(1, parseInt(min.value, 10) || 1); majReste(); };
+        row.createSpan({ cls: 'zfa-ratt-unite', text: 'min' });
+      }
+      const ajout = bloc.createEl('button', { cls: 'zfa-ratt-ajout', text: tr('+ Autre tâche…') });
+      ajout.onclick = () => {
+        const items = this.greffon.tachesRattachables()
+          .filter((t) => !x.lignes.some((l) => l.ref === t.ref))
+          .map((t) => ({ nom: t.ref + ' · ' + t.intitule, ref: t.ref }));
+        new ChoixListeModal(this.app, tr('Rattacher à quelle tâche ?'), items, (it) => {
+          const libre = Math.max(1, b.actifMin - total());
+          x.lignes.push({ ref: it.ref, min: libre, raison: tr('choisie à la main'), coche: true });
+          this.rendre();
+        }).open();
+      };
+      majReste();
+    }
+  }
+
+  async valider() {
+    const ops = [];
+    for (const x of this.parBloc) {
+      const b = x.b;
+      const actuels = new Map((b.rattache || []).map((r) => [r.ref, r]));
+      const quoi = (b.ia ? b.ia.categorie : b.categorie) + (b.details && b.details[0] ? ', ' + b.details[0].libelle : '');
+      for (const l of x.lignes) {
+        const ligne = l.coche ? Ariane.formatTempsReel({ debut: b.debut, fin: b.fin,
+          min: Math.min(Number(l.min) || 1, b.actifMin), quoi, id: b.empreinte }) : '';
+        const av = actuels.get(l.ref);
+        if (!ligne && !av) continue;
+        if (av && av.ligne === ligne) continue;
+        ops.push({ ref: l.ref, id: b.empreinte, apres: ligne });
+      }
+    }
+    this.close();
+    if (!ops.length) return;
+    const inverse = await this.greffon.appliquerRattachements(ops);
+    const n = ops.filter((o) => o.apres).length;
+    new obsidian.Notice(n + tr(' rattachement(s) écrit(s)') + (ops.length - n ? ', ' + (ops.length - n) + tr(' retiré(s)') : '') + '.');
+    if (this.o.surFait) this.o.surFait(ops, inverse);
   }
 
   onClose() { this.contentEl.empty(); }
@@ -31103,7 +31472,11 @@ class MoteurCalendrier extends MoteurVue {
       const el = col.createDiv({ cls: 'zfa-cal-reel' });
       el.style.top = ((d / 60 - hDeb) * PXH) + 'px';
       el.style.height = Math.max(3, ((f - d) / 60) * PXH) + 'px';
-      el.style.setProperty('--zfa-cal-coul', b.couleur);
+      // Rattaché à une tâche : la bande en prend la couleur.
+      const tRatt = (b.rattache && b.rattache.length)
+        ? (this._taches || []).find((t) => t.ref === b.rattache[0].ref) : null;
+      el.style.setProperty('--zfa-cal-coul', tRatt ? this.couleurTache(tRatt) : b.couleur);
+      if (b.rattache && b.rattache.length) el.addClass('est-rattache');
       // Carte de survol, sans délai : catégorie, résumé, et les applications
       // avec leur icône.
       el.addEventListener('mouseenter', () => this._montrerCarteActivite(el, jour, b));
@@ -31120,7 +31493,7 @@ class MoteurCalendrier extends MoteurVue {
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         new ModaleActiviteReelle(this.greffon, { jour, bloc: b,
-          surRattacher: () => this._rattacherActivite(jour, b) }).open();
+          surRattacher: () => this._rattacherActivite(jour, [b]) }).open();
       });
       el.addEventListener('contextmenu', (e) => {
         e.preventDefault(); e.stopPropagation();
@@ -31130,7 +31503,9 @@ class MoteurCalendrier extends MoteurVue {
         m.addItem((i) => i.setTitle(tr('Résumer la journée (IA)')).setIcon('calendar-check')
           .onClick(() => this.greffon.resumerActivite(jour)));
         m.addItem((i) => i.setTitle(tr('Rattacher à une tâche…')).setIcon('link')
-          .onClick(() => this._rattacherActivite(jour, b)));
+          .onClick(() => this._rattacherActivite(jour, [b])));
+        m.addItem((i) => i.setTitle(tr('Rattacher la journée (IA)…')).setIcon('list-checks')
+          .onClick(() => this._rattacherActivite(jour, this._activite.get(jour) || [])));
         if (b.ia) {
           m.addItem((i) => i.setTitle(tr('Oublier ce résumé')).setIcon('eraser')
             .onClick(() => this.greffon.oublierResumesActivite(b.cle)));
@@ -31159,6 +31534,15 @@ class MoteurCalendrier extends MoteurVue {
     tete.createSpan({ cls: 'zfa-act-meta', text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16)
       + ' · ' + dureeLisible(b.actifMin) + tr(' actives') });
     if (b.ia && b.ia.resume) carte.createDiv({ cls: 'zfa-act-survol-resume', text: b.ia.resume });
+    if (b.rattache && b.rattache.length) {
+      const rt = carte.createDiv({ cls: 'zfa-act-survol-ratt' });
+      for (const r of b.rattache) {
+        const lien = rt.createDiv({ cls: 'zfa-act-survol-ratt-l' });
+        obsidian.setIcon(lien.createSpan({ cls: 'zfa-act-survol-bt-ic' }), 'link');
+        lien.createSpan({ text: r.ref + ' · ' + (r.intitule || '') + ' · ' + dureeLisible(r.min) });
+        lien.addEventListener('click', (e) => { e.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(r.ref, e.metaKey || e.ctrlKey); });
+      }
+    }
     const apps = carte.createDiv({ cls: 'zfa-act-survol-apps' });
     const placer = () => {
       const r = el.getBoundingClientRect();
@@ -31181,9 +31565,9 @@ class MoteurCalendrier extends MoteurVue {
     };
     action('sparkles', b.ia ? tr('Résumer à nouveau') : tr('Résumer (IA)'),
       () => this.greffon.resumerActivite(jour, { cle: b.cle }));
-    action('link', tr('Rattacher à une tâche'), () => this._rattacherActivite(jour, b));
+    action('link', b.rattache && b.rattache.length ? tr('Rattachements') : tr('Rattacher à une tâche'), () => this._rattacherActivite(jour, [b]));
     action('panel-top-open', tr('Fiche'), () => new ModaleActiviteReelle(this.greffon, { jour, bloc: b,
-      surRattacher: () => this._rattacherActivite(jour, b) }).open());
+      surRattacher: () => this._rattacherActivite(jour, [b]) }).open());
     let tout = false;
     this.greffon.applicationsBlocActivite(jour, b).then((liste) => {
       if (this._carteActivite !== carte) return;
@@ -31250,30 +31634,17 @@ class MoteurCalendrier extends MoteurVue {
     this._carteMinuterie = setTimeout(() => this._cacherCarteActivite(), 250);
   }
 
-  // Le temps réel d'un créneau devient un créneau de tâche, aux mêmes bornes :
-  // on choisit la tâche comme pour un créneau tracé à la main.
-  _rattacherActivite(jour, b) {
-    const ecrire = async (ref) => {
-      await this._majCreneauU(ref, { avant: '', debut: b.debut, fin: b.fin });
-      this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
-    };
-    const echec = (err) => new obsidian.Notice(tr('Créneau non écrit : ') + (err && err.message ? err.message : err));
-    const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    const horaire = jl.charAt(0).toUpperCase() + jl.slice(1) + ' · ' + b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16)
-      + (b.ia && b.ia.resume ? ' · ' + b.ia.resume : '');
-    const taches = this._tachesBrutes || this._taches
-      || (this.greffon.tachesPourGantt ? this.greffon.tachesPourGantt() : []);
-    new ModaleTacheDuCreneau(this.app, this.greffon, {
-      taches, jour, horaire,
-      surChoix: (ref) => { ecrire(ref).catch(echec); },
-      surAbandon: () => {},
-      surNouvelle: (texte) => {
-        new ModaleTache(this.app, this.greffon, {
-          defauts: { intitule: texte || (b.ia && b.ia.resume) || '' },
-          apres: (ref) => { ecrire(ref).catch(echec); },
-        }).open();
-      },
-    }).open();
+  // Rattacher le temps réel d'un ou plusieurs créneaux d'un jour à des tâches
+  // (suggestions, IA, choix à la main). ⌘Z défait l'ensemble.
+  _rattacherActivite(jour, blocs) {
+    const liste = [].concat(blocs || []).filter((b) => !(b.ia && b.ia.personnel));
+    if (!liste.length) { new obsidian.Notice(tr('Rien à rattacher : créneaux personnels.')); return; }
+    new ModaleRattacherActivite(this.greffon, { jour, blocs: liste,
+      surFait: (ops, inverse) => {
+        if (this.racine && this.racine.focus) this.racine.focus({ preventScroll: true });
+        poserAnnulation(this, () => this.greffon.appliquerRattachements(inverse),
+          () => this.greffon.appliquerRattachements(ops));
+      } }).open();
   }
 
   //#endregion Calendrier · activité réelle
@@ -36469,6 +36840,20 @@ class ModaleActiviteReelle extends obsidian.Modal {
     if (ia && ia.resume) res.setText(ia.resume);
     else res.createSpan({ cls: 'zfa-act-vide', text: tr('Pas encore résumé.') });
 
+    if (b.rattache && b.rattache.length) {
+      contentEl.createDiv({ cls: 'zfa-act-sous-titre', text: tr('Rattaché à') });
+      const rt = contentEl.createDiv({ cls: 'zfa-act-survol-ratt' });
+      for (const r of b.rattache) {
+        const l = rt.createDiv({ cls: 'zfa-act-survol-ratt-l' });
+        obsidian.setIcon(l.createSpan({ cls: 'zfa-act-survol-bt-ic' }), 'link');
+        l.createSpan({ text: r.ref + ' · ' + (r.intitule || '') + ' · ' + dureeLisible(r.min) });
+        l.addEventListener('click', () => {
+          const f = this.greffon.fichierDeRef && this.greffon.fichierDeRef(r.ref);
+          if (f) { this.close(); this.app.workspace.getLeaf(false).openFile(f); }
+        });
+      }
+    }
+
     // Corriger la catégorie : le choix est gardé comme un résumé, et l'IA ne
     // repasse plus dessus.
     const cats = this.greffon.categoriesIA();
@@ -36514,7 +36899,7 @@ class ModaleActiviteReelle extends obsidian.Modal {
       this.close();
     };
     if (this.o.surRattacher) {
-      const btT = pied.createEl('button', { cls: 'mod-cta', text: tr('Rattacher à une tâche…') });
+      const btT = pied.createEl('button', { cls: 'mod-cta', text: b.rattache && b.rattache.length ? tr('Modifier les rattachements…') : tr('Rattacher à une tâche…') });
       btT.onclick = () => { this.close(); this.o.surRattacher(); };
     }
   }
@@ -38345,6 +38730,7 @@ class PontClaude extends obsidian.Component {
         debut: c.debut, fin: c.fin, passe: c.debut.slice(0, 10) < auj })),
       journal,
       temps_par_jour: temps,
+      temps_hors_obsidian: (t.tempsReel || []).map((r) => ({ debut: r.debut, fin: r.fin, minutes: r.min, activite: r.quoi })),
       notes_liees: chemins.slice(1),
       note: note.length > 6000 ? note.slice(0, 6000) + '\n[…]' : note,
     });

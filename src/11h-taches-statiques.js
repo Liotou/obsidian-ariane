@@ -16,6 +16,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       'bloque-par': 'Bloquée par', 'termine-le': 'Terminée le',
       source: 'Source', livrable: 'Livrable', fichier: 'Fichier',
       liste: 'Liste', 'rappel-id': 'Rappel ID', 'agenda-id': 'Agenda ID',
+      'temps-reel': 'Temps réel',
     })[concept] || concept;
   }
 

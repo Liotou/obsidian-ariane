@@ -419,6 +419,87 @@ const avecActivite = (Base) => class extends Base {
     return out;
   }
 
+  // ── rattachement à des tâches : fonctions pures ─────────────────────────
+
+  // Minutes de recouvrement entre deux intervalles « AAAA-MM-JJTHH:MM ».
+  static recouvrementMin(a0, a1, b0, b1) {
+    const ms = (x) => new Date(x).getTime();
+    return Math.max(0, Math.round((Math.min(ms(a1), ms(b1)) - Math.max(ms(a0), ms(b0))) / 60000));
+  }
+
+  // Les tâches dont un créneau PRÉVU recouvre le créneau réel : le
+  // rapprochement évident, sans IA. Rend [{ ref, min, raison }].
+  static candidatsParCreneauPrevu(bloc, taches) {
+    const out = [];
+    for (const t of (taches || [])) {
+      let min = 0;
+      for (const c of Ariane.creneauxDeTache([].concat(t.creneaux || []))) {
+        min += Ariane.recouvrementMin(bloc.debut, bloc.fin, c.debut, c.fin);
+      }
+      if (min >= 5) out.push({ ref: t.ref, min: Math.min(min, bloc.actifMin), raison: tr('créneau prévu à ce moment-là') });
+    }
+    return out.sort((a, b) => b.min - a.min);
+  }
+
+  // L'invite des suggestions de rattachement : les créneaux réels avec leur
+  // contenu, et les tâches actives. L'IA rend, pour chaque créneau, zéro à
+  // trois tâches avec la part du temps qui leur revient.
+  static promptRattachement(blocs, taches, contexte) {
+    const l = [];
+    l.push('Tu rattaches des créneaux de travail réel (relevés hors d\'Obsidian par ActivityWatch) aux tâches de Monsieur.');
+    if (contexte) l.push('Contexte : ' + contexte);
+    l.push('');
+    l.push('RÈGLES :');
+    l.push('- Pour chaque créneau, propose de 0 à 3 tâches de la liste (référence EXACTE), celles auxquelles ce temps a servi.');
+    l.push('- part : la fraction du temps actif du créneau qui revient à cette tâche (entre 0 et 1) ; la somme des parts d\'un créneau ne dépasse pas 1.');
+    l.push('- raison : en quelques mots, l\'indice qui justifie (titre de fenêtre, site, document, intitulé qui correspond).');
+    l.push('- Ne propose une tâche que sur un indice réel. Un créneau de courriels, de messagerie générale ou d\'organisation sans lien net reste sans tâche : rends une liste vide. N\'invente rien.');
+    l.push('');
+    l.push('Réponds UNIQUEMENT par un tableau JSON :');
+    l.push('[{"id": 1, "taches": [{"ref": "T054", "part": 0.6, "raison": "…"}]}]');
+    l.push('');
+    l.push('TÂCHES ACTIVES :');
+    for (const t of taches) {
+      l.push('- ' + t.ref + ' : ' + (t.intitule || '') + (t.famille ? ' [' + t.famille + ']' : '')
+        + (t.echeance ? ' (échéance ' + t.echeance + ')' : ''));
+    }
+    l.push('');
+    l.push('CRÉNEAUX :');
+    for (const b of blocs) {
+      l.push('');
+      l.push('id ' + b.id + ' · ' + b.debut.slice(0, 10) + ' ' + b.debut.slice(11, 16) + ' à ' + b.fin.slice(11, 16)
+        + ' · ' + b.actifMin + ' min actives' + (b.ia && b.ia.resume ? ' · résumé : ' + b.ia.resume : ''));
+      for (const x of (b.contenu || [])) {
+        l.push('  ' + x.min + ' min | ' + x.app + (x.titre && x.titre !== x.app ? ' | ' + x.titre : '')
+          + (x.domaine ? ' | ' + x.domaine : ''));
+      }
+    }
+    return l.join('\n');
+  }
+
+  // La réponse vérifiée : seules les références connues, des parts bornées et
+  // dont la somme ne dépasse pas 1. Rend Map(id → [{ ref, part, raison }]).
+  static lireRattachements(reponse, refsConnues) {
+    const connues = new Set(refsConnues || []);
+    const liste = Array.isArray(reponse) ? reponse
+      : (reponse && Array.isArray(reponse.creneaux) ? reponse.creneaux : []);
+    const out = new Map();
+    for (const r of liste) {
+      if (!r || r.id == null) continue;
+      const vus = new Set();
+      let taches = (Array.isArray(r.taches) ? r.taches : [])
+        .filter((x) => x && connues.has(String(x.ref)) && !vus.has(String(x.ref)) && vus.add(String(x.ref)))
+        .slice(0, 3)
+        .map((x) => ({ ref: String(x.ref), part: Math.min(1, Math.max(0, Number(x.part) || 0)),
+          raison: String(x.raison || '').replace(/\s*[—–]\s*/g, ' : ').trim().slice(0, 140) }))
+        .filter((x) => x.part > 0);
+      const somme = taches.reduce((s, x) => s + x.part, 0);
+      if (somme > 1) taches = taches.map((x) => Object.assign(x, { part: x.part / somme }));
+      out.set(Number(r.id), taches);
+    }
+    return out;
+  }
+
   // Infobulle d'un créneau réel.
   static infobulleActivite(b) {
     const ia = b.ia;
@@ -602,7 +683,10 @@ const avecActivite = (Base) => class extends Base {
     const r = this._resumesActivite || {};
     const cats = this.categoriesIA();
     const colorer = this.settings.activiteIACouleur !== false;
-    return blocs.map((b) => {
+    const index = this.indexTempsReel();
+    return blocs.map((b0) => {
+      const empreinte = Ariane.empreinteActivite(b0.debut);
+      const b = Object.assign({}, b0, { empreinte, rattache: index.get(empreinte) || [] });
       const cle = Ariane.cleBlocActivite(jour, b);
       const ia = r[cle];
       if (!ia) return Object.assign({}, b, { cle });
@@ -784,6 +868,107 @@ const avecActivite = (Base) => class extends Base {
       parApp.set(x.app, p);
     }
     return [...parApp.values()].sort((x, y) => y.min - x.min);
+  }
+
+  // ── rattachement du temps réel aux tâches ──────────────────────────────
+  //  La note de tâche porte la référence (« Temps réel », une ligne par
+  //  créneau rattaché, terminée par l'empreinte du créneau) : c'est elle qui
+  //  fait foi. Le calendrier en tire l'index inverse à chaque lecture.
+
+  indexTempsReel() {
+    const idx = new Map();
+    for (const t of this.tachesPourGantt()) {
+      for (const r of (t.tempsReel || [])) {
+        if (!idx.has(r.id)) idx.set(r.id, []);
+        idx.get(r.id).push({ ref: t.ref, intitule: t.intitule, min: r.min, ligne: Ariane.formatTempsReel(r) });
+      }
+    }
+    return idx;
+  }
+
+  // Écrit (ou retire, `ligne` vide) la ligne de l'empreinte `id` dans la
+  // propriété « Temps réel » d'une tâche. Rend la ligne qui s'y trouvait.
+  async ecrireTempsReel(ref, id, ligne) {
+    const f = this.fichierDeRef(ref);
+    if (!f) return null;
+    const cle = this.cleT('temps-reel');
+    let avant = null;
+    this.marquerEcriture(f.path);
+    if (this.marquerOrigineTache) this.marquerOrigineTache(f.path);
+    await this.app.fileManager.processFrontMatter(f, (fm) => {
+      const brut = [].concat(this._lireT(fm, 'temps-reel') || []).map(String).filter(Boolean);
+      const garde = [];
+      for (const l of brut) {
+        const x = Ariane.lireTempsReel(l);
+        if (x && x.id === id) { avant = l; continue; }
+        garde.push(l);
+      }
+      if (ligne) garde.push(ligne);
+      garde.sort();
+      fm[cle] = garde;
+    });
+    return avant;
+  }
+
+  // Applique une liste d'opérations { ref, id, apres } et rend celles qui les
+  // annulent (pour ⌘Z).
+  async appliquerRattachements(ops) {
+    const inverse = [];
+    for (const o of (ops || [])) {
+      const avant = await this.ecrireTempsReel(o.ref, o.id, o.apres || '');
+      inverse.push({ ref: o.ref, id: o.id, apres: avant || '' });
+    }
+    this._rafraichirActivite(false);
+    return inverse;
+  }
+
+  // Tâches actives, pour les suggestions.
+  tachesRattachables() {
+    return this.tachesPourGantt()
+      .filter((t) => t.statut !== 'terminée' && t.statut !== 'abandonnée' && !t.jalon);
+  }
+
+  // Les candidats d'un créneau réel : ses rattachements actuels, puis les
+  // tâches au créneau prévu à ce moment-là, puis celles dont la note a été
+  // ouverte pendant ce temps dans Obsidian.
+  candidatsRattachement(bloc) {
+    const taches = this.tachesRattachables();
+    const out = [];
+    const ajouter = (c) => { if (!out.some((x) => x.ref === c.ref)) out.push(c); };
+    for (const r of (bloc.rattache || [])) ajouter({ ref: r.ref, min: r.min, raison: tr('déjà rattaché'), coche: true });
+    for (const c of Ariane.candidatsParCreneauPrevu(bloc, taches)) ajouter(Object.assign(c, { coche: !bloc.rattache || !bloc.rattache.length }));
+    if (this.sessionsTravail) {
+      const sessions = this.sessionsTravail();
+      for (const t of taches) {
+        const chemins = [t.fichier && t.fichier.path].concat(this._cheminsLiesTache(t)).filter(Boolean);
+        let min = 0;
+        for (const x of sessions) {
+          if (!chemins.includes(x.chemin)) continue;
+          min += Ariane.recouvrementMin(bloc.debut, bloc.fin, x.debut.slice(0, 16), x.fin.slice(0, 16));
+        }
+        if (min >= 2) ajouter({ ref: t.ref, min: Math.min(bloc.actifMin, min), raison: tr('sa note était ouverte dans Obsidian'), coche: false });
+      }
+    }
+    return out;
+  }
+
+  // Suggestions de l'IA pour une liste de créneaux d'un même jour. Rend
+  // Map(empreinte → [{ ref, min, raison }]).
+  async suggererRattachements(jour, blocs) {
+    const taches = this.tachesRattachables();
+    if (!taches.length || !blocs.length) return new Map();
+    const segs = await this._segmentsDuJour(jour);
+    const lot = blocs.map((b, k) => Object.assign({}, b, { id: k + 1,
+      contenu: Ariane.contenuActivite(segs, new Date(b.debut).getTime(), new Date(b.fin).getTime() + 60000, 12) }));
+    const prompt = Ariane.promptRattachement(lot, taches.slice(0, 80), this.settings.activiteIAContexte);
+    const rep = await this._genererActiviteIA(prompt, 200 + 150 * lot.length);
+    const lus = Ariane.lireRattachements(rep, taches.map((t) => t.ref));
+    const out = new Map();
+    for (const b of lot) {
+      out.set(b.empreinte, (lus.get(b.id) || []).map((x) => ({ ref: x.ref,
+        min: Math.max(1, Math.round(x.part * b.actifMin)), raison: x.raison })));
+    }
+    return out;
   }
 
   // Tout ce qui a occupé un créneau réel, pour sa fiche.

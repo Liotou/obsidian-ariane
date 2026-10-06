@@ -228,6 +228,7 @@ class PontClaude extends obsidian.Component {
         debut: c.debut, fin: c.fin, passe: c.debut.slice(0, 10) < auj })),
       journal,
       temps_par_jour: temps,
+      temps_hors_obsidian: (t.tempsReel || []).map((r) => ({ debut: r.debut, fin: r.fin, minutes: r.min, activite: r.quoi })),
       notes_liees: chemins.slice(1),
       note: note.length > 6000 ? note.slice(0, 6000) + '\n[…]' : note,
     });

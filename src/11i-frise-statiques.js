@@ -281,10 +281,57 @@ const avecFriseStatiques = (Base) => class extends Base {
   // Chaîne vide quand aucun créneau valide. Les commentaires (clé
   // cleCommentaire) complètent la 5ᵉ colonne ; seuls ceux des sessions
   // présentes s'écrivent — une session supprimée emporte le sien.
-  static blocCreneaux(creneaux, stats, commentaires) {
+  // ── temps réel rattaché (hors Obsidian) ───────────────────────────────
+  //  Une ligne de la propriété « Temps réel » d'une tâche : le temps passé
+  //  hors d'Obsidian (relevé par ActivityWatch), rattaché à cette tâche.
+  //    « 2026-10-05 17:31-17:50 = 19 min (Enseignement, Teams) aw-261005-1731 »
+  //  L'empreinte finale (jour et heure de début du créneau d'activité) le
+  //  retrouve dans le calendrier ; elle est stable tant que le créneau commence
+  //  à la même minute.
+
+  static empreinteActivite(debutISO) {
+    const m = /^\d{2}(\d{2})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(debutISO || ''));
+    return m ? 'aw-' + m[1] + m[2] + m[3] + '-' + m[4] + m[5] : '';
+  }
+
+  static formatTempsReel(e) {
+    const quoi = String(e.quoi || '').replace(/[()]/g, '').replace(/\s+/g, ' ').trim();
+    return e.debut.slice(0, 10) + ' ' + e.debut.slice(11, 16) + '-' + e.fin.slice(11, 16)
+      + ' = ' + Math.max(1, Math.round(Number(e.min) || 0)) + ' min'
+      + (quoi ? ' (' + quoi + ')' : '') + ' ' + (e.id || Ariane.empreinteActivite(e.debut));
+  }
+
+  static lireTempsReel(ligne) {
+    const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})-(\d{2}:\d{2}) = (\d+) min(?: \(([^)]*)\))?\s+(aw-\d{6}-\d{4})\s*$/
+      .exec(String(ligne || '').trim());
+    if (!m) return null;
+    return { debut: m[1] + 'T' + m[2], fin: m[1] + 'T' + m[3], min: Number(m[4]), quoi: m[5] || '', id: m[6] };
+  }
+
+  static tempsReelDeTache(liste) {
+    return [].concat(liste || []).map((l) => Ariane.lireTempsReel(l)).filter(Boolean)
+      .sort((a, b) => (a.debut < b.debut ? -1 : a.debut > b.debut ? 1 : 0));
+  }
+
+  // Les lignes « hors Obsidian » de la section Sessions d'une note de tâche.
+  static blocTempsReel(reels) {
+    const l = Ariane.tempsReelDeTache(reels);
+    if (!l.length) return '';
+    const total = l.reduce((s, x) => s + x.min, 0);
+    return ['### Hors Obsidian', '',
+      '| Date | Heures | Durée | Activité |', '|---|---|---|---|',
+      ...l.map((x) => '| ' + Ariane._jourHumain(x.debut) + ' | ' + x.debut.slice(11, 16) + ' → '
+        + x.fin.slice(11, 16) + ' | ' + Ariane._dureeHumaine(x.min) + ' | '
+        + Ariane.echapperCellule(x.quoi) + ' |'),
+      '', '**' + l.length + ' créneau' + (l.length > 1 ? 'x' : '') + ' hors Obsidian · '
+        + Ariane._dureeHumaine(total) + ' rattachées**'].join('\n');
+  }
+
+  static blocCreneaux(creneaux, stats, commentaires, reels) {
     const list = Ariane.creneauxDeTache(Array.isArray(creneaux) ? creneaux
       : (creneaux ? [creneaux] : []));
-    if (!list.length) return '';
+    const horsObsidian = Ariane.blocTempsReel(reels);
+    if (!list.length) return horsObsidian ? '## Sessions\n\n' + horsObsidian : '';
     const s = stats || Ariane.statsCreneaux(list, new Date().toISOString());
     const coms = commentaires || {};
     const lignes = list.map((c, i) => {
@@ -301,7 +348,7 @@ const avecFriseStatiques = (Base) => class extends Base {
       + (s.dernier ? ' · dernière : ' + Ariane._jourHumain(s.dernier) : '') + '**';
     return ['## Sessions', '',
       '| Session | Date | Heures | Durée | Commentaire |', '|---|---|---|---|---|',
-      ...lignes, '', resume].join('\n');
+      ...lignes, '', resume].join('\n') + (horsObsidian ? '\n\n' + horsObsidian : '');
   }
 
   static lundiDeSemaine(iso) {

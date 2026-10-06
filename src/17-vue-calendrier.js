@@ -428,7 +428,11 @@ class MoteurCalendrier extends MoteurVue {
       const el = col.createDiv({ cls: 'zfa-cal-reel' });
       el.style.top = ((d / 60 - hDeb) * PXH) + 'px';
       el.style.height = Math.max(3, ((f - d) / 60) * PXH) + 'px';
-      el.style.setProperty('--zfa-cal-coul', b.couleur);
+      // Rattaché à une tâche : la bande en prend la couleur.
+      const tRatt = (b.rattache && b.rattache.length)
+        ? (this._taches || []).find((t) => t.ref === b.rattache[0].ref) : null;
+      el.style.setProperty('--zfa-cal-coul', tRatt ? this.couleurTache(tRatt) : b.couleur);
+      if (b.rattache && b.rattache.length) el.addClass('est-rattache');
       // Carte de survol, sans délai : catégorie, résumé, et les applications
       // avec leur icône.
       el.addEventListener('mouseenter', () => this._montrerCarteActivite(el, jour, b));
@@ -445,7 +449,7 @@ class MoteurCalendrier extends MoteurVue {
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         new ModaleActiviteReelle(this.greffon, { jour, bloc: b,
-          surRattacher: () => this._rattacherActivite(jour, b) }).open();
+          surRattacher: () => this._rattacherActivite(jour, [b]) }).open();
       });
       el.addEventListener('contextmenu', (e) => {
         e.preventDefault(); e.stopPropagation();
@@ -455,7 +459,9 @@ class MoteurCalendrier extends MoteurVue {
         m.addItem((i) => i.setTitle(tr('Résumer la journée (IA)')).setIcon('calendar-check')
           .onClick(() => this.greffon.resumerActivite(jour)));
         m.addItem((i) => i.setTitle(tr('Rattacher à une tâche…')).setIcon('link')
-          .onClick(() => this._rattacherActivite(jour, b)));
+          .onClick(() => this._rattacherActivite(jour, [b])));
+        m.addItem((i) => i.setTitle(tr('Rattacher la journée (IA)…')).setIcon('list-checks')
+          .onClick(() => this._rattacherActivite(jour, this._activite.get(jour) || [])));
         if (b.ia) {
           m.addItem((i) => i.setTitle(tr('Oublier ce résumé')).setIcon('eraser')
             .onClick(() => this.greffon.oublierResumesActivite(b.cle)));
@@ -484,6 +490,15 @@ class MoteurCalendrier extends MoteurVue {
     tete.createSpan({ cls: 'zfa-act-meta', text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16)
       + ' · ' + dureeLisible(b.actifMin) + tr(' actives') });
     if (b.ia && b.ia.resume) carte.createDiv({ cls: 'zfa-act-survol-resume', text: b.ia.resume });
+    if (b.rattache && b.rattache.length) {
+      const rt = carte.createDiv({ cls: 'zfa-act-survol-ratt' });
+      for (const r of b.rattache) {
+        const lien = rt.createDiv({ cls: 'zfa-act-survol-ratt-l' });
+        obsidian.setIcon(lien.createSpan({ cls: 'zfa-act-survol-bt-ic' }), 'link');
+        lien.createSpan({ text: r.ref + ' · ' + (r.intitule || '') + ' · ' + dureeLisible(r.min) });
+        lien.addEventListener('click', (e) => { e.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(r.ref, e.metaKey || e.ctrlKey); });
+      }
+    }
     const apps = carte.createDiv({ cls: 'zfa-act-survol-apps' });
     const placer = () => {
       const r = el.getBoundingClientRect();
@@ -506,9 +521,9 @@ class MoteurCalendrier extends MoteurVue {
     };
     action('sparkles', b.ia ? tr('Résumer à nouveau') : tr('Résumer (IA)'),
       () => this.greffon.resumerActivite(jour, { cle: b.cle }));
-    action('link', tr('Rattacher à une tâche'), () => this._rattacherActivite(jour, b));
+    action('link', b.rattache && b.rattache.length ? tr('Rattachements') : tr('Rattacher à une tâche'), () => this._rattacherActivite(jour, [b]));
     action('panel-top-open', tr('Fiche'), () => new ModaleActiviteReelle(this.greffon, { jour, bloc: b,
-      surRattacher: () => this._rattacherActivite(jour, b) }).open());
+      surRattacher: () => this._rattacherActivite(jour, [b]) }).open());
     let tout = false;
     this.greffon.applicationsBlocActivite(jour, b).then((liste) => {
       if (this._carteActivite !== carte) return;
@@ -575,30 +590,17 @@ class MoteurCalendrier extends MoteurVue {
     this._carteMinuterie = setTimeout(() => this._cacherCarteActivite(), 250);
   }
 
-  // Le temps réel d'un créneau devient un créneau de tâche, aux mêmes bornes :
-  // on choisit la tâche comme pour un créneau tracé à la main.
-  _rattacherActivite(jour, b) {
-    const ecrire = async (ref) => {
-      await this._majCreneauU(ref, { avant: '', debut: b.debut, fin: b.fin });
-      this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
-    };
-    const echec = (err) => new obsidian.Notice(tr('Créneau non écrit : ') + (err && err.message ? err.message : err));
-    const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    const horaire = jl.charAt(0).toUpperCase() + jl.slice(1) + ' · ' + b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16)
-      + (b.ia && b.ia.resume ? ' · ' + b.ia.resume : '');
-    const taches = this._tachesBrutes || this._taches
-      || (this.greffon.tachesPourGantt ? this.greffon.tachesPourGantt() : []);
-    new ModaleTacheDuCreneau(this.app, this.greffon, {
-      taches, jour, horaire,
-      surChoix: (ref) => { ecrire(ref).catch(echec); },
-      surAbandon: () => {},
-      surNouvelle: (texte) => {
-        new ModaleTache(this.app, this.greffon, {
-          defauts: { intitule: texte || (b.ia && b.ia.resume) || '' },
-          apres: (ref) => { ecrire(ref).catch(echec); },
-        }).open();
-      },
-    }).open();
+  // Rattacher le temps réel d'un ou plusieurs créneaux d'un jour à des tâches
+  // (suggestions, IA, choix à la main). ⌘Z défait l'ensemble.
+  _rattacherActivite(jour, blocs) {
+    const liste = [].concat(blocs || []).filter((b) => !(b.ia && b.ia.personnel));
+    if (!liste.length) { new obsidian.Notice(tr('Rien à rattacher : créneaux personnels.')); return; }
+    new ModaleRattacherActivite(this.greffon, { jour, blocs: liste,
+      surFait: (ops, inverse) => {
+        if (this.racine && this.racine.focus) this.racine.focus({ preventScroll: true });
+        poserAnnulation(this, () => this.greffon.appliquerRattachements(inverse),
+          () => this.greffon.appliquerRattachements(ops));
+      } }).open();
   }
 
   //#endregion Calendrier · activité réelle

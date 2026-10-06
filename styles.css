@@ -3908,3 +3908,28 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-act-survol .zfa-act-survol-bt:focus-visible { box-shadow: 0 0 0 2px var(--background-modifier-border-focus); }
 .zfa-act-survol-bt-ic { display: inline-flex; }
 .zfa-act-survol-bt-ic svg { width: 12px; height: 12px; }
+
+/* Rattachement du temps réel aux tâches. */
+.zfa-cal-reel.est-rattache { box-shadow: inset 0 0 0 1px var(--background-primary), 0 0 0 1px var(--zfa-cal-coul); }
+.zfa-act-survol-ratt { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+.zfa-act-survol-ratt-l { display: flex; align-items: center; gap: 5px; color: var(--text-accent); cursor: pointer; font-size: var(--font-ui-smaller); }
+.zfa-act-survol-ratt-l:hover { text-decoration: underline; }
+.zfa-ratt-modale { width: min(640px, 92vw); }
+.zfa-ratt-etat { color: var(--text-muted); font-size: var(--font-ui-small); margin-bottom: 8px; }
+.zfa-ratt-corps { max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.zfa-ratt-bloc { border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); padding: 10px 12px; }
+.zfa-ratt-tete { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.zfa-ratt-resume { margin: 6px 0 4px; font-size: var(--font-ui-small); }
+.zfa-ratt-ligne { display: grid; grid-template-columns: auto 1fr 64px auto; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid var(--background-modifier-border); }
+.zfa-ratt-ligne:first-of-type { border-top: none; }
+.zfa-ratt-txt { min-width: 0; }
+.zfa-ratt-ref { font-weight: var(--font-semibold); margin-right: 6px; font-variant-numeric: tabular-nums; }
+.zfa-ratt-intitule { color: var(--text-normal); }
+.zfa-ratt-raison { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.zfa-ratt-ligne.est-ia .zfa-ratt-raison { color: var(--text-accent); }
+.zfa-ratt-min { width: 64px; text-align: right; }
+.zfa-ratt-unite { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.zfa-ratt-reste { margin-top: 6px; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.zfa-ratt-reste.est-trop { color: var(--text-error); }
+.zfa-ratt-ajout { margin-top: 6px; font-size: var(--font-ui-smaller); }
+.zfa-ratt-pied { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
