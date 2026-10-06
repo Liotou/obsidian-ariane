@@ -95,7 +95,7 @@ test('compilerReglesActivite et classerActivite : première règle, couleur, exc
 
 test('libelleActivite : domaine pour une page, application et titre sinon', () => {
   assert.equal(Ariane.libelleActivite({ app: 'Safari', titre: 'x', url: 'https://www.cairn.info/revue' }), 'cairn.info');
-  assert.equal(Ariane.libelleActivite({ app: 'Word', titre: 'Chapitre 2.docx', url: '' }), 'Word · Chapitre 2.docx');
+  assert.equal(Ariane.libelleActivite({ app: 'Word', titre: 'Chapitre 2.docx', url: '' }), 'Word : Chapitre 2.docx');
   assert.equal(Ariane.libelleActivite({ app: 'Finder', titre: '', url: '' }), 'Finder');
 });
 
@@ -117,7 +117,7 @@ test('agregerActivite : grains, interruption courte absorbée, créneau court é
   assert.equal(b[0].debut, '2026-10-05T09:00');
   assert.equal(b[0].fin, '2026-10-05T10:15');
   assert.equal(b[0].actifMin, 70);
-  assert.deepEqual(b[0].details.map((d) => d.libelle), ['Zotero · Article A', 'Zotero · Article B']);
+  assert.deepEqual(b[0].details.map((d) => d.libelle), ['Zotero : Article A', 'Zotero : Article B']);
   // Catégorie par défaut : le temps non classé apparaît, couleur neutre.
   const b2 = Ariane.agregerActivite(segs, regles, Object.assign({}, opts, { autre: 'Autre' }));
   const autre = b2.find((x) => x.categorie === 'Autre');
@@ -144,7 +144,7 @@ test('agregerActivite : un grain trop peu actif reste vide', () => {
 test('infobulleActivite : catégorie, horaires, actif, détails', () => {
   const t = Ariane.infobulleActivite({ categorie: 'Lecture', debut: '2026-10-05T09:00',
     fin: '2026-10-05T10:15', actifMin: 70, details: [{ libelle: 'Zotero · A', min: 40 }, { libelle: 'x', min: 0 }] });
-  assert.equal(t, 'Lecture · 09:00 → 10:15\nActif : 1 h 10\n• Zotero · A (40 min)');
+  assert.equal(t, 'Lecture, 09:00 → 10:15\nActif : 1 h 10\n• Zotero · A (40 min)');
 });
 
 test('couleurActivite : stable et prise dans la palette', () => {

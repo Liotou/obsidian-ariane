@@ -1030,6 +1030,8 @@ const TEXTES = {
     "Ajouter un jalon lié à la tâche…": "Add a milestone linked to the task…",
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
+    "Hors Obsidian": "Outside Obsidian",
+    "Activité hors Obsidian": "Activity outside Obsidian",
     "Chronologie d'activité": "Activity timeline",
     "Chronologie d'activité (Ariane)": "Activity timeline (Ariane)",
     "Ouvrir la chronologie d'activité": "Open the activity timeline",
@@ -1062,7 +1064,7 @@ const TEXTES = {
     "lignes touchées": "lines changed",
     "ligne touchée": "line changed",
     "Reconstitué d'après les dates du fichier : antérieur au journal d'activité.": "Reconstructed from the file's dates: earlier than the activity log.",
-    "Activité · 10 dernières semaines": "Activity · last 10 weeks",
+    "Activité des 10 dernières semaines": "Activity over the last 10 weeks",
     "Par type": "By type",
     "Dossier": "Folder",
     "Tous les dossiers": "All folders",
@@ -17719,7 +17721,7 @@ const avecActivite = (Base) => class extends Base {
       if (m) return m[1].replace(/^www\./, '');
     }
     const t = String(seg.titre || '').trim();
-    const l = t ? (seg.app ? seg.app + ' · ' + t : t) : String(seg.app || '');
+    const l = t ? (seg.app ? seg.app + ' : ' + t : t) : String(seg.app || '');
     return l.length > 80 ? l.slice(0, 79) + '…' : l;
   }
 
@@ -18096,7 +18098,7 @@ const avecActivite = (Base) => class extends Base {
   // Infobulle d'un créneau réel.
   static infobulleActivite(b) {
     const ia = b.ia;
-    const lignes = [(ia ? ia.categorie + tr(' (IA)') : b.categorie) + ' · '
+    const lignes = [(ia ? ia.categorie + tr(' (IA)') : b.categorie) + ', '
       + b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16),
       tr('Actif : ') + dureeLisible(b.actifMin)];
     if (ia && ia.resume) lignes.splice(1, 0, ia.resume);
@@ -18887,6 +18889,7 @@ const avecChronologie = (Base) => class extends Base {
       { type: 'tache-terminee', libelle: 'Tâches terminées', etiquette: 'Tâche terminée', icone: 'check', couleur: 'var(--color-cyan)', filtre: 'taches' },
       { type: 'tache-abandonnee', libelle: 'Tâches abandonnées', etiquette: 'Tâche abandonnée', icone: 'x', couleur: 'var(--color-orange)', filtre: 'taches' },
       { type: 'canevas', libelle: 'Canevas & extraits', etiquette: 'Canevas', icone: 'layout-dashboard', couleur: 'var(--color-yellow)', filtre: 'canevas' },
+      { type: 'activite', libelle: 'Hors Obsidian', etiquette: 'Hors Obsidian', icone: 'monitor', couleur: 'var(--color-green)', filtre: 'externe' },
     ];
   }
 
@@ -19354,7 +19357,31 @@ const avecChronologie = (Base) => class extends Base {
     const depuis = Number(this.settings.chronoDepuis) || Date.now();
     const borne = Math.min(d1, depuis);
     if (d0 < borne) out.push(...this._chronoReconstituer(d0, borne));
+    out.push(...(await this._chronoActiviteExterne(j0, j1)));
     return out.sort((a, b) => b.t - a.t);
+  }
+
+  // L'activité hors d'Obsidian (créneaux d'ActivityWatch, avec leur résumé
+  // et leur catégorie d'IA, leurs rattachements) comme événements de la
+  // chronologie. Quatre-vingt-dix jours au plus : chaque jour est une
+  // requête au serveur d'ActivityWatch.
+  async _chronoActiviteExterne(j0, j1) {
+    if (!this.activiteDisponible || !this.activiteDisponible()) return [];
+    const auj = jourIsoDe(new Date());
+    const plancher = Ariane.decalerJour(auj, -90);
+    const jours = [];
+    for (let j = j0 > plancher ? j0 : plancher; j <= j1 && j <= auj; j = Ariane.decalerJour(j, 1)) jours.push(j);
+    if (!jours.length) return [];
+    let parJour;
+    try { parJour = await this.activitePlage(jours); } catch (e) { return []; }
+    const out = [];
+    for (const [jour, blocs] of parJour) {
+      for (const b of (blocs || [])) {
+        out.push({ t: new Date(b.debut).getTime(), type: 'activite', chemin: '', jour, bloc: b,
+          titre: (b.ia && b.ia.resume) || b.categorie });
+      }
+    }
+    return out;
   }
 
   _chronoReconstituer(d0, d1) {
@@ -24150,7 +24177,7 @@ class ModaleAjoutLN extends obsidian.Modal {
       if (n.apres != null && specs[n.apres]) liens.push(tr('après « ') + specs[n.apres].titre + ' »');
       if (n.bloquePar) liens.push(tr('bloquée par « ') + n.bloquePar + ' »');
       if (n.debut) liens.push(tr('début ') + n.debut);
-      if (liens.length) d.createDiv({ cls: 'zfa-struct-note', text: liens.join(' · ') });
+      if (liens.length) d.createDiv({ cls: 'zfa-struct-note', text: liens.join(', ') });
       if (n.note) d.createDiv({ cls: 'zfa-struct-note', text: n.note });
     });
     const pied = ap.createDiv({ cls: 'zfa-struct-actions' });
@@ -24200,7 +24227,7 @@ class ModaleRattacherActivite extends obsidian.Modal {
     const { contentEl } = this;
     if (this.modalEl) this.modalEl.addClass('zfa-ratt-modale');
     const jl = new Date(this.o.jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    this.titleEl.setText(tr('Rattacher le temps réel · ') + jl);
+    this.titleEl.setText(tr('Rattacher le temps réel du ') + jl);
     contentEl.empty();
     this.etat = contentEl.createDiv({ cls: 'zfa-ratt-etat', text: tr('Suggestions de l\'IA en cours…') });
     this.corps = contentEl.createDiv({ cls: 'zfa-ratt-corps' });
@@ -24240,7 +24267,7 @@ class ModaleRattacherActivite extends obsidian.Modal {
       const puce = tete.createSpan({ cls: 'zfa-act-cat', text: b.ia ? b.ia.categorie : b.categorie });
       puce.style.setProperty('--zfa-cal-coul', b.couleur);
       tete.createSpan({ cls: 'zfa-act-meta', text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16)
-        + ' · ' + dureeLisible(b.actifMin) + tr(' actives') });
+        + ', ' + dureeLisible(b.actifMin) + tr(' actives') });
       if (b.ia && b.ia.resume) bloc.createDiv({ cls: 'zfa-ratt-resume', text: b.ia.resume });
       const total = () => x.lignes.filter((l) => l.coche).reduce((s, l) => s + (Number(l.min) || 0), 0);
       const reste = bloc.createDiv({ cls: 'zfa-ratt-reste' });
@@ -24261,7 +24288,7 @@ class ModaleRattacherActivite extends obsidian.Modal {
         const txt = row.createDiv({ cls: 'zfa-ratt-txt' });
         txt.createSpan({ cls: 'zfa-ratt-ref', text: l.ref });
         txt.createSpan({ cls: 'zfa-ratt-intitule', text: t ? t.intitule : '' });
-        const pourquoi = [l.raison, l.raisonIA && l.raisonIA !== l.raison ? tr('IA : ') + l.raisonIA : ''].filter(Boolean).join(' · ');
+        const pourquoi = [l.raison, l.raisonIA && l.raisonIA !== l.raison ? tr('IA : ') + l.raisonIA : ''].filter(Boolean).join(' ; ');
         if (pourquoi) txt.createDiv({ cls: 'zfa-ratt-raison', text: (l.ia ? '✨ ' : '') + pourquoi });
         const min = row.createEl('input', { type: 'number', cls: 'zfa-ratt-min', attr: { min: '1', max: String(b.actifMin) } });
         min.value = String(l.min || 1);
@@ -24272,7 +24299,7 @@ class ModaleRattacherActivite extends obsidian.Modal {
       ajout.onclick = () => {
         const items = this.greffon.tachesRattachables()
           .filter((t) => !x.lignes.some((l) => l.ref === t.ref))
-          .map((t) => ({ nom: t.ref + ' · ' + t.intitule, ref: t.ref }));
+          .map((t) => ({ nom: t.ref + ' ' + t.intitule, ref: t.ref }));
         new ChoixListeModal(this.app, tr('Rattacher à quelle tâche ?'), items, (it) => {
           const libre = Math.max(1, b.actifMin - total());
           x.lignes.push({ ref: it.ref, min: libre, raison: tr('choisie à la main'), coche: true });
@@ -32260,9 +32287,9 @@ class MoteurCalendrier extends MoteurVue {
     const jour = String(e.debut || '').slice(0, 10);
     const jl = jour ? new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
     let quand = jl.charAt(0).toUpperCase() + jl.slice(1);
-    if (e.allDay) quand += tr(' · journée entière');
+    if (e.allDay) quand += tr(', journée entière');
     else if (String(e.debut).length > 15) {
-      quand += ' · ' + String(e.debut).slice(11, 16) + ' → ' + String(e.fin || '').slice(11, 16);
+      quand += ', ' + String(e.debut).slice(11, 16) + ' → ' + String(e.fin || '').slice(11, 16);
       const min = Ariane.dureeCreneauMin(String(e.debut).slice(0, 16), String(e.fin || '').slice(0, 16));
       if (min) quand += ' (' + dureeLisible(min) + ')';
     }
@@ -32518,15 +32545,15 @@ class MoteurCalendrier extends MoteurVue {
     const tete = carte.createDiv({ cls: 'zfa-act-survol-tete' });
     const puce = tete.createSpan({ cls: 'zfa-act-cat', text: b.ia ? b.ia.categorie : b.categorie });
     puce.style.setProperty('--zfa-cal-coul', b.couleur);
-    tete.createSpan({ cls: 'zfa-act-meta', text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16)
-      + ' · ' + dureeLisible(b.actifMin) + tr(' actives') });
+    tete.createSpan({ cls: 'zfa-act-meta', text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16) });
+    tete.createSpan({ cls: 'zfa-act-meta', text: dureeLisible(b.actifMin) + tr(' actives') });
     if (b.ia && b.ia.resume) carte.createDiv({ cls: 'zfa-act-survol-resume', text: b.ia.resume });
     if (b.rattache && b.rattache.length) {
       const rt = carte.createDiv({ cls: 'zfa-act-survol-ratt' });
       for (const r of b.rattache) {
         const lien = rt.createDiv({ cls: 'zfa-act-survol-ratt-l' });
         obsidian.setIcon(lien.createSpan({ cls: 'zfa-act-survol-bt-ic' }), 'link');
-        lien.createSpan({ text: r.ref + ' · ' + (r.intitule || '') + ' · ' + dureeLisible(r.min) });
+        lien.createSpan({ text: r.ref + ' ' + (r.intitule || '') + ' (' + dureeLisible(r.min) + ')' });
         lien.addEventListener('click', (e) => { e.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(r.ref, e.metaKey || e.ctrlKey); });
       }
     }
@@ -32595,7 +32622,8 @@ class MoteurCalendrier extends MoteurVue {
     const tete = carte.createDiv({ cls: 'zfa-act-survol-tete' });
     const puce = tete.createSpan({ cls: 'zfa-act-cat', text: o.tache ? o.tache.ref : tr('Hors tâche') });
     if (o.couleur) puce.style.setProperty('--zfa-cal-coul', o.couleur);
-    tete.createSpan({ cls: 'zfa-act-meta', text: o.horaires + ' · ' + o.duree + tr(' dans Obsidian') });
+    tete.createSpan({ cls: 'zfa-act-meta', text: o.horaires });
+    tete.createSpan({ cls: 'zfa-act-meta', text: o.duree + tr(' dans Obsidian') });
     if (o.tache && o.tache.intitule) carte.createDiv({ cls: 'zfa-act-survol-resume', text: o.tache.intitule });
     const l = carte.createDiv({ cls: 'zfa-act-survol-apps' }).createDiv({ cls: 'zfa-act-survol-app' });
     const ic = l.createSpan({ cls: 'zfa-act-icone est-initiale' });
@@ -32670,7 +32698,7 @@ class MoteurCalendrier extends MoteurVue {
 
   // Choisir une tâche active (recherche floue).
   _choisirTache(titre, surChoix) {
-    const items = this.greffon.tachesRattachables().map((t) => ({ nom: t.ref + ' · ' + t.intitule, ref: t.ref }));
+    const items = this.greffon.tachesRattachables().map((t) => ({ nom: t.ref + ' ' + t.intitule, ref: t.ref }));
     new ChoixListeModal(this.app, titre, items, (it) => surChoix(it.ref)).open();
   }
 
@@ -32694,8 +32722,8 @@ class MoteurCalendrier extends MoteurVue {
     const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     new ModaleTacheDuCreneau(this.app, this.greffon, {
       taches, jour,
-      horaire: jl.charAt(0).toUpperCase() + jl.slice(1) + ' · ' + debut.slice(11, 16) + ' → ' + fin.slice(11, 16)
-        + (libelle ? ' · ' + libelle : ''),
+      horaire: jl.charAt(0).toUpperCase() + jl.slice(1) + ', ' + debut.slice(11, 16) + ' → ' + fin.slice(11, 16)
+        + (libelle ? ' (' + libelle + ')' : ''),
       surChoix: (ref) => { ecrire(ref).catch((e) => new obsidian.Notice(String(e && e.message || e))); },
       surAbandon: () => {},
       surNouvelle: (texte) => this._tacheDepuisTemps(texte || libelle, (ref) => ecrire(ref)),
@@ -33164,7 +33192,7 @@ class MoteurCalendrier extends MoteurVue {
 
     // title= = toutes les propriétés, même quand la carte n'en montre qu'une.
     const toutes = Ariane.lignesProprietes(paires, t.intitule, 99);
-    carte.title = t.ref + ' · ' + (t.intitule || '')
+    carte.title = t.ref + ' ' + (t.intitule || '')
       + (toutes.length ? '\n' + toutes.map((x) => x.nom + ' : ' + x.valeur).join('\n') : '');
 
     carte.addEventListener('mouseover', (e) => {
@@ -34041,7 +34069,7 @@ class MoteurCalendrier extends MoteurVue {
     const jourLisible = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR',
       { weekday: 'long', day: 'numeric', month: 'long' });
     const horaire = jourLisible.charAt(0).toUpperCase() + jourLisible.slice(1)
-      + ' · ' + cr.debut.slice(11, 16) + ' → ' + cr.fin.slice(11, 16);
+      + ', ' + cr.debut.slice(11, 16) + ' → ' + cr.fin.slice(11, 16);
     // Les tâches de CETTE base, celles que la vue montre : on propose ce sur
     // quoi l'on travaille ici, pas tout le coffre.
     const taches = this._tachesBrutes || this._taches
@@ -34213,7 +34241,7 @@ class MoteurCalendrier extends MoteurVue {
           obsidian.setIcon(jd, 'diamond');
           jd.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
           jd.dataset.ref = t.ref;
-          jd.title = t.ref + ' · ' + (t.intitule || '');
+          jd.title = t.ref + ' ' + (t.intitule || '');
           this._brancherOuvertureCarte(jd, t, { source: 'dates', allDay: true });
         }
         // Le numéro du jour ouvre sa semaine. Le 1er porte le nom du mois :
@@ -34273,7 +34301,7 @@ class MoteurCalendrier extends MoteurVue {
       p.dataset.brut = ev.brut;
       p.createSpan({ cls: 'zfa-cal-pastille-h', text: ev.debut.slice(11, 16) });
       p.createSpan({ cls: 'zfa-cal-m-titre', text: t.intitule || t.ref });
-      p.title = t.ref + ' · ' + (t.intitule || '') + '\n'
+      p.title = t.ref + ' ' + (t.intitule || '') + '\n'
         + ev.debut.slice(11, 16) + ' → ' + ev.fin.slice(11, 16);
       this._brancherOuvertureCarte(p, t, ev);
       p.setAttribute('draggable', 'true');
@@ -34489,7 +34517,7 @@ class MoteurCalendrier extends MoteurVue {
             const ic = jp.createSpan({ cls: 'zfa-cal-bjalon-ic' });
             obsidian.setIcon(ic, 'diamond');
             jp.createSpan({ cls: 'zfa-cal-bjalon-t', text: t.intitule || t.ref });
-            jp.title = t.ref + ' · ' + (t.intitule || '');
+            jp.title = t.ref + ' ' + (t.intitule || '');
             this._brancherOuvertureCarte(jp, t, ev);
             // Glissable : vers un autre jour du bandeau (le jalon change de
             // date) ou dans la grille des heures (il devient une tâche avec
@@ -34874,7 +34902,7 @@ class MoteurCalendrier extends MoteurVue {
       // Au bout de la ligne des heures, jamais par-dessus : un créneau trop
       // court pour montrer ses heures ne montre que la jauge.
       const heure = bloc.querySelector('.zfa-cal-carte-heure');
-      if (heure) heure.createSpan({ cls: 'zfa-cal-jauge-val', text: ' · ' + duree(fait) + tr(' faites') });
+      if (heure) heure.createSpan({ cls: 'zfa-cal-jauge-val', text: ' (' + duree(fait) + tr(' faites') + ')' });
     }
 
     // Le rail du réel : une seule bande à gauche de chaque jour, où le temps
@@ -37210,7 +37238,7 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
     if (compacte || mode === 'suggestion') return l;
     for (const d of a.diagnostics) this._pastille(meta, tr(ORGA_DIAGNOSTICS[d.code] || d.code), 'diag-' + d.code, d.raison);
     if (a.diagnostics.length) {
-      corps.createDiv({ cls: 'zfa-orga-raisons', text: a.diagnostics.map((d) => d.raison).join(' · ') });
+      corps.createDiv({ cls: 'zfa-orga-raisons', text: a.diagnostics.map((d) => d.raison).join(' ; ') });
     }
     return l;
   }
@@ -37299,7 +37327,7 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
         const coul = o.genre === 'creneau' ? this._couleur({ famille: o.famille }) : o.couleur;
         if (coul) bloc.style.setProperty('--zfa-orga-coul', coul);
         bloc.createDiv({ cls: 'zfa-orga-cal-titre', text: o.titre });
-        bloc.setAttribute('title', o.debut.slice(11, 16) + ' → ' + o.fin.slice(11, 16) + ' · ' + o.titre
+        bloc.setAttribute('title', o.debut.slice(11, 16) + ' → ' + o.fin.slice(11, 16) + ', ' + o.titre
           + (o.calendrier ? ' (' + o.calendrier + ')' : ''));
       }
       if (j.aujourdhui) {
@@ -37328,7 +37356,7 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
       el.style.height = Math.max(18, ctx.y(b) - ctx.y(a) - 2) + 'px';
       heures.textContent = p.debut.slice(11, 16) + ' → ' + p.fin.slice(11, 16);
     };
-    const titre = el.createDiv({ cls: 'zfa-orga-cal-titre', text: p.ref + ' · ' + p.intitule });
+    const titre = el.createDiv({ cls: 'zfa-orga-cal-titre', text: p.ref + ' ' + p.intitule });
     const heures = el.createDiv({ cls: 'zfa-orga-fantome-heures' });
     const taille = { petite: tr('petite tâche'), moyenne: tr('tâche moyenne'), grosse: tr('gros travail') }[p.taille] || '';
     el.setAttribute('title', [p.intitule, [taille, p.raison].filter(Boolean).join(' : ')].filter(Boolean).join('\n'));
@@ -37534,7 +37562,7 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
           const l = c.createDiv({ cls: 'zfa-orga-ratt' });
           const jl = new Date(x.jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
           l.createSpan({ cls: 'zfa-orga-ratt-jour', text: jl.charAt(0).toUpperCase() + jl.slice(1) });
-          l.createSpan({ cls: 'zfa-orga-discret', text: this._duree(x.min) + ' · ' + x.blocs.length + tr(' créneau(x)') });
+          l.createSpan({ cls: 'zfa-orga-discret', text: this._duree(x.min) + tr(' en ') + x.blocs.length + tr(' créneau(x)') });
           const b = l.createEl('button', { cls: 'zfa-orga-ratt-bt' });
           obsidian.setIcon(b.createSpan({ cls: 'zfa-orga-ratt-ic' }), 'link');
           b.createSpan({ text: tr('Rattacher (IA)…') });
@@ -37659,8 +37687,8 @@ class BlocOrganisation extends obsidian.MarkdownRenderChild {
           col.createDiv({ cls: 'zfa-orga-jour-nom', text: this._jourCourt(j.jour) });
           const barre = col.createDiv({ cls: 'zfa-orga-jour-barre' });
           if (rj) {
-            barre.setAttribute('aria-label', this._duree(rj.obsidian) + tr(' dans Obsidian · ') + this._duree(rj.externe)
-              + tr(' hors Obsidian · ') + this._duree(rj.personnel) + tr(' personnel · prévu ') + this._duree(j.minutesPlanifiees));
+            barre.setAttribute('aria-label', this._duree(rj.obsidian) + tr(' dans Obsidian\n') + this._duree(rj.externe)
+              + tr(' hors Obsidian\n') + this._duree(rj.personnel) + tr(' personnel\nprévu : ') + this._duree(j.minutesPlanifiees));
             for (const [k, cls] of [['obsidian', 'est-obs'], ['externe', 'est-ext'], ['personnel', 'est-perso']]) {
               if (!rj[k]) continue;
               const p = barre.createDiv({ cls: 'zfa-orga-reel-p ' + cls });
@@ -37782,7 +37810,7 @@ class VueChronologie extends obsidian.ItemView {
     const e = etat || {};
     if (['jour', 'semaine', 'mois', 'annee'].includes(e.periode)) this.periode = e.periode;
     if (Ariane.jourValide(e.ancre)) this.ancre = e.ancre;
-    if (['tout', 'notes', 'taches', 'captures', 'canevas'].includes(e.filtre)) this.filtre = e.filtre;
+    if (['tout', 'notes', 'taches', 'captures', 'canevas', 'externe'].includes(e.filtre)) this.filtre = e.filtre;
     if (typeof e.dossier === 'string') this.dossier = e.dossier;
     await super.setState(etat, resultat);
     this.rafraichir();
@@ -37858,33 +37886,35 @@ class VueChronologie extends obsidian.ItemView {
     c.scrollTop = defil;
   }
 
+  // La barre d'outils, à la manière de celles d'Obsidian : la période et ses
+  // flèches à gauche, le choix jour / semaine / mois / année à droite, puis
+  // les filtres. Pas de grand titre : l'onglet porte déjà le nom de la vue.
   _dessinerEntete(hote, b, auj) {
-    const tete = hote.createDiv({ cls: 'zfa-chrono-tete' });
-    tete.createEl('h1', { cls: 'zfa-chrono-titre', text: tr("Chronologie d'activité") });
-    const seg = tete.createDiv({ cls: 'zfa-chrono-seg' });
-    for (const [p, l] of [['jour', 'Jour'], ['semaine', 'Semaine'], ['mois', 'Mois'], ['annee', 'Année']]) {
-      const o = seg.createEl('button', { cls: 'zfa-chrono-seg-btn' + (this.periode === p ? ' is-active' : ''), text: tr(l) });
-      o.onclick = () => this._changer({ periode: p });
-    }
-
-    const nav = hote.createDiv({ cls: 'zfa-chrono-nav' });
-    const prec = nav.createEl('button', { cls: 'zfa-chrono-nav-btn', attr: { 'aria-label': tr('Précédent') } });
-    obsidian.setIcon(prec, 'chevron-left');
-    prec.onclick = () => this._changer({ ancre: Ariane.decalerPeriode(this.periode, this.ancre, -1) });
+    const barre = hote.createDiv({ cls: 'zfa-chrono-barre-outils' });
+    const nav = barre.createDiv({ cls: 'zfa-chrono-nav' });
+    const icone = (parent, nom, libelle, faire, inactif) => {
+      const x = parent.createDiv({ cls: 'clickable-icon' + (inactif ? ' is-disabled' : ''), attr: { 'aria-label': libelle } });
+      obsidian.setIcon(x, nom);
+      x.onclick = () => { if (!inactif) faire(); };
+      return x;
+    };
+    icone(nav, 'chevron-left', tr('Précédent'), () => this._changer({ ancre: Ariane.decalerPeriode(this.periode, this.ancre, -1) }));
+    icone(nav, 'chevron-right', tr('Suivant'), () => this._changer({ ancre: Ariane.decalerPeriode(this.periode, this.ancre, 1) }), b.fin > auj);
     nav.createSpan({ cls: 'zfa-chrono-periode', text: this._titrePeriode(b) });
-    const suiv = nav.createEl('button', { cls: 'zfa-chrono-nav-btn', attr: { 'aria-label': tr('Suivant') } });
-    obsidian.setIcon(suiv, 'chevron-right');
-    suiv.disabled = b.fin > auj;
-    suiv.onclick = () => this._changer({ ancre: Ariane.decalerPeriode(this.periode, this.ancre, 1) });
     if (!(auj >= b.debut && auj < b.fin)) {
-      const ici = nav.createEl('button', { cls: 'zfa-chrono-nav-btn zfa-chrono-auj', text: tr("Aujourd'hui") });
+      const ici = nav.createEl('button', { cls: 'zfa-chrono-auj', text: tr("Aujourd'hui") });
       ici.onclick = () => this._changer({ ancre: auj });
+    }
+    const seg = barre.createDiv({ cls: 'zfa-chrono-seg' });
+    for (const [p, l] of [['jour', 'Jour'], ['semaine', 'Semaine'], ['mois', 'Mois'], ['annee', 'Année']]) {
+      const o = seg.createDiv({ cls: 'zfa-chrono-seg-btn' + (this.periode === p ? ' is-active' : ''), text: tr(l) });
+      o.onclick = () => this._changer({ periode: p });
     }
 
     const puces = hote.createDiv({ cls: 'zfa-chrono-puces' });
     for (const [f, l] of [['tout', 'Tout'], ['notes', 'Notes'], ['taches', 'Tâches'],
-      ['captures', 'Captures'], ['canevas', 'Canevas & extraits']]) {
-      const p = puces.createEl('button', { cls: 'zfa-chrono-puce' + (this.filtre === f ? ' is-active' : ''), text: tr(l) });
+      ['captures', 'Captures'], ['canevas', 'Canevas & extraits'], ['externe', 'Hors Obsidian']]) {
+      const p = puces.createDiv({ cls: 'zfa-chrono-puce' + (this.filtre === f ? ' is-active' : ''), text: tr(l) });
       p.onclick = () => this._changer({ filtre: f });
     }
     if (!this.greffon.settings.chronoActif) {
@@ -37911,13 +37941,14 @@ class VueChronologie extends obsidian.ItemView {
     for (const [jour, liste] of parJour) {
       if (jour.slice(0, 7) !== moisCourant) {
         moisCourant = jour.slice(0, 7);
-        hote.createDiv({ cls: 'zfa-chrono-mois', text: this._date(jour, { month: 'long', year: 'numeric' }) });
+        const m = this._date(jour, { month: 'long', year: 'numeric' });
+        hote.createDiv({ cls: 'zfa-chrono-mois', text: m.charAt(0).toUpperCase() + m.slice(1) });
       }
       const tj = hote.createDiv({ cls: 'zfa-chrono-jour' });
-      tj.createSpan({ cls: 'zfa-chrono-jour-nom', text: this._date(jour, { weekday: 'short', day: 'numeric', month: 'short' }) });
+      const nom = jour === auj ? tr("Aujourd'hui") : this._date(jour, { weekday: 'long', day: 'numeric', month: 'long' });
+      tj.createSpan({ cls: 'zfa-chrono-jour-nom', text: nom.charAt(0).toUpperCase() + nom.slice(1) });
       const n = totaux.get(jour) || liste.length;
-      tj.createSpan({ cls: 'zfa-chrono-jour-info',
-        text: ' · ' + (jour === auj ? tr("Aujourd'hui") : n + ' ' + (n > 1 ? tr('événements') : tr('événement'))) });
+      tj.createSpan({ cls: 'zfa-chrono-badge', text: String(n), attr: { 'aria-label': n + ' ' + (n > 1 ? tr('événements') : tr('événement')) } });
       const fil = hote.createDiv({ cls: 'zfa-chrono-fil' });
       for (const e of liste) this._dessinerEvenement(fil, e);
     }
@@ -37929,6 +37960,7 @@ class VueChronologie extends obsidian.ItemView {
   }
 
   _dessinerEvenement(hote, e) {
+    if (e.type === 'activite') { this._dessinerActivite(hote, e); return; }
     const d = Ariane.typeChrono(e.type);
     const ligne = hote.createDiv({ cls: 'zfa-chrono-evt' + (e.approx ? ' est-approx' : '') });
     ligne.style.setProperty('--zfa-chrono-coul', d.couleur);
@@ -37940,31 +37972,32 @@ class VueChronologie extends obsidian.ItemView {
     obsidian.setIcon(pastille, e.type === 'capture' && e.icone ? e.icone : d.icone);
 
     const carte = ligne.createDiv({ cls: 'zfa-chrono-carte' });
-    let etiquette = tr(d.etiquette);
-    if (e.type === 'capture' && e.source) etiquette += ' · ' + e.source;
-    if (e.type === 'canevas') etiquette += ' · ' + (e.action === 'cree' ? tr('créé') : tr('modifié'));
-    carte.createDiv({ cls: 'zfa-chrono-genre', text: etiquette });
-
     const f = this.app.vault.getAbstractFileByPath(e.chemin);
     const existe = f instanceof obsidian.TFile;
     const titre = existe && f.extension === 'md' ? this.greffon._chronoTitreFichier(f) : (e.titre || e.chemin);
-    carte.createDiv({ cls: 'zfa-chrono-nom' + (existe ? '' : ' est-disparu'), text: titre });
+    const tete = carte.createDiv({ cls: 'zfa-chrono-carte-tete' });
+    tete.createSpan({ cls: 'zfa-chrono-nom' + (existe ? '' : ' est-disparu'), text: titre });
+    // Le genre et ses précisions, chacun dans sa propre étiquette.
+    tete.createSpan({ cls: 'zfa-chrono-genre', text: tr(d.etiquette) });
+    if (e.type === 'capture' && e.source) tete.createSpan({ cls: 'zfa-chrono-etiquette', text: e.source });
+    if (e.type === 'canevas') tete.createSpan({ cls: 'zfa-chrono-etiquette', text: e.action === 'cree' ? tr('créé') : tr('modifié') });
 
     if (e.type === 'tache-terminee' || e.type === 'tache-abandonnee') {
+      const st = carte.createDiv({ cls: 'zfa-chrono-chemin' });
+      st.setText((e.de ? e.de + ' → ' : '→ ') + (e.vers || ''));
       if (e.raison) {
         const r = carte.createDiv({ cls: 'zfa-chrono-extrait' });
         r.createSpan({ cls: 'zfa-chrono-raison', text: tr('Raison : ') });
         r.createSpan({ text: e.raison });
       }
-      carte.createDiv({ cls: 'zfa-chrono-chemin', text: (e.de ? e.de + ' → ' : '→ ') + (e.vers || '') });
     } else {
-      const meta = [e.chemin];
-      if (e.n) meta.push(e.n + ' ' + (e.n > 1 ? tr('lignes touchées') : tr('ligne touchée')));
-      carte.createDiv({ cls: 'zfa-chrono-chemin', text: meta.join(' · ') });
+      const meta = carte.createDiv({ cls: 'zfa-chrono-chemin' });
+      meta.createSpan({ text: e.chemin });
+      if (e.n) meta.createSpan({ cls: 'zfa-chrono-etiquette', text: e.n + ' ' + (e.n > 1 ? tr('lignes touchées') : tr('ligne touchée')) });
       if (e.extrait) carte.createDiv({ cls: 'zfa-chrono-extrait', text: e.extrait });
     }
     if (e.approx) {
-      carte.title = tr("Reconstitué d'après les dates du fichier : antérieur au journal d'activité.");
+      carte.setAttribute('aria-label', tr("Reconstitué d'après les dates du fichier : antérieur au journal d'activité."));
     }
     if (existe) {
       carte.addClass('est-cliquable');
@@ -37974,8 +38007,33 @@ class VueChronologie extends obsidian.ItemView {
     }
   }
 
+  // Un créneau d'activité hors d'Obsidian : son résumé (ou sa catégorie), sa
+  // catégorie à sa couleur, son temps actif, ses rattachements, et ce qui l'a
+  // occupé. Un clic ouvre sa fiche.
+  _dessinerActivite(hote, e) {
+    const b = e.bloc;
+    const ia = b.ia;
+    const ligne = hote.createDiv({ cls: 'zfa-chrono-evt est-externe' + (ia && ia.personnel ? ' est-personnel' : '') });
+    ligne.style.setProperty('--zfa-chrono-coul', b.couleur || 'var(--color-green)');
+    ligne.createDiv({ cls: 'zfa-chrono-heure', text: b.debut.slice(11, 16) });
+    const pastille = ligne.createDiv({ cls: 'zfa-chrono-rail' }).createDiv({ cls: 'zfa-chrono-pastille' });
+    obsidian.setIcon(pastille, ia && ia.personnel ? 'coffee' : 'monitor');
+    const carte = ligne.createDiv({ cls: 'zfa-chrono-carte est-cliquable' });
+    const tete = carte.createDiv({ cls: 'zfa-chrono-carte-tete' });
+    tete.createSpan({ cls: 'zfa-chrono-nom', text: (ia && ia.resume) || tr('Activité hors Obsidian') });
+    tete.createSpan({ cls: 'zfa-chrono-genre', text: ia ? ia.categorie : b.categorie });
+    if (ia && ia.personnel) tete.createSpan({ cls: 'zfa-chrono-etiquette', text: tr('personnel') });
+    const meta = carte.createDiv({ cls: 'zfa-chrono-chemin' });
+    meta.createSpan({ text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16) });
+    meta.createSpan({ cls: 'zfa-chrono-etiquette', text: dureeLisible(b.actifMin) + tr(' actives') });
+    for (const r of (b.rattache || [])) meta.createSpan({ cls: 'zfa-chrono-etiquette est-tache', text: r.ref + ' ' + dureeLisible(r.min) });
+    const det = (b.details || []).filter((x) => x.min > 0).slice(0, 4);
+    if (det.length) carte.createDiv({ cls: 'zfa-chrono-extrait', text: det.map((x) => x.libelle + ' (' + dureeLisible(x.min) + ')').join('\n') });
+    carte.addEventListener('click', () => new ModaleActiviteReelle(this.greffon, { jour: e.jour, bloc: b }).open());
+  }
+
   _dessinerChaleur(hote, evts, auj) {
-    hote.createDiv({ cls: 'zfa-chrono-rubrique', text: tr('Activité · 10 dernières semaines') });
+    hote.createDiv({ cls: 'zfa-chrono-rubrique', text: tr('Activité des 10 dernières semaines') });
     const carte = Ariane.carteChaleur(evts, auj, 10);
     const g = hote.createDiv({ cls: 'zfa-chrono-chaleur' });
     for (const col of carte.colonnes) {
@@ -37998,7 +38056,8 @@ class VueChronologie extends obsidian.ItemView {
       const l = hote.createDiv({ cls: 'zfa-chrono-compte' + (this.filtre === d.filtre ? ' is-active' : '') });
       l.style.setProperty('--zfa-chrono-coul', d.couleur);
       const tete = l.createDiv({ cls: 'zfa-chrono-compte-tete' });
-      tete.createSpan({ text: tr(d.libelle) });
+      tete.createSpan({ cls: 'zfa-chrono-point' });
+      tete.createSpan({ cls: 'zfa-chrono-compte-nom', text: tr(d.libelle) });
       tete.createSpan({ cls: 'zfa-chrono-compte-n', text: String(comptes[d.type]) });
       const barre = l.createDiv({ cls: 'zfa-chrono-barre' });
       barre.createDiv({ cls: 'zfa-chrono-barre-plein' }).style.width = (comptes[d.type] / max * 100) + '%';
@@ -38285,7 +38344,7 @@ class ModaleActiviteReelle extends obsidian.Modal {
     const jour = this.o.jour;
     if (this.modalEl) this.modalEl.addClass('zfa-act-modale');
     const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    this.titleEl.setText(jl.charAt(0).toUpperCase() + jl.slice(1) + ' · '
+    this.titleEl.setText(jl.charAt(0).toUpperCase() + jl.slice(1) + ', '
       + b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16));
     contentEl.empty();
 
@@ -38294,7 +38353,7 @@ class ModaleActiviteReelle extends obsidian.Modal {
     const puce = tete.createSpan({ cls: 'zfa-act-cat', text: ia ? ia.categorie : b.categorie });
     puce.style.setProperty('--zfa-cal-coul', b.couleur);
     tete.createSpan({ cls: 'zfa-act-meta', text: dureeLisible(b.actifMin) + tr(' actives')
-      + (ia ? (ia.manuel ? tr(' · catégorie corrigée') : tr(' · classé par l\'IA')) : tr(' · classé par vos règles')) });
+      + (ia ? (ia.manuel ? tr(', catégorie corrigée') : tr(', classé par l\'IA')) : tr(', classé par vos règles')) });
     if (ia && ia.personnel) tete.createSpan({ cls: 'zfa-act-perso', text: tr('personnel') });
 
     const res = contentEl.createDiv({ cls: 'zfa-act-resume' });
@@ -38307,7 +38366,7 @@ class ModaleActiviteReelle extends obsidian.Modal {
       for (const r of b.rattache) {
         const l = rt.createDiv({ cls: 'zfa-act-survol-ratt-l' });
         obsidian.setIcon(l.createSpan({ cls: 'zfa-act-survol-bt-ic' }), 'link');
-        l.createSpan({ text: r.ref + ' · ' + (r.intitule || '') + ' · ' + dureeLisible(r.min) });
+        l.createSpan({ text: r.ref + ' ' + (r.intitule || '') + ' (' + dureeLisible(r.min) + ')' });
         l.addEventListener('click', () => {
           const f = this.greffon.fichierDeRef && this.greffon.fichierDeRef(r.ref);
           if (f) { this.close(); this.app.workspace.getLeaf(false).openFile(f); }

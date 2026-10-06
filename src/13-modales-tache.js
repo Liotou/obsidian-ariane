@@ -1024,7 +1024,7 @@ class ModaleAjoutLN extends obsidian.Modal {
       if (n.apres != null && specs[n.apres]) liens.push(tr('après « ') + specs[n.apres].titre + ' »');
       if (n.bloquePar) liens.push(tr('bloquée par « ') + n.bloquePar + ' »');
       if (n.debut) liens.push(tr('début ') + n.debut);
-      if (liens.length) d.createDiv({ cls: 'zfa-struct-note', text: liens.join(' · ') });
+      if (liens.length) d.createDiv({ cls: 'zfa-struct-note', text: liens.join(', ') });
       if (n.note) d.createDiv({ cls: 'zfa-struct-note', text: n.note });
     });
     const pied = ap.createDiv({ cls: 'zfa-struct-actions' });
@@ -1074,7 +1074,7 @@ class ModaleRattacherActivite extends obsidian.Modal {
     const { contentEl } = this;
     if (this.modalEl) this.modalEl.addClass('zfa-ratt-modale');
     const jl = new Date(this.o.jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    this.titleEl.setText(tr('Rattacher le temps réel · ') + jl);
+    this.titleEl.setText(tr('Rattacher le temps réel du ') + jl);
     contentEl.empty();
     this.etat = contentEl.createDiv({ cls: 'zfa-ratt-etat', text: tr('Suggestions de l\'IA en cours…') });
     this.corps = contentEl.createDiv({ cls: 'zfa-ratt-corps' });
@@ -1114,7 +1114,7 @@ class ModaleRattacherActivite extends obsidian.Modal {
       const puce = tete.createSpan({ cls: 'zfa-act-cat', text: b.ia ? b.ia.categorie : b.categorie });
       puce.style.setProperty('--zfa-cal-coul', b.couleur);
       tete.createSpan({ cls: 'zfa-act-meta', text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16)
-        + ' · ' + dureeLisible(b.actifMin) + tr(' actives') });
+        + ', ' + dureeLisible(b.actifMin) + tr(' actives') });
       if (b.ia && b.ia.resume) bloc.createDiv({ cls: 'zfa-ratt-resume', text: b.ia.resume });
       const total = () => x.lignes.filter((l) => l.coche).reduce((s, l) => s + (Number(l.min) || 0), 0);
       const reste = bloc.createDiv({ cls: 'zfa-ratt-reste' });
@@ -1135,7 +1135,7 @@ class ModaleRattacherActivite extends obsidian.Modal {
         const txt = row.createDiv({ cls: 'zfa-ratt-txt' });
         txt.createSpan({ cls: 'zfa-ratt-ref', text: l.ref });
         txt.createSpan({ cls: 'zfa-ratt-intitule', text: t ? t.intitule : '' });
-        const pourquoi = [l.raison, l.raisonIA && l.raisonIA !== l.raison ? tr('IA : ') + l.raisonIA : ''].filter(Boolean).join(' · ');
+        const pourquoi = [l.raison, l.raisonIA && l.raisonIA !== l.raison ? tr('IA : ') + l.raisonIA : ''].filter(Boolean).join(' ; ');
         if (pourquoi) txt.createDiv({ cls: 'zfa-ratt-raison', text: (l.ia ? '✨ ' : '') + pourquoi });
         const min = row.createEl('input', { type: 'number', cls: 'zfa-ratt-min', attr: { min: '1', max: String(b.actifMin) } });
         min.value = String(l.min || 1);
@@ -1146,7 +1146,7 @@ class ModaleRattacherActivite extends obsidian.Modal {
       ajout.onclick = () => {
         const items = this.greffon.tachesRattachables()
           .filter((t) => !x.lignes.some((l) => l.ref === t.ref))
-          .map((t) => ({ nom: t.ref + ' · ' + t.intitule, ref: t.ref }));
+          .map((t) => ({ nom: t.ref + ' ' + t.intitule, ref: t.ref }));
         new ChoixListeModal(this.app, tr('Rattacher à quelle tâche ?'), items, (it) => {
           const libre = Math.max(1, b.actifMin - total());
           x.lignes.push({ ref: it.ref, min: libre, raison: tr('choisie à la main'), coche: true });

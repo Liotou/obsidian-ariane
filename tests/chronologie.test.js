@@ -79,7 +79,7 @@ test('filtrerChrono et comptesChrono', () => {
   assert.equal(Ariane.filtrerChrono(e, 'notes', '').length, 2);
   assert.deepEqual(Ariane.comptesChrono(e), {
     'note-modifiee': 2, 'note-creee': 0, capture: 1,
-    'tache-terminee': 1, 'tache-abandonnee': 1, canevas: 0,
+    'tache-terminee': 1, 'tache-abandonnee': 1, canevas: 0, activite: 0,
   });
 });
 
@@ -103,7 +103,7 @@ test('carteChaleur : dix colonnes du lundi au dimanche, futur vide, niveaux rela
 });
 
 test('TYPES_CHRONO : chaque type a sa pastille de filtre', () => {
-  const filtres = new Set(['notes', 'taches', 'captures', 'canevas']);
+  const filtres = new Set(['notes', 'taches', 'captures', 'canevas', 'externe']);
   for (const d of Ariane.TYPES_CHRONO) assert.ok(filtres.has(d.filtre), d.type);
   assert.equal(Ariane.typeChrono('inconnu').type, 'note-modifiee');
 });

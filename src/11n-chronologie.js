@@ -24,6 +24,7 @@ const avecChronologie = (Base) => class extends Base {
       { type: 'tache-terminee', libelle: 'Tâches terminées', etiquette: 'Tâche terminée', icone: 'check', couleur: 'var(--color-cyan)', filtre: 'taches' },
       { type: 'tache-abandonnee', libelle: 'Tâches abandonnées', etiquette: 'Tâche abandonnée', icone: 'x', couleur: 'var(--color-orange)', filtre: 'taches' },
       { type: 'canevas', libelle: 'Canevas & extraits', etiquette: 'Canevas', icone: 'layout-dashboard', couleur: 'var(--color-yellow)', filtre: 'canevas' },
+      { type: 'activite', libelle: 'Hors Obsidian', etiquette: 'Hors Obsidian', icone: 'monitor', couleur: 'var(--color-green)', filtre: 'externe' },
     ];
   }
 
@@ -491,7 +492,31 @@ const avecChronologie = (Base) => class extends Base {
     const depuis = Number(this.settings.chronoDepuis) || Date.now();
     const borne = Math.min(d1, depuis);
     if (d0 < borne) out.push(...this._chronoReconstituer(d0, borne));
+    out.push(...(await this._chronoActiviteExterne(j0, j1)));
     return out.sort((a, b) => b.t - a.t);
+  }
+
+  // L'activité hors d'Obsidian (créneaux d'ActivityWatch, avec leur résumé
+  // et leur catégorie d'IA, leurs rattachements) comme événements de la
+  // chronologie. Quatre-vingt-dix jours au plus : chaque jour est une
+  // requête au serveur d'ActivityWatch.
+  async _chronoActiviteExterne(j0, j1) {
+    if (!this.activiteDisponible || !this.activiteDisponible()) return [];
+    const auj = jourIsoDe(new Date());
+    const plancher = Ariane.decalerJour(auj, -90);
+    const jours = [];
+    for (let j = j0 > plancher ? j0 : plancher; j <= j1 && j <= auj; j = Ariane.decalerJour(j, 1)) jours.push(j);
+    if (!jours.length) return [];
+    let parJour;
+    try { parJour = await this.activitePlage(jours); } catch (e) { return []; }
+    const out = [];
+    for (const [jour, blocs] of parJour) {
+      for (const b of (blocs || [])) {
+        out.push({ t: new Date(b.debut).getTime(), type: 'activite', chemin: '', jour, bloc: b,
+          titre: (b.ia && b.ia.resume) || b.categorie });
+      }
+    }
+    return out;
   }
 
   _chronoReconstituer(d0, d1) {

@@ -261,7 +261,7 @@ class ModaleActiviteReelle extends obsidian.Modal {
     const jour = this.o.jour;
     if (this.modalEl) this.modalEl.addClass('zfa-act-modale');
     const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    this.titleEl.setText(jl.charAt(0).toUpperCase() + jl.slice(1) + ' · '
+    this.titleEl.setText(jl.charAt(0).toUpperCase() + jl.slice(1) + ', '
       + b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16));
     contentEl.empty();
 
@@ -270,7 +270,7 @@ class ModaleActiviteReelle extends obsidian.Modal {
     const puce = tete.createSpan({ cls: 'zfa-act-cat', text: ia ? ia.categorie : b.categorie });
     puce.style.setProperty('--zfa-cal-coul', b.couleur);
     tete.createSpan({ cls: 'zfa-act-meta', text: dureeLisible(b.actifMin) + tr(' actives')
-      + (ia ? (ia.manuel ? tr(' · catégorie corrigée') : tr(' · classé par l\'IA')) : tr(' · classé par vos règles')) });
+      + (ia ? (ia.manuel ? tr(', catégorie corrigée') : tr(', classé par l\'IA')) : tr(', classé par vos règles')) });
     if (ia && ia.personnel) tete.createSpan({ cls: 'zfa-act-perso', text: tr('personnel') });
 
     const res = contentEl.createDiv({ cls: 'zfa-act-resume' });
@@ -283,7 +283,7 @@ class ModaleActiviteReelle extends obsidian.Modal {
       for (const r of b.rattache) {
         const l = rt.createDiv({ cls: 'zfa-act-survol-ratt-l' });
         obsidian.setIcon(l.createSpan({ cls: 'zfa-act-survol-bt-ic' }), 'link');
-        l.createSpan({ text: r.ref + ' · ' + (r.intitule || '') + ' · ' + dureeLisible(r.min) });
+        l.createSpan({ text: r.ref + ' ' + (r.intitule || '') + ' (' + dureeLisible(r.min) + ')' });
         l.addEventListener('click', () => {
           const f = this.greffon.fichierDeRef && this.greffon.fichierDeRef(r.ref);
           if (f) { this.close(); this.app.workspace.getLeaf(false).openFile(f); }

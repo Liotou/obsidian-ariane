@@ -229,7 +229,7 @@ const avecActivite = (Base) => class extends Base {
       if (m) return m[1].replace(/^www\./, '');
     }
     const t = String(seg.titre || '').trim();
-    const l = t ? (seg.app ? seg.app + ' · ' + t : t) : String(seg.app || '');
+    const l = t ? (seg.app ? seg.app + ' : ' + t : t) : String(seg.app || '');
     return l.length > 80 ? l.slice(0, 79) + '…' : l;
   }
 
@@ -606,7 +606,7 @@ const avecActivite = (Base) => class extends Base {
   // Infobulle d'un créneau réel.
   static infobulleActivite(b) {
     const ia = b.ia;
-    const lignes = [(ia ? ia.categorie + tr(' (IA)') : b.categorie) + ' · '
+    const lignes = [(ia ? ia.categorie + tr(' (IA)') : b.categorie) + ', '
       + b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16),
       tr('Actif : ') + dureeLisible(b.actifMin)];
     if (ia && ia.resume) lignes.splice(1, 0, ia.resume);
