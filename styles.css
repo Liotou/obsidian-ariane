@@ -4040,3 +4040,26 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 /* Le créneau tenu suit le curseur sans retard : pas de transition sur sa
    position (celle du survol le faisait traîner derrière la souris). */
 .zfa-cal-bloc.zfa-cal-bloc-flotte { transition: none; }
+
+/* Tableaux des notes : largeurs réglables, texte qui va à la ligne, listes
+   dans les cellules. */
+.markdown-rendered table.zfa-tab-largeurs,
+.cm-table-widget table.zfa-tab-largeurs { table-layout: fixed; width: 100%; }
+.markdown-rendered td, .markdown-rendered th,
+.cm-table-widget td, .cm-table-widget th { overflow-wrap: anywhere; vertical-align: top; }
+.markdown-rendered th, .cm-table-widget th { position: relative; }
+/* Les cellules restent alignées à gauche, même dans une note justifiée. */
+.markdown-rendered td, .cm-table-widget td { text-align: left; hyphens: manual; }
+.zfa-tab-poignee {
+  position: absolute; top: 0; bottom: 0; right: -4px; width: 8px; z-index: 2;
+  cursor: col-resize; touch-action: none;
+}
+.zfa-tab-poignee::after {
+  content: ''; position: absolute; top: 15%; bottom: 15%; left: 3px; width: 2px; border-radius: 1px;
+  background: var(--interactive-accent); opacity: 0; transition: opacity 0.12s ease;
+}
+th:hover > .zfa-tab-poignee::after { opacity: 0.35; }
+.zfa-tab-poignee:hover::after, table.est-redimensionne .zfa-tab-poignee::after { opacity: 1; }
+table.est-redimensionne { user-select: none; cursor: col-resize; }
+.zfa-tab-liste { margin: 0; padding-left: 1.3em; }
+.zfa-tab-liste > li { margin: 0; }

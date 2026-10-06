@@ -660,6 +660,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
   }
 
   ongletAffichage(c, s, maj) {
+    this._section(c, tr('Tableaux des notes'));
+    new obsidian.Setting(c)
+      .setName(tr('Tableaux enrichis'))
+      .setDesc(tr("Largeur des colonnes à la souris (poignée au bord des en-têtes, double-clic pour revenir à l'automatique), retour à la ligne dans une cellule avec Maj+Entrée, et lignes « - » ou « 1. » d'une cellule affichées en liste. Les largeurs sont gardées dans un commentaire invisible au-dessus du tableau."))
+      .addToggle((t) => t.setValue(s.tableauxActifs !== false).onChange(async (v) => { s.tableauxActifs = v; await maj(); }));
     this._section(c, tr('Aparté (titre sur les liens)'));
     new obsidian.Setting(c)
       .setName(tr('Afficher le titre en aparté'))

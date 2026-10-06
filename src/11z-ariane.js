@@ -14,7 +14,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecArticulationStatiques,
   avecTaches,
   avecPublicationSite,
-  avecActivite) {
+  avecActivite,
+  avecTableaux) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -985,6 +986,9 @@ class Ariane extends composer(obsidian.Plugin,
     this.app.workspace.onLayoutReady(() => this.decorerLecteursZotflow());
     this.registerEvent(this.app.workspace.on('layout-change', () => this.decorerLecteursZotflow()));
     this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.decorerLecteursZotflow()));
+
+    // Tableaux des notes : largeur des colonnes, retours à la ligne, listes.
+    this.installerTableaux();
 
     // Nouvelle note depuis le modèle d'un dossier (clic droit).
     this.installerNotesDepuisModele();
