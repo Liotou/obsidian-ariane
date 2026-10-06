@@ -725,6 +725,12 @@ const avecActivite = (Base) => class extends Base {
   // oublier (réglage changé, test) relit tout et réautorise l'avis d'erreur ;
   // la relecture périodique, elle, ne le répète pas toutes les cinq minutes.
   _rafraichirActivite(toutOublier) {
+    // La chronologie montre aussi les créneaux d'activité.
+    if (typeof TYPE_VUE_CHRONOLOGIE !== 'undefined') {
+      for (const f of this.app.workspace.getLeavesOfType(TYPE_VUE_CHRONOLOGIE)) {
+        try { if (f.view && f.view.rafraichir) f.view.rafraichir(); } catch (e) { /* vue fermée */ }
+      }
+    }
     if (toutOublier) {
       this._activiteSegments = null;
       this._awBucketsCache = null;
@@ -872,10 +878,7 @@ const avecActivite = (Base) => class extends Base {
       const lundi = Ariane.grilleSemaine(jourIsoDe(new Date())).lundi;
       for (let i = 0; i < 7; i++) jours.push(Ariane.decalerJour(lundi, i));
     }
-    const auj = jourIsoDe(new Date());
-    let n = 0;
-    for (const j of jours) if (j <= auj) n += await this.resumerActivite(j, { silencieux: true });
-    new obsidian.Notice(n + tr(' créneau(x) résumé(s) sur la semaine.'));
+    await this.resumerJoursActivite(jours);
   }
 
   // ── icônes des applications ────────────────────────────────────────────
@@ -1102,6 +1105,123 @@ const avecActivite = (Base) => class extends Base {
         .filter((x) => x.tache && x.min > 0).sort((a, b) => b.min - a.min).slice(0, 8),
       aRattacher,
     };
+  }
+
+  // ── actions sur le temps réel, communes aux vues ───────────────────────
+  //  Le calendrier et la chronologie proposent les mêmes gestes sur un
+  //  créneau d'activité : ils passent tous par ici. Chaque vue fournit son
+  //  `hote` :
+  //    apres()                     redessiner après un changement ;
+  //    blocsDuJour(jour)           les créneaux du jour qu'elle affiche ;
+  //    ecrireCreneau(ref, d, f)    écrire un créneau prévu (le calendrier y
+  //                                met son annulation) ;
+  //    surRattache(ops, inverse)   après un rattachement (annulation).
+
+  _normaliserHote(hote) {
+    const h = hote || {};
+    return {
+      apres: h.apres || (() => {}),
+      blocsDuJour: h.blocsDuJour || (() => []),
+      ecrireCreneau: h.ecrireCreneau || (async (ref, debut, fin) => {
+        await this.majCreneau(ref, { avant: '', debut, fin });
+        (h.apres || (() => {}))();
+      }),
+      surRattache: h.surRattache || (() => {}),
+    };
+  }
+
+  // Le menu d'un créneau d'activité (clic droit), dans un obsidian.Menu.
+  remplirMenuActivite(m, jour, b, hote) {
+    const h = this._normaliserHote(hote);
+    const resume = b.ia && b.ia.resume ? b.ia.resume : '';
+    m.addItem((i) => i.setTitle(b.ia ? tr('Résumer à nouveau ce créneau (IA)') : tr('Résumer ce créneau (IA)'))
+      .setIcon('sparkles').onClick(() => this.resumerActivite(jour, { cle: b.cle })));
+    m.addItem((i) => i.setTitle(tr('Résumer la journée (IA)')).setIcon('calendar-check')
+      .onClick(() => this.resumerActivite(jour)));
+    m.addSeparator();
+    m.addItem((i) => i.setTitle(b.rattache && b.rattache.length ? tr('Modifier les rattachements…') : tr('Rattacher à une tâche…'))
+      .setIcon('link').onClick(() => this.ouvrirRattachementActivite(jour, [b], hote)));
+    m.addItem((i) => i.setTitle(tr('Rattacher la journée (IA)…')).setIcon('list-checks')
+      .onClick(() => this.ouvrirRattachementActivite(jour, h.blocsDuJour(jour), hote)));
+    m.addItem((i) => i.setTitle(tr('Créer une tâche associée…')).setIcon('file-plus')
+      .onClick(() => this.creerTacheDepuisTemps(resume, (ref) => this.appliquerRattachements([{ ref, id: b.empreinte,
+        apres: Ariane.formatTempsReel({ debut: b.debut, fin: b.fin, min: b.actifMin,
+          quoi: (b.ia ? b.ia.categorie : b.categorie), id: b.empreinte }) }]), hote)));
+    m.addItem((i) => i.setTitle(tr('Poser comme créneau de tâche…')).setIcon('calendar-plus')
+      .onClick(() => this.poserCreneauDepuisTemps(jour, b.debut, b.fin, resume, '', hote)));
+    m.addSeparator();
+    m.addItem((i) => i.setTitle(tr('Ouvrir la fiche')).setIcon('panel-top-open')
+      .onClick(() => this.ouvrirFicheActivite(jour, b, hote)));
+    if (resume) {
+      m.addItem((i) => i.setTitle(tr('Copier le résumé')).setIcon('copy')
+        .onClick(() => { navigator.clipboard.writeText(resume); new obsidian.Notice(tr('Résumé copié.')); }));
+    }
+    if (b.ia) {
+      m.addItem((i) => i.setTitle(tr('Oublier ce résumé')).setIcon('eraser')
+        .onClick(() => this.oublierResumesActivite(b.cle)));
+    }
+  }
+
+  ouvrirFicheActivite(jour, b, hote) {
+    new ModaleActiviteReelle(this, { jour, bloc: b,
+      surRattacher: () => this.ouvrirRattachementActivite(jour, [b], hote) }).open();
+  }
+
+  // Rattacher le temps d'un ou plusieurs créneaux d'un jour à des tâches
+  // (suggestions, IA, choix à la main). Les créneaux personnels sont écartés.
+  ouvrirRattachementActivite(jour, blocs, hote) {
+    const h = this._normaliserHote(hote);
+    const liste = [].concat(blocs || []).filter((x) => !(x.ia && x.ia.personnel));
+    if (!liste.length) { new obsidian.Notice(tr('Rien à rattacher : créneaux personnels.')); return; }
+    new ModaleRattacherActivite(this, { jour, blocs: liste,
+      surFait: (ops, inverse) => { h.surRattache(ops, inverse); h.apres(); } }).open();
+  }
+
+  // Choisir une tâche active (recherche floue).
+  choisirTacheActive(titre, surChoix) {
+    const items = this.tachesRattachables().map((t) => ({ nom: t.ref + ' ' + t.intitule, ref: t.ref }));
+    new ChoixListeModal(this.app, titre, items, (it) => surChoix(it.ref)).open();
+  }
+
+  // Créer une tâche (formulaire pré-rempli), puis `apres(ref)`.
+  creerTacheDepuisTemps(intitule, apres, hote) {
+    const h = this._normaliserHote(hote);
+    new ModaleTache(this.app, this, {
+      defauts: { intitule: intitule || '' },
+      apres: async (ref) => { if (ref && apres) await apres(ref); h.apres(); },
+    }).open();
+  }
+
+  // Poser un créneau PRÉVU aux mêmes horaires sur une tâche (la proposée, ou
+  // celle qu'on choisit) : reporter après coup un travail fait hors plan.
+  poserCreneauDepuisTemps(jour, debut, fin, libelle, refProposee, hote) {
+    const h = this._normaliserHote(hote);
+    const ecrire = (ref) => Promise.resolve(h.ecrireCreneau(ref, debut, fin))
+      .catch((e) => new obsidian.Notice(String((e && e.message) || e)));
+    if (refProposee) { ecrire(refProposee); return; }
+    const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    new ModaleTacheDuCreneau(this.app, this, {
+      taches: this.tachesPourGantt(), jour,
+      horaire: jl.charAt(0).toUpperCase() + jl.slice(1) + ', ' + debut.slice(11, 16) + ' → ' + fin.slice(11, 16)
+        + (libelle ? ' (' + libelle + ')' : ''),
+      surChoix: (ref) => ecrire(ref),
+      surAbandon: () => {},
+      surNouvelle: (texte) => this.creerTacheDepuisTemps(texte || libelle, (ref) => ecrire(ref), hote),
+    }).open();
+  }
+
+  // Résumer plusieurs journées (seulement les jours passés ou le jour même).
+  async resumerJoursActivite(jours) {
+    const auj = jourIsoDe(new Date());
+    const vises = (jours || []).filter((j) => j <= auj);
+    if (!vises.length) return 0;
+    const avis = new obsidian.Notice(tr('Résumé de l\'activité de ') + vises.length + tr(' jour(s)…'), 0);
+    let n = 0;
+    try {
+      for (const j of vises) n += await this.resumerActivite(j, { silencieux: true });
+    } finally { avis.hide(); }
+    new obsidian.Notice(n + tr(' créneau(x) résumé(s).'));
+    return n;
   }
 
   // Tâches actives, pour les suggestions.

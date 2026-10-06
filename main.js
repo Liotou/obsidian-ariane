@@ -1030,6 +1030,9 @@ const TEXTES = {
     "Ajouter un jalon lié à la tâche…": "Add a milestone linked to the task…",
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
+    "Résumer la journée": "Summarise the day",
+    "Rattacher": "Attach",
+    "Résumer la période (IA)": "Summarise the period (AI)",
     "Hors Obsidian": "Outside Obsidian",
     "Activité hors Obsidian": "Activity outside Obsidian",
     "Chronologie d'activité": "Activity timeline",
@@ -18217,6 +18220,12 @@ const avecActivite = (Base) => class extends Base {
   // oublier (réglage changé, test) relit tout et réautorise l'avis d'erreur ;
   // la relecture périodique, elle, ne le répète pas toutes les cinq minutes.
   _rafraichirActivite(toutOublier) {
+    // La chronologie montre aussi les créneaux d'activité.
+    if (typeof TYPE_VUE_CHRONOLOGIE !== 'undefined') {
+      for (const f of this.app.workspace.getLeavesOfType(TYPE_VUE_CHRONOLOGIE)) {
+        try { if (f.view && f.view.rafraichir) f.view.rafraichir(); } catch (e) { /* vue fermée */ }
+      }
+    }
     if (toutOublier) {
       this._activiteSegments = null;
       this._awBucketsCache = null;
@@ -18364,10 +18373,7 @@ const avecActivite = (Base) => class extends Base {
       const lundi = Ariane.grilleSemaine(jourIsoDe(new Date())).lundi;
       for (let i = 0; i < 7; i++) jours.push(Ariane.decalerJour(lundi, i));
     }
-    const auj = jourIsoDe(new Date());
-    let n = 0;
-    for (const j of jours) if (j <= auj) n += await this.resumerActivite(j, { silencieux: true });
-    new obsidian.Notice(n + tr(' créneau(x) résumé(s) sur la semaine.'));
+    await this.resumerJoursActivite(jours);
   }
 
   // ── icônes des applications ────────────────────────────────────────────
@@ -18594,6 +18600,123 @@ const avecActivite = (Base) => class extends Base {
         .filter((x) => x.tache && x.min > 0).sort((a, b) => b.min - a.min).slice(0, 8),
       aRattacher,
     };
+  }
+
+  // ── actions sur le temps réel, communes aux vues ───────────────────────
+  //  Le calendrier et la chronologie proposent les mêmes gestes sur un
+  //  créneau d'activité : ils passent tous par ici. Chaque vue fournit son
+  //  `hote` :
+  //    apres()                     redessiner après un changement ;
+  //    blocsDuJour(jour)           les créneaux du jour qu'elle affiche ;
+  //    ecrireCreneau(ref, d, f)    écrire un créneau prévu (le calendrier y
+  //                                met son annulation) ;
+  //    surRattache(ops, inverse)   après un rattachement (annulation).
+
+  _normaliserHote(hote) {
+    const h = hote || {};
+    return {
+      apres: h.apres || (() => {}),
+      blocsDuJour: h.blocsDuJour || (() => []),
+      ecrireCreneau: h.ecrireCreneau || (async (ref, debut, fin) => {
+        await this.majCreneau(ref, { avant: '', debut, fin });
+        (h.apres || (() => {}))();
+      }),
+      surRattache: h.surRattache || (() => {}),
+    };
+  }
+
+  // Le menu d'un créneau d'activité (clic droit), dans un obsidian.Menu.
+  remplirMenuActivite(m, jour, b, hote) {
+    const h = this._normaliserHote(hote);
+    const resume = b.ia && b.ia.resume ? b.ia.resume : '';
+    m.addItem((i) => i.setTitle(b.ia ? tr('Résumer à nouveau ce créneau (IA)') : tr('Résumer ce créneau (IA)'))
+      .setIcon('sparkles').onClick(() => this.resumerActivite(jour, { cle: b.cle })));
+    m.addItem((i) => i.setTitle(tr('Résumer la journée (IA)')).setIcon('calendar-check')
+      .onClick(() => this.resumerActivite(jour)));
+    m.addSeparator();
+    m.addItem((i) => i.setTitle(b.rattache && b.rattache.length ? tr('Modifier les rattachements…') : tr('Rattacher à une tâche…'))
+      .setIcon('link').onClick(() => this.ouvrirRattachementActivite(jour, [b], hote)));
+    m.addItem((i) => i.setTitle(tr('Rattacher la journée (IA)…')).setIcon('list-checks')
+      .onClick(() => this.ouvrirRattachementActivite(jour, h.blocsDuJour(jour), hote)));
+    m.addItem((i) => i.setTitle(tr('Créer une tâche associée…')).setIcon('file-plus')
+      .onClick(() => this.creerTacheDepuisTemps(resume, (ref) => this.appliquerRattachements([{ ref, id: b.empreinte,
+        apres: Ariane.formatTempsReel({ debut: b.debut, fin: b.fin, min: b.actifMin,
+          quoi: (b.ia ? b.ia.categorie : b.categorie), id: b.empreinte }) }]), hote)));
+    m.addItem((i) => i.setTitle(tr('Poser comme créneau de tâche…')).setIcon('calendar-plus')
+      .onClick(() => this.poserCreneauDepuisTemps(jour, b.debut, b.fin, resume, '', hote)));
+    m.addSeparator();
+    m.addItem((i) => i.setTitle(tr('Ouvrir la fiche')).setIcon('panel-top-open')
+      .onClick(() => this.ouvrirFicheActivite(jour, b, hote)));
+    if (resume) {
+      m.addItem((i) => i.setTitle(tr('Copier le résumé')).setIcon('copy')
+        .onClick(() => { navigator.clipboard.writeText(resume); new obsidian.Notice(tr('Résumé copié.')); }));
+    }
+    if (b.ia) {
+      m.addItem((i) => i.setTitle(tr('Oublier ce résumé')).setIcon('eraser')
+        .onClick(() => this.oublierResumesActivite(b.cle)));
+    }
+  }
+
+  ouvrirFicheActivite(jour, b, hote) {
+    new ModaleActiviteReelle(this, { jour, bloc: b,
+      surRattacher: () => this.ouvrirRattachementActivite(jour, [b], hote) }).open();
+  }
+
+  // Rattacher le temps d'un ou plusieurs créneaux d'un jour à des tâches
+  // (suggestions, IA, choix à la main). Les créneaux personnels sont écartés.
+  ouvrirRattachementActivite(jour, blocs, hote) {
+    const h = this._normaliserHote(hote);
+    const liste = [].concat(blocs || []).filter((x) => !(x.ia && x.ia.personnel));
+    if (!liste.length) { new obsidian.Notice(tr('Rien à rattacher : créneaux personnels.')); return; }
+    new ModaleRattacherActivite(this, { jour, blocs: liste,
+      surFait: (ops, inverse) => { h.surRattache(ops, inverse); h.apres(); } }).open();
+  }
+
+  // Choisir une tâche active (recherche floue).
+  choisirTacheActive(titre, surChoix) {
+    const items = this.tachesRattachables().map((t) => ({ nom: t.ref + ' ' + t.intitule, ref: t.ref }));
+    new ChoixListeModal(this.app, titre, items, (it) => surChoix(it.ref)).open();
+  }
+
+  // Créer une tâche (formulaire pré-rempli), puis `apres(ref)`.
+  creerTacheDepuisTemps(intitule, apres, hote) {
+    const h = this._normaliserHote(hote);
+    new ModaleTache(this.app, this, {
+      defauts: { intitule: intitule || '' },
+      apres: async (ref) => { if (ref && apres) await apres(ref); h.apres(); },
+    }).open();
+  }
+
+  // Poser un créneau PRÉVU aux mêmes horaires sur une tâche (la proposée, ou
+  // celle qu'on choisit) : reporter après coup un travail fait hors plan.
+  poserCreneauDepuisTemps(jour, debut, fin, libelle, refProposee, hote) {
+    const h = this._normaliserHote(hote);
+    const ecrire = (ref) => Promise.resolve(h.ecrireCreneau(ref, debut, fin))
+      .catch((e) => new obsidian.Notice(String((e && e.message) || e)));
+    if (refProposee) { ecrire(refProposee); return; }
+    const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    new ModaleTacheDuCreneau(this.app, this, {
+      taches: this.tachesPourGantt(), jour,
+      horaire: jl.charAt(0).toUpperCase() + jl.slice(1) + ', ' + debut.slice(11, 16) + ' → ' + fin.slice(11, 16)
+        + (libelle ? ' (' + libelle + ')' : ''),
+      surChoix: (ref) => ecrire(ref),
+      surAbandon: () => {},
+      surNouvelle: (texte) => this.creerTacheDepuisTemps(texte || libelle, (ref) => ecrire(ref), hote),
+    }).open();
+  }
+
+  // Résumer plusieurs journées (seulement les jours passés ou le jour même).
+  async resumerJoursActivite(jours) {
+    const auj = jourIsoDe(new Date());
+    const vises = (jours || []).filter((j) => j <= auj);
+    if (!vises.length) return 0;
+    const avis = new obsidian.Notice(tr('Résumé de l\'activité de ') + vises.length + tr(' jour(s)…'), 0);
+    let n = 0;
+    try {
+      for (const j of vises) n += await this.resumerActivite(j, { silencieux: true });
+    } finally { avis.hide(); }
+    new obsidian.Notice(n + tr(' créneau(x) résumé(s).'));
+    return n;
   }
 
   // Tâches actives, pour les suggestions.
@@ -32490,39 +32613,13 @@ class MoteurCalendrier extends MoteurVue {
       // rattacher à une tâche.
       el.addEventListener('click', (e) => {
         e.stopPropagation();
-        new ModaleActiviteReelle(this.greffon, { jour, bloc: b,
-          surRattacher: () => this._rattacherActivite(jour, [b]) }).open();
+        this.greffon.ouvrirFicheActivite(jour, b, this._hoteActivite());
       });
       el.addEventListener('contextmenu', (e) => {
         e.preventDefault(); e.stopPropagation();
+        this._cacherCarteActivite(true);
         const m = new obsidian.Menu();
-        m.addItem((i) => i.setTitle(b.ia ? tr('Résumer à nouveau ce créneau (IA)') : tr('Résumer ce créneau (IA)'))
-          .setIcon('sparkles').onClick(() => this.greffon.resumerActivite(jour, { cle: b.cle })));
-        m.addItem((i) => i.setTitle(tr('Résumer la journée (IA)')).setIcon('calendar-check')
-          .onClick(() => this.greffon.resumerActivite(jour)));
-        m.addItem((i) => i.setTitle(b.rattache && b.rattache.length ? tr('Modifier les rattachements…') : tr('Rattacher à une tâche…'))
-          .setIcon('link').onClick(() => this._rattacherActivite(jour, [b])));
-        m.addItem((i) => i.setTitle(tr('Rattacher la journée (IA)…')).setIcon('list-checks')
-          .onClick(() => this._rattacherActivite(jour, this._activite.get(jour) || [])));
-        m.addSeparator();
-        m.addItem((i) => i.setTitle(tr('Créer une tâche associée…')).setIcon('file-plus')
-          .onClick(() => this._tacheDepuisTemps(b.ia && b.ia.resume ? b.ia.resume : '', (ref) =>
-            this.greffon.appliquerRattachements([{ ref, id: b.empreinte, apres: Ariane.formatTempsReel({ debut: b.debut,
-              fin: b.fin, min: b.actifMin, quoi: (b.ia ? b.ia.categorie : b.categorie), id: b.empreinte }) }]))));
-        m.addItem((i) => i.setTitle(tr('Poser comme créneau de tâche…')).setIcon('calendar-plus')
-          .onClick(() => this._creneauDepuisTemps(jour, b.debut, b.fin, b.ia && b.ia.resume ? b.ia.resume : '')));
-        m.addItem((i) => i.setTitle(tr('Ouvrir la fiche')).setIcon('panel-top-open')
-          .onClick(() => new ModaleActiviteReelle(this.greffon, { jour, bloc: b,
-            surRattacher: () => this._rattacherActivite(jour, [b]) }).open()));
-        if (b.ia && b.ia.resume) {
-          m.addItem((i) => i.setTitle(tr('Copier le résumé')).setIcon('copy')
-            .onClick(() => { navigator.clipboard.writeText(b.ia.resume); new obsidian.Notice(tr('Résumé copié.')); }));
-        }
-        m.addSeparator();
-        if (b.ia) {
-          m.addItem((i) => i.setTitle(tr('Oublier ce résumé')).setIcon('eraser')
-            .onClick(() => this.greffon.oublierResumesActivite(b.cle)));
-        }
+        this.greffon.remplirMenuActivite(m, jour, b, this._hoteActivite());
         m.showAtMouseEvent(e);
       });
     }
@@ -32580,8 +32677,7 @@ class MoteurCalendrier extends MoteurVue {
     action('sparkles', b.ia ? tr('Résumer à nouveau') : tr('Résumer (IA)'),
       () => this.greffon.resumerActivite(jour, { cle: b.cle }));
     action('link', b.rattache && b.rattache.length ? tr('Rattachements') : tr('Rattacher à une tâche'), () => this._rattacherActivite(jour, [b]));
-    action('panel-top-open', tr('Fiche'), () => new ModaleActiviteReelle(this.greffon, { jour, bloc: b,
-      surRattacher: () => this._rattacherActivite(jour, [b]) }).open());
+    action('panel-top-open', tr('Fiche'), () => this.greffon.ouvrirFicheActivite(jour, b, this._hoteActivite()));
     let tout = false;
     this.greffon.applicationsBlocActivite(jour, b).then((liste) => {
       if (this._carteActivite !== carte) return;
@@ -32696,52 +32792,31 @@ class MoteurCalendrier extends MoteurVue {
     m.showAtMouseEvent(e);
   }
 
-  // Choisir une tâche active (recherche floue).
-  _choisirTache(titre, surChoix) {
-    const items = this.greffon.tachesRattachables().map((t) => ({ nom: t.ref + ' ' + t.intitule, ref: t.ref }));
-    new ChoixListeModal(this.app, titre, items, (it) => surChoix(it.ref)).open();
-  }
-
-  // Créer une tâche (formulaire pré-rempli), puis `apres(ref)`.
-  _tacheDepuisTemps(intitule, apres) {
-    new ModaleTache(this.app, this.greffon, {
-      defauts: { intitule: intitule || '' },
-      apres: async (ref) => { if (ref && apres) await apres(ref); this.dessiner(); },
-    }).open();
-  }
-
-  // Poser un créneau PRÉVU aux mêmes horaires sur une tâche choisie (pour
-  // reporter après coup dans le planning un travail fait hors plan).
-  _creneauDepuisTemps(jour, debut, fin, libelle, refProposee) {
-    const ecrire = async (ref) => {
-      await this._majCreneauU(ref, { avant: '', debut, fin });
-      this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
-    };
-    if (refProposee) { ecrire(refProposee); return; }
-    const taches = this._tachesBrutes || this._taches || [];
-    const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    new ModaleTacheDuCreneau(this.app, this.greffon, {
-      taches, jour,
-      horaire: jl.charAt(0).toUpperCase() + jl.slice(1) + ', ' + debut.slice(11, 16) + ' → ' + fin.slice(11, 16)
-        + (libelle ? ' (' + libelle + ')' : ''),
-      surChoix: (ref) => { ecrire(ref).catch((e) => new obsidian.Notice(String(e && e.message || e))); },
-      surAbandon: () => {},
-      surNouvelle: (texte) => this._tacheDepuisTemps(texte || libelle, (ref) => ecrire(ref)),
-    }).open();
-  }
-
-  // Rattacher le temps réel d'un ou plusieurs créneaux d'un jour à des tâches
-  // (suggestions, IA, choix à la main). ⌘Z défait l'ensemble.
-  _rattacherActivite(jour, blocs) {
-    const liste = [].concat(blocs || []).filter((b) => !(b.ia && b.ia.personnel));
-    if (!liste.length) { new obsidian.Notice(tr('Rien à rattacher : créneaux personnels.')); return; }
-    new ModaleRattacherActivite(this.greffon, { jour, blocs: liste,
-      surFait: (ops, inverse) => {
+  // Ce que le calendrier apporte aux actions communes sur le temps réel
+  // (greffon, 11m) : son redessin, ses créneaux du jour, et l'annulation
+  // (⌘Z) de ses écritures.
+  _hoteActivite() {
+    return {
+      apres: () => this.dessiner(),
+      blocsDuJour: (j) => this._activite.get(j) || [],
+      ecrireCreneau: async (ref, debut, fin) => {
+        await this._majCreneauU(ref, { avant: '', debut, fin });
+        this._apres(ref, { cible: [undefined, undefined, null], creneaux: undefined });
+      },
+      surRattache: (ops, inverse) => {
         if (this.racine && this.racine.focus) this.racine.focus({ preventScroll: true });
         poserAnnulation(this, () => this.greffon.appliquerRattachements(inverse),
           () => this.greffon.appliquerRattachements(ops));
-      } }).open();
+      },
+    };
   }
+
+  _choisirTache(titre, surChoix) { this.greffon.choisirTacheActive(titre, surChoix); }
+  _tacheDepuisTemps(intitule, apres) { this.greffon.creerTacheDepuisTemps(intitule, apres, this._hoteActivite()); }
+  _creneauDepuisTemps(jour, debut, fin, libelle, refProposee) {
+    this.greffon.poserCreneauDepuisTemps(jour, debut, fin, libelle, refProposee, this._hoteActivite());
+  }
+  _rattacherActivite(jour, blocs) { this.greffon.ouvrirRattachementActivite(jour, blocs, this._hoteActivite()); }
 
   //#endregion Calendrier · activité réelle
 
@@ -37866,6 +37941,8 @@ class VueChronologie extends obsidian.ItemView {
   }
 
   dessiner(evts, b, auj, departChaleur) {
+    this._evts = evts;
+    this._bornes = b;
     const c = this.contentEl;
     // Le journal prévient la vue à chaque nouvel événement : redessiner ne
     // doit pas ramener la lecture en haut de page.
@@ -37905,7 +37982,18 @@ class VueChronologie extends obsidian.ItemView {
       const ici = nav.createEl('button', { cls: 'zfa-chrono-auj', text: tr("Aujourd'hui") });
       ici.onclick = () => this._changer({ ancre: auj });
     }
-    const seg = barre.createDiv({ cls: 'zfa-chrono-seg' });
+    const droite = barre.createDiv({ cls: 'zfa-chrono-droite' });
+    if (this.greffon.activiteDisponible && this.greffon.activiteDisponible()) {
+      const ia = droite.createEl('button', { cls: 'zfa-chrono-ia' });
+      obsidian.setIcon(ia.createSpan({ cls: 'zfa-chrono-jour-bt-ic' }), 'sparkles');
+      ia.createSpan({ text: tr('Résumer la période (IA)') });
+      ia.onclick = () => {
+        const jours = [];
+        for (let j = b.debut; j < b.fin; j = Ariane.decalerJour(j, 1)) jours.push(j);
+        this.greffon.resumerJoursActivite(jours);
+      };
+    }
+    const seg = droite.createDiv({ cls: 'zfa-chrono-seg' });
     for (const [p, l] of [['jour', 'Jour'], ['semaine', 'Semaine'], ['mois', 'Mois'], ['annee', 'Année']]) {
       const o = seg.createDiv({ cls: 'zfa-chrono-seg-btn' + (this.periode === p ? ' is-active' : ''), text: tr(l) });
       o.onclick = () => this._changer({ periode: p });
@@ -37949,6 +38037,19 @@ class VueChronologie extends obsidian.ItemView {
       tj.createSpan({ cls: 'zfa-chrono-jour-nom', text: nom.charAt(0).toUpperCase() + nom.slice(1) });
       const n = totaux.get(jour) || liste.length;
       tj.createSpan({ cls: 'zfa-chrono-badge', text: String(n), attr: { 'aria-label': n + ' ' + (n > 1 ? tr('événements') : tr('événement')) } });
+      // Un jour avec du temps hors Obsidian : le résumer, le rattacher.
+      if (liste.some((x) => x.type === 'activite')) {
+        const act = tj.createDiv({ cls: 'zfa-chrono-jour-actions' });
+        const bouton = (icone, libelle, faire) => {
+          const x = act.createEl('button', { cls: 'zfa-chrono-jour-bt' });
+          obsidian.setIcon(x.createSpan({ cls: 'zfa-chrono-jour-bt-ic' }), icone);
+          x.createSpan({ text: libelle });
+          x.onclick = faire;
+        };
+        bouton('sparkles', tr('Résumer la journée'), () => this.greffon.resumerActivite(jour));
+        bouton('link', tr('Rattacher'), () => this.greffon.ouvrirRattachementActivite(jour,
+          this._hoteActivite().blocsDuJour(jour), this._hoteActivite()));
+      }
       const fil = hote.createDiv({ cls: 'zfa-chrono-fil' });
       for (const e of liste) this._dessinerEvenement(fil, e);
     }
@@ -38004,7 +38105,28 @@ class VueChronologie extends obsidian.ItemView {
       carte.addEventListener('click', (ev) => {
         this.app.workspace.getLeaf(!!(ev.metaKey || ev.ctrlKey)).openFile(f);
       });
+      // Le menu d'Obsidian pour ce fichier (ouvrir, révéler, déplacer…),
+      // enrichi par les greffons comme partout ailleurs.
+      carte.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault(); ev.stopPropagation();
+        const m = new obsidian.Menu();
+        m.addItem((i) => i.setTitle(tr('Ouvrir dans un nouvel onglet')).setIcon('file-plus')
+          .onClick(() => this.app.workspace.getLeaf('tab').openFile(f)));
+        m.addSeparator();
+        this.app.workspace.trigger('file-menu', m, f, 'ariane-chronologie');
+        m.showAtMouseEvent(ev);
+      });
     }
+  }
+
+  // Ce que la chronologie apporte aux actions communes sur le temps réel
+  // (les mêmes que dans le calendrier, voir greffon 11m) : son
+  // rafraîchissement et les créneaux d'un jour qu'elle a lus.
+  _hoteActivite() {
+    return {
+      apres: () => this.rafraichir(),
+      blocsDuJour: (jour) => (this._evts || []).filter((x) => x.type === 'activite' && x.jour === jour).map((x) => x.bloc),
+    };
   }
 
   // Un créneau d'activité hors d'Obsidian : son résumé (ou sa catégorie), sa
@@ -38029,7 +38151,13 @@ class VueChronologie extends obsidian.ItemView {
     for (const r of (b.rattache || [])) meta.createSpan({ cls: 'zfa-chrono-etiquette est-tache', text: r.ref + ' ' + dureeLisible(r.min) });
     const det = (b.details || []).filter((x) => x.min > 0).slice(0, 4);
     if (det.length) carte.createDiv({ cls: 'zfa-chrono-extrait', text: det.map((x) => x.libelle + ' (' + dureeLisible(x.min) + ')').join('\n') });
-    carte.addEventListener('click', () => new ModaleActiviteReelle(this.greffon, { jour: e.jour, bloc: b }).open());
+    carte.addEventListener('click', () => this.greffon.ouvrirFicheActivite(e.jour, b, this._hoteActivite()));
+    carte.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      const m = new obsidian.Menu();
+      this.greffon.remplirMenuActivite(m, e.jour, b, this._hoteActivite());
+      m.showAtMouseEvent(ev);
+    });
   }
 
   _dessinerChaleur(hote, evts, auj) {

@@ -4156,3 +4156,15 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
   background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--zfa-chrono-coul) 30%, var(--background-primary)) 0 3px, var(--background-primary) 3px 6px);
 }
 .zfa-chrono-etiquette.est-tache { color: var(--text-accent); }
+.zfa-chrono-droite { display: flex; align-items: center; gap: var(--size-4-2); }
+.zfa-chrono-ia, .zfa-chrono-jour-bt {
+  display: inline-flex; align-items: center; gap: 5px; height: auto; padding: 3px 9px; cursor: pointer;
+  font-size: var(--font-ui-smaller); color: var(--text-muted); background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); box-shadow: none;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.zfa-chrono-ia:hover, .zfa-chrono-jour-bt:hover { color: var(--text-normal); background: var(--background-modifier-hover); border-color: var(--background-modifier-border-hover); }
+.zfa-chrono-jour-bt-ic { display: inline-flex; }
+.zfa-chrono-jour-bt-ic svg { width: 12px; height: 12px; }
+.zfa-chrono-jour-actions { margin-left: auto; display: flex; gap: 4px; opacity: 0.7; transition: opacity 0.12s ease; }
+.zfa-chrono-jour:hover .zfa-chrono-jour-actions { opacity: 1; }

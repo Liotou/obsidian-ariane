@@ -1448,6 +1448,8 @@ class VueChronologie extends obsidian.ItemView {
   }
 
   dessiner(evts, b, auj, departChaleur) {
+    this._evts = evts;
+    this._bornes = b;
     const c = this.contentEl;
     // Le journal prévient la vue à chaque nouvel événement : redessiner ne
     // doit pas ramener la lecture en haut de page.
@@ -1487,7 +1489,18 @@ class VueChronologie extends obsidian.ItemView {
       const ici = nav.createEl('button', { cls: 'zfa-chrono-auj', text: tr("Aujourd'hui") });
       ici.onclick = () => this._changer({ ancre: auj });
     }
-    const seg = barre.createDiv({ cls: 'zfa-chrono-seg' });
+    const droite = barre.createDiv({ cls: 'zfa-chrono-droite' });
+    if (this.greffon.activiteDisponible && this.greffon.activiteDisponible()) {
+      const ia = droite.createEl('button', { cls: 'zfa-chrono-ia' });
+      obsidian.setIcon(ia.createSpan({ cls: 'zfa-chrono-jour-bt-ic' }), 'sparkles');
+      ia.createSpan({ text: tr('Résumer la période (IA)') });
+      ia.onclick = () => {
+        const jours = [];
+        for (let j = b.debut; j < b.fin; j = Ariane.decalerJour(j, 1)) jours.push(j);
+        this.greffon.resumerJoursActivite(jours);
+      };
+    }
+    const seg = droite.createDiv({ cls: 'zfa-chrono-seg' });
     for (const [p, l] of [['jour', 'Jour'], ['semaine', 'Semaine'], ['mois', 'Mois'], ['annee', 'Année']]) {
       const o = seg.createDiv({ cls: 'zfa-chrono-seg-btn' + (this.periode === p ? ' is-active' : ''), text: tr(l) });
       o.onclick = () => this._changer({ periode: p });
@@ -1531,6 +1544,19 @@ class VueChronologie extends obsidian.ItemView {
       tj.createSpan({ cls: 'zfa-chrono-jour-nom', text: nom.charAt(0).toUpperCase() + nom.slice(1) });
       const n = totaux.get(jour) || liste.length;
       tj.createSpan({ cls: 'zfa-chrono-badge', text: String(n), attr: { 'aria-label': n + ' ' + (n > 1 ? tr('événements') : tr('événement')) } });
+      // Un jour avec du temps hors Obsidian : le résumer, le rattacher.
+      if (liste.some((x) => x.type === 'activite')) {
+        const act = tj.createDiv({ cls: 'zfa-chrono-jour-actions' });
+        const bouton = (icone, libelle, faire) => {
+          const x = act.createEl('button', { cls: 'zfa-chrono-jour-bt' });
+          obsidian.setIcon(x.createSpan({ cls: 'zfa-chrono-jour-bt-ic' }), icone);
+          x.createSpan({ text: libelle });
+          x.onclick = faire;
+        };
+        bouton('sparkles', tr('Résumer la journée'), () => this.greffon.resumerActivite(jour));
+        bouton('link', tr('Rattacher'), () => this.greffon.ouvrirRattachementActivite(jour,
+          this._hoteActivite().blocsDuJour(jour), this._hoteActivite()));
+      }
       const fil = hote.createDiv({ cls: 'zfa-chrono-fil' });
       for (const e of liste) this._dessinerEvenement(fil, e);
     }
@@ -1586,7 +1612,28 @@ class VueChronologie extends obsidian.ItemView {
       carte.addEventListener('click', (ev) => {
         this.app.workspace.getLeaf(!!(ev.metaKey || ev.ctrlKey)).openFile(f);
       });
+      // Le menu d'Obsidian pour ce fichier (ouvrir, révéler, déplacer…),
+      // enrichi par les greffons comme partout ailleurs.
+      carte.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault(); ev.stopPropagation();
+        const m = new obsidian.Menu();
+        m.addItem((i) => i.setTitle(tr('Ouvrir dans un nouvel onglet')).setIcon('file-plus')
+          .onClick(() => this.app.workspace.getLeaf('tab').openFile(f)));
+        m.addSeparator();
+        this.app.workspace.trigger('file-menu', m, f, 'ariane-chronologie');
+        m.showAtMouseEvent(ev);
+      });
     }
+  }
+
+  // Ce que la chronologie apporte aux actions communes sur le temps réel
+  // (les mêmes que dans le calendrier, voir greffon 11m) : son
+  // rafraîchissement et les créneaux d'un jour qu'elle a lus.
+  _hoteActivite() {
+    return {
+      apres: () => this.rafraichir(),
+      blocsDuJour: (jour) => (this._evts || []).filter((x) => x.type === 'activite' && x.jour === jour).map((x) => x.bloc),
+    };
   }
 
   // Un créneau d'activité hors d'Obsidian : son résumé (ou sa catégorie), sa
@@ -1611,7 +1658,13 @@ class VueChronologie extends obsidian.ItemView {
     for (const r of (b.rattache || [])) meta.createSpan({ cls: 'zfa-chrono-etiquette est-tache', text: r.ref + ' ' + dureeLisible(r.min) });
     const det = (b.details || []).filter((x) => x.min > 0).slice(0, 4);
     if (det.length) carte.createDiv({ cls: 'zfa-chrono-extrait', text: det.map((x) => x.libelle + ' (' + dureeLisible(x.min) + ')').join('\n') });
-    carte.addEventListener('click', () => new ModaleActiviteReelle(this.greffon, { jour: e.jour, bloc: b }).open());
+    carte.addEventListener('click', () => this.greffon.ouvrirFicheActivite(e.jour, b, this._hoteActivite()));
+    carte.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      const m = new obsidian.Menu();
+      this.greffon.remplirMenuActivite(m, e.jour, b, this._hoteActivite());
+      m.showAtMouseEvent(ev);
+    });
   }
 
   _dessinerChaleur(hote, evts, auj) {
