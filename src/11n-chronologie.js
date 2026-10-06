@@ -279,7 +279,7 @@ const avecChronologie = (Base) => class extends Base {
     if (this._chronoCfgCache && this._chronoCfgCache.sig === sig) return this._chronoCfgCache.cfg;
     const lignes = (t) => String(t || '').split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
     const exclus = lignes(s.chronoDossiersExclus);
-    // Le journal du temps est un produit d'Ariane, pas une activité.
+    // L'ancien journal du temps (s'il reste) est un produit d'Ariane, pas une activité.
     exclus.push(String(s.tempsDossierJournal || '9 - Journal du temps'));
     const cfg = {
       exclus,
@@ -291,7 +291,7 @@ const avecChronologie = (Base) => class extends Base {
   }
 
   // Le journal d'un mois ('AAAA-MM') : { jour: [événements] }, assemblé à
-  // partir des fichiers du jour du journal du temps (voir avecDonneesJour) ;
+  // partir des fichiers du jour (.ariane/jours, voir avecDonneesJour) ;
   // les listes sont celles de ces fichiers, si bien qu'y ajouter un
   // événement l'ajoute au jour. Une seule lecture par mois et par session.
   _chronoMois(mois) {

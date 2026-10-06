@@ -1032,6 +1032,10 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
+    "Temps dans Obsidian": "Time in Obsidian",
+    "Relevé quotidien": "Daily record",
+    "Jours gardés en mémoire": "Days kept in memory",
+    "Bilan de la journée prêt : il s’affiche dans la chronologie.": "Day summary ready: it shows in the timeline.",
     "Dossiers sans bibliographie": "Folders without bibliography",
     "Les notes de ces dossiers, et de leurs sous-dossiers, ne reçoivent pas de bibliographie de fin de note, ni automatiquement ni par les commandes. Un bloc déjà présent y est laissé tel quel.": "Notes in these folders, and their subfolders, get no end-of-note bibliography, neither automatically nor through the commands. A block already there is left as is.",
     "Ajouter un dossier": "Add a folder",
@@ -1543,8 +1547,7 @@ const DEFAULT_SETTINGS = {
   tempsDossiersExclus: '',              // dossiers non chronométrés (sous-dossiers compris)
   tempsBarreEtat: true,
   tempsInfobulleExplorateur: true,
-  tempsDossierJournal: '',      // rôle : où écrire le journal du compteur
-  tempsJournalAuto: true,               // écrire le journal au changement de jour
+  tempsDossierJournal: '',      // ancien journal du temps (lu seulement par la migration des données)
   tempsHistorique: {},                  // { 'AAAA-MM-JJ': { chemin: secondes } }
   // Total de référence, en secondes, par note. La propriété du frontmatter en
   // est dérivée : arrondir à chaque report, en repartant d'une valeur déjà
@@ -1580,7 +1583,7 @@ const DEFAULT_SETTINGS = {
   activiteIAModele: '',                 // modèle Ollama, LM Studio ou Mistral ('' = celui de l'assistant)
   activiteIAModeleClaude: 'haiku',      // modèle si le fournisseur est Claude en ligne de commande
   resumeJourneeHeure: '',               // résumé de la journée par l'IA à cette heure (HH:MM), '' = jamais
-  donneesJourVersion: 0,                // 1 : données du temps rangées par jour (journal du temps/.données)
+  donneesJourVersion: 0,                // 1 : données rangées par jour ; 2 : dans .ariane/jours, sans journal du temps
   activiteIAAuto: false,                // résumer seul les journées passées affichées
   activiteIACouleur: true,              // colorer les créneaux résumés selon leur catégorie IA
   activiteIAContexte: "Monsieur est doctorant en sciences de gestion (risque systémique, accidents NaTech) et enseigne (cours, TD, ateliers). Il travaille surtout dans Obsidian, Zotero, Word, Excel, Teams, Mail et Safari.",
@@ -17118,7 +17121,7 @@ const avecTaches = (Base) => class extends Base {
     if (this.settings.tempsBarreEtat) {
       this._tempsBarre = this.addStatusBarItem();
       this._tempsBarre.addClass('zfa-temps-barre');
-      this._tempsBarre.addEventListener('click', () => this.ouvrirBilanTemps());
+      this._tempsBarre.addEventListener('click', () => this.ouvrirChronologie());
     }
 
     // Report en propriété à intervalle régulier, et non à chaque seconde :
@@ -17139,8 +17142,8 @@ const avecTaches = (Base) => class extends Base {
     return dossier + '/sessions-travail.jsonl';
   }
 
-  // Les sessions des deux derniers mois, lues dans les fichiers du jour du
-  // journal du temps (voir avecDonneesJour).
+  // Les sessions des deux derniers mois, lues dans les fichiers du jour
+  // (.ariane/jours, voir avecDonneesJour).
   async chargerSessionsTravail() {
     const seuil = Ariane.decalerJour(jourIsoDe(new Date()), -62);
     const lues = (await this.listesDepuis('sessions', seuil)).filter((x) => x && x.chemin);
@@ -17253,11 +17256,7 @@ const avecTaches = (Base) => class extends Base {
     const jour = jourIsoDe(new Date());
     if (jour !== this._tempsDernierJour) {
       this.reporterTemps();
-      const veille = this._tempsDernierJour;
       this._tempsDernierJour = jour;
-      if (this.settings.tempsJournalAuto) {
-        this.ecrireJournalTemps(veille).catch((e) => console.error('[Ariane] journal du temps', e));
-      }
     }
 
     const chemin = this.noteChronometrable();
@@ -17327,7 +17326,7 @@ const avecTaches = (Base) => class extends Base {
   // les notes en attente.
   async reporterTemps(cheminVoulu) {
     // Le relevé du jour (et de la veille, pour un report à minuit) rejoint
-    // le fichier du jour du journal du temps.
+    // le fichier du jour (.ariane/jours).
     if (this.marquerJourSale) {
       const auj = jourIsoDe(new Date());
       for (const j of [auj, Ariane.decalerJour(auj, -1)]) {
@@ -17358,65 +17357,6 @@ const avecTaches = (Base) => class extends Base {
       }
     }
     await this.saveSettings();
-  }
-
-  /* ------------------------- Journal quotidien --------------------------- */
-
-  async ecrireJournalTemps(jour, opts) {
-    const o = opts || {};
-    const j = jour || jourIsoDe(new Date());
-    await this.reporterTemps();
-    const releve = (this.settings.tempsHistorique || {})[j] || {};
-    const lignes = Object.entries(releve)
-      .map(([chemin, secondes]) => [chemin, secondes / 60])
-      .filter(([, m]) => m >= 1)
-      .sort((a, b) => b[1] - a[1]);
-    // Le résumé de la journée par l'IA, s'il existe, ouvre la note.
-    const resume = this.resumeDeLaJournee ? await this.resumeDeLaJournee(j) : '';
-
-    if (!lignes.length && !resume) {
-      if (!o.silencieux) new obsidian.Notice(tr('Aucun temps enregistré pour le ') + j + '.');
-      return '';
-    }
-
-    const dossier = (this.settings.tempsDossierJournal || '9 - Journal du temps').replace(/\/+$/, '');
-    if (!this.app.vault.getAbstractFileByPath(dossier)) {
-      try { await this.app.vault.createFolder(dossier); } catch (e) { /* déjà là */ }
-    }
-
-    const total = lignes.reduce((s, [, m]) => s + m, 0);
-    const out = ['---', 'Type: journal-temps', 'Date: ' + j,
-      'Journal - Minutes totales: ' + Math.round(total), '---',
-      '# Temps de travail du ' + j, ''];
-    if (resume) {
-      out.push('## Résumé de la journée', Ariane.RESUME_JOURNEE_DEBUT, resume, Ariane.RESUME_JOURNEE_FIN, '');
-    }
-    if (lignes.length) {
-      if (resume) out.push('## Temps par note', '');
-      out.push('**Total : ' + dureeLisible(total) + '** sur ' + lignes.length + ' note(s).', '',
-        '| Note | Temps |', '| --- | --- |');
-      for (const [chemin, m] of lignes) {
-        const nom = chemin.replace(/\.md$/, '');
-        out.push('| [[' + nom + ']] | ' + dureeLisible(m) + ' |');
-      }
-      out.push('');
-    }
-
-    const chemin = dossier + '/' + j + '.md';
-    const existant = this.app.vault.getAbstractFileByPath(chemin);
-    if (existant instanceof obsidian.TFile) {
-      this.marquerEcriture(chemin);
-      await this.app.vault.modify(existant, out.join('\n'));
-    } else {
-      await this.ecrire(chemin, out.join('\n'));
-    }
-    return chemin;
-  }
-
-  async ouvrirBilanTemps() {
-    const chemin = await this.ecrireJournalTemps();
-    if (!chemin) return;
-    await this.app.workspace.openLinkText(chemin.replace(/\.md$/, ''), '', false);
   }
 
   // Écarte les relevés trop anciens, pour que le fichier de réglages ne gonfle
@@ -19459,7 +19399,7 @@ const avecChronologie = (Base) => class extends Base {
     if (this._chronoCfgCache && this._chronoCfgCache.sig === sig) return this._chronoCfgCache.cfg;
     const lignes = (t) => String(t || '').split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
     const exclus = lignes(s.chronoDossiersExclus);
-    // Le journal du temps est un produit d'Ariane, pas une activité.
+    // L'ancien journal du temps (s'il reste) est un produit d'Ariane, pas une activité.
     exclus.push(String(s.tempsDossierJournal || '9 - Journal du temps'));
     const cfg = {
       exclus,
@@ -19471,7 +19411,7 @@ const avecChronologie = (Base) => class extends Base {
   }
 
   // Le journal d'un mois ('AAAA-MM') : { jour: [événements] }, assemblé à
-  // partir des fichiers du jour du journal du temps (voir avecDonneesJour) ;
+  // partir des fichiers du jour (.ariane/jours, voir avecDonneesJour) ;
   // les listes sont celles de ces fichiers, si bien qu'y ajouter un
   // événement l'ajoute au jour. Une seule lecture par mois et par session.
   _chronoMois(mois) {
@@ -19799,11 +19739,11 @@ const avecChronologie = (Base) => class extends Base {
 };
 // ── avecDonneesJour ───────────────────────────────────────────────────────
 // Domaine : les données du temps et de l'activité, rangées par jour.
-// Un fichier JSON par jour dans « <journal du temps>/.données/AAAA-MM-JJ.json »,
-// à côté de la note du journal : il suit la sauvegarde et la synchronisation
-// du coffre, et Obsidian ne le traite pas comme une note (ni recherche, ni
-// graphe, ni bases). Il réunit ce qui était dispersé entre les réglages et le
-// dossier du greffon :
+// Un fichier JSON par jour dans « .ariane/jours/AAAA-MM-JJ.json », caché à la
+// racine du coffre : il suit sa sauvegarde, et Obsidian ne le traite pas comme
+// une note (ni recherche, ni graphe, ni bases). La chronologie l'affiche. Il
+// réunit ce qui était dispersé entre les réglages, le dossier du greffon et
+// les notes de l'ancien journal du temps :
 //   temps         secondes par note (le compteur de temps)
 //   sessions      sessions de travail dans Obsidian (heures)
 //   onglets       onglets de Safari relevés par Ariane
@@ -19817,10 +19757,7 @@ const avecDonneesJour = (Base) => class extends Base {
   //#region Ariane · données par jour
   // ── données par jour ────────────────────────────────────────────────────
 
-  get dossierDonneesJour() {
-    const j = String(this.settings.tempsDossierJournal || '07 - Journal du temps').replace(/\/+$/, '');
-    return j + '/.données';
-  }
+  get dossierDonneesJour() { return '.ariane/jours'; }
 
   cheminDonneesJour(jour) { return this.dossierDonneesJour + '/' + jour + '.json'; }
 
@@ -19858,6 +19795,14 @@ const avecDonneesJour = (Base) => class extends Base {
     this._joursMinuterie = setTimeout(() => this.ecrireDonneesJours(), 5000);
   }
 
+  async _creerDossierDonneesJour() {
+    const a = this.app.vault.adapter;
+    const j = this.dossierDonneesJour;
+    const parent = j.split('/').slice(0, -1).join('/');
+    if (parent && !(await a.exists(parent))) await a.mkdir(parent);
+    if (!(await a.exists(j))) await a.mkdir(j);
+  }
+
   async ecrireDonneesJours() {
     clearTimeout(this._joursMinuterie);
     const sales = [...(this._joursSales || [])];
@@ -19865,10 +19810,7 @@ const avecDonneesJour = (Base) => class extends Base {
     this._joursSales = new Set();
     const a = this.app.vault.adapter;
     try {
-      const j = this.dossierDonneesJour;
-      const parent = j.split('/').slice(0, -1).join('/');
-      if (parent && !(await a.exists(parent))) await a.mkdir(parent);
-      if (!(await a.exists(j))) await a.mkdir(j);
+      await this._creerDossierDonneesJour();
       for (const jour of sales) {
         const o = await this.donneesJour(jour);
         // Le compteur de temps tient son relevé en mémoire : il rejoint le
@@ -19922,7 +19864,12 @@ const avecDonneesJour = (Base) => class extends Base {
   //  « .avant-donnees-jour », le temps de vérifier.
 
   async migrerVersDonneesJour() {
-    if (Number(this.settings.donneesJourVersion) >= 1) return;
+    const v = Number(this.settings.donneesJourVersion) || 0;
+    if (v < 1) await this._migrerDonneesV1();
+    if (v < 2) await this._migrerDonneesV2();
+  }
+
+  async _migrerDonneesV1() {
     const a = this.app.vault.adapter;
     const dir = (this.manifest && this.manifest.dir) || '.obsidian/plugins/obsidian-ariane';
     const lire = async (c) => { try { return (await a.exists(c)) ? await a.read(c) : ''; } catch (e) { return ''; } };
@@ -19990,6 +19937,85 @@ const avecDonneesJour = (Base) => class extends Base {
     if (n) new obsidian.Notice(tr('Données du temps et de l’activité rangées par jour dans ') + this.dossierDonneesJour + ' (' + n + ').', 8000);
   }
 
+  // Version 2 : plus de notes de journal du temps. Les fichiers du jour
+  // quittent « <journal du temps>/.données » pour « .ariane/jours » (fusionnés
+  // si les deux existent), puis le dossier du journal part à la corbeille du
+  // système, s'il ne contient que des notes datées.
+  async _migrerDonneesV2() {
+    const a = this.app.vault.adapter;
+    const ancien = String(this.settings.tempsDossierJournal || '07 - Journal du temps').replace(/^\/+|\/+$/g, '');
+    const vieux = ancien + '/.données';
+    let n = 0;
+    try {
+      if (await a.exists(vieux)) {
+        // Ce qui est déjà en mémoire part d'abord sur le disque, au nouvel
+        // endroit ; le cache est ensuite relu.
+        await this.ecrireDonneesJours();
+        await this._creerDossierDonneesJour();
+        const l = await a.list(vieux);
+        for (const f of (l.files || [])) {
+          const nom = f.split('/').pop();
+          const dest = this.dossierDonneesJour + '/' + nom;
+          if (await a.exists(dest)) {
+            const o = Ariane.fusionnerDonneesJour(JSON.parse(await a.read(dest)), JSON.parse(await a.read(f)));
+            await a.write(dest, JSON.stringify(o, null, 1));
+            await a.remove(f);
+          } else {
+            await a.rename(f, dest);
+          }
+          n++;
+        }
+        try { await a.rmdir(vieux, false); } catch (e) { /* pas vide */ }
+        this._jours = new Map();
+      }
+    } catch (e) {
+      console.error('[Ariane] déplacement des données par jour', e);
+      return; // on réessaiera au prochain démarrage
+    }
+    let retire = false;
+    const dossier = this.app.vault.getAbstractFileByPath && this.app.vault.getAbstractFileByPath(ancien);
+    if (dossier && dossier instanceof obsidian.TFolder && !(await a.exists(vieux))) {
+      const enfants = dossier.children || [];
+      const seulementJournal = enfants.every((f) => f instanceof obsidian.TFile && /^\d{4}-\d{2}-\d{2}\.md$/.test(f.name));
+      if (seulementJournal) {
+        try { await this.app.vault.trash(dossier, true); retire = true; } catch (e) { console.error('[Ariane] journal du temps', e); }
+      }
+    }
+    this.settings.donneesJourVersion = 2;
+    await this.saveSettings();
+    if (n || retire) {
+      new obsidian.Notice(tr('Journal du temps : les données du jour sont désormais dans ') + this.dossierDonneesJour
+        + (retire ? tr(', et le dossier « ') + ancien + tr(' » est dans la corbeille.') : '.'), 10000);
+    }
+  }
+
+  // Deux versions d'un même jour réunies : listes mises bout à bout (sans
+  // doublon exact), objets complétés, le reste gardé de `a`.
+  static fusionnerDonneesJour(a, b) {
+    const o = Object.assign({}, b || {}, a || {});
+    for (const [k, vb] of Object.entries(b || {})) {
+      const va = (a || {})[k];
+      if (Array.isArray(va) && Array.isArray(vb)) {
+        const vus = new Set(va.map((x) => JSON.stringify(x)));
+        o[k] = va.concat(vb.filter((x) => !vus.has(JSON.stringify(x))));
+      } else if (va && vb && typeof va === 'object' && typeof vb === 'object' && !Array.isArray(va)) {
+        o[k] = Object.assign({}, vb, va);
+      }
+    }
+    return o;
+  }
+
+  // Le temps passé dans chaque note un jour donné, en minutes, du plus long
+  // au plus court (une minute au moins).
+  async tempsDuJour(jour) {
+    const m = Object.assign({}, (await this.donneesJour(jour)).temps || {});
+    for (const [c, sec] of Object.entries((this.settings.tempsHistorique || {})[jour] || {})) {
+      m[c] = Math.max(Number(m[c]) || 0, Number(sec) || 0);
+    }
+    return Object.entries(m).map(([chemin, sec]) => ({ chemin, min: (Number(sec) || 0) / 60 }))
+      .filter((x) => x.min >= 1).sort((x, y) => y.min - x.min);
+  }
+
   //#endregion Ariane · données par jour
 
   //#region Ariane · résumé de la journée
@@ -19998,12 +20024,8 @@ const avecDonneesJour = (Base) => class extends Base {
   //  été accompli, où le temps est allé, les moments de distraction, à partir
   //  de tous les créneaux (dans Obsidian et hors d'Obsidian), des tâches
   //  terminées et des notes créées. Écrit pour être lu à voix haute. Il se
-  //  retrouve toujours au même endroit :
-  //    .données/AAAA-MM-JJ.json  →  resumeJournee.texte
-  //    la note du journal du jour, section « Résumé de la journée ».
-
-  static get RESUME_JOURNEE_DEBUT() { return '%% ariane:resume-journee %%'; }
-  static get RESUME_JOURNEE_FIN() { return '%% /ariane:resume-journee %%'; }
+  //  retrouve toujours au même endroit : .ariane/jours/AAAA-MM-JJ.json, clé
+  //  resumeJournee.texte ; la chronologie l'affiche sous le jour.
 
   // La matière du résumé, en lignes lisibles par l'IA.
   async _matiereJournee(jour) {
@@ -20112,9 +20134,8 @@ const avecDonneesJour = (Base) => class extends Base {
     d.resumeJournee = { texte, le: new Date().toISOString(), modele: this.settings.activiteIAFournisseur || this.settings.refsFournisseur || '' };
     this.marquerJourSale(j);
     await this.ecrireDonneesJours();
-    await this.ecrireJournalTemps(j, { silencieux: true });
     this._signalerResumeJournee();
-    if (!o.silencieux) new obsidian.Notice(tr('Résumé de la journée écrit dans le journal du temps.'));
+    if (!o.silencieux) new obsidian.Notice(tr('Bilan de la journée prêt : il s’affiche dans la chronologie.'));
     return texte;
   }
 
@@ -20438,11 +20459,6 @@ class Ariane extends composer(obsidian.Plugin,
           if (it) new ModaleTache(this.app, this, { ref: it.cle }).open();
         }).open();
       },
-    });
-    this.addCommand({
-      id: 'temps-journal',
-      name: tr('Temps : écrire le journal du jour'),
-      callback: () => this.ouvrirBilanTemps(),
     });
     this.addCommand({
       id: 'temps-reporter',
@@ -22097,7 +22113,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     role(tr('Références en attente'), 'dossierReferences', tr("Références citées mais pas encore dans Zotero."));
     role(tr('Bibliographies citées'), 'dossierBibliographies', tr("Une note de bibliographie par source."));
     role(tr('Documents exportés'), 'exportDossier', tr("Sortie de l'export Word."));
-    role(tr('Journal du temps'), 'tempsDossierJournal', tr("Journaux quotidiens du compteur de temps."));
     role(tr("Notes d'événements"), 'dossierNotesEvenements', tr("Notes créées depuis un clic droit sur un événement de la vue calendrier (pas les tâches)."));
     new obsidian.Setting(c)
       .setName(tr('Sources à ne jamais atomiser'))
@@ -22531,7 +22546,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Dossiers exclus du compteur'))
       .setDesc(tr("Un chemin de dossier par ligne. Les notes de ces dossiers — et de leurs sous-dossiers — ne sont pas chronométrées."))
       .addTextArea((t) => {
-        t.setPlaceholder('8 - Tâches\n9 - Journal du temps')
+        t.setPlaceholder('08 - Tâches\n99 - Archives')
           .setValue(s.tempsDossiersExclus || '')
           .onChange(async (v) => { s.tempsDossiersExclus = v; await maj(); });
         t.inputEl.rows = 3;
@@ -22602,17 +22617,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       }
     }
 
-    this._section(c, tr('Journal quotidien'));
+    this._section(c, tr('Relevé quotidien'));
+    this._aide(c, tr("Le temps de chaque jour est gardé dans « .ariane/jours/AAAA-MM-JJ.json », un dossier caché à la racine du coffre, avec les sessions, l'activité hors Obsidian et le bilan de la journée. La chronologie l'affiche, jour par jour."));
     new obsidian.Setting(c)
-      .setName(tr('Dossier du journal'))
-      .addText((t) => t.setValue(s.tempsDossierJournal || '').onChange(async (v) => { s.tempsDossierJournal = v.trim() || '9 - Journal du temps'; await maj(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Écrire le journal automatiquement'))
-      .setDesc(tr('Au changement de jour, la veille est consignée.'))
-      .addToggle((t) => t.setValue(s.tempsJournalAuto !== false).onChange(async (v) => { s.tempsJournalAuto = v; await maj(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Conserver le relevé quotidien'))
-      .setDesc(tr("En jours. Ce relevé sert au journal ; passé ce délai il est effacé des réglages, les totaux inscrits dans les notes demeurent."))
+      .setName(tr('Jours gardés en mémoire'))
+      .setDesc(tr("Les jours récents dont le temps est rechargé au démarrage, pour les vues et les analyses. Les fichiers du jour, eux, restent tous."))
       .addText((t) => t.setValue(String(s.tempsRetenirJours || 120)).onChange(async (v) => { s.tempsRetenirJours = Math.max(7, parseInt(v, 10) || 120); await maj(); }));
 
     this._section(c, tr("Activité hors d'Obsidian (ActivityWatch)"));
@@ -22668,7 +22677,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         tr("Résume chaque créneau hors Obsidian et le range dans une catégorie (clic droit, « Résumer la journée », « Résumer la période »), et affine les suggestions de rattachement à la demande. Le premier jet de ces suggestions est local, sans cette IA. Haiku suffit, vite et à peu de frais."));
       new obsidian.Setting(c)
         .setName(tr('Bilan de la journée'))
-        .setDesc(tr("Un résumé de toute la journée par l'IA (accompli, temps, distractions), écrit pour être lu à voix haute. Il se fait à la demande (commande « Journée : résumer ma journée (IA) », bouton de la chronologie) ou chaque jour à l'heure indiquée ici (vide : jamais). On le retrouve dans la note du journal du temps du jour, et dans « .données/AAAA-MM-JJ.json », clé « resumeJournee »."))
+        .setDesc(tr("Un résumé de toute la journée par l'IA (accompli, temps, distractions), écrit pour être lu à voix haute. Il se fait à la demande (commande « Journée : résumer ma journée (IA) », bouton de la chronologie) ou chaque jour à l'heure indiquée ici (vide : jamais). On le retrouve sous le jour dans la chronologie, et dans « .ariane/jours/AAAA-MM-JJ.json », clé « resumeJournee »."))
         .addText((t) => t.setPlaceholder('22:30').setValue(s.resumeJourneeHeure || '')
           .onChange(async (v) => { s.resumeJourneeHeure = /^\d{1,2}:\d{2}$/.test(v.trim()) ? v.trim() : ''; await maj(); }));
       new obsidian.Setting(c)
@@ -22738,7 +22747,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       });
     new obsidian.Setting(c)
       .setName(tr('Dossiers ignorés par la chronologie'))
-      .setDesc(tr('Un chemin par ligne, sous-dossiers compris. Le journal du temps est toujours ignoré.'))
+      .setDesc(tr('Un chemin par ligne, sous-dossiers compris. Les dossiers cachés sont toujours ignorés.'))
       .addTextArea((t) => {
         t.setValue(s.chronoDossiersExclus || '').onChange(async (v) => { s.chronoDossiersExclus = v; await maj(); });
         t.inputEl.rows = 2;
@@ -38750,6 +38759,36 @@ class VueChronologie extends obsidian.ItemView {
         obsidian.setIcon(bilan.createSpan({ cls: 'zfa-chrono-bilan-ic' }), 'sunset');
         bilan.createDiv({ cls: 'zfa-chrono-bilan-texte', text: t });
       }).catch(() => bilan.remove());
+      // Le temps passé dans chaque note ce jour-là, replié sur son total.
+      const temps = hote.createDiv({ cls: 'zfa-chrono-temps' });
+      this.greffon.tempsDuJour(jour).then((notes) => {
+        if (!notes.length) { temps.remove(); return; }
+        const total = notes.reduce((s, x) => s + x.min, 0);
+        const tete = temps.createDiv({ cls: 'zfa-chrono-temps-tete' });
+        obsidian.setIcon(tete.createSpan({ cls: 'zfa-chrono-temps-ic' }), 'timer');
+        tete.createSpan({ cls: 'zfa-chrono-temps-titre', text: tr('Temps dans Obsidian') });
+        tete.createSpan({ cls: 'zfa-chrono-temps-total', text: dureeLisible(total) });
+        tete.createSpan({ cls: 'zfa-chrono-temps-n', text: notes.length + ' ' + (notes.length > 1 ? tr('notes') : tr('note')) });
+        const chevron = tete.createSpan({ cls: 'zfa-chrono-temps-chevron' });
+        obsidian.setIcon(chevron, 'chevron-right');
+        const liste = temps.createDiv({ cls: 'zfa-chrono-temps-liste' });
+        liste.hide();
+        for (const x of notes) {
+          const f = this.app.vault.getAbstractFileByPath(x.chemin);
+          const l = liste.createDiv({ cls: 'zfa-chrono-temps-ligne' });
+          const nom = l.createSpan({ cls: 'zfa-chrono-temps-nom' + (f instanceof obsidian.TFile ? '' : ' est-disparu'),
+            text: f instanceof obsidian.TFile ? this.greffon._chronoTitreFichier(f) : x.chemin.replace(/\.md$/, '').split('/').pop() });
+          l.createSpan({ cls: 'zfa-chrono-temps-duree', text: dureeLisible(x.min) });
+          if (f instanceof obsidian.TFile) {
+            nom.addEventListener('click', (ev) => this.app.workspace.getLeaf(!!(ev.metaKey || ev.ctrlKey)).openFile(f));
+          }
+        }
+        tete.addEventListener('click', () => {
+          const ouvert = !liste.isShown();
+          liste.toggle(ouvert);
+          temps.toggleClass('est-ouvert', ouvert);
+        });
+      }).catch(() => temps.remove());
       const fil = hote.createDiv({ cls: 'zfa-chrono-fil' });
       for (const e of liste) this._dessinerEvenement(fil, e);
     }
@@ -38887,7 +38926,11 @@ class VueChronologie extends obsidian.ItemView {
     const meta = carte.createDiv({ cls: 'zfa-chrono-chemin' });
     meta.createSpan({ text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16) });
     meta.createSpan({ cls: 'zfa-chrono-etiquette', text: dureeLisible(b.actifMin) + tr(' actives') });
-    for (const r of (b.rattache || [])) meta.createSpan({ cls: 'zfa-chrono-etiquette est-tache', text: r.ref + ' ' + dureeLisible(r.min) });
+    for (const r of (b.rattache || [])) {
+      const et = meta.createSpan({ cls: 'zfa-chrono-etiquette est-tache' });
+      et.createSpan({ cls: 'zfa-chrono-tache-ref', text: r.ref });
+      et.createSpan({ cls: 'zfa-chrono-tache-duree', text: dureeLisible(r.min) });
+    }
     const det = (b.details || []).filter((x) => x.min > 0).slice(0, 4);
     if (det.length) carte.createDiv({ cls: 'zfa-chrono-extrait', text: det.map((x) => x.libelle + ' (' + dureeLisible(x.min) + ')').join('\n') });
     carte.addEventListener('click', () => this.greffon.ouvrirFicheActivite(e.jour, b, this._hoteActivite()));

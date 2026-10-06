@@ -173,7 +173,7 @@ test('journal : un changement est noté avec son origine, puis écrit', async ()
   await g.ecrireDonneesJours();
   // Les changements rejoignent le fichier de leur jour, dans le journal du temps.
   const jour = avant[0].le.slice(0, 10);
-  const fichier = JSON.parse(disque['07 - Journal du temps/.données/' + jour + '.json']);
+  const fichier = JSON.parse(disque['.ariane/jours/' + jour + '.json']);
   assert.equal(fichier.taches.length, 2, 'un élément par changement');
   const relu = await g.lireJournalTaches();
   assert.equal(relu.length, 2, 'relu depuis le fichier, sans doublon avec le tampon vidé');

@@ -2698,7 +2698,7 @@ const avecTaches = (Base) => class extends Base {
     if (this.settings.tempsBarreEtat) {
       this._tempsBarre = this.addStatusBarItem();
       this._tempsBarre.addClass('zfa-temps-barre');
-      this._tempsBarre.addEventListener('click', () => this.ouvrirBilanTemps());
+      this._tempsBarre.addEventListener('click', () => this.ouvrirChronologie());
     }
 
     // Report en propriété à intervalle régulier, et non à chaque seconde :
@@ -2719,8 +2719,8 @@ const avecTaches = (Base) => class extends Base {
     return dossier + '/sessions-travail.jsonl';
   }
 
-  // Les sessions des deux derniers mois, lues dans les fichiers du jour du
-  // journal du temps (voir avecDonneesJour).
+  // Les sessions des deux derniers mois, lues dans les fichiers du jour
+  // (.ariane/jours, voir avecDonneesJour).
   async chargerSessionsTravail() {
     const seuil = Ariane.decalerJour(jourIsoDe(new Date()), -62);
     const lues = (await this.listesDepuis('sessions', seuil)).filter((x) => x && x.chemin);
@@ -2833,11 +2833,7 @@ const avecTaches = (Base) => class extends Base {
     const jour = jourIsoDe(new Date());
     if (jour !== this._tempsDernierJour) {
       this.reporterTemps();
-      const veille = this._tempsDernierJour;
       this._tempsDernierJour = jour;
-      if (this.settings.tempsJournalAuto) {
-        this.ecrireJournalTemps(veille).catch((e) => console.error('[Ariane] journal du temps', e));
-      }
     }
 
     const chemin = this.noteChronometrable();
@@ -2907,7 +2903,7 @@ const avecTaches = (Base) => class extends Base {
   // les notes en attente.
   async reporterTemps(cheminVoulu) {
     // Le relevé du jour (et de la veille, pour un report à minuit) rejoint
-    // le fichier du jour du journal du temps.
+    // le fichier du jour (.ariane/jours).
     if (this.marquerJourSale) {
       const auj = jourIsoDe(new Date());
       for (const j of [auj, Ariane.decalerJour(auj, -1)]) {
@@ -2938,65 +2934,6 @@ const avecTaches = (Base) => class extends Base {
       }
     }
     await this.saveSettings();
-  }
-
-  /* ------------------------- Journal quotidien --------------------------- */
-
-  async ecrireJournalTemps(jour, opts) {
-    const o = opts || {};
-    const j = jour || jourIsoDe(new Date());
-    await this.reporterTemps();
-    const releve = (this.settings.tempsHistorique || {})[j] || {};
-    const lignes = Object.entries(releve)
-      .map(([chemin, secondes]) => [chemin, secondes / 60])
-      .filter(([, m]) => m >= 1)
-      .sort((a, b) => b[1] - a[1]);
-    // Le résumé de la journée par l'IA, s'il existe, ouvre la note.
-    const resume = this.resumeDeLaJournee ? await this.resumeDeLaJournee(j) : '';
-
-    if (!lignes.length && !resume) {
-      if (!o.silencieux) new obsidian.Notice(tr('Aucun temps enregistré pour le ') + j + '.');
-      return '';
-    }
-
-    const dossier = (this.settings.tempsDossierJournal || '9 - Journal du temps').replace(/\/+$/, '');
-    if (!this.app.vault.getAbstractFileByPath(dossier)) {
-      try { await this.app.vault.createFolder(dossier); } catch (e) { /* déjà là */ }
-    }
-
-    const total = lignes.reduce((s, [, m]) => s + m, 0);
-    const out = ['---', 'Type: journal-temps', 'Date: ' + j,
-      'Journal - Minutes totales: ' + Math.round(total), '---',
-      '# Temps de travail du ' + j, ''];
-    if (resume) {
-      out.push('## Résumé de la journée', Ariane.RESUME_JOURNEE_DEBUT, resume, Ariane.RESUME_JOURNEE_FIN, '');
-    }
-    if (lignes.length) {
-      if (resume) out.push('## Temps par note', '');
-      out.push('**Total : ' + dureeLisible(total) + '** sur ' + lignes.length + ' note(s).', '',
-        '| Note | Temps |', '| --- | --- |');
-      for (const [chemin, m] of lignes) {
-        const nom = chemin.replace(/\.md$/, '');
-        out.push('| [[' + nom + ']] | ' + dureeLisible(m) + ' |');
-      }
-      out.push('');
-    }
-
-    const chemin = dossier + '/' + j + '.md';
-    const existant = this.app.vault.getAbstractFileByPath(chemin);
-    if (existant instanceof obsidian.TFile) {
-      this.marquerEcriture(chemin);
-      await this.app.vault.modify(existant, out.join('\n'));
-    } else {
-      await this.ecrire(chemin, out.join('\n'));
-    }
-    return chemin;
-  }
-
-  async ouvrirBilanTemps() {
-    const chemin = await this.ecrireJournalTemps();
-    if (!chemin) return;
-    await this.app.workspace.openLinkText(chemin.replace(/\.md$/, ''), '', false);
   }
 
   // Écarte les relevés trop anciens, pour que le fichier de réglages ne gonfle

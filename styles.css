@@ -4204,3 +4204,26 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-reglage-dossier-ic { display: inline-flex; color: var(--text-muted); }
 .zfa-reglage-dossier-ic svg, .zfa-reglage-dossier-x svg { width: 12px; height: 12px; }
 .zfa-reglage-dossier-x { padding: 2px; }
+/* Tâche rattachée dans la chronologie : la référence, un filet, le temps. */
+.zfa-chrono-etiquette.est-tache { display: inline-flex; align-items: center; gap: 0; }
+.zfa-chrono-tache-ref { font-weight: var(--font-semibold); }
+.zfa-chrono-tache-duree { margin-left: 6px; padding-left: 6px; border-left: 1px solid currentColor; }
+.zfa-chrono-tache-duree { border-left-color: color-mix(in srgb, currentColor 40%, transparent); }
+/* Temps passé dans Obsidian, sous le jour de la chronologie. */
+.zfa-chrono-temps { margin: 0 0 var(--size-4-2); font-size: var(--font-ui-small); }
+.zfa-chrono-temps-tete { display: flex; align-items: center; gap: 8px; padding: 4px var(--size-4-2);
+  border-radius: var(--radius-s); color: var(--text-muted); cursor: pointer; }
+.zfa-chrono-temps-tete:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.zfa-chrono-temps-ic, .zfa-chrono-temps-chevron { display: inline-flex; }
+.zfa-chrono-temps-ic svg, .zfa-chrono-temps-chevron svg { width: 14px; height: 14px; }
+.zfa-chrono-temps-total { color: var(--text-normal); font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; }
+.zfa-chrono-temps-n { color: var(--text-faint); }
+.zfa-chrono-temps-chevron { margin-left: auto; transition: transform 120ms ease; }
+.zfa-chrono-temps.est-ouvert .zfa-chrono-temps-chevron { transform: rotate(90deg); }
+.zfa-chrono-temps-liste { display: flex; flex-direction: column; padding: 2px 0 0 30px; }
+.zfa-chrono-temps-ligne { display: flex; gap: 12px; padding: 2px var(--size-4-2); }
+.zfa-chrono-temps-nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-normal); cursor: pointer; }
+.zfa-chrono-temps-nom:hover { color: var(--text-accent); }
+.zfa-chrono-temps-nom.est-disparu { color: var(--text-faint); cursor: default; }
+.zfa-chrono-temps-duree { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .zfa-chrono-temps-chevron { transition: none; } }

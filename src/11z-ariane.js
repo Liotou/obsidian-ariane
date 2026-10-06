@@ -289,11 +289,6 @@ class Ariane extends composer(obsidian.Plugin,
       },
     });
     this.addCommand({
-      id: 'temps-journal',
-      name: tr('Temps : écrire le journal du jour'),
-      callback: () => this.ouvrirBilanTemps(),
-    });
-    this.addCommand({
       id: 'temps-reporter',
       name: tr('Temps : reporter maintenant dans les notes'),
       callback: async () => {

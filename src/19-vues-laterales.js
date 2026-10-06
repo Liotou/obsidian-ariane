@@ -1572,6 +1572,36 @@ class VueChronologie extends obsidian.ItemView {
         obsidian.setIcon(bilan.createSpan({ cls: 'zfa-chrono-bilan-ic' }), 'sunset');
         bilan.createDiv({ cls: 'zfa-chrono-bilan-texte', text: t });
       }).catch(() => bilan.remove());
+      // Le temps passé dans chaque note ce jour-là, replié sur son total.
+      const temps = hote.createDiv({ cls: 'zfa-chrono-temps' });
+      this.greffon.tempsDuJour(jour).then((notes) => {
+        if (!notes.length) { temps.remove(); return; }
+        const total = notes.reduce((s, x) => s + x.min, 0);
+        const tete = temps.createDiv({ cls: 'zfa-chrono-temps-tete' });
+        obsidian.setIcon(tete.createSpan({ cls: 'zfa-chrono-temps-ic' }), 'timer');
+        tete.createSpan({ cls: 'zfa-chrono-temps-titre', text: tr('Temps dans Obsidian') });
+        tete.createSpan({ cls: 'zfa-chrono-temps-total', text: dureeLisible(total) });
+        tete.createSpan({ cls: 'zfa-chrono-temps-n', text: notes.length + ' ' + (notes.length > 1 ? tr('notes') : tr('note')) });
+        const chevron = tete.createSpan({ cls: 'zfa-chrono-temps-chevron' });
+        obsidian.setIcon(chevron, 'chevron-right');
+        const liste = temps.createDiv({ cls: 'zfa-chrono-temps-liste' });
+        liste.hide();
+        for (const x of notes) {
+          const f = this.app.vault.getAbstractFileByPath(x.chemin);
+          const l = liste.createDiv({ cls: 'zfa-chrono-temps-ligne' });
+          const nom = l.createSpan({ cls: 'zfa-chrono-temps-nom' + (f instanceof obsidian.TFile ? '' : ' est-disparu'),
+            text: f instanceof obsidian.TFile ? this.greffon._chronoTitreFichier(f) : x.chemin.replace(/\.md$/, '').split('/').pop() });
+          l.createSpan({ cls: 'zfa-chrono-temps-duree', text: dureeLisible(x.min) });
+          if (f instanceof obsidian.TFile) {
+            nom.addEventListener('click', (ev) => this.app.workspace.getLeaf(!!(ev.metaKey || ev.ctrlKey)).openFile(f));
+          }
+        }
+        tete.addEventListener('click', () => {
+          const ouvert = !liste.isShown();
+          liste.toggle(ouvert);
+          temps.toggleClass('est-ouvert', ouvert);
+        });
+      }).catch(() => temps.remove());
       const fil = hote.createDiv({ cls: 'zfa-chrono-fil' });
       for (const e of liste) this._dessinerEvenement(fil, e);
     }
@@ -1709,7 +1739,11 @@ class VueChronologie extends obsidian.ItemView {
     const meta = carte.createDiv({ cls: 'zfa-chrono-chemin' });
     meta.createSpan({ text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16) });
     meta.createSpan({ cls: 'zfa-chrono-etiquette', text: dureeLisible(b.actifMin) + tr(' actives') });
-    for (const r of (b.rattache || [])) meta.createSpan({ cls: 'zfa-chrono-etiquette est-tache', text: r.ref + ' ' + dureeLisible(r.min) });
+    for (const r of (b.rattache || [])) {
+      const et = meta.createSpan({ cls: 'zfa-chrono-etiquette est-tache' });
+      et.createSpan({ cls: 'zfa-chrono-tache-ref', text: r.ref });
+      et.createSpan({ cls: 'zfa-chrono-tache-duree', text: dureeLisible(r.min) });
+    }
     const det = (b.details || []).filter((x) => x.min > 0).slice(0, 4);
     if (det.length) carte.createDiv({ cls: 'zfa-chrono-extrait', text: det.map((x) => x.libelle + ' (' + dureeLisible(x.min) + ')').join('\n') });
     carte.addEventListener('click', () => this.greffon.ouvrirFicheActivite(e.jour, b, this._hoteActivite()));

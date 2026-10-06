@@ -640,7 +640,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     role(tr('Références en attente'), 'dossierReferences', tr("Références citées mais pas encore dans Zotero."));
     role(tr('Bibliographies citées'), 'dossierBibliographies', tr("Une note de bibliographie par source."));
     role(tr('Documents exportés'), 'exportDossier', tr("Sortie de l'export Word."));
-    role(tr('Journal du temps'), 'tempsDossierJournal', tr("Journaux quotidiens du compteur de temps."));
     role(tr("Notes d'événements"), 'dossierNotesEvenements', tr("Notes créées depuis un clic droit sur un événement de la vue calendrier (pas les tâches)."));
     new obsidian.Setting(c)
       .setName(tr('Sources à ne jamais atomiser'))
@@ -1074,7 +1073,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Dossiers exclus du compteur'))
       .setDesc(tr("Un chemin de dossier par ligne. Les notes de ces dossiers — et de leurs sous-dossiers — ne sont pas chronométrées."))
       .addTextArea((t) => {
-        t.setPlaceholder('8 - Tâches\n9 - Journal du temps')
+        t.setPlaceholder('08 - Tâches\n99 - Archives')
           .setValue(s.tempsDossiersExclus || '')
           .onChange(async (v) => { s.tempsDossiersExclus = v; await maj(); });
         t.inputEl.rows = 3;
@@ -1145,17 +1144,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       }
     }
 
-    this._section(c, tr('Journal quotidien'));
+    this._section(c, tr('Relevé quotidien'));
+    this._aide(c, tr("Le temps de chaque jour est gardé dans « .ariane/jours/AAAA-MM-JJ.json », un dossier caché à la racine du coffre, avec les sessions, l'activité hors Obsidian et le bilan de la journée. La chronologie l'affiche, jour par jour."));
     new obsidian.Setting(c)
-      .setName(tr('Dossier du journal'))
-      .addText((t) => t.setValue(s.tempsDossierJournal || '').onChange(async (v) => { s.tempsDossierJournal = v.trim() || '9 - Journal du temps'; await maj(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Écrire le journal automatiquement'))
-      .setDesc(tr('Au changement de jour, la veille est consignée.'))
-      .addToggle((t) => t.setValue(s.tempsJournalAuto !== false).onChange(async (v) => { s.tempsJournalAuto = v; await maj(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Conserver le relevé quotidien'))
-      .setDesc(tr("En jours. Ce relevé sert au journal ; passé ce délai il est effacé des réglages, les totaux inscrits dans les notes demeurent."))
+      .setName(tr('Jours gardés en mémoire'))
+      .setDesc(tr("Les jours récents dont le temps est rechargé au démarrage, pour les vues et les analyses. Les fichiers du jour, eux, restent tous."))
       .addText((t) => t.setValue(String(s.tempsRetenirJours || 120)).onChange(async (v) => { s.tempsRetenirJours = Math.max(7, parseInt(v, 10) || 120); await maj(); }));
 
     this._section(c, tr("Activité hors d'Obsidian (ActivityWatch)"));
@@ -1211,7 +1204,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         tr("Résume chaque créneau hors Obsidian et le range dans une catégorie (clic droit, « Résumer la journée », « Résumer la période »), et affine les suggestions de rattachement à la demande. Le premier jet de ces suggestions est local, sans cette IA. Haiku suffit, vite et à peu de frais."));
       new obsidian.Setting(c)
         .setName(tr('Bilan de la journée'))
-        .setDesc(tr("Un résumé de toute la journée par l'IA (accompli, temps, distractions), écrit pour être lu à voix haute. Il se fait à la demande (commande « Journée : résumer ma journée (IA) », bouton de la chronologie) ou chaque jour à l'heure indiquée ici (vide : jamais). On le retrouve dans la note du journal du temps du jour, et dans « .données/AAAA-MM-JJ.json », clé « resumeJournee »."))
+        .setDesc(tr("Un résumé de toute la journée par l'IA (accompli, temps, distractions), écrit pour être lu à voix haute. Il se fait à la demande (commande « Journée : résumer ma journée (IA) », bouton de la chronologie) ou chaque jour à l'heure indiquée ici (vide : jamais). On le retrouve sous le jour dans la chronologie, et dans « .ariane/jours/AAAA-MM-JJ.json », clé « resumeJournee »."))
         .addText((t) => t.setPlaceholder('22:30').setValue(s.resumeJourneeHeure || '')
           .onChange(async (v) => { s.resumeJourneeHeure = /^\d{1,2}:\d{2}$/.test(v.trim()) ? v.trim() : ''; await maj(); }));
       new obsidian.Setting(c)
@@ -1281,7 +1274,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       });
     new obsidian.Setting(c)
       .setName(tr('Dossiers ignorés par la chronologie'))
-      .setDesc(tr('Un chemin par ligne, sous-dossiers compris. Le journal du temps est toujours ignoré.'))
+      .setDesc(tr('Un chemin par ligne, sous-dossiers compris. Les dossiers cachés sont toujours ignorés.'))
       .addTextArea((t) => {
         t.setValue(s.chronoDossiersExclus || '').onChange(async (v) => { s.chronoDossiersExclus = v; await maj(); });
         t.inputEl.rows = 2;

@@ -843,6 +843,10 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
+    "Temps dans Obsidian": "Time in Obsidian",
+    "Relevé quotidien": "Daily record",
+    "Jours gardés en mémoire": "Days kept in memory",
+    "Bilan de la journée prêt : il s’affiche dans la chronologie.": "Day summary ready: it shows in the timeline.",
     "Dossiers sans bibliographie": "Folders without bibliography",
     "Les notes de ces dossiers, et de leurs sous-dossiers, ne reçoivent pas de bibliographie de fin de note, ni automatiquement ni par les commandes. Un bloc déjà présent y est laissé tel quel.": "Notes in these folders, and their subfolders, get no end-of-note bibliography, neither automatically nor through the commands. A block already there is left as is.",
     "Ajouter un dossier": "Add a folder",
@@ -1354,8 +1358,7 @@ const DEFAULT_SETTINGS = {
   tempsDossiersExclus: '',              // dossiers non chronométrés (sous-dossiers compris)
   tempsBarreEtat: true,
   tempsInfobulleExplorateur: true,
-  tempsDossierJournal: '',      // rôle : où écrire le journal du compteur
-  tempsJournalAuto: true,               // écrire le journal au changement de jour
+  tempsDossierJournal: '',      // ancien journal du temps (lu seulement par la migration des données)
   tempsHistorique: {},                  // { 'AAAA-MM-JJ': { chemin: secondes } }
   // Total de référence, en secondes, par note. La propriété du frontmatter en
   // est dérivée : arrondir à chaque report, en repartant d'une valeur déjà
@@ -1391,7 +1394,7 @@ const DEFAULT_SETTINGS = {
   activiteIAModele: '',                 // modèle Ollama, LM Studio ou Mistral ('' = celui de l'assistant)
   activiteIAModeleClaude: 'haiku',      // modèle si le fournisseur est Claude en ligne de commande
   resumeJourneeHeure: '',               // résumé de la journée par l'IA à cette heure (HH:MM), '' = jamais
-  donneesJourVersion: 0,                // 1 : données du temps rangées par jour (journal du temps/.données)
+  donneesJourVersion: 0,                // 1 : données rangées par jour ; 2 : dans .ariane/jours, sans journal du temps
   activiteIAAuto: false,                // résumer seul les journées passées affichées
   activiteIACouleur: true,              // colorer les créneaux résumés selon leur catégorie IA
   activiteIAContexte: "Monsieur est doctorant en sciences de gestion (risque systémique, accidents NaTech) et enseigne (cours, TD, ateliers). Il travaille surtout dans Obsidian, Zotero, Word, Excel, Teams, Mail et Safari.",

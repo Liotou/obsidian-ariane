@@ -1,11 +1,11 @@
-// Données du temps par jour (07 - Journal du temps/.données/AAAA-MM-JJ.json)
+// Données du temps par jour (.ariane/jours/AAAA-MM-JJ.json)
 // et bilan de la journée : éprouvés sur un disque en mémoire.
 const test = require('node:test');
 const assert = require('node:assert');
 const Ariane = require('./obsidian-factice.js');
 
 const DIR = '.obsidian/plugins/obsidian-ariane';
-const DONNEES = '07 - Journal du temps/.données';
+const DONNEES = '.ariane/jours';
 
 function greffon(disque, settings) {
   const g = Object.create(Ariane.prototype);
@@ -25,16 +25,18 @@ function greffon(disque, settings) {
           }
         },
         list: async (d) => ({ files: Object.keys(disque).filter((k) => k.startsWith(d + '/')), folders: [] }),
+        remove: async (p) => { delete disque[p]; },
+        rmdir: async () => {},
       },
     },
   };
   return g;
 }
 
-test('données par jour : le dossier est caché sous le journal du temps', () => {
+test('données par jour : un dossier caché à la racine du coffre', () => {
   const g = greffon({}, { tempsDossierJournal: 'Journal/' });
-  assert.equal(g.dossierDonneesJour, 'Journal/.données');
-  assert.equal(g.cheminDonneesJour('2026-10-06'), 'Journal/.données/2026-10-06.json');
+  assert.equal(g.dossierDonneesJour, '.ariane/jours');
+  assert.equal(g.cheminDonneesJour('2026-10-06'), '.ariane/jours/2026-10-06.json');
 });
 
 test('données par jour : ajout, écriture groupée, relecture bout à bout', async () => {
@@ -87,7 +89,7 @@ test('migration : les anciens fichiers passent dans les jours, puis sont mis de 
   assert.ok(!(DIR + '/sessions-travail.jsonl' in disque));
   assert.ok(DIR + '/sessions-travail.jsonl.avant-donnees-jour' in disque, 'l\'ancien fichier est gardé');
   assert.ok(DIR + '/chronologie.avant-donnees-jour/2026-10.json' in disque);
-  assert.equal(g.settings.donneesJourVersion, 1);
+  assert.equal(g.settings.donneesJourVersion, 2);
   assert.ok(g._sauve);
 
   // Une seconde fois : rien ne bouge.
@@ -126,4 +128,29 @@ test('chronologie : une rafale de créations devient un lot, le reste ne bouge p
   assert.deepEqual(lot.elements.map((x) => x.titre), ['n4', 'n3', 'n2', 'n1', 'n0']);
   assert.equal(g[3].titre, 'b', 'une note seule dans un autre dossier reste à sa place');
   assert.equal(Ariane.grouperAjoutsAuto(evts.slice(0, 3)).length, 3, 'trois créations ne font pas un lot');
+});
+
+test('migration v2 : l\'ancien .données rejoint .ariane/jours, fusionné si besoin', async () => {
+  const VIEUX = '07 - Journal du temps/.données';
+  const disque = {
+    [VIEUX + '/2026-10-01.json']: JSON.stringify({ version: 1, jour: '2026-10-01', sessions: [{ chemin: 'a.md' }], temps: { 'a.md': 60 } }),
+    [VIEUX + '/2026-10-02.json']: JSON.stringify({ version: 1, jour: '2026-10-02', taches: [{ ref: 'T1' }], resumeJournee: { texte: 'Bonne journée' } }),
+    [DONNEES + '/2026-10-02.json']: JSON.stringify({ version: 1, jour: '2026-10-02', taches: [{ ref: 'T2' }], temps: { 'b.md': 30 } }),
+  };
+  const g = greffon(disque, { donneesJourVersion: 1, tempsDossierJournal: '07 - Journal du temps' });
+  await g.migrerVersDonneesJour();
+  assert.ok(!Object.keys(disque).some((k) => k.startsWith(VIEUX + '/')), 'plus rien dans l\'ancien dossier');
+  assert.equal(JSON.parse(disque[DONNEES + '/2026-10-01.json']).sessions[0].chemin, 'a.md');
+  const d2 = JSON.parse(disque[DONNEES + '/2026-10-02.json']);
+  assert.deepEqual(d2.taches.map((x) => x.ref), ['T2', 'T1'], 'listes mises bout à bout');
+  assert.equal(d2.resumeJournee.texte, 'Bonne journée');
+  assert.deepEqual(d2.temps, { 'b.md': 30 });
+  assert.equal(g.settings.donneesJourVersion, 2);
+  assert.equal(await g.resumeDeLaJournee('2026-10-02'), 'Bonne journée', 'le cache relit le nouvel endroit');
+});
+
+test('temps du jour : en minutes, du plus long au plus court, une minute au moins', async () => {
+  const disque = { [DONNEES + '/2026-10-05.json']: JSON.stringify({ temps: { 'a.md': 600, 'b.md': 30, 'c.md': 1800 } }) };
+  const g = greffon(disque, { tempsHistorique: { '2026-10-05': { 'a.md': 900 } } });
+  assert.deepEqual(await g.tempsDuJour('2026-10-05'), [{ chemin: 'c.md', min: 30 }, { chemin: 'a.md', min: 15 }]);
 });
