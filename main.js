@@ -31452,16 +31452,17 @@ class MoteurCalendrier extends MoteurVue {
     return '';
   }
 
-  // Un jalon du bandeau, lâché quelque part dans la vue semaine. Rend true
-  // s'il s'agissait bien d'un jalon (le glissé est alors traité ici).
-  //  · sur le bandeau : il change de jour, échéance déplacée d'autant ;
-  //  · dans la grille des heures : il cesse d'être un jalon et devient une
-  //    tâche avec un créneau d'une heure à l'endroit visé ; son échéance
+  // Un jalon ou une tâche sans créneau du bandeau, lâché quelque part dans la
+  // vue semaine. Rend true s'il s'agissait bien de l'un d'eux (le glissé est
+  // alors traité ici).
+  //  · sur le bandeau : il change de jour, ses dates décalées d'autant ;
+  //  · dans la grille des heures : il reçoit un créneau d'une heure à
+  //    l'endroit visé (un jalon cesse alors d'en être un) ; son échéance
   //    recule jusqu'à ce jour si elle le précédait.
   _dropJalon(ev, jourISO, ou) {
     let d = null;
     try { d = JSON.parse(ev.dataTransfer.getData('text/x-ariane-cal') || 'null'); } catch (e) { d = null; }
-    if (!d || !d.jalon || !d.ref) return false;
+    if (!d || !(d.jalon || d.dates) || !d.ref) return false;
     ev.preventDefault();
     const t = (this._taches || []).find((x) => x.ref === d.ref);
     if (!t) return true;
@@ -31474,15 +31475,16 @@ class MoteurCalendrier extends MoteurVue {
       if (ou === 'bandeau') {
         const n = Ariane.ecartJours(d.jour, jourISO);
         if (!n) return;
+        const nd = (!d.jalon && t.debut) ? Ariane.decalerJour(t.debut, n) : '';
         const ne = t.echeance ? Ariane.decalerJour(t.echeance, n) : jourISO;
-        await this._ecrireDatesU([{ ref: d.ref, debut: '', echeance: ne }]);
-        this._apres(d.ref, { debut: '', echeance: ne, cible: ['', ne, []] });
+        await this._ecrireDatesU([{ ref: d.ref, debut: nd, echeance: ne }]);
+        this._apres(d.ref, { debut: nd, echeance: ne, cible: [nd, ne, []] });
         return;
       }
       if (!cr) return;
-      const champs = { jalon: false };
+      const champs = d.jalon ? { jalon: false } : {};
       if (!t.echeance || t.echeance < jourISO) champs.echeance = jourISO;
-      await this.greffon.majTache(d.ref, champs);
+      if (Object.keys(champs).length) await this.greffon.majTache(d.ref, champs);
       await this._majCreneauU(d.ref, { avant: '', debut: cr.debut, fin: cr.fin });
       this._apres(d.ref, { cible: [undefined, undefined, null], creneaux: undefined });
     })().catch((e) => console.error('[Ariane] jalon déplacé :', e));
@@ -32429,7 +32431,18 @@ class MoteurCalendrier extends MoteurVue {
               de.dataTransfer.effectAllowed = 'move';
             });
           } else {
-            this.rendreCarte(col, t, ev, { compact: true, avecCoche: true });
+            const carte = this.rendreCarte(col, t, ev, { compact: true, avecCoche: true });
+            // Tâche sans créneau, portée par ses dates : glissable comme un
+            // jalon (vers un autre jour, ou dans la grille pour lui donner un
+            // créneau).
+            if (carte && !ev.brut) {
+              carte.setAttribute('draggable', 'true');
+              carte.addEventListener('dragstart', (de) => {
+                de.dataTransfer.setData('text/x-ariane-cal', JSON.stringify({ ref: t.ref, jour: j, brut: '', dates: true }));
+                de.dataTransfer.setData('text/x-ariane-tache', t.ref);
+                de.dataTransfer.effectAllowed = 'move';
+              });
+            }
           }
         }
         if (reste) {
