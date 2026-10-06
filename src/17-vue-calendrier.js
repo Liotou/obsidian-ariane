@@ -427,7 +427,11 @@ class MoteurCalendrier extends MoteurVue {
       el.style.top = ((d / 60 - hDeb) * PXH) + 'px';
       el.style.height = Math.max(3, ((f - d) / 60) * PXH) + 'px';
       el.style.setProperty('--zfa-cal-coul', b.couleur);
-      el.title = Ariane.infobulleActivite(b);
+      // Infobulle d'Obsidian : l'attribut title du navigateur n'apparaît pas
+      // dans la grille (seul le curseur changeait).
+      const bulle = Ariane.infobulleActivite(b);
+      if (obsidian.setTooltip) obsidian.setTooltip(el, bulle, { placement: 'right', classes: ['zfa-bulle-lignes'] });
+      else el.setAttribute('aria-label', bulle);
       // La colonne réagit au clic (sélection, création) : la piste, non.
       el.addEventListener('pointerdown', (e) => e.stopPropagation());
     }

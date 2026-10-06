@@ -2489,7 +2489,7 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-reel {
   --zfa-cal-coul: var(--text-faint);
   position: absolute; left: 4px; width: 7px; z-index: 1;
-  border-radius: 3px; cursor: help;
+  border-radius: 3px; cursor: default;
   background: color-mix(in srgb, var(--zfa-cal-coul) 65%, transparent);
   transition: background 0.12s ease, box-shadow 0.12s ease;
 }
@@ -3832,3 +3832,7 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-struct-noeud.zfa-ln-noeud { grid-template-columns: auto 1fr auto auto; }
 .zfa-ln-noeud .zfa-struct-note { grid-column: 2 / -1; }
 .zfa-ln-noeud .zfa-ln-date { width: auto; font-size: var(--font-ui-small); }
+
+/* Infobulles sur plusieurs lignes (activité réelle) : retours à la ligne
+   respectés, texte aligné à gauche. */
+.tooltip.zfa-bulle-lignes { white-space: pre-line; text-align: left; }
