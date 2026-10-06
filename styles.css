@@ -4006,3 +4006,15 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
     color-mix(in srgb, var(--zfa-cal-coul) 70%, transparent) 0 3px,
     color-mix(in srgb, var(--zfa-cal-coul) 20%, transparent) 3px 6px);
 }
+/* Survol du rail : la pièce s'élargit et s'éclaire, qu'elle soit pleine
+   (Obsidian) ou pâle (hors Obsidian), pour répondre de la même façon. */
+.zfa-cal-reel.est-obsidian, .zfa-cal-reel.est-externe {
+  transition: background 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease, width 0.12s ease, left 0.12s ease;
+}
+.zfa-cal-reel.est-obsidian:hover, .zfa-cal-reel.est-externe:hover {
+  width: 10px; left: 2.5px; z-index: 4;
+}
+.zfa-cal-reel.est-obsidian:hover { filter: brightness(1.3) saturate(1.15); }
+@media (prefers-reduced-motion: reduce) {
+  .zfa-cal-reel.est-obsidian, .zfa-cal-reel.est-externe { transition: none; }
+}
