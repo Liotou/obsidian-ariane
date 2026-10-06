@@ -18058,6 +18058,101 @@ const avecActivite = (Base) => class extends Base {
     new obsidian.Notice(n + tr(' créneau(x) résumé(s) sur la semaine.'));
   }
 
+  // ── icônes des applications ────────────────────────────────────────────
+  //  Les icônes que macOS montre dans le Finder, extraites une fois (AppKit,
+  //  par osascript), réduites à 64 px (sips) et gardées dans icones-apps/ du
+  //  dossier du greffon. iconeApplication() rend tout de suite ce qui est
+  //  connu, et demande le reste : `apres` est rappelé quand il arrive.
+
+  get dossierIconesApps() {
+    const dossier = (this.manifest && this.manifest.dir) || '.obsidian/plugins/obsidian-ariane';
+    return dossier + '/icones-apps';
+  }
+
+  static nomFichierIcone(nom) { return String(nom || '').replace(/[\/:\\]/g, '_') + '.png'; }
+
+  iconeApplication(nom, apres) {
+    if (!nom || !obsidian.Platform.isMacOS) return '';
+    if (!this._iconesApps) {
+      this._iconesApps = new Map();
+      this._iconesInventaire = this.app.vault.adapter.list(this.dossierIconesApps)
+        .then((l) => {
+          for (const f of (l.files || [])) {
+            const n = f.split('/').pop().replace(/\.png$/, '');
+            if (!this._iconesApps.has(n)) this._iconesApps.set(n, this.app.vault.adapter.getResourcePath(f));
+          }
+        }).catch(() => { /* dossier pas encore créé */ });
+    }
+    const cle = Ariane.nomFichierIcone(nom).replace(/\.png$/, '');
+    if (this._iconesApps.has(cle)) return this._iconesApps.get(cle);
+    (this._iconesAttente || (this._iconesAttente = new Map())).set(nom, apres);
+    clearTimeout(this._iconesMinuterie);
+    this._iconesMinuterie = setTimeout(() => this._extraireIconesApps(), 30);
+    return '';
+  }
+
+  async _extraireIconesApps() {
+    const attente = this._iconesAttente || new Map();
+    this._iconesAttente = new Map();
+    if (this._iconesInventaire) await this._iconesInventaire;
+    const noms = [...attente.keys()].filter((n) => !this._iconesApps.has(Ariane.nomFichierIcone(n).replace(/\.png$/, '')));
+    const rappeler = () => { for (const f of attente.values()) { try { if (f) f(); } catch (e) { /* vue fermée */ } } };
+    if (!noms.length) { rappeler(); return; }
+    // Rien ne se retente dans la session : une application introuvable reste
+    // sans icône (repli sur l'initiale).
+    for (const n of noms) this._iconesApps.set(Ariane.nomFichierIcone(n).replace(/\.png$/, ''), '');
+    const a = this.app.vault.adapter;
+    try { if (!(await a.exists(this.dossierIconesApps))) await a.mkdir(this.dossierIconesApps); } catch (e) { return; }
+    const absolu = a.getFullPath ? a.getFullPath(this.dossierIconesApps) : '';
+    if (!absolu) return;
+    const script = [
+      "ObjC.import('AppKit');",
+      'function run(argv) {',
+      '  var dossier = argv[0], ws = $.NSWorkspace.sharedWorkspace, out = [];',
+      '  for (var i = 1; i < argv.length; i++) {',
+      '    var nom = argv[i];',
+      '    try {',
+      '      var chemin = ObjC.unwrap(ws.fullPathForApplication(nom));',
+      '      if (!chemin) continue;',
+      '      var img = ws.iconForFile(chemin);',
+      '      var bmp = $.NSBitmapImageRep.alloc.initWithCGImage(img.CGImageForProposedRectContextHints($(), $(), $()));',
+      '      var png = bmp.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $({}));',
+      "      var cible = dossier + '/' + nom.replace(/[\\/:\\\\]/g, '_') + '.png';",
+      '      if (png.writeToFileAtomically(cible, true)) out.push(nom + "\\t" + cible);',
+      '    } catch (e) {}',
+      '  }',
+      '  return out.join("\\n");',
+      '}',
+    ].join('\n');
+    const cp = require('child_process');
+    const sortie = await new Promise((res) => cp.execFile('osascript', ['-l', 'JavaScript', '-e', script, absolu].concat(noms),
+      { timeout: 30000 }, (err, out) => res(err ? '' : String(out || ''))));
+    const faits = sortie.split('\n').map((l) => l.split('\t')).filter((p) => p[1]);
+    if (faits.length) {
+      await new Promise((res) => cp.execFile('sips', ['-Z', '64'].concat(faits.map((p) => p[1])),
+        { timeout: 30000 }, () => res()));
+    }
+    for (const [nom] of faits) {
+      const f = this.dossierIconesApps + '/' + Ariane.nomFichierIcone(nom);
+      this._iconesApps.set(Ariane.nomFichierIcone(nom).replace(/\.png$/, ''), a.getResourcePath(f) + '?v=' + Date.now());
+    }
+    rappeler();
+  }
+
+  // Le temps d'un créneau par application, de la plus longue à la plus
+  // courte, avec ce qui l'a le plus occupée : la carte de survol.
+  async applicationsBlocActivite(jour, b) {
+    const contenu = await this.contenuBlocActivite(jour, b);
+    const parApp = new Map();
+    for (const x of contenu) {
+      const p = parApp.get(x.app) || { app: x.app, min: 0, principal: '' };
+      p.min += x.min;
+      if (!p.principal) p.principal = x.domaine || (x.titre && x.titre !== x.app ? x.titre : '');
+      parApp.set(x.app, p);
+    }
+    return [...parApp.values()].sort((x, y) => y.min - x.min);
+  }
+
   // Tout ce qui a occupé un créneau réel, pour sa fiche.
   async contenuBlocActivite(jour, b) {
     const segs = await this._segmentsDuJour(jour);
@@ -30748,6 +30843,7 @@ class MoteurCalendrier extends MoteurVue {
     this._gesteCal = false;
     if (this._pose) this._pose.finir();
     this._fermerJourMois();
+    this._cacherCarteActivite();
     for (const o of (this._observateursMois || [])) { try { o.disconnect(); } catch (e) { /* rien */ } }
     this._observateursMois = [];
     if (this._surTouche) this.racine.removeEventListener('keydown', this._surTouche);
@@ -30999,6 +31095,7 @@ class MoteurCalendrier extends MoteurVue {
   // Colonne des créneaux réels d'un jour. `mn` convertit « …THH:MM » en
   // minutes depuis minuit.
   _rendreActivite(col, jour, hDeb, PXH, mn) {
+    this._cacherCarteActivite();
     for (const b of (this._activite.get(jour) || [])) {
       const d = mn(b.debut);
       const f = b.fin.slice(0, 10) === jour ? mn(b.fin) : 24 * 60;
@@ -31007,11 +31104,10 @@ class MoteurCalendrier extends MoteurVue {
       el.style.top = ((d / 60 - hDeb) * PXH) + 'px';
       el.style.height = Math.max(3, ((f - d) / 60) * PXH) + 'px';
       el.style.setProperty('--zfa-cal-coul', b.couleur);
-      // Infobulle d'Obsidian : l'attribut title du navigateur n'apparaît pas
-      // dans la grille (seul le curseur changeait).
-      const bulle = Ariane.infobulleActivite(b);
-      if (obsidian.setTooltip) obsidian.setTooltip(el, bulle, { placement: 'right', classes: ['zfa-bulle-lignes'] });
-      else el.setAttribute('aria-label', bulle);
+      // Carte de survol, sans délai : catégorie, résumé, et les applications
+      // avec leur icône.
+      el.addEventListener('mouseenter', () => this._montrerCarteActivite(el, jour, b));
+      el.addEventListener('mouseleave', () => this._cacherCarteActivite());
       if (b.ia && b.ia.personnel) el.addClass('est-personnel');
       if (b.ia) el.addClass('est-resume');
       // La colonne réagit au clic (sélection, création) : la piste, non.
@@ -31040,6 +31136,58 @@ class MoteurCalendrier extends MoteurVue {
         m.showAtMouseEvent(e);
       });
     }
+  }
+
+  // La carte de survol d'un créneau réel. Posée sur le document de la bande
+  // (fenêtre détachée comprise), à droite d'elle, ramenée dans l'écran.
+  _montrerCarteActivite(el, jour, b) {
+    this._cacherCarteActivite();
+    const doc = el.ownerDocument;
+    const win = doc.defaultView || window;
+    const carte = doc.body.createDiv({ cls: 'zfa-act-survol' });
+    this._carteActivite = carte;
+    const tete = carte.createDiv({ cls: 'zfa-act-survol-tete' });
+    const puce = tete.createSpan({ cls: 'zfa-act-cat', text: b.ia ? b.ia.categorie : b.categorie });
+    puce.style.setProperty('--zfa-cal-coul', b.couleur);
+    tete.createSpan({ cls: 'zfa-act-meta', text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16)
+      + ' · ' + dureeLisible(b.actifMin) + tr(' actives') });
+    if (b.ia && b.ia.resume) carte.createDiv({ cls: 'zfa-act-survol-resume', text: b.ia.resume });
+    const apps = carte.createDiv({ cls: 'zfa-act-survol-apps' });
+    const placer = () => {
+      const r = el.getBoundingClientRect();
+      const w = carte.offsetWidth;
+      const h = carte.offsetHeight;
+      let x = r.right + 8;
+      if (x + w > win.innerWidth - 8) x = Math.max(8, r.left - w - 8);
+      const y = Math.max(8, Math.min(r.top, win.innerHeight - h - 8));
+      carte.style.left = x + 'px';
+      carte.style.top = y + 'px';
+    };
+    placer();
+    this.greffon.applicationsBlocActivite(jour, b).then((liste) => {
+      if (this._carteActivite !== carte) return;
+      const remplir = () => {
+        if (this._carteActivite !== carte) return;
+        apps.empty();
+        for (const a of liste.slice(0, 6)) {
+          const l = apps.createDiv({ cls: 'zfa-act-survol-app' });
+          const src = this.greffon.iconeApplication(a.app, remplir);
+          if (src) l.createEl('img', { cls: 'zfa-act-icone', attr: { src, alt: '' } });
+          else l.createSpan({ cls: 'zfa-act-icone est-initiale', text: (a.app || '?').charAt(0).toUpperCase() });
+          const t = l.createDiv({ cls: 'zfa-act-survol-txt' });
+          t.createSpan({ cls: 'zfa-act-app', text: a.app });
+          if (a.principal) t.createSpan({ cls: 'zfa-act-survol-sous', text: a.principal });
+          l.createSpan({ cls: 'zfa-act-min', text: dureeLisible(a.min) });
+        }
+        if (liste.length > 6) apps.createDiv({ cls: 'zfa-act-survol-plus', text: '+ ' + (liste.length - 6) + tr(' autre(s)') });
+        placer();
+      };
+      remplir();
+    }).catch(() => { /* relevé illisible : la carte garde son en-tête */ });
+  }
+
+  _cacherCarteActivite() {
+    if (this._carteActivite) { this._carteActivite.remove(); this._carteActivite = null; }
   }
 
   // Le temps réel d'un créneau devient un créneau de tâche, aux mêmes bornes :

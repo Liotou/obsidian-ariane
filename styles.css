@@ -3865,3 +3865,23 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-act-domaine { margin-left: 6px; color: var(--text-accent); }
 .zfa-act-pied { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .zfa-cal-reel { cursor: pointer; }
+
+/* Carte de survol d'un créneau réel : immédiate, icônes des applications. */
+.zfa-act-survol {
+  position: fixed; z-index: var(--layer-tooltip); pointer-events: none;
+  width: 300px; padding: 10px 12px; border-radius: var(--radius-m);
+  background: var(--background-primary); border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s); font-size: var(--font-ui-small);
+}
+.zfa-act-survol-tete { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.zfa-act-survol-resume { margin-top: 6px; line-height: 1.45; }
+.zfa-act-survol-apps { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+.zfa-act-survol-app { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px; }
+.zfa-act-icone { width: 22px; height: 22px; border-radius: 5px; }
+.zfa-act-icone.est-initiale {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--background-modifier-hover); color: var(--text-muted); font-weight: var(--font-semibold);
+}
+.zfa-act-survol-txt { display: flex; flex-direction: column; min-width: 0; }
+.zfa-act-survol-sous { color: var(--text-muted); font-size: var(--font-ui-smaller); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zfa-act-survol-plus { color: var(--text-faint); font-size: var(--font-ui-smaller); }
