@@ -280,6 +280,57 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     }
   }
 
+  // Éditeur de lignes : chaque ligne a ses champs (couleur, texte), se
+  // déplace et se supprime ; « Ajouter » en crée une. `o.ecrire` reçoit la
+  // liste à chaque changement ; la liste ne se redessine qu'à l'ajout, au
+  // déplacement et à la suppression, pour ne pas voler le curseur en cours de
+  // saisie.
+  _editeurLignes(c, o) {
+    const hote = c.createDiv({ cls: 'zfa-lignes' });
+    let lignes = o.lire();
+    const enregistrer = () => o.ecrire(lignes);
+    const dessiner = () => {
+      hote.empty();
+      lignes.forEach((l, i) => {
+        const row = hote.createDiv({ cls: 'zfa-lignes-l' });
+        for (const ch of o.champs) {
+          if (ch.type === 'couleur') {
+            const inp = row.createEl('input', { type: 'color', cls: 'zfa-lignes-couleur' });
+            inp.value = /^#[0-9a-f]{6}$/i.test(l[ch.cle] || '') ? l[ch.cle] : '#888888';
+            inp.oninput = () => { l[ch.cle] = inp.value; };
+            inp.onchange = () => { l[ch.cle] = inp.value; enregistrer(); };
+            continue;
+          }
+          const inp = row.createEl('input', { type: 'text', cls: 'zfa-lignes-texte' + (ch.large ? ' est-large' : ''),
+            attr: { placeholder: ch.place || '' } });
+          if (ch.largeur) inp.style.width = ch.largeur;
+          inp.value = l[ch.cle] || '';
+          inp.oninput = () => { l[ch.cle] = inp.value; };
+          inp.onchange = () => enregistrer();
+        }
+        const outils = row.createDiv({ cls: 'zfa-lignes-outils' });
+        const bt = (icone, libelle, faire, inactif) => {
+          const b = outils.createDiv({ cls: 'clickable-icon' + (inactif ? ' is-disabled' : ''), attr: { 'aria-label': libelle } });
+          obsidian.setIcon(b, icone);
+          b.onclick = () => { if (!inactif) faire(); };
+        };
+        bt('arrow-up', tr('Monter'), () => { [lignes[i - 1], lignes[i]] = [lignes[i], lignes[i - 1]]; enregistrer(); dessiner(); }, i === 0);
+        bt('arrow-down', tr('Descendre'), () => { [lignes[i + 1], lignes[i]] = [lignes[i], lignes[i + 1]]; enregistrer(); dessiner(); }, i === lignes.length - 1);
+        bt('trash-2', tr('Supprimer'), () => { lignes.splice(i, 1); enregistrer(); dessiner(); });
+      });
+      const ajout = hote.createEl('button', { cls: 'zfa-lignes-ajout' });
+      obsidian.setIcon(ajout.createSpan({ cls: 'zfa-lignes-ajout-ic' }), 'plus');
+      ajout.createSpan({ text: o.ajout || tr('Ajouter') });
+      ajout.onclick = () => {
+        lignes.push(o.nouvelle());
+        dessiner();
+        const champs = hote.querySelectorAll('.zfa-lignes-l:last-of-type input[type=text]');
+        if (champs[0]) champs[0].focus();
+      };
+    };
+    dessiner();
+  }
+
   _section(parent, titre, desc) {
     const st = new obsidian.Setting(parent).setName(titre).setHeading();
     if (desc) st.setDesc(desc);
@@ -1060,14 +1111,18 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         }));
       new obsidian.Setting(c)
         .setName(tr('Règles de classement'))
-        .setDesc(tr("Une règle par ligne : « Catégorie #couleur = motif, motif ». La couleur est facultative. Un motif est un fragment de texte, sans égard à la casse, cherché dans l'application, le titre de la fenêtre et l'adresse de la page ; « app: », « titre: » ou « url: » le restreint à ce champ, et /…/ en fait une expression régulière. La première règle qui correspond l'emporte. La catégorie « - » écarte ce qui correspond. Une ligne commençant par # est un commentaire."))
-        .addTextArea((t) => {
-          t.setValue(s.activiteRegles || '')
-            .onChange(async (v) => { s.activiteRegles = v; await maj(); this.plugin._rafraichirActiviteDiffere(); });
-          t.inputEl.rows = 8;
-          t.inputEl.style.width = '100%';
-          t.inputEl.style.fontFamily = 'var(--font-monospace)';
-        });
+        .setDesc(tr("Une règle par ligne, la première qui correspond l'emporte. Motifs séparés par des virgules, cherchés sans égard à la casse dans l'application, le titre de la fenêtre et l'adresse ; « app: », « titre: » ou « url: » restreint à ce champ, /…/ est une expression régulière. La catégorie « - » écarte ce qui correspond."));
+      this._editeurLignes(c, {
+        lire: () => Ariane.lignesReglesActivite(s.activiteRegles),
+        ecrire: async (l) => { s.activiteRegles = Ariane.texteReglesActivite(l); await maj(); this.plugin._rafraichirActiviteDiffere(); },
+        nouvelle: () => ({ categorie: '', couleur: '#6c8ead', motifs: '' }),
+        ajout: tr('Ajouter une règle'),
+        champs: [
+          { cle: 'couleur', type: 'couleur' },
+          { cle: 'categorie', place: tr('Catégorie (- pour écarter)'), largeur: '160px' },
+          { cle: 'motifs', place: tr('app:Zotero, .pdf, cairn.info'), large: true },
+        ],
+      });
       new obsidian.Setting(c)
         .setName(tr('Catégorie par défaut'))
         .setDesc(tr("Pour ce qu'aucune règle ne classe. Vide : ce temps n'est pas affiché."))
@@ -1112,14 +1167,22 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       }
       new obsidian.Setting(c)
         .setName(tr('Catégories'))
-        .setDesc(tr("Une par ligne : « Nom #couleur : ce qu'elle recouvre ». La description guide l'IA : soyez précis sur ce qui relève de chaque catégorie. Gardez une catégorie pour la vie privée et les distractions."))
-        .addTextArea((t) => {
-          t.setValue(s.activiteCategoriesIA || '')
-            .onChange(async (v) => { s.activiteCategoriesIA = v; await maj(); this.plugin._rafraichirActiviteDiffere(); });
-          t.inputEl.rows = 10;
-          t.inputEl.style.width = '100%';
-          t.inputEl.style.fontFamily = 'var(--font-monospace)';
-        });
+        .setDesc(tr("Le nom, la couleur, et ce que la catégorie recouvre : cette description guide l'IA, soyez précis. Gardez une catégorie pour la vie privée et les distractions."))
+        .addButton((b) => b.setButtonText(tr('Rétablir les catégories par défaut')).onClick(async () => {
+          s.activiteCategoriesIA = DEFAULT_SETTINGS.activiteCategoriesIA;
+          await maj(); this.plugin._rafraichirActiviteDiffere(); this.display();
+        }));
+      this._editeurLignes(c, {
+        lire: () => Ariane.compilerCategoriesIA(s.activiteCategoriesIA),
+        ecrire: async (l) => { s.activiteCategoriesIA = Ariane.texteCategoriesIA(l); await maj(); this.plugin._rafraichirActiviteDiffere(); },
+        nouvelle: () => ({ nom: '', couleur: '#6c8ead', description: '' }),
+        ajout: tr('Ajouter une catégorie'),
+        champs: [
+          { cle: 'couleur', type: 'couleur' },
+          { cle: 'nom', place: tr('Nom'), largeur: '170px' },
+          { cle: 'description', place: tr('Ce qu\'elle recouvre, pour guider l\'IA'), large: true },
+        ],
+      });
       new obsidian.Setting(c)
         .setName(tr('Contexte donné à l\'IA'))
         .setDesc(tr('Qui vous êtes et sur quoi vous travaillez : de quoi distinguer le travail du reste.'))

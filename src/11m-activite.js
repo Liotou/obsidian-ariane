@@ -173,6 +173,37 @@ const avecActivite = (Base) => class extends Base {
     return regles;
   }
 
+  // Les règles et les catégories restent rangées en texte dans les réglages
+  // (lisible, exportable) ; l'éditeur des réglages les manipule en lignes.
+  static lignesReglesActivite(texte) {
+    const out = [];
+    for (const brute of String(texte || '').split('\n')) {
+      const l = brute.trim();
+      if (!l || l.startsWith('#')) continue;
+      const i = l.indexOf('=');
+      if (i <= 0) continue;
+      let tete = l.slice(0, i).trim();
+      let couleur = '';
+      const mc = tete.match(/\s(#[0-9a-fA-F]{3,8})$/);
+      if (mc) { couleur = mc[1]; tete = tete.slice(0, mc.index).trim(); }
+      out.push({ categorie: tete, couleur, motifs: l.slice(i + 1).trim() });
+    }
+    return out;
+  }
+
+  static texteReglesActivite(lignes) {
+    return (lignes || []).filter((r) => String(r.categorie || '').trim() && String(r.motifs || '').trim())
+      .map((r) => r.categorie.trim() + (r.couleur && r.categorie.trim() !== '-' ? ' ' + r.couleur : '')
+        + ' = ' + r.motifs.trim()).join('\n');
+  }
+
+  static texteCategoriesIA(cats) {
+    return (cats || []).filter((c) => String(c.nom || '').trim())
+      .map((c) => c.nom.trim().replace(/[#:]/g, ' ').replace(/\s+/g, ' ')
+        + (c.couleur ? ' ' + c.couleur : '') + (String(c.description || '').trim() ? ' : ' + c.description.trim() : ''))
+      .join('\n');
+  }
+
   // Règle qui s'applique à un segment : la règle, null si elle l'écarte,
   // undefined si aucune ne correspond.
   static classerActivite(seg, regles) {

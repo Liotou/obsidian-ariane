@@ -3933,3 +3933,15 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-ratt-reste.est-trop { color: var(--text-error); }
 .zfa-ratt-ajout { margin-top: 6px; font-size: var(--font-ui-smaller); }
 .zfa-ratt-pied { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+/* Éditeur de lignes des réglages (règles et catégories d'activité). */
+.zfa-lignes { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 18px; }
+.zfa-lignes-l { display: flex; align-items: center; gap: 8px; }
+.zfa-lignes-couleur { width: 30px; height: 26px; padding: 0; border: none; background: none; cursor: pointer; flex: 0 0 auto; }
+.zfa-lignes-texte { flex: 0 0 auto; }
+.zfa-lignes-texte.est-large { flex: 1 1 auto; min-width: 120px; }
+.zfa-lignes-outils { display: flex; gap: 2px; flex: 0 0 auto; }
+.zfa-lignes-outils .clickable-icon.is-disabled { opacity: 0.3; cursor: default; }
+.zfa-lignes-ajout { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+.zfa-lignes-ajout-ic { display: inline-flex; }
+.zfa-lignes-ajout-ic svg { width: 14px; height: 14px; }

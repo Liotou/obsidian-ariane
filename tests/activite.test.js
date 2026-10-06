@@ -279,3 +279,13 @@ test('rattachement : réponse de l’IA vérifiée (refs connues, parts bornées
   assert.equal(r.get(1)[0].raison, 'document : ASNR');
   assert.deepEqual(r.get(2), []);
 });
+
+test('éditeur des réglages : règles et catégories, aller-retour texte ↔ lignes', () => {
+  const D = Ariane._test.DEFAULT_SETTINGS;
+  const r = Ariane.lignesReglesActivite(D.activiteRegles);
+  assert.equal(Ariane.texteReglesActivite(r), D.activiteRegles);
+  assert.deepEqual(r[r.length - 1], { categorie: '-', couleur: '', motifs: 'app:loginwindow, app:ScreenSaverEngine' });
+  const c = Ariane.compilerCategoriesIA(D.activiteCategoriesIA);
+  assert.deepEqual(Ariane.compilerCategoriesIA(Ariane.texteCategoriesIA(c)), c);
+  assert.equal(Ariane.texteCategoriesIA([{ nom: 'A: #b', couleur: '#123456', description: '' }, { nom: '', couleur: '#000' }]), 'A b #123456');
+});
