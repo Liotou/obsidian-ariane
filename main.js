@@ -31452,6 +31452,43 @@ class MoteurCalendrier extends MoteurVue {
     return '';
   }
 
+  // Un jalon du bandeau, lâché quelque part dans la vue semaine. Rend true
+  // s'il s'agissait bien d'un jalon (le glissé est alors traité ici).
+  //  · sur le bandeau : il change de jour, échéance déplacée d'autant ;
+  //  · dans la grille des heures : il cesse d'être un jalon et devient une
+  //    tâche avec un créneau d'une heure à l'endroit visé ; son échéance
+  //    recule jusqu'à ce jour si elle le précédait.
+  _dropJalon(ev, jourISO, ou) {
+    let d = null;
+    try { d = JSON.parse(ev.dataTransfer.getData('text/x-ariane-cal') || 'null'); } catch (e) { d = null; }
+    if (!d || !d.jalon || !d.ref) return false;
+    ev.preventDefault();
+    const t = (this._taches || []).find((x) => x.ref === d.ref);
+    if (!t) return true;
+    // La position se lit maintenant : après le premier await, l'événement est
+    // retombé et currentTarget ne vaut plus rien.
+    const cr = ou === 'grille' ? Ariane.creneauDepuisDrop({
+      yRel: ev.clientY - ev.currentTarget.getBoundingClientRect().top,
+      hauteurHeure: this._pxHeure, heureDebut: this._hDeb, jourISO }) : null;
+    (async () => {
+      if (ou === 'bandeau') {
+        const n = Ariane.ecartJours(d.jour, jourISO);
+        if (!n) return;
+        const ne = t.echeance ? Ariane.decalerJour(t.echeance, n) : jourISO;
+        await this._ecrireDatesU([{ ref: d.ref, debut: '', echeance: ne }]);
+        this._apres(d.ref, { debut: '', echeance: ne, cible: ['', ne, []] });
+        return;
+      }
+      if (!cr) return;
+      const champs = { jalon: false };
+      if (!t.echeance || t.echeance < jourISO) champs.echeance = jourISO;
+      await this.greffon.majTache(d.ref, champs);
+      await this._majCreneauU(d.ref, { avant: '', debut: cr.debut, fin: cr.fin });
+      this._apres(d.ref, { cible: [undefined, undefined, null], creneaux: undefined });
+    })().catch((e) => console.error('[Ariane] jalon déplacé :', e));
+    return true;
+  }
+
   async _dropExterne(ev, jourISO, mode) {
     const ref = this._refDepuisDrop(ev.dataTransfer);
     if (!ref) { new obsidian.Notice(tr('Aucune tâche reconnue dans ce glissé.')); return; }
@@ -32361,7 +32398,9 @@ class MoteurCalendrier extends MoteurVue {
       col.addEventListener('dragover', (de) => { de.preventDefault(); col.addClass('zfa-cal-cible'); });
       col.addEventListener('dragleave', () => col.removeClass('zfa-cal-cible'));
       col.addEventListener('drop', (de) => {
-        col.removeClass('zfa-cal-cible'); this._dropExterne(de, col.dataset.jour, 'mois');
+        col.removeClass('zfa-cal-cible');
+        if (this._dropJalon(de, col.dataset.jour, 'bandeau')) return;
+        this._dropExterne(de, col.dataset.jour, 'mois');
       });
       const liste = toutJour.get(j).slice().sort(Ariane.comparerEmpilement);
       let deplie = false;
@@ -32380,6 +32419,15 @@ class MoteurCalendrier extends MoteurVue {
             jp.createSpan({ cls: 'zfa-cal-bjalon-t', text: t.intitule || t.ref });
             jp.title = t.ref + ' · ' + (t.intitule || '');
             this._brancherOuvertureCarte(jp, t, ev);
+            // Glissable : vers un autre jour du bandeau (le jalon change de
+            // date) ou dans la grille des heures (il devient une tâche avec
+            // un créneau à cet endroit).
+            jp.setAttribute('draggable', 'true');
+            jp.addEventListener('dragstart', (de) => {
+              de.dataTransfer.setData('text/x-ariane-cal', JSON.stringify({ ref: t.ref, jour: j, brut: '', jalon: true }));
+              de.dataTransfer.setData('text/x-ariane-tache', t.ref);
+              de.dataTransfer.effectAllowed = 'move';
+            });
           } else {
             this.rendreCarte(col, t, ev, { compact: true, avecCoche: true });
           }
@@ -32463,7 +32511,9 @@ class MoteurCalendrier extends MoteurVue {
       col.addEventListener('dragover', (de) => { de.preventDefault(); col.addClass('zfa-cal-cible'); });
       col.addEventListener('dragleave', () => col.removeClass('zfa-cal-cible'));
       col.addEventListener('drop', (de) => {
-        col.removeClass('zfa-cal-cible'); this._dropExterne(de, col.dataset.jour, 'semaine');
+        col.removeClass('zfa-cal-cible');
+        if (this._dropJalon(de, col.dataset.jour, 'grille')) return;
+        this._dropExterne(de, col.dataset.jour, 'semaine');
       });
       col.addEventListener('contextmenu', (e) => {
         if (e.target.closest('.zfa-cal-carte')) return;
