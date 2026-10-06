@@ -1444,7 +1444,7 @@ class VueChronologie extends obsidian.ItemView {
       console.error('[Ariane] chronologie', e);
     }
     if (jeton !== this._jeton) return;
-    this.dessiner(evts, b, auj, departChaleur);
+    this.dessiner(Ariane.grouperAjoutsAuto(evts), b, auj, departChaleur);
   }
 
   dessiner(evts, b, auj, departChaleur) {
@@ -1544,19 +1544,34 @@ class VueChronologie extends obsidian.ItemView {
       tj.createSpan({ cls: 'zfa-chrono-jour-nom', text: nom.charAt(0).toUpperCase() + nom.slice(1) });
       const n = totaux.get(jour) || liste.length;
       tj.createSpan({ cls: 'zfa-chrono-badge', text: String(n), attr: { 'aria-label': n + ' ' + (n > 1 ? tr('événements') : tr('événement')) } });
-      // Un jour avec du temps hors Obsidian : le résumer, le rattacher.
+      const act = tj.createDiv({ cls: 'zfa-chrono-jour-actions' });
+      const bouton = (icone, libelle, faire) => {
+        const x = act.createEl('button', { cls: 'zfa-chrono-jour-bt' });
+        obsidian.setIcon(x.createSpan({ cls: 'zfa-chrono-jour-bt-ic' }), icone);
+        x.createSpan({ text: libelle });
+        x.onclick = faire;
+        return x;
+      };
+      // Un jour avec du temps hors Obsidian : résumer ses créneaux, les
+      // rattacher.
       if (liste.some((x) => x.type === 'activite')) {
-        const act = tj.createDiv({ cls: 'zfa-chrono-jour-actions' });
-        const bouton = (icone, libelle, faire) => {
-          const x = act.createEl('button', { cls: 'zfa-chrono-jour-bt' });
-          obsidian.setIcon(x.createSpan({ cls: 'zfa-chrono-jour-bt-ic' }), icone);
-          x.createSpan({ text: libelle });
-          x.onclick = faire;
-        };
-        bouton('sparkles', tr('Résumer la journée'), () => this.greffon.resumerActivite(jour));
+        bouton('sparkles', tr('Résumer les créneaux'), () => this.greffon.resumerActivite(jour));
         bouton('link', tr('Rattacher'), () => this.greffon.ouvrirRattachementActivite(jour,
           this._hoteActivite().blocsDuJour(jour), this._hoteActivite()));
       }
+      // Le bilan de la journée par l'IA : affiché sous le titre du jour.
+      const bilan = hote.createDiv({ cls: 'zfa-chrono-bilan' });
+      const btBilan = bouton('sunset', tr('Bilan de la journée'), async () => {
+        btBilan.disabled = true;
+        await this.greffon.resumerJournee(jour);
+        btBilan.disabled = false;
+      });
+      this.greffon.resumeDeLaJournee(jour).then((t) => {
+        if (!t) { bilan.remove(); return; }
+        btBilan.lastChild.setText(tr('Refaire le bilan'));
+        obsidian.setIcon(bilan.createSpan({ cls: 'zfa-chrono-bilan-ic' }), 'sunset');
+        bilan.createDiv({ cls: 'zfa-chrono-bilan-texte', text: t });
+      }).catch(() => bilan.remove());
       const fil = hote.createDiv({ cls: 'zfa-chrono-fil' });
       for (const e of liste) this._dessinerEvenement(fil, e);
     }
@@ -1569,6 +1584,7 @@ class VueChronologie extends obsidian.ItemView {
 
   _dessinerEvenement(hote, e) {
     if (e.type === 'activite') { this._dessinerActivite(hote, e); return; }
+    if (e.type === 'ajouts-auto') { this._dessinerLotAuto(hote, e); return; }
     const d = Ariane.typeChrono(e.type);
     const ligne = hote.createDiv({ cls: 'zfa-chrono-evt' + (e.approx ? ' est-approx' : '') });
     ligne.style.setProperty('--zfa-chrono-coul', d.couleur);
@@ -1624,6 +1640,44 @@ class VueChronologie extends obsidian.ItemView {
         m.showAtMouseEvent(ev);
       });
     }
+  }
+
+  // Un lot d'ajouts automatiques : une seule ligne, discrète, qui se déplie
+  // sur la liste des notes.
+  _dessinerLotAuto(hote, e) {
+    const d = Ariane.typeChrono(e.type);
+    const ligne = hote.createDiv({ cls: 'zfa-chrono-evt est-auto' + (e.approx ? ' est-approx' : '') });
+    ligne.style.setProperty('--zfa-chrono-coul', d.couleur);
+    const p = (x) => String(x).padStart(2, '0');
+    const hm = (t) => { const h = new Date(t); return p(h.getHours()) + ':' + p(h.getMinutes()); };
+    ligne.createDiv({ cls: 'zfa-chrono-heure', text: hm(e.t) });
+    const rail = ligne.createDiv({ cls: 'zfa-chrono-rail' });
+    obsidian.setIcon(rail.createDiv({ cls: 'zfa-chrono-pastille' }), d.icone);
+    const carte = ligne.createDiv({ cls: 'zfa-chrono-carte est-cliquable' });
+    const tete = carte.createDiv({ cls: 'zfa-chrono-carte-tete' });
+    tete.createSpan({ cls: 'zfa-chrono-nom', text: e.n + ' ' + tr('notes ajoutées') });
+    tete.createSpan({ cls: 'zfa-chrono-genre', text: tr(d.etiquette) });
+    if (e.source || e.dossier) tete.createSpan({ cls: 'zfa-chrono-etiquette', text: e.source || e.dossier });
+    const meta = carte.createDiv({ cls: 'zfa-chrono-chemin' });
+    meta.setText(e.debut && hm(e.debut) !== hm(e.t) ? tr('de') + ' ' + hm(e.debut) + ' ' + tr('à') + ' ' + hm(e.t) : tr('en une fois'));
+    const liste = carte.createDiv({ cls: 'zfa-chrono-lot' });
+    liste.hide();
+    let rempli = false;
+    carte.addEventListener('click', (ev) => {
+      if (ev.target.closest('.zfa-chrono-lot-el')) return;
+      if (!rempli) {
+        rempli = true;
+        for (const x of e.elements.slice(0, 100)) {
+          const f = this.app.vault.getAbstractFileByPath(x.chemin);
+          const el = liste.createDiv({ cls: 'zfa-chrono-lot-el' + (f instanceof obsidian.TFile ? '' : ' est-disparu'), text: x.titre || x.chemin });
+          if (f instanceof obsidian.TFile) {
+            el.addEventListener('click', (ev2) => this.app.workspace.getLeaf(!!(ev2.metaKey || ev2.ctrlKey)).openFile(f));
+          }
+        }
+        if (e.elements.length > 100) liste.createDiv({ cls: 'zfa-chrono-lot-plus', text: '+ ' + (e.elements.length - 100) });
+      }
+      liste.toggle(!liste.isShown());
+    });
   }
 
   // Ce que la chronologie apporte aux actions communes sur le temps réel

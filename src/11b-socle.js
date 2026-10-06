@@ -354,7 +354,15 @@ const avecSocle = (Base) => class extends Base {
     // Le dossier des tâches peut avoir changé : l'index « référence → fichier »
     // se lit dessus, on le laisse se reconstruire.
     this._invaliderIndexTaches();
-    await this.saveData(this.settings);
+    // Le relevé du compteur de temps vit dans les fichiers du jour du journal
+    // du temps (avecDonneesJour) : il ne gonfle plus les réglages.
+    if (Number(this.settings.donneesJourVersion) >= 1) {
+      const copie = Object.assign({}, this.settings);
+      delete copie.tempsHistorique;
+      await this.saveData(copie);
+    } else {
+      await this.saveData(this.settings);
+    }
     // Familles, préfixe, largeur des cartes… : les cartes du canevas se redessinent.
     if (this.canevas) this.canevas.invalider();
   }

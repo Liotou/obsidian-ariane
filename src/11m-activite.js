@@ -761,23 +761,40 @@ const avecActivite = (Base) => class extends Base {
 
   static cleBlocActivite(jour, b) { return jour + '|' + b.debut + '|' + b.fin; }
 
+  // Les résumés vivent dans les fichiers du jour (« activiteIA », clés
+  // « jour|début|fin ») ; en mémoire, un seul objet pour toutes les vues.
   async _chargerResumesActivite() {
     if (this._resumesActivite) return;
-    this._resumesActivite = {};
-    const a = this.app.vault.adapter;
-    try {
-      if (await a.exists(this.cheminResumesActivite)) {
-        const j = JSON.parse(await a.read(this.cheminResumesActivite));
-        if (j && typeof j === 'object') this._resumesActivite = j;
-      }
-    } catch (e) { console.warn('[Ariane] résumés d\'activité illisibles :', e); }
+    const r = {};
+    for (const j of await this.joursAvecDonnees()) {
+      const o = await this.donneesJour(j);
+      if (o.activiteIA) Object.assign(r, o.activiteIA);
+    }
+    if (!this._resumesActivite) this._resumesActivite = r;
+    this._joursResumes = new Set(Object.keys(r).map((k) => k.slice(0, 10)));
   }
 
+  // Chaque résumé rejoint le fichier de son jour ; un jour dont tous les
+  // résumés sont oubliés n'en garde plus.
   _sauverResumesActivite() {
     this.antirebond('activite-ia', async () => {
       try {
-        await this.app.vault.adapter.write(this.cheminResumesActivite,
-          JSON.stringify(this._resumesActivite || {}));
+        const r = this._resumesActivite || {};
+        const parJour = new Map();
+        for (const [cle, v] of Object.entries(r)) {
+          const j = cle.slice(0, 10);
+          if (!parJour.has(j)) parJour.set(j, {});
+          parJour.get(j)[cle] = v;
+        }
+        const jours = new Set([...parJour.keys(), ...(this._joursResumes || [])]);
+        for (const j of jours) {
+          const o = await this.donneesJour(j);
+          const nv = parJour.get(j);
+          if (nv) o.activiteIA = nv; else delete o.activiteIA;
+          this.marquerJourSale(j);
+        }
+        this._joursResumes = new Set(parJour.keys());
+        await this.ecrireDonneesJours();
       } catch (e) { console.warn('[Ariane] résumés d\'activité non écrits :', e); }
     }, 1500);
   }
@@ -1499,20 +1516,13 @@ const avecActivite = (Base) => class extends Base {
     return l;
   }
 
+  // Les onglets des deux derniers mois, lus dans les fichiers du jour.
   async _chargerOngletsSafari() {
     if (this._ongletsSafari) return;
     this._ongletsSafari = [];
-    const a = this.app.vault.adapter;
-    let brut = '';
-    try { if (await a.exists(this.cheminOngletsSafari)) brut = await a.read(this.cheminOngletsSafari); } catch (e) { brut = ''; }
-    // Deux mois suffisent au calendrier.
-    const seuil = Date.now() - 62 * 86400000;
-    for (const l of brut.split('\n')) {
-      if (!l.trim()) continue;
-      try {
-        const x = JSON.parse(l);
-        if (x && x.fin > seuil && x.url) this._ongletsSafari.push(x);
-      } catch (e) { /* ligne abîmée : passée */ }
+    const seuilJour = Ariane.decalerJour(jourIsoDe(new Date()), -62);
+    for (const x of await this.listesDepuis('onglets', seuilJour)) {
+      if (x && x.url) this._ongletsSafari.push(x);
     }
   }
 
@@ -1530,12 +1540,8 @@ const avecActivite = (Base) => class extends Base {
     if (c && c.url && x.ms - c.debut >= 5000) {
       const rec = { debut: c.debut, fin: x.ms, url: c.url, titre: c.titre };
       this._ongletsSafari.push(rec);
-      const a = this.app.vault.adapter;
-      const p = this.cheminOngletsSafari;
-      (async () => {
-        const l = JSON.stringify(rec) + '\n';
-        if (await a.exists(p)) await a.append(p, l); else await a.write(p, l);
-      })().catch((e) => console.warn('[Ariane] onglets Safari :', e));
+      this.ajouterDonneeJour(jourIsoDe(new Date(rec.debut)), 'onglets', rec)
+        .catch((e) => console.warn('[Ariane] onglets Safari :', e));
     }
     this._ongletSafariCourant = x.url ? { debut: x.ms, url: x.url, titre: x.titre || '' } : null;
   }

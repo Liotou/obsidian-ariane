@@ -15,7 +15,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecTaches,
   avecPublicationSite,
   avecActivite,
-  avecChronologie) {
+  avecChronologie,
+  avecDonneesJour) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -78,6 +79,12 @@ class Ariane extends composer(obsidian.Plugin,
       name: tr('Atomiser : la note source active'),
       icon: 'atom',
       callback: () => this.commandeNoteActive(),
+    });
+    this.addCommand({
+      id: 'journee-resumer',
+      name: tr('Journée : résumer ma journée (IA)'),
+      icon: 'sunset',
+      callback: () => this.resumerJournee(jourIsoDe(new Date())),
     });
     this.addCommand({
       id: 'activite-resumer-semaine',
@@ -749,12 +756,20 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerMarkdownPostProcessor((el) => this.rendreCitationsRepliables(el));
     this.registerMarkdownPostProcessor((el) => this.enrichirCompteursEmprunts(el));
     this.app.workspace.onLayoutReady(() => this.installerDecorateurExplorateur());
-    this.app.workspace.onLayoutReady(() => {
+    this.app.workspace.onLayoutReady(async () => {
+      // Les données du temps et de l'activité vivent par jour dans le journal
+      // du temps : la migration (une fois) et la relecture du compteur
+      // passent avant tout ce qui les lit ou les écrit.
+      try {
+        await this.migrerVersDonneesJour();
+        await this.chargerTempsDepuisJours();
+      } catch (e) { console.error('[Ariane] données par jour', e); }
       this.elaguerHistoriqueTemps();
       this.demarrerCompteurTemps();
       this.demarrerActivite();
       this.brancherChronologie();
       this.installerInfobulleTemps();
+      this.demarrerResumeJourneeAuto();
     });
     this._citVersion = 0;
     this.app.workspace.onLayoutReady(() => this.appliquerEtatCitations());
@@ -1275,6 +1290,8 @@ class Ariane extends composer(obsidian.Plugin,
     // perdues à la fermeture d'Obsidian ou au rechargement du greffon.
     // Journal d'activité : ce qui attend encore son écriture.
     if (this._chronoEcrire) this._chronoEcrire().catch(() => { /* fermeture en cours */ });
+    // Les données du jour qui attendent leur écriture.
+    if (this.ecrireDonneesJours) this.ecrireDonneesJours().catch(() => { /* fermeture en cours */ });
     this.reporterTemps().catch(() => { /* fermeture en cours */ });
     if (this._cloreSession) this._cloreSession();
     // Les derniers changements des tâches attendaient leur écriture groupée,

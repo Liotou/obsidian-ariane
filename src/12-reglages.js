@@ -1172,6 +1172,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       this._choixIAActivite(c, s, maj, 'synthese', tr('Fournisseur'),
         tr("Résume chaque créneau hors Obsidian et le range dans une catégorie (clic droit, « Résumer la journée », « Résumer la période »), et affine les suggestions de rattachement à la demande. Le premier jet de ces suggestions est local, sans cette IA. Haiku suffit, vite et à peu de frais."));
       new obsidian.Setting(c)
+        .setName(tr('Bilan de la journée'))
+        .setDesc(tr("Un résumé de toute la journée par l'IA (accompli, temps, distractions), écrit pour être lu à voix haute. Il se fait à la demande (commande « Journée : résumer ma journée (IA) », bouton de la chronologie) ou chaque jour à l'heure indiquée ici (vide : jamais). On le retrouve dans la note du journal du temps du jour, et dans « .données/AAAA-MM-JJ.json », clé « resumeJournee »."))
+        .addText((t) => t.setPlaceholder('22:30').setValue(s.resumeJourneeHeure || '')
+          .onChange(async (v) => { s.resumeJourneeHeure = /^\d{1,2}:\d{2}$/.test(v.trim()) ? v.trim() : ''; await maj(); }));
+      new obsidian.Setting(c)
         .setName(tr('Catégories'))
         .setDesc(tr("Le nom, la couleur, et ce que la catégorie recouvre : cette description guide l'IA, soyez précis. Gardez une catégorie pour la vie privée et les distractions."))
         .addButton((b) => b.setButtonText(tr('Rétablir les catégories par défaut')).onClick(async () => {

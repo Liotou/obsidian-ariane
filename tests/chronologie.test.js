@@ -79,7 +79,7 @@ test('filtrerChrono et comptesChrono', () => {
   assert.equal(Ariane.filtrerChrono(e, 'notes', '').length, 2);
   assert.deepEqual(Ariane.comptesChrono(e), {
     'note-modifiee': 2, 'note-creee': 0, capture: 1,
-    'tache-terminee': 1, 'tache-abandonnee': 1, canevas: 0, activite: 0,
+    'tache-terminee': 1, 'tache-abandonnee': 1, canevas: 0, 'ajouts-auto': 0, activite: 0,
   });
 });
 

@@ -2346,32 +2346,27 @@ const avecTaches = (Base) => class extends Base {
     this.antirebond('journal-taches', () => this._viderJournalTaches(), 2000);
   }
 
+  // Les modifications rejoignent le fichier de leur jour (voir avecDonneesJour).
   async _viderJournalTaches() {
     if (!this._journalTampon || !this._journalTampon.length) return;
-    const lignes = this._journalTampon.splice(0).map((e) => JSON.stringify(e)).join('\n') + '\n';
-    const a = this.app.vault.adapter;
+    const lot = this._journalTampon.splice(0);
     try {
-      if (await a.exists(this.cheminJournalTaches)) await a.append(this.cheminJournalTaches, lignes);
-      else await a.write(this.cheminJournalTaches, lignes);
+      for (const e of lot) {
+        await this.ajouterDonneeJour(String(e.le).slice(0, 10), 'taches', e);
+        if (this._journalTachesLu) this._journalTachesLu.push(e);
+      }
     } catch (e) {
       console.error('[Ariane] journal des tâches :', e);
     }
   }
 
-  // Tout le journal, tampon pas encore écrit compris. Une ligne illisible est
-  // passée, pas fatale.
+  // Tout le journal, tampon pas encore écrit compris. Lu une fois dans les
+  // fichiers du jour, puis tenu en mémoire.
   async lireJournalTaches() {
-    const a = this.app.vault.adapter;
-    let brut = '';
-    try {
-      if (await a.exists(this.cheminJournalTaches)) brut = await a.read(this.cheminJournalTaches);
-    } catch (e) { brut = ''; }
-    const out = [];
-    for (const l of brut.split('\n')) {
-      if (!l.trim()) continue;
-      try { out.push(JSON.parse(l)); } catch (e) { /* ligne abîmée : passée */ }
+    if (!this._journalTachesLu) {
+      this._journalTachesLu = (await this.listesDepuis('taches', '')).filter((x) => x && x.ref);
     }
-    return out.concat(this._journalTampon || []);
+    return this._journalTachesLu.concat(this._journalTampon || []);
   }
 
   // Minutes passées par note depuis `seuil` (jour ISO), d'après le relevé du
@@ -2724,36 +2719,21 @@ const avecTaches = (Base) => class extends Base {
     return dossier + '/sessions-travail.jsonl';
   }
 
+  // Les sessions des deux derniers mois, lues dans les fichiers du jour du
+  // journal du temps (voir avecDonneesJour).
   async chargerSessionsTravail() {
-    const a = this.app.vault.adapter;
-    let brut = '';
-    try {
-      if (await a.exists(this.cheminSessionsTravail)) brut = await a.read(this.cheminSessionsTravail);
-    } catch (e) { brut = ''; }
-    const lues = [];
-    for (const l of brut.split('\n')) {
-      if (!l.trim()) continue;
-      let x;
-      try { x = JSON.parse(l); } catch (e) { continue; }
-      if (x && x.renomme) {
-        for (const y of lues) if (y.chemin === x.renomme) y.chemin = x.vers;
-      } else if (x && x.chemin) {
-        lues.push(x);
-      }
-    }
+    const seuil = Ariane.decalerJour(jourIsoDe(new Date()), -62);
+    const lues = (await this.listesDepuis('sessions', seuil)).filter((x) => x && x.chemin);
     // Ce qui a été clos pendant la lecture n'est pas perdu.
     this._sessionsTravail = lues.concat(this._sessionsTravail || []);
     this._peindreTravailCalendriers();
   }
 
+  // Une session close rejoint le fichier de son jour.
   _ecrireLigneSessions(obj) {
-    const a = this.app.vault.adapter;
-    const ligne = JSON.stringify(obj) + '\n';
-    const p = this.cheminSessionsTravail;
-    (async () => {
-      if (await a.exists(p)) await a.append(p, ligne);
-      else await a.write(p, ligne);
-    })().catch((e) => console.error('[Ariane] sessions de travail :', e));
+    if (!obj || !obj.debut) return;
+    this.ajouterDonneeJour(String(obj.debut).slice(0, 10), 'sessions', obj)
+      .catch((e) => console.error('[Ariane] sessions de travail :', e));
   }
 
   // Un battement actif. La session continue tant que c'est la même note et
@@ -2789,9 +2769,14 @@ const avecTaches = (Base) => class extends Base {
     const touche = (this._sessionsTravail || []).some((x) => x.chemin === ancien)
       || (this._sessionEnCours && this._sessionEnCours.chemin === ancien);
     if (!touche) return;
-    for (const x of (this._sessionsTravail || [])) if (x.chemin === ancien) x.chemin = nouveau;
+    // Les sessions en mémoire sont celles des fichiers du jour (mêmes
+    // objets) : les renommer, puis réécrire les jours touchés.
+    const jours = new Set();
+    for (const x of (this._sessionsTravail || [])) {
+      if (x.chemin === ancien) { x.chemin = nouveau; jours.add(String(x.debut).slice(0, 10)); }
+    }
     if (this._sessionEnCours && this._sessionEnCours.chemin === ancien) this._sessionEnCours.chemin = nouveau;
-    this._ecrireLigneSessions({ renomme: ancien, vers: nouveau });
+    for (const j of jours) this.marquerJourSale(j);
   }
 
   // Toutes les sessions, celle en cours comprise, fusionnées.
@@ -2921,6 +2906,14 @@ const avecTaches = (Base) => class extends Base {
   // Reporte en propriété les secondes accumulées. Sans argument, pour toutes
   // les notes en attente.
   async reporterTemps(cheminVoulu) {
+    // Le relevé du jour (et de la veille, pour un report à minuit) rejoint
+    // le fichier du jour du journal du temps.
+    if (this.marquerJourSale) {
+      const auj = jourIsoDe(new Date());
+      for (const j of [auj, Ariane.decalerJour(auj, -1)]) {
+        if ((this.settings.tempsHistorique || {})[j]) this.marquerJourSale(j);
+      }
+    }
     if (!this._tempsSecondes || !this._tempsSecondes.size) return;
     const prop = this.settings.tempsPropriete || 'temps-passe';
     const chemins = cheminVoulu ? [cheminVoulu] : Array.from(this._tempsSecondes.keys());
@@ -2949,7 +2942,8 @@ const avecTaches = (Base) => class extends Base {
 
   /* ------------------------- Journal quotidien --------------------------- */
 
-  async ecrireJournalTemps(jour) {
+  async ecrireJournalTemps(jour, opts) {
+    const o = opts || {};
     const j = jour || jourIsoDe(new Date());
     await this.reporterTemps();
     const releve = (this.settings.tempsHistorique || {})[j] || {};
@@ -2957,9 +2951,11 @@ const avecTaches = (Base) => class extends Base {
       .map(([chemin, secondes]) => [chemin, secondes / 60])
       .filter(([, m]) => m >= 1)
       .sort((a, b) => b[1] - a[1]);
+    // Le résumé de la journée par l'IA, s'il existe, ouvre la note.
+    const resume = this.resumeDeLaJournee ? await this.resumeDeLaJournee(j) : '';
 
-    if (!lignes.length) {
-      new obsidian.Notice(tr('Aucun temps enregistré pour le ') + j + '.');
+    if (!lignes.length && !resume) {
+      if (!o.silencieux) new obsidian.Notice(tr('Aucun temps enregistré pour le ') + j + '.');
       return '';
     }
 
@@ -2971,14 +2967,20 @@ const avecTaches = (Base) => class extends Base {
     const total = lignes.reduce((s, [, m]) => s + m, 0);
     const out = ['---', 'Type: journal-temps', 'Date: ' + j,
       'Journal - Minutes totales: ' + Math.round(total), '---',
-      '# Temps de travail du ' + j, '',
-      '**Total : ' + dureeLisible(total) + '** sur ' + lignes.length + ' note(s).', '',
-      '| Note | Temps |', '| --- | --- |'];
-    for (const [chemin, m] of lignes) {
-      const nom = chemin.replace(/\.md$/, '');
-      out.push('| [[' + nom + ']] | ' + dureeLisible(m) + ' |');
+      '# Temps de travail du ' + j, ''];
+    if (resume) {
+      out.push('## Résumé de la journée', Ariane.RESUME_JOURNEE_DEBUT, resume, Ariane.RESUME_JOURNEE_FIN, '');
     }
-    out.push('');
+    if (lignes.length) {
+      if (resume) out.push('## Temps par note', '');
+      out.push('**Total : ' + dureeLisible(total) + '** sur ' + lignes.length + ' note(s).', '',
+        '| Note | Temps |', '| --- | --- |');
+      for (const [chemin, m] of lignes) {
+        const nom = chemin.replace(/\.md$/, '');
+        out.push('| [[' + nom + ']] | ' + dureeLisible(m) + ' |');
+      }
+      out.push('');
+    }
 
     const chemin = dossier + '/' + j + '.md';
     const existant = this.app.vault.getAbstractFileByPath(chemin);

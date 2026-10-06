@@ -4178,3 +4178,20 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-ratt-ia:hover { color: var(--text-normal); background: var(--background-modifier-hover); border-color: var(--background-modifier-border-hover); }
 .zfa-ratt-ia-ic { display: inline-flex; }
 .zfa-ratt-ia-ic svg { width: 12px; height: 12px; }
+/* Bilan de la journée par l'IA, sous le titre du jour de la chronologie. */
+.zfa-chrono-bilan {
+  display: flex; gap: 8px; margin: 2px 0 var(--size-4-2); padding: var(--size-4-2) var(--size-4-3);
+  border-radius: var(--radius-m); background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-small); line-height: 1.55; color: var(--text-normal);
+}
+.zfa-chrono-bilan-ic { display: inline-flex; color: var(--text-accent); padding-top: 2px; }
+.zfa-chrono-bilan-ic svg { width: 14px; height: 14px; }
+/* Lot d'ajouts automatiques (synchronisations) dans la chronologie. */
+.zfa-chrono-evt.est-auto .zfa-chrono-nom { color: var(--text-muted); }
+.zfa-chrono-lot { display: flex; flex-direction: column; gap: 2px; margin-top: var(--size-4-2);
+  max-height: 260px; overflow-y: auto; font-size: var(--font-ui-smaller); }
+.zfa-chrono-lot-el { padding: 2px 6px; border-radius: var(--radius-s); color: var(--text-normal); cursor: pointer; }
+.zfa-chrono-lot-el:hover { background: var(--background-modifier-hover); }
+.zfa-chrono-lot-el.est-disparu { color: var(--text-faint); text-decoration: line-through; cursor: default; }
+.zfa-chrono-lot-plus { padding: 2px 6px; color: var(--text-faint); }

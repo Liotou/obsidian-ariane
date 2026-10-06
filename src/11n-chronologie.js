@@ -24,6 +24,7 @@ const avecChronologie = (Base) => class extends Base {
       { type: 'tache-terminee', libelle: 'Tâches terminées', etiquette: 'Tâche terminée', icone: 'check', couleur: 'var(--color-cyan)', filtre: 'taches' },
       { type: 'tache-abandonnee', libelle: 'Tâches abandonnées', etiquette: 'Tâche abandonnée', icone: 'x', couleur: 'var(--color-orange)', filtre: 'taches' },
       { type: 'canevas', libelle: 'Canevas & extraits', etiquette: 'Canevas', icone: 'layout-dashboard', couleur: 'var(--color-yellow)', filtre: 'canevas' },
+      { type: 'ajouts-auto', libelle: 'Ajouts automatiques', etiquette: 'Ajouts automatiques', icone: 'layers', couleur: 'var(--text-faint)', filtre: 'notes' },
       { type: 'activite', libelle: 'Hors Obsidian', etiquette: 'Hors Obsidian', icone: 'monitor', couleur: 'var(--color-green)', filtre: 'externe' },
     ];
   }
@@ -188,6 +189,53 @@ const avecChronologie = (Base) => class extends Base {
     return c;
   }
 
+  // Les ajouts automatiques (une synchronisation, ZotFlow, Raindrop… crée
+  // d'un coup des dizaines de notes) réunis en un seul lot : au moins
+  // `opts.min` créations (4) dans le même dossier de premier niveau, chacune
+  // à moins de `opts.ecart` ms (60 s) de la précédente. Personne ne crée
+  // quatre notes à la main en si peu de temps. Le lot prend la place de ses
+  // éléments, à l'heure du dernier ; le reste garde son ordre (récent d'abord).
+  static grouperAjoutsAuto(evts, opts) {
+    const o = Object.assign({ min: 4, ecart: 60000 }, opts || {});
+    const liste = evts || [];
+    const parCle = new Map();
+    for (const e of liste) {
+      if (e.type !== 'note-creee' && e.type !== 'capture') continue;
+      const cle = e.type + '|' + (e.source || Ariane.dossierRacine(e.chemin));
+      if (!parCle.has(cle)) parCle.set(cle, []);
+      parCle.get(cle).push(e);
+    }
+    const remplace = new Map();
+    for (const groupe of parCle.values()) {
+      const tries = groupe.slice().sort((a, b) => a.t - b.t);
+      let rafale = [];
+      const clore = () => {
+        if (rafale.length >= o.min) {
+          const der = rafale[rafale.length - 1];
+          const lot = { t: der.t, debut: rafale[0].t, type: 'ajouts-auto', n: rafale.length,
+            dossier: Ariane.dossierRacine(der.chemin), source: der.source || '', chemin: der.chemin,
+            approx: rafale.every((x) => x.approx) ? true : undefined,
+            elements: rafale.map((x) => ({ chemin: x.chemin, titre: x.titre })).reverse() };
+          for (const x of rafale) remplace.set(x, x === der ? lot : null);
+        }
+        rafale = [];
+      };
+      for (const e of tries) {
+        if (rafale.length && e.t - rafale[rafale.length - 1].t > o.ecart) clore();
+        rafale.push(e);
+      }
+      clore();
+    }
+    if (!remplace.size) return liste.slice();
+    const out = [];
+    for (const e of liste) {
+      if (!remplace.has(e)) { out.push(e); continue; }
+      const r = remplace.get(e);
+      if (r) out.push(r);
+    }
+    return out;
+  }
+
   // Carte de chaleur : `semaines` colonnes (la dernière contient `aujourdhui`),
   // sept lignes du lundi au dimanche. Chaque case : { jour, n, niveau 0..4 },
   // ou null après aujourd'hui. Le niveau se rapporte au jour le plus chargé.
@@ -242,29 +290,21 @@ const avecChronologie = (Base) => class extends Base {
     return cfg;
   }
 
-  _chronoDossier() {
-    const base = (this.manifest && this.manifest.dir) || (this.app.vault.configDir + '/plugins/obsidian-ariane');
-    return base + '/chronologie';
-  }
-
-  // Le journal d'un mois ('AAAA-MM') : { jour: [événements] }. Une seule
-  // lecture par mois et par session ; la promesse est gardée pour que deux
-  // appels simultanés partagent le même objet.
+  // Le journal d'un mois ('AAAA-MM') : { jour: [événements] }, assemblé à
+  // partir des fichiers du jour du journal du temps (voir avecDonneesJour) ;
+  // les listes sont celles de ces fichiers, si bien qu'y ajouter un
+  // événement l'ajoute au jour. Une seule lecture par mois et par session.
   _chronoMois(mois) {
     const cache = this._chronoMoisCache || (this._chronoMoisCache = new Map());
     if (!cache.has(mois)) {
-      const chemin = this._chronoDossier() + '/' + mois + '.json';
       cache.set(mois, (async () => {
-        try {
-          const a = this.app.vault.adapter;
-          if (await a.exists(chemin)) {
-            const o = JSON.parse(await a.read(chemin));
-            if (o && typeof o === 'object') return o;
-          }
-        } catch (e) {
-          console.warn('[Ariane] chronologie illisible : ' + chemin, e);
+        const o = {};
+        for (const j of await this.joursAvecDonnees()) {
+          if (j.slice(0, 7) !== mois) continue;
+          const d = await this.donneesJour(j);
+          if (d.chronologie && d.chronologie.length) o[j] = d.chronologie;
         }
-        return {};
+        return o;
       })());
     }
     return cache.get(mois);
@@ -284,14 +324,16 @@ const avecChronologie = (Base) => class extends Base {
     const sales = [...(this._chronoSales || [])];
     if (!sales.length) return;
     this._chronoSales = new Set();
-    const a = this.app.vault.adapter;
-    const dossier = this._chronoDossier();
     try {
-      if (!(await a.exists(dossier))) await a.mkdir(dossier);
       for (const mois of sales) {
         const o = await this._chronoMois(mois);
-        await a.write(dossier + '/' + mois + '.json', JSON.stringify(o));
+        for (const [jour, liste] of Object.entries(o)) {
+          const d = await this.donneesJour(jour);
+          if (d.chronologie !== liste) d.chronologie = liste;
+          this.marquerJourSale(jour);
+        }
       }
+      await this.ecrireDonneesJours();
     } catch (e) {
       console.error('[Ariane] chronologie non écrite', e);
     }

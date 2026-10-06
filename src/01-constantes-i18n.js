@@ -842,6 +842,13 @@ const TEXTES = {
     "Ajouter un jalon lié à la tâche…": "Add a milestone linked to the task…",
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
+    "Résumer les créneaux": "Summarise the slots",
+    "Ajouts automatiques": "Automatic additions",
+    "notes ajoutées": "notes added",
+    "en une fois": "all at once",
+    "Bilan de la journée": "Day summary",
+    "Refaire le bilan": "Redo the summary",
+    "Journée : résumer ma journée (IA)": "Day: summarise my day (AI)",
     "Affiner avec l'IA": "Refine with AI",
     "proche par le sens": "close in meaning",
     "semblable à des créneaux déjà rattachés": "similar to slots already attached",
@@ -1377,6 +1384,8 @@ const DEFAULT_SETTINGS = {
   activiteIAFournisseur: '',            // '' = celui de l'assistant IA ; sinon ollama, lmstudio, mistral, claude
   activiteIAModele: '',                 // modèle Ollama, LM Studio ou Mistral ('' = celui de l'assistant)
   activiteIAModeleClaude: 'haiku',      // modèle si le fournisseur est Claude en ligne de commande
+  resumeJourneeHeure: '',               // résumé de la journée par l'IA à cette heure (HH:MM), '' = jamais
+  donneesJourVersion: 0,                // 1 : données du temps rangées par jour (journal du temps/.données)
   activiteIAAuto: false,                // résumer seul les journées passées affichées
   activiteIACouleur: true,              // colorer les créneaux résumés selon leur catégorie IA
   activiteIAContexte: "Monsieur est doctorant en sciences de gestion (risque systémique, accidents NaTech) et enseigne (cours, TD, ateliers). Il travaille surtout dans Obsidian, Zotero, Word, Excel, Teams, Mail et Safari.",

@@ -143,10 +143,12 @@ test('journal : un changement est noté avec son origine, puis écrit', async ()
     vault: {
       on: (nom, fn) => { ecoutes['vault:' + nom] = fn; return {}; },
       adapter: {
-        exists: async (p) => p in disque,
+        exists: async (p) => p in disque || Object.keys(disque).some((k) => k.startsWith(p + '/')),
         write: async (p, s) => { disque[p] = s; },
         append: async (p, s) => { disque[p] += s; },
         read: async (p) => disque[p],
+        mkdir: async () => {},
+        list: async (d) => ({ files: Object.keys(disque).filter((k) => k.startsWith(d + '/')), folders: [] }),
       },
     },
   };
@@ -168,8 +170,11 @@ test('journal : un changement est noté avec son origine, puis écrit', async ()
   ], 'le tampon se lit avant même d\'être écrit');
 
   await g._aVider();
-  const fichier = disque['.obsidian/plugins/obsidian-ariane/journal-taches.jsonl'];
-  assert.equal(fichier.trim().split('\n').length, 2, 'une ligne JSON par changement');
+  await g.ecrireDonneesJours();
+  // Les changements rejoignent le fichier de leur jour, dans le journal du temps.
+  const jour = avant[0].le.slice(0, 10);
+  const fichier = JSON.parse(disque['07 - Journal du temps/.données/' + jour + '.json']);
+  assert.equal(fichier.taches.length, 2, 'un élément par changement');
   const relu = await g.lireJournalTaches();
   assert.equal(relu.length, 2, 'relu depuis le fichier, sans doublon avec le tampon vidé');
 
