@@ -3887,3 +3887,12 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-act-survol-plus { color: var(--text-faint); font-size: var(--font-ui-smaller); }
 .zfa-act-icone.est-initiale svg { width: 14px; height: 14px; }
 .zfa-cal-presence { cursor: pointer; }
+/* Carte d'activité interactive : on peut y entrer, la parcourir, agir. */
+.zfa-act-survol.est-interactive { pointer-events: auto; }
+.zfa-act-survol.est-interactive .zfa-act-survol-apps { max-height: 260px; overflow-y: auto; }
+.zfa-act-survol.est-interactive .zfa-act-survol-plus { cursor: pointer; color: var(--text-accent); }
+.zfa-act-survol.est-interactive .zfa-act-survol-plus:hover { text-decoration: underline; }
+.zfa-act-survol-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--background-modifier-border); }
+.zfa-act-survol-bt { display: inline-flex; align-items: center; gap: 4px; font-size: var(--font-ui-smaller); padding: 2px 8px; height: auto; }
+.zfa-act-survol-bt-ic { display: inline-flex; }
+.zfa-act-survol-bt-ic svg { width: 12px; height: 12px; }

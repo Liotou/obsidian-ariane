@@ -31107,7 +31107,9 @@ class MoteurCalendrier extends MoteurVue {
       // Carte de survol, sans délai : catégorie, résumé, et les applications
       // avec leur icône.
       el.addEventListener('mouseenter', () => this._montrerCarteActivite(el, jour, b));
-      el.addEventListener('mouseleave', () => this._cacherCarteActivite());
+      // La carte reste ouverte le temps d'y glisser le curseur : on peut y
+      // déplier les autres applications et s'en servir.
+      el.addEventListener('mouseleave', () => this._cacherCarteDiffere());
       if (b.ia && b.ia.personnel) el.addClass('est-personnel');
       if (b.ia) el.addClass('est-resume');
       // La colonne réagit au clic (sélection, création) : la piste, non.
@@ -31141,11 +31143,16 @@ class MoteurCalendrier extends MoteurVue {
   // La carte de survol d'un créneau réel. Posée sur le document de la bande
   // (fenêtre détachée comprise), à droite d'elle, ramenée dans l'écran.
   _montrerCarteActivite(el, jour, b) {
+    clearTimeout(this._carteMinuterie);
+    if (this._carteActivite && this._carteActiviteEl === el) return;
     this._cacherCarteActivite();
     const doc = el.ownerDocument;
     const win = doc.defaultView || window;
-    const carte = doc.body.createDiv({ cls: 'zfa-act-survol' });
+    const carte = doc.body.createDiv({ cls: 'zfa-act-survol est-interactive' });
     this._carteActivite = carte;
+    this._carteActiviteEl = el;
+    carte.addEventListener('mouseenter', () => clearTimeout(this._carteMinuterie));
+    carte.addEventListener('mouseleave', () => this._cacherCarteDiffere());
     const tete = carte.createDiv({ cls: 'zfa-act-survol-tete' });
     const puce = tete.createSpan({ cls: 'zfa-act-cat', text: b.ia ? b.ia.categorie : b.categorie });
     puce.style.setProperty('--zfa-cal-coul', b.couleur);
@@ -31164,12 +31171,26 @@ class MoteurCalendrier extends MoteurVue {
       carte.style.top = y + 'px';
     };
     placer();
+    // Actions, sans quitter le calendrier.
+    const actions = carte.createDiv({ cls: 'zfa-act-survol-actions' });
+    const action = (icone, libelle, faire) => {
+      const bt = actions.createEl('button', { cls: 'zfa-act-survol-bt' });
+      obsidian.setIcon(bt.createSpan({ cls: 'zfa-act-survol-bt-ic' }), icone);
+      bt.createSpan({ text: libelle });
+      bt.addEventListener('click', (e) => { e.stopPropagation(); this._cacherCarteActivite(); faire(); });
+    };
+    action('sparkles', b.ia ? tr('Résumer à nouveau') : tr('Résumer (IA)'),
+      () => this.greffon.resumerActivite(jour, { cle: b.cle }));
+    action('link', tr('Rattacher à une tâche'), () => this._rattacherActivite(jour, b));
+    action('panel-top-open', tr('Fiche'), () => new ModaleActiviteReelle(this.greffon, { jour, bloc: b,
+      surRattacher: () => this._rattacherActivite(jour, b) }).open());
+    let tout = false;
     this.greffon.applicationsBlocActivite(jour, b).then((liste) => {
       if (this._carteActivite !== carte) return;
       const remplir = () => {
         if (this._carteActivite !== carte) return;
         apps.empty();
-        for (const a of liste.slice(0, 6)) {
+        for (const a of (tout ? liste : liste.slice(0, 6))) {
           const l = apps.createDiv({ cls: 'zfa-act-survol-app' });
           const src = this.greffon.iconeApplication(a.app, remplir);
           if (src) l.createEl('img', { cls: 'zfa-act-icone', attr: { src, alt: '' } });
@@ -31179,7 +31200,10 @@ class MoteurCalendrier extends MoteurVue {
           if (a.principal) t.createSpan({ cls: 'zfa-act-survol-sous', text: a.principal });
           l.createSpan({ cls: 'zfa-act-min', text: dureeLisible(a.min) });
         }
-        if (liste.length > 6) apps.createDiv({ cls: 'zfa-act-survol-plus', text: '+ ' + (liste.length - 6) + tr(' autre(s)') });
+        if (!tout && liste.length > 6) {
+          const plus = apps.createDiv({ cls: 'zfa-act-survol-plus', text: '+ ' + (liste.length - 6) + tr(' autre(s)') });
+          plus.addEventListener('click', (e) => { e.stopPropagation(); tout = true; remplir(); });
+        }
         placer();
       };
       remplir();
@@ -31190,10 +31214,12 @@ class MoteurCalendrier extends MoteurVue {
   // gauche du liseré, qui longe le bord droit du jour.
   _montrerCartePresence(el, o) {
     this._cacherCarteActivite();
+    this._carteActiviteEl = el;
     const doc = el.ownerDocument;
     const win = doc.defaultView || window;
     const carte = doc.body.createDiv({ cls: 'zfa-act-survol' });
     this._carteActivite = carte;
+    this._carteActiviteEl = el;
     const tete = carte.createDiv({ cls: 'zfa-act-survol-tete' });
     const puce = tete.createSpan({ cls: 'zfa-act-cat', text: o.tache ? o.tache.ref : tr('Hors tâche') });
     if (o.couleur) puce.style.setProperty('--zfa-cal-coul', o.couleur);
@@ -31213,7 +31239,15 @@ class MoteurCalendrier extends MoteurVue {
   }
 
   _cacherCarteActivite() {
+    clearTimeout(this._carteMinuterie);
     if (this._carteActivite) { this._carteActivite.remove(); this._carteActivite = null; }
+    this._carteActiviteEl = null;
+  }
+
+  // Un court répit avant de fermer : le temps d'aller de la bande à la carte.
+  _cacherCarteDiffere() {
+    clearTimeout(this._carteMinuterie);
+    this._carteMinuterie = setTimeout(() => this._cacherCarteActivite(), 250);
   }
 
   // Le temps réel d'un créneau devient un créneau de tâche, aux mêmes bornes :
