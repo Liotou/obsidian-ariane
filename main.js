@@ -31186,6 +31186,32 @@ class MoteurCalendrier extends MoteurVue {
     }).catch(() => { /* relevé illisible : la carte garde son en-tête */ });
   }
 
+  // Carte de survol du liseré de présence (travail dans Obsidian), placée à
+  // gauche du liseré, qui longe le bord droit du jour.
+  _montrerCartePresence(el, o) {
+    this._cacherCarteActivite();
+    const doc = el.ownerDocument;
+    const win = doc.defaultView || window;
+    const carte = doc.body.createDiv({ cls: 'zfa-act-survol' });
+    this._carteActivite = carte;
+    const tete = carte.createDiv({ cls: 'zfa-act-survol-tete' });
+    const puce = tete.createSpan({ cls: 'zfa-act-cat', text: o.tache ? o.tache.ref : tr('Hors tâche') });
+    if (o.couleur) puce.style.setProperty('--zfa-cal-coul', o.couleur);
+    tete.createSpan({ cls: 'zfa-act-meta', text: o.horaires + ' · ' + o.duree + tr(' dans Obsidian') });
+    if (o.tache && o.tache.intitule) carte.createDiv({ cls: 'zfa-act-survol-resume', text: o.tache.intitule });
+    const l = carte.createDiv({ cls: 'zfa-act-survol-apps' }).createDiv({ cls: 'zfa-act-survol-app' });
+    const ic = l.createSpan({ cls: 'zfa-act-icone est-initiale' });
+    obsidian.setIcon(ic, 'file-text');
+    const t = l.createDiv({ cls: 'zfa-act-survol-txt' });
+    t.createSpan({ cls: 'zfa-act-app', text: o.note });
+    t.createSpan({ cls: 'zfa-act-survol-sous', text: tr('Clic : ouvrir la note') });
+    const r = el.getBoundingClientRect();
+    let x = r.left - carte.offsetWidth - 8;
+    if (x < 8) x = Math.min(r.right + 8, win.innerWidth - carte.offsetWidth - 8);
+    carte.style.left = x + 'px';
+    carte.style.top = Math.max(8, Math.min(r.top, win.innerHeight - carte.offsetHeight - 8)) + 'px';
+  }
+
   _cacherCarteActivite() {
     if (this._carteActivite) { this._carteActivite.remove(); this._carteActivite = null; }
   }
@@ -33315,6 +33341,7 @@ class MoteurCalendrier extends MoteurVue {
   // recalage en construit une seconde hors écran avant l'échange).
   _peindreTravailReel(inner) {
     if (this._detruit || this.mode !== 'semaine') return;
+    this._cacherCarteActivite();
     if (!inner) {
       for (const i of this.racine.querySelectorAll('.zfa-cal-sem-inner')) this._peindreTravailReel(i);
       return;
@@ -33377,12 +33404,21 @@ class MoteurCalendrier extends MoteurVue {
         el.style.height = Math.max(3, (x.b - x.a) / 60 * PXH) + 'px';
         if (t) el.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
         const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.round(m % 60)).padStart(2, '0');
-        el.setAttribute('aria-label', hm(x.a) + ' → ' + hm(x.b) + ' · ' + duree(Math.round(x.b - x.a))
-          + '\n' + String(x.chemin).split('/').pop().replace(/\.md$/, '')
-          + (t ? '\n' + t.ref + ' · ' + (t.intitule || '') : ''));
-        el.setAttribute('data-tooltip-position', 'left');
+        // Carte de survol immédiate, comme pour l'activité hors d'Obsidian ;
+        // un clic ouvre la note travaillée.
+        el.addEventListener('mouseenter', () => this._montrerCartePresence(el, {
+          horaires: hm(x.a) + ' → ' + hm(x.b), duree: duree(Math.round(x.b - x.a)),
+          note: String(x.chemin).split('/').pop().replace(/\.md$/, ''), tache: t,
+          couleur: t ? this.couleurTache(t) : '' }));
+        el.addEventListener('mouseleave', () => this._cacherCarteActivite());
         el.addEventListener('pointerdown', (e) => e.stopPropagation());
         el.addEventListener('dblclick', (e) => e.stopPropagation());
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this._cacherCarteActivite();
+          const f = this.app.vault.getAbstractFileByPath(x.chemin);
+          if (f) this.app.workspace.getLeaf(e.metaKey || e.ctrlKey).openFile(f);
+        });
       }
     }
   }

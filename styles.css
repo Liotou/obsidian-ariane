@@ -3885,3 +3885,5 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-act-survol-txt { display: flex; flex-direction: column; min-width: 0; }
 .zfa-act-survol-sous { color: var(--text-muted); font-size: var(--font-ui-smaller); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .zfa-act-survol-plus { color: var(--text-faint); font-size: var(--font-ui-smaller); }
+.zfa-act-icone.est-initiale svg { width: 14px; height: 14px; }
+.zfa-cal-presence { cursor: pointer; }
