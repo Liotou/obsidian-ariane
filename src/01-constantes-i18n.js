@@ -843,6 +843,15 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
+    "Sommaire de lecture": "Reading index",
+    "Sommaire de lecture : quelle source ?": "Reading index: which source?",
+    "Lecture : sommaire à imprimer (annotations d’une source)": "Reading: printable index (annotations of a source)",
+    "Aucune source annotée.": "No annotated source.",
+    "Par page": "By page",
+    "Ordre de lecture": "Reading order",
+    "Titre de l’ouvrage": "Title of the work",
+    "Ouvrir dans le navigateur": "Open in browser",
+    "Imprimer…": "Print…",
     "Portrait pour le bilan": "Portrait for the summary",
     "Temps dans Obsidian": "Time in Obsidian",
     "Relevé quotidien": "Daily record",
@@ -1427,6 +1436,7 @@ const DEFAULT_SETTINGS = {
   separateurCitation: ' ; ',
   // Bibliographie de fin de note, régénérée d'après les citations du corps.
   biblioAuto: true,
+  sommaireFormat: 'A5', // format du sommaire de lecture à imprimer (A4, A5, A6)
   biblioDossiersExclus: [], // dossiers dont les notes n'ont pas de bibliographie de fin
   biblioTitre: 'Bibliographie',
   biblioModele: '{{auteurs}} ({{annee}}). {{titre}}. *{{publication}}*.',

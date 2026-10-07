@@ -1644,4 +1644,125 @@ const avecNoteBiblio = (Base) => class extends Base {
   }
 
   //#endregion Ariane · doublons d'auteurs
+
+  //#region Ariane · sommaire de lecture
+  // ── sommaire de lecture à imprimer ──────────────────────────────────────
+  //  Pour une source, la liste de ses annotations : le numéro de page et le
+  //  titre de l'annotation, rien d'autre, à glisser dans le livre. L'en-tête
+  //  reprend celui des fiches graphiques : la référence en Georgia à
+  //  gauche, la date en Helvetica à droite, un filet vertical entre les
+  //  deux, un filet horizontal dessous.
+
+  // Le rang d'une page pour le tri : les pages liminaires en chiffres
+  // romains d'abord, puis les numéros, puis ce qui n'est pas un numéro.
+  static rangPage(page) {
+    const p = String(page == null ? '' : page).trim().toLowerCase();
+    const n = p.match(/^\d+/);
+    if (n) return [1, Number(n[0])];
+    if (/^[ivxlcdm]+\b/.test(p)) {
+      const v = { i: 1, v: 5, x: 10, l: 50, c: 100, d: 500, m: 1000 };
+      const r = p.match(/^[ivxlcdm]+/)[0];
+      let t = 0;
+      for (let i = 0; i < r.length; i++) t += (v[r[i + 1]] > v[r[i]] ? -1 : 1) * v[r[i]];
+      return [0, t];
+    }
+    return [2, 0];
+  }
+
+  // Les entrées triées par page (puis ordre de lecture), ou dans l'ordre de
+  // lecture (« ordre »).
+  static trierSommaire(entrees, mode) {
+    const l = (entrees || []).slice();
+    const parOrdre = (a, b) => (Number(a.ordre) || 0) - (Number(b.ordre) || 0);
+    if (mode === 'ordre') return l.sort(parOrdre);
+    return l.sort((a, b) => {
+      const ra = Ariane.rangPage(a.page);
+      const rb = Ariane.rangPage(b.page);
+      return (ra[0] - rb[0]) || (ra[1] - rb[1]) || parOrdre(a, b);
+    });
+  }
+
+  // La page HTML, prête à imprimer. o = { reference, titre, date, entrees
+  // [{ page, titre }], format: 'A4' | 'A5' | 'A6', imprimer (lancer
+  // l'impression au chargement, pour le navigateur) }.
+  static pageSommaireLecture(o) {
+    const h = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const format = ['A4', 'A5', 'A6'].includes(o.format) ? o.format : 'A5';
+    const corps = { A4: 11, A5: 10, A6: 8.5 }[format];
+    const tete = { A4: 20, A5: 16, A6: 13 }[format];
+    const marge = { A4: '18mm 20mm', A5: '13mm 14mm', A6: '9mm 9mm' }[format];
+    const lignes = (o.entrees || []).map((e) => '<li><span class="p">' + h(e.page) + '</span><span class="t">' + h(e.titre) + '</span></li>').join('\n');
+    return '<!doctype html>\n<html lang="fr"><head><meta charset="utf-8"><title>' + h(o.reference) + '</title>\n<style>\n'
+      + '@page { size: ' + format + '; margin: ' + marge + '; }\n'
+      + '* { box-sizing: border-box; }\n'
+      + 'html, body { margin: 0; background: #fff; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }\n'
+      + 'body { font-family: Georgia, "Times New Roman", serif; font-size: ' + corps + 'pt; line-height: 1.35; }\n'
+      + 'header { display: flex; align-items: stretch; border-bottom: 1.2pt solid #000; margin-bottom: 1.1em; }\n'
+      + 'header .ref { flex: 1; font-family: Georgia, serif; font-size: ' + tete + 'pt; padding: 0.5em 0.6em 0.5em 0; }\n'
+      + 'header .date { font-family: Helvetica, Arial, sans-serif; font-size: ' + (tete * 0.85).toFixed(1) + 'pt; border-left: 1.2pt solid #000; padding: 0.5em 0 0.5em 0.7em; display: flex; align-items: center; white-space: nowrap; }\n'
+      + '.titre { font-style: italic; color: #444; margin: 0 0 1.2em; }\n'
+      + 'ol { list-style: none; margin: 0; padding: 0; }\n'
+      + 'li { display: grid; grid-template-columns: 3.2em 1fr; column-gap: 0.9em; padding: 0.28em 0; break-inside: avoid; }\n'
+      + 'li .p { font-family: Helvetica, Arial, sans-serif; font-variant-numeric: tabular-nums; text-align: right; font-size: 0.92em; padding-top: 0.08em; }\n'
+      + '.vide { font-style: italic; color: #444; }\n'
+      + '@media screen { body { padding: 24px; max-width: ' + { A4: '210mm', A5: '148mm', A6: '105mm' }[format] + '; margin: 0 auto; } }\n'
+      + '</style></head><body>\n'
+      + '<header><div class="ref">' + h(o.reference) + '</div>' + (o.date ? '<div class="date">' + h(o.date) + '</div>' : '') + '</header>\n'
+      + (o.titre ? '<p class="titre">' + h(o.titre) + '</p>\n' : '')
+      + (lignes ? '<ol>\n' + lignes + '\n</ol>\n' : '<p class="vide">Aucune annotation.</p>\n')
+      + (o.imprimer ? '<script>window.addEventListener("load", function () { window.print(); });</script>\n' : '')
+      + '</body></html>\n';
+  }
+
+  // Les sources qui ont des annotations : { fichier, cle, reference,
+  // titre, n }, la source de la note active en tête.
+  sourcesAvecAnnotations() {
+    const compte = new Map();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierA + '/')) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      const src = sansLien(fm['zotflow-source'] || '');
+      if (src) compte.set(src, (compte.get(src) || 0) + 1);
+    }
+    const out = [];
+    for (const [cle, n] of compte) {
+      const f = this.app.metadataCache.getFirstLinkpathDest(cle, '');
+      const fm = f ? ((this.app.metadataCache.getFileCache(f) || {}).frontmatter || {}) : {};
+      out.push({ fichier: f, cle, n, titre: String(fm.title || '').trim(),
+        reference: String(entreeBiblio(cle, fm, '{{auteurs}} ({{annee}})') || cle).replace(/\.$/, '') });
+    }
+    out.sort((a, b) => a.reference.localeCompare(b.reference, 'fr'));
+    const actif = this.app.workspace.getActiveFile();
+    if (actif) {
+      const fmA = (this.app.metadataCache.getFileCache(actif) || {}).frontmatter || {};
+      const cleA = sansLien(fmA['zotflow-source'] || '') || actif.basename;
+      const i = out.findIndex((x) => x.cle === cleA);
+      if (i > 0) out.unshift(out.splice(i, 1)[0]);
+    }
+    return out;
+  }
+
+  // Les annotations d'une source : { page, titre, ordre }. Le titre est
+  // l'alias de l'annotation (son intitulé), à défaut le nom de la note.
+  annotationsPourSommaire(cleSource) {
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierA + '/')) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (sansLien(fm['zotflow-source'] || '') !== cleSource) continue;
+      const alias = [].concat(fm.aliases || []).map((x) => String(x).trim()).filter(Boolean);
+      out.push({ page: String(fm.page == null ? '' : fm.page).trim(), titre: alias[0] || f.basename, ordre: fm.ordre });
+    }
+    return out;
+  }
+
+  ouvrirSommaireLecture() {
+    const sources = this.sourcesAvecAnnotations();
+    if (!sources.length) { new obsidian.Notice(tr('Aucune source annotée.')); return; }
+    new ChoixListeModal(this.app, tr('Sommaire de lecture : quelle source ?'),
+      sources.map((s) => Object.assign({ nom: s.reference + '  ' + (s.titre ? s.titre.slice(0, 80) + '  ' : '') + '(' + s.n + ')' }, s)),
+      (s) => new ModaleSommaireLecture(this.app, this, s).open()).open();
+  }
+
+  //#endregion Ariane · sommaire de lecture
 };

@@ -344,5 +344,76 @@ class ModaleActiviteReelle extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// Sommaire de lecture : l'aperçu de la page à imprimer, ses quelques
+// réglages, et l'impression (dialogue de macOS, qui enregistre aussi en PDF).
+class ModaleSommaireLecture extends obsidian.Modal {
+  constructor(app, greffon, source) {
+    super(app);
+    this.greffon = greffon;
+    this.source = source;
+    this.format = (greffon.settings.sommaireFormat) || 'A5';
+    this.tri = 'page';
+    this.avecTitre = true;
+  }
+
+  _html(imprimer) {
+    const d = new Date();
+    const p2 = (n) => String(n).padStart(2, '0');
+    const entrees = Ariane.trierSommaire(this.greffon.annotationsPourSommaire(this.source.cle), this.tri);
+    return Ariane.pageSommaireLecture({
+      reference: this.source.reference, titre: this.avecTitre ? this.source.titre : '',
+      date: p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + '/' + d.getFullYear(),
+      entrees, format: this.format, imprimer,
+    });
+  }
+
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass('zfa-sommaire-modale');
+    this.setTitle ? this.setTitle(tr('Sommaire de lecture')) : contentEl.createEl('h3', { text: tr('Sommaire de lecture') });
+    const reglages = contentEl.createDiv({ cls: 'zfa-sommaire-reglages' });
+    new obsidian.Setting(reglages).setName(tr('Format'))
+      .addDropdown((d) => d.addOptions({ A4: 'A4', A5: 'A5', A6: 'A6' }).setValue(this.format).onChange(async (v) => {
+        this.format = v;
+        this.greffon.settings.sommaireFormat = v;
+        await this.greffon.saveSettings();
+        this._apercu();
+      }));
+    new obsidian.Setting(reglages).setName(tr('Ordre'))
+      .addDropdown((d) => d.addOptions({ page: tr('Par page'), ordre: tr('Ordre de lecture') }).setValue(this.tri)
+        .onChange((v) => { this.tri = v; this._apercu(); }));
+    new obsidian.Setting(reglages).setName(tr('Titre de l’ouvrage'))
+      .addToggle((t) => t.setValue(this.avecTitre).onChange((v) => { this.avecTitre = v; this._apercu(); }));
+    this.cadre = contentEl.createEl('iframe', { cls: 'zfa-sommaire-apercu', attr: { title: tr('Aperçu') } });
+    this._apercu();
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const nav = pied.createEl('button', { text: tr('Ouvrir dans le navigateur') });
+    nav.onclick = () => this._navigateur();
+    const imp = pied.createEl('button', { cls: 'mod-cta', text: tr('Imprimer…') });
+    imp.onclick = () => {
+      try { this.cadre.contentWindow.focus(); this.cadre.contentWindow.print(); } catch (e) { this._navigateur(); }
+    };
+  }
+
+  _apercu() { this.cadre.srcdoc = this._html(false); }
+
+  // Repli : la page dans le navigateur, qui ouvre aussitôt son impression.
+  async _navigateur() {
+    try {
+      const os = require('os');
+      const path = require('path');
+      const fs = require('fs');
+      const nom = 'Sommaire ' + this.source.reference.replace(/[\\/:*?"<>|]+/g, ' ') + '.html';
+      const chemin = path.join(os.tmpdir(), nom);
+      fs.writeFileSync(chemin, this._html(true), 'utf8');
+      await require('electron').shell.openPath(chemin);
+    } catch (e) {
+      new obsidian.Notice(tr('Ouverture impossible : ') + ((e && e.message) || e));
+    }
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 //#endregion 20 · Modales secondaires
 

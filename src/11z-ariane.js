@@ -81,6 +81,12 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.commandeNoteActive(),
     });
     this.addCommand({
+      id: 'sommaire-lecture',
+      name: tr('Lecture : sommaire à imprimer (annotations d’une source)'),
+      icon: 'list-ordered',
+      callback: () => this.ouvrirSommaireLecture(),
+    });
+    this.addCommand({
       id: 'journee-resumer',
       name: tr('Journée : résumer ma journée (IA)'),
       icon: 'sunset',

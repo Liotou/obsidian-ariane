@@ -1032,6 +1032,15 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
+    "Sommaire de lecture": "Reading index",
+    "Sommaire de lecture : quelle source ?": "Reading index: which source?",
+    "Lecture : sommaire à imprimer (annotations d’une source)": "Reading: printable index (annotations of a source)",
+    "Aucune source annotée.": "No annotated source.",
+    "Par page": "By page",
+    "Ordre de lecture": "Reading order",
+    "Titre de l’ouvrage": "Title of the work",
+    "Ouvrir dans le navigateur": "Open in browser",
+    "Imprimer…": "Print…",
     "Portrait pour le bilan": "Portrait for the summary",
     "Temps dans Obsidian": "Time in Obsidian",
     "Relevé quotidien": "Daily record",
@@ -1616,6 +1625,7 @@ const DEFAULT_SETTINGS = {
   separateurCitation: ' ; ',
   // Bibliographie de fin de note, régénérée d'après les citations du corps.
   biblioAuto: true,
+  sommaireFormat: 'A5', // format du sommaire de lecture à imprimer (A4, A5, A6)
   biblioDossiersExclus: [], // dossiers dont les notes n'ont pas de bibliographie de fin
   biblioTitre: 'Bibliographie',
   biblioModele: '{{auteurs}} ({{annee}}). {{titre}}. *{{publication}}*.',
@@ -9806,6 +9816,127 @@ const avecNoteBiblio = (Base) => class extends Base {
   }
 
   //#endregion Ariane · doublons d'auteurs
+
+  //#region Ariane · sommaire de lecture
+  // ── sommaire de lecture à imprimer ──────────────────────────────────────
+  //  Pour une source, la liste de ses annotations : le numéro de page et le
+  //  titre de l'annotation, rien d'autre, à glisser dans le livre. L'en-tête
+  //  reprend celui des fiches graphiques : la référence en Georgia à
+  //  gauche, la date en Helvetica à droite, un filet vertical entre les
+  //  deux, un filet horizontal dessous.
+
+  // Le rang d'une page pour le tri : les pages liminaires en chiffres
+  // romains d'abord, puis les numéros, puis ce qui n'est pas un numéro.
+  static rangPage(page) {
+    const p = String(page == null ? '' : page).trim().toLowerCase();
+    const n = p.match(/^\d+/);
+    if (n) return [1, Number(n[0])];
+    if (/^[ivxlcdm]+\b/.test(p)) {
+      const v = { i: 1, v: 5, x: 10, l: 50, c: 100, d: 500, m: 1000 };
+      const r = p.match(/^[ivxlcdm]+/)[0];
+      let t = 0;
+      for (let i = 0; i < r.length; i++) t += (v[r[i + 1]] > v[r[i]] ? -1 : 1) * v[r[i]];
+      return [0, t];
+    }
+    return [2, 0];
+  }
+
+  // Les entrées triées par page (puis ordre de lecture), ou dans l'ordre de
+  // lecture (« ordre »).
+  static trierSommaire(entrees, mode) {
+    const l = (entrees || []).slice();
+    const parOrdre = (a, b) => (Number(a.ordre) || 0) - (Number(b.ordre) || 0);
+    if (mode === 'ordre') return l.sort(parOrdre);
+    return l.sort((a, b) => {
+      const ra = Ariane.rangPage(a.page);
+      const rb = Ariane.rangPage(b.page);
+      return (ra[0] - rb[0]) || (ra[1] - rb[1]) || parOrdre(a, b);
+    });
+  }
+
+  // La page HTML, prête à imprimer. o = { reference, titre, date, entrees
+  // [{ page, titre }], format: 'A4' | 'A5' | 'A6', imprimer (lancer
+  // l'impression au chargement, pour le navigateur) }.
+  static pageSommaireLecture(o) {
+    const h = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const format = ['A4', 'A5', 'A6'].includes(o.format) ? o.format : 'A5';
+    const corps = { A4: 11, A5: 10, A6: 8.5 }[format];
+    const tete = { A4: 20, A5: 16, A6: 13 }[format];
+    const marge = { A4: '18mm 20mm', A5: '13mm 14mm', A6: '9mm 9mm' }[format];
+    const lignes = (o.entrees || []).map((e) => '<li><span class="p">' + h(e.page) + '</span><span class="t">' + h(e.titre) + '</span></li>').join('\n');
+    return '<!doctype html>\n<html lang="fr"><head><meta charset="utf-8"><title>' + h(o.reference) + '</title>\n<style>\n'
+      + '@page { size: ' + format + '; margin: ' + marge + '; }\n'
+      + '* { box-sizing: border-box; }\n'
+      + 'html, body { margin: 0; background: #fff; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }\n'
+      + 'body { font-family: Georgia, "Times New Roman", serif; font-size: ' + corps + 'pt; line-height: 1.35; }\n'
+      + 'header { display: flex; align-items: stretch; border-bottom: 1.2pt solid #000; margin-bottom: 1.1em; }\n'
+      + 'header .ref { flex: 1; font-family: Georgia, serif; font-size: ' + tete + 'pt; padding: 0.5em 0.6em 0.5em 0; }\n'
+      + 'header .date { font-family: Helvetica, Arial, sans-serif; font-size: ' + (tete * 0.85).toFixed(1) + 'pt; border-left: 1.2pt solid #000; padding: 0.5em 0 0.5em 0.7em; display: flex; align-items: center; white-space: nowrap; }\n'
+      + '.titre { font-style: italic; color: #444; margin: 0 0 1.2em; }\n'
+      + 'ol { list-style: none; margin: 0; padding: 0; }\n'
+      + 'li { display: grid; grid-template-columns: 3.2em 1fr; column-gap: 0.9em; padding: 0.28em 0; break-inside: avoid; }\n'
+      + 'li .p { font-family: Helvetica, Arial, sans-serif; font-variant-numeric: tabular-nums; text-align: right; font-size: 0.92em; padding-top: 0.08em; }\n'
+      + '.vide { font-style: italic; color: #444; }\n'
+      + '@media screen { body { padding: 24px; max-width: ' + { A4: '210mm', A5: '148mm', A6: '105mm' }[format] + '; margin: 0 auto; } }\n'
+      + '</style></head><body>\n'
+      + '<header><div class="ref">' + h(o.reference) + '</div>' + (o.date ? '<div class="date">' + h(o.date) + '</div>' : '') + '</header>\n'
+      + (o.titre ? '<p class="titre">' + h(o.titre) + '</p>\n' : '')
+      + (lignes ? '<ol>\n' + lignes + '\n</ol>\n' : '<p class="vide">Aucune annotation.</p>\n')
+      + (o.imprimer ? '<script>window.addEventListener("load", function () { window.print(); });</script>\n' : '')
+      + '</body></html>\n';
+  }
+
+  // Les sources qui ont des annotations : { fichier, cle, reference,
+  // titre, n }, la source de la note active en tête.
+  sourcesAvecAnnotations() {
+    const compte = new Map();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierA + '/')) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      const src = sansLien(fm['zotflow-source'] || '');
+      if (src) compte.set(src, (compte.get(src) || 0) + 1);
+    }
+    const out = [];
+    for (const [cle, n] of compte) {
+      const f = this.app.metadataCache.getFirstLinkpathDest(cle, '');
+      const fm = f ? ((this.app.metadataCache.getFileCache(f) || {}).frontmatter || {}) : {};
+      out.push({ fichier: f, cle, n, titre: String(fm.title || '').trim(),
+        reference: String(entreeBiblio(cle, fm, '{{auteurs}} ({{annee}})') || cle).replace(/\.$/, '') });
+    }
+    out.sort((a, b) => a.reference.localeCompare(b.reference, 'fr'));
+    const actif = this.app.workspace.getActiveFile();
+    if (actif) {
+      const fmA = (this.app.metadataCache.getFileCache(actif) || {}).frontmatter || {};
+      const cleA = sansLien(fmA['zotflow-source'] || '') || actif.basename;
+      const i = out.findIndex((x) => x.cle === cleA);
+      if (i > 0) out.unshift(out.splice(i, 1)[0]);
+    }
+    return out;
+  }
+
+  // Les annotations d'une source : { page, titre, ordre }. Le titre est
+  // l'alias de l'annotation (son intitulé), à défaut le nom de la note.
+  annotationsPourSommaire(cleSource) {
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierA + '/')) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (sansLien(fm['zotflow-source'] || '') !== cleSource) continue;
+      const alias = [].concat(fm.aliases || []).map((x) => String(x).trim()).filter(Boolean);
+      out.push({ page: String(fm.page == null ? '' : fm.page).trim(), titre: alias[0] || f.basename, ordre: fm.ordre });
+    }
+    return out;
+  }
+
+  ouvrirSommaireLecture() {
+    const sources = this.sourcesAvecAnnotations();
+    if (!sources.length) { new obsidian.Notice(tr('Aucune source annotée.')); return; }
+    new ChoixListeModal(this.app, tr('Sommaire de lecture : quelle source ?'),
+      sources.map((s) => Object.assign({ nom: s.reference + '  ' + (s.titre ? s.titre.slice(0, 80) + '  ' : '') + '(' + s.n + ')' }, s)),
+      (s) => new ModaleSommaireLecture(this.app, this, s).open()).open();
+  }
+
+  //#endregion Ariane · sommaire de lecture
 };
 
 // ── avecNoteSchemas ───────────────────────────────────────────────────────
@@ -20544,6 +20675,12 @@ class Ariane extends composer(obsidian.Plugin,
       name: tr('Atomiser : la note source active'),
       icon: 'atom',
       callback: () => this.commandeNoteActive(),
+    });
+    this.addCommand({
+      id: 'sommaire-lecture',
+      name: tr('Lecture : sommaire à imprimer (annotations d’une source)'),
+      icon: 'list-ordered',
+      callback: () => this.ouvrirSommaireLecture(),
     });
     this.addCommand({
       id: 'journee-resumer',
@@ -39865,6 +40002,77 @@ class ModaleActiviteReelle extends obsidian.Modal {
     if (this.o.surRattacher) {
       const btT = pied.createEl('button', { cls: 'mod-cta', text: b.rattache && b.rattache.length ? tr('Modifier les rattachements…') : tr('Rattacher à une tâche…') });
       btT.onclick = () => { this.close(); this.o.surRattacher(); };
+    }
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+// Sommaire de lecture : l'aperçu de la page à imprimer, ses quelques
+// réglages, et l'impression (dialogue de macOS, qui enregistre aussi en PDF).
+class ModaleSommaireLecture extends obsidian.Modal {
+  constructor(app, greffon, source) {
+    super(app);
+    this.greffon = greffon;
+    this.source = source;
+    this.format = (greffon.settings.sommaireFormat) || 'A5';
+    this.tri = 'page';
+    this.avecTitre = true;
+  }
+
+  _html(imprimer) {
+    const d = new Date();
+    const p2 = (n) => String(n).padStart(2, '0');
+    const entrees = Ariane.trierSommaire(this.greffon.annotationsPourSommaire(this.source.cle), this.tri);
+    return Ariane.pageSommaireLecture({
+      reference: this.source.reference, titre: this.avecTitre ? this.source.titre : '',
+      date: p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + '/' + d.getFullYear(),
+      entrees, format: this.format, imprimer,
+    });
+  }
+
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass('zfa-sommaire-modale');
+    this.setTitle ? this.setTitle(tr('Sommaire de lecture')) : contentEl.createEl('h3', { text: tr('Sommaire de lecture') });
+    const reglages = contentEl.createDiv({ cls: 'zfa-sommaire-reglages' });
+    new obsidian.Setting(reglages).setName(tr('Format'))
+      .addDropdown((d) => d.addOptions({ A4: 'A4', A5: 'A5', A6: 'A6' }).setValue(this.format).onChange(async (v) => {
+        this.format = v;
+        this.greffon.settings.sommaireFormat = v;
+        await this.greffon.saveSettings();
+        this._apercu();
+      }));
+    new obsidian.Setting(reglages).setName(tr('Ordre'))
+      .addDropdown((d) => d.addOptions({ page: tr('Par page'), ordre: tr('Ordre de lecture') }).setValue(this.tri)
+        .onChange((v) => { this.tri = v; this._apercu(); }));
+    new obsidian.Setting(reglages).setName(tr('Titre de l’ouvrage'))
+      .addToggle((t) => t.setValue(this.avecTitre).onChange((v) => { this.avecTitre = v; this._apercu(); }));
+    this.cadre = contentEl.createEl('iframe', { cls: 'zfa-sommaire-apercu', attr: { title: tr('Aperçu') } });
+    this._apercu();
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const nav = pied.createEl('button', { text: tr('Ouvrir dans le navigateur') });
+    nav.onclick = () => this._navigateur();
+    const imp = pied.createEl('button', { cls: 'mod-cta', text: tr('Imprimer…') });
+    imp.onclick = () => {
+      try { this.cadre.contentWindow.focus(); this.cadre.contentWindow.print(); } catch (e) { this._navigateur(); }
+    };
+  }
+
+  _apercu() { this.cadre.srcdoc = this._html(false); }
+
+  // Repli : la page dans le navigateur, qui ouvre aussitôt son impression.
+  async _navigateur() {
+    try {
+      const os = require('os');
+      const path = require('path');
+      const fs = require('fs');
+      const nom = 'Sommaire ' + this.source.reference.replace(/[\\/:*?"<>|]+/g, ' ') + '.html';
+      const chemin = path.join(os.tmpdir(), nom);
+      fs.writeFileSync(chemin, this._html(true), 'utf8');
+      await require('electron').shell.openPath(chemin);
+    } catch (e) {
+      new obsidian.Notice(tr('Ouverture impossible : ') + ((e && e.message) || e));
     }
   }
 
