@@ -1216,11 +1216,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           t.inputEl.style.width = '100%';
         });
       new obsidian.Setting(c)
-        .setName(tr('Bilan dans Apple Notes'))
-        .setDesc(tr("Le dossier d'Apple Notes où chaque bilan est aussi déposé (une note par jour, nommée de sa date : « 06-10-2026 »), pour le faire lire sur le téléphone. Créé s'il n'existe pas. Vide : pas d'envoi."))
-        .addText((t) => t.setPlaceholder('Bilans du soir').setValue(s.bilanAppleNotesDossier || '')
-          .onChange(async (v) => { s.bilanAppleNotesDossier = v.trim(); await maj(); }));
-      new obsidian.Setting(c)
         .setName(tr('Mots du soir'))
         .setDesc(tr("Le bilan se clôt sur un mot et sa définition, tiré chaque soir sans reprendre ceux du dernier mois. Un dossier du coffre (une note par mot, comme la copie d'Apple Notes ci-dessous) ou une note (« mot : définition » par ligne). Vide : l'IA choisit le mot."))
         .addText((t) => {

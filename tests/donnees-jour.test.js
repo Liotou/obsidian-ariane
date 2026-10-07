@@ -220,13 +220,7 @@ test('bilan : la matière de demain', async () => {
   ].join('\n'));
 });
 
-test('Apple Notes : titre du bilan, script du bilan et des mots', () => {
-  assert.equal(Ariane.titreBilanAppleNotes('2026-10-06'), '06-10-2026');
-  const s = Ariane.genererJXABilan('Bilans du soir', '06-10-2026', 'Bonsoir Monsieur.\nLe mot <est> : Kairos & co.');
-  assert.match(s, /<h1>06-10-2026<\/h1>/);
-  assert.match(s, /Le mot &lt;est&gt; : Kairos &amp; co\./);
-  assert.match(s, /name: "Bilans du soir"/);
-  assert.doesNotThrow(() => new Function(s), 'du JavaScript valide');
+test('Apple Notes : le script de lecture des mots est du JavaScript valide', () => {
   assert.doesNotThrow(() => new Function(Ariane.genererJXAMots('🖋️ Mots')));
 });
 

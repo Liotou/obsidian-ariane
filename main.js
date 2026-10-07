@@ -1032,11 +1032,9 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
-    "Bilan dans Apple Notes": "Summary in Apple Notes",
     "Copier les mots depuis Apple Notes": "Copy the words from Apple Notes",
     "Dossier des mots dans le coffre": "Words folder in the vault",
     "Copier maintenant": "Copy now",
-    "Journée : envoyer le bilan dans Apple Notes": "Day: send the summary to Apple Notes",
     "Mots du soir : recopier depuis Apple Notes": "Evening words: copy from Apple Notes",
     "Portrait pour le bilan": "Portrait for the summary",
     "Mots du soir": "Evening words",
@@ -1596,7 +1594,6 @@ const DEFAULT_SETTINGS = {
   motsAppleNotesDossier: '🖋️ Mots',    // dossier d'Apple Notes recopié dans le coffre ('' = pas de copie)
   motsDossier: '11 - Mots',             // où vont les copies, une note par mot
   motsSynchroLe: 0,
-  bilanAppleNotesDossier: 'Bilans du soir', // dossier d'Apple Notes où déposer le bilan du soir ('' = non)
   donneesJourVersion: 0,                // 1 : données rangées par jour ; 2 : dans .ariane/jours, sans journal du temps
   activiteIAAuto: false,                // résumer seul les journées passées affichées
   activiteIACouleur: true,              // colorer les créneaux résumés selon leur catégorie IA
@@ -20353,12 +20350,7 @@ const avecDonneesJour = (Base) => class extends Base {
     this.marquerJourSale(j);
     await this.ecrireDonneesJours();
     this._signalerResumeJournee();
-    const versNotes = String(this.settings.bilanAppleNotesDossier || '').trim()
-      ? await this.envoyerBilanAppleNotes(j, true) : false;
-    if (!o.silencieux) {
-      new obsidian.Notice(versNotes ? tr('Bilan de la journée prêt : dans la chronologie et dans Apple Notes.')
-        : tr('Bilan de la journée prêt : il s’affiche dans la chronologie.'));
-    }
+    if (!o.silencieux) new obsidian.Notice(tr('Bilan de la journée prêt : il s’affiche dans la chronologie.'));
     return texte;
   }
 
@@ -20524,53 +20516,6 @@ const avecDonneesJour = (Base) => class extends Base {
     this.registerInterval(window.setInterval(() => this.synchroniserMots(true), 6 * 3600000));
   }
 
-  // ── le bilan vers Apple Notes ──
-  //  Une note par jour, nommée de sa seule date (« 06-10-2026 »), dans le
-  //  dossier réglé (« Bilans du soir »), créé au besoin ; refaire le bilan remplace la note du jour. Sur
-  //  le téléphone, la plus récente est en tête du dossier, prête à être lue.
-
-  static titreBilanAppleNotes(jour) {
-    const [a, m, j] = String(jour).split('-');
-    return j + '-' + m + '-' + a;
-  }
-
-  static genererJXABilan(dossier, titre, texte) {
-    const html = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const corps = '<div><h1>' + html(titre) + '</h1></div>'
-      + String(texte).split(/\n+/).map((p) => '<div>' + html(p) + '</div><div><br></div>').join('');
-    return [
-      'const N = Application("Notes");',
-      'let f = N.folders.whose({ name: ' + JSON.stringify(dossier) + ' });',
-      'let d;',
-      'if (f.length) { d = f[0]; } else { d = N.Folder({ name: ' + JSON.stringify(dossier) + ' }); N.folders.push(d); d = N.folders.whose({ name: ' + JSON.stringify(dossier) + ' })[0]; }',
-      'const ex = d.notes.whose({ name: ' + JSON.stringify(titre) + ' });',
-      'if (ex.length) { ex[0].body = ' + JSON.stringify(corps) + '; "maj"; }',
-      'else { d.notes.push(N.Note({ name: ' + JSON.stringify(titre) + ', body: ' + JSON.stringify(corps) + ' })); "cree"; }',
-    ].join('\n');
-  }
-
-  async envoyerBilanAppleNotes(jour, silencieux) {
-    if (!obsidian.Platform.isMacOS) return false;
-    const dossier = String(this.settings.bilanAppleNotesDossier || '').trim();
-    if (!dossier) {
-      if (!silencieux) new obsidian.Notice(tr('Bilan : choisissez d’abord un dossier Apple Notes dans les réglages (onglet Temps passé).'), 8000);
-      return false;
-    }
-    const j = jour || jourIsoDe(new Date());
-    const texte = await this.resumeDeLaJournee(j);
-    if (!texte) {
-      if (!silencieux) new obsidian.Notice(tr('Pas encore de bilan pour ce jour.'));
-      return false;
-    }
-    const r = await this._osascriptJXA(Ariane.genererJXABilan(dossier, Ariane.titreBilanAppleNotes(j), texte), 60000);
-    if (r == null) {
-      new obsidian.Notice(tr("Bilan : Apple Notes n'a pas répondu. Autorisez Obsidian à piloter Notes (Réglages système, Confidentialité et sécurité, Automatisation)."), 10000);
-      return false;
-    }
-    if (!silencieux) new obsidian.Notice(tr('Bilan envoyé dans Apple Notes, dossier ') + dossier + '.');
-    return true;
-  }
-
   //#endregion Ariane · mots du soir
 };
 
@@ -20660,12 +20605,6 @@ class Ariane extends composer(obsidian.Plugin,
       name: tr('Journée : résumer ma journée (IA)'),
       icon: 'sunset',
       callback: () => this.resumerJournee(jourIsoDe(new Date())),
-    });
-    this.addCommand({
-      id: 'journee-bilan-apple-notes',
-      name: tr('Journée : envoyer le bilan dans Apple Notes'),
-      icon: 'send',
-      callback: () => this.envoyerBilanAppleNotes(jourIsoDe(new Date())),
     });
     this.addCommand({
       id: 'mots-synchroniser',
@@ -23104,11 +23043,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           t.inputEl.rows = 2;
           t.inputEl.style.width = '100%';
         });
-      new obsidian.Setting(c)
-        .setName(tr('Bilan dans Apple Notes'))
-        .setDesc(tr("Le dossier d'Apple Notes où chaque bilan est aussi déposé (une note par jour, nommée de sa date : « 06-10-2026 »), pour le faire lire sur le téléphone. Créé s'il n'existe pas. Vide : pas d'envoi."))
-        .addText((t) => t.setPlaceholder('Bilans du soir').setValue(s.bilanAppleNotesDossier || '')
-          .onChange(async (v) => { s.bilanAppleNotesDossier = v.trim(); await maj(); }));
       new obsidian.Setting(c)
         .setName(tr('Mots du soir'))
         .setDesc(tr("Le bilan se clôt sur un mot et sa définition, tiré chaque soir sans reprendre ceux du dernier mois. Un dossier du coffre (une note par mot, comme la copie d'Apple Notes ci-dessous) ou une note (« mot : définition » par ligne). Vide : l'IA choisit le mot."))

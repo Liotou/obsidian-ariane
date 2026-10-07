@@ -843,11 +843,9 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
-    "Bilan dans Apple Notes": "Summary in Apple Notes",
     "Copier les mots depuis Apple Notes": "Copy the words from Apple Notes",
     "Dossier des mots dans le coffre": "Words folder in the vault",
     "Copier maintenant": "Copy now",
-    "Journée : envoyer le bilan dans Apple Notes": "Day: send the summary to Apple Notes",
     "Mots du soir : recopier depuis Apple Notes": "Evening words: copy from Apple Notes",
     "Portrait pour le bilan": "Portrait for the summary",
     "Mots du soir": "Evening words",
@@ -1407,7 +1405,6 @@ const DEFAULT_SETTINGS = {
   motsAppleNotesDossier: '🖋️ Mots',    // dossier d'Apple Notes recopié dans le coffre ('' = pas de copie)
   motsDossier: '11 - Mots',             // où vont les copies, une note par mot
   motsSynchroLe: 0,
-  bilanAppleNotesDossier: 'Bilans du soir', // dossier d'Apple Notes où déposer le bilan du soir ('' = non)
   donneesJourVersion: 0,                // 1 : données rangées par jour ; 2 : dans .ariane/jours, sans journal du temps
   activiteIAAuto: false,                // résumer seul les journées passées affichées
   activiteIACouleur: true,              // colorer les créneaux résumés selon leur catégorie IA

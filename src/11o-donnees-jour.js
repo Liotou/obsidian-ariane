@@ -587,12 +587,7 @@ const avecDonneesJour = (Base) => class extends Base {
     this.marquerJourSale(j);
     await this.ecrireDonneesJours();
     this._signalerResumeJournee();
-    const versNotes = String(this.settings.bilanAppleNotesDossier || '').trim()
-      ? await this.envoyerBilanAppleNotes(j, true) : false;
-    if (!o.silencieux) {
-      new obsidian.Notice(versNotes ? tr('Bilan de la journée prêt : dans la chronologie et dans Apple Notes.')
-        : tr('Bilan de la journée prêt : il s’affiche dans la chronologie.'));
-    }
+    if (!o.silencieux) new obsidian.Notice(tr('Bilan de la journée prêt : il s’affiche dans la chronologie.'));
     return texte;
   }
 
@@ -756,53 +751,6 @@ const avecDonneesJour = (Base) => class extends Base {
     if (!String(this.settings.motsAppleNotesDossier || '').trim()) return;
     window.setTimeout(() => this.synchroniserMots(true), 20000);
     this.registerInterval(window.setInterval(() => this.synchroniserMots(true), 6 * 3600000));
-  }
-
-  // ── le bilan vers Apple Notes ──
-  //  Une note par jour, nommée de sa seule date (« 06-10-2026 »), dans le
-  //  dossier réglé (« Bilans du soir »), créé au besoin ; refaire le bilan remplace la note du jour. Sur
-  //  le téléphone, la plus récente est en tête du dossier, prête à être lue.
-
-  static titreBilanAppleNotes(jour) {
-    const [a, m, j] = String(jour).split('-');
-    return j + '-' + m + '-' + a;
-  }
-
-  static genererJXABilan(dossier, titre, texte) {
-    const html = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const corps = '<div><h1>' + html(titre) + '</h1></div>'
-      + String(texte).split(/\n+/).map((p) => '<div>' + html(p) + '</div><div><br></div>').join('');
-    return [
-      'const N = Application("Notes");',
-      'let f = N.folders.whose({ name: ' + JSON.stringify(dossier) + ' });',
-      'let d;',
-      'if (f.length) { d = f[0]; } else { d = N.Folder({ name: ' + JSON.stringify(dossier) + ' }); N.folders.push(d); d = N.folders.whose({ name: ' + JSON.stringify(dossier) + ' })[0]; }',
-      'const ex = d.notes.whose({ name: ' + JSON.stringify(titre) + ' });',
-      'if (ex.length) { ex[0].body = ' + JSON.stringify(corps) + '; "maj"; }',
-      'else { d.notes.push(N.Note({ name: ' + JSON.stringify(titre) + ', body: ' + JSON.stringify(corps) + ' })); "cree"; }',
-    ].join('\n');
-  }
-
-  async envoyerBilanAppleNotes(jour, silencieux) {
-    if (!obsidian.Platform.isMacOS) return false;
-    const dossier = String(this.settings.bilanAppleNotesDossier || '').trim();
-    if (!dossier) {
-      if (!silencieux) new obsidian.Notice(tr('Bilan : choisissez d’abord un dossier Apple Notes dans les réglages (onglet Temps passé).'), 8000);
-      return false;
-    }
-    const j = jour || jourIsoDe(new Date());
-    const texte = await this.resumeDeLaJournee(j);
-    if (!texte) {
-      if (!silencieux) new obsidian.Notice(tr('Pas encore de bilan pour ce jour.'));
-      return false;
-    }
-    const r = await this._osascriptJXA(Ariane.genererJXABilan(dossier, Ariane.titreBilanAppleNotes(j), texte), 60000);
-    if (r == null) {
-      new obsidian.Notice(tr("Bilan : Apple Notes n'a pas répondu. Autorisez Obsidian à piloter Notes (Réglages système, Confidentialité et sécurité, Automatisation)."), 10000);
-      return false;
-    }
-    if (!silencieux) new obsidian.Notice(tr('Bilan envoyé dans Apple Notes, dossier ') + dossier + '.');
-    return true;
   }
 
   //#endregion Ariane · mots du soir
