@@ -849,7 +849,9 @@ const TEXTES = {
     "Aucune source annotée.": "No annotated source.",
     "Par page": "By page",
     "Ordre de lecture": "Reading order",
-    "Titre de l’ouvrage": "Title of the work",
+    "Sortie": "Output",
+    "Fiche 10 × 15": "10 × 15 card",
+    "A4 à découper": "A4 to cut",
     "Ouvrir dans le navigateur": "Open in browser",
     "Imprimer…": "Print…",
     "Portrait pour le bilan": "Portrait for the summary",
@@ -1436,8 +1438,8 @@ const DEFAULT_SETTINGS = {
   separateurCitation: ' ; ',
   // Bibliographie de fin de note, régénérée d'après les citations du corps.
   biblioAuto: true,
-  sommaireFormat: 'A5', // format du sommaire de lecture à imprimer (A4, A5, A6)
   sommaireColonnes: 1,  // une ou deux colonnes
+  sommaireSortie: 'fiche', // 'fiche' (10 × 15 cm) ou 'a4' (trois fiches par feuille, recto verso)
   biblioDossiersExclus: [], // dossiers dont les notes n'ont pas de bibliographie de fin
   biblioTitre: 'Bibliographie',
   biblioModele: '{{auteurs}} ({{annee}}). {{titre}}. *{{publication}}*.',

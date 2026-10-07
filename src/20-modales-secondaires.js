@@ -351,10 +351,9 @@ class ModaleSommaireLecture extends obsidian.Modal {
     super(app);
     this.greffon = greffon;
     this.source = source;
-    this.format = (greffon.settings.sommaireFormat) || 'A5';
     this.tri = 'page';
-    this.avecTitre = false;
     this.colonnes = Number(greffon.settings.sommaireColonnes) === 2 ? 2 : 1;
+    this.sortie = greffon.settings.sommaireSortie === 'a4' ? 'a4' : 'fiche';
   }
 
   _html(imprimer) {
@@ -362,9 +361,9 @@ class ModaleSommaireLecture extends obsidian.Modal {
     const p2 = (n) => String(n).padStart(2, '0');
     const entrees = Ariane.trierSommaire(this.greffon.annotationsPourSommaire(this.source.cle), this.tri);
     return Ariane.pageSommaireLecture({
-      reference: this.source.reference, titre: this.avecTitre ? this.source.titre : '',
+      titre: Ariane.titreCourtOuvrage(this.source.titre), citation: this.source.citation,
       date: p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + '/' + d.getFullYear(),
-      entrees, format: this.format, colonnes: this.colonnes, imprimer,
+      entrees, colonnes: this.colonnes, sortie: this.sortie, imprimer,
     });
   }
 
@@ -372,12 +371,18 @@ class ModaleSommaireLecture extends obsidian.Modal {
     const { contentEl, modalEl } = this;
     modalEl.addClass('zfa-sommaire-modale');
     this.setTitle ? this.setTitle(tr('Sommaire de lecture')) : contentEl.createEl('h3', { text: tr('Sommaire de lecture') });
+    const aide = contentEl.createDiv({ cls: 'setting-item-description zfa-sommaire-aide' });
+    const majAide = () => aide.setText(this.sortie === 'a4'
+      ? tr('Fiches de 10 × 15 cm, trois par feuille A4 à découper. Imprimez en recto verso, reliure bord long, à 100 % (sans ajustement à la page) : chaque verso tombe au dos de son recto.')
+      : tr('Au format des fiches graphiques (10 × 15 cm), une fiche par page, recto verso.'));
+    majAide();
     const reglages = contentEl.createDiv({ cls: 'zfa-sommaire-reglages' });
-    new obsidian.Setting(reglages).setName(tr('Format'))
-      .addDropdown((d) => d.addOptions({ A4: 'A4', A5: 'A5', A6: 'A6' }).setValue(this.format).onChange(async (v) => {
-        this.format = v;
-        this.greffon.settings.sommaireFormat = v;
+    new obsidian.Setting(reglages).setName(tr('Sortie'))
+      .addDropdown((d) => d.addOptions({ fiche: tr('Fiche 10 × 15'), a4: tr('A4 à découper') }).setValue(this.sortie).onChange(async (v) => {
+        this.sortie = v;
+        this.greffon.settings.sommaireSortie = v;
         await this.greffon.saveSettings();
+        majAide();
         this._apercu();
       }));
     new obsidian.Setting(reglages).setName(tr('Colonnes'))
@@ -390,8 +395,6 @@ class ModaleSommaireLecture extends obsidian.Modal {
     new obsidian.Setting(reglages).setName(tr('Ordre'))
       .addDropdown((d) => d.addOptions({ page: tr('Par page'), ordre: tr('Ordre de lecture') }).setValue(this.tri)
         .onChange((v) => { this.tri = v; this._apercu(); }));
-    new obsidian.Setting(reglages).setName(tr('Titre de l’ouvrage'))
-      .addToggle((t) => t.setValue(this.avecTitre).onChange((v) => { this.avecTitre = v; this._apercu(); }));
     this.cadre = contentEl.createEl('iframe', { cls: 'zfa-sommaire-apercu', attr: { title: tr('Aperçu') } });
     this._apercu();
     const pied = contentEl.createDiv({ cls: 'modal-button-container' });

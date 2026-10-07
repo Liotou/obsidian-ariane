@@ -1038,7 +1038,9 @@ const TEXTES = {
     "Aucune source annotée.": "No annotated source.",
     "Par page": "By page",
     "Ordre de lecture": "Reading order",
-    "Titre de l’ouvrage": "Title of the work",
+    "Sortie": "Output",
+    "Fiche 10 × 15": "10 × 15 card",
+    "A4 à découper": "A4 to cut",
     "Ouvrir dans le navigateur": "Open in browser",
     "Imprimer…": "Print…",
     "Portrait pour le bilan": "Portrait for the summary",
@@ -1625,8 +1627,8 @@ const DEFAULT_SETTINGS = {
   separateurCitation: ' ; ',
   // Bibliographie de fin de note, régénérée d'après les citations du corps.
   biblioAuto: true,
-  sommaireFormat: 'A5', // format du sommaire de lecture à imprimer (A4, A5, A6)
   sommaireColonnes: 1,  // une ou deux colonnes
+  sommaireSortie: 'fiche', // 'fiche' (10 × 15 cm) ou 'a4' (trois fiches par feuille, recto verso)
   biblioDossiersExclus: [], // dossiers dont les notes n'ont pas de bibliographie de fin
   biblioTitre: 'Bibliographie',
   biblioModele: '{{auteurs}} ({{annee}}). {{titre}}. *{{publication}}*.',
@@ -9855,42 +9857,148 @@ const avecNoteBiblio = (Base) => class extends Base {
     });
   }
 
-  // La page HTML, prête à imprimer, serrée comme un sommaire écrit à la
-  // main : une ligne par annotation, « 11. Titre », le titre aligné après
-  // le plus long numéro, et l'en-tête des fiches en réduction. o = {
-  // reference, titre, date, entrees [{ page, titre }], format: 'A4' | 'A5'
-  // | 'A6', colonnes: 1 | 2, imprimer (lancer l'impression au chargement,
-  // pour le navigateur) }.
+  // L'imposition d'un sommaire de `n` fiches recto verso sur des feuilles
+  // A4 portrait à découper : trois fiches par face (deux debout en haut,
+  // une couchée dessous), la fiche k portant les pages 2k (recto) et 2k+1
+  // (verso). Au dos de la feuille (retournée sur le bord long), chaque
+  // verso est à la place miroir de son recto ; la fiche couchée y est
+  // tournée dans l'autre sens, pour que son verso se lise à l'endroit
+  // quand on la retourne comme une page. Rend [{ recto: [emplacement],
+  // verso: [emplacement] }], emplacement = { page, x, y, rot } en mm (rot :
+  // 0, 90 ou -90 degrés ; x, y : coin haut gauche de la case).
+  static impositionA4(n) {
+    const L = 210;
+    const ox = 5;
+    const oy = (297 - 250) / 2;
+    const cases = [{ x: ox, y: oy, l: 100, rot: 0 }, { x: ox + 100, y: oy, l: 100, rot: 0 }, { x: ox, y: oy + 150, l: 150, rot: 90 }];
+    const feuilles = [];
+    for (let k = 0; k < n; k += 3) {
+      const recto = [];
+      const verso = [];
+      for (let i = 0; i < 3 && k + i < n; i++) {
+        const c = cases[i];
+        recto.push({ page: 2 * (k + i), x: c.x, y: c.y, rot: c.rot });
+        verso.push({ page: 2 * (k + i) + 1, x: L - c.x - c.l, y: c.y, rot: -c.rot });
+      }
+      feuilles.push({ recto, verso });
+    }
+    return feuilles;
+  }
+
+  // La page HTML, prête à imprimer, au format des fiches graphiques : leur
+  // page draw.io fait 394 × 591 unités de 0,254 mm, soit 10 × 15 cm. Chaque
+  // fiche reprend leur en-tête : 40 unités de haut, le livre et son auteur
+  // en Georgia corps 11 à gauche, la date en Helvetica à droite après un
+  // filet vertical (unité 319), un filet horizontal dessous. Puis une ligne
+  // par annotation, « 11. Titre », serrée comme un sommaire écrit à la
+  // main, en Georgia corps 10 (celui des blocs des fiches). Les fiches se
+  // remplissent dans la page elle-même (le texte y est mesuré), puis, en
+  // A4, s'imposent trois par face. o = { titre, citation « (Auteur,
+  // AAAA) », date, entrees [{ page, titre }], colonnes: 1 | 2, sortie:
+  // 'fiche' | 'a4', imprimer (lancer l'impression une fois composé) }.
   static pageSommaireLecture(o) {
     const h = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const format = ['A4', 'A5', 'A6'].includes(o.format) ? o.format : 'A5';
+    const u = (n) => (n * 0.254).toFixed(2) + 'mm';
     const colonnes = Number(o.colonnes) === 2 ? 2 : 1;
-    const corps = { A4: 10, A5: 9, A6: 7.5 }[format];
-    const tete = { A4: 14, A5: 12, A6: 10 }[format];
-    const marge = { A4: '12mm 14mm', A5: '8mm 9mm', A6: '6mm 6mm' }[format];
-    const entrees = o.entrees || [];
-    const large = Math.max(1, ...entrees.map((e) => String(e.page || '').length)) + 1;
-    const lignes = entrees.map((e) => '<li><span class="p">' + h(e.page ? e.page + '.' : '') + '</span><span class="t">' + h(e.titre) + '</span></li>').join('\n');
-    return '<!doctype html>\n<html lang="fr"><head><meta charset="utf-8"><title>' + h(o.reference) + '</title>\n<style>\n'
-      + '@page { size: ' + format + '; margin: ' + marge + '; }\n'
+    const a4 = o.sortie === 'a4';
+    const entrees = (o.entrees || []).map((e) => ({ p: e.page ? e.page + '.' : '', t: String(e.titre || '') }));
+    const large = Math.max(1, ...entrees.map((e) => e.p.length));
+    const trait = u(1) + ' solid #000';
+    const entete = '<header><div class="ref">' + (o.titre ? '<span>' + h(o.titre) + '</span>' : '') + (o.citation ? '<span>' + h(o.citation) + '</span>' : '')
+      + '</div><div class="date">' + h(o.date || '') + '</div></header>';
+    const script = [
+      'var ENTREES = ' + JSON.stringify(entrees).replace(/</g, '\\u003c') + ';',
+      'var A4 = ' + (a4 ? 'true' : 'false') + ', DEUX = ' + (colonnes === 2 ? 'true' : 'false') + ', IMPRIMER = ' + (o.imprimer ? 'true' : 'false') + ';',
+      'var ENTETE = ' + JSON.stringify(entete).replace(/</g, '\\u003c') + ';',
+      'var IMPOSER = { ' + Ariane.impositionA4.toString() + ' };',
+      'function carte() {',
+      '  var c = document.createElement("div"); c.className = "carte";',
+      '  c.innerHTML = ENTETE + "<main><ol></ol></main>";',
+      '  return c;',
+      '}',
+      'function deborde(c) {',
+      '  var m = c.querySelector("main"), ol = c.querySelector("ol");',
+      '  return DEUX ? ol.scrollWidth > ol.clientWidth + 1 : m.scrollHeight > m.clientHeight + 1;',
+      '}',
+      'function composer() {',
+      '  var zone = document.getElementById("cartes"), cartes = [], c = carte();',
+      '  zone.appendChild(c); cartes.push(c);',
+      '  if (!ENTREES.length) c.querySelector("main").innerHTML = "<p class=\\"vide\\">Aucune annotation.</p>";',
+      '  ENTREES.forEach(function (e) {',
+      '    var li = document.createElement("li");',
+      '    var p = document.createElement("span"); p.className = "p"; p.textContent = e.p;',
+      '    var t = document.createElement("span"); t.className = "t"; t.textContent = e.t;',
+      '    li.appendChild(p); li.appendChild(t);',
+      '    c.querySelector("ol").appendChild(li);',
+      '    if (deborde(c) && c.querySelectorAll("li").length > 1) {',
+      '      li.remove(); c = carte(); zone.appendChild(c); cartes.push(c); c.querySelector("ol").appendChild(li);',
+      '    }',
+      '  });',
+      '  if (!A4) return;',
+      // Le nombre de fiches recto verso : deux pages par fiche.
+      '  var fiches = Math.ceil(cartes.length / 2), plan = IMPOSER.impositionA4(fiches);',
+      '  var sortie = document.getElementById("feuilles");',
+      '  plan.forEach(function (f) {',
+      '    ["recto", "verso"].forEach(function (face) {',
+      '      var feuille = document.createElement("div"); feuille.className = "feuille est-" + face;',
+      '      f[face].forEach(function (e) {',
+      '        var place = document.createElement("div"); place.className = "place" + (e.rot ? " couchee" : "");',
+      '        place.style.left = e.x + "mm"; place.style.top = e.y + "mm";',
+      '        var x = cartes[e.page];',
+      '        if (x) {',
+      '          if (e.rot === 90) x.style.transform = "translate(150mm, 0) rotate(90deg)";',
+      '          if (e.rot === -90) x.style.transform = "translate(0, 100mm) rotate(-90deg)";',
+      '          place.appendChild(x);',
+      '        }',
+      '        feuille.appendChild(place);',
+      '      });',
+      '      sortie.appendChild(feuille);',
+      '    });',
+      '  });',
+      '  zone.remove();',
+      '}',
+      'function lancer() { composer(); if (IMPRIMER) setTimeout(function () { window.print(); }, 50); }',
+      'if (document.fonts && document.fonts.ready) document.fonts.ready.then(lancer); else window.addEventListener("load", lancer);',
+    ].join('\n');
+    return '<!doctype html>\n<html lang="fr"><head><meta charset="utf-8"><title>' + h(o.titre || o.citation) + '</title>\n<style>\n'
+      + '@page { size: ' + (a4 ? 'A4 portrait' : '100mm 150mm') + '; margin: 0; }\n'
       + '* { box-sizing: border-box; }\n'
       + 'html, body { margin: 0; background: #fff; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }\n'
-      + 'body { font-family: Georgia, "Times New Roman", serif; font-size: ' + corps + 'pt; line-height: 1.22; }\n'
-      + 'header { display: flex; align-items: stretch; border-bottom: 0.8pt solid #000; margin-bottom: 0.45em; }\n'
-      + 'header .ref { flex: 1; font-size: ' + tete + 'pt; padding: 0.15em 0.5em 0.2em 0; line-height: 1.15; }\n'
-      + 'header .date { font-family: Helvetica, Arial, sans-serif; font-size: ' + (tete * 0.8).toFixed(1) + 'pt; border-left: 0.8pt solid #000; padding: 0.15em 0 0.2em 0.6em; display: flex; align-items: center; white-space: nowrap; }\n'
-      + '.titre { font-style: italic; margin: 0 0 0.45em; font-size: 0.92em; }\n'
-      + 'ol { list-style: none; margin: 0; padding: 0;' + (colonnes === 2 ? ' column-count: 2; column-gap: 1.4em; column-rule: 0.4pt solid #bbb;' : '') + ' }\n'
-      + 'li { display: grid; grid-template-columns: ' + (large * 0.6).toFixed(2) + 'em 1fr; column-gap: 0.3em; padding: 0.06em 0; break-inside: avoid; }\n'
+      + 'body { font-family: Georgia, "Times New Roman", serif; font-size: ' + u(10) + '; line-height: 1.22; }\n'
+      + '.carte { width: 100mm; height: 150mm; overflow: hidden; display: flex; flex-direction: column; background: #fff; transform-origin: top left; break-after: page; }\n'
+      + 'header { flex: 0 0 auto; display: flex; min-height: ' + u(40) + '; border-bottom: ' + trait + '; width: ' + u(390) + '; }\n'
+      + 'header .ref { width: ' + u(319) + '; padding: ' + u(3) + ' ' + u(6) + ' ' + u(3) + ' ' + u(2) + '; font-size: ' + u(11) + '; line-height: 1.2;'
+      + ' display: flex; flex-direction: column; justify-content: center; }\n'
+      + 'header .date { flex: 1; border-left: ' + trait + '; font-family: Helvetica, Arial, sans-serif; font-size: ' + u(11) + ';'
+      + ' display: flex; align-items: center; justify-content: flex-end; white-space: nowrap; padding-right: ' + u(2) + '; }\n'
+      + 'main { flex: 1 1 auto; min-height: 0; overflow: hidden; padding: ' + u(8) + ' ' + u(6) + ' ' + u(6) + ' ' + u(2) + '; }\n'
+      + 'ol { list-style: none; margin: 0; padding: 0;' + (colonnes === 2 ? ' height: 100%; column-count: 2; column-fill: auto; column-gap: ' + u(12) + '; column-rule: ' + u(0.5) + ' solid #999;' : '') + ' }\n'
+      + 'li { display: grid; grid-template-columns: ' + (large * 0.6).toFixed(2) + 'em 1fr; column-gap: 0.3em; padding: 0.05em 0; break-inside: avoid; }\n'
       + 'li .p { font-variant-numeric: lining-nums tabular-nums; }\n'
       + '.vide { font-style: italic; }\n'
-      + '@media screen { body { padding: 18px; max-width: ' + { A4: '210mm', A5: '148mm', A6: '105mm' }[format] + '; margin: 0 auto; } }\n'
-      + '</style></head><body>\n'
-      + '<header><div class="ref">' + h(o.reference) + '</div>' + (o.date ? '<div class="date">' + h(o.date) + '</div>' : '') + '</header>\n'
-      + (o.titre ? '<p class="titre">' + h(o.titre) + '</p>\n' : '')
-      + (lignes ? '<ol>\n' + lignes + '\n</ol>\n' : '<p class="vide">Aucune annotation.</p>\n')
-      + (o.imprimer ? '<script>window.addEventListener("load", function () { window.print(); });</script>\n' : '')
+      + '.carte:last-child, .feuille:last-child { break-after: auto; }\n'
+      + '.feuille { position: relative; width: 210mm; height: 297mm; overflow: hidden; break-after: page; background: #fff; }\n'
+      + '.place { position: absolute; width: 100mm; height: 150mm; }\n'
+      + '.place.couchee { width: 150mm; height: 100mm; }\n'
+      + '.place .carte { position: absolute; left: 0; top: 0; break-after: auto; }\n'
+      // Repères de coupe, au recto seulement (un décalage du verso ne les
+      // rendrait pas faux).
+      + '.est-recto .place { outline: 0.1mm solid #c8c8c8; }\n'
+      + '@media screen { html { background: #e8e8e8; } body { padding: 16px 0; }'
+      + ' .carte, .feuille { margin: 0 auto 16px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }'
+      + ' .place .carte { margin: 0; box-shadow: none; }'
+      + ' .feuille.est-verso::before { content: "Verso"; position: absolute; right: 4mm; top: 3mm; font: 9px Helvetica, sans-serif; color: #999; } }\n'
+      + '</style></head><body>\n<div id="cartes"></div><div id="feuilles"></div>\n'
+      + '<script>\n' + script + '\n</script>\n'
       + '</body></html>\n';
+  }
+
+  // Le titre du livre pour l'en-tête : sans son sous-titre (après « : »
+  // ou « . »), qui le rendrait trop long pour la fiche.
+  static titreCourtOuvrage(titre) {
+    const t = String(titre || '').replace(/\s+/g, ' ').trim();
+    const m = t.match(/^(.{8,}?)\s*[:.]\s+\S/);
+    return m ? m[1].trim() : t;
   }
 
   // Les sources qui ont des annotations : { fichier, cle, reference,
@@ -9908,7 +10016,8 @@ const avecNoteBiblio = (Base) => class extends Base {
       const f = this.app.metadataCache.getFirstLinkpathDest(cle, '');
       const fm = f ? ((this.app.metadataCache.getFileCache(f) || {}).frontmatter || {}) : {};
       out.push({ fichier: f, cle, n, titre: String(fm.title || '').trim(),
-        reference: String(entreeBiblio(cle, fm, '{{auteurs}} ({{annee}})') || cle).replace(/\.$/, '') });
+        reference: String(entreeBiblio(cle, fm, '{{auteurs}} ({{annee}})') || cle).replace(/\.$/, ''),
+        citation: '(' + String(entreeBiblio(cle, fm, '{{auteurs}}, {{annee}}') || cle).replace(/\.$/, '') + ')' });
     }
     out.sort((a, b) => a.reference.localeCompare(b.reference, 'fr'));
     const actif = this.app.workspace.getActiveFile();
@@ -40022,10 +40131,9 @@ class ModaleSommaireLecture extends obsidian.Modal {
     super(app);
     this.greffon = greffon;
     this.source = source;
-    this.format = (greffon.settings.sommaireFormat) || 'A5';
     this.tri = 'page';
-    this.avecTitre = false;
     this.colonnes = Number(greffon.settings.sommaireColonnes) === 2 ? 2 : 1;
+    this.sortie = greffon.settings.sommaireSortie === 'a4' ? 'a4' : 'fiche';
   }
 
   _html(imprimer) {
@@ -40033,9 +40141,9 @@ class ModaleSommaireLecture extends obsidian.Modal {
     const p2 = (n) => String(n).padStart(2, '0');
     const entrees = Ariane.trierSommaire(this.greffon.annotationsPourSommaire(this.source.cle), this.tri);
     return Ariane.pageSommaireLecture({
-      reference: this.source.reference, titre: this.avecTitre ? this.source.titre : '',
+      titre: Ariane.titreCourtOuvrage(this.source.titre), citation: this.source.citation,
       date: p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + '/' + d.getFullYear(),
-      entrees, format: this.format, colonnes: this.colonnes, imprimer,
+      entrees, colonnes: this.colonnes, sortie: this.sortie, imprimer,
     });
   }
 
@@ -40043,12 +40151,18 @@ class ModaleSommaireLecture extends obsidian.Modal {
     const { contentEl, modalEl } = this;
     modalEl.addClass('zfa-sommaire-modale');
     this.setTitle ? this.setTitle(tr('Sommaire de lecture')) : contentEl.createEl('h3', { text: tr('Sommaire de lecture') });
+    const aide = contentEl.createDiv({ cls: 'setting-item-description zfa-sommaire-aide' });
+    const majAide = () => aide.setText(this.sortie === 'a4'
+      ? tr('Fiches de 10 × 15 cm, trois par feuille A4 à découper. Imprimez en recto verso, reliure bord long, à 100 % (sans ajustement à la page) : chaque verso tombe au dos de son recto.')
+      : tr('Au format des fiches graphiques (10 × 15 cm), une fiche par page, recto verso.'));
+    majAide();
     const reglages = contentEl.createDiv({ cls: 'zfa-sommaire-reglages' });
-    new obsidian.Setting(reglages).setName(tr('Format'))
-      .addDropdown((d) => d.addOptions({ A4: 'A4', A5: 'A5', A6: 'A6' }).setValue(this.format).onChange(async (v) => {
-        this.format = v;
-        this.greffon.settings.sommaireFormat = v;
+    new obsidian.Setting(reglages).setName(tr('Sortie'))
+      .addDropdown((d) => d.addOptions({ fiche: tr('Fiche 10 × 15'), a4: tr('A4 à découper') }).setValue(this.sortie).onChange(async (v) => {
+        this.sortie = v;
+        this.greffon.settings.sommaireSortie = v;
         await this.greffon.saveSettings();
+        majAide();
         this._apercu();
       }));
     new obsidian.Setting(reglages).setName(tr('Colonnes'))
@@ -40061,8 +40175,6 @@ class ModaleSommaireLecture extends obsidian.Modal {
     new obsidian.Setting(reglages).setName(tr('Ordre'))
       .addDropdown((d) => d.addOptions({ page: tr('Par page'), ordre: tr('Ordre de lecture') }).setValue(this.tri)
         .onChange((v) => { this.tri = v; this._apercu(); }));
-    new obsidian.Setting(reglages).setName(tr('Titre de l’ouvrage'))
-      .addToggle((t) => t.setValue(this.avecTitre).onChange((v) => { this.avecTitre = v; this._apercu(); }));
     this.cadre = contentEl.createEl('iframe', { cls: 'zfa-sommaire-apercu', attr: { title: tr('Aperçu') } });
     this._apercu();
     const pied = contentEl.createDiv({ cls: 'modal-button-container' });
