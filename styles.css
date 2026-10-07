@@ -4048,11 +4048,7 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-chrono-grille { display: grid; grid-template-columns: minmax(0, 1fr) 260px; min-height: 100%; }
 .zfa-chrono-principal { padding: var(--size-4-4) var(--size-4-6) var(--size-4-12); min-width: 0; max-width: 820px; }
 .zfa-chrono-cote { padding: var(--size-4-4) var(--size-4-4); border-left: 1px solid var(--divider-color, var(--background-modifier-border)); background: var(--background-secondary); }
-@container (max-width: 760px) {
-  .zfa-chrono-grille { grid-template-columns: minmax(0, 1fr); }
-  .zfa-chrono-cote { border-left: none; border-top: 1px solid var(--background-modifier-border); }
-  .zfa-chrono-principal { padding: var(--size-4-3) var(--size-4-3) var(--size-4-8); }
-}
+
 
 .zfa-chrono-auj { margin-left: var(--size-4-2); font-size: var(--font-ui-smaller); height: auto; padding: 2px 8px; }
 
@@ -4252,3 +4248,38 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-chrono-rythmes-c { aspect-ratio: 1; border-radius: 2px; background: var(--background-modifier-hover); }
 .zfa-chrono-rythmes-c.est-plein { background: color-mix(in srgb, var(--interactive-accent) calc(var(--zfa-int) * 100%), var(--background-modifier-hover)); }
 @media (prefers-reduced-motion: reduce) { .zfa-chrono-rub-chevron { transition: none; } }
+/* Chronologie dans la barre latérale droite : en-tête des panneaux
+   d'Obsidian, puis la période ; étroite, la vue montre le fil OU la
+   synthèse, au choix de deux onglets ; large (déplacée dans la zone
+   principale), les deux côte à côte. */
+.zfa-chrono { display: flex; flex-direction: column; }
+.zfa-chrono-entete { flex: 0 0 auto; padding: 0 var(--size-4-3) var(--size-4-2); border-bottom: 1px solid var(--background-modifier-border); }
+.zfa-chrono-entete .nav-header { padding: var(--size-4-2) 0 var(--size-4-1); }
+.zfa-chrono-entete .zfa-chrono-tete { padding: 0 var(--size-4-1); }
+.zfa-chrono-entete .zfa-chrono-titre { font-size: var(--font-ui-medium); font-weight: var(--font-semibold); margin-right: auto; }
+.zfa-chrono-entete .zfa-chrono-filtre-actif { margin-left: var(--size-4-1); }
+.zfa-chrono-grille { flex: 1 0 auto; }
+.zfa-chrono-principal { padding: var(--size-4-2) var(--size-4-3) var(--size-4-8); max-width: 820px; }
+.zfa-chrono-cote { padding: var(--size-4-3); }
+.zfa-chrono-onglets { display: none; gap: 2px; margin-top: var(--size-4-2); padding: 2px; border-radius: var(--radius-m);
+  background: var(--background-modifier-hover); }
+.zfa-chrono-onglet { flex: 1 1 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 3px 8px;
+  border-radius: var(--radius-s); cursor: pointer; font-size: var(--font-ui-small); color: var(--text-muted); }
+.zfa-chrono-onglet:hover { color: var(--text-normal); }
+.zfa-chrono-onglet.is-active { background: var(--background-primary); color: var(--text-normal); box-shadow: var(--shadow-xs, 0 1px 2px rgba(0, 0, 0, 0.12)); }
+.zfa-chrono-onglet-ic { display: inline-flex; }
+.zfa-chrono-onglet-ic svg { width: 14px; height: 14px; }
+@container (max-width: 760px) {
+  .zfa-chrono-onglets { display: flex; }
+  .zfa-chrono-grille { grid-template-columns: minmax(0, 1fr); }
+  .zfa-chrono:not(.montre-synthese) .zfa-chrono-cote { display: none; }
+  .zfa-chrono.montre-synthese .zfa-chrono-principal { display: none; }
+  .zfa-chrono-cote { border-left: none; background: none; padding: var(--size-4-3); }
+  .zfa-chrono-principal { padding: var(--size-4-1) var(--size-4-3) var(--size-4-8); }
+  /* Le jour : son nom, puis ses actions en icônes seules (libellé en infobulle). */
+  .zfa-chrono-jour { flex-wrap: wrap; }
+  .zfa-chrono-jour-actions { margin-left: auto; gap: 2px; }
+  .zfa-chrono-jour-bt { padding: 4px; border: none; background: none; box-shadow: none; }
+  .zfa-chrono-jour-bt > span:not(.zfa-chrono-jour-bt-ic) { display: none; }
+  .zfa-chrono-evt { grid-template-columns: 2.6em 22px minmax(0, 1fr); column-gap: 6px; }
+}

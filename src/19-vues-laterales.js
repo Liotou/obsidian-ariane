@@ -1378,8 +1378,10 @@ class VueChronologie extends obsidian.ItemView {
     this.dossier = '';
     this.limite = 200;
     this._jeton = 0;
-    // Rubriques repliées de la colonne latérale.
+    // Rubriques repliées de la synthèse, et l'onglet montré quand la vue
+    // est étroite (barre latérale) : « fil » ou « synthese ».
     this.replies = [];
+    this.onglet = 'fil';
   }
 
   getViewType() { return TYPE_VUE_CHRONOLOGIE; }
@@ -1387,7 +1389,7 @@ class VueChronologie extends obsidian.ItemView {
   getIcon() { return 'history'; }
 
   getState() {
-    return { periode: this.periode, ancre: this.ancre, filtre: this.filtre, dossier: this.dossier, replies: this.replies };
+    return { periode: this.periode, ancre: this.ancre, filtre: this.filtre, dossier: this.dossier, replies: this.replies, onglet: this.onglet };
   }
 
   async setState(etat, resultat) {
@@ -1397,23 +1399,13 @@ class VueChronologie extends obsidian.ItemView {
     if (['tout', 'notes', 'taches', 'captures', 'canevas', 'externe'].includes(e.filtre)) this.filtre = e.filtre;
     if (typeof e.dossier === 'string') this.dossier = e.dossier;
     if (Array.isArray(e.replies)) this.replies = e.replies.filter((x) => typeof x === 'string');
+    if (e.onglet === 'fil' || e.onglet === 'synthese') this.onglet = e.onglet;
     await super.setState(etat, resultat);
     this.rafraichir();
   }
 
   async onOpen() {
     this.contentEl.addClass('zfa-chrono');
-    // Le bandeau : les réglages de la vue dans l'en-tête de l'onglet, comme
-    // le graphe ou les rétroliens (addAction place chaque action à gauche
-    // de la précédente : d'où l'ordre inverse).
-    this._actIA = this.addAction('sparkles', tr('Résumer la période (IA)'), () => {
-      const b = Ariane.bornesPeriode(this.periode, this.ancre);
-      const jours = [];
-      for (let j = b.debut; j < b.fin; j = Ariane.decalerJour(j, 1)) jours.push(j);
-      this.greffon.resumerJoursActivite(jours);
-    });
-    this._actFiltre = this.addAction('filter', tr('Filtrer'), (ev) => this._menuFiltre(ev));
-    this._actPeriode = this.addAction('calendar-range', tr('Période'), (ev) => this._menuPeriode(ev));
     await this.rafraichir();
   }
 
@@ -1501,13 +1493,17 @@ class VueChronologie extends obsidian.ItemView {
     // doit pas ramener la lecture en haut de page.
     const defil = c.scrollTop;
     c.empty();
+    c.toggleClass('montre-synthese', this.onglet === 'synthese');
+    // En tête, comme le plan ou les rétroliens : les boutons de la vue, la
+    // période, et (vue étroite) les onglets « Fil » et « Synthèse ». Le
+    // reste : le fil et la synthèse côte à côte quand la place le permet.
+    this._dessinerEntete(c.createDiv({ cls: 'zfa-chrono-entete' }), b, auj);
     const grille = c.createDiv({ cls: 'zfa-chrono-grille' });
     const princ = grille.createDiv({ cls: 'zfa-chrono-principal' });
     const cote = grille.createDiv({ cls: 'zfa-chrono-cote' });
     const t0 = new Date(b.debut + 'T00:00:00').getTime();
     const t1 = new Date(b.fin + 'T00:00:00').getTime();
     const dansPeriode = evts.filter((e) => e.t >= t0 && e.t < t1);
-    this._dessinerEntete(princ, b, auj);
     this._dessinerFlux(princ, Ariane.filtrerChrono(dansPeriode, this.filtre, this.dossier), auj);
     const t2 = new Date(departChaleur + 'T00:00:00').getTime();
     this._dessinerChaleur(cote, Ariane.filtrerChrono(evts.filter((e) => e.t >= t2), this.filtre, this.dossier), auj);
@@ -1519,18 +1515,31 @@ class VueChronologie extends obsidian.ItemView {
       this._dessinerRythmes(cote, analyse);
     }
     this._dessinerComptes(cote, Ariane.filtrerChrono(dansPeriode, 'tout', this.dossier));
-    // L'état du bandeau : le filtre allumé quand il restreint quelque chose.
-    if (this._actFiltre) this._actFiltre.toggleClass('is-active', this.filtre !== 'tout' || !!this.dossier);
-    if (this._actIA) this._actIA.toggle(!!(this.greffon.activiteDisponible && this.greffon.activiteDisponible()));
     c.scrollTop = defil;
   }
 
-  // La barre d'outils, à la manière de celles d'Obsidian : la période et ses
-  // flèches à gauche, le choix jour / semaine / mois / année à droite, puis
-  // les filtres. Pas de grand titre : l'onglet porte déjà le nom de la vue.
-  // Le titre de la période, ses flèches, et « Aujourd'hui » hors de la
-  // période courante ; un rappel discret du filtre quand il restreint.
+  // L'en-tête : la rangée de boutons des panneaux d'Obsidian (période,
+  // filtre, résumé de la période par l'IA), puis le titre de la période, ses
+  // flèches, « Aujourd'hui » hors de la période courante, un rappel du
+  // filtre quand il restreint, et les onglets de la vue étroite.
   _dessinerEntete(hote, b, auj) {
+    const nav = hote.createDiv({ cls: 'nav-header' });
+    const btns = nav.createDiv({ cls: 'nav-buttons-container' });
+    const action = (ic, libelle, faire, actif) => {
+      const x = btns.createDiv({ cls: 'clickable-icon nav-action-button' + (actif ? ' is-active' : ''), attr: { 'aria-label': libelle } });
+      obsidian.setIcon(x, ic);
+      x.onclick = faire;
+    };
+    action('calendar-range', tr('Période'), (ev) => this._menuPeriode(ev));
+    action('filter', tr('Filtrer'), (ev) => this._menuFiltre(ev), this.filtre !== 'tout' || !!this.dossier);
+    if (this.greffon.activiteDisponible && this.greffon.activiteDisponible()) {
+      action('sparkles', tr('Résumer la période (IA)'), () => {
+        const jours = [];
+        for (let j = b.debut; j < b.fin; j = Ariane.decalerJour(j, 1)) jours.push(j);
+        this.greffon.resumerJoursActivite(jours);
+      });
+    }
+    action('refresh-cw', tr('Actualiser'), () => this.rafraichir());
     const tete = hote.createDiv({ cls: 'zfa-chrono-tete' });
     const icone = (nom, libelle, faire, inactif) => {
       const x = tete.createDiv({ cls: 'clickable-icon' + (inactif ? ' is-disabled' : ''), attr: { 'aria-label': libelle } });
@@ -1562,6 +1571,20 @@ class VueChronologie extends obsidian.ItemView {
       hote.createDiv({ cls: 'zfa-chrono-avis',
         text: tr("Le journal d'activité est désactivé (réglages, onglet Temps passé) : seule la reconstitution d'après les dates des fichiers s'affiche.") });
     }
+    const ong = hote.createDiv({ cls: 'zfa-chrono-onglets' });
+    for (const [o, l, ic] of [['fil', 'Fil', 'list'], ['synthese', 'Synthèse', 'chart-column']]) {
+      const x = ong.createDiv({ cls: 'zfa-chrono-onglet' + (this.onglet === o ? ' is-active' : '') });
+      obsidian.setIcon(x.createSpan({ cls: 'zfa-chrono-onglet-ic' }), ic);
+      x.createSpan({ text: tr(l) });
+      x.onclick = () => {
+        if (this.onglet === o) return;
+        this.onglet = o;
+        this.contentEl.toggleClass('montre-synthese', o === 'synthese');
+        for (const y of ong.children) y.toggleClass('is-active', y === x);
+        this.contentEl.scrollTop = 0;
+        this.app.workspace.requestSaveLayout();
+      };
+    }
   }
 
   _dessinerFlux(hote, evts, auj) {
@@ -1592,7 +1615,7 @@ class VueChronologie extends obsidian.ItemView {
       tj.createSpan({ cls: 'zfa-chrono-badge', text: String(n), attr: { 'aria-label': n + ' ' + (n > 1 ? tr('événements') : tr('événement')) } });
       const act = tj.createDiv({ cls: 'zfa-chrono-jour-actions' });
       const bouton = (icone, libelle, faire) => {
-        const x = act.createEl('button', { cls: 'zfa-chrono-jour-bt' });
+        const x = act.createEl('button', { cls: 'zfa-chrono-jour-bt', attr: { 'aria-label': libelle } });
         obsidian.setIcon(x.createSpan({ cls: 'zfa-chrono-jour-bt-ic' }), icone);
         x.createSpan({ text: libelle });
         x.onclick = faire;

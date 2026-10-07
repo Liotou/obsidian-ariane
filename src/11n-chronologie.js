@@ -607,12 +607,31 @@ const avecChronologie = (Base) => class extends Base {
     return out;
   }
 
+  // Au démarrage : une chronologie restée dans un onglet (avant qu'elle ne
+  // passe dans la barre latérale) est ramenée à droite, sans prendre le focus.
+  async rangerChronologie() {
+    const ws = this.app.workspace;
+    const ailleurs = ws.getLeavesOfType(TYPE_VUE_CHRONOLOGIE).filter((f) => !(f.getRoot && f.getRoot() === ws.rightSplit));
+    if (!ailleurs.length) return;
+    const etat = ailleurs[0].getViewState().state;
+    for (const f of ailleurs) f.detach();
+    if (ws.getLeavesOfType(TYPE_VUE_CHRONOLOGIE).length) return;
+    const feuille = ws.getRightLeaf(false);
+    if (feuille) await feuille.setViewState({ type: TYPE_VUE_CHRONOLOGIE, active: false, state: etat });
+  }
+
   async ouvrirChronologie() {
-    const ex = this.app.workspace.getLeavesOfType(TYPE_VUE_CHRONOLOGIE);
-    if (ex.length) { this.app.workspace.revealLeaf(ex[0]); return; }
-    const feuille = this.app.workspace.getLeaf('tab');
+    // La chronologie vit dans la barre latérale droite, comme le plan ou les
+    // rétroliens : une chronologie ouverte ailleurs (ancien onglet) y est
+    // ramenée.
+    const ws = this.app.workspace;
+    const ex = ws.getLeavesOfType(TYPE_VUE_CHRONOLOGIE);
+    const aDroite = ex.find((f) => f.getRoot && f.getRoot() === ws.rightSplit);
+    for (const f of ex) if (f !== aDroite) f.detach();
+    if (aDroite) { ws.revealLeaf(aDroite); return; }
+    const feuille = ws.getRightLeaf(false);
     await feuille.setViewState({ type: TYPE_VUE_CHRONOLOGIE, active: true });
-    this.app.workspace.revealLeaf(feuille);
+    ws.revealLeaf(feuille);
   }
 
   //#endregion Ariane · chronologie (journal & lecture)
