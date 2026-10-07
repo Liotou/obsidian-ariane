@@ -843,12 +843,7 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
-    "Copier les mots depuis Apple Notes": "Copy the words from Apple Notes",
-    "Dossier des mots dans le coffre": "Words folder in the vault",
-    "Copier maintenant": "Copy now",
-    "Mots du soir : recopier depuis Apple Notes": "Evening words: copy from Apple Notes",
     "Portrait pour le bilan": "Portrait for the summary",
-    "Mots du soir": "Evening words",
     "Temps dans Obsidian": "Time in Obsidian",
     "Relevé quotidien": "Daily record",
     "Jours gardés en mémoire": "Days kept in memory",
@@ -1401,10 +1396,6 @@ const DEFAULT_SETTINGS = {
   activiteIAModeleClaude: 'haiku',      // modèle si le fournisseur est Claude en ligne de commande
   resumeJourneeHeure: '',               // résumé de la journée par l'IA à cette heure (HH:MM), '' = jamais
   resumeJourneePortrait: "Monsieur est doctorant, souvent en proie au syndrome de l'imposteur et parfois à la procrastination.",
-  resumeJourneeMots: '',                // note (« mot : définition » par ligne) ou dossier (une note par mot) ; '' = l'IA choisit
-  motsAppleNotesDossier: '🖋️ Mots',    // dossier d'Apple Notes recopié dans le coffre ('' = pas de copie)
-  motsDossier: '11 - Mots',             // où vont les copies, une note par mot
-  motsSynchroLe: 0,
   donneesJourVersion: 0,                // 1 : données rangées par jour ; 2 : dans .ariane/jours, sans journal du temps
   activiteIAAuto: false,                // résumer seul les journées passées affichées
   activiteIACouleur: true,              // colorer les créneaux résumés selon leur catégorie IA

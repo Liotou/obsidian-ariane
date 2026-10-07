@@ -98,34 +98,22 @@ test('migration : les anciens fichiers passent dans les jours, puis sont mis de 
   assert.equal(JSON.stringify(disque), avant);
 });
 
-test('bilan de la journée : consigne du soir, demain, mot pour clore', () => {
+test('bilan de la journée : consigne du soir et demain', () => {
   const p = Ariane.promptResumeJournee('2026-10-06', 'Travail dans Obsidian : 2 h 10', 'doctorant', {
-    portrait: 'Imposteur à ses heures.', demain: 'ÉVÉNEMENTS :\n- 09:00 à 10:00 : Cours', mot: { mot: 'Kairos', definition: 'le moment opportun' } });
+    portrait: 'Imposteur à ses heures.', demain: 'ÉVÉNEMENTS :\n- 09:00 à 10:00 : Cours' });
   assert.match(p, /mardi 6 octobre/);
   assert.match(p, /Demain \(mercredi 7 octobre\)/);
   assert.match(p, /« Monsieur »/);
   assert.match(p, /voix haute/);
   assert.match(p, /Portrait : Imposteur à ses heures\./);
   assert.match(p, /Contexte : doctorant/);
-  assert.match(p, /« Le mot pour clore cette journée est : »/);
-  assert.match(p, /Le mot est imposé : « Kairos », défini ainsi : « le moment opportun »/);
+  assert.ok(!/mot pour clore/.test(p), 'plus de mot pour clore');
   assert.match(p, /une journée ne définit pas une thèse entière/);
   assert.match(p, /RELEVÉ DE LA JOURNÉE :\nTravail dans Obsidian : 2 h 10/);
   assert.match(p, /DEMAIN \(mercredi 7 octobre\) :\nÉVÉNEMENTS :\n- 09:00 à 10:00 : Cours$/);
-  const libre = Ariane.promptResumeJournee('2026-10-06', 'x', '', { motsRecents: ['Ataraxie'] });
+  const libre = Ariane.promptResumeJournee('2026-10-06', 'x', '');
   assert.ok(!/Contexte|Portrait/.test(libre), 'sans contexte ni portrait, pas de ligne');
-  assert.match(libre, /Choisis toi-même un mot/);
-  assert.match(libre, /Pas l'un de ceux-ci, déjà donnés : Ataraxie\./);
   assert.match(libre, /Rien de prévu au calendrier ni dans les tâches\.$/);
-});
-
-test('mots du soir : une entrée par ligne, puces et entête retirées', () => {
-  const t = '---\ntags: mots\n---\n# Mots\n- Kairos : le moment opportun\n* [ ] **Sérendipité** = trouver sans chercher\n3. Ataraxie\n\n';
-  assert.deepEqual(Ariane.motsDuSoir(t), [
-    { mot: 'Kairos', definition: 'le moment opportun' },
-    { mot: 'Sérendipité', definition: 'trouver sans chercher' },
-    { mot: 'Ataraxie', definition: '' },
-  ]);
 });
 
 test('chronologie : une rafale de créations devient un lot, le reste ne bouge pas', () => {
@@ -218,24 +206,4 @@ test('bilan : la matière de demain', async () => {
     'ÉCHÉANCES :', '- T1 Lire, statut en cours', '',
     'ÉCHÉANCES DES JOURS SUIVANTS :', '- 2026-10-09 : T3 Rendre (jalon)',
   ].join('\n'));
-});
-
-test('Apple Notes : le script de lecture des mots est du JavaScript valide', () => {
-  assert.doesNotThrow(() => new Function(Ariane.genererJXAMots('🖋️ Mots')));
-});
-
-test('Apple Notes : une note de mot mise en forme pour le coffre', () => {
-  const m = Ariane.noteMotDepuisApple({ id: 'x-coredata://A/ICNote/p1', nom: 'Allométrie', modifie: '2026-10-01T10:00:00.000Z',
-    texte: 'Allométrie\nAllométrie (n. f.) : Étude des variations relatives.\nExemple : « Une phrase. »\nÉtymologie : Du grec allos.' });
-  assert.equal(m.nom, 'Allométrie');
-  assert.equal(m.classe, 'n. f.');
-  assert.equal(m.definition, 'Étude des variations relatives.');
-  assert.match(m.contenu, /^---\nType: mot\nMot: "Allométrie"\nClasse: "n. f."\nDéfinition: "Étude des variations relatives\."\napple-notes-id: "x-coredata:\/\/A\/ICNote\/p1"/);
-  assert.match(m.contenu, /\nlocked: true\n---\n/, 'la copie est verrouillée dans Obsidian');
-  assert.match(m.contenu, /\n# Allométrie\n\n\*\*Allométrie\*\* \(n\. f\.\) : Étude des variations relatives\.\n\n\*\*Exemple\*\* : « Une phrase\. »\n\n\*\*Étymologie\*\* : Du grec allos\.\n/);
-  assert.equal(Ariane.noteMotDepuisApple({ nom: 'A/B: c?', texte: '' }).nom, 'A B c');
-  const c = Ariane.noteMotDepuisApple({ nom: 'Contingence', texte: 'Contingence\nContingence (épistémologie) (n. f.) : Ce qui aurait pu être autrement.' });
-  assert.equal(c.classe, 'n. f.');
-  assert.equal(c.definition, 'Ce qui aurait pu être autrement.');
-  assert.match(c.contenu, /\*\*Contingence\*\* \(épistémologie\) \(n\. f\.\) : Ce qui/);
 });

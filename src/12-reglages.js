@@ -1204,7 +1204,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         tr("Résume chaque créneau hors Obsidian et le range dans une catégorie (clic droit, « Résumer la journée », « Résumer la période »), et affine les suggestions de rattachement à la demande. Le premier jet de ces suggestions est local, sans cette IA. Haiku suffit, vite et à peu de frais."));
       new obsidian.Setting(c)
         .setName(tr('Bilan de la journée'))
-        .setDesc(tr("Le bilan du soir par l'IA : ce qui a été accompli, le prévu face au réalisé, les distractions, ce qui attend demain, et un mot pour clore ; écrit pour être lu à voix haute. Il se fait à la demande (commande « Journée : résumer ma journée (IA) », bouton de la chronologie) ou chaque jour à l'heure indiquée ici (vide : jamais). On le retrouve sous le jour dans la chronologie, et dans « .ariane/jours/AAAA-MM-JJ.json », clé « resumeJournee »."))
+        .setDesc(tr("Le bilan du soir par l'IA : ce qui a été accompli, le prévu face au réalisé, les distractions, et ce qui attend demain ; écrit pour être lu à voix haute. Il se fait à la demande (commande « Journée : résumer ma journée (IA) », bouton de la chronologie) ou chaque jour à l'heure indiquée ici (vide : jamais). On le retrouve sous le jour dans la chronologie, et dans « .ariane/jours/AAAA-MM-JJ.json », clé « resumeJournee »."))
         .addText((t) => t.setPlaceholder('22:30').setValue(s.resumeJourneeHeure || '')
           .onChange(async (v) => { s.resumeJourneeHeure = /^\d{1,2}:\d{2}$/.test(v.trim()) ? v.trim() : ''; await maj(); }));
       new obsidian.Setting(c)
@@ -1215,23 +1215,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           t.inputEl.rows = 2;
           t.inputEl.style.width = '100%';
         });
-      new obsidian.Setting(c)
-        .setName(tr('Mots du soir'))
-        .setDesc(tr("Le bilan se clôt sur un mot et sa définition, tiré chaque soir sans reprendre ceux du dernier mois. Un dossier du coffre (une note par mot, comme la copie d'Apple Notes ci-dessous) ou une note (« mot : définition » par ligne). Vide : l'IA choisit le mot."))
-        .addText((t) => {
-          t.setPlaceholder('11 - Mots').setValue(s.resumeJourneeMots || '')
-            .onChange(async (v) => { s.resumeJourneeMots = v.trim(); await maj(); });
-        });
-      new obsidian.Setting(c)
-        .setName(tr('Copier les mots depuis Apple Notes'))
-        .setDesc(tr("Le dossier d'Apple Notes où vous rangez vos mots (une note par mot). Il est recopié dans le coffre, une note par mot, au démarrage puis toutes les six heures : à sens unique, Apple Notes fait foi et n'est jamais modifié. Vide : pas de copie."))
-        .addText((t) => t.setPlaceholder('🖋️ Mots').setValue(s.motsAppleNotesDossier || '')
-          .onChange(async (v) => { s.motsAppleNotesDossier = v.trim(); await maj(); }))
-        .addButton((b) => b.setButtonText(tr('Copier maintenant')).onClick(() => this.plugin.synchroniserMots(false)));
-      new obsidian.Setting(c)
-        .setName(tr('Dossier des mots dans le coffre'))
-        .addText((t) => t.setPlaceholder('11 - Mots').setValue(s.motsDossier || '')
-          .onChange(async (v) => { s.motsDossier = v.trim().replace(/^\/+|\/+$/g, '') || '11 - Mots'; await maj(); }));
       new obsidian.Setting(c)
         .setName(tr('Catégories'))
         .setDesc(tr("Le nom, la couleur, et ce que la catégorie recouvre : cette description guide l'IA, soyez précis. Gardez une catégorie pour la vie privée et les distractions."))

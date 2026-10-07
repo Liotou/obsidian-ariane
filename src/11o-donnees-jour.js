@@ -445,84 +445,13 @@ const avecDonneesJour = (Base) => class extends Base {
     return l.join('\n').trim();
   }
 
-  // Le mot pour clore la journée : tiré de la note réglée (une entrée par
-  // ligne, « mot : définition »), en évitant ceux des trente derniers soirs.
-  // Le même mot reste au jour si le bilan est refait. Sans note : null, et
-  // l'IA choisit.
-  async _motDuSoir(jour) {
-    const d = await this.donneesJour(jour);
-    if (d.resumeJournee && d.resumeJournee.mot && d.resumeJournee.motDeLaListe) {
-      return { mot: d.resumeJournee.mot, definition: d.resumeJournee.definition || '' };
-    }
-    const entrees = await this._entreesMotsDuSoir();
-    if (!entrees.length) return null;
-    const recents = new Set((await this._motsRecents(jour)).map((m) => m.toLowerCase()));
-    const libres = entrees.filter((e) => !recents.has(e.mot.toLowerCase()));
-    const pool = libres.length ? libres : entrees;
-    return pool[Math.floor(Math.random() * pool.length)];
-  }
-
-  // Les mots possibles : une note (une entrée par ligne) ou un dossier (une
-  // note par mot, celle de la copie d'Apple Notes : propriétés Mot et
-  // Définition, ou à défaut le nom de la note).
-  async _entreesMotsDuSoir() {
-    const chemin = String(this.settings.resumeJourneeMots || '').trim().replace(/\/+$/, '');
-    if (!chemin) return [];
-    const v = this.app.vault;
-    const lu = v.getAbstractFileByPath(chemin);
-    if (lu instanceof obsidian.TFolder) {
-      const out = [];
-      for (const f of v.getMarkdownFiles()) {
-        if (!f.path.startsWith(lu.path + '/')) continue;
-        const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-        out.push({ mot: String(fm.Mot || f.basename).trim(), definition: String(fm['Définition'] || '').trim() });
-      }
-      return out.filter((e) => e.mot);
-    }
-    const f = this.app.metadataCache.getFirstLinkpathDest(chemin.replace(/\.md$/, ''), '') || lu;
-    if (!(f instanceof obsidian.TFile)) return [];
-    return Ariane.motsDuSoir(await v.cachedRead(f));
-  }
-
-  // Les mots des trente soirs précédents.
-  async _motsRecents(jour) {
-    const out = [];
-    for (let i = 1; i <= 30; i++) {
-      const j = Ariane.decalerJour(jour, -i);
-      if (!(await this.joursAvecDonnees()).includes(j)) continue;
-      const r = (await this.donneesJour(j)).resumeJournee;
-      if (r && r.mot) out.push(r.mot);
-    }
-    return out;
-  }
-
-  // Les entrées d'une liste de mots : une par ligne, puces et cases
-  // retirées, « mot : définition » (ou « mot = », « mot, »). Titres, lignes
-  // vides et entête ignorés.
-  static motsDuSoir(texte) {
-    const out = [];
-    for (const brute of Ariane.corpsSansEntete(texte).split('\n')) {
-      const l = brute.replace(/^\s*(?:[-*+]\s+(?:\[.\]\s+)?|\d+[.)]\s+)/, '').trim();
-      if (!l || /^#/.test(l)) continue;
-      const m = l.match(/^(.+?)\s*(?:\s:\s|:|=|,)\s*(.+)$/);
-      const mot = Ariane.texteBrutLigne(m ? m[1] : l).trim();
-      if (!mot || mot.length > 60) continue;
-      out.push({ mot, definition: m ? Ariane.texteBrutLigne(m[2]).trim() : '' });
-    }
-    return out;
-  }
-
   // La consigne du bilan du soir, inspirée de celle que Monsieur s'était
   // écrite pour un raccourci Apple : une base tangible, un miroir honnête,
-  // le lendemain, un mot pour clore, une invitation à se déconnecter.
+  // le lendemain, une invitation à se déconnecter.
   static promptResumeJournee(jour, matiere, contexte, opts) {
     const o = opts || {};
     const jl = (x) => new Date(x + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     const demain = Ariane.decalerJour(jour, 1);
-    const mot = o.mot && o.mot.mot
-      ? 'Le mot est imposé : « ' + o.mot.mot + ' »' + (o.mot.definition ? ', défini ainsi : « ' + o.mot.definition + ' »' : ' (donne toi-même sa définition exacte)') + '.'
-      : 'Choisis toi-même un mot français précis et peu courant, en résonance discrète avec la journée ou avec le repos, et donne sa définition exacte.'
-        + ((o.motsRecents || []).length ? ' Pas l\'un de ceux-ci, déjà donnés : ' + o.motsRecents.join(', ') + '.' : '');
     return [
       'Agis comme un majordome intellectuel, à la fois philosophe et rationnel. Tu écris le bilan du soir de Monsieur, pour le ' + jl(jour) + ', à partir du relevé ci-dessous.',
       o.portrait ? 'Portrait : ' + o.portrait : '',
@@ -532,16 +461,15 @@ const avecDonneesJour = (Base) => class extends Base {
       '1. La base tangible de la journée : la synthèse de ce qui a été accompli (tâches terminées ou avancées, travail de fond, cours, réunions et rendez-vous déjà passés).',
       '2. Un miroir honnête : où le temps est allé, en rapprochant le prévu du réalisé (créneaux tenus, faits en partie, laissés de côté) et en nommant les moments de distraction s\'il y en a eu. Si la journée a été productive, félicite sans excès. Si elle a été dispersée ou si du travail prévu a été repoussé, sois lucide : reconnais l\'écart sans le juger, et invite à tourner la page. Rassure par la logique plutôt que par des formules : une journée ne définit pas une thèse entière.',
       '3. Demain (' + jl(demain) + ') : ce qui l\'attend, concrètement et sans l\'accabler (le premier rendez-vous, les créneaux prévus, les échéances), en une ou deux phrases qui préparent sans inquiéter. Si rien n\'est prévu, dis-le simplement.',
-      '4. Annonce clairement : « Le mot pour clore cette journée est : » suivi du mot, puis énonce précisément sa définition. ' + mot + ' Improvise ensuite une courte réflexion philosophique, culturelle, scientifique ou poétique sur ce mot (la thématique selon la nature du mot : un mot savant appelle une réflexion savante), en la liant subtilement à l\'état d\'esprit de la journée ou au repos nécessaire.',
-      '5. Termine par une salutation élégante qui invite à la déconnexion immédiate.',
+      '4. Termine par une salutation élégante qui invite à la déconnexion immédiate.',
       '',
       'FORME :',
-      '- Un texte continu de 220 à 340 mots, en français, qui vouvoie et appelle « Monsieur ».',
+      '- Un texte continu de 180 à 280 mots, en français, qui vouvoie et appelle « Monsieur ».',
       '- Il sera lu à voix haute : texte brut, pas de liste, pas de titre, pas de markdown, pas de symboles ni d\'abréviations ; les durées et les heures en toutes lettres (« deux heures et quart », « neuf heures et demie »).',
       '- Uniquement ce que dit le relevé : n\'invente aucune activité, aucun nom, aucun chiffre, aucun rendez-vous.',
       '- Pas de tiret cadratin ni demi-cadratin.',
       '',
-      'Réponds UNIQUEMENT par du JSON : {"resume": "…", "mot": "le mot retenu"}',
+      'Réponds UNIQUEMENT par du JSON : {"resume": "…"}',
       '',
       'RELEVÉ DE LA JOURNÉE :',
       matiere,
@@ -558,19 +486,13 @@ const avecDonneesJour = (Base) => class extends Base {
     if (!matiere) { if (!o.silencieux) new obsidian.Notice(tr('Rien de relevé ce jour-là.')); return ''; }
     const avis = o.silencieux ? null : new obsidian.Notice(tr('Résumé de la journée en cours…'), 0);
     let texte = '';
-    let motRetenu = '';
-    let mot = null;
     try {
-      mot = await this._motDuSoir(j);
       const prompt = Ariane.promptResumeJournee(j, matiere, this.settings.activiteIAContexte, {
         portrait: this.settings.resumeJourneePortrait,
         demain: await this._matiereDemain(j),
-        mot,
-        motsRecents: mot ? [] : await this._motsRecents(j),
       });
       const rep = await this._genererActiviteIA(prompt, 1600, 'synthese');
       texte = String((rep && (rep.resume || rep.texte)) || '').replace(/\s*[\u2014\u2013]\s*/g, ', ').replace(/\s+/g, ' ').trim();
-      motRetenu = String((mot && mot.mot) || (rep && rep.mot) || '').trim();
     } catch (e) {
       if (avis) avis.hide();
       new obsidian.Notice(tr('Résumé de la journée impossible : ') + ((e && e.message) || e), 10000);
@@ -580,10 +502,6 @@ const avecDonneesJour = (Base) => class extends Base {
     if (!texte) return '';
     const d = await this.donneesJour(j);
     d.resumeJournee = { texte, le: new Date().toISOString(), modele: this.settings.activiteIAFournisseur || this.settings.refsFournisseur || '' };
-    if (motRetenu) {
-      d.resumeJournee.mot = motRetenu;
-      if (mot) Object.assign(d.resumeJournee, { motDeLaListe: true, definition: mot.definition || '' });
-    }
     this.marquerJourSale(j);
     await this.ecrireDonneesJours();
     this._signalerResumeJournee();
@@ -621,137 +539,4 @@ const avecDonneesJour = (Base) => class extends Base {
   }
 
   //#endregion Ariane · résumé de la journée
-
-  //#region Ariane · mots du soir
-  // ── mots du soir : copie d'Apple Notes ──────────────────────────────────
-  //  Le dossier d'Apple Notes où Monsieur range ses mots (une note par mot :
-  //  « Mot (classe) : définition », exemple, étymologie) est recopié dans le
-  //  coffre, une note par mot, À SENS UNIQUE : Apple Notes fait foi, n'est
-  //  jamais modifié, et la copie est réécrite quand la note d'origine change.
-  //  Les copies portent « apple-notes-id » : seules elles sont réécrites ou
-  //  retirées (corbeille) quand leur note d'origine disparaît.
-
-  static genererJXAMots(dossier) {
-    return [
-      'const N = Application("Notes");',
-      'const f = N.folders.whose({ name: ' + JSON.stringify(dossier) + ' });',
-      'if (!f.length) { "__ABSENT__"; } else {',
-      '  const ns = f[0].notes;',
-      '  const ids = ns.id(), noms = ns.name(), textes = ns.plaintext(), dates = ns.modificationDate();',
-      '  JSON.stringify(ids.map((id, i) => ({ id, nom: noms[i], texte: textes[i], modifie: dates[i] ? dates[i].toISOString() : "" })));',
-      '}',
-    ].join('\n');
-  }
-
-  // Une note d'Apple Notes mise en forme pour le coffre : { nom, mot,
-  // classe, definition, contenu }.
-  static noteMotDepuisApple(n) {
-    const titre = String(n.nom || '').trim();
-    const lignes = String(n.texte || '').replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean);
-    if (lignes.length && lignes[0] === titre) lignes.shift();
-    let classe = '';
-    let definition = '';
-    const esc = titre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const corps = lignes.map((l, i) => {
-      // « Mot (domaine) (classe) : définition » : la dernière parenthèse est
-      // la classe grammaticale.
-      const m = i === 0 ? l.match(new RegExp('^' + esc + '\\s*((?:\\([^)]*\\)\\s*)*):\\s*(.+)$', 'i')) : null;
-      if (m) {
-        const parens = [...m[1].matchAll(/\(([^)]*)\)/g)].map((x) => x[1].trim());
-        classe = parens.length ? parens[parens.length - 1] : '';
-        definition = m[2].trim();
-        return '**' + titre + '**' + (m[1].trim() ? ' ' + m[1].trim() : '') + ' : ' + definition;
-      }
-      return l.replace(/^(Exemples?|Étymologie|Synonymes?|Antonymes?|Remarques?|Citation)\s*:/i, '**$1** :');
-    });
-    if (!definition && lignes.length) definition = lignes[0];
-    const nom = titre.replace(/[\\/:*?"<>|#^[\]]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Sans titre';
-    const fm = ['---', 'Type: mot', 'Mot: ' + JSON.stringify(titre), 'Classe: ' + JSON.stringify(classe),
-      'Définition: ' + JSON.stringify(definition), 'apple-notes-id: ' + JSON.stringify(String(n.id || '')),
-      'apple-notes-modifie: ' + JSON.stringify(String(n.modifie || '')), 'locked: true', '---'];
-    return { nom, mot: titre, classe, definition,
-      contenu: fm.concat(['%% Copie verrouillée d\'Apple Notes (dossier des mots), réécrite à chaque changement : modifiez l\'original. %%', '',
-        '# ' + titre, ''], corps.flatMap((p) => [p, '']), []).join('\n') };
-  }
-
-  async synchroniserMots(silencieux) {
-    if (!obsidian.Platform.isMacOS) return;
-    const s = this.settings;
-    const source = String(s.motsAppleNotesDossier || '').trim();
-    const cible = String(s.motsDossier || '').trim().replace(/^\/+|\/+$/g, '');
-    if (!source || !cible) return;
-    if (this._motsEnCours) return;
-    this._motsEnCours = true;
-    try {
-      const sortie = await this._osascriptJXA(Ariane.genererJXAMots(source), 120000);
-      if (sortie == null) {
-        if (!silencieux) new obsidian.Notice(tr("Mots du soir : Apple Notes n'a pas répondu. Autorisez Obsidian à piloter Notes (Réglages système, Confidentialité et sécurité, Automatisation)."), 10000);
-        return;
-      }
-      if (sortie.trim() === '__ABSENT__') {
-        if (!silencieux) new obsidian.Notice(tr('Mots du soir : dossier introuvable dans Apple Notes : ') + source, 8000);
-        return;
-      }
-      const notes = JSON.parse(sortie);
-      const v = this.app.vault;
-      if (!v.getAbstractFileByPath(cible)) { try { await v.createFolder(cible); } catch (e) { /* déjà là */ } }
-      // Les copies existantes, par identifiant d'origine.
-      const copies = new Map();
-      for (const f of v.getMarkdownFiles()) {
-        if (!f.path.startsWith(cible + '/')) continue;
-        const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-        if (fm['apple-notes-id']) {
-          copies.set(String(fm['apple-notes-id']), { f, modifie: String(fm['apple-notes-modifie'] || ''), locked: fm.locked === true });
-        }
-      }
-      let crees = 0;
-      let majs = 0;
-      const pris = new Set();
-      for (const n of notes) {
-        const m = Ariane.noteMotDepuisApple(n);
-        const ex = copies.get(String(n.id));
-        copies.delete(String(n.id));
-        if (ex) {
-          pris.add(ex.f.path);
-          // Inchangée et déjà verrouillée : rien à faire.
-          if (ex.modifie === String(n.modifie || '') && ex.locked) continue;
-          this.marquerEcriture(ex.f.path);
-          await v.modify(ex.f, m.contenu);
-          majs++;
-          continue;
-        }
-        let chemin = cible + '/' + m.nom + '.md';
-        for (let k = 2; v.getAbstractFileByPath(chemin) || pris.has(chemin); k++) chemin = cible + '/' + m.nom + ' (' + k + ').md';
-        pris.add(chemin);
-        await this.ecrire(chemin, m.contenu);
-        crees++;
-      }
-      // Les mots retirés d'Apple Notes quittent le coffre (corbeille).
-      let retires = 0;
-      for (const { f } of copies.values()) {
-        try { await v.trash(f, true); retires++; } catch (e) { /* déjà parti */ }
-      }
-      s.motsSynchroLe = Date.now();
-      if (!String(s.resumeJourneeMots || '').trim()) s.resumeJourneeMots = cible;
-      await this.saveSettings();
-      if (!silencieux || crees || retires) {
-        new obsidian.Notice(tr('Mots du soir : ') + notes.length + tr(' mots') + (crees ? ', ' + crees + tr(' ajoutés') : '')
-          + (majs ? ', ' + majs + tr(' mis à jour') : '') + (retires ? ', ' + retires + tr(' retirés') : '') + '.');
-      }
-    } catch (e) {
-      console.error('[Ariane] mots du soir', e);
-      if (!silencieux) new obsidian.Notice(tr('Mots du soir : copie impossible : ') + ((e && e.message) || e), 10000);
-    } finally {
-      this._motsEnCours = false;
-    }
-  }
-
-  // Une copie au démarrage, puis toutes les six heures.
-  demarrerMotsDuSoir() {
-    if (!String(this.settings.motsAppleNotesDossier || '').trim()) return;
-    window.setTimeout(() => this.synchroniserMots(true), 20000);
-    this.registerInterval(window.setInterval(() => this.synchroniserMots(true), 6 * 3600000));
-  }
-
-  //#endregion Ariane · mots du soir
 };
