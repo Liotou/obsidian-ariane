@@ -359,11 +359,11 @@ const avecDonneesJour = (Base) => class extends Base {
           etat = 'à venir';
         } else {
           const fait = Ariane.minutesFaitesCreneau(c.debut, c.fin, sessions, chemins, t.tempsReel);
-          const part = prevu ? fait / prevu : 0;
+          const e = Ariane.etatCreneau(fait, prevu);
           etat = (c.fin > maintenant ? 'en cours, ' : '')
-            + (fait <= 0 ? 'aucun travail relevé'
+            + (e === 'rien' ? 'aucun travail relevé'
               : dureeLisible(fait) + ' faites sur ' + dureeLisible(prevu)
-                + (part >= 0.8 ? ' (tenu)' : part >= 0.3 ? ' (en partie)' : ' (à peine entamé)'));
+                + ({ tenu: ' (tenu)', partie: ' (en partie)', entame: ' (à peine entamé)' })[e]);
         }
         prevus.push(c.debut.slice(11, 16) + ' à ' + c.fin.slice(11, 16) + ' : ' + t.ref + ' ' + t.intitule
           + ' (statut ' + (t.statut || 'à faire') + ') : ' + etat);

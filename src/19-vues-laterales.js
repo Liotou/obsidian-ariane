@@ -1378,6 +1378,8 @@ class VueChronologie extends obsidian.ItemView {
     this.dossier = '';
     this.limite = 200;
     this._jeton = 0;
+    // Rubriques repliées de la colonne latérale.
+    this.replies = [];
   }
 
   getViewType() { return TYPE_VUE_CHRONOLOGIE; }
@@ -1385,7 +1387,7 @@ class VueChronologie extends obsidian.ItemView {
   getIcon() { return 'history'; }
 
   getState() {
-    return { periode: this.periode, ancre: this.ancre, filtre: this.filtre, dossier: this.dossier };
+    return { periode: this.periode, ancre: this.ancre, filtre: this.filtre, dossier: this.dossier, replies: this.replies };
   }
 
   async setState(etat, resultat) {
@@ -1394,13 +1396,56 @@ class VueChronologie extends obsidian.ItemView {
     if (Ariane.jourValide(e.ancre)) this.ancre = e.ancre;
     if (['tout', 'notes', 'taches', 'captures', 'canevas', 'externe'].includes(e.filtre)) this.filtre = e.filtre;
     if (typeof e.dossier === 'string') this.dossier = e.dossier;
+    if (Array.isArray(e.replies)) this.replies = e.replies.filter((x) => typeof x === 'string');
     await super.setState(etat, resultat);
     this.rafraichir();
   }
 
   async onOpen() {
     this.contentEl.addClass('zfa-chrono');
+    // Le bandeau : les réglages de la vue dans l'en-tête de l'onglet, comme
+    // le graphe ou les rétroliens (addAction place chaque action à gauche
+    // de la précédente : d'où l'ordre inverse).
+    this._actIA = this.addAction('sparkles', tr('Résumer la période (IA)'), () => {
+      const b = Ariane.bornesPeriode(this.periode, this.ancre);
+      const jours = [];
+      for (let j = b.debut; j < b.fin; j = Ariane.decalerJour(j, 1)) jours.push(j);
+      this.greffon.resumerJoursActivite(jours);
+    });
+    this._actFiltre = this.addAction('filter', tr('Filtrer'), (ev) => this._menuFiltre(ev));
+    this._actPeriode = this.addAction('calendar-range', tr('Période'), (ev) => this._menuPeriode(ev));
     await this.rafraichir();
+  }
+
+  _menuPeriode(ev) {
+    const m = new obsidian.Menu();
+    for (const [p, l, ic] of [['jour', 'Jour', 'calendar-days'], ['semaine', 'Semaine', 'calendar-range'],
+      ['mois', 'Mois', 'calendar'], ['annee', 'Année', 'calendar-clock']]) {
+      m.addItem((i) => i.setTitle(tr(l)).setIcon(ic).setChecked(this.periode === p).onClick(() => this._changer({ periode: p })));
+    }
+    m.addSeparator();
+    m.addItem((i) => i.setTitle(tr("Aujourd'hui")).setIcon('locate').onClick(() => this._changer({ ancre: jourIsoDe(new Date()) })));
+    m.showAtMouseEvent(ev);
+  }
+
+  _menuFiltre(ev) {
+    const m = new obsidian.Menu();
+    const etiquette = (t) => m.addItem((i) => { i.setTitle(t); if (i.setIsLabel) i.setIsLabel(true); else i.setDisabled(true); });
+    etiquette(tr('Afficher'));
+    for (const [f, l] of [['tout', 'Tout'], ['notes', 'Notes'], ['taches', 'Tâches'],
+      ['captures', 'Captures'], ['canevas', 'Canevas et extraits'], ['externe', 'Hors Obsidian']]) {
+      m.addItem((i) => i.setTitle(tr(l)).setChecked(this.filtre === f).onClick(() => this._changer({ filtre: f })));
+    }
+    m.addSeparator();
+    etiquette(tr('Dossier'));
+    m.addItem((i) => i.setTitle(tr('Tous les dossiers')).setChecked(!this.dossier).onClick(() => this._changer({ dossier: '' })));
+    const noms = (this.app.vault.getRoot().children || []).filter((x) => x instanceof obsidian.TFolder && !x.name.startsWith('.'))
+      .map((x) => x.name).sort((a, b) => a.localeCompare(b));
+    if (this.dossier && !noms.includes(this.dossier)) noms.push(this.dossier);
+    for (const n of noms) {
+      m.addItem((i) => i.setTitle(n).setIcon('folder').setChecked(this.dossier === n).onClick(() => this._changer({ dossier: n })));
+    }
+    m.showAtMouseEvent(ev);
   }
 
   async onClose() { this._jeton++; this.contentEl.empty(); }
@@ -1437,17 +1482,18 @@ class VueChronologie extends obsidian.ItemView {
     const finChaleur = Ariane.decalerJour(auj, 1);
     const fin = b.fin > finChaleur ? b.fin : finChaleur;
     let evts = [];
-    try {
-      evts = await this.greffon.evenementsChronologie(
-        new Date(debut + 'T00:00:00').getTime(), new Date(fin + 'T00:00:00').getTime());
-    } catch (e) {
-      console.error('[Ariane] chronologie', e);
-    }
+    let analyse = null;
+    await Promise.all([
+      this.greffon.evenementsChronologie(new Date(debut + 'T00:00:00').getTime(), new Date(fin + 'T00:00:00').getTime())
+        .then((x) => { evts = x; }).catch((e) => console.error('[Ariane] chronologie', e)),
+      this.greffon.analyseChronologie(b.debut, b.fin)
+        .then((x) => { analyse = x; }).catch((e) => console.error('[Ariane] chronologie (analyses)', e)),
+    ]);
     if (jeton !== this._jeton) return;
-    this.dessiner(Ariane.grouperAjoutsAuto(evts), b, auj, departChaleur);
+    this.dessiner(Ariane.grouperAjoutsAuto(evts), b, auj, departChaleur, analyse);
   }
 
-  dessiner(evts, b, auj, departChaleur) {
+  dessiner(evts, b, auj, departChaleur, analyse) {
     this._evts = evts;
     this._bornes = b;
     const c = this.contentEl;
@@ -1465,52 +1511,52 @@ class VueChronologie extends obsidian.ItemView {
     this._dessinerFlux(princ, Ariane.filtrerChrono(dansPeriode, this.filtre, this.dossier), auj);
     const t2 = new Date(departChaleur + 'T00:00:00').getTime();
     this._dessinerChaleur(cote, Ariane.filtrerChrono(evts.filter((e) => e.t >= t2), this.filtre, this.dossier), auj);
+    if (analyse) {
+      this._dessinerTempsPeriode(cote, analyse);
+      this._dessinerCategories(cote, analyse);
+      this._dessinerTachesPeriode(cote, analyse);
+      this._dessinerPrevuRealise(cote, analyse);
+      this._dessinerRythmes(cote, analyse);
+    }
     this._dessinerComptes(cote, Ariane.filtrerChrono(dansPeriode, 'tout', this.dossier));
-    this._dessinerDossier(cote);
+    // L'état du bandeau : le filtre allumé quand il restreint quelque chose.
+    if (this._actFiltre) this._actFiltre.toggleClass('is-active', this.filtre !== 'tout' || !!this.dossier);
+    if (this._actIA) this._actIA.toggle(!!(this.greffon.activiteDisponible && this.greffon.activiteDisponible()));
     c.scrollTop = defil;
   }
 
   // La barre d'outils, à la manière de celles d'Obsidian : la période et ses
   // flèches à gauche, le choix jour / semaine / mois / année à droite, puis
   // les filtres. Pas de grand titre : l'onglet porte déjà le nom de la vue.
+  // Le titre de la période, ses flèches, et « Aujourd'hui » hors de la
+  // période courante ; un rappel discret du filtre quand il restreint.
   _dessinerEntete(hote, b, auj) {
-    const barre = hote.createDiv({ cls: 'zfa-chrono-barre-outils' });
-    const nav = barre.createDiv({ cls: 'zfa-chrono-nav' });
-    const icone = (parent, nom, libelle, faire, inactif) => {
-      const x = parent.createDiv({ cls: 'clickable-icon' + (inactif ? ' is-disabled' : ''), attr: { 'aria-label': libelle } });
+    const tete = hote.createDiv({ cls: 'zfa-chrono-tete' });
+    const icone = (nom, libelle, faire, inactif) => {
+      const x = tete.createDiv({ cls: 'clickable-icon' + (inactif ? ' is-disabled' : ''), attr: { 'aria-label': libelle } });
       obsidian.setIcon(x, nom);
       x.onclick = () => { if (!inactif) faire(); };
       return x;
     };
-    icone(nav, 'chevron-left', tr('Précédent'), () => this._changer({ ancre: Ariane.decalerPeriode(this.periode, this.ancre, -1) }));
-    icone(nav, 'chevron-right', tr('Suivant'), () => this._changer({ ancre: Ariane.decalerPeriode(this.periode, this.ancre, 1) }), b.fin > auj);
-    nav.createSpan({ cls: 'zfa-chrono-periode', text: this._titrePeriode(b) });
+    const titre = this._titrePeriode(b);
+    tete.createDiv({ cls: 'zfa-chrono-titre', text: titre.charAt(0).toUpperCase() + titre.slice(1) });
+    icone('chevron-left', tr('Précédent'), () => this._changer({ ancre: Ariane.decalerPeriode(this.periode, this.ancre, -1) }));
+    icone('chevron-right', tr('Suivant'), () => this._changer({ ancre: Ariane.decalerPeriode(this.periode, this.ancre, 1) }), b.fin > auj);
     if (!(auj >= b.debut && auj < b.fin)) {
-      const ici = nav.createEl('button', { cls: 'zfa-chrono-auj', text: tr("Aujourd'hui") });
+      const ici = tete.createEl('button', { cls: 'zfa-chrono-auj', text: tr("Aujourd'hui") });
       ici.onclick = () => this._changer({ ancre: auj });
     }
-    const droite = barre.createDiv({ cls: 'zfa-chrono-droite' });
-    if (this.greffon.activiteDisponible && this.greffon.activiteDisponible()) {
-      const ia = droite.createEl('button', { cls: 'zfa-chrono-ia' });
-      obsidian.setIcon(ia.createSpan({ cls: 'zfa-chrono-jour-bt-ic' }), 'sparkles');
-      ia.createSpan({ text: tr('Résumer la période (IA)') });
-      ia.onclick = () => {
-        const jours = [];
-        for (let j = b.debut; j < b.fin; j = Ariane.decalerJour(j, 1)) jours.push(j);
-        this.greffon.resumerJoursActivite(jours);
-      };
-    }
-    const seg = droite.createDiv({ cls: 'zfa-chrono-seg' });
-    for (const [p, l] of [['jour', 'Jour'], ['semaine', 'Semaine'], ['mois', 'Mois'], ['annee', 'Année']]) {
-      const o = seg.createDiv({ cls: 'zfa-chrono-seg-btn' + (this.periode === p ? ' is-active' : ''), text: tr(l) });
-      o.onclick = () => this._changer({ periode: p });
-    }
-
-    const puces = hote.createDiv({ cls: 'zfa-chrono-puces' });
-    for (const [f, l] of [['tout', 'Tout'], ['notes', 'Notes'], ['taches', 'Tâches'],
-      ['captures', 'Captures'], ['canevas', 'Canevas & extraits'], ['externe', 'Hors Obsidian']]) {
-      const p = puces.createDiv({ cls: 'zfa-chrono-puce' + (this.filtre === f ? ' is-active' : ''), text: tr(l) });
-      p.onclick = () => this._changer({ filtre: f });
+    const filtres = [];
+    const LIBELLES = { notes: 'Notes', taches: 'Tâches', captures: 'Captures', canevas: 'Canevas et extraits', externe: 'Hors Obsidian' };
+    if (this.filtre !== 'tout') filtres.push(tr(LIBELLES[this.filtre] || this.filtre));
+    if (this.dossier) filtres.push(this.dossier);
+    if (filtres.length) {
+      const f = hote.createDiv({ cls: 'zfa-chrono-filtre-actif' });
+      obsidian.setIcon(f.createSpan({ cls: 'zfa-chrono-filtre-ic' }), 'filter');
+      f.createSpan({ text: filtres.join(', ') });
+      const x = f.createSpan({ cls: 'clickable-icon zfa-chrono-filtre-x', attr: { 'aria-label': tr('Retirer le filtre') } });
+      obsidian.setIcon(x, 'x');
+      x.onclick = () => this._changer({ filtre: 'tout', dossier: '' });
     }
     if (!this.greffon.settings.chronoActif) {
       hote.createDiv({ cls: 'zfa-chrono-avis',
@@ -1756,7 +1802,10 @@ class VueChronologie extends obsidian.ItemView {
   }
 
   _dessinerChaleur(hote, evts, auj) {
-    hote.createDiv({ cls: 'zfa-chrono-rubrique', text: tr('Activité des 10 dernières semaines') });
+    this._rubrique(hote, 'chaleur', tr('Activité des 10 dernières semaines'), (corps) => this._remplirChaleur(corps, evts, auj));
+  }
+
+  _remplirChaleur(hote, evts, auj) {
     const carte = Ariane.carteChaleur(evts, auj, 10);
     const g = hote.createDiv({ cls: 'zfa-chrono-chaleur' });
     for (const col of carte.colonnes) {
@@ -1771,8 +1820,11 @@ class VueChronologie extends obsidian.ItemView {
     }
   }
 
-  _dessinerComptes(hote, evts) {
-    hote.createDiv({ cls: 'zfa-chrono-rubrique', text: tr('Par type') });
+  _dessinerComptes(hote0, evts) {
+    this._rubrique(hote0, 'types', tr('Par type'), (hote) => this._remplirComptes(hote, evts));
+  }
+
+  _remplirComptes(hote, evts) {
     const comptes = Ariane.comptesChrono(evts);
     const max = Math.max(1, ...Object.values(comptes));
     for (const d of Ariane.TYPES_CHRONO) {
@@ -1788,18 +1840,179 @@ class VueChronologie extends obsidian.ItemView {
     }
   }
 
-  _dessinerDossier(hote) {
-    hote.createDiv({ cls: 'zfa-chrono-rubrique', text: tr('Dossier') });
-    const sel = hote.createEl('select', { cls: 'dropdown zfa-chrono-dossier' });
-    sel.createEl('option', { value: '', text: tr('Tous les dossiers') });
-    const racine = this.app.vault.getRoot();
-    const noms = (racine.children || []).filter((x) => x instanceof obsidian.TFolder && !x.name.startsWith('.'))
-      .map((x) => x.name).sort((a, b) => a.localeCompare(b));
-    if (this.dossier && !noms.includes(this.dossier)) noms.push(this.dossier);
-    for (const n of noms) sel.createEl('option', { value: n, text: n });
-    sel.value = this.dossier;
-    sel.onchange = () => this._changer({ dossier: sel.value });
+  // Une rubrique repliable de la colonne latérale ; l'état replié suit la
+  // vue (getState). `remplir` reçoit le corps.
+  _rubrique(hote, cle, titre, remplir) {
+    const r = hote.createDiv({ cls: 'zfa-chrono-rub' + (this.replies.includes(cle) ? ' est-repliee' : '') });
+    const t = r.createDiv({ cls: 'zfa-chrono-rubrique est-repliable' });
+    t.createSpan({ text: titre });
+    obsidian.setIcon(t.createSpan({ cls: 'zfa-chrono-rub-chevron' }), 'chevron-down');
+    t.onclick = () => {
+      const rep = !r.hasClass('est-repliee');
+      r.toggleClass('est-repliee', rep);
+      this.replies = rep ? this.replies.concat([cle]) : this.replies.filter((x) => x !== cle);
+      this.app.workspace.requestSaveLayout();
+    };
+    remplir(r.createDiv({ cls: 'zfa-chrono-rub-corps' }));
   }
+
+  // Une ligne « point, nom, valeur » et sa barre, comme « Par type ».
+  _ligneBarre(hote, nom, valeur, part, couleur, opts) {
+    const o = opts || {};
+    const l = hote.createDiv({ cls: 'zfa-chrono-compte est-mesure' + (o.clic ? '' : ' est-inerte') });
+    l.style.setProperty('--zfa-chrono-coul', couleur);
+    const tete = l.createDiv({ cls: 'zfa-chrono-compte-tete' });
+    tete.createSpan({ cls: 'zfa-chrono-point' + (o.hachure ? ' est-hachure' : '') });
+    tete.createSpan({ cls: 'zfa-chrono-compte-nom', text: nom });
+    tete.createSpan({ cls: 'zfa-chrono-compte-n', text: valeur });
+    const barre = l.createDiv({ cls: 'zfa-chrono-barre' });
+    if (o.prevu != null) barre.createDiv({ cls: 'zfa-chrono-barre-prevu' }).style.width = Math.min(100, o.prevu * 100) + '%';
+    barre.createDiv({ cls: 'zfa-chrono-barre-plein' + (o.hachure ? ' est-hachure' : '') }).style.width = Math.min(100, part * 100) + '%';
+    if (o.titre) l.setAttribute('aria-label', o.titre);
+    if (o.clic) l.onclick = o.clic;
+    return l;
+  }
+
+  // Le temps de la période : une barre empilée (Obsidian, hors Obsidian,
+  // personnel) et sa légende.
+  _dessinerTempsPeriode(hote, an) {
+    const total = an.obsidian + an.externe + an.personnel;
+    if (total < 1) return;
+    this._rubrique(hote, 'temps', tr('Temps de la période'), (corps) => {
+      corps.createDiv({ cls: 'zfa-chrono-total', text: dureeLisible(total) });
+      const pile = corps.createDiv({ cls: 'zfa-chrono-pile' });
+      const parts = [['obsidian', tr('Dans Obsidian'), an.obsidian], ['externe', tr('Hors Obsidian'), an.externe],
+        ['personnel', tr('Personnel et distraction'), an.personnel]].filter((x) => x[2] >= 1);
+      for (const [genre, nom, min] of parts) {
+        const seg = pile.createDiv({ cls: 'zfa-chrono-pile-seg est-' + genre });
+        seg.style.width = (min / total * 100) + '%';
+        seg.setAttribute('aria-label', nom + ' : ' + dureeLisible(min));
+      }
+      const leg = corps.createDiv({ cls: 'zfa-chrono-legende' });
+      for (const [genre, nom, min] of parts) {
+        const l = leg.createDiv({ cls: 'zfa-chrono-legende-l' });
+        l.createSpan({ cls: 'zfa-chrono-pile-seg est-' + genre + ' zfa-chrono-legende-pt' });
+        l.createSpan({ cls: 'zfa-chrono-compte-nom', text: nom });
+        l.createSpan({ cls: 'zfa-chrono-compte-n', text: dureeLisible(min) + ' (' + Math.round(min / total * 100) + ' %)' });
+      }
+      if (an.externeTronque) corps.createDiv({ cls: 'zfa-chrono-note', text: tr('Hors Obsidian : les 90 derniers jours seulement.') });
+    });
+  }
+
+  // Le temps par catégorie : Obsidian, vos catégories d'activité, le personnel.
+  _dessinerCategories(hote, an) {
+    const cats = an.categories.filter((c) => c.min >= 1);
+    if (cats.length < 2) return;
+    this._rubrique(hote, 'categories', tr('Par catégorie'), (corps) => {
+      const max = Math.max(...cats.map((c) => c.min));
+      for (const c of cats.slice(0, 10)) {
+        const nom = c.nom === 'Obsidian' ? tr('Dans Obsidian') : c.nom;
+        this._ligneBarre(corps, nom, dureeLisible(c.min), c.min / max, c.couleur,
+          { hachure: c.nom === 'Personnel et distraction' });
+      }
+    });
+  }
+
+  // Les tâches travaillées : temps réel (plein) face au temps prévu en
+  // créneaux (contour) ; un clic ouvre la tâche.
+  _dessinerTachesPeriode(hote, an) {
+    const t = an.taches.filter((x) => x.min >= 1).slice(0, 8);
+    if (!t.length) return;
+    this._rubrique(hote, 'taches', tr('Tâches travaillées'), (corps) => {
+      const max = Math.max(...t.map((x) => Math.max(x.min, x.prevu)));
+      for (const x of t) {
+        const f = x.tache.fichier;
+        this._ligneBarre(corps, x.ref + ' ' + x.tache.intitule, dureeLisible(x.min), x.min / max, 'var(--interactive-accent)', {
+          prevu: x.prevu ? x.prevu / max : null,
+          titre: tr('Fait : ') + dureeLisible(x.min) + (x.prevu ? ', ' + tr('prévu en créneaux : ') + dureeLisible(x.prevu) : ''),
+          clic: f ? (ev) => this.app.workspace.getLeaf(!!(ev.metaKey || ev.ctrlKey)).openFile(f) : null,
+        });
+      }
+      if (t.some((x) => x.prevu)) {
+        const n = corps.createDiv({ cls: 'zfa-chrono-note' });
+        n.createSpan({ cls: 'zfa-chrono-barre-prevu est-temoin' });
+        n.createSpan({ text: tr('contour : le temps prévu en créneaux') });
+      }
+    });
+  }
+
+  // Prévu et réalisé : la part des créneaux révolus effectivement faite, et
+  // leur répartition (tenus, en partie, à peine entamés, laissés de côté).
+  _dessinerPrevuRealise(hote, an) {
+    const revolus = [];
+    for (const j of an.jours) for (const c of j.creneaux) if (c.etat !== 'avenir') revolus.push(c);
+    if (!revolus.length) return;
+    this._rubrique(hote, 'prevu', tr('Prévu et réalisé'), (corps) => {
+      const prevu = revolus.reduce((s2, c) => s2 + c.prevu, 0);
+      const fait = revolus.reduce((s2, c) => s2 + Math.min(c.fait, c.prevu), 0);
+      const tete = corps.createDiv({ cls: 'zfa-chrono-taux' });
+      tete.createSpan({ cls: 'zfa-chrono-total', text: Math.round(fait / Math.max(1, prevu) * 100) + ' %' });
+      tete.createSpan({ cls: 'zfa-chrono-compte-n', text: dureeLisible(fait) + ' ' + tr('sur') + ' ' + dureeLisible(prevu) });
+      const etats = [['tenu', tr('Tenus'), 'var(--color-green)'], ['partie', tr('En partie'), 'var(--color-yellow)'],
+        ['entame', tr('À peine entamés'), 'var(--color-orange)'], ['rien', tr('Laissés de côté'), 'var(--text-faint)']];
+      const pile = corps.createDiv({ cls: 'zfa-chrono-pile' });
+      for (const [e, nom, coul] of etats) {
+        const n = revolus.filter((c) => c.etat === e).length;
+        if (!n) continue;
+        const seg = pile.createDiv({ cls: 'zfa-chrono-pile-seg' });
+        seg.style.width = (n / revolus.length * 100) + '%';
+        seg.style.background = coul;
+        seg.setAttribute('aria-label', nom + ' : ' + n);
+      }
+      const leg = corps.createDiv({ cls: 'zfa-chrono-legende' });
+      for (const [e, nom, coul] of etats) {
+        const n = revolus.filter((c) => c.etat === e).length;
+        if (!n) continue;
+        const l = leg.createDiv({ cls: 'zfa-chrono-legende-l' });
+        l.createSpan({ cls: 'zfa-chrono-legende-pt' }).style.background = coul;
+        l.createSpan({ cls: 'zfa-chrono-compte-nom', text: nom });
+        l.createSpan({ cls: 'zfa-chrono-compte-n', text: String(n) });
+      }
+      const avenir = an.jours.reduce((s2, j) => s2 + j.creneaux.filter((c) => c.etat === 'avenir').length, 0);
+      if (avenir) corps.createDiv({ cls: 'zfa-chrono-note', text: avenir + ' ' + (avenir > 1 ? tr('créneaux encore à venir') : tr('créneau encore à venir')) });
+    });
+  }
+
+  // Rythmes : quand le travail a lieu (jour de semaine par heure), et la
+  // longueur des plages de travail sans interruption.
+  _dessinerRythmes(hote, an) {
+    const g = an.rythmes;
+    let max = 0;
+    let h0 = 24;
+    let h1 = -1;
+    for (const ligne of g) {
+      ligne.forEach((v, h) => { if (v > 0) { max = Math.max(max, v); h0 = Math.min(h0, h); h1 = Math.max(h1, h); } });
+    }
+    if (!max) return;
+    h0 = Math.min(h0, 8);
+    h1 = Math.max(h1, 18);
+    this._rubrique(hote, 'rythmes', tr('Rythmes'), (corps) => {
+      const grille = corps.createDiv({ cls: 'zfa-chrono-rythmes' });
+      grille.style.setProperty('--zfa-cols', String(h1 - h0 + 1));
+      const jours = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+      const noms = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+      grille.createDiv();
+      for (let h = h0; h <= h1; h++) grille.createDiv({ cls: 'zfa-chrono-rythmes-h', text: h % 3 === 0 ? String(h) : '' });
+      g.forEach((ligne, js) => {
+        grille.createDiv({ cls: 'zfa-chrono-rythmes-j', text: jours[js] });
+        for (let h = h0; h <= h1; h++) {
+          const v = ligne[h];
+          const k = grille.createDiv({ cls: 'zfa-chrono-rythmes-c' });
+          if (v > 0) {
+            k.style.setProperty('--zfa-int', String(0.15 + 0.85 * v / max));
+            k.addClass('est-plein');
+            k.setAttribute('aria-label', tr(noms[js]) + ', ' + h + ' h : ' + dureeLisible(v));
+          }
+        }
+      });
+      const p = an.plages;
+      if (p.n) {
+        corps.createDiv({ cls: 'zfa-chrono-note', text: p.n + ' ' + (p.n > 1 ? tr('plages de travail') : tr('plage de travail'))
+          + ', ' + dureeLisible(p.moyenne) + ' ' + tr('en moyenne') + ', ' + tr('la plus longue') + ' ' + dureeLisible(p.longue) });
+      }
+    });
+  }
+
 }
 
 //#endregion 19 · Vues latérales (ItemView)

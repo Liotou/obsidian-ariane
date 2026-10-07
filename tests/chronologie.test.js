@@ -107,3 +107,23 @@ test('TYPES_CHRONO : chaque type a sa pastille de filtre', () => {
   for (const d of Ariane.TYPES_CHRONO) assert.ok(filtres.has(d.filtre), d.type);
   assert.equal(Ariane.typeChrono('inconnu').type, 'note-modifiee');
 });
+
+test('analyses : état d\'un créneau, plages de travail, grille des rythmes', () => {
+  assert.equal(Ariane.etatCreneau(0, 60), 'rien');
+  assert.equal(Ariane.etatCreneau(50, 60), 'tenu');
+  assert.equal(Ariane.etatCreneau(20, 60), 'partie');
+  assert.equal(Ariane.etatCreneau(10, 60), 'entame');
+  // 9 h-10 h et 10 h 03-10 h 30 font une plage (pause de 3 min) ; le
+  // personnel ne compte pas ; 14 h-14 h 04 est trop court.
+  const rail = [
+    { a: 540, b: 600, genre: 'obsidian' }, { a: 603, b: 630, genre: 'externe' },
+    { a: 700, b: 760, genre: 'personnel' }, { a: 840, b: 844, genre: 'obsidian' },
+  ];
+  assert.deepEqual(Ariane.plagesTravail([rail]), { n: 1, moyenne: 90, longue: 90 });
+  const g = Ariane.grilleRythmes([{ jour: '2026-10-05', rail }]); // un lundi
+  assert.equal(g[0][9], 60);
+  assert.equal(g[0][10], 27);
+  assert.equal(g[0][11], 0, 'le personnel ne compte pas');
+  assert.equal(g[0][14], 4);
+  assert.equal(g[1][9], 0);
+});

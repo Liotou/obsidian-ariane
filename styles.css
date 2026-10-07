@@ -4054,30 +4054,8 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
   .zfa-chrono-principal { padding: var(--size-4-3) var(--size-4-3) var(--size-4-8); }
 }
 
-.zfa-chrono-barre-outils { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--size-4-2); }
-.zfa-chrono-nav { display: flex; align-items: center; gap: 2px; }
-.zfa-chrono-nav .clickable-icon.is-disabled { opacity: 0.35; cursor: default; }
-.zfa-chrono-periode { margin-left: var(--size-4-2); font-size: var(--font-ui-medium); font-weight: var(--font-semibold); color: var(--text-normal); }
 .zfa-chrono-auj { margin-left: var(--size-4-2); font-size: var(--font-ui-smaller); height: auto; padding: 2px 8px; }
-.zfa-chrono-seg {
-  display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--radius-m);
-  background: var(--background-modifier-form-field, var(--background-secondary));
-  border: 1px solid var(--background-modifier-border);
-}
-.zfa-chrono-seg-btn {
-  padding: 2px 10px; border-radius: var(--radius-s); cursor: pointer;
-  font-size: var(--font-ui-small); color: var(--text-muted);
-}
-.zfa-chrono-seg-btn:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
-.zfa-chrono-seg-btn.is-active { color: var(--text-normal); background: var(--background-primary); box-shadow: var(--shadow-s); }
 
-.zfa-chrono-puces { display: flex; flex-wrap: wrap; gap: 4px; margin: var(--size-4-3) 0 var(--size-4-2); }
-.zfa-chrono-puce {
-  padding: 2px 10px; border-radius: var(--tag-radius, 999px); cursor: pointer;
-  font-size: var(--font-ui-small); color: var(--text-muted);
-}
-.zfa-chrono-puce:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
-.zfa-chrono-puce.is-active { color: var(--tag-color, var(--text-accent)); background: var(--tag-background, var(--background-modifier-hover)); }
 .zfa-chrono-avis, .zfa-chrono-vide { margin: var(--size-4-4) 0; color: var(--text-muted); font-size: var(--font-ui-small); }
 
 .zfa-chrono-mois {
@@ -4151,19 +4129,17 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-chrono-compte-n { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .zfa-chrono-barre { height: 3px; margin: 4px 0 0 16px; border-radius: 2px; background: var(--background-modifier-hover); overflow: hidden; }
 .zfa-chrono-barre-plein { height: 100%; border-radius: 2px; background: var(--zfa-chrono-coul); }
-.zfa-chrono-dossier { width: 100%; }
 .zfa-chrono-evt.est-personnel .zfa-chrono-pastille {
   background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--zfa-chrono-coul) 30%, var(--background-primary)) 0 3px, var(--background-primary) 3px 6px);
 }
 .zfa-chrono-etiquette.est-tache { color: var(--text-accent); }
-.zfa-chrono-droite { display: flex; align-items: center; gap: var(--size-4-2); }
-.zfa-chrono-ia, .zfa-chrono-jour-bt {
+.zfa-chrono-jour-bt {
   display: inline-flex; align-items: center; gap: 5px; height: auto; padding: 3px 9px; cursor: pointer;
   font-size: var(--font-ui-smaller); color: var(--text-muted); background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); box-shadow: none;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
-.zfa-chrono-ia:hover, .zfa-chrono-jour-bt:hover { color: var(--text-normal); background: var(--background-modifier-hover); border-color: var(--background-modifier-border-hover); }
+.zfa-chrono-jour-bt:hover { color: var(--text-normal); background: var(--background-modifier-hover); border-color: var(--background-modifier-border-hover); }
 .zfa-chrono-jour-bt-ic { display: inline-flex; }
 .zfa-chrono-jour-bt-ic svg { width: 12px; height: 12px; }
 .zfa-chrono-jour-actions { margin-left: auto; display: flex; gap: 4px; opacity: 0.7; transition: opacity 0.12s ease; }
@@ -4228,3 +4204,51 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-chrono-temps-nom.est-disparu { color: var(--text-faint); cursor: default; }
 .zfa-chrono-temps-duree { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .zfa-chrono-temps-chevron { transition: none; } }
+/* Chronologie : le titre de la période (les réglages sont dans l'en-tête de
+   l'onglet), et les visualisations de la colonne latérale. */
+.zfa-chrono-tete { display: flex; align-items: center; gap: 2px; }
+.zfa-chrono-titre { font-size: var(--h2-size, 1.4em); font-weight: var(--h2-weight, var(--font-bold)); color: var(--text-normal); margin-right: var(--size-4-2); line-height: 1.3; }
+.zfa-chrono-tete .clickable-icon.is-disabled { opacity: 0.35; cursor: default; }
+.zfa-chrono-filtre-actif { display: inline-flex; align-items: center; gap: 6px; margin-top: var(--size-4-2); padding: 2px 4px 2px 8px;
+  border-radius: var(--radius-s); background: var(--background-modifier-hover); color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.zfa-chrono-filtre-ic, .zfa-chrono-filtre-x { display: inline-flex; }
+.zfa-chrono-filtre-ic svg, .zfa-chrono-filtre-x svg { width: 12px; height: 12px; }
+.zfa-chrono-filtre-x { padding: 2px; }
+
+.zfa-chrono-rub + .zfa-chrono-rub { margin-top: var(--size-4-6); }
+.zfa-chrono-rubrique.est-repliable { display: flex; align-items: center; justify-content: space-between; cursor: pointer; margin-top: 0; }
+.zfa-chrono-rub-chevron { display: inline-flex; color: var(--text-faint); opacity: 0; transition: opacity 120ms ease, transform 120ms ease; }
+.zfa-chrono-rub-chevron svg { width: 14px; height: 14px; }
+.zfa-chrono-rubrique.est-repliable:hover .zfa-chrono-rub-chevron, .zfa-chrono-rub.est-repliee .zfa-chrono-rub-chevron { opacity: 1; }
+.zfa-chrono-rub.est-repliee .zfa-chrono-rub-chevron { transform: rotate(-90deg); }
+.zfa-chrono-rub.est-repliee .zfa-chrono-rub-corps { display: none; }
+.zfa-chrono-rub.est-repliee .zfa-chrono-rubrique { margin-bottom: 0; color: var(--text-muted); }
+
+.zfa-chrono-compte.est-inerte { cursor: default; }
+.zfa-chrono-compte.est-inerte:hover { background: none; }
+.zfa-chrono-compte.est-mesure .zfa-chrono-compte-nom { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zfa-chrono-barre { position: relative; }
+.zfa-chrono-barre-prevu { position: absolute; inset: 0 auto 0 0; border-radius: 2px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--zfa-chrono-coul) 55%, transparent); }
+.zfa-chrono-barre-prevu.est-temoin { position: static; display: inline-block; width: 18px; height: 6px; margin-right: 6px; vertical-align: middle; --zfa-chrono-coul: var(--interactive-accent); }
+.zfa-chrono-barre-plein { position: relative; }
+.zfa-chrono-hachure, .est-hachure.zfa-chrono-barre-plein, .zfa-chrono-point.est-hachure, .zfa-chrono-pile-seg.est-personnel {
+  background: repeating-linear-gradient(135deg, var(--text-faint) 0 2px, transparent 2px 4px); }
+
+.zfa-chrono-total { font-size: var(--font-ui-large); font-weight: var(--font-semibold); color: var(--text-normal); font-variant-numeric: tabular-nums; }
+.zfa-chrono-taux { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.zfa-chrono-pile { display: flex; height: 8px; margin: 6px 0 8px; border-radius: 4px; overflow: hidden; background: var(--background-modifier-hover); gap: 1px; }
+.zfa-chrono-pile-seg { height: 100%; }
+.zfa-chrono-pile-seg.est-obsidian { background: var(--interactive-accent); }
+.zfa-chrono-pile-seg.est-externe { background: color-mix(in srgb, var(--color-green) 70%, transparent); }
+.zfa-chrono-legende { display: flex; flex-direction: column; gap: 3px; font-size: var(--font-ui-small); }
+.zfa-chrono-legende-l { display: flex; align-items: center; gap: 8px; }
+.zfa-chrono-legende-pt { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 2px; }
+.zfa-chrono-legende-l .zfa-chrono-compte-nom { flex: 1 1 auto; color: var(--text-normal); }
+.zfa-chrono-note { margin-top: 6px; font-size: var(--font-ui-smaller); color: var(--text-faint); line-height: 1.45; }
+
+.zfa-chrono-rythmes { display: grid; grid-template-columns: 12px repeat(var(--zfa-cols), minmax(0, 1fr)); gap: 2px; align-items: center; }
+.zfa-chrono-rythmes-h { font-size: 9px; color: var(--text-faint); text-align: left; line-height: 1; height: 10px; }
+.zfa-chrono-rythmes-j { font-size: var(--font-ui-smaller); color: var(--text-faint); line-height: 1; }
+.zfa-chrono-rythmes-c { aspect-ratio: 1; border-radius: 2px; background: var(--background-modifier-hover); }
+.zfa-chrono-rythmes-c.est-plein { background: color-mix(in srgb, var(--interactive-accent) calc(var(--zfa-int) * 100%), var(--background-modifier-hover)); }
+@media (prefers-reduced-motion: reduce) { .zfa-chrono-rub-chevron { transition: none; } }

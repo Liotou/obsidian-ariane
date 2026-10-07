@@ -616,4 +616,154 @@ const avecChronologie = (Base) => class extends Base {
   }
 
   //#endregion Ariane · chronologie (journal & lecture)
+
+  //#region Ariane · chronologie (analyses)
+  // ── analyses : la colonne latérale de la chronologie ─────────────────────
+  //  Une seule lecture par période réunit, jour par jour, le rail du temps
+  //  réel (Obsidian, hors Obsidian, personnel, sans double compte), les
+  //  catégories, les tâches, les créneaux prévus et ce qui y a été fait. Les
+  //  visualisations de la colonne latérale (temps, catégories, tâches, prévu
+  //  et réalisé, rythmes) en sont des lectures croisées.
+
+  // L'état d'un créneau révolu d'après la part faite : la même échelle pour
+  // le bilan du soir et pour la rubrique « Prévu et réalisé ».
+  static etatCreneau(fait, prevu) {
+    if (!(fait > 0)) return 'rien';
+    const part = prevu ? fait / prevu : 1;
+    return part >= 0.8 ? 'tenu' : part >= 0.3 ? 'partie' : 'entame';
+  }
+
+  // Les plages de travail continues d'un rail (minutes du jour), les pauses
+  // de moins de `pause` minutes ne coupant pas : { n, moyenne, longue }.
+  static plagesTravail(rails, pause) {
+    const p = Number(pause) >= 0 ? Number(pause) : 5;
+    const durees = [];
+    for (const rail of (rails || [])) {
+      const segs = rail.filter((x) => x.genre !== 'personnel').map((x) => [x.a, x.b]).sort((x, y) => x[0] - y[0]);
+      let cour = null;
+      for (const [a, b] of segs) {
+        if (cour && a - cour[1] <= p) { cour[1] = Math.max(cour[1], b); continue; }
+        if (cour) durees.push(cour[1] - cour[0]);
+        cour = [a, b];
+      }
+      if (cour) durees.push(cour[1] - cour[0]);
+    }
+    const utiles = durees.filter((d) => d >= 5);
+    return { n: utiles.length, moyenne: utiles.length ? utiles.reduce((s, d) => s + d, 0) / utiles.length : 0,
+      longue: utiles.length ? Math.max(...utiles) : 0 };
+  }
+
+  // Minutes de travail (hors personnel) par jour de semaine (0 = lundi) et
+  // par heure : une grille 7 × 24.
+  static grilleRythmes(jours) {
+    const g = Array.from({ length: 7 }, () => new Array(24).fill(0));
+    for (const j of (jours || [])) {
+      const js = (new Date(j.jour + 'T12:00:00').getDay() + 6) % 7;
+      for (const x of j.rail) {
+        if (x.genre === 'personnel') continue;
+        for (let h = Math.floor(x.a / 60); h * 60 < x.b && h < 24; h++) {
+          g[js][h] += Math.max(0, Math.min(x.b, (h + 1) * 60) - Math.max(x.a, h * 60));
+        }
+      }
+    }
+    return g;
+  }
+
+  async analyseChronologie(debut, fin) {
+    const auj = jourIsoDe(new Date());
+    const jours = [];
+    for (let j = debut; j < fin && j <= auj; j = Ariane.decalerJour(j, 1)) jours.push(j);
+    const taches = this.tachesPourGantt();
+    const parRef = new Map(taches.map((t) => [t.ref, t]));
+    const refsDeChemin = new Map();
+    const cheminsDe = new Map();
+    for (const t of taches) {
+      if (!t.fichier) continue;
+      const ch = [t.fichier.path].concat(this._cheminsLiesTache(t));
+      cheminsDe.set(t.ref, ch);
+      for (const c of ch) if (!refsDeChemin.has(c)) refsDeChemin.set(c, t.ref);
+    }
+    const sessions = this.sessionsTravail ? this.sessionsTravail() : [];
+    // Hors Obsidian : quatre-vingt-dix jours au plus, comme le fil.
+    let blocs = new Map();
+    const plancher = Ariane.decalerJour(auj, -90);
+    if (this.activiteDisponible && this.activiteDisponible()) {
+      try { blocs = await this.activitePlage(jours.filter((j) => j >= plancher)); } catch (e) { blocs = new Map(); }
+    }
+    const minutesDe = (iso, jour) => (String(iso).slice(0, 10) < jour ? 0
+      : String(iso).slice(0, 10) > jour ? 24 * 60
+        : Number(String(iso).slice(11, 13)) * 60 + Number(String(iso).slice(14, 16)));
+    const maintenant = Ariane.instantSession(new Date());
+    const out = [];
+    const cats = new Map();
+    const parTache = new Map();
+    const tache = (ref) => {
+      if (!parTache.has(ref)) parTache.set(ref, { ref, tache: parRef.get(ref), min: 0, prevu: 0, fait: 0, parJour: {} });
+      return parTache.get(ref);
+    };
+    for (const jour of jours) {
+      const obs = Ariane.sessionsDuJour(jour, sessions, 1).map((x) => ({ a: x.a, b: x.b, ref: refsDeChemin.get(x.chemin) || '', chemin: x.chemin }));
+      const ext = (blocs.get(jour) || []).map((bl) => ({ a: minutesDe(bl.debut, jour), b: minutesDe(bl.fin, jour), bloc: bl }))
+        .filter((e) => e.b > e.a);
+      const r = Ariane.bilanJourReel(obs, ext);
+      const rail = Ariane.fusionnerRailReel(obs, ext).map((p) => {
+        if (p.source === 'obsidian') {
+          const t = p.item.ref && parRef.get(p.item.ref);
+          return { a: p.a, b: p.b, genre: 'obsidian',
+            libelle: t ? t.ref + ' ' + t.intitule : String(p.item.chemin || '').split('/').pop().replace(/\.md$/, '') };
+        }
+        const bl = p.item.bloc;
+        const perso = !!(bl.ia && bl.ia.personnel);
+        return { a: p.a, b: p.b, genre: perso ? 'personnel' : 'externe', couleur: bl.couleur || '',
+          libelle: ((bl.ia && bl.ia.categorie) || bl.categorie || '') + ((bl.ia && bl.ia.resume) ? ' : ' + bl.ia.resume : '') };
+      });
+      // Catégories : « Obsidian » d'un côté, celles du hors Obsidian de l'autre.
+      const ajouterCat = (nom, couleur, min) => {
+        if (!(min > 0)) return;
+        const c = cats.get(nom) || { nom, couleur, min: 0, parJour: {} };
+        c.min += min;
+        c.parJour[jour] = (c.parJour[jour] || 0) + min;
+        cats.set(nom, c);
+      };
+      ajouterCat('Obsidian', 'var(--interactive-accent)', r.obsidianMin);
+      for (const [nom, x] of r.parCategorie) ajouterCat(nom, x.couleur || 'var(--color-green)', x.min);
+      ajouterCat('Personnel et distraction', 'var(--text-faint)', r.personnelMin);
+      for (const [ref, x] of r.parTache) {
+        if (!parRef.has(ref)) continue;
+        const t = tache(ref);
+        t.min += x.min;
+        t.parJour[jour] = (t.parJour[jour] || 0) + x.min;
+      }
+      // Créneaux prévus ce jour et ce qui y a été fait.
+      const creneaux = [];
+      for (const t of taches) {
+        for (const c of Ariane.creneauxDeTache([].concat(t.creneaux || []))) {
+          if (c.debut.slice(0, 10) !== jour) continue;
+          const prevu = Ariane.dureeCreneauMin(c.debut, c.fin);
+          const avenir = c.debut > maintenant;
+          const fait = avenir ? 0 : Ariane.minutesFaitesCreneau(c.debut, c.fin, sessions, cheminsDe.get(t.ref) || [], t.tempsReel);
+          creneaux.push({ ref: t.ref, intitule: t.intitule, statut: t.statut, debut: c.debut, fin: c.fin, prevu, fait,
+            etat: avenir ? 'avenir' : Ariane.etatCreneau(fait, prevu) });
+          const x = tache(t.ref);
+          x.prevu += prevu;
+          x.fait += fait;
+        }
+      }
+      creneaux.sort((a, b) => a.debut.localeCompare(b.debut));
+      out.push({ jour, rail, creneaux,
+        obsidian: r.obsidianMin, externe: r.externeMin, personnel: r.personnelMin });
+    }
+    const somme = (k) => out.reduce((s, j) => s + j[k], 0);
+    return {
+      jours: out,
+      obsidian: somme('obsidian'), externe: somme('externe'), personnel: somme('personnel'),
+      externeTronque: jours.length > 0 && jours[0] < plancher,
+      categories: [...cats.values()].sort((a, b) => b.min - a.min),
+      taches: [...parTache.values()].filter((x) => x.tache && (x.min >= 1 || x.prevu > 0)).sort((a, b) => (b.min - a.min) || (b.prevu - a.prevu)),
+      rythmes: Ariane.grilleRythmes(out),
+      plages: Ariane.plagesTravail(out.map((j) => j.rail)),
+    };
+  }
+
+  //#endregion Ariane · chronologie (analyses)
 };
