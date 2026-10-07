@@ -4285,7 +4285,7 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 }
 /* Sommaire de lecture : l'aperçu de la feuille à imprimer. */
 .zfa-sommaire-modale { width: min(760px, 92vw); }
-.zfa-sommaire-reglages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 var(--size-4-4); }
+.zfa-sommaire-reglages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--size-4-4); }
 .zfa-sommaire-reglages .setting-item { border: none; padding: var(--size-4-1) 0; }
 .zfa-sommaire-apercu { display: block; width: 100%; height: min(62vh, 640px); margin-top: var(--size-4-2);
   border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: #fff; }

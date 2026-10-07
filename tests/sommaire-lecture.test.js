@@ -19,7 +19,9 @@ test('sommaire : une page sobre, en-tête des fiches graphiques, échappée', ()
   assert.match(html, /@page \{ size: A5;/);
   assert.match(html, /<div class="ref">Kamaté \(2023\)<\/div><div class="date">07\/10\/2026<\/div>/);
   assert.match(html, /<p class="titre">Participation &lt;citoyenne&gt;<\/p>/);
-  assert.match(html, /<li><span class="p">6<\/span><span class="t">Charte de confiance &amp; continuité<\/span><\/li>/);
+  assert.match(html, /<li><span class="p">6\.<\/span><span class="t">Charte de confiance &amp; continuité<\/span><\/li>/);
+  assert.ok(!/column-count/.test(html), 'une colonne par défaut');
+  assert.match(Ariane.pageSommaireLecture({ reference: 'x', entrees: [{ page: '313', titre: 't' }], colonnes: 2 }), /column-count: 2/);
   assert.match(html, /font-family: Georgia/);
   assert.ok(!/window\.print/.test(html), 'pas d\'impression automatique dans l\'aperçu');
   assert.match(Ariane.pageSommaireLecture({ reference: 'x', entrees: [], imprimer: true }), /window\.print\(\)/);

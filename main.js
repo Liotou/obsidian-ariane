@@ -1626,6 +1626,7 @@ const DEFAULT_SETTINGS = {
   // Bibliographie de fin de note, régénérée d'après les citations du corps.
   biblioAuto: true,
   sommaireFormat: 'A5', // format du sommaire de lecture à imprimer (A4, A5, A6)
+  sommaireColonnes: 1,  // une ou deux colonnes
   biblioDossiersExclus: [], // dossiers dont les notes n'ont pas de bibliographie de fin
   biblioTitre: 'Bibliographie',
   biblioModele: '{{auteurs}} ({{annee}}). {{titre}}. *{{publication}}*.',
@@ -9854,30 +9855,36 @@ const avecNoteBiblio = (Base) => class extends Base {
     });
   }
 
-  // La page HTML, prête à imprimer. o = { reference, titre, date, entrees
-  // [{ page, titre }], format: 'A4' | 'A5' | 'A6', imprimer (lancer
-  // l'impression au chargement, pour le navigateur) }.
+  // La page HTML, prête à imprimer, serrée comme un sommaire écrit à la
+  // main : une ligne par annotation, « 11. Titre », le titre aligné après
+  // le plus long numéro, et l'en-tête des fiches en réduction. o = {
+  // reference, titre, date, entrees [{ page, titre }], format: 'A4' | 'A5'
+  // | 'A6', colonnes: 1 | 2, imprimer (lancer l'impression au chargement,
+  // pour le navigateur) }.
   static pageSommaireLecture(o) {
     const h = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const format = ['A4', 'A5', 'A6'].includes(o.format) ? o.format : 'A5';
-    const corps = { A4: 11, A5: 10, A6: 8.5 }[format];
-    const tete = { A4: 20, A5: 16, A6: 13 }[format];
-    const marge = { A4: '18mm 20mm', A5: '13mm 14mm', A6: '9mm 9mm' }[format];
-    const lignes = (o.entrees || []).map((e) => '<li><span class="p">' + h(e.page) + '</span><span class="t">' + h(e.titre) + '</span></li>').join('\n');
+    const colonnes = Number(o.colonnes) === 2 ? 2 : 1;
+    const corps = { A4: 10, A5: 9, A6: 7.5 }[format];
+    const tete = { A4: 14, A5: 12, A6: 10 }[format];
+    const marge = { A4: '12mm 14mm', A5: '8mm 9mm', A6: '6mm 6mm' }[format];
+    const entrees = o.entrees || [];
+    const large = Math.max(1, ...entrees.map((e) => String(e.page || '').length)) + 1;
+    const lignes = entrees.map((e) => '<li><span class="p">' + h(e.page ? e.page + '.' : '') + '</span><span class="t">' + h(e.titre) + '</span></li>').join('\n');
     return '<!doctype html>\n<html lang="fr"><head><meta charset="utf-8"><title>' + h(o.reference) + '</title>\n<style>\n'
       + '@page { size: ' + format + '; margin: ' + marge + '; }\n'
       + '* { box-sizing: border-box; }\n'
       + 'html, body { margin: 0; background: #fff; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }\n'
-      + 'body { font-family: Georgia, "Times New Roman", serif; font-size: ' + corps + 'pt; line-height: 1.35; }\n'
-      + 'header { display: flex; align-items: stretch; border-bottom: 1.2pt solid #000; margin-bottom: 1.1em; }\n'
-      + 'header .ref { flex: 1; font-family: Georgia, serif; font-size: ' + tete + 'pt; padding: 0.5em 0.6em 0.5em 0; }\n'
-      + 'header .date { font-family: Helvetica, Arial, sans-serif; font-size: ' + (tete * 0.85).toFixed(1) + 'pt; border-left: 1.2pt solid #000; padding: 0.5em 0 0.5em 0.7em; display: flex; align-items: center; white-space: nowrap; }\n'
-      + '.titre { font-style: italic; color: #444; margin: 0 0 1.2em; }\n'
-      + 'ol { list-style: none; margin: 0; padding: 0; }\n'
-      + 'li { display: grid; grid-template-columns: 3.2em 1fr; column-gap: 0.9em; padding: 0.28em 0; break-inside: avoid; }\n'
-      + 'li .p { font-family: Helvetica, Arial, sans-serif; font-variant-numeric: tabular-nums; text-align: right; font-size: 0.92em; padding-top: 0.08em; }\n'
-      + '.vide { font-style: italic; color: #444; }\n'
-      + '@media screen { body { padding: 24px; max-width: ' + { A4: '210mm', A5: '148mm', A6: '105mm' }[format] + '; margin: 0 auto; } }\n'
+      + 'body { font-family: Georgia, "Times New Roman", serif; font-size: ' + corps + 'pt; line-height: 1.22; }\n'
+      + 'header { display: flex; align-items: stretch; border-bottom: 0.8pt solid #000; margin-bottom: 0.45em; }\n'
+      + 'header .ref { flex: 1; font-size: ' + tete + 'pt; padding: 0.15em 0.5em 0.2em 0; line-height: 1.15; }\n'
+      + 'header .date { font-family: Helvetica, Arial, sans-serif; font-size: ' + (tete * 0.8).toFixed(1) + 'pt; border-left: 0.8pt solid #000; padding: 0.15em 0 0.2em 0.6em; display: flex; align-items: center; white-space: nowrap; }\n'
+      + '.titre { font-style: italic; margin: 0 0 0.45em; font-size: 0.92em; }\n'
+      + 'ol { list-style: none; margin: 0; padding: 0;' + (colonnes === 2 ? ' column-count: 2; column-gap: 1.4em; column-rule: 0.4pt solid #bbb;' : '') + ' }\n'
+      + 'li { display: grid; grid-template-columns: ' + (large * 0.6).toFixed(2) + 'em 1fr; column-gap: 0.3em; padding: 0.06em 0; break-inside: avoid; }\n'
+      + 'li .p { font-variant-numeric: lining-nums tabular-nums; }\n'
+      + '.vide { font-style: italic; }\n'
+      + '@media screen { body { padding: 18px; max-width: ' + { A4: '210mm', A5: '148mm', A6: '105mm' }[format] + '; margin: 0 auto; } }\n'
       + '</style></head><body>\n'
       + '<header><div class="ref">' + h(o.reference) + '</div>' + (o.date ? '<div class="date">' + h(o.date) + '</div>' : '') + '</header>\n'
       + (o.titre ? '<p class="titre">' + h(o.titre) + '</p>\n' : '')
@@ -40017,7 +40024,8 @@ class ModaleSommaireLecture extends obsidian.Modal {
     this.source = source;
     this.format = (greffon.settings.sommaireFormat) || 'A5';
     this.tri = 'page';
-    this.avecTitre = true;
+    this.avecTitre = false;
+    this.colonnes = Number(greffon.settings.sommaireColonnes) === 2 ? 2 : 1;
   }
 
   _html(imprimer) {
@@ -40027,7 +40035,7 @@ class ModaleSommaireLecture extends obsidian.Modal {
     return Ariane.pageSommaireLecture({
       reference: this.source.reference, titre: this.avecTitre ? this.source.titre : '',
       date: p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + '/' + d.getFullYear(),
-      entrees, format: this.format, imprimer,
+      entrees, format: this.format, colonnes: this.colonnes, imprimer,
     });
   }
 
@@ -40040,6 +40048,13 @@ class ModaleSommaireLecture extends obsidian.Modal {
       .addDropdown((d) => d.addOptions({ A4: 'A4', A5: 'A5', A6: 'A6' }).setValue(this.format).onChange(async (v) => {
         this.format = v;
         this.greffon.settings.sommaireFormat = v;
+        await this.greffon.saveSettings();
+        this._apercu();
+      }));
+    new obsidian.Setting(reglages).setName(tr('Colonnes'))
+      .addDropdown((d) => d.addOptions({ 1: '1', 2: '2' }).setValue(String(this.colonnes)).onChange(async (v) => {
+        this.colonnes = Number(v);
+        this.greffon.settings.sommaireColonnes = this.colonnes;
         await this.greffon.saveSettings();
         this._apercu();
       }));

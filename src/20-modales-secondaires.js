@@ -353,7 +353,8 @@ class ModaleSommaireLecture extends obsidian.Modal {
     this.source = source;
     this.format = (greffon.settings.sommaireFormat) || 'A5';
     this.tri = 'page';
-    this.avecTitre = true;
+    this.avecTitre = false;
+    this.colonnes = Number(greffon.settings.sommaireColonnes) === 2 ? 2 : 1;
   }
 
   _html(imprimer) {
@@ -363,7 +364,7 @@ class ModaleSommaireLecture extends obsidian.Modal {
     return Ariane.pageSommaireLecture({
       reference: this.source.reference, titre: this.avecTitre ? this.source.titre : '',
       date: p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + '/' + d.getFullYear(),
-      entrees, format: this.format, imprimer,
+      entrees, format: this.format, colonnes: this.colonnes, imprimer,
     });
   }
 
@@ -376,6 +377,13 @@ class ModaleSommaireLecture extends obsidian.Modal {
       .addDropdown((d) => d.addOptions({ A4: 'A4', A5: 'A5', A6: 'A6' }).setValue(this.format).onChange(async (v) => {
         this.format = v;
         this.greffon.settings.sommaireFormat = v;
+        await this.greffon.saveSettings();
+        this._apercu();
+      }));
+    new obsidian.Setting(reglages).setName(tr('Colonnes'))
+      .addDropdown((d) => d.addOptions({ 1: '1', 2: '2' }).setValue(String(this.colonnes)).onChange(async (v) => {
+        this.colonnes = Number(v);
+        this.greffon.settings.sommaireColonnes = this.colonnes;
         await this.greffon.saveSettings();
         this._apercu();
       }));

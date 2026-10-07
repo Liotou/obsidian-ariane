@@ -1437,6 +1437,7 @@ const DEFAULT_SETTINGS = {
   // Bibliographie de fin de note, régénérée d'après les citations du corps.
   biblioAuto: true,
   sommaireFormat: 'A5', // format du sommaire de lecture à imprimer (A4, A5, A6)
+  sommaireColonnes: 1,  // une ou deux colonnes
   biblioDossiersExclus: [], // dossiers dont les notes n'ont pas de bibliographie de fin
   biblioTitre: 'Bibliographie',
   biblioModele: '{{auteurs}} ({{annee}}). {{titre}}. *{{publication}}*.',
