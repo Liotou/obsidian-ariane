@@ -35171,6 +35171,10 @@ class MoteurCalendrier extends MoteurVue {
       this._calerCarrousel(sens);
     };
     cadre.addEventListener('wheel', (e) => {
+      // Un pincement du pavé tactile arrive en molette avec Ctrl : c'est le
+      // zoom des heures, jamais un changement de semaine, même s'il dérive
+      // un peu de côté.
+      if (e.ctrlKey || e.metaKey) return;
       if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // vertical : laisser défiler
       e.preventDefault();
       this._decalGeste -= e.deltaX;
@@ -36743,6 +36747,7 @@ class MoteurCalendrier extends MoteurVue {
     corps.addEventListener('wheel', (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
+      e.stopPropagation();
       this._zoomerSemaine(e.deltaY < 0 ? 8 : -8);
     }, { passive: false });
     jours.forEach((j, di) => {
