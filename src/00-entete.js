@@ -89,6 +89,7 @@
  *            11n  avecChronologie  journal d'activité du coffre
  *            11o  avecDonneesJour  données du temps par jour, résumé de la journée
  *            11p  avecIphone       temps d'écran de l'iPhone, lu sur le Mac
+ *            11q  avecConcentration micro-interruptions, distractions, concentration
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab

@@ -17,7 +17,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecActivite,
   avecChronologie,
   avecDonneesJour,
-  avecIphone) {
+  avecIphone,
+  avecConcentration) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -80,6 +81,16 @@ class Ariane extends composer(obsidian.Plugin,
       name: tr('Atomiser : la note source active'),
       icon: 'atom',
       callback: () => this.commandeNoteActive(),
+    });
+    this.addCommand({
+      id: 'distractions-classer',
+      name: tr('Distractions : classer les sites et applications inconnus (IA)'),
+      icon: 'shield-alert',
+      callback: () => {
+        const jours = [];
+        for (let k = 0; k < 7; k++) jours.push(Ariane.decalerJour(jourIsoDe(new Date()), -k));
+        this.classerDistractionsInconnues(jours, false);
+      },
     });
     this.addCommand({
       id: 'sommaire-lecture',

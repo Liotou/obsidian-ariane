@@ -308,6 +308,19 @@ const avecDonneesJour = (Base) => class extends Base {
         l.push('- ' + dureeLisible(m) + ' : ' + c.split('/').pop().replace(/\.md$/, '') + (t ? ' (tâche ' + t.ref + ' : ' + t.intitule + ')' : ''));
       }
     }
+    // Les micro-interruptions et la concentration.
+    if (this.microDuJour && this.analyseChronologie) {
+      try {
+        const an = await this.analyseChronologie(jour, Ariane.decalerJour(jour, 1));
+        const c = an.concentration;
+        if (c && (c.n || c.longue)) {
+          l.push('', 'CONCENTRATION : ' + c.n + ' micro-interruption' + (c.n > 1 ? 's' : '') + (c.iphone ? ' (dont ' + c.iphone + ' sur l\'iPhone)' : '')
+            + (c.parHeure ? ', soit ' + (Math.round(c.parHeure * 10) / 10) + ' par heure de travail' : '')
+            + (c.principales.length ? ' ; surtout ' + c.principales.map((x) => x.quoi + ' (' + x.n + ' fois)').join(', ') : '')
+            + (c.longue ? ' ; plages de concentration de ' + dureeLisible(c.moyenne) + ' en moyenne, la plus longue ' + dureeLisible(c.longue) : '') + '.');
+        }
+      } catch (e) { /* sans mesure */ }
+    }
     // Les créneaux hors Obsidian, avec leur résumé et leur catégorie.
     if (this.activiteDisponible && this.activiteDisponible()) {
       const blocs = ((await this.activitePlage([jour])).get(jour) || []);
@@ -459,7 +472,7 @@ const avecDonneesJour = (Base) => class extends Base {
       '',
       'DÉROULÉ :',
       '1. La base tangible de la journée : la synthèse de ce qui a été accompli (tâches terminées ou avancées, travail de fond, cours, réunions et rendez-vous déjà passés).',
-      '2. Un miroir honnête : où le temps est allé, en rapprochant le prévu du réalisé (créneaux tenus, faits en partie, laissés de côté) et en nommant les moments de distraction s\'il y en a eu. Si la journée a été productive, félicite sans excès. Si elle a été dispersée ou si du travail prévu a été repoussé, sois lucide : reconnais l\'écart sans le juger, et invite à tourner la page. Rassure par la logique plutôt que par des formules : une journée ne définit pas une thèse entière.',
+      '2. Un miroir honnête : où le temps est allé, en rapprochant le prévu du réalisé (créneaux tenus, faits en partie, laissés de côté) et en nommant les moments de distraction s\'il y en a eu, y compris les micro-interruptions (leur nombre, ce qui les a causées, la plus longue plage de concentration) quand le relevé les donne. Si la journée a été productive, félicite sans excès. Si elle a été dispersée ou si du travail prévu a été repoussé, sois lucide : reconnais l\'écart sans le juger, et invite à tourner la page. Rassure par la logique plutôt que par des formules : une journée ne définit pas une thèse entière.',
       '3. Demain (' + jl(demain) + ') : ce qui l\'attend, concrètement et sans l\'accabler (le premier rendez-vous, les créneaux prévus, les échéances), en une ou deux phrases qui préparent sans inquiéter. Si rien n\'est prévu, dis-le simplement.',
       '4. Termine par une salutation élégante qui invite à la déconnexion immédiate.',
       '',

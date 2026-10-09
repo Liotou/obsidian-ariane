@@ -1513,6 +1513,7 @@ class VueChronologie extends obsidian.ItemView {
       this._dessinerTachesPeriode(cote, analyse);
       this._dessinerPrevuRealise(cote, analyse);
       this._dessinerRythmes(cote, analyse);
+      this._dessinerConcentration(cote, analyse);
     }
     this._dessinerComptes(cote, Ariane.filtrerChrono(dansPeriode, 'tout', this.dossier));
     c.scrollTop = defil;
@@ -1994,6 +1995,32 @@ class VueChronologie extends obsidian.ItemView {
       }
       const avenir = an.jours.reduce((s2, j) => s2 + j.creneaux.filter((c) => c.etat === 'avenir').length, 0);
       if (avenir) corps.createDiv({ cls: 'zfa-chrono-note', text: avenir + ' ' + (avenir > 1 ? tr('créneaux encore à venir') : tr('créneau encore à venir')) });
+    });
+  }
+
+  // Concentration : les micro-interruptions de la période (nombre, par
+  // heure de travail, dont l'iPhone), ce qui distrait le plus, et la durée
+  // des plages de concentration.
+  _dessinerConcentration(hote, an) {
+    const c = an.concentration;
+    if (!c || (!c.n && !c.longue)) return;
+    this._rubrique(hote, 'concentration', tr('Concentration'), (corps) => {
+      const tete = corps.createDiv({ cls: 'zfa-chrono-taux' });
+      tete.createSpan({ cls: 'zfa-chrono-total', text: String(c.n) });
+      tete.createSpan({ cls: 'zfa-chrono-compte-n', text: (c.n > 1 ? tr('micro-interruptions') : tr('micro-interruption'))
+        + (c.parHeure ? ', ' + (Math.round(c.parHeure * 10) / 10).toLocaleString('fr-FR') + tr(' par heure') : '') });
+      if (c.iphone) corps.createDiv({ cls: 'zfa-chrono-note', text: tr('dont ') + c.iphone + tr(' sur l’iPhone') });
+      if (c.principales.length) {
+        const max = Math.max(...c.principales.map((x) => x.n));
+        for (const x of c.principales) {
+          this._ligneBarre(corps, x.quoi, x.n + ' ' + tr('fois'), x.n / max, 'var(--color-red)',
+            { titre: x.n + ' ' + tr('fois') + ', ' + Math.round(x.sec / 60) + ' min ' + tr('en tout') });
+        }
+      }
+      if (c.longue) {
+        corps.createDiv({ cls: 'zfa-chrono-note', text: tr('Concentration sans interruption : ') + dureeLisible(c.moyenne) + ' '
+          + tr('en moyenne') + ', ' + tr('la plus longue') + ' ' + dureeLisible(c.longue) });
+      }
     });
   }
 

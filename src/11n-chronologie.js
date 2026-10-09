@@ -688,6 +688,33 @@ const avecChronologie = (Base) => class extends Base {
     return g;
   }
 
+  // La concentration d'une période : les micro-interruptions (dont
+  // l'iPhone), leur nombre par heure de travail, ce qui distrait le plus, et
+  // les plages de concentration (coupées à chaque interruption).
+  static syntheseConcentration(jours) {
+    const micro = [];
+    let travail = 0;
+    let plages = 0;
+    let cumul = 0;
+    let longue = 0;
+    for (const j of (jours || [])) {
+      micro.push(...(j.micro || []));
+      travail += (j.obsidian || 0) + (j.externe || 0);
+      const p = Ariane.plagesConcentration(j.rail, j.micro);
+      plages += p.n;
+      cumul += p.n * p.moyenne;
+      longue = Math.max(longue, p.longue);
+    }
+    const n = micro.length;
+    return {
+      n, iphone: micro.filter((m) => m.source === 'iphone').length,
+      parHeure: travail >= 30 ? n / (travail / 60) : 0,
+      principales: Ariane.principalesDistractions(micro, 5),
+      moyenne: plages ? cumul / plages : 0,
+      longue,
+    };
+  }
+
   async analyseChronologie(debut, fin) {
     const auj = jourIsoDe(new Date());
     const jours = [];
@@ -769,7 +796,10 @@ const avecChronologie = (Base) => class extends Base {
         }
       }
       creneaux.sort((a, b) => a.debut.localeCompare(b.debut));
-      out.push({ jour, rail, creneaux,
+      const d0 = new Date(jour + 'T00:00:00').getTime();
+      let micro = [];
+      if (jour >= plancher && this.microDuJour) { try { micro = await this.microDuJour(jour); } catch (e) { micro = []; } }
+      out.push({ jour, rail, creneaux, micro: micro.map((m) => Object.assign({ a: (m.deb - d0) / 60000, b: (m.fin - d0) / 60000 }, m)),
         obsidian: r.obsidianMin, externe: r.externeMin, personnel: r.personnelMin });
     }
     const somme = (k) => out.reduce((s, j) => s + j[k], 0);
@@ -781,6 +811,7 @@ const avecChronologie = (Base) => class extends Base {
       taches: [...parTache.values()].filter((x) => x.tache && (x.min >= 1 || x.prevu > 0)).sort((a, b) => (b.min - a.min) || (b.prevu - a.prevu)),
       rythmes: Ariane.grilleRythmes(out),
       plages: Ariane.plagesTravail(out.map((j) => j.rail)),
+      concentration: Ariane.syntheseConcentration(out),
     };
   }
 

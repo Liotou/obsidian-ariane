@@ -89,6 +89,7 @@
  *            11n  avecChronologie  journal d'activité du coffre
  *            11o  avecDonneesJour  données du temps par jour, résumé de la journée
  *            11p  avecIphone       temps d'écran de l'iPhone, lu sur le Mac
+ *            11q  avecConcentration micro-interruptions, distractions, concentration
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -1033,6 +1034,11 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
+    "Micro-interruptions": "Micro-interruptions",
+    "Concentration": "Focus",
+    "Distractions": "Distractions",
+    "Jamais des distractions": "Never distractions",
+    "Classer maintenant": "Classify now",
     "Temps d’écran de l’iPhone": "iPhone Screen Time",
     "Interrompu par l’iPhone : ": "Interrupted by the iPhone: ",
     "Dont temps sur l’iPhone": "Of which time on the iPhone",
@@ -1634,6 +1640,10 @@ const DEFAULT_SETTINGS = {
   sommaireColonnes: 1,  // une ou deux colonnes
   iphoneActif: true,    // temps d'écran de l'iPhone, lu sur le Mac (accès complet au disque)
   iphoneAppareil: '',   // identifiant Biome de l'iPhone ('' = trouvé seul)
+  activiteDistractionSec: 30, // créneau de distraction le plus court affiché, en secondes
+  distractionSeuilSec: 10,    // micro-interruption la plus courte relevée, en secondes
+  distractionsListe: '',      // sites et applications qui distraient, un par ligne
+  distractionsExceptions: '', // ceux qui ne distraient jamais (l'emportent sur tout)
   sommaireSortie: 'fiche', // 'fiche' (10 × 15 cm) ou 'a4' (trois fiches par feuille, recto verso)
   biblioDossiersExclus: [], // dossiers dont les notes n'ont pas de bibliographie de fin
   biblioTitre: 'Bibliographie',
@@ -18092,7 +18102,11 @@ const avecActivite = (Base) => class extends Base {
       bruts.push({ categorie: meilleur[0], couleur: meilleur[1].couleur, actif: meilleur[1].ms, iph: meilleur[1].iph,
         deb: meilleur[1].a, fin: meilleur[1].b, det: new Map(meilleur[1].det) });
     }
-    const blocs = rejoindre(rejoindre(bruts).filter((b) => b.actif >= dureeMin));
+    // Les distractions ont leur propre seuil, plus fin : un passage court
+    // reste visible là où le travail, lui, ne s'émiette pas.
+    const dureeDistraction = o.dureeDistractionSec == null ? dureeMin : Math.max(0, Number(o.dureeDistractionSec) || 0) * 1000;
+    const seuil = (b) => (Ariane.estCategorieDistraction(b.categorie) ? Math.min(dureeMin, dureeDistraction) : dureeMin);
+    const blocs = rejoindre(rejoindre(bruts).filter((b) => b.actif >= seuil(b)));
     return blocs.map((b) => Object.assign({
       categorie: b.categorie,
       couleur: b.couleur || Ariane.couleurActivite(b.categorie),
@@ -18431,7 +18445,7 @@ const avecActivite = (Base) => class extends Base {
   // créneaux calculés, pas les segments lus.
   _signatureActivite() {
     const s = this.settings;
-    return [s.activiteRegles, s.activiteAutre, s.activiteGrainMin, s.activiteDureeMin].join('\u0001');
+    return [s.activiteRegles, s.activiteAutre, s.activiteGrainMin, s.activiteDureeMin, s.activiteDistractionSec].join('\u0001');
   }
 
   // Créneaux réels de plusieurs jours : Map(jour → créneaux). Trois jours lus
@@ -18456,6 +18470,7 @@ const avecActivite = (Base) => class extends Base {
         d0, d1,
         grainMin: this.settings.activiteGrainMin,
         dureeMin: this.settings.activiteDureeMin,
+        dureeDistractionSec: this.settings.activiteDistractionSec,
         autre: this.settings.activiteAutre,
       });
       const inter = (this._iphoneInterruptions && this._iphoneInterruptions.get(jour)) || [];
@@ -18473,6 +18488,7 @@ const avecActivite = (Base) => class extends Base {
       while (file.length) await Promise.all(file.splice(0, 3).map(traiter));
       this._activiteErreur = '';
       if (this.settings.activiteIAAuto) this._resumerAuto(out);
+      if (this._classerDistractionsAuto) this._classerDistractionsAuto(jours || []);
     } catch (e) {
       const msg = (e && e.message) || String(e);
       if (this._activiteErreur !== msg) {
@@ -20094,6 +20110,33 @@ const avecChronologie = (Base) => class extends Base {
     return g;
   }
 
+  // La concentration d'une période : les micro-interruptions (dont
+  // l'iPhone), leur nombre par heure de travail, ce qui distrait le plus, et
+  // les plages de concentration (coupées à chaque interruption).
+  static syntheseConcentration(jours) {
+    const micro = [];
+    let travail = 0;
+    let plages = 0;
+    let cumul = 0;
+    let longue = 0;
+    for (const j of (jours || [])) {
+      micro.push(...(j.micro || []));
+      travail += (j.obsidian || 0) + (j.externe || 0);
+      const p = Ariane.plagesConcentration(j.rail, j.micro);
+      plages += p.n;
+      cumul += p.n * p.moyenne;
+      longue = Math.max(longue, p.longue);
+    }
+    const n = micro.length;
+    return {
+      n, iphone: micro.filter((m) => m.source === 'iphone').length,
+      parHeure: travail >= 30 ? n / (travail / 60) : 0,
+      principales: Ariane.principalesDistractions(micro, 5),
+      moyenne: plages ? cumul / plages : 0,
+      longue,
+    };
+  }
+
   async analyseChronologie(debut, fin) {
     const auj = jourIsoDe(new Date());
     const jours = [];
@@ -20175,7 +20218,10 @@ const avecChronologie = (Base) => class extends Base {
         }
       }
       creneaux.sort((a, b) => a.debut.localeCompare(b.debut));
-      out.push({ jour, rail, creneaux,
+      const d0 = new Date(jour + 'T00:00:00').getTime();
+      let micro = [];
+      if (jour >= plancher && this.microDuJour) { try { micro = await this.microDuJour(jour); } catch (e) { micro = []; } }
+      out.push({ jour, rail, creneaux, micro: micro.map((m) => Object.assign({ a: (m.deb - d0) / 60000, b: (m.fin - d0) / 60000 }, m)),
         obsidian: r.obsidianMin, externe: r.externeMin, personnel: r.personnelMin });
     }
     const somme = (k) => out.reduce((s, j) => s + j[k], 0);
@@ -20187,6 +20233,7 @@ const avecChronologie = (Base) => class extends Base {
       taches: [...parTache.values()].filter((x) => x.tache && (x.min >= 1 || x.prevu > 0)).sort((a, b) => (b.min - a.min) || (b.prevu - a.prevu)),
       rythmes: Ariane.grilleRythmes(out),
       plages: Ariane.plagesTravail(out.map((j) => j.rail)),
+      concentration: Ariane.syntheseConcentration(out),
     };
   }
 
@@ -20502,6 +20549,19 @@ const avecDonneesJour = (Base) => class extends Base {
         l.push('- ' + dureeLisible(m) + ' : ' + c.split('/').pop().replace(/\.md$/, '') + (t ? ' (tâche ' + t.ref + ' : ' + t.intitule + ')' : ''));
       }
     }
+    // Les micro-interruptions et la concentration.
+    if (this.microDuJour && this.analyseChronologie) {
+      try {
+        const an = await this.analyseChronologie(jour, Ariane.decalerJour(jour, 1));
+        const c = an.concentration;
+        if (c && (c.n || c.longue)) {
+          l.push('', 'CONCENTRATION : ' + c.n + ' micro-interruption' + (c.n > 1 ? 's' : '') + (c.iphone ? ' (dont ' + c.iphone + ' sur l\'iPhone)' : '')
+            + (c.parHeure ? ', soit ' + (Math.round(c.parHeure * 10) / 10) + ' par heure de travail' : '')
+            + (c.principales.length ? ' ; surtout ' + c.principales.map((x) => x.quoi + ' (' + x.n + ' fois)').join(', ') : '')
+            + (c.longue ? ' ; plages de concentration de ' + dureeLisible(c.moyenne) + ' en moyenne, la plus longue ' + dureeLisible(c.longue) : '') + '.');
+        }
+      } catch (e) { /* sans mesure */ }
+    }
     // Les créneaux hors Obsidian, avec leur résumé et leur catégorie.
     if (this.activiteDisponible && this.activiteDisponible()) {
       const blocs = ((await this.activitePlage([jour])).get(jour) || []);
@@ -20653,7 +20713,7 @@ const avecDonneesJour = (Base) => class extends Base {
       '',
       'DÉROULÉ :',
       '1. La base tangible de la journée : la synthèse de ce qui a été accompli (tâches terminées ou avancées, travail de fond, cours, réunions et rendez-vous déjà passés).',
-      '2. Un miroir honnête : où le temps est allé, en rapprochant le prévu du réalisé (créneaux tenus, faits en partie, laissés de côté) et en nommant les moments de distraction s\'il y en a eu. Si la journée a été productive, félicite sans excès. Si elle a été dispersée ou si du travail prévu a été repoussé, sois lucide : reconnais l\'écart sans le juger, et invite à tourner la page. Rassure par la logique plutôt que par des formules : une journée ne définit pas une thèse entière.',
+      '2. Un miroir honnête : où le temps est allé, en rapprochant le prévu du réalisé (créneaux tenus, faits en partie, laissés de côté) et en nommant les moments de distraction s\'il y en a eu, y compris les micro-interruptions (leur nombre, ce qui les a causées, la plus longue plage de concentration) quand le relevé les donne. Si la journée a été productive, félicite sans excès. Si elle a été dispersée ou si du travail prévu a été repoussé, sois lucide : reconnais l\'écart sans le juger, et invite à tourner la page. Rassure par la logique plutôt que par des formules : une journée ne définit pas une thèse entière.',
       '3. Demain (' + jl(demain) + ') : ce qui l\'attend, concrètement et sans l\'accabler (le premier rendez-vous, les créneaux prévus, les échéances), en une ou deux phrases qui préparent sans inquiéter. Si rien n\'est prévu, dis-le simplement.',
       '4. Termine par une salutation élégante qui invite à la déconnexion immédiate.',
       '',
@@ -21046,6 +21106,258 @@ const avecIphone = (Base) => class extends Base {
 
   //#endregion Ariane · iPhone (lecture)
 };
+// ── avecConcentration ─────────────────────────────────────────────────────
+// Domaine : les micro-interruptions et la concentration.
+// Les créneaux réels se forment par tranches de quelques minutes : un coup
+// d'œil de quarante secondes à un site sans rapport, ou au téléphone, s'y
+// perd. Or chacun coupe la concentration. Ici, Ariane les relève sur les
+// données brutes (segments du Mac et de l'iPhone), dès quelques secondes :
+//  - un segment du Mac ou de l'iPhone qui est une distraction (liste de
+//    Monsieur, règles d'activité, ou appris de l'IA, site par site) ;
+//  - le téléphone utilisé pendant que le Mac l'est (une interruption).
+// Le calendrier les marque d'un trait rouge en travers de la colonne des
+// créneaux réels ; la chronologie et le bilan du soir en tirent des mesures
+// (nombre par heure de travail, plages de concentration).
+const avecConcentration = (Base) => class extends Base {
+  //#region Ariane · concentration (statique)
+  // ── fonctions pures ─────────────────────────────────────────────────────
+
+  // La clé d'un segment pour juger s'il distrait : le domaine d'une page
+  // web, sinon le nom de l'application (sans « (iPhone) »), en minuscules.
+  static cleDistraction(seg) {
+    const u = String((seg && seg.url) || '');
+    const m = u.match(/^[a-z][\w+.-]*:\/\/([^/?#]+)/i);
+    if (m) return m[1].replace(/^www\./, '').toLowerCase();
+    return String((seg && seg.app) || '').replace(/\s*\(iPhone\)\s*$/, '').trim().toLowerCase();
+  }
+
+  // Une liste de Monsieur (un élément par ligne : domaine ou application) en
+  // fonction de test : un domaine vaut aussi pour ses sous-domaines.
+  static compilerListeDistractions(texte) {
+    const l = String(texte || '').split('\n').map((x) => x.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, ''))
+      .filter((x) => x && !x.startsWith('#'));
+    return (cle) => l.some((x) => cle === x || cle.endsWith('.' + x));
+  }
+
+  // Une catégorie de vie privée ou de distraction (même lecture que l'IA).
+  static estCategorieDistraction(nom) {
+    return /personnel|distraction|priv|loisir/i.test(String(nom || ''));
+  }
+
+  // Les micro-interruptions d'un jour : [{ deb, fin, quoi, source }] (ms ;
+  // source 'mac' ou 'iphone'). `segs` : les segments du jour (Mac et
+  // iPhone) ; `interruptions` : le téléphone utilisé pendant le Mac ;
+  // `distrait(seg)` : ce segment distrait-il ? Les morceaux d'une même chose
+  // séparés de moins de `fusionSec` se rejoignent ; ceux de moins de
+  // `seuilSec` en tout sont écartés.
+  static microDistractions(segs, interruptions, distrait, opts) {
+    const o = Object.assign({ seuilSec: 10, fusionSec: 20 }, opts || {});
+    const bruts = [];
+    for (const s of (segs || [])) {
+      if (!(s.fin > s.deb) || !distrait(s)) continue;
+      const iphone = s.appareil === 'iphone';
+      bruts.push({ deb: s.deb, fin: s.fin, source: iphone ? 'iphone' : 'mac',
+        quoi: iphone ? String(s.app || '').replace(/\s*\(iPhone\)\s*$/, '') : (Ariane.cleDistraction(s) || String(s.app || '')) });
+    }
+    for (const x of (interruptions || [])) {
+      if (x.fin > x.deb) bruts.push({ deb: x.deb, fin: x.fin, source: 'iphone', quoi: x.app });
+    }
+    bruts.sort((a, b) => a.deb - b.deb);
+    const out = [];
+    for (const b of bruts) {
+      const der = out[out.length - 1];
+      if (der && der.source === b.source && der.quoi === b.quoi && b.deb - der.fin <= o.fusionSec * 1000) {
+        der.fin = Math.max(der.fin, b.fin);
+      } else if (der && b.deb < der.fin) {
+        // Deux sources en même temps (le téléphone pendant un site distrayant) :
+        // une seule interruption, la première nommée.
+        der.fin = Math.max(der.fin, b.fin);
+      } else {
+        out.push(Object.assign({}, b));
+      }
+    }
+    return out.filter((x) => x.fin - x.deb >= o.seuilSec * 1000);
+  }
+
+  // Les plages de concentration d'une journée : le travail (rail sans le
+  // personnel, en minutes depuis minuit), les pauses de moins de `pause`
+  // minutes comblées, puis coupé à chaque micro-interruption. Rend { n,
+  // moyenne, longue } (minutes ; plages de 5 min au moins).
+  static plagesConcentration(rail, micro, pause) {
+    const p = Number(pause) >= 0 ? Number(pause) : 5;
+    const segs = (rail || []).filter((x) => x.genre !== 'personnel').map((x) => [x.a, x.b]).sort((x, y) => x[0] - y[0]);
+    const plages = [];
+    for (const [a, b] of segs) {
+      const der = plages[plages.length - 1];
+      if (der && a - der[1] <= p) der[1] = Math.max(der[1], b);
+      else plages.push([a, b]);
+    }
+    const coupes = Ariane.fusionnerIntervalles((micro || []).map((m) => [m.a, Math.max(m.b, m.a + 0.01)]));
+    const durees = [];
+    for (const [a, b] of plages) {
+      for (const [x, y] of Ariane.couperParIntervallesInverses(a, b, coupes)) durees.push(y - x);
+    }
+    const utiles = durees.filter((d) => d >= 5);
+    return { n: utiles.length, moyenne: utiles.length ? utiles.reduce((s, d) => s + d, 0) / utiles.length : 0,
+      longue: utiles.length ? Math.max(...utiles) : 0 };
+  }
+
+  // Ce qui distrait le plus : [{ quoi, n, sec }], par nombre de fois.
+  static principalesDistractions(micro, max) {
+    const m = new Map();
+    for (const x of (micro || [])) {
+      const k = x.quoi || '?';
+      const v = m.get(k) || { quoi: k, n: 0, sec: 0 };
+      v.n++;
+      v.sec += (x.fin - x.deb) / 1000;
+      m.set(k, v);
+    }
+    return [...m.values()].sort((a, b) => (b.n - a.n) || (b.sec - a.sec)).slice(0, max || 5);
+  }
+
+  // La consigne pour classer, en une fois, des sites et applications
+  // inconnus : distraction ou non, pour le travail de Monsieur.
+  static promptDistractions(cles, contexte) {
+    return [
+      'Pour chacun des sites et applications ci-dessous, dis si, ouvert pendant une journée de travail, c\'est une distraction (true) ou un outil de travail (false).',
+      contexte ? 'Contexte : ' + contexte : '',
+      'Une messagerie personnelle, un réseau social, une vidéo de loisir, un achat, l\'actualité générale sont des distractions ; une base bibliographique, un outil de rédaction, la messagerie du travail, un moteur de recherche ne le sont pas.',
+      '',
+      'Réponds UNIQUEMENT par du JSON : {"cle": true ou false, …}, avec exactement les clés données.',
+      '',
+      cles.map((c) => '- ' + c).join('\n'),
+    ].filter((x) => x !== '').join('\n');
+  }
+
+  //#endregion Ariane · concentration (statique)
+
+  //#region Ariane · concentration
+  // ── distractions apprises, micro-interruptions d'un jour ────────────────
+
+  get cheminDistractionsApprises() { return '.ariane/distractions.json'; }
+
+  async _chargerDistractionsApprises() {
+    if (this._distractionsApprises) return this._distractionsApprises;
+    let o = {};
+    try {
+      const a = this.app.vault.adapter;
+      if (await a.exists(this.cheminDistractionsApprises)) o = JSON.parse(await a.read(this.cheminDistractionsApprises)) || {};
+    } catch (e) { o = {}; }
+    this._distractionsApprises = o;
+    return o;
+  }
+
+  async _sauverDistractionsApprises() {
+    const a = this.app.vault.adapter;
+    if (!(await a.exists('.ariane'))) await a.mkdir('.ariane');
+    await a.write(this.cheminDistractionsApprises, JSON.stringify(this._distractionsApprises || {}, null, 1));
+  }
+
+  // Le juge d'un segment : les exceptions de Monsieur d'abord, puis sa liste,
+  // puis les règles d'activité (catégorie de distraction), puis ce que l'IA a
+  // appris. L'iPhone, faute de mieux, est jugé comme le Mac.
+  _jugeDistraction() {
+    const s = this.settings;
+    const sig = [s.distractionsListe, s.distractionsExceptions, s.activiteRegles].join('\u0001');
+    if (this._juge && this._juge.sig === sig && this._juge.appris === this._distractionsApprises) return this._juge.fn;
+    const oui = Ariane.compilerListeDistractions(s.distractionsListe);
+    const non = Ariane.compilerListeDistractions(s.distractionsExceptions);
+    const regles = Ariane.compilerReglesActivite(s.activiteRegles);
+    const appris = this._distractionsApprises || {};
+    const memo = new Map();
+    const fn = (seg) => {
+      const cle = Ariane.cleDistraction(seg);
+      if (!cle) return false;
+      const k = cle + '\u0001' + (seg.titre || '');
+      if (memo.has(k)) return memo.get(k);
+      let v;
+      if (non(cle)) v = false;
+      else if (oui(cle)) v = true;
+      else {
+        const r = Ariane.classerActivite(seg, regles);
+        if (r && Ariane.estCategorieDistraction(r.categorie)) v = true;
+        else v = !!(appris[cle] && appris[cle].d);
+      }
+      memo.set(k, v);
+      return v;
+    };
+    this._juge = { sig, appris: this._distractionsApprises, fn };
+    return fn;
+  }
+
+  // Les micro-interruptions d'un jour, à partir des segments déjà lus
+  // (activitePlage les a demandés). Gardées par jour et par segments.
+  async microDuJour(jour) {
+    if (!this.activiteDisponible || !this.activiteDisponible()) return [];
+    await this._chargerDistractionsApprises();
+    let segs;
+    try { segs = await this._segmentsDuJour(jour); } catch (e) { return []; }
+    const inter = (this._iphoneInterruptions && this._iphoneInterruptions.get(jour)) || [];
+    const juge = this._jugeDistraction();
+    const cache = this._microCache || (this._microCache = new Map());
+    const c = cache.get(jour);
+    if (c && c.segs === segs && c.juge === juge && c.inter === inter) return c.micro;
+    const micro = Ariane.microDistractions(segs, inter, juge, { seuilSec: Number(this.settings.distractionSeuilSec) || 10 });
+    cache.set(jour, { segs, juge, inter, micro });
+    return micro;
+  }
+
+  // Classe par l'IA, en une fois, les sites et applications des jours
+  // donnés que rien ne juge encore (ni liste, ni règle, ni apprentissage).
+  // Les quarante plus fréquentés au plus. Rend le nombre appris.
+  async classerDistractionsInconnues(jours, silencieux) {
+    if (!this.activiteDisponible || !this.activiteDisponible()) return 0;
+    const appris = await this._chargerDistractionsApprises();
+    const s = this.settings;
+    const oui = Ariane.compilerListeDistractions(s.distractionsListe);
+    const non = Ariane.compilerListeDistractions(s.distractionsExceptions);
+    const regles = Ariane.compilerReglesActivite(s.activiteRegles);
+    const temps = new Map();
+    for (const j of jours) {
+      let segs = [];
+      try { segs = await this._segmentsDuJour(j); } catch (e) { continue; }
+      for (const seg of segs) {
+        const cle = Ariane.cleDistraction(seg);
+        if (!cle || appris[cle] || oui(cle) || non(cle)) continue;
+        const r = Ariane.classerActivite(seg, regles);
+        if (r && Ariane.estCategorieDistraction(r.categorie)) continue;
+        temps.set(cle, (temps.get(cle) || 0) + (seg.fin - seg.deb));
+      }
+    }
+    const cles = [...temps].sort((a, b) => b[1] - a[1]).slice(0, 40).map((x) => x[0]);
+    if (!cles.length) { if (!silencieux) new obsidian.Notice(tr('Distractions : rien de nouveau à classer.')); return 0; }
+    const avis = silencieux ? null : new obsidian.Notice(tr('Distractions : classement de ') + cles.length + tr(' sites et applications…'), 0);
+    try {
+      const rep = await this._genererActiviteIA(Ariane.promptDistractions(cles, s.activiteIAContexte), 1200, 'synthese');
+      const le = jourIsoDe(new Date());
+      let n = 0;
+      for (const c of cles) {
+        if (typeof rep[c] === 'boolean') { appris[c] = { d: rep[c], le }; n++; }
+      }
+      this._distractionsApprises = Object.assign({}, appris);
+      await this._sauverDistractionsApprises();
+      if (avis) avis.hide();
+      if (!silencieux) new obsidian.Notice(tr('Distractions : ') + n + tr(' sites et applications classés.'));
+      this._rafraichirActivite(false);
+      return n;
+    } catch (e) {
+      if (avis) avis.hide();
+      if (!silencieux) new obsidian.Notice(tr('Distractions : classement impossible : ') + ((e && e.message) || e), 10000);
+      return 0;
+    }
+  }
+
+  // Avec le résumé automatique des créneaux : le classement des inconnus
+  // suit, une fois toutes les six heures au plus.
+  _classerDistractionsAuto(jours) {
+    if (!this.settings.activiteIAAuto) return;
+    if (this._distractionsAutoLe && Date.now() - this._distractionsAutoLe < 6 * 3600000) return;
+    this._distractionsAutoLe = Date.now();
+    this.classerDistractionsInconnues(jours, true).catch(() => {});
+  }
+
+  //#endregion Ariane · concentration
+};
 
 // ── class Ariane ──────────────────────────────────────────────────────────
 // Le point d'assemblage. Ne porte que le cycle de vie : onload, et les
@@ -21065,7 +21377,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecActivite,
   avecChronologie,
   avecDonneesJour,
-  avecIphone) {
+  avecIphone,
+  avecConcentration) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -21128,6 +21441,16 @@ class Ariane extends composer(obsidian.Plugin,
       name: tr('Atomiser : la note source active'),
       icon: 'atom',
       callback: () => this.commandeNoteActive(),
+    });
+    this.addCommand({
+      id: 'distractions-classer',
+      name: tr('Distractions : classer les sites et applications inconnus (IA)'),
+      icon: 'shield-alert',
+      callback: () => {
+        const jours = [];
+        for (let k = 0; k < 7; k++) jours.push(Ariane.decalerJour(jourIsoDe(new Date()), -k));
+        this.classerDistractionsInconnues(jours, false);
+      },
     });
     this.addCommand({
       id: 'sommaire-lecture',
@@ -23562,6 +23885,34 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setDesc(tr('En minutes de temps actif. Un créneau réel qui en compte moins est écarté, et ses voisins de même catégorie se rejoignent.'))
         .addText((t) => t.setValue(String(s.activiteDureeMin == null ? 10 : s.activiteDureeMin))
           .onChange(async (v) => { const n = parseInt(v, 10); s.activiteDureeMin = Number.isFinite(n) ? Math.max(0, n) : 10; await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+      new obsidian.Setting(c)
+        .setName(tr('Créneau de distraction le plus court'))
+        .setDesc(tr("En secondes. Les créneaux de vie privée ou de distraction ont leur propre seuil, plus fin, pour rester visibles."))
+        .addText((t) => t.setValue(String(s.activiteDistractionSec == null ? 30 : s.activiteDistractionSec))
+          .onChange(async (v) => { const n = parseInt(v, 10); s.activiteDistractionSec = Number.isFinite(n) ? Math.max(0, n) : 30; await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+      this._section(c, tr('Micro-interruptions'));
+      this._aide(c, tr("Un coup d'œil de quelques secondes à un site sans rapport, ou au téléphone, coupe la concentration sans former de créneau. Ariane les relève dès quelques secondes et les marque d'un trait rouge dans la colonne des créneaux réels du calendrier ; la synthèse de la chronologie et le bilan du soir en tirent la concentration de la journée. Une distraction : un site ou une application de la liste ci-dessous, ou d'une catégorie de distraction de vos règles, ou appris de l'IA (commande « Distractions : classer les sites et applications inconnus »). Le téléphone utilisé pendant que le Mac l'est en est toujours une."));
+      new obsidian.Setting(c)
+        .setName(tr('Micro-interruption la plus courte'))
+        .setDesc(tr('En secondes.'))
+        .addText((t) => t.setValue(String(s.distractionSeuilSec || 10))
+          .onChange(async (v) => { s.distractionSeuilSec = Math.max(1, parseInt(v, 10) || 10); await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+      const liste = (cle, nom, desc, exemple) => new obsidian.Setting(c).setName(nom).setDesc(desc)
+        .addTextArea((t) => {
+          t.setPlaceholder(exemple).setValue(s[cle] || '').onChange(async (v) => { s[cle] = v; await maj(); this.plugin._rafraichirActiviteDiffere(); });
+          t.inputEl.rows = 4;
+          t.inputEl.style.width = '100%';
+        });
+      liste('distractionsListe', tr('Distractions'), tr("Un site (domaine) ou une application par ligne ; un domaine vaut pour ses sous-domaines."), 'reddit.com\nyoutube.com\nWhatsApp');
+      liste('distractionsExceptions', tr('Jamais des distractions'), tr("Ceux-ci ne distraient jamais, quoi qu'en disent les règles ou l'IA."), 'scholar.google.com\nTeams');
+      new obsidian.Setting(c)
+        .setName(tr('Classer les inconnus par l’IA'))
+        .setDesc(tr("Les sites et applications des sept derniers jours que rien ne juge encore, quarante au plus, sont classés une fois pour toutes. Avec le résumé automatique, c'est fait seul, toutes les six heures au plus."))
+        .addButton((b) => b.setButtonText(tr('Classer maintenant')).onClick(() => {
+          const jours = [];
+          for (let k = 0; k < 7; k++) jours.push(Ariane.decalerJour(jourIsoDe(new Date()), -k));
+          this.plugin.classerDistractionsInconnues(jours, false);
+        }));
 
       this._section(c, tr('IA de l\'activité'));
       this._aide(c, tr("Sur chaque créneau réel, l'IA écrit ce qui a été fait et le range dans une de vos catégories, dont une pour la vie privée et les distractions (rayée dans le calendrier). Clic droit sur un créneau réel : résumer ce créneau ou la journée ; commande « Activité réelle : résumer la semaine affichée (IA) ». Les résumés sont gardés dans les fichiers du jour (« .ariane/jours »). Avec un fournisseur en ligne (Mistral, Claude), les titres de fenêtres et les sites lui sont envoyés ; Ollama et LM Studio restent sur l'ordinateur."));
@@ -36522,7 +36873,7 @@ class MoteurCalendrier extends MoteurVue {
       for (const i of this.racine.querySelectorAll('.zfa-cal-sem-inner')) this._peindreTravailReel(i);
       return;
     }
-    for (const x of inner.querySelectorAll('.zfa-cal-presence, .zfa-cal-reel, .zfa-cal-jauge, .zfa-cal-jauge-val')) x.remove();
+    for (const x of inner.querySelectorAll('.zfa-cal-presence, .zfa-cal-reel, .zfa-cal-jauge, .zfa-cal-jauge-val, .zfa-cal-micro')) x.remove();
     const g = this.greffon;
     const avecObsidian = g.settings.calTravailReel !== false && !!g.sessionsTravail;
     const avecExterne = this._activiteVisible();
@@ -36617,7 +36968,29 @@ class MoteurCalendrier extends MoteurVue {
         });
         el.addEventListener('contextmenu', (e) => this._menuPresence(e, x, t));
       }
+      if (avecExterne) this._poserMicro(col, jour, hDeb, PXH);
     }
+  }
+
+  // Les micro-interruptions d'un jour : un trait rouge en travers de la
+  // colonne des créneaux réels, à l'heure où elles commencent, jamais sur
+  // les créneaux de tâches. Leur détail (quoi, combien de temps) au survol.
+  _poserMicro(col, jour, hDeb, PXH) {
+    this.greffon.microDuJour(jour).then((micro) => {
+      if (this._detruit || !col.isConnected) return;
+      for (const x of col.querySelectorAll('.zfa-cal-micro')) x.remove();
+      const d0 = new Date(jour + 'T00:00:00').getTime();
+      const hm = (ms) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+      for (const m of micro) {
+        const a = (m.deb - d0) / 60000;
+        const el = col.createDiv({ cls: 'zfa-cal-micro' + (m.source === 'iphone' ? ' est-iphone' : '') });
+        el.style.top = ((a / 60 - hDeb) * PXH - 3) + 'px';
+        const sec = Math.round((m.fin - m.deb) / 1000);
+        el.setAttribute('aria-label', hm(m.deb) + ' : ' + m.quoi + (m.source === 'iphone' ? ' (iPhone)' : '') + ', '
+          + (sec < 60 ? sec + ' s' : dureeLisible(Math.round(sec / 60))));
+        el.addEventListener('pointerdown', (e) => e.stopPropagation());
+      }
+    }).catch(() => {});
   }
 
   // Pose (ref non vide) ou retire la classe de survol partagé. Seulement
@@ -39597,6 +39970,7 @@ class VueChronologie extends obsidian.ItemView {
       this._dessinerTachesPeriode(cote, analyse);
       this._dessinerPrevuRealise(cote, analyse);
       this._dessinerRythmes(cote, analyse);
+      this._dessinerConcentration(cote, analyse);
     }
     this._dessinerComptes(cote, Ariane.filtrerChrono(dansPeriode, 'tout', this.dossier));
     c.scrollTop = defil;
@@ -40078,6 +40452,32 @@ class VueChronologie extends obsidian.ItemView {
       }
       const avenir = an.jours.reduce((s2, j) => s2 + j.creneaux.filter((c) => c.etat === 'avenir').length, 0);
       if (avenir) corps.createDiv({ cls: 'zfa-chrono-note', text: avenir + ' ' + (avenir > 1 ? tr('créneaux encore à venir') : tr('créneau encore à venir')) });
+    });
+  }
+
+  // Concentration : les micro-interruptions de la période (nombre, par
+  // heure de travail, dont l'iPhone), ce qui distrait le plus, et la durée
+  // des plages de concentration.
+  _dessinerConcentration(hote, an) {
+    const c = an.concentration;
+    if (!c || (!c.n && !c.longue)) return;
+    this._rubrique(hote, 'concentration', tr('Concentration'), (corps) => {
+      const tete = corps.createDiv({ cls: 'zfa-chrono-taux' });
+      tete.createSpan({ cls: 'zfa-chrono-total', text: String(c.n) });
+      tete.createSpan({ cls: 'zfa-chrono-compte-n', text: (c.n > 1 ? tr('micro-interruptions') : tr('micro-interruption'))
+        + (c.parHeure ? ', ' + (Math.round(c.parHeure * 10) / 10).toLocaleString('fr-FR') + tr(' par heure') : '') });
+      if (c.iphone) corps.createDiv({ cls: 'zfa-chrono-note', text: tr('dont ') + c.iphone + tr(' sur l’iPhone') });
+      if (c.principales.length) {
+        const max = Math.max(...c.principales.map((x) => x.n));
+        for (const x of c.principales) {
+          this._ligneBarre(corps, x.quoi, x.n + ' ' + tr('fois'), x.n / max, 'var(--color-red)',
+            { titre: x.n + ' ' + tr('fois') + ', ' + Math.round(x.sec / 60) + ' min ' + tr('en tout') });
+        }
+      }
+      if (c.longue) {
+        corps.createDiv({ cls: 'zfa-chrono-note', text: tr('Concentration sans interruption : ') + dureeLisible(c.moyenne) + ' '
+          + tr('en moyenne') + ', ' + tr('la plus longue') + ' ' + dureeLisible(c.longue) });
+      }
     });
   }
 

@@ -843,6 +843,11 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
+    "Micro-interruptions": "Micro-interruptions",
+    "Concentration": "Focus",
+    "Distractions": "Distractions",
+    "Jamais des distractions": "Never distractions",
+    "Classer maintenant": "Classify now",
     "Temps d’écran de l’iPhone": "iPhone Screen Time",
     "Interrompu par l’iPhone : ": "Interrupted by the iPhone: ",
     "Dont temps sur l’iPhone": "Of which time on the iPhone",
@@ -1444,6 +1449,10 @@ const DEFAULT_SETTINGS = {
   sommaireColonnes: 1,  // une ou deux colonnes
   iphoneActif: true,    // temps d'écran de l'iPhone, lu sur le Mac (accès complet au disque)
   iphoneAppareil: '',   // identifiant Biome de l'iPhone ('' = trouvé seul)
+  activiteDistractionSec: 30, // créneau de distraction le plus court affiché, en secondes
+  distractionSeuilSec: 10,    // micro-interruption la plus courte relevée, en secondes
+  distractionsListe: '',      // sites et applications qui distraient, un par ligne
+  distractionsExceptions: '', // ceux qui ne distraient jamais (l'emportent sur tout)
   sommaireSortie: 'fiche', // 'fiche' (10 × 15 cm) ou 'a4' (trois fiches par feuille, recto verso)
   biblioDossiersExclus: [], // dossiers dont les notes n'ont pas de bibliographie de fin
   biblioTitre: 'Bibliographie',

@@ -1205,6 +1205,34 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setDesc(tr('En minutes de temps actif. Un créneau réel qui en compte moins est écarté, et ses voisins de même catégorie se rejoignent.'))
         .addText((t) => t.setValue(String(s.activiteDureeMin == null ? 10 : s.activiteDureeMin))
           .onChange(async (v) => { const n = parseInt(v, 10); s.activiteDureeMin = Number.isFinite(n) ? Math.max(0, n) : 10; await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+      new obsidian.Setting(c)
+        .setName(tr('Créneau de distraction le plus court'))
+        .setDesc(tr("En secondes. Les créneaux de vie privée ou de distraction ont leur propre seuil, plus fin, pour rester visibles."))
+        .addText((t) => t.setValue(String(s.activiteDistractionSec == null ? 30 : s.activiteDistractionSec))
+          .onChange(async (v) => { const n = parseInt(v, 10); s.activiteDistractionSec = Number.isFinite(n) ? Math.max(0, n) : 30; await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+      this._section(c, tr('Micro-interruptions'));
+      this._aide(c, tr("Un coup d'œil de quelques secondes à un site sans rapport, ou au téléphone, coupe la concentration sans former de créneau. Ariane les relève dès quelques secondes et les marque d'un trait rouge dans la colonne des créneaux réels du calendrier ; la synthèse de la chronologie et le bilan du soir en tirent la concentration de la journée. Une distraction : un site ou une application de la liste ci-dessous, ou d'une catégorie de distraction de vos règles, ou appris de l'IA (commande « Distractions : classer les sites et applications inconnus »). Le téléphone utilisé pendant que le Mac l'est en est toujours une."));
+      new obsidian.Setting(c)
+        .setName(tr('Micro-interruption la plus courte'))
+        .setDesc(tr('En secondes.'))
+        .addText((t) => t.setValue(String(s.distractionSeuilSec || 10))
+          .onChange(async (v) => { s.distractionSeuilSec = Math.max(1, parseInt(v, 10) || 10); await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+      const liste = (cle, nom, desc, exemple) => new obsidian.Setting(c).setName(nom).setDesc(desc)
+        .addTextArea((t) => {
+          t.setPlaceholder(exemple).setValue(s[cle] || '').onChange(async (v) => { s[cle] = v; await maj(); this.plugin._rafraichirActiviteDiffere(); });
+          t.inputEl.rows = 4;
+          t.inputEl.style.width = '100%';
+        });
+      liste('distractionsListe', tr('Distractions'), tr("Un site (domaine) ou une application par ligne ; un domaine vaut pour ses sous-domaines."), 'reddit.com\nyoutube.com\nWhatsApp');
+      liste('distractionsExceptions', tr('Jamais des distractions'), tr("Ceux-ci ne distraient jamais, quoi qu'en disent les règles ou l'IA."), 'scholar.google.com\nTeams');
+      new obsidian.Setting(c)
+        .setName(tr('Classer les inconnus par l’IA'))
+        .setDesc(tr("Les sites et applications des sept derniers jours que rien ne juge encore, quarante au plus, sont classés une fois pour toutes. Avec le résumé automatique, c'est fait seul, toutes les six heures au plus."))
+        .addButton((b) => b.setButtonText(tr('Classer maintenant')).onClick(() => {
+          const jours = [];
+          for (let k = 0; k < 7; k++) jours.push(Ariane.decalerJour(jourIsoDe(new Date()), -k));
+          this.plugin.classerDistractionsInconnues(jours, false);
+        }));
 
       this._section(c, tr('IA de l\'activité'));
       this._aide(c, tr("Sur chaque créneau réel, l'IA écrit ce qui a été fait et le range dans une de vos catégories, dont une pour la vie privée et les distractions (rayée dans le calendrier). Clic droit sur un créneau réel : résumer ce créneau ou la journée ; commande « Activité réelle : résumer la semaine affichée (IA) ». Les résumés sont gardés dans les fichiers du jour (« .ariane/jours »). Avec un fournisseur en ligne (Mistral, Claude), les titres de fenêtres et les sites lui sont envoyés ; Ollama et LM Studio restent sur l'ordinateur."));

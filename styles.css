@@ -4297,3 +4297,9 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-iphone-ic svg { width: 12px; height: 12px; }
 .zfa-iphone-inter { display: flex; align-items: flex-start; gap: 6px; color: var(--text-muted); font-size: var(--font-ui-smaller); }
 .zfa-iphone-inter .zfa-iphone-ic { padding-top: 2px; }
+/* Micro-interruptions : un trait rouge en travers de la colonne des
+   créneaux réels (zone de survol un peu plus haute que le trait). */
+.zfa-cal-micro { position: absolute; left: 1px; width: 13px; height: 8px; z-index: 2; cursor: default; }
+.zfa-cal-micro::after { content: ''; position: absolute; left: 0; right: 0; top: 3px; height: 2px; border-radius: 1px;
+  background: var(--color-red); opacity: 0.9; }
+.zfa-cal-micro:hover::after { opacity: 1; box-shadow: 0 0 0 1px var(--background-primary); }

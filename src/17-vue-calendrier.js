@@ -2826,7 +2826,7 @@ class MoteurCalendrier extends MoteurVue {
       for (const i of this.racine.querySelectorAll('.zfa-cal-sem-inner')) this._peindreTravailReel(i);
       return;
     }
-    for (const x of inner.querySelectorAll('.zfa-cal-presence, .zfa-cal-reel, .zfa-cal-jauge, .zfa-cal-jauge-val')) x.remove();
+    for (const x of inner.querySelectorAll('.zfa-cal-presence, .zfa-cal-reel, .zfa-cal-jauge, .zfa-cal-jauge-val, .zfa-cal-micro')) x.remove();
     const g = this.greffon;
     const avecObsidian = g.settings.calTravailReel !== false && !!g.sessionsTravail;
     const avecExterne = this._activiteVisible();
@@ -2921,7 +2921,29 @@ class MoteurCalendrier extends MoteurVue {
         });
         el.addEventListener('contextmenu', (e) => this._menuPresence(e, x, t));
       }
+      if (avecExterne) this._poserMicro(col, jour, hDeb, PXH);
     }
+  }
+
+  // Les micro-interruptions d'un jour : un trait rouge en travers de la
+  // colonne des créneaux réels, à l'heure où elles commencent, jamais sur
+  // les créneaux de tâches. Leur détail (quoi, combien de temps) au survol.
+  _poserMicro(col, jour, hDeb, PXH) {
+    this.greffon.microDuJour(jour).then((micro) => {
+      if (this._detruit || !col.isConnected) return;
+      for (const x of col.querySelectorAll('.zfa-cal-micro')) x.remove();
+      const d0 = new Date(jour + 'T00:00:00').getTime();
+      const hm = (ms) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+      for (const m of micro) {
+        const a = (m.deb - d0) / 60000;
+        const el = col.createDiv({ cls: 'zfa-cal-micro' + (m.source === 'iphone' ? ' est-iphone' : '') });
+        el.style.top = ((a / 60 - hDeb) * PXH - 3) + 'px';
+        const sec = Math.round((m.fin - m.deb) / 1000);
+        el.setAttribute('aria-label', hm(m.deb) + ' : ' + m.quoi + (m.source === 'iphone' ? ' (iPhone)' : '') + ', '
+          + (sec < 60 ? sec + ' s' : dureeLisible(Math.round(sec / 60))));
+        el.addEventListener('pointerdown', (e) => e.stopPropagation());
+      }
+    }).catch(() => {});
   }
 
   // Pose (ref non vide) ou retire la classe de survol partagé. Seulement
