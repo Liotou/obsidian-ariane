@@ -35145,7 +35145,15 @@ class MoteurCalendrier extends MoteurVue {
     const nv = Math.max(20, Math.min(160, cur + delta));
     if (nv === cur) return;
     if (this._semScrollTop != null) this._semScrollTop = this._semScrollTop * (nv / cur);
+    // Le zoom ne déplace pas la semaine : pendant le geste (un pincement
+    // enchaîne les crans, chacun redessine), et un instant après, le jour
+    // affiché ne suit plus le défilement horizontal. Sans ce gel, un
+    // défilement tardif d'une grille déjà remplacée renvoyait des semaines
+    // en arrière.
+    const ancre = this._ancre;
+    this._ancreGeleeJusqua = Date.now() + 600;
     await this.ctx.ecrire('calPxHeure', nv);
+    this._ancre = ancre;
     this.dessiner();
   }
 
@@ -36940,10 +36948,14 @@ class MoteurCalendrier extends MoteurVue {
     // dans le passé. Précédent / suivant partent aussi de ce que l'on voit.
     let idxVu = CENTRE;
     corps.addEventListener('scroll', () => {
+      // Une grille retirée de l'écran (remplacée par un redessin) peut encore
+      // émettre un défilement, à la position zéro : il ne dit rien du jour vu.
+      if (!corps.isConnected) return;
       sync();
       this._semScrollTop = corps.scrollTop;
       const idx = Math.max(0, Math.min(TAMPON - 1, Math.round(corps.scrollLeft / colW)));
-      if (idx !== idxVu && !this._detruit) {
+      const gelee = this._ancreGeleeJusqua && Date.now() < this._ancreGeleeJusqua;
+      if (idx !== idxVu && !this._detruit && !gelee) {
         idxVu = idx;
         this._ancre = jours[idx];
         const titre = this.racine.querySelector('.zfa-cal-titre');
