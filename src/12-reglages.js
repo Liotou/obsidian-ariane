@@ -1205,11 +1205,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setDesc(tr('En minutes de temps actif. Un créneau réel qui en compte moins est écarté, et ses voisins de même catégorie se rejoignent.'))
         .addText((t) => t.setValue(String(s.activiteDureeMin == null ? 10 : s.activiteDureeMin))
           .onChange(async (v) => { const n = parseInt(v, 10); s.activiteDureeMin = Number.isFinite(n) ? Math.max(0, n) : 10; await maj(); this.plugin._rafraichirActiviteDiffere(); }));
-      new obsidian.Setting(c)
-        .setName(tr('Créneau de distraction le plus court'))
-        .setDesc(tr("En secondes. Les créneaux de vie privée ou de distraction ont leur propre seuil, plus fin, pour rester visibles."))
-        .addText((t) => t.setValue(String(s.activiteDistractionSec == null ? 30 : s.activiteDistractionSec))
-          .onChange(async (v) => { const n = parseInt(v, 10); s.activiteDistractionSec = Number.isFinite(n) ? Math.max(0, n) : 30; await maj(); this.plugin._rafraichirActiviteDiffere(); }));
       this._section(c, tr('Micro-interruptions'));
       this._aide(c, tr("Un coup d'œil de quelques secondes à un site sans rapport, ou au téléphone, coupe la concentration sans former de créneau. Ariane les relève dès quelques secondes et les marque d'un trait rouge dans la colonne des créneaux réels du calendrier ; la synthèse de la chronologie et le bilan du soir en tirent la concentration de la journée. Une distraction : un site ou une application de la liste ci-dessous, ou d'une catégorie de distraction de vos règles, ou appris de l'IA (commande « Distractions : classer les sites et applications inconnus »). Le téléphone utilisé pendant que le Mac l'est en est toujours une."));
       new obsidian.Setting(c)

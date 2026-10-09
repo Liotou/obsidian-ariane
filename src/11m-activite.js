@@ -347,11 +347,10 @@ const avecActivite = (Base) => class extends Base {
       bruts.push({ categorie: meilleur[0], couleur: meilleur[1].couleur, actif: meilleur[1].ms, iph: meilleur[1].iph,
         deb: meilleur[1].a, fin: meilleur[1].b, det: new Map(meilleur[1].det) });
     }
-    // Les distractions ont leur propre seuil, plus fin : un passage court
-    // reste visible là où le travail, lui, ne s'émiette pas.
-    const dureeDistraction = o.dureeDistractionSec == null ? dureeMin : Math.max(0, Number(o.dureeDistractionSec) || 0) * 1000;
-    const seuil = (b) => (Ariane.estCategorieDistraction(b.categorie) ? Math.min(dureeMin, dureeDistraction) : dureeMin);
-    const blocs = rejoindre(rejoindre(bruts).filter((b) => b.actif >= seuil(b)));
+    // Une distraction plus courte que le seuil n'a pas de créneau à elle :
+    // elle se voit comme un trou dans le créneau de travail (voir
+    // avecConcentration).
+    const blocs = rejoindre(rejoindre(bruts).filter((b) => b.actif >= dureeMin));
     return blocs.map((b) => Object.assign({
       categorie: b.categorie,
       couleur: b.couleur || Ariane.couleurActivite(b.categorie),
@@ -690,7 +689,7 @@ const avecActivite = (Base) => class extends Base {
   // créneaux calculés, pas les segments lus.
   _signatureActivite() {
     const s = this.settings;
-    return [s.activiteRegles, s.activiteAutre, s.activiteGrainMin, s.activiteDureeMin, s.activiteDistractionSec].join('\u0001');
+    return [s.activiteRegles, s.activiteAutre, s.activiteGrainMin, s.activiteDureeMin].join('\u0001');
   }
 
   // Créneaux réels de plusieurs jours : Map(jour → créneaux). Trois jours lus
@@ -715,7 +714,6 @@ const avecActivite = (Base) => class extends Base {
         d0, d1,
         grainMin: this.settings.activiteGrainMin,
         dureeMin: this.settings.activiteDureeMin,
-        dureeDistractionSec: this.settings.activiteDistractionSec,
         autre: this.settings.activiteAutre,
       });
       const inter = (this._iphoneInterruptions && this._iphoneInterruptions.get(jour)) || [];

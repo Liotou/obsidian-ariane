@@ -58,15 +58,15 @@ test('distractions : la consigne pour l\'IA', () => {
   assert.match(p, /\{"cle": true ou false/);
 });
 
-test('créneaux : un seuil plus fin pour les distractions', () => {
+test('créneaux : une distraction courte n\'a pas de créneau à elle', () => {
   const m = (h) => Date.parse('2026-10-08T' + h + ':00Z');
   const regles = Ariane.compilerReglesActivite('Personnel et distraction #999999 = reddit\nRédaction #333333 = Word');
   const segs = [
     { deb: m('10:00'), fin: m('10:03'), app: 'Safari', titre: '', url: 'https://reddit.com' },
-    { deb: m('11:00'), fin: m('11:03'), app: 'Word', titre: '', url: '' },
+    { deb: m('11:00'), fin: m('11:15'), app: 'Word', titre: '', url: '' },
   ];
-  const b = Ariane.agregerActivite(segs, regles, { d0: m('00:00'), d1: m('23:59'), grainMin: 5, dureeMin: 10, dureeDistractionSec: 30 });
-  assert.deepEqual(b.map((x) => x.categorie), ['Personnel et distraction'], 'la distraction de trois minutes reste, pas le travail');
+  const b = Ariane.agregerActivite(segs, regles, { d0: m('00:00'), d1: m('23:59'), grainMin: 5, dureeMin: 10 });
+  assert.deepEqual(b.map((x) => x.categorie), ['Rédaction'], 'trois minutes de distraction : un trou, pas une pastille');
 });
 
 test('micro-interruptions : seulement pendant le travail, et leur libellé', () => {
