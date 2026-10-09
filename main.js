@@ -1035,6 +1035,8 @@ const TEXTES = {
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
+    "Travail sur les notes": "Work on notes",
+    "Autres activités": "Other activities",
     "autres notes": "other notes",
     "Aussi : ": "Also: ",
     "autre note": "other note",
@@ -17934,6 +17936,30 @@ const avecActivite = (Base) => class extends Base {
     return regles;
   }
 
+  // Le travail sur les notes : les sessions d'Ariane, et le dessin dans
+  // draw.io (au sein d'Obsidian), même catégorie partout.
+  static get CATEGORIE_NOTES() { return 'Travail sur les notes'; }
+
+  // Les règles d'Ariane, avant celles de Monsieur : le temps passé dans
+  // Obsidian hors d'une note (les sessions d'Ariane comptent les notes)
+  // est de l'organisation (bases, calendrier, frise, chronologie), sauf le
+  // dessin dans draw.io, qui est du travail sur les notes. `categoriesIA`
+  // donne sa couleur à « Organisation » si elle y figure.
+  static reglesIntegrees(categoriesIA) {
+    const orga = (categoriesIA || []).find((c) => /^organisation$/i.test(c.nom));
+    return [
+      { categorie: Ariane.CATEGORIE_NOTES, couleur: 'var(--interactive-accent)', ignorer: false,
+        motifs: [{ re: /^obsidian\n[^\n]*(\.drawio|draw\.io)/i }] },
+      { categorie: orga ? orga.nom : 'Organisation', couleur: (orga && orga.couleur) || '#7c5cbf', ignorer: false,
+        motifs: [{ champ: 'app', re: /^obsidian$/i }] },
+    ];
+  }
+
+  // Les règles en vigueur : celles d'Ariane, puis celles de Monsieur.
+  reglesActivite() {
+    return Ariane.reglesIntegrees(this.categoriesIA ? this.categoriesIA() : []).concat(Ariane.compilerReglesActivite(this.settings.activiteRegles));
+  }
+
   // Les règles et les catégories restent rangées en texte dans les réglages
   // (lisible, exportable) ; l'éditeur des réglages les manipule en lignes.
   static lignesReglesActivite(texte) {
@@ -18490,7 +18516,7 @@ const avecActivite = (Base) => class extends Base {
   // créneaux calculés, pas les segments lus.
   _signatureActivite() {
     const s = this.settings;
-    return [s.activiteRegles, s.activiteAutre, s.activiteGrainMin, s.activiteDureeMin].join('\u0001');
+    return [s.activiteRegles, s.activiteAutre, s.activiteGrainMin, s.activiteDureeMin, s.activiteCategoriesIA].join('\u0001');
   }
 
   // Créneaux réels de plusieurs jours : Map(jour → créneaux). Trois jours lus
@@ -18500,7 +18526,7 @@ const avecActivite = (Base) => class extends Base {
     if (!this.activiteDisponible()) return out;
     const sig = this._signatureActivite();
     if (!this._activiteRegles || this._activiteRegles.sig !== sig) {
-      this._activiteRegles = { sig, regles: Ariane.compilerReglesActivite(this.settings.activiteRegles) };
+      this._activiteRegles = { sig, regles: this.reglesActivite() };
       this._activiteBlocs = new Map();
     }
     const regles = this._activiteRegles.regles;
@@ -20251,7 +20277,7 @@ const avecChronologie = (Base) => class extends Base {
         c.parJour[jour] = (c.parJour[jour] || 0) + min;
         cats.set(nom, c);
       };
-      ajouterCat('Obsidian', 'var(--interactive-accent)', r.obsidianMin);
+      ajouterCat(Ariane.CATEGORIE_NOTES, 'var(--interactive-accent)', r.obsidianMin);
       for (const [nom, x] of r.parCategorie) ajouterCat(nom, x.couleur || 'var(--color-green)', x.min);
       ajouterCat('Personnel et distraction', 'var(--text-faint)', r.personnelMin);
       for (const [ref, x] of r.parTache) {
@@ -20604,7 +20630,7 @@ const avecDonneesJour = (Base) => class extends Base {
     const reel = this.donneesTempsReel ? await this.donneesTempsReel(Ariane.lundiDeSemaine(jour), jour) : null;
     const pj = reel && reel.parJour.find((x) => x.jour === jour);
     if (pj) {
-      l.push('Temps dans Obsidian : ' + dureeLisible(pj.obsidian) + ' ; hors Obsidian (travail) : '
+      l.push('Travail sur les notes dans Obsidian : ' + dureeLisible(pj.obsidian) + ' ; hors Obsidian (travail, dont l\'organisation dans Obsidian) : '
         + dureeLisible(pj.externe) + ' ; personnel ou distraction : ' + dureeLisible(pj.personnel) + '.');
     }
     // Les notes travaillées dans Obsidian.
@@ -21369,11 +21395,11 @@ const avecConcentration = (Base) => class extends Base {
   // appris. L'iPhone, faute de mieux, est jugé comme le Mac.
   _jugeDistraction() {
     const s = this.settings;
-    const sig = [s.distractionsListe, s.distractionsExceptions, s.activiteRegles].join('\u0001');
+    const sig = [s.distractionsListe, s.distractionsExceptions, s.activiteRegles, s.activiteCategoriesIA].join('\u0001');
     if (this._juge && this._juge.sig === sig && this._juge.appris === this._distractionsApprises) return this._juge.fn;
     const oui = Ariane.compilerListeDistractions(s.distractionsListe);
     const non = Ariane.compilerListeDistractions(s.distractionsExceptions);
-    const regles = Ariane.compilerReglesActivite(s.activiteRegles);
+    const regles = this.reglesActivite();
     const appris = this._distractionsApprises || {};
     const memo = new Map();
     const fn = (seg) => {
@@ -21422,7 +21448,7 @@ const avecConcentration = (Base) => class extends Base {
     const s = this.settings;
     const oui = Ariane.compilerListeDistractions(s.distractionsListe);
     const non = Ariane.compilerListeDistractions(s.distractionsExceptions);
-    const regles = Ariane.compilerReglesActivite(s.activiteRegles);
+    const regles = this.reglesActivite();
     const temps = new Map();
     for (const j of jours) {
       let segs = [];
@@ -40273,7 +40299,7 @@ class VueChronologie extends obsidian.ItemView {
         const total = notes.reduce((s, x) => s + x.min, 0);
         const tete = temps.createDiv({ cls: 'zfa-chrono-temps-tete' });
         obsidian.setIcon(tete.createSpan({ cls: 'zfa-chrono-temps-ic' }), 'timer');
-        tete.createSpan({ cls: 'zfa-chrono-temps-titre', text: tr('Temps dans Obsidian') });
+        tete.createSpan({ cls: 'zfa-chrono-temps-titre', text: tr(Ariane.CATEGORIE_NOTES) });
         tete.createSpan({ cls: 'zfa-chrono-temps-total', text: dureeLisible(total) });
         tete.createSpan({ cls: 'zfa-chrono-temps-n', text: notes.length + ' ' + (notes.length > 1 ? tr('notes') : tr('note')) });
         const chevron = tete.createSpan({ cls: 'zfa-chrono-temps-chevron' });
@@ -40529,7 +40555,7 @@ class VueChronologie extends obsidian.ItemView {
     this._rubrique(hote, 'temps', tr('Temps de la période'), (corps) => {
       corps.createDiv({ cls: 'zfa-chrono-total', text: dureeLisible(total) });
       const pile = corps.createDiv({ cls: 'zfa-chrono-pile' });
-      const parts = [['obsidian', tr('Dans Obsidian'), an.obsidian], ['externe', tr('Hors Obsidian'), an.externe],
+      const parts = [['obsidian', tr(Ariane.CATEGORIE_NOTES), an.obsidian], ['externe', tr('Autres activités'), an.externe],
         ['personnel', tr('Personnel et distraction'), an.personnel]].filter((x) => x[2] >= 1);
       for (const [genre, nom, min] of parts) {
         const seg = pile.createDiv({ cls: 'zfa-chrono-pile-seg est-' + genre });
@@ -40554,7 +40580,7 @@ class VueChronologie extends obsidian.ItemView {
     this._rubrique(hote, 'categories', tr('Par catégorie'), (corps) => {
       const max = Math.max(...cats.map((c) => c.min));
       for (const c of cats.slice(0, 10)) {
-        const nom = c.nom === 'Obsidian' ? tr('Dans Obsidian') : c.nom;
+        const nom = tr(c.nom);
         this._ligneBarre(corps, nom, dureeLisible(c.min), c.min / max, c.couleur,
           { hachure: c.nom === 'Personnel et distraction' });
       }

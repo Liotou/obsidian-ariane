@@ -1650,7 +1650,7 @@ class VueChronologie extends obsidian.ItemView {
         const total = notes.reduce((s, x) => s + x.min, 0);
         const tete = temps.createDiv({ cls: 'zfa-chrono-temps-tete' });
         obsidian.setIcon(tete.createSpan({ cls: 'zfa-chrono-temps-ic' }), 'timer');
-        tete.createSpan({ cls: 'zfa-chrono-temps-titre', text: tr('Temps dans Obsidian') });
+        tete.createSpan({ cls: 'zfa-chrono-temps-titre', text: tr(Ariane.CATEGORIE_NOTES) });
         tete.createSpan({ cls: 'zfa-chrono-temps-total', text: dureeLisible(total) });
         tete.createSpan({ cls: 'zfa-chrono-temps-n', text: notes.length + ' ' + (notes.length > 1 ? tr('notes') : tr('note')) });
         const chevron = tete.createSpan({ cls: 'zfa-chrono-temps-chevron' });
@@ -1906,7 +1906,7 @@ class VueChronologie extends obsidian.ItemView {
     this._rubrique(hote, 'temps', tr('Temps de la période'), (corps) => {
       corps.createDiv({ cls: 'zfa-chrono-total', text: dureeLisible(total) });
       const pile = corps.createDiv({ cls: 'zfa-chrono-pile' });
-      const parts = [['obsidian', tr('Dans Obsidian'), an.obsidian], ['externe', tr('Hors Obsidian'), an.externe],
+      const parts = [['obsidian', tr(Ariane.CATEGORIE_NOTES), an.obsidian], ['externe', tr('Autres activités'), an.externe],
         ['personnel', tr('Personnel et distraction'), an.personnel]].filter((x) => x[2] >= 1);
       for (const [genre, nom, min] of parts) {
         const seg = pile.createDiv({ cls: 'zfa-chrono-pile-seg est-' + genre });
@@ -1931,7 +1931,7 @@ class VueChronologie extends obsidian.ItemView {
     this._rubrique(hote, 'categories', tr('Par catégorie'), (corps) => {
       const max = Math.max(...cats.map((c) => c.min));
       for (const c of cats.slice(0, 10)) {
-        const nom = c.nom === 'Obsidian' ? tr('Dans Obsidian') : c.nom;
+        const nom = tr(c.nom);
         this._ligneBarre(corps, nom, dureeLisible(c.min), c.min / max, c.couleur,
           { hachure: c.nom === 'Personnel et distraction' });
       }

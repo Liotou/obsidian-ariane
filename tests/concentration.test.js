@@ -116,3 +116,11 @@ test('rail : sessions réunies en plages continues, tâche dominante', () => {
   assert.deepEqual(r[0].taches.map((y) => [y.t ? y.t.ref : '', y.min]), [['', 19], ['T053', 4]]);
   assert.equal(r[0].x.fin, '2026-10-08T12:56');
 });
+
+test('règles d\'Ariane : Obsidian hors note, organisation ; draw.io, travail sur les notes', () => {
+  const regles = Ariane.reglesIntegrees([{ nom: 'Organisation', couleur: '#7c5cbf' }]).concat(Ariane.compilerReglesActivite('Notes #111111 = app:Obsidian'));
+  const cat = (app, titre) => Ariane.classerActivite({ app, titre, url: '' }, regles).categorie;
+  assert.equal(cat('Obsidian', 'Tâches - Obsidian Vault - Obsidian 1.14.4'), 'Organisation');
+  assert.equal(cat('Obsidian', 'FS001 - Kamaté.drawio.svg - Obsidian Vault - Obsidian 1.14.4'), 'Travail sur les notes');
+  assert.equal(Ariane.classerActivite({ app: 'draw.io', titre: 'x.drawio', url: '' }, regles), undefined, 'draw.io hors d\'Obsidian : vos règles décident');
+});

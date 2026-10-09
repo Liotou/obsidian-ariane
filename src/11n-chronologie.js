@@ -771,7 +771,7 @@ const avecChronologie = (Base) => class extends Base {
         c.parJour[jour] = (c.parJour[jour] || 0) + min;
         cats.set(nom, c);
       };
-      ajouterCat('Obsidian', 'var(--interactive-accent)', r.obsidianMin);
+      ajouterCat(Ariane.CATEGORIE_NOTES, 'var(--interactive-accent)', r.obsidianMin);
       for (const [nom, x] of r.parCategorie) ajouterCat(nom, x.couleur || 'var(--color-green)', x.min);
       ajouterCat('Personnel et distraction', 'var(--text-faint)', r.personnelMin);
       for (const [ref, x] of r.parTache) {

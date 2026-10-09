@@ -304,7 +304,7 @@ const avecDonneesJour = (Base) => class extends Base {
     const reel = this.donneesTempsReel ? await this.donneesTempsReel(Ariane.lundiDeSemaine(jour), jour) : null;
     const pj = reel && reel.parJour.find((x) => x.jour === jour);
     if (pj) {
-      l.push('Temps dans Obsidian : ' + dureeLisible(pj.obsidian) + ' ; hors Obsidian (travail) : '
+      l.push('Travail sur les notes dans Obsidian : ' + dureeLisible(pj.obsidian) + ' ; hors Obsidian (travail, dont l\'organisation dans Obsidian) : '
         + dureeLisible(pj.externe) + ' ; personnel ou distraction : ' + dureeLisible(pj.personnel) + '.');
     }
     // Les notes travaillées dans Obsidian.

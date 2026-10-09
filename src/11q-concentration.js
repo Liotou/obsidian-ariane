@@ -193,11 +193,11 @@ const avecConcentration = (Base) => class extends Base {
   // appris. L'iPhone, faute de mieux, est jugé comme le Mac.
   _jugeDistraction() {
     const s = this.settings;
-    const sig = [s.distractionsListe, s.distractionsExceptions, s.activiteRegles].join('\u0001');
+    const sig = [s.distractionsListe, s.distractionsExceptions, s.activiteRegles, s.activiteCategoriesIA].join('\u0001');
     if (this._juge && this._juge.sig === sig && this._juge.appris === this._distractionsApprises) return this._juge.fn;
     const oui = Ariane.compilerListeDistractions(s.distractionsListe);
     const non = Ariane.compilerListeDistractions(s.distractionsExceptions);
-    const regles = Ariane.compilerReglesActivite(s.activiteRegles);
+    const regles = this.reglesActivite();
     const appris = this._distractionsApprises || {};
     const memo = new Map();
     const fn = (seg) => {
@@ -246,7 +246,7 @@ const avecConcentration = (Base) => class extends Base {
     const s = this.settings;
     const oui = Ariane.compilerListeDistractions(s.distractionsListe);
     const non = Ariane.compilerListeDistractions(s.distractionsExceptions);
-    const regles = Ariane.compilerReglesActivite(s.activiteRegles);
+    const regles = this.reglesActivite();
     const temps = new Map();
     for (const j of jours) {
       let segs = [];

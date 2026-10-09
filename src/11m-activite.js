@@ -173,6 +173,30 @@ const avecActivite = (Base) => class extends Base {
     return regles;
   }
 
+  // Le travail sur les notes : les sessions d'Ariane, et le dessin dans
+  // draw.io (au sein d'Obsidian), même catégorie partout.
+  static get CATEGORIE_NOTES() { return 'Travail sur les notes'; }
+
+  // Les règles d'Ariane, avant celles de Monsieur : le temps passé dans
+  // Obsidian hors d'une note (les sessions d'Ariane comptent les notes)
+  // est de l'organisation (bases, calendrier, frise, chronologie), sauf le
+  // dessin dans draw.io, qui est du travail sur les notes. `categoriesIA`
+  // donne sa couleur à « Organisation » si elle y figure.
+  static reglesIntegrees(categoriesIA) {
+    const orga = (categoriesIA || []).find((c) => /^organisation$/i.test(c.nom));
+    return [
+      { categorie: Ariane.CATEGORIE_NOTES, couleur: 'var(--interactive-accent)', ignorer: false,
+        motifs: [{ re: /^obsidian\n[^\n]*(\.drawio|draw\.io)/i }] },
+      { categorie: orga ? orga.nom : 'Organisation', couleur: (orga && orga.couleur) || '#7c5cbf', ignorer: false,
+        motifs: [{ champ: 'app', re: /^obsidian$/i }] },
+    ];
+  }
+
+  // Les règles en vigueur : celles d'Ariane, puis celles de Monsieur.
+  reglesActivite() {
+    return Ariane.reglesIntegrees(this.categoriesIA ? this.categoriesIA() : []).concat(Ariane.compilerReglesActivite(this.settings.activiteRegles));
+  }
+
   // Les règles et les catégories restent rangées en texte dans les réglages
   // (lisible, exportable) ; l'éditeur des réglages les manipule en lignes.
   static lignesReglesActivite(texte) {
@@ -729,7 +753,7 @@ const avecActivite = (Base) => class extends Base {
   // créneaux calculés, pas les segments lus.
   _signatureActivite() {
     const s = this.settings;
-    return [s.activiteRegles, s.activiteAutre, s.activiteGrainMin, s.activiteDureeMin].join('\u0001');
+    return [s.activiteRegles, s.activiteAutre, s.activiteGrainMin, s.activiteDureeMin, s.activiteCategoriesIA].join('\u0001');
   }
 
   // Créneaux réels de plusieurs jours : Map(jour → créneaux). Trois jours lus
@@ -739,7 +763,7 @@ const avecActivite = (Base) => class extends Base {
     if (!this.activiteDisponible()) return out;
     const sig = this._signatureActivite();
     if (!this._activiteRegles || this._activiteRegles.sig !== sig) {
-      this._activiteRegles = { sig, regles: Ariane.compilerReglesActivite(this.settings.activiteRegles) };
+      this._activiteRegles = { sig, regles: this.reglesActivite() };
       this._activiteBlocs = new Map();
     }
     const regles = this._activiteRegles.regles;

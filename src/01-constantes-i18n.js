@@ -844,6 +844,8 @@ const TEXTES = {
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
+    "Travail sur les notes": "Work on notes",
+    "Autres activités": "Other activities",
     "autres notes": "other notes",
     "Aussi : ": "Also: ",
     "autre note": "other note",
