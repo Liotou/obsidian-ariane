@@ -1813,6 +1813,7 @@ class VueChronologie extends obsidian.ItemView {
       et.createSpan({ cls: 'zfa-chrono-tache-ref', text: r.ref });
       et.createSpan({ cls: 'zfa-chrono-tache-duree', text: dureeLisible(r.min) });
     }
+    this.greffon.marquesIphone(meta, carte, b, { etiquette: 'zfa-chrono-etiquette', ligne: 'zfa-chrono-extrait' });
     const det = (b.details || []).filter((x) => x.min > 0).slice(0, 4);
     if (det.length) carte.createDiv({ cls: 'zfa-chrono-extrait', text: det.map((x) => x.libelle + ' (' + dureeLisible(x.min) + ')').join('\n') });
     carte.addEventListener('click', () => this.greffon.ouvrirFicheActivite(e.jour, b, this._hoteActivite()));

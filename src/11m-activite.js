@@ -309,9 +309,10 @@ const avecActivite = (Base) => class extends Base {
         if (b <= a) continue;
         if (!grains.has(k)) grains.set(k, new Map());
         const g = grains.get(k);
-        if (!g.has(r.categorie)) g.set(r.categorie, { ms: 0, a, b, couleur: r.couleur, det: new Map() });
+        if (!g.has(r.categorie)) g.set(r.categorie, { ms: 0, iph: 0, a, b, couleur: r.couleur, det: new Map() });
         const c = g.get(r.categorie);
         c.ms += b - a;
+        if (s.appareil === 'iphone') c.iph += b - a;
         c.a = Math.min(c.a, a);
         c.b = Math.max(c.b, b);
         c.det.set(lib, (c.det.get(lib) || 0) + (b - a));
@@ -325,6 +326,7 @@ const avecActivite = (Base) => class extends Base {
         if (der && der.categorie === b.categorie && b.deb - der.fin <= tolerance) {
           der.fin = b.fin;
           der.actif += b.actif;
+          der.iph += b.iph;
           fusionnerDet(der.det, b.det);
         } else {
           out.push(b);
@@ -342,11 +344,11 @@ const avecActivite = (Base) => class extends Base {
         if (!meilleur || c.ms > meilleur[1].ms) meilleur = [cat, c];
       }
       if (total < B / 5) continue;
-      bruts.push({ categorie: meilleur[0], couleur: meilleur[1].couleur, actif: meilleur[1].ms,
+      bruts.push({ categorie: meilleur[0], couleur: meilleur[1].couleur, actif: meilleur[1].ms, iph: meilleur[1].iph,
         deb: meilleur[1].a, fin: meilleur[1].b, det: new Map(meilleur[1].det) });
     }
     const blocs = rejoindre(rejoindre(bruts).filter((b) => b.actif >= dureeMin));
-    return blocs.map((b) => ({
+    return blocs.map((b) => Object.assign({
       categorie: b.categorie,
       couleur: b.couleur || Ariane.couleurActivite(b.categorie),
       debut: Ariane.isoLocalMinute(b.deb),
@@ -354,7 +356,7 @@ const avecActivite = (Base) => class extends Base {
       actifMin: Math.round(b.actif / 60000),
       details: [...b.det].sort((x, y) => y[1] - x[1]).slice(0, 5)
         .map(([libelle, ms]) => ({ libelle, min: Math.round(ms / 60000) })),
-    }));
+    }, b.iph >= 30000 ? { iphoneMin: Math.max(1, Math.round(b.iph / 60000)) } : {}));
   }
 
   // ── résumés par l'IA : fonctions pures ─────────────────────────────────
@@ -666,7 +668,16 @@ const avecActivite = (Base) => class extends Base {
     const [fen, afk, web] = await Promise.all([lire(b.fenetre), lire(b.afk), lire(b.web)]);
     // Safari n'a pas d'extension : ses onglets viennent du relevé d'Ariane.
     const safari = Ariane.ongletsEnEvenements(this.ongletsSafari(), d0, d1);
-    const segs = Ariane.segmentsActivite(fen, b.afk.length ? afk : null, web.concat(safari), d0, d1);
+    let segs = Ariane.segmentsActivite(fen, b.afk.length ? afk : null, web.concat(safari), d0, d1);
+    // L'iPhone sur la même ligne, le Mac prioritaire : ce qui recouvre le Mac
+    // devient une interruption du créneau du Mac (voir avecIphone).
+    let interruptions = [];
+    if (this.iphoneActif && this.iphoneActif()) {
+      const ip = this.iphoneDuJour(jour, segs);
+      if (ip.segs.length) segs = segs.concat(ip.segs).sort((p, q) => p.deb - q.deb);
+      interruptions = ip.interruptions;
+    }
+    (this._iphoneInterruptions || (this._iphoneInterruptions = new Map())).set(jour, interruptions);
     cache.set(jour, { le: Date.now(), segs });
     return segs;
   }
@@ -702,6 +713,13 @@ const avecActivite = (Base) => class extends Base {
         dureeMin: this.settings.activiteDureeMin,
         autre: this.settings.activiteAutre,
       });
+      const inter = (this._iphoneInterruptions && this._iphoneInterruptions.get(jour)) || [];
+      if (inter.length) {
+        for (const bl of blocs) {
+          const x = Ariane.interruptionsDuBloc(inter, new Date(bl.debut).getTime(), new Date(bl.fin).getTime() + 60000);
+          if (x.length) bl.interruptions = x;
+        }
+      }
       this._activiteBlocs.set(jour, { segs, blocs });
       out.set(jour, this._decorerResumes(jour, blocs));
     };

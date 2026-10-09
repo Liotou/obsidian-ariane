@@ -4291,3 +4291,9 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
   border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: #e8e8e8; }
 @media (max-width: 640px) { .zfa-sommaire-reglages { grid-template-columns: minmax(0, 1fr); } }
 .zfa-sommaire-aide { margin-bottom: var(--size-4-2); }
+/* Temps d'écran de l'iPhone : l'étiquette d'un créneau, ses interruptions. */
+.zfa-iphone-et { display: inline-flex; align-items: center; gap: 3px; }
+.zfa-iphone-ic { display: inline-flex; color: var(--text-muted); }
+.zfa-iphone-ic svg { width: 12px; height: 12px; }
+.zfa-iphone-inter { display: flex; align-items: flex-start; gap: 6px; color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.zfa-iphone-inter .zfa-iphone-ic { padding-top: 2px; }

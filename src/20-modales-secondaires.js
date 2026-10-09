@@ -276,6 +276,7 @@ class ModaleActiviteReelle extends obsidian.Modal {
     const res = contentEl.createDiv({ cls: 'zfa-act-resume' });
     if (ia && ia.resume) res.setText(ia.resume);
     else res.createSpan({ cls: 'zfa-act-vide', text: tr('Pas encore résumé.') });
+    this.greffon.marquesIphone(tete, contentEl, b);
 
     if (b.rattache && b.rattache.length) {
       contentEl.createDiv({ cls: 'zfa-act-sous-titre', text: tr('Rattaché à') });

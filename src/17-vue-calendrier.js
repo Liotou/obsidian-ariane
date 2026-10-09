@@ -543,6 +543,7 @@ class MoteurCalendrier extends MoteurVue {
     tete.createSpan({ cls: 'zfa-act-meta', text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16) });
     tete.createSpan({ cls: 'zfa-act-meta', text: dureeLisible(b.actifMin) + tr(' actives') });
     if (b.ia && b.ia.resume) carte.createDiv({ cls: 'zfa-act-survol-resume', text: b.ia.resume });
+    this.greffon.marquesIphone(tete, carte, b);
     if (b.rattache && b.rattache.length) {
       const rt = carte.createDiv({ cls: 'zfa-act-survol-ratt' });
       for (const r of b.rattache) {

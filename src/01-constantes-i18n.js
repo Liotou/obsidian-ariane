@@ -843,6 +843,9 @@ const TEXTES = {
     "Nouveau jalon": "New milestone",
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
+    "Temps d’écran de l’iPhone": "iPhone Screen Time",
+    "Interrompu par l’iPhone : ": "Interrupted by the iPhone: ",
+    "Dont temps sur l’iPhone": "Of which time on the iPhone",
     "Sommaire de lecture": "Reading index",
     "Sommaire de lecture : quelle source ?": "Reading index: which source?",
     "Lecture : sommaire à imprimer (annotations d’une source)": "Reading: printable index (annotations of a source)",
@@ -1439,6 +1442,8 @@ const DEFAULT_SETTINGS = {
   // Bibliographie de fin de note, régénérée d'après les citations du corps.
   biblioAuto: true,
   sommaireColonnes: 1,  // une ou deux colonnes
+  iphoneActif: true,    // temps d'écran de l'iPhone, lu sur le Mac (accès complet au disque)
+  iphoneAppareil: '',   // identifiant Biome de l'iPhone ('' = trouvé seul)
   sommaireSortie: 'fiche', // 'fiche' (10 × 15 cm) ou 'a4' (trois fiches par feuille, recto verso)
   biblioDossiersExclus: [], // dossiers dont les notes n'ont pas de bibliographie de fin
   biblioTitre: 'Bibliographie',

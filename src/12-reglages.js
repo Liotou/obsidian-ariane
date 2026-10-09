@@ -1158,6 +1158,14 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.activiteActif === true).onChange(async (v) => {
         s.activiteActif = v; await maj(); this.plugin._rafraichirActivite(true); this.display();
       }));
+    if (obsidian.Platform.isMacOS) {
+      new obsidian.Setting(c)
+        .setName(tr('Temps d’écran de l’iPhone'))
+        .setDesc(tr("Ajoute aux créneaux hors Obsidian ceux de l'iPhone, sur la même ligne. Il faut activer « Partager entre les appareils » dans Temps d'écran (iPhone et Mac) et donner à Obsidian l'« Accès complet au disque ». L'iPhone envoie ses relevés au Mac surtout la nuit : sa journée apparaît le lendemain. Quand le Mac est utilisé en même temps, il l'emporte ; le téléphone est noté comme une interruption."))
+        .addToggle((t) => t.setValue(s.iphoneActif !== false).onChange(async (v) => {
+          s.iphoneActif = v; await maj(); this.plugin._rafraichirActivite(true);
+        }));
+    }
     if (s.activiteActif) {
       new obsidian.Setting(c)
         .setName(tr('Adresse du serveur'))

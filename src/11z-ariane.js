@@ -16,7 +16,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecPublicationSite,
   avecActivite,
   avecChronologie,
-  avecDonneesJour) {
+  avecDonneesJour,
+  avecIphone) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
