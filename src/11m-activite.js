@@ -1199,7 +1199,15 @@ const avecActivite = (Base) => class extends Base {
       .onClick(() => this.creerTacheDepuisTemps(resume, (ref) => this.appliquerRattachements([{ ref, id: b.empreinte,
         apres: Ariane.formatTempsReel({ debut: b.debut, fin: b.fin, min: b.actifMin,
           quoi: (b.ia ? b.ia.categorie : b.categorie), id: b.empreinte }) }]), hote)));
-    m.addItem((i) => i.setTitle(tr('Poser comme créneau de tâche…')).setIcon('calendar-plus')
+    // Déjà rattaché : le créneau va droit à sa tâche (ou au choix parmi
+    // les siennes) ; le choix libre reste possible.
+    const ratt = (b.rattache || []).filter((r, k, l) => l.findIndex((y) => y.ref === r.ref) === k);
+    for (const r of ratt) {
+      m.addItem((i) => i.setTitle(tr('Poser comme créneau de ') + r.ref + (r.intitule ? ' ' + r.intitule : '')).setIcon('calendar-plus')
+        .onClick(() => this.poserCreneauDepuisTemps(jour, b.debut, b.fin, resume, r.ref, hote)));
+    }
+    m.addItem((i) => i.setTitle(ratt.length ? tr('Poser comme créneau d’une autre tâche…') : tr('Poser comme créneau de tâche…'))
+      .setIcon(ratt.length ? 'calendar-search' : 'calendar-plus')
       .onClick(() => this.poserCreneauDepuisTemps(jour, b.debut, b.fin, resume, '', hote)));
     m.addSeparator();
     m.addItem((i) => i.setTitle(tr('Ouvrir la fiche')).setIcon('panel-top-open')

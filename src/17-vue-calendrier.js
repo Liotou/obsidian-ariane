@@ -717,8 +717,13 @@ class MoteurCalendrier extends MoteurVue {
         this.greffon.lierNoteATache(ref, x.chemin).then(() => this.dessiner()))));
     m.addItem((i) => i.setTitle(tr('Créer une tâche associée…')).setIcon('file-plus')
       .onClick(() => this._tacheDepuisTemps(nom, (ref) => this.greffon.lierNoteATache(ref, x.chemin))));
-    m.addItem((i) => i.setTitle(tr('Poser comme créneau de tâche…')).setIcon('calendar-plus')
-      .onClick(() => this._creneauDepuisTemps(debut.slice(0, 10), debut, fin, nom, t ? t.ref : '')));
+    if (t) {
+      m.addItem((i) => i.setTitle(tr('Poser comme créneau de ') + t.ref + (t.intitule ? ' ' + t.intitule : '')).setIcon('calendar-plus')
+        .onClick(() => this._creneauDepuisTemps(debut.slice(0, 10), debut, fin, nom, t.ref)));
+    }
+    m.addItem((i) => i.setTitle(t ? tr('Poser comme créneau d’une autre tâche…') : tr('Poser comme créneau de tâche…'))
+      .setIcon(t ? 'calendar-search' : 'calendar-plus')
+      .onClick(() => this._creneauDepuisTemps(debut.slice(0, 10), debut, fin, nom, '')));
     m.showAtMouseEvent(e);
   }
 

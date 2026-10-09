@@ -1035,6 +1035,8 @@ const TEXTES = {
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
+    "Poser comme créneau de ": "Add as a slot of ",
+    "Poser comme créneau d’une autre tâche…": "Add as a slot of another task…",
     "interruptions": "interruptions",
     "interruption": "interruption",
     "Concentration": "Focus",
@@ -18956,7 +18958,15 @@ const avecActivite = (Base) => class extends Base {
       .onClick(() => this.creerTacheDepuisTemps(resume, (ref) => this.appliquerRattachements([{ ref, id: b.empreinte,
         apres: Ariane.formatTempsReel({ debut: b.debut, fin: b.fin, min: b.actifMin,
           quoi: (b.ia ? b.ia.categorie : b.categorie), id: b.empreinte }) }]), hote)));
-    m.addItem((i) => i.setTitle(tr('Poser comme créneau de tâche…')).setIcon('calendar-plus')
+    // Déjà rattaché : le créneau va droit à sa tâche (ou au choix parmi
+    // les siennes) ; le choix libre reste possible.
+    const ratt = (b.rattache || []).filter((r, k, l) => l.findIndex((y) => y.ref === r.ref) === k);
+    for (const r of ratt) {
+      m.addItem((i) => i.setTitle(tr('Poser comme créneau de ') + r.ref + (r.intitule ? ' ' + r.intitule : '')).setIcon('calendar-plus')
+        .onClick(() => this.poserCreneauDepuisTemps(jour, b.debut, b.fin, resume, r.ref, hote)));
+    }
+    m.addItem((i) => i.setTitle(ratt.length ? tr('Poser comme créneau d’une autre tâche…') : tr('Poser comme créneau de tâche…'))
+      .setIcon(ratt.length ? 'calendar-search' : 'calendar-plus')
       .onClick(() => this.poserCreneauDepuisTemps(jour, b.debut, b.fin, resume, '', hote)));
     m.addSeparator();
     m.addItem((i) => i.setTitle(tr('Ouvrir la fiche')).setIcon('panel-top-open')
@@ -34783,8 +34793,13 @@ class MoteurCalendrier extends MoteurVue {
         this.greffon.lierNoteATache(ref, x.chemin).then(() => this.dessiner()))));
     m.addItem((i) => i.setTitle(tr('Créer une tâche associée…')).setIcon('file-plus')
       .onClick(() => this._tacheDepuisTemps(nom, (ref) => this.greffon.lierNoteATache(ref, x.chemin))));
-    m.addItem((i) => i.setTitle(tr('Poser comme créneau de tâche…')).setIcon('calendar-plus')
-      .onClick(() => this._creneauDepuisTemps(debut.slice(0, 10), debut, fin, nom, t ? t.ref : '')));
+    if (t) {
+      m.addItem((i) => i.setTitle(tr('Poser comme créneau de ') + t.ref + (t.intitule ? ' ' + t.intitule : '')).setIcon('calendar-plus')
+        .onClick(() => this._creneauDepuisTemps(debut.slice(0, 10), debut, fin, nom, t.ref)));
+    }
+    m.addItem((i) => i.setTitle(t ? tr('Poser comme créneau d’une autre tâche…') : tr('Poser comme créneau de tâche…'))
+      .setIcon(t ? 'calendar-search' : 'calendar-plus')
+      .onClick(() => this._creneauDepuisTemps(debut.slice(0, 10), debut, fin, nom, '')));
     m.showAtMouseEvent(e);
   }
 

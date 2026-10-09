@@ -844,6 +844,8 @@ const TEXTES = {
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
+    "Poser comme créneau de ": "Add as a slot of ",
+    "Poser comme créneau d’une autre tâche…": "Add as a slot of another task…",
     "interruptions": "interruptions",
     "interruption": "interruption",
     "Concentration": "Focus",
