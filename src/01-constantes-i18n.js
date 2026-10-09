@@ -845,6 +845,7 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "autres notes": "other notes",
+    "Aussi : ": "Also: ",
     "autre note": "other note",
     "Poser comme créneau de ": "Add as a slot of ",
     "Poser comme créneau d’une autre tâche…": "Add as a slot of another task…",

@@ -626,6 +626,9 @@ class MoteurCalendrier extends MoteurVue {
     tete.createSpan({ cls: 'zfa-act-meta', text: o.horaires });
     tete.createSpan({ cls: 'zfa-act-meta', text: o.duree + tr(' dans Obsidian') });
     if (o.tache && o.tache.intitule) carte.createDiv({ cls: 'zfa-act-survol-resume', text: o.tache.intitule });
+    if (o.autresTaches && o.autresTaches.length) {
+      carte.createDiv({ cls: 'zfa-act-survol-sous', text: tr('Aussi : ') + o.autresTaches.join(', ') });
+    }
     this._listeMicro(carte, o.micro);
     const l = carte.createDiv({ cls: 'zfa-act-survol-apps' }).createDiv({ cls: 'zfa-act-survol-app' });
     const ic = l.createSpan({ cls: 'zfa-act-icone est-initiale' });
@@ -2928,9 +2931,9 @@ class MoteurCalendrier extends MoteurVue {
           && c.debut < x.fin && c.fin > x.debut)) || refs[0];
         return { a: x.a, b: x.b, x, t: ref ? parRef.get(ref) : null };
       });
-      // Les sessions d'une même tâche (ou toutes hors tâche) à moins de trois
-      // minutes l'une de l'autre forment une seule bande : changer de note
-      // ou s'arrêter un instant ne hache pas la colonne.
+      // Les sessions à moins de trois minutes l'une de l'autre forment une
+      // seule bande, quelle que soit la note : changer de note ou s'arrêter
+      // un instant ne hache pas la colonne.
       const obsReunies = Ariane.reunirSessionsRail(obs, 3);
       const ext = (avecExterne ? (this._activite.get(jour) || []) : [])
         .map((bl) => ({ a: minutesDe(bl.debut, jour), b: minutesDe(bl.fin, jour), bloc: bl }))
@@ -2956,6 +2959,7 @@ class MoteurCalendrier extends MoteurVue {
           micro: el._micro || [],
           horaires: hm(x.a) + ' → ' + hm(x.b), duree: duree(Math.round(p.item.minutes || (x.b - x.a))),
           note: String(x.chemin).split('/').pop().replace(/\.md$/, '') + (autres > 0 ? tr(' et ') + autres + ' ' + (autres > 1 ? tr('autres notes') : tr('autre note')) : ''), tache: t,
+          autresTaches: (p.item.taches || []).slice(1).filter((y) => y.t).map((y) => y.t.ref + ' (' + duree(Math.round(y.min)) + ')'),
           couleur: t ? this.couleurTache(t) : '' }));
         // Comme celle du hors Obsidian, la carte reste ouverte le temps d'y
         // glisser le curseur (pour déplier toutes les interruptions).

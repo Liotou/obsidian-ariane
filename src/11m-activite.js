@@ -473,29 +473,41 @@ const avecActivite = (Base) => class extends Base {
   }
 
   // Les sessions d'Obsidian du rail ({ a, b, x, t } en minutes, x la
-  // session, t la tâche) réunies quand elles sont de la même tâche (ou
-  // toutes hors tâche) et à moins de `ecartMin` l'une de l'autre. La pièce
-  // réunie garde pour x sa note la plus travaillée (bornes de l'ensemble),
-  // la liste de ses notes et ses minutes réelles.
+  // session, t la tâche) réunies en plages continues : à moins de
+  // `ecartMin` l'une de l'autre, quelle que soit la note ou la tâche (passer
+  // de la note d'une tâche à une note préparatoire ne hache pas la colonne).
+  // La plage prend la tâche qui l'a le plus occupée (hors tâche compris) ;
+  // x est sa note la plus travaillée, aux bornes de l'ensemble ; `notes` et
+  // `taches` disent le reste, `minutes` le temps réel.
   static reunirSessionsRail(obs, ecartMin) {
     const e = Number(ecartMin) >= 0 ? Number(ecartMin) : 3;
-    const out = [];
+    const plages = [];
     for (const o of (obs || []).slice().sort((p, q) => p.a - q.a)) {
-      const der = out[out.length - 1];
-      const memeTache = der && ((der.t && der.t.ref) || '') === ((o.t && o.t.ref) || '');
-      if (der && memeTache && o.a - der.b <= e) {
+      const der = plages[plages.length - 1];
+      if (der && o.a - der.b <= e) {
         der.b = Math.max(der.b, o.b);
-        der.minutes += o.b - o.a;
-        der.parNote.set(o.x.chemin, (der.parNote.get(o.x.chemin) || 0) + (o.b - o.a));
         der.fin = o.x.fin > der.fin ? o.x.fin : der.fin;
+        der.parties.push(o);
         continue;
       }
-      out.push({ a: o.a, b: o.b, t: o.t, minutes: o.b - o.a, debut: o.x.debut, fin: o.x.fin,
-        parNote: new Map([[o.x.chemin, o.b - o.a]]) });
+      plages.push({ a: o.a, b: o.b, debut: o.x.debut, fin: o.x.fin, parties: [o] });
     }
-    return out.map((r) => {
-      const notes = [...r.parNote].sort((p, q) => q[1] - p[1]).map(([chemin, min]) => ({ chemin, min }));
-      return { a: r.a, b: r.b, t: r.t, minutes: r.minutes, notes,
+    return plages.map((r) => {
+      const parNote = new Map();
+      const parTache = new Map();
+      let minutes = 0;
+      for (const o of r.parties) {
+        const d = o.b - o.a;
+        minutes += d;
+        parNote.set(o.x.chemin, (parNote.get(o.x.chemin) || 0) + d);
+        const k = (o.t && o.t.ref) || '';
+        const v = parTache.get(k) || { t: o.t || null, min: 0 };
+        v.min += d;
+        parTache.set(k, v);
+      }
+      const notes = [...parNote].sort((p, q) => q[1] - p[1]).map(([chemin, min]) => ({ chemin, min }));
+      const taches = [...parTache.values()].sort((p, q) => q.min - p.min);
+      return { a: r.a, b: r.b, t: taches[0].t, minutes, notes, taches,
         x: { chemin: notes[0].chemin, debut: r.debut, fin: r.fin, a: r.a, b: r.b } };
     });
   }

@@ -96,18 +96,23 @@ test('micro-interruptions : une même chose reprise de près, même entrecoupée
   ], 'WhatsApp de 19 h 49 à 20 h, Messages glissé au milieu');
 });
 
-test('rail : sessions d\'une même tâche réunies, notes classées', () => {
+test('rail : sessions réunies en plages continues, tâche dominante', () => {
   const x = (chemin, a, b) => ({ chemin, debut: '2026-10-08T' + a, fin: '2026-10-08T' + b });
+  const T53 = { ref: 'T053' };
+  // Jeudi 8, de 12 h 30 à 12 h 56 : la note préparatoire et T053 en alternance.
   const obs = [
-    { a: 555, b: 564, t: null, x: x('EV-1.md', '09:15', '09:24') },
-    { a: 564.5, b: 579.5, t: null, x: x('EV-2.md', '09:24', '09:39') },
-    { a: 580, b: 584, t: null, x: x('EV-1.md', '09:40', '09:44') },
-    { a: 594, b: 597, t: null, x: x('EV-1.md', '09:54', '09:57') },
-    { a: 600, b: 610, t: { ref: 'T1' }, x: x('T1.md', '10:00', '10:10') },
+    { a: 750, b: 753, t: null, x: x('NP.md', '12:30', '12:33') },
+    { a: 753, b: 754, t: T53, x: x('T053.md', '12:33', '12:34') },
+    { a: 754, b: 755, t: null, x: x('NP.md', '12:34', '12:35') },
+    { a: 756, b: 758, t: null, x: x('NP.md', '12:36', '12:38') },
+    { a: 758, b: 761, t: T53, x: x('T053.md', '12:38', '12:41') },
+    { a: 763, b: 776, t: null, x: x('NP.md', '12:43', '12:56') },
+    { a: 790, b: 795, t: T53, x: x('T053.md', '13:10', '13:15') },
   ];
   const r = Ariane.reunirSessionsRail(obs, 3);
-  assert.deepEqual(r.map((p) => [p.a, p.b, p.t ? p.t.ref : '', p.notes.length]), [[555, 584, '', 2], [594, 597, '', 1], [600, 610, 'T1', 1]]);
-  assert.equal(r[0].x.chemin, 'EV-2.md', 'la note la plus travaillée');
-  assert.equal(r[0].minutes, 28);
-  assert.equal(r[0].x.fin, '2026-10-08T09:44');
+  assert.deepEqual(r.map((p) => [p.a, p.b, p.t ? p.t.ref : '', p.notes.length]), [[750, 776, '', 2], [790, 795, 'T053', 1]]);
+  assert.equal(r[0].x.chemin, 'NP.md', 'la note la plus travaillée');
+  assert.equal(r[0].minutes, 23);
+  assert.deepEqual(r[0].taches.map((y) => [y.t ? y.t.ref : '', y.min]), [['', 19], ['T053', 4]]);
+  assert.equal(r[0].x.fin, '2026-10-08T12:56');
 });
