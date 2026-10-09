@@ -2971,8 +2971,7 @@ class MoteurCalendrier extends MoteurVue {
   // trou dans la bande du créneau réel (Obsidian, ou hors Obsidian s'il
   // n'est pas « personnel »), de son début à sa fin. Une plage
   // nette reste pleine, une plage hachée se voit hachée. Le détail (quoi,
-  // quand, combien de temps) est dans la carte de survol de la bande, et
-  // dans l'infobulle de l'interstice.
+  // quand, combien de temps) est dans la carte de survol de la bande.
   _poserCoupures(col, jour, travail, hDeb, PXH) {
     this.greffon.microDuJour(jour).then((micro) => {
       if (this._detruit || !col.isConnected) return;
@@ -2985,12 +2984,12 @@ class MoteurCalendrier extends MoteurVue {
         if (!w) continue;
         w.el._micro.push(m);
         const fin = Math.min(w.b, (m.fin - d0) / 60000);
-        const el = col.createDiv({ cls: 'zfa-cal-coupure' });
-        el.style.top = ((a / 60 - hDeb) * PXH) + 'px';
-        // Un trou à la taille de la distraction : un coup d'œil, un fin
-        // trait ; deux minutes, une vraie brèche.
+        // Dans la bande elle-même : le trou grandit avec elle au survol, et
+        // reste visible sous la bordure. À la taille de la distraction : un
+        // coup d'œil, un fin trait ; deux minutes, une vraie brèche.
+        const el = w.el.createDiv({ cls: 'zfa-cal-coupure' });
+        el.style.top = ((a - w.a) / 60 * PXH) + 'px';
         el.style.height = Math.max(1.5, (fin - a) / 60 * PXH) + 'px';
-        el.setAttribute('aria-label', Ariane.libelleMicro(m));
       }
     }).catch(() => {});
   }

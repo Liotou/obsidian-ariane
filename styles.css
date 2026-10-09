@@ -3999,7 +3999,8 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-cal-reel.est-externe { background: color-mix(in srgb, var(--zfa-cal-coul) 45%, transparent); }
 .zfa-cal-reel.est-externe:hover, .zfa-cal-reel.est-obsidian:hover {
   background: var(--zfa-cal-coul);
-  box-shadow: 0 0 0 1px var(--background-primary), 0 2px 6px rgba(0, 0, 0, 0.25);
+  /* Une fine bordure autour de la bande, qui garde ses trous visibles. */
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--zfa-cal-coul) 55%, var(--text-normal)), 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 .zfa-cal-reel.est-externe.est-personnel {
   background: repeating-linear-gradient(135deg,
@@ -4014,7 +4015,7 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-cal-reel.est-obsidian:hover, .zfa-cal-reel.est-externe:hover {
   width: 10px; left: 2.5px; z-index: 4;
 }
-.zfa-cal-reel.est-obsidian:hover { filter: brightness(1.3) saturate(1.15); }
+.zfa-cal-reel.est-obsidian:hover { background: color-mix(in srgb, var(--zfa-cal-coul) 80%, white); }
 @media (prefers-reduced-motion: reduce) {
   .zfa-cal-reel.est-obsidian, .zfa-cal-reel.est-externe { transition: none; }
 }
@@ -4299,7 +4300,9 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-iphone-inter .zfa-iphone-ic { padding-top: 2px; }
 /* Micro-interruptions pendant le travail : un fin interstice dans la bande
    du créneau réel ; leur détail dans la carte de survol. */
-.zfa-cal-coupure { position: absolute; left: 3px; width: 9px; z-index: 2; background: var(--background-primary); pointer-events: auto; }
+/* Le trou ne capte pas le pointeur : le survoler, c'est encore survoler la
+   bande, dont la carte donne le détail. */
+.zfa-cal-reel > .zfa-cal-coupure { position: absolute; left: 0; right: 0; background: var(--background-primary); pointer-events: none; }
 .zfa-act-micro { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--background-modifier-border);
   font-size: var(--font-ui-smaller); color: var(--text-muted); }
 .zfa-act-micro-titre { color: var(--text-normal); font-weight: var(--font-semibold); }
