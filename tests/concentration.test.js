@@ -28,8 +28,8 @@ test('micro-interruptions : dès dix secondes, morceaux rejoints, téléphone pe
   ];
   const inter = [{ deb: s('10:12:00'), fin: s('10:12:40'), app: 'Mail' }];
   const m = Ariane.microDistractions(segs, inter, distrait, { seuilSec: 10, fusionSec: 20 });
-  assert.deepEqual(m.map((x) => [x.quoi, x.source, (x.fin - x.deb) / 1000]), [
-    ['reddit.com', 'mac', 50], ['Mail', 'iphone', 40], ['WhatsApp', 'iphone', 120],
+  assert.deepEqual(m.map((x) => [x.quoi, x.source, x.genre, (x.fin - x.deb) / 1000]), [
+    ['reddit.com', 'mac', 'web', 50], ['Mail', 'iphone', 'iphone', 40], ['WhatsApp', 'iphone', 'iphone', 120],
   ]);
   assert.deepEqual(Ariane.principalesDistractions(m, 2).map((x) => [x.quoi, x.n]), [['WhatsApp', 1], ['reddit.com', 1]]);
 });
@@ -76,5 +76,22 @@ test('micro-interruptions : seulement pendant le travail, et leur libellé', () 
     'ni dans un créneau personnel, ni hors de tout travail');
   const d = new Date(2026, 9, 8, 10, 42, 0).getTime();
   assert.equal(Ariane.libelleMicro({ deb: d, fin: d + 40000, quoi: 'reddit.com', source: 'mac' }), '10:42 reddit.com, 40 s');
-  assert.equal(Ariane.libelleMicro({ deb: d, fin: d + 180000, quoi: 'WhatsApp', source: 'iphone' }), '10:42 WhatsApp (iPhone), 3 min');
+  assert.equal(Ariane.libelleMicro({ deb: d, fin: d + 180000, quoi: 'WhatsApp', source: 'iphone', aussi: ['Messages'] }), '10:42 WhatsApp et Messages, 3 min');
+  assert.equal(Ariane.iconeMicro({ source: 'iphone' }), 'smartphone');
+  assert.equal(Ariane.iconeMicro({ source: 'mac', genre: 'web' }), 'globe');
+  assert.equal(Ariane.iconeMicro({ source: 'mac', genre: 'app' }), 'monitor');
+});
+
+test('micro-interruptions : une même chose reprise de près, même entrecoupée, ne compte qu\'une fois', () => {
+  const t = (h) => Date.parse('2026-10-08T' + h + 'Z');
+  const segs = [
+    { deb: t('19:49:00'), fin: t('19:49:16'), app: 'WhatsApp (iPhone)', appareil: 'iphone' },
+    { deb: t('19:49:30'), fin: t('19:49:53'), app: 'Messages', titre: '', url: '' },
+    { deb: t('19:50:00'), fin: t('19:54:00'), app: 'WhatsApp (iPhone)', appareil: 'iphone' },
+    { deb: t('19:54:10'), fin: t('20:00:00'), app: 'WhatsApp (iPhone)', appareil: 'iphone' },
+  ];
+  const m = Ariane.microDistractions(segs, [], () => true);
+  assert.deepEqual(m.map((x) => [x.quoi, x.genre, x.aussi, (x.fin - x.deb) / 1000]), [
+    ['WhatsApp', 'iphone', ['Messages'], 660],
+  ], 'WhatsApp de 19 h 49 à 20 h, Messages glissé au milieu');
 });

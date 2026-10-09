@@ -946,7 +946,10 @@ const avecActivite = (Base) => class extends Base {
 
   static nomFichierIcone(nom) { return String(nom || '').replace(/[\/:\\]/g, '_') + '.png'; }
 
-  iconeApplication(nom, apres) {
+  iconeApplication(nom0, apres) {
+    // Une application de l'iPhone prend l'icône de sa sœur du Mac, si elle
+    // y est installée (WhatsApp, Messages, Téléphone…).
+    const nom = String(nom0 || '').replace(/\s*\(iPhone\)\s*$/, '');
     if (!nom || !obsidian.Platform.isMacOS) return '';
     if (!this._iconesApps) {
       this._iconesApps = new Map();
@@ -1203,7 +1206,7 @@ const avecActivite = (Base) => class extends Base {
     // les siennes) ; le choix libre reste possible.
     const ratt = (b.rattache || []).filter((r, k, l) => l.findIndex((y) => y.ref === r.ref) === k);
     for (const r of ratt) {
-      m.addItem((i) => i.setTitle(tr('Poser comme créneau de ') + r.ref + (r.intitule ? ' ' + r.intitule : '')).setIcon('calendar-plus')
+      m.addItem((i) => i.setTitle(tr('Poser comme créneau de ') + r.ref).setIcon('calendar-plus')
         .onClick(() => this.poserCreneauDepuisTemps(jour, b.debut, b.fin, resume, r.ref, hote)));
     }
     m.addItem((i) => i.setTitle(ratt.length ? tr('Poser comme créneau d’une autre tâche…') : tr('Poser comme créneau de tâche…'))

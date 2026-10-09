@@ -36,37 +36,56 @@ const avecConcentration = (Base) => class extends Base {
     return /personnel|distraction|priv|loisir/i.test(String(nom || ''));
   }
 
-  // Les micro-interruptions d'un jour : [{ deb, fin, quoi, source }] (ms ;
-  // source 'mac' ou 'iphone'). `segs` : les segments du jour (Mac et
-  // iPhone) ; `interruptions` : le téléphone utilisé pendant le Mac ;
-  // `distrait(seg)` : ce segment distrait-il ? Les morceaux d'une même chose
-  // séparés de moins de `fusionSec` se rejoignent ; ceux de moins de
-  // `seuilSec` en tout sont écartés.
+  // Les micro-interruptions d'un jour : [{ deb, fin, quoi, source, genre,
+  // aussi }] (ms ; source 'mac' ou 'iphone' ; genre 'web', 'app' ou
+  // 'iphone' ; `aussi` : ce qui distrayait en même temps). `segs` : les
+  // segments du jour (Mac et iPhone) ; `interruptions` : le téléphone utilisé
+  // pendant le Mac ; `distrait(seg)` : ce segment distrait-il ? Ce qui
+  // s'enchaîne à moins de `fusionSec`, ou se recouvre (le téléphone pendant
+  // Messages), forme un seul épisode. Ceux de moins de `seuilSec` sont
+  // écartés.
   static microDistractions(segs, interruptions, distrait, opts) {
     const o = Object.assign({ seuilSec: 10, fusionSec: 20 }, opts || {});
+    const nom = (app) => String(app || '').replace(/\s*\(iPhone\)\s*$/, '').trim();
     const bruts = [];
     for (const s of (segs || [])) {
       if (!(s.fin > s.deb) || !distrait(s)) continue;
-      const iphone = s.appareil === 'iphone';
-      bruts.push({ deb: s.deb, fin: s.fin, source: iphone ? 'iphone' : 'mac',
-        quoi: iphone ? String(s.app || '').replace(/\s*\(iPhone\)\s*$/, '') : (Ariane.cleDistraction(s) || String(s.app || '')) });
+      if (s.appareil === 'iphone') {
+        bruts.push({ deb: s.deb, fin: s.fin, source: 'iphone', genre: 'iphone', quoi: nom(s.app) });
+        continue;
+      }
+      const web = /^[a-z][\w+.-]*:\/\//i.test(String(s.url || ''));
+      bruts.push({ deb: s.deb, fin: s.fin, source: 'mac', genre: web ? 'web' : 'app', quoi: web ? Ariane.cleDistraction(s) : nom(s.app) });
     }
     for (const x of (interruptions || [])) {
-      if (x.fin > x.deb) bruts.push({ deb: x.deb, fin: x.fin, source: 'iphone', quoi: x.app });
+      if (x.fin > x.deb) bruts.push({ deb: x.deb, fin: x.fin, source: 'iphone', genre: 'iphone', quoi: nom(x.app) });
     }
     bruts.sort((a, b) => a.deb - b.deb);
+    // Un épisode : tout ce qui s'enchaîne à moins de `fusionSec` (WhatsApp,
+    // Messages, de nouveau WhatsApp), nommé d'après ce qui l'a le plus
+    // occupé, les autres dans `aussi`.
     const out = [];
     for (const b of bruts) {
       const der = out[out.length - 1];
-      if (der && der.source === b.source && der.quoi === b.quoi && b.deb - der.fin <= o.fusionSec * 1000) {
+      if (der && b.deb - der.fin <= o.fusionSec * 1000) {
         der.fin = Math.max(der.fin, b.fin);
-      } else if (der && b.deb < der.fin) {
-        // Deux sources en même temps (le téléphone pendant un site distrayant) :
-        // une seule interruption, la première nommée.
-        der.fin = Math.max(der.fin, b.fin);
+        der.parts.push(b);
       } else {
-        out.push(Object.assign({}, b));
+        out.push({ deb: b.deb, fin: b.fin, parts: [b] });
       }
+    }
+    for (const e of out) {
+      const temps = new Map();
+      for (const p of e.parts) {
+        const k = p.source + '\u0001' + p.quoi;
+        const v = temps.get(k) || { p, ms: 0 };
+        v.ms += p.fin - p.deb;
+        temps.set(k, v);
+      }
+      const rang = [...temps.values()].sort((x, y) => y.ms - x.ms);
+      Object.assign(e, { source: rang[0].p.source, genre: rang[0].p.genre, quoi: rang[0].p.quoi,
+        aussi: rang.slice(1).map((x) => x.p.quoi).filter((q, k, l) => q !== rang[0].p.quoi && l.indexOf(q) === k) });
+      delete e.parts;
     }
     return out.filter((x) => x.fin - x.deb >= o.seuilSec * 1000);
   }
@@ -94,12 +113,20 @@ const avecConcentration = (Base) => class extends Base {
       longue: utiles.length ? Math.max(...utiles) : 0 };
   }
 
-  // Une micro-interruption en une ligne : « 10:42 reddit.com, 40 s ».
+  // Une micro-interruption en une ligne : « 10:42 reddit.com, 40 s », ce
+  // qui distrayait en même temps joint par « et ». D'où elle vient (site,
+  // application du Mac, iPhone) est dit par l'icône, pas par le texte.
   static libelleMicro(m) {
     const d = new Date(m.deb);
     const sec = Math.round((m.fin - m.deb) / 1000);
-    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + m.quoi
-      + (m.source === 'iphone' ? ' (iPhone)' : '') + ', ' + (sec < 60 ? sec + ' s' : Math.round(sec / 60) + ' min');
+    const quoi = [m.quoi].concat(m.aussi || []).join(' et ');
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + quoi
+      + ', ' + (sec < 60 ? sec + ' s' : Math.round(sec / 60) + ' min');
+  }
+
+  // L'icône d'une micro-interruption : téléphone, page web ou application.
+  static iconeMicro(m) {
+    return m.genre === 'iphone' || m.source === 'iphone' ? 'smartphone' : m.genre === 'web' ? 'globe' : 'monitor';
   }
 
   // Les micro-interruptions survenues pendant le travail : celles qui

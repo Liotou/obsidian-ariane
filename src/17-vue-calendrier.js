@@ -649,7 +649,7 @@ class MoteurCalendrier extends MoteurVue {
     bloc.createDiv({ cls: 'zfa-act-micro-titre', text: l.length + ' ' + (l.length > 1 ? tr('interruptions') : tr('interruption')) });
     const ligne = (m) => {
       const x = bloc.createDiv({ cls: 'zfa-act-micro-l' });
-      obsidian.setIcon(x.createSpan({ cls: 'zfa-act-micro-ic' }), m.source === 'iphone' ? 'smartphone' : 'globe');
+      obsidian.setIcon(x.createSpan({ cls: 'zfa-act-micro-ic' }), Ariane.iconeMicro(m));
       x.createSpan({ text: Ariane.libelleMicro(m) });
     };
     for (const m of l.slice(0, 8)) ligne(m);
@@ -718,7 +718,7 @@ class MoteurCalendrier extends MoteurVue {
     m.addItem((i) => i.setTitle(tr('Créer une tâche associée…')).setIcon('file-plus')
       .onClick(() => this._tacheDepuisTemps(nom, (ref) => this.greffon.lierNoteATache(ref, x.chemin))));
     if (t) {
-      m.addItem((i) => i.setTitle(tr('Poser comme créneau de ') + t.ref + (t.intitule ? ' ' + t.intitule : '')).setIcon('calendar-plus')
+      m.addItem((i) => i.setTitle(tr('Poser comme créneau de ') + t.ref).setIcon('calendar-plus')
         .onClick(() => this._creneauDepuisTemps(debut.slice(0, 10), debut, fin, nom, t.ref)));
     }
     m.addItem((i) => i.setTitle(t ? tr('Poser comme créneau d’une autre tâche…') : tr('Poser comme créneau de tâche…'))
