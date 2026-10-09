@@ -3989,6 +3989,12 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-cal-reel.est-obsidian { background: var(--zfa-cal-coul, var(--text-faint)); }
 .zfa-cal-reel.est-obsidian.est-hors-tache { --zfa-cal-coul: var(--text-faint); }
 .zfa-cal-reel.est-externe { background: color-mix(in srgb, var(--zfa-cal-coul) 45%, transparent); }
+/* Une fine bordure sur toutes les bandes, tracée à l'extérieur : un trou de
+   micro-interruption (même en fin de créneau) reste dans le cadre, la bande
+   ne paraît jamais coupée en deux. Le survol la renforce (règle suivante). */
+.zfa-cal-reel.est-obsidian:not(.est-rattache), .zfa-cal-reel.est-externe:not(.est-rattache) {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--zfa-cal-coul) 70%, var(--background-primary));
+}
 .zfa-cal-reel.est-externe:hover, .zfa-cal-reel.est-obsidian:hover {
   background: var(--zfa-cal-coul);
   /* Une fine bordure autour de la bande, qui garde ses trous visibles. */
