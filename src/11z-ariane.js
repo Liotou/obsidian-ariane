@@ -66,7 +66,7 @@ class Ariane extends composer(obsidian.Plugin,
       }
       const perimes = this.famillesDossiersPerimes();
       if (perimes.length) {
-        new obsidian.Notice(tr('Ariane : dossiers de familles introuvables, à corriger dans Réglages → Dossiers & familles.\n')
+        new obsidian.Notice(tr('Ariane : dossiers de familles introuvables, à corriger dans les réglages d’Ariane, onglet « Familles de notes ».\n')
           + perimes.map((p) => p.famille + ' : « ' + p.dossier + ' »'
             + (p.probable ? tr(' (peut-être « ') + p.probable + ' »)' : '')).join('\n'), 20000);
       }

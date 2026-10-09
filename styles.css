@@ -274,14 +274,32 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   margin: 6px 0 16px;
 }
 /* Rangée 1 : onglets primaires en icônes seules, sur une seule ligne. */
+/* Rangée 1 : les onglets, icône et nom, sur plusieurs lignes au besoin. */
 .zfa-onglets-primaire {
-  flex-wrap: nowrap;
-  gap: 0;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  gap: 2px 4px;
   margin-bottom: 0;
+  padding-bottom: 4px;
 }
-.zfa-onglets-primaire .zfa-onglet { padding: 6px 10px; }
-.zfa-onglets-primaire .zfa-onglet-icone svg { width: 17px; height: 17px; }
+.zfa-onglets-primaire .zfa-onglet {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; height: auto;
+  font-size: var(--font-ui-small); color: var(--text-muted);
+  background: transparent; border: none; box-shadow: none; border-radius: var(--radius-s); cursor: pointer;
+}
+.zfa-onglets-primaire .zfa-onglet:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.zfa-onglets-primaire .zfa-onglet.is-active { color: var(--text-normal); background: var(--background-modifier-active-hover, var(--background-modifier-hover)); font-weight: var(--font-semibold); }
+.zfa-onglets-primaire .zfa-onglet-icone { display: inline-flex; }
+.zfa-onglets-primaire .zfa-onglet-icone svg { width: 15px; height: 15px; }
+/* La recherche dans les réglages. */
+.zfa-reglages-recherche { position: relative; margin: 4px 0 8px; }
+.zfa-reglages-recherche input { width: 100%; padding-left: 30px; }
+.zfa-reglages-recherche-ic { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); display: inline-flex; color: var(--text-faint); pointer-events: none; }
+.zfa-reglages-recherche-ic svg { width: 15px; height: 15px; }
+.zfa-reglages-trouve { margin: 18px 0 2px; font-size: var(--font-ui-smaller); color: var(--text-accent); cursor: pointer; }
+.zfa-reglages-trouve:hover { text-decoration: underline; }
+/* Un intertitre dans un sous-onglet. */
+.zfa-reglages-intertitre { margin: 22px 0 4px; padding-top: 10px; border-top: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-small); font-weight: var(--font-semibold); color: var(--text-normal); }
 /* Rangée 2 : sous-onglets (sections) de l'onglet actif. */
 .zfa-sous-onglets {
   display: flex;

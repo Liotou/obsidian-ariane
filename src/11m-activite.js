@@ -909,7 +909,7 @@ const avecActivite = (Base) => class extends Base {
   }
 
   // L'appel à l'IA choisie pour les résumés (ou celle de l'assistant).
-  // L'IA de l'activité réelle (réglages, onglet Temps passé) : résumés des
+  // L'IA de l'activité réelle (réglages, onglet IA) : résumés des
   // créneaux et des journées, et « Affiner avec l'IA » des rattachements (le
   // premier jet de ceux-ci est local, sans IA générative). Un réglage vide
   // reprend celui de l'assistant IA.
@@ -942,7 +942,7 @@ const avecActivite = (Base) => class extends Base {
     if (!this.activiteDisponible()) return 0;
     await this._chargerResumesActivite();
     const cats = this.categoriesIA();
-    if (!cats.length) { new obsidian.Notice(tr('Aucune catégorie pour l\'IA : voir Réglages > Temps passé.')); return 0; }
+    if (!cats.length) { new obsidian.Notice(tr('Aucune catégorie pour l\'IA : voir les réglages d’Ariane, onglet IA.')); return 0; }
     const blocs = (await this.activitePlage([jour])).get(jour) || [];
     const segs = await this._segmentsDuJour(jour);
     const r = this._resumesActivite;

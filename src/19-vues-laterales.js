@@ -1570,7 +1570,7 @@ class VueChronologie extends obsidian.ItemView {
     }
     if (!this.greffon.settings.chronoActif) {
       hote.createDiv({ cls: 'zfa-chrono-avis',
-        text: tr("Le journal d'activité est désactivé (réglages, onglet Temps passé) : seule la reconstitution d'après les dates des fichiers s'affiche.") });
+        text: tr("Le journal d'activité est désactivé (réglages, onglet « Temps et activité ») : seule la reconstitution d'après les dates des fichiers s'affiche.") });
     }
     const ong = hote.createDiv({ cls: 'zfa-chrono-onglets' });
     for (const [o, l, ic] of [['fil', 'Fil', 'list'], ['synthese', 'Synthèse', 'chart-column']]) {
