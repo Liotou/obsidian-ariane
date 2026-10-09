@@ -94,6 +94,22 @@ const avecConcentration = (Base) => class extends Base {
       longue: utiles.length ? Math.max(...utiles) : 0 };
   }
 
+  // Une micro-interruption en une ligne : « 10:42 reddit.com, 40 s ».
+  static libelleMicro(m) {
+    const d = new Date(m.deb);
+    const sec = Math.round((m.fin - m.deb) / 1000);
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + m.quoi
+      + (m.source === 'iphone' ? ' (iPhone)' : '') + ', ' + (sec < 60 ? sec + ' s' : Math.round(sec / 60) + ' min');
+  }
+
+  // Les micro-interruptions survenues pendant le travail : celles qui
+  // commencent dans une pièce du rail qui n'est pas « personnel » (minutes
+  // depuis minuit, champs a et b). Les autres ne coupent rien.
+  static microPendantTravail(micro, rail) {
+    const travail = (rail || []).filter((x) => x.genre !== 'personnel');
+    return (micro || []).filter((m) => travail.some((x) => m.a >= x.a && m.a < x.b));
+  }
+
   // Ce qui distrait le plus : [{ quoi, n, sec }], par nombre de fois.
   static principalesDistractions(micro, max) {
     const m = new Map();

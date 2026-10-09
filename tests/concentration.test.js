@@ -68,3 +68,13 @@ test('créneaux : un seuil plus fin pour les distractions', () => {
   const b = Ariane.agregerActivite(segs, regles, { d0: m('00:00'), d1: m('23:59'), grainMin: 5, dureeMin: 10, dureeDistractionSec: 30 });
   assert.deepEqual(b.map((x) => x.categorie), ['Personnel et distraction'], 'la distraction de trois minutes reste, pas le travail');
 });
+
+test('micro-interruptions : seulement pendant le travail, et leur libellé', () => {
+  const rail = [{ a: 540, b: 600, genre: 'obsidian' }, { a: 600, b: 640, genre: 'personnel' }, { a: 700, b: 760, genre: 'externe' }];
+  const micro = [{ a: 550, b: 551 }, { a: 610, b: 611 }, { a: 680, b: 681 }, { a: 759.5, b: 760.2 }];
+  assert.deepEqual(Ariane.microPendantTravail(micro, rail).map((m) => m.a), [550, 759.5],
+    'ni dans un créneau personnel, ni hors de tout travail');
+  const d = new Date(2026, 9, 8, 10, 42, 0).getTime();
+  assert.equal(Ariane.libelleMicro({ deb: d, fin: d + 40000, quoi: 'reddit.com', source: 'mac' }), '10:42 reddit.com, 40 s');
+  assert.equal(Ariane.libelleMicro({ deb: d, fin: d + 180000, quoi: 'WhatsApp', source: 'iphone' }), '10:42 WhatsApp (iPhone), 3 min');
+});

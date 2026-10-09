@@ -844,6 +844,8 @@ const TEXTES = {
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
+    "interruptions": "interruptions",
+    "interruption": "interruption",
     "Concentration": "Focus",
     "Distractions": "Distractions",
     "Jamais des distractions": "Never distractions",

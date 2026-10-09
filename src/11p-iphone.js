@@ -301,7 +301,7 @@ const avecIphone = (Base) => class extends Base {
       obsidian.setIcon(et.createSpan({ cls: 'zfa-iphone-ic' }), 'smartphone');
       et.createSpan({ text: dureeLisible(b.iphoneMin) });
     }
-    if (b.interruptions && b.interruptions.length) {
+    if (b.interruptions && b.interruptions.length && !c.sansInterruptions) {
       const l = corps.createDiv({ cls: (c.ligne || 'zfa-act-survol-resume') + ' zfa-iphone-inter' });
       obsidian.setIcon(l.createSpan({ cls: 'zfa-iphone-ic' }), 'smartphone');
       l.createSpan({ text: tr('Interrompu par l’iPhone : ') + b.interruptions.map((x) => x.app + ' (' + dureeLisible(x.min) + ')').join(', ') });

@@ -1035,6 +1035,8 @@ const TEXTES = {
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
+    "interruptions": "interruptions",
+    "interruption": "interruption",
     "Concentration": "Focus",
     "Distractions": "Distractions",
     "Jamais des distractions": "Never distractions",
@@ -20221,7 +20223,8 @@ const avecChronologie = (Base) => class extends Base {
       const d0 = new Date(jour + 'T00:00:00').getTime();
       let micro = [];
       if (jour >= plancher && this.microDuJour) { try { micro = await this.microDuJour(jour); } catch (e) { micro = []; } }
-      out.push({ jour, rail, creneaux, micro: micro.map((m) => Object.assign({ a: (m.deb - d0) / 60000, b: (m.fin - d0) / 60000 }, m)),
+      out.push({ jour, rail, creneaux,
+        micro: Ariane.microPendantTravail(micro.map((m) => Object.assign({ a: (m.deb - d0) / 60000, b: (m.fin - d0) / 60000 }, m)), rail),
         obsidian: r.obsidianMin, externe: r.externeMin, personnel: r.personnelMin });
     }
     const somme = (k) => out.reduce((s, j) => s + j[k], 0);
@@ -21097,7 +21100,7 @@ const avecIphone = (Base) => class extends Base {
       obsidian.setIcon(et.createSpan({ cls: 'zfa-iphone-ic' }), 'smartphone');
       et.createSpan({ text: dureeLisible(b.iphoneMin) });
     }
-    if (b.interruptions && b.interruptions.length) {
+    if (b.interruptions && b.interruptions.length && !c.sansInterruptions) {
       const l = corps.createDiv({ cls: (c.ligne || 'zfa-act-survol-resume') + ' zfa-iphone-inter' });
       obsidian.setIcon(l.createSpan({ cls: 'zfa-iphone-ic' }), 'smartphone');
       l.createSpan({ text: tr('Interrompu par l’iPhone : ') + b.interruptions.map((x) => x.app + ' (' + dureeLisible(x.min) + ')').join(', ') });
@@ -21200,6 +21203,22 @@ const avecConcentration = (Base) => class extends Base {
     const utiles = durees.filter((d) => d >= 5);
     return { n: utiles.length, moyenne: utiles.length ? utiles.reduce((s, d) => s + d, 0) / utiles.length : 0,
       longue: utiles.length ? Math.max(...utiles) : 0 };
+  }
+
+  // Une micro-interruption en une ligne : « 10:42 reddit.com, 40 s ».
+  static libelleMicro(m) {
+    const d = new Date(m.deb);
+    const sec = Math.round((m.fin - m.deb) / 1000);
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + m.quoi
+      + (m.source === 'iphone' ? ' (iPhone)' : '') + ', ' + (sec < 60 ? sec + ' s' : Math.round(sec / 60) + ' min');
+  }
+
+  // Les micro-interruptions survenues pendant le travail : celles qui
+  // commencent dans une pièce du rail qui n'est pas « personnel » (minutes
+  // depuis minuit, champs a et b). Les autres ne coupent rien.
+  static microPendantTravail(micro, rail) {
+    const travail = (rail || []).filter((x) => x.genre !== 'personnel');
+    return (micro || []).filter((m) => travail.some((x) => m.a >= x.a && m.a < x.b));
   }
 
   // Ce qui distrait le plus : [{ quoi, n, sec }], par nombre de fois.
@@ -34567,6 +34586,7 @@ class MoteurCalendrier extends MoteurVue {
         this.greffon.remplirMenuActivite(m, jour, b, this._hoteActivite());
         m.showAtMouseEvent(e);
       });
+      return el;
     }
   }
 
@@ -34590,7 +34610,8 @@ class MoteurCalendrier extends MoteurVue {
     tete.createSpan({ cls: 'zfa-act-meta', text: b.debut.slice(11, 16) + ' → ' + b.fin.slice(11, 16) });
     tete.createSpan({ cls: 'zfa-act-meta', text: dureeLisible(b.actifMin) + tr(' actives') });
     if (b.ia && b.ia.resume) carte.createDiv({ cls: 'zfa-act-survol-resume', text: b.ia.resume });
-    this.greffon.marquesIphone(tete, carte, b);
+    this.greffon.marquesIphone(tete, carte, b, { sansInterruptions: true });
+    this._listeMicro(carte, el._micro);
     if (b.rattache && b.rattache.length) {
       const rt = carte.createDiv({ cls: 'zfa-act-survol-ratt' });
       for (const r of b.rattache) {
@@ -34667,6 +34688,7 @@ class MoteurCalendrier extends MoteurVue {
     tete.createSpan({ cls: 'zfa-act-meta', text: o.horaires });
     tete.createSpan({ cls: 'zfa-act-meta', text: o.duree + tr(' dans Obsidian') });
     if (o.tache && o.tache.intitule) carte.createDiv({ cls: 'zfa-act-survol-resume', text: o.tache.intitule });
+    this._listeMicro(carte, o.micro);
     const l = carte.createDiv({ cls: 'zfa-act-survol-apps' }).createDiv({ cls: 'zfa-act-survol-app' });
     const ic = l.createSpan({ cls: 'zfa-act-icone est-initiale' });
     obsidian.setIcon(ic, 'file-text');
@@ -34678,6 +34700,21 @@ class MoteurCalendrier extends MoteurVue {
     if (x < 8) x = Math.min(r.right + 8, win.innerWidth - carte.offsetWidth - 8);
     carte.style.left = x + 'px';
     carte.style.top = Math.max(8, Math.min(r.top, win.innerHeight - carte.offsetHeight - 8)) + 'px';
+  }
+
+  // Les micro-interruptions d'une bande, dans sa carte de survol : une ligne
+  // chacune (heure, quoi, durée), le téléphone marqué.
+  _listeMicro(carte, micro) {
+    const l = micro || [];
+    if (!l.length) return;
+    const bloc = carte.createDiv({ cls: 'zfa-act-micro' });
+    bloc.createDiv({ cls: 'zfa-act-micro-titre', text: l.length + ' ' + (l.length > 1 ? tr('interruptions') : tr('interruption')) });
+    for (const m of l.slice(0, 8)) {
+      const x = bloc.createDiv({ cls: 'zfa-act-micro-l' });
+      obsidian.setIcon(x.createSpan({ cls: 'zfa-act-micro-ic' }), m.source === 'iphone' ? 'smartphone' : 'globe');
+      x.createSpan({ text: Ariane.libelleMicro(m) });
+    }
+    if (l.length > 8) bloc.createDiv({ cls: 'zfa-act-micro-l est-plus', text: '+ ' + (l.length - 8) });
   }
 
   // Entrée en fondu, légère montée : la carte apparaît au tour suivant de
@@ -36873,7 +36910,7 @@ class MoteurCalendrier extends MoteurVue {
       for (const i of this.racine.querySelectorAll('.zfa-cal-sem-inner')) this._peindreTravailReel(i);
       return;
     }
-    for (const x of inner.querySelectorAll('.zfa-cal-presence, .zfa-cal-reel, .zfa-cal-jauge, .zfa-cal-jauge-val, .zfa-cal-micro')) x.remove();
+    for (const x of inner.querySelectorAll('.zfa-cal-presence, .zfa-cal-reel, .zfa-cal-jauge, .zfa-cal-jauge-val, .zfa-cal-coupure')) x.remove();
     const g = this.greffon;
     const avecObsidian = g.settings.calTravailReel !== false && !!g.sessionsTravail;
     const avecExterne = this._activiteVisible();
@@ -36942,9 +36979,11 @@ class MoteurCalendrier extends MoteurVue {
       const ext = (avecExterne ? (this._activite.get(jour) || []) : [])
         .map((bl) => ({ a: minutesDe(bl.debut, jour), b: minutesDe(bl.fin, jour), bloc: bl }))
         .filter((e) => e.b > e.a);
+      const travail = [];
       for (const p of Ariane.fusionnerRailReel(obs, ext)) {
         if (p.source === 'externe') {
-          this._poserBandeExterne(col, jour, p.item.bloc, p.a, p.b, hDeb, PXH);
+          const elx = this._poserBandeExterne(col, jour, p.item.bloc, p.a, p.b, hDeb, PXH);
+          if (elx && !(p.item.bloc.ia && p.item.bloc.ia.personnel)) travail.push({ a: p.a, b: p.b, el: elx });
           continue;
         }
         const { x, t } = p.item;
@@ -36954,6 +36993,7 @@ class MoteurCalendrier extends MoteurVue {
         if (t) el.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
         // Carte de survol immédiate ; un clic ouvre la note travaillée.
         el.addEventListener('mouseenter', () => this._montrerCartePresence(el, {
+          micro: el._micro || [],
           horaires: hm(x.a) + ' → ' + hm(x.b), duree: duree(Math.round(x.b - x.a)),
           note: String(x.chemin).split('/').pop().replace(/\.md$/, ''), tache: t,
           couleur: t ? this.couleurTache(t) : '' }));
@@ -36967,28 +37007,34 @@ class MoteurCalendrier extends MoteurVue {
           if (f) this.app.workspace.getLeaf(e.metaKey || e.ctrlKey).openFile(f);
         });
         el.addEventListener('contextmenu', (e) => this._menuPresence(e, x, t));
+        travail.push({ a: p.a, b: p.b, el });
       }
-      if (avecExterne) this._poserMicro(col, jour, hDeb, PXH);
+      if (avecExterne && travail.length) this._poserCoupures(col, jour, travail, hDeb, PXH);
     }
   }
 
-  // Les micro-interruptions d'un jour : un trait rouge en travers de la
-  // colonne des créneaux réels, à l'heure où elles commencent, jamais sur
-  // les créneaux de tâches. Leur détail (quoi, combien de temps) au survol.
-  _poserMicro(col, jour, hDeb, PXH) {
+  // Les micro-interruptions d'un jour, pendant le travail seulement : un
+  // fin interstice dans la bande du créneau réel (Obsidian, ou hors Obsidian
+  // s'il n'est pas « personnel »), à l'heure où elle commence. Une plage
+  // nette reste pleine, une plage hachée se voit hachée. Le détail (quoi,
+  // quand, combien de temps) est dans la carte de survol de la bande, et
+  // dans l'infobulle de l'interstice.
+  _poserCoupures(col, jour, travail, hDeb, PXH) {
     this.greffon.microDuJour(jour).then((micro) => {
       if (this._detruit || !col.isConnected) return;
-      for (const x of col.querySelectorAll('.zfa-cal-micro')) x.remove();
+      for (const x of col.querySelectorAll('.zfa-cal-coupure')) x.remove();
       const d0 = new Date(jour + 'T00:00:00').getTime();
-      const hm = (ms) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+      for (const w of travail) w.el._micro = [];
       for (const m of micro) {
         const a = (m.deb - d0) / 60000;
-        const el = col.createDiv({ cls: 'zfa-cal-micro' + (m.source === 'iphone' ? ' est-iphone' : '') });
-        el.style.top = ((a / 60 - hDeb) * PXH - 3) + 'px';
-        const sec = Math.round((m.fin - m.deb) / 1000);
-        el.setAttribute('aria-label', hm(m.deb) + ' : ' + m.quoi + (m.source === 'iphone' ? ' (iPhone)' : '') + ', '
-          + (sec < 60 ? sec + ' s' : dureeLisible(Math.round(sec / 60))));
-        el.addEventListener('pointerdown', (e) => e.stopPropagation());
+        const w = travail.find((x) => a >= x.a && a < x.b);
+        if (!w) continue;
+        w.el._micro.push(m);
+        const fin = Math.min(w.b, (m.fin - d0) / 60000);
+        const el = col.createDiv({ cls: 'zfa-cal-coupure' });
+        el.style.top = ((a / 60 - hDeb) * PXH) + 'px';
+        el.style.height = Math.max(1.5, Math.min(4, (fin - a) / 60 * PXH)) + 'px';
+        el.setAttribute('aria-label', Ariane.libelleMicro(m));
       }
     }).catch(() => {});
   }

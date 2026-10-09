@@ -799,7 +799,8 @@ const avecChronologie = (Base) => class extends Base {
       const d0 = new Date(jour + 'T00:00:00').getTime();
       let micro = [];
       if (jour >= plancher && this.microDuJour) { try { micro = await this.microDuJour(jour); } catch (e) { micro = []; } }
-      out.push({ jour, rail, creneaux, micro: micro.map((m) => Object.assign({ a: (m.deb - d0) / 60000, b: (m.fin - d0) / 60000 }, m)),
+      out.push({ jour, rail, creneaux,
+        micro: Ariane.microPendantTravail(micro.map((m) => Object.assign({ a: (m.deb - d0) / 60000, b: (m.fin - d0) / 60000 }, m)), rail),
         obsidian: r.obsidianMin, externe: r.externeMin, personnel: r.personnelMin });
     }
     const somme = (k) => out.reduce((s, j) => s + j[k], 0);
