@@ -23603,7 +23603,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         s.citationsRepliees = v; await maj(); this.plugin.appliquerEtatCitations();
       }));
 
-    this._section(c, tr('Glisser-déposer & notes de bas de page'));
+    this._section(c, tr('Glisser-déposer et notes de bas de page'));
     new obsidian.Setting(c)
       .setName(tr('Déposer une note sur un paragraphe'))
       .setDesc(tr("Glisser un lien de note sur un paragraphe l'ajoute à sa note de bas de page. Déposer ailleurs reste normal."))

@@ -265,31 +265,40 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   text-align: center;
 }
 
-/* Onglets de la page de réglages */
-.zfa-onglets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  border-bottom: 1px solid var(--background-modifier-border);
-  margin: 6px 0 16px;
+/* Onglets de la page de réglages : deux niveaux de la même famille, des
+   pastilles arrondies. Le premier, avec son icône, marqué de l'accent quand
+   il est actif ; le second, plus petit, dans un bandeau discret, marqué d'un
+   fond neutre. Les sélecteurs nomment l'élément « button » pour l'emporter
+   sur le style des boutons d'Obsidian. */
+.zfa-onglets, .zfa-sous-onglets { display: flex; flex-wrap: wrap; }
+.zfa-onglets-primaire { gap: 2px 4px; margin: 6px 0 0; padding-bottom: 8px; }
+.zfa-onglets button.zfa-onglet, .zfa-sous-onglets button.zfa-sous-onglet {
+  display: inline-flex; align-items: center; gap: 6px; height: auto;
+  background: transparent; border: none; box-shadow: none; cursor: pointer;
+  color: var(--text-muted); line-height: 1.3;
+  transition: background 0.12s ease, color 0.12s ease;
 }
-/* Rangée 1 : onglets primaires en icônes seules, sur une seule ligne. */
-/* Rangée 1 : les onglets, icône et nom, sur plusieurs lignes au besoin. */
-.zfa-onglets-primaire {
-  flex-wrap: wrap;
-  gap: 2px 4px;
-  margin-bottom: 0;
-  padding-bottom: 4px;
+.zfa-onglets button.zfa-onglet { padding: 6px 12px; border-radius: var(--radius-m); font-size: var(--font-ui-small); }
+.zfa-sous-onglets button.zfa-sous-onglet { padding: 4px 10px; border-radius: var(--radius-s); font-size: var(--font-ui-smaller); }
+.zfa-onglets button.zfa-onglet:hover, .zfa-sous-onglets button.zfa-sous-onglet:hover {
+  color: var(--text-normal); background: var(--background-modifier-hover);
 }
-.zfa-onglets-primaire .zfa-onglet {
-  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; height: auto;
-  font-size: var(--font-ui-small); color: var(--text-muted);
-  background: transparent; border: none; box-shadow: none; border-radius: var(--radius-s); cursor: pointer;
+.zfa-onglets button.zfa-onglet.is-active {
+  color: var(--text-normal); font-weight: var(--font-semibold);
+  background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
 }
-.zfa-onglets-primaire .zfa-onglet:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
-.zfa-onglets-primaire .zfa-onglet.is-active { color: var(--text-normal); background: var(--background-modifier-active-hover, var(--background-modifier-hover)); font-weight: var(--font-semibold); }
-.zfa-onglets-primaire .zfa-onglet-icone { display: inline-flex; }
-.zfa-onglets-primaire .zfa-onglet-icone svg { width: 15px; height: 15px; }
+.zfa-onglets button.zfa-onglet.is-active .zfa-onglet-icone { color: var(--interactive-accent); }
+.zfa-onglets .zfa-onglet-icone { display: inline-flex; }
+.zfa-onglets .zfa-onglet-icone svg { width: 15px; height: 15px; }
+.zfa-sous-onglets button.zfa-sous-onglet.is-active {
+  color: var(--text-normal); font-weight: var(--font-semibold); background: var(--background-primary);
+  box-shadow: 0 0 0 1px var(--background-modifier-border);
+}
+/* Le second niveau dans un bandeau, sous le premier : la hiérarchie se lit. */
+.zfa-sous-onglets {
+  gap: 2px; padding: 4px; margin: 0 0 16px;
+  background: var(--background-secondary); border-radius: var(--radius-m);
+}
 /* La recherche dans les réglages. */
 .zfa-reglages-recherche { position: relative; margin: 4px 0 8px; }
 .zfa-reglages-recherche input { width: 100%; padding-left: 30px; }
@@ -300,25 +309,6 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 /* Un intertitre dans un sous-onglet. */
 .zfa-reglages-intertitre { margin: 22px 0 4px; padding-top: 10px; border-top: 1px solid var(--background-modifier-border);
   font-size: var(--font-ui-small); font-weight: var(--font-semibold); color: var(--text-normal); }
-/* Rangée 2 : sous-onglets (sections) de l'onglet actif. */
-.zfa-sous-onglets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  border-bottom: 1px solid var(--background-modifier-border);
-  margin: 0 0 16px;
-  padding-top: 4px;
-}
-.zfa-sous-onglet {
-  background: transparent; border: none; border-bottom: 2px solid transparent;
-  border-radius: 0; box-shadow: none;
-  padding: 5px 10px; cursor: pointer;
-  color: var(--text-muted); font-size: var(--font-ui-small);
-}
-.zfa-sous-onglet:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
-.zfa-sous-onglet.is-active {
-  color: var(--text-normal); border-bottom-color: var(--interactive-accent); font-weight: 600;
-}
 .zfa-reglages-corps { margin-top: 12px; }
 /* Un titre de section devenu panneau : discret, sans double marge. */
 .zfa-reglages-corps .setting-item-heading.zfa-sous-titre {
@@ -327,24 +317,8 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-reglages-corps .setting-item-heading.zfa-sous-titre .setting-item-name {
   font-size: var(--font-ui-medium);
 }
-.zfa-onglet {
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  box-shadow: none;
-  padding: 6px 12px;
-  cursor: pointer;
-  color: var(--text-muted);
-}
-.zfa-onglet:hover {
-  color: var(--text-normal);
-  background: var(--background-modifier-hover);
-}
-.zfa-onglet.is-active {
-  color: var(--text-normal);
-  border-bottom-color: var(--interactive-accent);
-  font-weight: 600;
+@media (prefers-reduced-motion: reduce) {
+  .zfa-onglets button.zfa-onglet, .zfa-sous-onglets button.zfa-sous-onglet { transition: none; }
 }
 
 /* Aparté (titre) affiché après un lien d'annotation.
