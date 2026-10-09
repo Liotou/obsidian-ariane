@@ -167,7 +167,7 @@ function prefixeCommun(noms) {
 }
 
 // Une valeur de propriété destinée à Word : les liens d'Obsidian n'y ont pas
-// leur place. « [[Chabane Mazri]] » devient « Chabane Mazri », « [[cible|nom]] »
+// leur place. « [[Camille Rouvier]] » devient « Camille Rouvier », « [[cible|nom]] »
 // devient « nom », « [texte](url) » devient « texte ». Le reste est intact.
 function valeurLisible(texte) {
   return String(texte == null ? '' : texte)

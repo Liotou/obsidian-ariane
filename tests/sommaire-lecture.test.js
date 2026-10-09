@@ -14,11 +14,11 @@ test('sommaire : les pages liminaires, puis les numéros, puis le reste', () => 
 });
 
 test('sommaire : au format des fiches, en-tête « Titre / (Auteur, AAAA) », échappé', () => {
-  const html = Ariane.pageSommaireLecture({ titre: 'Participation <citoyenne>', citation: '(Kamaté, 2023)', date: '07/10/2026',
+  const html = Ariane.pageSommaireLecture({ titre: 'Participation <citoyenne>', citation: '(Rivière, 2023)', date: '07/10/2026',
     entrees: [{ page: '6', titre: 'Charte </script> & continuité' }] });
   assert.match(html, /@page \{ size: 100mm 150mm; margin: 0; \}/);
   assert.ok(html.includes('Participation &lt;citoyenne&gt;'), 'le titre est échappé');
-  assert.ok(html.includes('(Kamaté, 2023)'));
+  assert.ok(html.includes('(Rivière, 2023)'));
   assert.ok(!/Charte <\/script>/.test(html), 'les données ne ferment pas le script');
   assert.match(html, /min-height: 10\.16mm/, 'l\'en-tête fait 40 unités de la fiche');
   assert.ok(!/column-count/.test(html), 'une colonne par défaut');

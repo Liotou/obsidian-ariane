@@ -6,10 +6,10 @@ test('le libellé d une source réunit auteur, année, titre et clé', () => {
   const l = Ariane.libelleSource({
     citationKey: 'perrowNormalAccidentsLiving2011',
     title: 'Normal Accidents: Living with High Risk Technologies',
-    creators: ['[[Charles Perrow]]'],
+    creators: ['[[Charles Morvan]]'],
     year: 2011,
   }, '@perrowNormalAccidentsLiving2011');
-  assert.ok(l.includes('Charles Perrow'));
+  assert.ok(l.includes('Charles Morvan'));
   assert.ok(l.includes('2011'));
   assert.ok(l.includes('Normal Accidents'));
   assert.ok(l.includes('@perrowNormalAccidentsLiving2011'));

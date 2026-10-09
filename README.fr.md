@@ -68,7 +68,7 @@ La forme attendue, avec le profil livré par défaut, est celle-ci :
 ```
 **Un titre court pour cette idée**
 Votre paraphrase, avec vos mots, sur autant de lignes que vous voulez.
-*(Fan et al., 2022 ; Stål et al., 2023)*
+*(Ferrand et al., 2022 ; Strand et al., 2023)*
 ```
 
 Trois lignes, trois rôles :
@@ -117,7 +117,7 @@ en être l'auteur, ceux que vous écririez avec un « cité dans ».
 ```
 **Deux modes de production de la connaissance**
 Les auteurs distinguent le mode 1 du mode 2 et reprennent le cadrage antérieur.
-*(Gibbons, 1994 ; Nowotny et al., 2001)*
+*(Delmas, 1994 ; Navarre et al., 2001)*
 ```
 
 N'y écrivez rien et vous ne perdez rien : l'annotation est atomisée comme
@@ -273,7 +273,7 @@ nom de votre propre dossier.
 Les citations s'écrivent en clair dans vos notes :
 
 ```
-([[CLE|Dresch et al., 2015, p. 63]] ; [[AUTRE|Gibbons, 1994, p. 12]])
+([[CLE|Garnier et al., 2015, p. 63]] ; [[AUTRE|Delmas, 1994, p. 12]])
 ```
 
 Le libellé vient d'un modèle que vous réglez, par exemple
@@ -281,8 +281,8 @@ Le libellé vient d'un modèle que vous réglez, par exemple
 finale, comme le veut la typographie française.
 
 **Les sources de seconde main.** Quand une annotation rapporte un travail que
-vous n'avez pas lu, Ariane écrit « Fan et al., 2022 et Stål et al., 2023, cité
-dans Raizada & Sinha, 2025, p. 1 ». Plusieurs travaux rapportés par une même
+vous n'avez pas lu, Ariane écrit « Ferrand et al., 2022 et Strand et al., 2023, cité
+dans Berthier & Lanoix, 2025, p. 1 ». Plusieurs travaux rapportés par une même
 source sont réunis en une seule citation, ce qui empêche le style de citation
 d'effacer le nom d'auteur du second. Si le travail rapporté figure lui-même dans
 Zotero, il est cité directement, puisque vous pouvez le lire.
@@ -317,8 +317,8 @@ annotations qu'il contient arrivent en une seule citation.
 ![Des annotations rassemblées dans le panier, puis déposées d'un coup sur une phrase en une seule citation](docs/annotation-basket.gif)
 
 Quatre annotations sont réunies ici, venues de trois sources différentes, et
-tombent d'un seul geste en `(Aven et Renn, 2010, p. 49 ; Aven et Renn, 2010,
-p. 65 ; Aven et Ylönen, 2019, p. 285 ; Babeau, 2025)`. La bibliographie suit
+tombent d'un seul geste en `(Valmont et Ferrat, 2010, p. 49 ; Valmont et Ferrat, 2010,
+p. 65 ; Valmont et Varenne, 2019, p. 285 ; Bastide, 2025)`. La bibliographie suit
 d'elle-même.
 
 Deux détails qui ont demandé du travail :

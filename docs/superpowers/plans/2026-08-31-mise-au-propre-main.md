@@ -571,7 +571,7 @@ git diff --stat taches-par-dossier..HEAD
 - [ ] **Step 5 :** une fois la relecture propre — copie vers le coffre :
 
 ```bash
-cp main.js styles.css manifest.json "/Users/equiriconi/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"
+cp main.js styles.css manifest.json "/Users/utilisateur/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"
 ```
 
 (rappel : `styles.css` et `manifest.json` sont inchangés depuis `taches-par-dossier` ; on les recopie par cohérence du trio.)

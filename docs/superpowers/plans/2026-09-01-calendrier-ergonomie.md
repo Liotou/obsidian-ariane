@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - `main.js` : fichier unique ~20 k lignes, `'use strict'`, **sans build**, contient des octets NUL → `grep -a` obligatoire, jamais `sed` en place. Éditer par remplacement de chaîne exacte.
-- Déploiement : `cp main.js styles.css manifest.json "/Users/equiriconi/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"`. **Ne jamais toucher `data.json`.**
+- Déploiement : `cp main.js styles.css manifest.json "/Users/utilisateur/Obsidian Vault/.obsidian/plugins/obsidian-ariane/"`. **Ne jamais toucher `data.json`.**
 - Tests : `node --test tests/*.test.js`. Base de départ : **288 verts**. Aucun test ne doit disparaître.
 - Commits : message écrit dans un fichier puis `git commit -F <fichier>`, dernière ligne exactement `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`.
 - Les gestes de la **vue semaine** (dépôt d'un lien, glissé/redimensionnement d'un bloc) ne touchent qu'à `Créneaux` via `majCreneau`. Un dépôt en **vue mois** reprogramme `début`/`échéance` via `ecrireDatesTaches` — comportement voulu, hérité de la vue calendrier initiale et documenté au README. Le seul autre point d'écriture de dates est l'item de menu contextuel « Retirer du calendrier » (efface `début`+`échéance`, Task 9).

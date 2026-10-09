@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const Ariane = require('./obsidian-factice.js');
 
-const tache = (x) => Object.assign({ ref: 'T001', intitule: 'Lire Bertalanffy', statut: 'à faire',
+const tache = (x) => Object.assign({ ref: 'T001', intitule: 'Lire Hartwig', statut: 'à faire',
   priorite: '', debut: '', echeance: '', heure: '', avancement: 0, jalon: false, parent: '',
   bloquePar: [], famille: 'production', creneaux: [] }, x || {});
 
@@ -421,7 +421,7 @@ test('répartition : candidats, les plus pressantes d\'abord, avec leurs indices
   assert.equal(fond.minutesPasseesPlanifiees, 180);
   const p = Ariane.promptRepartition(c, { heureDebut: '09:00', heureFin: '18:00', minutes: 1200, nbPlages: 4 }, AUJ,
     [{ id: 'production', nom: 'Production', description: 'Travail de fond' }]);
-  assert.match(p, /FOND \| Lire Bertalanffy \| famille : Production \(Travail de fond\)/);
+  assert.match(p, /FOND \| Lire Hartwig \| famille : Production \(Travail de fond\)/);
   assert.match(p, /durée de vie 172 j/);
   assert.match(p, /Réponds UNIQUEMENT par un tableau JSON/);
 });

@@ -121,6 +121,6 @@ test('règles d\'Ariane : Obsidian hors note, organisation ; draw.io, travail su
   const regles = Ariane.reglesIntegrees([{ nom: 'Organisation', couleur: '#7c5cbf' }]).concat(Ariane.compilerReglesActivite('Notes #111111 = app:Obsidian'));
   const cat = (app, titre) => Ariane.classerActivite({ app, titre, url: '' }, regles).categorie;
   assert.equal(cat('Obsidian', 'Tâches - Obsidian Vault - Obsidian 1.14.4'), 'Organisation');
-  assert.equal(cat('Obsidian', 'FS001 - Kamaté.drawio.svg - Obsidian Vault - Obsidian 1.14.4'), 'Travail sur les notes');
+  assert.equal(cat('Obsidian', 'FS001 - Rivière.drawio.svg - Obsidian Vault - Obsidian 1.14.4'), 'Travail sur les notes');
   assert.equal(Ariane.classerActivite({ app: 'draw.io', titre: 'x.drawio', url: '' }, regles), undefined, 'draw.io hors d\'Obsidian : vos règles décident');
 });

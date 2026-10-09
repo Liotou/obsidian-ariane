@@ -16,7 +16,7 @@
 - Identifiant de type de vue `ariane-articulation` **inchangé** (compat `.base`).
 - Le plan est stocké **en chaîne JSON** sous la clé de config de vue `arianeArtPlan` (évite toute question sur la sérialisation d'objets par Bases). Lecture = `JSON.parse` tolérant ; écriture = `JSON.stringify`.
 - Messages de commit terminés par `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`.
-- Après la dernière tâche : `cp main.js styles.css manifest.json` vers `/Users/equiriconi/Obsidian Vault/.obsidian/plugins/obsidian-ariane/`.
+- Après la dernière tâche : `cp main.js styles.css manifest.json` vers `/Users/utilisateur/Obsidian Vault/.obsidian/plugins/obsidian-ariane/`.
 - Ne pas pousser, ne pas taguer.
 
 ## Vérification (VERIF) — avant chaque commit

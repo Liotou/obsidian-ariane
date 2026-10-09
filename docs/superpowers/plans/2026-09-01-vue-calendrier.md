@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Déploiement : `cp main.js styles.css manifest.json` vers `/Users/equiriconi/Obsidian Vault/.obsidian/plugins/obsidian-ariane/`. Ne jamais toucher `data.json`.
+- Déploiement : `cp main.js styles.css manifest.json` vers `/Users/utilisateur/Obsidian Vault/.obsidian/plugins/obsidian-ariane/`. Ne jamais toucher `data.json`.
 - `main.js` contient des octets NUL → `grep -a`.
 - Commits en français, terminés par `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`, via `git commit -F <fichier>` (accents mangés par `-m`).
 - Ne pas fusionner de branche ni taguer sans demande explicite.

@@ -68,7 +68,7 @@ The expected shape, with the profile shipped by default, is this:
 ```
 **A short title for this idea**
 Your paraphrase, in your own words, over as many lines as you like.
-*(Fan et al., 2022 ; Stål et al., 2023)*
+*(Ferrand et al., 2022 ; Strand et al., 2023)*
 ```
 
 Three lines, three roles:
@@ -116,7 +116,7 @@ author, the ones you would write as "as cited in".
 ```
 **Two ways of producing knowledge**
 The authors distinguish mode 1 from mode 2 and take up the earlier framing.
-*(Gibbons, 1994 ; Nowotny et al., 2001)*
+*(Delmas, 1994 ; Navarre et al., 2001)*
 ```
 
 Write nothing there and you lose nothing: the annotation is atomised as usual,
@@ -267,7 +267,7 @@ it. Adapt `"1 - Annotations/"` to your own folder name.
 Citations are written in plain sight inside your notes:
 
 ```
-([[KEY|Dresch et al., 2015, p. 63]] ; [[OTHER|Gibbons, 1994, p. 12]])
+([[KEY|Garnier et al., 2015, p. 63]] ; [[OTHER|Delmas, 1994, p. 12]])
 ```
 
 The label is produced from a template you control, for example
@@ -275,8 +275,8 @@ The label is produced from a template you control, for example
 punctuation, as French typography wants.
 
 **Secondary sources.** When an annotation reports a work you have not read
-yourself, Ariane writes it as "Fan et al., 2022 and Stål et al., 2023, as cited
-in Raizada & Sinha, 2025, p. 1". Several works reported by the same source are
+yourself, Ariane writes it as "Ferrand et al., 2022 and Strand et al., 2023, as cited
+in Berthier & Lanoix, 2025, p. 1". Several works reported by the same source are
 gathered into a single citation, so the reference style cannot collapse the
 author name of the second one. If the reported work is itself in Zotero, it is
 cited directly instead, since you can read it.
@@ -311,8 +311,8 @@ arrives as a single citation.
 ![Collecting annotations in the basket, then dropping the whole set onto a sentence as one citation](docs/annotation-basket.gif)
 
 Four annotations are gathered here, from three different sources, and land in
-one go as `(Aven and Renn, 2010, p. 49 ; Aven and Renn, 2010, p. 65 ; Aven and
-Ylönen, 2019, p. 285 ; Babeau, 2025)`. The bibliography follows on its own.
+one go as `(Valmont and Ferrat, 2010, p. 49 ; Valmont and Ferrat, 2010, p. 65 ; Valmont and
+Varenne, 2019, p. 285 ; Bastide, 2025)`. The bibliography follows on its own.
 
 Two details that took some work:
 

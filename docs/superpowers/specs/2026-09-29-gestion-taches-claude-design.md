@@ -13,7 +13,7 @@ de nouveaux champs.
 
 Questions typiques visées : « qu'est-ce qui dérape cette semaine ? »,
 « quelles tâches semblent abandonnées ? », « replanifie-moi la lecture de
-Bertalanffy sur mes créneaux libres ».
+Hartwig sur mes créneaux libres ».
 
 ## 2. Décisions actées
 

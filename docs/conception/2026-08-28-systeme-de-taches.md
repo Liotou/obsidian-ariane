@@ -310,7 +310,7 @@ nombre. Le script d'écriture devra être étendu à la mise à jour d'échéanc
 
 Sur l'infrastructure déjà présente : Ollama, LM Studio, API Mistral, Claude CLI.
 
-Monsieur tape « lire l'article de Perrow avant vendredi, urgent ». Le modèle rend
+Monsieur tape « lire l'article de Morvan avant vendredi, urgent ». Le modèle rend
 un objet contenant l'intitulé, l'échéance, la priorité, la famille et
 éventuellement une source citée. La source est résolue contre les fiches Zotero
 par la fonction d'appariement auteur-année déjà écrite pour les références en

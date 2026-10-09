@@ -9,7 +9,7 @@ ouvert.
 
 ## 1. À qui l'on s'adresse
 
-Elliot Quiriconi, doctorant en sciences de gestion (Université Paris-Dauphine,
+Camille Martin, doctorant en sciences de gestion (Université Paris-Dauphine,
 laboratoire DRM, en lien avec l'INERIS). Sujet de thèse : le **risque
 systémique NaTech** — les accidents technologiques déclenchés par des aléas
 naturels.
@@ -37,7 +37,7 @@ Un greffon Obsidian sur mesure, écrit pour sa chaîne de travail doctorale.
 
 | | |
 |---|---|
-| Chemin | `/Users/equiriconi/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/` |
+| Chemin | `/Users/utilisateur/Obsidian Vault/.obsidian/plugins/zotflow-atomiser/` |
 | Identifiant | `zotflow-atomiser` (nom affiché : **Ariane**) |
 | Version | 2.44.0 |
 | Code | `main.js`, **fichier unique en JavaScript simple**, ~6 900 lignes |
@@ -58,7 +58,7 @@ chargeant le module avec un faux `obsidian` (voir chapitre 10).
 
 ## 3. Le coffre
 
-`/Users/equiriconi/Obsidian Vault`
+`/Users/utilisateur/Obsidian Vault`
 
 | Dossier | Contenu | Volume |
 |---|---|---|
@@ -102,7 +102,7 @@ Le format a **changé en cours de route** : les notes de bas de page ont été
 **abandonnées** au profit de citations en ligne. Une citation s'écrit :
 
 ```
-([[CLE|Dresch et al., 2015, p. 63]] ; [[CLE2|Gibbons, 1994, p. 12]])
+([[CLE|Garnier et al., 2015, p. 63]] ; [[CLE2|Delmas, 1994, p. 12]])
 ```
 
 Règles acquises :
@@ -323,7 +323,7 @@ Structure réelle relevée dans le modèle :
 tableau extérieur (grille : 10456)
   └ cellule
       └ tableau intérieur (grille : 2831 | 565 | 2296 | 587 | 1124 | 2829)
-          rang 1 : [vide] [« Document de travail doctoral – Elliot Quiriconi »] [vide]
+          rang 1 : [vide] [« Document de travail doctoral, Camille Martin »] [vide]
           rang 2 : [vide] [« Type »] [« Fiche conceptuelle »] [« Date »] [« 07/06/26 »] [vide]
           rang 3 : [vide] [« Réf. »] [« FC-26-07-02-01-A »] [« Page »] [« 1 sur 4 »] [vide]
 ```
@@ -361,9 +361,9 @@ en deux temps de `identifiant()` : nom exact, puis forme compactée.
 ### 6.8 Réglages de l'export
 
 ```json
-"exportModeleWord": "/Users/equiriconi/Obsidian Vault/Modèle/Modèle exportation word.docx",
+"exportModeleWord": "/Users/utilisateur/Obsidian Vault/Modèle/Modèle exportation word.docx",
 "exportPandocBin": "/opt/homebrew/bin/pandoc",
-"exportFiltreLua": "/Users/equiriconi/.ariane-mcp/bbt/pandoc/pandoc-zotero-live-citemarkers.lua",
+"exportFiltreLua": "/Users/utilisateur/.ariane-mcp/bbt/pandoc/pandoc-zotero-live-citemarkers.lua",
 "exportDossier": "4 - Livrables",
 "exportBibliographie": true,
 "exportDecalerTitres": true,

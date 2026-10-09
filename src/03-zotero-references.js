@@ -17,7 +17,7 @@ function nomCompletAuteur(c) {
 }
 
 // Remplace la conjonction entre auteurs (« et », « and ») par « & »,
-// en préservant « et al. ». Ex. « Bird et Tobin, 2018 » -> « Bird & Tobin, 2018 ».
+// en préservant « et al. ». Ex. « Barbier et Tissot, 2018 » -> « Barbier & Tissot, 2018 ».
 function normaliserConjAuteurs(s) {
   if (!s) return s;
   let out = String(s).replace(/\bet\s+al\.?/gi, '@@ETAL@@');
@@ -142,7 +142,7 @@ function appariementSource(ref, entree) {
   const es = new Set(liste);
   if (!es.size) return null;
   if (ref.etAl) {
-    // « Renn et al., 2011 » doit désigner une fiche dont Renn est le PREMIER
+    // « Ferrat et al., 2011 » doit désigner une fiche dont Ferrat est le PREMIER
     // auteur. Se contenter de sa présence quelque part dans la liste rattachait
     // à des travaux où l'auteur cité n'est que co-signataire : vérifié, quatre
     // faux appariements sur vingt-six.
@@ -164,7 +164,7 @@ function candidatsSource(ref, indexZotero) {
 
 // Source Zotero CERTAINE pour l'auto-rattachement (construireNote) : un unique
 // appariement 'fort', jamais pour une référence à suffixe (2005a/b, ambiguë).
-// La cible d'un libellé dépend de l'article qui le porte : « Renn, 2008 »
+// La cible d'un libellé dépend de l'article qui le porte : « Ferrat, 2008 »
 // désigne le chapitre chez l'un et le livre chez l'autre. La table est donc à
 // deux étages, { libellé: { source: cible, __defaut: cible } }. L'ancienne forme
 // plate, { libellé: cible }, reste lue telle quelle.

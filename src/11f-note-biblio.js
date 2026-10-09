@@ -127,7 +127,7 @@ const avecNoteBiblio = (Base) => class extends Base {
       : 'Toutes les citations sont déjà à jour.');
   }
 
-  // Libellé lisible d'une annotation : « Méric et al., 2009, p. 2 ».
+  // Libellé lisible d'une annotation : « Mérivel et al., 2009, p. 2 ».
   // Met en forme un libellé « Auteurs, année, p. X » à partir de composants.
   formatCitation(a, page, cle) {
     const vars = {
@@ -418,7 +418,7 @@ const avecNoteBiblio = (Base) => class extends Base {
   /* ------------- La bibliographie lue dans le PDF lui-même ----------------- *
    * Crossref ne connaît que ce qui porte un DOI. Or les livres n'en ont
    * souvent pas, et ce sont eux qui portent les références les plus citées :
-   * Dresch 2015 à lui seul cite March & Smith, Romme et van Aken, invisibles
+   * Garnier 2015 à lui seul cite Lebrun & Roy, Fabre et van Dorst, invisibles
    * autrement. Zotero garde sur le disque le texte extrait de chaque PDF, dans
    * « storage/<clé>/.zotero-ft-cache ». On y lit la bibliographie directement.
    * ------------------------------------------------------------------------ */
@@ -666,7 +666,7 @@ const avecNoteBiblio = (Base) => class extends Base {
   }
 
   /* ------------------ Compter par œuvre, non par libellé ------------------- *
-   * Le libellé agrège mal : « Gawer & Cusumano, 2014 » et « Gawer, 2014 » sont
+   * Le libellé agrège mal : « Aubert & Colas, 2014 » et « Aubert, 2014 » sont
    * le même article et comptent séparément, tandis que « Iansiti & Levien,
    * 2004 » cumule six citations pour DEUX ouvrages distincts. Compter par œuvre
    * répare les deux, et c'est ce compte qui doit guider une acquisition.
@@ -697,8 +697,8 @@ const avecNoteBiblio = (Base) => class extends Base {
         if (!o.doi && c.doi) o.doi = c.doi;
       }
       // Une occurrence non résolue ne fonde pas une œuvre : elle rejoint la
-      // seule connue quand il n'y en a qu'une. Sans cette règle, « Bowker &
-      // Star, 1999 » passait pour deux travaux, l'un identifié et l'autre non.
+      // seule connue quand il n'y en a qu'une. Sans cette règle, « Bouvier &
+      // Sarrazin, 1999 » passait pour deux travaux, l'un identifié et l'autre non.
       const liste = Ariane.fondreOeuvresProches([...oeuvres.values()]);
       // La clé doit être recalculée après la fonte : le titre retenu est le plus
       // complet des deux, et sans ce recalcul la clé restait celle du premier
@@ -726,14 +726,14 @@ const avecNoteBiblio = (Base) => class extends Base {
   // Résolution d'une référence en attente, source par source.
   //
   // On ne retient plus « la première source qui répond ». Une même note,
-  // « Renn, 2008 », peut désigner deux travaux différents selon l'article qui
+  // « Ferrat, 2008 », peut désigner deux travaux différents selon l'article qui
   // la cite : mesuré, sur les neuf références résolues par au moins deux
   // sources, cinq divergent et deux désignent réellement deux œuvres. Prendre
   // la première venue choisissait au hasard, et le hasard s'est déjà écrit dans
   // le coffre.
   //
-  // L'égalité des noms est stricte sur les mots : « han » CONTENU dans
-  // « hannah » rattachait Han et al. 2017 à Hannah 2018.
+  // L'égalité des noms est stricte sur les mots : « lin » CONTENU dans
+  // « linda » rattachait Lin et al. 2017 à Linda 2018.
   async resoudreParBibliographie(entree, passages) {
     await this.indexAttachements();
     const biblio = this.chargerBibliographies();
@@ -1134,7 +1134,7 @@ const avecNoteBiblio = (Base) => class extends Base {
     // Combien d'entrées de la bibliographie répondent à chaque référence en
     // attente ? Au-delà d'une, l'appariement auteur-année ne désigne rien : on
     // classe la référence sans écrire d'identification. C'est ce silence qui
-    // avait inscrit un mauvais « Renn, 2008 » dans le coffre.
+    // avait inscrit un mauvais « Ferrat, 2008 » dans le coffre.
     const ambigues = new Set();
     for (const x of pendings) {
       let n = 0;
@@ -1387,7 +1387,7 @@ const avecNoteBiblio = (Base) => class extends Base {
     // Les travaux rapportés d'une même source tiennent en UNE entrée. Huit
     // entrées distinctes renvoyant à la même source donnaient huit citations
     // que Zotero regroupait en effaçant le nom de l'auteur : « … cité dans
-    // Raizada & Sinha, 2025, p. 1, …, cité dans 2025, p. 1, … ».
+    // Berthier & Lanoix, 2025, p. 1, …, cité dans 2025, p. 1, … ».
     //
     // Ils sont énumérés à la française — virgules, puis « et » — et non par des
     // points-virgules : le « ; » reste ainsi réservé à la séparation des
@@ -1504,8 +1504,8 @@ const avecNoteBiblio = (Base) => class extends Base {
     // jeton. C'est le MODÈLE qui porte les jetons, donc qui décide où va
     // quelle donnée, et laquelle apparaît. Voir la légende en fin de modèle.
     // Les liens d'Obsidian n'ont pas leur place dans un document Word : sans
-    // ce nettoyage, une propriété sortait « [[Chabane Mazri]], [[Lionel
-    // Garreau]] », crochets compris.
+    // ce nettoyage, une propriété sortait « [[Camille Rouvier]], [[Sacha
+    // Delorme]] », crochets compris.
     const lisible = (x) => (this.settings.exportNettoyerLiens === false ? String(x) : valeurLisible(x));
 
     const valeurs = {

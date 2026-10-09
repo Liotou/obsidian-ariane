@@ -17,7 +17,7 @@ const J = (n) => Ariane.decalerJour(AUJ, n);
 
 function greffonFactice() {
   const taches = [
-    { ref: 'T001', intitule: 'Lire Bertalanffy', statut: 'en cours', famille: 'lecture', priorite: '',
+    { ref: 'T001', intitule: 'Lire Hartwig', statut: 'en cours', famille: 'lecture', priorite: '',
       echeance: J(-3), creneaux: [J(1) + ' 09:00-11:00'], bloquePar: [], fichier: { path: '08 - Tâches/T001.md' } },
     { ref: 'T002', intitule: 'Rédiger le chapitre 2', statut: 'à faire', famille: 'production', priorite: 'haute',
       echeance: J(30), creneaux: [], bloquePar: ['[[T001]]'], fichier: { path: '08 - Tâches/T002.md' } },
@@ -188,7 +188,7 @@ test('proposer_modifications : seul ce que Monsieur coche est appliqué, puis an
     })]);
     const res = texte(r.get(1));
     assert.deepEqual(montres, { motif: 'Replanifier la lecture.', valides: ['p1', 'p2'], erreurs: ['p3'] });
-    assert.deepEqual(res.acceptes, [{ id: 'p1', ref: 'T001', intitule: 'Lire Bertalanffy' }]);
+    assert.deepEqual(res.acceptes, [{ id: 'p1', ref: 'T001', intitule: 'Lire Hartwig' }]);
     assert.deepEqual(res.refuses.map((x) => x.ref), ['T002']);
     assert.equal(res.ecartes[0].erreur, 'echeance invalide : demain');
     assert.deepEqual(ecrits, [

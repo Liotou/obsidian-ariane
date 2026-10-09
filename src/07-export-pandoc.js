@@ -236,7 +236,7 @@ function footnotesVersCitations(contenu, resoudre, connecteur) {
   }
   const texte = sortie.join('\n');
   // Les liens Obsidian ne sont PAS aplatis ici : une citation en ligne s'écrit
-  // ([[CLE|Power, 2010, p. 5]]), et l'aplatir à cet endroit la réduisait à du
+  // ([[CLE|Poirier, 2010, p. 5]]), et l'aplatir à cet endroit la réduisait à du
   // texte mort avant que preparerMarkdownExport n'ait pu la convertir en champ
   // Zotero. L'aplatissement a lieu là-bas, une fois les citations converties.
   return texte.replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '') + '\n';

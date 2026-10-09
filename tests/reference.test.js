@@ -88,7 +88,7 @@ test('refDansTexte : jeton entre crochets puis sous-chaîne', () => {
 const rc = (chemin, dossier) => Ariane.refDepuisChemin(chemin, dossier);
 
 test('une note du dossier des tâches : la référence est son nom de fichier', () => {
-  assert.equal(rc('8 - Tâches/Lire Latour.md', '8 - Tâches'), 'Lire Latour');
+  assert.equal(rc('8 - Tâches/Lire Bonnefoy.md', '8 - Tâches'), 'Lire Bonnefoy');
 });
 
 test('une note dans un sous-dossier du dossier des tâches compte aussi', () => {
@@ -100,7 +100,7 @@ test('une ancienne référence T26-xxx est reconnue où qu elle soit', () => {
 });
 
 test('une note hors du dossier et sans forme T26 n est pas une tâche', () => {
-  assert.equal(rc('Lectures/Latour 2005.md', '8 - Tâches'), null);
+  assert.equal(rc('Lectures/Bonnefoy 2005.md', '8 - Tâches'), null);
 });
 
 test('un fichier non .md n est jamais une tâche', () => {
@@ -136,7 +136,7 @@ test('sousDossier : chemin dans un dossier listé ou un sous-dossier', () => {
   assert.equal(Ariane.sousDossier('8 - Tâches/T26-001.md', D), true);
   assert.equal(Ariane.sousDossier('8 - Tâches/2026/T26-050.md', D), true);
   assert.equal(Ariane.sousDossier('9 - Journal/2026-08-31.md', D), true);
-  assert.equal(Ariane.sousDossier('Lectures/Latour.md', D), false);
+  assert.equal(Ariane.sousDossier('Lectures/Bonnefoy.md', D), false);
   assert.equal(Ariane.sousDossier('8 - Tâchesbis/x.md', D), false); // pas un préfixe de segment
   assert.equal(Ariane.sousDossier('x.md', []), false);
   assert.equal(Ariane.sousDossier('x.md', ['', '  ']), false);

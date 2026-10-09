@@ -33,9 +33,9 @@ const avecNoteReferences = (Base) => class extends Base {
     return (liste || []).map((e) => Ariane.normaliserEntree(e)).filter(Boolean);
   }
 
-  // Une entrée de bibliographie porte le nom SUIVI d'initiales, « March, S. T.
-  // (1995) », ce qu'un appel en cours de texte n'écrit jamais : « (March and
-  // Smith 1995) ». C'est ce discriminant qui distingue les deux, et il est
+  // Une entrée de bibliographie porte le nom SUIVI d'initiales, « Lebrun, S. T.
+  // (1995) », ce qu'un appel en cours de texte n'écrit jamais : « (Lebrun and
+  // Roy 1995) ». C'est ce discriminant qui distingue les deux, et il est
   // fiable — vérifié sur huit références d'un même ouvrage.
   static entreeDansTexte(texte, nomFamille, annee) {
     if (!texte || !nomFamille || !annee) return null;
@@ -919,7 +919,7 @@ const avecNoteReferences = (Base) => class extends Base {
 
   // Renomme les notes de référence « … et … » / « … and … » en « … & … »
   // (en conservant « et al. »), via l'API Obsidian pour préserver les liens.
-  // « March et Smith, 1995 » et « March & Smith, 1995 » sont la même référence.
+  // « Lebrun et Roy, 1995 » et « Lebrun & Roy, 1995 » sont la même référence.
   // parseNomReference normalise déjà les conjonctions à la création, donc seules
   // les notes antérieures à ce garde-fou subsistent. Renommer ne suffit pas :
   // quand la forme normalisée existe déjà, il faut FUSIONNER, ce que l'ancienne
@@ -1265,7 +1265,7 @@ const avecNoteReferences = (Base) => class extends Base {
     });
   }
 
-  // Assistant : lie la note de référence active (ex. « Aven, 2005a ») à la
+  // Assistant : lie la note de référence active (ex. « Valmont, 2005a ») à la
   // bonne fiche Zotero parmi les candidats auteur+année, mémorise le choix,
   // remplace les liens et retire la note provisoire.
   async assistantLiageReference() {
@@ -1313,7 +1313,7 @@ const avecNoteReferences = (Base) => class extends Base {
    * rattachent par auteur et année. Les autres demandent un arbitrage humain,
    * et pour arbitrer il faut voir ce que la référence désigne réellement. D'où
    * la résolution par la bibliographie de la source citante : l'article qui
-   * cite « Aven & Renn, 2009a » donne dans sa propre liste de références le
+   * cite « Valmont & Ferrat, 2009a » donne dans sa propre liste de références le
    * titre et le DOI de ce qu'il désigne.
    * ========================================================================= */
 
@@ -1464,7 +1464,7 @@ const avecNoteReferences = (Base) => class extends Base {
       if (fiche.type) fm['type-œuvre'] = fiche.type;
       if (fiche.url) fm.url = fiche.url;
     });
-    // Le corps ne portait que des noms de famille, « [[Bowker]] », alors que
+    // Le corps ne portait que des noms de famille, « [[Bouvier]] », alors que
     // les notes d'auteurs du coffre sont en noms complets. On les aligne.
     if (fiche.auteurs.length) {
       const contenu = await this.app.vault.read(f);
@@ -1479,7 +1479,7 @@ const avecNoteReferences = (Base) => class extends Base {
   }
 
   /* --------------------- Fusionner deux libellés --------------------------- *
-   * « Gawer & Cusumano, 2014 » et « Gawer, 2014 » désignent parfois le même
+   * « Aubert & Colas, 2014 » et « Aubert, 2014 » désignent parfois le même
    * article et comptent séparément : le signal d'acquisition en est dilué. La
    * fusion réunit les liens sous un seul libellé et mémorise le renvoi.
    * ------------------------------------------------------------------------ */
@@ -1510,7 +1510,7 @@ const avecNoteReferences = (Base) => class extends Base {
   }
 
   /* ------------------- Détacher une œuvre d'un libellé --------------------- *
-   * « Renn, 2008 » recouvre deux travaux selon l'article citant. On crée une
+   * « Ferrat, 2008 » recouvre deux travaux selon l'article citant. On crée une
    * note pour l'œuvre minoritaire, nommée par SON titre, et la table renvoie
    * chaque source vers la bonne. Le libellé d'origine garde son nom : aucun
    * lien existant ne se casse ailleurs.

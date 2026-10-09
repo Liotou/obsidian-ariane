@@ -76,10 +76,10 @@ function clustersDoublons(noms) {
 // Plusieurs annotations d'une même source se retrouvent souvent côte à côte :
 // elles produisaient alors autant de citations du même ouvrage, qu'APA
 // regroupait en effaçant le nom de l'auteur à partir de la deuxième —
-// « … cité dans Dresch et al., 2015, p. 48, 2015, p. 52, … ». Une source ne
+// « … cité dans Garnier et al., 2015, p. 48, 2015, p. 52, … ». Une source ne
 // paraît donc plus qu'une fois, ses pages cumulées et ses travaux rapportés
 // réunis.
-// « Le Moigne, 1994 » et « Le Moigne, 1994, p. 228 » désignent le même travail,
+// « Le Bihan, 1994 » et « Le Bihan, 1994, p. 228 » désignent le même travail,
 // le second en précisant la page. On garde le plus précis, et jamais les deux.
 function ajouterTravail(liste, travail) {
   const t = String(travail || '').trim();

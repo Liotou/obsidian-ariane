@@ -31,7 +31,7 @@ const OPTS = {
 test('normaliserSpecsTaches : familles bornées, booléens, priorité, profondeur', () => {
   const brut = [{
     titre: '  Approfondir  ', famille: 'INCONNUE', jalon: 'oui', priorite: 'BONUS',
-    enfants: [{ title: 'Lire X', family: 'lecture', source_pressentie: 'von Bertalanffy' }],
+    enfants: [{ title: 'Lire X', family: 'lecture', source_pressentie: 'von Hartwig' }],
   }];
   const s = Ariane.normaliserSpecsTaches(brut, OPTS);
   assert.equal(s[0].titre, 'Approfondir');
@@ -39,7 +39,7 @@ test('normaliserSpecsTaches : familles bornées, booléens, priorité, profondeu
   assert.equal(s[0].jalon, true);
   assert.equal(s[0].priorite, 'basse');
   assert.equal(s[0].enfants[0].famille, 'lecture');
-  assert.equal(s[0].enfants[0].source, 'von Bertalanffy');
+  assert.equal(s[0].enfants[0].source, 'von Hartwig');
 });
 
 test('normaliserSpecsTaches : aucune date qui ne soit dans le texte source', () => {
@@ -59,7 +59,7 @@ test('normaliserSpecsTaches : nœuds sans titre ignorés, {taches:[…]} accept�
 test('meilleurTitre : trouve la tâche par recouvrement de mots', () => {
   const cand = [
     { ref: 'A', titre: 'Rédiger le chapitre 3' },
-    { ref: 'B', titre: 'Lire Morin' },
+    { ref: 'B', titre: 'Lire Vasseur' },
     { ref: 'C', titre: 'Envoyer le mail à Karine' },
   ];
   assert.equal(Ariane.meilleurTitre('rédaction du chapitre 3', cand).ref, 'A');

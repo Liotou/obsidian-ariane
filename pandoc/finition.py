@@ -802,7 +802,7 @@ def fusionner_numerotation(pieces, chemin_modele, numids):
 # --------------------------------------------------------------------------
 
 # Le filtre Lua rend les préfixes de citation en HTML (stringify passe par
-# pandoc.write(..., 'html')) : « Steen & Aven » y devient « Steen &amp; Aven »,
+# pandoc.write(..., 'html')) : « Mercier & Valmont » y devient « Mercier &amp; Valmont »,
 # puis « &amp;amp; » une fois le tout échappé pour le XML. Zotero ne décode pas
 # ces entités et les affiche telles quelles dans la citation actualisée. On les
 # ramène à leur caractère, dans les seules instructions de champ Zotero — les

@@ -23,7 +23,7 @@ function sansLien(s) {
 }
 
 // Normalise un DOI : minuscule, sans préfixe URL ni « doi: ».
-// Björnsdóttir, Ylönen, Méric, Santaló : sans cette normalisation, une simple
+// Þórvaldsdóttir, Ylvänen, Mérivel, Santaúl : sans cette normalisation, une simple
 // mise en minuscules laisse les diacritiques et l'appariement échoue dès que
 // les deux graphies diffèrent d'un accent.
 function sansAccents(s) {
