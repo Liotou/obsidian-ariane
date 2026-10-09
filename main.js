@@ -34674,14 +34674,18 @@ class MoteurCalendrier extends MoteurVue {
   // Carte de survol du liseré de présence (travail dans Obsidian), placée à
   // gauche du liseré, qui longe le bord droit du jour.
   _montrerCartePresence(el, o) {
+    clearTimeout(this._carteMinuterie);
+    if (this._carteActivite && this._carteActiviteEl === el) return;
     this._cacherCarteActivite();
     this._carteActiviteEl = el;
     const doc = el.ownerDocument;
     const win = doc.defaultView || window;
-    const carte = doc.body.createDiv({ cls: 'zfa-act-survol' });
+    const carte = doc.body.createDiv({ cls: 'zfa-act-survol est-interactive' });
     this._carteActivite = carte;
     this._carteActiviteEl = el;
     this._apparaitre(carte);
+    carte.addEventListener('mouseenter', () => clearTimeout(this._carteMinuterie));
+    carte.addEventListener('mouseleave', () => this._cacherCarteDiffere());
     const tete = carte.createDiv({ cls: 'zfa-act-survol-tete' });
     const puce = tete.createSpan({ cls: 'zfa-act-cat', text: o.tache ? o.tache.ref : tr('Hors tâche') });
     if (o.couleur) puce.style.setProperty('--zfa-cal-coul', o.couleur);
@@ -34709,12 +34713,21 @@ class MoteurCalendrier extends MoteurVue {
     if (!l.length) return;
     const bloc = carte.createDiv({ cls: 'zfa-act-micro' });
     bloc.createDiv({ cls: 'zfa-act-micro-titre', text: l.length + ' ' + (l.length > 1 ? tr('interruptions') : tr('interruption')) });
-    for (const m of l.slice(0, 8)) {
+    const ligne = (m) => {
       const x = bloc.createDiv({ cls: 'zfa-act-micro-l' });
       obsidian.setIcon(x.createSpan({ cls: 'zfa-act-micro-ic' }), m.source === 'iphone' ? 'smartphone' : 'globe');
       x.createSpan({ text: Ariane.libelleMicro(m) });
+    };
+    for (const m of l.slice(0, 8)) ligne(m);
+    if (l.length > 8) {
+      // Le reste se déplie d'un clic, la carte restant ouverte sous le curseur.
+      const plus = bloc.createEl('button', { cls: 'zfa-act-micro-plus', text: '+ ' + (l.length - 8) });
+      plus.addEventListener('click', (e) => {
+        e.stopPropagation();
+        plus.remove();
+        for (const m of l.slice(8)) ligne(m);
+      });
     }
-    if (l.length > 8) bloc.createDiv({ cls: 'zfa-act-micro-l est-plus', text: '+ ' + (l.length - 8) });
   }
 
   // Entrée en fondu, légère montée : la carte apparaît au tour suivant de
@@ -36997,7 +37010,9 @@ class MoteurCalendrier extends MoteurVue {
           horaires: hm(x.a) + ' → ' + hm(x.b), duree: duree(Math.round(x.b - x.a)),
           note: String(x.chemin).split('/').pop().replace(/\.md$/, ''), tache: t,
           couleur: t ? this.couleurTache(t) : '' }));
-        el.addEventListener('mouseleave', () => this._cacherCarteActivite());
+        // Comme celle du hors Obsidian, la carte reste ouverte le temps d'y
+        // glisser le curseur (pour déplier toutes les interruptions).
+        el.addEventListener('mouseleave', () => this._cacherCarteDiffere());
         el.addEventListener('pointerdown', (e) => e.stopPropagation());
         el.addEventListener('dblclick', (e) => e.stopPropagation());
         el.addEventListener('click', (e) => {
