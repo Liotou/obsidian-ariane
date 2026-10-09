@@ -232,7 +232,7 @@ const avecConcentration = (Base) => class extends Base {
     const cache = this._microCache || (this._microCache = new Map());
     const c = cache.get(jour);
     if (c && c.segs === segs && c.juge === juge && c.inter === inter) return c.micro;
-    const micro = Ariane.microDistractions(segs, inter, juge, { seuilSec: Number(this.settings.distractionSeuilSec) || 10 });
+    const micro = Ariane.microDistractions(segs, inter, juge, { seuilSec: Number(this.settings.distractionSeuilSec) || 5 });
     cache.set(jour, { segs, juge, inter, micro });
     return micro;
   }

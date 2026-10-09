@@ -1645,7 +1645,7 @@ const DEFAULT_SETTINGS = {
   iphoneActif: true,    // temps d'écran de l'iPhone, lu sur le Mac (accès complet au disque)
   iphoneAppareil: '',   // identifiant Biome de l'iPhone ('' = trouvé seul)
   activiteDistractionSec: 30, // créneau de distraction le plus court affiché, en secondes
-  distractionSeuilSec: 10,    // micro-interruption la plus courte relevée, en secondes
+  distractionSeuilSec: 5,     // micro-interruption la plus courte relevée, en secondes
   distractionsListe: '',      // sites et applications qui distraient, un par ligne
   distractionsExceptions: '', // ceux qui ne distraient jamais (l'emportent sur tout)
   sommaireSortie: 'fiche', // 'fiche' (10 × 15 cm) ou 'a4' (trois fiches par feuille, recto verso)
@@ -18159,7 +18159,7 @@ const avecActivite = (Base) => class extends Base {
       parCle.set(cle, x);
     }
     return [...parCle.values()].sort((x, y) => y.ms - x.ms).slice(0, max || 15)
-      .map((x) => ({ app: x.app, titre: x.titre, domaine: x.domaine, min: Math.max(1, Math.round(x.ms / 60000)) }));
+      .map((x) => ({ app: x.app, titre: x.titre, domaine: x.domaine, ms: x.ms, min: Math.max(1, Math.round(x.ms / 60000)) }));
   }
 
   // L'invite : qui est Monsieur, les catégories avec leur portée, puis les
@@ -18781,13 +18781,16 @@ const avecActivite = (Base) => class extends Base {
   async applicationsBlocActivite(jour, b) {
     const contenu = await this.contenuBlocActivite(jour, b);
     const parApp = new Map();
+    // Les durées s'additionnent en millisecondes : arrondir chaque fenêtre à
+    // la minute ferait de six coups d'œil de quatre secondes « 6 min ».
     for (const x of contenu) {
-      const p = parApp.get(x.app) || { app: x.app, min: 0, principal: '' };
-      p.min += x.min;
+      const p = parApp.get(x.app) || { app: x.app, ms: 0, min: 0, principal: '' };
+      p.ms += x.ms || x.min * 60000;
+      p.min = Math.max(1, Math.round(p.ms / 60000));
       if (!p.principal) p.principal = x.domaine || (x.titre && x.titre !== x.app ? x.titre : '');
       parApp.set(x.app, p);
     }
-    return [...parApp.values()].sort((x, y) => y.min - x.min);
+    return [...parApp.values()].sort((x, y) => y.ms - x.ms);
   }
 
   // ── rattachement du temps réel aux tâches ──────────────────────────────
@@ -21356,7 +21359,7 @@ const avecConcentration = (Base) => class extends Base {
     const cache = this._microCache || (this._microCache = new Map());
     const c = cache.get(jour);
     if (c && c.segs === segs && c.juge === juge && c.inter === inter) return c.micro;
-    const micro = Ariane.microDistractions(segs, inter, juge, { seuilSec: Number(this.settings.distractionSeuilSec) || 10 });
+    const micro = Ariane.microDistractions(segs, inter, juge, { seuilSec: Number(this.settings.distractionSeuilSec) || 5 });
     cache.set(jour, { segs, juge, inter, micro });
     return micro;
   }
@@ -23954,8 +23957,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       new obsidian.Setting(c)
         .setName(tr('Micro-interruption la plus courte'))
         .setDesc(tr('En secondes.'))
-        .addText((t) => t.setValue(String(s.distractionSeuilSec || 10))
-          .onChange(async (v) => { s.distractionSeuilSec = Math.max(1, parseInt(v, 10) || 10); await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+        .addText((t) => t.setValue(String(s.distractionSeuilSec || 5))
+          .onChange(async (v) => { s.distractionSeuilSec = Math.max(1, parseInt(v, 10) || 5); await maj(); this.plugin._rafraichirActiviteDiffere(); }));
       const liste = (cle, nom, desc, exemple) => new obsidian.Setting(c).setName(nom).setDesc(desc)
         .addTextArea((t) => {
           t.setPlaceholder(exemple).setValue(s[cle] || '').onChange(async (v) => { s[cle] = v; await maj(); this.plugin._rafraichirActiviteDiffere(); });
@@ -34699,7 +34702,7 @@ class MoteurCalendrier extends MoteurVue {
           const t = l.createDiv({ cls: 'zfa-act-survol-txt' });
           t.createSpan({ cls: 'zfa-act-app', text: a.app });
           if (a.principal) t.createSpan({ cls: 'zfa-act-survol-sous', text: a.principal });
-          l.createSpan({ cls: 'zfa-act-min', text: dureeLisible(a.min) });
+          l.createSpan({ cls: 'zfa-act-min', text: a.ms < 60000 ? Math.max(1, Math.round(a.ms / 1000)) + ' s' : dureeLisible(Math.round(a.ms / 60000)) });
         }
         if (!tout && liste.length > 6) {
           const plus = apps.createDiv({ cls: 'zfa-act-survol-plus', text: '+ ' + (liste.length - 6) + tr(' autre(s)') });
@@ -37074,8 +37077,8 @@ class MoteurCalendrier extends MoteurVue {
   }
 
   // Les micro-interruptions d'un jour, pendant le travail seulement : un
-  // fin interstice dans la bande du créneau réel (Obsidian, ou hors Obsidian
-  // s'il n'est pas « personnel »), à l'heure où elle commence. Une plage
+  // trou dans la bande du créneau réel (Obsidian, ou hors Obsidian s'il
+  // n'est pas « personnel »), de son début à sa fin. Une plage
   // nette reste pleine, une plage hachée se voit hachée. Le détail (quoi,
   // quand, combien de temps) est dans la carte de survol de la bande, et
   // dans l'infobulle de l'interstice.
@@ -37093,7 +37096,9 @@ class MoteurCalendrier extends MoteurVue {
         const fin = Math.min(w.b, (m.fin - d0) / 60000);
         const el = col.createDiv({ cls: 'zfa-cal-coupure' });
         el.style.top = ((a / 60 - hDeb) * PXH) + 'px';
-        el.style.height = Math.max(1.5, Math.min(4, (fin - a) / 60 * PXH)) + 'px';
+        // Un trou à la taille de la distraction : un coup d'œil, un fin
+        // trait ; deux minutes, une vraie brèche.
+        el.style.height = Math.max(1.5, (fin - a) / 60 * PXH) + 'px';
         el.setAttribute('aria-label', Ariane.libelleMicro(m));
       }
     }).catch(() => {});

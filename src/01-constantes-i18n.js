@@ -1454,7 +1454,7 @@ const DEFAULT_SETTINGS = {
   iphoneActif: true,    // temps d'écran de l'iPhone, lu sur le Mac (accès complet au disque)
   iphoneAppareil: '',   // identifiant Biome de l'iPhone ('' = trouvé seul)
   activiteDistractionSec: 30, // créneau de distraction le plus court affiché, en secondes
-  distractionSeuilSec: 10,    // micro-interruption la plus courte relevée, en secondes
+  distractionSeuilSec: 5,     // micro-interruption la plus courte relevée, en secondes
   distractionsListe: '',      // sites et applications qui distraient, un par ligne
   distractionsExceptions: '', // ceux qui ne distraient jamais (l'emportent sur tout)
   sommaireSortie: 'fiche', // 'fiche' (10 × 15 cm) ou 'a4' (trois fiches par feuille, recto verso)

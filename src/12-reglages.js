@@ -1215,8 +1215,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       new obsidian.Setting(c)
         .setName(tr('Micro-interruption la plus courte'))
         .setDesc(tr('En secondes.'))
-        .addText((t) => t.setValue(String(s.distractionSeuilSec || 10))
-          .onChange(async (v) => { s.distractionSeuilSec = Math.max(1, parseInt(v, 10) || 10); await maj(); this.plugin._rafraichirActiviteDiffere(); }));
+        .addText((t) => t.setValue(String(s.distractionSeuilSec || 5))
+          .onChange(async (v) => { s.distractionSeuilSec = Math.max(1, parseInt(v, 10) || 5); await maj(); this.plugin._rafraichirActiviteDiffere(); }));
       const liste = (cle, nom, desc, exemple) => new obsidian.Setting(c).setName(nom).setDesc(desc)
         .addTextArea((t) => {
           t.setPlaceholder(exemple).setValue(s[cle] || '').onChange(async (v) => { s[cle] = v; await maj(); this.plugin._rafraichirActiviteDiffere(); });

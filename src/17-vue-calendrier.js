@@ -593,7 +593,7 @@ class MoteurCalendrier extends MoteurVue {
           const t = l.createDiv({ cls: 'zfa-act-survol-txt' });
           t.createSpan({ cls: 'zfa-act-app', text: a.app });
           if (a.principal) t.createSpan({ cls: 'zfa-act-survol-sous', text: a.principal });
-          l.createSpan({ cls: 'zfa-act-min', text: dureeLisible(a.min) });
+          l.createSpan({ cls: 'zfa-act-min', text: a.ms < 60000 ? Math.max(1, Math.round(a.ms / 1000)) + ' s' : dureeLisible(Math.round(a.ms / 60000)) });
         }
         if (!tout && liste.length > 6) {
           const plus = apps.createDiv({ cls: 'zfa-act-survol-plus', text: '+ ' + (liste.length - 6) + tr(' autre(s)') });
@@ -2968,8 +2968,8 @@ class MoteurCalendrier extends MoteurVue {
   }
 
   // Les micro-interruptions d'un jour, pendant le travail seulement : un
-  // fin interstice dans la bande du créneau réel (Obsidian, ou hors Obsidian
-  // s'il n'est pas « personnel »), à l'heure où elle commence. Une plage
+  // trou dans la bande du créneau réel (Obsidian, ou hors Obsidian s'il
+  // n'est pas « personnel »), de son début à sa fin. Une plage
   // nette reste pleine, une plage hachée se voit hachée. Le détail (quoi,
   // quand, combien de temps) est dans la carte de survol de la bande, et
   // dans l'infobulle de l'interstice.
@@ -2987,7 +2987,9 @@ class MoteurCalendrier extends MoteurVue {
         const fin = Math.min(w.b, (m.fin - d0) / 60000);
         const el = col.createDiv({ cls: 'zfa-cal-coupure' });
         el.style.top = ((a / 60 - hDeb) * PXH) + 'px';
-        el.style.height = Math.max(1.5, Math.min(4, (fin - a) / 60 * PXH)) + 'px';
+        // Un trou à la taille de la distraction : un coup d'œil, un fin
+        // trait ; deux minutes, une vraie brèche.
+        el.style.height = Math.max(1.5, (fin - a) / 60 * PXH) + 'px';
         el.setAttribute('aria-label', Ariane.libelleMicro(m));
       }
     }).catch(() => {});

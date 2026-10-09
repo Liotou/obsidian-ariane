@@ -203,14 +203,14 @@ test('contenu d’un créneau : regroupé par application, titre et site, du plu
   const M = 60000;
   const segs = [
     { deb: 0, fin: 20 * M, app: 'Microsoft Teams', titre: 'Cours HEG - TD1', url: '' },
-    { deb: 20 * M, fin: 25 * M, app: 'Safari', titre: 'Personnel — Pantalon', url: 'https://www.vinted.fr/x' },
+    { deb: 20 * M, fin: 25 * M, app: 'Safari', titre: 'Personnel : Pantalon', url: 'https://www.vinted.fr/x' },
     { deb: 25 * M, fin: 40 * M, app: 'Microsoft Teams', titre: 'Cours HEG - TD1', url: '' },
     { deb: 50 * M, fin: 90 * M, app: 'Hors', titre: '', url: '' },
   ];
   const c = Ariane.contenuActivite(segs, 0, 45 * M, 10);
   assert.deepEqual(c, [
-    { app: 'Microsoft Teams', titre: 'Cours HEG - TD1', domaine: '', min: 35 },
-    { app: 'Safari', titre: 'Personnel — Pantalon', domaine: 'vinted.fr', min: 5 },
+    { app: 'Microsoft Teams', titre: 'Cours HEG - TD1', domaine: '', ms: 35 * M, min: 35 },
+    { app: 'Safari', titre: 'Personnel : Pantalon', domaine: 'vinted.fr', ms: 5 * M, min: 5 },
   ]);
 });
 

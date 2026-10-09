@@ -400,7 +400,7 @@ const avecActivite = (Base) => class extends Base {
       parCle.set(cle, x);
     }
     return [...parCle.values()].sort((x, y) => y.ms - x.ms).slice(0, max || 15)
-      .map((x) => ({ app: x.app, titre: x.titre, domaine: x.domaine, min: Math.max(1, Math.round(x.ms / 60000)) }));
+      .map((x) => ({ app: x.app, titre: x.titre, domaine: x.domaine, ms: x.ms, min: Math.max(1, Math.round(x.ms / 60000)) }));
   }
 
   // L'invite : qui est Monsieur, les catégories avec leur portée, puis les
@@ -1022,13 +1022,16 @@ const avecActivite = (Base) => class extends Base {
   async applicationsBlocActivite(jour, b) {
     const contenu = await this.contenuBlocActivite(jour, b);
     const parApp = new Map();
+    // Les durées s'additionnent en millisecondes : arrondir chaque fenêtre à
+    // la minute ferait de six coups d'œil de quatre secondes « 6 min ».
     for (const x of contenu) {
-      const p = parApp.get(x.app) || { app: x.app, min: 0, principal: '' };
-      p.min += x.min;
+      const p = parApp.get(x.app) || { app: x.app, ms: 0, min: 0, principal: '' };
+      p.ms += x.ms || x.min * 60000;
+      p.min = Math.max(1, Math.round(p.ms / 60000));
       if (!p.principal) p.principal = x.domaine || (x.titre && x.titre !== x.app ? x.titre : '');
       parApp.set(x.app, p);
     }
-    return [...parApp.values()].sort((x, y) => y.min - x.min);
+    return [...parApp.values()].sort((x, y) => y.ms - x.ms);
   }
 
   // ── rattachement du temps réel aux tâches ──────────────────────────────
