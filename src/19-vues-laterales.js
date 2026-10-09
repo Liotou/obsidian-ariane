@@ -1631,14 +1631,14 @@ class VueChronologie extends obsidian.ItemView {
       }
       // Le bilan de la journée par l'IA : affiché sous le titre du jour.
       const bilan = hote.createDiv({ cls: 'zfa-chrono-bilan' });
-      const btBilan = bouton('sunset', tr('Bilan de la journée'), async () => {
+      const btBilan = bouton('sunset', tr('Résumé de la journée'), async () => {
         btBilan.disabled = true;
         await this.greffon.resumerJournee(jour);
         btBilan.disabled = false;
       });
       this.greffon.resumeDeLaJournee(jour).then((t) => {
         if (!t) { bilan.remove(); return; }
-        btBilan.lastChild.setText(tr('Refaire le bilan'));
+        btBilan.lastChild.setText(tr('Refaire le résumé'));
         obsidian.setIcon(bilan.createSpan({ cls: 'zfa-chrono-bilan-ic' }), 'sunset');
         // Justifié, avec la césure du français pour éviter les lézardes.
         bilan.createDiv({ cls: 'zfa-chrono-bilan-texte', text: t, attr: { lang: 'fr' } });

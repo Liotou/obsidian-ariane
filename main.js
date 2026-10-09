@@ -214,9 +214,8 @@ const TEXTES = {
     "Activer le reclassement": "Enable reranking",
     "Activer le repliement": "Enable folding",
     "Activer les suggestions": "Enable suggestions",
-    "Activé, un travail rapporté mais absent de Zotero est cité sous la forme « Fan et al., 2022, cité dans Raizada & Sinha, 2025, p. 1 ». Désactivé, seule la source réellement consultée est citée. Sans effet sur les travaux présents dans Zotero, toujours cités directement.": "When enabled, a work reported but absent from Zotero is cited as “Fan et al., 2022, as cited in Raizada & Sinha, 2025, p. 1”. When disabled, only the source you actually read is cited. This has no effect on works present in Zotero, which are always cited directly.",
+    "Activé, un travail rapporté mais absent de Zotero est cité sous la forme « Auteur A et al., 2020, cité dans Auteur B, 2015, p. 12 ». Désactivé, seule la source réellement consultée est citée. Sans effet sur les travaux présents dans Zotero, toujours cités directement.": "When enabled, a work reported but absent from Zotero is cited as “Author A et al., 2020, as cited in Author B, 2015, p. 12”. When disabled, only the source you actually read is cited. This has no effect on works present in Zotero, which are always cited directly.",
     "Adresse": "Address",
-    "Affichage": "Appearance",
     "Affiche en police à largeur fixe les notes des dossiers listés. Liste vide : aucun. Le texte reste normal (recherche et tri intacts).": "Shows notes from the listed folders in a fixed width font. An empty list means none. The text itself is unchanged, so search and sorting still work.",
     "Affiche l'aperçu natif au survol des liens internes dans les vues qui ne le font pas (ex. chat Claudian, panneaux).": "Shows the native hover preview for internal links in views that do not provide one, such as side panels.",
     "Affiche un message quand un élément déposé ne correspond à aucune note du coffre, au lieu de ne rien faire.": "Shows a message when a dropped item matches no note in the vault, instead of doing nothing.",
@@ -239,7 +238,7 @@ const TEXTES = {
     "Annotations atomisées": "Atomised annotations",
     "Annuler": "Cancel",
     "Aparté": "Aside",
-    "Aparté (titre sur les liens)": "Aside (title shown after links)",
+    "Aparté sur les annotations": "Aside (title shown after links)",
     "Aperçu au survol hors éditeur": "Hover preview outside the editor",
     "Apparat « cité dans »": "Secondary source apparatus",
     "Apparat « cité dans » à l'export": "Secondary source apparatus on export",
@@ -282,7 +281,6 @@ const TEXTES = {
     "Bibliographie mise à jour dans ": "Bibliography updated in ",
     "Bibliographies : ": "Bibliographies: ",
     "Bibliographies citées": "Cited bibliographies",
-    "Bibliographies citées (API)": "Cited bibliographies (API)",
     "Bibliographies terminées : ": "Bibliographies finished: ",
     "Bibliographies…": "Bibliographies…",
     "Blocs sans type": "Shapes without a type",
@@ -306,7 +304,6 @@ const TEXTES = {
     "Cible automatique : en survolant le texte, l’appel de note se place en fin de la phrase visée ; en survolant la marge gauche du paragraphe, il se place en fin de paragraphe. La zone visée est surlignée pendant le glisser.": "Automatic target: hovering the text places the citation at the end of the sentence under the cursor, hovering the left margin places it at the end of the paragraph. The target area is highlighted while you drag.",
     "Citation  (>)": "Quote  (>)",
     "Citations": "Citations",
-    "Citations & bibliographie": "Citations and bibliography",
     "Citations : rafraîchir les libellés…": "Citations: refresh labels…",
     "Citations : replier ou déplier": "Citations: fold or unfold",
     "Citations : tout déplier": "Citations: unfold all",
@@ -335,13 +332,12 @@ const TEXTES = {
     "Dossier des références citées": "Cited references folder",
     "Dossier du journal": "Journal folder",
     "Dossiers": "Folders",
-    "Dossiers & familles": "Folders and families",
     "Décaler les titres d’un cran": "Shift headings down one level",
     "Décisions de rattachement oubliées.": "Attachment decisions forgotten.",
     "Décoché, les citations restent toujours visibles et les commandes sans effet.": "When unchecked, citations always stay visible and the commands do nothing.",
     "Décoché, tous les auteurs rapportés sont nommés, suivis de « cité dans » et de la source.": "When unchecked, every reported author is named, followed by “as cited in” and the source.",
-    "Déconseillé. Activé, le modèle repart à chaque changement de note — c'est ce qui faisait tourner la ventilation sans répit.": "Not recommended. When enabled, the model runs again on every note change, which is what kept the fans spinning.",
-    "Décrivez vos types de notes. Une famille couvre un ou plusieurs dossiers, éventuellement un préfixe de nom, et dit ce qu'Ariane doit en faire : afficher le titre après les liens, nourrir les suggestions, changer l'apparence dans l'explorateur. Glissez les lignes pour les réordonner — la première qui couvre une note l'emporte.": "Describe your own note types. A family covers one or more folders, optionally a filename prefix, and states what Ariane should do with them: show the title after links, feed the suggestions, change the look in the file explorer. Drag rows to reorder them, since the first family that covers a note wins.",
+    "Déconseillé. Activé, le modèle repart à chaque changement de note, ce qui fait tourner la ventilation sans répit.": "Not recommended. When enabled, the model runs again on every note change, which is what kept the fans spinning.",
+    "Décrivez vos types de notes. Une famille couvre un ou plusieurs dossiers, éventuellement un préfixe de nom, et dit ce qu'Ariane doit en faire : afficher le titre après les liens, nourrir les suggestions, changer l'apparence dans l'explorateur. Glissez les lignes pour les réordonner : la première qui couvre une note l'emporte.": "Describe your own note types. A family covers one or more folders, optionally a filename prefix, and states what Ariane should do with them: show the title after links, feed the suggestions, change the look in the file explorer. Drag rows to reorder them, since the first family that covers a note wins.",
     "Délai avant recalcul (ms)": "Delay before recomputing (ms)",
     "Délai maximal": "Maximum delay",
     "Déposer sur le curseur": "Drop at the cursor",
@@ -362,8 +358,6 @@ const TEXTES = {
     "Entretient un encart « Contenu du schéma » dans la note associée, ce qui rend les blocs et relations cherchables.": "Keeps a “Diagram contents” block in the paired note, which makes shapes and relations searchable.",
     "Espaces insécables": "Non breaking spaces",
     "Ex. « 0.8em », « 11px ».": "For example “0.8em” or “11px”.",
-    "Export SVG": "SVG export",
-    "Export Word": "Word export",
     "Export Word (Zotero)…": "Word export (Zotero)…",
     "Export terminé : ": "Export finished: ",
     "Export — échec : ": "Export failed: ",
@@ -388,7 +382,7 @@ const TEXTES = {
     "Garde-fous. Sans borne de longueur, un modèle qui ne referme pas sa réponse peut tourner plusieurs minutes à pleine charge : c'est arrivé, et mesuré.": "Safeguards. Without a length limit, a model that never closes its answer can run for several minutes at full load. That happened, and it was measured.",
     "Glisser pour réordonner": "Drag to reorder",
     "Glisser un lien de note sur un paragraphe l'ajoute à sa note de bas de page. Déposer ailleurs reste normal.": "Dragging a note link onto a paragraph adds it to that paragraph's citation. Dropping anywhere else behaves as usual.",
-    "Glisser-déposer & notes de bas de page": "Drag and drop, footnotes",
+    "Glisser-déposer et notes de bas de page": "Drag and drop, footnotes",
     "Glissez des notes ici…": "Drag notes here…",
     "Graphe": "Graph",
     "Groupe 1 = clé stable, groupe 2 = contenu.": "Group 1 is the stable key, group 2 is the content.",
@@ -412,7 +406,7 @@ const TEXTES = {
     "Journal du temps": "Time journal",
     "Journal quotidien": "Daily journal",
     "Journaux quotidiens du compteur de temps.": "Daily records from the timer.",
-    "L'aparté sur les autres notes, et l'affichage de l'alias dans l'explorateur, se règlent famille par famille — onglet « Dossiers & familles ».": "The aside on other notes, and showing the alias in the file explorer, are set family by family, in the “Folders and families” tab.",
+    "L'aparté sur les autres notes, et l'affichage de l'alias dans l'explorateur, se règlent famille par famille, dans l'onglet « Familles de notes ».": "The aside on other notes, and showing the alias in the file explorer, are set family by family, in the “Folders and families” tab.",
     "Lancer": "Run",
     "Langue": "Language",
     "Le JSON doit être un tableau non vide.": "The JSON must be a non empty array.",
@@ -420,13 +414,13 @@ const TEXTES = {
     "Le jeton {{réf}} de votre modèle. Ariane cherche les propriétés ci-dessous, dans l'ordre, accents et majuscules indifférents.": "The {{réf}} token of your template. Ariane looks for the properties below, in order, ignoring accents and case.",
     "Le modèle répond : le reclassement est disponible.": "The model answers: reranking is available.",
     "Le panier est vide.": "The basket is empty.",
-    "Le texte de liaison — « , cité dans » — se règle une seule fois, dans l'onglet « Citations & bibliographie ». Il vaut pour les citations en ligne comme pour l'export.": "The linking text, “, as cited in”, is set in one place only, in the “Citations and bibliography” tab. It applies to inline citations and to the export alike.",
+    "Le texte de liaison (« , cité dans ») se règle une seule fois, dans l'onglet « Citations et bibliographie ». Il vaut pour les citations en ligne comme pour l'export.": "The linking text, “, as cited in”, is set in one place only, in the “Citations and bibliography” tab. It applies to inline citations and to the export alike.",
     "Lecture des styles — échec : ": "Reading the styles failed: ",
-    "Les dossiers concernés se cochent famille par famille — onglet « Dossiers & familles ».": "The folders concerned are ticked family by family, in the “Folders and families” tab.",
-    "Les dossiers puisés par les suggestions, leur couleur et leur icône se règlent famille par famille — onglet « Dossiers & familles », case « Suggestions ».": "The folders the suggestions draw from, along with their colour and icon, are set family by family, in the “Folders and families” tab, under the “Suggestions” box.",
+    "Les dossiers concernés se cochent famille par famille, dans l'onglet « Familles de notes ».": "The folders concerned are ticked family by family, in the “Folders and families” tab.",
+    "Les dossiers puisés par les suggestions, leur couleur et leur icône se règlent famille par famille, dans l'onglet « Familles de notes » (case « Suggestions »).": "The folders the suggestions draw from, along with their colour and icon, are set family by family, in the “Folders and families” tab, under the “Suggestions” box.",
     "Les notes portant « locked: true » (fiches graphiques, notes importées) ne peuvent pas être éditées par inadvertance.": "Notes carrying “locked: true” cannot be edited by accident.",
     "Les notes portant « locked: true » ne sont pas chronométrées.": "Notes carrying “locked: true” are not timed.",
-    "Les notes-filles Zotero — attachées à la référence entière, non à un passage — deviennent des notes à part, citables et reliées à leur source.": "Zotero child notes, attached to the whole reference rather than to a passage, become notes in their own right, citable and linked back to their source.",
+    "Les notes-filles Zotero (attachées à la référence entière, non à un passage) deviennent des notes à part, citables et reliées à leur source.": "Zotero child notes, attached to the whole reference rather than to a passage, become notes in their own right, citable and linked back to their source.",
     "Les rapprochements que vous avez confirmés à la main entre une référence en attente et une source Zotero. Les oublier vous fera reposer la question.": "The matches you confirmed by hand between a pending reference and a Zotero source. Forgetting them means being asked again.",
     "Les étiquettes admises sur vos schémas. Une liste vide n'impose rien. Un terme par ligne.": "The labels allowed on your diagrams. An empty list imposes nothing. One term per line.",
     "Lexical (mots)": "Lexical (words)",
@@ -466,7 +460,7 @@ const TEXTES = {
     "Nombre de suggestions": "Number of suggestions",
     "Nommage des annotations": "Naming of annotations",
     "Noms codés en police monospace": "Coded names in a monospace font",
-    "Noms de styles tels qu'ils figurent dans votre modèle Word. Ariane les résout en identifiants — « Corps de texte » se range sous « Corpsdetexte ».": "Style names as they appear in your Word template. Ariane resolves them into identifiers, so “Body Text” is stored as “BodyText”.",
+    "Noms de styles tels qu'ils figurent dans votre modèle Word. Ariane les résout en identifiants : « Corps de texte » se range sous « Corpsdetexte ».": "Style names as they appear in your Word template. Ariane resolves them into identifiers, so “Body Text” is stored as “BodyText”.",
     "Normaliser les conjonctions des références (et → &)": "Normalise conjunctions in references (et to &)",
     "Note « ": "Note “",
     "Notes de lecture": "Reading notes",
@@ -658,14 +652,10 @@ const TEXTES = {
     "Référence citée :": "Cited reference:",
     "Passage :": "Passage:",
     "Œuvres possibles :": "Possible works:",
-    "Découpage des bibliographies": "Splitting raw bibliography entries",
     "Une entrée de bibliographie sur six n'existe qu'en texte brut, qu'aucune expression régulière ne découpe. Un modèle s'en charge. Il propose, il ne décide pas : chaque extraction est recoupée avec le texte d'origine, l'année, le nom et le titre devant s'y retrouver, sinon elle est jetée.": "One bibliography entry in six exists only as raw text, which no regular expression can split. A model handles it. It proposes, it does not decide: every extraction is checked against the original text, the year, the name and the title having to appear in it, otherwise it is discarded.",
-    "Moteur du découpage": "Splitting engine",
     "Claude en ligne de commande": "Claude command line",
     "Modèle": "Model",
-    "llama3.2 suffit largement pour cette tâche.": "llama3.2 is more than enough for this task.",
     "Clé Mistral": "Mistral key",
-    "Conservée dans les réglages du greffon, sur votre machine.": "Kept in the plugin settings, on your machine.",
     "Commande": "Command",
     "Chemin du binaire, si « claude » ne suffit pas.": "Path to the binary, if “claude” is not enough.",
     "Lancer le découpage": "Run the splitting",
@@ -740,7 +730,7 @@ const TEXTES = {
     "Préfixe des notes de bibliographie": "Prefix for bibliography notes",
     "Quand l'appel [^n] disparaît, retire sa définition. N'agit que sur les notes contenant des liens d'annotation.": "When the [^n] marker disappears, removes its definition. Only acts on notes containing annotation links.",
     "Quand plusieurs flèches partent d’un même bloc et qu’une seule porte une étiquette, elle vaut pour tout le faisceau. Sans effet si deux étiquettes différentes coexistent.": "When several arrows leave the same shape and only one carries a label, that label applies to all of them. No effect if two different labels coexist.",
-    "Quand une annotation cite un travail absent de Zotero — donc non consulté directement — la citation prend la forme « Moulin et Gérard, 2026, p. 345, cité dans Aven, 2012, p. 34 ». Si ce travail figure dans Zotero, il est cité directement. Texte inséré entre les deux références :": "When an annotation cites a work absent from Zotero, and therefore not read directly, the citation reads “Moulin and Gérard, 2026, p. 345, as cited in Aven, 2012, p. 34”. If that work is in Zotero, it is cited directly. Text inserted between the two references:",
+    "Quand une annotation cite un travail absent de Zotero (donc non consulté directement), la citation prend la forme « Auteur A, 2020, p. 45, cité dans Auteur B, 2015, p. 12 ». Si ce travail figure dans Zotero, il est cité directement. Texte inséré entre les deux références :": "When an annotation cites a work absent from Zotero, and therefore not read directly, the citation reads “Author A, 2020, p. 45, as cited in Author B, 2015, p. 12”. If that work is in Zotero, it is cited directly. Text inserted between the two references:",
     "Quand une annotation cite une référence absente de Zotero, la citation prend la forme : « Auteurs, année<texte ci-dessous>Source, p. XX ». Si la référence citée existe dans Zotero, elle est citée directement.": "When an annotation cites a reference absent from Zotero, the citation reads “Authors, year<text below>Source, p. XX”. If the cited reference exists in Zotero, it is cited directly.",
     "Quand une annotation rapporte des travaux que vous n'avez pas consultés, la source consultée porte un compteur des travaux qu'elle rapporte, au lieu de les nommer tous dans le fil du texte. Le survol du compteur les affiche en liens cliquables. Les références déjà présentes dans Zotero restent citées en clair, puisque vous les avez lues. Après changement, lancer « Citations : rafraîchir les libellés » pour réécrire les notes.": "When an annotation reports works you have not read yourself, the source you did read carries a counter of those works instead of naming them all in the running text. Hovering the counter shows them as clickable links. References already in Zotero stay cited in full, since you have read them. After changing this, run “Citations: refresh labels” to rewrite the notes.",
     "Rafraîchir les suggestions (sans modèle de langue)": "Refresh the suggestions (without the language model)",
@@ -788,7 +778,6 @@ const TEXTES = {
     "Référence de la note": "Reference of the note",
     "Référence par défaut = source": "Default reference is the source",
     "Référence « ": "Reference “",
-    "Références & auteurs": "References and authors",
     "Références : ": "References: ",
     "Références citées (apparat « cité dans »)": "Cited references (secondary source apparatus)",
     "Références citées mais pas encore dans Zotero.": "References cited but not yet in Zotero.",
@@ -803,8 +792,6 @@ const TEXTES = {
     "Réinitialisation": "Reset",
     "Réinitialiser": "Reset",
     "Rétablir les réglages par défaut": "Restore the default settings",
-    "Rôles — où Ariane range ses productions": "Roles: where Ariane files what it produces",
-    "Schémas": "Diagrams",
     "Schémas : ": "Diagrams: ",
     "Schémas : interroger le graphe": "Diagrams: query the graph",
     "Schémas : synchroniser le contenu dans les notes associées": "Diagrams: sync contents into the paired notes",
@@ -813,7 +800,6 @@ const TEXTES = {
     "Score final minimal (en %) pour qu'une note soit proposée. Plus haut = plus sélectif.": "Minimum final score, as a percentage, for a note to be proposed. Higher means more selective.",
     "Sert à mesurer la proximité de sens entre vos notes.": "Used to measure how close in meaning your notes are.",
     "Service": "Service",
-    "Service d'inférence local": "Local inference service",
     "Seuil de pertinence": "Relevance threshold",
     "Si activé, tout lien de note peut être déposé. Sinon, seules les annotations.": "When enabled, any note link can be dropped. Otherwise, annotations only.",
     "Si une annotation ne cite aucune référence, utilise sa source Zotero.": "If an annotation cites no reference, use its Zotero source.",
@@ -847,9 +833,8 @@ const TEXTES = {
     "Taille de l'aparté": "Size of the aside",
     "Temps : reporter maintenant dans les notes": "Time: write it into the notes now",
     "Temps : écrire le journal du jour": "Time: write today's journal",
-    "Temps de la note en cours. Le point est plein quand le compteur tourne, vide en pause. Un clic ouvre le journal du jour.": "Time on the current note. The dot is solid while the timer runs and hollow when paused. Clicking it opens today's journal.",
+    "Temps de la note en cours. Le point est plein quand le compteur tourne, vide en pause. Un clic ouvre la chronologie.": "Time on the current note. The dot is solid while the timer runs and hollow when paused. Clicking it opens today's journal.",
     "Temps d’inactivité dans la frappe avant de rafraîchir.": "How long typing must stop before refreshing.",
-    "Temps passé": "Time spent",
     "Temps reporté dans les propriétés.": "Time written into the properties.",
     "Test du modèle…": "Testing the model…",
     "Test en cours…": "Testing…",
@@ -866,14 +851,14 @@ const TEXTES = {
     "Types inconnus": "Unknown types",
     "Un modèle de langue relit les meilleurs candidats et les remet en ordre. C'est de loin le poste le plus lourd du greffon : il ne part que sur demande, par le bouton ✨ du panneau.": "A language model reviews the best candidates and puts them back in order. It is by far the heaviest part of the plugin, so it only runs on demand, through the ✨ button in the panel.",
     "Un panneau latéral propose, au fil de ce que vous écrivez, les notes les plus proches. Tout est local, gratuit et hors-ligne. Ouvrez-le via l'icône ✦ du ruban ou la commande dédiée.": "A side panel proposes the closest notes as you write. Everything runs locally, free of charge and offline. Open it from the ✦ ribbon icon or the matching command.",
-    "Un profil rassemble vos réglages pour les partager ou les retrouver ailleurs. Les chemins propres à cette machine — pandoc, filtre Lua, modèle Word, adresses des services d'inférence — n'y figurent jamais, et un profil importé ne les touche pas.": "A profile gathers your settings so you can share them or find them again elsewhere. Paths specific to this machine, meaning pandoc, the Lua filter, the Word template and the inference service addresses, never appear in it, and an imported profile never touches them.",
+    "Un profil rassemble vos réglages pour les partager ou les retrouver ailleurs. Les chemins propres à cette machine (pandoc, filtre Lua, modèle Word, adresses des services d'inférence) n'y figurent jamais, et un profil importé ne les touche pas.": "A profile gathers your settings so you can share them or find them again elsewhere. Paths specific to this machine, meaning pandoc, the Lua filter, the Word template and the inference service addresses, never appear in it, and an imported profile never touches them.",
     "Une annotation ou une source déposée sur une phrase insère sa référence en ligne, entre parenthèses, avant la ponctuation finale.": "An annotation or a source dropped onto a sentence inserts its reference inline, in brackets, before the closing punctuation.",
     "Une citation entre parenthèses cède la place à une pastille portant le nombre de références. Un clic sur la pastille déplie cette citation seule ; les commandes « Citations : tout replier » et « tout déplier » agissent sur l'ensemble, comme le bouton de la barre latérale. En édition, une citation se déplie d'elle-même dès que le curseur y entre.": "A citation in brackets gives way to a badge carrying the number of references. Clicking the badge unfolds that citation alone, while the “fold all” and “unfold all” commands act on the whole note, as does the sidebar button. While editing, a citation unfolds on its own as soon as the cursor enters it.",
     "Une clé de citation par ligne. Certains modules de Zotero rangent leurs réglages dans un élément de la bibliothèque, qui remonte alors comme une source : « AddonItem » en est le cas le plus courant. Les notes sans prose sont déjà écartées d'elles-mêmes.": "One citation key per line. Some Zotero add-ons store their settings inside a library item, which then shows up as a source. “AddonItem” is the most common case. Notes containing no prose are already skipped on their own.",
     "Une note de bibliographie par source.": "One bibliography note per source.",
     "Une note par annotation Zotero.": "One note per Zotero annotation.",
     "Une phrase expliquant pourquoi chaque note est proposée. Sans elle, le reclassement est un peu plus rapide.": "A sentence explaining why each note is proposed. Without it, reranking is a little faster.",
-    "Une propriété « [[Chabane Mazri]] » sort « Chabane Mazri ». Vaut pour les liens simples, les liens à alias et les liens markdown.": "A property written “[[Jane Doe]]” comes out as “Jane Doe”. This covers plain links, aliased links and markdown links.",
+    "Une propriété « [[Prénom Nom]] » sort « Prénom Nom ». Vaut pour les liens simples, les liens à alias et les liens markdown.": "A property written “[[Jane Doe]]” comes out as “Jane Doe”. This covers plain links, aliased links and markdown links.",
     "Variables : {{alias}} (titre), {{key}}, {{auteur}}, {{auteurs}}, {{annee}}. Ex. « ({{alias}}) », « ({{auteur}}, {{annee}}) ».": "Variables: {{alias}} (title), {{key}}, {{auteur}}, {{auteurs}}, {{annee}}. For example “({{alias}})” or “({{auteur}}, {{annee}})”.",
     "Variables : {{auteurs}}, {{auteursComplets}}, {{annee}}, {{page}}, {{key}}. Les fragments restés vides sont retirés.": "Variables: {{auteurs}}, {{auteursComplets}}, {{annee}}, {{page}}, {{key}}. Fragments left empty are removed.",
     "Variables : {{auteurs}}, {{auteursComplets}}, {{annee}}, {{titre}}, {{publication}}, {{doi}}, {{url}}, {{type}}, {{cle}}. Les fragments vides sont retirés.": "Variables: {{auteurs}}, {{auteursComplets}}, {{annee}}, {{titre}}, {{publication}}, {{doi}}, {{url}}, {{type}}, {{cle}}. Empty fragments are removed.",
@@ -886,7 +871,7 @@ const TEXTES = {
     "Vocabulaire des schémas": "Diagram vocabulary",
     "Vocabulaire strict": "Strict vocabulary",
     "Voir les styles": "View the styles",
-    "Vos notes s'appellent « NP-260826-07 » ou « CR-260826-07 » : le nom fait alors référence. Désactivé, le champ reste vide si aucune propriété n'est trouvée.": "If your notes are named like “NP-260826-07” or “CR-260826-07”, the filename is the reference. When disabled, the field stays empty if no property is found.",
+    "Si le nom de vos notes porte un code (« CR-261013-08 », par exemple), il fait alors référence. Désactivé, le champ reste vide si aucune propriété n'est trouvée.": "If your note names carry a code (“CR-261013-08”, for instance), the name is the reference. When disabled, the field stays empty if no property is found.",
     "Vérification du modèle — échec : ": "Template check failed: ",
     "Vérifier le modèle Word (jetons et gabarits)": "Check the Word template (tokens and layouts)",
     "ZotFlow [": "ZotFlow [",
@@ -917,7 +902,6 @@ const TEXTES = {
     "Étiquettes implicites": "Implicit labels",
     "Étiquettes portées par les flèches, ex. « précède », « contredit ».": "Labels carried by arrows, for example “precedes” or “contradicts”.",
     "Étiquettes portées par les formes, ex. « concept », « acteur ».": "Labels carried by shapes, for example “concept” or “actor”.",
-    "— Aparté sur les annotations": "Aside on annotations",
     "⇱ Glisser sur un paragraphe": "⇱ Drag onto a paragraph",
     "Tâches": "Tasks",
     "Une note par tâche.": "One note per task.",
@@ -1057,7 +1041,6 @@ const TEXTES = {
     "Compteur": "Counter",
     "Fournisseur principal": "Main provider",
     "Service local": "Local service",
-    "Bilan du soir": "Evening summary",
     "Relais pour Claude": "Relay for Claude",
     "Publication du site": "Site publishing",
     "Travail sur les notes": "Work on notes",
@@ -1087,11 +1070,9 @@ const TEXTES = {
     "A4 à découper": "A4 to cut",
     "Ouvrir dans le navigateur": "Open in browser",
     "Imprimer…": "Print…",
-    "Portrait pour le bilan": "Portrait for the summary",
     "Temps dans Obsidian": "Time in Obsidian",
-    "Relevé quotidien": "Daily record",
     "Jours gardés en mémoire": "Days kept in memory",
-    "Bilan de la journée prêt : il s’affiche dans la chronologie.": "Day summary ready: it shows in the timeline.",
+    "Résumé de la journée prêt : il s’affiche dans la chronologie.": "Day summary ready: it shows in the timeline.",
     "Dossiers sans bibliographie": "Folders without bibliography",
     "Les notes de ces dossiers, et de leurs sous-dossiers, ne reçoivent pas de bibliographie de fin de note, ni automatiquement ni par les commandes. Un bloc déjà présent y est laissé tel quel.": "Notes in these folders, and their subfolders, get no end-of-note bibliography, neither automatically nor through the commands. A block already there is left as is.",
     "Ajouter un dossier": "Add a folder",
@@ -1101,8 +1082,8 @@ const TEXTES = {
     "Ajouts automatiques": "Automatic additions",
     "notes ajoutées": "notes added",
     "en une fois": "all at once",
-    "Bilan de la journée": "Day summary",
-    "Refaire le bilan": "Redo the summary",
+    "Résumé de la journée": "Day summary",
+    "Refaire le résumé": "Redo the summary",
     "Journée : résumer ma journée (IA)": "Day: summarise my day (AI)",
     "Affiner avec l'IA": "Refine with AI",
     "proche par le sens": "close in meaning",
@@ -1151,7 +1132,7 @@ const TEXTES = {
     "Par type": "By type",
     "Dossier": "Folder",
     "Tous les dossiers": "All folders",
-    "Un journal de ce qui se passe dans le coffre : notes créées ou modifiées (avec le début de la modification), captures, tâches terminées ou abandonnées, canevas. Il est tenu par mois dans le dossier du greffon, jamais dans le coffre ni dans les réglages. Une modification qui ne touche que l'entête, ou qu'Ariane fait elle-même, n'est pas une activité. Avant le journal, la chronologie se reconstitue d'après les dates des fichiers.": "A log of what happens in the vault: notes created or edited (with the start of the change), captures, tasks completed or dropped, canvases. It is kept by month in the plugin folder, never in the vault nor in the settings. A change that only touches the frontmatter, or that Ariane makes itself, is not activity. Before the log, the timeline is reconstructed from file dates.",
+    "Un journal de ce qui se passe dans le coffre : notes créées ou modifiées (avec le début de la modification), captures, tâches terminées ou abandonnées, canevas. Il est tenu jour par jour dans « .ariane/jours », un dossier caché du coffre, jamais dans les réglages. Une modification qui ne touche que l'entête, ou qu'Ariane fait elle-même, n'est pas une activité. Avant le journal, la chronologie se reconstitue d'après les dates des fichiers.": "A log of what happens in the vault: notes created or edited (with the start of the change), captures, tasks completed or dropped, canvases. It is kept by month in the plugin folder, never in the vault nor in the settings. A change that only touches the frontmatter, or that Ariane makes itself, is not activity. Before the log, the timeline is reconstructed from file dates.",
     "Tenir le journal d'activité": "Keep the activity log",
     "Sources de capture": "Capture sources",
     "Une par ligne : « Nom (icône) = dossier, dossier ». Une note créée dans l'un de ces dossiers est une capture de cette source ; ses mises à jour ultérieures ne comptent pas. L'icône, facultative, est un nom Lucide (bookmark, mic, scissors…).": "One per line: \"Name (icon) = folder, folder\". A note created in one of these folders is a capture from that source; its later updates do not count. The optional icon is a Lucide name (bookmark, mic, scissors…).",
@@ -1244,10 +1225,8 @@ const TEXTES = {
     "Heure": "Time",
     "Facultative — sinon rappel « journée entière ».": "Optional — otherwise an all-day reminder.",
 
-    "Assistant IA": "AI assistant",
-    "Structurer un brouillon, découper une tâche, normaliser les intitulés, vérifier les familles, ajouter en langage naturel, résoudre les sources — via les commandes « Tâches : … (IA) » et les menus contextuels. Chaque proposition est revue avant d'être appliquée. Le classement s'appuie sur la « Description » de chaque famille (onglet Dossiers & familles).": "Structure a draft, split a task, normalise titles, check families, add in plain language, resolve sources — through the “Tasks: … (AI)” commands and context menus. Every proposal is reviewed before it is applied. Sorting relies on each family's “Description” (Folders & families tab).",
+    "Structurer un brouillon, découper une tâche, normaliser les intitulés, vérifier les familles, ajouter en langage naturel, résoudre les sources : par les commandes « Tâches : … (IA) » et les menus contextuels. Chaque proposition est revue avant d'être appliquée. Le classement s'appuie sur la « Description » de chaque famille (onglet « Familles de notes »).": "Structure a draft, split a task, normalise titles, check families, add in plain language, resolve sources, through the “Tasks: … (AI)” commands and context menus. Every proposal is reviewed before it is applied. Sorting relies on each family's “Description” (Folders & families tab).",
     "Fournisseur": "Provider",
-    "Partagé avec le découpage des bibliographies. Adresse du service locale : onglet Suggestions.": "Shared with bibliography splitting. Local service address: Suggestions tab.",
     "Claude en ligne de commande": "Claude command line",
     "Modèle": "Model",
     "Ex. « mistral-small-latest ».": "E.g. “mistral-small-latest”.",
@@ -1638,8 +1617,6 @@ const DEFAULT_SETTINGS = {
   activiteIAFournisseur: '',            // '' = celui de l'assistant IA ; sinon ollama, lmstudio, mistral, claude
   activiteIAModele: '',                 // modèle Ollama, LM Studio ou Mistral ('' = celui de l'assistant)
   activiteIAModeleClaude: 'haiku',      // modèle si le fournisseur est Claude en ligne de commande
-  resumeJourneeHeure: '',               // résumé de la journée par l'IA à cette heure (HH:MM), '' = jamais
-  resumeJourneePortrait: "Monsieur est doctorant, souvent en proie au syndrome de l'imposteur et parfois à la procrastination.",
   donneesJourVersion: 0,                // 1 : données rangées par jour ; 2 : dans .ariane/jours, sans journal du temps
   activiteIAAuto: false,                // résumer seul les journées passées affichées
   activiteIACouleur: true,              // colorer les créneaux résumés selon leur catégorie IA
@@ -1712,7 +1689,7 @@ const DEFAULT_SETTINGS = {
   exportStyleEnteteTableau: 'Titre de tableau',
   exportStyleCelluleTableau: 'Champ de tableau',
   exportEntetes: true,          // rattacher les en-têtes du modèle
-  exportNettoyerLiens: true,    // [[Chabane Mazri]] -> Chabane Mazri dans les propriétés
+  exportNettoyerLiens: true,    // [[Prénom Nom]] -> Prénom Nom dans les propriétés
   exportProprieteReference: 'ref, reference, réf, référence',
   exportRefDepuisNom: true,     // à défaut de propriété, le nom du fichier fait référence
 
@@ -20176,7 +20153,7 @@ const avecChronologie = (Base) => class extends Base {
   //  et réalisé, rythmes) en sont des lectures croisées.
 
   // L'état d'un créneau révolu d'après la part faite : la même échelle pour
-  // le bilan du soir et pour la rubrique « Prévu et réalisé ».
+  // le résumé de la journée et pour la rubrique « Prévu et réalisé ».
   static etatCreneau(fait, prevu) {
     if (!(fait > 0)) return 'rien';
     const part = prevu ? fait / prevu : 1;
@@ -20783,72 +20760,25 @@ const avecDonneesJour = (Base) => class extends Base {
       });
   }
 
-  // Ce qui attend Monsieur le lendemain de `jour` : événements, créneaux de
-  // tâches, échéances, et les échéances des jours suivants.
-  async _matiereDemain(jour) {
-    const demain = Ariane.decalerJour(jour, 1);
-    const l = [];
-    const evts = await this._lignesEvenementsJour(demain);
-    if (evts.length) { l.push('ÉVÉNEMENTS :'); l.push(...evts); }
-    const taches = this.tachesPourGantt();
-    const ouverte = (t) => t.statut !== 'terminée' && t.statut !== 'abandonnée';
-    const creneaux = [];
-    for (const t of taches) {
-      if (!ouverte(t)) continue;
-      for (const c of Ariane.creneauxDeTache([].concat(t.creneaux || []))) {
-        if (c.debut.slice(0, 10) === demain) {
-          creneaux.push(c.debut.slice(11, 16) + ' à ' + c.fin.slice(11, 16) + ' : ' + t.ref + ' ' + t.intitule
-            + ' (statut ' + (t.statut || 'à faire') + (t.avancement ? ', ' + t.avancement + ' %' : '') + ')');
-        }
-      }
-    }
-    if (creneaux.length) { l.push('', 'CRÉNEAUX DE TÂCHES :'); for (const c of creneaux.sort()) l.push('- ' + c); }
-    const dues = taches.filter((t) => ouverte(t) && t.echeance === demain);
-    if (dues.length) {
-      l.push('', 'ÉCHÉANCES :');
-      for (const t of dues) l.push('- ' + t.ref + ' ' + t.intitule + (t.jalon ? ' (jalon)' : '') + ', statut ' + (t.statut || 'à faire'));
-    }
-    const fin = Ariane.decalerJour(jour, 7);
-    const proches = taches.filter((t) => ouverte(t) && t.echeance > demain && t.echeance <= fin)
-      .sort((a, b) => a.echeance.localeCompare(b.echeance)).slice(0, 4);
-    if (proches.length) {
-      l.push('', 'ÉCHÉANCES DES JOURS SUIVANTS :');
-      for (const t of proches) l.push('- ' + t.echeance + ' : ' + t.ref + ' ' + t.intitule + (t.jalon ? ' (jalon)' : ''));
-    }
-    return l.join('\n').trim();
-  }
-
-  // La consigne du bilan du soir, inspirée de celle que Monsieur s'était
-  // écrite pour un raccourci Apple : une base tangible, un miroir honnête,
-  // le lendemain, une invitation à se déconnecter.
-  static promptResumeJournee(jour, matiere, contexte, opts) {
-    const o = opts || {};
-    const jl = (x) => new Date(x + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    const demain = Ariane.decalerJour(jour, 1);
+  // La consigne du résumé de la journée : factuel et neutre, sans s'adresser
+  // à personne ni juger, à partir du seul relevé.
+  static promptResumeJournee(jour, matiere, contexte) {
+    const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     return [
-      'Agis comme un majordome intellectuel, à la fois philosophe et rationnel. Tu écris le bilan du soir de Monsieur, pour le ' + jl(jour) + ', à partir du relevé ci-dessous.',
-      o.portrait ? 'Portrait : ' + o.portrait : '',
+      'Rédige le résumé de la journée du ' + jl + ', à partir du relevé de travail ci-dessous.',
       contexte ? 'Contexte : ' + contexte : '',
       '',
-      'DÉROULÉ :',
-      '1. La base tangible de la journée : la synthèse de ce qui a été accompli (tâches terminées ou avancées, travail de fond, cours, réunions et rendez-vous déjà passés).',
-      '2. Un miroir honnête : où le temps est allé, en rapprochant le prévu du réalisé (créneaux tenus, faits en partie, laissés de côté) et en nommant les moments de distraction s\'il y en a eu, y compris les micro-interruptions (leur nombre, ce qui les a causées, la plus longue plage de concentration) quand le relevé les donne. Si la journée a été productive, félicite sans excès. Si elle a été dispersée ou si du travail prévu a été repoussé, sois lucide : reconnais l\'écart sans le juger, et invite à tourner la page. Rassure par la logique plutôt que par des formules : une journée ne définit pas une thèse entière.',
-      '3. Demain (' + jl(demain) + ') : ce qui l\'attend, concrètement et sans l\'accabler (le premier rendez-vous, les créneaux prévus, les échéances), en une ou deux phrases qui préparent sans inquiéter. Si rien n\'est prévu, dis-le simplement.',
-      '4. Termine par une salutation élégante qui invite à la déconnexion immédiate.',
-      '',
-      'FORME :',
-      '- Un texte continu de 180 à 280 mots, en français, qui vouvoie et appelle « Monsieur ».',
-      '- Il sera lu à voix haute : texte brut, pas de liste, pas de titre, pas de markdown, pas de symboles ni d\'abréviations ; les durées et les heures en toutes lettres (« deux heures et quart », « neuf heures et demie »).',
-      '- Uniquement ce que dit le relevé : n\'invente aucune activité, aucun nom, aucun chiffre, aucun rendez-vous.',
+      'CONSIGNES :',
+      '- Un texte continu de 80 à 160 mots, en français, factuel et neutre : tournures impersonnelles, sans s\'adresser à quiconque, sans félicitation, conseil ni jugement.',
+      '- Dans cet ordre : ce qui a été fait (tâches terminées ou avancées, travail de fond, cours, réunions et rendez-vous) ; la répartition du temps et le prévu face au réalisé (créneaux tenus, faits en partie, laissés de côté) ; les distractions et la concentration (micro-interruptions, plus longue plage de concentration) quand le relevé les donne.',
+      '- Texte brut : pas de liste, pas de titre, pas de markdown.',
+      '- Uniquement ce que dit le relevé : n\'invente aucune activité, aucun nom, aucun chiffre.',
       '- Pas de tiret cadratin ni demi-cadratin.',
       '',
       'Réponds UNIQUEMENT par du JSON : {"resume": "…"}',
       '',
       'RELEVÉ DE LA JOURNÉE :',
       matiere,
-      '',
-      'DEMAIN (' + jl(demain) + ') :',
-      o.demain || 'Rien de prévu au calendrier ni dans les tâches.',
     ].filter((x) => x !== '').join('\n');
   }
 
@@ -20860,11 +20790,8 @@ const avecDonneesJour = (Base) => class extends Base {
     const avis = o.silencieux ? null : new obsidian.Notice(tr('Résumé de la journée en cours…'), 0);
     let texte = '';
     try {
-      const prompt = Ariane.promptResumeJournee(j, matiere, this.settings.activiteIAContexte, {
-        portrait: this.settings.resumeJourneePortrait,
-        demain: await this._matiereDemain(j),
-      });
-      const rep = await this._genererActiviteIA(prompt, 1600, 'synthese');
+      const prompt = Ariane.promptResumeJournee(j, matiere, this.settings.activiteIAContexte);
+      const rep = await this._genererActiviteIA(prompt, 1000, 'synthese');
       texte = String((rep && (rep.resume || rep.texte)) || '').replace(/\s*[\u2014\u2013]\s*/g, ', ').replace(/\s+/g, ' ').trim();
     } catch (e) {
       if (avis) avis.hide();
@@ -20878,12 +20805,11 @@ const avecDonneesJour = (Base) => class extends Base {
     this.marquerJourSale(j);
     await this.ecrireDonneesJours();
     this._signalerResumeJournee();
-    if (!o.silencieux) new obsidian.Notice(tr('Bilan de la journée prêt : il s’affiche dans la chronologie.'));
+    if (!o.silencieux) new obsidian.Notice(tr('Résumé de la journée prêt : il s’affiche dans la chronologie.'));
     return texte;
   }
 
-  // Le résumé d'un jour, s'il existe (pour les vues, et pour qui voudra le
-  // faire lire à voix haute).
+  // Le résumé d'un jour, s'il existe.
   async resumeDeLaJournee(jour) {
     const d = await this.donneesJour(jour || jourIsoDe(new Date()));
     return (d.resumeJournee && d.resumeJournee.texte) || '';
@@ -20896,20 +20822,7 @@ const avecDonneesJour = (Base) => class extends Base {
     }
   }
 
-  // Résumé automatique, à l'heure réglée (vide : jamais), une fois par jour.
-  demarrerResumeJourneeAuto() {
-    this.registerInterval(window.setInterval(() => {
-      const h = String(this.settings.resumeJourneeHeure || '').trim();
-      if (!/^\d{1,2}:\d{2}$/.test(h)) return;
-      const now = new Date();
-      const p2 = (n) => String(n).padStart(2, '0');
-      if (p2(now.getHours()) + ':' + p2(now.getMinutes()) < h.padStart(5, '0')) return;
-      const jour = jourIsoDe(now);
-      if (this._resumeAutoFait === jour) return;
-      this._resumeAutoFait = jour;
-      this.resumeDeLaJournee(jour).then((t) => { if (!t) this.resumerJournee(jour, { silencieux: true }); });
-    }, 60000));
-  }
+
 
   //#endregion Ariane · résumé de la journée
 };
@@ -21235,7 +21148,7 @@ const avecIphone = (Base) => class extends Base {
 //    Monsieur, règles d'activité, ou appris de l'IA, site par site) ;
 //  - le téléphone utilisé pendant que le Mac l'est (une interruption).
 // Le calendrier les marque d'un trait rouge en travers de la colonne des
-// créneaux réels ; la chronologie et le bilan du soir en tirent des mesures
+// créneaux réels ; la chronologie et le résumé de la journée en tirent des mesures
 // (nombre par heure de travail, plages de concentration).
 const avecConcentration = (Base) => class extends Base {
   //#region Ariane · concentration (statique)
@@ -22305,7 +22218,6 @@ class Ariane extends composer(obsidian.Plugin,
       this.brancherChronologie();
       this.rangerChronologie().catch((e) => console.error('[Ariane] chronologie', e));
       this.installerInfobulleTemps();
-      this.demarrerResumeJourneeAuto();
     });
     this._citVersion = 0;
     this.app.workspace.onLayoutReady(() => this.appliquerEtatCitations());
@@ -23629,7 +23541,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setValue(s.modeleCitation || '').onChange(async (v) => { s.modeleCitation = v.trim() || '{{auteurs}}, {{annee}}, p. {{page}}'; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Apparat « cité dans »'))
-      .setDesc(tr("Quand une annotation cite un travail absent de Zotero (donc non consulté directement), la citation prend la forme « Moulin et Gérard, 2026, p. 345, cité dans Aven, 2012, p. 34 ». Si ce travail figure dans Zotero, il est cité directement. Texte inséré entre les deux références :"))
+      .setDesc(tr("Quand une annotation cite un travail absent de Zotero (donc non consulté directement), la citation prend la forme « Auteur A, 2020, p. 45, cité dans Auteur B, 2015, p. 12 ». Si ce travail figure dans Zotero, il est cité directement. Texte inséré entre les deux références :"))
       .addText((t) => t.setValue(s.citeDans != null ? s.citeDans : ', cité dans ').onChange(async (v) => { s.citeDans = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Séparateur entre citations'))
@@ -24829,7 +24741,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     }
     if (s.activiteActif) {
       this._section(c, tr('Micro-interruptions'));
-      this._aide(c, tr("Un coup d'œil de quelques secondes à un site sans rapport, ou au téléphone, coupe la concentration sans former de créneau. Ariane les relève dès quelques secondes et les marque d'un trou dans la bande du créneau de travail, au calendrier (détail au survol) ; la synthèse de la chronologie et le bilan du soir en tirent la concentration de la journée. Une distraction : un site ou une application de la liste ci-dessous, ou d'une catégorie de distraction de vos règles, ou appris de l'IA (commande « Distractions : classer les sites et applications inconnus »). Le téléphone utilisé pendant que le Mac l'est en est toujours une."));
+      this._aide(c, tr("Un coup d'œil de quelques secondes à un site sans rapport, ou au téléphone, coupe la concentration sans former de créneau. Ariane les relève dès quelques secondes et les marque d'un trou dans la bande du créneau de travail, au calendrier (détail au survol) ; la synthèse de la chronologie et le résumé de la journée en tirent la concentration de la journée. Une distraction : un site ou une application de la liste ci-dessous, ou d'une catégorie de distraction de vos règles, ou appris de l'IA (commande « Distractions : classer les sites et applications inconnus »). Le téléphone utilisé pendant que le Mac l'est en est toujours une."));
       new obsidian.Setting(c)
         .setName(tr('Micro-interruption la plus courte'))
         .setDesc(tr('En secondes.'))
@@ -25033,20 +24945,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       this._section(c, tr('IA de l\'activité'));
       this._aide(c, tr('Activez d’abord ActivityWatch (onglet Temps et activité) : l’IA résume et classe ses créneaux.'));
     }
-    this._section(c, tr('Bilan du soir'));
-    new obsidian.Setting(c)
-      .setName(tr('Bilan de la journée'))
-      .setDesc(tr("Le bilan du soir par l'IA : ce qui a été accompli, le prévu face au réalisé, les distractions, et ce qui attend demain ; écrit pour être lu à voix haute. Il se fait à la demande (commande « Journée : résumer ma journée (IA) », bouton de la chronologie) ou chaque jour à l'heure indiquée ici (vide : jamais). On le retrouve sous le jour dans la chronologie, et dans « .ariane/jours/AAAA-MM-JJ.json », clé « resumeJournee »."))
-      .addText((t) => t.setPlaceholder('22:30').setValue(s.resumeJourneeHeure || '')
-        .onChange(async (v) => { s.resumeJourneeHeure = /^\d{1,2}:\d{2}$/.test(v.trim()) ? v.trim() : ''; await maj(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Portrait pour le bilan'))
-      .setDesc(tr("Qui est Monsieur, pour que le bilan du soir sache rassurer, féliciter ou recadrer avec justesse."))
-      .addTextArea((t) => {
-        t.setValue(s.resumeJourneePortrait || '').onChange(async (v) => { s.resumeJourneePortrait = v; await maj(); });
-        t.inputEl.rows = 2;
-        t.inputEl.style.width = '100%';
-      });
     this._section(c, tr('Relais pour Claude'));
     this._aide(c, tr("Claude, dans Claudian, lit vos tâches par le serveur MCP « ariane-taches », qui passe par un relais local d’Ariane : il n’écoute que sur cette machine, derrière un jeton renouvelé à chaque démarrage. Coupé, Claude n’a plus accès aux tâches."));
     new obsidian.Setting(c)
@@ -25094,7 +24992,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.exportInsecables !== false).onChange(async (v) => { s.exportInsecables = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr("Apparat « cité dans » à l'export"))
-      .setDesc(tr("Activé, un travail rapporté mais absent de Zotero est cité sous la forme « Fan et al., 2022, cité dans Raizada & Sinha, 2025, p. 1 ». Désactivé, seule la source réellement consultée est citée. Sans effet sur les travaux présents dans Zotero, toujours cités directement."))
+      .setDesc(tr("Activé, un travail rapporté mais absent de Zotero est cité sous la forme « Auteur A et al., 2020, cité dans Auteur B, 2015, p. 12 ». Désactivé, seule la source réellement consultée est citée. Sans effet sur les travaux présents dans Zotero, toujours cités directement."))
       .addToggle((t) => t.setValue(s.exportCiteDansActif !== false).onChange(async (v) => { s.exportCiteDansActif = v; await maj(); }));
     this._section(c, tr('Mise en forme du document'));
     new obsidian.Setting(c)
@@ -25111,7 +25009,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.exportEntetes !== false).onChange(async (v) => { s.exportEntetes = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Retirer les crochets des propriétés'))
-      .setDesc(tr("Une propriété « [[Chabane Mazri]] » sort « Chabane Mazri ». Vaut pour les liens simples, les liens à alias et les liens markdown."))
+      .setDesc(tr("Une propriété « [[Prénom Nom]] » sort « Prénom Nom ». Vaut pour les liens simples, les liens à alias et les liens markdown."))
       .addToggle((t) => t.setValue(s.exportNettoyerLiens !== false).onChange(async (v) => { s.exportNettoyerLiens = v; await maj(); }));
 
     this._section(c, tr('Styles du modèle employés'));
@@ -25133,7 +25031,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .onChange(async (v) => { s.exportProprieteReference = v.trim() || 'ref'; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('À défaut, le nom du fichier'))
-      .setDesc(tr("Vos notes s'appellent « NP-260826-07 » ou « CR-260826-07 » : le nom fait alors référence. Désactivé, le champ reste vide si aucune propriété n'est trouvée."))
+      .setDesc(tr("Si le nom de vos notes porte un code (« CR-261013-08 », par exemple), il fait alors référence. Désactivé, le champ reste vide si aucune propriété n'est trouvée."))
       .addToggle((t) => t.setValue(s.exportRefDepuisNom !== false).onChange(async (v) => { s.exportRefDepuisNom = v; await maj(); }));
 
     this._aide(c, tr("Le texte de liaison (« , cité dans ») se règle une seule fois, dans l'onglet « Citations et bibliographie ». Il vaut pour les citations en ligne comme pour l'export."));
@@ -25150,8 +25048,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._aide(c, tr("Miroir intégral d'un dossier du coffre vers content/ d'un dépôt Git (site Quartz) : tout ce que contient ce dossier est publié, et rien d'autre. La commande « Site : publier » (palette de commandes) synchronise, commit et pousse en un geste."));
     new obsidian.Setting(c)
       .setName(tr('Dépôt du site'))
-      .setDesc(tr('Chemin absolu, sur ce Mac, du dépôt Git déjà cloné (ex. liotou.github.io).'))
-      .addText((t) => t.setValue(s.publicationDepot || '').setPlaceholder('/Users/…/liotou.github.io')
+      .setDesc(tr('Chemin absolu, sur ce Mac, du dépôt Git déjà cloné (par exemple « mon-site.github.io »).'))
+      .addText((t) => t.setValue(s.publicationDepot || '').setPlaceholder('/Users/…/mon-site.github.io')
         .onChange(async (v) => { s.publicationDepot = v.trim(); await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Dossier du coffre à publier'))
@@ -40323,14 +40221,14 @@ class VueChronologie extends obsidian.ItemView {
       }
       // Le bilan de la journée par l'IA : affiché sous le titre du jour.
       const bilan = hote.createDiv({ cls: 'zfa-chrono-bilan' });
-      const btBilan = bouton('sunset', tr('Bilan de la journée'), async () => {
+      const btBilan = bouton('sunset', tr('Résumé de la journée'), async () => {
         btBilan.disabled = true;
         await this.greffon.resumerJournee(jour);
         btBilan.disabled = false;
       });
       this.greffon.resumeDeLaJournee(jour).then((t) => {
         if (!t) { bilan.remove(); return; }
-        btBilan.lastChild.setText(tr('Refaire le bilan'));
+        btBilan.lastChild.setText(tr('Refaire le résumé'));
         obsidian.setIcon(bilan.createSpan({ cls: 'zfa-chrono-bilan-ic' }), 'sunset');
         // Justifié, avec la césure du français pour éviter les lézardes.
         bilan.createDiv({ cls: 'zfa-chrono-bilan-texte', text: t, attr: { lang: 'fr' } });

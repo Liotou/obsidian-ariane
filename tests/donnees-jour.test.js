@@ -98,22 +98,14 @@ test('migration : les anciens fichiers passent dans les jours, puis sont mis de 
   assert.equal(JSON.stringify(disque), avant);
 });
 
-test('bilan de la journée : consigne du soir et demain', () => {
-  const p = Ariane.promptResumeJournee('2026-10-06', 'Travail dans Obsidian : 2 h 10', 'doctorant', {
-    portrait: 'Imposteur à ses heures.', demain: 'ÉVÉNEMENTS :\n- 09:00 à 10:00 : Cours' });
+test('résumé de la journée : une consigne neutre', () => {
+  const p = Ariane.promptResumeJournee('2026-10-06', 'Travail dans Obsidian : 2 h 10', 'doctorant');
   assert.match(p, /mardi 6 octobre/);
-  assert.match(p, /Demain \(mercredi 7 octobre\)/);
-  assert.match(p, /« Monsieur »/);
-  assert.match(p, /voix haute/);
-  assert.match(p, /Portrait : Imposteur à ses heures\./);
+  assert.match(p, /factuel et neutre/);
   assert.match(p, /Contexte : doctorant/);
-  assert.ok(!/mot pour clore/.test(p), 'plus de mot pour clore');
-  assert.match(p, /une journée ne définit pas une thèse entière/);
-  assert.match(p, /RELEVÉ DE LA JOURNÉE :\nTravail dans Obsidian : 2 h 10/);
-  assert.match(p, /DEMAIN \(mercredi 7 octobre\) :\nÉVÉNEMENTS :\n- 09:00 à 10:00 : Cours$/);
-  const libre = Ariane.promptResumeJournee('2026-10-06', 'x', '');
-  assert.ok(!/Contexte|Portrait/.test(libre), 'sans contexte ni portrait, pas de ligne');
-  assert.match(libre, /Rien de prévu au calendrier ni dans les tâches\.$/);
+  assert.match(p, /RELEVÉ DE LA JOURNÉE :\nTravail dans Obsidian : 2 h 10$/);
+  assert.ok(!/Monsieur|demain|DEMAIN|voix haute|salutation/.test(p), 'ni adresse, ni lendemain, ni lecture à voix haute');
+  assert.ok(!/Contexte/.test(Ariane.promptResumeJournee('2026-10-06', 'x', '')), 'sans contexte, pas de ligne');
 });
 
 test('chronologie : une rafale de créations devient un lot, le reste ne bouge pas', () => {
@@ -188,24 +180,6 @@ test('bilan : événements du calendrier, créneaux tenus ou non, échéances ou
   assert.match(m, /14:00 à 16:00 : T2 Écrire \(statut à faire\) : 20 min faites sur 2 h \(à peine entamé\)/);
   assert.match(m, /17:00 à 18:00 : T3 Rendre .* aucun travail relevé/);
   assert.match(m, /ÉCHÉANCES DU JOUR NON TERMINÉES :\n- T3 Rendre \(jalon\), statut à faire/);
-});
-
-test('bilan : la matière de demain', async () => {
-  const g = greffon({});
-  g.evenementsFond = async (d) => (d === '2026-10-06' ? [{ titre: 'Cours', debut: '2026-10-06T09:00', fin: '2026-10-06T10:00' }] : []);
-  g.tachesPourGantt = () => [
-    { ref: 'T1', intitule: 'Lire', statut: 'en cours', avancement: 40, creneaux: ['2026-10-06 14:00-15:00'], echeance: '2026-10-06' },
-    { ref: 'T2', intitule: 'Fini', statut: 'terminée', creneaux: ['2026-10-06 16:00-17:00'] },
-    { ref: 'T3', intitule: 'Rendre', statut: 'à faire', jalon: true, echeance: '2026-10-09', creneaux: [] },
-    { ref: 'T4', intitule: 'Loin', statut: 'à faire', echeance: '2026-11-01', creneaux: [] },
-  ];
-  const m = await g._matiereDemain('2026-10-05');
-  assert.equal(m, [
-    'ÉVÉNEMENTS :', '- 09:00 à 10:00 : Cours', '',
-    'CRÉNEAUX DE TÂCHES :', '- 14:00 à 15:00 : T1 Lire (statut en cours, 40 %)', '',
-    'ÉCHÉANCES :', '- T1 Lire, statut en cours', '',
-    'ÉCHÉANCES DES JOURS SUIVANTS :', '- 2026-10-09 : T3 Rendre (jalon)',
-  ].join('\n'));
 });
 
 test('temps du jour : d\'après les sessions, dossiers exclus du compteur compris', async () => {

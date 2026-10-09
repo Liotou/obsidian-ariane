@@ -783,7 +783,6 @@ class Ariane extends composer(obsidian.Plugin,
       this.brancherChronologie();
       this.rangerChronologie().catch((e) => console.error('[Ariane] chronologie', e));
       this.installerInfobulleTemps();
-      this.demarrerResumeJourneeAuto();
     });
     this._citVersion = 0;
     this.app.workspace.onLayoutReady(() => this.appliquerEtatCitations());

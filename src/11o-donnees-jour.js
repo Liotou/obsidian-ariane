@@ -432,72 +432,25 @@ const avecDonneesJour = (Base) => class extends Base {
       });
   }
 
-  // Ce qui attend Monsieur le lendemain de `jour` : événements, créneaux de
-  // tâches, échéances, et les échéances des jours suivants.
-  async _matiereDemain(jour) {
-    const demain = Ariane.decalerJour(jour, 1);
-    const l = [];
-    const evts = await this._lignesEvenementsJour(demain);
-    if (evts.length) { l.push('ÉVÉNEMENTS :'); l.push(...evts); }
-    const taches = this.tachesPourGantt();
-    const ouverte = (t) => t.statut !== 'terminée' && t.statut !== 'abandonnée';
-    const creneaux = [];
-    for (const t of taches) {
-      if (!ouverte(t)) continue;
-      for (const c of Ariane.creneauxDeTache([].concat(t.creneaux || []))) {
-        if (c.debut.slice(0, 10) === demain) {
-          creneaux.push(c.debut.slice(11, 16) + ' à ' + c.fin.slice(11, 16) + ' : ' + t.ref + ' ' + t.intitule
-            + ' (statut ' + (t.statut || 'à faire') + (t.avancement ? ', ' + t.avancement + ' %' : '') + ')');
-        }
-      }
-    }
-    if (creneaux.length) { l.push('', 'CRÉNEAUX DE TÂCHES :'); for (const c of creneaux.sort()) l.push('- ' + c); }
-    const dues = taches.filter((t) => ouverte(t) && t.echeance === demain);
-    if (dues.length) {
-      l.push('', 'ÉCHÉANCES :');
-      for (const t of dues) l.push('- ' + t.ref + ' ' + t.intitule + (t.jalon ? ' (jalon)' : '') + ', statut ' + (t.statut || 'à faire'));
-    }
-    const fin = Ariane.decalerJour(jour, 7);
-    const proches = taches.filter((t) => ouverte(t) && t.echeance > demain && t.echeance <= fin)
-      .sort((a, b) => a.echeance.localeCompare(b.echeance)).slice(0, 4);
-    if (proches.length) {
-      l.push('', 'ÉCHÉANCES DES JOURS SUIVANTS :');
-      for (const t of proches) l.push('- ' + t.echeance + ' : ' + t.ref + ' ' + t.intitule + (t.jalon ? ' (jalon)' : ''));
-    }
-    return l.join('\n').trim();
-  }
-
-  // La consigne du bilan du soir, inspirée de celle que Monsieur s'était
-  // écrite pour un raccourci Apple : une base tangible, un miroir honnête,
-  // le lendemain, une invitation à se déconnecter.
-  static promptResumeJournee(jour, matiere, contexte, opts) {
-    const o = opts || {};
-    const jl = (x) => new Date(x + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    const demain = Ariane.decalerJour(jour, 1);
+  // La consigne du résumé de la journée : factuel et neutre, sans s'adresser
+  // à personne ni juger, à partir du seul relevé.
+  static promptResumeJournee(jour, matiere, contexte) {
+    const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     return [
-      'Agis comme un majordome intellectuel, à la fois philosophe et rationnel. Tu écris le bilan du soir de Monsieur, pour le ' + jl(jour) + ', à partir du relevé ci-dessous.',
-      o.portrait ? 'Portrait : ' + o.portrait : '',
+      'Rédige le résumé de la journée du ' + jl + ', à partir du relevé de travail ci-dessous.',
       contexte ? 'Contexte : ' + contexte : '',
       '',
-      'DÉROULÉ :',
-      '1. La base tangible de la journée : la synthèse de ce qui a été accompli (tâches terminées ou avancées, travail de fond, cours, réunions et rendez-vous déjà passés).',
-      '2. Un miroir honnête : où le temps est allé, en rapprochant le prévu du réalisé (créneaux tenus, faits en partie, laissés de côté) et en nommant les moments de distraction s\'il y en a eu, y compris les micro-interruptions (leur nombre, ce qui les a causées, la plus longue plage de concentration) quand le relevé les donne. Si la journée a été productive, félicite sans excès. Si elle a été dispersée ou si du travail prévu a été repoussé, sois lucide : reconnais l\'écart sans le juger, et invite à tourner la page. Rassure par la logique plutôt que par des formules : une journée ne définit pas une thèse entière.',
-      '3. Demain (' + jl(demain) + ') : ce qui l\'attend, concrètement et sans l\'accabler (le premier rendez-vous, les créneaux prévus, les échéances), en une ou deux phrases qui préparent sans inquiéter. Si rien n\'est prévu, dis-le simplement.',
-      '4. Termine par une salutation élégante qui invite à la déconnexion immédiate.',
-      '',
-      'FORME :',
-      '- Un texte continu de 180 à 280 mots, en français, qui vouvoie et appelle « Monsieur ».',
-      '- Il sera lu à voix haute : texte brut, pas de liste, pas de titre, pas de markdown, pas de symboles ni d\'abréviations ; les durées et les heures en toutes lettres (« deux heures et quart », « neuf heures et demie »).',
-      '- Uniquement ce que dit le relevé : n\'invente aucune activité, aucun nom, aucun chiffre, aucun rendez-vous.',
+      'CONSIGNES :',
+      '- Un texte continu de 80 à 160 mots, en français, factuel et neutre : tournures impersonnelles, sans s\'adresser à quiconque, sans félicitation, conseil ni jugement.',
+      '- Dans cet ordre : ce qui a été fait (tâches terminées ou avancées, travail de fond, cours, réunions et rendez-vous) ; la répartition du temps et le prévu face au réalisé (créneaux tenus, faits en partie, laissés de côté) ; les distractions et la concentration (micro-interruptions, plus longue plage de concentration) quand le relevé les donne.',
+      '- Texte brut : pas de liste, pas de titre, pas de markdown.',
+      '- Uniquement ce que dit le relevé : n\'invente aucune activité, aucun nom, aucun chiffre.',
       '- Pas de tiret cadratin ni demi-cadratin.',
       '',
       'Réponds UNIQUEMENT par du JSON : {"resume": "…"}',
       '',
       'RELEVÉ DE LA JOURNÉE :',
       matiere,
-      '',
-      'DEMAIN (' + jl(demain) + ') :',
-      o.demain || 'Rien de prévu au calendrier ni dans les tâches.',
     ].filter((x) => x !== '').join('\n');
   }
 
@@ -509,11 +462,8 @@ const avecDonneesJour = (Base) => class extends Base {
     const avis = o.silencieux ? null : new obsidian.Notice(tr('Résumé de la journée en cours…'), 0);
     let texte = '';
     try {
-      const prompt = Ariane.promptResumeJournee(j, matiere, this.settings.activiteIAContexte, {
-        portrait: this.settings.resumeJourneePortrait,
-        demain: await this._matiereDemain(j),
-      });
-      const rep = await this._genererActiviteIA(prompt, 1600, 'synthese');
+      const prompt = Ariane.promptResumeJournee(j, matiere, this.settings.activiteIAContexte);
+      const rep = await this._genererActiviteIA(prompt, 1000, 'synthese');
       texte = String((rep && (rep.resume || rep.texte)) || '').replace(/\s*[\u2014\u2013]\s*/g, ', ').replace(/\s+/g, ' ').trim();
     } catch (e) {
       if (avis) avis.hide();
@@ -527,12 +477,11 @@ const avecDonneesJour = (Base) => class extends Base {
     this.marquerJourSale(j);
     await this.ecrireDonneesJours();
     this._signalerResumeJournee();
-    if (!o.silencieux) new obsidian.Notice(tr('Bilan de la journée prêt : il s’affiche dans la chronologie.'));
+    if (!o.silencieux) new obsidian.Notice(tr('Résumé de la journée prêt : il s’affiche dans la chronologie.'));
     return texte;
   }
 
-  // Le résumé d'un jour, s'il existe (pour les vues, et pour qui voudra le
-  // faire lire à voix haute).
+  // Le résumé d'un jour, s'il existe.
   async resumeDeLaJournee(jour) {
     const d = await this.donneesJour(jour || jourIsoDe(new Date()));
     return (d.resumeJournee && d.resumeJournee.texte) || '';
@@ -545,20 +494,7 @@ const avecDonneesJour = (Base) => class extends Base {
     }
   }
 
-  // Résumé automatique, à l'heure réglée (vide : jamais), une fois par jour.
-  demarrerResumeJourneeAuto() {
-    this.registerInterval(window.setInterval(() => {
-      const h = String(this.settings.resumeJourneeHeure || '').trim();
-      if (!/^\d{1,2}:\d{2}$/.test(h)) return;
-      const now = new Date();
-      const p2 = (n) => String(n).padStart(2, '0');
-      if (p2(now.getHours()) + ':' + p2(now.getMinutes()) < h.padStart(5, '0')) return;
-      const jour = jourIsoDe(now);
-      if (this._resumeAutoFait === jour) return;
-      this._resumeAutoFait = jour;
-      this.resumeDeLaJournee(jour).then((t) => { if (!t) this.resumerJournee(jour, { silencieux: true }); });
-    }, 60000));
-  }
+
 
   //#endregion Ariane · résumé de la journée
 };

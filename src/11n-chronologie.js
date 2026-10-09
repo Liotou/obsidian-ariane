@@ -645,7 +645,7 @@ const avecChronologie = (Base) => class extends Base {
   //  et réalisé, rythmes) en sont des lectures croisées.
 
   // L'état d'un créneau révolu d'après la part faite : la même échelle pour
-  // le bilan du soir et pour la rubrique « Prévu et réalisé ».
+  // le résumé de la journée et pour la rubrique « Prévu et réalisé ».
   static etatCreneau(fait, prevu) {
     if (!(fait > 0)) return 'rien';
     const part = prevu ? fait / prevu : 1;

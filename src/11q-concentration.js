@@ -8,7 +8,7 @@
 //    Monsieur, règles d'activité, ou appris de l'IA, site par site) ;
 //  - le téléphone utilisé pendant que le Mac l'est (une interruption).
 // Le calendrier les marque d'un trait rouge en travers de la colonne des
-// créneaux réels ; la chronologie et le bilan du soir en tirent des mesures
+// créneaux réels ; la chronologie et le résumé de la journée en tirent des mesures
 // (nombre par heure de travail, plages de concentration).
 const avecConcentration = (Base) => class extends Base {
   //#region Ariane · concentration (statique)

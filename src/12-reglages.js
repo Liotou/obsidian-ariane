@@ -787,7 +787,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setValue(s.modeleCitation || '').onChange(async (v) => { s.modeleCitation = v.trim() || '{{auteurs}}, {{annee}}, p. {{page}}'; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Apparat « cité dans »'))
-      .setDesc(tr("Quand une annotation cite un travail absent de Zotero (donc non consulté directement), la citation prend la forme « Moulin et Gérard, 2026, p. 345, cité dans Aven, 2012, p. 34 ». Si ce travail figure dans Zotero, il est cité directement. Texte inséré entre les deux références :"))
+      .setDesc(tr("Quand une annotation cite un travail absent de Zotero (donc non consulté directement), la citation prend la forme « Auteur A, 2020, p. 45, cité dans Auteur B, 2015, p. 12 ». Si ce travail figure dans Zotero, il est cité directement. Texte inséré entre les deux références :"))
       .addText((t) => t.setValue(s.citeDans != null ? s.citeDans : ', cité dans ').onChange(async (v) => { s.citeDans = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Séparateur entre citations'))
@@ -1987,7 +1987,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     }
     if (s.activiteActif) {
       this._section(c, tr('Micro-interruptions'));
-      this._aide(c, tr("Un coup d'œil de quelques secondes à un site sans rapport, ou au téléphone, coupe la concentration sans former de créneau. Ariane les relève dès quelques secondes et les marque d'un trou dans la bande du créneau de travail, au calendrier (détail au survol) ; la synthèse de la chronologie et le bilan du soir en tirent la concentration de la journée. Une distraction : un site ou une application de la liste ci-dessous, ou d'une catégorie de distraction de vos règles, ou appris de l'IA (commande « Distractions : classer les sites et applications inconnus »). Le téléphone utilisé pendant que le Mac l'est en est toujours une."));
+      this._aide(c, tr("Un coup d'œil de quelques secondes à un site sans rapport, ou au téléphone, coupe la concentration sans former de créneau. Ariane les relève dès quelques secondes et les marque d'un trou dans la bande du créneau de travail, au calendrier (détail au survol) ; la synthèse de la chronologie et le résumé de la journée en tirent la concentration de la journée. Une distraction : un site ou une application de la liste ci-dessous, ou d'une catégorie de distraction de vos règles, ou appris de l'IA (commande « Distractions : classer les sites et applications inconnus »). Le téléphone utilisé pendant que le Mac l'est en est toujours une."));
       new obsidian.Setting(c)
         .setName(tr('Micro-interruption la plus courte'))
         .setDesc(tr('En secondes.'))
@@ -2191,20 +2191,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       this._section(c, tr('IA de l\'activité'));
       this._aide(c, tr('Activez d’abord ActivityWatch (onglet Temps et activité) : l’IA résume et classe ses créneaux.'));
     }
-    this._section(c, tr('Bilan du soir'));
-    new obsidian.Setting(c)
-      .setName(tr('Bilan de la journée'))
-      .setDesc(tr("Le bilan du soir par l'IA : ce qui a été accompli, le prévu face au réalisé, les distractions, et ce qui attend demain ; écrit pour être lu à voix haute. Il se fait à la demande (commande « Journée : résumer ma journée (IA) », bouton de la chronologie) ou chaque jour à l'heure indiquée ici (vide : jamais). On le retrouve sous le jour dans la chronologie, et dans « .ariane/jours/AAAA-MM-JJ.json », clé « resumeJournee »."))
-      .addText((t) => t.setPlaceholder('22:30').setValue(s.resumeJourneeHeure || '')
-        .onChange(async (v) => { s.resumeJourneeHeure = /^\d{1,2}:\d{2}$/.test(v.trim()) ? v.trim() : ''; await maj(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Portrait pour le bilan'))
-      .setDesc(tr("Qui est Monsieur, pour que le bilan du soir sache rassurer, féliciter ou recadrer avec justesse."))
-      .addTextArea((t) => {
-        t.setValue(s.resumeJourneePortrait || '').onChange(async (v) => { s.resumeJourneePortrait = v; await maj(); });
-        t.inputEl.rows = 2;
-        t.inputEl.style.width = '100%';
-      });
     this._section(c, tr('Relais pour Claude'));
     this._aide(c, tr("Claude, dans Claudian, lit vos tâches par le serveur MCP « ariane-taches », qui passe par un relais local d’Ariane : il n’écoute que sur cette machine, derrière un jeton renouvelé à chaque démarrage. Coupé, Claude n’a plus accès aux tâches."));
     new obsidian.Setting(c)
@@ -2252,7 +2238,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.exportInsecables !== false).onChange(async (v) => { s.exportInsecables = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr("Apparat « cité dans » à l'export"))
-      .setDesc(tr("Activé, un travail rapporté mais absent de Zotero est cité sous la forme « Fan et al., 2022, cité dans Raizada & Sinha, 2025, p. 1 ». Désactivé, seule la source réellement consultée est citée. Sans effet sur les travaux présents dans Zotero, toujours cités directement."))
+      .setDesc(tr("Activé, un travail rapporté mais absent de Zotero est cité sous la forme « Auteur A et al., 2020, cité dans Auteur B, 2015, p. 12 ». Désactivé, seule la source réellement consultée est citée. Sans effet sur les travaux présents dans Zotero, toujours cités directement."))
       .addToggle((t) => t.setValue(s.exportCiteDansActif !== false).onChange(async (v) => { s.exportCiteDansActif = v; await maj(); }));
     this._section(c, tr('Mise en forme du document'));
     new obsidian.Setting(c)
@@ -2269,7 +2255,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.exportEntetes !== false).onChange(async (v) => { s.exportEntetes = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Retirer les crochets des propriétés'))
-      .setDesc(tr("Une propriété « [[Chabane Mazri]] » sort « Chabane Mazri ». Vaut pour les liens simples, les liens à alias et les liens markdown."))
+      .setDesc(tr("Une propriété « [[Prénom Nom]] » sort « Prénom Nom ». Vaut pour les liens simples, les liens à alias et les liens markdown."))
       .addToggle((t) => t.setValue(s.exportNettoyerLiens !== false).onChange(async (v) => { s.exportNettoyerLiens = v; await maj(); }));
 
     this._section(c, tr('Styles du modèle employés'));
@@ -2291,7 +2277,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .onChange(async (v) => { s.exportProprieteReference = v.trim() || 'ref'; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('À défaut, le nom du fichier'))
-      .setDesc(tr("Vos notes s'appellent « NP-260826-07 » ou « CR-260826-07 » : le nom fait alors référence. Désactivé, le champ reste vide si aucune propriété n'est trouvée."))
+      .setDesc(tr("Si le nom de vos notes porte un code (« CR-261013-08 », par exemple), il fait alors référence. Désactivé, le champ reste vide si aucune propriété n'est trouvée."))
       .addToggle((t) => t.setValue(s.exportRefDepuisNom !== false).onChange(async (v) => { s.exportRefDepuisNom = v; await maj(); }));
 
     this._aide(c, tr("Le texte de liaison (« , cité dans ») se règle une seule fois, dans l'onglet « Citations et bibliographie ». Il vaut pour les citations en ligne comme pour l'export."));
@@ -2308,8 +2294,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._aide(c, tr("Miroir intégral d'un dossier du coffre vers content/ d'un dépôt Git (site Quartz) : tout ce que contient ce dossier est publié, et rien d'autre. La commande « Site : publier » (palette de commandes) synchronise, commit et pousse en un geste."));
     new obsidian.Setting(c)
       .setName(tr('Dépôt du site'))
-      .setDesc(tr('Chemin absolu, sur ce Mac, du dépôt Git déjà cloné (ex. liotou.github.io).'))
-      .addText((t) => t.setValue(s.publicationDepot || '').setPlaceholder('/Users/…/liotou.github.io')
+      .setDesc(tr('Chemin absolu, sur ce Mac, du dépôt Git déjà cloné (par exemple « mon-site.github.io »).'))
+      .addText((t) => t.setValue(s.publicationDepot || '').setPlaceholder('/Users/…/mon-site.github.io')
         .onChange(async (v) => { s.publicationDepot = v.trim(); await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Dossier du coffre à publier'))
