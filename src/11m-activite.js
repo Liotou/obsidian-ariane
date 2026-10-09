@@ -472,6 +472,34 @@ const avecActivite = (Base) => class extends Base {
     return out.sort((x, y) => x.a - y.a || (x.source === 'obsidian' ? -1 : 1));
   }
 
+  // Les sessions d'Obsidian du rail ({ a, b, x, t } en minutes, x la
+  // session, t la tâche) réunies quand elles sont de la même tâche (ou
+  // toutes hors tâche) et à moins de `ecartMin` l'une de l'autre. La pièce
+  // réunie garde pour x sa note la plus travaillée (bornes de l'ensemble),
+  // la liste de ses notes et ses minutes réelles.
+  static reunirSessionsRail(obs, ecartMin) {
+    const e = Number(ecartMin) >= 0 ? Number(ecartMin) : 3;
+    const out = [];
+    for (const o of (obs || []).slice().sort((p, q) => p.a - q.a)) {
+      const der = out[out.length - 1];
+      const memeTache = der && ((der.t && der.t.ref) || '') === ((o.t && o.t.ref) || '');
+      if (der && memeTache && o.a - der.b <= e) {
+        der.b = Math.max(der.b, o.b);
+        der.minutes += o.b - o.a;
+        der.parNote.set(o.x.chemin, (der.parNote.get(o.x.chemin) || 0) + (o.b - o.a));
+        der.fin = o.x.fin > der.fin ? o.x.fin : der.fin;
+        continue;
+      }
+      out.push({ a: o.a, b: o.b, t: o.t, minutes: o.b - o.a, debut: o.x.debut, fin: o.x.fin,
+        parNote: new Map([[o.x.chemin, o.b - o.a]]) });
+    }
+    return out.map((r) => {
+      const notes = [...r.parNote].sort((p, q) => q[1] - p[1]).map(([chemin, min]) => ({ chemin, min }));
+      return { a: r.a, b: r.b, t: r.t, minutes: r.minutes, notes,
+        x: { chemin: notes[0].chemin, debut: r.debut, fin: r.fin, a: r.a, b: r.b } };
+    });
+  }
+
   // Ce qui reste de [a, b] une fois retirés les intervalles `pris` (triés,
   // disjoints).
   static couperParIntervallesInverses(a, b, pris) {

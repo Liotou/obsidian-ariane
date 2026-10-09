@@ -2928,12 +2928,19 @@ class MoteurCalendrier extends MoteurVue {
           && c.debut < x.fin && c.fin > x.debut)) || refs[0];
         return { a: x.a, b: x.b, x, t: ref ? parRef.get(ref) : null };
       });
+      // Les sessions d'une même tâche (ou toutes hors tâche) à moins de trois
+      // minutes l'une de l'autre forment une seule bande : changer de note
+      // ou s'arrêter un instant ne hache pas la colonne.
+      const obsReunies = Ariane.reunirSessionsRail(obs, 3);
       const ext = (avecExterne ? (this._activite.get(jour) || []) : [])
         .map((bl) => ({ a: minutesDe(bl.debut, jour), b: minutesDe(bl.fin, jour), bloc: bl }))
         .filter((e) => e.b > e.a);
       const travail = [];
-      for (const p of Ariane.fusionnerRailReel(obs, ext)) {
+      for (const p of Ariane.fusionnerRailReel(obsReunies, ext)) {
         if (p.source === 'externe') {
+          // Un reste de moins de deux minutes, coincé entre deux sessions
+          // d'Obsidian, n'est pas dessiné (son temps compte toujours).
+          if (p.b - p.a < 2) continue;
           const elx = this._poserBandeExterne(col, jour, p.item.bloc, p.a, p.b, hDeb, PXH);
           if (elx && !(p.item.bloc.ia && p.item.bloc.ia.personnel)) travail.push({ a: p.a, b: p.b, el: elx });
           continue;
@@ -2944,10 +2951,11 @@ class MoteurCalendrier extends MoteurVue {
         el.style.height = Math.max(3, (p.b - p.a) / 60 * PXH) + 'px';
         if (t) el.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
         // Carte de survol immédiate ; un clic ouvre la note travaillée.
+        const autres = (p.item.notes || []).length - 1;
         el.addEventListener('mouseenter', () => this._montrerCartePresence(el, {
           micro: el._micro || [],
-          horaires: hm(x.a) + ' → ' + hm(x.b), duree: duree(Math.round(x.b - x.a)),
-          note: String(x.chemin).split('/').pop().replace(/\.md$/, ''), tache: t,
+          horaires: hm(x.a) + ' → ' + hm(x.b), duree: duree(Math.round(p.item.minutes || (x.b - x.a))),
+          note: String(x.chemin).split('/').pop().replace(/\.md$/, '') + (autres > 0 ? tr(' et ') + autres + ' ' + (autres > 1 ? tr('autres notes') : tr('autre note')) : ''), tache: t,
           couleur: t ? this.couleurTache(t) : '' }));
         // Comme celle du hors Obsidian, la carte reste ouverte le temps d'y
         // glisser le curseur (pour déplier toutes les interruptions).

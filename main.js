@@ -1035,6 +1035,8 @@ const TEXTES = {
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
+    "autres notes": "other notes",
+    "autre note": "other note",
     "Poser comme créneau de ": "Add as a slot of ",
     "Poser comme créneau d’une autre tâche…": "Add as a slot of another task…",
     "interruptions": "interruptions",
@@ -18228,6 +18230,34 @@ const avecActivite = (Base) => class extends Base {
       }
     }
     return out.sort((x, y) => x.a - y.a || (x.source === 'obsidian' ? -1 : 1));
+  }
+
+  // Les sessions d'Obsidian du rail ({ a, b, x, t } en minutes, x la
+  // session, t la tâche) réunies quand elles sont de la même tâche (ou
+  // toutes hors tâche) et à moins de `ecartMin` l'une de l'autre. La pièce
+  // réunie garde pour x sa note la plus travaillée (bornes de l'ensemble),
+  // la liste de ses notes et ses minutes réelles.
+  static reunirSessionsRail(obs, ecartMin) {
+    const e = Number(ecartMin) >= 0 ? Number(ecartMin) : 3;
+    const out = [];
+    for (const o of (obs || []).slice().sort((p, q) => p.a - q.a)) {
+      const der = out[out.length - 1];
+      const memeTache = der && ((der.t && der.t.ref) || '') === ((o.t && o.t.ref) || '');
+      if (der && memeTache && o.a - der.b <= e) {
+        der.b = Math.max(der.b, o.b);
+        der.minutes += o.b - o.a;
+        der.parNote.set(o.x.chemin, (der.parNote.get(o.x.chemin) || 0) + (o.b - o.a));
+        der.fin = o.x.fin > der.fin ? o.x.fin : der.fin;
+        continue;
+      }
+      out.push({ a: o.a, b: o.b, t: o.t, minutes: o.b - o.a, debut: o.x.debut, fin: o.x.fin,
+        parNote: new Map([[o.x.chemin, o.b - o.a]]) });
+    }
+    return out.map((r) => {
+      const notes = [...r.parNote].sort((p, q) => q[1] - p[1]).map(([chemin, min]) => ({ chemin, min }));
+      return { a: r.a, b: r.b, t: r.t, minutes: r.minutes, notes,
+        x: { chemin: notes[0].chemin, debut: r.debut, fin: r.fin, a: r.a, b: r.b } };
+    });
   }
 
   // Ce qui reste de [a, b] une fois retirés les intervalles `pris` (triés,
@@ -37029,12 +37059,19 @@ class MoteurCalendrier extends MoteurVue {
           && c.debut < x.fin && c.fin > x.debut)) || refs[0];
         return { a: x.a, b: x.b, x, t: ref ? parRef.get(ref) : null };
       });
+      // Les sessions d'une même tâche (ou toutes hors tâche) à moins de trois
+      // minutes l'une de l'autre forment une seule bande : changer de note
+      // ou s'arrêter un instant ne hache pas la colonne.
+      const obsReunies = Ariane.reunirSessionsRail(obs, 3);
       const ext = (avecExterne ? (this._activite.get(jour) || []) : [])
         .map((bl) => ({ a: minutesDe(bl.debut, jour), b: minutesDe(bl.fin, jour), bloc: bl }))
         .filter((e) => e.b > e.a);
       const travail = [];
-      for (const p of Ariane.fusionnerRailReel(obs, ext)) {
+      for (const p of Ariane.fusionnerRailReel(obsReunies, ext)) {
         if (p.source === 'externe') {
+          // Un reste de moins de deux minutes, coincé entre deux sessions
+          // d'Obsidian, n'est pas dessiné (son temps compte toujours).
+          if (p.b - p.a < 2) continue;
           const elx = this._poserBandeExterne(col, jour, p.item.bloc, p.a, p.b, hDeb, PXH);
           if (elx && !(p.item.bloc.ia && p.item.bloc.ia.personnel)) travail.push({ a: p.a, b: p.b, el: elx });
           continue;
@@ -37045,10 +37082,11 @@ class MoteurCalendrier extends MoteurVue {
         el.style.height = Math.max(3, (p.b - p.a) / 60 * PXH) + 'px';
         if (t) el.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
         // Carte de survol immédiate ; un clic ouvre la note travaillée.
+        const autres = (p.item.notes || []).length - 1;
         el.addEventListener('mouseenter', () => this._montrerCartePresence(el, {
           micro: el._micro || [],
-          horaires: hm(x.a) + ' → ' + hm(x.b), duree: duree(Math.round(x.b - x.a)),
-          note: String(x.chemin).split('/').pop().replace(/\.md$/, ''), tache: t,
+          horaires: hm(x.a) + ' → ' + hm(x.b), duree: duree(Math.round(p.item.minutes || (x.b - x.a))),
+          note: String(x.chemin).split('/').pop().replace(/\.md$/, '') + (autres > 0 ? tr(' et ') + autres + ' ' + (autres > 1 ? tr('autres notes') : tr('autre note')) : ''), tache: t,
           couleur: t ? this.couleurTache(t) : '' }));
         // Comme celle du hors Obsidian, la carte reste ouverte le temps d'y
         // glisser le curseur (pour déplier toutes les interruptions).

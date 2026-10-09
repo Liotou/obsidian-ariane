@@ -95,3 +95,19 @@ test('micro-interruptions : une même chose reprise de près, même entrecoupée
     ['WhatsApp', 'iphone', ['Messages'], 660],
   ], 'WhatsApp de 19 h 49 à 20 h, Messages glissé au milieu');
 });
+
+test('rail : sessions d\'une même tâche réunies, notes classées', () => {
+  const x = (chemin, a, b) => ({ chemin, debut: '2026-10-08T' + a, fin: '2026-10-08T' + b });
+  const obs = [
+    { a: 555, b: 564, t: null, x: x('EV-1.md', '09:15', '09:24') },
+    { a: 564.5, b: 579.5, t: null, x: x('EV-2.md', '09:24', '09:39') },
+    { a: 580, b: 584, t: null, x: x('EV-1.md', '09:40', '09:44') },
+    { a: 594, b: 597, t: null, x: x('EV-1.md', '09:54', '09:57') },
+    { a: 600, b: 610, t: { ref: 'T1' }, x: x('T1.md', '10:00', '10:10') },
+  ];
+  const r = Ariane.reunirSessionsRail(obs, 3);
+  assert.deepEqual(r.map((p) => [p.a, p.b, p.t ? p.t.ref : '', p.notes.length]), [[555, 584, '', 2], [594, 597, '', 1], [600, 610, 'T1', 1]]);
+  assert.equal(r[0].x.chemin, 'EV-2.md', 'la note la plus travaillée');
+  assert.equal(r[0].minutes, 28);
+  assert.equal(r[0].x.fin, '2026-10-08T09:44');
+});
