@@ -20567,11 +20567,21 @@ const avecDonneesJour = (Base) => class extends Base {
   }
 
   // Le temps passé dans chaque note un jour donné, en minutes, du plus long
-  // au plus court (une minute au moins).
+  // au plus court (une minute au moins). D'après les sessions d'Obsidian,
+  // qui voient toutes les notes : le compteur de temps, lui, ignore les
+  // dossiers exclus (les tâches, souvent) et ne sert qu'à défaut de sessions.
   async tempsDuJour(jour) {
-    const m = Object.assign({}, (await this.donneesJour(jour)).temps || {});
-    for (const [c, sec] of Object.entries((this.settings.tempsHistorique || {})[jour] || {})) {
-      m[c] = Math.max(Number(m[c]) || 0, Number(sec) || 0);
+    const d = await this.donneesJour(jour);
+    let sess = Ariane.sessionsDuJour(jour, this.sessionsTravail ? this.sessionsTravail() : [], 0);
+    if (!sess.length) sess = Ariane.sessionsDuJour(jour, d.sessions || [], 0);
+    const m = {};
+    if (sess.length) {
+      for (const x of sess) m[x.chemin] = (m[x.chemin] || 0) + (x.b - x.a) * 60;
+    } else {
+      Object.assign(m, d.temps || {});
+      for (const [c, sec] of Object.entries((this.settings.tempsHistorique || {})[jour] || {})) {
+        m[c] = Math.max(Number(m[c]) || 0, Number(sec) || 0);
+      }
     }
     return Object.entries(m).map(([chemin, sec]) => ({ chemin, min: (Number(sec) || 0) / 60 }))
       .filter((x) => x.min >= 1).sort((x, y) => y.min - x.min);
@@ -20598,8 +20608,7 @@ const avecDonneesJour = (Base) => class extends Base {
         + dureeLisible(pj.externe) + ' ; personnel ou distraction : ' + dureeLisible(pj.personnel) + '.');
     }
     // Les notes travaillées dans Obsidian.
-    const h = (this.settings.tempsHistorique || {})[jour] || {};
-    const notes = Object.entries(h).map(([c, s]) => [c, s / 60]).filter(([, m]) => m >= 2).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    const notes = (await this.tempsDuJour(jour)).filter((x) => x.min >= 2).slice(0, 12).map((x) => [x.chemin, x.min]);
     if (notes.length) {
       l.push('', 'NOTES TRAVAILLÉES DANS OBSIDIAN :');
       const parChemin = new Map(this.tachesPourGantt().filter((t) => t.fichier).map((t) => [t.fichier.path, t]));

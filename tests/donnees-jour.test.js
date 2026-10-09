@@ -207,3 +207,12 @@ test('bilan : la matière de demain', async () => {
     'ÉCHÉANCES DES JOURS SUIVANTS :', '- 2026-10-09 : T3 Rendre (jalon)',
   ].join('\n'));
 });
+
+test('temps du jour : d\'après les sessions, dossiers exclus du compteur compris', async () => {
+  const disque = { [DONNEES + '/2026-10-09.json']: JSON.stringify({ temps: { 'NP.md': 270 }, sessions: [
+    { chemin: '08 - Tâches/T057.md', debut: '2026-10-09T09:00:00', fin: '2026-10-09T10:30:00' },
+    { chemin: 'NP.md', debut: '2026-10-09T10:31:00', fin: '2026-10-09T10:36:00' },
+  ] }) };
+  const g = greffon(disque);
+  assert.deepEqual(await g.tempsDuJour('2026-10-09'), [{ chemin: '08 - Tâches/T057.md', min: 90 }, { chemin: 'NP.md', min: 5 }]);
+});
