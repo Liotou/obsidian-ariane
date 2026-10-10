@@ -52,3 +52,43 @@ test('sommaire : le titre du livre sans son sous-titre', () => {
   assert.equal(Ariane.titreCourtOuvrage("L'ère du vide. Essais sur l'individualisme contemporain"), "L'ère du vide");
   assert.equal(Ariane.titreCourtOuvrage('Le risque'), 'Le risque');
 });
+
+test('sommaire : pages complétées par Zotero, approchées à défaut, ordre de lecture de Zotero', () => {
+  const entrees = [
+    { cle: 'AAAAAAAA', page: '', titre: 'a' }, { cle: 'BBBBBBBB', page: '', titre: 'b' },
+    { cle: 'CCCCCCCC', page: '12', titre: 'c' }, { cle: 'DDDDDDDD', page: '', titre: 'd' },
+  ];
+  const z = new Map([
+    ['AAAAAAAA', { page: 'vii', tri: '00004|00005639' }], ['BBBBBBBB', { page: '', tri: '00004|00009000' }],
+    ['CCCCCCCC', { page: '12', tri: '00005|00000100' }], ['DDDDDDDD', { page: '', tri: '00005|00054340' }],
+  ]);
+  const r = Ariane.completerPagesSommaire(entrees, z);
+  assert.deepEqual(r.map((e) => [e.titre, e.page, e.ordre]), [['a', 'vii', 1], ['b', '≈vii', 2], ['c', '12', 3], ['d', '≈12', 4]]);
+  assert.deepEqual(Ariane.trierSommaire(r, 'page').map((e) => e.titre), ['a', 'b', 'c', 'd'], 'une page approchée se range avec la sienne');
+  assert.ok(!('tri' in r[0]));
+});
+
+test('sommaire : pages saisies à la main, associées dans l’ordre, page répétée comprise', () => {
+  const e = [{ titre: 'a' }, { titre: 'b' }, { titre: 'c' }];
+  const r = Ariane.associerPagesSaisies('12, 12\n15.', e);
+  assert.deepEqual(r.pages, ['12', '12', '15']);
+  assert.equal(r.ok, true);
+  assert.deepEqual(Ariane.associerPagesSaisies('12 ; 13', e), { pages: ['12', '13'], n: 2, attendu: 3, ok: false });
+  assert.equal(Ariane.associerPagesSaisies('1 2 3 4', e).ok, false);
+  assert.equal(Ariane.associerPagesSaisies('', []).ok, false);
+});
+
+test('EPUB : la page d’une annotation retrouvée par sa position CFI', () => {
+  const c = Ariane.analyserCfi('epubcfi(/6/4!/4/2,/3:5,/3:9)');
+  assert.deepEqual(c, { spine: 1, etapes: [4, 2], texte: 3, decalage: 5 });
+  const doc0 = '<html><body><p>avant<span epub:type="pagebreak" title="7"/></p></body></html>';
+  const doc1 = '<?xml version="1.0"?><html><head/><body><p>un<span epub:type="pagebreak" title="8"/>deux &amp; trois'
+    + '<span role="doc-pagebreak" title="9"/>quatre</p></body></html>';
+  const { pos, reperes } = Ariane.positionsXhtml(doc1, [4, 2], 3, 5);
+  assert.deepEqual(reperes.map((x) => x.page), ['8', '9']);
+  assert.ok(pos > reperes[0].pos && pos < reperes[1].pos, 'dans le texte entre les pages 8 et 9');
+  assert.equal(Ariane.pageDepuisCfi([doc0, doc1], 'epubcfi(/6/4!/4/2,/3:5,/3:9)'), '8');
+  assert.equal(Ariane.pageDepuisCfi([doc0, doc1], 'epubcfi(/6/4!/4/2,/5:1,/5:3)'), '9');
+  assert.equal(Ariane.pageDepuisCfi([doc0, doc1], 'epubcfi(/6/4!/4/2,/1:0,/1:1)'), '7', 'avant tout repère : celui du document précédent');
+  assert.equal(Ariane.pageDepuisCfi([doc0], 'epubcfi(/6/2!/4/2,/1:0,/1:1)'), '');
+});

@@ -1019,6 +1019,12 @@ const TEXTES = {
     "Nom du jalon": "Milestone name",
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
+    "Saisir les pages…": "Enter pages…",
+    "Saisir les pages": "Enter pages",
+    "Enregistrer": "Save",
+    "Oublier les pages saisies": "Forget entered pages",
+    "Pages enregistrées.": "Pages saved.",
+    "Pages saisies oubliées.": "Entered pages forgotten.",
     "Annotations Zotero": "Zotero annotations",
     "Familles de notes": "Note families",
     "Citations et bibliographie": "Citations and bibliography",
@@ -9857,7 +9863,8 @@ const avecNoteBiblio = (Base) => class extends Base {
   // Le rang d'une page pour le tri : les pages liminaires en chiffres
   // romains d'abord, puis les numéros, puis ce qui n'est pas un numéro.
   static rangPage(page) {
-    const p = String(page == null ? '' : page).trim().toLowerCase();
+    // Une page approchée (« ≈42 ») se range comme la page dont elle part.
+    const p = String(page == null ? '' : page).trim().toLowerCase().replace(/^≈\s*/, '');
     const n = p.match(/^\d+/);
     if (n) return [1, Number(n[0])];
     if (/^[ivxlcdm]+\b/.test(p)) {
@@ -10065,9 +10072,258 @@ const avecNoteBiblio = (Base) => class extends Base {
       const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
       if (sansLien(fm['zotflow-source'] || '') !== cleSource) continue;
       const alias = [].concat(fm.aliases || []).map((x) => String(x).trim()).filter(Boolean);
-      out.push({ page: String(fm.page == null ? '' : fm.page).trim(), titre: alias[0] || f.basename, ordre: fm.ordre });
+      out.push({ page: String(fm.page == null ? '' : fm.page).trim(), titre: alias[0] || f.basename, ordre: fm.ordre,
+        cle: String(fm['zotflow-anno-key'] || '').trim() });
     }
     return out;
+  }
+
+  // Les pages manquantes complétées d'après Zotero : `zotero` = Map(clé de
+  // l'annotation → { page, tri }) (tri : position de lecture). Une
+  // annotation sans page dans Zotero non plus (un passage d'EPUB sans
+  // repère de pagination) prend, marquée « ≈ », la page de la précédente
+  // dans l'ordre de lecture : on sait où chercher sans la croire exacte.
+  // L'ordre de lecture de Zotero remplace alors celui du coffre.
+  static completerPagesSommaire(entrees, zotero) {
+    const z = zotero || new Map();
+    const l = (entrees || []).map((e) => {
+      const x = z.get(e.cle) || {};
+      return Object.assign({}, e, { page: e.page || x.page || '', tri: x.tri || '' });
+    });
+    const parLecture = l.filter((e) => e.tri).sort((a, b) => (a.tri < b.tri ? -1 : a.tri > b.tri ? 1 : 0));
+    let derniere = '';
+    parLecture.forEach((e, k) => {
+      e.ordre = k + 1;
+      if (e.page) derniere = String(e.page).replace(/^≈\s*/, '');
+      else if (derniere) e.page = '≈' + derniere;
+    });
+    return l.map(({ tri, ...e }) => e);
+  }
+
+  // Les pages et l'ordre de lecture d'annotations Zotero (clés), lus dans
+  // la base de Zotero en lecture seule (outil sqlite3 de macOS ; la base
+  // reste lisible pendant que Zotero tourne). Map vide si rien n'est lisible.
+  pagesZotero(cles) {
+    const valides = (cles || []).filter((c) => /^[A-Z0-9]{8}$/.test(c));
+    if (!valides.length || !obsidian.Platform.isDesktopApp) return Promise.resolve(new Map());
+    const base = require('path').join(this.racineZotero(), 'zotero.sqlite');
+    const requete = 'SELECT i.key, IFNULL(a.pageLabel, \'\'), IFNULL(a.sortIndex, \'\'), IFNULL(a.position, \'\'), '
+      + 'pj.key, IFNULL(ia.path, \'\') FROM itemAnnotations a JOIN items i ON i.itemID = a.itemID '
+      + 'JOIN items pj ON pj.itemID = a.parentItemID LEFT JOIN itemAttachments ia ON ia.itemID = a.parentItemID '
+      + 'WHERE i.key IN (' + valides.map((c) => "'" + c + "'").join(',') + ');';
+    return new Promise((ok) => {
+      require('child_process').execFile('sqlite3', ['-separator', '\t', 'file:' + encodeURI(base) + '?immutable=1', requete],
+        { timeout: 15000, maxBuffer: 4 << 20 }, (err, sortie) => {
+          const m = new Map();
+          if (!err) {
+            for (const ligne of String(sortie || '').split('\n')) {
+              const [cle, page, tri, position, pj, chemin] = ligne.split('\t');
+              if (!cle) continue;
+              const cfi = (String(position || '').match(/epubcfi\([^)]*\)/) || [])[0] || '';
+              const fichier = /^storage:/.test(chemin || '') && pj
+                ? require('path').join(this.racineZotero(), 'storage', pj, String(chemin).slice(8)) : '';
+              m.set(cle, { page: (page || '').trim(), tri: (tri || '').trim(), cfi, fichier });
+            }
+          }
+          ok(m);
+        });
+    });
+  }
+
+  // ── pages des annotations d'EPUB ──
+  //  Zotero repère une annotation d'EPUB par un CFI (« epubcfi(/6/10!/4/2/6,
+  //  /1:215,/1:547) ») et ne lui donne pas toujours de page. Un EPUB paginé
+  //  porte, lui, un repère par page imprimée (<span epub:type="pagebreak"
+  //  title="12">) : la page d'une annotation est celle du dernier repère qui
+  //  la précède. Fonctions pures, sur le texte XHTML (pas de DOM).
+
+  // Un CFI en { spine (rang dans la spine), etapes (pas d'éléments dans le
+  // document), texte (rang du nœud texte, impair), decalage }, ou null.
+  static analyserCfi(cfi) {
+    const m = String(cfi || '').match(/epubcfi\(([^)]*)\)/);
+    if (!m) return null;
+    const parties = m[1].split(',');
+    const chemin = parties[0] + (parties.length > 1 ? parties[1] : '');
+    const [avant, apres] = chemin.split('!');
+    if (apres === undefined) return null;
+    const pas = (t) => t.split('/').filter(Boolean).map((x) => { const q = x.match(/^(\d+)(?::(\d+))?/); return q ? { n: Number(q[1]), d: q[2] != null ? Number(q[2]) : null } : null; });
+    const pa = pas(avant).filter(Boolean);
+    const pd = pas(apres).filter(Boolean);
+    if (pa.length < 2) return null;
+    const etapes = [];
+    let texte = null;
+    let decalage = 0;
+    for (const x of pd) {
+      if (x.n % 2 === 0) { etapes.push(x.n); continue; }
+      texte = x.n;
+      decalage = x.d || 0;
+      break;
+    }
+    return { spine: pa[1].n / 2 - 1, etapes, texte, decalage };
+  }
+
+  // La position (en caractères du source) que désigne un chemin de CFI dans
+  // un document XHTML, et les repères de page qu'il contient ({ pos, page }).
+  static positionsXhtml(xml, etapes, texte, decalage) {
+    const x = String(xml || '');
+    const reperes = [];
+    let pos = null;
+    const pile = [];       // compteur d'enfants éléments, par niveau (depuis <html>)
+    let racine = false;
+    let suivis = 0;        // pas déjà suivis
+    let cible = -1;        // niveau de la cible dans la pile
+    const finsEnfants = []; // fins des enfants directs de la cible
+    const re = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<[?!][^>]*>|<\/[^>]+>|<[^>]+?\/?>/g;
+    let m;
+    // Le nœud texte visé (rang impair > 1) commence après le (rang - 1) / 2
+    // ième enfant de la cible : dès que cet enfant se referme.
+    const verifier = () => {
+      if (pos === null && cible >= 0 && texte != null && texte > 1 && finsEnfants.length === (texte - 1) / 2) {
+        pos = avancerTexte(finsEnfants[finsEnfants.length - 1], decalage);
+      }
+    };
+    const avancerTexte = (debut, n) => {
+      let k = debut;
+      let reste = n;
+      while (reste > 0 && k < x.length && x[k] !== '<') {
+        if (x[k] === '&') { const f = x.indexOf(';', k); k = f > k ? f + 1 : k + 1; } else k++;
+        reste--;
+      }
+      return k;
+    };
+    while ((m = re.exec(x))) {
+      const t = m[0];
+      if (t.startsWith('<!') || t.startsWith('<?')) continue;
+      if (/pagebreak/.test(t) && !t.startsWith('</')) {
+        const ti = t.match(/\btitle="([^"]*)"/) || t.match(/\baria-label="([^"]*)"/);
+        if (ti) reperes.push({ pos: m.index, page: ti[1] });
+      }
+      if (t.startsWith('</')) {
+        if (!racine) continue;
+        pile.pop();
+        if (cible >= 0 && pile.length === cible + 1) { finsEnfants.push(m.index + t.length); verifier(); }
+        if (cible >= 0 && pile.length === cible) cible = -2; // la cible est refermée
+        continue;
+      }
+      const ferme = /\/>$/.test(t);
+      if (!racine) { racine = true; if (!ferme) pile.push(0); continue; }
+      const niveau = pile.length - 1;
+      pile[niveau]++;
+      if (pos === null && suivis === niveau && suivis < etapes.length && pile[niveau] * 2 === etapes[suivis]) {
+        suivis++;
+        if (suivis === etapes.length) {
+          cible = niveau + 1;
+          if (texte == null || texte === 1) pos = avancerTexte(m.index + t.length, decalage);
+        }
+      }
+      if (!ferme) pile.push(0);
+      else if (cible >= 0 && pile.length === cible + 1) { finsEnfants.push(m.index + t.length); verifier(); }
+    }
+    if (pos === null && cible !== -1) pos = x.length; // cible trouvée, texte introuvable : sa fin
+    return { pos, reperes };
+  }
+
+  // La page d'une annotation d'EPUB : `docs` = textes XHTML dans l'ordre de
+  // la spine. Le dernier repère qui précède la position, dans ce document ou
+  // les précédents ; '' si rien.
+  static pageDepuisCfi(docs, cfi) {
+    const c = Ariane.analyserCfi(cfi);
+    if (!c || !docs[c.spine]) return '';
+    const r = Ariane.positionsXhtml(docs[c.spine], c.etapes, c.texte, c.decalage);
+    if (r.pos == null) return '';
+    const avant = r.reperes.filter((p) => p.pos <= r.pos);
+    if (avant.length) return avant[avant.length - 1].page;
+    for (let k = c.spine - 1; k >= 0; k--) {
+      const rk = Ariane.positionsXhtml(docs[k], [], null, 0).reperes;
+      if (rk.length) return rk[rk.length - 1].page;
+    }
+    return '';
+  }
+
+  // Les documents d'un EPUB dans l'ordre de sa spine (outil unzip de macOS),
+  // gardés par fichier et date.
+  async documentsEpub(fichier) {
+    const fs = require('fs');
+    let st;
+    try { st = fs.statSync(fichier); } catch (e) { return []; }
+    const c = this._epubCache || (this._epubCache = new Map());
+    const sig = st.size + ':' + st.mtimeMs;
+    const vu = c.get(fichier);
+    if (vu && vu.sig === sig) return vu.docs;
+    const lire = (entree) => new Promise((ok) => require('child_process').execFile('unzip', ['-p', fichier, entree],
+      { maxBuffer: 64 << 20, encoding: 'utf8' }, (err, out) => ok(err ? '' : String(out || ''))));
+    const conteneur = await lire('META-INF/container.xml');
+    const opfChemin = (conteneur.match(/full-path="([^"]+)"/) || [])[1];
+    if (!opfChemin) return [];
+    const opf = await lire(opfChemin);
+    const base = opfChemin.includes('/') ? opfChemin.replace(/\/[^/]*$/, '/') : '';
+    const manifeste = new Map();
+    for (const it of opf.match(/<item\b[^>]*>/g) || []) {
+      const id = (it.match(/\bid="([^"]+)"/) || [])[1];
+      const href = (it.match(/\bhref="([^"]+)"/) || [])[1];
+      if (id && href) manifeste.set(id, base + decodeURIComponent(href));
+    }
+    const docs = [];
+    for (const ref of opf.match(/<itemref\b[^>]*>/g) || []) {
+      const id = (ref.match(/\bidref="([^"]+)"/) || [])[1];
+      docs.push(manifeste.has(id) ? await lire(manifeste.get(id)) : '');
+    }
+    c.set(fichier, { sig, docs });
+    return docs;
+  }
+
+  // Les entrées du sommaire d'une source, pages complétées par Zotero.
+  // ── pages saisies à la main (livres papier) ──
+  //  Monsieur note sur papier les pages de ses annotations, dans l'ordre :
+  //  une page par annotation, répétée si deux tombent sur la même. Elles
+  //  sont rangées à part (« .ariane/pages-manuelles.json », par clé
+  //  d'annotation), les notes d'annotation étant régénérées par Ariane, et
+  //  l'emportent sur toute autre source.
+
+  // Les pages tapées (séparées par des espaces, virgules, points-virgules ou
+  // retours à la ligne) associées dans l'ordre aux entrées. Rend { pages,
+  // n, attendu, ok }.
+  static associerPagesSaisies(texte, entrees) {
+    const pages = String(texte || '').split(/[\s,;]+/).map((x) => x.trim().replace(/\.$/, '')).filter(Boolean);
+    const attendu = (entrees || []).length;
+    return { pages, n: pages.length, attendu, ok: pages.length === attendu && attendu > 0 };
+  }
+
+  get cheminPagesManuelles() { return '.ariane/pages-manuelles.json'; }
+
+  async pagesManuelles() {
+    try {
+      const a = this.app.vault.adapter;
+      if (await a.exists(this.cheminPagesManuelles)) return JSON.parse(await a.read(this.cheminPagesManuelles)) || {};
+    } catch (e) { /* fichier absent ou abîmé */ }
+    return {};
+  }
+
+  // Enregistre (ou, avec des pages vides, oublie) les pages de ces annotations.
+  async enregistrerPagesManuelles(parCle) {
+    const toutes = await this.pagesManuelles();
+    for (const [cle, page] of Object.entries(parCle || {})) {
+      if (page) toutes[cle] = String(page); else delete toutes[cle];
+    }
+    const a = this.app.vault.adapter;
+    if (!(await a.exists('.ariane'))) await a.mkdir('.ariane');
+    await a.write(this.cheminPagesManuelles, JSON.stringify(toutes, null, 1));
+  }
+
+  async entreesSommaire(cleSource) {
+    const entrees = this.annotationsPourSommaire(cleSource);
+    const manuelles = await this.pagesManuelles();
+    for (const e of entrees) if (manuelles[e.cle]) { e.page = manuelles[e.cle]; e.manuelle = true; }
+    let zotero = new Map();
+    try { zotero = await this.pagesZotero(entrees.map((e) => e.cle)); } catch (e) { /* Zotero illisible */ }
+    // Une annotation d'EPUB sans page dans Zotero : sa page se lit dans
+    // l'EPUB, au dernier repère de page qui la précède.
+    for (const e of entrees) {
+      const z = zotero.get(e.cle);
+      if (e.page || !z || z.page || !z.cfi || !/\.epub$/i.test(z.fichier)) continue;
+      try { z.page = Ariane.pageDepuisCfi(await this.documentsEpub(z.fichier), z.cfi); } catch (err) { /* EPUB illisible */ }
+    }
+    return Ariane.completerPagesSommaire(entrees, zotero);
   }
 
   ouvrirSommaireLecture() {
@@ -41037,7 +41293,7 @@ class ModaleSommaireLecture extends obsidian.Modal {
   _html(imprimer) {
     const d = new Date();
     const p2 = (n) => String(n).padStart(2, '0');
-    const entrees = Ariane.trierSommaire(this.greffon.annotationsPourSommaire(this.source.cle), this.tri);
+    const entrees = Ariane.trierSommaire(this.entrees || this.greffon.annotationsPourSommaire(this.source.cle), this.tri);
     return Ariane.pageSommaireLecture({
       titre: Ariane.titreCourtOuvrage(this.source.titre), citation: this.source.citation,
       date: p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + '/' + d.getFullYear(),
@@ -41075,7 +41331,19 @@ class ModaleSommaireLecture extends obsidian.Modal {
         .onChange((v) => { this.tri = v; this._apercu(); }));
     this.cadre = contentEl.createEl('iframe', { cls: 'zfa-sommaire-apercu', attr: { title: tr('Aperçu') } });
     this._apercu();
+    // Les pages manquantes (annotations d'EPUB) se lisent dans Zotero : l'aperçu
+    // se refait quand elles arrivent.
+    this.greffon.entreesSommaire(this.source.cle).then((l) => { this.entrees = l; if (this.cadre.isConnected) this._apercu(); });
     const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const saisir = pied.createEl('button', { text: tr('Saisir les pages…') });
+    saisir.onclick = async () => {
+      const l = (this.entrees || await this.greffon.entreesSommaire(this.source.cle)).slice()
+        .sort((a, b) => (Number(a.ordre) || 0) - (Number(b.ordre) || 0));
+      new ModalePagesSaisies(this.app, this.greffon, l, async () => {
+        this.entrees = await this.greffon.entreesSommaire(this.source.cle);
+        this._apercu();
+      }).open();
+    };
     const nav = pied.createEl('button', { text: tr('Ouvrir dans le navigateur') });
     nav.onclick = () => this._navigateur();
     const imp = pied.createEl('button', { cls: 'mod-cta', text: tr('Imprimer…') });
@@ -41099,6 +41367,74 @@ class ModaleSommaireLecture extends obsidian.Modal {
     } catch (e) {
       new obsidian.Notice(tr('Ouverture impossible : ') + ((e && e.message) || e));
     }
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+// Pages saisies à la main pour un livre papier : les numéros notés sur
+// papier, dans l'ordre de lecture, une page par annotation ; l'aperçu les
+// montre face à leurs annotations, et l'enregistrement attend le compte juste.
+class ModalePagesSaisies extends obsidian.Modal {
+  constructor(app, greffon, entrees, apres) {
+    super(app);
+    this.greffon = greffon;
+    this.entrees = entrees || [];
+    this.apres = apres;
+  }
+
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass('zfa-pages-modale');
+    this.setTitle ? this.setTitle(tr('Saisir les pages')) : contentEl.createEl('h3', { text: tr('Saisir les pages') });
+    contentEl.createDiv({ cls: 'setting-item-description', text: tr('Tapez les numéros de page notés sur papier, dans l’ordre de lecture, séparés par des espaces, des virgules ou des retours à la ligne. Une page par annotation : deux annotations sur la même page, deux fois le numéro.') });
+    const zone = contentEl.createEl('textarea', { cls: 'zfa-pages-saisie' });
+    zone.rows = 4;
+    // Pages déjà sûres pour toutes les annotations : on les reprend, à
+    // corriger ; sinon seules celles déjà saisies à la main.
+    const sure = (e) => e.manuelle || (e.page && !String(e.page).startsWith('≈'));
+    zone.value = (this.entrees.every(sure) ? this.entrees : this.entrees.filter((e) => e.manuelle)).map((e) => e.page).join(' ');
+    const etat = contentEl.createDiv({ cls: 'zfa-pages-etat' });
+    const liste = contentEl.createDiv({ cls: 'zfa-pages-liste' });
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const oublier = pied.createEl('button', { text: tr('Oublier les pages saisies') });
+    const ok = pied.createEl('button', { cls: 'mod-cta', text: tr('Enregistrer') });
+    const rendre = () => {
+      const r = Ariane.associerPagesSaisies(zone.value, this.entrees);
+      etat.empty();
+      etat.toggleClass('est-juste', r.ok);
+      etat.setText(r.ok ? r.n + ' ' + tr('pages pour') + ' ' + r.attendu + ' ' + tr('annotations : le compte est juste.')
+        : r.n < r.attendu ? r.n + ' ' + tr('pages pour') + ' ' + r.attendu + ' ' + tr('annotations : il en manque') + ' ' + (r.attendu - r.n) + '.'
+          : r.n + ' ' + tr('pages pour') + ' ' + r.attendu + ' ' + tr('annotations : il y en a') + ' ' + (r.n - r.attendu) + ' ' + tr('de trop.'));
+      ok.disabled = !r.ok;
+      liste.empty();
+      this.entrees.forEach((e, k) => {
+        const l = liste.createDiv({ cls: 'zfa-pages-ligne' + (r.pages[k] ? '' : ' est-vide') });
+        l.createSpan({ cls: 'zfa-pages-num', text: r.pages[k] ? r.pages[k] + '.' : '?' });
+        l.createSpan({ cls: 'zfa-pages-titre', text: e.titre });
+      });
+    };
+    zone.addEventListener('input', rendre);
+    rendre();
+    ok.onclick = async () => {
+      const r = Ariane.associerPagesSaisies(zone.value, this.entrees);
+      if (!r.ok) return;
+      const parCle = {};
+      this.entrees.forEach((e, k) => { if (e.cle) parCle[e.cle] = r.pages[k]; });
+      await this.greffon.enregistrerPagesManuelles(parCle);
+      new obsidian.Notice(tr('Pages enregistrées.'));
+      this.close();
+      if (this.apres) this.apres();
+    };
+    oublier.onclick = async () => {
+      const parCle = {};
+      for (const e of this.entrees) if (e.cle) parCle[e.cle] = '';
+      await this.greffon.enregistrerPagesManuelles(parCle);
+      new obsidian.Notice(tr('Pages saisies oubliées.'));
+      this.close();
+      if (this.apres) this.apres();
+    };
+    zone.focus();
   }
 
   onClose() { this.contentEl.empty(); }

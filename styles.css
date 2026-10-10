@@ -4312,3 +4312,14 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-act-survol .zfa-act-micro { max-height: 50vh; overflow-y: auto; }
 .zfa-act-micro-ic { display: inline-flex; color: var(--text-faint); }
 .zfa-act-micro-ic svg { width: 12px; height: 12px; }
+/* Pages saisies à la main (sommaire de lecture). */
+.zfa-pages-modale { width: min(620px, 92vw); }
+.zfa-pages-saisie { width: 100%; margin-top: var(--size-4-2); font-family: var(--font-monospace); }
+.zfa-pages-etat { margin: 6px 0; font-size: var(--font-ui-small); color: var(--text-warning); }
+.zfa-pages-etat.est-juste { color: var(--text-success); }
+.zfa-pages-liste { max-height: 40vh; overflow-y: auto; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m);
+  padding: 6px 10px; font-size: var(--font-ui-small); }
+.zfa-pages-ligne { display: grid; grid-template-columns: 4em 1fr; gap: 8px; padding: 2px 0; }
+.zfa-pages-num { color: var(--text-accent); font-variant-numeric: tabular-nums; }
+.zfa-pages-ligne.est-vide .zfa-pages-num { color: var(--text-faint); }
+.zfa-pages-titre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -360,7 +360,7 @@ class ModaleSommaireLecture extends obsidian.Modal {
   _html(imprimer) {
     const d = new Date();
     const p2 = (n) => String(n).padStart(2, '0');
-    const entrees = Ariane.trierSommaire(this.greffon.annotationsPourSommaire(this.source.cle), this.tri);
+    const entrees = Ariane.trierSommaire(this.entrees || this.greffon.annotationsPourSommaire(this.source.cle), this.tri);
     return Ariane.pageSommaireLecture({
       titre: Ariane.titreCourtOuvrage(this.source.titre), citation: this.source.citation,
       date: p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + '/' + d.getFullYear(),
@@ -398,7 +398,19 @@ class ModaleSommaireLecture extends obsidian.Modal {
         .onChange((v) => { this.tri = v; this._apercu(); }));
     this.cadre = contentEl.createEl('iframe', { cls: 'zfa-sommaire-apercu', attr: { title: tr('Aperçu') } });
     this._apercu();
+    // Les pages manquantes (annotations d'EPUB) se lisent dans Zotero : l'aperçu
+    // se refait quand elles arrivent.
+    this.greffon.entreesSommaire(this.source.cle).then((l) => { this.entrees = l; if (this.cadre.isConnected) this._apercu(); });
     const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const saisir = pied.createEl('button', { text: tr('Saisir les pages…') });
+    saisir.onclick = async () => {
+      const l = (this.entrees || await this.greffon.entreesSommaire(this.source.cle)).slice()
+        .sort((a, b) => (Number(a.ordre) || 0) - (Number(b.ordre) || 0));
+      new ModalePagesSaisies(this.app, this.greffon, l, async () => {
+        this.entrees = await this.greffon.entreesSommaire(this.source.cle);
+        this._apercu();
+      }).open();
+    };
     const nav = pied.createEl('button', { text: tr('Ouvrir dans le navigateur') });
     nav.onclick = () => this._navigateur();
     const imp = pied.createEl('button', { cls: 'mod-cta', text: tr('Imprimer…') });
@@ -422,6 +434,74 @@ class ModaleSommaireLecture extends obsidian.Modal {
     } catch (e) {
       new obsidian.Notice(tr('Ouverture impossible : ') + ((e && e.message) || e));
     }
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+// Pages saisies à la main pour un livre papier : les numéros notés sur
+// papier, dans l'ordre de lecture, une page par annotation ; l'aperçu les
+// montre face à leurs annotations, et l'enregistrement attend le compte juste.
+class ModalePagesSaisies extends obsidian.Modal {
+  constructor(app, greffon, entrees, apres) {
+    super(app);
+    this.greffon = greffon;
+    this.entrees = entrees || [];
+    this.apres = apres;
+  }
+
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass('zfa-pages-modale');
+    this.setTitle ? this.setTitle(tr('Saisir les pages')) : contentEl.createEl('h3', { text: tr('Saisir les pages') });
+    contentEl.createDiv({ cls: 'setting-item-description', text: tr('Tapez les numéros de page notés sur papier, dans l’ordre de lecture, séparés par des espaces, des virgules ou des retours à la ligne. Une page par annotation : deux annotations sur la même page, deux fois le numéro.') });
+    const zone = contentEl.createEl('textarea', { cls: 'zfa-pages-saisie' });
+    zone.rows = 4;
+    // Pages déjà sûres pour toutes les annotations : on les reprend, à
+    // corriger ; sinon seules celles déjà saisies à la main.
+    const sure = (e) => e.manuelle || (e.page && !String(e.page).startsWith('≈'));
+    zone.value = (this.entrees.every(sure) ? this.entrees : this.entrees.filter((e) => e.manuelle)).map((e) => e.page).join(' ');
+    const etat = contentEl.createDiv({ cls: 'zfa-pages-etat' });
+    const liste = contentEl.createDiv({ cls: 'zfa-pages-liste' });
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const oublier = pied.createEl('button', { text: tr('Oublier les pages saisies') });
+    const ok = pied.createEl('button', { cls: 'mod-cta', text: tr('Enregistrer') });
+    const rendre = () => {
+      const r = Ariane.associerPagesSaisies(zone.value, this.entrees);
+      etat.empty();
+      etat.toggleClass('est-juste', r.ok);
+      etat.setText(r.ok ? r.n + ' ' + tr('pages pour') + ' ' + r.attendu + ' ' + tr('annotations : le compte est juste.')
+        : r.n < r.attendu ? r.n + ' ' + tr('pages pour') + ' ' + r.attendu + ' ' + tr('annotations : il en manque') + ' ' + (r.attendu - r.n) + '.'
+          : r.n + ' ' + tr('pages pour') + ' ' + r.attendu + ' ' + tr('annotations : il y en a') + ' ' + (r.n - r.attendu) + ' ' + tr('de trop.'));
+      ok.disabled = !r.ok;
+      liste.empty();
+      this.entrees.forEach((e, k) => {
+        const l = liste.createDiv({ cls: 'zfa-pages-ligne' + (r.pages[k] ? '' : ' est-vide') });
+        l.createSpan({ cls: 'zfa-pages-num', text: r.pages[k] ? r.pages[k] + '.' : '?' });
+        l.createSpan({ cls: 'zfa-pages-titre', text: e.titre });
+      });
+    };
+    zone.addEventListener('input', rendre);
+    rendre();
+    ok.onclick = async () => {
+      const r = Ariane.associerPagesSaisies(zone.value, this.entrees);
+      if (!r.ok) return;
+      const parCle = {};
+      this.entrees.forEach((e, k) => { if (e.cle) parCle[e.cle] = r.pages[k]; });
+      await this.greffon.enregistrerPagesManuelles(parCle);
+      new obsidian.Notice(tr('Pages enregistrées.'));
+      this.close();
+      if (this.apres) this.apres();
+    };
+    oublier.onclick = async () => {
+      const parCle = {};
+      for (const e of this.entrees) if (e.cle) parCle[e.cle] = '';
+      await this.greffon.enregistrerPagesManuelles(parCle);
+      new obsidian.Notice(tr('Pages saisies oubliées.'));
+      this.close();
+      if (this.apres) this.apres();
+    };
+    zone.focus();
   }
 
   onClose() { this.contentEl.empty(); }
