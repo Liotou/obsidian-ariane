@@ -23,6 +23,7 @@ test('sommaire : au format des fiches, en-tête « Titre / (Auteur, AAAA) », é
   assert.match(html, /min-height: 10\.16mm/, 'l\'en-tête fait 40 unités de la fiche');
   assert.ok(!/column-count/.test(html), 'une colonne par défaut');
   assert.match(html, /IMPRIMER = false/);
+  assert.match(html, /\.folio \{/, 'chaque fiche porte son folio');
   assert.match(Ariane.pageSommaireLecture({ titre: 'x', entrees: [], colonnes: 2 }), /column-count: 2/);
   assert.match(Ariane.pageSommaireLecture({ titre: 'x', entrees: [], imprimer: true }), /IMPRIMER = true/);
   const a4 = Ariane.pageSommaireLecture({ titre: 'x', entrees: [], sortie: 'a4' });

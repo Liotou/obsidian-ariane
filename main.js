@@ -9949,7 +9949,7 @@ const avecNoteBiblio = (Base) => class extends Base {
       'var IMPOSER = { ' + Ariane.impositionA4.toString() + ' };',
       'function carte() {',
       '  var c = document.createElement("div"); c.className = "carte";',
-      '  c.innerHTML = ENTETE + "<main><ol></ol></main>";',
+      '  c.innerHTML = ENTETE + "<main><ol></ol></main><footer class=\\"folio\\"></footer>";',
       '  return c;',
       '}',
       'function deborde(c) {',
@@ -9970,6 +9970,8 @@ const avecNoteBiblio = (Base) => class extends Base {
       '      li.remove(); c = carte(); zone.appendChild(c); cartes.push(c); c.querySelector("ol").appendChild(li);',
       '    }',
       '  });',
+      // Folio « n / total » au pied de chaque fiche, dès qu'il y en a deux.
+      '  if (cartes.length > 1) cartes.forEach(function (x, i) { x.querySelector(".folio").textContent = (i + 1) + " / " + cartes.length; });',
       '  if (!A4) return;',
       // Le nombre de fiches recto verso : deux pages par fiche.
       '  var fiches = Math.ceil(cartes.length / 2), plan = IMPOSER.impositionA4(fiches);',
@@ -10007,7 +10009,9 @@ const avecNoteBiblio = (Base) => class extends Base {
       + ' display: flex; flex-direction: column; justify-content: center; }\n'
       + 'header .date { flex: 1; border-left: ' + trait + '; font-family: Helvetica, Arial, sans-serif; font-size: ' + u(11) + ';'
       + ' display: flex; align-items: center; justify-content: flex-end; white-space: nowrap; padding-right: ' + u(2) + '; }\n'
-      + 'main { flex: 1 1 auto; min-height: 0; overflow: hidden; padding: ' + u(8) + ' ' + u(6) + ' ' + u(6) + ' ' + u(2) + '; }\n'
+      + 'main { flex: 1 1 auto; min-height: 0; overflow: hidden; padding: ' + u(8) + ' ' + u(6) + ' ' + u(2) + ' ' + u(2) + '; }\n'
+      + '.folio { flex: 0 0 ' + u(12) + '; font-family: Helvetica, Arial, sans-serif; font-size: ' + u(8) + '; line-height: 1;'
+      + ' display: flex; align-items: center; justify-content: flex-end; padding-right: ' + u(2) + '; font-variant-numeric: tabular-nums; }\n'
       + 'ol { list-style: none; margin: 0; padding: 0;' + (colonnes === 2 ? ' height: 100%; column-count: 2; column-fill: auto; column-gap: ' + u(12) + '; column-rule: ' + u(0.5) + ' solid #999;' : '') + ' }\n'
       + 'li { display: grid; grid-template-columns: ' + large.toFixed(2) + 'em 1fr; column-gap: 0.35em; padding: 0.05em 0; break-inside: avoid; }\n'
       + 'li .p { font-variant-numeric: lining-nums tabular-nums; }\n'
