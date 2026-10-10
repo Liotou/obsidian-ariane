@@ -9935,7 +9935,10 @@ const avecNoteBiblio = (Base) => class extends Base {
     const colonnes = Number(o.colonnes) === 2 ? 2 : 1;
     const a4 = o.sortie === 'a4';
     const entrees = (o.entrees || []).map((e) => ({ p: e.page ? e.page + '.' : '', t: String(e.titre || '') }));
-    const large = Math.max(1, ...entrees.map((e) => e.p.length));
+    // Largeur de la colonne des pages, au plus juste : un chiffre tient un
+    // demi-cadratin (chiffres tabulaires), le point un quart, le reste davantage.
+    const chasse = (p) => [...p].reduce((n, c) => n + (/\d/.test(c) ? 0.53 : c === '.' ? 0.25 : 0.6), 0);
+    const large = Math.max(0.75, ...entrees.map((e) => chasse(e.p)));
     const trait = u(1) + ' solid #000';
     const entete = '<header><div class="ref">' + (o.titre ? '<span>' + h(o.titre) + '</span>' : '') + (o.citation ? '<span>' + h(o.citation) + '</span>' : '')
       + '</div><div class="date">' + h(o.date || '') + '</div></header>';
@@ -10006,7 +10009,7 @@ const avecNoteBiblio = (Base) => class extends Base {
       + ' display: flex; align-items: center; justify-content: flex-end; white-space: nowrap; padding-right: ' + u(2) + '; }\n'
       + 'main { flex: 1 1 auto; min-height: 0; overflow: hidden; padding: ' + u(8) + ' ' + u(6) + ' ' + u(6) + ' ' + u(2) + '; }\n'
       + 'ol { list-style: none; margin: 0; padding: 0;' + (colonnes === 2 ? ' height: 100%; column-count: 2; column-fill: auto; column-gap: ' + u(12) + '; column-rule: ' + u(0.5) + ' solid #999;' : '') + ' }\n'
-      + 'li { display: grid; grid-template-columns: ' + (large * 0.6).toFixed(2) + 'em 1fr; column-gap: 0.3em; padding: 0.05em 0; break-inside: avoid; }\n'
+      + 'li { display: grid; grid-template-columns: ' + large.toFixed(2) + 'em 1fr; column-gap: 0.35em; padding: 0.05em 0; break-inside: avoid; }\n'
       + 'li .p { font-variant-numeric: lining-nums tabular-nums; }\n'
       + '.vide { font-style: italic; }\n'
       + '.carte:last-child, .feuille:last-child { break-after: auto; }\n'
