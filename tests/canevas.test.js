@@ -6,6 +6,7 @@ const {
   CANEVAS_CLE, canevasCotes, canevasRefDuNoeud, canevasNouvelId,
   canevasAjouterCartes, canevasSansVuesGraphe,
   canevasRouteOrtho, canevasPontsOrtho, canevasCheminOrtho, canevasPort, canevasSegmentBloque,
+  canevasCorpsNote,
   IntegrationCanevas, SurfaceCanevas,
 } = Ariane._test;
 
@@ -362,4 +363,35 @@ test('surface : les liens entre tâches prennent le tracé angulaire, et le rend
   assert.equal(arete.path.display.getAttribute('d'), 'NATIF');
   assert.ok(natifs > avant);
   assert.ok(!Object.prototype.hasOwnProperty.call(arete, 'updatePath') || arete.updatePath.name === 'updatePath');
+});
+
+test('points d\'accroche : le témoin compte les sous-tâches cachées, le clic les pose puis les replie', async () => {
+  const { canvas, surface, integration } = monter([
+    tache('T1'), tache('T2', { parent: '[[T1]]' }), tache('T3', { parent: '[[T1]]' }), tache('T4', { bloquePar: ['[[T1]]'] }),
+  ]);
+  canvas.removeNode = (n) => canvas.nodes.delete(n.id);
+  const n1 = noeudTache(canvas, 'T1', 0, 0);
+  let rel = surface._relatifs('T1', integration.donnees());
+  assert.deepEqual(rel.hier, { tous: 2, caches: 2, pliables: 0 });
+  assert.deepEqual(rel.bloque, { tous: 0, caches: 0, pliables: 0 }, 'T1 bloque T4, elle n\'est pas bloquée');
+  await surface._accroche(n1, 'T1', 'hier', false);
+  const refs = () => [...canvas.nodes.values()].map((n) => n.getData()[CANEVAS_CLE].ref).sort();
+  assert.deepEqual(refs(), ['T1', 'T2', 'T3'], 'les sous-tâches cachées sont posées');
+  rel = surface._relatifs('T1', integration.donnees());
+  assert.deepEqual(rel.hier, { tous: 2, caches: 0, pliables: 2 }, 'le témoin passe à « − »');
+  await surface._accroche(n1, 'T1', 'hier', false);
+  assert.deepEqual(refs(), ['T1'], 'second clic : repliées');
+});
+
+test('carte dépliée : le choix est rangé dans le nœud, et le corps de note nettoyé', () => {
+  const { canvas, surface } = monter([tache('T1')]);
+  const n1 = noeudTache(canvas, 'T1', 0, 0);
+  assert.equal(surface._estDepliee('T1', n1), false);
+  surface._deplier(n1, true);
+  assert.equal(n1.getData()[CANEVAS_CLE].deplie, true);
+  assert.ok(n1.getData().height >= 280, 'la carte prend de la place pour la note');
+  surface._deplier(n1, false);
+  assert.equal(n1.getData()[CANEVAS_CLE].deplie, undefined);
+  assert.equal(canevasCorpsNote('---\na: 1\n---\n# Titre\n<!-- ariane:creneaux -->\n## Sessions\n<!-- /ariane:creneaux -->\n\n\n\n## Note\nTexte'),
+    '## Note\nTexte');
 });

@@ -1327,7 +1327,7 @@ const DEFAULT_SETTINGS = {
   friseBarreCouleur: 'famille', // 'famille' | 'statut' | 'racine' | 'priorite' | 'avancement'
   friseLignageSurvol: true,     // survol d'une barre : révéler ascendants + descendants
   // Canevas (section 16) : cartes de tâches sur le canevas natif.
-  canevasLargeurCarte: 280,     // largeur d'une carte posée (px)
+  canevasLargeurCarte: 400,     // largeur d'une carte posée (px), à l'échelle des notes
   canevasDossier: '',           // vide : « Canevas » dans le dossier des tâches
   // Liens entre tâches sur le canevas : 'angulaire' (à angles droits, en
   // contournant les cartes), 'courbe' (le tracé du canevas) ou 'droite'.

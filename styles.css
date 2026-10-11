@@ -2480,15 +2480,19 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .canvas-node.zfa-cnv-noeud .canvas-node-content > :not(.zfa-cnv-racine) { display: none !important; }
 .zfa-cnv-racine { width: 100%; }
 
+/* À l'échelle d'une note du canevas : le texte au corps des notes. La
+   colonne de droite reste aux points d'accroche. */
 .zfa-cnv-carte {
-  box-sizing: border-box; width: 100%;
-  display: flex; flex-direction: column; gap: 5px;
-  padding: 8px 10px 9px 11px;
-  border-left: 4px solid var(--zfa-fam-couleur, var(--background-modifier-border));
-  font-size: var(--font-ui-small); line-height: 1.35;
+  box-sizing: border-box; width: 100%; position: relative;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 46px 13px 15px;
+  border-left: 5px solid var(--zfa-fam-couleur, var(--background-modifier-border));
+  font-size: var(--font-text-size, 16px); line-height: 1.4;
   color: var(--text-normal);
   cursor: default;
 }
+.zfa-cnv-racine.est-depliee, .zfa-cnv-carte.est-depliee { height: 100%; }
+.canvas-node.zfa-cnv-noeud:has(.zfa-cnv-racine.est-depliee) .canvas-node-content { height: 100%; }
 .zfa-cnv-carte.est-abandonnee { opacity: 0.55; }
 
 /* Survol d'une carte de tâche : elle se soulève, ses liens directs et les
@@ -2506,14 +2510,16 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   stroke-width: calc(3.5px * var(--zoom-multiplier));
 }
 
-/* Style par relation (le canevas peint arête et pointe de --canvas-color) :
-   la hiérarchie en trait plein discret, le blocage en rouge et en
-   pointillés, qu'Ariane ait tracé l'arête ou non. */
-.canvas-edges > g.zfa-cnv-lien-hier path.canvas-display-path { opacity: 0.7; }
-.canvas-edges > g.zfa-cnv-lien-bloque { --canvas-color: var(--canvas-color-1); }
+/* Style par relation, comme dans l'ancien graphe : la parenté en gris, le
+   blocage à la couleur d'accent, en pointillés ; un blocage levé (la
+   bloquante est close) s'efface. Le canevas peint arête et pointe de
+   --canvas-color. */
+.canvas-edges > g.zfa-cnv-lien-hier { --canvas-color: var(--text-muted); }
+.canvas-edges > g.zfa-cnv-lien-bloque { --canvas-color: var(--interactive-accent); }
 .canvas-edges > g.zfa-cnv-lien-bloque path.canvas-display-path {
   stroke-dasharray: calc(7px * var(--zoom-multiplier)) calc(5px * var(--zoom-multiplier));
 }
+.canvas-edges > g.zfa-cnv-lien-resolu { opacity: 0.4; }
 @media (prefers-reduced-motion: reduce) {
   .canvas-node.zfa-cnv-noeud, .canvas-node.zfa-cnv-noeud .canvas-node-container { transition: none; }
 }
@@ -2527,18 +2533,20 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 }
 
 .zfa-cnv-tete { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* La case passe par --checkbox-size : la coche que le thème dessine en
+   ::after suit cette taille. En forçant largeur et hauteur à part, la case
+   grandissait mais pas sa coche, qui débordait une fois cochée. */
 .zfa-cnv-tete input.zfa-cnv-coche[type="checkbox"] {
-  width: 14px !important; height: 14px !important;
+  --checkbox-size: 17px;
   min-width: 0 !important; min-height: 0 !important;
   margin: 0 !important; padding: 0 !important;
-  flex: 0 0 auto; cursor: pointer; border-radius: 4px;
-  accent-color: var(--interactive-accent);
+  flex: 0 0 auto; cursor: pointer;
 }
 .zfa-cnv-fam { flex: 0 0 auto; display: inline-flex; color: var(--zfa-fam-couleur, var(--text-muted)); }
-.zfa-cnv-fam svg { width: 15px; height: 15px; }
+.zfa-cnv-fam svg { width: 18px; height: 18px; }
 .zfa-cnv-ref { color: var(--text-faint); font-size: 0.85em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .zfa-cnv-etat { flex: 0 0 auto; display: inline-flex; color: var(--text-muted); }
-.zfa-cnv-etat svg { width: 13px; height: 13px; }
+.zfa-cnv-etat svg { width: 16px; height: 16px; }
 .zfa-cnv-etat.est-alerte { color: var(--text-error); }
 .zfa-cnv-actions {
   margin-left: auto; display: flex; gap: 1px;
@@ -2547,10 +2555,12 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .canvas-node.zfa-cnv-noeud:hover .zfa-cnv-actions,
 .canvas-node.zfa-cnv-noeud.is-focused .zfa-cnv-actions { opacity: 1; }
 .zfa-cnv-actions .clickable-icon { padding: 2px; }
-.zfa-cnv-actions svg { width: 14px; height: 14px; }
+.zfa-cnv-actions svg { width: 17px; height: 17px; }
+.zfa-cnv-chevron { padding: 2px; color: var(--text-muted); }
+.zfa-cnv-chevron svg { width: 18px; height: 18px; }
 
 .zfa-cnv-titre {
-  font-weight: 600; font-size: 1.05em; overflow-wrap: anywhere;
+  font-weight: 650; font-size: 1.2em; line-height: 1.3; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical;
   -webkit-line-clamp: 4; overflow: hidden;
 }
@@ -2558,7 +2568,11 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 
 .zfa-cnv-pied {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
-  color: var(--text-muted); font-size: 0.85em;
+  color: var(--text-muted); font-size: 0.82em;
+}
+.zfa-cnv-titre.est-en-edition {
+  -webkit-line-clamp: unset; display: block; cursor: text; outline: none;
+  border-radius: 4px; box-shadow: 0 0 0 2px var(--interactive-accent);
 }
 .zfa-cnv-pastille {
   padding: 0 7px; border-radius: 9px; white-space: nowrap;
@@ -2573,36 +2587,53 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 .zfa-cnv-date-ic { display: inline-flex; }
-.zfa-cnv-date-ic svg { width: 12px; height: 12px; }
+.zfa-cnv-date-ic svg { width: 14px; height: 14px; }
 .zfa-cnv-date.est-depassee { color: var(--text-error); font-weight: 600; }
 .zfa-cnv-jauge {
-  height: 4px; border-radius: 2px; overflow: hidden;
+  height: 5px; border-radius: 3px; overflow: hidden;
   background: var(--background-modifier-border);
 }
 .zfa-cnv-jauge-in { height: 100%; background: var(--zfa-fam-couleur, var(--interactive-accent)); }
 
-/* Calque des relations : une pastille sur chaque arête qui porte une
-   relation — du côté de la mère, du côté de la bloquante. */
-.zfa-cnv-calque {
-  position: absolute; left: 0; top: 0; width: 0; height: 0;
-  overflow: visible; pointer-events: none;
+/* Points d'accroche, au bord droit comme dans l'ancien graphe : en haut
+   les sous-tâches, en bas les tâches bloquantes. Le témoin dit combien
+   sont hors du canevas ; « − » quand toutes y sont ; « + » s'il n'y en a pas. */
+.zfa-cnv-accroches {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 6px;
 }
-.zfa-cnv-marque {
-  position: absolute; display: flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; border-radius: 6px;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  box-shadow: var(--shadow-s);
-  color: var(--text-muted);
-  transform: translate(-50%, -50%) scale(var(--zfa-cnv-echelle, 1));
+.zfa-cnv-accroche {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 30px; padding: 4px 3px !important; height: auto !important;
+  border-radius: 8px; box-shadow: none !important;
+  background: var(--background-modifier-hover); color: var(--text-muted);
+  font-size: 0.72em; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums; cursor: pointer;
 }
-.zfa-cnv-marque svg { width: 14px; height: 14px; }
-.zfa-cnv-marque-hier { color: var(--interactive-accent); }
-.zfa-cnv-marque-bloque.est-actif {
-  color: var(--text-error);
-  border-color: color-mix(in srgb, var(--text-error) 45%, transparent);
+.zfa-cnv-accroche-ic { display: inline-flex; }
+.zfa-cnv-accroche-ic svg { width: 15px; height: 15px; }
+.zfa-cnv-accroche.est-vide { opacity: 0; }
+.canvas-node.zfa-cnv-noeud:hover .zfa-cnv-accroche.est-vide { opacity: 0.7; }
+.zfa-cnv-accroche.est-repliee {
+  color: var(--text-on-accent); background: var(--interactive-accent);
 }
-.zfa-cnv-marque-bloque.est-resolu { color: var(--text-faint); }
+.zfa-cnv-accroche-bloque.est-repliee { background: var(--text-error); }
+.zfa-cnv-accroche:hover { filter: brightness(1.15); }
+
+/* Carte dépliée : propriétés, puis la note, qui défile dans la carte. */
+.zfa-cnv-detail {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px;
+  border-top: 1px solid var(--background-modifier-border); padding-top: 10px;
+}
+.zfa-cnv-props { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 0.82em; }
+.zfa-cnv-prop { display: contents; }
+.zfa-cnv-prop-cle { display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); white-space: nowrap; }
+.zfa-cnv-prop-ic { display: inline-flex; }
+.zfa-cnv-prop-ic svg { width: 13px; height: 13px; }
+.zfa-cnv-prop-val { min-width: 0; overflow-wrap: anywhere; }
+.zfa-cnv-note { flex: 1 1 auto; min-height: 0; overflow: auto; font-size: 0.92em; padding-right: 4px; }
+.zfa-cnv-note > :first-child { margin-top: 0; }
+.zfa-cnv-note-vide { color: var(--text-faint); font-style: italic; }
 
 /* Contrôles greffés dans la barre native du canevas. */
 .zfa-cnv-controles {

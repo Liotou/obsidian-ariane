@@ -1518,7 +1518,7 @@ const DEFAULT_SETTINGS = {
   friseBarreCouleur: 'famille', // 'famille' | 'statut' | 'racine' | 'priorite' | 'avancement'
   friseLignageSurvol: true,     // survol d'une barre : révéler ascendants + descendants
   // Canevas (section 16) : cartes de tâches sur le canevas natif.
-  canevasLargeurCarte: 280,     // largeur d'une carte posée (px)
+  canevasLargeurCarte: 400,     // largeur d'une carte posée (px), à l'échelle des notes
   canevasDossier: '',           // vide : « Canevas » dans le dossier des tâches
   // Liens entre tâches sur le canevas : 'angulaire' (à angles droits, en
   // contournant les cartes), 'courbe' (le tracé du canevas) ou 'droite'.
@@ -4263,6 +4263,15 @@ const avecSocle = (Base) => class extends Base {
     // Migration : titre cliquable (ancien modèle par défaut -> nouveau).
     const ancienModele = '**{{title}}**\n\n{{image}}\n\n{{paraphrase}}\n\n{{citation}}\n\nSource : {{source}}\n\n{{references}}';
     if (this.settings.modeleNote === ancienModele) this.settings.modeleNote = DEFAULT_SETTINGS.modeleNote;
+
+    // Migration : les cartes du canevas passent à l'échelle des notes. Une
+    // largeur restée à l'ancien défaut (280) suit le nouveau ; les cartes déjà
+    // posées à cette largeur s'élargissent à l'ouverture de leur canevas.
+    if (this.settings.canevasLargeurCarte === 280 && !this.settings._canevasLargeurMigree) {
+      this.settings.canevasLargeurCarte = DEFAULT_SETTINGS.canevasLargeurCarte;
+      this.settings._canevasLargeurPrecedente = 280;
+    }
+    this.settings._canevasLargeurMigree = true;
   }
 
   // Les réglages qui nomment un dossier. Ceux des familles de notes n'y sont
@@ -24446,8 +24455,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     new obsidian.Setting(c)
       .setName(tr('Largeur des cartes (px)'))
       .setDesc(tr('Largeur d’une carte à sa pose. Chaque carte reste redimensionnable ; sa hauteur suit son contenu.'))
-      .addSlider((sl) => sl.setLimits(200, 420, 10).setDynamicTooltip()
-        .setValue(Number.isFinite(s.canevasLargeurCarte) ? s.canevasLargeurCarte : 280)
+      .addSlider((sl) => sl.setLimits(240, 640, 10).setDynamicTooltip()
+        .setValue(Number.isFinite(s.canevasLargeurCarte) ? s.canevasLargeurCarte : 400)
         .onChange(async (v) => { s.canevasLargeurCarte = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Tracer les relations à la pose'))
@@ -30672,7 +30681,7 @@ try {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const CANEVAS_CLE = 'arianeTache';
-const CANEVAS_LARGEUR_DEFAUT = 280;
+const CANEVAS_LARGEUR_DEFAUT = 400;
 const CANEVAS_HAUTEUR_MIN = 64;
 const CANEVAS_OPPOSE = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
 // Couleur native d'arête posée sur les liens de blocage que le canevas trace
@@ -30917,7 +30926,7 @@ class IntegrationCanevas extends obsidian.Component {
       else if (a.type === 'bloque') ajouter(bloquantes, a.vers, a.de);
     }
     this._cache = {
-      v: this._version, jour, toutes, parRef, enfants, bloquantes, parent,
+      v: this._version, jour, toutes, parRef, enfants, bloquantes, parent, aretes: g.aretes,
       bloquee: prop.bloquee, impactee: prop.impactee,
       av: Ariane.avancementsDerives(toutes),
     };
@@ -31127,6 +31136,15 @@ class IntegrationCanevas extends obsidian.Component {
     }
   }
   //#endregion Canevas · intégration
+}
+
+// Le corps d'une note de tâche tel que le montre une carte dépliée : sans
+// entête, sans titre « # », sans les blocs qu'Ariane tient (sessions…).
+function canevasCorpsNote(texte) {
+  let s = String(texte || '').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+  s = s.replace(/<!--\s*ariane:([\w-]+)\s*-->[\s\S]*?<!--\s*\/ariane:\1\s*-->\n?/g, '');
+  s = s.replace(/^\s*#[ \t]+[^\n]*\n/, '');
+  return s.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // ── Tracé des liens entre tâches ────────────────────────────────────────────
@@ -31437,7 +31455,12 @@ class SurfaceCanevas extends obsidian.Component {
       this._interaction = false;
       for (const [n, m] of this.cartes) {
         const d = canevasDonnees(n);
-        if (d && d.width !== m.largeur) this._aAjuster.add(n);
+        if (!d) continue;
+        const deplie = d[CANEVAS_CLE] && d[CANEVAS_CLE].deplie;
+        // Agrandie à la main bien au-delà de son contenu : la carte se
+        // déplie pour remplir la place, comme une note.
+        if (!deplie && m.hNaturelle && d.height > m.hNaturelle + 60) { this._deplier(n, true); continue; }
+        if (d.width !== m.largeur && !deplie) this._aAjuster.add(n);
       }
       this.planifier(true);
     };
@@ -31457,14 +31480,13 @@ class SurfaceCanevas extends obsidian.Component {
     if (this.panneau) this.panneau.fermer();
     this._retirerControles();
     for (const n of [...this.cartes.keys()]) this._demonter(n);
-    if (this._calque) { this._calque.remove(); this._calque = null; }
     if (this._outils) { this._outils.remove(); this._outils = null; }
     this._rendreLiensNatifs();
   }
 
   _estANous(t) {
-    if (!t || !t.closest) return !!(this._calque && t && this._calque.contains(t));
-    return !!t.closest('.zfa-cnv-racine, .zfa-cnv-calque, .zfa-cnv-controles, .zfa-cnv-outils');
+    if (!t || !t.closest) return false;
+    return !!t.closest('.zfa-cnv-racine, .zfa-cnv-controles, .zfa-cnv-outils');
   }
 
   // Un seul passage par cadre. `complet` : remonter/rafraîchir les cartes ;
@@ -31485,6 +31507,7 @@ class SurfaceCanevas extends obsidian.Component {
     if (!this._actif || this.vue.canvas !== this.canvas) return;
     const d = this.integration.donnees();
     if (complet) {
+      this._surCanevas = this._refsSurCanevas();
       for (const [noeud, m] of this.cartes) {
         const ref = canevasRefDuNoeud(this.greffon, noeud);
         if (this.canvas.nodes.get(noeud.id) !== noeud || ref !== m.ref
@@ -31497,19 +31520,22 @@ class SurfaceCanevas extends obsidian.Component {
         const ref = canevasRefDuNoeud(this.greffon, noeud);
         if (!ref) continue;
         let m = this.cartes.get(noeud);
-        if (!m) m = this._monter(noeud, ref);
-        const sig = this._signature(ref, d);
+        if (!m) {
+          m = this._monter(noeud, ref);
+          this._elargirAncienne(noeud);
+        }
+        const sig = this._signature(ref, d, noeud);
         if (m.sig !== sig) {
           this._rendreCarte(m, d);
           m.sig = sig;
           this._aAjuster.add(noeud);
         }
       }
+      this._surCanevas = null;
       this._ajusterHauteurs();
       this._assurerOutils();
     }
     this._majLiens(d);
-    this._majCalque(d);
     this._majControles(d);
     if (this.panneau) this.panneau.rafraichir();
   }
@@ -31517,7 +31543,7 @@ class SurfaceCanevas extends obsidian.Component {
   _monter(noeud, ref) {
     noeud.nodeEl.classList.add('zfa-cnv-noeud');
     const racine = canevasEl(noeud.contentEl, 'div', 'zfa-cnv-racine');
-    const m = { ref, racine, sig: '', restaurer: () => {} };
+    const m = { ref, racine, noeud, sig: '', restaurer: () => {} };
     // Survol : la carte, ses liens directs et les cartes au bout ressortent ;
     // le reste du canevas s'estompe. Purement visuel.
     const entrer = () => this._survolerCarte(noeud);
@@ -31569,6 +31595,21 @@ class SurfaceCanevas extends obsidian.Component {
     this._aAjuster.delete(noeud);
   }
 
+  // Une carte posée à l'ancienne largeur par défaut prend la nouvelle (une
+  // fois, au montage) : elle paraissait minuscule à côté des notes.
+  _elargirAncienne(noeud) {
+    const avant = this.greffon.settings._canevasLargeurPrecedente;
+    const x = canevasDonnees(noeud);
+    if (!avant || !x || this.canvas.readonly || Math.round(x.width) !== avant) return;
+    const larg = this._largeur();
+    if (larg <= avant) return;
+    try {
+      noeud.setData(Object.assign({}, x, { width: larg, x: Math.round(x.x - (larg - avant) / 2) }));
+      this._aAjuster.add(noeud);
+      this.canvas.requestSave();
+    } catch (e) { /* nœud parti */ }
+  }
+
   // Les éléments d'une arête qui se voient : son tracé et sa pointe.
   _elsArete(a) {
     return [a.lineGroupEl, a.lineEndGroupEl].filter((x) => x && x.classList);
@@ -31603,14 +31644,59 @@ class SurfaceCanevas extends obsidian.Component {
   }
 
   // Tout ce que la carte affiche : si rien n'a changé, on ne touche pas au DOM.
-  _signature(ref, d) {
+  _signature(ref, d, noeud) {
     const t = d.parRef.get(ref);
     if (!t) return 'absente:' + ref;
     const fam = this.greffon.familleDe(t.famille);
-    return JSON.stringify([ref, t.intitule, t.statut, t.priorite, t.echeance, t.jalon,
+    const rel = this._relatifs(ref, d);
+    const f = t.fichier || (this.greffon.fichierDeRef && this.greffon.fichierDeRef(ref));
+    return JSON.stringify([ref, t.intitule, t.statut, t.priorite, t.echeance, t.debut, t.jalon,
       fam.couleur, fam.icone, fam.nom, d.bloquee.has(ref), d.impactee.has(ref),
       d.av.has(ref) ? d.av.get(ref) : t.avancement,
-      (d.enfants.get(ref) || []).length, d.jour]);
+      (d.enfants.get(ref) || []).length, d.jour, rel, this._estDepliee(ref, noeud),
+      this._estDepliee(ref, noeud) && f && f.stat ? f.stat.mtime : 0]);
+  }
+
+  // Pour chaque type de relatifs (sous-tâches, tâches bloquantes) : combien
+  // ne sont pas sur le canevas, combien en partiraient si on les repliait,
+  // combien en tout. C'est ce que montrent les points d'accroche.
+  _relatifs(ref, d) {
+    const sur = this._surCanevas || this._refsSurCanevas();
+    const out = {};
+    for (const type of ['hier', 'bloque']) {
+      const tous = (type === 'hier' ? d.enfants.get(ref) : d.bloquantes.get(ref)) || [];
+      out[type] = {
+        tous: tous.length,
+        caches: tous.filter((r) => !sur.has(r)).length,
+        pliables: Ariane.replierRelatifs(ref, d.aretes || [], sur, type).length,
+      };
+    }
+    return out;
+  }
+
+  // Une carte dépliée montre ses propriétés et le contenu de sa note. Le
+  // choix est rangé dans le nœud du canevas (fichier .canvas), carte par carte.
+  _estDepliee(ref, noeud) {
+    const n = noeud || (this._noeudsParRef().get(ref) || [])[0];
+    const x = n ? canevasDonnees(n) : null;
+    return !!(x && x[CANEVAS_CLE] && x[CANEVAS_CLE].deplie);
+  }
+
+  _deplier(noeud, oui) {
+    const x = canevasDonnees(noeud);
+    if (!x || this.canvas.readonly) return;
+    const meta = Object.assign({}, x[CANEVAS_CLE] || {}, { deplie: !!oui });
+    if (!oui) delete meta.deplie;
+    const m = this.cartes.get(noeud);
+    const nv = Object.assign({}, x, { [CANEVAS_CLE]: meta });
+    // Déplier donne de la place au contenu ; replier laisse la hauteur se
+    // recaler sur la carte.
+    if (oui) nv.height = Math.max(Number(x.height) || 0, ((m && m.hNaturelle) || 110) + 280);
+    try { noeud.setData(nv); } catch (e) { return; }
+    if (m) m.sig = '';
+    if (!oui) this._aAjuster.add(noeud);
+    this.canvas.requestSave();
+    this.planifier(true);
   }
   //#endregion Canevas · montage des cartes
 
@@ -31631,10 +31717,13 @@ class SurfaceCanevas extends obsidian.Component {
     carte.dataset.statut = t.statut;
     const bloquee = d.bloquee.has(ref);
     const impactee = !bloquee && d.impactee.has(ref);
+    const deplie = this._estDepliee(ref, m.noeud);
     carte.classList.toggle('est-terminee', t.statut === 'terminée');
     carte.classList.toggle('est-abandonnee', t.statut === 'abandonnée');
     carte.classList.toggle('est-bloquee', bloquee);
     carte.classList.toggle('est-impactee', impactee);
+    carte.classList.toggle('est-depliee', deplie);
+    r.classList.toggle('est-depliee', deplie);
 
     const tete = canevasEl(carte, 'div', 'zfa-cnv-tete');
     const coche = canevasEl(tete, 'input', 'zfa-cnv-coche task-list-item-checkbox');
@@ -31669,8 +31758,20 @@ class SurfaceCanevas extends obsidian.Component {
     const bOuv = canevasBouton(act, 'file-text', tr('Ouvrir la note'));
     canevasIsoler(bOuv);
     bOuv.addEventListener('click', () => this.greffon.ouvrirNote(ref));
+    // Le chevron : les propriétés et le contenu de la note, dans la carte.
+    const bDep = canevasBouton(tete, deplie ? 'chevron-down' : 'chevron-right',
+      deplie ? tr('Masquer le détail') : tr('Afficher le détail (propriétés et note)'), 'zfa-cnv-chevron');
+    canevasIsoler(bDep);
+    bDep.addEventListener('click', () => this._deplier(m.noeud, !deplie));
 
-    canevasEl(carte, 'div', 'zfa-cnv-titre', t.intitule || ref);
+    // Le titre : double-clic pour le renommer sur place.
+    const titre = canevasEl(carte, 'div', 'zfa-cnv-titre', t.intitule || ref);
+    canevasInfobulle(titre, tr('Double-clic pour renommer'));
+    titre.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.canvas.readonly) this._renommer(titre, ref, t.intitule || '');
+    });
 
     const pied = canevasEl(carte, 'div', 'zfa-cnv-pied');
     canevasEl(pied, 'span', 'zfa-cnv-pastille', t.statut);
@@ -31685,18 +31786,142 @@ class SurfaceCanevas extends obsidian.Component {
         canevasInfobulle(e, tr('Échéance dépassée'));
       } else canevasInfobulle(e, tr('Échéance'));
     }
-    const nbEnf = (d.enfants.get(ref) || []).length;
-    if (nbEnf) {
-      const e = canevasEl(pied, 'span', 'zfa-cnv-compte');
-      obsidian.setIcon(canevasEl(e, 'span', 'zfa-cnv-date-ic'), 'list-tree');
-      canevasEl(e, 'span', '', String(nbEnf));
-      canevasInfobulle(e, nbEnf + ' ' + (nbEnf > 1 ? tr('sous-tâches') : tr('sous-tâche')));
-    }
     const av = d.av.has(ref) ? d.av.get(ref) : (Number(t.avancement) || 0);
     if (av > 0) {
       const j = canevasEl(carte, 'div', 'zfa-cnv-jauge');
       canevasEl(j, 'div', 'zfa-cnv-jauge-in').style.width = Math.min(100, Math.round(av)) + '%';
       canevasInfobulle(j, tr('Avancement : ') + Math.round(av) + ' %');
+    }
+
+    // Les points d'accroche, au bord droit comme dans l'ancien graphe : les
+    // sous-tâches en haut, les tâches bloquantes en bas. Le témoin dit
+    // combien sont cachées (« − » quand elles sont toutes posées).
+    const rel = this._relatifs(ref, d);
+    const accroches = canevasEl(carte, 'div', 'zfa-cnv-accroches');
+    for (const type of ['hier', 'bloque']) {
+      const x = rel[type];
+      const b = canevasEl(accroches, 'button', 'zfa-cnv-accroche zfa-cnv-accroche-' + type
+        + (x.caches ? ' est-repliee' : x.pliables ? ' est-depliee' : ' est-vide'));
+      b.type = 'button';
+      obsidian.setIcon(canevasEl(b, 'span', 'zfa-cnv-accroche-ic'), type === 'hier' ? 'list-tree' : 'octagon-alert');
+      canevasEl(b, 'span', 'zfa-cnv-accroche-n', x.caches ? String(x.caches) : x.pliables ? '−' : '+');
+      const nom = type === 'hier' ? tr('sous-tâches') : tr('tâches bloquantes');
+      canevasInfobulle(b, (x.caches ? x.caches + ' ' + nom + tr(' hors du canevas. ')
+        : x.pliables ? tr('Toutes les ') + nom + tr(' sont posées. ') : tr('Aucune ') + nom.replace(/s$/, '').replace(/s /, ' ') + '. ')
+        + tr('Clic : afficher / masquer (ou en créer une s’il n’y en a pas). Double-clic : en créer une.'));
+      b.setAttribute('data-tooltip-position', 'right');
+      canevasIsoler(b);
+      b.disabled = this.canvas.readonly;
+      // Un clic attend un instant de voir venir un second clic.
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (m.tap) { clearTimeout(m.tap); m.tap = null; return; }
+        m.tap = setTimeout(() => { m.tap = null; this._accroche(m.noeud, ref, type, false); }, 260);
+      });
+      b.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (m.tap) { clearTimeout(m.tap); m.tap = null; }
+        this._accroche(m.noeud, ref, type, true);
+      });
+    }
+
+    if (deplie) this._rendreDetail(carte, t, d);
+  }
+
+  // Le détail d'une carte dépliée : ses propriétés, puis le contenu de sa
+  // note, rendu comme une note du canevas (sans l'entête ni les blocs tenus
+  // par Ariane), qui défile dans la carte.
+  _rendreDetail(carte, t, d) {
+    const det = canevasEl(carte, 'div', 'zfa-cnv-detail');
+    const props = canevasEl(det, 'div', 'zfa-cnv-props');
+    const ligne = (icone, nom, valeur) => {
+      if (valeur == null || valeur === '') return;
+      const l = canevasEl(props, 'div', 'zfa-cnv-prop');
+      const k = canevasEl(l, 'span', 'zfa-cnv-prop-cle');
+      obsidian.setIcon(canevasEl(k, 'span', 'zfa-cnv-prop-ic'), icone);
+      canevasEl(k, 'span', '', nom);
+      canevasEl(l, 'span', 'zfa-cnv-prop-val', String(valeur));
+    };
+    const nomDe = (r) => { const x = d.parRef.get(r); return x ? r + ' ' + (x.intitule || '') : r; };
+    ligne('play', tr('Début'), t.debut ? canevasDateCourte(t.debut) : '');
+    ligne('calendar-check', tr('Échéance'), t.echeance ? canevasDateCourte(t.echeance) : '');
+    ligne('flag', tr('Priorité'), t.priorite);
+    ligne('gauge', tr('Avancement'), (d.av.has(t.ref) ? Math.round(d.av.get(t.ref)) : Number(t.avancement) || 0) + ' %');
+    const mere = d.parent.get(t.ref);
+    ligne('git-branch', tr('Mère'), mere ? nomDe(mere) : '');
+    const enf = d.enfants.get(t.ref) || [];
+    ligne('list-tree', tr('Sous-tâches'), enf.length ? enf.map(nomDe).join(', ') : '');
+    const blq = d.bloquantes.get(t.ref) || [];
+    ligne('octagon-alert', tr('Bloquée par'), blq.length ? blq.map(nomDe).join(', ') : '');
+    const corps = canevasEl(det, 'div', 'zfa-cnv-note markdown-rendered');
+    const f = t.fichier || (this.greffon.fichierDeRef && this.greffon.fichierDeRef(t.ref));
+    if (!f) return;
+    this.app.vault.cachedRead(f).then((texte) => {
+      if (!corps.isConnected && !carte.isConnected) return;
+      const md = canevasCorpsNote(texte);
+      if (!md.trim()) { canevasEl(corps, 'div', 'zfa-cnv-note-vide', tr('Note vide.')); return; }
+      const R = obsidian.MarkdownRenderer;
+      if (R && typeof R.render === 'function') R.render(this.app, md, corps, f.path, this);
+      else if (R && typeof R.renderMarkdown === 'function') R.renderMarkdown(md, corps, f.path, this);
+    }).catch(() => {});
+  }
+
+  // Renommer la tâche sur place : Entrée valide, Échap annule. Les touches
+  // ne remontent pas au canevas (Retour arrière y supprimerait la carte).
+  _renommer(el, ref, avant) {
+    el.contentEditable = 'true';
+    el.classList.add('est-en-edition');
+    el.focus();
+    const doc = this._document();
+    try {
+      const sel = doc.getSelection();
+      const rg = doc.createRange();
+      rg.selectNodeContents(el);
+      sel.removeAllRanges();
+      sel.addRange(rg);
+    } catch (e) { /* sélection indisponible */ }
+    let fini = false;
+    const finir = async (garder) => {
+      if (fini) return;
+      fini = true;
+      el.contentEditable = 'false';
+      el.classList.remove('est-en-edition');
+      const nv = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (garder && nv && nv !== avant) {
+        await this.greffon.renommerTitreTache(ref, nv);
+        this.integration.invalider();
+      } else el.textContent = avant;
+    };
+    el.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); finir(true); }
+      if (e.key === 'Escape') { e.preventDefault(); finir(false); }
+    });
+    el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    el.addEventListener('blur', () => finir(true), { once: true });
+  }
+
+  // Clic sur un point d'accroche : poser les relatifs cachés, sinon replier
+  // ceux qui sont posés, sinon en créer un. Double-clic : en créer un.
+  async _accroche(noeud, ref, type, creer) {
+    if (this.canvas.readonly || !noeud) return;
+    const d = this.integration.donnees();
+    const rel = this._relatifs(ref, d)[type];
+    if (!creer && rel.caches) { await this.ajouterRelatives(noeud, type); return; }
+    if (!creer && rel.pliables) {
+      const sur = this._refsSurCanevas();
+      this._retirerRefs(Ariane.replierRelatifs(ref, d.aretes || [], sur, type), this._noeudsParRef());
+      return;
+    }
+    if (!creer && rel.tous) return;
+    const p = canevasDonnees(noeud);
+    if (type === 'hier') {
+      const pt = p ? { x: p.x + p.width / 2, y: p.y + p.height + 160 } : this._centre();
+      this.nouvelleTache(pt, { parent: ref, source: noeud, cotes: { de: 'bottom', vers: 'top' } });
+    } else {
+      const pt = p ? { x: p.x - this._largeur() / 2 - 120, y: p.y + p.height / 2 } : this._centre();
+      this.nouvelleTache(pt, { bloquee: ref });
     }
   }
 
@@ -31724,6 +31949,8 @@ class SurfaceCanevas extends obsidian.Component {
       }
       const h = Math.max(CANEVAS_HAUTEUR_MIN, Math.ceil(carte.offsetHeight + marge) + 2);
       m.largeur = d.width;
+      if (d[CANEVAS_CLE] && d[CANEVAS_CLE].deplie) continue;   // sa hauteur est celle qu'on lui donne
+      m.hNaturelle = h;
       if (Math.abs((Number(d.height) || 0) - h) > 1) {
         try { noeud.setData(Object.assign({}, d, { height: h })); change = true; }
         catch (e) { /* nœud en cours de destruction */ }
@@ -31742,72 +31969,6 @@ class SurfaceCanevas extends obsidian.Component {
     const b = canevasRefDuNoeud(this.greffon, arete.to.node);
     if (!a || !b || a === b || !d.parRef.has(a) || !d.parRef.has(b)) return null;
     return { a, b };
-  }
-
-  // Calque des relations : sur chaque arête qui relie deux tâches liées, une
-  // pastille du côté de la mère (hiérarchie) et du côté de la bloquante
-  // (blocage — rouge tant que la bloquante n'est pas close).
-  _majCalque(d) {
-    const hote = this.canvas.canvasEl;
-    if (!hote) return;
-    if (!this._calque || !hote.contains(this._calque)) {
-      if (this._calque) this._calque.remove();
-      this._calque = canevasEl(hote, 'div', 'zfa-cnv-calque');
-      this._calque.setAttribute('aria-hidden', 'true');
-      this._sigCalque = '';
-    }
-    // Un déplacement de la vue ne change ni les tracés ni les relations : on
-    // ne reconstruit les pastilles que si la géométrie des arêtes, leurs
-    // extrémités ou les données ont bougé. Le zoom passe par une variable CSS
-    // (les pastilles gardent leur taille à l'écran).
-    let sig = String(d.v);
-    let zoom = null;
-    for (const arete of this.canvas.edges.values()) {
-      const ch = arete && arete.path && arete.path.display;
-      if (!ch) continue;
-      sig += '|' + arete.id + ':' + (ch.getAttribute('d') || '')
-        + ':' + (arete.from && arete.from.node ? canevasRefDuNoeud(this.greffon, arete.from.node) : '')
-        + '>' + (arete.to && arete.to.node ? canevasRefDuNoeud(this.greffon, arete.to.node) : '');
-      if (zoom == null && ch.isConnected && typeof ch.getScreenCTM === 'function') {
-        const m = ch.getScreenCTM();
-        if (m) zoom = Math.hypot(m.a, m.b);
-      }
-    }
-    if (zoom && Number.isFinite(zoom)) this._calque.style.setProperty('--zfa-cnv-echelle', String(1 / zoom));
-    if (sig === this._sigCalque) return;
-    this._sigCalque = sig;
-    this._calque.replaceChildren();
-    for (const arete of this.canvas.edges.values()) {
-      const paire = this._paireArete(arete, d);
-      const chemin = arete && arete.path && arete.path.display;
-      if (!paire || !chemin || !chemin.isConnected || typeof chemin.getPointAtLength !== 'function') continue;
-      const { a, b } = paire;
-      const marques = [];
-      if (this.integration.relation(d, a, b, 'hier')) marques.push({ type: 'hier', source: true });
-      else if (this.integration.relation(d, b, a, 'hier')) marques.push({ type: 'hier', source: false });
-      const blAB = this.integration.relation(d, a, b, 'bloque');
-      const blBA = this.integration.relation(d, b, a, 'bloque');
-      if (blAB || blBA) {
-        const bloquante = d.parRef.get(blAB ? a : b);
-        marques.push({ type: 'bloque', source: blAB, resolu: canevasClose(bloquante) });
-      }
-      if (!marques.length) continue;
-      try {
-        const L = chemin.getTotalLength();
-        if (!Number.isFinite(L) || L <= 0) continue;
-        const memeCote = marques.length === 2 && marques[0].source === marques[1].source;
-        marques.forEach((mq, i) => {
-          let f = mq.source ? 0.25 : 0.75;
-          if (memeCote) f = mq.source ? (i === 0 ? 0.33 : 0.17) : (i === 0 ? 0.67 : 0.83);
-          const p = chemin.getPointAtLength(L * f);
-          const el = canevasEl(this._calque, 'span', 'zfa-cnv-marque zfa-cnv-marque-' + mq.type
-            + (mq.type === 'bloque' ? (mq.resolu ? ' est-resolu' : ' est-actif') : ''));
-          obsidian.setIcon(el, mq.type === 'hier' ? 'git-branch' : 'octagon-x');
-          el.style.left = p.x + 'px';
-          el.style.top = p.y + 'px';
-        });
-      } catch (e) { /* chemin détaché : pas de géométrie */ }
-    }
   }
 
   // Écrit ou retire une relation depuis la barre du canevas. La logique
@@ -31950,10 +32111,14 @@ class SurfaceCanevas extends obsidian.Component {
       const type = !paire ? ''
         : (this.integration.relation(d, paire.a, paire.b, 'bloque') || this.integration.relation(d, paire.b, paire.a, 'bloque')) ? 'bloque'
           : (this.integration.relation(d, paire.a, paire.b, 'hier') || this.integration.relation(d, paire.b, paire.a, 'hier')) ? 'hier' : '';
+      // Un blocage levé (la bloquante est close) se trace en retrait.
+      const resolu = type === 'bloque' && canevasClose(d.parRef.get(
+        this.integration.relation(d, paire.a, paire.b, 'bloque') ? paire.a : paire.b));
       for (const el of [arete.lineGroupEl, arete.lineEndGroupEl]) {
         if (!el || !el.classList) continue;
         el.classList.toggle('zfa-cnv-lien-hier', style && type === 'hier');
         el.classList.toggle('zfa-cnv-lien-bloque', style && type === 'bloque');
+        el.classList.toggle('zfa-cnv-lien-resolu', style && type === 'bloque' && resolu);
       }
       if (mode === 'courbe') continue;
       this._envelopperArete(arete);
@@ -32221,7 +32386,7 @@ class SurfaceCanevas extends obsidian.Component {
 
   _largeur() {
     const n = Number(this.greffon.settings.canevasLargeurCarte);
-    return Number.isFinite(n) && n >= 180 ? n : CANEVAS_LARGEUR_DEFAUT;
+    return Number.isFinite(n) && n >= 240 ? n : CANEVAS_LARGEUR_DEFAUT;
   }
 
   // ref → nœuds de carte présents sur ce canevas.
@@ -32545,8 +32710,10 @@ class SurfaceCanevas extends obsidian.Component {
       defauts,
       apres: async (ref) => {
         if (o.bloquante) await this.greffon.creerBlocage(o.bloquante, ref);
+        if (o.bloquee) await this.greffon.creerBlocage(ref, o.bloquee);
         if (typeof o.apres === 'function') { await o.apres(ref); return; }
         if (!this._actif || this.vue.canvas !== this.canvas) return;
+        this.integration.invalider();
         await this.inserer([ref], point, Object.assign({}, o, { couleur: o.bloquante ? CANEVAS_COULEUR_BLOCAGE : '' }));
         this.integration.invalider();
       },
@@ -32645,7 +32812,40 @@ class SurfaceCanevas extends obsidian.Component {
     outil('layout-grid', tr('Re-disposer les tâches'), () => this.redisposer());
     outil('list-plus', tr('Ajouter un niveau de sous-tâches'), () => this.deplierNiveau());
     outil('list-minus', tr('Retirer un niveau de sous-tâches'), () => this.replierNiveau());
+    // Les réglages des liens, sans quitter le canevas.
+    const bLiens = canevasEl(g, 'div', 'canvas-control-item');
+    obsidian.setIcon(bLiens, 'spline');
+    canevasInfobulle(bLiens, tr('Liens entre tâches'));
+    bLiens.setAttribute('data-tooltip-position', 'left');
+    bLiens.addEventListener('click', (e) => { e.stopPropagation(); this.menuLiens(e); });
     this._boutonPanneau = b1;
+  }
+
+  // Menu des liens : forme, ponts, style par relation. Les choix valent pour
+  // tous les canevas (réglages d'Ariane) et s'appliquent aussitôt.
+  menuLiens(e) {
+    const s = this.greffon.settings;
+    const ecrire = async (cle, v) => {
+      s[cle] = v;
+      await this.greffon.saveSettings();
+      this.integration.invalider();
+    };
+    const mode = this._modeLiens();
+    const menu = new obsidian.Menu();
+    menu.addItem((i) => i.setTitle(tr('Forme des liens entre tâches')).setDisabled(true));
+    for (const [cle, nom, icone] of [['angulaire', tr('Angulaire, en contournant les cartes'), 'corner-down-right'],
+      ['courbe', tr('Courbe (celle du canevas)'), 'spline'], ['droite', tr('Droite'), 'move-right']]) {
+      menu.addItem((i) => i.setTitle(nom).setIcon(icone).setChecked(mode === cle)
+        .onClick(() => ecrire('canevasLiens', cle)));
+    }
+    menu.addSeparator();
+    menu.addItem((i) => i.setTitle(tr('Ponts aux croisements')).setIcon('git-commit-horizontal')
+      .setChecked(s.canevasPonts !== false).setDisabled(mode !== 'angulaire')
+      .onClick(() => ecrire('canevasPonts', s.canevasPonts === false)));
+    menu.addItem((i) => i.setTitle(tr('Style par relation (parenté grise, blocage en pointillés)')).setIcon('palette')
+      .setChecked(s.canevasStyleRelation !== false)
+      .onClick(() => ecrire('canevasStyleRelation', s.canevasStyleRelation === false)));
+    menu.showAtMouseEvent(e);
   }
 
   basculerPanneau() {
@@ -42242,6 +42442,7 @@ module.exports._test = {
   canevasCotes,
   canevasAjouterCartes,
   canevasRouteOrtho,
+  canevasCorpsNote,
   canevasPontsOrtho,
   canevasCheminOrtho,
   canevasPort,

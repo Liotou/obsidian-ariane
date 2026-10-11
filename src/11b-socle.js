@@ -283,6 +283,15 @@ const avecSocle = (Base) => class extends Base {
     // Migration : titre cliquable (ancien modèle par défaut -> nouveau).
     const ancienModele = '**{{title}}**\n\n{{image}}\n\n{{paraphrase}}\n\n{{citation}}\n\nSource : {{source}}\n\n{{references}}';
     if (this.settings.modeleNote === ancienModele) this.settings.modeleNote = DEFAULT_SETTINGS.modeleNote;
+
+    // Migration : les cartes du canevas passent à l'échelle des notes. Une
+    // largeur restée à l'ancien défaut (280) suit le nouveau ; les cartes déjà
+    // posées à cette largeur s'élargissent à l'ouverture de leur canevas.
+    if (this.settings.canevasLargeurCarte === 280 && !this.settings._canevasLargeurMigree) {
+      this.settings.canevasLargeurCarte = DEFAULT_SETTINGS.canevasLargeurCarte;
+      this.settings._canevasLargeurPrecedente = 280;
+    }
+    this.settings._canevasLargeurMigree = true;
   }
 
   // Les réglages qui nomment un dossier. Ceux des familles de notes n'y sont

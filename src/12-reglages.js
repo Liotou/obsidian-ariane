@@ -1787,8 +1787,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     new obsidian.Setting(c)
       .setName(tr('Largeur des cartes (px)'))
       .setDesc(tr('Largeur d’une carte à sa pose. Chaque carte reste redimensionnable ; sa hauteur suit son contenu.'))
-      .addSlider((sl) => sl.setLimits(200, 420, 10).setDynamicTooltip()
-        .setValue(Number.isFinite(s.canevasLargeurCarte) ? s.canevasLargeurCarte : 280)
+      .addSlider((sl) => sl.setLimits(240, 640, 10).setDynamicTooltip()
+        .setValue(Number.isFinite(s.canevasLargeurCarte) ? s.canevasLargeurCarte : 400)
         .onChange(async (v) => { s.canevasLargeurCarte = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Tracer les relations à la pose'))
