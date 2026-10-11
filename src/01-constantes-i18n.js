@@ -829,6 +829,12 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "Saisir les pages…": "Enter pages…",
+    "Forme des liens entre tâches": "Shape of links between tasks",
+    "Angulaire": "Right-angled",
+    "Courbe": "Curved",
+    "Droite": "Straight",
+    "Ponts aux croisements": "Bridges at crossings",
+    "Style par relation": "Style by relation",
     "Cacher les créneaux réels": "Hide actual sessions",
     "Afficher les créneaux réels": "Show actual sessions",
     "Canevas : ouvrir un canevas de tâches…": "Canvas: open a task canvas…",
@@ -1323,6 +1329,11 @@ const DEFAULT_SETTINGS = {
   // Canevas (section 16) : cartes de tâches sur le canevas natif.
   canevasLargeurCarte: 280,     // largeur d'une carte posée (px)
   canevasDossier: '',           // vide : « Canevas » dans le dossier des tâches
+  // Liens entre tâches sur le canevas : 'angulaire' (à angles droits, en
+  // contournant les cartes), 'courbe' (le tracé du canevas) ou 'droite'.
+  canevasLiens: 'angulaire',
+  canevasPonts: true,           // un pont là où deux liens angulaires se croisent
+  canevasStyleRelation: true,   // hiérarchie discrète, blocage rouge en pointillés
   // Demander avant de supprimer une tâche depuis le canevas. La clé date de
   // l'ancienne vue Graphe ; elle est gardée pour ne pas perdre le choix fait.
   articulationConfirmerSuppression: true,

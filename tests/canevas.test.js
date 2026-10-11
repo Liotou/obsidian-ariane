@@ -5,6 +5,7 @@ const Ariane = require('./obsidian-factice.js');
 const {
   CANEVAS_CLE, canevasCotes, canevasRefDuNoeud, canevasNouvelId,
   canevasAjouterCartes, canevasSansVuesGraphe,
+  canevasRouteOrtho, canevasPontsOrtho, canevasCheminOrtho, canevasPort, canevasSegmentBloque,
   IntegrationCanevas, SurfaceCanevas,
 } = Ariane._test;
 
@@ -277,4 +278,88 @@ test('redisposer : la mère à gauche de ses sous-tâches, le coin du groupe con
   assert.ok(pos.get('T2').x > pos.get('T1').x && pos.get('T3').x > pos.get('T1').x);
   assert.equal(Math.min(...[...pos.values()].map((d) => d.x)), 100);
   assert.equal(Math.min(...[...pos.values()].map((d) => d.y)), 100);
+});
+
+// Le chemin ne traverse aucune boîte (bords compris comme libres).
+const traverse = (pts, boites) => {
+  const b = boites.map((r) => ({ x1: r.x, y1: r.y, x2: r.x + r.width, y2: r.y + r.height }));
+  for (let i = 1; i < pts.length; i++) if (canevasSegmentBloque(pts[i - 1], pts[i], b)) return true;
+  return false;
+};
+const orthogonal = (pts) => pts.every((p, i) => !i || p.x === pts[i - 1].x || p.y === pts[i - 1].y);
+
+test('liens angulaires : droit au but quand la voie est libre', () => {
+  const A = { x: 0, y: 0, width: 200, height: 100 };
+  const B = { x: 400, y: 0, width: 200, height: 100 };
+  const pts = canevasRouteOrtho(canevasPort(A, 'right'), 'right', canevasPort(B, 'left'), 'left', [A, B], {});
+  assert.deepEqual(pts, [{ x: 200, y: 50 }, { x: 400, y: 50 }], 'une seule ligne droite');
+});
+
+test('liens angulaires : une carte en travers est contournée, à angles droits', () => {
+  const A = { x: 0, y: 0, width: 200, height: 100 };
+  const B = { x: 600, y: 0, width: 200, height: 100 };
+  const C = { x: 300, y: -40, width: 150, height: 180 };
+  const pts = canevasRouteOrtho(canevasPort(A, 'right'), 'right', canevasPort(B, 'left'), 'left', [A, B, C], {});
+  assert.ok(orthogonal(pts));
+  assert.ok(!traverse(pts, [C]), 'C n\'est pas traversée');
+  assert.deepEqual(pts[0], { x: 200, y: 50 });
+  assert.deepEqual(pts[pts.length - 1], { x: 600, y: 50 });
+  assert.ok(pts.length <= 6, 'peu de coudes : ' + JSON.stringify(pts));
+});
+
+test('liens angulaires : on aborde la cible par le côté demandé', () => {
+  const A = { x: 0, y: 0, width: 200, height: 100 };
+  const B = { x: 300, y: 300, width: 200, height: 100 };
+  const pts = canevasRouteOrtho(canevasPort(A, 'bottom'), 'bottom', canevasPort(B, 'top'), 'top', [A, B], {});
+  assert.ok(orthogonal(pts));
+  const [av, der] = pts.slice(-2);
+  assert.equal(av.x, der.x, 'le dernier segment est vertical');
+  assert.ok(av.y < der.y, 'il descend sur le haut de la cible');
+  assert.ok(!traverse(pts.slice(1, -1), [A, B]));
+});
+
+test('ponts : le segment horizontal enjambe le vertical, au bon endroit', () => {
+  const h = [{ x: 0, y: 50 }, { x: 200, y: 50 }];
+  const v = [{ x: 100, y: 0 }, { x: 100, y: 100 }];
+  assert.deepEqual(canevasPontsOrtho(h, [v], 5), [{ seg: 1, x: 100, y: 50 }]);
+  assert.deepEqual(canevasPontsOrtho(v, [h], 5), [], 'le vertical ne saute pas');
+  assert.deepEqual(canevasPontsOrtho(h, [[{ x: 3, y: 0 }, { x: 3, y: 100 }]], 5), [], 'trop près d\'un bout');
+  const d = canevasCheminOrtho(h, 8, canevasPontsOrtho(h, [v], 5), 5);
+  assert.equal(d, 'M 0 50 L 95 50 A 5 5 0 0 1 105 50 L 200 50');
+});
+
+test('chemin angulaire : coins arrondis, rayon borné par les segments', () => {
+  const d = canevasCheminOrtho([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 10 }, { x: 200, y: 10 }], 8, [], 5);
+  assert.equal(d, 'M 0 0 L 95 0 Q 100 0 100 5 L 100 5 Q 100 10 105 10 L 200 10');
+});
+
+test('surface : les liens entre tâches prennent le tracé angulaire, et le rendent', () => {
+  const { canvas, surface, greffon, integration } = monter([tache('T1'), tache('T2', { parent: '[[T1]]' })]);
+  const n1 = noeudTache(canvas, 'T1', 0, 0);
+  const n2 = noeudTache(canvas, 'T2', 400, 0);
+  const attr = () => { const a = {}; return { getAttribute: (k) => a[k], setAttribute: (k, v) => { a[k] = v; } }; };
+  const classes = () => { const s = new Set(); return { classList: { toggle: (c, v) => (v ? s.add(c) : s.delete(c)), has: (c) => s.has(c) } }; };
+  let natifs = 0;
+  const arete = { id: 'e1', from: { node: n1, side: 'right' }, to: { node: n2, side: 'left' },
+    toLineEnd: { el: {} }, path: { display: attr(), interaction: attr() },
+    lineGroupEl: classes(), lineEndGroupEl: classes(),
+    updatePath() { natifs += 1; this.path.display.setAttribute('d', 'NATIF'); } };
+  canvas.edges.set('e1', arete);
+  surface._actif = true;
+  surface._majLiens(integration.donnees());
+  assert.equal(arete.path.display.getAttribute('d'), 'M 200 40 L 393 40', 'droit, arrêté avant la pointe');
+  assert.equal(arete.path.interaction.getAttribute('d'), 'M 200 40 L 393 40');
+  assert.ok(arete.lineGroupEl.classList.has('zfa-cnv-lien-hier'));
+  // Le canevas recalcule (une carte bouge) : Ariane repasse derrière lui.
+  n2.setData(Object.assign({}, n2.getData(), { y: 300 }));
+  arete.updatePath();
+  assert.notEqual(arete.path.display.getAttribute('d'), 'NATIF');
+  assert.match(arete.path.display.getAttribute('d'), /^M 200 40 L /);
+  // Retour à la courbe : le tracé du canevas revient, sa méthode aussi.
+  greffon.settings.canevasLiens = 'courbe';
+  const avant = natifs;
+  surface._majLiens(integration.donnees());
+  assert.equal(arete.path.display.getAttribute('d'), 'NATIF');
+  assert.ok(natifs > avant);
+  assert.ok(!Object.prototype.hasOwnProperty.call(arete, 'updatePath') || arete.updatePath.name === 'updatePath');
 });

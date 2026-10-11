@@ -2471,7 +2471,7 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   padding: 1px 4px; white-space: nowrap; text-overflow: ellipsis; }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   Canevas (section 16b) : cartes de tâches sur le canevas natif
+   Canevas (section 16) : cartes de tâches sur le canevas natif
    ═══════════════════════════════════════════════════════════════════════ */
 
 /* Le rendu natif du nœud (texte « [[T021]] », aperçu d'une note de tâche)
@@ -2490,6 +2490,33 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   cursor: default;
 }
 .zfa-cnv-carte.est-abandonnee { opacity: 0.55; }
+
+/* Survol d'une carte de tâche : elle se soulève, ses liens directs et les
+   cartes à l'autre bout ressortent, le reste s'estompe. */
+.canvas-node.zfa-cnv-noeud { transition: opacity 0.15s ease, filter 0.15s ease; }
+.canvas-node.zfa-cnv-noeud .canvas-node-container { transition: box-shadow 0.15s ease, transform 0.15s ease; }
+.canvas-node.zfa-cnv-noeud.zfa-cnv-est-survolee .canvas-node-container {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18), 0 0 0 1px var(--zfa-fam-couleur, var(--interactive-accent));
+  transform: translateY(-1px);
+}
+.zfa-cnv-a-un-survol .canvas-node:not(.zfa-cnv-est-lie) { opacity: 0.4; }
+.zfa-cnv-a-un-survol .canvas-edges > g { transition: opacity 0.15s ease; }
+.zfa-cnv-a-un-survol .canvas-edges > g:not(.zfa-cnv-est-lie) { opacity: 0.2; }
+.zfa-cnv-a-un-survol .canvas-edges > g.zfa-cnv-est-lie path.canvas-display-path {
+  stroke-width: calc(3.5px * var(--zoom-multiplier));
+}
+
+/* Style par relation (le canevas peint arête et pointe de --canvas-color) :
+   la hiérarchie en trait plein discret, le blocage en rouge et en
+   pointillés, qu'Ariane ait tracé l'arête ou non. */
+.canvas-edges > g.zfa-cnv-lien-hier path.canvas-display-path { opacity: 0.7; }
+.canvas-edges > g.zfa-cnv-lien-bloque { --canvas-color: var(--canvas-color-1); }
+.canvas-edges > g.zfa-cnv-lien-bloque path.canvas-display-path {
+  stroke-dasharray: calc(7px * var(--zoom-multiplier)) calc(5px * var(--zoom-multiplier));
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-node.zfa-cnv-noeud, .canvas-node.zfa-cnv-noeud .canvas-node-container { transition: none; }
+}
 .zfa-cnv-carte.est-bloquee {
   background-image: repeating-linear-gradient(45deg,
     color-mix(in srgb, var(--text-error) 9%, transparent) 0 6px, transparent 6px 12px);

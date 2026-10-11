@@ -1020,6 +1020,12 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "Saisir les pages…": "Enter pages…",
+    "Forme des liens entre tâches": "Shape of links between tasks",
+    "Angulaire": "Right-angled",
+    "Courbe": "Curved",
+    "Droite": "Straight",
+    "Ponts aux croisements": "Bridges at crossings",
+    "Style par relation": "Style by relation",
     "Cacher les créneaux réels": "Hide actual sessions",
     "Afficher les créneaux réels": "Show actual sessions",
     "Canevas : ouvrir un canevas de tâches…": "Canvas: open a task canvas…",
@@ -1514,6 +1520,11 @@ const DEFAULT_SETTINGS = {
   // Canevas (section 16) : cartes de tâches sur le canevas natif.
   canevasLargeurCarte: 280,     // largeur d'une carte posée (px)
   canevasDossier: '',           // vide : « Canevas » dans le dossier des tâches
+  // Liens entre tâches sur le canevas : 'angulaire' (à angles droits, en
+  // contournant les cartes), 'courbe' (le tracé du canevas) ou 'droite'.
+  canevasLiens: 'angulaire',
+  canevasPonts: true,           // un pont là où deux liens angulaires se croisent
+  canevasStyleRelation: true,   // hiérarchie discrète, blocage rouge en pointillés
   // Demander avant de supprimer une tâche depuis le canevas. La clé date de
   // l'ancienne vue Graphe ; elle est gardée pour ne pas perdre le choix fait.
   articulationConfirmerSuppression: true,
@@ -23059,6 +23070,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     }
   }
 
+  // Les canevas ouverts reprennent aussitôt les réglages de leurs liens.
+  _rafraichirCanevas() {
+    if (this.plugin.canevas) this.plugin.canevas.invalider();
+  }
+
   _section(parent, titre, desc) {
     const st = new obsidian.Setting(parent).setName(titre).setHeading();
     if (desc) st.setDesc(desc);
@@ -24401,6 +24417,27 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setValue(s.canevasDossier || '')
         .setPlaceholder(((s.dossierTaches || '') ? s.dossierTaches + '/' : '') + 'Canevas')
         .onChange(async (v) => { s.canevasDossier = v.trim(); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Forme des liens entre tâches'))
+      .setDesc(tr('Angulaire : à angles droits, en contournant les cartes, comme dans l’ancien graphe. Courbe : le tracé du canevas. Droite : un trait direct. Les liens vers d’autres nœuds gardent le tracé du canevas.'))
+      .addDropdown((d) => d
+        .addOption('angulaire', tr('Angulaire'))
+        .addOption('courbe', tr('Courbe'))
+        .addOption('droite', tr('Droite'))
+        .setValue(s.canevasLiens || 'angulaire')
+        .onChange(async (v) => { s.canevasLiens = v; await maj(); this._rafraichirCanevas(); this.display(); }));
+    if ((s.canevasLiens || 'angulaire') === 'angulaire') {
+      new obsidian.Setting(c)
+        .setName(tr('Ponts aux croisements'))
+        .setDesc(tr('Là où deux liens se croisent, le lien horizontal enjambe l’autre par un petit arc.'))
+        .addToggle((t) => t.setValue(s.canevasPonts !== false)
+          .onChange(async (v) => { s.canevasPonts = v; await maj(); this._rafraichirCanevas(); }));
+    }
+    new obsidian.Setting(c)
+      .setName(tr('Style par relation'))
+      .setDesc(tr('La hiérarchie en trait plein discret, le blocage en rouge et en pointillés.'))
+      .addToggle((t) => t.setValue(s.canevasStyleRelation !== false)
+        .onChange(async (v) => { s.canevasStyleRelation = v; await maj(); this._rafraichirCanevas(); }));
     new obsidian.Setting(c)
       .setName(tr('Confirmer avant de supprimer une tâche'))
       .setDesc(tr('Demander une validation quand on supprime une tâche depuis le canevas (clic droit). Retirer une carte du canevas, elle, ne supprime rien.'))
@@ -31092,6 +31129,252 @@ class IntegrationCanevas extends obsidian.Component {
   //#endregion Canevas · intégration
 }
 
+// ── Tracé des liens entre tâches ────────────────────────────────────────────
+//  Le canevas trace ses arêtes en courbes. Entre deux tâches, Ariane peut les
+//  redessiner comme le faisait l'ancien graphe : à angles droits, en
+//  contournant les cartes, coins adoucis, avec un petit pont là où deux
+//  liens se croisent. Fonctions pures ; la surface les applique.
+
+// Direction vers l'extérieur de chaque côté d'un nœud.
+const CANEVAS_NORMALE = { top: [0, -1], bottom: [0, 1], left: [-1, 0], right: [1, 0] };
+
+// Le point d'attache d'un côté : son milieu, comme le canevas.
+function canevasPort(r, cote) {
+  if (cote === 'top') return { x: r.x + r.width / 2, y: r.y };
+  if (cote === 'bottom') return { x: r.x + r.width / 2, y: r.y + r.height };
+  if (cote === 'left') return { x: r.x, y: r.y + r.height / 2 };
+  return { x: r.x + r.width, y: r.y + r.height / 2 };
+}
+
+// Un segment horizontal ou vertical traverse-t-il l'intérieur d'une boîte ?
+// Longer un bord n'est pas traverser.
+function canevasSegmentBloque(a, b, boites) {
+  const x1 = Math.min(a.x, b.x);
+  const x2 = Math.max(a.x, b.x);
+  const y1 = Math.min(a.y, b.y);
+  const y2 = Math.max(a.y, b.y);
+  for (const r of boites) {
+    const dx = x1 === x2 ? (x1 > r.x1 && x1 < r.x2) : (x1 < r.x2 && x2 > r.x1);
+    const dy = y1 === y2 ? (y1 > r.y1 && y1 < r.y2) : (y1 < r.y2 && y2 > r.y1);
+    if (dx && dy) return true;
+  }
+  return false;
+}
+
+// Retire les points alignés (et les doublons) d'une ligne brisée.
+function canevasSimplifier(pts) {
+  const out = [];
+  for (const p of pts) {
+    const q = out[out.length - 1];
+    if (q && Math.abs(q.x - p.x) < 0.01 && Math.abs(q.y - p.y) < 0.01) continue;
+    out.push({ x: p.x, y: p.y });
+    while (out.length >= 3) {
+      const [a, b, c] = out.slice(-3);
+      const aligne = (Math.abs(a.x - b.x) < 0.01 && Math.abs(b.x - c.x) < 0.01)
+        || (Math.abs(a.y - b.y) < 0.01 && Math.abs(b.y - c.y) < 0.01);
+      if (!aligne) break;
+      out.splice(out.length - 2, 1);
+    }
+  }
+  return out;
+}
+
+// Chemin à angles droits du point p1 (côté c1 de la source) au point p2
+// (côté c2 de la cible) : il quitte la source et aborde la cible à angle
+// droit, ne traverse aucune carte (obstacles : { x, y, width, height }, la
+// source et la cible comprises) et préfère peu de coudes. Recherche A* sur
+// la grille des bords des cartes voisines. Rend la liste des points.
+function canevasRouteOrtho(p1, c1, p2, c2, obstacles, opts) {
+  const o = opts || {};
+  const M = Number.isFinite(o.marge) ? o.marge : 14;
+  const S = Number.isFinite(o.amorce) ? o.amorce : 24;
+  const PEN = Number.isFinite(o.coude) ? o.coude : 40;
+  const n1 = CANEVAS_NORMALE[c1] || CANEVAS_NORMALE.right;
+  const n2 = CANEVAS_NORMALE[c2] || CANEVAS_NORMALE.left;
+  const a1 = { x: p1.x + n1[0] * S, y: p1.y + n1[1] * S };
+  const a2 = { x: p2.x + n2[0] * S, y: p2.y + n2[1] * S };
+  const repli = () => {
+    const horiz = n1[0] !== 0;
+    const m = horiz ? (a1.x + a2.x) / 2 : (a1.y + a2.y) / 2;
+    return canevasSimplifier(horiz
+      ? [p1, a1, { x: m, y: a1.y }, { x: m, y: a2.y }, a2, p2]
+      : [p1, a1, { x: a1.x, y: m }, { x: a2.x, y: m }, a2, p2]);
+  };
+  // Seules comptent les cartes proches du trajet : la grille reste petite.
+  const E = Number.isFinite(o.voisinage) ? o.voisinage : 400;
+  const zx1 = Math.min(a1.x, a2.x) - E;
+  const zx2 = Math.max(a1.x, a2.x) + E;
+  const zy1 = Math.min(a1.y, a2.y) - E;
+  const zy2 = Math.max(a1.y, a2.y) + E;
+  const boites = [];
+  for (const r of obstacles || []) {
+    if (!r || !(r.width > 0) || !(r.height > 0)) continue;
+    const b = { x1: r.x - M, y1: r.y - M, x2: r.x + r.width + M, y2: r.y + r.height + M };
+    if (b.x2 < zx1 || b.x1 > zx2 || b.y2 < zy1 || b.y1 > zy2) continue;
+    boites.push(b);
+  }
+  const libre = (p) => !boites.some((r) => p.x > r.x1 && p.x < r.x2 && p.y > r.y1 && p.y < r.y2);
+  if (!libre(a1) || !libre(a2)) return repli();
+  const tri = (s) => [...s].sort((a, b) => a - b);
+  const X = tri(new Set([a1.x, a2.x, (a1.x + a2.x) / 2].concat(...boites.map((b) => [b.x1, b.x2]))));
+  const Y = tri(new Set([a1.y, a2.y, (a1.y + a2.y) / 2].concat(...boites.map((b) => [b.y1, b.y2]))));
+  const NX = X.length;
+  const NY = Y.length;
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const dirDe = (v) => DIRS.findIndex((d) => d[0] === v[0] && d[1] === v[1]);
+  const d0 = dirDe(n1);
+  const dFin = dirDe([-n2[0], -n2[1]]);
+  const i0 = X.indexOf(a1.x);
+  const j0 = Y.indexOf(a1.y);
+  const iF = X.indexOf(a2.x);
+  const jF = Y.indexOf(a2.y);
+  const cle = (i, j, d) => (i * NY + j) * 4 + d;
+  const g = new Map();
+  const venu = new Map();
+  // Tas binaire minimal sur [f, cle].
+  const tas = [];
+  const pousser = (f, k) => {
+    tas.push([f, k]);
+    let n = tas.length - 1;
+    while (n > 0) {
+      const p = (n - 1) >> 1;
+      if (tas[p][0] <= tas[n][0]) break;
+      [tas[p], tas[n]] = [tas[n], tas[p]];
+      n = p;
+    }
+  };
+  const tirer = () => {
+    const haut = tas[0];
+    const bas = tas.pop();
+    if (tas.length) {
+      tas[0] = bas;
+      let n = 0;
+      for (;;) {
+        const l = 2 * n + 1;
+        const r = l + 1;
+        let m = n;
+        if (l < tas.length && tas[l][0] < tas[m][0]) m = l;
+        if (r < tas.length && tas[r][0] < tas[m][0]) m = r;
+        if (m === n) break;
+        [tas[m], tas[n]] = [tas[n], tas[m]];
+        n = m;
+      }
+    }
+    return haut;
+  };
+  const h = (i, j) => Math.abs(X[i] - a2.x) + Math.abs(Y[j] - a2.y);
+  const k0 = cle(i0, j0, d0);
+  g.set(k0, 0);
+  pousser(h(i0, j0), k0);
+  let fin = null;
+  let garde = 0;
+  while (tas.length && garde++ < 60000) {
+    const [, k] = tirer();
+    const d = k % 4;
+    const ij = (k - d) / 4;
+    const i = Math.floor(ij / NY);
+    const j = ij % NY;
+    const gk = g.get(k);
+    if (i === iF && j === jF) {
+      const total = gk + (d === dFin ? 0 : PEN);
+      if (!fin || total < fin.cout) fin = { k, cout: total };
+      if (d === dFin) break;
+      continue;
+    }
+    for (let nd = 0; nd < 4; nd++) {
+      if ((nd ^ 1) === d && (nd >> 1) === (d >> 1)) continue;   // pas de demi-tour
+      const ni = i + DIRS[nd][0];
+      const nj = j + DIRS[nd][1];
+      if (ni < 0 || nj < 0 || ni >= NX || nj >= NY) continue;
+      const a = { x: X[i], y: Y[j] };
+      const b = { x: X[ni], y: Y[nj] };
+      if (!libre(b) || canevasSegmentBloque(a, b, boites)) continue;
+      const cout = gk + Math.abs(b.x - a.x) + Math.abs(b.y - a.y) + (nd === d ? 0 : PEN);
+      const nk = cle(ni, nj, nd);
+      if (g.has(nk) && g.get(nk) <= cout) continue;
+      g.set(nk, cout);
+      venu.set(nk, k);
+      pousser(cout + h(ni, nj), nk);
+    }
+  }
+  if (!fin) return repli();
+  const chemin = [];
+  for (let k = fin.k; k != null; k = venu.get(k)) {
+    const ij = (k - (k % 4)) / 4;
+    chemin.push({ x: X[Math.floor(ij / NY)], y: Y[ij % NY] });
+    if (k === k0) break;
+  }
+  chemin.reverse();
+  return canevasSimplifier([p1].concat(chemin, [p2]));
+}
+
+// Les ponts d'un lien : là où l'un de ses segments horizontaux croise un
+// segment vertical d'un autre lien, c'est lui qui enjambe. Rend [{ seg, x, y }].
+function canevasPontsOrtho(pts, autres, rayon) {
+  const r = Number.isFinite(rayon) ? rayon : 5;
+  const out = [];
+  for (let s = 1; s < pts.length; s++) {
+    const a = pts[s - 1];
+    const b = pts[s];
+    if (Math.abs(a.y - b.y) > 0.01 || Math.abs(a.x - b.x) < 0.01) continue;
+    const xa = Math.min(a.x, b.x);
+    const xb = Math.max(a.x, b.x);
+    for (const q of autres || []) {
+      for (let t = 1; t < q.length; t++) {
+        const c = q[t - 1];
+        const d = q[t];
+        if (Math.abs(c.x - d.x) > 0.01) continue;
+        const x = c.x;
+        if (x <= xa + r * 2 || x >= xb - r * 2) continue;
+        if (a.y <= Math.min(c.y, d.y) + 1 || a.y >= Math.max(c.y, d.y) - 1) continue;
+        if (!out.some((p) => p.seg === s && Math.abs(p.x - x) < r * 2)) out.push({ seg: s, x, y: a.y });
+      }
+    }
+  }
+  return out;
+}
+
+// Le `d` SVG d'une ligne brisée à angles droits : coins arrondis (rayon
+// borné par la moitié des segments voisins), ponts en demi-cercle au-dessus
+// des liens enjambés.
+function canevasCheminOrtho(pts, rayon, ponts, rPont) {
+  if (!pts || pts.length < 2) return '';
+  const R = Number.isFinite(rayon) ? rayon : 8;
+  const rp = Number.isFinite(rPont) ? rPont : 5;
+  const f = (v) => String(Math.round(v * 10) / 10);
+  const lg = (a, b) => Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+  const dir = (a, b) => ({ x: Math.sign(b.x - a.x), y: Math.sign(b.y - a.y) });
+  const rc = [0];
+  for (let k = 1; k < pts.length - 1; k++) {
+    rc.push(Math.max(0, Math.min(R, lg(pts[k - 1], pts[k]) / 2, lg(pts[k], pts[k + 1]) / 2)));
+  }
+  rc.push(0);
+  let d = 'M ' + f(pts[0].x) + ' ' + f(pts[0].y);
+  for (let s = 1; s < pts.length; s++) {
+    const a = pts[s - 1];
+    const b = pts[s];
+    const u = dir(a, b);
+    const fin = { x: b.x - u.x * rc[s], y: b.y - u.y * rc[s] };
+    const sur = (ponts || []).filter((p) => p.seg === s)
+      .sort((p, q) => (p.x - q.x) * (u.x || 1));
+    for (const p of sur) {
+      d += ' L ' + f(p.x - u.x * rp) + ' ' + f(p.y)
+        + ' A ' + rp + ' ' + rp + ' 0 0 ' + (u.x > 0 ? 1 : 0) + ' ' + f(p.x + u.x * rp) + ' ' + f(p.y);
+    }
+    d += ' L ' + f(fin.x) + ' ' + f(fin.y);
+    if (s < pts.length - 1 && rc[s] > 0) {
+      const v = dir(b, pts[s + 1]);
+      d += ' Q ' + f(b.x) + ' ' + f(b.y) + ' ' + f(b.x + v.x * rc[s]) + ' ' + f(b.y + v.y * rc[s]);
+    }
+  }
+  return d;
+}
+
+// Le `d` d'une ligne brisée sans arrondi (tracé droit : amorces et diagonale).
+function canevasCheminDroit(pts) {
+  return (pts || []).map((p, i) => (i ? 'L ' : 'M ') + Math.round(p.x * 10) / 10 + ' ' + Math.round(p.y * 10) / 10).join(' ');
+}
+
 // ── Surface : un canevas ouvert ─────────────────────────────────────────────
 
 class SurfaceCanevas extends obsidian.Component {
@@ -31113,6 +31396,9 @@ class SurfaceCanevas extends obsidian.Component {
     this._controles = null;
     this._sigControles = '';
     this.panneau = null;
+    this._routes = new Map();    // arête → { cle, pts } : tracé calculé
+    this._poses = new Map();     // arête → `d` posé par Ariane
+    this._enveloppes = new Map();// arête → restauration de updatePath
   }
 
   _document() { return this.vue.contentEl.ownerDocument; }
@@ -31143,7 +31429,7 @@ class SurfaceCanevas extends obsidian.Component {
 
     // Geste en cours sur le canevas : pas de recalage de hauteur pendant qu'on
     // glisse ou redimensionne (ce serait se battre avec la main).
-    this.registerDomEvent(this.vue.contentEl, 'pointerdown', () => { this._interaction = true; }, true);
+    this.registerDomEvent(this.vue.contentEl, 'pointerdown', () => { this._interaction = true; this._finSurvol(); }, true);
     // Au relâché, seules les cartes dont la LARGEUR a changé (redimensionnées)
     // voient leur texte se replier autrement : ce sont les seules à remesurer.
     const relache = () => {
@@ -31173,6 +31459,7 @@ class SurfaceCanevas extends obsidian.Component {
     for (const n of [...this.cartes.keys()]) this._demonter(n);
     if (this._calque) { this._calque.remove(); this._calque = null; }
     if (this._outils) { this._outils.remove(); this._outils = null; }
+    this._rendreLiensNatifs();
   }
 
   _estANous(t) {
@@ -31221,6 +31508,7 @@ class SurfaceCanevas extends obsidian.Component {
       this._ajusterHauteurs();
       this._assurerOutils();
     }
+    this._majLiens(d);
     this._majCalque(d);
     this._majControles(d);
     if (this.panneau) this.panneau.rafraichir();
@@ -31230,6 +31518,12 @@ class SurfaceCanevas extends obsidian.Component {
     noeud.nodeEl.classList.add('zfa-cnv-noeud');
     const racine = canevasEl(noeud.contentEl, 'div', 'zfa-cnv-racine');
     const m = { ref, racine, sig: '', restaurer: () => {} };
+    // Survol : la carte, ses liens directs et les cartes au bout ressortent ;
+    // le reste du canevas s'estompe. Purement visuel.
+    const entrer = () => this._survolerCarte(noeud);
+    const sortir = () => this._finSurvol();
+    noeud.nodeEl.addEventListener('mouseenter', entrer);
+    noeud.nodeEl.addEventListener('mouseleave', sortir);
     // Double-clic : le formulaire de la tâche, jamais l'édition du texte brut.
     racine.addEventListener('dblclick', (e) => {
       e.preventDefault();
@@ -31254,6 +31548,13 @@ class SurfaceCanevas extends obsidian.Component {
         else delete noeud.startEditing;
       };
     }
+    const restaurerEdition = m.restaurer;
+    m.restaurer = () => {
+      restaurerEdition();
+      noeud.nodeEl.removeEventListener('mouseenter', entrer);
+      noeud.nodeEl.removeEventListener('mouseleave', sortir);
+      if (this._survolee === noeud) this._finSurvol();
+    };
     this.cartes.set(noeud, m);
     return m;
   }
@@ -31266,6 +31567,39 @@ class SurfaceCanevas extends obsidian.Component {
     if (noeud.nodeEl) noeud.nodeEl.classList.remove('zfa-cnv-noeud');
     this.cartes.delete(noeud);
     this._aAjuster.delete(noeud);
+  }
+
+  // Les éléments d'une arête qui se voient : son tracé et sa pointe.
+  _elsArete(a) {
+    return [a.lineGroupEl, a.lineEndGroupEl].filter((x) => x && x.classList);
+  }
+
+  _survolerCarte(noeud) {
+    if (this._interaction || !this._actif) return;
+    this._finSurvol();
+    const hote = this.vue.contentEl;
+    this._survolee = noeud;
+    const lies = new Set([noeud]);
+    for (const a of this.canvas.edges.values()) {
+      if (!a || !a.from || !a.to) continue;
+      if (a.from.node !== noeud && a.to.node !== noeud) continue;
+      for (const el of this._elsArete(a)) el.classList.add('zfa-cnv-est-lie');
+      lies.add(a.from.node);
+      lies.add(a.to.node);
+    }
+    for (const n of lies) if (n && n.nodeEl) n.nodeEl.classList.add('zfa-cnv-est-lie');
+    if (noeud.nodeEl) noeud.nodeEl.classList.add('zfa-cnv-est-survolee');
+    hote.classList.add('zfa-cnv-a-un-survol');
+  }
+
+  _finSurvol() {
+    this._survolee = null;
+    const hote = this.vue.contentEl;
+    if (!hote || !hote.querySelectorAll) return;
+    hote.classList.remove('zfa-cnv-a-un-survol');
+    for (const el of hote.querySelectorAll('.zfa-cnv-est-lie, .zfa-cnv-est-survolee')) {
+      el.classList.remove('zfa-cnv-est-lie', 'zfa-cnv-est-survolee');
+    }
   }
 
   // Tout ce que la carte affiche : si rien n'a changé, on ne touche pas au DOM.
@@ -31492,6 +31826,162 @@ class SurfaceCanevas extends obsidian.Component {
     }
   }
   //#endregion Canevas · relations sur les arêtes
+
+  //#region Canevas · tracé des liens
+  // Forme des liens entre deux tâches : 'courbe' (celle du canevas),
+  // 'angulaire' (à angles droits, en contournant les cartes) ou 'droite'.
+  _modeLiens() {
+    const m = this.greffon.settings.canevasLiens;
+    return m === 'courbe' || m === 'droite' ? m : 'angulaire';
+  }
+
+  // Ce qu'il faut savoir d'une arête entre deux tâches pour la tracer, ou null.
+  _geometrieArete(arete) {
+    if (!arete || !arete.from || !arete.to || !arete.from.node || !arete.to.node) return null;
+    if (this.canvas.edges.get(arete.id) !== arete) return null;
+    if (!canevasRefDuNoeud(this.greffon, arete.from.node) || !canevasRefDuNoeud(this.greffon, arete.to.node)) return null;
+    const r1 = canevasDonnees(arete.from.node);
+    const r2 = canevasDonnees(arete.to.node);
+    if (!r1 || !r2) return null;
+    return { r1, r2, c1: arete.from.side || 'right', c2: arete.to.side || 'left' };
+  }
+
+  // Les boîtes que les liens contournent (tous les nœuds, sauf les groupes),
+  // et leur signature : un tracé n'est recalculé que si elle change.
+  _obstacles() {
+    const boites = [];
+    for (const n of this.canvas.nodes.values()) {
+      const r = canevasDonnees(n);
+      if (r && r.type !== 'group') boites.push({ x: r.x, y: r.y, width: r.width, height: r.height });
+    }
+    const sig = this._modeLiens() + '|' + boites.map((r) => r.x + ',' + r.y + ',' + r.width + ',' + r.height).join(';');
+    return { boites, sig };
+  }
+
+  // Le tracé (points) d'une arête, recalculé seulement si sa géométrie, ou
+  // celle des cartes, a changé.
+  _route(arete, mode, obs) {
+    const g = this._geometrieArete(arete);
+    if (!g) { this._routes.delete(arete); return null; }
+    const cle = obs.sig + '|' + [g.r1.x, g.r1.y, g.r1.width, g.r1.height, g.c1,
+      g.r2.x, g.r2.y, g.r2.width, g.r2.height, g.c2, !!arete.fromLineEnd, !!arete.toLineEnd].join(',');
+    const deja = this._routes.get(arete);
+    if (deja && deja.cle === cle) return deja.pts;
+    // Comme le canevas : là où une pointe se pose, le tracé s'arrête 7 px
+    // avant le bord (la pointe fait le reste) ; sinon il part du bord même.
+    const decale = (p, c, pointe) => {
+      const n = CANEVAS_NORMALE[c] || CANEVAS_NORMALE.right;
+      return pointe ? { x: p.x + n[0] * 7, y: p.y + n[1] * 7 } : p;
+    };
+    const p1 = decale(canevasPort(g.r1, g.c1), g.c1, !!arete.fromLineEnd);
+    const p2 = decale(canevasPort(g.r2, g.c2), g.c2, !!arete.toLineEnd);
+    let pts;
+    if (mode === 'droite') {
+      const n1 = CANEVAS_NORMALE[g.c1] || CANEVAS_NORMALE.right;
+      const n2 = CANEVAS_NORMALE[g.c2] || CANEVAS_NORMALE.left;
+      pts = canevasSimplifier([p1, { x: p1.x + n1[0] * 17, y: p1.y + n1[1] * 17 }, { x: p2.x + n2[0] * 17, y: p2.y + n2[1] * 17 }, p2]);
+    } else {
+      pts = canevasRouteOrtho(p1, g.c1, p2, g.c2, obs.boites, { amorce: 17 });
+    }
+    this._routes.set(arete, { cle, pts });
+    return pts;
+  }
+
+  // Pose le `d` d'Ariane sur le tracé visible et sur la zone cliquable.
+  _poserD(arete, d) {
+    const p = arete.path;
+    if (!p || !p.display || !d) return;
+    if (p.display.getAttribute('d') !== d) p.display.setAttribute('d', d);
+    if (p.interaction && p.interaction.getAttribute('d') !== d) p.interaction.setAttribute('d', d);
+    this._poses.set(arete, d);
+  }
+
+  _dDe(arete, mode, pts) {
+    if (mode === 'droite') return canevasCheminDroit(pts);
+    let ponts = [];
+    if (this.greffon.settings.canevasPonts !== false) {
+      const autres = [];
+      for (const [a, r] of this._routes) if (a !== arete && r && r.pts) autres.push(r.pts);
+      ponts = canevasPontsOrtho(pts, autres, 5);
+    }
+    return canevasCheminOrtho(pts, 10, ponts, 5);
+  }
+
+  // Le canevas recalcule le tracé d'une arête quand l'une de ses cartes
+  // bouge : on repasse derrière lui, dans le même geste, pour qu'aucune
+  // courbe ne s'affiche entre deux images. Propriété d'INSTANCE, rendue au
+  // déchargement.
+  _envelopperArete(arete) {
+    if (this._enveloppes.has(arete) || typeof arete.updatePath !== 'function') return;
+    const orig = arete.updatePath;
+    const desc = Object.getOwnPropertyDescriptor(arete, 'updatePath');
+    const surface = this;
+    const nous = function (...args) {
+      const r = orig.apply(this, args);
+      try {
+        const mode = surface._modeLiens();
+        if (mode !== 'courbe' && surface._actif) {
+          const pts = surface._route(this, mode, surface._obstacles());
+          if (pts) surface._poserD(this, surface._dDe(this, mode, pts));
+        }
+      } catch (e) { /* le tracé natif reste */ }
+      return r;
+    };
+    arete.updatePath = nous;
+    this._enveloppes.set(arete, () => {
+      if (arete.updatePath !== nous) return;
+      if (desc) Object.defineProperty(arete, 'updatePath', desc);
+      else delete arete.updatePath;
+    });
+  }
+
+  // Une passe sur tous les liens : tracés (si la géométrie a changé), ponts,
+  // et classes de style selon la relation.
+  _majLiens(d) {
+    const mode = this._modeLiens();
+    const style = this.greffon.settings.canevasStyleRelation !== false;
+    for (const [a, rendre] of this._enveloppes) {
+      if (this.canvas.edges.get(a.id) !== a) { rendre(); this._enveloppes.delete(a); this._routes.delete(a); this._poses.delete(a); }
+    }
+    if (mode === 'courbe') { this._rendreLiensNatifs(); }
+    const liens = [];
+    for (const arete of this.canvas.edges.values()) {
+      const paire = this._paireArete(arete, d);
+      const type = !paire ? ''
+        : (this.integration.relation(d, paire.a, paire.b, 'bloque') || this.integration.relation(d, paire.b, paire.a, 'bloque')) ? 'bloque'
+          : (this.integration.relation(d, paire.a, paire.b, 'hier') || this.integration.relation(d, paire.b, paire.a, 'hier')) ? 'hier' : '';
+      for (const el of [arete.lineGroupEl, arete.lineEndGroupEl]) {
+        if (!el || !el.classList) continue;
+        el.classList.toggle('zfa-cnv-lien-hier', style && type === 'hier');
+        el.classList.toggle('zfa-cnv-lien-bloque', style && type === 'bloque');
+      }
+      if (mode === 'courbe') continue;
+      this._envelopperArete(arete);
+      if (this._geometrieArete(arete)) liens.push(arete);
+    }
+    if (mode === 'courbe') return;
+    // Les tracés d'abord, tous : les ponts se calculent contre les autres.
+    const obs = this._obstacles();
+    for (const a of liens) this._route(a, mode, obs);
+    for (const a of liens) {
+      const r = this._routes.get(a);
+      if (r) this._poserD(a, this._dDe(a, mode, r.pts));
+    }
+  }
+
+  // Rend aux liens le tracé du canevas (courbe), et à leurs méthodes leur forme.
+  _rendreLiensNatifs() {
+    for (const [a, rendre] of this._enveloppes) {
+      rendre();
+      if (this._poses.has(a) && typeof a.updatePath === 'function') {
+        try { a.updatePath(); } catch (e) { /* arête partie */ }
+      }
+    }
+    this._enveloppes.clear();
+    this._poses.clear();
+    this._routes.clear();
+  }
+  //#endregion Canevas · tracé des liens
 
   //#region Canevas · barre de sélection
   // La barre flottante native du canevas se reconstruit à chaque sélection :
@@ -41751,6 +42241,11 @@ module.exports._test = {
   CANEVAS_CLE,
   canevasCotes,
   canevasAjouterCartes,
+  canevasRouteOrtho,
+  canevasPontsOrtho,
+  canevasCheminOrtho,
+  canevasPort,
+  canevasSegmentBloque,
   canevasSansVuesGraphe,
   canevasRefDuNoeud,
   canevasNouvelId,

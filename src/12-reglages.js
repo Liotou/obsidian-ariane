@@ -411,6 +411,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     }
   }
 
+  // Les canevas ouverts reprennent aussitôt les réglages de leurs liens.
+  _rafraichirCanevas() {
+    if (this.plugin.canevas) this.plugin.canevas.invalider();
+  }
+
   _section(parent, titre, desc) {
     const st = new obsidian.Setting(parent).setName(titre).setHeading();
     if (desc) st.setDesc(desc);
@@ -1753,6 +1758,27 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setValue(s.canevasDossier || '')
         .setPlaceholder(((s.dossierTaches || '') ? s.dossierTaches + '/' : '') + 'Canevas')
         .onChange(async (v) => { s.canevasDossier = v.trim(); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Forme des liens entre tâches'))
+      .setDesc(tr('Angulaire : à angles droits, en contournant les cartes, comme dans l’ancien graphe. Courbe : le tracé du canevas. Droite : un trait direct. Les liens vers d’autres nœuds gardent le tracé du canevas.'))
+      .addDropdown((d) => d
+        .addOption('angulaire', tr('Angulaire'))
+        .addOption('courbe', tr('Courbe'))
+        .addOption('droite', tr('Droite'))
+        .setValue(s.canevasLiens || 'angulaire')
+        .onChange(async (v) => { s.canevasLiens = v; await maj(); this._rafraichirCanevas(); this.display(); }));
+    if ((s.canevasLiens || 'angulaire') === 'angulaire') {
+      new obsidian.Setting(c)
+        .setName(tr('Ponts aux croisements'))
+        .setDesc(tr('Là où deux liens se croisent, le lien horizontal enjambe l’autre par un petit arc.'))
+        .addToggle((t) => t.setValue(s.canevasPonts !== false)
+          .onChange(async (v) => { s.canevasPonts = v; await maj(); this._rafraichirCanevas(); }));
+    }
+    new obsidian.Setting(c)
+      .setName(tr('Style par relation'))
+      .setDesc(tr('La hiérarchie en trait plein discret, le blocage en rouge et en pointillés.'))
+      .addToggle((t) => t.setValue(s.canevasStyleRelation !== false)
+        .onChange(async (v) => { s.canevasStyleRelation = v; await maj(); this._rafraichirCanevas(); }));
     new obsidian.Setting(c)
       .setName(tr('Confirmer avant de supprimer une tâche'))
       .setDesc(tr('Demander une validation quand on supprime une tâche depuis le canevas (clic droit). Retirer une carte du canevas, elle, ne supprime rien.'))
