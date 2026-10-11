@@ -878,6 +878,9 @@ function barreDefaut() {
     { cmd: a('citations-basculer') },
     { cmd: a('correcteur-volet') },
     { separateur: true },
+    // La note, telle quelle, vers Word (citations Zotero vivantes).
+    { cmd: a('exporter-word-zotero') },
+    { separateur: true },
     { cmd: a('note-plein-ecran') },
     { cmd: a('espace-plein-ecran') },
   ];

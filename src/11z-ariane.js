@@ -400,6 +400,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.addCommand({
       id: 'exporter-word-zotero',
       name: tr('Word : exporter avec citations Zotero'),
+      icon: 'file-output',          // son bouton dans la barre d'édition
       callback: () => this.exporterWordZotero(),
     });
     this.addCommand({

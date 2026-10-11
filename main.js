@@ -22258,6 +22258,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.addCommand({
       id: 'exporter-word-zotero',
       name: tr('Word : exporter avec citations Zotero'),
+      icon: 'file-output',          // son bouton dans la barre d'édition
       callback: () => this.exporterWordZotero(),
     });
     this.addCommand({
@@ -42490,6 +42491,9 @@ function barreDefaut() {
     // citations pour lire le texte seul, et ouvrir le volet de relecture.
     { cmd: a('citations-basculer') },
     { cmd: a('correcteur-volet') },
+    { separateur: true },
+    // La note, telle quelle, vers Word (citations Zotero vivantes).
+    { cmd: a('exporter-word-zotero') },
     { separateur: true },
     { cmd: a('note-plein-ecran') },
     { cmd: a('espace-plein-ecran') },
