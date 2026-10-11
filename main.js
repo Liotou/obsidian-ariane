@@ -42351,22 +42351,6 @@ const BARRE_COMMANDES = [
                { cle: 'repere', nom: 'Garder les repères', valeur: '', case: true }],
     }, (v) => barreSurBloc(ed, (t) => barreExtraireEntre(t, v.debut, v.fin, !!v.repere), false)) },
 
-  // Presse-papiers. Obsidian s'en remet aux raccourcis du système ; la barre,
-  // elle, a besoin de boutons.
-  { id: 'md-couper', nom: 'Édition : couper', icone: 'scissors',
-    sur: async (ed) => {
-      if (!ed.somethingSelected()) return;
-      await barreVersPressePapiers(ed.getSelection());
-      ed.replaceSelection('');
-    } },
-  { id: 'md-copier', nom: 'Édition : copier', icone: 'copy',
-    sur: async (ed) => { if (ed.somethingSelected()) await barreVersPressePapiers(ed.getSelection()); } },
-  { id: 'md-coller', nom: 'Édition : coller', icone: 'clipboard-paste',
-    sur: async (ed) => {
-      const t = await barreDepuisPressePapiers();
-      if (t) ed.replaceSelection(t);
-    } },
-
   // Couleurs : la palette s'ouvre sous le bouton quand elle vient de la
   // barre, au curseur quand elle vient de la palette de commandes.
   { id: 'md-couleur-texte', nom: 'Mise en forme : couleur du texte…', icone: 'baseline',
@@ -42385,22 +42369,6 @@ const BARRE_COMMANDES = [
   { id: 'espace-plein-ecran', nom: 'Fenêtre : plein écran', icone: 'expand',
     sur: (ed, vue, greffon) => greffon.barre.basculerPleinEcran(vue) },
 ];
-
-// Le presse-papiers, en deux fonctions qui ne supposent rien de l'hôte :
-// l'API moderne d'abord, l'ancienne commande d'édition en secours.
-async function barreVersPressePapiers(texte) {
-  try {
-    if (navigator && navigator.clipboard) { await navigator.clipboard.writeText(texte); return true; }
-  } catch (e) { /* refusé : on tente l'ancienne voie */ }
-  try { return document.execCommand('copy'); } catch (e2) { return false; }
-}
-
-async function barreDepuisPressePapiers() {
-  try {
-    if (navigator && navigator.clipboard) return await navigator.clipboard.readText();
-  } catch (e) { /* refusé */ }
-  return '';
-}
 
 // ── La disposition par défaut ────────────────────────────────────────────
 //  Trois formes d'entrée, et trois seulement :
@@ -42435,12 +42403,15 @@ function barreDefaut() {
     { cmd: a('md-couleur-texte') },
     { cmd: a('md-couleur-fond') },
     { separateur: true },
+    // Les blocs et les liens d'usage courant, chacun son bouton.
+    { cmd: 'editor:toggle-blockquote' },
+    { cmd: 'editor:insert-callout' },
+    { cmd: 'editor:insert-wikilink' },
+    { cmd: 'editor:insert-embed' },
     { groupe: 'Markdown', icone: 'code', elements: [
       { cmd: a('md-exposant') }, { cmd: a('md-indice') },
-      { cmd: 'editor:toggle-code' }, { cmd: 'editor:toggle-blockquote' },
-      { cmd: 'editor:insert-callout' }, { cmd: a('md-ligne-horizontale') },
+      { cmd: 'editor:toggle-code' }, { cmd: a('md-ligne-horizontale') },
       { separateur: true },
-      { cmd: 'editor:insert-wikilink' }, { cmd: 'editor:insert-embed' },
       { cmd: 'editor:insert-link' },
       { separateur: true },
       { cmd: a('md-math-ligne') }, { cmd: 'editor:insert-mathblock' },
@@ -42451,6 +42422,8 @@ function barreDefaut() {
       { separateur: true },
       { cmd: a('liste-renumeroter') },
       { cmd: 'editor:indent-list' }, { cmd: 'editor:unindent-list' },
+      { separateur: true },
+      { cmd: 'editor:swap-line-up' }, { cmd: 'editor:swap-line-down' },
     ] },
     { groupe: 'Alignement', icone: 'align-left', elements: [
       { cmd: a('md-aligner-gauche') }, { cmd: a('md-aligner-centre') },
@@ -42473,11 +42446,6 @@ function barreDefaut() {
       { separateur: true },
       { cmd: a('liste-vers-tableau') }, { cmd: a('tableau-vers-liste') },
       { cmd: a('extraire-entre') },
-    ] },
-    { groupe: 'Édition', icone: 'clipboard', elements: [
-      { cmd: a('md-couper') }, { cmd: a('md-copier') }, { cmd: a('md-coller') },
-      { separateur: true },
-      { cmd: 'editor:swap-line-up' }, { cmd: 'editor:swap-line-down' },
     ] },
     // Ce qu'Editing toolbar n'avait pas : les gestes d'Ariane, au même rang
     // que la mise en forme, puisqu'ils portent sur la note ouverte.
