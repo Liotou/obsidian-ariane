@@ -1025,6 +1025,8 @@ class Ariane extends composer(obsidian.Plugin,
 
     // Nouvelle note depuis le modèle d'un dossier (clic droit).
     this.installerNotesDepuisModele();
+    // « Ouvrir avec Word / PowerPoint / Excel » (clic droit).
+    this.installerOuvrirAvecOffice();
 
     // « Ouvrir dans Zotero », au clic droit sur la note comme dans l'éditeur.
     const entreeZotero = (menu, fichier) => {

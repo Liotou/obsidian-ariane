@@ -2,7 +2,8 @@
 // filets, guillemets, titres).
 const test = require('node:test');
 const assert = require('node:assert');
-const { deplierIntegrations, preparerMarkdownExport } = require('./obsidian-factice.js')._test;
+const Ariane = require('./obsidian-factice.js');
+const { deplierIntegrations, preparerMarkdownExport } = Ariane._test;
 
 const NOTES = {
   'NC-1': '---\naliases:\n  - Phénomène\n---\n# Phénomène\nUn fait observable.\n\n## Nuance\nTexte nuancé. ^b1\n\n---\n## Bibliographie\n%% ariane:biblio %%\n- Réf.\n%% /ariane:biblio %%\n',
@@ -41,4 +42,11 @@ test('export : ni filet, ni guillemets droits, ni point final aux titres', () =>
   assert.ok(s.includes('« prospection »'));
   assert.ok(s.includes('class="x"'), 'les attributs gardent leurs guillemets');
   assert.ok(s.includes('|---|'), 'les tableaux gardent leur ligne de séparation');
+});
+
+test('clic droit : l’application Office d’un document', () => {
+  assert.equal(Ariane.appliOffice('DOCX').appli, 'Microsoft Word');
+  assert.equal(Ariane.appliOffice('pptx').nom, 'PowerPoint');
+  assert.equal(Ariane.appliOffice('csv').nom, 'Excel');
+  assert.equal(Ariane.appliOffice('md'), null);
 });

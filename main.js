@@ -1020,6 +1020,8 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "Saisir les pages…": "Enter pages…",
+    "Ouvrir avec ": "Open with ",
+    " : ouverture impossible.": ": could not open the file.",
     "Saisir les pages": "Enter pages",
     "Enregistrer": "Save",
     "Oublier les pages saisies": "Forget entered pages",
@@ -6080,6 +6082,36 @@ const avecNoteReferences = (Base) => class extends Base {
       menu.addItem((it) => it.setTitle(tr('Nouvelle note : ') + m.basename).setIcon('file-plus')
         .setSection('action-primary')
         .onClick(() => this.nouvelleNoteDepuisModele(f.path, m)));
+    }));
+  }
+
+  // L'application Office qui ouvre un fichier, d'après son extension, ou null.
+  static appliOffice(extension) {
+    const ext = String(extension || '').toLowerCase();
+    if (/^(docx?|docm|dotx?|rtf)$/.test(ext)) return { nom: 'Word', appli: 'Microsoft Word' };
+    if (/^(pptx?|pptm|potx|ppsx)$/.test(ext)) return { nom: 'PowerPoint', appli: 'Microsoft PowerPoint' };
+    if (/^(xlsx?|xlsm|xltx|csv)$/.test(ext)) return { nom: 'Excel', appli: 'Microsoft Excel' };
+    return null;
+  }
+
+  // Clic droit sur un document Office : « Ouvrir avec Word » (PowerPoint,
+  // Excel). Le greffon ONLYOFFICE les ouvre dans Obsidian ; ceci rend la main
+  // à l'application de Microsoft. Sur Mac, et si l'application est installée.
+  installerOuvrirAvecOffice() {
+    if (!(obsidian.Platform && obsidian.Platform.isMacOS)) return;
+    const fs = require('fs');
+    this.registerEvent(this.app.workspace.on('file-menu', (menu, f) => {
+      if (!(f instanceof obsidian.TFile)) return;
+      const o = Ariane.appliOffice(f.extension);
+      if (!o) return;
+      const chemins = ['/Applications/' + o.appli + '.app', require('os').homedir() + '/Applications/' + o.appli + '.app'];
+      if (!chemins.some((c) => fs.existsSync(c))) return;
+      menu.addItem((it) => it.setTitle(tr('Ouvrir avec ') + o.nom).setIcon('external-link').setSection('open')
+        .onClick(() => {
+          require('child_process').execFile('open', ['-a', o.appli, this.cheminAbsoluVault(f.path)], (e) => {
+            if (e) new obsidian.Notice(o.nom + tr(' : ouverture impossible.'));
+          });
+        }));
     }));
   }
 
@@ -22851,6 +22883,8 @@ class Ariane extends composer(obsidian.Plugin,
 
     // Nouvelle note depuis le modèle d'un dossier (clic droit).
     this.installerNotesDepuisModele();
+    // « Ouvrir avec Word / PowerPoint / Excel » (clic droit).
+    this.installerOuvrirAvecOffice();
 
     // « Ouvrir dans Zotero », au clic droit sur la note comme dans l'éditeur.
     const entreeZotero = (menu, fichier) => {

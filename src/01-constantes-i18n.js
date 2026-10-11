@@ -829,6 +829,8 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "Saisir les pages…": "Enter pages…",
+    "Ouvrir avec ": "Open with ",
+    " : ouverture impossible.": ": could not open the file.",
     "Saisir les pages": "Enter pages",
     "Enregistrer": "Save",
     "Oublier les pages saisies": "Forget entered pages",
