@@ -31195,6 +31195,11 @@ class MoteurArticulation extends MoteurVue {
   }
 
   dessiner() {
+    // Pendant qu'on glisse une carte, Bases redessine la vue à chaque écriture
+    // dans le coffre (position précédente, temps passé…) : la carte tenue
+    // était remplacée par une neuve et le glissé déplaçait l'ancienne, hors
+    // de l'écran. On attend donc le lâcher.
+    if (this._geste) { this._redessinAttendu = true; return; }
     try { this.dessinerVraiment(); } catch (e) {
       console.error('[Ariane] articulation :', e);
       this.racine.empty();
@@ -32164,7 +32169,16 @@ class MoteurArticulation extends MoteurVue {
     const gnPar = new Map();
     for (const el of this._svg.querySelectorAll('.zfa-artic-noeud')) gnPar.set(el.dataset.ref, el);
     let bouge = false;
+    this._geste = true;
+    // Un déplacement par image affichée : les mouvements du pointeur
+    // arrivent plus vite que l'écran ne se rafraîchit.
+    let attente = null, dernier = null;
     const bouger = (e) => {
+      dernier = e;
+      if (attente == null) attente = this._win().requestAnimationFrame(() => { attente = null; deplacer(dernier); });
+    };
+    const deplacer = (e) => {
+      if (!e) return;
       const s = this._versScene(e);
       if (Math.abs(s.x - dep.x) > 2 || Math.abs(s.y - dep.y) > 2) bouge = true;
       const dx = s.x - dep.x;
@@ -32186,16 +32200,25 @@ class MoteurArticulation extends MoteurVue {
         this.majAretesDe(r);
       }
     };
-    const lacher = async () => {
+    const finGeste = () => {
+      this._geste = false;
+      if (this._redessinAttendu) { this._redessinAttendu = false; this.dessiner(); }
+    };
+    const lacher = async (e) => {
       this._doc().removeEventListener('pointermove', bouger);
       this._doc().removeEventListener('pointerup', lacher);
+      this._doc().removeEventListener('pointercancel', lacher);
+      if (attente != null) { this._win().cancelAnimationFrame(attente); attente = null; }
+      if (e && e.type === 'pointerup') deplacer(e);
       this._tracerReperes(null);
-      if (!bouge) return;
+      if (!bouge) { finGeste(); return; }
       gn.dataset.aGlisse = '1';
-      for (const r of refs) {
-        const p = this._pt(r);
-        await this.ctx.poserPosition(r, Math.round(p.x), Math.round(p.y));
-      }
+      try {
+        for (const r of refs) {
+          const p = this._pt(r);
+          await this.ctx.poserPosition(r, Math.round(p.x), Math.round(p.y));
+        }
+      } finally { finGeste(); }
       if (this.racine && this.racine.focus) this.racine.focus({ preventScroll: true });
       // Annulation / rétablissement : replacer chaque carte où elle était
       // avant le glissé, puis la rejouer vers sa position d'arrivée.
@@ -32217,6 +32240,7 @@ class MoteurArticulation extends MoteurVue {
     };
     this._doc().addEventListener('pointermove', bouger);
     this._doc().addEventListener('pointerup', lacher);
+    this._doc().addEventListener('pointercancel', lacher);
   }
 
   // Redessine les chemins des arêtes touchant un nœud déplacé.
