@@ -689,12 +689,12 @@ class ModaleStructurerTaches extends obsidian.Modal {
     if (!this.decouper) {
       const reg = new obsidian.Setting(c)
         .setName(tr('Poser les tâches sur'))
-        .setDesc(tr('Une vue articulation reçoit les cartes ; sinon les notes sont seulement créées.'));
-      reg.addDropdown(async (d) => {
-        d.addOption('', tr('— notes seulement —'));
+        .setDesc(tr('Un canevas de tâches reçoit les cartes ; sinon les notes sont seulement créées.'));
+      reg.addDropdown((d) => {
+        d.addOption('', tr('Notes seulement'));
         try {
-          this.vues = await this.greffon.vuesArticulation();
-          for (let i = 0; i < this.vues.length; i += 1) d.addOption(String(i), this.vues[i].nom);
+          this.vues = this.greffon.canevas ? this.greffon.canevas.canevasDuDossier() : [];
+          for (let i = 0; i < this.vues.length; i += 1) d.addOption(String(i), this.vues[i].basename);
         } catch (e) { /* pas grave */ }
         d.onChange((v) => { this._vueChoisie = v; });
       });
@@ -878,13 +878,13 @@ class ModaleStructurerTaches extends obsidian.Modal {
   async _creer() {
     const specs = this._elaguer(this.arbre);
     if (!specs.length) { new obsidian.Notice(tr('Aucune tâche sélectionnée.')); return; }
-    const vue = (!this.decouper && this._vueChoisie)
+    const canevas = (!this.decouper && this._vueChoisie)
       ? this.vues[Number(this._vueChoisie)] : null;
     this.close();
     const avis = new obsidian.Notice(tr('Création des tâches…'), 0);
     try {
       const refs = await this.greffon.creerArbreTaches(specs, {
-        vue, parentRef: this.decouper ? this.decouper.ref : null,
+        canevas, parentRef: this.decouper ? this.decouper.ref : null,
       });
       avis.hide();
       new obsidian.Notice(refs.length + tr(' tâche(s) créée(s).'));

@@ -1,6 +1,9 @@
-
+//#region 16 · Canevas des tâches
 // ═══════════════════════════════════════════════════════════════════════════
-//  CANEVAS — les tâches d'Ariane sur le canevas natif d'Obsidian
+//  16 · CANEVAS DES TÂCHES
+//  Les tâches d'Ariane sur le canevas natif d'Obsidian. Il a remplacé la vue
+//  Bases « Graphe » (ariane-articulation), retirée : ses plans deviennent des
+//  canevas au démarrage (migrerVuesGraphe).
 //
 //  Modèle repris d'Operon (« Canvas Task Cards »), réécrit pour Ariane :
 //   - une carte est un nœud TEXTE du fichier .canvas portant une métadonnée
@@ -133,6 +136,81 @@ function canevasClose(t) {
 
 // ── Intégration : suit les canevas ouverts, tient les données des tâches ────
 
+// Pose des tâches dans le contenu d'un fichier .canvas (sans l'ouvrir) : une
+// carte par tâche absente, en grille sous ce qui s'y trouve déjà, et une
+// arête par relation entre ces cartes et celles déjà posées.
+// relation(a, b, type) dit si `a` est la mère (hier) ou la bloquante (bloque)
+// de `b`. Rend { contenu, poses } ; le contenu d'entrée n'est pas modifié.
+function canevasAjouterCartes(contenu, refs, relation, largeur) {
+  const nodes = Array.isArray(contenu && contenu.nodes) ? contenu.nodes.slice() : [];
+  const edges = Array.isArray(contenu && contenu.edges) ? contenu.edges.slice() : [];
+  const larg = Number(largeur) || CANEVAS_LARGEUR_DEFAUT;
+  const refDe = (n) => (n && n[CANEVAS_CLE] && n[CANEVAS_CLE].ref)
+    || (n && n.type === 'text' && /^\[\[([^\]|#]+)\]\]$/.test(String(n.text || '').trim())
+      ? String(n.text).trim().slice(2, -2) : null);
+  const parRef = new Map();
+  for (const n of nodes) { const r = refDe(n); if (r && !parRef.has(r)) parRef.set(r, n); }
+  const aPoser = [...new Set((refs || []).filter(Boolean))].filter((r) => !parRef.has(r));
+  if (!aPoser.length) return { contenu: { nodes, edges }, poses: [] };
+  let x0 = 0;
+  let y0 = 0;
+  if (nodes.length) {
+    x0 = Math.min(...nodes.map((n) => Number(n.x) || 0));
+    y0 = Math.max(...nodes.map((n) => (Number(n.y) || 0) + (Number(n.height) || 0))) + 120;
+  }
+  const cols = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(aPoser.length))));
+  const neufs = [];
+  aPoser.forEach((ref, i) => {
+    const n = { id: canevasNouvelId(), type: 'text', text: '[[' + ref + ']]',
+      x: x0 + (i % cols) * (larg + 60), y: y0 + Math.floor(i / cols) * 170,
+      width: larg, height: 110, [CANEVAS_CLE]: { v: 1, ref } };
+    nodes.push(n);
+    parRef.set(ref, n);
+    neufs.push(ref);
+  });
+  const paires = new Set(edges.map((e) => [e.fromNode, e.toNode].sort().join('|')));
+  for (const a of neufs) {
+    for (const b of parRef.keys()) {
+      if (a === b) continue;
+      for (const [de, vers] of [[a, b], [b, a]]) {
+        const bloc = relation(de, vers, 'bloque');
+        if (!bloc && !relation(de, vers, 'hier')) continue;
+        const na = parRef.get(de);
+        const nb = parRef.get(vers);
+        const cle = [na.id, nb.id].sort().join('|');
+        if (paires.has(cle)) continue;
+        paires.add(cle);
+        const cotes = canevasCotes(na, nb);
+        const e = { id: canevasNouvelId(), fromNode: na.id, fromSide: cotes.de, fromEnd: 'none',
+          toNode: nb.id, toSide: cotes.vers, toEnd: 'arrow' };
+        if (bloc) e.color = CANEVAS_COULEUR_BLOCAGE;
+        edges.push(e);
+      }
+    }
+  }
+  return { contenu: { nodes, edges }, poses: neufs };
+}
+
+// Retire d'un fichier .base les vues de l'ancien type « Graphe »
+// (ariane-articulation), en laissant le reste du texte tel quel : une entrée
+// court de sa ligne « - type: » à la suivante, ou à la clé suivante.
+function canevasSansVuesGraphe(texte) {
+  const eol = String(texte).includes('\r\n') ? '\r\n' : '\n';
+  const out = [];
+  let retrait = null;            // indentation de l'entrée en cours de retrait
+  for (const l of String(texte).split(/\r?\n/)) {
+    const ind = (l.match(/^\s*/) || [''])[0].length;
+    if (retrait != null) {
+      if (!l.trim() || ind > retrait) continue;   // corps de l'entrée retirée
+      retrait = null;
+    }
+    const m = l.match(/^(\s*)-\s*type:\s*["']?([^"'\s]+)["']?\s*$/);
+    if (m && m[2] === TYPE_VUE_BASE_ARTIC) { retrait = m[1].length; continue; }
+    out.push(l);
+  }
+  return out.join(eol);
+}
+
 class IntegrationCanevas extends obsidian.Component {
   //#region Canevas · intégration
   constructor(greffon) {
@@ -241,25 +319,83 @@ class IntegrationCanevas extends obsidian.Component {
     return this.surfaces.get(vue) || null;
   }
 
-  // Nouveau fichier .canvas, ouvert dans un nouvel onglet.
-  async creerCanevas() {
-    let dossier = '';
-    try {
-      const p = this.app.fileManager.getNewFileParent('');
-      dossier = p && p.path && p.path !== '/' ? p.path : '';
-    } catch (e) { dossier = ''; }
-    const base = tr('Canevas des tâches');
-    let chemin = obsidian.normalizePath((dossier ? dossier + '/' : '') + base + '.canvas');
+  // Les canevas de tâches vivent ensemble, dans un sous-dossier « Canevas »
+  // du dossier des tâches (un autre dossier se règle dans les réglages) :
+  // c'est là qu'on les retrouve, un par thème.
+  dossierCanevas() {
+    const r = String(this.greffon.settings.canevasDossier || '').trim();
+    if (r) return obsidian.normalizePath(r);
+    const t = String(this.greffon.settings.dossierTaches || '').trim();
+    return obsidian.normalizePath((t ? t + '/' : '') + 'Canevas');
+  }
+
+  // Les canevas de ce dossier, le dernier modifié en tête.
+  canevasDuDossier() {
+    const d = this.dossierCanevas() + '/';
+    return this.app.vault.getFiles()
+      .filter((f) => f.extension === 'canvas' && f.path.startsWith(d))
+      .sort((a, b) => ((b.stat && b.stat.mtime) || 0) - ((a.stat && a.stat.mtime) || 0));
+  }
+
+  // Nouveau canevas de tâches : son nom est demandé, il est rangé dans le
+  // dossier des canevas et ouvert dans un nouvel onglet.
+  creerCanevas() {
+    return new Promise((res) => {
+      ModaleBarreTexte.demander(this.greffon, {
+        titre: 'Nouveau canevas de tâches', bouton: 'Créer',
+        champs: [{ cle: 'nom', nom: 'Nom', aide: 'Un canevas par thème : « Thèse, chapitre 1 », « Enseignement »…', valeur: '' }],
+      }, async (v) => res(await this._creerCanevas(v && v.nom, { nodes: [], edges: [] }, true)));
+    });
+  }
+
+  async _creerCanevas(nom, contenu, ouvrir) {
+    const dossier = this.dossierCanevas();
+    await this.greffon.assurerDossier(dossier);
+    const base = String(nom || '').replace(/[\\/:*?"<>|#^[\]]/g, '-').trim() || tr('Canevas des tâches');
+    let chemin = obsidian.normalizePath(dossier + '/' + base + '.canvas');
     for (let n = 2; this.app.vault.getAbstractFileByPath(chemin); n += 1) {
-      chemin = obsidian.normalizePath((dossier ? dossier + '/' : '') + base + ' ' + n + '.canvas');
+      chemin = obsidian.normalizePath(dossier + '/' + base + ' ' + n + '.canvas');
     }
-    const f = await this.app.vault.create(chemin, JSON.stringify({ nodes: [], edges: [] }, null, '\t'));
-    await this.app.workspace.getLeaf('tab').openFile(f);
+    const f = await this.app.vault.create(chemin, JSON.stringify(contenu, null, '\t'));
+    if (ouvrir) await this.app.workspace.getLeaf('tab').openFile(f);
     return f;
   }
 
-  // Plans des vues « Articulation » enregistrés dans les fichiers .base :
-  // [{ fichier, vue, cartes: [{ref, x, y}] }].
+  // Choisir un canevas du dossier, ou en créer un.
+  ouvrirCanevas() {
+    const fichiers = this.canevasDuDossier();
+    const items = fichiers.map((f, i) => ({ cle: i, nom: f.basename }));
+    items.push({ cle: -1, nom: tr('Nouveau canevas de tâches…') });
+    new ChoixListeModal(this.app, tr('Canevas de tâches…'), items, (it) => {
+      if (!it) return;
+      if (it.cle === -1) { this.creerCanevas(); return; }
+      this.app.workspace.getLeaf('tab').openFile(fichiers[it.cle]);
+    }).open();
+  }
+
+  // Pose des tâches sur un canevas donné : par le canevas lui-même s'il est
+  // ouvert, sinon dans son fichier. Rend le nombre de cartes posées.
+  async poserDansCanevas(fichier, refs) {
+    if (!fichier || !refs || !refs.length) return 0;
+    this.synchroniser();
+    const s = [...this.surfaces.values()].find((x) => x.vue.file && x.vue.file.path === fichier.path);
+    if (s && !s.canvas.readonly) {
+      const sur = s._refsSurCanevas();
+      const neufs = refs.filter((r) => !sur.has(r));
+      if (neufs.length) await s.inserer(neufs, s._pointLibre(), {});
+      return neufs.length;
+    }
+    let contenu = {};
+    try { contenu = JSON.parse((await this.app.vault.read(fichier)) || '{}') || {}; } catch (e) { contenu = {}; }
+    const d = this.donnees();
+    const larg = Number(this.greffon.settings.canevasLargeurCarte) || CANEVAS_LARGEUR_DEFAUT;
+    const r = canevasAjouterCartes(contenu, refs, (a, b, type) => this.relation(d, a, b, type), larg);
+    if (r.poses.length) await this.app.vault.modify(fichier, JSON.stringify(r.contenu, null, '\t'));
+    return r.poses.length;
+  }
+
+  // Plans des anciennes vues « Graphe » (vue Bases « ariane-articulation »,
+  // retirée) : [{ fichier, vue, cartes: [{ref, x, y}] }].
   async plansArticulation() {
     const out = [];
     for (const f of this.app.vault.getFiles()) {
@@ -267,21 +403,21 @@ class IntegrationCanevas extends obsidian.Component {
       let conf = null;
       try { conf = obsidian.parseYaml(await this.app.vault.cachedRead(f)); } catch (e) { conf = null; }
       for (const v of (conf && Array.isArray(conf.views)) ? conf.views : []) {
-        if (!v || v.type !== TYPE_VUE_BASE_ARTIC || !v.arianeArtPlan) continue;
+        if (!v || v.type !== TYPE_VUE_BASE_ARTIC) continue;
         let plan = null;
         try { plan = typeof v.arianeArtPlan === 'string' ? JSON.parse(v.arianeArtPlan) : v.arianeArtPlan; }
         catch (e) { plan = null; }
         const cartes = (plan && Array.isArray(plan.cartes) ? plan.cartes : [])
           .filter((c) => c && c.ref && Number.isFinite(c.x) && Number.isFinite(c.y));
-        if (cartes.length) out.push({ fichier: f, vue: v.name || tr('Articulation'), cartes });
+        out.push({ fichier: f, vue: v.name || tr('Graphe'), cartes });
       }
     }
     return out;
   }
 
-  // Contenu .canvas d'un plan d'articulation : une carte par tâche à la même
-  // disposition (écarts agrandis — les cartes du canevas sont plus hautes),
-  // et une arête par relation entre les tâches du plan.
+  // Contenu .canvas d'un plan de l'ancienne vue Graphe : une carte par tâche
+  // à la même disposition (écarts agrandis : les cartes du canevas sont plus
+  // hautes), et une arête par relation entre les tâches du plan.
   canevasDepuisPlan(cartes) {
     const d = this.donnees();
     const larg = Number(this.greffon.settings.canevasLargeurCarte) || CANEVAS_LARGEUR_DEFAUT;
@@ -317,26 +453,35 @@ class IntegrationCanevas extends obsidian.Component {
     return { nodes, edges };
   }
 
-  async convertirArticulation() {
-    const plans = await this.plansArticulation();
-    if (!plans.length) { new obsidian.Notice(tr('Aucun plan d’articulation à convertir.')); return; }
-    const faire = async (p) => {
-      const contenu = this.canevasDepuisPlan(p.cartes);
-      const dossier = p.fichier.parent && p.fichier.parent.path !== '/' ? p.fichier.parent.path + '/' : '';
-      const base = (p.fichier.basename + ' - ' + p.vue).replace(/[\\/:*?"<>|#^[\]]/g, '-');
-      let chemin = obsidian.normalizePath(dossier + base + '.canvas');
-      for (let n = 2; this.app.vault.getAbstractFileByPath(chemin); n += 1) {
-        chemin = obsidian.normalizePath(dossier + base + ' ' + n + '.canvas');
+  // La vue Bases « Graphe » n'existe plus : chacune de ses vues encore
+  // présente dans un .base devient un canevas du dossier (ses cartes et leurs
+  // relations), puis disparaît du .base. Une fois, au démarrage, et sans
+  // effet s'il n'y en a plus.
+  async migrerVuesGraphe() {
+    let plans = [];
+    try { plans = await this.plansArticulation(); } catch (e) { return; }
+    if (!plans.length) return;
+    const parFichier = new Map();
+    for (const p of plans) {
+      if (p.cartes.length) {
+        const contenu = this.canevasDepuisPlan(p.cartes);
+        if (contenu.nodes.length) {
+          try {
+            const f = await this._creerCanevas(p.fichier.basename + ' - ' + p.vue, contenu, false);
+            new obsidian.Notice(tr('Vue « ') + p.vue + tr(' » de ') + p.fichier.basename
+              + tr(' : devenue le canevas « ') + f.basename + ' ».', 10000);
+          } catch (e) { console.error('[Ariane] graphe vers canevas :', e); continue; }
+        }
       }
-      const f = await this.app.vault.create(chemin, JSON.stringify(contenu, null, '\t'));
-      await this.app.workspace.getLeaf('tab').openFile(f);
-      new obsidian.Notice(contenu.nodes.length + ' ' + tr('carte(s) et ') + contenu.edges.length
-        + ' ' + tr('lien(s) repris dans « ') + f.basename + ' »');
-    };
-    if (plans.length === 1) { await faire(plans[0]); return; }
-    new ChoixListeModal(this.app, tr('Plan d’articulation à convertir…'),
-      plans.map((p, i) => ({ cle: i, nom: p.fichier.basename + ' · ' + p.vue + ' (' + p.cartes.length + ')' })),
-      (it) => { if (it) faire(plans[it.cle]); }).open();
+      parFichier.set(p.fichier.path, p.fichier);
+    }
+    for (const f of parFichier.values()) {
+      try {
+        const avant = await this.app.vault.read(f);
+        const apres = canevasSansVuesGraphe(avant);
+        if (apres !== avant) await this.app.vault.modify(f, apres);
+      } catch (e) { console.error('[Ariane] retrait de la vue Graphe :', e); }
+    }
   }
   //#endregion Canevas · intégration
 }
@@ -897,6 +1042,8 @@ class SurfaceCanevas extends obsidian.Component {
           .onClick(() => this.ajouterRelatives(noeud, 'hier')));
         menu.addItem((i) => i.setTitle(tr('Poser ses tâches bloquantes')).setIcon('octagon-alert')
           .onClick(() => this.ajouterRelatives(noeud, 'bloque')));
+        menu.addItem((i) => i.setTitle(tr('Retirer ses sous-tâches du canevas')).setIcon('list-collapse')
+          .onClick(() => this.retirerSousTaches(noeud)));
         menu.addItem((i) => i.setTitle(tr('Tracer ses relations sur le canevas')).setIcon('waypoints')
           .onClick(() => {
             const n = this.relier([noeud]);
@@ -1129,6 +1276,134 @@ class SurfaceCanevas extends obsidian.Component {
     await this.inserer(cibles, point, {});
   }
 
+  // Un point sous tout ce que porte le canevas (centre de la vue s'il est vide).
+  _pointLibre() {
+    const ds = [...this.canvas.nodes.values()].map(canevasDonnees).filter(Boolean);
+    if (!ds.length) return this._centre();
+    const x = Math.min(...ds.map((d) => d.x));
+    const y = Math.max(...ds.map((d) => d.y + d.height));
+    return { x: x + this._largeur() / 2, y: y + 170 };
+  }
+
+  // Une étape de l'historique du canevas, pour que ⌘Z défasse le geste entier.
+  _historique() {
+    const c = this.canvas;
+    try { if (typeof c.pushHistory === 'function') c.pushHistory(c.getData()); } catch (e) { /* indisponible */ }
+  }
+
+  // Déplace un nœud ; le canevas recale alors ses arêtes.
+  _deplacerNoeud(noeud, x, y) {
+    try {
+      if (typeof noeud.moveTo === 'function') noeud.moveTo({ x, y });
+      else noeud.setData(Object.assign({}, canevasDonnees(noeud), { x, y }));
+    } catch (e) { /* nœud parti */ }
+  }
+
+  // Après un déplacement d'ensemble, chaque arête entre deux tâches repart du
+  // côté de sa source qui regarde sa cible.
+  _recalerCotes() {
+    const c = this.canvas;
+    if (typeof c.removeEdge !== 'function' || typeof c.importData !== 'function') return;
+    for (const a of [...c.edges.values()]) {
+      if (!a || !a.from || !a.to || !a.from.node || !a.to.node) continue;
+      if (!canevasRefDuNoeud(this.greffon, a.from.node) || !canevasRefDuNoeud(this.greffon, a.to.node)) continue;
+      const dd = canevasDonnees(a.from.node);
+      const dv = canevasDonnees(a.to.node);
+      const brut = typeof a.getData === 'function' ? a.getData() : null;
+      if (!dd || !dv || !brut) continue;
+      const cotes = canevasCotes(dd, dv);
+      if (brut.fromSide === cotes.de && brut.toSide === cotes.vers) continue;
+      try {
+        c.removeEdge(a);
+        c.importData({ nodes: [], edges: [Object.assign({}, brut, { fromSide: cotes.de, toSide: cotes.vers })] }, false);
+      } catch (e) { /* arête laissée telle quelle */ }
+    }
+  }
+
+  // Re-disposer : les tâches du canevas rangées comme l'était le graphe, la
+  // hiérarchie de gauche à droite et les blocages en aval. Les autres nœuds
+  // (notes, textes, groupes) ne bougent pas.
+  redisposer() {
+    const c = this.canvas;
+    if (c.readonly) return;
+    const d = this.integration.donnees();
+    const parRef = this._noeudsParRef();
+    const taches = [...parRef.keys()].map((r) => d.parRef.get(r)).filter(Boolean);
+    if (taches.length < 2) { new obsidian.Notice(tr('Pas assez de tâches à disposer.')); return; }
+    const { noeuds, aretes } = Ariane.grapheArticulation(taches);
+    const larg = this._largeur();
+    const haut = (ref) => { const x = canevasDonnees((parRef.get(ref) || [])[0]); return (x && x.height) || 110; };
+    const pos = Ariane.disposerArticulation(noeuds, aretes, { dx: larg + 120, gapY: 40, gapBande: 120, hauteur: haut });
+    const actuels = taches.map((t) => canevasDonnees(parRef.get(t.ref)[0])).filter(Boolean);
+    const ox = Math.min(...actuels.map((x) => x.x));
+    const oy = Math.min(...actuels.map((x) => x.y));
+    const ps = [...pos.values()];
+    if (!ps.length) return;
+    const px = Math.min(...ps.map((p) => p.x));
+    const py = Math.min(...ps.map((p) => p.y));
+    this._historique();
+    for (const [ref, p] of pos) {
+      const n = (parRef.get(ref) || [])[0];
+      if (n) this._deplacerNoeud(n, Math.round(ox + p.x - px), Math.round(oy + p.y - py));
+    }
+    this._recalerCotes();
+    c.requestSave();
+    this._historique();
+    this.planifier(true);
+    new obsidian.Notice(tr('Disposition recalculée.'));
+  }
+
+  // « + » : pose le niveau suivant de sous-tâches, sous leurs mères.
+  async deplierNiveau() {
+    if (this.canvas.readonly) return;
+    const d = this.integration.donnees();
+    const parRef = this._noeudsParRef();
+    const meres = [...parRef.keys()].filter((r) => (d.enfants.get(r) || []).some((e) => !parRef.has(e)));
+    if (!meres.length) { new obsidian.Notice(tr('Toutes les sous-tâches sont déjà sur le canevas.')); return; }
+    for (const r of meres) await this.ajouterRelatives(parRef.get(r)[0], 'hier');
+  }
+
+  // « − » : retire du canevas le niveau de sous-tâches le plus profond.
+  replierNiveau() {
+    if (this.canvas.readonly) return;
+    const d = this.integration.donnees();
+    const parRef = this._noeudsParRef();
+    const mereDe = new Map();
+    const aEnfant = new Set();
+    for (const r of parRef.keys()) {
+      const m = d.parent.get(r);
+      if (m && parRef.has(m)) { mereDe.set(r, m); aEnfant.add(m); }
+    }
+    const feuilles = [...mereDe.keys()].filter((r) => !aEnfant.has(r));
+    if (!feuilles.length) { new obsidian.Notice(tr('Aucune sous-tâche à retirer.')); return; }
+    const prof = (r) => { let n = 0; const vus = new Set(); while (mereDe.has(r) && !vus.has(r)) { vus.add(r); r = mereDe.get(r); n += 1; } return n; };
+    const max = Math.max(...feuilles.map(prof));
+    this._retirerRefs(feuilles.filter((r) => prof(r) === max), parRef);
+  }
+
+  // Retire du canevas le sous-arbre d'une carte (ce qui n'y tient que par elle).
+  retirerSousTaches(noeud) {
+    const ref = canevasRefDuNoeud(this.greffon, noeud);
+    if (!ref || this.canvas.readonly) return;
+    const d = this.integration.donnees();
+    const parRef = this._noeudsParRef();
+    const refs = Ariane.replierRelatifs(ref, Ariane.grapheArticulation(d.toutes).aretes, new Set(parRef.keys()), 'hier');
+    if (!refs.length) { new obsidian.Notice(tr('Aucune sous-tâche à retirer.')); return; }
+    this._retirerRefs(refs, parRef);
+  }
+
+  // Les cartes s'en vont ; les notes de tâche restent.
+  _retirerRefs(refs, parRef) {
+    const c = this.canvas;
+    if (typeof c.removeNode !== 'function') return;
+    this._historique();
+    for (const r of refs) for (const n of parRef.get(r) || []) { try { c.removeNode(n); } catch (e) { /* déjà parti */ } }
+    c.requestSave();
+    this._historique();
+    this.planifier(true);
+    new obsidian.Notice(refs.length + ' ' + tr('carte(s) retirée(s) du canevas'));
+  }
+
   // Sélecteur de tâches existantes (toutes, les ouvertes d'abord).
   choisirTache(point, opts) {
     const o = opts || {};
@@ -1242,8 +1517,9 @@ class SurfaceCanevas extends obsidian.Component {
   //#endregion Canevas · menus et création
 
   //#region Canevas · outils et panneau
-  // Deux boutons dans les commandes du canevas (colonne de droite) : le
-  // panneau des tâches, et le traçage de toutes les relations.
+  // Les boutons d'Ariane dans les commandes du canevas (colonne de droite) :
+  // le panneau des tâches, le traçage des relations, la disposition et les
+  // niveaux de sous-tâches.
   _assurerOutils() {
     const hote = this.canvas.canvasControlsEl;
     if (!hote || !hote.isConnected) return;
@@ -1261,6 +1537,18 @@ class SurfaceCanevas extends obsidian.Component {
     canevasInfobulle(b2, tr('Tracer les relations entre les tâches'));
     b2.setAttribute('data-tooltip-position', 'left');
     b2.addEventListener('click', (e) => { e.stopPropagation(); if (!this.canvas.readonly) this.tracerTout(); });
+    // Repris de l'ancienne vue Graphe : re-disposer, et un niveau de
+    // sous-tâches de plus ou de moins.
+    const outil = (icone, texte, action) => {
+      const b = canevasEl(g, 'div', 'canvas-control-item');
+      obsidian.setIcon(b, icone);
+      canevasInfobulle(b, texte);
+      b.setAttribute('data-tooltip-position', 'left');
+      b.addEventListener('click', (e) => { e.stopPropagation(); if (!this.canvas.readonly) action(); });
+    };
+    outil('layout-grid', tr('Re-disposer les tâches'), () => this.redisposer());
+    outil('list-plus', tr('Ajouter un niveau de sous-tâches'), () => this.deplierNiveau());
+    outil('list-minus', tr('Retirer un niveau de sous-tâches'), () => this.replierNiveau());
     this._boutonPanneau = b1;
   }
 
@@ -1581,4 +1869,4 @@ class PanneauTachesCanevas {
   //#endregion Canevas · panneau des tâches
 }
 
-//#endregion 16 · Articulation & Canevas
+//#endregion 16 · Canevas des tâches

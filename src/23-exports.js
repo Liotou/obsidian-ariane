@@ -17,7 +17,6 @@ module.exports._test = {
   // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
   construireBibliographie,
   injecterBibliographie,
-  MoteurArticulation, // prototype : _traceArete s'éprouve avec un moteur factice
   MoteurCalendrier,   // mémoire de la période consultée, par vue
   // Icônes des vues de base : clé de réglage, lecture de l'icône en place, tri
   // des éléments de menu.
@@ -32,6 +31,8 @@ module.exports._test = {
   // Canevas : logique éprouvée sur un faux canevas (nœuds, arêtes, importData).
   CANEVAS_CLE,
   canevasCotes,
+  canevasAjouterCartes,
+  canevasSansVuesGraphe,
   canevasRefDuNoeud,
   canevasNouvelId,
   IntegrationCanevas,

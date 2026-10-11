@@ -71,44 +71,6 @@ test('meilleurTitre : rien de probant -> null', () => {
   assert.equal(Ariane.meilleurTitre('', [{ ref: 'A', titre: 'x' }]), null);
 });
 
-/* ------------------- majPlanArticulationTexte -------------------- */
-
-const BASE = [
-  'filters:',
-  '  and:',
-  '    - file.ext == "md"',
-  'views:',
-  '  - type: table',
-  '    name: Liste',
-  '  - type: ariane-articulation',
-  '    name: Articulation',
-  "    arianeArtPlan: '{\"cartes\":[{\"ref\":\"T26-001\",\"x\":-270,\"y\":-90,\"replie\":false}],\"_migre\":true}'",
-].join('\n');
-
-test('majPlanArticulationTexte : ajoute des cartes au plan existant', () => {
-  const out = Ariane.majPlanArticulationTexte(BASE, 'Articulation', ['T26-002', 'T26-003']);
-  assert.ok(out.includes('"ref":"T26-002"'));
-  assert.ok(out.includes('"ref":"T26-003"'));
-  assert.ok(out.includes('"ref":"T26-001"'));       // l'existant reste
-  assert.equal(out.split('arianeArtPlan:').length, 2); // une seule ligne de plan
-});
-
-test('majPlanArticulationTexte : crée la ligne plan si absente', () => {
-  const base = BASE.split('\n').filter((l) => !l.includes('arianeArtPlan')).join('\n');
-  const out = Ariane.majPlanArticulationTexte(base, null, ['T26-009']);
-  assert.ok(out.includes('arianeArtPlan:'));
-  assert.ok(out.includes('"ref":"T26-009"'));
-});
-
-test('majPlanArticulationTexte : pas de vue articulation -> null', () => {
-  const base = ['views:', '  - type: table', '    name: X'].join('\n');
-  assert.equal(Ariane.majPlanArticulationTexte(base, null, ['T26-001']), null);
-});
-
-test('majPlanArticulationTexte : rien à ajouter (déjà présent) -> null', () => {
-  assert.equal(Ariane.majPlanArticulationTexte(BASE, 'Articulation', ['T26-001']), null);
-});
-
 /* ------- aplatir / reconstruire / déplacer les specs (hiérarchie) ----- */
 
 const ARBRE = () => ([

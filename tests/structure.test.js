@@ -72,7 +72,7 @@ test('régions de niveau 2 : appariées par préfixe et titre', () => {
 
 test('les grosses classes portent bien des sous-régions', () => {
   const prefixes = new Set(regionsNiveau2().map((b) => b.prefixe));
-  for (const p of ['Ariane', 'Frise', 'Articulation', 'Calendrier']) {
+  for (const p of ['Ariane', 'Frise', 'Canevas', 'Calendrier']) {
     assert.ok(prefixes.has(p), `aucune sous-région « ${p} · … » : la classe a perdu son balisage`);
   }
 });
@@ -88,8 +88,8 @@ test('la carte de l\'en-tête liste exactement les régions du fichier', () => {
   }
 });
 
-test('les trois moteurs de vue héritent du socle, sans _doc() local', () => {
-  for (const c of ['MoteurFrise', 'MoteurArticulation', 'MoteurCalendrier']) {
+test('les deux moteurs de vue héritent du socle, sans _doc() local', () => {
+  for (const c of ['MoteurFrise', 'MoteurCalendrier']) {
     assert.ok(SRC.includes('class ' + c + ' extends MoteurVue {'),
       c + ' doit hériter de MoteurVue : c\'est là que vivent _doc() et _win()');
   }

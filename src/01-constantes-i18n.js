@@ -829,6 +829,15 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "Saisir les pages…": "Enter pages…",
+    "Canevas : ouvrir un canevas de tâches…": "Canvas: open a task canvas…",
+    "Canevas de tâches…": "Task canvases…",
+    "Nouveau canevas de tâches…": "New task canvas…",
+    "Re-disposer les tâches": "Rearrange the tasks",
+    "Ajouter un niveau de sous-tâches": "Add a level of subtasks",
+    "Retirer un niveau de sous-tâches": "Remove a level of subtasks",
+    "Retirer ses sous-tâches du canevas": "Remove its subtasks from the canvas",
+    "Dossier des canevas": "Canvas folder",
+    "Confirmer avant de supprimer une tâche": "Confirm before deleting a task",
     "Ouvrir avec ": "Open with ",
     " : ouverture impossible.": ": could not open the file.",
     "Saisir les pages": "Enter pages",
@@ -1151,8 +1160,8 @@ const TEXTES = {
     "Reproposer": "Suggest again",
     "Analyse…": "Analysing…",
     "Poser les tâches sur": "Place tasks on",
-    "Une vue articulation reçoit les cartes ; sinon les notes sont seulement créées.": "An articulation view receives the cards; otherwise only the notes are created.",
-    "— notes seulement —": "— notes only —",
+    "Un canevas de tâches reçoit les cartes ; sinon les notes sont seulement créées.": "A task canvas receives the cards; otherwise only the notes are created.",
+    "Notes seulement": "Notes only",
     " tâche(s) à créer": " task(s) to create",
     "Créer les tâches": "Create the tasks",
     "Glissez la poignée : vertical = l’ordre, horizontal = le niveau.": "Drag the handle: vertical = order, horizontal = level.",
@@ -1307,16 +1316,14 @@ const DEFAULT_SETTINGS = {
   clesTaches: {},
   libellesTaches: {}, // ancien réglage, plus utilisé
   _clesTachesNettoye: 0,
-  // Vue Articulation : accrochage magnétique des cartes au glissé.
-  articulationAimant: true,
-  articulationFleches: 'courbe', // 'courbe' | 'angulaire'
-  articulationConfirmerSuppression: true, // demander avant de supprimer une carte
   friseBarreCouleur: 'famille', // 'famille' | 'statut' | 'racine' | 'priorite' | 'avancement'
   friseLignageSurvol: true,     // survol d'une barre : révéler ascendants + descendants
-  articulationGrille: 20,       // pas de la grille (0 = pas de grille)
-  articulationSeuilAimant: 7,   // distance d'accrochage aux voisins (px)
-  // Canevas (section 16b) : cartes de tâches sur le canevas natif.
+  // Canevas (section 16) : cartes de tâches sur le canevas natif.
   canevasLargeurCarte: 280,     // largeur d'une carte posée (px)
+  canevasDossier: '',           // vide : « Canevas » dans le dossier des tâches
+  // Demander avant de supprimer une tâche depuis le canevas. La clé date de
+  // l'ancienne vue Graphe ; elle est gardée pour ne pas perdre le choix fait.
+  articulationConfirmerSuppression: true,
   // Icône par vue de base : « chemin.base::Nom de la vue » -> nom lucide.
   basesIcones: {},
   basesIconesDossiers: true,    // à défaut, la vue reprend l'icône Iconize de son dossier

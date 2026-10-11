@@ -1,6 +1,6 @@
 
 // ── avecTaches ────────────────────────────────────────────────────────────
-// Domaine : tâches (frise, articulation, calendrier).
+// Domaine : tâches (frise, canevas, calendrier).
 // Lecture et écriture des notes de tâche, index ref→fichier, temps de travail,
 // synchronisation Apple (Rappels et Agenda).
 const avecTaches = (Base) => class extends Base {
@@ -950,7 +950,7 @@ const avecTaches = (Base) => class extends Base {
   }
 
   // Intitulé d'une colonne / propriété affichée : sans le préfixe des tâches si
-  // l'option est active (les vues frise et articulation).
+  // l'option est active (la frise et le canevas).
   libelleColonne(nom) {
     if (this.settings.masquerPrefixeAffichage === false) return nom;
     const pre = this.settings.prefixeTaches || '';
@@ -1209,7 +1209,7 @@ const avecTaches = (Base) => class extends Base {
   }
 
   // Crée un arbre de specs (déjà normalisées). Renvoie la liste des réfs créées.
-  // opts.vue = { fichier, nom } d'une vue articulation où poser les cartes.
+  // opts.canevas = fichier .canvas où poser les cartes.
   async creerArbreTaches(specs, opts) {
     const o = opts || {};
     const crees = [];
@@ -1231,32 +1231,13 @@ const avecTaches = (Base) => class extends Base {
       for (const e of spec.enfants || []) await poser(e, ref);
     };
     for (const s of specs || []) await poser(s, o.parentRef || null);
-    if (o.vue && o.vue.fichier && crees.length) {
+    if (o.canevas && crees.length && this.canevas) {
       try {
-        const fv = this.app.vault.getAbstractFileByPath(o.vue.fichier);
-        if (fv) {
-          const txt = await this.app.vault.read(fv);
-          const out = Ariane.majPlanArticulationTexte(txt, o.vue.nom || null, crees);
-          if (out && out !== txt) await this.app.vault.modify(fv, out);
-        }
-      } catch (e) { console.debug('[Ariane] pose sur vue', e); }
+        this.canevas.invalider();
+        await this.canevas.poserDansCanevas(o.canevas, crees);
+      } catch (e) { console.debug('[Ariane] pose sur le canevas', e); }
     }
     return crees;
-  }
-
-  // Vues « ariane-articulation » trouvées dans les .base du coffre.
-  async vuesArticulation() {
-    const out = [];
-    for (const f of this.app.vault.getFiles().filter((x) => x && x.extension === 'base')) {
-      let base;
-      try { base = obsidian.parseYaml(await this.app.vault.read(f)) || {}; } catch (e) { continue; }
-      for (const v of (Array.isArray(base.views) ? base.views : [])) {
-        if (v && v.type === 'ariane-articulation') {
-          out.push({ fichier: f.path, nom: v.name || f.basename });
-        }
-      }
-    }
-    return out;
   }
 
   // Ouvre la modale de découpage pour une tâche donnée.
@@ -1654,7 +1635,7 @@ const avecTaches = (Base) => class extends Base {
   }
 
   // Le titre d'une tâche EST son premier alias (c'est ce qu'affichent la frise
-  // et l'articulation). On aligne aussi le titre H1 du corps s'il existe, pour
+  // et le canevas). On aligne aussi le titre H1 du corps s'il existe, pour
   // que la note ne se contredise pas.
   async renommerTitreTache(ref, titre) {
     const t = String(titre == null ? '' : titre).trim();

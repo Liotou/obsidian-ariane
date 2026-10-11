@@ -82,7 +82,7 @@
  *            11g  avecNoteSchemas           draw.io
  *            11h  avecTachesStatiques       fonctions pures des tâches
  *            11i  avecFriseStatiques        Gantt, périodes, tri
- *            11j  avecArticulationStatiques plan, arêtes, zones
+ *            11j  avecArticulationStatiques graphe, disposition, lignée
  *            11k  avecTaches     notes de tâche, temps, synchro Apple
  *            11l  avecPublicationSite   miroir vault -> content/, commit, push
  *            11m  avecActivite   activité réelle (ActivityWatch)
@@ -99,19 +99,19 @@
  *   14 · Socle des vues
  *          identifiants de vue, réglages par défaut des vues de base, svgEl,
  *          pile d'annulation / rétablissement, et la classe MoteurVue dont
- *          héritent les trois moteurs (contexte, _doc(), _win())
+ *          héritent les deux moteurs (contexte, _doc(), _win())
  *   15 · Vue Frise
  *          Gantt. Sous-régions « Frise · … ».
  *            15a  MoteurFrise — reste une SEULE classe : l'export la sérialise
  *                 par toString(), des mixins l'ampute (voir l'en-tête de 15a)
  *            15b  fabriquerVueFriseBase — la vue Bases « ariane-frise »
  *            15c  figage des données + pageFriseHtml (page autonome)
- *   16 · Articulation & Canevas
- *          16   graphe : MoteurArticulation, vue Bases « ariane-articulation ».
- *               Sous-régions « Articulation · … ».
- *          16b  canevas natif : IntegrationCanevas (suit les .canvas ouverts),
- *               SurfaceCanevas (cartes de tâches, relations sur les arêtes,
- *               menus), PanneauTachesCanevas. Sous-régions « Canevas · … ».
+ *   16 · Canevas des tâches
+ *          canevas natif : IntegrationCanevas (suit les .canvas ouverts, range
+ *          les canevas dans leur dossier, convertit les anciennes vues
+ *          « Graphe »), SurfaceCanevas (cartes de tâches, relations sur les
+ *          arêtes, menus, disposition, niveaux), PanneauTachesCanevas.
+ *          Sous-régions « Canevas · … ».
  *   17 · Vue Calendrier
  *          mois et semaine : MoteurCalendrier, vue Bases « ariane-calendrier »,
  *          agenda Apple en fond. Sous-régions « Calendrier · … ».
@@ -156,7 +156,7 @@
  *   · niveau 2, indenté de 2 espaces, à l'intérieur des grosses classes :
  *       //#region Ariane · <domaine>          (class Ariane, section 11)
  *       //#region Frise · <domaine>           (MoteurFrise, section 15)
- *       //#region Articulation · <domaine>    (MoteurArticulation, 16)
+ *       //#region Canevas · <domaine>         (canevas des tâches, 16)
  *       //#region Calendrier · <domaine>      (MoteurCalendrier, 17)
  *     Une méthode nouvelle se range DANS le groupe qui la concerne, pas en fin
  *     de classe : c'est ce qui garde le fichier lisible malgré sa taille.
@@ -167,7 +167,7 @@
  * toute réécriture globale :  tr -cd '\000' < main.js | wc -c
  *
  * MULTI-FENÊTRE. Dans un volet détaché, `document` et `window` globaux sont
- * ceux de la fenêtre PRINCIPALE. Les trois moteurs de vue héritent de MoteurVue
+ * ceux de la fenêtre PRINCIPALE. Les deux moteurs de vue héritent de MoteurVue
  * (section 14), qui expose `_doc()` et `_win()` : les utiliser pour tout
  * createElement, tout écouteur de glisser (pointermove/pointerup) et tout
  * requestAnimationFrame lié à la vue. Ne jamais réintroduire un `_doc()` local :

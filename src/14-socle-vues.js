@@ -1,9 +1,9 @@
 //#region 14 · Socle des vues
 // ═══════════════════════════════════════════════════════════════════════════
 //  14 · SOCLE DES VUES
-//  Ce que frise, articulation et calendrier partagent : identifiants de vue,
-//  réglages par défaut de chaque vue de base, svgEl, pile d'annulation et de
-//  rétablissement, et la classe MoteurVue dont les trois moteurs héritent.
+//  Ce que frise et calendrier partagent : identifiants de vue, réglages par
+//  défaut de chaque vue de base, svgEl, pile d'annulation et de
+//  rétablissement, et la classe MoteurVue dont les deux moteurs héritent.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const TYPE_VUE_REFS = 'zfa-references';
@@ -11,6 +11,8 @@ const TYPE_VUE_INCOHERENCES = 'zfa-taches-incoherences';
 const TYPE_VUE_CHRONOLOGIE = 'ariane-chronologie';
 const TYPE_VUE_RELECTURE = 'zfa-relecture';
 const TYPE_VUE_BASE_FRISE = 'ariane-frise';
+// L'ancienne vue « Graphe », retirée : son identifiant ne sert plus qu'à
+// retrouver ses traces dans les .base pour les convertir en canevas.
 const TYPE_VUE_BASE_ARTIC = 'ariane-articulation';
 const TYPE_VUE_BASE_CALENDRIER = 'ariane-calendrier';
 
@@ -42,7 +44,7 @@ function svgEl(nom, attrs) {
   return e;
 }
 
-// Annulation et rétablissement partagés par la frise, l'articulation et le
+// Annulation et rétablissement partagés par la frise et le
 // calendrier : chaque geste qui écrit pousse une PAIRE de fonctions — `annule`
 // revient à l'état d'avant, `retablit` rejoue le geste. Ctrl/⌘+Z (sans Maj)
 // annule ; ⌘⇧Z ou Ctrl+Y rétablit. Deux piles locales au moteur (survivent aux
@@ -430,7 +432,7 @@ class IconesVuesBases extends obsidian.Component {
   }
 }
 
-// Socle des trois moteurs de vue (frise, articulation, calendrier).
+// Socle des deux moteurs de vue (frise, calendrier).
 //
 // Ce qu'ils partagent vraiment : le même quatuor greffon/app/racine/contexte, et
 // surtout la fenêtre dans laquelle ils vivent. Le mettre ici n'est pas de la

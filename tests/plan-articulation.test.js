@@ -4,15 +4,6 @@ const Ariane = require('./obsidian-factice.js');
 
 const A = (de, vers, type) => ({ de, vers, type });
 
-test('aretesEntre garde les arêtes internes à l ensemble', () => {
-  const ar = [A('P', 'C', 'hier'), A('P', 'X', 'hier'), A('B', 'P', 'bloque')];
-  assert.deepEqual(
-    Ariane.aretesEntre(ar, ['P', 'C']),
-    [A('P', 'C', 'hier')]);
-  assert.equal(Ariane.aretesEntre(ar, new Set(['P', 'C', 'B'])).length, 2);
-  assert.deepEqual(Ariane.aretesEntre([], ['P']), []);
-});
-
 test('relativesHorsPlan : enfants et bloquantes absents du plan', () => {
   const ar = [A('T', 'C1', 'hier'), A('T', 'C2', 'hier'),
     A('B1', 'T', 'bloque'), A('T', 'B2', 'bloque')];

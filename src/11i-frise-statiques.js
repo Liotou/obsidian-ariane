@@ -1,6 +1,6 @@
 
 // ── avecFriseStatiques ────────────────────────────────────────────────────
-// Domaine : tâches (frise, articulation, calendrier).
+// Domaine : tâches (frise, canevas, calendrier).
 // Fonctions pures de la frise : disposition Gantt, périodes, regroupement, tri.
 const avecFriseStatiques = (Base) => class extends Base {
   //#region Ariane · static · frise / gantt

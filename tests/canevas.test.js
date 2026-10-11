@@ -4,6 +4,7 @@ const Ariane = require('./obsidian-factice.js');
 
 const {
   CANEVAS_CLE, canevasCotes, canevasRefDuNoeud, canevasNouvelId,
+  canevasAjouterCartes, canevasSansVuesGraphe,
   IntegrationCanevas, SurfaceCanevas,
 } = Ariane._test;
 
@@ -185,7 +186,7 @@ test('inserer : canevas en lecture seule → rien n\'est posé', async () => {
   assert.equal(canvas.nodes.size, 0);
 });
 
-test('canevasDepuisPlan : le plan d\'articulation devient un canevas, relations comprises', () => {
+test('canevasDepuisPlan : le plan de l\'ancienne vue Graphe devient un canevas, relations comprises', () => {
   const { integration } = monter([
     tache('T1'), tache('T2', { parent: '[[T1]]' }), tache('T3', { bloquePar: ['[[T2]]'] }),
   ]);
@@ -207,4 +208,73 @@ test('canevasDepuisPlan : le plan d\'articulation devient un canevas, relations 
   const bloc = edges.find((e) => e.fromNode === n2.id);
   assert.equal(bloc.toNode, n3.id);
   assert.equal(bloc.color, '1');
+});
+
+test('canevasSansVuesGraphe : la vue Graphe quitte le .base, le reste est intact', () => {
+  const base = [
+    'filters:',
+    '  and:',
+    '    - file.ext == "md"',
+    'views:',
+    '  - type: table',
+    '    name: Liste',
+    '  - type: ariane-articulation',
+    '    name: Graphe',
+    '    order:',
+    '      - file.name',
+    "    arianeArtPlan: '{\"cartes\":[]}'",
+    '  - type: ariane-calendrier',
+    '    name: Calendrier',
+    '',
+  ].join('\n');
+  const r = canevasSansVuesGraphe(base);
+  assert.ok(!r.includes('ariane-articulation') && !r.includes('arianeArtPlan') && !r.includes('Graphe'));
+  assert.ok(r.includes('  - type: table\n    name: Liste\n  - type: ariane-calendrier\n    name: Calendrier'));
+  assert.ok(r.startsWith('filters:\n  and:\n    - file.ext == "md"\nviews:'));
+  assert.equal(canevasSansVuesGraphe('views:\n  - type: table\n'), 'views:\n  - type: table\n');
+});
+
+test('canevasAjouterCartes : cartes neuves sous le contenu, relations tracées, sans doublon', () => {
+  const rel = (a, b, type) => (type === 'hier' && a === 'T1' && b === 'T2') || (type === 'bloque' && a === 'T2' && b === 'T3');
+  const contenu = { nodes: [{ id: 'a', type: 'text', text: '[[T1]]', x: 10, y: 0, width: 280, height: 100 },
+    { id: 'n', type: 'file', file: 'x.md', x: 400, y: 50, width: 200, height: 300 }], edges: [] };
+  const { contenu: c, poses } = canevasAjouterCartes(contenu, ['T1', 'T2', 'T3', 'T2'], rel, 280);
+  assert.deepEqual(poses, ['T2', 'T3'], 'T1 est déjà là (en texte simple), T2 n\'est posée qu\'une fois');
+  const n2 = c.nodes.find((n) => n[CANEVAS_CLE] && n[CANEVAS_CLE].ref === 'T2');
+  assert.ok(n2.y >= 350 + 120 && n2.x === 10, 'sous tout ce que porte le canevas, aligné à gauche');
+  assert.equal(c.edges.length, 2);
+  const hier = c.edges.find((e) => e.fromNode === 'a');
+  assert.equal(hier.toNode, n2.id);
+  assert.equal(hier.color, undefined);
+  assert.equal(c.edges.find((e) => e.fromNode === n2.id).color, '1');
+  assert.equal(contenu.nodes.length, 2, 'le contenu d\'origine n\'est pas modifié');
+  assert.deepEqual(canevasAjouterCartes(c, ['T1'], rel, 280).poses, []);
+});
+
+test('replierNiveau et retirerSousTaches : les cartes partent, les notes restent', () => {
+  const { canvas, surface } = monter([
+    tache('T1'), tache('T2', { parent: '[[T1]]' }), tache('T3', { parent: '[[T2]]' }), tache('T4', { parent: '[[T1]]' }),
+  ]);
+  canvas.removeNode = (n) => canvas.nodes.delete(n.id);
+  const n1 = noeudTache(canvas, 'T1', 0, 0);
+  noeudTache(canvas, 'T2', 0, 200);
+  noeudTache(canvas, 'T3', 0, 400);
+  noeudTache(canvas, 'T4', 300, 200);
+  surface.replierNiveau();
+  const refs = () => [...canvas.nodes.values()].map((n) => n.getData()[CANEVAS_CLE].ref).sort();
+  assert.deepEqual(refs(), ['T1', 'T2', 'T4'], 'seul le niveau le plus profond s\'en va');
+  surface.retirerSousTaches(n1);
+  assert.deepEqual(refs(), ['T1']);
+});
+
+test('redisposer : la mère à gauche de ses sous-tâches, le coin du groupe conservé', () => {
+  const { canvas, surface } = monter([tache('T1'), tache('T2', { parent: '[[T1]]' }), tache('T3', { parent: '[[T1]]' })]);
+  noeudTache(canvas, 'T2', 500, 500);
+  noeudTache(canvas, 'T1', 900, 100);
+  noeudTache(canvas, 'T3', 100, 900);
+  surface.redisposer();
+  const pos = new Map([...canvas.nodes.values()].map((n) => [n.getData()[CANEVAS_CLE].ref, n.getData()]));
+  assert.ok(pos.get('T2').x > pos.get('T1').x && pos.get('T3').x > pos.get('T1').x);
+  assert.equal(Math.min(...[...pos.values()].map((d) => d.x)), 100);
+  assert.equal(Math.min(...[...pos.values()].map((d) => d.y)), 100);
 });

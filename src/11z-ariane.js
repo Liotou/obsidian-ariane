@@ -474,9 +474,9 @@ class Ariane extends composer(obsidian.Plugin,
       checkCallback: surCanevas((s) => s.basculerPanneau()),
     });
     this.addCommand({
-      id: 'canevas-depuis-articulation',
-      name: tr('Canevas : convertir un plan d’articulation en canevas'),
-      callback: () => this.canevas && this.canevas.convertirArticulation(),
+      id: 'canevas-ouvrir',
+      name: tr('Canevas : ouvrir un canevas de tâches…'),
+      callback: () => this.canevas && this.canevas.ouvrirCanevas(),
     });
     this.addCommand({
       id: 'canevas-tracer-relations',
@@ -577,7 +577,7 @@ class Ariane extends composer(obsidian.Plugin,
     new obsidian.Notice(tr('L’opération a échoué : ') + (e && e.message ? e.message : e));
   }
 
-  // Volets latéraux et vues de base (frise, articulation, calendrier).
+  // Volets latéraux et vues de base (frise, calendrier).
   // Les vues de base n'existent que si Bases est actif.
   _enregistrerVues() {
     // Panneau de suggestions dynamiques (moteur lexical local).
@@ -590,10 +590,12 @@ class Ariane extends composer(obsidian.Plugin,
     // qu'une par type de vue.
     this.iconesBases = new IconesVuesBases(this);
     this.addChild(this.iconesBases);
-    // Le canevas natif d'Obsidian reçoit les cartes de tâches (section 16b) :
-    // pas une vue à nous, une intégration qui suit les .canvas ouverts.
+    // Le canevas natif d'Obsidian reçoit les cartes de tâches (section 16) :
+    // pas une vue à nous, une intégration qui suit les .canvas ouverts. Les
+    // vues « Graphe » qui restent dans les .base y sont converties.
     this.canevas = new IntegrationCanevas(this);
     this.addChild(this.canevas);
+    this.app.workspace.onLayoutReady(() => { if (this.canevas) this.canevas.migrerVuesGraphe(); });
     // Le correcteur du système dans l'éditeur (Mac) : l'extension CodeMirror
     // est enregistrée avec les autres, dans _installerExtensionsEditeur.
     this.correcteur = new CorrecteurApple(this);
@@ -638,19 +640,6 @@ class Ariane extends composer(obsidian.Plugin,
             options: { numero: tr('nº de semaine'), dates: tr('dates'),
                        'les-deux': tr('les deux') },
             shouldHide: () => config.get('zoom') !== 'semaine',
-          },
-        ],
-      });
-      const VueArtic = fabriquerVueArticulationBase(this);
-      this.registerBasesView(TYPE_VUE_BASE_ARTIC, {
-        name: tr('Articulation'),
-        icon: 'git-branch',
-        factory: (controleur, conteneur) => new VueArtic(controleur, conteneur),
-        options: () => [
-          {
-            type: 'dropdown', key: 'modeCarte', displayName: tr('Cartes'),
-            default: 'retracte',
-            options: { retracte: tr('Rétracté'), detaille: tr('Détaillé') },
           },
         ],
       });

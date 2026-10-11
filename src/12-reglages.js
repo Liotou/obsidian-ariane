@@ -1322,7 +1322,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       });
     }
     this._section(c, tr('Familles de tâches'));
-    this._aide(c, tr("Chaque famille porte une couleur et une icône (cartes de l'articulation) et déclare les propriétés qu'elle ajoute à une tâche. La famille d'une tâche vit dans son champ « famille »."));
+    this._aide(c, tr("Chaque famille porte une couleur et une icône (cartes du canevas) et déclare les propriétés qu'elle ajoute à une tâche. La famille d'une tâche vit dans son champ « famille »."));
     this._tableFamillesTaches(c, s, maj);
     new obsidian.Setting(c)
       .setName(tr('Famille par défaut'))
@@ -1351,7 +1351,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         }));
     new obsidian.Setting(c)
       .setName(tr('Masquer le préfixe à l\'affichage'))
-      .setDesc(tr('Colonnes de frise, cartes d\'articulation et colonnes des bases affichent le nom sans le préfixe.'))
+      .setDesc(tr('Colonnes de frise, cartes du canevas et colonnes des bases affichent le nom sans le préfixe.'))
       .addToggle((t) => t.setValue(s.masquerPrefixeAffichage !== false)
         .onChange(async (v) => { s.masquerPrefixeAffichage = v; await maj(); }));
     {
@@ -1481,7 +1481,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .onChange(async (v) => { s.styleNoteTache = v; await maj(); this.plugin.habillerNotesTache(); }));
     new obsidian.Setting(c)
       .setName(tr('CSS personnalisé'))
-      .setDesc(tr("Injecté globalement dans Obsidian. Vise entre autres « .zfa-note-tache » (note de tâche), « .zfa-artic-* » (articulation), « .zfa-gantt-* » (frise). Laisser vide pour ne rien injecter."))
+      .setDesc(tr("Injecté globalement dans Obsidian. Vise entre autres « .zfa-note-tache » (note de tâche), « .zfa-cnv-* » (canevas), « .zfa-gantt-* » (frise). Laisser vide pour ne rien injecter."))
       .setClass('zfa-css-perso-reglage')
       .addTextArea((t) => {
         t.setPlaceholder('.zfa-note-tache .metadata-container { ... }')
@@ -1748,6 +1748,17 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._section(c, tr('Canevas'));
     this._aide(c, tr("Les tâches se posent sur n'importe quel canevas Obsidian (fichier .canvas) : clic droit sur le fond, connexion tirée d'une carte, ou panneau « Tâches Ariane » dans les commandes du canevas. Sélectionner une arête entre deux tâches propose, dans la barre du canevas, d'en faire une relation mère / sous-tâche ou un blocage. Un canevas par thème, ou un seul : à votre guise."));
     new obsidian.Setting(c)
+      .setName(tr('Dossier des canevas'))
+      .setDesc(tr('Où se rangent les canevas de tâches, et où les commandes les cherchent. Vide : un dossier « Canevas » dans le dossier des tâches.'))
+      .addText((t) => t.setValue(s.canevasDossier || '')
+        .setPlaceholder(((s.dossierTaches || '') ? s.dossierTaches + '/' : '') + 'Canevas')
+        .onChange(async (v) => { s.canevasDossier = v.trim(); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Confirmer avant de supprimer une tâche'))
+      .setDesc(tr('Demander une validation quand on supprime une tâche depuis le canevas (clic droit). Retirer une carte du canevas, elle, ne supprime rien.'))
+      .addToggle((t) => t.setValue(s.articulationConfirmerSuppression !== false)
+        .onChange(async (v) => { s.articulationConfirmerSuppression = v; await maj(); }));
+    new obsidian.Setting(c)
       .setName(tr('Largeur des cartes (px)'))
       .setDesc(tr('Largeur d’une carte à sa pose. Chaque carte reste redimensionnable ; sa hauteur suit son contenu.'))
       .addSlider((sl) => sl.setLimits(200, 420, 10).setDynamicTooltip()
@@ -1758,42 +1769,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr('Poser une carte trace aussitôt ses liens (mère, sous-tâches, blocages) avec les cartes déjà présentes.'))
       .addToggle((t) => t.setValue(s.canevasRelierAuto !== false)
         .onChange(async (v) => { s.canevasRelierAuto = v; await maj(); }));
-    this._section(c, tr('Vue Articulation'));
-    this._aide(c, tr("L'articulation des tâches (hiérarchie, blocages) se dessine dans une vue « Articulation » de la base. L'échelle de la frise, la hauteur de ligne, le regroupement et le tri se règlent par vue, dans « Configurer la vue »."));
-    new obsidian.Setting(c)
-      .setName(tr('Fléchage'))
-      .setDesc(tr('Forme des liens entre cartes.'))
-      .addDropdown((d) => d
-        .addOption('courbe', tr('Courbe'))
-        .addOption('angulaire', tr('Angulaire'))
-        .setValue(s.articulationFleches || 'courbe')
-        .onChange(async (v) => { s.articulationFleches = v; await maj(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Confirmer avant de supprimer une carte'))
-      .setDesc(tr("Demander une validation quand on supprime une tâche depuis l'articulation (clavier ou clic droit)."))
-      .addToggle((t) => t.setValue(s.articulationConfirmerSuppression !== false)
-        .onChange(async (v) => { s.articulationConfirmerSuppression = v; await maj(); }));
-    new obsidian.Setting(c)
-      .setName(tr("Accrochage magnétique"))
-      .setDesc(tr("Au glissé d'une carte, l'accrocher à une grille et aux bords / centres des cartes voisines."))
-      .addToggle((t) => t.setValue(s.articulationAimant !== false)
-        .onChange(async (v) => { s.articulationAimant = v; await maj(); this.display(); }));
-    if (s.articulationAimant !== false) {
-      new obsidian.Setting(c)
-        .setName(tr('Pas de la grille (px)'))
-        .setDesc(tr('0 pour ne pas accrocher à la grille.'))
-        .addText((t) => t.setValue(String(s.articulationGrille ?? 20))
-          .onChange(async (v) => {
-            const n = parseInt(v, 10);
-            s.articulationGrille = Number.isFinite(n) && n >= 0 ? n : 20;
-            await maj();
-          }));
-      new obsidian.Setting(c)
-        .setName(tr("Distance d'accrochage aux voisins (px)"))
-        .addSlider((sl) => sl.setLimits(0, 24, 1).setDynamicTooltip()
-          .setValue(Number.isFinite(s.articulationSeuilAimant) ? s.articulationSeuilAimant : 7)
-          .onChange(async (v) => { s.articulationSeuilAimant = v; await maj(); }));
-    }
     this._section(c, tr('Icônes des vues de base'));
     this._aide(c, tr("Obsidian n'attache qu'une icône par type de vue : toutes les vues « tableau » d'une base portent la même. Clic droit sur l'icône d'une vue, dans la barre d'outils de la base ou dans son menu déroulant, pour en choisir une autre. La commande « Bases : icône de la vue affichée… » fait la même chose. Les icônes posées se retrouvent ici."));
     new obsidian.Setting(c)

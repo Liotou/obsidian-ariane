@@ -56,16 +56,21 @@ Une méthode nouvelle va dans le mixin de son domaine, et dans la sous-région
   et les outils d'édition les préservent. Contrôle :
   `tr -cd '\000' < main.js | wc -c`.
 - **Multi-fenêtre.** Dans un volet détaché, `document` et `window` globaux sont
-  ceux de la fenêtre **principale**. Les trois moteurs de vue héritent de
-  `MoteurVue` et passent par `this._doc()` / `this._win()` pour tout
+  ceux de la fenêtre **principale**. Les deux moteurs de vue (frise,
+  calendrier) héritent de `MoteurVue` et passent par `this._doc()` / `this._win()` pour tout
   `createElement`, tout écouteur `pointermove`/`pointerup` et tout
   `requestAnimationFrame`. Ne jamais réintroduire un `_doc()` local.
 - **Index des tâches.** `Ariane.refDepuisChemin` ne lit que le **chemin** :
   `_indexTaches()` s'invalide donc sur `create`/`delete`/`rename` et
   `saveSettings`, pas sur `modify`.
-- **Identifiants de vue gelés** : `ariane-frise`, `ariane-articulation`,
-  `ariane-calendrier`, `zfa-references`, `zfa-taches-incoherences`,
-  `zfa-suggestions`. Les fichiers `.base` de l'utilisateur les référencent.
+- **Identifiants de vue gelés** : `ariane-frise`, `ariane-calendrier`,
+  `zfa-references`, `zfa-taches-incoherences`, `zfa-suggestions`. Les fichiers
+  `.base` de l'utilisateur les référencent.
+- **Plus de vue « Graphe »** (`ariane-articulation`, retirée le 2026-10-11 à la
+  demande de l'utilisateur) : les tâches s'articulent sur le canevas natif
+  (section 16), dont les fichiers se rangent dans « Canevas » sous le dossier
+  des tâches. `migrerVuesGraphe` convertit au démarrage toute vue Graphe
+  restée dans un `.base`, puis l'en retire. Ne pas la réintroduire.
 - **JXA / EventKit** (synchro Apple) : `authorizationStatusForEntityType`
   renvoie une **chaîne**, la passer par `Number()` ; `null` en argument objet
   ObjC devient `NSNull` et plante — utiliser `$(tableau)` ; lire la couleur d'un

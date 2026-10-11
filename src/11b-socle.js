@@ -23,7 +23,7 @@ const avecSocle = (Base) => class extends Base {
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
-  // « Type » de l'en-tête de frise et le rendu des cartes d'articulation.
+  // « Type » de l'en-tête de frise et le rendu des cartes du canevas.
   static get TYPE_FR_VERS_OBSIDIAN() {
     return { texte: 'text', nombre: 'number', date: 'date',
              case: 'checkbox', liste: 'multitext', lien: 'link' };

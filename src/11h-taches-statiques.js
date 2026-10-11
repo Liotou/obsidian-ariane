@@ -1,6 +1,6 @@
 
 // ── avecTachesStatiques ───────────────────────────────────────────────────
-// Domaine : tâches (frise, articulation, calendrier).
+// Domaine : tâches (frise, canevas, calendrier).
 // Fonctions pures des tâches : clés, statuts, familles, cohérence.
 const avecTachesStatiques = (Base) => class extends Base {
   //#region Ariane · static · tâches
