@@ -1767,6 +1767,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addOption('droite', tr('Droite'))
         .setValue(s.canevasLiens || 'angulaire')
         .onChange(async (v) => { s.canevasLiens = v; await maj(); this._rafraichirCanevas(); this.display(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Côtés selon la disposition'))
+      .setDesc(tr('Un lien part du flanc de la carte quand les deux sont côte à côte, du bas quand elles sont empilées, et change de côté quand on les déplace. Plusieurs liens sur un même côté s’y répartissent.'))
+      .addToggle((t) => t.setValue(s.canevasCotesAuto !== false)
+        .onChange(async (v) => { s.canevasCotesAuto = v; await maj(); this._rafraichirCanevas(); }));
     if ((s.canevasLiens || 'angulaire') === 'angulaire') {
       new obsidian.Setting(c)
         .setName(tr('Ponts aux croisements'))

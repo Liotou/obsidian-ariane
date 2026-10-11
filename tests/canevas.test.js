@@ -269,16 +269,18 @@ test('replierNiveau et retirerSousTaches : les cartes partent, les notes restent
   assert.deepEqual(refs(), ['T1']);
 });
 
-test('redisposer : la mère à gauche de ses sous-tâches, le coin du groupe conservé', () => {
+test('redisposer : la mère à gauche de ses sous-tâches, le coin du groupe conservé, une même taille', async () => {
   const { canvas, surface } = monter([tache('T1'), tache('T2', { parent: '[[T1]]' }), tache('T3', { parent: '[[T1]]' })]);
   noeudTache(canvas, 'T2', 500, 500);
   noeudTache(canvas, 'T1', 900, 100);
   noeudTache(canvas, 'T3', 100, 900);
-  surface.redisposer();
+  await surface.redisposer();
   const pos = new Map([...canvas.nodes.values()].map((n) => [n.getData()[CANEVAS_CLE].ref, n.getData()]));
   assert.ok(pos.get('T2').x > pos.get('T1').x && pos.get('T3').x > pos.get('T1').x);
   assert.equal(Math.min(...[...pos.values()].map((d) => d.x)), 100);
   assert.equal(Math.min(...[...pos.values()].map((d) => d.y)), 100);
+  assert.equal(new Set([...pos.values()].map((d) => d.width + 'x' + d.height)).size, 1, 'toutes à la même taille');
+  assert.equal(pos.get('T1').width, 400);
 });
 
 // Le chemin ne traverse aucune boîte (bords compris comme libres).
@@ -362,7 +364,36 @@ test('surface : les liens entre tâches prennent le tracé angulaire, et le rend
   surface._majLiens(integration.donnees());
   assert.equal(arete.path.display.getAttribute('d'), 'NATIF');
   assert.ok(natifs > avant);
-  assert.ok(!Object.prototype.hasOwnProperty.call(arete, 'updatePath') || arete.updatePath.name === 'updatePath');
+  // Sans côtés automatiques non plus, l'arête retrouve sa méthode d'origine.
+  greffon.settings.canevasCotesAuto = false;
+  surface._majLiens(integration.donnees());
+  assert.equal(arete.updatePath.name, 'updatePath');
+});
+
+test('côtés lisibles : de flanc à flanc côte à côte, de haut en bas empilées, sans basculer au moindre pixel', () => {
+  const { canevasCotesLisibles } = Ariane._test;
+  const A = { x: 0, y: 0, width: 200, height: 100 };
+  assert.deepEqual(canevasCotesLisibles(A, { x: 400, y: 20, width: 200, height: 100 }, null), { de: 'right', vers: 'left' });
+  assert.deepEqual(canevasCotesLisibles(A, { x: -400, y: 0, width: 200, height: 100 }, null), { de: 'left', vers: 'right' });
+  assert.deepEqual(canevasCotesLisibles(A, { x: 50, y: 300, width: 200, height: 100 }, null), { de: 'bottom', vers: 'top' });
+  // En diagonale : l'horizontale tient tant que l'écart vertical ne l'écrase pas.
+  const diag = { x: 300, y: 260, width: 200, height: 100 };   // gx 100, gy 160
+  assert.deepEqual(canevasCotesLisibles(A, diag, { de: 'right', vers: 'left' }), { de: 'right', vers: 'left' });
+  assert.deepEqual(canevasCotesLisibles(A, diag, null), { de: 'bottom', vers: 'top' });
+  assert.deepEqual(canevasCotesLisibles(A, { x: 10, y: 10, width: 200, height: 100 }, { de: 'top', vers: 'bottom' }),
+    { de: 'top', vers: 'bottom' }, 'cartes superposées : on garde');
+});
+
+test('répartition : deux liens sur un même côté s\'y partagent la place, dans l\'ordre de leurs cibles', () => {
+  const { canvas, surface } = monter([tache('T1'), tache('T2'), tache('T3')]);
+  const n1 = noeudTache(canvas, 'T1', 0, 100);
+  const n2 = noeudTache(canvas, 'T2', 400, 0);
+  const n3 = noeudTache(canvas, 'T3', 400, 300);
+  const a = { id: 'a', from: { node: n1, side: 'right' }, to: { node: n3, side: 'left' } };
+  const b = { id: 'b', from: { node: n1, side: 'right' }, to: { node: n2, side: 'left' } };
+  const f = surface._repartir([a, b]);
+  assert.ok(f.get(b).f1 < f.get(a).f1, 'le lien vers la carte du haut part plus haut');
+  assert.equal(f.get(a).f2, 0.5, 'seul sur son côté d\'arrivée : au milieu');
 });
 
 test('points d\'accroche : le témoin compte les sous-tâches cachées, le clic les pose puis les replie', async () => {
@@ -383,15 +414,45 @@ test('points d\'accroche : le témoin compte les sous-tâches cachées, le clic 
   assert.deepEqual(refs(), ['T1'], 'second clic : repliées');
 });
 
-test('carte dépliée : le choix est rangé dans le nœud, et le corps de note nettoyé', () => {
+test('carte dépliée : la hauteur en décide, le chevron la donne ou la reprend', () => {
   const { canvas, surface } = monter([tache('T1')]);
   const n1 = noeudTache(canvas, 'T1', 0, 0);
-  assert.equal(surface._estDepliee('T1', n1), false);
-  surface._deplier(n1, true);
-  assert.equal(n1.getData()[CANEVAS_CLE].deplie, true);
-  assert.ok(n1.getData().height >= 280, 'la carte prend de la place pour la note');
-  surface._deplier(n1, false);
-  assert.equal(n1.getData()[CANEVAS_CLE].deplie, undefined);
+  surface._majDetails = () => {};
+  const m = { ref: 'T1', noeud: n1, hNaturelle: 140 };
+  const h = (v) => n1.setData(Object.assign({}, n1.getData(), { height: v }));
+  h(200);
+  assert.equal(surface._estDepliee(m, n1.getData()), false, 'un peu de marge ne fait pas un détail');
+  h(400);
+  assert.equal(surface._estDepliee(m, n1.getData()), true, 'agrandie : le détail paraît');
+  surface._basculerDetail(m);
+  assert.equal(n1.getData().height, 140, 'le chevron referme à la hauteur du contenu');
+  surface._basculerDetail(m);
+  assert.ok(surface._estDepliee(m, n1.getData()), 'et rouvre avec la place du détail');
   assert.equal(canevasCorpsNote('---\na: 1\n---\n# Titre\n<!-- ariane:creneaux -->\n## Sessions\n<!-- /ariane:creneaux -->\n\n\n\n## Note\nTexte'),
     '## Note\nTexte');
+});
+
+test('liens : une seconde passe n\'écrit plus rien (pas de passes sans fin avec l\'observateur)', () => {
+  const { canvas, surface, integration } = monter([tache('T1'), tache('T2', { parent: '[[T1]]' }), tache('T3', { parent: '[[T1]]' })]);
+  const n1 = noeudTache(canvas, 'T1', 0, 0);
+  const n2 = noeudTache(canvas, 'T2', 400, -100);
+  const n3 = noeudTache(canvas, 'T3', 400, 200);
+  let ecritures = 0;
+  const attr = () => { const a = {}; return { getAttribute: (k) => a[k], setAttribute: (k, v) => { a[k] = v; ecritures += 1; } }; };
+  const classes = () => { const s = new Set(); return { classList: { toggle: (c, v) => (v ? s.add(c) : s.delete(c)), has: (c) => s.has(c) } }; };
+  const pointe = () => { const st = {}; return { el: { style: new Proxy(st, { set: (o, k, v) => { o[k] = v; ecritures += 1; return true; } }) } }; };
+  const arete = (id, de, vers) => ({ id, from: { node: de, side: 'bottom' }, to: { node: vers, side: 'top' },
+    toLineEnd: pointe(), path: { display: attr(), interaction: attr() }, lineGroupEl: classes(), lineEndGroupEl: classes(),
+    updatePath() { this.path.display.setAttribute('d', 'NATIF'); this.toLineEnd.el.style.transform = 'natif'; } });
+  canvas.edges.set('a', arete('a', n1, n2));
+  canvas.edges.set('b', arete('b', n1, n3));
+  surface._actif = true;
+  surface._majLiens(integration.donnees());
+  const a = canvas.edges.get('a');
+  assert.equal(a.from.side, 'right', 'côte à côte : de flanc à flanc');
+  assert.equal(a.to.side, 'left');
+  assert.match(a.toLineEnd.el.style.transform, /rotate\(90deg\)/, 'la pointe entre par la gauche');
+  ecritures = 0;
+  surface._majLiens(integration.donnees());
+  assert.equal(ecritures, 0, 'rien n\'a bougé : rien n\'est réécrit');
 });

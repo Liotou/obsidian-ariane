@@ -2599,7 +2599,7 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
    les sous-tâches, en bas les tâches bloquantes. Le témoin dit combien
    sont hors du canevas ; « − » quand toutes y sont ; « + » s'il n'y en a pas. */
 .zfa-cnv-accroches {
-  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  position: absolute; right: 6px; top: 12px;
   display: flex; flex-direction: column; gap: 6px;
 }
 .zfa-cnv-accroche {
@@ -2620,7 +2620,9 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-cnv-accroche-bloque.est-repliee { background: var(--text-error); }
 .zfa-cnv-accroche:hover { filter: brightness(1.15); }
 
-/* Carte dépliée : propriétés, puis la note, qui défile dans la carte. */
+/* Carte dépliée : propriétés, puis la note, qui défile dans la carte. Le
+   détail n'existe à l'écran que lorsque la carte a la place de le montrer. */
+.zfa-cnv-racine:not(.est-depliee) .zfa-cnv-detail { display: none; }
 .zfa-cnv-detail {
   flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px;
   border-top: 1px solid var(--background-modifier-border); padding-top: 10px;

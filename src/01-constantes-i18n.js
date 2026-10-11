@@ -829,6 +829,8 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "Saisir les pages…": "Enter pages…",
+    "Côtés selon la disposition": "Sides follow the layout",
+    "Liens entre tâches": "Links between tasks",
     "Forme des liens entre tâches": "Shape of links between tasks",
     "Angulaire": "Right-angled",
     "Courbe": "Curved",
@@ -1333,6 +1335,7 @@ const DEFAULT_SETTINGS = {
   // contournant les cartes), 'courbe' (le tracé du canevas) ou 'droite'.
   canevasLiens: 'angulaire',
   canevasPonts: true,           // un pont là où deux liens angulaires se croisent
+  canevasCotesAuto: true,       // les côtés des liens suivent la disposition des cartes
   canevasStyleRelation: true,   // hiérarchie discrète, blocage rouge en pointillés
   // Demander avant de supprimer une tâche depuis le canevas. La clé date de
   // l'ancienne vue Graphe ; elle est gardée pour ne pas perdre le choix fait.

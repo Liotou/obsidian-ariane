@@ -34,6 +34,8 @@ module.exports._test = {
   canevasCotes,
   canevasAjouterCartes,
   canevasRouteOrtho,
+  canevasCotesLisibles,
+  canevasMilieu,
   canevasCorpsNote,
   canevasPontsOrtho,
   canevasCheminOrtho,
