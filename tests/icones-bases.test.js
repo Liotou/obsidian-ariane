@@ -165,3 +165,46 @@ test('icône d\'un dossier : à défaut, celle du dossier qui le contient', () =
   assert.equal(basesIconeDeDossier(table, ''), '');
   assert.equal(basesIconeDeDossier(null, '04 - Livrables'), '');
 });
+
+test('menu des vues : la base est celle de la barre cliquée, pas la dernière repeinte', () => {
+  const centre = new IconesVuesBases({ app: { workspace: { getActiveFile: () => null } }, settings: {} });
+  // Deux bases ouvertes côte à côte, chacune avec sa barre ; le menu flottant
+  // a été ouvert depuis la première.
+  const barre = (base, vue) => {
+    const b = el('bases-toolbar-views-menu', [el('text-button-icon'), el('text-button-label')]);
+    b.base = base;
+    b.querySelector = (sel) => (sel === '.text-button-label' ? { textContent: vue } : null);
+    return b;
+  };
+  const barres = [barre('Base.base', 'Fiches'), barre('Tâches.base', 'Liste')];
+  const items = ['Notes conceptuelles', 'Fiches'].map((nom) => {
+    const icone = el('bases-toolbar-menu-item-info-icon');
+    const item = el('bases-toolbar-menu-item', [icone]);
+    item.querySelector = (sel) => (sel === '.bases-toolbar-menu-item-info-icon' ? icone
+      : null);
+    return { textContent: nom, closest: () => item, parentElement: item };
+  });
+  const doc = { querySelectorAll: (sel) => (sel === '.bases-toolbar-views-menu' ? barres
+    : sel === '.bases-toolbar-menu-item-name' ? items : []) };
+  centre.cheminDe = (b) => b.base || '';
+  const appels = [];
+  centre.iconeDeVue = (chemin, nom) => { appels.push(chemin + '::' + nom); return ''; };
+  centre.baseDuMenu = 'Base.base';
+  centre.peindre(doc);
+  assert.deepEqual(appels.filter((a) => /Notes conceptuelles|::Fiches$/.test(a) && !a.startsWith('Tâches')).length, 3,
+    'la barre de Base.base et les deux éléments du menu');
+  assert.ok(appels.includes('Base.base::Notes conceptuelles'), 'le menu suit la base d\'où il a été ouvert');
+  assert.ok(appels.includes('Tâches.base::Liste'), 'chaque barre garde sa propre base');
+  assert.ok(!appels.includes('Tâches.base::Notes conceptuelles'));
+});
+
+test('icône présente : Lucide, greffon ou emoji', () => {
+  const { basesIconePresente } = Ariane._test;
+  const avec = (classes) => { const s = svg(classes); s.classList = { contains: (c) => classes.split(' ').includes(c) }; return el('x', [s]); };
+  assert.equal(basesIconePresente(avec('svg-icon lucide-notebook-pen'), 'notebook-pen'), true);
+  assert.equal(basesIconePresente(avec('svg-icon zotero-note'), 'zotero-note'), true);
+  assert.equal(basesIconePresente(avec('svg-icon lucide-table'), 'notebook-pen'), false, 'Obsidian a remis la sienne');
+  assert.equal(basesIconePresente(el('x'), 'book'), false);
+  const emoji = el('x'); emoji.textContent = '💭';
+  assert.equal(basesIconePresente(emoji, '💭'), true);
+});

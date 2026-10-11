@@ -26445,6 +26445,16 @@ function basesIconeOrigine(el) {
   return m ? m[0] : '';
 }
 
+// L'icône « nom » est-elle bien celle que montre l'élément ? Une icône Lucide
+// porte la classe « lucide-nom », une icône ajoutée par un greffon la classe
+// « nom » ; un emoji est le texte même de l'élément.
+function basesIconePresente(el, nom) {
+  if (!el || !nom) return false;
+  if (!/^[a-z0-9-]+$/.test(nom)) return el.textContent === nom;
+  const svg = el.querySelector ? el.querySelector('svg') : null;
+  return !!(svg && svg.classList && (svg.classList.contains('lucide-' + nom) || svg.classList.contains(nom)));
+}
+
 // Un élément de menu qui désigne bien une VUE. Le même habillage sert aux
 // propriétés (qui portent une case à cocher) et aux formules (qui affichent
 // une valeur) : sans ce tri, une propriété homonyme d'une vue changerait
@@ -26522,7 +26532,7 @@ class IconesVuesBases extends obsidian.Component {
     super();
     this.greffon = greffon;
     this.observateurs = new Map();
-    this.derniereBase = '';       // la base dont le menu vient d'être ouvert
+    this.baseDuMenu = '';         // la base dont on vient d'ouvrir le menu des vues
     this.iconesDossiers = {};     // ce qu'Iconize a retenu, par chemin
     this.iconizeLu = 0;           // horodatage de cette lecture
     this.basesConnues = new Map();// chemin de base -> dossiers, par vue
@@ -26567,7 +26577,15 @@ class IconesVuesBases extends obsidian.Component {
     // reviendrait à les empiler.
     const surContexte = (e) => this.surClicDroit(e);
     doc.addEventListener('contextmenu', surContexte, true);
-    this.observateurs.set(doc, { obs, surContexte, doc });
+    // Le menu des vues flotte hors du volet : sa base est celle de la barre
+    // sur laquelle on a cliqué pour l'ouvrir. On la retient au moment du
+    // geste, avant que le menu ne se dessine.
+    const surPointe = (e) => {
+      const barre = e.target && e.target.closest ? e.target.closest('.bases-toolbar-views-menu') : null;
+      if (barre) this.baseDuMenu = this.cheminDe(barre) || this.baseActive();
+    };
+    doc.addEventListener('pointerdown', surPointe, true);
+    this.observateurs.set(doc, { obs, surContexte, surPointe, doc });
     this.peindre(doc);
   }
 
@@ -26576,6 +26594,7 @@ class IconesVuesBases extends obsidian.Component {
     if (suivi) {
       try { suivi.obs.disconnect(); } catch (e) { /* fenêtre partie */ }
       try { doc.removeEventListener('contextmenu', suivi.surContexte, true); } catch (e) { /* idem */ }
+      try { doc.removeEventListener('pointerdown', suivi.surPointe, true); } catch (e) { /* idem */ }
     }
     this.observateurs.delete(doc);
   }
@@ -26592,7 +26611,7 @@ class IconesVuesBases extends obsidian.Component {
       if (!nomEl) return;
       evt.preventDefault();
       evt.stopPropagation();
-      this.ouvrirChoix(this.derniereBase, nomEl.textContent);
+      this.ouvrirChoix(this.baseDuMenu || this.baseActive(), nomEl.textContent);
       return;
     }
     const barre = cible.closest('.bases-toolbar-views-menu');
@@ -26710,7 +26729,9 @@ class IconesVuesBases extends obsidian.Component {
   poser(el, nom) {
     if (!el) return;
     if (nom) {
-      if (el.dataset.zfaIcone === nom) return;
+      // Déjà posée, et toujours là : Obsidian redessine parfois l'icône d'un
+      // élément qu'il garde, sans rien savoir de la nôtre.
+      if (el.dataset.zfaIcone === nom && basesIconePresente(el, nom)) return;
       if (el.dataset.zfaIconeOrigine === undefined) el.dataset.zfaIconeOrigine = basesIconeOrigine(el);
       el.empty();
       if (/^[a-z0-9-]+$/.test(nom)) obsidian.setIcon(el, nom); else el.textContent = nom;
@@ -26731,8 +26752,10 @@ class IconesVuesBases extends obsidian.Component {
     let vues = 0;
     for (const barre of Array.from(doc.querySelectorAll('.bases-toolbar-views-menu'))) {
       try {
+        // Chaque barre a sa base : celle de son volet. Elle ne dit rien du
+        // menu ouvert, qui peut appartenir à une autre base du coffre (c'était
+        // la faute : la dernière barre repeinte imposait sa base au menu).
         const chemin = this.cheminDe(barre) || this.baseActive();
-        if (chemin) this.derniereBase = chemin;
         const etiquette = barre.querySelector('.text-button-label');
         const nom = etiquette ? etiquette.textContent : '';
         this.poser(barre.querySelector('.text-button-icon'), this.iconeDeVue(chemin, nom));
@@ -26748,7 +26771,7 @@ class IconesVuesBases extends obsidian.Component {
           || nomEl.previousElementSibling;
         if (!icone) continue;
         vues += 1;
-        this.poser(icone, this.iconeDeVue(this.derniereBase || this.baseActive(), nomEl.textContent));
+        this.poser(icone, this.iconeDeVue(this.baseDuMenu || this.baseActive(), nomEl.textContent));
       } catch (e) { console.error('[Ariane] icône de menu de base :', e); }
     }
     if (vues) this.vuesPeintes = vues;
@@ -41694,6 +41717,7 @@ module.exports._test = {
   // des éléments de menu.
   basesCleIcone,
   basesIconeIconize,
+  basesIconePresente,
   basesIconeDeDossier,
   basesDossiersDepuisFiltres,
   basesIconeOrigine,

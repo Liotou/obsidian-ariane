@@ -22,6 +22,7 @@ module.exports._test = {
   // des éléments de menu.
   basesCleIcone,
   basesIconeIconize,
+  basesIconePresente,
   basesIconeDeDossier,
   basesDossiersDepuisFiltres,
   basesIconeOrigine,
