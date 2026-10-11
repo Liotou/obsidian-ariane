@@ -10,6 +10,10 @@ module.exports = Ariane;
 // Exposition des fonctions pures pour les tests.
 module.exports._test = {
   DEFAULT_SETTINGS,
+  // Export Word : préparation du markdown pour pandoc.
+  preparerMarkdownExport,
+  deplierIntegrations,
+  footnotesVersCitations,
   // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
   construireBibliographie,
   injecterBibliographie,

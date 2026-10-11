@@ -24,6 +24,112 @@ function citationsEnLigneVersPandoc(texte, resoudre, connecteur) {
   });
 }
 
+// Intégrations « ![[note]] » : Obsidian affiche la note intégrée dans le
+// texte, pandoc n'en voyait que le nom, précédé d'un « ! ». On les déplie
+// donc avant tout le reste, pour que citations, encadrés et titres de la note
+// intégrée suivent le même traitement que le texte qui l'accueille.
+//   - « ![[note]] » : le corps de la note, sans propriétés, sans son titre
+//     « # », sans la bibliographie d'Ariane (Zotero dresse la sienne) ni les
+//     blocs que tient Ariane (sessions d'une tâche, etc.) ;
+//   - « ![[note#Titre]] » : cette section seule ; « ![[note#^bloc]] » : ce
+//     paragraphe seul ;
+//   - « ![[image.png]] » : l'image, si lireImage la situe ;
+//   - les titres de la note intégrée se rangent sous le titre qui précède
+//     l'intégration : sous un « ### », son « ## » devient « #### ».
+// lire(cible) -> texte de la note ou null ; lireImage(cible) -> chemin ou
+// null. Les intégrations imbriquées sont dépliées à leur tour, sans boucle.
+const ZFA_EXT_IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp|tiff?)$/i;
+
+function sansBlocsAriane(texte) {
+  return String(texte)
+    .replace(/^---\n[\s\S]*?\n---\n?/, '')
+    .replace(/<!--\s*ariane:([\w-]+)\s*-->[\s\S]*?<!--\s*\/ariane:\1\s*-->\n?/g, '')
+    .replace(/(?:^[ \t]*-{3,}[ \t]*\n+)?%%\s*ariane:biblio\s*%%[\s\S]*?%%\s*\/ariane:biblio\s*%%/gm, '')
+    .replace(/(?:^[ \t]*-{3,}[ \t]*\n+)?^#{1,6}[ \t]*Bibliographie[ \t]*$[\s\S]*?(?=^#{1,6}[ \t]|$(?![\s\S]))/gim, '');
+}
+
+function extraitIntegre(texte, ancre) {
+  const lignes = String(texte).split('\n');
+  if (!ancre) {
+    // Le titre « # » de la note : l'intégration a déjà le sien.
+    const i = lignes.findIndex((l) => l.trim());
+    if (i >= 0 && /^#[ \t]+\S/.test(lignes[i])) lignes.splice(i, 1);
+    return lignes.join('\n');
+  }
+  if (ancre.startsWith('^')) {
+    const id = ancre.slice(1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('\\s\\^' + id + '\\s*$');
+    const k = lignes.findIndex((l) => re.test(l));
+    if (k < 0) return '';
+    // Un élément de liste vaut seul ; un paragraphe remonte à sa première ligne.
+    let a = k;
+    if (!/^[ \t]*(?:[-*+]|\d+[.)])[ \t]/.test(lignes[k])) {
+      while (a > 0 && lignes[a - 1].trim() && !/^#{1,6}[ \t]/.test(lignes[a - 1])) a--;
+    }
+    return lignes.slice(a, k + 1).join('\n').replace(re, '');
+  }
+  const norm = (t) => t.replace(/[\s#]+/g, ' ').trim().toLowerCase();
+  const k = lignes.findIndex((l) => /^#{1,6}[ \t]/.test(l) && norm(l.replace(/^#+/, '')) === norm(ancre));
+  if (k < 0) return '';
+  const niveau = lignes[k].match(/^#+/)[0].length;
+  let f = k + 1;
+  while (f < lignes.length && !(/^#{1,6}[ \t]/.test(lignes[f]) && lignes[f].match(/^#+/)[0].length <= niveau)) f++;
+  return lignes.slice(k + 1, f).join('\n');
+}
+
+// Range les titres d'un extrait sous un titre de niveau « base » (0 : aucun).
+function titresSous(texte, base) {
+  const niveaux = [...String(texte).matchAll(/^(#{1,6})[ \t]+\S/gm)].map((m) => m[1].length);
+  if (!niveaux.length) return texte;
+  const ecart = base + 1 - Math.min(...niveaux);
+  return String(texte).replace(/^(#{1,6})(?=[ \t]+\S)/gm, (d) => '#'.repeat(Math.min(6, Math.max(1, d.length + ecart))));
+}
+
+async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
+  profondeur = profondeur || 0;
+  vus = vus || new Set();
+  const lignes = String(texte).split('\n');
+  const out = [];
+  let dansCode = false, base = 0;
+  for (const l of lignes) {
+    if (/^\s*(?:```|~~~)/.test(l)) dansCode = !dansCode;
+    const t = !dansCode && l.match(/^(#{1,6})[ \t]+\S/);
+    if (t) base = t[1].length;
+    if (dansCode || !l.includes('![[')) { out.push(l); continue; }
+    const morceaux = [];
+    let reste = l, m;
+    const re = /!\[\[([^\]\n]+)\]\]/;
+    while ((m = reste.match(re))) {
+      if (m.index) morceaux.push(reste.slice(0, m.index));
+      const [lien, alias] = m[1].split('|');
+      const [cible, ...a] = lien.split('#');
+      const ancre = a.join('#').trim();
+      let rendu = '';
+      if (ZFA_EXT_IMAGE.test(cible.trim())) {
+        const chemin = lireImage ? await lireImage(cible.trim()) : null;
+        rendu = chemin ? '\n![](<' + chemin + '>)\n' : '';
+      } else if (/\.\w{2,4}$/.test(cible.trim()) && !/\.md$/i.test(cible.trim())) {
+        rendu = (alias || cible).trim();             // PDF, son… : leur nom
+      } else {
+        const cle = (cible.trim() + '#' + ancre).toLowerCase();
+        const brut = profondeur < 6 && !vus.has(cle) ? await lire(cible.trim()) : null;
+        if (brut == null) rendu = (alias || cible.split('/').pop()).trim();
+        else {
+          const v = new Set(vus); v.add(cle);
+          let corps = extraitIntegre(sansBlocsAriane(brut), ancre);
+          corps = await deplierIntegrations(corps, lire, lireImage, profondeur + 1, v);
+          rendu = '\n' + titresSous(corps.trim(), base) + '\n';
+        }
+      }
+      morceaux.push(rendu);
+      reste = reste.slice(m.index + m[0].length);
+    }
+    if (reste) morceaux.push(reste);
+    out.push(morceaux.join(''));
+  }
+  return out.join('\n');
+}
+
 // Prépare le markdown : citations, titres, encadrés, blocs à ne pas exporter.
 function preparerMarkdownExport(contenu, resoudre, opts) {
   const o = opts || {};
@@ -35,6 +141,13 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
   // « \Z » n'existe pas en JavaScript : il y vaut la lettre Z, si bien que la
   // coupe s'arrêtait au premier Z rencontré. On vise la vraie fin de texte.
   s = s.replace(/^#{1,6}[ \t]*Bibliographie[ \t]*$[\s\S]*?(?=^#{1,6}[ \t]|$(?![\s\S]))/gim, '');
+
+  // 1 bis. Blocs qu'Ariane tient dans la note (sessions d'une tâche…) : ce
+  //    sont des relevés, non du texte.
+  s = s.replace(/<!--\s*ariane:([\w-]+)\s*-->[\s\S]*?<!--\s*\/ariane:\1\s*-->\n?/g, '');
+  // 1 ter. Les filets « --- » : le modèle souligne déjà ses titres, et un
+  //    filet de plus se dessinait en double trait. Hors tableaux.
+  s = s.replace(/^[ \t]*(?:-[ \t]*){3,}$|^[ \t]*(?:\*[ \t]*){3,}$|^[ \t]*(?:_[ \t]*){3,}$/gm, '');
 
   // 2. Compteurs de travaux rapportés : ils n'ont pas de sens hors d'Obsidian.
   s = s.replace(/\s*⟨\d+⟩/g, '');
@@ -60,7 +173,8 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
   if (o.decalerTitres !== false) {
     s = s.replace(/^(#{1,6})[ \t]+(.+?)[ \t]*$/gm, (t, diese, txt) => {
       const n = diese.length;
-      const titre = o.retirerNumerotation === false ? txt.trim() : titreSansNumerotation(txt);
+      // Un titre ne prend pas de point final (les points de suspension restent).
+      const titre = (o.retirerNumerotation === false ? txt.trim() : titreSansNumerotation(txt)).replace(/([^.])\.$/, '$1');
       if (n === 1) return '';                    // titre global : porté par l'en-tête
       return '#'.repeat(Math.max(1, n - 1)) + ' ' + titre;
     });
@@ -149,6 +263,9 @@ function insecablesFrancais(texte) {
     if (/^\s*\|[\s|:-]*\|\s*$/.test(l)) return l; // ligne de séparation de tableau
     // split avec groupe capturant : les crochets tombent aux rangs impairs.
     return l.split(/(\[[^\]\n]*\])/).map((bout, i) => (i % 2 ? bout : bout
+      // Guillemets droits appariés -> guillemets français. Pas ceux d'un
+      // attribut (« ="…" »), ni ceux qui encadrent une balise.
+      .replace(/(^|[^=\w])"([^"\n<>=]+)"/g, (t, av, dedans) => av + '«' + NB + dedans.trim() + NB + '»')
       .replace(/ +([;:!?»])/g, NB + '$1')
       .replace(/(«) +/g, '$1' + NB))).join('');
   });

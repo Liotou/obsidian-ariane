@@ -1440,7 +1440,13 @@ const avecNoteBiblio = (Base) => class extends Base {
     // Les notes anciennes portent encore des notes de bas de page ; les
     // récentes des citations en ligne. Les deux passes se complètent.
     const citeDans = this.settings.citeDans || ', cité dans ';
-    let md = footnotesVersCitations(contenu, resoudre, citeDans);
+    // Les notes intégrées « ![[…]] » sont dépliées dans le texte, comme
+    // Obsidian les affiche.
+    const cibleFichier = (c) => this.app.metadataCache.getFirstLinkpathDest(c, file.path);
+    const deplie = await deplierIntegrations(contenu,
+      async (c) => { const f = cibleFichier(c); return f && f.extension === 'md' ? this.app.vault.cachedRead(f) : null; },
+      async (c) => { const f = cibleFichier(c); return f ? this.cheminAbsoluVault(f.path) : null; });
+    let md = footnotesVersCitations(deplie, resoudre, citeDans);
     md = preparerMarkdownExport(md, resoudre, {
       citeDans,
       styleEncadre: this.settings.exportStyleEncadre || 'Items de réflexion',
@@ -1520,13 +1526,18 @@ const avecNoteBiblio = (Base) => class extends Base {
     // {{propriété:clé}} du modèle, et en liste, pour ses rangs répétables. La
     // finition écarte de la liste celles que le modèle place déjà ailleurs.
     const structurelles = new Set(['position', 'aliases', 'tags', 'cssclasses']);
+    // Les relevés d'Ariane (temps passé, identifiants de synchronisation) ne
+    // sont pas des propriétés du document.
+    const internes = (cle) => /^temps$|\bID$|Synchro/i.test(String(cle));
     const proprietes = [];
     for (const [cle, val] of Object.entries(fm)) {
       if (val == null || val === '') continue;
-      const texte = lisible(Array.isArray(val) ? val.map(lisible).join(', ') : val);
+      let texte = lisible(Array.isArray(val) ? val.map(lisible).join(', ') : val);
       if (!texte.trim()) continue;
+      // Une date ISO s'écrit comme les autres dates du document.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(texte.trim())) texte = this.formaterDate(new Date(texte.trim() + 'T12:00'), 'long');
       valeurs['propriété:' + cle] = texte;
-      if (!structurelles.has(String(cle).toLowerCase())) {
+      if (!structurelles.has(String(cle).toLowerCase()) && !internes(cle)) {
         proprietes.push([this.libellePropriete(cle), texte]);
       }
     }
