@@ -36,6 +36,9 @@ const DEFAUTS_CALENDRIER = {
   calCalendriersMasques: [],
   // Colonne des créneaux réels (ActivityWatch) en vue semaine.
   calActiviteReelle: true,
+  // Le rail des créneaux réels (Obsidian et hors Obsidian), montré ou caché
+  // d'un bouton de la barre, en vue semaine.
+  calReelVisible: true,
 };
 
 function svgEl(nom, attrs) {

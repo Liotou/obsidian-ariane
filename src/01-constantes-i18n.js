@@ -829,6 +829,8 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "Saisir les pages…": "Enter pages…",
+    "Cacher les créneaux réels": "Hide actual sessions",
+    "Afficher les créneaux réels": "Show actual sessions",
     "Canevas : ouvrir un canevas de tâches…": "Canvas: open a task canvas…",
     "Canevas de tâches…": "Task canvases…",
     "Nouveau canevas de tâches…": "New task canvas…",

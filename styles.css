@@ -2202,6 +2202,9 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-trait.quart { border-top-style: dotted; opacity: 0.22; }
 .zfa-cal-zoom { display: flex; gap: 2px; }
 .zfa-cal-zoom .zfa-cal-nav { padding: 2px 5px; }
+/* Bouton du rail des créneaux réels : allumé quand le rail est montré. */
+.zfa-cal-bascule-reel { color: var(--text-faint); }
+.zfa-cal-bascule-reel.est-actif { color: var(--text-accent); }
 .zfa-cal-now { position: absolute; left: 0; right: 0; height: 0;
   border-top: 2px solid var(--interactive-accent); z-index: 2; pointer-events: none; }
 .zfa-cal-bloc { position: absolute; overflow: hidden; z-index: 1; }

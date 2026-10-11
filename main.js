@@ -1020,6 +1020,8 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "Saisir les pages…": "Enter pages…",
+    "Cacher les créneaux réels": "Hide actual sessions",
+    "Afficher les créneaux réels": "Show actual sessions",
     "Canevas : ouvrir un canevas de tâches…": "Canvas: open a task canvas…",
     "Canevas de tâches…": "Task canvases…",
     "Nouveau canevas de tâches…": "New task canvas…",
@@ -26384,6 +26386,9 @@ const DEFAUTS_CALENDRIER = {
   calCalendriersMasques: [],
   // Colonne des créneaux réels (ActivityWatch) en vue semaine.
   calActiviteReelle: true,
+  // Le rail des créneaux réels (Obsidian et hors Obsidian), montré ou caché
+  // d'un bouton de la barre, en vue semaine.
+  calReelVisible: true,
 };
 
 function svgEl(nom, attrs) {
@@ -33390,6 +33395,21 @@ class MoteurCalendrier extends MoteurVue {
       const bPlus = zoom.createEl('button', { cls: 'zfa-cal-nav', attr: { 'aria-label': tr('Zoomer') } });
       obsidian.setIcon(bPlus, 'plus');
       bPlus.onclick = () => this._zoomerSemaine(8);
+      // Montrer ou cacher le rail des créneaux réels. Seul le rail se
+      // repeint : la grille et le défilement restent où ils sont.
+      const visible = this.lire('calReelVisible') !== false;
+      const bReel = droite.createEl('button', { cls: 'zfa-cal-nav zfa-cal-bascule-reel' + (visible ? ' est-actif' : ''),
+        attr: { 'aria-label': visible ? tr('Cacher les créneaux réels') : tr('Afficher les créneaux réels'),
+          'aria-pressed': String(visible) } });
+      obsidian.setIcon(bReel, 'activity');
+      bReel.onclick = async () => {
+        const v = this.lire('calReelVisible') === false;
+        await this.ctx.ecrire('calReelVisible', v);
+        bReel.toggleClass('est-actif', v);
+        bReel.setAttribute('aria-pressed', String(v));
+        bReel.setAttribute('aria-label', v ? tr('Cacher les créneaux réels') : tr('Afficher les créneaux réels'));
+        this._peindreTravailReel();
+      };
     }
     // Bouton « Calendriers à afficher » : familles de tâches (calendriers de
     // créneaux) et, si l'intégration Apple est active, calendriers d'événements.
@@ -35403,6 +35423,9 @@ class MoteurCalendrier extends MoteurVue {
       const heure = bloc.querySelector('.zfa-cal-carte-heure');
       if (heure) heure.createSpan({ cls: 'zfa-cal-jauge-val', text: ' (' + duree(fait) + tr(' faites') + ')' });
     }
+
+    // Rail caché d'un clic sur le bouton de la barre : les jauges restent.
+    if (this.lire('calReelVisible') === false) return;
 
     // Le rail du réel : une seule bande à gauche de chaque jour, où le temps
     // passé dans Obsidian prime, et où ActivityWatch comble le reste (il voit
