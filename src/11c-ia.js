@@ -232,7 +232,9 @@ const avecIa = (Base) => class extends Base {
       this.fournisseurLmStudio(), this.settings.suggModeleLLM || 'llama3.2');
   }
 
-  async genererJsonAvec(prompt, max, lm, modele) {
+  // `ctx` (facultatif) élargit la fenêtre de contexte d'Ollama, qui tronque
+  // en silence une invite plus longue que sa valeur par défaut (la veille).
+  async genererJsonAvec(prompt, max, lm, modele, ctx) {
     const url = this.urlInference(lm) + (lm ? '/v1/chat/completions' : '/api/generate');
     try {
       const corps = lm
@@ -243,7 +245,7 @@ const avecIa = (Base) => class extends Base {
         ? { model: modele, messages: [{ role: 'user', content: prompt }],
             temperature: 0, max_tokens: max }
         : { model: modele, prompt, stream: false, format: 'json', keep_alive: '2m',
-            options: { temperature: 0, num_predict: max } };
+            options: Object.assign({ temperature: 0, num_predict: max }, ctx ? { num_ctx: ctx } : {}) };
       const rep = await obsidian.requestUrl({
         url, method: 'POST', throw: false,
         headers: { 'Content-Type': 'application/json' },
@@ -345,10 +347,12 @@ const avecIa = (Base) => class extends Base {
           + (process.env.PATH || ''),
       });
       // Le modèle choisi dans les réglages ; sans choix, celui de Claude Code.
+      // `parEntree` : l'invite passe par l'entrée standard, qui ignore la
+      // limite de taille des arguments (une semaine de veille la dépasse).
       const modele = String(o.modeleClaude || this.settings.refsModeleClaude || '').trim();
-      const args = modele ? ['--model', modele, '-p', prompt] : ['-p', prompt];
+      const args = (modele ? ['--model', modele] : []).concat(o.parEntree ? ['-p'] : ['-p', prompt]);
       const enfant = require('child_process').execFile(
-        bin, args, { env, timeout: delai, maxBuffer: 1 << 20 },
+        bin, args, { env, timeout: delai, maxBuffer: o.parEntree ? 8 << 20 : 1 << 20 },
         (err, sortie) => {
           if (fini) return;
           fini = true;
@@ -359,7 +363,7 @@ const avecIa = (Base) => class extends Base {
         });
       // Sans cela le CLI attend trois secondes une entrée standard qui ne
       // viendra jamais, à chaque appel.
-      try { if (enfant.stdin) enfant.stdin.end(); } catch (e) { /* déjà fermée */ }
+      try { if (enfant.stdin) enfant.stdin.end(o.parEntree ? prompt : undefined); } catch (e) { /* déjà fermée */ }
       setTimeout(() => { if (!fini) { try { enfant.kill('SIGKILL'); } catch (e) { /* déjà mort */ } } }, delai + 1000);
     });
   }

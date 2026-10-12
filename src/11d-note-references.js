@@ -901,6 +901,7 @@ const avecNoteReferences = (Base) => class extends Base {
       ['dossierBibliographies', ['bibliographie citee', 'bibliographies citees', 'biblio']],
       ['exportDossier', ['livrable', 'export', 'document']],
       ['tempsDossierJournal', ['journal']],
+      ['veilleDossier', ['veille']],
     ];
     let poses = 0;
     for (const [cle, mots] of indices) {

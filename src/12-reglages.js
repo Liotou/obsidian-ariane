@@ -21,6 +21,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       [tr('Annotations Zotero'), 'highlighter', (c) => this.ongletAnnotations(c, s, maj)],
       [tr('Familles de notes'), 'folder-tree', (c) => this.ongletFamilles(c, s, maj)],
       [tr('Citations et bibliographie'), 'quote', (c) => this.ongletCitations(c, s, maj)],
+      [tr('Veille'), 'radar', (c) => this.ongletVeille(c, s, maj)],
       [tr('Écriture'), 'pen-line', (c) => this.ongletEcriture(c, s, maj)],
       [tr('Suggestions'), 'sparkles', (c) => this.ongletSuggestions(c, s, maj)],
       [tr('Tâches'), 'list-checks', (c) => this.ongletTaches(c, s, maj)],
@@ -584,6 +585,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     role(tr('Références en attente'), 'dossierReferences', tr("Références citées mais pas encore dans Zotero."));
     role(tr('Bibliographies citées'), 'dossierBibliographies', tr("Une note de bibliographie par source."));
     role(tr('Documents exportés'), 'exportDossier', tr("Sortie de l'export Word."));
+    role(tr('Veille'), 'veilleDossier', tr("Notes de synthèse de la veille (défaut : « Veille »)."));
     role(tr("Notes d'événements"), 'dossierNotesEvenements', tr("Notes créées depuis un clic droit sur un événement de la vue calendrier (pas les tâches)."));
     new obsidian.Setting(c)
       .setName(tr('Détecter les dossiers de mon coffre'))
@@ -1896,6 +1898,109 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     new obsidian.Setting(c)
       .setName(tr('Corps (pt)'))
       .addText((t) => t.setValue(String(s.cartesSvgTaille || 10)).onChange(async (v) => { s.cartesSvgTaille = Number(v) || 10; await maj(); }));
+  }
+
+  ongletVeille(c, s, maj) {
+    // Zone de texte pleine largeur, une donnée par ligne.
+    const zone = (nom, desc, cle, lignes, exemple, mono) => new obsidian.Setting(c)
+      .setName(nom).setDesc(desc)
+      .addTextArea((t) => {
+        t.setValue(s[cle] || '').setPlaceholder(exemple || '')
+          .onChange(async (v) => { s[cle] = v; await maj(); });
+        t.inputEl.rows = lignes;
+        t.inputEl.style.width = '100%';
+        if (mono) t.inputEl.style.fontFamily = 'var(--font-monospace)';
+      });
+    const nombre = (nom, desc, cle, defaut) => new obsidian.Setting(c)
+      .setName(nom).setDesc(desc)
+      .addText((t) => t.setValue(String(s[cle] == null ? defaut : s[cle]))
+        .onChange(async (v) => { const n = Number(v); s[cle] = Number.isFinite(n) ? n : defaut; await maj(); }));
+
+    this._section(c, tr('Veille de thèse'));
+    this._aide(c, tr("Chaque semaine, les nouveaux articles des revues suivies (Crossref, par ISSN), les rapports d'organisations (par préfixe DOI), les flux RSS d'institutions et les dépôts HAL. Un pré-score par mots-clés trie les candidats ; le fournisseur d'IA (onglet IA) choisit ensuite les références utiles à la thèse et rédige, pour chacune, son apport et son intérêt. Le tout devient une note du dossier de veille. Les titres, auteurs et liens viennent toujours des métadonnées des éditeurs, jamais de l'IA. Inspiré de veille-revues, de Thibaud Salomone."));
+    new obsidian.Setting(c)
+      .setName(tr('Lancer'))
+      .setDesc(s.veilleDerniere ? tr('Dernière veille : ') + s.veilleDerniere + tr('. La suivante couvre les jours écoulés depuis.')
+        : tr('Jamais lancée.'))
+      .addButton((b) => b.setButtonText(tr('Lancer la veille')).setCta().onClick(() => this.plugin.lancerVeille()))
+      .addButton((b) => b.setButtonText(tr('Vérifier les ISSN')).onClick(() => this.plugin.verifierIssnVeille()));
+    new obsidian.Setting(c)
+      .setName(tr('Chaque semaine'))
+      .setDesc(tr("Le jour choisi, Obsidian ouvert ; ou à l'ouverture, si la dernière veille a plus d'une semaine."))
+      .addToggle((t) => t.setValue(s.veilleAuto === true).onChange(async (v) => { s.veilleAuto = v; await maj(); }))
+      .addDropdown((d) => {
+        ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+          .forEach((j, i) => d.addOption(String(i + 1), tr(j)));
+        d.setValue(String(s.veilleJourAuto || 1)).onChange(async (v) => { s.veilleJourAuto = Number(v); await maj(); });
+      });
+    nombre(tr('Première fenêtre'), tr("En jours, pour la toute première veille. Ensuite, chaque veille couvre les jours écoulés depuis la précédente (un mois au plus) ; l'historique écarte ce qui a déjà été vu."), 'veilleJours', 7);
+    new obsidian.Setting(c)
+      .setName(tr("Sélection et analyse par l'IA"))
+      .setDesc(tr("Désactivée, la note liste les candidats les mieux notés avec leur résumé, sans analyse. Une semaine de veille est un long texte : un petit modèle local s'y perd, Claude ou Mistral conviennent mieux."))
+      .addToggle((t) => t.setValue(s.veilleIA !== false).onChange(async (v) => { s.veilleIA = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Adresse de contact'))
+      .setDesc(tr('Facultative. Transmise à Crossref et OpenAlex, elle donne accès à leur file prioritaire.'))
+      .addText((t) => t.setValue(s.veilleMailto || '').onChange(async (v) => { s.veilleMailto = v.trim(); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Importer une configuration veille-revues'))
+      .setDesc(tr("Choisissez sources.json, profil_these.json, ou les deux : les champs correspondants ci-dessous sont remplacés."))
+      .addButton((b) => b.setButtonText(tr('Choisir les fichiers…')).onClick(() => {
+        const entree = c.ownerDocument.createElement('input');
+        entree.type = 'file';
+        entree.accept = '.json,application/json';
+        entree.multiple = true;
+        entree.onchange = async () => {
+          const faits = [];
+          for (const f of Array.from(entree.files || [])) {
+            try {
+              const o = JSON.parse(await f.text());
+              if (o && o.revues) { Object.assign(s, Ariane.depuisSourcesVeilleJson(o)); faits.push(tr('sources')); }
+              if (o && o.these) { Object.assign(s, Ariane.depuisProfilVeilleJson(o)); faits.push(tr('profil')); }
+            } catch (e) {
+              new obsidian.Notice(f.name + tr(' : JSON illisible.'));
+            }
+          }
+          if (faits.length) {
+            await maj();
+            new obsidian.Notice(tr('Veille : importé (') + faits.join(', ') + ').');
+            this.display();
+          }
+        };
+        entree.click();
+      }));
+
+    this._section(c, tr('Profil de la thèse'));
+    this._aide(c, tr("Ce que l'IA lit pour juger chaque publication et rédiger « Pour la thèse ». Plus il est précis, meilleure est la sélection."));
+    zone(tr('Résumé de la thèse'), tr('5 à 10 lignes : question de recherche, cadre théorique, terrain, méthodes.'), 'veilleResume', 6, '');
+    zone(tr('Critères de sélection'), tr("Un par ligne, du plus important au moins important."), 'veilleCriteres', 4,
+      tr('Cœur théorique : concepts et courants centraux de la thèse.\nMéthodes mobilisées ou envisagées.'));
+    zone(tr('À écarter'), tr('Thèmes voisins mais hors sujet.'), 'veilleAEcarter', 2, '');
+    zone(tr('Phases'), tr("Une par ligne : « 1 = Libellé court : description ». Chaque référence retenue y est rattachée."), 'veillePhases', 3,
+      '1 = Littérature : revue de littérature\n2 = Terrain : étude de cas', true);
+    zone(tr('Exemple de lien avec la thèse'), tr('Le ton attendu pour « Pour la thèse ».'), 'veilleExempleLien', 2,
+      tr('« fournit un mécanisme X mobilisable dans le chapitre 2 pour discuter Y »'));
+
+    this._section(c, tr('Mots-clés et seuils'));
+    zone(tr('Mots-clés pondérés'), tr("Une ligne par motif : « poids | axe | motif ». Le motif est une expression régulière, sans égard à la casse, cherchée dans le titre et le résumé ; ses « | » sont des alternatives. Le score d'un item est la somme des poids des motifs trouvés."), 'veilleMotsCles', 7,
+      '5 | Cœur théorique | sensemaking|sense-making|fabrique du sens\n3 | Méthodes | ethnograph|case study|étude de cas', true);
+    nombre(tr('Seuil des sources filtrées'), tr('Score minimal pour garder un item d\'une source marquée « filtré » (revue généraliste ou volumineuse).'), 'veilleSeuilFiltre', 5);
+    nombre(tr('Seuil de priorité'), tr('Score à partir duquel un item est marqué prioritaire.'), 'veilleSeuilPriorite', 8);
+    nombre(tr('Seuil du résumé'), tr("Score à partir duquel l'IA lit le résumé ; en dessous, le titre seul."), 'veilleSeuilResume', 4);
+    zone(tr('Titres à exclure'), tr("Expression régulière : erratums, comités éditoriaux, sommaires…"), 'veilleExclusionsTitre', 2, '', true);
+
+    this._section(c, tr('Sources'));
+    this._aide(c, tr("Une source par ligne, colonnes séparées par « | ». « filtré » en dernière colonne : source volumineuse ou généraliste, dont on ne garde que les items au score suffisant. Une ligne commençant par # est ignorée."));
+    zone(tr('Revues'), tr('« Nom | ISSN, ISSN | Catégorie | filtré ». Vérifiez les ISSN après tout ajout.'), 'veilleRevues', 8,
+      'Safety Science | 0925-7535 | Risques & sécurité\nJournal of Business Research | 0148-2963 | Management | filtré', true);
+    zone(tr("Préfixes DOI d'organisations"), tr("« Nom | préfixe | Catégorie | filtré » : tout ce que l'organisation dépose chez Crossref."), 'veillePrefixes', 3,
+      'OCDE (OECD iLibrary) | 10.1787 | Rapports internationaux | filtré', true);
+    zone(tr('Flux RSS ou Atom'), tr('« Nom | adresse | Catégorie | filtré ».'), 'veilleFlux', 4,
+      'ADEME | https://www.ademe.fr/feed/ | Rapports (France) | filtré', true);
+    zone(tr('Requêtes HAL'), tr('Une requête Solr par ligne, cherchée dans les dépôts de la période.'), 'veilleHal', 3,
+      '"culture de sécurité" OR "safety culture"', true);
+    zone(tr('Sites à consulter'), tr("« Nom | adresse | Catégorie » : institutions sans flux, rappelées en fin de note pour une visite à la main."), 'veilleSites', 3,
+      'Cour des comptes | https://www.ccomptes.fr/fr/publications | Rapports (France)', true);
   }
 
   ongletTemps(c, s, maj) {
