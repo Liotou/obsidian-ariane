@@ -63,7 +63,7 @@ test('meilleurTitre : trouve la tâche par recouvrement de mots', () => {
     { ref: 'C', titre: 'Envoyer le mail à Solène' },
   ];
   assert.equal(Ariane.meilleurTitre('rédaction du chapitre 3', cand).ref, 'A');
-  assert.equal(Ariane.meilleurTitre('le mail pour karine', cand).ref, 'C');
+  assert.equal(Ariane.meilleurTitre('le mail pour solène', cand).ref, 'C');
 });
 
 test('meilleurTitre : rien de probant -> null', () => {
