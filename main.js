@@ -1522,7 +1522,7 @@ const TEXTES = {
     "Créer en langage naturel…": "Create in plain language…",
     "Créer des tâches en langage naturel": "Create tasks in plain language",
     "Décrivez ce qu’il y a à faire, en une phrase ou plusieurs : une tâche par action, famille devinée, dates comprises (« lundi prochain », « le 30/10 »), dépendances rattachées.": "Describe what needs doing, in one or several sentences: one task per action, family guessed, dates understood (“next Monday”, “30/10”), dependencies linked.",
-    "Ex. : rédiger le résumé du webinaire pour lundi prochain, puis l’envoyer à Karine.": "E.g.: write the webinar summary by next Monday, then send it to Karine.",
+    "Ex. : rédiger le résumé du webinaire pour lundi prochain, puis l’envoyer à Solène.": "E.g.: write the webinar summary by next Monday, then send it to Solène.",
     "Analyser": "Analyse",
     "après « ": "after “",
     "bloquée par « ": "blocked by “",
@@ -27512,7 +27512,7 @@ class ModaleAjoutLN extends obsidian.Modal {
     inp.rows = 4;
     inp.style.minHeight = '6em';
     inp.style.fontFamily = 'var(--font-text)';
-    inp.placeholder = tr('Ex. : rédiger le résumé du webinaire pour lundi prochain, puis l’envoyer à Karine.');
+    inp.placeholder = tr('Ex. : rédiger le résumé du webinaire pour lundi prochain, puis l’envoyer à Solène.');
     if (this.o.texte) inp.value = this.o.texte;
     const pied = c.createDiv({ cls: 'zfa-struct-actions' });
     const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Analyser') });

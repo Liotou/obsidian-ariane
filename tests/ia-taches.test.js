@@ -60,7 +60,7 @@ test('meilleurTitre : trouve la tâche par recouvrement de mots', () => {
   const cand = [
     { ref: 'A', titre: 'Rédiger le chapitre 3' },
     { ref: 'B', titre: 'Lire Vasseur' },
-    { ref: 'C', titre: 'Envoyer le mail à Karine' },
+    { ref: 'C', titre: 'Envoyer le mail à Solène' },
   ];
   assert.equal(Ariane.meilleurTitre('rédaction du chapitre 3', cand).ref, 'A');
   assert.equal(Ariane.meilleurTitre('le mail pour karine', cand).ref, 'C');
@@ -148,10 +148,10 @@ test('lireTachesLN : plusieurs tâches, dépendance par rang, rangs recalculés'
   const l = Ariane.lireTachesLN([
     { titre: 'Rédiger le résumé du webinaire', famille: 'production', echeance: '2026-10-05', apres: null },
     { titre: '' },
-    { titre: 'Envoyer le résumé à Karine', famille: 'action', echeance: '2026-10-05', apres: 0 },
+    { titre: 'Envoyer le résumé à Solène', famille: 'action', echeance: '2026-10-05', apres: 0 },
     { titre: 'Relire', apres: 9, bloque_par: 'Chapitre 2' },
   ], { familles: ['action', 'production'] });
-  assert.deepEqual(l.map((x) => x.titre), ['Rédiger le résumé du webinaire', 'Envoyer le résumé à Karine', 'Relire']);
+  assert.deepEqual(l.map((x) => x.titre), ['Rédiger le résumé du webinaire', 'Envoyer le résumé à Solène', 'Relire']);
   assert.equal(l[1].apres, 0);
   assert.equal(l[1].echeance, '2026-10-05');
   assert.equal(l[2].apres, null);

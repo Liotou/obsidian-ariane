@@ -986,7 +986,7 @@ class ModaleAjoutLN extends obsidian.Modal {
     inp.rows = 4;
     inp.style.minHeight = '6em';
     inp.style.fontFamily = 'var(--font-text)';
-    inp.placeholder = tr('Ex. : rédiger le résumé du webinaire pour lundi prochain, puis l’envoyer à Karine.');
+    inp.placeholder = tr('Ex. : rédiger le résumé du webinaire pour lundi prochain, puis l’envoyer à Solène.');
     if (this.o.texte) inp.value = this.o.texte;
     const pied = c.createDiv({ cls: 'zfa-struct-actions' });
     const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Analyser') });
