@@ -339,3 +339,39 @@ test('mots-clés en étiquettes : termes échappés, et un vrai motif reste une 
   assert.equal(Ariane.texteMotsClesVeille(l), '5 | Cœur | sensemaking|sense-making\n3 | Méthodes | stud(y|ies)');
   assert.ok(new RegExp(Ariane.compilerMotsClesVeille(Ariane.texteMotsClesVeille(l))[0].re.source, 'i').test('SENSE-MAKING'));
 });
+
+test('configuration complète : lue, fusionnée sans doublon ou posée telle quelle, et réexportée', () => {
+  const fichier = {
+    'ariane-veille': 1,
+    profil: { resume: 'Ma thèse.', criteres: ['A', 'B'], a_ecarter: ['C'], exemple_lien: 'Ex.',
+      phases: [{ n: 1, court: 'Objet', description: 'les risques' }] },
+    mots_cles: [{ poids: 8, axe: 'NaTech', termes: ['natech', 'effet domino'] }, { poids: 3, axe: 'M', motif: 'stud(y|ies)' }],
+    sources: {
+      revues: [{ nom: 'Safety Science', issn: '0925-7535', categorie: 'Risques' }, { nom: 'JBR', issn: ['0148-2963'], filtre: true }],
+      hal: ['natech'], acteurs: [{ nom: 'Asso', adresses: ['https://a.fr/', 'https://www.linkedin.com/company/a/'] }],
+    },
+    seuils: { priorite: 9 },
+  };
+  const lu = Ariane.lireConfigVeille(fichier);
+  assert.equal(lu.reglages.veilleResume, 'Ma thèse.');
+  assert.equal(lu.reglages.veillePhases, '1 = Objet : les risques');
+  assert.equal(lu.reglages.veilleRevues, 'Safety Science | 0925-7535 | Risques\nJBR | 0148-2963 |  | filtré'.replace(' |  | ', ' |  | '));
+  assert.equal(lu.reglages.veilleSeuilPriorite, 9);
+  assert.equal(lu.resume.revue, 2);
+  // Ajouter : rien en double, le profil ne remplit que le vide.
+  const actuels = { veilleRevues: 'Safety Science | 0925-7535 | Mes risques', veilleResume: 'Déjà écrit.',
+    veilleMotsCles: '8 | NaTech | natech|effet domino' };
+  const aj = Ariane.fusionnerConfigVeille(actuels, lu.reglages, 'ajouter');
+  assert.equal(aj.veilleRevues.split('\n').length, 2, 'Safety Science n\'est pas ajoutée deux fois');
+  assert.ok(aj.veilleRevues.startsWith('Safety Science | 0925-7535 | Mes risques'), 'la ligne en place est gardée');
+  assert.equal(aj.veilleResume, undefined, 'un résumé déjà écrit est respecté');
+  assert.equal(aj.veilleMotsCles.split('\n').length, 2);
+  // Remplacer : le fichier fait foi.
+  assert.equal(Ariane.fusionnerConfigVeille(actuels, lu.reglages, 'remplacer').veilleResume, 'Ma thèse.');
+  // Aller-retour par l'export.
+  const relu = Ariane.lireConfigVeille(Ariane.configDepuisReglagesVeille(Object.assign({}, lu.reglages)));
+  assert.equal(relu.reglages.veilleRevues, lu.reglages.veilleRevues);
+  assert.equal(relu.reglages.veilleMotsCles, lu.reglages.veilleMotsCles);
+  assert.equal(relu.reglages.veilleActeurs, 'Asso | https://a.fr/, https://www.linkedin.com/company/a/');
+  assert.equal(Ariane.lireConfigVeille({ autre: 1 }), null);
+});

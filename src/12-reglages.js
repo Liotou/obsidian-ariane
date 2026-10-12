@@ -1945,31 +1945,42 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr('Facultative. Transmise à Crossref et OpenAlex, elle donne accès à leur file prioritaire.'))
       .addText((t) => t.setValue(s.veilleMailto || '').onChange(async (v) => { s.veilleMailto = v.trim(); await maj(); }));
     new obsidian.Setting(c)
-      .setName(tr('Importer une configuration veille-revues'))
-      .setDesc(tr("Choisissez sources.json, profil_these.json, ou les deux : les champs correspondants ci-dessous sont remplacés."))
-      .addButton((b) => b.setButtonText(tr('Choisir les fichiers…')).onClick(() => {
+      .setName(tr('Importer ou exporter la configuration'))
+      .setDesc(tr("Un fichier de configuration de veille porte tout : profil de la thèse, thèmes, sources, acteurs, seuils. L'import propose d'ajouter à vos réglages, sans doublon, ou de les remplacer. Les fichiers de veille-revues (sources.json, profil_these.json) sont acceptés aussi."))
+      .addButton((b) => b.setButtonText(tr('Importer…')).setCta().onClick(() => {
         const entree = c.ownerDocument.createElement('input');
         entree.type = 'file';
         entree.accept = '.json,application/json';
         entree.multiple = true;
         entree.onchange = async () => {
-          const faits = [];
+          const apport = {};
+          const resume = {};
           for (const f of Array.from(entree.files || [])) {
-            try {
-              const o = JSON.parse(await f.text());
-              if (o && o.revues) { Object.assign(s, Ariane.depuisSourcesVeilleJson(o)); faits.push(tr('sources')); }
-              if (o && o.these) { Object.assign(s, Ariane.depuisProfilVeilleJson(o)); faits.push(tr('profil')); }
-            } catch (e) {
-              new obsidian.Notice(f.name + tr(' : JSON illisible.'));
-            }
+            let lu = null;
+            try { lu = Ariane.lireConfigVeille(JSON.parse(await f.text())); } catch (e) { lu = null; }
+            if (!lu) { new obsidian.Notice(f.name + tr(' : ce n’est pas une configuration de veille.')); continue; }
+            Object.assign(apport, lu.reglages);
+            Object.assign(resume, lu.resume);
           }
-          if (faits.length) {
+          if (!Object.keys(apport).length) return;
+          new ModaleImportVeille(this.app, resume, async (mode) => {
+            Object.assign(s, Ariane.fusionnerConfigVeille(s, apport, mode));
             await maj();
-            new obsidian.Notice(tr('Veille : importé (') + faits.join(', ') + ').');
+            new obsidian.Notice(mode === 'remplacer' ? tr('Veille : configuration remplacée.') : tr('Veille : configuration complétée.'));
             this.display();
-          }
+          }).open();
         };
         entree.click();
+      }))
+      .addButton((b) => b.setButtonText(tr('Exporter')).onClick(async () => {
+        const dossier = this.plugin.dossierVeille;
+        await this.plugin.assurerDossier(dossier);
+        let chemin = dossier + '/' + tr('Configuration de veille') + ' ' + jourIsoDe(new Date()) + '.json';
+        for (let k = 2; this.app.vault.getAbstractFileByPath(chemin); k += 1) {
+          chemin = dossier + '/' + tr('Configuration de veille') + ' ' + jourIsoDe(new Date()) + ' (' + k + ').json';
+        }
+        await this.app.vault.create(chemin, JSON.stringify(Ariane.configDepuisReglagesVeille(s), null, 2));
+        new obsidian.Notice(tr('Configuration exportée : ') + chemin, 8000);
       }));
 
     this._section(c, tr('Sources et acteurs suivis'));

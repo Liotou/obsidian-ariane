@@ -634,5 +634,37 @@ class ModaleEssaiVeille extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// Confirmation d'un import de configuration de veille : ce que le fichier
+// apporte, puis « Ajouter » (sans doublon, profil seulement s'il est vide)
+// ou « Remplacer ».
+class ModaleImportVeille extends obsidian.Modal {
+  constructor(app, resume, surChoix) { super(app); this.resume = resume || {}; this.surChoix = surChoix; }
+
+  onOpen() {
+    const { contentEl } = this;
+    if (this.setTitle) this.setTitle(tr('Importer une configuration de veille'));
+    else contentEl.createEl('h3', { text: tr('Importer une configuration de veille') });
+    const r = this.resume;
+    const T = Ariane.TYPES_SOURCES_VEILLE;
+    const bouts = [];
+    if (r.profil) bouts.push(tr('le profil de la thèse'));
+    if (r.themes) bouts.push(r.themes + ' ' + tr('thèmes de mots-clés'));
+    for (const type of Object.keys(T)) if (r[type]) bouts.push(tr(T[type].groupe) + ' (' + r[type] + ')');
+    if (r.sources && !bouts.length) bouts.push(tr('des sources'));
+    contentEl.createEl('p', { text: tr('Le fichier apporte : ') + (bouts.join(', ') || tr('des réglages')) + '.' });
+    const ul = contentEl.createEl('ul', { cls: 'zfa-import-choix' });
+    ul.createEl('li', { text: tr('Ajouter : les sources, acteurs et thèmes s’ajoutent aux vôtres, sans doublon ; les champs du profil ne remplissent que ceux qui sont vides.') });
+    ul.createEl('li', { text: tr('Remplacer : tout ce que porte le fichier remplace vos réglages correspondants.') });
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    const rem = pied.createEl('button', { cls: 'mod-warning', text: tr('Remplacer') });
+    rem.onclick = () => { this.close(); this.surChoix('remplacer'); };
+    const aj = pied.createEl('button', { cls: 'mod-cta', text: tr('Ajouter') });
+    aj.onclick = () => { this.close(); this.surChoix('ajouter'); };
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 //#endregion 20 · Modales secondaires
 

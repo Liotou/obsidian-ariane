@@ -796,6 +796,132 @@ const avecVeille = (Base) => class extends Base {
     }).filter(Boolean).join('\n');
   }
 
+  // ── import et export d'une configuration complète ──
+  //  Le format d'Ariane (« ariane-veille ») porte tout en un fichier : profil,
+  //  thèmes, sources, acteurs, seuils. Les fichiers de veille-revues
+  //  (sources.json, profil_these.json) restent acceptés.
+
+  // Les réglages qu'un fichier apporte, à fusionner ou à poser. Rend
+  // { reglages, resume } (resume : ce qu'il contient, pour la confirmation),
+  // ou null si le fichier n'est pas une configuration de veille.
+  static lireConfigVeille(o) {
+    if (!o || typeof o !== 'object') return null;
+    if (o.revues || o.prefixes_doi || o.rss) {
+      const r = Ariane.depuisSourcesVeilleJson(o);
+      return { reglages: r, resume: { sources: true } };
+    }
+    if (o.these) return { reglages: Ariane.depuisProfilVeilleJson(o), resume: { profil: true } };
+    if (!o['ariane-veille']) return null;
+    const r = {};
+    const p = o.profil && typeof o.profil === 'object' ? o.profil : null;
+    const liste = (v) => [].concat(v || []).map((x) => String(x).trim()).filter(Boolean);
+    if (p) {
+      if (p.resume != null) r.veilleResume = String(p.resume).trim();
+      if (p.criteres != null) r.veilleCriteres = liste(p.criteres).join('\n');
+      if (p.a_ecarter != null) r.veilleAEcarter = liste(p.a_ecarter).join('\n');
+      if (p.exemple_lien != null) r.veilleExempleLien = String(p.exemple_lien).trim();
+      if (p.phases != null) {
+        r.veillePhases = [].concat(p.phases).filter((x) => x && x.n != null).map((x) => Number(x.n) + ' = '
+          + String(x.court || x.description || '').trim() + (x.description ? ' : ' + String(x.description).trim() : '')).join('\n');
+      }
+    }
+    if (Array.isArray(o.mots_cles)) {
+      r.veilleMotsCles = Ariane.texteMotsClesVeille(o.mots_cles.map((m) => ({
+        poids: Number(m && m.poids) || 1, axe: String((m && m.axe) || ''),
+        termes: Array.isArray(m && m.termes) ? liste(m.termes) : null, motif: String((m && m.motif) || ''),
+      })));
+    }
+    const sources = o.sources && typeof o.sources === 'object' ? o.sources : {};
+    const conv = {
+      revue: ['revues', (x) => ({ nom: x.nom, adresse: [].concat(x.issn || x.adresse || []).join(', '), categorie: x.categorie, filtre: !!x.filtre })],
+      prefixe: ['prefixes', (x) => ({ nom: x.nom, adresse: x.prefixe || x.prefix || x.adresse, categorie: x.categorie, filtre: !!x.filtre })],
+      flux: ['flux', (x) => ({ nom: x.nom, adresse: x.adresse || x.url, categorie: x.categorie, filtre: !!x.filtre })],
+      hal: ['hal', (x) => ({ adresse: typeof x === 'string' ? x : (x.requete || x.adresse) })],
+      acteur: ['acteurs', (x) => ({ nom: x.nom, adresse: [].concat(x.adresses || x.adresse || []).join(', ') })],
+      site: ['sites', (x) => ({ nom: x.nom, adresse: x.adresse || x.url, categorie: x.categorie })],
+    };
+    const resume = { profil: !!p, themes: Array.isArray(o.mots_cles) ? o.mots_cles.length : 0 };
+    for (const [type, [cle, f]] of Object.entries(conv)) {
+      if (!Array.isArray(sources[cle])) continue;
+      const lignes = sources[cle].filter((x) => x != null).map((x) => Object.assign({ actif: x.actif !== false, categorie: '', filtre: false }, f(x)));
+      r[Ariane.TYPES_SOURCES_VEILLE[type].cle] = Ariane.texteSourcesVeille(lignes, type);
+      resume[type] = lignes.length;
+    }
+    if (Array.isArray(o.categories_acteurs)) r.veilleCategoriesActeurs = liste(o.categories_acteurs).join('\n');
+    const seuils = o.seuils && typeof o.seuils === 'object' ? o.seuils : {};
+    for (const [k, cle] of [['filtre', 'veilleSeuilFiltre'], ['priorite', 'veilleSeuilPriorite'], ['resume', 'veilleSeuilResume']]) {
+      if (Number.isFinite(Number(seuils[k])) && seuils[k] !== '' && seuils[k] != null) r[cle] = Number(seuils[k]);
+    }
+    if (o.exclusions_titre != null) r.veilleExclusionsTitre = String(o.exclusions_titre);
+    return { reglages: r, resume };
+  }
+
+  // Applique une configuration lue. « remplacer » : chaque réglage présent
+  // dans le fichier prend la valeur du fichier. « ajouter » : sources, acteurs
+  // et thèmes s'ajoutent à ceux en place, sans doublon (même adresse, même
+  // motif) ; les champs du profil ne remplissent que ceux qui sont vides.
+  // Rend les réglages à écrire.
+  static fusionnerConfigVeille(actuels, apport, mode) {
+    const s = actuels || {};
+    const out = {};
+    const types = Ariane.TYPES_SOURCES_VEILLE;
+    const cleSource = new Map(Object.entries(types).map(([t, d]) => [d.cle, t]));
+    for (const [cle, valeur] of Object.entries(apport || {})) {
+      if (mode === 'remplacer') { out[cle] = valeur; continue; }
+      if (cleSource.has(cle)) {
+        const type = cleSource.get(cle);
+        const en = Ariane.lignesSourcesVeille(s[cle], type);
+        const vues = new Set(en.filter((x) => x.commentaire == null).map((x) => String(x.adresse).toLowerCase().replace(/\/+$/, '')));
+        for (const x of Ariane.lignesSourcesVeille(valeur, type)) {
+          const k = String(x.adresse || '').toLowerCase().replace(/\/+$/, '');
+          if (x.commentaire != null || vues.has(k)) continue;
+          vues.add(k);
+          en.push(x);
+        }
+        out[cle] = Ariane.texteSourcesVeille(en, type);
+      } else if (cle === 'veilleMotsCles') {
+        const en = Ariane.motsClesEditablesVeille(s.veilleMotsCles);
+        const vus = new Set(en.map((m) => (m.termes ? Ariane.motifDepuisTermesVeille(m.termes) : m.motif).toLowerCase()));
+        for (const m of Ariane.motsClesEditablesVeille(valeur)) {
+          const k = (m.termes ? Ariane.motifDepuisTermesVeille(m.termes) : m.motif).toLowerCase();
+          if (!vus.has(k)) { vus.add(k); en.push(m); }
+        }
+        out.veilleMotsCles = Ariane.texteMotsClesVeille(en);
+      } else if (s[cle] == null || String(s[cle]).trim() === '') {
+        out[cle] = valeur;
+      }
+    }
+    return out;
+  }
+
+  // L'inverse : les réglages en un fichier « ariane-veille », lisible et
+  // réimportable (sources mises de côté comprises).
+  static configDepuisReglagesVeille(s) {
+    const x = s || {};
+    const phases = Object.entries(Ariane.compilerPhasesVeille(x.veillePhases))
+      .map(([n, p]) => ({ n: Number(n), court: p.court, description: p.long }));
+    const lignes = (type) => Ariane.lignesSourcesVeille(x[Ariane.TYPES_SOURCES_VEILLE[type].cle], type).filter((l) => l.commentaire == null);
+    const lst = (t) => String(t || '').split('\n').map((v) => v.trim()).filter(Boolean);
+    return {
+      'ariane-veille': 1,
+      profil: { resume: x.veilleResume || '', criteres: lst(x.veilleCriteres), a_ecarter: lst(x.veilleAEcarter),
+        exemple_lien: x.veilleExempleLien || '', phases },
+      mots_cles: Ariane.motsClesEditablesVeille(x.veilleMotsCles).map((m) => (m.termes
+        ? { poids: m.poids, axe: m.axe, termes: m.termes } : { poids: m.poids, axe: m.axe, motif: m.motif })),
+      sources: {
+        revues: lignes('revue').map((l) => ({ nom: l.nom, issn: l.adresse.split(/[,\s]+/).filter(Boolean), categorie: l.categorie, filtre: l.filtre, actif: l.actif })),
+        prefixes: lignes('prefixe').map((l) => ({ nom: l.nom, prefixe: l.adresse, categorie: l.categorie, filtre: l.filtre, actif: l.actif })),
+        flux: lignes('flux').map((l) => ({ nom: l.nom, adresse: l.adresse, categorie: l.categorie, filtre: l.filtre, actif: l.actif })),
+        hal: lignes('hal').map((l) => ({ requete: l.adresse, actif: l.actif })),
+        acteurs: lignes('acteur').map((l) => ({ nom: l.nom, adresses: l.adresse.split(/[\s,]+/).filter(Boolean), actif: l.actif })),
+        sites: lignes('site').map((l) => ({ nom: l.nom, adresse: l.adresse, categorie: l.categorie, actif: l.actif })),
+      },
+      categories_acteurs: lst(x.veilleCategoriesActeurs),
+      seuils: { filtre: x.veilleSeuilFiltre, priorite: x.veilleSeuilPriorite, resume: x.veilleSeuilResume },
+      exclusions_titre: x.veilleExclusionsTitre || '',
+    };
+  }
+
   //#endregion Ariane · static · veille
 
   //#region Ariane · veille (collecte & synthèse)
