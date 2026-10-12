@@ -1021,6 +1021,57 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "Saisir les pages…": "Enter pages…",
+    "Rapports (préfixes DOI)": "Reports (DOI prefixes)",
+    "Essai à blanc": "Dry run",
+    "Essai à blanc de la veille": "Watch dry run",
+    "Sources et acteurs suivis": "Sources and followed actors",
+    "Ajouter": "Add",
+    "Recherche…": "Looking up…",
+    "Ajouté : ": "Added: ",
+    ". Donnez-lui un nom.": ". Give it a name.",
+    "Tester cette source": "Test this source",
+    "Supprimer": "Delete",
+    "Nom": "Name",
+    "Catégorie": "Category",
+    "Axe": "Axis",
+    "Poids": "Weight",
+    "terme, Entrée": "term, Enter",
+    "expression régulière": "regular expression",
+    "Passer en expression régulière": "Switch to a regular expression",
+    "Revenir aux étiquettes": "Back to tags",
+    "Cette expression ne se réduit pas à des termes simples.": "This expression is not just plain terms.",
+    "Supprimer ce thème": "Delete this theme",
+    "Ajouter un thème": "Add a theme",
+    "Lancer la vraie veille": "Run the real watch",
+    "Les mieux notés": "Top scored",
+    "Source par source": "Source by source",
+    "collectées": "collected",
+    "déjà vues": "already seen",
+    "gardées par le pré-tri": "kept by pre-sorting",
+    "prioritaires": "priority",
+    "sources en erreur": "sources in error",
+    "publications en 30 jours": "posts in 30 days",
+    "publication en 30 jours": "post in 30 days",
+    "Page joignable": "Page reachable",
+    "Aucune adresse": "No address",
+    "ISSN invalide": "Invalid ISSN",
+    "Préfixe invalide": "Invalid prefix",
+    "Erreur : ": "Error: ",
+    "Fermer": "Close",
+    "Revue": "Journal",
+    "Rapports (préfixe DOI)": "Reports (DOI prefix)",
+    "Flux RSS": "RSS feed",
+    "Requête HAL": "HAL query",
+    "Acteur suivi": "Followed actor",
+    "Site à consulter": "Site to check",
+    "Adresse du flux": "Feed address",
+    "Préfixe DOI": "DOI prefix",
+    "Requête": "Query",
+    "Adresses (site, flux, LinkedIn)": "Addresses (site, feed, LinkedIn)",
+    "Essai à blanc : collecte…": "Dry run: collecting…",
+    "Essai à blanc : collecte ": "Dry run: collecting ",
+    "Essai à blanc interrompu : ": "Dry run stopped: ",
+    "Collecte et pré-tri, sans IA, sans note, sans rien retenir : pour régler sources et seuils.": "Collection and pre-sorting, without AI, note or history: to tune sources and thresholds.",
     "intérêt": "interest",
     "fort": "high",
     "moyen": "medium",
@@ -22385,6 +22436,125 @@ const avecVeille = (Base) => class extends Base {
     return sortie;
   }
 
+  // ── réglages de la veille, en lignes éditables ──
+  //  Les réglages restent des lignes de texte (« a | b | c »), que la collecte
+  //  et l'import de veille-revues lisent tels quels ; l'onglet les présente en
+  //  lignes à champs. Une source mise de côté est une ligne « #off … » : la
+  //  collecte, qui ignore les lignes en #, ne la lit pas, et rien n'est perdu.
+
+  // Les types de sources : réglage où elles vivent, colonnes, libellé.
+  static get TYPES_SOURCES_VEILLE() {
+    return {
+      revue: { cle: 'veilleRevues', nom: 'Revue', groupe: 'Revues', adresse: 'ISSN', filtre: true, categorie: true },
+      prefixe: { cle: 'veillePrefixes', nom: 'Rapports (préfixe DOI)', groupe: 'Rapports (préfixes DOI)', adresse: 'Préfixe DOI', filtre: true, categorie: true },
+      flux: { cle: 'veilleFlux', nom: 'Flux RSS', groupe: 'Flux RSS', adresse: 'Adresse du flux', filtre: true, categorie: true },
+      hal: { cle: 'veilleHal', nom: 'Requête HAL', groupe: 'Requêtes HAL', adresse: 'Requête', filtre: false, categorie: false, seule: true },
+      acteur: { cle: 'veilleActeurs', nom: 'Acteur suivi', groupe: 'Acteurs suivis', adresse: 'Adresses (site, flux, LinkedIn)', filtre: false, categorie: false },
+      site: { cle: 'veilleSites', nom: 'Site à consulter', groupe: 'Sites à consulter', adresse: 'Adresse', filtre: false, categorie: true },
+    };
+  }
+
+  // Les lignes d'un réglage de sources, mises de côté comprises :
+  // [{ actif, nom, adresse, categorie, filtre }] ; les commentaires sont
+  // gardés tels quels ({ commentaire }).
+  static lignesSourcesVeille(texte, type) {
+    const t = Ariane.TYPES_SOURCES_VEILLE[type] || {};
+    const out = [];
+    for (const brute of String(texte || '').split('\n')) {
+      let l = brute.trim();
+      if (!l) continue;
+      let actif = true;
+      if (/^#off\s/i.test(l)) { actif = false; l = l.replace(/^#off\s+/i, ''); }
+      else if (l.startsWith('#')) { out.push({ commentaire: brute }); continue; }
+      if (t.seule) { out.push({ actif, nom: '', adresse: l, categorie: '', filtre: false }); continue; }
+      const [nom, adresse, ...reste] = l.split('|').map((x) => x.trim());
+      if (type === 'acteur') {
+        // Les adresses d'un acteur peuvent contenir des « | » égarés : tout le reste.
+        out.push({ actif, nom: nom || '', adresse: [adresse].concat(reste).filter(Boolean).join(', '), categorie: '', filtre: false });
+        continue;
+      }
+      const derniere = reste[reste.length - 1];
+      const filtre = reste.length >= 1 && Ariane.estFiltre(derniere);
+      const categorie = filtre ? reste.slice(0, -1).join(' / ') : reste.join(' / ');
+      out.push({ actif, nom: nom || '', adresse: adresse || '', categorie, filtre });
+    }
+    return out;
+  }
+
+  // Le chemin inverse : les lignes, prêtes pour le réglage.
+  static texteSourcesVeille(lignes, type) {
+    const t = Ariane.TYPES_SOURCES_VEILLE[type] || {};
+    const net = (v) => String(v == null ? '' : v).replace(/\|/g, '/').replace(/\s+/g, ' ').trim();
+    return (lignes || []).map((x) => {
+      if (x.commentaire != null) return x.commentaire;
+      let l;
+      if (t.seule) l = String(x.adresse || '').replace(/\s+/g, ' ').trim();
+      else if (type === 'acteur') l = net(x.nom) + ' | ' + String(x.adresse || '').split(/[\s,]+/).filter(Boolean).join(', ');
+      else {
+        const c = [net(x.nom), net(x.adresse)];
+        if (t.categorie) c.push(net(x.categorie));
+        if (t.filtre && x.filtre) c.push(tr('filtré'));
+        l = c.join(' | ').replace(/( \| )+$/, '');
+      }
+      if (!l.replace(/\|/g, '').trim()) return null;
+      return (x.actif === false ? '#off ' : '') + l;
+    }).filter((l) => l != null).join('\n');
+  }
+
+  // Ce qu'est une adresse collée dans le champ d'ajout, à vue : un ISSN, un
+  // préfixe DOI, une page LinkedIn, une adresse web (à ouvrir pour en savoir
+  // plus) ou, à défaut, une requête HAL.
+  static typeAdresseVeille(texte) {
+    const t = String(texte || '').trim();
+    if (!t) return null;
+    const issn = t.match(/^(\d{4})-?(\d{3}[\dXx])$/);
+    if (issn) return { type: 'revue', adresse: issn[1] + '-' + issn[2].toUpperCase() };
+    const pre = t.match(/^(?:https?:\/\/(?:dx\.)?doi\.org\/)?(10\.\d{4,9})\/?$/i);
+    if (pre) return { type: 'prefixe', adresse: pre[1] };
+    if (/^https?:\/\/([a-z0-9-]+\.)*linkedin\.com\//i.test(t)) return { type: 'acteur', adresse: t, linkedin: true };
+    if (/^https?:\/\//i.test(t)) return { type: 'url', adresse: t };
+    return { type: 'hal', adresse: t };
+  }
+
+  // Mots-clés en étiquettes : des termes simples, qu'Ariane traduit en
+  // expression régulière (alternatives échappées). Un motif qui n'est fait que
+  // de termes simples se relit en étiquettes ; un vrai motif (classes,
+  // quantificateurs…) reste en expression, à éditer comme tel.
+  static motifDepuisTermesVeille(termes) {
+    return (termes || []).map((x) => String(x).trim()).filter(Boolean)
+      .map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  }
+
+  static termesDepuisMotifVeille(motif) {
+    const m = String(motif || '');
+    if (!m.trim()) return [];
+    const parts = m.split(/(?<!\\)\|/);
+    const out = [];
+    for (const p of parts) {
+      if (/(^|[^\\])[.*+?^${}()[\]]/.test(p)) return null;     // vrai motif : pas d'étiquettes
+      const terme = p.replace(/\\(.)/g, '$1').trim();
+      if (terme) out.push(terme);
+    }
+    return out;
+  }
+
+  // Les mots-clés du réglage en lignes : [{ poids, axe, motif, termes }]
+  // (termes = null pour un motif à garder en expression).
+  static motsClesEditablesVeille(texte) {
+    return Ariane.lignesVeille(texte).map(([poids, axe, ...reste]) => {
+      const motif = reste.join('|').trim();
+      return { poids: Number(poids) || 1, axe: axe || '', motif, termes: Ariane.termesDepuisMotifVeille(motif) };
+    });
+  }
+
+  static texteMotsClesVeille(lignes) {
+    return (lignes || []).map((x) => {
+      const motif = x.termes ? Ariane.motifDepuisTermesVeille(x.termes) : String(x.motif || '').trim();
+      if (!motif) return null;
+      return (Number(x.poids) || 1) + ' | ' + String(x.axe || '').replace(/\|/g, '/').trim() + ' | ' + motif;
+    }).filter(Boolean).join('\n');
+  }
+
   //#endregion Ariane · static · veille
 
   //#region Ariane · veille (collecte & synthèse)
@@ -22741,6 +22911,111 @@ const avecVeille = (Base) => class extends Base {
     }
     avis.hide();
     new TexteModal(this.app, tr('Vérification des ISSN') + ' (' + doutes + ' ' + tr('à revoir') + ')', lignes.join('\n'), tr('Rapport copié.')).open();
+  }
+
+  // ── réglages : ajout par collage, test d'une source, essai à blanc ──
+
+  // Ce qu'est l'adresse collée, et son nom quand on peut le trouver : titre
+  // de la revue chez Crossref, de l'organisation pour un préfixe, du flux ou
+  // de la page. Une page qui annonce des flux devient un acteur suivi ; une
+  // page sans flux, un site à consulter. Rend { type, nom, adresse }.
+  async analyserAdresseVeille(texte) {
+    const d = Ariane.typeAdresseVeille(texte);
+    if (!d) return null;
+    const titreCourt = (t) => Ariane.nettoyerVeille(t).split(/\s+[|:\u2013\u2014-]\s+/)[0].trim().slice(0, 80);
+    try {
+      if (d.type === 'revue') {
+        const m = JSON.parse(await this._veilleGet('https://api.crossref.org/journals/' + d.adresse + '?' + this._veilleMailto().slice(1))).message;
+        return { type: 'revue', nom: String(m.title || ''), adresse: d.adresse };
+      }
+      if (d.type === 'prefixe') {
+        const m = JSON.parse(await this._veilleGet('https://api.crossref.org/prefixes/' + d.adresse + '?' + this._veilleMailto().slice(1))).message;
+        return { type: 'prefixe', nom: String(m.name || ''), adresse: d.adresse };
+      }
+      if (d.type === 'acteur') return { type: 'acteur', nom: '', adresse: d.adresse };
+      if (d.type === 'url') {
+        const texteP = await this._veilleGet(d.adresse);
+        const titre = (texteP.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '';
+        if (/<(rss|feed|rdf:RDF)[\s>]/i.test(texteP)) return { type: 'flux', nom: titreCourt(titre), adresse: d.adresse };
+        const flux = Ariane.decouvrirFluxVeille(texteP, d.adresse);
+        return { type: flux.length ? 'acteur' : 'site', nom: titreCourt(titre), adresse: d.adresse };
+      }
+    } catch (e) {
+      // Introuvable ou injoignable : on garde le type deviné, sans nom.
+      if (d.type === 'url') return { type: 'site', nom: '', adresse: d.adresse, erreur: (e && e.message) || String(e) };
+      return { type: d.type, nom: '', adresse: d.adresse, erreur: (e && e.message) || String(e) };
+    }
+    return { type: d.type, nom: '', adresse: d.adresse };
+  }
+
+  // Interroge une source seule sur les trente derniers jours ; rend une
+  // phrase pour l'onglet (combien de publications, ou l'erreur).
+  async testerSourceVeille(type, ligne) {
+    const auj = jourIsoDe(new Date());
+    const debut = Ariane.decalerJour(auj, -30);
+    const pub = Ariane.decalerJour(auj, -150);
+    const limite = new Date(debut + 'T00:00:00Z').getTime();
+    const n = (k) => k + ' ' + (k > 1 ? tr('publications en 30 jours') : tr('publication en 30 jours'));
+    try {
+      if (type === 'revue') {
+        const [r] = Ariane.compilerRevuesVeille(Ariane.texteSourcesVeille([Object.assign({}, ligne, { actif: true })], 'revue'));
+        if (!r) return tr('ISSN invalide');
+        return n((await this._veilleRevue(r, debut, pub)).length);
+      }
+      if (type === 'prefixe') {
+        if (!/^10\.\d{4,9}$/.test(String(ligne.adresse || '').trim())) return tr('Préfixe invalide');
+        return n((await this._veilleCrossref('prefixes/' + ligne.adresse.trim(), debut, pub, 500)).length);
+      }
+      if (type === 'flux') {
+        return n(Ariane.analyserFluxVeille(await this._veilleGet(ligne.adresse), { nom: ligne.nom, categorie: '' }, limite).length);
+      }
+      if (type === 'hal') return n((await this._veilleHal(ligne.adresse, 30)).length);
+      if (type === 'acteur') {
+        const [a] = Ariane.compilerActeursVeille(Ariane.texteSourcesVeille([Object.assign({ nom: '?' }, ligne, { actif: true })], 'acteur'));
+        if (!a) return tr('Aucune adresse');
+        const r = await this._veilleActeur(a, limite);
+        if (r.erreur) return r.erreur;
+        return n(r.items.length) + (a.aConsulter.length ? tr(', LinkedIn à voir à la main') : '');
+      }
+      if (type === 'site') { await this._veilleGet(ligne.adresse); return tr('Page joignable'); }
+    } catch (e) {
+      return tr('Erreur : ') + ((e && e.message) || e);
+    }
+    return '';
+  }
+
+  // L'essai à blanc : la collecte et le pré-tri d'une vraie veille, sur la
+  // même période, sans IA, sans note et sans toucher à l'historique. De quoi
+  // régler sources et seuils en voyant leur effet.
+  async essaiVeille() {
+    if (this._veilleEnCours) { new obsidian.Notice(tr('Veille : une collecte est déjà en cours.')); return null; }
+    const s = this.settings;
+    const auj = jourIsoDe(new Date());
+    const der = Ariane.jourValide(s.veilleDerniere);
+    const jours = der ? Math.min(31, Math.max(1, Ariane.ecartJours(der, auj))) : (Number(s.veilleJours) || 7);
+    this._veilleEnCours = true;
+    const avis = new obsidian.Notice(tr('Essai à blanc : collecte…'), 0);
+    try {
+      const col = await this.collecterVeille(jours, auj, (f, t) => avis.setMessage(tr('Essai à blanc : collecte ') + f + ' / ' + t + '…'));
+      const tri = Ariane.trierVeille(col.items, {
+        exclusions: s.veilleExclusionsTitre,
+        historique: await this._veilleHistorique(),
+        motsCles: Ariane.compilerMotsClesVeille(s.veilleMotsCles),
+        seuilFiltre: s.veilleSeuilFiltre,
+        seuilPriorite: s.veilleSeuilPriorite,
+      });
+      avis.hide();
+      const r = { debut: col.debut, fin: auj, jours, bilan: col.bilan, bruts: col.items.length, deja: tri.deja,
+        gardes: tri.gardes, acteurs: col.acteurs || [] };
+      new ModaleEssaiVeille(this.app, this, r).open();
+      return r;
+    } catch (e) {
+      avis.hide();
+      new obsidian.Notice(tr('Essai à blanc interrompu : ') + ((e && e.message) || e), 10000);
+      return null;
+    } finally {
+      this._veilleEnCours = false;
+    }
   }
 
   // Lancement hebdomadaire, Obsidian ouvert : le jour choisi, ou dès
@@ -26036,6 +26311,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(s.veilleDerniere ? tr('Dernière veille : ') + s.veilleDerniere + tr('. La suivante couvre les jours écoulés depuis.')
         : tr('Jamais lancée.'))
       .addButton((b) => b.setButtonText(tr('Lancer la veille')).setCta().onClick(() => this.plugin.lancerVeille()))
+      .addButton((b) => b.setButtonText(tr('Essai à blanc')).setTooltip(tr('Collecte et pré-tri, sans IA, sans note, sans rien retenir : pour régler sources et seuils.'))
+        .onClick(() => this.plugin.essaiVeille()))
       .addButton((b) => b.setButtonText(tr('Vérifier les ISSN')).onClick(() => this.plugin.verifierIssnVeille()));
     new obsidian.Setting(c)
       .setName(tr('Chaque semaine'))
@@ -26083,6 +26360,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         entree.click();
       }));
 
+    this._section(c, tr('Sources et acteurs suivis'));
+    this._aide(c, tr("Collez ce que vous voulez suivre : Ariane reconnaît un ISSN (revue), un préfixe DOI (rapports d'une organisation), l'adresse d'un flux, celle d'un site (qui devient un acteur suivi s'il publie un flux, un site à consulter sinon) ou d'une page LinkedIn ; tout autre texte devient une requête HAL. « Filtré » : source volumineuse ou généraliste, dont on ne garde que les publications au score suffisant. Un acteur suivi est montré en entier, dans sa propre section."));
+    this._veilleSources(c, s, maj);
+    zone(tr('Catégories des publications des acteurs'), tr("Une par ligne. L'IA range chaque publication d'un acteur dans l'une d'elles, juge son intérêt pour la thèse et relève la date et le lieu des événements."), 'veilleCategoriesActeurs', 3,
+      'Événement\nActualité\nPublication ou rapport', false);
+
     this._section(c, tr('Profil de la thèse'));
     this._aide(c, tr("Ce que l'IA lit pour juger chaque publication et rédiger « Pour la thèse ». Plus il est précis, meilleure est la sélection."));
     zone(tr('Résumé de la thèse'), tr('5 à 10 lignes : question de recherche, cadre théorique, terrain, méthodes.'), 'veilleResume', 6, '');
@@ -26095,29 +26378,184 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       tr('« fournit un mécanisme X mobilisable dans le chapitre 2 pour discuter Y »'));
 
     this._section(c, tr('Mots-clés et seuils'));
-    zone(tr('Mots-clés pondérés'), tr("Une ligne par motif : « poids | axe | motif ». Le motif est une expression régulière, sans égard à la casse, cherchée dans le titre et le résumé ; ses « | » sont des alternatives. Le score d'un item est la somme des poids des motifs trouvés."), 'veilleMotsCles', 7,
-      '5 | Cœur théorique | sensemaking|sense-making|fabrique du sens\n3 | Méthodes | ethnograph|case study|étude de cas', true);
+    this._aide(c, tr("Un thème par ligne : son poids, son axe, et ses termes, cherchés sans égard à la casse dans le titre et le résumé (« ethnograph » trouve aussi « ethnographie »). Le score d'une publication est la somme des poids des thèmes trouvés. Le bouton « .* » passe un thème en expression régulière, pour qui en a besoin."));
+    this._veilleMotsCles(c, s, maj);
     nombre(tr('Seuil des sources filtrées'), tr('Score minimal pour garder un item d\'une source marquée « filtré » (revue généraliste ou volumineuse).'), 'veilleSeuilFiltre', 5);
     nombre(tr('Seuil de priorité'), tr('Score à partir duquel un item est marqué prioritaire.'), 'veilleSeuilPriorite', 8);
     nombre(tr('Seuil du résumé'), tr("Score à partir duquel l'IA lit le résumé ; en dessous, le titre seul."), 'veilleSeuilResume', 4);
     zone(tr('Titres à exclure'), tr("Expression régulière : erratums, comités éditoriaux, sommaires…"), 'veilleExclusionsTitre', 2, '', true);
 
-    this._section(c, tr('Sources'));
-    this._aide(c, tr("Une source par ligne, colonnes séparées par « | ». « filtré » en dernière colonne : source volumineuse ou généraliste, dont on ne garde que les items au score suffisant. Une ligne commençant par # est ignorée."));
-    zone(tr('Revues'), tr('« Nom | ISSN, ISSN | Catégorie | filtré ». Vérifiez les ISSN après tout ajout.'), 'veilleRevues', 8,
-      'Safety Science | 0925-7535 | Risques & sécurité\nJournal of Business Research | 0148-2963 | Management | filtré', true);
-    zone(tr("Préfixes DOI d'organisations"), tr("« Nom | préfixe | Catégorie | filtré » : tout ce que l'organisation dépose chez Crossref."), 'veillePrefixes', 3,
-      'OCDE (OECD iLibrary) | 10.1787 | Rapports internationaux | filtré', true);
-    zone(tr('Flux RSS ou Atom'), tr('« Nom | adresse | Catégorie | filtré ».'), 'veilleFlux', 4,
-      'ADEME | https://www.ademe.fr/feed/ | Rapports (France) | filtré', true);
-    zone(tr('Requêtes HAL'), tr('Une requête Solr par ligne, cherchée dans les dépôts de la période.'), 'veilleHal', 3,
-      '"culture de sécurité" OR "safety culture"', true);
-    zone(tr('Acteurs suivis'), tr("« Nom | adresse, adresse… » : associations, institutions, entreprises dont on veut voir tout ce qu'elles publient, sans tri ni sélection, dans une section à part. Une adresse peut être un flux RSS ou une page de leur site (Ariane y cherche le flux). Les pages LinkedIn ne se lisent pas sans connexion : elles sont rappelées dans la note, pour une visite à la main."), 'veilleActeurs', 3,
-      'Association Exemple | https://www.exemple.fr/, https://www.exemple.fr/evenements/, https://www.linkedin.com/company/exemple/', true);
-    zone(tr('Catégories des publications des acteurs'), tr("Une par ligne. L'IA range chaque publication d'un acteur dans l'une d'elles, juge son intérêt pour la thèse et relève la date et le lieu des événements."), 'veilleCategoriesActeurs', 3,
-      'Événement\nActualité\nPublication ou rapport', false);
-    zone(tr('Sites à consulter'), tr("« Nom | adresse | Catégorie » : institutions sans flux, rappelées en fin de note pour une visite à la main."), 'veilleSites', 3,
-      'Cour des comptes | https://www.ccomptes.fr/fr/publications | Rapports (France)', true);
+  }
+
+  // Les sources de la veille en lignes éditables, avec ajout par collage.
+  // Les réglages restent des lignes de texte (voir Ariane.lignesSourcesVeille).
+  _veilleSources(c, s, maj) {
+    const TYPES = Ariane.TYPES_SOURCES_VEILLE;
+    const lignes = {};
+    for (const type of Object.keys(TYPES)) lignes[type] = Ariane.lignesSourcesVeille(s[TYPES[type].cle], type);
+    const enregistrer = async (type) => { s[TYPES[type].cle] = Ariane.texteSourcesVeille(lignes[type], type); await maj(); };
+
+    const ajout = c.createDiv({ cls: 'zfa-veille-ajout' });
+    const champ = ajout.createEl('input', { type: 'text', cls: 'zfa-veille-ajout-champ',
+      attr: { placeholder: tr('ISSN, préfixe DOI, adresse d’un flux, d’un site ou de LinkedIn, ou requête HAL') } });
+    const bAjout = ajout.createEl('button', { cls: 'mod-cta', text: tr('Ajouter') });
+    const etat = c.createDiv({ cls: 'zfa-veille-etat' });
+    const listes = c.createDiv({ cls: 'zfa-veille-listes' });
+
+    const dessiner = (focus) => {
+      listes.empty();
+      const cats = [...new Set(['revue', 'prefixe', 'flux', 'site']
+        .flatMap((t) => lignes[t].map((x) => x.categorie)).filter(Boolean))].sort();
+      const dl = listes.createEl('datalist', { attr: { id: 'zfa-veille-categories' } });
+      for (const cat of cats) dl.createEl('option', { attr: { value: cat } });
+      for (const type of Object.keys(TYPES)) {
+        const T = TYPES[type];
+        const rangs = lignes[type].filter((x) => x.commentaire == null);
+        if (!rangs.length) continue;
+        const actives = rangs.filter((x) => x.actif !== false).length;
+        listes.createDiv({ cls: 'zfa-veille-type', text: tr(T.groupe) + ' (' + actives + (actives < rangs.length ? ' / ' + rangs.length : '') + ')' });
+        for (const x of rangs) {
+          const l = listes.createDiv({ cls: 'zfa-veille-ligne est-' + type + (x.actif === false ? ' est-inactive' : '') });
+          const actif = l.createEl('input', { type: 'checkbox', cls: 'zfa-veille-actif' });
+          actif.checked = x.actif !== false;
+          actif.setAttribute('aria-label', tr('Active (décochée : mise de côté, sans être perdue)'));
+          actif.onchange = async () => { x.actif = actif.checked; l.toggleClass('est-inactive', !actif.checked); await enregistrer(type); };
+          const texte = (cle, ph, cls) => {
+            const i = l.createEl('input', { type: 'text', cls: 'zfa-veille-champ ' + (cls || ''), attr: { placeholder: ph } });
+            i.value = x[cle] || '';
+            i.onchange = async () => { x[cle] = i.value.trim(); await enregistrer(type); };
+            return i;
+          };
+          let premier = null;
+          if (!T.seule) premier = texte('nom', tr('Nom'), 'est-nom');
+          const adr = texte('adresse', tr(T.adresse), 'est-adresse');
+          if (T.categorie) texte('categorie', tr('Catégorie'), 'est-categorie').setAttribute('list', 'zfa-veille-categories');
+          if (T.filtre) {
+            const lab = l.createEl('label', { cls: 'zfa-veille-filtre' });
+            const f = lab.createEl('input', { type: 'checkbox' });
+            f.checked = !!x.filtre;
+            lab.appendText(tr('filtré'));
+            f.onchange = async () => { x.filtre = f.checked; await enregistrer(type); };
+          }
+          const res = l.createSpan({ cls: 'zfa-veille-resultat' });
+          const bTest = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Tester cette source') } });
+          obsidian.setIcon(bTest, 'flask-conical');
+          bTest.onclick = async () => {
+            bTest.disabled = true;
+            res.setText(tr('Test…'));
+            res.removeClass('est-erreur');
+            const m = await this.plugin.testerSourceVeille(type, x);
+            res.setText(m);
+            res.toggleClass('est-erreur', /^(Erreur|HTTP|ISSN|Préfixe|Aucune)/.test(m) || /: HTTP/.test(m));
+            bTest.disabled = false;
+          };
+          const bSup = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Supprimer') } });
+          obsidian.setIcon(bSup, 'trash-2');
+          bSup.onclick = async () => { lignes[type].splice(lignes[type].indexOf(x), 1); await enregistrer(type); dessiner(); };
+          if (focus === x) (premier && !x.nom ? premier : adr).focus();
+        }
+      }
+      if (!Object.values(lignes).some((l) => l.some((x) => x.commentaire == null))) {
+        listes.createDiv({ cls: 'zfa-veille-vide', text: tr('Aucune source pour l’instant. Collez une adresse ci-dessus, ou importez une configuration veille-revues.') });
+      }
+    };
+
+    const ajouter = async () => {
+      const t = champ.value.trim();
+      if (!t) return;
+      bAjout.disabled = true;
+      etat.setText(tr('Recherche…'));
+      etat.removeClass('est-erreur');
+      const r = await this.plugin.analyserAdresseVeille(t);
+      bAjout.disabled = false;
+      if (!r) { etat.setText(''); return; }
+      // LinkedIn : rattaché à un acteur déjà suivi s'il en a le nom dans
+      // l'adresse, sinon un nouvel acteur à nommer.
+      const x = { actif: true, nom: r.nom || '', adresse: r.adresse, categorie: '', filtre: false };
+      lignes[r.type].push(x);
+      await enregistrer(r.type);
+      champ.value = '';
+      etat.setText(tr('Ajouté : ') + tr(TYPES[r.type].nom) + (r.nom ? ' « ' + r.nom + ' »' : '')
+        + (r.erreur ? tr(' (introuvable en ligne : ') + r.erreur + ')' : '')
+        + (!r.nom && !TYPES[r.type].seule ? tr('. Donnez-lui un nom.') : '.'));
+      etat.toggleClass('est-erreur', !!r.erreur);
+      dessiner(x);
+    };
+    bAjout.onclick = ajouter;
+    champ.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ajouter(); } });
+    dessiner();
+  }
+
+  // Les mots-clés en lignes : poids au curseur, axe, termes en étiquettes ;
+  // un thème peut passer en expression régulière (bouton « .* »).
+  _veilleMotsCles(c, s, maj) {
+    const lignes = Ariane.motsClesEditablesVeille(s.veilleMotsCles);
+    const boite = c.createDiv({ cls: 'zfa-veille-mots' });
+    const enregistrer = async () => { s.veilleMotsCles = Ariane.texteMotsClesVeille(lignes); await maj(); };
+    const dessiner = (focus) => {
+      boite.empty();
+      for (const x of lignes) {
+        const l = boite.createDiv({ cls: 'zfa-veille-mot' });
+        const p = l.createDiv({ cls: 'zfa-veille-poids' });
+        const r = p.createEl('input', { type: 'range', attr: { min: '1', max: String(Math.max(10, x.poids)), step: '1' } });
+        r.value = String(x.poids);
+        const v = p.createSpan({ cls: 'zfa-veille-poids-val', text: String(x.poids) });
+        r.setAttribute('aria-label', tr('Poids'));
+        r.oninput = () => { v.setText(r.value); };
+        r.onchange = async () => { x.poids = Number(r.value); await enregistrer(); };
+        const axe = l.createEl('input', { type: 'text', cls: 'zfa-veille-champ est-axe', attr: { placeholder: tr('Axe') } });
+        axe.value = x.axe;
+        axe.onchange = async () => { x.axe = axe.value.trim(); await enregistrer(); };
+        const corps = l.createDiv({ cls: 'zfa-veille-termes' });
+        if (x.termes) {
+          for (const t of x.termes) {
+            const e = corps.createSpan({ cls: 'zfa-veille-terme', text: t });
+            const sup = e.createSpan({ cls: 'zfa-veille-terme-x', text: '×', attr: { 'aria-label': tr('Retirer') } });
+            sup.onclick = async () => { x.termes.splice(x.termes.indexOf(t), 1); await enregistrer(); dessiner(); };
+          }
+          const i = corps.createEl('input', { type: 'text', cls: 'zfa-veille-terme-champ', attr: { placeholder: tr('terme, Entrée') } });
+          const valider = async () => {
+            const nv = i.value.split(/[,;]/).map((t) => t.trim()).filter((t) => t && !x.termes.includes(t));
+            if (!nv.length) return;
+            x.termes.push(...nv);
+            await enregistrer();
+            dessiner(x);
+          };
+          i.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); valider(); }
+            if (e.key === 'Backspace' && !i.value && x.termes.length) { x.termes.pop(); enregistrer().then(() => dessiner(x)); }
+          });
+          i.onblur = () => { if (i.value.trim()) valider(); };
+          if (focus === x) i.focus();
+        } else {
+          const m = corps.createEl('input', { type: 'text', cls: 'zfa-veille-champ est-motif', attr: { placeholder: tr('expression régulière') } });
+          m.value = x.motif;
+          m.onchange = async () => {
+            try { new RegExp(m.value, 'i'); m.removeClass('zfa-saisie-invalide'); } catch (e) { m.addClass('zfa-saisie-invalide'); return; }
+            x.motif = m.value.trim();
+            await enregistrer();
+          };
+        }
+        const bMode = l.createEl('button', { cls: 'clickable-icon zfa-veille-mode' + (x.termes ? '' : ' is-active'), text: '.*',
+          attr: { 'aria-label': x.termes ? tr('Passer en expression régulière') : tr('Revenir aux étiquettes') } });
+        bMode.onclick = async () => {
+          if (x.termes) { x.motif = Ariane.motifDepuisTermesVeille(x.termes); x.termes = null; }
+          else {
+            const t = Ariane.termesDepuisMotifVeille(x.motif);
+            if (!t) { new obsidian.Notice(tr('Cette expression ne se réduit pas à des termes simples.')); return; }
+            x.termes = t;
+          }
+          await enregistrer();
+          dessiner();
+        };
+        const bSup = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Supprimer ce thème') } });
+        obsidian.setIcon(bSup, 'trash-2');
+        bSup.onclick = async () => { lignes.splice(lignes.indexOf(x), 1); await enregistrer(); dessiner(); };
+      }
+      const bAj = boite.createEl('button', { text: tr('Ajouter un thème') });
+      bAj.onclick = () => { const x = { poids: 3, axe: '', motif: '', termes: [] }; lignes.push(x); dessiner(x); };
+    };
+    dessiner();
   }
 
   ongletTemps(c, s, maj) {
@@ -42164,6 +42602,70 @@ class ModaleReferencesOrphelines extends obsidian.Modal {
       this.close();
     };
     maj();
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+// L'essai à blanc de la veille : ce que la collecte rapporte source par
+// source, ce que le pré-tri garderait, et les mieux notés. Rien n'est écrit.
+class ModaleEssaiVeille extends obsidian.Modal {
+  constructor(app, greffon, r) { super(app); this.greffon = greffon; this.r = r; }
+
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    const r = this.r;
+    modalEl.addClass('zfa-essai-veille');
+    if (this.setTitle) this.setTitle(tr('Essai à blanc de la veille'));
+    else contentEl.createEl('h3', { text: tr('Essai à blanc de la veille') });
+    const prio = r.gardes.filter((i) => i.prioriteAuto).length;
+    const erreurs = Object.values(r.bilan).filter((v) => v && v.erreur).length;
+    contentEl.createDiv({ cls: 'setting-item-description', text: tr('Du ') + r.debut + tr(' au ') + r.fin + ' (' + r.jours + ' ' + tr('jours') + ').'
+      + tr(' Rien n’a été écrit ni retenu : la vraie veille couvrira la même période.') });
+    const chiffres = contentEl.createDiv({ cls: 'zfa-essai-chiffres' });
+    for (const [n, lib] of [[r.bruts, tr('collectées')], [r.deja, tr('déjà vues')], [r.gardes.length, tr('gardées par le pré-tri')],
+      [prio, tr('prioritaires')], [erreurs, tr('sources en erreur')]]) {
+      const b = chiffres.createDiv({ cls: 'zfa-essai-chiffre' + (lib === tr('sources en erreur') && n ? ' est-erreur' : '') });
+      b.createDiv({ cls: 'zfa-essai-n', text: String(n) });
+      b.createDiv({ cls: 'zfa-essai-lib', text: lib });
+    }
+
+    contentEl.createEl('h4', { text: tr('Source par source') });
+    const t = contentEl.createDiv({ cls: 'zfa-essai-sources' });
+    const lignes = Object.entries(r.bilan).sort(([, a], [, b]) => (b.erreur ? 1 : 0) - (a.erreur ? 1 : 0) || (b.bruts || 0) - (a.bruts || 0));
+    for (const [nom, v] of lignes) {
+      const l = t.createDiv({ cls: 'zfa-essai-source' + (v.erreur ? ' est-erreur' : '') });
+      l.createSpan({ cls: 'zfa-essai-source-nom', text: nom });
+      l.createSpan({ cls: 'zfa-essai-source-val', text: v.erreur ? v.erreur : String(v.bruts) });
+    }
+
+    const meilleurs = r.gardes.slice(0, 15);
+    if (meilleurs.length) {
+      contentEl.createEl('h4', { text: tr('Les mieux notés') });
+      const m = contentEl.createDiv({ cls: 'zfa-essai-items' });
+      for (const it of meilleurs) {
+        const l = m.createDiv({ cls: 'zfa-essai-item' });
+        l.createSpan({ cls: 'zfa-essai-score' + (it.prioriteAuto ? ' est-prio' : ''), text: String(it.score) });
+        const c = l.createDiv({ cls: 'zfa-essai-item-corps' });
+        const a = c.createEl('a', { text: it.titre, href: it.url || '#' });
+        a.setAttribute('target', '_blank');
+        c.createDiv({ cls: 'zfa-essai-item-info', text: [it.revue || it.source, (it.axes || []).join(', ')].filter(Boolean).join(' ; ') });
+      }
+    }
+    const acteurs = (r.acteurs || []).filter((a) => a.items.length || a.erreur);
+    if (acteurs.length) {
+      contentEl.createEl('h4', { text: tr('Acteurs suivis') });
+      const ac = contentEl.createDiv({ cls: 'zfa-essai-sources' });
+      for (const a of r.acteurs) {
+        const l = ac.createDiv({ cls: 'zfa-essai-source' + (a.erreur ? ' est-erreur' : '') });
+        l.createSpan({ cls: 'zfa-essai-source-nom', text: a.nom });
+        l.createSpan({ cls: 'zfa-essai-source-val', text: a.erreur || (a.items.length + ' ' + tr('publications')) });
+      }
+    }
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    pied.createEl('button', { text: tr('Fermer') }).onclick = () => this.close();
+    const go = pied.createEl('button', { cls: 'mod-cta', text: tr('Lancer la vraie veille') });
+    go.onclick = () => { this.close(); this.greffon.lancerVeille(); };
   }
 
   onClose() { this.contentEl.empty(); }

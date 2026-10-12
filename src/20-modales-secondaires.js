@@ -570,5 +570,69 @@ class ModaleReferencesOrphelines extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// L'essai à blanc de la veille : ce que la collecte rapporte source par
+// source, ce que le pré-tri garderait, et les mieux notés. Rien n'est écrit.
+class ModaleEssaiVeille extends obsidian.Modal {
+  constructor(app, greffon, r) { super(app); this.greffon = greffon; this.r = r; }
+
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    const r = this.r;
+    modalEl.addClass('zfa-essai-veille');
+    if (this.setTitle) this.setTitle(tr('Essai à blanc de la veille'));
+    else contentEl.createEl('h3', { text: tr('Essai à blanc de la veille') });
+    const prio = r.gardes.filter((i) => i.prioriteAuto).length;
+    const erreurs = Object.values(r.bilan).filter((v) => v && v.erreur).length;
+    contentEl.createDiv({ cls: 'setting-item-description', text: tr('Du ') + r.debut + tr(' au ') + r.fin + ' (' + r.jours + ' ' + tr('jours') + ').'
+      + tr(' Rien n’a été écrit ni retenu : la vraie veille couvrira la même période.') });
+    const chiffres = contentEl.createDiv({ cls: 'zfa-essai-chiffres' });
+    for (const [n, lib] of [[r.bruts, tr('collectées')], [r.deja, tr('déjà vues')], [r.gardes.length, tr('gardées par le pré-tri')],
+      [prio, tr('prioritaires')], [erreurs, tr('sources en erreur')]]) {
+      const b = chiffres.createDiv({ cls: 'zfa-essai-chiffre' + (lib === tr('sources en erreur') && n ? ' est-erreur' : '') });
+      b.createDiv({ cls: 'zfa-essai-n', text: String(n) });
+      b.createDiv({ cls: 'zfa-essai-lib', text: lib });
+    }
+
+    contentEl.createEl('h4', { text: tr('Source par source') });
+    const t = contentEl.createDiv({ cls: 'zfa-essai-sources' });
+    const lignes = Object.entries(r.bilan).sort(([, a], [, b]) => (b.erreur ? 1 : 0) - (a.erreur ? 1 : 0) || (b.bruts || 0) - (a.bruts || 0));
+    for (const [nom, v] of lignes) {
+      const l = t.createDiv({ cls: 'zfa-essai-source' + (v.erreur ? ' est-erreur' : '') });
+      l.createSpan({ cls: 'zfa-essai-source-nom', text: nom });
+      l.createSpan({ cls: 'zfa-essai-source-val', text: v.erreur ? v.erreur : String(v.bruts) });
+    }
+
+    const meilleurs = r.gardes.slice(0, 15);
+    if (meilleurs.length) {
+      contentEl.createEl('h4', { text: tr('Les mieux notés') });
+      const m = contentEl.createDiv({ cls: 'zfa-essai-items' });
+      for (const it of meilleurs) {
+        const l = m.createDiv({ cls: 'zfa-essai-item' });
+        l.createSpan({ cls: 'zfa-essai-score' + (it.prioriteAuto ? ' est-prio' : ''), text: String(it.score) });
+        const c = l.createDiv({ cls: 'zfa-essai-item-corps' });
+        const a = c.createEl('a', { text: it.titre, href: it.url || '#' });
+        a.setAttribute('target', '_blank');
+        c.createDiv({ cls: 'zfa-essai-item-info', text: [it.revue || it.source, (it.axes || []).join(', ')].filter(Boolean).join(' ; ') });
+      }
+    }
+    const acteurs = (r.acteurs || []).filter((a) => a.items.length || a.erreur);
+    if (acteurs.length) {
+      contentEl.createEl('h4', { text: tr('Acteurs suivis') });
+      const ac = contentEl.createDiv({ cls: 'zfa-essai-sources' });
+      for (const a of r.acteurs) {
+        const l = ac.createDiv({ cls: 'zfa-essai-source' + (a.erreur ? ' est-erreur' : '') });
+        l.createSpan({ cls: 'zfa-essai-source-nom', text: a.nom });
+        l.createSpan({ cls: 'zfa-essai-source-val', text: a.erreur || (a.items.length + ' ' + tr('publications')) });
+      }
+    }
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    pied.createEl('button', { text: tr('Fermer') }).onclick = () => this.close();
+    const go = pied.createEl('button', { cls: 'mod-cta', text: tr('Lancer la vraie veille') });
+    go.onclick = () => { this.close(); this.greffon.lancerVeille(); };
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 //#endregion 20 · Modales secondaires
 

@@ -1923,6 +1923,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(s.veilleDerniere ? tr('Dernière veille : ') + s.veilleDerniere + tr('. La suivante couvre les jours écoulés depuis.')
         : tr('Jamais lancée.'))
       .addButton((b) => b.setButtonText(tr('Lancer la veille')).setCta().onClick(() => this.plugin.lancerVeille()))
+      .addButton((b) => b.setButtonText(tr('Essai à blanc')).setTooltip(tr('Collecte et pré-tri, sans IA, sans note, sans rien retenir : pour régler sources et seuils.'))
+        .onClick(() => this.plugin.essaiVeille()))
       .addButton((b) => b.setButtonText(tr('Vérifier les ISSN')).onClick(() => this.plugin.verifierIssnVeille()));
     new obsidian.Setting(c)
       .setName(tr('Chaque semaine'))
@@ -1970,6 +1972,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         entree.click();
       }));
 
+    this._section(c, tr('Sources et acteurs suivis'));
+    this._aide(c, tr("Collez ce que vous voulez suivre : Ariane reconnaît un ISSN (revue), un préfixe DOI (rapports d'une organisation), l'adresse d'un flux, celle d'un site (qui devient un acteur suivi s'il publie un flux, un site à consulter sinon) ou d'une page LinkedIn ; tout autre texte devient une requête HAL. « Filtré » : source volumineuse ou généraliste, dont on ne garde que les publications au score suffisant. Un acteur suivi est montré en entier, dans sa propre section."));
+    this._veilleSources(c, s, maj);
+    zone(tr('Catégories des publications des acteurs'), tr("Une par ligne. L'IA range chaque publication d'un acteur dans l'une d'elles, juge son intérêt pour la thèse et relève la date et le lieu des événements."), 'veilleCategoriesActeurs', 3,
+      'Événement\nActualité\nPublication ou rapport', false);
+
     this._section(c, tr('Profil de la thèse'));
     this._aide(c, tr("Ce que l'IA lit pour juger chaque publication et rédiger « Pour la thèse ». Plus il est précis, meilleure est la sélection."));
     zone(tr('Résumé de la thèse'), tr('5 à 10 lignes : question de recherche, cadre théorique, terrain, méthodes.'), 'veilleResume', 6, '');
@@ -1982,29 +1990,184 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       tr('« fournit un mécanisme X mobilisable dans le chapitre 2 pour discuter Y »'));
 
     this._section(c, tr('Mots-clés et seuils'));
-    zone(tr('Mots-clés pondérés'), tr("Une ligne par motif : « poids | axe | motif ». Le motif est une expression régulière, sans égard à la casse, cherchée dans le titre et le résumé ; ses « | » sont des alternatives. Le score d'un item est la somme des poids des motifs trouvés."), 'veilleMotsCles', 7,
-      '5 | Cœur théorique | sensemaking|sense-making|fabrique du sens\n3 | Méthodes | ethnograph|case study|étude de cas', true);
+    this._aide(c, tr("Un thème par ligne : son poids, son axe, et ses termes, cherchés sans égard à la casse dans le titre et le résumé (« ethnograph » trouve aussi « ethnographie »). Le score d'une publication est la somme des poids des thèmes trouvés. Le bouton « .* » passe un thème en expression régulière, pour qui en a besoin."));
+    this._veilleMotsCles(c, s, maj);
     nombre(tr('Seuil des sources filtrées'), tr('Score minimal pour garder un item d\'une source marquée « filtré » (revue généraliste ou volumineuse).'), 'veilleSeuilFiltre', 5);
     nombre(tr('Seuil de priorité'), tr('Score à partir duquel un item est marqué prioritaire.'), 'veilleSeuilPriorite', 8);
     nombre(tr('Seuil du résumé'), tr("Score à partir duquel l'IA lit le résumé ; en dessous, le titre seul."), 'veilleSeuilResume', 4);
     zone(tr('Titres à exclure'), tr("Expression régulière : erratums, comités éditoriaux, sommaires…"), 'veilleExclusionsTitre', 2, '', true);
 
-    this._section(c, tr('Sources'));
-    this._aide(c, tr("Une source par ligne, colonnes séparées par « | ». « filtré » en dernière colonne : source volumineuse ou généraliste, dont on ne garde que les items au score suffisant. Une ligne commençant par # est ignorée."));
-    zone(tr('Revues'), tr('« Nom | ISSN, ISSN | Catégorie | filtré ». Vérifiez les ISSN après tout ajout.'), 'veilleRevues', 8,
-      'Safety Science | 0925-7535 | Risques & sécurité\nJournal of Business Research | 0148-2963 | Management | filtré', true);
-    zone(tr("Préfixes DOI d'organisations"), tr("« Nom | préfixe | Catégorie | filtré » : tout ce que l'organisation dépose chez Crossref."), 'veillePrefixes', 3,
-      'OCDE (OECD iLibrary) | 10.1787 | Rapports internationaux | filtré', true);
-    zone(tr('Flux RSS ou Atom'), tr('« Nom | adresse | Catégorie | filtré ».'), 'veilleFlux', 4,
-      'ADEME | https://www.ademe.fr/feed/ | Rapports (France) | filtré', true);
-    zone(tr('Requêtes HAL'), tr('Une requête Solr par ligne, cherchée dans les dépôts de la période.'), 'veilleHal', 3,
-      '"culture de sécurité" OR "safety culture"', true);
-    zone(tr('Acteurs suivis'), tr("« Nom | adresse, adresse… » : associations, institutions, entreprises dont on veut voir tout ce qu'elles publient, sans tri ni sélection, dans une section à part. Une adresse peut être un flux RSS ou une page de leur site (Ariane y cherche le flux). Les pages LinkedIn ne se lisent pas sans connexion : elles sont rappelées dans la note, pour une visite à la main."), 'veilleActeurs', 3,
-      'Association Exemple | https://www.exemple.fr/, https://www.exemple.fr/evenements/, https://www.linkedin.com/company/exemple/', true);
-    zone(tr('Catégories des publications des acteurs'), tr("Une par ligne. L'IA range chaque publication d'un acteur dans l'une d'elles, juge son intérêt pour la thèse et relève la date et le lieu des événements."), 'veilleCategoriesActeurs', 3,
-      'Événement\nActualité\nPublication ou rapport', false);
-    zone(tr('Sites à consulter'), tr("« Nom | adresse | Catégorie » : institutions sans flux, rappelées en fin de note pour une visite à la main."), 'veilleSites', 3,
-      'Cour des comptes | https://www.ccomptes.fr/fr/publications | Rapports (France)', true);
+  }
+
+  // Les sources de la veille en lignes éditables, avec ajout par collage.
+  // Les réglages restent des lignes de texte (voir Ariane.lignesSourcesVeille).
+  _veilleSources(c, s, maj) {
+    const TYPES = Ariane.TYPES_SOURCES_VEILLE;
+    const lignes = {};
+    for (const type of Object.keys(TYPES)) lignes[type] = Ariane.lignesSourcesVeille(s[TYPES[type].cle], type);
+    const enregistrer = async (type) => { s[TYPES[type].cle] = Ariane.texteSourcesVeille(lignes[type], type); await maj(); };
+
+    const ajout = c.createDiv({ cls: 'zfa-veille-ajout' });
+    const champ = ajout.createEl('input', { type: 'text', cls: 'zfa-veille-ajout-champ',
+      attr: { placeholder: tr('ISSN, préfixe DOI, adresse d’un flux, d’un site ou de LinkedIn, ou requête HAL') } });
+    const bAjout = ajout.createEl('button', { cls: 'mod-cta', text: tr('Ajouter') });
+    const etat = c.createDiv({ cls: 'zfa-veille-etat' });
+    const listes = c.createDiv({ cls: 'zfa-veille-listes' });
+
+    const dessiner = (focus) => {
+      listes.empty();
+      const cats = [...new Set(['revue', 'prefixe', 'flux', 'site']
+        .flatMap((t) => lignes[t].map((x) => x.categorie)).filter(Boolean))].sort();
+      const dl = listes.createEl('datalist', { attr: { id: 'zfa-veille-categories' } });
+      for (const cat of cats) dl.createEl('option', { attr: { value: cat } });
+      for (const type of Object.keys(TYPES)) {
+        const T = TYPES[type];
+        const rangs = lignes[type].filter((x) => x.commentaire == null);
+        if (!rangs.length) continue;
+        const actives = rangs.filter((x) => x.actif !== false).length;
+        listes.createDiv({ cls: 'zfa-veille-type', text: tr(T.groupe) + ' (' + actives + (actives < rangs.length ? ' / ' + rangs.length : '') + ')' });
+        for (const x of rangs) {
+          const l = listes.createDiv({ cls: 'zfa-veille-ligne est-' + type + (x.actif === false ? ' est-inactive' : '') });
+          const actif = l.createEl('input', { type: 'checkbox', cls: 'zfa-veille-actif' });
+          actif.checked = x.actif !== false;
+          actif.setAttribute('aria-label', tr('Active (décochée : mise de côté, sans être perdue)'));
+          actif.onchange = async () => { x.actif = actif.checked; l.toggleClass('est-inactive', !actif.checked); await enregistrer(type); };
+          const texte = (cle, ph, cls) => {
+            const i = l.createEl('input', { type: 'text', cls: 'zfa-veille-champ ' + (cls || ''), attr: { placeholder: ph } });
+            i.value = x[cle] || '';
+            i.onchange = async () => { x[cle] = i.value.trim(); await enregistrer(type); };
+            return i;
+          };
+          let premier = null;
+          if (!T.seule) premier = texte('nom', tr('Nom'), 'est-nom');
+          const adr = texte('adresse', tr(T.adresse), 'est-adresse');
+          if (T.categorie) texte('categorie', tr('Catégorie'), 'est-categorie').setAttribute('list', 'zfa-veille-categories');
+          if (T.filtre) {
+            const lab = l.createEl('label', { cls: 'zfa-veille-filtre' });
+            const f = lab.createEl('input', { type: 'checkbox' });
+            f.checked = !!x.filtre;
+            lab.appendText(tr('filtré'));
+            f.onchange = async () => { x.filtre = f.checked; await enregistrer(type); };
+          }
+          const res = l.createSpan({ cls: 'zfa-veille-resultat' });
+          const bTest = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Tester cette source') } });
+          obsidian.setIcon(bTest, 'flask-conical');
+          bTest.onclick = async () => {
+            bTest.disabled = true;
+            res.setText(tr('Test…'));
+            res.removeClass('est-erreur');
+            const m = await this.plugin.testerSourceVeille(type, x);
+            res.setText(m);
+            res.toggleClass('est-erreur', /^(Erreur|HTTP|ISSN|Préfixe|Aucune)/.test(m) || /: HTTP/.test(m));
+            bTest.disabled = false;
+          };
+          const bSup = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Supprimer') } });
+          obsidian.setIcon(bSup, 'trash-2');
+          bSup.onclick = async () => { lignes[type].splice(lignes[type].indexOf(x), 1); await enregistrer(type); dessiner(); };
+          if (focus === x) (premier && !x.nom ? premier : adr).focus();
+        }
+      }
+      if (!Object.values(lignes).some((l) => l.some((x) => x.commentaire == null))) {
+        listes.createDiv({ cls: 'zfa-veille-vide', text: tr('Aucune source pour l’instant. Collez une adresse ci-dessus, ou importez une configuration veille-revues.') });
+      }
+    };
+
+    const ajouter = async () => {
+      const t = champ.value.trim();
+      if (!t) return;
+      bAjout.disabled = true;
+      etat.setText(tr('Recherche…'));
+      etat.removeClass('est-erreur');
+      const r = await this.plugin.analyserAdresseVeille(t);
+      bAjout.disabled = false;
+      if (!r) { etat.setText(''); return; }
+      // LinkedIn : rattaché à un acteur déjà suivi s'il en a le nom dans
+      // l'adresse, sinon un nouvel acteur à nommer.
+      const x = { actif: true, nom: r.nom || '', adresse: r.adresse, categorie: '', filtre: false };
+      lignes[r.type].push(x);
+      await enregistrer(r.type);
+      champ.value = '';
+      etat.setText(tr('Ajouté : ') + tr(TYPES[r.type].nom) + (r.nom ? ' « ' + r.nom + ' »' : '')
+        + (r.erreur ? tr(' (introuvable en ligne : ') + r.erreur + ')' : '')
+        + (!r.nom && !TYPES[r.type].seule ? tr('. Donnez-lui un nom.') : '.'));
+      etat.toggleClass('est-erreur', !!r.erreur);
+      dessiner(x);
+    };
+    bAjout.onclick = ajouter;
+    champ.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ajouter(); } });
+    dessiner();
+  }
+
+  // Les mots-clés en lignes : poids au curseur, axe, termes en étiquettes ;
+  // un thème peut passer en expression régulière (bouton « .* »).
+  _veilleMotsCles(c, s, maj) {
+    const lignes = Ariane.motsClesEditablesVeille(s.veilleMotsCles);
+    const boite = c.createDiv({ cls: 'zfa-veille-mots' });
+    const enregistrer = async () => { s.veilleMotsCles = Ariane.texteMotsClesVeille(lignes); await maj(); };
+    const dessiner = (focus) => {
+      boite.empty();
+      for (const x of lignes) {
+        const l = boite.createDiv({ cls: 'zfa-veille-mot' });
+        const p = l.createDiv({ cls: 'zfa-veille-poids' });
+        const r = p.createEl('input', { type: 'range', attr: { min: '1', max: String(Math.max(10, x.poids)), step: '1' } });
+        r.value = String(x.poids);
+        const v = p.createSpan({ cls: 'zfa-veille-poids-val', text: String(x.poids) });
+        r.setAttribute('aria-label', tr('Poids'));
+        r.oninput = () => { v.setText(r.value); };
+        r.onchange = async () => { x.poids = Number(r.value); await enregistrer(); };
+        const axe = l.createEl('input', { type: 'text', cls: 'zfa-veille-champ est-axe', attr: { placeholder: tr('Axe') } });
+        axe.value = x.axe;
+        axe.onchange = async () => { x.axe = axe.value.trim(); await enregistrer(); };
+        const corps = l.createDiv({ cls: 'zfa-veille-termes' });
+        if (x.termes) {
+          for (const t of x.termes) {
+            const e = corps.createSpan({ cls: 'zfa-veille-terme', text: t });
+            const sup = e.createSpan({ cls: 'zfa-veille-terme-x', text: '×', attr: { 'aria-label': tr('Retirer') } });
+            sup.onclick = async () => { x.termes.splice(x.termes.indexOf(t), 1); await enregistrer(); dessiner(); };
+          }
+          const i = corps.createEl('input', { type: 'text', cls: 'zfa-veille-terme-champ', attr: { placeholder: tr('terme, Entrée') } });
+          const valider = async () => {
+            const nv = i.value.split(/[,;]/).map((t) => t.trim()).filter((t) => t && !x.termes.includes(t));
+            if (!nv.length) return;
+            x.termes.push(...nv);
+            await enregistrer();
+            dessiner(x);
+          };
+          i.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); valider(); }
+            if (e.key === 'Backspace' && !i.value && x.termes.length) { x.termes.pop(); enregistrer().then(() => dessiner(x)); }
+          });
+          i.onblur = () => { if (i.value.trim()) valider(); };
+          if (focus === x) i.focus();
+        } else {
+          const m = corps.createEl('input', { type: 'text', cls: 'zfa-veille-champ est-motif', attr: { placeholder: tr('expression régulière') } });
+          m.value = x.motif;
+          m.onchange = async () => {
+            try { new RegExp(m.value, 'i'); m.removeClass('zfa-saisie-invalide'); } catch (e) { m.addClass('zfa-saisie-invalide'); return; }
+            x.motif = m.value.trim();
+            await enregistrer();
+          };
+        }
+        const bMode = l.createEl('button', { cls: 'clickable-icon zfa-veille-mode' + (x.termes ? '' : ' is-active'), text: '.*',
+          attr: { 'aria-label': x.termes ? tr('Passer en expression régulière') : tr('Revenir aux étiquettes') } });
+        bMode.onclick = async () => {
+          if (x.termes) { x.motif = Ariane.motifDepuisTermesVeille(x.termes); x.termes = null; }
+          else {
+            const t = Ariane.termesDepuisMotifVeille(x.motif);
+            if (!t) { new obsidian.Notice(tr('Cette expression ne se réduit pas à des termes simples.')); return; }
+            x.termes = t;
+          }
+          await enregistrer();
+          dessiner();
+        };
+        const bSup = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Supprimer ce thème') } });
+        obsidian.setIcon(bSup, 'trash-2');
+        bSup.onclick = async () => { lignes.splice(lignes.indexOf(x), 1); await enregistrer(); dessiner(); };
+      }
+      const bAj = boite.createEl('button', { text: tr('Ajouter un thème') });
+      bAj.onclick = () => { const x = { poids: 3, axe: '', motif: '', termes: [] }; lignes.push(x); dessiner(x); };
+    };
+    dessiner();
   }
 
   ongletTemps(c, s, maj) {

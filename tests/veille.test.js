@@ -302,3 +302,40 @@ test('acteurs suivis : l\'analyse de l\'IA est bornée, et les événements à v
   assert.ok(md.includes('[LinkedIn](https://www.linkedin.com/company/a/)'));
   assert.ok(md.includes('### B\n\nRien de neuf sur la période.'));
 });
+
+test('réglages en lignes : lecture et réécriture fidèles, mises de côté et commentaires compris', () => {
+  const texte = '# mes revues\nSafety Science | 0925-7535 | Risques & sécurité\n#off JBR | 0148-2963 | Management | filtré';
+  const l = Ariane.lignesSourcesVeille(texte, 'revue');
+  assert.deepEqual(l[1], { actif: true, nom: 'Safety Science', adresse: '0925-7535', categorie: 'Risques & sécurité', filtre: false });
+  assert.deepEqual(l[2], { actif: false, nom: 'JBR', adresse: '0148-2963', categorie: 'Management', filtre: true });
+  assert.equal(Ariane.texteSourcesVeille(l, 'revue'), texte);
+  // Une source mise de côté n'est pas collectée.
+  assert.deepEqual(Ariane.compilerRevuesVeille(Ariane.texteSourcesVeille(l, 'revue')).map((r) => r.nom), ['Safety Science']);
+  const acteurs = Ariane.lignesSourcesVeille('A | https://a.fr/, https://www.linkedin.com/company/a/', 'acteur');
+  assert.equal(acteurs[0].adresse, 'https://a.fr/, https://www.linkedin.com/company/a/');
+  assert.equal(Ariane.texteSourcesVeille(acteurs, 'acteur'), 'A | https://a.fr/, https://www.linkedin.com/company/a/');
+  assert.equal(Ariane.texteSourcesVeille([{ actif: true, adresse: '"safety culture"' }], 'hal'), '"safety culture"');
+  assert.equal(Ariane.texteSourcesVeille([{ actif: true, nom: '', adresse: '' }], 'flux'), '', 'une ligne vide disparaît');
+});
+
+test('ajout par collage : le type se devine', () => {
+  assert.deepEqual(Ariane.typeAdresseVeille('0925 7535'.replace(' ', '-')), { type: 'revue', adresse: '0925-7535' });
+  assert.deepEqual(Ariane.typeAdresseVeille('1234567x'), { type: 'revue', adresse: '1234-567X' });
+  assert.deepEqual(Ariane.typeAdresseVeille('https://doi.org/10.1787'), { type: 'prefixe', adresse: '10.1787' });
+  assert.equal(Ariane.typeAdresseVeille('https://fr.linkedin.com/company/x/').type, 'acteur');
+  assert.equal(Ariane.typeAdresseVeille('https://exemple.fr/feed/').type, 'url');
+  assert.deepEqual(Ariane.typeAdresseVeille('"risque systémique"'), { type: 'hal', adresse: '"risque systémique"' });
+  assert.equal(Ariane.typeAdresseVeille('  '), null);
+});
+
+test('mots-clés en étiquettes : termes échappés, et un vrai motif reste une expression', () => {
+  const motif = Ariane.motifDepuisTermesVeille(['sensemaking', 'fabrique du sens', 'C++ (outil)']);
+  assert.equal(motif, 'sensemaking|fabrique du sens|C\\+\\+ \\(outil\\)');
+  assert.deepEqual(Ariane.termesDepuisMotifVeille(motif), ['sensemaking', 'fabrique du sens', 'C++ (outil)']);
+  assert.equal(Ariane.termesDepuisMotifVeille('ethnograph.*|case stud(y|ies)'), null);
+  const l = Ariane.motsClesEditablesVeille('5 | Cœur | sensemaking|sense-making\n3 | Méthodes | stud(y|ies)');
+  assert.deepEqual(l[0].termes, ['sensemaking', 'sense-making']);
+  assert.equal(l[1].termes, null);
+  assert.equal(Ariane.texteMotsClesVeille(l), '5 | Cœur | sensemaking|sense-making\n3 | Méthodes | stud(y|ies)');
+  assert.ok(new RegExp(Ariane.compilerMotsClesVeille(Ariane.texteMotsClesVeille(l))[0].re.source, 'i').test('SENSE-MAKING'));
+});
