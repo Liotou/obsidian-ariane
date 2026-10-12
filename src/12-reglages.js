@@ -1999,6 +1999,10 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       'ADEME | https://www.ademe.fr/feed/ | Rapports (France) | filtré', true);
     zone(tr('Requêtes HAL'), tr('Une requête Solr par ligne, cherchée dans les dépôts de la période.'), 'veilleHal', 3,
       '"culture de sécurité" OR "safety culture"', true);
+    zone(tr('Acteurs suivis'), tr("« Nom | adresse, adresse… » : associations, institutions, entreprises dont on veut voir tout ce qu'elles publient, sans tri ni sélection, dans une section à part. Une adresse peut être un flux RSS ou une page de leur site (Ariane y cherche le flux). Les pages LinkedIn ne se lisent pas sans connexion : elles sont rappelées dans la note, pour une visite à la main."), 'veilleActeurs', 3,
+      'Association Exemple | https://www.exemple.fr/, https://www.exemple.fr/evenements/, https://www.linkedin.com/company/exemple/', true);
+    zone(tr('Catégories des publications des acteurs'), tr("Une par ligne. L'IA range chaque publication d'un acteur dans l'une d'elles, juge son intérêt pour la thèse et relève la date et le lieu des événements."), 'veilleCategoriesActeurs', 3,
+      'Événement\nActualité\nPublication ou rapport', false);
     zone(tr('Sites à consulter'), tr("« Nom | adresse | Catégorie » : institutions sans flux, rappelées en fin de note pour une visite à la main."), 'veilleSites', 3,
       'Cour des comptes | https://www.ccomptes.fr/fr/publications | Rapports (France)', true);
   }

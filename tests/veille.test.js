@@ -248,3 +248,57 @@ test('import de veille-revues : sources.json et profil_these.json', () => {
   assert.deepEqual([p.veilleSeuilFiltre, p.veilleSeuilPriorite, p.veilleSeuilResume], [6, 9, 3]);
   assert.equal(p.veilleExclusionsTitre, '^(erratum)');
 });
+
+test('acteurs suivis : lignes générales, LinkedIn mis à part, flux découvert dans la page', () => {
+  const a = Ariane.compilerActeursVeille('# commentaire\nAssociation A | https://a.fr/, https://a.fr/agenda/feed/ https://www.linkedin.com/company/a/\nSans adresse | rien');
+  assert.deepEqual(a, [{ nom: 'Association A', flux: ['https://a.fr/', 'https://a.fr/agenda/feed/'],
+    aConsulter: ['https://www.linkedin.com/company/a/'] }]);
+  const html = '<head><link rel="stylesheet" href="x.css"><link rel="alternate" type="application/rss+xml" title="A &raquo; Flux" href="/feed/">'
+    + '<link rel="alternate" type="application/rss+xml" title="A &raquo; Flux pour Événements" href="https://a.fr/evenements/feed/"></head>';
+  assert.deepEqual(Ariane.decouvrirFluxVeille(html, 'https://a.fr/evenements/'),
+    ['https://a.fr/evenements/feed/', 'https://a.fr/feed/'], 'le flux de la page d\'abord');
+  assert.deepEqual(Ariane.decouvrirFluxVeille('<html></html>', 'https://a.fr/'), []);
+});
+
+test('acteurs suivis : collecte par la page, sans doublon, du plus récent au plus ancien', async () => {
+  const flux = (items) => '<rss><channel>' + items.map(([t, u, d]) => '<item><title>' + t + '</title><link>' + u
+    + '</link><pubDate>' + d + '</pubDate><description>Texte</description></item>').join('') + '</channel></rss>';
+  const pages = {
+    'https://a.fr/': '<link rel="alternate" type="application/rss+xml" href="https://a.fr/feed/">',
+    'https://a.fr/feed/': flux([['Vieux', 'https://a.fr/v', 'Mon, 01 Jun 2026 10:00:00 +0000'],
+      ['Récent', 'https://a.fr/r', 'Wed, 07 Oct 2026 10:00:00 +0000']]),
+    'https://a.fr/evenements/feed/': flux([['Récent', 'https://a.fr/r', 'Wed, 07 Oct 2026 10:00:00 +0000'],
+      ['Conférence', 'https://a.fr/c', 'Thu, 08 Oct 2026 10:00:00 +0000']]),
+  };
+  const moi = { _veilleGet: async (u) => { if (!(u in pages)) throw new Error('HTTP 404'); return pages[u]; } };
+  const r = await Ariane.prototype._veilleActeur.call(moi,
+    { nom: 'A', flux: ['https://a.fr/', 'https://a.fr/evenements/feed/'], aConsulter: [] },
+    Date.parse('2026-10-01T00:00:00Z'));
+  assert.deepEqual(r.items.map((i) => i.titre), ['Conférence', 'Récent']);
+  assert.equal(r.erreur, '');
+  const ko = await Ariane.prototype._veilleActeur.call(moi, { nom: 'B', flux: ['https://b.fr/'], aConsulter: [] }, 0);
+  assert.match(ko.erreur, /HTTP 404/);
+});
+
+test('acteurs suivis : l\'analyse de l\'IA est bornée, et les événements à venir remontent', () => {
+  const ana = Ariane.normaliserActeursVeille({
+    x1: { categorie: 'événement', interet: 'FORT', pourquoi: 'Utile.', quand: '2026-11-20', lieu: 'Le Havre' },
+    x2: { categorie: 'inventée', interet: 'énorme', quand: 'bientôt' },
+    zz: { categorie: 'Événement' },
+  }, ['x1', 'x2'], ['Événement', 'Actualité']);
+  assert.deepEqual(ana.get('x1'), { categorie: 'Événement', interet: 'fort', pourquoi: 'Utile.', quand: '2026-11-20', lieu: 'Le Havre' });
+  assert.deepEqual(ana.get('x2'), { categorie: 'Événement', interet: 'moyen', pourquoi: '', quand: '', lieu: '' });
+  assert.ok(!ana.has('zz'), 'identifiant inconnu écarté');
+  const items = [
+    { id: 'x1', titre: 'Colloque', url: 'https://a.fr/c', date: '2026-10-08', resume: '', ia: ana.get('x1') },
+    { id: 'x2', titre: 'Brève', url: 'https://a.fr/b', date: '2026-10-09', resume: 'Une brève.', ia: ana.get('x2') },
+  ];
+  const md = Ariane.noteVeille({ debut: '2026-10-05', fin: '2026-10-12', semaine: 41, stats: { bruts: 2 }, items: [],
+    selection: null, acteurs: [{ nom: 'Association A', items, aConsulter: ['https://www.linkedin.com/company/a/'], erreur: '' },
+      { nom: 'B', items: [], aConsulter: [], erreur: '' }], genereLe: 'x' });
+  assert.ok(md.includes('## Acteurs suivis'));
+  assert.ok(md.includes('> [!tip] Événements à venir\n> - **2026-11-20** (Le Havre) : [Colloque](https://a.fr/c), Association A'));
+  assert.ok(md.includes('- `Événement, intérêt fort` [Colloque](https://a.fr/c) (2026-10-08) : Utile.'));
+  assert.ok(md.includes('[LinkedIn](https://www.linkedin.com/company/a/)'));
+  assert.ok(md.includes('### B\n\nRien de neuf sur la période.'));
+});

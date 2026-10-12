@@ -829,6 +829,19 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "Saisir les pages…": "Enter pages…",
+    "intérêt": "interest",
+    "fort": "high",
+    "moyen": "medium",
+    "faible": "low",
+    "Événements à venir": "Upcoming events",
+    "Veille : analyse des acteurs (": "Watch: analysing actors (",
+    " publications)…": " posts)…",
+    "Catégories des publications des acteurs": "Categories of actors' posts",
+    "Acteurs suivis": "Followed actors",
+    "Rien de neuf sur la période.": "Nothing new over the period.",
+    "Site injoignable : ": "Site unreachable: ",
+    "À voir aussi, à la main : ": "Also worth a look, by hand: ",
+    " : aucun flux annoncé": ": no feed announced",
     "Revues": "Journals",
     "Rapports": "Reports",
     "Flux": "Feeds",
@@ -1492,6 +1505,9 @@ const DEFAULT_SETTINGS = {
   veilleFlux: '',
   veilleHal: '',
   veilleSites: '',
+  veilleActeurs: '',                    // « Nom | adresse, adresse » : associations, institutions suivies
+  // Catégories où l'IA range les publications des acteurs (une par ligne).
+  veilleCategoriesActeurs: 'Événement\nActualité\nPublication ou rapport\nPartenariat ou nouveau membre\nPosition ou plaidoyer\nRecrutement ou appel',
   canevasStyleRelation: true,   // hiérarchie discrète, blocage rouge en pointillés
   // Demander avant de supprimer une tâche depuis le canevas. La clé date de
   // l'ancienne vue Graphe ; elle est gardée pour ne pas perdre le choix fait.
