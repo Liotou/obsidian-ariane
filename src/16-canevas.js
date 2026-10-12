@@ -1053,7 +1053,8 @@ class SurfaceCanevas extends obsidian.Component {
     if (!t) return 'absente:' + ref;
     const fam = this.greffon.familleDe(t.famille);
     const rel = this._relatifs(ref, d);
-    return JSON.stringify([ref, t.intitule, t.statut, t.priorite, t.echeance, t.debut, t.jalon,
+    return JSON.stringify([ref, t.intitule, t.statut, t.priorite, t.echeance, t.debut, t.jalon, t.tempsEstime,
+      [].concat(t.creneaux || []).join('|'),
       fam.couleur, fam.icone, fam.nom, d.bloquee.has(ref), d.impactee.has(ref),
       d.av.has(ref) ? d.av.get(ref) : t.avancement,
       (d.enfants.get(ref) || []).length, d.jour, rel]);
@@ -1224,6 +1225,16 @@ class SurfaceCanevas extends obsidian.Component {
         canevasInfobulle(e, tr('Échéance dépassée'));
       } else canevasInfobulle(e, tr('Échéance'));
     }
+    // Temps estimé, et ce qui en est déjà planifié en créneaux.
+    if (t.tempsEstime > 0) {
+      const planifie = Ariane.creneauxDeTache([].concat(t.creneaux || []))
+        .reduce((s, x) => s + Ariane.dureeCreneauMin(x.debut, x.fin), 0);
+      const e = canevasEl(pied, 'span', 'zfa-cnv-estime' + (planifie >= t.tempsEstime ? ' est-couvert' : ''));
+      obsidian.setIcon(canevasEl(e, 'span', 'zfa-cnv-date-ic'), 'hourglass');
+      canevasEl(e, 'span', '', dureeLisible(t.tempsEstime));
+      canevasInfobulle(e, tr('Temps estimé : ') + dureeLisible(t.tempsEstime)
+        + (planifie ? tr(', dont ') + dureeLisible(Math.min(planifie, t.tempsEstime)) + tr(' planifiés') : tr(', rien de planifié')));
+    }
     const av = d.av.has(ref) ? d.av.get(ref) : (Number(t.avancement) || 0);
     if (av > 0) {
       const j = canevasEl(carte, 'div', 'zfa-cnv-jauge');
@@ -1289,6 +1300,7 @@ class SurfaceCanevas extends obsidian.Component {
     ligne('play', tr('Début'), t.debut ? canevasDateCourte(t.debut) : '');
     ligne('calendar-check', tr('Échéance'), t.echeance ? canevasDateCourte(t.echeance) : '');
     ligne('flag', tr('Priorité'), t.priorite);
+    ligne('hourglass', tr('Temps estimé'), t.tempsEstime > 0 ? dureeLisible(t.tempsEstime) : '');
     ligne('gauge', tr('Avancement'), (d.av.has(t.ref) ? Math.round(d.av.get(t.ref)) : Number(t.avancement) || 0) + ' %');
     const mere = d.parent.get(t.ref);
     ligne('git-branch', tr('Mère'), mere ? nomDe(mere) : '');

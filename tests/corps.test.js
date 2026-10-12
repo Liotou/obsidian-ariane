@@ -79,7 +79,7 @@ test('defautsNoyau : le jeu de concepts et leurs valeurs par défaut', () => {
   const d = Ariane.defautsNoyau();
   assert.deepEqual(Object.keys(d).sort(), [
     'avancement', 'bloque-par', 'creneaux', 'debut', 'echeance', 'heure',
-    'jalon', 'parent', 'priorite', 'sans-echeance', 'statut', 'termine-le',
+    'jalon', 'parent', 'priorite', 'sans-echeance', 'statut', 'temps-estime', 'termine-le',
     'terminee',
   ]);
   assert.deepEqual(d.creneaux, []);
@@ -92,6 +92,7 @@ test('defautsNoyau : le jeu de concepts et leurs valeurs par défaut', () => {
   assert.equal(d.priorite, null);
   assert.equal(d.debut, null);
   assert.equal(d['termine-le'], null);
+  assert.equal(d['temps-estime'], null, 'le temps estimé arrive vide');
 });
 
 test('defautsNoyau : n\'inclut aucun concept des groupes « rappel » / « agenda »', () => {

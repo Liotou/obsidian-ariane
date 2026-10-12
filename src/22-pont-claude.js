@@ -163,6 +163,7 @@ class PontClaude extends obsidian.Component {
       debut: t.debut || '',
       echeance: t.echeance || '',
       avancement: Number(t.avancement) || 0,
+      temps_estime_min: Number(t.tempsEstime) || 0,
       jalon: t.jalon === true,
       parent: Ariane.refDeLien(t.parent || ''),
       bloque_par: (t.bloquePar || []).map((b) => Ariane.refDeLien(b)).filter(Boolean),
@@ -498,7 +499,7 @@ class PontClaude extends obsidian.Component {
 
 const PONT_LIBELLES = {
   intitule: 'Intitulé', statut: 'Statut', priorite: 'Priorité', debut: 'Début',
-  echeance: 'Échéance', heure: 'Heure', avancement: 'Avancement', jalon: 'Jalon',
+  echeance: 'Échéance', heure: 'Heure', avancement: 'Avancement', 'temps-estime': 'Temps estimé', jalon: 'Jalon',
   parent: 'Tâche mère', famille: 'Famille',
 };
 
@@ -506,6 +507,10 @@ function pontOperationLisible(op) {
   const v = (x) => (x === '' || x == null ? tr('(vide)')
     : x === true ? tr('oui') : x === false ? tr('non') : String(x).replace(/^\[\[|\]\]$/g, ''));
   if (op.genre === 'champ') {
+    if (op.champ === 'temps-estime') {
+      const d = (x) => (Number(x) > 0 ? dureeLisible(x) : tr('(vide)'));
+      return tr('Temps estimé') + ' : ' + d(op.avant) + ' → ' + d(op.apres);
+    }
     return tr(PONT_LIBELLES[op.champ] || op.champ) + ' : ' + v(op.avant) + ' → ' + v(op.apres)
       + (op.champ === 'avancement' ? ' %' : '');
   }

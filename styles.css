@@ -2589,6 +2589,10 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-cnv-date-ic { display: inline-flex; }
 .zfa-cnv-date-ic svg { width: 14px; height: 14px; }
 .zfa-cnv-date.est-depassee { color: var(--text-error); font-weight: 600; }
+.zfa-cnv-estime { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.zfa-cnv-estime.est-couvert { color: var(--text-success); }
+/* Une saisie qu'Ariane ne sait pas lire (temps estimé, par exemple). */
+input.zfa-saisie-invalide { box-shadow: 0 0 0 1px var(--text-error) !important; }
 .zfa-cnv-jauge {
   height: 5px; border-radius: 3px; overflow: hidden;
   background: var(--background-modifier-border);

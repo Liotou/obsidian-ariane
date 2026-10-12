@@ -20,6 +20,26 @@ const avecTachesStatiques = (Base) => class extends Base {
     })[concept] || concept;
   }
 
+  // Le temps estimé d'une tâche, en minutes. La propriété en porte un nombre
+  // de minutes (comme le temps passé des notes) ; la saisie accepte aussi les
+  // formes qu'on écrit à la main : « 1 h 30 », « 1h30 », « 1,5 h », « 2 h »,
+  // « 45 min », « 90 ». Rend 0 pour une valeur vide ou illisible.
+  static dureeEstimeeMin(v) {
+    if (v == null || v === '') return 0;
+    if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
+    const s = String(v).trim().toLowerCase().replace(',', '.').replace(/\s+/g, ' ');
+    if (!s) return 0;
+    let m = /^(\d+(?:\.\d+)?)$/.exec(s);
+    if (m) return Math.round(Number(m[1]));
+    m = /^(\d+(?:\.\d+)?) ?(?:h|heures?)(?: ?(\d{1,2}) ?(?:min|mn|m)?)?$/.exec(s);
+    if (m) return Math.round(Number(m[1]) * 60 + (m[2] ? Number(m[2]) : 0));
+    m = /^(\d+) ?(?:min|mn|minutes?)$/.exec(s);
+    if (m) return Number(m[1]);
+    m = /^(\d{1,2}):(\d{2})$/.exec(s);
+    if (m) return Number(m[1]) * 60 + Number(m[2]);
+    return 0;
+  }
+
   // Clé de frontmatter d'un concept de tâche. Règle UNIQUE :
   //   clé = `prefixe` + label
   //   label = `cles[concept]` si l'utilisateur l'a personnalisé,
@@ -113,6 +133,10 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push(K('sans-echeance') + ': ' + (c.echeance ? 'false' : 'true'));
     l.push(K('creneaux') + ': []');
     l.push(K('avancement') + ': ' + (Number(c.avancement) || 0));
+    {
+      const est = Ariane.dureeEstimeeMin(c['temps-estime'] != null ? c['temps-estime'] : c.tempsEstime);
+      l.push(K('temps-estime') + ':' + (est ? ' ' + est : ''));
+    }
     l.push(K('termine-le') + ':');
     l.push(K('jalon') + ': ' + (c.jalon ? 'true' : 'false'));
     l.push(K('parent') + ':');
@@ -435,7 +459,7 @@ const avecTachesStatiques = (Base) => class extends Base {
   // survit ainsi à un renommage des clés de propriétés).
   static get CHAMPS_JOURNAL() {
     return ['intitule', 'statut', 'priorite', 'debut', 'echeance', 'heure',
-      'avancement', 'jalon', 'parent', 'bloque-par', 'famille'];
+      'avancement', 'temps-estime', 'jalon', 'parent', 'bloque-par', 'famille'];
   }
 
   // L'instantané d'une tâche (objet de tachesPourGantt) : valeurs simples,
@@ -451,6 +475,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       echeance: String(x.echeance || ''),
       heure: String(x.heure || ''),
       avancement: Number(x.avancement) || 0,
+      'temps-estime': Number(x.tempsEstime) || 0,
       jalon: x.jalon === true,
       parent: String(x.parent || ''),
       'bloque-par': liste(x.bloquePar),
@@ -635,7 +660,7 @@ const avecTachesStatiques = (Base) => class extends Base {
     const STATUTS = ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée'];
     const PRIORITES = ['', 'basse', 'moyenne', 'haute'];
     const CHAMPS = ['intitule', 'statut', 'priorite', 'debut', 'echeance', 'heure',
-      'avancement', 'jalon', 'parent', 'famille'];
+      'avancement', 'temps-estime', 'jalon', 'parent', 'famille'];
     const valides = [];
     const erreurs = [];
     // Une valeur de champ : normalisée si elle est acceptable, sinon une erreur.
@@ -661,6 +686,13 @@ const avecTachesStatiques = (Base) => class extends Base {
       if (champ === 'avancement') {
         const n = Number(v);
         return Number.isInteger(n) && n >= 0 && n <= 100 ? { v: n } : { e: 'avancement invalide : ' + v };
+      }
+      if (champ === 'temps-estime') {
+        // En minutes (nombre), ou sous une forme lisible (« 1 h 30 ») ; vide
+        // ou 0 pour le retirer.
+        if (v == null || v === '' || v === 0) return { v: 0 };
+        const n = Ariane.dureeEstimeeMin(v);
+        return n > 0 && n <= 60 * 500 ? { v: n } : { e: 'temps estimé invalide : ' + v };
       }
       if (champ === 'jalon') return typeof v === 'boolean' ? { v } : { e: 'jalon : vrai ou faux' };
       if (champ === 'parent') {
@@ -701,7 +733,8 @@ const avecTachesStatiques = (Base) => class extends Base {
         const avant = k === 'parent' ? (Ariane.refDeLien(t.parent || '') ? '[[' + Ariane.refDeLien(t.parent) + ']]' : '')
           : k === 'jalon' ? t.jalon === true
             : k === 'avancement' ? (Number(t.avancement) || 0)
-              : String(t[k] == null ? '' : t[k]);
+              : k === 'temps-estime' ? (Number(t.tempsEstime) || 0)
+                : String(t[k] == null ? '' : t[k]);
         if (JSON.stringify(avant) === JSON.stringify(r.v)) continue;
         operations.push({ genre: 'champ', champ: k, avant, apres: r.v });
       }
@@ -764,6 +797,9 @@ const avecTachesStatiques = (Base) => class extends Base {
       case 'debut': return x.apres ? tr('début : ') + x.apres : tr('début retiré');
       case 'statut': return tr('statut : ') + v(x.avant) + ' → ' + v(x.apres);
       case 'avancement': return tr('avancement : ') + (Number(x.avant) || 0) + ' % → ' + (Number(x.apres) || 0) + ' %';
+      case 'temps-estime': return Number(x.apres) > 0
+        ? tr('temps estimé : ') + (Number(x.avant) > 0 ? dureeLisible(x.avant) + ' → ' : '') + dureeLisible(x.apres)
+        : tr('temps estimé retiré');
       case 'intitule': return tr('renommée : « ') + x.apres + ' »';
       case 'priorite': return tr('priorité : ') + v(x.avant) + ' → ' + v(x.apres);
       case 'jalon': return x.apres === true ? tr('devient un jalon') : tr('n’est plus un jalon');
@@ -999,6 +1035,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       out.push({
         ref: t.ref, intitule: t.intitule || t.ref, famille: t.famille || '', statut: t.statut || 'à faire',
         avancement: Number(t.avancement) || 0, debut: deb, echeance: ech,
+        tempsEstime: Number(t.tempsEstime) || 0,
         dureeVieJours: deb && ech ? Ariane.ecartJours(deb, ech) : null,
         joursRestants: ech ? Ariane.ecartJours(auj, ech) : null,
         minutesPasseesPlanifiees: somme(crs.filter((c) => c.debut.slice(0, 10) < auj)),
@@ -1021,6 +1058,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       const bouts = [c.ref, c.intitule,
         'famille : ' + (f ? f.nom + (f.description ? ' (' + String(f.description).slice(0, 120) + ')' : '') : (c.famille || '?')),
         'statut : ' + c.statut + ', avancement ' + c.avancement + ' %'];
+      if (c.tempsEstime) bouts.push('temps estimé par Monsieur : ' + h(c.tempsEstime) + ' au total');
       if (c.echeance) {
         bouts.push('échéance ' + c.echeance + ' (' + (c.joursRestants < 0 ? 'dépassée de ' + (-c.joursRestants) + ' j' : 'dans ' + c.joursRestants + ' j') + ')');
       } else bouts.push('sans échéance');

@@ -205,7 +205,7 @@ class ModaleTache extends obsidian.Modal {
       ? greffon.settings.famillesTaches : [];
     this.v = {
       intitule: '', statut: 'à faire', priorite: '', debut: '', echeance: '', heure: '',
-      avancement: 0, jalon: false, parent: '', note: '',
+      avancement: 0, tempsEstime: 0, jalon: false, parent: '', note: '',
       famille: greffon.settings.familleTacheDefaut || 'action',
     };
     if (!this.ref && opts && opts.defauts) {
@@ -289,6 +289,7 @@ class ModaleTache extends obsidian.Modal {
     this.v.echeance = L('echeance') || '';
     this.v.heure = String(L('heure') || '').trim();
     this.v.avancement = Number(L('avancement')) || 0;
+    this.v.tempsEstime = Ariane.dureeEstimeeMin(L('temps-estime'));
     this.v.jalon = L('jalon') === true;
     this.v.parent = Ariane.refDeLien(L('parent') || '') || '';
     const fmN = Object.assign({}, fm, {
@@ -416,6 +417,26 @@ class ModaleTache extends obsidian.Modal {
         .setValue(Number(this.v.avancement) || 0)
         .onChange((x) => { this.v.avancement = x; }));
 
+    // Temps estimé : saisi comme on l'écrit (« 1 h 30 », « 45 min », « 2 h »),
+    // rangé en minutes. En regard, ce qui est déjà planifié en créneaux.
+    const planifie = this.ref ? Ariane.creneauxDeTache([].concat(this.greffon._lireT(this._fm || {}, 'creneaux') || []))
+      .reduce((s, x) => s + Ariane.dureeCreneauMin(x.debut, x.fin), 0) : 0;
+    const descEstime = () => {
+      const e = Number(this.v.tempsEstime) || 0;
+      if (!planifie) return e ? tr('Rien de planifié pour l’instant.') : tr('Par exemple « 1 h 30 », « 45 min », « 2 h ».');
+      return tr('Déjà planifié en créneaux : ') + dureeLisible(planifie)
+        + (e ? (planifie >= e ? tr(' (l’estimation est couverte)') : tr(' (reste ') + dureeLisible(e - planifie) + tr(' à planifier)')) : '');
+    };
+    const sEst = this._settingGen(c, 'temps-estime', true).setDesc(descEstime());
+    sEst.addText((t) => {
+      t.setPlaceholder(tr('1 h 30')).setValue(this.v.tempsEstime ? dureeLisible(this.v.tempsEstime) : '')
+        .onChange((x) => {
+          this.v.tempsEstime = Ariane.dureeEstimeeMin(x);
+          t.inputEl.toggleClass('zfa-saisie-invalide', !!String(x).trim() && !this.v.tempsEstime);
+          sEst.setDesc(descEstime());
+        });
+    });
+
     this._settingGen(c, 'parent', true)
       .setDesc(this.v.parent || tr('aucune'))
       .addButton((b) => b.setButtonText(tr('Choisir…')).onClick(() => {
@@ -542,6 +563,7 @@ class ModaleTache extends obsidian.Modal {
         echeance: this.v.echeance,
         heure: this.v.jalon ? '' : (this.v.echeance ? this.v.heure : ''),
         avancement: Number(this.v.avancement) || 0,
+        'temps-estime': Number(this.v.tempsEstime) > 0 ? Number(this.v.tempsEstime) : '',
         jalon: this.v.jalon === true,
         parent: this.v.parent ? '[[' + this.v.parent + ']]' : '',
         famille: this.v.famille,

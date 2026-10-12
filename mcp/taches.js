@@ -70,7 +70,7 @@ const OUTILS = [
   },
   {
     name: 'proposer_modifications',
-    description: "LE SEUL MOYEN de modifier les tâches : ne jamais éditer une note de tâche directement. Propose une liste de changements ; Ariane les vérifie, les montre à Monsieur dans Obsidian (avant → après, avec ta justification) et n'applique que ce qu'il accepte. L'appel attend sa décision (dix minutes au plus) et rend ce qui a été accepté, refusé ou écarté (avec la raison). Chaque changement porte sur une tâche existante (ref) ou en crée une (creer). Champs modifiables : intitule, statut (à faire, en cours, en attente, terminée, abandonnée), priorite (vide, basse, moyenne, haute), debut, echeance (AAAA-MM-JJ, vide pour retirer), heure (HH:MM), avancement (0 à 100), jalon (booléen), parent (référence de la tâche mère), famille. Un changement dont une valeur est invalide est écarté en entier.",
+    description: "LE SEUL MOYEN de modifier les tâches : ne jamais éditer une note de tâche directement. Propose une liste de changements ; Ariane les vérifie, les montre à Monsieur dans Obsidian (avant → après, avec ta justification) et n'applique que ce qu'il accepte. L'appel attend sa décision (dix minutes au plus) et rend ce qui a été accepté, refusé ou écarté (avec la raison). Chaque changement porte sur une tâche existante (ref) ou en crée une (creer). Champs modifiables : intitule, statut (à faire, en cours, en attente, terminée, abandonnée), priorite (vide, basse, moyenne, haute), debut, echeance (AAAA-MM-JJ, vide pour retirer), heure (HH:MM), avancement (0 à 100), temps-estime (le temps total que Monsieur estime nécessaire, en minutes ; 0 pour le retirer), jalon (booléen), parent (référence de la tâche mère), famille. Un changement dont une valeur est invalide est écarté en entier.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -88,7 +88,7 @@ const OUTILS = [
                 required: ['debut', 'fin'] } },
               retirer_creneaux: { type: 'array', items: { type: 'string' },
                 description: 'Créneaux à retirer, tels que detail_tache les rend (« AAAA-MM-JJ HH:MM-HH:MM »)' },
-              creer: { type: 'object', description: 'Nouvelle tâche : intitule (obligatoire), famille, statut, priorite, debut, echeance, parent' },
+              creer: { type: 'object', description: 'Nouvelle tâche : intitule (obligatoire), famille, statut, priorite, debut, echeance, temps-estime (minutes), parent' },
             },
           },
         },

@@ -52,6 +52,10 @@ disponibles, dans la bibliothèque Zotero.
 - **Créneaux** : les plages de travail prévues dans le calendrier
   (`AAAA-MM-JJ HH:MM-HH:MM`). Un créneau passé est du travail prévu, pas
   forcément fait.
+- **Temps estimé** (`temps_estime_min`) : le temps total que Monsieur pense
+  y passer, en minutes ; 0 quand il ne l'a pas donné. C'est sa mesure, pas la
+  vôtre : pour planifier, partez de ce qui reste (temps estimé moins les
+  créneaux déjà posés). Ne le modifiez qu'en le proposant (`temps-estime`).
 - **Jalon** : un point daté, sans durée ni créneau.
 - **Tâche mère, bloquée par** : la hiérarchie et les dépendances. Une tâche
   qui en bloque d'autres pèse plus lourd.
@@ -95,7 +99,8 @@ indice, jamais une preuve.
 
 ### Replanifier
 
-1. `detail_tache` : ce qui reste, les créneaux déjà posés, les reports.
+1. `detail_tache` : ce qui reste, les créneaux déjà posés, les reports, et
+   le temps estimé quand Monsieur l'a donné.
 2. `charge_calendrier` sur la période utile.
 3. Placez les créneaux dans les **plages libres**, sans remplir la journée :
    gardez de l'air autour des rendez-vous, préférez des blocs d'une à trois

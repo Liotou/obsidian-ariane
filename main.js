@@ -1020,6 +1020,11 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "Saisir les pages…": "Enter pages…",
+    "Temps estimé": "Estimated time",
+    "Temps estimé : ": "Estimated time: ",
+    "Déjà planifié en créneaux : ": "Already scheduled in slots: ",
+    "Rien de planifié pour l’instant.": "Nothing scheduled yet.",
+    " (l’estimation est couverte)": " (the estimate is covered)",
     "Côtés selon la disposition": "Sides follow the layout",
     "Liens entre tâches": "Links between tasks",
     "Forme des liens entre tâches": "Shape of links between tasks",
@@ -4028,6 +4033,7 @@ const avecSocle = (Base) => class extends Base {
       { cle: 'sans-echeance', defaut: 'Sans échéance', icone: 'calendar-off' },
       { cle: 'creneaux', defaut: 'Créneaux', icone: 'calendar-clock' },
       { cle: 'avancement', defaut: 'Avancement', icone: 'percent' },
+      { cle: 'temps-estime', defaut: 'Temps estimé', icone: 'hourglass' },
       { cle: 'parent', defaut: 'Rattachée à', icone: 'git-branch' },
     ];
   }
@@ -4037,7 +4043,7 @@ const avecSocle = (Base) => class extends Base {
   // alias). On y ajoute les champs structurels propres aux tâches.
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
-            'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'avancement', 'parent',
+            'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'avancement', 'temps-estime', 'parent',
             'bloque-par', 'termine-le',
             'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id'];
   }
@@ -4048,7 +4054,7 @@ const avecSocle = (Base) => class extends Base {
   static get GROUPES_TACHE() {
     return [
       { id: 'etat', nom: 'État & progression', concepts: ['statut', 'terminee', 'priorite', 'avancement'] },
-      { id: 'planning', nom: 'Planning', concepts: ['debut', 'echeance', 'heure', 'creneaux', 'jalon', 'termine-le'] },
+      { id: 'planning', nom: 'Planning', concepts: ['debut', 'echeance', 'heure', 'temps-estime', 'creneaux', 'jalon', 'termine-le'] },
       { id: 'relations', nom: 'Relations', concepts: ['parent', 'bloque-par'] },
       { id: 'rappel', nom: 'Rappel', concepts: ['liste', 'rappel-id'] },
       { id: 'agenda', nom: 'Agenda', concepts: ['agenda-id'] },
@@ -10742,6 +10748,26 @@ const avecTachesStatiques = (Base) => class extends Base {
     })[concept] || concept;
   }
 
+  // Le temps estimé d'une tâche, en minutes. La propriété en porte un nombre
+  // de minutes (comme le temps passé des notes) ; la saisie accepte aussi les
+  // formes qu'on écrit à la main : « 1 h 30 », « 1h30 », « 1,5 h », « 2 h »,
+  // « 45 min », « 90 ». Rend 0 pour une valeur vide ou illisible.
+  static dureeEstimeeMin(v) {
+    if (v == null || v === '') return 0;
+    if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
+    const s = String(v).trim().toLowerCase().replace(',', '.').replace(/\s+/g, ' ');
+    if (!s) return 0;
+    let m = /^(\d+(?:\.\d+)?)$/.exec(s);
+    if (m) return Math.round(Number(m[1]));
+    m = /^(\d+(?:\.\d+)?) ?(?:h|heures?)(?: ?(\d{1,2}) ?(?:min|mn|m)?)?$/.exec(s);
+    if (m) return Math.round(Number(m[1]) * 60 + (m[2] ? Number(m[2]) : 0));
+    m = /^(\d+) ?(?:min|mn|minutes?)$/.exec(s);
+    if (m) return Number(m[1]);
+    m = /^(\d{1,2}):(\d{2})$/.exec(s);
+    if (m) return Number(m[1]) * 60 + Number(m[2]);
+    return 0;
+  }
+
   // Clé de frontmatter d'un concept de tâche. Règle UNIQUE :
   //   clé = `prefixe` + label
   //   label = `cles[concept]` si l'utilisateur l'a personnalisé,
@@ -10835,6 +10861,10 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push(K('sans-echeance') + ': ' + (c.echeance ? 'false' : 'true'));
     l.push(K('creneaux') + ': []');
     l.push(K('avancement') + ': ' + (Number(c.avancement) || 0));
+    {
+      const est = Ariane.dureeEstimeeMin(c['temps-estime'] != null ? c['temps-estime'] : c.tempsEstime);
+      l.push(K('temps-estime') + ':' + (est ? ' ' + est : ''));
+    }
     l.push(K('termine-le') + ':');
     l.push(K('jalon') + ': ' + (c.jalon ? 'true' : 'false'));
     l.push(K('parent') + ':');
@@ -11157,7 +11187,7 @@ const avecTachesStatiques = (Base) => class extends Base {
   // survit ainsi à un renommage des clés de propriétés).
   static get CHAMPS_JOURNAL() {
     return ['intitule', 'statut', 'priorite', 'debut', 'echeance', 'heure',
-      'avancement', 'jalon', 'parent', 'bloque-par', 'famille'];
+      'avancement', 'temps-estime', 'jalon', 'parent', 'bloque-par', 'famille'];
   }
 
   // L'instantané d'une tâche (objet de tachesPourGantt) : valeurs simples,
@@ -11173,6 +11203,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       echeance: String(x.echeance || ''),
       heure: String(x.heure || ''),
       avancement: Number(x.avancement) || 0,
+      'temps-estime': Number(x.tempsEstime) || 0,
       jalon: x.jalon === true,
       parent: String(x.parent || ''),
       'bloque-par': liste(x.bloquePar),
@@ -11357,7 +11388,7 @@ const avecTachesStatiques = (Base) => class extends Base {
     const STATUTS = ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée'];
     const PRIORITES = ['', 'basse', 'moyenne', 'haute'];
     const CHAMPS = ['intitule', 'statut', 'priorite', 'debut', 'echeance', 'heure',
-      'avancement', 'jalon', 'parent', 'famille'];
+      'avancement', 'temps-estime', 'jalon', 'parent', 'famille'];
     const valides = [];
     const erreurs = [];
     // Une valeur de champ : normalisée si elle est acceptable, sinon une erreur.
@@ -11383,6 +11414,13 @@ const avecTachesStatiques = (Base) => class extends Base {
       if (champ === 'avancement') {
         const n = Number(v);
         return Number.isInteger(n) && n >= 0 && n <= 100 ? { v: n } : { e: 'avancement invalide : ' + v };
+      }
+      if (champ === 'temps-estime') {
+        // En minutes (nombre), ou sous une forme lisible (« 1 h 30 ») ; vide
+        // ou 0 pour le retirer.
+        if (v == null || v === '' || v === 0) return { v: 0 };
+        const n = Ariane.dureeEstimeeMin(v);
+        return n > 0 && n <= 60 * 500 ? { v: n } : { e: 'temps estimé invalide : ' + v };
       }
       if (champ === 'jalon') return typeof v === 'boolean' ? { v } : { e: 'jalon : vrai ou faux' };
       if (champ === 'parent') {
@@ -11423,7 +11461,8 @@ const avecTachesStatiques = (Base) => class extends Base {
         const avant = k === 'parent' ? (Ariane.refDeLien(t.parent || '') ? '[[' + Ariane.refDeLien(t.parent) + ']]' : '')
           : k === 'jalon' ? t.jalon === true
             : k === 'avancement' ? (Number(t.avancement) || 0)
-              : String(t[k] == null ? '' : t[k]);
+              : k === 'temps-estime' ? (Number(t.tempsEstime) || 0)
+                : String(t[k] == null ? '' : t[k]);
         if (JSON.stringify(avant) === JSON.stringify(r.v)) continue;
         operations.push({ genre: 'champ', champ: k, avant, apres: r.v });
       }
@@ -11486,6 +11525,9 @@ const avecTachesStatiques = (Base) => class extends Base {
       case 'debut': return x.apres ? tr('début : ') + x.apres : tr('début retiré');
       case 'statut': return tr('statut : ') + v(x.avant) + ' → ' + v(x.apres);
       case 'avancement': return tr('avancement : ') + (Number(x.avant) || 0) + ' % → ' + (Number(x.apres) || 0) + ' %';
+      case 'temps-estime': return Number(x.apres) > 0
+        ? tr('temps estimé : ') + (Number(x.avant) > 0 ? dureeLisible(x.avant) + ' → ' : '') + dureeLisible(x.apres)
+        : tr('temps estimé retiré');
       case 'intitule': return tr('renommée : « ') + x.apres + ' »';
       case 'priorite': return tr('priorité : ') + v(x.avant) + ' → ' + v(x.apres);
       case 'jalon': return x.apres === true ? tr('devient un jalon') : tr('n’est plus un jalon');
@@ -11721,6 +11763,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       out.push({
         ref: t.ref, intitule: t.intitule || t.ref, famille: t.famille || '', statut: t.statut || 'à faire',
         avancement: Number(t.avancement) || 0, debut: deb, echeance: ech,
+        tempsEstime: Number(t.tempsEstime) || 0,
         dureeVieJours: deb && ech ? Ariane.ecartJours(deb, ech) : null,
         joursRestants: ech ? Ariane.ecartJours(auj, ech) : null,
         minutesPasseesPlanifiees: somme(crs.filter((c) => c.debut.slice(0, 10) < auj)),
@@ -11743,6 +11786,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       const bouts = [c.ref, c.intitule,
         'famille : ' + (f ? f.nom + (f.description ? ' (' + String(f.description).slice(0, 120) + ')' : '') : (c.famille || '?')),
         'statut : ' + c.statut + ', avancement ' + c.avancement + ' %'];
+      if (c.tempsEstime) bouts.push('temps estimé par Monsieur : ' + h(c.tempsEstime) + ' au total');
       if (c.echeance) {
         bouts.push('échéance ' + c.echeance + ' (' + (c.joursRestants < 0 ? 'dépassée de ' + (-c.joursRestants) + ' j' : 'dans ' + c.joursRestants + ' j') + ')');
       } else bouts.push('sans échéance');
@@ -14743,6 +14787,7 @@ const avecTaches = (Base) => class extends Base {
         statut: this._lireT(fm, 'statut') || 'à faire',
         priorite: this._lireT(fm, 'priorite') || '',
         avancement: Number(this._lireT(fm, 'avancement')) || 0,
+        tempsEstime: Ariane.dureeEstimeeMin(this._lireT(fm, 'temps-estime')),
         jalon: this._lireT(fm, 'jalon') === true,
         famille: Ariane.familleTache(fmFam, this.settings.famillesTaches, this.settings.familleTacheDefaut),
         x: Number.isFinite(nx) ? nx : null,
@@ -25390,7 +25435,7 @@ class ModaleTache extends obsidian.Modal {
       ? greffon.settings.famillesTaches : [];
     this.v = {
       intitule: '', statut: 'à faire', priorite: '', debut: '', echeance: '', heure: '',
-      avancement: 0, jalon: false, parent: '', note: '',
+      avancement: 0, tempsEstime: 0, jalon: false, parent: '', note: '',
       famille: greffon.settings.familleTacheDefaut || 'action',
     };
     if (!this.ref && opts && opts.defauts) {
@@ -25474,6 +25519,7 @@ class ModaleTache extends obsidian.Modal {
     this.v.echeance = L('echeance') || '';
     this.v.heure = String(L('heure') || '').trim();
     this.v.avancement = Number(L('avancement')) || 0;
+    this.v.tempsEstime = Ariane.dureeEstimeeMin(L('temps-estime'));
     this.v.jalon = L('jalon') === true;
     this.v.parent = Ariane.refDeLien(L('parent') || '') || '';
     const fmN = Object.assign({}, fm, {
@@ -25601,6 +25647,26 @@ class ModaleTache extends obsidian.Modal {
         .setValue(Number(this.v.avancement) || 0)
         .onChange((x) => { this.v.avancement = x; }));
 
+    // Temps estimé : saisi comme on l'écrit (« 1 h 30 », « 45 min », « 2 h »),
+    // rangé en minutes. En regard, ce qui est déjà planifié en créneaux.
+    const planifie = this.ref ? Ariane.creneauxDeTache([].concat(this.greffon._lireT(this._fm || {}, 'creneaux') || []))
+      .reduce((s, x) => s + Ariane.dureeCreneauMin(x.debut, x.fin), 0) : 0;
+    const descEstime = () => {
+      const e = Number(this.v.tempsEstime) || 0;
+      if (!planifie) return e ? tr('Rien de planifié pour l’instant.') : tr('Par exemple « 1 h 30 », « 45 min », « 2 h ».');
+      return tr('Déjà planifié en créneaux : ') + dureeLisible(planifie)
+        + (e ? (planifie >= e ? tr(' (l’estimation est couverte)') : tr(' (reste ') + dureeLisible(e - planifie) + tr(' à planifier)')) : '');
+    };
+    const sEst = this._settingGen(c, 'temps-estime', true).setDesc(descEstime());
+    sEst.addText((t) => {
+      t.setPlaceholder(tr('1 h 30')).setValue(this.v.tempsEstime ? dureeLisible(this.v.tempsEstime) : '')
+        .onChange((x) => {
+          this.v.tempsEstime = Ariane.dureeEstimeeMin(x);
+          t.inputEl.toggleClass('zfa-saisie-invalide', !!String(x).trim() && !this.v.tempsEstime);
+          sEst.setDesc(descEstime());
+        });
+    });
+
     this._settingGen(c, 'parent', true)
       .setDesc(this.v.parent || tr('aucune'))
       .addButton((b) => b.setButtonText(tr('Choisir…')).onClick(() => {
@@ -25727,6 +25793,7 @@ class ModaleTache extends obsidian.Modal {
         echeance: this.v.echeance,
         heure: this.v.jalon ? '' : (this.v.echeance ? this.v.heure : ''),
         avancement: Number(this.v.avancement) || 0,
+        'temps-estime': Number(this.v.tempsEstime) > 0 ? Number(this.v.tempsEstime) : '',
         jalon: this.v.jalon === true,
         parent: this.v.parent ? '[[' + this.v.parent + ']]' : '',
         famille: this.v.famille,
@@ -31713,7 +31780,8 @@ class SurfaceCanevas extends obsidian.Component {
     if (!t) return 'absente:' + ref;
     const fam = this.greffon.familleDe(t.famille);
     const rel = this._relatifs(ref, d);
-    return JSON.stringify([ref, t.intitule, t.statut, t.priorite, t.echeance, t.debut, t.jalon,
+    return JSON.stringify([ref, t.intitule, t.statut, t.priorite, t.echeance, t.debut, t.jalon, t.tempsEstime,
+      [].concat(t.creneaux || []).join('|'),
       fam.couleur, fam.icone, fam.nom, d.bloquee.has(ref), d.impactee.has(ref),
       d.av.has(ref) ? d.av.get(ref) : t.avancement,
       (d.enfants.get(ref) || []).length, d.jour, rel]);
@@ -31884,6 +31952,16 @@ class SurfaceCanevas extends obsidian.Component {
         canevasInfobulle(e, tr('Échéance dépassée'));
       } else canevasInfobulle(e, tr('Échéance'));
     }
+    // Temps estimé, et ce qui en est déjà planifié en créneaux.
+    if (t.tempsEstime > 0) {
+      const planifie = Ariane.creneauxDeTache([].concat(t.creneaux || []))
+        .reduce((s, x) => s + Ariane.dureeCreneauMin(x.debut, x.fin), 0);
+      const e = canevasEl(pied, 'span', 'zfa-cnv-estime' + (planifie >= t.tempsEstime ? ' est-couvert' : ''));
+      obsidian.setIcon(canevasEl(e, 'span', 'zfa-cnv-date-ic'), 'hourglass');
+      canevasEl(e, 'span', '', dureeLisible(t.tempsEstime));
+      canevasInfobulle(e, tr('Temps estimé : ') + dureeLisible(t.tempsEstime)
+        + (planifie ? tr(', dont ') + dureeLisible(Math.min(planifie, t.tempsEstime)) + tr(' planifiés') : tr(', rien de planifié')));
+    }
     const av = d.av.has(ref) ? d.av.get(ref) : (Number(t.avancement) || 0);
     if (av > 0) {
       const j = canevasEl(carte, 'div', 'zfa-cnv-jauge');
@@ -31949,6 +32027,7 @@ class SurfaceCanevas extends obsidian.Component {
     ligne('play', tr('Début'), t.debut ? canevasDateCourte(t.debut) : '');
     ligne('calendar-check', tr('Échéance'), t.echeance ? canevasDateCourte(t.echeance) : '');
     ligne('flag', tr('Priorité'), t.priorite);
+    ligne('hourglass', tr('Temps estimé'), t.tempsEstime > 0 ? dureeLisible(t.tempsEstime) : '');
     ligne('gauge', tr('Avancement'), (d.av.has(t.ref) ? Math.round(d.av.get(t.ref)) : Number(t.avancement) || 0) + ' %');
     const mere = d.parent.get(t.ref);
     ligne('git-branch', tr('Mère'), mere ? nomDe(mere) : '');
@@ -42242,6 +42321,7 @@ class PontClaude extends obsidian.Component {
       debut: t.debut || '',
       echeance: t.echeance || '',
       avancement: Number(t.avancement) || 0,
+      temps_estime_min: Number(t.tempsEstime) || 0,
       jalon: t.jalon === true,
       parent: Ariane.refDeLien(t.parent || ''),
       bloque_par: (t.bloquePar || []).map((b) => Ariane.refDeLien(b)).filter(Boolean),
@@ -42577,7 +42657,7 @@ class PontClaude extends obsidian.Component {
 
 const PONT_LIBELLES = {
   intitule: 'Intitulé', statut: 'Statut', priorite: 'Priorité', debut: 'Début',
-  echeance: 'Échéance', heure: 'Heure', avancement: 'Avancement', jalon: 'Jalon',
+  echeance: 'Échéance', heure: 'Heure', avancement: 'Avancement', 'temps-estime': 'Temps estimé', jalon: 'Jalon',
   parent: 'Tâche mère', famille: 'Famille',
 };
 
@@ -42585,6 +42665,10 @@ function pontOperationLisible(op) {
   const v = (x) => (x === '' || x == null ? tr('(vide)')
     : x === true ? tr('oui') : x === false ? tr('non') : String(x).replace(/^\[\[|\]\]$/g, ''));
   if (op.genre === 'champ') {
+    if (op.champ === 'temps-estime') {
+      const d = (x) => (Number(x) > 0 ? dureeLisible(x) : tr('(vide)'));
+      return tr('Temps estimé') + ' : ' + d(op.avant) + ' → ' + d(op.apres);
+    }
     return tr(PONT_LIBELLES[op.champ] || op.champ) + ' : ' + v(op.avant) + ' → ' + v(op.apres)
       + (op.champ === 'avancement' ? ' %' : '');
   }

@@ -88,6 +88,7 @@ const avecTaches = (Base) => class extends Base {
         statut: this._lireT(fm, 'statut') || 'à faire',
         priorite: this._lireT(fm, 'priorite') || '',
         avancement: Number(this._lireT(fm, 'avancement')) || 0,
+        tempsEstime: Ariane.dureeEstimeeMin(this._lireT(fm, 'temps-estime')),
         jalon: this._lireT(fm, 'jalon') === true,
         famille: Ariane.familleTache(fmFam, this.settings.famillesTaches, this.settings.familleTacheDefaut),
         x: Number.isFinite(nx) ? nx : null,

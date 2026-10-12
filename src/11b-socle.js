@@ -45,6 +45,7 @@ const avecSocle = (Base) => class extends Base {
       { cle: 'sans-echeance', defaut: 'Sans échéance', icone: 'calendar-off' },
       { cle: 'creneaux', defaut: 'Créneaux', icone: 'calendar-clock' },
       { cle: 'avancement', defaut: 'Avancement', icone: 'percent' },
+      { cle: 'temps-estime', defaut: 'Temps estimé', icone: 'hourglass' },
       { cle: 'parent', defaut: 'Rattachée à', icone: 'git-branch' },
     ];
   }
@@ -54,7 +55,7 @@ const avecSocle = (Base) => class extends Base {
   // alias). On y ajoute les champs structurels propres aux tâches.
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
-            'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'avancement', 'parent',
+            'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'avancement', 'temps-estime', 'parent',
             'bloque-par', 'termine-le',
             'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id'];
   }
@@ -65,7 +66,7 @@ const avecSocle = (Base) => class extends Base {
   static get GROUPES_TACHE() {
     return [
       { id: 'etat', nom: 'État & progression', concepts: ['statut', 'terminee', 'priorite', 'avancement'] },
-      { id: 'planning', nom: 'Planning', concepts: ['debut', 'echeance', 'heure', 'creneaux', 'jalon', 'termine-le'] },
+      { id: 'planning', nom: 'Planning', concepts: ['debut', 'echeance', 'heure', 'temps-estime', 'creneaux', 'jalon', 'termine-le'] },
       { id: 'relations', nom: 'Relations', concepts: ['parent', 'bloque-par'] },
       { id: 'rappel', nom: 'Rappel', concepts: ['liste', 'rappel-id'] },
       { id: 'agenda', nom: 'Agenda', concepts: ['agenda-id'] },
