@@ -45,6 +45,7 @@ chaîne : Annota écrit, ZotFlow transporte, Ariane exploite.
 - [📝 Exporter vers Word](#-exporter-vers-word)
 - [⏱️ Compter le temps](#-compter-le-temps)
 - [🕰️ Chronologie d'activité](#-chronologie-dactivité)
+- [🔭 Veille de thèse](#-veille-de-thèse)
 - [🧹 Outils d'entretien](#-outils-dentretien)
 - [🗂️ S'adapter à votre organisation](#-sadapter-à-votre-organisation)
 - [✅ Tâches](#-tâches)
@@ -576,6 +577,70 @@ fichiers : création, dernière modification, date d'achèvement des tâches. Ce
 événements, sans extrait et à l'heure approximative, s'affichent en **pointillés**.
 Réglages : onglet **Temps passé**, section **Chronologie d'activité**.
 
+## 🔭 Veille de thèse
+
+Chaque semaine, les nouveautés qui comptent pour la thèse, triées, analysées et
+rangées dans une note. Inspiré de *veille-revues*, le greffon Claude Code de
+Thibaud Salomone, dont la configuration s'importe telle quelle.
+
+1. **Collecte.**
+   - Crossref : les revues suivies, par ISSN, et les rapports d'organisations,
+     par préfixe DOI (OCDE, FAO, Banque mondiale…).
+   - Les flux RSS ou Atom d'institutions.
+   - HAL, par requêtes thématiques.
+   - OpenAlex complète les résumés manquants.
+2. **Pré-tri.**
+   - Erratums et sommaires écartés, doublons fondus.
+   - Ce qui a déjà été vu est écarté : un historique est tenu dans le dossier
+     du greffon.
+   - Score par **mots-clés pondérés**. Une source marquée « filtré », revue
+     généraliste ou volumineuse, ne garde que ses items au score suffisant.
+3. **Sélection et analyse.** Le fournisseur d'IA d'Ariane (onglet Tâches,
+   Assistant IA) lit le **profil de la thèse** : résumé, critères par ordre
+   d'importance, thèmes à écarter, phases. Il retient de 12 à 30 références
+   et rédige :
+   - un éditorial ;
+   - les lectures prioritaires ;
+   - des fils thématiques ;
+   - pour chaque référence, son **apport** et son intérêt **pour la thèse** ;
+   - des pistes d'action.
+4. **Note** dans le dossier de veille : `Veille AAAA-MM-JJ.md`, avec propriétés
+   (`type: veille`, période, semaine, comptes). Chaque référence a sa fiche ;
+   les prioritaires sont mises en avant. Les candidats non retenus et les
+   sources en erreur sont rangés en annexe, repliée.
+
+**Rigueur.** Titres, auteurs, revues, dates et liens viennent **toujours** des
+métadonnées des éditeurs. L'IA ne fournit que des identifiants et des textes
+d'analyse ; un identifiant qu'elle inventerait est écarté et signalé.
+
+Sans IA, ou si elle ne répond pas, la note liste les candidats les mieux notés
+avec leur résumé. Une semaine de veille est un long texte : Claude en ligne de
+commande ou Mistral conviennent mieux qu'un petit modèle local.
+
+**Lancer.**
+- *Veille : lancer la veille* couvre les jours écoulés depuis la dernière
+  veille, un mois au plus ; sept jours la première fois.
+- *Veille : rattraper les 14 derniers jours*.
+- Une **veille hebdomadaire** automatique se règle sur un jour de la semaine ;
+  elle tourne Obsidian ouvert, ou à l'ouverture si elle a été manquée.
+
+**Configurer** (onglet **Veille** des réglages) : une source par ligne, en
+colonnes séparées par `|`.
+
+```text
+Safety Science | 0925-7535 | Risques & sécurité
+Journal of Business Research | 0148-2963 | Management | filtré
+OCDE (OECD iLibrary) | 10.1787 | Rapports internationaux | filtré
+ADEME | https://www.ademe.fr/feed/ | Rapports (France) | filtré
+```
+
+Mots-clés : `poids | axe | motif`, le motif étant une expression régulière
+cherchée dans le titre et le résumé. Le bouton **Importer une configuration
+veille-revues** lit `sources.json` et `profil_these.json`. **Vérifier les ISSN**
+contrôle chaque revue auprès de Crossref. Les institutions sans flux
+(Cour des comptes…) sont rappelées en fin de note, avec leur lien, pour une
+visite à la main.
+
 ## 🧹 Outils d'entretien
 
 - **Renommer une propriété** dans tout le coffre. Changer un nom dans les
@@ -859,7 +924,9 @@ nulle part : il n'y a **aucun appel réseau** dans le greffon, hormis la
 recherche facultative de références sur Crossref et OpenAlex, que vous
 déclenchez vous-même, les modèles d'IA locaux d'Ollama ou LM Studio, qui
 tournent sur votre machine, et, si vous l'activez, le serveur local
-d'ActivityWatch, que le greffon lit sans jamais y écrire. Pour choisir les
+d'ActivityWatch, que le greffon lit sans jamais y écrire. La **veille**, que
+vous lancez ou planifiez, interroge Crossref, OpenAlex, HAL et les flux RSS que
+vous avez déclarés, en lecture seule. Pour choisir les
 relevés de la bonne machine, il lit aussi son nom (`os.hostname`).
 
 **Presse-papiers.** En écriture seulement, et seulement quand vous cliquez sur

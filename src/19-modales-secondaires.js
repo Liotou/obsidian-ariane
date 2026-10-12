@@ -57,7 +57,7 @@ class RapportCarteModal extends obsidian.Modal {
 
 // Affichage d'un texte (DSL) avec copie.
 class TexteModal extends obsidian.Modal {
-  constructor(app, titre, texte) { super(app); this.titre = titre; this.texte = texte; }
+  constructor(app, titre, texte, avisCopie) { super(app); this.titre = titre; this.texte = texte; this.avisCopie = avisCopie; }
   onOpen() {
     const c = this.contentEl;
     c.createEl('h3', { text: this.titre });
@@ -66,7 +66,7 @@ class TexteModal extends obsidian.Modal {
     ta.rows = 18;
     const pied = c.createDiv({ cls: 'zfa-dedup-pied' });
     const b = pied.createEl('button', { text: tr('Copier') });
-    b.onclick = () => { navigator.clipboard.writeText(this.texte); new obsidian.Notice(tr('DSL copié.')); };
+    b.onclick = () => { navigator.clipboard.writeText(this.texte); new obsidian.Notice(this.avisCopie || tr('DSL copié.')); };
   }
   onClose() { this.contentEl.empty(); }
 }

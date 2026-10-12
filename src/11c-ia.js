@@ -232,7 +232,9 @@ const avecIa = (Base) => class extends Base {
       this.fournisseurLmStudio(), this.settings.suggModeleLLM || 'llama3.2');
   }
 
-  async genererJsonAvec(prompt, max, lm, modele) {
+  // `ctx` (facultatif) élargit la fenêtre de contexte d'Ollama, qui tronque
+  // en silence une invite plus longue que sa valeur par défaut.
+  async genererJsonAvec(prompt, max, lm, modele, ctx) {
     const url = this.urlInference(lm) + (lm ? '/v1/chat/completions' : '/api/generate');
     try {
       const corps = lm
@@ -243,7 +245,7 @@ const avecIa = (Base) => class extends Base {
         ? { model: modele, messages: [{ role: 'user', content: prompt }],
             temperature: 0, max_tokens: max }
         : { model: modele, prompt, stream: false, format: 'json', keep_alive: '2m',
-            options: { temperature: 0, num_predict: max } };
+            options: Object.assign({ temperature: 0, num_predict: max }, ctx ? { num_ctx: ctx } : {}) };
       const rep = await obsidian.requestUrl({
         url, method: 'POST', throw: false,
         headers: { 'Content-Type': 'application/json' },
@@ -354,6 +356,33 @@ const avecIa = (Base) => class extends Base {
       // viendra jamais, à chaque appel.
       try { if (enfant.stdin) enfant.stdin.end(); } catch (e) { /* déjà fermée */ }
       setTimeout(() => { if (!fini) { try { enfant.kill('SIGKILL'); } catch (e) { /* déjà mort */ } } }, 61000);
+    });
+  }
+
+  // Variante pour les longues tâches (la veille) : l'invite passe par l'entrée
+  // standard, qui ne connaît pas la limite de taille des arguments, et le
+  // délai se compte en minutes.
+  genererClaudeLong(prompt, delai) {
+    const bin = (this.settings.refsCheminClaude || 'claude').trim() || 'claude';
+    const duree = delai || 600000;
+    return new Promise((resoudre) => {
+      let fini = false;
+      const env = Object.assign({}, process.env, {
+        PATH: process.env.HOME + '/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:'
+          + (process.env.PATH || ''),
+      });
+      const enfant = require('child_process').execFile(
+        bin, ['-p'], { env, timeout: duree, maxBuffer: 8 << 20 },
+        (err, sortie) => {
+          if (fini) return;
+          fini = true;
+          if (err) this._diagIA = tr('CLI Claude : ') + (err.message || err)
+            + tr(' (« ') + bin + tr(' » dans le PATH ?)');
+          else this._diagIA = '';
+          resoudre(err ? null : String(sortie || '').trim());
+        });
+      try { enfant.stdin.end(prompt); } catch (e) { /* processus déjà sorti */ }
+      setTimeout(() => { if (!fini) { try { enfant.kill('SIGKILL'); } catch (e) { /* déjà mort */ } } }, duree + 1000);
     });
   }
 

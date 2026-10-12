@@ -86,6 +86,7 @@
  *            11k  avecTaches     notes de tâche, temps, synchro Apple
  *            11l  avecActivite   activité réelle (ActivityWatch)
  *            11m  avecChronologie  journal d'activité du coffre
+ *            11n  avecVeille     veille de thèse (revues, rapports, synthèse)
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab

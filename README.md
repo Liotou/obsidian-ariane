@@ -45,6 +45,7 @@ carries, Ariane exploits.
 - [📝 Exporting to Word](#-exporting-to-word)
 - [⏱️ Tracking time](#-tracking-time)
 - [🕰️ Activity timeline](#-activity-timeline)
+- [🔭 Thesis watch](#-thesis-watch)
 - [🧹 Housekeeping tools](#-housekeeping-tools)
 - [🗂️ Fitting your own organisation](#-fitting-your-own-organisation)
 - [✅ Tasks](#-tasks)
@@ -563,6 +564,68 @@ creation, last change, task completion date. Those events, with no excerpt and a
 approximate time, are drawn **dashed**. Settings: **Time spent** tab,
 **Activity timeline** section.
 
+## 🔭 Thesis watch
+
+Every week, what's new and matters for the thesis, sorted, analysed and filed in
+a note. Inspired by *veille-revues*, Thibaud Salomone's Claude Code plugin,
+whose configuration imports as is.
+
+1. **Collection.**
+   - Crossref: the journals you follow, by ISSN, and organisations' reports, by
+     DOI prefix (OECD, FAO, World Bank…).
+   - Institutional RSS or Atom feeds.
+   - HAL, through thematic queries.
+   - OpenAlex fills in missing abstracts.
+2. **Pre-sorting.**
+   - Errata and tables of contents are dropped, duplicates merged.
+   - What was already seen is dropped: a history is kept in the plugin folder.
+   - Scoring by **weighted keywords**. A source marked "filtered", a generalist
+     or high-volume journal, only keeps items with a high enough score.
+3. **Selection and analysis.** Ariane's AI provider (Tasks tab, AI assistant)
+   reads the **thesis profile**: summary, criteria by order of importance,
+   topics to leave out, phases. It keeps 12 to 30 references and writes:
+   - an editorial;
+   - the read-first list;
+   - thematic threads;
+   - for each reference, its **contribution** and why it matters **for the
+     thesis**;
+   - leads for action.
+4. **A note** in the watch folder: `Veille YYYY-MM-DD.md`, with properties
+   (`type: veille`, period, week, counts). Each reference has its card; the
+   read-first ones stand out. Candidates not selected and sources in error are
+   filed in a folded appendix.
+
+**Rigour.** Titles, authors, journals, dates and links **always** come from the
+publishers' metadata. The AI only supplies identifiers and analysis; an
+identifier it made up is discarded and reported.
+
+Without AI, or if it does not answer, the note lists the top-scoring candidates
+with their abstract. A week of watch is a long text: Claude on the command line
+or Mistral fit better than a small local model.
+
+**Running it.**
+- *Watch: run the watch* covers the days since the last one, a month at most;
+  seven days the first time.
+- *Watch: catch up on the last 14 days*.
+- An automatic **weekly watch** is set to a weekday; it runs while Obsidian is
+  open, or at start-up if it was missed.
+
+**Configuring** (**Watch** settings tab): one source per line, in columns
+separated by `|`.
+
+```text
+Safety Science | 0925-7535 | Risk & safety
+Journal of Business Research | 0148-2963 | Management | filtered
+OECD iLibrary | 10.1787 | International reports | filtered
+ADEME | https://www.ademe.fr/feed/ | Reports (France) | filtered
+```
+
+Keywords: `weight | axis | pattern`, the pattern being a regular expression
+looked for in the title and abstract. **Import a veille-revues configuration**
+reads `sources.json` and `profil_these.json`. **Check ISSNs** checks each
+journal with Crossref. Institutions without a feed (Cour des comptes…) are
+listed at the end of the note, with their link, for a visit by hand.
+
 ## 🧹 Housekeeping tools
 
 - **Rename a property** across the whole vault. Changing a name in the settings
@@ -824,7 +887,9 @@ need to know which notes exist. Network calls are all **opt-in and named**: the
 reference lookup on Crossref and OpenAlex; local models on Ollama or LM Studio,
 on your own machine; if you configure it, Mistral's API for the task AI or
 bibliography splitting; and, if you enable it, the local ActivityWatch server,
-which the plugin reads and never writes to. To pick the records of the right
+which the plugin reads and never writes to. The **thesis watch**, which you run
+or schedule, queries Crossref, OpenAlex, HAL and the RSS feeds you declared,
+read only. To pick the records of the right
 machine, it also reads its name (`os.hostname`). Nothing else leaves your
 machine.
 
