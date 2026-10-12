@@ -295,6 +295,24 @@ const avecNoteReferences = (Base) => class extends Base {
     return /^(sans titre|untitled)( \d+)?$/i.test(String(nom || '').trim());
   }
 
+  // Les notes de références dont la fiche Zotero n'existe plus. `notes` :
+  // [{ cle, … }] (clé Zotero de la note) ; `etats` : Map clé → 'active' |
+  // 'corbeille' pour les fiches trouvées dans la base ; `total` : nombre de
+  // fiches de la base. Garde-fou : une base vide, ou qui ne reconnaîtrait plus
+  // la majorité des notes, est une base mal lue, pas une bibliothèque
+  // vidée : on ne déclare alors rien orphelin.
+  static referencesOrphelines(notes, etats, total) {
+    const l = notes || [];
+    if (!etats || !(Number(total) > 0) || !l.length) return [];
+    const out = [];
+    for (const n of l) {
+      const e = etats.get(n.cle);
+      if (e === 'active') continue;
+      out.push(Object.assign({}, n, { etat: e === 'corbeille' ? 'corbeille' : 'absente' }));
+    }
+    return out.length > Math.max(5, l.length / 2) ? [] : out;
+  }
+
   //#endregion Ariane · static · références
 
   //#region Ariane · index Zotero
@@ -344,6 +362,80 @@ const avecNoteReferences = (Base) => class extends Base {
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache ? cache.frontmatter : null;
     return !!((fm && fm.citationKey) || file.basename.startsWith('@'));
+  }
+
+  // ── notes de références orphelines ──
+  //  ZotFlow écarte la note d'une fiche mise à la corbeille de Zotero, mais
+  //  pas celle d'une fiche supprimée pour de bon (corbeille vidée avant la
+  //  synchronisation) : la fiche sort de sa base sans laisser de trace, et la
+  //  note reste. Ariane compare les notes de références à la base de Zotero.
+
+  // Les notes de références du coffre : celles qui portent une clé Zotero et
+  // une clé de citation (les notes d'annotation n'en portent pas).
+  notesDeReferences() {
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      const cle = fm && String(fm['zotero-key'] || '').trim();
+      if (!cle || !fm.citationKey || !/^[A-Z0-9]{8}$/.test(cle)) continue;
+      out.push({ fichier: f, cle, citationKey: String(fm.citationKey), titre: String(fm.title || '') });
+    }
+    return out;
+  }
+
+  // Les orphelines, avec le nombre de notes qui les citent encore. Null si
+  // la base de Zotero n'a pas pu être lue.
+  async referencesOrphelinesDuCoffre() {
+    const notes = this.notesDeReferences();
+    if (!notes.length) return [];
+    const total = await this.requeteZotero('SELECT COUNT(*) FROM items;');
+    const lignes = await this.requeteZotero('SELECT i.key, CASE WHEN d.itemID IS NULL THEN \'active\' ELSE \'corbeille\' END '
+      + 'FROM items i LEFT JOIN deletedItems d ON d.itemID = i.itemID WHERE i.key IN ('
+      + [...new Set(notes.map((n) => "'" + n.cle + "'"))].join(',') + ');');
+    if (!total || !lignes) return null;
+    const etats = new Map(lignes.map(([k, e]) => [k, e]));
+    const orphelines = Ariane.referencesOrphelines(notes, etats, Number((total[0] || [])[0]));
+    const liens = this.app.metadataCache.resolvedLinks || {};
+    for (const o of orphelines) {
+      o.citee = Object.entries(liens).filter(([src, cibles]) => src !== o.fichier.path
+        && cibles && cibles[o.fichier.path] && !src.startsWith('.')).map(([src]) => src);
+    }
+    return orphelines;
+  }
+
+  // La fenêtre de revue : rien n'est supprimé sans y être coché.
+  async revoirReferencesOrphelines(silencieux) {
+    const l = await this.referencesOrphelinesDuCoffre();
+    if (l == null) { if (!silencieux) new obsidian.Notice(tr('La base de Zotero n’a pas pu être lue.')); return; }
+    if (!l.length) { if (!silencieux) new obsidian.Notice(tr('Aucune note de référence orpheline : toutes ont leur fiche dans Zotero.')); return; }
+    new ModaleReferencesOrphelines(this.app, this, l).open();
+  }
+
+  // Vérification discrète (démarrage, après une synchronisation de ZotFlow) :
+  // un avis cliquable s'il y a du neuf, jamais de suppression.
+  async verifierReferencesOrphelines() {
+    if (this.settings.zoteroOrphelinsAuto === false || this._verifOrphelins) return;
+    this._verifOrphelins = true;
+    try {
+      const l = await this.referencesOrphelinesDuCoffre();
+      if (!l || !l.length) { this._orphelinsSignales = ''; return; }
+      const sig = l.map((o) => o.cle).sort().join(',');
+      if (sig === this._orphelinsSignales) return;
+      this._orphelinsSignales = sig;
+      const frag = document.createDocumentFragment();
+      frag.append(l.length + ' ' + (l.length > 1 ? tr('notes de références n’ont plus de fiche dans Zotero. ')
+        : tr('note de référence n’a plus de fiche dans Zotero. ')));
+      const a = document.createElement('a');
+      a.textContent = tr('Les revoir');
+      a.href = '#';
+      a.addEventListener('click', (e) => { e.preventDefault(); new ModaleReferencesOrphelines(this.app, this, l).open(); });
+      frag.append(a);
+      new obsidian.Notice(frag, 20000);
+    } catch (e) {
+      console.warn('[Ariane] vérification des références orphelines :', e);
+    } finally {
+      this._verifOrphelins = false;
+    }
   }
 
   //#endregion Ariane · index Zotero

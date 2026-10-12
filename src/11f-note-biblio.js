@@ -430,6 +430,53 @@ const avecNoteBiblio = (Base) => class extends Base {
     return require('path').join(os.homedir(), 'Zotero');
   }
 
+  // La base de Zotero telle qu'elle est vraiment. Zotero écrit d'abord dans
+  // son journal (zotero.sqlite-wal) ; une lecture « immutable » de la base
+  // seule ignorait donc les derniers changements (une fiche supprimée y était
+  // encore). Quand ce journal existe, on lit une copie de la base ET du
+  // journal, que sqlite réunit à l'ouverture ; la copie est refaite seulement
+  // si l'un des deux a changé. Rend l'argument à passer à sqlite3, ou ''.
+  async baseZoteroLisible() {
+    const fs = require('fs'), path = require('path'), os = require('os');
+    const base = path.join(this.racineZotero(), 'zotero.sqlite');
+    let sb, sw = null;
+    try { sb = await fs.promises.stat(base); } catch (e) { return ''; }
+    try { sw = await fs.promises.stat(base + '-wal'); } catch (e) { sw = null; }
+    if (!sw || !sw.size) return 'file:' + encodeURI(base) + '?immutable=1';
+    const cle = sb.mtimeMs + ':' + sb.size + ':' + sw.mtimeMs + ':' + sw.size;
+    const dossier = path.join(os.tmpdir(), 'ariane-zotero');
+    const copie = path.join(dossier, 'zotero.sqlite');
+    if (this._baseZoteroCle === cle && fs.existsSync(copie)) return copie;
+    try {
+      await fs.promises.mkdir(dossier, { recursive: true });
+      for (const suf of ['', '-wal', '-shm']) {
+        try { await fs.promises.unlink(copie + suf); } catch (e) { /* rien à retirer */ }
+      }
+      await fs.promises.copyFile(base, copie);
+      await fs.promises.copyFile(base + '-wal', copie + '-wal');
+      this._baseZoteroCle = cle;
+      return copie;
+    } catch (e) {
+      console.warn('[Ariane] copie de la base Zotero impossible, lecture sans le journal :', e);
+      return 'file:' + encodeURI(base) + '?immutable=1';
+    }
+  }
+
+  // Une requête sur la base de Zotero (outil sqlite3 de macOS). Rend les
+  // lignes, champs séparés, ou null si la base n'est pas lisible.
+  async requeteZotero(requete) {
+    if (!obsidian.Platform.isDesktopApp) return null;
+    const cible = await this.baseZoteroLisible();
+    if (!cible) return null;
+    return new Promise((ok) => {
+      require('child_process').execFile('sqlite3', ['-separator', '\t', cible, requete],
+        { timeout: 20000, maxBuffer: 16 << 20 }, (err, sortie) => {
+          if (err) { ok(null); return; }
+          ok(String(sortie || '').split('\n').filter((l) => l !== '').map((l) => l.split('\t')));
+        });
+    });
+  }
+
   // Le texte extrait d'une pièce jointe, mis en cache mémoire : un PDF pèse
   // deux cent cinquante mille caractères, on ne le relit pas par référence.
   texteAttachement(cle) {
@@ -1912,33 +1959,23 @@ const avecNoteBiblio = (Base) => class extends Base {
   }
 
   // Les pages et l'ordre de lecture d'annotations Zotero (clés), lus dans
-  // la base de Zotero en lecture seule (outil sqlite3 de macOS ; la base
-  // reste lisible pendant que Zotero tourne). Map vide si rien n'est lisible.
-  pagesZotero(cles) {
+  // la base de Zotero (voir requeteZotero). Map vide si rien n'est lisible.
+  async pagesZotero(cles) {
     const valides = (cles || []).filter((c) => /^[A-Z0-9]{8}$/.test(c));
-    if (!valides.length || !obsidian.Platform.isDesktopApp) return Promise.resolve(new Map());
-    const base = require('path').join(this.racineZotero(), 'zotero.sqlite');
+    if (!valides.length) return new Map();
     const requete = 'SELECT i.key, IFNULL(a.pageLabel, \'\'), IFNULL(a.sortIndex, \'\'), IFNULL(a.position, \'\'), '
       + 'pj.key, IFNULL(ia.path, \'\') FROM itemAnnotations a JOIN items i ON i.itemID = a.itemID '
       + 'JOIN items pj ON pj.itemID = a.parentItemID LEFT JOIN itemAttachments ia ON ia.itemID = a.parentItemID '
       + 'WHERE i.key IN (' + valides.map((c) => "'" + c + "'").join(',') + ');';
-    return new Promise((ok) => {
-      require('child_process').execFile('sqlite3', ['-separator', '\t', 'file:' + encodeURI(base) + '?immutable=1', requete],
-        { timeout: 15000, maxBuffer: 4 << 20 }, (err, sortie) => {
-          const m = new Map();
-          if (!err) {
-            for (const ligne of String(sortie || '').split('\n')) {
-              const [cle, page, tri, position, pj, chemin] = ligne.split('\t');
-              if (!cle) continue;
-              const cfi = (String(position || '').match(/epubcfi\([^)]*\)/) || [])[0] || '';
-              const fichier = /^storage:/.test(chemin || '') && pj
-                ? require('path').join(this.racineZotero(), 'storage', pj, String(chemin).slice(8)) : '';
-              m.set(cle, { page: (page || '').trim(), tri: (tri || '').trim(), cfi, fichier });
-            }
-          }
-          ok(m);
-        });
-    });
+    const m = new Map();
+    for (const [cle, page, tri, position, pj, chemin] of (await this.requeteZotero(requete)) || []) {
+      if (!cle) continue;
+      const cfi = (String(position || '').match(/epubcfi\([^)]*\)/) || [])[0] || '';
+      const fichier = /^storage:/.test(chemin || '') && pj
+        ? require('path').join(this.racineZotero(), 'storage', pj, String(chemin).slice(8)) : '';
+      m.set(cle, { page: (page || '').trim(), tri: (tri || '').trim(), cfi, fichier });
+    }
+    return m;
   }
 
   // ── pages des annotations d'EPUB ──

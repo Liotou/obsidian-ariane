@@ -474,6 +474,11 @@ class Ariane extends composer(obsidian.Plugin,
       checkCallback: surCanevas((s) => s.basculerPanneau()),
     });
     this.addCommand({
+      id: 'zotero-references-orphelines',
+      name: tr('Zotero : notes de références orphelines…'),
+      callback: () => this.revoirReferencesOrphelines(false),
+    });
+    this.addCommand({
       id: 'canevas-ouvrir',
       name: tr('Canevas : ouvrir un canevas de tâches…'),
       callback: () => this.canevas && this.canevas.ouvrirCanevas(),
@@ -1012,6 +1017,20 @@ class Ariane extends composer(obsidian.Plugin,
     this.app.workspace.onLayoutReady(() => this.decorerLecteursZotflow());
     this.registerEvent(this.app.workspace.on('layout-change', () => this.decorerLecteursZotflow()));
     this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.decorerLecteursZotflow()));
+
+    // Notes de références sans fiche Zotero : vérifiées une minute après le
+    // démarrage, puis après chaque synchronisation de ZotFlow (une rafale de
+    // notes de références réécrites).
+    this.app.workspace.onLayoutReady(() => {
+      const t = window.setTimeout(() => this.verifierReferencesOrphelines(), 60000);
+      this.register(() => window.clearTimeout(t));
+    });
+    this.registerEvent(this.app.metadataCache.on('changed', (f, _d, cache) => {
+      const fm = cache && cache.frontmatter;
+      if (fm && fm['zotero-key'] && fm.citationKey) {
+        this.antirebond('orphelins-zotero', () => this.verifierReferencesOrphelines(), 20000);
+      }
+    }));
 
     // Nouvelle note depuis le modèle d'un dossier (clic droit).
     this.installerNotesDepuisModele();

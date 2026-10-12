@@ -829,6 +829,12 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "Saisir les pages…": "Enter pages…",
+    "Zotero : notes de références orphelines…": "Zotero: orphaned reference notes…",
+    "Notes de références orphelines": "Orphaned reference notes",
+    "Mettre à la corbeille": "Move to trash",
+    "Les revoir": "Review them",
+    "Revoir maintenant": "Review now",
+    "Signaler les notes orphelines": "Report orphaned notes",
     "Temps estimé": "Estimated time",
     "Temps estimé : ": "Estimated time: ",
     "Déjà planifié en créneaux : ": "Already scheduled in slots: ",
@@ -1341,6 +1347,7 @@ const DEFAULT_SETTINGS = {
   canevasLiens: 'angulaire',
   canevasPonts: true,           // un pont là où deux liens angulaires se croisent
   canevasCotesAuto: true,       // les côtés des liens suivent la disposition des cartes
+  zoteroOrphelinsAuto: true,    // signaler les notes de références sans fiche Zotero
   canevasStyleRelation: true,   // hiérarchie discrète, blocage rouge en pointillés
   // Demander avant de supprimer une tâche depuis le canevas. La clé date de
   // l'ancienne vue Graphe ; elle est gardée pour ne pas perdre le choix fait.

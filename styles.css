@@ -4118,3 +4118,17 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-pages-num { color: var(--text-accent); font-variant-numeric: tabular-nums; }
 .zfa-pages-ligne.est-vide .zfa-pages-num { color: var(--text-faint); }
 .zfa-pages-titre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Notes de références orphelines (fiche Zotero disparue). */
+.zfa-orphelins-modale { width: min(640px, 94vw); }
+.zfa-orphelins-liste { display: flex; flex-direction: column; gap: 2px; margin: 12px 0; max-height: 55vh; overflow-y: auto; }
+.zfa-orphelins-ligne {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 10px;
+  padding: 7px 8px; border-radius: var(--radius-s); cursor: pointer;
+}
+.zfa-orphelins-ligne:hover { background: var(--background-modifier-hover); }
+.zfa-orphelins-ligne input[type="checkbox"] { margin-top: 3px; }
+.zfa-orphelins-texte { min-width: 0; }
+.zfa-orphelins-nom { font-weight: 600; overflow-wrap: anywhere; }
+.zfa-orphelins-info { color: var(--text-muted); font-size: var(--font-ui-small); }
+.zfa-orphelins-citee { color: var(--text-warning); font-size: var(--font-ui-small); }

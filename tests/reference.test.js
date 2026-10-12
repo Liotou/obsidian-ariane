@@ -141,3 +141,15 @@ test('sousDossier : chemin dans un dossier listé ou un sous-dossier', () => {
   assert.equal(Ariane.sousDossier('x.md', []), false);
   assert.equal(Ariane.sousDossier('x.md', ['', '  ']), false);
 });
+
+test('références orphelines : fiche absente ou à la corbeille, et jamais sur une base mal lue', () => {
+  const notes = ['AAAAAAAA', 'BBBBBBBB', 'CCCCCCCC', 'DDDDDDDD', 'EEEEEEEE', 'FFFFFFFF', 'GGGGGGGG', 'HHHHHHHH']
+    .map((cle) => ({ cle }));
+  const etats = new Map(notes.map((n) => [n.cle, 'active']));
+  etats.delete('BBBBBBBB');
+  etats.set('CCCCCCCC', 'corbeille');
+  const o = Ariane.referencesOrphelines(notes, etats, 3000);
+  assert.deepEqual(o.map((x) => x.cle + ':' + x.etat), ['BBBBBBBB:absente', 'CCCCCCCC:corbeille']);
+  assert.deepEqual(Ariane.referencesOrphelines(notes, etats, 0), [], 'base vide : rien');
+  assert.deepEqual(Ariane.referencesOrphelines(notes, new Map(), 3000), [], 'plus aucune note reconnue : base mal lue, rien');
+});

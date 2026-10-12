@@ -1020,6 +1020,12 @@ const TEXTES = {
     "Résumer les créneaux": "Summarise the slots",
     "Micro-interruptions": "Micro-interruptions",
     "Saisir les pages…": "Enter pages…",
+    "Zotero : notes de références orphelines…": "Zotero: orphaned reference notes…",
+    "Notes de références orphelines": "Orphaned reference notes",
+    "Mettre à la corbeille": "Move to trash",
+    "Les revoir": "Review them",
+    "Revoir maintenant": "Review now",
+    "Signaler les notes orphelines": "Report orphaned notes",
     "Temps estimé": "Estimated time",
     "Temps estimé : ": "Estimated time: ",
     "Déjà planifié en créneaux : ": "Already scheduled in slots: ",
@@ -1532,6 +1538,7 @@ const DEFAULT_SETTINGS = {
   canevasLiens: 'angulaire',
   canevasPonts: true,           // un pont là où deux liens angulaires se croisent
   canevasCotesAuto: true,       // les côtés des liens suivent la disposition des cartes
+  zoteroOrphelinsAuto: true,    // signaler les notes de références sans fiche Zotero
   canevasStyleRelation: true,   // hiérarchie discrète, blocage rouge en pointillés
   // Demander avant de supprimer une tâche depuis le canevas. La clé date de
   // l'ancienne vue Graphe ; elle est gardée pour ne pas perdre le choix fait.
@@ -5676,6 +5683,24 @@ const avecNoteReferences = (Base) => class extends Base {
     return /^(sans titre|untitled)( \d+)?$/i.test(String(nom || '').trim());
   }
 
+  // Les notes de références dont la fiche Zotero n'existe plus. `notes` :
+  // [{ cle, … }] (clé Zotero de la note) ; `etats` : Map clé → 'active' |
+  // 'corbeille' pour les fiches trouvées dans la base ; `total` : nombre de
+  // fiches de la base. Garde-fou : une base vide, ou qui ne reconnaîtrait plus
+  // la majorité des notes, est une base mal lue, pas une bibliothèque
+  // vidée : on ne déclare alors rien orphelin.
+  static referencesOrphelines(notes, etats, total) {
+    const l = notes || [];
+    if (!etats || !(Number(total) > 0) || !l.length) return [];
+    const out = [];
+    for (const n of l) {
+      const e = etats.get(n.cle);
+      if (e === 'active') continue;
+      out.push(Object.assign({}, n, { etat: e === 'corbeille' ? 'corbeille' : 'absente' }));
+    }
+    return out.length > Math.max(5, l.length / 2) ? [] : out;
+  }
+
   //#endregion Ariane · static · références
 
   //#region Ariane · index Zotero
@@ -5725,6 +5750,80 @@ const avecNoteReferences = (Base) => class extends Base {
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache ? cache.frontmatter : null;
     return !!((fm && fm.citationKey) || file.basename.startsWith('@'));
+  }
+
+  // ── notes de références orphelines ──
+  //  ZotFlow écarte la note d'une fiche mise à la corbeille de Zotero, mais
+  //  pas celle d'une fiche supprimée pour de bon (corbeille vidée avant la
+  //  synchronisation) : la fiche sort de sa base sans laisser de trace, et la
+  //  note reste. Ariane compare les notes de références à la base de Zotero.
+
+  // Les notes de références du coffre : celles qui portent une clé Zotero et
+  // une clé de citation (les notes d'annotation n'en portent pas).
+  notesDeReferences() {
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      const cle = fm && String(fm['zotero-key'] || '').trim();
+      if (!cle || !fm.citationKey || !/^[A-Z0-9]{8}$/.test(cle)) continue;
+      out.push({ fichier: f, cle, citationKey: String(fm.citationKey), titre: String(fm.title || '') });
+    }
+    return out;
+  }
+
+  // Les orphelines, avec le nombre de notes qui les citent encore. Null si
+  // la base de Zotero n'a pas pu être lue.
+  async referencesOrphelinesDuCoffre() {
+    const notes = this.notesDeReferences();
+    if (!notes.length) return [];
+    const total = await this.requeteZotero('SELECT COUNT(*) FROM items;');
+    const lignes = await this.requeteZotero('SELECT i.key, CASE WHEN d.itemID IS NULL THEN \'active\' ELSE \'corbeille\' END '
+      + 'FROM items i LEFT JOIN deletedItems d ON d.itemID = i.itemID WHERE i.key IN ('
+      + [...new Set(notes.map((n) => "'" + n.cle + "'"))].join(',') + ');');
+    if (!total || !lignes) return null;
+    const etats = new Map(lignes.map(([k, e]) => [k, e]));
+    const orphelines = Ariane.referencesOrphelines(notes, etats, Number((total[0] || [])[0]));
+    const liens = this.app.metadataCache.resolvedLinks || {};
+    for (const o of orphelines) {
+      o.citee = Object.entries(liens).filter(([src, cibles]) => src !== o.fichier.path
+        && cibles && cibles[o.fichier.path] && !src.startsWith('.')).map(([src]) => src);
+    }
+    return orphelines;
+  }
+
+  // La fenêtre de revue : rien n'est supprimé sans y être coché.
+  async revoirReferencesOrphelines(silencieux) {
+    const l = await this.referencesOrphelinesDuCoffre();
+    if (l == null) { if (!silencieux) new obsidian.Notice(tr('La base de Zotero n’a pas pu être lue.')); return; }
+    if (!l.length) { if (!silencieux) new obsidian.Notice(tr('Aucune note de référence orpheline : toutes ont leur fiche dans Zotero.')); return; }
+    new ModaleReferencesOrphelines(this.app, this, l).open();
+  }
+
+  // Vérification discrète (démarrage, après une synchronisation de ZotFlow) :
+  // un avis cliquable s'il y a du neuf, jamais de suppression.
+  async verifierReferencesOrphelines() {
+    if (this.settings.zoteroOrphelinsAuto === false || this._verifOrphelins) return;
+    this._verifOrphelins = true;
+    try {
+      const l = await this.referencesOrphelinesDuCoffre();
+      if (!l || !l.length) { this._orphelinsSignales = ''; return; }
+      const sig = l.map((o) => o.cle).sort().join(',');
+      if (sig === this._orphelinsSignales) return;
+      this._orphelinsSignales = sig;
+      const frag = document.createDocumentFragment();
+      frag.append(l.length + ' ' + (l.length > 1 ? tr('notes de références n’ont plus de fiche dans Zotero. ')
+        : tr('note de référence n’a plus de fiche dans Zotero. ')));
+      const a = document.createElement('a');
+      a.textContent = tr('Les revoir');
+      a.href = '#';
+      a.addEventListener('click', (e) => { e.preventDefault(); new ModaleReferencesOrphelines(this.app, this, l).open(); });
+      frag.append(a);
+      new obsidian.Notice(frag, 20000);
+    } catch (e) {
+      console.warn('[Ariane] vérification des références orphelines :', e);
+    } finally {
+      this._verifOrphelins = false;
+    }
   }
 
   //#endregion Ariane · index Zotero
@@ -8824,6 +8923,53 @@ const avecNoteBiblio = (Base) => class extends Base {
     return require('path').join(os.homedir(), 'Zotero');
   }
 
+  // La base de Zotero telle qu'elle est vraiment. Zotero écrit d'abord dans
+  // son journal (zotero.sqlite-wal) ; une lecture « immutable » de la base
+  // seule ignorait donc les derniers changements (une fiche supprimée y était
+  // encore). Quand ce journal existe, on lit une copie de la base ET du
+  // journal, que sqlite réunit à l'ouverture ; la copie est refaite seulement
+  // si l'un des deux a changé. Rend l'argument à passer à sqlite3, ou ''.
+  async baseZoteroLisible() {
+    const fs = require('fs'), path = require('path'), os = require('os');
+    const base = path.join(this.racineZotero(), 'zotero.sqlite');
+    let sb, sw = null;
+    try { sb = await fs.promises.stat(base); } catch (e) { return ''; }
+    try { sw = await fs.promises.stat(base + '-wal'); } catch (e) { sw = null; }
+    if (!sw || !sw.size) return 'file:' + encodeURI(base) + '?immutable=1';
+    const cle = sb.mtimeMs + ':' + sb.size + ':' + sw.mtimeMs + ':' + sw.size;
+    const dossier = path.join(os.tmpdir(), 'ariane-zotero');
+    const copie = path.join(dossier, 'zotero.sqlite');
+    if (this._baseZoteroCle === cle && fs.existsSync(copie)) return copie;
+    try {
+      await fs.promises.mkdir(dossier, { recursive: true });
+      for (const suf of ['', '-wal', '-shm']) {
+        try { await fs.promises.unlink(copie + suf); } catch (e) { /* rien à retirer */ }
+      }
+      await fs.promises.copyFile(base, copie);
+      await fs.promises.copyFile(base + '-wal', copie + '-wal');
+      this._baseZoteroCle = cle;
+      return copie;
+    } catch (e) {
+      console.warn('[Ariane] copie de la base Zotero impossible, lecture sans le journal :', e);
+      return 'file:' + encodeURI(base) + '?immutable=1';
+    }
+  }
+
+  // Une requête sur la base de Zotero (outil sqlite3 de macOS). Rend les
+  // lignes, champs séparés, ou null si la base n'est pas lisible.
+  async requeteZotero(requete) {
+    if (!obsidian.Platform.isDesktopApp) return null;
+    const cible = await this.baseZoteroLisible();
+    if (!cible) return null;
+    return new Promise((ok) => {
+      require('child_process').execFile('sqlite3', ['-separator', '\t', cible, requete],
+        { timeout: 20000, maxBuffer: 16 << 20 }, (err, sortie) => {
+          if (err) { ok(null); return; }
+          ok(String(sortie || '').split('\n').filter((l) => l !== '').map((l) => l.split('\t')));
+        });
+    });
+  }
+
   // Le texte extrait d'une pièce jointe, mis en cache mémoire : un PDF pèse
   // deux cent cinquante mille caractères, on ne le relit pas par référence.
   texteAttachement(cle) {
@@ -10306,33 +10452,23 @@ const avecNoteBiblio = (Base) => class extends Base {
   }
 
   // Les pages et l'ordre de lecture d'annotations Zotero (clés), lus dans
-  // la base de Zotero en lecture seule (outil sqlite3 de macOS ; la base
-  // reste lisible pendant que Zotero tourne). Map vide si rien n'est lisible.
-  pagesZotero(cles) {
+  // la base de Zotero (voir requeteZotero). Map vide si rien n'est lisible.
+  async pagesZotero(cles) {
     const valides = (cles || []).filter((c) => /^[A-Z0-9]{8}$/.test(c));
-    if (!valides.length || !obsidian.Platform.isDesktopApp) return Promise.resolve(new Map());
-    const base = require('path').join(this.racineZotero(), 'zotero.sqlite');
+    if (!valides.length) return new Map();
     const requete = 'SELECT i.key, IFNULL(a.pageLabel, \'\'), IFNULL(a.sortIndex, \'\'), IFNULL(a.position, \'\'), '
       + 'pj.key, IFNULL(ia.path, \'\') FROM itemAnnotations a JOIN items i ON i.itemID = a.itemID '
       + 'JOIN items pj ON pj.itemID = a.parentItemID LEFT JOIN itemAttachments ia ON ia.itemID = a.parentItemID '
       + 'WHERE i.key IN (' + valides.map((c) => "'" + c + "'").join(',') + ');';
-    return new Promise((ok) => {
-      require('child_process').execFile('sqlite3', ['-separator', '\t', 'file:' + encodeURI(base) + '?immutable=1', requete],
-        { timeout: 15000, maxBuffer: 4 << 20 }, (err, sortie) => {
-          const m = new Map();
-          if (!err) {
-            for (const ligne of String(sortie || '').split('\n')) {
-              const [cle, page, tri, position, pj, chemin] = ligne.split('\t');
-              if (!cle) continue;
-              const cfi = (String(position || '').match(/epubcfi\([^)]*\)/) || [])[0] || '';
-              const fichier = /^storage:/.test(chemin || '') && pj
-                ? require('path').join(this.racineZotero(), 'storage', pj, String(chemin).slice(8)) : '';
-              m.set(cle, { page: (page || '').trim(), tri: (tri || '').trim(), cfi, fichier });
-            }
-          }
-          ok(m);
-        });
-    });
+    const m = new Map();
+    for (const [cle, page, tri, position, pj, chemin] of (await this.requeteZotero(requete)) || []) {
+      if (!cle) continue;
+      const cfi = (String(position || '').match(/epubcfi\([^)]*\)/) || [])[0] || '';
+      const fichier = /^storage:/.test(chemin || '') && pj
+        ? require('path').join(this.racineZotero(), 'storage', pj, String(chemin).slice(8)) : '';
+      m.set(cle, { page: (page || '').trim(), tri: (tri || '').trim(), cfi, fichier });
+    }
+    return m;
   }
 
   // ── pages des annotations d'EPUB ──
@@ -21879,6 +22015,11 @@ class Ariane extends composer(obsidian.Plugin,
       checkCallback: surCanevas((s) => s.basculerPanneau()),
     });
     this.addCommand({
+      id: 'zotero-references-orphelines',
+      name: tr('Zotero : notes de références orphelines…'),
+      callback: () => this.revoirReferencesOrphelines(false),
+    });
+    this.addCommand({
       id: 'canevas-ouvrir',
       name: tr('Canevas : ouvrir un canevas de tâches…'),
       callback: () => this.canevas && this.canevas.ouvrirCanevas(),
@@ -22417,6 +22558,20 @@ class Ariane extends composer(obsidian.Plugin,
     this.app.workspace.onLayoutReady(() => this.decorerLecteursZotflow());
     this.registerEvent(this.app.workspace.on('layout-change', () => this.decorerLecteursZotflow()));
     this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.decorerLecteursZotflow()));
+
+    // Notes de références sans fiche Zotero : vérifiées une minute après le
+    // démarrage, puis après chaque synchronisation de ZotFlow (une rafale de
+    // notes de références réécrites).
+    this.app.workspace.onLayoutReady(() => {
+      const t = window.setTimeout(() => this.verifierReferencesOrphelines(), 60000);
+      this.register(() => window.clearTimeout(t));
+    });
+    this.registerEvent(this.app.metadataCache.on('changed', (f, _d, cache) => {
+      const fm = cache && cache.frontmatter;
+      if (fm && fm['zotero-key'] && fm.citationKey) {
+        this.antirebond('orphelins-zotero', () => this.verifierReferencesOrphelines(), 20000);
+      }
+    }));
 
     // Nouvelle note depuis le modèle d'un dossier (clic droit).
     this.installerNotesDepuisModele();
@@ -23640,6 +23795,14 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setValue(s.dossierZotero || '')
         .setPlaceholder(require('path').join(require('os').homedir(), 'Zotero'))
         .onChange(async (v) => { s.dossierZotero = v.trim(); this.plugin._textesPdf = null; await maj(); }));
+    this._sousTitre(c, tr('Notes de références orphelines'));
+    this._aide(c, tr("ZotFlow retire la note d'une fiche mise à la corbeille de Zotero, mais pas celle d'une fiche supprimée pour de bon : la note reste dans le coffre. Ariane compare les notes de références à la base de Zotero et propose de mettre à la corbeille celles qui n'ont plus de fiche. Rien n'est supprimé sans votre accord."));
+    new obsidian.Setting(c)
+      .setName(tr('Signaler les notes orphelines'))
+      .setDesc(tr('Au démarrage et après une synchronisation de ZotFlow, un avis dit combien de notes n’ont plus de fiche, avec un lien pour les revoir.'))
+      .addToggle((t) => t.setValue(s.zoteroOrphelinsAuto !== false)
+        .onChange(async (v) => { s.zoteroOrphelinsAuto = v; await maj(); }))
+      .addButton((b) => b.setButtonText(tr('Revoir maintenant')).onClick(() => this.plugin.revoirReferencesOrphelines(false)));
     this._section(c, tr('Graphe'));
     new obsidian.Setting(c)
       .setName(tr('Taguer les annotations non citées'))
@@ -40587,6 +40750,69 @@ class ModalePagesSaisies extends obsidian.Modal {
       if (this.apres) this.apres();
     };
     zone.focus();
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+// Notes de références dont la fiche Zotero n'existe plus. Une note encore
+// citée ailleurs n'est pas cochée d'office : on montre qui la cite.
+class ModaleReferencesOrphelines extends obsidian.Modal {
+  constructor(app, greffon, orphelines) {
+    super(app);
+    this.greffon = greffon;
+    this.l = orphelines || [];
+    this.choix = new Set(this.l.filter((o) => !(o.citee || []).length).map((o) => o.fichier.path));
+  }
+
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass('zfa-orphelins-modale');
+    if (this.setTitle) this.setTitle(tr('Notes de références orphelines'));
+    else contentEl.createEl('h3', { text: tr('Notes de références orphelines') });
+    contentEl.createDiv({ cls: 'setting-item-description', text: tr('Leur fiche n’existe plus dans Zotero (ou n’y est plus qu’à la corbeille), et ZotFlow ne les retire pas. Les notes cochées iront à la corbeille d’Obsidian, d’où elles se récupèrent.') });
+    const liste = contentEl.createDiv({ cls: 'zfa-orphelins-liste' });
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const bouton = pied.createEl('button', { cls: 'mod-warning' });
+    const maj = () => {
+      bouton.setText(tr('Mettre à la corbeille') + ' (' + this.choix.size + ')');
+      bouton.disabled = !this.choix.size;
+    };
+    for (const o of this.l) {
+      const ligne = liste.createEl('label', { cls: 'zfa-orphelins-ligne' });
+      const c = ligne.createEl('input', { type: 'checkbox' });
+      c.checked = this.choix.has(o.fichier.path);
+      c.addEventListener('change', () => {
+        if (c.checked) this.choix.add(o.fichier.path); else this.choix.delete(o.fichier.path);
+        maj();
+      });
+      const txt = ligne.createDiv({ cls: 'zfa-orphelins-texte' });
+      txt.createDiv({ cls: 'zfa-orphelins-nom', text: o.fichier.basename });
+      const info = [o.titre, o.etat === 'corbeille' ? tr('fiche à la corbeille de Zotero') : tr('fiche supprimée de Zotero')]
+        .filter(Boolean).join(', ');
+      txt.createDiv({ cls: 'zfa-orphelins-info', text: info });
+      if ((o.citee || []).length) {
+        const cit = txt.createDiv({ cls: 'zfa-orphelins-citee' });
+        cit.setText(tr('Encore citée par : ') + o.citee.map((p) => p.split('/').pop().replace(/\.md$/, '')).slice(0, 4).join(', ')
+          + (o.citee.length > 4 ? '…' : ''));
+      }
+      const ouvrir = ligne.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Ouvrir la note') } });
+      obsidian.setIcon(ouvrir, 'file-text');
+      ouvrir.addEventListener('click', (e) => { e.preventDefault(); this.app.workspace.getLeaf('tab').openFile(o.fichier); });
+    }
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    pied.appendChild(bouton);
+    bouton.onclick = async () => {
+      let n = 0;
+      for (const o of this.l) {
+        if (!this.choix.has(o.fichier.path)) continue;
+        try { await this.app.fileManager.trashFile(o.fichier); n += 1; } catch (e) { console.error('[Ariane] corbeille :', e); }
+      }
+      this.greffon._orphelinsSignales = '';
+      new obsidian.Notice(n + ' ' + tr('note(s) mise(s) à la corbeille.'));
+      this.close();
+    };
+    maj();
   }
 
   onClose() { this.contentEl.empty(); }

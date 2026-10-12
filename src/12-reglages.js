@@ -924,6 +924,14 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setValue(s.dossierZotero || '')
         .setPlaceholder(require('path').join(require('os').homedir(), 'Zotero'))
         .onChange(async (v) => { s.dossierZotero = v.trim(); this.plugin._textesPdf = null; await maj(); }));
+    this._sousTitre(c, tr('Notes de références orphelines'));
+    this._aide(c, tr("ZotFlow retire la note d'une fiche mise à la corbeille de Zotero, mais pas celle d'une fiche supprimée pour de bon : la note reste dans le coffre. Ariane compare les notes de références à la base de Zotero et propose de mettre à la corbeille celles qui n'ont plus de fiche. Rien n'est supprimé sans votre accord."));
+    new obsidian.Setting(c)
+      .setName(tr('Signaler les notes orphelines'))
+      .setDesc(tr('Au démarrage et après une synchronisation de ZotFlow, un avis dit combien de notes n’ont plus de fiche, avec un lien pour les revoir.'))
+      .addToggle((t) => t.setValue(s.zoteroOrphelinsAuto !== false)
+        .onChange(async (v) => { s.zoteroOrphelinsAuto = v; await maj(); }))
+      .addButton((b) => b.setButtonText(tr('Revoir maintenant')).onClick(() => this.plugin.revoirReferencesOrphelines(false)));
     this._section(c, tr('Graphe'));
     new obsidian.Setting(c)
       .setName(tr('Taguer les annotations non citées'))

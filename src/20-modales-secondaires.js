@@ -507,5 +507,68 @@ class ModalePagesSaisies extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// Notes de références dont la fiche Zotero n'existe plus. Une note encore
+// citée ailleurs n'est pas cochée d'office : on montre qui la cite.
+class ModaleReferencesOrphelines extends obsidian.Modal {
+  constructor(app, greffon, orphelines) {
+    super(app);
+    this.greffon = greffon;
+    this.l = orphelines || [];
+    this.choix = new Set(this.l.filter((o) => !(o.citee || []).length).map((o) => o.fichier.path));
+  }
+
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass('zfa-orphelins-modale');
+    if (this.setTitle) this.setTitle(tr('Notes de références orphelines'));
+    else contentEl.createEl('h3', { text: tr('Notes de références orphelines') });
+    contentEl.createDiv({ cls: 'setting-item-description', text: tr('Leur fiche n’existe plus dans Zotero (ou n’y est plus qu’à la corbeille), et ZotFlow ne les retire pas. Les notes cochées iront à la corbeille d’Obsidian, d’où elles se récupèrent.') });
+    const liste = contentEl.createDiv({ cls: 'zfa-orphelins-liste' });
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const bouton = pied.createEl('button', { cls: 'mod-warning' });
+    const maj = () => {
+      bouton.setText(tr('Mettre à la corbeille') + ' (' + this.choix.size + ')');
+      bouton.disabled = !this.choix.size;
+    };
+    for (const o of this.l) {
+      const ligne = liste.createEl('label', { cls: 'zfa-orphelins-ligne' });
+      const c = ligne.createEl('input', { type: 'checkbox' });
+      c.checked = this.choix.has(o.fichier.path);
+      c.addEventListener('change', () => {
+        if (c.checked) this.choix.add(o.fichier.path); else this.choix.delete(o.fichier.path);
+        maj();
+      });
+      const txt = ligne.createDiv({ cls: 'zfa-orphelins-texte' });
+      txt.createDiv({ cls: 'zfa-orphelins-nom', text: o.fichier.basename });
+      const info = [o.titre, o.etat === 'corbeille' ? tr('fiche à la corbeille de Zotero') : tr('fiche supprimée de Zotero')]
+        .filter(Boolean).join(', ');
+      txt.createDiv({ cls: 'zfa-orphelins-info', text: info });
+      if ((o.citee || []).length) {
+        const cit = txt.createDiv({ cls: 'zfa-orphelins-citee' });
+        cit.setText(tr('Encore citée par : ') + o.citee.map((p) => p.split('/').pop().replace(/\.md$/, '')).slice(0, 4).join(', ')
+          + (o.citee.length > 4 ? '…' : ''));
+      }
+      const ouvrir = ligne.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Ouvrir la note') } });
+      obsidian.setIcon(ouvrir, 'file-text');
+      ouvrir.addEventListener('click', (e) => { e.preventDefault(); this.app.workspace.getLeaf('tab').openFile(o.fichier); });
+    }
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    pied.appendChild(bouton);
+    bouton.onclick = async () => {
+      let n = 0;
+      for (const o of this.l) {
+        if (!this.choix.has(o.fichier.path)) continue;
+        try { await this.app.fileManager.trashFile(o.fichier); n += 1; } catch (e) { console.error('[Ariane] corbeille :', e); }
+      }
+      this.greffon._orphelinsSignales = '';
+      new obsidian.Notice(n + ' ' + tr('note(s) mise(s) à la corbeille.'));
+      this.close();
+    };
+    maj();
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 //#endregion 20 · Modales secondaires
 
