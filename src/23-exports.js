@@ -22,6 +22,9 @@ module.exports._test = {
   souderPonctuation,
   numerosTitres,
   numerosDepuisTitres,
+  renumeroterTitres,
+  numeroDeLigneTitre,
+  majLiensTitre,
   rafraichirLibelles,
   // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
   construireBibliographie,

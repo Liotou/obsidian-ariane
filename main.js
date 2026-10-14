@@ -1918,7 +1918,8 @@ const DEFAULT_SETTINGS = {
   aparteTaille: '0.8em', // taille de police de l'aparté
   dropSurParagraphe: true, // déposer une note sur un paragraphe -> note de bas de page
   dropToutesNotes: true, // accepter n'importe quelle note (sinon seulement les annotations)
-  numerotationTitres: true, // numéros des titres (## = 1., ### = 1.1.) affichés, jamais écrits
+  numerotationTitres: true, // numéros des titres (## = 1., ### = 1.1.) écrits et tenus à jour
+  numerotationDossiers: [], // dossiers dont les notes sont numérotées (vide : aucune)
   ponctuationInsecable: true, // texte justifié : ponctuation jamais séparée de son mot
   dropToucheStyle: 'shift', // touche qui alterne « (Auteur, année) » et « Auteur (année) » au glisser
   titreSectionNotes: 'Annotations de lecture associées', // en-tête de la section des notes
@@ -2296,26 +2297,33 @@ function souderPonctuation(texte) {
 
 // ── Numérotation des titres ──
 //  « ## » vaut 1., « ### » 1.1., « #### » 1.1.1., et ainsi de suite. Les
-//  numéros sont affichés, jamais écrits : ils suivent la note sans qu'on ait
-//  à les tenir. Une note dont les titres sont déjà numérotés à la main, ou
-//  qui porte « numérotation: false », n'en reçoit pas. Une note sans « ## »
-//  part de son plus haut niveau de titre. Un niveau sauté compte zéro.
+//  numéros sont écrits dans la note (« ## 1.1. Titre ») et tenus à jour par
+//  Ariane ; l'éditeur les grise et les protège de la frappe. Une
+//  numérotation saisie à la main (« 1) », « 2.3 », « II - ») est remplacée.
+//  Une note sans « ## » part de son plus haut niveau de titre ; un niveau
+//  sauté compte zéro. Restent hors numérotation : le code, le titre de la
+//  bibliographie d'Ariane et les notes qui portent « numérotation: false ».
 
-// Les numéros des titres d'une note, par indice de ligne (0 en tête).
-function numerosTitres(lignes) {
+// Numérotation en tête d'un texte de titre, saisie à la main ou posée par
+// Ariane, collée ou non au texte (« 1.Cadrage »). « 2026 : bilan » ou
+// « 3 questions » n'en sont pas.
+const RE_NUMERO_TITRE = /^(?:(?:\d+(?:\.\d+)+\.?|\d+[.)])[ \t]*|[IVXLC]+[ \t]*[.)\-\u2013\u2014][ \t]+)(?=\S)/;
+
+// Les titres numérotables d'une note : [{ ligne, niveau, texte }], ou null
+// si la note s'en dispense.
+function releverTitres(lignes) {
   const l = Array.isArray(lignes) ? lignes : String(lignes == null ? '' : lignes).split('\n');
   let i = 0;
   if (l[0] !== undefined && l[0].trim() === '---') {
     let j = 1;
     while (j < l.length && l[j].trim() !== '---') {
-      if (/^num[ée]rotation\s*:\s*["']?(false|non|no)["']?\s*$/i.test(l[j])) return new Map();
+      if (/^num[ée]rotation\s*:\s*["']?(false|non|no)["']?\s*$/i.test(l[j])) return null;
       j++;
     }
     if (j < l.length) i = j + 1;
   }
   const titres = [];
   let cloture = '';
-  // Les titres sont relevés ici, numérotés par numerosDepuisTitres.
   for (; i < l.length; i++) {
     const t = l[i];
     const f = t.match(/^\s*(`{3,}|~{3,})/);
@@ -2327,19 +2335,23 @@ function numerosTitres(lignes) {
     if (cloture) continue;
     const m = t.match(/^(#{2,6})[ \t]+(\S.*)$/);
     if (!m) continue;
-    titres.push({ ligne: i, niveau: m[1].length, texte: m[2].replace(/\s#+\s*$/, '') });
+    // Le titre que tient Ariane au-dessus de sa bibliographie.
+    let k = i + 1;
+    while (k < l.length && !l[k].trim()) k++;
+    if (k < l.length && l[k].trim() === ZFA_BIBLIO_DEBUT) continue;
+    titres.push({ ligne: i, niveau: m[1].length, texte: m[2] });
   }
-  return numerosDepuisTitres(titres);
+  return titres;
 }
 
-// Le calcul lui-même, sur des titres déjà relevés ({ ligne, niveau, texte }) :
-// la note en mode lecture et en édition, le panneau « Plan » d'Obsidian
-// depuis l'index des métadonnées.
+// Le numéro de chaque titre, par indice de ligne (0 en tête).
+function numerosTitres(lignes) {
+  return numerosDepuisTitres(releverTitres(lignes));
+}
+
+// Le calcul lui-même, sur des titres relevés ({ ligne, niveau }).
 function numerosDepuisTitres(liste) {
   const titres = (liste || []).filter((x) => x && x.niveau >= 2 && x.niveau <= 6);
-  // Déjà numérotée à la main (« 1. », « 2) », « 1.2. », « II - ») : on n'en
-  // rajoute pas. « 2026 : bilan » n'est pas une numérotation.
-  if (titres.some((x) => /^(?:\d+(?:\.\d+)*[.)]|[IVXLC]+\s*[.)\-])\s+\S/.test(String(x.texte || '')))) return new Map();
   const out = new Map();
   if (!titres.length) return out;
   const base = Math.min(...titres.map((x) => x.niveau));
@@ -2351,6 +2363,48 @@ function numerosDepuisTitres(liste) {
     out.set(ligne, c.slice(0, k + 1).join('.') + '.');
   }
   return out;
+}
+
+// Réécrit les titres d'une note avec leur numéro. Rend { texte,
+// changements: [{ ligne, ancien, nouveau }] } (textes de titre, pour
+// reporter le changement dans les liens « [[note#titre]] »).
+function renumeroterTitres(texte) {
+  const src = String(texte == null ? '' : texte);
+  const lignes = src.split('\n');
+  const titres = releverTitres(lignes);
+  if (!titres) return { texte: src, changements: [] };
+  const numeros = numerosDepuisTitres(titres);
+  const changements = [];
+  for (const t of titres) {
+    const n = numeros.get(t.ligne);
+    if (!n) continue;
+    const m = lignes[t.ligne].match(/^(#{2,6}[ \t]+)(.*)$/);
+    const ancien = m[2];
+    const nouveau = n + ' ' + ancien.replace(RE_NUMERO_TITRE, '');
+    if (nouveau === ancien) continue;
+    lignes[t.ligne] = m[1] + nouveau;
+    changements.push({ ligne: t.ligne, ancien: ancien.trim(), nouveau: nouveau.trim() });
+  }
+  return { texte: changements.length ? lignes.join('\n') : src, changements };
+}
+
+// Le numéro posé en tête d'une ligne de titre : { debut, fin } (espaces
+// suivantes comprises), ou null.
+function numeroDeLigneTitre(ligne) {
+  const m = String(ligne || '').match(/^(#{2,6}[ \t]+)(\d+(?:\.\d+)*\.)[ \t]+/);
+  return m ? { debut: m[1].length, fin: m[0].length } : null;
+}
+
+// Reporte le nouveau texte d'un titre dans les liens qui le visent :
+// « [[Note#1.2. Ancien]] », « ![[Note#…|alias]] », et « [[#…]] » quand le
+// lien est dans la note même (`memeNote`). `nom` : le nom de la note visée.
+function majLiensTitre(texte, nom, ancien, nouveau, memeNote) {
+  const re = new RegExp('(!?\\[\\[)([^\\]|#\\n]*)#' + echapperRegex(ancien) + '(?=[\\]|])', 'g');
+  return String(texte).replace(re, (tout, ouv, cible) => {
+    const c = cible.trim();
+    const vise = c ? c.split('/').pop().replace(/\.md$/i, '') === nom : !!memeNote;
+    return vise ? ouv + cible + '#' + nouveau : tout;
+  });
 }
 
 //#endregion 2 · Utilitaires génériques
@@ -4991,6 +5045,8 @@ const avecSocle = (Base) => class extends Base {
   surModification(file) {
     if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
     if (this.ecritePlugin(file.path)) return;
+    // Numérotation des titres, tenue à jour une fois la frappe posée.
+    if (this.dansNumerotation(file)) this.antirebond('num:' + file.path, () => this.renumeroterNote(file), 1500);
 
     if (file.path.startsWith(this.dossierA + '/')) {
       if (this.settings.verrouillage) {
@@ -8020,63 +8076,180 @@ const avecNoteAtomes = (Base) => class extends Base {
     }
   }
 
-  // Mode lecture : chaque titre reçoit son numéro, calculé sur la note
-  // entière (le rendu arrive par sections).
-  numeroterTitresRendus(el, ctx) {
-    if (this.settings.numerotationTitres === false || !el || !ctx || !ctx.getSectionInfo) return;
-    const titres = el.querySelectorAll('h2, h3, h4, h5, h6');
-    if (!titres.length) return;
-    const info = ctx.getSectionInfo(el);
-    if (!info || typeof info.text !== 'string') return;
-    if (!this._numerosRendus || this._numerosRendus.texte !== info.text) {
-      this._numerosRendus = { texte: info.text, numeros: numerosTitres(info.text) };
-    }
-    const n = this._numerosRendus.numeros.get(info.lineStart);
-    for (const h of titres) {
-      const ancien = h.querySelector(':scope > .zfa-num-titre');
-      if (ancien) ancien.remove();
-      if (!n || titres.length > 1) continue;
-      const s = (h.ownerDocument || document).createElement('span');
-      s.className = 'zfa-num-titre';
-      s.textContent = n;
-      s.setAttribute('aria-hidden', 'true');
-      const ind = h.querySelector(':scope > .heading-collapse-indicator');
-      h.insertBefore(s, ind ? ind.nextSibling : h.firstChild);
-    }
+  // ── numérotation des titres ──
+  //  Les numéros sont écrits dans la note (voir renumeroterTitres) et tenus
+  //  à jour à chaque modification, dans les dossiers choisis. L'éditeur les
+  //  grise et les protège (section 11z) ; ici, la lecture et le panneau
+  //  « Plan » les grisent à leur tour.
+
+  // Une note relève-t-elle de la numérotation ? Dans un dossier choisi, hors
+  // tâches, veilles et notes que produisent ZotFlow ou Ariane.
+  dansNumerotation(file) {
+    const s = this.settings;
+    if (s.numerotationTitres === false || !file || file.extension !== 'md') return false;
+    const dossiers = Array.isArray(s.numerotationDossiers) ? s.numerotationDossiers : [];
+    const dans = (d) => d && (file.path === d + '.md' || file.path.startsWith(d + '/'));
+    if (!dossiers.some(dans)) return false;
+    if ([s.dossierTaches, s.veilleDossier].some(dans)) return false;
+    const fm = (this.app.metadataCache.getFileCache(file) || {}).frontmatter || {};
+    return fm['zotflow-auto'] !== true && fm['zotflow-locked'] !== true;
   }
 
-  // Le panneau « Plan » d'Obsidian : chaque entrée reçoit le numéro de son
-  // titre. Le plan se reconstruit à chaque changement de la note ; on
-  // repasse derrière lui, une fois sa mise à jour faite.
+  // Grise le numéro en tête d'un élément de titre déjà rendu (lecture, plan).
+  griserNumeroTitre(el) {
+    if (!el || el.querySelector(':scope > .zfa-num-titre')) return;
+    let n = el.firstChild;
+    while (n && n.nodeType === 1 && n.classList && n.classList.contains('heading-collapse-indicator')) n = n.nextSibling;
+    if (!n || n.nodeType !== 3) return;
+    const m = n.nodeValue.match(/^(\d+(?:\.\d+)*\.)[ \t ]+/);
+    if (!m) return;
+    const reste = n.splitText(m[0].length);
+    const s = (el.ownerDocument || document).createElement('span');
+    s.className = 'zfa-num-titre';
+    s.textContent = m[0];
+    el.insertBefore(s, reste);
+    n.remove();
+  }
+
+  numeroterTitresRendus(el, ctx) {
+    if (!el || !ctx) return;
+    const f = this.app.vault.getAbstractFileByPath(ctx.sourcePath || '');
+    if (!this.dansNumerotation(f)) return;
+    for (const h of el.querySelectorAll('h2, h3, h4, h5, h6')) this.griserNumeroTitre(h);
+  }
+
+  // Le panneau « Plan » d'Obsidian : le numéro de chaque entrée est grisé.
+  // Le plan se reconstruit à chaque changement de la note ; on repasse
+  // derrière lui, une fois sa mise à jour faite.
   numeroterPlan(vue) {
-    const f = vue && vue.file;
     const racine = vue && vue.tree && vue.tree.root;
-    if (!f || !racine) return;
-    const cache = this.app.metadataCache.getFileCache(f) || {};
-    const fm = cache.frontmatter || {};
-    const dispense = ['false', 'non', 'no'].includes(String(fm['numérotation'] != null ? fm['numérotation'] : fm.numerotation).toLowerCase());
-    const numeros = (this.settings.numerotationTitres === false || dispense) ? new Map()
-      : numerosDepuisTitres((cache.headings || []).map((h) => ({ ligne: h.position.start.line, niveau: h.level, texte: h.heading })));
+    if (!racine || !this.dansNumerotation(vue.file)) return;
     const parcourir = (item) => {
       for (const it of (item.vChildren && item.vChildren._children) || []) {
-        const inner = it.innerEl;
-        if (inner && it.heading && it.heading.position) {
-          const n = numeros.get(it.heading.position.start.line);
-          let s = inner.querySelector(':scope > .zfa-num-titre');
-          if (!n) { if (s) s.remove(); } else {
-            if (!s) {
-              s = (inner.ownerDocument || document).createElement('span');
-              s.className = 'zfa-num-titre';
-              s.setAttribute('aria-hidden', 'true');
-              inner.prepend(s);
-            }
-            s.textContent = n;
-          }
-        }
+        if (it.innerEl) this.griserNumeroTitre(it.innerEl);
         parcourir(it);
       }
     };
     parcourir(racine);
+  }
+
+  // Transforme le texte d'une note par `fn`. Ouverte dans un éditeur, elle
+  // change par lui, ligne à ligne : le curseur reste où il était et ce qui
+  // n'est pas encore enregistré n'est pas écrasé. Sinon, par le coffre.
+  // Rend vrai si le texte a changé.
+  async transformerNote(file, fn) {
+    const feuille = this.app.workspace.getLeavesOfType('markdown')
+      .find((l) => l.view && l.view.file === file && l.view.editor && l.view.editor.cm);
+    if (feuille) {
+      const cm = feuille.view.editor.cm;
+      const doc = cm.state.doc;
+      const avant = doc.toString();
+      const apres = fn(avant);
+      if (apres === avant) return false;
+      const a = avant.split('\n'), z = apres.split('\n');
+      if (a.length !== z.length) {
+        cm.dispatch({ changes: { from: 0, to: doc.length, insert: apres }, userEvent: 'ariane.numerotation' });
+        return true;
+      }
+      const changes = [];
+      for (let k = 0; k < a.length; k++) {
+        if (a[k] === z[k]) continue;
+        const l = doc.line(k + 1);
+        changes.push({ from: l.from, to: l.to, insert: z[k] });
+      }
+      cm.dispatch({ changes, userEvent: 'ariane.numerotation' });
+      return true;
+    }
+    let change = false;
+    const avant = await this.app.vault.cachedRead(file);
+    if (fn(avant) === avant) return false;
+    await this.app.vault.process(file, (t) => { const x = fn(t); change = x !== t; return x; });
+    return change;
+  }
+
+  // Renumérote une note, puis reporte le changement dans les liens qui
+  // visaient un titre renuméroté. Rend le nombre de titres changés.
+  async renumeroterNote(file) {
+    if (!this.dansNumerotation(file)) return 0;
+    let changements = [];
+    await this.transformerNote(file, (t) => {
+      const r = renumeroterTitres(t);
+      changements = r.changements;
+      return r.texte;
+    });
+    if (changements.length) await this.majLiensVersTitres(file, changements);
+    return changements.length;
+  }
+
+  // Les liens « [[note#titre]] » du coffre qui visent un titre renuméroté.
+  async majLiensVersTitres(file, changements) {
+    const sources = new Set([file.path]);
+    for (const [src, cibles] of Object.entries(this.app.metadataCache.resolvedLinks || {})) {
+      if (cibles && cibles[file.path]) sources.add(src);
+    }
+    for (const chemin of sources) {
+      const f = this.app.vault.getAbstractFileByPath(chemin);
+      if (!(f instanceof obsidian.TFile)) continue;
+      await this.transformerNote(f, (t) => {
+        let x = t;
+        for (const c of changements) x = majLiensTitre(x, file.basename, c.ancien, c.nouveau, chemin === file.path);
+        return x;
+      });
+    }
+  }
+
+  // Les dossiers de premier niveau et ce qu'ils contiennent de notes à
+  // titres, pour la fenêtre de choix.
+  async dossiersNumerotables() {
+    const parDossier = new Map();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const haut = f.path.includes('/') ? f.path.split('/')[0] : '';
+      if (!haut) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (fm['zotflow-auto'] === true || fm['zotflow-locked'] === true) continue;
+      const titres = ((this.app.metadataCache.getFileCache(f) || {}).headings || []).filter((h) => h.level >= 2);
+      if (!titres.length) continue;
+      const e = parDossier.get(haut) || { dossier: haut, notes: 0 };
+      e.notes += 1;
+      parDossier.set(haut, e);
+    }
+    return [...parDossier.values()].sort((a, b) => a.dossier.localeCompare(b.dossier, 'fr'));
+  }
+
+  // Ouvre la fenêtre de choix. Sans choix enregistré, on coche d'avance
+  // tout ce qui n'est pas un dossier de rôle (tâches, annotations,
+  // bibliographie, modèles, publication) ni d'archives.
+  async choisirDossiersNumerotation() {
+    const s = this.settings;
+    const dossiers = await this.dossiersNumerotables();
+    const haut = (p) => String(p || '').split('/')[0];
+    let modeles = '';
+    try { modeles = this.app.internalPlugins.plugins.templates.instance.options.folder || ''; } catch (e) { modeles = ''; }
+    const roles = new Set([s.dossierTaches, s.dossierAnnotations, s.dossierReferences, s.dossierZotero,
+      s.dossierBibliographies, s.publicationDossierVault, modeles].filter(Boolean).map(haut));
+    const enregistres = Array.isArray(s.numerotationDossiers) ? s.numerotationDossiers : [];
+    const coches = new Set(enregistres.length ? enregistres
+      : dossiers.map((d) => d.dossier).filter((d) => !roles.has(d) && !/archive|bibliograph/i.test(d)));
+    new ModaleNumerotationDossiers(this.app, this, dossiers, coches).open();
+  }
+
+  // Enregistre les dossiers choisis, puis numérote toutes leurs notes.
+  async convertirNumerotation(dossiers) {
+    this.settings.numerotationDossiers = dossiers.slice();
+    await this.saveSettings();
+    this.rafraichirPonctuation();
+    let notes = 0, titres = 0;
+    const avis = new obsidian.Notice(tr('Numérotation des titres…'), 0);
+    try {
+      for (const f of this.app.vault.getMarkdownFiles()) {
+        if (!this.dansNumerotation(f)) continue;
+        const n = await this.renumeroterNote(f);
+        if (n) { notes += 1; titres += n; }
+      }
+    } finally { avis.hide(); }
+    new obsidian.Notice(titres
+      ? titres + tr(' titre(s) numéroté(s) dans ') + notes + tr(' note(s).')
+      : tr('Tous les titres étaient déjà numérotés.'));
   }
 
   // Branche la numérotation sur les panneaux « Plan » ouverts.
@@ -24324,6 +24497,21 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.revoirReferencesOrphelines(false),
     });
     this.addCommand({
+      id: 'titres-numeroter',
+      name: tr('Titres : choisir les dossiers numérotés et numéroter…'),
+      callback: () => this.choisirDossiersNumerotation(),
+    });
+    this.addCommand({
+      id: 'titres-renumeroter-note',
+      name: tr('Titres : renuméroter cette note'),
+      checkCallback: (verif) => {
+        const f = this.app.workspace.getActiveFile();
+        if (!this.dansNumerotation(f)) return false;
+        if (!verif) this.renumeroterNote(f);
+        return true;
+      },
+    });
+    this.addCommand({
       id: 'annotations-sources-mentionnees',
       name: tr('Annotations : revoir les sources mentionnées dans mes commentaires…'),
       callback: () => this.revoirMentionsDeSources(),
@@ -24872,46 +25060,82 @@ class Ariane extends composer(obsidian.Plugin,
       console.error('[Ariane] Ponctuation insécable indisponible :', e);
     }
 
-    // Numéros des titres (1., 1.1., …) : affichés en grisé, jamais écrits,
-    // ni sélectionnables ni modifiables.
+    // Numéros des titres (1., 1.1., …) : écrits dans la note par Ariane,
+    // grisés dans l'éditeur, que le curseur saute et que la frappe ne peut
+    // pas entamer (une frappe juste devant passe derrière eux).
     try {
-      const { ViewPlugin, Decoration, WidgetType } = require('@codemirror/view');
-      const { RangeSetBuilder } = require('@codemirror/state');
-      class NumeroTitre extends WidgetType {
-        constructor(n) { super(); this.n = n; }
-        eq(o) { return o.n === this.n; }
-        toDOM(view) {
-          // Fenêtre détachée : le document de l'éditeur, non le global.
-          const s = ((view && view.dom && view.dom.ownerDocument) || document).createElement('span');
-          s.className = 'zfa-num-titre';
-          s.textContent = this.n;
-          s.setAttribute('aria-hidden', 'true');
-          return s;
-        }
-        ignoreEvent() { return true; }
-      }
+      const { ViewPlugin, Decoration, EditorView } = require('@codemirror/view');
+      const { RangeSetBuilder, EditorState } = require('@codemirror/state');
+      const marque = Decoration.mark({ class: 'zfa-num-titre', attributes: { spellcheck: 'false' } });
       const greffon = this;
+      const actif = (state) => {
+        let f = null;
+        try { const info = state.field(obsidian.editorInfoField, false); f = info && info.file; } catch (e) { f = null; }
+        return !!(f && greffon.dansNumerotation(f));
+      };
       const calculer = (view) => {
         const b = new RangeSetBuilder();
-        if (greffon.settings.numerotationTitres === false) return b.finish();
+        if (!actif(view.state)) return b.finish();
         const doc = view.state.doc;
-        const lignes = doc.toString().split('\n');
-        for (const [i, n] of numerosTitres(lignes)) {
-          const l = doc.line(i + 1);
-          const m = l.text.match(/^#{2,6}[ \t]+/);
-          if (m) b.add(l.from + m[0].length, l.from + m[0].length, Decoration.widget({ widget: new NumeroTitre(n), side: -1 }));
+        for (const { from, to } of view.visibleRanges) {
+          for (let n = doc.lineAt(from).number, fin = doc.lineAt(to).number; n <= fin; n++) {
+            const l = doc.line(n);
+            const p = numeroDeLigneTitre(l.text);
+            if (p) b.add(l.from + p.debut, l.from + p.fin, marque);
+          }
         }
         return b.finish();
       };
-      this.registerEditorExtension(ViewPlugin.fromClass(class {
+      const plugin = ViewPlugin.fromClass(class {
         constructor(view) { this.decorations = calculer(view); }
         update(u) {
-          if (u.docChanged || greffon._numerotationRevue !== this.revue) {
+          if (u.docChanged || u.viewportChanged || greffon._numerotationRevue !== this.revue) {
             this.revue = greffon._numerotationRevue;
             this.decorations = calculer(u.view);
           }
         }
-      }, { decorations: (v) => v.decorations }));
+      }, {
+        decorations: (v) => v.decorations,
+        provide: (pl) => EditorView.atomicRanges.of((view) => {
+          const v = view.plugin(pl);
+          return v ? v.decorations : Decoration.none;
+        }),
+      });
+      // La frappe et l'effacement ne touchent pas au numéro. Les autres
+      // transactions (Ariane qui renumérote, Obsidian qui déplace un titre)
+      // passent telles quelles.
+      const filtre = EditorState.transactionFilter.of((tr) => {
+        if (!tr.docChanged || !(tr.isUserEvent('input') || tr.isUserEvent('delete'))) return tr;
+        if (!actif(tr.startState)) return tr;
+        const doc = tr.startState.doc;
+        const touches = [];
+        tr.changes.iterChanges((a, b, c, d, ins) => touches.push({ a, b, ins }));
+        let bloque = false, redirige = null;
+        for (const t of touches) {
+          for (let n = doc.lineAt(t.a).number, fin = doc.lineAt(t.b).number; n <= fin; n++) {
+            const l = doc.line(n);
+            const p = numeroDeLigneTitre(l.text);
+            if (!p) continue;
+            const d = l.from + p.debut, f = l.from + p.fin;
+            if (t.b <= d || t.a >= f) continue;          // hors du numéro
+            if (t.a <= d && t.b >= f && (t.a < d || t.b > f)) continue;   // le numéro part avec le reste
+            bloque = true;
+          }
+          // Une frappe juste devant le numéro passe derrière lui.
+          if (t.a === t.b) {
+            const l = doc.lineAt(t.a);
+            const p = numeroDeLigneTitre(l.text);
+            if (p && t.a === l.from + p.debut) redirige = { t, f: l.from + p.fin };
+          }
+        }
+        if (bloque) return [];
+        if (redirige && touches.length === 1) {
+          const texte = redirige.t.ins.toString();
+          return { changes: { from: redirige.f, insert: texte }, selection: { anchor: redirige.f + texte.length }, userEvent: 'input' };
+        }
+        return tr;
+      });
+      this.registerEditorExtension([plugin, filtre]);
     } catch (e) {
       console.error('[Ariane] Numérotation des titres indisponible :', e);
     }
@@ -26238,11 +26462,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("En texte justifié, une parenthèse, un guillemet, un point-virgule ou un deux-points ne se retrouve plus seul en début ou en fin de ligne. Rien n'est modifié dans vos notes : seul l'affichage change, en édition comme en lecture."))
       .addToggle((t) => t.setValue(s.ponctuationInsecable !== false)
         .onChange(async (v) => { s.ponctuationInsecable = v; await maj(); this.plugin.rafraichirPonctuation(); }));
+    const nbDossiers = (s.numerotationDossiers || []).length;
     new obsidian.Setting(c)
       .setName(tr('Numéroter les titres'))
-      .setDesc(tr("« ## » vaut 1., « ### » 1.1., « #### » 1.1.1. Les numéros s'affichent en grisé, en édition comme en lecture, mais ne sont jamais écrits dans la note : ils suivent d'eux-mêmes l'ajout, le retrait ou le déplacement d'un titre. Une note déjà numérotée à la main n'en reçoit pas ; une note peut s'en dispenser par la propriété « numérotation: false »."))
+      .setDesc(tr("« ## » vaut 1., « ### » 1.1., « #### » 1.1.1. Les numéros sont écrits dans la note et tenus à jour par Ariane quand vous ajoutez, retirez ou déplacez un titre ; une numérotation saisie à la main est remplacée. Dans l'éditeur, ils sont grisés et protégés de la frappe. L'export Word les retire, son modèle numérotant lui-même. Une note s'en dispense par la propriété « numérotation: false »."))
       .addToggle((t) => t.setValue(s.numerotationTitres !== false)
         .onChange(async (v) => { s.numerotationTitres = v; await maj(); this.plugin.rafraichirPonctuation(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Dossiers numérotés'))
+      .setDesc(nbDossiers ? (s.numerotationDossiers || []).join(', ') : tr('Aucun pour l’instant.'))
+      .addButton((b) => b.setButtonText(tr('Choisir et numéroter…')).onClick(() => this.plugin.choisirDossiersNumerotation()));
     this._section(c, tr('Correcteur Apple'));
     this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne."));
     const relancerCorrecteur = (vider) => { if (this.plugin.correcteur) this.plugin.correcteur.relancer(vider); };
@@ -43523,6 +43752,52 @@ class ModaleReferencesOrphelines extends obsidian.Modal {
 
 // Les autres sources que vos commentaires d'annotation mentionnent : cochées,
 // elles deviennent des sources associées ; écartées, elles ne reviennent plus.
+// Les dossiers dont les notes reçoivent la numérotation des titres. Valider
+// enregistre le choix et numérote aussitôt toutes leurs notes.
+class ModaleNumerotationDossiers extends obsidian.Modal {
+  constructor(app, greffon, dossiers, coches) {
+    super(app);
+    this.greffon = greffon;
+    this.l = dossiers || [];
+    this.choix = new Set(coches || []);
+  }
+
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass('zfa-orphelins-modale');
+    const titre = tr('Numérotation des titres');
+    if (this.setTitle) this.setTitle(titre); else contentEl.createEl('h3', { text: titre });
+    contentEl.createDiv({ cls: 'setting-item-description', text: tr('Les notes des dossiers cochés reçoivent la numérotation 1., 1.1., 1.1.1., écrite dans le texte et tenue à jour. Une numérotation saisie à la main y est remplacée. Les tâches, les veilles et les notes produites par ZotFlow ou Ariane restent à l’écart.') });
+    const liste = contentEl.createDiv({ cls: 'zfa-orphelins-liste' });
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const bouton = pied.createEl('button', { cls: 'mod-cta' });
+    const maj = () => {
+      const n = this.l.filter((d) => this.choix.has(d.dossier)).reduce((t, d) => t + d.notes, 0);
+      bouton.setText(tr('Numéroter') + ' (' + n + ' ' + tr('note(s)') + ')');
+    };
+    for (const d of this.l) {
+      const ligne = liste.createEl('label', { cls: 'zfa-orphelins-ligne' });
+      const c = ligne.createEl('input', { type: 'checkbox' });
+      c.checked = this.choix.has(d.dossier);
+      c.addEventListener('change', () => { if (c.checked) this.choix.add(d.dossier); else this.choix.delete(d.dossier); maj(); });
+      const txt = ligne.createDiv({ cls: 'zfa-orphelins-texte' });
+      txt.createDiv({ cls: 'zfa-orphelins-nom', text: d.dossier });
+      txt.createDiv({ cls: 'zfa-orphelins-info', text: d.notes + ' ' + tr('note(s) à titres') });
+      ligne.createDiv();
+    }
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    pied.appendChild(bouton);
+    bouton.onclick = async () => {
+      bouton.disabled = true;
+      this.close();
+      await this.greffon.convertirNumerotation(this.l.map((d) => d.dossier).filter((d) => this.choix.has(d)));
+    };
+    maj();
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 class ModaleMentionsSources extends obsidian.Modal {
   constructor(app, greffon, lignes) {
     super(app);
@@ -45874,6 +46149,9 @@ module.exports._test = {
   souderPonctuation,
   numerosTitres,
   numerosDepuisTitres,
+  renumeroterTitres,
+  numeroDeLigneTitre,
+  majLiensTitre,
   rafraichirLibelles,
   // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
   construireBibliographie,

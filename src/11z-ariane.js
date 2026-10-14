@@ -495,6 +495,21 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.revoirReferencesOrphelines(false),
     });
     this.addCommand({
+      id: 'titres-numeroter',
+      name: tr('Titres : choisir les dossiers numérotés et numéroter…'),
+      callback: () => this.choisirDossiersNumerotation(),
+    });
+    this.addCommand({
+      id: 'titres-renumeroter-note',
+      name: tr('Titres : renuméroter cette note'),
+      checkCallback: (verif) => {
+        const f = this.app.workspace.getActiveFile();
+        if (!this.dansNumerotation(f)) return false;
+        if (!verif) this.renumeroterNote(f);
+        return true;
+      },
+    });
+    this.addCommand({
       id: 'annotations-sources-mentionnees',
       name: tr('Annotations : revoir les sources mentionnées dans mes commentaires…'),
       callback: () => this.revoirMentionsDeSources(),
@@ -1043,46 +1058,82 @@ class Ariane extends composer(obsidian.Plugin,
       console.error('[Ariane] Ponctuation insécable indisponible :', e);
     }
 
-    // Numéros des titres (1., 1.1., …) : affichés en grisé, jamais écrits,
-    // ni sélectionnables ni modifiables.
+    // Numéros des titres (1., 1.1., …) : écrits dans la note par Ariane,
+    // grisés dans l'éditeur, que le curseur saute et que la frappe ne peut
+    // pas entamer (une frappe juste devant passe derrière eux).
     try {
-      const { ViewPlugin, Decoration, WidgetType } = require('@codemirror/view');
-      const { RangeSetBuilder } = require('@codemirror/state');
-      class NumeroTitre extends WidgetType {
-        constructor(n) { super(); this.n = n; }
-        eq(o) { return o.n === this.n; }
-        toDOM(view) {
-          // Fenêtre détachée : le document de l'éditeur, non le global.
-          const s = ((view && view.dom && view.dom.ownerDocument) || document).createElement('span');
-          s.className = 'zfa-num-titre';
-          s.textContent = this.n;
-          s.setAttribute('aria-hidden', 'true');
-          return s;
-        }
-        ignoreEvent() { return true; }
-      }
+      const { ViewPlugin, Decoration, EditorView } = require('@codemirror/view');
+      const { RangeSetBuilder, EditorState } = require('@codemirror/state');
+      const marque = Decoration.mark({ class: 'zfa-num-titre', attributes: { spellcheck: 'false' } });
       const greffon = this;
+      const actif = (state) => {
+        let f = null;
+        try { const info = state.field(obsidian.editorInfoField, false); f = info && info.file; } catch (e) { f = null; }
+        return !!(f && greffon.dansNumerotation(f));
+      };
       const calculer = (view) => {
         const b = new RangeSetBuilder();
-        if (greffon.settings.numerotationTitres === false) return b.finish();
+        if (!actif(view.state)) return b.finish();
         const doc = view.state.doc;
-        const lignes = doc.toString().split('\n');
-        for (const [i, n] of numerosTitres(lignes)) {
-          const l = doc.line(i + 1);
-          const m = l.text.match(/^#{2,6}[ \t]+/);
-          if (m) b.add(l.from + m[0].length, l.from + m[0].length, Decoration.widget({ widget: new NumeroTitre(n), side: -1 }));
+        for (const { from, to } of view.visibleRanges) {
+          for (let n = doc.lineAt(from).number, fin = doc.lineAt(to).number; n <= fin; n++) {
+            const l = doc.line(n);
+            const p = numeroDeLigneTitre(l.text);
+            if (p) b.add(l.from + p.debut, l.from + p.fin, marque);
+          }
         }
         return b.finish();
       };
-      this.registerEditorExtension(ViewPlugin.fromClass(class {
+      const plugin = ViewPlugin.fromClass(class {
         constructor(view) { this.decorations = calculer(view); }
         update(u) {
-          if (u.docChanged || greffon._numerotationRevue !== this.revue) {
+          if (u.docChanged || u.viewportChanged || greffon._numerotationRevue !== this.revue) {
             this.revue = greffon._numerotationRevue;
             this.decorations = calculer(u.view);
           }
         }
-      }, { decorations: (v) => v.decorations }));
+      }, {
+        decorations: (v) => v.decorations,
+        provide: (pl) => EditorView.atomicRanges.of((view) => {
+          const v = view.plugin(pl);
+          return v ? v.decorations : Decoration.none;
+        }),
+      });
+      // La frappe et l'effacement ne touchent pas au numéro. Les autres
+      // transactions (Ariane qui renumérote, Obsidian qui déplace un titre)
+      // passent telles quelles.
+      const filtre = EditorState.transactionFilter.of((tr) => {
+        if (!tr.docChanged || !(tr.isUserEvent('input') || tr.isUserEvent('delete'))) return tr;
+        if (!actif(tr.startState)) return tr;
+        const doc = tr.startState.doc;
+        const touches = [];
+        tr.changes.iterChanges((a, b, c, d, ins) => touches.push({ a, b, ins }));
+        let bloque = false, redirige = null;
+        for (const t of touches) {
+          for (let n = doc.lineAt(t.a).number, fin = doc.lineAt(t.b).number; n <= fin; n++) {
+            const l = doc.line(n);
+            const p = numeroDeLigneTitre(l.text);
+            if (!p) continue;
+            const d = l.from + p.debut, f = l.from + p.fin;
+            if (t.b <= d || t.a >= f) continue;          // hors du numéro
+            if (t.a <= d && t.b >= f && (t.a < d || t.b > f)) continue;   // le numéro part avec le reste
+            bloque = true;
+          }
+          // Une frappe juste devant le numéro passe derrière lui.
+          if (t.a === t.b) {
+            const l = doc.lineAt(t.a);
+            const p = numeroDeLigneTitre(l.text);
+            if (p && t.a === l.from + p.debut) redirige = { t, f: l.from + p.fin };
+          }
+        }
+        if (bloque) return [];
+        if (redirige && touches.length === 1) {
+          const texte = redirige.t.ins.toString();
+          return { changes: { from: redirige.f, insert: texte }, selection: { anchor: redirige.f + texte.length }, userEvent: 'input' };
+        }
+        return tr;
+      });
+      this.registerEditorExtension([plugin, filtre]);
     } catch (e) {
       console.error('[Ariane] Numérotation des titres indisponible :', e);
     }

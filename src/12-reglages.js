@@ -972,11 +972,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("En texte justifié, une parenthèse, un guillemet, un point-virgule ou un deux-points ne se retrouve plus seul en début ou en fin de ligne. Rien n'est modifié dans vos notes : seul l'affichage change, en édition comme en lecture."))
       .addToggle((t) => t.setValue(s.ponctuationInsecable !== false)
         .onChange(async (v) => { s.ponctuationInsecable = v; await maj(); this.plugin.rafraichirPonctuation(); }));
+    const nbDossiers = (s.numerotationDossiers || []).length;
     new obsidian.Setting(c)
       .setName(tr('Numéroter les titres'))
-      .setDesc(tr("« ## » vaut 1., « ### » 1.1., « #### » 1.1.1. Les numéros s'affichent en grisé, en édition comme en lecture, mais ne sont jamais écrits dans la note : ils suivent d'eux-mêmes l'ajout, le retrait ou le déplacement d'un titre. Une note déjà numérotée à la main n'en reçoit pas ; une note peut s'en dispenser par la propriété « numérotation: false »."))
+      .setDesc(tr("« ## » vaut 1., « ### » 1.1., « #### » 1.1.1. Les numéros sont écrits dans la note et tenus à jour par Ariane quand vous ajoutez, retirez ou déplacez un titre ; une numérotation saisie à la main est remplacée. Dans l'éditeur, ils sont grisés et protégés de la frappe. L'export Word les retire, son modèle numérotant lui-même. Une note s'en dispense par la propriété « numérotation: false »."))
       .addToggle((t) => t.setValue(s.numerotationTitres !== false)
         .onChange(async (v) => { s.numerotationTitres = v; await maj(); this.plugin.rafraichirPonctuation(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Dossiers numérotés'))
+      .setDesc(nbDossiers ? (s.numerotationDossiers || []).join(', ') : tr('Aucun pour l’instant.'))
+      .addButton((b) => b.setButtonText(tr('Choisir et numéroter…')).onClick(() => this.plugin.choisirDossiersNumerotation()));
     this._section(c, tr('Correcteur Apple'));
     this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne."));
     const relancerCorrecteur = (vider) => { if (this.plugin.correcteur) this.plugin.correcteur.relancer(vider); };

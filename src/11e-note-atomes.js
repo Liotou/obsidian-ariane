@@ -341,63 +341,180 @@ const avecNoteAtomes = (Base) => class extends Base {
     }
   }
 
-  // Mode lecture : chaque titre reçoit son numéro, calculé sur la note
-  // entière (le rendu arrive par sections).
-  numeroterTitresRendus(el, ctx) {
-    if (this.settings.numerotationTitres === false || !el || !ctx || !ctx.getSectionInfo) return;
-    const titres = el.querySelectorAll('h2, h3, h4, h5, h6');
-    if (!titres.length) return;
-    const info = ctx.getSectionInfo(el);
-    if (!info || typeof info.text !== 'string') return;
-    if (!this._numerosRendus || this._numerosRendus.texte !== info.text) {
-      this._numerosRendus = { texte: info.text, numeros: numerosTitres(info.text) };
-    }
-    const n = this._numerosRendus.numeros.get(info.lineStart);
-    for (const h of titres) {
-      const ancien = h.querySelector(':scope > .zfa-num-titre');
-      if (ancien) ancien.remove();
-      if (!n || titres.length > 1) continue;
-      const s = (h.ownerDocument || document).createElement('span');
-      s.className = 'zfa-num-titre';
-      s.textContent = n;
-      s.setAttribute('aria-hidden', 'true');
-      const ind = h.querySelector(':scope > .heading-collapse-indicator');
-      h.insertBefore(s, ind ? ind.nextSibling : h.firstChild);
-    }
+  // ── numérotation des titres ──
+  //  Les numéros sont écrits dans la note (voir renumeroterTitres) et tenus
+  //  à jour à chaque modification, dans les dossiers choisis. L'éditeur les
+  //  grise et les protège (section 11z) ; ici, la lecture et le panneau
+  //  « Plan » les grisent à leur tour.
+
+  // Une note relève-t-elle de la numérotation ? Dans un dossier choisi, hors
+  // tâches, veilles et notes que produisent ZotFlow ou Ariane.
+  dansNumerotation(file) {
+    const s = this.settings;
+    if (s.numerotationTitres === false || !file || file.extension !== 'md') return false;
+    const dossiers = Array.isArray(s.numerotationDossiers) ? s.numerotationDossiers : [];
+    const dans = (d) => d && (file.path === d + '.md' || file.path.startsWith(d + '/'));
+    if (!dossiers.some(dans)) return false;
+    if ([s.dossierTaches, s.veilleDossier].some(dans)) return false;
+    const fm = (this.app.metadataCache.getFileCache(file) || {}).frontmatter || {};
+    return fm['zotflow-auto'] !== true && fm['zotflow-locked'] !== true;
   }
 
-  // Le panneau « Plan » d'Obsidian : chaque entrée reçoit le numéro de son
-  // titre. Le plan se reconstruit à chaque changement de la note ; on
-  // repasse derrière lui, une fois sa mise à jour faite.
+  // Grise le numéro en tête d'un élément de titre déjà rendu (lecture, plan).
+  griserNumeroTitre(el) {
+    if (!el || el.querySelector(':scope > .zfa-num-titre')) return;
+    let n = el.firstChild;
+    while (n && n.nodeType === 1 && n.classList && n.classList.contains('heading-collapse-indicator')) n = n.nextSibling;
+    if (!n || n.nodeType !== 3) return;
+    const m = n.nodeValue.match(/^(\d+(?:\.\d+)*\.)[ \t ]+/);
+    if (!m) return;
+    const reste = n.splitText(m[0].length);
+    const s = (el.ownerDocument || document).createElement('span');
+    s.className = 'zfa-num-titre';
+    s.textContent = m[0];
+    el.insertBefore(s, reste);
+    n.remove();
+  }
+
+  numeroterTitresRendus(el, ctx) {
+    if (!el || !ctx) return;
+    const f = this.app.vault.getAbstractFileByPath(ctx.sourcePath || '');
+    if (!this.dansNumerotation(f)) return;
+    for (const h of el.querySelectorAll('h2, h3, h4, h5, h6')) this.griserNumeroTitre(h);
+  }
+
+  // Le panneau « Plan » d'Obsidian : le numéro de chaque entrée est grisé.
+  // Le plan se reconstruit à chaque changement de la note ; on repasse
+  // derrière lui, une fois sa mise à jour faite.
   numeroterPlan(vue) {
-    const f = vue && vue.file;
     const racine = vue && vue.tree && vue.tree.root;
-    if (!f || !racine) return;
-    const cache = this.app.metadataCache.getFileCache(f) || {};
-    const fm = cache.frontmatter || {};
-    const dispense = ['false', 'non', 'no'].includes(String(fm['numérotation'] != null ? fm['numérotation'] : fm.numerotation).toLowerCase());
-    const numeros = (this.settings.numerotationTitres === false || dispense) ? new Map()
-      : numerosDepuisTitres((cache.headings || []).map((h) => ({ ligne: h.position.start.line, niveau: h.level, texte: h.heading })));
+    if (!racine || !this.dansNumerotation(vue.file)) return;
     const parcourir = (item) => {
       for (const it of (item.vChildren && item.vChildren._children) || []) {
-        const inner = it.innerEl;
-        if (inner && it.heading && it.heading.position) {
-          const n = numeros.get(it.heading.position.start.line);
-          let s = inner.querySelector(':scope > .zfa-num-titre');
-          if (!n) { if (s) s.remove(); } else {
-            if (!s) {
-              s = (inner.ownerDocument || document).createElement('span');
-              s.className = 'zfa-num-titre';
-              s.setAttribute('aria-hidden', 'true');
-              inner.prepend(s);
-            }
-            s.textContent = n;
-          }
-        }
+        if (it.innerEl) this.griserNumeroTitre(it.innerEl);
         parcourir(it);
       }
     };
     parcourir(racine);
+  }
+
+  // Transforme le texte d'une note par `fn`. Ouverte dans un éditeur, elle
+  // change par lui, ligne à ligne : le curseur reste où il était et ce qui
+  // n'est pas encore enregistré n'est pas écrasé. Sinon, par le coffre.
+  // Rend vrai si le texte a changé.
+  async transformerNote(file, fn) {
+    const feuille = this.app.workspace.getLeavesOfType('markdown')
+      .find((l) => l.view && l.view.file === file && l.view.editor && l.view.editor.cm);
+    if (feuille) {
+      const cm = feuille.view.editor.cm;
+      const doc = cm.state.doc;
+      const avant = doc.toString();
+      const apres = fn(avant);
+      if (apres === avant) return false;
+      const a = avant.split('\n'), z = apres.split('\n');
+      if (a.length !== z.length) {
+        cm.dispatch({ changes: { from: 0, to: doc.length, insert: apres }, userEvent: 'ariane.numerotation' });
+        return true;
+      }
+      const changes = [];
+      for (let k = 0; k < a.length; k++) {
+        if (a[k] === z[k]) continue;
+        const l = doc.line(k + 1);
+        changes.push({ from: l.from, to: l.to, insert: z[k] });
+      }
+      cm.dispatch({ changes, userEvent: 'ariane.numerotation' });
+      return true;
+    }
+    let change = false;
+    const avant = await this.app.vault.cachedRead(file);
+    if (fn(avant) === avant) return false;
+    await this.app.vault.process(file, (t) => { const x = fn(t); change = x !== t; return x; });
+    return change;
+  }
+
+  // Renumérote une note, puis reporte le changement dans les liens qui
+  // visaient un titre renuméroté. Rend le nombre de titres changés.
+  async renumeroterNote(file) {
+    if (!this.dansNumerotation(file)) return 0;
+    let changements = [];
+    await this.transformerNote(file, (t) => {
+      const r = renumeroterTitres(t);
+      changements = r.changements;
+      return r.texte;
+    });
+    if (changements.length) await this.majLiensVersTitres(file, changements);
+    return changements.length;
+  }
+
+  // Les liens « [[note#titre]] » du coffre qui visent un titre renuméroté.
+  async majLiensVersTitres(file, changements) {
+    const sources = new Set([file.path]);
+    for (const [src, cibles] of Object.entries(this.app.metadataCache.resolvedLinks || {})) {
+      if (cibles && cibles[file.path]) sources.add(src);
+    }
+    for (const chemin of sources) {
+      const f = this.app.vault.getAbstractFileByPath(chemin);
+      if (!(f instanceof obsidian.TFile)) continue;
+      await this.transformerNote(f, (t) => {
+        let x = t;
+        for (const c of changements) x = majLiensTitre(x, file.basename, c.ancien, c.nouveau, chemin === file.path);
+        return x;
+      });
+    }
+  }
+
+  // Les dossiers de premier niveau et ce qu'ils contiennent de notes à
+  // titres, pour la fenêtre de choix.
+  async dossiersNumerotables() {
+    const parDossier = new Map();
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const haut = f.path.includes('/') ? f.path.split('/')[0] : '';
+      if (!haut) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (fm['zotflow-auto'] === true || fm['zotflow-locked'] === true) continue;
+      const titres = ((this.app.metadataCache.getFileCache(f) || {}).headings || []).filter((h) => h.level >= 2);
+      if (!titres.length) continue;
+      const e = parDossier.get(haut) || { dossier: haut, notes: 0 };
+      e.notes += 1;
+      parDossier.set(haut, e);
+    }
+    return [...parDossier.values()].sort((a, b) => a.dossier.localeCompare(b.dossier, 'fr'));
+  }
+
+  // Ouvre la fenêtre de choix. Sans choix enregistré, on coche d'avance
+  // tout ce qui n'est pas un dossier de rôle (tâches, annotations,
+  // bibliographie, modèles, publication) ni d'archives.
+  async choisirDossiersNumerotation() {
+    const s = this.settings;
+    const dossiers = await this.dossiersNumerotables();
+    const haut = (p) => String(p || '').split('/')[0];
+    let modeles = '';
+    try { modeles = this.app.internalPlugins.plugins.templates.instance.options.folder || ''; } catch (e) { modeles = ''; }
+    const roles = new Set([s.dossierTaches, s.dossierAnnotations, s.dossierReferences, s.dossierZotero,
+      s.dossierBibliographies, s.publicationDossierVault, modeles].filter(Boolean).map(haut));
+    const enregistres = Array.isArray(s.numerotationDossiers) ? s.numerotationDossiers : [];
+    const coches = new Set(enregistres.length ? enregistres
+      : dossiers.map((d) => d.dossier).filter((d) => !roles.has(d) && !/archive|bibliograph/i.test(d)));
+    new ModaleNumerotationDossiers(this.app, this, dossiers, coches).open();
+  }
+
+  // Enregistre les dossiers choisis, puis numérote toutes leurs notes.
+  async convertirNumerotation(dossiers) {
+    this.settings.numerotationDossiers = dossiers.slice();
+    await this.saveSettings();
+    this.rafraichirPonctuation();
+    let notes = 0, titres = 0;
+    const avis = new obsidian.Notice(tr('Numérotation des titres…'), 0);
+    try {
+      for (const f of this.app.vault.getMarkdownFiles()) {
+        if (!this.dansNumerotation(f)) continue;
+        const n = await this.renumeroterNote(f);
+        if (n) { notes += 1; titres += n; }
+      }
+    } finally { avis.hide(); }
+    new obsidian.Notice(titres
+      ? titres + tr(' titre(s) numéroté(s) dans ') + notes + tr(' note(s).')
+      : tr('Tous les titres étaient déjà numérotés.'));
   }
 
   // Branche la numérotation sur les panneaux « Plan » ouverts.

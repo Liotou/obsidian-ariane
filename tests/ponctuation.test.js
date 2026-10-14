@@ -34,28 +34,36 @@ test('numerosTitres : ## = 1., ### = 1.1., #### = 1.1.1.', () => {
   const n = (t) => [...numerosTitres(t)].map(([i, v]) => i + ':' + v);
   assert.deepEqual(n('# Titre\n## A\n### A1\n#### A1a\n### A2\n## B\n### B1'),
     ['1:1.', '2:1.1.', '3:1.1.1.', '4:1.2.', '5:2.', '6:2.1.']);
-  // Entête ignoré, code ignoré.
   assert.deepEqual(n('---\ntype: x\n---\n## A\n```\n## pas un titre\n```\n## B'), ['3:1.', '7:2.']);
-  // Sans « ## », le plus haut niveau présent fait 1.
   assert.deepEqual(n('### A\n#### A1\n### B'), ['0:1.', '1:1.1.', '2:2.']);
-  // Niveau sauté : zéro.
   assert.deepEqual(n('## A\n#### A01'), ['0:1.', '1:1.0.1.']);
-  // Déjà numérotée à la main, ou dispensée : rien.
-  assert.deepEqual(n('## A\n### 1) Charge'), []);
-  assert.deepEqual(n('## 1. Introduction'), []);
   assert.deepEqual(n('---\nnumérotation: false\n---\n## A'), []);
-  // « 2026 : bilan » n'est pas une numérotation.
-  assert.deepEqual(n('## 2026 : bilan\n## Suite'), ['0:1.', '1:2.']);
+  // Le titre de la bibliographie d'Ariane n'est pas numéroté.
+  assert.deepEqual(n('## A\n---\n## Bibliographie\n%% ariane:biblio %%\n- x\n%% /ariane:biblio %%'), ['0:1.']);
 });
 
-test('numerosDepuisTitres : depuis l’index des métadonnées (panneau « Plan »)', () => {
-  const { numerosDepuisTitres } = Ariane._test;
-  const t = [
-    { ligne: 0, niveau: 1, texte: 'Titre' },
-    { ligne: 4, niveau: 2, texte: 'A' },
-    { ligne: 9, niveau: 3, texte: 'A1' },
-    { ligne: 12, niveau: 2, texte: 'B' },
-  ];
-  assert.deepEqual([...numerosDepuisTitres(t)], [[4, '1.'], [9, '1.1.'], [12, '2.']]);
-  assert.deepEqual([...numerosDepuisTitres([{ ligne: 2, niveau: 2, texte: '1. Intro' }])], []);
+test('renumeroterTitres : numéros écrits, numérotation manuelle remplacée', () => {
+  const { renumeroterTitres } = Ariane._test;
+  const r = renumeroterTitres('# Note\n## Contexte\n### 1) Charge mentale\n### 2.3 Vigilance\n## II - Suite\n## 2026 : bilan\n### 3 questions');
+  assert.equal(r.texte, '# Note\n## 1. Contexte\n### 1.1. Charge mentale\n### 1.2. Vigilance\n## 2. Suite\n## 3. 2026 : bilan\n### 3.1. 3 questions');
+  assert.deepEqual(r.changements[1], { ligne: 2, ancien: '1) Charge mentale', nouveau: '1.1. Charge mentale' });
+  assert.equal(renumeroterTitres('## 1.Cadrage acté\n## LC-MS en pratique').texte, '## 1. Cadrage acté\n## 2. LC-MS en pratique');
+  // Déjà à jour : rien ne change.
+  const d = renumeroterTitres(r.texte);
+  assert.equal(d.changements.length, 0);
+  assert.equal(d.texte, r.texte);
+  // Un titre ajouté avant décale les suivants.
+  const e = renumeroterTitres(r.texte.replace('## 2. Suite', '## Nouveau\n## 2. Suite'));
+  assert.match(e.texte, /## 2\. Nouveau\n## 3\. Suite\n## 4\. 2026 : bilan/);
+});
+
+test('numeroDeLigneTitre et majLiensTitre', () => {
+  const { numeroDeLigneTitre, majLiensTitre } = Ariane._test;
+  assert.deepEqual(numeroDeLigneTitre('### 1.2. Titre'), { debut: 4, fin: 9 });
+  assert.equal(numeroDeLigneTitre('### Titre'), null);
+  assert.equal(numeroDeLigneTitre('Texte 1. pas un titre'), null);
+  const t = 'Voir [[NC-1#1. Contexte]], ![[dossier/NC-1#1. Contexte|ici]], [[NC-2#1. Contexte]] et [[#1. Contexte]].';
+  assert.equal(majLiensTitre(t, 'NC-1', '1. Contexte', '2. Contexte', false),
+    'Voir [[NC-1#2. Contexte]], ![[dossier/NC-1#2. Contexte|ici]], [[NC-2#1. Contexte]] et [[#1. Contexte]].');
+  assert.match(majLiensTitre(t, 'NC-1', '1. Contexte', '2. Contexte', true), /\[\[#2\. Contexte\]\]/);
 });

@@ -1726,7 +1726,8 @@ const DEFAULT_SETTINGS = {
   aparteTaille: '0.8em', // taille de police de l'aparté
   dropSurParagraphe: true, // déposer une note sur un paragraphe -> note de bas de page
   dropToutesNotes: true, // accepter n'importe quelle note (sinon seulement les annotations)
-  numerotationTitres: true, // numéros des titres (## = 1., ### = 1.1.) affichés, jamais écrits
+  numerotationTitres: true, // numéros des titres (## = 1., ### = 1.1.) écrits et tenus à jour
+  numerotationDossiers: [], // dossiers dont les notes sont numérotées (vide : aucune)
   ponctuationInsecable: true, // texte justifié : ponctuation jamais séparée de son mot
   dropToucheStyle: 'shift', // touche qui alterne « (Auteur, année) » et « Auteur (année) » au glisser
   titreSectionNotes: 'Annotations de lecture associées', // en-tête de la section des notes

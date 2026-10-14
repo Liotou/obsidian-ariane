@@ -556,6 +556,8 @@ const avecSocle = (Base) => class extends Base {
   surModification(file) {
     if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
     if (this.ecritePlugin(file.path)) return;
+    // Numérotation des titres, tenue à jour une fois la frappe posée.
+    if (this.dansNumerotation(file)) this.antirebond('num:' + file.path, () => this.renumeroterNote(file), 1500);
 
     if (file.path.startsWith(this.dossierA + '/')) {
       if (this.settings.verrouillage) {

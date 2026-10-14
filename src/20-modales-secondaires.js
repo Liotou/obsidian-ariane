@@ -572,6 +572,52 @@ class ModaleReferencesOrphelines extends obsidian.Modal {
 
 // Les autres sources que vos commentaires d'annotation mentionnent : cochées,
 // elles deviennent des sources associées ; écartées, elles ne reviennent plus.
+// Les dossiers dont les notes reçoivent la numérotation des titres. Valider
+// enregistre le choix et numérote aussitôt toutes leurs notes.
+class ModaleNumerotationDossiers extends obsidian.Modal {
+  constructor(app, greffon, dossiers, coches) {
+    super(app);
+    this.greffon = greffon;
+    this.l = dossiers || [];
+    this.choix = new Set(coches || []);
+  }
+
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass('zfa-orphelins-modale');
+    const titre = tr('Numérotation des titres');
+    if (this.setTitle) this.setTitle(titre); else contentEl.createEl('h3', { text: titre });
+    contentEl.createDiv({ cls: 'setting-item-description', text: tr('Les notes des dossiers cochés reçoivent la numérotation 1., 1.1., 1.1.1., écrite dans le texte et tenue à jour. Une numérotation saisie à la main y est remplacée. Les tâches, les veilles et les notes produites par ZotFlow ou Ariane restent à l’écart.') });
+    const liste = contentEl.createDiv({ cls: 'zfa-orphelins-liste' });
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const bouton = pied.createEl('button', { cls: 'mod-cta' });
+    const maj = () => {
+      const n = this.l.filter((d) => this.choix.has(d.dossier)).reduce((t, d) => t + d.notes, 0);
+      bouton.setText(tr('Numéroter') + ' (' + n + ' ' + tr('note(s)') + ')');
+    };
+    for (const d of this.l) {
+      const ligne = liste.createEl('label', { cls: 'zfa-orphelins-ligne' });
+      const c = ligne.createEl('input', { type: 'checkbox' });
+      c.checked = this.choix.has(d.dossier);
+      c.addEventListener('change', () => { if (c.checked) this.choix.add(d.dossier); else this.choix.delete(d.dossier); maj(); });
+      const txt = ligne.createDiv({ cls: 'zfa-orphelins-texte' });
+      txt.createDiv({ cls: 'zfa-orphelins-nom', text: d.dossier });
+      txt.createDiv({ cls: 'zfa-orphelins-info', text: d.notes + ' ' + tr('note(s) à titres') });
+      ligne.createDiv();
+    }
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    pied.appendChild(bouton);
+    bouton.onclick = async () => {
+      bouton.disabled = true;
+      this.close();
+      await this.greffon.convertirNumerotation(this.l.map((d) => d.dossier).filter((d) => this.choix.has(d)));
+    };
+    maj();
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 class ModaleMentionsSources extends obsidian.Modal {
   constructor(app, greffon, lignes) {
     super(app);
