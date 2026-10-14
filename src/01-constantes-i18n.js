@@ -1826,7 +1826,6 @@ const DEFAULT_SETTINGS = {
   modeleNote: '**{{titleLink}}**\n\n{{image}}\n\n{{paraphrase}}\n\n{{citation}}\n\nSource : {{source}}\n\n{{references}}',
   labelReferences: 'Références citées : ',
   labelVoirAussi: 'Voir aussi : ', // sources associées (notes d'annotation)
-  associationsProches: true, // panneau : proposer des sources proches d'une annotation
   labelPage: 'Page : ',
   modeleReference: '---\ntype: reference-citee\n---\n\n{{authorLinks}}',
 

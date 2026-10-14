@@ -558,8 +558,6 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
     this.ancre = c.createDiv({ cls: 'zfa-sugg-ancre' }); this.ancre.style.display = 'none';
     this.barre = null;
     this.barreJauge = null;
-    this.sources = c.createDiv({ cls: 'zfa-assoc' });
-    this.sources.style.display = 'none';
     this.liste = c.createDiv({ cls: 'zfa-sugg-liste' });
     // À l'ouverture, la vue n'a pas encore ses dimensions : on passe outre le
     // test de visibilité, mais sans lancer le modèle de langue.
@@ -704,83 +702,6 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
           e.dataTransfer.effectAllowed = 'copy';
         }
       });
-    }
-  }
-
-  // Les sources associées d'une note d'annotation, puis celles qu'Ariane
-  // propose d'y rattacher : mentionnées dans le commentaire, ou dont les
-  // annotations sont proches. `d` nul : la rubrique disparaît.
-  rendreSources(d, contenu) {
-    const el = this.sources;
-    if (!el) return;
-    el.empty();
-    if (!d) { el.style.display = 'none'; return; }
-    el.style.display = '';
-    const p = this.plugin;
-    const ouvrir = (cible) => p.app.workspace.openLinkText(cible, d.file.path, false);
-    const survol = (cible, event, targetEl) => p.app.workspace.trigger('hover-link', {
-      event, source: 'zfa-suggestions', hoverParent: this, targetEl, linktext: cible, sourcePath: d.file.path,
-    });
-    const action = (parent, icone, libelle, fn) => {
-      const b = parent.createDiv({ cls: 'clickable-icon zfa-assoc-action', attr: { 'aria-label': libelle } });
-      obsidian.setIcon(b, icone);
-      b.addEventListener('click', (e) => { e.stopPropagation(); fn(b); });
-      return b;
-    };
-    const lien = (parent, cls, texte, cible) => {
-      const s = parent.createSpan({ cls, text: texte });
-      s.addEventListener('click', () => ouvrir(cible));
-      s.addEventListener('mouseover', (event) => survol(cible, event, s));
-      return s;
-    };
-
-    const tete = el.createDiv({ cls: 'zfa-assoc-tete' });
-    tete.createSpan({ cls: 'zfa-assoc-titre', text: tr('Sources associées') });
-    action(tete, 'plus', tr('Associer une source…'), () => p.choisirSourceAssociee(d.file));
-    if (d.associees.length) {
-      const puces = el.createDiv({ cls: 'zfa-assoc-puces' });
-      for (const a of d.associees) {
-        const puce = puces.createDiv({ cls: 'zfa-assoc-puce' });
-        lien(puce, 'zfa-assoc-lien', a.titre, a.basename);
-        action(puce, 'x', tr('Retirer cette source associée'), () => p.changerAssociation(d.file, a.basename, 'dissocier'));
-      }
-    } else {
-      el.createDiv({ cls: 'zfa-assoc-vide', text: tr('Aucune pour l’instant.') });
-    }
-
-    const props = d.mentions.map((m) => Object.assign({ type: 'mention' }, m))
-      .concat(d.proches.map((x) => Object.assign({ type: 'proche' }, x)));
-    if (!props.length) return;
-    el.createDiv({ cls: 'zfa-assoc-sous', text: tr('À rapprocher ?') });
-    for (const x of props) {
-      const item = el.createDiv({ cls: 'zfa-assoc-prop est-' + x.type });
-      const haut = item.createDiv({ cls: 'zfa-assoc-prop-tete' });
-      lien(haut, 'zfa-assoc-lien', x.titre, x.basename);
-      const actions = haut.createDiv({ cls: 'zfa-assoc-actions' });
-      const raison = item.createDiv({ cls: 'zfa-sugg-raison' });
-      raison.style.display = 'none';
-      if (x.type === 'proche' && x.meilleure) {
-        action(actions, 'sparkles', tr('Pourquoi ce rapprochement ? (modèle de langue)'), async (b) => {
-          b.addClass('is-disabled');
-          raison.style.display = '';
-          raison.setText(tr('Le modèle réfléchit…'));
-          const r = await p.expliquerRapprochement(contenu, x.meilleure.path);
-          raison.setText(r || (p._diagIA || tr('Le modèle n’a pas répondu.')));
-          b.removeClass('is-disabled');
-        });
-      }
-      action(actions, 'link', tr('Associer à cette annotation'), () => p.changerAssociation(d.file, x.basename, 'associer'));
-      action(actions, 'x', tr('Écarter : ne plus la proposer pour cette annotation'), () => p.changerAssociation(d.file, x.basename, 'ecarter'));
-      const meta = item.createDiv({ cls: 'zfa-sugg-meta' });
-      if (x.type === 'mention') {
-        meta.setText(tr('Mentionnée dans votre commentaire (') + ModaleMentionsSources.raison(x.raison) + ')');
-      } else {
-        meta.setText(tr('Proche à ') + Math.round(x.score * 100) + ' %, ' + x.n + ' ' + (x.n > 1 ? tr('annotations voisines') : tr('annotation voisine')));
-        if (x.meilleure) {
-          const m = item.createDiv({ cls: 'zfa-assoc-voisine' });
-          lien(m, 'zfa-assoc-lien-voisine', '« ' + x.meilleure.titre + ' »', x.meilleure.path);
-        }
-      }
     }
   }
 

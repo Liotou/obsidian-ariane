@@ -495,16 +495,6 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.revoirReferencesOrphelines(false),
     });
     this.addCommand({
-      id: 'annotations-associer-source',
-      name: tr('Annotations : associer une source à cette annotation…'),
-      checkCallback: (verif) => {
-        const f = this.app.workspace.getActiveFile();
-        if (!f || !this.annotationDe(f)) return false;
-        if (!verif) this.chargerAssociations().then(() => this.choisirSourceAssociee(f));
-        return true;
-      },
-    });
-    this.addCommand({
       id: 'annotations-sources-mentionnees',
       name: tr('Annotations : revoir les sources mentionnées dans mes commentaires…'),
       callback: () => this.revoirMentionsDeSources(),

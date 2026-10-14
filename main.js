@@ -2018,7 +2018,6 @@ const DEFAULT_SETTINGS = {
   modeleNote: '**{{titleLink}}**\n\n{{image}}\n\n{{paraphrase}}\n\n{{citation}}\n\nSource : {{source}}\n\n{{references}}',
   labelReferences: 'Références citées : ',
   labelVoirAussi: 'Voir aussi : ', // sources associées (notes d'annotation)
-  associationsProches: true, // panneau : proposer des sources proches d'une annotation
   labelPage: 'Page : ',
   modeleReference: '---\ntype: reference-citee\n---\n\n{{authorLinks}}',
 
@@ -5429,27 +5428,6 @@ const avecIa = (Base) => class extends Base {
   // selon le moteur choisi. Renvoie { liste, statut }.
   async suggestionsPour(cheminActif, contenu, dejaLies) {
     if (!this.suggIndex || !this.suggIndex.docs.length) return { liste: [], statut: 'vide' };
-    const { score, statut } = await this.scoresVoisinage(contenu);
-    const seuil = typeof this.settings.suggSeuil === 'number' ? this.settings.suggSeuil : 0.18;
-    const res = [];
-    for (const d of this.suggIndex.docs) {
-      if (d.path === cheminActif) continue;
-      if (dejaLies && dejaLies.has(d.basename)) continue;
-      const sc = score(d.path);
-      if (sc < seuil) continue;
-      const dossier = this.dossierCandidatDe(d.path);
-      if (!this.dossierRetenu(dossier)) continue;   // filtre du panneau
-      res.push({ path: d.path, basename: d.basename, titre: d.titre, score: sc, dossier });
-    }
-    res.sort((a, b) => b.score - a.score);
-    return { liste: res.slice(0, this.settings.suggK || 8), statut };
-  }
-
-  // Le score de chaque note indexée face à un texte : lexical, sémantique ou
-  // les deux selon le moteur. Rend { score(chemin), statut }. Les
-  // suggestions du panneau et les sources proches d'une annotation le
-  // partagent.
-  async scoresVoisinage(contenu) {
     const moteur = this.settings.suggMoteur || 'hybride';
     // Score lexical (toujours calculé)
     const { vec, norme } = vecteurTfIdf(frequenceTermes(tokeniser(contenu)), this.suggIndex.idf);
@@ -5482,13 +5460,24 @@ const avecIa = (Base) => class extends Base {
       }
     }
     const w = typeof this.settings.suggPoidsSemantique === 'number' ? this.settings.suggPoidsSemantique : 0.7;
-    const score = (chemin) => {
-      const l = lex.get(chemin) || 0;
-      if (!sem) return l;
-      const s = sem.get(chemin) || 0;
-      return moteur === 'semantique' ? s : w * s + (1 - w) * l;
-    };
-    return { score, statut };
+    const seuil = typeof this.settings.suggSeuil === 'number' ? this.settings.suggSeuil : 0.18;
+    const res = [];
+    for (const d of this.suggIndex.docs) {
+      if (d.path === cheminActif) continue;
+      if (dejaLies && dejaLies.has(d.basename)) continue;
+      const l = lex.get(d.path) || 0;
+      const s = sem ? (sem.get(d.path) || 0) : 0;
+      let score;
+      if (!sem) score = l;
+      else if (moteur === 'semantique') score = s;
+      else score = w * s + (1 - w) * l;
+      if (score < seuil) continue;
+      const dossier = this.dossierCandidatDe(d.path);
+      if (!this.dossierRetenu(dossier)) continue;   // filtre du panneau
+      res.push({ path: d.path, basename: d.basename, titre: d.titre, score, dossier });
+    }
+    res.sort((a, b) => b.score - a.score);
+    return { liste: res.slice(0, this.settings.suggK || 8), statut };
   }
 
   vueSuggestions() {
@@ -5518,7 +5507,7 @@ const avecIa = (Base) => class extends Base {
   async majSuggestions(forcerRerank, ignorerVisibilite) {
     const vue = ignorerVisibilite ? this.vueSuggestions() : this.vueSuggestionsVisible();
     if (!vue) return;
-    if (!this.settings.suggActif) { vue.rendre([], null, 'inactif'); if (vue.rendreSources) vue.rendreSources(null); return; }
+    if (!this.settings.suggActif) { vue.rendre([], null, 'inactif'); return; }
     await this.assurerIndexSuggestions();
     const anc = this.suggAncrage;
     const file = this.app.workspace.getActiveFile();
@@ -5527,7 +5516,7 @@ const avecIa = (Base) => class extends Base {
       cheminActif = anc.sourcePath || (file ? file.path : '');
       requete = anc.texte;
     } else {
-      if (!file || file.extension !== 'md') { if (vue.montrerAncrage) vue.montrerAncrage(null); vue.rendre([], null); if (vue.rendreSources) vue.rendreSources(null); return; }
+      if (!file || file.extension !== 'md') { if (vue.montrerAncrage) vue.montrerAncrage(null); vue.rendre([], null); return; }
       cheminActif = file.path;
       try { requete = await this.app.vault.cachedRead(file); } catch (e) { requete = ''; }
       dejaLies = this.liensExistants(requete);
@@ -5538,12 +5527,6 @@ const avecIa = (Base) => class extends Base {
     const { liste, statut } = await this.suggestionsPour(cheminActif, requete, dejaLies);
     if (jeton !== this._suggJeton) return;
     vue.rendre(liste, etiq, (anc ? 'argument · ' : '') + statut);
-    // Sur une note d'annotation : ses sources associées et les propositions.
-    if (vue.rendreSources) {
-      const sources = (!anc && file) ? await this.sourcesAssocieesPour(file, requete) : null;
-      if (jeton !== this._suggJeton) return;
-      vue.rendreSources(sources, requete);
-    }
     const reclasser = (forcerRerank || this.settings.suggRerankAuto === true)
       && this.settings.suggRerank && liste.length
       && (statut === 'sémantique' || statut === 'hybride');
@@ -7638,9 +7621,9 @@ const avecNoteAtomes = (Base) => class extends Base {
   //  régénérées, les liens vivent à part, dans « .ariane/associations.json » :
   //    { <clé d'annotation> : { sources: [nom de note…], refus: [nom…] } }
   //  construireNote les réinjecte (propriété « sources-associées », ligne
-  //  « Voir aussi »). Deux pistes les proposent, sans jamais rien écrire
-  //  seules : les mentions du commentaire (titre, auteur et année, @clé) et
-  //  la proximité des annotations des autres sources.
+  //  « Voir aussi »). Ariane les propose sans rien écrire seule : la commande
+  //  de revue liste les autres sources que les commentaires mentionnent
+  //  (titre, auteur et année, @clé), et Monsieur coche celles à garder.
 
   // Texte comparable : minuscules sans accents, ponctuation en espaces,
   // bordé d'espaces pour chercher des mots entiers.
@@ -7700,26 +7683,6 @@ const avecNoteAtomes = (Base) => class extends Base {
       if (raison) vues.set(e.basename, { basename: e.basename, titre: e.titre || e.basename, raison });
     }
     return [...vues.values()];
-  }
-
-  // Les annotations voisines regroupées par source. `voisines` :
-  // [{ path, score }] ; `infos` : chemin -> { source, titre }. Rend les `k`
-  // meilleures sources, [{ basename, score, n, meilleure: { path, titre,
-  // score } }], hors `exclure`.
-  static regrouperParSource(voisines, infos, exclure, k) {
-    const ex = exclure instanceof Set ? exclure : new Set(exclure || []);
-    const parSource = new Map();
-    for (const v of voisines || []) {
-      const i = infos.get(v.path);
-      if (!i || !i.source || ex.has(i.source)) continue;
-      let g = parSource.get(i.source);
-      if (!g) parSource.set(i.source, (g = { basename: i.source, score: 0, n: 0, meilleure: null }));
-      g.n += 1;
-      if (v.score > g.score) { g.score = v.score; g.meilleure = { path: v.path, titre: i.titre, score: v.score }; }
-    }
-    return [...parSource.values()]
-      .sort((a, b) => (b.score - a.score) || (b.n - a.n))
-      .slice(0, k || 5);
   }
 
   // Modifie l'entrée d'une annotation dans la table des associations.
@@ -7790,104 +7753,6 @@ const avecNoteAtomes = (Base) => class extends Base {
     };
   }
 
-  // L'index Zotero, gardé trente secondes : le panneau le consulte à chaque
-  // changement de note.
-  indexZoteroRecent() {
-    const t = Date.now();
-    if (!this._idxZoteroRecent || t - this._idxZoteroRecent.t > 30000) {
-      this._idxZoteroRecent = { t, idx: this.construireIndexZotero() };
-    }
-    return this._idxZoteroRecent.idx;
-  }
-
-  titreDeSource(basename) {
-    const e = this.indexZoteroRecent().find((x) => x.basename === basename);
-    return (e && e.titre) || basename;
-  }
-
-  // Applique une action à une annotation, l'enregistre, puis régénère la
-  // note pour que la propriété et la ligne « Voir aussi » suivent.
-  async changerAssociation(file, basename, action, silencieux) {
-    const a = this.annotationDe(file);
-    if (!a) return false;
-    await this.chargerAssociations();
-    if (!Ariane.modifierAssociation(this._associations, a.cle, basename, action)) return false;
-    await this.enregistrerAssociations();
-    if (action === 'associer' || action === 'dissocier') await this.regenererAnnotation(file);
-    if (!silencieux) this.majSuggestions(false, true);
-    return true;
-  }
-
-  // Les sources dont les annotations sont les plus proches de celle-ci.
-  async sourcesProches(file, contenu, exclure) {
-    await this.assurerIndexSuggestions();
-    if (!this.suggIndex || !this.suggIndex.docs.length) return [];
-    const { score } = await this.scoresVoisinage(contenu);
-    const seuil = typeof this.settings.suggSeuil === 'number' ? this.settings.suggSeuil : 0.18;
-    const voisines = [];
-    const infos = new Map();
-    for (const d of this.suggIndex.docs) {
-      if (d.path === file.path) continue;
-      const sc = score(d.path);
-      if (sc < seuil) continue;
-      const a = this.annotationDe(this.app.vault.getAbstractFileByPath(d.path));
-      if (!a) continue;
-      infos.set(d.path, { source: a.source, titre: d.titre });
-      voisines.push({ path: d.path, score: sc });
-    }
-    return Ariane.regrouperParSource(voisines, infos, exclure, 5);
-  }
-
-  // Ce que le panneau montre pour une note d'annotation : ses sources
-  // associées, puis les propositions. Rend null pour une autre note.
-  async sourcesAssocieesPour(file, contenu) {
-    const a = this.annotationDe(file);
-    if (!a) return null;
-    await this.chargerAssociations();
-    const entree = this._associations[a.cle] || {};
-    const associees = entree.sources || [];
-    const exclure = new Set([a.source, ...a.citees, ...associees, ...(entree.refus || [])]);
-    const mentions = Ariane.mentionsDeSources(
-      Ariane.texteMentionsAnnotation(contenu, this.settings), this.indexZoteroRecent(), exclure);
-    for (const m of mentions) exclure.add(m.basename);
-    const proches = this.settings.associationsProches === false ? []
-      : await this.sourcesProches(file, contenu, exclure);
-    for (const p of proches) p.titre = this.titreDeSource(p.basename);
-    return {
-      file,
-      associees: associees.map((b) => ({ basename: b, titre: this.titreDeSource(b) })),
-      mentions,
-      proches,
-    };
-  }
-
-  // Une phrase du modèle de langue sur ce qui relie deux annotations.
-  async expliquerRapprochement(contenu, cheminVoisine) {
-    const f = this.app.vault.getAbstractFileByPath(cheminVoisine);
-    if (!(f instanceof obsidian.TFile)) return '';
-    const autre = await this.app.vault.cachedRead(f);
-    const net = (t) => String(t || '').replace(/^---\n[\s\S]*?\n---\n?/, '').replace(/\]\([^)]*\)/g, ']').replace(/\s+/g, ' ').slice(0, 1800);
-    const prompt = 'Deux annotations de lecture d\'un doctorant, tirées de deux sources différentes.\n'
-      + 'A : ' + net(contenu) + '\nB : ' + net(autre) + '\n'
-      + 'En une phrase en français, dis ce qui les relie (concept, argument, prolongement ou opposition). '
-      + 'Réponds uniquement en JSON : {"raison":"…"}';
-    const brut = await this.genererJson(prompt, 160);
-    const j = brut ? Ariane.extraireJson(brut) : null;
-    return (j && typeof j.raison === 'string') ? j.raison.trim() : '';
-  }
-
-  // Commande : associer une source choisie à l'annotation ouverte.
-  choisirSourceAssociee(file) {
-    const a = this.annotationDe(file);
-    if (!a) { new obsidian.Notice(tr("Ouvrez une note d'annotation.")); return; }
-    const deja = new Set([a.source, ...((this._associations || {})[a.cle] || {}).sources || []]);
-    const items = this.construireIndexZotero()
-      .filter((e) => !deja.has(e.basename))
-      .map((e) => ({ nom: (e.titre || e.basename) + ' (' + e.basename + ')', basename: e.basename }));
-    new ChoixListeModal(this.app, tr('Source à associer à cette annotation…'), items,
-      (it) => this.changerAssociation(file, it.basename, 'associer')).open();
-  }
-
   // Commande : toutes les annotations dont le commentaire mentionne une
   // autre source, à associer d'un coup.
   async revoirMentionsDeSources() {
@@ -7922,7 +7787,6 @@ const avecNoteAtomes = (Base) => class extends Base {
     }
     await this.enregistrerAssociations();
     for (const f of aRegenerer.values()) await this.regenererAnnotation(f);
-    this.majSuggestions(false, true);
     return aRegenerer.size;
   }
 
@@ -24037,16 +23901,6 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.revoirReferencesOrphelines(false),
     });
     this.addCommand({
-      id: 'annotations-associer-source',
-      name: tr('Annotations : associer une source à cette annotation…'),
-      checkCallback: (verif) => {
-        const f = this.app.workspace.getActiveFile();
-        if (!f || !this.annotationDe(f)) return false;
-        if (!verif) this.chargerAssociations().then(() => this.choisirSourceAssociee(f));
-        return true;
-      },
-    });
-    this.addCommand({
       id: 'annotations-sources-mentionnees',
       name: tr('Annotations : revoir les sources mentionnées dans mes commentaires…'),
       callback: () => this.revoirMentionsDeSources(),
@@ -25582,7 +25436,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setValue(s.labelReferences).onChange(async (v) => { s.labelReferences = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Libellé des sources associées'))
-      .setDesc(tr("Les autres sources que vous rattachez à une annotation, par le panneau de suggestions ou la commande « Annotations : associer une source à cette annotation »."))
+      .setDesc(tr("Les autres sources rattachées à une annotation par la commande « Annotations : revoir les sources mentionnées dans mes commentaires »."))
       .addText((t) => t.setValue(s.labelVoirAussi == null ? 'Voir aussi : ' : s.labelVoirAussi).onChange(async (v) => { s.labelVoirAussi = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Libellé de la page'))
@@ -26142,16 +25996,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Délai avant recalcul (ms)'))
       .setDesc(tr('Temps d’inactivité dans la frappe avant de rafraîchir.'))
       .addText((t) => t.setValue(String(s.suggAntirebond)).onChange(async (v) => { const n = parseInt(v, 10); s.suggAntirebond = Number.isFinite(n) && n >= 100 ? n : 900; await maj(); }));
-
-    this._section(c, tr('Sources associées'));
-    this._aide(c, tr("Sur une note d'annotation, le panneau propose d'autres sources à y rattacher : celles que votre commentaire mentionne (titre, auteur et année, @clé), et celles dont les annotations sont les plus proches. Rien n'est écrit sans votre accord. Les sources proches demandent que le dossier des annotations nourrisse les suggestions."));
-    new obsidian.Setting(c)
-      .setName(tr('Proposer des sources proches'))
-      .setDesc(tr('Désactivé, seules les sources mentionnées dans votre commentaire sont proposées.'))
-      .addToggle((t) => t.setValue(s.associationsProches !== false).onChange(async (v) => { s.associationsProches = v; await maj(); rafraichir(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Revoir les sources mentionnées dans toutes les annotations'))
-      .addButton((b) => b.setButtonText(tr('Revoir')).onClick(() => this.plugin.revoirMentionsDeSources()));
 
     this._section(c, tr('Moteur de pertinence'));
     this._aide(c, tr("Lexical : mots en commun (aucune dépendance). Sémantique : comprend le sens via des embeddings locaux (Ollama). Hybride : combine les deux (recommandé). En l'absence d'Ollama, le moteur bascule automatiquement sur le lexical."));
@@ -41068,8 +40912,6 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
     this.ancre = c.createDiv({ cls: 'zfa-sugg-ancre' }); this.ancre.style.display = 'none';
     this.barre = null;
     this.barreJauge = null;
-    this.sources = c.createDiv({ cls: 'zfa-assoc' });
-    this.sources.style.display = 'none';
     this.liste = c.createDiv({ cls: 'zfa-sugg-liste' });
     // À l'ouverture, la vue n'a pas encore ses dimensions : on passe outre le
     // test de visibilité, mais sans lancer le modèle de langue.
@@ -41214,83 +41056,6 @@ class VueSuggestionsZotflow extends obsidian.ItemView {
           e.dataTransfer.effectAllowed = 'copy';
         }
       });
-    }
-  }
-
-  // Les sources associées d'une note d'annotation, puis celles qu'Ariane
-  // propose d'y rattacher : mentionnées dans le commentaire, ou dont les
-  // annotations sont proches. `d` nul : la rubrique disparaît.
-  rendreSources(d, contenu) {
-    const el = this.sources;
-    if (!el) return;
-    el.empty();
-    if (!d) { el.style.display = 'none'; return; }
-    el.style.display = '';
-    const p = this.plugin;
-    const ouvrir = (cible) => p.app.workspace.openLinkText(cible, d.file.path, false);
-    const survol = (cible, event, targetEl) => p.app.workspace.trigger('hover-link', {
-      event, source: 'zfa-suggestions', hoverParent: this, targetEl, linktext: cible, sourcePath: d.file.path,
-    });
-    const action = (parent, icone, libelle, fn) => {
-      const b = parent.createDiv({ cls: 'clickable-icon zfa-assoc-action', attr: { 'aria-label': libelle } });
-      obsidian.setIcon(b, icone);
-      b.addEventListener('click', (e) => { e.stopPropagation(); fn(b); });
-      return b;
-    };
-    const lien = (parent, cls, texte, cible) => {
-      const s = parent.createSpan({ cls, text: texte });
-      s.addEventListener('click', () => ouvrir(cible));
-      s.addEventListener('mouseover', (event) => survol(cible, event, s));
-      return s;
-    };
-
-    const tete = el.createDiv({ cls: 'zfa-assoc-tete' });
-    tete.createSpan({ cls: 'zfa-assoc-titre', text: tr('Sources associées') });
-    action(tete, 'plus', tr('Associer une source…'), () => p.choisirSourceAssociee(d.file));
-    if (d.associees.length) {
-      const puces = el.createDiv({ cls: 'zfa-assoc-puces' });
-      for (const a of d.associees) {
-        const puce = puces.createDiv({ cls: 'zfa-assoc-puce' });
-        lien(puce, 'zfa-assoc-lien', a.titre, a.basename);
-        action(puce, 'x', tr('Retirer cette source associée'), () => p.changerAssociation(d.file, a.basename, 'dissocier'));
-      }
-    } else {
-      el.createDiv({ cls: 'zfa-assoc-vide', text: tr('Aucune pour l’instant.') });
-    }
-
-    const props = d.mentions.map((m) => Object.assign({ type: 'mention' }, m))
-      .concat(d.proches.map((x) => Object.assign({ type: 'proche' }, x)));
-    if (!props.length) return;
-    el.createDiv({ cls: 'zfa-assoc-sous', text: tr('À rapprocher ?') });
-    for (const x of props) {
-      const item = el.createDiv({ cls: 'zfa-assoc-prop est-' + x.type });
-      const haut = item.createDiv({ cls: 'zfa-assoc-prop-tete' });
-      lien(haut, 'zfa-assoc-lien', x.titre, x.basename);
-      const actions = haut.createDiv({ cls: 'zfa-assoc-actions' });
-      const raison = item.createDiv({ cls: 'zfa-sugg-raison' });
-      raison.style.display = 'none';
-      if (x.type === 'proche' && x.meilleure) {
-        action(actions, 'sparkles', tr('Pourquoi ce rapprochement ? (modèle de langue)'), async (b) => {
-          b.addClass('is-disabled');
-          raison.style.display = '';
-          raison.setText(tr('Le modèle réfléchit…'));
-          const r = await p.expliquerRapprochement(contenu, x.meilleure.path);
-          raison.setText(r || (p._diagIA || tr('Le modèle n’a pas répondu.')));
-          b.removeClass('is-disabled');
-        });
-      }
-      action(actions, 'link', tr('Associer à cette annotation'), () => p.changerAssociation(d.file, x.basename, 'associer'));
-      action(actions, 'x', tr('Écarter : ne plus la proposer pour cette annotation'), () => p.changerAssociation(d.file, x.basename, 'ecarter'));
-      const meta = item.createDiv({ cls: 'zfa-sugg-meta' });
-      if (x.type === 'mention') {
-        meta.setText(tr('Mentionnée dans votre commentaire (') + ModaleMentionsSources.raison(x.raison) + ')');
-      } else {
-        meta.setText(tr('Proche à ') + Math.round(x.score * 100) + ' %, ' + x.n + ' ' + (x.n > 1 ? tr('annotations voisines') : tr('annotation voisine')));
-        if (x.meilleure) {
-          const m = item.createDiv({ cls: 'zfa-assoc-voisine' });
-          lien(m, 'zfa-assoc-lien-voisine', '« ' + x.meilleure.titre + ' »', x.meilleure.path);
-        }
-      }
     }
   }
 

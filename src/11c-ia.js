@@ -529,27 +529,6 @@ const avecIa = (Base) => class extends Base {
   // selon le moteur choisi. Renvoie { liste, statut }.
   async suggestionsPour(cheminActif, contenu, dejaLies) {
     if (!this.suggIndex || !this.suggIndex.docs.length) return { liste: [], statut: 'vide' };
-    const { score, statut } = await this.scoresVoisinage(contenu);
-    const seuil = typeof this.settings.suggSeuil === 'number' ? this.settings.suggSeuil : 0.18;
-    const res = [];
-    for (const d of this.suggIndex.docs) {
-      if (d.path === cheminActif) continue;
-      if (dejaLies && dejaLies.has(d.basename)) continue;
-      const sc = score(d.path);
-      if (sc < seuil) continue;
-      const dossier = this.dossierCandidatDe(d.path);
-      if (!this.dossierRetenu(dossier)) continue;   // filtre du panneau
-      res.push({ path: d.path, basename: d.basename, titre: d.titre, score: sc, dossier });
-    }
-    res.sort((a, b) => b.score - a.score);
-    return { liste: res.slice(0, this.settings.suggK || 8), statut };
-  }
-
-  // Le score de chaque note indexée face à un texte : lexical, sémantique ou
-  // les deux selon le moteur. Rend { score(chemin), statut }. Les
-  // suggestions du panneau et les sources proches d'une annotation le
-  // partagent.
-  async scoresVoisinage(contenu) {
     const moteur = this.settings.suggMoteur || 'hybride';
     // Score lexical (toujours calculé)
     const { vec, norme } = vecteurTfIdf(frequenceTermes(tokeniser(contenu)), this.suggIndex.idf);
@@ -582,13 +561,24 @@ const avecIa = (Base) => class extends Base {
       }
     }
     const w = typeof this.settings.suggPoidsSemantique === 'number' ? this.settings.suggPoidsSemantique : 0.7;
-    const score = (chemin) => {
-      const l = lex.get(chemin) || 0;
-      if (!sem) return l;
-      const s = sem.get(chemin) || 0;
-      return moteur === 'semantique' ? s : w * s + (1 - w) * l;
-    };
-    return { score, statut };
+    const seuil = typeof this.settings.suggSeuil === 'number' ? this.settings.suggSeuil : 0.18;
+    const res = [];
+    for (const d of this.suggIndex.docs) {
+      if (d.path === cheminActif) continue;
+      if (dejaLies && dejaLies.has(d.basename)) continue;
+      const l = lex.get(d.path) || 0;
+      const s = sem ? (sem.get(d.path) || 0) : 0;
+      let score;
+      if (!sem) score = l;
+      else if (moteur === 'semantique') score = s;
+      else score = w * s + (1 - w) * l;
+      if (score < seuil) continue;
+      const dossier = this.dossierCandidatDe(d.path);
+      if (!this.dossierRetenu(dossier)) continue;   // filtre du panneau
+      res.push({ path: d.path, basename: d.basename, titre: d.titre, score, dossier });
+    }
+    res.sort((a, b) => b.score - a.score);
+    return { liste: res.slice(0, this.settings.suggK || 8), statut };
   }
 
   vueSuggestions() {
@@ -618,7 +608,7 @@ const avecIa = (Base) => class extends Base {
   async majSuggestions(forcerRerank, ignorerVisibilite) {
     const vue = ignorerVisibilite ? this.vueSuggestions() : this.vueSuggestionsVisible();
     if (!vue) return;
-    if (!this.settings.suggActif) { vue.rendre([], null, 'inactif'); if (vue.rendreSources) vue.rendreSources(null); return; }
+    if (!this.settings.suggActif) { vue.rendre([], null, 'inactif'); return; }
     await this.assurerIndexSuggestions();
     const anc = this.suggAncrage;
     const file = this.app.workspace.getActiveFile();
@@ -627,7 +617,7 @@ const avecIa = (Base) => class extends Base {
       cheminActif = anc.sourcePath || (file ? file.path : '');
       requete = anc.texte;
     } else {
-      if (!file || file.extension !== 'md') { if (vue.montrerAncrage) vue.montrerAncrage(null); vue.rendre([], null); if (vue.rendreSources) vue.rendreSources(null); return; }
+      if (!file || file.extension !== 'md') { if (vue.montrerAncrage) vue.montrerAncrage(null); vue.rendre([], null); return; }
       cheminActif = file.path;
       try { requete = await this.app.vault.cachedRead(file); } catch (e) { requete = ''; }
       dejaLies = this.liensExistants(requete);
@@ -638,12 +628,6 @@ const avecIa = (Base) => class extends Base {
     const { liste, statut } = await this.suggestionsPour(cheminActif, requete, dejaLies);
     if (jeton !== this._suggJeton) return;
     vue.rendre(liste, etiq, (anc ? 'argument · ' : '') + statut);
-    // Sur une note d'annotation : ses sources associées et les propositions.
-    if (vue.rendreSources) {
-      const sources = (!anc && file) ? await this.sourcesAssocieesPour(file, requete) : null;
-      if (jeton !== this._suggJeton) return;
-      vue.rendreSources(sources, requete);
-    }
     const reclasser = (forcerRerank || this.settings.suggRerankAuto === true)
       && this.settings.suggRerank && liste.length
       && (statut === 'sémantique' || statut === 'hybride');

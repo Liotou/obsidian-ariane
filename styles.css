@@ -4138,39 +4138,6 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-mentions-modale .zfa-orphelins-ligne { grid-template-columns: auto 1fr auto auto; }
 .zfa-mentions-modale .zfa-orphelins-ligne.est-ecartee .zfa-orphelins-texte { opacity: 0.45; text-decoration: line-through; }
 
-/* Sources associées d'une annotation (panneau de suggestions). */
-.zfa-assoc {
-  margin: 4px 0 10px; padding: 8px 8px 6px;
-  border: 1px solid var(--background-modifier-border); border-radius: 6px;
-  background: var(--background-secondary);
-}
-.zfa-assoc-tete { display: flex; align-items: center; gap: 6px; }
-.zfa-assoc-titre { flex: 1 1 auto; font-weight: 600; font-size: var(--font-ui-small); color: var(--text-normal); }
-.zfa-assoc-action { padding: 2px; }
-.zfa-assoc-action svg { width: 14px; height: 14px; }
-.zfa-assoc-action.is-disabled { opacity: 0.4; pointer-events: none; }
-.zfa-assoc-vide { color: var(--text-faint); font-size: 0.78em; margin-top: 2px; }
-.zfa-assoc-puces { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-.zfa-assoc-puce {
-  display: inline-flex; align-items: center; gap: 2px; max-width: 100%;
-  padding: 1px 2px 1px 8px; border-radius: 999px;
-  background: var(--background-modifier-hover); font-size: 0.8em;
-}
-.zfa-assoc-puce .zfa-assoc-lien { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.zfa-assoc-lien, .zfa-assoc-lien-voisine { cursor: pointer; }
-.zfa-assoc-lien:hover, .zfa-assoc-lien-voisine:hover { color: var(--text-accent); text-decoration: underline; }
-.zfa-assoc-sous {
-  margin: 10px 0 4px; color: var(--text-muted);
-  font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.06em;
-}
-.zfa-assoc-prop { padding: 5px 0; border-top: 1px solid var(--background-modifier-border); }
-.zfa-assoc-prop-tete { display: flex; align-items: flex-start; gap: 4px; }
-.zfa-assoc-prop-tete .zfa-assoc-lien { flex: 1 1 auto; min-width: 0; font-size: 0.85em; line-height: 1.3; }
-.zfa-assoc-actions { display: flex; flex: 0 0 auto; opacity: 0.55; transition: opacity 120ms ease; }
-.zfa-assoc-prop:hover .zfa-assoc-actions { opacity: 1; }
-.zfa-assoc-prop.est-mention .zfa-sugg-meta { color: var(--text-accent); }
-.zfa-assoc-voisine { font-size: 0.75em; color: var(--text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 /* Réglages de la veille : sources en lignes, ajout par collage, mots-clés en étiquettes. */
 .zfa-veille-ajout { display: flex; gap: 8px; margin: 8px 0 4px; }
 .zfa-veille-ajout-champ { flex: 1 1 auto; min-width: 0; }

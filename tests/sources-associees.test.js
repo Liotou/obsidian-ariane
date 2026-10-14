@@ -38,17 +38,6 @@ test('texteMentionsAnnotation : ni entête, ni passage cité, ni lignes de liens
   assert.doesNotMatch(t, /Adner|obsidian:|beckRisk|zotflow-anno-key|@y/);
 });
 
-test('regrouperParSource : meilleure annotation par source, hors exclusions', () => {
-  const infos = new Map([
-    ['a1', { source: '@A', titre: 'a un' }], ['a2', { source: '@A', titre: 'a deux' }],
-    ['b1', { source: '@B', titre: 'b un' }], ['c1', { source: '@C', titre: 'c un' }],
-  ]);
-  const r = Ariane.regrouperParSource(
-    [{ path: 'a1', score: 0.4 }, { path: 'a2', score: 0.6 }, { path: 'b1', score: 0.7 }, { path: 'c1', score: 0.9 }],
-    infos, new Set(['@C']), 5);
-  assert.deepEqual(r.map((g) => [g.basename, g.n, g.meilleure.titre]), [['@B', 1, 'b un'], ['@A', 2, 'a deux']]);
-});
-
 test('modifierAssociation et renommerAssociations', () => {
   const t = {};
   assert.equal(Ariane.modifierAssociation(t, 'K', '@A', 'associer'), true);

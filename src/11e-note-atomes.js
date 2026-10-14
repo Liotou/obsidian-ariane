@@ -140,9 +140,9 @@ const avecNoteAtomes = (Base) => class extends Base {
   //  régénérées, les liens vivent à part, dans « .ariane/associations.json » :
   //    { <clé d'annotation> : { sources: [nom de note…], refus: [nom…] } }
   //  construireNote les réinjecte (propriété « sources-associées », ligne
-  //  « Voir aussi »). Deux pistes les proposent, sans jamais rien écrire
-  //  seules : les mentions du commentaire (titre, auteur et année, @clé) et
-  //  la proximité des annotations des autres sources.
+  //  « Voir aussi »). Ariane les propose sans rien écrire seule : la commande
+  //  de revue liste les autres sources que les commentaires mentionnent
+  //  (titre, auteur et année, @clé), et Monsieur coche celles à garder.
 
   // Texte comparable : minuscules sans accents, ponctuation en espaces,
   // bordé d'espaces pour chercher des mots entiers.
@@ -202,26 +202,6 @@ const avecNoteAtomes = (Base) => class extends Base {
       if (raison) vues.set(e.basename, { basename: e.basename, titre: e.titre || e.basename, raison });
     }
     return [...vues.values()];
-  }
-
-  // Les annotations voisines regroupées par source. `voisines` :
-  // [{ path, score }] ; `infos` : chemin -> { source, titre }. Rend les `k`
-  // meilleures sources, [{ basename, score, n, meilleure: { path, titre,
-  // score } }], hors `exclure`.
-  static regrouperParSource(voisines, infos, exclure, k) {
-    const ex = exclure instanceof Set ? exclure : new Set(exclure || []);
-    const parSource = new Map();
-    for (const v of voisines || []) {
-      const i = infos.get(v.path);
-      if (!i || !i.source || ex.has(i.source)) continue;
-      let g = parSource.get(i.source);
-      if (!g) parSource.set(i.source, (g = { basename: i.source, score: 0, n: 0, meilleure: null }));
-      g.n += 1;
-      if (v.score > g.score) { g.score = v.score; g.meilleure = { path: v.path, titre: i.titre, score: v.score }; }
-    }
-    return [...parSource.values()]
-      .sort((a, b) => (b.score - a.score) || (b.n - a.n))
-      .slice(0, k || 5);
   }
 
   // Modifie l'entrée d'une annotation dans la table des associations.
@@ -292,104 +272,6 @@ const avecNoteAtomes = (Base) => class extends Base {
     };
   }
 
-  // L'index Zotero, gardé trente secondes : le panneau le consulte à chaque
-  // changement de note.
-  indexZoteroRecent() {
-    const t = Date.now();
-    if (!this._idxZoteroRecent || t - this._idxZoteroRecent.t > 30000) {
-      this._idxZoteroRecent = { t, idx: this.construireIndexZotero() };
-    }
-    return this._idxZoteroRecent.idx;
-  }
-
-  titreDeSource(basename) {
-    const e = this.indexZoteroRecent().find((x) => x.basename === basename);
-    return (e && e.titre) || basename;
-  }
-
-  // Applique une action à une annotation, l'enregistre, puis régénère la
-  // note pour que la propriété et la ligne « Voir aussi » suivent.
-  async changerAssociation(file, basename, action, silencieux) {
-    const a = this.annotationDe(file);
-    if (!a) return false;
-    await this.chargerAssociations();
-    if (!Ariane.modifierAssociation(this._associations, a.cle, basename, action)) return false;
-    await this.enregistrerAssociations();
-    if (action === 'associer' || action === 'dissocier') await this.regenererAnnotation(file);
-    if (!silencieux) this.majSuggestions(false, true);
-    return true;
-  }
-
-  // Les sources dont les annotations sont les plus proches de celle-ci.
-  async sourcesProches(file, contenu, exclure) {
-    await this.assurerIndexSuggestions();
-    if (!this.suggIndex || !this.suggIndex.docs.length) return [];
-    const { score } = await this.scoresVoisinage(contenu);
-    const seuil = typeof this.settings.suggSeuil === 'number' ? this.settings.suggSeuil : 0.18;
-    const voisines = [];
-    const infos = new Map();
-    for (const d of this.suggIndex.docs) {
-      if (d.path === file.path) continue;
-      const sc = score(d.path);
-      if (sc < seuil) continue;
-      const a = this.annotationDe(this.app.vault.getAbstractFileByPath(d.path));
-      if (!a) continue;
-      infos.set(d.path, { source: a.source, titre: d.titre });
-      voisines.push({ path: d.path, score: sc });
-    }
-    return Ariane.regrouperParSource(voisines, infos, exclure, 5);
-  }
-
-  // Ce que le panneau montre pour une note d'annotation : ses sources
-  // associées, puis les propositions. Rend null pour une autre note.
-  async sourcesAssocieesPour(file, contenu) {
-    const a = this.annotationDe(file);
-    if (!a) return null;
-    await this.chargerAssociations();
-    const entree = this._associations[a.cle] || {};
-    const associees = entree.sources || [];
-    const exclure = new Set([a.source, ...a.citees, ...associees, ...(entree.refus || [])]);
-    const mentions = Ariane.mentionsDeSources(
-      Ariane.texteMentionsAnnotation(contenu, this.settings), this.indexZoteroRecent(), exclure);
-    for (const m of mentions) exclure.add(m.basename);
-    const proches = this.settings.associationsProches === false ? []
-      : await this.sourcesProches(file, contenu, exclure);
-    for (const p of proches) p.titre = this.titreDeSource(p.basename);
-    return {
-      file,
-      associees: associees.map((b) => ({ basename: b, titre: this.titreDeSource(b) })),
-      mentions,
-      proches,
-    };
-  }
-
-  // Une phrase du modèle de langue sur ce qui relie deux annotations.
-  async expliquerRapprochement(contenu, cheminVoisine) {
-    const f = this.app.vault.getAbstractFileByPath(cheminVoisine);
-    if (!(f instanceof obsidian.TFile)) return '';
-    const autre = await this.app.vault.cachedRead(f);
-    const net = (t) => String(t || '').replace(/^---\n[\s\S]*?\n---\n?/, '').replace(/\]\([^)]*\)/g, ']').replace(/\s+/g, ' ').slice(0, 1800);
-    const prompt = 'Deux annotations de lecture d\'un doctorant, tirées de deux sources différentes.\n'
-      + 'A : ' + net(contenu) + '\nB : ' + net(autre) + '\n'
-      + 'En une phrase en français, dis ce qui les relie (concept, argument, prolongement ou opposition). '
-      + 'Réponds uniquement en JSON : {"raison":"…"}';
-    const brut = await this.genererJson(prompt, 160);
-    const j = brut ? Ariane.extraireJson(brut) : null;
-    return (j && typeof j.raison === 'string') ? j.raison.trim() : '';
-  }
-
-  // Commande : associer une source choisie à l'annotation ouverte.
-  choisirSourceAssociee(file) {
-    const a = this.annotationDe(file);
-    if (!a) { new obsidian.Notice(tr("Ouvrez une note d'annotation.")); return; }
-    const deja = new Set([a.source, ...((this._associations || {})[a.cle] || {}).sources || []]);
-    const items = this.construireIndexZotero()
-      .filter((e) => !deja.has(e.basename))
-      .map((e) => ({ nom: (e.titre || e.basename) + ' (' + e.basename + ')', basename: e.basename }));
-    new ChoixListeModal(this.app, tr('Source à associer à cette annotation…'), items,
-      (it) => this.changerAssociation(file, it.basename, 'associer')).open();
-  }
-
   // Commande : toutes les annotations dont le commentaire mentionne une
   // autre source, à associer d'un coup.
   async revoirMentionsDeSources() {
@@ -424,7 +306,6 @@ const avecNoteAtomes = (Base) => class extends Base {
     }
     await this.enregistrerAssociations();
     for (const f of aRegenerer.values()) await this.regenererAnnotation(f);
-    this.majSuggestions(false, true);
     return aRegenerer.size;
   }
 
