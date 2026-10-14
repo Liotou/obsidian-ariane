@@ -9101,8 +9101,9 @@ const avecNoteAtomes = (Base) => class extends Base {
   /* ------------------------------ Événements DnD ------------------------- */
 
   // ── deux styles de citation au dépôt ──
-  //  « (Auteur, année) » par défaut ; « Auteur (année) » pour parler d'un
-  //  auteur à la troisième personne. Chaque appui sur la touche réglée (Maj
+  //  « (Auteur, année) » par défaut sur un paragraphe ; « Auteur (année) »,
+  //  pour parler d'un auteur à la troisième personne, par défaut sur une
+  //  ligne vide. Chaque appui sur la touche réglée (Maj
   //  par défaut), pendant le glisser, fait alterner l'un et l'autre. Le clavier se tait pendant un
   //  glisser, mais chaque « dragover » porte l'état des touches : on guette
   //  le passage de Maj relâchée à Maj enfoncée. Une étiquette suit le
@@ -9110,7 +9111,7 @@ const avecNoteAtomes = (Base) => class extends Base {
   //  point exact d'insertion, à la place du surlignage de la phrase.
 
   reinitialiserStyleGlisser() {
-    this._styleCitation = 'parenthese';
+    this._styleInverse = false;
     this._majGlisser = false;
     this._glisserCitable = null;
     this.retirerReperesStyle();
@@ -9130,7 +9131,7 @@ const avecNoteAtomes = (Base) => class extends Base {
   suivreMajGlisser(e) {
     const maj = !!(e && e[Ariane.toucheStyleGlisser(this.settings.dropToucheStyle).prop]);
     if (maj && !this._majGlisser) {
-      this._styleCitation = this._styleCitation === 'narratif' ? 'parenthese' : 'narratif';
+      this._styleInverse = !this._styleInverse;
     }
     this._majGlisser = maj;
   }
@@ -9145,8 +9146,31 @@ const avecNoteAtomes = (Base) => class extends Base {
     return this._glisserCitable;
   }
 
-  styleGlisser(e) {
-    return this._styleCitation === 'narratif' && this.glisserCitable(e) ? 'narratif' : 'parenthese';
+  // Le style du dépôt : « (Auteur, année) » sur un paragraphe, « Auteur
+  // (année) » sur une ligne vide, où l'on commence une phrase ; la touche
+  // réglée inverse l'un et l'autre.
+  styleGlisser(e, ligneVide) {
+    if (!this.glisserCitable(e)) return 'parenthese';
+    const narratif = !!ligneVide !== !!this._styleInverse;
+    return narratif ? 'narratif' : 'parenthese';
+  }
+
+  // Une ligne vide où l'on peut déposer : hors entête, bloc de code et zone
+  // des notes de bas de page.
+  ligneVideDeposable(doc, n) {
+    if (n < 1 || n > doc.lines || doc.line(n).text.trim() !== '') return false;
+    let k = 1, fence = false;
+    if (doc.line(1).text.trim() === '---') {
+      for (k = 2; k <= doc.lines && doc.line(k).text.trim() !== '---'; k++) { /* entête */ }
+      if (n <= k) return false;
+      k += 1;
+    }
+    for (; k < n; k++) {
+      const t = doc.line(k).text;
+      if (/^\s*(`{3,}|~{3,})/.test(t)) fence = !fence;
+      if (/^\s*\[\^[^\]]+\]:/.test(t)) return false;
+    }
+    return !fence;
   }
 
   montrerStyleGlisser(doc, e, narratif) {
@@ -9196,16 +9220,25 @@ const avecNoteAtomes = (Base) => class extends Base {
     const cm = this.cmSousPoint(e, doc);
     if (!cm) { this.nettoyerZoneDrop(); return; }
     const pos = cm.posAtCoords({ x: e.clientX, y: e.clientY });
-    if (pos == null || !this.ligneEstParagraphe(cm.state.doc, cm.state.doc.lineAt(pos).number)) {
+    const nLigne = pos == null ? 0 : cm.state.doc.lineAt(pos).number;
+    const vide = pos != null && this.glisserCitable(e) && this.ligneVideDeposable(cm.state.doc, nLigne);
+    if (pos == null || (!vide && !this.ligneEstParagraphe(cm.state.doc, nLigne))) {
       this.nettoyerZoneDrop();
       return;
     }
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
     if (this.glisserCitable(e)) {
-      const narratif = this.styleGlisser(e) === 'narratif';
+      const narratif = this.styleGlisser(e, vide) === 'narratif';
       this.montrerStyleGlisser(doc, e, narratif);
       if (narratif) {
+        this.effacerSurlignagePhrase();
+        if (this.zoneDrop) { this.zoneDrop.classList.remove('zfa-drop-cible'); this.zoneDrop = null; }
+        this.montrerCurseurNarratif(doc, cm, pos);
+        return;
+      }
+      if (vide) {
+        // « (Auteur, année) » sur une ligne vide : au début de la ligne.
         this.effacerSurlignagePhrase();
         if (this.zoneDrop) { this.zoneDrop.classList.remove('zfa-drop-cible'); this.zoneDrop = null; }
         this.montrerCurseurNarratif(doc, cm, pos);
@@ -9281,7 +9314,8 @@ const avecNoteAtomes = (Base) => class extends Base {
     const pos = cm.posAtCoords({ x: e.clientX, y: e.clientY });
     if (pos == null) { this.nettoyerZoneDrop(); return; }
     const n = cm.state.doc.lineAt(pos).number;
-    if (!this.ligneEstParagraphe(cm.state.doc, n)) { this.nettoyerZoneDrop(); return; }
+    const vide = this.glisserCitable(e) && this.ligneVideDeposable(cm.state.doc, n);
+    if (!vide && !this.ligneEstParagraphe(cm.state.doc, n)) { this.nettoyerZoneDrop(); return; }
     // Dépôt groupé depuis le panier flottant, sinon annotation unique glissée.
     let cles;
     if (this.glisseDepuisPanier && this.panier && this.panier.length) {
@@ -9295,7 +9329,8 @@ const avecNoteAtomes = (Base) => class extends Base {
     e.stopPropagation();
     if (e.stopImmediatePropagation) e.stopImmediatePropagation();
     // Style narratif : « Auteur (année) » au point exact du dépôt.
-    if (this.styleGlisser(e) === 'narratif') {
+    const style = this.styleGlisser(e, vide);
+    if (style === 'narratif') {
       const ligne = cm.state.doc.lineAt(pos);
       const entrees = cles.map((c) => '[[' + c + '|' + narratifDepuisLibelle(this.libelleCitation(c)) + ']]');
       const r = insertionNarrative(ligne.text, pos - ligne.from, entrees, this.settings.separateurCitation || ' ; ');
@@ -9305,6 +9340,16 @@ const avecNoteAtomes = (Base) => class extends Base {
       return;
     }
     this.reinitialiserStyleGlisser();
+    // Ligne vide, style inversé : « (Auteur, année) » posé sur la ligne.
+    if (vide) {
+      const ligne = cm.state.doc.line(n);
+      const entrees = cles.map((c) => '[[' + c + '|' + this.libelleCitation(c) + ']]');
+      // Pas composerCitation : il rejoindrait le groupe qui clôt le paragraphe
+      // précédent, par-dessus la ligne vide.
+      cm.dispatch({ changes: { from: ligne.from, insert: '(' + entrees.join(this.settings.separateurCitation || ' ; ') + ')' } });
+      this.nettoyerZoneDrop();
+      return;
+    }
     // Dépôt sur le texte -> fin de la phrase visée ; dans la marge -> paragraphe.
     let insertOffset;
     if (this.modeDrop(e, doc) === 'phrase') {

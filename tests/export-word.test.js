@@ -114,3 +114,19 @@ test('toucheStyleGlisser : quatre touches de modification, Maj par défaut', () 
   assert.deepEqual(Ariane.toucheStyleGlisser(undefined), { prop: 'shiftKey', nom: 'Maj' });
   assert.deepEqual(Ariane.toucheStyleGlisser('a'), { prop: 'shiftKey', nom: 'Maj' });
 });
+
+test('glisser sur une ligne vide : « Auteur (année) » par défaut, la touche inverse', () => {
+  const doc = (t) => { const l = t.split('\n'); return { lines: l.length, line: (n) => ({ text: l[n - 1] }) }; };
+  const vide = (t, n) => Ariane.prototype.ligneVideDeposable.call({}, doc(t), n);
+  assert.equal(vide('Texte\n\nSuite', 2), true);
+  assert.equal(vide('Texte\nSuite', 2), false);
+  assert.equal(vide('---\ntype: x\n\n---\n', 3), false);          // dans l'entête
+  assert.equal(vide('```\n\n```', 2), false);                     // dans un bloc de code
+  assert.equal(vide('Texte[^1]\n\n[^1]: note\n\n', 4), false);    // zone des notes
+  const style = (vide, inverse) => Ariane.prototype.styleGlisser.call(
+    { glisserCitable: () => true, _styleInverse: inverse }, {}, vide);
+  assert.equal(style(true, false), 'narratif');
+  assert.equal(style(true, true), 'parenthese');
+  assert.equal(style(false, false), 'parenthese');
+  assert.equal(style(false, true), 'narratif');
+});
