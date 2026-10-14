@@ -134,3 +134,9 @@ test('glisser sur une ligne vide : « Auteur (année) » par défaut, la touche 
   assert.equal(style(false, false), 'parenthese');
   assert.equal(style(false, true), 'narratif');
 });
+
+test('cleDepuisCharge : un lien de Claudian « app://obsidian.md/… » donne le nom de la note', () => {
+  const f = (x) => Ariane.prototype.cleDepuisCharge.call({}, x);
+  assert.equal(f('app://obsidian.md/@valkokariBusinessInnovationKnowledge2015'), '@valkokariBusinessInnovationKnowledge2015');
+  assert.equal(f('app://obsidian.md/03%20-%20Notes/NC-1.md'), '03 - Notes/NC-1');
+});

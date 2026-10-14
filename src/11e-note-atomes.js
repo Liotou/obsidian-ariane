@@ -1571,6 +1571,48 @@ const avecNoteAtomes = (Base) => class extends Base {
     this.phraseRange = null;
   }
 
+  // Un lien glissé depuis un panneau tiers (le chat de Claudian) arrive sur
+  // un canevas comme une adresse « app://obsidian.md/… » : le canevas en
+  // faisait une carte de texte. On y pose la note elle-même. Un glisser
+  // interne d'Obsidian (explorateur, lien d'une note) reste à Obsidian, qui
+  // sait faire. Rend vrai si le dépôt est pris en charge.
+  surDropCanevas(e) {
+    const cible = e && e.target;
+    if (!cible || typeof cible.closest !== 'function' || !cible.closest('.canvas-wrapper')) return false;
+    if (this.app.dragManager && this.app.dragManager.draggable) return false;
+    const feuille = this.app.workspace.getLeavesOfType('canvas').find((l) => {
+      const w = l.view && l.view.canvas && l.view.canvas.wrapperEl;
+      return w && w.contains(cible);
+    });
+    const canvas = feuille && feuille.view.canvas;
+    if (!canvas || typeof canvas.createFileNode !== 'function' || typeof canvas.posFromEvt !== 'function') return false;
+    const depuis = (feuille.view.file && feuille.view.file.path) || '';
+    const charges = [this._sourceGlissee];
+    const dt = e.dataTransfer;
+    for (const fmt of ['text/plain', 'text/uri-list']) {
+      try { if (dt) charges.push(dt.getData(fmt)); } catch (err) { /* format absent */ }
+    }
+    let fichier = null;
+    for (const c of charges) {
+      const cle = this.cleDepuisCharge(c);
+      if (!cle || /^[a-z]+:\/\//i.test(cle)) continue;
+      const f = this.app.metadataCache.getFirstLinkpathDest(cle, depuis);
+      if (f instanceof obsidian.TFile) { fichier = f; break; }
+    }
+    if (!fichier) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    try {
+      canvas.createFileNode({ pos: canvas.posFromEvt(e), file: fichier, save: true, focus: true });
+      if (canvas.wrapperEl) canvas.wrapperEl.focus();
+    } catch (err) {
+      console.warn('[Ariane] dépôt sur le canevas :', err);
+    }
+    this._sourceGlissee = '';
+    return true;
+  }
+
   surDropParagraphe(e) {
     if (!this.settings.dropSurParagraphe) return;
     const doc = this.docDeEvenement(e);

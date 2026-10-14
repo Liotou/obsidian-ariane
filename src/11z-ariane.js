@@ -767,7 +767,7 @@ class Ariane extends composer(obsidian.Plugin,
       // au départ du glisser, seul moment où l'information est sûre.
       this.registerDomEvent(doc, 'dragstart', (e) => { this.reinitialiserStyleGlisser(); this.noterSourceGlissee(e); }, { capture: true });
       this.registerDomEvent(doc, 'dragover', (e) => this.surDragOverParagraphe(e), { capture: true });
-      this.registerDomEvent(doc, 'drop', (e) => this.surDropParagraphe(e), { capture: true });
+      this.registerDomEvent(doc, 'drop', (e) => { if (!this.surDropCanevas(e)) this.surDropParagraphe(e); }, { capture: true });
       this.registerDomEvent(doc, 'dragend', () => { this._sourceGlissee = ''; this.reinitialiserStyleGlisser(); this.nettoyerZoneDrop(); });
     };
     enregistrerDnD(document);
