@@ -797,6 +797,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr('Variables : {{auteurs}}, {{auteursComplets}}, {{annee}}, {{page}}, {{key}}. Les fragments restés vides sont retirés.'))
       .addText((t) => t.setValue(s.modeleCitation || '').onChange(async (v) => { s.modeleCitation = v.trim() || '{{auteurs}}, {{annee}}, p. {{page}}'; await maj(); }));
     new obsidian.Setting(c)
+      .setName(tr('Touche qui alterne le style de citation'))
+      .setDesc(tr("Pendant le glisser, chaque appui fait alterner « (Auteur, année) » et « Auteur (année) ». Seules les touches de modification sont possibles : le clavier se tait pendant un glisser. Sur Mac, Commande peut changer l'effet du glisser dans certaines fenêtres."))
+      .addDropdown((d) => d
+        .addOption('shift', tr('Maj'))
+        .addOption('alt', tr('Option (⌥)'))
+        .addOption('ctrl', tr('Contrôle (⌃)'))
+        .addOption('meta', tr('Commande (⌘)'))
+        .setValue(s.dropToucheStyle || 'shift')
+        .onChange(async (v) => { s.dropToucheStyle = v; await maj(); }));
+    new obsidian.Setting(c)
       .setName(tr('Apparat « cité dans »'))
       .setDesc(tr("Quand une annotation cite un travail absent de Zotero (donc non consulté directement), la citation prend la forme « Auteur A, 2020, p. 45, cité dans Auteur B, 2015, p. 12 ». Si ce travail figure dans Zotero, il est cité directement. Texte inséré entre les deux références :"))
       .addText((t) => t.setValue(s.citeDans != null ? s.citeDans : ', cité dans ').onChange(async (v) => { s.citeDans = v; await maj(); }));

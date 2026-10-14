@@ -25,7 +25,10 @@ const TEXTES = {
     "Activer les suggestions": "Enable suggestions",
     "(Auteur, année)": "(Author, year)",
     "Auteur (année)": "Author (year)",
-    "Maj : changer": "Shift: switch",
+    "Maj": "Shift",
+    "Contrôle": "Control",
+    "Commande": "Command",
+    " : changer": ": switch",
     "Activé, un travail rapporté mais absent de Zotero est cité sous la forme « Auteur A et al., 2020, cité dans Auteur B, 2015, p. 12 ». Désactivé, seule la source réellement consultée est citée. Sans effet sur les travaux présents dans Zotero, toujours cités directement.": "When enabled, a work reported but absent from Zotero is cited as “Author A et al., 2020, as cited in Author B, 2015, p. 12”. When disabled, only the source you actually read is cited. This has no effect on works present in Zotero, which are always cited directly.",
     "Adresse": "Address",
     "Affiche en police à largeur fixe les notes des dossiers listés. Liste vide : aucun. Le texte reste normal (recherche et tri intacts).": "Shows notes from the listed folders in a fixed width font. An empty list means none. The text itself is unchanged, so search and sorting still work.",
@@ -1723,6 +1726,7 @@ const DEFAULT_SETTINGS = {
   aparteTaille: '0.8em', // taille de police de l'aparté
   dropSurParagraphe: true, // déposer une note sur un paragraphe -> note de bas de page
   dropToutesNotes: true, // accepter n'importe quelle note (sinon seulement les annotations)
+  dropToucheStyle: 'shift', // touche qui alterne « (Auteur, année) » et « Auteur (année) » au glisser
   titreSectionNotes: 'Annotations de lecture associées', // en-tête de la section des notes
   modeleCitation: '{{auteurs}}, {{annee}}, p. {{page}}',
   separateurCitation: ' ; ',

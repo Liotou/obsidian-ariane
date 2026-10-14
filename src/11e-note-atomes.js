@@ -1140,8 +1140,8 @@ const avecNoteAtomes = (Base) => class extends Base {
 
   // ── deux styles de citation au dépôt ──
   //  « (Auteur, année) » par défaut ; « Auteur (année) » pour parler d'un
-  //  auteur à la troisième personne. Chaque appui sur Maj, pendant le
-  //  glisser, fait alterner l'un et l'autre. Le clavier se tait pendant un
+  //  auteur à la troisième personne. Chaque appui sur la touche réglée (Maj
+  //  par défaut), pendant le glisser, fait alterner l'un et l'autre. Le clavier se tait pendant un
   //  glisser, mais chaque « dragover » porte l'état des touches : on guette
   //  le passage de Maj relâchée à Maj enfoncée. Une étiquette suit le
   //  curseur et montre le style en cours ; en narratif, une barre marque le
@@ -1154,8 +1154,19 @@ const avecNoteAtomes = (Base) => class extends Base {
     this.retirerReperesStyle();
   }
 
+  // La touche réglée (Maj par défaut). Seules les touches de modification
+  // accompagnent un glisser : une lettre n'y parviendrait jamais.
+  static toucheStyleGlisser(cle) {
+    return ({
+      shift: { prop: 'shiftKey', nom: 'Maj' },
+      alt: { prop: 'altKey', nom: 'Option' },
+      ctrl: { prop: 'ctrlKey', nom: 'Contrôle' },
+      meta: { prop: 'metaKey', nom: 'Commande' },
+    })[cle] || { prop: 'shiftKey', nom: 'Maj' };
+  }
+
   suivreMajGlisser(e) {
-    const maj = !!(e && e.shiftKey);
+    const maj = !!(e && e[Ariane.toucheStyleGlisser(this.settings.dropToucheStyle).prop]);
     if (maj && !this._majGlisser) {
       this._styleCitation = this._styleCitation === 'narratif' ? 'parenthese' : 'narratif';
     }
@@ -1183,7 +1194,8 @@ const avecNoteAtomes = (Base) => class extends Base {
       b = this._etiquetteStyle = doc.body.createDiv({ cls: 'zfa-drop-style' });
       b.createSpan({ cls: 'zfa-drop-style-choix est-parenthese', text: tr('(Auteur, année)') });
       b.createSpan({ cls: 'zfa-drop-style-choix est-narratif', text: tr('Auteur (année)') });
-      b.createSpan({ cls: 'zfa-drop-style-aide', text: tr('Maj : changer') });
+      b.createSpan({ cls: 'zfa-drop-style-aide',
+        text: tr(Ariane.toucheStyleGlisser(this.settings.dropToucheStyle).nom) + tr(' : changer') });
       b._largeur = 0;
     }
     b.toggleClass('est-narratif', narratif);

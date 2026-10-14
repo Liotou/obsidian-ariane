@@ -107,3 +107,10 @@ test('export : la citation narrative devient « @cle [p. X] », la parenthèse r
   // Une citation entre parenthèses n'est pas concernée.
   assert.equal(c('([[K1|Ackoff, 2006, p. 12]])', resoudre), '([[K1|Ackoff, 2006, p. 12]])');
 });
+
+test('toucheStyleGlisser : quatre touches de modification, Maj par défaut', () => {
+  assert.deepEqual(Ariane.toucheStyleGlisser('alt'), { prop: 'altKey', nom: 'Option' });
+  assert.deepEqual(Ariane.toucheStyleGlisser('meta'), { prop: 'metaKey', nom: 'Commande' });
+  assert.deepEqual(Ariane.toucheStyleGlisser(undefined), { prop: 'shiftKey', nom: 'Maj' });
+  assert.deepEqual(Ariane.toucheStyleGlisser('a'), { prop: 'shiftKey', nom: 'Maj' });
+});

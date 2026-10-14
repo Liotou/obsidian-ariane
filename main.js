@@ -217,7 +217,10 @@ const TEXTES = {
     "Activer les suggestions": "Enable suggestions",
     "(Auteur, année)": "(Author, year)",
     "Auteur (année)": "Author (year)",
-    "Maj : changer": "Shift: switch",
+    "Maj": "Shift",
+    "Contrôle": "Control",
+    "Commande": "Command",
+    " : changer": ": switch",
     "Activé, un travail rapporté mais absent de Zotero est cité sous la forme « Auteur A et al., 2020, cité dans Auteur B, 2015, p. 12 ». Désactivé, seule la source réellement consultée est citée. Sans effet sur les travaux présents dans Zotero, toujours cités directement.": "When enabled, a work reported but absent from Zotero is cited as “Author A et al., 2020, as cited in Author B, 2015, p. 12”. When disabled, only the source you actually read is cited. This has no effect on works present in Zotero, which are always cited directly.",
     "Adresse": "Address",
     "Affiche en police à largeur fixe les notes des dossiers listés. Liste vide : aucun. Le texte reste normal (recherche et tri intacts).": "Shows notes from the listed folders in a fixed width font. An empty list means none. The text itself is unchanged, so search and sorting still work.",
@@ -1915,6 +1918,7 @@ const DEFAULT_SETTINGS = {
   aparteTaille: '0.8em', // taille de police de l'aparté
   dropSurParagraphe: true, // déposer une note sur un paragraphe -> note de bas de page
   dropToutesNotes: true, // accepter n'importe quelle note (sinon seulement les annotations)
+  dropToucheStyle: 'shift', // touche qui alterne « (Auteur, année) » et « Auteur (année) » au glisser
   titreSectionNotes: 'Annotations de lecture associées', // en-tête de la section des notes
   modeleCitation: '{{auteurs}}, {{annee}}, p. {{page}}',
   separateurCitation: ' ; ',
@@ -8689,8 +8693,8 @@ const avecNoteAtomes = (Base) => class extends Base {
 
   // ── deux styles de citation au dépôt ──
   //  « (Auteur, année) » par défaut ; « Auteur (année) » pour parler d'un
-  //  auteur à la troisième personne. Chaque appui sur Maj, pendant le
-  //  glisser, fait alterner l'un et l'autre. Le clavier se tait pendant un
+  //  auteur à la troisième personne. Chaque appui sur la touche réglée (Maj
+  //  par défaut), pendant le glisser, fait alterner l'un et l'autre. Le clavier se tait pendant un
   //  glisser, mais chaque « dragover » porte l'état des touches : on guette
   //  le passage de Maj relâchée à Maj enfoncée. Une étiquette suit le
   //  curseur et montre le style en cours ; en narratif, une barre marque le
@@ -8703,8 +8707,19 @@ const avecNoteAtomes = (Base) => class extends Base {
     this.retirerReperesStyle();
   }
 
+  // La touche réglée (Maj par défaut). Seules les touches de modification
+  // accompagnent un glisser : une lettre n'y parviendrait jamais.
+  static toucheStyleGlisser(cle) {
+    return ({
+      shift: { prop: 'shiftKey', nom: 'Maj' },
+      alt: { prop: 'altKey', nom: 'Option' },
+      ctrl: { prop: 'ctrlKey', nom: 'Contrôle' },
+      meta: { prop: 'metaKey', nom: 'Commande' },
+    })[cle] || { prop: 'shiftKey', nom: 'Maj' };
+  }
+
   suivreMajGlisser(e) {
-    const maj = !!(e && e.shiftKey);
+    const maj = !!(e && e[Ariane.toucheStyleGlisser(this.settings.dropToucheStyle).prop]);
     if (maj && !this._majGlisser) {
       this._styleCitation = this._styleCitation === 'narratif' ? 'parenthese' : 'narratif';
     }
@@ -8732,7 +8747,8 @@ const avecNoteAtomes = (Base) => class extends Base {
       b = this._etiquetteStyle = doc.body.createDiv({ cls: 'zfa-drop-style' });
       b.createSpan({ cls: 'zfa-drop-style-choix est-parenthese', text: tr('(Auteur, année)') });
       b.createSpan({ cls: 'zfa-drop-style-choix est-narratif', text: tr('Auteur (année)') });
-      b.createSpan({ cls: 'zfa-drop-style-aide', text: tr('Maj : changer') });
+      b.createSpan({ cls: 'zfa-drop-style-aide',
+        text: tr(Ariane.toucheStyleGlisser(this.settings.dropToucheStyle).nom) + tr(' : changer') });
       b._largeur = 0;
     }
     b.toggleClass('est-narratif', narratif);
@@ -25727,6 +25743,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Format de la citation'))
       .setDesc(tr('Variables : {{auteurs}}, {{auteursComplets}}, {{annee}}, {{page}}, {{key}}. Les fragments restés vides sont retirés.'))
       .addText((t) => t.setValue(s.modeleCitation || '').onChange(async (v) => { s.modeleCitation = v.trim() || '{{auteurs}}, {{annee}}, p. {{page}}'; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Touche qui alterne le style de citation'))
+      .setDesc(tr("Pendant le glisser, chaque appui fait alterner « (Auteur, année) » et « Auteur (année) ». Seules les touches de modification sont possibles : le clavier se tait pendant un glisser. Sur Mac, Commande peut changer l'effet du glisser dans certaines fenêtres."))
+      .addDropdown((d) => d
+        .addOption('shift', tr('Maj'))
+        .addOption('alt', tr('Option (⌥)'))
+        .addOption('ctrl', tr('Contrôle (⌃)'))
+        .addOption('meta', tr('Commande (⌘)'))
+        .setValue(s.dropToucheStyle || 'shift')
+        .onChange(async (v) => { s.dropToucheStyle = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Apparat « cité dans »'))
       .setDesc(tr("Quand une annotation cite un travail absent de Zotero (donc non consulté directement), la citation prend la forme « Auteur A, 2020, p. 45, cité dans Auteur B, 2015, p. 12 ». Si ce travail figure dans Zotero, il est cité directement. Texte inséré entre les deux références :"))
