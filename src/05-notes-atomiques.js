@@ -403,6 +403,13 @@ function construireNote(bloc, sourceBasename, indexZotero, cfg, ctxSource) {
   }
   const liens = refLinks.join(' ; ');
 
+  // Sources associées par Monsieur : ni la source, ni une référence citée,
+  // mais une autre lecture que le passage lui rappelle. Elles vivent hors de
+  // la note (« .ariane/associations.json »), qui est régénérée.
+  const assoc = (((ctxSource.associations || {})[bloc.cle] || {}).sources || [])
+    .filter((b, i, t) => b && b !== sourceBasename && t.indexOf(b) === i);
+  const assocLiens = assoc.map((b) => '[[' + b + ']]');
+
   const vars = {
     title: bloc.titre,
     key: bloc.cle,
@@ -414,6 +421,8 @@ function construireNote(bloc, sourceBasename, indexZotero, cfg, ctxSource) {
     pageLine: bloc.page ? cfg.labelPage + bloc.page : '',
     referenceLinks: liens,
     references: refLinks.length > 0 ? cfg.labelReferences + liens : '',
+    seeAlsoLinks: assocLiens.join(' ; '),
+    seeAlso: assocLiens.length ? (cfg.labelVoirAussi == null ? 'Voir aussi : ' : cfg.labelVoirAussi) + assocLiens.join(' ; ') : '',
     annotationUrl: bloc.lienAnno || '',
     titleLink: bloc.lienAnno ? '[' + bloc.titre + '](' + bloc.lienAnno + ')' : bloc.titre,
   };
@@ -429,6 +438,8 @@ function construireNote(bloc, sourceBasename, indexZotero, cfg, ctxSource) {
   vars.highlight = bloc.highlight || '';
 
   let corps = appliquerModele(cfg.modeleNote, vars);
+  // Un modèle antérieur à {{seeAlso}} reçoit la ligne en fin de note.
+  if (vars.seeAlso && !/\{\{seeAlso/.test(cfg.modeleNote || '')) corps += '\n\n' + vars.seeAlso;
   corps = corps
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -458,6 +469,10 @@ function construireNote(bloc, sourceBasename, indexZotero, cfg, ctxSource) {
   if (clesPages.length > 0) {
     fm.push('références-pages:');
     for (const k of clesPages) fm.push('  ' + JSON.stringify(k) + ': ' + JSON.stringify(String(pagesRef[k])));
+  }
+  if (assocLiens.length > 0) {
+    fm.push('sources-associées:');
+    for (const l of assocLiens) fm.push('  - ' + JSON.stringify(l));
   }
   // Collections Zotero (héritées de la source) : filtrage direct dans les Bases.
   const cols = ctxSource.collections;

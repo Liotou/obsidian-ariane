@@ -570,6 +570,78 @@ class ModaleReferencesOrphelines extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// Les autres sources que vos commentaires d'annotation mentionnent : cochées,
+// elles deviennent des sources associées ; écartées, elles ne reviennent plus.
+class ModaleMentionsSources extends obsidian.Modal {
+  constructor(app, greffon, lignes) {
+    super(app);
+    this.greffon = greffon;
+    this.l = lignes || [];
+    this.choix = new Set(this.l.map((_, i) => i));
+    this.ecartees = new Set();
+  }
+
+  static raison(r) {
+    return r === 'clé' ? tr('clé de citation') : r === 'auteur' ? tr('auteur et année') : tr('titre');
+  }
+
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass('zfa-mentions-modale');
+    const titre = tr('Sources mentionnées dans vos annotations');
+    if (this.setTitle) this.setTitle(titre); else contentEl.createEl('h3', { text: titre });
+    contentEl.createDiv({ cls: 'setting-item-description', text: tr('Votre commentaire cite une autre source de votre bibliothèque. Cochée, elle devient une source associée de l’annotation (propriété « sources-associées » et ligne « Voir aussi »). Écartée, elle ne vous sera plus proposée pour cette annotation.') });
+    const liste = contentEl.createDiv({ cls: 'zfa-orphelins-liste' });
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const bouton = pied.createEl('button', { cls: 'mod-cta' });
+    const maj = () => {
+      bouton.setText(tr('Associer') + ' (' + this.choix.size + ')');
+      bouton.disabled = !this.choix.size && !this.ecartees.size;
+    };
+    this.l.forEach((o, i) => {
+      const ligne = liste.createEl('label', { cls: 'zfa-orphelins-ligne' });
+      const c = ligne.createEl('input', { type: 'checkbox' });
+      c.checked = true;
+      c.addEventListener('change', () => {
+        if (c.checked) this.choix.add(i); else this.choix.delete(i);
+        maj();
+      });
+      const txt = ligne.createDiv({ cls: 'zfa-orphelins-texte' });
+      txt.createDiv({ cls: 'zfa-orphelins-nom', text: o.titreAnnotation });
+      txt.createDiv({ cls: 'zfa-orphelins-info', text: tr('Mentionne ') + '« ' + o.titre + ' » (' + ModaleMentionsSources.raison(o.raison) + ')' });
+      const ouvrir = ligne.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Ouvrir l’annotation') } });
+      obsidian.setIcon(ouvrir, 'file-text');
+      ouvrir.addEventListener('click', (e) => { e.preventDefault(); this.app.workspace.getLeaf('tab').openFile(o.fichier); });
+      const ecarter = ligne.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Écarter cette proposition') } });
+      obsidian.setIcon(ecarter, 'x');
+      ecarter.addEventListener('click', (e) => {
+        e.preventDefault();
+        const oui = !this.ecartees.has(i);
+        if (oui) { this.ecartees.add(i); this.choix.delete(i); c.checked = false; } else this.ecartees.delete(i);
+        c.disabled = oui;
+        ligne.toggleClass('est-ecartee', oui);
+        maj();
+      });
+    });
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    pied.appendChild(bouton);
+    bouton.onclick = async () => {
+      bouton.disabled = true;
+      const choix = [];
+      this.l.forEach((ligne, i) => {
+        if (this.choix.has(i)) choix.push({ ligne, action: 'associer' });
+        else if (this.ecartees.has(i)) choix.push({ ligne, action: 'ecarter' });
+      });
+      const n = await this.greffon.appliquerMentions(choix);
+      new obsidian.Notice(n + ' ' + tr('annotation(s) reliée(s) à une autre source.'));
+      this.close();
+    };
+    maj();
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 // L'essai à blanc de la veille : ce que la collecte rapporte source par
 // source, ce que le pré-tri garderait, et les mieux notés. Rien n'est écrit.
 class ModaleEssaiVeille extends obsidian.Modal {

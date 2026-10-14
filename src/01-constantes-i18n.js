@@ -674,7 +674,7 @@ const TEXTES = {
     "Variables : {{authorLinks}}, {{name}}, {{year}}, {{firstAuthor}}.": "Variables: {{authorLinks}}, {{name}}, {{year}}, {{firstAuthor}}.",
     "Variables : {{key}}, {{title}}. Ex. « {{key}}_{{title}} » (recommandé), « {{title}} » ou « {{key}} ».": "Variables: {{key}}, {{title}}. For example “{{key}}_{{title}}” (recommended), “{{title}}” or “{{key}}”.",
     "Variables : {{key}}, {{title}}. Vide = pas d'alias.": "Variables: {{key}}, {{title}}. Empty means no alias.",
-    "Variables : {{title}}, {{titleLink}} (titre cliquable vers l’annotation dans le PDF), {{annotationUrl}}, {{key}}, {{paraphrase}}, {{image}}, {{citation}}, {{highlight}}, {{source}}, {{page}}, {{pageLine}}, {{references}}, {{referenceLinks}}, {{sourceName}}.": "Variables: {{title}}, {{titleLink}} (clickable title leading to the annotation in the PDF), {{annotationUrl}}, {{key}}, {{paraphrase}}, {{image}}, {{citation}}, {{highlight}}, {{source}}, {{page}}, {{pageLine}}, {{references}}, {{referenceLinks}}, {{sourceName}}.",
+    "Variables : {{title}}, {{titleLink}} (titre cliquable vers l’annotation dans le PDF), {{annotationUrl}}, {{key}}, {{paraphrase}}, {{image}}, {{citation}}, {{highlight}}, {{source}}, {{page}}, {{pageLine}}, {{references}}, {{referenceLinks}}, {{seeAlso}} (sources associées, ajoutées en fin de note si le modèle ne les place pas), {{seeAlsoLinks}}, {{sourceName}}.": "Variables: {{title}}, {{titleLink}} (clickable title leading to the annotation in the PDF), {{annotationUrl}}, {{key}}, {{paraphrase}}, {{image}}, {{citation}}, {{highlight}}, {{source}}, {{page}}, {{pageLine}}, {{references}}, {{referenceLinks}}, {{seeAlso}} (associated sources, appended at the end of the note when the template does not place them), {{seeAlsoLinks}}, {{sourceName}}.",
     "Verrouiller les notes automatiques": "Lock generated notes",
     "Vider": "Clear",
     "Vocabulaire des schémas": "Diagram vocabulary",
@@ -1825,6 +1825,8 @@ const DEFAULT_SETTINGS = {
   // --- Modèles de sortie ---
   modeleNote: '**{{titleLink}}**\n\n{{image}}\n\n{{paraphrase}}\n\n{{citation}}\n\nSource : {{source}}\n\n{{references}}',
   labelReferences: 'Références citées : ',
+  labelVoirAussi: 'Voir aussi : ', // sources associées (notes d'annotation)
+  associationsProches: true, // panneau : proposer des sources proches d'une annotation
   labelPage: 'Page : ',
   modeleReference: '---\ntype: reference-citee\n---\n\n{{authorLinks}}',
 

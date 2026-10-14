@@ -63,6 +63,24 @@ test('segmentsActivite : absence retirée, journée rognée, onglet du navigateu
   assert.equal(Ariane.segmentsActivite(fen.slice(0, 1), null, [], D0, D1)[0].fin - D0, 540 * MIN);
 });
 
+test('segmentsActivite : un relevé d’absence arrêté ne vaut pas absence', () => {
+  const fen = [
+    evt(a(8, 0), 60, { app: 'Microsoft Word', title: 'Chapitre 2.docx' }),
+    evt(a(11, 0), 60, { app: 'Zotero', title: 'Lecture' }),
+  ];
+  // Seau présent mais muet toute la journée : les fenêtres comptent.
+  const muet = Ariane.segmentsActivite(fen, [], [], D0, D1);
+  assert.deepEqual(muet.map((x) => [(x.deb - D0) / MIN, (x.fin - D0) / MIN]), [[480, 540], [660, 720]]);
+  // Relevé arrêté à 10 h : l'absence de 8 h 20 compte, la suite reste.
+  const afk = [
+    evt(a(8, 0), 20, { status: 'not-afk' }),
+    evt(a(8, 20), 10, { status: 'afk' }),
+    evt(a(8, 30), 90, { status: 'not-afk' }),
+  ];
+  const s = Ariane.segmentsActivite(fen, afk, [], D0, D1);
+  assert.deepEqual(s.map((x) => [(x.deb - D0) / MIN, (x.fin - D0) / MIN]), [[480, 500], [510, 540], [660, 720]]);
+});
+
 test('motifsActivite : texte, champ, expression, virgule dans une expression', () => {
   const m = Ariane.motifsActivite(' app:Zotero, .PDF ,/chap(itre)? \\d{1,2}/, url: hal.science');
   assert.equal(m.length, 4);

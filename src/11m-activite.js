@@ -70,8 +70,19 @@ const avecActivite = (Base) => class extends Base {
       const b = a + (Number(e.duration) || 0) * 1000;
       return [Math.max(a, d0), Math.min(b, d1)];
     };
-    const actifs = afk ? Ariane.fusionnerIntervalles(afk
-      .filter((e) => e && e.data && e.data.status === 'not-afk').map(iv)) : null;
+    // La présence ne vaut que là où le relevé d'absence a parlé. Arrêté (il
+    // l'a été une journée entière, le relevé des fenêtres tournant seul), il
+    // ne dit pas « absent » : on garde alors les fenêtres telles quelles.
+    let actifs = null;
+    if (afk) {
+      const couvert = Ariane.fusionnerIntervalles(afk.map(iv));
+      const inconnu = [];
+      let cur = d0;
+      for (const [x, y] of couvert) { if (x > cur) inconnu.push([cur, x]); cur = Math.max(cur, y); }
+      if (cur < d1) inconnu.push([cur, d1]);
+      actifs = Ariane.fusionnerIntervalles(afk
+        .filter((e) => e && e.data && e.data.status === 'not-afk').map(iv).concat(inconnu));
+    }
     const onglets = (web || []).map((e) => {
       const [a, b] = iv(e);
       const d = (e && e.data) || {};

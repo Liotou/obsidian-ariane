@@ -1191,6 +1191,12 @@ const avecNoteReferences = (Base) => class extends Base {
 
   async verrouiller(file) {
     if (!this.settings.verrouillage) return;
+    await this.regenererAnnotation(file);
+  }
+
+  // Réécrit une note d'annotation depuis sa source : la restauration d'une
+  // note verrouillée, et la prise en compte d'une source associée.
+  async regenererAnnotation(file) {
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache ? cache.frontmatter : null;
     if (!fm || fm['zotflow-auto'] !== true) return;
@@ -1211,7 +1217,9 @@ const avecNoteReferences = (Base) => class extends Base {
     }
     const idx = this.construireIndexZotero();
     const fmSrc = (this.app.metadataCache.getFileCache(source) || {}).frontmatter || {};
-    const canon = construireNote(bloc, source.basename, idx, this.settings, { collections: fmSrc.collections });
+    await this.chargerAssociations();
+    const canon = construireNote(bloc, source.basename, idx, this.settings,
+      { collections: fmSrc.collections, canoniques: this.indexCanoniques(), associations: this._associations });
     const actuel = await this.app.vault.read(file);
     if (actuel !== canon) await this.ecrire(file.path, canon, file);
   }

@@ -495,6 +495,21 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.revoirReferencesOrphelines(false),
     });
     this.addCommand({
+      id: 'annotations-associer-source',
+      name: tr('Annotations : associer une source à cette annotation…'),
+      checkCallback: (verif) => {
+        const f = this.app.workspace.getActiveFile();
+        if (!f || !this.annotationDe(f)) return false;
+        if (!verif) this.chargerAssociations().then(() => this.choisirSourceAssociee(f));
+        return true;
+      },
+    });
+    this.addCommand({
+      id: 'annotations-sources-mentionnees',
+      name: tr('Annotations : revoir les sources mentionnées dans mes commentaires…'),
+      callback: () => this.revoirMentionsDeSources(),
+    });
+    this.addCommand({
       id: 'canevas-ouvrir',
       name: tr('Canevas : ouvrir un canevas de tâches…'),
       callback: () => this.canevas && this.canevas.ouvrirCanevas(),
@@ -1272,6 +1287,8 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerEvent(this.app.vault.on('create', revaliderIndex));
     this.registerEvent(this.app.vault.on('delete', revaliderIndex));
     this.registerEvent(this.app.vault.on('rename', (f) => revaliderIndex(f)));
+    // Une source renommée : les sources associées des annotations suivent.
+    this.registerEvent(this.app.vault.on('rename', (f, ancien) => { this.renommerSourceAssociee(ancien, f); }));
 
     // L'index des tâches se lit sur les chemins : seul un chemin qui bouge le
     // périme. Une modification de contenu n'y change rien, d'où l'absence de

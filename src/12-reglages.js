@@ -654,7 +654,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Variables : {{key}}, {{title}}. Vide = pas d'alias."))
       .addText((t) => t.setValue(s.aliasTemplate).onChange(async (v) => { s.aliasTemplate = v; await maj(); }));
     this._section(c, tr('Contenu des notes'));
-    this._aide(c, tr('Variables : {{title}}, {{titleLink}} (titre cliquable vers l’annotation dans le PDF), {{annotationUrl}}, {{key}}, {{paraphrase}}, {{image}}, {{citation}}, {{highlight}}, {{source}}, {{page}}, {{pageLine}}, {{references}}, {{referenceLinks}}, {{sourceName}}.'));
+    this._aide(c, tr('Variables : {{title}}, {{titleLink}} (titre cliquable vers l’annotation dans le PDF), {{annotationUrl}}, {{key}}, {{paraphrase}}, {{image}}, {{citation}}, {{highlight}}, {{source}}, {{page}}, {{pageLine}}, {{references}}, {{referenceLinks}}, {{seeAlso}} (sources associées, ajoutées en fin de note si le modèle ne les place pas), {{seeAlsoLinks}}, {{sourceName}}.'));
     new obsidian.Setting(c)
       .setName(tr('Modèle de corps de note'))
       .addTextArea((t) => {
@@ -674,6 +674,10 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     new obsidian.Setting(c)
       .setName(tr('Libellé des références'))
       .addText((t) => t.setValue(s.labelReferences).onChange(async (v) => { s.labelReferences = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Libellé des sources associées'))
+      .setDesc(tr("Les autres sources que vous rattachez à une annotation, par le panneau de suggestions ou la commande « Annotations : associer une source à cette annotation »."))
+      .addText((t) => t.setValue(s.labelVoirAussi == null ? 'Voir aussi : ' : s.labelVoirAussi).onChange(async (v) => { s.labelVoirAussi = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Libellé de la page'))
       .addText((t) => t.setValue(s.labelPage).onChange(async (v) => { s.labelPage = v; await maj(); }));
@@ -1232,6 +1236,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Délai avant recalcul (ms)'))
       .setDesc(tr('Temps d’inactivité dans la frappe avant de rafraîchir.'))
       .addText((t) => t.setValue(String(s.suggAntirebond)).onChange(async (v) => { const n = parseInt(v, 10); s.suggAntirebond = Number.isFinite(n) && n >= 100 ? n : 900; await maj(); }));
+
+    this._section(c, tr('Sources associées'));
+    this._aide(c, tr("Sur une note d'annotation, le panneau propose d'autres sources à y rattacher : celles que votre commentaire mentionne (titre, auteur et année, @clé), et celles dont les annotations sont les plus proches. Rien n'est écrit sans votre accord. Les sources proches demandent que le dossier des annotations nourrisse les suggestions."));
+    new obsidian.Setting(c)
+      .setName(tr('Proposer des sources proches'))
+      .setDesc(tr('Désactivé, seules les sources mentionnées dans votre commentaire sont proposées.'))
+      .addToggle((t) => t.setValue(s.associationsProches !== false).onChange(async (v) => { s.associationsProches = v; await maj(); rafraichir(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Revoir les sources mentionnées dans toutes les annotations'))
+      .addButton((b) => b.setButtonText(tr('Revoir')).onClick(() => this.plugin.revoirMentionsDeSources()));
 
     this._section(c, tr('Moteur de pertinence'));
     this._aide(c, tr("Lexical : mots en commun (aucune dépendance). Sémantique : comprend le sens via des embeddings locaux (Ollama). Hybride : combine les deux (recommandé). En l'absence d'Ollama, le moteur bascule automatiquement sur le lexical."));
