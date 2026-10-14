@@ -340,6 +340,9 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 
 /* Phrase visée pendant un glisser (mode « cibler la phrase »). */
+/* Ponctuation soudée à son mot (texte justifié). */
+.zfa-insecable { white-space: nowrap; }
+
 /* Glisser une citation : style en cours (Maj alterne) et point d'insertion
    du style narratif. */
 .zfa-drop-style {

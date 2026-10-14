@@ -784,6 +784,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerMarkdownPostProcessor((el, ctx) => this.enrichirLiensAnnotation(el, ctx));
     this.registerMarkdownPostProcessor((el) => this.rendreCitationsRepliables(el));
     this.registerMarkdownPostProcessor((el) => this.enrichirCompteursEmprunts(el));
+    this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
     this.app.workspace.onLayoutReady(() => this.installerDecorateurExplorateur());
     this.app.workspace.onLayoutReady(async () => {
       // Les données du temps et de l'activité vivent par jour dans le journal
@@ -1002,6 +1003,40 @@ class Ariane extends composer(obsidian.Plugin,
       this.registerEditorExtension(champPhrase);
     } catch (e) {
       console.error('[Ariane] Surlignage de phrase indisponible :', e);
+    }
+
+    // Ponctuation soudée à son mot : pas de « ( » seule en fin de ligne, ni
+    // de « ) » ou de « ; » seuls en début de ligne, en texte justifié.
+    try {
+      const { ViewPlugin, Decoration } = require('@codemirror/view');
+      const { RangeSetBuilder } = require('@codemirror/state');
+      const marque = Decoration.mark({ class: 'zfa-insecable' });
+      const greffon = this;
+      const calculer = (view) => {
+        const b = new RangeSetBuilder();
+        if (greffon.settings.ponctuationInsecable === false) return b.finish();
+        const doc = view.state.doc;
+        for (const { from, to } of view.visibleRanges) {
+          let n = doc.lineAt(from).number;
+          const fin = doc.lineAt(to).number;
+          for (; n <= fin; n++) {
+            const l = doc.line(n);
+            for (const [a, z] of plagesInsecables(l.text)) b.add(l.from + a, l.from + z, marque);
+          }
+        }
+        return b.finish();
+      };
+      this.registerEditorExtension(ViewPlugin.fromClass(class {
+        constructor(view) { this.decorations = calculer(view); }
+        update(u) {
+          if (u.docChanged || u.viewportChanged || greffon._ponctuationRevue !== this.revue) {
+            this.revue = greffon._ponctuationRevue;
+            this.decorations = calculer(u.view);
+          }
+        }
+      }, { decorations: (v) => v.decorations }));
+    } catch (e) {
+      console.error('[Ariane] Ponctuation insécable indisponible :', e);
     }
 
     // Correcteur du système : soulignements et bulle de correction (Mac).

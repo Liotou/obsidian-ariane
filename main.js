@@ -1918,6 +1918,7 @@ const DEFAULT_SETTINGS = {
   aparteTaille: '0.8em', // taille de police de l'aparté
   dropSurParagraphe: true, // déposer une note sur un paragraphe -> note de bas de page
   dropToutesNotes: true, // accepter n'importe quelle note (sinon seulement les annotations)
+  ponctuationInsecable: true, // texte justifié : ponctuation jamais séparée de son mot
   dropToucheStyle: 'shift', // touche qui alterne « (Auteur, année) » et « Auteur (année) » au glisser
   titreSectionNotes: 'Annotations de lecture associées', // en-tête de la section des notes
   modeleCitation: '{{auteurs}}, {{annee}}, p. {{page}}',
@@ -2225,6 +2226,71 @@ function debutPhrase(texte, off) {
   }
   while (start < texte.length && /\s/.test(texte[start])) start++;
   return start;
+}
+
+// ── Ponctuation insécable ──
+//  En texte justifié, le navigateur coupait une ligne entre une parenthèse
+//  et son mot : « ( » seule en fin de ligne quand une espace la suivait,
+//  « ) » seule en début de ligne après un mot en italique (les astérisques
+//  masqués de l'éditeur lui laissent un point de coupure). On soude donc la
+//  ponctuation au mot qu'elle touche.
+
+const PONCT_FERMANTE = ')»”;:!?.,…';
+const PONCT_OUVRANTE = '(«“';
+const ESPACE_LIGNE = /[ \t\u00a0\u202f]/;
+
+// Les plages d'une ligne de source à ne jamais couper. Seuls les cas où une
+// coupure est possible sont retenus : une espace entre la ponctuation et
+// son mot, ou une marque de mise en forme ou de lien (« *éco*) »,
+// « ([[clé|Auteur… »). Les plages qui se touchent sont réunies ; une plage
+// trop longue, ou qui contient une intégration ou des mathématiques, est
+// laissée : mieux vaut une coupure qu'une ligne qui déborde.
+function plagesInsecables(ligne) {
+  const t = String(ligne == null ? '' : ligne);
+  const marqueAvant = /[*_~=`\]>]/;
+  const marqueApres = /[*_~=`[<]/;
+  const brutes = [];
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (PONCT_FERMANTE.includes(c)) {
+      let k = i;
+      while (k > 0 && ESPACE_LIGNE.test(t[k - 1])) k--;
+      if (k === 0) continue;
+      if (k === i && !marqueAvant.test(t[k - 1])) continue;
+      let d = k;
+      while (d > 0 && !/\s/.test(t[d - 1])) d--;
+      if (k - d > 60) d = k - 1;
+      let f = i + 1;
+      while (f < t.length && PONCT_FERMANTE.includes(t[f])) f++;
+      brutes.push([d, f]);
+      i = f - 1;
+    } else if (PONCT_OUVRANTE.includes(c)) {
+      let k = i + 1;
+      while (k < t.length && ESPACE_LIGNE.test(t[k])) k++;
+      if (k >= t.length) continue;
+      if (k === i + 1 && !marqueApres.test(t[k])) continue;
+      let f = k;
+      while (f < t.length && !/\s/.test(t[f])) f++;
+      if (f - k > 60) f = k + 1;
+      brutes.push([i, f]);
+    }
+  }
+  brutes.sort((a, b) => a[0] - b[0]);
+  const out = [];
+  for (const [a, b] of brutes) {
+    const der = out[out.length - 1];
+    if (der && a <= der[1]) der[1] = Math.max(der[1], b);
+    else out.push([a, b]);
+  }
+  return out.filter(([a, b]) => b - a <= 120 && !/!\[\[|\$/.test(t.slice(a, b)));
+}
+
+// Le même principe pour un texte déjà rendu (mode lecture) : l'espace qui
+// sépare une ponctuation de son mot devient insécable.
+function souderPonctuation(texte) {
+  return String(texte == null ? '' : texte)
+    .replace(/([(«“])[ \t]+(?=\S)/g, '$1\u00a0')
+    .replace(/(?<=\S)[ \t]+(?=[)»”;:!?…])/g, '\u00a0');
 }
 
 //#endregion 2 · Utilitaires génériques
@@ -7875,6 +7941,33 @@ const avecNoteAtomes = (Base) => class extends Base {
 
   //#region Ariane · notes & citations — rendu
   // ── notes & citations — rendu ────────────────────────────────────────────
+
+  // Mode lecture : l'espace entre une ponctuation et son mot devient
+  // insécable (voir plagesInsecables pour l'éditeur). Ni code, ni formules.
+  souderPonctuationRendue(el) {
+    if (this.settings.ponctuationInsecable === false || !el) return;
+    const doc = el.ownerDocument || document;
+    const parcours = doc.createTreeWalker(el, 4 /* NodeFilter.SHOW_TEXT */);
+    const noeuds = [];
+    for (let n = parcours.nextNode(); n; n = parcours.nextNode()) {
+      const p = n.parentElement;
+      if (p && p.closest('code, pre, .math, mjx-container')) continue;
+      if (/[ \t]/.test(n.nodeValue)) noeuds.push(n);
+    }
+    for (const n of noeuds) {
+      const v = souderPonctuation(n.nodeValue);
+      if (v !== n.nodeValue) n.nodeValue = v;
+    }
+  }
+
+  // Le réglage a changé : les éditeurs ouverts se redessinent.
+  rafraichirPonctuation() {
+    this._ponctuationRevue = (this._ponctuationRevue || 0) + 1;
+    for (const f of this.app.workspace.getLeavesOfType('markdown')) {
+      const cm = f.view && f.view.editor && f.view.editor.cm;
+      if (cm) try { cm.dispatch({}); } catch (e) { /* vue fermée */ }
+    }
+  }
 
   // La référence de la note pour l'en-tête principal. On cherche, dans
   // l'ordre, les propriétés que l'utilisateur a désignées ; à défaut, et s'il
@@ -24377,6 +24470,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerMarkdownPostProcessor((el, ctx) => this.enrichirLiensAnnotation(el, ctx));
     this.registerMarkdownPostProcessor((el) => this.rendreCitationsRepliables(el));
     this.registerMarkdownPostProcessor((el) => this.enrichirCompteursEmprunts(el));
+    this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
     this.app.workspace.onLayoutReady(() => this.installerDecorateurExplorateur());
     this.app.workspace.onLayoutReady(async () => {
       // Les données du temps et de l'activité vivent par jour dans le journal
@@ -24595,6 +24689,40 @@ class Ariane extends composer(obsidian.Plugin,
       this.registerEditorExtension(champPhrase);
     } catch (e) {
       console.error('[Ariane] Surlignage de phrase indisponible :', e);
+    }
+
+    // Ponctuation soudée à son mot : pas de « ( » seule en fin de ligne, ni
+    // de « ) » ou de « ; » seuls en début de ligne, en texte justifié.
+    try {
+      const { ViewPlugin, Decoration } = require('@codemirror/view');
+      const { RangeSetBuilder } = require('@codemirror/state');
+      const marque = Decoration.mark({ class: 'zfa-insecable' });
+      const greffon = this;
+      const calculer = (view) => {
+        const b = new RangeSetBuilder();
+        if (greffon.settings.ponctuationInsecable === false) return b.finish();
+        const doc = view.state.doc;
+        for (const { from, to } of view.visibleRanges) {
+          let n = doc.lineAt(from).number;
+          const fin = doc.lineAt(to).number;
+          for (; n <= fin; n++) {
+            const l = doc.line(n);
+            for (const [a, z] of plagesInsecables(l.text)) b.add(l.from + a, l.from + z, marque);
+          }
+        }
+        return b.finish();
+      };
+      this.registerEditorExtension(ViewPlugin.fromClass(class {
+        constructor(view) { this.decorations = calculer(view); }
+        update(u) {
+          if (u.docChanged || u.viewportChanged || greffon._ponctuationRevue !== this.revue) {
+            this.revue = greffon._ponctuationRevue;
+            this.decorations = calculer(u.view);
+          }
+        }
+      }, { decorations: (v) => v.decorations }));
+    } catch (e) {
+      console.error('[Ariane] Ponctuation insécable indisponible :', e);
     }
 
     // Correcteur du système : soulignements et bulle de correction (Mac).
@@ -25913,6 +26041,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
 
   ongletEcriture(c, s, maj) {
     this.ongletBarre(c, s, maj);
+    this._section(c, tr('Typographie'));
+    new obsidian.Setting(c)
+      .setName(tr('Ponctuation jamais séparée de son mot'))
+      .setDesc(tr("En texte justifié, une parenthèse, un guillemet, un point-virgule ou un deux-points ne se retrouve plus seul en début ou en fin de ligne. Rien n'est modifié dans vos notes : seul l'affichage change, en édition comme en lecture."))
+      .addToggle((t) => t.setValue(s.ponctuationInsecable !== false)
+        .onChange(async (v) => { s.ponctuationInsecable = v; await maj(); this.plugin.rafraichirPonctuation(); }));
     this._section(c, tr('Correcteur Apple'));
     this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne."));
     const relancerCorrecteur = (vider) => { if (this.plugin.correcteur) this.plugin.correcteur.relancer(vider); };
@@ -45540,6 +45674,8 @@ module.exports._test = {
   narratifDepuisLibelle,
   estLibelleNarratif,
   insertionNarrative,
+  plagesInsecables,
+  souderPonctuation,
   rafraichirLibelles,
   // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
   construireBibliographie,

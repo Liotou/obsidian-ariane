@@ -18,6 +18,8 @@ module.exports._test = {
   narratifDepuisLibelle,
   estLibelleNarratif,
   insertionNarrative,
+  plagesInsecables,
+  souderPonctuation,
   rafraichirLibelles,
   // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
   construireBibliographie,

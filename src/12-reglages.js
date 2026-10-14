@@ -966,6 +966,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
 
   ongletEcriture(c, s, maj) {
     this.ongletBarre(c, s, maj);
+    this._section(c, tr('Typographie'));
+    new obsidian.Setting(c)
+      .setName(tr('Ponctuation jamais séparée de son mot'))
+      .setDesc(tr("En texte justifié, une parenthèse, un guillemet, un point-virgule ou un deux-points ne se retrouve plus seul en début ou en fin de ligne. Rien n'est modifié dans vos notes : seul l'affichage change, en édition comme en lecture."))
+      .addToggle((t) => t.setValue(s.ponctuationInsecable !== false)
+        .onChange(async (v) => { s.ponctuationInsecable = v; await maj(); this.plugin.rafraichirPonctuation(); }));
     this._section(c, tr('Correcteur Apple'));
     this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne."));
     const relancerCorrecteur = (vider) => { if (this.plugin.correcteur) this.plugin.correcteur.relancer(vider); };

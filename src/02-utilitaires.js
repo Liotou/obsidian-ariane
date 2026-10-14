@@ -131,5 +131,70 @@ function debutPhrase(texte, off) {
   return start;
 }
 
+// ── Ponctuation insécable ──
+//  En texte justifié, le navigateur coupait une ligne entre une parenthèse
+//  et son mot : « ( » seule en fin de ligne quand une espace la suivait,
+//  « ) » seule en début de ligne après un mot en italique (les astérisques
+//  masqués de l'éditeur lui laissent un point de coupure). On soude donc la
+//  ponctuation au mot qu'elle touche.
+
+const PONCT_FERMANTE = ')»”;:!?.,…';
+const PONCT_OUVRANTE = '(«“';
+const ESPACE_LIGNE = /[ \t\u00a0\u202f]/;
+
+// Les plages d'une ligne de source à ne jamais couper. Seuls les cas où une
+// coupure est possible sont retenus : une espace entre la ponctuation et
+// son mot, ou une marque de mise en forme ou de lien (« *éco*) »,
+// « ([[clé|Auteur… »). Les plages qui se touchent sont réunies ; une plage
+// trop longue, ou qui contient une intégration ou des mathématiques, est
+// laissée : mieux vaut une coupure qu'une ligne qui déborde.
+function plagesInsecables(ligne) {
+  const t = String(ligne == null ? '' : ligne);
+  const marqueAvant = /[*_~=`\]>]/;
+  const marqueApres = /[*_~=`[<]/;
+  const brutes = [];
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (PONCT_FERMANTE.includes(c)) {
+      let k = i;
+      while (k > 0 && ESPACE_LIGNE.test(t[k - 1])) k--;
+      if (k === 0) continue;
+      if (k === i && !marqueAvant.test(t[k - 1])) continue;
+      let d = k;
+      while (d > 0 && !/\s/.test(t[d - 1])) d--;
+      if (k - d > 60) d = k - 1;
+      let f = i + 1;
+      while (f < t.length && PONCT_FERMANTE.includes(t[f])) f++;
+      brutes.push([d, f]);
+      i = f - 1;
+    } else if (PONCT_OUVRANTE.includes(c)) {
+      let k = i + 1;
+      while (k < t.length && ESPACE_LIGNE.test(t[k])) k++;
+      if (k >= t.length) continue;
+      if (k === i + 1 && !marqueApres.test(t[k])) continue;
+      let f = k;
+      while (f < t.length && !/\s/.test(t[f])) f++;
+      if (f - k > 60) f = k + 1;
+      brutes.push([i, f]);
+    }
+  }
+  brutes.sort((a, b) => a[0] - b[0]);
+  const out = [];
+  for (const [a, b] of brutes) {
+    const der = out[out.length - 1];
+    if (der && a <= der[1]) der[1] = Math.max(der[1], b);
+    else out.push([a, b]);
+  }
+  return out.filter(([a, b]) => b - a <= 120 && !/!\[\[|\$/.test(t.slice(a, b)));
+}
+
+// Le même principe pour un texte déjà rendu (mode lecture) : l'espace qui
+// sépare une ponctuation de son mot devient insécable.
+function souderPonctuation(texte) {
+  return String(texte == null ? '' : texte)
+    .replace(/([(«“])[ \t]+(?=\S)/g, '$1\u00a0')
+    .replace(/(?<=\S)[ \t]+(?=[)»”;:!?…])/g, '\u00a0');
+}
+
 //#endregion 2 · Utilitaires génériques
 

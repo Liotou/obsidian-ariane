@@ -323,6 +323,33 @@ const avecNoteAtomes = (Base) => class extends Base {
   //#region Ariane · notes & citations — rendu
   // ── notes & citations — rendu ────────────────────────────────────────────
 
+  // Mode lecture : l'espace entre une ponctuation et son mot devient
+  // insécable (voir plagesInsecables pour l'éditeur). Ni code, ni formules.
+  souderPonctuationRendue(el) {
+    if (this.settings.ponctuationInsecable === false || !el) return;
+    const doc = el.ownerDocument || document;
+    const parcours = doc.createTreeWalker(el, 4 /* NodeFilter.SHOW_TEXT */);
+    const noeuds = [];
+    for (let n = parcours.nextNode(); n; n = parcours.nextNode()) {
+      const p = n.parentElement;
+      if (p && p.closest('code, pre, .math, mjx-container')) continue;
+      if (/[ \t]/.test(n.nodeValue)) noeuds.push(n);
+    }
+    for (const n of noeuds) {
+      const v = souderPonctuation(n.nodeValue);
+      if (v !== n.nodeValue) n.nodeValue = v;
+    }
+  }
+
+  // Le réglage a changé : les éditeurs ouverts se redessinent.
+  rafraichirPonctuation() {
+    this._ponctuationRevue = (this._ponctuationRevue || 0) + 1;
+    for (const f of this.app.workspace.getLeavesOfType('markdown')) {
+      const cm = f.view && f.view.editor && f.view.editor.cm;
+      if (cm) try { cm.dispatch({}); } catch (e) { /* vue fermée */ }
+    }
+  }
+
   // La référence de la note pour l'en-tête principal. On cherche, dans
   // l'ordre, les propriétés que l'utilisateur a désignées ; à défaut, et s'il
   // l'a demandé, le nom du fichier fait office de référence — c'est le cas des
