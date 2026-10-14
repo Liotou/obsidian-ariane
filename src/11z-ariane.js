@@ -785,6 +785,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerMarkdownPostProcessor((el) => this.rendreCitationsRepliables(el));
     this.registerMarkdownPostProcessor((el) => this.enrichirCompteursEmprunts(el));
     this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
+    this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
     this.app.workspace.onLayoutReady(() => this.installerDecorateurExplorateur());
     this.app.workspace.onLayoutReady(async () => {
       // Les données du temps et de l'activité vivent par jour dans le journal
@@ -1037,6 +1038,50 @@ class Ariane extends composer(obsidian.Plugin,
       }, { decorations: (v) => v.decorations }));
     } catch (e) {
       console.error('[Ariane] Ponctuation insécable indisponible :', e);
+    }
+
+    // Numéros des titres (1., 1.1., …) : affichés en grisé, jamais écrits,
+    // ni sélectionnables ni modifiables.
+    try {
+      const { ViewPlugin, Decoration, WidgetType } = require('@codemirror/view');
+      const { RangeSetBuilder } = require('@codemirror/state');
+      class NumeroTitre extends WidgetType {
+        constructor(n) { super(); this.n = n; }
+        eq(o) { return o.n === this.n; }
+        toDOM(view) {
+          // Fenêtre détachée : le document de l'éditeur, non le global.
+          const s = ((view && view.dom && view.dom.ownerDocument) || document).createElement('span');
+          s.className = 'zfa-num-titre';
+          s.textContent = this.n;
+          s.setAttribute('aria-hidden', 'true');
+          return s;
+        }
+        ignoreEvent() { return true; }
+      }
+      const greffon = this;
+      const calculer = (view) => {
+        const b = new RangeSetBuilder();
+        if (greffon.settings.numerotationTitres === false) return b.finish();
+        const doc = view.state.doc;
+        const lignes = doc.toString().split('\n');
+        for (const [i, n] of numerosTitres(lignes)) {
+          const l = doc.line(i + 1);
+          const m = l.text.match(/^#{2,6}[ \t]+/);
+          if (m) b.add(l.from + m[0].length, l.from + m[0].length, Decoration.widget({ widget: new NumeroTitre(n), side: -1 }));
+        }
+        return b.finish();
+      };
+      this.registerEditorExtension(ViewPlugin.fromClass(class {
+        constructor(view) { this.decorations = calculer(view); }
+        update(u) {
+          if (u.docChanged || greffon._numerotationRevue !== this.revue) {
+            this.revue = greffon._numerotationRevue;
+            this.decorations = calculer(u.view);
+          }
+        }
+      }, { decorations: (v) => v.decorations }));
+    } catch (e) {
+      console.error('[Ariane] Numérotation des titres indisponible :', e);
     }
 
     // Correcteur du système : soulignements et bulle de correction (Mac).

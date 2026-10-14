@@ -341,9 +341,35 @@ const avecNoteAtomes = (Base) => class extends Base {
     }
   }
 
-  // Le réglage a changé : les éditeurs ouverts se redessinent.
+  // Mode lecture : chaque titre reçoit son numéro, calculé sur la note
+  // entière (le rendu arrive par sections).
+  numeroterTitresRendus(el, ctx) {
+    if (this.settings.numerotationTitres === false || !el || !ctx || !ctx.getSectionInfo) return;
+    const titres = el.querySelectorAll('h2, h3, h4, h5, h6');
+    if (!titres.length) return;
+    const info = ctx.getSectionInfo(el);
+    if (!info || typeof info.text !== 'string') return;
+    if (!this._numerosRendus || this._numerosRendus.texte !== info.text) {
+      this._numerosRendus = { texte: info.text, numeros: numerosTitres(info.text) };
+    }
+    const n = this._numerosRendus.numeros.get(info.lineStart);
+    for (const h of titres) {
+      const ancien = h.querySelector(':scope > .zfa-num-titre');
+      if (ancien) ancien.remove();
+      if (!n || titres.length > 1) continue;
+      const s = (h.ownerDocument || document).createElement('span');
+      s.className = 'zfa-num-titre';
+      s.textContent = n;
+      s.setAttribute('aria-hidden', 'true');
+      const ind = h.querySelector(':scope > .heading-collapse-indicator');
+      h.insertBefore(s, ind ? ind.nextSibling : h.firstChild);
+    }
+  }
+
+  // Un réglage de typographie a changé : les éditeurs ouverts se redessinent.
   rafraichirPonctuation() {
     this._ponctuationRevue = (this._ponctuationRevue || 0) + 1;
+    this._numerotationRevue = (this._numerotationRevue || 0) + 1;
     for (const f of this.app.workspace.getLeavesOfType('markdown')) {
       const cm = f.view && f.view.editor && f.view.editor.cm;
       if (cm) try { cm.dispatch({}); } catch (e) { /* vue fermée */ }

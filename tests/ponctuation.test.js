@@ -28,3 +28,22 @@ test('souderPonctuation : espaces insécables au contact de la ponctuation', () 
     'vivants (\u00a0biotiques) et «\u00a0mot\u00a0»\u00a0; fin\u00a0!');
   assert.equal(souderPonctuation('rien (à) faire.'), 'rien (à) faire.');
 });
+
+test('numerosTitres : ## = 1., ### = 1.1., #### = 1.1.1.', () => {
+  const { numerosTitres } = Ariane._test;
+  const n = (t) => [...numerosTitres(t)].map(([i, v]) => i + ':' + v);
+  assert.deepEqual(n('# Titre\n## A\n### A1\n#### A1a\n### A2\n## B\n### B1'),
+    ['1:1.', '2:1.1.', '3:1.1.1.', '4:1.2.', '5:2.', '6:2.1.']);
+  // Entête ignoré, code ignoré.
+  assert.deepEqual(n('---\ntype: x\n---\n## A\n```\n## pas un titre\n```\n## B'), ['3:1.', '7:2.']);
+  // Sans « ## », le plus haut niveau présent fait 1.
+  assert.deepEqual(n('### A\n#### A1\n### B'), ['0:1.', '1:1.1.', '2:2.']);
+  // Niveau sauté : zéro.
+  assert.deepEqual(n('## A\n#### A01'), ['0:1.', '1:1.0.1.']);
+  // Déjà numérotée à la main, ou dispensée : rien.
+  assert.deepEqual(n('## A\n### 1) Charge'), []);
+  assert.deepEqual(n('## 1. Introduction'), []);
+  assert.deepEqual(n('---\nnumérotation: false\n---\n## A'), []);
+  // « 2026 : bilan » n'est pas une numérotation.
+  assert.deepEqual(n('## 2026 : bilan\n## Suite'), ['0:1.', '1:2.']);
+});

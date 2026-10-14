@@ -1918,6 +1918,7 @@ const DEFAULT_SETTINGS = {
   aparteTaille: '0.8em', // taille de police de l'aparté
   dropSurParagraphe: true, // déposer une note sur un paragraphe -> note de bas de page
   dropToutesNotes: true, // accepter n'importe quelle note (sinon seulement les annotations)
+  numerotationTitres: true, // numéros des titres (## = 1., ### = 1.1.) affichés, jamais écrits
   ponctuationInsecable: true, // texte justifié : ponctuation jamais séparée de son mot
   dropToucheStyle: 'shift', // touche qui alterne « (Auteur, année) » et « Auteur (année) » au glisser
   titreSectionNotes: 'Annotations de lecture associées', // en-tête de la section des notes
@@ -2291,6 +2292,57 @@ function souderPonctuation(texte) {
   return String(texte == null ? '' : texte)
     .replace(/([(«“])[ \t]+(?=\S)/g, '$1\u00a0')
     .replace(/(?<=\S)[ \t]+(?=[)»”;:!?…])/g, '\u00a0');
+}
+
+// ── Numérotation des titres ──
+//  « ## » vaut 1., « ### » 1.1., « #### » 1.1.1., et ainsi de suite. Les
+//  numéros sont affichés, jamais écrits : ils suivent la note sans qu'on ait
+//  à les tenir. Une note dont les titres sont déjà numérotés à la main, ou
+//  qui porte « numérotation: false », n'en reçoit pas. Une note sans « ## »
+//  part de son plus haut niveau de titre. Un niveau sauté compte zéro.
+
+// Les numéros des titres d'une note, par indice de ligne (0 en tête).
+function numerosTitres(lignes) {
+  const l = Array.isArray(lignes) ? lignes : String(lignes == null ? '' : lignes).split('\n');
+  let i = 0;
+  if (l[0] !== undefined && l[0].trim() === '---') {
+    let j = 1;
+    while (j < l.length && l[j].trim() !== '---') {
+      if (/^num[ée]rotation\s*:\s*["']?(false|non|no)["']?\s*$/i.test(l[j])) return new Map();
+      j++;
+    }
+    if (j < l.length) i = j + 1;
+  }
+  const titres = [];
+  let cloture = '';
+  for (; i < l.length; i++) {
+    const t = l[i];
+    const f = t.match(/^\s*(`{3,}|~{3,})/);
+    if (f) {
+      if (!cloture) cloture = f[1][0];
+      else if (f[1][0] === cloture) cloture = '';
+      continue;
+    }
+    if (cloture) continue;
+    const m = t.match(/^(#{2,6})[ \t]+(\S.*)$/);
+    if (!m) continue;
+    const texte = m[2].replace(/\s#+\s*$/, '');
+    // Déjà numérotée à la main (« 1. », « 2) », « 1.2. », « II - ») : on
+    // n'en rajoute pas. « 2026 : bilan » n'est pas une numérotation.
+    if (/^(?:\d+(?:\.\d+)*[.)]|[IVXLC]+\s*[.)\-])\s+\S/.test(texte)) return new Map();
+    titres.push({ ligne: i, niveau: m[1].length });
+  }
+  const out = new Map();
+  if (!titres.length) return out;
+  const base = Math.min(...titres.map((x) => x.niveau));
+  const c = [0, 0, 0, 0, 0];
+  for (const { ligne, niveau } of titres) {
+    const k = niveau - base;
+    c[k] += 1;
+    for (let j = k + 1; j < c.length; j++) c[j] = 0;
+    out.set(ligne, c.slice(0, k + 1).join('.') + '.');
+  }
+  return out;
 }
 
 //#endregion 2 · Utilitaires génériques
@@ -7960,9 +8012,35 @@ const avecNoteAtomes = (Base) => class extends Base {
     }
   }
 
-  // Le réglage a changé : les éditeurs ouverts se redessinent.
+  // Mode lecture : chaque titre reçoit son numéro, calculé sur la note
+  // entière (le rendu arrive par sections).
+  numeroterTitresRendus(el, ctx) {
+    if (this.settings.numerotationTitres === false || !el || !ctx || !ctx.getSectionInfo) return;
+    const titres = el.querySelectorAll('h2, h3, h4, h5, h6');
+    if (!titres.length) return;
+    const info = ctx.getSectionInfo(el);
+    if (!info || typeof info.text !== 'string') return;
+    if (!this._numerosRendus || this._numerosRendus.texte !== info.text) {
+      this._numerosRendus = { texte: info.text, numeros: numerosTitres(info.text) };
+    }
+    const n = this._numerosRendus.numeros.get(info.lineStart);
+    for (const h of titres) {
+      const ancien = h.querySelector(':scope > .zfa-num-titre');
+      if (ancien) ancien.remove();
+      if (!n || titres.length > 1) continue;
+      const s = (h.ownerDocument || document).createElement('span');
+      s.className = 'zfa-num-titre';
+      s.textContent = n;
+      s.setAttribute('aria-hidden', 'true');
+      const ind = h.querySelector(':scope > .heading-collapse-indicator');
+      h.insertBefore(s, ind ? ind.nextSibling : h.firstChild);
+    }
+  }
+
+  // Un réglage de typographie a changé : les éditeurs ouverts se redessinent.
   rafraichirPonctuation() {
     this._ponctuationRevue = (this._ponctuationRevue || 0) + 1;
+    this._numerotationRevue = (this._numerotationRevue || 0) + 1;
     for (const f of this.app.workspace.getLeavesOfType('markdown')) {
       const cm = f.view && f.view.editor && f.view.editor.cm;
       if (cm) try { cm.dispatch({}); } catch (e) { /* vue fermée */ }
@@ -24471,6 +24549,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerMarkdownPostProcessor((el) => this.rendreCitationsRepliables(el));
     this.registerMarkdownPostProcessor((el) => this.enrichirCompteursEmprunts(el));
     this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
+    this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
     this.app.workspace.onLayoutReady(() => this.installerDecorateurExplorateur());
     this.app.workspace.onLayoutReady(async () => {
       // Les données du temps et de l'activité vivent par jour dans le journal
@@ -24723,6 +24802,50 @@ class Ariane extends composer(obsidian.Plugin,
       }, { decorations: (v) => v.decorations }));
     } catch (e) {
       console.error('[Ariane] Ponctuation insécable indisponible :', e);
+    }
+
+    // Numéros des titres (1., 1.1., …) : affichés en grisé, jamais écrits,
+    // ni sélectionnables ni modifiables.
+    try {
+      const { ViewPlugin, Decoration, WidgetType } = require('@codemirror/view');
+      const { RangeSetBuilder } = require('@codemirror/state');
+      class NumeroTitre extends WidgetType {
+        constructor(n) { super(); this.n = n; }
+        eq(o) { return o.n === this.n; }
+        toDOM(view) {
+          // Fenêtre détachée : le document de l'éditeur, non le global.
+          const s = ((view && view.dom && view.dom.ownerDocument) || document).createElement('span');
+          s.className = 'zfa-num-titre';
+          s.textContent = this.n;
+          s.setAttribute('aria-hidden', 'true');
+          return s;
+        }
+        ignoreEvent() { return true; }
+      }
+      const greffon = this;
+      const calculer = (view) => {
+        const b = new RangeSetBuilder();
+        if (greffon.settings.numerotationTitres === false) return b.finish();
+        const doc = view.state.doc;
+        const lignes = doc.toString().split('\n');
+        for (const [i, n] of numerosTitres(lignes)) {
+          const l = doc.line(i + 1);
+          const m = l.text.match(/^#{2,6}[ \t]+/);
+          if (m) b.add(l.from + m[0].length, l.from + m[0].length, Decoration.widget({ widget: new NumeroTitre(n), side: -1 }));
+        }
+        return b.finish();
+      };
+      this.registerEditorExtension(ViewPlugin.fromClass(class {
+        constructor(view) { this.decorations = calculer(view); }
+        update(u) {
+          if (u.docChanged || greffon._numerotationRevue !== this.revue) {
+            this.revue = greffon._numerotationRevue;
+            this.decorations = calculer(u.view);
+          }
+        }
+      }, { decorations: (v) => v.decorations }));
+    } catch (e) {
+      console.error('[Ariane] Numérotation des titres indisponible :', e);
     }
 
     // Correcteur du système : soulignements et bulle de correction (Mac).
@@ -26047,6 +26170,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("En texte justifié, une parenthèse, un guillemet, un point-virgule ou un deux-points ne se retrouve plus seul en début ou en fin de ligne. Rien n'est modifié dans vos notes : seul l'affichage change, en édition comme en lecture."))
       .addToggle((t) => t.setValue(s.ponctuationInsecable !== false)
         .onChange(async (v) => { s.ponctuationInsecable = v; await maj(); this.plugin.rafraichirPonctuation(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Numéroter les titres'))
+      .setDesc(tr("« ## » vaut 1., « ### » 1.1., « #### » 1.1.1. Les numéros s'affichent en grisé, en édition comme en lecture, mais ne sont jamais écrits dans la note : ils suivent d'eux-mêmes l'ajout, le retrait ou le déplacement d'un titre. Une note déjà numérotée à la main n'en reçoit pas ; une note peut s'en dispenser par la propriété « numérotation: false »."))
+      .addToggle((t) => t.setValue(s.numerotationTitres !== false)
+        .onChange(async (v) => { s.numerotationTitres = v; await maj(); this.plugin.rafraichirPonctuation(); }));
     this._section(c, tr('Correcteur Apple'));
     this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne."));
     const relancerCorrecteur = (vider) => { if (this.plugin.correcteur) this.plugin.correcteur.relancer(vider); };
@@ -45676,6 +45804,7 @@ module.exports._test = {
   insertionNarrative,
   plagesInsecables,
   souderPonctuation,
+  numerosTitres,
   rafraichirLibelles,
   // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
   construireBibliographie,

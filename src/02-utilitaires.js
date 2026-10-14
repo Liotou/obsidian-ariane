@@ -196,5 +196,56 @@ function souderPonctuation(texte) {
     .replace(/(?<=\S)[ \t]+(?=[)»”;:!?…])/g, '\u00a0');
 }
 
+// ── Numérotation des titres ──
+//  « ## » vaut 1., « ### » 1.1., « #### » 1.1.1., et ainsi de suite. Les
+//  numéros sont affichés, jamais écrits : ils suivent la note sans qu'on ait
+//  à les tenir. Une note dont les titres sont déjà numérotés à la main, ou
+//  qui porte « numérotation: false », n'en reçoit pas. Une note sans « ## »
+//  part de son plus haut niveau de titre. Un niveau sauté compte zéro.
+
+// Les numéros des titres d'une note, par indice de ligne (0 en tête).
+function numerosTitres(lignes) {
+  const l = Array.isArray(lignes) ? lignes : String(lignes == null ? '' : lignes).split('\n');
+  let i = 0;
+  if (l[0] !== undefined && l[0].trim() === '---') {
+    let j = 1;
+    while (j < l.length && l[j].trim() !== '---') {
+      if (/^num[ée]rotation\s*:\s*["']?(false|non|no)["']?\s*$/i.test(l[j])) return new Map();
+      j++;
+    }
+    if (j < l.length) i = j + 1;
+  }
+  const titres = [];
+  let cloture = '';
+  for (; i < l.length; i++) {
+    const t = l[i];
+    const f = t.match(/^\s*(`{3,}|~{3,})/);
+    if (f) {
+      if (!cloture) cloture = f[1][0];
+      else if (f[1][0] === cloture) cloture = '';
+      continue;
+    }
+    if (cloture) continue;
+    const m = t.match(/^(#{2,6})[ \t]+(\S.*)$/);
+    if (!m) continue;
+    const texte = m[2].replace(/\s#+\s*$/, '');
+    // Déjà numérotée à la main (« 1. », « 2) », « 1.2. », « II - ») : on
+    // n'en rajoute pas. « 2026 : bilan » n'est pas une numérotation.
+    if (/^(?:\d+(?:\.\d+)*[.)]|[IVXLC]+\s*[.)\-])\s+\S/.test(texte)) return new Map();
+    titres.push({ ligne: i, niveau: m[1].length });
+  }
+  const out = new Map();
+  if (!titres.length) return out;
+  const base = Math.min(...titres.map((x) => x.niveau));
+  const c = [0, 0, 0, 0, 0];
+  for (const { ligne, niveau } of titres) {
+    const k = niveau - base;
+    c[k] += 1;
+    for (let j = k + 1; j < c.length; j++) c[j] = 0;
+    out.set(ligne, c.slice(0, k + 1).join('.') + '.');
+  }
+  return out;
+}
+
 //#endregion 2 · Utilitaires génériques
 
