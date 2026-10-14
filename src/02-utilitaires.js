@@ -217,6 +217,7 @@ function numerosTitres(lignes) {
   }
   const titres = [];
   let cloture = '';
+  // Les titres sont relevés ici, numérotés par numerosDepuisTitres.
   for (; i < l.length; i++) {
     const t = l[i];
     const f = t.match(/^\s*(`{3,}|~{3,})/);
@@ -228,12 +229,19 @@ function numerosTitres(lignes) {
     if (cloture) continue;
     const m = t.match(/^(#{2,6})[ \t]+(\S.*)$/);
     if (!m) continue;
-    const texte = m[2].replace(/\s#+\s*$/, '');
-    // Déjà numérotée à la main (« 1. », « 2) », « 1.2. », « II - ») : on
-    // n'en rajoute pas. « 2026 : bilan » n'est pas une numérotation.
-    if (/^(?:\d+(?:\.\d+)*[.)]|[IVXLC]+\s*[.)\-])\s+\S/.test(texte)) return new Map();
-    titres.push({ ligne: i, niveau: m[1].length });
+    titres.push({ ligne: i, niveau: m[1].length, texte: m[2].replace(/\s#+\s*$/, '') });
   }
+  return numerosDepuisTitres(titres);
+}
+
+// Le calcul lui-même, sur des titres déjà relevés ({ ligne, niveau, texte }) :
+// la note en mode lecture et en édition, le panneau « Plan » d'Obsidian
+// depuis l'index des métadonnées.
+function numerosDepuisTitres(liste) {
+  const titres = (liste || []).filter((x) => x && x.niveau >= 2 && x.niveau <= 6);
+  // Déjà numérotée à la main (« 1. », « 2) », « 1.2. », « II - ») : on n'en
+  // rajoute pas. « 2026 : bilan » n'est pas une numérotation.
+  if (titres.some((x) => /^(?:\d+(?:\.\d+)*[.)]|[IVXLC]+\s*[.)\-])\s+\S/.test(String(x.texte || '')))) return new Map();
   const out = new Map();
   if (!titres.length) return out;
   const base = Math.min(...titres.map((x) => x.niveau));

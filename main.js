@@ -2315,6 +2315,7 @@ function numerosTitres(lignes) {
   }
   const titres = [];
   let cloture = '';
+  // Les titres sont relevés ici, numérotés par numerosDepuisTitres.
   for (; i < l.length; i++) {
     const t = l[i];
     const f = t.match(/^\s*(`{3,}|~{3,})/);
@@ -2326,12 +2327,19 @@ function numerosTitres(lignes) {
     if (cloture) continue;
     const m = t.match(/^(#{2,6})[ \t]+(\S.*)$/);
     if (!m) continue;
-    const texte = m[2].replace(/\s#+\s*$/, '');
-    // Déjà numérotée à la main (« 1. », « 2) », « 1.2. », « II - ») : on
-    // n'en rajoute pas. « 2026 : bilan » n'est pas une numérotation.
-    if (/^(?:\d+(?:\.\d+)*[.)]|[IVXLC]+\s*[.)\-])\s+\S/.test(texte)) return new Map();
-    titres.push({ ligne: i, niveau: m[1].length });
+    titres.push({ ligne: i, niveau: m[1].length, texte: m[2].replace(/\s#+\s*$/, '') });
   }
+  return numerosDepuisTitres(titres);
+}
+
+// Le calcul lui-même, sur des titres déjà relevés ({ ligne, niveau, texte }) :
+// la note en mode lecture et en édition, le panneau « Plan » d'Obsidian
+// depuis l'index des métadonnées.
+function numerosDepuisTitres(liste) {
+  const titres = (liste || []).filter((x) => x && x.niveau >= 2 && x.niveau <= 6);
+  // Déjà numérotée à la main (« 1. », « 2) », « 1.2. », « II - ») : on n'en
+  // rajoute pas. « 2026 : bilan » n'est pas une numérotation.
+  if (titres.some((x) => /^(?:\d+(?:\.\d+)*[.)]|[IVXLC]+\s*[.)\-])\s+\S/.test(String(x.texte || '')))) return new Map();
   const out = new Map();
   if (!titres.length) return out;
   const base = Math.min(...titres.map((x) => x.niveau));
@@ -8037,10 +8045,67 @@ const avecNoteAtomes = (Base) => class extends Base {
     }
   }
 
+  // Le panneau « Plan » d'Obsidian : chaque entrée reçoit le numéro de son
+  // titre. Le plan se reconstruit à chaque changement de la note ; on
+  // repasse derrière lui, une fois sa mise à jour faite.
+  numeroterPlan(vue) {
+    const f = vue && vue.file;
+    const racine = vue && vue.tree && vue.tree.root;
+    if (!f || !racine) return;
+    const cache = this.app.metadataCache.getFileCache(f) || {};
+    const fm = cache.frontmatter || {};
+    const dispense = ['false', 'non', 'no'].includes(String(fm['numérotation'] != null ? fm['numérotation'] : fm.numerotation).toLowerCase());
+    const numeros = (this.settings.numerotationTitres === false || dispense) ? new Map()
+      : numerosDepuisTitres((cache.headings || []).map((h) => ({ ligne: h.position.start.line, niveau: h.level, texte: h.heading })));
+    const parcourir = (item) => {
+      for (const it of (item.vChildren && item.vChildren._children) || []) {
+        const inner = it.innerEl;
+        if (inner && it.heading && it.heading.position) {
+          const n = numeros.get(it.heading.position.start.line);
+          let s = inner.querySelector(':scope > .zfa-num-titre');
+          if (!n) { if (s) s.remove(); } else {
+            if (!s) {
+              s = (inner.ownerDocument || document).createElement('span');
+              s.className = 'zfa-num-titre';
+              s.setAttribute('aria-hidden', 'true');
+              inner.prepend(s);
+            }
+            s.textContent = n;
+          }
+        }
+        parcourir(it);
+      }
+    };
+    parcourir(racine);
+  }
+
+  // Branche la numérotation sur les panneaux « Plan » ouverts.
+  brancherPlans() {
+    for (const f of this.app.workspace.getLeavesOfType('outline')) {
+      const vue = f.view;
+      if (!vue || typeof vue.update !== 'function') continue;
+      if (!vue._zfaNumerote) {
+        vue._zfaNumerote = true;
+        const greffon = this;
+        const origine = vue.update;
+        // Interne d'Obsidian : une erreur ici ne doit jamais casser le plan.
+        const numeroter = (v) => { try { greffon.numeroterPlan(v); } catch (e) { console.debug('[Ariane] plan', e); } };
+        vue.update = function () {
+          const r = origine.apply(this, arguments);
+          if (r && typeof r.then === 'function') r.then(() => numeroter(this), () => {});
+          else numeroter(this);
+          return r;
+        };
+      }
+      try { this.numeroterPlan(vue); } catch (e) { console.debug('[Ariane] plan', e); }
+    }
+  }
+
   // Un réglage de typographie a changé : les éditeurs ouverts se redessinent.
   rafraichirPonctuation() {
     this._ponctuationRevue = (this._ponctuationRevue || 0) + 1;
     this._numerotationRevue = (this._numerotationRevue || 0) + 1;
+    this.brancherPlans();
     for (const f of this.app.workspace.getLeavesOfType('markdown')) {
       const cm = f.view && f.view.editor && f.view.editor.cm;
       if (cm) try { cm.dispatch({}); } catch (e) { /* vue fermée */ }
@@ -24550,6 +24615,9 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerMarkdownPostProcessor((el) => this.enrichirCompteursEmprunts(el));
     this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
     this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
+    // Le panneau « Plan » : ses entrées portent les mêmes numéros.
+    this.app.workspace.onLayoutReady(() => this.brancherPlans());
+    this.registerEvent(this.app.workspace.on('layout-change', () => this.brancherPlans()));
     this.app.workspace.onLayoutReady(() => this.installerDecorateurExplorateur());
     this.app.workspace.onLayoutReady(async () => {
       // Les données du temps et de l'activité vivent par jour dans le journal
@@ -45805,6 +45873,7 @@ module.exports._test = {
   plagesInsecables,
   souderPonctuation,
   numerosTitres,
+  numerosDepuisTitres,
   rafraichirLibelles,
   // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
   construireBibliographie,

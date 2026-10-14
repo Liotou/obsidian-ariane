@@ -21,6 +21,7 @@ module.exports._test = {
   plagesInsecables,
   souderPonctuation,
   numerosTitres,
+  numerosDepuisTitres,
   rafraichirLibelles,
   // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
   construireBibliographie,

@@ -47,3 +47,15 @@ test('numerosTitres : ## = 1., ### = 1.1., #### = 1.1.1.', () => {
   // « 2026 : bilan » n'est pas une numérotation.
   assert.deepEqual(n('## 2026 : bilan\n## Suite'), ['0:1.', '1:2.']);
 });
+
+test('numerosDepuisTitres : depuis l’index des métadonnées (panneau « Plan »)', () => {
+  const { numerosDepuisTitres } = Ariane._test;
+  const t = [
+    { ligne: 0, niveau: 1, texte: 'Titre' },
+    { ligne: 4, niveau: 2, texte: 'A' },
+    { ligne: 9, niveau: 3, texte: 'A1' },
+    { ligne: 12, niveau: 2, texte: 'B' },
+  ];
+  assert.deepEqual([...numerosDepuisTitres(t)], [[4, '1.'], [9, '1.1.'], [12, '2.']]);
+  assert.deepEqual([...numerosDepuisTitres([{ ligne: 2, niveau: 2, texte: '1. Intro' }])], []);
+});

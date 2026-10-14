@@ -366,10 +366,67 @@ const avecNoteAtomes = (Base) => class extends Base {
     }
   }
 
+  // Le panneau « Plan » d'Obsidian : chaque entrée reçoit le numéro de son
+  // titre. Le plan se reconstruit à chaque changement de la note ; on
+  // repasse derrière lui, une fois sa mise à jour faite.
+  numeroterPlan(vue) {
+    const f = vue && vue.file;
+    const racine = vue && vue.tree && vue.tree.root;
+    if (!f || !racine) return;
+    const cache = this.app.metadataCache.getFileCache(f) || {};
+    const fm = cache.frontmatter || {};
+    const dispense = ['false', 'non', 'no'].includes(String(fm['numérotation'] != null ? fm['numérotation'] : fm.numerotation).toLowerCase());
+    const numeros = (this.settings.numerotationTitres === false || dispense) ? new Map()
+      : numerosDepuisTitres((cache.headings || []).map((h) => ({ ligne: h.position.start.line, niveau: h.level, texte: h.heading })));
+    const parcourir = (item) => {
+      for (const it of (item.vChildren && item.vChildren._children) || []) {
+        const inner = it.innerEl;
+        if (inner && it.heading && it.heading.position) {
+          const n = numeros.get(it.heading.position.start.line);
+          let s = inner.querySelector(':scope > .zfa-num-titre');
+          if (!n) { if (s) s.remove(); } else {
+            if (!s) {
+              s = (inner.ownerDocument || document).createElement('span');
+              s.className = 'zfa-num-titre';
+              s.setAttribute('aria-hidden', 'true');
+              inner.prepend(s);
+            }
+            s.textContent = n;
+          }
+        }
+        parcourir(it);
+      }
+    };
+    parcourir(racine);
+  }
+
+  // Branche la numérotation sur les panneaux « Plan » ouverts.
+  brancherPlans() {
+    for (const f of this.app.workspace.getLeavesOfType('outline')) {
+      const vue = f.view;
+      if (!vue || typeof vue.update !== 'function') continue;
+      if (!vue._zfaNumerote) {
+        vue._zfaNumerote = true;
+        const greffon = this;
+        const origine = vue.update;
+        // Interne d'Obsidian : une erreur ici ne doit jamais casser le plan.
+        const numeroter = (v) => { try { greffon.numeroterPlan(v); } catch (e) { console.debug('[Ariane] plan', e); } };
+        vue.update = function () {
+          const r = origine.apply(this, arguments);
+          if (r && typeof r.then === 'function') r.then(() => numeroter(this), () => {});
+          else numeroter(this);
+          return r;
+        };
+      }
+      try { this.numeroterPlan(vue); } catch (e) { console.debug('[Ariane] plan', e); }
+    }
+  }
+
   // Un réglage de typographie a changé : les éditeurs ouverts se redessinent.
   rafraichirPonctuation() {
     this._ponctuationRevue = (this._ponctuationRevue || 0) + 1;
     this._numerotationRevue = (this._numerotationRevue || 0) + 1;
+    this.brancherPlans();
     for (const f of this.app.workspace.getLeavesOfType('markdown')) {
       const cm = f.view && f.view.editor && f.view.editor.cm;
       if (cm) try { cm.dispatch({}); } catch (e) { /* vue fermée */ }

@@ -786,6 +786,9 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerMarkdownPostProcessor((el) => this.enrichirCompteursEmprunts(el));
     this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
     this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
+    // Le panneau « Plan » : ses entrées portent les mêmes numéros.
+    this.app.workspace.onLayoutReady(() => this.brancherPlans());
+    this.registerEvent(this.app.workspace.on('layout-change', () => this.brancherPlans()));
     this.app.workspace.onLayoutReady(() => this.installerDecorateurExplorateur());
     this.app.workspace.onLayoutReady(async () => {
       // Les données du temps et de l'activité vivent par jour dans le journal
