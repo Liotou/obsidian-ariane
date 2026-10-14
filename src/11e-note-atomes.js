@@ -1599,7 +1599,10 @@ const avecNoteAtomes = (Base) => class extends Base {
       const ligne = cm.state.doc.lineAt(pos);
       const entrees = cles.map((c) => '[[' + c + '|' + narratifDepuisLibelle(this.libelleCitation(c)) + ']]');
       const r = insertionNarrative(ligne.text, pos - ligne.from, entrees, this.settings.separateurCitation || ' ; ');
-      cm.dispatch({ changes: { from: ligne.from + r.off, insert: r.insert } });
+      const fin = ligne.from + r.off + r.insert.length;
+      // Le curseur après l'espace : la phrase se poursuit aussitôt.
+      cm.dispatch({ changes: { from: ligne.from + r.off, insert: r.insert }, selection: { anchor: fin } });
+      try { cm.focus(); } catch (err) { /* éditeur fermé */ }
       this.reinitialiserStyleGlisser();
       this.nettoyerZoneDrop();
       return;
@@ -1611,7 +1614,9 @@ const avecNoteAtomes = (Base) => class extends Base {
       const entrees = cles.map((c) => '[[' + c + '|' + this.libelleCitation(c) + ']]');
       // Pas composerCitation : il rejoindrait le groupe qui clôt le paragraphe
       // précédent, par-dessus la ligne vide.
-      cm.dispatch({ changes: { from: ligne.from, insert: '(' + entrees.join(this.settings.separateurCitation || ' ; ') + ')' } });
+      const insert = '(' + entrees.join(this.settings.separateurCitation || ' ; ') + ') ';
+      cm.dispatch({ changes: { from: ligne.from, insert }, selection: { anchor: ligne.from + insert.length } });
+      try { cm.focus(); } catch (err) { /* éditeur fermé */ }
       this.nettoyerZoneDrop();
       return;
     }

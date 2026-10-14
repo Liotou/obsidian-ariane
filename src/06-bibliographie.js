@@ -246,7 +246,8 @@ function estLibelleNarratif(alias) {
 
 // Où et quoi insérer pour une citation narrative déposée à `off` dans une
 // ligne : jamais au milieu d'un mot (on recule à son début) ni d'un lien (on
-// passe après lui), avec une espace de part et d'autre si le texte l'exige.
+// passe après lui), avec une espace avant si le texte l'exige, et une après,
+// sauf devant une ponctuation ou une espace : on enchaîne la phrase aussitôt.
 // `entrees` : les liens « [[clé|libellé]] » à poser. Rend { off, insert }.
 function insertionNarrative(ligne, off, entrees, sep) {
   const t = String(ligne || '');
@@ -262,7 +263,7 @@ function insertionNarrative(ligne, off, entrees, sep) {
   const apres = o < t.length ? t[o] : '';
   const corps = (entrees || []).join(sep || ' ; ');
   const insert = (avant && !/[\s(\[«\u00a0\u202f]/.test(avant) ? ' ' : '')
-    + corps + (apres && !/[\s.,;:!?)\]»\u00a0\u202f]/.test(apres) ? ' ' : '');
+    + corps + (!apres || !/[\s.,;:!?)\]»\u00a0\u202f]/.test(apres) ? ' ' : '');
   return { off: o, insert };
 }
 

@@ -3637,7 +3637,8 @@ function estLibelleNarratif(alias) {
 
 // Où et quoi insérer pour une citation narrative déposée à `off` dans une
 // ligne : jamais au milieu d'un mot (on recule à son début) ni d'un lien (on
-// passe après lui), avec une espace de part et d'autre si le texte l'exige.
+// passe après lui), avec une espace avant si le texte l'exige, et une après,
+// sauf devant une ponctuation ou une espace : on enchaîne la phrase aussitôt.
 // `entrees` : les liens « [[clé|libellé]] » à poser. Rend { off, insert }.
 function insertionNarrative(ligne, off, entrees, sep) {
   const t = String(ligne || '');
@@ -3653,7 +3654,7 @@ function insertionNarrative(ligne, off, entrees, sep) {
   const apres = o < t.length ? t[o] : '';
   const corps = (entrees || []).join(sep || ' ; ');
   const insert = (avant && !/[\s(\[«\u00a0\u202f]/.test(avant) ? ' ' : '')
-    + corps + (apres && !/[\s.,;:!?)\]»\u00a0\u202f]/.test(apres) ? ' ' : '');
+    + corps + (!apres || !/[\s.,;:!?)\]»\u00a0\u202f]/.test(apres) ? ' ' : '');
   return { off: o, insert };
 }
 
@@ -9334,7 +9335,10 @@ const avecNoteAtomes = (Base) => class extends Base {
       const ligne = cm.state.doc.lineAt(pos);
       const entrees = cles.map((c) => '[[' + c + '|' + narratifDepuisLibelle(this.libelleCitation(c)) + ']]');
       const r = insertionNarrative(ligne.text, pos - ligne.from, entrees, this.settings.separateurCitation || ' ; ');
-      cm.dispatch({ changes: { from: ligne.from + r.off, insert: r.insert } });
+      const fin = ligne.from + r.off + r.insert.length;
+      // Le curseur après l'espace : la phrase se poursuit aussitôt.
+      cm.dispatch({ changes: { from: ligne.from + r.off, insert: r.insert }, selection: { anchor: fin } });
+      try { cm.focus(); } catch (err) { /* éditeur fermé */ }
       this.reinitialiserStyleGlisser();
       this.nettoyerZoneDrop();
       return;
@@ -9346,7 +9350,9 @@ const avecNoteAtomes = (Base) => class extends Base {
       const entrees = cles.map((c) => '[[' + c + '|' + this.libelleCitation(c) + ']]');
       // Pas composerCitation : il rejoindrait le groupe qui clôt le paragraphe
       // précédent, par-dessus la ligne vide.
-      cm.dispatch({ changes: { from: ligne.from, insert: '(' + entrees.join(this.settings.separateurCitation || ' ; ') + ')' } });
+      const insert = '(' + entrees.join(this.settings.separateurCitation || ' ; ') + ') ';
+      cm.dispatch({ changes: { from: ligne.from, insert }, selection: { anchor: ligne.from + insert.length } });
+      try { cm.focus(); } catch (err) { /* éditeur fermé */ }
       this.nettoyerZoneDrop();
       return;
     }

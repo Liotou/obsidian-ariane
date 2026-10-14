@@ -76,12 +76,16 @@ test('insertionNarrative : jamais dans un mot ni dans un lien, espaces au besoin
   // Au milieu de « montre » : recule au début du mot, espace après.
   assert.deepEqual(ins('Comme montre la note.', 8, [L]), { off: 6, insert: L + ' ' });
   // Après un mot sans espace : espace avant.
-  assert.deepEqual(ins('Ainsi,', 6, [L]), { off: 6, insert: ' ' + L });
+  assert.deepEqual(ins('Ainsi,', 6, [L]), { off: 6, insert: ' ' + L + ' ' });
   // Avant une virgule : pas d'espace après.
   assert.deepEqual(ins('selon , x', 6, [L]), { off: 6, insert: L });
   // Dans un lien existant : après lui.
   const t = 'Voir [[A|Adner, 2017]] ici';
   assert.equal(ins(t, 10, [L]).off, 22);
+  // Ligne vide : une espace après, pour enchaîner.
+  assert.deepEqual(ins('', 0, [L]), { off: 0, insert: L + ' ' });
+  // Avant une espace : pas de seconde espace.
+  assert.deepEqual(ins('a b', 1, [L]), { off: 1, insert: ' ' + L });
   // En début de ligne.
   assert.deepEqual(ins('montre que', 0, [L]), { off: 0, insert: L + ' ' });
 });
