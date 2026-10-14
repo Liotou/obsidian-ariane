@@ -14,6 +14,11 @@ module.exports._test = {
   preparerMarkdownExport,
   deplierIntegrations,
   footnotesVersCitations,
+  citationsNarrativesVersPandoc,
+  narratifDepuisLibelle,
+  estLibelleNarratif,
+  insertionNarrative,
+  rafraichirLibelles,
   // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
   construireBibliographie,
   injecterBibliographie,

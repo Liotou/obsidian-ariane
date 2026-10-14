@@ -215,6 +215,9 @@ const TEXTES = {
     "Activer le reclassement": "Enable reranking",
     "Activer le repliement": "Enable folding",
     "Activer les suggestions": "Enable suggestions",
+    "(Auteur, année)": "(Author, year)",
+    "Auteur (année)": "Author (year)",
+    "Maj : changer": "Shift: switch",
     "Activé, un travail rapporté mais absent de Zotero est cité sous la forme « Auteur A et al., 2020, cité dans Auteur B, 2015, p. 12 ». Désactivé, seule la source réellement consultée est citée. Sans effet sur les travaux présents dans Zotero, toujours cités directement.": "When enabled, a work reported but absent from Zotero is cited as “Author A et al., 2020, as cited in Author B, 2015, p. 12”. When disabled, only the source you actually read is cited. This has no effect on works present in Zotero, which are always cited directly.",
     "Adresse": "Address",
     "Affiche en police à largeur fixe les notes des dossiers listés. Liste vide : aucun. Le texte reste normal (recherche et tri intacts).": "Shows notes from the listed folders in a fixed width font. An empty list means none. The text itself is unchanged, so search and sorting still work.",
@@ -3415,12 +3418,59 @@ function rafraichirLibelles(contenu, libelle, citable) {
     if (protege(pos)) return tout;
     const k = cleDeLien(cle);
     if (!citable(k)) return tout;
-    const neuf = libelle(k);
+    let neuf = libelle(k);
+    // Une citation narrative garde sa forme « Auteur (année) ».
+    if (neuf && estLibelleNarratif(alias)) neuf = narratifDepuisLibelle(neuf);
     if (!neuf || neuf === alias) return tout;
     n++;
     return '[[' + k + '|' + neuf + ']]';
   });
   return { texte: out, n };
+}
+
+// ── Citation narrative : « Auteur (année) » ──
+//  Le second style du glisser-déposer, pour parler d'un auteur à la troisième
+//  personne : « Ackoff et al. (2006, p. 12) montre que… ». Il s'écrit
+//  [[clé|Ackoff et al. (2006, p. 12)]], sans parenthèses autour, à l'endroit
+//  même du dépôt. Son libellé se tire du libellé ordinaire, quel qu'en soit
+//  le modèle : tout ce qui suit l'année passe dans la parenthèse.
+
+// « Ackoff et al., 2006, p. 12 » -> « Ackoff et al. (2006, p. 12) ». Chaque
+// référence d'un libellé composé (« A, 2000 ; B, 2001 ») est traitée à part ;
+// une référence sans année reste telle quelle.
+function narratifDepuisLibelle(libelle) {
+  return String(libelle == null ? '' : libelle).split(/\s*;\s*/).map((r) => {
+    const m = r.match(/^(.*?),\s*((?:\d{4}[a-z]?|s\.\s?d\.|n\.\s?d\.)(?=$|[\s,]).*)$/);
+    return m ? m[1].trim() + ' (' + m[2].trim() + ')' : r.trim();
+  }).filter(Boolean).join(' ; ');
+}
+
+// Un alias de citation est-il narratif ? Le libellé ordinaire ne finit
+// jamais par une parenthèse ; le narratif, toujours.
+function estLibelleNarratif(alias) {
+  return /\S\s*\([^()]*\)\s*$/.test(String(alias || ''));
+}
+
+// Où et quoi insérer pour une citation narrative déposée à `off` dans une
+// ligne : jamais au milieu d'un mot (on recule à son début) ni d'un lien (on
+// passe après lui), avec une espace de part et d'autre si le texte l'exige.
+// `entrees` : les liens « [[clé|libellé]] » à poser. Rend { off, insert }.
+function insertionNarrative(ligne, off, entrees, sep) {
+  const t = String(ligne || '');
+  let o = Math.max(0, Math.min(t.length, off | 0));
+  for (const m of t.matchAll(/\[\[[^\]\n]*\]\]/g)) {
+    if (o > m.index && o < m.index + m[0].length) { o = m.index + m[0].length; break; }
+  }
+  const lettre = /[\p{L}\p{N}'’-]/u;
+  if (o > 0 && o < t.length && lettre.test(t[o - 1]) && lettre.test(t[o])) {
+    while (o > 0 && lettre.test(t[o - 1])) o--;
+  }
+  const avant = o > 0 ? t[o - 1] : '';
+  const apres = o < t.length ? t[o] : '';
+  const corps = (entrees || []).join(sep || ' ; ');
+  const insert = (avant && !/[\s(\[«\u00a0\u202f]/.test(avant) ? ' ' : '')
+    + corps + (apres && !/[\s.,;:!?)\]»\u00a0\u202f]/.test(apres) ? ' ' : '');
+  return { off: o, insert };
 }
 
 // Où insérer un groupe de citations « (…) » à la position visée, et sous
@@ -3469,6 +3519,23 @@ function citationsEnLigneVersPandoc(texte, resoudre, connecteur) {
     }
     if (!entrees.length) return tout;            // rien de reconnu : on n'abîme pas
     return '[' + rendreGrappe(entrees, connecteur).join('; ') + ']';
+  });
+}
+
+// Citations narratives « [[clé|Ackoff (2006, p. 12)]] » -> « @cle [p. 12] »,
+// la forme pandoc d'une citation dans le texte : Zotero y écrit l'auteur
+// hors de la parenthèse. Une citation qui renvoie à plusieurs travaux, ou de
+// seconde main, n'a pas d'équivalent simple : elle reste en texte.
+function citationsNarrativesVersPandoc(texte, resoudre) {
+  return String(texte).replace(/\[\[([^\]|#\n]+)\|([^\]\n]*)\]\]/g, (tout, cible, alias) => {
+    if (!estLibelleNarratif(alias)) return tout;
+    const es = resoudre(cleDeLien(cible)) || [];
+    if (es.length !== 1 || !es[0]) return tout;
+    const e = es[0];
+    if (typeof e === 'string') return /^@\S+$/.test(e) ? e : tout;   // note source
+    if (!e.cle || (e.travaux || []).length) return tout;
+    const page = String(e.page || '').trim();
+    return '@' + e.cle + (page ? ' [p. ' + page + ']' : '');
   });
 }
 
@@ -3602,6 +3669,7 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
 
   // 3. Citations en ligne -> syntaxe du filtre Zotero.
   s = citationsEnLigneVersPandoc(s, resoudre, o.citeDans);
+  s = citationsNarrativesVersPandoc(s, resoudre);
 
   // 4. Liens de source isolés « [[@clé]] » -> citation dans le texte.
   s = s.replace(/\[\[@([^\]|#\n]+)(?:\|[^\]\n]*)?\]\]/g, (t, cle) => '@' + cleDeLien(cle));
@@ -8324,7 +8392,8 @@ const avecNoteAtomes = (Base) => class extends Base {
     return [...noms];
   }
 
-  obtenirCleGlissee(e) {
+  // `silencieux` : pendant le survol, un échec ne se signale pas.
+  obtenirCleGlissee(e, silencieux) {
     const toutes = this.settings.dropToutesNotes;
     // Un fichier est-il acceptable comme appui ? Toute note markdown si
     // « toutes les notes », sinon seulement les annotations.
@@ -8422,6 +8491,7 @@ const avecNoteAtomes = (Base) => class extends Base {
           if (k) return k;
         }
       }
+      if (silencieux) return '';
       // Aide au diagnostic : sans cela, un dépôt refusé reste muet.
       if (this.settings.dropSignalerRefus !== false) {
         const apercu = this._sourceGlissee || (() => {
@@ -8617,8 +8687,86 @@ const avecNoteAtomes = (Base) => class extends Base {
 
   /* ------------------------------ Événements DnD ------------------------- */
 
+  // ── deux styles de citation au dépôt ──
+  //  « (Auteur, année) » par défaut ; « Auteur (année) » pour parler d'un
+  //  auteur à la troisième personne. Chaque appui sur Maj, pendant le
+  //  glisser, fait alterner l'un et l'autre. Le clavier se tait pendant un
+  //  glisser, mais chaque « dragover » porte l'état des touches : on guette
+  //  le passage de Maj relâchée à Maj enfoncée. Une étiquette suit le
+  //  curseur et montre le style en cours ; en narratif, une barre marque le
+  //  point exact d'insertion, à la place du surlignage de la phrase.
+
+  reinitialiserStyleGlisser() {
+    this._styleCitation = 'parenthese';
+    this._majGlisser = false;
+    this._glisserCitable = null;
+    this.retirerReperesStyle();
+  }
+
+  suivreMajGlisser(e) {
+    const maj = !!(e && e.shiftKey);
+    if (maj && !this._majGlisser) {
+      this._styleCitation = this._styleCitation === 'narratif' ? 'parenthese' : 'narratif';
+    }
+    this._majGlisser = maj;
+  }
+
+  // Le glisser porte-t-il une note citable ? Établi une fois par glisser :
+  // sans cela, déplacer un mot dans l'éditeur ferait paraître l'étiquette.
+  glisserCitable(e) {
+    if (this._glisserCitable == null) {
+      this._glisserCitable = !!((this.glisseDepuisPanier && this.panier && this.panier.length)
+        || this.obtenirCleGlissee(e, true));
+    }
+    return this._glisserCitable;
+  }
+
+  styleGlisser(e) {
+    return this._styleCitation === 'narratif' && this.glisserCitable(e) ? 'narratif' : 'parenthese';
+  }
+
+  montrerStyleGlisser(doc, e, narratif) {
+    let b = this._etiquetteStyle;
+    if (!b || b.ownerDocument !== doc) {
+      if (b) b.remove();
+      b = this._etiquetteStyle = doc.body.createDiv({ cls: 'zfa-drop-style' });
+      b.createSpan({ cls: 'zfa-drop-style-choix est-parenthese', text: tr('(Auteur, année)') });
+      b.createSpan({ cls: 'zfa-drop-style-choix est-narratif', text: tr('Auteur (année)') });
+      b.createSpan({ cls: 'zfa-drop-style-aide', text: tr('Maj : changer') });
+      b._largeur = 0;
+    }
+    b.toggleClass('est-narratif', narratif);
+    if (!b._largeur) b._largeur = b.offsetWidth || 220;
+    const win = doc.defaultView || window;
+    b.style.left = Math.max(4, Math.min(e.clientX + 16, win.innerWidth - b._largeur - 8)) + 'px';
+    b.style.top = (e.clientY + 20) + 'px';
+  }
+
+  montrerCurseurNarratif(doc, cm, pos) {
+    const ligne = cm.state.doc.lineAt(pos);
+    const off = ligne.from + insertionNarrative(ligne.text, pos - ligne.from, []).off;
+    let c = null;
+    try { c = cm.coordsAtPos(off); } catch (err) { c = null; }
+    let el = this._curseurNarratif;
+    if (!c) { if (el) el.style.display = 'none'; return; }
+    if (!el || el.ownerDocument !== doc) {
+      if (el) el.remove();
+      el = this._curseurNarratif = doc.body.createDiv({ cls: 'zfa-drop-curseur' });
+    }
+    el.style.display = '';
+    el.style.left = (c.left - 1) + 'px';
+    el.style.top = c.top + 'px';
+    el.style.height = Math.max(12, c.bottom - c.top) + 'px';
+  }
+
+  retirerReperesStyle() {
+    if (this._etiquetteStyle) { this._etiquetteStyle.remove(); this._etiquetteStyle = null; }
+    if (this._curseurNarratif) { this._curseurNarratif.remove(); this._curseurNarratif = null; }
+  }
+
   surDragOverParagraphe(e) {
     if (!this.settings.dropSurParagraphe) return;
+    this.suivreMajGlisser(e);
     const doc = this.docDeEvenement(e);
     const cm = this.cmSousPoint(e, doc);
     if (!cm) { this.nettoyerZoneDrop(); return; }
@@ -8629,6 +8777,17 @@ const avecNoteAtomes = (Base) => class extends Base {
     }
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    if (this.glisserCitable(e)) {
+      const narratif = this.styleGlisser(e) === 'narratif';
+      this.montrerStyleGlisser(doc, e, narratif);
+      if (narratif) {
+        this.effacerSurlignagePhrase();
+        if (this.zoneDrop) { this.zoneDrop.classList.remove('zfa-drop-cible'); this.zoneDrop = null; }
+        this.montrerCurseurNarratif(doc, cm, pos);
+        return;
+      }
+      if (this._curseurNarratif) this._curseurNarratif.style.display = 'none';
+    }
     // Sur le texte -> mode phrase ; dans la marge gauche du paragraphe -> mode paragraphe.
     if (this.modeDrop(e, doc) === 'phrase' && this.effetPhrase) {
       this.surlignerPhrase(cm, pos);
@@ -8710,6 +8869,17 @@ const avecNoteAtomes = (Base) => class extends Base {
     e.preventDefault();
     e.stopPropagation();
     if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    // Style narratif : « Auteur (année) » au point exact du dépôt.
+    if (this.styleGlisser(e) === 'narratif') {
+      const ligne = cm.state.doc.lineAt(pos);
+      const entrees = cles.map((c) => '[[' + c + '|' + narratifDepuisLibelle(this.libelleCitation(c)) + ']]');
+      const r = insertionNarrative(ligne.text, pos - ligne.from, entrees, this.settings.separateurCitation || ' ; ');
+      cm.dispatch({ changes: { from: ligne.from + r.off, insert: r.insert } });
+      this.reinitialiserStyleGlisser();
+      this.nettoyerZoneDrop();
+      return;
+    }
+    this.reinitialiserStyleGlisser();
     // Dépôt sur le texte -> fin de la phrase visée ; dans la marge -> paragraphe.
     let insertOffset;
     if (this.modeDrop(e, doc) === 'phrase') {
@@ -8721,6 +8891,7 @@ const avecNoteAtomes = (Base) => class extends Base {
   }
 
   nettoyerZoneDrop() {
+    this.retirerReperesStyle();
     if (this.zoneDrop) {
       this.zoneDrop.classList.remove('zfa-drop-cible');
       this.zoneDrop = null;
@@ -24156,10 +24327,10 @@ class Ariane extends composer(obsidian.Plugin,
       // précisément la forme que prennent les liens internes rendus hors d'une
       // vue markdown (le chat de Claudian, par exemple). On note donc la cible
       // au départ du glisser, seul moment où l'information est sûre.
-      this.registerDomEvent(doc, 'dragstart', (e) => this.noterSourceGlissee(e), { capture: true });
+      this.registerDomEvent(doc, 'dragstart', (e) => { this.reinitialiserStyleGlisser(); this.noterSourceGlissee(e); }, { capture: true });
       this.registerDomEvent(doc, 'dragover', (e) => this.surDragOverParagraphe(e), { capture: true });
       this.registerDomEvent(doc, 'drop', (e) => this.surDropParagraphe(e), { capture: true });
-      this.registerDomEvent(doc, 'dragend', () => { this._sourceGlissee = ''; this.nettoyerZoneDrop(); });
+      this.registerDomEvent(doc, 'dragend', () => { this._sourceGlissee = ''; this.reinitialiserStyleGlisser(); this.nettoyerZoneDrop(); });
     };
     enregistrerDnD(document);
     // Rattrapage des fenêtres déjà ouvertes.
@@ -45339,6 +45510,11 @@ module.exports._test = {
   preparerMarkdownExport,
   deplierIntegrations,
   footnotesVersCitations,
+  citationsNarrativesVersPandoc,
+  narratifDepuisLibelle,
+  estLibelleNarratif,
+  insertionNarrative,
+  rafraichirLibelles,
   // Bloc de bibliographie : forme écrite et migration de l'ancienne forme.
   construireBibliographie,
   injecterBibliographie,

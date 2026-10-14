@@ -211,12 +211,59 @@ function rafraichirLibelles(contenu, libelle, citable) {
     if (protege(pos)) return tout;
     const k = cleDeLien(cle);
     if (!citable(k)) return tout;
-    const neuf = libelle(k);
+    let neuf = libelle(k);
+    // Une citation narrative garde sa forme « Auteur (année) ».
+    if (neuf && estLibelleNarratif(alias)) neuf = narratifDepuisLibelle(neuf);
     if (!neuf || neuf === alias) return tout;
     n++;
     return '[[' + k + '|' + neuf + ']]';
   });
   return { texte: out, n };
+}
+
+// ── Citation narrative : « Auteur (année) » ──
+//  Le second style du glisser-déposer, pour parler d'un auteur à la troisième
+//  personne : « Ackoff et al. (2006, p. 12) montre que… ». Il s'écrit
+//  [[clé|Ackoff et al. (2006, p. 12)]], sans parenthèses autour, à l'endroit
+//  même du dépôt. Son libellé se tire du libellé ordinaire, quel qu'en soit
+//  le modèle : tout ce qui suit l'année passe dans la parenthèse.
+
+// « Ackoff et al., 2006, p. 12 » -> « Ackoff et al. (2006, p. 12) ». Chaque
+// référence d'un libellé composé (« A, 2000 ; B, 2001 ») est traitée à part ;
+// une référence sans année reste telle quelle.
+function narratifDepuisLibelle(libelle) {
+  return String(libelle == null ? '' : libelle).split(/\s*;\s*/).map((r) => {
+    const m = r.match(/^(.*?),\s*((?:\d{4}[a-z]?|s\.\s?d\.|n\.\s?d\.)(?=$|[\s,]).*)$/);
+    return m ? m[1].trim() + ' (' + m[2].trim() + ')' : r.trim();
+  }).filter(Boolean).join(' ; ');
+}
+
+// Un alias de citation est-il narratif ? Le libellé ordinaire ne finit
+// jamais par une parenthèse ; le narratif, toujours.
+function estLibelleNarratif(alias) {
+  return /\S\s*\([^()]*\)\s*$/.test(String(alias || ''));
+}
+
+// Où et quoi insérer pour une citation narrative déposée à `off` dans une
+// ligne : jamais au milieu d'un mot (on recule à son début) ni d'un lien (on
+// passe après lui), avec une espace de part et d'autre si le texte l'exige.
+// `entrees` : les liens « [[clé|libellé]] » à poser. Rend { off, insert }.
+function insertionNarrative(ligne, off, entrees, sep) {
+  const t = String(ligne || '');
+  let o = Math.max(0, Math.min(t.length, off | 0));
+  for (const m of t.matchAll(/\[\[[^\]\n]*\]\]/g)) {
+    if (o > m.index && o < m.index + m[0].length) { o = m.index + m[0].length; break; }
+  }
+  const lettre = /[\p{L}\p{N}'’-]/u;
+  if (o > 0 && o < t.length && lettre.test(t[o - 1]) && lettre.test(t[o])) {
+    while (o > 0 && lettre.test(t[o - 1])) o--;
+  }
+  const avant = o > 0 ? t[o - 1] : '';
+  const apres = o < t.length ? t[o] : '';
+  const corps = (entrees || []).join(sep || ' ; ');
+  const insert = (avant && !/[\s(\[«\u00a0\u202f]/.test(avant) ? ' ' : '')
+    + corps + (apres && !/[\s.,;:!?)\]»\u00a0\u202f]/.test(apres) ? ' ' : '');
+  return { off: o, insert };
 }
 
 // Où insérer un groupe de citations « (…) » à la position visée, et sous

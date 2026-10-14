@@ -50,3 +50,60 @@ test('clic droit : l’application Office d’un document', () => {
   assert.equal(Ariane.appliOffice('csv').nom, 'Excel');
   assert.equal(Ariane.appliOffice('md'), null);
 });
+
+/* --------------------- Citation narrative « Auteur (année) » ---------------------- */
+
+test('narratifDepuisLibelle : l’année et ce qui la suit passent dans la parenthèse', () => {
+  const { narratifDepuisLibelle: n } = Ariane._test;
+  assert.equal(n('Ackoff et al., 2006, p. 12'), 'Ackoff et al. (2006, p. 12)');
+  assert.equal(n('Ackoff et Magidson, 2006'), 'Ackoff et Magidson (2006)');
+  assert.equal(n('Beck, 1992, cité dans Aven, 2016, p. 3'), 'Beck (1992, cité dans Aven, 2016, p. 3)');
+  assert.equal(n('Aven, 2016a ; Renn, 2008, p. 4'), 'Aven (2016a) ; Renn (2008, p. 4)');
+  assert.equal(n('INERIS, s. d.'), 'INERIS (s. d.)');
+  assert.equal(n('Sans année'), 'Sans année');
+});
+
+test('estLibelleNarratif : le libellé ordinaire ne finit pas par une parenthèse', () => {
+  const { estLibelleNarratif: e } = Ariane._test;
+  assert.equal(e('Ackoff (2006, p. 12)'), true);
+  assert.equal(e('Ackoff, 2006, p. 12'), false);
+  assert.equal(e('Aven, 2016 ⟨2⟩'), false);
+});
+
+test('insertionNarrative : jamais dans un mot ni dans un lien, espaces au besoin', () => {
+  const { insertionNarrative: ins } = Ariane._test;
+  const L = '[[K|Ackoff (2006)]]';
+  // Au milieu de « montre » : recule au début du mot, espace après.
+  assert.deepEqual(ins('Comme montre la note.', 8, [L]), { off: 6, insert: L + ' ' });
+  // Après un mot sans espace : espace avant.
+  assert.deepEqual(ins('Ainsi,', 6, [L]), { off: 6, insert: ' ' + L });
+  // Avant une virgule : pas d'espace après.
+  assert.deepEqual(ins('selon , x', 6, [L]), { off: 6, insert: L });
+  // Dans un lien existant : après lui.
+  const t = 'Voir [[A|Adner, 2017]] ici';
+  assert.equal(ins(t, 10, [L]).off, 22);
+  // En début de ligne.
+  assert.deepEqual(ins('montre que', 0, [L]), { off: 0, insert: L + ' ' });
+});
+
+test('rafraichirLibelles : une citation narrative garde sa forme', () => {
+  const { rafraichirLibelles } = Ariane._test;
+  const r = rafraichirLibelles('[[K1|Ackoff (2005)]] montre, et ([[K1|Ackoff, 2005]]).',
+    () => 'Ackoff et al., 2006, p. 12', () => true);
+  assert.equal(r.texte, '[[K1|Ackoff et al. (2006, p. 12)]] montre, et ([[K1|Ackoff et al., 2006, p. 12]]).');
+});
+
+test('export : la citation narrative devient « @cle [p. X] », la parenthèse reste une grappe', () => {
+  const { citationsNarrativesVersPandoc: c } = Ariane._test;
+  const resoudre = (k) => ({
+    K1: [{ cle: 'ackoff2006', page: '12' }],
+    K2: [{ cle: 'aven2016', page: '3', travaux: ['Beck, 1992'] }],
+    S: ['@renn2008'],
+  }[k] || null);
+  assert.equal(c('[[K1|Ackoff (2006, p. 12)]] montre que', resoudre), '@ackoff2006 [p. 12] montre que');
+  assert.equal(c('[[S|Renn (2008)]] dit', resoudre), '@renn2008 dit');
+  // Seconde main : pas d'équivalent simple, le texte reste.
+  assert.equal(c('[[K2|Beck (1992, cité dans Aven, 2016, p. 3)]]', resoudre), '[[K2|Beck (1992, cité dans Aven, 2016, p. 3)]]');
+  // Une citation entre parenthèses n'est pas concernée.
+  assert.equal(c('([[K1|Ackoff, 2006, p. 12]])', resoudre), '([[K1|Ackoff, 2006, p. 12]])');
+});

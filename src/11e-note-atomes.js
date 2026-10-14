@@ -843,7 +843,8 @@ const avecNoteAtomes = (Base) => class extends Base {
     return [...noms];
   }
 
-  obtenirCleGlissee(e) {
+  // `silencieux` : pendant le survol, un échec ne se signale pas.
+  obtenirCleGlissee(e, silencieux) {
     const toutes = this.settings.dropToutesNotes;
     // Un fichier est-il acceptable comme appui ? Toute note markdown si
     // « toutes les notes », sinon seulement les annotations.
@@ -941,6 +942,7 @@ const avecNoteAtomes = (Base) => class extends Base {
           if (k) return k;
         }
       }
+      if (silencieux) return '';
       // Aide au diagnostic : sans cela, un dépôt refusé reste muet.
       if (this.settings.dropSignalerRefus !== false) {
         const apercu = this._sourceGlissee || (() => {
@@ -1136,8 +1138,86 @@ const avecNoteAtomes = (Base) => class extends Base {
 
   /* ------------------------------ Événements DnD ------------------------- */
 
+  // ── deux styles de citation au dépôt ──
+  //  « (Auteur, année) » par défaut ; « Auteur (année) » pour parler d'un
+  //  auteur à la troisième personne. Chaque appui sur Maj, pendant le
+  //  glisser, fait alterner l'un et l'autre. Le clavier se tait pendant un
+  //  glisser, mais chaque « dragover » porte l'état des touches : on guette
+  //  le passage de Maj relâchée à Maj enfoncée. Une étiquette suit le
+  //  curseur et montre le style en cours ; en narratif, une barre marque le
+  //  point exact d'insertion, à la place du surlignage de la phrase.
+
+  reinitialiserStyleGlisser() {
+    this._styleCitation = 'parenthese';
+    this._majGlisser = false;
+    this._glisserCitable = null;
+    this.retirerReperesStyle();
+  }
+
+  suivreMajGlisser(e) {
+    const maj = !!(e && e.shiftKey);
+    if (maj && !this._majGlisser) {
+      this._styleCitation = this._styleCitation === 'narratif' ? 'parenthese' : 'narratif';
+    }
+    this._majGlisser = maj;
+  }
+
+  // Le glisser porte-t-il une note citable ? Établi une fois par glisser :
+  // sans cela, déplacer un mot dans l'éditeur ferait paraître l'étiquette.
+  glisserCitable(e) {
+    if (this._glisserCitable == null) {
+      this._glisserCitable = !!((this.glisseDepuisPanier && this.panier && this.panier.length)
+        || this.obtenirCleGlissee(e, true));
+    }
+    return this._glisserCitable;
+  }
+
+  styleGlisser(e) {
+    return this._styleCitation === 'narratif' && this.glisserCitable(e) ? 'narratif' : 'parenthese';
+  }
+
+  montrerStyleGlisser(doc, e, narratif) {
+    let b = this._etiquetteStyle;
+    if (!b || b.ownerDocument !== doc) {
+      if (b) b.remove();
+      b = this._etiquetteStyle = doc.body.createDiv({ cls: 'zfa-drop-style' });
+      b.createSpan({ cls: 'zfa-drop-style-choix est-parenthese', text: tr('(Auteur, année)') });
+      b.createSpan({ cls: 'zfa-drop-style-choix est-narratif', text: tr('Auteur (année)') });
+      b.createSpan({ cls: 'zfa-drop-style-aide', text: tr('Maj : changer') });
+      b._largeur = 0;
+    }
+    b.toggleClass('est-narratif', narratif);
+    if (!b._largeur) b._largeur = b.offsetWidth || 220;
+    const win = doc.defaultView || window;
+    b.style.left = Math.max(4, Math.min(e.clientX + 16, win.innerWidth - b._largeur - 8)) + 'px';
+    b.style.top = (e.clientY + 20) + 'px';
+  }
+
+  montrerCurseurNarratif(doc, cm, pos) {
+    const ligne = cm.state.doc.lineAt(pos);
+    const off = ligne.from + insertionNarrative(ligne.text, pos - ligne.from, []).off;
+    let c = null;
+    try { c = cm.coordsAtPos(off); } catch (err) { c = null; }
+    let el = this._curseurNarratif;
+    if (!c) { if (el) el.style.display = 'none'; return; }
+    if (!el || el.ownerDocument !== doc) {
+      if (el) el.remove();
+      el = this._curseurNarratif = doc.body.createDiv({ cls: 'zfa-drop-curseur' });
+    }
+    el.style.display = '';
+    el.style.left = (c.left - 1) + 'px';
+    el.style.top = c.top + 'px';
+    el.style.height = Math.max(12, c.bottom - c.top) + 'px';
+  }
+
+  retirerReperesStyle() {
+    if (this._etiquetteStyle) { this._etiquetteStyle.remove(); this._etiquetteStyle = null; }
+    if (this._curseurNarratif) { this._curseurNarratif.remove(); this._curseurNarratif = null; }
+  }
+
   surDragOverParagraphe(e) {
     if (!this.settings.dropSurParagraphe) return;
+    this.suivreMajGlisser(e);
     const doc = this.docDeEvenement(e);
     const cm = this.cmSousPoint(e, doc);
     if (!cm) { this.nettoyerZoneDrop(); return; }
@@ -1148,6 +1228,17 @@ const avecNoteAtomes = (Base) => class extends Base {
     }
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    if (this.glisserCitable(e)) {
+      const narratif = this.styleGlisser(e) === 'narratif';
+      this.montrerStyleGlisser(doc, e, narratif);
+      if (narratif) {
+        this.effacerSurlignagePhrase();
+        if (this.zoneDrop) { this.zoneDrop.classList.remove('zfa-drop-cible'); this.zoneDrop = null; }
+        this.montrerCurseurNarratif(doc, cm, pos);
+        return;
+      }
+      if (this._curseurNarratif) this._curseurNarratif.style.display = 'none';
+    }
     // Sur le texte -> mode phrase ; dans la marge gauche du paragraphe -> mode paragraphe.
     if (this.modeDrop(e, doc) === 'phrase' && this.effetPhrase) {
       this.surlignerPhrase(cm, pos);
@@ -1229,6 +1320,17 @@ const avecNoteAtomes = (Base) => class extends Base {
     e.preventDefault();
     e.stopPropagation();
     if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    // Style narratif : « Auteur (année) » au point exact du dépôt.
+    if (this.styleGlisser(e) === 'narratif') {
+      const ligne = cm.state.doc.lineAt(pos);
+      const entrees = cles.map((c) => '[[' + c + '|' + narratifDepuisLibelle(this.libelleCitation(c)) + ']]');
+      const r = insertionNarrative(ligne.text, pos - ligne.from, entrees, this.settings.separateurCitation || ' ; ');
+      cm.dispatch({ changes: { from: ligne.from + r.off, insert: r.insert } });
+      this.reinitialiserStyleGlisser();
+      this.nettoyerZoneDrop();
+      return;
+    }
+    this.reinitialiserStyleGlisser();
     // Dépôt sur le texte -> fin de la phrase visée ; dans la marge -> paragraphe.
     let insertOffset;
     if (this.modeDrop(e, doc) === 'phrase') {
@@ -1240,6 +1342,7 @@ const avecNoteAtomes = (Base) => class extends Base {
   }
 
   nettoyerZoneDrop() {
+    this.retirerReperesStyle();
     if (this.zoneDrop) {
       this.zoneDrop.classList.remove('zfa-drop-cible');
       this.zoneDrop = null;

@@ -340,6 +340,27 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 
 /* Phrase visée pendant un glisser (mode « cibler la phrase »). */
+/* Glisser une citation : style en cours (Maj alterne) et point d'insertion
+   du style narratif. */
+.zfa-drop-style {
+  position: fixed; z-index: var(--layer-tooltip, 70); pointer-events: none;
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 4px; border-radius: var(--radius-m);
+  background: var(--background-primary); border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s); font-size: var(--font-ui-smaller); white-space: nowrap;
+}
+.zfa-drop-style-choix { padding: 1px 7px; border-radius: var(--radius-s); color: var(--text-faint); }
+.zfa-drop-style:not(.est-narratif) .est-parenthese,
+.zfa-drop-style.est-narratif .est-narratif {
+  background: var(--interactive-accent); color: var(--text-on-accent); font-weight: 600;
+}
+.zfa-drop-style-aide { padding: 0 4px 0 2px; color: var(--text-muted); }
+.zfa-drop-curseur {
+  position: fixed; z-index: var(--layer-tooltip, 70); pointer-events: none;
+  width: 2px; border-radius: 1px; background: var(--interactive-accent);
+  box-shadow: 0 0 0 2px hsla(var(--interactive-accent-hsl), 0.25);
+}
+
 .zfa-drop-cible-phrase {
   border-radius: 4px;
   outline: 2px dashed var(--interactive-accent);

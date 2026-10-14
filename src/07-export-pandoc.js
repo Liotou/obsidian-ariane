@@ -24,6 +24,23 @@ function citationsEnLigneVersPandoc(texte, resoudre, connecteur) {
   });
 }
 
+// Citations narratives « [[clé|Ackoff (2006, p. 12)]] » -> « @cle [p. 12] »,
+// la forme pandoc d'une citation dans le texte : Zotero y écrit l'auteur
+// hors de la parenthèse. Une citation qui renvoie à plusieurs travaux, ou de
+// seconde main, n'a pas d'équivalent simple : elle reste en texte.
+function citationsNarrativesVersPandoc(texte, resoudre) {
+  return String(texte).replace(/\[\[([^\]|#\n]+)\|([^\]\n]*)\]\]/g, (tout, cible, alias) => {
+    if (!estLibelleNarratif(alias)) return tout;
+    const es = resoudre(cleDeLien(cible)) || [];
+    if (es.length !== 1 || !es[0]) return tout;
+    const e = es[0];
+    if (typeof e === 'string') return /^@\S+$/.test(e) ? e : tout;   // note source
+    if (!e.cle || (e.travaux || []).length) return tout;
+    const page = String(e.page || '').trim();
+    return '@' + e.cle + (page ? ' [p. ' + page + ']' : '');
+  });
+}
+
 // Intégrations « ![[note]] » : Obsidian affiche la note intégrée dans le
 // texte, pandoc n'en voyait que le nom, précédé d'un « ! ». On les déplie
 // donc avant tout le reste, pour que citations, encadrés et titres de la note
@@ -154,6 +171,7 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
 
   // 3. Citations en ligne -> syntaxe du filtre Zotero.
   s = citationsEnLigneVersPandoc(s, resoudre, o.citeDans);
+  s = citationsNarrativesVersPandoc(s, resoudre);
 
   // 4. Liens de source isolés « [[@clé]] » -> citation dans le texte.
   s = s.replace(/\[\[@([^\]|#\n]+)(?:\|[^\]\n]*)?\]\]/g, (t, cle) => '@' + cleDeLien(cle));
