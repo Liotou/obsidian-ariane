@@ -340,6 +340,12 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 
 /* Phrase visée pendant un glisser (mode « cibler la phrase »). */
+/* Réglages, « Greffons liés » : état d'installation de chaque greffon. */
+.zfa-etat-greffon .setting-item-description { font-weight: 600; }
+.zfa-etat-greffon.est-actif .setting-item-description { color: var(--text-success); }
+.zfa-etat-greffon.est-inactif .setting-item-description { color: var(--text-warning); }
+.zfa-etat-greffon.est-absent .setting-item-description { color: var(--text-muted); }
+
 /* Numéros des titres : affichés, jamais écrits ni sélectionnables. */
 .zfa-num-titre {
   color: var(--text-faint); font-weight: inherit;

@@ -29,6 +29,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       [tr('Temps et activité'), 'timer', (c) => this.ongletTemps(c, s, maj)],
       [tr('IA'), 'bot', (c) => this.ongletIA(c, s, maj)],
       [tr('Export et publication'), 'file-output', (c) => this.ongletExport(c, s, maj)],
+      [tr('Greffons liés'), 'plug', (c) => this.ongletGreffons(c, s, maj)],
       [tr('Avancé'), 'wrench', (c) => this.ongletAvance(c, s, maj)],
     ];
   }
@@ -862,10 +863,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Titre de la section'))
       .addText((t) => t.setValue(s.biblioTitre || '').onChange(async (v) => { s.biblioTitre = v.trim() || 'Bibliographie'; await maj(); }));
     new obsidian.Setting(c)
-      .setName(tr('Champ de référence formatée'))
-      .setDesc(tr('Propriété des notes sources contenant la référence mise en forme par zotflow (filtre « bibliography »). Le style se règle dans zotflow. Champ absent : Ariane utilise le modèle libre ci-dessous.'))
-      .addText((t) => t.setValue(s.biblioChamp || '').onChange(async (v) => { s.biblioChamp = v.trim() || 'bibliographie'; await maj(); }));
-    new obsidian.Setting(c)
       .setName(tr('Renvoi vers la note source'))
       .setDesc(tr('Ajoute un lien après chaque référence. Il est placé à la suite, et non autour du texte, afin de préserver les italiques du style bibliographique.'))
       .addToggle((t) => t.setValue(s.biblioLien !== false).onChange(async (v) => { s.biblioLien = v; await maj(); }));
@@ -933,21 +930,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addButton((b) => b.setButtonText(tr('Arrêter'))
         .onClick(() => { this.plugin.decoupageEnCours = false; }));
     this._sousTitre(c, tr('Bibliographies lues dans les PDF'));
-    this._aide(c, tr("Crossref ne connaît que ce qui porte un DOI, or les livres n'en ont souvent pas et ce sont eux qui portent les références les plus citées. Zotero garde le texte extrait de chaque PDF : Ariane y lit la bibliographie directement."));
-    new obsidian.Setting(c)
-      .setName(tr('Dossier de données Zotero'))
-      .setDesc(tr('Vide : détection automatique dans votre dossier personnel.'))
-      .addText((t) => t.setValue(s.dossierZotero || '')
-        .setPlaceholder(require('path').join(require('os').homedir(), 'Zotero'))
-        .onChange(async (v) => { s.dossierZotero = v.trim(); this.plugin._textesPdf = null; await maj(); }));
-    this._sousTitre(c, tr('Notes de références orphelines'));
-    this._aide(c, tr("ZotFlow retire la note d'une fiche mise à la corbeille de Zotero, mais pas celle d'une fiche supprimée pour de bon : la note reste dans le coffre. Ariane compare les notes de références à la base de Zotero et propose de mettre à la corbeille celles qui n'ont plus de fiche. Rien n'est supprimé sans votre accord."));
-    new obsidian.Setting(c)
-      .setName(tr('Signaler les notes orphelines'))
-      .setDesc(tr('Au démarrage et après une synchronisation de ZotFlow, un avis dit combien de notes n’ont plus de fiche, avec un lien pour les revoir.'))
-      .addToggle((t) => t.setValue(s.zoteroOrphelinsAuto !== false)
-        .onChange(async (v) => { s.zoteroOrphelinsAuto = v; await maj(); }))
-      .addButton((b) => b.setButtonText(tr('Revoir maintenant')).onClick(() => this.plugin.revoirReferencesOrphelines(false)));
+    this._aide(c, tr("Crossref ne connaît que ce qui porte un DOI, or les livres n'en ont souvent pas et ce sont eux qui portent les références les plus citées. Zotero garde le texte extrait de chaque PDF : Ariane y lit la bibliographie directement. Le dossier de données de Zotero se règle dans l'onglet « Greffons liés »."));
     this._section(c, tr('Graphe'));
     new obsidian.Setting(c)
       .setName(tr('Taguer les annotations non citées'))
@@ -1039,10 +1022,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Afficher le titre en aparté'))
       .setDesc(tr("Ajoute le titre après un lien d'annotation ou de note conceptuelle qui affiche la clé (lecture et édition)."))
       .addToggle((t) => t.setValue(s.aliasSurLiens).onChange(async (v) => { s.aliasSurLiens = v; await maj(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Aperçu au survol hors éditeur'))
-      .setDesc(tr("Affiche l'aperçu natif au survol des liens internes dans les vues qui ne le font pas (ex. chat Claudian, panneaux)."))
-      .addToggle((t) => t.setValue(s.hoverPartout !== false).onChange(async (v) => { s.hoverPartout = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Aparté sur les annotations'))
       .setDesc(tr('Afficher l’aparté pour les liens vers des notes d’annotation.'))
@@ -2518,30 +2497,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       this._section(c, tr('IA de l\'activité'));
       this._aide(c, tr('Activez d’abord ActivityWatch (onglet Temps et activité) : l’IA résume et classe ses créneaux.'));
     }
-    this._section(c, tr('Relais pour Claude'));
-    this._aide(c, tr("Claude, dans Claudian, lit vos tâches par le serveur MCP « ariane-taches », qui passe par un relais local d’Ariane : il n’écoute que sur cette machine, derrière un jeton renouvelé à chaque démarrage. Coupé, Claude n’a plus accès aux tâches."));
-    new obsidian.Setting(c)
-      .setName(tr('Relais pour Claude'))
-      .setDesc(tr('Bureau seulement.'))
-      .addToggle((t) => t.setValue(s.claudePont !== false).onChange(async (v) => {
-        s.claudePont = v;
-        await maj();
-        if (!this.plugin.pont) return;
-        if (v) this.plugin.pont.demarrer(); else this.plugin.pont.arreter();
-      }));
   }
 
   ongletExport(c, s, maj) {
     this._aide(c, tr('Exporte la note active en .docx où chaque note de bas de page devient une citation Zotero vivante (via Pandoc + filtre BetterBibTeX). Zotero doit tourner ; pandoc doit être installé (brew install pandoc). Commande : « Exporter en Word avec citations Zotero (Pandoc) ».'));
 
     new obsidian.Setting(c).setName(tr('Moteur')).setHeading();
+    this._aide(c, tr("Le filtre Lua de Better BibTeX se règle dans l'onglet « Greffons liés »."));
     new obsidian.Setting(c)
       .setName(tr('Chemin de pandoc'))
       .addText((t) => t.setValue(s.exportPandocBin).onChange(async (v) => { s.exportPandocBin = v.trim() || 'pandoc'; await maj(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Filtre Lua (BetterBibTeX)'))
-      .setDesc(tr('pandoc-zotero-live-citemarkers.lua avec ses dépendances.'))
-      .addText((t) => t.setValue(s.exportFiltreLua).onChange(async (v) => { s.exportFiltreLua = v.trim(); await maj(); }));
 
     new obsidian.Setting(c).setName(tr('Mise en page (modèle Word)')).setHeading();
     new obsidian.Setting(c)
@@ -2640,7 +2605,75 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
   }
 
   ongletAvance(c, s, maj) {
-    this._section(c, tr('Analyse (expressions régulières)'), tr("À ne modifier qu'en connaissance de cause."));
+    this._section(c, tr('Notes de référence provisoires'));
+    new obsidian.Setting(c)
+      .setName(tr('Modèle'))
+      .setDesc(tr('Variables : {{authorLinks}}, {{name}}, {{year}}, {{firstAuthor}}.'))
+      .addTextArea((t) => {
+        t.setValue(s.modeleReference).onChange(async (v) => { s.modeleReference = v; await maj(); });
+        t.inputEl.rows = 4;
+        t.inputEl.style.width = '100%';
+        t.inputEl.style.fontFamily = 'monospace';
+      });
+  }
+
+  // ── Greffons liés ──
+  //  Les réglages qui n'existent que par un autre greffon, d'Obsidian ou de
+  //  Zotero : un sous-onglet chacun, avec son état d'installation. Ariane
+  //  dépend de ZotFlow sans le remplacer ; Annota, greffon de Zotero, écrit
+  //  le commentaire des surlignages qu'Ariane lit.
+
+  // L'état d'un greffon d'Obsidian : installé, activé, version.
+  _etatGreffon(c, id) {
+    const p = this.app.plugins;
+    const m = p && p.manifests ? p.manifests[id] : null;
+    const actif = !!(p && p.enabledPlugins && p.enabledPlugins.has(id));
+    const txt = !m ? tr('Non installé.')
+      : (actif ? tr('Installé et activé') : tr('Installé, mais désactivé')) + tr(', version ') + m.version + '.';
+    const st = new obsidian.Setting(c).setName(tr('État')).setDesc(txt);
+    st.settingEl.addClass('zfa-etat-greffon', !m ? 'est-absent' : actif ? 'est-actif' : 'est-inactif');
+  }
+
+  // L'état d'un greffon de Zotero : son paquet dans un profil de Zotero.
+  _etatGreffonZotero(c, id) {
+    let present = false;
+    try {
+      const path = require('path'), fs = require('fs'), os = require('os');
+      const racines = [
+        path.join(os.homedir(), 'Library', 'Application Support', 'Zotero', 'Profiles'),
+        path.join(process.env.APPDATA || '', 'Zotero', 'Zotero', 'Profiles'),
+        path.join(os.homedir(), '.zotero', 'zotero'),
+      ];
+      for (const r of racines) {
+        if (!r || !fs.existsSync(r)) continue;
+        for (const profil of fs.readdirSync(r)) {
+          if (fs.existsSync(path.join(r, profil, 'extensions', id + '.xpi'))) present = true;
+        }
+      }
+    } catch (e) { present = false; }
+    const st = new obsidian.Setting(c).setName(tr('État'))
+      .setDesc(present ? tr('Installé dans Zotero.') : tr('Introuvable dans les profils de Zotero.'));
+    st.settingEl.addClass('zfa-etat-greffon', present ? 'est-actif' : 'est-absent');
+  }
+
+  ongletGreffons(c, s, maj) {
+    this._section(c, 'ZotFlow');
+    this._etatGreffon(c, 'zotflow');
+    this._aide(c, tr("ZotFlow synchronise Zotero avec le coffre : notes de références, notes sources des annotations, lecteur de PDF. Ariane part de ce qu'il écrit : elle atomise les annotations de ses notes sources et cite ses notes de références. Les réglages de ZotFlow lui-même (synchronisation, modèles de notes, style de citation) restent dans son propre onglet."));
+    new obsidian.Setting(c)
+      .setName(tr('Champ de référence formatée'))
+      .setDesc(tr('Propriété des notes sources contenant la référence mise en forme par ZotFlow (filtre « bibliography »). Le style se règle dans ZotFlow. Champ absent : Ariane utilise le modèle libre ci-dessous.'))
+      .addText((t) => t.setValue(s.biblioChamp || '').onChange(async (v) => { s.biblioChamp = v.trim() || 'bibliographie'; await maj(); }));
+    this._sousTitre(c, tr('Notes de références orphelines'));
+    this._aide(c, tr("ZotFlow retire la note d'une fiche mise à la corbeille de Zotero, mais pas celle d'une fiche supprimée pour de bon : la note reste dans le coffre. Ariane compare les notes de références à la base de Zotero et propose de mettre à la corbeille celles qui n'ont plus de fiche. Rien n'est supprimé sans votre accord."));
+    new obsidian.Setting(c)
+      .setName(tr('Signaler les notes orphelines'))
+      .setDesc(tr('Au démarrage et après une synchronisation de ZotFlow, un avis dit combien de notes n’ont plus de fiche, avec un lien pour les revoir.'))
+      .addToggle((t) => t.setValue(s.zoteroOrphelinsAuto !== false)
+        .onChange(async (v) => { s.zoteroOrphelinsAuto = v; await maj(); }))
+      .addButton((b) => b.setButtonText(tr('Revoir maintenant')).onClick(() => this.plugin.revoirReferencesOrphelines(false)));
+    this._sousTitre(c, tr('Lecture des notes de ZotFlow'));
+    this._aide(c, tr("Comment Ariane reconnaît une note source de ZotFlow et y découpe les annotations. À ne modifier qu'en connaissance de cause, par exemple si ZotFlow change la forme de ses notes."));
     new obsidian.Setting(c)
       .setName(tr('Marqueur de source'))
       .setDesc(tr('Chaîne détectant une note source à traiter.'))
@@ -2655,6 +2688,24 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     new obsidian.Setting(c)
       .setName(tr("Regex d'image"))
       .addText((t) => t.setValue(s.imageRegex).onChange(async (v) => { s.imageRegex = v; await maj(); }));
+
+    this._section(c, tr('Zotero et Better BibTeX'));
+    this._etatGreffonZotero(c, 'better-bibtex@iris-advies.com');
+    this._aide(c, tr("Ariane lit la base de Zotero (pages, textes extraits des PDF, fiches disparues), et l'export Word passe par le filtre de Better BibTeX pour poser des citations Zotero vivantes."));
+    new obsidian.Setting(c)
+      .setName(tr('Dossier de données Zotero'))
+      .setDesc(tr('Vide : détection automatique dans votre dossier personnel.'))
+      .addText((t) => t.setValue(s.dossierZotero || '')
+        .setPlaceholder(require('path').join(require('os').homedir(), 'Zotero'))
+        .onChange(async (v) => { s.dossierZotero = v.trim(); this.plugin._textesPdf = null; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Filtre Lua (BetterBibTeX)'))
+      .setDesc(tr('pandoc-zotero-live-citemarkers.lua avec ses dépendances.'))
+      .addText((t) => t.setValue(s.exportFiltreLua).onChange(async (v) => { s.exportFiltreLua = v.trim(); await maj(); }));
+
+    this._section(c, 'Annota');
+    this._etatGreffonZotero(c, 'annota@equiriconi');
+    this._aide(c, tr("Annota, greffon de Zotero, rédige le commentaire de chaque surlignage : titre, paraphrase, références citées. C'est ce commentaire qu'Ariane lit pour nommer les notes d'annotation et les relier à leurs références. Les invites et le modèle de langue d'Annota se règlent dans Zotero (Réglages, Annota) ; ici, la façon dont Ariane lit son commentaire."));
     new obsidian.Setting(c)
       .setName(tr('Retirer les parenthèses des références'))
       .addToggle((t) => t.setValue(s.retirerParentheses).onChange(async (v) => { s.retirerParentheses = v; await maj(); }));
@@ -2665,18 +2716,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr("Séparateur d'auteurs (regex)"))
       .addText((t) => t.setValue(s.separateurAuteurs).onChange(async (v) => { s.separateurAuteurs = v; await maj(); }));
 
-    this._section(c, tr('Notes de référence provisoires'));
-    new obsidian.Setting(c)
-      .setName(tr('Modèle'))
-      .setDesc(tr('Variables : {{authorLinks}}, {{name}}, {{year}}, {{firstAuthor}}.'))
-      .addTextArea((t) => {
-        t.setValue(s.modeleReference).onChange(async (v) => { s.modeleReference = v; await maj(); });
-        t.inputEl.rows = 4;
-        t.inputEl.style.width = '100%';
-        t.inputEl.style.fontFamily = 'monospace';
-      });
-
-    this._section(c, tr('Profils de standard'));
+    this._sousTitre(c, tr('Profils de standard'));
     this._aide(c, tr('Liste JSON. Pour chaque bloc, le premier profil dont « titreRegex » correspond est retenu.'));
     let profilsErreur;
     new obsidian.Setting(c)
@@ -2702,6 +2742,36 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       });
     profilsErreur = c.createEl('div', { text: tr(''), cls: 'setting-item-description' });
     profilsErreur.style.color = 'var(--text-error)';
+
+    this._section(c, 'Claudian');
+    this._etatGreffon(c, 'realclaudian');
+    this._aide(c, tr("Claude, dans Claudian, lit vos tâches par le serveur MCP « ariane-taches », qui passe par un relais local d’Ariane : il n’écoute que sur cette machine, derrière un jeton renouvelé à chaque démarrage. Coupé, Claude n’a plus accès aux tâches."));
+    new obsidian.Setting(c)
+      .setName(tr('Relais pour Claude'))
+      .setDesc(tr('Bureau seulement.'))
+      .addToggle((t) => t.setValue(s.claudePont !== false).onChange(async (v) => {
+        s.claudePont = v;
+        await maj();
+        if (!this.plugin.pont) return;
+        if (v) this.plugin.pont.demarrer(); else this.plugin.pont.arreter();
+      }));
+    new obsidian.Setting(c)
+      .setName(tr('Compétence et outils des tâches pour Claude'))
+      .setDesc(tr('Installe ou met à jour la compétence « ariane-taches » et le serveur MCP dans Claude.'))
+      .addButton((b) => b.setButtonText(tr('Installer ou mettre à jour'))
+        .onClick(() => this.app.commands.executeCommandById(this.plugin.manifest.id + ':claude-installer')));
+    new obsidian.Setting(c)
+      .setName(tr('Aperçu au survol hors éditeur'))
+      .setDesc(tr("Affiche l'aperçu natif au survol des liens internes dans les vues qui ne le font pas (ex. chat Claudian, panneaux)."))
+      .addToggle((t) => t.setValue(s.hoverPartout !== false).onChange(async (v) => { s.hoverPartout = v; await maj(); }));
+
+    this._section(c, 'draw.io');
+    this._etatGreffon(c, 'drawio');
+    this._aide(c, tr("L'éditeur de schémas est celui du greffon draw.io, qu'Ariane ne remplace pas. Son vocabulaire de schémas et l'export SVG se règlent dans l'onglet « Vues et schémas »."));
+
+    this._section(c, 'Templater');
+    this._etatGreffon(c, 'templater-obsidian');
+    this._aide(c, tr("Ariane propose les modèles de Templater (et ceux des modèles natifs d'Obsidian) quand elle crée une note : compte rendu, note préparatoire, note d'événement. Aucun réglage ici : le dossier des modèles est celui de Templater."));
   }
 
   // Éditeur des familles de tâches. Même esprit que _tableFamilles (familles
