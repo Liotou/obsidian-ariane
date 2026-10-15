@@ -765,10 +765,17 @@ class Ariane extends composer(obsidian.Plugin,
       // précisément la forme que prennent les liens internes rendus hors d'une
       // vue markdown (le chat de Claudian, par exemple). On note donc la cible
       // au départ du glisser, seul moment où l'information est sûre.
-      this.registerDomEvent(doc, 'dragstart', (e) => { this.reinitialiserStyleGlisser(); this.noterSourceGlissee(e); }, { capture: true });
+      this.registerDomEvent(doc, 'dragstart', (e) => { this.reinitialiserStyleGlisser(); this._glisserInterne = true; this.noterSourceGlissee(e); }, { capture: true });
+      // Un glisser venu d'ailleurs (application Zotero, lecteur de ZotFlow dans
+      // son cadre) n'émet ici ni dragstart ni dragend : on repart de zéro à
+      // son entrée dans la fenêtre, et ses repères s'effacent à sa sortie.
+      this.registerDomEvent(doc, 'dragenter', (e) => {
+        if (!e.relatedTarget && !this._glisserInterne) this.reinitialiserStyleGlisser();
+      }, { capture: true });
+      this.registerDomEvent(doc, 'dragleave', (e) => { if (!e.relatedTarget) this.nettoyerZoneDrop(); }, { capture: true });
       this.registerDomEvent(doc, 'dragover', (e) => this.surDragOverParagraphe(e), { capture: true });
       this.registerDomEvent(doc, 'drop', (e) => { if (!this.surDropCanevas(e)) this.surDropParagraphe(e); }, { capture: true });
-      this.registerDomEvent(doc, 'dragend', () => { this._sourceGlissee = ''; this.reinitialiserStyleGlisser(); this.nettoyerZoneDrop(); });
+      this.registerDomEvent(doc, 'dragend', () => { this._sourceGlissee = ''; this._glisserInterne = false; this.reinitialiserStyleGlisser(); this.nettoyerZoneDrop(); });
     };
     enregistrerDnD(document);
     // Rattrapage des fenêtres déjà ouvertes.

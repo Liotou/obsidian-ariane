@@ -1793,6 +1793,9 @@ const avecNoteAtomes = (Base) => class extends Base {
       const f = this.app.metadataCache.getFirstLinkpathDest(m[1].trim(), '');
       if (f instanceof obsidian.TFile) return f;
     }
+    // Sans clé d'élément (glisser depuis Zotero sans citation lisible), pas
+    // de recherche : une clé vide désignerait n'importe quelle note.
+    if (!charge.key) return null;
     return this.app.vault.getMarkdownFiles().find((f) => {
       const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
       return String(fm['zotero-key'] || '') === charge.key && !!fm.citationKey;

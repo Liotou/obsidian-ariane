@@ -37,3 +37,9 @@ test('lireChargeZotero : un texte sans surlignage Zotero est ignoré', () => {
   assert.equal(Ariane.lireChargeZotero('([pdf](zotero://open-pdf/library/items/RZ4BV8NX?page=2))'), null);
   assert.equal(Ariane.lireChargeZotero(''), null);
 });
+
+test('sourceDeZotflow : sans clé d’élément ni lien de source, aucune note n’est désignée', () => {
+  const app = { vault: { getMarkdownFiles: () => [{ path: 'x.md' }] },
+    metadataCache: { getFileCache: () => ({ frontmatter: { citationKey: 'x' } }), getFirstLinkpathDest: () => null } };
+  assert.equal(Ariane.prototype.sourceDeZotflow.call({ app }, { key: '', annotations: [] }, ''), null);
+});
