@@ -10,6 +10,8 @@ module.exports = Ariane;
 // Exposition des fonctions pures pour les tests.
 module.exports._test = {
   DEFAULT_SETTINGS,
+  // Notes de lecture : citations zotflow ramenées à la forme d'Ariane.
+  citationsZotflowVersAriane,
   // Export Word : préparation du markdown pour pandoc.
   preparerMarkdownExport,
   deplierIntegrations,

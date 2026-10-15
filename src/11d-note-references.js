@@ -458,10 +458,28 @@ const avecNoteReferences = (Base) => class extends Base {
     return m;
   }
 
+  // Table clé du surlignage Zotero -> cible de lien de sa note d'annotation.
+  // Une citation glissée depuis un surlignage (greffon Annota) pointe ainsi
+  // vers la note qui le porte. Le nom seul quand il désigne sans ambiguïté
+  // la note, le chemin sinon.
+  indexParCleAnnotation() {
+    const m = new Map();
+    const mc = this.app.metadataCache;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierA + '/')) continue;
+      const fm = (mc.getFileCache(f) || {}).frontmatter || {};
+      const cle = fm['zotflow-anno-key'];
+      if (cle === undefined || cle === null || cle === '') continue;
+      const unique = mc.getFirstLinkpathDest(f.basename, '') === f;
+      m.set(String(cle).trim(), unique ? f.basename : f.path.replace(/\.md$/, ''));
+    }
+    return m;
+  }
+
   // Atomise les notes-filles d'une fiche source : une note par bloc, dans le
   // dossier des notes de lecture. Le lien vers la source suffit à la
   // réciprocité — Obsidian tient les rétroliens.
-  async atomiserNotesLecture(fichierSource, parCleZotero) {
+  async atomiserNotesLecture(fichierSource, parCleZotero, parCleAnnotation) {
     if (this.settings.atomiserNotesLecture === false) return 0;
     const fm = (this.app.metadataCache.getFileCache(fichierSource) || {}).frontmatter || {};
     if (!fm.citationKey) return 0;
@@ -473,6 +491,7 @@ const avecNoteReferences = (Base) => class extends Base {
     if (!blocs.length) return 0;
 
     const table = parCleZotero || this.indexParCleZotero();
+    const tableAnno = parCleAnnotation || this.indexParCleAnnotation();
     const racine = this.settings.dossierNotesLecture || '2 - Notes de lecture';
     const dossier = racine + '/' + fichierSource.basename;
     await this.assurerDossier(racine);
@@ -486,7 +505,7 @@ const avecNoteReferences = (Base) => class extends Base {
         const fmx = (this.app.metadataCache.getFileCache(existant) || {}).frontmatter || {};
         if (fmx['zotflow-locked'] === false || fmx.locked === true) continue; // note reprise à la main
       }
-      const corps = citationsZotflowVersAriane(bloc.corps, table);
+      const corps = citationsZotflowVersAriane(bloc.corps, table, tableAnno);
       const entete = [
         '---',
         'aliases:',
@@ -510,13 +529,14 @@ const avecNoteReferences = (Base) => class extends Base {
   // qu'une fois : le refaire par source coûterait 736 lectures à chaque tour.
   async atomiserToutesNotesLecture() {
     const table = this.indexParCleZotero();
+    const tableAnno = this.indexParCleAnnotation();
     let sources = 0, notes = 0;
     const notice = new obsidian.Notice(tr('Notes de lecture : atomisation…'), 0);
     try {
       for (const f of this.app.vault.getMarkdownFiles()) {
         const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
         if (!fm.citationKey) continue;
-        const n = await this.atomiserNotesLecture(f, table);
+        const n = await this.atomiserNotesLecture(f, table, tableAnno);
         if (n) { sources += 1; notes += n; }
       }
     } finally {

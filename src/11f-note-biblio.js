@@ -381,9 +381,12 @@ const avecNoteBiblio = (Base) => class extends Base {
 
     // Ne pas citer deux fois la même annotation dans le voisinage immédiat.
     const voisinage = docStr.slice(Math.max(0, pos - 400), pos + 400);
+    // Une clé est un nom de note, ou { cle, page } : une source citée à une
+    // page (annotation glissée du lecteur, pas encore atomisée).
+    const nom = (c) => (typeof c === 'string' ? c : c.cle);
     const entrees = cles
-      .filter((c) => voisinage.indexOf('[[' + c + '|') === -1)
-      .map((c) => '[[' + c + '|' + this.libelleCitation(c) + ']]');
+      .filter((c) => typeof c !== 'string' || voisinage.indexOf('[[' + c + '|') === -1)
+      .map((c) => '[[' + nom(c) + '|' + this.libelleDeCitation(c) + ']]');
 
     const modif = composerCitation(docStr, pos, entrees, sep);
     if (!modif) return false;

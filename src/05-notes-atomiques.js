@@ -158,7 +158,14 @@ function titreDeNoteFille(corps) {
 // l'URI Zotero de la source et le libellé déjà mis en forme. On les ramène à
 // la forme d'Ariane — ([[@clé|libellé]]) — pour qu'elles nourrissent la
 // bibliographie de fin de note comme l'export Word.
-function citationsZotflowVersAriane(corps, parCleZotero) {
+//
+// Une citation obtenue en glissant un surlignage dans la note porte en plus
+// la clé de ce surlignage (citationItems[0].annotationKey, posée par le
+// greffon Zotero Annota). Quand la note d'annotation correspondante existe
+// (parCleAnnotation : clé du surlignage → cible de lien), la citation pointe
+// vers elle : ([[cible|libellé]]). Ariane sait déjà citer une note
+// d'annotation (source, page, « cité dans »), en lecture comme à l'export.
+function citationsZotflowVersAriane(corps, parCleZotero, parCleAnnotation) {
   const texte = String(corps);
   // Le span de citation en contient un autre : une expression paresseuse
   // s'arrêterait sur la balise fermante du span intérieur. On apparie donc à
@@ -172,16 +179,22 @@ function citationsZotflowVersAriane(corps, parCleZotero) {
     const dedans = texte.slice(debutDedans, apres - '</span>'.length);
     const libelle = dedans.replace(/<[^>]+>/g, '').trim().replace(/^\(+\s*/, '').replace(/\s*\)+$/, '').trim();
     let cleZot = null;
+    let cleAnno = null;
     try {
       const j = JSON.parse(decodeURIComponent(m[1]));
       const items = (j && j.citationItems) || [];
       const uri = items[0] && items[0].uris && items[0].uris[0];
       const mu = uri && String(uri).match(/items\/(\w+)/);
       if (mu) cleZot = mu[1];
+      const ka = items[0] && (items[0].annotationKey
+        || (String(items[0].annotationURI || '').match(/items\/(\w+)$/) || [])[1]);
+      if (ka) cleAnno = String(ka);
     } catch (e) { /* citation illisible : on la laisse telle quelle */ }
+    const noteAnno = cleAnno && parCleAnnotation ? parCleAnnotation.get(cleAnno) : null;
     const citekey = cleZot && parCleZotero ? parCleZotero.get(cleZot) : null;
-    const remplacement = (citekey && libelle)
-      ? '([[' + citekey + '|' + libelle + ']])'
+    const cible = noteAnno || citekey;
+    const remplacement = (cible && libelle)
+      ? '([[' + cible + '|' + libelle + ']])'
       : texte.slice(m.index, apres);
     sortie += texte.slice(dernier, m.index) + remplacement;
     dernier = apres;

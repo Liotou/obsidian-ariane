@@ -140,3 +140,13 @@ test('cleDepuisCharge : un lien de Claudian « app://obsidian.md/… » donne le
   assert.equal(f('app://obsidian.md/@valkokariBusinessInnovationKnowledge2015'), '@valkokariBusinessInnovationKnowledge2015');
   assert.equal(f('app://obsidian.md/03%20-%20Notes/NC-1.md'), '03 - Notes/NC-1');
 });
+
+test('lireChargeZotflow : clés et pages des annotations glissées du lecteur', () => {
+  const brut = JSON.stringify({ type: 'zotflow-citation', libraryID: 1, key: 'ITEMKEY1',
+    annotations: [{ id: 'ANNOKEY1', pageLabel: '21', text: 'x' }, { id: 'ANNOKEY2', pageLabel: null }] });
+  assert.deepEqual(Ariane.lireChargeZotflow(brut), { key: 'ITEMKEY1',
+    annotations: [{ id: 'ANNOKEY1', page: '21' }, { id: 'ANNOKEY2', page: '' }] });
+  assert.equal(Ariane.lireChargeZotflow('{"type":"autre","key":"K"}'), null);
+  assert.equal(Ariane.lireChargeZotflow('pas du JSON'), null);
+  assert.equal(Ariane.lireChargeZotflow(JSON.stringify({ type: 'zotflow-citation', key: 'K', annotations: [] })), null);
+});

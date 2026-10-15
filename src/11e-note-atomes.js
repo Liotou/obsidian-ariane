@@ -1405,8 +1405,10 @@ const avecNoteAtomes = (Base) => class extends Base {
   // sans cela, déplacer un mot dans l'éditeur ferait paraître l'étiquette.
   glisserCitable(e) {
     if (this._glisserCitable == null) {
+      const dt = e && e.dataTransfer;
+      const zotflow = !!(dt && Array.from(dt.types || []).includes(Ariane.MIME_ZOTFLOW));
       this._glisserCitable = !!((this.glisseDepuisPanier && this.panier && this.panier.length)
-        || this.obtenirCleGlissee(e, true));
+        || zotflow || this.obtenirCleGlissee(e, true));
     }
     return this._glisserCitable;
   }
@@ -1623,53 +1625,145 @@ const avecNoteAtomes = (Base) => class extends Base {
     const n = cm.state.doc.lineAt(pos).number;
     const vide = this.glisserCitable(e) && this.ligneVideDeposable(cm.state.doc, n);
     if (!vide && !this.ligneEstParagraphe(cm.state.doc, n)) { this.nettoyerZoneDrop(); return; }
-    // Dépôt groupé depuis le panier flottant, sinon annotation unique glissée.
-    let cles;
-    if (this.glisseDepuisPanier && this.panier && this.panier.length) {
-      cles = this.panier.slice();
-    } else {
-      const cle = this.obtenirCleGlissee(e);
-      if (!cle) { this.nettoyerZoneDrop(); return; }
-      cles = [cle];
+    // Annotations glissées depuis le lecteur de ZotFlow, dépôt groupé depuis
+    // le panier flottant, sinon note unique glissée.
+    const zotflow = this.chargeDeposeeZotflow(e);
+    let cles = null;
+    if (!zotflow) {
+      if (this.glisseDepuisPanier && this.panier && this.panier.length) {
+        cles = this.panier.slice();
+      } else {
+        const cle = this.obtenirCleGlissee(e);
+        if (!cle) { this.nettoyerZoneDrop(); return; }
+        cles = [cle];
+      }
     }
     e.preventDefault();
     e.stopPropagation();
     if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    // Tout ce qui dépend du geste se relève maintenant : la citation peut
+    // n'être posée qu'après une atomisation.
+    const ctx = { cm, pos, vide, style: this.styleGlisser(e, vide), phrase: this.modeDrop(e, doc) === 'phrase' };
+    this.reinitialiserStyleGlisser();
+    this.nettoyerZoneDrop();
+    if (!zotflow) { this.poserCitations(ctx, cles); return; }
+    let texte = '';
+    try { texte = e.dataTransfer.getData('text/plain') || ''; } catch (err) { texte = ''; }
+    this.clesDepuisZotflow(zotflow, texte).then((liste) => {
+      if (liste.length) this.poserCitations(ctx, liste);
+      else new obsidian.Notice(tr('Annotation introuvable dans le coffre, même après atomisation de sa source.'));
+    }).catch((err) => console.warn('[Ariane] dépôt depuis le lecteur ZotFlow :', err));
+  }
+
+  // Pose les citations d'un dépôt. `cles` : noms de notes, ou { cle, page }
+  // pour une source citée à une page (annotation encore sans note).
+  poserCitations(ctx, cles) {
+    const cm = ctx.cm;
+    const sep = this.settings.separateurCitation || ' ; ';
+    const doc = cm.state.doc;
+    const pos = Math.min(ctx.pos, doc.length);
+    const ligne = doc.lineAt(pos);
+    const lien = (c, narratif) => {
+      const lib = this.libelleDeCitation(c);
+      return '[[' + (typeof c === 'string' ? c : c.cle) + '|' + (narratif ? narratifDepuisLibelle(lib) : lib) + ']]';
+    };
     // Style narratif : « Auteur (année) » au point exact du dépôt.
-    const style = this.styleGlisser(e, vide);
-    if (style === 'narratif') {
-      const ligne = cm.state.doc.lineAt(pos);
-      const entrees = cles.map((c) => '[[' + c + '|' + narratifDepuisLibelle(this.libelleCitation(c)) + ']]');
-      const r = insertionNarrative(ligne.text, pos - ligne.from, entrees, this.settings.separateurCitation || ' ; ');
+    if (ctx.style === 'narratif') {
+      const r = insertionNarrative(ligne.text, pos - ligne.from, cles.map((c) => lien(c, true)), sep);
       const fin = ligne.from + r.off + r.insert.length;
       // Le curseur après l'espace : la phrase se poursuit aussitôt.
       cm.dispatch({ changes: { from: ligne.from + r.off, insert: r.insert }, selection: { anchor: fin } });
       try { cm.focus(); } catch (err) { /* éditeur fermé */ }
-      this.reinitialiserStyleGlisser();
-      this.nettoyerZoneDrop();
       return;
     }
-    this.reinitialiserStyleGlisser();
     // Ligne vide, style inversé : « (Auteur, année) » posé sur la ligne.
-    if (vide) {
-      const ligne = cm.state.doc.line(n);
-      const entrees = cles.map((c) => '[[' + c + '|' + this.libelleCitation(c) + ']]');
+    if (ctx.vide) {
       // Pas composerCitation : il rejoindrait le groupe qui clôt le paragraphe
       // précédent, par-dessus la ligne vide.
-      const insert = '(' + entrees.join(this.settings.separateurCitation || ' ; ') + ') ';
+      const insert = '(' + cles.map((c) => lien(c, false)).join(sep) + ') ';
       cm.dispatch({ changes: { from: ligne.from, insert }, selection: { anchor: ligne.from + insert.length } });
       try { cm.focus(); } catch (err) { /* éditeur fermé */ }
-      this.nettoyerZoneDrop();
       return;
     }
     // Dépôt sur le texte -> fin de la phrase visée ; dans la marge -> paragraphe.
-    let insertOffset;
-    if (this.modeDrop(e, doc) === 'phrase') {
-      const ligne = cm.state.doc.lineAt(pos);
-      insertOffset = ligne.from + finDePhraseAvantPonct(ligne.text, pos - ligne.from);
+    const insertOffset = ctx.phrase ? ligne.from + finDePhraseAvantPonct(ligne.text, pos - ligne.from) : undefined;
+    this.attacherAnnotationParagraphe(cm, ligne.number, cles, insertOffset);
+  }
+
+  // Le libellé d'une citation : celui de la note, ou, pour une source citée
+  // à une page, « Auteur, année, p. X ».
+  libelleDeCitation(c) {
+    if (typeof c === 'string') return this.libelleCitation(c);
+    return this.formatCitation(this.auteursDepuisReference('[[' + c.cle + ']]', ''), c.page || '', c.cle) || c.cle;
+  }
+
+  // ── glisser depuis le lecteur de ZotFlow ──
+  //  Le lecteur joint au glisser un paquet « application/zotflow-citation » :
+  //  la clé de l'élément Zotero et, pour chaque annotation, sa clé et sa page.
+  //  ZotFlow en tire sa propre citation, mais s'efface devant un dépôt déjà
+  //  pris en charge : Ariane le prend donc, et cite la note d'annotation du
+  //  coffre, comme pour un glisser depuis le coffre.
+
+  static get MIME_ZOTFLOW() { return 'application/zotflow-citation'; }
+
+  // Le paquet lu dans le texte d'un glisser : { key, annotations: [{ id,
+  // page }] }, ou null.
+  static lireChargeZotflow(brut) {
+    let o = null;
+    try { o = JSON.parse(brut); } catch (e) { return null; }
+    if (!o || o.type !== 'zotflow-citation' || typeof o.key !== 'string') return null;
+    const annotations = (Array.isArray(o.annotations) ? o.annotations : [])
+      .filter((a) => a && a.id)
+      .map((a) => ({ id: String(a.id), page: a.pageLabel != null ? String(a.pageLabel) : '' }));
+    return annotations.length ? { key: o.key, annotations } : null;
+  }
+
+  chargeDeposeeZotflow(e) {
+    const dt = e && e.dataTransfer;
+    if (!dt || !Array.from(dt.types || []).includes(Ariane.MIME_ZOTFLOW)) return null;
+    try { return Ariane.lireChargeZotflow(dt.getData(Ariane.MIME_ZOTFLOW)); } catch (err) { return null; }
+  }
+
+  // La note source des annotations glissées : celle que vise le texte joint
+  // par le lecteur (« ![[source#^clé]] »), sinon celle de l'élément Zotero.
+  sourceDeZotflow(charge, texte) {
+    const m = String(texte || '').match(/!?\[\[([^\]#|]+)#\^/);
+    if (m) {
+      const f = this.app.metadataCache.getFirstLinkpathDest(m[1].trim(), '');
+      if (f instanceof obsidian.TFile) return f;
     }
-    this.attacherAnnotationParagraphe(cm, n, cles, insertOffset);
-    this.nettoyerZoneDrop();
+    return this.app.vault.getMarkdownFiles().find((f) => {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      return String(fm['zotero-key'] || '') === charge.key && !!fm.citationKey;
+    }) || null;
+  }
+
+  // Les citations à poser pour un paquet du lecteur. Une annotation sans note
+  // fait atomiser sa source, aussitôt ; si ZotFlow ne l'y a pas encore
+  // écrite, c'est la source qui est citée, à la page de l'annotation.
+  async clesDepuisZotflow(charge, texte) {
+    let index = this.indexAnnotationsParCle();
+    const manquent = () => charge.annotations.filter((a) => !index.has(a.id));
+    const source = manquent().length ? this.sourceDeZotflow(charge, texte) : null;
+    if (source) {
+      try { await this.atomiseSource(source); } catch (err) { console.warn('[Ariane] atomisation au dépôt :', err); }
+      // La note créée doit encore être indexée avant de se laisser citer.
+      for (let i = 0; i < 20 && manquent().length; i++) {
+        await new Promise((r) => setTimeout(r, 150));
+        index = this.indexAnnotationsParCle();
+      }
+    }
+    const vues = new Set();
+    const out = [];
+    for (const a of charge.annotations) {
+      const f = index.get(a.id);
+      const c = f ? f.basename : (source ? { cle: source.basename, page: a.page } : null);
+      const k = c && (typeof c === 'string' ? c : c.cle + '|' + c.page);
+      if (!c || vues.has(k)) continue;
+      vues.add(k);
+      out.push(c);
+    }
+    return out;
   }
 
   nettoyerZoneDrop() {
