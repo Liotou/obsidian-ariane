@@ -3015,8 +3015,8 @@ function titreDeNoteFille(corps) {
 // (parCleAnnotation : clé du surlignage → cible de lien), la citation pointe
 // vers elle : ([[cible|libellé]]). Ariane sait déjà citer une note
 // d'annotation (source, page, « cité dans »), en lecture comme à l'export.
-function citationsZotflowVersAriane(corps, parCleZotero, parCleAnnotation) {
-  const texte = String(corps);
+function citationsZotflowVersAriane(corps, parCleZotero, parCleAnnotation, commentaires) {
+  const texte = surlignagesZotflowVersAriane(String(corps), parCleAnnotation, commentaires);
   // Le span de citation en contient un autre : une expression paresseuse
   // s'arrêterait sur la balise fermante du span intérieur. On apparie donc à
   // la profondeur, comme on le ferait pour n'importe quelle imbrication.
@@ -3051,6 +3051,77 @@ function citationsZotflowVersAriane(corps, parCleZotero, parCleAnnotation) {
     ouvre.lastIndex = apres;
   }
   return sortie + texte.slice(dernier);
+}
+
+// Un surlignage glissé dans une note Zotero y dépose, avec le gabarit par
+// défaut, le passage, la citation et le commentaire : zotflow les recopie en
+// « <span class="highlight" data-annotation=…>« passage »</span>
+// <span class="citation" …>(Auteur, 2015, p. 18)</span> commentaire ».
+// La note d'annotation du coffre porte déjà passage et commentaire : le trio
+// devient la seule citation, liée à cette note ([[clé|Auteur, 2015, p. 18]]).
+// Le texte qui suit n'est retiré que s'il est le commentaire du surlignage,
+// ou une version antérieure que le commentaire actuel contient (commentaires :
+// clé -> commentaire, lu dans la fiche source) ; ce que Monsieur a écrit
+// lui-même à la suite reste en place.
+function surlignagesZotflowVersAriane(texte, parCleAnnotation, commentaires) {
+  if (!parCleAnnotation || !texte.includes('class="highlight"')) return texte;
+  const ouvre = /<span\b(?=[^>]*class="highlight")[^>]*data-annotation="([^"]*)"[^>]*>/g;
+  const ouvreCit = /^\s*<span\b(?=[^>]*class="citation")[^>]*>/;
+  let sortie = '', dernier = 0, m;
+  while ((m = ouvre.exec(texte)) !== null) {
+    const finSurl = finDeSpanApparie(texte, m.index + m[0].length);
+    if (finSurl < 0) continue;
+    let cle = null;
+    try { cle = JSON.parse(decodeURIComponent(m[1])).annotationKey || null; } catch (e) { cle = null; }
+    const cible = cle ? parCleAnnotation.get(String(cle)) : null;
+    const mc = cible ? texte.slice(finSurl).match(ouvreCit) : null;
+    if (!mc) { ouvre.lastIndex = finSurl; continue; }
+    const debutCit = finSurl + mc[0].length;
+    const finCit = finDeSpanApparie(texte, debutCit);
+    if (finCit < 0) { ouvre.lastIndex = finSurl; continue; }
+    const libelle = texte.slice(debutCit, finCit - '</span>'.length)
+      .replace(/<[^>]+>/g, '').trim().replace(/^\(+\s*/, '').replace(/\s*\)+$/, '').trim();
+    if (!libelle) { ouvre.lastIndex = finSurl; continue; }
+    // Fin du paragraphe : la prochaine ligne vide.
+    const finPar = (() => { const i = texte.indexOf('\n\n', finCit); return i < 0 ? texte.length : i; })();
+    const reste = texte.slice(finCit, finPar);
+    // Le commentaire tel qu'il était au dépôt, ou une version que le
+    // commentaire actuel a depuis prolongée : il y figure alors tel quel.
+    const comm = commentaires ? texteCompare(commentaires.get(String(cle)) || '') : '';
+    const r = texteCompare(reste);
+    const retirer = !!comm && r !== '' && (r === comm || (r.length >= 12 && comm.includes(r)));
+    sortie += texte.slice(dernier, m.index) + '([[' + cible + '|' + libelle + ']])';
+    dernier = retirer ? finPar : finCit;
+    ouvre.lastIndex = dernier;
+  }
+  return sortie + texte.slice(dernier);
+}
+
+// Texte réduit à ses mots, pour reconnaître un commentaire d'annotation
+// quelle que soit sa mise en forme (gras, sauts de ligne, entités), ses
+// accents ou ses majuscules, corrigés depuis le dépôt.
+function texteCompare(s) {
+  return String(s || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#x26;|&amp;/g, '&')
+    .replace(/[*_]+/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Commentaire de chaque annotation d'une fiche source : clé -> texte, lu
+// entre <!-- ZF_ANNO_BEG_clé --> et <!-- ZF_ANNO_END_clé -->.
+function commentairesAnnotations(contenu) {
+  const m = new Map();
+  const re = /<!--\s*ZF_ANNO_BEG_(\w+)\s*-->([\s\S]*?)<!--\s*ZF_ANNO_END_\1\s*-->/g;
+  let r;
+  while ((r = re.exec(String(contenu || ''))) !== null) {
+    const corps = r[2].split('\n').map((l) => l.replace(/^>\s?/, '')).join('\n').trim();
+    m.set(r[1], corps);
+  }
+  return m;
 }
 
 // Indice qui suit le </span> appariant le span ouvert juste avant « depart ».
@@ -6392,6 +6463,7 @@ const avecNoteReferences = (Base) => class extends Base {
     const contenu = await this.app.vault.cachedRead(fichierSource);
     const blocs = extraireNotesFilles(contenu);
     if (!blocs.length) return 0;
+    const commentaires = commentairesAnnotations(contenu);
 
     const table = parCleZotero || this.indexParCleZotero();
     const tableAnno = parCleAnnotation || this.indexParCleAnnotation();
@@ -6408,7 +6480,7 @@ const avecNoteReferences = (Base) => class extends Base {
         const fmx = (this.app.metadataCache.getFileCache(existant) || {}).frontmatter || {};
         if (fmx['zotflow-locked'] === false || fmx.locked === true) continue; // note reprise à la main
       }
-      const corps = citationsZotflowVersAriane(bloc.corps, table, tableAnno);
+      const corps = citationsZotflowVersAriane(bloc.corps, table, tableAnno, commentaires);
       const entete = [
         '---',
         'aliases:',
@@ -9392,11 +9464,20 @@ const avecNoteAtomes = (Base) => class extends Base {
     const pos = cm.posAtCoords({ x: e.clientX, y: e.clientY });
     if (pos == null) { this.nettoyerZoneDrop(); return; }
     const n = cm.state.doc.lineAt(pos).number;
+    // Surlignage glissé depuis l'application Zotero : son texte ne se lit
+    // qu'au dépôt, le survol ne l'a donc pas compté comme citable.
+    const zotero = this.chargeDeposeeZotflow(e) ? null : this.chargeDeposeeZotero(e);
+    if (zotero) this._glisserCitable = true;
     const vide = this.glisserCitable(e) && this.ligneVideDeposable(cm.state.doc, n);
-    if (!vide && !this.ligneEstParagraphe(cm.state.doc, n)) { this.nettoyerZoneDrop(); return; }
-    // Annotations glissées depuis le lecteur de ZotFlow, dépôt groupé depuis
-    // le panier flottant, sinon note unique glissée.
-    const zotflow = this.chargeDeposeeZotflow(e);
+    if (!vide && !this.ligneEstParagraphe(cm.state.doc, n)) {
+      // Glisser venu d'ailleurs : aucun dragend ne remettra l'état à zéro.
+      if (zotero) this._glisserCitable = null;
+      this.nettoyerZoneDrop();
+      return;
+    }
+    // Annotations glissées depuis le lecteur de ZotFlow ou depuis Zotero,
+    // dépôt groupé depuis le panier flottant, sinon note unique glissée.
+    const zotflow = this.chargeDeposeeZotflow(e) || zotero;
     let cles = null;
     if (!zotflow) {
       if (this.glisseDepuisPanier && this.panier && this.panier.length) {
@@ -9485,6 +9566,58 @@ const avecNoteAtomes = (Base) => class extends Base {
       .filter((a) => a && a.id)
       .map((a) => ({ id: String(a.id), page: a.pageLabel != null ? String(a.pageLabel) : '' }));
     return annotations.length ? { key: o.key, annotations } : null;
+  }
+
+  // ── glisser depuis l'application Zotero ──
+  //  Un surlignage glissé depuis le lecteur de Zotero n'arrive qu'en texte :
+  //  « « passage » ([Auteur, 2015, p. 18](zotero://select/…/items/ÉLÉMENT))
+  //  ([pdf](zotero://open-pdf/…?page=2&annotation=CLÉ)) commentaire ». Le
+  //  lien « pdf » porte la clé du surlignage, celle de sa note d'annotation :
+  //  on en tire le même paquet que celui du lecteur de ZotFlow, et le dépôt
+  //  ne garde que la citation, liée à cette note.
+
+  // Le paquet lu dans le texte (Markdown, ou HTML) d'un glisser depuis
+  // Zotero : { key, annotations: [{ id, page }] }, ou null.
+  static lireChargeZotero(brut) {
+    let s = String(brut || '');
+    // HTML : les liens repris sous leur forme Markdown, entités décodées.
+    if (/<a\b/i.test(s)) {
+      s = s.replace(/<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi,
+        (m, href, lib) => '[' + lib.replace(/<[^>]+>/g, '') + '](' + href + ')')
+        .replace(/<[^>]+>/g, '').replace(/&amp;/g, '&');
+    }
+    const reAnno = /zotero:\/\/open-pdf\/(?:library|groups\/\d+)\/items\/[A-Z0-9]{8}\?[^)\s"'<>]*?\bannotation=([A-Z0-9]{8})/g;
+    const reCitation = /\[([^\[\]]*)\]\(zotero:\/\/select\/(?:library|groups\/\d+)\/items\/([A-Z0-9]{8})\)/g;
+    const annotations = [];
+    const vues = new Set();
+    let key = '';
+    let debut = 0;
+    let m;
+    while ((m = reAnno.exec(s)) !== null) {
+      // La citation de CE surlignage : la dernière depuis le lien précédent.
+      const avant = s.slice(debut, m.index);
+      debut = m.index + m[0].length;
+      let lib = '', cit;
+      reCitation.lastIndex = 0;
+      while ((cit = reCitation.exec(avant)) !== null) { lib = cit[1]; key = key || cit[2]; }
+      if (vues.has(m[1])) continue;
+      vues.add(m[1]);
+      const p = lib.match(/\bpp?\.\s*([^\s,;)]+)\s*$/);
+      annotations.push({ id: m[1], page: p ? p[1] : '' });
+    }
+    return annotations.length ? { key, annotations } : null;
+  }
+
+  chargeDeposeeZotero(e) {
+    const dt = e && e.dataTransfer;
+    if (!dt) return null;
+    for (const fmt of ['text/plain', 'text/html']) {
+      let brut = '';
+      try { brut = dt.getData(fmt) || ''; } catch (err) { brut = ''; }
+      const charge = brut.includes('zotero://open-pdf') ? Ariane.lireChargeZotero(brut) : null;
+      if (charge) return charge;
+    }
+    return null;
   }
 
   chargeDeposeeZotflow(e) {
@@ -46362,6 +46495,7 @@ module.exports._test = {
   DEFAULT_SETTINGS,
   // Notes de lecture : citations zotflow ramenées à la forme d'Ariane.
   citationsZotflowVersAriane,
+  commentairesAnnotations,
   // Export Word : préparation du markdown pour pandoc.
   preparerMarkdownExport,
   deplierIntegrations,

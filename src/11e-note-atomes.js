@@ -1623,11 +1623,20 @@ const avecNoteAtomes = (Base) => class extends Base {
     const pos = cm.posAtCoords({ x: e.clientX, y: e.clientY });
     if (pos == null) { this.nettoyerZoneDrop(); return; }
     const n = cm.state.doc.lineAt(pos).number;
+    // Surlignage glissé depuis l'application Zotero : son texte ne se lit
+    // qu'au dépôt, le survol ne l'a donc pas compté comme citable.
+    const zotero = this.chargeDeposeeZotflow(e) ? null : this.chargeDeposeeZotero(e);
+    if (zotero) this._glisserCitable = true;
     const vide = this.glisserCitable(e) && this.ligneVideDeposable(cm.state.doc, n);
-    if (!vide && !this.ligneEstParagraphe(cm.state.doc, n)) { this.nettoyerZoneDrop(); return; }
-    // Annotations glissées depuis le lecteur de ZotFlow, dépôt groupé depuis
-    // le panier flottant, sinon note unique glissée.
-    const zotflow = this.chargeDeposeeZotflow(e);
+    if (!vide && !this.ligneEstParagraphe(cm.state.doc, n)) {
+      // Glisser venu d'ailleurs : aucun dragend ne remettra l'état à zéro.
+      if (zotero) this._glisserCitable = null;
+      this.nettoyerZoneDrop();
+      return;
+    }
+    // Annotations glissées depuis le lecteur de ZotFlow ou depuis Zotero,
+    // dépôt groupé depuis le panier flottant, sinon note unique glissée.
+    const zotflow = this.chargeDeposeeZotflow(e) || zotero;
     let cles = null;
     if (!zotflow) {
       if (this.glisseDepuisPanier && this.panier && this.panier.length) {
@@ -1716,6 +1725,58 @@ const avecNoteAtomes = (Base) => class extends Base {
       .filter((a) => a && a.id)
       .map((a) => ({ id: String(a.id), page: a.pageLabel != null ? String(a.pageLabel) : '' }));
     return annotations.length ? { key: o.key, annotations } : null;
+  }
+
+  // ── glisser depuis l'application Zotero ──
+  //  Un surlignage glissé depuis le lecteur de Zotero n'arrive qu'en texte :
+  //  « « passage » ([Auteur, 2015, p. 18](zotero://select/…/items/ÉLÉMENT))
+  //  ([pdf](zotero://open-pdf/…?page=2&annotation=CLÉ)) commentaire ». Le
+  //  lien « pdf » porte la clé du surlignage, celle de sa note d'annotation :
+  //  on en tire le même paquet que celui du lecteur de ZotFlow, et le dépôt
+  //  ne garde que la citation, liée à cette note.
+
+  // Le paquet lu dans le texte (Markdown, ou HTML) d'un glisser depuis
+  // Zotero : { key, annotations: [{ id, page }] }, ou null.
+  static lireChargeZotero(brut) {
+    let s = String(brut || '');
+    // HTML : les liens repris sous leur forme Markdown, entités décodées.
+    if (/<a\b/i.test(s)) {
+      s = s.replace(/<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi,
+        (m, href, lib) => '[' + lib.replace(/<[^>]+>/g, '') + '](' + href + ')')
+        .replace(/<[^>]+>/g, '').replace(/&amp;/g, '&');
+    }
+    const reAnno = /zotero:\/\/open-pdf\/(?:library|groups\/\d+)\/items\/[A-Z0-9]{8}\?[^)\s"'<>]*?\bannotation=([A-Z0-9]{8})/g;
+    const reCitation = /\[([^\[\]]*)\]\(zotero:\/\/select\/(?:library|groups\/\d+)\/items\/([A-Z0-9]{8})\)/g;
+    const annotations = [];
+    const vues = new Set();
+    let key = '';
+    let debut = 0;
+    let m;
+    while ((m = reAnno.exec(s)) !== null) {
+      // La citation de CE surlignage : la dernière depuis le lien précédent.
+      const avant = s.slice(debut, m.index);
+      debut = m.index + m[0].length;
+      let lib = '', cit;
+      reCitation.lastIndex = 0;
+      while ((cit = reCitation.exec(avant)) !== null) { lib = cit[1]; key = key || cit[2]; }
+      if (vues.has(m[1])) continue;
+      vues.add(m[1]);
+      const p = lib.match(/\bpp?\.\s*([^\s,;)]+)\s*$/);
+      annotations.push({ id: m[1], page: p ? p[1] : '' });
+    }
+    return annotations.length ? { key, annotations } : null;
+  }
+
+  chargeDeposeeZotero(e) {
+    const dt = e && e.dataTransfer;
+    if (!dt) return null;
+    for (const fmt of ['text/plain', 'text/html']) {
+      let brut = '';
+      try { brut = dt.getData(fmt) || ''; } catch (err) { brut = ''; }
+      const charge = brut.includes('zotero://open-pdf') ? Ariane.lireChargeZotero(brut) : null;
+      if (charge) return charge;
+    }
+    return null;
   }
 
   chargeDeposeeZotflow(e) {

@@ -12,6 +12,7 @@ module.exports._test = {
   DEFAULT_SETTINGS,
   // Notes de lecture : citations zotflow ramenées à la forme d'Ariane.
   citationsZotflowVersAriane,
+  commentairesAnnotations,
   // Export Word : préparation du markdown pour pandoc.
   preparerMarkdownExport,
   deplierIntegrations,

@@ -489,6 +489,7 @@ const avecNoteReferences = (Base) => class extends Base {
     const contenu = await this.app.vault.cachedRead(fichierSource);
     const blocs = extraireNotesFilles(contenu);
     if (!blocs.length) return 0;
+    const commentaires = commentairesAnnotations(contenu);
 
     const table = parCleZotero || this.indexParCleZotero();
     const tableAnno = parCleAnnotation || this.indexParCleAnnotation();
@@ -505,7 +506,7 @@ const avecNoteReferences = (Base) => class extends Base {
         const fmx = (this.app.metadataCache.getFileCache(existant) || {}).frontmatter || {};
         if (fmx['zotflow-locked'] === false || fmx.locked === true) continue; // note reprise à la main
       }
-      const corps = citationsZotflowVersAriane(bloc.corps, table, tableAnno);
+      const corps = citationsZotflowVersAriane(bloc.corps, table, tableAnno, commentaires);
       const entete = [
         '---',
         'aliases:',
