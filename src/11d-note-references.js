@@ -507,24 +507,53 @@ const avecNoteReferences = (Base) => class extends Base {
         const fmx = (this.app.metadataCache.getFileCache(existant) || {}).frontmatter || {};
         if (fmx['zotflow-locked'] === false || fmx.locked === true) continue; // note reprise à la main
       }
-      const corps = citationsZotflowVersAriane(bloc.corps, table, tableAnno);
-      const entete = [
-        '---',
-        'aliases:',
-        '  - ' + JSON.stringify(bloc.titre || bloc.cle),
-        'cssclasses:',
-        '  - note-de-lecture',
-        'zotflow-note-key: ' + bloc.cle,
-        'zotflow-source: "[[' + fichierSource.basename + ']]"',
-        'type: lecture',
-        'zotflow-auto: true',
-        '---',
-        '',
-      ].join('\n');
-      await this.ecrire(chemin, entete + corps + '\n', existant || null);
+      const canon = this.contenuNoteLecture(fichierSource, bloc, table, tableAnno);
+      if (existant instanceof obsidian.TFile && (await this.app.vault.read(existant)) === canon) continue;
+      await this.ecrire(chemin, canon, existant || null);
       faits += 1;
     }
     return faits;
+  }
+
+  // Le contenu d'une note de lecture, tel qu'Ariane le tient. Verrouillée
+  // comme une note d'annotation : c'est une copie de la note Zotero, qui se
+  // modifie dans ZotFlow (éditeur de notes, ou zone de la fiche source).
+  contenuNoteLecture(fichierSource, bloc, table, tableAnno) {
+    const corps = citationsZotflowVersAriane(bloc.corps, table, tableAnno);
+    const entete = [
+      '---',
+      'aliases:',
+      '  - ' + JSON.stringify(bloc.titre || bloc.cle),
+      'cssclasses:',
+      '  - note-de-lecture',
+      'zotflow-note-key: ' + bloc.cle,
+      'zotflow-source: "[[' + fichierSource.basename + ']]"',
+      'type: lecture',
+      'zotflow-auto: true',
+      'zotflow-locked: true',
+      '---',
+      '',
+    ].join('\n');
+    return entete + corps + '\n';
+  }
+
+  // Une note de lecture retouchée à la main retrouve son contenu, tiré de la
+  // fiche source, comme une note d'annotation verrouillée. Une note dont la
+  // propriété « zotflow-locked » vaut false est à Monsieur : on la laisse.
+  async verrouillerNoteLecture(file) {
+    if (!this.settings.verrouillage) return;
+    const fm = (this.app.metadataCache.getFileCache(file) || {}).frontmatter || {};
+    if (fm['zotflow-auto'] !== true || !fm['zotflow-note-key']) return;
+    if (fm['zotflow-locked'] === false || fm.locked === true) return;
+    const source = this.app.metadataCache.getFirstLinkpathDest(sansLien(fm['zotflow-source']), file.path);
+    if (!(source instanceof obsidian.TFile)) return;
+    const bloc = extraireNotesFilles(await this.app.vault.read(source))
+      .find((b) => b.cle === String(fm['zotflow-note-key']));
+    if (!bloc) return;
+    const canon = this.contenuNoteLecture(source, bloc, this.indexParCleZotero(), this.indexParCleAnnotation());
+    if ((await this.app.vault.read(file)) === canon) return;
+    await this.ecrire(file.path, canon, file);
+    new obsidian.Notice(tr('Note de lecture rétablie : elle se modifie dans ZotFlow (éditeur de notes, ou zone de la fiche source).'), 6000);
   }
 
   // Passe sur toutes les fiches sources. L'index des clés Zotero n'est bâti

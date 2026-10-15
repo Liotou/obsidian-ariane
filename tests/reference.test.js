@@ -176,3 +176,11 @@ test('extraireNotesFilles : les mentions de catalogue ne deviennent pas des note
     + bloc('CCCC3333', 'Includes bibliographical references and index.') + bloc('DDDD4444', 'Aborde la notion d’écosystème.');
   assert.deepEqual(extraireNotesFilles(t).map((b) => b.cle), ['DDDD4444']);
 });
+
+test('contenuNoteLecture : la note de lecture se déclare verrouillée, comme une note d’annotation', () => {
+  const t = Ariane.prototype.contenuNoteLecture.call({}, { basename: '@aven2011' },
+    { cle: 'NOTEKEY1', titre: 'Synthèse', corps: 'Le texte de la note.' }, new Map(), new Map());
+  assert.match(t, /\nzotflow-note-key: NOTEKEY1\n/);
+  assert.match(t, /\nzotflow-auto: true\nzotflow-locked: true\n---\n/);
+  assert.match(t, /Le texte de la note\.\n$/);
+});

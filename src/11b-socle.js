@@ -565,6 +565,14 @@ const avecSocle = (Base) => class extends Base {
       }
       return;
     }
+    // Notes de lecture : verrouillées comme les notes d'annotation.
+    const lecture = this.settings.dossierNotesLecture;
+    if (lecture && file.path.startsWith(lecture + '/')) {
+      if (this.settings.verrouillage) {
+        this.antirebond('lock:' + file.path, () => this.verrouillerNoteLecture(file));
+      }
+      return;
+    }
     if (!this.settings.regenerationAuto && !this.settings.rattachementZotero) return;
     this.antirebond('src:' + file.path, async () => {
       const contenu = await this.app.vault.read(file);
