@@ -766,8 +766,8 @@ class Ariane extends composer(obsidian.Plugin,
       // vue markdown (le chat de Claudian, par exemple). On note donc la cible
       // au départ du glisser, seul moment où l'information est sûre.
       this.registerDomEvent(doc, 'dragstart', (e) => { this.reinitialiserStyleGlisser(); this._glisserInterne = true; this.noterSourceGlissee(e); }, { capture: true });
-      // Un glisser venu d'ailleurs (application Zotero, lecteur de ZotFlow dans
-      // son cadre) n'émet ici ni dragstart ni dragend : on repart de zéro à
+      // Un glisser venu d'ailleurs (une autre application, le lecteur de
+      // ZotFlow dans son cadre) n'émet ici ni dragstart ni dragend : on repart de zéro à
       // son entrée dans la fenêtre, et ses repères s'effacent à sa sortie.
       this.registerDomEvent(doc, 'dragenter', (e) => {
         if (!e.relatedTarget && !this._glisserInterne) this.reinitialiserStyleGlisser();

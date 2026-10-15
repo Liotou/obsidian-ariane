@@ -165,8 +165,8 @@ function titreDeNoteFille(corps) {
 // (parCleAnnotation : clé du surlignage → cible de lien), la citation pointe
 // vers elle : ([[cible|libellé]]). Ariane sait déjà citer une note
 // d'annotation (source, page, « cité dans »), en lecture comme à l'export.
-function citationsZotflowVersAriane(corps, parCleZotero, parCleAnnotation, commentaires) {
-  const texte = surlignagesZotflowVersAriane(String(corps), parCleAnnotation, commentaires);
+function citationsZotflowVersAriane(corps, parCleZotero, parCleAnnotation) {
+  const texte = String(corps);
   // Le span de citation en contient un autre : une expression paresseuse
   // s'arrêterait sur la balise fermante du span intérieur. On apparie donc à
   // la profondeur, comme on le ferait pour n'importe quelle imbrication.
@@ -201,77 +201,6 @@ function citationsZotflowVersAriane(corps, parCleZotero, parCleAnnotation, comme
     ouvre.lastIndex = apres;
   }
   return sortie + texte.slice(dernier);
-}
-
-// Un surlignage glissé dans une note Zotero y dépose, avec le gabarit par
-// défaut, le passage, la citation et le commentaire : zotflow les recopie en
-// « <span class="highlight" data-annotation=…>« passage »</span>
-// <span class="citation" …>(Auteur, 2015, p. 18)</span> commentaire ».
-// La note d'annotation du coffre porte déjà passage et commentaire : le trio
-// devient la seule citation, liée à cette note ([[clé|Auteur, 2015, p. 18]]).
-// Le texte qui suit n'est retiré que s'il est le commentaire du surlignage,
-// ou une version antérieure que le commentaire actuel contient (commentaires :
-// clé -> commentaire, lu dans la fiche source) ; ce que Monsieur a écrit
-// lui-même à la suite reste en place.
-function surlignagesZotflowVersAriane(texte, parCleAnnotation, commentaires) {
-  if (!parCleAnnotation || !texte.includes('class="highlight"')) return texte;
-  const ouvre = /<span\b(?=[^>]*class="highlight")[^>]*data-annotation="([^"]*)"[^>]*>/g;
-  const ouvreCit = /^\s*<span\b(?=[^>]*class="citation")[^>]*>/;
-  let sortie = '', dernier = 0, m;
-  while ((m = ouvre.exec(texte)) !== null) {
-    const finSurl = finDeSpanApparie(texte, m.index + m[0].length);
-    if (finSurl < 0) continue;
-    let cle = null;
-    try { cle = JSON.parse(decodeURIComponent(m[1])).annotationKey || null; } catch (e) { cle = null; }
-    const cible = cle ? parCleAnnotation.get(String(cle)) : null;
-    const mc = cible ? texte.slice(finSurl).match(ouvreCit) : null;
-    if (!mc) { ouvre.lastIndex = finSurl; continue; }
-    const debutCit = finSurl + mc[0].length;
-    const finCit = finDeSpanApparie(texte, debutCit);
-    if (finCit < 0) { ouvre.lastIndex = finSurl; continue; }
-    const libelle = texte.slice(debutCit, finCit - '</span>'.length)
-      .replace(/<[^>]+>/g, '').trim().replace(/^\(+\s*/, '').replace(/\s*\)+$/, '').trim();
-    if (!libelle) { ouvre.lastIndex = finSurl; continue; }
-    // Fin du paragraphe : la prochaine ligne vide.
-    const finPar = (() => { const i = texte.indexOf('\n\n', finCit); return i < 0 ? texte.length : i; })();
-    const reste = texte.slice(finCit, finPar);
-    // Le commentaire tel qu'il était au dépôt, ou une version que le
-    // commentaire actuel a depuis prolongée : il y figure alors tel quel.
-    const comm = commentaires ? texteCompare(commentaires.get(String(cle)) || '') : '';
-    const r = texteCompare(reste);
-    const retirer = !!comm && r !== '' && (r === comm || (r.length >= 12 && comm.includes(r)));
-    sortie += texte.slice(dernier, m.index) + '([[' + cible + '|' + libelle + ']])';
-    dernier = retirer ? finPar : finCit;
-    ouvre.lastIndex = dernier;
-  }
-  return sortie + texte.slice(dernier);
-}
-
-// Texte réduit à ses mots, pour reconnaître un commentaire d'annotation
-// quelle que soit sa mise en forme (gras, sauts de ligne, entités), ses
-// accents ou ses majuscules, corrigés depuis le dépôt.
-function texteCompare(s) {
-  return String(s || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&#x26;|&amp;/g, '&')
-    .replace(/[*_]+/g, '')
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-// Commentaire de chaque annotation d'une fiche source : clé -> texte, lu
-// entre <!-- ZF_ANNO_BEG_clé --> et <!-- ZF_ANNO_END_clé -->.
-function commentairesAnnotations(contenu) {
-  const m = new Map();
-  const re = /<!--\s*ZF_ANNO_BEG_(\w+)\s*-->([\s\S]*?)<!--\s*ZF_ANNO_END_\1\s*-->/g;
-  let r;
-  while ((r = re.exec(String(contenu || ''))) !== null) {
-    const corps = r[2].split('\n').map((l) => l.replace(/^>\s?/, '')).join('\n').trim();
-    m.set(r[1], corps);
-  }
-  return m;
 }
 
 // Indice qui suit le </span> appariant le span ouvert juste avant « depart ».

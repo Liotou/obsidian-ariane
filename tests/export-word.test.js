@@ -150,3 +150,9 @@ test('lireChargeZotflow : clés et pages des annotations glissées du lecteur', 
   assert.equal(Ariane.lireChargeZotflow('pas du JSON'), null);
   assert.equal(Ariane.lireChargeZotflow(JSON.stringify({ type: 'zotflow-citation', key: 'K', annotations: [] })), null);
 });
+
+test('sourceDeZotflow : sans clé d’élément ni lien de source, aucune note n’est désignée', () => {
+  const app = { vault: { getMarkdownFiles: () => [{ path: 'x.md' }] },
+    metadataCache: { getFileCache: () => ({ frontmatter: { citationKey: 'x' } }), getFirstLinkpathDest: () => null } };
+  assert.equal(Ariane.prototype.sourceDeZotflow.call({ app }, { key: '', annotations: [] }, ''), null);
+});
