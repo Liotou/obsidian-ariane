@@ -571,6 +571,10 @@ const avecSocle = (Base) => class extends Base {
       if (this.settings.regenerationAuto && contenu.includes(this.settings.marqueurSource)) {
         await this.atomiseSource(file);
       }
+      // Ses notes-filles Zotero, recopiées par zotflow : des notes de lecture.
+      if (this.settings.regenerationAuto && contenu.includes('ZF_NOTE_BEG_')) {
+        await this.atomiserNotesLecture(file);
+      }
       if (this.settings.rattachementZotero && this.estSourceZoteroFrontmatter(file)) {
         await this.rattacherReferencesZotero(file);
       }
@@ -585,6 +589,10 @@ const avecSocle = (Base) => class extends Base {
       const contenu = await this.app.vault.read(file);
       if (this.settings.regenerationAuto && contenu.includes(this.settings.marqueurSource)) {
         await this.atomiseSource(file);
+      }
+      // Ses notes-filles Zotero, recopiées par zotflow : des notes de lecture.
+      if (this.settings.regenerationAuto && contenu.includes('ZF_NOTE_BEG_')) {
+        await this.atomiserNotesLecture(file);
       }
       if (this.settings.rattachementZotero && this.estSourceZoteroFrontmatter(file)) {
         await this.rattacherReferencesZotero(file);

@@ -492,8 +492,10 @@ const avecNoteReferences = (Base) => class extends Base {
 
     const table = parCleZotero || this.indexParCleZotero();
     const tableAnno = parCleAnnotation || this.indexParCleAnnotation();
-    const racine = this.settings.dossierNotesLecture || '2 - Notes de lecture';
-    const dossier = racine + '/' + fichierSource.basename;
+    const racine = this.settings.dossierNotesLecture;
+    if (!racine) return 0;
+    // Un sous-dossier par source, nommé comme celui de ses annotations.
+    const dossier = racine + '/' + this.nettoyerNomFichier(fichierSource.basename);
     await this.assurerDossier(racine);
     await this.assurerDossier(dossier);
 
@@ -906,12 +908,21 @@ const avecNoteReferences = (Base) => class extends Base {
   // migre qu'une fois, et seulement si la table est encore vide.
   // Propose un rôle par dossier dont le nom s'en approche. On ne remplit que
   // les rôles restés vides : jamais on n'écrase un choix de l'utilisateur.
-  proposerRoles() {
+  // `seulsOrphelins` : ne revoir que les rôles qui désignent un dossier
+  // absent du coffre (renommé, ou resté sur un ancien nom par défaut) ; ils
+  // comptent alors comme vides. Les dossiers encore vides sont candidats.
+  proposerRoles(seulsOrphelins) {
     const racines = new Set();
     for (const f of this.app.vault.getMarkdownFiles()) {
       const parts = f.path.split('/');
       for (let i = 1; i <= Math.min(2, parts.length - 1); i++) racines.add(parts.slice(0, i).join('/'));
     }
+    const tous = typeof this.app.vault.getAllLoadedFiles === 'function' ? this.app.vault.getAllLoadedFiles() : [];
+    for (const d of tous) {
+      if (!d || !d.path || !Array.isArray(d.children) || d.path === '/') continue;
+      if (d.path.split('/').length <= 2 && !d.path.startsWith('.')) racines.add(d.path);
+    }
+    const existe = (chemin) => !!this.app.vault.getAbstractFileByPath(chemin);
     const sansAccent = (x) => String(x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const indices = [
       ['dossierAnnotations', ['annotation']],
@@ -925,7 +936,8 @@ const avecNoteReferences = (Base) => class extends Base {
     ];
     let poses = 0;
     for (const [cle, mots] of indices) {
-      if (this.settings[cle]) continue;
+      const actuel = this.settings[cle];
+      if (seulsOrphelins ? (!actuel || existe(actuel)) : actuel) continue;
       let choisi = null;
       for (const d of racines) {
         const n = sansAccent(d);

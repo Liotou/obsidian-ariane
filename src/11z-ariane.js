@@ -810,6 +810,11 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
     // Le panneau « Plan » : ses entrées portent les mêmes numéros.
     this.app.workspace.onLayoutReady(() => this.brancherPlans());
+    // Un rôle de dossier qui désigne un dossier absent (renommé, ou resté sur
+    // un ancien nom par défaut) suit le dossier existant qui lui correspond.
+    this.app.workspace.onLayoutReady(async () => {
+      try { if (this.proposerRoles(true)) await this.saveSettings(); } catch (e) { console.debug('[Ariane] rôles', e); }
+    });
     this.registerEvent(this.app.workspace.on('layout-change', () => this.brancherPlans()));
     this.app.workspace.onLayoutReady(() => this.installerDecorateurExplorateur());
     this.app.workspace.onLayoutReady(async () => {

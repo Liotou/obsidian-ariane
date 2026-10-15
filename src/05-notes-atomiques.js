@@ -111,6 +111,11 @@ function estNoteDeDonnees(corps) {
   // Une clé Zotero seule en première ligne ne dit rien : on l'écarte d'abord.
   t = t.replace(/^[A-Z0-9]{6,10}\s*\n/, '').trim();
   if (!t) return true;
+  // Mention de catalogue importée avec la fiche (« Bibliography: p. 287-290 »,
+  // « Includes index », « Hier auch später erschienene… ») : courte, et faite
+  // d'une formule de bibliothécaire, non d'une lecture.
+  const brut = t.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (brut.length < 200 && /^(?:bibliography\b|bibliographie\s*:|includes\b|index\b|notes?\s*:|hier auch\b|enth(?:ä|a)lt\b|literaturverz)/i.test(brut)) return true;
   if (/^[[{][\s\S]*[\]}]$/.test(t)) {
     try { JSON.parse(t); return true; } catch (e) { /* pas du JSON : on continue */ }
   }

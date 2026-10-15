@@ -153,3 +153,26 @@ test('références orphelines : fiche absente ou à la corbeille, et jamais sur 
   assert.deepEqual(Ariane.referencesOrphelines(notes, etats, 0), [], 'base vide : rien');
   assert.deepEqual(Ariane.referencesOrphelines(notes, new Map(), 3000), [], 'plus aucune note reconnue : base mal lue, rien');
 });
+
+test('proposerRoles(true) : un rôle qui désigne un dossier absent suit le dossier existant, même vide', () => {
+  const dossiers = ['02 - Annotations', '11 - Notes de lecture', '08 - Tâches'];
+  const settings = { dossierNotesLecture: '2 - Notes de lecture', dossierAnnotations: '02 - Annotations', dossierTaches: '' };
+  const app = { vault: {
+    getMarkdownFiles: () => [{ path: '02 - Annotations/@a/K.md' }],
+    getAllLoadedFiles: () => dossiers.map((p) => ({ path: p, children: [] })),
+    getAbstractFileByPath: (p) => (dossiers.includes(p) ? { path: p } : null),
+  } };
+  const n = Ariane.prototype.proposerRoles.call({ app, settings }, true);
+  assert.equal(n, 1);
+  assert.equal(settings.dossierNotesLecture, '11 - Notes de lecture');
+  assert.equal(settings.dossierTaches, '');            // rôle vide : laissé au choix de l'utilisateur
+  assert.equal(settings.dossierAnnotations, '02 - Annotations');
+});
+
+test('extraireNotesFilles : les mentions de catalogue ne deviennent pas des notes de lecture', () => {
+  const { extraireNotesFilles } = Ariane._test;
+  const bloc = (cle, corps) => '<!-- ZF_NOTE_BEG_' + cle + ' -->\n' + corps + '\n<!-- ZF_NOTE_END_' + cle + ' -->\n';
+  const t = bloc('AAAA1111', 'Bibliography: p. 287-290') + bloc('BBBB2222', 'Hier auch später erschienene, unveränderte Nachdrucke')
+    + bloc('CCCC3333', 'Includes bibliographical references and index.') + bloc('DDDD4444', 'Aborde la notion d’écosystème.');
+  assert.deepEqual(extraireNotesFilles(t).map((b) => b.cle), ['DDDD4444']);
+});

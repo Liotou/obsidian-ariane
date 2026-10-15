@@ -2968,6 +2968,11 @@ function estNoteDeDonnees(corps) {
   // Une clé Zotero seule en première ligne ne dit rien : on l'écarte d'abord.
   t = t.replace(/^[A-Z0-9]{6,10}\s*\n/, '').trim();
   if (!t) return true;
+  // Mention de catalogue importée avec la fiche (« Bibliography: p. 287-290 »,
+  // « Includes index », « Hier auch später erschienene… ») : courte, et faite
+  // d'une formule de bibliothécaire, non d'une lecture.
+  const brut = t.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (brut.length < 200 && /^(?:bibliography\b|bibliographie\s*:|includes\b|index\b|notes?\s*:|hier auch\b|enth(?:ä|a)lt\b|literaturverz)/i.test(brut)) return true;
   if (/^[[{][\s\S]*[\]}]$/.test(t)) {
     try { JSON.parse(t); return true; } catch (e) { /* pas du JSON : on continue */ }
   }
@@ -5081,6 +5086,10 @@ const avecSocle = (Base) => class extends Base {
       if (this.settings.regenerationAuto && contenu.includes(this.settings.marqueurSource)) {
         await this.atomiseSource(file);
       }
+      // Ses notes-filles Zotero, recopiées par zotflow : des notes de lecture.
+      if (this.settings.regenerationAuto && contenu.includes('ZF_NOTE_BEG_')) {
+        await this.atomiserNotesLecture(file);
+      }
       if (this.settings.rattachementZotero && this.estSourceZoteroFrontmatter(file)) {
         await this.rattacherReferencesZotero(file);
       }
@@ -5095,6 +5104,10 @@ const avecSocle = (Base) => class extends Base {
       const contenu = await this.app.vault.read(file);
       if (this.settings.regenerationAuto && contenu.includes(this.settings.marqueurSource)) {
         await this.atomiseSource(file);
+      }
+      // Ses notes-filles Zotero, recopiées par zotflow : des notes de lecture.
+      if (this.settings.regenerationAuto && contenu.includes('ZF_NOTE_BEG_')) {
+        await this.atomiserNotesLecture(file);
       }
       if (this.settings.rattachementZotero && this.estSourceZoteroFrontmatter(file)) {
         await this.rattacherReferencesZotero(file);
@@ -6402,8 +6415,10 @@ const avecNoteReferences = (Base) => class extends Base {
 
     const table = parCleZotero || this.indexParCleZotero();
     const tableAnno = parCleAnnotation || this.indexParCleAnnotation();
-    const racine = this.settings.dossierNotesLecture || '2 - Notes de lecture';
-    const dossier = racine + '/' + fichierSource.basename;
+    const racine = this.settings.dossierNotesLecture;
+    if (!racine) return 0;
+    // Un sous-dossier par source, nommé comme celui de ses annotations.
+    const dossier = racine + '/' + this.nettoyerNomFichier(fichierSource.basename);
     await this.assurerDossier(racine);
     await this.assurerDossier(dossier);
 
@@ -6816,12 +6831,21 @@ const avecNoteReferences = (Base) => class extends Base {
   // migre qu'une fois, et seulement si la table est encore vide.
   // Propose un rôle par dossier dont le nom s'en approche. On ne remplit que
   // les rôles restés vides : jamais on n'écrase un choix de l'utilisateur.
-  proposerRoles() {
+  // `seulsOrphelins` : ne revoir que les rôles qui désignent un dossier
+  // absent du coffre (renommé, ou resté sur un ancien nom par défaut) ; ils
+  // comptent alors comme vides. Les dossiers encore vides sont candidats.
+  proposerRoles(seulsOrphelins) {
     const racines = new Set();
     for (const f of this.app.vault.getMarkdownFiles()) {
       const parts = f.path.split('/');
       for (let i = 1; i <= Math.min(2, parts.length - 1); i++) racines.add(parts.slice(0, i).join('/'));
     }
+    const tous = typeof this.app.vault.getAllLoadedFiles === 'function' ? this.app.vault.getAllLoadedFiles() : [];
+    for (const d of tous) {
+      if (!d || !d.path || !Array.isArray(d.children) || d.path === '/') continue;
+      if (d.path.split('/').length <= 2 && !d.path.startsWith('.')) racines.add(d.path);
+    }
+    const existe = (chemin) => !!this.app.vault.getAbstractFileByPath(chemin);
     const sansAccent = (x) => String(x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const indices = [
       ['dossierAnnotations', ['annotation']],
@@ -6835,7 +6859,8 @@ const avecNoteReferences = (Base) => class extends Base {
     ];
     let poses = 0;
     for (const [cle, mots] of indices) {
-      if (this.settings[cle]) continue;
+      const actuel = this.settings[cle];
+      if (seulsOrphelins ? (!actuel || existe(actuel)) : actuel) continue;
       let choisi = null;
       for (const d of racines) {
         const n = sansAccent(d);
@@ -25045,6 +25070,11 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
     // Le panneau « Plan » : ses entrées portent les mêmes numéros.
     this.app.workspace.onLayoutReady(() => this.brancherPlans());
+    // Un rôle de dossier qui désigne un dossier absent (renommé, ou resté sur
+    // un ancien nom par défaut) suit le dossier existant qui lui correspond.
+    this.app.workspace.onLayoutReady(async () => {
+      try { if (this.proposerRoles(true)) await this.saveSettings(); } catch (e) { console.debug('[Ariane] rôles', e); }
+    });
     this.registerEvent(this.app.workspace.on('layout-change', () => this.brancherPlans()));
     this.app.workspace.onLayoutReady(() => this.installerDecorateurExplorateur());
     this.app.workspace.onLayoutReady(async () => {
@@ -46449,6 +46479,7 @@ module.exports._test = {
   DEFAULT_SETTINGS,
   // Notes de lecture : citations zotflow ramenées à la forme d'Ariane.
   citationsZotflowVersAriane,
+  extraireNotesFilles,
   // Export Word : préparation du markdown pour pandoc.
   preparerMarkdownExport,
   deplierIntegrations,
