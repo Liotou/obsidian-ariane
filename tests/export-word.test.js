@@ -156,3 +156,27 @@ test('sourceDeZotflow : sans clé d’élément ni lien de source, aucune note n
     metadataCache: { getFileCache: () => ({ frontmatter: { citationKey: 'x' } }), getFirstLinkpathDest: () => null } };
   assert.equal(Ariane.prototype.sourceDeZotflow.call({ app }, { key: '', annotations: [] }, ''), null);
 });
+
+test('tableaux : cellules d’une ligne, rangée vers ligne source, insertion avec barre échappée', () => {
+  const { cellulesDeLigne, ligneDeRangee, insertionCellule, rafraichirLibelles } = Ariane._test;
+  const L = '| Concept | Définition | Source |';
+  const c = cellulesDeLigne(L);
+  assert.deepEqual(c.map((x) => L.slice(x.debut, x.fin).trim()), ['Concept', 'Définition', 'Source']);
+  // Une barre échappée ne sépare pas ; sans barres d'encadrement aussi.
+  const E = 'a | [[K\\|Lib]] | c';
+  assert.deepEqual(cellulesDeLigne(E).map((x) => E.slice(x.debut, x.fin).trim()), ['a', '[[K\\|Lib]]', 'c']);
+  assert.equal(ligneDeRangee(0), 0);
+  assert.equal(ligneDeRangee(1), 2);   // la ligne de séparation est sautée
+  const lien = '[[K1|Adner, 2017, p. 3]]';
+  const T = '| Écosystème | Une structure. |  |';
+  const cs = cellulesDeLigne(T);
+  // Entre parenthèses, avant le point final.
+  let r = insertionCellule(T, cs[1], [lien], false);
+  assert.equal(T.slice(0, r.off) + r.insert + T.slice(r.off), '| Écosystème | Une structure ([[K1\\|Adner, 2017, p. 3]]). |  |');
+  // Cellule vide : la citation seule, encadrée d'espaces.
+  r = insertionCellule(T, cs[2], ['[[K1|Adner (2017, p. 3)]]'], true);
+  assert.equal(T.slice(0, r.off) + r.insert + T.slice(r.off), '| Écosystème | Une structure. | [[K1\\|Adner (2017, p. 3)]] |');
+  // Le rafraîchissement garde la barre échappée.
+  const f = rafraichirLibelles('| x | [[K1\\|Adner, 2016]] |', () => 'Adner, 2017', () => true);
+  assert.equal(f.texte, '| x | [[K1\\|Adner, 2017]] |');
+});

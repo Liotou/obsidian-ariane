@@ -1422,6 +1422,37 @@ const avecNoteAtomes = (Base) => class extends Base {
     return narratif ? 'narratif' : 'parenthese';
   }
 
+  // La cellule de tableau sous le pointeur, dans l'éditeur : { cm, td, ligne
+  // (ligne source), colonne, vide }, ou null. Le tableau est dessiné d'un
+  // bloc : on remonte du rendu (rangée, colonne) à sa ligne source.
+  celluleSousPoint(e) {
+    const cible = e && e.target;
+    if (!cible || typeof cible.closest !== 'function') return null;
+    const td = cible.closest('.cm-table-widget td, .cm-table-widget th');
+    const widget = td && td.closest('.cm-table-widget');
+    const table = td && td.closest('table');
+    if (!widget || !table) return null;
+    let cm = null;
+    for (const f of this.app.workspace.getLeavesOfType('markdown')) {
+      const c = f.view && f.view.editor && f.view.editor.cm;
+      if (c && c.dom && c.dom.contains(widget)) { cm = c; break; }
+    }
+    if (!cm) return null;
+    let pos = null;
+    try { pos = cm.posAtDOM(widget); } catch (err) { return null; }
+    const doc = cm.state.doc;
+    let n = doc.lineAt(pos).number;
+    for (let k = 0; k < 3 && n < doc.lines && !doc.line(n).text.includes('|'); k++) n++;
+    const rangee = Array.from(table.rows).indexOf(td.parentElement);
+    const nl = n + ligneDeRangee(rangee);
+    if (rangee < 0 || nl > doc.lines) return null;
+    const ligne = doc.line(nl);
+    const colonne = td.cellIndex;
+    const c = cellulesDeLigne(ligne.text)[colonne];
+    if (!c) return null;
+    return { cm, td, ligne, colonne, vide: ligne.text.slice(c.debut, c.fin).trim() === '' };
+  }
+
   // Une ligne vide où l'on peut déposer : hors entête, bloc de code et zone
   // des notes de bas de page.
   ligneVideDeposable(doc, n) {
@@ -1484,6 +1515,23 @@ const avecNoteAtomes = (Base) => class extends Base {
     if (!this.settings.dropSurParagraphe) return;
     this.suivreMajGlisser(e);
     const doc = this.docDeEvenement(e);
+    // Une cellule de tableau : elle s'encadre, l'étiquette dit le style.
+    const cel = this.glisserCitable(e) ? this.celluleSousPoint(e) : null;
+    if (cel) {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      this.effacerSurlignagePhrase();
+      if (this.zoneDrop) { this.zoneDrop.classList.remove('zfa-drop-cible'); this.zoneDrop = null; }
+      if (this._curseurNarratif) this._curseurNarratif.style.display = 'none';
+      if (this._celluleCible !== cel.td) {
+        if (this._celluleCible) this._celluleCible.classList.remove('zfa-drop-cible-cellule');
+        cel.td.classList.add('zfa-drop-cible-cellule');
+        this._celluleCible = cel.td;
+      }
+      this.montrerStyleGlisser(doc, e, this.styleGlisser(e, cel.vide) === 'narratif');
+      return;
+    }
+    if (this._celluleCible) { this._celluleCible.classList.remove('zfa-drop-cible-cellule'); this._celluleCible = null; }
     const cm = this.cmSousPoint(e, doc);
     if (!cm) { this.nettoyerZoneDrop(); return; }
     const pos = cm.posAtCoords({ x: e.clientX, y: e.clientY });
@@ -1618,13 +1666,15 @@ const avecNoteAtomes = (Base) => class extends Base {
   surDropParagraphe(e) {
     if (!this.settings.dropSurParagraphe) return;
     const doc = this.docDeEvenement(e);
-    const cm = this.cmSousPoint(e, doc);
+    // Une cellule de tableau, que l'éditeur dessine d'un bloc.
+    const cel = this.celluleSousPoint(e);
+    const cm = cel ? cel.cm : this.cmSousPoint(e, doc);
     if (!cm) { this.nettoyerZoneDrop(); return; }
-    const pos = cm.posAtCoords({ x: e.clientX, y: e.clientY });
+    const pos = cel ? cel.ligne.from : cm.posAtCoords({ x: e.clientX, y: e.clientY });
     if (pos == null) { this.nettoyerZoneDrop(); return; }
     const n = cm.state.doc.lineAt(pos).number;
-    const vide = this.glisserCitable(e) && this.ligneVideDeposable(cm.state.doc, n);
-    if (!vide && !this.ligneEstParagraphe(cm.state.doc, n)) { this.nettoyerZoneDrop(); return; }
+    const vide = cel ? cel.vide : (this.glisserCitable(e) && this.ligneVideDeposable(cm.state.doc, n));
+    if (!cel && !vide && !this.ligneEstParagraphe(cm.state.doc, n)) { this.nettoyerZoneDrop(); return; }
     // Annotations glissées depuis le lecteur de ZotFlow, dépôt groupé depuis
     // le panier flottant, sinon note unique glissée.
     const zotflow = this.chargeDeposeeZotflow(e);
@@ -1643,7 +1693,8 @@ const avecNoteAtomes = (Base) => class extends Base {
     if (e.stopImmediatePropagation) e.stopImmediatePropagation();
     // Tout ce qui dépend du geste se relève maintenant : la citation peut
     // n'être posée qu'après une atomisation.
-    const ctx = { cm, pos, vide, style: this.styleGlisser(e, vide), phrase: this.modeDrop(e, doc) === 'phrase' };
+    const ctx = { cm, pos, vide, style: this.styleGlisser(e, vide), phrase: this.modeDrop(e, doc) === 'phrase',
+      cellule: cel ? { ligne: cel.ligne.number, colonne: cel.colonne } : null };
     this.reinitialiserStyleGlisser();
     this.nettoyerZoneDrop();
     if (!zotflow) { this.poserCitations(ctx, cles); return; }
@@ -1667,6 +1718,17 @@ const avecNoteAtomes = (Base) => class extends Base {
       const lib = this.libelleDeCitation(c);
       return '[[' + (typeof c === 'string' ? c : c.cle) + '|' + (narratif ? narratifDepuisLibelle(lib) : lib) + ']]';
     };
+    // Dans une cellule de tableau : en fin de contenu, barre des liens échappée.
+    if (ctx.cellule) {
+      if (ctx.cellule.ligne > doc.lines) return;
+      const l = doc.line(ctx.cellule.ligne);
+      const c = cellulesDeLigne(l.text)[ctx.cellule.colonne];
+      if (!c) return;
+      const narratif = ctx.style === 'narratif';
+      const r = insertionCellule(l.text, c, cles.map((x) => lien(x, narratif)), narratif, sep);
+      cm.dispatch({ changes: { from: l.from + r.off, insert: r.insert } });
+      return;
+    }
     // Style narratif : « Auteur (année) » au point exact du dépôt.
     if (ctx.style === 'narratif') {
       const r = insertionNarrative(ligne.text, pos - ligne.from, cles.map((c) => lien(c, true)), sep);
@@ -1771,6 +1833,7 @@ const avecNoteAtomes = (Base) => class extends Base {
 
   nettoyerZoneDrop() {
     this.retirerReperesStyle();
+    if (this._celluleCible) { this._celluleCible.classList.remove('zfa-drop-cible-cellule'); this._celluleCible = null; }
     if (this.zoneDrop) {
       this.zoneDrop.classList.remove('zfa-drop-cible');
       this.zoneDrop = null;

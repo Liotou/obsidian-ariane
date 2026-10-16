@@ -216,7 +216,8 @@ function rafraichirLibelles(contenu, libelle, citable) {
     if (neuf && estLibelleNarratif(alias)) neuf = narratifDepuisLibelle(neuf);
     if (!neuf || neuf === alias) return tout;
     n++;
-    return '[[' + k + '|' + neuf + ']]';
+    // Dans un tableau, la barre du lien est échappée : elle le reste.
+    return '[[' + k + (/\\$/.test(cle) ? '\\|' : '|') + neuf + ']]';
   });
   return { texte: out, n };
 }
@@ -265,6 +266,53 @@ function insertionNarrative(ligne, off, entrees, sep) {
   const insert = (avant && !/[\s(\[«\u00a0\u202f]/.test(avant) ? ' ' : '')
     + corps + (!apres || !/[\s.,;:!?)\]»\u00a0\u202f]/.test(apres) ? ' ' : '');
   return { off: o, insert };
+}
+
+// ── Citations dans un tableau ──
+//  Dans l'éditeur, Obsidian dessine un tableau d'un bloc : le dépôt vise une
+//  cellule, qu'il faut retrouver dans la ligne source. Dans une cellule, la
+//  barre d'un lien s'écrit « \\| » : sans cela, elle couperait la cellule.
+
+// Les cellules d'une ligne de tableau : [{ debut, fin }], bornes de leur
+// contenu (espaces comprises), barres d'encadrement exclues. Une barre
+// échappée (« \\| ») ne sépare pas.
+function cellulesDeLigne(ligne) {
+  const t = String(ligne == null ? '' : ligne);
+  const barres = [];
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === '\\') { i++; continue; }
+    if (t[i] === '|') barres.push(i);
+  }
+  const bornes = [-1].concat(barres, [t.length]);
+  const out = [];
+  for (let k = 0; k + 1 < bornes.length; k++) out.push({ debut: bornes[k] + 1, fin: bornes[k + 1] });
+  // Barres d'encadrement : le segment vide avant la première, après la dernière.
+  if (out.length > 1 && t.slice(0, out[0].fin).trim() === '') out.shift();
+  if (out.length > 1 && t.slice(out[out.length - 1].debut).trim() === '') out.pop();
+  return out;
+}
+
+// La ligne source d'une rangée du tableau affiché : l'en-tête est la
+// première, puis vient la ligne de séparation, que le rendu n'affiche pas.
+function ligneDeRangee(rangee) {
+  return rangee === 0 ? 0 : rangee + 1;
+}
+
+// Où et quoi insérer dans une cellule (bornes `c` dans la ligne `ligne`) :
+// en fin de contenu, avant la ponctuation finale pour « (Auteur, année) ».
+// Les liens prennent la barre échappée. Rend { off, insert }.
+function insertionCellule(ligne, c, entrees, narratif, sep) {
+  const t = String(ligne || '');
+  const contenu = t.slice(c.debut, c.fin);
+  const liens = (entrees || []).map((l) => l.replace(/\|/, '\\|')).join(sep || ' ; ');
+  let fin = c.debut + contenu.replace(/\s+$/, '').length;
+  if (fin === c.debut) return { off: c.debut + (contenu.length ? 1 : 0), insert: (contenu.length ? '' : ' ') + (narratif ? liens : '(' + liens + ')') + (contenu.length > 1 ? '' : ' ') };
+  if (!narratif) {
+    const m = t.slice(c.debut, fin).match(/[.?!…]+$/);
+    if (m) fin -= m[0].length;
+    return { off: fin, insert: ' (' + liens + ')' };
+  }
+  return { off: fin, insert: ' ' + liens };
 }
 
 // Où insérer un groupe de citations « (…) » à la position visée, et sous
