@@ -1779,10 +1779,11 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   content: attr(data-zfa-label);
   font: inherit; color: var(--text-muted); font-weight: 600;
 }
+/* Masquées : celles qu'Ariane tient seule. L'alias reste visible, pour
+   qu'on puisse le modifier. */
 .zfa-note-tache .metadata-property[data-property-key="type"],
 .zfa-note-tache .metadata-property[data-property-key="cree"],
-.zfa-note-tache .metadata-property[data-property-key="modifie"],
-.zfa-note-tache .metadata-property[data-property-key="aliases"] { display: none; }
+.zfa-note-tache .metadata-property[data-property-key="modifie"] { display: none; }
 
 /* --- Habillage complet (réglage « Habillage de la note de tâche »). --- */
 .zfa-note-tache-skin .metadata-container {
