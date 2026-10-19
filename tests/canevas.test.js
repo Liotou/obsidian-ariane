@@ -515,3 +515,21 @@ test('points d\'attache d\'un faisceau : en face de leur carte quand la place le
   assert.ok(f.every((x, i) => i === 0 || x - f[i - 1] >= 0.094), 'espacés');
   assert.ok(f[0] >= 0.3 && f[4] <= 0.9, 'bornés');
 });
+
+test('carte repliée : elle épouse son contenu, sans vide sous la jauge ; dépliée, elle garde sa place', () => {
+  const { canvas, surface } = monter([tache('T1')]);
+  const n1 = noeudTache(canvas, 'T1', 0, 0);
+  surface._majDetails = () => {};
+  const m = { ref: 'T1', noeud: n1 };
+  surface.cartes.set(n1, m);
+  surface._hauteurContenu = () => 140;
+  const h = (v) => n1.setData(Object.assign({}, n1.getData(), { height: v }));
+  h(240);                                   // repliée, avec 100 px de vide
+  surface._aAjuster.add(n1);
+  surface._ajusterHauteurs();
+  assert.equal(n1.getData().height, 140, 'repliée : ramenée à son contenu');
+  h(480);                                   // dépliée : on la laisse
+  surface._aAjuster.add(n1);
+  surface._ajusterHauteurs();
+  assert.equal(n1.getData().height, 480);
+});

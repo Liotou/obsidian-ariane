@@ -35784,10 +35784,12 @@ class SurfaceCanevas extends obsidian.Component {
       if (!h) continue;                       // contenu non monté (zoom lointain)
       m.largeur = d.width;
       m.hNaturelle = h;
-      // Une carte trop petite pour son contenu grandit ; jamais l'inverse :
-      // la hauteur qu'on lui a donnée (à la main, ou par « Re-disposer »)
-      // reste la sienne, et c'est elle qui décide du détail.
-      if ((Number(d.height) || 0) >= h - 1) continue;
+      // Repliée, une carte épouse son contenu : ni trop petite, ni avec du
+      // vide sous la jauge. Dépliée, elle garde la hauteur qu'on lui a
+      // donnée (c'est elle qui fait la place du détail), et ne fait que
+      // grandir si son contenu le demande.
+      const haut = Number(d.height) || 0;
+      if (this._estDepliee(m, d) ? haut >= h - 1 : Math.abs(haut - h) <= 1) continue;
       try { noeud.setData(Object.assign({}, d, { height: h })); change = true; }
       catch (e) { /* nœud en cours de destruction */ }
     }
@@ -36599,10 +36601,9 @@ class SurfaceCanevas extends obsidian.Component {
       const m = this.cartes.get(ns[0]);
       nat.set(ref, (m && (this._hauteurContenu(m, ns[0]) || m.hNaturelle)) || 110);
     }
-    // La hauteur commune est celle de la plus haute ; une carte bien plus
-    // courte s'arrête avant d'avoir la place d'un détail.
-    const H = Math.max(...nat.values());
-    const hauteurDe = (ref) => Math.min(H, (nat.get(ref) || 110) + CANEVAS_SEUIL_DETAIL - 10);
+    // Chaque carte repliée, à la hauteur de son contenu : pas de vide sous
+    // la jauge. La largeur, elle, est commune.
+    const hauteurDe = (ref) => nat.get(ref) || 110;
     for (const [ref, ns] of parRef) for (const n of ns) poser(n, { height: hauteurDe(ref) });
     // 2. La disposition.
     const { noeuds, aretes } = Ariane.grapheArticulation(taches);
