@@ -9529,7 +9529,9 @@ const avecNoteAtomes = (Base) => class extends Base {
       try { if (dt) charges.push(dt.getData(fmt)); } catch (err) { /* format absent */ }
     }
     let fichier = null;
-    for (const c of charges) {
+    const zf = this.chargeDeposeeZotflow(e);
+    if (zf && !zf.annotations.length) fichier = this.sourceDeZotflow(zf, '');
+    for (const c of fichier ? [] : charges) {
       const cle = this.cleDepuisCharge(c);
       if (!cle || /^[a-z]+:\/\//i.test(cle)) continue;
       const f = this.app.metadataCache.getFirstLinkpathDest(cle, depuis);
@@ -9588,7 +9590,9 @@ const avecNoteAtomes = (Base) => class extends Base {
     try { texte = e.dataTransfer.getData('text/plain') || ''; } catch (err) { texte = ''; }
     this.clesDepuisZotflow(zotflow, texte).then((liste) => {
       if (liste.length) this.poserCitations(ctx, liste);
-      else new obsidian.Notice(tr('Annotation introuvable dans le coffre, même après atomisation de sa source.'));
+      else new obsidian.Notice(zotflow.annotations.length
+        ? tr('Annotation introuvable dans le coffre, même après atomisation de sa source.')
+        : tr('Cette source n’a pas encore de note dans le coffre : ZotFlow la crée à l’ouverture de la fiche.'));
     }).catch((err) => console.warn('[Ariane] dépôt depuis le lecteur ZotFlow :', err));
   }
 
@@ -9655,7 +9659,9 @@ const avecNoteAtomes = (Base) => class extends Base {
   static get MIME_ZOTFLOW() { return 'application/zotflow-citation'; }
 
   // Le paquet lu dans le texte d'un glisser : { key, annotations: [{ id,
-  // page }] }, ou null.
+  // page }] }, ou null. Glissée depuis l'arborescence « Zotero Library » de
+  // ZotFlow, une source arrive sans annotation : la clé est alors celle de
+  // sa fiche, et c'est la source elle-même qui est citée.
   static lireChargeZotflow(brut) {
     let o = null;
     try { o = JSON.parse(brut); } catch (e) { return null; }
@@ -9663,7 +9669,7 @@ const avecNoteAtomes = (Base) => class extends Base {
     const annotations = (Array.isArray(o.annotations) ? o.annotations : [])
       .filter((a) => a && a.id)
       .map((a) => ({ id: String(a.id), page: a.pageLabel != null ? String(a.pageLabel) : '' }));
-    return annotations.length ? { key: o.key, annotations } : null;
+    return { key: o.key, annotations };
   }
 
   chargeDeposeeZotflow(e) {
@@ -9693,6 +9699,11 @@ const avecNoteAtomes = (Base) => class extends Base {
   // fait atomiser sa source, aussitôt ; si ZotFlow ne l'y a pas encore
   // écrite, c'est la source qui est citée, à la page de l'annotation.
   async clesDepuisZotflow(charge, texte) {
+    // Une source entière (arborescence de ZotFlow) : sa note de référence.
+    if (!charge.annotations.length) {
+      const src = this.sourceDeZotflow(charge, texte);
+      return src ? [src.basename] : [];
+    }
     let index = this.indexAnnotationsParCle();
     const manquent = () => charge.annotations.filter((a) => !index.has(a.id));
     const source = manquent().length ? this.sourceDeZotflow(charge, texte) : null;

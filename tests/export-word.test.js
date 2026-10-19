@@ -148,7 +148,9 @@ test('lireChargeZotflow : clés et pages des annotations glissées du lecteur', 
     annotations: [{ id: 'ANNOKEY1', page: '21' }, { id: 'ANNOKEY2', page: '' }] });
   assert.equal(Ariane.lireChargeZotflow('{"type":"autre","key":"K"}'), null);
   assert.equal(Ariane.lireChargeZotflow('pas du JSON'), null);
-  assert.equal(Ariane.lireChargeZotflow(JSON.stringify({ type: 'zotflow-citation', key: 'K', annotations: [] })), null);
+  // Une source glissée de l'arborescence de ZotFlow : la clé de sa fiche, sans annotation.
+  assert.deepEqual(Ariane.lireChargeZotflow(JSON.stringify({ type: 'zotflow-citation', libraryID: 1, key: 'ITEMKEY2' })),
+    { key: 'ITEMKEY2', annotations: [] });
 });
 
 test('sourceDeZotflow : sans clé d’élément ni lien de source, aucune note n’est désignée', () => {
@@ -179,4 +181,13 @@ test('tableaux : cellules d’une ligne, rangée vers ligne source, insertion av
   // Le rafraîchissement garde la barre échappée.
   const f = rafraichirLibelles('| x | [[K1\\|Adner, 2016]] |', () => 'Adner, 2017', () => true);
   assert.equal(f.texte, '| x | [[K1\\|Adner, 2017]] |');
+});
+
+test('clesDepuisZotflow : une source glissée de l’arborescence cite sa note de référence', async () => {
+  const fichiers = [{ path: '98/@valkokari2015.md', basename: '@valkokari2015' }];
+  const app = { vault: { getMarkdownFiles: () => fichiers },
+    metadataCache: { getFileCache: () => ({ frontmatter: { citationKey: 'valkokari2015', 'zotero-key': 'ITEMKEY2' } }), getFirstLinkpathDest: () => null } };
+  const ctx = { app, sourceDeZotflow: Ariane.prototype.sourceDeZotflow };
+  assert.deepEqual(await Ariane.prototype.clesDepuisZotflow.call(ctx, { key: 'ITEMKEY2', annotations: [] }, 'Business, Innovation…'), ['@valkokari2015']);
+  assert.deepEqual(await Ariane.prototype.clesDepuisZotflow.call(ctx, { key: 'INCONNUE', annotations: [] }, ''), []);
 });
