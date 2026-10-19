@@ -528,6 +528,9 @@ function canevasPortF(r, cote, f) {
   return { x: r.x + r.width, y: r.y + r.height * k };
 }
 
+// Écart entre deux colonnes au-delà duquel un lien va de flanc à flanc.
+const CANEVAS_ECART_FLANC = 60;
+
 // Les côtés d'un lien selon la disposition : de flanc à flanc quand les
 // cartes sont côte à côte, du bas vers le haut quand elles sont empilées ;
 // en diagonale, le plus grand écart l'emporte, avec une préférence pour la
@@ -542,6 +545,9 @@ function canevasCotesLisibles(a, b, actuels) {
   const vert = { de: dy >= 0 ? 'bottom' : 'top', vers: dy >= 0 ? 'top' : 'bottom' };
   const valide = actuels && CANEVAS_NORMALE[actuels.de] && CANEVAS_NORMALE[actuels.vers];
   if (gx <= 0 && gy <= 0) return valide ? { de: actuels.de, vers: actuels.vers } : horiz;
+  // Une carte nettement à côté se relie de flanc à flanc, même loin en
+  // dessous : la lecture va de gauche à droite, d'une colonne à la suivante.
+  if (gx >= CANEVAS_ECART_FLANC) return horiz;
   if (gy <= 0) return horiz;
   if (gx <= 0) return vert;
   const actH = valide && (actuels.de === 'left' || actuels.de === 'right');
@@ -549,6 +555,47 @@ function canevasCotesLisibles(a, b, actuels) {
   if (actH && gx * 1.6 >= gy) return horiz;
   if (actV && gy * 1.3 >= gx) return vert;
   return gx * 1.25 >= gy ? horiz : vert;
+}
+
+// Les points d'attache d'un faisceau le long d'un côté, en fractions : chacun
+// au plus près de son souhait (en face de sa carte d'arrivée), borné à
+// [deb, fin], dans l'ordre, et à `ecart` au moins les uns des autres.
+// desirs : fractions souhaitées, triées.
+function canevasFractions(desirs, deb, fin, ecart) {
+  const n = (desirs || []).length;
+  if (!n) return [];
+  const e = Math.min(ecart, (fin - deb) / Math.max(1, n - 1));
+  const f = desirs.map((d) => Math.max(deb, Math.min(fin, Number.isFinite(d) ? d : 0.5)));
+  for (let i = 1; i < n; i++) f[i] = Math.max(f[i], f[i - 1] + e);
+  if (f[n - 1] > fin) {
+    f[n - 1] = fin;
+    for (let i = n - 2; i >= 0; i--) f[i] = Math.min(f[i], f[i + 1] - e);
+  }
+  return f;
+}
+
+// Les couloirs d'un faisceau de liens qui partent d'un même côté d'une carte
+// (ou arrivent sur un même côté) : la position de leur segment transversal,
+// étagée pour qu'ils ne se superposent ni ne se croisent. Celui qui descend
+// le plus haut va le plus loin, celui qui monte le plus bas aussi : chacun
+// enjambe ainsi les départs des autres sans les couper. Les couloirs restent
+// entre l'amorce de départ et la plus proche des amorces d'arrivée.
+// liens : [{ id, depart, arrivee, a, b }] : depart, arrivee le long du côté
+// (y pour un côté droit ou gauche), a et b les amorces sur l'autre axe.
+// Rend Map id → position du couloir.
+function canevasCouloirs(liens) {
+  const out = new Map();
+  const sens = (l) => (l.arrivee > l.depart + 1 ? 1 : l.arrivee < l.depart - 1 ? -1 : 0);
+  const etager = (groupe, rangDe) => {
+    if (!groupe.length) return;
+    const a = groupe[0].a;
+    const b = groupe.reduce((m, l) => (Math.abs(l.b - a) < Math.abs(m - a) ? l.b : m), groupe[0].b);
+    groupe.forEach((l, i) => out.set(l.id, a + (b - a) * (rangDe(i, groupe.length) + 1) / (groupe.length + 1)));
+  };
+  const parDepart = (p, q) => p.depart - q.depart;
+  etager((liens || []).filter((l) => sens(l) > 0).sort(parDepart), (i, n) => n - 1 - i);
+  etager((liens || []).filter((l) => sens(l) < 0).sort(parDepart), (i) => i);
+  return out;
 }
 
 // Le point à mi-longueur d'une ligne brisée (là où se pose l'étiquette).
@@ -639,6 +686,18 @@ function canevasRouteOrtho(p1, c1, p2, c2, obstacles, opts) {
     boites.push(b);
   }
   const libre = (p) => !boites.some((r) => p.x > r.x1 && p.x < r.x2 && p.y > r.y1 && p.y < r.y2);
+  // Un couloir imposé (faisceau étagé) : le tracé à trois segments qui le
+  // suit, s'il ne traverse aucune carte. Sinon, la recherche ordinaire.
+  const opposes = n1[0] === -n2[0] && n1[1] === -n2[1];
+  if (Number.isFinite(o.couloir) && opposes && libre(a1) && libre(a2)) {
+    const c = o.couloir;
+    const via = n1[0] !== 0
+      ? [a1, { x: c, y: a1.y }, { x: c, y: a2.y }, a2]
+      : [a1, { x: a1.x, y: c }, { x: a2.x, y: c }, a2];
+    let ok = true;
+    for (let i = 1; i < via.length && ok; i++) if (canevasSegmentBloque(via[i - 1], via[i], boites)) ok = false;
+    if (ok) return canevasSimplifier([p1].concat(via, [p2]));
+  }
   if (!libre(a1) || !libre(a2)) return repli();
   const tri = (s) => [...s].sort((a, b) => a - b);
   const X = tri(new Set([a1.x, a2.x, (a1.x + a2.x) / 2].concat(...boites.map((b) => [b.x1, b.x2]))));
@@ -1152,6 +1211,8 @@ class SurfaceCanevas extends obsidian.Component {
     }
     const fam = this.greffon.familleDe(t.famille);
     carte.style.setProperty('--zfa-fam-couleur', fam.couleur || '#888888');
+    // La bande de famille se peint sur la racine, à toute la hauteur du nœud.
+    r.style.setProperty('--zfa-fam-couleur', fam.couleur || '#888888');
     carte.dataset.statut = t.statut;
     const bloquee = d.bloquee.has(ref);
     const impactee = !bloquee && d.impactee.has(ref);
@@ -1505,13 +1566,63 @@ class SurfaceCanevas extends obsidian.Component {
       const cote = cle.slice(cle.lastIndexOf('|') + 1);
       const axe = cote === 'top' || cote === 'bottom' ? 'x' : 'y';
       l.sort((p, q) => p.autre[axe] - q.autre[axe]);
+      // Seul sur son côté : au milieu, comme le canevas. À plusieurs, chaque
+      // lien vise sa carte d'arrivée (une carte en face reçoit un trait
+      // droit), dans l'ordre, sans se serrer. À droite, le haut de la carte
+      // porte les points d'accroche : le faisceau s'attache plus bas.
+      let fr = [0.5];
+      if (l.length > 1) {
+        const r = canevasDonnees(this.canvas.nodes.get(cle.slice(0, cle.lastIndexOf('|')))) || { x: 0, y: 0, width: 1, height: 1 };
+        const debut = axe === 'y' ? r.y : r.x;
+        const long = Math.max(1, axe === 'y' ? r.height : r.width);
+        const [deb, fin] = cote === 'right' ? [0.3, 0.9] : [0.15, 0.85];
+        fr = canevasFractions(l.map((e) => (e.autre[axe] - debut) / long), deb, fin, 18 / long);
+      }
       l.forEach((e, i) => {
         const o = out.get(e.arete) || { f1: 0.5, f2: 0.5 };
-        o[e.bout] = (i + 1) / (l.length + 1);
+        o[e.bout] = fr[i];
         out.set(e.arete, o);
       });
     }
     this._ports = out;
+    return out;
+  }
+
+  // Les couloirs des faisceaux : les liens qui partent d'un même côté d'une
+  // carte, ou à défaut qui arrivent sur un même côté, s'étagent au lieu de
+  // partager un seul couloir. Rend Map arête → position du couloir.
+  _etagerCouloirs(liens) {
+    const S = 17;
+    const parDepart = new Map();
+    const parArrivee = new Map();
+    const ranger = (m, cle, e) => { if (!m.has(cle)) m.set(cle, []); m.get(cle).push(e); };
+    for (const a of liens) {
+      const g = this._geometrieArete(a);
+      if (!g) continue;
+      const n1 = CANEVAS_NORMALE[g.c1];
+      const n2 = CANEVAS_NORMALE[g.c2];
+      if (!n1 || !n2 || n1[0] !== -n2[0] || n1[1] !== -n2[1]) continue;
+      const f = (this._ports && this._ports.get(a)) || { f1: 0.5, f2: 0.5 };
+      const p1 = canevasPortF(g.r1, g.c1, f.f1);
+      const p2 = canevasPortF(g.r2, g.c2, f.f2);
+      const h = n1[0] !== 0;
+      const e = { a, depart: h ? p1.y : p1.x, arrivee: h ? p2.y : p2.x,
+        debut: h ? p1.x + n1[0] * S : p1.y + n1[1] * S, fin: h ? p2.x + n2[0] * S : p2.y + n2[1] * S };
+      if ((e.fin - e.debut) * (h ? n1[0] : n1[1]) <= 0) continue;   // pas de place entre les deux
+      ranger(parDepart, a.from.node.id + '|' + g.c1, e);
+      ranger(parArrivee, a.to.node.id + '|' + g.c2, e);
+    }
+    const out = new Map();
+    for (const l of parDepart.values()) {
+      if (l.length < 2) continue;
+      for (const [k, v] of canevasCouloirs(l.map((e) => ({ id: e.a, depart: e.depart, arrivee: e.arrivee, a: e.debut, b: e.fin })))) out.set(k, v);
+    }
+    for (const l of parArrivee.values()) {
+      const libres = l.filter((e) => !out.has(e.a));
+      if (libres.length < 2) continue;
+      for (const [k, v] of canevasCouloirs(libres.map((e) => ({ id: e.a, depart: e.arrivee, arrivee: e.depart, a: e.fin, b: e.debut })))) out.set(k, v);
+    }
+    this._couloirs = out;
     return out;
   }
 
@@ -1533,8 +1644,9 @@ class SurfaceCanevas extends obsidian.Component {
     const g = this._geometrieArete(arete);
     if (!g) { this._routes.delete(arete); return null; }
     const f = (this._ports && this._ports.get(arete)) || { f1: 0.5, f2: 0.5 };
+    const couloir = this._couloirs ? this._couloirs.get(arete) : undefined;
     const cle = obs.sig + '|' + [g.r1.x, g.r1.y, g.r1.width, g.r1.height, g.c1, f.f1,
-      g.r2.x, g.r2.y, g.r2.width, g.r2.height, g.c2, f.f2, !!arete.fromLineEnd, !!arete.toLineEnd].join(',');
+      g.r2.x, g.r2.y, g.r2.width, g.r2.height, g.c2, f.f2, !!arete.fromLineEnd, !!arete.toLineEnd, couloir].join(',');
     const deja = this._routes.get(arete);
     if (deja && deja.cle === cle) return deja;
     // Comme le canevas : là où une pointe se pose, le tracé s'arrête 7 px
@@ -1553,7 +1665,7 @@ class SurfaceCanevas extends obsidian.Component {
       const n2 = CANEVAS_NORMALE[g.c2] || CANEVAS_NORMALE.left;
       pts = canevasSimplifier([p1, { x: p1.x + n1[0] * 17, y: p1.y + n1[1] * 17 }, { x: p2.x + n2[0] * 17, y: p2.y + n2[1] * 17 }, p2]);
     } else {
-      pts = canevasRouteOrtho(p1, g.c1, p2, g.c2, obs.boites, { amorce: 17 });
+      pts = canevasRouteOrtho(p1, g.c1, p2, g.c2, obs.boites, { amorce: 17, couloir });
     }
     const r = { cle, pts, port1, port2, c1: g.c1, c2: g.c2 };
     this._routes.set(arete, r);
@@ -1683,6 +1795,7 @@ class SurfaceCanevas extends obsidian.Component {
     }
     if (mode === 'courbe') { this._rendreTracesNatifs(); return; }
     this._repartir(liens);
+    this._etagerCouloirs(liens);
     // Les tracés ensuite, tous : les ponts se calculent contre les autres.
     const obs = this._obstacles();
     for (const a of liens) this._route(a, mode, obs);

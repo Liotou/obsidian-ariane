@@ -376,10 +376,14 @@ test('côtés lisibles : de flanc à flanc côte à côte, de haut en bas empil�
   assert.deepEqual(canevasCotesLisibles(A, { x: 400, y: 20, width: 200, height: 100 }, null), { de: 'right', vers: 'left' });
   assert.deepEqual(canevasCotesLisibles(A, { x: -400, y: 0, width: 200, height: 100 }, null), { de: 'left', vers: 'right' });
   assert.deepEqual(canevasCotesLisibles(A, { x: 50, y: 300, width: 200, height: 100 }, null), { de: 'bottom', vers: 'top' });
-  // En diagonale : l'horizontale tient tant que l'écart vertical ne l'écrase pas.
+  // Nettement à côté, même loin en dessous : de flanc à flanc (lecture d'une
+  // colonne à la suivante).
   const diag = { x: 300, y: 260, width: 200, height: 100 };   // gx 100, gy 160
-  assert.deepEqual(canevasCotesLisibles(A, diag, { de: 'right', vers: 'left' }), { de: 'right', vers: 'left' });
-  assert.deepEqual(canevasCotesLisibles(A, diag, null), { de: 'bottom', vers: 'top' });
+  assert.deepEqual(canevasCotesLisibles(A, diag, null), { de: 'right', vers: 'left' });
+  assert.deepEqual(canevasCotesLisibles(A, { x: 300, y: 900, width: 200, height: 100 }, null), { de: 'right', vers: 'left' });
+  // Presque à l'aplomb (gx 40, gy 160) : de haut en bas.
+  const aplomb = { x: 240, y: 260, width: 200, height: 100 };
+  assert.deepEqual(canevasCotesLisibles(A, aplomb, null), { de: 'bottom', vers: 'top' });
   assert.deepEqual(canevasCotesLisibles(A, { x: 10, y: 10, width: 200, height: 100 }, { de: 'top', vers: 'bottom' }),
     { de: 'top', vers: 'bottom' }, 'cartes superposées : on garde');
 });
@@ -455,4 +459,59 @@ test('liens : une seconde passe n\'écrit plus rien (pas de passes sans fin avec
   ecritures = 0;
   surface._majLiens(integration.donnees());
   assert.equal(ecritures, 0, 'rien n\'a bougé : rien n\'est réécrit');
+});
+
+test('couloirs : un faisceau s\'étage, sans superposition ni croisement', () => {
+  const { canevasCouloirs } = Ariane._test;
+  // Quatre liens partent du flanc droit (x 400, amorce 417) vers une colonne
+  // à x 520 (amorce 503), tous plus bas que leur départ.
+  const l = [
+    { id: 'a', depart: 100, arrivee: 120, a: 417, b: 503 },
+    { id: 'b', depart: 120, arrivee: 300, a: 417, b: 503 },
+    { id: 'c', depart: 140, arrivee: 480, a: 417, b: 503 },
+    { id: 'd', depart: 160, arrivee: 660, a: 417, b: 503 },
+  ];
+  const c = canevasCouloirs(l);
+  const xs = ['a', 'b', 'c', 'd'].map((k) => c.get(k));
+  assert.equal(new Set(xs).size, 4, 'quatre couloirs distincts');
+  assert.ok(xs[0] > xs[1] && xs[1] > xs[2] && xs[2] > xs[3], 'le plus haut va le plus loin');
+  assert.ok(xs.every((x) => x > 417 && x < 503), 'entre les amorces');
+  // Montants : le plus bas va le plus loin.
+  const m = canevasCouloirs([
+    { id: 'h', depart: 100, arrivee: 10, a: 417, b: 503 },
+    { id: 'i', depart: 120, arrivee: 50, a: 417, b: 503 },
+  ]);
+  assert.ok(m.get('i') > m.get('h'));
+  // À niveau : pas de couloir (le lien est droit).
+  assert.equal(canevasCouloirs([{ id: 'z', depart: 100, arrivee: 100.5, a: 417, b: 503 }]).size, 0);
+});
+
+test('tracé : le couloir imposé est suivi quand rien ne le barre', () => {
+  const { canevasRouteOrtho } = Ariane._test;
+  const A = { x: 0, y: 0, width: 400, height: 200 };
+  const B = { x: 520, y: 400, width: 400, height: 200 };
+  const pts = canevasRouteOrtho({ x: 400, y: 80 }, 'right', { x: 520, y: 500 }, 'left', [A, B], { amorce: 17, couloir: 450 });
+  assert.ok(pts.some((p) => p.x === 450), 'le segment vertical passe par le couloir');
+  assert.equal(pts.length, 4, 'un seul coude par côté');
+});
+
+test('disposition : une mère se centre sur ses filles, un enfant unique en face', () => {
+  const noeuds = ['M', 'F1', 'F2', 'F3', 'U', 'V'].map((ref) => ({ ref }));
+  const aretes = [
+    { de: 'M', vers: 'F1', type: 'hier' }, { de: 'M', vers: 'F2', type: 'hier' }, { de: 'M', vers: 'F3', type: 'hier' },
+    { de: 'U', vers: 'V', type: 'hier' },
+  ];
+  const pos = Ariane.disposerArticulation(noeuds, aretes, { dx: 500, gapY: 50, gapBande: 120, hauteur: () => 100 });
+  const cy = (r) => pos.get(r).y + 50;
+  const milieu = (Math.min(cy('F1'), cy('F2'), cy('F3')) + Math.max(cy('F1'), cy('F2'), cy('F3'))) / 2;
+  assert.equal(cy('M'), milieu);
+  assert.equal(cy('U'), cy('V'));
+});
+
+test('points d\'attache d\'un faisceau : en face de leur carte quand la place le permet, dans l\'ordre, espacés', () => {
+  const { canevasFractions } = Ariane._test;
+  const f = canevasFractions([-0.7, -0.2, 0.5, 1.4, 2.4], 0.3, 0.9, 0.095);
+  assert.equal(f[2], 0.5, 'la carte en face : trait droit');
+  assert.ok(f.every((x, i) => i === 0 || x - f[i - 1] >= 0.094), 'espacés');
+  assert.ok(f[0] >= 0.3 && f[4] <= 0.9, 'bornés');
 });

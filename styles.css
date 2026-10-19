@@ -2520,7 +2520,19 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 
 /* Le rendu natif du nœud (texte « [[T021]] », aperçu d'une note de tâche)
    laisse toute la place à la carte. */
-.canvas-node.zfa-cnv-noeud .canvas-node-content { padding: 0; overflow: hidden; }
+.canvas-node.zfa-cnv-noeud .canvas-node-content { padding: 0; overflow: hidden; position: relative; }
+/* La bande de famille court sur toute la hauteur du nœud, même quand la
+   carte est plus courte que lui (cartes égalisées par « Re-disposer »). */
+.zfa-cnv-racine::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+  background: var(--zfa-fam-couleur, var(--background-modifier-border));
+  pointer-events: none; z-index: 1;
+}
+.canvas-node-content:has(.zfa-cnv-carte.est-introuvable) .zfa-cnv-racine::before { background: var(--background-modifier-border); }
+.canvas-node.zfa-cnv-noeud .canvas-node-content:has(.zfa-cnv-carte.est-bloquee) {
+  background-image: repeating-linear-gradient(45deg,
+    color-mix(in srgb, var(--text-error) 9%, transparent) 0 6px, transparent 6px 12px);
+}
 .canvas-node.zfa-cnv-noeud .canvas-node-content > :not(.zfa-cnv-racine) { display: none !important; }
 .zfa-cnv-racine { width: 100%; }
 
@@ -2529,8 +2541,7 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-cnv-carte {
   box-sizing: border-box; width: 100%; position: relative;
   display: flex; flex-direction: column; gap: 8px;
-  padding: 12px 46px 13px 15px;
-  border-left: 5px solid var(--zfa-fam-couleur, var(--background-modifier-border));
+  padding: 12px 46px 13px 20px;
   font-size: var(--font-text-size, 16px); line-height: 1.4;
   color: var(--text-normal);
   cursor: default;
@@ -2567,14 +2578,7 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 @media (prefers-reduced-motion: reduce) {
   .canvas-node.zfa-cnv-noeud, .canvas-node.zfa-cnv-noeud .canvas-node-container { transition: none; }
 }
-.zfa-cnv-carte.est-bloquee {
-  background-image: repeating-linear-gradient(45deg,
-    color-mix(in srgb, var(--text-error) 9%, transparent) 0 6px, transparent 6px 12px);
-}
-.zfa-cnv-carte.est-introuvable {
-  color: var(--text-faint); font-style: italic;
-  border-left-color: var(--background-modifier-border);
-}
+.zfa-cnv-carte.est-introuvable { color: var(--text-faint); font-style: italic; }
 
 .zfa-cnv-tete { display: flex; align-items: center; gap: 6px; min-width: 0; }
 /* La case passe par --checkbox-size : la coche que le thème dessine en
