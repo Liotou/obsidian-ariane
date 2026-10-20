@@ -9932,16 +9932,70 @@ const avecNoteAtomes = (Base) => class extends Base {
     return annotations.length ? { key, annotations } : null;
   }
 
+  // Avec le gabarit « {{citation}} » seul, le glisser ne porte plus le lien
+  // « pdf » : la clé du surlignage est dans la citation HTML, où Annota
+  // l'inscrit (data-citation, citationItems[].annotationKey). Sans elle
+  // (citation ancienne, Annota absent), restent la fiche et la page, en HTML
+  // ou en texte (« ([Power, 2010, p. 3](zotero://select/…/items/CLÉ)) »).
+  // Rend { key, annotations: [{ id, page }], sansCle: [{ key, page }] } ou null.
+  static lireCitationsZotero(brut) {
+    const s = String(brut || '');
+    const annotations = [];
+    const sansCle = [];
+    const vues = new Set();
+    let key = '';
+    for (const m of s.matchAll(/data-citation="([^"]*)"/g)) {
+      let c = null;
+      try { c = JSON.parse(decodeURIComponent(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&'))); } catch (e) { continue; }
+      for (const ci of (c && c.citationItems) || []) {
+        const uri = String((ci.uris || [])[0] || '');
+        const k = (uri.match(/\/items\/([A-Z0-9]{8})$/) || [])[1] || '';
+        key = key || k;
+        const page = ci.locator != null ? String(ci.locator).trim() : '';
+        const a = String(ci.annotationKey || '');
+        if (/^[A-Z0-9]{8}$/.test(a)) { if (!vues.has(a)) { vues.add(a); annotations.push({ id: a, page }); } }
+        else sansCle.push({ key: k, page });
+      }
+    }
+    if (!annotations.length && !sansCle.length) {
+      for (const m of s.matchAll(/\[([^\[\]]*)\]\(zotero:\/\/select\/(?:library|groups\/\d+)\/items\/([A-Z0-9]{8})\)/g)) {
+        const p = m[1].match(/\bpp?\.\s*([^\s,;)]+)\s*$/);
+        key = key || m[2];
+        sansCle.push({ key: m[2], page: p ? p[1] : '' });
+      }
+    }
+    return annotations.length || sansCle.length ? { key, annotations, sansCle } : null;
+  }
+
   chargeDeposeeZotero(e) {
     const dt = e && e.dataTransfer;
     if (!dt) return null;
-    for (const fmt of ['text/plain', 'text/html']) {
-      let brut = '';
-      try { brut = dt.getData(fmt) || ''; } catch (err) { brut = ''; }
+    const lire = (fmt) => { try { return dt.getData(fmt) || ''; } catch (err) { return ''; } };
+    const html = lire('text/html');
+    const texte = lire('text/plain');
+    // 1. L'ancienne forme, lien « pdf » compris : la clé y est explicite.
+    for (const brut of [texte, html]) {
       const charge = brut.includes('zotero://open-pdf') ? Ariane.lireChargeZotero(brut) : null;
       if (charge) return charge;
     }
-    return null;
+    // 2. La citation seule : la clé d'Annota en HTML, sinon la fiche et la page.
+    const enHtml = html.includes('data-citation') ? Ariane.lireCitationsZotero(html) : null;
+    if (enHtml && enHtml.annotations.length) return enHtml;
+    const enTexte = texte.includes('zotero://select') ? Ariane.lireCitationsZotero(texte) : null;
+    return enHtml || enTexte;
+  }
+
+  // Les notes d'annotation d'une source à une page donnée.
+  annotationsALaPage(source, page) {
+    const out = [];
+    if (!source || !page) return out;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(this.dossierA + '/')) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (!fm['zotflow-anno-key'] || sansLien(fm['zotflow-source']) !== source.basename) continue;
+      if (String(fm.page == null ? '' : fm.page).trim() === String(page).trim()) out.push(f);
+    }
+    return out;
   }
 
   chargeDeposeeZotflow(e) {
@@ -9971,6 +10025,22 @@ const avecNoteAtomes = (Base) => class extends Base {
   // fait atomiser sa source, aussitôt ; si ZotFlow ne l'y a pas encore
   // écrite, c'est la source qui est citée, à la page de l'annotation.
   async clesDepuisZotflow(charge, texte) {
+    // Des citations sans clé de surlignage (gabarit « {{citation}} » sans
+    // Annota, ou citation ancienne) : le surlignage de cette page, s'il est
+    // le seul de la source ; sinon, la source à la page.
+    if (!charge.annotations.length && charge.sansCle && charge.sansCle.length) {
+      const out = [];
+      const vues = new Set();
+      for (const c of charge.sansCle) {
+        const src = this.sourceDeZotflow({ key: c.key || charge.key, annotations: [] }, texte);
+        if (!src) continue;
+        const notes = this.annotationsALaPage(src, c.page);
+        const x = notes.length === 1 ? notes[0].basename : { cle: src.basename, page: c.page };
+        const k = typeof x === 'string' ? x : x.cle + '|' + x.page;
+        if (!vues.has(k)) { vues.add(k); out.push(x); }
+      }
+      return out;
+    }
     // Une source entière (arborescence de ZotFlow) : sa note de référence.
     if (!charge.annotations.length) {
       const src = this.sourceDeZotflow(charge, texte);

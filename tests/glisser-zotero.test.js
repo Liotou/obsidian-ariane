@@ -47,3 +47,32 @@ test('glisser depuis Zotero : la note d’annotation déjà dans le coffre est c
   });
   assert.deepEqual(await ctx.clesDepuisZotflow(charge, MD), ['4GWCTBFD_Hétérogénéité']);
 });
+
+// Avec le gabarit « {{citation}} » seul : la citation HTML, clé d'Annota comprise.
+const CIT = (extra) => '<p><span class="citation" data-citation="' + encodeURIComponent(JSON.stringify({
+  citationItems: [Object.assign({ uris: ['http://zotero.org/users/123/items/Y4GRSDJ9'], locator: '3' }, extra)], properties: {},
+})) + '">(<span class="citation-item">Power, 2010, p. 3</span>)</span></p>';
+
+test('lireCitationsZotero : la clé du surlignage qu’Annota inscrit dans la citation', () => {
+  assert.deepEqual(Ariane.lireCitationsZotero(CIT({ annotationKey: 'AB12CD34' })),
+    { key: 'Y4GRSDJ9', annotations: [{ id: 'AB12CD34', page: '3' }], sansCle: [] });
+});
+
+test('lireCitationsZotero : sans clé, la fiche et la page, en HTML ou en texte', () => {
+  assert.deepEqual(Ariane.lireCitationsZotero(CIT({})), { key: 'Y4GRSDJ9', annotations: [], sansCle: [{ key: 'Y4GRSDJ9', page: '3' }] });
+  assert.deepEqual(Ariane.lireCitationsZotero('([Power, 2010, p. 3](zotero://select/library/items/Y4GRSDJ9))'),
+    { key: 'Y4GRSDJ9', annotations: [], sansCle: [{ key: 'Y4GRSDJ9', page: '3' }] });
+});
+
+test('glisser la citation seule : le surlignage unique de la page, sinon la source à la page', async () => {
+  const src = { path: '98/@power2010.md', basename: '@power2010' };
+  const unique = { path: '02 - Annotations/@power2010/AB12.md', basename: 'AB12_Incertitude' };
+  const mk = (notes) => Object.assign(Object.create(Ariane.prototype), {
+    sourceDeZotflow: () => src,
+    annotationsALaPage: () => notes,
+    indexAnnotationsParCle: () => new Map(),
+  });
+  const charge = Ariane.lireCitationsZotero('([Power, 2010, p. 3](zotero://select/library/items/Y4GRSDJ9))');
+  assert.deepEqual(await mk([unique]).clesDepuisZotflow(charge, ''), ['AB12_Incertitude']);
+  assert.deepEqual(await mk([unique, { basename: 'autre' }]).clesDepuisZotflow(charge, ''), [{ cle: '@power2010', page: '3' }]);
+});
