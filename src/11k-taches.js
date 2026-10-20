@@ -251,7 +251,61 @@ const avecTaches = (Base) => class extends Base {
   // vue calendrier. Cache mémoire 60 s, clé sur la fenêtre demandée. Exclut les
   // événements déjà représentés par un créneau (leur id figure dans un
   // agenda-id de tâche) pour ne pas les afficher deux fois.
+  // La source des événements de fond, l'une ou l'autre : Apple Agenda (Mac,
+  // synchronisé avec les créneaux) ou Google Agenda par ses adresses iCal
+  // (tout système, en lecture seule). Sans choix : Apple sur Mac, Google
+  // ailleurs.
+  sourceAgenda() {
+    const s = this.settings.agendaSource;
+    if (s === 'apple' || s === 'google') return s;
+    return obsidian.Platform.isMacOS ? 'apple' : 'google';
+  }
+
+  // Le texte iCal d'une adresse (« webcal:// » accepté), gardé cinq minutes.
+  // En cas d'échec, la dernière version lue, et l'erreur dans _icsErreur.
+  async lireIcsDistant(url, forcer) {
+    const u = String(url || '').trim().replace(/^webcal:\/\//i, 'https://');
+    if (!u) return '';
+    this._icsCache = this._icsCache || new Map();
+    const c = this._icsCache.get(u);
+    if (!forcer && c && Date.now() - c.le < 5 * 60000) return c.texte;
+    try {
+      const rep = await obsidian.requestUrl({ url: u, method: 'GET', throw: false });
+      const texte = rep && rep.status >= 200 && rep.status < 300 ? String(rep.text || '') : '';
+      if (/BEGIN:VCALENDAR/.test(texte)) {
+        this._icsCache.set(u, { le: Date.now(), texte });
+        this._icsErreur = '';
+        return texte;
+      }
+      this._icsErreur = rep ? 'HTTP ' + rep.status : tr('pas de réponse');
+    } catch (e) {
+      this._icsErreur = (e && e.message) || String(e);
+    }
+    return c ? c.texte : '';
+  }
+
+  // Les événements des agendas iCal réglés, entre deux jours.
+  async evenementsFondIcs(debutISO, finISO) {
+    const cals = (this.settings.agendasIcs || []).filter((x) => x && x.actif !== false && String(x.url || '').trim());
+    if (!cals.length) return [];
+    const cle = 'ics|' + String(debutISO) + '|' + String(finISO);
+    const c = this._fondCache;
+    if (c && c.cle === cle && Date.now() - c.le < 60000) return c.data;
+    const data = [];
+    for (const cal of cals) {
+      const texte = await this.lireIcsDistant(cal.url);
+      if (!texte) continue;
+      try {
+        data.push(...Ariane.evenementsIcs(texte, debutISO, finISO,
+          { nom: cal.nom || tr('Google Agenda'), couleur: cal.couleur || '' }));
+      } catch (e) { console.warn('[Ariane] agenda iCal illisible :', cal.nom, e); }
+    }
+    this._fondCache = { cle, le: Date.now(), data };
+    return data;
+  }
+
   async evenementsFond(debutISO, finISO) {
+    if (this.sourceAgenda() === 'google') return this.evenementsFondIcs(debutISO, finISO);
     if (!obsidian.Platform.isMacOS || !this.settings.agendaActif) return [];
     const cle = String(debutISO) + '|' + String(finISO);
     const c = this._fondCache;
@@ -617,7 +671,7 @@ const avecTaches = (Base) => class extends Base {
   // La synchro automatique Agenda doit-elle tourner ? (macOS, activée, auto, et
   // l'accès Calendriers n'est pas refusé/restreint.)
   _agendaAutoActif() {
-    return obsidian.Platform.isMacOS && !!this.settings.agendaActif
+    return obsidian.Platform.isMacOS && this.sourceAgenda() === 'apple' && !!this.settings.agendaActif
       && this.settings.agendaAuto !== false
       && this._agendaStatut !== 2 && this._agendaStatut !== 1;
   }

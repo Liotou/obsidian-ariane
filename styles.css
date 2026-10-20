@@ -340,6 +340,13 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 
 /* Phrase visée pendant un glisser (mode « cibler la phrase »). */
+/* Réglages, agendas Google (iCal) : nom, adresse et couleur sur une ligne. */
+.zfa-agenda-ics .setting-item-control { flex-wrap: wrap; gap: 6px; }
+.zfa-agenda-ics .setting-item-control input[type="text"],
+.zfa-agenda-ics .setting-item-control input[type="password"] { width: 11em; }
+.zfa-agenda-ics .setting-item-control input[type="password"],
+.zfa-agenda-ics .setting-item-control input[placeholder^="https"] { width: 18em; }
+
 /* Réglages, « Greffons liés » : état d'installation de chaque greffon. */
 .zfa-etat-greffon .setting-item-description { font-weight: 600; }
 .zfa-etat-greffon.est-actif .setting-item-description { color: var(--text-success); }

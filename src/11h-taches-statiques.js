@@ -204,6 +204,232 @@ const avecTachesStatiques = (Base) => class extends Base {
     return l.join('\n');
   }
 
+  // ── Agenda iCal (Google Agenda…) en fond, en lecture seule ──
+  //  L'adresse secrète iCal d'un agenda Google (ou de tout agenda qui en
+  //  publie une) donne ses événements, en texte. Ariane les lit, déplie les
+  //  répétitions sur la fenêtre affichée, et les rend sous la forme des
+  //  événements d'Apple Agenda : la vue calendrier les montre de même.
+
+  // Les lignes d'un texte iCal, dépliées (une ligne continuée commence par
+  // une espace ou une tabulation).
+  static lignesIcs(texte) {
+    return String(texte || '').replace(/\r\n?/g, '\n').replace(/\n[ \t]/g, '').split('\n').filter(Boolean);
+  }
+
+  // « NOM;PARAM=V:valeur » -> { nom, params, valeur }.
+  static proprieteIcs(ligne) {
+    let i = 0, guill = false;
+    for (; i < ligne.length; i++) {
+      const c = ligne[i];
+      if (c === '"') guill = !guill;
+      else if (c === ':' && !guill) break;
+    }
+    const tete = ligne.slice(0, i);
+    const valeur = ligne.slice(i + 1);
+    const morceaux = tete.split(';');
+    const params = {};
+    for (const p of morceaux.slice(1)) {
+      const k = p.indexOf('=');
+      if (k > 0) params[p.slice(0, k).toUpperCase()] = p.slice(k + 1).replace(/^"|"$/g, '');
+    }
+    return { nom: morceaux[0].toUpperCase(), params, valeur };
+  }
+
+  static texteIcs(v) {
+    return String(v || '').replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1').trim();
+  }
+
+  // Une date iCal : { y, mo, d, h, mi, s, jour (journée entière), utc, tz }.
+  static dateIcs(valeur, params) {
+    const m = String(valeur || '').match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/);
+    if (!m) return null;
+    const jour = !m[4] || (params && params.VALUE === 'DATE');
+    return { y: +m[1], mo: +m[2], d: +m[3], h: jour ? 0 : +m[4], mi: jour ? 0 : +m[5], s: jour ? 0 : +(m[6] || 0),
+      jour, utc: !!m[7], tz: (params && params.TZID) || '' };
+  }
+
+  // Décalage d'un fuseau à un instant, en millisecondes (null : fuseau inconnu).
+  static decalageFuseau(ms, tz) {
+    try {
+      const f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit',
+        day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const p = {};
+      for (const x of f.formatToParts(new Date(ms))) p[x.type] = x.value;
+      return Date.UTC(+p.year, +p.month - 1, +p.day, (+p.hour) % 24, +p.minute, +p.second) - ms;
+    } catch (e) { return null; }
+  }
+
+  // L'instant d'une heure murale (date iCal) : UTC, fuseau nommé, ou heure
+  // locale (« flottante », et fuseau inconnu).
+  static instantIcs(m) {
+    const naif = Date.UTC(m.y, m.mo - 1, m.d, m.h, m.mi, m.s || 0);
+    if (m.utc) return naif;
+    if (m.tz && !m.jour) {
+      const o1 = Ariane.decalageFuseau(naif, m.tz);
+      if (o1 != null) {
+        let t = naif - o1;
+        const o2 = Ariane.decalageFuseau(t, m.tz);
+        if (o2 != null && o2 !== o1) t = naif - o2;
+        return t;
+      }
+    }
+    return new Date(m.y, m.mo - 1, m.d, m.h, m.mi, m.s || 0).getTime();
+  }
+
+  // « AAAA-MM-JJTHH:MM » à l'heure locale.
+  static isoLocal(ms) {
+    const d = new Date(ms);
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  // Les événements d'un texte iCal : [{ uid, titre, debut, duree, rrule,
+  // exdates, recurrenceId, ... }], dates en mur iCal.
+  static lireIcs(texte) {
+    const out = [];
+    let e = null;
+    for (const ligne of Ariane.lignesIcs(texte)) {
+      if (ligne === 'BEGIN:VEVENT') { e = { exdates: [], participants: [] }; continue; }
+      if (ligne === 'END:VEVENT') { if (e && e.debut) out.push(e); e = null; continue; }
+      if (!e) continue;
+      const { nom, params, valeur } = Ariane.proprieteIcs(ligne);
+      if (nom === 'UID') e.uid = valeur.trim();
+      else if (nom === 'SUMMARY') e.titre = Ariane.texteIcs(valeur);
+      else if (nom === 'DTSTART') e.debut = Ariane.dateIcs(valeur, params);
+      else if (nom === 'DTEND') e.fin = Ariane.dateIcs(valeur, params);
+      else if (nom === 'DURATION') e.duree = valeur.trim();
+      else if (nom === 'RRULE') e.rrule = valeur.trim();
+      else if (nom === 'EXDATE') for (const v of valeur.split(',')) { const d = Ariane.dateIcs(v, params); if (d) e.exdates.push(d); }
+      else if (nom === 'RECURRENCE-ID') e.recurrenceId = Ariane.dateIcs(valeur, params);
+      else if (nom === 'LOCATION') e.lieu = Ariane.texteIcs(valeur);
+      else if (nom === 'DESCRIPTION') e.notes = Ariane.texteIcs(valeur);
+      else if (nom === 'URL') e.url = valeur.trim();
+      else if (nom === 'STATUS') e.statut = valeur.trim().toUpperCase();
+      else if (nom === 'ORGANIZER') e.organisateur = params.CN || valeur.replace(/^mailto:/i, '');
+      else if (nom === 'ATTENDEE') e.participants.push(params.CN || valeur.replace(/^mailto:/i, ''));
+    }
+    return out;
+  }
+
+  // Durée iCal (« PT1H30M », « P1D ») en millisecondes.
+  static dureeIcs(v) {
+    const m = String(v || '').match(/^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/);
+    if (!m) return 0;
+    const n = (x) => Number(x || 0);
+    return ((n(m[2]) * 7 + n(m[3])) * 86400 + n(m[4]) * 3600 + n(m[5]) * 60 + n(m[6])) * 1000 * (m[1] === '-' ? -1 : 1);
+  }
+
+  // Les dates murales d'une répétition (RRULE) à partir de `debut`, jusqu'à
+  // `limite` (date murale exclue) : quotidienne, hebdomadaire, mensuelle,
+  // annuelle, avec INTERVAL, COUNT, UNTIL, BYDAY (ordinaux compris),
+  // BYMONTHDAY et BYMONTH. Borné à 2000 occurrences examinées.
+  static repetitionsIcs(debut, rrule, limiteMs) {
+    const r = {};
+    for (const p of String(rrule || '').split(';')) { const k = p.indexOf('='); if (k > 0) r[p.slice(0, k).toUpperCase()] = p.slice(k + 1); }
+    const freq = r.FREQ;
+    if (!['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'].includes(freq)) return [debut];
+    const pas = Math.max(1, Number(r.INTERVAL) || 1);
+    const compte = r.COUNT ? Number(r.COUNT) : Infinity;
+    const jusque = r.UNTIL ? Ariane.dateIcs(r.UNTIL, {}) : null;
+    const finMs = jusque ? Ariane.instantIcs(Object.assign({}, jusque, jusque.jour ? { h: 23, mi: 59, s: 59, utc: false } : {})) : Infinity;
+    const JOURS = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+    const parJour = (r.BYDAY || '').split(',').filter(Boolean).map((x) => {
+      const m = x.match(/^([+-]?\d+)?([A-Z]{2})$/);
+      return m ? { n: m[1] ? Number(m[1]) : 0, j: JOURS[m[2]] } : null;
+    }).filter(Boolean);
+    const parJourMois = (r.BYMONTHDAY || '').split(',').filter(Boolean).map(Number);
+    const parMois = (r.BYMONTH || '').split(',').filter(Boolean).map(Number);
+    const mur = (y, mo, d) => Object.assign({}, debut, { y, mo, d });
+    const valeur = (m) => Date.UTC(m.y, m.mo - 1, m.d);
+    const joursDuMois = (y, mo) => new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    const jourSem = (y, mo, d) => new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
+    const dansMois = (y, mo) => {
+      const nb = joursDuMois(y, mo);
+      if (parJour.length) {
+        const out = [];
+        for (const { n, j } of parJour) {
+          const tous = [];
+          for (let d = 1; d <= nb; d++) if (jourSem(y, mo, d) === j) tous.push(d);
+          if (!n) out.push(...tous);
+          else { const d = n > 0 ? tous[n - 1] : tous[tous.length + n]; if (d) out.push(d); }
+        }
+        return out.sort((a, b) => a - b);
+      }
+      if (parJourMois.length) return parJourMois.map((d) => (d < 0 ? nb + d + 1 : d)).filter((d) => d >= 1 && d <= nb).sort((a, b) => a - b);
+      return debut.d <= nb ? [debut.d] : [];
+    };
+    const out = [];
+    let vus = 0;
+    const d0 = valeur(debut);
+    const pousser = (m) => {
+      if (valeur(m) < d0) return true;
+      const t = Ariane.instantIcs(m);
+      if (t > finMs || vus >= compte || t >= limiteMs) return false;
+      vus += 1;
+      out.push(m);
+      return true;
+    };
+    for (let k = 0; k < 2000; k++) {
+      let candidats = [];
+      if (freq === 'DAILY') {
+        const t = new Date(d0 + k * pas * 86400000);
+        const m = mur(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
+        if ((!parJour.length || parJour.some((x) => x.j === t.getUTCDay())) && (!parMois.length || parMois.includes(m.mo))) candidats = [m];
+      } else if (freq === 'WEEKLY') {
+        const lundi = d0 - ((new Date(d0).getUTCDay() + 6) % 7) * 86400000 + k * pas * 7 * 86400000;
+        const js = parJour.length ? parJour.map((x) => x.j) : [new Date(d0).getUTCDay()];
+        candidats = js.map((j) => new Date(lundi + ((j + 6) % 7) * 86400000)).sort((a, b) => a - b)
+          .map((t) => mur(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()));
+      } else if (freq === 'MONTHLY') {
+        const tot = debut.mo - 1 + k * pas;
+        const y = debut.y + Math.floor(tot / 12), mo = (tot % 12) + 1;
+        if (!parMois.length || parMois.includes(mo)) candidats = dansMois(y, mo).map((d) => mur(y, mo, d));
+      } else {
+        const y = debut.y + k * pas;
+        for (const mo of (parMois.length ? parMois : [debut.mo])) {
+          const ds = (parJour.length || parJourMois.length) ? dansMois(y, mo) : (debut.d <= joursDuMois(y, mo) ? [debut.d] : []);
+          candidats.push(...ds.map((d) => mur(y, mo, d)));
+        }
+      }
+      for (const m of candidats) if (!pousser(m)) return out;
+      if (out.length && Ariane.instantIcs(out[out.length - 1]) >= limiteMs) return out;
+    }
+    return out;
+  }
+
+  // Les événements d'un texte iCal entre deux jours (« AAAA-MM-JJ », fin
+  // comprise), dépliés et convertis à la forme des événements d'Apple
+  // Agenda. `cal` : { nom, couleur }.
+  static evenementsIcs(texte, debutISO, finISO, cal) {
+    const c = cal || {};
+    const evs = Ariane.lireIcs(texte).filter((e) => e.statut !== 'CANCELLED');
+    const borneD = String(debutISO).slice(0, 10);
+    const borneF = String(finISO).slice(0, 10);
+    const limite = new Date(Number(borneF.slice(0, 4)), Number(borneF.slice(5, 7)) - 1, Number(borneF.slice(8, 10)) + 1).getTime();
+    // Les occurrences remplacées (RECURRENCE-ID) : clé uid|instant.
+    const remplacees = new Set(evs.filter((e) => e.recurrenceId).map((e) => e.uid + '|' + Ariane.instantIcs(e.recurrenceId)));
+    const out = [];
+    for (const e of evs) {
+      const t0 = Ariane.instantIcs(e.debut);
+      let duree = e.fin ? Ariane.instantIcs(e.fin) - t0 : Ariane.dureeIcs(e.duree);
+      if (!(duree > 0)) duree = e.debut.jour ? 86400000 : 0;
+      const exclues = new Set(e.exdates.map((x) => Ariane.instantIcs(x)));
+      const occ = e.rrule && !e.recurrenceId ? Ariane.repetitionsIcs(e.debut, e.rrule, limite) : [e.debut];
+      for (const m of occ) {
+        const t = Ariane.instantIcs(m);
+        if (exclues.has(t)) continue;
+        if (!e.recurrenceId && e.rrule && remplacees.has(e.uid + '|' + t)) continue;
+        const debut = Ariane.isoLocal(t);
+        const fin = Ariane.isoLocal(t + duree);
+        if (fin.slice(0, 10) < borneD || debut.slice(0, 10) > borneF) continue;
+        out.push({ id: 'ics:' + (e.uid || '') + '|' + debut, titre: e.titre || '', debut, fin, allDay: !!e.debut.jour,
+          couleur: c.couleur || '', calendrier: c.nom || '', lieu: e.lieu || '', notes: e.notes || '',
+          url: e.url || '', participants: e.participants.filter(Boolean), organisateur: e.organisateur || '', source: 'ics' });
+      }
+    }
+    return out.sort((a, b) => a.debut.localeCompare(b.debut));
+  }
+
   // Le corps d'une note neuve associée à un événement Apple Calendrier (clic
   // droit sur un événement de la vue calendrier — pas un créneau de tâche :
   // ça reste un événement, pas quelque chose à faire). Note libre, sans

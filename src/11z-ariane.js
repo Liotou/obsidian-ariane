@@ -1391,7 +1391,11 @@ class Ariane extends composer(obsidian.Plugin,
       this._relancerPushAgenda(2500);
     }));
     this.app.workspace.onLayoutReady(() => {
-      if (obsidian.Platform.isMacOS && this.settings.agendaActif && this.settings.agendaAuto !== false) {
+      // Google Agenda (iCal) : relu toutes les dix minutes, en lecture seule.
+      this.registerInterval(window.setInterval(() => {
+        if (this.sourceAgenda() === 'google' && (this.settings.agendasIcs || []).length) this._rafraichirFond();
+      }, 10 * 60000));
+      if (obsidian.Platform.isMacOS && this.sourceAgenda() === 'apple' && this.settings.agendaActif && this.settings.agendaAuto !== false) {
         setTimeout(() => this.releverAgenda(true), 12000);
         this.registerInterval(window.setInterval(() => {
           if (!this.settings.agendaActif || this.settings.agendaAuto === false) return;

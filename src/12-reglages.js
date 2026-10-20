@@ -1643,8 +1643,30 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Une tâche passée en « abandonnée » voit son rappel supprimé d'Apple Rappels, au lieu d'y rester ouvert. Une tâche terminée, elle, reste cochée."))
       .addToggle((t) => t.setValue(s.rappelsSupprimerAbandonnees !== false)
         .onChange(async (v) => { s.rappelsSupprimerAbandonnees = v; await maj(); }));
+    this._section(c, tr('Agenda en fond'));
+    this._aide(c, tr("Les événements d'un agenda s'affichent en fond de la vue calendrier. Deux sources, l'une ou l'autre : Apple Agenda (Mac), synchronisé avec les créneaux des tâches ; ou Google Agenda, en lecture seule, par l'adresse secrète iCal de chaque agenda (Google Agenda, puis Paramètres de l'agenda, « Adresse secrète au format iCal »)."));
+    const source = this.plugin.sourceAgenda();
+    new obsidian.Setting(c)
+      .setName(tr('Source'))
+      .addDropdown((d) => {
+        if (obsidian.Platform.isMacOS) d.addOption('apple', tr('Apple Agenda (synchronisé)'));
+        d.addOption('google', tr('Google Agenda (adresse iCal, lecture seule)'));
+        d.setValue(source).onChange(async (v) => {
+          s.agendaSource = v;
+          await maj();
+          this.plugin._fondCache = null;
+          this.plugin._rafraichirFond();
+          this.display();
+        });
+      });
+    if (source === 'google') this._agendasIcs(c, s, maj);
+
     this._section(c, tr('Apple Agenda'));
     this._reserveMac(c);
+    if (this.plugin.sourceAgenda() === 'google') {
+      this._aide(c, tr("La source choisie est Google Agenda : la synchronisation avec Apple Agenda est suspendue."));
+      return;
+    }
     this._aide(c, tr("macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchro bidirectionnelle automatique : à chaque modif d'un côté (et au changement de fenêtre), déplacer/redimensionner l'événement dans Calendar réécrit le créneau. Les calendriers cochés s'affichent en fond de la vue calendrier."));
     // Suggestions de calendriers Apple, partagées par le calendrier par défaut
     // et les familles. Chargées à la volée sur macOS.
@@ -2782,6 +2804,49 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._section(c, 'Templater');
     this._etatGreffon(c, 'templater-obsidian');
     this._aide(c, tr("Ariane propose les modèles de Templater (et ceux des modèles natifs d'Obsidian) quand elle crée une note : compte rendu, note préparatoire, note d'événement. Aucun réglage ici : le dossier des modèles est celui de Templater."));
+  }
+
+  // Les agendas Google (iCal) affichés en fond : nom, adresse secrète,
+  // couleur, actif ; un essai lit l'adresse et compte les événements à venir.
+  _agendasIcs(c, s, maj) {
+    const liste = Array.isArray(s.agendasIcs) ? s.agendasIcs : (s.agendasIcs = []);
+    const changer = async () => { await maj(); this.plugin._fondCache = null; this.plugin._icsCache = null; this.plugin._rafraichirFond(); };
+    liste.forEach((cal, i) => {
+      const st = new obsidian.Setting(c)
+        .setName(cal.nom || tr('Agenda ') + (i + 1))
+        .addToggle((t) => t.setTooltip(tr('Afficher')).setValue(cal.actif !== false)
+          .onChange(async (v) => { cal.actif = v; await changer(); }))
+        .addText((t) => t.setPlaceholder(tr('Nom')).setValue(cal.nom || '')
+          .onChange(async (v) => { cal.nom = v.trim(); await changer(); }))
+        .addText((t) => {
+          t.setPlaceholder('https://calendar.google.com/calendar/ical/…/basic.ics').setValue(cal.url || '')
+            .onChange(async (v) => { cal.url = v.trim(); await changer(); });
+          // L'adresse est secrète : masquée hors de la saisie.
+          t.inputEl.type = 'password';
+          t.inputEl.addEventListener('focus', () => { t.inputEl.type = 'text'; });
+          t.inputEl.addEventListener('blur', () => { t.inputEl.type = 'password'; });
+        })
+        .addColorPicker((cp) => cp.setValue(cal.couleur || '#4285f4')
+          .onChange(async (v) => { cal.couleur = v; await changer(); }))
+        .addExtraButton((b) => b.setIcon('flask-conical').setTooltip(tr('Tester l\'adresse')).onClick(async () => {
+          const texte = await this.plugin.lireIcsDistant(cal.url, true);
+          if (!texte) { new obsidian.Notice(tr('Adresse illisible : ') + (this.plugin._icsErreur || tr('réponse vide'))); return; }
+          const auj = new Date().toISOString().slice(0, 10);
+          const fin = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+          const n = Ariane.evenementsIcs(texte, auj, fin, {}).length;
+          new obsidian.Notice((cal.nom || tr('Agenda')) + tr(' : ') + n + tr(' événement(s) dans les trente prochains jours.'));
+        }))
+        .addExtraButton((b) => b.setIcon('trash').setTooltip(tr('Retirer cet agenda')).onClick(async () => {
+          liste.splice(i, 1); await changer(); this.display();
+        }));
+      st.settingEl.addClass('zfa-agenda-ics');
+    });
+    new obsidian.Setting(c)
+      .addButton((b) => b.setButtonText(tr('Ajouter un agenda Google')).onClick(async () => {
+        liste.push({ nom: '', url: '', couleur: '#4285f4', actif: true });
+        await maj();
+        this.display();
+      }));
   }
 
   // Éditeur des familles de tâches. Même esprit que _tableFamilles (familles

@@ -246,9 +246,19 @@ class MoteurCalendrier extends MoteurVue {
     return { horaires, jour };
   }
 
+  // Un événement Google (iCal) s'ouvre dans Google Agenda, au jour voulu.
+  _estIcs(e, id) { return (e && e.source === 'ics') || String(id || '').startsWith('ics:'); }
+  _libelleOuvrir(e) { return this._estIcs(e, e && e.id) ? tr('Ouvrir dans Google Agenda') : tr('Ouvrir dans Calendrier'); }
+
   _ouvrirEvenement(id) {
     if (!id) return;
-    const url = 'ical://ekevent/' + encodeURIComponent(id) + '?method=show&options=more';
+    const e = (this._fond || []).find((x) => x && x.id === id);
+    let url = 'ical://ekevent/' + encodeURIComponent(id) + '?method=show&options=more';
+    if (this._estIcs(e, id)) {
+      const jour = String((e && e.debut) || String(id).split('|')[1] || '').slice(0, 10);
+      url = e && /^https?:\/\//.test(e.url || '') ? e.url
+        : 'https://calendar.google.com/calendar/r/day/' + jour.split('-').join('/');
+    }
     try {
       const shell = require('electron').shell;
       if (shell && shell.openExternal) { shell.openExternal(url); return; }
@@ -340,7 +350,7 @@ class MoteurCalendrier extends MoteurVue {
       bt.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); faire(); });
     };
     action('file-text', note ? tr('Ouvrir la note') : tr('Créer la note'), () => this._noteEvenement(e).catch(() => {}));
-    if (e.id) action('external-link', tr('Ouvrir dans Calendrier'), () => this._ouvrirEvenement(e.id));
+    if (e.id) action('external-link', this._libelleOuvrir(e), () => this._ouvrirEvenement(e.id));
 
     const r = el.getBoundingClientRect();
     let x = r.right + 8;
@@ -357,7 +367,7 @@ class MoteurCalendrier extends MoteurVue {
     const jour = String(e.debut || '').slice(0, 10);
     const m = new obsidian.Menu();
     if (e.id) {
-      m.addItem((i) => i.setTitle(tr('Ouvrir dans Calendrier')).setIcon('external-link')
+      m.addItem((i) => i.setTitle(this._libelleOuvrir(e)).setIcon('external-link')
         .onClick(() => this._ouvrirEvenement(e.id)));
     }
     // Ce qui existe déjà s'ouvre ; seul ce qui manque se crée. Sans cela, le
@@ -1381,7 +1391,7 @@ class MoteurCalendrier extends MoteurVue {
       const eid = fj ? String(((this.app.metadataCache.getFileCache(fj) || {}).frontmatter
         || {})['Événement ID'] || '').trim() : '';
       if (eid) {
-        m.addItem((i) => i.setTitle(tr('Ouvrir l\'événement Apple')).setIcon('external-link')
+        m.addItem((i) => i.setTitle(this._estIcs(null, eid) ? tr('Ouvrir dans Google Agenda') : tr('Ouvrir l\'événement Apple')).setIcon('external-link')
           .onClick(() => this._ouvrirEvenement(eid)));
       }
       // Carte de dates (jalon / tâche d'une journée) : on efface début + échéance.

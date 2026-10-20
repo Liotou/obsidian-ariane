@@ -1535,6 +1535,8 @@ const DEFAULT_SETTINGS = {
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques
   agendaFenetreJours: 120,      // fenêtre de relève / agenda de fond (jours)
   agendaCalendrierDefaut: '',   // calendrier Apple cible par défaut (familles sans réglage)
+  agendaSource: '',             // événements de fond : 'apple' | 'google' (vide : Apple sur Mac, Google ailleurs)
+  agendasIcs: [],               // Google Agenda : [{ nom, url (adresse secrète iCal), couleur, actif }]
   agendaCalendriersAffiches: [], // calendriers Apple cochés, affichés en fond (lecture seule)
   agendaFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un événement Apple
   // Clés de frontmatter des propriétés de tâche. Chaque clé = « prefixeTaches »
