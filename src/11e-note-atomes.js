@@ -1891,6 +1891,15 @@ const avecNoteAtomes = (Base) => class extends Base {
     return enHtml || enTexte;
   }
 
+  // Lequel de ces surlignages ? Rend la note choisie, ou null (on citera
+  // alors la source à la page).
+  choisirAnnotation(notes, page) {
+    const tries = notes.slice().sort((a, b) => this.titreLisibleFichier(a).localeCompare(this.titreLisibleFichier(b), 'fr'));
+    return new ModaleChoixNote(this.app, tries,
+      tr('Plusieurs surlignages page ') + page + tr(' : lequel citer ? (Échap : la source à la page)'),
+      (f) => this.titreLisibleFichier(f)).choisir();
+  }
+
   // Les notes d'annotation d'une source à une page donnée.
   annotationsALaPage(source, page) {
     const out = [];
@@ -1941,7 +1950,11 @@ const avecNoteAtomes = (Base) => class extends Base {
         const src = this.sourceDeZotflow({ key: c.key || charge.key, annotations: [] }, texte);
         if (!src) continue;
         const notes = this.annotationsALaPage(src, c.page);
-        const x = notes.length === 1 ? notes[0].basename : { cle: src.basename, page: c.page };
+        let choisie = notes.length === 1 ? notes[0] : null;
+        // Plusieurs surlignages à cette page : Zotero n'a pas dit lequel, on
+        // le demande, titres à l'appui.
+        if (!choisie && notes.length > 1 && typeof this.choisirAnnotation === 'function') choisie = await this.choisirAnnotation(notes, c.page);
+        const x = choisie ? choisie.basename : { cle: src.basename, page: c.page };
         const k = typeof x === 'string' ? x : x.cle + '|' + x.page;
         if (!vues.has(k)) { vues.add(k); out.push(x); }
       }

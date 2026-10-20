@@ -570,6 +570,28 @@ class ModaleReferencesOrphelines extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// Un choix parmi quelques notes, rendu par une promesse : la note choisie,
+// ou null si la fenêtre se ferme sans choix. (Obsidian ferme la fenêtre
+// avant d'annoncer le choix : la réponse « rien » attend donc un instant.)
+class ModaleChoixNote extends obsidian.SuggestModal {
+  constructor(app, notes, titre, libelle) {
+    super(app);
+    this.notes = notes || [];
+    this.libelle = libelle || ((f) => f.basename);
+    this.setPlaceholder(titre || '');
+    this.promesse = new Promise((r) => { this._rendre = r; });
+    this._fait = false;
+  }
+  getSuggestions(q) {
+    const t = String(q || '').toLowerCase();
+    return this.notes.filter((f) => !t || this.libelle(f).toLowerCase().includes(t));
+  }
+  renderSuggestion(f, el) { el.createDiv({ text: this.libelle(f) }); }
+  onChooseSuggestion(f) { this._fait = true; this._rendre(f); }
+  onClose() { setTimeout(() => { if (!this._fait) this._rendre(null); }, 50); }
+  choisir() { this.open(); return this.promesse; }
+}
+
 // Les autres sources que vos commentaires d'annotation mentionnent : cochées,
 // elles deviennent des sources associées ; écartées, elles ne reviennent plus.
 // Les dossiers dont les notes reçoivent la numérotation des titres. Valider

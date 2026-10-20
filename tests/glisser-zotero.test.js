@@ -74,5 +74,10 @@ test('glisser la citation seule : le surlignage unique de la page, sinon la sour
   });
   const charge = Ariane.lireCitationsZotero('([Power, 2010, p. 3](zotero://select/library/items/Y4GRSDJ9))');
   assert.deepEqual(await mk([unique]).clesDepuisZotflow(charge, ''), ['AB12_Incertitude']);
-  assert.deepEqual(await mk([unique, { basename: 'autre' }]).clesDepuisZotflow(charge, ''), [{ cle: '@power2010', page: '3' }]);
+  // Plusieurs à la page : on demande ; sans réponse, la source à la page.
+  const plusieurs = mk([unique, { basename: 'autre' }]);
+  plusieurs.choisirAnnotation = async () => null;
+  assert.deepEqual(await plusieurs.clesDepuisZotflow(charge, ''), [{ cle: '@power2010', page: '3' }]);
+  plusieurs.choisirAnnotation = async (notes) => notes[1];
+  assert.deepEqual(await plusieurs.clesDepuisZotflow(charge, ''), ['autre']);
 });
