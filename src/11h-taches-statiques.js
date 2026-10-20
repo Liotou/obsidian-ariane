@@ -154,10 +154,53 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push('---');
     l.push('# ' + intitule);
     l.push('');
-    l.push('## Note de travail');
-    l.push('');
     l.push('## Journal');
     l.push('');
+    return l.join('\n');
+  }
+
+  // La note de travail d'une tâche : ce qui suit son titre et les blocs
+  // qu'Ariane y tient (accès, sessions), jusqu'au journal ou au bloc
+  // suivant. Sans titre de section : elle est le corps même de la note.
+  // Rend { debut, fin } en indices de lignes (fin exclue).
+  static zoneNoteTravail(lignes) {
+    const l = lignes || [];
+    const ouvre = (x) => /^\s*(?:%%|<!--)\s*ariane:([\w-]+)\s*(?:%%|-->)\s*$/.exec(x || '');
+    const ferme = (x, nom) => new RegExp('^\\s*(?:%%|<!--)\\s*/ariane:' + nom + '\\s*(?:%%|-->)').test(x || '');
+    let i = 0;
+    if (l[0] === '---') { const f = l.indexOf('---', 1); i = f >= 0 ? f + 1 : 0; }
+    while (i < l.length && l[i].trim() === '') i += 1;
+    if (i < l.length && /^#\s/.test(l[i])) i += 1;
+    // Sous le titre : les blocs d'Ariane, et l'ancien titre de section.
+    for (;;) {
+      let j = i;
+      while (j < l.length && l[j].trim() === '') j += 1;
+      if (j >= l.length) break;
+      const o = ouvre(l[j]);
+      if (o) {
+        let k = j + 1;
+        while (k < l.length && !ferme(l[k], o[1])) k += 1;
+        i = Math.min(l.length, k + 1);
+        continue;
+      }
+      if (/^##\s+Note de travail\s*$/.test(l[j])) { i = j + 1; continue; }
+      break;
+    }
+    let fin = i;
+    while (fin < l.length && !/^##\s+Journal\s*$/.test(l[fin]) && !ouvre(l[fin])) fin += 1;
+    return { debut: i, fin };
+  }
+
+  // Retire d'une note de tâche l'ancien titre « ## Note de travail » : son
+  // contenu suit désormais le titre de la note. Rend le texte, inchangé
+  // s'il n'y a rien à retirer.
+  static sansTitreNoteTravail(texte) {
+    const l = String(texte == null ? '' : texte).split('\n');
+    const k = l.findIndex((x) => /^##\s+Note de travail\s*$/.test(x));
+    if (k < 0) return String(texte == null ? '' : texte);
+    l.splice(k, 1);
+    // Pas deux lignes vides à la suite là où se tenait le titre.
+    if (k > 0 && k < l.length && l[k - 1].trim() === '' && l[k].trim() === '') l.splice(k, 1);
     return l.join('\n');
   }
 

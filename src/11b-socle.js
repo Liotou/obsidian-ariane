@@ -20,7 +20,7 @@ const avecSocle = (Base) => class extends Base {
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
             'dossierTaches', 'tempsDossierJournal', 'dossierNotesEvenements', 'chronoDepuis',
-            'veilleDossier', 'veilleDerniere'];
+            'veilleDossier', 'veilleDerniere', '_noteTravailSansTitre'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu

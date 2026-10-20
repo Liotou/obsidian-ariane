@@ -664,7 +664,7 @@ and the readable names are set in the **Tasks** settings tab; "Masquer le préfi
 headers without touching the data.
 
 The **Tasks: create a task** form carries a **working note** field, written into
-the note's *## Note de travail* section, and every planning field including an
+the body of the note right under its title (no section heading), and every planning field including an
 optional **time** on the due date. Two properties are kept up to date for you and
 not meant to be typed: `Terminée le` follows the status, and `Sans échéance` (a
 checkbox) is true while the task has no due date — so you can filter or sort a

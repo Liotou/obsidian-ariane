@@ -4583,7 +4583,7 @@ const avecSocle = (Base) => class extends Base {
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
             'dossierTaches', 'tempsDossierJournal', 'dossierNotesEvenements', 'chronoDepuis',
-            'veilleDossier', 'veilleDerniere'];
+            'veilleDossier', 'veilleDerniere', '_noteTravailSansTitre'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
@@ -12477,10 +12477,53 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push('---');
     l.push('# ' + intitule);
     l.push('');
-    l.push('## Note de travail');
-    l.push('');
     l.push('## Journal');
     l.push('');
+    return l.join('\n');
+  }
+
+  // La note de travail d'une tâche : ce qui suit son titre et les blocs
+  // qu'Ariane y tient (accès, sessions), jusqu'au journal ou au bloc
+  // suivant. Sans titre de section : elle est le corps même de la note.
+  // Rend { debut, fin } en indices de lignes (fin exclue).
+  static zoneNoteTravail(lignes) {
+    const l = lignes || [];
+    const ouvre = (x) => /^\s*(?:%%|<!--)\s*ariane:([\w-]+)\s*(?:%%|-->)\s*$/.exec(x || '');
+    const ferme = (x, nom) => new RegExp('^\\s*(?:%%|<!--)\\s*/ariane:' + nom + '\\s*(?:%%|-->)').test(x || '');
+    let i = 0;
+    if (l[0] === '---') { const f = l.indexOf('---', 1); i = f >= 0 ? f + 1 : 0; }
+    while (i < l.length && l[i].trim() === '') i += 1;
+    if (i < l.length && /^#\s/.test(l[i])) i += 1;
+    // Sous le titre : les blocs d'Ariane, et l'ancien titre de section.
+    for (;;) {
+      let j = i;
+      while (j < l.length && l[j].trim() === '') j += 1;
+      if (j >= l.length) break;
+      const o = ouvre(l[j]);
+      if (o) {
+        let k = j + 1;
+        while (k < l.length && !ferme(l[k], o[1])) k += 1;
+        i = Math.min(l.length, k + 1);
+        continue;
+      }
+      if (/^##\s+Note de travail\s*$/.test(l[j])) { i = j + 1; continue; }
+      break;
+    }
+    let fin = i;
+    while (fin < l.length && !/^##\s+Journal\s*$/.test(l[fin]) && !ouvre(l[fin])) fin += 1;
+    return { debut: i, fin };
+  }
+
+  // Retire d'une note de tâche l'ancien titre « ## Note de travail » : son
+  // contenu suit désormais le titre de la note. Rend le texte, inchangé
+  // s'il n'y a rien à retirer.
+  static sansTitreNoteTravail(texte) {
+    const l = String(texte == null ? '' : texte).split('\n');
+    const k = l.findIndex((x) => /^##\s+Note de travail\s*$/.test(x));
+    if (k < 0) return String(texte == null ? '' : texte);
+    l.splice(k, 1);
+    // Pas deux lignes vides à la suite là où se tenait le titre.
+    if (k > 0 && k < l.length && l[k - 1].trim() === '' && l[k].trim() === '') l.splice(k, 1);
     return l.join('\n');
   }
 
@@ -17464,7 +17507,30 @@ const avecTaches = (Base) => class extends Base {
     ].join('\n');
   }
 
-  // Insère un texte de note sous « ## Note de travail » d'une tâche.
+  // Une fois pour toutes : les notes de tâche perdent l'ancien titre
+  // « ## Note de travail », leur contenu suivant désormais le titre de la
+  // note. Par le coffre (vault.process), qui ménage une note ouverte.
+  async migrerNotesTravail() {
+    if (this.settings._noteTravailSansTitre) return 0;
+    const dossier = this.settings.dossierTaches;
+    if (!dossier) return 0;
+    let n = 0;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(dossier + '/')) continue;
+      const avant = await this.app.vault.cachedRead(f);
+      if (!/^##\s+Note de travail\s*$/m.test(avant)) continue;
+      this.marquerEcriture(f.path);
+      await this.app.vault.process(f, (t) => Ariane.sansTitreNoteTravail(t));
+      n += 1;
+    }
+    this.settings._noteTravailSansTitre = true;
+    await this.saveSettings();
+    if (n) new obsidian.Notice(tr('Notes de tâche : titre « Note de travail » retiré de ') + n + tr(' note(s).'));
+    return n;
+  }
+
+  // Insère un texte en tête de la note de travail d'une tâche (ce qui suit
+  // son titre).
   async ajouterNoteTache(ref, texte) {
     const t = String(texte || '').trim();
     if (!t) return;
@@ -17472,42 +17538,29 @@ const avecTaches = (Base) => class extends Base {
     if (!f) return;
     this.marquerEcriture(f.path);
     const lignes = (await this.app.vault.read(f)).split('\n');
-    const i = lignes.findIndex((l) => /^##\s+Note de travail\s*$/.test(l));
-    if (i >= 0) lignes.splice(i + 1, 0, '', t);
-    else { lignes.push('', t); }
+    const z = Ariane.zoneNoteTravail(lignes);
+    lignes.splice(z.debut, 0, '', t);
     await this.app.vault.modify(f, lignes.join('\n'));
   }
 
-  // Corps (sans le titre) de la section « ## Note de travail » d'une tâche.
+  // La note de travail d'une tâche : ce qui suit son titre, sans le journal
+  // ni les blocs qu'Ariane tient.
   async lireNoteTache(ref) {
     const f = this.fichierDeRef(ref);
     if (!f) return '';
     const lignes = (await this.app.vault.read(f)).split('\n');
-    const i = lignes.findIndex((l) => /^##\s+Note de travail\s*$/.test(l));
-    if (i < 0) return '';
-    let j = i + 1;
-    while (j < lignes.length && !/^##\s+/.test(lignes[j])) j += 1;
-    return lignes.slice(i + 1, j).join('\n').trim();
+    const z = Ariane.zoneNoteTravail(lignes);
+    return lignes.slice(z.debut, z.fin).join('\n').trim();
   }
 
-  // Remplace le corps de « ## Note de travail » (crée la section si absente).
+  // Remplace la note de travail d'une tâche (ce qui suit son titre).
   async ecrireNoteTache(ref, texte) {
     const f = this.fichierDeRef(ref);
     if (!f) return false;
     const corps = String(texte == null ? '' : texte).replace(/\s+$/, '');
     const lignes = (await this.app.vault.read(f)).split('\n');
-    const i = lignes.findIndex((l) => /^##\s+Note de travail\s*$/.test(l));
-    let sortie;
-    if (i < 0) {
-      let k = 0;
-      if (lignes[0] === '---') { const fin = lignes.indexOf('---', 1); k = fin >= 0 ? fin + 1 : 0; }
-      while (k < lignes.length && (lignes[k].trim() === '' || /^# /.test(lignes[k]))) k += 1;
-      sortie = lignes.slice(0, k).concat(['## Note de travail', '', corps, ''], lignes.slice(k));
-    } else {
-      let j = i + 1;
-      while (j < lignes.length && !/^##\s+/.test(lignes[j])) j += 1;
-      sortie = lignes.slice(0, i + 1).concat(['', corps, ''], lignes.slice(j));
-    }
+    const z = Ariane.zoneNoteTravail(lignes);
+    const sortie = lignes.slice(0, z.debut).concat(['', corps, ''], lignes.slice(z.fin));
     const texteSortie = sortie.join('\n');
     const avant = await this.app.vault.read(f);
     if (texteSortie === avant) return false;
@@ -25242,6 +25295,10 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
     // Le panneau « Plan » : ses entrées portent les mêmes numéros.
     this.app.workspace.onLayoutReady(() => this.brancherPlans());
+    // Une fois : l'ancien titre « ## Note de travail » quitte les notes de tâche.
+    this.app.workspace.onLayoutReady(() => {
+      this.migrerNotesTravail().catch((e) => console.warn('[Ariane] notes de travail :', e));
+    });
     // Un rôle de dossier qui désigne un dossier absent (renommé, ou resté sur
     // un ancien nom par défaut) suit le dossier existant qui lui correspond.
     this.app.workspace.onLayoutReady(async () => {

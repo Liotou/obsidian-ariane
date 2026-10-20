@@ -683,7 +683,7 @@ frise, des cartes d'articulation et des en-têtes de colonnes des bases, sans
 toucher aux données.
 
 Le formulaire **« Tâches : créer une tâche »** porte un champ **note de travail**,
-écrit dans la section *## Note de travail* de la note, et tous les champs de
+écrit sous le titre de la note (la note de travail en est le corps, sans titre de section), et tous les champs de
 planning dont une **heure** facultative sur l'échéance. Deux propriétés sont
 tenues à jour toutes seules, sans se saisir : `Terminée le` suit le statut, et
 `Sans échéance` (une case) vaut vrai tant que la tâche n'a pas d'échéance — de

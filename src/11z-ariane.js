@@ -810,6 +810,10 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
     // Le panneau « Plan » : ses entrées portent les mêmes numéros.
     this.app.workspace.onLayoutReady(() => this.brancherPlans());
+    // Une fois : l'ancien titre « ## Note de travail » quitte les notes de tâche.
+    this.app.workspace.onLayoutReady(() => {
+      this.migrerNotesTravail().catch((e) => console.warn('[Ariane] notes de travail :', e));
+    });
     // Un rôle de dossier qui désigne un dossier absent (renommé, ou resté sur
     // un ancien nom par défaut) suit le dossier existant qui lui correspond.
     this.app.workspace.onLayoutReady(async () => {

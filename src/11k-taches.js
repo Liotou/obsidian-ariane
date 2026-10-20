@@ -1157,7 +1157,30 @@ const avecTaches = (Base) => class extends Base {
     ].join('\n');
   }
 
-  // Insère un texte de note sous « ## Note de travail » d'une tâche.
+  // Une fois pour toutes : les notes de tâche perdent l'ancien titre
+  // « ## Note de travail », leur contenu suivant désormais le titre de la
+  // note. Par le coffre (vault.process), qui ménage une note ouverte.
+  async migrerNotesTravail() {
+    if (this.settings._noteTravailSansTitre) return 0;
+    const dossier = this.settings.dossierTaches;
+    if (!dossier) return 0;
+    let n = 0;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(dossier + '/')) continue;
+      const avant = await this.app.vault.cachedRead(f);
+      if (!/^##\s+Note de travail\s*$/m.test(avant)) continue;
+      this.marquerEcriture(f.path);
+      await this.app.vault.process(f, (t) => Ariane.sansTitreNoteTravail(t));
+      n += 1;
+    }
+    this.settings._noteTravailSansTitre = true;
+    await this.saveSettings();
+    if (n) new obsidian.Notice(tr('Notes de tâche : titre « Note de travail » retiré de ') + n + tr(' note(s).'));
+    return n;
+  }
+
+  // Insère un texte en tête de la note de travail d'une tâche (ce qui suit
+  // son titre).
   async ajouterNoteTache(ref, texte) {
     const t = String(texte || '').trim();
     if (!t) return;
@@ -1165,42 +1188,29 @@ const avecTaches = (Base) => class extends Base {
     if (!f) return;
     this.marquerEcriture(f.path);
     const lignes = (await this.app.vault.read(f)).split('\n');
-    const i = lignes.findIndex((l) => /^##\s+Note de travail\s*$/.test(l));
-    if (i >= 0) lignes.splice(i + 1, 0, '', t);
-    else { lignes.push('', t); }
+    const z = Ariane.zoneNoteTravail(lignes);
+    lignes.splice(z.debut, 0, '', t);
     await this.app.vault.modify(f, lignes.join('\n'));
   }
 
-  // Corps (sans le titre) de la section « ## Note de travail » d'une tâche.
+  // La note de travail d'une tâche : ce qui suit son titre, sans le journal
+  // ni les blocs qu'Ariane tient.
   async lireNoteTache(ref) {
     const f = this.fichierDeRef(ref);
     if (!f) return '';
     const lignes = (await this.app.vault.read(f)).split('\n');
-    const i = lignes.findIndex((l) => /^##\s+Note de travail\s*$/.test(l));
-    if (i < 0) return '';
-    let j = i + 1;
-    while (j < lignes.length && !/^##\s+/.test(lignes[j])) j += 1;
-    return lignes.slice(i + 1, j).join('\n').trim();
+    const z = Ariane.zoneNoteTravail(lignes);
+    return lignes.slice(z.debut, z.fin).join('\n').trim();
   }
 
-  // Remplace le corps de « ## Note de travail » (crée la section si absente).
+  // Remplace la note de travail d'une tâche (ce qui suit son titre).
   async ecrireNoteTache(ref, texte) {
     const f = this.fichierDeRef(ref);
     if (!f) return false;
     const corps = String(texte == null ? '' : texte).replace(/\s+$/, '');
     const lignes = (await this.app.vault.read(f)).split('\n');
-    const i = lignes.findIndex((l) => /^##\s+Note de travail\s*$/.test(l));
-    let sortie;
-    if (i < 0) {
-      let k = 0;
-      if (lignes[0] === '---') { const fin = lignes.indexOf('---', 1); k = fin >= 0 ? fin + 1 : 0; }
-      while (k < lignes.length && (lignes[k].trim() === '' || /^# /.test(lignes[k]))) k += 1;
-      sortie = lignes.slice(0, k).concat(['## Note de travail', '', corps, ''], lignes.slice(k));
-    } else {
-      let j = i + 1;
-      while (j < lignes.length && !/^##\s+/.test(lignes[j])) j += 1;
-      sortie = lignes.slice(0, i + 1).concat(['', corps, ''], lignes.slice(j));
-    }
+    const z = Ariane.zoneNoteTravail(lignes);
+    const sortie = lignes.slice(0, z.debut).concat(['', corps, ''], lignes.slice(z.fin));
     const texteSortie = sortie.join('\n');
     const avant = await this.app.vault.read(f);
     if (texteSortie === avant) return false;

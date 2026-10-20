@@ -34,10 +34,10 @@ test('l intitulé figure en alias et en titre de niveau 1', () => {
   assert.ok(s.includes("\n# Rédiger l'état de l'art\n"));
 });
 
-test('les deux sections du corps sont présentes', () => {
+test('le corps : la note de travail suit le titre, sans titre de section, puis le journal', () => {
   const s = Ariane.corpsNouvelleTache(base);
-  assert.ok(s.includes('\n## Note de travail\n'));
-  assert.ok(s.includes('\n## Journal\n'));
+  assert.ok(!s.includes('## Note de travail'));
+  assert.ok(/\n# [^\n]+\n\n## Journal\n/.test(s));
 });
 
 test('bloque-par est une liste vide, pas une chaîne', () => {
