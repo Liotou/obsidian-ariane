@@ -23,6 +23,19 @@ const TEXTES = {
     "Activer le reclassement": "Enable reranking",
     "Activer le repliement": "Enable folding",
     "Activer les suggestions": "Enable suggestions",
+    "Agenda en fond": "Background calendar",
+    "Apple Agenda (synchronisé)": "Apple Calendar (synchronised)",
+    "Google Agenda (adresse iCal, lecture seule)": "Google Calendar (iCal address, read only)",
+    "Google Agenda (synchronisé, compte Google)": "Google Calendar (synchronised, Google account)",
+    "Ajouter un agenda Google": "Add a Google calendar",
+    "Relier mon compte Google": "Link my Google account",
+    "Identifiant client": "Client ID",
+    "Code secret du client": "Client secret",
+    "Calendrier Google": "Google calendar",
+    "Ouvrir dans Google Agenda": "Open in Google Calendar",
+    "Google Agenda : synchroniser les créneaux": "Google Calendar: synchronise the slots",
+    "Google Agenda : relever les événements": "Google Calendar: fetch the events",
+    "Google Agenda : relier mon compte": "Google Calendar: link my account",
     "Réservé au Mac : ces réglages restent sans effet sur ce système.": "Mac only: these settings have no effect on this system.",
     "Python 3 introuvable : installez-le (python.org), puis relancez Obsidian.": "Python 3 not found: install it (python.org), then restart Obsidian.",
     "Greffons liés": "Related plugins",
@@ -1535,8 +1548,12 @@ const DEFAULT_SETTINGS = {
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques
   agendaFenetreJours: 120,      // fenêtre de relève / agenda de fond (jours)
   agendaCalendrierDefaut: '',   // calendrier Apple cible par défaut (familles sans réglage)
-  agendaSource: '',             // événements de fond : 'apple' | 'google' (vide : Apple sur Mac, Google ailleurs)
-  agendasIcs: [],               // Google Agenda : [{ nom, url (adresse secrète iCal), couleur, actif }]
+  agendaSource: '',             // événements de fond : 'apple' | 'google' (iCal) | 'google-sync' (vide : Apple sur Mac, Google ailleurs)
+  agendasIcs: [],
+  googleClientId: '',           // Google Agenda synchronisé : l'application Google de l'utilisateur
+  googleClientSecret: '',
+  googleJeton: null,            // { refresh_token, access_token, expire } : propre à la machine
+  googleAuto: true,               // Google Agenda : [{ nom, url (adresse secrète iCal), couleur, actif }]
   agendaCalendriersAffiches: [], // calendriers Apple cochés, affichés en fond (lecture seule)
   agendaFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un événement Apple
   // Clés de frontmatter des propriétés de tâche. Chaque clé = « prefixeTaches »

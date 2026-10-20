@@ -11,7 +11,9 @@ const avecSocle = (Base) => class extends Base {
   // Un profil partagé ne doit jamais imposer l'installation de qui l'a écrit.
   static get CLES_MACHINE() {
     return ['exportPandocBin', 'exportFiltreLua', 'exportModeleWord',
-            'suggOllamaUrl', 'suggLmStudioUrl', 'activiteUrl'];
+            'suggOllamaUrl', 'suggLmStudioUrl', 'activiteUrl',
+            // Secrets : ils ne voyagent jamais dans un profil exporté.
+            'googleJeton', 'googleClientSecret', 'agendasIcs'];
   }
 
   // Ce qui ne voyage pas non plus : l'état accumulé, propre au coffre.

@@ -1651,6 +1651,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addDropdown((d) => {
         if (obsidian.Platform.isMacOS) d.addOption('apple', tr('Apple Agenda (synchronisé)'));
         d.addOption('google', tr('Google Agenda (adresse iCal, lecture seule)'));
+        d.addOption('google-sync', tr('Google Agenda (synchronisé, compte Google)'));
         d.setValue(source).onChange(async (v) => {
           s.agendaSource = v;
           await maj();
@@ -1659,11 +1660,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           this.display();
         });
       });
-    if (source === 'google') this._agendasIcs(c, s, maj);
+    if (source === 'google-sync') {
+      this._googleSynchro(c, s, maj);
+      this._sousTitre(c, tr('Agendas affichés en fond'));
+      this._aide(c, tr("Pour voir en fond d'autres agendas Google (ou les événements de vos calendriers de familles qui ne viennent pas d'Ariane), ajoutez leur adresse secrète iCal. Les événements créés par Ariane n'y figurent pas deux fois."));
+    }
+    if (source === 'google' || source === 'google-sync') this._agendasIcs(c, s, maj);
 
     this._section(c, tr('Apple Agenda'));
     this._reserveMac(c);
-    if (this.plugin.sourceAgenda() === 'google') {
+    if (this.plugin.sourceAgenda() !== 'apple') {
       this._aide(c, tr("La source choisie est Google Agenda : la synchronisation avec Apple Agenda est suspendue."));
       return;
     }
@@ -2806,6 +2812,52 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._aide(c, tr("Ariane propose les modèles de Templater (et ceux des modèles natifs d'Obsidian) quand elle crée une note : compte rendu, note préparatoire, note d'événement. Aucun réglage ici : le dossier des modèles est celui de Templater."));
   }
 
+  // Google Agenda synchronisé : l'application Google de l'utilisateur
+  // (identifiant et secret client), la connexion au compte, le calendrier
+  // par défaut, l'automatisme, et les gestes à la main.
+  _googleSynchro(c, s, maj) {
+    this._aide(c, tr("Chaque créneau d'une tâche devient un événement dans le calendrier Google de sa famille (le champ « calendrier » de la famille, ou le calendrier par défaut ci-dessous) ; un événement déplacé dans Google déplace le créneau. La connexion passe par votre propre application Google : aucune adresse ni aucun compte n'est partagé. Le guide pas à pas est dans docs/google-agenda.md du dépôt d'Ariane."));
+    new obsidian.Setting(c)
+      .setName(tr('Identifiant client'))
+      .setDesc(tr('De votre application Google (type « Application de bureau »).'))
+      .addText((t) => t.setPlaceholder('…apps.googleusercontent.com').setValue(s.googleClientId || '')
+        .onChange(async (v) => { s.googleClientId = v.trim(); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Code secret du client'))
+      .addText((t) => {
+        t.setValue(s.googleClientSecret || '').onChange(async (v) => { s.googleClientSecret = v.trim(); await maj(); });
+        t.inputEl.type = 'password';
+      });
+    const relie = this.plugin.googleRelie();
+    new obsidian.Setting(c)
+      .setName(tr('Compte Google'))
+      .setDesc(relie ? tr('Relié.') : tr('Non relié : une page de connexion Google s’ouvrira dans le navigateur.'))
+      .addButton((b) => b.setButtonText(relie ? tr('Relier à nouveau') : tr('Relier mon compte Google')).setCta()
+        .onClick(async () => { await this.plugin.relierGoogle(); this.display(); }))
+      .addExtraButton((b) => b.setIcon('unlink').setTooltip(tr('Délier le compte'))
+        .onClick(async () => { await this.plugin.oublierGoogle(); this.display(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Calendrier par défaut'))
+      .setDesc(tr("Nom du calendrier Google d'une tâche quand sa famille n'en précise pas."))
+      .addText((t) => t.setValue(s.agendaCalendrierDefaut || '')
+        .onChange(async (v) => { s.agendaCalendrierDefaut = v.trim(); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Synchronisation automatique'))
+      .setDesc(tr('À chaque créneau modifié, et une relève toutes les cinq minutes.'))
+      .addToggle((t) => t.setValue(s.googleAuto !== false).onChange(async (v) => { s.googleAuto = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Maintenant'))
+      .addButton((b) => b.setButtonText(tr('Synchroniser')).onClick(() => this.plugin.pousserGoogle(false)))
+      .addButton((b) => b.setButtonText(tr('Relever')).onClick(() => this.plugin.releverGoogle(false)))
+      .addButton((b) => b.setButtonText(tr('Voir les calendriers')).onClick(async () => {
+        try {
+          const m = await this.plugin.calendriersGoogle(true);
+          const noms = [...m.keys()].filter((k) => k !== '__principal__');
+          new obsidian.Notice(tr('Calendriers modifiables : ') + (noms.join(', ') || tr('aucun')), 12000);
+        } catch (e) { new obsidian.Notice(tr('Google Agenda : ') + ((e && e.message) || e), 9000); }
+      }));
+  }
+
   // Les agendas Google (iCal) affichés en fond : nom, adresse secrète,
   // couleur, actif ; un essai lit l'adresse et compte les événements à venir.
   _agendasIcs(c, s, maj) {
@@ -2930,7 +2982,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         }
         {
           const la = corps.createDiv({ cls: 'zfa-famt-prop' });
-          la.createEl('label', { text: tr('Calendrier Apple'), cls: 'zfa-famt-prop-lbl' });
+          // Le même champ sert à la source choisie : Apple ou Google.
+          la.createEl('label', { text: this.plugin.sourceAgenda() === 'apple' ? tr('Calendrier Apple') : tr('Calendrier Google'), cls: 'zfa-famt-prop-lbl' });
           const inp = la.createEl('input', { type: 'text' });
           inp.setAttribute('list', 'zfa-dl-agendas');
           inp.placeholder = this.plugin.settings.agendaCalendrierDefaut || tr('(calendrier par défaut)');

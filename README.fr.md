@@ -823,6 +823,18 @@ colonne. Tourne à la sauvegarde et sur minuterie quand la section **Apple
 Agenda** des réglages l'active ; la première synchronisation demande l'accès à
 Calendrier.
 
+### Google Agenda
+
+Au choix d'Apple Agenda (Réglages, Tâches, **Agenda en fond**, « Source ») :
+
+- **par l'adresse secrète iCal** d'un agenda : ses événements s'affichent en
+  fond du calendrier, en lecture seule, sur tout système ; répétitions,
+  exceptions et fuseaux horaires compris ;
+- **synchronisé**, par votre propre application Google : chaque créneau
+  devient un événement dans le calendrier Google de sa famille, et un
+  événement déplacé dans Google déplace le créneau. Le guide pas à pas est
+  dans [docs/google-agenda.md](docs/google-agenda.md).
+
 ### Activité réelle hors d'Obsidian (ActivityWatch)
 
 Le compteur de temps ne voit que les notes. Pour savoir ce qui se passe

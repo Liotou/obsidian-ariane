@@ -215,6 +215,19 @@ const TEXTES = {
     "Activer le reclassement": "Enable reranking",
     "Activer le repliement": "Enable folding",
     "Activer les suggestions": "Enable suggestions",
+    "Agenda en fond": "Background calendar",
+    "Apple Agenda (synchronisé)": "Apple Calendar (synchronised)",
+    "Google Agenda (adresse iCal, lecture seule)": "Google Calendar (iCal address, read only)",
+    "Google Agenda (synchronisé, compte Google)": "Google Calendar (synchronised, Google account)",
+    "Ajouter un agenda Google": "Add a Google calendar",
+    "Relier mon compte Google": "Link my Google account",
+    "Identifiant client": "Client ID",
+    "Code secret du client": "Client secret",
+    "Calendrier Google": "Google calendar",
+    "Ouvrir dans Google Agenda": "Open in Google Calendar",
+    "Google Agenda : synchroniser les créneaux": "Google Calendar: synchronise the slots",
+    "Google Agenda : relever les événements": "Google Calendar: fetch the events",
+    "Google Agenda : relier mon compte": "Google Calendar: link my account",
     "Réservé au Mac : ces réglages restent sans effet sur ce système.": "Mac only: these settings have no effect on this system.",
     "Python 3 introuvable : installez-le (python.org), puis relancez Obsidian.": "Python 3 not found: install it (python.org), then restart Obsidian.",
     "Greffons liés": "Related plugins",
@@ -1727,8 +1740,12 @@ const DEFAULT_SETTINGS = {
   agendaReleveMin: 10,          // minutes entre deux relèves automatiques
   agendaFenetreJours: 120,      // fenêtre de relève / agenda de fond (jours)
   agendaCalendrierDefaut: '',   // calendrier Apple cible par défaut (familles sans réglage)
-  agendaSource: '',             // événements de fond : 'apple' | 'google' (vide : Apple sur Mac, Google ailleurs)
-  agendasIcs: [],               // Google Agenda : [{ nom, url (adresse secrète iCal), couleur, actif }]
+  agendaSource: '',             // événements de fond : 'apple' | 'google' (iCal) | 'google-sync' (vide : Apple sur Mac, Google ailleurs)
+  agendasIcs: [],
+  googleClientId: '',           // Google Agenda synchronisé : l'application Google de l'utilisateur
+  googleClientSecret: '',
+  googleJeton: null,            // { refresh_token, access_token, expire } : propre à la machine
+  googleAuto: true,               // Google Agenda : [{ nom, url (adresse secrète iCal), couleur, actif }]
   agendaCalendriersAffiches: [], // calendriers Apple cochés, affichés en fond (lecture seule)
   agendaFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un événement Apple
   // Clés de frontmatter des propriétés de tâche. Chaque clé = « prefixeTaches »
@@ -4733,7 +4750,9 @@ const avecSocle = (Base) => class extends Base {
   // Un profil partagé ne doit jamais imposer l'installation de qui l'a écrit.
   static get CLES_MACHINE() {
     return ['exportPandocBin', 'exportFiltreLua', 'exportModeleWord',
-            'suggOllamaUrl', 'suggLmStudioUrl', 'activiteUrl'];
+            'suggOllamaUrl', 'suggLmStudioUrl', 'activiteUrl',
+            // Secrets : ils ne voyagent jamais dans un profil exporté.
+            'googleJeton', 'googleClientSecret', 'agendasIcs'];
   }
 
   // Ce qui ne voyage pas non plus : l'état accumulé, propre au coffre.
@@ -12974,6 +12993,97 @@ const avecTachesStatiques = (Base) => class extends Base {
     return out.sort((a, b) => a.debut.localeCompare(b.debut));
   }
 
+  // ── Google Agenda synchronisé (API) : fonctions pures ──
+  //  Chaque créneau d'une tâche devient un événement dans le calendrier
+  //  Google de sa famille, comme avec Apple Agenda. La note garde, par
+  //  créneau, « calendrier::événement » ; la relève ramène les déplacements.
+  //  La connexion passe par l'application Google de l'utilisateur (son
+  //  identifiant client) : aucune application n'est publiée avec Ariane.
+
+  static get GOOGLE_PORTEES() {
+    return ['https://www.googleapis.com/auth/calendar.events',
+      'https://www.googleapis.com/auth/calendar.calendarlist.readonly'];
+  }
+
+  // Le défi PKCE (S256) d'un vérificateur, en base64url.
+  static defiPkce(verificateur) {
+    return require('crypto').createHash('sha256').update(String(verificateur)).digest('base64')
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  // L'adresse de la page de connexion de Google.
+  static urlAutorisationGoogle(o) {
+    const p = new URLSearchParams({
+      client_id: o.clientId, redirect_uri: o.redirection, response_type: 'code',
+      scope: Ariane.GOOGLE_PORTEES.join(' '), access_type: 'offline', prompt: 'consent',
+      code_challenge: Ariane.defiPkce(o.verificateur), code_challenge_method: 'S256', state: o.etat,
+    });
+    return 'https://accounts.google.com/o/oauth2/v2/auth?' + p.toString();
+  }
+
+  // Une heure locale « AAAA-MM-JJTHH:MM » pour l'API : avec son décalage, et
+  // le fuseau du système.
+  static dateHeureGoogle(iso, fuseau) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if (!m) return null;
+    const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+    const dec = -d.getTimezoneOffset();
+    const p = (n) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+    const off = (dec >= 0 ? '+' : '-') + p(dec / 60) + ':' + p(dec % 60);
+    const tz = fuseau || (Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+    return Object.assign({ dateTime: m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5] + ':00' + off }, tz ? { timeZone: tz } : {});
+  }
+
+  // L'heure locale « AAAA-MM-JJTHH:MM » d'une date de l'API ({ dateTime } ou
+  // { date } d'une journée entière).
+  static localDepuisGoogle(o) {
+    if (!o) return '';
+    if (o.dateTime) { const t = Date.parse(o.dateTime); return isNaN(t) ? '' : Ariane.isoLocal(t); }
+    if (o.date) return String(o.date).slice(0, 10) + 'T00:00';
+    return '';
+  }
+
+  // « calendrier::événement » et l'inverse.
+  static idGoogle(cal, ev) { return cal && ev ? cal + '::' + ev : ''; }
+  static partiesIdGoogle(s) {
+    const t = String(s || '');
+    const i = t.lastIndexOf('::');
+    return i > 0 ? { cal: t.slice(0, i), ev: t.slice(i + 2) } : { cal: '', ev: '' };
+  }
+
+  // Le corps d'un événement : titre, horaires, description (extrait de la
+  // note de travail, puis le lien vers la note), et la marque d'Ariane.
+  static corpsEvenementGoogle(o) {
+    const desc = [String(o.notes || '').trim(), o.lien ? tr('Note dans Obsidian : ') + o.lien : ''].filter(Boolean).join('\n\n');
+    return {
+      summary: o.titre || '', description: desc,
+      start: Ariane.dateHeureGoogle(o.debut, o.fuseau), end: Ariane.dateHeureGoogle(o.fin, o.fuseau),
+      extendedProperties: { private: { ariane: String(o.ref || ''), arianeIdx: String(o.idx == null ? '' : o.idx) } },
+    };
+  }
+
+  // Ce qu'il faut faire pour qu'une tâche ait un événement par créneau dans
+  // son calendrier : créer, mettre à jour, déplacer (changement de
+  // calendrier : supprimer puis recréer), supprimer (créneau disparu).
+  // t : { ref, crs: [{debut, fin}], ids: [« cal::ev »], cal }. Rend [op].
+  static planPushGoogle(t) {
+    const ops = [];
+    const ids = t.ids || [];
+    const crs = t.cal ? (t.crs || []) : [];
+    crs.forEach((c, i) => {
+      const p = Ariane.partiesIdGoogle(ids[i]);
+      if (!p.ev) ops.push({ ref: t.ref, idx: i, op: 'creer', cal: t.cal, creneau: c });
+      else if (p.cal !== t.cal) ops.push({ ref: t.ref, idx: i, op: 'deplacer', cal: t.cal, ancien: p, creneau: c });
+      else ops.push({ ref: t.ref, idx: i, op: 'maj', cal: t.cal, ev: p.ev, creneau: c });
+    });
+    ids.forEach((id, i) => {
+      if (i < crs.length) return;
+      const p = Ariane.partiesIdGoogle(id);
+      if (p.ev) ops.push({ ref: t.ref, idx: i, op: 'supprimer', ancien: p });
+    });
+    return ops;
+  }
+
   // Le corps d'une note neuve associée à un événement Apple Calendrier (clic
   // droit sur un événement de la vue calendrier — pas un créneau de tâche :
   // ça reste un événement, pas quelque chose à faire). Note libre, sans
@@ -17054,7 +17164,7 @@ const avecTaches = (Base) => class extends Base {
   // ailleurs.
   sourceAgenda() {
     const s = this.settings.agendaSource;
-    if (s === 'apple' || s === 'google') return s;
+    if (s === 'apple' || s === 'google' || s === 'google-sync') return s;
     return obsidian.Platform.isMacOS ? 'apple' : 'google';
   }
 
@@ -17088,13 +17198,29 @@ const avecTaches = (Base) => class extends Base {
     const cle = 'ics|' + String(debutISO) + '|' + String(finISO);
     const c = this._fondCache;
     if (c && c.cle === cle && Date.now() - c.le < 60000) return c.data;
+    // Ceux que la synchronisation Google a créés représentent des créneaux,
+    // déjà dessinés : on ne les montre pas deux fois (identifiant connu, ou
+    // référence d'une tâche entre crochets dans le titre).
+    const connus = new Set();
+    const refs = new Set();
+    for (const t of this.tachesPourGantt()) {
+      refs.add(t.ref);
+      const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+      for (const id of [].concat(fm[this._cleGoogleId] || [])) { const p = Ariane.partiesIdGoogle(id); if (p.ev) connus.add(p.ev); }
+    }
+    const aNous = (e) => {
+      const uid = String(e.id || '').replace(/^ics:/, '').split('|')[0].replace(/@google\.com$/, '');
+      if (connus.has(uid)) return true;
+      const m = String(e.titre || '').match(/\[([^\]]+)\]/);
+      return !!(m && refs.has(m[1].trim()));
+    };
     const data = [];
     for (const cal of cals) {
       const texte = await this.lireIcsDistant(cal.url);
       if (!texte) continue;
       try {
         data.push(...Ariane.evenementsIcs(texte, debutISO, finISO,
-          { nom: cal.nom || tr('Google Agenda'), couleur: cal.couleur || '' }));
+          { nom: cal.nom || tr('Google Agenda'), couleur: cal.couleur || '' }).filter((e) => !aNous(e)));
       } catch (e) { console.warn('[Ariane] agenda iCal illisible :', cal.nom, e); }
     }
     this._fondCache = { cle, le: Date.now(), data };
@@ -17102,7 +17228,7 @@ const avecTaches = (Base) => class extends Base {
   }
 
   async evenementsFond(debutISO, finISO) {
-    if (this.sourceAgenda() === 'google') return this.evenementsFondIcs(debutISO, finISO);
+    if (this.sourceAgenda() !== 'apple') return this.evenementsFondIcs(debutISO, finISO);
     if (!obsidian.Platform.isMacOS || !this.settings.agendaActif) return [];
     const cle = String(debutISO) + '|' + String(finISO);
     const c = this._fondCache;
@@ -17477,6 +17603,10 @@ const avecTaches = (Base) => class extends Base {
   // note de tâche sauvegardée…). Antirebondi ; le verrou de pousserAgenda gère
   // les recouvrements.
   _relancerPushAgenda(delai) {
+    if (this.sourceAgenda() === 'google-sync') {
+      if (this._googleAutoActif()) this.antirebond('google:push', () => this.pousserGoogle(true), delai || 2000);
+      return;
+    }
     if (!this._agendaAutoActif()) return;
     this._agendaPushEnAttente = true;
     this.antirebond('agenda:push', async () => {
@@ -17487,6 +17617,15 @@ const avecTaches = (Base) => class extends Base {
   // Programme une relève automatique (retour de focus, ouverture de la vue…),
   // antirebondie et espacée d'au moins 15 s des précédentes.
   _relancerReleveAgenda(delai) {
+    if (this.sourceAgenda() === 'google-sync') {
+      if (!this._googleAutoActif() || this._pushGoogleEnCours) return;
+      if (this._googleDerniereReleve && Date.now() - this._googleDerniereReleve < 60000) return;
+      this.antirebond('google:releve', async () => {
+        this._googleDerniereReleve = Date.now();
+        await this.releverGoogle(true);
+      }, delai || 800);
+      return;
+    }
     if (!this._agendaAutoActif() || this._agendaPushEnAttente) return;
     if (this._agendaDerniereReleve && Date.now() - this._agendaDerniereReleve < 15000) return;
     this.antirebond('agenda:releve', async () => {
@@ -17793,6 +17932,296 @@ const avecTaches = (Base) => class extends Base {
     }
     if (n) this.antirebond('agenda:push', () => this.pousserAgenda(true), 1500);
     if (!silencieux && n) new obsidian.Notice(n + tr(' créneau(x) mis à jour depuis Apple Agenda.'));
+    return n;
+  }
+
+  /* ---- Google Agenda synchronisé (API) ------------------------------ */
+
+  // Les clés de la note pour Google : identifiants par créneau, instantané.
+  get _cleGoogleId() { return (this.settings.prefixeTaches || '') + 'Google ID'; }
+  get _cleGoogleSynchro() { return (this.settings.prefixeTaches || '') + 'Synchro Google'; }
+
+  googleRelie() { return !!(this.settings.googleJeton && this.settings.googleJeton.refresh_token); }
+
+  _googleAutoActif() {
+    return this.sourceAgenda() === 'google-sync' && this.googleRelie() && this.settings.googleAuto !== false;
+  }
+
+  // Relie le compte Google : la page de connexion s'ouvre dans le navigateur,
+  // Google renvoie vers un petit serveur local d'Ariane (127.0.0.1, port
+  // libre, cinq minutes au plus), qui échange le code contre les jetons.
+  async relierGoogle() {
+    const s = this.settings;
+    if (!obsidian.Platform.isDesktopApp) { new obsidian.Notice(tr('Google Agenda : la connexion se fait depuis Obsidian sur ordinateur.')); return false; }
+    const clientId = String(s.googleClientId || '').trim();
+    if (!clientId) { new obsidian.Notice(tr('Google Agenda : renseignez d’abord l’identifiant client (Réglages, Tâches, Agenda en fond).'), 9000); return false; }
+    const http = require('http');
+    const crypto = require('crypto');
+    const verificateur = crypto.randomBytes(48).toString('base64').replace(/[^A-Za-z0-9]/g, '').slice(0, 64);
+    const etat = crypto.randomBytes(12).toString('hex');
+    return new Promise((fin) => {
+      let fini = false;
+      const serveur = http.createServer(async (req, res) => {
+        const u = new URL(req.url, 'http://127.0.0.1');
+        const code = u.searchParams.get('code');
+        const err = u.searchParams.get('error');
+        if (!code && !err) { res.writeHead(404); res.end(); return; }
+        const ok = code && u.searchParams.get('state') === etat;
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:3em">'
+          + (ok ? 'Ariane est reliée à Google Agenda. Vous pouvez fermer cet onglet.' : 'La connexion a échoué. Vous pouvez fermer cet onglet.') + '</body>');
+        if (fini) return;
+        fini = true;
+        serveur.close();
+        if (!ok) { new obsidian.Notice(tr('Google Agenda : connexion refusée (') + (err || tr('état inattendu')) + ').', 9000); fin(false); return; }
+        try {
+          const j = await this._googleJetonDepuis({ grant_type: 'authorization_code', code,
+            redirect_uri: 'http://127.0.0.1:' + serveur._port, code_verifier: verificateur });
+          if (!j || !j.refresh_token) throw new Error(tr('Google n’a pas rendu de jeton de renouvellement.'));
+          s.googleJeton = { refresh_token: j.refresh_token, access_token: j.access_token,
+            expire: Date.now() + (Number(j.expires_in) || 3600) * 1000 };
+          this._googleCals = null;
+          await this.saveSettings();
+          new obsidian.Notice(tr('Google Agenda : compte relié.'));
+          fin(true);
+        } catch (e) {
+          new obsidian.Notice(tr('Google Agenda : ') + ((e && e.message) || e), 10000);
+          fin(false);
+        }
+      });
+      serveur.listen(0, '127.0.0.1', () => {
+        serveur._port = serveur.address().port;
+        const url = Ariane.urlAutorisationGoogle({ clientId, redirection: 'http://127.0.0.1:' + serveur._port, verificateur, etat });
+        try { require('electron').shell.openExternal(url); } catch (e) { window.open(url); }
+      });
+      setTimeout(() => {
+        if (fini) return;
+        fini = true;
+        try { serveur.close(); } catch (e) { /* déjà fermé */ }
+        new obsidian.Notice(tr('Google Agenda : connexion abandonnée (cinq minutes écoulées).'));
+        fin(false);
+      }, 5 * 60000);
+    });
+  }
+
+  oublierGoogle() {
+    this.settings.googleJeton = null;
+    this._googleCals = null;
+    return this.saveSettings();
+  }
+
+  // Un échange avec le point d'accès des jetons de Google.
+  async _googleJetonDepuis(champs) {
+    const corps = new URLSearchParams(Object.assign({
+      client_id: String(this.settings.googleClientId || '').trim(),
+      client_secret: String(this.settings.googleClientSecret || '').trim(),
+    }, champs)).toString();
+    const rep = await obsidian.requestUrl({ url: 'https://oauth2.googleapis.com/token', method: 'POST', throw: false,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: corps });
+    let j = null;
+    try { j = rep ? rep.json : null; } catch (e) { j = null; }
+    if (!rep || rep.status < 200 || rep.status >= 300) {
+      throw new Error((j && (j.error_description || j.error)) || ('HTTP ' + (rep ? rep.status : '?')));
+    }
+    return j;
+  }
+
+  // Le jeton d'accès, renouvelé s'il expire dans la minute.
+  async _googleJeton() {
+    const t = this.settings.googleJeton;
+    if (!t || !t.refresh_token) throw new Error(tr('compte Google non relié'));
+    if (t.access_token && t.expire - Date.now() > 60000) return t.access_token;
+    const j = await this._googleJetonDepuis({ grant_type: 'refresh_token', refresh_token: t.refresh_token });
+    t.access_token = j.access_token;
+    t.expire = Date.now() + (Number(j.expires_in) || 3600) * 1000;
+    await this.saveSettings();
+    return t.access_token;
+  }
+
+  // Un appel à l'API de Google Agenda. Rend { status, json }.
+  async _googleApi(methode, chemin, corps) {
+    const jeton = await this._googleJeton();
+    const rep = await obsidian.requestUrl({
+      url: 'https://www.googleapis.com/calendar/v3' + chemin, method: methode, throw: false,
+      headers: Object.assign({ Authorization: 'Bearer ' + jeton }, corps ? { 'Content-Type': 'application/json' } : {}),
+      body: corps ? JSON.stringify(corps) : undefined,
+    });
+    let json = null;
+    try { json = rep.json; } catch (e) { json = null; }
+    return { status: rep.status, json };
+  }
+
+  // Les calendriers du compte : nom → identifiant (gardés dix minutes).
+  async calendriersGoogle(forcer) {
+    if (!forcer && this._googleCals && Date.now() - this._googleCals.le < 10 * 60000) return this._googleCals.parNom;
+    const parNom = new Map();
+    let jeton = '';
+    for (let k = 0; k < 10; k++) {
+      const r = await this._googleApi('GET', '/users/me/calendarList?maxResults=250' + (jeton ? '&pageToken=' + encodeURIComponent(jeton) : ''));
+      if (r.status !== 200 || !r.json) throw new Error(tr('liste des calendriers illisible (HTTP ') + r.status + ')');
+      for (const c of r.json.items || []) {
+        if (c.accessRole !== 'owner' && c.accessRole !== 'writer') continue;
+        parNom.set(String(c.summaryOverride || c.summary || '').trim().toLowerCase(), c.id);
+        if (c.primary) parNom.set('__principal__', c.id);
+      }
+      jeton = r.json.nextPageToken || '';
+      if (!jeton) break;
+    }
+    this._googleCals = { le: Date.now(), parNom };
+    return parNom;
+  }
+
+  async pousserGoogle(silencieux) {
+    if (this._pushGoogleEnCours) { this._pushGoogleRedemande = true; return 0; }
+    this._pushGoogleEnCours = true;
+    try {
+      return await this._pousserGoogleImpl(silencieux);
+    } catch (e) {
+      console.warn('[Ariane] Google Agenda, envoi :', e);
+      if (!silencieux) new obsidian.Notice(tr('Google Agenda : ') + ((e && e.message) || e), 10000);
+      return 0;
+    } finally {
+      this._pushGoogleEnCours = false;
+      if (this._pushGoogleRedemande) { this._pushGoogleRedemande = false; setTimeout(() => this.pousserGoogle(true), 400); }
+    }
+  }
+
+  async _pousserGoogleImpl(silencieux) {
+    if (!this.googleRelie()) {
+      if (!silencieux) new obsidian.Notice(tr('Google Agenda : reliez d’abord votre compte (Réglages, Tâches, Agenda en fond).'), 9000);
+      return 0;
+    }
+    const cals = await this.calendriersGoogle();
+    const vault = this.app.vault.getName();
+    const fuseau = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    const inconnus = new Set();
+    let liens = 0, echecs = 0, n = 0;
+    const avis = silencieux ? null : new obsidian.Notice(tr('Synchronisation Google Agenda…'), 0);
+    try {
+      for (const t of this.tachesPourGantt()) {
+        const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+        const ids = [].concat(fm[this._cleGoogleId] || []).map(String);
+        const crs = Ariane.creneauxDeTache(t);
+        const nomCal = this.agendaCalendrierDe(t.famille);
+        if (!crs.length && !ids.some((x) => x)) continue;
+        let cal = '';
+        if (nomCal) {
+          cal = cals.get(nomCal.toLowerCase()) || '';
+          if (!cal) inconnus.add(nomCal);
+        }
+        if (!cal && crs.length && !ids.some((x) => x)) continue;
+        const ops = Ariane.planPushGoogle({ ref: t.ref, crs, ids, cal });
+        if (!ops.length) continue;
+        const titreBase = Ariane.formatModele(this.settings.agendaFormatTitre || '[{ref}] - {intitule}',
+          { ref: t.ref, intitule: t.intitule, famille: (this.familleDe(t.famille) || {}).nom || '' });
+        // L'instantané : créneaux et statut (que la relève compare), puis titre
+        // et calendrier. Inchangé, et chaque créneau déjà lié : un envoi
+        // automatique n'a rien à faire pour cette tâche.
+        const instant = Ariane.instantAgenda(t) + '§' + titreBase + '|' + cal;
+        if (silencieux && String(fm[this._cleGoogleSynchro] || '') === instant && ops.every((o) => o.op === 'maj')) continue;
+        let note = '';
+        try { note = await this.lireNoteTache(t.ref); } catch (e) { /* rien */ }
+        const lien = 'obsidian://open?vault=' + encodeURIComponent(vault) + '&file=' + encodeURIComponent(t.fichier.path.replace(/\.md$/, ''));
+        const prefixe = t.statut === 'terminée' ? '✅ ' : '';
+        const liste = ids.slice(0, crs.length);
+        while (liste.length < crs.length) liste.push('');
+        let complet = true;
+        for (const op of ops) {
+          const corps = op.creneau ? Ariane.corpsEvenementGoogle({ ref: t.ref, idx: op.idx, fuseau,
+            titre: prefixe + titreBase + (crs.length > 1 ? ' (session ' + (op.idx + 1) + ')' : ''),
+            notes: note ? note.slice(0, 500) : '', lien, debut: op.creneau.debut, fin: op.creneau.fin }) : null;
+          const ev = (c, e) => '/calendars/' + encodeURIComponent(c) + '/events' + (e ? '/' + encodeURIComponent(e) : '');
+          try {
+            if (op.op === 'supprimer' || op.op === 'deplacer') {
+              const r = await this._googleApi('DELETE', ev(op.ancien.cal, op.ancien.ev));
+              if (r.status >= 300 && r.status !== 404 && r.status !== 410) throw new Error('HTTP ' + r.status);
+            }
+            if (op.op === 'maj') {
+              const r = await this._googleApi('PATCH', ev(op.cal, op.ev), corps);
+              if (r.status === 404 || r.status === 410 || (r.json && r.json.status === 'cancelled')) op.op = 'creer';
+              else if (r.status >= 300) throw new Error('HTTP ' + r.status);
+              else { liste[op.idx] = Ariane.idGoogle(op.cal, op.ev); liens += 1; }
+            }
+            if (op.op === 'creer' || op.op === 'deplacer') {
+              const r = await this._googleApi('POST', ev(op.cal), corps);
+              if (r.status >= 300 || !r.json || !r.json.id) throw new Error('HTTP ' + r.status);
+              liste[op.idx] = Ariane.idGoogle(op.cal, r.json.id);
+              liens += 1;
+            }
+          } catch (e) {
+            echecs += 1;
+            complet = false;
+            console.warn('[Ariane] Google Agenda : ' + t.ref + ' #' + op.idx + ' ' + op.op + ' :', e && e.message);
+          }
+        }
+        const avant = JSON.stringify(ids);
+        if (t.fichier && (JSON.stringify(liste) !== avant || (complet && String(fm[this._cleGoogleSynchro] || '') !== instant))) {
+          this.marquerEcriture(t.fichier.path);
+          await this.app.fileManager.processFrontMatter(t.fichier, (x) => {
+            x[this._cleGoogleId] = liste;
+            if (complet) x[this._cleGoogleSynchro] = instant;
+          });
+        }
+        n += 1;
+      }
+    } finally { if (avis) avis.hide(); }
+    this._fondCache = null;
+    this._rafraichirFond();
+    if (inconnus.size) console.warn('[Ariane] Google Agenda : calendriers introuvables dans le compte :', [...inconnus].join(', '));
+    if (!silencieux) {
+      new obsidian.Notice(liens + tr(' événement(s) liés dans Google Agenda')
+        + (echecs ? tr(', ') + echecs + tr(' échec(s), voir la console') : '')
+        + (inconnus.size ? tr('. Calendriers introuvables : ') + [...inconnus].join(', ') : '') + '.', 9000);
+    }
+    return n;
+  }
+
+  // La relève : un événement déplacé ou allongé dans Google Agenda déplace le
+  // créneau ; un événement disparu perd seulement son lien (le prochain envoi
+  // le recrée), comme avec Apple Agenda.
+  async releverGoogle(silencieux) {
+    if (!this.googleRelie()) {
+      if (!silencieux) new obsidian.Notice(tr('Google Agenda : reliez d’abord votre compte.'));
+      return 0;
+    }
+    let n = 0;
+    try {
+      for (const t of this.tachesPourGantt()) {
+        const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+        const ids = [].concat(fm[this._cleGoogleId] || []).map(String);
+        if (!ids.some((x) => x)) continue;
+        const snap = String(fm[this._cleGoogleSynchro] || '').split('§')[0];
+        if (snap && Ariane.instantAgenda(t) !== snap) continue;   // la note a bougé : l'envoi l'emporte
+        const crs = Ariane.creneauxDeTache(t);
+        const nouveaux = ids.slice();
+        let liensChanges = false;
+        for (let i = 0; i < ids.length && i < crs.length; i++) {
+          const p = Ariane.partiesIdGoogle(ids[i]);
+          if (!p.ev) continue;
+          const r = await this._googleApi('GET', '/calendars/' + encodeURIComponent(p.cal) + '/events/' + encodeURIComponent(p.ev));
+          if (r.status === 404 || r.status === 410 || (r.json && r.json.status === 'cancelled')) {
+            nouveaux[i] = ''; liensChanges = true; n += 1; continue;
+          }
+          if (r.status !== 200 || !r.json) continue;
+          const d = Ariane.localDepuisGoogle(r.json.start);
+          const f = Ariane.localDepuisGoogle(r.json.end);
+          if (d && f && (d !== crs[i].debut || f !== crs[i].fin)) {
+            await this.majCreneau(t.ref, { avant: crs[i].brut, debut: d, fin: f });
+            n += 1;
+          }
+        }
+        if (liensChanges && t.fichier) {
+          this.marquerEcriture(t.fichier.path);
+          await this.app.fileManager.processFrontMatter(t.fichier, (x) => { x[this._cleGoogleId] = nouveaux; });
+        }
+      }
+    } catch (e) {
+      console.warn('[Ariane] Google Agenda, relève :', e);
+      if (!silencieux) new obsidian.Notice(tr('Google Agenda : ') + ((e && e.message) || e), 10000);
+      return n;
+    }
+    if (n) this.antirebond('google:push', () => this.pousserGoogle(true), 1500);
+    if (!silencieux) new obsidian.Notice(n ? n + tr(' créneau(x) mis à jour depuis Google Agenda.') : tr('Google Agenda : rien de neuf.'));
     return n;
   }
 
@@ -25495,6 +25924,21 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.revoirReferencesOrphelines(false),
     });
     this.addCommand({
+      id: 'google-relier',
+      name: tr('Google Agenda : relier mon compte'),
+      callback: () => this.relierGoogle(),
+    });
+    this.addCommand({
+      id: 'google-synchroniser',
+      name: tr('Google Agenda : synchroniser les créneaux'),
+      callback: () => this.pousserGoogle(false),
+    });
+    this.addCommand({
+      id: 'google-relever',
+      name: tr('Google Agenda : relever les événements'),
+      callback: () => this.releverGoogle(false),
+    });
+    this.addCommand({
       id: 'titres-numeroter',
       name: tr('Titres : choisir les dossiers numérotés et numéroter…'),
       callback: () => this.choisirDossiersNumerotation(),
@@ -26393,8 +26837,14 @@ class Ariane extends composer(obsidian.Plugin,
     this.app.workspace.onLayoutReady(() => {
       // Google Agenda (iCal) : relu toutes les dix minutes, en lecture seule.
       this.registerInterval(window.setInterval(() => {
-        if (this.sourceAgenda() === 'google' && (this.settings.agendasIcs || []).length) this._rafraichirFond();
+        if (this.sourceAgenda() !== 'apple' && (this.settings.agendasIcs || []).length) this._rafraichirFond();
       }, 10 * 60000));
+      // Google Agenda synchronisé : une relève au démarrage, puis toutes les
+      // cinq minutes.
+      if (this._googleAutoActif()) setTimeout(() => this.releverGoogle(true), 15000);
+      this.registerInterval(window.setInterval(() => {
+        if (this._googleAutoActif() && !this._pushGoogleEnCours) this.releverGoogle(true);
+      }, 5 * 60000));
       if (obsidian.Platform.isMacOS && this.sourceAgenda() === 'apple' && this.settings.agendaActif && this.settings.agendaAuto !== false) {
         setTimeout(() => this.releverAgenda(true), 12000);
         this.registerInterval(window.setInterval(() => {
@@ -28159,6 +28609,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addDropdown((d) => {
         if (obsidian.Platform.isMacOS) d.addOption('apple', tr('Apple Agenda (synchronisé)'));
         d.addOption('google', tr('Google Agenda (adresse iCal, lecture seule)'));
+        d.addOption('google-sync', tr('Google Agenda (synchronisé, compte Google)'));
         d.setValue(source).onChange(async (v) => {
           s.agendaSource = v;
           await maj();
@@ -28167,11 +28618,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           this.display();
         });
       });
-    if (source === 'google') this._agendasIcs(c, s, maj);
+    if (source === 'google-sync') {
+      this._googleSynchro(c, s, maj);
+      this._sousTitre(c, tr('Agendas affichés en fond'));
+      this._aide(c, tr("Pour voir en fond d'autres agendas Google (ou les événements de vos calendriers de familles qui ne viennent pas d'Ariane), ajoutez leur adresse secrète iCal. Les événements créés par Ariane n'y figurent pas deux fois."));
+    }
+    if (source === 'google' || source === 'google-sync') this._agendasIcs(c, s, maj);
 
     this._section(c, tr('Apple Agenda'));
     this._reserveMac(c);
-    if (this.plugin.sourceAgenda() === 'google') {
+    if (this.plugin.sourceAgenda() !== 'apple') {
       this._aide(c, tr("La source choisie est Google Agenda : la synchronisation avec Apple Agenda est suspendue."));
       return;
     }
@@ -29314,6 +29770,52 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._aide(c, tr("Ariane propose les modèles de Templater (et ceux des modèles natifs d'Obsidian) quand elle crée une note : compte rendu, note préparatoire, note d'événement. Aucun réglage ici : le dossier des modèles est celui de Templater."));
   }
 
+  // Google Agenda synchronisé : l'application Google de l'utilisateur
+  // (identifiant et secret client), la connexion au compte, le calendrier
+  // par défaut, l'automatisme, et les gestes à la main.
+  _googleSynchro(c, s, maj) {
+    this._aide(c, tr("Chaque créneau d'une tâche devient un événement dans le calendrier Google de sa famille (le champ « calendrier » de la famille, ou le calendrier par défaut ci-dessous) ; un événement déplacé dans Google déplace le créneau. La connexion passe par votre propre application Google : aucune adresse ni aucun compte n'est partagé. Le guide pas à pas est dans docs/google-agenda.md du dépôt d'Ariane."));
+    new obsidian.Setting(c)
+      .setName(tr('Identifiant client'))
+      .setDesc(tr('De votre application Google (type « Application de bureau »).'))
+      .addText((t) => t.setPlaceholder('…apps.googleusercontent.com').setValue(s.googleClientId || '')
+        .onChange(async (v) => { s.googleClientId = v.trim(); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Code secret du client'))
+      .addText((t) => {
+        t.setValue(s.googleClientSecret || '').onChange(async (v) => { s.googleClientSecret = v.trim(); await maj(); });
+        t.inputEl.type = 'password';
+      });
+    const relie = this.plugin.googleRelie();
+    new obsidian.Setting(c)
+      .setName(tr('Compte Google'))
+      .setDesc(relie ? tr('Relié.') : tr('Non relié : une page de connexion Google s’ouvrira dans le navigateur.'))
+      .addButton((b) => b.setButtonText(relie ? tr('Relier à nouveau') : tr('Relier mon compte Google')).setCta()
+        .onClick(async () => { await this.plugin.relierGoogle(); this.display(); }))
+      .addExtraButton((b) => b.setIcon('unlink').setTooltip(tr('Délier le compte'))
+        .onClick(async () => { await this.plugin.oublierGoogle(); this.display(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Calendrier par défaut'))
+      .setDesc(tr("Nom du calendrier Google d'une tâche quand sa famille n'en précise pas."))
+      .addText((t) => t.setValue(s.agendaCalendrierDefaut || '')
+        .onChange(async (v) => { s.agendaCalendrierDefaut = v.trim(); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Synchronisation automatique'))
+      .setDesc(tr('À chaque créneau modifié, et une relève toutes les cinq minutes.'))
+      .addToggle((t) => t.setValue(s.googleAuto !== false).onChange(async (v) => { s.googleAuto = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Maintenant'))
+      .addButton((b) => b.setButtonText(tr('Synchroniser')).onClick(() => this.plugin.pousserGoogle(false)))
+      .addButton((b) => b.setButtonText(tr('Relever')).onClick(() => this.plugin.releverGoogle(false)))
+      .addButton((b) => b.setButtonText(tr('Voir les calendriers')).onClick(async () => {
+        try {
+          const m = await this.plugin.calendriersGoogle(true);
+          const noms = [...m.keys()].filter((k) => k !== '__principal__');
+          new obsidian.Notice(tr('Calendriers modifiables : ') + (noms.join(', ') || tr('aucun')), 12000);
+        } catch (e) { new obsidian.Notice(tr('Google Agenda : ') + ((e && e.message) || e), 9000); }
+      }));
+  }
+
   // Les agendas Google (iCal) affichés en fond : nom, adresse secrète,
   // couleur, actif ; un essai lit l'adresse et compte les événements à venir.
   _agendasIcs(c, s, maj) {
@@ -29438,7 +29940,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         }
         {
           const la = corps.createDiv({ cls: 'zfa-famt-prop' });
-          la.createEl('label', { text: tr('Calendrier Apple'), cls: 'zfa-famt-prop-lbl' });
+          // Le même champ sert à la source choisie : Apple ou Google.
+          la.createEl('label', { text: this.plugin.sourceAgenda() === 'apple' ? tr('Calendrier Apple') : tr('Calendrier Google'), cls: 'zfa-famt-prop-lbl' });
           const inp = la.createEl('input', { type: 'text' });
           inp.setAttribute('list', 'zfa-dl-agendas');
           inp.placeholder = this.plugin.settings.agendaCalendrierDefaut || tr('(calendrier par défaut)');

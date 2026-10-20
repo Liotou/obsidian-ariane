@@ -792,6 +792,19 @@ event and a créneau at the same time split the column. Runs on save and on a
 timer when enabled in the **Apple Calendar** settings section; the first sync
 asks for Calendar access.
 
+### Google Calendar
+
+Instead of Apple Calendar (Settings, Tasks, **Background calendar**,
+"Source"):
+
+- **through a calendar's secret iCal address**: its events show in the
+  background of the calendar view, read only, on any system, recurrences,
+  exceptions and time zones included;
+- **synchronised**, through your own Google app: each slot becomes an event
+  in its family's Google calendar, and moving the event in Google moves the
+  slot. The step-by-step guide (in French) is in
+  [docs/google-agenda.md](docs/google-agenda.md).
+
 ### Actual activity outside Obsidian (ActivityWatch)
 
 The timer only sees notes. To know what happens elsewhere on the computer,

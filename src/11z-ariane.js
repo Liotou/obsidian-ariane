@@ -495,6 +495,21 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.revoirReferencesOrphelines(false),
     });
     this.addCommand({
+      id: 'google-relier',
+      name: tr('Google Agenda : relier mon compte'),
+      callback: () => this.relierGoogle(),
+    });
+    this.addCommand({
+      id: 'google-synchroniser',
+      name: tr('Google Agenda : synchroniser les créneaux'),
+      callback: () => this.pousserGoogle(false),
+    });
+    this.addCommand({
+      id: 'google-relever',
+      name: tr('Google Agenda : relever les événements'),
+      callback: () => this.releverGoogle(false),
+    });
+    this.addCommand({
       id: 'titres-numeroter',
       name: tr('Titres : choisir les dossiers numérotés et numéroter…'),
       callback: () => this.choisirDossiersNumerotation(),
@@ -1393,8 +1408,14 @@ class Ariane extends composer(obsidian.Plugin,
     this.app.workspace.onLayoutReady(() => {
       // Google Agenda (iCal) : relu toutes les dix minutes, en lecture seule.
       this.registerInterval(window.setInterval(() => {
-        if (this.sourceAgenda() === 'google' && (this.settings.agendasIcs || []).length) this._rafraichirFond();
+        if (this.sourceAgenda() !== 'apple' && (this.settings.agendasIcs || []).length) this._rafraichirFond();
       }, 10 * 60000));
+      // Google Agenda synchronisé : une relève au démarrage, puis toutes les
+      // cinq minutes.
+      if (this._googleAutoActif()) setTimeout(() => this.releverGoogle(true), 15000);
+      this.registerInterval(window.setInterval(() => {
+        if (this._googleAutoActif() && !this._pushGoogleEnCours) this.releverGoogle(true);
+      }, 5 * 60000));
       if (obsidian.Platform.isMacOS && this.sourceAgenda() === 'apple' && this.settings.agendaActif && this.settings.agendaAuto !== false) {
         setTimeout(() => this.releverAgenda(true), 12000);
         this.registerInterval(window.setInterval(() => {

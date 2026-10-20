@@ -430,6 +430,97 @@ const avecTachesStatiques = (Base) => class extends Base {
     return out.sort((a, b) => a.debut.localeCompare(b.debut));
   }
 
+  // ── Google Agenda synchronisé (API) : fonctions pures ──
+  //  Chaque créneau d'une tâche devient un événement dans le calendrier
+  //  Google de sa famille, comme avec Apple Agenda. La note garde, par
+  //  créneau, « calendrier::événement » ; la relève ramène les déplacements.
+  //  La connexion passe par l'application Google de l'utilisateur (son
+  //  identifiant client) : aucune application n'est publiée avec Ariane.
+
+  static get GOOGLE_PORTEES() {
+    return ['https://www.googleapis.com/auth/calendar.events',
+      'https://www.googleapis.com/auth/calendar.calendarlist.readonly'];
+  }
+
+  // Le défi PKCE (S256) d'un vérificateur, en base64url.
+  static defiPkce(verificateur) {
+    return require('crypto').createHash('sha256').update(String(verificateur)).digest('base64')
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  // L'adresse de la page de connexion de Google.
+  static urlAutorisationGoogle(o) {
+    const p = new URLSearchParams({
+      client_id: o.clientId, redirect_uri: o.redirection, response_type: 'code',
+      scope: Ariane.GOOGLE_PORTEES.join(' '), access_type: 'offline', prompt: 'consent',
+      code_challenge: Ariane.defiPkce(o.verificateur), code_challenge_method: 'S256', state: o.etat,
+    });
+    return 'https://accounts.google.com/o/oauth2/v2/auth?' + p.toString();
+  }
+
+  // Une heure locale « AAAA-MM-JJTHH:MM » pour l'API : avec son décalage, et
+  // le fuseau du système.
+  static dateHeureGoogle(iso, fuseau) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if (!m) return null;
+    const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+    const dec = -d.getTimezoneOffset();
+    const p = (n) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+    const off = (dec >= 0 ? '+' : '-') + p(dec / 60) + ':' + p(dec % 60);
+    const tz = fuseau || (Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+    return Object.assign({ dateTime: m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5] + ':00' + off }, tz ? { timeZone: tz } : {});
+  }
+
+  // L'heure locale « AAAA-MM-JJTHH:MM » d'une date de l'API ({ dateTime } ou
+  // { date } d'une journée entière).
+  static localDepuisGoogle(o) {
+    if (!o) return '';
+    if (o.dateTime) { const t = Date.parse(o.dateTime); return isNaN(t) ? '' : Ariane.isoLocal(t); }
+    if (o.date) return String(o.date).slice(0, 10) + 'T00:00';
+    return '';
+  }
+
+  // « calendrier::événement » et l'inverse.
+  static idGoogle(cal, ev) { return cal && ev ? cal + '::' + ev : ''; }
+  static partiesIdGoogle(s) {
+    const t = String(s || '');
+    const i = t.lastIndexOf('::');
+    return i > 0 ? { cal: t.slice(0, i), ev: t.slice(i + 2) } : { cal: '', ev: '' };
+  }
+
+  // Le corps d'un événement : titre, horaires, description (extrait de la
+  // note de travail, puis le lien vers la note), et la marque d'Ariane.
+  static corpsEvenementGoogle(o) {
+    const desc = [String(o.notes || '').trim(), o.lien ? tr('Note dans Obsidian : ') + o.lien : ''].filter(Boolean).join('\n\n');
+    return {
+      summary: o.titre || '', description: desc,
+      start: Ariane.dateHeureGoogle(o.debut, o.fuseau), end: Ariane.dateHeureGoogle(o.fin, o.fuseau),
+      extendedProperties: { private: { ariane: String(o.ref || ''), arianeIdx: String(o.idx == null ? '' : o.idx) } },
+    };
+  }
+
+  // Ce qu'il faut faire pour qu'une tâche ait un événement par créneau dans
+  // son calendrier : créer, mettre à jour, déplacer (changement de
+  // calendrier : supprimer puis recréer), supprimer (créneau disparu).
+  // t : { ref, crs: [{debut, fin}], ids: [« cal::ev »], cal }. Rend [op].
+  static planPushGoogle(t) {
+    const ops = [];
+    const ids = t.ids || [];
+    const crs = t.cal ? (t.crs || []) : [];
+    crs.forEach((c, i) => {
+      const p = Ariane.partiesIdGoogle(ids[i]);
+      if (!p.ev) ops.push({ ref: t.ref, idx: i, op: 'creer', cal: t.cal, creneau: c });
+      else if (p.cal !== t.cal) ops.push({ ref: t.ref, idx: i, op: 'deplacer', cal: t.cal, ancien: p, creneau: c });
+      else ops.push({ ref: t.ref, idx: i, op: 'maj', cal: t.cal, ev: p.ev, creneau: c });
+    });
+    ids.forEach((id, i) => {
+      if (i < crs.length) return;
+      const p = Ariane.partiesIdGoogle(id);
+      if (p.ev) ops.push({ ref: t.ref, idx: i, op: 'supprimer', ancien: p });
+    });
+    return ops;
+  }
+
   // Le corps d'une note neuve associée à un événement Apple Calendrier (clic
   // droit sur un événement de la vue calendrier — pas un créneau de tâche :
   // ça reste un événement, pas quelque chose à faire). Note libre, sans
