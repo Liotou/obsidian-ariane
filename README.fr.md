@@ -940,6 +940,24 @@ minification : vous pouvez tout vérifier vous-même.
 
 ---
 
+## 💻 Mac, Windows et Linux
+
+Ariane fonctionne sur les trois systèmes. Les programmes externes (pandoc,
+Python, Git, le CLI de Claude) sont cherchés aux emplacements usuels de chaque
+système, et la base de Zotero est lue par le module SQLite intégré à Node, sans
+rien installer.
+
+Restent propres au Mac, et sans effet ailleurs (les réglages le signalent) :
+la synchronisation avec Apple Rappels et Apple Agenda, le correcteur Apple, le
+temps d'écran de l'iPhone, le relevé des onglets de Safari et les icônes des
+applications. Sous Windows, « Ouvrir avec Word » (PowerPoint, Excel) lance
+l'application installée par Microsoft 365 ou Office.
+
+Pour l'export Word sous Windows : installez pandoc (pandoc.org) et Python 3
+(python.org, avec le lanceur « py »).
+
+---
+
 ## 📦 Installation
 
 Ariane ne figure pas dans le catalogue officiel d'Obsidian. Deux voies :

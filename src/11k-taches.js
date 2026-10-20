@@ -174,6 +174,8 @@ const avecTaches = (Base) => class extends Base {
   }
 
   _osascriptJXA(script, ms) {
+    // AppleScript n'existe que sur Mac : ailleurs, la même réponse qu'un échec.
+    if (process.platform !== 'darwin') return Promise.resolve(null);
     return new Promise((res) => {
       require('child_process').execFile('osascript', ['-l', 'JavaScript', '-e', script],
         { timeout: ms || 60000, maxBuffer: 1 << 20 },
@@ -221,6 +223,8 @@ const avecTaches = (Base) => class extends Base {
   }
 
   _osascriptAS(script, ms) {
+    // AppleScript n'existe que sur Mac : ailleurs, la même réponse qu'un échec.
+    if (process.platform !== 'darwin') return Promise.resolve(null);
     return new Promise((res) => {
       require('child_process').execFile('osascript', ['-e', script],
         { timeout: ms || 30000, maxBuffer: 1 << 20 },
@@ -1752,9 +1756,20 @@ const avecTaches = (Base) => class extends Base {
   // sont séparées par un octet nul ; un fichier absent ou non indexé ne rend
   // rien qui ressemble à une date, et le filtre le laisse tomber.
   async metadonneesFichier(chemin) {
-    const abs = chemin.startsWith('~/')
-      ? require('os').homedir() + chemin.slice(1)
-      : chemin.replace(/^file:\/\//, '');
+    const path = require('path');
+    let abs = chemin.startsWith('~/')
+      ? path.join(require('os').homedir(), chemin.slice(2))
+      : chemin;
+    if (/^file:/.test(abs)) { try { abs = require('url').fileURLToPath(abs); } catch (e) { abs = abs.replace(/^file:\/\//, ''); } }
+    // Hors Mac, pas de Spotlight : les dates du système de fichiers (le
+    // dernier accès tient lieu de dernière ouverture).
+    if (!obsidian.Platform.isMacOS) {
+      try {
+        const st = await require('fs').promises.stat(abs);
+        const j = (d) => (d && !isNaN(d) ? new Date(d).toISOString().slice(0, 10) : '');
+        return { modifie: j(st.mtime), ouvert: j(st.atime) };
+      } catch (e) { return null; }
+    }
     return new Promise((resolve) => {
       require('child_process').execFile('mdls', [
         '-raw', '-name', 'kMDItemContentModificationDate',

@@ -888,27 +888,57 @@ const avecNoteReferences = (Base) => class extends Base {
   // L'application Office qui ouvre un fichier, d'après son extension, ou null.
   static appliOffice(extension) {
     const ext = String(extension || '').toLowerCase();
-    if (/^(docx?|docm|dotx?|rtf)$/.test(ext)) return { nom: 'Word', appli: 'Microsoft Word' };
-    if (/^(pptx?|pptm|potx|ppsx)$/.test(ext)) return { nom: 'PowerPoint', appli: 'Microsoft PowerPoint' };
-    if (/^(xlsx?|xlsm|xltx|csv)$/.test(ext)) return { nom: 'Excel', appli: 'Microsoft Excel' };
+    if (/^(docx?|docm|dotx?|rtf)$/.test(ext)) return { nom: 'Word', appli: 'Microsoft Word', exe: 'WINWORD.EXE' };
+    if (/^(pptx?|pptm|potx|ppsx)$/.test(ext)) return { nom: 'PowerPoint', appli: 'Microsoft PowerPoint', exe: 'POWERPNT.EXE' };
+    if (/^(xlsx?|xlsm|xltx|csv)$/.test(ext)) return { nom: 'Excel', appli: 'Microsoft Excel', exe: 'EXCEL.EXE' };
     return null;
+  }
+
+  // L'exécutable d'une application Office sous Windows, dans les dossiers
+  // d'installation de Microsoft 365 et d'Office 2016 à 2021, ou ''.
+  static exeOfficeWindows(exe, env) {
+    const path = require('path');
+    const fs = require('fs');
+    const e = env || process.env;
+    for (const racine of [e.ProgramFiles, e['ProgramFiles(x86)'], e.ProgramW6432].filter(Boolean)) {
+      for (const sous of [['Microsoft Office', 'root', 'Office16'], ['Microsoft Office', 'Office16'],
+        ['Microsoft Office', 'root', 'Office15'], ['Microsoft Office', 'Office15']]) {
+        const c = path.join(racine, ...sous, exe);
+        if (fs.existsSync(c)) return c;
+      }
+    }
+    return '';
   }
 
   // Clic droit sur un document Office : « Ouvrir avec Word » (PowerPoint,
   // Excel). Le greffon ONLYOFFICE les ouvre dans Obsidian ; ceci rend la main
-  // à l'application de Microsoft. Sur Mac, et si l'application est installée.
+  // à l'application de Microsoft, si elle est installée (Mac ou Windows).
   installerOuvrirAvecOffice() {
-    if (!(obsidian.Platform && obsidian.Platform.isMacOS)) return;
+    const mac = !!(obsidian.Platform && obsidian.Platform.isMacOS);
+    const win = !!(obsidian.Platform && obsidian.Platform.isWin);
+    if (!mac && !win) return;
     const fs = require('fs');
     this.registerEvent(this.app.workspace.on('file-menu', (menu, f) => {
       if (!(f instanceof obsidian.TFile)) return;
       const o = Ariane.appliOffice(f.extension);
       if (!o) return;
-      const chemins = ['/Applications/' + o.appli + '.app', require('os').homedir() + '/Applications/' + o.appli + '.app'];
-      if (!chemins.some((c) => fs.existsSync(c))) return;
+      let lancer = null;
+      if (mac) {
+        const chemins = ['/Applications/' + o.appli + '.app', require('path').join(require('os').homedir(), 'Applications', o.appli + '.app')];
+        if (!chemins.some((c) => fs.existsSync(c))) return;
+        lancer = (cible, rappel) => require('child_process').execFile('open', ['-a', o.appli, cible], rappel);
+      } else {
+        const exe = Ariane.exeOfficeWindows(o.exe);
+        if (!exe) return;
+        lancer = (cible, rappel) => {
+          const enfant = require('child_process').spawn(exe, [cible], { detached: true, stdio: 'ignore', windowsHide: false });
+          enfant.on('error', (err) => rappel(err));
+          enfant.unref();
+        };
+      }
       menu.addItem((it) => it.setTitle(tr('Ouvrir avec ') + o.nom).setIcon('external-link').setSection('open')
         .onClick(() => {
-          require('child_process').execFile('open', ['-a', o.appli, this.cheminAbsoluVault(f.path)], (e) => {
+          lancer(this.cheminAbsoluVault(f.path), (e) => {
             if (e) new obsidian.Notice(o.nom + tr(' : ouverture impossible.'));
           });
         }));

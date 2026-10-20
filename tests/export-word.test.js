@@ -113,8 +113,11 @@ test('export : la citation narrative devient « @cle [p. X] », la parenthèse r
 });
 
 test('toucheStyleGlisser : quatre touches de modification, Maj par défaut', () => {
-  assert.deepEqual(Ariane.toucheStyleGlisser('alt'), { prop: 'altKey', nom: 'Option' });
-  assert.deepEqual(Ariane.toucheStyleGlisser('meta'), { prop: 'metaKey', nom: 'Commande' });
+  assert.deepEqual(Ariane.toucheStyleGlisser('alt', true), { prop: 'altKey', nom: 'Option' });
+  assert.deepEqual(Ariane.toucheStyleGlisser('meta', true), { prop: 'metaKey', nom: 'Commande' });
+  // Sous Windows, les touches portent leur nom de Windows.
+  assert.deepEqual(Ariane.toucheStyleGlisser('alt', false), { prop: 'altKey', nom: 'Alt' });
+  assert.deepEqual(Ariane.toucheStyleGlisser('meta', false), { prop: 'metaKey', nom: 'Windows' });
   assert.deepEqual(Ariane.toucheStyleGlisser(undefined), { prop: 'shiftKey', nom: 'Maj' });
   assert.deepEqual(Ariane.toucheStyleGlisser('a'), { prop: 'shiftKey', nom: 'Maj' });
 });
@@ -190,4 +193,17 @@ test('clesDepuisZotflow : une source glissée de l’arborescence cite sa note d
   const ctx = { app, sourceDeZotflow: Ariane.prototype.sourceDeZotflow };
   assert.deepEqual(await Ariane.prototype.clesDepuisZotflow.call(ctx, { key: 'ITEMKEY2', annotations: [] }, 'Business, Innovation…'), ['@valkokari2015']);
   assert.deepEqual(await Ariane.prototype.clesDepuisZotflow.call(ctx, { key: 'INCONNUE', annotations: [] }, ''), []);
+});
+
+test('compatibilité : chemins des outils et lecture ZIP sans outil externe', () => {
+  const { dossiersOutils, lireEntreeZip, argumentCmd } = Ariane._test;
+  const win = dossiersOutils('win32', { APPDATA: 'C:\\U\\AppData\\Roaming', ProgramFiles: 'C:\\Program Files' });
+  assert.ok(win.some((d) => /npm$/.test(d)) && win.some((d) => /Pandoc$/.test(d)), 'npm et Pandoc sous Windows');
+  assert.ok(!win.some((d) => d.startsWith('/opt')), 'aucun dossier du Mac sous Windows');
+  assert.ok(dossiersOutils('darwin').includes('/opt/homebrew/bin'));
+  assert.equal(argumentCmd('a "b" c'), '"a ""b"" c"');
+  // Une archive ZIP construite par Ariane (stockée) relue sans unzip.
+  const zip = Buffer.from(Ariane.zipStored([{ nom: 'META-INF/container.xml', donnees: '<x full-path="a.opf"/>' }]));
+  assert.equal(lireEntreeZip(zip, 'META-INF/container.xml').toString('utf8'), '<x full-path="a.opf"/>');
+  assert.equal(lireEntreeZip(zip, 'absent.txt'), null);
 });

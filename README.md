@@ -904,6 +904,23 @@ minification: you can check all of this yourself.
 
 ---
 
+## 💻 Mac, Windows and Linux
+
+Ariane runs on all three systems. External programs (pandoc, Python, Git, the
+Claude CLI) are looked up in each system's usual places, and the Zotero
+database is read through Node's built-in SQLite module, with nothing to
+install.
+
+Mac only, with no effect elsewhere (the settings say so): Apple Reminders and
+Apple Calendar sync, the Apple spell checker, iPhone screen time, the Safari
+tab log and application icons. On Windows, "Open with Word" (PowerPoint,
+Excel) launches the app installed by Microsoft 365 or Office.
+
+For the Word export on Windows, install pandoc (pandoc.org) and Python 3
+(python.org, with the "py" launcher).
+
+---
+
 ## 📦 Installing
 
 Ariane is not in the official Obsidian catalogue. Two ways in:

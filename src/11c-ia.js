@@ -342,17 +342,17 @@ const avecIa = (Base) => class extends Base {
     const delai = Number(o.delai) > 0 ? Number(o.delai) : 60000;
     return new Promise((resoudre) => {
       let fini = false;
-      const env = Object.assign({}, process.env, {
-        PATH: process.env.HOME + '/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:'
-          + (process.env.PATH || ''),
-      });
+      const env = envOutils();
       // Le modèle choisi dans les réglages ; sans choix, celui de Claude Code.
       // `parEntree` : l'invite passe par l'entrée standard, qui ignore la
       // limite de taille des arguments (une semaine de veille la dépasse).
+      // Sous Windows, toujours : cmd.exe limite la ligne de commande et
+      // interpréterait certains caractères de l'invite.
+      const parEntree = o.parEntree || process.platform === 'win32';
       const modele = String(o.modeleClaude || this.settings.refsModeleClaude || '').trim();
-      const args = (modele ? ['--model', modele] : []).concat(o.parEntree ? ['-p'] : ['-p', prompt]);
-      const enfant = require('child_process').execFile(
-        bin, args, { env, timeout: delai, maxBuffer: o.parEntree ? 8 << 20 : 1 << 20 },
+      const args = (modele ? ['--model', modele] : []).concat(parEntree ? ['-p'] : ['-p', prompt]);
+      const enfant = executer(
+        bin, args, { env, timeout: delai, maxBuffer: parEntree ? 8 << 20 : 1 << 20 },
         (err, sortie) => {
           if (fini) return;
           fini = true;
@@ -363,7 +363,7 @@ const avecIa = (Base) => class extends Base {
         });
       // Sans cela le CLI attend trois secondes une entrée standard qui ne
       // viendra jamais, à chaque appel.
-      try { if (enfant.stdin) enfant.stdin.end(o.parEntree ? prompt : undefined); } catch (e) { /* déjà fermée */ }
+      try { if (enfant.stdin) enfant.stdin.end(parEntree ? prompt : undefined); } catch (e) { /* déjà fermée */ }
       setTimeout(() => { if (!fini) { try { enfant.kill('SIGKILL'); } catch (e) { /* déjà mort */ } } }, delai + 1000);
     });
   }

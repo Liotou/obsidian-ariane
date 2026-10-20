@@ -445,7 +445,7 @@ const avecNoteBiblio = (Base) => class extends Base {
     let sb, sw = null;
     try { sb = await fs.promises.stat(base); } catch (e) { return ''; }
     try { sw = await fs.promises.stat(base + '-wal'); } catch (e) { sw = null; }
-    if (!sw || !sw.size) return 'file:' + encodeURI(base) + '?immutable=1';
+    if (!sw || !sw.size) return require('url').pathToFileURL(base).href + '?immutable=1';
     const cle = sb.mtimeMs + ':' + sb.size + ':' + sw.mtimeMs + ':' + sw.size;
     const dossier = path.join(os.tmpdir(), 'ariane-zotero');
     const copie = path.join(dossier, 'zotero.sqlite');
@@ -461,23 +461,48 @@ const avecNoteBiblio = (Base) => class extends Base {
       return copie;
     } catch (e) {
       console.warn('[Ariane] copie de la base Zotero impossible, lecture sans le journal :', e);
-      return 'file:' + encodeURI(base) + '?immutable=1';
+      return require('url').pathToFileURL(base).href + '?immutable=1';
     }
   }
 
-  // Une requête sur la base de Zotero (outil sqlite3 de macOS). Rend les
+  // Une requête sur la base de Zotero (module sqlite de Node, sinon l'outil
+  // sqlite3). Rend les
   // lignes, champs séparés, ou null si la base n'est pas lisible.
   async requeteZotero(requete) {
     if (!obsidian.Platform.isDesktopApp) return null;
     const cible = await this.baseZoteroLisible();
     if (!cible) return null;
+    // Le module sqlite intégré à Node (Obsidian l'embarque) marche sur tout
+    // système, sans rien installer. À défaut, l'outil sqlite3 (macOS, Linux).
+    const integre = Ariane.requeteSqliteIntegre(cible, requete);
+    if (integre) return integre;
     return new Promise((ok) => {
-      require('child_process').execFile('sqlite3', ['-separator', '\t', cible, requete],
+      executer('sqlite3', ['-separator', '\t', cible, requete],
         { timeout: 20000, maxBuffer: 16 << 20 }, (err, sortie) => {
           if (err) { ok(null); return; }
           ok(String(sortie || '').split('\n').filter((l) => l !== '').map((l) => l.split('\t')));
         });
     });
+  }
+
+  // Une requête en lecture par node:sqlite. `cible` : un chemin, ou une URI
+  // « file:…?immutable=1 ». Rend les lignes en chaînes, comme l'outil
+  // sqlite3, ou null si le module manque ou si la lecture échoue.
+  static requeteSqliteIntegre(cible, requete) {
+    let sqlite = null;
+    try { sqlite = require('node:sqlite'); } catch (e) { return null; }
+    if (!sqlite || typeof sqlite.DatabaseSync !== 'function') return null;
+    let db = null;
+    try {
+      db = new sqlite.DatabaseSync(/^file:/.test(cible) ? new URL(cible) : cible, { readOnly: true });
+      const lignes = db.prepare(requete).all();
+      return lignes.map((r) => Object.values(r).map((v) => (v == null ? '' : String(v))));
+    } catch (e) {
+      console.debug('[Ariane] sqlite intégré :', e && e.message);
+      return null;
+    } finally {
+      try { if (db) db.close(); } catch (e) { /* déjà fermée */ }
+    }
   }
 
   // Le texte extrait d'une pièce jointe, mis en cache mémoire : un PDF pèse
@@ -1354,8 +1379,8 @@ const avecNoteBiblio = (Base) => class extends Base {
     const script = this.cheminScriptPandoc('remap-styles.py');
     try {
       await new Promise((resolve, reject) => {
-        require('child_process').execFile('python3', [script, '--remap', outPath, JSON.stringify(m)],
-          { env: env || process.env },
+        executerPython([script, '--remap', outPath, JSON.stringify(m)],
+          { env: env || envOutils() },
           (e, so, se) => e ? reject(new Error(String(se || e.message || e).slice(0, 300))) : resolve());
       });
     } catch (e) {
@@ -1369,10 +1394,10 @@ const avecNoteBiblio = (Base) => class extends Base {
     const modele = this.settings.exportModeleWord;
     if (!modele || !require('fs').existsSync(modele)) { new obsidian.Notice(tr('Renseignez un modèle Word valide dans les réglages.')); return; }
     const script = this.cheminScriptPandoc('remap-styles.py');
-    const env = Object.assign({}, process.env, { PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + (process.env.PATH || '') });
+    const env = envOutils();
     try {
       const out = await new Promise((resolve, reject) => {
-        require('child_process').execFile('python3', [script, '--list', modele], { env, maxBuffer: 8 * 1024 * 1024 },
+        executerPython([script, '--list', modele], { env, maxBuffer: 8 * 1024 * 1024 },
           (e, so, se) => e ? reject(new Error(String(se || e.message || e).slice(0, 300))) : resolve(so));
       });
       new StylesModeleModal(this.app, JSON.parse(out)).open();
@@ -1459,7 +1484,7 @@ const avecNoteBiblio = (Base) => class extends Base {
     if (!modele || !fs.existsSync(modele)) { new obsidian.Notice(tr('Modèle Word introuvable : ') + modele); return; }
     try {
       const sortie = await new Promise((resolve) => {
-        require('child_process').execFile('python3', [script, '--verifier', modele],
+        executerPython([script, '--verifier', modele],
           { maxBuffer: 4 * 1024 * 1024 },
           (e, so, se) => resolve(String(so || '') + String(se || '')));
       });
@@ -1517,16 +1542,16 @@ const avecNoteBiblio = (Base) => class extends Base {
     const notice = new obsidian.Notice(tr('Export Word (Zotero)…'), 0);
     try {
       const dirFiltre = pathMod.dirname(this.settings.exportFiltreLua);
-      const env = Object.assign({}, process.env, {
-        PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + (process.env.PATH || ''),
-        LUA_PATH: dirFiltre + '/?.lua;' + dirFiltre + '/?/init.lua;;',
+      // LUA_PATH sépare ses motifs par « ; » sur tout système.
+      const env = envOutils({
+        LUA_PATH: pathMod.join(dirFiltre, '?.lua') + ';' + pathMod.join(dirFiltre, '?', 'init.lua') + ';;',
       });
       const args = ['--lua-filter', this.settings.exportFiltreLua];
       const modele = this.settings.exportModeleWord;
       if (modele && fs.existsSync(modele)) args.push('--reference-doc', modele);
       args.push(tmp, '-s', '-o', outPath);
       await new Promise((resolve, reject) => {
-        require('child_process').execFile(
+        executer(
           this.settings.exportPandocBin || 'pandoc', args,
           { maxBuffer: 64 * 1024 * 1024, env, cwd: dirFiltre },
           (e, so, se) => e ? reject(new Error(String(se || e.message || e).slice(0, 400))) : resolve());
@@ -1612,7 +1637,7 @@ const avecNoteBiblio = (Base) => class extends Base {
 
     try {
       const sortie = await new Promise((resolve, reject) => {
-        require('child_process').execFile('python3', [script, chemin, ordres],
+        executerPython([script, chemin, ordres],
           { maxBuffer: 32 * 1024 * 1024, env },
           (e, so, se) => (e ? reject(new Error(String(se || e.message).slice(0, 400))) : resolve(String(so || ''))));
       });
@@ -2101,8 +2126,14 @@ const avecNoteBiblio = (Base) => class extends Base {
     const sig = st.size + ':' + st.mtimeMs;
     const vu = c.get(fichier);
     if (vu && vu.sig === sig) return vu.docs;
-    const lire = (entree) => new Promise((ok) => require('child_process').execFile('unzip', ['-p', fichier, entree],
-      { maxBuffer: 64 << 20, encoding: 'utf8' }, (err, out) => ok(err ? '' : String(out || ''))));
+    // L'archive se lit en JavaScript : « unzip » n'existe pas sous Windows.
+    let octets = null;
+    try { octets = await fs.promises.readFile(fichier); } catch (e) { return []; }
+    const lire = async (entree) => {
+      const nom = decodeURIComponent(String(entree || '')).replace(/^\/+/, '');
+      const brut = lireEntreeZip(octets, nom) || lireEntreeZip(octets, entree);
+      return brut ? brut.toString('utf8') : '';
+    };
     const conteneur = await lire('META-INF/container.xml');
     const opfChemin = (conteneur.match(/full-path="([^"]+)"/) || [])[1];
     if (!opfChemin) return [];

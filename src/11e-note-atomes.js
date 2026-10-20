@@ -1384,12 +1384,13 @@ const avecNoteAtomes = (Base) => class extends Base {
 
   // La touche réglée (Maj par défaut). Seules les touches de modification
   // accompagnent un glisser : une lettre n'y parviendrait jamais.
-  static toucheStyleGlisser(cle) {
+  static toucheStyleGlisser(cle, mac) {
+    const surMac = mac !== undefined ? mac : !!(obsidian.Platform && obsidian.Platform.isMacOS);
     return ({
       shift: { prop: 'shiftKey', nom: 'Maj' },
-      alt: { prop: 'altKey', nom: 'Option' },
+      alt: { prop: 'altKey', nom: surMac ? 'Option' : 'Alt' },
       ctrl: { prop: 'ctrlKey', nom: 'Contrôle' },
-      meta: { prop: 'metaKey', nom: 'Commande' },
+      meta: { prop: 'metaKey', nom: surMac ? 'Commande' : 'Windows' },
     })[cle] || { prop: 'shiftKey', nom: 'Maj' };
   }
 

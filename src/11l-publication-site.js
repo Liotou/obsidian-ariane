@@ -44,9 +44,8 @@ const avecPublicationSite = (Base) => class extends Base {
   }
 
   _executerGit(depot, args) {
-    const { execFile } = require('child_process');
     return new Promise((resolve, reject) => {
-      execFile('git', args, { cwd: depot }, (err, stdout, stderr) => {
+      executer('git', args, { cwd: depot }, (err, stdout, stderr) => {
         if (err) reject(new Error((stderr || err.message || '').trim() || ('git ' + args.join(' '))));
         else resolve(stdout);
       });

@@ -215,6 +215,8 @@ const TEXTES = {
     "Activer le reclassement": "Enable reranking",
     "Activer le repliement": "Enable folding",
     "Activer les suggestions": "Enable suggestions",
+    "Réservé au Mac : ces réglages restent sans effet sur ce système.": "Mac only: these settings have no effect on this system.",
+    "Python 3 introuvable : installez-le (python.org), puis relancez Obsidian.": "Python 3 not found: install it (python.org), then restart Obsidian.",
     "Greffons liés": "Related plugins",
     "Non installé.": "Not installed.",
     "Installé et activé": "Installed and enabled",
@@ -375,7 +377,7 @@ const TEXTES = {
     "Export Word (Zotero)…": "Word export (Zotero)…",
     "Export terminé : ": "Export finished: ",
     "Export — échec : ": "Export failed: ",
-    "Exporte la note active en .docx où chaque note de bas de page devient une citation Zotero vivante (via Pandoc + filtre BetterBibTeX). Zotero doit tourner ; pandoc doit être installé (brew install pandoc). Commande : « Exporter en Word avec citations Zotero (Pandoc) ».": "Exports the active note to .docx, where each citation becomes a live Zotero field, through pandoc and the BetterBibTeX filter. Zotero must be running and pandoc must be installed.",
+    "Exporte la note active en .docx où chaque note de bas de page devient une citation Zotero vivante (via Pandoc + filtre BetterBibTeX). Zotero doit tourner ; pandoc doit être installé (macOS : brew install pandoc ; Windows : installeur de pandoc.org), ainsi que Python 3 pour la mise en forme. Commande : « Exporter en Word avec citations Zotero (Pandoc) ».": "Exports the active note to .docx, where each citation becomes a live Zotero field, through pandoc and the BetterBibTeX filter. Zotero must be running and pandoc must be installed.",
     "Exporter": "Export",
     "Exporter en Word avec citations Zotero (Pandoc)": "Export to Word with live Zotero citations (pandoc)",
     "Familles de notes": "Note families",
@@ -2412,6 +2414,161 @@ function majLiensTitre(texte, nom, ancien, nouveau, memeNote) {
     const vise = c ? c.split('/').pop().replace(/\.md$/i, '') === nom : !!memeNote;
     return vise ? ouv + cible + '#' + nouveau : tout;
   });
+}
+
+// ── Programmes externes : Mac, Windows et Linux ──
+//  Obsidian lancé depuis le Dock ou le menu Démarrer ne voit pas toujours le
+//  PATH du terminal : on y ajoute les dossiers usuels de chaque système, avec
+//  le séparateur du système (« : » ailleurs, « ; » sous Windows). Sous
+//  Windows, un programme installé par npm est un « .cmd », qu'execFile ne
+//  sait pas lancer seul : il passe alors par cmd.exe, arguments entre
+//  guillemets.
+
+// Les dossiers où chercher un programme, selon le système.
+function dossiersOutils(plateforme, env) {
+  const path = require('path');
+  const os = require('os');
+  const e = env || process.env;
+  const p = plateforme || process.platform;
+  const home = os.homedir();
+  if (p === 'win32') {
+    return [
+      path.join(home, '.local', 'bin'),
+      e.APPDATA && path.join(e.APPDATA, 'npm'),
+      e.LOCALAPPDATA && path.join(e.LOCALAPPDATA, 'Pandoc'),
+      e.LOCALAPPDATA && path.join(e.LOCALAPPDATA, 'Programs', 'Python', 'Launcher'),
+      e.ProgramFiles && path.join(e.ProgramFiles, 'Pandoc'),
+      e.ProgramFiles && path.join(e.ProgramFiles, 'nodejs'),
+      e.ProgramFiles && path.join(e.ProgramFiles, 'Git', 'cmd'),
+    ].filter(Boolean);
+  }
+  if (p === 'darwin') return [path.join(home, '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
+  return [path.join(home, '.local', 'bin'), '/usr/local/bin', '/usr/bin', '/bin'];
+}
+
+// L'environnement d'un programme externe : le PATH complété, le reste tel
+// quel. `ajouts` : variables en plus (LUA_PATH…).
+function envOutils(ajouts) {
+  const path = require('path');
+  const cle = Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') || 'PATH';
+  const actuel = String(process.env[cle] || '').split(path.delimiter).filter(Boolean);
+  const tout = dossiersOutils().concat(actuel).filter((d, i, t) => t.indexOf(d) === i);
+  return Object.assign({}, process.env, { [cle]: tout.join(path.delimiter) }, ajouts || {});
+}
+
+// Le chemin complet d'un programme d'après le PATH de `env`, ou ''. Sous
+// Windows, les extensions de PATHEXT sont essayées (.exe, .cmd…).
+function trouverExecutable(nom, env) {
+  const path = require('path');
+  const fs = require('fs');
+  const e = env || envOutils();
+  if (!nom) return '';
+  if (path.isAbsolute(nom)) return fs.existsSync(nom) ? nom : '';
+  const cle = Object.keys(e).find((k) => k.toUpperCase() === 'PATH') || 'PATH';
+  const win = process.platform === 'win32';
+  const exts = win && !path.extname(nom)
+    ? String(e.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
+  for (const d of String(e[cle] || '').split(path.delimiter)) {
+    if (!d) continue;
+    for (const x of exts) {
+      const c = path.join(d, nom + x);
+      try { if (fs.statSync(c).isFile()) return c; } catch (err) { /* absent */ }
+    }
+  }
+  return '';
+}
+
+// Un argument pour cmd.exe : entre guillemets, ceux du texte doublés.
+function argumentCmd(a) {
+  return '"' + String(a).replace(/"/g, '""') + '"';
+}
+
+// execFile, mais pour tout système : le PATH complété, et un « .cmd » ou un
+// « .bat » de Windows lancé par cmd.exe. Même signature, même valeur rendue
+// (le processus enfant).
+function executer(bin, args, opts, rappel) {
+  const cp = require('child_process');
+  const o = Object.assign({ env: envOutils() }, opts || {});
+  if (process.platform === 'win32') {
+    const plein = trouverExecutable(bin, o.env) || bin;
+    if (/\.(cmd|bat)$/i.test(plein)) {
+      const ligne = '"' + [plein].concat(args || []).map(argumentCmd).join(' ') + '"';
+      return cp.execFile(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', ligne],
+        Object.assign({ windowsVerbatimArguments: true, windowsHide: true }, o), rappel);
+    }
+    return cp.execFile(plein, args || [], Object.assign({ windowsHide: true }, o), rappel);
+  }
+  return cp.execFile(bin, args || [], o, rappel);
+}
+
+// Python 3 : « python3 » sur Mac et Linux ; sous Windows, le lanceur « py »
+// (avec -3), à défaut « python ». Rend { bin, prefixe } ou null.
+let _pythonTrouve;
+function commandePython() {
+  if (_pythonTrouve !== undefined) return _pythonTrouve;
+  const env = envOutils();
+  const essais = process.platform === 'win32'
+    ? [['py', ['-3']], ['python', []], ['python3', []]]
+    : [['python3', []], ['python', []]];
+  _pythonTrouve = null;
+  for (const [nom, prefixe] of essais) {
+    const plein = trouverExecutable(nom, env);
+    if (plein) { _pythonTrouve = { bin: plein, prefixe }; break; }
+  }
+  return _pythonTrouve;
+}
+
+// Lance un script Python ; même rappel qu'execFile. Sans Python : l'erreur
+// le dit, en clair.
+function executerPython(args, opts, rappel) {
+  const py = commandePython();
+  if (!py) {
+    const err = new Error(tr('Python 3 introuvable : installez-le (python.org), puis relancez Obsidian.'));
+    setTimeout(() => rappel && rappel(err, '', err.message), 0);
+    return null;
+  }
+  // UTF-8 partout : sous Windows, Python écrirait sinon sa sortie dans la page
+  // de code du système, qu'Ariane lirait de travers.
+  const o = Object.assign({}, opts || {});
+  o.env = Object.assign({}, o.env || envOutils(), { PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' });
+  return executer(py.bin, py.prefixe.concat(args || []), o, rappel);
+}
+
+// Une entrée d'une archive ZIP (EPUB, DOCX), lue sans outil externe : le
+// répertoire central donne sa place, zlib la décompresse. Rend un Buffer, ou
+// null si l'entrée manque ou si l'archive est illisible.
+function lireEntreeZip(octets, nom) {
+  const b = octets;
+  if (!b || b.length < 22) return null;
+  let fin = -1;
+  for (let i = b.length - 22; i >= Math.max(0, b.length - 65557); i--) {
+    if (b.readUInt32LE(i) === 0x06054b50) { fin = i; break; }
+  }
+  if (fin < 0) return null;
+  const nb = b.readUInt16LE(fin + 10);
+  let p = b.readUInt32LE(fin + 16);
+  for (let k = 0; k < nb && p + 46 <= b.length; k++) {
+    if (b.readUInt32LE(p) !== 0x02014b50) return null;
+    const methode = b.readUInt16LE(p + 10);
+    const taille = b.readUInt32LE(p + 20);
+    const lgNom = b.readUInt16LE(p + 28);
+    const lgExtra = b.readUInt16LE(p + 30);
+    const lgCom = b.readUInt16LE(p + 32);
+    const local = b.readUInt32LE(p + 42);
+    const n = b.toString('utf8', p + 46, p + 46 + lgNom);
+    if (n === nom) {
+      if (b.readUInt32LE(local) !== 0x04034b50) return null;
+      const debut = local + 30 + b.readUInt16LE(local + 26) + b.readUInt16LE(local + 28);
+      const donnees = b.subarray(debut, debut + taille);
+      try {
+        if (methode === 0) return Buffer.from(donnees);
+        if (methode === 8) return require('zlib').inflateRawSync(donnees);
+      } catch (e) { return null; }
+      return null;
+    }
+    p += 46 + lgNom + lgExtra + lgCom;
+  }
+  return null;
 }
 
 //#endregion 2 · Utilitaires génériques
@@ -5585,17 +5742,17 @@ const avecIa = (Base) => class extends Base {
     const delai = Number(o.delai) > 0 ? Number(o.delai) : 60000;
     return new Promise((resoudre) => {
       let fini = false;
-      const env = Object.assign({}, process.env, {
-        PATH: process.env.HOME + '/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:'
-          + (process.env.PATH || ''),
-      });
+      const env = envOutils();
       // Le modèle choisi dans les réglages ; sans choix, celui de Claude Code.
       // `parEntree` : l'invite passe par l'entrée standard, qui ignore la
       // limite de taille des arguments (une semaine de veille la dépasse).
+      // Sous Windows, toujours : cmd.exe limite la ligne de commande et
+      // interpréterait certains caractères de l'invite.
+      const parEntree = o.parEntree || process.platform === 'win32';
       const modele = String(o.modeleClaude || this.settings.refsModeleClaude || '').trim();
-      const args = (modele ? ['--model', modele] : []).concat(o.parEntree ? ['-p'] : ['-p', prompt]);
-      const enfant = require('child_process').execFile(
-        bin, args, { env, timeout: delai, maxBuffer: o.parEntree ? 8 << 20 : 1 << 20 },
+      const args = (modele ? ['--model', modele] : []).concat(parEntree ? ['-p'] : ['-p', prompt]);
+      const enfant = executer(
+        bin, args, { env, timeout: delai, maxBuffer: parEntree ? 8 << 20 : 1 << 20 },
         (err, sortie) => {
           if (fini) return;
           fini = true;
@@ -5606,7 +5763,7 @@ const avecIa = (Base) => class extends Base {
         });
       // Sans cela le CLI attend trois secondes une entrée standard qui ne
       // viendra jamais, à chaque appel.
-      try { if (enfant.stdin) enfant.stdin.end(o.parEntree ? prompt : undefined); } catch (e) { /* déjà fermée */ }
+      try { if (enfant.stdin) enfant.stdin.end(parEntree ? prompt : undefined); } catch (e) { /* déjà fermée */ }
       setTimeout(() => { if (!fini) { try { enfant.kill('SIGKILL'); } catch (e) { /* déjà mort */ } } }, delai + 1000);
     });
   }
@@ -6867,27 +7024,57 @@ const avecNoteReferences = (Base) => class extends Base {
   // L'application Office qui ouvre un fichier, d'après son extension, ou null.
   static appliOffice(extension) {
     const ext = String(extension || '').toLowerCase();
-    if (/^(docx?|docm|dotx?|rtf)$/.test(ext)) return { nom: 'Word', appli: 'Microsoft Word' };
-    if (/^(pptx?|pptm|potx|ppsx)$/.test(ext)) return { nom: 'PowerPoint', appli: 'Microsoft PowerPoint' };
-    if (/^(xlsx?|xlsm|xltx|csv)$/.test(ext)) return { nom: 'Excel', appli: 'Microsoft Excel' };
+    if (/^(docx?|docm|dotx?|rtf)$/.test(ext)) return { nom: 'Word', appli: 'Microsoft Word', exe: 'WINWORD.EXE' };
+    if (/^(pptx?|pptm|potx|ppsx)$/.test(ext)) return { nom: 'PowerPoint', appli: 'Microsoft PowerPoint', exe: 'POWERPNT.EXE' };
+    if (/^(xlsx?|xlsm|xltx|csv)$/.test(ext)) return { nom: 'Excel', appli: 'Microsoft Excel', exe: 'EXCEL.EXE' };
     return null;
+  }
+
+  // L'exécutable d'une application Office sous Windows, dans les dossiers
+  // d'installation de Microsoft 365 et d'Office 2016 à 2021, ou ''.
+  static exeOfficeWindows(exe, env) {
+    const path = require('path');
+    const fs = require('fs');
+    const e = env || process.env;
+    for (const racine of [e.ProgramFiles, e['ProgramFiles(x86)'], e.ProgramW6432].filter(Boolean)) {
+      for (const sous of [['Microsoft Office', 'root', 'Office16'], ['Microsoft Office', 'Office16'],
+        ['Microsoft Office', 'root', 'Office15'], ['Microsoft Office', 'Office15']]) {
+        const c = path.join(racine, ...sous, exe);
+        if (fs.existsSync(c)) return c;
+      }
+    }
+    return '';
   }
 
   // Clic droit sur un document Office : « Ouvrir avec Word » (PowerPoint,
   // Excel). Le greffon ONLYOFFICE les ouvre dans Obsidian ; ceci rend la main
-  // à l'application de Microsoft. Sur Mac, et si l'application est installée.
+  // à l'application de Microsoft, si elle est installée (Mac ou Windows).
   installerOuvrirAvecOffice() {
-    if (!(obsidian.Platform && obsidian.Platform.isMacOS)) return;
+    const mac = !!(obsidian.Platform && obsidian.Platform.isMacOS);
+    const win = !!(obsidian.Platform && obsidian.Platform.isWin);
+    if (!mac && !win) return;
     const fs = require('fs');
     this.registerEvent(this.app.workspace.on('file-menu', (menu, f) => {
       if (!(f instanceof obsidian.TFile)) return;
       const o = Ariane.appliOffice(f.extension);
       if (!o) return;
-      const chemins = ['/Applications/' + o.appli + '.app', require('os').homedir() + '/Applications/' + o.appli + '.app'];
-      if (!chemins.some((c) => fs.existsSync(c))) return;
+      let lancer = null;
+      if (mac) {
+        const chemins = ['/Applications/' + o.appli + '.app', require('path').join(require('os').homedir(), 'Applications', o.appli + '.app')];
+        if (!chemins.some((c) => fs.existsSync(c))) return;
+        lancer = (cible, rappel) => require('child_process').execFile('open', ['-a', o.appli, cible], rappel);
+      } else {
+        const exe = Ariane.exeOfficeWindows(o.exe);
+        if (!exe) return;
+        lancer = (cible, rappel) => {
+          const enfant = require('child_process').spawn(exe, [cible], { detached: true, stdio: 'ignore', windowsHide: false });
+          enfant.on('error', (err) => rappel(err));
+          enfant.unref();
+        };
+      }
       menu.addItem((it) => it.setTitle(tr('Ouvrir avec ') + o.nom).setIcon('external-link').setSection('open')
         .onClick(() => {
-          require('child_process').execFile('open', ['-a', o.appli, this.cheminAbsoluVault(f.path)], (e) => {
+          lancer(this.cheminAbsoluVault(f.path), (e) => {
             if (e) new obsidian.Notice(o.nom + tr(' : ouverture impossible.'));
           });
         }));
@@ -9270,12 +9457,13 @@ const avecNoteAtomes = (Base) => class extends Base {
 
   // La touche réglée (Maj par défaut). Seules les touches de modification
   // accompagnent un glisser : une lettre n'y parviendrait jamais.
-  static toucheStyleGlisser(cle) {
+  static toucheStyleGlisser(cle, mac) {
+    const surMac = mac !== undefined ? mac : !!(obsidian.Platform && obsidian.Platform.isMacOS);
     return ({
       shift: { prop: 'shiftKey', nom: 'Maj' },
-      alt: { prop: 'altKey', nom: 'Option' },
+      alt: { prop: 'altKey', nom: surMac ? 'Option' : 'Alt' },
       ctrl: { prop: 'ctrlKey', nom: 'Contrôle' },
-      meta: { prop: 'metaKey', nom: 'Commande' },
+      meta: { prop: 'metaKey', nom: surMac ? 'Commande' : 'Windows' },
     })[cle] || { prop: 'shiftKey', nom: 'Maj' };
   }
 
@@ -10394,7 +10582,7 @@ const avecNoteBiblio = (Base) => class extends Base {
     let sb, sw = null;
     try { sb = await fs.promises.stat(base); } catch (e) { return ''; }
     try { sw = await fs.promises.stat(base + '-wal'); } catch (e) { sw = null; }
-    if (!sw || !sw.size) return 'file:' + encodeURI(base) + '?immutable=1';
+    if (!sw || !sw.size) return require('url').pathToFileURL(base).href + '?immutable=1';
     const cle = sb.mtimeMs + ':' + sb.size + ':' + sw.mtimeMs + ':' + sw.size;
     const dossier = path.join(os.tmpdir(), 'ariane-zotero');
     const copie = path.join(dossier, 'zotero.sqlite');
@@ -10410,23 +10598,48 @@ const avecNoteBiblio = (Base) => class extends Base {
       return copie;
     } catch (e) {
       console.warn('[Ariane] copie de la base Zotero impossible, lecture sans le journal :', e);
-      return 'file:' + encodeURI(base) + '?immutable=1';
+      return require('url').pathToFileURL(base).href + '?immutable=1';
     }
   }
 
-  // Une requête sur la base de Zotero (outil sqlite3 de macOS). Rend les
+  // Une requête sur la base de Zotero (module sqlite de Node, sinon l'outil
+  // sqlite3). Rend les
   // lignes, champs séparés, ou null si la base n'est pas lisible.
   async requeteZotero(requete) {
     if (!obsidian.Platform.isDesktopApp) return null;
     const cible = await this.baseZoteroLisible();
     if (!cible) return null;
+    // Le module sqlite intégré à Node (Obsidian l'embarque) marche sur tout
+    // système, sans rien installer. À défaut, l'outil sqlite3 (macOS, Linux).
+    const integre = Ariane.requeteSqliteIntegre(cible, requete);
+    if (integre) return integre;
     return new Promise((ok) => {
-      require('child_process').execFile('sqlite3', ['-separator', '\t', cible, requete],
+      executer('sqlite3', ['-separator', '\t', cible, requete],
         { timeout: 20000, maxBuffer: 16 << 20 }, (err, sortie) => {
           if (err) { ok(null); return; }
           ok(String(sortie || '').split('\n').filter((l) => l !== '').map((l) => l.split('\t')));
         });
     });
+  }
+
+  // Une requête en lecture par node:sqlite. `cible` : un chemin, ou une URI
+  // « file:…?immutable=1 ». Rend les lignes en chaînes, comme l'outil
+  // sqlite3, ou null si le module manque ou si la lecture échoue.
+  static requeteSqliteIntegre(cible, requete) {
+    let sqlite = null;
+    try { sqlite = require('node:sqlite'); } catch (e) { return null; }
+    if (!sqlite || typeof sqlite.DatabaseSync !== 'function') return null;
+    let db = null;
+    try {
+      db = new sqlite.DatabaseSync(/^file:/.test(cible) ? new URL(cible) : cible, { readOnly: true });
+      const lignes = db.prepare(requete).all();
+      return lignes.map((r) => Object.values(r).map((v) => (v == null ? '' : String(v))));
+    } catch (e) {
+      console.debug('[Ariane] sqlite intégré :', e && e.message);
+      return null;
+    } finally {
+      try { if (db) db.close(); } catch (e) { /* déjà fermée */ }
+    }
   }
 
   // Le texte extrait d'une pièce jointe, mis en cache mémoire : un PDF pèse
@@ -11303,8 +11516,8 @@ const avecNoteBiblio = (Base) => class extends Base {
     const script = this.cheminScriptPandoc('remap-styles.py');
     try {
       await new Promise((resolve, reject) => {
-        require('child_process').execFile('python3', [script, '--remap', outPath, JSON.stringify(m)],
-          { env: env || process.env },
+        executerPython([script, '--remap', outPath, JSON.stringify(m)],
+          { env: env || envOutils() },
           (e, so, se) => e ? reject(new Error(String(se || e.message || e).slice(0, 300))) : resolve());
       });
     } catch (e) {
@@ -11318,10 +11531,10 @@ const avecNoteBiblio = (Base) => class extends Base {
     const modele = this.settings.exportModeleWord;
     if (!modele || !require('fs').existsSync(modele)) { new obsidian.Notice(tr('Renseignez un modèle Word valide dans les réglages.')); return; }
     const script = this.cheminScriptPandoc('remap-styles.py');
-    const env = Object.assign({}, process.env, { PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + (process.env.PATH || '') });
+    const env = envOutils();
     try {
       const out = await new Promise((resolve, reject) => {
-        require('child_process').execFile('python3', [script, '--list', modele], { env, maxBuffer: 8 * 1024 * 1024 },
+        executerPython([script, '--list', modele], { env, maxBuffer: 8 * 1024 * 1024 },
           (e, so, se) => e ? reject(new Error(String(se || e.message || e).slice(0, 300))) : resolve(so));
       });
       new StylesModeleModal(this.app, JSON.parse(out)).open();
@@ -11408,7 +11621,7 @@ const avecNoteBiblio = (Base) => class extends Base {
     if (!modele || !fs.existsSync(modele)) { new obsidian.Notice(tr('Modèle Word introuvable : ') + modele); return; }
     try {
       const sortie = await new Promise((resolve) => {
-        require('child_process').execFile('python3', [script, '--verifier', modele],
+        executerPython([script, '--verifier', modele],
           { maxBuffer: 4 * 1024 * 1024 },
           (e, so, se) => resolve(String(so || '') + String(se || '')));
       });
@@ -11466,16 +11679,16 @@ const avecNoteBiblio = (Base) => class extends Base {
     const notice = new obsidian.Notice(tr('Export Word (Zotero)…'), 0);
     try {
       const dirFiltre = pathMod.dirname(this.settings.exportFiltreLua);
-      const env = Object.assign({}, process.env, {
-        PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:' + (process.env.PATH || ''),
-        LUA_PATH: dirFiltre + '/?.lua;' + dirFiltre + '/?/init.lua;;',
+      // LUA_PATH sépare ses motifs par « ; » sur tout système.
+      const env = envOutils({
+        LUA_PATH: pathMod.join(dirFiltre, '?.lua') + ';' + pathMod.join(dirFiltre, '?', 'init.lua') + ';;',
       });
       const args = ['--lua-filter', this.settings.exportFiltreLua];
       const modele = this.settings.exportModeleWord;
       if (modele && fs.existsSync(modele)) args.push('--reference-doc', modele);
       args.push(tmp, '-s', '-o', outPath);
       await new Promise((resolve, reject) => {
-        require('child_process').execFile(
+        executer(
           this.settings.exportPandocBin || 'pandoc', args,
           { maxBuffer: 64 * 1024 * 1024, env, cwd: dirFiltre },
           (e, so, se) => e ? reject(new Error(String(se || e.message || e).slice(0, 400))) : resolve());
@@ -11561,7 +11774,7 @@ const avecNoteBiblio = (Base) => class extends Base {
 
     try {
       const sortie = await new Promise((resolve, reject) => {
-        require('child_process').execFile('python3', [script, chemin, ordres],
+        executerPython([script, chemin, ordres],
           { maxBuffer: 32 * 1024 * 1024, env },
           (e, so, se) => (e ? reject(new Error(String(se || e.message).slice(0, 400))) : resolve(String(so || ''))));
       });
@@ -12050,8 +12263,14 @@ const avecNoteBiblio = (Base) => class extends Base {
     const sig = st.size + ':' + st.mtimeMs;
     const vu = c.get(fichier);
     if (vu && vu.sig === sig) return vu.docs;
-    const lire = (entree) => new Promise((ok) => require('child_process').execFile('unzip', ['-p', fichier, entree],
-      { maxBuffer: 64 << 20, encoding: 'utf8' }, (err, out) => ok(err ? '' : String(out || ''))));
+    // L'archive se lit en JavaScript : « unzip » n'existe pas sous Windows.
+    let octets = null;
+    try { octets = await fs.promises.readFile(fichier); } catch (e) { return []; }
+    const lire = async (entree) => {
+      const nom = decodeURIComponent(String(entree || '')).replace(/^\/+/, '');
+      const brut = lireEntreeZip(octets, nom) || lireEntreeZip(octets, entree);
+      return brut ? brut.toString('utf8') : '';
+    };
     const conteneur = await lire('META-INF/container.xml');
     const opfChemin = (conteneur.match(/full-path="([^"]+)"/) || [])[1];
     if (!opfChemin) return [];
@@ -16524,6 +16743,8 @@ const avecTaches = (Base) => class extends Base {
   }
 
   _osascriptJXA(script, ms) {
+    // AppleScript n'existe que sur Mac : ailleurs, la même réponse qu'un échec.
+    if (process.platform !== 'darwin') return Promise.resolve(null);
     return new Promise((res) => {
       require('child_process').execFile('osascript', ['-l', 'JavaScript', '-e', script],
         { timeout: ms || 60000, maxBuffer: 1 << 20 },
@@ -16571,6 +16792,8 @@ const avecTaches = (Base) => class extends Base {
   }
 
   _osascriptAS(script, ms) {
+    // AppleScript n'existe que sur Mac : ailleurs, la même réponse qu'un échec.
+    if (process.platform !== 'darwin') return Promise.resolve(null);
     return new Promise((res) => {
       require('child_process').execFile('osascript', ['-e', script],
         { timeout: ms || 30000, maxBuffer: 1 << 20 },
@@ -18102,9 +18325,20 @@ const avecTaches = (Base) => class extends Base {
   // sont séparées par un octet nul ; un fichier absent ou non indexé ne rend
   // rien qui ressemble à une date, et le filtre le laisse tomber.
   async metadonneesFichier(chemin) {
-    const abs = chemin.startsWith('~/')
-      ? require('os').homedir() + chemin.slice(1)
-      : chemin.replace(/^file:\/\//, '');
+    const path = require('path');
+    let abs = chemin.startsWith('~/')
+      ? path.join(require('os').homedir(), chemin.slice(2))
+      : chemin;
+    if (/^file:/.test(abs)) { try { abs = require('url').fileURLToPath(abs); } catch (e) { abs = abs.replace(/^file:\/\//, ''); } }
+    // Hors Mac, pas de Spotlight : les dates du système de fichiers (le
+    // dernier accès tient lieu de dernière ouverture).
+    if (!obsidian.Platform.isMacOS) {
+      try {
+        const st = await require('fs').promises.stat(abs);
+        const j = (d) => (d && !isNaN(d) ? new Date(d).toISOString().slice(0, 10) : '');
+        return { modifie: j(st.mtime), ouvert: j(st.atime) };
+      } catch (e) { return null; }
+    }
     return new Promise((resolve) => {
       require('child_process').execFile('mdls', [
         '-raw', '-name', 'kMDItemContentModificationDate',
@@ -19339,9 +19573,8 @@ const avecPublicationSite = (Base) => class extends Base {
   }
 
   _executerGit(depot, args) {
-    const { execFile } = require('child_process');
     return new Promise((resolve, reject) => {
-      execFile('git', args, { cwd: depot }, (err, stdout, stderr) => {
+      executer('git', args, { cwd: depot }, (err, stdout, stderr) => {
         if (err) reject(new Error((stderr || err.message || '').trim() || ('git ' + args.join(' '))));
         else resolve(stdout);
       });
@@ -26412,6 +26645,13 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     if (desc) st.setDesc(desc);
     return st;
   }
+  // Sous Windows et Linux, une fonction propre au Mac le dit d'emblée.
+  _reserveMac(parent) {
+    if (obsidian.Platform && obsidian.Platform.isMacOS) return false;
+    const p = this._aide(parent, tr('Réservé au Mac : ces réglages restent sans effet sur ce système.'));
+    p.style.color = 'var(--text-warning)';
+    return true;
+  }
   _aide(parent, txt) {
     const p = parent.createEl('div', { text: txt, cls: 'setting-item-description' });
     p.style.margin = '2px 0 10px';
@@ -26791,9 +27031,9 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Pendant le glisser, chaque appui fait alterner « (Auteur, année) » et « Auteur (année) ». Seules les touches de modification sont possibles : le clavier se tait pendant un glisser. Sur Mac, Commande peut changer l'effet du glisser dans certaines fenêtres."))
       .addDropdown((d) => d
         .addOption('shift', tr('Maj'))
-        .addOption('alt', tr('Option (⌥)'))
-        .addOption('ctrl', tr('Contrôle (⌃)'))
-        .addOption('meta', tr('Commande (⌘)'))
+        .addOption('alt', obsidian.Platform.isMacOS ? tr('Option (⌥)') : 'Alt')
+        .addOption('ctrl', obsidian.Platform.isMacOS ? tr('Contrôle (⌃)') : tr('Contrôle (Ctrl)'))
+        .addOption('meta', obsidian.Platform.isMacOS ? tr('Commande (⌘)') : 'Windows')
         .setValue(s.dropToucheStyle || 'shift')
         .onChange(async (v) => { s.dropToucheStyle = v; await maj(); }));
     new obsidian.Setting(c)
@@ -26955,6 +27195,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(nbDossiers ? (s.numerotationDossiers || []).join(', ') : tr('Aucun pour l’instant.'))
       .addButton((b) => b.setButtonText(tr('Choisir et numéroter…')).onClick(() => this.plugin.choisirDossiersNumerotation()));
     this._section(c, tr('Correcteur Apple'));
+    this._reserveMac(c);
     this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne."));
     const relancerCorrecteur = (vider) => { if (this.plugin.correcteur) this.plugin.correcteur.relancer(vider); };
     new obsidian.Setting(c)
@@ -27553,6 +27794,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setValue(Number(s.tachesSemainesAbandon) || 4)
         .onChange(async (v) => { s.tachesSemainesAbandon = v; await maj(); }));
     this._section(c, tr('Apple Rappels'));
+    this._reserveMac(c);
     this._aide(c, tr("macOS. Chaque tâche datée devient un rappel dans la liste de sa famille. Synchronisation bidirectionnelle : cocher un rappel termine la tâche, un rappel ajouté à la main devient une tâche. La première synchronisation demande l'accès à Rappels."));
     // Suggestions de listes Apple Rappels, partagées par la liste par défaut et
     // les familles. Chargées à la volée sur macOS.
@@ -27624,6 +27866,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.rappelsSupprimerAbandonnees !== false)
         .onChange(async (v) => { s.rappelsSupprimerAbandonnees = v; await maj(); }));
     this._section(c, tr('Apple Agenda'));
+    this._reserveMac(c);
     this._aide(c, tr("macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchro bidirectionnelle automatique : à chaque modif d'un côté (et au changement de fenêtre), déplacer/redimensionner l'événement dans Calendar réécrit le créneau. Les calendriers cochés s'affichent en fond de la vue calendrier."));
     // Suggestions de calendriers Apple, partagées par le calendrier par défaut
     // et les familles. Chargées à la volée sur macOS.
@@ -28489,7 +28732,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
   }
 
   ongletExport(c, s, maj) {
-    this._aide(c, tr('Exporte la note active en .docx où chaque note de bas de page devient une citation Zotero vivante (via Pandoc + filtre BetterBibTeX). Zotero doit tourner ; pandoc doit être installé (brew install pandoc). Commande : « Exporter en Word avec citations Zotero (Pandoc) ».'));
+    this._aide(c, tr('Exporte la note active en .docx où chaque note de bas de page devient une citation Zotero vivante (via Pandoc + filtre BetterBibTeX). Zotero doit tourner ; pandoc doit être installé (macOS : brew install pandoc ; Windows : installeur de pandoc.org), ainsi que Python 3 pour la mise en forme. Commande : « Exporter en Word avec citations Zotero (Pandoc) ».'));
 
     new obsidian.Setting(c).setName(tr('Moteur')).setHeading();
     this._aide(c, tr("Le filtre Lua de Better BibTeX se règle dans l'onglet « Greffons liés »."));
@@ -46562,10 +46805,14 @@ class PontClaude extends obsidian.Component {
   _cheminNode(prefere) {
     const fs = require('fs');
     const path = require('path');
-    for (const c of [prefere, '/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node']) {
+    const win = process.platform === 'win32';
+    const usuels = win
+      ? [process.env.ProgramFiles && path.join(process.env.ProgramFiles, 'nodejs', 'node.exe'), trouverExecutable('node')]
+      : ['/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node', trouverExecutable('node')];
+    for (const c of [prefere].concat(usuels)) {
       // Seulement un exécutable « node » : une commande configurée à la main
       // pourrait être autre chose (un shell, un lanceur).
-      if (c && c.startsWith('/') && path.basename(c) === 'node' && fs.existsSync(c)) return c;
+      if (c && path.isAbsolute(c) && /^node(\.exe)?$/i.test(path.basename(c)) && fs.existsSync(c)) return c;
     }
     return 'node';
   }
@@ -46831,6 +47078,10 @@ module.exports._test = {
   narratifDepuisLibelle,
   estLibelleNarratif,
   insertionNarrative,
+  dossiersOutils,
+  lireEntreeZip,
+  argumentCmd,
+  trouverExecutable,
   cellulesDeLigne,
   ligneDeRangee,
   insertionCellule,

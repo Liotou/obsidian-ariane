@@ -349,10 +349,14 @@ class PontClaude extends obsidian.Component {
   _cheminNode(prefere) {
     const fs = require('fs');
     const path = require('path');
-    for (const c of [prefere, '/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node']) {
+    const win = process.platform === 'win32';
+    const usuels = win
+      ? [process.env.ProgramFiles && path.join(process.env.ProgramFiles, 'nodejs', 'node.exe'), trouverExecutable('node')]
+      : ['/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node', trouverExecutable('node')];
+    for (const c of [prefere].concat(usuels)) {
       // Seulement un exécutable « node » : une commande configurée à la main
       // pourrait être autre chose (un shell, un lanceur).
-      if (c && c.startsWith('/') && path.basename(c) === 'node' && fs.existsSync(c)) return c;
+      if (c && path.isAbsolute(c) && /^node(\.exe)?$/i.test(path.basename(c)) && fs.existsSync(c)) return c;
     }
     return 'node';
   }

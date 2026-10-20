@@ -423,6 +423,13 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     if (desc) st.setDesc(desc);
     return st;
   }
+  // Sous Windows et Linux, une fonction propre au Mac le dit d'emblée.
+  _reserveMac(parent) {
+    if (obsidian.Platform && obsidian.Platform.isMacOS) return false;
+    const p = this._aide(parent, tr('Réservé au Mac : ces réglages restent sans effet sur ce système.'));
+    p.style.color = 'var(--text-warning)';
+    return true;
+  }
   _aide(parent, txt) {
     const p = parent.createEl('div', { text: txt, cls: 'setting-item-description' });
     p.style.margin = '2px 0 10px';
@@ -802,9 +809,9 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Pendant le glisser, chaque appui fait alterner « (Auteur, année) » et « Auteur (année) ». Seules les touches de modification sont possibles : le clavier se tait pendant un glisser. Sur Mac, Commande peut changer l'effet du glisser dans certaines fenêtres."))
       .addDropdown((d) => d
         .addOption('shift', tr('Maj'))
-        .addOption('alt', tr('Option (⌥)'))
-        .addOption('ctrl', tr('Contrôle (⌃)'))
-        .addOption('meta', tr('Commande (⌘)'))
+        .addOption('alt', obsidian.Platform.isMacOS ? tr('Option (⌥)') : 'Alt')
+        .addOption('ctrl', obsidian.Platform.isMacOS ? tr('Contrôle (⌃)') : tr('Contrôle (Ctrl)'))
+        .addOption('meta', obsidian.Platform.isMacOS ? tr('Commande (⌘)') : 'Windows')
         .setValue(s.dropToucheStyle || 'shift')
         .onChange(async (v) => { s.dropToucheStyle = v; await maj(); }));
     new obsidian.Setting(c)
@@ -966,6 +973,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(nbDossiers ? (s.numerotationDossiers || []).join(', ') : tr('Aucun pour l’instant.'))
       .addButton((b) => b.setButtonText(tr('Choisir et numéroter…')).onClick(() => this.plugin.choisirDossiersNumerotation()));
     this._section(c, tr('Correcteur Apple'));
+    this._reserveMac(c);
     this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne."));
     const relancerCorrecteur = (vider) => { if (this.plugin.correcteur) this.plugin.correcteur.relancer(vider); };
     new obsidian.Setting(c)
@@ -1564,6 +1572,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setValue(Number(s.tachesSemainesAbandon) || 4)
         .onChange(async (v) => { s.tachesSemainesAbandon = v; await maj(); }));
     this._section(c, tr('Apple Rappels'));
+    this._reserveMac(c);
     this._aide(c, tr("macOS. Chaque tâche datée devient un rappel dans la liste de sa famille. Synchronisation bidirectionnelle : cocher un rappel termine la tâche, un rappel ajouté à la main devient une tâche. La première synchronisation demande l'accès à Rappels."));
     // Suggestions de listes Apple Rappels, partagées par la liste par défaut et
     // les familles. Chargées à la volée sur macOS.
@@ -1635,6 +1644,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.rappelsSupprimerAbandonnees !== false)
         .onChange(async (v) => { s.rappelsSupprimerAbandonnees = v; await maj(); }));
     this._section(c, tr('Apple Agenda'));
+    this._reserveMac(c);
     this._aide(c, tr("macOS. Chaque créneau d'une tâche devient un événement dans le calendrier de sa famille. Synchro bidirectionnelle automatique : à chaque modif d'un côté (et au changement de fenêtre), déplacer/redimensionner l'événement dans Calendar réécrit le créneau. Les calendriers cochés s'affichent en fond de la vue calendrier."));
     // Suggestions de calendriers Apple, partagées par le calendrier par défaut
     // et les familles. Chargées à la volée sur macOS.
@@ -2500,7 +2510,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
   }
 
   ongletExport(c, s, maj) {
-    this._aide(c, tr('Exporte la note active en .docx où chaque note de bas de page devient une citation Zotero vivante (via Pandoc + filtre BetterBibTeX). Zotero doit tourner ; pandoc doit être installé (brew install pandoc). Commande : « Exporter en Word avec citations Zotero (Pandoc) ».'));
+    this._aide(c, tr('Exporte la note active en .docx où chaque note de bas de page devient une citation Zotero vivante (via Pandoc + filtre BetterBibTeX). Zotero doit tourner ; pandoc doit être installé (macOS : brew install pandoc ; Windows : installeur de pandoc.org), ainsi que Python 3 pour la mise en forme. Commande : « Exporter en Word avec citations Zotero (Pandoc) ».'));
 
     new obsidian.Setting(c).setName(tr('Moteur')).setHeading();
     this._aide(c, tr("Le filtre Lua de Better BibTeX se règle dans l'onglet « Greffons liés »."));

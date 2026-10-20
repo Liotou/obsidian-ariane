@@ -308,5 +308,160 @@ function majLiensTitre(texte, nom, ancien, nouveau, memeNote) {
   });
 }
 
+// ── Programmes externes : Mac, Windows et Linux ──
+//  Obsidian lancé depuis le Dock ou le menu Démarrer ne voit pas toujours le
+//  PATH du terminal : on y ajoute les dossiers usuels de chaque système, avec
+//  le séparateur du système (« : » ailleurs, « ; » sous Windows). Sous
+//  Windows, un programme installé par npm est un « .cmd », qu'execFile ne
+//  sait pas lancer seul : il passe alors par cmd.exe, arguments entre
+//  guillemets.
+
+// Les dossiers où chercher un programme, selon le système.
+function dossiersOutils(plateforme, env) {
+  const path = require('path');
+  const os = require('os');
+  const e = env || process.env;
+  const p = plateforme || process.platform;
+  const home = os.homedir();
+  if (p === 'win32') {
+    return [
+      path.join(home, '.local', 'bin'),
+      e.APPDATA && path.join(e.APPDATA, 'npm'),
+      e.LOCALAPPDATA && path.join(e.LOCALAPPDATA, 'Pandoc'),
+      e.LOCALAPPDATA && path.join(e.LOCALAPPDATA, 'Programs', 'Python', 'Launcher'),
+      e.ProgramFiles && path.join(e.ProgramFiles, 'Pandoc'),
+      e.ProgramFiles && path.join(e.ProgramFiles, 'nodejs'),
+      e.ProgramFiles && path.join(e.ProgramFiles, 'Git', 'cmd'),
+    ].filter(Boolean);
+  }
+  if (p === 'darwin') return [path.join(home, '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
+  return [path.join(home, '.local', 'bin'), '/usr/local/bin', '/usr/bin', '/bin'];
+}
+
+// L'environnement d'un programme externe : le PATH complété, le reste tel
+// quel. `ajouts` : variables en plus (LUA_PATH…).
+function envOutils(ajouts) {
+  const path = require('path');
+  const cle = Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') || 'PATH';
+  const actuel = String(process.env[cle] || '').split(path.delimiter).filter(Boolean);
+  const tout = dossiersOutils().concat(actuel).filter((d, i, t) => t.indexOf(d) === i);
+  return Object.assign({}, process.env, { [cle]: tout.join(path.delimiter) }, ajouts || {});
+}
+
+// Le chemin complet d'un programme d'après le PATH de `env`, ou ''. Sous
+// Windows, les extensions de PATHEXT sont essayées (.exe, .cmd…).
+function trouverExecutable(nom, env) {
+  const path = require('path');
+  const fs = require('fs');
+  const e = env || envOutils();
+  if (!nom) return '';
+  if (path.isAbsolute(nom)) return fs.existsSync(nom) ? nom : '';
+  const cle = Object.keys(e).find((k) => k.toUpperCase() === 'PATH') || 'PATH';
+  const win = process.platform === 'win32';
+  const exts = win && !path.extname(nom)
+    ? String(e.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
+  for (const d of String(e[cle] || '').split(path.delimiter)) {
+    if (!d) continue;
+    for (const x of exts) {
+      const c = path.join(d, nom + x);
+      try { if (fs.statSync(c).isFile()) return c; } catch (err) { /* absent */ }
+    }
+  }
+  return '';
+}
+
+// Un argument pour cmd.exe : entre guillemets, ceux du texte doublés.
+function argumentCmd(a) {
+  return '"' + String(a).replace(/"/g, '""') + '"';
+}
+
+// execFile, mais pour tout système : le PATH complété, et un « .cmd » ou un
+// « .bat » de Windows lancé par cmd.exe. Même signature, même valeur rendue
+// (le processus enfant).
+function executer(bin, args, opts, rappel) {
+  const cp = require('child_process');
+  const o = Object.assign({ env: envOutils() }, opts || {});
+  if (process.platform === 'win32') {
+    const plein = trouverExecutable(bin, o.env) || bin;
+    if (/\.(cmd|bat)$/i.test(plein)) {
+      const ligne = '"' + [plein].concat(args || []).map(argumentCmd).join(' ') + '"';
+      return cp.execFile(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', ligne],
+        Object.assign({ windowsVerbatimArguments: true, windowsHide: true }, o), rappel);
+    }
+    return cp.execFile(plein, args || [], Object.assign({ windowsHide: true }, o), rappel);
+  }
+  return cp.execFile(bin, args || [], o, rappel);
+}
+
+// Python 3 : « python3 » sur Mac et Linux ; sous Windows, le lanceur « py »
+// (avec -3), à défaut « python ». Rend { bin, prefixe } ou null.
+let _pythonTrouve;
+function commandePython() {
+  if (_pythonTrouve !== undefined) return _pythonTrouve;
+  const env = envOutils();
+  const essais = process.platform === 'win32'
+    ? [['py', ['-3']], ['python', []], ['python3', []]]
+    : [['python3', []], ['python', []]];
+  _pythonTrouve = null;
+  for (const [nom, prefixe] of essais) {
+    const plein = trouverExecutable(nom, env);
+    if (plein) { _pythonTrouve = { bin: plein, prefixe }; break; }
+  }
+  return _pythonTrouve;
+}
+
+// Lance un script Python ; même rappel qu'execFile. Sans Python : l'erreur
+// le dit, en clair.
+function executerPython(args, opts, rappel) {
+  const py = commandePython();
+  if (!py) {
+    const err = new Error(tr('Python 3 introuvable : installez-le (python.org), puis relancez Obsidian.'));
+    setTimeout(() => rappel && rappel(err, '', err.message), 0);
+    return null;
+  }
+  // UTF-8 partout : sous Windows, Python écrirait sinon sa sortie dans la page
+  // de code du système, qu'Ariane lirait de travers.
+  const o = Object.assign({}, opts || {});
+  o.env = Object.assign({}, o.env || envOutils(), { PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' });
+  return executer(py.bin, py.prefixe.concat(args || []), o, rappel);
+}
+
+// Une entrée d'une archive ZIP (EPUB, DOCX), lue sans outil externe : le
+// répertoire central donne sa place, zlib la décompresse. Rend un Buffer, ou
+// null si l'entrée manque ou si l'archive est illisible.
+function lireEntreeZip(octets, nom) {
+  const b = octets;
+  if (!b || b.length < 22) return null;
+  let fin = -1;
+  for (let i = b.length - 22; i >= Math.max(0, b.length - 65557); i--) {
+    if (b.readUInt32LE(i) === 0x06054b50) { fin = i; break; }
+  }
+  if (fin < 0) return null;
+  const nb = b.readUInt16LE(fin + 10);
+  let p = b.readUInt32LE(fin + 16);
+  for (let k = 0; k < nb && p + 46 <= b.length; k++) {
+    if (b.readUInt32LE(p) !== 0x02014b50) return null;
+    const methode = b.readUInt16LE(p + 10);
+    const taille = b.readUInt32LE(p + 20);
+    const lgNom = b.readUInt16LE(p + 28);
+    const lgExtra = b.readUInt16LE(p + 30);
+    const lgCom = b.readUInt16LE(p + 32);
+    const local = b.readUInt32LE(p + 42);
+    const n = b.toString('utf8', p + 46, p + 46 + lgNom);
+    if (n === nom) {
+      if (b.readUInt32LE(local) !== 0x04034b50) return null;
+      const debut = local + 30 + b.readUInt16LE(local + 26) + b.readUInt16LE(local + 28);
+      const donnees = b.subarray(debut, debut + taille);
+      try {
+        if (methode === 0) return Buffer.from(donnees);
+        if (methode === 8) return require('zlib').inflateRawSync(donnees);
+      } catch (e) { return null; }
+      return null;
+    }
+    p += 46 + lgNom + lgExtra + lgCom;
+  }
+  return null;
+}
+
 //#endregion 2 · Utilitaires génériques
 
