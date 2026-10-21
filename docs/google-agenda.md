@@ -1,8 +1,10 @@
-# Relier Ariane à Google Agenda
+# Relier Ariane à Google Agenda et Google Tasks
 
 Ariane peut synchroniser les créneaux de vos tâches avec Google Agenda, dans
 les deux sens : chaque créneau devient un événement dans le calendrier Google
-de sa famille, et un événement déplacé dans Google déplace le créneau.
+de sa famille, et un événement déplacé dans Google déplace le créneau. Elle
+peut aussi envoyer vos rappels dans **Google Tasks** (Réglages, Tâches,
+Rappels, destination « Google Tasks »). Un seul compte relié sert les deux.
 
 La connexion passe par **votre propre application Google**. Elle n'appartient
 qu'à vous : aucune adresse, aucun compte ni aucun jeton n'est partagé avec
@@ -21,10 +23,11 @@ ce guide est inutile.
 2. En haut, ouvrez le sélecteur de projet, puis **Nouveau projet**. Nommez-le
    par exemple « Ariane », puis **Créer**.
 
-## 2. Activer l'API Google Calendar
+## 2. Activer les API
 
 1. Menu, **API et services**, puis **Bibliothèque**.
 2. Cherchez « Google Calendar API », ouvrez-la, puis **Activer**.
+3. Pour les rappels, cherchez aussi « Google Tasks API », puis **Activer**.
 
 ## 3. L'écran de consentement
 
@@ -53,15 +56,20 @@ ce guide est inutile.
 ## 5. Relier Ariane
 
 1. Dans Obsidian : Réglages, Ariane, onglet **Tâches**, rubrique **Agenda en
-   fond**.
+   fond** (ou rubrique **Rappels**, destination « Google Tasks », si vous ne
+   voulez que les rappels).
 2. Source : **Google Agenda (synchronisé, compte Google)**.
 3. Collez l'**identifiant client** et le **code secret du client**.
 4. Cliquez sur **Relier mon compte Google**. Votre navigateur ouvre la page de
    connexion de Google.
 5. Google prévient que l'application n'est pas validée : cliquez sur
    **Paramètres avancés**, puis **Accéder à Ariane**. Acceptez l'accès à
-   l'agenda.
-6. La page affiche « Ariane est reliée à Google Agenda » : fermez l'onglet.
+   l'agenda et aux tâches.
+6. La page affiche « Ariane est reliée à votre compte Google » : fermez
+   l'onglet.
+
+Un compte relié avant l'arrivée de Google Tasks dans Ariane n'a autorisé que
+l'agenda : cliquez sur **Relier à nouveau** pour ajouter les tâches.
 
 ## 6. Choisir les calendriers
 
@@ -74,12 +82,24 @@ Ensuite, **Synchroniser** envoie les créneaux. La synchronisation automatique
 suit chaque créneau modifié, et relève les déplacements toutes les cinq
 minutes.
 
+## 7. Les rappels dans Google Tasks
+
+- Chaque famille de tâches porte un champ **Liste de rappels** : le nom
+  d'une liste de Google Tasks, créée au besoin. À défaut, la **liste de
+  rappels par défaut** de la rubrique Rappels ; vide, la liste par défaut du
+  compte.
+- Google Tasks ne garde que le **jour** de l'échéance : l'heure reste dans la
+  note, et n'est jamais effacée par la relève.
+- Cocher une tâche dans Google Tasks termine la tâche du coffre ; une tâche
+  ajoutée à la main dans une liste surveillée devient une tâche du coffre.
+
 ## Ce qu'Ariane garde, et où
 
 - Les jetons de connexion restent dans les réglages d'Ariane, sur votre
   machine ; ils ne partent jamais dans un profil exporté.
 - Chaque note de tâche garde, par créneau, l'identifiant de son événement
-  (propriété « Google ID »).
+  (propriété « Google ID »), et l'identifiant de son rappel (propriété
+  « Rappel ID », préfixée « google: »).
 - Pour tout délier : le bouton à côté de « Relier mon compte Google ». Vous
   pouvez aussi retirer l'accès depuis votre compte Google (Sécurité,
   « Applications tierces »).

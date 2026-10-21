@@ -1571,12 +1571,38 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addSlider((sl) => sl.setLimits(2, 12, 1).setDynamicTooltip()
         .setValue(Number(s.tachesSemainesAbandon) || 4)
         .onChange(async (v) => { s.tachesSemainesAbandon = v; await maj(); }));
-    this._section(c, tr('Apple Rappels'));
-    this._reserveMac(c);
-    this._aide(c, tr("macOS. Chaque tâche datée devient un rappel dans la liste de sa famille. Synchronisation bidirectionnelle : cocher un rappel termine la tâche, un rappel ajouté à la main devient une tâche. La première synchronisation demande l'accès à Rappels."));
+    this._section(c, tr('Rappels'));
+    this._aide(c, tr("Chaque tâche datée devient un rappel dans la liste de sa famille. Synchronisation bidirectionnelle : cocher un rappel termine la tâche, un rappel ajouté à la main dans une liste surveillée devient une tâche. Trois destinations, l'une ou l'autre : Apple Rappels (Mac), Google Tasks ou Microsoft To Do (tout système)."));
+    const dest = this.plugin.destinationRappels();
+    new obsidian.Setting(c)
+      .setName(tr('Destination'))
+      .addDropdown((d) => {
+        if (obsidian.Platform.isMacOS) d.addOption('apple', 'Apple Rappels');
+        d.addOption('google', 'Google Tasks');
+        d.addOption('microsoft', 'Microsoft To Do');
+        d.setValue(dest).onChange(async (v) => {
+          s.rappelsDestination = v;
+          this.plugin._listesDistantes = null;
+          await maj();
+          this.display();
+        });
+      });
+    if (dest === 'apple') {
+      this._reserveMac(c);
+      this._aide(c, tr("La première synchronisation demande l'accès à Rappels."));
+    } else if (dest === 'google') {
+      this._aide(c, tr("Google Tasks ne garde que le jour de l'échéance : l'heure reste dans la note. Un compte Google relié avant l'arrivée de Google Tasks dans Ariane doit être relié à nouveau, pour autoriser les tâches. Pensez aussi à activer l'API Google Tasks dans votre projet Google (docs/google-agenda.md)."));
+      if (this.plugin.sourceAgenda() === 'google-sync') {
+        this._aide(c, tr('Le compte Google est celui de l’agenda synchronisé, réglé plus bas (Agenda en fond).'));
+      } else {
+        this._googleCompte(c, s, maj);
+      }
+    } else {
+      this._microsoftCompte(c, s, maj);
+    }
     // Suggestions de listes Apple Rappels, partagées par la liste par défaut et
     // les familles. Chargées à la volée sur macOS.
-    {
+    if (dest === 'apple') {
       const dl = c.createEl('datalist');
       dl.id = 'zfa-dl-listes-rappels';
       for (const nom of (this.plugin._listesRappels || [])) dl.createEl('option', { value: nom });
@@ -1586,7 +1612,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     }
     new obsidian.Setting(c)
       .setName(tr('Liste de rappels par défaut'))
-      .setDesc(tr("Liste Apple Rappels d'une tâche quand sa famille n'en précise pas."))
+      .setDesc(dest === 'apple' ? tr("Liste Apple Rappels d'une tâche quand sa famille n'en précise pas.")
+        : tr("Liste d'une tâche quand sa famille n'en précise pas ; créée au besoin. Vide : la liste par défaut du compte."))
       .addText((t) => {
         t.inputEl.setAttribute('list', 'zfa-dl-listes-rappels');
         t.setValue(s.listeRappelsDefaut || '')
@@ -1635,12 +1662,20 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setName(tr('Synchroniser maintenant'))
         .addButton((b) => b.setButtonText(tr('Pousser')).onClick(() => this.plugin.pousserRappels(false)))
         .addButton((b) => b.setButtonText(tr('Relever')).onClick(() => this.plugin.releverRappels(false)))
-        .addExtraButton((b) => b.setIcon('refresh-cw').setTooltip(tr('Recharger la liste des listes'))
-          .onClick(async () => { await this.plugin.chargerListesRappels(); this.display(); }));
+        .addExtraButton((b) => b.setIcon(dest === 'apple' ? 'refresh-cw' : 'list')
+          .setTooltip(dest === 'apple' ? tr('Recharger la liste des listes') : tr('Voir les listes du compte'))
+          .onClick(async () => {
+            if (dest === 'apple') { await this.plugin.chargerListesRappels(); this.display(); return; }
+            const svc = this.plugin._serviceRappels(dest);
+            try {
+              const l = await this.plugin.listesDistantes(svc, true);
+              new obsidian.Notice(svc.nom + tr(' : listes ') + ([...l.parNom.keys()].join(', ') || tr('aucune')), 12000);
+            } catch (e) { new obsidian.Notice(svc.nom + ' : ' + ((e && e.message) || e), 9000); }
+          }));
     }
     new obsidian.Setting(c)
       .setName(tr('Retirer les tâches abandonnées'))
-      .setDesc(tr("Une tâche passée en « abandonnée » voit son rappel supprimé d'Apple Rappels, au lieu d'y rester ouvert. Une tâche terminée, elle, reste cochée."))
+      .setDesc(tr("Une tâche passée en « abandonnée » voit son rappel supprimé, au lieu d'y rester ouvert. Une tâche terminée, elle, reste cochée."))
       .addToggle((t) => t.setValue(s.rappelsSupprimerAbandonnees !== false)
         .onChange(async (v) => { s.rappelsSupprimerAbandonnees = v; await maj(); }));
     this._section(c, tr('Agenda en fond'));
@@ -2817,25 +2852,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
   // par défaut, l'automatisme, et les gestes à la main.
   _googleSynchro(c, s, maj) {
     this._aide(c, tr("Chaque créneau d'une tâche devient un événement dans le calendrier Google de sa famille (le champ « calendrier » de la famille, ou le calendrier par défaut ci-dessous) ; un événement déplacé dans Google déplace le créneau. La connexion passe par votre propre application Google : aucune adresse ni aucun compte n'est partagé. Le guide pas à pas est dans docs/google-agenda.md du dépôt d'Ariane."));
-    new obsidian.Setting(c)
-      .setName(tr('Identifiant client'))
-      .setDesc(tr('De votre application Google (type « Application de bureau »).'))
-      .addText((t) => t.setPlaceholder('…apps.googleusercontent.com').setValue(s.googleClientId || '')
-        .onChange(async (v) => { s.googleClientId = v.trim(); await maj(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Code secret du client'))
-      .addText((t) => {
-        t.setValue(s.googleClientSecret || '').onChange(async (v) => { s.googleClientSecret = v.trim(); await maj(); });
-        t.inputEl.type = 'password';
-      });
-    const relie = this.plugin.googleRelie();
-    new obsidian.Setting(c)
-      .setName(tr('Compte Google'))
-      .setDesc(relie ? tr('Relié.') : tr('Non relié : une page de connexion Google s’ouvrira dans le navigateur.'))
-      .addButton((b) => b.setButtonText(relie ? tr('Relier à nouveau') : tr('Relier mon compte Google')).setCta()
-        .onClick(async () => { await this.plugin.relierGoogle(); this.display(); }))
-      .addExtraButton((b) => b.setIcon('unlink').setTooltip(tr('Délier le compte'))
-        .onClick(async () => { await this.plugin.oublierGoogle(); this.display(); }));
+    this._googleCompte(c, s, maj);
     new obsidian.Setting(c)
       .setName(tr('Calendrier par défaut'))
       .setDesc(tr("Nom du calendrier Google d'une tâche quand sa famille n'en précise pas."))
@@ -2856,6 +2873,54 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           new obsidian.Notice(tr('Calendriers modifiables : ') + (noms.join(', ') || tr('aucun')), 12000);
         } catch (e) { new obsidian.Notice(tr('Google Agenda : ') + ((e && e.message) || e), 9000); }
       }));
+  }
+
+  // Le compte Google (votre application : identifiant, secret), commun à
+  // l'agenda synchronisé et à Google Tasks.
+  _googleCompte(c, s, maj) {
+    new obsidian.Setting(c)
+      .setName(tr('Identifiant client'))
+      .setDesc(tr('De votre application Google (type « Application de bureau »).'))
+      .addText((t) => t.setPlaceholder('…apps.googleusercontent.com').setValue(s.googleClientId || '')
+        .onChange(async (v) => { s.googleClientId = v.trim(); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Code secret du client'))
+      .addText((t) => {
+        t.setValue(s.googleClientSecret || '').onChange(async (v) => { s.googleClientSecret = v.trim(); await maj(); });
+        t.inputEl.type = 'password';
+      });
+    const relie = this.plugin.googleRelie();
+    new obsidian.Setting(c)
+      .setName(tr('Compte Google'))
+      .setDesc(relie ? tr('Relié.') : tr('Non relié : une page de connexion Google s’ouvrira dans le navigateur.'))
+      .addButton((b) => b.setButtonText(relie ? tr('Relier à nouveau') : tr('Relier mon compte Google')).setCta()
+        .onClick(async () => { await this.plugin.relierGoogle(); this.display(); }))
+      .addExtraButton((b) => b.setIcon('unlink').setTooltip(tr('Délier le compte'))
+        .onClick(async () => { await this.plugin.oublierGoogle(); this.display(); }));
+  }
+
+  // Le compte Microsoft (votre application Microsoft Entra, publique, sans
+  // secret) pour Microsoft To Do.
+  _microsoftCompte(c, s, maj) {
+    this._aide(c, tr("La connexion passe par votre propre application Microsoft (Microsoft Entra) : aucune adresse ni aucun compte n'est partagé. Le guide pas à pas est dans docs/microsoft-todo.md du dépôt d'Ariane."));
+    new obsidian.Setting(c)
+      .setName(tr("Identifiant de l'application"))
+      .setDesc(tr('« ID d’application (client) » de votre application, de type « Client public/natif » avec l’adresse de retour http://localhost.'))
+      .addText((t) => t.setPlaceholder('00000000-0000-0000-0000-000000000000').setValue(s.microsoftClientId || '')
+        .onChange(async (v) => { s.microsoftClientId = v.trim(); await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Annuaire'))
+      .setDesc(tr('« common » pour tout compte Microsoft ; l’identifiant de votre annuaire si votre application n’accepte que lui.'))
+      .addText((t) => t.setPlaceholder('common').setValue(s.microsoftLocataire || 'common')
+        .onChange(async (v) => { s.microsoftLocataire = v.trim() || 'common'; await maj(); }));
+    const relie = this.plugin.microsoftRelie();
+    new obsidian.Setting(c)
+      .setName(tr('Compte Microsoft'))
+      .setDesc(relie ? tr('Relié.') : tr('Non relié : une page de connexion Microsoft s’ouvrira dans le navigateur.'))
+      .addButton((b) => b.setButtonText(relie ? tr('Relier à nouveau') : tr('Relier mon compte Microsoft')).setCta()
+        .onClick(async () => { await this.plugin.relierMicrosoft(); this.display(); }))
+      .addExtraButton((b) => b.setIcon('unlink').setTooltip(tr('Délier le compte'))
+        .onClick(async () => { await this.plugin.oublierMicrosoft(); this.display(); }));
   }
 
   // Les agendas Google (iCal) affichés en fond : nom, adresse secrète,
@@ -2973,7 +3038,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         desc.onchange = async () => { f.description = desc.value.trim(); await maj(); };
         {
           const lr = corps.createDiv({ cls: 'zfa-famt-prop' });
-          lr.createEl('label', { text: tr('Liste Apple Rappels'), cls: 'zfa-famt-prop-lbl' });
+          lr.createEl('label', { text: tr('Liste de rappels'), cls: 'zfa-famt-prop-lbl' });
           const inp = lr.createEl('input', { type: 'text' });
           inp.setAttribute('list', 'zfa-dl-listes-rappels');
           inp.placeholder = this.plugin.settings.listeRappelsDefaut || tr('(liste par défaut)');

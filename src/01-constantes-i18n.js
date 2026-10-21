@@ -15,6 +15,62 @@ const DELAI_ANTIREBOND_MS = 800;
 
 const TEXTES = {
   en: {
+    // Rappels : Google Tasks et Microsoft To Do, comptes reliés.
+    "Chaque tâche datée devient un rappel dans la liste de sa famille. Synchronisation bidirectionnelle : cocher un rappel termine la tâche, un rappel ajouté à la main dans une liste surveillée devient une tâche. Trois destinations, l'une ou l'autre : Apple Rappels (Mac), Google Tasks ou Microsoft To Do (tout système).": "Each dated task becomes a reminder in its family's list. Two-way sync: ticking a reminder completes the task, and a reminder added by hand to a watched list becomes a task. Three destinations, one or the other: Apple Reminders (Mac), Google Tasks or Microsoft To Do (any system).",
+    "Google Tasks ne garde que le jour de l'échéance : l'heure reste dans la note. Un compte Google relié avant l'arrivée de Google Tasks dans Ariane doit être relié à nouveau, pour autoriser les tâches. Pensez aussi à activer l'API Google Tasks dans votre projet Google (docs/google-agenda.md).": "Google Tasks only keeps the due day: the time stays in the note. A Google account linked before Ariane supported Google Tasks must be linked again, to allow tasks. Also enable the Google Tasks API in your Google project (docs/google-agenda.md).",
+    "Identifiant de l'application": "Application ID",
+    "La connexion passe par votre propre application Microsoft (Microsoft Entra) : aucune adresse ni aucun compte n'est partagé. Le guide pas à pas est dans docs/microsoft-todo.md du dépôt d'Ariane.": "Sign-in goes through your own Microsoft application (Microsoft Entra): no address or account is shared. The step-by-step guide is in docs/microsoft-todo.md in Ariane's repository.",
+    "La première synchronisation demande l'accès à Rappels.": "The first sync asks for access to Reminders.",
+    "Liste Apple Rappels d'une tâche quand sa famille n'en précise pas.": "Apple Reminders list for a task whose family sets none.",
+    "Liste d'une tâche quand sa famille n'en précise pas ; créée au besoin. Vide : la liste par défaut du compte.": "List for a task whose family sets none; created if needed. Empty: the account's default list.",
+    "Une tâche passée en « abandonnée » voit son rappel supprimé, au lieu d'y rester ouvert. Une tâche terminée, elle, reste cochée.": "A task set to “abandoned” has its reminder deleted instead of left open. A completed task stays ticked.",
+    " : compte relié.": ": account linked.",
+    " : connexion abandonnée (cinq minutes écoulées).": ": sign-in abandoned (five minutes elapsed).",
+    " : connexion refusée (": ": sign-in refused (",
+    " : listes ": ": lists ",
+    " : reliez d’abord votre compte (Réglages, Tâches, Rappels).": ": link your account first (Settings, Tasks, Reminders).",
+    " : rien de neuf.": ": nothing new.",
+    " rappel(s) synchronisé(s) avec ": " reminder(s) synced with ",
+    " tâche(s) mise(s) à jour depuis ": " task(s) updated from ",
+    " échec(s), voir la console": " failure(s), see the console",
+    "Annuaire": "Directory",
+    "Compte Google": "Google account",
+    "Compte Microsoft": "Microsoft account",
+    "De votre application Google (type « Application de bureau »).": "From your Google application (“Desktop app” type).",
+    "Destination": "Destination",
+    "Délier le compte": "Unlink the account",
+    "Google : la connexion se fait depuis Obsidian sur ordinateur.": "Google: sign in from Obsidian on a computer.",
+    "Google : renseignez d’abord l’identifiant client de votre application Google (Réglages, Tâches).": "Google: first enter your Google application's client ID (Settings, Tasks).",
+    "Google n’a pas rendu de jeton de renouvellement.": "Google returned no refresh token.",
+    "Le compte Google est celui de l’agenda synchronisé, réglé plus bas (Agenda en fond).": "The Google account is the synced calendar's one, set further down (Background calendar).",
+    "Liste de rappels": "Reminders list",
+    "Microsoft : la connexion se fait depuis Obsidian sur ordinateur.": "Microsoft: sign in from Obsidian on a computer.",
+    "Microsoft : renseignez d’abord l’identifiant de votre application Microsoft (Réglages, Tâches, Rappels).": "Microsoft: first enter your Microsoft application's ID (Settings, Tasks, Reminders).",
+    "Microsoft n’a pas rendu de jeton de renouvellement.": "Microsoft returned no refresh token.",
+    "Non relié : une page de connexion Google s’ouvrira dans le navigateur.": "Not linked: a Google sign-in page will open in the browser.",
+    "Non relié : une page de connexion Microsoft s’ouvrira dans le navigateur.": "Not linked: a Microsoft sign-in page will open in the browser.",
+    "Rappels : dossier des tâches introuvable (« ": "Reminders: tasks folder not found (“",
+    "Rappels": "Reminders",
+    "Relier mon compte Microsoft": "Link my Microsoft account",
+    "Relier à nouveau": "Link again",
+    "Relié.": "Linked.",
+    "Sans titre": "Untitled",
+    "Synchronisation ": "Syncing ",
+    "Tâche supprimée : son rappel est retiré de ": "Task deleted: its reminder is removed from ",
+    "Tâches : synchroniser les rappels": "Tasks: sync reminders",
+    "Voir les listes du compte": "Show the account's lists",
+    "accès refusé : reliez à nouveau votre compte": "access denied: link your account again",
+    "aucune": "none",
+    "compte Microsoft non relié": "Microsoft account not linked",
+    "création refusée": "creation refused",
+    "liste non créée": "list not created",
+    "listes illisibles": "lists unreadable",
+    "mise à jour refusée": "update refused",
+    "suppression refusée": "deletion refused",
+    "tâches illisibles": "tasks unreadable",
+    "« ID d’application (client) » de votre application, de type « Client public/natif » avec l’adresse de retour http://localhost.": "Your application's “Application (client) ID”, registered as “Public client/native” with the redirect URI http://localhost.",
+    "« common » pour tout compte Microsoft ; l’identifiant de votre annuaire si votre application n’accepte que lui.": "“common” for any Microsoft account; your directory ID if your application only accepts that directory.",
+    "état inattendu": "unexpected state",
     ".docx dont les styles seront appliqués (titres, corps, citation, etc.).": ".docx whose styles will be applied (headings, body, quote, and so on).",
     "Abréger les citations indirectes": "Shorten secondary citations",
     "Accepter n'importe quelle note": "Accept any note",
@@ -1525,7 +1581,11 @@ const DEFAULT_SETTINGS = {
   dossierTaches: '',            // rôle : où déposer les notes de tâche
   refGabarit: 'T-{n:3}',        // forme de la référence : {n} = compteur, {n:3} = sur 3 chiffres
   listeRappelsDefaut: 'Doctorat - Tâches',
-  rappelsActif: false,          // intégration Apple Rappels (macOS)
+  rappelsActif: false,          // intégration des rappels (Apple Rappels, Google Tasks, Microsoft To Do)
+  rappelsDestination: '',       // 'apple' | 'google' | 'microsoft' (vide : Apple sur Mac, Google ailleurs)
+  microsoftClientId: '',        // Microsoft To Do : l'application Microsoft de l'utilisateur (publique, sans secret)
+  microsoftLocataire: 'common', // annuaire de connexion : common, consumers, organizations, ou l'identifiant d'un annuaire
+  microsoftJeton: null,         // { refresh_token, access_token, expire } : propre à la machine
   rappelsAuto: true,            // pousser à la sauvegarde d'une tâche + relever régulièrement
   rappelsReleveMin: 10,         // minutes entre deux relèves automatiques
   rappelsFormatTitre: '[{ref}] - {intitule}', // gabarit du titre d'un rappel Apple

@@ -267,7 +267,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'rappels-pousser',
-      name: tr('Tâches : synchroniser vers Apple Rappels'),
+      name: tr('Tâches : synchroniser les rappels'),
       callback: () => this.pousserRappels(false),
     });
     this.addCommand({
@@ -1378,9 +1378,10 @@ class Ariane extends composer(obsidian.Plugin,
       }, 3000);
     });
 
-    // Apple Rappels : poussée automatique quand une tâche change, et relève
-    // régulière tant qu'Obsidian est ouvert. Tout est inerte hors macOS ou si
-    // l'intégration est coupée. Les gestes des vues passent par majTache
+    // Rappels (Apple Rappels, Google Tasks ou Microsoft To Do) : poussée
+    // automatique quand une tâche change, et relève régulière tant
+    // qu'Obsidian est ouvert. Tout est inerte si la destination n'est pas
+    // disponible (Apple hors macOS, compte non relié) ou l'intégration coupée. Les gestes des vues passent par majTache
     // (jamais marquée écriture) → cette écoute les couvre aussi.
     this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
       if (!this.refDeChemin(fichier.path)) return;
@@ -1388,12 +1389,11 @@ class Ariane extends composer(obsidian.Plugin,
       this._relancerPushRappels(2500);
     }));
     this.app.workspace.onLayoutReady(() => {
-      if (obsidian.Platform.isMacOS && this.settings.rappelsActif && this.settings.rappelsAuto) {
-        setTimeout(() => this.releverRappels(true), 8000);
-        this.registerInterval(window.setInterval(
-          () => { if (this.settings.rappelsActif && this.settings.rappelsAuto) this.releverRappels(true); },
-          Math.max(2, Number(this.settings.rappelsReleveMin) || 10) * 60000));
-      }
+      if (this._rappelsAutoActif()) setTimeout(() => this.releverRappels(true), 8000);
+      // L'intervalle tourne toujours : la destination peut être reliée plus tard.
+      this.registerInterval(window.setInterval(
+        () => { if (this._rappelsAutoActif()) this.releverRappels(true); },
+        Math.max(2, Number(this.settings.rappelsReleveMin) || 10) * 60000));
     });
 
     // Apple Agenda : push antirebondi quand une note de tâche change de

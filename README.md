@@ -812,6 +812,24 @@ Instead of Apple Calendar (Settings, Tasks, **Background calendar**,
   slot. The step-by-step guide (in French) is in
   [docs/google-agenda.md](docs/google-agenda.md).
 
+### Google Tasks and Microsoft To Do
+
+Instead of Apple Reminders (Settings, Tasks, **Reminders**, "Destination"),
+on any system, with the same rules. Each dated task becomes a task in its
+family's list (created if needed), ticking it completes the task, a task
+added by hand to a watched list becomes a vault task, and the note wins when
+both sides changed.
+
+- **Google Tasks** uses the same Google account as the synchronised
+  calendar. It only keeps the due day: the time stays in the note. Guide (in
+  French): [docs/google-agenda.md](docs/google-agenda.md).
+- **Microsoft To Do** goes through your own Microsoft application. The time
+  becomes the reminder alert, the priority its importance. Guide (in French):
+  [docs/microsoft-todo.md](docs/microsoft-todo.md).
+
+The ID kept in the note names its service: switching destination never
+mistakes one service's reminder for another's.
+
 ### Actual activity outside Obsidian (ActivityWatch)
 
 The timer only sees notes. To know what happens elsewhere on the computer,
@@ -879,7 +897,7 @@ says what the server exposes.
 | Tasks: normalise titles, check families (AI) | batch review |
 | Tasks: add (plain language, AI) | one sentence → one task |
 | Tasks: resolve sources of reading tasks | plain text → `@citekey` |
-| Tasks: sync to Apple Reminders, pull reminders | two-way, macOS |
+| Tasks: sync reminders, pull reminders | two-way; Apple Reminders, Google Tasks or Microsoft To Do |
 | Tasks: sync to Apple Calendar, pull Apple Calendar | créneaux ↔ events, macOS |
 
 ---
@@ -908,7 +926,8 @@ on your own machine; if you configure it, Mistral's API for the task AI or
 bibliography splitting; and, if you enable it, the local ActivityWatch server,
 which the plugin reads and never writes to. The **thesis watch**, which you run
 or schedule, queries Crossref, OpenAlex, HAL and the RSS feeds you declared,
-read only. To pick the records of the right
+read only. If you link an account, Ariane also talks to Google (Calendar,
+Tasks) or Microsoft (To Do), through your own application. To pick the records of the right
 machine, it also reads its name (`os.hostname`). Nothing else leaves your
 machine.
 
@@ -933,8 +952,9 @@ install.
 
 Mac only, with no effect elsewhere (the settings say so): Apple Reminders and
 Apple Calendar sync, the Apple spell checker, iPhone screen time, the Safari
-tab log and application icons. On Windows, "Open with Word" (PowerPoint,
-Excel) launches the app installed by Microsoft 365 or Office.
+tab log and application icons. Elsewhere, reminders go to Google Tasks or
+Microsoft To Do, and the calendar to Google Calendar. On Windows, "Open with
+Word" (PowerPoint, Excel) launches the app installed by Microsoft 365 or Office.
 
 For the Word export on Windows, install pandoc (pandoc.org) and Python 3
 (python.org, with the "py" launcher).

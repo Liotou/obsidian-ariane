@@ -438,8 +438,10 @@ const avecTachesStatiques = (Base) => class extends Base {
   //  identifiant client) : aucune application n'est publiée avec Ariane.
 
   static get GOOGLE_PORTEES() {
+    // Les tâches aussi : un seul compte relié sert l'agenda et les rappels.
     return ['https://www.googleapis.com/auth/calendar.events',
-      'https://www.googleapis.com/auth/calendar.calendarlist.readonly'];
+      'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+      'https://www.googleapis.com/auth/tasks'];
   }
 
   // Le défi PKCE (S256) d'un vérificateur, en base64url.
@@ -519,6 +521,112 @@ const avecTachesStatiques = (Base) => class extends Base {
       if (p.ev) ops.push({ ref: t.ref, idx: i, op: 'supprimer', ancien: p });
     });
     return ops;
+  }
+
+  // ── Rappels hors du Mac : Google Tasks et Microsoft To Do ──
+  //  Même contrat qu'Apple Rappels : chaque tâche datée devient une tâche
+  //  dans la liste de sa famille, la cocher termine la tâche, et une tâche
+  //  ajoutée à la main dans une liste surveillée devient une tâche du coffre.
+  //  La note garde l'identifiant dans « rappel-id », préfixé du service
+  //  (« google:liste::tâche », « microsoft:liste::tâche ») : changer de
+  //  service ne fait jamais prendre l'identifiant de l'un pour l'autre.
+
+  static get MICROSOFT_PORTEES() { return ['Tasks.ReadWrite', 'offline_access']; }
+
+  // L'adresse de la page de connexion de Microsoft (application publique,
+  // PKCE, sans secret). `locataire` : « common » par défaut.
+  static urlAutorisationMicrosoft(o) {
+    const p = new URLSearchParams({
+      client_id: o.clientId, response_type: 'code', redirect_uri: o.redirection, response_mode: 'query',
+      scope: Ariane.MICROSOFT_PORTEES.join(' '), state: o.etat, prompt: 'select_account',
+      code_challenge: Ariane.defiPkce(o.verificateur), code_challenge_method: 'S256',
+    });
+    return 'https://login.microsoftonline.com/' + encodeURIComponent(String(o.locataire || '').trim() || 'common')
+      + '/oauth2/v2.0/authorize?' + p.toString();
+  }
+
+  static idRappel(fournisseur, liste, tache) {
+    return fournisseur && liste && tache ? fournisseur + ':' + liste + '::' + tache : '';
+  }
+
+  // { fournisseur : 'apple' | 'google' | 'microsoft' | '', liste, tache }.
+  // Un identifiant sans préfixe vient d'Apple Rappels.
+  static partiesIdRappel(id) {
+    const s = String(id || '').trim();
+    if (!s) return { fournisseur: '', liste: '', tache: '' };
+    const m = s.match(/^(google|microsoft):(.+)::([^:]+)$/);
+    if (m) return { fournisseur: m[1], liste: m[2], tache: m[3] };
+    return { fournisseur: 'apple', liste: '', tache: s };
+  }
+
+  // Une tâche Google : l'échéance n'y est qu'un jour, l'heure se perd.
+  static corpsTacheGoogle(o) {
+    const corps = {
+      title: o.titre || '', notes: String(o.notes || ''),
+      due: o.echeance ? o.echeance + 'T00:00:00.000Z' : null,
+      status: o.termine ? 'completed' : 'needsAction',
+    };
+    if (!o.termine) corps.completed = null;
+    return corps;
+  }
+
+  // Une date pour Graph : le jour (et l'heure) dans le fuseau donné ; sans
+  // fuseau, le même instant exprimé en UTC.
+  static dateGraph(jour, heure, fuseau) {
+    const m = String(jour || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const h = /^\d{2}:\d{2}$/.test(heure || '') ? heure : '00:00';
+    if (fuseau) return { dateTime: jour + 'T' + h + ':00', timeZone: fuseau };
+    const d = new Date(+m[1], +m[2] - 1, +m[3], +h.slice(0, 2), +h.slice(3, 5));
+    return { dateTime: d.toISOString().slice(0, 19), timeZone: 'UTC' };
+  }
+
+  // Une tâche Microsoft To Do : l'échéance est un jour ; l'heure devient
+  // l'alerte du rappel, la priorité son importance.
+  static corpsTacheMicrosoft(o) {
+    const heure = o.echeance && /^\d{2}:\d{2}$/.test(o.heure || '') ? o.heure : '';
+    return {
+      title: o.titre || '', body: { content: String(o.notes || ''), contentType: 'text' },
+      dueDateTime: Ariane.dateGraph(o.echeance, '', o.fuseau),
+      isReminderOn: !!heure,
+      reminderDateTime: heure ? Ariane.dateGraph(o.echeance, heure, o.fuseau) : null,
+      importance: { haute: 'high', basse: 'low' }[o.priorite] || 'normal',
+      status: o.termine ? 'completed' : 'notStarted',
+    };
+  }
+
+  // Une date de Graph ({ dateTime, timeZone }) en heure locale
+  // « AAAA-MM-JJTHH:MM ». Un fuseau nommé est celui qu'Ariane a envoyé.
+  static localDepuisGraph(o) {
+    if (!o || !o.dateTime) return '';
+    const s = String(o.dateTime).slice(0, 19);
+    if (!o.timeZone || /^utc$/i.test(o.timeZone)) {
+      const t = Date.parse(s + 'Z');
+      return isNaN(t) ? '' : Ariane.isoLocal(t);
+    }
+    return s.slice(0, 16);
+  }
+
+  // Ce que la relève lit d'une tâche distante : { titre, coche, due }, due
+  // valant « AAAA-MM-JJ » ou « AAAA-MM-JJTHH:MM ».
+  static etatTacheDistante(fournisseur, j) {
+    const x = j || {};
+    if (fournisseur === 'google') {
+      return { titre: String(x.title || ''), coche: x.status === 'completed', due: x.due ? String(x.due).slice(0, 10) : '' };
+    }
+    let jour = '';
+    if (x.dueDateTime && x.dueDateTime.dateTime) {
+      // Une échéance de To Do est un jour. Minuit pile : on le lit tel quel ;
+      // sinon, c'est un minuit local exprimé en UTC, qu'on ramène.
+      const brut = String(x.dueDateTime.dateTime);
+      jour = /T00:00(?::00)?/.test(brut) ? brut.slice(0, 10) : Ariane.localDepuisGraph(x.dueDateTime).slice(0, 10);
+    }
+    let heure = '';
+    if (jour && x.isReminderOn && x.reminderDateTime) {
+      const r = Ariane.localDepuisGraph(x.reminderDateTime);
+      if (r.slice(0, 10) === jour) heure = r.slice(11, 16);
+    }
+    return { titre: String(x.title || ''), coche: x.status === 'completed', due: jour ? jour + (heure ? 'T' + heure : '') : '' };
   }
 
   // Le corps d'une note neuve associée à un événement Apple Calendrier (clic

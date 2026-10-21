@@ -13,7 +13,7 @@ const avecSocle = (Base) => class extends Base {
     return ['exportPandocBin', 'exportFiltreLua', 'exportModeleWord',
             'suggOllamaUrl', 'suggLmStudioUrl', 'activiteUrl',
             // Secrets : ils ne voyagent jamais dans un profil exporté.
-            'googleJeton', 'googleClientSecret', 'agendasIcs'];
+            'googleJeton', 'googleClientSecret', 'agendasIcs', 'microsoftJeton'];
   }
 
   // Ce qui ne voyage pas non plus : l'état accumulé, propre au coffre.

@@ -841,6 +841,24 @@ Au choix d'Apple Agenda (Réglages, Tâches, **Agenda en fond**, « Source ») :
   événement déplacé dans Google déplace le créneau. Le guide pas à pas est
   dans [docs/google-agenda.md](docs/google-agenda.md).
 
+### Google Tasks et Microsoft To Do
+
+Au choix d'Apple Rappels (Réglages, Tâches, **Rappels**, « Destination »), et
+sur tout système : les rappels suivent les mêmes règles. Chaque tâche datée
+devient une tâche dans la liste de sa famille (créée au besoin), cocher la
+termine, une tâche ajoutée à la main dans une liste surveillée devient une
+tâche du coffre, et la note fait foi quand les deux côtés ont changé.
+
+- **Google Tasks** passe par le même compte Google que l'agenda synchronisé.
+  Il ne garde que le jour de l'échéance : l'heure reste dans la note. Guide :
+  [docs/google-agenda.md](docs/google-agenda.md).
+- **Microsoft To Do** passe par votre propre application Microsoft. L'heure
+  devient l'alerte du rappel, la priorité son importance. Guide :
+  [docs/microsoft-todo.md](docs/microsoft-todo.md).
+
+L'identifiant gardé dans la note porte le nom du service : changer de
+destination ne fait jamais prendre le rappel de l'un pour celui de l'autre.
+
 ### Activité réelle hors d'Obsidian (ActivityWatch)
 
 Le compteur de temps ne voit que les notes. Pour savoir ce qui se passe
@@ -912,7 +930,7 @@ expose.
 | Tâches : normaliser les intitulés, vérifier les familles (IA) | revue en lot |
 | Tâches : ajouter (langage naturel, IA) | une phrase → une tâche |
 | Tâches : résoudre les sources des tâches de lecture | texte → `@citekey` |
-| Tâches : synchroniser vers Apple Rappels, relever les rappels | bidirectionnel, macOS |
+| Tâches : synchroniser les rappels, relever les rappels | bidirectionnel ; Apple Rappels, Google Tasks ou Microsoft To Do |
 | Tâches : synchroniser vers Apple Agenda, relever Apple Agenda | créneaux ↔ événements, macOS |
 
 ---
@@ -943,7 +961,9 @@ déclenchez vous-même, les modèles d'IA locaux d'Ollama ou LM Studio, qui
 tournent sur votre machine, et, si vous l'activez, le serveur local
 d'ActivityWatch, que le greffon lit sans jamais y écrire. La **veille**, que
 vous lancez ou planifiez, interroge Crossref, OpenAlex, HAL et les flux RSS que
-vous avez déclarés, en lecture seule. Pour choisir les
+vous avez déclarés, en lecture seule. Si vous reliez un compte, Ariane parle
+aussi à Google (Agenda, Tasks) ou à Microsoft (To Do), avec votre propre
+application. Pour choisir les
 relevés de la bonne machine, il lit aussi son nom (`os.hostname`).
 
 **Presse-papiers.** En écriture seulement, et seulement quand vous cliquez sur
@@ -968,8 +988,9 @@ rien installer.
 Restent propres au Mac, et sans effet ailleurs (les réglages le signalent) :
 la synchronisation avec Apple Rappels et Apple Agenda, le correcteur Apple, le
 temps d'écran de l'iPhone, le relevé des onglets de Safari et les icônes des
-applications. Sous Windows, « Ouvrir avec Word » (PowerPoint, Excel) lance
-l'application installée par Microsoft 365 ou Office.
+applications. Ailleurs, les rappels vont dans Google Tasks ou Microsoft To Do,
+et l'agenda dans Google Agenda. Sous Windows, « Ouvrir avec Word »
+(PowerPoint, Excel) lance l'application installée par Microsoft 365 ou Office.
 
 Pour l'export Word sous Windows : installez pandoc (pandoc.org) et Python 3
 (python.org, avec le lanceur « py »).

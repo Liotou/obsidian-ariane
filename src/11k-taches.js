@@ -428,13 +428,18 @@ const avecTaches = (Base) => class extends Base {
     const d = this.app.vault.getAbstractFileByPath(this.dossierT);
     if (d instanceof obsidian.TFolder) return true;
     if (!silencieux) {
-      new obsidian.Notice(tr('Apple Rappels : dossier des tâches introuvable (« ')
+      new obsidian.Notice(tr('Rappels : dossier des tâches introuvable (« ')
         + this.dossierT + tr(' »). Rechargez Ariane si vous venez de le renommer.'), 8000);
     }
     return false;
   }
 
   async _pousserRappelsImpl(silencieux) {
+    if (this.settings.rappelsActif === false) return 0;
+    if (this.destinationRappels() !== 'apple') {
+      if (!this._dossierTachesValide(silencieux)) return 0;
+      return this._pousserRappelsDistant(silencieux);
+    }
     if (!obsidian.Platform.isMacOS) {
       if (!silencieux) new obsidian.Notice(tr('Apple Rappels : disponible sur macOS uniquement.'));
       return 0;
@@ -442,7 +447,10 @@ const avecTaches = (Base) => class extends Base {
     if (this.settings.rappelsActif === false) return 0;
     if (!this._dossierTachesValide(silencieux)) return 0;
     const vault = this.app.vault.getName();
-    const cibles = this._tachesRappel();
+    // L'identifiant d'un autre service (Google, Microsoft) n'est pas un rappel Apple.
+    const cibles = this._tachesRappel().map((t) => (Ariane.partiesIdRappel(t._rid).fournisseur === 'apple' ? t
+      : Object.assign({}, t, { _rid: '' })))
+      .filter((t) => t._rid || (t.statut !== 'terminée' && t.statut !== 'abandonnée'));
     if (!cibles.length) { if (!silencieux) new obsidian.Notice(tr('Aucune tâche à synchroniser.')); return 0; }
     const charge = [];
     for (const t of cibles) {
@@ -518,7 +526,12 @@ const avecTaches = (Base) => class extends Base {
   // répercutée (sauf si la note a bougé, elle fait foi) ; un rappel ajouté à la
   // main dans une liste surveillée, sans référence connue → nouvelle tâche.
   async releverRappels(silencieux) {
-    if (!obsidian.Platform.isMacOS || this.settings.rappelsActif === false) return 0;
+    if (this.settings.rappelsActif === false) return 0;
+    if (this.destinationRappels() !== 'apple') {
+      if (!this._dossierTachesValide(silencieux)) return 0;
+      return this._releverRappelsDistant(silencieux);
+    }
+    if (!obsidian.Platform.isMacOS) return 0;
     if (!this._dossierTachesValide(silencieux)) return 0;
     const listes = this._listesSurveillees();
     const avecId = [];
@@ -526,10 +539,10 @@ const avecTaches = (Base) => class extends Base {
     for (const t of this.tachesPourGantt()) {
       const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
       const rid = String(this._lireT(fm, 'rappel-id') || '').trim();
-      if (rid) {
-        idsConnus.add(rid);
-        avecId.push(Object.assign({}, t, { _rid: rid, _snap: String(fm['Tâche - Synchro Rappels'] || '') }));
-      }
+      if (!rid) continue;
+      idsConnus.add(rid);
+      if (Ariane.partiesIdRappel(rid).fournisseur !== 'apple') continue;
+      avecId.push(Object.assign({}, t, { _rid: rid, _snap: String(fm['Tâche - Synchro Rappels'] || '') }));
     }
     if (!avecId.length && !listes.length) return 0;
     const avis = silencieux ? null : new obsidian.Notice(tr('Relève Apple Rappels…'), 0);
@@ -544,79 +557,86 @@ const avecTaches = (Base) => class extends Base {
       const parts = l.split('\t');
       if (parts[0] === 'NOUVEAU') {
         const id = parts[1];
-        const nom = String(parts[2] || '').trim();
-        const coche = parts[3] === '1';
-        const dueIso = parts[4] || '';
-        const listeNom = parts[5] || '';
         if (!id || idsConnus.has(id) || this._rappelIgnore(id)) continue;
-        // Le titre du rappel porte-t-il la référence d'une tâche existante ? On
-        // relie au lieu de recréer. Sans supposer de forme : un jeton entre
-        // crochets qui est une réf connue, sinon une réf connue en sous-chaîne.
-        const refLiee = Ariane.refDansTexte(nom, refsTaches);
-        if (refLiee) {
-          await this.majTache(refLiee, { 'rappel-id': id });
-          idsConnus.add(id); n += 1; continue;
-        }
-        const d = dueIso.slice(0, 10);
-        const h = dueIso.length > 10 ? dueIso.slice(11, 16) : '';
-        const chemin = await this.creerTache({
-          intitule: nom || tr('Sans titre'),
-          echeance: d, heure: h === '00:00' ? '' : h,
-          statut: coche ? 'terminée' : 'à faire',
-          liste: listeNom,
-          famille: this._familleParListe(listeNom),
-        });
-        const ref = this.refDeChemin(chemin);
-        if (ref) {
-          await this.majTache(ref, { 'rappel-id': id });
-          const f2 = this.fichierDeRef(ref);
-          if (f2) {
-            this.marquerEcriture(f2.path);
-            await this.app.fileManager.processFrontMatter(f2, (x) => {
-              x['Tâche - Synchro Rappels'] = [d, h === '00:00' ? '' : h, coche ? 'terminée' : 'à faire'].join('|');
-            });
-          }
-          idsConnus.add(id); n += 1;
-        }
+        if (await this._importerRappel({ id, nom: String(parts[2] || '').trim(), coche: parts[3] === '1',
+          dueIso: parts[4] || '', listeNom: parts[5] || '' }, refsTaches, idsConnus)) n += 1;
         continue;
       }
       const t = parts[0] && parRef.get(parts[0]);
-      if (!t) continue;
-      if (parts[1] === 'MANQUANT') continue;
-      const coche = parts[1] === '1';
-      const dueIso = parts[2] || '';
-      const noteInstant = this._instantRappel(t);
-      const noteBougee = t._snap && noteInstant !== t._snap;
-      const champs = {};
-      // Complétion : le rappel coché termine la tâche (si la note n'a pas changé de statut).
-      if (coche && t.statut !== 'terminée' && !noteBougee) {
-        champs.statut = 'terminée';
-        champs.terminee = true;
-      }
-      // Échéance : reportée seulement si la note n'a pas bougé.
-      if (dueIso && !noteBougee) {
-        const d = dueIso.slice(0, 10);
-        const h = dueIso.length > 10 ? dueIso.slice(11, 16) : '';
-        const hNote = h === '00:00' ? '' : h;
-        if (d !== t.echeance || (hNote || '') !== (t.heure || '')) {
-          champs.echeance = d;
-          champs.heure = hNote;
-        }
-      }
-      if (Object.keys(champs).length) {
-        await this.majTache(t.ref, champs);
-        if (t.fichier) {
-          const maj2 = Object.assign({ echeance: t.echeance, heure: t.heure, statut: t.statut }, champs);
-          this.marquerEcriture(t.fichier.path);
-          await this.app.fileManager.processFrontMatter(t.fichier, (x) => {
-            x['Tâche - Synchro Rappels'] = [maj2.echeance || '', maj2.heure || '', maj2.statut || ''].join('|');
-          });
-        }
-        n += 1;
-      }
+      if (!t || parts[1] === 'MANQUANT') continue;
+      if (await this._releverUneTache(t, parts[1] === '1', parts[2] || '', false)) n += 1;
     }
     if (!silencieux && n) new obsidian.Notice(n + tr(' tâche(s) mise(s) à jour depuis Rappels.'));
     return n;
+  }
+
+  // Relève d'un rappel lié : coché, il termine la tâche ; son échéance
+  // (« AAAA-MM-JJ » ou « AAAA-MM-JJTHH:MM ») est reportée. La note fait foi
+  // si elle a bougé depuis le dernier envoi. `heureIgnoree` : le service ne
+  // garde que le jour (Google Tasks), l'heure de la note reste. Rend vrai si
+  // la tâche a changé.
+  async _releverUneTache(t, coche, dueIso, heureIgnoree) {
+    const noteBougee = !!t._snap && this._instantRappel(t) !== String(t._snap).split('§')[0];
+    if (noteBougee) return false;
+    const champs = {};
+    if (coche && t.statut !== 'terminée') {
+      champs.statut = 'terminée';
+      champs.terminee = true;
+    }
+    if (dueIso) {
+      const d = dueIso.slice(0, 10);
+      const h = heureIgnoree ? (t.heure || '') : (dueIso.length > 10 ? dueIso.slice(11, 16) : '');
+      const hNote = h === '00:00' ? '' : h;
+      if (d !== t.echeance || (hNote || '') !== (t.heure || '')) {
+        champs.echeance = d;
+        champs.heure = hNote;
+      }
+    }
+    if (!Object.keys(champs).length) return false;
+    await this.majTache(t.ref, champs);
+    if (t.fichier) {
+      const maj2 = Object.assign({ echeance: t.echeance, heure: t.heure, statut: t.statut }, champs);
+      this.marquerEcriture(t.fichier.path);
+      await this.app.fileManager.processFrontMatter(t.fichier, (x) => {
+        x['Tâche - Synchro Rappels'] = [maj2.echeance || '', maj2.heure || '', maj2.statut || ''].join('|');
+      });
+    }
+    return true;
+  }
+
+  // Un rappel inconnu d'une liste surveillée : relié à la tâche dont son titre
+  // porte la référence, sinon devenu une tâche neuve. r : { id, nom, coche,
+  // dueIso, listeNom }. Rend vrai si une tâche a été reliée ou créée.
+  async _importerRappel(r, refsTaches, idsConnus) {
+    // Le titre du rappel porte-t-il la référence d'une tâche existante ? On
+    // relie au lieu de recréer. Sans supposer de forme : un jeton entre
+    // crochets qui est une réf connue, sinon une réf connue en sous-chaîne.
+    const refLiee = Ariane.refDansTexte(r.nom, refsTaches);
+    if (refLiee) {
+      await this.majTache(refLiee, { 'rappel-id': r.id });
+      idsConnus.add(r.id);
+      return true;
+    }
+    const d = String(r.dueIso || '').slice(0, 10);
+    const h0 = String(r.dueIso || '').length > 10 ? r.dueIso.slice(11, 16) : '';
+    const h = h0 === '00:00' ? '' : h0;
+    const statut = r.coche ? 'terminée' : 'à faire';
+    const chemin = await this.creerTache({
+      intitule: r.nom || tr('Sans titre'),
+      echeance: d, heure: h, statut,
+      liste: r.listeNom,
+      famille: this._familleParListe(r.listeNom),
+    });
+    const ref = this.refDeChemin(chemin);
+    if (!ref) return false;
+    await this.majTache(ref, { 'rappel-id': r.id });
+    const f2 = this.fichierDeRef(ref);
+    if (f2) {
+      this.marquerEcriture(f2.path);
+      await this.app.fileManager.processFrontMatter(f2, (x) => { x['Tâche - Synchro Rappels'] = [d, h, statut].join('|'); });
+    }
+    idsConnus.add(r.id);
+    return true;
   }
 
   /* ---- Apple Rappels : tâches supprimées ---------------------------- */
@@ -648,7 +668,18 @@ const avecTaches = (Base) => class extends Base {
     // longtemps n'a plus de chance de revenir.
     this.settings.rappelsIgnores = l.slice(-500);
     await this.saveSettings();
-    if (!obsidian.Platform.isMacOS || this.settings.rappelsActif === false) return;
+    if (this.settings.rappelsActif === false) return;
+    const p = Ariane.partiesIdRappel(id);
+    if (p.fournisseur !== 'apple') {
+      if (p.fournisseur !== this.destinationRappels() || !this.rappelsDisponibles()) return;
+      const svc = this._serviceRappels(p.fournisseur);
+      try {
+        const r = await svc.supprimer(p.liste, p.tache);
+        if (r.status < 300) new obsidian.Notice(tr('Tâche supprimée : son rappel est retiré de ') + svc.nom + '.');
+      } catch (e) { console.warn('[Ariane] ' + svc.nom + ', suppression :', e); }
+      return;
+    }
+    if (!obsidian.Platform.isMacOS) return;
     const sortie = await this._osascriptJXA(
       Ariane.genererJXARappels([{ ref: 'supprime', id, supprimer: true }]), 30000);
     if (sortie && /SUPPRIME/.test(sortie)) new obsidian.Notice(tr('Tâche supprimée : son rappel est retiré d’Apple Rappels.'));
@@ -656,9 +687,10 @@ const avecTaches = (Base) => class extends Base {
 
   /* ---- Apple Rappels : orchestration -------------------------------- */
 
-  // La synchro automatique Rappels doit-elle tourner ? (macOS, activée, auto.)
+  // La synchro automatique des rappels doit-elle tourner ? (Destination
+  // disponible, activée, auto.)
   _rappelsAutoActif() {
-    return obsidian.Platform.isMacOS && !!this.settings.rappelsActif && !!this.settings.rappelsAuto;
+    return !!this.settings.rappelsActif && !!this.settings.rappelsAuto && this.rappelsDisponibles();
   }
 
   // Programme un push automatique (note de tâche modifiée, nouvelle tâche…).
@@ -1040,20 +1072,20 @@ const avecTaches = (Base) => class extends Base {
     return this.sourceAgenda() === 'google-sync' && this.googleRelie() && this.settings.googleAuto !== false;
   }
 
-  // Relie le compte Google : la page de connexion s'ouvre dans le navigateur,
-  // Google renvoie vers un petit serveur local d'Ariane (127.0.0.1, port
-  // libre, cinq minutes au plus), qui échange le code contre les jetons.
-  async relierGoogle() {
-    const s = this.settings;
-    if (!obsidian.Platform.isDesktopApp) { new obsidian.Notice(tr('Google Agenda : la connexion se fait depuis Obsidian sur ordinateur.')); return false; }
-    const clientId = String(s.googleClientId || '').trim();
-    if (!clientId) { new obsidian.Notice(tr('Google Agenda : renseignez d’abord l’identifiant client (Réglages, Tâches, Agenda en fond).'), 9000); return false; }
+  // Relie un compte (Google, Microsoft) : la page de connexion s'ouvre dans
+  // le navigateur, qui revient vers un petit serveur local d'Ariane
+  // (127.0.0.1, port libre, cinq minutes au plus) ; `echanger` change le code
+  // contre les jetons. o : { nom, hote (de l'adresse de retour), adresse
+  // (redirection, verificateur, etat), echanger (code, redirection,
+  // verificateur) }. Rend vrai si le compte est relié.
+  _connexionNavigateur(o) {
     const http = require('http');
     const crypto = require('crypto');
     const verificateur = crypto.randomBytes(48).toString('base64').replace(/[^A-Za-z0-9]/g, '').slice(0, 64);
     const etat = crypto.randomBytes(12).toString('hex');
     return new Promise((fin) => {
       let fini = false;
+      let redirection = '';
       const serveur = http.createServer(async (req, res) => {
         const u = new URL(req.url, 'http://127.0.0.1');
         const code = u.searchParams.get('code');
@@ -1062,44 +1094,64 @@ const avecTaches = (Base) => class extends Base {
         const ok = code && u.searchParams.get('state') === etat;
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end('<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:3em">'
-          + (ok ? 'Ariane est reliée à Google Agenda. Vous pouvez fermer cet onglet.' : 'La connexion a échoué. Vous pouvez fermer cet onglet.') + '</body>');
+          + (ok ? 'Ariane est reliée à votre compte ' + o.nom + '. Vous pouvez fermer cet onglet.' : 'La connexion a échoué. Vous pouvez fermer cet onglet.') + '</body>');
         if (fini) return;
         fini = true;
         serveur.close();
-        if (!ok) { new obsidian.Notice(tr('Google Agenda : connexion refusée (') + (err || tr('état inattendu')) + ').', 9000); fin(false); return; }
+        if (!ok) {
+          new obsidian.Notice(o.nom + tr(' : connexion refusée (') + (u.searchParams.get('error_description') || err || tr('état inattendu')) + ').', 9000);
+          fin(false);
+          return;
+        }
         try {
-          const j = await this._googleJetonDepuis({ grant_type: 'authorization_code', code,
-            redirect_uri: 'http://127.0.0.1:' + serveur._port, code_verifier: verificateur });
-          if (!j || !j.refresh_token) throw new Error(tr('Google n’a pas rendu de jeton de renouvellement.'));
-          s.googleJeton = { refresh_token: j.refresh_token, access_token: j.access_token,
-            expire: Date.now() + (Number(j.expires_in) || 3600) * 1000 };
-          this._googleCals = null;
-          await this.saveSettings();
-          new obsidian.Notice(tr('Google Agenda : compte relié.'));
+          await o.echanger(code, redirection, verificateur);
+          new obsidian.Notice(o.nom + tr(' : compte relié.'));
           fin(true);
         } catch (e) {
-          new obsidian.Notice(tr('Google Agenda : ') + ((e && e.message) || e), 10000);
+          new obsidian.Notice(o.nom + ' : ' + ((e && e.message) || e), 10000);
           fin(false);
         }
       });
       serveur.listen(0, '127.0.0.1', () => {
-        serveur._port = serveur.address().port;
-        const url = Ariane.urlAutorisationGoogle({ clientId, redirection: 'http://127.0.0.1:' + serveur._port, verificateur, etat });
+        redirection = 'http://' + o.hote + ':' + serveur.address().port;
+        const url = o.adresse(redirection, verificateur, etat);
         try { require('electron').shell.openExternal(url); } catch (e) { window.open(url); }
       });
       setTimeout(() => {
         if (fini) return;
         fini = true;
         try { serveur.close(); } catch (e) { /* déjà fermé */ }
-        new obsidian.Notice(tr('Google Agenda : connexion abandonnée (cinq minutes écoulées).'));
+        new obsidian.Notice(o.nom + tr(' : connexion abandonnée (cinq minutes écoulées).'));
         fin(false);
       }, 5 * 60000);
+    });
+  }
+
+  async relierGoogle() {
+    const s = this.settings;
+    if (!obsidian.Platform.isDesktopApp) { new obsidian.Notice(tr('Google : la connexion se fait depuis Obsidian sur ordinateur.')); return false; }
+    const clientId = String(s.googleClientId || '').trim();
+    if (!clientId) { new obsidian.Notice(tr('Google : renseignez d’abord l’identifiant client de votre application Google (Réglages, Tâches).'), 9000); return false; }
+    return this._connexionNavigateur({
+      nom: 'Google', hote: '127.0.0.1',
+      adresse: (redirection, verificateur, etat) => Ariane.urlAutorisationGoogle({ clientId, redirection, verificateur, etat }),
+      echanger: async (code, redirection, verificateur) => {
+        const j = await this._googleJetonDepuis({ grant_type: 'authorization_code', code,
+          redirect_uri: redirection, code_verifier: verificateur });
+        if (!j || !j.refresh_token) throw new Error(tr('Google n’a pas rendu de jeton de renouvellement.'));
+        s.googleJeton = { refresh_token: j.refresh_token, access_token: j.access_token,
+          expire: Date.now() + (Number(j.expires_in) || 3600) * 1000 };
+        this._googleCals = null;
+        this._listesDistantes = null;
+        await this.saveSettings();
+      },
     });
   }
 
   oublierGoogle() {
     this.settings.googleJeton = null;
     this._googleCals = null;
+    this._listesDistantes = null;
     return this.saveSettings();
   }
 
@@ -1131,17 +1183,23 @@ const avecTaches = (Base) => class extends Base {
     return t.access_token;
   }
 
-  // Un appel à l'API de Google Agenda. Rend { status, json }.
-  async _googleApi(methode, chemin, corps) {
-    const jeton = await this._googleJeton();
+  // Un appel authentifié à l'API d'un service relié ('google' ou
+  // 'microsoft'). Rend { status, json }.
+  async _appelOAuth(service, methode, url, corps) {
+    const jeton = service === 'microsoft' ? await this._microsoftJeton() : await this._googleJeton();
     const rep = await obsidian.requestUrl({
-      url: 'https://www.googleapis.com/calendar/v3' + chemin, method: methode, throw: false,
+      url, method: methode, throw: false,
       headers: Object.assign({ Authorization: 'Bearer ' + jeton }, corps ? { 'Content-Type': 'application/json' } : {}),
       body: corps ? JSON.stringify(corps) : undefined,
     });
     let json = null;
     try { json = rep.json; } catch (e) { json = null; }
     return { status: rep.status, json };
+  }
+
+  // Un appel à l'API de Google Agenda. Rend { status, json }.
+  _googleApi(methode, chemin, corps) {
+    return this._appelOAuth('google', methode, 'https://www.googleapis.com/calendar/v3' + chemin, corps);
   }
 
   // Les calendriers du compte : nom → identifiant (gardés dix minutes).
@@ -1315,6 +1373,336 @@ const avecTaches = (Base) => class extends Base {
     }
     if (n) this.antirebond('google:push', () => this.pousserGoogle(true), 1500);
     if (!silencieux) new obsidian.Notice(n ? n + tr(' créneau(x) mis à jour depuis Google Agenda.') : tr('Google Agenda : rien de neuf.'));
+    return n;
+  }
+
+  /* ---- Rappels hors du Mac : Google Tasks et Microsoft To Do -------- */
+
+  // Où vont les rappels : Apple Rappels (Mac), Google Tasks ou Microsoft To
+  // Do. Sans choix : Apple sur Mac, Google ailleurs.
+  destinationRappels() {
+    const d = this.settings.rappelsDestination;
+    if (d === 'google' || d === 'microsoft') return d;
+    return obsidian.Platform.isMacOS ? 'apple' : 'google';
+  }
+
+  nomRappels(dest) {
+    return { apple: 'Apple Rappels', google: 'Google Tasks', microsoft: 'Microsoft To Do' }[dest || this.destinationRappels()];
+  }
+
+  // La destination peut-elle servir ici et maintenant ?
+  rappelsDisponibles() {
+    const d = this.destinationRappels();
+    if (d === 'apple') return obsidian.Platform.isMacOS;
+    return d === 'google' ? this.googleRelie() : this.microsoftRelie();
+  }
+
+  microsoftRelie() { return !!(this.settings.microsoftJeton && this.settings.microsoftJeton.refresh_token); }
+
+  _microsoftUrl(fin) {
+    const loc = String(this.settings.microsoftLocataire || '').trim() || 'common';
+    return 'https://login.microsoftonline.com/' + encodeURIComponent(loc) + '/oauth2/v2.0/' + fin;
+  }
+
+  // Relie le compte Microsoft : application publique (PKCE), sans secret ;
+  // l'adresse de retour est « http://localhost », dont Microsoft ignore le port.
+  async relierMicrosoft() {
+    const s = this.settings;
+    if (!obsidian.Platform.isDesktopApp) { new obsidian.Notice(tr('Microsoft : la connexion se fait depuis Obsidian sur ordinateur.')); return false; }
+    const clientId = String(s.microsoftClientId || '').trim();
+    if (!clientId) { new obsidian.Notice(tr('Microsoft : renseignez d’abord l’identifiant de votre application Microsoft (Réglages, Tâches, Rappels).'), 9000); return false; }
+    return this._connexionNavigateur({
+      nom: 'Microsoft', hote: 'localhost',
+      adresse: (redirection, verificateur, etat) => Ariane.urlAutorisationMicrosoft({
+        clientId, locataire: s.microsoftLocataire, redirection, verificateur, etat }),
+      echanger: async (code, redirection, verificateur) => {
+        const j = await this._microsoftJetonDepuis({ grant_type: 'authorization_code', code,
+          redirect_uri: redirection, code_verifier: verificateur });
+        if (!j || !j.refresh_token) throw new Error(tr('Microsoft n’a pas rendu de jeton de renouvellement.'));
+        s.microsoftJeton = { refresh_token: j.refresh_token, access_token: j.access_token,
+          expire: Date.now() + (Number(j.expires_in) || 3600) * 1000 };
+        this._listesDistantes = null;
+        await this.saveSettings();
+      },
+    });
+  }
+
+  oublierMicrosoft() {
+    this.settings.microsoftJeton = null;
+    this._listesDistantes = null;
+    return this.saveSettings();
+  }
+
+  async _microsoftJetonDepuis(champs) {
+    const corps = new URLSearchParams(Object.assign({
+      client_id: String(this.settings.microsoftClientId || '').trim(),
+      scope: Ariane.MICROSOFT_PORTEES.join(' '),
+    }, champs)).toString();
+    const rep = await obsidian.requestUrl({ url: this._microsoftUrl('token'), method: 'POST', throw: false,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: corps });
+    let j = null;
+    try { j = rep ? rep.json : null; } catch (e) { j = null; }
+    if (!rep || rep.status < 200 || rep.status >= 300) {
+      throw new Error((j && (j.error_description || j.error)) || ('HTTP ' + (rep ? rep.status : '?')));
+    }
+    return j;
+  }
+
+  // Le jeton d'accès, renouvelé s'il expire dans la minute. Microsoft change
+  // aussi le jeton de renouvellement : le nouveau remplace l'ancien.
+  async _microsoftJeton() {
+    const t = this.settings.microsoftJeton;
+    if (!t || !t.refresh_token) throw new Error(tr('compte Microsoft non relié'));
+    if (t.access_token && t.expire - Date.now() > 60000) return t.access_token;
+    const j = await this._microsoftJetonDepuis({ grant_type: 'refresh_token', refresh_token: t.refresh_token });
+    t.access_token = j.access_token;
+    if (j.refresh_token) t.refresh_token = j.refresh_token;
+    t.expire = Date.now() + (Number(j.expires_in) || 3600) * 1000;
+    await this.saveSettings();
+    return t.access_token;
+  }
+
+  // Le service d'une destination distante : listes, tâches d'une liste,
+  // création, mise à jour, suppression. Chaque appel rend { status, json }.
+  _serviceRappels(dest) {
+    const e = encodeURIComponent;
+    const verifier = (r, quoi) => {
+      if (r.status === 401 || r.status === 403) {
+        const err = new Error(tr('accès refusé : reliez à nouveau votre compte'));
+        err.acces = true;
+        throw err;
+      }
+      if (r.status >= 300 || !r.json) throw new Error(quoi + ' (HTTP ' + r.status + ')');
+      return r.json;
+    };
+    if (dest === 'microsoft') {
+      const base = 'https://graph.microsoft.com/v1.0/me/todo';
+      const appel = (m, url, corps) => this._appelOAuth('microsoft', m, url.startsWith('http') ? url : base + url, corps);
+      const pages = async (url, quoi) => {
+        const out = [];
+        for (let k = 0, suite = url; suite && k < 50; k++) {
+          const j = verifier(await appel('GET', suite), quoi);
+          out.push(...(j.value || []));
+          suite = j['@odata.nextLink'] || '';
+        }
+        return out;
+      };
+      return {
+        dest, nom: 'Microsoft To Do', heureIgnoree: false, verifier,
+        listes: async () => (await pages('/lists', tr('listes illisibles')))
+          .map((l) => ({ id: l.id, nom: l.displayName || '', defaut: l.wellknownListName === 'defaultList' })),
+        creerListe: async (nom) => verifier(await appel('POST', '/lists', { displayName: nom }), tr('liste non créée')).id,
+        taches: (l) => pages('/lists/' + e(l) + '/tasks?$top=100', tr('tâches illisibles')),
+        creer: (l, corps) => appel('POST', '/lists/' + e(l) + '/tasks', corps),
+        maj: (l, t, corps) => appel('PATCH', '/lists/' + e(l) + '/tasks/' + e(t), corps),
+        supprimer: (l, t) => appel('DELETE', '/lists/' + e(l) + '/tasks/' + e(t)),
+        corps: (o) => Ariane.corpsTacheMicrosoft(o),
+      };
+    }
+    const base = 'https://tasks.googleapis.com/tasks/v1';
+    const appel = (m, chemin, corps) => this._appelOAuth('google', m, base + chemin, corps);
+    const pages = async (chemin, quoi) => {
+      const out = [];
+      let jeton = '';
+      for (let k = 0; k < 50; k++) {
+        const j = verifier(await appel('GET', chemin + (jeton ? '&pageToken=' + e(jeton) : '')), quoi);
+        out.push(...(j.items || []));
+        jeton = j.nextPageToken || '';
+        if (!jeton) break;
+      }
+      return out;
+    };
+    return {
+      dest: 'google', nom: 'Google Tasks', heureIgnoree: true, verifier,
+      // La première liste est celle « par défaut » de Google Tasks.
+      listes: async () => (await pages('/users/@me/lists?maxResults=100', tr('listes illisibles')))
+        .map((l, i) => ({ id: l.id, nom: l.title || '', defaut: i === 0 })),
+      creerListe: async (nom) => verifier(await appel('POST', '/users/@me/lists', { title: nom }), tr('liste non créée')).id,
+      taches: (l) => pages('/lists/' + e(l) + '/tasks?showCompleted=true&showHidden=true&maxResults=100', tr('tâches illisibles')),
+      creer: (l, corps) => appel('POST', '/lists/' + e(l) + '/tasks', corps),
+      maj: (l, t, corps) => appel('PATCH', '/lists/' + e(l) + '/tasks/' + e(t), corps),
+      supprimer: (l, t) => appel('DELETE', '/lists/' + e(l) + '/tasks/' + e(t)),
+      corps: (o) => Ariane.corpsTacheGoogle(o),
+    };
+  }
+
+  // Les listes du compte : nom (en minuscules) → identifiant, et la liste par
+  // défaut ; gardées dix minutes.
+  async listesDistantes(svc, forcer) {
+    const c = this._listesDistantes;
+    if (!forcer && c && c.dest === svc.dest && Date.now() - c.le < 10 * 60000) return c;
+    const parNom = new Map();
+    let defaut = '';
+    for (const l of await svc.listes()) {
+      const k = String(l.nom).trim().toLowerCase();
+      if (k && !parNom.has(k)) parNom.set(k, l.id);
+      if (l.defaut && !defaut) defaut = l.id;
+    }
+    this._listesDistantes = { dest: svc.dest, le: Date.now(), parNom, defaut };
+    return this._listesDistantes;
+  }
+
+  // L'identifiant de la liste `nom`, créée au besoin ; sans nom, la liste
+  // par défaut du compte.
+  async _listeDistante(svc, cache, nom) {
+    const k = String(nom || '').trim().toLowerCase();
+    if (!k) return cache.defaut;
+    if (!cache.parNom.has(k)) cache.parNom.set(k, await svc.creerListe(String(nom).trim()));
+    return cache.parNom.get(k);
+  }
+
+  // L'envoi : comme pour Apple Rappels, chaque tâche concernée est créée ou
+  // mise à jour dans la liste de sa famille ; une tâche abandonnée en est
+  // retirée. L'instantané porte, après « § », le titre et la liste : un envoi
+  // automatique saute les tâches qui n'ont pas bougé.
+  async _pousserRappelsDistant(silencieux) {
+    const dest = this.destinationRappels();
+    const svc = this._serviceRappels(dest);
+    if (!this.rappelsDisponibles()) {
+      if (!silencieux) new obsidian.Notice(svc.nom + tr(' : reliez d’abord votre compte (Réglages, Tâches, Rappels).'), 9000);
+      return 0;
+    }
+    const cibles = this._tachesRappel();
+    if (!cibles.length) { if (!silencieux) new obsidian.Notice(tr('Aucune tâche à synchroniser.')); return 0; }
+    const vault = this.app.vault.getName();
+    const fuseau = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    const avis = silencieux ? null : new obsidian.Notice(tr('Synchronisation ') + svc.nom + '…', 0);
+    let n = 0, echecs = 0;
+    try {
+      const cache = await this.listesDistantes(svc);
+      for (const t of cibles) {
+        const p = Ariane.partiesIdRappel(t._rid);
+        const lie = p.fournisseur === dest ? p : null;
+        try {
+          if (Ariane.rappelASupprimer(t.statut, lie ? t._rid : '', this.settings)) {
+            const r = await svc.supprimer(lie.liste, lie.tache);
+            if (r.status >= 300 && r.status !== 404 && r.status !== 410) svc.verifier(r, tr('suppression refusée'));
+            if (t.fichier) this.marquerEcriture(t.fichier.path);
+            await this.majTache(t.ref, { 'rappel-id': '' });
+            n += 1;
+            continue;
+          }
+          // Rien à créer pour une tâche close qui n'a pas de rappel ici.
+          if (!lie && (t.statut === 'terminée' || t.statut === 'abandonnée')) continue;
+          const titre = Ariane.formatModele(this.settings.rappelsFormatTitre || '[{ref}] - {intitule}',
+            { ref: t.ref, intitule: t.intitule, famille: (this.familleDe(t.famille) || {}).nom || '' });
+          const liste = await this._listeDistante(svc, cache, this.listeRappelsDe(t.famille));
+          const instant = this._instantRappel(t) + '§' + titre + '|' + liste;
+          if (silencieux && lie && lie.liste === liste && t._snap === instant) continue;
+          let note = '';
+          try { note = await this.lireNoteTache(t.ref); } catch (e) { /* rien */ }
+          const lien = 'obsidian://open?vault=' + encodeURIComponent(vault)
+            + '&file=' + encodeURIComponent(t.fichier.path.replace(/\.md$/, ''));
+          // Graph peut refuser un fuseau nommé : on se rabat alors sur l'UTC.
+          const corps = () => svc.corps({ titre, notes: (note ? note.slice(0, 500).trim() + '\n\n' : '') + lien,
+            echeance: t.echeance || '', heure: t.heure || '', priorite: t.priorite || '',
+            termine: t.statut === 'terminée', fuseau: this._graphSansFuseau ? '' : fuseau });
+          const envoyer = async (fn) => {
+            let r = await fn(corps());
+            if (r.status === 400 && dest === 'microsoft' && !this._graphSansFuseau) {
+              this._graphSansFuseau = true;
+              r = await fn(corps());
+            }
+            return r;
+          };
+          let id = '';
+          if (lie && lie.liste === liste) {
+            const r = await envoyer((c) => svc.maj(lie.liste, lie.tache, c));
+            if (r.status !== 404 && r.status !== 410 && !(r.json && r.json.deleted)) {
+              svc.verifier(r, tr('mise à jour refusée'));
+              id = t._rid;
+            }
+          } else if (lie) {
+            // Une autre liste : ni Google ni Microsoft ne déplacent une tâche.
+            const r = await svc.supprimer(lie.liste, lie.tache);
+            if (r.status >= 300 && r.status !== 404 && r.status !== 410) svc.verifier(r, tr('suppression refusée'));
+          }
+          if (!id) {
+            const r = await envoyer((c) => svc.creer(liste, c));
+            id = Ariane.idRappel(dest, liste, svc.verifier(r, tr('création refusée')).id);
+          }
+          if (id !== t._rid) {
+            if (t.fichier) this.marquerEcriture(t.fichier.path);
+            await this.majTache(t.ref, { 'rappel-id': id });
+          }
+          if (t.fichier && t._snap !== instant) {
+            this.marquerEcriture(t.fichier.path);
+            await this.app.fileManager.processFrontMatter(t.fichier, (x) => { x['Tâche - Synchro Rappels'] = instant; });
+          }
+          n += 1;
+        } catch (e) {
+          if (e && e.acces) throw e;
+          echecs += 1;
+          console.warn('[Ariane] ' + svc.nom + ' : ' + t.ref + ' :', e && e.message);
+        }
+      }
+    } catch (e) {
+      console.warn('[Ariane] ' + svc.nom + ', envoi :', e);
+      if (!silencieux) new obsidian.Notice(svc.nom + ' : ' + ((e && e.message) || e), 10000);
+      return n;
+    } finally { if (avis) avis.hide(); }
+    if (!silencieux) {
+      new obsidian.Notice(n + tr(' rappel(s) synchronisé(s) avec ') + svc.nom
+        + (echecs ? tr(', ') + echecs + tr(' échec(s), voir la console') : '') + '.', 8000);
+    }
+    return n;
+  }
+
+  // La relève : une tâche cochée termine la tâche du coffre, une échéance
+  // changée la reporte (la note fait foi si elle a bougé), et une tâche
+  // ajoutée à la main dans une liste surveillée devient une tâche du coffre.
+  async _releverRappelsDistant(silencieux) {
+    const dest = this.destinationRappels();
+    if (!this.rappelsDisponibles() || this._rappelsPushEnCours) return 0;
+    const svc = this._serviceRappels(dest);
+    const avecId = [];
+    const idsConnus = new Set();
+    for (const t of this.tachesPourGantt()) {
+      const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
+      const rid = String(this._lireT(fm, 'rappel-id') || '').trim();
+      if (!rid) continue;
+      idsConnus.add(rid);
+      const p = Ariane.partiesIdRappel(rid);
+      if (p.fournisseur === dest) avecId.push(Object.assign({}, t, { _rid: rid, _p: p, _snap: String(fm['Tâche - Synchro Rappels'] || '') }));
+    }
+    let n = 0;
+    try {
+      const cache = await this.listesDistantes(svc);
+      const surveillees = new Map();
+      for (const nom of this._listesSurveillees()) {
+        const id = cache.parNom.get(String(nom).trim().toLowerCase());
+        if (id) surveillees.set(id, nom);
+      }
+      const parListe = new Map();
+      for (const id of new Set([...avecId.map((t) => t._p.liste), ...surveillees.keys()])) {
+        try { parListe.set(id, await svc.taches(id)); } catch (e) {
+          if (e && e.acces) throw e;
+          parListe.set(id, null);
+        }
+      }
+      for (const t of avecId) {
+        const j = (parListe.get(t._p.liste) || []).find((x) => x && x.id === t._p.tache);
+        if (!j) continue;
+        const etat = Ariane.etatTacheDistante(dest, j);
+        if (await this._releverUneTache(t, etat.coche, etat.due, svc.heureIgnoree)) n += 1;
+      }
+      const refsTaches = new Set(this.tachesPourGantt().map((x) => x.ref));
+      for (const [liste, nom] of surveillees) {
+        for (const j of parListe.get(liste) || []) {
+          const id = Ariane.idRappel(dest, liste, j && j.id);
+          if (!id || idsConnus.has(id) || this._rappelIgnore(id)) continue;
+          const etat = Ariane.etatTacheDistante(dest, j);
+          // Une tâche déjà cochée, ou vide, n'a rien à faire dans le coffre.
+          if (etat.coche || !etat.titre.trim()) continue;
+          if (await this._importerRappel({ id, nom: etat.titre, coche: false, dueIso: etat.due, listeNom: nom }, refsTaches, idsConnus)) n += 1;
+        }
+      }
+    } catch (e) {
+      console.warn('[Ariane] ' + svc.nom + ', relève :', e);
+      if (!silencieux) new obsidian.Notice(svc.nom + ' : ' + ((e && e.message) || e), 10000);
+      return n;
+    }
+    if (!silencieux) new obsidian.Notice(n ? n + tr(' tâche(s) mise(s) à jour depuis ') + svc.nom + '.' : svc.nom + tr(' : rien de neuf.'));
     return n;
   }
 
