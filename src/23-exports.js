@@ -21,6 +21,8 @@ module.exports._test = {
   narratifDepuisLibelle,
   estLibelleNarratif,
   insertionNarrative,
+  debutDePhrase,
+  libelleConcept,
   dossiersOutils,
   lireEntreeZip,
   argumentCmd,

@@ -1379,6 +1379,7 @@ const avecNoteAtomes = (Base) => class extends Base {
     this._styleInverse = false;
     this._majGlisser = false;
     this._glisserCitable = null;
+    this._conceptsGlisses = null;
     this.retirerReperesStyle();
   }
 
@@ -1510,12 +1511,15 @@ const avecNoteAtomes = (Base) => class extends Base {
   retirerReperesStyle() {
     if (this._etiquetteStyle) { this._etiquetteStyle.remove(); this._etiquetteStyle = null; }
     if (this._curseurNarratif) { this._curseurNarratif.remove(); this._curseurNarratif = null; }
+    if (this._etiquetteConcept) { this._etiquetteConcept.remove(); this._etiquetteConcept = null; }
   }
 
   surDragOverParagraphe(e) {
     if (!this.settings.dropSurParagraphe) return;
     this.suivreMajGlisser(e);
     const doc = this.docDeEvenement(e);
+    const concepts = this.conceptsGlisses(e);
+    if (concepts.length) { this.survolConcepts(e, doc, concepts); return; }
     // Une cellule de tableau : elle s'encadre, l'étiquette dit le style.
     const cel = this.glisserCitable(e) ? this.celluleSousPoint(e) : null;
     if (cel) {
@@ -1671,6 +1675,8 @@ const avecNoteAtomes = (Base) => class extends Base {
   surDropParagraphe(e) {
     if (!this.settings.dropSurParagraphe) return;
     const doc = this.docDeEvenement(e);
+    const concepts = this.conceptsGlisses(e);
+    if (concepts.length) { this.deposerConcepts(e, doc, concepts); return; }
     // Une cellule de tableau, que l'éditeur dessine d'un bloc.
     const cel = this.celluleSousPoint(e);
     const cm = cel ? cel.cm : this.cmSousPoint(e, doc);
@@ -1773,6 +1779,107 @@ const avecNoteAtomes = (Base) => class extends Base {
   libelleDeCitation(c) {
     if (typeof c === 'string') return this.libelleCitation(c);
     return this.formatCitation(this.auteursDepuisReference('[[' + c.cle + ']]', ''), c.page || '', c.cle) || c.cle;
+  }
+
+  // ── glisser une note conceptuelle ──
+  //  Un concept n'est pas une citation : il se pose au point exact du dépôt,
+  //  sous son alias et sans majuscule (debutDePhrase, libelleConcept), lié à
+  //  sa note, comme un mot de la phrase. Ni parenthèses ni touche de style.
+
+  // Les notes conceptuelles du glisser, établies une fois par glisser ; vide
+  // dès qu'une note glissée n'en est pas une (elle reste une citation).
+  conceptsGlisses(e) {
+    if (this._conceptsGlisses == null) {
+      const dossier = String(this.settings.dossierNotesConceptuelles || '').replace(/\/+$/, '');
+      let out = [];
+      if (dossier && !(this.glisseDepuisPanier && this.panier && this.panier.length)) {
+        const fichiers = this.notesGlissees(e)
+          .map((n) => this.app.metadataCache.getFirstLinkpathDest(n, '')).filter(Boolean);
+        if (fichiers.length && fichiers.every((f) => f.path.startsWith(dossier + '/'))) out = fichiers;
+      }
+      this._conceptsGlisses = out;
+    }
+    return this._conceptsGlisses;
+  }
+
+  aliasConcept(f) {
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    const al = Array.isArray(fm.aliases) ? fm.aliases[0] : fm.aliases;
+    return String(al || f.basename);
+  }
+
+  // Le point visé : { cm, pos, cel } sur une cellule, un paragraphe ou une
+  // ligne vide, sinon null.
+  cibleConcept(e, doc) {
+    const cel = this.celluleSousPoint(e);
+    if (cel) return { cm: cel.cm, pos: cel.ligne.from, cel };
+    const cm = this.cmSousPoint(e, doc);
+    const pos = cm ? cm.posAtCoords({ x: e.clientX, y: e.clientY }) : null;
+    if (pos == null) return null;
+    const n = cm.state.doc.lineAt(pos).number;
+    if (!this.ligneEstParagraphe(cm.state.doc, n) && !this.ligneVideDeposable(cm.state.doc, n)) return null;
+    return { cm, pos, cel: null };
+  }
+
+  survolConcepts(e, doc, concepts) {
+    const c = this.cibleConcept(e, doc);
+    if (!c) { this.nettoyerZoneDrop(); return; }
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    this.effacerSurlignagePhrase();
+    if (this.zoneDrop) { this.zoneDrop.classList.remove('zfa-drop-cible'); this.zoneDrop = null; }
+    if (c.cel) {
+      if (this._curseurNarratif) this._curseurNarratif.style.display = 'none';
+      if (this._celluleCible !== c.cel.td) {
+        if (this._celluleCible) this._celluleCible.classList.remove('zfa-drop-cible-cellule');
+        c.cel.td.classList.add('zfa-drop-cible-cellule');
+        this._celluleCible = c.cel.td;
+      }
+    } else {
+      if (this._celluleCible) { this._celluleCible.classList.remove('zfa-drop-cible-cellule'); this._celluleCible = null; }
+      this.montrerCurseurNarratif(doc, c.cm, c.pos);
+    }
+    // L'étiquette montre ce qui s'écrira : l'alias, tel qu'en cours de phrase.
+    let b = this._etiquetteConcept;
+    if (!b || b.ownerDocument !== doc) {
+      if (b) b.remove();
+      b = this._etiquetteConcept = doc.body.createDiv({ cls: 'zfa-drop-style zfa-drop-concept' });
+      b.createSpan({ cls: 'zfa-drop-style-choix', text: concepts.map((f) => libelleConcept(this.aliasConcept(f), false)).join(', ') });
+      b._largeur = 0;
+    }
+    if (!b._largeur) b._largeur = b.offsetWidth || 220;
+    const win = doc.defaultView || window;
+    b.style.left = Math.max(4, Math.min(e.clientX + 16, win.innerWidth - b._largeur - 8)) + 'px';
+    b.style.top = (e.clientY + 20) + 'px';
+  }
+
+  deposerConcepts(e, doc, concepts) {
+    const c = this.cibleConcept(e, doc);
+    if (!c) { this.nettoyerZoneDrop(); return; }
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    this.reinitialiserStyleGlisser();
+    this.nettoyerZoneDrop();
+    const cm = c.cm;
+    const etat = cm.state.doc;
+    const lien = (f, maj) => '[[' + f.basename + '|' + libelleConcept(this.aliasConcept(f), maj) + ']]';
+    if (c.cel) {
+      const l = c.cel.ligne;
+      const cellule = cellulesDeLigne(l.text)[c.cel.colonne];
+      if (!cellule) return;
+      const vide = !l.text.slice(cellule.debut, cellule.fin).trim();
+      const r = insertionCellule(l.text, cellule, concepts.map((f, i) => lien(f, vide && i === 0)), true, ', ');
+      cm.dispatch({ changes: { from: l.from + r.off, insert: r.insert } });
+      return;
+    }
+    const ligne = etat.lineAt(Math.min(c.pos, etat.length));
+    const off = c.pos - ligne.from;
+    const maj = debutDePhrase(ligne.text.slice(0, insertionNarrative(ligne.text, off, []).off));
+    const r = insertionNarrative(ligne.text, off, concepts.map((f, i) => lien(f, maj && i === 0)), ', ');
+    const fin = ligne.from + r.off + r.insert.length;
+    cm.dispatch({ changes: { from: ligne.from + r.off, insert: r.insert }, selection: { anchor: fin } });
+    try { cm.focus(); } catch (err) { /* éditeur fermé */ }
   }
 
   // ── glisser depuis le lecteur de ZotFlow ──

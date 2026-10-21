@@ -315,6 +315,13 @@ Four annotations are gathered here, from three different sources, and land in
 one go as `(Valmont and Ferrat, 2010, p. 49 ; Valmont and Ferrat, 2010, p. 65 ; Valmont and
 Varenne, 2019, p. 285 ; Bastide, 2025)`. The bibliography follows on its own.
 
+**A concept note, by contrast, is not a citation.** Dragged into the text,
+it lands at the exact drop point, under its alias and without its capital
+letter, like any word of the sentence: "we retain [[NC-…|organisational
+resilience]] here". The capital stays at the start of a sentence, and an
+acronym keeps its case. The label that follows the cursor shows what will be
+written.
+
 Two details that took some work:
 
 - reusing a citation is a **copy**, never a move. Without forcing that, the

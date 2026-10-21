@@ -268,6 +268,27 @@ function insertionNarrative(ligne, off, entrees, sep) {
   return { off: o, insert };
 }
 
+// ── Notes conceptuelles glissées dans le texte ──
+//  Un concept s'écrit comme un mot de la phrase : son alias, en minuscule,
+//  sauf en tête de phrase ou pour un sigle (« ICPE »), qui garde sa casse.
+
+// Le texte qui précède le point de dépôt ouvre-t-il une phrase ? Les
+// marques de début de ligne (liste, citation, titre, case) ne comptent pas.
+function debutDePhrase(avant) {
+  const s = String(avant || '')
+    .replace(/^\s*(?:>\s*)*(?:[-*+]\s+(?:\[.\]\s+)?|\d+[.)]\s+|#{1,6}\s+)?/, '').trim();
+  return !s || /[.!?…][)\]»”"]*$/.test(s);
+}
+
+// Le libellé d'un concept : `majuscule` vrai en tête de phrase.
+function libelleConcept(alias, majuscule) {
+  const t = String(alias || '').replace(/[\[\]|]/g, '').trim();
+  if (!t) return t;
+  if (majuscule) return t.charAt(0).toLocaleUpperCase('fr') + t.slice(1);
+  if (/^\p{Lu}[\p{Lu}\p{N}]/u.test(t)) return t;
+  return t.charAt(0).toLocaleLowerCase('fr') + t.slice(1);
+}
+
 // ── Citations dans un tableau ──
 //  Dans l'éditeur, Obsidian dessine un tableau d'un bloc : le dépôt vise une
 //  cellule, qu'il faut retrouver dans la ligne source. Dans une cellule, la

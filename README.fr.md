@@ -322,6 +322,12 @@ tombent d'un seul geste en `(Valmont et Ferrat, 2010, p. 49 ; Valmont et Ferrat,
 p. 65 ; Valmont et Varenne, 2019, p. 285 ; Bastide, 2025)`. La bibliographie suit
 d'elle-même.
 
+**Une note conceptuelle, elle, n'est pas une citation.** Glissée dans le
+texte, elle se pose au point exact du dépôt, sous son alias et sans majuscule,
+comme un mot de la phrase : « on retient la [[NC-…|résilience organisationnelle]]
+dans ce cas ». La majuscule reste en tête de phrase, et un sigle garde sa casse.
+L'étiquette qui suit le curseur montre ce qui s'écrira.
+
 Deux détails qui ont demandé du travail :
 
 - réutiliser une citation est une **copie**, jamais un déplacement. Sans le
