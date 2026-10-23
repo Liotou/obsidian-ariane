@@ -4293,3 +4293,8 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-cnv-note-actions .clickable-icon { padding: 2px; }
 .zfa-cnv-note-actions svg { width: 17px; height: 17px; }
 @media (prefers-reduced-motion: reduce) { .zfa-cnv-note-actions { transition: none; } }
+
+/* Création en langage naturel : la note associée en livrable, qu'on peut retirer. */
+.zfa-ln-livrable { display: flex; align-items: center; gap: 4px; }
+.zfa-ln-livrable .clickable-icon { padding: 1px; }
+.zfa-ln-livrable svg { width: 14px; height: 14px; }

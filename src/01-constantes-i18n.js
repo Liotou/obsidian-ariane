@@ -17,6 +17,8 @@ const TEXTES = {
   en: {
     // Rappels : Google Tasks et Microsoft To Do, comptes reliés.
     "Notes en cartes compactes": "Notes as compact cards",
+    "Livrable : ": "Deliverable: ",
+    "Ne pas associer cette note": "Do not link this note",
     "Une note ordinaire posée sur un canevas montre seulement son alias et sa référence, aux couleurs de sa famille ; le chevron l’agrandit sur son contenu, puis la referme. Coupé : l’affichage natif du canevas.": "A regular note on a canvas shows only its alias and reference, in its family's colours; the chevron expands it over its content, then folds it. Off: the canvas's native display.",
     "Ouvrir la note": "Open the note",
     "Afficher le contenu": "Show the content",

@@ -209,6 +209,8 @@ const TEXTES = {
   en: {
     // Rappels : Google Tasks et Microsoft To Do, comptes reliés.
     "Notes en cartes compactes": "Notes as compact cards",
+    "Livrable : ": "Deliverable: ",
+    "Ne pas associer cette note": "Do not link this note",
     "Une note ordinaire posée sur un canevas montre seulement son alias et sa référence, aux couleurs de sa famille ; le chevron l’agrandit sur son contenu, puis la referme. Coupé : l’affichage natif du canevas.": "A regular note on a canvas shows only its alias and reference, in its family's colours; the chevron expands it over its content, then folds it. Off: the canvas's native display.",
     "Ouvrir la note": "Open the note",
     "Afficher le contenu": "Show the content",
@@ -16801,7 +16803,8 @@ const avecArticulationStatiques = (Base) => class extends Base {
       const apres = Number.isInteger(brutRang) && rang.has(brutRang) && rang.get(brutRang) !== k
         ? rang.get(brutRang) : null;
       return Object.assign(spec, { enfants: [], apres,
-        bloquePar: String(n.bloque_par || n.bloquePar || '').trim() });
+        bloquePar: String(n.bloque_par || n.bloquePar || '').trim(),
+        noteVisee: String(n.note_visee || n.noteVisee || '').trim() });
     });
   }
 
@@ -16867,6 +16870,21 @@ const avecArticulationStatiques = (Base) => class extends Base {
     const hors = plat.filter((_, k) => k < i || k >= fin);
     hors.splice(depot.h, 0, ...bloc);
     return hors;
+  }
+
+  // Part des mots communs à deux titres, rapportée au plus long (0 à 1) :
+  // casse, accents, ponctuation et pluriel (s, x final) ignorés. 1 : mêmes mots.
+  static memesMots(a, b) {
+    const mots = (s) => new Set(String(s || '')
+      .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length > 1)
+      .map((w) => (w.length > 3 ? w.replace(/[sx]$/, '') : w)));
+    const A = mots(a);
+    const B = mots(b);
+    if (!A.size || !B.size) return 0;
+    let inter = 0;
+    for (const w of A) if (B.has(w)) inter += 1;
+    return inter / Math.max(A.size, B.size);
   }
 
   // Meilleure correspondance d'un titre approximatif parmi des candidats
@@ -19604,19 +19622,62 @@ const avecTaches = (Base) => class extends Base {
       '- apres : le rang (0, 1, 2…) dans TON tableau d\'une tâche à finir avant celle-ci (envoyer un résumé vient après l\'avoir rédigé), sinon null.',
       '- bloque_par : le titre approximatif d\'une tâche DÉJÀ EXISTANTE à finir avant, sinon "".',
       '- note : une précision utile qui ne tient pas dans le titre, sinon "".',
+      '- note_visee : quand la tâche porte sur une note précise du coffre (la rédiger, la compléter, la relire), son titre. Pour une note conceptuelle, recopie EXACTEMENT un titre de la liste ci-dessous ; pour une autre note, son titre en clair ; sans note visée : "".',
+      this._blocNotesConceptuelles(),
       '',
       'Réponds UNIQUEMENT par le tableau JSON. Chaque entrée :',
-      '{"titre": "...", "famille": "id", "debut": "", "echeance": "", "apres": null, "bloque_par": "", "note": ""}',
+      '{"titre": "...", "famille": "id", "debut": "", "echeance": "", "apres": null, "bloque_par": "", "note": "", "note_visee": ""}',
       '',
       'DESCRIPTION :',
       p,
     ].join('\n');
     const brut = await this.genererIA(prompt, 1500);
     if (!brut) return [];
-    return Ariane.lireTachesLN(brut, {
+    const specs = Ariane.lireTachesLN(brut, {
       familles: new Set(this.famillesIA().map((f) => f.id)),
       defaut: this.settings.familleTacheDefaut || 'action',
     });
+    // La note visée devient le livrable de la tâche (une lecture, elle, a sa source).
+    for (const s of specs) {
+      if (!s.noteVisee || s.famille === 'lecture') continue;
+      const n = this.resoudreNoteVisee(s.noteVisee);
+      if (n) { s.livrable = '[[' + n.cle + ']]'; s.livrableNom = n.nom; }
+    }
+    return specs;
+  }
+
+  // Les notes conceptuelles du coffre : [{ nom (alias), cle (nom de fichier) }].
+  _notesConceptuelles() {
+    const dossier = String(this.settings.dossierNotesConceptuelles || '').replace(/\/+$/, '');
+    if (!dossier) return [];
+    return this.app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(dossier + '/'))
+      .map((f) => ({ nom: this.aliasConcept(f), cle: f.basename }));
+  }
+
+  _blocNotesConceptuelles() {
+    const l = this._notesConceptuelles().map((n) => n.nom).filter(Boolean);
+    return l.length ? 'Notes conceptuelles du coffre : ' + l.join(' ; ') + '.' : '';
+  }
+
+  // La note que désigne un titre : un alias exact, sinon une note conceptuelle
+  // aux mêmes mots (pluriel et accents près), sinon une autre note de
+  // production presque identique. Jamais une note qui n'en partage que
+  // quelques mots : « risque » ne désigne pas « Risque émergent », la tâche
+  // crée peut-être une note neuve. Rend { nom, cle } ou null.
+  resoudreNoteVisee(cible) {
+    const c = String(cible || '').trim();
+    if (!c) return null;
+    const concepts = this._notesConceptuelles();
+    const autres = this.notesPourChoix().filter((x) => !concepts.some((k) => k.cle === x.cle));
+    const meilleur = (l, seuil) => {
+      let best = null;
+      for (const x of l) {
+        const s = Math.max(Ariane.memesMots(c, x.nom), Ariane.memesMots(c, x.cle));
+        if (s >= seuil && (!best || s > best.s)) best = { x, s };
+      }
+      return best ? best.x : null;
+    };
+    return meilleur(concepts, 1) || meilleur(autres, 1) || meilleur(autres, 0.75);
   }
 
   // Crée les tâches revues, puis leurs dépendances : entre tâches de la même
@@ -19632,6 +19693,7 @@ const avecTaches = (Base) => class extends Base {
         intitule: s.titre, famille: s.famille, debut: s.debut, echeance: s.echeance,
         jalon: s.jalon, priorite: s.priorite,
         source: s.famille === 'lecture' ? s.source : undefined,
+        livrable: s.famille !== 'lecture' && s.livrable ? s.livrable : undefined,
       });
       const ref = chemin ? this.refDeChemin(chemin) : null;
       refs.push(ref);
@@ -32061,6 +32123,13 @@ class ModaleAjoutLN extends obsidian.Modal {
       if (n.bloquePar) liens.push(tr('bloquée par « ') + n.bloquePar + ' »');
       if (n.debut) liens.push(tr('début ') + n.debut);
       if (liens.length) d.createDiv({ cls: 'zfa-struct-note', text: liens.join(', ') });
+      if (n.livrable) {
+        const l = d.createDiv({ cls: 'zfa-struct-note zfa-ln-livrable' });
+        l.createSpan({ text: tr('Livrable : ') + (n.livrableNom || n.livrable) });
+        const x = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Ne pas associer cette note') } });
+        obsidian.setIcon(x, 'x');
+        x.onclick = () => { n.livrable = ''; l.remove(); };
+      }
       if (n.note) d.createDiv({ cls: 'zfa-struct-note', text: n.note });
     });
     const pied = ap.createDiv({ cls: 'zfa-struct-actions' });

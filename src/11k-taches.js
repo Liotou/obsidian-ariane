@@ -2137,19 +2137,62 @@ const avecTaches = (Base) => class extends Base {
       '- apres : le rang (0, 1, 2…) dans TON tableau d\'une tâche à finir avant celle-ci (envoyer un résumé vient après l\'avoir rédigé), sinon null.',
       '- bloque_par : le titre approximatif d\'une tâche DÉJÀ EXISTANTE à finir avant, sinon "".',
       '- note : une précision utile qui ne tient pas dans le titre, sinon "".',
+      '- note_visee : quand la tâche porte sur une note précise du coffre (la rédiger, la compléter, la relire), son titre. Pour une note conceptuelle, recopie EXACTEMENT un titre de la liste ci-dessous ; pour une autre note, son titre en clair ; sans note visée : "".',
+      this._blocNotesConceptuelles(),
       '',
       'Réponds UNIQUEMENT par le tableau JSON. Chaque entrée :',
-      '{"titre": "...", "famille": "id", "debut": "", "echeance": "", "apres": null, "bloque_par": "", "note": ""}',
+      '{"titre": "...", "famille": "id", "debut": "", "echeance": "", "apres": null, "bloque_par": "", "note": "", "note_visee": ""}',
       '',
       'DESCRIPTION :',
       p,
     ].join('\n');
     const brut = await this.genererIA(prompt, 1500);
     if (!brut) return [];
-    return Ariane.lireTachesLN(brut, {
+    const specs = Ariane.lireTachesLN(brut, {
       familles: new Set(this.famillesIA().map((f) => f.id)),
       defaut: this.settings.familleTacheDefaut || 'action',
     });
+    // La note visée devient le livrable de la tâche (une lecture, elle, a sa source).
+    for (const s of specs) {
+      if (!s.noteVisee || s.famille === 'lecture') continue;
+      const n = this.resoudreNoteVisee(s.noteVisee);
+      if (n) { s.livrable = '[[' + n.cle + ']]'; s.livrableNom = n.nom; }
+    }
+    return specs;
+  }
+
+  // Les notes conceptuelles du coffre : [{ nom (alias), cle (nom de fichier) }].
+  _notesConceptuelles() {
+    const dossier = String(this.settings.dossierNotesConceptuelles || '').replace(/\/+$/, '');
+    if (!dossier) return [];
+    return this.app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(dossier + '/'))
+      .map((f) => ({ nom: this.aliasConcept(f), cle: f.basename }));
+  }
+
+  _blocNotesConceptuelles() {
+    const l = this._notesConceptuelles().map((n) => n.nom).filter(Boolean);
+    return l.length ? 'Notes conceptuelles du coffre : ' + l.join(' ; ') + '.' : '';
+  }
+
+  // La note que désigne un titre : un alias exact, sinon une note conceptuelle
+  // aux mêmes mots (pluriel et accents près), sinon une autre note de
+  // production presque identique. Jamais une note qui n'en partage que
+  // quelques mots : « risque » ne désigne pas « Risque émergent », la tâche
+  // crée peut-être une note neuve. Rend { nom, cle } ou null.
+  resoudreNoteVisee(cible) {
+    const c = String(cible || '').trim();
+    if (!c) return null;
+    const concepts = this._notesConceptuelles();
+    const autres = this.notesPourChoix().filter((x) => !concepts.some((k) => k.cle === x.cle));
+    const meilleur = (l, seuil) => {
+      let best = null;
+      for (const x of l) {
+        const s = Math.max(Ariane.memesMots(c, x.nom), Ariane.memesMots(c, x.cle));
+        if (s >= seuil && (!best || s > best.s)) best = { x, s };
+      }
+      return best ? best.x : null;
+    };
+    return meilleur(concepts, 1) || meilleur(autres, 1) || meilleur(autres, 0.75);
   }
 
   // Crée les tâches revues, puis leurs dépendances : entre tâches de la même
@@ -2165,6 +2208,7 @@ const avecTaches = (Base) => class extends Base {
         intitule: s.titre, famille: s.famille, debut: s.debut, echeance: s.echeance,
         jalon: s.jalon, priorite: s.priorite,
         source: s.famille === 'lecture' ? s.source : undefined,
+        livrable: s.famille !== 'lecture' && s.livrable ? s.livrable : undefined,
       });
       const ref = chemin ? this.refDeChemin(chemin) : null;
       refs.push(ref);

@@ -1047,6 +1047,13 @@ class ModaleAjoutLN extends obsidian.Modal {
       if (n.bloquePar) liens.push(tr('bloquée par « ') + n.bloquePar + ' »');
       if (n.debut) liens.push(tr('début ') + n.debut);
       if (liens.length) d.createDiv({ cls: 'zfa-struct-note', text: liens.join(', ') });
+      if (n.livrable) {
+        const l = d.createDiv({ cls: 'zfa-struct-note zfa-ln-livrable' });
+        l.createSpan({ text: tr('Livrable : ') + (n.livrableNom || n.livrable) });
+        const x = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Ne pas associer cette note') } });
+        obsidian.setIcon(x, 'x');
+        x.onclick = () => { n.livrable = ''; l.remove(); };
+      }
       if (n.note) d.createDiv({ cls: 'zfa-struct-note', text: n.note });
     });
     const pied = ap.createDiv({ cls: 'zfa-struct-actions' });

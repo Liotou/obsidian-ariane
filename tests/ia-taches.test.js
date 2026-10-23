@@ -190,3 +190,35 @@ test('diagnosticClaude : la cause, pas la ligne de commande ; le remède à une 
   assert.match(d({ killed: true, signal: 'SIGTERM' }, ''), /délai/);
   assert.equal(d({ message: 'Command failed: claude -p x\nerreur réseau', code: 1 }, ''), 'CLI Claude : erreur réseau');
 });
+
+test('langage naturel : la note visée devient le livrable de la tâche', async () => {
+  const notes = [
+    { nom: 'Risque', cle: 'NC-1', concept: true }, { nom: 'Risque émergent', cle: 'NC-2', concept: true },
+    { nom: 'Gouvernance des risques', cle: 'NC-3', concept: true }, { nom: 'Partie 1 - Cadrage théorique', cle: 'Partie 1 - Cadrage théorique' },
+  ];
+  let invite = '';
+  const g = Object.assign(Object.create(Ariane.prototype), {
+    settings: { familleTacheDefaut: 'action' },
+    _notesConceptuelles: () => notes.filter((n) => n.concept).map(({ nom, cle }) => ({ nom, cle })),
+    notesPourChoix: () => notes.map(({ nom, cle }) => ({ nom, cle })),
+    famillesIA: () => [{ id: 'production' }, { id: 'lecture' }, { id: 'action' }],
+    _blocFamilles: () => '',
+    genererIA: async (p) => { invite = p; return ([
+      { titre: 'Rédiger la note conceptuelle sur le risque', famille: 'production', note_visee: 'Risque' },
+      { titre: 'Compléter la gouvernance', famille: 'production', note_visee: 'gouvernance des risques' },
+      { titre: 'Relire le cadrage', famille: 'production', note_visee: 'cadrage théorique partie 1' },
+      { titre: 'Lire Beck', famille: 'lecture', note_visee: 'Risque' },
+      { titre: 'Appeler le labo', famille: 'action', note_visee: '' },
+      { titre: 'Écrire sur la météo', famille: 'production', note_visee: 'Météorologie' },
+      { titre: 'Rédiger la note sur le risque émergé', famille: 'production', note_visee: 'risques émergents' },
+      { titre: 'Créer la note sur la résilience', famille: 'production', note_visee: 'Risque organisationnel' },
+    ]); },
+  });
+  const specs = await g.analyserTachesLN('rédiger la note conceptuelle sur le risque, etc.');
+  assert.match(invite, /Notes conceptuelles du coffre : Risque ; Risque émergent ; Gouvernance des risques\./);
+  assert.deepEqual(specs.map((s) => s.livrable || ''),
+    ['[[NC-1]]', '[[NC-3]]', '[[Partie 1 - Cadrage théorique]]', '', '', '', '[[NC-2]]', ''],
+    'pluriel près ; jamais une note qui ne partage que quelques mots');
+  assert.equal(Ariane.memesMots('Risque', 'Risque émergent'), 0.5);
+  assert.equal(specs[0].livrableNom, 'Risque');
+});
