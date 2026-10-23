@@ -763,7 +763,8 @@ const avecTachesStatiques = (Base) => class extends Base {
   }
 
   // Contenu du bloc d'accès, sans ses marques. Une action n'en a pas besoin :
-  // un bloc vide dans chaque note d'action ne serait que du bruit.
+  // un bloc vide dans chaque note d'action ne serait que du bruit. Un
+  // livrable non plus : la propriété le montre déjà, le bloc le répétait.
   static blocTache(fm, meta) {
     const c = Ariane.champTache(fm);
     if (!c.retenu) return '';
@@ -780,7 +781,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       if (meta && meta.uriZotero) acces.push('[' + tr('Ouvrir dans Zotero') + '](' + meta.uriZotero + ')');
       if (acces.length) { l.push(''); l.push(acces.join('  ·  ')); }
     } else if (c.retenu === 'livrable') {
-      l.push('**' + tr('Livrable') + '** ' + String(fm.livrable).trim());
+      // La propriété suffit ; seul un conflit de champs mérite le bloc.
     } else {
       const chemin = String(fm.fichier).trim();
       l.push('**' + tr('Fichier') + '** `' + chemin.split('/').pop() + '`');
@@ -792,7 +793,7 @@ const avecTachesStatiques = (Base) => class extends Base {
         l.push('*' + bouts.join('  ·  ') + '*');
       }
     }
-    return l.join('\n');
+    return l.join('\n').trim();
   }
 
   // Libellé d'une note du coffre dans le sélecteur. L'alias passe devant : c'est

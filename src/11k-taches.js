@@ -1922,6 +1922,23 @@ const avecTaches = (Base) => class extends Base {
     ].join('\n');
   }
 
+  // Une fois pour toutes : le bloc d'accès qui ne faisait que répéter le
+  // livrable quitte les notes de tâche (majBlocTache le retire).
+  async retirerBlocsLivrable() {
+    if (this.settings._blocLivrableRetire) return 0;
+    let n = 0;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!this.refDeChemin(f.path)) continue;
+      const t = await this.app.vault.cachedRead(f);
+      if (t.indexOf(ZFA_TACHE_DEBUT) < 0) continue;
+      this.marquerEcriture(f.path);
+      if (await this.majBlocTache(f)) n += 1;
+    }
+    this.settings._blocLivrableRetire = true;
+    await this.saveSettings();
+    return n;
+  }
+
   // Une fois pour toutes : les notes de tâche perdent l'ancien titre
   // « ## Note de travail », leur contenu suivant désormais le titre de la
   // note. Par le coffre (vault.process), qui ménage une note ouverte.
@@ -2633,8 +2650,12 @@ const avecTaches = (Base) => class extends Base {
     let texte = avant;
     const debut = texte.indexOf(ZFA_TACHE_DEBUT);
     const fin = texte.indexOf(ZFA_TACHE_FIN);
-    if (debut !== -1 && fin > debut) {
+    if (debut !== -1 && fin > debut && bloc) {
       texte = texte.slice(0, debut) + bloc + texte.slice(fin + ZFA_TACHE_FIN.length);
+    } else if (debut !== -1 && fin > debut) {
+      // Plus rien à montrer : le bloc part, et la ligne vide qu'il occupait.
+      texte = texte.slice(0, debut).replace(/\n{2,}$/, '\n\n')
+        + texte.slice(fin + ZFA_TACHE_FIN.length).replace(/^\n+/, '');
     } else if (bloc) {
       texte = texte.replace(/^(# .*\n)/m, '$1\n' + bloc + '\n');
     }

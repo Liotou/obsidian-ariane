@@ -4887,7 +4887,7 @@ const avecSocle = (Base) => class extends Base {
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
             'dossierTaches', 'tempsDossierJournal', 'dossierNotesEvenements', 'chronoDepuis',
-            'veilleDossier', 'veilleDerniere', '_noteTravailSansTitre'];
+            'veilleDossier', 'veilleDerniere', '_noteTravailSansTitre', '_blocLivrableRetire'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
@@ -13780,7 +13780,8 @@ const avecTachesStatiques = (Base) => class extends Base {
   }
 
   // Contenu du bloc d'accès, sans ses marques. Une action n'en a pas besoin :
-  // un bloc vide dans chaque note d'action ne serait que du bruit.
+  // un bloc vide dans chaque note d'action ne serait que du bruit. Un
+  // livrable non plus : la propriété le montre déjà, le bloc le répétait.
   static blocTache(fm, meta) {
     const c = Ariane.champTache(fm);
     if (!c.retenu) return '';
@@ -13797,7 +13798,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       if (meta && meta.uriZotero) acces.push('[' + tr('Ouvrir dans Zotero') + '](' + meta.uriZotero + ')');
       if (acces.length) { l.push(''); l.push(acces.join('  ·  ')); }
     } else if (c.retenu === 'livrable') {
-      l.push('**' + tr('Livrable') + '** ' + String(fm.livrable).trim());
+      // La propriété suffit ; seul un conflit de champs mérite le bloc.
     } else {
       const chemin = String(fm.fichier).trim();
       l.push('**' + tr('Fichier') + '** `' + chemin.split('/').pop() + '`');
@@ -13809,7 +13810,7 @@ const avecTachesStatiques = (Base) => class extends Base {
         l.push('*' + bouts.join('  ·  ') + '*');
       }
     }
-    return l.join('\n');
+    return l.join('\n').trim();
   }
 
   // Libellé d'une note du coffre dans le sélecteur. L'alias passe devant : c'est
@@ -19407,6 +19408,23 @@ const avecTaches = (Base) => class extends Base {
     ].join('\n');
   }
 
+  // Une fois pour toutes : le bloc d'accès qui ne faisait que répéter le
+  // livrable quitte les notes de tâche (majBlocTache le retire).
+  async retirerBlocsLivrable() {
+    if (this.settings._blocLivrableRetire) return 0;
+    let n = 0;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!this.refDeChemin(f.path)) continue;
+      const t = await this.app.vault.cachedRead(f);
+      if (t.indexOf(ZFA_TACHE_DEBUT) < 0) continue;
+      this.marquerEcriture(f.path);
+      if (await this.majBlocTache(f)) n += 1;
+    }
+    this.settings._blocLivrableRetire = true;
+    await this.saveSettings();
+    return n;
+  }
+
   // Une fois pour toutes : les notes de tâche perdent l'ancien titre
   // « ## Note de travail », leur contenu suivant désormais le titre de la
   // note. Par le coffre (vault.process), qui ménage une note ouverte.
@@ -20118,8 +20136,12 @@ const avecTaches = (Base) => class extends Base {
     let texte = avant;
     const debut = texte.indexOf(ZFA_TACHE_DEBUT);
     const fin = texte.indexOf(ZFA_TACHE_FIN);
-    if (debut !== -1 && fin > debut) {
+    if (debut !== -1 && fin > debut && bloc) {
       texte = texte.slice(0, debut) + bloc + texte.slice(fin + ZFA_TACHE_FIN.length);
+    } else if (debut !== -1 && fin > debut) {
+      // Plus rien à montrer : le bloc part, et la ligne vide qu'il occupait.
+      texte = texte.slice(0, debut).replace(/\n{2,}$/, '\n\n')
+        + texte.slice(fin + ZFA_TACHE_FIN.length).replace(/^\n+/, '');
     } else if (bloc) {
       texte = texte.replace(/^(# .*\n)/m, '$1\n' + bloc + '\n');
     }
@@ -27272,6 +27294,7 @@ class Ariane extends composer(obsidian.Plugin,
     // Une fois : l'ancien titre « ## Note de travail » quitte les notes de tâche.
     this.app.workspace.onLayoutReady(() => {
       this.migrerNotesTravail().catch((e) => console.warn('[Ariane] notes de travail :', e));
+      this.retirerBlocsLivrable().catch((e) => console.warn('[Ariane] blocs de livrable :', e));
     });
     // Un rôle de dossier qui désigne un dossier absent (renommé, ou resté sur
     // un ancien nom par défaut) suit le dossier existant qui lui correspond.

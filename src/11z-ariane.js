@@ -833,6 +833,7 @@ class Ariane extends composer(obsidian.Plugin,
     // Une fois : l'ancien titre « ## Note de travail » quitte les notes de tâche.
     this.app.workspace.onLayoutReady(() => {
       this.migrerNotesTravail().catch((e) => console.warn('[Ariane] notes de travail :', e));
+      this.retirerBlocsLivrable().catch((e) => console.warn('[Ariane] blocs de livrable :', e));
     });
     // Un rôle de dossier qui désigne un dossier absent (renommé, ou resté sur
     // un ancien nom par défaut) suit le dossier existant qui lui correspond.

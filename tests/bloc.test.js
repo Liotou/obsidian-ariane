@@ -20,9 +20,9 @@ test('une lecture sans PDF attaché n offre pas de lien mort', () => {
   assert.ok(!s.includes('undefined'));
 });
 
-test('une production interne renvoie vers la note produite', () => {
-  const s = Ariane.blocTache({ livrable: '[[NC-202607081912]]' }, null);
-  assert.ok(s.includes('[[NC-202607081912]]'));
+test('une production interne n’a pas de bloc : la propriété montre déjà le livrable', () => {
+  assert.equal(Ariane.blocTache({ livrable: '[[NC-202607081912]]' }, null), '');
+  assert.match(Ariane.blocTache({ livrable: '[[NC-1]]', fichier: '/x.pptx' }, null), /Conflit/, 'un conflit se signale toujours');
 });
 
 test('une production externe affiche les deux dates connues', () => {
