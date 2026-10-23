@@ -23,6 +23,7 @@ module.exports._test = {
   insertionNarrative,
   debutDePhrase,
   libelleConcept,
+  uniformiserLiensConcepts,
   dossiersOutils,
   lireEntreeZip,
   argumentCmd,

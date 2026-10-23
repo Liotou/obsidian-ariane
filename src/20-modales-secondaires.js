@@ -710,6 +710,56 @@ class ModaleMentionsSources extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// Les liens vers les notes conceptuelles à mettre au format de la phrase,
+// note par note : cochée, la note est reprise.
+class ModaleLiensConcepts extends obsidian.Modal {
+  constructor(app, greffon, notes) {
+    super(app);
+    this.greffon = greffon;
+    this.l = notes || [];
+    this.choix = new Set(this.l.map((_, i) => i));
+  }
+
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass('zfa-orphelins-modale');
+    const titre = tr('Liens vers les notes conceptuelles');
+    if (this.setTitle) this.setTitle(titre); else contentEl.createEl('h3', { text: titre });
+    contentEl.createDiv({ cls: 'setting-item-description', text: tr('Chaque lien prend l’alias de sa note, sans majuscule en cours de phrase, comme un concept glissé dans le texte. Un libellé choisi à la main garde ses mots ; seule sa majuscule suit la phrase.') });
+    const liste = contentEl.createDiv({ cls: 'zfa-orphelins-liste' });
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const bouton = pied.createEl('button', { cls: 'mod-cta' });
+    const maj = () => {
+      const n = this.l.filter((_, i) => this.choix.has(i)).reduce((t, o) => t + o.changements.length, 0);
+      bouton.setText(tr('Mettre au format') + ' (' + n + ' ' + tr('lien(s)') + ')');
+      bouton.disabled = !n;
+    };
+    this.l.forEach((o, i) => {
+      const ligne = liste.createEl('label', { cls: 'zfa-orphelins-ligne' });
+      const c = ligne.createEl('input', { type: 'checkbox' });
+      c.checked = true;
+      c.addEventListener('change', () => { if (c.checked) this.choix.add(i); else this.choix.delete(i); maj(); });
+      const txt = ligne.createDiv({ cls: 'zfa-orphelins-texte' });
+      txt.createDiv({ cls: 'zfa-orphelins-nom', text: o.fichier.basename });
+      for (const ch of o.changements) txt.createDiv({ cls: 'zfa-orphelins-info', text: ch.avant + '  →  ' + ch.apres });
+      const ouvrir = ligne.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Ouvrir la note') } });
+      obsidian.setIcon(ouvrir, 'file-text');
+      ouvrir.addEventListener('click', (e) => { e.preventDefault(); this.app.workspace.getLeaf('tab').openFile(o.fichier); });
+    });
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    pied.appendChild(bouton);
+    bouton.onclick = async () => {
+      bouton.disabled = true;
+      const n = await this.greffon.uniformiserLiensConcepts(this.l.filter((_, i) => this.choix.has(i)).map((o) => o.fichier));
+      new obsidian.Notice(n + ' ' + tr('lien(s) mis au format.'));
+      this.close();
+    };
+    maj();
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 // L'essai à blanc de la veille : ce que la collecte rapporte source par
 // source, ce que le pré-tri garderait, et les mieux notés. Rien n'est écrit.
 class ModaleEssaiVeille extends obsidian.Modal {

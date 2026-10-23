@@ -510,6 +510,11 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.releverGoogle(false),
     });
     this.addCommand({
+      id: 'concepts-uniformiser-liens',
+      name: tr('Notes conceptuelles : mettre les liens au format de la phrase…'),
+      callback: () => this.revoirLiensConcepts(),
+    });
+    this.addCommand({
       id: 'titres-numeroter',
       name: tr('Titres : choisir les dossiers numérotés et numéroter…'),
       callback: () => this.choisirDossiersNumerotation(),

@@ -3938,7 +3938,44 @@ function libelleConcept(alias, majuscule) {
   if (!t) return t;
   if (majuscule) return t.charAt(0).toLocaleUpperCase('fr') + t.slice(1);
   if (/^\p{Lu}[\p{Lu}\p{N}]/u.test(t)) return t;
+  // Deux mots capitalisés (« Design Science ») : un nom propre, gardé tel quel.
+  if (/^\S+\s+\p{Lu}/u.test(t)) return t;
   return t.charAt(0).toLocaleLowerCase('fr') + t.slice(1);
+}
+
+// Les liens vers des notes conceptuelles d'un texte, mis au format d'un mot
+// de la phrase : « [[NC-…|alias]] », sans majuscule sauf en tête de phrase
+// ou pour un sigle. `aliasDe(cible)` rend l'alias de la note visée, ou ''
+// si elle n'est pas une note conceptuelle (ou n'a pas d'alias). Un libellé
+// choisi à la main garde ses mots : seule sa majuscule suit la phrase.
+// L'entête, les blocs de code, les incorporations et les liens vers un titre
+// ou un bloc restent tels quels. Rend { texte, changements: [{ avant, apres }] }.
+function uniformiserLiensConcepts(texte, aliasDe) {
+  const lignes = String(texte == null ? '' : texte).split('\n');
+  const changements = [];
+  let entete = lignes[0] === '---';
+  let code = false;
+  for (let i = 0; i < lignes.length; i++) {
+    const l = lignes[i];
+    if (entete) { if (i > 0 && l.trim() === '---') entete = false; continue; }
+    if (/^\s*(`{3,}|~{3,})/.test(l)) { code = !code; continue; }
+    if (code || l.indexOf('[[') < 0) continue;
+    lignes[i] = l.replace(/(!?)\[\[([^\]\n]+?)\]\]/g, (m, inc, dedans, off) => {
+      if (inc) return m;
+      const k = dedans.search(/\\?\|/);
+      const cible = (k < 0 ? dedans : dedans.slice(0, k)).trim();
+      const sep = k < 0 ? (/^\s*\|/.test(l) ? '\\|' : '|') : dedans.slice(k).match(/^\\?\|/)[0];
+      const lib = k < 0 ? '' : dedans.slice(k + sep.length);
+      if (!cible || /[#^]/.test(cible)) return m;
+      const alias = aliasDe(cible);
+      if (!alias) return m;
+      const base = lib.trim() && lib.trim() !== cible ? lib.trim() : alias;
+      const nouveau = '[[' + cible + sep + libelleConcept(base, debutDePhrase(l.slice(0, off))) + ']]';
+      if (nouveau !== m) changements.push({ avant: m, apres: nouveau });
+      return nouveau;
+    });
+  }
+  return { texte: lignes.join('\n'), changements };
 }
 
 // ── Citations dans un tableau ──
@@ -9977,10 +10014,73 @@ const avecNoteAtomes = (Base) => class extends Base {
     return this._conceptsGlisses;
   }
 
-  aliasConcept(f) {
+  // L'alias d'une note conceptuelle ; à défaut, son nom (sauf `strict`).
+  aliasConcept(f, strict) {
     const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
     const al = Array.isArray(fm.aliases) ? fm.aliases[0] : fm.aliases;
-    return String(al || f.basename);
+    return String(al || (strict ? '' : f.basename));
+  }
+
+  // Un concept se pose sur toute ligne de texte, puce indentée ou titre
+  // compris : seuls l'entête et les blocs de code le refusent.
+  ligneAccepteConcept(doc, n) {
+    if (n < 1 || n > doc.lines) return false;
+    let k = 1, fence = false;
+    if (doc.line(1).text.trim() === '---') {
+      for (k = 2; k <= doc.lines && doc.line(k).text.trim() !== '---'; k++) { /* entête */ }
+      if (n <= k) return false;
+      k += 1;
+    }
+    for (; k < n; k++) if (/^\s*(`{3,}|~{3,})/.test(doc.line(k).text)) fence = !fence;
+    return !fence && !/^\s*(`{3,}|~{3,})/.test(doc.line(n).text);
+  }
+
+  // ── liens vers les notes conceptuelles, dans tout le coffre ──
+  //  Les liens posés avant le glisser (« [[NC-…]] » nu, « [[NC-…|Phénomène]] »)
+  //  prennent le même format : l'alias, sans majuscule en cours de phrase.
+
+  // Les notes à reprendre : [{ fichier, changements }], sans rien écrire.
+  async liensConceptsAUniformiser() {
+    const dossier = String(this.settings.dossierNotesConceptuelles || '').replace(/\/+$/, '');
+    if (!dossier) return [];
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      // Sans lien, rien à lire.
+      if (!((this.app.metadataCache.getFileCache(f) || {}).links || []).length) continue;
+      const r = uniformiserLiensConcepts(await this.app.vault.cachedRead(f), this._aliasDeCible(f.path, dossier));
+      if (r.changements.length) out.push({ fichier: f, changements: r.changements });
+    }
+    return out;
+  }
+
+  _aliasDeCible(depuis, dossier) {
+    return (cible) => {
+      const f = this.app.metadataCache.getFirstLinkpathDest(cible, depuis);
+      return f && f.path.startsWith(dossier + '/') ? this.aliasConcept(f, true) : '';
+    };
+  }
+
+  async uniformiserLiensConcepts(fichiers) {
+    const dossier = String(this.settings.dossierNotesConceptuelles || '').replace(/\/+$/, '');
+    let n = 0;
+    for (const f of fichiers) {
+      await this.app.vault.process(f, (t) => {
+        const r = uniformiserLiensConcepts(t, this._aliasDeCible(f.path, dossier));
+        n += r.changements.length;
+        return r.texte;
+      });
+    }
+    return n;
+  }
+
+  async revoirLiensConcepts() {
+    if (!this.settings.dossierNotesConceptuelles) {
+      new obsidian.Notice(tr('Aucun dossier de notes conceptuelles n’est réglé.'));
+      return;
+    }
+    const l = await this.liensConceptsAUniformiser();
+    if (!l.length) { new obsidian.Notice(tr('Tous les liens vers les notes conceptuelles sont déjà au format.')); return; }
+    new ModaleLiensConcepts(this.app, this, l).open();
   }
 
   // Le point visé : { cm, pos, cel } sur une cellule, un paragraphe ou une
@@ -9991,8 +10091,7 @@ const avecNoteAtomes = (Base) => class extends Base {
     const cm = this.cmSousPoint(e, doc);
     const pos = cm ? cm.posAtCoords({ x: e.clientX, y: e.clientY }) : null;
     if (pos == null) return null;
-    const n = cm.state.doc.lineAt(pos).number;
-    if (!this.ligneEstParagraphe(cm.state.doc, n) && !this.ligneVideDeposable(cm.state.doc, n)) return null;
+    if (!this.ligneAccepteConcept(cm.state.doc, cm.state.doc.lineAt(pos).number)) return null;
     return { cm, pos, cel: null };
   }
 
@@ -26767,6 +26866,11 @@ class Ariane extends composer(obsidian.Plugin,
       id: 'google-relever',
       name: tr('Google Agenda : relever les événements'),
       callback: () => this.releverGoogle(false),
+    });
+    this.addCommand({
+      id: 'concepts-uniformiser-liens',
+      name: tr('Notes conceptuelles : mettre les liens au format de la phrase…'),
+      callback: () => this.revoirLiensConcepts(),
     });
     this.addCommand({
       id: 'titres-numeroter',
@@ -46575,6 +46679,56 @@ class ModaleMentionsSources extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// Les liens vers les notes conceptuelles à mettre au format de la phrase,
+// note par note : cochée, la note est reprise.
+class ModaleLiensConcepts extends obsidian.Modal {
+  constructor(app, greffon, notes) {
+    super(app);
+    this.greffon = greffon;
+    this.l = notes || [];
+    this.choix = new Set(this.l.map((_, i) => i));
+  }
+
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass('zfa-orphelins-modale');
+    const titre = tr('Liens vers les notes conceptuelles');
+    if (this.setTitle) this.setTitle(titre); else contentEl.createEl('h3', { text: titre });
+    contentEl.createDiv({ cls: 'setting-item-description', text: tr('Chaque lien prend l’alias de sa note, sans majuscule en cours de phrase, comme un concept glissé dans le texte. Un libellé choisi à la main garde ses mots ; seule sa majuscule suit la phrase.') });
+    const liste = contentEl.createDiv({ cls: 'zfa-orphelins-liste' });
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const bouton = pied.createEl('button', { cls: 'mod-cta' });
+    const maj = () => {
+      const n = this.l.filter((_, i) => this.choix.has(i)).reduce((t, o) => t + o.changements.length, 0);
+      bouton.setText(tr('Mettre au format') + ' (' + n + ' ' + tr('lien(s)') + ')');
+      bouton.disabled = !n;
+    };
+    this.l.forEach((o, i) => {
+      const ligne = liste.createEl('label', { cls: 'zfa-orphelins-ligne' });
+      const c = ligne.createEl('input', { type: 'checkbox' });
+      c.checked = true;
+      c.addEventListener('change', () => { if (c.checked) this.choix.add(i); else this.choix.delete(i); maj(); });
+      const txt = ligne.createDiv({ cls: 'zfa-orphelins-texte' });
+      txt.createDiv({ cls: 'zfa-orphelins-nom', text: o.fichier.basename });
+      for (const ch of o.changements) txt.createDiv({ cls: 'zfa-orphelins-info', text: ch.avant + '  →  ' + ch.apres });
+      const ouvrir = ligne.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Ouvrir la note') } });
+      obsidian.setIcon(ouvrir, 'file-text');
+      ouvrir.addEventListener('click', (e) => { e.preventDefault(); this.app.workspace.getLeaf('tab').openFile(o.fichier); });
+    });
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    pied.appendChild(bouton);
+    bouton.onclick = async () => {
+      bouton.disabled = true;
+      const n = await this.greffon.uniformiserLiensConcepts(this.l.filter((_, i) => this.choix.has(i)).map((o) => o.fichier));
+      new obsidian.Notice(n + ' ' + tr('lien(s) mis au format.'));
+      this.close();
+    };
+    maj();
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 // L'essai à blanc de la veille : ce que la collecte rapporte source par
 // source, ce que le pré-tri garderait, et les mieux notés. Rien n'est écrit.
 class ModaleEssaiVeille extends obsidian.Modal {
@@ -48861,6 +49015,7 @@ module.exports._test = {
   insertionNarrative,
   debutDePhrase,
   libelleConcept,
+  uniformiserLiensConcepts,
   dossiersOutils,
   lireEntreeZip,
   argumentCmd,

@@ -286,7 +286,44 @@ function libelleConcept(alias, majuscule) {
   if (!t) return t;
   if (majuscule) return t.charAt(0).toLocaleUpperCase('fr') + t.slice(1);
   if (/^\p{Lu}[\p{Lu}\p{N}]/u.test(t)) return t;
+  // Deux mots capitalisés (« Design Science ») : un nom propre, gardé tel quel.
+  if (/^\S+\s+\p{Lu}/u.test(t)) return t;
   return t.charAt(0).toLocaleLowerCase('fr') + t.slice(1);
+}
+
+// Les liens vers des notes conceptuelles d'un texte, mis au format d'un mot
+// de la phrase : « [[NC-…|alias]] », sans majuscule sauf en tête de phrase
+// ou pour un sigle. `aliasDe(cible)` rend l'alias de la note visée, ou ''
+// si elle n'est pas une note conceptuelle (ou n'a pas d'alias). Un libellé
+// choisi à la main garde ses mots : seule sa majuscule suit la phrase.
+// L'entête, les blocs de code, les incorporations et les liens vers un titre
+// ou un bloc restent tels quels. Rend { texte, changements: [{ avant, apres }] }.
+function uniformiserLiensConcepts(texte, aliasDe) {
+  const lignes = String(texte == null ? '' : texte).split('\n');
+  const changements = [];
+  let entete = lignes[0] === '---';
+  let code = false;
+  for (let i = 0; i < lignes.length; i++) {
+    const l = lignes[i];
+    if (entete) { if (i > 0 && l.trim() === '---') entete = false; continue; }
+    if (/^\s*(`{3,}|~{3,})/.test(l)) { code = !code; continue; }
+    if (code || l.indexOf('[[') < 0) continue;
+    lignes[i] = l.replace(/(!?)\[\[([^\]\n]+?)\]\]/g, (m, inc, dedans, off) => {
+      if (inc) return m;
+      const k = dedans.search(/\\?\|/);
+      const cible = (k < 0 ? dedans : dedans.slice(0, k)).trim();
+      const sep = k < 0 ? (/^\s*\|/.test(l) ? '\\|' : '|') : dedans.slice(k).match(/^\\?\|/)[0];
+      const lib = k < 0 ? '' : dedans.slice(k + sep.length);
+      if (!cible || /[#^]/.test(cible)) return m;
+      const alias = aliasDe(cible);
+      if (!alias) return m;
+      const base = lib.trim() && lib.trim() !== cible ? lib.trim() : alias;
+      const nouveau = '[[' + cible + sep + libelleConcept(base, debutDePhrase(l.slice(0, off))) + ']]';
+      if (nouveau !== m) changements.push({ avant: m, apres: nouveau });
+      return nouveau;
+    });
+  }
+  return { texte: lignes.join('\n'), changements };
 }
 
 // ── Citations dans un tableau ──

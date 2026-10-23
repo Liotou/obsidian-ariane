@@ -1802,10 +1802,73 @@ const avecNoteAtomes = (Base) => class extends Base {
     return this._conceptsGlisses;
   }
 
-  aliasConcept(f) {
+  // L'alias d'une note conceptuelle ; à défaut, son nom (sauf `strict`).
+  aliasConcept(f, strict) {
     const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
     const al = Array.isArray(fm.aliases) ? fm.aliases[0] : fm.aliases;
-    return String(al || f.basename);
+    return String(al || (strict ? '' : f.basename));
+  }
+
+  // Un concept se pose sur toute ligne de texte, puce indentée ou titre
+  // compris : seuls l'entête et les blocs de code le refusent.
+  ligneAccepteConcept(doc, n) {
+    if (n < 1 || n > doc.lines) return false;
+    let k = 1, fence = false;
+    if (doc.line(1).text.trim() === '---') {
+      for (k = 2; k <= doc.lines && doc.line(k).text.trim() !== '---'; k++) { /* entête */ }
+      if (n <= k) return false;
+      k += 1;
+    }
+    for (; k < n; k++) if (/^\s*(`{3,}|~{3,})/.test(doc.line(k).text)) fence = !fence;
+    return !fence && !/^\s*(`{3,}|~{3,})/.test(doc.line(n).text);
+  }
+
+  // ── liens vers les notes conceptuelles, dans tout le coffre ──
+  //  Les liens posés avant le glisser (« [[NC-…]] » nu, « [[NC-…|Phénomène]] »)
+  //  prennent le même format : l'alias, sans majuscule en cours de phrase.
+
+  // Les notes à reprendre : [{ fichier, changements }], sans rien écrire.
+  async liensConceptsAUniformiser() {
+    const dossier = String(this.settings.dossierNotesConceptuelles || '').replace(/\/+$/, '');
+    if (!dossier) return [];
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      // Sans lien, rien à lire.
+      if (!((this.app.metadataCache.getFileCache(f) || {}).links || []).length) continue;
+      const r = uniformiserLiensConcepts(await this.app.vault.cachedRead(f), this._aliasDeCible(f.path, dossier));
+      if (r.changements.length) out.push({ fichier: f, changements: r.changements });
+    }
+    return out;
+  }
+
+  _aliasDeCible(depuis, dossier) {
+    return (cible) => {
+      const f = this.app.metadataCache.getFirstLinkpathDest(cible, depuis);
+      return f && f.path.startsWith(dossier + '/') ? this.aliasConcept(f, true) : '';
+    };
+  }
+
+  async uniformiserLiensConcepts(fichiers) {
+    const dossier = String(this.settings.dossierNotesConceptuelles || '').replace(/\/+$/, '');
+    let n = 0;
+    for (const f of fichiers) {
+      await this.app.vault.process(f, (t) => {
+        const r = uniformiserLiensConcepts(t, this._aliasDeCible(f.path, dossier));
+        n += r.changements.length;
+        return r.texte;
+      });
+    }
+    return n;
+  }
+
+  async revoirLiensConcepts() {
+    if (!this.settings.dossierNotesConceptuelles) {
+      new obsidian.Notice(tr('Aucun dossier de notes conceptuelles n’est réglé.'));
+      return;
+    }
+    const l = await this.liensConceptsAUniformiser();
+    if (!l.length) { new obsidian.Notice(tr('Tous les liens vers les notes conceptuelles sont déjà au format.')); return; }
+    new ModaleLiensConcepts(this.app, this, l).open();
   }
 
   // Le point visé : { cm, pos, cel } sur une cellule, un paragraphe ou une
@@ -1816,8 +1879,7 @@ const avecNoteAtomes = (Base) => class extends Base {
     const cm = this.cmSousPoint(e, doc);
     const pos = cm ? cm.posAtCoords({ x: e.clientX, y: e.clientY }) : null;
     if (pos == null) return null;
-    const n = cm.state.doc.lineAt(pos).number;
-    if (!this.ligneEstParagraphe(cm.state.doc, n) && !this.ligneVideDeposable(cm.state.doc, n)) return null;
+    if (!this.ligneAccepteConcept(cm.state.doc, cm.state.doc.lineAt(pos).number)) return null;
     return { cm, pos, cel: null };
   }
 
