@@ -3782,5 +3782,57 @@ const avecTaches = (Base) => class extends Base {
     return retires;
   }
 
+  // ── le créneau du moment, dans la barre d'état ──
+  //  Partout dans Obsidian : la tâche du créneau en cours, une jauge aux
+  //  couleurs de sa famille, le temps passé et le temps restant. Hors
+  //  créneau, le prochain de la journée, en retrait. Un clic ouvre la tâche.
+
+  demarrerBarreCreneau() {
+    const el = this.addStatusBarItem();
+    el.addClass('zfa-creneau-barre');
+    this._creneauBarre = el;
+    el.addEventListener('click', () => {
+      const f = this._creneauAffiche && this._creneauAffiche.tache.fichier;
+      if (f) this.app.workspace.getLeaf(false).openFile(f);
+    });
+    this.registerInterval(window.setInterval(() => this.rafraichirBarreCreneau(), 15000));
+    this.registerEvent(this.app.metadataCache.on('changed', (f) => {
+      if (f && this.refDeChemin(f.path)) this.antirebond('barre:creneau', () => this.rafraichirBarreCreneau(), 800);
+    }));
+    this.app.workspace.onLayoutReady(() => this.rafraichirBarreCreneau());
+  }
+
+  rafraichirBarreCreneau() {
+    const el = this._creneauBarre;
+    if (!el) return;
+    const maintenant = Date.now();
+    const c = this.settings.creneauBarreEtat === false ? null : Ariane.creneauDuMoment(this.tachesPourGantt(), maintenant);
+    this._creneauAffiche = c;
+    el.empty();
+    el.toggleClass('est-vide', !c);
+    if (!c) { el.removeAttribute('aria-label'); return; }
+    const t = c.tache;
+    const fam = this.familleDe(t.famille);
+    el.style.setProperty('--zfa-fam-couleur', fam.couleur || 'var(--interactive-accent)');
+    el.toggleClass('est-prochain', !c.enCours);
+    const ic = el.createSpan({ cls: 'zfa-creneau-icone' });
+    obsidian.setIcon(ic, c.enCours ? 'timer' : 'clock');
+    const h = (iso) => iso.slice(11, 16);
+    if (!c.enCours) {
+      el.createSpan({ cls: 'zfa-creneau-titre', text: h(c.debut) + ' ' + t.intitule });
+      el.setAttr('aria-label', tr('Prochain créneau : ') + t.ref + ', ' + t.intitule + ', ' + h(c.debut) + '-' + h(c.fin));
+      el.removeClass('est-fin');
+      return;
+    }
+    const a = Ariane.avanceeCreneau(c, maintenant);
+    el.createSpan({ cls: 'zfa-creneau-titre', text: t.intitule });
+    const jauge = el.createSpan({ cls: 'zfa-creneau-jauge' });
+    jauge.createSpan({ cls: 'zfa-creneau-rempli' }).style.width = Math.round(a.part * 100) + '%';
+    el.createSpan({ cls: 'zfa-creneau-temps', text: dureeLisible(a.passeMin) + tr(', reste ') + dureeLisible(a.resteMin) });
+    el.toggleClass('est-fin', a.resteMin <= 5);
+    el.setAttr('aria-label', t.ref + ', ' + t.intitule + ' : ' + h(c.debut) + '-' + h(c.fin)
+      + tr('. Un clic ouvre la tâche.'));
+  }
+
   //#endregion Ariane · temps de travail
 };

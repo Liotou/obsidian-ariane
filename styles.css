@@ -691,6 +691,30 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   color: var(--text-normal);
 }
 
+/* Créneau du moment en barre d'état : la tâche, une jauge à la couleur de sa
+   famille, le passé et le restant. Le prochain créneau, en retrait. */
+.zfa-creneau-barre {
+  display: inline-flex; align-items: center; gap: 6px;
+  cursor: pointer; color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.zfa-creneau-barre.est-vide { display: none; }
+.zfa-creneau-barre:hover { color: var(--text-normal); }
+.zfa-creneau-icone { display: inline-flex; color: var(--zfa-fam-couleur); }
+.zfa-creneau-icone svg { width: 13px; height: 13px; }
+.zfa-creneau-titre { max-width: 18em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zfa-creneau-barre:not(.est-prochain) .zfa-creneau-titre { color: var(--text-normal); }
+.zfa-creneau-jauge {
+  position: relative; width: 72px; height: 6px; border-radius: 3px; overflow: hidden;
+  background: var(--background-modifier-border);
+}
+.zfa-creneau-rempli {
+  position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px;
+  background: var(--zfa-fam-couleur); transition: width 0.6s ease;
+}
+.zfa-creneau-barre.est-fin .zfa-creneau-temps { color: var(--text-warning); }
+.zfa-creneau-barre.est-prochain { opacity: 0.8; }
+@media (prefers-reduced-motion: reduce) { .zfa-creneau-rempli { transition: none; } }
+
 /* ---------------- Onglets de réglages : icône + libellé ---------------- */
 .zfa-onglet {
   display: inline-flex;

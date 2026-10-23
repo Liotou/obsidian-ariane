@@ -2306,6 +2306,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Temps de la note en cours. Le point est plein quand le compteur tourne, vide en pause. Un clic ouvre la chronologie."))
       .addToggle((t) => t.setValue(s.tempsBarreEtat !== false).onChange(async (v) => { s.tempsBarreEtat = v; await maj(); }));
     new obsidian.Setting(c)
+      .setName(tr("Créneau en cours dans la barre d'état"))
+      .setDesc(tr("La tâche du créneau en cours, une jauge, le temps passé et le temps restant ; hors créneau, le prochain de la journée. Un clic ouvre la tâche."))
+      .addToggle((t) => t.setValue(s.creneauBarreEtat !== false).onChange(async (v) => {
+        s.creneauBarreEtat = v; await maj(); this.plugin.rafraichirBarreCreneau();
+      }));
+    new obsidian.Setting(c)
       .setName(tr("Infobulle dans l'explorateur"))
       .addToggle((t) => t.setValue(s.tempsInfobulleExplorateur !== false).onChange(async (v) => { s.tempsInfobulleExplorateur = v; await maj(); }));
     this._aide(c, tr("Le temps de chaque jour est gardé dans « .ariane/jours/AAAA-MM-JJ.json », un dossier caché à la racine du coffre, avec les sessions, l'activité hors Obsidian et le bilan de la journée. La chronologie l'affiche, jour par jour."));

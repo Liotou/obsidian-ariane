@@ -17,6 +17,11 @@ const TEXTES = {
   en: {
     // Rappels : Google Tasks et Microsoft To Do, comptes reliés.
     "Notes en cartes compactes": "Notes as compact cards",
+    "Prochain créneau : ": "Next slot: ",
+    ", reste ": ", left ",
+    ". Un clic ouvre la tâche.": ". Click to open the task.",
+    "Créneau en cours dans la barre d'état": "Current slot in the status bar",
+    "La tâche du créneau en cours, une jauge, le temps passé et le temps restant ; hors créneau, le prochain de la journée. Un clic ouvre la tâche.": "The task of the current slot, a gauge, the time spent and the time left; outside a slot, the day's next one. Click to open the task.",
     "Livrable : ": "Deliverable: ",
     "Ne pas associer cette note": "Do not link this note",
     "Une note ordinaire posée sur un canevas montre seulement son alias et sa référence, aux couleurs de sa famille ; le chevron l’agrandit sur son contenu, puis la referme. Coupé : l’affichage natif du canevas.": "A regular note on a canvas shows only its alias and reference, in its family's colours; the chevron expands it over its content, then folds it. Off: the canvas's native display.",
@@ -1760,6 +1765,7 @@ const DEFAULT_SETTINGS = {
   tempsIgnorerVerrouillees: true,       // ne pas chronométrer « locked: true »
   tempsDossiersExclus: '',              // dossiers non chronométrés (sous-dossiers compris)
   tempsBarreEtat: true,
+  creneauBarreEtat: true,       // créneau en cours (jauge, passé, restant) dans la barre d'état
   tempsInfobulleExplorateur: true,
   tempsDossierJournal: '',      // ancien journal du temps (lu seulement par la migration des données)
   tempsHistorique: {},                  // { 'AAAA-MM-JJ': { chemin: secondes } }

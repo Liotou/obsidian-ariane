@@ -852,6 +852,7 @@ class Ariane extends composer(obsidian.Plugin,
       } catch (e) { console.error('[Ariane] données par jour', e); }
       this.elaguerHistoriqueTemps();
       this.demarrerCompteurTemps();
+      this.demarrerBarreCreneau();
       this.demarrerActivite();
       this.brancherChronologie();
       this.demarrerVeille();

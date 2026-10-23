@@ -276,6 +276,42 @@ const avecTachesStatiques = (Base) => class extends Base {
     return new Date(m.y, m.mo - 1, m.d, m.h, m.mi, m.s || 0).getTime();
   }
 
+  // Le créneau du moment parmi les tâches ouvertes : celui en cours (le
+  // premier à finir, s'ils se chevauchent), sinon le prochain du jour.
+  // Rend { tache, debut, fin, enCours } ou null.
+  static creneauDuMoment(taches, maintenantMs) {
+    const maintenant = Ariane.isoLocal(maintenantMs);
+    const jour = maintenant.slice(0, 10);
+    let cours = null;
+    let proch = null;
+    for (const t of taches || []) {
+      if (t.statut === 'terminée' || t.statut === 'abandonnée') continue;
+      for (const c of Ariane.creneauxDeTache(t)) {
+        if (c.debut <= maintenant && maintenant < c.fin) {
+          if (!cours || c.fin < cours.fin) cours = { tache: t, debut: c.debut, fin: c.fin, enCours: true };
+        } else if (c.debut > maintenant && c.debut.slice(0, 10) === jour && (!proch || c.debut < proch.debut)) {
+          proch = { tache: t, debut: c.debut, fin: c.fin, enCours: false };
+        }
+      }
+    }
+    return cours || proch;
+  }
+
+  // L'instant (ms) d'une heure locale « AAAA-MM-JJTHH:MM ».
+  static msDeIsoLocal(iso) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).getTime() : NaN;
+  }
+
+  // Ce que montre la barre d'état : passé et restant en minutes, part écoulée.
+  static avanceeCreneau(c, maintenantMs) {
+    const d = Ariane.msDeIsoLocal(c.debut);
+    const f = Ariane.msDeIsoLocal(c.fin);
+    const total = Math.max(1, f - d);
+    const passe = Math.min(total, Math.max(0, maintenantMs - d));
+    return { passeMin: Math.floor(passe / 60000), resteMin: Math.ceil((total - passe) / 60000), part: passe / total };
+  }
+
   // « AAAA-MM-JJTHH:MM » à l'heure locale.
   static isoLocal(ms) {
     const d = new Date(ms);

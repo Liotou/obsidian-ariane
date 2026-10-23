@@ -209,6 +209,11 @@ const TEXTES = {
   en: {
     // Rappels : Google Tasks et Microsoft To Do, comptes reliés.
     "Notes en cartes compactes": "Notes as compact cards",
+    "Prochain créneau : ": "Next slot: ",
+    ", reste ": ", left ",
+    ". Un clic ouvre la tâche.": ". Click to open the task.",
+    "Créneau en cours dans la barre d'état": "Current slot in the status bar",
+    "La tâche du créneau en cours, une jauge, le temps passé et le temps restant ; hors créneau, le prochain de la journée. Un clic ouvre la tâche.": "The task of the current slot, a gauge, the time spent and the time left; outside a slot, the day's next one. Click to open the task.",
     "Livrable : ": "Deliverable: ",
     "Ne pas associer cette note": "Do not link this note",
     "Une note ordinaire posée sur un canevas montre seulement son alias et sa référence, aux couleurs de sa famille ; le chevron l’agrandit sur son contenu, puis la referme. Coupé : l’affichage natif du canevas.": "A regular note on a canvas shows only its alias and reference, in its family's colours; the chevron expands it over its content, then folds it. Off: the canvas's native display.",
@@ -1952,6 +1957,7 @@ const DEFAULT_SETTINGS = {
   tempsIgnorerVerrouillees: true,       // ne pas chronométrer « locked: true »
   tempsDossiersExclus: '',              // dossiers non chronométrés (sous-dossiers compris)
   tempsBarreEtat: true,
+  creneauBarreEtat: true,       // créneau en cours (jauge, passé, restant) dans la barre d'état
   tempsInfobulleExplorateur: true,
   tempsDossierJournal: '',      // ancien journal du temps (lu seulement par la migration des données)
   tempsHistorique: {},                  // { 'AAAA-MM-JJ': { chemin: secondes } }
@@ -13293,6 +13299,42 @@ const avecTachesStatiques = (Base) => class extends Base {
     return new Date(m.y, m.mo - 1, m.d, m.h, m.mi, m.s || 0).getTime();
   }
 
+  // Le créneau du moment parmi les tâches ouvertes : celui en cours (le
+  // premier à finir, s'ils se chevauchent), sinon le prochain du jour.
+  // Rend { tache, debut, fin, enCours } ou null.
+  static creneauDuMoment(taches, maintenantMs) {
+    const maintenant = Ariane.isoLocal(maintenantMs);
+    const jour = maintenant.slice(0, 10);
+    let cours = null;
+    let proch = null;
+    for (const t of taches || []) {
+      if (t.statut === 'terminée' || t.statut === 'abandonnée') continue;
+      for (const c of Ariane.creneauxDeTache(t)) {
+        if (c.debut <= maintenant && maintenant < c.fin) {
+          if (!cours || c.fin < cours.fin) cours = { tache: t, debut: c.debut, fin: c.fin, enCours: true };
+        } else if (c.debut > maintenant && c.debut.slice(0, 10) === jour && (!proch || c.debut < proch.debut)) {
+          proch = { tache: t, debut: c.debut, fin: c.fin, enCours: false };
+        }
+      }
+    }
+    return cours || proch;
+  }
+
+  // L'instant (ms) d'une heure locale « AAAA-MM-JJTHH:MM ».
+  static msDeIsoLocal(iso) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).getTime() : NaN;
+  }
+
+  // Ce que montre la barre d'état : passé et restant en minutes, part écoulée.
+  static avanceeCreneau(c, maintenantMs) {
+    const d = Ariane.msDeIsoLocal(c.debut);
+    const f = Ariane.msDeIsoLocal(c.fin);
+    const total = Math.max(1, f - d);
+    const passe = Math.min(total, Math.max(0, maintenantMs - d));
+    return { passeMin: Math.floor(passe / 60000), resteMin: Math.ceil((total - passe) / 60000), part: passe / total };
+  }
+
   // « AAAA-MM-JJTHH:MM » à l'heure locale.
   static isoLocal(ms) {
     const d = new Date(ms);
@@ -21268,6 +21310,58 @@ const avecTaches = (Base) => class extends Base {
     return retires;
   }
 
+  // ── le créneau du moment, dans la barre d'état ──
+  //  Partout dans Obsidian : la tâche du créneau en cours, une jauge aux
+  //  couleurs de sa famille, le temps passé et le temps restant. Hors
+  //  créneau, le prochain de la journée, en retrait. Un clic ouvre la tâche.
+
+  demarrerBarreCreneau() {
+    const el = this.addStatusBarItem();
+    el.addClass('zfa-creneau-barre');
+    this._creneauBarre = el;
+    el.addEventListener('click', () => {
+      const f = this._creneauAffiche && this._creneauAffiche.tache.fichier;
+      if (f) this.app.workspace.getLeaf(false).openFile(f);
+    });
+    this.registerInterval(window.setInterval(() => this.rafraichirBarreCreneau(), 15000));
+    this.registerEvent(this.app.metadataCache.on('changed', (f) => {
+      if (f && this.refDeChemin(f.path)) this.antirebond('barre:creneau', () => this.rafraichirBarreCreneau(), 800);
+    }));
+    this.app.workspace.onLayoutReady(() => this.rafraichirBarreCreneau());
+  }
+
+  rafraichirBarreCreneau() {
+    const el = this._creneauBarre;
+    if (!el) return;
+    const maintenant = Date.now();
+    const c = this.settings.creneauBarreEtat === false ? null : Ariane.creneauDuMoment(this.tachesPourGantt(), maintenant);
+    this._creneauAffiche = c;
+    el.empty();
+    el.toggleClass('est-vide', !c);
+    if (!c) { el.removeAttribute('aria-label'); return; }
+    const t = c.tache;
+    const fam = this.familleDe(t.famille);
+    el.style.setProperty('--zfa-fam-couleur', fam.couleur || 'var(--interactive-accent)');
+    el.toggleClass('est-prochain', !c.enCours);
+    const ic = el.createSpan({ cls: 'zfa-creneau-icone' });
+    obsidian.setIcon(ic, c.enCours ? 'timer' : 'clock');
+    const h = (iso) => iso.slice(11, 16);
+    if (!c.enCours) {
+      el.createSpan({ cls: 'zfa-creneau-titre', text: h(c.debut) + ' ' + t.intitule });
+      el.setAttr('aria-label', tr('Prochain créneau : ') + t.ref + ', ' + t.intitule + ', ' + h(c.debut) + '-' + h(c.fin));
+      el.removeClass('est-fin');
+      return;
+    }
+    const a = Ariane.avanceeCreneau(c, maintenant);
+    el.createSpan({ cls: 'zfa-creneau-titre', text: t.intitule });
+    const jauge = el.createSpan({ cls: 'zfa-creneau-jauge' });
+    jauge.createSpan({ cls: 'zfa-creneau-rempli' }).style.width = Math.round(a.part * 100) + '%';
+    el.createSpan({ cls: 'zfa-creneau-temps', text: dureeLisible(a.passeMin) + tr(', reste ') + dureeLisible(a.resteMin) });
+    el.toggleClass('est-fin', a.resteMin <= 5);
+    el.setAttr('aria-label', t.ref + ', ' + t.intitule + ' : ' + h(c.debut) + '-' + h(c.fin)
+      + tr('. Un clic ouvre la tâche.'));
+  }
+
   //#endregion Ariane · temps de travail
 };
 
@@ -27313,6 +27407,7 @@ class Ariane extends composer(obsidian.Plugin,
       } catch (e) { console.error('[Ariane] données par jour', e); }
       this.elaguerHistoriqueTemps();
       this.demarrerCompteurTemps();
+      this.demarrerBarreCreneau();
       this.demarrerActivite();
       this.brancherChronologie();
       this.demarrerVeille();
@@ -30301,6 +30396,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr("Barre d'état"))
       .setDesc(tr("Temps de la note en cours. Le point est plein quand le compteur tourne, vide en pause. Un clic ouvre la chronologie."))
       .addToggle((t) => t.setValue(s.tempsBarreEtat !== false).onChange(async (v) => { s.tempsBarreEtat = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr("Créneau en cours dans la barre d'état"))
+      .setDesc(tr("La tâche du créneau en cours, une jauge, le temps passé et le temps restant ; hors créneau, le prochain de la journée. Un clic ouvre la tâche."))
+      .addToggle((t) => t.setValue(s.creneauBarreEtat !== false).onChange(async (v) => {
+        s.creneauBarreEtat = v; await maj(); this.plugin.rafraichirBarreCreneau();
+      }));
     new obsidian.Setting(c)
       .setName(tr("Infobulle dans l'explorateur"))
       .addToggle((t) => t.setValue(s.tempsInfobulleExplorateur !== false).onChange(async (v) => { s.tempsInfobulleExplorateur = v; await maj(); }));
