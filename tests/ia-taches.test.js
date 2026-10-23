@@ -177,3 +177,16 @@ test('modèle d’un dossier : par le nom, au singulier près, numéro et accent
   assert.equal(m(['03 - Notes conceptuelles']), 'Note conceptuelle');
   assert.equal(m(['08 - Tâches', 'Tâches']), null);
 });
+
+test('diagnosticClaude : la cause, pas la ligne de commande ; le remède à une connexion expirée', () => {
+  const d = (err, erreurs) => Ariane.diagnosticClaude(err, erreurs, 'claude');
+  const longue = { message: 'Command failed: claude --model sonnet -p Tu transformes…\nFailed to authenticate: OAuth session expired and could not be refreshed', code: 1 };
+  const m = d(longue, 'Failed to authenticate: OAuth session expired and could not be refreshed\n');
+  assert.match(m, /expiré/);
+  assert.match(m, /\/login/);
+  assert.ok(!/Tu transformes/.test(m), 'l’invite ne revient pas dans le message');
+  assert.match(d(longue, ''), /expiré/, 'la cause se lit aussi dans le message');
+  assert.match(d({ code: 'ENOENT' }, ''), /introuvable/);
+  assert.match(d({ killed: true, signal: 'SIGTERM' }, ''), /délai/);
+  assert.equal(d({ message: 'Command failed: claude -p x\nerreur réseau', code: 1 }, ''), 'CLI Claude : erreur réseau');
+});

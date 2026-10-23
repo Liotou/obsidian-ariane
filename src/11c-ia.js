@@ -353,12 +353,10 @@ const avecIa = (Base) => class extends Base {
       const args = (modele ? ['--model', modele] : []).concat(parEntree ? ['-p'] : ['-p', prompt]);
       const enfant = executer(
         bin, args, { env, timeout: delai, maxBuffer: parEntree ? 8 << 20 : 1 << 20 },
-        (err, sortie) => {
+        (err, sortie, erreurs) => {
           if (fini) return;
           fini = true;
-          if (err) this._diagIA = tr('CLI Claude : ') + (err.message || err)
-            + tr(' (« ') + bin + tr(' » dans le PATH ?)');
-          else this._diagIA = '';
+          this._diagIA = err ? Ariane.diagnosticClaude(err, erreurs, bin) : '';
           resoudre(err ? null : String(sortie || '').trim());
         });
       // Sans cela le CLI attend trois secondes une entrée standard qui ne
@@ -366,6 +364,21 @@ const avecIa = (Base) => class extends Base {
       try { if (enfant.stdin) enfant.stdin.end(parEntree ? prompt : undefined); } catch (e) { /* déjà fermée */ }
       setTimeout(() => { if (!fini) { try { enfant.kill('SIGKILL'); } catch (e) { /* déjà mort */ } } }, delai + 1000);
     });
+  }
+
+  // Le message d'un échec du CLI : sa sortie d'erreur plutôt que la ligne de
+  // commande (qui recopie toute l'invite), et le remède quand on le connaît.
+  static diagnosticClaude(err, erreurs, bin) {
+    const e = err || {};
+    if (e.code === 'ENOENT') return tr('CLI Claude introuvable : « ') + bin + tr(' » n’est pas dans le PATH (Réglages, chemin du CLI Claude).');
+    if (e.killed || e.signal === 'SIGKILL' || e.signal === 'SIGTERM') return tr('CLI Claude : pas de réponse dans le délai imparti.');
+    const brut = String(erreurs || '').trim() || String(e.message || e).split('\n').slice(1).join(' ').trim();
+    const cause = brut.split('\n').map((l) => l.trim()).filter(Boolean).slice(-3).join(' ').slice(0, 300);
+    if (/authenticat|OAuth|log ?in|401/i.test(cause)) {
+      return tr('CLI Claude : la connexion à votre compte a expiré. Ouvrez un terminal, lancez « claude », puis tapez /login.')
+        + (cause ? ' (' + cause + ')' : '');
+    }
+    return tr('CLI Claude : ') + (cause || tr('échec sans message') + (e.code != null ? ' (code ' + e.code + ')' : ''));
   }
 
   async testerEncodage() {
