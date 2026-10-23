@@ -4258,3 +4258,38 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-essai-score.est-prio { background: var(--interactive-accent); color: var(--text-on-accent); }
 .zfa-essai-item-info { font-size: var(--font-ui-smaller); color: var(--text-muted); }
 @media (max-width: 600px) { .zfa-essai-chiffres { grid-template-columns: repeat(3, 1fr); } }
+
+/* Canevas : une note ordinaire en carte compacte (alias, référence, famille).
+   Repliée, seule sa tête se voit ; dépliée, le contenu natif suit la tête. */
+.canvas-node.zfa-cnv-note .canvas-node-label { display: none; }
+.canvas-node.zfa-cnv-note .canvas-node-content { display: flex; flex-direction: column; position: relative; }
+.canvas-node.zfa-cnv-note .canvas-node-content > :not(.zfa-cnv-note-tete) { flex: 1 1 auto; min-height: 0; }
+.canvas-node.zfa-cnv-note.zfa-cnv-note-repliee .canvas-node-content { padding: 0; overflow: hidden; }
+.canvas-node.zfa-cnv-note.zfa-cnv-note-repliee .canvas-node-content > :not(.zfa-cnv-note-tete) { display: none !important; }
+.zfa-cnv-note-tete {
+  flex: 0 0 auto; position: relative; box-sizing: border-box; width: 100%;
+  padding: 10px 10px 10px 18px;
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: var(--font-text-size, 16px); line-height: 1.35; color: var(--text-normal);
+  cursor: default;
+}
+.zfa-cnv-note-repliee .zfa-cnv-note-tete { border-bottom: none; }
+.zfa-cnv-note-tete::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+  background: var(--zfa-fam-couleur, var(--background-modifier-border));
+  pointer-events: none;
+}
+.zfa-cnv-note-ligne { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.zfa-cnv-note-textes { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.zfa-cnv-note-titre {
+  font-weight: 650; font-size: 1.1em; line-height: 1.3; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+}
+.zfa-cnv-note-actions { flex: 0 0 auto; display: flex; gap: 1px; opacity: 0; transition: opacity 0.12s ease; }
+.canvas-node.zfa-cnv-note:hover .zfa-cnv-note-actions,
+.canvas-node.zfa-cnv-note.is-focused .zfa-cnv-note-actions,
+.canvas-node.zfa-cnv-note:not(.zfa-cnv-note-repliee) .zfa-cnv-note-actions { opacity: 1; }
+.zfa-cnv-note-actions .clickable-icon { padding: 2px; }
+.zfa-cnv-note-actions svg { width: 17px; height: 17px; }
+@media (prefers-reduced-motion: reduce) { .zfa-cnv-note-actions { transition: none; } }

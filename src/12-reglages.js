@@ -1851,6 +1851,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setPlaceholder(((s.dossierTaches || '') ? s.dossierTaches + '/' : '') + 'Canevas')
         .onChange(async (v) => { s.canevasDossier = v.trim(); await maj(); }));
     new obsidian.Setting(c)
+      .setName(tr('Notes en cartes compactes'))
+      .setDesc(tr('Une note ordinaire posée sur un canevas montre seulement son alias et sa référence, aux couleurs de sa famille ; le chevron l’agrandit sur son contenu, puis la referme. Coupé : l’affichage natif du canevas.'))
+      .addToggle((t) => t.setValue(s.canevasNotesCompactes !== false)
+        .onChange(async (v) => { s.canevasNotesCompactes = v; await maj(); this._rafraichirCanevas(); }));
+    new obsidian.Setting(c)
       .setName(tr('Forme des liens entre tâches'))
       .setDesc(tr('Angulaire : à angles droits, en contournant les cartes, comme dans l’ancien graphe. Courbe : le tracé du canevas. Droite : un trait direct. Les liens vers d’autres nœuds gardent le tracé du canevas.'))
       .addDropdown((d) => d

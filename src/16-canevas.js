@@ -38,6 +38,12 @@ const CANEVAS_SEUIL_DETAIL = 120;
 // Hauteur que donne le chevron à une carte qu'on déplie, en plus de son contenu.
 const CANEVAS_HAUTEUR_DETAIL = 340;
 const CANEVAS_OPPOSE = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
+// Une note ordinaire du canevas : la clé de son nœud ({ v, hDepliee }), la
+// marge au-delà de laquelle elle passe pour dépliée, et sa hauteur dépliée
+// par défaut.
+const CANEVAS_CLE_NOTE = 'arianeNote';
+const CANEVAS_SEUIL_NOTE = 40;
+const CANEVAS_HAUTEUR_NOTE = 400;
 // Couleur native d'arête posée sur les liens de blocage que le canevas trace
 // lui-même (« 1 » = rouge dans la palette d'Obsidian).
 const CANEVAS_COULEUR_BLOCAGE = '1';
@@ -871,6 +877,8 @@ class SurfaceCanevas extends obsidian.Component {
     this.vue = vue;
     this.canvas = vue.canvas;
     this.cartes = new Map();     // nœud natif → { ref, racine, sig, restaurer }
+    this.notes = new Map();      // nœud natif → carte de note ordinaire
+    this._notesAAjuster = new Set();
     this._aAjuster = new Set();  // nœuds dont la hauteur est à recaler
     this._actif = false;
     this._cadre = 0;
@@ -924,6 +932,10 @@ class SurfaceCanevas extends obsidian.Component {
         const d = canevasDonnees(n);
         if (d && d.width !== m.largeur) this._aAjuster.add(n);
       }
+      for (const [n, m] of this.notes) {
+        const d = canevasDonnees(n);
+        if (d && d.width !== m.largeur) this._notesAAjuster.add(n);
+      }
       this.planifier(true);
     };
     this.registerDomEvent(win, 'pointerup', relache);
@@ -942,13 +954,14 @@ class SurfaceCanevas extends obsidian.Component {
     if (this.panneau) this.panneau.fermer();
     this._retirerControles();
     for (const n of [...this.cartes.keys()]) this._demonter(n);
+    for (const n of [...this.notes.keys()]) this._demonterNote(n);
     if (this._outils) { this._outils.remove(); this._outils = null; }
     this._rendreLiensNatifs();
   }
 
   _estANous(t) {
     if (!t || !t.closest) return false;
-    return !!t.closest('.zfa-cnv-racine, .zfa-cnv-controles, .zfa-cnv-outils');
+    return !!t.closest('.zfa-cnv-racine, .zfa-cnv-controles, .zfa-cnv-outils, .zfa-cnv-note-tete');
   }
 
   // Un seul passage par cadre. `complet` : remonter/rafraîchir les cartes ;
@@ -995,9 +1008,12 @@ class SurfaceCanevas extends obsidian.Component {
       }
       this._surCanevas = null;
       this._ajusterHauteurs();
+      this._synchroniserNotes();
+      this._ajusterNotes();
       this._assurerOutils();
     }
     this._majDetails();
+    this._majNotesRepli();
     this._majLiens(d);
     this._majControles(d);
     if (this.panneau) this.panneau.rafraichir();
@@ -1475,6 +1491,201 @@ class SurfaceCanevas extends obsidian.Component {
     this._majDetails();
   }
   //#endregion Canevas · rendu des cartes
+
+  //#region Canevas · cartes de notes
+  // Une note ordinaire posée sur le canevas (nœud fichier d'une note qui
+  // n'est pas une tâche) se montre en carte compacte : son alias, sa
+  // référence, la couleur et l'icône de sa famille. Le chevron l'agrandit
+  // sur le contenu natif de la note, toujours modifiable, puis la referme.
+  // Comme pour les tâches, la hauteur décide : agrandie à la main, la carte
+  // se déplie. Le nœud garde `arianeNote` : repliée une fois à sa première
+  // rencontre, elle retrouve ensuite la taille qu'on lui avait donnée.
+
+  // La note d'un nœud, si elle relève des cartes compactes ; sinon null.
+  _noteDuNoeud(noeud) {
+    if (this.greffon.settings.canevasNotesCompactes === false) return null;
+    const d = canevasDonnees(noeud);
+    if (!d || d.type !== 'file' || typeof d.file !== 'string' || !/\.md$/i.test(d.file)) return null;
+    if (this.greffon.refDeChemin(d.file)) return null;
+    const f = this.app.vault.getAbstractFileByPath(d.file);
+    return f instanceof obsidian.TFile ? f : null;
+  }
+
+  // L'alias, ou le titre d'une fiche de source ; vide sinon.
+  _aliasNote(f) {
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    const al = Array.isArray(fm.aliases) ? fm.aliases[0] : fm.aliases;
+    return String(al || fm.title || '').trim();
+  }
+
+  _synchroniserNotes() {
+    for (const [noeud, m] of this.notes) {
+      const encore = this.canvas.nodes.get(noeud.id) === noeud && noeud.contentEl
+        && noeud.contentEl.contains(m.racine) && this._noteDuNoeud(noeud) === m.fichier;
+      if (!encore) this._demonterNote(noeud);
+    }
+    for (const noeud of this.canvas.nodes.values()) {
+      if (!noeud || !noeud.nodeEl || !noeud.contentEl) continue;
+      const f = this._noteDuNoeud(noeud);
+      if (!f) continue;
+      const m = this.notes.get(noeud) || this._monterNote(noeud, f);
+      const sig = this._signatureNote(m);
+      if (m.sig !== sig) {
+        this._rendreNote(m);
+        m.sig = sig;
+        this._notesAAjuster.add(noeud);
+      }
+    }
+  }
+
+  _monterNote(noeud, f) {
+    noeud.nodeEl.classList.add('zfa-cnv-note');
+    const racine = noeud.contentEl.ownerDocument.createElement('div');
+    racine.className = 'zfa-cnv-note-tete';
+    noeud.contentEl.prepend(racine);
+    const x = canevasDonnees(noeud);
+    // Jamais vue : elle se montre repliée tout de suite, sans éclair du contenu.
+    const m = { racine, noeud, fichier: f, sig: '', hNat: 0, largeur: x ? x.width : 0 };
+    if (x && !x[CANEVAS_CLE_NOTE]) noeud.nodeEl.classList.add('zfa-cnv-note-repliee');
+    // Double-clic sur une carte repliée : elle se déplie (l'édition native
+    // suppose le contenu visible).
+    racine.addEventListener('dblclick', (e) => {
+      if (this._noteDepliee(m)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this._basculerNote(m);
+    });
+    this.notes.set(noeud, m);
+    this._notesAAjuster.add(noeud);
+    return m;
+  }
+
+  _demonterNote(noeud) {
+    const m = this.notes.get(noeud);
+    if (!m) return;
+    m.racine.remove();
+    if (noeud.nodeEl) noeud.nodeEl.classList.remove('zfa-cnv-note', 'zfa-cnv-note-repliee');
+    this.notes.delete(noeud);
+    this._notesAAjuster.delete(noeud);
+  }
+
+  _signatureNote(m) {
+    const f = m.fichier;
+    const fam = this.greffon.familleDuChemin(f.path, f.basename) || {};
+    const x = canevasDonnees(m.noeud) || {};
+    return JSON.stringify([f.path, this._aliasNote(f), fam.couleur, fam.icone, fam.nom, x.subpath || '']);
+  }
+
+  _rendreNote(m) {
+    const f = m.fichier;
+    const r = m.racine;
+    r.replaceChildren();
+    const fam = this.greffon.familleDuChemin(f.path, f.basename);
+    m.noeud.nodeEl.style.setProperty('--zfa-fam-couleur', (fam && fam.couleur) || 'var(--background-modifier-border)');
+    const ligne = canevasEl(r, 'div', 'zfa-cnv-note-ligne');
+    const ic = canevasEl(ligne, 'span', 'zfa-cnv-fam');
+    obsidian.setIcon(ic, (fam && fam.icone) || 'file-text');
+    if (fam && fam.nom) canevasInfobulle(ic, fam.nom);
+    const textes = canevasEl(ligne, 'div', 'zfa-cnv-note-textes');
+    const alias = this._aliasNote(f);
+    const x = canevasDonnees(m.noeud) || {};
+    canevasEl(textes, 'div', 'zfa-cnv-note-titre', alias || f.basename);
+    const ref = [alias && alias !== f.basename ? f.basename : '', x.subpath || ''].filter(Boolean).join(' ');
+    if (ref) canevasEl(textes, 'div', 'zfa-cnv-ref', ref);
+    const actions = canevasEl(ligne, 'div', 'zfa-cnv-note-actions');
+    const ouvrir = canevasBouton(actions, 'file-symlink', tr('Ouvrir la note'));
+    canevasIsoler(ouvrir);
+    ouvrir.addEventListener('click', () => this.app.workspace.getLeaf('tab').openFile(f));
+    m.chevron = canevasBouton(actions, 'chevron-right', tr('Afficher le contenu'), 'zfa-cnv-chevron');
+    canevasIsoler(m.chevron);
+    m.chevron.addEventListener('click', () => this._basculerNote(m));
+    m.chevronDeplie = null;
+  }
+
+  // Hauteur de la carte repliée : la tête, bordures et marges du nœud comprises.
+  _hauteurNote(m, noeud) {
+    if (!m.racine.offsetHeight || !noeud.nodeEl) return null;
+    let marge = 0;
+    const st = (el) => (el ? this._fenetre().getComputedStyle(el) : null);
+    for (const s of [st(noeud.nodeEl.querySelector('.canvas-node-container')), st(noeud.contentEl)]) {
+      if (!s) continue;
+      for (const k of ['borderTopWidth', 'borderBottomWidth', 'paddingTop', 'paddingBottom']) marge += parseFloat(s[k]) || 0;
+    }
+    return Math.max(40, Math.ceil(m.racine.offsetHeight + marge) + 2);
+  }
+
+  _noteDepliee(m) {
+    const x = canevasDonnees(m.noeud);
+    if (!x) return false;
+    if (!x[CANEVAS_CLE_NOTE]) return false;
+    return Number(x.height) > (m.hNat || 72) + CANEVAS_SEUIL_NOTE;
+  }
+
+  // Classe « repliée » et chevron de chaque carte, d'après sa hauteur : en
+  // direct pendant qu'on la redimensionne.
+  _majNotesRepli() {
+    for (const [n, m] of this.notes) {
+      const dep = this._noteDepliee(m);
+      n.nodeEl.classList.toggle('zfa-cnv-note-repliee', !dep);
+      if (m.chevron && m.chevronDeplie !== dep) {
+        m.chevronDeplie = dep;
+        m.chevron.replaceChildren();
+        obsidian.setIcon(m.chevron, dep ? 'chevron-down' : 'chevron-right');
+        canevasInfobulle(m.chevron, dep ? tr('Replier la carte') : tr('Afficher le contenu'));
+      }
+    }
+  }
+
+  // Mesure des cartes : une note jamais vue se replie (une fois), une carte
+  // repliée épouse sa tête. Jamais pendant un geste.
+  _ajusterNotes() {
+    if (!this._notesAAjuster.size) return;
+    if (this._interaction || this.canvas.readonly || this.vue.saving) return;
+    let change = false;
+    const restent = new Set();
+    for (const noeud of this._notesAAjuster) {
+      const m = this.notes.get(noeud);
+      if (!m || this.canvas.nodes.get(noeud.id) !== noeud) continue;
+      const x = canevasDonnees(noeud);
+      const h = x ? this._hauteurNote(m, noeud) : null;
+      if (!h) { restent.add(noeud); continue; }      // pas dessinée (zoom lointain)
+      m.hNat = h;
+      m.largeur = x.width;
+      const haut = Number(x.height) || 0;
+      try {
+        if (!x[CANEVAS_CLE_NOTE]) {
+          noeud.setData(Object.assign({}, x, { height: h,
+            [CANEVAS_CLE_NOTE]: { v: 1, hDepliee: haut > h + CANEVAS_SEUIL_NOTE ? Math.round(haut) : 0 } }));
+          change = true;
+        } else if (!this._noteDepliee(m) && Math.abs(haut - h) > 1) {
+          noeud.setData(Object.assign({}, x, { height: h }));
+          change = true;
+        }
+      } catch (e) { /* nœud en cours de destruction */ }
+    }
+    this._notesAAjuster = restent;
+    if (change) this.canvas.requestSave();
+    this._majNotesRepli();
+  }
+
+  // Le chevron : la carte reprend sa taille dépliée, ou se referme sur sa tête.
+  _basculerNote(m) {
+    const x = canevasDonnees(m.noeud);
+    if (!x || this.canvas.readonly) return;
+    const meta = Object.assign({ v: 1 }, x[CANEVAS_CLE_NOTE] || {});
+    const hNat = m.hNat || this._hauteurNote(m, m.noeud) || 72;
+    let h;
+    if (this._noteDepliee(m)) {
+      meta.hDepliee = Math.round(Number(x.height) || 0);
+      h = hNat;
+    } else {
+      h = Math.max(Number(meta.hDepliee) || CANEVAS_HAUTEUR_NOTE, hNat + CANEVAS_SEUIL_NOTE + 80);
+    }
+    try { m.noeud.setData(Object.assign({}, x, { height: h, [CANEVAS_CLE_NOTE]: meta })); } catch (e) { return; }
+    this.canvas.requestSave();
+    this._majNotesRepli();
+  }
+  //#endregion Canevas · cartes de notes
 
   //#region Canevas · relations sur les arêtes
   _paireArete(arete, d) {

@@ -533,3 +533,41 @@ test('carte repliée : elle épouse son contenu, sans vide sous la jauge ; dépl
   surface._ajusterHauteurs();
   assert.equal(n1.getData().height, 480);
 });
+
+test('note ordinaire : repliée à la première rencontre, le chevron rend sa taille puis la referme', () => {
+  const { canvas, surface, greffon } = monter([]);
+  const n = canvas.createTextNode({ pos: { x: 0, y: 0 }, size: { width: 400, height: 400 }, text: '' });
+  n.setData(Object.assign({}, n.getData(), { type: 'file', file: '03 - Notes conceptuelles/NC-1.md' }));
+  const m = { noeud: n, racine: {}, fichier: {}, hNat: 0 };
+  surface.notes.set(n, m);
+  surface._hauteurNote = () => 70;
+  surface._majNotesRepli = () => {};
+  surface.vue.saving = false;
+  surface._notesAAjuster.add(n);
+  surface._ajusterNotes();
+  assert.equal(n.getData().height, 70, 'repliée sur sa tête');
+  assert.deepEqual(n.getData().arianeNote, { v: 1, hDepliee: 400 }, 'sa grande taille est gardée');
+  assert.equal(surface._noteDepliee(m), false);
+  surface._basculerNote(m);
+  assert.equal(n.getData().height, 400, 'le chevron rend la taille d’avant');
+  assert.equal(surface._noteDepliee(m), true);
+  // Agrandie à la main, puis refermée : c'est la nouvelle taille qui revient.
+  n.setData(Object.assign({}, n.getData(), { height: 520 }));
+  surface._basculerNote(m);
+  assert.equal(n.getData().height, 70);
+  surface._basculerNote(m);
+  assert.equal(n.getData().height, 520);
+  // Repliée mais un peu trop haute : ramenée à sa tête ; une seconde passe ne fait rien.
+  surface._basculerNote(m);
+  n.setData(Object.assign({}, n.getData(), { height: 90 }));
+  surface._notesAAjuster.add(n);
+  surface._ajusterNotes();
+  assert.equal(n.getData().height, 70);
+  // Une tâche, ou le réglage coupé : pas de carte de note.
+  greffon.app = { vault: { getAbstractFileByPath: () => null } };
+  n.setData(Object.assign({}, n.getData(), { file: '08 - Tâches/T001.md' }));
+  assert.equal(surface._noteDuNoeud(n), null);
+  greffon.settings.canevasNotesCompactes = false;
+  n.setData(Object.assign({}, n.getData(), { file: '03 - Notes conceptuelles/NC-1.md' }));
+  assert.equal(surface._noteDuNoeud(n), null);
+});

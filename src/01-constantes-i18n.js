@@ -16,6 +16,11 @@ const DELAI_ANTIREBOND_MS = 800;
 const TEXTES = {
   en: {
     // Rappels : Google Tasks et Microsoft To Do, comptes reliés.
+    "Notes en cartes compactes": "Notes as compact cards",
+    "Une note ordinaire posée sur un canevas montre seulement son alias et sa référence, aux couleurs de sa famille ; le chevron l’agrandit sur son contenu, puis la referme. Coupé : l’affichage natif du canevas.": "A regular note on a canvas shows only its alias and reference, in its family's colours; the chevron expands it over its content, then folds it. Off: the canvas's native display.",
+    "Ouvrir la note": "Open the note",
+    "Afficher le contenu": "Show the content",
+    "Replier la carte": "Fold the card",
     "Chaque tâche datée devient un rappel dans la liste de sa famille. Synchronisation bidirectionnelle : cocher un rappel termine la tâche, un rappel ajouté à la main dans une liste surveillée devient une tâche. Trois destinations, l'une ou l'autre : Apple Rappels (Mac), Google Tasks ou Microsoft To Do (tout système).": "Each dated task becomes a reminder in its family's list. Two-way sync: ticking a reminder completes the task, and a reminder added by hand to a watched list becomes a task. Three destinations, one or the other: Apple Reminders (Mac), Google Tasks or Microsoft To Do (any system).",
     "Google Tasks ne garde que le jour de l'échéance : l'heure reste dans la note. Un compte Google relié avant l'arrivée de Google Tasks dans Ariane doit être relié à nouveau, pour autoriser les tâches. Pensez aussi à activer l'API Google Tasks dans votre projet Google (docs/google-agenda.md).": "Google Tasks only keeps the due day: the time stays in the note. A Google account linked before Ariane supported Google Tasks must be linked again, to allow tasks. Also enable the Google Tasks API in your Google project (docs/google-agenda.md).",
     "Identifiant de l'application": "Application ID",
@@ -1633,6 +1638,7 @@ const DEFAULT_SETTINGS = {
   // Canevas (section 16) : cartes de tâches sur le canevas natif.
   canevasLargeurCarte: 400,     // largeur d'une carte posée (px), à l'échelle des notes
   canevasDossier: '',           // vide : « Canevas » dans le dossier des tâches
+  canevasNotesCompactes: true,  // notes ordinaires du canevas en cartes compactes (alias, référence), dépliables
   // Liens entre tâches sur le canevas : 'angulaire' (à angles droits, en
   // contournant les cartes), 'courbe' (le tracé du canevas) ou 'droite'.
   canevasLiens: 'angulaire',
