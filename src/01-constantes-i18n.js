@@ -17,6 +17,12 @@ const TEXTES = {
   en: {
     // Rappels : Google Tasks et Microsoft To Do, comptes reliés.
     "Notes en cartes compactes": "Notes as compact cards",
+    "Diagnostic : mesurer les ralentissements pendant la frappe (5 min)": "Diagnostics: measure slowdowns while typing (5 min)",
+    "Une mesure est déjà en cours.": "A measurement is already running.",
+    "Mesure des ralentissements": "Slowdown measurement",
+    "Relevé copié.": "Report copied.",
+    "Mesure en cours : écrivez normalement pendant ": "Measuring: type as usual for ",
+    " minutes. Le relevé s’ouvrira seul.": " minutes. The report will open on its own.",
     "Prochain créneau : ": "Next slot: ",
     ", reste ": ", left ",
     ". Un clic ouvre la tâche.": ". Click to open the task.",

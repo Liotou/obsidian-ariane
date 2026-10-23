@@ -209,6 +209,12 @@ const TEXTES = {
   en: {
     // Rappels : Google Tasks et Microsoft To Do, comptes reliés.
     "Notes en cartes compactes": "Notes as compact cards",
+    "Diagnostic : mesurer les ralentissements pendant la frappe (5 min)": "Diagnostics: measure slowdowns while typing (5 min)",
+    "Une mesure est déjà en cours.": "A measurement is already running.",
+    "Mesure des ralentissements": "Slowdown measurement",
+    "Relevé copié.": "Report copied.",
+    "Mesure en cours : écrivez normalement pendant ": "Measuring: type as usual for ",
+    " minutes. Le relevé s’ouvrira seul.": " minutes. The report will open on its own.",
     "Prochain créneau : ": "Next slot: ",
     ", reste ": ", left ",
     ". Un clic ouvre la tâche.": ". Click to open the task.",
@@ -2662,6 +2668,72 @@ function lireEntreeZip(octets, nom) {
     p += 46 + lgNom + lgExtra + lgCom;
   }
   return null;
+}
+
+// ── Mesure des ralentissements ──
+//  Pendant une mesure, chaque travail d'Ariane (antirebond, rendu de
+//  l'éditeur) note sa durée : la part qui bloque l'interface (synchrone) et
+//  sa durée totale (promesses comprises). Les gels de l'interface (tâches de
+//  plus de 50 ms, vues par le navigateur) sont rapprochés des travaux qui les
+//  recouvrent. Le relevé dit ainsi si un ralentissement vient d'Ariane, et
+//  de quoi, ou d'ailleurs.
+class MesureLenteurs {
+  constructor(debut) {
+    this.debut = debut || 0;
+    this.travaux = new Map();   // nom → { n, sync, syncMax, total, totalMax }
+    this.passes = [];           // [{ nom, t0, sync, total }], les plus récentes
+    this.gels = [];             // [{ t, d }]
+    this.frappes = [];          // instants des frappes
+  }
+
+  noter(nom, t0, sync, total) {
+    const w = this.travaux.get(nom) || { n: 0, sync: 0, syncMax: 0, total: 0, totalMax: 0 };
+    w.n += 1;
+    w.sync += sync;
+    w.syncMax = Math.max(w.syncMax, sync);
+    w.total += total;
+    w.totalMax = Math.max(w.totalMax, total);
+    this.travaux.set(nom, w);
+    this.passes.push({ nom, t0, sync, total });
+    if (this.passes.length > 5000) this.passes.splice(0, 1000);
+  }
+
+  gel(t, d) { this.gels.push({ t, d }); }
+  frappe(t) { this.frappes.push(t); }
+
+  // Le relevé, en texte. `fin` : l'instant de la fin de mesure.
+  rapport(fin) {
+    const ms = (x) => Math.round(x) + ' ms';
+    const pendantFrappe = (g) => this.frappes.some((f) => f <= g.t + g.d && f >= g.t - 2000);
+    const parTravail = new Map();
+    let horsAriane = 0, horsArianeMs = 0;
+    for (const g of this.gels) {
+      const surs = new Set(), possibles = new Set();
+      for (const p of this.passes) {
+        if (p.t0 <= g.t + g.d && p.t0 + p.sync >= g.t) surs.add(p.nom);
+        else if (p.t0 <= g.t + g.d && p.t0 + p.total >= g.t) possibles.add(p.nom);
+      }
+      if (!surs.size && !possibles.size) { horsAriane += 1; horsArianeMs += g.d; continue; }
+      for (const nom of surs) { const a = parTravail.get(nom) || { surs: 0, possibles: 0, ms: 0 }; a.surs += 1; a.ms += g.d; parTravail.set(nom, a); }
+      for (const nom of possibles) { const a = parTravail.get(nom) || { surs: 0, possibles: 0, ms: 0 }; a.possibles += 1; parTravail.set(nom, a); }
+    }
+    const l = [];
+    const duree = Math.max(0, (fin || 0) - this.debut);
+    l.push('Mesure de ' + Math.round(duree / 60000) + ' min, ' + this.frappes.length + ' frappes.');
+    l.push('Gels de l’interface (plus de 50 ms) : ' + this.gels.length + ', ' + ms(this.gels.reduce((s, g) => s + g.d, 0))
+      + ' au total, dont ' + this.gels.filter(pendantFrappe).length + ' pendant la frappe.');
+    if (this.gels.length) l.push('Le plus long : ' + ms(Math.max(...this.gels.map((g) => g.d))) + '.');
+    l.push('Sans travail d’Ariane en cours (Obsidian ou un autre greffon) : ' + horsAriane + ' gel(s), ' + ms(horsArianeMs) + '.');
+    l.push('');
+    l.push('Travaux d’Ariane, du plus bloquant au moins bloquant :');
+    l.push('travail | passes | bloquant max | bloquant total | durée max | gels certains | gels possibles');
+    const lignes = [...this.travaux.entries()].sort((a, b) => b[1].syncMax - a[1].syncMax);
+    for (const [nom, w] of lignes) {
+      const a = parTravail.get(nom) || { surs: 0, possibles: 0, ms: 0 };
+      l.push([nom, w.n, ms(w.syncMax), ms(w.sync), ms(w.totalMax), a.surs + (a.ms ? ' (' + ms(a.ms) + ')' : ''), a.possibles].join(' | '));
+    }
+    return l.join('\n');
+  }
 }
 
 //#endregion 2 · Utilitaires génériques
@@ -5369,9 +5441,53 @@ const avecSocle = (Base) => class extends Base {
       cle,
       setTimeout(() => {
         this.antirebonds.delete(cle);
-        Promise.resolve(fn()).catch((e) => console.error('[Ariane]', e));
+        const p = this._mesureLenteurs;
+        if (!p) { Promise.resolve(fn()).catch((e) => console.error('[Ariane]', e)); return; }
+        const nom = String(cle).split(':')[0];
+        const t0 = performance.now();
+        let r;
+        try { r = fn(); } catch (e) { r = Promise.reject(e); }
+        const sync = performance.now() - t0;
+        Promise.resolve(r).catch((e) => console.error('[Ariane]', e))
+          .finally(() => p.noter(nom, t0, sync, performance.now() - t0));
       }, delai || DELAI_ANTIREBOND_MS)
     );
+  }
+
+  // Un travail synchrone mesuré pendant une mesure des ralentissements.
+  _mesurer(nom, fn) {
+    const p = this._mesureLenteurs;
+    if (!p) return fn();
+    const t0 = performance.now();
+    try { return fn(); } finally { const d = performance.now() - t0; p.noter(nom, t0, d, d); }
+  }
+
+  // Cinq minutes de mesure : gels de l'interface, frappes, travaux d'Ariane ;
+  // puis le relevé s'ouvre.
+  mesurerLenteurs(minutes) {
+    if (this._mesureLenteurs) { new obsidian.Notice(tr('Une mesure est déjà en cours.')); return; }
+    const duree = (Number(minutes) || 5) * 60000;
+    const p = new MesureLenteurs(performance.now());
+    this._mesureLenteurs = p;
+    let obs = null;
+    try {
+      obs = new PerformanceObserver((liste) => { for (const e of liste.getEntries()) p.gel(e.startTime, e.duration); });
+      obs.observe({ entryTypes: ['longtask'] });
+    } catch (e) { obs = null; }
+    const frappe = () => p.frappe(performance.now());
+    document.addEventListener('keydown', frappe, true);
+    const finir = () => {
+      document.removeEventListener('keydown', frappe, true);
+      if (obs) obs.disconnect();
+      this._mesureLenteurs = null;
+      const texte = p.rapport(performance.now());
+      console.log('[Ariane] mesure des ralentissements\n' + texte);
+      new TexteModal(this.app, tr('Mesure des ralentissements'), texte, tr('Relevé copié.')).open();
+    };
+    const t = window.setTimeout(finir, duree);
+    this.register(() => { window.clearTimeout(t); if (this._mesureLenteurs === p) { document.removeEventListener('keydown', frappe, true); if (obs) obs.disconnect(); this._mesureLenteurs = null; } });
+    new obsidian.Notice(tr('Mesure en cours : écrivez normalement pendant ') + Math.round(duree / 60000)
+      + tr(' minutes. Le relevé s’ouvrira seul.'), 8000);
   }
 
   async ecrire(chemin, contenu, fichierExistant) {
@@ -27065,6 +27181,11 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.releverGoogle(false),
     });
     this.addCommand({
+      id: 'mesurer-lenteurs',
+      name: tr('Diagnostic : mesurer les ralentissements pendant la frappe (5 min)'),
+      callback: () => this.mesurerLenteurs(5),
+    });
+    this.addCommand({
       id: 'concepts-uniformiser-liens',
       name: tr('Notes conceptuelles : mettre les liens au format de la phrase…'),
       callback: () => this.revoirLiensConcepts(),
@@ -27443,12 +27564,15 @@ class Ariane extends composer(obsidian.Plugin,
       const ext = ViewPlugin.fromClass(
         class {
           constructor(view) { this.decorations = this.build(view); }
+          // L'aparté ne dépend que du texte : un déplacement du curseur n'y
+          // change rien, et le recalcul relisait les métadonnées de chaque lien.
           update(u) {
-            if (u.docChanged || u.viewportChanged || u.selectionSet) this.decorations = this.build(u.view);
+            if (u.docChanged || u.viewportChanged) this.decorations = plugin._mesurer('éditeur aparté', () => this.build(u.view));
           }
           build(view) {
             const builder = new RangeSetBuilder();
             if (!plugin.settings.aliasSurLiens) return builder.finish();
+            const titres = new Map();
             for (const { from, to } of view.visibleRanges) {
               const texte = view.state.doc.sliceString(from, to);
               const re = /\[\[([^\]\n]+?)\]\]/g;
@@ -27460,7 +27584,8 @@ class Ariane extends composer(obsidian.Plugin,
                 const parts = inner.split('|');
                 if (parts.length > 1) continue; // alias manuel présent -> pas d'aparté auto
                 const cible = parts[0].trim();
-                const titre = plugin.titreAnnotationCiblee(cible, '', true);
+                if (!titres.has(cible)) titres.set(cible, plugin.titreAnnotationCiblee(cible, '', true));
+                const titre = titres.get(cible);
                 if (!titre) continue;
                 const pos = from + m.index + m[0].length;
                 builder.add(pos, pos, Decoration.widget({ widget: new AliasWidget(plugin.formatAparte(titre, cible)), side: 1 }));
@@ -27534,7 +27659,7 @@ class Ariane extends composer(obsidian.Plugin,
             this.local = false;
 
             if (bascule || local || u.docChanged || u.viewportChanged) {
-              this.decorations = this.build(u.view);
+              this.decorations = plugin._mesurer('éditeur citations', () => this.build(u.view));
               return;
             }
 
@@ -27643,7 +27768,7 @@ class Ariane extends composer(obsidian.Plugin,
         update(u) {
           if (u.docChanged || u.viewportChanged || greffon._ponctuationRevue !== this.revue) {
             this.revue = greffon._ponctuationRevue;
-            this.decorations = calculer(u.view);
+            this.decorations = greffon._mesurer('éditeur ponctuation', () => calculer(u.view));
           }
         }
       }, { decorations: (v) => v.decorations }));
@@ -27682,7 +27807,7 @@ class Ariane extends composer(obsidian.Plugin,
         update(u) {
           if (u.docChanged || u.viewportChanged || greffon._numerotationRevue !== this.revue) {
             this.revue = greffon._numerotationRevue;
-            this.decorations = calculer(u.view);
+            this.decorations = greffon._mesurer('éditeur numérotation', () => calculer(u.view));
           }
         }
       }, {
@@ -49443,6 +49568,7 @@ module.exports._test = {
   insertionNarrative,
   debutDePhrase,
   libelleConcept,
+  MesureLenteurs,
   uniformiserLiensConcepts,
   dossiersOutils,
   lireEntreeZip,

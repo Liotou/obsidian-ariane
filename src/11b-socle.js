@@ -498,9 +498,53 @@ const avecSocle = (Base) => class extends Base {
       cle,
       setTimeout(() => {
         this.antirebonds.delete(cle);
-        Promise.resolve(fn()).catch((e) => console.error('[Ariane]', e));
+        const p = this._mesureLenteurs;
+        if (!p) { Promise.resolve(fn()).catch((e) => console.error('[Ariane]', e)); return; }
+        const nom = String(cle).split(':')[0];
+        const t0 = performance.now();
+        let r;
+        try { r = fn(); } catch (e) { r = Promise.reject(e); }
+        const sync = performance.now() - t0;
+        Promise.resolve(r).catch((e) => console.error('[Ariane]', e))
+          .finally(() => p.noter(nom, t0, sync, performance.now() - t0));
       }, delai || DELAI_ANTIREBOND_MS)
     );
+  }
+
+  // Un travail synchrone mesuré pendant une mesure des ralentissements.
+  _mesurer(nom, fn) {
+    const p = this._mesureLenteurs;
+    if (!p) return fn();
+    const t0 = performance.now();
+    try { return fn(); } finally { const d = performance.now() - t0; p.noter(nom, t0, d, d); }
+  }
+
+  // Cinq minutes de mesure : gels de l'interface, frappes, travaux d'Ariane ;
+  // puis le relevé s'ouvre.
+  mesurerLenteurs(minutes) {
+    if (this._mesureLenteurs) { new obsidian.Notice(tr('Une mesure est déjà en cours.')); return; }
+    const duree = (Number(minutes) || 5) * 60000;
+    const p = new MesureLenteurs(performance.now());
+    this._mesureLenteurs = p;
+    let obs = null;
+    try {
+      obs = new PerformanceObserver((liste) => { for (const e of liste.getEntries()) p.gel(e.startTime, e.duration); });
+      obs.observe({ entryTypes: ['longtask'] });
+    } catch (e) { obs = null; }
+    const frappe = () => p.frappe(performance.now());
+    document.addEventListener('keydown', frappe, true);
+    const finir = () => {
+      document.removeEventListener('keydown', frappe, true);
+      if (obs) obs.disconnect();
+      this._mesureLenteurs = null;
+      const texte = p.rapport(performance.now());
+      console.log('[Ariane] mesure des ralentissements\n' + texte);
+      new TexteModal(this.app, tr('Mesure des ralentissements'), texte, tr('Relevé copié.')).open();
+    };
+    const t = window.setTimeout(finir, duree);
+    this.register(() => { window.clearTimeout(t); if (this._mesureLenteurs === p) { document.removeEventListener('keydown', frappe, true); if (obs) obs.disconnect(); this._mesureLenteurs = null; } });
+    new obsidian.Notice(tr('Mesure en cours : écrivez normalement pendant ') + Math.round(duree / 60000)
+      + tr(' minutes. Le relevé s’ouvrira seul.'), 8000);
   }
 
   async ecrire(chemin, contenu, fichierExistant) {

@@ -510,6 +510,11 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.releverGoogle(false),
     });
     this.addCommand({
+      id: 'mesurer-lenteurs',
+      name: tr('Diagnostic : mesurer les ralentissements pendant la frappe (5 min)'),
+      callback: () => this.mesurerLenteurs(5),
+    });
+    this.addCommand({
       id: 'concepts-uniformiser-liens',
       name: tr('Notes conceptuelles : mettre les liens au format de la phrase…'),
       callback: () => this.revoirLiensConcepts(),
@@ -888,12 +893,15 @@ class Ariane extends composer(obsidian.Plugin,
       const ext = ViewPlugin.fromClass(
         class {
           constructor(view) { this.decorations = this.build(view); }
+          // L'aparté ne dépend que du texte : un déplacement du curseur n'y
+          // change rien, et le recalcul relisait les métadonnées de chaque lien.
           update(u) {
-            if (u.docChanged || u.viewportChanged || u.selectionSet) this.decorations = this.build(u.view);
+            if (u.docChanged || u.viewportChanged) this.decorations = plugin._mesurer('éditeur aparté', () => this.build(u.view));
           }
           build(view) {
             const builder = new RangeSetBuilder();
             if (!plugin.settings.aliasSurLiens) return builder.finish();
+            const titres = new Map();
             for (const { from, to } of view.visibleRanges) {
               const texte = view.state.doc.sliceString(from, to);
               const re = /\[\[([^\]\n]+?)\]\]/g;
@@ -905,7 +913,8 @@ class Ariane extends composer(obsidian.Plugin,
                 const parts = inner.split('|');
                 if (parts.length > 1) continue; // alias manuel présent -> pas d'aparté auto
                 const cible = parts[0].trim();
-                const titre = plugin.titreAnnotationCiblee(cible, '', true);
+                if (!titres.has(cible)) titres.set(cible, plugin.titreAnnotationCiblee(cible, '', true));
+                const titre = titres.get(cible);
                 if (!titre) continue;
                 const pos = from + m.index + m[0].length;
                 builder.add(pos, pos, Decoration.widget({ widget: new AliasWidget(plugin.formatAparte(titre, cible)), side: 1 }));
@@ -979,7 +988,7 @@ class Ariane extends composer(obsidian.Plugin,
             this.local = false;
 
             if (bascule || local || u.docChanged || u.viewportChanged) {
-              this.decorations = this.build(u.view);
+              this.decorations = plugin._mesurer('éditeur citations', () => this.build(u.view));
               return;
             }
 
@@ -1088,7 +1097,7 @@ class Ariane extends composer(obsidian.Plugin,
         update(u) {
           if (u.docChanged || u.viewportChanged || greffon._ponctuationRevue !== this.revue) {
             this.revue = greffon._ponctuationRevue;
-            this.decorations = calculer(u.view);
+            this.decorations = greffon._mesurer('éditeur ponctuation', () => calculer(u.view));
           }
         }
       }, { decorations: (v) => v.decorations }));
@@ -1127,7 +1136,7 @@ class Ariane extends composer(obsidian.Plugin,
         update(u) {
           if (u.docChanged || u.viewportChanged || greffon._numerotationRevue !== this.revue) {
             this.revue = greffon._numerotationRevue;
-            this.decorations = calculer(u.view);
+            this.decorations = greffon._mesurer('éditeur numérotation', () => calculer(u.view));
           }
         }
       }, {
