@@ -22,7 +22,7 @@ const avecSocle = (Base) => class extends Base {
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
             'dossierTaches', 'tempsDossierJournal', 'dossierNotesEvenements', 'chronoDepuis',
-            'veilleDossier', 'veilleDerniere', '_noteTravailSansTitre', '_blocLivrableRetire'];
+            'veilleDossier', 'veilleDerniere', '_noteTravailSansTitre', '_blocLivrableRetire', '_pagesEpubReprises'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
@@ -296,6 +296,11 @@ const avecSocle = (Base) => class extends Base {
       this.settings._canevasLargeurPrecedente = 280;
     }
     this.settings._canevasLargeurMigree = true;
+    // Migration : la page des surlignages d'EPUB ne se lisait pas. Un motif resté
+    // à l'ancien défaut, qui ne connaissait que « .pdf », suit le nouveau.
+    if (this.settings.pageRegex === '\\.pdf,\\s*p\\.\\s*([^\\]]+?)\\]\\(obsidian') {
+      this.settings.pageRegex = DEFAULT_SETTINGS.pageRegex;
+    }
   }
 
   // Les réglages qui nomment un dossier. Ceux des familles de notes n'y sont

@@ -209,6 +209,8 @@ const TEXTES = {
   en: {
     // Rappels : Google Tasks et Microsoft To Do, comptes reliés.
     "Notes en cartes compactes": "Notes as compact cards",
+    "Annotations d’EPUB : page imprimée reprise pour ": "EPUB annotations: print page picked up for ",
+    " source(s).": " source(s).",
     "Prochain créneau : ": "Next slot: ",
     ", reste ": ", left ",
     ". Un clic ouvre la tâche.": ". Click to open the task.",
@@ -2100,7 +2102,9 @@ const DEFAULT_SETTINGS = {
 
   // --- Analyse (global) ---
   blocRegex: '<!-- ZF_ANNO_BEG_(\\w+) -->([\\s\\S]*?)<!-- ZF_ANNO_END_\\1 -->',
-  pageRegex: '\\.pdf,\\s*p\\.\\s*([^\\]]+?)\\]\\(obsidian',
+  // La page d'un surlignage, dans l'en-tête que ZotFlow écrit : « fichier.pdf,
+  // p.12 » comme « fichier.epub, p.131 » (pagination imprimée de l'EPUB).
+  pageRegex: '\\.[A-Za-z0-9]{2,5},\\s*p\\.\\s*([^\\]]+?)\\]\\(obsidian',
   imageRegex: '!\\[\\[([^\\]]+?)\\]\\]',
   retirerParentheses: true,
   // Annotations dont le commentaire ne porte pas de titre reconnu : écartées
@@ -4893,7 +4897,7 @@ const avecSocle = (Base) => class extends Base {
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
             'dossierTaches', 'tempsDossierJournal', 'dossierNotesEvenements', 'chronoDepuis',
-            'veilleDossier', 'veilleDerniere', '_noteTravailSansTitre', '_blocLivrableRetire'];
+            'veilleDossier', 'veilleDerniere', '_noteTravailSansTitre', '_blocLivrableRetire', '_pagesEpubReprises'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
@@ -5167,6 +5171,11 @@ const avecSocle = (Base) => class extends Base {
       this.settings._canevasLargeurPrecedente = 280;
     }
     this.settings._canevasLargeurMigree = true;
+    // Migration : la page des surlignages d'EPUB ne se lisait pas. Un motif resté
+    // à l'ancien défaut, qui ne connaissait que « .pdf », suit le nouveau.
+    if (this.settings.pageRegex === '\\.pdf,\\s*p\\.\\s*([^\\]]+?)\\]\\(obsidian') {
+      this.settings.pageRegex = DEFAULT_SETTINGS.pageRegex;
+    }
   }
 
   // Les réglages qui nomment un dossier. Ceux des familles de notes n'y sont
@@ -8259,6 +8268,23 @@ const avecNoteAtomes = (Base) => class extends Base {
       return;
     }
     await this.atomiseSource(file);
+  }
+
+  // Une fois : les sources dont un surlignage d'EPUB porte une page sont
+  // atomisées de nouveau, pour que leurs annotations la reçoivent.
+  async reprendrePagesEpub() {
+    if (this.settings._pagesEpubReprises) return 0;
+    let n = 0;
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const contenu = await this.app.vault.cachedRead(file);
+      if (!contenu.includes(this.settings.marqueurSource) || !/\.epub,\s*p\./.test(contenu)) continue;
+      await this.atomiseSource(file);
+      n += 1;
+    }
+    this.settings._pagesEpubReprises = true;
+    await this.saveSettings();
+    if (n) new obsidian.Notice(tr('Annotations d’EPUB : page imprimée reprise pour ') + n + tr(' source(s).'));
+    return n;
   }
 
   async atomiserTout() {
@@ -27389,6 +27415,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.app.workspace.onLayoutReady(() => {
       this.migrerNotesTravail().catch((e) => console.warn('[Ariane] notes de travail :', e));
       this.retirerBlocsLivrable().catch((e) => console.warn('[Ariane] blocs de livrable :', e));
+      this.reprendrePagesEpub().catch((e) => console.warn('[Ariane] pages des EPUB :', e));
     });
     // Un rôle de dossier qui désigne un dossier absent (renommé, ou resté sur
     // un ancien nom par défaut) suit le dossier existant qui lui correspond.

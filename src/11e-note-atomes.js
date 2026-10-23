@@ -22,6 +22,23 @@ const avecNoteAtomes = (Base) => class extends Base {
     await this.atomiseSource(file);
   }
 
+  // Une fois : les sources dont un surlignage d'EPUB porte une page sont
+  // atomisées de nouveau, pour que leurs annotations la reçoivent.
+  async reprendrePagesEpub() {
+    if (this.settings._pagesEpubReprises) return 0;
+    let n = 0;
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const contenu = await this.app.vault.cachedRead(file);
+      if (!contenu.includes(this.settings.marqueurSource) || !/\.epub,\s*p\./.test(contenu)) continue;
+      await this.atomiseSource(file);
+      n += 1;
+    }
+    this.settings._pagesEpubReprises = true;
+    await this.saveSettings();
+    if (n) new obsidian.Notice(tr('Annotations d’EPUB : page imprimée reprise pour ') + n + tr(' source(s).'));
+    return n;
+  }
+
   async atomiserTout() {
     let n = 0;
     for (const file of this.app.vault.getMarkdownFiles()) {

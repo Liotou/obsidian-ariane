@@ -834,6 +834,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.app.workspace.onLayoutReady(() => {
       this.migrerNotesTravail().catch((e) => console.warn('[Ariane] notes de travail :', e));
       this.retirerBlocsLivrable().catch((e) => console.warn('[Ariane] blocs de livrable :', e));
+      this.reprendrePagesEpub().catch((e) => console.warn('[Ariane] pages des EPUB :', e));
     });
     // Un rôle de dossier qui désigne un dossier absent (renommé, ou resté sur
     // un ancien nom par défaut) suit le dossier existant qui lui correspond.

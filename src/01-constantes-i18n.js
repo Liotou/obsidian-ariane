@@ -17,6 +17,8 @@ const TEXTES = {
   en: {
     // Rappels : Google Tasks et Microsoft To Do, comptes reliés.
     "Notes en cartes compactes": "Notes as compact cards",
+    "Annotations d’EPUB : page imprimée reprise pour ": "EPUB annotations: print page picked up for ",
+    " source(s).": " source(s).",
     "Prochain créneau : ": "Next slot: ",
     ", reste ": ", left ",
     ". Un clic ouvre la tâche.": ". Click to open the task.",
@@ -1908,7 +1910,9 @@ const DEFAULT_SETTINGS = {
 
   // --- Analyse (global) ---
   blocRegex: '<!-- ZF_ANNO_BEG_(\\w+) -->([\\s\\S]*?)<!-- ZF_ANNO_END_\\1 -->',
-  pageRegex: '\\.pdf,\\s*p\\.\\s*([^\\]]+?)\\]\\(obsidian',
+  // La page d'un surlignage, dans l'en-tête que ZotFlow écrit : « fichier.pdf,
+  // p.12 » comme « fichier.epub, p.131 » (pagination imprimée de l'EPUB).
+  pageRegex: '\\.[A-Za-z0-9]{2,5},\\s*p\\.\\s*([^\\]]+?)\\]\\(obsidian',
   imageRegex: '!\\[\\[([^\\]]+?)\\]\\]',
   retirerParentheses: true,
   // Annotations dont le commentaire ne porte pas de titre reconnu : écartées
