@@ -510,11 +510,6 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.releverGoogle(false),
     });
     this.addCommand({
-      id: 'mesurer-lenteurs',
-      name: tr('Diagnostic : mesurer les ralentissements pendant la frappe (5 min)'),
-      callback: () => this.mesurerLenteurs(5),
-    });
-    this.addCommand({
       id: 'concepts-uniformiser-liens',
       name: tr('Notes conceptuelles : mettre les liens au format de la phrase…'),
       callback: () => this.revoirLiensConcepts(),
@@ -896,7 +891,7 @@ class Ariane extends composer(obsidian.Plugin,
           // L'aparté ne dépend que du texte : un déplacement du curseur n'y
           // change rien, et le recalcul relisait les métadonnées de chaque lien.
           update(u) {
-            if (u.docChanged || u.viewportChanged) this.decorations = plugin._mesurer('éditeur aparté', () => this.build(u.view));
+            if (u.docChanged || u.viewportChanged) this.decorations = this.build(u.view);
           }
           build(view) {
             const builder = new RangeSetBuilder();
@@ -988,7 +983,7 @@ class Ariane extends composer(obsidian.Plugin,
             this.local = false;
 
             if (bascule || local || u.docChanged || u.viewportChanged) {
-              this.decorations = plugin._mesurer('éditeur citations', () => this.build(u.view));
+              this.decorations = this.build(u.view);
               return;
             }
 
@@ -1097,7 +1092,7 @@ class Ariane extends composer(obsidian.Plugin,
         update(u) {
           if (u.docChanged || u.viewportChanged || greffon._ponctuationRevue !== this.revue) {
             this.revue = greffon._ponctuationRevue;
-            this.decorations = greffon._mesurer('éditeur ponctuation', () => calculer(u.view));
+            this.decorations = calculer(u.view);
           }
         }
       }, { decorations: (v) => v.decorations }));
@@ -1136,7 +1131,7 @@ class Ariane extends composer(obsidian.Plugin,
         update(u) {
           if (u.docChanged || u.viewportChanged || greffon._numerotationRevue !== this.revue) {
             this.revue = greffon._numerotationRevue;
-            this.decorations = greffon._mesurer('éditeur numérotation', () => calculer(u.view));
+            this.decorations = calculer(u.view);
           }
         }
       }, {
