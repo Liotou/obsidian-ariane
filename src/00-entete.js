@@ -91,6 +91,7 @@
  *            11p  avecIphone       temps d'écran de l'iPhone, lu sur le Mac
  *            11q  avecConcentration micro-interruptions, distractions, concentration
  *            11r  avecVeille     veille de thèse (revues, rapports, synthèse)
+ *            11s  avecLecturesWeb liste de lecture de Safari en notes, vers Zotero
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab

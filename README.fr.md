@@ -859,6 +859,19 @@ tâche du coffre, et la note fait foi quand les deux côtés ont changé.
 L'identifiant gardé dans la note porte le nom du service : changer de
 destination ne fait jamais prendre le rappel de l'un pour celui de l'autre.
 
+### Liste de lecture de Safari
+
+Sans commande : au démarrage d'Obsidian puis toutes les heures, chaque article
+de la liste de lecture de Safari devient une note du dossier « 12 - Liste de
+lectures Web ». La note garde le texte principal de la page, sans menus ni
+publicités, lisible hors ligne, avec son adresse, son site, son auteur et sa
+date. Safari n'est jamais modifié, et un article n'est jamais importé deux
+fois. Une page qui ne se lit pas hors du navigateur (accès payant, site tout
+en JavaScript) donne une note d'aperçu, retentée aux passages suivants. Au
+clic droit sur une note d'article, « Ajouter à Zotero » l'envoie à Zotero
+ouvert, comme le ferait son extension de navigateur. Mac uniquement ; Obsidian
+doit avoir l'« Accès complet au disque ».
+
 ### Activité réelle hors d'Obsidian (ActivityWatch)
 
 Le compteur de temps ne voit que les notes. Pour savoir ce qui se passe

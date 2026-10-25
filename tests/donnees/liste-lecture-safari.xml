@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Children</key>
+	<array>
+		<dict>
+			<key>Title</key>
+			<string>BookmarksBar</string>
+			<key>WebBookmarkType</key>
+			<string>WebBookmarkTypeList</string>
+		</dict>
+		<dict>
+			<key>Children</key>
+			<array>
+				<dict>
+					<key>ReadingList</key>
+					<dict>
+						<key>DateAdded</key>
+						<date>2026-10-20T08:15:00Z</date>
+						<key>PreviewText</key>
+						<string>Un aperçu.</string>
+					</dict>
+					<key>URIDictionary</key>
+					<dict>
+						<key>title</key>
+						<string>Un article &amp; un titre</string>
+					</dict>
+					<key>URLString</key>
+					<string>https://example.org/article?utm_source=x</string>
+					<key>WebBookmarkUUID</key>
+					<string>A1B2</string>
+					<key>imageURL</key>
+					<data>
+					AAEC
+					</data>
+				</dict>
+			</array>
+			<key>Title</key>
+			<string>com.apple.ReadingList</string>
+			<key>WebBookmarkType</key>
+			<string>WebBookmarkTypeList</string>
+		</dict>
+	</array>
+</dict>
+</plist>
