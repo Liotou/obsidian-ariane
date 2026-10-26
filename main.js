@@ -4442,7 +4442,7 @@ function composerCitation(docStr, pos, entrees, sep) {
 
 // ── Citations d'une même source, et ordre chronologique ──
 //  Dans un groupe « ( … ) », les références se suivent de la plus ancienne à
-//  la plus récente (à année égale, dans l'ordre où elles ont été posées), et
+//  la plus récente (à année égale, par ordre alphabétique des auteurs), et
 //  deux annotations d'une même source ne répètent
 //  pas son nom : il vient une fois, puis les pages à la suite, par ordre
 //  croissant, chacune gardant le lien vers sa note d'annotation :
@@ -4481,19 +4481,22 @@ function fusionnerCitations(texte, infoDe, sep) {
       const cle = cleDeLien(l[1]);
       const info = infoDe(cle);
       const morceaux = info && info.source ? decouper(l[3]) : null;
-      if (!morceaux) { entrees.push({ seul: l[0], annee: anneeDe(l[3]), citation: !!(info && info.source) }); continue; }
+      if (!morceaux) { entrees.push({ seul: l[0], annee: anneeDe(l[3]), nom: l[3], citation: !!(info && info.source) }); continue; }
       const it = { cle, barre: l[2], tete: morceaux.tete, page: morceaux.page, libelle: info.libelle };
       if (!parSource.has(info.source)) {
-        const e = { items: [], annee: anneeDe(morceaux.tete || info.libelle || ''), citation: true };
+        const e = { items: [], annee: anneeDe(morceaux.tete || info.libelle || ''), nom: morceaux.tete || info.libelle || '', citation: true };
         parSource.set(info.source, e);
         entrees.push(e);
       }
       parSource.get(info.source).items.push(it);
     }
     const lien = (it, alias) => '[[' + it.cle + it.barre + alias + ']]';
-    // Le tri est stable : à année égale, ou sans année, l'ordre posé demeure.
-    // Un groupe qui relie autre chose que des citations garde son ordre.
-    if (entrees.every((e) => e.citation)) entrees.sort((a, b) => a.annee - b.annee);
+    // À année égale, l'ordre alphabétique des auteurs, sans égard aux
+    // accents ni aux majuscules. Un groupe qui relie autre chose que des
+    // citations garde son ordre.
+    if (entrees.every((e) => e.citation)) {
+      entrees.sort((a, b) => a.annee - b.annee || String(a.nom).localeCompare(String(b.nom), 'fr', { sensitivity: 'base' }));
+    }
     const rendu = entrees.map((e) => {
       if (e.seul) return e.seul;
       const items = e.items.slice().sort((a, b) => pageDe(a.page) - pageDe(b.page));

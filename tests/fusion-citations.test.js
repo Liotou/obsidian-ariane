@@ -42,7 +42,7 @@ test('une page restée seule après suppression d’une citation retrouve son li
   assert.equal(f('([[ABC|Beck, 1986, p. 12]])', info).changements.length, 0);
 });
 
-test('ordre chronologique : le cas de Monsieur, et l’ordre posé à année égale', () => {
+test('ordre chronologique : le cas de Monsieur, puis alphabétique à année égale', () => {
   const sources = {
     '@rummensDeterminismParadoxPredictability2010': { source: '@rummensDeterminismParadoxPredictability2010', libelle: 'Rummens et Cuypers, 2010' },
     '@bertalanffyTheorieGeneraleSystemes1973': { source: '@bertalanffyTheorieGeneraleSystemes1973', libelle: 'Bertalanffy, 1973' },
@@ -52,7 +52,8 @@ test('ordre chronologique : le cas de Monsieur, et l’ordre posé à année ég
   const g = (c) => sources[c] || notes[c] || null;
   assert.equal(f('([[@rummensDeterminismParadoxPredictability2010|Rummens et Cuypers, 2010]] ; [[@bertalanffyTheorieGeneraleSystemes1973|Bertalanffy, 1973]])', g).texte,
     '([[@bertalanffyTheorieGeneraleSystemes1973|Bertalanffy, 1973]] ; [[@rummensDeterminismParadoxPredictability2010|Rummens et Cuypers, 2010]])');
-  assert.equal(f('([[A|Morin, 1990, p. 3]] ; [[B|Luhmann, 1990, p. 9]])', g).changements.length, 0, 'à année égale, l’ordre posé demeure');
+  assert.equal(f('([[A|Morin, 1990, p. 3]] ; [[B|Luhmann, 1990, p. 9]])', g).texte, '([[B|Luhmann, 1990, p. 9]] ; [[A|Morin, 1990, p. 3]])', 'à année égale, l’ordre alphabétique');
+  assert.equal(f('([[B|Luhmann, 1990, p. 9]] ; [[A|Morin, 1990, p. 3]])', g).changements.length, 0);
   // Réunion et tri ensemble.
   assert.equal(f('([[2N6LMK5K|Amsterdamski et al., 1990, p. 164]] ; [[ABC|Beck, 1986, p. 12]] ; [[K5L9HRN5|Amsterdamski et al., 1990, p. 156]])', g).texte,
     '([[ABC|Beck, 1986, p. 12]] ; [[K5L9HRN5|Amsterdamski et al., 1990, p. 156]], [[2N6LMK5K|p. 164]])');
