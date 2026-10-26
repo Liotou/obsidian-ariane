@@ -30,6 +30,8 @@ chaîne : Annota écrit, ZotFlow transporte, Ariane exploite.
 
 ## 🧭 Sommaire
 
+- [🚀 Premiers pas](#-premiers-pas)
+- [🧩 Les modules](#-les-modules)
 - [⚠️ Avant de commencer](#-avant-de-commencer)
 - [⚛️ Atomiser](#-atomiser)
 - [🧮 Une base pour vos annotations](#-une-base-pour-vos-annotations)
@@ -52,6 +54,64 @@ chaîne : Annota écrit, ZotFlow transporte, Ariane exploite.
 - [📦 Installation](#-installation)
 - [🔐 Ce que le greffon peut faire](#-ce-que-le-greffon-peut-faire-sur-votre-machine)
 - [☕ Offrez-moi un café](#-offrez-moi-un-café)
+
+---
+
+## 🚀 Premiers pas
+
+Ariane est faite pour les chercheurs qui lisent dans Zotero et écrivent dans
+Obsidian. Le parcours qu'elle tient, du surlignage à la citation :
+
+1. **Dans Zotero**, vous surlignez un passage et vous le commentez.
+2. **ZotFlow** amène la source et ses annotations dans le coffre.
+3. **Ariane** fait de chaque annotation une note à part, nommée d'après votre
+   commentaire, et verrouillée : c'est Zotero qui fait foi.
+4. **Vous écrivez** : glissez une note d'annotation sur une phrase, la citation
+   « (Auteur, année, p. X) » s'y pose.
+5. **La bibliographie** de la note se construit d'elle-même, en bas de page.
+6. **L'export Word** produit un document avec des citations Zotero vivantes.
+
+**À l'installation**, une note de présentation s'ouvre, en français ou en
+anglais selon la langue d'Obsidian. Elle dit ce qui est prêt et ce qui manque
+(ZotFlow, Zotero, Better BibTeX, pandoc), et propose de choisir un profil. Un
+**tutoriel** pas à pas crée un dossier d'exemple, avec une source fictive et un
+brouillon, pour faire le parcours en cinq minutes sans toucher à vos notes ;
+ses étapes se cochent d'elles-mêmes, et un bouton le supprime ensuite. La
+commande « Ariane : ouvrir la présentation » rouvre la note à tout moment.
+
+Les **réglages** commencent par l'onglet **Accueil** (ce qui est prêt, les
+portes vers la présentation et le tutoriel), puis **Modules**, puis un onglet
+par module actif. Dans chacun, l'essentiel vient en haut ; les réglages experts
+sont rangés sous « Réglages avancés ».
+
+## 🧩 Les modules
+
+Le cœur, les annotations Zotero et les citations, est toujours actif. Le reste
+s'active à la carte, dans l'onglet **Modules** des réglages : un module coupé
+ne charge rien, ni commande, ni panneau, ni réglage, et Ariane se recharge en
+une seconde pour l'appliquer.
+
+| Module | Ce qu'il apporte | Zotero et écriture | Gestion de la thèse |
+|---|---|:-:|:-:|
+| Annotations Zotero *(cœur)* | atomisation, verrouillage, notes de lecture, références, auteurs | ✓ | ✓ |
+| Citations et bibliographie *(cœur)* | glisser-déposer, citations repliables, notes de bas de page, bibliographies, panier | ✓ | ✓ |
+| Export Word | document mis en forme, citations Zotero vivantes | ✓ | ✓ |
+| Familles de notes | notes conceptuelles, réflexives et autres, aparté des liens | ✓ | ✓ |
+| Typographie | ponctuation soudée à son mot, numérotation des titres | ✓ | ✓ |
+| Suggestions d'annotations | les annotations proches de ce que vous écrivez | | |
+| Barre d'édition | barre de mise en forme sous les onglets | | |
+| Tâches | notes de tâche, tableau de bord, frise, calendrier | | ✓ |
+| Canevas | notes en cartes compactes, cartes de tâches | | ✓ |
+| Rappels et agendas | Apple, Google, Microsoft | | ✓ |
+| Temps et activité | temps par note, chronologie, ActivityWatch, iPhone | | ✓ |
+| Correcteur Apple *(Mac)* | relecture et orthographe du système | | |
+| Schémas draw.io | schémas tenus à jour dans les notes | | |
+| Pont avec Claude | serveurs MCP et compétences | | |
+| Publication de site | miroir du coffre vers un site | | |
+
+Les deux colonnes sont des profils de départ ; le profil « Tout » active
+l'ensemble. Les sections qui suivent décrivent chaque fonction ; celle d'un
+module facultatif le dit en tête.
 
 ---
 
@@ -356,6 +416,8 @@ rendent dès qu'on en a besoin.
 
 ## 🏷️ L'aparté, ou comment lire les noms codés
 
+*Module « Familles de notes ».*
+
 Un coffre construit ainsi se remplit de noms que personne ne peut lire. Les
 notes d'annotation portent le nom de leur clé Zotero, `6BH5SHHB`. Les notes
 conceptuelles portent un horodatage, `NC-202607041635`. Ces noms sont excellents
@@ -386,6 +448,8 @@ autres plugins continuent de voir exactement ce qui a toujours été là. Coupez
 l'option et tout revient à son nom codé.
 
 ## ✨ Suggestions
+
+*Module « Suggestions d'annotations ».*
 
 Un panneau latéral propose les notes les plus proches au fil de l'écriture.
 
@@ -457,6 +521,8 @@ les variantes, et vous laisse cocher celles à fusionner et la fiche à conserve
 
 ## 📝 Exporter vers Word
 
+*Module « Export Word ».*
+
 Le point le plus délicat, et le plus abouti : un export `.docx` **avec des
 champs Zotero actualisables**, et non du texte figé. Vous rouvrez le document
 dans Word, vous cliquez « Actualiser », et Zotero refait la mise en forme.
@@ -495,6 +561,8 @@ L'export, au passage :
 ⚠️ Demande pandoc, le filtre Lua de Better BibTeX, et Zotero ouvert.
 
 ## ⏱️ Compter le temps
+
+*Module « Temps et activité ».*
 
 Le temps passé dans chaque note, en minutes, reporté en propriété.
 
@@ -536,6 +604,8 @@ notes qu'il cite. Rouvrir une note des mois plus tard vous dit le temps qu'elle
 a coûté.
 
 ## 🕰️ Chronologie d'activité
+
+*Module « Temps et activité ».*
 
 Ce qui s'est passé dans le coffre, jour par jour : notes **créées** ou
 **modifiées**, **captures**, tâches **terminées** ou **abandonnées**,
@@ -609,8 +679,10 @@ tombent les exports, et ainsi de suite.
 
 ## ✅ Tâches
 
+*Modules « Tâches », « Canevas » et « Rappels et agendas ».*
+
 Une tâche est **une note** de votre dossier de tâches, nommée d'après un
-compteur incrémental habillé par un gabarit — `T-{n:3}` par défaut, soit
+compteur incrémental habillé par un gabarit : `T-{n:3}` par défaut, soit
 `T-001`, `T-002`… Le gabarit se règle dans l'onglet **Tâches** (`{n}` = le
 numéro, `{n:3}` = sur trois chiffres, le reste littéral) ; un aperçu montre le
 résultat en direct, et un coffre déjà numéroté à l'ancienne (`T26-041`) reprend
@@ -628,7 +700,7 @@ Le formulaire **« Tâches : créer une tâche »** porte un champ **note de tra
 écrit sous le titre de la note (la note de travail en est le corps, sans titre de section), et tous les champs de
 planning dont une **heure** facultative sur l'échéance. Deux propriétés sont
 tenues à jour toutes seules, sans se saisir : `Terminée le` suit le statut, et
-`Sans échéance` (une case) vaut vrai tant que la tâche n'a pas d'échéance — de
+`Sans échéance` (une case) vaut vrai tant que la tâche n'a pas d'échéance, de
 quoi filtrer ou trier une base dessus comme sur n'importe quelle propriété.
 
 ### Familles
@@ -644,7 +716,7 @@ Ce sont des **vues de base** (`ariane-frise`, `ariane-articulation`) : elles
 respectent le filtre, le tri et le regroupement natifs de Bases, et chaque vue
 d'un `.base` garde ses propres réglages.
 
-La colonne de gauche de la **frise** est un tableau à plat — toutes les tâches
+La colonne de gauche de la **frise** est un tableau à plat : toutes les tâches
 traitées pareil, quels que soient leurs liens. L'ordre suit le tri actif (les
 tâches ne se rangent sous leur parent qu'en tri par date) ; une **tâche sans
 date suit le tri comme les autres**, sa ligne simplement hachurée. Les colonnes
@@ -654,10 +726,10 @@ d'en-tête. Les barres prennent la couleur de la famille, se redimensionnent aux
 deux bords, et glisser une fille qui sort des bornes de sa mère étend la mère.
 Une tâche dont l'échéance est passée et qui n'est pas terminée reçoit un
 **repère d'alerte** sur sa barre, avec un compte dans la barre d'outils.
-Survoler une barre révèle sa **lignée** — parents et sous-tâches, reliés par un
-trait — sans rien de permanent à l'écran. Le bouton **Exporter** de la barre
-d'outils écrit la frise telle qu'affichée — mêmes colonnes, même ordre de
-lignes — dans un `.xlsx` du dossier de pièces jointes, et l'ouvre : les colonnes
+Survoler une barre révèle sa **lignée** (parents et sous-tâches, reliés par un
+trait) sans rien de permanent à l'écran. Le bouton **Exporter** de la barre
+d'outils écrit la frise telle qu'affichée (mêmes colonnes, même ordre de
+lignes) dans un `.xlsx` du dossier de pièces jointes, et l'ouvre : les colonnes
 de données, puis un **damier Gantt** (une colonne par période, l'échelle suit le
 zoom courant), barres à la couleur de la famille, en retard en rouge, jalons
 marqués ; en-tête et colonnes de données figées, filtre automatique, vraies
@@ -672,7 +744,7 @@ déplie dans le plan.
 ### Vue calendrier
 
 Une troisième vue de base, `ariane-calendrier` : grille **mois** ou **semaine**.
-Les tâches s'y posent sur leurs dates — plage `début → échéance` en journée
+Les tâches s'y posent sur leurs dates : plage `début → échéance` en journée
 entière, ou un **bloc par créneau** si la tâche porte des `Créneaux`. `Créneaux`
 est une **liste** (`2026-09-08 14:00-16:00`, …) : une tâche se travaille en
 plusieurs sessions. Ariane entretient dans la note un tableau `## Créneaux` avec
@@ -707,7 +779,7 @@ bloqueurs. Les deux se posent depuis les formulaires, l'articulation, ou à la
 main dans une cellule de base.
 
 - **Les cycles sont refusés** au moment où on les crée, sur le graphe *fusionné*
-  — une tâche qui se retrouverait parent *et* bloquée par la même branche est
+  : une tâche qui se retrouverait parent *et* bloquée par la même branche est
   écartée, avec un message, quelle que soit l'origine du lien.
 - Une mère affiche un **statut « bloquée » dérivé** quand une de ses sous-tâches
   l'est, et gèle son sous-arbre quand elle est elle-même bloquée. Jamais écrit.
@@ -721,7 +793,7 @@ grand-parent, ou les laisse racines.
 
 ### Assistant IA
 
-Local (Ollama / LM Studio) ou distant (Mistral, CLI Claude) — le fournisseur est
+Local (Ollama / LM Studio) ou distant (Mistral, CLI Claude) : le fournisseur est
 celui déjà réglé pour le découpage des bibliographies. Chaque proposition est
 **revue avant d'être appliquée**. Commandes et entrées de menu contextuel :
 
@@ -741,7 +813,7 @@ sont vues, y compris celles rangées dans un groupe. Chaque tâche datée devien
 rappel dans la liste de sa famille : titre selon un gabarit (`[{ref}] - {intitule}`
 par défaut, jetons `{ref}`, `{intitule}`, `{famille}`), date et heure d'échéance,
 priorité, un lien retour vers la note. Cocher un rappel termine la tâche ; un
-rappel ajouté à la main dans une liste surveillée devient une nouvelle tâche — ou
+rappel ajouté à la main dans une liste surveillée devient une nouvelle tâche, ou
 se rattache à une tâche existante si son titre en porte la référence. Quand les
 deux côtés ont changé, la note fait foi. Tourne à la sauvegarde et sur minuterie
 quand la section **Apple Rappels** des réglages l'active ; la première
@@ -753,12 +825,12 @@ Aussi via **EventKit**, en parallèle et sans se croiser avec les rappels. Chaqu
 famille peut viser un **calendrier Apple** (plusieurs familles peuvent partager
 le même, ou en avoir chacune un) ; une famille sans calendrier n'est pas
 synchronisée. Chaque **créneau** d'une tâche devient un **événement** dans ce
-calendrier — titre selon un gabarit, un suffixe `(session N)` si la tâche a
+calendrier : titre selon un gabarit, un suffixe `(session N)` si la tâche a
 plusieurs créneaux, un lien retour vers la note. Déplacer ou redimensionner
 l'événement dans Calendar réécrit le créneau (la durée réelle revient dans les
 stats) ; le supprimer retire le créneau. La note fait foi si elle a bougé depuis
-la dernière synchro. Les événements des calendriers surveillés — y compris ceux
-qui ne viennent pas d'Ariane — s'affichent **en fond** de la vue calendrier :
+la dernière synchro. Les événements des calendriers surveillés (y compris ceux
+qui ne viennent pas d'Ariane) s'affichent **en fond** de la vue calendrier :
 une **barre verticale gauche à la couleur du calendrier**, un clic les ouvre
 dans Calendar.app ; un événement et un créneau au même horaire scindent la
 colonne. Tourne à la sauvegarde et sur minuterie quand la section **Apple

@@ -30,6 +30,8 @@ carries, Ariane exploits.
 
 ## 🧭 Table of contents
 
+- [🚀 Getting started](#-getting-started)
+- [🧩 Modules](#-modules)
 - [⚠️ Before you start](#-before-you-start)
 - [⚛️ Atomising](#-atomising)
 - [🧮 A base for your annotations](#-a-base-for-your-annotations)
@@ -52,6 +54,64 @@ carries, Ariane exploits.
 - [📦 Installing](#-installing)
 - [🔐 What the plugin can do](#-what-the-plugin-can-do-on-your-machine)
 - [☕ Buy me a coffee](#-buy-me-a-coffee)
+
+---
+
+## 🚀 Getting started
+
+Ariane is made for researchers who read in Zotero and write in Obsidian. The
+journey it supports, from highlight to citation:
+
+1. **In Zotero**, you highlight a passage and comment on it.
+2. **ZotFlow** brings the source and its annotations into the vault.
+3. **Ariane** turns each annotation into a note of its own, named after your
+   comment, and locked: Zotero stays the reference.
+4. **You write**: drag an annotation note onto a sentence, and the citation
+   "(Author, year, p. X)" lands there.
+5. **The bibliography** of the note builds itself at the bottom.
+6. **The Word export** produces a document with live Zotero citations.
+
+**On installation**, an introduction note opens, in English or French
+depending on Obsidian's language. It shows what is ready and what is missing
+(ZotFlow, Zotero, Better BibTeX, pandoc), and offers a choice of profile. A
+step-by-step **tutorial** creates a sample folder, with a fictional source and
+a draft, so you can try the whole journey in five minutes without touching
+your notes; its steps tick themselves, and one button removes it afterwards.
+The command "Ariane: open the introduction" reopens the note at any time.
+
+The **settings** open on the **Home** tab (what is ready, links to the
+introduction and the tutorial), then **Modules**, then one tab per active
+module. In each, the essentials come first; expert settings are kept under
+"Advanced settings".
+
+## 🧩 Modules
+
+The core, Zotero annotations and citations, is always on. Everything else is
+switched on as needed, in the **Modules** settings tab: a module that is off
+loads nothing, no command, no panel, no setting, and Ariane reloads in a second
+to apply it.
+
+| Module | What it brings | Zotero and writing | Thesis management |
+|---|---|:-:|:-:|
+| Zotero annotations *(core)* | atomising, locking, reading notes, references, authors | ✓ | ✓ |
+| Citations and bibliography *(core)* | drag and drop, foldable citations, footnotes, bibliographies, basket | ✓ | ✓ |
+| Word export | formatted document, live Zotero citations | ✓ | ✓ |
+| Note families | concept notes, reflective notes and more, link asides | ✓ | ✓ |
+| Typography | punctuation kept with its word, heading numbering | ✓ | ✓ |
+| Annotation suggestions | annotations close to what you are writing | | |
+| Editing bar | formatting bar under the tabs | | |
+| Tasks | task notes, dashboard, timeline, calendar | | ✓ |
+| Canvas | notes as compact cards, task cards | | ✓ |
+| Reminders and calendars | Apple, Google, Microsoft | | ✓ |
+| Time and activity | time per note, timeline, ActivityWatch, iPhone | | ✓ |
+| Apple spell checker *(Mac)* | system proofreading and spelling | | |
+| draw.io diagrams | diagrams kept up to date in notes | | |
+| Claude bridge | MCP servers and skills | | |
+| Site publishing | mirror of the vault to a website | | |
+
+The two columns are starting profiles; the "Everything" profile turns them all
+on. The sections below describe each feature; an optional module's section
+says so at the top.
 
 ---
 
@@ -351,6 +411,8 @@ the moment you need them.
 
 ## 🏷️ The aside, or reading coded names
 
+*"Note families" module.*
+
 A vault built this way fills up with names nobody can read. Annotation notes are
 named after their Zotero key, `6BH5SHHB`. Concept notes carry a timestamp,
 `NC-202607041635`. Those names are excellent for the machine, stable and never
@@ -379,6 +441,8 @@ exactly what was always there. Turn the option off and everything falls back to
 its coded name.
 
 ## ✨ Suggestions
+
+*"Annotation suggestions" module.*
 
 A side panel proposes the closest notes as you write.
 
@@ -449,6 +513,8 @@ lets you tick which ones to merge and which entry to keep.
 
 ## 📝 Exporting to Word
 
+*"Word export" module.*
+
 The hardest part, and the most polished: a `.docx` export **with live Zotero
 fields**, not frozen text. Reopen the document in Word, click Refresh, and
 Zotero redoes the formatting.
@@ -486,6 +552,8 @@ Along the way the export also:
 ⚠️ Requires pandoc, the Better BibTeX Lua filter, and Zotero running.
 
 ## ⏱️ Tracking time
+
+*"Time and activity" module.*
 
 Time spent in each note, in minutes, written back to a property.
 
@@ -526,6 +594,8 @@ Because every row is a real link, the journal appears in the backlinks of the
 notes it mentions. Opening a note months later tells you how long it took.
 
 ## 🕰️ Activity timeline
+
+*"Time and activity" module.*
 
 What happened in the vault, day by day: notes **created** or **edited**,
 **captures**, tasks **completed** or **dropped**, **canvas & snippets**. Run
@@ -595,8 +665,10 @@ where exports land, and so on.
 
 ## ✅ Tasks
 
+*"Tasks", "Canvas" and "Reminders and calendars" modules.*
+
 A task is **a note** in your tasks folder, named from an incremental counter
-dressed by a template — `T-{n:3}` by default, giving `T-001`, `T-002`… Change
+dressed by a template: `T-{n:3}` by default, giving `T-001`, `T-002`… Change
 the template in the **Tasks** settings tab (`{n}` = the number, `{n:3}` = padded
 to three digits, the rest literal); a live preview shows the result, and a vault
 already numbered the old way (`T26-041`) keeps counting from there. Its title
@@ -612,7 +684,7 @@ The **Tasks: create a task** form carries a **working note** field, written into
 the body of the note right under its title (no section heading), and every planning field including an
 optional **time** on the due date. Two properties are kept up to date for you and
 not meant to be typed: `Terminée le` follows the status, and `Sans échéance` (a
-checkbox) is true while the task has no due date — so you can filter or sort a
+checkbox) is true while the task has no due date, so you can filter or sort a
 base on it like any real property.
 
 ### Families
@@ -628,17 +700,17 @@ Both are **base views** (`ariane-frise`, `ariane-articulation`): they obey Bases
 native filter, sort and grouping, and each view of a `.base` keeps its own
 settings.
 
-The **timeline** left column is a flat table — every task treated the same,
+The **timeline** left column is a flat table: every task treated the same,
 whatever its links. Order follows the active sort (tasks nest under their parent
 only in the default date order); an **undated task follows the sort like any
-other**, its row simply hatched. Columns match the base view — drag-reorder them
+other**, its row simply hatched. Columns match the base view: drag-reorder them
 by their header, rename per-view through *Edit property…*, hide from the header
 menu. Bars carry the family colour, are resizable at either edge, and dragging a
 child that leaves its parent's span stretches the parent. A task whose due date
 has passed and is not done gets a **warning mark** on its bar, with a count in
-the toolbar. Hovering a bar reveals its **lineage** — parents and subtasks,
-joined by a line — with nothing permanent on screen. The toolbar's **Export**
-button writes the timeline exactly as shown — same columns, same row order — to
+the toolbar. Hovering a bar reveals its **lineage** (parents and subtasks,
+joined by a line) with nothing permanent on screen. The toolbar's **Export**
+button writes the timeline exactly as shown (same columns, same row order) to
 an `.xlsx` in the attachments folder and opens it: the data columns, then a
 **cell-grid Gantt** (one column per period, the scale following the current
 zoom), bars painted in the family colour, overdue in red, milestones marked;
@@ -652,7 +724,7 @@ hierarchy relatives collapse into badges you expand into the plan.
 ### Calendar view
 
 A third base view, `ariane-calendrier`: a **month** or **week** grid. Tasks land
-on their dates — a `début → échéance` span shown all-day, or **one block per
+on their dates: a `début → échéance` span shown all-day, or **one block per
 créneau** if the task carries `Créneaux`. `Créneaux` is a **list**
 (`2026-09-08 14:00-16:00`, …): a task is worked over several sessions. Ariane
 keeps a `## Créneaux` table in the note with duration stats (sessions, planned
@@ -682,7 +754,7 @@ onto a calendar day (the SVG bars themselves are no longer draggable).
 `Rattachement` gives a task **one parent**; `Bloquée par` lists its blockers.
 Both are set from the forms, the articulation, or by hand in a base cell.
 
-- **Cycles are refused** as you create them, on the *merged* graph — a task that
+- **Cycles are refused** as you create them, on the *merged* graph: a task that
   would end up parent *and* blocked by the same branch is turned down, with a
   message, wherever the link comes from.
 - A parent shows a **derived "blocked" status** when one of its subtasks is
@@ -696,7 +768,7 @@ grandparent, or leaves them as roots.
 
 ### AI assistant
 
-Local (Ollama / LM Studio) or cloud (Mistral, Claude CLI) — the provider is the
+Local (Ollama / LM Studio) or cloud (Mistral, Claude CLI): the provider is the
 one already set for bibliography splitting. Every proposal is **reviewed before
 it is applied**. Commands and context-menu entries:
 
@@ -716,7 +788,7 @@ filed inside a group. Each dated task becomes a reminder in its family's list:
 title from a template (`[{ref}] - {intitule}` by default, tokens `{ref}`,
 `{intitule}`, `{famille}`), due date and time, priority, a link back to the note.
 Checking a reminder completes the task; a reminder added by hand in a watched
-list becomes a new task — or links to an existing one if its title carries that
+list becomes a new task, or links to an existing one if its title carries that
 task's reference. When both sides changed, the note wins. Runs on save and on a
 timer when enabled in the **Apple Reminders** settings section; the first sync
 asks for Reminders access.
@@ -726,12 +798,12 @@ asks for Reminders access.
 Also through **EventKit**, running alongside reminders without overlap. Each
 family can target an **Apple calendar** (several families may share one, or each
 get its own); a family with no calendar is not synced. Every **créneau** of a
-task becomes an **event** in that calendar — title from a template, a
+task becomes an **event** in that calendar: title from a template, a
 `(session N)` suffix when the task has several créneaux, a link back to the note.
 Moving or resizing the event in Calendar rewrites the créneau (the real duration
 flows back into the stats); deleting it removes the créneau. The note wins if it
-moved since the last sync. Events from watched calendars — including ones that do
-not come from Ariane — show as **background** in the calendar view: a **left
+moved since the last sync. Events from watched calendars (including ones that do
+not come from Ariane) show as **background** in the calendar view: a **left
 vertical bar in the calendar's colour**, a click opens them in Calendar.app; an
 event and a créneau at the same time split the column. Runs on save and on a
 timer when enabled in the **Apple Calendar** settings section; the first sync

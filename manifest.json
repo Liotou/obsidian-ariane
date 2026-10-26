@@ -1,9 +1,9 @@
 {
   "id": "obsidian-ariane",
   "name": "Ariane",
-  "version": "2.82.0",
+  "version": "3.0.0",
   "minAppVersion": "1.0.0",
-  "description": "Downstream companion of ZotFlow: turns Zotero annotations and notes into linked atomic notes, cites Zotero live while you write, suggests related notes locally, and exports to Word with refreshable Zotero fields.",
+  "description": "For researchers who read in Zotero and write in Obsidian: turns your Zotero annotations (via ZotFlow) into linked notes, cites them by drag and drop, keeps the bibliography and exports to Word with live Zotero citations. Optional modules for tasks, time and more.",
   "author": "Liotou",
   "fundingUrl": "https://buymeacoffee.com/liotou",
   "isDesktopOnly": false,
