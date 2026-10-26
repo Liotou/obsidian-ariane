@@ -4277,3 +4277,15 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-ln-livrable { display: flex; align-items: center; gap: 4px; }
 .zfa-ln-livrable .clickable-icon { padding: 1px; }
 .zfa-ln-livrable svg { width: 14px; height: 14px; }
+
+/* Réglages par module : une rubrique avancée garde son titre, plus discret
+   qu'un sous-onglet ; l'onglet Modules, ses interrupteurs et son pied. */
+.zfa-rubrique-avancee { border-top: 1px solid var(--background-modifier-border); margin-top: 14px; padding-top: 10px; }
+.zfa-rubrique-avancee .setting-item-name { font-weight: 600; color: var(--text-muted); }
+.zfa-module .setting-item-name { font-weight: 600; }
+.zfa-modules-pied {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--background-secondary); border-radius: var(--radius-m);
+  padding: 8px 12px; margin-bottom: 8px; border-top: none;
+}
+.zfa-reglages-sans-nom .setting-item-info { display: none; }

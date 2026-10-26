@@ -11,6 +11,7 @@ module.exports = Ariane;
 module.exports._test = {
   DEFAULT_SETTINGS,
   MODULES_ARIANE,
+  ArianeSettingTab,
   PROFILS_ARIANE,
   // Notes de lecture : citations zotflow ramenées à la forme d'Ariane.
   citationsZotflowVersAriane,

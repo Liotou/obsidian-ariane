@@ -1,9 +1,11 @@
 //#region 12 · ArianeSettingTab
 // ═══════════════════════════════════════════════════════════════════════════
 //  12 · ARIANESETTINGTAB
-//  L'onglet de réglages du greffon : douze onglets (_onglets), une méthode
-//  par onglet (ongletGeneral, ongletAnnotations, ongletTaches…), un champ de
-//  recherche en tête, plus les fabriques de tableaux de familles.
+//  L'onglet de réglages du greffon : Accueil, Modules, puis un onglet par
+//  module actif, composé (COMPOSITION) des rubriques que dessinent les
+//  méthodes ongletGeneral, ongletAnnotations, ongletTaches… ; les rubriques
+//  expertes sous « Réglages avancés ». Un champ de recherche en tête, plus
+//  les fabriques de tableaux de familles.
 // ═══════════════════════════════════════════════════════════════════════════
 
 class ArianeSettingTab extends obsidian.PluginSettingTab {
@@ -12,25 +14,232 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this.plugin = plugin;
   }
 
-  // Les onglets, dans l'ordre : chacun réunit des sous-onglets, un par
-  // titre de section (Setting.setHeading). Un champ de recherche en tête
-  // retrouve un réglage par son nom ou sa description, quel que soit l'onglet.
-  _onglets(s, maj) {
+  // La composition des onglets. Après « Accueil » et « Modules », un onglet
+  // par module actif : ses rubriques, prises par leur titre dans la méthode
+  // qui les dessine ; celles d'« avance » sont rangées à part, sous
+  // « Réglages avancés ». Puis les onglets communs. Un titre est en français :
+  // il est traduit au moment de la comparaison. « * » : la méthode entière.
+  static get COMPOSITION() {
     return [
-      [tr('Général'), 'settings', (c) => this.ongletGeneral(c, s, maj)],
-      [tr('Annotations Zotero'), 'highlighter', (c) => this.ongletAnnotations(c, s, maj)],
-      [tr('Familles de notes'), 'folder-tree', (c) => this.ongletFamilles(c, s, maj)],
-      [tr('Citations et bibliographie'), 'quote', (c) => this.ongletCitations(c, s, maj)],
-      [tr('Écriture'), 'pen-line', (c) => this.ongletEcriture(c, s, maj)],
-      [tr('Suggestions'), 'sparkles', (c) => this.ongletSuggestions(c, s, maj)],
-      [tr('Tâches'), 'list-checks', (c) => this.ongletTaches(c, s, maj)],
-      [tr('Vues et schémas'), 'layout-dashboard', (c) => this.ongletVues(c, s, maj)],
-      [tr('Temps et activité'), 'timer', (c) => this.ongletTemps(c, s, maj)],
-      [tr('IA'), 'bot', (c) => this.ongletIA(c, s, maj)],
-      [tr('Export et publication'), 'file-output', (c) => this.ongletExport(c, s, maj)],
-      [tr('Greffons liés'), 'plug', (c) => this.ongletGreffons(c, s, maj)],
-      [tr('Avancé'), 'wrench', (c) => this.ongletAvance(c, s, maj)],
+      { id: 'annotations', module: 'annotations', icone: 'highlighter',
+        rubriques: [['ongletAnnotations', 'Atomisation'], ['ongletGeneral', 'Automatisation'], ['ongletAnnotations', 'Contenu des notes']],
+        avance: [['ongletAnnotations', 'Nommage des annotations'], ['ongletAnnotations', 'Références et auteurs'],
+          ['ongletCitations', 'Graphe'], ['ongletAvance', 'Notes de référence provisoires']] },
+      { id: 'citations', module: 'citations', icone: 'quote',
+        rubriques: [['ongletCitations', 'Glisser-déposer et notes de bas de page'], ['ongletCitations', 'Repliement des citations'],
+          ['ongletCitations', 'Bibliographies citées']],
+        avance: [['ongletCitations', 'Citations indirectes']] },
+      { id: 'export', module: 'export', icone: 'file-output',
+        rubriques: [['ongletExport', 'Mise en forme du document']],
+        avance: [['ongletExport', 'Styles du modèle employés'], ['ongletExport', 'Référence de la note']] },
+      { id: 'familles', module: 'familles', icone: 'folder-tree',
+        rubriques: [['ongletFamilles', 'Familles de notes'], ['ongletEcriture', 'Aparté et noms codés']] },
+      { id: 'typographie', module: 'typographie', icone: 'type', rubriques: [['ongletEcriture', 'Typographie']] },
+      { id: 'suggestions', module: 'suggestions', icone: 'sparkles',
+        rubriques: [['ongletSuggestions', "Suggestions dynamiques d'annotations"]],
+        avance: [['ongletSuggestions', 'Moteur de pertinence'], ['ongletSuggestions', 'Reclassement par modèle de langue'],
+          ['ongletSuggestions', 'Maintenance']] },
+      { id: 'barre', module: 'barre', icone: 'pen-line',
+        rubriques: [['ongletBarre', 'La barre'], ['ongletBarre', 'Les boutons']], avance: [['ongletBarre', 'Couleurs proposées']] },
+      { id: 'taches', module: 'taches', icone: 'list-checks',
+        rubriques: [['ongletTaches', 'Tâches'], ['ongletTaches', 'Familles de tâches'], ['ongletTaches', 'Tableau de bord'],
+          ['ongletVues', 'Calendrier'], ['ongletVues', 'Vue Frise']],
+        avance: [['ongletTaches', 'Clés des propriétés de tâche'], ['ongletTaches', 'Note de tâche']] },
+      { id: 'canevas', module: 'canevas', icone: 'layout-dashboard', rubriques: [['ongletVues', 'Canevas']] },
+      { id: 'rappels', module: 'rappels', icone: 'bell',
+        rubriques: [['ongletTaches', 'Rappels'], ['ongletTaches', 'Agenda en fond'], ['ongletTaches', 'Apple Agenda']] },
+      { id: 'temps', module: 'temps', icone: 'timer',
+        rubriques: [['ongletTemps', 'Compteur'], ['ongletTemps', "Chronologie d'activité"],
+          ['ongletTemps', "Activité hors d'Obsidian (ActivityWatch)"]],
+        avance: [['ongletTemps', 'iPhone'], ['ongletTemps', 'Micro-interruptions']] },
+      { id: 'correcteur', module: 'correcteur', icone: 'spell-check', rubriques: [['ongletEcriture', 'Correcteur Apple']] },
+      { id: 'schemas', module: 'schemas', icone: 'shapes',
+        rubriques: [['ongletVues', 'Vocabulaire des schémas'], ['ongletVues', 'Export SVG des schémas']] },
+      { id: 'publication', module: 'publication', icone: 'globe', rubriques: [['ongletExport', 'Publication du site']] },
+      { id: 'ia', nom: 'IA', icone: 'bot', rubriques: [['ongletIA', '*']] },
+      { id: 'greffons', nom: 'Greffons liés', icone: 'plug', rubriques: [['ongletGreffons', '*']] },
+      { id: 'avance', nom: 'Avancé', icone: 'wrench',
+        rubriques: [['ongletAnnotations', 'Dossiers des productions'], ['ongletGeneral', 'Maintenance'], ['ongletVues', 'Icônes des vues de base']] },
     ];
+  }
+
+  // Les onglets affichés : [nom, icône, (conteneur) => rendu].
+  _onglets(s, maj) {
+    const rendus = new Map();   // méthode -> tranches, le temps d'un affichage
+    const tranches = (meth) => {
+      if (!rendus.has(meth)) {
+        const tmp = this.containerEl.createDiv();
+        tmp.style.display = 'none';
+        try { this[meth](tmp, s, maj); } catch (e) { console.warn('[Ariane] réglages, ' + meth + ' :', e); }
+        rendus.set(meth, this._decouper(tmp));
+        tmp.remove();
+      }
+      return rendus.get(meth);
+    };
+    const poser = (c, meth, titre, avance) => {
+      const liste = tranches(meth);
+      const choisies = titre === '*' ? liste : liste.filter((ch) => ch.titre === tr(titre) || ch.titre === titre);
+      for (const ch of choisies) {
+        ch.els.forEach((el, k) => {
+          // Une rubrique avancée garde son titre, mais ne fait plus un sous-onglet.
+          if (avance && k === 0 && el.classList && el.classList.contains('setting-item-heading')) {
+            el.classList.remove('setting-item-heading', 'zfa-sous-titre');
+            el.classList.add('zfa-rubrique-avancee');
+          }
+          c.appendChild(el);
+        });
+      }
+    };
+    const onglets = [
+      [tr('Accueil'), 'home', (c) => this.ongletAccueil(c, s, maj)],
+      [tr('Modules'), 'blocks', (c) => this.ongletModules(c, s, maj)],
+    ];
+    const noms = new Map(MODULES_ARIANE.map((m) => [m.id, m.nom]));
+    for (const def of ArianeSettingTab.COMPOSITION) {
+      if (def.module && !this.plugin.module(def.module)) continue;
+      onglets.push([tr(def.nom || noms.get(def.module)), def.icone, (c) => {
+        for (const [meth, titre] of def.rubriques) poser(c, meth, titre, false);
+        if (def.avance && def.avance.length) {
+          this._section(c, tr('Réglages avancés'), tr('À ne modifier qu’en connaissance de cause : les valeurs par défaut conviennent à la plupart des usages.'));
+          for (const [meth, titre] of def.avance) poser(c, meth, titre, true);
+        }
+      }]);
+    }
+    return onglets;
+  }
+
+  // ── Accueil ──
+  //  Ce qu'Ariane fait, ce qui est prêt et ce qui manque, puis les portes :
+  //  présentation, tutoriel, modules. Et la langue.
+  ongletAccueil(c, s, maj) {
+    this._section(c, tr('Bienvenue'));
+    this._aide(c, tr("Ariane relie vos annotations Zotero à votre écriture : chaque surlignage commenté devient une note, que vous glissez dans votre texte pour le citer ; la bibliographie et l'export Word suivent. Le reste (tâches, temps, canevas…) s'ajoute à la carte, dans l'onglet Modules."));
+    const portes = new obsidian.Setting(c).setName(tr('Pour commencer'));
+    if (typeof this.plugin.ouvrirPresentation === 'function') {
+      portes.addButton((b) => b.setButtonText(tr('Ouvrir la présentation')).setCta()
+        .onClick(() => { this.app.setting.close(); this.plugin.ouvrirPresentation(); }));
+    }
+    if (typeof this.plugin.creerTutoriel === 'function') {
+      portes.addButton((b) => b.setButtonText(tr('Lancer le tutoriel'))
+        .onClick(() => { this.app.setting.close(); this.plugin.creerTutoriel(); }));
+    }
+    portes.addButton((b) => b.setButtonText(tr('Choisir les modules')).onClick(() => {
+      this._ongletActif = 1;
+      this.display();
+    }));
+
+    this._section(c, tr('Ce qui est prêt'));
+    const etat = (nom, ok, desc) => {
+      const st = new obsidian.Setting(c).setName((ok ? '✓ ' : '○ ') + nom).setDesc(desc);
+      st.settingEl.addClass('zfa-etat-greffon', ok ? 'est-actif' : 'est-absent');
+      return st;
+    };
+    for (const e of this.plugin.etatPrerequis()) etat(tr(e.nom), e.ok, tr(e.ok ? e.siOk : e.sinon));
+    const r = new obsidian.Setting(c).addButton((b) => b.setButtonText(tr('Vérifier de nouveau')).onClick(() => this.display()));
+    r.settingEl.addClass('zfa-reglages-sans-nom');
+
+    const mieux = [['ongletGeneral', 'Langue']];
+    const tmp = c.createDiv();
+    tmp.style.display = 'none';
+    this.ongletGeneral(tmp, s, maj);
+    for (const ch of this._decouper(tmp)) if (mieux.some(([, titre]) => ch.titre === tr(titre))) for (const el of ch.els) c.appendChild(el);
+    tmp.remove();
+  }
+
+  // ── Modules ──
+  //  Un interrupteur par module ; les dépendances suivent ; « Appliquer »
+  //  enregistre et recharge Ariane. Les profils remplissent les interrupteurs.
+  ongletModules(c, s, maj) {
+    const actifs = Array.isArray(s.modules) ? s.modules : PROFILS_ARIANE.tout;
+    if (!this._modulesVoulus) this._modulesVoulus = new Set(actifs);
+    const voulus = this._modulesVoulus;
+    const mac = !!(obsidian.Platform && obsidian.Platform.isMacOS);
+    const change = () => {
+      const a = new Set(Ariane.modulesAvecDependances([...voulus]));
+      const b = new Set(Ariane.modulesAvecDependances(actifs));
+      return a.size !== b.size || [...a].some((x) => !b.has(x));
+    };
+    this._section(c, tr('Modules'));
+    this._aide(c, tr("Le cœur, l'intégration des annotations Zotero et des citations, est toujours actif. Le reste s'active à la carte : un module coupé ne charge rien, ni commande, ni panneau, ni réglage. Appliquer recharge Ariane, en une seconde."));
+    const profils = new obsidian.Setting(c).setName(tr('Profils')).setDesc(tr('Un point de départ ; chaque module reste réglable ensuite.'));
+    for (const [id, nom] of [['zotero', 'Zotero et écriture'], ['these', 'Gestion de la thèse'], ['tout', 'Tout']]) {
+      profils.addButton((b) => b.setButtonText(tr(nom)).onClick(() => {
+        voulus.clear();
+        for (const m of PROFILS_ARIANE[id]) voulus.add(m);
+        this.display();
+      }));
+    }
+    const pied = new obsidian.Setting(c)
+      .setName(change() ? tr('Changements en attente') : tr('Aucun changement'))
+      .setDesc(change() ? tr('Appliquer enregistre ce choix et recharge Ariane.') : '')
+      .addButton((b) => {
+        b.setButtonText(tr('Appliquer')).setCta().setDisabled(!change()).onClick(async () => {
+          const liste = [...voulus];
+          this._modulesVoulus = null;
+          new obsidian.Notice(tr('Ariane se recharge avec les modules choisis…'));
+          this.app.setting.close();
+          await this.plugin.appliquerModules(liste);
+        });
+      })
+      .addExtraButton((b) => b.setIcon('rotate-ccw').setTooltip(tr('Annuler les changements')).onClick(() => {
+        this._modulesVoulus = null;
+        this.display();
+      }));
+    pied.settingEl.addClass('zfa-modules-pied');
+    const groupes = [
+      ['Le cœur', MODULES_ARIANE.filter((m) => m.coeur)],
+      ['Écriture et recherche', MODULES_ARIANE.filter((m) => ['export', 'familles', 'typographie', 'suggestions', 'barre', 'correcteur', 'schemas'].includes(m.id))],
+      ['Gestion de la thèse', MODULES_ARIANE.filter((m) => ['taches', 'canevas', 'rappels', 'temps'].includes(m.id))],
+      ['Liens et diffusion', MODULES_ARIANE.filter((m) => ['claude', 'publication'].includes(m.id))],
+    ];
+    const noms = new Map(MODULES_ARIANE.map((m) => [m.id, tr(m.nom)]));
+    for (const [titre, liste] of groupes) {
+      this._sousTitre(c, tr(titre));
+      for (const m of liste) {
+        const desc = [tr(m.description)];
+        if (m.dependances.length) desc.push(tr('Demande : ') + m.dependances.map((d) => noms.get(d)).join(', ') + '.');
+        if (m.macSeul) desc.push(tr('Mac uniquement.'));
+        const st = new obsidian.Setting(c).setName(noms.get(m.id)).setDesc(desc.join(' '));
+        st.settingEl.addClass('zfa-module');
+        if (m.coeur) { st.addExtraButton((b) => b.setIcon('lock').setTooltip(tr('Toujours actif')).setDisabled(true)); continue; }
+        st.addToggle((tg) => {
+          tg.setValue(voulus.has(m.id) && (mac || !m.macSeul));
+          if (m.macSeul && !mac) tg.setDisabled(true);
+          tg.onChange((v) => {
+            if (v) {
+              for (const id of Ariane.modulesAvecDependances([m.id])) voulus.add(id);
+            } else {
+              voulus.delete(m.id);
+              for (const id of Ariane.modulesDependants(m.id, [...voulus])) voulus.delete(id);
+            }
+            this.display();
+          });
+        });
+      }
+    }
+  }
+
+  // Coupe le contenu d'un onglet en tranches délimitées par ses titres de
+  // section (Setting.setHeading -> .setting-item-heading).
+  _decouper(hote) {
+    const chunks = [];
+    let cur = { titre: null, els: [] };
+    for (const el of Array.from(hote.children)) {
+      if (el.classList && el.classList.contains('setting-item-heading')) {
+        if (cur.els.length || cur.titre !== null) chunks.push(cur);
+        const nomEl = el.querySelector('.setting-item-name');
+        cur = { titre: nomEl ? nomEl.textContent : '', els: [] };
+        el.addClass('zfa-sous-titre');
+      }
+      cur.els.push(el);
+    }
+    if (cur.els.length) chunks.push(cur);
+    // Un préambule sans titre est rattaché à la première section titrée.
+    if (chunks.length > 1 && chunks[0].titre === null) {
+      chunks[1].els = chunks[0].els.concat(chunks[1].els);
+      chunks.shift();
+    }
+    return chunks;
   }
 
   display() {
@@ -53,28 +262,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     const sousBarre = containerEl.createDiv({ cls: 'zfa-sous-onglets' });
     const corps = containerEl.createDiv({ cls: 'zfa-reglages-corps' });
 
-    // Coupe le contenu d'un onglet en tranches délimitées par ses titres de
-    // section (Setting.setHeading -> .setting-item-heading).
-    const decouper = (hote) => {
-      const chunks = [];
-      let cur = { titre: null, els: [] };
-      for (const el of Array.from(hote.children)) {
-        if (el.classList && el.classList.contains('setting-item-heading')) {
-          if (cur.els.length || cur.titre !== null) chunks.push(cur);
-          const nomEl = el.querySelector('.setting-item-name');
-          cur = { titre: nomEl ? nomEl.textContent : '', els: [] };
-          el.addClass('zfa-sous-titre');
-        }
-        cur.els.push(el);
-      }
-      if (cur.els.length) chunks.push(cur);
-      // Un préambule sans titre est rattaché à la première section titrée.
-      if (chunks.length > 1 && chunks[0].titre === null) {
-        chunks[1].els = chunks[0].els.concat(chunks[1].els);
-        chunks.shift();
-      }
-      return chunks;
-    };
+    const decouper = (hote) => this._decouper(hote);
 
     const rendreSous = (chunks, prim) => {
       sousBarre.empty();
@@ -2248,7 +2436,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           ? nomService + ' répond : encodage disponible.'
           : 'Échec : ' + nomService + ' injoignable, ou modèle « ' + (s.suggModeleEmbed || 'bge-m3') + ' » absent.');
       }));
-    if (s.activiteActif) {
+    if (!this.plugin.module('temps')) { /* l'IA de l'activité suit le module Temps */ } else if (s.activiteActif) {
       this._section(c, tr('IA de l\'activité'));
       this._aide(c, tr("Sur chaque créneau réel, l'IA écrit ce qui a été fait et le range dans une de vos catégories, dont une pour la vie privée et les distractions (rayée dans le calendrier). Clic droit sur un créneau réel : résumer ce créneau ou la journée ; commande « Activité réelle : résumer la semaine affichée (IA) ». Les résumés sont gardés dans les fichiers du jour (« .ariane/jours »). Avec un fournisseur en ligne (Mistral, Claude), les titres de fenêtres et les sites lui sont envoyés ; Ollama et LM Studio restent sur l'ordinateur."));
       this._choixIAActivite(c, s, maj, 'synthese', tr('Fournisseur'),
@@ -2437,21 +2625,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
 
   // L'état d'un greffon de Zotero : son paquet dans un profil de Zotero.
   _etatGreffonZotero(c, id) {
-    let present = false;
-    try {
-      const path = require('path'), fs = require('fs'), os = require('os');
-      const racines = [
-        path.join(os.homedir(), 'Library', 'Application Support', 'Zotero', 'Profiles'),
-        path.join(process.env.APPDATA || '', 'Zotero', 'Zotero', 'Profiles'),
-        path.join(os.homedir(), '.zotero', 'zotero'),
-      ];
-      for (const r of racines) {
-        if (!r || !fs.existsSync(r)) continue;
-        for (const profil of fs.readdirSync(r)) {
-          if (fs.existsSync(path.join(r, profil, 'extensions', id + '.xpi'))) present = true;
-        }
-      }
-    } catch (e) { present = false; }
+    const present = this.plugin.greffonZoteroPresent(id);
     const st = new obsidian.Setting(c).setName(tr('État'))
       .setDesc(present ? tr('Installé dans Zotero.') : tr('Introuvable dans les profils de Zotero.'));
     st.settingEl.addClass('zfa-etat-greffon', present ? 'est-actif' : 'est-absent');

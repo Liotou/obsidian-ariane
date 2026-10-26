@@ -81,3 +81,34 @@ test('commandes : celle d’un module coupé n’est pas enregistrée, la propri
     assert.deepEqual(recues, [{ id: 'b', name: 'B' }]);
   } finally { base.addCommand = orig; }
 });
+
+test('réglages : chaque rubrique existante a sa place dans un onglet', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const { ArianeSettingTab } = Ariane._test;
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', '12-reglages.js'), 'utf8');
+  const places = new Set();
+  const entieres = new Set();
+  for (const d of ArianeSettingTab.COMPOSITION) {
+    for (const [meth, titre] of (d.rubriques || []).concat(d.avance || [])) {
+      if (titre === '*') entieres.add(meth); else places.add(meth + ' :: ' + titre);
+    }
+  }
+  places.add('ongletGeneral :: Langue');   // dans l'Accueil
+  const ids = new Set(MODULES_ARIANE.map((m) => m.id));
+  for (const d of ArianeSettingTab.COMPOSITION) if (d.module) assert.ok(ids.has(d.module), d.module);
+  // Les rubriques des anciennes méthodes d'onglet, par leur titre.
+  const orphelines = [];
+  let vues = 0;
+  const re = /^  (onglet[A-Z]\w*)\(c, s, maj\) \{([\s\S]*?)^  \}/gm;
+  for (const m of src.matchAll(re)) {
+    if (m[1] === 'ongletAccueil' || m[1] === 'ongletModules' || entieres.has(m[1])) continue;
+    for (const t of m[2].matchAll(/_section\(c, tr\((['"])((?:\\.|(?!\1).)*)\1\)/g)) {
+      const titre = t[2].replace(/\\'/g, "'");
+      vues += 1;
+      if (!places.has(m[1] + ' :: ' + titre)) orphelines.push(m[1] + ' :: ' + titre);
+    }
+  }
+  assert.deepEqual(orphelines, []);
+  assert.ok(vues >= 40, 'rubriques relevées : ' + vues);
+});

@@ -315,6 +315,58 @@ const avecSocle = (Base) => class extends Base {
     return super.addCommand(sans);
   }
 
+  // Un greffon de Zotero est-il installé ? Son paquet, dans un profil.
+  greffonZoteroPresent(id) {
+    try {
+      const path = require('path'), fs = require('fs'), os = require('os');
+      const racines = [
+        path.join(os.homedir(), 'Library', 'Application Support', 'Zotero', 'Profiles'),
+        path.join(process.env.APPDATA || '', 'Zotero', 'Zotero', 'Profiles'),
+        path.join(os.homedir(), '.zotero', 'zotero'),
+      ];
+      for (const r of racines) {
+        if (!r || !fs.existsSync(r)) continue;
+        for (const profil of fs.readdirSync(r)) {
+          if (fs.existsSync(path.join(r, profil, 'extensions', id + '.xpi'))) return true;
+        }
+      }
+    } catch (e) { /* hors ordinateur : rien à lire */ }
+    return false;
+  }
+
+  // Ce qu'il faut pour que le cœur d'Ariane tourne, et l'export s'il est
+  // actif : [{ id, nom, ok, siOk, sinon }] (textes en français, à traduire).
+  etatPrerequis() {
+    const s = this.settings;
+    const p = this.app.plugins;
+    const out = [];
+    const zf = p && p.manifests ? p.manifests.zotflow : null;
+    const zfActif = !!(p && p.enabledPlugins && p.enabledPlugins.has('zotflow'));
+    out.push({ id: 'zotflow', nom: 'ZotFlow, greffon d’Obsidian', ok: !!(zf && zfActif),
+      siOk: 'Installé et activé : vos annotations Zotero arrivent dans le coffre.',
+      sinon: zf ? 'Installé mais désactivé : activez-le dans Réglages, Greffons tiers.'
+        : 'À installer depuis les greffons de la communauté : c’est lui qui apporte vos annotations Zotero.' });
+    let base = false;
+    try {
+      const path = require('path'), fs = require('fs'), os = require('os');
+      base = fs.existsSync(path.join(s.dossierZotero || path.join(os.homedir(), 'Zotero'), 'zotero.sqlite'));
+    } catch (e) { base = false; }
+    out.push({ id: 'zotero', nom: 'Zotero', ok: base,
+      siOk: 'Sa base est trouvée : Ariane y lit les pages et les fiches.',
+      sinon: 'Base introuvable : installez Zotero, ou indiquez son dossier de données (onglet Greffons liés).' });
+    out.push({ id: 'bbt', nom: 'Better BibTeX, greffon de Zotero', ok: this.greffonZoteroPresent('better-bibtex@iris-advies.com'),
+      siOk: 'Installé : clés de citation stables, et citations Zotero vivantes à l’export.',
+      sinon: 'Conseillé : il donne à chaque source une clé de citation stable (retorque.re/zotero-better-bibtex).' });
+    if (this.module('export')) {
+      let pandoc = '';
+      try { pandoc = trouverExecutable(s.exportPandocBin || 'pandoc', envOutils()) || ''; } catch (e) { pandoc = ''; }
+      out.push({ id: 'pandoc', nom: 'pandoc', ok: !!pandoc,
+        siOk: 'Trouvé : l’export Word est possible.',
+        sinon: 'Introuvable : installez pandoc (pandoc.org) pour l’export Word.' });
+    }
+    return out;
+  }
+
   // Enregistre les modules voulus (dépendances et cœur compris), puis
   // recharge Ariane : un module ne se branche ou ne se retire qu'au
   // démarrage. Hors de la pile courante, le temps que l'appelant finisse.
