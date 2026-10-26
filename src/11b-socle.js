@@ -255,9 +255,73 @@ const avecSocle = (Base) => class extends Base {
   //#region Ariane · réglages & profils
   // ── réglages & profils ───────────────────────────────────────────────────
 
+  // ── modules ──
+  //  Un module coupé ne charge rien (commandes, vues, écoutes, minuteries) ;
+  //  le cœur est toujours actif ; un module réservé au Mac ne l'est jamais
+  //  ailleurs.
+
+  // Les modules et leurs dépendances (transitives), plus le cœur, dans
+  // l'ordre du registre. Les ids inconnus sont ignorés.
+  static modulesAvecDependances(ids) {
+    const parId = new Map(MODULES_ARIANE.map((m) => [m.id, m]));
+    const voulus = new Set();
+    const ajouter = (id) => {
+      const m = parId.get(id);
+      if (!m || voulus.has(id)) return;
+      voulus.add(id);
+      for (const d of m.dependances) ajouter(d);
+    };
+    for (const m of MODULES_ARIANE) if (m.coeur) ajouter(m.id);
+    for (const id of ids || []) ajouter(id);
+    return MODULES_ARIANE.map((m) => m.id).filter((id) => voulus.has(id));
+  }
+
+  // Les modules actifs qui tomberaient avec `id` (dépendances transitives).
+  static modulesDependants(id, actifs) {
+    const out = [];
+    const voir = (cible) => {
+      for (const m of MODULES_ARIANE) {
+        if (!(actifs || []).includes(m.id) || out.includes(m.id) || !m.dependances.includes(cible)) continue;
+        out.push(m.id);
+        voir(m.id);
+      }
+    };
+    voir(id);
+    return out;
+  }
+
+  // Un module est-il actif ? `reglage` : la liste des réglages (null : tout).
+  static moduleActif(id, reglage, mac) {
+    const m = MODULES_ARIANE.find((x) => x.id === id);
+    if (!m) return false;
+    if (m.macSeul && !mac) return false;
+    if (m.coeur || reglage == null) return true;
+    return reglage.includes(id);
+  }
+
+  // Vrai si chacun des modules (un id, ou un tableau d'ids) est actif.
+  module(ids) {
+    const mac = !!(obsidian.Platform && obsidian.Platform.isMacOS);
+    const reglage = Array.isArray(this.settings && this.settings.modules) ? this.settings.modules : null;
+    return [].concat(ids).every((id) => Ariane.moduleActif(id, reglage, mac));
+  }
+
+  // Une commande porte son module : celle d'un module coupé n'existe pas.
+  addCommand(c) {
+    if (!c || !c.module) return super.addCommand(c);
+    if (!this.module(c.module)) return null;
+    const sans = Object.assign({}, c);
+    delete sans.module;
+    return super.addCommand(sans);
+  }
+
   async loadSettings() {
     const charge = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, charge || {});
+    // Une installation qui n'a pas encore de modules garde tout ce qu'elle
+    // avait : profil « Tout ». (L'assistant de premier lancement viendra
+    // pour les nouvelles installations.)
+    if (!Array.isArray(this.settings.modules)) this.settings.modules = PROFILS_ARIANE.tout.slice();
     this.settings.correspondancesSuffixe = migrerCorrespondances(this.settings.correspondancesSuffixe);
 
     // clesTaches ne contient plus que de VRAIES personnalisations de label.

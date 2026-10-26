@@ -78,12 +78,14 @@ class Ariane extends composer(obsidian.Plugin,
   _enregistrerCommandes() {
     this.addCommand({
       id: 'atomise-active',
+      module: 'annotations',
       name: tr('Atomiser : la note source active'),
       icon: 'atom',
       callback: () => this.commandeNoteActive(),
     });
     this.addCommand({
       id: 'distractions-classer',
+      module: 'temps',
       name: tr('Distractions : classer les sites et applications inconnus (IA)'),
       icon: 'shield-alert',
       callback: () => {
@@ -94,18 +96,21 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'sommaire-lecture',
+      module: 'annotations',
       name: tr('Lecture : sommaire à imprimer (annotations d’une source)'),
       icon: 'list-ordered',
       callback: () => this.ouvrirSommaireLecture(),
     });
     this.addCommand({
       id: 'journee-resumer',
+      module: 'temps',
       name: tr('Journée : résumer ma journée (IA)'),
       icon: 'sunset',
       callback: () => this.resumerJournee(jourIsoDe(new Date())),
     });
     this.addCommand({
       id: 'activite-resumer-semaine',
+      module: 'temps',
       name: tr('Activité réelle : résumer la semaine affichée (IA)'),
       icon: 'sparkles',
       checkCallback: (verif) => {
@@ -116,51 +121,61 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'atomise-tout',
+      module: 'annotations',
       name: tr('Atomiser : toutes les sources'),
       callback: () => this.atomiserTout(),
     });
     this.addCommand({
       id: 'retirer-alias-liens',
+      module: 'annotations',
       name: tr('Entretien : retirer l’alias des liens d’annotation'),
       callback: () => this.retirerAliasLiensAnnotation(),
     });
     this.addCommand({
       id: 'normaliser-conjonctions-references',
+      module: 'annotations',
       name: tr('Entretien : normaliser les conjonctions des références'),
       callback: () => this.normaliserConjonctionsReferences(),
     });
     this.addCommand({
       id: 'panier-annotations',
+      module: 'citations',
       name: tr("Panier de notes : afficher ou masquer"),
       callback: () => this.basculerPanier(),
     });
     this.addCommand({
       id: 'lier-reference-zotero',
+      module: 'annotations',
       name: tr('Références en attente : lier la référence active à une fiche Zotero'),
       callback: () => this.assistantLiageReference(),
     });
     this.addCommand({
       id: 'rattacher-toutes-references',
+      module: 'annotations',
       name: tr('Références en attente : rattacher automatiquement'),
       callback: () => this.rattacherToutesReferences(),
     });
     this.addCommand({
       id: 'incoherences-taches',
+      module: 'taches',
       name: tr('Tâches : incohérences'),
       callback: () => this.ouvrirVueIncoherences(),
     });
     this.addCommand({
       id: 'ouvrir-chronologie',
+      module: 'temps',
       name: tr("Ouvrir la chronologie d'activité"),
       callback: () => this.ouvrirChronologie(),
     });
     this.addCommand({
       id: 'harmoniser-colonnes-bases',
+      module: 'taches',
       name: tr('Tâches : harmoniser les noms de colonnes des bases'),
       callback: () => this.harmoniserNomsColonnesBases().catch(() => {}),
     });
     this.addCommand({
       id: 'completer-concepts-taches',
+      module: 'taches',
       name: tr('Tâches : compléter les propriétés manquantes'),
       callback: async () => {
         const n = await this.semerConceptsTache();
@@ -169,6 +184,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'relire-incoherences-taches',
+      module: 'taches',
       name: tr('Tâches : relire les incohérences'),
       callback: () => {
         const r = this.recalculerIncoherences();
@@ -178,6 +194,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'creer-tache',
+      module: 'taches',
       name: tr('Tâches : créer une tâche'),
       icon: 'list-plus',
       callback: () => new ModaleTache(this.app, this, {
@@ -189,6 +206,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'structurer-brouillon-taches',
+      module: 'taches',
       name: tr('Tâches : structurer un brouillon (IA)'),
       callback: () => {
         const ed = this.app.workspace.activeEditor && this.app.workspace.activeEditor.editor;
@@ -198,6 +216,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'decouper-tache-active',
+      module: 'taches',
       name: tr('Tâches : découper la tâche active (IA)'),
       callback: () => {
         const f = this.app.workspace.getActiveFile();
@@ -208,6 +227,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'normaliser-intitules-taches',
+      module: 'taches',
       name: tr('Tâches : normaliser les intitulés (IA)'),
       callback: async () => {
         const lignes = await this.normaliserIntitules(null);
@@ -225,6 +245,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'verifier-familles-taches',
+      module: 'taches',
       name: tr('Tâches : vérifier les familles (IA)'),
       callback: async () => {
         const lignes = await this.verifierFamilles(null);
@@ -242,11 +263,13 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'ajouter-tache-langage-naturel',
+      module: 'taches',
       name: tr('Tâches : ajouter (langage naturel, IA)'),
       callback: () => new ModaleAjoutLN(this).open(),
     });
     this.addCommand({
       id: 'resoudre-sources-lecture',
+      module: 'taches',
       name: tr('Tâches : résoudre les sources des tâches de lecture'),
       callback: async () => {
         const avis = new obsidian.Notice(tr('Recherche des sources…'), 0);
@@ -266,36 +289,43 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'rappels-pousser',
+      module: 'rappels',
       name: tr('Tâches : synchroniser les rappels'),
       callback: () => this.pousserRappels(false),
     });
     this.addCommand({
       id: 'rappels-relever',
+      module: 'rappels',
       name: tr('Tâches : relever les rappels (terminés, échéances)'),
       callback: () => this.releverRappels(false),
     });
     this.addCommand({
       id: 'agenda-pousser',
+      module: 'rappels',
       name: tr('Tâches : synchroniser vers Apple Agenda'),
       callback: () => this.pousserAgenda(false),
     });
     this.addCommand({
       id: 'agenda-relever',
+      module: 'rappels',
       name: tr('Tâches : relever Apple Agenda'),
       callback: () => this.releverAgenda(false),
     });
     this.addCommand({
       id: 'agenda-diagnostic',
+      module: 'rappels',
       name: tr('Tâches : diagnostiquer Apple Agenda'),
       callback: () => this.diagnostiquerAgenda(),
     });
     this.addCommand({
       id: 'agenda-nettoyer',
+      module: 'rappels',
       name: tr('Tâches : nettoyer les doublons Apple Agenda'),
       callback: () => this.nettoyerAgenda(false),
     });
     this.addCommand({
       id: 'modifier-tache',
+      module: 'taches',
       name: tr('Tâches : modifier une tâche…'),
       callback: () => {
         const items = this.tachesPourGantt()
@@ -308,6 +338,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'temps-reporter',
+      module: 'temps',
       name: tr('Temps : reporter maintenant dans les notes'),
       callback: async () => {
         await this.reporterTemps();
@@ -316,22 +347,26 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'citations-replier',
+      module: 'citations',
       name: tr('Citations : tout replier'),
       callback: () => this.basculerCitations(true),
     });
     this.addCommand({
       id: 'citations-deplier',
+      module: 'citations',
       name: tr('Citations : tout déplier'),
       callback: () => this.basculerCitations(false),
     });
     this.addCommand({
       id: 'citations-basculer',
+      module: 'citations',
       name: tr('Citations : replier ou déplier'),
       icon: 'quote',
       callback: () => this.basculerCitations(!this.settings.citationsRepliees),
     });
     this.addCommand({
       id: 'citations-rafraichir',
+      module: 'citations',
       name: tr('Citations : rafraîchir les libellés…'),
       callback: () => new ChoixListeModal(this.app, 'Rafraîchir les libellés de citation', [
         { nom: 'Note active', portee: 'active' },
@@ -340,6 +375,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'biblio-note',
+      module: 'citations',
       name: tr('Bibliographie : recomposer celle de la note active'),
       icon: 'library',
       callback: () => {
@@ -349,67 +385,80 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'biblio-tout',
+      module: 'citations',
       name: tr('Bibliographie : recomposer celles de toutes les notes'),
       callback: () => this.majBibliographieToutes(),
     });
     this.addCommand({
       id: 'schema-synchroniser-tout',
+      module: 'schemas',
       name: tr('Schémas : synchroniser dans les notes'),
       callback: () => this.synchroniserTousSchemas(),
     });
     this.addCommand({
       id: 'carte-valider',
+      module: 'schemas',
       name: tr('Schémas : valider le schéma actif'),
       callback: () => this.validerCarte(),
     });
     this.addCommand({
       id: 'carte-interroger',
+      module: 'schemas',
       name: tr('Schémas : interroger le graphe'),
       callback: () => this.interrogerGraphe(),
     });
     this.addCommand({
       id: 'notes-lecture-atomiser',
+      module: 'annotations',
       name: tr('Atomiser : les notes-filles Zotero'),
       callback: () => this.atomiserToutesNotesLecture(),
     });
     this.addCommand({
       id: 'ouvrir-dans-zotero',
+      module: 'annotations',
       name: tr('Annotations : ouvrir dans Zotero'),
       callback: () => this.ouvrirDansZotero(),
     });
     this.addCommand({
       id: 'verifier-modele-word',
+      module: 'export',
       name: tr('Word : vérifier le modèle'),
       callback: () => this.verifierModeleWord(),
     });
     this.addCommand({
       id: 'decouper-bibliographies',
+      module: 'annotations',
       name: tr('Références citées : structurer les entrées non structurées'),
       callback: () => this.decouperBibliographies(),
     });
     this.addCommand({
       id: 'reparer-liens-auteurs',
+      module: 'annotations',
       name: tr('Entretien : réparer les liens d’auteurs'),
       callback: () => this.reparerLiensAuteurs(),
     });
     this.addCommand({
       id: 'arbitrer-references-attente',
+      module: 'annotations',
       name: tr('Références en attente : ouvrir la liste'),
       callback: () => this.ouvrirVueReferences(),
     });
     this.addCommand({
       id: 'exporter-word-zotero',
+      module: 'export',
       name: tr('Word : exporter avec citations Zotero'),
       icon: 'file-output',          // son bouton dans la barre d'édition
       callback: () => this.exporterWordZotero(),
     });
     this.addCommand({
       id: 'bibliographie-citee-source',
+      module: 'annotations',
       name: tr('Références citées : extraire celles de la source active'),
       callback: () => this.genererBibliographieSource(),
     });
     this.addCommand({
       id: 'arreter-bibliographies',
+      module: 'annotations',
       name: tr('Références citées : interrompre l’extraction'),
       callback: () => {
         if (!this.bibliosEnCours) { new obsidian.Notice(tr('Aucune génération en cours.')); return; }
@@ -418,21 +467,25 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'bibliographies-citees-toutes',
+      module: 'annotations',
       name: tr('Références citées : extraire celles de toutes les sources'),
       callback: () => this.genererToutesBibliographies(),
     });
     this.addCommand({
       id: 'fusionner-doublons-auteurs',
+      module: 'annotations',
       name: tr('Entretien : fusionner les doublons d’auteurs'),
       callback: () => this.ouvrirFusionAuteurs(),
     });
     this.addCommand({
       id: 'suggestions-ouvrir',
+      module: 'suggestions',
       name: tr('Annotations : ouvrir le panneau de suggestions'),
       callback: () => this.ouvrirVueSuggestions(),
     });
     this.addCommand({
       id: 'suggestions-reconstruire',
+      module: 'suggestions',
       name: tr('Annotations : reconstruire l’index des suggestions'),
       callback: async () => {
         const n = await this.construireIndexSuggestions();
@@ -442,6 +495,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'publier-site',
+      module: 'publication',
       name: tr('Site : publier'),
       callback: () => this.publierSite(),
     });
@@ -455,56 +509,67 @@ class Ariane extends composer(obsidian.Plugin,
     };
     this.addCommand({
       id: 'canevas-nouveau',
+      module: ['canevas', 'taches'],
       name: tr('Canevas : nouveau canevas de tâches'),
       callback: () => this.canevas && this.canevas.creerCanevas(),
     });
     this.addCommand({
       id: 'canevas-ajouter-tache',
+      module: ['canevas', 'taches'],
       name: tr('Canevas : poser une tâche existante…'),
       checkCallback: surCanevas((s) => s.choisirTache(s._centre())),
     });
     this.addCommand({
       id: 'canevas-nouvelle-tache',
+      module: ['canevas', 'taches'],
       name: tr('Canevas : nouvelle tâche…'),
       checkCallback: surCanevas((s) => s.nouvelleTache(s._centre())),
     });
     this.addCommand({
       id: 'canevas-panneau',
+      module: ['canevas', 'taches'],
       name: tr('Canevas : panneau des tâches'),
       checkCallback: surCanevas((s) => s.basculerPanneau()),
     });
     this.addCommand({
       id: 'zotero-references-orphelines',
+      module: 'annotations',
       name: tr('Zotero : notes de références orphelines…'),
       callback: () => this.revoirReferencesOrphelines(false),
     });
     this.addCommand({
       id: 'google-relier',
+      module: 'rappels',
       name: tr('Google Agenda : relier mon compte'),
       callback: () => this.relierGoogle(),
     });
     this.addCommand({
       id: 'google-synchroniser',
+      module: 'rappels',
       name: tr('Google Agenda : synchroniser les créneaux'),
       callback: () => this.pousserGoogle(false),
     });
     this.addCommand({
       id: 'google-relever',
+      module: 'rappels',
       name: tr('Google Agenda : relever les événements'),
       callback: () => this.releverGoogle(false),
     });
     this.addCommand({
       id: 'concepts-uniformiser-liens',
+      module: 'familles',
       name: tr('Notes conceptuelles : mettre les liens au format de la phrase…'),
       callback: () => this.revoirLiensConcepts(),
     });
     this.addCommand({
       id: 'titres-numeroter',
+      module: 'typographie',
       name: tr('Titres : choisir les dossiers numérotés et numéroter…'),
       callback: () => this.choisirDossiersNumerotation(),
     });
     this.addCommand({
       id: 'titres-renumeroter-note',
+      module: 'typographie',
       name: tr('Titres : renuméroter cette note'),
       checkCallback: (verif) => {
         const f = this.app.workspace.getActiveFile();
@@ -515,21 +580,25 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'annotations-sources-mentionnees',
+      module: 'annotations',
       name: tr('Annotations : revoir les sources mentionnées dans mes commentaires…'),
       callback: () => this.revoirMentionsDeSources(),
     });
     this.addCommand({
       id: 'canevas-ouvrir',
+      module: ['canevas', 'taches'],
       name: tr('Canevas : ouvrir un canevas de tâches…'),
       callback: () => this.canevas && this.canevas.ouvrirCanevas(),
     });
     this.addCommand({
       id: 'canevas-tracer-relations',
+      module: ['canevas', 'taches'],
       name: tr('Canevas : tracer les relations entre les tâches'),
       checkCallback: surCanevas((s) => s.tracerTout()),
     });
     this.addCommand({
       id: 'correcteur-basculer',
+      module: 'correcteur',
       name: tr('Correcteur Apple : activer ou désactiver'),
       callback: async () => {
         this.settings.correcteurApple = this.settings.correcteurApple === false;
@@ -541,6 +610,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'correcteur-relire',
+      module: 'correcteur',
       name: tr('Correcteur Apple : relire la note, faute par faute'),
       icon: 'scan-search',
       editorCallback: (editeur) => {
@@ -549,6 +619,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'bases-icone-vue',
+      module: 'annotations',
       name: tr('Bases : icône de la vue affichée…'),
       checkCallback: (verif) => {
         const cible = this.iconesBases && this.iconesBases.vueActive();
@@ -560,23 +631,27 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'correcteur-volet',
+      module: 'correcteur',
       name: tr('Correcteur Apple : ouvrir ou fermer le volet de relecture'),
       icon: 'spell-check',
       callback: () => this.correcteur && this.correcteur.basculerVolet(),
     });
     this.addCommand({
       id: 'organisation-repartir',
+      module: 'taches',
       name: tr('Tâches : répartir sur la semaine (IA)'),
       callback: () => this.repartirSemaineIA().catch((e) => new obsidian.Notice(
         tr('Répartition impossible : ') + (e && e.message ? e.message : e), 10000)),
     });
     this.addCommand({
       id: 'organisation-ouvrir',
+      module: 'taches',
       name: tr('Tâches : ouvrir la gestion de l’organisation'),
       callback: () => this.ouvrirGestionOrganisation(),
     });
     this.addCommand({
       id: 'claude-installer',
+      module: 'claude',
       name: tr('Claude : installer ou mettre à jour la compétence et les outils des tâches'),
       callback: () => {
         if (!this.pont) return;
@@ -591,11 +666,13 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'claude-annuler',
+      module: 'claude',
       name: tr('Claude : annuler les derniers changements acceptés'),
       callback: () => this.pont && this.pont.annulerDerniereProposition(),
     });
     this.addCommand({
       id: 'barre-basculer',
+      module: 'barre',
       name: tr('Barre d’édition : replier ou déplier'),
       callback: () => this.barre && this.barre.basculerRepli(),
     });
@@ -606,6 +683,7 @@ class Ariane extends composer(obsidian.Plugin,
     for (const c of BARRE_COMMANDES) {
       this.addCommand({
         id: c.id,
+        module: 'barre',
         name: tr(c.nom),
         editorCallback: (editeur, vue) => {
           try {

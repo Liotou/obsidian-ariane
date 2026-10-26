@@ -10,6 +10,8 @@ module.exports = Ariane;
 // Exposition des fonctions pures pour les tests.
 module.exports._test = {
   DEFAULT_SETTINGS,
+  MODULES_ARIANE,
+  PROFILS_ARIANE,
   // Notes de lecture : citations zotflow ramenées à la forme d'Ariane.
   citationsZotflowVersAriane,
   extraireNotesFilles,

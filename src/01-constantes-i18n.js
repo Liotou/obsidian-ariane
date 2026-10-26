@@ -1550,7 +1550,50 @@ function tr(cle) {
   return v == null ? cle : v;
 }
 
+// ── Les modules d'Ariane ──
+//  Le cœur (annotations Zotero, citations) est toujours actif ; le reste
+//  s'active à la carte. Les identifiants vivent dans les réglages : ne pas
+//  les renommer. L'ordre est celui des onglets de réglages.
+const MODULES_ARIANE = [
+  { id: 'annotations', nom: 'Annotations Zotero', coeur: true, dependances: [], macSeul: false,
+    description: 'Atomisation des annotations de ZotFlow, verrouillage, notes de lecture, références et auteurs.' },
+  { id: 'citations', nom: 'Citations et bibliographie', coeur: true, dependances: [], macSeul: false,
+    description: 'Glisser-déposer des annotations, citations repliables, notes de bas de page, bibliographies, panier.' },
+  { id: 'export', nom: 'Export Word', coeur: false, dependances: [], macSeul: false,
+    description: 'Un document Word mis en forme, avec des citations Zotero vivantes, par pandoc.' },
+  { id: 'familles', nom: 'Familles de notes', coeur: false, dependances: [], macSeul: false,
+    description: 'Notes conceptuelles, réflexives et autres familles : préfixes, couleurs, aparté des liens.' },
+  { id: 'typographie', nom: 'Typographie', coeur: false, dependances: [], macSeul: false,
+    description: 'Ponctuation soudée à son mot, numérotation automatique des titres.' },
+  { id: 'suggestions', nom: 'Suggestions d’annotations', coeur: false, dependances: [], macSeul: false,
+    description: 'Les annotations proches de ce que vous écrivez, dans un panneau (modèle local conseillé).' },
+  { id: 'barre', nom: 'Barre d’édition', coeur: false, dependances: [], macSeul: false,
+    description: 'Une barre de mise en forme sous les onglets de chaque note.' },
+  { id: 'taches', nom: 'Tâches', coeur: false, dependances: [], macSeul: false,
+    description: 'Notes de tâche, tableau de bord, frise, calendrier, IA des tâches.' },
+  { id: 'canevas', nom: 'Canevas', coeur: false, dependances: [], macSeul: false,
+    description: 'Les notes du canevas en cartes compactes ; les cartes de tâches si le module Tâches est actif.' },
+  { id: 'rappels', nom: 'Rappels et agendas', coeur: false, dependances: ['taches'], macSeul: false,
+    description: 'Synchronisation des tâches avec Apple, Google ou Microsoft.' },
+  { id: 'temps', nom: 'Temps et activité', coeur: false, dependances: [], macSeul: false,
+    description: 'Temps passé par note, chronologie, activité hors d’Obsidian, micro-interruptions.' },
+  { id: 'correcteur', nom: 'Correcteur Apple', coeur: false, dependances: [], macSeul: true,
+    description: 'La relecture et l’orthographe du système, dans l’éditeur.' },
+  { id: 'schemas', nom: 'Schémas draw.io', coeur: false, dependances: [], macSeul: false,
+    description: 'Schémas draw.io tenus à jour dans les notes, vocabulaire, export SVG.' },
+  { id: 'claude', nom: 'Pont avec Claude', coeur: false, dependances: [], macSeul: false,
+    description: 'Serveurs MCP et compétences pour que Claude lise vos tâches et vos annotations.' },
+  { id: 'publication', nom: 'Publication de site', coeur: false, dependances: [], macSeul: false,
+    description: 'Miroir d’une partie du coffre vers un site, avec commit et envoi.' },
+];
+const PROFILS_ARIANE = {
+  zotero: ['annotations', 'citations', 'export', 'familles', 'typographie'],
+  these: ['annotations', 'citations', 'export', 'familles', 'typographie', 'taches', 'canevas', 'rappels', 'temps'],
+  tout: MODULES_ARIANE.map((m) => m.id),
+};
+
 const DEFAULT_SETTINGS = {
+  modules: null,                // ids des modules actifs ; null : profil « Tout »
   langue: 'auto',               // 'auto' | 'fr' | 'en'
   // --- Dossiers ---
   dossierAnnotations: '',       // rôle : où atomiser les annotations
