@@ -36,8 +36,29 @@ test('rien à fusionner, autre chose qu’une citation, narratif, tableau', () =
 });
 
 test('une page restée seule après suppression d’une citation retrouve son libellé complet', () => {
-  const r = f('([[2N6LMK5K|p. 164]] ; [[ABC|Beck, 1986, p. 12]])', info);
-  assert.equal(r.texte, '([[2N6LMK5K|Amsterdamski et al., 1990, p. 164]] ; [[ABC|Beck, 1986, p. 12]])');
+  const r = f('([[ABC|Beck, 1986, p. 12]] ; [[2N6LMK5K|p. 164]])', info);
+  assert.equal(r.texte, '([[ABC|Beck, 1986, p. 12]] ; [[2N6LMK5K|Amsterdamski et al., 1990, p. 164]])');
   assert.equal(f('Il le dit ([[2N6LMK5K|p. 164]]).', info).texte, 'Il le dit ([[2N6LMK5K|Amsterdamski et al., 1990, p. 164]]).');
   assert.equal(f('([[ABC|Beck, 1986, p. 12]])', info).changements.length, 0);
+});
+
+test('ordre chronologique : le cas de Monsieur, et l’ordre posé à année égale', () => {
+  const sources = {
+    '@rummensDeterminismParadoxPredictability2010': { source: '@rummensDeterminismParadoxPredictability2010', libelle: 'Rummens et Cuypers, 2010' },
+    '@bertalanffyTheorieGeneraleSystemes1973': { source: '@bertalanffyTheorieGeneraleSystemes1973', libelle: 'Bertalanffy, 1973' },
+    A: { source: '@a', libelle: 'Morin, 1990, p. 3' }, B: { source: '@b', libelle: 'Luhmann, 1990, p. 9' },
+    S: { source: '@s', libelle: 'Anonyme, s. d.' },
+  };
+  const g = (c) => sources[c] || notes[c] || null;
+  assert.equal(f('([[@rummensDeterminismParadoxPredictability2010|Rummens et Cuypers, 2010]] ; [[@bertalanffyTheorieGeneraleSystemes1973|Bertalanffy, 1973]])', g).texte,
+    '([[@bertalanffyTheorieGeneraleSystemes1973|Bertalanffy, 1973]] ; [[@rummensDeterminismParadoxPredictability2010|Rummens et Cuypers, 2010]])');
+  assert.equal(f('([[A|Morin, 1990, p. 3]] ; [[B|Luhmann, 1990, p. 9]])', g).changements.length, 0, 'à année égale, l’ordre posé demeure');
+  // Réunion et tri ensemble.
+  assert.equal(f('([[2N6LMK5K|Amsterdamski et al., 1990, p. 164]] ; [[ABC|Beck, 1986, p. 12]] ; [[K5L9HRN5|Amsterdamski et al., 1990, p. 156]])', g).texte,
+    '([[ABC|Beck, 1986, p. 12]] ; [[K5L9HRN5|Amsterdamski et al., 1990, p. 156]], [[2N6LMK5K|p. 164]])');
+  // Une référence sans année passe après les autres.
+  assert.equal(f('([[S|Anonyme, s. d.]] ; [[@bertalanffyTheorieGeneraleSystemes1973|Bertalanffy, 1973]])', g).texte,
+    '([[@bertalanffyTheorieGeneraleSystemes1973|Bertalanffy, 1973]] ; [[S|Anonyme, s. d.]])');
+  // Des liens qui ne sont pas des citations : l'ordre ne bouge pas.
+  assert.equal(f('([[Note 2020|Bilan 2020]] ; [[Note 1999|Bilan 1999]])', g).changements.length, 0);
 });
