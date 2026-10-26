@@ -57,7 +57,7 @@ const avecPublicationSite = (Base) => class extends Base {
   async publierSite() {
     const depot = this.cheminDepotSite;
     if (!depot) {
-      new obsidian.Notice(tr('Publication du site : renseigne le chemin du dépôt dans les réglages Ariane (onglet « Export et publication »).'));
+      new obsidian.Notice(tr('Publication du site : renseigne le chemin du dépôt dans les réglages Ariane (onglet « Publication de site »).'));
       return;
     }
     const fs = require('fs');

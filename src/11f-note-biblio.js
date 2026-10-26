@@ -1499,6 +1499,10 @@ const avecNoteBiblio = (Base) => class extends Base {
   }
 
   async exporterWordZotero() {
+    // L'étape « exporter » du tutoriel : l'export du brouillon d'exemple.
+    const ex = this._tutorielExistant ? this._tutorielExistant() : null;
+    const active = this.app.workspace.getActiveFile();
+    if (ex && active && active.path.startsWith(ex.dossier.path + '/')) this.noterEtapeTutoriel('export');
     // L'export appelle pandoc et python par child_process : rien de tout cela
     // n'existe sur mobile. Le greffon se charge malgré tout, tous les modules
     // Node étant requis à l'intérieur des fonctions, mais mieux vaut un

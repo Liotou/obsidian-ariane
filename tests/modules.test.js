@@ -36,12 +36,15 @@ test('état : cœur toujours, Mac seul, réglage absent vaut tout', () => {
   assert.equal(g.module(['annotations', 'canevas']), true);
 });
 
-test('migration : des réglages sans modules passent au profil « Tout »', async () => {
-  for (const charge of [null, { langue: 'fr' }]) {
-    const g = Object.assign(Object.create(Ariane.prototype), { loadData: async () => charge, saveData: async () => {} });
-    await g.loadSettings();
-    assert.deepEqual(g.settings.modules, PROFILS_ARIANE.tout);
-  }
+test('migration : une installation existante passe au profil « Tout », une nouvelle au profil Zotero avec présentation', async () => {
+  const ancienne = Object.assign(Object.create(Ariane.prototype), { loadData: async () => ({ langue: 'fr' }), saveData: async () => {} });
+  await ancienne.loadSettings();
+  assert.deepEqual(ancienne.settings.modules, PROFILS_ARIANE.tout);
+  assert.ok(!ancienne._accueilAOuvrir, 'pas de présentation chez qui a déjà des réglages');
+  const neuve = Object.assign(Object.create(Ariane.prototype), { loadData: async () => null, saveData: async () => {} });
+  await neuve.loadSettings();
+  assert.deepEqual(neuve.settings.modules, PROFILS_ARIANE.zotero);
+  assert.equal(neuve._accueilAOuvrir, true);
   const g = Object.assign(Object.create(Ariane.prototype), { loadData: async () => ({ modules: ['export'] }), saveData: async () => {} });
   await g.loadSettings();
   assert.deepEqual(g.settings.modules, ['export']);

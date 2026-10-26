@@ -18,7 +18,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecChronologie,
   avecDonneesJour,
   avecIphone,
-  avecConcentration) {
+  avecConcentration,
+  avecAccueil) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -561,6 +562,18 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.releverGoogle(false),
     });
     this.addCommand({
+      id: 'ouvrir-presentation',
+      module: 'annotations',
+      name: tr('Ariane : ouvrir la présentation'),
+      callback: () => this.ouvrirPresentation(),
+    });
+    this.addCommand({
+      id: 'tutoriel-lancer',
+      module: 'annotations',
+      name: tr('Ariane : lancer le tutoriel'),
+      callback: () => this.creerTutoriel(),
+    });
+    this.addCommand({
       id: 'concepts-uniformiser-liens',
       module: 'familles',
       name: tr('Notes conceptuelles : mettre les liens au format de la phrase…'),
@@ -708,6 +721,9 @@ class Ariane extends composer(obsidian.Plugin,
   // Volets latéraux et vues de base (frise, calendrier).
   // Les vues de base n'existent que si Bases est actif.
   _enregistrerVues() {
+    // La présentation et le tutoriel : leurs zones vivantes, et l'ouverture
+    // de la présentation au tout premier lancement.
+    this.installerAccueil();
     // Panneau de suggestions dynamiques (moteur lexical local).
     if (this.module('suggestions')) this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));

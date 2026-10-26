@@ -1131,7 +1131,7 @@ const avecTaches = (Base) => class extends Base {
     const s = this.settings;
     if (!obsidian.Platform.isDesktopApp) { new obsidian.Notice(tr('Google : la connexion se fait depuis Obsidian sur ordinateur.')); return false; }
     const clientId = String(s.googleClientId || '').trim();
-    if (!clientId) { new obsidian.Notice(tr('Google : renseignez d’abord l’identifiant client de votre application Google (Réglages, Tâches).'), 9000); return false; }
+    if (!clientId) { new obsidian.Notice(tr('Google : renseignez d’abord l’identifiant client de votre application Google (Réglages, Ariane, onglet Rappels et agendas).'), 9000); return false; }
     return this._connexionNavigateur({
       nom: 'Google', hote: '127.0.0.1',
       adresse: (redirection, verificateur, etat) => Ariane.urlAutorisationGoogle({ clientId, redirection, verificateur, etat }),
@@ -1239,7 +1239,7 @@ const avecTaches = (Base) => class extends Base {
 
   async _pousserGoogleImpl(silencieux) {
     if (!this.googleRelie()) {
-      if (!silencieux) new obsidian.Notice(tr('Google Agenda : reliez d’abord votre compte (Réglages, Tâches, Agenda en fond).'), 9000);
+      if (!silencieux) new obsidian.Notice(tr('Google Agenda : reliez d’abord votre compte (Réglages, Ariane, onglet Rappels et agendas, Agenda en fond).'), 9000);
       return 0;
     }
     const cals = await this.calendriersGoogle();
@@ -1410,7 +1410,7 @@ const avecTaches = (Base) => class extends Base {
     const s = this.settings;
     if (!obsidian.Platform.isDesktopApp) { new obsidian.Notice(tr('Microsoft : la connexion se fait depuis Obsidian sur ordinateur.')); return false; }
     const clientId = String(s.microsoftClientId || '').trim();
-    if (!clientId) { new obsidian.Notice(tr('Microsoft : renseignez d’abord l’identifiant de votre application Microsoft (Réglages, Tâches, Rappels).'), 9000); return false; }
+    if (!clientId) { new obsidian.Notice(tr('Microsoft : renseignez d’abord l’identifiant de votre application Microsoft (Réglages, Ariane, onglet Rappels et agendas).'), 9000); return false; }
     return this._connexionNavigateur({
       nom: 'Microsoft', hote: 'localhost',
       adresse: (redirection, verificateur, etat) => Ariane.urlAutorisationMicrosoft({
@@ -1559,7 +1559,7 @@ const avecTaches = (Base) => class extends Base {
     const dest = this.destinationRappels();
     const svc = this._serviceRappels(dest);
     if (!this.rappelsDisponibles()) {
-      if (!silencieux) new obsidian.Notice(svc.nom + tr(' : reliez d’abord votre compte (Réglages, Tâches, Rappels).'), 9000);
+      if (!silencieux) new obsidian.Notice(svc.nom + tr(' : reliez d’abord votre compte (Réglages, Ariane, onglet Rappels et agendas).'), 9000);
       return 0;
     }
     const cibles = this._tachesRappel();

@@ -4289,3 +4289,47 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
   padding: 8px 12px; margin-bottom: 8px; border-top: none;
 }
 .zfa-reglages-sans-nom .setting-item-info { display: none; }
+
+/* Présentation et tutoriel : zones vivantes dessinées par Ariane dans une
+   note ordinaire. Couleurs du thème, en clair comme en sombre. */
+.zfa-accueil-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
+.zfa-accueil-etat { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.zfa-accueil-etat-ligne {
+  display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px;
+  border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m);
+  background: var(--background-primary-alt);
+}
+.zfa-accueil-etat-ic { flex: 0 0 auto; display: inline-flex; margin-top: 2px; }
+.zfa-accueil-etat-ic svg { width: 18px; height: 18px; }
+.zfa-accueil-etat-ligne.est-ok .zfa-accueil-etat-ic { color: var(--color-green); }
+.zfa-accueil-etat-ligne.est-manquant .zfa-accueil-etat-ic { color: var(--text-faint); }
+.zfa-accueil-etat-nom { font-weight: 600; }
+.zfa-accueil-etat-desc { color: var(--text-muted); font-size: var(--font-ui-small); }
+.zfa-accueil-petit { font-size: var(--font-ui-small); }
+.zfa-accueil-profils { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 6px 0; }
+.zfa-accueil-profil {
+  display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; cursor: pointer;
+  border: 1px solid var(--background-modifier-border); border-radius: var(--radius-l);
+  background: var(--background-primary-alt);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.zfa-accueil-profil:hover, .zfa-accueil-profil:focus-visible { border-color: var(--interactive-accent); outline: none; }
+.zfa-accueil-profil.est-courant { border-color: var(--interactive-accent); box-shadow: 0 0 0 1px var(--interactive-accent); cursor: default; }
+.zfa-accueil-profil-nom { font-weight: 650; }
+.zfa-accueil-profil-desc { font-size: var(--font-ui-small); }
+.zfa-accueil-profil-mods { font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.zfa-tuto { display: flex; flex-direction: column; gap: 8px; }
+.zfa-tuto-etape {
+  display: flex; gap: 10px; padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m);
+}
+.zfa-tuto-etape.est-faite { background: var(--background-primary-alt); }
+.zfa-tuto-etape.est-faite .zfa-tuto-titre { color: var(--text-muted); }
+.zfa-tuto-ic { flex: 0 0 auto; display: inline-flex; margin-top: 2px; color: var(--text-faint); }
+.zfa-tuto-etape.est-faite .zfa-tuto-ic { color: var(--color-green); }
+.zfa-tuto-ic svg { width: 18px; height: 18px; }
+.zfa-tuto-corps { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.zfa-tuto-titre { font-weight: 600; }
+.zfa-tuto-aide { color: var(--text-muted); font-size: var(--font-ui-small); }
+.zfa-tuto-pied { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; color: var(--text-muted); }
+@media (prefers-reduced-motion: reduce) { .zfa-accueil-profil { transition: none; } }

@@ -2742,7 +2742,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
 
     this._section(c, 'draw.io');
     this._etatGreffon(c, 'drawio');
-    this._aide(c, tr("L'éditeur de schémas est celui du greffon draw.io, qu'Ariane ne remplace pas. Son vocabulaire de schémas et l'export SVG se règlent dans l'onglet « Vues et schémas »."));
+    this._aide(c, tr("L'éditeur de schémas est celui du greffon draw.io, qu'Ariane ne remplace pas. Son vocabulaire de schémas et l'export SVG se règlent dans l'onglet « Schémas draw.io »."));
 
     this._section(c, 'Templater');
     this._etatGreffon(c, 'templater-obsidian');

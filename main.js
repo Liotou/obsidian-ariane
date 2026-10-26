@@ -90,6 +90,7 @@
  *            11o  avecDonneesJour  données du temps par jour, résumé de la journée
  *            11p  avecIphone       temps d'écran de l'iPhone, lu sur le Mac
  *            11q  avecConcentration micro-interruptions, distractions, concentration
+ *            11s  avecAccueil    présentation, assistant de premier lancement, tutoriel
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -206,6 +207,401 @@ const DELAI_ANTIREBOND_MS = 800;
 
 const TEXTES = {
   en: {
+    // Modules, accueil, tutoriel, et les réglages restés sans traduction.
+    "Accueil": "Home",
+    "Modules": "Modules",
+    "Réglages avancés": "Advanced settings",
+    "À ne modifier qu’en connaissance de cause : les valeurs par défaut conviennent à la plupart des usages.": "Change only if you know why: the defaults suit most uses.",
+    "Bienvenue": "Welcome",
+    "Ariane relie vos annotations Zotero à votre écriture : chaque surlignage commenté devient une note, que vous glissez dans votre texte pour le citer ; la bibliographie et l'export Word suivent. Le reste (tâches, temps, canevas…) s'ajoute à la carte, dans l'onglet Modules.": "Ariane connects your Zotero annotations to your writing: each commented highlight becomes a note, which you drag into your text to cite it; the bibliography and the Word export follow. Everything else (tasks, time, canvas…) can be added as you need it, in the Modules tab.",
+    "Pour commencer": "Getting started",
+    "Ouvrir la présentation": "Open the introduction",
+    "Lancer le tutoriel": "Start the tutorial",
+    "Choisir les modules": "Choose modules",
+    "Ce qui est prêt": "What is ready",
+    "Vérifier de nouveau": "Check again",
+    "Le cœur, l'intégration des annotations Zotero et des citations, est toujours actif. Le reste s'active à la carte : un module coupé ne charge rien, ni commande, ni panneau, ni réglage. Appliquer recharge Ariane, en une seconde.": "The core, Zotero annotations and citations, is always on. Everything else is switched on as needed: a module that is off loads nothing, no command, no panel, no setting. Apply reloads Ariane in a second.",
+    "Profils": "Profiles",
+    "Un point de départ ; chaque module reste réglable ensuite.": "A starting point; each module can still be changed afterwards.",
+    "Changements en attente": "Pending changes",
+    "Aucun changement": "No changes",
+    "Appliquer enregistre ce choix et recharge Ariane.": "Apply saves this choice and reloads Ariane.",
+    "Appliquer": "Apply",
+    "Ariane se recharge avec les modules choisis…": "Ariane is reloading with the chosen modules…",
+    "Annuler les changements": "Undo the changes",
+    "Demande : ": "Requires: ",
+    "Mac uniquement.": "Mac only.",
+    "Toujours actif": "Always on",
+    "Les alias suivent la dernière version de chaque modèle. Plus capable = plus lent et plus coûteux en quota : Haiku suffit pour découper des bibliographies.": "Aliases follow the latest version of each model. More capable means slower and costlier in quota: Haiku is enough to split bibliographies.",
+    "Par défaut (celui de Claude Code)": "Default (Claude Code's)",
+    "Sonnet : équilibré": "Sonnet: balanced",
+    "Haiku : le plus rapide": "Haiku: fastest",
+    "Autre identifiant…": "Other identifier…",
+    "Identifiant du modèle": "Model identifier",
+    "Tel que « claude --model » l’accepte, par exemple « claude-opus-5-5 ».": "As \"claude --model\" accepts it, for example \"claude-opus-5-5\".",
+    "Celui de l'assistant IA (": "The AI assistant's (",
+    "Modèle Claude": "Claude model",
+    "Vide : celui de l'assistant IA (": "Empty: the AI assistant's (",
+    "Les vues de base ne sont pas actives.": "Bases views are not enabled.",
+    "Iconize : rien lu pour le moment.": "Iconize: nothing read yet.",
+    "Aucun fichier .base dans le coffre.": "No .base file in the vault.",
+    "posée à la main": "set by hand",
+    "dossier sans icône : ": "folder without icon: ",
+    "aucun filtre de dossier": "no folder filter",
+    "Français": "Français",
+    "English": "English",
+    "Ce qu'Ariane fait seule quand une source Zotero change.": "What Ariane does on its own when a Zotero source changes.",
+    "Les opérations sur tout le coffre, et les réglages eux-mêmes.": "Vault-wide operations, and the settings themselves.",
+    "Notes d'événements": "Event notes",
+    "Notes créées depuis un clic droit sur un événement de la vue calendrier (pas les tâches).": "Notes created by right-clicking an event in the calendar view (not tasks).",
+    "Ce qui devient une note à part : chaque annotation Zotero, et, au choix, les notes de lecture et les annotations sans titre.": "What becomes a note of its own: each Zotero annotation and, optionally, reading notes and untitled annotations.",
+    "Le nom de fichier et l'alias de chaque note d'annotation.": "The file name and alias of each annotation note.",
+    "Libellé des sources associées": "Label for associated sources",
+    "Les autres sources rattachées à une annotation par la commande « Annotations : revoir les sources mentionnées dans mes commentaires ».": "Other sources linked to an annotation by the command \"Annotations: review the sources mentioned in my comments\".",
+    "Les références citées dans vos annotations, leur rattachement aux sources Zotero, et les fiches auteurs.": "The references cited in your annotations, how they link to Zotero sources, and the author notes.",
+    "Touche qui alterne le style de citation": "Key that switches the citation style",
+    "Pendant le glisser, chaque appui fait alterner « (Auteur, année) » et « Auteur (année) ». Seules les touches de modification sont possibles : le clavier se tait pendant un glisser. Sur Mac, Commande peut changer l'effet du glisser dans certaines fenêtres.": "While dragging, each press switches between \"(Author, year)\" and \"Author (year)\". Only modifier keys work: the keyboard is silent during a drag. On Mac, Command may change the drag effect in some windows.",
+    "Option (⌥)": "Option (⌥)",
+    "Contrôle (⌃)": "Control (⌃)",
+    "Contrôle (Ctrl)": "Control (Ctrl)",
+    "Commande (⌘)": "Command (⌘)",
+    "Le modèle est celui de l'assistant IA (onglet IA, Fournisseur principal).": "The model is the AI assistant's (AI tab, Main provider).",
+    "Crossref ne connaît que ce qui porte un DOI, or les livres n'en ont souvent pas et ce sont eux qui portent les références les plus citées. Zotero garde le texte extrait de chaque PDF : Ariane y lit la bibliographie directement. Le dossier de données de Zotero se règle dans l'onglet « Greffons liés ».": "Crossref only knows what has a DOI, yet books often have none, and they hold the most cited references. Zotero keeps the text extracted from each PDF: Ariane reads the bibliography there directly. Zotero's data folder is set in the \"Linked plugins\" tab.",
+    "Typographie": "Typography",
+    "Ponctuation jamais séparée de son mot": "Punctuation never split from its word",
+    "En texte justifié, une parenthèse, un guillemet, un point-virgule ou un deux-points ne se retrouve plus seul en début ou en fin de ligne. Rien n'est modifié dans vos notes : seul l'affichage change, en édition comme en lecture.": "In justified text, a bracket, quotation mark, semicolon or colon no longer ends up alone at the start or end of a line. Nothing changes in your notes: only the display, while editing and reading.",
+    "Numéroter les titres": "Number headings",
+    "« ## » vaut 1., « ### » 1.1., « #### » 1.1.1. Les numéros sont écrits dans la note et tenus à jour par Ariane quand vous ajoutez, retirez ou déplacez un titre ; une numérotation saisie à la main est remplacée. Dans l'éditeur, ils sont grisés et protégés de la frappe. L'export Word les retire, son modèle numérotant lui-même. Une note s'en dispense par la propriété « numérotation: false ».": "\"##\" is 1., \"###\" 1.1., \"####\" 1.1.1. Numbers are written into the note and kept up to date by Ariane when you add, remove or move a heading; numbering typed by hand is replaced. In the editor they are greyed out and protected from typing. The Word export removes them, as its template numbers headings itself. A note opts out with the property \"numérotation: false\".",
+    "Dossiers numérotés": "Numbered folders",
+    "Aucun pour l’instant.": "None yet.",
+    "Choisir et numéroter…": "Choose and number…",
+    "Correcteur Apple": "Apple spell checker",
+    "Activer le correcteur Apple": "Enable the Apple spell checker",
+    "Relecture contextuelle (pointillés bleus)": "Contextual proofreading (blue dotted)",
+    "Accords, conjugaisons, participes passés, accents, mots erronés : le moteur de relecture du système, celui de Mail.": "Agreement, conjugation, past participles, accents, wrong words: the system's proofreading engine, the one in Mail.",
+    "Orthographe seule (pointillés rouges)": "Spelling only (red dotted)",
+    "Les mots que la relecture ne signale pas et que le dictionnaire ne connaît pas. Obsidian sait aussi le faire de son côté : désactivez sa « Correction orthographique » pour éviter le double soulignement.": "Words the proofreading does not flag and the dictionary does not know. Obsidian can do this too: turn off its \"Spellcheck\" to avoid double underlining.",
+    "Langue de relecture": "Proofreading language",
+    "Devinée sur la note entière, ce qui convient à un coffre mêlant les langues. Imposez-la si une note courte ou très citée est mal reconnue.": "Guessed from the whole note, which suits a multilingual vault. Force it if a short or quote-heavy note is misrecognised.",
+    "Anglais": "English",
+    "Relire aussi les tableaux": "Also proofread tables",
+    "Zones exclues": "Excluded zones",
+    "Expliquer la faute dans la bulle": "Explain the mistake in the bubble",
+    "Sans cela, la bulle se borne à nommer la catégorie et à proposer la correction.": "Otherwise the bubble only names the category and offers the fix.",
+    "Délai avant vérification (ms)": "Delay before checking (ms)",
+    "Attente après la dernière frappe avant de souligner.": "Wait after the last keystroke before underlining.",
+    "Le titre affiché après un lien qui ne montre qu'une clé, et la police des noms codés.": "The title shown after a link that only shows a key, and the font of coded names.",
+    "La barre": "The bar",
+    "Afficher la barre": "Show the bar",
+    "Aussi en mode lecture": "Also in reading view",
+    "En lecture il n’y a pas d’éditeur : seuls les boutons qui portent sur le volet (pleine page) restent utiles.": "Reading view has no editor: only pane buttons (full page) remain useful.",
+    "Boutons resserrés": "Compact buttons",
+    "Moins d’air autour des icônes : la barre tient sur une rangée plus souvent.": "Less space around icons: the bar fits on one row more often.",
+    "Quand la barre est trop longue": "When the bar is too long",
+    "Passer à la ligne": "Wrap",
+    "Défiler horizontalement": "Scroll horizontally",
+    "Taille des icônes": "Icon size",
+    "En pixels. 17 par défaut.": "In pixels. 17 by default.",
+    "Les boutons": "The buttons",
+    "L’ordre ici est l’ordre dans la barre. Un groupe rassemble plusieurs commandes derrière un seul bouton, qui ouvre un menu.": "The order here is the order in the bar. A group gathers several commands behind one button, which opens a menu.",
+    "Les commandes qui travaillent par lignes (trier, dédoublonner, nettoyer les espaces) portent sur la sélection ; sans sélection, elles portent sur la note entière. Un ⌘Z les annule.": "Line commands (sort, remove duplicates, clean spaces) act on the selection; without one, on the whole note. Cmd Z undoes them.",
+    "Couleurs proposées": "Offered colours",
+    "Les pastilles des deux boutons de couleur. Une couleur choisie librement vient s’ajouter en tête. Les valeurs « var(--…) » suivent le thème.": "The swatches of the two colour buttons. A freely chosen colour is added at the top. \"var(--…)\" values follow the theme.",
+    "Couleur du texte": "Text colour",
+    "Couleur de fond": "Background colour",
+    "Ajouter une commande": "Add a command",
+    "Séparateur": "Separator",
+    "Nouveau groupe": "New group",
+    "Disposition d’origine": "Original layout",
+    "· séparateur ·": "· separator ·",
+    "commande(s)": "command(s)",
+    "Nom du groupe": "Group name",
+    "icône lucide": "lucide icon",
+    "Ajouter dans ce groupe": "Add to this group",
+    "Commande absente : le greffon qui la fournit est peut-être désactivé.": "Missing command: the plugin that provides it may be disabled.",
+    "Une couleur CSS par ligne.": "One CSS colour per line.",
+    "Dossier des tâches": "Tasks folder",
+    "Où Ariane crée les nouvelles tâches et où elle les cherche. Vide : « 8 - Tâches ».": "Where Ariane creates new tasks and looks for them. Empty: \"8 - Tâches\".",
+    "Familles de tâches": "Task families",
+    "Famille par défaut": "Default family",
+    "Appliquée quand le champ « famille » est vide et qu'aucune règle ne tranche.": "Used when the \"famille\" field is empty and no rule decides.",
+    "Clés des propriétés de tâche": "Task property keys",
+    "Clé : ": "Key: ",
+    "Vide = pas de préfixe. L'espace final compte : « Tâche - ».": "Empty means no prefix. The trailing space counts: \"Tâche - \".",
+    "Masquer le préfixe à l'affichage": "Hide the prefix on display",
+    "Appliquer aux notes existantes": "Apply to existing notes",
+    "Renomme les propriétés dans toutes les notes de tâches (et elles seules). Une note qui porte déjà la nouvelle clé n'est pas touchée.": "Renames the properties in every task note (and only those). A note that already has the new key is left alone.",
+    "Renommer dans les notes": "Rename in notes",
+    " propriété(s) renommée(s) dans les notes.": " property(ies) renamed in notes.",
+    "Nettoyer les clés résiduelles": "Clean leftover keys",
+    "Nettoyer": "Clean",
+    "Nettoyage en cours…": "Cleaning…",
+    " clé(s) résiduelle(s) supprimée(s).": " leftover key(s) removed.",
+    "Note de tâche": "Task note",
+    "Habillage de la note de tâche": "Task note styling",
+    "Dans une note de tâche : propriétés en grille ordonnée avec icônes, contenu aéré. Purement visuel.": "In a task note: properties in an ordered grid with icons, airy content. Purely visual.",
+    "CSS personnalisé": "Custom CSS",
+    "Plage de travail": "Working hours",
+    "Début et fin de journée, HH:MM.": "Start and end of the day, HH:MM.",
+    "Pause déjeuner": "Lunch break",
+    "Retirée du temps libre, et jamais occupée par la répartition. Videz les deux champs pour n’en compter aucune.": "Removed from free time, and never filled by planning. Empty both fields to count none.",
+    "La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne.": "The system's proofreading, the one in Mail and Pages, applied to your notes: agreement, conjugation, past participles, accents and wrong words, underlined in blue dots. Hover a mistake to read the explanation and fix it in one click. Isolated words the proofreading does not cover are underlined in red. Everything happens on your Mac; nothing is sent elsewhere. Allow a few seconds per new paragraph; once read, it costs nothing more. The first time, the plugin prepares a small program, which needs Apple's command line tools (xcode-select --install). Two ways to go through everything: \"proofread the note, mistake by mistake\" puts a window next to each remark, \"open the proofreading pane\" lists them all in a side pane. The double chevron, in the bubble and in the pane, opens that window from the mistake it belongs to.",
+    "Laissés de côté par défaut, pour deux raisons : un tableau bilingue, un glossaire par exemple, fait lire de l'anglais à la note entière ; et en aperçu, Obsidian dessine le tableau lui-même, si bien que les soulignements n'y apparaissent pas. En mode source, ils s'affichent normalement.": "Skipped by default, for two reasons: a bilingual table, a glossary for example, makes the whole note read as English; and in Live Preview, Obsidian draws the table itself, so underlines do not appear there. In source mode they show normally.",
+    "Une par ligne. Soit une paire de balises « début -> fin », soit un titre de section (« ## Bibliographie », ou « Bibliographie » à tout niveau), auquel cas la section est sautée jusqu'au titre de rang égal ou supérieur qui suit. La bibliographie d'Ariane y figure d'office : ses références, souvent en anglais, fausseraient la langue de toute la note.": "One per line. Either a pair of markers \"start -> end\", or a section heading (\"## Bibliographie\", or \"Bibliographie\" at any level), in which case the section is skipped up to the next heading of the same or higher level. Ariane's bibliography is always included: its references, often in English, would skew the language of the whole note.",
+    "Une barre de mise en forme par volet de note, posée sous la barre d’onglets et au-dessus du titre. Chaque bouton lance une commande de la palette : celles d’Ariane, celles d’Obsidian, ou celles d’un autre greffon. Un volet détaché a la sienne.": "A formatting bar per note pane, under the tab bar and above the title. Each button runs a palette command: Ariane's, Obsidian's, or another plugin's. A pop-out pane has its own.",
+    "Chaque famille porte une couleur et une icône (cartes du canevas) et déclare les propriétés qu'elle ajoute à une tâche. La famille d'une tâche vit dans son champ « famille ».": "Each family has a colour and an icon (canvas cards) and declares the properties it adds to a task. A task's family lives in its \"famille\" field.",
+    "Chaque propriété est écrite « préfixe + nom lisible » (« Tâche - Échéance »). Le préfixe évite les collisions avec d'autres notes. Le nom lisible se remplace ci-dessous ; le préfixe reste devant. « Renommer dans les notes » reporte ensuite l'ancien nom sur le nouveau.": "Each property is written \"prefix + readable name\" (\"Tâche - Échéance\"). The prefix avoids clashes with other notes. The readable name can be replaced below; the prefix stays in front. \"Rename in notes\" then carries the old name over to the new one.",
+    "Colonnes de frise, cartes du canevas et colonnes des bases affichent le nom sans le préfixe.": "Timeline columns, canvas cards and Bases columns show the name without the prefix.",
+    "Supprime des notes de tâches les propriétés en double laissées par un ancien nommage (ex. « Statut » quand « Tâche - statut » existe déjà). Ne touche qu'une clé reconnue comme variante d'un concept, et seulement si la clé actuelle est déjà là.": "Removes from task notes the duplicate properties left by an old naming (e.g. \"Statut\" when \"Tâche - statut\" already exists). Only touches a key recognised as a variant of a concept, and only if the current key is already there.",
+    "Injecté globalement dans Obsidian. Vise entre autres « .zfa-note-tache » (note de tâche), « .zfa-cnv-* » (canevas), « .zfa-gantt-* » (frise). Laisser vide pour ne rien injecter.": "Injected globally into Obsidian. Targets among others \".zfa-note-tache\" (task note), \".zfa-cnv-*\" (canvas), \".zfa-gantt-*\" (timeline). Leave empty to inject nothing.",
+    "La note « Gestion de l’organisation » compte le temps libre qui reste dans la semaine : la plage de travail de chaque jour, moins vos créneaux et vos rendez-vous.": "The \"Organisation\" note counts the free time left in the week: each day's working hours, minus your slots and appointments.",
+    "« Répartir sur la semaine » : Claude estime la taille de vos tâches (titre, famille, échéance, durée de vie, ce qui est déjà fait), puis Ariane place leurs créneaux dans vos plages libres. Rien n’est appliqué sans votre accord.": "\"Spread over the week\": Claude estimates the size of your tasks (title, family, due date, age, what is already done), then Ariane places their slots in your free time. Nothing is applied without your consent.",
+    "Modèle de la répartition": "Planning model",
+    "Toujours Claude en ligne de commande, quel que soit le fournisseur de l’assistant IA. Sonnet par défaut ; Opus ou Fable jugent plus finement la taille des tâches, plus lentement.": "Always Claude on the command line, whatever the AI assistant's provider. Sonnet by default; Opus or Fable judge task size more finely, more slowly.",
+    "Au plus, par jour": "At most, per day",
+    "Heures de tâches par jour, créneaux déjà posés compris.": "Task hours per day, existing slots included.",
+    "Temps laissé libre": "Time left free",
+    "Part du temps libre que la répartition ne remplit pas, pour l’imprévu (%).": "Share of free time that planning leaves empty, for the unexpected (%).",
+    "Abandon probable après": "Probably dropped after",
+    "Semaines sans créneau, sans modification ni temps passé, avant qu’une tâche soit signalée comme probablement abandonnée.": "Weeks without a slot, edit or time spent before a task is flagged as probably dropped.",
+    "Liste de rappels par défaut": "Default reminders list",
+    "Retirer les tâches abandonnées": "Remove dropped tasks",
+    "Les événements d'un agenda s'affichent en fond de la vue calendrier. Deux sources, l'une ou l'autre : Apple Agenda (Mac), synchronisé avec les créneaux des tâches ; ou Google Agenda, en lecture seule, par l'adresse secrète iCal de chaque agenda (Google Agenda, puis Paramètres de l'agenda, « Adresse secrète au format iCal »).": "A calendar's events show in the background of the calendar view. Two sources, one or the other: Apple Calendar (Mac), synced with task slots; or Google Calendar, read only, through each calendar's secret iCal address (Google Calendar, then calendar Settings, \"Secret address in iCal format\").",
+    "Agendas affichés en fond": "Background calendars",
+    "Pour voir en fond d'autres agendas Google (ou les événements de vos calendriers de familles qui ne viennent pas d'Ariane), ajoutez leur adresse secrète iCal. Les événements créés par Ariane n'y figurent pas deux fois.": "To see other Google calendars in the background (or the events of your family calendars that do not come from Ariane), add their secret iCal address. Events created by Ariane do not appear twice.",
+    "La source choisie est Google Agenda : la synchronisation avec Apple Agenda est suspendue.": "The chosen source is Google Calendar: syncing with Apple Calendar is paused.",
+    "La vue calendrier des bases de tâches.": "The calendar view of task bases.",
+    "Vue Frise": "Timeline view",
+    "Couleur des barres": "Bar colour",
+    "Famille, statut, arborescence (une couleur par tâche racine), priorité ou avancement. Réglable aussi dans la barre de la vue.": "Family, status, tree (one colour per root task), priority or progress. Also adjustable in the view's bar.",
+    "Les tâches se posent sur n'importe quel canevas Obsidian (fichier .canvas) : clic droit sur le fond, connexion tirée d'une carte, ou panneau « Tâches Ariane » dans les commandes du canevas. Sélectionner une arête entre deux tâches propose, dans la barre du canevas, d'en faire une relation mère / sous-tâche ou un blocage. Un canevas par thème, ou un seul : à votre guise.": "Tasks go on any Obsidian canvas (.canvas file): right-click the background, drag a connection from a card, or use the \"Ariane tasks\" panel in the canvas controls. Selecting an edge between two tasks offers, in the canvas bar, to make it a parent / subtask or blocking relation. One canvas per topic, or a single one: as you like.",
+    "Où se rangent les canevas de tâches, et où les commandes les cherchent. Vide : un dossier « Canevas » dans le dossier des tâches.": "Where task canvases are kept, and where commands look for them. Empty: a \"Canevas\" folder in the tasks folder.",
+    "Angulaire : à angles droits, en contournant les cartes, comme dans l’ancien graphe. Courbe : le tracé du canevas. Droite : un trait direct. Les liens vers d’autres nœuds gardent le tracé du canevas.": "Angular: right angles, going around cards, as in the old graph. Curved: the canvas's own line. Straight: a direct line. Links to other nodes keep the canvas line.",
+    "Un lien part du flanc de la carte quand les deux sont côte à côte, du bas quand elles sont empilées, et change de côté quand on les déplace. Plusieurs liens sur un même côté s’y répartissent.": "A link leaves from the side of the card when both are side by side, from the bottom when stacked, and changes side when you move them. Several links on one side spread out.",
+    "Là où deux liens se croisent, le lien horizontal enjambe l’autre par un petit arc.": "Where two links cross, the horizontal one hops over the other with a small arc.",
+    "La hiérarchie en trait plein discret, le blocage en rouge et en pointillés.": "Hierarchy as a discreet solid line, blocking in red dashes.",
+    "Demander une validation quand on supprime une tâche depuis le canevas (clic droit). Retirer une carte du canevas, elle, ne supprime rien.": "Ask for confirmation when deleting a task from the canvas (right-click). Removing a card from the canvas deletes nothing.",
+    "Largeur des cartes (px)": "Card width (px)",
+    "Largeur d’une carte à sa pose. Chaque carte reste redimensionnable ; sa hauteur suit son contenu.": "Width of a card when placed. Each card stays resizable; its height follows its content.",
+    "Tracer les relations à la pose": "Draw relations when placing",
+    "Poser une carte trace aussitôt ses liens (mère, sous-tâches, blocages) avec les cartes déjà présentes.": "Placing a card immediately draws its links (parent, subtasks, blocking) with the cards already there.",
+    "Icônes des vues de base": "Bases view icons",
+    "Obsidian n'attache qu'une icône par type de vue : toutes les vues « tableau » d'une base portent la même. Clic droit sur l'icône d'une vue, dans la barre d'outils de la base ou dans son menu déroulant, pour en choisir une autre. La commande « Bases : icône de la vue affichée… » fait la même chose. Les icônes posées se retrouvent ici.": "Obsidian attaches only one icon per view type: all \"table\" views of a base share it. Right-click a view's icon, in the base's toolbar or its dropdown, to choose another. The command \"Bases: icon of the displayed view…\" does the same. The icons you set are listed here.",
+    "Reprendre les icônes de dossier": "Reuse folder icons",
+    "Une vue qui filtre sur un dossier prend l'icône que vous avez donnée à ce dossier avec Iconize. Une icône posée à la main sur la vue reste prioritaire. Les jeux d'icônes autres que Lucide, et les emojis mis à part, ne se dessinent pas ici.": "A view filtering on a folder takes the icon you gave that folder with Iconize. An icon set by hand on the view takes priority. Icon packs other than Lucide, emojis aside, are not drawn here.",
+    "Vérifier la résolution": "Check resolution",
+    "Relit les fichiers .base et les réglages d’Iconize, puis montre ce que chaque vue obtient.": "Rereads the .base files and Iconize settings, then shows what each view gets.",
+    "Relire": "Reread",
+    "Aucune icône posée pour le moment.": "No icon set yet.",
+    "Dossiers exclus du compteur": "Folders excluded from the timer",
+    "Un chemin de dossier par ligne. Les notes de ces dossiers, et de leurs sous-dossiers, ne sont pas chronométrées.": "One folder path per line. Notes in these folders, and their subfolders, are not timed.",
+    "Le temps de chaque jour est gardé dans « .ariane/jours/AAAA-MM-JJ.json », un dossier caché à la racine du coffre, avec les sessions, l'activité hors Obsidian et le bilan de la journée. La chronologie l'affiche, jour par jour.": "Each day's time is kept in \".ariane/jours/YYYY-MM-DD.json\", a hidden folder at the vault root, with sessions, activity outside Obsidian and the day's summary. The timeline shows it, day by day.",
+    "Les jours récents dont le temps est rechargé au démarrage, pour les vues et les analyses. Les fichiers du jour, eux, restent tous.": "The recent days whose time is reloaded at startup, for views and analyses. The daily files are all kept.",
+    "Une règle par ligne, la première qui correspond l'emporte. Motifs séparés par des virgules, cherchés sans égard à la casse dans l'application, le titre de la fenêtre et l'adresse ; « app: », « titre: » ou « url: » restreint à ce champ, /…/ est une expression régulière. La catégorie « - » écarte ce qui correspond.": "One rule per line; the first match wins. Comma-separated patterns, matched case-insensitively against the app, window title and address; \"app:\", \"titre:\" or \"url:\" restricts to that field, /…/ is a regular expression. The \"-\" category discards what matches.",
+    "Ajouter une règle": "Add a rule",
+    "Catégorie (- pour écarter)": "Category (- to discard)",
+    "Ajoute aux créneaux hors Obsidian ceux de l'iPhone, sur la même ligne. Il faut activer « Partager entre les appareils » dans Temps d'écran (iPhone et Mac) et donner à Obsidian l'« Accès complet au disque ». L'iPhone envoie ses relevés au Mac surtout la nuit : sa journée apparaît le lendemain. Quand le Mac est utilisé en même temps, il l'emporte ; le téléphone est noté comme une interruption.": "Adds the iPhone's slots to the ones outside Obsidian, on the same line. Turn on \"Share Across Devices\" in Screen Time (iPhone and Mac) and give Obsidian \"Full Disk Access\". The iPhone sends its records to the Mac mostly at night: its day appears the next day. When the Mac is used at the same time, it wins; the phone is noted as an interruption.",
+    "Un coup d'œil de quelques secondes à un site sans rapport, ou au téléphone, coupe la concentration sans former de créneau. Ariane les relève dès quelques secondes et les marque d'un trou dans la bande du créneau de travail, au calendrier (détail au survol) ; la synthèse de la chronologie et le résumé de la journée en tirent la concentration de la journée. Une distraction : un site ou une application de la liste ci-dessous, ou d'une catégorie de distraction de vos règles, ou appris de l'IA (commande « Distractions : classer les sites et applications inconnus »). Le téléphone utilisé pendant que le Mac l'est en est toujours une.": "A glance of a few seconds at an unrelated site, or at the phone, breaks concentration without making a slot. Ariane records them from a few seconds and marks them as a gap in the work slot's band in the calendar (details on hover); the timeline summary and the day's summary derive the day's concentration from them. A distraction: a site or app in the list below, or in a distraction category of your rules, or learned by the AI (command \"Distractions: classify unknown sites and apps\"). The phone used while the Mac is in use always counts as one.",
+    "Micro-interruption la plus courte": "Shortest micro-interruption",
+    "En secondes.": "In seconds.",
+    "Un site (domaine) ou une application par ligne ; un domaine vaut pour ses sous-domaines.": "One site (domain) or app per line; a domain covers its subdomains.",
+    "Ceux-ci ne distraient jamais, quoi qu'en disent les règles ou l'IA.": "These never count as distractions, whatever the rules or the AI say.",
+    "Classer les inconnus par l’IA": "Classify unknowns with AI",
+    "Les sites et applications des sept derniers jours que rien ne juge encore, quarante au plus, sont classés une fois pour toutes. Avec le résumé automatique, c'est fait seul, toutes les six heures au plus.": "Sites and apps from the last seven days that nothing judges yet, forty at most, are classified once and for all. With automatic summaries, this happens on its own, every six hours at most.",
+    "Un chemin par ligne, sous-dossiers compris. Les dossiers cachés sont toujours ignorés.": "One path per line, subfolders included. Hidden folders are always ignored.",
+    "Le fournisseur et le modèle de l'assistant (commandes « Tâches : … (IA) »), du découpage des bibliographies, du rattachement des références, et, sauf choix contraire, de l'activité.": "The provider and model of the assistant (\"Tasks: … (AI)\" commands), bibliography splitting, reference linking and, unless set otherwise, activity.",
+    "Ollama et LM Studio restent sur l’ordinateur ; leur adresse se règle dans « Service local ».": "Ollama and LM Studio stay on the computer; their address is set in \"Local service\".",
+    "Sur chaque créneau réel, l'IA écrit ce qui a été fait et le range dans une de vos catégories, dont une pour la vie privée et les distractions (rayée dans le calendrier). Clic droit sur un créneau réel : résumer ce créneau ou la journée ; commande « Activité réelle : résumer la semaine affichée (IA) ». Les résumés sont gardés dans les fichiers du jour (« .ariane/jours »). Avec un fournisseur en ligne (Mistral, Claude), les titres de fenêtres et les sites lui sont envoyés ; Ollama et LM Studio restent sur l'ordinateur.": "On each actual slot, the AI writes what was done and files it in one of your categories, including one for private life and distractions (struck through in the calendar). Right-click an actual slot: summarise this slot or the day; command \"Actual activity: summarise the displayed week (AI)\". Summaries are kept in the daily files (\".ariane/jours\"). With an online provider (Mistral, Claude), window titles and sites are sent to it; Ollama and LM Studio stay on the computer.",
+    "Résume chaque créneau hors Obsidian et le range dans une catégorie (clic droit, « Résumer la journée », « Résumer la période »), et affine les suggestions de rattachement à la demande. Le premier jet de ces suggestions est local, sans cette IA. Haiku suffit, vite et à peu de frais.": "Summarises each slot outside Obsidian and files it in a category (right-click, \"Summarise the day\", \"Summarise the period\"), and refines linking suggestions on demand. The first draft of these suggestions is local, without this AI. Haiku is enough, fast and cheap.",
+    "Catégories": "Categories",
+    "Le nom, la couleur, et ce que la catégorie recouvre : cette description guide l'IA, soyez précis. Gardez une catégorie pour la vie privée et les distractions.": "The name, the colour, and what the category covers: this description guides the AI, so be precise. Keep a category for private life and distractions.",
+    "Rétablir les catégories par défaut": "Restore default categories",
+    "Ajouter une catégorie": "Add a category",
+    "Ce qu'elle recouvre, pour guider l'IA": "What it covers, to guide the AI",
+    "Contexte donné à l'IA": "Context given to the AI",
+    "Qui vous êtes et sur quoi vous travaillez : de quoi distinguer le travail du reste.": "Who you are and what you work on: enough to tell work from the rest.",
+    "Couleur de la catégorie IA": "AI category colour",
+    "Un créneau résumé prend la couleur de sa catégorie IA plutôt que celle des règles.": "A summarised slot takes its AI category's colour rather than the rules' one.",
+    "Résumer automatiquement": "Summarise automatically",
+    "Les journées passées affichées dans le calendrier sont résumées sans le demander, une fois. La journée en cours, encore ouverte, attend votre demande.": "Past days shown in the calendar are summarised without asking, once. The current day, still open, waits for you to ask.",
+    "Oublier tous les résumés": "Forget all summaries",
+    "Après un changement de catégories, pour tout faire refaire.": "After changing categories, to redo everything.",
+    "Résumés oubliés.": "Summaries forgotten.",
+    "Activez d’abord ActivityWatch (onglet Temps et activité) : l’IA résume et classe ses créneaux.": "Turn on ActivityWatch first (Time and activity tab): the AI summarises and files its slots.",
+    "Le filtre Lua de Better BibTeX se règle dans l'onglet « Greffons liés ».": "Better BibTeX's Lua filter is set in the \"Linked plugins\" tab.",
+    "Miroir intégral d'un dossier du coffre vers content/ d'un dépôt Git (site Quartz) : tout ce que contient ce dossier est publié, et rien d'autre. La commande « Site : publier » (palette de commandes) synchronise, commit et pousse en un geste.": "A full mirror of a vault folder to content/ of a Git repository (Quartz site): everything in this folder is published, and nothing else. The command \"Site: publish\" (command palette) syncs, commits and pushes in one go.",
+    "Dépôt du site": "Site repository",
+    "Chemin absolu, sur ce Mac, du dépôt Git déjà cloné (par exemple « mon-site.github.io »).": "Absolute path, on this computer, of the already cloned Git repository (for example \"my-site.github.io\").",
+    "Dossier du coffre à publier": "Vault folder to publish",
+    "Chemin dans le coffre. Son contenu entier devient content/ du dépôt : le dossier EST la sélection.": "Path in the vault. Its whole content becomes the repository's content/: the folder IS the selection.",
+    "Branche": "Branch",
+    "Publier maintenant": "Publish now",
+    "Synchronise, commit et pousse, sans attendre un raccourci.": "Syncs, commits and pushes, without waiting for a shortcut.",
+    "Publier le site": "Publish the site",
+    "État": "Status",
+    "ZotFlow synchronise Zotero avec le coffre : notes de références, notes sources des annotations, lecteur de PDF. Ariane part de ce qu'il écrit : elle atomise les annotations de ses notes sources et cite ses notes de références. Les réglages de ZotFlow lui-même (synchronisation, modèles de notes, style de citation) restent dans son propre onglet.": "ZotFlow syncs Zotero with the vault: reference notes, annotation source notes, PDF reader. Ariane starts from what it writes: it atomises the annotations of its source notes and cites its reference notes. ZotFlow's own settings (sync, note templates, citation style) stay in its own tab.",
+    "ZotFlow retire la note d'une fiche mise à la corbeille de Zotero, mais pas celle d'une fiche supprimée pour de bon : la note reste dans le coffre. Ariane compare les notes de références à la base de Zotero et propose de mettre à la corbeille celles qui n'ont plus de fiche. Rien n'est supprimé sans votre accord.": "ZotFlow removes the note of an item moved to Zotero's trash, but not that of an item deleted for good: the note stays in the vault. Ariane compares reference notes with Zotero's database and offers to trash those that no longer have an item. Nothing is deleted without your consent.",
+    "Au démarrage et après une synchronisation de ZotFlow, un avis dit combien de notes n’ont plus de fiche, avec un lien pour les revoir.": "At startup and after a ZotFlow sync, a notice says how many notes no longer have an item, with a link to review them.",
+    "Lecture des notes de ZotFlow": "Reading ZotFlow notes",
+    "Comment Ariane reconnaît une note source de ZotFlow et y découpe les annotations. À ne modifier qu'en connaissance de cause, par exemple si ZotFlow change la forme de ses notes.": "How Ariane recognises a ZotFlow source note and splits its annotations. Change only if you know why, for example if ZotFlow changes the shape of its notes.",
+    "Zotero et Better BibTeX": "Zotero and Better BibTeX",
+    "Ariane lit la base de Zotero (pages, textes extraits des PDF, fiches disparues), et l'export Word passe par le filtre de Better BibTeX pour poser des citations Zotero vivantes.": "Ariane reads Zotero's database (pages, text extracted from PDFs, vanished items), and the Word export goes through Better BibTeX's filter to place live Zotero citations.",
+    "Annota, greffon de Zotero, rédige le commentaire de chaque surlignage : titre, paraphrase, références citées. C'est ce commentaire qu'Ariane lit pour nommer les notes d'annotation et les relier à leurs références. Les invites et le modèle de langue d'Annota se règlent dans Zotero (Réglages, Annota) ; ici, la façon dont Ariane lit son commentaire.": "Annota, a Zotero plugin, writes the comment of each highlight: title, paraphrase, cited references. Ariane reads that comment to name annotation notes and link them to their references. Annota's prompts and language model are set in Zotero (Settings, Annota); here, how Ariane reads its comment.",
+    "Claude, dans Claudian, lit vos tâches par le serveur MCP « ariane-taches », qui passe par un relais local d’Ariane : il n’écoute que sur cette machine, derrière un jeton renouvelé à chaque démarrage. Coupé, Claude n’a plus accès aux tâches.": "Claude, in Claudian, reads your tasks through the \"ariane-taches\" MCP server, which goes through a local Ariane relay: it only listens on this machine, behind a token renewed at each startup. Off, Claude no longer has access to tasks.",
+    "Bureau seulement.": "Desktop only.",
+    "Compétence et outils des tâches pour Claude": "Task skill and tools for Claude",
+    "Installe ou met à jour la compétence « ariane-taches » et le serveur MCP dans Claude.": "Installs or updates the \"ariane-taches\" skill and the MCP server in Claude.",
+    "Installer ou mettre à jour": "Install or update",
+    "L'éditeur de schémas est celui du greffon draw.io, qu'Ariane ne remplace pas. Son vocabulaire de schémas et l'export SVG se règlent dans l'onglet « Schémas draw.io ».": "The diagram editor is the draw.io plugin's, which Ariane does not replace. Its diagram vocabulary and SVG export are set in the \"draw.io diagrams\" tab.",
+    "Ariane propose les modèles de Templater (et ceux des modèles natifs d'Obsidian) quand elle crée une note : compte rendu, note préparatoire, note d'événement. Aucun réglage ici : le dossier des modèles est celui de Templater.": "Ariane offers Templater templates (and Obsidian's core templates) when it creates a note: minutes, preparatory note, event note. No setting here: the templates folder is Templater's.",
+    "Chaque créneau d'une tâche devient un événement dans le calendrier Google de sa famille (le champ « calendrier » de la famille, ou le calendrier par défaut ci-dessous) ; un événement déplacé dans Google déplace le créneau. La connexion passe par votre propre application Google : aucune adresse ni aucun compte n'est partagé. Le guide pas à pas est dans docs/google-agenda.md du dépôt d'Ariane.": "Each task slot becomes an event in its family's Google calendar (the family's \"calendrier\" field, or the default calendar below); an event moved in Google moves the slot. Sign-in goes through your own Google application: no address or account is shared. The step-by-step guide is in docs/google-agenda.md in Ariane's repository.",
+    "Nom du calendrier Google d'une tâche quand sa famille n'en précise pas.": "Name of a task's Google calendar when its family sets none.",
+    "Synchronisation automatique": "Automatic sync",
+    "À chaque créneau modifié, et une relève toutes les cinq minutes.": "On each changed slot, and a pull every five minutes.",
+    "Maintenant": "Now",
+    "Synchroniser": "Sync",
+    "Voir les calendriers": "Show calendars",
+    "Calendriers modifiables : ": "Editable calendars: ",
+    "aucun": "none",
+    "Google Agenda : ": "Google Calendar: ",
+    "Agenda ": "Calendar ",
+    "Afficher": "Show",
+    "Tester l'adresse": "Test the address",
+    "Adresse illisible : ": "Unreadable address: ",
+    "réponse vide": "empty response",
+    "Agenda": "Calendar",
+    " événement(s) dans les trente prochains jours.": " event(s) in the next thirty days.",
+    "Retirer cet agenda": "Remove this calendar",
+    "Aucune famille de tâches.": "No task family.",
+    "Renommer l'identifiant d'une famille ne migre pas les tâches déjà rattachées.": "Renaming a family's identifier does not migrate the tasks already attached.",
+    "identifiant": "identifier",
+    "Nom affiché": "Display name",
+    "icône Lucide": "Lucide icon",
+    "Propriétés ajoutées": "Added properties",
+    "clé": "key",
+    "libellé": "label",
+    "Ajouter une propriété": "Add a property",
+    "Recharger les familles par défaut": "Reload default families",
+    "Ouvrir les réglages d’Ariane": "Open Ariane's settings",
+    "(actuel)": "(current)",
+    "Ariane se recharge avec le profil « ": "Ariane is reloading with the profile \"",
+    " »…": "\"…",
+    "Votre choix actuel est personnalisé (onglet Modules des réglages).": "Your current choice is custom (Modules tab in the settings).",
+    "Le dossier du tutoriel n’existe plus.": "The tutorial folder no longer exists.",
+    "Recréer le tutoriel": "Create the tutorial again",
+    "Atomisez d’abord la source d’exemple.": "Atomise the sample source first.",
+    "(facultatif)": "(optional)",
+    "Bravo : le parcours est fait. Vous pouvez supprimer le tutoriel.": "Well done: the journey is complete. You may delete the tutorial.",
+    "Supprimer le tutoriel": "Delete the tutorial",
+    "Tutoriel supprimé.": "Tutorial deleted.",
+    "Ariane : dossiers renommés, réglages mis à jour.\n": "Ariane: folders renamed, settings updated.\n",
+    "Ariane : dossiers de familles introuvables, à corriger dans les réglages d’Ariane, onglet « Familles de notes ».\n": "Ariane: family folders not found, to fix in Ariane's settings, \"Note families\" tab.\n",
+    " (peut-être « ": " (maybe \"",
+    "Distractions : classer les sites et applications inconnus (IA)": "Distractions: classify unknown sites and apps (AI)",
+    "Activité réelle : résumer la semaine affichée (IA)": "Actual activity: summarise the displayed week (AI)",
+    "Tâches : harmoniser les noms de colonnes des bases": "Tasks: harmonise Bases column names",
+    "Tâches : compléter les propriétés manquantes": "Tasks: complete missing properties",
+    " note(s) de tâche complétée(s).": " task note(s) completed.",
+    "Tâches : relire les incohérences": "Tasks: review inconsistencies",
+    "Tâches : modifier une tâche…": "Tasks: edit a task…",
+    "Aucune tâche.": "No task.",
+    "Tâche à modifier…": "Task to edit…",
+    "Site : publier": "Site: publish",
+    "Canevas : nouveau canevas de tâches": "Canvas: new task canvas",
+    "Canevas : poser une tâche existante…": "Canvas: place an existing task…",
+    "Canevas : nouvelle tâche…": "Canvas: new task…",
+    "Canevas : panneau des tâches": "Canvas: tasks panel",
+    "Ariane : ouvrir la présentation": "Ariane: open the introduction",
+    "Ariane : lancer le tutoriel": "Ariane: start the tutorial",
+    "Notes conceptuelles : mettre les liens au format de la phrase…": "Concept notes: format links as part of the sentence…",
+    "Titres : choisir les dossiers numérotés et numéroter…": "Headings: choose numbered folders and number…",
+    "Titres : renuméroter cette note": "Headings: renumber this note",
+    "Annotations : revoir les sources mentionnées dans mes commentaires…": "Annotations: review the sources mentioned in my comments…",
+    "Canevas : tracer les relations entre les tâches": "Canvas: draw relations between tasks",
+    "Correcteur Apple : activer ou désactiver": "Apple spell checker: turn on or off",
+    "Correcteur Apple désactivé.": "Apple spell checker off.",
+    "Correcteur Apple activé.": "Apple spell checker on.",
+    "Correcteur Apple : relire la note, faute par faute": "Apple spell checker: proofread the note, mistake by mistake",
+    "Bases : icône de la vue affichée…": "Bases: icon of the displayed view…",
+    "Correcteur Apple : ouvrir ou fermer le volet de relecture": "Apple spell checker: open or close the proofreading pane",
+    "Tâches : répartir sur la semaine (IA)": "Tasks: spread over the week (AI)",
+    "Répartition impossible : ": "Planning impossible: ",
+    "Tâches : ouvrir la gestion de l’organisation": "Tasks: open the organisation note",
+    "Claude : installer ou mettre à jour la compétence et les outils des tâches": "Claude: install or update the task skill and tools",
+    "Claude : installé ou mis à jour : ": "Claude: installed or updated: ",
+    ".\nOuvrez une nouvelle conversation dans Claudian pour en profiter.": ".\nOpen a new conversation in Claudian to use it.",
+    "Installation pour Claude impossible : ": "Installation for Claude failed: ",
+    "Claude : annuler les derniers changements acceptés": "Claude: undo the last accepted changes",
+    "Barre d’édition : replier ou déplier": "Editing bar: fold or unfold",
+    "L’opération a échoué : ": "The operation failed: ",
+    "Relecture (Ariane)": "Proofreading (Ariane)",
+    "Ariane : structurer en tâches": "Ariane: structure into tasks",
+    "Atomisation des annotations de ZotFlow, verrouillage, notes de lecture, références et auteurs.": "Atomising ZotFlow annotations, locking, reading notes, references and authors.",
+    "Glisser-déposer des annotations, citations repliables, notes de bas de page, bibliographies, panier.": "Drag and drop of annotations, foldable citations, footnotes, bibliographies, basket.",
+    "Export Word": "Word export",
+    "Un document Word mis en forme, avec des citations Zotero vivantes, par pandoc.": "A formatted Word document with live Zotero citations, through pandoc.",
+    "Notes conceptuelles, réflexives et autres familles : préfixes, couleurs, aparté des liens.": "Concept notes, reflective notes and other families: prefixes, colours, link asides.",
+    "Ponctuation soudée à son mot, numérotation automatique des titres.": "Punctuation kept with its word, automatic heading numbering.",
+    "Suggestions d’annotations": "Annotation suggestions",
+    "Les annotations proches de ce que vous écrivez, dans un panneau (modèle local conseillé).": "Annotations close to what you are writing, in a panel (local model advised).",
+    "Barre d’édition": "Editing bar",
+    "Une barre de mise en forme sous les onglets de chaque note.": "A formatting bar under each note's tabs.",
+    "Notes de tâche, tableau de bord, frise, calendrier, IA des tâches.": "Task notes, dashboard, timeline, calendar, task AI.",
+    "Les notes du canevas en cartes compactes ; les cartes de tâches si le module Tâches est actif.": "Canvas notes as compact cards; task cards if the Tasks module is on.",
+    "Rappels et agendas": "Reminders and calendars",
+    "Synchronisation des tâches avec Apple, Google ou Microsoft.": "Task sync with Apple, Google or Microsoft.",
+    "Temps passé par note, chronologie, activité hors d’Obsidian, micro-interruptions.": "Time spent per note, timeline, activity outside Obsidian, micro-interruptions.",
+    "La relecture et l’orthographe du système, dans l’éditeur.": "The system's proofreading and spelling, in the editor.",
+    "Schémas draw.io": "draw.io diagrams",
+    "Schémas draw.io tenus à jour dans les notes, vocabulaire, export SVG.": "draw.io diagrams kept up to date in notes, vocabulary, SVG export.",
+    "Pont avec Claude": "Claude bridge",
+    "Serveurs MCP et compétences pour que Claude lise vos tâches et vos annotations.": "MCP servers and skills so Claude can read your tasks and annotations.",
+    "Publication de site": "Site publishing",
+    "Miroir d’une partie du coffre vers un site, avec commit et envoi.": "Mirror part of the vault to a website, with commit and push.",
+    "Lire un texte, un article, un livre ; en tirer des notes. Souvent rattachée à une source Zotero.": "Read a text, an article, a book; take notes from it. Often linked to a Zotero source.",
+    "Rédiger ou fabriquer un livrable : document, section, présentation, courrier formalisé.": "Write or build a deliverable: document, section, presentation, formal letter.",
+    "Démarche concrète : envoyer un message, prendre un rendez-vous, relancer, réserver.": "A concrete step: send a message, make an appointment, follow up, book.",
+    "ZotFlow standard (gras / texte / *(référence)*)": "Standard ZotFlow (bold / text / *(reference)*)",
+    "Zotero et écriture": "Zotero and writing",
+    "Le cœur, et ce qui sert à écrire : annotations, citations, bibliographie, export Word, familles de notes, typographie.": "The core, and what helps you write: annotations, citations, bibliography, Word export, note families, typography.",
+    "Gestion de la thèse": "Thesis management",
+    "Le précédent, plus les tâches, le canevas, les rappels et agendas, le temps passé.": "The above, plus tasks, canvas, reminders and calendars, time spent.",
+    "Tous les modules, y compris la barre d’édition, les suggestions, les schémas, Claude et la publication.": "Every module, including the editing bar, suggestions, diagrams, Claude and publishing.",
+    "État & progression": "Status & progress",
+    "Planning": "Planning",
+    "Relations": "Relations",
+    "Rappel": "Reminder",
+    "ZotFlow, greffon d’Obsidian": "ZotFlow, Obsidian plugin",
+    "Installé et activé : vos annotations Zotero arrivent dans le coffre.": "Installed and enabled: your Zotero annotations reach the vault.",
+    "Installé mais désactivé : activez-le dans Réglages, Greffons tiers.": "Installed but disabled: enable it in Settings, Community plugins.",
+    "À installer depuis les greffons de la communauté : c’est lui qui apporte vos annotations Zotero.": "Install it from the community plugins: it is what brings your Zotero annotations.",
+    "Sa base est trouvée : Ariane y lit les pages et les fiches.": "Its database was found: Ariane reads pages and items there.",
+    "Base introuvable : installez Zotero, ou indiquez son dossier de données (onglet Greffons liés).": "Database not found: install Zotero, or set its data folder (Linked plugins tab).",
+    "Better BibTeX, greffon de Zotero": "Better BibTeX, Zotero plugin",
+    "Installé : clés de citation stables, et citations Zotero vivantes à l’export.": "Installed: stable citation keys, and live Zotero citations on export.",
+    "Conseillé : il donne à chaque source une clé de citation stable (retorque.re/zotero-better-bibtex).": "Recommended: it gives each source a stable citation key (retorque.re/zotero-better-bibtex).",
+    "Trouvé : l’export Word est possible.": "Found: Word export is possible.",
+    "Introuvable : installez pandoc (pandoc.org) pour l’export Word.": "Not found: install pandoc (pandoc.org) for Word export.",
+    "IA": "AI",
+    "Atomiser la source d’exemple": "Atomise the sample source",
+    "Ariane fait de chacune de ses trois annotations une note à part, dans votre dossier d’annotations.": "Ariane turns each of its three annotations into a note of its own, in your annotations folder.",
+    "Atomiser": "Atomise",
+    "Ouvrir une note d’annotation": "Open an annotation note",
+    "Elle porte le passage, votre commentaire, la source et la page. Elle est verrouillée : c’est Zotero qui fait foi.": "It holds the passage, your comment, the source and the page. It is locked: Zotero stays the reference.",
+    "La glisser dans le brouillon": "Drag it into the draft",
+    "Ouvrez le brouillon, puis glissez une note d’annotation (depuis l’explorateur de fichiers) sur une phrase : la citation s’y pose. Maj pendant le glisser donne « Auteur (année) ».": "Open the draft, then drag an annotation note (from the file explorer) onto a sentence: the citation lands there. Shift while dragging gives \"Author (year)\".",
+    "Ouvrir le brouillon": "Open the draft",
+    "Voir la bibliographie": "See the bibliography",
+    "En bas du brouillon, la bibliographie s’est construite d’elle-même, et se tient à jour.": "At the bottom of the draft, the bibliography has built itself, and keeps up to date.",
+    "Replier les citations": "Fold the citations",
+    "Les citations se replient en pastilles, pour relire le texte d’un trait ; un clic sur une pastille la déplie.": "Citations fold into badges, to reread the text in one go; a click on a badge unfolds it.",
+    "Replier ou déplier": "Fold or unfold",
+    "Exporter en Word": "Export to Word",
+    "Le brouillon devient un document Word, avec des citations Zotero vivantes (pandoc et Better BibTeX requis).": "The draft becomes a Word document with live Zotero citations (pandoc and Better BibTeX required).",
+    "Exporter le brouillon": "Export the draft",
+    "Le cœur": "The core",
+    "Écriture et recherche": "Writing and research",
+    "Liens et diffusion": "Connections and sharing",
     // Rappels : Google Tasks et Microsoft To Do, comptes reliés.
     "Notes en cartes compactes": "Notes as compact cards",
     "Ariane : relancez Obsidian pour appliquer les modules.": "Ariane: restart Obsidian to apply the modules.",
@@ -234,7 +630,7 @@ const TEXTES = {
     " : connexion abandonnée (cinq minutes écoulées).": ": sign-in abandoned (five minutes elapsed).",
     " : connexion refusée (": ": sign-in refused (",
     " : listes ": ": lists ",
-    " : reliez d’abord votre compte (Réglages, Tâches, Rappels).": ": link your account first (Settings, Tasks, Reminders).",
+    " : reliez d’abord votre compte (Réglages, Ariane, onglet Rappels et agendas).": ": link your account first (Settings, Ariane, Reminders and calendars tab).",
     " : rien de neuf.": ": nothing new.",
     " rappel(s) synchronisé(s) avec ": " reminder(s) synced with ",
     " tâche(s) mise(s) à jour depuis ": " task(s) updated from ",
@@ -246,12 +642,12 @@ const TEXTES = {
     "Destination": "Destination",
     "Délier le compte": "Unlink the account",
     "Google : la connexion se fait depuis Obsidian sur ordinateur.": "Google: sign in from Obsidian on a computer.",
-    "Google : renseignez d’abord l’identifiant client de votre application Google (Réglages, Tâches).": "Google: first enter your Google application's client ID (Settings, Tasks).",
+    "Google : renseignez d’abord l’identifiant client de votre application Google (Réglages, Ariane, onglet Rappels et agendas).": "Google: first enter your Google application's client ID (Settings, Ariane, Reminders and calendars tab).",
     "Google n’a pas rendu de jeton de renouvellement.": "Google returned no refresh token.",
     "Le compte Google est celui de l’agenda synchronisé, réglé plus bas (Agenda en fond).": "The Google account is the synced calendar's one, set further down (Background calendar).",
     "Liste de rappels": "Reminders list",
     "Microsoft : la connexion se fait depuis Obsidian sur ordinateur.": "Microsoft: sign in from Obsidian on a computer.",
-    "Microsoft : renseignez d’abord l’identifiant de votre application Microsoft (Réglages, Tâches, Rappels).": "Microsoft: first enter your Microsoft application's ID (Settings, Tasks, Reminders).",
+    "Microsoft : renseignez d’abord l’identifiant de votre application Microsoft (Réglages, Ariane, onglet Rappels et agendas).": "Microsoft: first enter your Microsoft application's ID (Settings, Ariane, Reminders and calendars tab).",
     "Microsoft n’a pas rendu de jeton de renouvellement.": "Microsoft returned no refresh token.",
     "Non relié : une page de connexion Google s’ouvrira dans le navigateur.": "Not linked: a Google sign-in page will open in the browser.",
     "Non relié : une page de connexion Microsoft s’ouvrira dans le navigateur.": "Not linked: a Microsoft sign-in page will open in the browser.",
@@ -4879,7 +5275,7 @@ const avecSocle = (Base) => class extends Base {
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
             'dossierTaches', 'tempsDossierJournal', 'dossierNotesEvenements', 'chronoDepuis',
-            '_noteTravailSansTitre', '_blocLivrableRetire', '_pagesEpubReprises'];
+            '_noteTravailSansTitre', '_blocLivrableRetire', '_pagesEpubReprises', '_tutoriel'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
@@ -5250,10 +5646,15 @@ const avecSocle = (Base) => class extends Base {
   async loadSettings() {
     const charge = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, charge || {});
-    // Une installation qui n'a pas encore de modules garde tout ce qu'elle
-    // avait : profil « Tout ». (L'assistant de premier lancement viendra
-    // pour les nouvelles installations.)
-    if (!Array.isArray(this.settings.modules)) this.settings.modules = PROFILS_ARIANE.tout.slice();
+    // Première installation (rien d'enregistré) : le profil « Zotero et
+    // écriture », et la présentation s'ouvrira, avec le choix du profil.
+    // Une installation existante sans modules garde tout ce qu'elle avait.
+    if (charge == null) {
+      this.settings.modules = PROFILS_ARIANE.zotero.slice();
+      this._accueilAOuvrir = true;
+    } else if (!Array.isArray(this.settings.modules)) {
+      this.settings.modules = PROFILS_ARIANE.tout.slice();
+    }
     this.settings.correspondancesSuffixe = migrerCorrespondances(this.settings.correspondancesSuffixe);
 
     // clesTaches ne contient plus que de VRAIES personnalisations de label.
@@ -9719,6 +10120,7 @@ const avecNoteAtomes = (Base) => class extends Base {
   // perceptible à chaque basculement.
   basculerCitations(replier) {
     this.settings.citationsRepliees = replier;
+    if (this.noterEtapeTutoriel) this.noterEtapeTutoriel('replie');
     // Aucune notification : le changement se voit à l'écran, l'annoncer en
     // plus ne fait qu'encombrer.
     this.appliquerEtatCitations();
@@ -12264,6 +12666,10 @@ const avecNoteBiblio = (Base) => class extends Base {
   }
 
   async exporterWordZotero() {
+    // L'étape « exporter » du tutoriel : l'export du brouillon d'exemple.
+    const ex = this._tutorielExistant ? this._tutorielExistant() : null;
+    const active = this.app.workspace.getActiveFile();
+    if (ex && active && active.path.startsWith(ex.dossier.path + '/')) this.noterEtapeTutoriel('export');
     // L'export appelle pandoc et python par child_process : rien de tout cela
     // n'existe sur mobile. Le greffon se charge malgré tout, tous les modules
     // Node étant requis à l'intérieur des fonctions, mais mieux vaut un
@@ -18806,7 +19212,7 @@ const avecTaches = (Base) => class extends Base {
     const s = this.settings;
     if (!obsidian.Platform.isDesktopApp) { new obsidian.Notice(tr('Google : la connexion se fait depuis Obsidian sur ordinateur.')); return false; }
     const clientId = String(s.googleClientId || '').trim();
-    if (!clientId) { new obsidian.Notice(tr('Google : renseignez d’abord l’identifiant client de votre application Google (Réglages, Tâches).'), 9000); return false; }
+    if (!clientId) { new obsidian.Notice(tr('Google : renseignez d’abord l’identifiant client de votre application Google (Réglages, Ariane, onglet Rappels et agendas).'), 9000); return false; }
     return this._connexionNavigateur({
       nom: 'Google', hote: '127.0.0.1',
       adresse: (redirection, verificateur, etat) => Ariane.urlAutorisationGoogle({ clientId, redirection, verificateur, etat }),
@@ -18914,7 +19320,7 @@ const avecTaches = (Base) => class extends Base {
 
   async _pousserGoogleImpl(silencieux) {
     if (!this.googleRelie()) {
-      if (!silencieux) new obsidian.Notice(tr('Google Agenda : reliez d’abord votre compte (Réglages, Tâches, Agenda en fond).'), 9000);
+      if (!silencieux) new obsidian.Notice(tr('Google Agenda : reliez d’abord votre compte (Réglages, Ariane, onglet Rappels et agendas, Agenda en fond).'), 9000);
       return 0;
     }
     const cals = await this.calendriersGoogle();
@@ -19085,7 +19491,7 @@ const avecTaches = (Base) => class extends Base {
     const s = this.settings;
     if (!obsidian.Platform.isDesktopApp) { new obsidian.Notice(tr('Microsoft : la connexion se fait depuis Obsidian sur ordinateur.')); return false; }
     const clientId = String(s.microsoftClientId || '').trim();
-    if (!clientId) { new obsidian.Notice(tr('Microsoft : renseignez d’abord l’identifiant de votre application Microsoft (Réglages, Tâches, Rappels).'), 9000); return false; }
+    if (!clientId) { new obsidian.Notice(tr('Microsoft : renseignez d’abord l’identifiant de votre application Microsoft (Réglages, Ariane, onglet Rappels et agendas).'), 9000); return false; }
     return this._connexionNavigateur({
       nom: 'Microsoft', hote: 'localhost',
       adresse: (redirection, verificateur, etat) => Ariane.urlAutorisationMicrosoft({
@@ -19234,7 +19640,7 @@ const avecTaches = (Base) => class extends Base {
     const dest = this.destinationRappels();
     const svc = this._serviceRappels(dest);
     if (!this.rappelsDisponibles()) {
-      if (!silencieux) new obsidian.Notice(svc.nom + tr(' : reliez d’abord votre compte (Réglages, Tâches, Rappels).'), 9000);
+      if (!silencieux) new obsidian.Notice(svc.nom + tr(' : reliez d’abord votre compte (Réglages, Ariane, onglet Rappels et agendas).'), 9000);
       return 0;
     }
     const cibles = this._tachesRappel();
@@ -21570,7 +21976,7 @@ const avecPublicationSite = (Base) => class extends Base {
   async publierSite() {
     const depot = this.cheminDepotSite;
     if (!depot) {
-      new obsidian.Notice(tr('Publication du site : renseigne le chemin du dépôt dans les réglages Ariane (onglet « Export et publication »).'));
+      new obsidian.Notice(tr('Publication du site : renseigne le chemin du dépôt dans les réglages Ariane (onglet « Publication de site »).'));
       return;
     }
     const fs = require('fs');
@@ -25292,6 +25698,418 @@ const avecConcentration = (Base) => class extends Base {
 
   //#endregion Ariane · concentration
 };
+// ── avecAccueil ───────────────────────────────────────────────────────────
+// Domaine : la présentation d'Ariane et son tutoriel.
+// À la première installation, une note de présentation s'ouvre, dans la
+// langue d'Obsidian : ce qu'est Ariane, le parcours d'une annotation, et des
+// zones vivantes (blocs de code dessinés par Ariane) : l'état des
+// prérequis, le choix du profil de modules, les portes vers le tutoriel et
+// les réglages. Le tutoriel crée un dossier d'exemple (une source fictive au
+// format de ZotFlow, un brouillon, un parcours) dont les étapes se cochent
+// d'elles-mêmes, puis se supprime d'un bouton.
+const avecAccueil = (Base) => class extends Base {
+  //#region Ariane · static · accueil
+
+  static get NOMS_ACCUEIL() {
+    return {
+      fr: { note: 'Bienvenue dans Ariane', dossier: 'Ariane - Tutoriel', parcours: 'Tutoriel Ariane', brouillon: 'Mon brouillon' },
+      en: { note: 'Welcome to Ariane', dossier: 'Ariane - Tutorial', parcours: 'Ariane tutorial', brouillon: 'My draft' },
+    };
+  }
+
+  // La clé de citation de la source d'exemple (ouvrage fictif).
+  static get CLE_EXEMPLE() { return 'valmontRisqueOrganisations2010'; }
+
+  static langueAccueil() { return LANGUE === 'fr' ? 'fr' : 'en'; }
+
+  // Le profil que forment ces modules (dépendances comprises), ou ''.
+  static profilCourant(modules) {
+    const a = Ariane.modulesAvecDependances(modules || []).join('|');
+    for (const id of ['zotero', 'these', 'tout']) {
+      if (Ariane.modulesAvecDependances(PROFILS_ARIANE[id]).join('|') === a) return id;
+    }
+    return '';
+  }
+
+  static noteAccueil(langue) {
+    // La version anglaise puise dans la table anglaise, quelle que soit la
+    // langue d'Obsidian.
+    const en = (cle) => (TEXTES.en && TEXTES.en[cle]) || cle;
+    const modules = MODULES_ARIANE.filter((m) => !m.coeur).map((m) => (langue === 'fr'
+      ? '- **' + m.nom + '** : ' + m.description
+      : '- **' + en(m.nom) + '**: ' + en(m.description)) + (m.macSeul ? ' (Mac)' : ''));
+    if (langue === 'fr') {
+      return [
+        '---', 'cssclasses:', '  - ariane-accueil', '---',
+        '# Bienvenue dans Ariane', '',
+        '```ariane-actions', '```', '',
+        'Ariane relie vos annotations Zotero à votre écriture. Chaque passage que vous surlignez et commentez dans Zotero devient une note de votre coffre ; vous la glissez dans votre texte pour la citer, et la bibliographie se tient à jour d’elle-même. Tout le reste est facultatif, et s’active à la carte.', '',
+        '## Ce qui est prêt', '',
+        '```ariane-etat', '```', '',
+        '## Le parcours d’une annotation', '',
+        '1. **Dans Zotero**, vous surlignez un passage d’un PDF ou d’un EPUB, et vous le commentez.',
+        '2. **ZotFlow**, greffon d’Obsidian, amène la source et ses annotations dans le coffre.',
+        '3. **Ariane** fait de chaque annotation une note à part, nommée d’après votre commentaire, et verrouillée : c’est Zotero qui fait foi.',
+        '4. **Vous écrivez** : glissez une note d’annotation sur une phrase. La citation « (Auteur, année, p. X) » s’y pose. Sur une ligne vide, ou avec la touche Maj pendant le glisser, elle prend la forme « Auteur (année) ».',
+        '5. **La bibliographie** de la note se construit en bas de page, à mesure.',
+        '6. **L’export Word** produit un document mis en forme, avec des citations Zotero vivantes.', '',
+        '## Votre profil', '',
+        'Choisissez un point de départ. Ariane se recharge, et chaque module reste réglable ensuite (Réglages, Ariane, onglet Modules).', '',
+        '```ariane-profil', '```', '',
+        '## Les modules facultatifs', '',
+        ...modules, '',
+        '## Apprendre en essayant', '',
+        'Le tutoriel crée un dossier d’exemple, avec une source fictive et un brouillon, pour faire le parcours en cinq minutes sans toucher à vos notes. Un bouton le supprime ensuite.', '',
+        '## Aide', '',
+        '- Les réglages d’Ariane commencent par l’onglet **Accueil**, qui redit ce qui est prêt et ce qui manque.',
+        '- La palette de commandes (⌘ P ou Ctrl P) liste toutes les commandes d’Ariane : tapez « Ariane » ou le nom d’un module.',
+        '- La documentation complète : https://github.com/Liotou/obsidian-ariane',
+        '- Cette note peut être supprimée : la commande « Ariane : ouvrir la présentation » la recrée.', '',
+      ].join('\n');
+    }
+    return [
+      '---', 'cssclasses:', '  - ariane-accueil', '---',
+      '# Welcome to Ariane', '',
+      '```ariane-actions', '```', '',
+      'Ariane connects your Zotero annotations to your writing. Every passage you highlight and comment on in Zotero becomes a note in your vault; drag it into your text to cite it, and the bibliography keeps itself up to date. Everything else is optional, and can be switched on as you need it.', '',
+      '## What is ready', '',
+      '```ariane-etat', '```', '',
+      '## The life of an annotation', '',
+      '1. **In Zotero**, you highlight a passage of a PDF or an EPUB, and comment on it.',
+      '2. **ZotFlow**, an Obsidian plugin, brings the source and its annotations into the vault.',
+      '3. **Ariane** turns each annotation into a note of its own, named after your comment, and locked: Zotero stays the reference.',
+      '4. **You write**: drag an annotation note onto a sentence. The citation "(Author, year, p. X)" lands there. On an empty line, or holding Shift while dragging, it takes the form "Author (year)".',
+      '5. **The bibliography** of the note builds itself at the bottom, as you go.',
+      '6. **The Word export** produces a formatted document with live Zotero citations.', '',
+      '## Your profile', '',
+      'Pick a starting point. Ariane reloads, and every module can still be changed later (Settings, Ariane, Modules tab).', '',
+      '```ariane-profil', '```', '',
+      '## Optional modules', '',
+      ...modules, '',
+      '## Learn by doing', '',
+      'The tutorial creates a sample folder, with a fictional source and a draft, so you can try the whole journey in five minutes without touching your notes. One button removes it afterwards.', '',
+      '## Help', '',
+      '- Ariane\'s settings open on the **Home** tab, which shows what is ready and what is missing.',
+      '- The command palette (Cmd P or Ctrl P) lists every Ariane command: type "Ariane" or the name of a module.',
+      '- Full documentation: https://github.com/Liotou/obsidian-ariane',
+      '- You may delete this note: the command "Ariane: open the introduction" creates it again.', '',
+    ].join('\n');
+  }
+
+  // La source d'exemple, au format des notes de ZotFlow : trois annotations
+  // commentées, sur un ouvrage fictif.
+  static sourceExemple(langue) {
+    const fr = langue === 'fr';
+    const bloc = (cle, page, couleur, passage, titre, commentaire) => [
+      '> [!zotflow-highlight-' + couleur + '] [valmont2010.pdf, p.' + page + '](obsidian://zotflow?type=open-annotation&libraryID=1&key=' + cle + ')',
+      '> > ' + passage, '>',
+      '> <!-- ZF_ANNO_BEG_' + cle + ' -->',
+      '> **' + titre + '**',
+      '> ' + commentaire,
+      '> <!-- ZF_ANNO_END_' + cle + ' -->',
+      '> ', '^' + cle, '',
+    ].join('\n');
+    return [
+      '---',
+      'citationKey: ' + Ariane.CLE_EXEMPLE,
+      'title: ' + (fr ? '"Le risque dans les organisations"' : '"Risk in organisations"'),
+      'itemType: book',
+      'creators:', '  - "Hélène Valmont"', '  - "Paul Ferrat"',
+      'year: 2010', 'date: "2010"',
+      'tutoriel-ariane: true',
+      '---',
+      '# ' + (fr ? 'Le risque dans les organisations' : 'Risk in organisations'), '',
+      fr ? '*Source fictive du tutoriel d’Ariane. Elle imite une note de ZotFlow.*' : '*A fictional source for the Ariane tutorial. It mimics a ZotFlow note.*', '',
+      '## Annotations', '### valmont2010.pdf', '',
+      bloc('TUTOANN1', '12', '#ffd400',
+        fr ? 'Une organisation ne supprime jamais le risque : elle choisit lequel elle accepte.' : 'An organisation never removes risk: it chooses which one it accepts.',
+        fr ? 'Le risque comme choix.' : 'Risk as a choice.',
+        fr ? 'Le risque n’est pas une fatalité mais un arbitrage : accepter un risque, c’est en écarter un autre.' : 'Risk is not fate but a trade-off: accepting one risk means setting another aside.'),
+      bloc('TUTOANN2', '47', '#5fb236',
+        fr ? 'Les signaux faibles se perdent moins par ignorance que par excès d’information.' : 'Weak signals are lost less through ignorance than through too much information.',
+        fr ? 'Signaux faibles et surcharge.' : 'Weak signals and overload.',
+        fr ? 'Ce n’est pas le manque d’alerte qui aveugle, c’est leur nombre : le tri devient le vrai travail de vigilance.' : 'What blinds us is not the lack of warnings but their number: sorting becomes the real work of vigilance.'),
+      bloc('TUTOANN3', '103', '#2ea8e5',
+        fr ? 'La résilience tient à la marge de manœuvre que l’on s’est ménagée avant la crise.' : 'Resilience depends on the room for manoeuvre secured before the crisis.',
+        fr ? 'La résilience se prépare.' : 'Resilience is prepared.',
+        fr ? 'La capacité à rebondir se construit en amont : elle tient aux réserves, aux redondances, au temps que l’on garde.' : 'The ability to bounce back is built in advance: it rests on reserves, redundancy, and the time one keeps.'),
+    ].join('\n');
+  }
+
+  static brouillonExemple(langue) {
+    return langue === 'fr'
+      ? '# Mon brouillon\n\nLes organisations ne font pas disparaître le risque.\n\nUne vigilance trop sollicitée finit par ne plus rien voir.\n\n'
+      : '# My draft\n\nOrganisations do not make risk disappear.\n\nVigilance that is asked too much ends up seeing nothing.\n\n';
+  }
+
+  static noteTutoriel(langue) {
+    return langue === 'fr'
+      ? ['---', 'cssclasses:', '  - ariane-accueil', '---', '# Tutoriel Ariane', '',
+        'Six étapes, qui se cochent d’elles-mêmes. Gardez cette note ouverte à côté de votre travail.', '',
+        '```ariane-tutoriel', '```', ''].join('\n')
+      : ['---', 'cssclasses:', '  - ariane-accueil', '---', '# Ariane tutorial', '',
+        'Six steps, which tick themselves. Keep this note open next to your work.', '',
+        '```ariane-tutoriel', '```', ''].join('\n');
+  }
+
+  // Les étapes du tutoriel et leur état. f : { annotations (nombre de notes
+  // d'annotation de la source d'exemple), ouverte, citation, biblio, replie,
+  // export, exportPossible }.
+  static etapesTutoriel(f) {
+    return [
+      { id: 'atomiser', fait: (f.annotations || 0) >= 3 },
+      { id: 'ouvrir', fait: !!f.ouverte },
+      { id: 'citer', fait: !!f.citation },
+      { id: 'biblio', fait: !!f.biblio },
+      { id: 'replier', fait: !!f.replie },
+      { id: 'exporter', fait: !!f.export, facultatif: !f.exportPossible },
+    ];
+  }
+
+  //#endregion Ariane · static · accueil
+
+  //#region Ariane · accueil et tutoriel
+
+  // Les zones vivantes et l'ouverture au premier lancement.
+  installerAccueil() {
+    const bloc = (nom, rendu) => this.registerMarkdownCodeBlockProcessor(nom, (_src, el, ctx) => {
+      const enfant = new obsidian.MarkdownRenderChild(el);
+      ctx.addChild(enfant);
+      const dessiner = () => { el.empty(); try { rendu(el, enfant); } catch (e) { console.warn('[Ariane] ' + nom + ' :', e); } };
+      enfant.registerEvent(this.app.workspace.on('ariane:accueil', dessiner));
+      dessiner();
+    });
+    bloc('ariane-etat', (el) => this._dessinerEtat(el));
+    bloc('ariane-profil', (el) => this._dessinerProfils(el));
+    bloc('ariane-actions', (el) => this._dessinerActions(el));
+    bloc('ariane-tutoriel', (el, enfant) => {
+      this._dessinerTutoriel(el);
+      // Les étapes se cochent quand le coffre ou la note ouverte changent.
+      const plus = () => this.antirebond('tutoriel', () => this.app.workspace.trigger('ariane:accueil'), 500);
+      enfant.registerEvent(this.app.vault.on('create', plus));
+      enfant.registerEvent(this.app.vault.on('modify', plus));
+      enfant.registerEvent(this.app.vault.on('delete', plus));
+    });
+    // Une annotation d'exemple ouverte : l'étape 2 est faite.
+    this.registerEvent(this.app.workspace.on('file-open', (f) => {
+      if (f && f.path.startsWith(this._dossierAnnotationsExemple() + '/')) this.noterEtapeTutoriel('ouverte');
+    }));
+    this.app.workspace.onLayoutReady(() => {
+      if (!this._accueilAOuvrir) return;
+      this._accueilAOuvrir = false;
+      this.ouvrirPresentation().catch((e) => console.warn('[Ariane] présentation :', e));
+    });
+  }
+
+  _cheminPresentation(langue) { return Ariane.NOMS_ACCUEIL[langue].note + '.md'; }
+
+  // Ouvre la présentation, en la créant si elle manque.
+  async ouvrirPresentation(langue) {
+    const l = langue || Ariane.langueAccueil();
+    const chemin = this._cheminPresentation(l);
+    let f = this.app.vault.getAbstractFileByPath(chemin);
+    if (!(f instanceof obsidian.TFile)) {
+      await this.ecrire(chemin, Ariane.noteAccueil(l));
+      f = this.app.vault.getAbstractFileByPath(chemin);
+    }
+    if (f instanceof obsidian.TFile) await this.app.workspace.getLeaf('tab').openFile(f);
+  }
+
+  ouvrirReglagesAriane() {
+    const s = this.app.setting;
+    if (!s) return;
+    s.open();
+    if (typeof s.openTabById === 'function') s.openTabById(this.manifest.id);
+  }
+
+  _dessinerActions(el) {
+    const l = Ariane.langueAccueil();
+    const autre = l === 'fr' ? 'en' : 'fr';
+    const boite = el.createDiv({ cls: 'zfa-accueil-actions' });
+    const bouton = (texte, cta, faire) => {
+      const b = boite.createEl('button', { text: texte, cls: cta ? 'mod-cta' : '' });
+      b.addEventListener('click', faire);
+    };
+    bouton(tr('Lancer le tutoriel'), true, () => this.creerTutoriel());
+    bouton(tr('Ouvrir les réglages d’Ariane'), false, () => this.ouvrirReglagesAriane());
+    bouton(autre === 'en' ? 'Read in English' : 'Lire en français', false, () => this.ouvrirPresentation(autre));
+  }
+
+  _dessinerEtat(el) {
+    const liste = el.createDiv({ cls: 'zfa-accueil-etat' });
+    for (const e of this.etatPrerequis()) {
+      const l = liste.createDiv({ cls: 'zfa-accueil-etat-ligne ' + (e.ok ? 'est-ok' : 'est-manquant') });
+      obsidian.setIcon(l.createSpan({ cls: 'zfa-accueil-etat-ic' }), e.ok ? 'check-circle-2' : 'circle-dashed');
+      const t = l.createDiv();
+      t.createDiv({ cls: 'zfa-accueil-etat-nom', text: tr(e.nom) });
+      t.createDiv({ cls: 'zfa-accueil-etat-desc', text: tr(e.ok ? e.siOk : e.sinon) });
+    }
+    const b = el.createEl('button', { text: tr('Vérifier de nouveau'), cls: 'zfa-accueil-petit' });
+    b.addEventListener('click', () => this.app.workspace.trigger('ariane:accueil'));
+  }
+
+  _dessinerProfils(el) {
+    const courant = Ariane.profilCourant(this.settings.modules);
+    const noms = new Map(MODULES_ARIANE.map((m) => [m.id, tr(m.nom)]));
+    const profils = [
+      ['zotero', 'Zotero et écriture', 'Le cœur, et ce qui sert à écrire : annotations, citations, bibliographie, export Word, familles de notes, typographie.'],
+      ['these', 'Gestion de la thèse', 'Le précédent, plus les tâches, le canevas, les rappels et agendas, le temps passé.'],
+      ['tout', 'Tout', 'Tous les modules, y compris la barre d’édition, les suggestions, les schémas, Claude et la publication.'],
+    ];
+    const grille = el.createDiv({ cls: 'zfa-accueil-profils' });
+    for (const [id, nom, desc] of profils) {
+      const carte = grille.createDiv({ cls: 'zfa-accueil-profil' + (id === courant ? ' est-courant' : '') });
+      carte.setAttr('role', 'button');
+      carte.setAttr('tabindex', '0');
+      carte.createDiv({ cls: 'zfa-accueil-profil-nom', text: tr(nom) + (id === courant ? '  ' + tr('(actuel)') : '') });
+      carte.createDiv({ cls: 'zfa-accueil-profil-desc', text: tr(desc) });
+      carte.createDiv({ cls: 'zfa-accueil-profil-mods',
+        text: Ariane.modulesAvecDependances(PROFILS_ARIANE[id]).filter((m) => !['annotations', 'citations'].includes(m)).map((m) => noms.get(m)).join(', ') });
+      const choisir = () => {
+        if (id === courant) return;
+        new obsidian.Notice(tr('Ariane se recharge avec le profil « ') + tr(nom) + tr(' »…'));
+        this.appliquerModules(PROFILS_ARIANE[id]);
+      };
+      carte.addEventListener('click', choisir);
+      carte.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choisir(); } });
+    }
+    if (!courant) el.createDiv({ cls: 'zfa-accueil-etat-desc', text: tr('Votre choix actuel est personnalisé (onglet Modules des réglages).') });
+  }
+
+  // ── le tutoriel ──
+
+  _dossierTutoriel(langue) { return Ariane.NOMS_ACCUEIL[langue || Ariane.langueAccueil()].dossier; }
+  _dossierAnnotationsExemple() { return this.dossierA + '/' + this.nettoyerNomFichier('@' + Ariane.CLE_EXEMPLE); }
+
+  // Le dossier du tutoriel existant (l'une ou l'autre langue), ou null.
+  _tutorielExistant() {
+    for (const l of ['fr', 'en']) {
+      const d = this.app.vault.getAbstractFileByPath(this._dossierTutoriel(l));
+      if (d instanceof obsidian.TFolder) return { dossier: d, langue: l };
+    }
+    return null;
+  }
+
+  async creerTutoriel() {
+    const deja = this._tutorielExistant();
+    const l = deja ? deja.langue : Ariane.langueAccueil();
+    const n = Ariane.NOMS_ACCUEIL[l];
+    const d = this._dossierTutoriel(l);
+    await this.assurerDossier(d);
+    const poser = async (nom, texte) => {
+      const chemin = d + '/' + nom + '.md';
+      if (!this.app.vault.getAbstractFileByPath(chemin)) await this.ecrire(chemin, texte);
+      return chemin;
+    };
+    await poser('@' + Ariane.CLE_EXEMPLE, Ariane.sourceExemple(l));
+    await poser(n.brouillon, Ariane.brouillonExemple(l));
+    const parcours = await poser(n.parcours, Ariane.noteTutoriel(l));
+    if (!deja) { this.settings._tutoriel = {}; await this.saveSettings(); }
+    const f = this.app.vault.getAbstractFileByPath(parcours);
+    if (f instanceof obsidian.TFile) await this.app.workspace.getLeaf('tab').openFile(f);
+  }
+
+  // Une étape constatée ailleurs (repli des citations, export, ouverture).
+  noterEtapeTutoriel(etape) {
+    if (!this._tutorielExistant()) return;
+    const t = this.settings._tutoriel || (this.settings._tutoriel = {});
+    if (t[etape]) return;
+    t[etape] = true;
+    this.saveSettings().catch(() => {});
+    this.app.workspace.trigger('ariane:accueil');
+  }
+
+  async _faitsTutoriel() {
+    const ex = this._tutorielExistant();
+    const t = this.settings._tutoriel || {};
+    const f = { ouverte: !!t.ouverte, replie: !!t.replie, export: !!t.export, annotations: 0, citation: false, biblio: false };
+    const dossierAnno = this._dossierAnnotationsExemple();
+    const annos = this.app.vault.getMarkdownFiles().filter((x) => x.path.startsWith(dossierAnno + '/'));
+    f.annotations = annos.length;
+    if (ex) {
+      const b = this.app.vault.getAbstractFileByPath(this._dossierTutoriel(ex.langue) + '/' + Ariane.NOMS_ACCUEIL[ex.langue].brouillon + '.md');
+      if (b instanceof obsidian.TFile) {
+        const texte = await this.app.vault.cachedRead(b);
+        f.citation = annos.some((a) => texte.includes('[[' + a.basename));
+        f.biblio = /%% ariane:biblio %%/.test(texte) && f.citation;
+      }
+    }
+    let pandoc = '';
+    try { pandoc = trouverExecutable(this.settings.exportPandocBin || 'pandoc', envOutils()) || ''; } catch (e) { pandoc = ''; }
+    f.exportPossible = this.module('export') && !!pandoc;
+    return f;
+  }
+
+  _dessinerTutoriel(el) {
+    const ex = this._tutorielExistant();
+    if (!ex) {
+      el.createDiv({ cls: 'zfa-accueil-etat-desc', text: tr('Le dossier du tutoriel n’existe plus.') });
+      const b = el.createEl('button', { text: tr('Recréer le tutoriel'), cls: 'mod-cta' });
+      b.addEventListener('click', () => this.creerTutoriel());
+      return;
+    }
+    const n = Ariane.NOMS_ACCUEIL[ex.langue];
+    const d = this._dossierTutoriel(ex.langue);
+    const source = this.app.vault.getAbstractFileByPath(d + '/@' + Ariane.CLE_EXEMPLE + '.md');
+    const brouillon = this.app.vault.getAbstractFileByPath(d + '/' + n.brouillon + '.md');
+    const ouvrirACote = (f) => { if (f instanceof obsidian.TFile) this.app.workspace.getLeaf('split').openFile(f); };
+    const textes = {
+      atomiser: ['Atomiser la source d’exemple', 'Ariane fait de chacune de ses trois annotations une note à part, dans votre dossier d’annotations.', 'Atomiser', async () => {
+        if (source instanceof obsidian.TFile) await this.atomiseSource(source);
+        this.app.workspace.trigger('ariane:accueil');
+      }],
+      ouvrir: ['Ouvrir une note d’annotation', 'Elle porte le passage, votre commentaire, la source et la page. Elle est verrouillée : c’est Zotero qui fait foi.', 'Ouvrir', () => {
+        const a = this.app.vault.getMarkdownFiles().find((x) => x.path.startsWith(this._dossierAnnotationsExemple() + '/'));
+        if (a) ouvrirACote(a); else new obsidian.Notice(tr('Atomisez d’abord la source d’exemple.'));
+      }],
+      citer: ['La glisser dans le brouillon', 'Ouvrez le brouillon, puis glissez une note d’annotation (depuis l’explorateur de fichiers) sur une phrase : la citation s’y pose. Maj pendant le glisser donne « Auteur (année) ».', 'Ouvrir le brouillon', () => ouvrirACote(brouillon)],
+      biblio: ['Voir la bibliographie', 'En bas du brouillon, la bibliographie s’est construite d’elle-même, et se tient à jour.', '', null],
+      replier: ['Replier les citations', 'Les citations se replient en pastilles, pour relire le texte d’un trait ; un clic sur une pastille la déplie.', 'Replier ou déplier', () => this.basculerCitations(!this.settings.citationsRepliees)],
+      exporter: ['Exporter en Word', 'Le brouillon devient un document Word, avec des citations Zotero vivantes (pandoc et Better BibTeX requis).', 'Exporter le brouillon', async () => {
+        if (brouillon instanceof obsidian.TFile) await this.app.workspace.getLeaf(false).openFile(brouillon);
+        await this.exporterWordZotero();
+      }],
+    };
+    const liste = el.createDiv({ cls: 'zfa-tuto' });
+    this._faitsTutoriel().then((faits) => {
+      const etapes = Ariane.etapesTutoriel(faits);
+      etapes.forEach((e, i) => {
+        const [titre, aide, action, faire] = textes[e.id];
+        const l = liste.createDiv({ cls: 'zfa-tuto-etape' + (e.fait ? ' est-faite' : '') });
+        obsidian.setIcon(l.createSpan({ cls: 'zfa-tuto-ic' }), e.fait ? 'check-circle-2' : 'circle');
+        const corps = l.createDiv({ cls: 'zfa-tuto-corps' });
+        corps.createDiv({ cls: 'zfa-tuto-titre', text: (i + 1) + '. ' + tr(titre) + (e.facultatif ? ' ' + tr('(facultatif)') : '') });
+        corps.createDiv({ cls: 'zfa-tuto-aide', text: tr(aide) });
+        if (action && faire && !(e.id === 'exporter' && e.facultatif)) {
+          const b = corps.createEl('button', { text: tr(action), cls: e.fait ? '' : 'mod-cta' });
+          b.addEventListener('click', () => Promise.resolve(faire()).catch((err) => console.warn('[Ariane] tutoriel :', err)));
+        }
+      });
+      const faites = etapes.filter((e) => e.fait || e.facultatif).length;
+      const pied = el.createDiv({ cls: 'zfa-tuto-pied' });
+      pied.createDiv({ text: faites === etapes.length ? tr('Bravo : le parcours est fait. Vous pouvez supprimer le tutoriel.') : faites + ' / ' + etapes.length });
+      const sup = pied.createEl('button', { text: tr('Supprimer le tutoriel'), cls: 'mod-warning' });
+      sup.addEventListener('click', () => this.supprimerTutoriel());
+    });
+  }
+
+  // Le dossier d'exemple et les annotations atomisées de la source fictive
+  // partent à la corbeille d'Obsidian.
+  async supprimerTutoriel() {
+    const ex = this._tutorielExistant();
+    const annos = this.app.vault.getAbstractFileByPath(this._dossierAnnotationsExemple());
+    for (const cible of [annos, ex && ex.dossier]) {
+      if (!cible) continue;
+      this.marquerEcriture(cible.path);
+      try { await this.app.fileManager.trashFile(cible); } catch (e) { console.warn('[Ariane] tutoriel :', e); }
+    }
+    this.settings._tutoriel = {};
+    await this.saveSettings();
+    new obsidian.Notice(tr('Tutoriel supprimé.'));
+  }
+
+  //#endregion Ariane · accueil et tutoriel
+};
 
 // ── class Ariane ──────────────────────────────────────────────────────────
 // Le point d'assemblage. Ne porte que le cycle de vie : onload, et les
@@ -25312,7 +26130,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecChronologie,
   avecDonneesJour,
   avecIphone,
-  avecConcentration) {
+  avecConcentration,
+  avecAccueil) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -25855,6 +26674,18 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.releverGoogle(false),
     });
     this.addCommand({
+      id: 'ouvrir-presentation',
+      module: 'annotations',
+      name: tr('Ariane : ouvrir la présentation'),
+      callback: () => this.ouvrirPresentation(),
+    });
+    this.addCommand({
+      id: 'tutoriel-lancer',
+      module: 'annotations',
+      name: tr('Ariane : lancer le tutoriel'),
+      callback: () => this.creerTutoriel(),
+    });
+    this.addCommand({
       id: 'concepts-uniformiser-liens',
       module: 'familles',
       name: tr('Notes conceptuelles : mettre les liens au format de la phrase…'),
@@ -26002,6 +26833,9 @@ class Ariane extends composer(obsidian.Plugin,
   // Volets latéraux et vues de base (frise, calendrier).
   // Les vues de base n'existent que si Bases est actif.
   _enregistrerVues() {
+    // La présentation et le tutoriel : leurs zones vivantes, et l'ouverture
+    // de la présentation au tout premier lancement.
+    this.installerAccueil();
     // Panneau de suggestions dynamiques (moteur lexical local).
     if (this.module('suggestions')) this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
@@ -29676,7 +30510,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
 
     this._section(c, 'draw.io');
     this._etatGreffon(c, 'drawio');
-    this._aide(c, tr("L'éditeur de schémas est celui du greffon draw.io, qu'Ariane ne remplace pas. Son vocabulaire de schémas et l'export SVG se règlent dans l'onglet « Vues et schémas »."));
+    this._aide(c, tr("L'éditeur de schémas est celui du greffon draw.io, qu'Ariane ne remplace pas. Son vocabulaire de schémas et l'export SVG se règlent dans l'onglet « Schémas draw.io »."));
 
     this._section(c, 'Templater');
     this._etatGreffon(c, 'templater-obsidian');

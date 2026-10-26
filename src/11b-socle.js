@@ -22,7 +22,7 @@ const avecSocle = (Base) => class extends Base {
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
             'dossierTaches', 'tempsDossierJournal', 'dossierNotesEvenements', 'chronoDepuis',
-            '_noteTravailSansTitre', '_blocLivrableRetire', '_pagesEpubReprises'];
+            '_noteTravailSansTitre', '_blocLivrableRetire', '_pagesEpubReprises', '_tutoriel'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
@@ -393,10 +393,15 @@ const avecSocle = (Base) => class extends Base {
   async loadSettings() {
     const charge = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, charge || {});
-    // Une installation qui n'a pas encore de modules garde tout ce qu'elle
-    // avait : profil « Tout ». (L'assistant de premier lancement viendra
-    // pour les nouvelles installations.)
-    if (!Array.isArray(this.settings.modules)) this.settings.modules = PROFILS_ARIANE.tout.slice();
+    // Première installation (rien d'enregistré) : le profil « Zotero et
+    // écriture », et la présentation s'ouvrira, avec le choix du profil.
+    // Une installation existante sans modules garde tout ce qu'elle avait.
+    if (charge == null) {
+      this.settings.modules = PROFILS_ARIANE.zotero.slice();
+      this._accueilAOuvrir = true;
+    } else if (!Array.isArray(this.settings.modules)) {
+      this.settings.modules = PROFILS_ARIANE.tout.slice();
+    }
     this.settings.correspondancesSuffixe = migrerCorrespondances(this.settings.correspondancesSuffixe);
 
     // clesTaches ne contient plus que de VRAIES personnalisations de label.

@@ -1351,6 +1351,7 @@ const avecNoteAtomes = (Base) => class extends Base {
   // perceptible à chaque basculement.
   basculerCitations(replier) {
     this.settings.citationsRepliees = replier;
+    if (this.noterEtapeTutoriel) this.noterEtapeTutoriel('replie');
     // Aucune notification : le changement se voit à l'écran, l'annoncer en
     // plus ne fait qu'encombrer.
     this.appliquerEtatCitations();
