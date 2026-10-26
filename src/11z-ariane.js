@@ -58,6 +58,11 @@ class Ariane extends composer(obsidian.Plugin,
     // Le coffre n'est lisible qu'une fois la disposition prête : c'est là
     // qu'on peut voir quels dossiers existent vraiment.
     this.app.workspace.onLayoutReady(async () => {
+      // Une vue d'un module coupé, restée dans la disposition, se ferme :
+      // Obsidian la montrerait sinon comme une vue introuvable.
+      const vuesDeModule = [['zfa-suggestions', 'suggestions'], [TYPE_VUE_INCOHERENCES, 'taches'],
+        [TYPE_VUE_CHRONOLOGIE, 'temps'], [TYPE_VUE_RELECTURE, 'correcteur']];
+      for (const [type, mod] of vuesDeModule) if (!this.module(mod)) this.app.workspace.detachLeavesOfType(type);
       const corriges = this.reconcilierDossiersReglages();
       if (corriges.length) {
         await this.saveSettings();
@@ -704,11 +709,11 @@ class Ariane extends composer(obsidian.Plugin,
   // Les vues de base n'existent que si Bases est actif.
   _enregistrerVues() {
     // Panneau de suggestions dynamiques (moteur lexical local).
-    this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
+    if (this.module('suggestions')) this.registerView('zfa-suggestions', (leaf) => new VueSuggestionsZotflow(leaf, this));
     this.registerView(TYPE_VUE_REFS, (leaf) => new VueReferencesAttente(leaf, this));
-    this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
-    this.registerView(TYPE_VUE_CHRONOLOGIE, (leaf) => new VueChronologie(leaf, this));
-    this.registerView(TYPE_VUE_RELECTURE, (leaf) => new VueRelecture(leaf, this));
+    if (this.module('taches')) this.registerView(TYPE_VUE_INCOHERENCES, (leaf) => new VueIncoherencesTaches(leaf, this));
+    if (this.module('temps')) this.registerView(TYPE_VUE_CHRONOLOGIE, (leaf) => new VueChronologie(leaf, this));
+    if (this.module('correcteur')) this.registerView(TYPE_VUE_RELECTURE, (leaf) => new VueRelecture(leaf, this));
     // Les icônes des vues de base : posées après Obsidian, qui n'en connaît
     // qu'une par type de vue.
     this.iconesBases = new IconesVuesBases(this);
@@ -716,26 +721,36 @@ class Ariane extends composer(obsidian.Plugin,
     // Le canevas natif d'Obsidian reçoit les cartes de tâches (section 16) :
     // pas une vue à nous, une intégration qui suit les .canvas ouverts. Les
     // vues « Graphe » qui restent dans les .base y sont converties.
-    this.canevas = new IntegrationCanevas(this);
-    this.addChild(this.canevas);
-    this.app.workspace.onLayoutReady(() => { if (this.canevas) this.canevas.migrerVuesGraphe(); });
+    if (this.module('canevas')) {
+      this.canevas = new IntegrationCanevas(this);
+      this.addChild(this.canevas);
+      this.app.workspace.onLayoutReady(() => { if (this.canevas) this.canevas.migrerVuesGraphe(); });
+    }
     // Le correcteur du système dans l'éditeur (Mac) : l'extension CodeMirror
     // est enregistrée avec les autres, dans _installerExtensionsEditeur.
-    this.correcteur = new CorrecteurApple(this);
-    this.addChild(this.correcteur);
+    if (this.module('correcteur')) {
+      this.correcteur = new CorrecteurApple(this);
+      this.addChild(this.correcteur);
+    }
     // Le tableau de bord des tâches, dans une note ordinaire (section 19).
-    this.registerMarkdownCodeBlockProcessor('ariane-organisation',
-      (_src, el, ctx) => ctx.addChild(new BlocOrganisation(this, el)));
+    if (this.module('taches')) {
+      this.registerMarkdownCodeBlockProcessor('ariane-organisation',
+        (_src, el, ctx) => ctx.addChild(new BlocOrganisation(this, el)));
+    }
     // La barre d'édition : une par volet de note, posée sous la barre
     // d'onglets. Elle n'a aucun geste à elle, elle appelle des commandes.
-    this.barre = new BarreEdition(this);
-    this.addChild(this.barre);
+    if (this.module('barre')) {
+      this.barre = new BarreEdition(this);
+      this.addChild(this.barre);
+    }
     // Le pont vers Claude (section 22) : le serveur MCP ariane-taches passe
     // par lui pour lire les tâches avec la logique d'Ariane.
-    this.pont = new PontClaude(this);
-    this.addChild(this.pont);
+    if (this.module('claude')) {
+      this.pont = new PontClaude(this);
+      this.addChild(this.pont);
+    }
     // La frise est une vue de base : elle n'existe que si Bases est actif.
-    if (typeof this.registerBasesView === 'function') {
+    if (typeof this.registerBasesView === 'function' && this.module('taches')) {
       const Vue = fabriquerVueFriseBase(this);
       this.registerBasesView(TYPE_VUE_BASE_FRISE, {
         name: tr('Frise'),
@@ -795,9 +810,9 @@ class Ariane extends composer(obsidian.Plugin,
   _brancherInterface() {
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
-    this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
+    if (this.module('suggestions')) this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
     this.addRibbonIcon('scale', tr('Références en attente (Ariane)'), () => this.ouvrirVueReferences());
-    this.addRibbonIcon('history', tr("Chronologie d'activité (Ariane)"), () => this.ouvrirChronologie());
+    if (this.module('temps')) this.addRibbonIcon('history', tr("Chronologie d'activité (Ariane)"), () => this.ouvrirChronologie());
     // Le correcteur n'existe que sur Mac : ailleurs, l'icône n'aurait rien
     // à ouvrir. La bascule du ruban se cale donc sur ce que le système offre.
     if (this.correcteur && AssistantApple.disponible()) {
@@ -805,7 +820,7 @@ class Ariane extends composer(obsidian.Plugin,
     }
     // Déclare le panneau comme source d'aperçu au survol (« Page preview »).
     if (this.registerHoverLinkSource) {
-      this.registerHoverLinkSource('zfa-suggestions', { display: tr('Suggestions (Ariane)'), defaultMod: false });
+      if (this.module('suggestions')) this.registerHoverLinkSource('zfa-suggestions', { display: tr('Suggestions (Ariane)'), defaultMod: false });
       this.registerHoverLinkSource('zfa-partout', { display: 'Ariane — liens (chat, panneaux)', defaultMod: false });
     }
     // Aperçu au survol des liens internes dans les vues NON-markdown (ex. chat
@@ -885,17 +900,22 @@ class Ariane extends composer(obsidian.Plugin,
     );
     // Affiche dynamiquement le titre (alias) en aparté discret après un
     // lien d'annotation montrant la clé, en lecture. Non destructif.
-    this.registerMarkdownPostProcessor((el, ctx) => this.enrichirLiensAnnotation(el, ctx));
+    if (this.module('familles')) this.registerMarkdownPostProcessor((el, ctx) => this.enrichirLiensAnnotation(el, ctx));
     this.registerMarkdownPostProcessor((el) => this.rendreCitationsRepliables(el));
     this.registerMarkdownPostProcessor((el) => this.enrichirCompteursEmprunts(el));
-    this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
-    this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
-    // Le panneau « Plan » : ses entrées portent les mêmes numéros.
-    this.app.workspace.onLayoutReady(() => this.brancherPlans());
+    if (this.module('typographie')) {
+      this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
+      this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
+      // Le panneau « Plan » : ses entrées portent les mêmes numéros.
+      this.app.workspace.onLayoutReady(() => this.brancherPlans());
+      this.registerEvent(this.app.workspace.on('layout-change', () => this.brancherPlans()));
+    }
     // Une fois : l'ancien titre « ## Note de travail » quitte les notes de tâche.
     this.app.workspace.onLayoutReady(() => {
-      this.migrerNotesTravail().catch((e) => console.warn('[Ariane] notes de travail :', e));
-      this.retirerBlocsLivrable().catch((e) => console.warn('[Ariane] blocs de livrable :', e));
+      if (this.module('taches')) {
+        this.migrerNotesTravail().catch((e) => console.warn('[Ariane] notes de travail :', e));
+        this.retirerBlocsLivrable().catch((e) => console.warn('[Ariane] blocs de livrable :', e));
+      }
       this.reprendrePagesEpub().catch((e) => console.warn('[Ariane] pages des EPUB :', e));
     });
     // Un rôle de dossier qui désigne un dossier absent (renommé, ou resté sur
@@ -903,9 +923,8 @@ class Ariane extends composer(obsidian.Plugin,
     this.app.workspace.onLayoutReady(async () => {
       try { if (this.proposerRoles(true)) await this.saveSettings(); } catch (e) { console.debug('[Ariane] rôles', e); }
     });
-    this.registerEvent(this.app.workspace.on('layout-change', () => this.brancherPlans()));
-    this.app.workspace.onLayoutReady(() => this.installerDecorateurExplorateur());
-    this.app.workspace.onLayoutReady(async () => {
+    if (this.module('familles')) this.app.workspace.onLayoutReady(() => this.installerDecorateurExplorateur());
+    if (this.module('temps')) this.app.workspace.onLayoutReady(async () => {
       // Les données du temps et de l'activité vivent par jour dans le journal
       // du temps : la migration (une fois) et la relecture du compteur
       // passent avant tout ce qui les lit ou les écrit.
@@ -915,7 +934,7 @@ class Ariane extends composer(obsidian.Plugin,
       } catch (e) { console.error('[Ariane] données par jour', e); }
       this.elaguerHistoriqueTemps();
       this.demarrerCompteurTemps();
-      this.demarrerBarreCreneau();
+      if (this.module('taches')) this.demarrerBarreCreneau();
       this.demarrerActivite();
       this.brancherChronologie();
       this.rangerChronologie().catch((e) => console.error('[Ariane] chronologie', e));
@@ -930,7 +949,7 @@ class Ariane extends composer(obsidian.Plugin,
   // greffon de démarrer.
   _installerExtensionsEditeur() {
     // Même aparté en mode édition (Live Preview), via une extension CodeMirror.
-    try {
+    if (this.module('familles')) try {
       const { ViewPlugin, Decoration, WidgetType } = require('@codemirror/view');
       const { RangeSetBuilder } = require('@codemirror/state');
       const plugin = this;
@@ -1130,7 +1149,7 @@ class Ariane extends composer(obsidian.Plugin,
 
     // Ponctuation soudée à son mot : pas de « ( » seule en fin de ligne, ni
     // de « ) » ou de « ; » seuls en début de ligne, en texte justifié.
-    try {
+    if (this.module('typographie')) try {
       const { ViewPlugin, Decoration } = require('@codemirror/view');
       const { RangeSetBuilder } = require('@codemirror/state');
       const marque = Decoration.mark({ class: 'zfa-insecable' });
@@ -1165,7 +1184,7 @@ class Ariane extends composer(obsidian.Plugin,
     // Numéros des titres (1., 1.1., …) : écrits dans la note par Ariane,
     // grisés dans l'éditeur, que le curseur saute et que la frappe ne peut
     // pas entamer (une frappe juste devant passe derrière eux).
-    try {
+    if (this.module('typographie')) try {
       const { ViewPlugin, Decoration, EditorView } = require('@codemirror/view');
       const { RangeSetBuilder, EditorState } = require('@codemirror/state');
       const marque = Decoration.mark({ class: 'zfa-num-titre', attributes: { spellcheck: 'false' } });
@@ -1255,23 +1274,29 @@ class Ariane extends composer(obsidian.Plugin,
   // (estCandidat, revaliderIndex, surTache…) restent volontairement ici :
   // elles ne servent qu'à ce câblage.
   _brancherEvenements() {
-    // Journal des modifications des tâches (section 11k, spec 2026-09-29).
-    this.demarrerJournalTaches();
-    // Une note de tâche supprimée emporte son rappel (sinon la relève le
-    // réimporterait en tâche neuve).
-    this.ecouterSuppressionTaches();
+    if (this.module('taches')) {
+      // Journal des modifications des tâches (section 11k, spec 2026-09-29).
+      this.demarrerJournalTaches();
+      // Une note de tâche supprimée emporte son rappel (sinon la relève le
+      // réimporterait en tâche neuve).
+      this.ecouterSuppressionTaches();
+      this._brancherTaches();
+    }
+    if (this.module('rappels')) this._brancherRappels();
     // Suggestions : recalcul à la pause de frappe et au changement de note.
     const estCandidat = (f) => {
       if (!f || !f.path) return false;
       const dossiers = this.dossiersSuggeres();
       return !dossiers.length || dossiers.some((d) => f.path === d + '.md' || f.path.startsWith(d + '/'));
     };
-    this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
-      if (this.settings.suggActif) this.antirebond('suggestions', () => this.majSuggestions(false), 200);
-    }));
-    this.registerEvent(this.app.workspace.on('editor-change', () => {
-      if (this.settings.suggActif) this.antirebond('suggestions', () => this.majSuggestions(false), this.settings.suggAntirebond || 900);
-    }));
+    if (this.module('suggestions')) {
+      this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
+        if (this.settings.suggActif) this.antirebond('suggestions', () => this.majSuggestions(false), 200);
+      }));
+      this.registerEvent(this.app.workspace.on('editor-change', () => {
+        if (this.settings.suggActif) this.antirebond('suggestions', () => this.majSuggestions(false), this.settings.suggAntirebond || 900);
+      }));
+    }
     // Bouton « Ouvrir dans Zotero » dans les lecteurs ZotFlow : au démarrage
     // pour les vues déjà restaurées, puis à chaque changement de disposition.
     this.app.workspace.onLayoutReady(() => this.decorerLecteursZotflow());
@@ -1313,10 +1338,14 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor) => {
       const sel = editor && editor.getSelection ? editor.getSelection() : '';
       if (!sel || !sel.trim()) return;
-      menu.addItem((it) => it.setTitle(tr('Ariane : suggestions pour ce passage')).setIcon('sparkles')
-        .onClick(() => this.suggestionsPourArgument(sel)));
-      menu.addItem((it) => it.setTitle(tr('Ariane : structurer en tâches')).setIcon('list-tree')
-        .onClick(() => new ModaleStructurerTaches(this, sel).open()));
+      if (this.module('suggestions')) {
+        menu.addItem((it) => it.setTitle(tr('Ariane : suggestions pour ce passage')).setIcon('sparkles')
+          .onClick(() => this.suggestionsPourArgument(sel)));
+      }
+      if (this.module('taches')) {
+        menu.addItem((it) => it.setTitle(tr('Ariane : structurer en tâches')).setIcon('list-tree')
+          .onClick(() => new ModaleStructurerTaches(this, sel).open()));
+      }
     }));
     // Invalidation de l'index quand une note candidate change.
     const revaliderIndex = (f) => {
@@ -1324,6 +1353,26 @@ class Ariane extends composer(obsidian.Plugin,
       this.marquerNoteSale(f);
       if (this.settings.suggActif) this.antirebond('suggestionsIndex', () => this.majSuggestions(false), 1500);
     };
+    if (this.module('suggestions')) {
+      this.registerEvent(this.app.vault.on('modify', revaliderIndex));
+      this.registerEvent(this.app.vault.on('create', revaliderIndex));
+      this.registerEvent(this.app.vault.on('delete', revaliderIndex));
+      this.registerEvent(this.app.vault.on('rename', (f) => revaliderIndex(f)));
+    }
+    // Une source renommée : les sources associées des annotations suivent.
+    this.registerEvent(this.app.vault.on('rename', (f, ancien) => { this.renommerSourceAssociee(ancien, f); }));
+
+    // L'index des tâches se lit sur les chemins : seul un chemin qui bouge le
+    // périme. Une modification de contenu n'y change rien, d'où l'absence de
+    // « modify » ici : c'est ce qui rend le cache rentable.
+    for (const ev of ['create', 'delete', 'rename']) {
+      this.registerEvent(this.app.vault.on(ev, () => this._invaliderIndexTaches()));
+    }
+  }
+
+  // Les écoutes des notes de tâche (module Tâches) : champs dérivés, blocs
+  // entretenus, incohérences, anti-cycle.
+  _brancherTaches() {
     // La date d'achèvement suit le statut. La passe ne réécrit que si la valeur
     // change vraiment, faute de quoi cette écoute se rappellerait elle-même.
     this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _donnees, cacheNote) => {
@@ -1450,7 +1499,10 @@ class Ariane extends composer(obsidian.Plugin,
           .catch(() => {});
       }, 3000);
     });
+  }
 
+  // Rappels et agendas (module du même nom) : poussées, relèves, fenêtre.
+  _brancherRappels() {
     // Rappels (Apple Rappels, Google Tasks ou Microsoft To Do) : poussée
     // automatique quand une tâche change, et relève régulière tant
     // qu'Obsidian est ouvert. Tout est inerte si la destination n'est pas
@@ -1520,20 +1572,6 @@ class Ariane extends composer(obsidian.Plugin,
       this.antirebonds.delete('rappels:push');
       Promise.resolve(this.pousserRappels(true)).finally(() => { this._rappelsPushEnAttente = false; });
     });
-
-    this.registerEvent(this.app.vault.on('modify', revaliderIndex));
-    this.registerEvent(this.app.vault.on('create', revaliderIndex));
-    this.registerEvent(this.app.vault.on('delete', revaliderIndex));
-    this.registerEvent(this.app.vault.on('rename', (f) => revaliderIndex(f)));
-    // Une source renommée : les sources associées des annotations suivent.
-    this.registerEvent(this.app.vault.on('rename', (f, ancien) => { this.renommerSourceAssociee(ancien, f); }));
-
-    // L'index des tâches se lit sur les chemins : seul un chemin qui bouge le
-    // périme. Une modification de contenu n'y change rien, d'où l'absence de
-    // « modify » ici — c'est ce qui rend le cache rentable.
-    for (const ev of ['create', 'delete', 'rename']) {
-      this.registerEvent(this.app.vault.on(ev, () => this._invaliderIndexTaches()));
-    }
   }
 
   // Ce qui ne démarre qu'une fois la disposition prête : écoutes tardives,
@@ -1548,7 +1586,7 @@ class Ariane extends composer(obsidian.Plugin,
         if (!(f instanceof obsidian.TFile) || !this.estSchemaDrawio(f)) return;
         this.antirebond('schema:' + f.path, () => this.synchroniserSchema(f, true), 1200);
       };
-      this.registerEvent(this.app.vault.on('modify', majSchema));
+      if (this.module('schemas')) this.registerEvent(this.app.vault.on('modify', majSchema));
 
       // Bibliographie : régénérée après une pause dans la frappe.
       this.registerEvent(this.app.vault.on('modify', (f) => {
@@ -1559,9 +1597,9 @@ class Ariane extends composer(obsidian.Plugin,
         if (this.biblioExclue(f.path)) return;
         this.antirebond('biblio:' + f.path, () => this.majBibliographie(f, true), 2500);
       }));
-      this.registerEvent(this.app.vault.on('create', majSchema));
+      if (this.module('schemas')) this.registerEvent(this.app.vault.on('create', majSchema));
       this.registerEvent(this.app.vault.on('create', (f) => this.surCreation(f)));
-      this.registerEvent(this.app.vault.on('create', (f) => this.surCreationTacheVierge(f)));
+      if (this.module('taches')) this.registerEvent(this.app.vault.on('create', (f) => this.surCreationTacheVierge(f)));
       this.registerEvent(this.app.vault.on('delete', (f) => this.surSuppression(f)));
 
       // Tag « orpheline » : mise à jour quand les liens changent.

@@ -369,6 +369,7 @@ const avecNoteAtomes = (Base) => class extends Base {
   dansNumerotation(file) {
     const s = this.settings;
     if (s.numerotationTitres === false || !file || file.extension !== 'md') return false;
+    if (!this.module('typographie')) return false;
     const dossiers = Array.isArray(s.numerotationDossiers) ? s.numerotationDossiers : [];
     const dans = (d) => d && (file.path === d + '.md' || file.path.startsWith(d + '/'));
     if (!dossiers.some(dans)) return false;

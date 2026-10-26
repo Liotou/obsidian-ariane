@@ -17,6 +17,7 @@ const TEXTES = {
   en: {
     // Rappels : Google Tasks et Microsoft To Do, comptes reliés.
     "Notes en cartes compactes": "Notes as compact cards",
+    "Ariane : relancez Obsidian pour appliquer les modules.": "Ariane: restart Obsidian to apply the modules.",
     "Annotations d’EPUB : page imprimée reprise pour ": "EPUB annotations: print page picked up for ",
     " source(s).": " source(s).",
     "Prochain créneau : ": "Next slot: ",

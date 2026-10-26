@@ -315,6 +315,29 @@ const avecSocle = (Base) => class extends Base {
     return super.addCommand(sans);
   }
 
+  // Enregistre les modules voulus (dépendances et cœur compris), puis
+  // recharge Ariane : un module ne se branche ou ne se retire qu'au
+  // démarrage. Hors de la pile courante, le temps que l'appelant finisse.
+  async appliquerModules(ids) {
+    this.settings.modules = Ariane.modulesAvecDependances(ids);
+    await this.saveSettings();
+    const id = this.manifest && this.manifest.id;
+    const greffons = this.app.plugins;
+    if (!id || !greffons || typeof greffons.disablePlugin !== 'function') {
+      new obsidian.Notice(tr('Ariane : relancez Obsidian pour appliquer les modules.'));
+      return;
+    }
+    window.setTimeout(async () => {
+      try {
+        await greffons.disablePlugin(id);
+        await greffons.enablePlugin(id);
+      } catch (e) {
+        console.error('[Ariane] rechargement :', e);
+        new obsidian.Notice(tr('Ariane : relancez Obsidian pour appliquer les modules.'));
+      }
+    }, 50);
+  }
+
   async loadSettings() {
     const charge = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, charge || {});
