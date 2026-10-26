@@ -17,19 +17,6 @@ const TEXTES = {
   en: {
     // Rappels : Google Tasks et Microsoft To Do, comptes reliés.
     "Notes en cartes compactes": "Notes as compact cards",
-    "Liste de lecture de Safari": "Safari Reading List",
-    "Liste de lecture de Safari : Obsidian n’a pas le droit de la lire. Donnez-lui l’« Accès complet au disque », puis relancez Obsidian. ": "Safari Reading List: Obsidian may not read it. Give it “Full Disk Access”, then restart Obsidian. ",
-    " article(s) de la liste de lecture enregistré(s) dans « ": " reading list article(s) saved in “",
-    "Au démarrage d'Obsidian puis toutes les heures, chaque article de la liste de lecture de Safari devient une note : le texte principal de la page, sans menus ni publicités, lisible hors ligne. Safari n'est jamais modifié. Une page illisible hors du navigateur donne une note d'aperçu, retentée ensuite. Au clic droit sur une note d'article : « Ajouter à Zotero » (Zotero ouvert). Obsidian doit avoir l'« Accès complet au disque ».": "When Obsidian starts and then every hour, each article of Safari's Reading List becomes a note: the page's main text, without menus or ads, readable offline. Safari is never modified. A page unreadable outside the browser gives a preview note, retried later. Right-click an article note: “Add to Zotero” (Zotero open). Obsidian needs “Full Disk Access”.",
-    "Importer la liste de lecture": "Import the reading list",
-    "Dossier des articles": "Articles folder",
-    "Lire en ligne": "Read online",
-    "Page illisible hors du navigateur pour l’instant : Ariane la retentera.": "Page unreadable outside the browser for now: Ariane will try again.",
-    "Ariane : ajouter à Zotero": "Ariane: add to Zotero",
-    "Ouvrir les Réglages Système": "Open System Settings",
-    "Zotero n’est pas ouvert : ouvrez-le, puis recommencez.": "Zotero is not open: open it, then try again.",
-    "Zotero a refusé l’article (HTTP ": "Zotero refused the article (HTTP ",
-    "Article ajouté à Zotero : ZotFlow le rapatriera à sa prochaine synchronisation.": "Article added to Zotero: ZotFlow will bring it in at its next sync.",
     "Annotations d’EPUB : page imprimée reprise pour ": "EPUB annotations: print page picked up for ",
     " source(s).": " source(s).",
     "Prochain créneau : ": "Next slot: ",
@@ -1671,8 +1658,6 @@ const DEFAULT_SETTINGS = {
   // Les listes sont des lignes « a | b | c » ; voir les compilateurs de
   // src/11r-veille.js. Tout s'importe aussi depuis veille-revues.
   veilleDossier: '',                    // rôle : où écrire les notes de veille
-  lecturesWebActif: true,               // liste de lecture de Safari importée en notes (Mac)
-  dossierLecturesWeb: '12 - Liste de lectures Web', // où vont les notes d'article
   veilleDerniere: '',                   // jour de la dernière veille (état)
   veilleJours: 7,                       // fenêtre de la première veille
   veilleAuto: false,                    // lancer chaque semaine, Obsidian ouvert

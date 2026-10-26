@@ -19,8 +19,7 @@ class Ariane extends composer(obsidian.Plugin,
   avecDonneesJour,
   avecIphone,
   avecConcentration,
-  avecVeille,
-  avecLecturesWeb) {
+  avecVeille) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -858,7 +857,6 @@ class Ariane extends composer(obsidian.Plugin,
       this.demarrerActivite();
       this.brancherChronologie();
       this.demarrerVeille();
-      this.demarrerLecturesWeb();
       this.rangerChronologie().catch((e) => console.error('[Ariane] chronologie', e));
       this.installerInfobulleTemps();
     });

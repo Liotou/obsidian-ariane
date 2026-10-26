@@ -2003,17 +2003,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setValue(String(s[cle] == null ? defaut : s[cle]))
         .onChange(async (v) => { const n = Number(v); s[cle] = Number.isFinite(n) ? n : defaut; await maj(); }));
 
-    this._section(c, tr('Liste de lecture de Safari'));
-    this._reserveMac(c);
-    this._aide(c, tr("Au démarrage d'Obsidian puis toutes les heures, chaque article de la liste de lecture de Safari devient une note : le texte principal de la page, sans menus ni publicités, lisible hors ligne. Safari n'est jamais modifié. Une page illisible hors du navigateur donne une note d'aperçu, retentée ensuite. Au clic droit sur une note d'article : « Ajouter à Zotero » (Zotero ouvert). Obsidian doit avoir l'« Accès complet au disque »."));
-    new obsidian.Setting(c)
-      .setName(tr('Importer la liste de lecture'))
-      .addToggle((t) => t.setValue(s.lecturesWebActif !== false).onChange(async (v) => { s.lecturesWebActif = v; await maj(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Dossier des articles'))
-      .addText((t) => t.setPlaceholder('12 - Liste de lectures Web').setValue(s.dossierLecturesWeb || '')
-        .onChange(async (v) => { s.dossierLecturesWeb = v.trim() || '12 - Liste de lectures Web'; await maj(); }));
-
     this._section(c, tr('Veille de thèse'));
     this._aide(c, tr("Chaque semaine, les nouveaux articles des revues suivies (Crossref, par ISSN), les rapports d'organisations (par préfixe DOI), les flux RSS d'institutions et les dépôts HAL. Un pré-score par mots-clés trie les candidats ; le fournisseur d'IA (onglet IA) choisit ensuite les références utiles à la thèse et rédige, pour chacune, son apport et son intérêt. Le tout devient une note du dossier de veille. Les titres, auteurs et liens viennent toujours des métadonnées des éditeurs, jamais de l'IA. Inspiré de veille-revues, de Thibaud Salomone."));
     new obsidian.Setting(c)

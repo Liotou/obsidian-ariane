@@ -830,18 +830,6 @@ both sides changed.
 The ID kept in the note names its service: switching destination never
 mistakes one service's reminder for another's.
 
-### Safari Reading List
-
-No command needed: when Obsidian starts and then every hour, each article of
-Safari's Reading List becomes a note in the "12 - Liste de lectures Web"
-folder. The note keeps the page's main text, without menus or ads, readable
-offline, with its address, site, author and date. Safari is never modified,
-and an article is never imported twice. A page that cannot be read outside
-the browser (paywall, JavaScript-only site) gives a preview note, retried on
-later passes. Right-click an article note: "Add to Zotero" sends it to the
-running Zotero, as its browser extension would. Mac only; Obsidian needs
-"Full Disk Access".
-
 ### Actual activity outside Obsidian (ActivityWatch)
 
 The timer only sees notes. To know what happens elsewhere on the computer,
