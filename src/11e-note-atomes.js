@@ -365,14 +365,14 @@ const avecNoteAtomes = (Base) => class extends Base {
   //  « Plan » les grisent à leur tour.
 
   // Une note relève-t-elle de la numérotation ? Dans un dossier choisi, hors
-  // tâches, veilles et notes que produisent ZotFlow ou Ariane.
+  // tâches et notes que produisent ZotFlow ou Ariane.
   dansNumerotation(file) {
     const s = this.settings;
     if (s.numerotationTitres === false || !file || file.extension !== 'md') return false;
     const dossiers = Array.isArray(s.numerotationDossiers) ? s.numerotationDossiers : [];
     const dans = (d) => d && (file.path === d + '.md' || file.path.startsWith(d + '/'));
     if (!dossiers.some(dans)) return false;
-    if ([s.dossierTaches, s.veilleDossier].some(dans)) return false;
+    if (dans(s.dossierTaches)) return false;
     const fm = (this.app.metadataCache.getFileCache(file) || {}).frontmatter || {};
     return fm['zotflow-auto'] !== true && fm['zotflow-locked'] !== true;
   }

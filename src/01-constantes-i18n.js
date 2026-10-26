@@ -929,12 +929,7 @@ const TEXTES = {
     "Saisir les pages…": "Enter pages…",
     "Importer ou exporter la configuration": "Import or export the configuration",
     "Importer…": "Import…",
-    " : ce n’est pas une configuration de veille.": ": not a watch configuration.",
-    "Veille : configuration remplacée.": "Watch: configuration replaced.",
-    "Veille : configuration complétée.": "Watch: configuration completed.",
-    "Configuration de veille": "Watch configuration",
     "Configuration exportée : ": "Configuration exported: ",
-    "Importer une configuration de veille": "Import a watch configuration",
     "le profil de la thèse": "the thesis profile",
     "thèmes de mots-clés": "keyword themes",
     "des sources": "sources",
@@ -943,7 +938,6 @@ const TEXTES = {
     "Remplacer": "Replace",
     "Rapports (préfixes DOI)": "Reports (DOI prefixes)",
     "Essai à blanc": "Dry run",
-    "Essai à blanc de la veille": "Watch dry run",
     "Sources et acteurs suivis": "Sources and followed actors",
     "Ajouter": "Add",
     "Recherche…": "Looking up…",
@@ -962,7 +956,6 @@ const TEXTES = {
     "Cette expression ne se réduit pas à des termes simples.": "This expression is not just plain terms.",
     "Supprimer ce thème": "Delete this theme",
     "Ajouter un thème": "Add a theme",
-    "Lancer la vraie veille": "Run the real watch",
     "Les mieux notés": "Top scored",
     "Source par source": "Source by source",
     "collectées": "collected",
@@ -997,7 +990,6 @@ const TEXTES = {
     "moyen": "medium",
     "faible": "low",
     "Événements à venir": "Upcoming events",
-    "Veille : analyse des acteurs (": "Watch: analysing actors (",
     " publications)…": " posts)…",
     "Catégories des publications des acteurs": "Categories of actors' posts",
     "Acteurs suivis": "Followed actors",
@@ -1014,7 +1006,6 @@ const TEXTES = {
     "Résumé": "Abstract",
     "Pour la thèse": "For the thesis",
     "Phase": "Phase",
-    "Veille du ": "Watch from ",
     " au ": " to ",
     "items collectés": "items collected",
     "après pré-tri": "after pre-sorting",
@@ -1040,51 +1031,31 @@ const TEXTES = {
     "filtré": "filtered",
     "aucun ISSN valide": "no valid ISSN",
     "requête": "query",
-    "Veille : une collecte est déjà en cours.": "Watch: a collection is already running.",
-    "Veille : aucune source. Réglages → Veille, ou importez la configuration de veille-revues.": "Watch: no source. Settings → Watch, or import the veille-revues configuration.",
-    "Veille : collecte…": "Watch: collecting…",
-    "Veille : collecte ": "Watch: collecting ",
-    "Veille : résumés et tri…": "Watch: abstracts and sorting…",
-    "Veille : sélection par l'IA (": "Watch: AI selection (",
     " candidats)…": " candidates)…",
     "réponse illisible": "unreadable answer",
     "aucune réponse": "no answer",
-    "Veille : écriture de la note…": "Watch: writing the note…",
-    "Veille": "Watch",
-    "Veille : ": "Watch: ",
     " candidats": " candidates",
     " retenus": " selected",
     ", sans analyse par l'IA": ", without AI analysis",
     " source(s) en erreur": " source(s) in error",
-    "Veille interrompue : ": "Watch stopped: ",
     "aucune source n'a répondu (connexion ?)": "no source answered (connection?)",
-    "Veille : aucune revue à vérifier.": "Watch: no journal to check.",
     "Vérification des ISSN…": "Checking ISSNs…",
     "Vérification des ISSN": "ISSN check",
     "à revoir": "to review",
     "Rapport copié.": "Report copied.",
-    "Veille de thèse": "Thesis watch",
-    "Chaque semaine, les nouveaux articles des revues suivies (Crossref, par ISSN), les rapports d'organisations (par préfixe DOI), les flux RSS d'institutions et les dépôts HAL. Un pré-score par mots-clés trie les candidats ; le fournisseur d'IA (onglet IA) choisit ensuite les références utiles à la thèse et rédige, pour chacune, son apport et son intérêt. Le tout devient une note du dossier de veille. Les titres, auteurs et liens viennent toujours des métadonnées des éditeurs, jamais de l'IA. Inspiré de veille-revues, de Thibaud Salomone.": "Every week: new articles from the journals you follow (Crossref, by ISSN), reports from organisations (by DOI prefix), institutional RSS feeds and HAL deposits. A keyword pre-score sorts the candidates; the AI provider (Tasks tab, AI assistant) then picks the references useful to the thesis and writes, for each, what it brings and why it matters. It all becomes a note in the watch folder. Titles, authors and links always come from the publishers' metadata, never from the AI. Inspired by veille-revues, by Thibaud Salomone.",
-    "Dernière veille : ": "Last watch: ",
     ". La suivante couvre les jours écoulés depuis.": ". The next one covers the days since.",
     "Jamais lancée.": "Never run.",
-    "Lancer la veille": "Run the watch",
     "Vérifier les ISSN": "Check ISSNs",
     "Chaque semaine": "Every week",
-    "Le jour choisi, Obsidian ouvert ; ou à l'ouverture, si la dernière veille a plus d'une semaine.": "On the chosen day, with Obsidian open; or at start-up, if the last watch is over a week old.",
     "Première fenêtre": "First window",
-    "En jours, pour la toute première veille. Ensuite, chaque veille couvre les jours écoulés depuis la précédente (un mois au plus) ; l'historique écarte ce qui a déjà été vu.": "In days, for the very first watch. After that, each watch covers the days since the previous one (a month at most); the history drops what was already seen.",
     "Sélection et analyse par l'IA": "AI selection and analysis",
-    "Désactivée, la note liste les candidats les mieux notés avec leur résumé, sans analyse. Une semaine de veille est un long texte : un petit modèle local s'y perd, Claude ou Mistral conviennent mieux.": "When off, the note lists the top-scoring candidates with their abstract, without analysis. A week of watch is a long text: a small local model gets lost in it, Claude or Mistral fit better.",
     "Adresse de contact": "Contact address",
     "Facultative. Transmise à Crossref et OpenAlex, elle donne accès à leur file prioritaire.": "Optional. Sent to Crossref and OpenAlex, it gives access to their polite pool.",
-    "Importer une configuration veille-revues": "Import a veille-revues configuration",
     "Choisissez sources.json, profil_these.json, ou les deux : les champs correspondants ci-dessous sont remplacés.": "Pick sources.json, profil_these.json, or both: the matching fields below are replaced.",
     "Choisir les fichiers…": "Choose files…",
     "sources": "sources",
     "profil": "profile",
     " : JSON illisible.": ": unreadable JSON.",
-    "Veille : importé (": "Watch: imported (",
     "Profil de la thèse": "Thesis profile",
     "Ce que l'IA lit pour juger chaque publication et rédiger « Pour la thèse ». Plus il est précis, meilleure est la sélection.": "What the AI reads to judge each publication and write \"For the thesis\". The more precise, the better the selection.",
     "Résumé de la thèse": "Thesis summary",
@@ -1120,10 +1091,6 @@ const TEXTES = {
     "Requêtes HAL": "HAL queries",
     "Une requête Solr par ligne, cherchée dans les dépôts de la période.": "One Solr query per line, run on the period's deposits.",
     "« Nom | adresse | Catégorie » : institutions sans flux, rappelées en fin de note pour une visite à la main.": "\"Name | address | Category\": institutions without a feed, listed at the end of the note for a visit by hand.",
-    "Veille : lancer la veille (depuis la dernière)": "Watch: run the watch (since the last one)",
-    "Veille : rattraper les 14 derniers jours": "Watch: catch up on the last 14 days",
-    "Veille : vérifier les ISSN des revues": "Watch: check the journals' ISSNs",
-    "Notes de synthèse de la veille (défaut : « Veille »).": "Watch summary notes (default: \"Veille\").",
     "Zotero : notes de références orphelines…": "Zotero: orphaned reference notes…",
     "Notes de références orphelines": "Orphaned reference notes",
     "Mettre à la corbeille": "Move to trash",
@@ -1654,34 +1621,6 @@ const DEFAULT_SETTINGS = {
   canevasPonts: true,           // un pont là où deux liens angulaires se croisent
   canevasCotesAuto: true,       // les côtés des liens suivent la disposition des cartes
   zoteroOrphelinsAuto: true,    // signaler les notes de références sans fiche Zotero
-  // --- Veille de thèse (revues, rapports, synthèse hebdomadaire) -----------
-  // Les listes sont des lignes « a | b | c » ; voir les compilateurs de
-  // src/11r-veille.js. Tout s'importe aussi depuis veille-revues.
-  veilleDossier: '',                    // rôle : où écrire les notes de veille
-  veilleDerniere: '',                   // jour de la dernière veille (état)
-  veilleJours: 7,                       // fenêtre de la première veille
-  veilleAuto: false,                    // lancer chaque semaine, Obsidian ouvert
-  veilleJourAuto: 1,                    // 1 = lundi … 7 = dimanche
-  veilleIA: true,                       // sélection et analyse par le fournisseur d'IA
-  veilleMailto: '',                     // contact transmis à Crossref et OpenAlex (facultatif)
-  veilleResume: '',
-  veilleCriteres: '',
-  veilleAEcarter: '',
-  veilleExempleLien: '',
-  veillePhases: '',
-  veilleMotsCles: '',
-  veilleSeuilFiltre: 5,                 // score minimal d'un item de source « filtrée »
-  veilleSeuilPriorite: 8,               // score à partir duquel un item est prioritaire
-  veilleSeuilResume: 4,                 // score à partir duquel l'IA lit le résumé
-  veilleExclusionsTitre: '^(issue information|editorial board|erratum|correction to|corrigendum|retraction|front matter|back matter|table of contents|cover image|masthead|reviewer acknowledg|annual index|thanks to reviewers|in this issue)',
-  veilleRevues: '',
-  veillePrefixes: '',
-  veilleFlux: '',
-  veilleHal: '',
-  veilleSites: '',
-  veilleActeurs: '',                    // « Nom | adresse, adresse » : associations, institutions suivies
-  // Catégories où l'IA range les publications des acteurs (une par ligne).
-  veilleCategoriesActeurs: 'Événement\nActualité\nPublication ou rapport\nPartenariat ou nouveau membre\nPosition ou plaidoyer\nRecrutement ou appel',
   canevasStyleRelation: true,   // hiérarchie discrète, blocage rouge en pointillés
   // Demander avant de supprimer une tâche depuis le canevas. La clé date de
   // l'ancienne vue Graphe ; elle est gardée pour ne pas perdre le choix fait.

@@ -18,8 +18,7 @@ class Ariane extends composer(obsidian.Plugin,
   avecChronologie,
   avecDonneesJour,
   avecIphone,
-  avecConcentration,
-  avecVeille) {
+  avecConcentration) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -475,21 +474,6 @@ class Ariane extends composer(obsidian.Plugin,
       checkCallback: surCanevas((s) => s.basculerPanneau()),
     });
     this.addCommand({
-      id: 'veille-lancer',
-      name: tr('Veille : lancer la veille (depuis la dernière)'),
-      callback: () => this.lancerVeille(),
-    });
-    this.addCommand({
-      id: 'veille-rattraper',
-      name: tr('Veille : rattraper les 14 derniers jours'),
-      callback: () => this.lancerVeille({ jours: 14 }),
-    });
-    this.addCommand({
-      id: 'veille-verifier-issn',
-      name: tr('Veille : vérifier les ISSN des revues'),
-      callback: () => this.verifierIssnVeille(),
-    });
-    this.addCommand({
       id: 'zotero-references-orphelines',
       name: tr('Zotero : notes de références orphelines…'),
       callback: () => this.revoirReferencesOrphelines(false),
@@ -856,7 +840,6 @@ class Ariane extends composer(obsidian.Plugin,
       this.demarrerBarreCreneau();
       this.demarrerActivite();
       this.brancherChronologie();
-      this.demarrerVeille();
       this.rangerChronologie().catch((e) => console.error('[Ariane] chronologie', e));
       this.installerInfobulleTemps();
     });

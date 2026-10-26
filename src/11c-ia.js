@@ -233,7 +233,7 @@ const avecIa = (Base) => class extends Base {
   }
 
   // `ctx` (facultatif) élargit la fenêtre de contexte d'Ollama, qui tronque
-  // en silence une invite plus longue que sa valeur par défaut (la veille).
+  // en silence une invite plus longue que sa valeur par défaut (une longue synthèse).
   async genererJsonAvec(prompt, max, lm, modele, ctx) {
     const url = this.urlInference(lm) + (lm ? '/v1/chat/completions' : '/api/generate');
     try {
@@ -345,7 +345,7 @@ const avecIa = (Base) => class extends Base {
       const env = envOutils();
       // Le modèle choisi dans les réglages ; sans choix, celui de Claude Code.
       // `parEntree` : l'invite passe par l'entrée standard, qui ignore la
-      // limite de taille des arguments (une semaine de veille la dépasse).
+      // limite de taille des arguments (un long texte la dépasse).
       // Sous Windows, toujours : cmd.exe limite la ligne de commande et
       // interpréterait certains caractères de l'invite.
       const parEntree = o.parEntree || process.platform === 'win32';
