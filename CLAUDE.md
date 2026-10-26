@@ -48,6 +48,27 @@ Deux règles, chacune tenue par un test de `tests/structure.test.js` :
 Une méthode nouvelle va dans le mixin de son domaine, et dans la sous-région
 `//#region Ariane · …` qui la concerne — pas en fin de fichier.
 
+## Ariane en modules (depuis 3.0.0)
+
+Le registre `MODULES_ARIANE` (01) liste quinze modules ; le cœur
+(`annotations`, `citations`) est toujours actif, le reste se coupe dans
+l'onglet Modules, ce qui **recharge** Ariane (`appliquerModules`). Un module
+coupé ne charge rien. D'où deux règles, tenues par des tests :
+
+- **Toute commande porte `module:`** (un id, ou un tableau d'ids tous requis) ;
+  `tests/modules.test.js` échoue sinon.
+- **Tout autre enregistrement** (vue, ruban, extension, post-processeur,
+  écoute, minuterie, composant) se place sous `if (this.module('…'))`.
+  `tests/modules-chargement.test.js` exécute le vrai `onload` module par
+  module coupé et vérifie que chaque coupure retire ses enregistrements.
+
+Les réglages : `ArianeSettingTab.COMPOSITION` range chaque rubrique (par son
+titre, dans la méthode qui la dessine) dans l'onglet de son module ; une
+rubrique nouvelle doit y être ajoutée, sinon le test des réglages échoue.
+Installation existante sans `modules` : profil « Tout ». Première
+installation : profil « Zotero et écriture » et note de présentation
+(`avecAccueil`, 11s).
+
 ## Pièges déjà payés
 
 - **Octets NUL.** `main.js` en contient (chaînes sentinelles : `SANS_GROUPE`
