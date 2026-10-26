@@ -394,5 +394,67 @@ function composerCitation(docStr, pos, entrees, sep) {
   return { from: pos, to: pos, insert: espace + '(' + retenues.join(separateur) + ')' };
 }
 
+// ── Citations d'une même source ──
+//  Dans un groupe « ( … ) », deux annotations d'une même source ne répètent
+//  pas son nom : il vient une fois, puis les pages à la suite, par ordre
+//  croissant, chacune gardant le lien vers sa note d'annotation :
+//  ([[K1|Amsterdamski et al., 1990, p. 156]], [[K2|p. 164]]).
+//  `infoDe(cle)` rend { source, libelle } (la source commune, le libellé
+//  complet) ou null pour un lien qui n'est pas une citation. Un groupe qui
+//  contient autre chose que des liens et des séparateurs n'est pas touché.
+//  Rend { texte, changements: [{ from, to, insert }] } (positions dans
+//  le texte d'origine).
+function fusionnerCitations(texte, infoDe, sep) {
+  const t = String(texte == null ? '' : texte);
+  const separateur = sep || ' ; ';
+  const changements = [];
+  const pageDe = (p) => { const m = String(p).match(/\d+/); return m ? Number(m[0]) : Infinity; };
+  const decouper = (alias) => {
+    if (estLibelleNarratif(alias)) return null;
+    let m = alias.match(/^(.*\S),\s*(pp?\.\s*\S.*)$/);
+    if (m && !/;/.test(m[1])) return { tete: m[1], page: m[2] };
+    m = alias.match(/^(pp?\.\s*\S.*)$/);
+    return m ? { tete: null, page: m[1] } : null;
+  };
+  for (const g of t.matchAll(/\(([^()]*\[\[[^()]*)\)/g)) {
+    const dedans = g[1];
+    const debut = g.index + 1;
+    const liens = [...dedans.matchAll(/\[\[([^\]|#\n]+?)(\\?\|)([^\]\n]*)\]\]/g)];
+    if (!liens.length) continue;
+    // Entre les liens, des séparateurs seulement.
+    let reste = dedans;
+    for (const l of liens) reste = reste.replace(l[0], '');
+    if (!/^[\s;,]*$/.test(reste)) continue;
+    const entrees = [];
+    const parSource = new Map();
+    for (const l of liens) {
+      const cle = cleDeLien(l[1]);
+      const info = infoDe(cle);
+      const morceaux = info && info.source ? decouper(l[3]) : null;
+      if (!morceaux) { entrees.push({ seul: l[0] }); continue; }
+      const it = { cle, barre: l[2], tete: morceaux.tete, page: morceaux.page, libelle: info.libelle };
+      if (!parSource.has(info.source)) { const e = { items: [] }; parSource.set(info.source, e); entrees.push(e); }
+      parSource.get(info.source).items.push(it);
+    }
+    const lien = (it, alias) => '[[' + it.cle + it.barre + alias + ']]';
+    const rendu = entrees.map((e) => {
+      if (e.seul) return e.seul;
+      const items = e.items.slice().sort((a, b) => pageDe(a.page) - pageDe(b.page));
+      const tete = (items.find((i) => i.tete) || {}).tete
+        || (decouper(items[0].libelle || '') || {}).tete;
+      if (items.length === 1) {
+        const i = items[0];
+        return lien(i, i.tete ? i.tete + ', ' + i.page : (i.libelle || (tete ? tete + ', ' + i.page : i.page)));
+      }
+      if (!tete) return items.map((i) => lien(i, i.tete ? i.tete + ', ' + i.page : i.page)).join(separateur);
+      return items.map((i, k) => lien(i, k === 0 ? tete + ', ' + i.page : i.page)).join(', ');
+    }).join(separateur);
+    if (rendu !== dedans) changements.push({ from: debut, to: debut + dedans.length, insert: rendu });
+  }
+  let out = t;
+  for (const c of changements.slice().reverse()) out = out.slice(0, c.from) + c.insert + out.slice(c.to);
+  return { texte: out, changements };
+}
+
 //#endregion 6 · Bibliographie
 

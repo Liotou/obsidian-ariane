@@ -70,8 +70,6 @@ function dureeLisible(minutes) {
   return r ? h + ' h ' + String(r).padStart(2, '0') : h + ' h';
 }
 
-// Regroupe les entrées d'une même source : deux annotations d'un même travail
-// ne font qu'une citation, et leurs pages se cumulent dans un seul suffixe.
 // « a, b et c ». Le dernier terme est amené par « et », ce qui marque la fin
 // de l'énumération sans recourir au point-virgule.
 function enumererFrancais(liste) {

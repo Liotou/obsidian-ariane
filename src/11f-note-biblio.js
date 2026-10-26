@@ -117,6 +117,10 @@ const avecNoteBiblio = (Base) => class extends Base {
         const avant = await this.app.vault.read(f);
         if (avant.indexOf('|') === -1) continue;
         const r = rafraichirLibelles(avant, (c) => this.libelleCitation(c), (c) => this.estCitable(c));
+        // Les citations d'une même source restent réunies.
+        const fus = fusionnerCitations(r.texte, (c) => this.infoCitation(c), this.settings.separateurCitation || ' ; ');
+        r.texte = fus.texte;
+        r.n += fus.changements.length;
         if (!r.n || r.texte === avant) continue;
         await this.ecrire(f.path, r.texte, f);
         notes++; total += r.n;
@@ -355,6 +359,29 @@ const avecNoteBiblio = (Base) => class extends Base {
 
   // Mode « citation classique » : insère « ([[clé|Auteur, année, p. X]]) » au
   // point visé, ou complète le groupe de citations déjà présent à cet endroit.
+  // Ce que la fusion des citations doit savoir d'un lien : la source commune
+  // (celle de l'annotation, ou la note de source elle-même) et le libellé
+  // complet. null : pas une citation.
+  infoCitation(cle) {
+    const dest = this.app.metadataCache.getFirstLinkpathDest(cle, '');
+    if (!dest) return null;
+    const fm = (this.app.metadataCache.getFileCache(dest) || {}).frontmatter || {};
+    let source = '';
+    if (fm['zotflow-anno-key'] !== undefined) {
+      source = String(fm['zotflow-source'] || '').replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
+    } else if (fm.citationKey) source = dest.basename;
+    return source ? { source, libelle: this.libelleCitation(cle) } : null;
+  }
+
+  // Après un dépôt : les citations d'une même source, réunies.
+  fusionnerCitationsEditeur(cm) {
+    try {
+      const r = fusionnerCitations(cm.state.doc.toString(), (c) => this.infoCitation(c),
+        this.settings.separateurCitation || ' ; ');
+      if (r.changements.length) cm.dispatch({ changes: r.changements });
+    } catch (e) { console.warn('[Ariane] fusion des citations :', e); }
+  }
+
   attacherCitation(cm, lineNumber, cles, insertOffset) {
     const doc = cm.state.doc;
     const docStr = doc.toString();
@@ -391,6 +418,7 @@ const avecNoteBiblio = (Base) => class extends Base {
     const modif = composerCitation(docStr, pos, entrees, sep);
     if (!modif) return false;
     cm.dispatch({ changes: [modif] });
+    this.fusionnerCitationsEditeur(cm);
     return true;
   }
 

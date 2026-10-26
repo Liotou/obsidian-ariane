@@ -24,6 +24,7 @@ module.exports._test = {
   narratifDepuisLibelle,
   estLibelleNarratif,
   insertionNarrative,
+  fusionnerCitations,
   debutDePhrase,
   libelleConcept,
   uniformiserLiensConcepts,

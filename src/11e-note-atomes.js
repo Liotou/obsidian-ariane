@@ -1768,6 +1768,7 @@ const avecNoteAtomes = (Base) => class extends Base {
       const narratif = ctx.style === 'narratif';
       const r = insertionCellule(l.text, c, cles.map((x) => lien(x, narratif)), narratif, sep);
       cm.dispatch({ changes: { from: l.from + r.off, insert: r.insert } });
+      this.fusionnerCitationsEditeur(cm);
       return;
     }
     // Style narratif : « Auteur (année) » au point exact du dépôt.
@@ -1785,6 +1786,7 @@ const avecNoteAtomes = (Base) => class extends Base {
       // précédent, par-dessus la ligne vide.
       const insert = '(' + cles.map((c) => lien(c, false)).join(sep) + ') ';
       cm.dispatch({ changes: { from: ligne.from, insert }, selection: { anchor: ligne.from + insert.length } });
+      this.fusionnerCitationsEditeur(cm);
       try { cm.focus(); } catch (err) { /* éditeur fermé */ }
       return;
     }
