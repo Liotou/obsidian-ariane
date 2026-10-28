@@ -129,13 +129,16 @@ function surnamesReference(ref) {
 }
 
 // Force d'appariement entre une référence citée et une entrée d'index Zotero.
-// 'fort'   : année + TOUS les auteurs cités présents (haute certitude).
+// L'année est celle de l'édition, ou la date originale : « Morin, 1990 » désigne
+// l'« Introduction à la pensée complexe » de 1990 rééditée en 2014.
+// 'fort'   : année + TOUS les auteurs cités présents, le premier cité étant le
+//            premier de la fiche (haute certitude).
 // 'faible' : « et al. » (seul le premier auteur connu) + année + 1er auteur présent.
 // null     : pas de correspondance.
 function appariementSource(ref, entree) {
   if (!ref || !entree) return null;
   const an = ref.annee4 || ref.annee;
-  if (!an || !entree.annee || entree.annee !== an) return null;
+  if (!an || (entree.annee !== an && entree.anneeOriginale !== an)) return null;
   const rs = surnamesReference(ref);
   if (!rs.length) return null;
   const liste = entree.surnames || [];
@@ -148,7 +151,10 @@ function appariementSource(ref, entree) {
     // faux appariements sur vingt-six.
     return rs[0] === liste[0] ? 'fort' : (es.has(rs[0]) ? 'faible' : null);
   }
-  return rs.every((s) => es.has(s)) ? 'fort' : null;
+  // « Morin, 1990 » ne désigne pas un ouvrage collectif où Morin signe parmi
+  // douze : un auteur cité seul qui n'ouvre pas la fiche n'est qu'un candidat.
+  if (!rs.every((s) => es.has(s))) return null;
+  return rs[0] === liste[0] ? 'fort' : 'faible';
 }
 
 // Tous les candidats (les 'fort' d'abord) pour une référence citée.

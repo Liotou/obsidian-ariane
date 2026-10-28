@@ -3177,13 +3177,16 @@ function surnamesReference(ref) {
 }
 
 // Force d'appariement entre une référence citée et une entrée d'index Zotero.
-// 'fort'   : année + TOUS les auteurs cités présents (haute certitude).
+// L'année est celle de l'édition, ou la date originale : « Morin, 1990 » désigne
+// l'« Introduction à la pensée complexe » de 1990 rééditée en 2014.
+// 'fort'   : année + TOUS les auteurs cités présents, le premier cité étant le
+//            premier de la fiche (haute certitude).
 // 'faible' : « et al. » (seul le premier auteur connu) + année + 1er auteur présent.
 // null     : pas de correspondance.
 function appariementSource(ref, entree) {
   if (!ref || !entree) return null;
   const an = ref.annee4 || ref.annee;
-  if (!an || !entree.annee || entree.annee !== an) return null;
+  if (!an || (entree.annee !== an && entree.anneeOriginale !== an)) return null;
   const rs = surnamesReference(ref);
   if (!rs.length) return null;
   const liste = entree.surnames || [];
@@ -3196,7 +3199,10 @@ function appariementSource(ref, entree) {
     // faux appariements sur vingt-six.
     return rs[0] === liste[0] ? 'fort' : (es.has(rs[0]) ? 'faible' : null);
   }
-  return rs.every((s) => es.has(s)) ? 'fort' : null;
+  // « Morin, 1990 » ne désigne pas un ouvrage collectif où Morin signe parmi
+  // douze : un auteur cité seul qui n'ouvre pas la fiche n'est qu'un candidat.
+  if (!rs.every((s) => es.has(s))) return null;
+  return rs[0] === liste[0] ? 'fort' : 'faible';
 }
 
 // Tous les candidats (les 'fort' d'abord) pour une référence citée.
@@ -7239,6 +7245,12 @@ const avecNoteReferences = (Base) => class extends Base {
       .map((c) => sansAccents(String(c).trim().split(/\s+/).pop()))
       .filter((x) => x.length > 0);
     const anneeMatch = String(fm.year || fm.date || '').match(/\d{4}/);
+    // La date originale d'une réédition : propriété de la note si ZotFlow l'y
+    // inscrit, ligne « original-date » du champ Extra, sinon la base de Zotero.
+    const origine = String(fm.originalDate || fm['original-date'] || fm['date-originale']
+      || (String(fm.extra || '').match(/original-date:\s*(\S+)/i) || [])[1]
+      || (this._datesOriginales && this._datesOriginales.get(String(fm['zotero-key'] || '')))
+      || '').match(/\d{4}/);
     const creatorsFull = [];
     for (const c of creators) {
       const nom = nomCompletAuteur(c);
@@ -7253,10 +7265,27 @@ const avecNoteReferences = (Base) => class extends Base {
       titre: fm.title || '',
       doi: normDoi(fm.doi),
       annee: anneeMatch ? anneeMatch[0] : '',
+      anneeOriginale: origine ? origine[0] : '',
     };
   }
 
+  // Dates originales des fiches Zotero (clé de fiche : date), que ZotFlow ne
+  // recopie pas dans les notes. Lues en arrière-plan, au plus toutes les dix
+  // minutes ; la promesse est rendue à qui doit les attendre (l'atomisation).
+  chargerDatesOriginales() {
+    if (!this._datesOriginalesP || Date.now() - this._datesOriginalesT > 600000) {
+      this._datesOriginalesT = Date.now();
+      this._datesOriginalesP = Promise.resolve(this.requeteZotero('SELECT i.key, v.value FROM items i '
+        + 'JOIN itemData d ON d.itemID = i.itemID JOIN fields f ON f.fieldID = d.fieldID '
+        + "JOIN itemDataValues v ON v.valueID = d.valueID WHERE f.fieldName = 'originalDate';"))
+        .then((lignes) => { this._datesOriginales = new Map((lignes || []).map(([k, v]) => [k, v])); })
+        .catch(() => { this._datesOriginales = new Map(); });
+    }
+    return this._datesOriginalesP;
+  }
+
   construireIndexZotero() {
+    this.chargerDatesOriginales();
     const idx = [];
     for (const file of this.app.vault.getMarkdownFiles()) {
       const e = this.entreeIndex(file);
@@ -8212,6 +8241,7 @@ const avecNoteReferences = (Base) => class extends Base {
       if (this.settings.propagerSuppressions) await this.supprimerAnnotation(file, cle);
       return;
     }
+    await this.chargerDatesOriginales();
     const idx = this.construireIndexZotero();
     const fmSrc = (this.app.metadataCache.getFileCache(source) || {}).frontmatter || {};
     await this.chargerAssociations();
@@ -8231,6 +8261,7 @@ const avecNoteReferences = (Base) => class extends Base {
 
     if (!this.app.vault.getAbstractFileByPath(this.dossierR)) return;
     // Index complet (pour juger l'unicité d'un appariement fort).
+    await this.chargerDatesOriginales();
     const index = this.settings.rattachementAutoCertain ? this.construireIndexZotero() : null;
     for (const f of this.app.vault.getMarkdownFiles()) {
       if (!f.path.startsWith(this.dossierR + '/')) continue;
@@ -8258,6 +8289,7 @@ const avecNoteReferences = (Base) => class extends Base {
       new obsidian.Notice(tr('Aucun dossier de références en attente.'));
       return;
     }
+    await this.chargerDatesOriginales();
     const index = this.construireIndexZotero();
     let attachees = 0, ambigues = 0, sansSource = 0;
     for (const f of this.app.vault.getMarkdownFiles()) {
@@ -8899,6 +8931,7 @@ const avecNoteAtomes = (Base) => class extends Base {
     const contenu = await this.app.vault.read(file);
     if (!contenu.includes(cfg.marqueurSource)) return;
 
+    await this.chargerDatesOriginales();
     const idx = this.construireIndexZotero();
     const blocs = extraireBlocs(contenu, cfg);
 

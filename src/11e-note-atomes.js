@@ -56,6 +56,7 @@ const avecNoteAtomes = (Base) => class extends Base {
     const contenu = await this.app.vault.read(file);
     if (!contenu.includes(cfg.marqueurSource)) return;
 
+    await this.chargerDatesOriginales();
     const idx = this.construireIndexZotero();
     const blocs = extraireBlocs(contenu, cfg);
 
