@@ -23,6 +23,13 @@ const avecNoteBiblio = (Base) => class extends Base {
     return f || null;
   }
 
+  // La source (nom de sa note) que commente une note de lecture, d'après
+  // ses propriétés ; '' pour toute autre note.
+  sourceDeNoteLecture(fm) {
+    if (!fm || fm['zotflow-note-key'] === undefined || fm['zotflow-anno-key'] !== undefined) return '';
+    return sansLien(fm['zotflow-source'] || '');
+  }
+
   // Sources citées dans le corps, dans l'ordre d'apparition, sans doublon.
   sourcesCitees(contenu) {
     const corps = corpsCitable(contenu);
@@ -93,12 +100,12 @@ const avecNoteBiblio = (Base) => class extends Base {
     new obsidian.Notice(tr('Bibliographie mise à jour dans ') + n + ' note(s).');
   }
 
-  // Une clé désigne-t-elle une annotation ou une note source citable ?
+  // Une clé désigne-t-elle une annotation, une note de lecture ou une note source citable ?
   estCitable(cle) {
     const dest = this.app.metadataCache.getFirstLinkpathDest(String(cle), '');
     if (!dest) return false;
     const fm = (this.app.metadataCache.getFileCache(dest) || {}).frontmatter || {};
-    return fm['zotflow-anno-key'] !== undefined || !!fm.citationKey;
+    return fm['zotflow-anno-key'] !== undefined || !!fm.citationKey || !!this.sourceDeNoteLecture(fm);
   }
 
   async rafraichirCitations(portee) {
@@ -149,8 +156,9 @@ const avecNoteBiblio = (Base) => class extends Base {
       .replace(/\s{2,}/g, ' ');
   }
 
-  // Libellé d'une citation. Trois cas :
+  // Libellé d'une citation. Quatre cas :
   //  - note source : ses propres auteurs, sans page ;
+  //  - note de lecture : les auteurs de la source qu'elle commente, sans page ;
   //  - annotation sans référence citée : auteurs de la source + page ;
   //  - annotation citant un travail tiers : ce travail, suivi de « cité dans »
   //    et de la source réellement consultée — sauf si ce travail figure lui
@@ -160,6 +168,8 @@ const avecNoteBiblio = (Base) => class extends Base {
     const fm = dest ? ((this.app.metadataCache.getFileCache(dest) || {}).frontmatter || {}) : {};
 
     if (fm['zotflow-anno-key'] === undefined) {
+      const lue = this.sourceDeNoteLecture(fm);
+      if (lue) return this.formatCitation(this.auteursDepuisReference('[[' + lue + ']]', dest.path), '', cle) || cle;
       return this.formatCitation(this.auteursDepuisReference('[[' + cle + ']]', ''), '', cle) || cle;
     }
 
@@ -370,6 +380,7 @@ const avecNoteBiblio = (Base) => class extends Base {
     if (fm['zotflow-anno-key'] !== undefined) {
       source = String(fm['zotflow-source'] || '').replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
     } else if (fm.citationKey) source = dest.basename;
+    else source = this.sourceDeNoteLecture(fm);
     return source ? { source, libelle: this.libelleCitation(cle) } : null;
   }
 

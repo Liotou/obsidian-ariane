@@ -1003,7 +1003,7 @@ const avecNoteAtomes = (Base) => class extends Base {
     }
   }
 
-  // Une note peut-elle servir d'appui : annotation, ou source Zotero ?
+  // Une note peut-elle servir d'appui : annotation, note de lecture, ou source Zotero ?
   noteCitable(cle) {
     if (!cle) return false;
     for (const c of [cle, String(cle).split('/').pop()]) {
@@ -1013,6 +1013,7 @@ const avecNoteAtomes = (Base) => class extends Base {
       const fm = ((this.app.metadataCache.getFileCache(f) || {}).frontmatter) || {};
       if (f.path.startsWith(this.dossierA + '/') && fm['zotflow-anno-key'] !== undefined) return true;
       if (fm.citationKey !== undefined) return true;
+      if (this.sourceDeNoteLecture(fm)) return true;
     }
     return false;
   }
@@ -1100,6 +1101,8 @@ const avecNoteAtomes = (Base) => class extends Base {
       const fm = (cache ? cache.frontmatter : null) || {};
       // Annotation.
       if (f.path.startsWith(this.dossierA + '/') && fm['zotflow-anno-key'] !== undefined) return true;
+      // Note de lecture : elle cite la source qu'elle commente.
+      if (this.sourceDeNoteLecture(fm)) return true;
       // Note source : citer un travail sans passer par une annotation reste
       // légitime, et c'est précisément ce qu'on glisse depuis un panneau tiers.
       return fm.citationKey !== undefined;
