@@ -313,6 +313,21 @@ const avecNoteReferences = (Base) => class extends Base {
     return out.length > Math.max(5, l.length / 2) ? [] : out;
   }
 
+  // Lignes [clé, champ, valeur] de la base de Zotero : clé de fiche -> date
+  // originale. Le champ « Date originale » l'emporte ; à défaut, la ligne
+  // « original-date: 1990 » du champ Extra, que l'API web sait écrire.
+  static datesOriginales(lignes) {
+    const out = new Map();
+    for (const [cle, champ, valeur] of lignes || []) {
+      if (champ === 'originalDate' && valeur) out.set(cle, valeur);
+    }
+    for (const [cle, champ, valeur] of lignes || []) {
+      const m = champ === 'extra' && !out.has(cle) && String(valeur || '').match(/^\s*original[- ]date:\s*(\S.*)$/im);
+      if (m) out.set(cle, m[1].trim());
+    }
+    return out;
+  }
+
   //#endregion Ariane · static · références
 
   //#region Ariane · index Zotero
@@ -362,10 +377,10 @@ const avecNoteReferences = (Base) => class extends Base {
   chargerDatesOriginales() {
     if (!this._datesOriginalesP || Date.now() - this._datesOriginalesT > 600000) {
       this._datesOriginalesT = Date.now();
-      this._datesOriginalesP = Promise.resolve(this.requeteZotero('SELECT i.key, v.value FROM items i '
+      this._datesOriginalesP = Promise.resolve(this.requeteZotero('SELECT i.key, f.fieldName, v.value FROM items i '
         + 'JOIN itemData d ON d.itemID = i.itemID JOIN fields f ON f.fieldID = d.fieldID '
-        + "JOIN itemDataValues v ON v.valueID = d.valueID WHERE f.fieldName = 'originalDate';"))
-        .then((lignes) => { this._datesOriginales = new Map((lignes || []).map(([k, v]) => [k, v])); })
+        + "JOIN itemDataValues v ON v.valueID = d.valueID WHERE f.fieldName IN ('originalDate', 'extra');"))
+        .then((lignes) => { this._datesOriginales = Ariane.datesOriginales(lignes); })
         .catch(() => { this._datesOriginales = new Map(); });
     }
     return this._datesOriginalesP;

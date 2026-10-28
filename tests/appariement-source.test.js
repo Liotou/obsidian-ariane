@@ -32,3 +32,17 @@ test('« Morin, 1990 » se rattache à l’Introduction, non à la Querelle', ()
   assert.equal(trouverSourceZotero(MORIN_1990, [QUERELLE, INTRODUCTION]), '@morinIntroductionPenseeComplexe2014');
   assert.equal(trouverSourceZotero(MORIN_1990, [QUERELLE]), null, 'seule la Querelle : rien d’automatique');
 });
+
+test('dates originales lues dans la base : le champ, sinon la ligne du champ Extra', () => {
+  const m = Ariane.datesOriginales([
+    ['YAG3ES5C', 'originalDate', '1990'],
+    ['T87ITB9H', 'extra', 'OCLC: 1\noriginal-date: 1990'],
+    ['QL8ZPTPB', 'extra', 'Original Date: 1968'],
+    ['AAAAAAAA', 'extra', 'OCLC: 2'],
+    ['YAG3ES5C', 'extra', 'original-date: 1985'],
+  ]);
+  assert.equal(m.get('YAG3ES5C'), '1990', 'le champ l’emporte');
+  assert.equal(m.get('T87ITB9H'), '1990');
+  assert.equal(m.get('QL8ZPTPB'), '1968');
+  assert.equal(m.has('AAAAAAAA'), false);
+});
