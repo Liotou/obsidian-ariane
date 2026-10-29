@@ -147,7 +147,7 @@ const TEXTES = {
     " clé(s) résiduelle(s) supprimée(s).": " leftover key(s) removed.",
     "Note de tâche": "Task note",
     "Habillage de la note de tâche": "Task note styling",
-    "Dans une note de tâche : propriétés en grille ordonnée avec icônes, contenu aéré. Purement visuel.": "In a task note: properties in an ordered grid with icons, airy content. Purely visual.",
+    "Dans une note de tâche : propriétés en grille ordonnée avec icônes. Le texte de la note garde son apparence native.": "In a task note: properties in an ordered grid with icons. The note text keeps its native look.",
     "CSS personnalisé": "Custom CSS",
     "Plage de travail": "Working hours",
     "Début et fin de journée, HH:MM.": "Start and end of the day, HH:MM.",

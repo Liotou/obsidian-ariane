@@ -1694,7 +1694,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._section(c, tr('Note de tâche'));
     new obsidian.Setting(c)
       .setName(tr('Habillage de la note de tâche'))
-      .setDesc(tr('Dans une note de tâche : propriétés en grille ordonnée avec icônes, contenu aéré. Purement visuel.'))
+      .setDesc(tr('Dans une note de tâche : propriétés en grille ordonnée avec icônes. Le texte de la note garde son apparence native.'))
       .addToggle((t) => t.setValue(s.styleNoteTache === true)
         .onChange(async (v) => { s.styleNoteTache = v; await maj(); this.plugin.habillerNotesTache(); }));
     new obsidian.Setting(c)
