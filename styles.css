@@ -1920,6 +1920,48 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   opacity: 0.8;
 }
 
+/* La section « Sessions » (créneaux de la tâche) : tables dans le style
+   des propriétés, en lecture comme en direct (classes posées par
+   _habillerSessions). Le titre garde son apparence native. */
+.zfa-note-tache-skin table.zfa-sessions-table {
+  --table-border-width: 0;
+  --table-background: transparent;
+  --table-row-alt-background: transparent;
+  --table-row-background-hover: var(--background-modifier-hover);
+  --table-row-alt-background-hover: var(--background-modifier-hover);
+  --table-header-background: transparent;
+  --table-header-background-hover: transparent;
+  --table-header-color: var(--text-faint);
+  --table-header-size: var(--font-ui-smaller);
+  --table-header-weight: 700;
+  --table-text-size: var(--font-ui-medium);
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+.zfa-note-tache-skin .zfa-sessions-bloc .table-wrapper { width: 100%; }
+.zfa-note-tache-skin table.zfa-sessions-table thead th {
+  border-bottom: 1px solid var(--background-modifier-border);
+  text-align: start;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.zfa-note-tache-skin table.zfa-sessions-table td:first-child {
+  width: 1%;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.zfa-note-tache-skin .zfa-sessions-resume {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
 /* Réglage : zone de CSS personnalisé pleine largeur. */
 .zfa-css-perso-reglage { display: block; }
 .zfa-css-perso-reglage .setting-item-control { width: 100%; margin-top: 6px; }

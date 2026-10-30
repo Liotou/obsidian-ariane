@@ -21165,6 +21165,34 @@ const avecTaches = (Base) => class extends Base {
       for (const cont of contEl.querySelectorAll('.metadata-properties')) {
         try { this._grouperProprietes(cont, ctx.clesFamille); } catch (e) { /* rien */ }
       }
+      try { this._habillerSessions(contEl); } catch (e) { /* rien */ }
+    }
+  }
+
+  // La section « Sessions » (bloc des créneaux, voir majBlocCreneaux) : ses
+  // tables et son résumé reçoivent une classe, pour être habillés comme les
+  // propriétés. En lecture, chaque bloc est un div frère (div > h2, div >
+  // table) ; en direct, une ligne de titre suivie du widget de table.
+  _habillerSessions(contEl) {
+    const titres = contEl.querySelectorAll('.markdown-preview-section h2, .markdown-preview-section h3, '
+      + '.cm-content > .HyperMD-header-2, .cm-content > .HyperMD-header-3');
+    const estTitre = (el) => el.matches('.el-h1, .el-h2, .el-h3, .HyperMD-header');
+    for (const t of titres) {
+      const nom = String(t.textContent || '').replace(/^#+\s*/, '').trim();
+      if (nom !== 'Sessions' && nom !== 'Hors Obsidian') continue;
+      let el = (t.closest('.cm-line') || t.parentElement).nextElementSibling;
+      let table = null;
+      for (let i = 0; el && i < 5 && !estTitre(el); i += 1, el = el.nextElementSibling) {
+        table = el.matches('table') ? el : el.querySelector('table');
+        if (table) break;
+      }
+      if (!table) continue;
+      table.classList.add('zfa-sessions-table');
+      el.classList.add('zfa-sessions-bloc');
+      let r = el.nextElementSibling;
+      for (let i = 0; r && i < 3 && !estTitre(r); i += 1, r = r.nextElementSibling) {
+        if (r.querySelector('strong, .cm-strong')) { r.classList.add('zfa-sessions-resume'); break; }
+      }
     }
   }
 
