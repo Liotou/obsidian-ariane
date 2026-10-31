@@ -4354,226 +4354,237 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 
 /* ===================== Commentaires en marge (section 23) ================== */
 /* Repris de Margin Annotations (hex, licence MIT, voir src/23), redessiné
-   aux couleurs et aux gestes d'Obsidian. */
+   sur le modèle d'Obsidian : les cartes empruntent l'allure des encadrés
+   (fond teinté de leur couleur, icône, sans bordure), l'en-tête celle des
+   volets natifs (nav-header), les boutons les clickable-icon. */
 body {
-  --zfa-com-rgb-yellow: 230, 180, 0;
+  --zfa-com-rgb-yellow: 224, 172, 0;
   --zfa-com-rgb-green: 46, 170, 90;
   --zfa-com-rgb-blue: 60, 140, 240;
   --zfa-com-rgb-pink: 235, 90, 150;
   --zfa-com-rgb-purple: 150, 110, 240;
   --zfa-com-rgb-orange: 240, 125, 50;
 }
+.zfa-com-c-yellow { --zfa-com-rgb: var(--zfa-com-rgb-yellow); }
 .zfa-com-c-green  { --zfa-com-rgb: var(--zfa-com-rgb-green); }
 .zfa-com-c-blue   { --zfa-com-rgb: var(--zfa-com-rgb-blue); }
 .zfa-com-c-pink   { --zfa-com-rgb: var(--zfa-com-rgb-pink); }
 .zfa-com-c-purple { --zfa-com-rgb: var(--zfa-com-rgb-purple); }
 .zfa-com-c-orange { --zfa-com-rgb: var(--zfa-com-rgb-orange); }
+.zfa-com-hl { --zfa-com-rgb: var(--zfa-com-rgb-yellow); }
+.zfa-com-hl[data-color="green"]  { --zfa-com-rgb: var(--zfa-com-rgb-green); }
+.zfa-com-hl[data-color="blue"]   { --zfa-com-rgb: var(--zfa-com-rgb-blue); }
+.zfa-com-hl[data-color="pink"]   { --zfa-com-rgb: var(--zfa-com-rgb-pink); }
+.zfa-com-hl[data-color="purple"] { --zfa-com-rgb: var(--zfa-com-rgb-purple); }
+.zfa-com-hl[data-color="orange"] { --zfa-com-rgb: var(--zfa-com-rgb-orange); }
 
-/* ---- Le passage commenté : fond léger et soulignement de sa couleur,
-        en édition comme en lecture ; l'actif et le survolé s'éclairent ---- */
+/* ---- Le passage commenté : fond léger et soulignement de sa couleur ---- */
 .zfa-com-hl,
 .cm-line .zfa-com-texte {
-  --zfa-com-rgb: var(--zfa-com-rgb-yellow);
   color: inherit;
-  background-color: rgba(var(--zfa-com-rgb), 0.16);
+  background-color: rgba(var(--zfa-com-rgb), 0.14);
   text-decoration: underline;
-  text-decoration-color: rgba(var(--zfa-com-rgb), 0.9);
+  text-decoration-color: rgba(var(--zfa-com-rgb), 0.85);
   text-decoration-thickness: 2px;
   text-underline-offset: 3px;
   text-decoration-skip-ink: none;
   border-radius: 2px;
   transition: background-color 0.15s ease;
 }
-.zfa-com-hl[data-color="green"]  { --zfa-com-rgb: var(--zfa-com-rgb-green); }
-.zfa-com-hl[data-color="blue"]   { --zfa-com-rgb: var(--zfa-com-rgb-blue); }
-.zfa-com-hl[data-color="pink"]   { --zfa-com-rgb: var(--zfa-com-rgb-pink); }
-.zfa-com-hl[data-color="purple"] { --zfa-com-rgb: var(--zfa-com-rgb-purple); }
-.zfa-com-hl[data-color="orange"] { --zfa-com-rgb: var(--zfa-com-rgb-orange); }
-.cm-line .zfa-com-texte.zfa-com-c-green  { --zfa-com-rgb: var(--zfa-com-rgb-green); }
-.cm-line .zfa-com-texte.zfa-com-c-blue   { --zfa-com-rgb: var(--zfa-com-rgb-blue); }
-.cm-line .zfa-com-texte.zfa-com-c-pink   { --zfa-com-rgb: var(--zfa-com-rgb-pink); }
-.cm-line .zfa-com-texte.zfa-com-c-purple { --zfa-com-rgb: var(--zfa-com-rgb-purple); }
-.cm-line .zfa-com-texte.zfa-com-c-orange { --zfa-com-rgb: var(--zfa-com-rgb-orange); }
 .zfa-com-hl.is-active, .zfa-com-hl.est-survole,
 .cm-line .zfa-com-texte.est-actif, .cm-line .zfa-com-texte.est-survole {
-  background-color: rgba(var(--zfa-com-rgb), 0.38);
+  background-color: rgba(var(--zfa-com-rgb), 0.32);
+}
+/* Le brouillon : le passage choisi reste visible pendant qu'on écrit. */
+.cm-line .zfa-com-texte.est-brouillon {
+  background-color: rgba(var(--zfa-com-rgb), 0.28);
+  text-decoration-style: dashed;
 }
 .zfa-com-hl.is-resolved,
 .cm-line .zfa-com-texte.est-resolu {
   background-color: transparent;
   text-decoration-style: dotted;
-  text-decoration-color: rgba(var(--zfa-com-rgb), 0.5);
+  text-decoration-color: rgba(var(--zfa-com-rgb), 0.45);
 }
 .zfa-com-hl.is-resolved.est-survole,
-.cm-line .zfa-com-texte.est-resolu.est-survole { background-color: rgba(var(--zfa-com-rgb), 0.16); }
+.cm-line .zfa-com-texte.est-resolu.est-survole { background-color: rgba(var(--zfa-com-rgb), 0.14); }
 
 /* La petite bulle en fin de passage (édition) et le bouton (lecture). */
 .zfa-com-signe,
 .zfa-com-bouton {
   display: inline-flex; align-items: center; justify-content: center;
-  vertical-align: text-top;
-  width: 1.15em; height: 1.15em;
-  margin: 0 1px 0 2px;
+  vertical-align: baseline;
+  margin: 0 1px 0 3px; padding: 1px;
   border-radius: var(--radius-s);
   color: rgb(var(--zfa-com-rgb, var(--zfa-com-rgb-yellow)));
-  cursor: pointer; user-select: none;
-  opacity: 0.85;
+  cursor: var(--cursor);
+  user-select: none;
+  opacity: 0.75;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
 }
-.zfa-com-signe svg, .zfa-com-bouton svg { width: 0.85em; height: 0.85em; stroke-width: 2.4px; }
+.zfa-com-signe svg, .zfa-com-bouton svg { width: 0.8em; height: 0.8em; stroke-width: 2.4px; }
 .zfa-com-signe:hover, .zfa-com-bouton:hover,
-.zfa-com-signe.est-actif, .zfa-com-signe.est-survole {
-  opacity: 1; background-color: rgba(var(--zfa-com-rgb, var(--zfa-com-rgb-yellow)), 0.18);
+.zfa-com-signe.est-actif, .zfa-com-signe.est-survole,
+.zfa-com-bouton.is-active, .zfa-com-bouton.est-survole {
+  opacity: 1; background-color: rgba(var(--zfa-com-rgb, var(--zfa-com-rgb-yellow)), 0.16);
 }
-.zfa-com-signe.est-resolu, .zfa-com-bouton.is-resolved { opacity: 0.45; }
+.zfa-com-signe.est-resolu, .zfa-com-bouton.is-resolved { opacity: 0.4; }
 
 /* Les balises : pâles en mode source, effacées en aperçu en direct. */
 .cm-line .zfa-com-balise { opacity: 0.3; font-size: 0.75em; }
 .zfa-com-masquer .markdown-source-view.is-live-preview .cm-line .zfa-com-balise { font-size: 0; opacity: 0; }
 span.ann-s { display: none; }
 
-/* ---- La bulle (lecture, volet fermé) ---- */
-.zfa-com-bulle {
-  position: fixed;
-  z-index: var(--layer-popover, 50);
-  width: max-content;
-  max-width: min(340px, calc(100vw - 16px));
-  padding: var(--size-4-2) var(--size-4-3);
-  background: var(--background-primary);
-  color: var(--text-normal);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  box-shadow: var(--shadow-l);
-  font-size: var(--font-ui-small);
-}
-.zfa-com-bulle-texte { margin-top: var(--size-4-1); white-space: pre-wrap; word-break: break-word; line-height: var(--line-height-normal); }
-
-/* ---- Saisie : modale, pastilles de couleur ---- */
-.zfa-com-modale-saisie { width: 100%; resize: vertical; margin-bottom: 12px; }
-.zfa-com-couleurs { display: flex; align-items: center; gap: var(--size-4-2); margin-bottom: 8px; }
-.zfa-com-couleurs-nom { color: var(--text-muted); font-size: var(--font-ui-small); }
-.zfa-com-pastille {
-  width: 16px; height: 16px; border-radius: 50%;
-  background: var(--zfa-com-pastille); cursor: pointer;
-  box-sizing: border-box;
-  box-shadow: 0 0 0 1px var(--background-modifier-border);
-  transition: transform 0.1s ease;
-}
-.zfa-com-pastille:hover { transform: scale(1.12); }
-.zfa-com-pastille.is-selected { box-shadow: 0 0 0 2px var(--background-primary), 0 0 0 4px var(--zfa-com-pastille); }
-
-/* ---- Le volet : en-tête fixe, marge qui défile ---- */
+/* ---- Le volet ---- */
 .zfa-com-volet {
   padding: 0 !important;
   display: flex; flex-direction: column;
   overflow: hidden;
-  background: var(--background-secondary);
 }
-.zfa-com-entete {
-  flex: 0 0 auto;
-  display: flex; align-items: center; justify-content: space-between; gap: var(--size-4-2);
-  padding: var(--size-4-2) var(--size-4-3);
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-.zfa-com-entete-titre {
-  display: flex; align-items: center; gap: var(--size-4-2);
-  font-size: var(--font-ui-small); font-weight: var(--font-semibold); color: var(--text-muted);
-}
+.zfa-com-entete.nav-header { flex: 0 0 auto; display: flex; align-items: center; }
+.zfa-com-entete .nav-buttons-container { flex: 1 1 auto; }
 .zfa-com-compte {
-  min-width: 18px; padding: 0 6px;
-  border-radius: var(--radius-l);
+  flex: none;
+  margin-inline-end: var(--size-4-2);
+  padding: 0 var(--size-4-1);
+  min-width: 1.6em;
+  border-radius: var(--radius-s);
   background: var(--background-modifier-hover);
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller); font-weight: var(--font-normal);
-  text-align: center; font-variant-numeric: tabular-nums;
+  font-size: var(--font-ui-smaller);
+  line-height: 1.6;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
-.zfa-com-entete-boutons { display: flex; gap: 2px; }
 .zfa-com-marge { position: relative; flex: 1 1 auto; overflow-x: hidden; overflow-y: auto; }
+.zfa-com-marge.zfa-com-suivre { overflow: hidden; }
 .zfa-com-marge:focus { outline: none; }
 .zfa-com-piste {
-  position: relative; min-height: 100%; padding: var(--size-4-3); box-sizing: border-box;
+  position: relative; padding: var(--size-4-2) var(--size-4-3); box-sizing: border-box;
   display: flex; flex-direction: column; gap: var(--size-4-2);
 }
-.zfa-com-suivre .zfa-com-piste { display: block; padding: 0; min-height: var(--zfa-com-piste-h, 100%); }
-.zfa-com-vide.pane-empty { padding: var(--size-4-4) var(--size-4-3); line-height: var(--line-height-normal); }
+.zfa-com-suivre .zfa-com-piste { display: block; padding: 0; will-change: transform; }
+.zfa-com-vide.pane-empty { padding: var(--size-4-4) var(--size-4-3); }
 
-/* ---- Les cartes ---- */
+/* ---- Les cartes, à la manière des encadrés ---- */
+.zfa-com-carte {
+  position: relative;
+  box-sizing: border-box;
+  padding: var(--size-4-2) var(--size-4-3) var(--size-4-3);
+  border-radius: var(--callout-radius, var(--radius-s));
+  background-color: rgba(var(--zfa-com-rgb), 0.08);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-normal);
+  cursor: var(--cursor);
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
 .zfa-com-suivre .zfa-com-carte {
   position: absolute; left: var(--size-4-3); right: var(--size-4-3); top: 0;
   transform: translateY(var(--zfa-com-y, 0px));
-  transition: transform 0.18s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-  will-change: transform;
+  transition: transform 0.2s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
-.zfa-com-carte {
-  box-sizing: border-box;
-  padding: var(--size-4-2) var(--size-4-3);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  background: var(--background-primary);
-  box-shadow: inset 3px 0 0 var(--zfa-com-couleur, var(--interactive-accent));
-  font-size: var(--font-ui-small);
-  cursor: pointer;
-  transition: box-shadow 0.15s ease, border-color 0.15s ease;
-}
-.zfa-com-carte.is-hidden { visibility: hidden; pointer-events: none; }
-.zfa-com-carte.est-survolee { border-color: var(--background-modifier-border-hover); }
+.zfa-com-piste.est-immobile .zfa-com-carte { transition: none; }
+.zfa-com-carte:hover, .zfa-com-carte.est-survolee { background-color: rgba(var(--zfa-com-rgb), 0.13); }
 .zfa-com-carte.is-active {
-  border-color: var(--zfa-com-couleur, var(--interactive-accent));
-  box-shadow: inset 3px 0 0 var(--zfa-com-couleur, var(--interactive-accent)), var(--shadow-s);
+  background-color: rgba(var(--zfa-com-rgb), 0.13);
+  box-shadow: 0 0 0 1px rgba(var(--zfa-com-rgb), 0.5);
   cursor: default;
 }
-.zfa-com-carte.is-resolved:not(.is-active) { opacity: 0.6; box-shadow: none; }
+.zfa-com-carte.is-hidden { visibility: hidden; pointer-events: none; }
+.zfa-com-carte.is-resolved { --zfa-com-rgb: var(--mono-rgb-100); }
+.zfa-com-carte.is-resolved:not(.is-active) { background-color: rgba(var(--mono-rgb-100), 0.04); }
 .zfa-com-carte.is-resolved:not(.is-active) .zfa-com-note {
+  color: var(--text-muted);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .zfa-com-carte.is-resolved:not(.is-active) .zfa-com-reponses { display: none; }
 
-.zfa-com-tete { display: flex; align-items: center; gap: var(--size-4-2); min-height: 24px; }
-.zfa-com-point { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.zfa-com-tete { display: flex; align-items: center; gap: var(--size-4-1); min-height: var(--icon-size, 18px); }
+.zfa-com-icone {
+  display: inline-flex; flex: none; margin-inline-end: var(--size-2-1);
+  color: rgb(var(--zfa-com-rgb));
+}
+.zfa-com-icone svg { width: var(--icon-xs, 14px); height: var(--icon-xs, 14px); }
 .zfa-com-auteur {
   font-weight: var(--font-semibold); color: var(--text-normal);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.zfa-com-heure { color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.zfa-com-outils { margin-left: auto; display: flex; gap: 0; opacity: 0; transition: opacity 0.12s ease; }
-.zfa-com-carte:hover .zfa-com-outils,
-.zfa-com-carte.is-active .zfa-com-outils,
-.zfa-com-outils:focus-within,
-.zfa-com-resoudre.is-active { opacity: 1; }
-.zfa-com-outils .clickable-icon { padding: 2px 4px; }
-.zfa-com-resoudre.is-active { color: var(--color-green); }
+.zfa-com-heure { color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; }
+.zfa-com-outils {
+  margin-inline-start: auto; display: flex; gap: 0;
+  opacity: 0; transition: opacity 0.12s ease;
+}
+.zfa-com-carte:hover .zfa-com-outils, .zfa-com-carte.is-active .zfa-com-outils,
+.zfa-com-outils:focus-within { opacity: 1; }
+.zfa-com-tete .clickable-icon { padding: var(--size-2-1) var(--size-2-2); }
+.zfa-com-tete .clickable-icon svg { width: var(--icon-xs, 14px); height: var(--icon-xs, 14px); }
 .zfa-com-citation {
-  margin-top: var(--size-4-1); padding-left: var(--size-4-2);
-  border-left: 2px solid var(--zfa-com-couleur, var(--background-modifier-border));
-  color: var(--text-muted); font-size: var(--font-ui-smaller);
+  margin-top: var(--size-4-1);
+  color: var(--text-muted); font-size: var(--font-ui-smaller); font-style: italic;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .zfa-com-note {
-  margin-top: var(--size-4-1);
+  margin-top: var(--size-2-2);
   white-space: pre-wrap; word-break: break-word;
-  line-height: var(--line-height-normal); color: var(--text-normal);
+  color: var(--text-normal);
 }
-.zfa-com-saisie { width: 100%; margin-top: var(--size-4-2); resize: vertical; font-size: var(--font-ui-small); }
+.zfa-com-saisie {
+  display: block; width: 100%; margin-top: var(--size-4-2);
+  min-height: 4.5em; resize: vertical;
+  font-size: var(--font-ui-small);
+}
+.zfa-com-pied { display: flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-2); margin-top: var(--size-4-2); }
 .zfa-com-actions { display: flex; gap: var(--size-4-2); justify-content: flex-end; margin-top: var(--size-4-2); }
-.zfa-com-actions button { font-size: var(--font-ui-smaller); }
+.zfa-com-pied .zfa-com-actions { margin-top: 0; margin-inline-start: auto; }
+.zfa-com-actions button { font-size: var(--font-ui-smaller); height: auto; padding: var(--size-2-2) var(--size-4-3); }
 .zfa-com-reponses {
-  margin-top: var(--size-4-2); padding-top: var(--size-4-2);
-  border-top: 1px solid var(--background-modifier-border);
+  margin-top: var(--size-4-2);
   display: flex; flex-direction: column; gap: var(--size-4-2);
+  padding-inline-start: var(--size-4-3);
+  border-inline-start: 2px solid rgba(var(--zfa-com-rgb), 0.3);
 }
-.zfa-com-reponse-tete { display: flex; align-items: center; gap: var(--size-4-2); }
-.zfa-com-reponse-tete .zfa-com-auteur { font-weight: var(--font-medium, 500); }
-.zfa-com-reponse-texte { margin-top: 2px; white-space: pre-wrap; word-break: break-word; line-height: var(--line-height-normal); }
-.zfa-com-reponse-suppr { margin-left: auto; padding: 2px 4px; visibility: hidden; }
-.zfa-com-reponse:hover .zfa-com-reponse-suppr,
-.zfa-com-reponse-suppr:focus-visible { visibility: visible; }
-.zfa-com-repondre { display: none; gap: var(--size-4-2); margin-top: var(--size-4-2); align-items: flex-end; }
+.zfa-com-reponse .zfa-com-auteur { font-weight: var(--font-medium, 500); }
+.zfa-com-reponse-texte { white-space: pre-wrap; word-break: break-word; }
+.zfa-com-reponse-suppr { margin-inline-start: auto; visibility: hidden; }
+.zfa-com-reponse:hover .zfa-com-reponse-suppr, .zfa-com-reponse-suppr:focus-visible { visibility: visible; }
+.zfa-com-repondre { display: none; align-items: flex-end; gap: var(--size-2-2); margin-top: var(--size-4-2); }
 .zfa-com-carte.is-active:not(.is-draft) .zfa-com-repondre { display: flex; }
 .zfa-com-reponse-saisie {
   flex: 1; min-width: 0; resize: none; field-sizing: content; max-height: 120px;
   font-size: var(--font-ui-small);
 }
-.zfa-com-repondre button { font-size: var(--font-ui-smaller); }
-.zfa-com-carte .zfa-com-couleurs { margin: var(--size-4-2) 0 0; }
+
+/* ---- Pastilles de couleur (brouillon, modale) ---- */
+.zfa-com-couleurs { display: flex; align-items: center; gap: var(--size-2-3); }
+.zfa-com-pastille {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: rgb(var(--zfa-com-rgb));
+  cursor: var(--cursor);
+  transition: transform 0.1s ease;
+}
+.zfa-com-pastille:hover { transform: scale(1.15); }
+.zfa-com-pastille.is-selected { box-shadow: 0 0 0 2px var(--background-primary), 0 0 0 3.5px rgb(var(--zfa-com-rgb)); }
+.zfa-com-pastille:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.zfa-com-modale-saisie { width: 100%; resize: vertical; margin-bottom: var(--size-4-3); }
+.zfa-com-modale-couleurs { display: flex; align-items: center; gap: var(--size-4-3); }
+.zfa-com-couleurs-nom { color: var(--text-muted); font-size: var(--font-ui-small); }
+
+/* ---- La bulle (lecture, volet fermé) ---- */
+.zfa-com-bulle {
+  position: fixed;
+  z-index: var(--layer-popover, 50);
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: var(--size-4-2) var(--size-4-3);
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-s);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-normal);
+}
+.zfa-com-bulle-texte { margin-top: var(--size-2-2); white-space: pre-wrap; word-break: break-word; }
 @media (prefers-reduced-motion: reduce) {
-  .zfa-com-carte, .zfa-com-suivre .zfa-com-carte, .zfa-com-hl, .cm-line .zfa-com-texte, .zfa-com-outils, .zfa-com-pastille { transition: none; }
+  .zfa-com-carte, .zfa-com-suivre .zfa-com-carte, .zfa-com-hl, .cm-line .zfa-com-texte,
+  .zfa-com-outils, .zfa-com-pastille, .zfa-com-signe, .zfa-com-bouton { transition: none; }
 }

@@ -280,3 +280,17 @@ test('heure lisible : à la façon d’Obsidian, l’heure exacte gardée en inf
   assert.equal(C.heureLisible('2025-03-02 08:00', n), '2 mars 2025, 08:00');
   assert.equal(C.heureLisible('vers midi', n), 'vers midi');
 });
+
+test('brouillon : ses positions suivent la note, dans la seule vue que suit le volet', () => {
+  const { GestionCommentairesMarge } = Ariane._test;
+  const cm = {};
+  const greffon = { _comBrouillon: { from: 10, to: 20 } };
+  const m = new GestionCommentairesMarge(greffon);
+  m.panneau = { vue: { editor: { cm } } };
+  // Trois caractères insérés en tête de note.
+  const changes = { mapPos: (p) => p + 3 };
+  m.suivreBrouillon({}, changes);
+  assert.deepEqual([greffon._comBrouillon.from, greffon._comBrouillon.to], [10, 20], 'une autre vue : rien');
+  m.suivreBrouillon(cm, changes);
+  assert.deepEqual([greffon._comBrouillon.from, greffon._comBrouillon.to], [13, 23]);
+});

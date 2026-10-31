@@ -124,12 +124,27 @@ const avecCommentaires = (Base) => class extends Base {
       ignoreEvent() { return true; }
     }
 
+    // Le chemin de la note que montre cet éditeur.
+    const cheminDe = (vue) => {
+      try {
+        const info = obsidian.editorInfoField ? vue.state.field(obsidian.editorInfoField, false) : null;
+        return info && info.file ? info.file.path : '';
+      } catch (e) { return ''; }
+    };
     const decorer = (vue) => {
       const doc = vue.state.doc.toString();
-      if (!doc.includes('class="ann-')) return Decoration.none;
+      const b = greffon._comBrouillon;
+      const brouillon = b && b.from < b.to && b.to <= doc.length && b.chemin === cheminDe(vue) ? b : null;
+      if (!brouillon && !doc.includes('class="ann-')) return Decoration.none;
       const actif = greffon._comActif;
       const survol = greffon._comSurvol;
       const plages = [];
+      // Le passage d'un commentaire en cours d'écriture, surligné avant même
+      // qu'il soit enregistré.
+      if (brouillon) {
+        plages.push(Decoration.mark({ class: 'zfa-com-texte zfa-com-c-' + brouillon.couleur + ' est-brouillon' })
+          .range(brouillon.from, brouillon.to));
+      }
       for (const a of CommentairesMarge.lire(doc)) {
         const etat = (a.resolu ? 'est-resolu ' : '') + (a.id === actif ? 'est-actif ' : '') + (a.id === survol ? 'est-survole' : '');
         plages.push(Decoration.mark({ class: 'zfa-com-balise' }).range(a.debut.from, a.debut.to));
@@ -145,9 +160,13 @@ const avecCommentaires = (Base) => class extends Base {
     return ViewPlugin.fromClass(class {
       constructor(vue) { this.decorations = decorer(vue); }
       update(u) {
+        const m = greffon.margeCommentaires;
+        if (u.docChanged && m) m.suivreBrouillon(u.view, u.changes);
         const signal = u.transactions.some((t) => t.effects.some((e) => e.is(effet)));
         if (u.docChanged || signal) this.decorations = decorer(u.view);
-        if (u.selectionSet && !u.docChanged && greffon.margeCommentaires) greffon.margeCommentaires.surCurseur(u.view);
+        if (!m) return;
+        if (u.selectionSet && !u.docChanged) m.surCurseur(u.view);
+        if (u.geometryChanged || u.viewportChanged || u.docChanged) m.geometrie(u.view);
       }
     }, { decorations: (v) => v.decorations });
   }
@@ -155,8 +174,9 @@ const avecCommentaires = (Base) => class extends Base {
   // L'actif ou le survol ont changé : chaque éditeur ouvert se redessine.
   // Hors de la mise à jour en cours (on peut venir du suivi du curseur, où
   // CodeMirror refuse une nouvelle transaction).
-  signalerCommentaires(actif, survol) {
-    if (this._comActif === actif && this._comSurvol === survol) return;
+  // `force` : redessiner même sans changement (le brouillon a bougé).
+  signalerCommentaires(actif, survol, force) {
+    if (!force && this._comActif === actif && this._comSurvol === survol) return;
     this._comActif = actif;
     this._comSurvol = survol;
     if (!this._effetCommentaires) return;
@@ -521,11 +541,10 @@ const avecCommentaires = (Base) => class extends Base {
     if (ouverte) return;
     const d = ancre.ownerDocument;
     const fen = d.defaultView || window;
-    const bulle = d.body.createDiv({ cls: 'zfa-com-bulle' });
+    const bulle = d.body.createDiv({ cls: 'zfa-com-bulle zfa-com-c-' + CommentairesMarge.normaliserCouleur(ancre.dataset.color) });
     bulle.dataset.comId = id;
-    bulle.style.setProperty('--zfa-com-couleur', CommentairesMarge.couleurCss(CommentairesMarge.normaliserCouleur(ancre.dataset.color)));
     const tete = bulle.createDiv({ cls: 'zfa-com-tete' });
-    tete.createSpan({ cls: 'zfa-com-point' }).style.background = CommentairesMarge.couleurCss(CommentairesMarge.normaliserCouleur(ancre.dataset.color));
+    obsidian.setIcon(tete.createSpan({ cls: 'zfa-com-icone' }), 'message-square');
     tete.createSpan({ cls: 'zfa-com-auteur', text: CommentairesMarge.decoder(ancre.dataset.author || '') || tr('Commentaire') });
     if (ancre.dataset.time) tete.createSpan({ cls: 'zfa-com-heure', text: CommentairesMarge.heureLisible(ancre.dataset.time) });
     bulle.createDiv({ cls: 'zfa-com-bulle-texte', text: note });

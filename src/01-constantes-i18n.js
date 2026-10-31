@@ -357,6 +357,7 @@ const TEXTES = {
     "Commentaires en marge": "Margin comments",
     "Des commentaires sur un passage, comme dans Word : surlignage, carte en marge, réponses, résolution.": "Comments on a passage, as in Word: highlight, card in the margin, replies, resolution.",
     "Commenter le passage": "Comment on the passage",
+    "Commenter": "Comment",
     "à l’instant": "just now",
     "il y a {n} min": "{n} min ago",
     "il y a {n} h": "{n} h ago",
