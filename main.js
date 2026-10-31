@@ -554,6 +554,8 @@ const TEXTES = {
     "Commentaires en marge": "Margin comments",
     "Des commentaires sur un passage, comme dans Word : surlignage, carte en marge, réponses, résolution.": "Comments on a passage, as in Word: highlight, card in the margin, replies, resolution.",
     "Commenter le passage": "Comment on the passage",
+    "Répondre au commentaire": "Reply to the comment",
+    "Marquer le commentaire comme résolu, ou le rouvrir": "Mark the comment as resolved, or reopen it",
     "Modifier le commentaire sous le curseur": "Edit the comment under the cursor",
     "Supprimer le commentaire choisi": "Delete the selected comment",
     "Choisissez d’abord un commentaire (une carte du volet, ou le curseur dans le passage).": "Select a comment first (a card in the pane, or the cursor in the passage).",
@@ -26406,19 +26408,38 @@ const avecCommentaires = (Base) => class extends Base {
     this.registerView(TYPE_VUE_COMMENTAIRES, (leaf) => new VueCommentairesMarge(leaf, this));
     this.registerEditorExtension(this.extensionCommentaires());
     this.addRibbonIcon('message-square', tr('Commentaires en marge'), () => this.basculerVueCommentaires());
+    // Les commandes portent leur icône : la barre d'édition (section 21) en
+    // fait ses boutons.
     this.addCommand({
-      id: 'commentaire-ajouter', module: 'commentaires', name: tr('Commenter le passage'),
+      id: 'commentaire-ajouter', module: 'commentaires', name: tr('Commenter le passage'), icon: 'message-square-plus',
       editorCallback: (editeur, vue) => this.commenterPassage(editeur, vue.file),
     });
     this.addCommand({
-      id: 'commentaire-modifier', module: 'commentaires', name: tr('Modifier le commentaire sous le curseur'),
+      id: 'commentaire-repondre', module: 'commentaires', name: tr('Répondre au commentaire'), icon: 'reply',
       editorCallback: (editeur, vue) => {
-        const a = this._commentaireAuCurseur(editeur, true);
+        const a = this._commentaireVise(editeur, vue);
+        if (a) this.ouvrirVueCommentaires(true).then(() => {
+          const p = vue.file && this.margeCommentaires.panneauDuFichier(vue.file.path);
+          if (p) p.repondre(a.id);
+        });
+      },
+    });
+    this.addCommand({
+      id: 'commentaire-resoudre', module: 'commentaires', name: tr('Marquer le commentaire comme résolu, ou le rouvrir'), icon: 'check',
+      editorCallback: (editeur, vue) => {
+        const a = this._commentaireVise(editeur, vue);
+        if (a && vue.file) this.majCommentaireMarge(vue.file, a.id, (c) => ({ resolu: !c.resolu }));
+      },
+    });
+    this.addCommand({
+      id: 'commentaire-modifier', module: 'commentaires', name: tr('Modifier le commentaire sous le curseur'), icon: 'pencil',
+      editorCallback: (editeur, vue) => {
+        const a = this._commentaireVise(editeur, vue);
         if (a && vue.file) this.modifierCommentaireMarge(vue.file, a.id);
       },
     });
     this.addCommand({
-      id: 'commentaire-supprimer', module: 'commentaires', name: tr('Supprimer le commentaire choisi'),
+      id: 'commentaire-supprimer', module: 'commentaires', name: tr('Supprimer le commentaire choisi'), icon: 'message-square-x',
       callback: () => {
         const vue = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
         if (vue && vue.file && vue.getMode() === 'source') {
@@ -26432,6 +26453,7 @@ const avecCommentaires = (Base) => class extends Base {
     });
     this.addCommand({
       id: 'commentaires-volet', module: 'commentaires', name: tr('Afficher ou masquer le volet des commentaires'),
+      icon: 'messages-square',
       callback: () => this.basculerVueCommentaires(),
     });
 
@@ -26609,6 +26631,17 @@ const avecCommentaires = (Base) => class extends Base {
     const a = CommentairesMarge.trouverA(editeur.getValue(), editeur.posToOffset(editeur.getCursor('from')));
     if (!a && prevenir) new obsidian.Notice(tr('Le curseur n’est dans aucun passage commenté.'));
     return a;
+  }
+
+  // Le commentaire visé : celui sous le curseur, sinon la carte choisie
+  // dans le volet.
+  _commentaireVise(editeur, vue) {
+    const a = this._commentaireAuCurseur(editeur, false);
+    if (a) return a;
+    const p = vue && vue.file && this.margeCommentaires.panneauDuFichier(vue.file.path);
+    const c = p && p.carteActive();
+    if (!c) new obsidian.Notice(tr('Choisissez d’abord un commentaire (une carte du volet, ou le curseur dans le passage).'));
+    return c || null;
   }
 
   commenterPassage(editeur, f) {
@@ -48376,6 +48409,17 @@ function barreDefaut() {
     { cmd: a('citations-basculer') },
     { cmd: a('correcteur-volet') },
     { separateur: true },
+    // Les commentaires en marge (section 23) : commenter d'un clic, le reste
+    // dans un menu.
+    { cmd: a('commentaire-ajouter') },
+    { groupe: 'Commentaires', icone: 'messages-square', elements: [
+      { cmd: a('commentaire-repondre') }, { cmd: a('commentaire-resoudre') }, { cmd: a('commentaire-modifier') },
+      { separateur: true },
+      { cmd: a('commentaire-supprimer') },
+      { separateur: true },
+      { cmd: a('commentaires-volet') },
+    ] },
+    { separateur: true },
     // La note, telle quelle, vers Word (citations Zotero vivantes).
     { cmd: a('exporter-word-zotero') },
     { separateur: true },
@@ -48811,6 +48855,8 @@ class BarreOutils {
   }
 
   poserGroupe(hote, entree) {
+    // Un menu dont aucune commande n'existe ici (module coupé) ne se pose pas.
+    if (!(entree.elements || []).some((x) => x && x.cmd && this.definition(x.cmd))) return;
     const b = this.bouton(hote, entree.icone || 'chevron-down', tr(entree.groupe));
     b.classList.add('est-groupe');
     const fleche = this.doc.createElement('span');

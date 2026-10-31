@@ -357,6 +357,8 @@ const TEXTES = {
     "Commentaires en marge": "Margin comments",
     "Des commentaires sur un passage, comme dans Word : surlignage, carte en marge, réponses, résolution.": "Comments on a passage, as in Word: highlight, card in the margin, replies, resolution.",
     "Commenter le passage": "Comment on the passage",
+    "Répondre au commentaire": "Reply to the comment",
+    "Marquer le commentaire comme résolu, ou le rouvrir": "Mark the comment as resolved, or reopen it",
     "Modifier le commentaire sous le curseur": "Edit the comment under the cursor",
     "Supprimer le commentaire choisi": "Delete the selected comment",
     "Choisissez d’abord un commentaire (une carte du volet, ou le curseur dans le passage).": "Select a comment first (a card in the pane, or the cursor in the passage).",

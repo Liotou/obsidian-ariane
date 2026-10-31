@@ -12,19 +12,38 @@ const avecCommentaires = (Base) => class extends Base {
     this.registerView(TYPE_VUE_COMMENTAIRES, (leaf) => new VueCommentairesMarge(leaf, this));
     this.registerEditorExtension(this.extensionCommentaires());
     this.addRibbonIcon('message-square', tr('Commentaires en marge'), () => this.basculerVueCommentaires());
+    // Les commandes portent leur icône : la barre d'édition (section 21) en
+    // fait ses boutons.
     this.addCommand({
-      id: 'commentaire-ajouter', module: 'commentaires', name: tr('Commenter le passage'),
+      id: 'commentaire-ajouter', module: 'commentaires', name: tr('Commenter le passage'), icon: 'message-square-plus',
       editorCallback: (editeur, vue) => this.commenterPassage(editeur, vue.file),
     });
     this.addCommand({
-      id: 'commentaire-modifier', module: 'commentaires', name: tr('Modifier le commentaire sous le curseur'),
+      id: 'commentaire-repondre', module: 'commentaires', name: tr('Répondre au commentaire'), icon: 'reply',
       editorCallback: (editeur, vue) => {
-        const a = this._commentaireAuCurseur(editeur, true);
+        const a = this._commentaireVise(editeur, vue);
+        if (a) this.ouvrirVueCommentaires(true).then(() => {
+          const p = vue.file && this.margeCommentaires.panneauDuFichier(vue.file.path);
+          if (p) p.repondre(a.id);
+        });
+      },
+    });
+    this.addCommand({
+      id: 'commentaire-resoudre', module: 'commentaires', name: tr('Marquer le commentaire comme résolu, ou le rouvrir'), icon: 'check',
+      editorCallback: (editeur, vue) => {
+        const a = this._commentaireVise(editeur, vue);
+        if (a && vue.file) this.majCommentaireMarge(vue.file, a.id, (c) => ({ resolu: !c.resolu }));
+      },
+    });
+    this.addCommand({
+      id: 'commentaire-modifier', module: 'commentaires', name: tr('Modifier le commentaire sous le curseur'), icon: 'pencil',
+      editorCallback: (editeur, vue) => {
+        const a = this._commentaireVise(editeur, vue);
         if (a && vue.file) this.modifierCommentaireMarge(vue.file, a.id);
       },
     });
     this.addCommand({
-      id: 'commentaire-supprimer', module: 'commentaires', name: tr('Supprimer le commentaire choisi'),
+      id: 'commentaire-supprimer', module: 'commentaires', name: tr('Supprimer le commentaire choisi'), icon: 'message-square-x',
       callback: () => {
         const vue = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
         if (vue && vue.file && vue.getMode() === 'source') {
@@ -38,6 +57,7 @@ const avecCommentaires = (Base) => class extends Base {
     });
     this.addCommand({
       id: 'commentaires-volet', module: 'commentaires', name: tr('Afficher ou masquer le volet des commentaires'),
+      icon: 'messages-square',
       callback: () => this.basculerVueCommentaires(),
     });
 
@@ -215,6 +235,17 @@ const avecCommentaires = (Base) => class extends Base {
     const a = CommentairesMarge.trouverA(editeur.getValue(), editeur.posToOffset(editeur.getCursor('from')));
     if (!a && prevenir) new obsidian.Notice(tr('Le curseur n’est dans aucun passage commenté.'));
     return a;
+  }
+
+  // Le commentaire visé : celui sous le curseur, sinon la carte choisie
+  // dans le volet.
+  _commentaireVise(editeur, vue) {
+    const a = this._commentaireAuCurseur(editeur, false);
+    if (a) return a;
+    const p = vue && vue.file && this.margeCommentaires.panneauDuFichier(vue.file.path);
+    const c = p && p.carteActive();
+    if (!c) new obsidian.Notice(tr('Choisissez d’abord un commentaire (une carte du volet, ou le curseur dans le passage).'));
+    return c || null;
   }
 
   commenterPassage(editeur, f) {

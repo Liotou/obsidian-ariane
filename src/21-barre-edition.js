@@ -846,6 +846,17 @@ function barreDefaut() {
     { cmd: a('citations-basculer') },
     { cmd: a('correcteur-volet') },
     { separateur: true },
+    // Les commentaires en marge (section 23) : commenter d'un clic, le reste
+    // dans un menu.
+    { cmd: a('commentaire-ajouter') },
+    { groupe: 'Commentaires', icone: 'messages-square', elements: [
+      { cmd: a('commentaire-repondre') }, { cmd: a('commentaire-resoudre') }, { cmd: a('commentaire-modifier') },
+      { separateur: true },
+      { cmd: a('commentaire-supprimer') },
+      { separateur: true },
+      { cmd: a('commentaires-volet') },
+    ] },
+    { separateur: true },
     // La note, telle quelle, vers Word (citations Zotero vivantes).
     { cmd: a('exporter-word-zotero') },
     { separateur: true },
@@ -1281,6 +1292,8 @@ class BarreOutils {
   }
 
   poserGroupe(hote, entree) {
+    // Un menu dont aucune commande n'existe ici (module coupé) ne se pose pas.
+    if (!(entree.elements || []).some((x) => x && x.cmd && this.definition(x.cmd))) return;
     const b = this.bouton(hote, entree.icone || 'chevron-down', tr(entree.groupe));
     b.classList.add('est-groupe');
     const fleche = this.doc.createElement('span');
