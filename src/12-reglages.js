@@ -1250,7 +1250,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
   ongletCommentaires(c, s, maj) {
     const g = this.plugin;
     this._section(c, tr('Commentaires en marge'));
-    this._aide(c, tr("Sélectionnez un passage, puis « Commenter le passage » (clic droit ou palette) : il se surligne, et le commentaire s'écrit dans une carte du volet de droite, face au texte, avec réponses et résolution. Le commentaire vit dans la note elle-même, dans deux balises invisibles à la lecture."));
+    this._aide(c, tr("Sélectionnez un passage, puis « Commenter le passage » (clic droit, barre d’édition ou palette) : il se surligne, et le commentaire s'écrit dans une carte du volet de droite, face au texte, avec réponses et résolution. Le commentaire vit dans la note elle-même, dans deux balises invisibles à la lecture."));
     new obsidian.Setting(c)
       .setName(tr('Couleur par défaut'))
       .setDesc(tr('Proposée pour chaque nouveau commentaire ; chacun peut ensuite changer de couleur.'))
@@ -1273,12 +1273,26 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         if (g.margeCommentaires) g.margeCommentaires.synchroniser(true);
       }));
     new obsidian.Setting(c)
+      .setName(tr('Masquer les commentaires résolus'))
+      .setDesc(tr('Le volet ne montre que les commentaires ouverts ; leur passage reste souligné en pointillé. Aussi au bouton de l’en-tête du volet.'))
+      .addToggle((t) => t.setValue(s.commentairesResolusMasques === true).onChange(async (v) => {
+        s.commentairesResolusMasques = v;
+        await maj();
+        if (g.margeCommentaires) g.margeCommentaires.synchroniser(true);
+      }));
+    new obsidian.Setting(c)
       .setName(tr('Masquer les balises en aperçu en direct'))
       .setDesc(tr('Le mode source les montre toujours, en pâle.'))
       .addToggle((t) => t.setValue(s.commentairesMasquer !== false).onChange(async (v) => {
         s.commentairesMasquer = v;
         await maj();
         if (g.appliquerMasqueBalises) g.appliquerMasqueBalises();
+      }));
+    new obsidian.Setting(c)
+      .setName(tr('Le volet des commentaires'))
+      .setDesc(tr('S’ouvre de lui-même au premier commentaire ; aussi par l’icône du ruban, la barre d’édition ou la palette.'))
+      .addButton((b) => b.setButtonText(tr('Ouvrir le volet')).onClick(() => {
+        if (g.ouvrirVueCommentaires) g.ouvrirVueCommentaires(true);
       }));
   }
 
