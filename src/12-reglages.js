@@ -41,6 +41,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           ['ongletSuggestions', 'Maintenance']] },
       { id: 'barre', module: 'barre', icone: 'pen-line',
         rubriques: [['ongletBarre', 'La barre'], ['ongletBarre', 'Les boutons']], avance: [['ongletBarre', 'Couleurs proposées']] },
+      { id: 'commentaires', module: 'commentaires', icone: 'message-square',
+        rubriques: [['ongletCommentaires', 'Commentaires en marge']] },
       { id: 'taches', module: 'taches', icone: 'list-checks',
         rubriques: [['ongletTaches', 'Tâches'], ['ongletTaches', 'Familles de tâches'], ['ongletTaches', 'Tableau de bord'],
           ['ongletVues', 'Calendrier'], ['ongletVues', 'Vue Frise']],
@@ -188,7 +190,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     pied.settingEl.addClass('zfa-modules-pied');
     const groupes = [
       ['Le cœur', MODULES_ARIANE.filter((m) => m.coeur)],
-      ['Écriture et recherche', MODULES_ARIANE.filter((m) => ['export', 'familles', 'typographie', 'suggestions', 'barre', 'correcteur', 'schemas'].includes(m.id))],
+      ['Écriture et recherche', MODULES_ARIANE.filter((m) => ['export', 'familles', 'typographie', 'suggestions', 'barre', 'commentaires', 'correcteur', 'schemas'].includes(m.id))],
       ['Gestion de la thèse', MODULES_ARIANE.filter((m) => ['taches', 'canevas', 'rappels', 'temps'].includes(m.id))],
       ['Liens et diffusion', MODULES_ARIANE.filter((m) => ['claude', 'publication'].includes(m.id))],
     ];
@@ -1242,6 +1244,42 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Ex. « 0.8em », « 11px »."))
       .addText((t) => t.setValue(s.aparteTaille).onChange(async (v) => { s.aparteTaille = v.trim() || '0.8em'; await maj(); this.plugin.appliquerStyleAparte(); }));
 
+  }
+
+  // ── Commentaires en marge (section 23) ───────────────────────────────
+  ongletCommentaires(c, s, maj) {
+    const g = this.plugin;
+    this._section(c, tr('Commentaires en marge'));
+    this._aide(c, tr("Sélectionnez un passage, puis « Commenter le passage » (clic droit ou palette) : il se surligne, et le commentaire s'écrit dans une carte du volet de droite, face au texte, avec réponses et résolution. Le commentaire vit dans la note elle-même, dans deux balises invisibles à la lecture."));
+    new obsidian.Setting(c)
+      .setName(tr('Couleur par défaut'))
+      .setDesc(tr('Proposée pour chaque nouveau commentaire ; chacun peut ensuite changer de couleur.'))
+      .addDropdown((d) => {
+        for (const coul of CommentairesMarge.COULEURS) d.addOption(coul.cle, tr(coul.nom));
+        d.setValue(CommentairesMarge.normaliserCouleur(s.commentairesCouleur))
+          .onChange(async (v) => { s.commentairesCouleur = v; await maj(); });
+      });
+    new obsidian.Setting(c)
+      .setName(tr('Nom de l’auteur'))
+      .setDesc(tr('Affiché sur les commentaires et les réponses. Vide : « Moi ».'))
+      .addText((t) => t.setValue(s.commentairesAuteur || '')
+        .onChange(async (v) => { s.commentairesAuteur = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Cartes face au passage'))
+      .setDesc(tr('Activé : chaque carte se tient face à son passage et suit le défilement. Désactivé : une liste dans l’ordre du texte, où un clic mène au passage.'))
+      .addToggle((t) => t.setValue(s.commentairesSuivre !== false).onChange(async (v) => {
+        s.commentairesSuivre = v;
+        await maj();
+        if (g.margeCommentaires) g.margeCommentaires.synchroniser(true);
+      }));
+    new obsidian.Setting(c)
+      .setName(tr('Masquer les balises en aperçu en direct'))
+      .setDesc(tr('Le mode source les montre toujours, en pâle.'))
+      .addToggle((t) => t.setValue(s.commentairesMasquer !== false).onChange(async (v) => {
+        s.commentairesMasquer = v;
+        await maj();
+        if (g.appliquerMasqueBalises) g.appliquerMasqueBalises();
+      }));
   }
 
   // ── Barre d'édition (section 21) ─────────────────────────────────────

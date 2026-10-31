@@ -4,14 +4,14 @@ const assert = require('node:assert');
 const Ariane = require('./obsidian-factice.js');
 const { MODULES_ARIANE, PROFILS_ARIANE } = Ariane._test;
 
-test('registre : quinze modules, ids uniques, dépendances connues, cœur en tête', () => {
+test('registre : seize modules, ids uniques, dépendances connues, cœur en tête', () => {
   const ids = MODULES_ARIANE.map((m) => m.id);
-  assert.equal(ids.length, 15);
+  assert.equal(ids.length, 16);
   assert.equal(new Set(ids).size, ids.length);
   for (const m of MODULES_ARIANE) for (const d of m.dependances) assert.ok(ids.includes(d), m.id + ' -> ' + d);
   assert.deepEqual(MODULES_ARIANE.filter((m) => m.coeur).map((m) => m.id), ['annotations', 'citations']);
   for (const p of Object.values(PROFILS_ARIANE)) for (const id of p) assert.ok(ids.includes(id), id);
-  assert.equal(PROFILS_ARIANE.tout.length, 15);
+  assert.equal(PROFILS_ARIANE.tout.length, 16);
 });
 
 test('dépendances : le cœur et les dépendances s’ajoutent, l’ordre suit le registre', () => {
@@ -48,6 +48,22 @@ test('migration : une installation existante passe au profil « Tout », une nou
   const g = Object.assign(Object.create(Ariane.prototype), { loadData: async () => ({ modules: ['export'] }), saveData: async () => {} });
   await g.loadSettings();
   assert.deepEqual(g.settings.modules, ['export']);
+});
+
+test('un module nouveau s’ajoute chez qui avait tous les autres, et seulement là', async () => {
+  const { MODULES_ARIANE_3_0 } = Ariane._test;
+  const tout30 = MODULES_ARIANE_3_0.slice();
+  assert.deepEqual(Ariane.modulesAvecNouveaux(tout30, undefined), PROFILS_ARIANE.tout);
+  assert.deepEqual(Ariane.modulesAvecNouveaux(['export'], undefined), ['export']);
+  assert.deepEqual(Ariane.modulesAvecNouveaux(tout30.filter((m) => m !== 'temps'), undefined),
+    tout30.filter((m) => m !== 'temps'));
+  // Une fois noté, le module ne revient pas chez qui l'a coupé.
+  const sans = PROFILS_ARIANE.tout.filter((m) => m !== 'commentaires');
+  assert.deepEqual(Ariane.modulesAvecNouveaux(sans, PROFILS_ARIANE.tout), sans);
+  const g = Object.assign(Object.create(Ariane.prototype), { loadData: async () => ({ modules: tout30 }), saveData: async () => {} });
+  await g.loadSettings();
+  assert.ok(g.settings.modules.includes('commentaires'));
+  assert.deepEqual(g.settings.modulesConnus, PROFILS_ARIANE.tout);
 });
 
 test('commandes : chacune porte un module connu', () => {

@@ -62,7 +62,7 @@ async function demarrer(modules) {
     };
     const g = Object.create(Ariane.prototype);
     Object.assign(g, { app, manifest: { id: 'obsidian-ariane', dir: '.obsidian/plugins/obsidian-ariane' },
-      loadData: async () => ({ modules }), saveData: async () => {},
+      loadData: async () => ({ modules, modulesConnus: MODULES_ARIANE.map((m) => m.id) }), saveData: async () => {},
       // Ce qui touche au DOM d'Obsidian avant les enregistrements.
       appliquerStyleAparte() {}, installerVerrouLecture() {}, installerAffichageTaches() {}, appliquerCssPersonnalise() {} });
     await g.onload();

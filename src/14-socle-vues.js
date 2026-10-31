@@ -15,6 +15,8 @@ const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 // retrouver ses traces dans les .base pour les convertir en canevas.
 const TYPE_VUE_BASE_ARTIC = 'ariane-articulation';
 const TYPE_VUE_BASE_CALENDRIER = 'ariane-calendrier';
+// Le volet des commentaires en marge (section 23).
+const TYPE_VUE_COMMENTAIRES = 'ariane-commentaires';
 
 // Valeurs par défaut des réglages d'une frise de base. Ils ne passent plus par
 // les réglages d'Ariane : chaque vue d'une base porte les siens.

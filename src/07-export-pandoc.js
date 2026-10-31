@@ -61,6 +61,7 @@ function sansBlocsAriane(texte) {
   return String(texte)
     .replace(/^---\n[\s\S]*?\n---\n?/, '')
     .replace(/<!--\s*ariane:([\w-]+)\s*-->[\s\S]*?<!--\s*\/ariane:\1\s*-->\n?/g, '')
+    .replace(/<span\b[^>]*\bclass="ann-[se]"[^>]*><\/span>/g, '')
     .replace(/(?:^[ \t]*-{3,}[ \t]*\n+)?%%\s*ariane:biblio\s*%%[\s\S]*?%%\s*\/ariane:biblio\s*%%/gm, '')
     .replace(/(?:^[ \t]*-{3,}[ \t]*\n+)?^#{1,6}[ \t]*Bibliographie[ \t]*$[\s\S]*?(?=^#{1,6}[ \t]|$(?![\s\S]))/gim, '');
 }
@@ -162,6 +163,9 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
   // 1 bis. Blocs qu'Ariane tient dans la note (sessions d'une tâche…) : ce
   //    sont des relevés, non du texte.
   s = s.replace(/<!--\s*ariane:([\w-]+)\s*-->[\s\S]*?<!--\s*\/ariane:\1\s*-->\n?/g, '');
+  // 1 bis bis. Les commentaires en marge (section 23) : leurs balises
+  //    disparaissent, le passage commenté reste.
+  s = s.replace(/<span\b[^>]*\bclass="ann-[se]"[^>]*><\/span>/g, '');
   // 1 ter. Les filets « --- » : le modèle souligne déjà ses titres, et un
   //    filet de plus se dessinait en double trait. Hors tableaux.
   s = s.replace(/^[ \t]*(?:-[ \t]*){3,}$|^[ \t]*(?:\*[ \t]*){3,}$|^[ \t]*(?:_[ \t]*){3,}$/gm, '');

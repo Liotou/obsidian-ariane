@@ -91,6 +91,7 @@
  *            11p  avecIphone       temps d'écran de l'iPhone, lu sur le Mac
  *            11q  avecConcentration micro-interruptions, distractions, concentration
  *            11s  avecAccueil    présentation, assistant de premier lancement, tutoriel
+ *            11t  avecCommentaires commentaires en marge (branchement de la section 23)
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -135,7 +136,11 @@
  *          le relais local (127.0.0.1, jeton) par lequel le serveur MCP
  *          ariane-taches (mcp/taches.js) interroge Ariane pour Claude :
  *          liste, détail, charge du calendrier, revue des tâches
- *   23 · Exports
+ *   23 · Commentaires en marge
+ *          commentaires sur un passage, comme dans Word, repris du greffon
+ *          Margin Annotations (MIT) : CommentairesMarge (logique pure), cartes
+ *          en marge, volet « ariane-commentaires »
+ *   24 · Exports
  *          module.exports et surface _test des fonctions pures
  *
  * ─────────────────────────────────────────────────────────────────────────

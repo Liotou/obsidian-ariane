@@ -1,6 +1,6 @@
-//#region 23 · Exports
+//#region 24 · Exports
 // ═══════════════════════════════════════════════════════════════════════════
-//  23 · EXPORTS
+//  24 · EXPORTS
 //  Points d'entrée CommonJS : la classe du greffon et la surface _test
 //  des fonctions pures pour la suite de tests.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -11,6 +11,7 @@ module.exports = Ariane;
 module.exports._test = {
   DEFAULT_SETTINGS,
   MODULES_ARIANE,
+  MODULES_ARIANE_3_0,
   ArianeSettingTab,
   PROFILS_ARIANE,
   // Notes de lecture : citations zotflow ramenées à la forme d'Ariane.
@@ -119,6 +120,8 @@ module.exports._test = {
   barreDefaut,
   BARRE_COMMANDES,
   BarreEdition,
+  // Commentaires en marge : lecture, pose et retrait des balises.
+  CommentairesMarge,
   // Pont Claude : les outils de lecture s'éprouvent avec un greffon factice.
   PontClaude,
   BlocOrganisation, // tableau de bord : son rendu s'éprouve sur un DOM factice
@@ -168,4 +171,4 @@ module.exports._test = {
   colonnesPourExport,
 };
 
-//#endregion 23 · Exports
+//#endregion 24 · Exports

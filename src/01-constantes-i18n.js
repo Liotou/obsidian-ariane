@@ -354,6 +354,58 @@ const TEXTES = {
     "Les annotations proches de ce que vous écrivez, dans un panneau (modèle local conseillé).": "Annotations close to what you are writing, in a panel (local model advised).",
     "Barre d’édition": "Editing bar",
     "Une barre de mise en forme sous les onglets de chaque note.": "A formatting bar under each note's tabs.",
+    "Commentaires en marge": "Margin comments",
+    "Des commentaires sur un passage, comme dans Word : surlignage, carte en marge, réponses, résolution.": "Comments on a passage, as in Word: highlight, card in the margin, replies, resolution.",
+    "Commenter le passage": "Comment on the passage",
+    "Modifier le commentaire sous le curseur": "Edit the comment under the cursor",
+    "Supprimer le commentaire choisi": "Delete the selected comment",
+    "Choisissez d’abord un commentaire (une carte du volet, ou le curseur dans le passage).": "Select a comment first (a card in the pane, or the cursor in the passage).",
+    "Afficher ou masquer le volet des commentaires": "Show or hide the comments pane",
+    "Moi": "Me",
+    "Le curseur n’est dans aucun passage commenté.": "The cursor is not in a commented passage.",
+    "Cette note est réécrite automatiquement (par Ariane ou ZotFlow) : un commentaire y serait perdu.": "This note is rewritten automatically (by Ariane or ZotFlow): a comment would be lost.",
+    "Passage introuvable dans la note : double-cliquez pour passer en édition, puis sélectionnez-le.": "Passage not found in the note: double-click to edit, then select it.",
+    "Rien à commenter sur cette ligne.": "Nothing to comment on this line.",
+    "Rien à commenter dans la sélection (un tableau ne se commente que cellule par cellule).": "Nothing to comment in the selection (a table is commented one cell at a time).",
+    "Passez en mode édition et sélectionnez le passage à commenter.": "Switch to editing mode and select the passage to comment on.",
+    "Modifier le commentaire": "Edit the comment",
+    "Répondre": "Reply",
+    "Rouvrir le commentaire": "Reopen the comment",
+    "Marquer comme résolu": "Mark as resolved",
+    "Couleur du commentaire": "Comment color",
+    "Supprimer le commentaire": "Delete the comment",
+    "Voir le commentaire": "Show the comment",
+    "Modifier": "Edit",
+    "Votre commentaire (⌘ ou Ctrl + Entrée pour enregistrer)": "Your comment (⌘ or Ctrl + Enter to save)",
+    "Couleur": "Color",
+    "Le commentaire est vide.": "The comment is empty.",
+    "Ouvrez une note pour voir ses commentaires.": "Open a note to see its comments.",
+    "Le passage a changé : sélectionnez-le de nouveau.": "The passage has changed: select it again.",
+    "Aucun commentaire dans cette note. Sélectionnez un passage, puis « Commenter le passage » au clic droit.": "No comments in this note. Select a passage, then right-click « Comment on the passage ».",
+    "Commentaire": "Comment",
+    "vers ": "around ",
+    "Résolu": "Resolved",
+    "Plus": "More",
+    "Réponse": "Reply",
+    "Supprimer la réponse": "Delete the reply",
+    "Répondre…": "Reply…",
+    "Envoyer": "Send",
+    "Commentaires": "Comments",
+    "Sélectionnez un passage, puis « Commenter le passage » (clic droit ou palette) : il se surligne, et le commentaire s'écrit dans une carte du volet de droite, face au texte, avec réponses et résolution. Le commentaire vit dans la note elle-même, dans deux balises invisibles à la lecture.": "Select a passage, then « Comment on the passage » (right-click or palette): it is highlighted, and the comment goes into a card in the right pane, facing the text, with replies and resolution. The comment lives in the note itself, in two tags hidden in reading view.",
+    "Couleur par défaut": "Default color",
+    "Proposée pour chaque nouveau commentaire ; chacun peut ensuite changer de couleur.": "Offered for each new comment; any comment can change color afterwards.",
+    "Nom de l’auteur": "Author name",
+    "Affiché sur les commentaires et les réponses. Vide : « Moi ».": "Shown on comments and replies. Empty: « Me ».",
+    "Cartes face au passage": "Cards facing the passage",
+    "Activé : chaque carte se tient face à son passage et suit le défilement. Désactivé : une liste dans l’ordre du texte, où un clic mène au passage.": "On: each card faces its passage and follows scrolling. Off: a list in text order, where a click leads to the passage.",
+    "Masquer les balises en aperçu en direct": "Hide the tags in Live Preview",
+    "Le mode source les montre toujours, en pâle.": "Source mode always shows them, faded.",
+    "Jaune": "Yellow",
+    "Vert": "Green",
+    "Bleu": "Blue",
+    "Rose": "Pink",
+    "Violet": "Purple",
+    "Orange": "Orange",
     "Notes de tâche, tableau de bord, frise, calendrier, IA des tâches.": "Task notes, dashboard, timeline, calendar, task AI.",
     "Les notes du canevas en cartes compactes ; les cartes de tâches si le module Tâches est actif.": "Canvas notes as compact cards; task cards if the Tasks module is on.",
     "Rappels et agendas": "Reminders and calendars",
@@ -1965,6 +2017,8 @@ const MODULES_ARIANE = [
     description: 'Les annotations proches de ce que vous écrivez, dans un panneau (modèle local conseillé).' },
   { id: 'barre', nom: 'Barre d’édition', coeur: false, dependances: [], macSeul: false,
     description: 'Une barre de mise en forme sous les onglets de chaque note.' },
+  { id: 'commentaires', nom: 'Commentaires en marge', coeur: false, dependances: [], macSeul: false,
+    description: 'Des commentaires sur un passage, comme dans Word : surlignage, carte en marge, réponses, résolution.' },
   { id: 'taches', nom: 'Tâches', coeur: false, dependances: [], macSeul: false,
     description: 'Notes de tâche, tableau de bord, frise, calendrier, IA des tâches.' },
   { id: 'canevas', nom: 'Canevas', coeur: false, dependances: [], macSeul: false,
@@ -1982,6 +2036,10 @@ const MODULES_ARIANE = [
   { id: 'publication', nom: 'Publication de site', coeur: false, dependances: [], macSeul: false,
     description: 'Miroir d’une partie du coffre vers un site, avec commit et envoi.' },
 ];
+// Les modules de la 3.0.0 : un module venu depuis s'ajoute de lui-même chez
+// qui les avait tous (voir Ariane.modulesAvecNouveaux).
+const MODULES_ARIANE_3_0 = ['annotations', 'citations', 'export', 'familles', 'typographie', 'suggestions',
+  'barre', 'taches', 'canevas', 'rappels', 'temps', 'correcteur', 'schemas', 'claude', 'publication'];
 const PROFILS_ARIANE = {
   zotero: ['annotations', 'citations', 'export', 'familles', 'typographie'],
   these: ['annotations', 'citations', 'export', 'familles', 'typographie', 'taches', 'canevas', 'rappels', 'temps'],
@@ -2237,6 +2295,12 @@ const DEFAULT_SETTINGS = {
   nettoyerNotesOrphelines: true, // retirer la définition d'une note quand son appel disparaît
   marquerOrphelines: true, // taguer les annotations à 0 appel (pour le graphe)
   tagOrpheline: 'orphelin', // nom du tag (sans #)
+
+  // --- Commentaires en marge (module « commentaires ») ---
+  commentairesCouleur: 'yellow',  // couleur proposée pour un nouveau commentaire
+  commentairesAuteur: '',         // nom affiché ; vide : « Moi »
+  commentairesSuivre: true,       // cartes face au passage (sinon une liste)
+  commentairesMasquer: true,      // balises masquées en aperçu en direct
 
   // --- Comportement ---
   regenerationAuto: true,

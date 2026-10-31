@@ -28,6 +28,7 @@
   "11p-iphone.js",
   "11q-concentration.js",
   "11s-accueil.js",
+  "11t-commentaires.js",
   "11z-ariane.js",
   "12-reglages.js",
   "13-modales-tache.js",
@@ -42,5 +43,6 @@
   "20-modales-secondaires.js",
   "21-barre-edition.js",
   "22-pont-claude.js",
-  "23-exports.js"
+  "23-commentaires-marge.js",
+  "24-exports.js"
 ]

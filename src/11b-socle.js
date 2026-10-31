@@ -299,6 +299,19 @@ const avecSocle = (Base) => class extends Base {
     return reglage.includes(id);
   }
 
+  // Un module venu après le dernier démarrage s'active de lui-même chez qui
+  // avait tous les autres (profil « Tout ») ; ailleurs, il attend qu'on le
+  // choisisse. `connus` : les modules du dernier démarrage (ceux de la 3.0.0
+  // quand rien n'est noté).
+  static modulesAvecNouveaux(modules, connus) {
+    if (!Array.isArray(modules)) return modules;
+    const avant = Array.isArray(connus) ? connus : MODULES_ARIANE_3_0;
+    const ids = MODULES_ARIANE.map((m) => m.id);
+    const nouveaux = ids.filter((id) => !avant.includes(id));
+    if (!nouveaux.length || !avant.every((id) => modules.includes(id))) return modules;
+    return ids.filter((id) => modules.includes(id) || nouveaux.includes(id));
+  }
+
   // Vrai si chacun des modules (un id, ou un tableau d'ids) est actif.
   module(ids) {
     const mac = !!(obsidian.Platform && obsidian.Platform.isMacOS);
@@ -402,6 +415,8 @@ const avecSocle = (Base) => class extends Base {
     } else if (!Array.isArray(this.settings.modules)) {
       this.settings.modules = PROFILS_ARIANE.tout.slice();
     }
+    this.settings.modules = Ariane.modulesAvecNouveaux(this.settings.modules, this.settings.modulesConnus);
+    this.settings.modulesConnus = MODULES_ARIANE.map((m) => m.id);
     this.settings.correspondancesSuffixe = migrerCorrespondances(this.settings.correspondancesSuffixe);
 
     // clesTaches ne contient plus que de VRAIES personnalisations de label.

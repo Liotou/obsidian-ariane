@@ -91,6 +91,7 @@
  *            11p  avecIphone       temps d'écran de l'iPhone, lu sur le Mac
  *            11q  avecConcentration micro-interruptions, distractions, concentration
  *            11s  avecAccueil    présentation, assistant de premier lancement, tutoriel
+ *            11t  avecCommentaires commentaires en marge (branchement de la section 23)
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -135,7 +136,11 @@
  *          le relais local (127.0.0.1, jeton) par lequel le serveur MCP
  *          ariane-taches (mcp/taches.js) interroge Ariane pour Claude :
  *          liste, détail, charge du calendrier, revue des tâches
- *   23 · Exports
+ *   23 · Commentaires en marge
+ *          commentaires sur un passage, comme dans Word, repris du greffon
+ *          Margin Annotations (MIT) : CommentairesMarge (logique pure), cartes
+ *          en marge, volet « ariane-commentaires »
+ *   24 · Exports
  *          module.exports et surface _test des fonctions pures
  *
  * ─────────────────────────────────────────────────────────────────────────
@@ -546,6 +551,58 @@ const TEXTES = {
     "Les annotations proches de ce que vous écrivez, dans un panneau (modèle local conseillé).": "Annotations close to what you are writing, in a panel (local model advised).",
     "Barre d’édition": "Editing bar",
     "Une barre de mise en forme sous les onglets de chaque note.": "A formatting bar under each note's tabs.",
+    "Commentaires en marge": "Margin comments",
+    "Des commentaires sur un passage, comme dans Word : surlignage, carte en marge, réponses, résolution.": "Comments on a passage, as in Word: highlight, card in the margin, replies, resolution.",
+    "Commenter le passage": "Comment on the passage",
+    "Modifier le commentaire sous le curseur": "Edit the comment under the cursor",
+    "Supprimer le commentaire choisi": "Delete the selected comment",
+    "Choisissez d’abord un commentaire (une carte du volet, ou le curseur dans le passage).": "Select a comment first (a card in the pane, or the cursor in the passage).",
+    "Afficher ou masquer le volet des commentaires": "Show or hide the comments pane",
+    "Moi": "Me",
+    "Le curseur n’est dans aucun passage commenté.": "The cursor is not in a commented passage.",
+    "Cette note est réécrite automatiquement (par Ariane ou ZotFlow) : un commentaire y serait perdu.": "This note is rewritten automatically (by Ariane or ZotFlow): a comment would be lost.",
+    "Passage introuvable dans la note : double-cliquez pour passer en édition, puis sélectionnez-le.": "Passage not found in the note: double-click to edit, then select it.",
+    "Rien à commenter sur cette ligne.": "Nothing to comment on this line.",
+    "Rien à commenter dans la sélection (un tableau ne se commente que cellule par cellule).": "Nothing to comment in the selection (a table is commented one cell at a time).",
+    "Passez en mode édition et sélectionnez le passage à commenter.": "Switch to editing mode and select the passage to comment on.",
+    "Modifier le commentaire": "Edit the comment",
+    "Répondre": "Reply",
+    "Rouvrir le commentaire": "Reopen the comment",
+    "Marquer comme résolu": "Mark as resolved",
+    "Couleur du commentaire": "Comment color",
+    "Supprimer le commentaire": "Delete the comment",
+    "Voir le commentaire": "Show the comment",
+    "Modifier": "Edit",
+    "Votre commentaire (⌘ ou Ctrl + Entrée pour enregistrer)": "Your comment (⌘ or Ctrl + Enter to save)",
+    "Couleur": "Color",
+    "Le commentaire est vide.": "The comment is empty.",
+    "Ouvrez une note pour voir ses commentaires.": "Open a note to see its comments.",
+    "Le passage a changé : sélectionnez-le de nouveau.": "The passage has changed: select it again.",
+    "Aucun commentaire dans cette note. Sélectionnez un passage, puis « Commenter le passage » au clic droit.": "No comments in this note. Select a passage, then right-click « Comment on the passage ».",
+    "Commentaire": "Comment",
+    "vers ": "around ",
+    "Résolu": "Resolved",
+    "Plus": "More",
+    "Réponse": "Reply",
+    "Supprimer la réponse": "Delete the reply",
+    "Répondre…": "Reply…",
+    "Envoyer": "Send",
+    "Commentaires": "Comments",
+    "Sélectionnez un passage, puis « Commenter le passage » (clic droit ou palette) : il se surligne, et le commentaire s'écrit dans une carte du volet de droite, face au texte, avec réponses et résolution. Le commentaire vit dans la note elle-même, dans deux balises invisibles à la lecture.": "Select a passage, then « Comment on the passage » (right-click or palette): it is highlighted, and the comment goes into a card in the right pane, facing the text, with replies and resolution. The comment lives in the note itself, in two tags hidden in reading view.",
+    "Couleur par défaut": "Default color",
+    "Proposée pour chaque nouveau commentaire ; chacun peut ensuite changer de couleur.": "Offered for each new comment; any comment can change color afterwards.",
+    "Nom de l’auteur": "Author name",
+    "Affiché sur les commentaires et les réponses. Vide : « Moi ».": "Shown on comments and replies. Empty: « Me ».",
+    "Cartes face au passage": "Cards facing the passage",
+    "Activé : chaque carte se tient face à son passage et suit le défilement. Désactivé : une liste dans l’ordre du texte, où un clic mène au passage.": "On: each card faces its passage and follows scrolling. Off: a list in text order, where a click leads to the passage.",
+    "Masquer les balises en aperçu en direct": "Hide the tags in Live Preview",
+    "Le mode source les montre toujours, en pâle.": "Source mode always shows them, faded.",
+    "Jaune": "Yellow",
+    "Vert": "Green",
+    "Bleu": "Blue",
+    "Rose": "Pink",
+    "Violet": "Purple",
+    "Orange": "Orange",
     "Notes de tâche, tableau de bord, frise, calendrier, IA des tâches.": "Task notes, dashboard, timeline, calendar, task AI.",
     "Les notes du canevas en cartes compactes ; les cartes de tâches si le module Tâches est actif.": "Canvas notes as compact cards; task cards if the Tasks module is on.",
     "Rappels et agendas": "Reminders and calendars",
@@ -2157,6 +2214,8 @@ const MODULES_ARIANE = [
     description: 'Les annotations proches de ce que vous écrivez, dans un panneau (modèle local conseillé).' },
   { id: 'barre', nom: 'Barre d’édition', coeur: false, dependances: [], macSeul: false,
     description: 'Une barre de mise en forme sous les onglets de chaque note.' },
+  { id: 'commentaires', nom: 'Commentaires en marge', coeur: false, dependances: [], macSeul: false,
+    description: 'Des commentaires sur un passage, comme dans Word : surlignage, carte en marge, réponses, résolution.' },
   { id: 'taches', nom: 'Tâches', coeur: false, dependances: [], macSeul: false,
     description: 'Notes de tâche, tableau de bord, frise, calendrier, IA des tâches.' },
   { id: 'canevas', nom: 'Canevas', coeur: false, dependances: [], macSeul: false,
@@ -2174,6 +2233,10 @@ const MODULES_ARIANE = [
   { id: 'publication', nom: 'Publication de site', coeur: false, dependances: [], macSeul: false,
     description: 'Miroir d’une partie du coffre vers un site, avec commit et envoi.' },
 ];
+// Les modules de la 3.0.0 : un module venu depuis s'ajoute de lui-même chez
+// qui les avait tous (voir Ariane.modulesAvecNouveaux).
+const MODULES_ARIANE_3_0 = ['annotations', 'citations', 'export', 'familles', 'typographie', 'suggestions',
+  'barre', 'taches', 'canevas', 'rappels', 'temps', 'correcteur', 'schemas', 'claude', 'publication'];
 const PROFILS_ARIANE = {
   zotero: ['annotations', 'citations', 'export', 'familles', 'typographie'],
   these: ['annotations', 'citations', 'export', 'familles', 'typographie', 'taches', 'canevas', 'rappels', 'temps'],
@@ -2429,6 +2492,12 @@ const DEFAULT_SETTINGS = {
   nettoyerNotesOrphelines: true, // retirer la définition d'une note quand son appel disparaît
   marquerOrphelines: true, // taguer les annotations à 0 appel (pour le graphe)
   tagOrpheline: 'orphelin', // nom du tag (sans #)
+
+  // --- Commentaires en marge (module « commentaires ») ---
+  commentairesCouleur: 'yellow',  // couleur proposée pour un nouveau commentaire
+  commentairesAuteur: '',         // nom affiché ; vide : « Moi »
+  commentairesSuivre: true,       // cartes face au passage (sinon une liste)
+  commentairesMasquer: true,      // balises masquées en aperçu en direct
 
   // --- Comportement ---
   regenerationAuto: true,
@@ -4587,6 +4656,7 @@ function sansBlocsAriane(texte) {
   return String(texte)
     .replace(/^---\n[\s\S]*?\n---\n?/, '')
     .replace(/<!--\s*ariane:([\w-]+)\s*-->[\s\S]*?<!--\s*\/ariane:\1\s*-->\n?/g, '')
+    .replace(/<span\b[^>]*\bclass="ann-[se]"[^>]*><\/span>/g, '')
     .replace(/(?:^[ \t]*-{3,}[ \t]*\n+)?%%\s*ariane:biblio\s*%%[\s\S]*?%%\s*\/ariane:biblio\s*%%/gm, '')
     .replace(/(?:^[ \t]*-{3,}[ \t]*\n+)?^#{1,6}[ \t]*Bibliographie[ \t]*$[\s\S]*?(?=^#{1,6}[ \t]|$(?![\s\S]))/gim, '');
 }
@@ -4688,6 +4758,9 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
   // 1 bis. Blocs qu'Ariane tient dans la note (sessions d'une tâche…) : ce
   //    sont des relevés, non du texte.
   s = s.replace(/<!--\s*ariane:([\w-]+)\s*-->[\s\S]*?<!--\s*\/ariane:\1\s*-->\n?/g, '');
+  // 1 bis bis. Les commentaires en marge (section 23) : leurs balises
+  //    disparaissent, le passage commenté reste.
+  s = s.replace(/<span\b[^>]*\bclass="ann-[se]"[^>]*><\/span>/g, '');
   // 1 ter. Les filets « --- » : le modèle souligne déjà ses titres, et un
   //    filet de plus se dessinait en double trait. Hors tableaux.
   s = s.replace(/^[ \t]*(?:-[ \t]*){3,}$|^[ \t]*(?:\*[ \t]*){3,}$|^[ \t]*(?:_[ \t]*){3,}$/gm, '');
@@ -5632,6 +5705,19 @@ const avecSocle = (Base) => class extends Base {
     return reglage.includes(id);
   }
 
+  // Un module venu après le dernier démarrage s'active de lui-même chez qui
+  // avait tous les autres (profil « Tout ») ; ailleurs, il attend qu'on le
+  // choisisse. `connus` : les modules du dernier démarrage (ceux de la 3.0.0
+  // quand rien n'est noté).
+  static modulesAvecNouveaux(modules, connus) {
+    if (!Array.isArray(modules)) return modules;
+    const avant = Array.isArray(connus) ? connus : MODULES_ARIANE_3_0;
+    const ids = MODULES_ARIANE.map((m) => m.id);
+    const nouveaux = ids.filter((id) => !avant.includes(id));
+    if (!nouveaux.length || !avant.every((id) => modules.includes(id))) return modules;
+    return ids.filter((id) => modules.includes(id) || nouveaux.includes(id));
+  }
+
   // Vrai si chacun des modules (un id, ou un tableau d'ids) est actif.
   module(ids) {
     const mac = !!(obsidian.Platform && obsidian.Platform.isMacOS);
@@ -5735,6 +5821,8 @@ const avecSocle = (Base) => class extends Base {
     } else if (!Array.isArray(this.settings.modules)) {
       this.settings.modules = PROFILS_ARIANE.tout.slice();
     }
+    this.settings.modules = Ariane.modulesAvecNouveaux(this.settings.modules, this.settings.modulesConnus);
+    this.settings.modulesConnus = MODULES_ARIANE.map((m) => m.id);
     this.settings.correspondancesSuffixe = migrerCorrespondances(this.settings.correspondancesSuffixe);
 
     // clesTaches ne contient plus que de VRAIES personnalisations de label.
@@ -26304,6 +26392,482 @@ const avecAccueil = (Base) => class extends Base {
 
   //#endregion Ariane · accueil et tutoriel
 };
+// ── avecCommentaires ──────────────────────────────────────────────────────
+// Domaine : les commentaires en marge (module « commentaires »).
+// Le branchement de la section 23 : commandes, menus, surlignage dans
+// l'éditeur, rendu en lecture (passage surligné, bouton, bulle), écriture
+// des balises dans la note. La logique pure vit dans CommentairesMarge.
+const avecCommentaires = (Base) => class extends Base {
+  //#region Ariane · commentaires en marge
+
+  // Tout ce que le module enregistre ; appelé seulement s'il est actif.
+  brancherCommentaires() {
+    this.margeCommentaires = new GestionCommentairesMarge(this);
+    this.registerView(TYPE_VUE_COMMENTAIRES, (leaf) => new VueCommentairesMarge(leaf, this));
+    this.registerEditorExtension(this.extensionCommentaires());
+    this.addRibbonIcon('message-square', tr('Commentaires en marge'), () => this.basculerVueCommentaires());
+    this.addCommand({
+      id: 'commentaire-ajouter', module: 'commentaires', name: tr('Commenter le passage'),
+      editorCallback: (editeur, vue) => this.commenterPassage(editeur, vue.file),
+    });
+    this.addCommand({
+      id: 'commentaire-modifier', module: 'commentaires', name: tr('Modifier le commentaire sous le curseur'),
+      editorCallback: (editeur, vue) => {
+        const a = this._commentaireAuCurseur(editeur, true);
+        if (a && vue.file) this.modifierCommentaireMarge(vue.file, a.id);
+      },
+    });
+    this.addCommand({
+      id: 'commentaire-supprimer', module: 'commentaires', name: tr('Supprimer le commentaire choisi'),
+      callback: () => {
+        const vue = this.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+        if (vue && vue.file && vue.getMode() === 'source') {
+          const a = CommentairesMarge.trouverA(vue.editor.getValue(), vue.editor.posToOffset(vue.editor.getCursor('from')));
+          if (a) { this.supprimerCommentaireMarge(vue.file, a.id); return; }
+        }
+        if (!this.margeCommentaires.supprimerChoisi()) {
+          new obsidian.Notice(tr('Choisissez d’abord un commentaire (une carte du volet, ou le curseur dans le passage).'));
+        }
+      },
+    });
+    this.addCommand({
+      id: 'commentaires-volet', module: 'commentaires', name: tr('Afficher ou masquer le volet des commentaires'),
+      callback: () => this.basculerVueCommentaires(),
+    });
+
+    this.registerEvent(this.app.workspace.on('editor-menu', (menu, editeur, info) => {
+      const f = info && info.file;
+      if (!f) return;
+      menu.addItem((i) => i.setTitle(tr('Commenter le passage')).setIcon('message-square-plus')
+        .onClick(() => this.commenterPassage(editeur, f)));
+      const a = this._commentaireAuCurseur(editeur, false);
+      if (a) this.remplirMenuCommentaire(menu, f, a.id);
+    }));
+    this.registerMarkdownPostProcessor((el, ctx) => this.decorerLectureCommentaires(el, ctx));
+
+    const m = this.margeCommentaires;
+    this.registerEvent(this.app.workspace.on('layout-change', () => m.synchroniser()));
+    this.registerEvent(this.app.workspace.on('active-leaf-change', () => m.synchroniser()));
+    this.registerEvent(this.app.workspace.on('file-open', () => m.synchroniser()));
+    this.registerEvent(this.app.workspace.on('editor-change',
+      () => this.antirebond('commentaires:marge', () => m.synchroniser(), 250)));
+    this.registerEvent(this.app.vault.on('modify', (f) => m.rafraichirFichier(f.path)));
+    // Les balises masquées en aperçu en direct : une classe sur le corps de
+    // chaque fenêtre, volets détachés compris.
+    this.registerEvent(this.app.workspace.on('window-open', (fen) => this.appliquerMasqueBalises(fen && fen.doc)));
+    this.registerInterval(window.setInterval(() => m.battement(), 1000));
+    this.app.workspace.onLayoutReady(() => m.synchroniser(true));
+    this.appliquerMasqueBalises();
+    this.register(() => {
+      for (const d of this._documentsOuverts()) d.body.removeClass('zfa-com-masquer');
+      this.fermerBulleCommentaire();
+      m.detacher();
+    });
+  }
+
+  // Le surlignage des passages dans l'éditeur (source et aperçu en direct),
+  // et le suivi du curseur, qui rend active la carte du passage.
+  extensionCommentaires() {
+    const { ViewPlugin, Decoration } = require('@codemirror/view');
+    const greffon = this;
+    const decorer = (vue) => {
+      const doc = vue.state.doc.toString();
+      if (!doc.includes('class="ann-')) return Decoration.none;
+      const plages = [];
+      for (const a of CommentairesMarge.lire(doc)) {
+        plages.push(Decoration.mark({ class: 'zfa-com-balise' }).range(a.debut.from, a.debut.to));
+        if (a.textFrom < a.textTo) {
+          plages.push(Decoration.mark({ class: 'zfa-com-texte zfa-com-c-' + a.couleur + (a.resolu ? ' zfa-com-resolu' : '') })
+            .range(a.textFrom, a.textTo));
+        }
+        plages.push(Decoration.mark({ class: 'zfa-com-balise' }).range(a.fin.from, a.fin.to));
+      }
+      return Decoration.set(plages, true);
+    };
+    return ViewPlugin.fromClass(class {
+      constructor(vue) { this.decorations = decorer(vue); }
+      update(u) {
+        if (u.docChanged) this.decorations = decorer(u.view);
+        else if (u.selectionSet && greffon.margeCommentaires) greffon.margeCommentaires.surCurseur(u.view);
+      }
+    }, { decorations: (v) => v.decorations });
+  }
+
+  _documentsOuverts() {
+    const docs = new Set([document]);
+    this.app.workspace.iterateAllLeaves((l) => {
+      const d = l.view && l.view.containerEl && l.view.containerEl.ownerDocument;
+      if (d) docs.add(d);
+    });
+    return docs;
+  }
+
+  appliquerMasqueBalises(seul) {
+    const masquer = this.settings.commentairesMasquer !== false;
+    for (const d of seul ? [seul] : this._documentsOuverts()) if (d && d.body) d.body.toggleClass('zfa-com-masquer', masquer);
+  }
+
+  auteurCommentaires() {
+    return String(this.settings.commentairesAuteur || '').trim() || tr('Moi');
+  }
+
+  async basculerVueCommentaires() {
+    const ouvertes = this.app.workspace.getLeavesOfType(TYPE_VUE_COMMENTAIRES);
+    if (ouvertes.length) ouvertes.forEach((l) => l.detach());
+    else await this.ouvrirVueCommentaires(true);
+  }
+
+  async ouvrirVueCommentaires(montrer) {
+    const ws = this.app.workspace;
+    let leaf = ws.getLeavesOfType(TYPE_VUE_COMMENTAIRES)[0];
+    if (!leaf) {
+      const droite = ws.getRightLeaf(false);
+      if (!droite) return;
+      await droite.setViewState({ type: TYPE_VUE_COMMENTAIRES, active: false });
+      leaf = droite;
+    }
+    if (montrer) await ws.revealLeaf(leaf);
+    this.margeCommentaires.synchroniser(true);
+  }
+
+  // Une note qu'Ariane ou ZotFlow réécrivent : un commentaire y serait perdu
+  // à la prochaine régénération (annotations, notes de lecture, fiches
+  // Zotero), ou ne pourrait pas s'y poser (notes verrouillées).
+  noteTenueParAriane(f) {
+    if (!f) return false;
+    const dans = (d) => !!d && f.path.startsWith(d + '/');
+    if (dans(this.dossierA) || dans(this.settings.dossierNotesLecture)) return true;
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    return fm['zotero-key'] !== undefined || fm.locked === true || fm['zotflow-anno-key'] !== undefined;
+  }
+
+  // ── Lecture et écriture de la note ──
+
+  _vueSourceMarge(f) {
+    for (const l of this.app.workspace.getLeavesOfType('markdown')) {
+      const v = l.view;
+      if (v instanceof obsidian.MarkdownView && v.file && v.file.path === f.path && v.getMode() === 'source') return v;
+    }
+    return null;
+  }
+
+  // Le texte de la note : celui de l'éditeur ouvert s'il y en a un.
+  async texteCommentaires(f) {
+    const v = this._vueSourceMarge(f);
+    return v ? v.editor.getValue() : this.app.vault.cachedRead(f);
+  }
+
+  appliquerAEditeurMarge(editeur, changements) {
+    editeur.transaction({
+      changes: changements.map((c) => ({ from: editeur.offsetToPos(c.from), to: editeur.offsetToPos(c.to), text: c.insert })),
+    });
+  }
+
+  // Le défilement de chaque vue de la note, rendu après l'écriture : une
+  // vue de lecture se redessine, et remonterait sinon tout en haut.
+  _memoriserDefilement(f) {
+    const pris = [];
+    for (const l of this.app.workspace.getLeavesOfType('markdown')) {
+      const v = l.view;
+      if (!(v instanceof obsidian.MarkdownView) || !v.file || v.file.path !== f.path) continue;
+      const el = v.getMode() === 'source' ? (v.editor.cm && v.editor.cm.scrollDOM)
+        : v.contentEl.querySelector('.markdown-preview-view');
+      if (el) pris.push([el, el.scrollTop]);
+    }
+    return () => {
+      for (const delai of [0, 60, 200, 500]) {
+        setTimeout(() => { for (const [el, haut] of pris) if (Math.abs(el.scrollTop - haut) > 2) el.scrollTop = haut; }, delai);
+      }
+    };
+  }
+
+  // Applique fn(doc) par l'éditeur ouvert s'il y en a un, sinon au fichier.
+  async muterCommentairesMarge(f, fn) {
+    const rendre = this._memoriserDefilement(f);
+    const v = this._vueSourceMarge(f);
+    if (v) {
+      const ch = fn(v.editor.getValue());
+      if (!ch || !ch.length) return false;
+      this.appliquerAEditeurMarge(v.editor, ch);
+      rendre();
+      return true;
+    }
+    let fait = false;
+    await this.app.vault.process(f, (doc) => {
+      const ch = fn(doc);
+      if (!ch || !ch.length) return doc;
+      fait = true;
+      return CommentairesMarge.appliquer(doc, ch);
+    });
+    rendre();
+    return fait;
+  }
+
+  // ── Gestes ──
+
+  _commentaireAuCurseur(editeur, prevenir) {
+    const a = CommentairesMarge.trouverA(editeur.getValue(), editeur.posToOffset(editeur.getCursor('from')));
+    if (!a && prevenir) new obsidian.Notice(tr('Le curseur n’est dans aucun passage commenté.'));
+    return a;
+  }
+
+  commenterPassage(editeur, f) {
+    if (!f) return;
+    if (this.noteTenueParAriane(f)) {
+      new obsidian.Notice(tr('Cette note est réécrite automatiquement (par Ariane ou ZotFlow) : un commentaire y serait perdu.'));
+      return;
+    }
+    const doc = editeur.getValue();
+    const a = editeur.posToOffset(editeur.getCursor('from'));
+    const b = editeur.posToOffset(editeur.getCursor('to'));
+    let from = Math.min(a, b);
+    let to = Math.max(a, b);
+    if (!editeur.somethingSelected()) {
+      // Un texte choisi dans un bloc rendu (encadré en aperçu en direct)
+      // n'existe que dans le DOM.
+      const rendu = this._selectionRendueMarge(editeur, doc);
+      if (rendu === 'introuvable') {
+        new obsidian.Notice(tr('Passage introuvable dans la note : double-cliquez pour passer en édition, puis sélectionnez-le.'));
+        return;
+      }
+      // Rien de choisi : la cellule, le bloc de code ou la ligne du curseur.
+      const r = rendu || CommentairesMarge.plageAuCurseur(doc, from);
+      if (!r) { new obsidian.Notice(tr('Rien à commenter sur cette ligne.')); return; }
+      ({ from, to } = r);
+    }
+    if (!CommentairesMarge.entourer(doc, from, to, 'x', 'test')) {
+      new obsidian.Notice(tr('Rien à commenter dans la sélection (un tableau ne se commente que cellule par cellule).'));
+      return;
+    }
+    this.margeCommentaires.panneauPour(editeur).then((p) => {
+      if (p) p.commencer(from, to, doc.slice(from, to));
+      else new obsidian.Notice(tr('Passez en mode édition et sélectionnez le passage à commenter.'));
+    });
+  }
+
+  // L'aperçu en direct dessine les blocs hors du curseur en widgets ; un
+  // texte choisi là n'est qu'une sélection du DOM. On la ramène à la source :
+  // null hors d'un tel widget, « introuvable » si le texte n'y est pas.
+  _selectionRendueMarge(editeur, doc) {
+    const cm = editeur.cm;
+    const sel = cm && cm.contentDOM.ownerDocument.getSelection();
+    if (!cm || !sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+    const plage = sel.getRangeAt(0);
+    const noeud = plage.commonAncestorContainer;
+    const el = noeud.nodeType === 1 ? noeud : noeud.parentElement;
+    const widget = el && el.closest('.cm-embed-block');
+    if (!widget || !cm.contentDOM.contains(widget)) return null;
+    const choisi = plage.toString();
+    const cible = CommentairesMarge.texteCompact(choisi);
+    if (!cible) return 'introuvable';
+    // Quelle occurrence dans le widget, si le même texte y revient.
+    const tout = widget.ownerDocument.createRange();
+    tout.selectNodeContents(widget);
+    const avant = tout.cloneRange();
+    avant.setEnd(plage.startContainer, plage.startOffset);
+    const rang = CommentairesMarge.occurrencesAvant(CommentairesMarge.texteCompact(tout.toString()), cible,
+      CommentairesMarge.texteCompact(avant.toString()).length);
+    let debut = -1;
+    try {
+      const r = widget.getBoundingClientRect();
+      debut = cm.posAtCoords({ x: r.left + 2, y: r.top + 2 }, false);
+    } catch (e) { /* widget non disposé */ }
+    if (debut >= 0) {
+      const bloc = CommentairesMarge.blocAutour(doc, debut);
+      const occ = CommentairesMarge.trouverTexteRendu(doc.slice(bloc.from, bloc.to), choisi);
+      const o = occ[Math.min(rang, occ.length - 1)];
+      if (o) return { from: bloc.from + o.from, to: bloc.from + o.to };
+    }
+    // Position du widget inconnue : seulement une occurrence sans ambiguïté.
+    const toutes = CommentairesMarge.trouverTexteRendu(doc, choisi);
+    return toutes.length === 1 ? toutes[0] : 'introuvable';
+  }
+
+  async modifierCommentaireMarge(f, id) {
+    const p = this.margeCommentaires.panneauDuFichier(f.path);
+    if (p && p.trouver(id)) { p.modifier(id); return; }
+    const a = CommentairesMarge.trouverParId(await this.texteCommentaires(f), id);
+    if (!a) return;
+    new ModaleCommentaireMarge(this.app, tr('Modifier le commentaire'), a.note, a.couleur, (note, couleur) => {
+      this.majCommentaireMarge(f, id, { note, couleur });
+    }).open();
+  }
+
+  // patch : un objet, ou une fonction du commentaire courant qui le rend.
+  async majCommentaireMarge(f, id, patch) {
+    await this.muterCommentairesMarge(f, (doc) => {
+      const a = CommentairesMarge.trouverParId(doc, id);
+      return a ? CommentairesMarge.changementsMaj(a, typeof patch === 'function' ? patch(a) : patch) : null;
+    });
+  }
+
+  async supprimerCommentaireMarge(f, id) {
+    await this.muterCommentairesMarge(f, (doc) => {
+      const a = CommentairesMarge.trouverParId(doc, id);
+      return a ? CommentairesMarge.changementsRetrait(a) : null;
+    });
+  }
+
+  remplirMenuCommentaire(menu, f, id) {
+    const p = this.margeCommentaires.panneauDuFichier(f.path);
+    const c = p && p.trouver(id);
+    const resolu = !!(c && c.resolu);
+    if (p) menu.addItem((i) => i.setTitle(tr('Répondre')).setIcon('message-square').onClick(() => p.repondre(id)));
+    menu.addItem((i) => i.setTitle(resolu ? tr('Rouvrir le commentaire') : tr('Marquer comme résolu'))
+      .setIcon(resolu ? 'rotate-ccw' : 'check')
+      .onClick(() => this.majCommentaireMarge(f, id, (a) => ({ resolu: !a.resolu }))));
+    menu.addItem((i) => i.setTitle(tr('Modifier le commentaire')).setIcon('pencil').onClick(() => this.modifierCommentaireMarge(f, id)));
+    menu.addItem((i) => {
+      i.setTitle(tr('Couleur du commentaire')).setIcon('palette');
+      const sous = typeof i.setSubmenu === 'function' ? i.setSubmenu() : null;
+      if (!sous) return;
+      for (const coul of CommentairesMarge.COULEURS) {
+        sous.addItem((j) => j.setTitle(tr(coul.nom) + (c && c.couleur === coul.cle ? '  ✓' : '')).setIcon('circle')
+          .onClick(() => this.majCommentaireMarge(f, id, { couleur: coul.cle })));
+      }
+    });
+    menu.addItem((i) => i.setTitle(tr('Supprimer le commentaire')).setIcon('trash')
+      .onClick(() => this.supprimerCommentaireMarge(f, id)));
+  }
+
+  // ── Mode lecture ──
+  //  Les balises arrivent dans le DOM comme des span vides : le texte entre
+  //  les deux est enveloppé d'un surlignage, la balise de fin devient un
+  //  bouton qui ouvre la bulle du commentaire.
+
+  decorerLectureCommentaires(el, ctx) {
+    const d = el.ownerDocument;
+    const abs = this.app.vault.getAbstractFileByPath(ctx.sourcePath);
+    const f = abs instanceof obsidian.TFile ? abs : null;
+    // Les commentaires déjà ouverts au début de cette section (étendue sur
+    // plusieurs paragraphes).
+    const ouverts = new Map();
+    const info = ctx.getSectionInfo(el);
+    if (info && info.text.includes('class="ann-')) {
+      const debut = CommentairesMarge.decalageLigne(info.text, info.lineStart);
+      for (const a of CommentairesMarge.lire(info.text)) {
+        if (a.debut.to <= debut && a.fin.from >= debut) ouverts.set(a.id, a.couleur);
+      }
+    }
+    const balises = el.querySelectorAll('span.ann-s, span.ann-e');
+    if (!ouverts.size && !balises.length) return;
+    // Sans information de section : une fin sans début dans ce bloc veut
+    // dire « ouvert depuis le haut ».
+    const vus = new Set();
+    balises.forEach((b) => {
+      const id = b.dataset.id || '';
+      if (b.classList.contains('ann-s')) vus.add(id);
+      else if (!vus.has(id) && !ouverts.has(id)) ouverts.set(id, CommentairesMarge.normaliserCouleur(b.dataset.color));
+    });
+    const noeuds = [];
+    const parcours = d.createTreeWalker(el, 1 | 4);
+    while (parcours.nextNode()) noeuds.push(parcours.currentNode);
+    const EN_LIGNE = new Set(['P', 'EM', 'STRONG', 'A', 'B', 'I', 'DEL', 'MARK', 'SPAN', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+    for (const n of noeuds) {
+      if (n.nodeType === 1) {
+        if (n.tagName !== 'SPAN') continue;
+        const id = n.dataset.id || '';
+        if (n.classList.contains('ann-s')) ouverts.set(id, CommentairesMarge.normaliserCouleur(n.dataset.color));
+        else if (n.classList.contains('ann-e')) { this._boutonCommentaire(n, f); ouverts.delete(id); }
+        continue;
+      }
+      if (!ouverts.size) continue;
+      const val = n.nodeValue || '';
+      const parent = n.parentElement;
+      if (!val || !parent || parent.closest('.zfa-com-bouton, .zfa-com-bulle')) continue;
+      if (val.trim() === '' && !EN_LIGNE.has(parent.tagName)) continue;
+      let courant = n;
+      for (const [id, couleur] of ouverts) {
+        const s = parent.createSpan({ cls: 'zfa-com-hl' });
+        s.dataset.id = id;
+        s.dataset.color = couleur;
+        if (f) {
+          s.addEventListener('contextmenu', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const menu = new obsidian.Menu();
+            this.remplirMenuCommentaire(menu, f, id);
+            menu.showAtMouseEvent(ev);
+          });
+        }
+        courant.parentNode.replaceChild(s, courant);
+        s.appendChild(courant);
+        courant = s;
+      }
+    }
+  }
+
+  _boutonCommentaire(b, f) {
+    const note = b.dataset.note || '';
+    b.addClass('zfa-com-bouton');
+    obsidian.setIcon(b, 'message-square');
+    b.setAttribute('role', 'button');
+    b.setAttribute('aria-label', tr('Voir le commentaire'));
+    b.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._basculerBulleCommentaire(b, note, f);
+    });
+    if (f) {
+      b.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const menu = new obsidian.Menu();
+        this.remplirMenuCommentaire(menu, f, b.dataset.id || '');
+        menu.showAtMouseEvent(ev);
+      });
+    }
+  }
+
+  _basculerBulleCommentaire(ancre, note, f) {
+    const id = ancre.dataset.id || '';
+    const ouverte = this._bulleCom && this._bulleCom.dataset.comId === id;
+    this.fermerBulleCommentaire();
+    if (ouverte) return;
+    const d = ancre.ownerDocument;
+    const fen = d.defaultView || window;
+    const bulle = d.body.createDiv({ cls: 'zfa-com-bulle' });
+    bulle.dataset.comId = id;
+    bulle.style.setProperty('--zfa-com-couleur', CommentairesMarge.couleurCss(CommentairesMarge.normaliserCouleur(ancre.dataset.color)));
+    bulle.createDiv({ cls: 'zfa-com-bulle-texte', text: note });
+    if (f) {
+      const actions = bulle.createDiv({ cls: 'zfa-com-actions' });
+      actions.createEl('button', { text: tr('Modifier') }).addEventListener('click', () => {
+        this.fermerBulleCommentaire();
+        this.modifierCommentaireMarge(f, id);
+      });
+      actions.createEl('button', { text: tr('Supprimer') }).addEventListener('click', () => {
+        this.fermerBulleCommentaire();
+        this.supprimerCommentaireMarge(f, id);
+      });
+    }
+    const r = ancre.getBoundingClientRect();
+    const larg = Math.min(bulle.offsetWidth || 320, fen.innerWidth - 16);
+    bulle.style.left = Math.max(8, Math.min(r.left, fen.innerWidth - larg - 8)) + 'px';
+    bulle.style.top = (r.bottom + 6) + 'px';
+    const surAppui = (e) => { if (!bulle.contains(e.target) && e.target !== ancre) this.fermerBulleCommentaire(); };
+    const surTouche = (e) => { if (e.key === 'Escape') this.fermerBulleCommentaire(); };
+    const surDefil = (e) => { if (!bulle.contains(e.target)) this.fermerBulleCommentaire(); };
+    d.addEventListener('mousedown', surAppui, true);
+    d.addEventListener('keydown', surTouche, true);
+    d.addEventListener('scroll', surDefil, true);
+    this._bulleCom = bulle;
+    this._bulleComFin = () => {
+      d.removeEventListener('mousedown', surAppui, true);
+      d.removeEventListener('keydown', surTouche, true);
+      d.removeEventListener('scroll', surDefil, true);
+    };
+  }
+
+  fermerBulleCommentaire() {
+    if (this._bulleComFin) this._bulleComFin();
+    this._bulleComFin = null;
+    if (this._bulleCom) this._bulleCom.remove();
+    this._bulleCom = null;
+  }
+
+  //#endregion Ariane · commentaires en marge
+};
 
 // ── class Ariane ──────────────────────────────────────────────────────────
 // Le point d'assemblage. Ne porte que le cycle de vie : onload, et les
@@ -26325,7 +26889,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecDonneesJour,
   avecIphone,
   avecConcentration,
-  avecAccueil) {
+  avecAccueil,
+  avecCommentaires) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -26368,7 +26933,7 @@ class Ariane extends composer(obsidian.Plugin,
       // Une vue d'un module coupé, restée dans la disposition, se ferme :
       // Obsidian la montrerait sinon comme une vue introuvable.
       const vuesDeModule = [['zfa-suggestions', 'suggestions'], [TYPE_VUE_INCOHERENCES, 'taches'],
-        [TYPE_VUE_CHRONOLOGIE, 'temps'], [TYPE_VUE_RELECTURE, 'correcteur']];
+        [TYPE_VUE_CHRONOLOGIE, 'temps'], [TYPE_VUE_RELECTURE, 'correcteur'], [TYPE_VUE_COMMENTAIRES, 'commentaires']];
       for (const [type, mod] of vuesDeModule) if (!this.module(mod)) this.app.workspace.detachLeavesOfType(type);
       const corriges = this.reconcilierDossiersReglages();
       if (corriges.length) {
@@ -27130,6 +27695,8 @@ class Ariane extends composer(obsidian.Plugin,
   // Icônes du ruban, aperçu au survol, glisser-déposer d'annotations et
   // post-traitements Markdown.
   _brancherInterface() {
+    // Commentaires en marge (section 23) : volet, commandes, surlignage.
+    if (this.module('commentaires')) this.brancherCommentaires();
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
     if (this.module('suggestions')) this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
@@ -28003,6 +28570,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           ['ongletSuggestions', 'Maintenance']] },
       { id: 'barre', module: 'barre', icone: 'pen-line',
         rubriques: [['ongletBarre', 'La barre'], ['ongletBarre', 'Les boutons']], avance: [['ongletBarre', 'Couleurs proposées']] },
+      { id: 'commentaires', module: 'commentaires', icone: 'message-square',
+        rubriques: [['ongletCommentaires', 'Commentaires en marge']] },
       { id: 'taches', module: 'taches', icone: 'list-checks',
         rubriques: [['ongletTaches', 'Tâches'], ['ongletTaches', 'Familles de tâches'], ['ongletTaches', 'Tableau de bord'],
           ['ongletVues', 'Calendrier'], ['ongletVues', 'Vue Frise']],
@@ -28150,7 +28719,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     pied.settingEl.addClass('zfa-modules-pied');
     const groupes = [
       ['Le cœur', MODULES_ARIANE.filter((m) => m.coeur)],
-      ['Écriture et recherche', MODULES_ARIANE.filter((m) => ['export', 'familles', 'typographie', 'suggestions', 'barre', 'correcteur', 'schemas'].includes(m.id))],
+      ['Écriture et recherche', MODULES_ARIANE.filter((m) => ['export', 'familles', 'typographie', 'suggestions', 'barre', 'commentaires', 'correcteur', 'schemas'].includes(m.id))],
       ['Gestion de la thèse', MODULES_ARIANE.filter((m) => ['taches', 'canevas', 'rappels', 'temps'].includes(m.id))],
       ['Liens et diffusion', MODULES_ARIANE.filter((m) => ['claude', 'publication'].includes(m.id))],
     ];
@@ -29204,6 +29773,42 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Ex. « 0.8em », « 11px »."))
       .addText((t) => t.setValue(s.aparteTaille).onChange(async (v) => { s.aparteTaille = v.trim() || '0.8em'; await maj(); this.plugin.appliquerStyleAparte(); }));
 
+  }
+
+  // ── Commentaires en marge (section 23) ───────────────────────────────
+  ongletCommentaires(c, s, maj) {
+    const g = this.plugin;
+    this._section(c, tr('Commentaires en marge'));
+    this._aide(c, tr("Sélectionnez un passage, puis « Commenter le passage » (clic droit ou palette) : il se surligne, et le commentaire s'écrit dans une carte du volet de droite, face au texte, avec réponses et résolution. Le commentaire vit dans la note elle-même, dans deux balises invisibles à la lecture."));
+    new obsidian.Setting(c)
+      .setName(tr('Couleur par défaut'))
+      .setDesc(tr('Proposée pour chaque nouveau commentaire ; chacun peut ensuite changer de couleur.'))
+      .addDropdown((d) => {
+        for (const coul of CommentairesMarge.COULEURS) d.addOption(coul.cle, tr(coul.nom));
+        d.setValue(CommentairesMarge.normaliserCouleur(s.commentairesCouleur))
+          .onChange(async (v) => { s.commentairesCouleur = v; await maj(); });
+      });
+    new obsidian.Setting(c)
+      .setName(tr('Nom de l’auteur'))
+      .setDesc(tr('Affiché sur les commentaires et les réponses. Vide : « Moi ».'))
+      .addText((t) => t.setValue(s.commentairesAuteur || '')
+        .onChange(async (v) => { s.commentairesAuteur = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Cartes face au passage'))
+      .setDesc(tr('Activé : chaque carte se tient face à son passage et suit le défilement. Désactivé : une liste dans l’ordre du texte, où un clic mène au passage.'))
+      .addToggle((t) => t.setValue(s.commentairesSuivre !== false).onChange(async (v) => {
+        s.commentairesSuivre = v;
+        await maj();
+        if (g.margeCommentaires) g.margeCommentaires.synchroniser(true);
+      }));
+    new obsidian.Setting(c)
+      .setName(tr('Masquer les balises en aperçu en direct'))
+      .setDesc(tr('Le mode source les montre toujours, en pâle.'))
+      .addToggle((t) => t.setValue(s.commentairesMasquer !== false).onChange(async (v) => {
+        s.commentairesMasquer = v;
+        await maj();
+        if (g.appliquerMasqueBalises) g.appliquerMasqueBalises();
+      }));
   }
 
   // ── Barre d'édition (section 21) ─────────────────────────────────────
@@ -32225,6 +32830,8 @@ const TYPE_VUE_BASE_FRISE = 'ariane-frise';
 // retrouver ses traces dans les .base pour les convertir en canevas.
 const TYPE_VUE_BASE_ARTIC = 'ariane-articulation';
 const TYPE_VUE_BASE_CALENDRIER = 'ariane-calendrier';
+// Le volet des commentaires en marge (section 23).
+const TYPE_VUE_COMMENTAIRES = 'ariane-commentaires';
 
 // Valeurs par défaut des réglages d'une frise de base. Ils ne passent plus par
 // les réglages d'Ariane : chaque vue d'une base porte les siens.
@@ -48790,10 +49397,16 @@ class PontClaude extends obsidian.Component {
 
     const skillSrc = path.join(greffon, 'competence', 'ariane-taches', 'SKILL.md');
     if (!fs.existsSync(skillSrc)) throw new Error('Compétence absente du dossier du greffon : ' + skillSrc);
-    const skillDst = path.join(coffre, '.claude', 'skills', 'ariane-taches', 'SKILL.md');
-    fs.mkdirSync(path.dirname(skillDst), { recursive: true });
-    fs.copyFileSync(skillSrc, skillDst);
-    faits.push(tr('compétence ariane-taches'));
+    // Celle des commentaires en marge suit : elle apprend à Claude le format
+    // des balises, utile dès qu'une note en porte.
+    for (const nom of ['ariane-taches', 'ariane-commentaires']) {
+      const src = path.join(greffon, 'competence', nom, 'SKILL.md');
+      if (!fs.existsSync(src)) continue;
+      const dst = path.join(coffre, '.claude', 'skills', nom, 'SKILL.md');
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(src, dst);
+      faits.push(tr('compétence ') + nom);
+    }
 
     const mcp = path.join(os.homedir(), '.ariane-mcp');
     fs.mkdirSync(mcp, { recursive: true, mode: 0o700 });
@@ -49084,9 +49697,1141 @@ class ModaleValidationClaude extends obsidian.Modal {
 }
 
 //#endregion 22 · Pont Claude
-//#region 23 · Exports
+//#region 23 · Commentaires en marge
 // ═══════════════════════════════════════════════════════════════════════════
-//  23 · EXPORTS
+//  23 · COMMENTAIRES EN MARGE
+//  Des commentaires sur un passage, comme dans Word : le passage est
+//  surligné, le commentaire tient dans une carte en marge, face au texte,
+//  avec réponses, résolution, couleur, auteur et date.
+//
+//  Repris du greffon Margin Annotations (hex, github.com/aoldiot/
+//  margin-annotations, version 0.3.7), sous licence MIT :
+//    Copyright (c) 2026 hex. Permission is hereby granted, free of charge,
+//    to any person obtaining a copy of this software and associated
+//    documentation files (the "Software"), to deal in the Software without
+//    restriction, including without limitation the rights to use, copy,
+//    modify, merge, publish, distribute, sublicense, and/or sell copies of
+//    the Software, and to permit persons to whom the Software is furnished
+//    to do so, subject to the following conditions: The above copyright
+//    notice and this permission notice shall be included in all copies or
+//    substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS",
+//    WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+//    LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+//    PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+//    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
+//    AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+//    CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+//    SOFTWARE.
+//
+//  Le format dans la note est celui du greffon d'origine, pour qu'une note
+//  commentée reste lisible par lui comme par une IA : deux balises vides,
+//    <span class="ann-s" data-id="k3f9" data-color="yellow"></span>passage
+//    <span class="ann-e" data-id="k3f9" data-color="yellow" data-note="…"></span>
+//  la seconde portant le commentaire (data-note), l'auteur, la date, la
+//  résolution (data-resolved="1") et les réponses (data-replies, JSON).
+//  Différence voulue : Ariane n'écrit pas le guide pour les IA que le
+//  greffon d'origine ajoutait en fin de note.
+//
+//  CommentairesMarge : la logique pure (lecture, pose, retrait), éprouvée
+//  par tests/commentaires-marge.test.js. PanneauCommentairesMarge et
+//  GestionCommentairesMarge : les cartes en marge. VueCommentairesMarge :
+//  le volet latéral qui les porte. Le branchement est dans avecCommentaires
+//  (11t).
+// ═══════════════════════════════════════════════════════════════════════════
+
+class CommentairesMarge {
+  static get COULEURS() {
+    return [
+      { cle: 'yellow', nom: 'Jaune', css: '#ffd000' },
+      { cle: 'green', nom: 'Vert', css: '#3ec06a' },
+      { cle: 'blue', nom: 'Bleu', css: '#4a9eff' },
+      { cle: 'pink', nom: 'Rose', css: '#ff6fa5' },
+      { cle: 'purple', nom: 'Violet', css: '#a67cff' },
+      { cle: 'orange', nom: 'Orange', css: '#ff8a3d' },
+    ];
+  }
+
+  static normaliserCouleur(c) {
+    return CommentairesMarge.COULEURS.some((x) => x.cle === c) ? c : 'yellow';
+  }
+
+  static couleurCss(c) {
+    const t = CommentairesMarge.COULEURS.find((x) => x.cle === c);
+    return t ? t.css : CommentairesMarge.COULEURS[0].css;
+  }
+
+  // Valeur d'attribut HTML. Neutralise aussi la syntaxe d'Obsidian ([[ ]],
+  // $, %%, #étiquette, ==) qui, sinon, s'animerait dans la balise.
+  static encoder(s) {
+    return String(s).replace(/[&"<>\n\r[\]$%#=~`|]/g, (c) => (c === '\r' ? '' : '&#' + c.charCodeAt(0) + ';'));
+  }
+
+  static decoder(s) {
+    return String(s)
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+      .replace(/&quot;/g, '"')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&');
+  }
+
+  static nouvelId(existants) {
+    const pris = existants || new Set();
+    for (;;) {
+      const id = Math.random().toString(36).slice(2, 6).padEnd(4, '0');
+      if (!pris.has(id)) return id;
+    }
+  }
+
+  static baliseDebut(id, couleur) {
+    return '<span class="ann-s" data-id="' + id + '" data-color="' + CommentairesMarge.normaliserCouleur(couleur) + '"></span>';
+  }
+
+  // « AAAA-MM-JJ HH:mm », à l'heure locale.
+  static horodatage(d) {
+    const x = d || new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return x.getFullYear() + '-' + p(x.getMonth() + 1) + '-' + p(x.getDate()) + ' ' + p(x.getHours()) + ':' + p(x.getMinutes());
+  }
+
+  static baliseFin(id, couleur, note, meta) {
+    const m = meta || {};
+    let extra = '';
+    if (m.auteur) extra += ' data-author="' + CommentairesMarge.encoder(m.auteur) + '"';
+    if (m.heure) extra += ' data-time="' + CommentairesMarge.encoder(m.heure) + '"';
+    if (m.resolu) extra += ' data-resolved="1"';
+    if (m.reponses && m.reponses.length) {
+      extra += ' data-replies="' + CommentairesMarge.encoder(JSON.stringify(
+        m.reponses.map((r) => ({ a: r.auteur, t: r.heure, c: r.texte })))) + '"';
+    }
+    return '<span class="ann-e" data-id="' + id + '" data-color="' + CommentairesMarge.normaliserCouleur(couleur)
+      + '" data-note="' + CommentairesMarge.encoder(note) + '"' + extra + '></span>';
+  }
+
+  static _reponses(brut) {
+    if (!brut) return [];
+    try {
+      const t = JSON.parse(CommentairesMarge.decoder(brut));
+      if (!Array.isArray(t)) return [];
+      const ch = (v) => (typeof v === 'string' ? v : '');
+      return t.map((r) => ({ auteur: ch((r || {}).a), heure: ch((r || {}).t), texte: ch((r || {}).c) }));
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static _attr(balise, nom) {
+    const m = new RegExp('\\b' + nom + '="([^"]*)"').exec(balise);
+    return m ? m[1] : undefined;
+  }
+
+  // Les commentaires de la note, dans l'ordre du texte. Chacun : id,
+  // couleur, note, auteur, heure, resolu, reponses, les deux balises
+  // (debut, fin : {from, to}), l'étendue entière (from, to) et celle du
+  // seul passage (textFrom, textTo). Une balise de fin orpheline est ignorée.
+  static lire(doc) {
+    const ouverts = new Map();
+    const out = [];
+    const re = /<span\b[^>]*\bclass="ann-([se])"[^>]*><\/span>/g;
+    const attr = CommentairesMarge._attr;
+    let m;
+    while ((m = re.exec(doc))) {
+      const balise = m[0];
+      const id = attr(balise, 'data-id');
+      if (!id) continue;
+      const plage = { from: m.index, to: m.index + balise.length };
+      if (m[1] === 's') {
+        if (!ouverts.has(id)) ouverts.set(id, plage);
+        continue;
+      }
+      const s = ouverts.get(id);
+      if (!s) continue;
+      ouverts.delete(id);
+      const note = attr(balise, 'data-note');
+      out.push({
+        id,
+        couleur: CommentairesMarge.normaliserCouleur(attr(balise, 'data-color') || attr(doc.slice(s.from, s.to), 'data-color')),
+        note: note === undefined ? '' : CommentairesMarge.decoder(note),
+        auteur: CommentairesMarge.decoder(attr(balise, 'data-author') || ''),
+        heure: CommentairesMarge.decoder(attr(balise, 'data-time') || ''),
+        resolu: attr(balise, 'data-resolved') === '1',
+        reponses: CommentairesMarge._reponses(attr(balise, 'data-replies')),
+        debut: s,
+        fin: plage,
+        from: s.from,
+        to: plage.to,
+        textFrom: s.to,
+        textTo: plage.from,
+      });
+    }
+    return out.sort((a, b) => a.from - b.from);
+  }
+
+  // Le commentaire le plus intérieur qui contient la position.
+  static trouverA(doc, pos) {
+    let mieux = null;
+    for (const a of CommentairesMarge.lire(doc)) {
+      if (pos >= a.from && pos <= a.to && (!mieux || a.to - a.from < mieux.to - mieux.from)) mieux = a;
+    }
+    return mieux;
+  }
+
+  static trouverParId(doc, id) {
+    return CommentairesMarge.lire(doc).find((a) => a.id === id) || null;
+  }
+
+  static idsExistants(doc) {
+    return new Set(CommentairesMarge.lire(doc).map((a) => a.id));
+  }
+
+  // Position du début de la ligne `ligne` (comptée depuis 0).
+  static decalageLigne(texte, ligne) {
+    let pos = 0;
+    for (let i = 0; i < ligne; i += 1) {
+      const nl = texte.indexOf('\n', pos);
+      if (nl < 0) return texte.length;
+      pos = nl + 1;
+    }
+    return pos;
+  }
+
+  // Un court aperçu, en texte brut, du passage commenté.
+  static extrait(doc, a, max) {
+    const lim = max || 80;
+    let t = doc.slice(a.textFrom, a.textTo)
+      .replace(/<span\b[^>]*\bclass="ann-[se]"[^>]*><\/span>/g, '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/^\s*(?:>\s?)*(?:(?:[-*+]|\d{1,9}[.)])\s+(?:\[[ xX]\]\s+)?|#{1,6}\s+)/gm, '')
+      .replace(/[*_~`]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (t.length > lim) t = t.slice(0, lim) + '…';
+    return t;
+  }
+
+  // ── Pose ──
+
+  static get _RE() {
+    return {
+      prefixe: /^[ \t]*(?:>[ \t]?)*[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]+)?|#{1,6}[ \t]+)?/,
+      cloture: /^[ \t]*(```|~~~)/,
+      filet: /^[ \t]*([-*_])([ \t]*\1){2,}[ \t]*$/,
+      encadre: /^[ \t]*(?:>[ \t]?)*[ \t]*\[!/,
+      separateurTableau: /^[ \t]*\|?[ \t:|-]+\|?[ \t]*$/,
+      citation: /^[ \t]*(?:>[ \t]?)*[ \t]*/,
+      syntaxe: /<[^>\n]*>|\]\([^)\n]*\)|\[![^\]\n]*\][+-]?/y,
+      lettreTombee: /[\s*_~=`\\[\]]/,
+    };
+  }
+
+  static _dansClotureAvant(doc, pos) {
+    let dedans = false;
+    const debutLigne = doc.lastIndexOf('\n', pos - 1) + 1;
+    for (const l of doc.slice(0, debutLigne).split('\n')) if (CommentairesMarge._RE.cloture.test(l)) dedans = !dedans;
+    return dedans;
+  }
+
+  // Le bloc de code clôturé qui contient toute la sélection [from, to].
+  static _blocCodeAutour(doc, from, to) {
+    const RE = CommentairesMarge._RE;
+    let ouvert = null;
+    let ls = 0;
+    while (ls <= doc.length) {
+      let le = doc.indexOf('\n', ls);
+      if (le < 0) le = doc.length;
+      const ligne = doc.slice(ls, le);
+      if (RE.cloture.test(ligne)) {
+        if (!ouvert) ouvert = { ls, prefixe: /^[ \t>]*/.exec(ligne)[0] };
+        else {
+          if (from >= ouvert.ls && to <= le) return { from: ouvert.ls, to: le, prefixe: ouvert.prefixe };
+          ouvert = null;
+        }
+      }
+      if (le >= doc.length) break;
+      ls = le + 1;
+    }
+    if (ouvert && from >= ouvert.ls) return { from: ouvert.ls, to: doc.length, prefixe: ouvert.prefixe };
+    return null;
+  }
+
+  // Un bloc de code : les balises sur des lignes à elles, hors des clôtures,
+  // pour que le code reste intact.
+  static _entourerCode(doc, b, note, id, couleur, meta) {
+    const vide = b.prefixe.trimEnd();
+    const ecart = b.from > 0 && doc.slice(doc.lastIndexOf('\n', b.from - 2) + 1, b.from - 1).trim() !== '';
+    return [
+      { from: b.from, to: b.from, insert: (ecart ? vide + '\n' : '') + b.prefixe + CommentairesMarge.baliseDebut(id, couleur) + '\n' + vide + '\n' },
+      { from: b.to, to: b.to, insert: '\n' + vide + '\n' + b.prefixe + CommentairesMarge.baliseFin(id, couleur, note, meta) },
+    ];
+  }
+
+  // Une sélection dans une seule cellule de tableau (même ligne, sans
+  // barre) se commente comme du texte ordinaire.
+  static _celluleTableau(doc, from, to) {
+    const ls = doc.lastIndexOf('\n', from - 1) + 1;
+    let le = doc.indexOf('\n', from);
+    if (le < 0) le = doc.length;
+    if (to > le) return null;
+    const ligne = doc.slice(ls, le);
+    if (!ligne.trimStart().startsWith('|') || CommentairesMarge._RE.separateurTableau.test(ligne)) return null;
+    if (doc.slice(from, to).includes('|')) return null;
+    return { from, to };
+  }
+
+  // Sans sélection : la cellule de tableau, le bloc de code ou la ligne sous
+  // le curseur. null s'il n'y a pas de texte.
+  static plageAuCurseur(doc, pos) {
+    const RE = CommentairesMarge._RE;
+    const bloc = CommentairesMarge._blocCodeAutour(doc, pos, pos);
+    if (bloc) return { from: bloc.from, to: bloc.to };
+    const ls = doc.lastIndexOf('\n', pos - 1) + 1;
+    let le = doc.indexOf('\n', pos);
+    if (le < 0) le = doc.length;
+    const ligne = doc.slice(ls, le);
+    if (RE.separateurTableau.test(ligne)) return null;
+    let from = ls;
+    let to = le;
+    if (ligne.trimStart().startsWith('|')) {
+      const rel = pos - ls;
+      const g = ligne.lastIndexOf('|', Math.max(rel - 1, 0));
+      const d = ligne.indexOf('|', rel);
+      from = ls + g + 1;
+      to = d < 0 ? le : ls + d;
+    }
+    const texte = doc.slice(from, to);
+    if (texte.trim() === '' || RE.filet.test(texte)) return null;
+    return { from, to };
+  }
+
+  // ── Du texte rendu à la source ──
+  //  L'aperçu en direct dessine les blocs hors du curseur (encadrés…) en
+  //  widgets : un texte choisi là n'est qu'une sélection du DOM, et l'éditeur
+  //  la voit vide. Ces fonctions retrouvent ce texte dans la source.
+
+  // Le texte rendu, réduit à ce qui survit dans le DOM comme dans la source.
+  static texteCompact(s) {
+    const tombee = CommentairesMarge._RE.lettreTombee;
+    return Array.from(String(s).replace(/💬/gu, '')).filter((c) => !tombee.test(c)).join('');
+  }
+
+  // Les lignes non vides autour de la position (encadré, paragraphe, liste).
+  static blocAutour(doc, pos) {
+    const debutDe = (o) => (o <= 0 ? 0 : doc.lastIndexOf('\n', o - 1) + 1);
+    const finDe = (o) => {
+      const i = doc.indexOf('\n', o);
+      return i < 0 ? doc.length : i;
+    };
+    let from = debutDe(pos);
+    while (from > 0) {
+      const prec = debutDe(from - 1);
+      if (doc.slice(prec, from - 1).trim() === '') break;
+      from = prec;
+    }
+    let to = finDe(pos);
+    while (to < doc.length) {
+      const suiv = finDe(to + 1);
+      if (doc.slice(to + 1, suiv).trim() === '') break;
+      to = suiv;
+    }
+    return { from, to };
+  }
+
+  // La source telle qu'elle se lit une fois rendue (compactée), avec la
+  // position dans la source de chaque caractère restant.
+  static _vueRendue(src) {
+    const RE = CommentairesMarge._RE;
+    let texte = '';
+    const at = [];
+    let dansCode = false;
+    let ls = 0;
+    for (;;) {
+      let le = src.indexOf('\n', ls);
+      if (le < 0) le = src.length;
+      const ligne = src.slice(ls, le);
+      const cit = RE.citation.exec(ligne)[0].length;
+      const estCloture = /^(```|~~~)/.test(ligne.slice(cit));
+      if (estCloture) dansCode = !dansCode;
+      let i = ls + (dansCode || estCloture ? cit : RE.prefixe.exec(ligne)[0].length);
+      if (estCloture) i = le;
+      while (i < le) {
+        RE.syntaxe.lastIndex = i;
+        const jeton = dansCode ? null : RE.syntaxe.exec(src);
+        if (jeton) { i += jeton[0].length; continue; }
+        const c = src[i];
+        if (!RE.lettreTombee.test(c)) { texte += c; at.push(i); }
+        i += 1;
+      }
+      if (le >= src.length) break;
+      ls = le + 1;
+    }
+    return { texte, at };
+  }
+
+  // Chaque endroit de la source d'où peut venir le texte rendu.
+  static trouverTexteRendu(src, rendu) {
+    const cible = CommentairesMarge.texteCompact(rendu);
+    if (!cible) return [];
+    const { texte, at } = CommentairesMarge._vueRendue(src);
+    const out = [];
+    for (let i = texte.indexOf(cible); i >= 0; i = texte.indexOf(cible, i + cible.length)) {
+      out.push({ from: at[i], to: at[i + cible.length - 1] + 1 });
+    }
+    return out;
+  }
+
+  // Combien d'occurrences de `cible` commencent avant `avant` (textes compactés).
+  static occurrencesAvant(meule, cible, avant) {
+    let n = 0;
+    if (!cible) return n;
+    for (let i = meule.indexOf(cible); i >= 0 && i < avant; i = meule.indexOf(cible, i + cible.length)) n += 1;
+    return n;
+  }
+
+  // Les changements qui posent les deux balises autour de doc[from, to).
+  // La balise d'ouverture saute les préfixes de liste, de titre et de
+  // citation ; l'étendue ne commence ni ne finit dans une clôture de code,
+  // un tableau, un filet ou un en-tête d'encadré. Exceptions : une sélection
+  // dans une seule cellule s'entoure telle quelle, une sélection dans un
+  // bloc de code commente tout le bloc. null si rien n'est commentable.
+  static entourer(doc, from, to, note, id, couleur, meta) {
+    const RE = CommentairesMarge._RE;
+    const c = couleur || 'yellow';
+    while (from < to && /\s/.test(doc[from])) from += 1;
+    while (to > from && /\s/.test(doc[to - 1])) to -= 1;
+    if (from >= to) return null;
+
+    const bloc = CommentairesMarge._blocCodeAutour(doc, from, to);
+    if (bloc) return CommentairesMarge._entourerCode(doc, bloc, note, id, c, meta || {});
+    const cellule = CommentairesMarge._celluleTableau(doc, from, to);
+    if (cellule) {
+      return [
+        { from: cellule.from, to: cellule.from, insert: CommentairesMarge.baliseDebut(id, c) },
+        { from: cellule.to, to: cellule.to, insert: CommentairesMarge.baliseFin(id, c, note, meta) },
+      ];
+    }
+
+    let dansCode = CommentairesMarge._dansClotureAvant(doc, from);
+    let debut = -1;
+    let fin = -1;
+    let ls = doc.lastIndexOf('\n', from - 1) + 1;
+    while (ls < to) {
+      let le = doc.indexOf('\n', ls);
+      if (le < 0) le = doc.length;
+      const ligne = doc.slice(ls, le);
+      const net = ligne.trim();
+      let ok = true;
+      if (RE.cloture.test(ligne)) { dansCode = !dansCode; ok = false; }
+      else if (dansCode || net === '' || net.startsWith('|') || RE.filet.test(ligne) || RE.encadre.test(ligne)) ok = false;
+      if (ok) {
+        const lo = Math.max(ls, from, ls + RE.prefixe.exec(ligne)[0].length);
+        let hi = Math.min(le, to);
+        while (hi > lo && /\s/.test(doc[hi - 1])) hi -= 1;
+        if (lo < hi) {
+          if (debut < 0) debut = lo;
+          fin = hi;
+        }
+      }
+      ls = le + 1;
+    }
+    if (debut < 0) return null;
+    return [
+      { from: debut, to: debut, insert: CommentairesMarge.baliseDebut(id, c) },
+      { from: fin, to: fin, insert: CommentairesMarge.baliseFin(id, c, note, meta) },
+    ];
+  }
+
+  // ── Retrait, modification ──
+
+  static changementsRetrait(a) {
+    return [
+      { from: a.debut.from, to: a.debut.to, insert: '' },
+      { from: a.fin.from, to: a.fin.to, insert: '' },
+    ];
+  }
+
+  // patch : { note, couleur, auteur, heure, resolu, reponses }, chacun facultatif.
+  static changementsMaj(a, patch) {
+    const p = patch || {};
+    const pris = (k, v) => (p[k] !== undefined ? p[k] : v);
+    const couleur = pris('couleur', a.couleur);
+    const meta = { auteur: pris('auteur', a.auteur), heure: pris('heure', a.heure),
+      resolu: pris('resolu', a.resolu), reponses: pris('reponses', a.reponses) };
+    return [
+      { from: a.debut.from, to: a.debut.to, insert: CommentairesMarge.baliseDebut(a.id, couleur) },
+      { from: a.fin.from, to: a.fin.to, insert: CommentairesMarge.baliseFin(a.id, couleur, pris('note', a.note), meta) },
+    ];
+  }
+
+  // À positions égales, les changements suivent l'ordre du tableau.
+  static appliquer(doc, changements) {
+    let out = doc;
+    const ordre = changements.map((c, i) => ({ c, i })).sort((a, b) => b.c.from - a.c.from || b.i - a.i);
+    for (const { c } of ordre) out = out.slice(0, c.from) + c.insert + out.slice(c.to);
+    return out;
+  }
+}
+
+// Saisie d'un commentaire hors du panneau (lecture, menu) : texte et couleur.
+class ModaleCommentaireMarge extends obsidian.Modal {
+  constructor(app, titre, note, couleur, valider) {
+    super(app);
+    this.titre = titre;
+    this.note = note;
+    this.couleur = CommentairesMarge.normaliserCouleur(couleur);
+    this.valider = valider;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.titleEl.setText(this.titre);
+    const zone = contentEl.createEl('textarea', { cls: 'zfa-com-modale-saisie' });
+    zone.placeholder = tr('Votre commentaire (⌘ ou Ctrl + Entrée pour enregistrer)');
+    zone.rows = 5;
+    zone.value = this.note;
+    zone.addEventListener('input', () => { this.note = zone.value; });
+    zone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.isComposing) {
+        e.preventDefault();
+        this._valider();
+      }
+    });
+    const rangee = contentEl.createDiv({ cls: 'zfa-com-couleurs' });
+    rangee.createSpan({ text: tr('Couleur'), cls: 'zfa-com-couleurs-nom' });
+    const pastilles = [];
+    for (const c of CommentairesMarge.COULEURS) {
+      const p = rangee.createSpan({ cls: 'zfa-com-pastille' });
+      p.style.setProperty('--zfa-com-pastille', c.css);
+      p.setAttribute('aria-label', tr(c.nom));
+      p.toggleClass('is-selected', c.cle === this.couleur);
+      p.addEventListener('click', () => {
+        this.couleur = c.cle;
+        pastilles.forEach((x) => x.removeClass('is-selected'));
+        p.addClass('is-selected');
+      });
+      pastilles.push(p);
+    }
+    new obsidian.Setting(contentEl)
+      .addButton((b) => b.setButtonText(tr('Annuler')).onClick(() => this.close()))
+      .addButton((b) => b.setButtonText(tr('Enregistrer')).setCta().onClick(() => this._valider()));
+    setTimeout(() => { zone.focus(); zone.setSelectionRange(zone.value.length, zone.value.length); }, 0);
+  }
+
+  _valider() {
+    const note = String(this.note || '').trim();
+    if (!note) { new obsidian.Notice(tr('Le commentaire est vide.')); return; }
+    this.close();
+    this.valider(note, this.couleur);
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+// ── Les cartes en marge ──
+//  Un panneau suit une vue Markdown : chaque carte se tient face à son
+//  passage et glisse avec le texte (mode « suivre ») ; sinon, une liste
+//  dans l'ordre du texte, où un clic mène au passage.
+const COM_MARGE_ECART = 8;
+
+class PanneauCommentairesMarge {
+  constructor(greffon, hote) {
+    this.greffon = greffon;
+    this.anns = [];
+    this.doc = '';
+    this.chemin = '';
+    this.mode = '';
+    this.seq = 0;
+    this.raf = 0;
+    this.actif = null;
+    this.edition = null;
+    this.brouillon = null;
+    this.brouillonEl = null;
+    this.brouillonFin = null;
+    this.cartes = new Map();
+    this.hauteurPiste = '';
+    this.vue = null;
+    this.el = hote.createDiv({ cls: 'zfa-com-marge' });
+    this.piste = this.el.createDiv({ cls: 'zfa-com-piste' });
+    this.surDefilement = () => this.planifier();
+    this.surClic = (e) => {
+      const hl = e.target && e.target.closest ? e.target.closest('.zfa-com-hl, .zfa-com-bouton') : null;
+      if (hl && hl.dataset.id) this.activer(hl.dataset.id);
+    };
+    this.ro = new ResizeObserver(() => this.planifier());
+    this.ro.observe(this.el);
+    // Mode « suivre » : la molette sur le panneau fait défiler la note ; le
+    // panneau ne défile lui-même qu'une fois la note au bout.
+    this.el.addEventListener('wheel', (e) => {
+      const def = this._defileur();
+      if (!this._suivre || !def || e.ctrlKey) return;
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      const auBout = def.scrollTop + def.clientHeight >= def.scrollHeight - 1;
+      if (dy > 0 && auBout && this.el.scrollTop + this.el.clientHeight < this.el.scrollHeight) return;
+      if (dy < 0 && this.el.scrollTop > 0) return;
+      e.preventDefault();
+      def.scrollTop += dy;
+    }, { passive: false });
+    this.el.tabIndex = -1;
+    this.el.addEventListener('keydown', (e) => {
+      if (e.target.matches('input, textarea') || (e.key !== 'Delete' && e.key !== 'Backspace')) return;
+      if (this.supprimerActif()) e.preventDefault();
+    });
+    this.el.addEventListener('click', (e) => {
+      if (!e.target.closest('.zfa-com-carte')) this.activer(null);
+      // Le focus reste dans le panneau, pour que Suppr agisse sur la carte.
+      if (!e.target.closest('input, textarea, button')) this.el.focus({ preventScroll: true });
+    });
+  }
+
+  _win() { return this.el.ownerDocument.defaultView || window; }
+
+  get _suivre() { return this.greffon.settings.commentairesSuivre !== false; }
+
+  _cm(vue) { return vue && vue.editor ? vue.editor.cm : null; }
+
+  _defileur() {
+    const v = this.vue;
+    if (!v) return null;
+    if (v.getMode() === 'source') { const cm = this._cm(v); return cm ? cm.scrollDOM : null; }
+    return v.contentEl.querySelector('.markdown-preview-view');
+  }
+
+  lier(vue) {
+    if (this.vue === vue) return;
+    this._delier();
+    this.vue = vue;
+    this.mode = '';
+    if (vue) {
+      vue.contentEl.addEventListener('scroll', this.surDefilement, true);
+      vue.contentEl.addEventListener('click', this.surClic, true);
+      this.ro.observe(vue.contentEl);
+    }
+    this.rafraichir(true);
+  }
+
+  _delier() {
+    const r = this.vue && this.vue.contentEl;
+    if (!r) return;
+    r.removeEventListener('scroll', this.surDefilement, true);
+    r.removeEventListener('click', this.surClic, true);
+    this.ro.unobserve(r);
+  }
+
+  detruire() {
+    if (this.brouillonFin) this.brouillonFin();
+    this._delier();
+    this.ro.disconnect();
+    this._win().cancelAnimationFrame(this.raf);
+    this.el.remove();
+  }
+
+  trouver(id) { return this.anns.find((a) => a.id === id); }
+
+  _occupe() {
+    if (this.brouillon || this.edition) return true;
+    const ae = this.el.ownerDocument.activeElement;
+    return !!ae && this.el.contains(ae) && ae.value !== undefined && ae.value !== '';
+  }
+
+  async rafraichir(force) {
+    const fichier = this.vue && this.vue.file;
+    const seq = ++this.seq;
+    if (!this.vue || !fichier) {
+      this.chemin = '';
+      this.anns = [];
+      this.cartes.clear();
+      this.brouillon = null;
+      this.el.empty();
+      this.piste = this.el.createDiv({ cls: 'zfa-com-piste' });
+      this.piste.createDiv({ cls: 'zfa-com-vide', text: tr('Ouvrez une note pour voir ses commentaires.') });
+      return;
+    }
+    if (fichier.path !== this.chemin) {
+      this.chemin = fichier.path;
+      this.brouillon = null;
+      this.edition = null;
+      this.actif = null;
+      this.hauteurPiste = '';
+      force = true;
+    }
+    const doc = await this.greffon.texteCommentaires(fichier);
+    if (seq !== this.seq) return;
+    this.mode = this.vue.getMode();
+    this.doc = doc;
+    this.anns = CommentairesMarge.lire(doc);
+    if (!force && this._occupe()) { this.planifier(); return; }
+    this._dessiner(fichier);
+  }
+
+  // Chaque seconde : un passage lecture / édition, des sections de lecture
+  // dessinées tardivement.
+  battement() {
+    if (this.vue && this.vue.getMode() !== this.mode) this.rafraichir(true);
+    else this.planifier();
+  }
+
+  carteActive() { return this.actif ? this.trouver(this.actif) : undefined; }
+
+  supprimerActif() {
+    const a = this.carteActive();
+    const f = this.vue && this.vue.file;
+    if (!a || !f) return false;
+    this.actif = null;
+    this.greffon.supprimerCommentaireMarge(f, a.id).then(() => this.rafraichir(true));
+    return true;
+  }
+
+  activer(id) {
+    if (this.actif === id) return;
+    this.actif = id;
+    this.cartes.forEach((c, cid) => c.toggleClass('is-active', cid === id));
+    if (id && !this._suivre) { const c = this.cartes.get(id); if (c) c.scrollIntoView({ block: 'nearest' }); }
+    this.planifier();
+  }
+
+  // Le curseur a bougé dans l'éditeur : le commentaire le plus intérieur
+  // sous lui devient actif.
+  surCurseur(pos) {
+    let mieux = null;
+    for (const a of this.anns) {
+      if (pos >= a.from && pos <= a.to && (!mieux || a.to - a.from < mieux.to - mieux.from)) mieux = a;
+    }
+    if (!this.brouillon) this.activer(mieux ? mieux.id : null);
+  }
+
+  // ── Brouillon (nouveau commentaire) ──
+
+  async commencer(from, to, texte) {
+    this.brouillon = { from, to, texte, couleur: CommentairesMarge.normaliserCouleur(this.greffon.settings.commentairesCouleur) };
+    this.actif = null;
+    this.edition = null;
+    await this.rafraichir(true);
+    const z = this.brouillonEl && this.brouillonEl.querySelector('textarea');
+    if (z) z.focus();
+  }
+
+  _abandonner() {
+    this.brouillon = null;
+    this.rafraichir(true);
+  }
+
+  async _valider(note) {
+    const d = this.brouillon;
+    const f = this.vue && this.vue.file;
+    if (!d || !f || !this.vue) return;
+    const texte = String(note || '').trim();
+    if (!texte) { new obsidian.Notice(tr('Le commentaire est vide.')); return; }
+    const editeur = this.vue.editor;
+    const doc = editeur.getValue();
+    let { from, to } = d;
+    if (doc.slice(from, to) !== d.texte) {
+      const i = doc.indexOf(d.texte);
+      if (i < 0) { new obsidian.Notice(tr('Le passage a changé : sélectionnez-le de nouveau.')); return; }
+      from = i;
+      to = i + d.texte.length;
+    }
+    const id = CommentairesMarge.nouvelId(CommentairesMarge.idsExistants(doc));
+    const ch = CommentairesMarge.entourer(doc, from, to, texte, id, d.couleur,
+      { auteur: this.greffon.auteurCommentaires(), heure: CommentairesMarge.horodatage() });
+    if (!ch) { new obsidian.Notice(tr('Rien à commenter dans la sélection (un tableau ne se commente que cellule par cellule).')); return; }
+    this.brouillon = null;
+    if (this.brouillonFin) this.brouillonFin();
+    this.brouillonFin = null;
+    this.actif = id;
+    this.greffon.appliquerAEditeurMarge(editeur, ch);
+    await this.rafraichir(true);
+  }
+
+  modifier(id) {
+    this.edition = id;
+    this.actif = id;
+    this.rafraichir(true).then(() => {
+      const c = this.cartes.get(id);
+      const z = c && c.querySelector('textarea');
+      if (z) z.focus();
+    });
+  }
+
+  repondre(id) {
+    this.activer(id);
+    setTimeout(() => {
+      const c = this.cartes.get(id);
+      const z = c && c.querySelector('.zfa-com-reponse-saisie');
+      if (z) z.focus();
+    }, 30);
+  }
+
+  // ── Dessin ──
+
+  _dessiner(fichier) {
+    if (this.brouillonFin) this.brouillonFin();
+    this.brouillonFin = null;
+    const haut = this.el.scrollTop;
+    this.el.empty();
+    this.piste = this.el.createDiv({ cls: 'zfa-com-piste' });
+    if (this.hauteurPiste) this.piste.style.setProperty('--zfa-com-piste-h', this.hauteurPiste);
+    this.el.toggleClass('zfa-com-suivre', this._suivre);
+    this.cartes.clear();
+    this.brouillonEl = null;
+    if (this.brouillon) this.brouillonEl = this._dessinerBrouillon(this.brouillon);
+    for (const a of this.anns) this.cartes.set(a.id, this._dessinerCarte(fichier, a));
+    if (!this.brouillon && !this.anns.length) {
+      this.piste.createDiv({ cls: 'zfa-com-vide',
+        text: tr('Aucun commentaire dans cette note. Sélectionnez un passage, puis « Commenter le passage » au clic droit.') });
+    }
+    this.el.scrollTop = haut;
+    this.planifier();
+  }
+
+  _entete(carte, auteur, heure, couleur) {
+    const tete = carte.createDiv({ cls: 'zfa-com-tete' });
+    const av = tete.createDiv({ cls: 'zfa-com-avatar', text: (auteur || tr('Moi')).slice(0, 1) });
+    av.style.background = CommentairesMarge.couleurCss(couleur);
+    const meta = tete.createDiv({ cls: 'zfa-com-meta' });
+    const nom = meta.createDiv({ cls: 'zfa-com-auteur' });
+    nom.createSpan({ text: auteur || tr('Commentaire') });
+    if (heure) meta.createDiv({ cls: 'zfa-com-heure', text: heure });
+    return { tete, nom };
+  }
+
+  _pastilles(carte, choisie, choisir) {
+    const rangee = carte.createDiv({ cls: 'zfa-com-couleurs' });
+    const toutes = [];
+    for (const c of CommentairesMarge.COULEURS) {
+      const p = rangee.createSpan({ cls: 'zfa-com-pastille' });
+      p.style.setProperty('--zfa-com-pastille', c.css);
+      p.setAttribute('aria-label', tr(c.nom));
+      p.toggleClass('is-selected', c.cle === choisie);
+      p.addEventListener('click', () => {
+        toutes.forEach((x) => x.removeClass('is-selected'));
+        p.addClass('is-selected');
+        choisir(c);
+      });
+      toutes.push(p);
+    }
+  }
+
+  _dessinerBrouillon(d) {
+    const carte = this.piste.createDiv({ cls: 'zfa-com-carte is-draft is-active' });
+    carte.style.setProperty('--zfa-com-couleur', CommentairesMarge.couleurCss(d.couleur));
+    this._entete(carte, this.greffon.auteurCommentaires(), CommentairesMarge.horodatage(), d.couleur);
+    carte.createDiv({ cls: 'zfa-com-citation', text: d.texte.replace(/\s+/g, ' ').trim().slice(0, 60) });
+    const zone = carte.createEl('textarea', { cls: 'zfa-com-saisie',
+      attr: { placeholder: tr('Votre commentaire (⌘ ou Ctrl + Entrée pour enregistrer)'), rows: '3' } });
+    this._pastilles(carte, d.couleur, (c) => {
+      d.couleur = c.cle;
+      carte.style.setProperty('--zfa-com-couleur', c.css);
+    });
+    const actions = carte.createDiv({ cls: 'zfa-com-actions' });
+    const annuler = actions.createEl('button', { text: tr('Annuler') });
+    const enreg = actions.createEl('button', { text: tr('Enregistrer'), cls: 'mod-cta' });
+    annuler.addEventListener('click', () => this._abandonner());
+    // Un clic hors de la carte enregistre le brouillon, s'il a du texte.
+    const doc = this.el.ownerDocument;
+    const surAppui = (e) => {
+      if (carte.contains(e.target) || !zone.value.trim()) return;
+      this._valider(zone.value);
+    };
+    doc.addEventListener('mousedown', surAppui, true);
+    this.brouillonFin = () => doc.removeEventListener('mousedown', surAppui, true);
+    enreg.addEventListener('click', () => this._valider(zone.value));
+    zone.addEventListener('keydown', (e) => {
+      if (e.isComposing) return;
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); enreg.click(); }
+      else if (e.key === 'Escape') annuler.click();
+    });
+    return carte;
+  }
+
+  _dessinerCarte(fichier, a) {
+    const g = this.greffon;
+    const carte = this.piste.createDiv({ cls: 'zfa-com-carte' });
+    carte.toggleClass('is-resolved', a.resolu);
+    carte.toggleClass('is-active', a.id === this.actif);
+    carte.dataset.id = a.id;
+    carte.style.setProperty('--zfa-com-couleur', CommentairesMarge.couleurCss(a.couleur));
+    carte.addEventListener('click', () => {
+      this.activer(a.id);
+      if (!this._suivre) this._montrer(a);
+    });
+    // Un commentaire sans date prend celle de la dernière modification.
+    const heure = a.heure || tr('vers ') + CommentairesMarge.horodatage(new Date(fichier.stat.mtime));
+    const { tete, nom } = this._entete(carte, a.auteur, heure, a.couleur);
+    if (a.resolu) nom.createSpan({ cls: 'zfa-com-badge', text: tr('Résolu') });
+    const plus = tete.createEl('button', { cls: 'zfa-com-icone zfa-com-plus', attr: { 'aria-label': tr('Plus') } });
+    obsidian.setIcon(plus, 'more-horizontal');
+    plus.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.activer(a.id);
+      const menu = new obsidian.Menu();
+      g.remplirMenuCommentaire(menu, fichier, a.id);
+      menu.showAtMouseEvent(e);
+    });
+    const q = CommentairesMarge.extrait(this.doc, a, 60);
+    if (q) carte.createDiv({ cls: 'zfa-com-citation', text: q });
+
+    if (this.edition === a.id) {
+      const zone = carte.createEl('textarea', { cls: 'zfa-com-saisie', attr: { rows: '3' } });
+      zone.value = a.note;
+      const actions = carte.createDiv({ cls: 'zfa-com-actions' });
+      const annuler = actions.createEl('button', { text: tr('Annuler') });
+      const enreg = actions.createEl('button', { text: tr('Enregistrer'), cls: 'mod-cta' });
+      const finir = () => { this.edition = null; this.rafraichir(true); };
+      annuler.addEventListener('click', finir);
+      enreg.addEventListener('click', async () => {
+        const note = zone.value.trim();
+        if (note) await g.majCommentaireMarge(fichier, a.id, { note });
+        finir();
+      });
+      zone.addEventListener('keydown', (e) => {
+        if (e.isComposing) return;
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) enreg.click();
+        else if (e.key === 'Escape') annuler.click();
+      });
+    } else {
+      carte.createDiv({ cls: 'zfa-com-note', text: a.note });
+    }
+
+    if (a.reponses.length) {
+      const liste = carte.createDiv({ cls: 'zfa-com-reponses' });
+      a.reponses.forEach((r, i) => {
+        const item = liste.createDiv({ cls: 'zfa-com-reponse' });
+        const haut = item.createDiv({ cls: 'zfa-com-reponse-tete' });
+        haut.createSpan({ cls: 'zfa-com-auteur', text: r.auteur || tr('Réponse') });
+        haut.createSpan({ cls: 'zfa-com-heure', text: r.heure || tr('vers ') + CommentairesMarge.horodatage(new Date(fichier.stat.mtime)) });
+        const suppr = haut.createEl('button', { cls: 'zfa-com-icone zfa-com-reponse-suppr', attr: { 'aria-label': tr('Supprimer la réponse') } });
+        obsidian.setIcon(suppr, 'x');
+        suppr.addEventListener('click', (e) => {
+          e.stopPropagation();
+          g.majCommentaireMarge(fichier, a.id, (cur) => ({ reponses: cur.reponses.filter((_, j) => j !== i) }))
+            .then(() => this.rafraichir(true));
+        });
+        item.createDiv({ cls: 'zfa-com-reponse-texte', text: r.texte });
+      });
+    }
+
+    const boite = carte.createDiv({ cls: 'zfa-com-repondre' });
+    const saisie = boite.createEl('textarea', { cls: 'zfa-com-reponse-saisie', attr: { placeholder: tr('Répondre…'), rows: '1' } });
+    const envoi = boite.createEl('button', { text: tr('Envoyer'), cls: 'mod-cta' });
+    const envoyer = async () => {
+      const texte = saisie.value.trim();
+      if (!texte) return;
+      saisie.value = '';
+      await g.majCommentaireMarge(fichier, a.id, (cur) => ({
+        reponses: cur.reponses.concat([{ auteur: g.auteurCommentaires(), heure: CommentairesMarge.horodatage(), texte }]),
+      }));
+      this.rafraichir(true);
+    };
+    envoi.addEventListener('click', (e) => { e.stopPropagation(); envoyer(); });
+    saisie.addEventListener('keydown', (e) => {
+      if (e.isComposing) return;
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); envoyer(); }
+      else if (e.key === 'Escape') saisie.blur();
+    });
+    return carte;
+  }
+
+  // Mode liste : amener le passage commenté à l'écran.
+  _montrer(a) {
+    const v = this.vue;
+    if (!v) return;
+    if (v.getMode() === 'source') {
+      v.editor.scrollIntoView({ from: v.editor.offsetToPos(a.textFrom), to: v.editor.offsetToPos(a.textTo) }, true);
+    } else {
+      v.setEphemeralState({ line: this.doc.slice(0, a.textFrom).split('\n').length - 1 });
+    }
+  }
+
+  // ── Placement ──
+
+  planifier() {
+    if (this.raf) return;
+    this.raf = this._win().requestAnimationFrame(() => {
+      this.raf = 0;
+      this._placer();
+    });
+  }
+
+  // Hauteur, depuis le haut du panneau, d'une position du texte ; null si
+  // elle n'est pas connue.
+  _ancre(pos, id, hautPanneau) {
+    const v = this.vue;
+    if (!v) return null;
+    if (v.getMode() === 'source') {
+      const cm = this._cm(v);
+      if (!cm) return null;
+      let y;
+      try { const c = cm.coordsAtPos(pos); if (c) y = c.top; } catch (e) { /* position non dessinée */ }
+      if (y === undefined) {
+        try { y = cm.documentTop + cm.lineBlockAt(pos).top; } catch (e) { return null; }
+      }
+      return y - hautPanneau;
+    }
+    if (!id) return null;
+    const lecture = v.contentEl.querySelector('.markdown-reading-view');
+    const sel = '[data-id="' + CSS.escape(id) + '"]';
+    const cible = lecture && (lecture.querySelector('.zfa-com-hl' + sel) || lecture.querySelector('.zfa-com-bouton' + sel));
+    return cible ? cible.getBoundingClientRect().top - hautPanneau : null;
+  }
+
+  _placer() {
+    if (!this.vue) return;
+    if (!this._suivre) {
+      this.cartes.forEach((c) => c.removeClass('is-hidden'));
+      return;
+    }
+    const hautPanneau = this.el.getBoundingClientRect().top;
+    const entrees = [];
+    const cacher = (el) => el.addClass('is-hidden');
+    const poser = (el, ancre, actif) => {
+      if (ancre === null) return cacher(el);
+      el.removeClass('is-hidden');
+      entrees.push({ el, ancre, h: el.offsetHeight, actif, haut: ancre });
+      return null;
+    };
+    if (this.brouillonEl && this.brouillon) {
+      const y = this._ancre(this.brouillon.from, null, hautPanneau);
+      poser(this.brouillonEl, y === null ? 0 : y, true);
+    }
+    const parId = new Map(this.anns.map((a) => [a.id, a]));
+    this.cartes.forEach((el, id) => {
+      const a = parId.get(id);
+      if (!a) return cacher(el);
+      return poser(el, this._ancre(a.textFrom, id, hautPanneau), id === this.actif);
+    });
+    entrees.sort((x, y) => x.ancre - y.ancre);
+    // La carte active reste face à son passage ; les autres s'écartent.
+    const act = entrees.findIndex((e) => e.actif);
+    for (let i = 0; i < entrees.length; i += 1) {
+      if (i === act || (act >= 0 && i < act)) continue;
+      const prec = entrees[i - 1];
+      entrees[i].haut = prec ? Math.max(entrees[i].ancre, prec.haut + prec.h + COM_MARGE_ECART) : entrees[i].ancre;
+    }
+    if (act >= 0) {
+      for (let i = act - 1; i >= 0; i -= 1) {
+        entrees[i].haut = Math.min(entrees[i].ancre, entrees[i + 1].haut - entrees[i].h - COM_MARGE_ECART);
+      }
+      for (let i = act + 1; i < entrees.length; i += 1) {
+        const prec = entrees[i - 1];
+        entrees[i].haut = Math.max(entrees[i].ancre, prec.haut + prec.h + COM_MARGE_ECART);
+      }
+    }
+    let bas = 0;
+    for (const e of entrees) {
+      e.el.style.setProperty('--zfa-com-y', Math.round(e.haut) + 'px');
+      bas = Math.max(bas, e.haut + e.h);
+    }
+    this.hauteurPiste = (Math.ceil(bas) + 24) + 'px';
+    this.piste.style.setProperty('--zfa-com-piste-h', this.hauteurPiste);
+    this._surlignagesLecture();
+  }
+
+  // En lecture : les commentaires résolus pâlissent, l'actif se renforce.
+  _surlignagesLecture() {
+    if (!this.vue || this.vue.getMode() === 'source') return;
+    const lecture = this.vue.contentEl.querySelector('.markdown-reading-view');
+    if (!lecture) return;
+    for (const a of this.anns) {
+      lecture.querySelectorAll('.zfa-com-hl[data-id="' + CSS.escape(a.id) + '"]').forEach((h) => {
+        h.toggleClass('is-resolved', a.resolu);
+        h.toggleClass('is-active', a.id === this.actif);
+      });
+    }
+  }
+}
+
+// Le panneau unique, rattaché à la note active (garde la précédente tant
+// que le volet des commentaires lui-même a le focus).
+class GestionCommentairesMarge {
+  constructor(greffon) {
+    this.greffon = greffon;
+    this.panneau = null;
+  }
+
+  attacher(hote) {
+    if (this.panneau) this.panneau.detruire();
+    this.panneau = new PanneauCommentairesMarge(this.greffon, hote);
+    this.synchroniser(true);
+  }
+
+  detacher() {
+    if (this.panneau) this.panneau.detruire();
+    this.panneau = null;
+  }
+
+  _vues() {
+    return this.greffon.app.workspace.getLeavesOfType('markdown')
+      .map((l) => l.view).filter((v) => v instanceof obsidian.MarkdownView);
+  }
+
+  synchroniser(force) {
+    const p = this.panneau;
+    if (!p) return;
+    const vues = this._vues();
+    const active = this.greffon.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+    let cible = active && vues.includes(active) ? active : null;
+    if (!cible && p.vue && vues.includes(p.vue)) cible = p.vue;
+    if (!cible) cible = vues[0] || null;
+    if (cible !== p.vue) p.lier(cible);
+    else p.rafraichir(force);
+  }
+
+  // Ouvre le volet, rattaché à la vue qui porte cet éditeur.
+  async panneauPour(editeur) {
+    const vue = this._vues().find((v) => v.editor === editeur);
+    if (!vue) return null;
+    await this.greffon.ouvrirVueCommentaires(true);
+    if (this.panneau) this.panneau.lier(vue);
+    return this.panneau;
+  }
+
+  rafraichirFichier(chemin) {
+    const p = this.panneau;
+    if (p && p.vue && p.vue.file && p.vue.file.path === chemin) p.rafraichir();
+  }
+
+  battement() { if (this.panneau) this.panneau.battement(); }
+
+  supprimerChoisi() { return !!this.panneau && this.panneau.supprimerActif(); }
+
+  panneauDuFichier(chemin) {
+    const p = this.panneau;
+    return p && p.vue && p.vue.file && p.vue.file.path === chemin ? p : null;
+  }
+
+  surCurseur(cm) {
+    const p = this.panneau;
+    const v = p && p.vue;
+    if (v && v.editor && v.editor.cm === cm) p.surCurseur(cm.state.selection.main.head);
+  }
+}
+
+// Le volet latéral qui porte les cartes.
+class VueCommentairesMarge extends obsidian.ItemView {
+  constructor(leaf, greffon) {
+    super(leaf);
+    this.greffon = greffon;
+  }
+
+  getViewType() { return TYPE_VUE_COMMENTAIRES; }
+  getDisplayText() { return tr('Commentaires'); }
+  getIcon() { return 'message-square'; }
+
+  async onOpen() {
+    this.contentEl.empty();
+    this.contentEl.addClass('zfa-com-volet');
+    this.greffon.margeCommentaires.attacher(this.contentEl);
+  }
+
+  async onClose() {
+    this.greffon.margeCommentaires.detacher();
+  }
+}
+
+//#endregion 23 · Commentaires en marge
+//#region 24 · Exports
+// ═══════════════════════════════════════════════════════════════════════════
+//  24 · EXPORTS
 //  Points d'entrée CommonJS : la classe du greffon et la surface _test
 //  des fonctions pures pour la suite de tests.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -49097,6 +50842,7 @@ module.exports = Ariane;
 module.exports._test = {
   DEFAULT_SETTINGS,
   MODULES_ARIANE,
+  MODULES_ARIANE_3_0,
   ArianeSettingTab,
   PROFILS_ARIANE,
   // Notes de lecture : citations zotflow ramenées à la forme d'Ariane.
@@ -49205,6 +50951,8 @@ module.exports._test = {
   barreDefaut,
   BARRE_COMMANDES,
   BarreEdition,
+  // Commentaires en marge : lecture, pose et retrait des balises.
+  CommentairesMarge,
   // Pont Claude : les outils de lecture s'éprouvent avec un greffon factice.
   PontClaude,
   BlocOrganisation, // tableau de bord : son rendu s'éprouve sur un DOM factice
@@ -49254,4 +51002,4 @@ module.exports._test = {
   colonnesPourExport,
 };
 
-//#endregion 23 · Exports
+//#endregion 24 · Exports

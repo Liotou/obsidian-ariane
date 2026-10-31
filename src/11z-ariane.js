@@ -19,7 +19,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecDonneesJour,
   avecIphone,
   avecConcentration,
-  avecAccueil) {
+  avecAccueil,
+  avecCommentaires) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -62,7 +63,7 @@ class Ariane extends composer(obsidian.Plugin,
       // Une vue d'un module coupé, restée dans la disposition, se ferme :
       // Obsidian la montrerait sinon comme une vue introuvable.
       const vuesDeModule = [['zfa-suggestions', 'suggestions'], [TYPE_VUE_INCOHERENCES, 'taches'],
-        [TYPE_VUE_CHRONOLOGIE, 'temps'], [TYPE_VUE_RELECTURE, 'correcteur']];
+        [TYPE_VUE_CHRONOLOGIE, 'temps'], [TYPE_VUE_RELECTURE, 'correcteur'], [TYPE_VUE_COMMENTAIRES, 'commentaires']];
       for (const [type, mod] of vuesDeModule) if (!this.module(mod)) this.app.workspace.detachLeavesOfType(type);
       const corriges = this.reconcilierDossiersReglages();
       if (corriges.length) {
@@ -824,6 +825,8 @@ class Ariane extends composer(obsidian.Plugin,
   // Icônes du ruban, aperçu au survol, glisser-déposer d'annotations et
   // post-traitements Markdown.
   _brancherInterface() {
+    // Commentaires en marge (section 23) : volet, commandes, surlignage.
+    if (this.module('commentaires')) this.brancherCommentaires();
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
     if (this.module('suggestions')) this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());

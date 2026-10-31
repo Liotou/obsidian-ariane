@@ -305,10 +305,16 @@ class PontClaude extends obsidian.Component {
 
     const skillSrc = path.join(greffon, 'competence', 'ariane-taches', 'SKILL.md');
     if (!fs.existsSync(skillSrc)) throw new Error('Compétence absente du dossier du greffon : ' + skillSrc);
-    const skillDst = path.join(coffre, '.claude', 'skills', 'ariane-taches', 'SKILL.md');
-    fs.mkdirSync(path.dirname(skillDst), { recursive: true });
-    fs.copyFileSync(skillSrc, skillDst);
-    faits.push(tr('compétence ariane-taches'));
+    // Celle des commentaires en marge suit : elle apprend à Claude le format
+    // des balises, utile dès qu'une note en porte.
+    for (const nom of ['ariane-taches', 'ariane-commentaires']) {
+      const src = path.join(greffon, 'competence', nom, 'SKILL.md');
+      if (!fs.existsSync(src)) continue;
+      const dst = path.join(coffre, '.claude', 'skills', nom, 'SKILL.md');
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(src, dst);
+      faits.push(tr('compétence ') + nom);
+    }
 
     const mcp = path.join(os.homedir(), '.ariane-mcp');
     fs.mkdirSync(mcp, { recursive: true, mode: 0o700 });
