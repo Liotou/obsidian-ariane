@@ -91,32 +91,88 @@ const avecCommentaires = (Base) => class extends Base {
     });
   }
 
-  // Le surlignage des passages dans l'éditeur (source et aperçu en direct),
-  // et le suivi du curseur, qui rend active la carte du passage.
+  // Le surlignage des passages dans l'éditeur (source et aperçu en direct) :
+  // le passage porte la couleur de son commentaire, souligné ; une petite
+  // bulle à sa fin ouvre la carte. Le commentaire actif et celui qu'on
+  // survole, dans le volet ou dans le texte, s'éclairent. Le suivi du
+  // curseur rend active la carte du passage.
   extensionCommentaires() {
-    const { ViewPlugin, Decoration } = require('@codemirror/view');
+    const { ViewPlugin, Decoration, WidgetType } = require('@codemirror/view');
+    const { StateEffect } = require('@codemirror/state');
     const greffon = this;
+    // Un effet vide : « l'actif ou le survol ont changé, redessinez ».
+    const effet = StateEffect.define();
+    this._effetCommentaires = effet;
+
+    class Signe extends WidgetType {
+      constructor(id, couleur, etat) { super(); this.id = id; this.couleur = couleur; this.etat = etat; }
+      eq(o) { return o.id === this.id && o.couleur === this.couleur && o.etat === this.etat; }
+      toDOM(vue) {
+        const el = vue.dom.ownerDocument.createElement('span');
+        el.className = 'zfa-com-signe zfa-com-c-' + this.couleur + (this.etat ? ' ' + this.etat : '');
+        el.dataset.comId = this.id;
+        el.setAttribute('aria-label', tr('Voir le commentaire'));
+        obsidian.setIcon(el, 'message-square');
+        el.addEventListener('mousedown', (e) => e.preventDefault());
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          greffon.montrerCommentaire(this.id);
+        });
+        return el;
+      }
+      ignoreEvent() { return true; }
+    }
+
     const decorer = (vue) => {
       const doc = vue.state.doc.toString();
       if (!doc.includes('class="ann-')) return Decoration.none;
+      const actif = greffon._comActif;
+      const survol = greffon._comSurvol;
       const plages = [];
       for (const a of CommentairesMarge.lire(doc)) {
+        const etat = (a.resolu ? 'est-resolu ' : '') + (a.id === actif ? 'est-actif ' : '') + (a.id === survol ? 'est-survole' : '');
         plages.push(Decoration.mark({ class: 'zfa-com-balise' }).range(a.debut.from, a.debut.to));
         if (a.textFrom < a.textTo) {
-          plages.push(Decoration.mark({ class: 'zfa-com-texte zfa-com-c-' + a.couleur + (a.resolu ? ' zfa-com-resolu' : '') })
-            .range(a.textFrom, a.textTo));
+          plages.push(Decoration.mark({ class: ('zfa-com-texte zfa-com-c-' + a.couleur + ' ' + etat).trim(),
+            attributes: { 'data-com-id': a.id } }).range(a.textFrom, a.textTo));
         }
         plages.push(Decoration.mark({ class: 'zfa-com-balise' }).range(a.fin.from, a.fin.to));
+        plages.push(Decoration.widget({ widget: new Signe(a.id, a.couleur, etat.trim()), side: 1 }).range(a.fin.to));
       }
       return Decoration.set(plages, true);
     };
     return ViewPlugin.fromClass(class {
       constructor(vue) { this.decorations = decorer(vue); }
       update(u) {
-        if (u.docChanged) this.decorations = decorer(u.view);
-        else if (u.selectionSet && greffon.margeCommentaires) greffon.margeCommentaires.surCurseur(u.view);
+        const signal = u.transactions.some((t) => t.effects.some((e) => e.is(effet)));
+        if (u.docChanged || signal) this.decorations = decorer(u.view);
+        if (u.selectionSet && !u.docChanged && greffon.margeCommentaires) greffon.margeCommentaires.surCurseur(u.view);
       }
     }, { decorations: (v) => v.decorations });
+  }
+
+  // L'actif ou le survol ont changé : chaque éditeur ouvert se redessine.
+  // Hors de la mise à jour en cours (on peut venir du suivi du curseur, où
+  // CodeMirror refuse une nouvelle transaction).
+  signalerCommentaires(actif, survol) {
+    if (this._comActif === actif && this._comSurvol === survol) return;
+    this._comActif = actif;
+    this._comSurvol = survol;
+    if (!this._effetCommentaires) return;
+    setTimeout(() => {
+      for (const l of this.app.workspace.getLeavesOfType('markdown')) {
+        const cm = l.view && l.view.editor && l.view.editor.cm;
+        try { if (cm) cm.dispatch({ effects: this._effetCommentaires.of(null) }); } catch (e) { /* éditeur fermé */ }
+      }
+    }, 0);
+  }
+
+  // Ouvre le volet et y rend active la carte du commentaire.
+  async montrerCommentaire(id) {
+    await this.ouvrirVueCommentaires(true);
+    const p = this.margeCommentaires.panneau;
+    if (p) p.activer(id);
   }
 
   _documentsOuverts() {
@@ -436,14 +492,16 @@ const avecCommentaires = (Base) => class extends Base {
 
   _boutonCommentaire(b, f) {
     const note = b.dataset.note || '';
-    b.addClass('zfa-com-bouton');
+    b.addClass('zfa-com-bouton', 'zfa-com-c-' + CommentairesMarge.normaliserCouleur(b.dataset.color));
     obsidian.setIcon(b, 'message-square');
     b.setAttribute('role', 'button');
     b.setAttribute('aria-label', tr('Voir le commentaire'));
     b.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      this._basculerBulleCommentaire(b, note, f);
+      // Le volet ouvert, la carte suffit ; sinon, une bulle.
+      if (this.app.workspace.getLeavesOfType(TYPE_VUE_COMMENTAIRES).length) this.montrerCommentaire(b.dataset.id || '');
+      else this._basculerBulleCommentaire(b, note, f);
     });
     if (f) {
       b.addEventListener('contextmenu', (ev) => {
@@ -466,6 +524,10 @@ const avecCommentaires = (Base) => class extends Base {
     const bulle = d.body.createDiv({ cls: 'zfa-com-bulle' });
     bulle.dataset.comId = id;
     bulle.style.setProperty('--zfa-com-couleur', CommentairesMarge.couleurCss(CommentairesMarge.normaliserCouleur(ancre.dataset.color)));
+    const tete = bulle.createDiv({ cls: 'zfa-com-tete' });
+    tete.createSpan({ cls: 'zfa-com-point' }).style.background = CommentairesMarge.couleurCss(CommentairesMarge.normaliserCouleur(ancre.dataset.color));
+    tete.createSpan({ cls: 'zfa-com-auteur', text: CommentairesMarge.decoder(ancre.dataset.author || '') || tr('Commentaire') });
+    if (ancre.dataset.time) tete.createSpan({ cls: 'zfa-com-heure', text: CommentairesMarge.heureLisible(ancre.dataset.time) });
     bulle.createDiv({ cls: 'zfa-com-bulle-texte', text: note });
     if (f) {
       const actions = bulle.createDiv({ cls: 'zfa-com-actions' });

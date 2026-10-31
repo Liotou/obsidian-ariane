@@ -269,3 +269,14 @@ test('export Word : les balises disparaissent, le passage reste', () => {
   assert.ok(!sortie.includes('ann-'), sortie);
   assert.ok(sortie.includes('Un passage commenté.'));
 });
+
+test('heure lisible : à la façon d’Obsidian, l’heure exacte gardée en infobulle', () => {
+  const n = new Date(2026, 9, 31, 18, 30);
+  assert.equal(C.heureLisible('2026-10-31 18:30', n), 'à l’instant');
+  assert.equal(C.heureLisible('2026-10-31 18:05', n), 'il y a 25 min');
+  assert.equal(C.heureLisible('2026-10-31 14:10', n), 'il y a 4 h');
+  assert.equal(C.heureLisible('2026-10-30 09:15', n), 'hier, 09:15');
+  assert.equal(C.heureLisible('2026-10-12 14:20', n), '12 oct., 14:20');
+  assert.equal(C.heureLisible('2025-03-02 08:00', n), '2 mars 2025, 08:00');
+  assert.equal(C.heureLisible('vers midi', n), 'vers midi');
+});

@@ -43,12 +43,12 @@
 class CommentairesMarge {
   static get COULEURS() {
     return [
-      { cle: 'yellow', nom: 'Jaune', css: '#ffd000' },
-      { cle: 'green', nom: 'Vert', css: '#3ec06a' },
-      { cle: 'blue', nom: 'Bleu', css: '#4a9eff' },
-      { cle: 'pink', nom: 'Rose', css: '#ff6fa5' },
-      { cle: 'purple', nom: 'Violet', css: '#a67cff' },
-      { cle: 'orange', nom: 'Orange', css: '#ff8a3d' },
+      { cle: 'yellow', nom: 'Jaune', css: '#e6b400' },
+      { cle: 'green', nom: 'Vert', css: '#2eaa5a' },
+      { cle: 'blue', nom: 'Bleu', css: '#3c8cf0' },
+      { cle: 'pink', nom: 'Rose', css: '#eb5a96' },
+      { cle: 'purple', nom: 'Violet', css: '#966ef0' },
+      { cle: 'orange', nom: 'Orange', css: '#f07d32' },
     ];
   }
 
@@ -107,6 +107,27 @@ class CommentairesMarge {
     }
     return '<span class="ann-e" data-id="' + id + '" data-color="' + CommentairesMarge.normaliserCouleur(couleur)
       + '" data-note="' + CommentairesMarge.encoder(note) + '"' + extra + '></span>';
+  }
+
+  // L'heure d'un commentaire, à la façon d'Obsidian : « à l'instant »,
+  // « il y a 5 min », « il y a 2 h », « hier, 14:20 », sinon « 12 oct.,
+  // 14:20 » (l'année quand elle n'est pas la courante). `heure` est au
+  // format AAAA-MM-JJ HH:mm ; ce qui ne s'y lit pas revient tel quel.
+  static heureLisible(heure, maintenant) {
+    const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/.exec(String(heure || '').trim());
+    if (!m) return String(heure || '');
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+    const n = maintenant || new Date();
+    const min = Math.round((n - d) / 60000);
+    const hm = m[4] + ':' + m[5];
+    if (min >= 0 && min < 1) return tr('à l’instant');
+    if (min >= 0 && min < 60) return tr('il y a {n} min').replace('{n}', min);
+    const jour = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const ecart = Math.round((jour(n) - jour(d)) / 86400000);
+    if (ecart === 0 && min >= 0) return tr('il y a {n} h').replace('{n}', Math.floor(min / 60));
+    if (ecart === 1) return tr('hier, ') + hm;
+    const mois = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    return Number(m[3]) + ' ' + tr(mois[Number(m[2]) - 1]) + (d.getFullYear() !== n.getFullYear() ? ' ' + m[1] : '') + ', ' + hm;
   }
 
   static _reponses(brut) {
@@ -551,13 +572,20 @@ class PanneauCommentairesMarge {
     this.cartes = new Map();
     this.hauteurPiste = '';
     this.vue = null;
+    this.survol = null;
+    // L'en-tête reste en place ; seule la marge, dessous, défile.
+    this.entete = hote.createDiv({ cls: 'zfa-com-entete' });
     this.el = hote.createDiv({ cls: 'zfa-com-marge' });
     this.piste = this.el.createDiv({ cls: 'zfa-com-piste' });
     this.surDefilement = () => this.planifier();
-    this.surClic = (e) => {
-      const hl = e.target && e.target.closest ? e.target.closest('.zfa-com-hl, .zfa-com-bouton') : null;
-      if (hl && hl.dataset.id) this.activer(hl.dataset.id);
+    // Le passage, dans la note, mène à sa carte : au clic elle devient
+    // active, au survol elle s'éclaire.
+    const idSous = (e) => {
+      const t = e.target && e.target.closest ? e.target.closest('[data-com-id], .zfa-com-hl, .zfa-com-bouton') : null;
+      return t ? (t.dataset.comId || t.dataset.id || null) : null;
     };
+    this.surClic = (e) => { const id = idSous(e); if (id) this.activer(id); };
+    this.surSurvol = (e) => { const id = idSous(e); if (id !== this.survol) this.survoler(id); };
     this.ro = new ResizeObserver(() => this.planifier());
     this.ro.observe(this.el);
     // Mode « suivre » : la molette sur le panneau fait défiler la note ; le
@@ -605,6 +633,7 @@ class PanneauCommentairesMarge {
     if (vue) {
       vue.contentEl.addEventListener('scroll', this.surDefilement, true);
       vue.contentEl.addEventListener('click', this.surClic, true);
+      vue.contentEl.addEventListener('mouseover', this.surSurvol, true);
       this.ro.observe(vue.contentEl);
     }
     this.rafraichir(true);
@@ -615,6 +644,7 @@ class PanneauCommentairesMarge {
     if (!r) return;
     r.removeEventListener('scroll', this.surDefilement, true);
     r.removeEventListener('click', this.surClic, true);
+    r.removeEventListener('mouseover', this.surSurvol, true);
     this.ro.unobserve(r);
   }
 
@@ -623,7 +653,9 @@ class PanneauCommentairesMarge {
     this._delier();
     this.ro.disconnect();
     this._win().cancelAnimationFrame(this.raf);
+    this.entete.remove();
     this.el.remove();
+    this.greffon.signalerCommentaires(null, null);
   }
 
   trouver(id) { return this.anns.find((a) => a.id === id); }
@@ -643,8 +675,9 @@ class PanneauCommentairesMarge {
       this.cartes.clear();
       this.brouillon = null;
       this.el.empty();
+      this._dessinerEntete();
       this.piste = this.el.createDiv({ cls: 'zfa-com-piste' });
-      this.piste.createDiv({ cls: 'zfa-com-vide', text: tr('Ouvrez une note pour voir ses commentaires.') });
+      this.piste.createDiv({ cls: 'pane-empty zfa-com-vide', text: tr('Ouvrez une note pour voir ses commentaires.') });
       return;
     }
     if (fichier.path !== this.chemin) {
@@ -687,7 +720,17 @@ class PanneauCommentairesMarge {
     this.actif = id;
     this.cartes.forEach((c, cid) => c.toggleClass('is-active', cid === id));
     if (id && !this._suivre) { const c = this.cartes.get(id); if (c) c.scrollIntoView({ block: 'nearest' }); }
+    this.greffon.signalerCommentaires(this.actif, this.survol);
     this.planifier();
+  }
+
+  // Le survol relie la carte et son passage : l'un éclaire l'autre.
+  survoler(id) {
+    if (this.survol === id) return;
+    this.survol = id;
+    this.cartes.forEach((c, cid) => c.toggleClass('est-survolee', cid === id));
+    this.greffon.signalerCommentaires(this.actif, this.survol);
+    this._surlignagesLecture();
   }
 
   // Le curseur a bougé dans l'éditeur : le commentaire le plus intérieur
@@ -769,29 +812,73 @@ class PanneauCommentairesMarge {
     this.brouillonFin = null;
     const haut = this.el.scrollTop;
     this.el.empty();
+    this._dessinerEntete();
     this.piste = this.el.createDiv({ cls: 'zfa-com-piste' });
     if (this.hauteurPiste) this.piste.style.setProperty('--zfa-com-piste-h', this.hauteurPiste);
     this.el.toggleClass('zfa-com-suivre', this._suivre);
     this.cartes.clear();
     this.brouillonEl = null;
     if (this.brouillon) this.brouillonEl = this._dessinerBrouillon(this.brouillon);
-    for (const a of this.anns) this.cartes.set(a.id, this._dessinerCarte(fichier, a));
-    if (!this.brouillon && !this.anns.length) {
-      this.piste.createDiv({ cls: 'zfa-com-vide',
-        text: tr('Aucun commentaire dans cette note. Sélectionnez un passage, puis « Commenter le passage » au clic droit.') });
+    const masquer = this.greffon.settings.commentairesResolusMasques === true;
+    for (const a of this.anns) if (!(masquer && a.resolu && a.id !== this.actif)) this.cartes.set(a.id, this._dessinerCarte(fichier, a));
+    if (!this.brouillon && !this.cartes.size) {
+      this.piste.createDiv({ cls: 'pane-empty zfa-com-vide', text: this.anns.length
+        ? tr('Tous les commentaires de cette note sont résolus.')
+        : tr('Aucun commentaire dans cette note. Sélectionnez un passage, puis « Commenter le passage » au clic droit.') });
     }
     this.el.scrollTop = haut;
     this.planifier();
   }
 
+  // L'en-tête du volet, à la manière des volets d'Obsidian : le compte des
+  // commentaires ouverts, et trois boutons.
+  _dessinerEntete() {
+    const g = this.greffon;
+    const s = g.settings;
+    const e = this.entete;
+    e.empty();
+    const titre = e.createDiv({ cls: 'zfa-com-entete-titre' });
+    titre.createSpan({ text: tr('Commentaires') });
+    const ouverts = this.anns.filter((a) => !a.resolu).length;
+    if (this.anns.length) {
+      titre.createSpan({ cls: 'zfa-com-compte', text: String(ouverts) })
+        .setAttribute('aria-label', ouverts + tr(' ouvert(s) sur ') + this.anns.length);
+    }
+    const boutons = e.createDiv({ cls: 'zfa-com-entete-boutons' });
+    const bouton = (icone, nom, actif, faire) => {
+      const b = boutons.createDiv({ cls: 'clickable-icon' + (actif ? ' is-active' : ''), attr: { 'aria-label': nom } });
+      obsidian.setIcon(b, icone);
+      b.addEventListener('click', faire);
+      return b;
+    };
+    bouton('message-square-plus', tr('Commenter le passage'), false, () => {
+      const v = this.vue;
+      if (v && v.file && v.getMode() === 'source') g.commenterPassage(v.editor, v.file);
+      else new obsidian.Notice(tr('Passez en mode édition et sélectionnez le passage à commenter.'));
+    });
+    bouton('check-check', s.commentairesResolusMasques ? tr('Afficher les commentaires résolus') : tr('Masquer les commentaires résolus'),
+      s.commentairesResolusMasques === true, async () => {
+        s.commentairesResolusMasques = s.commentairesResolusMasques !== true;
+        await g.saveSettings();
+        this.rafraichir(true);
+      });
+    bouton(this._suivre ? 'list' : 'panel-right', this._suivre ? tr('Afficher en liste') : tr('Placer face au texte'), false, async () => {
+      s.commentairesSuivre = !this._suivre;
+      await g.saveSettings();
+      this.hauteurPiste = '';
+      this.rafraichir(true);
+    });
+  }
+
   _entete(carte, auteur, heure, couleur) {
     const tete = carte.createDiv({ cls: 'zfa-com-tete' });
-    const av = tete.createDiv({ cls: 'zfa-com-avatar', text: (auteur || tr('Moi')).slice(0, 1) });
-    av.style.background = CommentairesMarge.couleurCss(couleur);
-    const meta = tete.createDiv({ cls: 'zfa-com-meta' });
-    const nom = meta.createDiv({ cls: 'zfa-com-auteur' });
-    nom.createSpan({ text: auteur || tr('Commentaire') });
-    if (heure) meta.createDiv({ cls: 'zfa-com-heure', text: heure });
+    const pt = tete.createSpan({ cls: 'zfa-com-point' });
+    pt.style.background = CommentairesMarge.couleurCss(couleur);
+    const nom = tete.createSpan({ cls: 'zfa-com-auteur', text: auteur || tr('Commentaire') });
+    if (heure) {
+      const h = tete.createSpan({ cls: 'zfa-com-heure', text: CommentairesMarge.heureLisible(heure) });
+      h.setAttribute('aria-label', heure);
+    }
     return { tete, nom };
   }
 
@@ -853,13 +940,22 @@ class PanneauCommentairesMarge {
     carte.style.setProperty('--zfa-com-couleur', CommentairesMarge.couleurCss(a.couleur));
     carte.addEventListener('click', () => {
       this.activer(a.id);
-      if (!this._suivre) this._montrer(a);
+      this._montrer(a);
     });
+    carte.addEventListener('mouseenter', () => this.survoler(a.id));
+    carte.addEventListener('mouseleave', () => { if (this.survol === a.id) this.survoler(null); });
     // Un commentaire sans date prend celle de la dernière modification.
-    const heure = a.heure || tr('vers ') + CommentairesMarge.horodatage(new Date(fichier.stat.mtime));
-    const { tete, nom } = this._entete(carte, a.auteur, heure, a.couleur);
-    if (a.resolu) nom.createSpan({ cls: 'zfa-com-badge', text: tr('Résolu') });
-    const plus = tete.createEl('button', { cls: 'zfa-com-icone zfa-com-plus', attr: { 'aria-label': tr('Plus') } });
+    const heure = a.heure || CommentairesMarge.horodatage(new Date(fichier.stat.mtime));
+    const { tete } = this._entete(carte, a.auteur, heure, a.couleur);
+    const outils = tete.createDiv({ cls: 'zfa-com-outils' });
+    const res = outils.createDiv({ cls: 'clickable-icon zfa-com-resoudre' + (a.resolu ? ' is-active' : ''),
+      attr: { 'aria-label': a.resolu ? tr('Rouvrir le commentaire') : tr('Marquer comme résolu') } });
+    obsidian.setIcon(res, a.resolu ? 'check-circle-2' : 'check');
+    res.addEventListener('click', (e) => {
+      e.stopPropagation();
+      g.majCommentaireMarge(fichier, a.id, (cur) => ({ resolu: !cur.resolu })).then(() => this.rafraichir(true));
+    });
+    const plus = outils.createDiv({ cls: 'clickable-icon', attr: { 'aria-label': tr('Plus') } });
     obsidian.setIcon(plus, 'more-horizontal');
     plus.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -868,7 +964,8 @@ class PanneauCommentairesMarge {
       g.remplirMenuCommentaire(menu, fichier, a.id);
       menu.showAtMouseEvent(e);
     });
-    const q = CommentairesMarge.extrait(this.doc, a, 60);
+    // Face au texte, le passage se voit déjà : son extrait ne sert qu'en liste.
+    const q = this._suivre ? '' : CommentairesMarge.extrait(this.doc, a, 60);
     if (q) carte.createDiv({ cls: 'zfa-com-citation', text: q });
 
     if (this.edition === a.id) {
@@ -899,8 +996,9 @@ class PanneauCommentairesMarge {
         const item = liste.createDiv({ cls: 'zfa-com-reponse' });
         const haut = item.createDiv({ cls: 'zfa-com-reponse-tete' });
         haut.createSpan({ cls: 'zfa-com-auteur', text: r.auteur || tr('Réponse') });
-        haut.createSpan({ cls: 'zfa-com-heure', text: r.heure || tr('vers ') + CommentairesMarge.horodatage(new Date(fichier.stat.mtime)) });
-        const suppr = haut.createEl('button', { cls: 'zfa-com-icone zfa-com-reponse-suppr', attr: { 'aria-label': tr('Supprimer la réponse') } });
+        const hr = r.heure || CommentairesMarge.horodatage(new Date(fichier.stat.mtime));
+        haut.createSpan({ cls: 'zfa-com-heure', text: CommentairesMarge.heureLisible(hr) }).setAttribute('aria-label', hr);
+        const suppr = haut.createDiv({ cls: 'clickable-icon zfa-com-reponse-suppr', attr: { 'aria-label': tr('Supprimer la réponse') } });
         obsidian.setIcon(suppr, 'x');
         suppr.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -932,10 +1030,15 @@ class PanneauCommentairesMarge {
     return carte;
   }
 
-  // Mode liste : amener le passage commenté à l'écran.
+  // Amener le passage commenté à l'écran : toujours en liste ; face au
+  // texte, seulement s'il en est sorti.
   _montrer(a) {
     const v = this.vue;
     if (!v) return;
+    if (this._suivre) {
+      const y = this._ancre(a.textFrom, a.id, this.el.getBoundingClientRect().top);
+      if (y !== null && y >= 0 && y < this.el.clientHeight - 40) return;
+    }
     if (v.getMode() === 'source') {
       v.editor.scrollIntoView({ from: v.editor.offsetToPos(a.textFrom), to: v.editor.offsetToPos(a.textTo) }, true);
     } else {
@@ -1036,6 +1139,7 @@ class PanneauCommentairesMarge {
       lecture.querySelectorAll('.zfa-com-hl[data-id="' + CSS.escape(a.id) + '"]').forEach((h) => {
         h.toggleClass('is-resolved', a.resolu);
         h.toggleClass('is-active', a.id === this.actif);
+        h.toggleClass('est-survole', a.id === this.survol);
       });
     }
   }

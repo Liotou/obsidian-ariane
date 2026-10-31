@@ -357,6 +357,28 @@ const TEXTES = {
     "Commentaires en marge": "Margin comments",
     "Des commentaires sur un passage, comme dans Word : surlignage, carte en marge, réponses, résolution.": "Comments on a passage, as in Word: highlight, card in the margin, replies, resolution.",
     "Commenter le passage": "Comment on the passage",
+    "à l’instant": "just now",
+    "il y a {n} min": "{n} min ago",
+    "il y a {n} h": "{n} h ago",
+    "hier, ": "yesterday, ",
+    "janv.": "Jan",
+    "févr.": "Feb",
+    "mars": "Mar",
+    "avr.": "Apr",
+    "mai": "May",
+    "juin": "Jun",
+    "juil.": "Jul",
+    "août": "Aug",
+    "sept.": "Sep",
+    "oct.": "Oct",
+    "nov.": "Nov",
+    "déc.": "Dec",
+    "Tous les commentaires de cette note sont résolus.": "Every comment in this note is resolved.",
+    " ouvert(s) sur ": " open out of ",
+    "Afficher les commentaires résolus": "Show resolved comments",
+    "Masquer les commentaires résolus": "Hide resolved comments",
+    "Afficher en liste": "Show as a list",
+    "Placer face au texte": "Place facing the text",
     "Répondre au commentaire": "Reply to the comment",
     "Marquer le commentaire comme résolu, ou le rouvrir": "Mark the comment as resolved, or reopen it",
     "Modifier le commentaire sous le curseur": "Edit the comment under the cursor",
@@ -2303,6 +2325,7 @@ const DEFAULT_SETTINGS = {
   commentairesAuteur: '',         // nom affiché ; vide : « Moi »
   commentairesSuivre: true,       // cartes face au passage (sinon une liste)
   commentairesMasquer: true,      // balises masquées en aperçu en direct
+  commentairesResolusMasques: false, // le volet tait les commentaires résolus
 
   // --- Comportement ---
   regenerationAuto: true,
