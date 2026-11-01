@@ -405,6 +405,9 @@ function composerCitation(docStr, pos, entrees, sep) {
 //  pas son nom : il vient une fois, puis les pages à la suite, par ordre
 //  croissant, chacune gardant le lien vers sa note d'annotation :
 //  ([[K1|Amsterdamski et al., 1990, p. 156]], [[K2|p. 164]]).
+//  Deux annotations d'une même page se distinguent par une lettre, dans
+//  l'ordre du texte : ([[K1|Adner, 2017, p. 41a]], [[K2|p. 41b]]). La lettre
+//  se recalcule à chaque passage : restée seule, la page la perd.
 //  `infoDe(cle)` rend { source, libelle } (la source commune, le libellé
 //  complet) ou null pour un lien qui n'est pas une citation. Un groupe qui
 //  contient autre chose que des liens et des séparateurs n'est pas touché.
@@ -415,6 +418,8 @@ function fusionnerCitations(texte, infoDe, sep) {
   const separateur = sep || ' ; ';
   const changements = [];
   const pageDe = (p) => { const m = String(p).match(/\d+/); return m ? Number(m[0]) : Infinity; };
+  // La page sans la lettre qu'un passage précédent a pu lui donner.
+  const sansLettre = (p) => String(p).replace(/(\d)[a-z]$/, '$1');
   // L'année d'une référence : la première de son libellé ; sans année, après les autres.
   const anneeDe = (s) => { const m = String(s).match(/(?:^|[^\d])(1[4-9]\d\d|20\d\d)(?!\d)/); return m ? Number(m[1]) : Infinity; };
   const decouper = (alias) => {
@@ -458,6 +463,18 @@ function fusionnerCitations(texte, infoDe, sep) {
     const rendu = entrees.map((e) => {
       if (e.seul) return e.seul;
       const items = e.items.slice().sort((a, b) => pageDe(a.page) - pageDe(b.page));
+      const parPage = new Map();
+      for (const i of items) {
+        i.page = sansLettre(i.page);
+        parPage.set(i.page, (parPage.get(i.page) || 0) + 1);
+      }
+      const vus = new Map();
+      for (const i of items) {
+        if (parPage.get(i.page) < 2) continue;
+        const k = vus.get(i.page) || 0;
+        vus.set(i.page, k + 1);
+        i.page += String.fromCharCode(97 + Math.min(k, 25));
+      }
       const tete = (items.find((i) => i.tete) || {}).tete
         || (decouper(items[0].libelle || '') || {}).tete;
       if (items.length === 1) {

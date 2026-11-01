@@ -63,3 +63,18 @@ test('ordre chronologique : le cas de Monsieur, puis alphabétique à année ég
   // Des liens qui ne sont pas des citations : l'ordre ne bouge pas.
   assert.equal(f('([[Note 2020|Bilan 2020]] ; [[Note 1999|Bilan 1999]])', g).changements.length, 0);
 });
+
+test('deux annotations d’une même page : une lettre chacune, recalculée à chaque passage', () => {
+  const g = (c) => ({
+    YBPHLBVT: { source: '@adner2017', libelle: 'Adner, 2017, p. 41' },
+    RD76HHN9: { source: '@adner2017', libelle: 'Adner, 2017, p. 41' },
+    Q3: { source: '@adner2017', libelle: 'Adner, 2017, p. 44' },
+  })[c] || null;
+  const r = f('affiliation ([[YBPHLBVT|Adner, 2017, p. 41]], [[RD76HHN9|p. 41]]).', g);
+  assert.equal(r.texte, 'affiliation ([[YBPHLBVT|Adner, 2017, p. 41a]], [[RD76HHN9|p. 41b]]).');
+  assert.equal(f(r.texte, g).changements.length, 0, 'une seconde passe ne change rien');
+  assert.equal(f('([[Q3|Adner, 2017, p. 44]] ; [[RD76HHN9|Adner, 2017, p. 41]] ; [[YBPHLBVT|Adner, 2017, p. 41]])', g).texte,
+    '([[RD76HHN9|Adner, 2017, p. 41a]], [[YBPHLBVT|p. 41b]], [[Q3|p. 44]])', 'les lettres suivent l’ordre du texte');
+  assert.equal(f('([[YBPHLBVT|Adner, 2017, p. 41a]], [[Q3|p. 44]])', g).texte,
+    '([[YBPHLBVT|Adner, 2017, p. 41]], [[Q3|p. 44]])', 'restée seule, la page perd sa lettre');
+});
