@@ -4753,6 +4753,10 @@ body {
 .cm-line .zfa-para-repere {
   position: absolute; top: 0; right: 100%;
   margin-right: 30px;
+  /* Calé à droite de rien (right: 100 %), il n'a aucune largeur disponible :
+     sans cela, « 13 » s'écrirait un chiffre par ligne. */
+  width: max-content;
+  white-space: nowrap;
   height: 1lh;
   display: inline-flex; align-items: center; justify-content: flex-end;
   user-select: none; -webkit-user-select: none;
