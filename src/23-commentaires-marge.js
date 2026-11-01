@@ -480,6 +480,57 @@ class CommentairesMarge {
     ];
   }
 
+  // ── Redimensionnement ──
+
+  // Un commentaire de bloc de code (balises sur des lignes à elles) ne se
+  // redimensionne pas.
+  static redimensionnable(doc, a) {
+    return doc[a.debut.to] !== '\n' && doc[a.fin.from - 1] !== '\n';
+  }
+
+  // Où poser la balise du bord tiré (« debut » ou « fin ») vers pos : jamais
+  // dans une balise ni dans un préfixe de ligne, sans blanc au bord, et le
+  // passage garde du texte. null si la place ne convient pas (clôture, ligne
+  // vide, filet, autre cellule de tableau).
+  static borneRedim(doc, a, bord, pos) {
+    if (pos == null || pos < 0 || pos > doc.length) return null;
+    const RE = CommentairesMarge._RE;
+    const re = /<span\b[^>]*\bclass="ann-[se]"[^>]*><\/span>/g;
+    let m;
+    while ((m = re.exec(doc))) {
+      const f = m.index;
+      const t = f + m[0].length;
+      if (pos > f && pos < t) { pos = bord === 'debut' ? t : f; break; }
+    }
+    pos = bord === 'debut' ? Math.min(pos, a.fin.from - 1) : Math.max(pos, a.debut.to + 1);
+    const ls = doc.lastIndexOf('\n', pos - 1) + 1;
+    let le = doc.indexOf('\n', pos);
+    if (le < 0) le = doc.length;
+    const ligne = doc.slice(ls, le);
+    const net = ligne.trim();
+    if (net === '' || RE.cloture.test(ligne) || RE.filet.test(ligne) || RE.encadre.test(ligne)
+      || CommentairesMarge._dansClotureAvant(doc, pos)) return null;
+    const sansBalises = (s) => s.replace(/<span\b[^>]*><\/span>/g, '');
+    if (net.startsWith('|')) {
+      const autre = bord === 'debut' ? a.fin.from : a.debut.to;
+      if (autre < ls || autre > le || sansBalises(doc.slice(Math.min(pos, autre), Math.max(pos, autre))).includes('|')) return null;
+    }
+    pos = Math.max(pos, ls + RE.prefixe.exec(ligne)[0].length);
+    if (bord === 'debut') { while (pos < le && /\s/.test(doc[pos])) pos += 1; }
+    else { while (pos > ls && /\s/.test(doc[pos - 1])) pos -= 1; }
+    if (bord === 'debut' ? pos >= a.fin.from : pos <= a.debut.to) return null;
+    const [x, y] = bord === 'debut' ? [pos, a.fin.from] : [a.debut.to, pos];
+    return sansBalises(doc.slice(x, y)).trim() ? pos : null;
+  }
+
+  // Les changements qui déplacent la balise du bord tiré vers pos.
+  static changementsRedim(doc, a, bord, pos) {
+    const b = bord === 'debut' ? a.debut : a.fin;
+    if (pos == null || (pos >= b.from && pos <= b.to)) return [];
+    return [{ from: b.from, to: b.to, insert: '' }, { from: pos, to: pos, insert: doc.slice(b.from, b.to) }]
+      .sort((u, v) => u.from - v.from);
+  }
+
   // À positions égales, les changements suivent l'ordre du tableau.
   static appliquer(doc, changements) {
     let out = doc;

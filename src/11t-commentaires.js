@@ -125,6 +125,21 @@ const avecCommentaires = (Base) => class extends Base {
       ignoreEvent() { return true; }
     }
 
+    // Une poignée à chaque bord du passage : la tirer élargit ou resserre
+    // le texte commenté.
+    class Poignee extends WidgetType {
+      constructor(id, bord, couleur, etat) { super(); this.id = id; this.bord = bord; this.couleur = couleur; this.etat = etat; }
+      eq(o) { return o.id === this.id && o.bord === this.bord && o.couleur === this.couleur && o.etat === this.etat; }
+      toDOM(vue) {
+        const el = vue.dom.ownerDocument.createElement('span');
+        el.className = 'zfa-com-poignee est-' + this.bord + ' zfa-com-c-' + this.couleur + (this.etat ? ' ' + this.etat : '');
+        el.setAttribute('aria-label', tr('Tirer pour redimensionner le passage commenté'));
+        el.addEventListener('pointerdown', (e) => greffon.redimensionnerCommentaire(vue, this.id, this.bord, e));
+        return el;
+      }
+      ignoreEvent() { return true; }
+    }
+
     // Le chemin de la note que montre cet éditeur.
     const cheminDe = (vue) => {
       try {
@@ -146,12 +161,21 @@ const avecCommentaires = (Base) => class extends Base {
         plages.push(Decoration.mark({ class: 'zfa-com-texte zfa-com-c-' + brouillon.couleur + ' est-brouillon' })
           .range(brouillon.from, brouillon.to));
       }
+      const redim = greffon._comRedim;
       for (const a of CommentairesMarge.lire(doc)) {
         const etat = (a.resolu ? 'est-resolu ' : '') + (a.id === actif ? 'est-actif ' : '') + (a.id === survol ? 'est-survole' : '');
         plages.push(Decoration.mark({ class: 'zfa-com-balise' }).range(a.debut.from, a.debut.to));
-        if (a.textFrom < a.textTo) {
+        // Pendant qu'on tire un bord, le passage suit le pointeur.
+        const r = redim && redim.id === a.id ? redim : null;
+        const de = r && r.bord === 'debut' ? r.pos : a.textFrom;
+        const a_ = r && r.bord === 'fin' ? r.pos : a.textTo;
+        if (de < a_) {
           plages.push(Decoration.mark({ class: ('zfa-com-texte zfa-com-c-' + a.couleur + ' ' + etat).trim(),
-            attributes: { 'data-com-id': a.id } }).range(a.textFrom, a.textTo));
+            attributes: { 'data-com-id': a.id } }).range(de, a_));
+          if (CommentairesMarge.redimensionnable(doc, a)) {
+            plages.push(Decoration.widget({ widget: new Poignee(a.id, 'debut', a.couleur, etat.trim()), side: -1 }).range(de));
+            plages.push(Decoration.widget({ widget: new Poignee(a.id, 'fin', a.couleur, etat.trim()), side: 1 }).range(a_));
+          }
         }
         plages.push(Decoration.mark({ class: 'zfa-com-balise' }).range(a.fin.from, a.fin.to));
         plages.push(Decoration.widget({ widget: new Signe(a.id, a.couleur, etat.trim()), side: 1 }).range(a.fin.to));
@@ -187,6 +211,63 @@ const avecCommentaires = (Base) => class extends Base {
         try { if (cm) cm.dispatch({ effects: this._effetCommentaires.of(null) }); } catch (e) { /* éditeur fermé */ }
       }
     }, 0);
+  }
+
+  // Tirer un bord du surlignage : le passage suit le pointeur, la balise se
+  // déplace au lâcher. Un simple clic pose le curseur ; Échap annule.
+  redimensionnerCommentaire(vue, id, bord, e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const doc = vue.dom.ownerDocument;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let bouge = false;
+    const redessiner = () => {
+      try { vue.dispatch({ effects: this._effetCommentaires.of(null) }); } catch (er) { /* éditeur fermé */ }
+    };
+    const suivre = (ev) => {
+      if (!bouge && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 3) return;
+      bouge = true;
+      doc.body.addClass('zfa-com-redim');
+      const texte = vue.state.doc.toString();
+      const a = CommentairesMarge.trouverParId(texte, id);
+      if (!a) return;
+      const pos = CommentairesMarge.borneRedim(texte, a, bord, vue.posAtCoords({ x: ev.clientX, y: ev.clientY }, false));
+      if (pos == null || (this._comRedim && this._comRedim.pos === pos)) return;
+      this._comRedim = { id, bord, pos };
+      redessiner();
+    };
+    const fermer = () => {
+      doc.removeEventListener('pointermove', suivre);
+      doc.removeEventListener('pointerup', lacher);
+      doc.removeEventListener('pointercancel', annuler);
+      doc.removeEventListener('keydown', echap, true);
+      doc.body.removeClass('zfa-com-redim');
+      const r = this._comRedim;
+      this._comRedim = null;
+      return r;
+    };
+    const annuler = () => { fermer(); redessiner(); };
+    const echap = (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); annuler(); } };
+    const lacher = (ev) => {
+      const r = fermer();
+      if (!bouge) {
+        const p = vue.posAtCoords({ x: ev.clientX, y: ev.clientY });
+        if (p != null) vue.dispatch({ selection: { anchor: p } });
+        vue.focus();
+        return;
+      }
+      const texte = vue.state.doc.toString();
+      const a = r && CommentairesMarge.trouverParId(texte, id);
+      const ch = a ? CommentairesMarge.changementsRedim(texte, a, bord, r.pos) : [];
+      if (ch.length) vue.dispatch({ changes: ch });
+      else redessiner();
+    };
+    doc.addEventListener('pointermove', suivre);
+    doc.addEventListener('pointerup', lacher);
+    doc.addEventListener('pointercancel', annuler);
+    doc.addEventListener('keydown', echap, true);
   }
 
   // Ouvre le volet et y rend active la carte du commentaire.

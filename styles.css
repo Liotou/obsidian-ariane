@@ -4430,6 +4430,26 @@ body {
 }
 .zfa-com-signe.est-resolu, .zfa-com-bouton.is-resolved { opacity: 0.4; }
 
+/* Les poignées aux bords du passage : on les tire pour élargir ou resserrer. */
+.cm-line .zfa-com-poignee {
+  position: relative; display: inline-block; width: 0; height: 1.25em;
+  font-size: var(--font-text-size); vertical-align: text-bottom;
+}
+.cm-line .zfa-com-poignee::after {
+  content: ''; position: absolute; top: -2px; bottom: -2px; left: -4px; width: 8px;
+  cursor: ew-resize;
+}
+.cm-line .zfa-com-poignee::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; border-radius: 1px;
+  background: rgb(var(--zfa-com-rgb, var(--zfa-com-rgb-yellow)));
+  opacity: 0; transition: opacity 0.12s ease;
+}
+.cm-line .zfa-com-poignee:hover::before,
+.cm-line .zfa-com-poignee.est-actif::before,
+.cm-line .zfa-com-poignee.est-survole::before,
+.zfa-com-redim .cm-line .zfa-com-poignee::before { opacity: 0.9; }
+.zfa-com-redim, .zfa-com-redim * { cursor: ew-resize !important; user-select: none; }
+
 /* Les balises : pâles en mode source, effacées en aperçu en direct. */
 .cm-line .zfa-com-balise { opacity: 0.3; font-size: 0.75em; }
 .zfa-com-masquer .markdown-source-view.is-live-preview .cm-line .zfa-com-balise { font-size: 0; opacity: 0; }

@@ -26644,6 +26644,21 @@ const avecCommentaires = (Base) => class extends Base {
       ignoreEvent() { return true; }
     }
 
+    // Une poignée à chaque bord du passage : la tirer élargit ou resserre
+    // le texte commenté.
+    class Poignee extends WidgetType {
+      constructor(id, bord, couleur, etat) { super(); this.id = id; this.bord = bord; this.couleur = couleur; this.etat = etat; }
+      eq(o) { return o.id === this.id && o.bord === this.bord && o.couleur === this.couleur && o.etat === this.etat; }
+      toDOM(vue) {
+        const el = vue.dom.ownerDocument.createElement('span');
+        el.className = 'zfa-com-poignee est-' + this.bord + ' zfa-com-c-' + this.couleur + (this.etat ? ' ' + this.etat : '');
+        el.setAttribute('aria-label', tr('Tirer pour redimensionner le passage commenté'));
+        el.addEventListener('pointerdown', (e) => greffon.redimensionnerCommentaire(vue, this.id, this.bord, e));
+        return el;
+      }
+      ignoreEvent() { return true; }
+    }
+
     // Le chemin de la note que montre cet éditeur.
     const cheminDe = (vue) => {
       try {
@@ -26665,12 +26680,21 @@ const avecCommentaires = (Base) => class extends Base {
         plages.push(Decoration.mark({ class: 'zfa-com-texte zfa-com-c-' + brouillon.couleur + ' est-brouillon' })
           .range(brouillon.from, brouillon.to));
       }
+      const redim = greffon._comRedim;
       for (const a of CommentairesMarge.lire(doc)) {
         const etat = (a.resolu ? 'est-resolu ' : '') + (a.id === actif ? 'est-actif ' : '') + (a.id === survol ? 'est-survole' : '');
         plages.push(Decoration.mark({ class: 'zfa-com-balise' }).range(a.debut.from, a.debut.to));
-        if (a.textFrom < a.textTo) {
+        // Pendant qu'on tire un bord, le passage suit le pointeur.
+        const r = redim && redim.id === a.id ? redim : null;
+        const de = r && r.bord === 'debut' ? r.pos : a.textFrom;
+        const a_ = r && r.bord === 'fin' ? r.pos : a.textTo;
+        if (de < a_) {
           plages.push(Decoration.mark({ class: ('zfa-com-texte zfa-com-c-' + a.couleur + ' ' + etat).trim(),
-            attributes: { 'data-com-id': a.id } }).range(a.textFrom, a.textTo));
+            attributes: { 'data-com-id': a.id } }).range(de, a_));
+          if (CommentairesMarge.redimensionnable(doc, a)) {
+            plages.push(Decoration.widget({ widget: new Poignee(a.id, 'debut', a.couleur, etat.trim()), side: -1 }).range(de));
+            plages.push(Decoration.widget({ widget: new Poignee(a.id, 'fin', a.couleur, etat.trim()), side: 1 }).range(a_));
+          }
         }
         plages.push(Decoration.mark({ class: 'zfa-com-balise' }).range(a.fin.from, a.fin.to));
         plages.push(Decoration.widget({ widget: new Signe(a.id, a.couleur, etat.trim()), side: 1 }).range(a.fin.to));
@@ -26706,6 +26730,63 @@ const avecCommentaires = (Base) => class extends Base {
         try { if (cm) cm.dispatch({ effects: this._effetCommentaires.of(null) }); } catch (e) { /* éditeur fermé */ }
       }
     }, 0);
+  }
+
+  // Tirer un bord du surlignage : le passage suit le pointeur, la balise se
+  // déplace au lâcher. Un simple clic pose le curseur ; Échap annule.
+  redimensionnerCommentaire(vue, id, bord, e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const doc = vue.dom.ownerDocument;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let bouge = false;
+    const redessiner = () => {
+      try { vue.dispatch({ effects: this._effetCommentaires.of(null) }); } catch (er) { /* éditeur fermé */ }
+    };
+    const suivre = (ev) => {
+      if (!bouge && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 3) return;
+      bouge = true;
+      doc.body.addClass('zfa-com-redim');
+      const texte = vue.state.doc.toString();
+      const a = CommentairesMarge.trouverParId(texte, id);
+      if (!a) return;
+      const pos = CommentairesMarge.borneRedim(texte, a, bord, vue.posAtCoords({ x: ev.clientX, y: ev.clientY }, false));
+      if (pos == null || (this._comRedim && this._comRedim.pos === pos)) return;
+      this._comRedim = { id, bord, pos };
+      redessiner();
+    };
+    const fermer = () => {
+      doc.removeEventListener('pointermove', suivre);
+      doc.removeEventListener('pointerup', lacher);
+      doc.removeEventListener('pointercancel', annuler);
+      doc.removeEventListener('keydown', echap, true);
+      doc.body.removeClass('zfa-com-redim');
+      const r = this._comRedim;
+      this._comRedim = null;
+      return r;
+    };
+    const annuler = () => { fermer(); redessiner(); };
+    const echap = (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); annuler(); } };
+    const lacher = (ev) => {
+      const r = fermer();
+      if (!bouge) {
+        const p = vue.posAtCoords({ x: ev.clientX, y: ev.clientY });
+        if (p != null) vue.dispatch({ selection: { anchor: p } });
+        vue.focus();
+        return;
+      }
+      const texte = vue.state.doc.toString();
+      const a = r && CommentairesMarge.trouverParId(texte, id);
+      const ch = a ? CommentairesMarge.changementsRedim(texte, a, bord, r.pos) : [];
+      if (ch.length) vue.dispatch({ changes: ch });
+      else redessiner();
+    };
+    doc.addEventListener('pointermove', suivre);
+    doc.addEventListener('pointerup', lacher);
+    doc.addEventListener('pointercancel', annuler);
+    doc.addEventListener('keydown', echap, true);
   }
 
   // Ouvre le volet et y rend active la carte du commentaire.
@@ -50860,6 +50941,57 @@ class CommentairesMarge {
       { from: a.debut.from, to: a.debut.to, insert: CommentairesMarge.baliseDebut(a.id, couleur) },
       { from: a.fin.from, to: a.fin.to, insert: CommentairesMarge.baliseFin(a.id, couleur, pris('note', a.note), meta) },
     ];
+  }
+
+  // ── Redimensionnement ──
+
+  // Un commentaire de bloc de code (balises sur des lignes à elles) ne se
+  // redimensionne pas.
+  static redimensionnable(doc, a) {
+    return doc[a.debut.to] !== '\n' && doc[a.fin.from - 1] !== '\n';
+  }
+
+  // Où poser la balise du bord tiré (« debut » ou « fin ») vers pos : jamais
+  // dans une balise ni dans un préfixe de ligne, sans blanc au bord, et le
+  // passage garde du texte. null si la place ne convient pas (clôture, ligne
+  // vide, filet, autre cellule de tableau).
+  static borneRedim(doc, a, bord, pos) {
+    if (pos == null || pos < 0 || pos > doc.length) return null;
+    const RE = CommentairesMarge._RE;
+    const re = /<span\b[^>]*\bclass="ann-[se]"[^>]*><\/span>/g;
+    let m;
+    while ((m = re.exec(doc))) {
+      const f = m.index;
+      const t = f + m[0].length;
+      if (pos > f && pos < t) { pos = bord === 'debut' ? t : f; break; }
+    }
+    pos = bord === 'debut' ? Math.min(pos, a.fin.from - 1) : Math.max(pos, a.debut.to + 1);
+    const ls = doc.lastIndexOf('\n', pos - 1) + 1;
+    let le = doc.indexOf('\n', pos);
+    if (le < 0) le = doc.length;
+    const ligne = doc.slice(ls, le);
+    const net = ligne.trim();
+    if (net === '' || RE.cloture.test(ligne) || RE.filet.test(ligne) || RE.encadre.test(ligne)
+      || CommentairesMarge._dansClotureAvant(doc, pos)) return null;
+    const sansBalises = (s) => s.replace(/<span\b[^>]*><\/span>/g, '');
+    if (net.startsWith('|')) {
+      const autre = bord === 'debut' ? a.fin.from : a.debut.to;
+      if (autre < ls || autre > le || sansBalises(doc.slice(Math.min(pos, autre), Math.max(pos, autre))).includes('|')) return null;
+    }
+    pos = Math.max(pos, ls + RE.prefixe.exec(ligne)[0].length);
+    if (bord === 'debut') { while (pos < le && /\s/.test(doc[pos])) pos += 1; }
+    else { while (pos > ls && /\s/.test(doc[pos - 1])) pos -= 1; }
+    if (bord === 'debut' ? pos >= a.fin.from : pos <= a.debut.to) return null;
+    const [x, y] = bord === 'debut' ? [pos, a.fin.from] : [a.debut.to, pos];
+    return sansBalises(doc.slice(x, y)).trim() ? pos : null;
+  }
+
+  // Les changements qui déplacent la balise du bord tiré vers pos.
+  static changementsRedim(doc, a, bord, pos) {
+    const b = bord === 'debut' ? a.debut : a.fin;
+    if (pos == null || (pos >= b.from && pos <= b.to)) return [];
+    return [{ from: b.from, to: b.to, insert: '' }, { from: pos, to: pos, insert: doc.slice(b.from, b.to) }]
+      .sort((u, v) => u.from - v.from);
   }
 
   // À positions égales, les changements suivent l'ordre du tableau.
