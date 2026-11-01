@@ -1129,6 +1129,8 @@ const TEXTES = {
     "Nom de la police monospace (vide = police de code d’Obsidian).": "Name of the monospace font. Empty means the Obsidian code font.",
     "Nom de référence non reconnu (attendu « Auteur, Année »).": "Reference name not recognised. Expected “Author, Year”.",
     "Nom du tag « orpheline »": "Name of the “orphan” tag",
+    "Compter les appels": "Count citations",
+    "Chaque annotation porte « appels » (les notes qui la citent), chaque fiche source « nb-annotations », tenus en direct. Dans une base, préférez note.appels à file.backlinks.length : les rétroliens se recherchent dans tout le coffre à chaque frappe, et figent l'écriture.": "Each annotation carries “appels” (the notes citing it), each source note “nb-annotations”, kept up to date live. In a base, prefer note.appels to file.backlinks.length: backlinks are searched across the whole vault on every keystroke, which freezes typing.",
     "Nombre de meilleurs candidats relus par le modèle.": "How many top candidates the model reviews.",
     "Nombre de suggestions": "Number of suggestions",
     "Nommage des annotations": "Naming of annotations",
@@ -2617,6 +2619,7 @@ const DEFAULT_SETTINGS = {
   biblioLienTexte: '↗', // libellé de ce renvoi
   nettoyerNotesOrphelines: true, // retirer la définition d'une note quand son appel disparaît
   marquerOrphelines: true, // taguer les annotations à 0 appel (pour le graphe)
+  compterAppels: true, // « appels » et « nb-annotations » tenus en propriétés
   tagOrpheline: 'orphelin', // nom du tag (sans #)
 
   // --- Commentaires en marge (module « commentaires ») ---
@@ -3957,6 +3960,25 @@ function choisirAnnotationCitee(contexte, candidats) {
   }).sort((x, y) => y.score - x.score);
   const [premier, second] = notes;
   return premier.score >= 0.3 && premier.score - second.score >= 0.15 ? premier.a : null;
+}
+
+// Les appels, comptés depuis l'index des liens d'Obsidian (resolvedLinks :
+// note -> { cible: nombre }) : pour chaque note, le nombre de notes
+// distinctes qui la citent (c'est file.backlinks.length, sans en avoir le
+// coût), et pour chaque source, le nombre d'annotations qui la citent.
+// estAnnotation(chemin) dit si une note est une annotation.
+function compterAppels(resolved, estAnnotation) {
+  const appels = new Map();
+  const annotations = new Map();
+  for (const source in resolved || {}) {
+    const anno = !!estAnnotation(source);
+    for (const cible in resolved[source]) {
+      if (cible === source) continue;
+      appels.set(cible, (appels.get(cible) || 0) + 1);
+      if (anno) annotations.set(cible, (annotations.get(cible) || 0) + 1);
+    }
+  }
+  return { appels, annotations };
 }
 
 // Indice qui suit le </span> appariant le span ouvert juste avant « depart ».
@@ -11554,58 +11576,87 @@ const avecNoteAtomes = (Base) => class extends Base {
     new obsidian.Notice(this.panier.length + ' annotation(s) déposée(s) en note de bas de page.');
   }
 
-  /* ------------- Tag « orpheline » (annotations à 0 appel) --------------- */
+  /* ------------- Tag « orpheline » et nombre d'appels ------------------- */
+  //  Ce que Base.base comptait par file.backlinks, au prix d'un gel de près
+  //  d'une seconde à chaque frappe (Bases recherchait les rétroliens dans tout
+  //  le coffre, pour chaque ligne) : Ariane le tient ici, en propriétés,
+  //  après chaque mise à jour des liens. « appels » sur une annotation : les
+  //  notes distinctes qui la citent ; « nb-annotations » sur une fiche
+  //  source : ses annotations. Une propriété n'est écrite qu'à partir de 1, et
+  //  une note n'est réécrite que si l'un de ses chiffres a changé.
 
-  // Ajoute ou retire le tag orpheline dans l'entête, sans toucher au corps.
-  async appliquerTagOrpheline(file, orpheline) {
+  // L'étiquette orpheline et les deux comptes, en une seule écriture.
+  // `voulu` : { orpheline?: bool, appels?: n, annotations?: n } ; une clé
+  // absente laisse la propriété telle quelle, 0 la retire.
+  async appliquerAppels(file, voulu) {
     const tag = this.settings.tagOrpheline || 'orphelin';
     this.marquerEcriture(file.path);
     await this.app.fileManager.processFrontMatter(file, (fm) => {
-      let tags = fm.tags;
-      if (Array.isArray(tags)) { /* garder */ }
-      else if (typeof tags === 'string' && tags.trim()) tags = [tags];
-      else tags = [];
-      tags = tags.filter((t) => String(t).replace(/^#/, '') !== tag);
-      if (orpheline) tags.push(tag);
-      if (tags.length) fm.tags = tags;
-      else delete fm.tags;
+      if (voulu.orpheline !== undefined) {
+        let tags = fm.tags;
+        if (Array.isArray(tags)) { /* garder */ }
+        else if (typeof tags === 'string' && tags.trim()) tags = [tags];
+        else tags = [];
+        tags = tags.filter((t) => String(t).replace(/^#/, '') !== tag);
+        if (voulu.orpheline) tags.push(tag);
+        if (tags.length) fm.tags = tags;
+        else delete fm.tags;
+      }
+      for (const [cle, n] of [['appels', voulu.appels], ['nb-annotations', voulu.annotations]]) {
+        if (n === undefined) continue;
+        if (n > 0) fm[cle] = n;
+        else delete fm[cle];
+      }
     });
   }
 
-  // Met à jour le tag orpheline sur toutes les annotations selon leur
-  // nombre d'appels (notes distinctes qui les citent).
-  async synchroniserTagsOrphelines() {
-    if (!this.settings.marquerOrphelines) return;
-    const tag = this.settings.tagOrpheline || 'orphelin';
-    const resolved = this.app.metadataCache.resolvedLinks || {};
-    const counts = new Map();
-    for (const source in resolved) {
-      for (const cible in resolved[source]) {
-        if (cible === source) continue;
-        counts.set(cible, (counts.get(cible) || 0) + 1);
-      }
-    }
-    for (const f of this.app.vault.getMarkdownFiles()) {
-      if (!f.path.startsWith(this.dossierA + '/')) continue;
-      const cache = this.app.metadataCache.getFileCache(f);
-      const fm = cache ? cache.frontmatter : null;
-      if (!fm || fm['zotflow-anno-key'] === undefined) continue;
-      const orpheline = (counts.get(f.path) || 0) === 0;
-      let present = false;
+  // Ce qu'une note doit porter, comparé à ce qu'elle porte : null si rien ne
+  // change. Un réglage coupé veut l'étiquette ou le compte absents.
+  _appelsVoulus(f, fm, comptes) {
+    const s = this.settings;
+    const compter = s.compterAppels !== false;
+    const voulu = {};
+    const chiffre = (v) => (Number(v) > 0 ? Number(v) : 0);
+    if (fm['zotflow-anno-key'] !== undefined && f.path.startsWith(this.dossierA + '/')) {
+      const n = comptes.appels.get(f.path) || 0;
+      const tag = s.tagOrpheline || 'orphelin';
       const tg = fm.tags;
-      if (Array.isArray(tg)) present = tg.some((t) => String(t).replace(/^#/, '') === tag);
-      else if (typeof tg === 'string') present = tg.replace(/^#/, '') === tag;
-      if (orpheline !== present) await this.appliquerTagOrpheline(f, orpheline);
+      const present = Array.isArray(tg) ? tg.some((t) => String(t).replace(/^#/, '') === tag)
+        : typeof tg === 'string' && tg.replace(/^#/, '') === tag;
+      const orpheline = !!s.marquerOrphelines && n === 0;
+      if (orpheline !== present) voulu.orpheline = orpheline;
+      const appels = compter ? n : 0;
+      if (appels !== chiffre(fm.appels)) voulu.appels = appels;
+    } else if (fm['zotero-key'] !== undefined && fm.citationKey !== undefined) {
+      const n = compter ? comptes.annotations.get(f.path) || 0 : 0;
+      if (n !== chiffre(fm['nb-annotations'])) voulu.annotations = n;
+    } else {
+      return null;
     }
+    return Object.keys(voulu).length ? voulu : null;
   }
 
-  async retirerTousTagsOrphelines() {
+  // Après chaque mise à jour des liens : un passage sur l'index (quelques
+  // millisecondes), des écritures pour les seules notes qui changent.
+  // `force` : passer même les deux réglages coupés, pour retirer ce qu'ils
+  // avaient posé.
+  async synchroniserAppels(force) {
+    const s = this.settings;
+    if (!force && !s.marquerOrphelines && s.compterAppels === false) return;
+    const mc = this.app.metadataCache;
+    const prefixe = this.dossierA + '/';
+    const estAnnotation = (chemin) => {
+      if (!chemin.startsWith(prefixe)) return false;
+      const fm = (mc.getCache(chemin) || {}).frontmatter;
+      return !!fm && fm['zotflow-anno-key'] !== undefined;
+    };
+    const comptes = compterAppels(mc.resolvedLinks || {}, estAnnotation);
     for (const f of this.app.vault.getMarkdownFiles()) {
-      if (!f.path.startsWith(this.dossierA + '/')) continue;
-      const cache = this.app.metadataCache.getFileCache(f);
+      const cache = mc.getFileCache(f);
       const fm = cache ? cache.frontmatter : null;
-      if (!fm || fm['zotflow-anno-key'] === undefined) continue;
-      await this.appliquerTagOrpheline(f, false);
+      if (!fm) continue;
+      const voulu = this._appelsVoulus(f, fm, comptes);
+      if (voulu) await this.appliquerAppels(f, voulu);
     }
   }
 
@@ -29356,14 +29407,12 @@ class Ariane extends composer(obsidian.Plugin,
       if (this.module('taches')) this.registerEvent(this.app.vault.on('create', (f) => this.surCreationTacheVierge(f)));
       this.registerEvent(this.app.vault.on('delete', (f) => this.surSuppression(f)));
 
-      // Tag « orpheline » : mise à jour quand les liens changent.
+      // Tag « orpheline » et nombre d'appels : mis à jour quand les liens
+      // changent ; au démarrage, rattrape ce qui a changé hors d'Obsidian.
       this.registerEvent(this.app.metadataCache.on('resolved', () => {
-        if (!this.settings.marquerOrphelines) return;
-        this.antirebond('orphelines', () => this.synchroniserTagsOrphelines(), 800);
+        this.antirebond('orphelines', () => this.synchroniserAppels(), 800);
       }));
-      if (this.settings.marquerOrphelines) {
-        this.antirebond('orphelines', () => this.synchroniserTagsOrphelines(), 1500);
-      }
+      this.antirebond('orphelines', () => this.synchroniserAppels(), 1500);
     });
   }
 
@@ -30529,13 +30578,20 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._aide(c, tr("Crossref ne connaît que ce qui porte un DOI, or les livres n'en ont souvent pas et ce sont eux qui portent les références les plus citées. Zotero garde le texte extrait de chaque PDF : Ariane y lit la bibliographie directement. Le dossier de données de Zotero se règle dans l'onglet « Greffons liés »."));
     this._section(c, tr('Graphe'));
     new obsidian.Setting(c)
+      .setName(tr('Compter les appels'))
+      .setDesc(tr("Chaque annotation porte « appels » (les notes qui la citent), chaque fiche source « nb-annotations », tenus en direct. Dans une base, préférez note.appels à file.backlinks.length : les rétroliens se recherchent dans tout le coffre à chaque frappe, et figent l'écriture."))
+      .addToggle((t) => t.setValue(s.compterAppels !== false).onChange(async (v) => {
+        s.compterAppels = v;
+        await maj();
+        this.plugin.synchroniserAppels(true);
+      }));
+    new obsidian.Setting(c)
       .setName(tr('Taguer les annotations non citées'))
       .setDesc(tr('Ajoute un tag aux annotations à zéro appel, pour les colorer dans le graphe.'))
       .addToggle((t) => t.setValue(s.marquerOrphelines).onChange(async (v) => {
         s.marquerOrphelines = v;
         await maj();
-        if (v) this.plugin.synchroniserTagsOrphelines();
-        else this.plugin.retirerTousTagsOrphelines();
+        this.plugin.synchroniserAppels(true);
       }));
     new obsidian.Setting(c)
       .setName(tr('Nom du tag « orpheline »'))
@@ -53264,6 +53320,7 @@ module.exports._test = {
   citationsZotflowVersAriane,
   annotationsDeSource,
   choisirAnnotationCitee,
+  compterAppels,
   extraireNotesFilles,
   // Export Word : préparation du markdown pour pandoc.
   preparerMarkdownExport,

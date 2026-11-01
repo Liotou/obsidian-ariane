@@ -18,6 +18,7 @@ module.exports._test = {
   citationsZotflowVersAriane,
   annotationsDeSource,
   choisirAnnotationCitee,
+  compterAppels,
   extraireNotesFilles,
   // Export Word : préparation du markdown pour pandoc.
   preparerMarkdownExport,

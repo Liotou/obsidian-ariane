@@ -1,13 +1,13 @@
 formulas:
   source: note["zotflow-source"]
   cle: note["zotflow-anno-key"]
-  appels: file.backlinks.length
+  appels: if(note.appels, note.appels, 0)
   refs: note["références-citées"]
   collection: note["collections"].filter(value.toString().containsAny("My Library", "Doctorat") == false).reverse().slice(0, 1).join("")
   chemin: note["collections"].filter(value.toString().containsAny("My Library", "Doctorat") == false).join(" › ")
   auteurs: note["zotflow-source"].asFile().properties["creators"]
   annee: note["zotflow-source"].asFile().properties["year"]
-  annotations: file.backlinks.filter(value.asFile().path.startsWith("1 - Annotations/")).map(value.asFile().path).unique().length
+  annotations: if(note["nb-annotations"], note["nb-annotations"], 0)
   jamaisCitees: file.backlinks.filter(value.asFile().path.startsWith("1 - Annotations/")).filter(value.asFile().hasTag("orphelin")).map(value.asFile().path).unique().length
 properties:
   file.name:
@@ -83,7 +83,7 @@ views:
       and:
         - note["zotflow-auto"] == true
         - file.folder.startsWith("1 - Annotations")
-        - file.backlinks.length == 0
+        - file.hasTag("orphelin")
     groupBy:
       property: formula.source
       direction: ASC

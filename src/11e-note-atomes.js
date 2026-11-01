@@ -2347,58 +2347,87 @@ const avecNoteAtomes = (Base) => class extends Base {
     new obsidian.Notice(this.panier.length + ' annotation(s) déposée(s) en note de bas de page.');
   }
 
-  /* ------------- Tag « orpheline » (annotations à 0 appel) --------------- */
+  /* ------------- Tag « orpheline » et nombre d'appels ------------------- */
+  //  Ce que Base.base comptait par file.backlinks, au prix d'un gel de près
+  //  d'une seconde à chaque frappe (Bases recherchait les rétroliens dans tout
+  //  le coffre, pour chaque ligne) : Ariane le tient ici, en propriétés,
+  //  après chaque mise à jour des liens. « appels » sur une annotation : les
+  //  notes distinctes qui la citent ; « nb-annotations » sur une fiche
+  //  source : ses annotations. Une propriété n'est écrite qu'à partir de 1, et
+  //  une note n'est réécrite que si l'un de ses chiffres a changé.
 
-  // Ajoute ou retire le tag orpheline dans l'entête, sans toucher au corps.
-  async appliquerTagOrpheline(file, orpheline) {
+  // L'étiquette orpheline et les deux comptes, en une seule écriture.
+  // `voulu` : { orpheline?: bool, appels?: n, annotations?: n } ; une clé
+  // absente laisse la propriété telle quelle, 0 la retire.
+  async appliquerAppels(file, voulu) {
     const tag = this.settings.tagOrpheline || 'orphelin';
     this.marquerEcriture(file.path);
     await this.app.fileManager.processFrontMatter(file, (fm) => {
-      let tags = fm.tags;
-      if (Array.isArray(tags)) { /* garder */ }
-      else if (typeof tags === 'string' && tags.trim()) tags = [tags];
-      else tags = [];
-      tags = tags.filter((t) => String(t).replace(/^#/, '') !== tag);
-      if (orpheline) tags.push(tag);
-      if (tags.length) fm.tags = tags;
-      else delete fm.tags;
+      if (voulu.orpheline !== undefined) {
+        let tags = fm.tags;
+        if (Array.isArray(tags)) { /* garder */ }
+        else if (typeof tags === 'string' && tags.trim()) tags = [tags];
+        else tags = [];
+        tags = tags.filter((t) => String(t).replace(/^#/, '') !== tag);
+        if (voulu.orpheline) tags.push(tag);
+        if (tags.length) fm.tags = tags;
+        else delete fm.tags;
+      }
+      for (const [cle, n] of [['appels', voulu.appels], ['nb-annotations', voulu.annotations]]) {
+        if (n === undefined) continue;
+        if (n > 0) fm[cle] = n;
+        else delete fm[cle];
+      }
     });
   }
 
-  // Met à jour le tag orpheline sur toutes les annotations selon leur
-  // nombre d'appels (notes distinctes qui les citent).
-  async synchroniserTagsOrphelines() {
-    if (!this.settings.marquerOrphelines) return;
-    const tag = this.settings.tagOrpheline || 'orphelin';
-    const resolved = this.app.metadataCache.resolvedLinks || {};
-    const counts = new Map();
-    for (const source in resolved) {
-      for (const cible in resolved[source]) {
-        if (cible === source) continue;
-        counts.set(cible, (counts.get(cible) || 0) + 1);
-      }
-    }
-    for (const f of this.app.vault.getMarkdownFiles()) {
-      if (!f.path.startsWith(this.dossierA + '/')) continue;
-      const cache = this.app.metadataCache.getFileCache(f);
-      const fm = cache ? cache.frontmatter : null;
-      if (!fm || fm['zotflow-anno-key'] === undefined) continue;
-      const orpheline = (counts.get(f.path) || 0) === 0;
-      let present = false;
+  // Ce qu'une note doit porter, comparé à ce qu'elle porte : null si rien ne
+  // change. Un réglage coupé veut l'étiquette ou le compte absents.
+  _appelsVoulus(f, fm, comptes) {
+    const s = this.settings;
+    const compter = s.compterAppels !== false;
+    const voulu = {};
+    const chiffre = (v) => (Number(v) > 0 ? Number(v) : 0);
+    if (fm['zotflow-anno-key'] !== undefined && f.path.startsWith(this.dossierA + '/')) {
+      const n = comptes.appels.get(f.path) || 0;
+      const tag = s.tagOrpheline || 'orphelin';
       const tg = fm.tags;
-      if (Array.isArray(tg)) present = tg.some((t) => String(t).replace(/^#/, '') === tag);
-      else if (typeof tg === 'string') present = tg.replace(/^#/, '') === tag;
-      if (orpheline !== present) await this.appliquerTagOrpheline(f, orpheline);
+      const present = Array.isArray(tg) ? tg.some((t) => String(t).replace(/^#/, '') === tag)
+        : typeof tg === 'string' && tg.replace(/^#/, '') === tag;
+      const orpheline = !!s.marquerOrphelines && n === 0;
+      if (orpheline !== present) voulu.orpheline = orpheline;
+      const appels = compter ? n : 0;
+      if (appels !== chiffre(fm.appels)) voulu.appels = appels;
+    } else if (fm['zotero-key'] !== undefined && fm.citationKey !== undefined) {
+      const n = compter ? comptes.annotations.get(f.path) || 0 : 0;
+      if (n !== chiffre(fm['nb-annotations'])) voulu.annotations = n;
+    } else {
+      return null;
     }
+    return Object.keys(voulu).length ? voulu : null;
   }
 
-  async retirerTousTagsOrphelines() {
+  // Après chaque mise à jour des liens : un passage sur l'index (quelques
+  // millisecondes), des écritures pour les seules notes qui changent.
+  // `force` : passer même les deux réglages coupés, pour retirer ce qu'ils
+  // avaient posé.
+  async synchroniserAppels(force) {
+    const s = this.settings;
+    if (!force && !s.marquerOrphelines && s.compterAppels === false) return;
+    const mc = this.app.metadataCache;
+    const prefixe = this.dossierA + '/';
+    const estAnnotation = (chemin) => {
+      if (!chemin.startsWith(prefixe)) return false;
+      const fm = (mc.getCache(chemin) || {}).frontmatter;
+      return !!fm && fm['zotflow-anno-key'] !== undefined;
+    };
+    const comptes = compterAppels(mc.resolvedLinks || {}, estAnnotation);
     for (const f of this.app.vault.getMarkdownFiles()) {
-      if (!f.path.startsWith(this.dossierA + '/')) continue;
-      const cache = this.app.metadataCache.getFileCache(f);
+      const cache = mc.getFileCache(f);
       const fm = cache ? cache.frontmatter : null;
-      if (!fm || fm['zotflow-anno-key'] === undefined) continue;
-      await this.appliquerTagOrpheline(f, false);
+      if (!fm) continue;
+      const voulu = this._appelsVoulus(f, fm, comptes);
+      if (voulu) await this.appliquerAppels(f, voulu);
     }
   }
 

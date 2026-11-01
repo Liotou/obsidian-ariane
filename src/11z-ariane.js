@@ -1629,14 +1629,12 @@ class Ariane extends composer(obsidian.Plugin,
       if (this.module('taches')) this.registerEvent(this.app.vault.on('create', (f) => this.surCreationTacheVierge(f)));
       this.registerEvent(this.app.vault.on('delete', (f) => this.surSuppression(f)));
 
-      // Tag « orpheline » : mise à jour quand les liens changent.
+      // Tag « orpheline » et nombre d'appels : mis à jour quand les liens
+      // changent ; au démarrage, rattrape ce qui a changé hors d'Obsidian.
       this.registerEvent(this.app.metadataCache.on('resolved', () => {
-        if (!this.settings.marquerOrphelines) return;
-        this.antirebond('orphelines', () => this.synchroniserTagsOrphelines(), 800);
+        this.antirebond('orphelines', () => this.synchroniserAppels(), 800);
       }));
-      if (this.settings.marquerOrphelines) {
-        this.antirebond('orphelines', () => this.synchroniserTagsOrphelines(), 1500);
-      }
+      this.antirebond('orphelines', () => this.synchroniserAppels(), 1500);
     });
   }
 

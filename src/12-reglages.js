@@ -1135,13 +1135,20 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     this._aide(c, tr("Crossref ne connaît que ce qui porte un DOI, or les livres n'en ont souvent pas et ce sont eux qui portent les références les plus citées. Zotero garde le texte extrait de chaque PDF : Ariane y lit la bibliographie directement. Le dossier de données de Zotero se règle dans l'onglet « Greffons liés »."));
     this._section(c, tr('Graphe'));
     new obsidian.Setting(c)
+      .setName(tr('Compter les appels'))
+      .setDesc(tr("Chaque annotation porte « appels » (les notes qui la citent), chaque fiche source « nb-annotations », tenus en direct. Dans une base, préférez note.appels à file.backlinks.length : les rétroliens se recherchent dans tout le coffre à chaque frappe, et figent l'écriture."))
+      .addToggle((t) => t.setValue(s.compterAppels !== false).onChange(async (v) => {
+        s.compterAppels = v;
+        await maj();
+        this.plugin.synchroniserAppels(true);
+      }));
+    new obsidian.Setting(c)
       .setName(tr('Taguer les annotations non citées'))
       .setDesc(tr('Ajoute un tag aux annotations à zéro appel, pour les colorer dans le graphe.'))
       .addToggle((t) => t.setValue(s.marquerOrphelines).onChange(async (v) => {
         s.marquerOrphelines = v;
         await maj();
-        if (v) this.plugin.synchroniserTagsOrphelines();
-        else this.plugin.retirerTousTagsOrphelines();
+        this.plugin.synchroniserAppels(true);
       }));
     new obsidian.Setting(c)
       .setName(tr('Nom du tag « orpheline »'))

@@ -923,6 +923,8 @@ const TEXTES = {
     "Nom de la police monospace (vide = police de code d’Obsidian).": "Name of the monospace font. Empty means the Obsidian code font.",
     "Nom de référence non reconnu (attendu « Auteur, Année »).": "Reference name not recognised. Expected “Author, Year”.",
     "Nom du tag « orpheline »": "Name of the “orphan” tag",
+    "Compter les appels": "Count citations",
+    "Chaque annotation porte « appels » (les notes qui la citent), chaque fiche source « nb-annotations », tenus en direct. Dans une base, préférez note.appels à file.backlinks.length : les rétroliens se recherchent dans tout le coffre à chaque frappe, et figent l'écriture.": "Each annotation carries “appels” (the notes citing it), each source note “nb-annotations”, kept up to date live. In a base, prefer note.appels to file.backlinks.length: backlinks are searched across the whole vault on every keystroke, which freezes typing.",
     "Nombre de meilleurs candidats relus par le modèle.": "How many top candidates the model reviews.",
     "Nombre de suggestions": "Number of suggestions",
     "Nommage des annotations": "Naming of annotations",
@@ -2411,6 +2413,7 @@ const DEFAULT_SETTINGS = {
   biblioLienTexte: '↗', // libellé de ce renvoi
   nettoyerNotesOrphelines: true, // retirer la définition d'une note quand son appel disparaît
   marquerOrphelines: true, // taguer les annotations à 0 appel (pour le graphe)
+  compterAppels: true, // « appels » et « nb-annotations » tenus en propriétés
   tagOrpheline: 'orphelin', // nom du tag (sans #)
 
   // --- Commentaires en marge (module « commentaires ») ---

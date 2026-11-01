@@ -263,6 +263,25 @@ function choisirAnnotationCitee(contexte, candidats) {
   return premier.score >= 0.3 && premier.score - second.score >= 0.15 ? premier.a : null;
 }
 
+// Les appels, comptés depuis l'index des liens d'Obsidian (resolvedLinks :
+// note -> { cible: nombre }) : pour chaque note, le nombre de notes
+// distinctes qui la citent (c'est file.backlinks.length, sans en avoir le
+// coût), et pour chaque source, le nombre d'annotations qui la citent.
+// estAnnotation(chemin) dit si une note est une annotation.
+function compterAppels(resolved, estAnnotation) {
+  const appels = new Map();
+  const annotations = new Map();
+  for (const source in resolved || {}) {
+    const anno = !!estAnnotation(source);
+    for (const cible in resolved[source]) {
+      if (cible === source) continue;
+      appels.set(cible, (appels.get(cible) || 0) + 1);
+      if (anno) annotations.set(cible, (annotations.get(cible) || 0) + 1);
+    }
+  }
+  return { appels, annotations };
+}
+
 // Indice qui suit le </span> appariant le span ouvert juste avant « depart ».
 function finDeSpanApparie(texte, depart) {
   const re = /<span\b[^>]*>|<\/span>/g;
