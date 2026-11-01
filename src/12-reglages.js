@@ -1256,7 +1256,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     const g = this.plugin;
     const mac = MoteurAppleIA.disponible();
     this._section(c, tr('Assistant IA'));
-    this._aide(c, tr("À la manière de Notes sous macOS 27. Sélectionnez un passage : des pastilles se posent à sa gauche, pour le modifier par une consigne, le relire, le réécrire (plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau) ou demander « Qu’en pensez-vous ? », dont les remarques arrivent en commentaires dans la marge. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer. Les outils d’écriture d’Apple eux-mêmes restent au clic droit, ou par la commande « Outils d’écriture d’Apple (natifs) »."));
+    this._aide(c, tr("Sélectionnez un passage, puis « Outils d’écriture » (barre d’édition, clic droit dans le sous-menu Ariane, ou palette) : le modifier par une consigne, le relire, le réécrire (plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau) ou demander « Qu’en pensez-vous ? », dont les remarques arrivent en commentaires dans la marge. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer. Les outils d’écriture d’Apple eux-mêmes restent au clic droit, ou par la commande « Outils d’écriture d’Apple (natifs) »."));
     new obsidian.Setting(c)
       .setName(tr('Moteur de l’assistant'))
       .setDesc(mac
@@ -1274,10 +1274,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .setDesc(tr('La première fois, Ariane prépare son lien avec le modèle d’Apple (quelques secondes).'))
         .addButton((b) => b.setButtonText(tr('Vérifier')).onClick(() => g.verifierAppleIA()));
     }
-    new obsidian.Setting(c)
-      .setName(tr('Pastilles à la sélection'))
-      .setDesc(tr('Les outils d’écriture se proposent dès qu’un passage est sélectionné, comme dans Notes. Désactivé : seulement par la barre d’édition, le clic droit ou la palette.'))
-      .addToggle((t) => t.setValue(s.assistantPastilles !== false).onChange(async (v) => { s.assistantPastilles = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Filet de sécurité des citations'))
       .setDesc(tr('Quand une réécriture venue d’ailleurs (les outils d’écriture d’Apple, un collage) fait disparaître des liens, des citations ou des notes, Ariane le signale et propose de l’annuler. Les outils d’Apple ne savent pas protéger ces éléments, et rien ne permet de le leur apprendre dans Obsidian.'))

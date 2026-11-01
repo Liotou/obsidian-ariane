@@ -358,10 +358,12 @@ const TEXTES = {
     "Des commentaires sur un passage, comme dans Word : surlignage, carte en marge, réponses, résolution.": "Comments on a passage, as in Word: highlight, card in the margin, replies, resolution.",
     "Commenter le passage": "Comment on the passage",
     "Commenter": "Comment",
+    "Modifier par une consigne…": "Change with an instruction…",
+    "Modifier par une consigne": "Change with an instruction",
+    "Décrivez la modification, puis Entrée": "Describe the change, then press Enter",
     "Outils d’écriture d’Apple (natifs)": "Apple Writing Tools (native)",
     "Outils d’écriture d’Apple…": "Apple Writing Tools…",
     "Les outils d’écriture d’Apple ne sont pas accessibles ici.": "Apple’s Writing Tools are not available here.",
-    "Modifier avec Ariane": "Edit with Ariane",
     "Qu’en pensez-vous ?": "What do you think?",
     "L’IA n’a rien trouvé à redire.": "The AI found nothing to point out.",
     " remarque(s) de l’IA ajoutée(s) en marge.": " AI remark(s) added in the margin.",
@@ -371,8 +373,6 @@ const TEXTES = {
     "Annuler la réécriture": "Undo the rewrite",
     "Suggestions pour ce passage": "Suggestions for this passage",
     "Structurer en tâches": "Structure into tasks",
-    "Pastilles à la sélection": "Pills on selection",
-    "Les outils d’écriture se proposent dès qu’un passage est sélectionné, comme dans Notes. Désactivé : seulement par la barre d’édition, le clic droit ou la palette.": "Writing Tools appear as soon as a passage is selected, as in Notes. Off: only from the editing bar, the right-click menu or the palette.",
     "Filet de sécurité des citations": "Citation safety net",
     "Quand une réécriture venue d’ailleurs (les outils d’écriture d’Apple, un collage) fait disparaître des liens, des citations ou des notes, Ariane le signale et propose de l’annuler. Les outils d’Apple ne savent pas protéger ces éléments, et rien ne permet de le leur apprendre dans Obsidian.": "When a rewrite from elsewhere (Apple’s Writing Tools, a paste) removes links, citations or footnotes, Ariane points it out and offers to undo it. Apple’s tools cannot protect these elements, and nothing lets Obsidian teach them to.",
     "Outils d’écriture (IA)": "Writing Tools (AI)",
@@ -406,7 +406,7 @@ const TEXTES = {
     "Plus soutenu": "More formal",
     "la sélection": "the selection",
     "Assistant IA": "AI assistant",
-    "À la manière de Notes sous macOS 27. Sélectionnez un passage : des pastilles se posent à sa gauche, pour le modifier par une consigne, le relire, le réécrire (plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau) ou demander « Qu’en pensez-vous ? », dont les remarques arrivent en commentaires dans la marge. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer. Les outils d’écriture d’Apple eux-mêmes restent au clic droit, ou par la commande « Outils d’écriture d’Apple (natifs) ».": "In the manner of Notes on macOS 27. Select a passage: pills appear to its left, to change it with an instruction, proofread it, rewrite it (clearer, more formal, more concise, summary, key points, list, table) or ask « What do you think? », whose remarks arrive as comments in the margin. Links, citations and footnotes are protected: the AI cannot alter them. Apple’s own Writing Tools remain in the right-click menu, or through the « Apple Writing Tools (native) » command.",
+    "Sélectionnez un passage, puis « Outils d’écriture » (barre d’édition, clic droit dans le sous-menu Ariane, ou palette) : le modifier par une consigne, le relire, le réécrire (plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau) ou demander « Qu’en pensez-vous ? », dont les remarques arrivent en commentaires dans la marge. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer. Les outils d’écriture d’Apple eux-mêmes restent au clic droit, ou par la commande « Outils d’écriture d’Apple (natifs) ».": "Select a passage, then « Writing Tools » (editing bar, right-click in the Ariane submenu, or palette): change it with an instruction, proofread it, rewrite it (clearer, more formal, more concise, summary, key points, list, table) or ask « What do you think? », whose remarks arrive as comments in the margin. Links, citations and footnotes are protected: the AI cannot alter them. Apple’s own Writing Tools remain in the right-click menu, or through the « Apple Writing Tools (native) » command.",
     "Moteur de l’assistant": "Assistant engine",
     "Apple Intelligence travaille sur ce Mac, sans connexion ni compte ; son modèle est modeste, mais suffit à la relecture et aux reformulations. Automatique : Apple Intelligence si elle est là, sinon le fournisseur principal (onglet IA).": "Apple Intelligence runs on this Mac, without a connection or an account; its model is modest but enough for proofreading and rephrasing. Automatic: Apple Intelligence when present, otherwise the main provider (AI tab).",
     "Apple Intelligence n’existe que sur Mac : l’assistant emploie le fournisseur principal (onglet IA).": "Apple Intelligence only exists on Mac: the assistant uses the main provider (AI tab).",
@@ -2405,7 +2405,6 @@ const DEFAULT_SETTINGS = {
   // --- Assistant IA (module « assistant ») ---
   assistantFournisseur: 'auto',   // auto : Apple Intelligence si présente, sinon le fournisseur principal ; apple ; principal
   assistantEffets: true,          // halo au bord de la fenêtre, miroitement du passage
-  assistantPastilles: true,       // les outils d'écriture se proposent à la sélection
   assistantFilet: true,           // signaler les citations perdues par une réécriture venue d'ailleurs
 
   // --- Comportement ---

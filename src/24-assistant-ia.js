@@ -9,10 +9,9 @@
 //    - AssistantEcriture : la logique pure (consignes, masquage des liens et
 //      citations, nettoyage des réponses, différences mot à mot, remarques
 //      placées dans le texte, citations perdues), éprouvée par les tests.
-//    - PanneauEcritureIA : les outils d'écriture, à la manière de Notes sous
-//      macOS 27 : une pile de pastilles à gauche de la sélection (modifier
-//      par une consigne, relire, réécrire, « qu'en pensez-vous ? »), puis
-//      le résultat dans une carte de verre.
+//    - PanneauEcritureIA : les outils d'écriture, à la demande : un menu
+//      d'actions (consigne libre, relire, réécrire et ses variantes,
+//      « qu'en pensez-vous ? »), puis le résultat dans une carte de verre.
 //  Le branchement est dans avecAssistant (11u).
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -454,13 +453,12 @@ class AssistantEcriture {
 }
 
 // ── Les outils d'écriture ──
-//  À la manière de Notes sous macOS 27 : quand on sélectionne un passage, une
-//  pile de pastilles se pose à sa gauche : « Modifier avec Ariane » (une
-//  consigne libre), « Relire », « Réécrire » (et ses variantes), « Qu'en
-//  pensez-vous ? ». Le passage miroite pendant que l'IA écrit ; le résultat
-//  arrive dans une carte de verre, avec les différences pour la relecture.
-//  Remplacer passe par une seule transaction de l'éditeur : un ⌘Z la défait.
-//  « Qu'en pensez-vous ? » pose ses remarques en commentaires dans la marge.
+//  À la demande seulement (barre d'édition, clic droit, palette) : un menu
+//  d'Obsidian propose les actions, puis le résultat arrive dans une carte de
+//  verre sous le passage. Le passage miroite pendant que l'IA écrit ; la
+//  relecture montre les différences. Remplacer passe par une seule
+//  transaction de l'éditeur : un ⌘Z la défait. « Qu'en pensez-vous ? » pose
+//  ses remarques en commentaires dans la marge.
 class PanneauEcritureIA {
   constructor(greffon, vue) {
     this.greffon = greffon;
@@ -478,18 +476,33 @@ class PanneauEcritureIA {
     this.action = null;
   }
 
-  // o : { action } lance tout de suite ; { saisie } met le curseur dans la
-  // consigne ; { discret } : proposé à la sélection, il s'efface au moindre
-  // geste ailleurs.
+  // Les actions, dans un menu d'Obsidian (le sien, ou un sous-menu du clic
+  // droit). `lancer(action)` et `consigne()` disent quoi faire du choix.
+  static remplirMenu(menu, lancer, consigne, greffon, vue) {
+    menu.addItem((i) => i.setTitle(tr('Modifier par une consigne…')).setIcon('sparkles').onClick(consigne));
+    menu.addSeparator();
+    for (const a of AssistantEcriture.ACTIONS) {
+      if (a.id === 'resume' || a.id === 'avis') menu.addSeparator();
+      menu.addItem((i) => i.setTitle(tr(a.nom)).setIcon(a.icone).onClick(() => lancer(a)));
+    }
+    if (MoteurAppleIA.disponible()) {
+      menu.addSeparator();
+      menu.addItem((i) => i.setTitle(tr('Outils d’écriture d’Apple…')).setIcon('app-window')
+        .onClick(() => greffon.outilsEcritureApple(vue)));
+    }
+  }
+
+  // o : { action } lance tout de suite ; { consigne } demande la consigne ;
+  // sinon, le menu des actions sous le passage.
   ouvrir(o) {
     const opts = o || {};
     if (!this.original.trim()) {
-      if (!opts.discret) new obsidian.Notice(tr('Sélectionnez d’abord le passage à travailler.'));
+      new obsidian.Notice(tr('Sélectionnez d’abord le passage à travailler.'));
       return;
     }
+    if (!opts.action && !opts.consigne) { this._menu(); return; }
     PanneauEcritureIA.fermerTout();
     PanneauEcritureIA.ouvert = this;
-    this.discret = !!opts.discret;
     this.el = this.doc.body.createDiv({ cls: 'zfa-ia-ecriture' });
     this.el.setAttribute('role', 'dialog');
     this.el.setAttribute('aria-label', tr('Outils d’écriture'));
@@ -499,8 +512,8 @@ class PanneauEcritureIA {
     this.doc.addEventListener('mousedown', this.surAppui, true);
     this.doc.addEventListener('keydown', this.surTouche, true);
     if (this.cm) this.cm.scrollDOM.addEventListener('scroll', this.surDefil);
-    if (opts.action) { this.lancer(AssistantEcriture.action(opts.action)); return; }
-    this._pastilles(opts.saisie);
+    if (opts.consigne) this._consigne();
+    else this.lancer(AssistantEcriture.action(opts.action));
   }
 
   static fermerTout() { if (PanneauEcritureIA.ouvert) PanneauEcritureIA.ouvert.fermer(); }
@@ -508,105 +521,67 @@ class PanneauEcritureIA {
   fermer() {
     if (this.encours) this.encours.annuler();
     this.encours = null;
-    this.doc.removeEventListener('mousedown', this.surAppui, true);
-    this.doc.removeEventListener('keydown', this.surTouche, true);
-    if (this.cm) this.cm.scrollDOM.removeEventListener('scroll', this.surDefil);
+    if (this.surAppui) this.doc.removeEventListener('mousedown', this.surAppui, true);
+    if (this.surTouche) this.doc.removeEventListener('keydown', this.surTouche, true);
+    if (this.cm && this.surDefil) this.cm.scrollDOM.removeEventListener('scroll', this.surDefil);
     if (this.el) this.el.remove();
     this.el = null;
     this.greffon.effacerCibleIA(this.cm);
     if (PanneauEcritureIA.ouvert === this) PanneauEcritureIA.ouvert = null;
   }
 
-  // Le passage : ses coins à l'écran, et la colonne du texte.
-  _reperes() {
+  // Le menu des actions, sous la fin du passage.
+  _menu() {
+    const menu = new obsidian.Menu();
+    PanneauEcritureIA.remplirMenu(menu, (a) => this.ouvrir({ action: a.id }), () => this.ouvrir({ consigne: true }),
+      this.greffon, this.vue);
+    let p = null;
+    try { p = this.cm.coordsAtPos(this.to); } catch (e) { /* hors de la vue */ }
+    if (p) menu.showAtPosition({ x: p.left, y: p.bottom + 6 }, this.doc);
+    else { const r = this.cm.dom.getBoundingClientRect(); menu.showAtPosition({ x: r.left + 40, y: r.top + 80 }, this.doc); }
+  }
+
+  // La carte sous le passage (au-dessus, faute de place dessous).
+  _placer() {
+    const carte = this.el && this.el.querySelector('.zfa-ia-carte');
+    if (!carte) return;
+    const fen = this.doc.defaultView || window;
     let haut = null;
     let bas = null;
-    let gauche = null;
     try {
       const c1 = this.cm.coordsAtPos(this.from);
       const c2 = this.cm.coordsAtPos(this.to);
-      if (c1) { haut = c1.top; gauche = c1.left; }
+      if (c1) haut = c1.top;
       if (c2) bas = c2.bottom;
     } catch (e) { /* hors de la vue */ }
     const colonne = this.cm.contentDOM.getBoundingClientRect();
     const cadre = this.cm.scrollDOM.getBoundingClientRect();
-    return { haut: haut === null ? cadre.top + 60 : haut, bas: bas === null ? cadre.top + 60 : bas,
-      gauche: gauche === null ? colonne.left : gauche, colonne, cadre };
+    if (haut === null) haut = cadre.top + 60;
+    if (bas === null) bas = haut + 20;
+    const l = carte.offsetWidth || 440;
+    const h = carte.offsetHeight || 200;
+    const x = Math.max(12, Math.min(colonne.left, fen.innerWidth - l - 12));
+    let y = bas + 10;
+    if (y + h > fen.innerHeight - 12) y = Math.max(12, haut - h - 10);
+    carte.style.left = Math.round(x) + 'px';
+    carte.style.top = Math.round(y) + 'px';
   }
 
-  // Les pastilles à gauche de la colonne de texte, face au début du passage ;
-  // la carte sous le passage. Faute de place à gauche, les pastilles passent
-  // sous le passage elles aussi.
-  _placer() {
-    if (!this.el) return;
-    const fen = this.doc.defaultView || window;
-    const r = this._reperes();
-    const pile = this.el.querySelector('.zfa-ia-pastilles');
-    const carte = this.el.querySelector('.zfa-ia-carte');
-    if (pile) {
-      const l = pile.offsetWidth || 220;
-      let x = r.colonne.left - l - 14;
-      let y = r.haut - 4;
-      pile.toggleClass('est-dessous', x < r.cadre.left + 4);
-      if (x < r.cadre.left + 4) { x = Math.max(12, r.gauche); y = r.bas + 8; }
-      y = Math.max(12, Math.min(y, fen.innerHeight - (pile.offsetHeight || 180) - 12));
-      pile.style.left = Math.round(x) + 'px';
-      pile.style.top = Math.round(y) + 'px';
-    }
-    if (carte) {
-      const l = carte.offsetWidth || 440;
-      const h = carte.offsetHeight || 200;
-      const x = Math.max(12, Math.min(r.colonne.left, fen.innerWidth - l - 12));
-      let y = r.bas + 10;
-      if (y + h > fen.innerHeight - 12) y = Math.max(12, r.haut - h - 10);
-      carte.style.left = Math.round(x) + 'px';
-      carte.style.top = Math.round(y) + 'px';
-    }
-  }
-
-  _pastille(hote, icone, texte, cls, faire) {
-    const b = hote.createEl('button', { cls: 'zfa-ia-pastille' + (cls ? ' ' + cls : '') });
-    obsidian.setIcon(b.createSpan({ cls: 'zfa-ia-pastille-icone' }), icone);
-    b.createSpan({ text: texte });
-    b.addEventListener('mousedown', (e) => e.preventDefault());   // la sélection reste
-    b.addEventListener('click', faire);
-    return b;
-  }
-
-  _pastilles(saisie) {
-    this.el.empty();
-    const pile = this.el.createDiv({ cls: 'zfa-ia-pastilles' });
-    const libre = pile.createDiv({ cls: 'zfa-ia-pastille est-saisie' });
-    iconeIA(libre.createSpan({ cls: 'zfa-ia-pastille-icone' }));
-    const champ = libre.createEl('input', { type: 'text', attr: { placeholder: tr('Modifier avec Ariane') } });
+  // Une consigne libre : « rends ce passage plus vivant », « traduis en anglais »…
+  _consigne() {
+    const carte = this._carte(tr('Modifier par une consigne'));
+    carte.removeClass('zfa-ia-halo');
+    const champ = carte.createEl('input', { type: 'text', cls: 'zfa-ia-consigne',
+      attr: { placeholder: tr('Décrivez la modification, puis Entrée') } });
     champ.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' || e.isComposing) return;
       e.preventDefault();
       const v = champ.value.trim();
       if (v) this.lancer({ id: 'libre', nom: v, sortie: 'remplacer', diff: true, consigne: v });
     });
-    champ.addEventListener('focus', () => { this.discret = false; });
-    this._pastille(pile, 'search-check', tr('Relire'), '', () => this.lancer(AssistantEcriture.action('relire')));
-    const reecrire = this._pastille(pile, 'pen-line', tr('Réécrire'), 'est-bleue', (e) => {
-      const menu = new obsidian.Menu();
-      for (const a of AssistantEcriture.ACTIONS.filter((x) => x.id !== 'relire' && x.id !== 'avis')) {
-        if (a.id === 'resume') menu.addSeparator();
-        menu.addItem((i) => i.setTitle(tr(a.nom)).setIcon(a.icone).onClick(() => this.lancer(a)));
-      }
-      if (MoteurAppleIA.disponible()) {
-        menu.addSeparator();
-        menu.addItem((i) => i.setTitle(tr('Outils d’écriture d’Apple…')).setIcon('app-window')
-          .onClick(() => this.greffon.outilsEcritureApple(this.vue)));
-      }
-      const r = reecrire.getBoundingClientRect();
-      menu.showAtPosition({ x: r.left, y: r.bottom + 4 }, this.doc);
-      e.stopPropagation();
-    });
-    obsidian.setIcon(reecrire.createSpan({ cls: 'zfa-ia-pastille-chevron' }), 'chevron-down');
-    this._pastille(pile, 'message-circle-question', tr('Qu’en pensez-vous ?'), 'est-bleue',
-      () => this.lancer(AssistantEcriture.action('avis')));
+    this.greffon.marquerCibleIA(this.cm, this.from, this.to, 'cible');
     this._placer();
-    if (saisie) setTimeout(() => champ.focus(), 0);
+    setTimeout(() => champ.focus(), 0);
   }
 
   _carte(titre) {
@@ -624,7 +599,6 @@ class PanneauEcritureIA {
   // Lance une action : le passage miroite, le résultat arrive au fil de l'eau.
   lancer(a) {
     if (!a || !this.el) return;
-    this.discret = false;
     if (a.id === 'avis') { this._avis(); return; }
     this.action = a;
     this.resultat = '';

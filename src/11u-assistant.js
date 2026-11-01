@@ -1,7 +1,7 @@
 // ── avecAssistant ─────────────────────────────────────────────────────────
 // Domaine : l'assistant IA, à la manière d'Apple Intelligence (module
 // « assistant », section 24). Le moteur d'Apple comme fournisseur d'IA, les
-// outils d'écriture proposés à la sélection, le filet de sécurité des
+// outils d'écriture à la demande, le filet de sécurité des
 // citations (y compris face aux outils d'écriture d'Apple), et la signature
 // lumineuse commune (liseré, halo au bord de la fenêtre quand l'IA
 // travaille, miroitement du passage en cours de réécriture).
@@ -31,8 +31,13 @@ const avecAssistant = (Base) => class extends Base {
     // Au clic droit sur une sélection, dans le sous-menu « Ariane ».
     this.registerEvent(this.app.workspace.on('editor-menu', (menu, editeur, info) => {
       if (!editeur.somethingSelected() || !(info instanceof obsidian.MarkdownView)) return;
-      this.sousMenuAriane(menu).addItem((i) => i.setTitle(tr('Outils d’écriture')).setIcon('sparkles')
-        .onClick(() => this.ouvrirOutilsEcriture(info)));
+      this.sousMenuAriane(menu).addItem((i) => {
+        i.setTitle(tr('Outils d’écriture')).setIcon('sparkles');
+        const sous = typeof i.setSubmenu === 'function' ? i.setSubmenu() : null;
+        if (!sous) { i.onClick(() => this.ouvrirOutilsEcriture(info)); return; }
+        PanneauEcritureIA.remplirMenu(sous, (a) => this.ouvrirOutilsEcriture(info, a.id),
+          () => this.ouvrirOutilsEcriture(info, 'consigne'), this, info);
+      });
     }));
     this.register(() => {
       PanneauEcritureIA.fermerTout();
@@ -210,32 +215,17 @@ const avecAssistant = (Base) => class extends Base {
       provide: (f) => EditorView.decorations.from(f),
     });
     this._iaCm = { champ, poser, retirer };
-    return [champ, this._extensionSelectionIA()];
+    return [champ, this._extensionFiletIA()];
   }
 
-  // Deux veilles sur l'éditeur. Les pastilles des outils d'écriture se
-  // proposent quand une sélection se pose (après une courte pause), et
-  // s'effacent quand elle disparaît. Le filet de sécurité : une réécriture
-  // venue d'ailleurs (les outils d'écriture d'Apple, un collage) qui fait
-  // disparaître des liens ou des citations est signalée, avec de quoi
-  // l'annuler.
-  _extensionSelectionIA() {
+  // Le filet de sécurité : une réécriture venue d'ailleurs (les outils
+  // d'écriture d'Apple, un collage) qui fait disparaître des liens ou des
+  // citations est signalée, avec de quoi l'annuler.
+  _extensionFiletIA() {
     const { ViewPlugin } = require('@codemirror/view');
     const greffon = this;
     return ViewPlugin.fromClass(class {
-      constructor() { this.minuteur = null; }
-      update(u) {
-        if (u.docChanged) greffon._verifierCitations(u);
-        if (!u.selectionSet && !u.docChanged) return;
-        const ouvert = PanneauEcritureIA.ouvert;
-        if (ouvert && ouvert.discret && ouvert.cm === u.view) ouvert.fermer();
-        clearTimeout(this.minuteur);
-        if (greffon.settings.assistantPastilles === false) return;
-        const sel = u.state.selection.main;
-        if (sel.empty || u.docChanged) return;
-        this.minuteur = setTimeout(() => greffon._proposerPastilles(u.view), 450);
-      }
-      destroy() { clearTimeout(this.minuteur); }
+      update(u) { if (u.docChanged) greffon._verifierCitations(u); }
     });
   }
 
@@ -245,15 +235,6 @@ const avecAssistant = (Base) => class extends Base {
       if (v instanceof obsidian.MarkdownView && v.editor && v.editor.cm === cm) return v;
     }
     return null;
-  }
-
-  _proposerPastilles(cm) {
-    if (!cm.hasFocus || PanneauEcritureIA.ouvert) return;
-    const sel = cm.state.selection.main;
-    if (sel.empty || cm.state.sliceDoc(sel.from, sel.to).trim().length < 3) return;
-    const vue = this._vueDeCm(cm);
-    if (!vue || vue.getMode() !== 'source') return;
-    new PanneauEcritureIA(this, vue).ouvrir({ discret: true });
   }
 
   // Les écritures d'Ariane elle-même ne passent pas par le filet.
@@ -352,7 +333,7 @@ const avecAssistant = (Base) => class extends Base {
       new obsidian.Notice(tr('Passez en mode édition et sélectionnez le passage à travailler.'));
       return;
     }
-    new PanneauEcritureIA(this, vue).ouvrir(action ? { action } : { saisie: true });
+    new PanneauEcritureIA(this, vue).ouvrir(action === 'consigne' ? { consigne: true } : (action ? { action } : {}));
   }
 
   // Les outils d'écriture d'Apple eux-mêmes (macOS 15.2 et suivants) : la
