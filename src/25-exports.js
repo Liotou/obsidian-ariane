@@ -16,6 +16,8 @@ module.exports._test = {
   PROFILS_ARIANE,
   // Notes de lecture : citations zotflow ramenées à la forme d'Ariane.
   citationsZotflowVersAriane,
+  annotationsDeSource,
+  choisirAnnotationCitee,
   extraireNotesFilles,
   // Export Word : préparation du markdown pour pandoc.
   preparerMarkdownExport,

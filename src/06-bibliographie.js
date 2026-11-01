@@ -212,6 +212,10 @@ function rafraichirLibelles(contenu, libelle, citable) {
     const k = cleDeLien(cle);
     if (!citable(k)) return tout;
     let neuf = libelle(k);
+    // La page d'une citation de la source entière (« Adner, 2017, p. 40 ») :
+    // le libellé de la fiche n'en sait rien, elle se garde.
+    const page = (String(alias).match(/,\s*(pp?\.\s*[^,;()[\]]+?)\s*\)?\s*$/) || [])[1];
+    if (neuf && page && !/\bpp?\.\s/.test(neuf)) neuf += ', ' + page;
     // Une citation narrative garde sa forme « Auteur (année) ».
     if (neuf && estLibelleNarratif(alias)) neuf = narratifDepuisLibelle(neuf);
     if (!neuf || neuf === alias) return tout;

@@ -527,6 +527,7 @@ const avecNoteReferences = (Base) => class extends Base {
     const contenu = await this.app.vault.cachedRead(fichierSource);
     const blocs = extraireNotesFilles(contenu);
     if (!blocs.length) return 0;
+    const annos = annotationsDeSource(contenu);
 
     const table = parCleZotero || this.indexParCleZotero();
     const tableAnno = parCleAnnotation || this.indexParCleAnnotation();
@@ -545,7 +546,7 @@ const avecNoteReferences = (Base) => class extends Base {
         const fmx = (this.app.metadataCache.getFileCache(existant) || {}).frontmatter || {};
         if (fmx['zotflow-locked'] === false || fmx.locked === true) continue; // note reprise à la main
       }
-      const canon = this.contenuNoteLecture(fichierSource, bloc, table, tableAnno);
+      const canon = this.contenuNoteLecture(fichierSource, bloc, table, tableAnno, annos);
       if (existant instanceof obsidian.TFile && (await this.app.vault.read(existant)) === canon) continue;
       await this.ecrire(chemin, canon, existant || null);
       faits += 1;
@@ -556,8 +557,10 @@ const avecNoteReferences = (Base) => class extends Base {
   // Le contenu d'une note de lecture, tel qu'Ariane le tient. Verrouillée
   // comme une note d'annotation : c'est une copie de la note Zotero, qui se
   // modifie dans ZotFlow (éditeur de notes, ou zone de la fiche source).
-  contenuNoteLecture(fichierSource, bloc, table, tableAnno) {
-    const corps = citationsZotflowVersAriane(bloc.corps, table, tableAnno);
+  // annos : les annotations de la fiche (annotationsDeSource), pour relier
+  // une citation posée à la main au surlignage qu'elle cite.
+  contenuNoteLecture(fichierSource, bloc, table, tableAnno, annos) {
+    const corps = citationsZotflowVersAriane(bloc.corps, table, tableAnno, annos);
     const entete = [
       '---',
       'aliases:',
@@ -585,10 +588,11 @@ const avecNoteReferences = (Base) => class extends Base {
     if (fm['zotflow-locked'] === false || fm.locked === true) return;
     const source = this.app.metadataCache.getFirstLinkpathDest(sansLien(fm['zotflow-source']), file.path);
     if (!(source instanceof obsidian.TFile)) return;
-    const bloc = extraireNotesFilles(await this.app.vault.read(source))
-      .find((b) => b.cle === String(fm['zotflow-note-key']));
+    const texteSource = await this.app.vault.read(source);
+    const bloc = extraireNotesFilles(texteSource).find((b) => b.cle === String(fm['zotflow-note-key']));
     if (!bloc) return;
-    const canon = this.contenuNoteLecture(source, bloc, this.indexParCleZotero(), this.indexParCleAnnotation());
+    const canon = this.contenuNoteLecture(source, bloc, this.indexParCleZotero(), this.indexParCleAnnotation(),
+      annotationsDeSource(texteSource));
     if ((await this.app.vault.read(file)) === canon) return;
     await this.ecrire(file.path, canon, file);
     new obsidian.Notice(tr('Note de lecture rétablie : elle se modifie dans ZotFlow (éditeur de notes, ou zone de la fiche source).'), 6000);

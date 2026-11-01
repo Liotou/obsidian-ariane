@@ -1230,7 +1230,9 @@ const avecNoteAtomes = (Base) => class extends Base {
   // Notes concernées par une conversion : on écarte les annotations elles-mêmes
   // et les fiches Zotero, qui ne contiennent pas de rédaction.
   notesConvertibles() {
+    // Les notes de lecture aussi : Ariane les tient, copies des notes Zotero.
     const exclus = [this.dossierA + '/', this.dossierR + '/', 'Références/', 'Auteurs/'];
+    if (this.settings.dossierNotesLecture) exclus.push(this.settings.dossierNotesLecture + '/');
     return this.app.vault.getMarkdownFiles()
       .filter((f) => !exclus.some((d) => f.path.startsWith(d)));
   }

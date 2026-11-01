@@ -3842,7 +3842,13 @@ function titreDeNoteFille(corps) {
 // (parCleAnnotation : clé du surlignage → cible de lien), la citation pointe
 // vers elle : ([[cible|libellé]]). Ariane sait déjà citer une note
 // d'annotation (source, page, « cité dans »), en lecture comme à l'export.
-function citationsZotflowVersAriane(corps, parCleZotero, parCleAnnotation) {
+//
+// Une citation posée à la main dans Zotero (« Ajouter une citation », page
+// comprise) ne porte pas de clé de surlignage. Avec annotationsSource (les
+// annotations de la fiche, voir annotationsDeSource), elle se relie quand
+// même à son surlignage : celui de la page, s'il est seul, sinon celui dont
+// le texte ressemble le plus à la phrase qui cite.
+function citationsZotflowVersAriane(corps, parCleZotero, parCleAnnotation, annotationsSource) {
   const texte = String(corps);
   // Le span de citation en contient un autre : une expression paresseuse
   // s'arrêterait sur la balise fermante du span intérieur. On apparie donc à
@@ -3857,6 +3863,7 @@ function citationsZotflowVersAriane(corps, parCleZotero, parCleAnnotation) {
     const libelle = dedans.replace(/<[^>]+>/g, '').trim().replace(/^\(+\s*/, '').replace(/\s*\)+$/, '').trim();
     let cleZot = null;
     let cleAnno = null;
+    let page = '';
     try {
       const j = JSON.parse(decodeURIComponent(m[1]));
       const items = (j && j.citationItems) || [];
@@ -3866,7 +3873,14 @@ function citationsZotflowVersAriane(corps, parCleZotero, parCleAnnotation) {
       const ka = items[0] && (items[0].annotationKey
         || (String(items[0].annotationURI || '').match(/items\/(\w+)$/) || [])[1]);
       if (ka) cleAnno = String(ka);
+      if (items[0] && items[0].locator != null) page = String(items[0].locator).trim();
     } catch (e) { /* citation illisible : on la laisse telle quelle */ }
+    if (!cleAnno && page && listeNonVide(annotationsSource)) {
+      const debutLigne = texte.lastIndexOf('\n', m.index - 1) + 1;
+      const contexte = texte.slice(debutLigne, m.index).replace(/<[^>]+>/g, ' ');
+      const choisie = choisirAnnotationCitee(contexte, annotationsSource.filter((a) => a.page === page));
+      if (choisie) cleAnno = choisie.cle;
+    }
     const noteAnno = cleAnno && parCleAnnotation ? parCleAnnotation.get(cleAnno) : null;
     const citekey = cleZot && parCleZotero ? parCleZotero.get(cleZot) : null;
     const cible = noteAnno || citekey;
@@ -3878,6 +3892,47 @@ function citationsZotflowVersAriane(corps, parCleZotero, parCleAnnotation) {
     ouvre.lastIndex = apres;
   }
   return sortie + texte.slice(dernier);
+}
+
+function listeNonVide(liste) { return Array.isArray(liste) && liste.length > 0; }
+
+// Les annotations d'une fiche source de ZotFlow : clé, page et texte
+// (surlignage et commentaire), lues dans les encadrés « zotflow-… » que
+// ferme leur ancre « ^CLÉ ».
+function annotationsDeSource(contenu) {
+  const out = [];
+  const re = /^> \[!zotflow-[^\]\n]*\][^\n]*?,\s*p\.\s*([^\]\s]+)\]\([^)\n]*?key=([A-Z0-9]{8})\)([\s\S]*?)^\^\2[ \t]*$/gm;
+  let m;
+  while ((m = re.exec(String(contenu || ''))) !== null) {
+    out.push({ cle: m[2], page: m[1].trim(), texte: m[3].replace(/<!--[\s\S]*?-->/g, ' ').replace(/^>[ >]*/gm, '') });
+  }
+  return out;
+}
+
+// Les mots qui portent le sens, sans accents ni mots outils.
+function motsSignifiants(s) {
+  const vides = new Set(['dans', 'pour', 'avec', 'cette', 'sont', 'leur', 'leurs', 'plus', 'comme', 'elle', 'elles',
+    'mais', 'donc', 'ainsi', 'entre', 'etre', 'fait', 'tout', 'tous', 'nous', 'vous', 'aussi', 'dont', 'sans',
+    'that', 'with', 'which', 'from', 'this', 'their', 'have', 'into']);
+  return new Set(String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !vides.has(w)));
+}
+
+// Le surlignage que cite une phrase, parmi ceux de la page : le seul, ou
+// celui dont le texte reprend nettement le plus de ses mots. null sinon.
+function choisirAnnotationCitee(contexte, candidats) {
+  if (!listeNonVide(candidats)) return null;
+  if (candidats.length === 1) return candidats[0];
+  const mots = motsSignifiants(contexte);
+  if (!mots.size) return null;
+  const notes = candidats.map((a) => {
+    const t = motsSignifiants(a.texte);
+    let n = 0;
+    for (const w of mots) if (t.has(w)) n += 1;
+    return { a, score: n / mots.size };
+  }).sort((x, y) => y.score - x.score);
+  const [premier, second] = notes;
+  return premier.score >= 0.3 && premier.score - second.score >= 0.15 ? premier.a : null;
 }
 
 // Indice qui suit le </span> appariant le span ouvert juste avant « depart ».
@@ -4443,6 +4498,10 @@ function rafraichirLibelles(contenu, libelle, citable) {
     const k = cleDeLien(cle);
     if (!citable(k)) return tout;
     let neuf = libelle(k);
+    // La page d'une citation de la source entière (« Adner, 2017, p. 40 ») :
+    // le libellé de la fiche n'en sait rien, elle se garde.
+    const page = (String(alias).match(/,\s*(pp?\.\s*[^,;()[\]]+?)\s*\)?\s*$/) || [])[1];
+    if (neuf && page && !/\bpp?\.\s/.test(neuf)) neuf += ', ' + page;
     // Une citation narrative garde sa forme « Auteur (année) ».
     if (neuf && estLibelleNarratif(alias)) neuf = narratifDepuisLibelle(neuf);
     if (!neuf || neuf === alias) return tout;
@@ -7653,6 +7712,7 @@ const avecNoteReferences = (Base) => class extends Base {
     const contenu = await this.app.vault.cachedRead(fichierSource);
     const blocs = extraireNotesFilles(contenu);
     if (!blocs.length) return 0;
+    const annos = annotationsDeSource(contenu);
 
     const table = parCleZotero || this.indexParCleZotero();
     const tableAnno = parCleAnnotation || this.indexParCleAnnotation();
@@ -7671,7 +7731,7 @@ const avecNoteReferences = (Base) => class extends Base {
         const fmx = (this.app.metadataCache.getFileCache(existant) || {}).frontmatter || {};
         if (fmx['zotflow-locked'] === false || fmx.locked === true) continue; // note reprise à la main
       }
-      const canon = this.contenuNoteLecture(fichierSource, bloc, table, tableAnno);
+      const canon = this.contenuNoteLecture(fichierSource, bloc, table, tableAnno, annos);
       if (existant instanceof obsidian.TFile && (await this.app.vault.read(existant)) === canon) continue;
       await this.ecrire(chemin, canon, existant || null);
       faits += 1;
@@ -7682,8 +7742,10 @@ const avecNoteReferences = (Base) => class extends Base {
   // Le contenu d'une note de lecture, tel qu'Ariane le tient. Verrouillée
   // comme une note d'annotation : c'est une copie de la note Zotero, qui se
   // modifie dans ZotFlow (éditeur de notes, ou zone de la fiche source).
-  contenuNoteLecture(fichierSource, bloc, table, tableAnno) {
-    const corps = citationsZotflowVersAriane(bloc.corps, table, tableAnno);
+  // annos : les annotations de la fiche (annotationsDeSource), pour relier
+  // une citation posée à la main au surlignage qu'elle cite.
+  contenuNoteLecture(fichierSource, bloc, table, tableAnno, annos) {
+    const corps = citationsZotflowVersAriane(bloc.corps, table, tableAnno, annos);
     const entete = [
       '---',
       'aliases:',
@@ -7711,10 +7773,11 @@ const avecNoteReferences = (Base) => class extends Base {
     if (fm['zotflow-locked'] === false || fm.locked === true) return;
     const source = this.app.metadataCache.getFirstLinkpathDest(sansLien(fm['zotflow-source']), file.path);
     if (!(source instanceof obsidian.TFile)) return;
-    const bloc = extraireNotesFilles(await this.app.vault.read(source))
-      .find((b) => b.cle === String(fm['zotflow-note-key']));
+    const texteSource = await this.app.vault.read(source);
+    const bloc = extraireNotesFilles(texteSource).find((b) => b.cle === String(fm['zotflow-note-key']));
     if (!bloc) return;
-    const canon = this.contenuNoteLecture(source, bloc, this.indexParCleZotero(), this.indexParCleAnnotation());
+    const canon = this.contenuNoteLecture(source, bloc, this.indexParCleZotero(), this.indexParCleAnnotation(),
+      annotationsDeSource(texteSource));
     if ((await this.app.vault.read(file)) === canon) return;
     await this.ecrire(file.path, canon, file);
     new obsidian.Notice(tr('Note de lecture rétablie : elle se modifie dans ZotFlow (éditeur de notes, ou zone de la fiche source).'), 6000);
@@ -10333,7 +10396,9 @@ const avecNoteAtomes = (Base) => class extends Base {
   // Notes concernées par une conversion : on écarte les annotations elles-mêmes
   // et les fiches Zotero, qui ne contiennent pas de rédaction.
   notesConvertibles() {
+    // Les notes de lecture aussi : Ariane les tient, copies des notes Zotero.
     const exclus = [this.dossierA + '/', this.dossierR + '/', 'Références/', 'Auteurs/'];
+    if (this.settings.dossierNotesLecture) exclus.push(this.settings.dossierNotesLecture + '/');
     return this.app.vault.getMarkdownFiles()
       .filter((f) => !exclus.some((d) => f.path.startsWith(d)));
   }
@@ -52589,6 +52654,8 @@ module.exports._test = {
   PROFILS_ARIANE,
   // Notes de lecture : citations zotflow ramenées à la forme d'Ariane.
   citationsZotflowVersAriane,
+  annotationsDeSource,
+  choisirAnnotationCitee,
   extraireNotesFilles,
   // Export Word : préparation du markdown pour pandoc.
   preparerMarkdownExport,
