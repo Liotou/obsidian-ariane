@@ -27,13 +27,15 @@ const T = [
   'Troisième.',
 ].join('\n');
 
-test('blocs : genres, numéros des seuls paragraphes, code entier, en-tête sauté', () => {
+test('blocs : une ligne, un paragraphe ; puce avec sa suite, code entier, en-tête sauté', () => {
   const b = ParagraphesTexte.blocs(T);
   assert.deepEqual(b.map((x) => [x.genre, x.numero]), [
-    ['titre', 0], ['paragraphe', 1], ['liste', 0], ['paragraphe', 2], ['code', 0], ['citation', 0], ['paragraphe', 3],
+    ['titre', 0], ['paragraphe', 1], ['paragraphe', 2], ['liste', 0], ['liste', 0], ['paragraphe', 3],
+    ['code', 0], ['citation', 0], ['paragraphe', 4],
   ]);
-  assert.equal(T.slice(b[1].from, b[1].to), 'Premier paragraphe,\nsur deux lignes.');
-  assert.ok(T.slice(b[4].from, b[4].to).endsWith('```'));
+  assert.equal(T.slice(b[1].from, b[1].to), 'Premier paragraphe,');
+  assert.equal(T.slice(b[3].from, b[3].to), '- une puce\n  suite de la puce');
+  assert.ok(T.slice(b[6].from, b[6].to).endsWith('```'));
 });
 
 test('un paragraphe ouvert par un commentaire en marge reste un paragraphe', () => {
@@ -73,4 +75,20 @@ test('extrait : le début lisible du bloc', () => {
   const t = '- **Gras** et [[cible|lien]] et la suite';
   const b = ParagraphesTexte.blocs(t);
   assert.equal(ParagraphesTexte.extrait(t, b[0], 60), 'Gras et lien et la suite');
+});
+
+test('paragraphes séparés d’un simple saut de ligne : chacun le sien, et ils s’échangent', () => {
+  const t = 'Un.\nDeux.\nTrois.';
+  const b = ParagraphesTexte.blocs(t);
+  assert.deepEqual(b.map((x) => x.numero), [1, 2, 3]);
+  const r = ParagraphesTexte.deplacer(t, b, 2, 0);
+  let s = t;
+  for (const c of r.changements.slice().reverse()) s = s.slice(0, c.from) + c.insert + s.slice(c.to);
+  assert.equal(s, 'Trois.\nUn.\nDeux.');
+});
+
+test('une puce emporte ses sous-puces ; les lignes d’une citation restent ensemble', () => {
+  const t = '- a\n  - a1\n- b\n> c1\n> c2';
+  const b = ParagraphesTexte.blocs(t);
+  assert.deepEqual(b.map((x) => t.slice(x.from, x.to)), ['- a\n  - a1', '- b', '> c1\n> c2']);
 });

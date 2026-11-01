@@ -28,9 +28,12 @@ class ParagraphesTexte {
 
   // Les blocs du texte, dans l'ordre : { from, to, genre, numero }. from est
   // le début de la première ligne, to la fin de la dernière (saut exclu).
-  // Un bloc de code ou de formules reste entier, lignes vides comprises ;
-  // un titre, un filet forment un bloc à eux seuls. Seuls les paragraphes
-  // sont numérotés (numero 0 pour les autres). L'en-tête YAML est sauté.
+  // Chaque ligne de texte est un paragraphe : Monsieur sépare ses
+  // paragraphes d'un simple saut de ligne, pas d'une ligne vide. Une puce
+  // emporte ses sous-puces et ses lignes en retrait ; une citation, un
+  // tableau, un bloc de code ou de formules restent entiers ; un titre, un
+  // filet forment un bloc à eux seuls. Seuls les paragraphes sont numérotés
+  // (numero 0 pour les autres). L'en-tête YAML est sauté.
   static blocs(texte) {
     const t = String(texte || '');
     const lignes = [];
@@ -69,15 +72,27 @@ class ParagraphesTexte {
       const g = ParagraphesTexte.genreLigne(l.s);
       if (g === 'vide') { fermer(); continue; }
       if (g === 'titre' || g === 'filet') { fermer(); out.push({ from: l.from, to: l.to, genre: g }); continue; }
-      // Une ligne de texte sous une puce la continue ; tout autre changement
-      // de genre ouvre un bloc.
-      if (cur && g !== cur.genre && !(cur.genre === 'liste' && g === 'paragraphe')) fermer();
-      if (!cur) cur = { from: l.from, to: l.to, genre: g };
-      else cur.to = l.to;
+      const retrait = /^[ \t]*/.exec(l.s)[0].replace(/\t/g, '    ').length;
+      // Sous une puce, ce qui est plus en retrait lui appartient : sous-puces
+      // et lignes de suite.
+      if (cur && cur.genre === 'liste' && (g === 'liste' || g === 'paragraphe') && retrait > cur.retrait) {
+        cur.to = l.to;
+        continue;
+      }
+      // Les lignes d'une même citation, d'un même tableau, restent ensemble.
+      if (cur && g === cur.genre && g !== 'liste' && g !== 'paragraphe') {
+        cur.to = l.to;
+        continue;
+      }
+      fermer();
+      cur = { from: l.from, to: l.to, genre: g, retrait };
     }
     fermer();
     let n = 0;
-    for (const b of out) b.numero = b.genre === 'paragraphe' ? ++n : 0;
+    for (const b of out) {
+      delete b.retrait;
+      b.numero = b.genre === 'paragraphe' ? ++n : 0;
+    }
     return out;
   }
 
