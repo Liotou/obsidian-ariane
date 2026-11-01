@@ -1130,6 +1130,8 @@ const TEXTES = {
     "Nom de référence non reconnu (attendu « Auteur, Année »).": "Reference name not recognised. Expected “Author, Year”.",
     "Nom du tag « orpheline »": "Name of the “orphan” tag",
     "Compter les appels": "Count citations",
+    "Cette annotation est déjà citée ici.": "This annotation is already cited here.",
+    "Ces annotations sont déjà citées ici.": "These annotations are already cited here.",
     "Chaque annotation porte « appels » (les notes qui la citent), chaque fiche source « nb-annotations », tenus en direct. Dans une base, préférez note.appels à file.backlinks.length : les rétroliens se recherchent dans tout le coffre à chaque frappe, et figent l'écriture.": "Each annotation carries “appels” (the notes citing it), each source note “nb-annotations”, kept up to date live. In a base, prefer note.appels to file.backlinks.length: backlinks are searched across the whole vault on every keystroke, which freezes typing.",
     "Nombre de meilleurs candidats relus par le modèle.": "How many top candidates the model reviews.",
     "Nombre de suggestions": "Number of suggestions",
@@ -12081,17 +12083,19 @@ const avecNoteBiblio = (Base) => class extends Base {
       }
     }
 
-    // Ne pas citer deux fois la même annotation dans le voisinage immédiat.
-    const voisinage = docStr.slice(Math.max(0, pos - 400), pos + 400);
     // Une clé est un nom de note, ou { cle, page } : une source citée à une
-    // page (annotation glissée du lecteur, pas encore atomisée).
+    // page (annotation glissée du lecteur, pas encore atomisée). Une même
+    // annotation peut appuyer deux phrases voisines : seule la parenthèse où
+    // l'on dépose écarte un doublon (composerCitation). Écarter tout ce qui
+    // était cité à moins de 400 caractères avalait le dépôt sans un mot.
     const nom = (c) => (typeof c === 'string' ? c : c.cle);
-    const entrees = cles
-      .filter((c) => typeof c !== 'string' || voisinage.indexOf('[[' + c + '|') === -1)
-      .map((c) => '[[' + nom(c) + '|' + this.libelleDeCitation(c) + ']]');
+    const entrees = cles.map((c) => '[[' + nom(c) + '|' + this.libelleDeCitation(c) + ']]');
 
     const modif = composerCitation(docStr, pos, entrees, sep);
-    if (!modif) return false;
+    if (!modif) {
+      new obsidian.Notice(tr(cles.length > 1 ? 'Ces annotations sont déjà citées ici.' : 'Cette annotation est déjà citée ici.'));
+      return false;
+    }
     cm.dispatch({ changes: [modif] });
     this.fusionnerCitationsEditeur(cm);
     return true;

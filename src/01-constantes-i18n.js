@@ -924,6 +924,8 @@ const TEXTES = {
     "Nom de référence non reconnu (attendu « Auteur, Année »).": "Reference name not recognised. Expected “Author, Year”.",
     "Nom du tag « orpheline »": "Name of the “orphan” tag",
     "Compter les appels": "Count citations",
+    "Cette annotation est déjà citée ici.": "This annotation is already cited here.",
+    "Ces annotations sont déjà citées ici.": "These annotations are already cited here.",
     "Chaque annotation porte « appels » (les notes qui la citent), chaque fiche source « nb-annotations », tenus en direct. Dans une base, préférez note.appels à file.backlinks.length : les rétroliens se recherchent dans tout le coffre à chaque frappe, et figent l'écriture.": "Each annotation carries “appels” (the notes citing it), each source note “nb-annotations”, kept up to date live. In a base, prefer note.appels to file.backlinks.length: backlinks are searched across the whole vault on every keystroke, which freezes typing.",
     "Nombre de meilleurs candidats relus par le modèle.": "How many top candidates the model reviews.",
     "Nombre de suggestions": "Number of suggestions",

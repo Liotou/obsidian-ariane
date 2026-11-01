@@ -417,17 +417,19 @@ const avecNoteBiblio = (Base) => class extends Base {
       }
     }
 
-    // Ne pas citer deux fois la même annotation dans le voisinage immédiat.
-    const voisinage = docStr.slice(Math.max(0, pos - 400), pos + 400);
     // Une clé est un nom de note, ou { cle, page } : une source citée à une
-    // page (annotation glissée du lecteur, pas encore atomisée).
+    // page (annotation glissée du lecteur, pas encore atomisée). Une même
+    // annotation peut appuyer deux phrases voisines : seule la parenthèse où
+    // l'on dépose écarte un doublon (composerCitation). Écarter tout ce qui
+    // était cité à moins de 400 caractères avalait le dépôt sans un mot.
     const nom = (c) => (typeof c === 'string' ? c : c.cle);
-    const entrees = cles
-      .filter((c) => typeof c !== 'string' || voisinage.indexOf('[[' + c + '|') === -1)
-      .map((c) => '[[' + nom(c) + '|' + this.libelleDeCitation(c) + ']]');
+    const entrees = cles.map((c) => '[[' + nom(c) + '|' + this.libelleDeCitation(c) + ']]');
 
     const modif = composerCitation(docStr, pos, entrees, sep);
-    if (!modif) return false;
+    if (!modif) {
+      new obsidian.Notice(tr(cles.length > 1 ? 'Ces annotations sont déjà citées ici.' : 'Cette annotation est déjà citée ici.'));
+      return false;
+    }
     cm.dispatch({ changes: [modif] });
     this.fusionnerCitationsEditeur(cm);
     return true;
