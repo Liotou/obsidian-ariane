@@ -1,6 +1,6 @@
-//#region 24 · Exports
+//#region 25 · Exports
 // ═══════════════════════════════════════════════════════════════════════════
-//  24 · EXPORTS
+//  25 · EXPORTS
 //  Points d'entrée CommonJS : la classe du greffon et la surface _test
 //  des fonctions pures pour la suite de tests.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -123,6 +123,9 @@ module.exports._test = {
   // Commentaires en marge : lecture, pose et retrait des balises.
   CommentairesMarge,
   GestionCommentairesMarge,
+  // Assistant IA : consignes, masquage des liens, différences, intention.
+  AssistantEcriture,
+  MoteurAppleIA,
   // Pont Claude : les outils de lecture s'éprouvent avec un greffon factice.
   PontClaude,
   BlocOrganisation, // tableau de bord : son rendu s'éprouve sur un DOM factice
@@ -172,4 +175,4 @@ module.exports._test = {
   colonnesPourExport,
 };
 
-//#endregion 24 · Exports
+//#endregion 25 · Exports

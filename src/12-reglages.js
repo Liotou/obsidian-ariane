@@ -43,6 +43,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         rubriques: [['ongletBarre', 'La barre'], ['ongletBarre', 'Les boutons']], avance: [['ongletBarre', 'Couleurs proposées']] },
       { id: 'commentaires', module: 'commentaires', icone: 'message-square',
         rubriques: [['ongletCommentaires', 'Commentaires en marge']] },
+      { id: 'assistant', module: 'assistant', icone: 'sparkles',
+        rubriques: [['ongletAssistant', 'Assistant IA']] },
       { id: 'taches', module: 'taches', icone: 'list-checks',
         rubriques: [['ongletTaches', 'Tâches'], ['ongletTaches', 'Familles de tâches'], ['ongletTaches', 'Tableau de bord'],
           ['ongletVues', 'Calendrier'], ['ongletVues', 'Vue Frise']],
@@ -190,7 +192,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     pied.settingEl.addClass('zfa-modules-pied');
     const groupes = [
       ['Le cœur', MODULES_ARIANE.filter((m) => m.coeur)],
-      ['Écriture et recherche', MODULES_ARIANE.filter((m) => ['export', 'familles', 'typographie', 'suggestions', 'barre', 'commentaires', 'correcteur', 'schemas'].includes(m.id))],
+      ['Écriture et recherche', MODULES_ARIANE.filter((m) => ['export', 'familles', 'typographie', 'suggestions', 'barre', 'commentaires', 'assistant', 'correcteur', 'schemas'].includes(m.id))],
       ['Gestion de la thèse', MODULES_ARIANE.filter((m) => ['taches', 'canevas', 'rappels', 'temps'].includes(m.id))],
       ['Liens et diffusion', MODULES_ARIANE.filter((m) => ['claude', 'publication'].includes(m.id))],
     ];
@@ -586,10 +588,13 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addOption('lmstudio', 'LM Studio')
         .addOption('mistral', 'Mistral')
         .addOption('claude', tr('Claude en ligne de commande'))
+        .then((d2) => { if (MoteurAppleIA.disponible()) d2.addOption('apple', tr('Apple Intelligence (sur ce Mac)')); })
         .setValue(s[k.f] || '')
         .onChange(async (v) => { s[k.f] = v; await maj(); this.display(); }));
     const f = s[k.f] || s.refsFournisseur || 'ollama';
-    if (f === 'claude') {
+    if (f === 'apple') {
+      // Un seul modèle : rien à choisir.
+    } else if (f === 'claude') {
       if (!s[k.c]) s[k.c] = k.defautClaude;
       this._modeleClaude(c, s, maj, k.c, { nom: tr('Modèle Claude'), sansDefaut: true, desc: ' ' });
     } else {
@@ -1244,6 +1249,38 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Ex. « 0.8em », « 11px »."))
       .addText((t) => t.setValue(s.aparteTaille).onChange(async (v) => { s.aparteTaille = v.trim() || '0.8em'; await maj(); this.plugin.appliquerStyleAparte(); }));
 
+  }
+
+  // ── Assistant IA (section 24) ────────────────────────────────────────
+  ongletAssistant(c, s, maj) {
+    const g = this.plugin;
+    const mac = MoteurAppleIA.disponible();
+    this._section(c, tr('Assistant IA'));
+    this._aide(c, tr("À la manière d’Apple Intelligence. Sélectionnez un passage puis « Outils d’écriture » (clic droit, barre d’édition ou palette) : relire, réécrire, plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau, ou une consigne libre. « Demander à l’assistant » ouvre une barre où écrire ce que vous voulez : une tâche, le résumé de votre journée, une question sur la note ouverte. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer."));
+    new obsidian.Setting(c)
+      .setName(tr('Moteur de l’assistant'))
+      .setDesc(mac
+        ? tr('Apple Intelligence travaille sur ce Mac, sans connexion ni compte ; son modèle est modeste, mais suffit à la relecture et aux reformulations. Automatique : Apple Intelligence si elle est là, sinon le fournisseur principal (onglet IA).')
+        : tr('Apple Intelligence n’existe que sur Mac : l’assistant emploie le fournisseur principal (onglet IA).'))
+      .addDropdown((d) => {
+        d.addOption('auto', tr('Automatique'));
+        if (mac) d.addOption('apple', 'Apple Intelligence');
+        d.addOption('principal', tr('Le fournisseur principal (') + (s.refsFournisseur || 'ollama') + ')');
+        d.setValue(s.assistantFournisseur || 'auto').onChange(async (v) => { s.assistantFournisseur = v; g._appleIndisponible = false; await maj(); });
+      });
+    if (mac) {
+      new obsidian.Setting(c)
+        .setName(tr('Vérifier Apple Intelligence'))
+        .setDesc(tr('La première fois, Ariane prépare son lien avec le modèle d’Apple (quelques secondes).'))
+        .addButton((b) => b.setButtonText(tr('Vérifier')).onClick(() => g.verifierAppleIA()));
+    }
+    new obsidian.Setting(c)
+      .setName(tr('Effets lumineux'))
+      .setDesc(tr('Un halo aux couleurs d’Apple Intelligence borde la fenêtre tant que l’IA travaille, et le passage réécrit miroite.'))
+      .addToggle((t) => t.setValue(s.assistantEffets !== false).onChange(async (v) => { s.assistantEffets = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Raccourcis'))
+      .setDesc(tr('Attribuez un raccourci à « Outils d’écriture (IA) » et à « Demander à l’assistant (IA) » dans Réglages, Raccourcis clavier.'));
   }
 
   // ── Commentaires en marge (section 23) ───────────────────────────────
@@ -2402,6 +2439,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addOption('lmstudio', 'LM Studio')
         .addOption('mistral', 'Mistral')
         .addOption('claude', tr('Claude en ligne de commande'))
+        .then((d2) => { if (MoteurAppleIA.disponible()) d2.addOption('apple', tr('Apple Intelligence (sur ce Mac)')); })
         .setValue(s.refsFournisseur || 'ollama')
         .onChange(async (v) => {
           s.refsFournisseur = v;
@@ -2416,7 +2454,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           }
           await maj(); this.display();
         }));
-    if (s.refsFournisseur !== 'claude') {
+    if (s.refsFournisseur !== 'claude' && s.refsFournisseur !== 'apple') {
       new obsidian.Setting(c)
         .setName(tr('Modèle'))
         .setDesc(s.refsFournisseur === 'mistral'

@@ -4588,3 +4588,208 @@ span.ann-s { display: none; }
   .zfa-com-carte, .zfa-com-suivre .zfa-com-carte, .zfa-com-hl, .cm-line .zfa-com-texte,
   .zfa-com-outils, .zfa-com-pastille, .zfa-com-signe, .zfa-com-bouton { transition: none; }
 }
+
+/* ===================== Assistant IA (section 24) =========================== */
+/* À la manière d'Apple Intelligence : verre translucide, liseré lumineux
+   aux couleurs d'Apple, halo au bord de la fenêtre pendant que l'IA
+   travaille, miroitement du passage en cours de réécriture. */
+@property --zfa-ia-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+body {
+  --zfa-ia-degrade: conic-gradient(from var(--zfa-ia-angle),
+    #ff9f0a, #ff375f, #bf5af2, #5e5ce6, #0a84ff, #64d2ff, #ff9f0a);
+  --zfa-ia-verre: color-mix(in srgb, var(--background-primary) 78%, transparent);
+}
+@keyframes zfa-ia-tourner { to { --zfa-ia-angle: 360deg; } }
+
+/* ---- Le liseré lumineux (panneau, barre) ---- */
+.zfa-ia-halo { position: fixed; isolation: isolate; }
+.zfa-ia-halo::before,
+.zfa-ia-halo::after {
+  content: ''; position: absolute; inset: 0;
+  border-radius: inherit; pointer-events: none;
+  background: var(--zfa-ia-degrade);
+  animation: zfa-ia-tourner 6s linear infinite;
+}
+/* Le trait net et la lueur : deux anneaux du même dégradé, le second flou. */
+.zfa-ia-halo::before,
+.zfa-ia-halo::after {
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.zfa-ia-halo::before { padding: 1.5px; z-index: 1; }
+.zfa-ia-halo::after { inset: -5px; padding: 6px; filter: blur(9px); opacity: 0.5; border-radius: calc(16px + 5px); z-index: -1; }
+
+/* ---- Le panneau des outils d'écriture ---- */
+.zfa-ia-panneau {
+  z-index: var(--layer-popover, 50);
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  padding: var(--size-4-2) var(--size-4-3) var(--size-4-3);
+  border-radius: 16px;
+  background: var(--zfa-ia-verre);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  backdrop-filter: blur(28px) saturate(1.8);
+  box-shadow: var(--shadow-l);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  animation: zfa-ia-apparaitre 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.zfa-ia-panneau.est-resultat { width: 420px; }
+@keyframes zfa-ia-apparaitre { from { opacity: 0; transform: translateY(-4px) scale(0.97); } to { opacity: 1; transform: none; } }
+.zfa-ia-tete { display: flex; align-items: center; gap: var(--size-4-2); min-height: 28px; margin-bottom: var(--size-4-2); }
+.zfa-ia-titre { flex: 1; font-weight: var(--font-semibold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zfa-ia-tete .clickable-icon { padding: var(--size-2-1); }
+.zfa-ia-icone { display: inline-flex; }
+.zfa-ia-icone svg { width: 18px; height: 18px; stroke-width: 2px; }
+.zfa-ia-saisie {
+  display: flex; align-items: center; gap: var(--size-2-2);
+  padding: 2px 4px 2px var(--size-4-3);
+  border-radius: 999px;
+  background: var(--background-modifier-form-field);
+  border: 1px solid var(--background-modifier-border);
+}
+.zfa-ia-saisie:focus-within { border-color: var(--interactive-accent); }
+.zfa-ia-saisie input {
+  flex: 1; min-width: 0; height: 30px;
+  border: none !important; background: transparent !important; box-shadow: none !important; padding: 0;
+  font-size: var(--font-ui-small);
+}
+.zfa-ia-saisie .clickable-icon { border-radius: 999px; }
+.zfa-ia-gros { display: grid; grid-template-columns: 1fr 1fr; gap: var(--size-4-2); margin-top: var(--size-4-3); }
+.zfa-ia-gros-bouton {
+  display: flex; flex-direction: column; align-items: center; gap: var(--size-2-2);
+  height: auto; padding: var(--size-4-2) var(--size-4-2);
+  border-radius: 12px;
+  background: var(--background-modifier-hover);
+  box-shadow: none;
+  font-size: var(--font-ui-small);
+}
+.zfa-ia-gros-bouton:hover { background: var(--background-modifier-active-hover); }
+.zfa-ia-gros-bouton .zfa-ia-bouton-icone svg { width: 20px; height: 20px; }
+.zfa-ia-tons { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--size-2-3); margin-top: var(--size-2-3); }
+.zfa-ia-ton {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  height: auto; padding: var(--size-2-3) var(--size-2-2);
+  border-radius: 10px; background: var(--background-modifier-hover); box-shadow: none;
+  font-size: var(--font-ui-smaller);
+}
+.zfa-ia-ton:hover { background: var(--background-modifier-active-hover); }
+.zfa-ia-trait { height: 1px; margin: var(--size-4-2) 0 var(--size-2-2); background: var(--background-modifier-border); }
+.zfa-ia-liste { display: flex; flex-direction: column; }
+.zfa-ia-panneau .zfa-ia-ligne {
+  display: flex; align-items: center; gap: var(--size-4-2);
+  justify-content: flex-start;
+  height: auto; padding: var(--size-2-3) var(--size-4-2);
+  border-radius: var(--radius-s);
+  background-color: transparent; box-shadow: none;
+  font-size: var(--font-ui-small); font-weight: var(--font-normal);
+}
+.zfa-ia-panneau .zfa-ia-ligne:hover { background-color: var(--background-modifier-hover); }
+.zfa-ia-bouton-icone { display: inline-flex; color: var(--text-muted); }
+.zfa-ia-bouton-icone svg { width: 16px; height: 16px; }
+
+/* ---- Le résultat ---- */
+.zfa-ia-resultat {
+  max-height: 46vh; overflow-y: auto;
+  padding: var(--size-4-2) var(--size-4-3);
+  border-radius: 10px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  white-space: pre-wrap; word-break: break-word;
+  font-family: var(--font-text); font-size: var(--font-text-size);
+  line-height: var(--line-height-normal);
+}
+.zfa-ia-resultat.est-attente { min-height: 3.2em; position: relative; }
+.zfa-ia-resultat.est-attente::after {
+  content: ''; position: absolute; inset: var(--size-4-2) var(--size-4-3); border-radius: 6px;
+  background: linear-gradient(100deg, transparent 20%, rgba(191, 90, 242, 0.18) 40%, rgba(255, 159, 10, 0.18) 55%, transparent 75%);
+  background-size: 250% 100%;
+  animation: zfa-ia-balayer 1.3s linear infinite;
+}
+.zfa-ia-resultat.est-erreur { color: var(--text-error); font-family: var(--font-interface); font-size: var(--font-ui-small); }
+.zfa-ia-diff-ajout { background: rgba(var(--color-green-rgb), 0.18); border-radius: 3px; }
+.zfa-ia-diff-retrait { color: var(--text-faint); text-decoration: line-through; text-decoration-color: rgba(var(--color-red-rgb), 0.7); }
+.zfa-ia-diff-retrait + .zfa-ia-diff-ajout { margin-inline-start: 3px; }
+.zfa-ia-note { margin-top: var(--size-2-3); color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.zfa-ia-note.est-alerte { color: var(--text-warning); }
+.zfa-ia-pied { display: flex; align-items: center; gap: var(--size-2-2); margin-top: var(--size-4-2); }
+.zfa-ia-espace { flex: 1; }
+.zfa-ia-pied button { display: inline-flex; align-items: center; gap: var(--size-2-2); }
+
+/* ---- La barre de l'assistant, façon Siri ---- */
+.zfa-ia-barre {
+  z-index: var(--layer-modal, 50);
+  top: 18vh; left: 50%;
+  width: min(620px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  padding: var(--size-4-2) var(--size-4-3);
+  border-radius: 22px;
+  background: var(--zfa-ia-verre);
+  -webkit-backdrop-filter: blur(32px) saturate(1.8);
+  backdrop-filter: blur(32px) saturate(1.8);
+  box-shadow: var(--shadow-l);
+  animation: zfa-ia-barre-entree 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+@keyframes zfa-ia-barre-entree { from { opacity: 0; transform: translateX(-50%) scale(0.96); } to { opacity: 1; transform: translateX(-50%); } }
+.zfa-ia-barre-ligne { display: flex; align-items: center; gap: var(--size-4-2); }
+.zfa-ia-barre-icone svg { width: 22px; height: 22px; }
+.zfa-ia-barre-ligne input {
+  flex: 1; min-width: 0; height: 40px;
+  border: none !important; background: transparent !important; box-shadow: none !important; padding: 0;
+  font-size: var(--font-ui-large, 1.15em);
+}
+.zfa-ia-barre-zone:not(:empty) { margin-top: var(--size-4-2); padding-top: var(--size-4-2); border-top: 1px solid var(--background-modifier-border); }
+.zfa-ia-barre-question { margin-bottom: var(--size-4-2); color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.zfa-ia-puces { display: flex; flex-wrap: wrap; gap: var(--size-2-3); }
+.zfa-ia-puce {
+  display: inline-flex; align-items: center; gap: var(--size-2-2);
+  height: auto; padding: var(--size-2-2) var(--size-4-3);
+  border-radius: 999px; background: var(--background-modifier-hover); box-shadow: none;
+  font-size: var(--font-ui-smaller);
+}
+.zfa-ia-puce:hover { background: var(--background-modifier-active-hover); }
+
+/* ---- Le halo au bord de la fenêtre, pendant que l'IA travaille ---- */
+.zfa-ia-bord {
+  position: fixed; inset: 0; z-index: var(--layer-notice, 60);
+  pointer-events: none;
+  animation: zfa-ia-bord-entree 0.45s ease both;
+}
+.zfa-ia-bord::before,
+.zfa-ia-bord::after {
+  content: ''; position: absolute; inset: 0;
+  background: var(--zfa-ia-degrade);
+  animation: zfa-ia-tourner 4s linear infinite;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.zfa-ia-bord::before { padding: 3px; }
+.zfa-ia-bord::after { padding: 14px; filter: blur(16px); opacity: 0.55; }
+.zfa-ia-bord.est-sortant { animation: zfa-ia-bord-sortie 0.45s ease both; }
+@keyframes zfa-ia-bord-entree { from { opacity: 0; } to { opacity: 1; } }
+@keyframes zfa-ia-bord-sortie { from { opacity: 1; } to { opacity: 0; } }
+
+/* ---- Dans l'éditeur : le passage travaillé ---- */
+.cm-line .zfa-ia-cible { background-color: rgba(191, 90, 242, 0.12); border-radius: 2px; }
+.cm-line .zfa-ia-miroir {
+  background-image: linear-gradient(100deg, var(--text-normal) 35%, #bf5af2 45%, #ff375f 50%, #ff9f0a 55%, var(--text-normal) 65%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  animation: zfa-ia-balayer 1.6s linear infinite;
+}
+.cm-line .zfa-ia-nouveau {
+  background-color: rgba(191, 90, 242, 0.16);
+  border-radius: 2px;
+  animation: zfa-ia-eteindre 2.6s ease forwards;
+}
+@keyframes zfa-ia-balayer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@keyframes zfa-ia-eteindre { 0%, 40% { background-color: rgba(191, 90, 242, 0.2); } 100% { background-color: transparent; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .zfa-ia-halo::before, .zfa-ia-halo::after, .zfa-ia-bord::before, .zfa-ia-bord::after,
+  .zfa-ia-panneau, .zfa-ia-barre, .zfa-ia-resultat.est-attente::after { animation: none; }
+  .cm-line .zfa-ia-miroir { animation: none; color: var(--text-normal); background-image: none; background-color: rgba(191, 90, 242, 0.18); }
+}

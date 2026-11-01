@@ -248,9 +248,12 @@ test('disposition par défaut : des entrées bien formées, et nos commandes exi
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', '11z-ariane.js'), 'utf8');
   const arianeHorsBarre = new Set([...src.matchAll(/^ {6}id: '([a-z0-9-]+)',$/gm)]
     .map((m) => 'obsidian-ariane:' + m[1]));
-  // Et celles des commentaires en marge (11t), écrites « id: '…', module: ».
-  const com = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', '11t-commentaires.js'), 'utf8');
-  for (const m of com.matchAll(/\bid: '([a-z0-9-]+)', module: 'commentaires'/g)) arianeHorsBarre.add('obsidian-ariane:' + m[1]);
+  // Et celles des mixins qui les écrivent « id: '…', module: » (11t, 11u…).
+  const dossier = require('path').join(__dirname, '..', 'src');
+  for (const f of require('fs').readdirSync(dossier).filter((x) => /^11[t-y]-.*\.js$/.test(x))) {
+    const t = require('fs').readFileSync(require('path').join(dossier, f), 'utf8');
+    for (const m of t.matchAll(/\bid: '([a-z0-9-]+)', module: '[a-z]+'/g)) arianeHorsBarre.add('obsidian-ariane:' + m[1]);
+  }
   assert.ok(arianeHorsBarre.has('obsidian-ariane:citations-basculer'), 'relecture de la source ratée');
   let boutons = 0;
   const verifier = (liste, profondeur) => {

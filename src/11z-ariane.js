@@ -20,7 +20,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecIphone,
   avecConcentration,
   avecAccueil,
-  avecCommentaires) {
+  avecCommentaires,
+  avecAssistant) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -98,7 +99,7 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => {
         const jours = [];
         for (let k = 0; k < 7; k++) jours.push(Ariane.decalerJour(jourIsoDe(new Date()), -k));
-        this.classerDistractionsInconnues(jours, false);
+        this.avecHaloIA(() => this.classerDistractionsInconnues(jours, false));
       },
     });
     this.addCommand({
@@ -113,7 +114,7 @@ class Ariane extends composer(obsidian.Plugin,
       module: 'temps',
       name: tr('Journée : résumer ma journée (IA)'),
       icon: 'sunset',
-      callback: () => this.resumerJournee(jourIsoDe(new Date())),
+      callback: () => this.avecHaloIA(() => this.resumerJournee(jourIsoDe(new Date()))),
     });
     this.addCommand({
       id: 'activite-resumer-semaine',
@@ -122,7 +123,7 @@ class Ariane extends composer(obsidian.Plugin,
       icon: 'sparkles',
       checkCallback: (verif) => {
         if (!this.activiteDisponible()) return false;
-        if (!verif) this.resumerSemaineAffichee();
+        if (!verif) this.avecHaloIA(() => this.resumerSemaineAffichee());
         return true;
       },
     });
@@ -827,6 +828,8 @@ class Ariane extends composer(obsidian.Plugin,
   _brancherInterface() {
     // Commentaires en marge (section 23) : volet, commandes, surlignage.
     if (this.module('commentaires')) this.brancherCommentaires();
+    // L'assistant IA (section 24) : outils d'écriture, barre de demande.
+    if (this.module('assistant')) this.brancherAssistant();
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
     if (this.module('suggestions')) this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());

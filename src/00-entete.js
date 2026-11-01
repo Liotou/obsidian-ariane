@@ -92,6 +92,7 @@
  *            11q  avecConcentration micro-interruptions, distractions, concentration
  *            11s  avecAccueil    présentation, assistant de premier lancement, tutoriel
  *            11t  avecCommentaires commentaires en marge (branchement de la section 23)
+ *            11u  avecAssistant  assistant IA : moteur Apple, halo, outils d’écriture (section 24)
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -140,7 +141,11 @@
  *          commentaires sur un passage, comme dans Word, repris du greffon
  *          Margin Annotations (MIT) : CommentairesMarge (logique pure), cartes
  *          en marge, volet « ariane-commentaires »
- *   24 · Exports
+ *   24 · Assistant IA
+ *          à la manière d’Apple Intelligence : MoteurAppleIA (modèle d’Apple
+ *          par un démon Swift), AssistantEcriture (logique pure), outils
+ *          d’écriture sur la sélection, barre de demande façon Siri
+ *   25 · Exports
  *          module.exports et surface _test des fonctions pures
  *
  * ─────────────────────────────────────────────────────────────────────────

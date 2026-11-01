@@ -290,6 +290,7 @@ const avecIa = (Base) => class extends Base {
   async genererAvecFournisseur(prompt, max, f, modele, opts) {
     if (f === 'mistral') return this.genererMistral(prompt, max, modele);
     if (f === 'claude') return this.genererClaude(prompt, max, opts);
+    if (f === 'apple') return this.genererApple(prompt, max);
     return this.genererJsonAvec(prompt, max, f === 'lmstudio', modele);
   }
 

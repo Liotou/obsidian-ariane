@@ -29,6 +29,7 @@
   "11q-concentration.js",
   "11s-accueil.js",
   "11t-commentaires.js",
+  "11u-assistant.js",
   "11z-ariane.js",
   "12-reglages.js",
   "13-modales-tache.js",
@@ -44,5 +45,6 @@
   "21-barre-edition.js",
   "22-pont-claude.js",
   "23-commentaires-marge.js",
-  "24-exports.js"
+  "24-assistant-ia.js",
+  "25-exports.js"
 ]

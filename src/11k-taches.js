@@ -1869,7 +1869,7 @@ const avecTaches = (Base) => class extends Base {
   // Appel LLM (fournisseur configuré dans les réglages) qui rend du JSON parsé.
   async genererIA(prompt, jetons, opts) {
     this._diagIA = '';
-    const brut = await this.genererJsonRefs(prompt, jetons || 1800, opts);
+    const brut = await this.avecHaloIA(() => this.genererJsonRefs(prompt, jetons || 1800, opts));
     if (!brut) {
       const f = this.settings.refsFournisseur || 'ollama';
       new obsidian.Notice(tr('IA (') + f + ') : ' + (this._diagIA

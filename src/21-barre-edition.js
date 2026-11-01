@@ -846,6 +846,10 @@ function barreDefaut() {
     { cmd: a('citations-basculer') },
     { cmd: a('correcteur-volet') },
     { separateur: true },
+    // L'assistant IA (section 24), comme les Outils d'écriture d'Apple.
+    { cmd: a('assistant-outils') },
+    { cmd: a('assistant-demander') },
+    { separateur: true },
     // Les commentaires en marge (section 23) : commenter d'un clic, le reste
     // dans un menu.
     { cmd: a('commentaire-ajouter') },
