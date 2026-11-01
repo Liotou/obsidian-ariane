@@ -50,7 +50,7 @@ Une méthode nouvelle va dans le mixin de son domaine, et dans la sous-région
 
 ## Ariane en modules (depuis 3.0.0)
 
-Le registre `MODULES_ARIANE` (01) liste dix-sept modules ; le cœur
+Le registre `MODULES_ARIANE` (01) liste dix-huit modules ; le cœur
 (`annotations`, `citations`) est toujours actif, le reste se coupe dans
 l'onglet Modules, ce qui **recharge** Ariane (`appliquerModules`). Un module
 coupé ne charge rien. D'où deux règles, tenues par des tests :

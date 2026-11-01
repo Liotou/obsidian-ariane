@@ -45,6 +45,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         rubriques: [['ongletCommentaires', 'Commentaires en marge']] },
       { id: 'assistant', module: 'assistant', icone: 'sparkles',
         rubriques: [['ongletAssistant', 'Assistant IA']] },
+      { id: 'paragraphes', module: 'paragraphes', icone: 'list-ordered',
+        rubriques: [['ongletParagraphes', 'Paragraphes']] },
       { id: 'taches', module: 'taches', icone: 'list-checks',
         rubriques: [['ongletTaches', 'Tâches'], ['ongletTaches', 'Familles de tâches'], ['ongletTaches', 'Tableau de bord'],
           ['ongletVues', 'Calendrier'], ['ongletVues', 'Vue Frise']],
@@ -192,7 +194,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     pied.settingEl.addClass('zfa-modules-pied');
     const groupes = [
       ['Le cœur', MODULES_ARIANE.filter((m) => m.coeur)],
-      ['Écriture et recherche', MODULES_ARIANE.filter((m) => ['export', 'familles', 'typographie', 'suggestions', 'barre', 'commentaires', 'assistant', 'correcteur', 'schemas'].includes(m.id))],
+      ['Écriture et recherche', MODULES_ARIANE.filter((m) => ['export', 'familles', 'typographie', 'suggestions', 'barre', 'commentaires', 'assistant', 'paragraphes', 'correcteur', 'schemas'].includes(m.id))],
       ['Gestion de la thèse', MODULES_ARIANE.filter((m) => ['taches', 'canevas', 'rappels', 'temps'].includes(m.id))],
       ['Liens et diffusion', MODULES_ARIANE.filter((m) => ['claude', 'publication'].includes(m.id))],
     ];
@@ -1167,7 +1169,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addButton((b) => b.setButtonText(tr('Choisir et numéroter…')).onClick(() => this.plugin.choisirDossiersNumerotation()));
     this._section(c, tr('Correcteur Apple'));
     this._reserveMac(c);
-    this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne."));
+    this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés aux couleurs d'Apple Intelligence, ou en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne."));
     const relancerCorrecteur = (vider) => { if (this.plugin.correcteur) this.plugin.correcteur.relancer(vider); };
     new obsidian.Setting(c)
       .setName(tr('Activer le correcteur Apple'))
@@ -1211,6 +1213,14 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("Sans cela, la bulle se borne à nommer la catégorie et à proposer la correction."))
       .addToggle((t) => t.setValue(s.correcteurExplication !== false)
         .onChange(async (v) => { s.correcteurExplication = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Apparence Apple Intelligence'))
+      .setDesc(tr('La relecture prend l’allure des outils d’écriture d’Apple : passages à revoir soulignés aux couleurs d’Apple Intelligence, bulle et fenêtre de relecture en verre, bordées d’un liseré lumineux. Sans cela, l’allure sobre d’Obsidian, pointillés bleus.'))
+      .addToggle((t) => t.setValue(s.correcteurApparenceIA !== false).onChange(async (v) => {
+        s.correcteurApparenceIA = v;
+        await maj();
+        if (this.plugin.correcteur) this.plugin.correcteur.appliquerApparence();
+      }));
     new obsidian.Setting(c)
       .setName(tr('Délai avant vérification (ms)'))
       .setDesc(tr('Attente après la dernière frappe avant de souligner.'))
@@ -1285,6 +1295,26 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     new obsidian.Setting(c)
       .setName(tr('Raccourcis'))
       .setDesc(tr('Attribuez un raccourci à « Outils d’écriture (IA) » ou à « Outils d’écriture d’Apple (natifs) » dans Réglages, Raccourcis clavier.'));
+  }
+
+  // ── Paragraphes (section 25) ─────────────────────────────────────────
+  ongletParagraphes(c, s, maj) {
+    const g = this.plugin;
+    this._section(c, tr('Paragraphes'));
+    this._aide(c, tr('Chaque paragraphe porte son numéro dans la marge de gauche. Saisissez-le et faites-le glisser : un trait montre où le paragraphe se posera, et la page défile près des bords. Un clic sur le numéro sélectionne le paragraphe ; Échap annule le glisser. Les titres, listes, citations et blocs de code se déplacent de même, par la poignée qui paraît au survol. Au clavier : « Monter le paragraphe » et « Descendre le paragraphe ».'));
+    new obsidian.Setting(c)
+      .setName(tr('Numéros des paragraphes'))
+      .setDesc(tr('Toujours visibles, au survol du paragraphe seulement, ou jamais (une poignée paraît alors au survol). Aussi par la commande « Numéros des paragraphes : changer l’affichage ».'))
+      .addDropdown((d) => {
+        d.addOption('toujours', tr('Toujours'));
+        d.addOption('survol', tr('Au survol'));
+        d.addOption('poignee', tr('Jamais : une poignée au survol'));
+        d.setValue(GlisserParagraphes.mode(g)).onChange(async (v) => {
+          s.paragraphesMode = v;
+          await maj();
+          if (g.redessinerParagraphes) g.redessinerParagraphes();
+        });
+      });
   }
 
   // ── Commentaires en marge (section 23) ───────────────────────────────

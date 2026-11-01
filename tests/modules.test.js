@@ -4,14 +4,14 @@ const assert = require('node:assert');
 const Ariane = require('./obsidian-factice.js');
 const { MODULES_ARIANE, PROFILS_ARIANE } = Ariane._test;
 
-test('registre : dix-sept modules, ids uniques, dépendances connues, cœur en tête', () => {
+test('registre : dix-huit modules, ids uniques, dépendances connues, cœur en tête', () => {
   const ids = MODULES_ARIANE.map((m) => m.id);
-  assert.equal(ids.length, 17);
+  assert.equal(ids.length, 18);
   assert.equal(new Set(ids).size, ids.length);
   for (const m of MODULES_ARIANE) for (const d of m.dependances) assert.ok(ids.includes(d), m.id + ' -> ' + d);
   assert.deepEqual(MODULES_ARIANE.filter((m) => m.coeur).map((m) => m.id), ['annotations', 'citations']);
   for (const p of Object.values(PROFILS_ARIANE)) for (const id of p) assert.ok(ids.includes(id), id);
-  assert.equal(PROFILS_ARIANE.tout.length, 17);
+  assert.equal(PROFILS_ARIANE.tout.length, 18);
 });
 
 test('dépendances : le cœur et les dépendances s’ajoutent, l’ordre suit le registre', () => {

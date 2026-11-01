@@ -14,6 +14,8 @@ function faussesBalises() {
     const e = {
       tag, className: '', textContent: '', enfants: [], attributs: {}, ecoutes: {}, style: {},
       appendChild(x) { this.enfants.push(x); x.parent = this; return x; },
+      prepend(x) { this.enfants.unshift(x); x.parent = this; return x; },
+      querySelector() { return null; },
       setAttribute(k, v) { this.attributs[k] = v; },
       addEventListener(nom, f) { (this.ecoutes[nom] = this.ecoutes[nom] || []).push(f); },
       contains() { return false; },

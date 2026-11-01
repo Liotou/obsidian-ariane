@@ -93,6 +93,7 @@
  *            11s  avecAccueil    présentation, assistant de premier lancement, tutoriel
  *            11t  avecCommentaires commentaires en marge (branchement de la section 23)
  *            11u  avecAssistant  assistant IA : moteur Apple, halo, outils d’écriture (section 24)
+ *            11v  avecParagraphes paragraphes numérotés et déplaçables (section 25)
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -145,7 +146,10 @@
  *          à la manière d’Apple Intelligence : MoteurAppleIA (modèle d’Apple
  *          par un démon Swift), AssistantEcriture (logique pure), outils
  *          d’écriture sur la sélection, barre de demande façon Siri
- *   25 · Exports
+ *   25 · Paragraphes
+ *          les paragraphes numérotés dans la marge, déplaçables par glisser :
+ *          ParagraphesTexte (logique pure), GlisserParagraphes (éditeur)
+ *   26 · Exports
  *          module.exports et surface _test des fonctions pures
  *
  * ─────────────────────────────────────────────────────────────────────────

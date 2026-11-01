@@ -95,6 +95,21 @@ const TEXTES = {
     "Relire aussi les tableaux": "Also proofread tables",
     "Zones exclues": "Excluded zones",
     "Expliquer la faute dans la bulle": "Explain the mistake in the bubble",
+    "Apparence Apple Intelligence": "Apple Intelligence look",
+    "La relecture prend l’allure des outils d’écriture d’Apple : passages à revoir soulignés aux couleurs d’Apple Intelligence, bulle et fenêtre de relecture en verre, bordées d’un liseré lumineux. Sans cela, l’allure sobre d’Obsidian, pointillés bleus.": "Proofreading takes on the look of Apple's Writing Tools: passages to review underlined in Apple Intelligence colours, bubble and proofreading window in glass, edged with a glowing line. Without it, Obsidian's plain look, blue dots.",
+    "Monter le paragraphe": "Move paragraph up",
+    "Descendre le paragraphe": "Move paragraph down",
+    "Numéros des paragraphes : changer l’affichage": "Paragraph numbers: change display",
+    "Numéros des paragraphes : toujours visibles": "Paragraph numbers: always visible",
+    "Numéros des paragraphes : au survol": "Paragraph numbers: on hover",
+    "Numéros des paragraphes : masqués, poignée au survol": "Paragraph numbers: hidden, handle on hover",
+    "Glisser pour déplacer ; cliquer pour sélectionner": "Drag to move; click to select",
+    "Paragraphes": "Paragraphs",
+    "Numéros des paragraphes": "Paragraph numbers",
+    "Toujours visibles, au survol du paragraphe seulement, ou jamais (une poignée paraît alors au survol). Aussi par la commande « Numéros des paragraphes : changer l’affichage ».": "Always visible, only when hovering the paragraph, or never (a handle then appears on hover). Also with the command \"Paragraph numbers: change display\".",
+    "Toujours": "Always",
+    "Au survol": "On hover",
+    "Jamais : une poignée au survol": "Never: a handle on hover",
     "Sans cela, la bulle se borne à nommer la catégorie et à proposer la correction.": "Otherwise the bubble only names the category and offers the fix.",
     "Délai avant vérification (ms)": "Delay before checking (ms)",
     "Attente après la dernière frappe avant de souligner.": "Wait after the last keystroke before underlining.",
@@ -153,7 +168,7 @@ const TEXTES = {
     "Début et fin de journée, HH:MM.": "Start and end of the day, HH:MM.",
     "Pause déjeuner": "Lunch break",
     "Retirée du temps libre, et jamais occupée par la répartition. Videz les deux champs pour n’en compter aucune.": "Removed from free time, and never filled by planning. Empty both fields to count none.",
-    "La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne.": "The system's proofreading, the one in Mail and Pages, applied to your notes: agreement, conjugation, past participles, accents and wrong words, underlined in blue dots. Hover a mistake to read the explanation and fix it in one click. Isolated words the proofreading does not cover are underlined in red. Everything happens on your Mac; nothing is sent elsewhere. Allow a few seconds per new paragraph; once read, it costs nothing more. The first time, the plugin prepares a small program, which needs Apple's command line tools (xcode-select --install). Two ways to go through everything: \"proofread the note, mistake by mistake\" puts a window next to each remark, \"open the proofreading pane\" lists them all in a side pane. The double chevron, in the bubble and in the pane, opens that window from the mistake it belongs to.",
+    "La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés aux couleurs d'Apple Intelligence, ou en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne.": "The system's proofreading, the one in Mail and Pages, applied to your notes: agreement, conjugation, past participles, accents and wrong words, underlined in Apple Intelligence colours, or in blue dots. Hover a mistake to read the explanation and fix it in one click. Isolated words the proofreading does not cover are underlined in red. Everything happens on your Mac; nothing is sent elsewhere. Allow a few seconds per new paragraph; once read, it costs nothing more. The first time, the plugin prepares a small program, which needs Apple's command line tools (xcode-select --install). Two ways to go through everything: \"proofread the note, mistake by mistake\" puts a window next to each remark, \"open the proofreading pane\" lists them all in a side pane. The double chevron, in the bubble and in the pane, opens that window from the mistake it belongs to.",
     "Laissés de côté par défaut, pour deux raisons : un tableau bilingue, un glossaire par exemple, fait lire de l'anglais à la note entière ; et en aperçu, Obsidian dessine le tableau lui-même, si bien que les soulignements n'y apparaissent pas. En mode source, ils s'affichent normalement.": "Skipped by default, for two reasons: a bilingual table, a glossary for example, makes the whole note read as English; and in Live Preview, Obsidian draws the table itself, so underlines do not appear there. In source mode they show normally.",
     "Une par ligne. Soit une paire de balises « début -> fin », soit un titre de section (« ## Bibliographie », ou « Bibliographie » à tout niveau), auquel cas la section est sautée jusqu'au titre de rang égal ou supérieur qui suit. La bibliographie d'Ariane y figure d'office : ses références, souvent en anglais, fausseraient la langue de toute la note.": "One per line. Either a pair of markers \"start -> end\", or a section heading (\"## Bibliographie\", or \"Bibliographie\" at any level), in which case the section is skipped up to the next heading of the same or higher level. Ariane's bibliography is always included: its references, often in English, would skew the language of the whole note.",
     "Une barre de mise en forme par volet de note, posée sous la barre d’onglets et au-dessus du titre. Chaque bouton lance une commande de la palette : celles d’Ariane, celles d’Obsidian, ou celles d’un autre greffon. Un volet détaché a la sienne.": "A formatting bar per note pane, under the tab bar and above the title. Each button runs a palette command: Ariane's, Obsidian's, or another plugin's. A pop-out pane has its own.",
@@ -2118,6 +2133,8 @@ const MODULES_ARIANE = [
     description: 'Des commentaires sur un passage, comme dans Word : surlignage, carte en marge, réponses, résolution.' },
   { id: 'assistant', nom: 'Assistant IA', coeur: false, dependances: [], macSeul: false,
     description: 'À la manière d’Apple Intelligence : outils d’écriture sur la sélection, barre de demande, Apple Intelligence comme moteur sur Mac.' },
+  { id: 'paragraphes', nom: 'Paragraphes', coeur: false, dependances: [], macSeul: false,
+    description: 'Les paragraphes numérotés dans la marge, à saisir pour les déplacer en les faisant glisser.' },
   { id: 'taches', nom: 'Tâches', coeur: false, dependances: [], macSeul: false,
     description: 'Notes de tâche, tableau de bord, frise, calendrier, IA des tâches.' },
   { id: 'canevas', nom: 'Canevas', coeur: false, dependances: [], macSeul: false,
@@ -2234,6 +2251,7 @@ const DEFAULT_SETTINGS = {
   correcteurZonesExclues: '%% ariane:biblio %% -> %% /ariane:biblio %%',
   correcteurTableaux: false,    // les tableaux sont laissés de côté (voir le réglage)
   correcteurExplication: true,  // la bulle dit pourquoi, ou se borne à corriger
+  correcteurApparenceIA: true,  // allure des outils d'écriture d'Apple : soulignement aux couleurs d'Apple Intelligence, verre, liseré
   correcteurDelai: 700,         // ms après la dernière frappe
   // BARRE D'ÉDITION (section 21). Une barre par volet, sous la barre
   // d'onglets. `barreBoutons` vide veut dire « la disposition d'origine » :
@@ -2406,6 +2424,8 @@ const DEFAULT_SETTINGS = {
   assistantFournisseur: 'auto',   // auto : Apple Intelligence si présente, sinon le fournisseur principal ; apple ; principal
   assistantEffets: true,          // halo au bord de la fenêtre, miroitement du passage
   assistantFilet: true,           // signaler les citations perdues par une réécriture venue d'ailleurs
+  // --- Paragraphes (module « paragraphes ») ---
+  paragraphesMode: 'toujours',  // toujours : numéros visibles ; survol : au survol du paragraphe ; poignee : pas de numéro, une poignée au survol
 
   // --- Comportement ---
   regenerationAuto: true,

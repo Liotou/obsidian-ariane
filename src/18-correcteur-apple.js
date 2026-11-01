@@ -502,7 +502,33 @@ class CorrecteurApple extends obsidian.Component {
     this._plainte = false;       // la relecture manquante n'est dite qu'une fois
   }
 
-  onunload() { this.guidee.fermer(); this.assistant.arreter(); }
+  onload() {
+    this.appliquerApparence();
+    this.registerEvent(this.greffon.app.workspace.on('window-open', (fen) => this.appliquerApparence(fen && fen.doc)));
+  }
+
+  onunload() {
+    this.guidee.fermer();
+    this.assistant.arreter();
+    for (const d of this._documents()) d.body.classList.remove('zfa-corr-ia');
+  }
+
+  // L'allure des outils d'écriture d'Apple (réglage « Apparence Apple
+  // Intelligence ») : une classe sur le corps de chaque fenêtre.
+  apparenceIA() { return this.greffon.settings.correcteurApparenceIA !== false; }
+
+  appliquerApparence(seul) {
+    for (const d of seul ? [seul] : this._documents()) if (d && d.body) d.body.classList.toggle('zfa-corr-ia', this.apparenceIA());
+  }
+
+  _documents() {
+    const docs = new Set([document]);
+    this.greffon.app.workspace.iterateAllLeaves((l) => {
+      const d = l.view && l.view.containerEl && l.view.containerEl.ownerDocument;
+      if (d) docs.add(d);
+    });
+    return docs;
+  }
 
   //#endregion Correcteur · cycle de vie
 
@@ -808,8 +834,15 @@ class CorrecteurApple extends obsidian.Component {
     const racine = doc.createElement('div');
     racine.className = 'zfa-corr-bulle';
 
-    el(racine, 'div', 'zfa-corr-categorie',
+    const categorie = el(racine, 'div', 'zfa-corr-categorie',
       faute.category || (faute.kind === 'spelling' ? tr('Orthographe') : tr('Relecture')));
+    // La relecture d'Apple porte l'étincelle d'Apple Intelligence.
+    if (this.apparenceIA() && faute.kind !== 'spelling') {
+      const ic = doc.createElement('span');
+      ic.className = 'zfa-corr-ia-icone';
+      iconeIA(ic);
+      categorie.prepend(ic);
+    }
     // L'explication se lit vite une fois, puis encombre : elle se coupe.
     if (this.greffon.settings.correcteurExplication !== false) {
       el(racine, 'div', 'zfa-corr-texte', faute.message
@@ -934,9 +967,13 @@ class RelectureGuidee {
       return e;
     };
     const racine = doc.createElement('div');
-    racine.className = 'zfa-relecture';
+    // À la manière des outils d'écriture d'Apple : verre, liseré lumineux,
+    // étincelle devant le titre.
+    const ia = this.centre.apparenceIA();
+    racine.className = 'zfa-relecture' + (ia ? ' zfa-ia-halo zfa-relecture-ia' : '');
 
     const tete = el(racine, 'div', 'zfa-relecture-tete');
+    if (ia) iconeIA(el(tete, 'span', 'zfa-corr-ia-icone'));
     el(tete, 'span', 'zfa-relecture-titre', tr('Relecture'));
     this.elCompte = el(tete, 'span', 'zfa-relecture-compte', tr('en cours…'));
     const fermer = el(tete, 'button', 'zfa-relecture-icone');

@@ -4746,3 +4746,182 @@ body {
   .zfa-ia-carte, .zfa-ia-resultat.est-attente::after { animation: none; }
   .cm-line .zfa-ia-miroir { animation: none; color: var(--text-normal); background-image: none; background-color: rgba(191, 90, 242, 0.18); }
 }
+
+/* ===================== Paragraphes (section 25) ============================ */
+/* Le numéro de chaque paragraphe dans la marge de gauche, à l'écart des
+   flèches de repli d'Obsidian ; on le saisit pour déplacer le paragraphe. */
+.cm-line .zfa-para-repere {
+  position: absolute; top: 0; right: 100%;
+  margin-right: 30px;
+  height: 1lh;
+  display: inline-flex; align-items: center; justify-content: flex-end;
+  user-select: none; -webkit-user-select: none;
+  font-family: var(--font-interface);
+  text-indent: 0;
+}
+.cm-line .zfa-para-num {
+  min-width: 1.6em; padding: 1px 6px;
+  border-radius: 999px;
+  font-size: var(--font-ui-smaller); font-weight: var(--font-medium, 500);
+  font-variant-numeric: tabular-nums; line-height: 1.5; text-align: center;
+  color: var(--text-faint);
+  cursor: grab;
+  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+.cm-line .zfa-para-prise {
+  display: none; align-items: center; justify-content: center;
+  width: 18px; height: 22px; border-radius: var(--radius-s);
+  color: var(--text-faint); cursor: grab;
+}
+.cm-line .zfa-para-prise svg { width: 14px; height: 14px; }
+/* Sans numéro (titres, listes, autres blocs, ou numéros masqués) : la
+   poignée, au survol seulement. */
+.cm-line .zfa-para-repere:not(.a-numero) .zfa-para-prise,
+.cm-editor[data-zfa-para="poignee"] .cm-line .zfa-para-prise { display: inline-flex; opacity: 0; transition: opacity 0.15s ease; }
+.cm-editor[data-zfa-para="poignee"] .cm-line .zfa-para-num { display: none; }
+.cm-line .zfa-para-repere.est-survole .zfa-para-prise,
+.cm-line .zfa-para-repere:hover .zfa-para-prise { opacity: 1; }
+/* Au survol seulement : le numéro paraît avec son paragraphe. */
+.cm-editor[data-zfa-para="survol"] .cm-line .zfa-para-num { opacity: 0; }
+.cm-editor[data-zfa-para="survol"] .cm-line .zfa-para-repere.est-survole .zfa-para-num { opacity: 1; }
+/* Le paragraphe survolé : son numéro s'avive, prêt à être saisi. */
+.cm-line .zfa-para-repere.est-survole .zfa-para-num { color: var(--text-muted); }
+.cm-line .zfa-para-repere:hover .zfa-para-num,
+.cm-line .zfa-para-repere:hover .zfa-para-prise {
+  color: var(--text-normal); background-color: var(--background-modifier-hover);
+}
+/* Pas de repère dans la marge des tableaux ni à l'impression. */
+.cm-line.HyperMD-table-row .zfa-para-repere { display: none; }
+@media print { .zfa-para-repere { display: none !important; } }
+
+/* Pendant le glisser : le bloc emporté pâlit, le trait guide marque
+   l'emplacement, un fantôme suit le pointeur. */
+.zfa-para-glisse, .zfa-para-glisse * { cursor: grabbing !important; user-select: none !important; }
+.cm-line.zfa-para-ligne.est-deplace { opacity: 0.35; transition: opacity 0.15s ease; }
+.zfa-para-guide {
+  position: fixed; left: 0; top: 0; height: 2px;
+  z-index: var(--layer-popover, 50); pointer-events: none;
+  border-radius: 1px; background: var(--interactive-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+  transition: transform 0.08s ease-out, opacity 0.12s ease;
+}
+.zfa-para-guide::before {
+  content: ''; position: absolute; left: -5px; top: -3px;
+  width: 8px; height: 8px; border-radius: 50%;
+  border: 2px solid var(--interactive-accent); background: var(--background-primary);
+}
+.zfa-para-guide.est-nul { opacity: 0.25; }
+.zfa-para-guide.est-cache { opacity: 0; }
+.zfa-para-fantome {
+  position: fixed; left: 0; top: 0;
+  z-index: var(--layer-popover, 50); pointer-events: none;
+  display: flex; align-items: center; gap: 8px;
+  max-width: 340px; padding: 5px 10px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  font-family: var(--font-interface); font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+.zfa-para-fantome-num {
+  flex: none; padding: 0 6px; border-radius: 999px;
+  background: var(--interactive-accent); color: var(--text-on-accent);
+  font-weight: var(--font-semibold); font-variant-numeric: tabular-nums;
+}
+.zfa-para-fantome-texte { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* Le bloc posé s'éclaire un instant à sa nouvelle place. */
+.cm-line.zfa-para-ligne.est-arrive { animation: zfa-para-arrive 0.9s ease-out; }
+@keyframes zfa-para-arrive {
+  0% { background-color: color-mix(in srgb, var(--interactive-accent) 22%, transparent); }
+  100% { background-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .zfa-para-guide, .cm-line .zfa-para-num { transition: none; }
+  .cm-line.zfa-para-ligne.est-arrive { animation: none; }
+}
+
+/* ============ Correcteur Apple, à la manière d'Apple Intelligence ============ */
+/* Réglage « Apparence Apple Intelligence » (classe zfa-corr-ia sur le corps) :
+   la relecture d'Apple soulignée aux couleurs d'Apple Intelligence, la bulle
+   et la fenêtre de relecture en verre, bordées du liseré lumineux de
+   l'assistant (section 24). L'orthographe garde le rouge du système. */
+.zfa-corr-ia .cm-content .zfa-corr-gram {
+  text-decoration: none;
+  background-image: linear-gradient(90deg, var(--zfa-ia-couleurs));
+  background-size: 100% 2px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  padding-bottom: 1px;
+}
+.zfa-corr-ia .cm-content .zfa-corr-gram:hover {
+  background-image:
+    linear-gradient(90deg, var(--zfa-ia-couleurs)),
+    linear-gradient(90deg, rgba(255, 159, 10, 0.12), rgba(191, 90, 242, 0.14), rgba(10, 132, 255, 0.12));
+  background-size: 100% 2px, 100% 100%;
+}
+/* La remarque qu'on examine : un voile irisé plutôt que le surligneur. */
+.zfa-corr-ia .cm-content .zfa-corr-visee {
+  background: linear-gradient(90deg, rgba(255, 159, 10, 0.22), rgba(255, 55, 95, 0.2), rgba(191, 90, 242, 0.22), rgba(10, 132, 255, 0.22));
+  box-shadow: 0 0 0 2px rgba(191, 90, 242, 0.18), 0 0 12px rgba(94, 92, 230, 0.25);
+}
+.zfa-corr-ia-icone { display: inline-flex; align-items: center; flex: none; }
+.zfa-corr-ia-icone svg { width: 14px; height: 14px; }
+
+/* La bulle : du verre, et le liseré tournant. */
+.zfa-corr-ia .cm-tooltip:has(> .zfa-corr-bulle) {
+  overflow: visible;
+  isolation: isolate;
+  border-radius: 14px;
+  border-color: transparent;
+  background: var(--zfa-ia-verre);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  backdrop-filter: blur(28px) saturate(1.8);
+  box-shadow: var(--shadow-l);
+}
+.zfa-corr-ia .cm-tooltip:has(> .zfa-corr-bulle)::before {
+  content: ''; position: absolute; inset: -1px; padding: 1.5px;
+  border-radius: inherit; pointer-events: none;
+  background: conic-gradient(from var(--zfa-ia-angle), var(--zfa-ia-couleurs));
+  animation: zfa-ia-tourner 6s linear infinite;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.zfa-corr-ia .zfa-corr-bulle { padding: 12px 14px 10px; }
+.zfa-corr-ia .zfa-corr-categorie {
+  display: flex; align-items: center; gap: 6px;
+  letter-spacing: 0.02em; text-transform: none;
+  font-size: var(--font-ui-smaller, 13px);
+  color: var(--text-normal);
+}
+.zfa-corr-ia .zfa-corr-rang { border-top-color: color-mix(in srgb, var(--text-normal) 10%, transparent); }
+.zfa-corr-ia .zfa-corr-choix {
+  border-radius: 999px; padding: 3px 12px;
+  background: color-mix(in srgb, var(--text-normal) 7%, transparent);
+}
+.zfa-corr-ia .zfa-corr-choix:hover { background: color-mix(in srgb, var(--interactive-accent) 22%, transparent); }
+
+/* La fenêtre de relecture guidée : verre, liseré lumineux, boutons ronds. */
+.zfa-relecture.zfa-relecture-ia {
+  width: 300px;
+  overflow: visible;
+  border-radius: 16px;
+  border-color: transparent;
+  background: var(--zfa-ia-verre);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  backdrop-filter: blur(28px) saturate(1.8);
+  animation: zfa-ia-carte-entree 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.zfa-relecture-ia .zfa-relecture-tete,
+.zfa-relecture-ia .zfa-relecture-pied { border-color: color-mix(in srgb, var(--text-normal) 10%, transparent); background: transparent; }
+.zfa-relecture-ia .zfa-relecture-tete { padding: 8px 8px 8px 14px; }
+.zfa-relecture-ia .zfa-relecture-pied { padding: 10px 12px; border-radius: 0 0 16px 16px; }
+.zfa-relecture-ia .zfa-relecture-corps { padding: 12px 14px; }
+.zfa-relecture-ia .zfa-relecture-etiquette { letter-spacing: 0.02em; text-transform: none; color: var(--text-faint); }
+.zfa-relecture-ia .zfa-relecture-mot-propose { color: var(--text-normal); }
+.zfa-relecture-ia .zfa-relecture-bouton { border-radius: 999px; padding-left: 14px; padding-right: 14px; }
+.zfa-relecture-ia .zfa-relecture-icone { border-radius: 999px; }
+@media (prefers-reduced-motion: reduce) {
+  .zfa-corr-ia .cm-tooltip:has(> .zfa-corr-bulle)::before { animation: none; }
+}

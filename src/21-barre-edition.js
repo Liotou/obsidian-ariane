@@ -859,6 +859,12 @@ function barreDefaut() {
       { separateur: true },
       { cmd: a('commentaires-volet') },
     ] },
+    // Les paragraphes (section 25) : monter, descendre, l'affichage des numéros.
+    { groupe: 'Paragraphes', icone: 'pilcrow', elements: [
+      { cmd: a('paragraphe-monter') }, { cmd: a('paragraphe-descendre') },
+      { separateur: true },
+      { cmd: a('paragraphes-affichage') },
+    ] },
     { separateur: true },
     // La note, telle quelle, vers Word (citations Zotero vivantes).
     { cmd: a('exporter-word-zotero') },
