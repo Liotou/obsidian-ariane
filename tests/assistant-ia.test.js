@@ -37,22 +37,35 @@ test('différences mot à mot : ce qui part, ce qui arrive', () => {
   assert.equal(d.filter((x) => x.genre !== 'retrait').map((x) => x.texte).join(''), 'Les organisations cultivent la vigilance.');
 });
 
-test('intention : la demande faite à la barre trouve son outil', () => {
-  assert.deepEqual(A.intention('Ajoute une tâche : relire le chapitre 3 vendredi'),
-    { genre: 'tache', texte: 'relire le chapitre 3 vendredi' });
-  assert.equal(A.intention('rappelle-moi d’écrire à Solène lundi').genre, 'tache');
-  assert.equal(A.intention('Résume ma journée').genre, 'journee');
-  assert.equal(A.intention('résumé de la semaine').genre, 'semaine');
-  assert.deepEqual(A.intention('Relis la sélection'), { genre: 'ecriture', action: 'relire', texte: 'Relis la sélection' });
-  assert.equal(A.intention('Rends ce passage plus soutenu').action, 'soutenu');
-  assert.equal(A.intention('Mets ça en tableau').action, 'tableau');
-  assert.equal(A.intention('Que dit Weick sur la vigilance ?').genre, 'question');
+test('filet de sécurité : les liens et citations perdus par une réécriture', () => {
+  const avant = 'Selon [[Weick 2007|Weick]] [^3], la vigilance [@weick2007] et [[Weick 2007|Weick]].';
+  assert.deepEqual(A.citationsPerdues(avant, avant), []);
+  assert.deepEqual(A.citationsPerdues(avant, 'Selon Weick [^3], la vigilance et [[Weick 2007|Weick]].'),
+    ['[[Weick 2007|Weick]]', '[@weick2007]']);
+  assert.deepEqual(A.citationsPerdues('Un texte sans lien.', 'Un autre texte.'), []);
+});
+
+test('« Qu’en pensez-vous ? » : chaque remarque s’accroche au passage qu’elle cite', () => {
+  const t = 'La vigilance collective repose sur des signaux faibles. Elle se cultive.';
+  const r = A.remarques([
+    { extrait: 'Elle se cultive', remarque: 'Préciser comment.' },
+    { extrait: 'signaux faibles', remarque: 'Définir.' },
+    { extrait: 'introuvable ici', remarque: 'Remarque générale.' },
+    { extrait: 'faibles', remarque: 'Chevauche : écartée.' },
+    { extrait: 'La vigilance', remarque: '' },
+  ], t);
+  // Dans l'ordre du texte ; la remarque générale (tout le texte) et celle qui
+  // chevauche sont écartées, comme celle qui est vide.
+  assert.deepEqual(r.map((x) => t.slice(x.from, x.to) + ' / ' + x.remarque),
+    ['signaux faibles / Définir.', 'Elle se cultive / Préciser comment.']);
+  assert.deepEqual(A.remarques([{ extrait: 'absent', remarque: 'Seule.' }], t), [{ from: 0, to: t.length, remarque: 'Seule.' }]);
+  assert.deepEqual(A.remarques({ remarques: [{ extrait: 'Elle', remarque: 'x' }] }, t).length, 1);
 });
 
 test('actions : chacune a sa consigne, son icône et sa sortie', () => {
   for (const a of A.ACTIONS) {
     assert.ok(a.consigne && a.icone && a.nom, a.id);
-    assert.ok(['remplacer', 'inserer'].includes(a.sortie), a.id);
+    assert.ok(['remplacer', 'inserer', 'commenter'].includes(a.sortie), a.id);
   }
   assert.equal(A.action('relire').diff, true);
   assert.equal(A.action('inconnue'), null);

@@ -973,7 +973,7 @@ class ModaleRevueLot extends obsidian.Modal {
 // tâches. Comme pour « Structurer un brouillon », tout passe par un aperçu où
 // l'on décoche, renomme, change la famille ou l'échéance avant de créer.
 class ModaleAjoutLN extends obsidian.Modal {
-  // opts : { texte?, lancer?, apres?(ref) } ; `texte` amorce la description (ouverture
+  // opts : { texte?, apres?(ref) } ; `texte` amorce la description (ouverture
   // depuis la fenêtre de création), `apres` prévient la vue qui l'a ouverte.
   constructor(greffon, opts) { super(greffon.app); this.greffon = greffon; this.o = opts || {}; }
   onOpen() {
@@ -1013,8 +1013,6 @@ class ModaleAjoutLN extends obsidian.Modal {
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); b.click(); }
     });
-    // Ouverte par l'assistant avec une demande toute faite : l'analyse part seule.
-    if (this.o.texte && this.o.lancer) setTimeout(() => b.click(), 0);
     setTimeout(() => { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }, 30);
   }
 

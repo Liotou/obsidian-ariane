@@ -319,6 +319,20 @@ const avecSocle = (Base) => class extends Base {
     return [].concat(ids).every((id) => Ariane.moduleActif(id, reglage, mac));
   }
 
+  // Le sous-menu « Ariane » du clic droit dans l'éditeur : créé au premier
+  // besoin, partagé par toutes les entrées d'Ariane de ce menu. Sans
+  // sous-menu possible, le menu lui-même.
+  sousMenuAriane(menu) {
+    if (menu._zfaAriane) return menu._zfaAriane;
+    let sous = menu;
+    menu.addItem((i) => {
+      i.setTitle('Ariane').setIcon('compass');
+      if (typeof i.setSubmenu === 'function') sous = i.setSubmenu();
+    });
+    menu._zfaAriane = sous;
+    return sous;
+  }
+
   // Une commande porte son module : celle d'un module coupé n'existe pas.
   addCommand(c) {
     if (!c || !c.module) return super.addCommand(c);

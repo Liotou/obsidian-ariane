@@ -1,9 +1,10 @@
 // ── avecAssistant ─────────────────────────────────────────────────────────
 // Domaine : l'assistant IA, à la manière d'Apple Intelligence (module
 // « assistant », section 24). Le moteur d'Apple comme fournisseur d'IA, les
-// outils d'écriture sur la sélection, la barre de demande, et la signature
-// lumineuse commune (liseré des panneaux, halo au bord de la fenêtre quand
-// l'IA travaille, miroitement du passage en cours de réécriture).
+// outils d'écriture proposés à la sélection, le filet de sécurité des
+// citations (y compris face aux outils d'écriture d'Apple), et la signature
+// lumineuse commune (liseré, halo au bord de la fenêtre quand l'IA
+// travaille, miroitement du passage en cours de réécriture).
 const avecAssistant = (Base) => class extends Base {
   //#region Ariane · assistant IA
 
@@ -15,8 +16,8 @@ const avecAssistant = (Base) => class extends Base {
       editorCallback: (editeur, vue) => this.ouvrirOutilsEcriture(vue),
     });
     this.addCommand({
-      id: 'assistant-demander', module: 'assistant', name: tr('Demander à l’assistant (IA)'), icon: 'sparkle',
-      callback: () => new BarreAssistantIA(this).ouvrir(),
+      id: 'assistant-outils-apple', module: 'assistant', name: tr('Outils d’écriture d’Apple (natifs)'), icon: 'app-window',
+      editorCallback: (editeur, vue) => this.outilsEcritureApple(vue),
     });
     for (const [id, action, nom, icone] of [
       ['assistant-relire', 'relire', 'Outils d’écriture : relire la sélection', 'spell-check'],
@@ -27,24 +28,14 @@ const avecAssistant = (Base) => class extends Base {
         editorCallback: (editeur, vue) => this.ouvrirOutilsEcriture(vue, action),
       });
     }
-    // Au clic droit sur une sélection, comme les Outils d'écriture d'Apple.
+    // Au clic droit sur une sélection, dans le sous-menu « Ariane ».
     this.registerEvent(this.app.workspace.on('editor-menu', (menu, editeur, info) => {
       if (!editeur.somethingSelected() || !(info instanceof obsidian.MarkdownView)) return;
-      menu.addItem((i) => {
-        i.setTitle(tr('Outils d’écriture')).setIcon('sparkles').setSection('selection');
-        const sous = typeof i.setSubmenu === 'function' ? i.setSubmenu() : null;
-        if (!sous) { i.onClick(() => this.ouvrirOutilsEcriture(info)); return; }
-        sous.addItem((j) => j.setTitle(tr('Ouvrir les outils d’écriture')).setIcon('sparkles')
-          .onClick(() => this.ouvrirOutilsEcriture(info)));
-        sous.addSeparator();
-        for (const a of AssistantEcriture.ACTIONS) {
-          sous.addItem((j) => j.setTitle(tr(a.nom)).setIcon(a.icone).onClick(() => this.ouvrirOutilsEcriture(info, a.id)));
-        }
-      });
+      this.sousMenuAriane(menu).addItem((i) => i.setTitle(tr('Outils d’écriture')).setIcon('sparkles')
+        .onClick(() => this.ouvrirOutilsEcriture(info)));
     }));
     this.register(() => {
       PanneauEcritureIA.fermerTout();
-      BarreAssistantIA.fermerTout();
       this._retirerHalo(true);
     });
   }
@@ -219,7 +210,107 @@ const avecAssistant = (Base) => class extends Base {
       provide: (f) => EditorView.decorations.from(f),
     });
     this._iaCm = { champ, poser, retirer };
-    return champ;
+    return [champ, this._extensionSelectionIA()];
+  }
+
+  // Deux veilles sur l'éditeur. Les pastilles des outils d'écriture se
+  // proposent quand une sélection se pose (après une courte pause), et
+  // s'effacent quand elle disparaît. Le filet de sécurité : une réécriture
+  // venue d'ailleurs (les outils d'écriture d'Apple, un collage) qui fait
+  // disparaître des liens ou des citations est signalée, avec de quoi
+  // l'annuler.
+  _extensionSelectionIA() {
+    const { ViewPlugin } = require('@codemirror/view');
+    const greffon = this;
+    return ViewPlugin.fromClass(class {
+      constructor() { this.minuteur = null; }
+      update(u) {
+        if (u.docChanged) greffon._verifierCitations(u);
+        if (!u.selectionSet && !u.docChanged) return;
+        const ouvert = PanneauEcritureIA.ouvert;
+        if (ouvert && ouvert.discret && ouvert.cm === u.view) ouvert.fermer();
+        clearTimeout(this.minuteur);
+        if (greffon.settings.assistantPastilles === false) return;
+        const sel = u.state.selection.main;
+        if (sel.empty || u.docChanged) return;
+        this.minuteur = setTimeout(() => greffon._proposerPastilles(u.view), 450);
+      }
+      destroy() { clearTimeout(this.minuteur); }
+    });
+  }
+
+  _vueDeCm(cm) {
+    for (const l of this.app.workspace.getLeavesOfType('markdown')) {
+      const v = l.view;
+      if (v instanceof obsidian.MarkdownView && v.editor && v.editor.cm === cm) return v;
+    }
+    return null;
+  }
+
+  _proposerPastilles(cm) {
+    if (!cm.hasFocus || PanneauEcritureIA.ouvert) return;
+    const sel = cm.state.selection.main;
+    if (sel.empty || cm.state.sliceDoc(sel.from, sel.to).trim().length < 3) return;
+    const vue = this._vueDeCm(cm);
+    if (!vue || vue.getMode() !== 'source') return;
+    new PanneauEcritureIA(this, vue).ouvrir({ discret: true });
+  }
+
+  // Les écritures d'Ariane elle-même ne passent pas par le filet.
+  ecritureIA(fn) {
+    this._ecritureIA = true;
+    try { return fn(); } finally { this._ecritureIA = false; }
+  }
+
+  _verifierCitations(u) {
+    if (this._ecritureIA || this.settings.assistantFilet === false) return;
+    for (const t of u.transactions) {
+      if (!t.docChanged || !(t.isUserEvent('input') || t.isUserEvent('paste') || t.isUserEvent('drop'))) continue;
+      const perdus = [];
+      t.changes.iterChanges((fromA, toA, fromB, toB, insere) => {
+        const avant = t.startState.doc.sliceString(fromA, toA);
+        if (avant.length < 20 || avant.length > 20000 || insere.length < 10) return;
+        perdus.push(...AssistantEcriture.citationsPerdues(avant, insere.toString()));
+      });
+      if (perdus.length) setTimeout(() => this._alerterCitations(u.view, perdus), 0);
+    }
+  }
+
+  _alerterCitations(cm, perdus) {
+    const vue = this._vueDeCm(cm);
+    const frag = createFragment((f) => {
+      f.createDiv({ text: tr('Cette réécriture a fait disparaître ') + perdus.length + tr(' lien(s) ou citation(s) :') });
+      f.createDiv({ cls: 'zfa-ia-perdus', text: perdus.join('  ') });
+    });
+    const avis = new obsidian.Notice(frag, 15000);
+    if (vue && vue.editor) {
+      const b = avis.noticeEl.createEl('button', { cls: 'mod-cta', text: tr('Annuler la réécriture') });
+      b.addEventListener('click', (e) => { e.stopPropagation(); vue.editor.undo(); avis.hide(); });
+    }
+  }
+
+  // « Qu'en pensez-vous ? » : chaque remarque devient un commentaire en
+  // marge sur le passage qu'elle cite, signé « Ariane (IA) », en violet. Une
+  // seule transaction. Rend le nombre de remarques posées.
+  poserRemarquesIA(ed, from, to, original, remarques) {
+    const plage = this.plageCibleIA(ed.cm) || { from, to };
+    if (ed.getRange(ed.offsetToPos(plage.from), ed.offsetToPos(plage.to)) !== original) return 0;
+    const pris = CommentairesMarge.idsExistants(ed.getValue());
+    let texte = original;
+    let n = 0;
+    for (const r of remarques.slice().reverse()) {
+      const id = CommentairesMarge.nouvelId(pris);
+      pris.add(id);
+      const ch = CommentairesMarge.entourer(texte, r.from, r.to, r.remarque, id, 'purple',
+        { auteur: tr('Ariane (IA)'), heure: CommentairesMarge.horodatage() });
+      if (!ch) continue;
+      texte = CommentairesMarge.appliquer(texte, ch);
+      n += 1;
+    }
+    if (!n) return 0;
+    this.ecritureIA(() => ed.transaction({ changes: [{ from: ed.offsetToPos(plage.from), to: ed.offsetToPos(plage.to), text: texte }] }));
+    if (this.ouvrirVueCommentaires) this.ouvrirVueCommentaires(false);
+    return n;
   }
 
   marquerCibleIA(cm, from, to, genre) {
@@ -261,7 +352,25 @@ const avecAssistant = (Base) => class extends Base {
       new obsidian.Notice(tr('Passez en mode édition et sélectionnez le passage à travailler.'));
       return;
     }
-    new PanneauEcritureIA(this, vue).ouvrir(action);
+    new PanneauEcritureIA(this, vue).ouvrir(action ? { action } : { saisie: true });
+  }
+
+  // Les outils d'écriture d'Apple eux-mêmes (macOS 15.2 et suivants) : la
+  // même action que leur entrée du clic droit, que macOS ajoute au menu
+  // contextuel d'Obsidian (Electron 36 et suivants), envoyée au répondeur
+  // actif, c'est-à-dire l'éditeur. Leur fenêtre et leur moteur sont ceux du
+  // système ; ils ignorent tout des citations, d'où le filet de sécurité.
+  outilsEcritureApple(vue) {
+    const remote = window.electron && window.electron.remote;
+    const menu = remote && remote.Menu;
+    if (!MoteurAppleIA.disponible() || !menu || typeof menu.sendActionToFirstResponder !== 'function') {
+      new obsidian.Notice(tr('Les outils d’écriture d’Apple ne sont pas accessibles ici.'));
+      return false;
+    }
+    PanneauEcritureIA.fermerTout();
+    if (vue && vue.editor) vue.editor.focus();
+    menu.sendActionToFirstResponder('showWritingTools:');
+    return true;
   }
 
   async verifierAppleIA() {

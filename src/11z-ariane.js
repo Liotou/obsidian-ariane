@@ -1345,15 +1345,17 @@ class Ariane extends composer(obsidian.Plugin,
     this.installerOuvrirAvecOffice();
 
     // « Ouvrir dans Zotero », au clic droit sur la note comme dans l'éditeur.
-    const entreeZotero = (menu, fichier) => {
+    const entreeZotero = (menu, fichier, titre) => {
       if (!fichier || fichier.extension !== 'md') return;
       if (!this.cibleZotero(fichier)) return;
-      menu.addItem((it) => it.setTitle(tr('Ariane : ouvrir dans Zotero')).setIcon('external-link')
+      menu.addItem((it) => it.setTitle(titre).setIcon('external-link')
         .onClick(() => this.ouvrirDansZotero(fichier)));
     };
-    this.registerEvent(this.app.workspace.on('file-menu', (menu, f) => entreeZotero(menu, f)));
+    this.registerEvent(this.app.workspace.on('file-menu', (menu, f) => entreeZotero(menu, f, tr('Ariane : ouvrir dans Zotero'))));
+    // Dans l'éditeur, les entrées d'Ariane se rangent dans son sous-menu.
     this.registerEvent(this.app.workspace.on('editor-menu', (menu, ed, vue) => {
-      entreeZotero(menu, vue && vue.file ? vue.file : this.app.workspace.getActiveFile());
+      const f = vue && vue.file ? vue.file : this.app.workspace.getActiveFile();
+      if (f && f.extension === 'md' && this.cibleZotero(f)) entreeZotero(this.sousMenuAriane(menu), f, tr('Ouvrir dans Zotero'));
     }));
 
     // Clic droit sur une sélection -> suggestions ciblées sur ce passage.
@@ -1361,11 +1363,11 @@ class Ariane extends composer(obsidian.Plugin,
       const sel = editor && editor.getSelection ? editor.getSelection() : '';
       if (!sel || !sel.trim()) return;
       if (this.module('suggestions')) {
-        menu.addItem((it) => it.setTitle(tr('Ariane : suggestions pour ce passage')).setIcon('sparkles')
+        this.sousMenuAriane(menu).addItem((it) => it.setTitle(tr('Suggestions pour ce passage')).setIcon('lightbulb')
           .onClick(() => this.suggestionsPourArgument(sel)));
       }
       if (this.module('taches')) {
-        menu.addItem((it) => it.setTitle(tr('Ariane : structurer en tâches')).setIcon('list-tree')
+        this.sousMenuAriane(menu).addItem((it) => it.setTitle(tr('Structurer en tâches')).setIcon('list-tree')
           .onClick(() => new ModaleStructurerTaches(this, sel).open()));
       }
     }));

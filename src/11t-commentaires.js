@@ -64,10 +64,11 @@ const avecCommentaires = (Base) => class extends Base {
     this.registerEvent(this.app.workspace.on('editor-menu', (menu, editeur, info) => {
       const f = info && info.file;
       if (!f) return;
-      menu.addItem((i) => i.setTitle(tr('Commenter le passage')).setIcon('message-square-plus')
+      const sous = this.sousMenuAriane(menu);
+      sous.addItem((i) => i.setTitle(tr('Commenter le passage')).setIcon('message-square-plus')
         .onClick(() => this.commenterPassage(editeur, f)));
       const a = this._commentaireAuCurseur(editeur, false);
-      if (a) this.remplirMenuCommentaire(menu, f, a.id);
+      if (a) { sous.addSeparator(); this.remplirMenuCommentaire(sous, f, a.id); }
     }));
     this.registerMarkdownPostProcessor((el, ctx) => this.decorerLectureCommentaires(el, ctx));
 

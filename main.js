@@ -560,13 +560,28 @@ const TEXTES = {
     "Des commentaires sur un passage, comme dans Word : surlignage, carte en marge, réponses, résolution.": "Comments on a passage, as in Word: highlight, card in the margin, replies, resolution.",
     "Commenter le passage": "Comment on the passage",
     "Commenter": "Comment",
+    "Outils d’écriture d’Apple (natifs)": "Apple Writing Tools (native)",
+    "Outils d’écriture d’Apple…": "Apple Writing Tools…",
+    "Les outils d’écriture d’Apple ne sont pas accessibles ici.": "Apple’s Writing Tools are not available here.",
+    "Modifier avec Ariane": "Edit with Ariane",
+    "Qu’en pensez-vous ?": "What do you think?",
+    "L’IA n’a rien trouvé à redire.": "The AI found nothing to point out.",
+    " remarque(s) de l’IA ajoutée(s) en marge.": " AI remark(s) added in the margin.",
+    "Ariane (IA)": "Ariane (AI)",
+    "Cette réécriture a fait disparaître ": "This rewrite removed ",
+    " lien(s) ou citation(s) :": " link(s) or citation(s):",
+    "Annuler la réécriture": "Undo the rewrite",
+    "Suggestions pour ce passage": "Suggestions for this passage",
+    "Structurer en tâches": "Structure into tasks",
+    "Pastilles à la sélection": "Pills on selection",
+    "Les outils d’écriture se proposent dès qu’un passage est sélectionné, comme dans Notes. Désactivé : seulement par la barre d’édition, le clic droit ou la palette.": "Writing Tools appear as soon as a passage is selected, as in Notes. Off: only from the editing bar, the right-click menu or the palette.",
+    "Filet de sécurité des citations": "Citation safety net",
+    "Quand une réécriture venue d’ailleurs (les outils d’écriture d’Apple, un collage) fait disparaître des liens, des citations ou des notes, Ariane le signale et propose de l’annuler. Les outils d’Apple ne savent pas protéger ces éléments, et rien ne permet de le leur apprendre dans Obsidian.": "When a rewrite from elsewhere (Apple’s Writing Tools, a paste) removes links, citations or footnotes, Ariane points it out and offers to undo it. Apple’s tools cannot protect these elements, and nothing lets Obsidian teach them to.",
     "Outils d’écriture (IA)": "Writing Tools (AI)",
-    "Demander à l’assistant (IA)": "Ask the assistant (AI)",
     "Outils d’écriture : relire la sélection": "Writing Tools: proofread the selection",
     "Outils d’écriture : réécrire la sélection": "Writing Tools: rewrite the selection",
     "Outils d’écriture : résumer la sélection": "Writing Tools: summarize the selection",
     "Outils d’écriture": "Writing Tools",
-    "Ouvrir les outils d’écriture": "Open Writing Tools",
     "Apple Intelligence est réservée au Mac.": "Apple Intelligence is only available on Mac.",
     "annulé": "cancelled",
     "Passez en mode édition et sélectionnez le passage à travailler.": "Switch to editing mode and select the passage to work on.",
@@ -584,31 +599,16 @@ const TEXTES = {
     "langue non prise en charge par le modèle d’Apple": "language not supported by Apple’s model",
     "Apple Intelligence ne répond pas": "Apple Intelligence is not responding",
     "Sélectionnez d’abord le passage à travailler.": "Select the passage to work on first.",
-    "Retour": "Back",
-    "Décrivez la modification…": "Describe your change…",
     "L’IA n’a pas pu répondre : ": "The AI could not answer: ",
     "Attention : l’IA a perdu ": "Careful: the AI lost ",
     " lien(s) ou citation(s), à reprendre : ": " link(s) or citation(s), to restore: ",
     "Recommencer": "Try again",
     "Copié.": "Copied.",
     "Insérer après": "Insert after",
-    "Demander à l’assistant": "Ask the assistant",
-    "Que faire de la sélection ?": "What should I do with the selection?",
-    "Demandez à Ariane…": "Ask Ariane…",
-    "Relire la sélection": "Proofread the selection",
-    "Résumer la sélection": "Summarize the selection",
     "Plus soutenu": "More formal",
-    "Résumer cette note": "Summarize this note",
-    "Ajouter une tâche…": "Add a task…",
-    "Résumer ma journée": "Summarize my day",
     "la sélection": "the selection",
-    "la note « ": "the note « ",
-    "Voici ": "Here is ",
-    "Demande :": "Request:",
-    "Une autre demande…": "Another request…",
-    "Insérer dans la note": "Insert into the note",
     "Assistant IA": "AI assistant",
-    "À la manière d’Apple Intelligence. Sélectionnez un passage puis « Outils d’écriture » (clic droit, barre d’édition ou palette) : relire, réécrire, plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau, ou une consigne libre. « Demander à l’assistant » ouvre une barre où écrire ce que vous voulez : une tâche, le résumé de votre journée, une question sur la note ouverte. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer.": "In the manner of Apple Intelligence. Select a passage, then « Writing Tools » (right-click, editing bar or palette): proofread, rewrite, clearer, more formal, more concise, summary, key points, list, table, or a free instruction. « Ask the assistant » opens a bar where you write what you want: a task, a summary of your day, a question about the open note. Links, citations and footnotes are protected: the AI cannot alter them.",
+    "À la manière de Notes sous macOS 27. Sélectionnez un passage : des pastilles se posent à sa gauche, pour le modifier par une consigne, le relire, le réécrire (plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau) ou demander « Qu’en pensez-vous ? », dont les remarques arrivent en commentaires dans la marge. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer. Les outils d’écriture d’Apple eux-mêmes restent au clic droit, ou par la commande « Outils d’écriture d’Apple (natifs) ».": "In the manner of Notes on macOS 27. Select a passage: pills appear to its left, to change it with an instruction, proofread it, rewrite it (clearer, more formal, more concise, summary, key points, list, table) or ask « What do you think? », whose remarks arrive as comments in the margin. Links, citations and footnotes are protected: the AI cannot alter them. Apple’s own Writing Tools remain in the right-click menu, or through the « Apple Writing Tools (native) » command.",
     "Moteur de l’assistant": "Assistant engine",
     "Apple Intelligence travaille sur ce Mac, sans connexion ni compte ; son modèle est modeste, mais suffit à la relecture et aux reformulations. Automatique : Apple Intelligence si elle est là, sinon le fournisseur principal (onglet IA).": "Apple Intelligence runs on this Mac, without a connection or an account; its model is modest but enough for proofreading and rephrasing. Automatic: Apple Intelligence when present, otherwise the main provider (AI tab).",
     "Apple Intelligence n’existe que sur Mac : l’assistant emploie le fournisseur principal (onglet IA).": "Apple Intelligence only exists on Mac: the assistant uses the main provider (AI tab).",
@@ -619,7 +619,7 @@ const TEXTES = {
     "Effets lumineux": "Light effects",
     "Un halo aux couleurs d’Apple Intelligence borde la fenêtre tant que l’IA travaille, et le passage réécrit miroite.": "A glow in Apple Intelligence colors frames the window while the AI works, and the passage being rewritten shimmers.",
     "Raccourcis": "Shortcuts",
-    "Attribuez un raccourci à « Outils d’écriture (IA) » et à « Demander à l’assistant (IA) » dans Réglages, Raccourcis clavier.": "Assign a shortcut to « Writing Tools (AI) » and « Ask the assistant (AI) » in Settings, Hotkeys.",
+    "Attribuez un raccourci à « Outils d’écriture (IA) » ou à « Outils d’écriture d’Apple (natifs) » dans Réglages, Raccourcis clavier.": "Assign a shortcut to « Writing Tools (AI) » or « Apple Writing Tools (native) » in Settings, Hotkeys.",
     "Apple Intelligence (sur ce Mac)": "Apple Intelligence (on this Mac)",
     "À la manière d’Apple Intelligence : outils d’écriture sur la sélection, barre de demande, Apple Intelligence comme moteur sur Mac.": "In the manner of Apple Intelligence: Writing Tools on the selection, a request bar, Apple Intelligence as the engine on Mac.",
     "Réécrire": "Rewrite",
@@ -2607,6 +2607,8 @@ const DEFAULT_SETTINGS = {
   // --- Assistant IA (module « assistant ») ---
   assistantFournisseur: 'auto',   // auto : Apple Intelligence si présente, sinon le fournisseur principal ; apple ; principal
   assistantEffets: true,          // halo au bord de la fenêtre, miroitement du passage
+  assistantPastilles: true,       // les outils d'écriture se proposent à la sélection
+  assistantFilet: true,           // signaler les citations perdues par une réécriture venue d'ailleurs
 
   // --- Comportement ---
   regenerationAuto: true,
@@ -5832,6 +5834,20 @@ const avecSocle = (Base) => class extends Base {
     const mac = !!(obsidian.Platform && obsidian.Platform.isMacOS);
     const reglage = Array.isArray(this.settings && this.settings.modules) ? this.settings.modules : null;
     return [].concat(ids).every((id) => Ariane.moduleActif(id, reglage, mac));
+  }
+
+  // Le sous-menu « Ariane » du clic droit dans l'éditeur : créé au premier
+  // besoin, partagé par toutes les entrées d'Ariane de ce menu. Sans
+  // sous-menu possible, le menu lui-même.
+  sousMenuAriane(menu) {
+    if (menu._zfaAriane) return menu._zfaAriane;
+    let sous = menu;
+    menu.addItem((i) => {
+      i.setTitle('Ariane').setIcon('compass');
+      if (typeof i.setSubmenu === 'function') sous = i.setSubmenu();
+    });
+    menu._zfaAriane = sous;
+    return sous;
   }
 
   // Une commande porte son module : celle d'un module coupé n'existe pas.
@@ -26568,10 +26584,11 @@ const avecCommentaires = (Base) => class extends Base {
     this.registerEvent(this.app.workspace.on('editor-menu', (menu, editeur, info) => {
       const f = info && info.file;
       if (!f) return;
-      menu.addItem((i) => i.setTitle(tr('Commenter le passage')).setIcon('message-square-plus')
+      const sous = this.sousMenuAriane(menu);
+      sous.addItem((i) => i.setTitle(tr('Commenter le passage')).setIcon('message-square-plus')
         .onClick(() => this.commenterPassage(editeur, f)));
       const a = this._commentaireAuCurseur(editeur, false);
-      if (a) this.remplirMenuCommentaire(menu, f, a.id);
+      if (a) { sous.addSeparator(); this.remplirMenuCommentaire(sous, f, a.id); }
     }));
     this.registerMarkdownPostProcessor((el, ctx) => this.decorerLectureCommentaires(el, ctx));
 
@@ -27093,9 +27110,10 @@ const avecCommentaires = (Base) => class extends Base {
 // ── avecAssistant ─────────────────────────────────────────────────────────
 // Domaine : l'assistant IA, à la manière d'Apple Intelligence (module
 // « assistant », section 24). Le moteur d'Apple comme fournisseur d'IA, les
-// outils d'écriture sur la sélection, la barre de demande, et la signature
-// lumineuse commune (liseré des panneaux, halo au bord de la fenêtre quand
-// l'IA travaille, miroitement du passage en cours de réécriture).
+// outils d'écriture proposés à la sélection, le filet de sécurité des
+// citations (y compris face aux outils d'écriture d'Apple), et la signature
+// lumineuse commune (liseré, halo au bord de la fenêtre quand l'IA
+// travaille, miroitement du passage en cours de réécriture).
 const avecAssistant = (Base) => class extends Base {
   //#region Ariane · assistant IA
 
@@ -27107,8 +27125,8 @@ const avecAssistant = (Base) => class extends Base {
       editorCallback: (editeur, vue) => this.ouvrirOutilsEcriture(vue),
     });
     this.addCommand({
-      id: 'assistant-demander', module: 'assistant', name: tr('Demander à l’assistant (IA)'), icon: 'sparkle',
-      callback: () => new BarreAssistantIA(this).ouvrir(),
+      id: 'assistant-outils-apple', module: 'assistant', name: tr('Outils d’écriture d’Apple (natifs)'), icon: 'app-window',
+      editorCallback: (editeur, vue) => this.outilsEcritureApple(vue),
     });
     for (const [id, action, nom, icone] of [
       ['assistant-relire', 'relire', 'Outils d’écriture : relire la sélection', 'spell-check'],
@@ -27119,24 +27137,14 @@ const avecAssistant = (Base) => class extends Base {
         editorCallback: (editeur, vue) => this.ouvrirOutilsEcriture(vue, action),
       });
     }
-    // Au clic droit sur une sélection, comme les Outils d'écriture d'Apple.
+    // Au clic droit sur une sélection, dans le sous-menu « Ariane ».
     this.registerEvent(this.app.workspace.on('editor-menu', (menu, editeur, info) => {
       if (!editeur.somethingSelected() || !(info instanceof obsidian.MarkdownView)) return;
-      menu.addItem((i) => {
-        i.setTitle(tr('Outils d’écriture')).setIcon('sparkles').setSection('selection');
-        const sous = typeof i.setSubmenu === 'function' ? i.setSubmenu() : null;
-        if (!sous) { i.onClick(() => this.ouvrirOutilsEcriture(info)); return; }
-        sous.addItem((j) => j.setTitle(tr('Ouvrir les outils d’écriture')).setIcon('sparkles')
-          .onClick(() => this.ouvrirOutilsEcriture(info)));
-        sous.addSeparator();
-        for (const a of AssistantEcriture.ACTIONS) {
-          sous.addItem((j) => j.setTitle(tr(a.nom)).setIcon(a.icone).onClick(() => this.ouvrirOutilsEcriture(info, a.id)));
-        }
-      });
+      this.sousMenuAriane(menu).addItem((i) => i.setTitle(tr('Outils d’écriture')).setIcon('sparkles')
+        .onClick(() => this.ouvrirOutilsEcriture(info)));
     }));
     this.register(() => {
       PanneauEcritureIA.fermerTout();
-      BarreAssistantIA.fermerTout();
       this._retirerHalo(true);
     });
   }
@@ -27311,7 +27319,107 @@ const avecAssistant = (Base) => class extends Base {
       provide: (f) => EditorView.decorations.from(f),
     });
     this._iaCm = { champ, poser, retirer };
-    return champ;
+    return [champ, this._extensionSelectionIA()];
+  }
+
+  // Deux veilles sur l'éditeur. Les pastilles des outils d'écriture se
+  // proposent quand une sélection se pose (après une courte pause), et
+  // s'effacent quand elle disparaît. Le filet de sécurité : une réécriture
+  // venue d'ailleurs (les outils d'écriture d'Apple, un collage) qui fait
+  // disparaître des liens ou des citations est signalée, avec de quoi
+  // l'annuler.
+  _extensionSelectionIA() {
+    const { ViewPlugin } = require('@codemirror/view');
+    const greffon = this;
+    return ViewPlugin.fromClass(class {
+      constructor() { this.minuteur = null; }
+      update(u) {
+        if (u.docChanged) greffon._verifierCitations(u);
+        if (!u.selectionSet && !u.docChanged) return;
+        const ouvert = PanneauEcritureIA.ouvert;
+        if (ouvert && ouvert.discret && ouvert.cm === u.view) ouvert.fermer();
+        clearTimeout(this.minuteur);
+        if (greffon.settings.assistantPastilles === false) return;
+        const sel = u.state.selection.main;
+        if (sel.empty || u.docChanged) return;
+        this.minuteur = setTimeout(() => greffon._proposerPastilles(u.view), 450);
+      }
+      destroy() { clearTimeout(this.minuteur); }
+    });
+  }
+
+  _vueDeCm(cm) {
+    for (const l of this.app.workspace.getLeavesOfType('markdown')) {
+      const v = l.view;
+      if (v instanceof obsidian.MarkdownView && v.editor && v.editor.cm === cm) return v;
+    }
+    return null;
+  }
+
+  _proposerPastilles(cm) {
+    if (!cm.hasFocus || PanneauEcritureIA.ouvert) return;
+    const sel = cm.state.selection.main;
+    if (sel.empty || cm.state.sliceDoc(sel.from, sel.to).trim().length < 3) return;
+    const vue = this._vueDeCm(cm);
+    if (!vue || vue.getMode() !== 'source') return;
+    new PanneauEcritureIA(this, vue).ouvrir({ discret: true });
+  }
+
+  // Les écritures d'Ariane elle-même ne passent pas par le filet.
+  ecritureIA(fn) {
+    this._ecritureIA = true;
+    try { return fn(); } finally { this._ecritureIA = false; }
+  }
+
+  _verifierCitations(u) {
+    if (this._ecritureIA || this.settings.assistantFilet === false) return;
+    for (const t of u.transactions) {
+      if (!t.docChanged || !(t.isUserEvent('input') || t.isUserEvent('paste') || t.isUserEvent('drop'))) continue;
+      const perdus = [];
+      t.changes.iterChanges((fromA, toA, fromB, toB, insere) => {
+        const avant = t.startState.doc.sliceString(fromA, toA);
+        if (avant.length < 20 || avant.length > 20000 || insere.length < 10) return;
+        perdus.push(...AssistantEcriture.citationsPerdues(avant, insere.toString()));
+      });
+      if (perdus.length) setTimeout(() => this._alerterCitations(u.view, perdus), 0);
+    }
+  }
+
+  _alerterCitations(cm, perdus) {
+    const vue = this._vueDeCm(cm);
+    const frag = createFragment((f) => {
+      f.createDiv({ text: tr('Cette réécriture a fait disparaître ') + perdus.length + tr(' lien(s) ou citation(s) :') });
+      f.createDiv({ cls: 'zfa-ia-perdus', text: perdus.join('  ') });
+    });
+    const avis = new obsidian.Notice(frag, 15000);
+    if (vue && vue.editor) {
+      const b = avis.noticeEl.createEl('button', { cls: 'mod-cta', text: tr('Annuler la réécriture') });
+      b.addEventListener('click', (e) => { e.stopPropagation(); vue.editor.undo(); avis.hide(); });
+    }
+  }
+
+  // « Qu'en pensez-vous ? » : chaque remarque devient un commentaire en
+  // marge sur le passage qu'elle cite, signé « Ariane (IA) », en violet. Une
+  // seule transaction. Rend le nombre de remarques posées.
+  poserRemarquesIA(ed, from, to, original, remarques) {
+    const plage = this.plageCibleIA(ed.cm) || { from, to };
+    if (ed.getRange(ed.offsetToPos(plage.from), ed.offsetToPos(plage.to)) !== original) return 0;
+    const pris = CommentairesMarge.idsExistants(ed.getValue());
+    let texte = original;
+    let n = 0;
+    for (const r of remarques.slice().reverse()) {
+      const id = CommentairesMarge.nouvelId(pris);
+      pris.add(id);
+      const ch = CommentairesMarge.entourer(texte, r.from, r.to, r.remarque, id, 'purple',
+        { auteur: tr('Ariane (IA)'), heure: CommentairesMarge.horodatage() });
+      if (!ch) continue;
+      texte = CommentairesMarge.appliquer(texte, ch);
+      n += 1;
+    }
+    if (!n) return 0;
+    this.ecritureIA(() => ed.transaction({ changes: [{ from: ed.offsetToPos(plage.from), to: ed.offsetToPos(plage.to), text: texte }] }));
+    if (this.ouvrirVueCommentaires) this.ouvrirVueCommentaires(false);
+    return n;
   }
 
   marquerCibleIA(cm, from, to, genre) {
@@ -27353,7 +27461,25 @@ const avecAssistant = (Base) => class extends Base {
       new obsidian.Notice(tr('Passez en mode édition et sélectionnez le passage à travailler.'));
       return;
     }
-    new PanneauEcritureIA(this, vue).ouvrir(action);
+    new PanneauEcritureIA(this, vue).ouvrir(action ? { action } : { saisie: true });
+  }
+
+  // Les outils d'écriture d'Apple eux-mêmes (macOS 15.2 et suivants) : la
+  // même action que leur entrée du clic droit, que macOS ajoute au menu
+  // contextuel d'Obsidian (Electron 36 et suivants), envoyée au répondeur
+  // actif, c'est-à-dire l'éditeur. Leur fenêtre et leur moteur sont ceux du
+  // système ; ils ignorent tout des citations, d'où le filet de sécurité.
+  outilsEcritureApple(vue) {
+    const remote = window.electron && window.electron.remote;
+    const menu = remote && remote.Menu;
+    if (!MoteurAppleIA.disponible() || !menu || typeof menu.sendActionToFirstResponder !== 'function') {
+      new obsidian.Notice(tr('Les outils d’écriture d’Apple ne sont pas accessibles ici.'));
+      return false;
+    }
+    PanneauEcritureIA.fermerTout();
+    if (vue && vue.editor) vue.editor.focus();
+    menu.sendActionToFirstResponder('showWritingTools:');
+    return true;
   }
 
   async verifierAppleIA() {
@@ -28715,15 +28841,17 @@ class Ariane extends composer(obsidian.Plugin,
     this.installerOuvrirAvecOffice();
 
     // « Ouvrir dans Zotero », au clic droit sur la note comme dans l'éditeur.
-    const entreeZotero = (menu, fichier) => {
+    const entreeZotero = (menu, fichier, titre) => {
       if (!fichier || fichier.extension !== 'md') return;
       if (!this.cibleZotero(fichier)) return;
-      menu.addItem((it) => it.setTitle(tr('Ariane : ouvrir dans Zotero')).setIcon('external-link')
+      menu.addItem((it) => it.setTitle(titre).setIcon('external-link')
         .onClick(() => this.ouvrirDansZotero(fichier)));
     };
-    this.registerEvent(this.app.workspace.on('file-menu', (menu, f) => entreeZotero(menu, f)));
+    this.registerEvent(this.app.workspace.on('file-menu', (menu, f) => entreeZotero(menu, f, tr('Ariane : ouvrir dans Zotero'))));
+    // Dans l'éditeur, les entrées d'Ariane se rangent dans son sous-menu.
     this.registerEvent(this.app.workspace.on('editor-menu', (menu, ed, vue) => {
-      entreeZotero(menu, vue && vue.file ? vue.file : this.app.workspace.getActiveFile());
+      const f = vue && vue.file ? vue.file : this.app.workspace.getActiveFile();
+      if (f && f.extension === 'md' && this.cibleZotero(f)) entreeZotero(this.sousMenuAriane(menu), f, tr('Ouvrir dans Zotero'));
     }));
 
     // Clic droit sur une sélection -> suggestions ciblées sur ce passage.
@@ -28731,11 +28859,11 @@ class Ariane extends composer(obsidian.Plugin,
       const sel = editor && editor.getSelection ? editor.getSelection() : '';
       if (!sel || !sel.trim()) return;
       if (this.module('suggestions')) {
-        menu.addItem((it) => it.setTitle(tr('Ariane : suggestions pour ce passage')).setIcon('sparkles')
+        this.sousMenuAriane(menu).addItem((it) => it.setTitle(tr('Suggestions pour ce passage')).setIcon('lightbulb')
           .onClick(() => this.suggestionsPourArgument(sel)));
       }
       if (this.module('taches')) {
-        menu.addItem((it) => it.setTitle(tr('Ariane : structurer en tâches')).setIcon('list-tree')
+        this.sousMenuAriane(menu).addItem((it) => it.setTitle(tr('Structurer en tâches')).setIcon('list-tree')
           .onClick(() => new ModaleStructurerTaches(this, sel).open()));
       }
     }));
@@ -30288,7 +30416,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     const g = this.plugin;
     const mac = MoteurAppleIA.disponible();
     this._section(c, tr('Assistant IA'));
-    this._aide(c, tr("À la manière d’Apple Intelligence. Sélectionnez un passage puis « Outils d’écriture » (clic droit, barre d’édition ou palette) : relire, réécrire, plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau, ou une consigne libre. « Demander à l’assistant » ouvre une barre où écrire ce que vous voulez : une tâche, le résumé de votre journée, une question sur la note ouverte. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer."));
+    this._aide(c, tr("À la manière de Notes sous macOS 27. Sélectionnez un passage : des pastilles se posent à sa gauche, pour le modifier par une consigne, le relire, le réécrire (plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau) ou demander « Qu’en pensez-vous ? », dont les remarques arrivent en commentaires dans la marge. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer. Les outils d’écriture d’Apple eux-mêmes restent au clic droit, ou par la commande « Outils d’écriture d’Apple (natifs) »."));
     new obsidian.Setting(c)
       .setName(tr('Moteur de l’assistant'))
       .setDesc(mac
@@ -30307,12 +30435,20 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addButton((b) => b.setButtonText(tr('Vérifier')).onClick(() => g.verifierAppleIA()));
     }
     new obsidian.Setting(c)
+      .setName(tr('Pastilles à la sélection'))
+      .setDesc(tr('Les outils d’écriture se proposent dès qu’un passage est sélectionné, comme dans Notes. Désactivé : seulement par la barre d’édition, le clic droit ou la palette.'))
+      .addToggle((t) => t.setValue(s.assistantPastilles !== false).onChange(async (v) => { s.assistantPastilles = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Filet de sécurité des citations'))
+      .setDesc(tr('Quand une réécriture venue d’ailleurs (les outils d’écriture d’Apple, un collage) fait disparaître des liens, des citations ou des notes, Ariane le signale et propose de l’annuler. Les outils d’Apple ne savent pas protéger ces éléments, et rien ne permet de le leur apprendre dans Obsidian.'))
+      .addToggle((t) => t.setValue(s.assistantFilet !== false).onChange(async (v) => { s.assistantFilet = v; await maj(); }));
+    new obsidian.Setting(c)
       .setName(tr('Effets lumineux'))
       .setDesc(tr('Un halo aux couleurs d’Apple Intelligence borde la fenêtre tant que l’IA travaille, et le passage réécrit miroite.'))
       .addToggle((t) => t.setValue(s.assistantEffets !== false).onChange(async (v) => { s.assistantEffets = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Raccourcis'))
-      .setDesc(tr('Attribuez un raccourci à « Outils d’écriture (IA) » et à « Demander à l’assistant (IA) » dans Réglages, Raccourcis clavier.'));
+      .setDesc(tr('Attribuez un raccourci à « Outils d’écriture (IA) » ou à « Outils d’écriture d’Apple (natifs) » dans Réglages, Raccourcis clavier.'));
   }
 
   // ── Commentaires en marge (section 23) ───────────────────────────────
@@ -33095,7 +33231,7 @@ class ModaleRevueLot extends obsidian.Modal {
 // tâches. Comme pour « Structurer un brouillon », tout passe par un aperçu où
 // l'on décoche, renomme, change la famille ou l'échéance avant de créer.
 class ModaleAjoutLN extends obsidian.Modal {
-  // opts : { texte?, lancer?, apres?(ref) } ; `texte` amorce la description (ouverture
+  // opts : { texte?, apres?(ref) } ; `texte` amorce la description (ouverture
   // depuis la fenêtre de création), `apres` prévient la vue qui l'a ouverte.
   constructor(greffon, opts) { super(greffon.app); this.greffon = greffon; this.o = opts || {}; }
   onOpen() {
@@ -33135,8 +33271,6 @@ class ModaleAjoutLN extends obsidian.Modal {
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); b.click(); }
     });
-    // Ouverte par l'assistant avec une demande toute faite : l'analyse part seule.
-    if (this.o.texte && this.o.lancer) setTimeout(() => b.click(), 0);
     setTimeout(() => { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }, 30);
   }
 
@@ -48935,7 +49069,6 @@ function barreDefaut() {
     { separateur: true },
     // L'assistant IA (section 24), comme les Outils d'écriture d'Apple.
     { cmd: a('assistant-outils') },
-    { cmd: a('assistant-demander') },
     { separateur: true },
     // Les commentaires en marge (section 23) : commenter d'un clic, le reste
     // dans un menu.
@@ -51604,11 +51737,12 @@ class VueCommentairesMarge extends obsidian.ItemView {
 //      compilé une fois, comme celui du correcteur (section 18). Il sert
 //      aussi de fournisseur à toutes les fonctions d'IA d'Ariane.
 //    - AssistantEcriture : la logique pure (consignes, masquage des liens et
-//      citations, nettoyage des réponses, différences mot à mot, intention
-//      d'une demande en langage naturel), éprouvée par les tests.
-//    - PanneauEcritureIA : les outils d'écriture, sur la sélection, dans un
-//      panneau translucide au liseré lumineux.
-//    - BarreAssistantIA : une barre de demande, à la manière de Siri.
+//      citations, nettoyage des réponses, différences mot à mot, remarques
+//      placées dans le texte, citations perdues), éprouvée par les tests.
+//    - PanneauEcritureIA : les outils d'écriture, à la manière de Notes sous
+//      macOS 27 : une pile de pastilles à gauche de la sélection (modifier
+//      par une consigne, relire, réécrire, « qu'en pensez-vous ? »), puis
+//      le résultat dans une carte de verre.
 //  Le branchement est dans avecAssistant (11u).
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -51922,6 +52056,10 @@ class AssistantEcriture {
         consigne: 'Mets ce texte en liste à puces Markdown (« - »), sans rien perdre de son contenu.' },
       { id: 'tableau', nom: 'En tableau', icone: 'table', sortie: 'remplacer',
         consigne: 'Mets le contenu de ce texte dans un tableau Markdown, avec une ligne d’en-tête.' },
+      { id: 'avis', nom: 'Qu’en pensez-vous ?', icone: 'message-circle-question', sortie: 'commenter',
+        consigne: 'Relis ce texte comme un directeur de thèse exigeant et bienveillant. Donne de une à quatre remarques utiles '
+          + '(clarté, argumentation, précision, style). Rends uniquement un tableau JSON : '
+          + '[{"extrait": "quelques mots recopiés exactement du texte", "remarque": "ta remarque, en une ou deux phrases"}].' },
     ];
   }
 
@@ -52001,39 +52139,58 @@ class AssistantEcriture {
     return out;
   }
 
-  // Ce que veut une demande faite à la barre de l'assistant. Rend
-  // { genre, action?, texte } : genre « tache », « journee », « semaine »,
-  // « ecriture » (avec une action des outils), « commentaire » ou « question ».
-  static intention(demande) {
-    const t = String(demande || '').trim();
-    const b = t.toLowerCase();
-    if (!t) return { genre: 'question', texte: '' };
-    const tache = /^(?:ajoute|ajouter|cr[ée]e|cr[ée]er|note|planifie|rappelle-moi(?: de)?)\b[^\n]*?\bt[âa]ches?\b\s*:?\s*(.*)$/i.exec(t)
-      || /^(?:nouvelle t[âa]che|t[âa]che)\s*:?\s*(.+)$/i.exec(t)
-      || /^rappelle-moi\s+(?:de\s+)?(.+)$/i.exec(t);
-    if (tache) return { genre: 'tache', texte: (tache[1] || t).trim() || t };
-    if (/r[ée]sum\w*[^\n]*\b(?:journ[ée]e|aujourd)/.test(b)) return { genre: 'journee', texte: t };
-    if (/r[ée]sum\w*[^\n]*\bsemaine/.test(b)) return { genre: 'semaine', texte: t };
-    if (/^(?:relis|relire|corrige|corriger)\b/.test(b)) return { genre: 'ecriture', action: 'relire', texte: t };
-    if (/^(?:r[ée]sume|r[ée]sumer)\b/.test(b)) return { genre: 'ecriture', action: 'resume', texte: t };
-    if (/\bpoints? cl[ée]s\b/.test(b)) return { genre: 'ecriture', action: 'points', texte: t };
-    if (/\bplus (?:clair|lisible)\b/.test(b)) return { genre: 'ecriture', action: 'clair', texte: t };
-    if (/\bplus (?:soutenu|acad[ée]mique|formel)\b/.test(b)) return { genre: 'ecriture', action: 'soutenu', texte: t };
-    if (/\bplus (?:concis|court)\b|\braccourcis\b/.test(b)) return { genre: 'ecriture', action: 'concis', texte: t };
-    if (/^(?:r[ée][ée]cris|reformule|r[ée][ée]crire|reformuler)\b/.test(b)) return { genre: 'ecriture', action: 'reecrire', texte: t };
-    if (/\ben tableau\b/.test(b)) return { genre: 'ecriture', action: 'tableau', texte: t };
-    if (/\ben liste\b/.test(b)) return { genre: 'ecriture', action: 'liste', texte: t };
-    if (/^(?:commente|commenter)\b/.test(b)) return { genre: 'commentaire', texte: t };
-    return { genre: 'question', texte: t };
+  // Ce qu'il ne faut jamais perdre en réécrivant : liens, citations, notes,
+  // balises des commentaires. Les mêmes motifs que masquer(), sans le code.
+  static get MOTIF_PRECIEUX() {
+    return /!?\[\[[^\]\n]*\]\]|\[\^[^\]\n]+\]|\[@[^\]\n]+\]|<span\b[^>]*><\/span>/g;
+  }
+
+  // Les liens et citations présents avant et absents après (en tenant
+  // compte des doublons). Le filet de sécurité des outils d'écriture d'Apple.
+  static citationsPerdues(avant, apres) {
+    const compter = (t) => {
+      const m = new Map();
+      for (const x of String(t).match(AssistantEcriture.MOTIF_PRECIEUX) || []) m.set(x, (m.get(x) || 0) + 1);
+      return m;
+    };
+    const a = compter(avant);
+    const b = compter(apres);
+    const perdus = [];
+    for (const [x, n] of a) for (let k = (b.get(x) || 0); k < n; k += 1) perdus.push(x);
+    return perdus;
+  }
+
+  // Les remarques de « Qu'en pensez-vous ? », placées dans le texte : chacune
+  // s'accroche au passage qu'elle cite. Rend [{ from, to, remarque }], sans
+  // chevauchement, dans l'ordre du texte ; une remarque dont le passage est
+  // introuvable s'accroche à tout le texte.
+  static remarques(reponse, texte) {
+    const liste = Array.isArray(reponse) ? reponse
+      : (reponse && Array.isArray(reponse.remarques) ? reponse.remarques : []);
+    const t = String(texte);
+    const out = [];
+    for (const r of liste.slice(0, 5)) {
+      const remarque = String((r && (r.remarque || r.commentaire)) || '').trim();
+      if (!remarque) continue;
+      const extrait = String((r && (r.extrait || r.passage)) || '').trim();
+      let i = extrait ? t.indexOf(extrait) : -1;
+      if (i < 0 && extrait) i = t.toLowerCase().indexOf(extrait.toLowerCase());
+      const place = i >= 0 ? { from: i, to: i + extrait.length } : { from: 0, to: t.length };
+      if (out.some((o) => place.from < o.to && o.from < place.to)) continue;
+      out.push(Object.assign(place, { remarque }));
+    }
+    return out.sort((a, b) => a.from - b.from);
   }
 }
 
 // ── Les outils d'écriture ──
-//  Un panneau translucide, au liseré lumineux, posé sous la sélection. On y
-//  choisit une action ou on décrit la modification voulue ; le passage
-//  miroite pendant que l'IA écrit, le résultat s'affiche au fil de l'eau,
-//  avec les différences pour la relecture. Remplacer passe par une seule
-//  transaction de l'éditeur : un ⌘Z la défait.
+//  À la manière de Notes sous macOS 27 : quand on sélectionne un passage, une
+//  pile de pastilles se pose à sa gauche : « Modifier avec Ariane » (une
+//  consigne libre), « Relire », « Réécrire » (et ses variantes), « Qu'en
+//  pensez-vous ? ». Le passage miroite pendant que l'IA écrit ; le résultat
+//  arrive dans une carte de verre, avec les différences pour la relecture.
+//  Remplacer passe par une seule transaction de l'éditeur : un ⌘Z la défait.
+//  « Qu'en pensez-vous ? » pose ses remarques en commentaires dans la marge.
 class PanneauEcritureIA {
   constructor(greffon, vue) {
     this.greffon = greffon;
@@ -52051,23 +52208,29 @@ class PanneauEcritureIA {
     this.action = null;
   }
 
-  ouvrir(actionDirecte) {
+  // o : { action } lance tout de suite ; { saisie } met le curseur dans la
+  // consigne ; { discret } : proposé à la sélection, il s'efface au moindre
+  // geste ailleurs.
+  ouvrir(o) {
+    const opts = o || {};
     if (!this.original.trim()) {
-      new obsidian.Notice(tr('Sélectionnez d’abord le passage à travailler.'));
+      if (!opts.discret) new obsidian.Notice(tr('Sélectionnez d’abord le passage à travailler.'));
       return;
     }
     PanneauEcritureIA.fermerTout();
     PanneauEcritureIA.ouvert = this;
-    this.greffon.marquerCibleIA(this.cm, this.from, this.to, 'cible');
-    this.el = this.doc.body.createDiv({ cls: 'zfa-ia-panneau zfa-ia-halo' });
+    this.discret = !!opts.discret;
+    this.el = this.doc.body.createDiv({ cls: 'zfa-ia-ecriture' });
     this.el.setAttribute('role', 'dialog');
     this.el.setAttribute('aria-label', tr('Outils d’écriture'));
-    this.surAppui = (e) => { if (!this.el.contains(e.target)) this.fermer(); };
+    this.surAppui = (e) => { if (!this.el.contains(e.target) && !e.target.closest('.menu')) this.fermer(); };
     this.surTouche = (e) => { if (e.key === 'Escape') { e.preventDefault(); this.fermer(); } };
+    this.surDefil = () => this._placer();
     this.doc.addEventListener('mousedown', this.surAppui, true);
     this.doc.addEventListener('keydown', this.surTouche, true);
-    if (actionDirecte) this.lancer(AssistantEcriture.action(actionDirecte));
-    else this._menu();
+    if (this.cm) this.cm.scrollDOM.addEventListener('scroll', this.surDefil);
+    if (opts.action) { this.lancer(AssistantEcriture.action(opts.action)); return; }
+    this._pastilles(opts.saisie);
   }
 
   static fermerTout() { if (PanneauEcritureIA.ouvert) PanneauEcritureIA.ouvert.fermer(); }
@@ -52077,96 +52240,131 @@ class PanneauEcritureIA {
     this.encours = null;
     this.doc.removeEventListener('mousedown', this.surAppui, true);
     this.doc.removeEventListener('keydown', this.surTouche, true);
+    if (this.cm) this.cm.scrollDOM.removeEventListener('scroll', this.surDefil);
     if (this.el) this.el.remove();
     this.el = null;
     this.greffon.effacerCibleIA(this.cm);
     if (PanneauEcritureIA.ouvert === this) PanneauEcritureIA.ouvert = null;
   }
 
-  // Sous la sélection, ou au-dessus s'il n'y a pas la place.
-  _placer() {
-    const fen = this.doc.defaultView || window;
-    let r = null;
+  // Le passage : ses coins à l'écran, et la colonne du texte.
+  _reperes() {
+    let haut = null;
+    let bas = null;
+    let gauche = null;
     try {
       const c1 = this.cm.coordsAtPos(this.from);
       const c2 = this.cm.coordsAtPos(this.to);
-      if (c1 && c2) r = { gauche: Math.min(c1.left, c2.left), haut: c1.top, bas: c2.bottom };
+      if (c1) { haut = c1.top; gauche = c1.left; }
+      if (c2) bas = c2.bottom;
     } catch (e) { /* hors de la vue */ }
-    if (!r) { const b = this.cm.dom.getBoundingClientRect(); r = { gauche: b.left + 40, haut: b.top + 80, bas: b.top + 80 }; }
-    const l = this.el.offsetWidth || 360;
-    const h = this.el.offsetHeight || 300;
-    const x = Math.max(12, Math.min(r.gauche, fen.innerWidth - l - 12));
-    let y = r.bas + 10;
-    if (y + h > fen.innerHeight - 12) y = Math.max(12, r.haut - h - 10);
-    this.el.style.left = Math.round(x) + 'px';
-    this.el.style.top = Math.round(y) + 'px';
+    const colonne = this.cm.contentDOM.getBoundingClientRect();
+    const cadre = this.cm.scrollDOM.getBoundingClientRect();
+    return { haut: haut === null ? cadre.top + 60 : haut, bas: bas === null ? cadre.top + 60 : bas,
+      gauche: gauche === null ? colonne.left : gauche, colonne, cadre };
   }
 
-  _entete(titre, retour) {
-    const t = this.el.createDiv({ cls: 'zfa-ia-tete' });
-    if (retour) {
-      const r = t.createDiv({ cls: 'clickable-icon', attr: { 'aria-label': tr('Retour') } });
-      obsidian.setIcon(r, 'chevron-left');
-      r.addEventListener('click', () => { if (this.encours) this.encours.annuler(); this.encours = null; this._menu(); });
-    } else {
-      iconeIA(t.createSpan());
+  // Les pastilles à gauche de la colonne de texte, face au début du passage ;
+  // la carte sous le passage. Faute de place à gauche, les pastilles passent
+  // sous le passage elles aussi.
+  _placer() {
+    if (!this.el) return;
+    const fen = this.doc.defaultView || window;
+    const r = this._reperes();
+    const pile = this.el.querySelector('.zfa-ia-pastilles');
+    const carte = this.el.querySelector('.zfa-ia-carte');
+    if (pile) {
+      const l = pile.offsetWidth || 220;
+      let x = r.colonne.left - l - 14;
+      let y = r.haut - 4;
+      pile.toggleClass('est-dessous', x < r.cadre.left + 4);
+      if (x < r.cadre.left + 4) { x = Math.max(12, r.gauche); y = r.bas + 8; }
+      y = Math.max(12, Math.min(y, fen.innerHeight - (pile.offsetHeight || 180) - 12));
+      pile.style.left = Math.round(x) + 'px';
+      pile.style.top = Math.round(y) + 'px';
     }
-    t.createSpan({ cls: 'zfa-ia-titre', text: titre });
-    const x = t.createDiv({ cls: 'clickable-icon zfa-ia-fermer', attr: { 'aria-label': tr('Fermer') } });
-    obsidian.setIcon(x, 'x');
-    x.addEventListener('click', () => this.fermer());
+    if (carte) {
+      const l = carte.offsetWidth || 440;
+      const h = carte.offsetHeight || 200;
+      const x = Math.max(12, Math.min(r.colonne.left, fen.innerWidth - l - 12));
+      let y = r.bas + 10;
+      if (y + h > fen.innerHeight - 12) y = Math.max(12, r.haut - h - 10);
+      carte.style.left = Math.round(x) + 'px';
+      carte.style.top = Math.round(y) + 'px';
+    }
   }
 
-  _menu() {
+  _pastille(hote, icone, texte, cls, faire) {
+    const b = hote.createEl('button', { cls: 'zfa-ia-pastille' + (cls ? ' ' + cls : '') });
+    obsidian.setIcon(b.createSpan({ cls: 'zfa-ia-pastille-icone' }), icone);
+    b.createSpan({ text: texte });
+    b.addEventListener('mousedown', (e) => e.preventDefault());   // la sélection reste
+    b.addEventListener('click', faire);
+    return b;
+  }
+
+  _pastilles(saisie) {
     this.el.empty();
-    this.el.removeClass('est-resultat');
-    this.greffon.marquerCibleIA(this.cm, this.from, this.to, 'cible');
-    this._entete(tr('Outils d’écriture'), false);
-    const saisie = this.el.createDiv({ cls: 'zfa-ia-saisie' });
-    const champ = saisie.createEl('input', { type: 'text', attr: { placeholder: tr('Décrivez la modification…') } });
-    const envoi = saisie.createDiv({ cls: 'clickable-icon', attr: { 'aria-label': tr('Envoyer') } });
-    obsidian.setIcon(envoi, 'arrow-up');
-    const libre = () => {
+    const pile = this.el.createDiv({ cls: 'zfa-ia-pastilles' });
+    const libre = pile.createDiv({ cls: 'zfa-ia-pastille est-saisie' });
+    iconeIA(libre.createSpan({ cls: 'zfa-ia-pastille-icone' }));
+    const champ = libre.createEl('input', { type: 'text', attr: { placeholder: tr('Modifier avec Ariane') } });
+    champ.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
       const v = champ.value.trim();
       if (v) this.lancer({ id: 'libre', nom: v, sortie: 'remplacer', diff: true, consigne: v });
-    };
-    champ.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); libre(); } });
-    envoi.addEventListener('click', libre);
-    const A = AssistantEcriture.ACTIONS;
-    const gros = this.el.createDiv({ cls: 'zfa-ia-gros' });
-    for (const a of A.slice(0, 2)) this._bouton(gros, a, 'zfa-ia-gros-bouton');
-    const tons = this.el.createDiv({ cls: 'zfa-ia-tons' });
-    for (const a of A.slice(2, 5)) this._bouton(tons, a, 'zfa-ia-ton');
-    this.el.createDiv({ cls: 'zfa-ia-trait' });
-    const liste = this.el.createDiv({ cls: 'zfa-ia-liste' });
-    for (const a of A.slice(5)) this._bouton(liste, a, 'zfa-ia-ligne');
+    });
+    champ.addEventListener('focus', () => { this.discret = false; });
+    this._pastille(pile, 'search-check', tr('Relire'), '', () => this.lancer(AssistantEcriture.action('relire')));
+    const reecrire = this._pastille(pile, 'pen-line', tr('Réécrire'), 'est-bleue', (e) => {
+      const menu = new obsidian.Menu();
+      for (const a of AssistantEcriture.ACTIONS.filter((x) => x.id !== 'relire' && x.id !== 'avis')) {
+        if (a.id === 'resume') menu.addSeparator();
+        menu.addItem((i) => i.setTitle(tr(a.nom)).setIcon(a.icone).onClick(() => this.lancer(a)));
+      }
+      if (MoteurAppleIA.disponible()) {
+        menu.addSeparator();
+        menu.addItem((i) => i.setTitle(tr('Outils d’écriture d’Apple…')).setIcon('app-window')
+          .onClick(() => this.greffon.outilsEcritureApple(this.vue)));
+      }
+      const r = reecrire.getBoundingClientRect();
+      menu.showAtPosition({ x: r.left, y: r.bottom + 4 }, this.doc);
+      e.stopPropagation();
+    });
+    obsidian.setIcon(reecrire.createSpan({ cls: 'zfa-ia-pastille-chevron' }), 'chevron-down');
+    this._pastille(pile, 'message-circle-question', tr('Qu’en pensez-vous ?'), 'est-bleue',
+      () => this.lancer(AssistantEcriture.action('avis')));
     this._placer();
-    setTimeout(() => champ.focus(), 0);
+    if (saisie) setTimeout(() => champ.focus(), 0);
   }
 
-  _bouton(hote, a, cls) {
-    const b = hote.createEl('button', { cls });
-    obsidian.setIcon(b.createSpan({ cls: 'zfa-ia-bouton-icone' }), a.icone);
-    b.createSpan({ text: tr(a.nom) });
-    b.addEventListener('click', () => this.lancer(a));
-    return b;
+  _carte(titre) {
+    this.el.empty();
+    const carte = this.el.createDiv({ cls: 'zfa-ia-carte zfa-ia-halo' });
+    const t = carte.createDiv({ cls: 'zfa-ia-tete' });
+    iconeIA(t.createSpan());
+    t.createSpan({ cls: 'zfa-ia-titre', text: titre });
+    const x = t.createDiv({ cls: 'clickable-icon', attr: { 'aria-label': tr('Fermer') } });
+    obsidian.setIcon(x, 'x');
+    x.addEventListener('click', () => this.fermer());
+    return carte;
   }
 
   // Lance une action : le passage miroite, le résultat arrive au fil de l'eau.
   lancer(a) {
-    if (!a) return;
+    if (!a || !this.el) return;
+    this.discret = false;
+    if (a.id === 'avis') { this._avis(); return; }
     this.action = a;
     this.resultat = '';
-    this.el.empty();
-    this.el.addClass('est-resultat');
-    this._entete(tr(a.nom), true);
-    const corps = this.el.createDiv({ cls: 'zfa-ia-resultat est-attente' });
-    const pied = this.el.createDiv({ cls: 'zfa-ia-pied' });
+    const carte = this._carte(tr(a.nom));
+    const corps = carte.createDiv({ cls: 'zfa-ia-resultat est-attente' });
+    const pied = carte.createDiv({ cls: 'zfa-ia-pied' });
     this._placer();
     this.greffon.marquerCibleIA(this.cm, this.from, this.to, 'miroir');
     const { texte, jetons } = AssistantEcriture.masquer(this.original);
-    const consigne = a.consigne + '\n\nTexte :\n' + texte;
-    this.encours = this.greffon.ecrireAvecIA(AssistantEcriture.INSTRUCTIONS, consigne, {
+    this.encours = this.greffon.ecrireAvecIA(AssistantEcriture.INSTRUCTIONS, a.consigne + '\n\nTexte :\n' + texte, {
       max: Math.min(3000, Math.max(400, Math.round(texte.length / 2))),
       surPartiel: (p) => {
         corps.removeClass('est-attente');
@@ -52177,9 +52375,10 @@ class PanneauEcritureIA {
     this.encours.fin.then((r) => {
       if (!this.el || this.action !== a) return;
       this.encours = null;
+      carte.removeClass('zfa-ia-halo');
       corps.removeClass('est-attente');
+      this.greffon.marquerCibleIA(this.cm, this.from, this.to, 'cible');
       if (!r || r.erreur) {
-        this.greffon.marquerCibleIA(this.cm, this.from, this.to, 'cible');
         corps.addClass('est-erreur');
         corps.setText(tr('L’IA n’a pas pu répondre : ') + ((r && r.erreur) || tr('aucune réponse')));
         this._pied(pied, false);
@@ -52187,7 +52386,6 @@ class PanneauEcritureIA {
       }
       const rendu = AssistantEcriture.restaurer(AssistantEcriture.nettoyer(r.texte), jetons);
       this.resultat = rendu.texte;
-      this.greffon.marquerCibleIA(this.cm, this.from, this.to, 'cible');
       corps.empty();
       if (a.diff && this.resultat !== this.original) {
         for (const d of AssistantEcriture.differences(this.original, this.resultat)) {
@@ -52196,14 +52394,57 @@ class PanneauEcritureIA {
       } else {
         corps.setText(this.resultat);
       }
-      if (a.diff && this.resultat === this.original) {
-        this.el.createDiv({ cls: 'zfa-ia-note', text: tr('Rien à changer.') });
-      }
+      if (a.diff && this.resultat === this.original) carte.createDiv({ cls: 'zfa-ia-note', text: tr('Rien à changer.') });
       if (rendu.manquants.length) {
-        this.el.createDiv({ cls: 'zfa-ia-note est-alerte',
+        carte.createDiv({ cls: 'zfa-ia-note est-alerte',
           text: tr('Attention : l’IA a perdu ') + rendu.manquants.length + tr(' lien(s) ou citation(s), à reprendre : ') + rendu.manquants.join(' ') });
       }
+      carte.appendChild(pied);
       this._pied(pied, true);
+      this._placer();
+    });
+  }
+
+  // « Qu'en pensez-vous ? » : des remarques sur le passage, posées en
+  // commentaires dans la marge (module « commentaires »), sinon listées.
+  _avis() {
+    const a = AssistantEcriture.action('avis');
+    this.action = a;
+    const carte = this._carte(tr(a.nom));
+    const corps = carte.createDiv({ cls: 'zfa-ia-resultat est-attente' });
+    this._placer();
+    this.greffon.marquerCibleIA(this.cm, this.from, this.to, 'miroir');
+    const { texte } = AssistantEcriture.masquer(this.original);
+    this.encours = this.greffon.ecrireAvecIA(AssistantEcriture.INSTRUCTIONS, a.consigne + '\n\nTexte :\n' + texte, { max: 900 });
+    this.encours.fin.then((r) => {
+      if (!this.el || this.action !== a) return;
+      this.encours = null;
+      carte.removeClass('zfa-ia-halo');
+      corps.removeClass('est-attente');
+      this.greffon.marquerCibleIA(this.cm, this.from, this.to, 'cible');
+      const j = r && !r.erreur ? Ariane.extraireJson(r.texte) : null;
+      const rem = j ? AssistantEcriture.remarques(j, this.original) : [];
+      if (!rem.length) {
+        corps.addClass('est-erreur');
+        corps.setText(r && r.erreur ? tr('L’IA n’a pas pu répondre : ') + r.erreur : tr('L’IA n’a rien trouvé à redire.'));
+        return;
+      }
+      const f = this.vue.file;
+      if (this.greffon.module('commentaires') && f && !this.greffon.noteTenueParAriane(f)) {
+        const n = this.greffon.poserRemarquesIA(this.editeur, this.from, this.to, this.original, rem);
+        if (n) {
+          this.fermer();
+          new obsidian.Notice(n + tr(' remarque(s) de l’IA ajoutée(s) en marge.'));
+          return;
+        }
+      }
+      corps.empty();
+      const ul = corps.createEl('ul', { cls: 'zfa-ia-remarques' });
+      for (const x of rem) {
+        const li = ul.createEl('li');
+        li.createDiv({ cls: 'zfa-ia-remarque-passage', text: this.original.slice(x.from, x.to).slice(0, 80) });
+        li.createDiv({ text: x.remarque });
+      }
       this._placer();
     });
   }
@@ -52211,13 +52452,6 @@ class PanneauEcritureIA {
   _pied(pied, ok) {
     pied.empty();
     const a = this.action;
-    const bouton = (texte, icone, cta, faire) => {
-      const b = pied.createEl('button', { cls: cta ? 'mod-cta' : '' });
-      if (icone) obsidian.setIcon(b.createSpan({ cls: 'zfa-ia-bouton-icone' }), icone);
-      b.createSpan({ text: texte });
-      b.addEventListener('click', faire);
-      return b;
-    };
     const refaire = pied.createDiv({ cls: 'clickable-icon', attr: { 'aria-label': tr('Recommencer') } });
     obsidian.setIcon(refaire, 'rotate-ccw');
     refaire.addEventListener('click', () => this.lancer(a));
@@ -52227,8 +52461,10 @@ class PanneauEcritureIA {
     copier.addEventListener('click', () => { navigator.clipboard.writeText(this.resultat); new obsidian.Notice(tr('Copié.')); });
     pied.createDiv({ cls: 'zfa-ia-espace' });
     const inserer = a.sortie === 'inserer';
-    bouton(inserer ? tr('Remplacer') : tr('Insérer après'), null, false, () => this._appliquer(!inserer));
-    bouton(inserer ? tr('Insérer après') : tr('Remplacer'), null, true, () => this._appliquer(inserer));
+    const b1 = pied.createEl('button', { text: inserer ? tr('Remplacer') : tr('Insérer après') });
+    b1.addEventListener('click', () => this._appliquer(!inserer));
+    const b2 = pied.createEl('button', { cls: 'mod-cta', text: inserer ? tr('Insérer après') : tr('Remplacer') });
+    b2.addEventListener('click', () => this._appliquer(inserer));
   }
 
   // Remplace la sélection, ou insère le résultat après elle, en une seule
@@ -52244,185 +52480,11 @@ class PanneauEcritureIA {
     }
     const texte = inserer ? '\n\n' + this.resultat : this.resultat;
     const de = inserer ? plage.to : plage.from;
-    ed.transaction({ changes: [{ from: ed.offsetToPos(de), to: ed.offsetToPos(plage.to), text: texte }] });
+    this.greffon.ecritureIA(() => ed.transaction({ changes: [{ from: ed.offsetToPos(de), to: ed.offsetToPos(plage.to), text: texte }] }));
     const debut = inserer ? plage.to + 2 : plage.from;
     this.fermer();
     this.greffon.marquerCibleIA(this.cm, debut, debut + this.resultat.length, 'nouveau');
     ed.focus();
-  }
-}
-
-// ── La barre de l'assistant ──
-//  Une barre flottante, au liseré lumineux, à la manière de Siri : on y
-//  écrit ce que l'on veut, Ariane reconnaît la demande (une tâche, un
-//  résumé de la journée, un outil d'écriture…) ou y répond directement, à
-//  partir de la note ouverte.
-class BarreAssistantIA {
-  constructor(greffon) {
-    this.greffon = greffon;
-    this.encours = null;
-    this.reponse = '';
-  }
-
-  static fermerTout() { if (BarreAssistantIA.ouverte) BarreAssistantIA.ouverte.fermer(); }
-
-  ouvrir() {
-    BarreAssistantIA.fermerTout();
-    BarreAssistantIA.ouverte = this;
-    const ws = this.greffon.app.workspace;
-    this.vue = ws.getActiveViewOfType(obsidian.MarkdownView);
-    this.doc = (this.vue && this.vue.containerEl.ownerDocument) || document;
-    const ed = this.vue && this.vue.editor;
-    this.selection = ed && ed.somethingSelected() ? ed.getSelection() : '';
-    this.el = this.doc.body.createDiv({ cls: 'zfa-ia-barre zfa-ia-halo' });
-    this.el.setAttribute('role', 'dialog');
-    this.el.setAttribute('aria-label', tr('Demander à l’assistant'));
-    const ligne = this.el.createDiv({ cls: 'zfa-ia-barre-ligne' });
-    iconeIA(ligne.createSpan({ cls: 'zfa-ia-barre-icone' }));
-    this.champ = ligne.createEl('input', { type: 'text',
-      attr: { placeholder: this.selection ? tr('Que faire de la sélection ?') : tr('Demandez à Ariane…') } });
-    this.zone = this.el.createDiv({ cls: 'zfa-ia-barre-zone' });
-    this._suggestions();
-    this.champ.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); this.envoyer(this.champ.value); }
-    });
-    this.surAppui = (e) => { if (!this.el.contains(e.target)) this.fermer(); };
-    this.surTouche = (e) => { if (e.key === 'Escape') { e.preventDefault(); this.fermer(); } };
-    this.doc.addEventListener('mousedown', this.surAppui, true);
-    this.doc.addEventListener('keydown', this.surTouche, true);
-    setTimeout(() => this.champ.focus(), 0);
-  }
-
-  fermer() {
-    if (this.encours) this.encours.annuler();
-    this.encours = null;
-    if (this.doc) {
-      this.doc.removeEventListener('mousedown', this.surAppui, true);
-      this.doc.removeEventListener('keydown', this.surTouche, true);
-    }
-    if (this.el) this.el.remove();
-    this.el = null;
-    if (BarreAssistantIA.ouverte === this) BarreAssistantIA.ouverte = null;
-  }
-
-  // Quelques demandes toutes prêtes, selon ce qui est ouvert.
-  _suggestions() {
-    this.zone.empty();
-    const g = this.greffon;
-    const idees = [];
-    if (this.selection) {
-      idees.push(['spell-check', tr('Relire la sélection'), 'Relis la sélection']);
-      idees.push(['align-left', tr('Résumer la sélection'), 'Résume la sélection']);
-      idees.push(['graduation-cap', tr('Plus soutenu'), 'Rends la sélection plus soutenue']);
-    } else if (this.vue) {
-      idees.push(['align-left', tr('Résumer cette note'), 'Résume cette note en quelques phrases.']);
-    }
-    if (g.module('taches')) idees.push(['list-plus', tr('Ajouter une tâche…'), null, 'Ajoute une tâche : ']);
-    if (g.module('temps')) idees.push(['sunset', tr('Résumer ma journée'), 'Résume ma journée']);
-    if (!idees.length) return;
-    const puces = this.zone.createDiv({ cls: 'zfa-ia-puces' });
-    for (const [icone, nom, demande, amorce] of idees) {
-      const p = puces.createEl('button', { cls: 'zfa-ia-puce' });
-      obsidian.setIcon(p.createSpan({ cls: 'zfa-ia-bouton-icone' }), icone);
-      p.createSpan({ text: nom });
-      p.addEventListener('click', () => {
-        if (amorce) { this.champ.value = amorce; this.champ.focus(); return; }
-        this.champ.value = demande;
-        this.envoyer(demande);
-      });
-    }
-  }
-
-  envoyer(demande) {
-    const t = String(demande || '').trim();
-    if (!t || this.encours) return;
-    const i = AssistantEcriture.intention(t);
-    const g = this.greffon;
-    if (i.genre === 'ecriture' && this.selection && this.vue) {
-      this.fermer();
-      g.ouvrirOutilsEcriture(this.vue, i.action);
-      return;
-    }
-    if (i.genre === 'tache' && g.module('taches')) {
-      this.fermer();
-      new ModaleAjoutLN(g, { texte: i.texte, lancer: true }).open();
-      return;
-    }
-    if (i.genre === 'journee' && g.module('temps') && g.resumerJournee) {
-      this.fermer();
-      g.avecHaloIA(() => g.resumerJournee(jourIsoDe(new Date())));
-      return;
-    }
-    if (i.genre === 'semaine' && g.module('temps') && g.resumerSemaineAffichee && g.activiteDisponible && g.activiteDisponible()) {
-      this.fermer();
-      g.avecHaloIA(() => g.resumerSemaineAffichee());
-      return;
-    }
-    if (i.genre === 'commentaire' && this.vue && g.module('commentaires') && this.vue.file) {
-      this.fermer();
-      g.commenterPassage(this.vue.editor, this.vue.file);
-      return;
-    }
-    this._repondre(t);
-  }
-
-  // Une réponse libre, à partir de la sélection ou de la note ouverte.
-  async _repondre(question) {
-    const g = this.greffon;
-    let contexte = this.selection;
-    let source = tr('la sélection');
-    if (!contexte && this.vue && this.vue.file) {
-      contexte = this.vue.editor ? this.vue.editor.getValue() : await g.app.vault.cachedRead(this.vue.file);
-      contexte = contexte.replace(/^---\n[\s\S]*?\n---\n?/, '');
-      source = tr('la note « ') + this.vue.file.basename + ' »';
-    }
-    // Le modèle d'Apple a une fenêtre courte : on borne le contexte.
-    const borne = 6000;
-    if (contexte.length > borne) contexte = contexte.slice(0, borne) + '\n[…]';
-    const consigne = contexte
-      ? tr('Voici ') + source + ' :\n\n' + contexte + '\n\n' + tr('Demande :') + ' ' + question
-      : question;
-    const instructions = 'Tu es l’assistant d’Ariane, dans Obsidian, pour un doctorant. Tu réponds en français, '
-      + 'brièvement et précisément, en Markdown, sans préambule. Si la demande porte sur le texte fourni, tu t’y tiens.';
-    this.zone.empty();
-    const tete = this.zone.createDiv({ cls: 'zfa-ia-barre-question', text: question });
-    tete.setAttribute('aria-hidden', 'true');
-    const corps = this.zone.createDiv({ cls: 'zfa-ia-resultat est-attente' });
-    const pied = this.zone.createDiv({ cls: 'zfa-ia-pied' });
-    this.champ.value = '';
-    this.champ.setAttribute('placeholder', tr('Une autre demande…'));
-    this.encours = g.ecrireAvecIA(instructions, consigne, {
-      max: 900,
-      surPartiel: (p) => { corps.removeClass('est-attente'); corps.setText(AssistantEcriture.nettoyer(p)); },
-    });
-    const r = await this.encours.fin;
-    this.encours = null;
-    if (!this.el) return;
-    corps.removeClass('est-attente');
-    if (!r || r.erreur) {
-      corps.addClass('est-erreur');
-      corps.setText(tr('L’IA n’a pas pu répondre : ') + ((r && r.erreur) || tr('aucune réponse')));
-      return;
-    }
-    this.reponse = AssistantEcriture.nettoyer(r.texte);
-    corps.setText(this.reponse);
-    const copier = pied.createDiv({ cls: 'clickable-icon', attr: { 'aria-label': tr('Copier') } });
-    obsidian.setIcon(copier, 'copy');
-    copier.addEventListener('click', () => { navigator.clipboard.writeText(this.reponse); new obsidian.Notice(tr('Copié.')); });
-    pied.createDiv({ cls: 'zfa-ia-espace' });
-    if (this.vue && this.vue.editor && this.vue.getMode() === 'source') {
-      const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Insérer dans la note') });
-      b.addEventListener('click', () => {
-        const ed = this.vue.editor;
-        const pos = ed.getCursor('to');
-        const debut = ed.posToOffset(pos);
-        const texte = (this.selection ? '\n\n' : '') + this.reponse;
-        ed.transaction({ changes: [{ from: pos, to: pos, text: texte }] });
-        this.greffon.marquerCibleIA(ed.cm, debut + (this.selection ? 2 : 0), debut + texte.length, 'nouveau');
-        this.fermer();
-        ed.focus();
-      });
-    }
   }
 }
 
