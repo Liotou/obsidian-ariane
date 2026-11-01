@@ -1567,8 +1567,14 @@ const avecNoteBiblio = (Base) => class extends Base {
       async (c) => { const f = cibleFichier(c); return f && f.extension === 'md' ? this.app.vault.cachedRead(f) : null; },
       async (c) => { const f = cibleFichier(c); return f ? this.cheminAbsoluVault(f.path) : null; });
     let md = footnotesVersCitations(deplie, resoudre, citeDans);
+    // Les commentaires en marge deviennent des commentaires Word ; fils
+    // reçoit de quoi rattacher ensuite réponses et résolutions.
+    const fils = [];
     md = preparerMarkdownExport(md, resoudre, {
       citeDans,
+      commentaires: this.settings.exportCommentaires || 'tous',
+      auteurCommentaires: this.auteurCommentaires ? this.auteurCommentaires() : '',
+      fils,
       styleEncadre: this.settings.exportStyleEncadre || 'Items de réflexion',
       insecables: this.settings.exportInsecables !== false,
       decalerTitres: this.settings.exportDecalerTitres !== false,
@@ -1603,12 +1609,35 @@ const avecNoteBiblio = (Base) => class extends Base {
       });
       await this.remapperStyles(outPath, env);
       await this.finirDocument(outPath, env, file);
+      await this.enfilerCommentaires(outPath, env, fils);
       notice.hide();
       new obsidian.Notice(tr('Export terminé : ') + file.basename + '.docx (dans « ' + this.settings.exportDossier + ' »).');
     } catch (e) {
       notice.hide();
       new obsidian.Notice(tr('Export — échec : ') + (e && e.message ? e.message : e) + ' — pandoc installé ? Zotero lancé ?');
       console.error('[Ariane] export word', e);
+    } finally {
+      try { fs.unlinkSync(tmp); } catch (e) { /* */ }
+    }
+  }
+
+  // Pandoc écrit les réponses comme des commentaires isolés et ignore la
+  // résolution : la finition les rattache en fil, comme Word le fait.
+  async enfilerCommentaires(chemin, env, fils) {
+    if (!fils.some((f) => f.parent != null || f.fait)) return;
+    const fs = require('fs'), os = require('os'), pathMod = require('path');
+    const script = this.cheminScriptPandoc('finition.py');
+    if (!fs.existsSync(script)) return;
+    const tmp = pathMod.join(os.tmpdir(), 'ariane-fils-' + Date.now() + '.json');
+    fs.writeFileSync(tmp, JSON.stringify(fils), 'utf8');
+    try {
+      await new Promise((resolve, reject) => {
+        executerPython([script, '--fils', chemin, tmp], { env },
+          (e, so, se) => (e ? reject(new Error(String(se || e.message).slice(0, 300))) : resolve()));
+      });
+    } catch (e) {
+      new obsidian.Notice(tr('Réponses aux commentaires non rattachées : ') + (e && e.message ? e.message : e), 10000);
+      console.error('[Ariane] fils de commentaires', e);
     } finally {
       try { fs.unlinkSync(tmp); } catch (e) { /* */ }
     }

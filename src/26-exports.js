@@ -22,6 +22,7 @@ module.exports._test = {
   extraireNotesFilles,
   // Export Word : préparation du markdown pour pandoc.
   preparerMarkdownExport,
+  texteCommentaireWord,
   deplierIntegrations,
   footnotesVersCitations,
   citationsNarrativesVersPandoc,

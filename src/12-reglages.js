@@ -2662,6 +2662,15 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("« 2.1 Titre » devient « Titre » : Word numérote seul."))
       .addToggle((t) => t.setValue(s.exportRetirerNumerotation !== false).onChange(async (v) => { s.exportRetirerNumerotation = v; await maj(); }));
     new obsidian.Setting(c)
+      .setName(tr('Commentaires en marge'))
+      .setDesc(tr("Deviennent des commentaires Word sur le même passage, avec leur auteur, leur date et leurs réponses. Un commentaire résolu l'est aussi dans Word."))
+      .addDropdown((d) => d
+        .addOption('tous', tr('Tous'))
+        .addOption('ouverts', tr('Sauf les résolus'))
+        .addOption('aucun', tr('Aucun'))
+        .setValue(s.exportCommentaires || 'tous')
+        .onChange(async (v) => { s.exportCommentaires = v; await maj(); }));
+    new obsidian.Setting(c)
       .setName(tr('Rattacher les en-têtes du modèle'))
       .setDesc(tr("Pandoc écrit sa propre section et laisse les en-têtes orphelins. Désactiver ne se justifie qu'en cas de difficulté."))
       .addToggle((t) => t.setValue(s.exportEntetes !== false).onChange(async (v) => { s.exportEntetes = v; await maj(); }));

@@ -261,13 +261,56 @@ test("code fences inside a callout: fence lines are not part of the rendered tex
   assert.equal(src.slice(hit.from, hit.to), "let a_b = 1;");
 });
 
-test('export Word : les balises disparaissent, le passage reste', () => {
+test('export Word : le commentaire devient un commentaire Word sur le même passage', () => {
   const { preparerMarkdownExport } = Ariane._test;
-  const doc = C.appliquer('Un passage commenté.', C.entourer('Un passage commenté.', 3, 10, 'Note « x »', 'k1', 'blue'));
+  const doc = C.appliquer('Un passage commenté.', C.entourer('Un passage commenté.', 3, 10, 'Note « x »', 'k1', 'blue',
+    { auteur: 'Elliot', heure: '2026-10-31 14:20' }));
   assert.ok(doc.includes('ann-s'));
   const sortie = preparerMarkdownExport(doc, () => null);
   assert.ok(!sortie.includes('ann-'), sortie);
-  assert.ok(sortie.includes('Un passage commenté.'));
+  assert.equal(sortie, 'Un [Note «\u00a0x\u00a0»]{.comment-start id="0" author="Elliot" date="2026-10-31T14:20:00Z"}'
+    + 'passage[]{.comment-end id="0"} commenté.');
+  // Sans commentaire, le passage reste seul.
+  assert.equal(preparerMarkdownExport(doc, () => null, { commentaires: 'aucun' }), 'Un passage commenté.');
+});
+
+test('export Word : réponses en fil, résolus marqués ou écartés', () => {
+  const { preparerMarkdownExport } = Ariane._test;
+  const base = 'Premier passage. Second passage.';
+  let doc = C.appliquer(base, C.entourer(base, 0, 7, 'À revoir', 'k1', 'yellow', {
+    auteur: 'Elliot', heure: '2026-10-31 14:20',
+    reponses: [{ auteur: 'Claude', heure: '2026-10-31 15:00', texte: 'Fait.' }],
+  }));
+  const i = doc.indexOf('Second');
+  doc = C.appliquer(doc, C.entourer(doc, i, i + 6, 'Clos', 'k2', 'blue', { auteur: 'Elliot', resolu: true }));
+  const fils = [];
+  const s = preparerMarkdownExport(doc, () => null, { fils, auteurCommentaires: 'Moi' });
+  assert.equal(s, '[À revoir]{.comment-start id="0" author="Elliot" date="2026-10-31T14:20:00Z"}'
+    + '[Fait.]{.comment-start id="1" author="Claude" date="2026-10-31T15:00:00Z"}'
+    + 'Premier[]{.comment-end id="0"}[]{.comment-end id="1"} passage. '
+    + '[Clos]{.comment-start id="2" author="Elliot"}Second[]{.comment-end id="2"} passage.');
+  assert.deepEqual(fils, [
+    { id: 0, parent: null, fait: false },
+    { id: 1, parent: 0, fait: false },
+    { id: 2, parent: null, fait: true },
+  ]);
+  const ouverts = preparerMarkdownExport(doc, () => null, { commentaires: 'ouverts' });
+  assert.ok(ouverts.includes('comment-start id="1"') && !ouverts.includes('Clos'), ouverts);
+  assert.ok(!ouverts.includes('ann-'));
+});
+
+test('export Word : texte du commentaire inerte, commentaire tombé avec son titre', () => {
+  const { preparerMarkdownExport, texteCommentaireWord } = Ariane._test;
+  assert.equal(texteCommentaireWord('Voir [[@adner2017|Adner]] et @x [y]\nsuite *ici*', false),
+    'Voir Adner et \\@x \\[y\\]\\\nsuite \\*ici\\*');
+  // L'auteur porte des guillemets : l'attribut reste bien formé.
+  const base = 'Texte.';
+  const doc = C.appliquer(base, C.entourer(base, 0, 5, 'N', 'k1', 'yellow', { auteur: 'A "B"' }));
+  assert.match(preparerMarkdownExport(doc, () => null), /author="A \\"B\\""/);
+  // Un commentaire qui court du titre « # » (retiré) au corps ne laisse rien.
+  const t = '# Titre\n\nCorps.';
+  const d2 = C.appliquer(t, C.entourer(t, 2, t.length - 1, 'N', 'k1', 'yellow'));
+  assert.equal(preparerMarkdownExport(d2, () => null), 'Corps.');
 });
 
 test('heure lisible : à la façon d’Obsidian, l’heure exacte gardée en infobulle', () => {

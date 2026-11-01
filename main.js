@@ -973,6 +973,11 @@ const TEXTES = {
     "Chasse fixe": "Fixed width",
     "Chaîne détectant une note source à traiter.": "String used to detect a source note worth processing.",
     "Chemin de pandoc": "Path to pandoc",
+    "Deviennent des commentaires Word sur le même passage, avec leur auteur, leur date et leurs réponses. Un commentaire résolu l'est aussi dans Word.": "They become Word comments on the same passage, with their author, date and replies. A resolved comment is resolved in Word too.",
+    "Sauf les résolus": "All but resolved ones",
+    "Tous": "All",
+    "Aucun": "None",
+    "Réponses aux commentaires non rattachées : ": "Comment replies not threaded: ",
     "Choisissez la fiche Zotero correspondante :": "Choose the matching Zotero entry:",
     "Cible automatique : en survolant le texte, l’appel de note se place en fin de la phrase visée ; en survolant la marge gauche du paragraphe, il se place en fin de paragraphe. La zone visée est surlignée pendant le glisser.": "Automatic target: hovering the text places the citation at the end of the sentence under the cursor, hovering the left margin places it at the end of the paragraph. The target area is highlighted while you drag.",
     "Citation  (>)": "Quote  (>)",
@@ -2655,6 +2660,7 @@ const DEFAULT_SETTINGS = {
   exportRetirerNumerotation: true,  // Word numérote seul
   exportStyleEncadre: 'Items de réflexion',
   exportInsecables: true,       // espaces insécables devant ; : ! ? et autour des guillemets
+  exportCommentaires: 'tous',   // commentaires en marge -> Word : tous, ouverts, aucun
   exportStyleEnteteTableau: 'Titre de tableau',
   exportStyleCelluleTableau: 'Champ de tableau',
   exportEntetes: true,          // rattacher les en-têtes du modèle
@@ -4992,9 +4998,10 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
   // 1 bis. Blocs qu'Ariane tient dans la note (sessions d'une tâche…) : ce
   //    sont des relevés, non du texte.
   s = s.replace(/<!--\s*ariane:([\w-]+)\s*-->[\s\S]*?<!--\s*\/ariane:\1\s*-->\n?/g, '');
-  // 1 bis bis. Les commentaires en marge (section 23) : leurs balises
-  //    disparaissent, le passage commenté reste.
-  s = s.replace(/<span\b[^>]*\bclass="ann-[se]"[^>]*><\/span>/g, '');
+  // 1 bis bis. Les commentaires en marge (section 23) : des repères inertes
+  //    pour l'instant, de vrais commentaires Word à la toute fin.
+  const coms = reperesCommentaires(s, o.commentaires || 'tous');
+  s = coms.texte;
   // 1 ter. Les filets « --- » : le modèle souligne déjà ses titres, et un
   //    filet de plus se dessinait en double trait. Hors tableaux.
   s = s.replace(/^[ \t]*(?:-[ \t]*){3,}$|^[ \t]*(?:\*[ \t]*){3,}$|^[ \t]*(?:_[ \t]*){3,}$/gm, '');
@@ -5042,7 +5049,97 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
   //    ligne.
   if (o.insecables !== false) s = insecablesFrancais(s);
 
+  // 9. Les repères des commentaires deviennent des commentaires Word.
+  s = commentairesVersPandoc(s, coms.liste, o);
+
   return s.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// Commentaires en marge -> vrais commentaires Word. Pandoc en écrit un pour
+// chaque paire de spans « comment-start » (qui porte le texte, l'auteur, la
+// date) et « comment-end », bornant le passage, même sur plusieurs
+// paragraphes. Les balises sont d'abord réduites à des repères inertes, que
+// les passes suivantes (citations, liens, titres, insécables) laissent en
+// paix ; ils ne deviennent des spans qu'une fois le texte arrêté. Un repère
+// dont le jumeau est tombé avec son bloc (titre « # », bibliographie)
+// s'efface, plutôt que d'ouvrir un commentaire sans fin.
+//
+// mode : 'tous', 'ouverts' (sans les résolus) ou 'aucun'.
+const COM_REPERE = /([se])(\d+)/g;
+
+function reperesCommentaires(texte, mode) {
+  const liste = [];
+  const poses = [];
+  if (mode !== 'aucun') {
+    for (const c of CommentairesMarge.lire(texte)) {
+      if (mode === 'ouverts' && c.resolu) continue;
+      const n = liste.push(c) - 1;
+      poses.push({ from: c.debut.from, to: c.debut.to, par: 's' + n + '' });
+      poses.push({ from: c.fin.from, to: c.fin.to, par: 'e' + n + '' });
+    }
+  }
+  let s = String(texte);
+  for (const p of poses.sort((a, b) => b.from - a.from)) s = s.slice(0, p.from) + p.par + s.slice(p.to);
+  // Ce qui reste : commentaires écartés, balises orphelines.
+  s = s.replace(/<span\b[^>]*\bclass="ann-[se]"[^>]*><\/span>/g, '');
+  return { texte: s, liste };
+}
+
+// Le texte d'un commentaire, en markdown inerte : liens aplatis, symboles
+// échappés (un « @ » ferait une citation, un crochet romprait le span), une
+// ligne par saut de ligne.
+function texteCommentaireWord(t, insecables) {
+  let s = String(t || '')
+    .replace(/\[\[[^\]\n]*\|([^\]\n]+)\]\]/g, '$1')
+    .replace(/\[\[([^\]|#\n]+)(?:#[^\]|\n]*)?\]\]/g, (m, x) => x.split('/').pop().replace(/^@/, '').trim());
+  if (insecables) s = insecablesFrancais(s);
+  return s.split(/\s*\n\s*/).filter(Boolean)
+    .map((l) => l.replace(/[\\`*_[\]{}<>$@^~#|]/g, '\\$&'))
+    .join('\\\n');
+}
+
+// « AAAA-MM-JJ HH:mm » -> date Word. Word écrit l'heure locale suivie d'un
+// « Z » : on fait de même, pour que l'heure lue soit celle de la carte.
+function dateCommentaireWord(h) {
+  const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$/.exec(String(h || '').trim());
+  return m ? m[1] + 'T' + m[2] + ':00Z' : '';
+}
+
+// Remplace les repères par les spans de pandoc. Les réponses deviennent des
+// commentaires sur le même passage, juste après celui qu'elles suivent ; la
+// finition (finition.py --fils) les rattache ensuite en fil de discussion.
+// o.fils, s'il est donné, reçoit pour chaque commentaire écrit { id, parent,
+// fait } : parent est l'id du commentaire d'origine, fait vaut pour résolu.
+function commentairesVersPandoc(texte, liste, opts) {
+  const o = opts || {};
+  const vus = { s: new Set(), e: new Set() };
+  for (const m of String(texte).matchAll(COM_REPERE)) vus[m[1]].add(m[2]);
+  const attr = (v) => '"' + String(v).replace(/[\\"]/g, '\\$&') + '"';
+  const auteurDefaut = o.auteurCommentaires || '';
+  let suivant = 0;
+  const ids = new Map();               // rang du commentaire -> ids Word (lui, puis ses réponses)
+  const idsDe = (n) => {
+    if (!ids.has(n)) {
+      const c = liste[n];
+      const fil = [c].concat(c.reponses.map((r) => ({ note: r.texte, auteur: r.auteur, heure: r.heure })));
+      const v = fil.map((x) => ({ x, id: suivant++ }));
+      for (const e of v) {
+        if (o.fils) o.fils.push({ id: e.id, parent: e === v[0] ? null : v[0].id, fait: !!c.resolu });
+      }
+      ids.set(n, v);
+    }
+    return ids.get(n);
+  };
+  return String(texte).replace(COM_REPERE, (t, k, n) => {
+    if (!liste[n] || !vus.s.has(n) || !vus.e.has(n)) return '';
+    const fil = idsDe(n);
+    if (k === 'e') return fil.map((e) => '[]{.comment-end id="' + e.id + '"}').join('');
+    return fil.map(({ x, id }) => {
+      const date = dateCommentaireWord(x.heure);
+      return '[' + texteCommentaireWord(x.note, o.insecables !== false) + ']{.comment-start id="' + id + '"'
+        + ' author=' + attr(x.auteur || auteurDefaut) + (date ? ' date=' + attr(date) : '') + '}';
+    }).join('');
+  });
 }
 
 // Deux écarts entre Obsidian et pandoc, tous deux dus aux lignes vides que
@@ -13233,8 +13330,14 @@ const avecNoteBiblio = (Base) => class extends Base {
       async (c) => { const f = cibleFichier(c); return f && f.extension === 'md' ? this.app.vault.cachedRead(f) : null; },
       async (c) => { const f = cibleFichier(c); return f ? this.cheminAbsoluVault(f.path) : null; });
     let md = footnotesVersCitations(deplie, resoudre, citeDans);
+    // Les commentaires en marge deviennent des commentaires Word ; fils
+    // reçoit de quoi rattacher ensuite réponses et résolutions.
+    const fils = [];
     md = preparerMarkdownExport(md, resoudre, {
       citeDans,
+      commentaires: this.settings.exportCommentaires || 'tous',
+      auteurCommentaires: this.auteurCommentaires ? this.auteurCommentaires() : '',
+      fils,
       styleEncadre: this.settings.exportStyleEncadre || 'Items de réflexion',
       insecables: this.settings.exportInsecables !== false,
       decalerTitres: this.settings.exportDecalerTitres !== false,
@@ -13269,12 +13372,35 @@ const avecNoteBiblio = (Base) => class extends Base {
       });
       await this.remapperStyles(outPath, env);
       await this.finirDocument(outPath, env, file);
+      await this.enfilerCommentaires(outPath, env, fils);
       notice.hide();
       new obsidian.Notice(tr('Export terminé : ') + file.basename + '.docx (dans « ' + this.settings.exportDossier + ' »).');
     } catch (e) {
       notice.hide();
       new obsidian.Notice(tr('Export — échec : ') + (e && e.message ? e.message : e) + ' — pandoc installé ? Zotero lancé ?');
       console.error('[Ariane] export word', e);
+    } finally {
+      try { fs.unlinkSync(tmp); } catch (e) { /* */ }
+    }
+  }
+
+  // Pandoc écrit les réponses comme des commentaires isolés et ignore la
+  // résolution : la finition les rattache en fil, comme Word le fait.
+  async enfilerCommentaires(chemin, env, fils) {
+    if (!fils.some((f) => f.parent != null || f.fait)) return;
+    const fs = require('fs'), os = require('os'), pathMod = require('path');
+    const script = this.cheminScriptPandoc('finition.py');
+    if (!fs.existsSync(script)) return;
+    const tmp = pathMod.join(os.tmpdir(), 'ariane-fils-' + Date.now() + '.json');
+    fs.writeFileSync(tmp, JSON.stringify(fils), 'utf8');
+    try {
+      await new Promise((resolve, reject) => {
+        executerPython([script, '--fils', chemin, tmp], { env },
+          (e, so, se) => (e ? reject(new Error(String(se || e.message).slice(0, 300))) : resolve()));
+      });
+    } catch (e) {
+      new obsidian.Notice(tr('Réponses aux commentaires non rattachées : ') + (e && e.message ? e.message : e), 10000);
+      console.error('[Ariane] fils de commentaires', e);
     } finally {
       try { fs.unlinkSync(tmp); } catch (e) { /* */ }
     }
@@ -32108,6 +32234,15 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Retirer la numérotation saisie à la main'))
       .setDesc(tr("« 2.1 Titre » devient « Titre » : Word numérote seul."))
       .addToggle((t) => t.setValue(s.exportRetirerNumerotation !== false).onChange(async (v) => { s.exportRetirerNumerotation = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Commentaires en marge'))
+      .setDesc(tr("Deviennent des commentaires Word sur le même passage, avec leur auteur, leur date et leurs réponses. Un commentaire résolu l'est aussi dans Word."))
+      .addDropdown((d) => d
+        .addOption('tous', tr('Tous'))
+        .addOption('ouverts', tr('Sauf les résolus'))
+        .addOption('aucun', tr('Aucun'))
+        .setValue(s.exportCommentaires || 'tous')
+        .onChange(async (v) => { s.exportCommentaires = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Rattacher les en-têtes du modèle'))
       .setDesc(tr("Pandoc écrit sa propre section et laisse les en-têtes orphelins. Désactiver ne se justifie qu'en cas de difficulté."))
@@ -53328,6 +53463,7 @@ module.exports._test = {
   extraireNotesFilles,
   // Export Word : préparation du markdown pour pandoc.
   preparerMarkdownExport,
+  texteCommentaireWord,
   deplierIntegrations,
   footnotesVersCitations,
   citationsNarrativesVersPandoc,

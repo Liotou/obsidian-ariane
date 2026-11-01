@@ -163,9 +163,10 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
   // 1 bis. Blocs qu'Ariane tient dans la note (sessions d'une tâche…) : ce
   //    sont des relevés, non du texte.
   s = s.replace(/<!--\s*ariane:([\w-]+)\s*-->[\s\S]*?<!--\s*\/ariane:\1\s*-->\n?/g, '');
-  // 1 bis bis. Les commentaires en marge (section 23) : leurs balises
-  //    disparaissent, le passage commenté reste.
-  s = s.replace(/<span\b[^>]*\bclass="ann-[se]"[^>]*><\/span>/g, '');
+  // 1 bis bis. Les commentaires en marge (section 23) : des repères inertes
+  //    pour l'instant, de vrais commentaires Word à la toute fin.
+  const coms = reperesCommentaires(s, o.commentaires || 'tous');
+  s = coms.texte;
   // 1 ter. Les filets « --- » : le modèle souligne déjà ses titres, et un
   //    filet de plus se dessinait en double trait. Hors tableaux.
   s = s.replace(/^[ \t]*(?:-[ \t]*){3,}$|^[ \t]*(?:\*[ \t]*){3,}$|^[ \t]*(?:_[ \t]*){3,}$/gm, '');
@@ -213,7 +214,97 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
   //    ligne.
   if (o.insecables !== false) s = insecablesFrancais(s);
 
+  // 9. Les repères des commentaires deviennent des commentaires Word.
+  s = commentairesVersPandoc(s, coms.liste, o);
+
   return s.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// Commentaires en marge -> vrais commentaires Word. Pandoc en écrit un pour
+// chaque paire de spans « comment-start » (qui porte le texte, l'auteur, la
+// date) et « comment-end », bornant le passage, même sur plusieurs
+// paragraphes. Les balises sont d'abord réduites à des repères inertes, que
+// les passes suivantes (citations, liens, titres, insécables) laissent en
+// paix ; ils ne deviennent des spans qu'une fois le texte arrêté. Un repère
+// dont le jumeau est tombé avec son bloc (titre « # », bibliographie)
+// s'efface, plutôt que d'ouvrir un commentaire sans fin.
+//
+// mode : 'tous', 'ouverts' (sans les résolus) ou 'aucun'.
+const COM_REPERE = /([se])(\d+)/g;
+
+function reperesCommentaires(texte, mode) {
+  const liste = [];
+  const poses = [];
+  if (mode !== 'aucun') {
+    for (const c of CommentairesMarge.lire(texte)) {
+      if (mode === 'ouverts' && c.resolu) continue;
+      const n = liste.push(c) - 1;
+      poses.push({ from: c.debut.from, to: c.debut.to, par: 's' + n + '' });
+      poses.push({ from: c.fin.from, to: c.fin.to, par: 'e' + n + '' });
+    }
+  }
+  let s = String(texte);
+  for (const p of poses.sort((a, b) => b.from - a.from)) s = s.slice(0, p.from) + p.par + s.slice(p.to);
+  // Ce qui reste : commentaires écartés, balises orphelines.
+  s = s.replace(/<span\b[^>]*\bclass="ann-[se]"[^>]*><\/span>/g, '');
+  return { texte: s, liste };
+}
+
+// Le texte d'un commentaire, en markdown inerte : liens aplatis, symboles
+// échappés (un « @ » ferait une citation, un crochet romprait le span), une
+// ligne par saut de ligne.
+function texteCommentaireWord(t, insecables) {
+  let s = String(t || '')
+    .replace(/\[\[[^\]\n]*\|([^\]\n]+)\]\]/g, '$1')
+    .replace(/\[\[([^\]|#\n]+)(?:#[^\]|\n]*)?\]\]/g, (m, x) => x.split('/').pop().replace(/^@/, '').trim());
+  if (insecables) s = insecablesFrancais(s);
+  return s.split(/\s*\n\s*/).filter(Boolean)
+    .map((l) => l.replace(/[\\`*_[\]{}<>$@^~#|]/g, '\\$&'))
+    .join('\\\n');
+}
+
+// « AAAA-MM-JJ HH:mm » -> date Word. Word écrit l'heure locale suivie d'un
+// « Z » : on fait de même, pour que l'heure lue soit celle de la carte.
+function dateCommentaireWord(h) {
+  const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$/.exec(String(h || '').trim());
+  return m ? m[1] + 'T' + m[2] + ':00Z' : '';
+}
+
+// Remplace les repères par les spans de pandoc. Les réponses deviennent des
+// commentaires sur le même passage, juste après celui qu'elles suivent ; la
+// finition (finition.py --fils) les rattache ensuite en fil de discussion.
+// o.fils, s'il est donné, reçoit pour chaque commentaire écrit { id, parent,
+// fait } : parent est l'id du commentaire d'origine, fait vaut pour résolu.
+function commentairesVersPandoc(texte, liste, opts) {
+  const o = opts || {};
+  const vus = { s: new Set(), e: new Set() };
+  for (const m of String(texte).matchAll(COM_REPERE)) vus[m[1]].add(m[2]);
+  const attr = (v) => '"' + String(v).replace(/[\\"]/g, '\\$&') + '"';
+  const auteurDefaut = o.auteurCommentaires || '';
+  let suivant = 0;
+  const ids = new Map();               // rang du commentaire -> ids Word (lui, puis ses réponses)
+  const idsDe = (n) => {
+    if (!ids.has(n)) {
+      const c = liste[n];
+      const fil = [c].concat(c.reponses.map((r) => ({ note: r.texte, auteur: r.auteur, heure: r.heure })));
+      const v = fil.map((x) => ({ x, id: suivant++ }));
+      for (const e of v) {
+        if (o.fils) o.fils.push({ id: e.id, parent: e === v[0] ? null : v[0].id, fait: !!c.resolu });
+      }
+      ids.set(n, v);
+    }
+    return ids.get(n);
+  };
+  return String(texte).replace(COM_REPERE, (t, k, n) => {
+    if (!liste[n] || !vus.s.has(n) || !vus.e.has(n)) return '';
+    const fil = idsDe(n);
+    if (k === 'e') return fil.map((e) => '[]{.comment-end id="' + e.id + '"}').join('');
+    return fil.map(({ x, id }) => {
+      const date = dateCommentaireWord(x.heure);
+      return '[' + texteCommentaireWord(x.note, o.insecables !== false) + ']{.comment-start id="' + id + '"'
+        + ' author=' + attr(x.auteur || auteurDefaut) + (date ? ' date=' + attr(date) : '') + '}';
+    }).join('');
+  });
 }
 
 // Deux écarts entre Obsidian et pandoc, tous deux dus aux lignes vides que

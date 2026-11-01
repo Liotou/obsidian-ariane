@@ -767,6 +767,11 @@ const TEXTES = {
     "Chasse fixe": "Fixed width",
     "Chaîne détectant une note source à traiter.": "String used to detect a source note worth processing.",
     "Chemin de pandoc": "Path to pandoc",
+    "Deviennent des commentaires Word sur le même passage, avec leur auteur, leur date et leurs réponses. Un commentaire résolu l'est aussi dans Word.": "They become Word comments on the same passage, with their author, date and replies. A resolved comment is resolved in Word too.",
+    "Sauf les résolus": "All but resolved ones",
+    "Tous": "All",
+    "Aucun": "None",
+    "Réponses aux commentaires non rattachées : ": "Comment replies not threaded: ",
     "Choisissez la fiche Zotero correspondante :": "Choose the matching Zotero entry:",
     "Cible automatique : en survolant le texte, l’appel de note se place en fin de la phrase visée ; en survolant la marge gauche du paragraphe, il se place en fin de paragraphe. La zone visée est surlignée pendant le glisser.": "Automatic target: hovering the text places the citation at the end of the sentence under the cursor, hovering the left margin places it at the end of the paragraph. The target area is highlighted while you drag.",
     "Citation  (>)": "Quote  (>)",
@@ -2449,6 +2454,7 @@ const DEFAULT_SETTINGS = {
   exportRetirerNumerotation: true,  // Word numérote seul
   exportStyleEncadre: 'Items de réflexion',
   exportInsecables: true,       // espaces insécables devant ; : ! ? et autour des guillemets
+  exportCommentaires: 'tous',   // commentaires en marge -> Word : tous, ouverts, aucun
   exportStyleEnteteTableau: 'Titre de tableau',
   exportStyleCelluleTableau: 'Champ de tableau',
   exportEntetes: true,          // rattacher les en-têtes du modèle

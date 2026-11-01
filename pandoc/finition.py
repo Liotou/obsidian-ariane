@@ -928,12 +928,132 @@ def verifier(chemin_modele):
     return 0
 
 
+# --------------------------------------------------------------------------
+# Fils de commentaires
+#
+# Pandoc écrit chaque commentaire à part : une réponse n'est pour Word qu'un
+# commentaire de plus sur le même passage, et rien n'y dit « résolu ». Word
+# tient ces deux renseignements dans commentsExtended.xml, qui désigne chaque
+# commentaire par l'identifiant (w14:paraId) de son dernier paragraphe.
+# --------------------------------------------------------------------------
+
+NS_W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
+NS_W15 = "http://schemas.microsoft.com/office/word/2012/wordml"
+NS_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+TYPE_CX = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
+CONTENU_CX = "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"
+
+
+def ignorer_espace(racine, prefixe, uri):
+    """Déclare l'espace « prefixe » sur la balise racine et le range parmi
+    ceux qu'un lecteur ancien peut ignorer."""
+    if "xmlns:%s=" % prefixe not in racine:
+        racine = racine[:-1] + ' xmlns:%s="%s">' % (prefixe, uri)
+    if "xmlns:mc=" not in racine:
+        racine = racine[:-1] + ' xmlns:mc="%s">' % NS_MC
+    m = re.search(r'mc:Ignorable="([^"]*)"', racine)
+    if not m:
+        return racine[:-1] + ' mc:Ignorable="%s">' % prefixe
+    if prefixe in m.group(1).split():
+        return racine
+    return racine[:m.start(1)] + m.group(1) + " " + prefixe + racine[m.end(1):]
+
+
+def enfiler_commentaires(pieces, fils):
+    """fils : [{"id": 3, "parent": 2, "fait": false}, …]. Rend le nombre de
+    commentaires rattachés à un fil ou marqués résolus."""
+    nom = "word/comments.xml"
+    if nom not in pieces:
+        return 0
+    xml = pieces[nom].decode("utf-8")
+    par_id = {str(f.get("id")): f for f in fils}
+    pris = set(re.findall(r'w14:paraId="([0-9A-Fa-f]{8})"', xml))
+    para = {}
+
+    def nouveau():
+        while True:
+            v = "%08X" % random.randint(1, 0x7FFFFFFF)
+            if v not in pris:
+                pris.add(v)
+                return v
+
+    morceaux, i = [], 0
+    for debut, fin in elements(xml, "w:comment"):
+        tete = re.match(r"<w:comment\b[^>]*>", xml[debut:fin]).group(0)
+        cid = re.search(r'w:id="([^"]*)"', tete)
+        ps = [m.start() for m in re.finditer(r"<w:p(?=[\s>/])", xml[debut:fin])]
+        if not cid or not ps:
+            continue
+        p = debut + ps[-1] + len("<w:p")
+        existant = re.match(r'[^>]*w14:paraId="([0-9A-Fa-f]{8})"', xml[p:])
+        if existant:
+            para[cid.group(1)] = existant.group(1)
+            continue
+        para[cid.group(1)] = nouveau()
+        morceaux.append(xml[i:p])
+        morceaux.append(' w14:paraId="%s" w14:textId="77777777"' % para[cid.group(1)])
+        i = p
+    morceaux.append(xml[i:])
+    xml = "".join(morceaux)
+    racine = re.search(r"<w:comments\b[^>]*>", xml)
+    xml = xml[:racine.start()] + ignorer_espace(racine.group(0), "w14", NS_W14) + xml[racine.end():]
+    pieces[nom] = xml.encode("utf-8")
+
+    lignes, touches = [], 0
+    for cid, pid in para.items():
+        f = par_id.get(cid) or {}
+        parent = para.get(str(f.get("parent"))) if f.get("parent") is not None else None
+        fait = "1" if f.get("fait") else "0"
+        if parent or fait == "1":
+            touches += 1
+        lignes.append('<w15:commentEx w15:paraId="%s"%s w15:done="%s"/>'
+                      % (pid, ' w15:paraIdParent="%s"' % parent if parent else "", fait))
+    pieces["word/commentsExtended.xml"] = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w15:commentsEx xmlns:w15="%s" xmlns:mc="%s" mc:Ignorable="w15">%s</w15:commentsEx>'
+        % (NS_W15, NS_MC, "".join(lignes))).encode("utf-8")
+
+    rels_nom = "word/_rels/document.xml.rels"
+    rels = pieces.get(rels_nom, b"").decode("utf-8")
+    if rels and TYPE_CX not in rels:
+        rid = "rIdArianeCx"
+        rels = rels.replace("</Relationships>",
+                            '<Relationship Id="%s" Type="%s" Target="commentsExtended.xml"/></Relationships>'
+                            % (rid, TYPE_CX))
+        pieces[rels_nom] = rels.encode("utf-8")
+    types = pieces.get("[Content_Types].xml", b"").decode("utf-8")
+    if types and "/word/commentsExtended.xml" not in types:
+        types = types.replace("</Types>",
+                              '<Override PartName="/word/commentsExtended.xml" ContentType="%s"/></Types>'
+                              % CONTENU_CX)
+        pieces["[Content_Types].xml"] = types.encode("utf-8")
+    return touches
+
+
+def fils(chemin, ffils):
+    """Mode « --fils » : rattache réponses et résolutions des commentaires."""
+    donnees = json.load(io.open(ffils, encoding="utf-8"))
+    with zipfile.ZipFile(chemin) as z:
+        pieces = {n: z.read(n) for n in z.namelist()}
+    n = enfiler_commentaires(pieces, donnees)
+    verifier_xml(pieces, ["word/comments.xml", "word/commentsExtended.xml",
+                          "word/_rels/document.xml.rels", "[Content_Types].xml"])
+    with zipfile.ZipFile(chemin, "w", zipfile.ZIP_DEFLATED) as z:
+        for nom, contenu in pieces.items():
+            z.writestr(nom, contenu)
+    print("commentaires en fil ou résolus : %d" % n)
+    return 0
+
+
 def main():
     if len(sys.argv) >= 3 and sys.argv[1] == "--verifier":
         return verifier(sys.argv[2])
+    if len(sys.argv) >= 4 and sys.argv[1] == "--fils":
+        return fils(sys.argv[2], sys.argv[3])
     if len(sys.argv) < 3:
         print("usage: finition.py document.docx ordres.json", file=sys.stderr)
         print("       finition.py --verifier modele.docx", file=sys.stderr)
+        print("       finition.py --fils document.docx fils.json", file=sys.stderr)
         return 2
     chemin, fordres = sys.argv[1], sys.argv[2]
     ordres = json.load(io.open(fordres, encoding="utf-8"))
