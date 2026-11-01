@@ -4594,9 +4594,10 @@ span.ann-s { display: none; }
    aux couleurs d'Apple, halo au bord de la fenêtre pendant que l'IA
    travaille, miroitement du passage en cours de réécriture. */
 @property --zfa-ia-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+/* Les couleurs seules : le dégradé, lui, se calcule sur chaque liseré, là
+   où son angle s'anime. Calculé ici, sur le corps, il serait figé. */
 body {
-  --zfa-ia-degrade: conic-gradient(from var(--zfa-ia-angle),
-    #ff9f0a, #ff375f, #bf5af2, #5e5ce6, #0a84ff, #64d2ff, #ff9f0a);
+  --zfa-ia-couleurs: #ff9f0a, #ff375f, #bf5af2, #5e5ce6, #0a84ff, #64d2ff, #ff9f0a;
   --zfa-ia-verre: color-mix(in srgb, var(--background-primary) 78%, transparent);
 }
 @keyframes zfa-ia-tourner { to { --zfa-ia-angle: 360deg; } }
@@ -4607,7 +4608,7 @@ body {
 .zfa-ia-halo::after {
   content: ''; position: absolute; inset: 0;
   border-radius: inherit; pointer-events: none;
-  background: var(--zfa-ia-degrade);
+  background: conic-gradient(from var(--zfa-ia-angle), var(--zfa-ia-couleurs));
   animation: zfa-ia-tourner 6s linear infinite;
 }
 /* Le trait net et la lueur : deux anneaux du même dégradé, le second flou. */
@@ -4759,14 +4760,19 @@ body {
 .zfa-ia-bord::before,
 .zfa-ia-bord::after {
   content: ''; position: absolute; inset: 0;
-  background: var(--zfa-ia-degrade);
+  background: conic-gradient(from var(--zfa-ia-angle), var(--zfa-ia-couleurs));
   animation: zfa-ia-tourner 4s linear infinite;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
 }
 .zfa-ia-bord::before { padding: 3px; }
-.zfa-ia-bord::after { padding: 14px; filter: blur(16px); opacity: 0.55; }
+.zfa-ia-bord::after {
+  padding: 14px; filter: blur(16px); opacity: 0.55;
+  /* La lueur tourne avec le trait, et respire. */
+  animation: zfa-ia-tourner 4s linear infinite, zfa-ia-respirer 2.4s ease-in-out infinite;
+}
+@keyframes zfa-ia-respirer { 50% { opacity: 0.85; } }
 .zfa-ia-bord.est-sortant { animation: zfa-ia-bord-sortie 0.45s ease both; }
 @keyframes zfa-ia-bord-entree { from { opacity: 0; } to { opacity: 1; } }
 @keyframes zfa-ia-bord-sortie { from { opacity: 1; } to { opacity: 0; } }
