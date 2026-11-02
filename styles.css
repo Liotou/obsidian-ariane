@@ -2397,14 +2397,20 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-poignee-haut:hover::after { opacity: 1; background: var(--interactive-accent); }
 
 /* Bandeau d'actions d'un créneau (dupliquer, commentaire, sous-tâches,
-   lignée), révélé au survol. Hors du bloc, au-dessus à droite : dedans, il
-   couvrait l'intitulé ou les poignées. Le bloc ne rogne plus son contenu par
-   overflow, qui couperait le bandeau, mais par clip-path, ouvert de 22 px
-   vers le haut seulement. Le 2 px sous les boutons est du rembourrage, pour
-   que le survol ne se perde pas entre le bloc et eux. */
-.zfa-cal-lignee-btns { position: absolute; bottom: 100%; right: 0; padding-bottom: 2px;
-  display: flex; gap: 2px; opacity: 0; transition: opacity 0.12s ease; z-index: 5; }
-.zfa-cal-bloc.zfa-cal-bloc-actions { overflow: visible; clip-path: inset(-22px 0 0 0); }
+   lignée), révélé au survol. Hors du bloc, en colonne contre son flanc
+   droit, dans le vide qui le sépare du filet : dedans, il couvrait
+   l'intitulé ou les poignées. Le bloc ne rogne plus son contenu par
+   overflow, qui couperait la colonne, mais par clip-path : le bloc lui-même,
+   plus une bande de 22 px à sa droite, qui descend sous un bloc court. Le
+   2 px à gauche des boutons est du rembourrage, pour que le survol ne se
+   perde pas entre le bloc et eux. */
+.zfa-cal-lignee-btns { position: absolute; left: 100%; top: 0; padding-left: 2px;
+  display: flex; flex-direction: column; gap: 2px; opacity: 0; transition: opacity 0.12s ease; z-index: 5; }
+.zfa-cal-bloc.zfa-cal-bloc-actions {
+  overflow: visible;
+  clip-path: polygon(0 0, calc(100% + 22px) 0, calc(100% + 22px) calc(100% + 80px),
+    100% calc(100% + 80px), 100% 100%, 0 100%);
+}
 .zfa-cal-bloc.zfa-cal-bloc-actions:hover { z-index: 6; }
 .zfa-cal-bloc.zfa-cal-bloc-actions:focus { outline-offset: -2px; }
 /* Bloc emporté ou fantôme : ombre entière, contenu rogné, pas de bandeau. */

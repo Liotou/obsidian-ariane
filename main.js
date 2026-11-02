@@ -44452,7 +44452,7 @@ class MoteurCalendrier extends MoteurVue {
               this._basculeLignee(t.ref, sens, bt);
             });
           }
-          // Les boutons sortent au-dessus du bloc, à droite (styles.css) : ils
+          // Les boutons sortent sur le flanc droit du bloc (styles.css) : ils
           // ne couvrent ni l'intitulé ni les poignées.
           bloc.classList.add('zfa-cal-bloc-actions');
           bloc.tabIndex = 0;
