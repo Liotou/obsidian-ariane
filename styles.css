@@ -2540,10 +2540,14 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-seance-mere { color: var(--text-muted); font-size: var(--font-ui-small); margin-bottom: var(--size-4-2); }
 .zfa-seance-liste { display: flex; flex-direction: column; gap: var(--size-2-1);
   max-height: 45vh; overflow-y: auto; margin-bottom: var(--size-4-3); }
+.zfa-seance-aide { color: var(--text-faint); font-size: var(--font-ui-smaller); margin: calc(-1 * var(--size-4-1)) 0 var(--size-4-2); }
 .zfa-seance-ligne { display: flex; align-items: center; gap: var(--size-4-2);
-  padding: var(--size-2-2) var(--size-4-1); border-radius: var(--radius-s); cursor: pointer; }
+  padding: var(--size-2-1) var(--size-4-1); border-radius: var(--radius-s); }
 .zfa-seance-ligne:hover { background: var(--background-modifier-hover); }
-.zfa-seance-titre { flex: 1 1 auto; min-width: 0; }
+.zfa-seance-ligne.est-retenue { background: var(--background-modifier-active-hover); }
+.zfa-seance-titre { flex: 1 1 auto; min-width: 0; cursor: pointer; }
+.zfa-seance-retenir { color: var(--text-faint); }
+.zfa-seance-retenir.est-active { color: var(--interactive-accent); }
 .zfa-seance-titre.est-terminee { text-decoration: line-through; color: var(--text-faint); }
 .zfa-seance-ref { color: var(--text-faint); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
 .zfa-seance-vide { color: var(--text-faint); font-size: var(--font-ui-small); padding: var(--size-2-2) var(--size-4-1); }

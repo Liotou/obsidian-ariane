@@ -711,6 +711,8 @@ class ModaleSeance extends obsidian.Modal {
     this.modalEl.addClass('zfa-seance-modale');
     titleEl.setText(tr('Sous-tâches de la séance'));
     contentEl.createDiv({ cls: 'zfa-seance-mere', text: this.o.mere.intitule || this.o.mere.ref });
+    contentEl.createDiv({ cls: 'zfa-seance-aide',
+      text: tr('Retenez avec l’icône de droite les sous-tâches à traiter pendant ce créneau.') });
     this.liste = contentEl.createDiv({ cls: 'zfa-seance-liste' });
     const ajout = contentEl.createDiv({ cls: 'zfa-seance-ajout' });
     const champ = ajout.createEl('input', { type: 'text',
@@ -766,14 +768,29 @@ class ModaleSeance extends obsidian.Modal {
       l.createDiv({ cls: 'zfa-seance-vide', text: tr('Aucune tâche fille pour l’instant. Créez-en une ci-dessous.') });
       return;
     }
-    const fini = (t) => t.statut === 'terminée' || t.terminee === true;
+    // La case dit si la tâche est faite, comme dans le bloc du calendrier ;
+    // le bouton de droite (ou un clic sur l'intitulé) la retient pour la
+    // séance. Un statut changé ici vaut tout de suite, sans attendre l'index.
+    const etats = this._etats || (this._etats = {});
+    const fini = (t) => (t.ref in etats ? etats[t.ref] : (t.statut === 'terminée' || t.terminee === true));
     const ligne = (hote, t) => {
-      const el = hote.createEl('label', { cls: 'zfa-seance-ligne' });
+      const retenue = this.choisies.has(t.ref);
+      const el = hote.createDiv({ cls: 'zfa-seance-ligne' + (retenue ? ' est-retenue' : '') });
       const cb = el.createEl('input', { type: 'checkbox' });
-      cb.checked = this.choisies.has(t.ref);
-      cb.addEventListener('change', () => this._cocher(t.ref, cb.checked));
-      el.createSpan({ cls: 'zfa-seance-titre' + (fini(t) ? ' est-terminee' : ''), text: t.intitule || t.ref });
+      cb.checked = fini(t);
+      cb.setAttr('aria-label', cb.checked ? tr('Rouvrir la tâche') : tr('Terminer la tâche'));
+      cb.addEventListener('change', async () => {
+        etats[t.ref] = cb.checked;
+        this._dessiner();
+        await this.o.greffon.majTache(t.ref, { statut: cb.checked ? 'terminée' : 'à faire' });
+      });
+      const titre = el.createSpan({ cls: 'zfa-seance-titre' + (fini(t) ? ' est-terminee' : ''), text: t.intitule || t.ref });
+      titre.addEventListener('click', () => this._cocher(t.ref, !retenue));
       el.createSpan({ cls: 'zfa-seance-ref', text: t.ref });
+      const bt = el.createEl('button', { cls: 'clickable-icon zfa-seance-retenir' + (retenue ? ' est-active' : ''),
+        attr: { 'aria-label': retenue ? tr('Retirer de la séance') : tr('Retenir pour la séance') } });
+      obsidian.setIcon(bt, 'calendar-check');
+      bt.addEventListener('click', () => this._cocher(t.ref, !retenue));
     };
     const ouvertes = filles.filter((t) => !fini(t));
     const closes = filles.filter(fini);
