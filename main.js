@@ -44452,11 +44452,9 @@ class MoteurCalendrier extends MoteurVue {
               this._basculeLignee(t.ref, sens, bt);
             });
           }
-          // Les boutons se posent au-dessus de la poignée basse. Un bloc trop
-          // court pour cela les garde au ras du bord, et sa poignée s'arrête
-          // avant eux (styles.css) : jamais l'un sur l'autre.
-          bloc.style.setProperty('--zfa-cal-nb-btns', btns.childElementCount);
-          if (haut < 40) bloc.classList.add('est-court');
+          // Les boutons sortent au-dessus du bloc, à droite (styles.css) : ils
+          // ne couvrent ni l'intitulé ni les poignées.
+          bloc.classList.add('zfa-cal-bloc-actions');
           bloc.tabIndex = 0;
           bloc.addEventListener('keydown', async (de) => {
             if (de.key === 'Delete' || de.key === 'Backspace') {
