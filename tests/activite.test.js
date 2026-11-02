@@ -30,6 +30,22 @@ test('choisirBucketsAW : fenêtres et absence de la même machine, navigateurs d
   assert.deepEqual(Ariane.choisirBucketsAW({}, 'mac'), { hote: '', fenetre: [], afk: [], web: [] });
 });
 
+test('choisirBucketsAW : le même Mac sous deux noms de réseau, anciens et nouveaux seaux lus', () => {
+  // Cas réel du 2 novembre 2026 : Obsidian voit « MacBook-Pro-de-Elliot.local »,
+  // ActivityWatch écrit depuis le 30 octobre sous « macbook-pro-de-elliot.home ».
+  const tous = {
+    'aw-watcher-window_MacBook-Pro-de-Elliot.local': { id: 'aw-watcher-window_MacBook-Pro-de-Elliot.local', type: 'currentwindow', hostname: 'MacBook-Pro-de-Elliot.local', last_updated: '2026-10-30T09:20' },
+    'aw-watcher-afk_MacBook-Pro-de-Elliot.local': { id: 'aw-watcher-afk_MacBook-Pro-de-Elliot.local', type: 'afkstatus', hostname: 'MacBook-Pro-de-Elliot.local' },
+    'aw-watcher-window_macbook-pro-de-elliot.home': { id: 'aw-watcher-window_macbook-pro-de-elliot.home', type: 'currentwindow', hostname: 'macbook-pro-de-elliot.home', last_updated: '2026-11-02T09:00' },
+    'aw-watcher-afk_macbook-pro-de-elliot.home': { id: 'aw-watcher-afk_macbook-pro-de-elliot.home', type: 'afkstatus', hostname: 'macbook-pro-de-elliot.home' },
+    'aw-watcher-window_pc': { id: 'aw-watcher-window_pc', type: 'currentwindow', hostname: 'pc', last_updated: '2026-11-02T10:00' },
+  };
+  const b = Ariane.choisirBucketsAW(tous, 'MacBook-Pro-de-Elliot.local');
+  assert.equal(b.hote, 'macbook-pro-de-elliot');
+  assert.deepEqual(b.fenetre, ['aw-watcher-window_MacBook-Pro-de-Elliot.local', 'aw-watcher-window_macbook-pro-de-elliot.home']);
+  assert.deepEqual(b.afk, ['aw-watcher-afk_MacBook-Pro-de-Elliot.local', 'aw-watcher-afk_macbook-pro-de-elliot.home']);
+});
+
 test('fusionnerIntervalles et couperParIntervalles', () => {
   assert.deepEqual(Ariane.fusionnerIntervalles([[5, 8], [1, 3], [2, 4], [8, 9], [7, 7]]),
     [[1, 4], [5, 9]]);

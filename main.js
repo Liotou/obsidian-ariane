@@ -22826,17 +22826,24 @@ const avecActivite = (Base) => class extends Base {
   // est connu du serveur, sinon celui dont le seau de fenêtres a bougé en
   // dernier. Les seaux du navigateur portent souvent un hôte « unknown » : on
   // les prend tous.
+  //
+  // Une machine se reconnaît à son nom sans domaine ni casse : le même Mac
+  // s'appelle « MacBook-Pro.local » pour Obsidian et, selon le réseau,
+  // « macbook-pro.home » pour ActivityWatch, qui ouvre alors des seaux neufs
+  // et laisse les anciens figés. On lit les uns et les autres : l'historique
+  // reste, et le jour courant n'est plus vide.
   static choisirBucketsAW(tous, hote) {
+    const machine = (x) => String(x || '').trim().toLowerCase().split('.')[0];
     const liste = Object.values(tous || {}).filter((b) => b && b.id);
     const deType = (t) => liste.filter((b) => b.type === t);
     const fen = deType('currentwindow');
-    let h = hote && fen.some((b) => b.hostname === hote) ? hote : '';
+    let h = hote && fen.some((b) => machine(b.hostname) === machine(hote)) ? machine(hote) : '';
     if (!h && fen.length) {
       const recent = fen.slice().sort((a, b) =>
         String(b.last_updated || '').localeCompare(String(a.last_updated || '')))[0];
-      h = recent.hostname || '';
+      h = machine(recent.hostname);
     }
-    const deHote = (bs) => bs.filter((b) => !h || b.hostname === h).map((b) => b.id);
+    const deHote = (bs) => bs.filter((b) => !h || machine(b.hostname) === h).map((b) => b.id);
     return {
       hote: h,
       fenetre: deHote(fen),
