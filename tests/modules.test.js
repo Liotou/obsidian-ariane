@@ -114,6 +114,7 @@ test('réglages : chaque rubrique existante a sa place dans un onglet', () => {
     }
   }
   places.add('ongletGeneral :: Langue');   // dans l'Accueil
+  places.add('ongletGeneral :: Affichage des notes');   // dans l'Accueil aussi
   const ids = new Set(MODULES_ARIANE.map((m) => m.id));
   for (const d of ArianeSettingTab.COMPOSITION) if (d.module) assert.ok(ids.has(d.module), d.module);
   // Les rubriques des anciennes méthodes d'onglet, par leur titre.

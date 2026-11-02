@@ -857,4 +857,35 @@ const avecSocle = (Base) => class extends Base {
   }
 
   //#endregion Ariane · événements vault & métadonnées
+
+  //#region Ariane · affichage des notes
+  // ── affichage des notes ──────────────────────────────────────────────────
+
+  // Les propriétés d'une note s'ouvrent repliées : une ligne « Propriétés »
+  // en tête, qu'un clic déplie. Obsidian n'a pas ce réglage ; son éditeur de
+  // propriétés (view.metadataEditor) sait se replier, on le lui demande à
+  // chaque note ouverte. Une note déjà ouverte dans son onglet n'est pas
+  // repliée de nouveau quand on y revient : ce que l'on a déplié le reste.
+  brancherProprietesRepliees() {
+    const vus = new WeakMap();      // vue -> chemin de la note déjà repliée
+    const replier = () => {
+      if (this.settings.proprietesRepliees === false) return;
+      this.app.workspace.iterateAllLeaves((leaf) => {
+        const v = leaf.view;
+        const ed = v && v.metadataEditor;
+        const f = v && v.file;
+        if (!f || !ed || typeof ed.setCollapse !== 'function' || !(v instanceof obsidian.MarkdownView)) return;
+        if (vus.get(v) === f.path) return;
+        vus.set(v, f.path);
+        ed.setCollapse(true, false);
+      });
+    };
+    // Après Obsidian, qui rétablit l'état replié qu'il a gardé de la note.
+    const plusTard = () => window.setTimeout(replier, 60);
+    this.registerEvent(this.app.workspace.on('file-open', plusTard));
+    this.registerEvent(this.app.workspace.on('layout-change', plusTard));
+    this.app.workspace.onLayoutReady(plusTard);
+  }
+
+  //#endregion Ariane · affichage des notes
 };

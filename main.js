@@ -791,6 +791,9 @@ const TEXTES = {
     "Un clic ouvre la tâche.": "Click to open the task.",
     "Sous-tâches de la séance": "Session subtasks",
     "Pour cette séance": "For this session",
+    "Affichage des notes": "Note display",
+    "Propriétés repliées à l’ouverture": "Properties collapsed on open",
+    "Chaque note s’ouvre avec ses propriétés repliées sous une ligne « Propriétés », qu’un clic déplie.": "Each note opens with its properties collapsed under a « Properties » line that a click expands.",
     "Décrivez la séance : « reprendre la liste du TD, puis préparer le support et écrire aux étudiants »": "Describe the session: « go over the class list, then prepare the slides and write to the students »",
     "Proposition": "Suggestion",
     "Retenir": "Keep",
@@ -2679,6 +2682,7 @@ const DEFAULT_SETTINGS = {
   exportRetirerNumerotation: true,  // Word numérote seul
   exportStyleEncadre: 'Items de réflexion',
   exportInsecables: true,       // espaces insécables devant ; : ! ? et autour des guillemets
+  proprietesRepliees: true,     // les propriétés d'une note s'ouvrent repliées
   exportCommentaires: 'tous',   // commentaires en marge -> Word : tous, ouverts, aucun
   exportStyleEnteteTableau: 'Titre de tableau',
   exportStyleCelluleTableau: 'Champ de tableau',
@@ -6613,6 +6617,37 @@ const avecSocle = (Base) => class extends Base {
   }
 
   //#endregion Ariane · événements vault & métadonnées
+
+  //#region Ariane · affichage des notes
+  // ── affichage des notes ──────────────────────────────────────────────────
+
+  // Les propriétés d'une note s'ouvrent repliées : une ligne « Propriétés »
+  // en tête, qu'un clic déplie. Obsidian n'a pas ce réglage ; son éditeur de
+  // propriétés (view.metadataEditor) sait se replier, on le lui demande à
+  // chaque note ouverte. Une note déjà ouverte dans son onglet n'est pas
+  // repliée de nouveau quand on y revient : ce que l'on a déplié le reste.
+  brancherProprietesRepliees() {
+    const vus = new WeakMap();      // vue -> chemin de la note déjà repliée
+    const replier = () => {
+      if (this.settings.proprietesRepliees === false) return;
+      this.app.workspace.iterateAllLeaves((leaf) => {
+        const v = leaf.view;
+        const ed = v && v.metadataEditor;
+        const f = v && v.file;
+        if (!f || !ed || typeof ed.setCollapse !== 'function' || !(v instanceof obsidian.MarkdownView)) return;
+        if (vus.get(v) === f.path) return;
+        vus.set(v, f.path);
+        ed.setCollapse(true, false);
+      });
+    };
+    // Après Obsidian, qui rétablit l'état replié qu'il a gardé de la note.
+    const plusTard = () => window.setTimeout(replier, 60);
+    this.registerEvent(this.app.workspace.on('file-open', plusTard));
+    this.registerEvent(this.app.workspace.on('layout-change', plusTard));
+    this.app.workspace.onLayoutReady(plusTard);
+  }
+
+  //#endregion Ariane · affichage des notes
 };
 
 // ── avecIa ────────────────────────────────────────────────────────────────
@@ -29032,6 +29067,8 @@ class Ariane extends composer(obsidian.Plugin,
     // lien d'annotation montrant la clé, en lecture. Non destructif.
     if (this.module('familles')) this.registerMarkdownPostProcessor((el, ctx) => this.enrichirLiensAnnotation(el, ctx));
     this.registerMarkdownPostProcessor((el) => this.rendreCitationsRepliables(el));
+    // Le socle, quels que soient les modules : propriétés repliées à l'ouverture.
+    this.brancherProprietesRepliees();
     this.registerMarkdownPostProcessor((el) => this.enrichirCompteursEmprunts(el));
     if (this.module('typographie')) {
       this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
@@ -29914,7 +29951,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     const r = new obsidian.Setting(c).addButton((b) => b.setButtonText(tr('Vérifier de nouveau')).onClick(() => this.display()));
     r.settingEl.addClass('zfa-reglages-sans-nom');
 
-    const mieux = [['ongletGeneral', 'Langue']];
+    const mieux = [['ongletGeneral', 'Langue'], ['ongletGeneral', 'Affichage des notes']];
     const tmp = c.createDiv();
     tmp.style.display = 'none';
     this.ongletGeneral(tmp, s, maj);
@@ -30483,6 +30520,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addOption('en', tr('English'))
         .setValue(s.langue || 'auto')
         .onChange(async (v) => { s.langue = v; definirLangue(v); await maj(); this.display(); }));
+    this._section(c, tr('Affichage des notes'));
+    new obsidian.Setting(c)
+      .setName(tr('Propriétés repliées à l’ouverture'))
+      .setDesc(tr('Chaque note s’ouvre avec ses propriétés repliées sous une ligne « Propriétés », qu’un clic déplie.'))
+      .addToggle((t) => t.setValue(s.proprietesRepliees !== false).onChange(async (v) => { s.proprietesRepliees = v; await maj(); }));
     this._section(c, tr('Automatisation'));
     this._aide(c, tr("Ce qu'Ariane fait seule quand une source Zotero change."));
     new obsidian.Setting(c)

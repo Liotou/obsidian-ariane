@@ -144,7 +144,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     const r = new obsidian.Setting(c).addButton((b) => b.setButtonText(tr('Vérifier de nouveau')).onClick(() => this.display()));
     r.settingEl.addClass('zfa-reglages-sans-nom');
 
-    const mieux = [['ongletGeneral', 'Langue']];
+    const mieux = [['ongletGeneral', 'Langue'], ['ongletGeneral', 'Affichage des notes']];
     const tmp = c.createDiv();
     tmp.style.display = 'none';
     this.ongletGeneral(tmp, s, maj);
@@ -713,6 +713,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addOption('en', tr('English'))
         .setValue(s.langue || 'auto')
         .onChange(async (v) => { s.langue = v; definirLangue(v); await maj(); this.display(); }));
+    this._section(c, tr('Affichage des notes'));
+    new obsidian.Setting(c)
+      .setName(tr('Propriétés repliées à l’ouverture'))
+      .setDesc(tr('Chaque note s’ouvre avec ses propriétés repliées sous une ligne « Propriétés », qu’un clic déplie.'))
+      .addToggle((t) => t.setValue(s.proprietesRepliees !== false).onChange(async (v) => { s.proprietesRepliees = v; await maj(); }));
     this._section(c, tr('Automatisation'));
     this._aide(c, tr("Ce qu'Ariane fait seule quand une source Zotero change."));
     new obsidian.Setting(c)

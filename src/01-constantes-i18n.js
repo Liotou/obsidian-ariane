@@ -585,6 +585,9 @@ const TEXTES = {
     "Un clic ouvre la tâche.": "Click to open the task.",
     "Sous-tâches de la séance": "Session subtasks",
     "Pour cette séance": "For this session",
+    "Affichage des notes": "Note display",
+    "Propriétés repliées à l’ouverture": "Properties collapsed on open",
+    "Chaque note s’ouvre avec ses propriétés repliées sous une ligne « Propriétés », qu’un clic déplie.": "Each note opens with its properties collapsed under a « Properties » line that a click expands.",
     "Décrivez la séance : « reprendre la liste du TD, puis préparer le support et écrire aux étudiants »": "Describe the session: « go over the class list, then prepare the slides and write to the students »",
     "Proposition": "Suggestion",
     "Retenir": "Keep",
@@ -2473,6 +2476,7 @@ const DEFAULT_SETTINGS = {
   exportRetirerNumerotation: true,  // Word numérote seul
   exportStyleEncadre: 'Items de réflexion',
   exportInsecables: true,       // espaces insécables devant ; : ! ? et autour des guillemets
+  proprietesRepliees: true,     // les propriétés d'une note s'ouvrent repliées
   exportCommentaires: 'tous',   // commentaires en marge -> Word : tous, ouverts, aucun
   exportStyleEnteteTableau: 'Titre de tableau',
   exportStyleCelluleTableau: 'Champ de tableau',

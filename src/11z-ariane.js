@@ -927,6 +927,8 @@ class Ariane extends composer(obsidian.Plugin,
     // lien d'annotation montrant la clé, en lecture. Non destructif.
     if (this.module('familles')) this.registerMarkdownPostProcessor((el, ctx) => this.enrichirLiensAnnotation(el, ctx));
     this.registerMarkdownPostProcessor((el) => this.rendreCitationsRepliables(el));
+    // Le socle, quels que soient les modules : propriétés repliées à l'ouverture.
+    this.brancherProprietesRepliees();
     this.registerMarkdownPostProcessor((el) => this.enrichirCompteursEmprunts(el));
     if (this.module('typographie')) {
       this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
