@@ -126,6 +126,7 @@ module.exports._test = {
   BarreEdition,
   // Commentaires en marge : lecture, pose et retrait des balises.
   CommentairesMarge,
+  ModaleSeance,
   GestionCommentairesMarge,
   // Assistant IA : consignes, masquage des liens, différences, intention.
   AssistantEcriture,

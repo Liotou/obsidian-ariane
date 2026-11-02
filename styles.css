@@ -2548,25 +2548,51 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-cal-seance-titre:hover { color: var(--text-normal); text-decoration: underline; }
 .zfa-cal-seance-ligne.est-terminee .zfa-cal-seance-titre { text-decoration: line-through; color: var(--text-faint); }
 
-/* Fenêtre « Sous-tâches de la séance ». */
-.zfa-seance-mere { color: var(--text-muted); font-size: var(--font-ui-small); margin-bottom: var(--size-4-2); }
-.zfa-seance-liste { display: flex; flex-direction: column; gap: var(--size-2-1);
-  max-height: 45vh; overflow-y: auto; margin-bottom: var(--size-4-3); }
-.zfa-seance-aide { color: var(--text-faint); font-size: var(--font-ui-smaller); margin: calc(-1 * var(--size-4-1)) 0 var(--size-4-2); }
-.zfa-seance-ligne { display: flex; align-items: center; gap: var(--size-4-2);
-  padding: var(--size-2-1) var(--size-4-1); border-radius: var(--radius-s); }
-.zfa-seance-ligne:hover { background: var(--background-modifier-hover); }
-.zfa-seance-ligne.est-retenue { background: var(--background-modifier-active-hover); }
-.zfa-seance-titre { flex: 1 1 auto; min-width: 0; cursor: pointer; }
-.zfa-seance-retenir { color: var(--text-faint); }
-.zfa-seance-retenir.est-active { color: var(--interactive-accent); }
-.zfa-seance-titre.est-terminee { text-decoration: line-through; color: var(--text-faint); }
+/* Fenêtre « Sous-tâches de la séance » : deux colonnes, l'une à retenir,
+   l'autre à puiser. Surfaces, filets et rayons du thème d'Obsidian. */
+.modal.zfa-seance-modale { width: min(760px, calc(100vw - 32px)); }
+.zfa-seance-mere { color: var(--text-muted); font-size: var(--font-ui-small); margin-bottom: var(--size-4-3); }
+.zfa-seance-grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--size-4-3); }
+.zfa-seance-col { display: flex; flex-direction: column; min-width: 0;
+  border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m);
+  background: var(--background-secondary); }
+.zfa-seance-col-tete { display: flex; align-items: baseline; gap: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3); border-bottom: 1px solid var(--background-modifier-border); }
+.zfa-seance-col-titre { font-weight: var(--font-semibold); font-size: var(--font-ui-small); color: var(--text-normal); }
+.zfa-seance-col-compte { margin-left: auto; color: var(--text-faint); font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums; }
+.zfa-seance-col-corps { display: flex; flex-direction: column; gap: var(--size-2-1);
+  padding: var(--size-4-2); min-height: 120px; max-height: 45vh; overflow-y: auto;
+  border-radius: 0 0 var(--radius-m) var(--radius-m); transition: background 0.12s ease; }
+.zfa-seance-col-corps.est-survolee { background: var(--background-modifier-hover); }
+.zfa-seance-col-pied:not(:empty) { padding: 0 var(--size-4-2) var(--size-4-2); }
+.zfa-seance-ligne { position: relative; display: flex; align-items: center; gap: var(--size-4-2);
+  padding: var(--size-2-2) var(--size-4-1); border-radius: var(--radius-s);
+  background: var(--background-primary); border: 1px solid var(--background-modifier-border); cursor: grab; }
+.zfa-seance-ligne:hover { border-color: var(--background-modifier-border-hover); }
+.zfa-seance-ligne.est-glissee { opacity: 0.4; }
+.zfa-seance-ligne.est-insertion-avant::before,
+.zfa-seance-ligne.est-insertion-apres::after { content: ""; position: absolute; left: 0; right: 0; height: 2px;
+  border-radius: 1px; background: var(--interactive-accent); }
+.zfa-seance-ligne.est-insertion-avant::before { top: calc(-1 * var(--size-2-1) / 2 - 2px); }
+.zfa-seance-ligne.est-insertion-apres::after { bottom: calc(-1 * var(--size-2-1) / 2 - 2px); }
+.zfa-seance-poignee { display: inline-flex; color: var(--text-faint); }
+.zfa-seance-poignee svg { width: var(--icon-xs, 14px); height: var(--icon-xs, 14px); }
+.zfa-seance-ligne input[type=checkbox] { margin: 0; flex: 0 0 auto; }
+.zfa-seance-titre { flex: 1 1 auto; min-width: 0; font-size: var(--font-ui-small); overflow-wrap: anywhere; }
+.zfa-seance-ligne.est-faite .zfa-seance-titre { text-decoration: line-through; color: var(--text-faint); }
 .zfa-seance-ref { color: var(--text-faint); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
-.zfa-seance-vide { color: var(--text-faint); font-size: var(--font-ui-small); padding: var(--size-2-2) var(--size-4-1); }
+.zfa-seance-bouger { opacity: 0; }
+.zfa-seance-ligne:hover .zfa-seance-bouger, .zfa-seance-bouger:focus-visible { opacity: 1; }
+.zfa-seance-vide { color: var(--text-faint); font-size: var(--font-ui-small); text-align: center;
+  padding: var(--size-4-4) var(--size-4-2); border: 1px dashed var(--background-modifier-border);
+  border-radius: var(--radius-s); }
 .zfa-seance-terminees { display: flex; flex-direction: column; gap: var(--size-2-1); margin-top: var(--size-4-1); }
 .zfa-seance-terminees > summary { cursor: pointer; color: var(--text-muted); font-size: var(--font-ui-small);
   padding: var(--size-2-2) var(--size-4-1); border-radius: var(--radius-s); }
 .zfa-seance-terminees > summary:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.zfa-seance-terminees[open] > summary { margin-bottom: var(--size-2-1); }
 .zfa-seance-ajout input { width: 100%; }
 /* Variante compacte : une seule ligne, pour le bandeau « tout le jour ». */
 .zfa-cal-carte.est-compacte { flex-direction: row; align-items: center; gap: 4px;

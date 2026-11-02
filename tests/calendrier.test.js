@@ -132,6 +132,23 @@ test('séance : sous-tâches lues et réécrites dans le commentaire du créneau
   assert.deepEqual(Ariane.seanceDuCommentaire(relu['11-03T09:00']).refs, ['T070', 'T071']);
 });
 
+test('séance : glisser pour retenir, réordonner et relâcher les sous-tâches', () => {
+  const M = Ariane._test.ModaleSeance;
+  const m = Object.create(M.prototype);
+  Object.assign(m, { retenues: ['A', 'B', 'C'], modifie: false, _dessiner() {} });
+  m._retenir('D', 1);
+  assert.deepEqual(m.retenues, ['A', 'D', 'B', 'C'], 'lâchée au deuxième rang');
+  m._retenir('A', 3);
+  assert.deepEqual(m.retenues, ['D', 'B', 'A', 'C'], 'descendue : le rang tient compte de son retrait');
+  m._retenir('C', 0);
+  assert.deepEqual(m.retenues, ['C', 'D', 'B', 'A'], 'remontée en tête');
+  m._retenir('E', -1);
+  assert.deepEqual(m.retenues, ['C', 'D', 'B', 'A', 'E'], 'sans rang : à la fin');
+  m._relacher('D');
+  assert.deepEqual(m.retenues, ['C', 'B', 'A', 'E']);
+  assert.ok(m.modifie);
+});
+
 test('barre d’état : la bulle retrouve le commentaire du créneau en cours', async () => {
   const cr = ['2026-09-08 14:00-16:00', '2026-09-10 09:00-11:00'];
   const bloc = Ariane.blocCreneaux(cr, null, { [Ariane.cleCommentaire(cr[1])]: 'Relire le chapitre 2\npuis les notes' });

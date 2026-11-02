@@ -790,8 +790,11 @@ const TEXTES = {
     ". Un clic ouvre la tâche.": ". Click to open the task.",
     "Un clic ouvre la tâche.": "Click to open the task.",
     "Sous-tâches de la séance": "Session subtasks",
-    "Toutes les tâches filles sont terminées.": "Every child task is done.",
-    "Retenez avec l’icône de droite les sous-tâches à traiter pendant ce créneau.": "Use the icon on the right to keep the subtasks to work on during this slot.",
+    "Pour cette séance": "For this session",
+    "Autres tâches filles": "Other child tasks",
+    "Glissez ici les sous-tâches de cette séance.": "Drag this session's subtasks here.",
+    "Toutes les autres tâches filles sont terminées.": "Every other child task is done.",
+    "Aucune autre tâche fille.": "No other child task.",
     "Retenir pour la séance": "Keep for this session",
     "Retirer de la séance": "Remove from this session",
     "Rouvrir la tâche": "Reopen the task",
@@ -799,7 +802,6 @@ const TEXTES = {
     "Terminées": "Done",
     "Sous-tâches de la séance…": "Session subtasks…",
     "Nouvelle sous-tâche, puis Entrée": "New subtask, then Enter",
-    "Aucune tâche fille pour l’instant. Créez-en une ci-dessous.": "No child task yet. Create one below.",
     "Terminé": "Done",
     "Créneau en cours dans la barre d'état": "Current slot in the status bar",
     "La tâche du créneau en cours, une jauge, le temps passé et le temps restant ; hors créneau, le prochain de la journée. Un clic ouvre la tâche.": "The task of the current slot, a gauge, the time spent and the time left; outside a slot, the day's next one. Click to open the task.",
@@ -33529,34 +33531,44 @@ class ModaleCommentaire extends obsidian.Modal {
 
 /* ---- Sous-tâches d'une séance --------------------------------------- */
 
-// Les tâches filles à traiter pendant un créneau : celles qui existent, à
-// cocher, et un champ pour en créer d'autres à la volée (Entrée crée la
-// fille, la rattache, la coche ; on enchaîne). Ce qui est coché s'écrit
-// dans le commentaire du créneau à la fermeture, Échap compris.
-// opts : { greffon, mere (tâche), libre (texte du commentaire hors
-// sous-tâches), choisies (refs), sur(sousTaches) }.
+// Les tâches filles à traiter pendant un créneau, en deux colonnes : à
+// gauche celles retenues pour la séance, dans l'ordre où on les fera ; à
+// droite les autres filles, les terminées repliées. On passe de l'une à
+// l'autre en glissant une ligne (ou par le bouton de la ligne) ; on réordonne
+// la gauche de même. La case dit « faite » dans les deux colonnes. Le champ
+// sous la colonne de gauche crée une fille et la retient d'une frappe
+// d'Entrée. Tout s'écrit dans le commentaire du créneau à la fermeture,
+// Échap compris.
+// opts : { greffon, mere (tâche), choisies (refs), sur(sousTaches) }.
 class ModaleSeance extends obsidian.Modal {
   constructor(app, opts) {
     super(app);
     this.o = opts;
-    this.choisies = new Set(opts.choisies || []);
-    this.ordre = (opts.choisies || []).slice();
+    this.retenues = (opts.choisies || []).slice();
+    this.etats = {};          // ref -> faite, changé ici, sans attendre l'index
+    this.noms = {};           // ref -> intitulé des filles créées ici
     this.modifie = false;
+    this.glisse = null;
   }
 
+  // Toutes les filles connues : celles de l'index, celles créées à l'instant,
+  // et une retenue qui ne serait plus fille (pour pouvoir la retirer).
   _filles() {
     const g = this.o.greffon;
+    const toutes = g.tachesPourGantt();
     const mere = this.o.mere.ref;
-    const filles = g.tachesPourGantt().filter((x) => Ariane.refDeLien(x.parent || '') === mere
-      && x.statut !== 'abandonnée');
-    // Une sous-tâche choisie puis détachée reste visible, pour pouvoir la décocher.
-    for (const ref of this.ordre) {
-      if (!filles.some((x) => x.ref === ref)) {
-        const t = g.tachesPourGantt().find((x) => x.ref === ref);
-        filles.push(t || { ref, intitule: ref });
-      }
-    }
+    const filles = toutes.filter((x) => Ariane.refDeLien(x.parent || '') === mere && x.statut !== 'abandonnée');
+    const ajouter = (ref) => {
+      if (filles.some((x) => x.ref === ref)) return;
+      filles.push(toutes.find((x) => x.ref === ref) || { ref, intitule: this.noms[ref] || ref });
+    };
+    Object.keys(this.noms).forEach(ajouter);
+    this.retenues.forEach(ajouter);
     return filles;
+  }
+
+  _faite(t) {
+    return t.ref in this.etats ? this.etats[t.ref] : (t.statut === 'terminée' || t.terminee === true);
   }
 
   onOpen() {
@@ -33564,10 +33576,11 @@ class ModaleSeance extends obsidian.Modal {
     this.modalEl.addClass('zfa-seance-modale');
     titleEl.setText(tr('Sous-tâches de la séance'));
     contentEl.createDiv({ cls: 'zfa-seance-mere', text: this.o.mere.intitule || this.o.mere.ref });
-    contentEl.createDiv({ cls: 'zfa-seance-aide',
-      text: tr('Retenez avec l’icône de droite les sous-tâches à traiter pendant ce créneau.') });
-    this.liste = contentEl.createDiv({ cls: 'zfa-seance-liste' });
-    const ajout = contentEl.createDiv({ cls: 'zfa-seance-ajout' });
+    const grille = contentEl.createDiv({ cls: 'zfa-seance-grille' });
+    this.colG = this._colonne(grille, 'retenues', tr('Pour cette séance'));
+    this.colD = this._colonne(grille, 'autres', tr('Autres tâches filles'));
+
+    const ajout = this.colG.pied.createDiv({ cls: 'zfa-seance-ajout' });
     const champ = ajout.createEl('input', { type: 'text',
       attr: { placeholder: tr('Nouvelle sous-tâche, puis Entrée') } });
     champ.addEventListener('keydown', async (e) => {
@@ -33579,17 +33592,73 @@ class ModaleSeance extends obsidian.Modal {
       champ.disabled = true;
       try {
         const ref = await this._creer(nom);
-        if (ref) { champ.value = ''; this._cocher(ref, true); }
+        if (ref) { champ.value = ''; this._retenir(ref, this.retenues.length); }
       } finally {
         champ.disabled = false;
         champ.focus();
       }
     });
+
     this._dessiner();
-    const pied = contentEl.createDiv({ cls: 'zfa-gantt-modale-pied' });
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
     const ok = pied.createEl('button', { cls: 'mod-cta', text: tr('Terminé') });
     ok.onclick = () => this.close();
     setTimeout(() => champ.focus(), 0);
+  }
+
+  // Une colonne : en-tête (titre, compte), corps qui reçoit les dépôts, pied.
+  _colonne(hote, cle, titre) {
+    const col = hote.createDiv({ cls: 'zfa-seance-col' });
+    const tete = col.createDiv({ cls: 'zfa-seance-col-tete' });
+    tete.createSpan({ cls: 'zfa-seance-col-titre', text: titre });
+    const compte = tete.createSpan({ cls: 'zfa-seance-col-compte' });
+    const corps = col.createDiv({ cls: 'zfa-seance-col-corps' });
+    const pied = col.createDiv({ cls: 'zfa-seance-col-pied' });
+    corps.addEventListener('dragover', (e) => {
+      if (!this.glisse) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      corps.addClass('est-survolee');
+      if (cle === 'retenues') this._marquerInsertion(corps, e.clientY);
+    });
+    corps.addEventListener('dragleave', (e) => {
+      if (corps.contains(e.relatedTarget)) return;
+      corps.removeClass('est-survolee');
+      this._effacerInsertion(corps);
+    });
+    corps.addEventListener('drop', (e) => {
+      if (!this.glisse) return;
+      e.preventDefault();
+      const ref = this.glisse;
+      const rang = cle === 'retenues' ? this._rangInsertion(corps, e.clientY) : -1;
+      corps.removeClass('est-survolee');
+      this._effacerInsertion(corps);
+      this.glisse = null;
+      if (cle === 'retenues') this._retenir(ref, rang); else this._relacher(ref);
+    });
+    return { col, compte, corps, pied };
+  }
+
+  // Le rang où tomberait une ligne lâchée à la hauteur y, dans la colonne de
+  // gauche : avant la première ligne dont le milieu est plus bas.
+  _rangInsertion(corps, y) {
+    const lignes = Array.from(corps.querySelectorAll('.zfa-seance-ligne'));
+    const k = lignes.findIndex((l) => { const r = l.getBoundingClientRect(); return y < r.top + r.height / 2; });
+    return k < 0 ? lignes.length : k;
+  }
+
+  _marquerInsertion(corps, y) {
+    this._effacerInsertion(corps);
+    const lignes = Array.from(corps.querySelectorAll('.zfa-seance-ligne'));
+    const k = this._rangInsertion(corps, y);
+    if (!lignes.length) return;
+    if (k < lignes.length) lignes[k].addClass('est-insertion-avant');
+    else lignes[lignes.length - 1].addClass('est-insertion-apres');
+  }
+
+  _effacerInsertion(corps) {
+    corps.querySelectorAll('.est-insertion-avant, .est-insertion-apres')
+      .forEach((x) => x.removeClass('est-insertion-avant', 'est-insertion-apres'));
   }
 
   async _creer(nom) {
@@ -33599,74 +33668,101 @@ class ModaleSeance extends obsidian.Modal {
     const ref = chemin && g.refDeChemin(chemin);
     if (!ref) return null;
     await g.rattacher(ref, mere.ref);
-    this._noms = Object.assign(this._noms || {}, { [ref]: nom });
+    this.noms[ref] = nom;
     return ref;
   }
 
-  _cocher(ref, oui) {
-    if (oui) { this.choisies.add(ref); if (!this.ordre.includes(ref)) this.ordre.push(ref); } else this.choisies.delete(ref);
+  // Retient (ou déplace) une fille au rang voulu de la colonne de gauche.
+  _retenir(ref, rang) {
+    const avant = this.retenues.indexOf(ref);
+    const l = this.retenues.filter((r) => r !== ref);
+    let k = rang < 0 || rang == null ? l.length : rang;
+    if (avant >= 0 && avant < k) k -= 1;   // le retrait a décalé la suite
+    l.splice(Math.max(0, Math.min(k, l.length)), 0, ref);
+    this.retenues = l;
     this.modifie = true;
     this._dessiner();
   }
 
+  _relacher(ref) {
+    if (!this.retenues.includes(ref)) return;
+    this.retenues = this.retenues.filter((r) => r !== ref);
+    this.modifie = true;
+    this._dessiner();
+  }
+
+  _ligne(hote, t, retenue) {
+    const faite = this._faite(t);
+    const el = hote.createDiv({ cls: 'zfa-seance-ligne' + (faite ? ' est-faite' : ''), attr: { draggable: 'true' } });
+    const poignee = el.createSpan({ cls: 'zfa-seance-poignee' });
+    obsidian.setIcon(poignee, 'grip-vertical');
+    const cb = el.createEl('input', { type: 'checkbox', cls: 'task-list-item-checkbox' });
+    cb.checked = faite;
+    cb.setAttr('aria-label', faite ? tr('Rouvrir la tâche') : tr('Terminer la tâche'));
+    cb.addEventListener('change', async () => {
+      this.etats[t.ref] = cb.checked;
+      this._dessiner();
+      await this.o.greffon.majTache(t.ref, { statut: cb.checked ? 'terminée' : 'à faire' });
+    });
+    el.createSpan({ cls: 'zfa-seance-titre', text: t.intitule || this.noms[t.ref] || t.ref });
+    el.createSpan({ cls: 'zfa-seance-ref', text: t.ref });
+    const bt = el.createDiv({ cls: 'clickable-icon zfa-seance-bouger',
+      attr: { 'aria-label': retenue ? tr('Retirer de la séance') : tr('Retenir pour la séance') } });
+    obsidian.setIcon(bt, retenue ? 'x' : 'arrow-left');
+    bt.addEventListener('click', () => (retenue ? this._relacher(t.ref) : this._retenir(t.ref, this.retenues.length)));
+    el.addEventListener('dragstart', (e) => {
+      this.glisse = t.ref;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', t.ref);
+      setTimeout(() => el.addClass('est-glissee'), 0);
+    });
+    el.addEventListener('dragend', () => {
+      this.glisse = null;
+      el.removeClass('est-glissee');
+      for (const c of [this.colG, this.colD]) { c.corps.removeClass('est-survolee'); this._effacerInsertion(c.corps); }
+    });
+  }
+
   _dessiner() {
-    const l = this.liste;
-    l.empty();
     const filles = this._filles();
-    // Une fille créée à l'instant n'est pas encore indexée : on la montre.
-    for (const [ref, nom] of Object.entries(this._noms || {})) {
-      if (!filles.some((x) => x.ref === ref)) filles.push({ ref, intitule: nom });
+    const parRef = new Map(filles.map((x) => [x.ref, x]));
+
+    const g = this.colG.corps;
+    g.empty();
+    const retenues = this.retenues.map((r) => parRef.get(r)).filter(Boolean);
+    for (const t of retenues) this._ligne(g, t, true);
+    if (!retenues.length) g.createDiv({ cls: 'zfa-seance-vide', text: tr('Glissez ici les sous-tâches de cette séance.') });
+    this.colG.compte.setText(retenues.length ? String(retenues.length) : '');
+
+    const d = this.colD.corps;
+    d.empty();
+    const autres = filles.filter((t) => !this.retenues.includes(t.ref));
+    const ouvertes = autres.filter((t) => !this._faite(t));
+    const closes = autres.filter((t) => this._faite(t));
+    for (const t of ouvertes) this._ligne(d, t, false);
+    if (!ouvertes.length) {
+      d.createDiv({ cls: 'zfa-seance-vide', text: autres.length
+        ? tr('Toutes les autres tâches filles sont terminées.')
+        : tr('Aucune autre tâche fille.') });
     }
-    if (!filles.length) {
-      l.createDiv({ cls: 'zfa-seance-vide', text: tr('Aucune tâche fille pour l’instant. Créez-en une ci-dessous.') });
-      return;
-    }
-    // La case dit si la tâche est faite, comme dans le bloc du calendrier ;
-    // le bouton de droite (ou un clic sur l'intitulé) la retient pour la
-    // séance. Un statut changé ici vaut tout de suite, sans attendre l'index.
-    const etats = this._etats || (this._etats = {});
-    const fini = (t) => (t.ref in etats ? etats[t.ref] : (t.statut === 'terminée' || t.terminee === true));
-    const ligne = (hote, t) => {
-      const retenue = this.choisies.has(t.ref);
-      const el = hote.createDiv({ cls: 'zfa-seance-ligne' + (retenue ? ' est-retenue' : '') });
-      const cb = el.createEl('input', { type: 'checkbox' });
-      cb.checked = fini(t);
-      cb.setAttr('aria-label', cb.checked ? tr('Rouvrir la tâche') : tr('Terminer la tâche'));
-      cb.addEventListener('change', async () => {
-        etats[t.ref] = cb.checked;
-        this._dessiner();
-        await this.o.greffon.majTache(t.ref, { statut: cb.checked ? 'terminée' : 'à faire' });
-      });
-      const titre = el.createSpan({ cls: 'zfa-seance-titre' + (fini(t) ? ' est-terminee' : ''), text: t.intitule || t.ref });
-      titre.addEventListener('click', () => this._cocher(t.ref, !retenue));
-      el.createSpan({ cls: 'zfa-seance-ref', text: t.ref });
-      const bt = el.createEl('button', { cls: 'clickable-icon zfa-seance-retenir' + (retenue ? ' est-active' : ''),
-        attr: { 'aria-label': retenue ? tr('Retirer de la séance') : tr('Retenir pour la séance') } });
-      obsidian.setIcon(bt, 'calendar-check');
-      bt.addEventListener('click', () => this._cocher(t.ref, !retenue));
-    };
-    const ouvertes = filles.filter((t) => !fini(t));
-    const closes = filles.filter(fini);
-    for (const t of ouvertes) ligne(l, t);
-    if (!ouvertes.length) l.createDiv({ cls: 'zfa-seance-vide', text: tr('Toutes les tâches filles sont terminées.') });
     // Les terminées, repliées par défaut ; l'état ouvert survit aux redessins.
     if (closes.length) {
-      const sec = l.createEl('details', { cls: 'zfa-seance-terminees' });
+      const sec = d.createEl('details', { cls: 'zfa-seance-terminees' });
       sec.open = !!this._terminesOuvertes;
       sec.addEventListener('toggle', () => { this._terminesOuvertes = sec.open; });
       sec.createEl('summary', { text: tr('Terminées') + ' (' + closes.length + ')' });
-      for (const t of closes) ligne(sec, t);
+      for (const t of closes) this._ligne(sec, t, false);
     }
+    this.colD.compte.setText(ouvertes.length ? String(ouvertes.length) : '');
   }
 
   onClose() {
     this.contentEl.empty();
     if (!this.modifie) return;
-    const g = this.o.greffon;
-    const toutes = g.tachesPourGantt();
-    const sous = this.ordre.filter((r) => this.choisies.has(r)).map((ref) => {
+    const toutes = this.o.greffon.tachesPourGantt();
+    const sous = this.retenues.map((ref) => {
       const t = toutes.find((x) => x.ref === ref);
-      return { ref, intitule: (t && t.intitule) || (this._noms || {})[ref] || '' };
+      return { ref, intitule: (t && t.intitule) || this.noms[ref] || '' };
     });
     this.o.sur(sous);
   }
@@ -53927,6 +54023,7 @@ module.exports._test = {
   BarreEdition,
   // Commentaires en marge : lecture, pose et retrait des balises.
   CommentairesMarge,
+  ModaleSeance,
   GestionCommentairesMarge,
   // Assistant IA : consignes, masquage des liens, différences, intention.
   AssistantEcriture,
