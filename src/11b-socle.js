@@ -887,5 +887,42 @@ const avecSocle = (Base) => class extends Base {
     this.app.workspace.onLayoutReady(plusTard);
   }
 
+  // Toute note s'ouvre dans un nouvel onglet : un onglet du centre qui
+  // montre déjà une note ne la remplace plus. Obsidian n'a pas ce réglage ;
+  // on enveloppe WorkspaceLeaf.openFile, par où passent l'explorateur, les
+  // liens, la recherche et les vues d'Ariane. Une note déjà ouverte n'est pas
+  // dédoublée : on rejoint son onglet. Rien ne change pour un onglet vide,
+  // les volets latéraux, ni la même note rouverte (un lien vers un titre).
+  brancherNouvelOnglet() {
+    const L = obsidian.WorkspaceLeaf;
+    if (!L || !L.prototype || typeof L.prototype.openFile !== 'function') return;
+    const origine = L.prototype.openFile;
+    const greffon = this;
+    L.prototype.openFile = function (file, etat) {
+      const ws = greffon.app.workspace;
+      const actuel = this.view && this.view.file;
+      const auCentre = this.getRoot && this.getRoot() === ws.rootSplit;
+      if (greffon.settings.toujoursNouvelOnglet === false || !file || !actuel || !auCentre
+        || actuel.path === file.path || (etat && etat.ariane_sur_place)) {
+        return origine.call(this, file, etat);
+      }
+      const actif = !etat || etat.active !== false;
+      let deja = null;
+      ws.iterateRootLeaves((l) => { if (!deja && l !== this && l.view && l.view.file && l.view.file.path === file.path) deja = l; });
+      if (deja) {
+        ws.setActiveLeaf(deja, { focus: actif });
+        // Un état porté (titre, bloc visé) s'applique à l'onglet rejoint.
+        if (etat && etat.eState) deja.setEphemeralState(etat.eState);
+        return Promise.resolve();
+      }
+      const neuf = ws.getLeaf('tab');
+      return origine.call(neuf, file, etat).then((r) => {
+        if (actif) ws.setActiveLeaf(neuf, { focus: true });
+        return r;
+      });
+    };
+    this.register(() => { if (L.prototype.openFile !== origine) L.prototype.openFile = origine; });
+  }
+
   //#endregion Ariane · affichage des notes
 };

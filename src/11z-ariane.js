@@ -929,6 +929,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerMarkdownPostProcessor((el) => this.rendreCitationsRepliables(el));
     // Le socle, quels que soient les modules : propriétés repliées à l'ouverture.
     this.brancherProprietesRepliees();
+    this.brancherNouvelOnglet();
     this.registerMarkdownPostProcessor((el) => this.enrichirCompteursEmprunts(el));
     if (this.module('typographie')) {
       this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));

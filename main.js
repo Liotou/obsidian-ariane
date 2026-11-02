@@ -792,6 +792,8 @@ const TEXTES = {
     "Sous-tâches de la séance": "Session subtasks",
     "Pour cette séance": "For this session",
     "Affichage des notes": "Note display",
+    "Toujours ouvrir les notes dans un nouvel onglet": "Always open notes in a new tab",
+    "Une note ouverte depuis l’explorateur, un lien ou une vue ne remplace plus celle de l’onglet courant. Une note déjà ouverte n’est pas dédoublée : on rejoint son onglet.": "A note opened from the file explorer, a link or a view no longer replaces the one in the current tab. A note that is already open is not duplicated: its tab comes to the front.",
     "Propriétés repliées à l’ouverture": "Properties collapsed on open",
     "Chaque note s’ouvre avec ses propriétés repliées sous une ligne « Propriétés », qu’un clic déplie.": "Each note opens with its properties collapsed under a « Properties » line that a click expands.",
     "Décrivez la séance : « reprendre la liste du TD, puis préparer le support et écrire aux étudiants »": "Describe the session: « go over the class list, then prepare the slides and write to the students »",
@@ -2683,6 +2685,7 @@ const DEFAULT_SETTINGS = {
   exportStyleEncadre: 'Items de réflexion',
   exportInsecables: true,       // espaces insécables devant ; : ! ? et autour des guillemets
   proprietesRepliees: true,     // les propriétés d'une note s'ouvrent repliées
+  toujoursNouvelOnglet: true,   // une note s'ouvre dans un nouvel onglet
   exportCommentaires: 'tous',   // commentaires en marge -> Word : tous, ouverts, aucun
   exportStyleEnteteTableau: 'Titre de tableau',
   exportStyleCelluleTableau: 'Champ de tableau',
@@ -6645,6 +6648,43 @@ const avecSocle = (Base) => class extends Base {
     this.registerEvent(this.app.workspace.on('file-open', plusTard));
     this.registerEvent(this.app.workspace.on('layout-change', plusTard));
     this.app.workspace.onLayoutReady(plusTard);
+  }
+
+  // Toute note s'ouvre dans un nouvel onglet : un onglet du centre qui
+  // montre déjà une note ne la remplace plus. Obsidian n'a pas ce réglage ;
+  // on enveloppe WorkspaceLeaf.openFile, par où passent l'explorateur, les
+  // liens, la recherche et les vues d'Ariane. Une note déjà ouverte n'est pas
+  // dédoublée : on rejoint son onglet. Rien ne change pour un onglet vide,
+  // les volets latéraux, ni la même note rouverte (un lien vers un titre).
+  brancherNouvelOnglet() {
+    const L = obsidian.WorkspaceLeaf;
+    if (!L || !L.prototype || typeof L.prototype.openFile !== 'function') return;
+    const origine = L.prototype.openFile;
+    const greffon = this;
+    L.prototype.openFile = function (file, etat) {
+      const ws = greffon.app.workspace;
+      const actuel = this.view && this.view.file;
+      const auCentre = this.getRoot && this.getRoot() === ws.rootSplit;
+      if (greffon.settings.toujoursNouvelOnglet === false || !file || !actuel || !auCentre
+        || actuel.path === file.path || (etat && etat.ariane_sur_place)) {
+        return origine.call(this, file, etat);
+      }
+      const actif = !etat || etat.active !== false;
+      let deja = null;
+      ws.iterateRootLeaves((l) => { if (!deja && l !== this && l.view && l.view.file && l.view.file.path === file.path) deja = l; });
+      if (deja) {
+        ws.setActiveLeaf(deja, { focus: actif });
+        // Un état porté (titre, bloc visé) s'applique à l'onglet rejoint.
+        if (etat && etat.eState) deja.setEphemeralState(etat.eState);
+        return Promise.resolve();
+      }
+      const neuf = ws.getLeaf('tab');
+      return origine.call(neuf, file, etat).then((r) => {
+        if (actif) ws.setActiveLeaf(neuf, { focus: true });
+        return r;
+      });
+    };
+    this.register(() => { if (L.prototype.openFile !== origine) L.prototype.openFile = origine; });
   }
 
   //#endregion Ariane · affichage des notes
@@ -29069,6 +29109,7 @@ class Ariane extends composer(obsidian.Plugin,
     this.registerMarkdownPostProcessor((el) => this.rendreCitationsRepliables(el));
     // Le socle, quels que soient les modules : propriétés repliées à l'ouverture.
     this.brancherProprietesRepliees();
+    this.brancherNouvelOnglet();
     this.registerMarkdownPostProcessor((el) => this.enrichirCompteursEmprunts(el));
     if (this.module('typographie')) {
       this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
@@ -30525,6 +30566,10 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Propriétés repliées à l’ouverture'))
       .setDesc(tr('Chaque note s’ouvre avec ses propriétés repliées sous une ligne « Propriétés », qu’un clic déplie.'))
       .addToggle((t) => t.setValue(s.proprietesRepliees !== false).onChange(async (v) => { s.proprietesRepliees = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Toujours ouvrir les notes dans un nouvel onglet'))
+      .setDesc(tr('Une note ouverte depuis l’explorateur, un lien ou une vue ne remplace plus celle de l’onglet courant. Une note déjà ouverte n’est pas dédoublée : on rejoint son onglet.'))
+      .addToggle((t) => t.setValue(s.toujoursNouvelOnglet !== false).onChange(async (v) => { s.toujoursNouvelOnglet = v; await maj(); }));
     this._section(c, tr('Automatisation'));
     this._aide(c, tr("Ce qu'Ariane fait seule quand une source Zotero change."));
     new obsidian.Setting(c)

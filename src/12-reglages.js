@@ -718,6 +718,10 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Propriétés repliées à l’ouverture'))
       .setDesc(tr('Chaque note s’ouvre avec ses propriétés repliées sous une ligne « Propriétés », qu’un clic déplie.'))
       .addToggle((t) => t.setValue(s.proprietesRepliees !== false).onChange(async (v) => { s.proprietesRepliees = v; await maj(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Toujours ouvrir les notes dans un nouvel onglet'))
+      .setDesc(tr('Une note ouverte depuis l’explorateur, un lien ou une vue ne remplace plus celle de l’onglet courant. Une note déjà ouverte n’est pas dédoublée : on rejoint son onglet.'))
+      .addToggle((t) => t.setValue(s.toujoursNouvelOnglet !== false).onChange(async (v) => { s.toujoursNouvelOnglet = v; await maj(); }));
     this._section(c, tr('Automatisation'));
     this._aide(c, tr("Ce qu'Ariane fait seule quand une source Zotero change."));
     new obsidian.Setting(c)

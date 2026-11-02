@@ -586,6 +586,8 @@ const TEXTES = {
     "Sous-tâches de la séance": "Session subtasks",
     "Pour cette séance": "For this session",
     "Affichage des notes": "Note display",
+    "Toujours ouvrir les notes dans un nouvel onglet": "Always open notes in a new tab",
+    "Une note ouverte depuis l’explorateur, un lien ou une vue ne remplace plus celle de l’onglet courant. Une note déjà ouverte n’est pas dédoublée : on rejoint son onglet.": "A note opened from the file explorer, a link or a view no longer replaces the one in the current tab. A note that is already open is not duplicated: its tab comes to the front.",
     "Propriétés repliées à l’ouverture": "Properties collapsed on open",
     "Chaque note s’ouvre avec ses propriétés repliées sous une ligne « Propriétés », qu’un clic déplie.": "Each note opens with its properties collapsed under a « Properties » line that a click expands.",
     "Décrivez la séance : « reprendre la liste du TD, puis préparer le support et écrire aux étudiants »": "Describe the session: « go over the class list, then prepare the slides and write to the students »",
@@ -2477,6 +2479,7 @@ const DEFAULT_SETTINGS = {
   exportStyleEncadre: 'Items de réflexion',
   exportInsecables: true,       // espaces insécables devant ; : ! ? et autour des guillemets
   proprietesRepliees: true,     // les propriétés d'une note s'ouvrent repliées
+  toujoursNouvelOnglet: true,   // une note s'ouvre dans un nouvel onglet
   exportCommentaires: 'tous',   // commentaires en marge -> Word : tous, ouverts, aucun
   exportStyleEnteteTableau: 'Titre de tableau',
   exportStyleCelluleTableau: 'Champ de tableau',
