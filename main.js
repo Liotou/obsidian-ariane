@@ -790,6 +790,8 @@ const TEXTES = {
     ". Un clic ouvre la tâche.": ". Click to open the task.",
     "Un clic ouvre la tâche.": "Click to open the task.",
     "Sous-tâches de la séance": "Session subtasks",
+    "Toutes les tâches filles sont terminées.": "Every child task is done.",
+    "Terminées": "Done",
     "Sous-tâches de la séance…": "Session subtasks…",
     "Nouvelle sous-tâche, puis Entrée": "New subtask, then Enter",
     "Aucune tâche fille pour l’instant. Créez-en une ci-dessous.": "No child task yet. Create one below.",
@@ -33612,14 +33614,26 @@ class ModaleSeance extends obsidian.Modal {
       l.createDiv({ cls: 'zfa-seance-vide', text: tr('Aucune tâche fille pour l’instant. Créez-en une ci-dessous.') });
       return;
     }
-    for (const t of filles) {
-      const ligne = l.createEl('label', { cls: 'zfa-seance-ligne' });
-      const cb = ligne.createEl('input', { type: 'checkbox' });
+    const fini = (t) => t.statut === 'terminée' || t.terminee === true;
+    const ligne = (hote, t) => {
+      const el = hote.createEl('label', { cls: 'zfa-seance-ligne' });
+      const cb = el.createEl('input', { type: 'checkbox' });
       cb.checked = this.choisies.has(t.ref);
       cb.addEventListener('change', () => this._cocher(t.ref, cb.checked));
-      const fini = t.statut === 'terminée' || t.terminee === true;
-      ligne.createSpan({ cls: 'zfa-seance-titre' + (fini ? ' est-terminee' : ''), text: t.intitule || t.ref });
-      ligne.createSpan({ cls: 'zfa-seance-ref', text: t.ref });
+      el.createSpan({ cls: 'zfa-seance-titre' + (fini(t) ? ' est-terminee' : ''), text: t.intitule || t.ref });
+      el.createSpan({ cls: 'zfa-seance-ref', text: t.ref });
+    };
+    const ouvertes = filles.filter((t) => !fini(t));
+    const closes = filles.filter(fini);
+    for (const t of ouvertes) ligne(l, t);
+    if (!ouvertes.length) l.createDiv({ cls: 'zfa-seance-vide', text: tr('Toutes les tâches filles sont terminées.') });
+    // Les terminées, repliées par défaut ; l'état ouvert survit aux redessins.
+    if (closes.length) {
+      const sec = l.createEl('details', { cls: 'zfa-seance-terminees' });
+      sec.open = !!this._terminesOuvertes;
+      sec.addEventListener('toggle', () => { this._terminesOuvertes = sec.open; });
+      sec.createEl('summary', { text: tr('Terminées') + ' (' + closes.length + ')' });
+      for (const t of closes) ligne(sec, t);
     }
   }
 

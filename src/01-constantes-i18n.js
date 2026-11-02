@@ -584,6 +584,8 @@ const TEXTES = {
     ". Un clic ouvre la tâche.": ". Click to open the task.",
     "Un clic ouvre la tâche.": "Click to open the task.",
     "Sous-tâches de la séance": "Session subtasks",
+    "Toutes les tâches filles sont terminées.": "Every child task is done.",
+    "Terminées": "Done",
     "Sous-tâches de la séance…": "Session subtasks…",
     "Nouvelle sous-tâche, puis Entrée": "New subtask, then Enter",
     "Aucune tâche fille pour l’instant. Créez-en une ci-dessous.": "No child task yet. Create one below.",

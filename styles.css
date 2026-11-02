@@ -2547,6 +2547,10 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
 .zfa-seance-titre.est-terminee { text-decoration: line-through; color: var(--text-faint); }
 .zfa-seance-ref { color: var(--text-faint); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
 .zfa-seance-vide { color: var(--text-faint); font-size: var(--font-ui-small); padding: var(--size-2-2) var(--size-4-1); }
+.zfa-seance-terminees { display: flex; flex-direction: column; gap: var(--size-2-1); margin-top: var(--size-4-1); }
+.zfa-seance-terminees > summary { cursor: pointer; color: var(--text-muted); font-size: var(--font-ui-small);
+  padding: var(--size-2-2) var(--size-4-1); border-radius: var(--radius-s); }
+.zfa-seance-terminees > summary:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .zfa-seance-ajout input { width: 100%; }
 /* Variante compacte : une seule ligne, pour le bandeau « tout le jour ». */
 .zfa-cal-carte.est-compacte { flex-direction: row; align-items: center; gap: 4px;
