@@ -22632,6 +22632,8 @@ const avecTaches = (Base) => class extends Base {
   }
 
   // La bulle s'ouvre au-dessus de l'indicateur, calée sur son bord droit.
+  // Elle porte la classe « menu » d'Obsidian : fond, bordure, ombre et
+  // arrondi sont ceux du thème. Le commentaire est rendu comme une note.
   _montrerBulleCreneau() {
     this._cacherBulleCreneau();
     const el = this._creneauBarre;
@@ -22640,22 +22642,35 @@ const avecTaches = (Base) => class extends Base {
     const t = c.tache;
     const doc = el.ownerDocument;
     const win = doc.defaultView || window;
-    const b = doc.body.createDiv({ cls: 'zfa-creneau-bulle' });
+    const b = doc.body.createDiv({ cls: 'menu zfa-creneau-bulle' });
     b.style.setProperty('--zfa-fam-couleur', this.familleDe(t.famille).couleur || 'var(--interactive-accent)');
     const tete = b.createDiv({ cls: 'zfa-creneau-bulle-tete' });
+    obsidian.setIcon(tete.createSpan({ cls: 'zfa-creneau-bulle-icone' }), 'timer');
     tete.createSpan({ cls: 'zfa-creneau-bulle-titre', text: t.intitule });
     tete.createSpan({ cls: 'zfa-creneau-bulle-heures', text: c.debut.slice(11, 16) + '-' + c.fin.slice(11, 16) });
-    b.createDiv({ cls: 'zfa-creneau-bulle-texte', text: c.commentaire });
+    b.createDiv({ cls: 'menu-separator' });
+    const corps = b.createDiv({ cls: 'zfa-creneau-bulle-texte markdown-rendered' });
+    const comp = new obsidian.Component();
+    comp.load();
+    try {
+      const R = obsidian.MarkdownRenderer;
+      if (R && typeof R.render === 'function') R.render(this.app, c.commentaire, corps, t.fichier.path, comp);
+      else corps.setText(c.commentaire);
+    } catch (e) { corps.setText(c.commentaire); }
+    b.createDiv({ cls: 'menu-separator' });
     b.createDiv({ cls: 'zfa-creneau-bulle-pied', text: tr('Un clic ouvre la tâche.') });
     const r = el.getBoundingClientRect();
     b.style.right = Math.max(8, win.innerWidth - r.right) + 'px';
     b.style.bottom = (win.innerHeight - r.top + 6) + 'px';
     this._bulleCreneau = b;
+    this._bulleCreneauComp = comp;
   }
 
   _cacherBulleCreneau() {
+    if (this._bulleCreneauComp) this._bulleCreneauComp.unload();
     if (this._bulleCreneau) this._bulleCreneau.remove();
     this._bulleCreneau = null;
+    this._bulleCreneauComp = null;
   }
 
   //#endregion Ariane · temps de travail
