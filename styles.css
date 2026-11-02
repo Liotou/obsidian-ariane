@@ -2397,9 +2397,14 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-cal-poignee-haut:hover::after { opacity: 1; background: var(--interactive-accent); }
 
 /* Bandeau d'actions d'un créneau (commentaire, lignée mères / filles), révélé
-   au survol. En bas à droite : en haut ça recouvrait le titre de la carte. */
-.zfa-cal-lignee-btns { position: absolute; bottom: 2px; right: 2px; display: flex;
+   au survol. En bas à droite : en haut ça recouvrait le titre de la carte.
+   Juste au-dessus de la poignée basse (12 px), pour ne pas la recouvrir ;
+   dans un bloc court, au ras du bord, et la poignée s'arrête avant eux
+   (16 px par bouton, 2 px d'écart). */
+.zfa-cal-lignee-btns { position: absolute; bottom: 12px; right: 2px; display: flex;
   gap: 2px; opacity: 0; transition: opacity 0.12s ease; z-index: 5; }
+.zfa-cal-bloc.est-court .zfa-cal-lignee-btns { bottom: 2px; }
+.zfa-cal-bloc.est-court .zfa-cal-poignee { right: calc(var(--zfa-cal-nb-btns, 0) * 18px + 2px); }
 .zfa-cal-carte:hover .zfa-cal-lignee-btns { opacity: 1; }
 .zfa-cal-lignee-btn { display: inline-flex; align-items: center; justify-content: center;
   width: 16px; height: 16px; border-radius: 4px; cursor: pointer;
