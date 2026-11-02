@@ -760,6 +760,31 @@ const avecTachesStatiques = (Base) => class extends Base {
 
   // Référence nue d'un lien, alias compris : « [[T26-001|partie 2]] » rend
   // « T26-001 ».
+  // Les descendantes d'une tâche (filles, petites-filles…), par le lien
+  // « parent » de chacune. Une boucle dans les rattachements ne fait pas
+  // tourner sans fin : chaque tâche n'est vue qu'une fois.
+  static descendantesDe(ref, taches) {
+    const filles = new Map();
+    for (const t of taches || []) {
+      const p = Ariane.refDeLien(t.parent || '');
+      if (!p) continue;
+      if (!filles.has(p)) filles.set(p, []);
+      filles.get(p).push(t.ref);
+    }
+    const vues = new Set([ref]);
+    const out = [];
+    const file = [ref];
+    while (file.length) {
+      for (const f of filles.get(file.shift()) || []) {
+        if (vues.has(f)) continue;
+        vues.add(f);
+        out.push(f);
+        file.push(f);
+      }
+    }
+    return out;
+  }
+
   // La réponse de l'IA pour une séance (promptSeance), rendue sûre : seules
   // les références connues sont retenues, une fois chacune ; les intitulés à
   // créer sont nettoyés, et l'un d'eux qui reprend mot pour mot une fille

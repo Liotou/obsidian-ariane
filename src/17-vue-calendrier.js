@@ -2993,16 +2993,40 @@ class MoteurCalendrier extends MoteurVue {
     const parRef = new Map(this._taches.map((t) => [t.ref, t]));
     const cheminsDe = new Map();
     const refsDeChemin = new Map();
-    for (const t of this._taches) {
+    const cheminsPropres = (t) => {
       const f = t.fichier || (g.fichierDeRef && g.fichierDeRef(t.ref));
-      if (!f) continue;
-      const ch = [f.path].concat(g._cheminsLiesTache(Object.assign({}, t, { fichier: f })));
+      return f ? [f.path].concat(g._cheminsLiesTache(Object.assign({}, t, { fichier: f }))) : null;
+    };
+    for (const t of this._taches) {
+      const ch = cheminsPropres(t);
+      if (!ch) continue;
       cheminsDe.set(t.ref, ch);
       for (const c of ch) {
         if (!refsDeChemin.has(c)) refsDeChemin.set(c, []);
         refsDeChemin.get(c).push(t.ref);
       }
     }
+    // La jauge d'un créneau compte aussi le travail sur les sous-tâches :
+    // leurs notes, à tous les étages, et leur temps hors Obsidian. Lues dans
+    // toutes les tâches, la vue n'en montrant parfois qu'une partie.
+    const toutes = g.tachesPourGantt ? g.tachesPourGantt() : this._taches;
+    const parRefTout = new Map(toutes.map((t) => [t.ref, t]));
+    const famille = new Map();
+    const travailDe = (ref) => {
+      if (famille.has(ref)) return famille.get(ref);
+      const refs = [ref].concat(Ariane.descendantesDe(ref, toutes));
+      const chemins = new Set();
+      const reel = [];
+      for (const r of refs) {
+        const t = parRefTout.get(r) || parRef.get(r);
+        if (!t) continue;
+        for (const c of (r === ref && cheminsDe.get(r)) || cheminsPropres(t) || []) chemins.add(c);
+        for (const x of t.tempsReel || []) reel.push(x);
+      }
+      const v = { chemins: [...chemins], reel };
+      famille.set(ref, v);
+      return v;
+    };
     const duree = (m) => (m < 60 ? m + ' min'
       : Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + String(m % 60).padStart(2, '0') : ''));
     const maintenant = Ariane.instantSession(new Date());
@@ -3014,11 +3038,11 @@ class MoteurCalendrier extends MoteurVue {
       if (!debut || !fin) continue;
       creneaux.push({ ref, debut, fin });
       if (debut > maintenant) continue;
-      // Le travail fait : dans les notes de la tâche, plus le temps hors
-      // Obsidian qui lui est rattaché, au prorata de ce qui tombe dans le
-      // créneau.
-      const tR = parRef.get(ref);
-      const fait = Ariane.minutesFaitesCreneau(debut, fin, sessions, cheminsDe.get(ref) || [], tR && tR.tempsReel);
+      // Le travail fait : dans les notes de la tâche et de ses sous-tâches,
+      // plus le temps hors Obsidian qui leur est rattaché, au prorata de ce
+      // qui tombe dans le créneau.
+      const tf = travailDe(ref);
+      const fait = Ariane.minutesFaitesCreneau(debut, fin, sessions, tf.chemins, tf.reel);
       if (fait <= 0) continue;
       const prevu = Ariane.dureeCreneauMin(debut, fin);
       const j = bloc.createDiv({ cls: 'zfa-cal-jauge' });

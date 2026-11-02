@@ -174,6 +174,20 @@ test('séance en langage naturel : la proposition de l’IA rendue sûre', () =>
   assert.match(inv, /reprendre la liste$/);
 });
 
+test('jauge : le travail sur les sous-tâches compte pour la mère', () => {
+  const taches = [
+    { ref: 'T1' }, { ref: 'T2', parent: '[[T1]]' }, { ref: 'T3', parent: '[[T2]]' },
+    { ref: 'T4', parent: '[[T9]]' }, { ref: 'T5', parent: '[[T3]]' }, { ref: 'T9', parent: '[[T4]]' },
+  ];
+  assert.deepEqual(Ariane.descendantesDe('T1', taches), ['T2', 'T3', 'T5']);
+  assert.deepEqual(Ariane.descendantesDe('T4', taches), ['T9'], 'une boucle ne tourne pas sans fin');
+  assert.deepEqual(Ariane.descendantesDe('T5', taches), []);
+  // Vingt minutes sur la note d'une fille, dans le créneau de la mère.
+  const sessions = [{ chemin: 'T/T2.md', debut: '2026-11-03T10:50', fin: '2026-11-03T11:10' }];
+  assert.equal(Ariane.minutesFaitesCreneau('2026-11-03T10:45', '2026-11-03T12:00', sessions, ['T/T1.md']), 0);
+  assert.equal(Ariane.minutesFaitesCreneau('2026-11-03T10:45', '2026-11-03T12:00', sessions, ['T/T1.md', 'T/T2.md']), 20);
+});
+
 test('barre d’état : la bulle retrouve le commentaire du créneau en cours', async () => {
   const cr = ['2026-09-08 14:00-16:00', '2026-09-10 09:00-11:00'];
   const bloc = Ariane.blocCreneaux(cr, null, { [Ariane.cleCommentaire(cr[1])]: 'Relire le chapitre 2\npuis les notes' });
