@@ -1340,6 +1340,67 @@ class MoteurCalendrier extends MoteurVue {
     }).open();
   }
 
+  // Les sous-tâches d'une séance : choisies ou créées dans ModaleSeance,
+  // écrites dans le commentaire du créneau, sous son texte libre.
+  async _ouvrirSeance(t, ev) {
+    const fich = this.greffon.fichierDeRef ? this.greffon.fichierDeRef(t.ref) : null;
+    if (!fich) return;
+    const coms = Ariane.commentairesDuBloc(await this.app.vault.cachedRead(fich));
+    const seance = Ariane.seanceDuCommentaire(coms[Ariane.cleCommentaire(ev.brut)] || '');
+    new ModaleSeance(this.app, {
+      greffon: this.greffon, mere: t, libre: seance.texte, choisies: seance.refs,
+      sur: async (sous) => {
+        // Relu à la fermeture : le texte libre a pu changer entre-temps.
+        const relu = Ariane.commentairesDuBloc(await this.app.vault.read(fich));
+        const libre = Ariane.seanceDuCommentaire(relu[Ariane.cleCommentaire(ev.brut)] || '').texte;
+        await this.greffon.majCommentaireCreneau(t.ref, ev.brut, Ariane.commentaireDeSeance(libre, sous));
+        this.dessiner();
+      },
+    }).open();
+  }
+
+  // Les sous-tâches de chaque séance, en liste à cocher dans son bloc. Lu
+  // après le dessin (les commentaires sont dans le corps des notes) ; cocher
+  // termine la tâche fille.
+  async _peindreSeances(inner) {
+    const blocs = Array.from(inner.querySelectorAll('.zfa-cal-bloc[data-ref][data-brut]'));
+    if (!blocs.length) return;
+    const g = this.greffon;
+    const parRef = new Map(g.tachesPourGantt().map((x) => [x.ref, x]));
+    const lus = new Map();
+    for (const bloc of blocs) {
+      const ref = bloc.dataset.ref;
+      if (!lus.has(ref)) {
+        const f = g.fichierDeRef && g.fichierDeRef(ref);
+        lus.set(ref, f ? this.app.vault.cachedRead(f).then(Ariane.commentairesDuBloc, () => ({})) : Promise.resolve({}));
+      }
+      const coms = await lus.get(ref);
+      if (!bloc.isConnected) continue;
+      const refs = Ariane.seanceDuCommentaire(coms[Ariane.cleCommentaire(bloc.dataset.brut)] || '').refs;
+      bloc.querySelectorAll('.zfa-cal-seance').forEach((x) => x.remove());
+      if (!refs.length) continue;
+      const liste = bloc.createDiv({ cls: 'zfa-cal-seance' });
+      const avant = bloc.querySelector('.zfa-cal-carte-prop');
+      if (avant) bloc.insertBefore(liste, avant);
+      for (const r of refs) {
+        const st = parRef.get(r);
+        const fini = !!st && (st.statut === 'terminée' || st.terminee === true);
+        const ligne = liste.createDiv({ cls: 'zfa-cal-seance-ligne' + (fini ? ' est-terminee' : '') });
+        const cb = ligne.createEl('input', { type: 'checkbox', cls: 'zfa-cal-carte-coche' });
+        cb.checked = fini;
+        cb.disabled = !st;
+        for (const evt of ['pointerdown', 'click']) cb.addEventListener(evt, (e) => e.stopPropagation());
+        cb.addEventListener('change', async () => {
+          await g.majTache(r, { statut: cb.checked ? 'terminée' : 'à faire' });
+          this.dessiner();
+        });
+        const nom = ligne.createSpan({ cls: 'zfa-cal-seance-titre', text: st ? (st.intitule || r) : r });
+        nom.addEventListener('click', (e) => { e.stopPropagation(); this.ouvrir(r, e.metaKey || e.ctrlKey); });
+        nom.addEventListener('pointerdown', (e) => e.stopPropagation());
+      }
+    }
+  }
+
   menuCarte(e, t, ev) {
     e.preventDefault(); e.stopPropagation();
     const m = new obsidian.Menu();
@@ -1373,6 +1434,8 @@ class MoteurCalendrier extends MoteurVue {
       // Commentaire de session : stocké dans le bloc balisé de la note.
       m.addItem((i) => i.setTitle(tr('Commentaire…')).setIcon('message-square')
         .onClick(() => this._ouvrirCommentaire(t, ev)));
+      m.addItem((i) => i.setTitle(tr('Sous-tâches de la séance…')).setIcon('list-checks')
+        .onClick(() => this._ouvrirSeance(t, ev)));
       const blocMenu = e.target && e.target.closest ? e.target.closest('.zfa-cal-bloc') : null;
       if (blocMenu && this.mode === 'semaine') {
         m.addItem((i) => i.setTitle(tr('Dupliquer ce créneau')).setIcon('copy-plus')
@@ -2752,6 +2815,14 @@ class MoteurCalendrier extends MoteurVue {
             e.stopPropagation(); e.preventDefault();
             this._ouvrirCommentaire(t, ev);
           });
+          const btSous = btns.createDiv({ cls: 'zfa-cal-lignee-btn',
+            attr: { 'aria-label': tr('Sous-tâches de la séance…'), title: tr('Sous-tâches de la séance…') } });
+          obsidian.setIcon(btSous, 'list-checks');
+          btSous.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
+          btSous.addEventListener('click', (e) => {
+            e.stopPropagation(); e.preventDefault();
+            this._ouvrirSeance(t, ev);
+          });
           const infos = this._hier && this._hier.parRef.get(t.ref);
           const nbMeres = infos ? (this._hier.meres.get(t.ref) || []).length - 1 : 0;
           const nbFilles = infos ? (this._hier.filles.get(t.ref) || []).length : 0;
@@ -2826,6 +2897,7 @@ class MoteurCalendrier extends MoteurVue {
     });
 
     this._peindreTravailReel(inner);
+    this._peindreSeances(inner).catch((e) => console.warn('[Ariane] sous-tâches des séances :', e));
 
     // Clic droit : un seul gestionnaire délégué sur la grille (fiable même si un
     // écouteur par élément a été avalé). Carte/jalon → menu de la tâche ;

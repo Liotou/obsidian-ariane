@@ -789,6 +789,11 @@ const TEXTES = {
     ", reste ": ", left ",
     ". Un clic ouvre la tâche.": ". Click to open the task.",
     "Un clic ouvre la tâche.": "Click to open the task.",
+    "Sous-tâches de la séance": "Session subtasks",
+    "Sous-tâches de la séance…": "Session subtasks…",
+    "Nouvelle sous-tâche, puis Entrée": "New subtask, then Enter",
+    "Aucune tâche fille pour l’instant. Créez-en une ci-dessous.": "No child task yet. Create one below.",
+    "Terminé": "Done",
     "Créneau en cours dans la barre d'état": "Current slot in the status bar",
     "La tâche du créneau en cours, une jauge, le temps passé et le temps restant ; hors créneau, le prochain de la journée. Un clic ouvre la tâche.": "The task of the current slot, a gauge, the time spent and the time left; outside a slot, the day's next one. Click to open the task.",
     "Livrable : ": "Deliverable: ",
@@ -16265,6 +16270,31 @@ const avecFriseStatiques = (Base) => class extends Base {
       out[num.get(dm[2]) + '-' + String(Number(dm[1])).padStart(2, '0') + 'T' + hm[1]] = txt;
     }
     return out;
+  }
+
+  // Les sous-tâches d'une séance vivent dans le commentaire de son créneau,
+  // une ligne « - [[T070|Intitulé]] » chacune, sous le texte libre. Leur
+  // état (faite ou non) n'y est pas : c'est celui de la tâche fille, lu à
+  // l'affichage, pour qu'il ne diverge jamais de la note.
+  static seanceDuCommentaire(texte) {
+    const libre = [];
+    const refs = [];
+    for (const l of String(texte || '').split('\n')) {
+      const m = /^\s*[-*]\s+(?:\[[ xX]\]\s+)?\[\[([^\]|#\n]+)(?:\|[^\]\n]*)?\]\]\s*$/.exec(l);
+      if (m) { if (!refs.includes(m[1].trim())) refs.push(m[1].trim()); } else libre.push(l);
+    }
+    return { texte: libre.join('\n').trim(), refs };
+  }
+
+  // L'inverse : le texte libre, puis une ligne par sous-tâche choisie.
+  // sousTaches : [{ ref, intitule }]. L'intitulé n'est qu'un repère pour le
+  // lecteur du tableau « Sessions » ; crochets et barres en sont ôtés.
+  static commentaireDeSeance(libre, sousTaches) {
+    const lignes = (sousTaches || []).filter((x) => x && x.ref).map((x) => {
+      const nom = String(x.intitule || '').replace(/[[\]|\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
+      return '- [[' + x.ref + (nom ? '|' + nom : '') + ']]';
+    });
+    return [String(libre || '').trim()].concat(lignes).filter(Boolean).join('\n');
   }
 
   // Rend le corps markdown de la section « ## Sessions » (sans les marqueurs).
@@ -33490,6 +33520,122 @@ class ModaleCommentaire extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+/* ---- Sous-tâches d'une séance --------------------------------------- */
+
+// Les tâches filles à traiter pendant un créneau : celles qui existent, à
+// cocher, et un champ pour en créer d'autres à la volée (Entrée crée la
+// fille, la rattache, la coche ; on enchaîne). Ce qui est coché s'écrit
+// dans le commentaire du créneau à la fermeture, Échap compris.
+// opts : { greffon, mere (tâche), libre (texte du commentaire hors
+// sous-tâches), choisies (refs), sur(sousTaches) }.
+class ModaleSeance extends obsidian.Modal {
+  constructor(app, opts) {
+    super(app);
+    this.o = opts;
+    this.choisies = new Set(opts.choisies || []);
+    this.ordre = (opts.choisies || []).slice();
+    this.modifie = false;
+  }
+
+  _filles() {
+    const g = this.o.greffon;
+    const mere = this.o.mere.ref;
+    const filles = g.tachesPourGantt().filter((x) => Ariane.refDeLien(x.parent || '') === mere
+      && x.statut !== 'abandonnée');
+    // Une sous-tâche choisie puis détachée reste visible, pour pouvoir la décocher.
+    for (const ref of this.ordre) {
+      if (!filles.some((x) => x.ref === ref)) {
+        const t = g.tachesPourGantt().find((x) => x.ref === ref);
+        filles.push(t || { ref, intitule: ref });
+      }
+    }
+    return filles;
+  }
+
+  onOpen() {
+    const { contentEl, titleEl } = this;
+    this.modalEl.addClass('zfa-seance-modale');
+    titleEl.setText(tr('Sous-tâches de la séance'));
+    contentEl.createDiv({ cls: 'zfa-seance-mere', text: this.o.mere.intitule || this.o.mere.ref });
+    this.liste = contentEl.createDiv({ cls: 'zfa-seance-liste' });
+    const ajout = contentEl.createDiv({ cls: 'zfa-seance-ajout' });
+    const champ = ajout.createEl('input', { type: 'text',
+      attr: { placeholder: tr('Nouvelle sous-tâche, puis Entrée') } });
+    champ.addEventListener('keydown', async (e) => {
+      e.stopPropagation();
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+      const nom = champ.value.trim();
+      if (!nom || champ.disabled) return;
+      champ.disabled = true;
+      try {
+        const ref = await this._creer(nom);
+        if (ref) { champ.value = ''; this._cocher(ref, true); }
+      } finally {
+        champ.disabled = false;
+        champ.focus();
+      }
+    });
+    this._dessiner();
+    const pied = contentEl.createDiv({ cls: 'zfa-gantt-modale-pied' });
+    const ok = pied.createEl('button', { cls: 'mod-cta', text: tr('Terminé') });
+    ok.onclick = () => this.close();
+    setTimeout(() => champ.focus(), 0);
+  }
+
+  async _creer(nom) {
+    const g = this.o.greffon;
+    const mere = this.o.mere;
+    const chemin = await g.creerTache({ intitule: nom, famille: mere.famille || '' });
+    const ref = chemin && g.refDeChemin(chemin);
+    if (!ref) return null;
+    await g.rattacher(ref, mere.ref);
+    this._noms = Object.assign(this._noms || {}, { [ref]: nom });
+    return ref;
+  }
+
+  _cocher(ref, oui) {
+    if (oui) { this.choisies.add(ref); if (!this.ordre.includes(ref)) this.ordre.push(ref); } else this.choisies.delete(ref);
+    this.modifie = true;
+    this._dessiner();
+  }
+
+  _dessiner() {
+    const l = this.liste;
+    l.empty();
+    const filles = this._filles();
+    // Une fille créée à l'instant n'est pas encore indexée : on la montre.
+    for (const [ref, nom] of Object.entries(this._noms || {})) {
+      if (!filles.some((x) => x.ref === ref)) filles.push({ ref, intitule: nom });
+    }
+    if (!filles.length) {
+      l.createDiv({ cls: 'zfa-seance-vide', text: tr('Aucune tâche fille pour l’instant. Créez-en une ci-dessous.') });
+      return;
+    }
+    for (const t of filles) {
+      const ligne = l.createEl('label', { cls: 'zfa-seance-ligne' });
+      const cb = ligne.createEl('input', { type: 'checkbox' });
+      cb.checked = this.choisies.has(t.ref);
+      cb.addEventListener('change', () => this._cocher(t.ref, cb.checked));
+      const fini = t.statut === 'terminée' || t.terminee === true;
+      ligne.createSpan({ cls: 'zfa-seance-titre' + (fini ? ' est-terminee' : ''), text: t.intitule || t.ref });
+      ligne.createSpan({ cls: 'zfa-seance-ref', text: t.ref });
+    }
+  }
+
+  onClose() {
+    this.contentEl.empty();
+    if (!this.modifie) return;
+    const g = this.o.greffon;
+    const toutes = g.tachesPourGantt();
+    const sous = this.ordre.filter((r) => this.choisies.has(r)).map((ref) => {
+      const t = toutes.find((x) => x.ref === ref);
+      return { ref, intitule: (t && t.intitule) || (this._noms || {})[ref] || '' };
+    });
+    this.o.sur(sous);
+  }
+}
+
 /* ---- Structurer un brouillon de tâches (IA) ------------------------- */
 
 class ModaleStructurerTaches extends obsidian.Modal {
@@ -42770,6 +42916,67 @@ class MoteurCalendrier extends MoteurVue {
     }).open();
   }
 
+  // Les sous-tâches d'une séance : choisies ou créées dans ModaleSeance,
+  // écrites dans le commentaire du créneau, sous son texte libre.
+  async _ouvrirSeance(t, ev) {
+    const fich = this.greffon.fichierDeRef ? this.greffon.fichierDeRef(t.ref) : null;
+    if (!fich) return;
+    const coms = Ariane.commentairesDuBloc(await this.app.vault.cachedRead(fich));
+    const seance = Ariane.seanceDuCommentaire(coms[Ariane.cleCommentaire(ev.brut)] || '');
+    new ModaleSeance(this.app, {
+      greffon: this.greffon, mere: t, libre: seance.texte, choisies: seance.refs,
+      sur: async (sous) => {
+        // Relu à la fermeture : le texte libre a pu changer entre-temps.
+        const relu = Ariane.commentairesDuBloc(await this.app.vault.read(fich));
+        const libre = Ariane.seanceDuCommentaire(relu[Ariane.cleCommentaire(ev.brut)] || '').texte;
+        await this.greffon.majCommentaireCreneau(t.ref, ev.brut, Ariane.commentaireDeSeance(libre, sous));
+        this.dessiner();
+      },
+    }).open();
+  }
+
+  // Les sous-tâches de chaque séance, en liste à cocher dans son bloc. Lu
+  // après le dessin (les commentaires sont dans le corps des notes) ; cocher
+  // termine la tâche fille.
+  async _peindreSeances(inner) {
+    const blocs = Array.from(inner.querySelectorAll('.zfa-cal-bloc[data-ref][data-brut]'));
+    if (!blocs.length) return;
+    const g = this.greffon;
+    const parRef = new Map(g.tachesPourGantt().map((x) => [x.ref, x]));
+    const lus = new Map();
+    for (const bloc of blocs) {
+      const ref = bloc.dataset.ref;
+      if (!lus.has(ref)) {
+        const f = g.fichierDeRef && g.fichierDeRef(ref);
+        lus.set(ref, f ? this.app.vault.cachedRead(f).then(Ariane.commentairesDuBloc, () => ({})) : Promise.resolve({}));
+      }
+      const coms = await lus.get(ref);
+      if (!bloc.isConnected) continue;
+      const refs = Ariane.seanceDuCommentaire(coms[Ariane.cleCommentaire(bloc.dataset.brut)] || '').refs;
+      bloc.querySelectorAll('.zfa-cal-seance').forEach((x) => x.remove());
+      if (!refs.length) continue;
+      const liste = bloc.createDiv({ cls: 'zfa-cal-seance' });
+      const avant = bloc.querySelector('.zfa-cal-carte-prop');
+      if (avant) bloc.insertBefore(liste, avant);
+      for (const r of refs) {
+        const st = parRef.get(r);
+        const fini = !!st && (st.statut === 'terminée' || st.terminee === true);
+        const ligne = liste.createDiv({ cls: 'zfa-cal-seance-ligne' + (fini ? ' est-terminee' : '') });
+        const cb = ligne.createEl('input', { type: 'checkbox', cls: 'zfa-cal-carte-coche' });
+        cb.checked = fini;
+        cb.disabled = !st;
+        for (const evt of ['pointerdown', 'click']) cb.addEventListener(evt, (e) => e.stopPropagation());
+        cb.addEventListener('change', async () => {
+          await g.majTache(r, { statut: cb.checked ? 'terminée' : 'à faire' });
+          this.dessiner();
+        });
+        const nom = ligne.createSpan({ cls: 'zfa-cal-seance-titre', text: st ? (st.intitule || r) : r });
+        nom.addEventListener('click', (e) => { e.stopPropagation(); this.ouvrir(r, e.metaKey || e.ctrlKey); });
+        nom.addEventListener('pointerdown', (e) => e.stopPropagation());
+      }
+    }
+  }
+
   menuCarte(e, t, ev) {
     e.preventDefault(); e.stopPropagation();
     const m = new obsidian.Menu();
@@ -42803,6 +43010,8 @@ class MoteurCalendrier extends MoteurVue {
       // Commentaire de session : stocké dans le bloc balisé de la note.
       m.addItem((i) => i.setTitle(tr('Commentaire…')).setIcon('message-square')
         .onClick(() => this._ouvrirCommentaire(t, ev)));
+      m.addItem((i) => i.setTitle(tr('Sous-tâches de la séance…')).setIcon('list-checks')
+        .onClick(() => this._ouvrirSeance(t, ev)));
       const blocMenu = e.target && e.target.closest ? e.target.closest('.zfa-cal-bloc') : null;
       if (blocMenu && this.mode === 'semaine') {
         m.addItem((i) => i.setTitle(tr('Dupliquer ce créneau')).setIcon('copy-plus')
@@ -44182,6 +44391,14 @@ class MoteurCalendrier extends MoteurVue {
             e.stopPropagation(); e.preventDefault();
             this._ouvrirCommentaire(t, ev);
           });
+          const btSous = btns.createDiv({ cls: 'zfa-cal-lignee-btn',
+            attr: { 'aria-label': tr('Sous-tâches de la séance…'), title: tr('Sous-tâches de la séance…') } });
+          obsidian.setIcon(btSous, 'list-checks');
+          btSous.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
+          btSous.addEventListener('click', (e) => {
+            e.stopPropagation(); e.preventDefault();
+            this._ouvrirSeance(t, ev);
+          });
           const infos = this._hier && this._hier.parRef.get(t.ref);
           const nbMeres = infos ? (this._hier.meres.get(t.ref) || []).length - 1 : 0;
           const nbFilles = infos ? (this._hier.filles.get(t.ref) || []).length : 0;
@@ -44256,6 +44473,7 @@ class MoteurCalendrier extends MoteurVue {
     });
 
     this._peindreTravailReel(inner);
+    this._peindreSeances(inner).catch((e) => console.warn('[Ariane] sous-tâches des séances :', e));
 
     // Clic droit : un seul gestionnaire délégué sur la grille (fiable même si un
     // écouteur par élément a été avalé). Carte/jalon → menu de la tâche ;

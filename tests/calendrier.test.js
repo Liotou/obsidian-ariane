@@ -114,6 +114,24 @@ test('commentaires : écrits dans le bloc puis relus (clé mois-jour + heure)', 
   assert.equal(Ariane.cleCommentaire('2027-09-08 14:00-16:00'), '09-08T14:00');
 });
 
+test('séance : sous-tâches lues et réécrites dans le commentaire du créneau', () => {
+  const com = Ariane.commentaireDeSeance('Avancer le plan\ndeux idées', [
+    { ref: 'T070', intitule: 'Relire [la] partie | 2' }, { ref: 'T071', intitule: '' },
+  ]);
+  assert.equal(com, 'Avancer le plan\ndeux idées\n- [[T070|Relire la partie 2]]\n- [[T071]]');
+  assert.deepEqual(Ariane.seanceDuCommentaire(com), { texte: 'Avancer le plan\ndeux idées', refs: ['T070', 'T071'] });
+  // Une case cochée à la main, un doublon, un lien dans le texte : seuls les
+  // liens seuls sur leur ligne sont des sous-tâches.
+  assert.deepEqual(Ariane.seanceDuCommentaire('Voir [[T080]] avant\n- [x] [[T070|a]]\n- [[T070]]'),
+    { texte: 'Voir [[T080]] avant', refs: ['T070'] });
+  assert.equal(Ariane.commentaireDeSeance('', []), '');
+  // Aller-retour par le tableau « Sessions » (barres et retours échappés).
+  const cr = ['2026-11-03 09:00-11:00'];
+  const bloc = Ariane.blocCreneaux(cr, null, { [Ariane.cleCommentaire(cr[0])]: com });
+  const relu = Ariane.commentairesDuBloc(['<!-- ariane:creneaux -->', bloc, '<!-- /ariane:creneaux -->'].join('\n'));
+  assert.deepEqual(Ariane.seanceDuCommentaire(relu['11-03T09:00']).refs, ['T070', 'T071']);
+});
+
 test('barre d’état : la bulle retrouve le commentaire du créneau en cours', async () => {
   const cr = ['2026-09-08 14:00-16:00', '2026-09-10 09:00-11:00'];
   const bloc = Ariane.blocCreneaux(cr, null, { [Ariane.cleCommentaire(cr[1])]: 'Relire le chapitre 2\npuis les notes' });

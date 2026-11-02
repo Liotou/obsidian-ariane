@@ -674,6 +674,122 @@ class ModaleCommentaire extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+/* ---- Sous-tâches d'une séance --------------------------------------- */
+
+// Les tâches filles à traiter pendant un créneau : celles qui existent, à
+// cocher, et un champ pour en créer d'autres à la volée (Entrée crée la
+// fille, la rattache, la coche ; on enchaîne). Ce qui est coché s'écrit
+// dans le commentaire du créneau à la fermeture, Échap compris.
+// opts : { greffon, mere (tâche), libre (texte du commentaire hors
+// sous-tâches), choisies (refs), sur(sousTaches) }.
+class ModaleSeance extends obsidian.Modal {
+  constructor(app, opts) {
+    super(app);
+    this.o = opts;
+    this.choisies = new Set(opts.choisies || []);
+    this.ordre = (opts.choisies || []).slice();
+    this.modifie = false;
+  }
+
+  _filles() {
+    const g = this.o.greffon;
+    const mere = this.o.mere.ref;
+    const filles = g.tachesPourGantt().filter((x) => Ariane.refDeLien(x.parent || '') === mere
+      && x.statut !== 'abandonnée');
+    // Une sous-tâche choisie puis détachée reste visible, pour pouvoir la décocher.
+    for (const ref of this.ordre) {
+      if (!filles.some((x) => x.ref === ref)) {
+        const t = g.tachesPourGantt().find((x) => x.ref === ref);
+        filles.push(t || { ref, intitule: ref });
+      }
+    }
+    return filles;
+  }
+
+  onOpen() {
+    const { contentEl, titleEl } = this;
+    this.modalEl.addClass('zfa-seance-modale');
+    titleEl.setText(tr('Sous-tâches de la séance'));
+    contentEl.createDiv({ cls: 'zfa-seance-mere', text: this.o.mere.intitule || this.o.mere.ref });
+    this.liste = contentEl.createDiv({ cls: 'zfa-seance-liste' });
+    const ajout = contentEl.createDiv({ cls: 'zfa-seance-ajout' });
+    const champ = ajout.createEl('input', { type: 'text',
+      attr: { placeholder: tr('Nouvelle sous-tâche, puis Entrée') } });
+    champ.addEventListener('keydown', async (e) => {
+      e.stopPropagation();
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+      const nom = champ.value.trim();
+      if (!nom || champ.disabled) return;
+      champ.disabled = true;
+      try {
+        const ref = await this._creer(nom);
+        if (ref) { champ.value = ''; this._cocher(ref, true); }
+      } finally {
+        champ.disabled = false;
+        champ.focus();
+      }
+    });
+    this._dessiner();
+    const pied = contentEl.createDiv({ cls: 'zfa-gantt-modale-pied' });
+    const ok = pied.createEl('button', { cls: 'mod-cta', text: tr('Terminé') });
+    ok.onclick = () => this.close();
+    setTimeout(() => champ.focus(), 0);
+  }
+
+  async _creer(nom) {
+    const g = this.o.greffon;
+    const mere = this.o.mere;
+    const chemin = await g.creerTache({ intitule: nom, famille: mere.famille || '' });
+    const ref = chemin && g.refDeChemin(chemin);
+    if (!ref) return null;
+    await g.rattacher(ref, mere.ref);
+    this._noms = Object.assign(this._noms || {}, { [ref]: nom });
+    return ref;
+  }
+
+  _cocher(ref, oui) {
+    if (oui) { this.choisies.add(ref); if (!this.ordre.includes(ref)) this.ordre.push(ref); } else this.choisies.delete(ref);
+    this.modifie = true;
+    this._dessiner();
+  }
+
+  _dessiner() {
+    const l = this.liste;
+    l.empty();
+    const filles = this._filles();
+    // Une fille créée à l'instant n'est pas encore indexée : on la montre.
+    for (const [ref, nom] of Object.entries(this._noms || {})) {
+      if (!filles.some((x) => x.ref === ref)) filles.push({ ref, intitule: nom });
+    }
+    if (!filles.length) {
+      l.createDiv({ cls: 'zfa-seance-vide', text: tr('Aucune tâche fille pour l’instant. Créez-en une ci-dessous.') });
+      return;
+    }
+    for (const t of filles) {
+      const ligne = l.createEl('label', { cls: 'zfa-seance-ligne' });
+      const cb = ligne.createEl('input', { type: 'checkbox' });
+      cb.checked = this.choisies.has(t.ref);
+      cb.addEventListener('change', () => this._cocher(t.ref, cb.checked));
+      const fini = t.statut === 'terminée' || t.terminee === true;
+      ligne.createSpan({ cls: 'zfa-seance-titre' + (fini ? ' est-terminee' : ''), text: t.intitule || t.ref });
+      ligne.createSpan({ cls: 'zfa-seance-ref', text: t.ref });
+    }
+  }
+
+  onClose() {
+    this.contentEl.empty();
+    if (!this.modifie) return;
+    const g = this.o.greffon;
+    const toutes = g.tachesPourGantt();
+    const sous = this.ordre.filter((r) => this.choisies.has(r)).map((ref) => {
+      const t = toutes.find((x) => x.ref === ref);
+      return { ref, intitule: (t && t.intitule) || (this._noms || {})[ref] || '' };
+    });
+    this.o.sur(sous);
+  }
+}
+
 /* ---- Structurer un brouillon de tâches (IA) ------------------------- */
 
 class ModaleStructurerTaches extends obsidian.Modal {

@@ -277,6 +277,31 @@ const avecFriseStatiques = (Base) => class extends Base {
     return out;
   }
 
+  // Les sous-tâches d'une séance vivent dans le commentaire de son créneau,
+  // une ligne « - [[T070|Intitulé]] » chacune, sous le texte libre. Leur
+  // état (faite ou non) n'y est pas : c'est celui de la tâche fille, lu à
+  // l'affichage, pour qu'il ne diverge jamais de la note.
+  static seanceDuCommentaire(texte) {
+    const libre = [];
+    const refs = [];
+    for (const l of String(texte || '').split('\n')) {
+      const m = /^\s*[-*]\s+(?:\[[ xX]\]\s+)?\[\[([^\]|#\n]+)(?:\|[^\]\n]*)?\]\]\s*$/.exec(l);
+      if (m) { if (!refs.includes(m[1].trim())) refs.push(m[1].trim()); } else libre.push(l);
+    }
+    return { texte: libre.join('\n').trim(), refs };
+  }
+
+  // L'inverse : le texte libre, puis une ligne par sous-tâche choisie.
+  // sousTaches : [{ ref, intitule }]. L'intitulé n'est qu'un repère pour le
+  // lecteur du tableau « Sessions » ; crochets et barres en sont ôtés.
+  static commentaireDeSeance(libre, sousTaches) {
+    const lignes = (sousTaches || []).filter((x) => x && x.ref).map((x) => {
+      const nom = String(x.intitule || '').replace(/[[\]|\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
+      return '- [[' + x.ref + (nom ? '|' + nom : '') + ']]';
+    });
+    return [String(libre || '').trim()].concat(lignes).filter(Boolean).join('\n');
+  }
+
   // Rend le corps markdown de la section « ## Sessions » (sans les marqueurs).
   // Chaîne vide quand aucun créneau valide. Les commentaires (clé
   // cleCommentaire) complètent la 5ᵉ colonne ; seuls ceux des sessions

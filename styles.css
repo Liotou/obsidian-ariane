@@ -2525,6 +2525,29 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .zfa-cal-carte-heure { color: var(--text-muted); font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums; }
+/* Sous-tâches d'une séance, sous l'intitulé du bloc : une ligne chacune,
+   la coche termine la tâche fille. */
+.zfa-cal-seance { display: flex; flex-direction: column; gap: 1px; min-width: 0;
+  font-size: var(--font-ui-smaller); }
+.zfa-cal-seance-ligne { display: flex; align-items: flex-start; gap: 0.4em; min-width: 0;
+  color: var(--text-muted); }
+.zfa-cal-seance-titre { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer; }
+.zfa-cal-seance-titre:hover { color: var(--text-normal); text-decoration: underline; }
+.zfa-cal-seance-ligne.est-terminee .zfa-cal-seance-titre { text-decoration: line-through; color: var(--text-faint); }
+
+/* Fenêtre « Sous-tâches de la séance ». */
+.zfa-seance-mere { color: var(--text-muted); font-size: var(--font-ui-small); margin-bottom: var(--size-4-2); }
+.zfa-seance-liste { display: flex; flex-direction: column; gap: var(--size-2-1);
+  max-height: 45vh; overflow-y: auto; margin-bottom: var(--size-4-3); }
+.zfa-seance-ligne { display: flex; align-items: center; gap: var(--size-4-2);
+  padding: var(--size-2-2) var(--size-4-1); border-radius: var(--radius-s); cursor: pointer; }
+.zfa-seance-ligne:hover { background: var(--background-modifier-hover); }
+.zfa-seance-titre { flex: 1 1 auto; min-width: 0; }
+.zfa-seance-titre.est-terminee { text-decoration: line-through; color: var(--text-faint); }
+.zfa-seance-ref { color: var(--text-faint); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
+.zfa-seance-vide { color: var(--text-faint); font-size: var(--font-ui-small); padding: var(--size-2-2) var(--size-4-1); }
+.zfa-seance-ajout input { width: 100%; }
 /* Variante compacte : une seule ligne, pour le bandeau « tout le jour ». */
 .zfa-cal-carte.est-compacte { flex-direction: row; align-items: center; gap: 4px;
   padding: 1px 5px; border-radius: var(--radius-s); }
