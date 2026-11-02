@@ -2090,6 +2090,32 @@ const avecTaches = (Base) => class extends Base {
     ].filter(Boolean).join('\n');
   }
 
+  // La séance d'un créneau, décrite en langage naturel : l'IA dit quelles
+  // filles existantes y retenir, et quelles sous-tâches créer. Les filles
+  // sont données avec leur référence, pour qu'elle les reconnaisse au lieu
+  // d'en créer des doublons.
+  promptSeance(mere, filles, texte) {
+    return [
+      'Tu prépares une séance de travail sur une tâche, à partir de ce que l\'utilisateur en dit.',
+      'Tâche mère : ' + mere.ref + ' « ' + (mere.intitule || mere.ref) + ' ».',
+      filles.length
+        ? 'Tâches filles existantes (référence :: intitulé :: état) :\n' + filles.map((t) => '- ' + t.ref + ' :: '
+          + (t.intitule || t.ref) + ' :: ' + (t.faite ? 'faite' : 'à faire')).join('\n')
+        : 'Aucune tâche fille pour l\'instant.',
+      '',
+      'RÈGLES :',
+      '- Ce qui correspond à une tâche fille existante va dans "retenir", par sa référence EXACTE ; ne la recrée jamais.',
+      '- Ce qui n\'existe pas encore va dans "creer" : intitulés brefs, verbe à l\'infinitif, sans date.',
+      '- Garde l\'ordre dans lequel l\'utilisateur compte faire les choses.',
+      '- N\'ajoute rien qu\'il n\'a pas demandé.',
+      '',
+      'Réponds UNIQUEMENT par un objet JSON : {"retenir": ["T012"], "creer": [{"titre": "..."}]}',
+      '',
+      'CE QUE L\'UTILISATEUR DIT DE LA SÉANCE :',
+      String(texte || '').trim(),
+    ].join('\n');
+  }
+
   // Passe en lots : réécrit les intitulés en style cohérent. Rend
   // [{ ref, avant, apres }] pour les seuls qui changent.
   async normaliserIntitules(refs) {

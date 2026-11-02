@@ -791,6 +791,10 @@ const TEXTES = {
     "Un clic ouvre la tâche.": "Click to open the task.",
     "Sous-tâches de la séance": "Session subtasks",
     "Pour cette séance": "For this session",
+    "Décrivez la séance : « reprendre la liste du TD, puis préparer le support et écrire aux étudiants »": "Describe the session: « go over the class list, then prepare the slides and write to the students »",
+    "Proposition": "Suggestion",
+    "Retenir": "Keep",
+    "L'IA n'a rien proposé pour cette séance.": "The AI suggested nothing for this session.",
     "Autres tâches filles": "Other child tasks",
     "Glissez ici les sous-tâches de cette séance.": "Drag this session's subtasks here.",
     "Toutes les autres tâches filles sont terminées.": "Every other child task is done.",
@@ -15017,6 +15021,31 @@ const avecTachesStatiques = (Base) => class extends Base {
 
   // Référence nue d'un lien, alias compris : « [[T26-001|partie 2]] » rend
   // « T26-001 ».
+  // La réponse de l'IA pour une séance (promptSeance), rendue sûre : seules
+  // les références connues sont retenues, une fois chacune ; les intitulés à
+  // créer sont nettoyés, et l'un d'eux qui reprend mot pour mot une fille
+  // connue la retient au lieu de la recréer. Tolère un tableau nu de titres.
+  static propositionSeance(j, filles) {
+    const connues = new Map((filles || []).map((t) => [t.ref, t]));
+    const norm = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ').trim();
+    const parNom = new Map((filles || []).map((t) => [norm(t.intitule), t.ref]));
+    const retenir = [];
+    const creer = [];
+    const garder = (ref) => { if (connues.has(ref) && !retenir.includes(ref)) retenir.push(ref); };
+    const o = Array.isArray(j) ? { creer: j } : (j || {});
+    for (const r of [].concat(o.retenir || [])) garder(String(r || '').trim());
+    for (const c of [].concat(o.creer || [])) {
+      const titre = String(typeof c === 'string' ? c : (c && (c.titre || c.title)) || '')
+        .replace(/\s+/g, ' ').trim().replace(/[.;]+$/, '');
+      if (!titre) continue;
+      const deja = parNom.get(norm(titre));
+      if (deja) { garder(deja); continue; }
+      if (!creer.some((x) => norm(x.titre) === norm(titre))) creer.push({ titre });
+    }
+    return { retenir, creer };
+  }
+
   static refDeLien(v) {
     return String(v == null ? '' : v).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
   }
@@ -20875,6 +20904,32 @@ const avecTaches = (Base) => class extends Base {
       'RÈGLES : 3 à 8 sous-tâches, intitulés brefs à l\'infinitif, pas de dates, "jalon" seulement pour une étape de validation. Imbrication possible via "enfants".',
       'Réponds UNIQUEMENT par un tableau JSON de nœuds {"titre","famille","jalon":false,"priorite":"","note":"","source":"","enfants":[]}.',
     ].filter(Boolean).join('\n');
+  }
+
+  // La séance d'un créneau, décrite en langage naturel : l'IA dit quelles
+  // filles existantes y retenir, et quelles sous-tâches créer. Les filles
+  // sont données avec leur référence, pour qu'elle les reconnaisse au lieu
+  // d'en créer des doublons.
+  promptSeance(mere, filles, texte) {
+    return [
+      'Tu prépares une séance de travail sur une tâche, à partir de ce que l\'utilisateur en dit.',
+      'Tâche mère : ' + mere.ref + ' « ' + (mere.intitule || mere.ref) + ' ».',
+      filles.length
+        ? 'Tâches filles existantes (référence :: intitulé :: état) :\n' + filles.map((t) => '- ' + t.ref + ' :: '
+          + (t.intitule || t.ref) + ' :: ' + (t.faite ? 'faite' : 'à faire')).join('\n')
+        : 'Aucune tâche fille pour l\'instant.',
+      '',
+      'RÈGLES :',
+      '- Ce qui correspond à une tâche fille existante va dans "retenir", par sa référence EXACTE ; ne la recrée jamais.',
+      '- Ce qui n\'existe pas encore va dans "creer" : intitulés brefs, verbe à l\'infinitif, sans date.',
+      '- Garde l\'ordre dans lequel l\'utilisateur compte faire les choses.',
+      '- N\'ajoute rien qu\'il n\'a pas demandé.',
+      '',
+      'Réponds UNIQUEMENT par un objet JSON : {"retenir": ["T012"], "creer": [{"titre": "..."}]}',
+      '',
+      'CE QUE L\'UTILISATEUR DIT DE LA SÉANCE :',
+      String(texte || '').trim(),
+    ].join('\n');
   }
 
   // Passe en lots : réécrit les intitulés en style cohérent. Rend
@@ -33575,7 +33630,10 @@ class ModaleSeance extends obsidian.Modal {
     const { contentEl, titleEl } = this;
     this.modalEl.addClass('zfa-seance-modale');
     titleEl.setText(tr('Sous-tâches de la séance'));
-    contentEl.createDiv({ cls: 'zfa-seance-mere', text: this.o.mere.intitule || this.o.mere.ref });
+    const mere = contentEl.createDiv({ cls: 'zfa-seance-mere' });
+    mere.createSpan({ cls: 'zfa-seance-mere-ref', text: this.o.mere.ref });
+    mere.createSpan({ text: this.o.mere.intitule || '' });
+    this._zoneIA(contentEl);
     const grille = contentEl.createDiv({ cls: 'zfa-seance-grille' });
     this.colG = this._colonne(grille, 'retenues', tr('Pour cette séance'));
     this.colD = this._colonne(grille, 'autres', tr('Autres tâches filles'));
@@ -33604,6 +33662,82 @@ class ModaleSeance extends obsidian.Modal {
     const ok = pied.createEl('button', { cls: 'mod-cta', text: tr('Terminé') });
     ok.onclick = () => this.close();
     setTimeout(() => champ.focus(), 0);
+  }
+
+  // La séance dite en langage naturel. L'IA (le moteur des tâches, réglé
+  // dans Réglages, Tâches, Assistant IA) propose quelles filles retenir et
+  // quelles sous-tâches créer ; rien n'est fait avant « Appliquer ».
+  _zoneIA(hote) {
+    const z = hote.createDiv({ cls: 'zfa-seance-ia' });
+    const ligne = z.createDiv({ cls: 'zfa-seance-ia-saisie' });
+    const zone = ligne.createEl('textarea', { attr: { rows: '2',
+      placeholder: tr('Décrivez la séance : « reprendre la liste du TD, puis préparer le support et écrire aux étudiants »') } });
+    const bt = ligne.createEl('button', { cls: 'zfa-seance-ia-bouton' });
+    obsidian.setIcon(bt.createSpan({ cls: 'zfa-seance-ia-icone' }), 'sparkles');
+    bt.createSpan({ text: tr('Proposer') });
+    this.propo = z.createDiv({ cls: 'zfa-seance-ia-propo' });
+    this.propo.hide();
+    const lancer = async () => {
+      const texte = zone.value.trim();
+      if (!texte || bt.disabled) return;
+      bt.disabled = true;
+      bt.addClass('est-en-cours');
+      try {
+        const filles = this._filles().map((t) => ({ ref: t.ref, intitule: t.intitule || this.noms[t.ref] || t.ref, faite: this._faite(t) }));
+        const g = this.o.greffon;
+        const j = await g.genererIA(g.promptSeance(this.o.mere, filles, texte), 1200);
+        if (!j) return;
+        const p = Ariane.propositionSeance(j, filles);
+        if (!p.retenir.length && !p.creer.length) { new obsidian.Notice(tr('L\'IA n\'a rien proposé pour cette séance.')); return; }
+        this._montrerProposition(p, filles, () => { zone.value = ''; });
+      } finally {
+        bt.disabled = false;
+        bt.removeClass('est-en-cours');
+      }
+    };
+    bt.addEventListener('click', lancer);
+    zone.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); lancer(); }
+    });
+  }
+
+  // La proposition, à cocher ligne à ligne avant de l'appliquer.
+  _montrerProposition(p, filles, vider) {
+    const z = this.propo;
+    z.empty();
+    z.show();
+    z.createDiv({ cls: 'zfa-seance-ia-titre', text: tr('Proposition') });
+    const nom = new Map(filles.map((t) => [t.ref, t.intitule]));
+    const items = p.retenir.map((ref) => ({ ref })).concat(p.creer.map((c) => ({ titre: c.titre })));
+    for (const it of items) {
+      it.oui = true;
+      const l = z.createEl('label', { cls: 'zfa-seance-ia-ligne' });
+      const cb = l.createEl('input', { type: 'checkbox' });
+      cb.checked = true;
+      cb.addEventListener('change', () => { it.oui = cb.checked; });
+      l.createSpan({ cls: 'zfa-seance-ia-genre' + (it.ref ? '' : ' est-neuve'), text: it.ref ? tr('Retenir') : tr('Créer') });
+      l.createSpan({ cls: 'zfa-seance-titre', text: it.ref ? nom.get(it.ref) : it.titre });
+      if (it.ref) l.createSpan({ cls: 'zfa-seance-ref', text: it.ref });
+    }
+    const pied = z.createDiv({ cls: 'zfa-seance-ia-pied' });
+    const ecarter = pied.createEl('button', { text: tr('Écarter') });
+    ecarter.onclick = () => { z.empty(); z.hide(); };
+    const appliquer = pied.createEl('button', { cls: 'mod-cta', text: tr('Appliquer') });
+    appliquer.onclick = async () => {
+      appliquer.disabled = true;
+      try {
+        for (const it of items) {
+          if (!it.oui) continue;
+          const ref = it.ref || await this._creer(it.titre);
+          if (ref) this._retenir(ref, this.retenues.length);
+        }
+      } finally {
+        z.empty();
+        z.hide();
+        vider();
+      }
+    };
   }
 
   // Une colonne : en-tête (titre, compte), corps qui reçoit les dépôts, pied.

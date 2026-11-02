@@ -760,6 +760,31 @@ const avecTachesStatiques = (Base) => class extends Base {
 
   // Référence nue d'un lien, alias compris : « [[T26-001|partie 2]] » rend
   // « T26-001 ».
+  // La réponse de l'IA pour une séance (promptSeance), rendue sûre : seules
+  // les références connues sont retenues, une fois chacune ; les intitulés à
+  // créer sont nettoyés, et l'un d'eux qui reprend mot pour mot une fille
+  // connue la retient au lieu de la recréer. Tolère un tableau nu de titres.
+  static propositionSeance(j, filles) {
+    const connues = new Map((filles || []).map((t) => [t.ref, t]));
+    const norm = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ').trim();
+    const parNom = new Map((filles || []).map((t) => [norm(t.intitule), t.ref]));
+    const retenir = [];
+    const creer = [];
+    const garder = (ref) => { if (connues.has(ref) && !retenir.includes(ref)) retenir.push(ref); };
+    const o = Array.isArray(j) ? { creer: j } : (j || {});
+    for (const r of [].concat(o.retenir || [])) garder(String(r || '').trim());
+    for (const c of [].concat(o.creer || [])) {
+      const titre = String(typeof c === 'string' ? c : (c && (c.titre || c.title)) || '')
+        .replace(/\s+/g, ' ').trim().replace(/[.;]+$/, '');
+      if (!titre) continue;
+      const deja = parNom.get(norm(titre));
+      if (deja) { garder(deja); continue; }
+      if (!creer.some((x) => norm(x.titre) === norm(titre))) creer.push({ titre });
+    }
+    return { retenir, creer };
+  }
+
   static refDeLien(v) {
     return String(v == null ? '' : v).replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
   }

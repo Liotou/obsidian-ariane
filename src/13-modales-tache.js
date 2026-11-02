@@ -720,7 +720,10 @@ class ModaleSeance extends obsidian.Modal {
     const { contentEl, titleEl } = this;
     this.modalEl.addClass('zfa-seance-modale');
     titleEl.setText(tr('Sous-tâches de la séance'));
-    contentEl.createDiv({ cls: 'zfa-seance-mere', text: this.o.mere.intitule || this.o.mere.ref });
+    const mere = contentEl.createDiv({ cls: 'zfa-seance-mere' });
+    mere.createSpan({ cls: 'zfa-seance-mere-ref', text: this.o.mere.ref });
+    mere.createSpan({ text: this.o.mere.intitule || '' });
+    this._zoneIA(contentEl);
     const grille = contentEl.createDiv({ cls: 'zfa-seance-grille' });
     this.colG = this._colonne(grille, 'retenues', tr('Pour cette séance'));
     this.colD = this._colonne(grille, 'autres', tr('Autres tâches filles'));
@@ -749,6 +752,82 @@ class ModaleSeance extends obsidian.Modal {
     const ok = pied.createEl('button', { cls: 'mod-cta', text: tr('Terminé') });
     ok.onclick = () => this.close();
     setTimeout(() => champ.focus(), 0);
+  }
+
+  // La séance dite en langage naturel. L'IA (le moteur des tâches, réglé
+  // dans Réglages, Tâches, Assistant IA) propose quelles filles retenir et
+  // quelles sous-tâches créer ; rien n'est fait avant « Appliquer ».
+  _zoneIA(hote) {
+    const z = hote.createDiv({ cls: 'zfa-seance-ia' });
+    const ligne = z.createDiv({ cls: 'zfa-seance-ia-saisie' });
+    const zone = ligne.createEl('textarea', { attr: { rows: '2',
+      placeholder: tr('Décrivez la séance : « reprendre la liste du TD, puis préparer le support et écrire aux étudiants »') } });
+    const bt = ligne.createEl('button', { cls: 'zfa-seance-ia-bouton' });
+    obsidian.setIcon(bt.createSpan({ cls: 'zfa-seance-ia-icone' }), 'sparkles');
+    bt.createSpan({ text: tr('Proposer') });
+    this.propo = z.createDiv({ cls: 'zfa-seance-ia-propo' });
+    this.propo.hide();
+    const lancer = async () => {
+      const texte = zone.value.trim();
+      if (!texte || bt.disabled) return;
+      bt.disabled = true;
+      bt.addClass('est-en-cours');
+      try {
+        const filles = this._filles().map((t) => ({ ref: t.ref, intitule: t.intitule || this.noms[t.ref] || t.ref, faite: this._faite(t) }));
+        const g = this.o.greffon;
+        const j = await g.genererIA(g.promptSeance(this.o.mere, filles, texte), 1200);
+        if (!j) return;
+        const p = Ariane.propositionSeance(j, filles);
+        if (!p.retenir.length && !p.creer.length) { new obsidian.Notice(tr('L\'IA n\'a rien proposé pour cette séance.')); return; }
+        this._montrerProposition(p, filles, () => { zone.value = ''; });
+      } finally {
+        bt.disabled = false;
+        bt.removeClass('est-en-cours');
+      }
+    };
+    bt.addEventListener('click', lancer);
+    zone.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); lancer(); }
+    });
+  }
+
+  // La proposition, à cocher ligne à ligne avant de l'appliquer.
+  _montrerProposition(p, filles, vider) {
+    const z = this.propo;
+    z.empty();
+    z.show();
+    z.createDiv({ cls: 'zfa-seance-ia-titre', text: tr('Proposition') });
+    const nom = new Map(filles.map((t) => [t.ref, t.intitule]));
+    const items = p.retenir.map((ref) => ({ ref })).concat(p.creer.map((c) => ({ titre: c.titre })));
+    for (const it of items) {
+      it.oui = true;
+      const l = z.createEl('label', { cls: 'zfa-seance-ia-ligne' });
+      const cb = l.createEl('input', { type: 'checkbox' });
+      cb.checked = true;
+      cb.addEventListener('change', () => { it.oui = cb.checked; });
+      l.createSpan({ cls: 'zfa-seance-ia-genre' + (it.ref ? '' : ' est-neuve'), text: it.ref ? tr('Retenir') : tr('Créer') });
+      l.createSpan({ cls: 'zfa-seance-titre', text: it.ref ? nom.get(it.ref) : it.titre });
+      if (it.ref) l.createSpan({ cls: 'zfa-seance-ref', text: it.ref });
+    }
+    const pied = z.createDiv({ cls: 'zfa-seance-ia-pied' });
+    const ecarter = pied.createEl('button', { text: tr('Écarter') });
+    ecarter.onclick = () => { z.empty(); z.hide(); };
+    const appliquer = pied.createEl('button', { cls: 'mod-cta', text: tr('Appliquer') });
+    appliquer.onclick = async () => {
+      appliquer.disabled = true;
+      try {
+        for (const it of items) {
+          if (!it.oui) continue;
+          const ref = it.ref || await this._creer(it.titre);
+          if (ref) this._retenir(ref, this.retenues.length);
+        }
+      } finally {
+        z.empty();
+        z.hide();
+        vider();
+      }
+    };
   }
 
   // Une colonne : en-tête (titre, compte), corps qui reçoit les dépôts, pied.

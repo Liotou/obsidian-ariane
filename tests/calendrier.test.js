@@ -149,6 +149,31 @@ test('séance : glisser pour retenir, réordonner et relâcher les sous-tâches'
   assert.ok(m.modifie);
 });
 
+test('séance en langage naturel : la proposition de l’IA rendue sûre', () => {
+  const filles = [
+    { ref: 'T043', intitule: 'Récupérer la liste des étudiants du TD' },
+    { ref: 'T044', intitule: 'Envoyer numéros de groupe et liens Mural aux étudiants' },
+  ];
+  const p = Ariane.propositionSeance({
+    retenir: ['T043', 'T999', 'T043'],
+    creer: [{ titre: '  Préparer le support du TD. ' }, 'Envoyer numéros de groupe et liens Mural aux étudiants',
+      { titre: 'préparer le support du td' }, { titre: '' }],
+  }, filles);
+  assert.deepEqual(p, {
+    retenir: ['T043', 'T044'],           // inconnue écartée, doublon fondu, intitulé repris reconnu
+    creer: [{ titre: 'Préparer le support du TD' }],
+  });
+  assert.deepEqual(Ariane.propositionSeance(['Relire le plan'], filles), { retenir: [], creer: [{ titre: 'Relire le plan' }] });
+  assert.deepEqual(Ariane.propositionSeance(null, filles), { retenir: [], creer: [] });
+  // L'invite donne les filles avec leur référence et leur état.
+  const g = Object.create(Ariane.prototype);
+  const inv = g.promptSeance({ ref: 'T040', intitule: 'Préparer les cours' },
+    [{ ref: 'T043', intitule: 'Récupérer la liste', faite: true }], 'reprendre la liste');
+  assert.match(inv, /T040 « Préparer les cours »/);
+  assert.match(inv, /- T043 :: Récupérer la liste :: faite/);
+  assert.match(inv, /reprendre la liste$/);
+});
+
 test('barre d’état : la bulle retrouve le commentaire du créneau en cours', async () => {
   const cr = ['2026-09-08 14:00-16:00', '2026-09-10 09:00-11:00'];
   const bloc = Ariane.blocCreneaux(cr, null, { [Ariane.cleCommentaire(cr[1])]: 'Relire le chapitre 2\npuis les notes' });
