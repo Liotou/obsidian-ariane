@@ -114,6 +114,19 @@ test('commentaires : écrits dans le bloc puis relus (clé mois-jour + heure)', 
   assert.equal(Ariane.cleCommentaire('2027-09-08 14:00-16:00'), '09-08T14:00');
 });
 
+test('barre d’état : la bulle retrouve le commentaire du créneau en cours', async () => {
+  const cr = ['2026-09-08 14:00-16:00', '2026-09-10 09:00-11:00'];
+  const bloc = Ariane.blocCreneaux(cr, null, { [Ariane.cleCommentaire(cr[1])]: 'Relire le chapitre 2\npuis les notes' });
+  const texte = ['<!-- ariane:creneaux -->', bloc, '<!-- /ariane:creneaux -->'].join('\n');
+  const g = Object.create(Ariane.prototype);
+  g.app = { vault: { cachedRead: async () => texte } };
+  const tache = { fichier: { path: 'T.md' } };
+  const [c1, c2] = Ariane.creneauxDeTache(cr).map((c) => ({ tache, debut: c.debut, fin: c.fin, enCours: true }));
+  assert.equal(await g._commentaireDuCreneau(c2), 'Relire le chapitre 2\npuis les notes');
+  assert.equal(await g._commentaireDuCreneau(c1), '');
+  assert.equal(await g._commentaireDuCreneau({ tache: {}, debut: c1.debut }), '');
+});
+
 test('commentaires : ancien bloc à 4 colonnes → aucune clé, session supprimée → rien', () => {
   const ancien = ['<!-- ariane:creneaux -->', '## Créneaux', '',
     '| Session | Date | Heures | Durée |', '|---|---|---|---|',

@@ -582,6 +582,7 @@ const TEXTES = {
     "Prochain créneau : ": "Next slot: ",
     ", reste ": ", left ",
     ". Un clic ouvre la tâche.": ". Click to open the task.",
+    "Un clic ouvre la tâche.": "Click to open the task.",
     "Créneau en cours dans la barre d'état": "Current slot in the status bar",
     "La tâche du créneau en cours, une jauge, le temps passé et le temps restant ; hors créneau, le prochain de la journée. Un clic ouvre la tâche.": "The task of the current slot, a gauge, the time spent and the time left; outside a slot, the day's next one. Click to open the task.",
     "Livrable : ": "Deliverable: ",

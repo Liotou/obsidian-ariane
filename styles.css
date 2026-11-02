@@ -714,6 +714,27 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-creneau-barre.est-fin .zfa-creneau-temps { color: var(--text-warning); }
 .zfa-creneau-barre.est-prochain { opacity: 0.8; }
 @media (prefers-reduced-motion: reduce) { .zfa-creneau-rempli { transition: none; } }
+/* Le commentaire du créneau en cours, au survol de l'indicateur. */
+.zfa-creneau-bulle {
+  position: fixed; z-index: var(--layer-tooltip, 60);
+  width: max-content; max-width: min(360px, calc(100vw - 16px));
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--zfa-fam-couleur);
+  border-radius: var(--radius-m, 8px);
+  background: var(--background-primary);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), 0 2px 6px rgba(0, 0, 0, 0.15);
+  padding: 8px 12px; pointer-events: none;
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: var(--font-ui-small);
+  animation: zfa-creneau-bulle 120ms ease-out;
+}
+.zfa-creneau-bulle-tete { display: flex; align-items: baseline; gap: 10px; }
+.zfa-creneau-bulle-titre { font-weight: var(--font-semibold, 600); color: var(--text-normal); }
+.zfa-creneau-bulle-heures { margin-left: auto; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.zfa-creneau-bulle-texte { color: var(--text-normal); white-space: pre-wrap; overflow-wrap: anywhere; }
+.zfa-creneau-bulle-pied { color: var(--text-faint); font-size: var(--font-ui-smaller); }
+@keyframes zfa-creneau-bulle { from { opacity: 0; transform: translateY(3px); } }
+@media (prefers-reduced-motion: reduce) { .zfa-creneau-bulle { animation: none; } }
 
 /* ---------------- Onglets de réglages : icône + libellé ---------------- */
 .zfa-onglet {

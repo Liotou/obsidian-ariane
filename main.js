@@ -788,6 +788,7 @@ const TEXTES = {
     "Prochain créneau : ": "Next slot: ",
     ", reste ": ", left ",
     ". Un clic ouvre la tâche.": ". Click to open the task.",
+    "Un clic ouvre la tâche.": "Click to open the task.",
     "Créneau en cours dans la barre d'état": "Current slot in the status bar",
     "La tâche du créneau en cours, une jauge, le temps passé et le temps restant ; hors créneau, le prochain de la journée. Un clic ouvre la tâche.": "The task of the current slot, a gauge, the time spent and the time left; outside a slot, the day's next one. Click to open the task.",
     "Livrable : ": "Deliverable: ",
@@ -22567,9 +22568,13 @@ const avecTaches = (Base) => class extends Base {
     el.addClass('zfa-creneau-barre');
     this._creneauBarre = el;
     el.addEventListener('click', () => {
+      this._cacherBulleCreneau();
       const f = this._creneauAffiche && this._creneauAffiche.tache.fichier;
       if (f) this.app.workspace.getLeaf(false).openFile(f);
     });
+    el.addEventListener('mouseenter', () => this._montrerBulleCreneau());
+    el.addEventListener('mouseleave', () => this._cacherBulleCreneau());
+    this.register(() => this._cacherBulleCreneau());
     this.registerInterval(window.setInterval(() => this.rafraichirBarreCreneau(), 15000));
     this.registerEvent(this.app.metadataCache.on('changed', (f) => {
       if (f && this.refDeChemin(f.path)) this.antirebond('barre:creneau', () => this.rafraichirBarreCreneau(), 800);
@@ -22583,6 +22588,7 @@ const avecTaches = (Base) => class extends Base {
     const maintenant = Date.now();
     const c = this.settings.creneauBarreEtat === false ? null : Ariane.creneauDuMoment(this.tachesPourGantt(), maintenant);
     this._creneauAffiche = c;
+    this._cacherBulleCreneau();
     el.empty();
     el.toggleClass('est-vide', !c);
     if (!c) { el.removeAttribute('aria-label'); return; }
@@ -22607,6 +22613,49 @@ const avecTaches = (Base) => class extends Base {
     el.toggleClass('est-fin', a.resteMin <= 5);
     el.setAttr('aria-label', t.ref + ', ' + t.intitule + ' : ' + h(c.debut) + '-' + h(c.fin)
       + tr('. Un clic ouvre la tâche.'));
+    // Le commentaire du créneau, s'il en a un, se lit dans une bulle au
+    // survol. Elle remplace alors l'infobulle d'Obsidian : pas deux bulles.
+    this._commentaireDuCreneau(c).then((txt) => {
+      if (this._creneauAffiche !== c) return;
+      c.commentaire = txt;
+      if (!txt) return;
+      el.removeAttribute('aria-label');
+      if (el.matches(':hover')) this._montrerBulleCreneau();
+    }).catch((e) => console.warn('[Ariane] commentaire du créneau :', e));
+  }
+
+  async _commentaireDuCreneau(c) {
+    const f = c && c.tache && c.tache.fichier;
+    if (!f) return '';
+    const coms = Ariane.commentairesDuBloc(await this.app.vault.cachedRead(f));
+    return coms[Ariane.cleCommentaire(c)] || '';
+  }
+
+  // La bulle s'ouvre au-dessus de l'indicateur, calée sur son bord droit.
+  _montrerBulleCreneau() {
+    this._cacherBulleCreneau();
+    const el = this._creneauBarre;
+    const c = this._creneauAffiche;
+    if (!el || !c || !c.enCours || !c.commentaire) return;
+    const t = c.tache;
+    const doc = el.ownerDocument;
+    const win = doc.defaultView || window;
+    const b = doc.body.createDiv({ cls: 'zfa-creneau-bulle' });
+    b.style.setProperty('--zfa-fam-couleur', this.familleDe(t.famille).couleur || 'var(--interactive-accent)');
+    const tete = b.createDiv({ cls: 'zfa-creneau-bulle-tete' });
+    tete.createSpan({ cls: 'zfa-creneau-bulle-titre', text: t.intitule });
+    tete.createSpan({ cls: 'zfa-creneau-bulle-heures', text: c.debut.slice(11, 16) + '-' + c.fin.slice(11, 16) });
+    b.createDiv({ cls: 'zfa-creneau-bulle-texte', text: c.commentaire });
+    b.createDiv({ cls: 'zfa-creneau-bulle-pied', text: tr('Un clic ouvre la tâche.') });
+    const r = el.getBoundingClientRect();
+    b.style.right = Math.max(8, win.innerWidth - r.right) + 'px';
+    b.style.bottom = (win.innerHeight - r.top + 6) + 'px';
+    this._bulleCreneau = b;
+  }
+
+  _cacherBulleCreneau() {
+    if (this._bulleCreneau) this._bulleCreneau.remove();
+    this._bulleCreneau = null;
   }
 
   //#endregion Ariane · temps de travail
