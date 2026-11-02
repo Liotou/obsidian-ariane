@@ -19273,7 +19273,22 @@ const avecTaches = (Base) => class extends Base {
   // Relève : un rappel coché → tâche terminée ; échéance changée dans Rappels →
   // répercutée (sauf si la note a bougé, elle fait foi) ; un rappel ajouté à la
   // main dans une liste surveillée, sans référence connue → nouvelle tâche.
-  async releverRappels(silencieux) {
+  //
+  // Une relève à la fois. Le minuteur, le retour de focus et la commande
+  // pouvaient en lancer deux à quelques secondes d'écart : chacune voyait le
+  // même rappel neuf, faute que la note créée par l'autre soit déjà connue,
+  // et l'importait (T066 et T067, même Rappel ID, créées à une seconde
+  // d'intervalle). Qui arrive pendant une relève en partage le résultat.
+  releverRappels(silencieux) {
+    if (this._releveRappelsEnCours) return this._releveRappelsEnCours;
+    const p = this._releverRappelsSeule(silencieux);
+    this._releveRappelsEnCours = p;
+    const liberer = () => { if (this._releveRappelsEnCours === p) this._releveRappelsEnCours = null; };
+    p.then(liberer, liberer);
+    return p;
+  }
+
+  async _releverRappelsSeule(silencieux) {
     if (this.settings.rappelsActif === false) return 0;
     if (this.destinationRappels() !== 'apple') {
       if (!this._dossierTachesValide(silencieux)) return 0;
@@ -19356,6 +19371,23 @@ const avecTaches = (Base) => class extends Base {
   // porte la référence, sinon devenu une tâche neuve. r : { id, nom, coche,
   // dueIso, listeNom }. Rend vrai si une tâche a été reliée ou créée.
   async _importerRappel(r, refsTaches, idsConnus) {
+    // Un rappel importé ne l'est qu'une fois par session, même si la relève
+    // suivante part avant que la note neuve soit indexée (son Rappel ID
+    // encore inconnu du metadataCache). Noté avant toute attente.
+    const importes = this._rappelsImportes || (this._rappelsImportes = new Set());
+    if (importes.has(r.id)) return false;
+    importes.add(r.id);
+    try {
+      if (await this._importerRappelNeuf(r, refsTaches, idsConnus)) return true;
+    } catch (e) {
+      importes.delete(r.id);
+      throw e;
+    }
+    importes.delete(r.id);
+    return false;
+  }
+
+  async _importerRappelNeuf(r, refsTaches, idsConnus) {
     // Le titre du rappel porte-t-il la référence d'une tâche existante ? On
     // relie au lieu de recréer. Sans supposer de forme : un jeton entre
     // crochets qui est une réf connue, sinon une réf connue en sous-chaîne.

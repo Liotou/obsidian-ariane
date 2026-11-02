@@ -214,3 +214,32 @@ test('relève Apple : inchangée, et sans les identifiants des autres services',
   assert.deepEqual(g.ecrits.T1, { statut: 'terminée', terminee: true, echeance: '2026-10-24', heure: '09:00' });
   assert.deepEqual(importes, [['R9', 'Appeler', false, '2026-10-25', 'Doctorat', true]]);
 });
+
+test('relève Apple : deux relèves rapprochées n’importent le même rappel qu’une fois', async () => {
+  const taches = [];
+  const crees = [];
+  let scripts = 0;
+  const g = greffon('apple', [], () => ({ status: 500 }));
+  Object.assign(g.ctx, {
+    settings: Object.assign(g.ctx.settings, { rappelsDestination: '', listeRappelsDefaut: 'Doctorat', famillesTaches: [], rappelsIgnores: [] }),
+    _dossierTachesValide: () => true,
+    tachesPourGantt: () => taches,
+    _lireT: (x) => x['Tâche - Rappel ID'],
+    _osascriptJXA: async () => {
+      scripts += 1;
+      await new Promise((r) => setTimeout(r, 20));
+      return 'NOUVEAU\tR1\tImprimer les fiches\t0\t\tDoctorat';
+    },
+    _importerRappelNeuf: async (r) => { crees.push(r.id); await new Promise((x) => setTimeout(x, 5)); return true; },
+  });
+  g.ctx.app.metadataCache = { getFileCache: () => ({ frontmatter: {} }) };
+  // Minuteur et retour de focus au même moment : une seule relève.
+  const [a, b] = await Promise.all([g.ctx.releverRappels(true), g.ctx.releverRappels(true)]);
+  assert.equal(scripts, 1, 'la seconde relève partage la première');
+  assert.equal(a, 1);
+  assert.equal(b, 1);
+  // Relève suivante, la note neuve pas encore indexée : rien de recréé.
+  await g.ctx.releverRappels(true);
+  assert.equal(scripts, 2);
+  assert.deepEqual(crees, ['R1']);
+});
