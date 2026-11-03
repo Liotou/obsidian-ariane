@@ -43916,6 +43916,43 @@ class MoteurCalendrier extends MoteurVue {
     return true;
   }
 
+  // Pendant qu'on glisse une tâche sur la grille de la semaine, la place
+  // que prendra son créneau : le guide des déplacements, calé comme le dépôt
+  // (début au quart d'heure sous le curseur, une heure). Il s'efface au
+  // dépôt, ou dès que le glissé ne survole plus la grille (plus de dragover).
+  _apercuDepot(inner, col, de) {
+    const r = col.getBoundingClientRect();
+    const cr = Ariane.creneauDepuisDrop({ yRel: de.clientY - r.top,
+      hauteurHeure: this._pxHeure, heureDebut: this._hDeb, jourISO: col.dataset.jour });
+    clearTimeout(this._apercuDepotMinuterie);
+    this._apercuDepotMinuterie = setTimeout(() => this._oterApercuDepot(), 250);
+    if (!cr) return;
+    const cle = col.dataset.jour + '|' + cr.debut;
+    let g = this._apercuDepotEl;
+    if (g && g.isConnected && g.dataset.cle === cle) return;
+    if (!g || !g.isConnected || g.parentElement !== inner) {
+      if (g) g.remove();
+      g = inner.createDiv({ cls: 'zfa-cal-bloc-guide zfa-cal-depot-guide' });
+      g.style.transition = 'none';
+      this._win().requestAnimationFrame(() => { if (g.isConnected) g.style.transition = ''; });
+      this._apercuDepotEl = g;
+    }
+    const mn = (iso) => Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
+    const deb = mn(cr.debut);
+    const dur = Ariane.dureeCreneauMin(cr.debut, cr.fin) || 60;
+    g.dataset.cle = cle;
+    g.style.left = col.style.left;
+    g.style.width = col.style.width;
+    g.style.top = ((deb / 60 - this._hDeb) * this._pxHeure) + 'px';
+    g.style.height = (dur / 60 * this._pxHeure) + 'px';
+    g.setText(cr.debut.slice(11, 16) + ' → ' + cr.fin.slice(11, 16));
+  }
+
+  _oterApercuDepot() {
+    clearTimeout(this._apercuDepotMinuterie);
+    if (this._apercuDepotEl) { this._apercuDepotEl.remove(); this._apercuDepotEl = null; }
+  }
+
   async _dropExterne(ev, jourISO, mode) {
     const ref = this._refDepuisDrop(ev.dataTransfer);
     if (!ref) { new obsidian.Notice(tr('Aucune tâche reconnue dans ce glissé.')); return; }
@@ -44945,10 +44982,15 @@ class MoteurCalendrier extends MoteurVue {
       col.dataset.jour = j;
       col.style.left = (di * colW) + 'px';
       col.style.width = colW + 'px';
-      col.addEventListener('dragover', (de) => { de.preventDefault(); col.addClass('zfa-cal-cible'); });
+      col.addEventListener('dragover', (de) => {
+        de.preventDefault();
+        col.addClass('zfa-cal-cible');
+        this._apercuDepot(inner, col, de);
+      });
       col.addEventListener('dragleave', () => col.removeClass('zfa-cal-cible'));
       col.addEventListener('drop', (de) => {
         col.removeClass('zfa-cal-cible');
+        this._oterApercuDepot();
         if (this._dropJalon(de, col.dataset.jour, 'grille')) return;
         this._dropExterne(de, col.dataset.jour, 'semaine');
       });

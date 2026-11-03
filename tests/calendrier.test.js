@@ -639,3 +639,35 @@ test('Carte de survol d\'un créneau : seulement quand le bloc cache quelque cho
   // Sous-tâches sous le bord.
   assert.equal(d(bloc(entier, [enfant('zfa-cal-carte-l1', 40), enfant('zfa-cal-seance', 130)])), true);
 });
+
+test('Glisser une tâche sur la semaine : aperçu d\'une heure calé au quart d\'heure, ôté au dépôt', () => {
+  const { MoteurCalendrier } = Ariane._test;
+  const m = Object.create(MoteurCalendrier.prototype);
+  Object.assign(m, { _pxHeure: 60, _hDeb: 8, _win: () => ({ requestAnimationFrame: () => {} }) });
+  const crees = [];
+  const inner = {
+    createDiv() {
+      const el = { style: {}, dataset: {}, isConnected: true, parentElement: inner, texte: '',
+        setText(t) { this.texte = t; }, remove() { this.isConnected = false; } };
+      crees.push(el);
+      return el;
+    },
+  };
+  const col = { dataset: { jour: '2026-11-03' }, style: { left: '120px', width: '120px' },
+    getBoundingClientRect: () => ({ top: 100 }) };
+  // 7 h 10 sous le haut de la grille (8 h) : 15:10, calé à 15:15.
+  m._apercuDepot(inner, col, { clientY: 100 + 7 * 60 + 10 });
+  assert.equal(crees.length, 1);
+  const g = crees[0];
+  assert.equal(g.texte, '15:15 → 16:15');
+  assert.equal(g.style.top, (7.25 * 60) + 'px');
+  assert.equal(g.style.height, '60px');
+  assert.equal(g.style.left, '120px');
+  // Le même quart d'heure : rien n'est refait ; un autre : le guide glisse.
+  m._apercuDepot(inner, col, { clientY: 100 + 7 * 60 + 12 });
+  m._apercuDepot(inner, col, { clientY: 100 + 9 * 60 });
+  assert.equal(crees.length, 1);
+  assert.equal(g.texte, '17:00 → 18:00');
+  m._oterApercuDepot();
+  assert.equal(g.isConnected, false);
+});

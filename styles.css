@@ -2369,6 +2369,16 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
   background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
   transition: left 90ms ease, top 90ms ease, height 90ms ease;
 }
+/* Le même guide, quand on glisse une tâche venue d'ailleurs : l'horaire
+   qu'elle recevra, en haut à gauche. */
+.zfa-cal-depot-guide {
+  padding: 2px 6px;
+  color: var(--text-accent);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  white-space: nowrap;
+}
 .zfa-cal-col.zfa-cal-col-cible-jour {
   background: color-mix(in srgb, var(--interactive-accent) 9%, transparent);
 }
