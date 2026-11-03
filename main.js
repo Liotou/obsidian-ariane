@@ -23734,15 +23734,55 @@ const avecActivite = (Base) => class extends Base {
     return data;
   }
 
-  // Segments bruts d'un jour local. Un jour passé ne change plus : il reste en
-  // mémoire pour la session. Le jour courant est relu au plus toutes les deux
-  // minutes. Un jour futur n'a rien.
+  // Segments bruts d'un jour local. Ceux du Mac, pour un jour passé, ne
+  // changent plus : ils restent en mémoire pour la session ; le jour courant
+  // est relu au plus toutes les deux minutes. Un jour futur n'a rien.
+  // L'iPhone, lui, envoie ses relevés au Mac surtout la nuit : sa part est
+  // rejointe à chaque lecture de ses fichiers, même pour un jour passé, et
+  // même quand ActivityWatch est injoignable (une journée loin du Mac).
   async _segmentsDuJour(jour) {
     const auj = jourIsoDe(new Date());
     if (jour > auj) return [];
     const cache = this._activiteSegments || (this._activiteSegments = new Map());
-    const c = cache.get(jour);
-    if (c && (jour < auj || Date.now() - c.le < 120000)) return c.segs;
+    let c = cache.get(jour);
+    let erreur = null;
+    if (!c || !(jour < auj || Date.now() - c.le < 120000)) {
+      try {
+        c = { le: Date.now(), mac: await this._segmentsMac(jour) };
+        cache.set(jour, c);
+      } catch (e) {
+        erreur = e;
+        c = { le: 0, mac: (c && c.mac) || [] };
+      }
+    }
+    const iph = this.iphoneActif && this.iphoneActif();
+    const sigIp = iph ? (this.plagesIphoneLues(), (this._iphonePlages && this._iphonePlages.sig) || '') : '';
+    if (!c.segs || c.sigIp !== sigIp) {
+      // L'iPhone sur la même ligne, le Mac prioritaire : ce qui recouvre le
+      // Mac devient une interruption du créneau du Mac (voir avecIphone).
+      let segs = c.mac;
+      let interruptions = [];
+      if (iph) {
+        const ip = this.iphoneDuJour(jour, segs);
+        if (ip.segs.length) segs = segs.concat(ip.segs).sort((p, q) => p.deb - q.deb);
+        interruptions = ip.interruptions;
+      }
+      c.segs = segs;
+      c.sigIp = sigIp;
+      c.interruptions = interruptions;
+    }
+    (this._iphoneInterruptions || (this._iphoneInterruptions = new Map())).set(jour, c.interruptions);
+    // Le Mac illisible : l'avis vient d'activitePlage, l'iPhone reste montré.
+    if (erreur) {
+      if (!c.segs.length) throw erreur;
+      this._activiteErreurDiffere = erreur;
+    }
+    return c.segs;
+  }
+
+  // Les segments du Mac d'un jour, lus d'ActivityWatch (et des onglets de
+  // Safari relevés par Ariane).
+  async _segmentsMac(jour) {
     const d0 = new Date(jour + 'T00:00:00').getTime();
     const d1 = new Date(Ariane.decalerJour(jour, 1) + 'T00:00:00').getTime();
     const b = await this._awBuckets();
@@ -23756,18 +23796,7 @@ const avecActivite = (Base) => class extends Base {
     const [fen, afk, web] = await Promise.all([lire(b.fenetre), lire(b.afk), lire(b.web)]);
     // Safari n'a pas d'extension : ses onglets viennent du relevé d'Ariane.
     const safari = Ariane.ongletsEnEvenements(this.ongletsSafari(), d0, d1);
-    let segs = Ariane.segmentsActivite(fen, b.afk.length ? afk : null, web.concat(safari), d0, d1);
-    // L'iPhone sur la même ligne, le Mac prioritaire : ce qui recouvre le Mac
-    // devient une interruption du créneau du Mac (voir avecIphone).
-    let interruptions = [];
-    if (this.iphoneActif && this.iphoneActif()) {
-      const ip = this.iphoneDuJour(jour, segs);
-      if (ip.segs.length) segs = segs.concat(ip.segs).sort((p, q) => p.deb - q.deb);
-      interruptions = ip.interruptions;
-    }
-    (this._iphoneInterruptions || (this._iphoneInterruptions = new Map())).set(jour, interruptions);
-    cache.set(jour, { le: Date.now(), segs });
-    return segs;
+    return Ariane.segmentsActivite(fen, b.afk.length ? afk : null, web.concat(safari), d0, d1);
   }
 
   // Signature des réglages dont dépend l'agrégation : la changer invalide les
@@ -23813,7 +23842,9 @@ const avecActivite = (Base) => class extends Base {
     };
     await this._chargerResumesActivite();
     try {
+      this._activiteErreurDiffere = null;
       while (file.length) await Promise.all(file.splice(0, 3).map(traiter));
+      if (this._activiteErreurDiffere) throw this._activiteErreurDiffere;
       this._activiteErreur = '';
       if (this.settings.activiteIAAuto) this._resumerAuto(out);
       if (this._classerDistractionsAuto) this._classerDistractionsAuto(jours || []);
@@ -26194,29 +26225,30 @@ const avecIphone = (Base) => class extends Base {
 
   // Les plages d'usage des applications : [{ bundle, deb, fin }] en ms.
   // Une application court de son ouverture à sa fermeture, ou à l'ouverture
-  // d'autre chose ; au plus `maxMin` minutes sans nouvel événement (écran
-  // éteint sans fermeture notée). Les éléments du système sont écartés, et
-  // les plages de moins de `minSec` secondes.
+  // d'autre chose (l'écran verrouillé en est une) : une longue séance garde
+  // toute sa durée, jusqu'à `maxFinMin` minutes. Sans rien après elle (fin
+  // du relevé), au plus `maxMin` minutes. Les éléments du système sont
+  // écartés, et les plages de moins de `minSec` secondes.
   static plagesIphone(evts, opts) {
-    const o = Object.assign({ maxMin: 30, minSec: 5 }, opts || {});
+    const o = Object.assign({ maxMin: 30, maxFinMin: 240, minSec: 5 }, opts || {});
     const out = [];
     let cour = null;
-    const clore = (t) => {
+    const clore = (t, max) => {
       if (!cour) return;
-      const fin = Math.min(t, cour.deb + o.maxMin * 60000);
+      const fin = Math.min(t, cour.deb + max * 60000);
       if (fin - cour.deb >= o.minSec * 1000 && !Ariane.estSystemeIphone(cour.bundle)) out.push({ bundle: cour.bundle, deb: cour.deb, fin });
       cour = null;
     };
     for (const e of (evts || [])) {
       if (e.ouvre) {
         if (cour && cour.bundle === e.bundle) continue;
-        clore(e.t);
+        clore(e.t, o.maxFinMin);
         cour = { bundle: e.bundle, deb: e.t };
       } else if (cour && cour.bundle === e.bundle) {
-        clore(e.t);
+        clore(e.t, o.maxFinMin);
       }
     }
-    if (cour) clore(cour.deb + o.maxMin * 60000);
+    if (cour) clore(cour.deb + o.maxMin * 60000, o.maxMin);
     return out;
   }
 

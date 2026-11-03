@@ -79,6 +79,12 @@ test('iPhone : plages d\'applications, système écarté, durée bornée', () =>
   assert.deepEqual(p.map((x) => [x.bundle, (x.fin - x.deb) / 60000]), [
     ['com.apple.mobilemail', 5], ['net.whatsapp.WhatsApp', 3], ['com.google.ios.youtube', 30],
   ]);
+  // Une longue séance, close par l'écran verrouillé, garde toute sa durée.
+  const longue = Ariane.plagesIphone([
+    { t: t('20:00'), bundle: 'com.google.ios.youtube', ouvre: true },
+    { t: t('21:25'), bundle: 'com.apple.SleepLockScreen', ouvre: true },
+  ], { maxMin: 30 });
+  assert.deepEqual(longue.map((x) => [x.bundle, (x.fin - x.deb) / 60000]), [['com.google.ios.youtube', 85]]);
   assert.equal(Ariane.nomAppIphone('com.apple.mobilemail'), 'Mail');
   assert.equal(Ariane.nomAppIphone('lt.manodrabuziai.fr'), 'Vinted');
   assert.equal(Ariane.nomAppIphone('com.exemple.ios.SuperNotes'), 'Super Notes');
@@ -102,4 +108,38 @@ test('iPhone : la part du téléphone dans un créneau agrégé', () => {
   assert.equal(b.length, 1);
   assert.equal(b[0].categorie, 'Distraction');
   assert.equal(b[0].iphoneMin, 12);
+});
+
+test('iPhone : un jour passé reçoit les relevés arrivés après coup, même sans ActivityWatch', async () => {
+  const jour = '2026-10-08';
+  const m = (h) => new Date(jour + 'T' + h + ':00').getTime();
+  let plages = [];
+  let awEnPanne = false;
+  let lecturesMac = 0;
+  const g = Object.create(Ariane.prototype);
+  Object.assign(g, {
+    iphoneActif: () => true,
+    plagesIphoneLues() { this._iphonePlages = { sig: String(plages.length), plages }; return plages; },
+    _segmentsMac: async () => {
+      lecturesMac++;
+      if (awEnPanne) throw new Error('HTTP 0');
+      return [{ deb: m('09:00'), fin: m('10:00'), app: 'Word', titre: '', url: '' }];
+    },
+  });
+  const avant = await g._segmentsDuJour(jour);
+  assert.deepEqual(avant.map((s) => s.app), ['Word']);
+  // La nuit suivante, l'iPhone envoie une longue séance de la veille.
+  plages = [{ bundle: 'com.google.ios.youtube', deb: m('20:00'), fin: m('21:30') }];
+  const apres = await g._segmentsDuJour(jour);
+  assert.deepEqual(apres.map((s) => [s.app, (s.fin - s.deb) / 60000]), [['Word', 60], ['YouTube (iPhone)', 90]]);
+  assert.equal(lecturesMac, 1, 'le Mac d\'un jour passé n\'est pas relu');
+  // Rien de nouveau : les mêmes segments (le calcul des créneaux est gardé).
+  assert.equal(await g._segmentsDuJour(jour), apres);
+  // ActivityWatch injoignable : l'iPhone reste montré.
+  const h = Object.create(g);
+  h._activiteSegments = null;
+  awEnPanne = true;
+  const seul = await h._segmentsDuJour(jour);
+  assert.deepEqual(seul.map((s) => s.app), ['YouTube (iPhone)']);
+  assert.ok(h._activiteErreurDiffere, 'l\'avis d\'erreur est gardé pour activitePlage');
 });

@@ -110,29 +110,30 @@ const avecIphone = (Base) => class extends Base {
 
   // Les plages d'usage des applications : [{ bundle, deb, fin }] en ms.
   // Une application court de son ouverture à sa fermeture, ou à l'ouverture
-  // d'autre chose ; au plus `maxMin` minutes sans nouvel événement (écran
-  // éteint sans fermeture notée). Les éléments du système sont écartés, et
-  // les plages de moins de `minSec` secondes.
+  // d'autre chose (l'écran verrouillé en est une) : une longue séance garde
+  // toute sa durée, jusqu'à `maxFinMin` minutes. Sans rien après elle (fin
+  // du relevé), au plus `maxMin` minutes. Les éléments du système sont
+  // écartés, et les plages de moins de `minSec` secondes.
   static plagesIphone(evts, opts) {
-    const o = Object.assign({ maxMin: 30, minSec: 5 }, opts || {});
+    const o = Object.assign({ maxMin: 30, maxFinMin: 240, minSec: 5 }, opts || {});
     const out = [];
     let cour = null;
-    const clore = (t) => {
+    const clore = (t, max) => {
       if (!cour) return;
-      const fin = Math.min(t, cour.deb + o.maxMin * 60000);
+      const fin = Math.min(t, cour.deb + max * 60000);
       if (fin - cour.deb >= o.minSec * 1000 && !Ariane.estSystemeIphone(cour.bundle)) out.push({ bundle: cour.bundle, deb: cour.deb, fin });
       cour = null;
     };
     for (const e of (evts || [])) {
       if (e.ouvre) {
         if (cour && cour.bundle === e.bundle) continue;
-        clore(e.t);
+        clore(e.t, o.maxFinMin);
         cour = { bundle: e.bundle, deb: e.t };
       } else if (cour && cour.bundle === e.bundle) {
-        clore(e.t);
+        clore(e.t, o.maxFinMin);
       }
     }
-    if (cour) clore(cour.deb + o.maxMin * 60000);
+    if (cour) clore(cour.deb + o.maxMin * 60000, o.maxMin);
     return out;
   }
 
