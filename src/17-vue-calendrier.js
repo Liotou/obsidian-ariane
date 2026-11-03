@@ -359,6 +359,115 @@ class MoteurCalendrier extends MoteurVue {
     carte.style.top = Math.max(8, Math.min(r.top, win.innerHeight - carte.offsetHeight - 8)) + 'px';
   }
 
+  // Ce qu'un bloc de créneau cache : intitulé coupé, ou une ligne (heure,
+  // propriété, sous-tâches) qui passe sous son bord. Les boutons du flanc et
+  // les poignées n'en sont pas.
+  _blocDeborde(el) {
+    const titre = el.querySelector('.zfa-cal-carte-titre');
+    if (titre && (titre.scrollHeight > titre.clientHeight + 1 || titre.scrollWidth > titre.clientWidth + 1)) return true;
+    const bas = el.getBoundingClientRect().bottom;
+    for (const c of Array.from(el.children)) {
+      if (c.matches('.zfa-cal-poignee, .zfa-cal-poignee-haut, .zfa-cal-lignee-btns')) continue;
+      if (c.getBoundingClientRect().bottom > bas + 1) return true;
+    }
+    return false;
+  }
+
+  // La carte de survol d'un créneau de tâche, quand son bloc ne montre pas
+  // tout ou porte un commentaire (que le bloc ne montre jamais) : intitulé
+  // entier, horaire, propriétés, commentaire et sous-tâches de la séance,
+  // qui s'y cochent. Rien pendant un geste.
+  _montrerCarteCreneau(el, t, ev) {
+    if (this._gesteCal) return;
+    clearTimeout(this._carteMinuterie);
+    if (this._carteActivite && this._carteActiviteEl === el) return;
+    const seance = el._seance || { texte: '', refs: [] };
+    const libre = String(seance.texte || '').trim();
+    if (!libre && !this._blocDeborde(el)) return;
+    this._cacherCarteActivite();
+    // La carte remplace la bulle native, qui viendrait s'y superposer.
+    el.removeAttribute('title');
+    const doc = el.ownerDocument;
+    const win = doc.defaultView || window;
+    const g = this.greffon;
+    const carte = doc.body.createDiv({ cls: 'zfa-act-survol est-interactive zfa-evt-survol zfa-cren-survol' });
+    this._carteActivite = carte;
+    this._carteActiviteEl = el;
+    this._apparaitre(carte);
+    carte.addEventListener('mouseenter', () => clearTimeout(this._carteMinuterie));
+    carte.addEventListener('mouseleave', () => this._cacherCarteDiffere());
+    carte.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
+
+    const tete = carte.createDiv({ cls: 'zfa-act-survol-tete' });
+    tete.createSpan({ cls: 'zfa-act-cat', text: t.ref });
+    carte.createDiv({ cls: 'zfa-evt-survol-titre', text: t.intitule || t.ref });
+    const ligne = (icone, texte) => {
+      const l = carte.createDiv({ cls: 'zfa-evt-survol-l' });
+      obsidian.setIcon(l.createSpan({ cls: 'zfa-evt-survol-ic' }), icone);
+      return l.createSpan({ cls: 'zfa-evt-survol-txt', text: texte });
+    };
+    const jour = String(ev.debut || '').slice(0, 10);
+    const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    let quand = jl.charAt(0).toUpperCase() + jl.slice(1);
+    if (ev.fin) {
+      quand += ', ' + ev.debut.slice(11, 16) + ' → ' + ev.fin.slice(11, 16);
+      const min = Ariane.dureeCreneauMin(ev.debut.slice(0, 16), ev.fin.slice(0, 16));
+      if (min) quand += ' (' + dureeLisible(min) + ')';
+    }
+    ligne('clock', quand);
+    for (const p of Ariane.lignesProprietes(this._pairesProps(t.ref), t.intitule, 99)) {
+      ligne('info', p.nom + ' : ' + p.valeur);
+    }
+    if (libre) carte.createDiv({ cls: 'zfa-evt-survol-notes', text: libre });
+
+    if (seance.refs.length) {
+      const parRef = new Map(g.tachesPourGantt().map((x) => [x.ref, x]));
+      const st = carte.createDiv({ cls: 'zfa-cren-survol-st' });
+      st.createDiv({ cls: 'zfa-cren-survol-st-titre', text: tr('Sous-tâches de la séance') });
+      for (const r of seance.refs) {
+        const f = parRef.get(r);
+        const fini = !!f && (f.statut === 'terminée' || f.terminee === true);
+        const l = st.createEl('label', { cls: 'zfa-cren-survol-st-l' + (fini ? ' est-terminee' : '') });
+        const cb = l.createEl('input', { type: 'checkbox', cls: 'task-list-item-checkbox' });
+        cb.checked = fini;
+        cb.disabled = !f;
+        cb.addEventListener('change', async () => {
+          l.toggleClass('est-terminee', cb.checked);
+          await g.majTache(r, { statut: cb.checked ? 'terminée' : 'à faire' });
+          this.dessiner();
+        });
+        const nom = l.createSpan({ cls: 'zfa-cren-survol-st-nom', text: f ? (f.intitule || r) : r });
+        nom.addEventListener('click', (e) => {
+          e.preventDefault(); e.stopPropagation();
+          this._cacherCarteActivite();
+          this.ouvrir(r, e.metaKey || e.ctrlKey);
+        });
+        l.createSpan({ cls: 'zfa-cren-survol-st-ref', text: r });
+      }
+    }
+
+    const actions = carte.createDiv({ cls: 'zfa-act-survol-actions' });
+    const action = (icone, libelle, faire) => {
+      const bt = actions.createEl('button', { cls: 'zfa-act-survol-bt' });
+      obsidian.setIcon(bt.createSpan({ cls: 'zfa-act-survol-bt-ic' }), icone);
+      bt.createSpan({ text: libelle });
+      bt.addEventListener('click', (e) => { e.stopPropagation(); this._cacherCarteActivite(); faire(e); });
+    };
+    action('file-text', tr('Ouvrir'), (e) => this.ouvrir(t.ref, e.metaKey || e.ctrlKey));
+    action('list-checks', tr('Sous-tâches de la séance…'), () => this._ouvrirSeance(t, ev));
+    action('message-square', tr('Commentaire'), () => this._ouvrirCommentaire(t, ev));
+
+    // À droite du bloc, au-delà de ses boutons de flanc ; à gauche s'il n'y a
+    // pas la place.
+    const r = el.getBoundingClientRect();
+    const flanc = el.querySelector('.zfa-cal-lignee-btns');
+    const droite = flanc ? Math.max(r.right, flanc.getBoundingClientRect().right) : r.right;
+    let x = droite + 8;
+    if (x + carte.offsetWidth > win.innerWidth - 8) x = Math.max(8, r.left - carte.offsetWidth - 8);
+    carte.style.left = x + 'px';
+    carte.style.top = Math.max(8, Math.min(r.top, win.innerHeight - carte.offsetHeight - 8)) + 'px';
+  }
+
   // Menu contextuel d'un événement Apple : l'ouvrir dans Calendrier, ou en
   // dériver un jalon (même titre, premier jour de l'événement) lié dynamiquement
   // à l'événement d'origine (`Événement ID` dans la note).
@@ -1376,7 +1485,9 @@ class MoteurCalendrier extends MoteurVue {
       }
       const coms = await lus.get(ref);
       if (!bloc.isConnected) continue;
-      const refs = Ariane.seanceDuCommentaire(coms[Ariane.cleCommentaire(bloc.dataset.brut)] || '').refs;
+      const seance = Ariane.seanceDuCommentaire(coms[Ariane.cleCommentaire(bloc.dataset.brut)] || '');
+      bloc._seance = seance;
+      const refs = seance.refs;
       bloc.querySelectorAll('.zfa-cal-seance').forEach((x) => x.remove());
       if (!refs.length) continue;
       const liste = bloc.createDiv({ cls: 'zfa-cal-seance' });
@@ -2788,6 +2899,12 @@ class MoteurCalendrier extends MoteurVue {
           bloc.dataset.debut = ev.debut;
           bloc.dataset.fin = ev.fin || '';
           bloc.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j));
+          // Carte de survol quand le bloc ne montre pas tout ; un geste ou un
+          // clic droit la ferme.
+          bloc.addEventListener('mouseenter', () => this._montrerCarteCreneau(bloc, t, ev));
+          bloc.addEventListener('mouseleave', () => this._cacherCarteDiffere());
+          bloc.addEventListener('pointerdown', () => this._cacherCarteActivite(true), true);
+          bloc.addEventListener('contextmenu', () => this._cacherCarteActivite(true), true);
           const poi = bloc.createDiv({ cls: 'zfa-cal-poignee' });
           poi.addEventListener('pointerdown', (e) => this._saisirBloc(e, bloc, t.ref, ev.brut, j, 'fin'));
           // Même geste par le haut : on tire le début, la fin reste en place.

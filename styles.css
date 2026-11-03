@@ -4023,6 +4023,16 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
   white-space: pre-line; color: var(--text-normal); max-height: 140px; overflow-y: auto; font-size: var(--font-ui-smaller);
 }
 
+/* Carte de survol d'un créneau de tâche : les sous-tâches de la séance. */
+.zfa-cren-survol-st { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--background-modifier-border); display: flex; flex-direction: column; gap: 3px; }
+.zfa-cren-survol-st-titre { color: var(--text-muted); font-size: var(--font-ui-smaller); margin-bottom: 2px; }
+.zfa-cren-survol-st-l { display: flex; align-items: center; gap: 6px; min-width: 0; cursor: pointer; }
+.zfa-cren-survol-st-l input { margin: 0; flex: 0 0 auto; }
+.zfa-cren-survol-st-nom { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.zfa-cren-survol-st-nom:hover { color: var(--text-accent); text-decoration: underline; }
+.zfa-cren-survol-st-ref { flex: 0 0 auto; color: var(--text-faint); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
+.zfa-cren-survol-st-l.est-terminee .zfa-cren-survol-st-nom { color: var(--text-muted); text-decoration: line-through; }
+
 /* Cartes de survol à la manière d'Obsidian (aperçu de note, menus) : fond
    du thème, filet discret, ombre du thème ; la catégorie en point de couleur
    suivi de son nom, comme une étiquette, plutôt qu'en pastille. */

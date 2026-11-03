@@ -620,3 +620,22 @@ test('Créneau tracé : la tâche dite en langage naturel est créée, puis le c
   await n._creerLN();
   assert.equal(appele, false);
 });
+
+test('Carte de survol d\'un créneau : seulement quand le bloc cache quelque chose', () => {
+  const { MoteurCalendrier } = Ariane._test;
+  const enfant = (cls, bas) => ({ matches: (sel) => sel.split(',').some((x) => x.trim() === '.' + cls), getBoundingClientRect: () => ({ bottom: bas }) });
+  const bloc = (titre, enfants) => ({
+    querySelector: (sel) => (sel === '.zfa-cal-carte-titre' ? titre : null),
+    getBoundingClientRect: () => ({ bottom: 100 }),
+    children: enfants,
+  });
+  const entier = { scrollHeight: 32, clientHeight: 32, scrollWidth: 80, clientWidth: 80 };
+  const coupe = { scrollHeight: 48, clientHeight: 32, scrollWidth: 80, clientWidth: 80 };
+  const d = MoteurCalendrier.prototype._blocDeborde;
+  // Tout tient : pas de carte (les boutons du flanc débordent, ils ne comptent pas).
+  assert.equal(d(bloc(entier, [enfant('zfa-cal-carte-l1', 40), enfant('zfa-cal-lignee-btns', 180)])), false);
+  // Intitulé coupé.
+  assert.equal(d(bloc(coupe, [enfant('zfa-cal-carte-l1', 40)])), true);
+  // Sous-tâches sous le bord.
+  assert.equal(d(bloc(entier, [enfant('zfa-cal-carte-l1', 40), enfant('zfa-cal-seance', 130)])), true);
+});
