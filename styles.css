@@ -3582,6 +3582,43 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 }
 .zfa-tc-icone { display: inline-flex; }
 .zfa-tc-icone .svg-icon { width: 14px; height: 14px; }
+/* Une tâche neuve dite en langage naturel, sous la recherche. */
+.zfa-tc-ln {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  padding: var(--size-2-3) var(--size-4-3) var(--size-4-2);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.zfa-tc-ln-saisie { display: flex; align-items: center; gap: var(--size-4-2); }
+.zfa-tc-ln-icone { display: inline-flex; color: var(--text-accent); }
+.zfa-tc-ln-icone .svg-icon { width: 15px; height: 15px; }
+.zfa-tc-ln-icone.est-en-cours { animation: zfa-seance-ia-pulse 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .zfa-tc-ln-icone.est-en-cours { animation: none; } }
+.zfa-tc-ln-champ.zfa-tc-ln-champ {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: var(--size-2-2) 0;
+  font-size: var(--font-ui-small, 13px);
+}
+.zfa-tc-ln-propo { display: flex; flex-direction: column; gap: var(--size-2-3); }
+.zfa-tc-ln-ligne { display: flex; align-items: center; gap: var(--size-4-2); }
+.zfa-tc-ln-ligne.est-exclu { opacity: 0.5; }
+.zfa-tc-ln-titre { flex: 1 1 auto; min-width: 0; }
+.zfa-tc-ln-fam { flex: 0 0 auto; max-width: 30%; }
+.zfa-tc-ln-date { flex: 0 0 auto; }
+.zfa-tc-ln-marque {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller, 12px);
+}
+.zfa-tc-ln-pied { display: flex; justify-content: flex-end; gap: var(--size-4-2); }
 
 /* ── Claude : validation des changements proposés (section 22) ─────────── */
 .zfa-claude-modale { width: min(640px, 92vw); }

@@ -127,6 +127,7 @@ module.exports._test = {
   // Commentaires en marge : lecture, pose et retrait des balises.
   CommentairesMarge,
   ModaleSeance,
+  ModaleTacheDuCreneau,
   GestionCommentairesMarge,
   // Assistant IA : consignes, masquage des liens, différences, intention.
   AssistantEcriture,

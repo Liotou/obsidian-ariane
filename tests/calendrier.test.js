@@ -596,3 +596,27 @@ test('vue mois : la journée entière d\'abord, puis tout par heure, tâches et 
   assert.deepEqual(l.map((x) => x.id),
     ['tâche du jour', 'événement journée', 'événement 09:00', 'tache 10:15', 'tache 18:00']);
 });
+
+test('Créneau tracé : la tâche dite en langage naturel est créée, puis le créneau lui est attaché', async () => {
+  const { ModaleTacheDuCreneau } = Ariane._test;
+  const m = Object.create(ModaleTacheDuCreneau.prototype);
+  const crees = [];
+  const attache = [];
+  let ferme = false;
+  Object.assign(m, {
+    o: { surChoix: (ref) => attache.push(ref) },
+    close: () => { ferme = true; },
+    greffon: { creerTachesLN: async (specs) => { crees.push(...specs.filter((s) => s.inclus !== false).map((s) => s.titre)); return ['T071', 'T072'].slice(0, crees.length); } },
+    _specsLN: [{ titre: 'Relire le chapitre 2', famille: 'action' }, { titre: 'Envoyer le chapitre', famille: 'action', inclus: false }],
+  });
+  await m._creerLN();
+  assert.deepEqual(crees, ['Relire le chapitre 2']);
+  assert.deepEqual(attache, ['T071']);
+  assert.ok(ferme && m.choisi, 'la fenêtre se ferme comme sur un choix, sans abandonner le créneau');
+  // Tout décoché : rien n'est créé, la fenêtre reste ouverte.
+  const n = Object.create(ModaleTacheDuCreneau.prototype);
+  let appele = false;
+  Object.assign(n, { o: {}, close() {}, greffon: { creerTachesLN: async () => { appele = true; return []; } }, _specsLN: [{ titre: 'X', inclus: false }] });
+  await n._creerLN();
+  assert.equal(appele, false);
+});
