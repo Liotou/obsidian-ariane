@@ -299,3 +299,12 @@ test('repli : un seul réglage, appliqué à toutes les barres, avec animation',
   await chef.basculerRepli();
   assert.equal(chef.greffon.settings.barreRepliee, false, 'la seconde bascule déplie');
 });
+
+test('barre : les commandes pas encore déclarées sont guettées, groupes compris', () => {
+  const { BarreEdition } = T;
+  const existe = (id) => id !== 'x:commentaire-ajouter' && id !== 'x:assistant-outils';
+  assert.deepEqual(BarreEdition.commandesManquantes([
+    { cmd: 'x:gras' }, { separateur: true }, { cmd: 'x:assistant-outils' },
+    { groupe: 'Commentaires', elements: [{ cmd: 'x:commentaire-ajouter' }, { separateur: true }, { cmd: 'x:volet' }] },
+  ], existe), ['x:assistant-outils', 'x:commentaire-ajouter']);
+});

@@ -51124,7 +51124,50 @@ class BarreEdition extends obsidian.Component {
     this.registerEvent(espace.on('window-close', () => this.rafraichir()));
     // L'état des boutons (gras allumé, titre en cours) suit le curseur.
     this.registerEvent(espace.on('editor-change', () => this.majEtats()));
-    espace.onLayoutReady(() => this.rafraichir());
+    // La barre naît avant qu'Ariane ait déclaré toutes ses commandes
+    // (commentaires, assistant), et d'autres greffons chargent après elle :
+    // posée trop tôt, elle sautait ces boutons pour de bon. Elle se pose donc
+    // au tour suivant, puis se redessine quand une commande de sa
+    // disposition apparaît.
+    espace.onLayoutReady(() => {
+      window.setTimeout(() => this.rafraichir(), 0);
+      this.guetterCommandes();
+    });
+  }
+
+  // Les commandes de la disposition qui n'existent pas (encore) ici.
+  static commandesManquantes(entrees, existe) {
+    const ids = [];
+    const parcourir = (l) => {
+      for (const e of l || []) {
+        if (!e) continue;
+        if (e.elements) parcourir(e.elements);
+        else if (e.cmd && !existe(e.cmd)) ids.push(e.cmd);
+      }
+    };
+    parcourir(entrees);
+    return ids;
+  }
+
+  // Une minute durant, toutes les deux secondes : dès qu'une commande
+  // attendue apparaît, les barres se redessinent. Une commande d'un greffon
+  // désactivé reste absente, et la veille s'arrête d'elle-même.
+  guetterCommandes() {
+    const entrees = () => (Array.isArray(this.reglages.barreBoutons) && this.reglages.barreBoutons.length
+      ? this.reglages.barreBoutons : barreDefaut());
+    const manquantes = () => BarreEdition.commandesManquantes(entrees(),
+      (id) => !!BarreOutils.prototype.definition.call(this, id));
+    let attendues = manquantes();
+    if (!attendues.length) return;
+    let tours = 0;
+    const veille = window.setInterval(() => {
+      tours += 1;
+      const encore = manquantes();
+      if (encore.length < attendues.length) this.redessiner();
+      attendues = encore;
+      if (!encore.length || tours >= 30) window.clearInterval(veille);
+    }, 2000);
+    this.registerInterval(veille);
   }
 
   onunload() {
