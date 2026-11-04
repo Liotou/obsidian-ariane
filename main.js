@@ -636,7 +636,7 @@ const TEXTES = {
     "La première fois, Ariane prépare son lien avec le modèle d’Apple (quelques secondes).": "The first time, Ariane prepares its link to Apple’s model (a few seconds).",
     "Vérifier": "Check",
     "Effets lumineux": "Light effects",
-    "Un halo aux couleurs d’Apple Intelligence borde la fenêtre tant que l’IA travaille, et le passage réécrit miroite.": "A glow in Apple Intelligence colors frames the window while the AI works, and the passage being rewritten shimmers.",
+    "Un halo aux couleurs d’Apple Intelligence borde la fenêtre où l’IA travaille tant qu’elle travaille, et le passage réécrit miroite.": "A glow in Apple Intelligence colors frames the window the AI is working in while it works, and the passage being rewritten shimmers.",
     "Raccourcis": "Shortcuts",
     "Attribuez un raccourci à « Outils d’écriture (IA) » ou à « Outils d’écriture d’Apple (natifs) » dans Réglages, Raccourcis clavier.": "Assign a shortcut to « Writing Tools (AI) » or « Apple Writing Tools (native) » in Settings, Hotkeys.",
     "Apple Intelligence (sur ce Mac)": "Apple Intelligence (on this Mac)",
@@ -27813,8 +27813,8 @@ const avecCommentaires = (Base) => class extends Base {
 // « assistant », section 24). Le moteur d'Apple comme fournisseur d'IA, les
 // outils d'écriture à la demande, le filet de sécurité des
 // citations (y compris face aux outils d'écriture d'Apple), et la signature
-// lumineuse commune (liseré, halo au bord de la fenêtre quand l'IA
-// travaille, miroitement du passage en cours de réécriture).
+// lumineuse commune (liseré, halo autour de la fenêtre où l'IA travaille,
+// miroitement du passage en cours de réécriture).
 const avecAssistant = (Base) => class extends Base {
   //#region Ariane · assistant IA
 
@@ -27966,7 +27966,9 @@ const avecAssistant = (Base) => class extends Base {
 
   // ── La signature lumineuse ──
   //  Tant qu'une demande d'IA faite par Monsieur est en cours, un halo aux
-  //  couleurs d'Apple Intelligence borde la fenêtre (chaque fenêtre ouverte).
+  //  couleurs d'Apple Intelligence borde la fenêtre d'où elle part : la
+  //  fenêtre modale ouverte, sinon le volet actif. Plus le bord de tout
+  //  l'écran, jugé trop envahissant (2026-11-04).
 
   async avecHaloIA(fn) {
     const effets = this.module('assistant') && this.settings.assistantEffets !== false;
@@ -27974,16 +27976,39 @@ const avecAssistant = (Base) => class extends Base {
     try { return await fn(); } finally { if (effets) this._retirerHalo(false); }
   }
 
+  // La fenêtre que borde le halo : la dernière fenêtre modale ouverte du
+  // document actif (celle du dessus), sinon le volet actif.
+  static cibleHaloIA(doc, feuille) {
+    const modales = doc && doc.querySelectorAll ? doc.querySelectorAll('.modal-container .modal') : [];
+    if (modales.length) return modales[modales.length - 1];
+    return (feuille && feuille.view && feuille.view.containerEl) || null;
+  }
+
   _poserHalo() {
     this._haloIA = (this._haloIA || 0) + 1;
     if (this._haloIA > 1) return;
-    const docs = new Set([document]);
-    this.app.workspace.iterateAllLeaves((l) => {
-      const d = l.view && l.view.containerEl && l.view.containerEl.ownerDocument;
-      if (d) docs.add(d);
-    });
+    const doc = typeof activeDocument !== 'undefined' ? activeDocument : document;
+    const ws = this.app.workspace;
+    const feuille = ws.getMostRecentLeaf ? ws.getMostRecentLeaf() : ws.activeLeaf;
+    const cible = Ariane.cibleHaloIA(doc, feuille);
     this._halos = [];
-    for (const d of docs) if (d.body) this._halos.push(d.body.createDiv({ cls: 'zfa-ia-bord' }));
+    if (!cible || !cible.ownerDocument || !cible.ownerDocument.body) return;
+    const d = cible.ownerDocument;
+    const win = d.defaultView || window;
+    const halo = d.body.createDiv({ cls: 'zfa-ia-bord' });
+    this._halos.push(halo);
+    // Le halo suit la fenêtre (elle grandit quand l'aperçu arrive) et
+    // s'en va avec elle.
+    const suivre = () => {
+      if (!halo.isConnected || halo.hasClass('est-sortant')) return;
+      if (!cible.isConnected) { halo.remove(); return; }
+      const r = cible.getBoundingClientRect();
+      Object.assign(halo.style, { top: r.top + 'px', left: r.left + 'px',
+        width: r.width + 'px', height: r.height + 'px',
+        borderRadius: win.getComputedStyle(cible).borderRadius });
+      win.requestAnimationFrame(suivre);
+    };
+    suivre();
   }
 
   _retirerHalo(tout) {
@@ -31222,7 +31247,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.assistantFilet !== false).onChange(async (v) => { s.assistantFilet = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Effets lumineux'))
-      .setDesc(tr('Un halo aux couleurs d’Apple Intelligence borde la fenêtre tant que l’IA travaille, et le passage réécrit miroite.'))
+      .setDesc(tr('Un halo aux couleurs d’Apple Intelligence borde la fenêtre où l’IA travaille tant qu’elle travaille, et le passage réécrit miroite.'))
       .addToggle((t) => t.setValue(s.assistantEffets !== false).onChange(async (v) => { s.assistantEffets = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Raccourcis'))

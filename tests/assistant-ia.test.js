@@ -70,3 +70,12 @@ test('actions : chacune a sa consigne, son icône et sa sortie', () => {
   assert.equal(A.action('relire').diff, true);
   assert.equal(A.action('inconnue'), null);
 });
+
+test('Halo de l\'IA : autour de la fenêtre modale du dessus, sinon du volet actif', () => {
+  const vue = { id: 'volet' };
+  const feuille = { view: { containerEl: vue } };
+  const doc = (n) => ({ querySelectorAll: () => Array.from({ length: n }, (_, i) => ({ id: 'modale' + i })) });
+  assert.equal(Ariane.cibleHaloIA(doc(2), feuille).id, 'modale1');
+  assert.equal(Ariane.cibleHaloIA(doc(0), feuille), vue);
+  assert.equal(Ariane.cibleHaloIA(doc(0), null), null);
+});

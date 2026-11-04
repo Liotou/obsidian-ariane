@@ -4887,24 +4887,27 @@ body {
 .zfa-ia-pied { display: flex; align-items: center; gap: var(--size-2-2); margin-top: var(--size-4-2); }
 .zfa-ia-espace { flex: 1; }
 
-/* ---- Le halo au bord de la fenêtre, pendant que l'IA travaille ---- */
+/* ---- Le halo autour de la fenêtre où l'IA travaille (modale ou volet) ----
+   Posé sur le corps du document, calé chaque image sur la fenêtre visée :
+   main.js écrit top, left, width, height et border-radius. */
 .zfa-ia-bord {
-  position: fixed; inset: 0; z-index: var(--layer-notice, 60);
+  position: fixed; z-index: var(--layer-notice, 60);
   pointer-events: none;
   animation: zfa-ia-bord-entree 0.45s ease both;
 }
 .zfa-ia-bord::before,
 .zfa-ia-bord::after {
   content: ''; position: absolute; inset: 0;
+  border-radius: inherit;
   background: conic-gradient(from var(--zfa-ia-angle), var(--zfa-ia-couleurs));
   animation: zfa-ia-tourner 4s linear infinite;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
 }
-.zfa-ia-bord::before { padding: 3px; }
+.zfa-ia-bord::before { padding: 2px; }
 .zfa-ia-bord::after {
-  padding: 14px; filter: blur(16px); opacity: 0.55;
+  inset: -6px; padding: 8px; filter: blur(10px); opacity: 0.5;
   /* La lueur tourne avec le trait, et respire. */
   animation: zfa-ia-tourner 4s linear infinite, zfa-ia-respirer 2.4s ease-in-out infinite;
 }

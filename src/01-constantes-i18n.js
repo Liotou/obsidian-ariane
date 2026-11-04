@@ -430,7 +430,7 @@ const TEXTES = {
     "La première fois, Ariane prépare son lien avec le modèle d’Apple (quelques secondes).": "The first time, Ariane prepares its link to Apple’s model (a few seconds).",
     "Vérifier": "Check",
     "Effets lumineux": "Light effects",
-    "Un halo aux couleurs d’Apple Intelligence borde la fenêtre tant que l’IA travaille, et le passage réécrit miroite.": "A glow in Apple Intelligence colors frames the window while the AI works, and the passage being rewritten shimmers.",
+    "Un halo aux couleurs d’Apple Intelligence borde la fenêtre où l’IA travaille tant qu’elle travaille, et le passage réécrit miroite.": "A glow in Apple Intelligence colors frames the window the AI is working in while it works, and the passage being rewritten shimmers.",
     "Raccourcis": "Shortcuts",
     "Attribuez un raccourci à « Outils d’écriture (IA) » ou à « Outils d’écriture d’Apple (natifs) » dans Réglages, Raccourcis clavier.": "Assign a shortcut to « Writing Tools (AI) » or « Apple Writing Tools (native) » in Settings, Hotkeys.",
     "Apple Intelligence (sur ce Mac)": "Apple Intelligence (on this Mac)",

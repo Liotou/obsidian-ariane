@@ -1306,7 +1306,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.assistantFilet !== false).onChange(async (v) => { s.assistantFilet = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Effets lumineux'))
-      .setDesc(tr('Un halo aux couleurs d’Apple Intelligence borde la fenêtre tant que l’IA travaille, et le passage réécrit miroite.'))
+      .setDesc(tr('Un halo aux couleurs d’Apple Intelligence borde la fenêtre où l’IA travaille tant qu’elle travaille, et le passage réécrit miroite.'))
       .addToggle((t) => t.setValue(s.assistantEffets !== false).onChange(async (v) => { s.assistantEffets = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Raccourcis'))
