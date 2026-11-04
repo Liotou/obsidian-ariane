@@ -1282,7 +1282,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     const g = this.plugin;
     const mac = MoteurAppleIA.disponible();
     this._section(c, tr('Assistant IA'));
-    this._aide(c, tr("Sélectionnez un passage, puis « Outils d’écriture » (barre d’édition, clic droit dans le sous-menu Ariane, ou palette) : le modifier par une consigne, le relire, le réécrire (plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau) ou demander « Qu’en pensez-vous ? », dont les remarques arrivent en commentaires dans la marge. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer. Les outils d’écriture d’Apple eux-mêmes restent au clic droit, ou par la commande « Outils d’écriture d’Apple (natifs) »."));
+    this._aide(c, tr("Sélectionnez un passage, puis « Outils d’écriture » (barre d’édition, clic droit dans le sous-menu Ariane, ou palette) : le modifier par une consigne, le relire, le réécrire (plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau) ou demander « Qu’en pensez-vous ? », dont les remarques arrivent en commentaires dans la marge. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer. Les outils d’écriture d’Apple eux-mêmes restent au clic droit."));
     new obsidian.Setting(c)
       .setName(tr('Moteur de l’assistant'))
       .setDesc(mac
@@ -1310,7 +1310,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.assistantEffets !== false).onChange(async (v) => { s.assistantEffets = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Raccourcis'))
-      .setDesc(tr('Attribuez un raccourci à « Outils d’écriture (IA) » ou à « Outils d’écriture d’Apple (natifs) » dans Réglages, Raccourcis clavier.'));
+      .setDesc(tr('Attribuez un raccourci à « Outils d’écriture (IA) » dans Réglages, Raccourcis clavier.'));
   }
 
   // ── Paragraphes (section 25) ─────────────────────────────────────────

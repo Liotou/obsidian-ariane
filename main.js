@@ -582,8 +582,6 @@ const TEXTES = {
     "Modifier par une consigne…": "Change with an instruction…",
     "Modifier par une consigne": "Change with an instruction",
     "Décrivez la modification, puis Entrée": "Describe the change, then press Enter",
-    "Outils d’écriture d’Apple (natifs)": "Apple Writing Tools (native)",
-    "Outils d’écriture d’Apple…": "Apple Writing Tools…",
     "Les outils d’écriture d’Apple ne sont pas accessibles ici.": "Apple’s Writing Tools are not available here.",
     "Qu’en pensez-vous ?": "What do you think?",
     "L’IA n’a rien trouvé à redire.": "The AI found nothing to point out.",
@@ -627,7 +625,7 @@ const TEXTES = {
     "Plus soutenu": "More formal",
     "la sélection": "the selection",
     "Assistant IA": "AI assistant",
-    "Sélectionnez un passage, puis « Outils d’écriture » (barre d’édition, clic droit dans le sous-menu Ariane, ou palette) : le modifier par une consigne, le relire, le réécrire (plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau) ou demander « Qu’en pensez-vous ? », dont les remarques arrivent en commentaires dans la marge. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer. Les outils d’écriture d’Apple eux-mêmes restent au clic droit, ou par la commande « Outils d’écriture d’Apple (natifs) ».": "Select a passage, then « Writing Tools » (editing bar, right-click in the Ariane submenu, or palette): change it with an instruction, proofread it, rewrite it (clearer, more formal, more concise, summary, key points, list, table) or ask « What do you think? », whose remarks arrive as comments in the margin. Links, citations and footnotes are protected: the AI cannot alter them. Apple’s own Writing Tools remain in the right-click menu, or through the « Apple Writing Tools (native) » command.",
+    "Sélectionnez un passage, puis « Outils d’écriture » (barre d’édition, clic droit dans le sous-menu Ariane, ou palette) : le modifier par une consigne, le relire, le réécrire (plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau) ou demander « Qu’en pensez-vous ? », dont les remarques arrivent en commentaires dans la marge. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer. Les outils d’écriture d’Apple eux-mêmes restent au clic droit.": "Select a passage, then « Writing Tools » (editing bar, right-click in the Ariane submenu, or palette): change it with an instruction, proofread it, rewrite it (clearer, more formal, more concise, summary, key points, list, table) or ask « What do you think? », whose remarks arrive as comments in the margin. Links, citations and footnotes are protected: the AI cannot alter them. Apple’s own Writing Tools remain in the right-click menu.",
     "Moteur de l’assistant": "Assistant engine",
     "Apple Intelligence travaille sur ce Mac, sans connexion ni compte ; son modèle est modeste, mais suffit à la relecture et aux reformulations. Automatique : Apple Intelligence si elle est là, sinon le fournisseur principal (onglet IA).": "Apple Intelligence runs on this Mac, without a connection or an account; its model is modest but enough for proofreading and rephrasing. Automatic: Apple Intelligence when present, otherwise the main provider (AI tab).",
     "Apple Intelligence n’existe que sur Mac : l’assistant emploie le fournisseur principal (onglet IA).": "Apple Intelligence only exists on Mac: the assistant uses the main provider (AI tab).",
@@ -638,7 +636,7 @@ const TEXTES = {
     "Effets lumineux": "Light effects",
     "Un halo aux couleurs d’Apple Intelligence borde la fenêtre où l’IA travaille tant qu’elle travaille, et le passage réécrit miroite.": "A glow in Apple Intelligence colors frames the window the AI is working in while it works, and the passage being rewritten shimmers.",
     "Raccourcis": "Shortcuts",
-    "Attribuez un raccourci à « Outils d’écriture (IA) » ou à « Outils d’écriture d’Apple (natifs) » dans Réglages, Raccourcis clavier.": "Assign a shortcut to « Writing Tools (AI) » or « Apple Writing Tools (native) » in Settings, Hotkeys.",
+    "Attribuez un raccourci à « Outils d’écriture (IA) » dans Réglages, Raccourcis clavier.": "Assign a shortcut to « Writing Tools (AI) » in Settings, Hotkeys.",
     "Apple Intelligence (sur ce Mac)": "Apple Intelligence (on this Mac)",
     "À la manière d’Apple Intelligence : outils d’écriture sur la sélection, barre de demande, Apple Intelligence comme moteur sur Mac.": "In the manner of Apple Intelligence: Writing Tools on the selection, a request bar, Apple Intelligence as the engine on Mac.",
     "Réécrire": "Rewrite",
@@ -28091,10 +28089,6 @@ const avecAssistant = (Base) => class extends Base {
       id: 'assistant-outils', module: 'assistant', name: tr('Outils d’écriture (IA)'), icon: 'sparkles',
       editorCallback: (editeur, vue) => this.ouvrirOutilsEcriture(vue),
     });
-    this.addCommand({
-      id: 'assistant-outils-apple', module: 'assistant', name: tr('Outils d’écriture d’Apple (natifs)'), icon: 'app-window',
-      editorCallback: (editeur, vue) => this.outilsEcritureApple(vue),
-    });
     for (const [id, action, nom, icone] of [
       ['assistant-relire', 'relire', 'Outils d’écriture : relire la sélection', 'spell-check'],
       ['assistant-reecrire', 'reecrire', 'Outils d’écriture : réécrire la sélection', 'pen-line'],
@@ -28437,23 +28431,11 @@ const avecAssistant = (Base) => class extends Base {
     new PanneauEcritureIA(this, vue).ouvrir(action === 'consigne' ? { consigne: true } : (action ? { action } : {}));
   }
 
-  // Les outils d'écriture d'Apple eux-mêmes (macOS 15.2 et suivants) : la
-  // même action que leur entrée du clic droit, que macOS ajoute au menu
-  // contextuel d'Obsidian (Electron 36 et suivants), envoyée au répondeur
-  // actif, c'est-à-dire l'éditeur. Leur fenêtre et leur moteur sont ceux du
-  // système ; ils ignorent tout des citations, d'où le filet de sécurité.
-  outilsEcritureApple(vue) {
-    const remote = window.electron && window.electron.remote;
-    const menu = remote && remote.Menu;
-    if (!MoteurAppleIA.disponible() || !menu || typeof menu.sendActionToFirstResponder !== 'function') {
-      new obsidian.Notice(tr('Les outils d’écriture d’Apple ne sont pas accessibles ici.'));
-      return false;
-    }
-    PanneauEcritureIA.fermerTout();
-    if (vue && vue.editor) vue.editor.focus();
-    menu.sendActionToFirstResponder('showWritingTools:');
-    return true;
-  }
+  // Les outils d'écriture d'Apple eux-mêmes ne se lancent pas d'ici :
+  // envoyer « showWritingTools: » au répondeur actif depuis le code
+  // (Menu.sendActionToFirstResponder) fait lever à AppKit une exception que
+  // rien ne rattrape, et Obsidian se ferme (2026-11-04, macOS 27.2,
+  // Electron 43). Ils restent au clic droit, où macOS les met lui-même.
 
   async verifierAppleIA() {
     if (!MoteurAppleIA.disponible()) { new obsidian.Notice(tr('Apple Intelligence est réservée au Mac.')); return; }
@@ -31500,7 +31482,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     const g = this.plugin;
     const mac = MoteurAppleIA.disponible();
     this._section(c, tr('Assistant IA'));
-    this._aide(c, tr("Sélectionnez un passage, puis « Outils d’écriture » (barre d’édition, clic droit dans le sous-menu Ariane, ou palette) : le modifier par une consigne, le relire, le réécrire (plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau) ou demander « Qu’en pensez-vous ? », dont les remarques arrivent en commentaires dans la marge. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer. Les outils d’écriture d’Apple eux-mêmes restent au clic droit, ou par la commande « Outils d’écriture d’Apple (natifs) »."));
+    this._aide(c, tr("Sélectionnez un passage, puis « Outils d’écriture » (barre d’édition, clic droit dans le sous-menu Ariane, ou palette) : le modifier par une consigne, le relire, le réécrire (plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau) ou demander « Qu’en pensez-vous ? », dont les remarques arrivent en commentaires dans la marge. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer. Les outils d’écriture d’Apple eux-mêmes restent au clic droit."));
     new obsidian.Setting(c)
       .setName(tr('Moteur de l’assistant'))
       .setDesc(mac
@@ -31528,7 +31510,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.assistantEffets !== false).onChange(async (v) => { s.assistantEffets = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Raccourcis'))
-      .setDesc(tr('Attribuez un raccourci à « Outils d’écriture (IA) » ou à « Outils d’écriture d’Apple (natifs) » dans Réglages, Raccourcis clavier.'));
+      .setDesc(tr('Attribuez un raccourci à « Outils d’écriture (IA) » dans Réglages, Raccourcis clavier.'));
   }
 
   // ── Paragraphes (section 25) ─────────────────────────────────────────
@@ -54323,11 +54305,6 @@ class PanneauEcritureIA {
     for (const a of AssistantEcriture.ACTIONS) {
       if (a.id === 'resume' || a.id === 'avis') menu.addSeparator();
       menu.addItem((i) => i.setTitle(tr(a.nom)).setIcon(a.icone).onClick(() => lancer(a)));
-    }
-    if (MoteurAppleIA.disponible()) {
-      menu.addSeparator();
-      menu.addItem((i) => i.setTitle(tr('Outils d’écriture d’Apple…')).setIcon('app-window')
-        .onClick(() => greffon.outilsEcritureApple(vue)));
     }
   }
 

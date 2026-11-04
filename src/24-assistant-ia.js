@@ -485,11 +485,6 @@ class PanneauEcritureIA {
       if (a.id === 'resume' || a.id === 'avis') menu.addSeparator();
       menu.addItem((i) => i.setTitle(tr(a.nom)).setIcon(a.icone).onClick(() => lancer(a)));
     }
-    if (MoteurAppleIA.disponible()) {
-      menu.addSeparator();
-      menu.addItem((i) => i.setTitle(tr('Outils d’écriture d’Apple…')).setIcon('app-window')
-        .onClick(() => greffon.outilsEcritureApple(vue)));
-    }
   }
 
   // o : { action } lance tout de suite ; { consigne } demande la consigne ;

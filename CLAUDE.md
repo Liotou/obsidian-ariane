@@ -92,6 +92,11 @@ installation : profil « Zotero et écriture » et note de présentation
   (section 16), dont les fichiers se rangent dans « Canevas » sous le dossier
   des tâches. `migrerVuesGraphe` convertit au démarrage toute vue Graphe
   restée dans un `.base`, puis l'en retire. Ne pas la réintroduire.
+- **Outils d'écriture d'Apple : jamais lancés depuis le code.**
+  `Menu.sendActionToFirstResponder('showWritingTools:')` fait planter
+  Obsidian entier (exception AppKit non rattrapée, 2026-11-04). La commande
+  « Outils d'écriture d'Apple (natifs) » a été retirée pour cela ;
+  `tests/assistant-ia.test.js` vérifie que l'appel ne revient pas.
 - **JXA / EventKit** (synchro Apple) : `authorizationStatusForEntityType`
   renvoie une **chaîne**, la passer par `Number()` ; `null` en argument objet
   ObjC devient `NSNull` et plante — utiliser `$(tableau)` ; lire la couleur d'un

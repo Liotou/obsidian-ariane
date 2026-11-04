@@ -79,3 +79,9 @@ test('Halo de l\'IA : autour de la fenêtre modale du dessus, sinon du volet act
   assert.equal(Ariane.cibleHaloIA(doc(0), feuille), vue);
   assert.equal(Ariane.cibleHaloIA(doc(0), null), null);
 });
+
+test('Outils d’écriture d’Apple : jamais lancés depuis le code (Obsidian plante)', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'main.js'), 'latin1');
+  assert.doesNotMatch(src, /sendActionToFirstResponder\s*\(/);
+  assert.doesNotMatch(src, /['"`]showWritingTools:?['"`]/);
+});

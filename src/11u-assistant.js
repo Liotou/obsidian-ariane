@@ -15,10 +15,6 @@ const avecAssistant = (Base) => class extends Base {
       id: 'assistant-outils', module: 'assistant', name: tr('Outils d’écriture (IA)'), icon: 'sparkles',
       editorCallback: (editeur, vue) => this.ouvrirOutilsEcriture(vue),
     });
-    this.addCommand({
-      id: 'assistant-outils-apple', module: 'assistant', name: tr('Outils d’écriture d’Apple (natifs)'), icon: 'app-window',
-      editorCallback: (editeur, vue) => this.outilsEcritureApple(vue),
-    });
     for (const [id, action, nom, icone] of [
       ['assistant-relire', 'relire', 'Outils d’écriture : relire la sélection', 'spell-check'],
       ['assistant-reecrire', 'reecrire', 'Outils d’écriture : réécrire la sélection', 'pen-line'],
@@ -361,23 +357,11 @@ const avecAssistant = (Base) => class extends Base {
     new PanneauEcritureIA(this, vue).ouvrir(action === 'consigne' ? { consigne: true } : (action ? { action } : {}));
   }
 
-  // Les outils d'écriture d'Apple eux-mêmes (macOS 15.2 et suivants) : la
-  // même action que leur entrée du clic droit, que macOS ajoute au menu
-  // contextuel d'Obsidian (Electron 36 et suivants), envoyée au répondeur
-  // actif, c'est-à-dire l'éditeur. Leur fenêtre et leur moteur sont ceux du
-  // système ; ils ignorent tout des citations, d'où le filet de sécurité.
-  outilsEcritureApple(vue) {
-    const remote = window.electron && window.electron.remote;
-    const menu = remote && remote.Menu;
-    if (!MoteurAppleIA.disponible() || !menu || typeof menu.sendActionToFirstResponder !== 'function') {
-      new obsidian.Notice(tr('Les outils d’écriture d’Apple ne sont pas accessibles ici.'));
-      return false;
-    }
-    PanneauEcritureIA.fermerTout();
-    if (vue && vue.editor) vue.editor.focus();
-    menu.sendActionToFirstResponder('showWritingTools:');
-    return true;
-  }
+  // Les outils d'écriture d'Apple eux-mêmes ne se lancent pas d'ici :
+  // envoyer « showWritingTools: » au répondeur actif depuis le code
+  // (Menu.sendActionToFirstResponder) fait lever à AppKit une exception que
+  // rien ne rattrape, et Obsidian se ferme (2026-11-04, macOS 27.2,
+  // Electron 43). Ils restent au clic droit, où macOS les met lui-même.
 
   async verifierAppleIA() {
     if (!MoteurAppleIA.disponible()) { new obsidian.Notice(tr('Apple Intelligence est réservée au Mac.')); return; }
