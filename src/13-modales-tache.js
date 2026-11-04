@@ -307,6 +307,10 @@ class ModaleTache extends obsidian.Modal {
   // édition. `defauts` pré-remplit une création (intitule, parent, famille,
   // note…) : le canevas s'en sert pour créer une sous-tâche depuis une
   // connexion tirée d'une carte.
+  // Une création s'ouvre sur la description en langage naturel ; le
+  // formulaire est à un clic (« Remplir à la main »). Sauf quand l'appelant
+  // apporte déjà une note (carte ou note du canevas convertie) : le contenu
+  // est écrit, c'est le formulaire qui sert.
   constructor(app, greffon, opts) {
     super(app);
     this.greffon = greffon;
@@ -327,6 +331,10 @@ class ModaleTache extends obsidian.Modal {
     }
     this.props = {};
     this._noteInitiale = '';
+    this.modeLN = !this.ref && typeof greffon.analyserTachesLN === 'function'
+      && !(opts && opts.defauts && opts.defauts.note);
+    this._texteLN = '';
+    this._specsLN = null;
   }
 
   async onOpen() {
@@ -339,7 +347,191 @@ class ModaleTache extends obsidian.Modal {
     if (this.ref) await this._chargerDepuisNote();
     else this._synchroniserProps();
     this.corps = contentEl.createDiv();
+    if (this.modeLN) this._dessinerLN();
+    else this._dessiner();
+  }
+
+  // La tâche décrite d'une phrase : l'IA des tâches la comprend (une tâche
+  // par action, famille, dates, dépendances) et la montre avant de la créer.
+  // Entrée analyse, puis crée ce que l'aperçu montre ; Maj+Entrée va à la ligne.
+  _dessinerLN() {
+    const c = this.corps;
+    c.empty();
+    c.createEl('p', { cls: 'zfa-struct-intro', text: tr('Décrivez ce qu’il y a à faire, en une phrase ou plusieurs : une tâche par action, famille devinée, dates comprises (« lundi prochain », « le 30/10 »), dépendances rattachées.') });
+    const zone = c.createEl('textarea', { cls: 'zfa-struct-zone zfa-tache-ln-zone' });
+    zone.rows = 3;
+    zone.placeholder = tr('Ex. : rédiger le résumé du webinaire pour lundi prochain, puis l’envoyer à Solène.');
+    zone.value = this._texteLN || this.v.intitule || '';
+    this._texteLN = zone.value;
+    zone.oninput = () => { this._texteLN = zone.value; this._majBoutonLN(); };
+    zone.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+      e.preventDefault();
+      this._agirLN();
+    });
+    this.apercuLN = c.createDiv({ cls: 'zfa-struct-apercu' });
+    if (this._specsLN) this._apercuLN(this._specsLN);
+
+    const pied = c.createDiv({ cls: 'zfa-tache-modale-pied' });
+    const main = pied.createEl('button', { cls: 'zfa-tache-ln' });
+    obsidian.setIcon(main.createSpan({ cls: 'zfa-tache-ln-ic' }), 'pencil-line');
+    main.createSpan({ text: tr('Remplir à la main') });
+    main.onclick = () => this._versFormulaire();
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    this._btnLN = pied.createEl('button', { cls: 'mod-cta' });
+    this._btnLN.onclick = () => this._agirLN();
+    this._majBoutonLN();
+    setTimeout(() => { zone.focus(); zone.setSelectionRange(zone.value.length, zone.value.length); }, 30);
+  }
+
+  // L'aperçu vaut pour le texte analysé : retouché, la description se
+  // ré-analyse avant de créer.
+  _lnAJour() {
+    return !!(this._specsLN && String(this._texteLN || '').trim() === this._texteAnalyse);
+  }
+
+  _majBoutonLN() {
+    const b = this._btnLN;
+    if (!b) return;
+    if (this._lnOccupe) return;
+    b.setText(this._lnAJour() ? tr('Créer') : (this._specsLN ? tr('Ré-analyser') : tr('Analyser')));
+  }
+
+  _agirLN() {
+    if (this._lnOccupe) return;
+    if (this._lnAJour()) this._creerLN();
+    else this._analyserLN();
+  }
+
+  async _analyserLN() {
+    const texte = String(this._texteLN || '').trim();
+    if (!texte || this._lnOccupe) return;
+    this._lnOccupe = true;
+    if (this._btnLN) { this._btnLN.disabled = true; this._btnLN.setText(tr('Analyse…')); }
+    let specs = [];
+    try {
+      specs = await this.greffon.analyserTachesLN(texte);
+    } catch (e) {
+      new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
+    } finally {
+      this._lnOccupe = false;
+      if (this._btnLN) this._btnLN.disabled = false;
+    }
+    // Passé au formulaire pendant l'analyse : la réponse ne sert plus.
+    if (!this.modeLN) return;
+    if (specs && specs.length) {
+      this._specsLN = specs;
+      this._texteAnalyse = texte;
+      this._apercuLN(specs);
+    } else {
+      new obsidian.Notice(tr('L\'IA n\'a reconnu aucune tâche dans cette description.'));
+    }
+    this._majBoutonLN();
+  }
+
+  // Ce que l'IA a compris, à revoir : décocher, renommer, changer la famille
+  // ou l'échéance avant de créer.
+  _apercuLN(specs) {
+    const ap = this.apercuLN;
+    ap.empty();
+    const familles = this.greffon.famillesIA();
+    const tete = ap.createDiv({ cls: 'zfa-struct-apercu-tete' });
+    const compte = tete.createSpan({ cls: 'zfa-struct-compte' });
+    const majCompte = () => compte.setText(specs.filter((s) => s.inclus !== false).length
+      + tr(' tâche(s) à créer'));
+    majCompte();
+    const liste = ap.createDiv({ cls: 'zfa-struct-liste' });
+    specs.forEach((n) => {
+      const d = liste.createDiv({ cls: 'zfa-struct-noeud zfa-ln-noeud' });
+      const inc = d.createEl('input', { type: 'checkbox', cls: 'zfa-struct-inc' });
+      inc.checked = n.inclus !== false;
+      inc.onchange = () => { n.inclus = inc.checked; d.toggleClass('est-exclu', !inc.checked); majCompte(); };
+      const titre = d.createEl('input', { type: 'text', cls: 'zfa-struct-titre' });
+      titre.value = n.titre;
+      titre.onchange = () => { n.titre = titre.value.trim() || n.titre; };
+      const fam = d.createEl('select', { cls: 'zfa-struct-fam dropdown' });
+      for (const f of familles) fam.createEl('option', { value: f.id, text: f.nom || f.id });
+      fam.value = n.famille;
+      fam.onchange = () => { n.famille = fam.value; };
+      const ech = d.createEl('input', { type: 'date', cls: 'zfa-ln-date',
+        attr: { title: tr('Échéance') } });
+      ech.value = n.echeance || '';
+      ech.onchange = () => { n.echeance = ech.value; };
+      const liens = [];
+      if (n.apres != null && specs[n.apres]) liens.push(tr('après « ') + specs[n.apres].titre + ' »');
+      if (n.bloquePar) liens.push(tr('bloquée par « ') + n.bloquePar + ' »');
+      if (n.debut) liens.push(tr('début ') + n.debut);
+      if (liens.length) d.createDiv({ cls: 'zfa-struct-note', text: liens.join(', ') });
+      if (n.livrable) {
+        const l = d.createDiv({ cls: 'zfa-struct-note zfa-ln-livrable' });
+        l.createSpan({ text: tr('Livrable : ') + (n.livrableNom || n.livrable) });
+        const x = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Ne pas associer cette note') } });
+        obsidian.setIcon(x, 'x');
+        x.onclick = () => { n.livrable = ''; l.remove(); };
+      }
+      if (n.note) d.createDiv({ cls: 'zfa-struct-note', text: n.note });
+    });
+  }
+
+  // Crée les tâches de l'aperçu. La fenêtre ne se ferme qu'ensuite, `apres`
+  // aussitôt derrière, comme au formulaire : le calendrier attend un tour
+  // après la fermeture pour savoir si une tâche est venue.
+  async _creerLN() {
+    const specs = this._specsLN || [];
+    if (!specs.some((s) => s.inclus !== false)) { new obsidian.Notice(tr('Aucune tâche sélectionnée.')); return; }
+    if (this.repondu || this._lnOccupe) return;
+    this.repondu = true;
+    this._lnOccupe = true;
+    if (this._btnLN) { this._btnLN.disabled = true; this._btnLN.setText(tr('Création…')); }
+    let refs = [];
+    try {
+      refs = await this.greffon.creerTachesLN(specs);
+      // La mère que l'appelant fixait (sous-tâche tirée d'une carte du
+      // canevas) vaut pour chaque tâche décrite.
+      if (this.v.parent) {
+        for (const r of refs) if (r !== this.v.parent) await this.greffon.rattacher(r, this.v.parent);
+      }
+    } catch (e) {
+      new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
+    }
+    this._lnOccupe = false;
+    if (!refs.length) {
+      this.repondu = false;
+      if (this._btnLN) this._btnLN.disabled = false;
+      this._majBoutonLN();
+      new obsidian.Notice(tr('Rien n\'a pu être créé.'));
+      return;
+    }
+    new obsidian.Notice(refs.length === 1 ? tr('Tâche créée : ') + refs[0]
+      : refs.length + tr(' tâche(s) créée(s) : ') + refs.join(', '));
+    this.close();
+    if (this.apres) this.apres(refs[0]);
+  }
+
+  // Le formulaire, en option : ce que l'IA a déjà compris (première tâche
+  // retenue) le pré-remplit, sinon la description devient l'intitulé.
+  _versFormulaire() {
+    this.modeLN = false;
+    const s = (this._specsLN || []).find((x) => x.inclus !== false);
+    if (s && this._lnAJour()) {
+      this.v.intitule = s.titre || this.v.intitule;
+      if (s.famille && (this.familles.some((f) => f.id === s.famille) || !this.familles.length)) this.v.famille = s.famille;
+      if (s.debut) this.v.debut = s.debut;
+      if (s.echeance) this.v.echeance = s.echeance;
+      if (s.note && !this.v.note) this.v.note = s.note;
+      this._synchroniserProps();
+    } else if (String(this._texteLN || '').trim()) {
+      this.v.intitule = String(this._texteLN).trim().split('\n')[0];
+    }
+    this._btnLN = null;
     this._dessiner();
+  }
+
+  // Retour à la description : l'intitulé tapé entre-temps l'amorce.
+  _versLN() {
+    this.modeLN = true;
+    if (!String(this._texteLN || '').trim()) this._texteLN = this.v.intitule || '';
+    this._dessinerLN();
   }
 
   // Rend un aperçu Markdown formaté (comme dans une note) dans `el`.
@@ -574,20 +766,13 @@ class ModaleTache extends obsidian.Modal {
     }
 
     const pied = c.createDiv({ cls: 'zfa-tache-modale-pied' });
-    if (!this.ref) {
-      // Décrire la tâche d'une phrase plutôt que remplir les champs : on passe
-      // la main à l'invite en langage naturel, l'intitulé déjà tapé en amorce.
+    if (!this.ref && typeof this.greffon.analyserTachesLN === 'function') {
+      // Revenir à la description d'une phrase, dans la même fenêtre.
       const ln = pied.createEl('button', { cls: 'zfa-tache-ln' });
       const ic = ln.createSpan({ cls: 'zfa-tache-ln-ic' });
       obsidian.setIcon(ic, 'sparkles');
-      ln.createSpan({ text: tr('Créer en langage naturel…') });
-      ln.onclick = () => {
-        const texte = this.v.intitule || '';
-        const apres = this.apres;
-        this.repondu = true;
-        this.close();
-        new ModaleAjoutLN(this.greffon, { texte, apres }).open();
-      };
+      ln.createSpan({ text: tr('Décrire en langage naturel') });
+      ln.onclick = () => this._versLN();
     }
     pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
     const ok = pied.createEl('button', {
@@ -1396,120 +1581,6 @@ class ModaleRevueLot extends obsidian.Modal {
       new obsidian.Notice((n || 0) + tr(' modification(s) appliquée(s).'));
     };
   }
-  onClose() { this.contentEl.empty(); }
-}
-
-// Invite « créer en langage naturel » : une description, une ou plusieurs
-// tâches. Comme pour « Structurer un brouillon », tout passe par un aperçu où
-// l'on décoche, renomme, change la famille ou l'échéance avant de créer.
-class ModaleAjoutLN extends obsidian.Modal {
-  // opts : { texte?, apres?(ref) } ; `texte` amorce la description (ouverture
-  // depuis la fenêtre de création), `apres` prévient la vue qui l'a ouverte.
-  constructor(greffon, opts) { super(greffon.app); this.greffon = greffon; this.o = opts || {}; }
-  onOpen() {
-    const c = this.contentEl;
-    if (this.modalEl) this.modalEl.addClass('zfa-struct-modal');
-    c.addClass('zfa-struct');
-    this.titleEl.setText(tr('Créer des tâches en langage naturel'));
-    c.createEl('p', { cls: 'zfa-struct-intro', text: tr('Décrivez ce qu’il y a à faire, en une phrase ou plusieurs : une tâche par action, famille devinée, dates comprises (« lundi prochain », « le 30/10 »), dépendances rattachées.') });
-    const inp = c.createEl('textarea', { cls: 'zfa-struct-zone' });
-    inp.rows = 4;
-    inp.style.minHeight = '6em';
-    inp.style.fontFamily = 'var(--font-text)';
-    inp.placeholder = tr('Ex. : rédiger le résumé du webinaire pour lundi prochain, puis l’envoyer à Solène.');
-    if (this.o.texte) inp.value = this.o.texte;
-    const pied = c.createDiv({ cls: 'zfa-struct-actions' });
-    const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Analyser') });
-    this.apercu = c.createDiv({ cls: 'zfa-struct-apercu' });
-    b.onclick = async () => {
-      const p = inp.value.trim();
-      if (!p || b.disabled) return;
-      b.disabled = true; b.setText(tr('Analyse…'));
-      let specs = [];
-      try {
-        specs = await this.greffon.analyserTachesLN(p);
-      } catch (e) {
-        new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
-      } finally {
-        b.disabled = false; b.setText(tr('Ré-analyser'));
-      }
-      if (!specs.length) {
-        if (!this.apercu.childElementCount) new obsidian.Notice(tr('Rien n\'a pu être créé.'));
-        return;
-      }
-      this._apercu(specs);
-    };
-    // ⌘↵ analyse sans quitter le clavier.
-    inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); b.click(); }
-    });
-    setTimeout(() => { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }, 30);
-  }
-
-  _apercu(specs) {
-    const ap = this.apercu;
-    ap.empty();
-    const familles = this.greffon.famillesIA();
-    const tete = ap.createDiv({ cls: 'zfa-struct-apercu-tete' });
-    const compte = tete.createSpan({ cls: 'zfa-struct-compte' });
-    const majCompte = () => compte.setText(specs.filter((s) => s.inclus !== false).length
-      + tr(' tâche(s) à créer'));
-    majCompte();
-    const liste = ap.createDiv({ cls: 'zfa-struct-liste' });
-    specs.forEach((n) => {
-      const d = liste.createDiv({ cls: 'zfa-struct-noeud zfa-ln-noeud' });
-      const inc = d.createEl('input', { type: 'checkbox', cls: 'zfa-struct-inc' });
-      inc.checked = n.inclus !== false;
-      inc.onchange = () => { n.inclus = inc.checked; d.toggleClass('est-exclu', !inc.checked); majCompte(); };
-      const titre = d.createEl('input', { type: 'text', cls: 'zfa-struct-titre' });
-      titre.value = n.titre;
-      titre.onchange = () => { n.titre = titre.value.trim() || n.titre; };
-      const fam = d.createEl('select', { cls: 'zfa-struct-fam dropdown' });
-      for (const f of familles) fam.createEl('option', { value: f.id, text: f.nom || f.id });
-      fam.value = n.famille;
-      fam.onchange = () => { n.famille = fam.value; };
-      const ech = d.createEl('input', { type: 'date', cls: 'zfa-ln-date',
-        attr: { title: tr('Échéance') } });
-      ech.value = n.echeance || '';
-      ech.onchange = () => { n.echeance = ech.value; };
-      const liens = [];
-      if (n.apres != null && specs[n.apres]) liens.push(tr('après « ') + specs[n.apres].titre + ' »');
-      if (n.bloquePar) liens.push(tr('bloquée par « ') + n.bloquePar + ' »');
-      if (n.debut) liens.push(tr('début ') + n.debut);
-      if (liens.length) d.createDiv({ cls: 'zfa-struct-note', text: liens.join(', ') });
-      if (n.livrable) {
-        const l = d.createDiv({ cls: 'zfa-struct-note zfa-ln-livrable' });
-        l.createSpan({ text: tr('Livrable : ') + (n.livrableNom || n.livrable) });
-        const x = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Ne pas associer cette note') } });
-        obsidian.setIcon(x, 'x');
-        x.onclick = () => { n.livrable = ''; l.remove(); };
-      }
-      if (n.note) d.createDiv({ cls: 'zfa-struct-note', text: n.note });
-    });
-    const pied = ap.createDiv({ cls: 'zfa-struct-actions' });
-    const b = pied.createEl('button', { cls: 'mod-cta', text: tr('Créer les tâches') });
-    b.onclick = () => this._creer(specs);
-  }
-
-  async _creer(specs) {
-    if (!specs.some((s) => s.inclus !== false)) { new obsidian.Notice(tr('Aucune tâche sélectionnée.')); return; }
-    this.close();
-    const avis = new obsidian.Notice(tr('Création…'), 0);
-    try {
-      const refs = await this.greffon.creerTachesLN(specs);
-      avis.hide();
-      if (!refs.length) { new obsidian.Notice(tr('Rien n\'a pu être créé.')); return; }
-      new obsidian.Notice(refs.length === 1 ? tr('Tâche créée : ') + refs[0]
-        : refs.length + tr(' tâche(s) créée(s) : ') + refs.join(', '));
-      if (this.o.apres) { try { this.o.apres(refs[0]); } catch (e) { /* vue fermée */ } }
-      const f = this.greffon.fichierDeRef(refs[0]);
-      if (f) this.greffon.app.workspace.getLeaf(true).openFile(f);
-    } catch (e) {
-      avis.hide();
-      new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
-    }
-  }
-
   onClose() { this.contentEl.empty(); }
 }
 

@@ -2184,7 +2184,7 @@ const avecTaches = (Base) => class extends Base {
 
   // Une phrase -> une tâche créée (famille + dates si écrites + blocage déduit).
   // Une description en langage naturel → une ou plusieurs tâches, à revoir
-  // avant création (ModaleAjoutLN). C'est l'IA qui comprend les dates
+  // avant création (ModaleTache, en création). C'est l'IA qui comprend les dates
   // (« vendredi prochain », « dans deux semaines », « le 30/10 ») : elle
   // reçoit la date du jour et le calendrier des semaines à venir, pour ne pas
   // avoir à compter les jours elle-même.

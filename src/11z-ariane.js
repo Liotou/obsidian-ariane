@@ -274,7 +274,13 @@ class Ariane extends composer(obsidian.Plugin,
       id: 'ajouter-tache-langage-naturel',
       module: 'taches',
       name: tr('Tâches : ajouter (langage naturel, IA)'),
-      callback: () => new ModaleAjoutLN(this).open(),
+      // La fenêtre de création s'ouvre d'elle-même sur le langage naturel.
+      callback: () => new ModaleTache(this.app, this, {
+        apres: async (ref) => {
+          const f = this.fichierDeRef(ref);
+          if (f) await this.app.workspace.getLeaf(true).openFile(f);
+        },
+      }).open(),
     });
     this.addCommand({
       id: 'resoudre-sources-lecture',

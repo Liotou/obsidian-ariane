@@ -222,3 +222,74 @@ test('langage naturel : la note visée devient le livrable de la tâche', async 
   assert.equal(Ariane.memesMots('Risque', 'Risque émergent'), 0.5);
   assert.equal(specs[0].livrableNom, 'Risque');
 });
+
+/* ------------- Fenêtre de création : langage naturel d'emblée ------------- */
+
+test('Création d\'une tâche : la fenêtre s\'ouvre sur le langage naturel, le formulaire en option', () => {
+  const { ModaleTache } = Ariane._test;
+  const greffon = { settings: { famillesTaches: [{ id: 'action' }, { id: 'lecture' }] }, analyserTachesLN: async () => [] };
+  assert.equal(new ModaleTache({}, greffon, {}).modeLN, true);
+  // Modifier une tâche, ou convertir une carte déjà écrite : le formulaire.
+  assert.equal(new ModaleTache({}, greffon, { ref: 'T001' }).modeLN, false);
+  assert.equal(new ModaleTache({}, greffon, { defauts: { intitule: 'X', note: 'corps' } }).modeLN, false);
+  // Sans IA des tâches : le formulaire.
+  assert.equal(new ModaleTache({}, { settings: {} }, {}).modeLN, false);
+
+  // « Remplir à la main » après analyse : la première tâche retenue pré-remplit.
+  const m = new ModaleTache({}, greffon, {});
+  let dessine = 0;
+  m._dessiner = () => { dessine++; };
+  m._texteLN = 'relire Latour pour vendredi';
+  m._texteAnalyse = 'relire Latour pour vendredi';
+  m._specsLN = [{ titre: 'Écarté', inclus: false }, { titre: 'Relire Latour', famille: 'lecture', echeance: '2026-11-06' }];
+  m._versFormulaire();
+  assert.equal(m.modeLN, false);
+  assert.equal(dessine, 1);
+  assert.equal(m.v.intitule, 'Relire Latour');
+  assert.equal(m.v.famille, 'lecture');
+  assert.equal(m.v.echeance, '2026-11-06');
+  // Sans analyse à jour : la description devient l'intitulé.
+  const n = new ModaleTache({}, greffon, {});
+  n._dessiner = () => {};
+  n._texteLN = 'Écrire le plan\nsuite';
+  n._specsLN = [{ titre: 'Ancien' }];
+  n._texteAnalyse = 'autre chose';
+  n._versFormulaire();
+  assert.equal(n.v.intitule, 'Écrire le plan');
+});
+
+test('Création en langage naturel : Entrée analyse, puis crée ; la fenêtre se ferme avant `apres`', async () => {
+  const { ModaleTache } = Ariane._test;
+  const ordre = [];
+  const rattaches = [];
+  const greffon = {
+    settings: {},
+    analyserTachesLN: async () => [{ titre: 'Relire', famille: 'action' }],
+    creerTachesLN: async (specs) => { ordre.push('cree'); return specs.filter((s) => s.inclus !== false).map((_, i) => 'T09' + i); },
+    rattacher: async (r, p) => { rattaches.push([r, p]); },
+  };
+  const m = new ModaleTache({}, greffon, { defauts: { parent: 'T001' }, apres: (ref) => ordre.push('apres ' + ref) });
+  m.close = () => ordre.push('ferme');
+  m.apercuLN = { empty() {} };
+  m._apercuLN = () => {};
+  m._texteLN = 'relire';
+  m._agirLN();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(m._specsLN.map((s) => s.titre), ['Relire'], 'premier Entrée : analyse');
+  m._texteLN = 'relire ';
+  assert.equal(m._lnAJour(), true, 'des espaces en plus ne périment pas l\'aperçu');
+  m._texteLN = 'relire et envoyer';
+  assert.equal(m._lnAJour(), false, 'un texte retouché se ré-analyse');
+  m._texteLN = 'relire';
+  await m._creerLN();
+  assert.deepEqual(ordre, ['cree', 'ferme', 'apres T090']);
+  assert.deepEqual(rattaches, [['T090', 'T001']], 'la mère fixée par l\'appelant vaut pour la tâche décrite');
+  // Rien de créé : la fenêtre reste ouverte et se laisse réessayer.
+  const k = new ModaleTache({}, Object.assign({}, greffon, { creerTachesLN: async () => [] }), {});
+  let fermee = false;
+  k.close = () => { fermee = true; };
+  k._specsLN = [{ titre: 'X' }];
+  await k._creerLN();
+  assert.equal(fermee, false);
+  assert.equal(k.repondu, false);
+});

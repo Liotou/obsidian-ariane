@@ -1820,6 +1820,10 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 }
 .zfa-tache-ln-ic { display: inline-flex; color: var(--text-accent); }
 .zfa-tache-ln-ic svg { width: 14px; height: 14px; }
+/* Création décrite d'une phrase : la zone en police du texte, l'aperçu
+   caché tant que l'IA n'a rien rendu. */
+.zfa-tache-modale .zfa-tache-ln-zone { min-height: 5em; font-family: var(--font-text); font-size: var(--font-ui-medium); }
+.zfa-tache-modale .zfa-struct-apercu:empty { display: none; }
 
 /* Décompte réel de cartes, dans la barre de la vue. */
 

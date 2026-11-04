@@ -128,6 +128,7 @@ module.exports._test = {
   CommentairesMarge,
   ModaleSeance,
   ModaleTacheDuCreneau,
+  ModaleTache,       // création : langage naturel d'emblée, formulaire en option
   GestionCommentairesMarge,
   // Assistant IA : consignes, masquage des liens, différences, intention.
   AssistantEcriture,
