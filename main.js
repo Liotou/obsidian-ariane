@@ -2271,6 +2271,35 @@ const TEXTES = {
     "Ajouter une tâche (langage naturel)": "Add a task (plain language)",
     "Décrire en langage naturel": "Describe in plain language",
     "Remplir à la main": "Fill in by hand",
+    "Tâches : fusionner deux tâches": "Tasks: merge two tasks",
+    "Fusionner avec une autre tâche…": "Merge with another task…",
+    "Fusionner deux tâches": "Merge two tasks",
+    "Fusionner « ": "Merge “",
+    " » avec…": "” with…",
+    "Première tâche à fusionner…": "First task to merge…",
+    "Cliquez la tâche à garder. L’autre lui passe ses créneaux, ses séances, son temps et ses liens, puis va à la corbeille.": "Click the task to keep. The other hands over its slots, sessions, time and links, then goes to the trash.",
+    "Gardée": "Kept",
+    "Absorbée, puis supprimée": "Absorbed, then deleted",
+    "Inverser": "Swap",
+    " créneaux": " slots",
+    " commentaires de séance": " session comments",
+    " commentaire de séance": " session comment",
+    " de temps passé": " of time spent",
+    " hors Obsidian": " outside Obsidian",
+    " sous-tâches": " subtasks",
+    " sous-tâche": " subtask",
+    "sa note de travail": "its working note",
+    "ni créneau, ni temps, ni note": "no slot, time or note",
+    "un rappel": "a reminder",
+    " » reçoit ": "” receives ",
+    "ses liens seulement": "its links only",
+    ", qui part ensuite à la corbeille.": ", which then goes to the trash.",
+    "Fusionner dans ": "Merge into ",
+    "Fusion…": "Merging…",
+    " fusionnée dans ": " merged into ",
+    "Repris de ": "Taken from ",
+    ", fusionnée le ": ", merged on ",
+    "Tâche introuvable.": "Task not found.",
     "Aucune tâche sélectionnée.": "No task selected.",
     "Décrivez ce qu’il y a à faire, en une phrase ou plusieurs : une tâche par action, famille devinée, dates comprises (« lundi prochain », « le 30/10 »), dépendances rattachées.": "Describe what needs doing, in one or several sentences: one task per action, family guessed, dates understood (“next Monday”, “30/10”), dependencies linked.",
     "Ex. : rédiger le résumé du webinaire pour lundi prochain, puis l’envoyer à Solène.": "E.g.: write the webinar summary by next Monday, then send it to Solène.",
@@ -16387,6 +16416,48 @@ const avecFriseStatiques = (Base) => class extends Base {
     return String(t || '').replace(/<br\s*\/?>/gi, '\n').replace(/\\\|/g, '|').trim();
   }
 
+  // Fusion de deux tâches : ce que la gardée reçoit de l'absorbée.
+  // Chaque côté : { creneaux, agendaIds, coms, tempsReel }. Les créneaux sont
+  // réunis (triés, sans doublon) et leurs événements Agenda restent alignés
+  // dessus, comme le veut le push. L'événement d'un créneau que la gardée a
+  // déjà, ou laissé en trop, passe en fin de liste : le push suivant le
+  // supprime. Les commentaires de séance d'un même créneau se suivent.
+  static fusionCreneaux(garde, abs) {
+    const paires = (t) => {
+      const ids = [].concat((t && t.agendaIds) || []).map((x) => (x == null ? '' : String(x)));
+      const crs = Ariane.creneauxDeTache([].concat((t && t.creneaux) || []).map(String).filter(Boolean));
+      return { l: crs.map((c, i) => ({ c, id: ids[i] || '' })), surplus: ids.slice(crs.length).filter(Boolean) };
+    };
+    const g = paires(garde);
+    const a = paires(abs);
+    const cle = (p) => p.c.debut + '|' + p.c.fin;
+    const parCle = new Map(g.l.map((p) => [cle(p), p]));
+    const idsGarde = new Set(g.l.map((p) => p.id).filter(Boolean));
+    const enTrop = g.surplus.concat(a.surplus);
+    for (const p of a.l) {
+      if (parCle.has(cle(p))) { if (p.id) enTrop.push(p.id); continue; }
+      parCle.set(cle(p), { c: p.c, id: idsGarde.has(p.id) ? '' : p.id });
+    }
+    const tout = [...parCle.values()].sort((x, y) => (x.c.debut < y.c.debut ? -1 : x.c.debut > y.c.debut ? 1 : 0));
+    const utilises = new Set(tout.map((p) => p.id).filter(Boolean));
+    const supprimer = enTrop.filter((id, i, l) => !utilises.has(id) && l.indexOf(id) === i);
+    const agendaIds = tout.map((p) => p.id).concat(supprimer);
+    const coms = Object.assign({}, (garde && garde.coms) || {});
+    for (const [k, v] of Object.entries((abs && abs.coms) || {})) {
+      const t = String(v || '').trim();
+      if (!t) continue;
+      coms[k] = coms[k] && String(coms[k]).trim() !== t ? String(coms[k]).trim() + '\n' + t : t;
+    }
+    const reel = [].concat((garde && garde.tempsReel) || [], (abs && abs.tempsReel) || [])
+      .map((x) => String(x).trim()).filter(Boolean);
+    return {
+      creneaux: tout.map((p) => p.c.brut),
+      agendaIds: agendaIds.some(Boolean) ? agendaIds : [],
+      coms,
+      tempsReel: reel.filter((x, i) => reel.indexOf(x) === i),
+    };
+  }
+
   // Relit les commentaires de session depuis le bloc balisé d'une note.
   // Rendu humain (date « mer. 2 sept. », heures « 09:45 – 12:45 ») relu vers
   // la même clé que cleCommentaire — c'est elle qui fait la jointure.
@@ -19604,6 +19675,9 @@ const avecTaches = (Base) => class extends Base {
       if (!f || !this.refDeChemin(f.path)) return;
       const fm = (ancien && ancien.frontmatter) || {};
       const rid = String(this._lireT(fm, 'rappel-id') || '').trim();
+      // Une tâche absorbée par une fusion dont la gardée reprend le rappel :
+      // il reste en place (voir fusionnerTaches).
+      if (rid && this._rappelsEpargnes && this._rappelsEpargnes.delete(rid)) return;
       if (rid) this.oublierRappel(rid);
     }));
   }
@@ -21499,6 +21573,198 @@ const avecTaches = (Base) => class extends Base {
     this.marquerEcriture(f.path);
     await this.app.fileManager.trashFile(f);
     return true;
+  }
+
+  // Fusionner deux tâches : la première est `ref` (sinon on la choisit),
+  // la seconde se choisit, puis la fenêtre dit laquelle est gardée.
+  ouvrirFusion(ref, apres) {
+    const items = (sauf) => this.tachesPourGantt().filter((t) => t.ref !== sauf)
+      .map((t) => ({ nom: t.intitule + '  (' + t.ref + ')', cle: t.ref }));
+    const seconde = (r1) => {
+      const t1 = this.tachesPourGantt().find((t) => t.ref === r1);
+      new ChoixListeModal(this.app, tr('Fusionner « ') + ((t1 && t1.intitule) || r1) + tr(' » avec…'),
+        items(r1), (it) => { if (it) new ModaleFusionTaches(this, r1, it.cle, apres).open(); }).open();
+    };
+    if (ref) seconde(ref);
+    else new ChoixListeModal(this.app, tr('Première tâche à fusionner…'), items(null), (it) => { if (it) seconde(it.cle); }).open();
+  }
+
+  // Ce qu'une tâche apporterait à une fusion, pour la fenêtre de choix.
+  async resumeFusion(ref) {
+    const f = this.fichierDeRef(ref);
+    if (!f) return null;
+    const t = this.tachesPourGantt().find((x) => x.ref === ref) || { ref, intitule: ref, creneaux: [], tempsReel: [] };
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    let coms = {};
+    let note = '';
+    try {
+      coms = Ariane.commentairesDuBloc(await this.app.vault.cachedRead(f));
+      note = await this.lireNoteTache(ref);
+    } catch (e) { /* note illisible : rien à montrer */ }
+    const totaux = this.settings.tempsTotalSecondes || {};
+    const tempsMin = Math.round(totaux[f.path] != null ? totaux[f.path] / 60 : this.tempsTotalDe(f.path))
+      + Math.round(((this._tempsSecondes && this._tempsSecondes.get(f.path)) || 0) / 60);
+    return {
+      ref, intitule: t.intitule, statut: t.statut, cree: String(fm.cree || ''),
+      creneaux: Ariane.creneauxDeTache(t.creneaux).length,
+      commentaires: Object.values(coms).filter((x) => String(x || '').trim()).length,
+      horsObsidian: (t.tempsReel || []).length,
+      enfants: this.tachesPourGantt().filter((x) => Ariane.refDeLien(x.parent || '') === ref).length,
+      tempsMin, note: !!note.trim(),
+      rappel: !!String(this._lireT(fm, 'rappel-id') || '').trim(),
+    };
+  }
+
+  // Fusionne `refA` dans `refG`, puis met `refA` à la corbeille. La gardée
+  // garde ses propriétés et reçoit : les créneaux de l'absorbée (et leurs
+  // événements Agenda, que le push renommera au lieu d'en créer d'autres),
+  // les commentaires de séance, le temps hors Obsidian, le temps passé et
+  // les sessions de travail, la note de travail (à la suite de la sienne),
+  // ses filles et ses blocages, les dates qui lui manquaient, et son rappel
+  // si elle n'en avait pas. Les liens vers l'absorbée pointent ensuite vers
+  // la gardée.
+  async fusionnerTaches(refG, refA) {
+    if (!refG || !refA || refG === refA) return false;
+    const fG = this.fichierDeRef(refG);
+    const fA = this.fichierDeRef(refA);
+    if (!fG || !fA) return false;
+    const fmDe = (f) => (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    const L = (fm, c) => this._lireT(fm, c);
+    const liste = (v) => [].concat(v == null ? [] : v).map(String).filter(Boolean);
+    const vide = (v) => v == null || String(v).trim() === '' || (Array.isArray(v) && !v.length);
+    const fmG = fmDe(fG);
+    const fmA = fmDe(fA);
+    const intituleA = ([].concat(fmA.aliases || [])[0]) || refA;
+    const cote = async (f, fm) => ({
+      creneaux: liste(L(fm, 'creneaux')),
+      agendaIds: [].concat(L(fm, 'agenda-id') == null ? [] : L(fm, 'agenda-id')),
+      coms: Ariane.commentairesDuBloc(await this.app.vault.read(f)),
+      tempsReel: liste(L(fm, 'temps-reel')),
+    });
+    const plan = Ariane.fusionCreneaux(await cote(fG, fmG), await cote(fA, fmA));
+
+    // La note de travail de l'absorbée, à la suite.
+    const noteA = await this.lireNoteTache(refA);
+    if (noteA.trim()) {
+      const noteG = await this.lireNoteTache(refG);
+      const tete = '*' + tr('Repris de ') + refA + ' (' + intituleA + ')' + tr(', fusionnée le ')
+        + jourIsoDe(new Date()) + '.*';
+      await this.ecrireNoteTache(refG, (noteG.trim() ? noteG.trim() + '\n\n---\n\n' : '') + tete + '\n\n' + noteA.trim());
+    }
+
+    const champs = { creneaux: plan.creneaux, 'agenda-id': plan.agendaIds, 'temps-reel': plan.tempsReel };
+    for (const c of ['debut', 'echeance', 'temps-estime', 'source', 'livrable', 'fichier']) {
+      if (vide(L(fmG, c)) && !vide(L(fmA, c))) champs[c] = L(fmA, c);
+    }
+    if (champs.echeance && !vide(L(fmA, 'heure'))) champs.heure = L(fmA, 'heure');
+    // Le rappel : celui que les deux partagent (doublon venu du même rappel),
+    // ou celui de l'absorbée quand la gardée n'en a pas, reste en place.
+    const ridG = String(L(fmG, 'rappel-id') || '').trim();
+    const ridA = String(L(fmA, 'rappel-id') || '').trim();
+    if (ridA && (!ridG || ridA === ridG)) {
+      if (!ridG) champs['rappel-id'] = ridA;
+      (this._rappelsEpargnes || (this._rappelsEpargnes = new Set())).add(ridA);
+    }
+    // Mère et blocages de l'absorbée, sans boucle sur la gardée.
+    const pG = Ariane.refDeLien(L(fmG, 'parent') || '');
+    const pA = Ariane.refDeLien(L(fmA, 'parent') || '');
+    if (pG === refA || (!pG && pA)) {
+      const p = pA && pA !== refG ? pA : '';
+      if (!p || !this._lienFermeCycle({ de: p, vers: refG, type: 'hier' })) champs.parent = p ? '[[' + p + ']]' : '';
+    }
+    const bpAvant = liste(L(fmG, 'bloque-par'));
+    const bp = bpAvant.concat(liste(L(fmA, 'bloque-par'))).map((b) => Ariane.refDeLien(b))
+      .filter((r, i, l) => r && r !== refA && r !== refG && l.indexOf(r) === i);
+    if (bp.length !== bpAvant.length || bpAvant.some((b) => [refA, refG].includes(Ariane.refDeLien(b)))) {
+      champs['bloque-par'] = bp.map((r) => '[[' + r + ']]');
+    }
+    this.marquerEcriture(fG.path);
+    await this.majTache(refG, champs);
+    // Le bloc des sessions se réécrit sur les créneaux réunis : attendre que
+    // le cache les voie, sinon les commentaires des créneaux venus de
+    // l'absorbée seraient écartés.
+    for (let i = 0; i < 40; i += 1) {
+      if (Ariane.creneauxDeTache(liste(L(fmDe(fG), 'creneaux'))).length === plan.creneaux.length) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    await this.majBlocCreneaux(fG, { coms: plan.coms });
+
+    // Les filles et les tâches bloquées par l'absorbée passent à la gardée.
+    for (const t of this.tachesPourGantt()) {
+      if (t.ref === refA || t.ref === refG) continue;
+      if (Ariane.refDeLien(t.parent || '') === refA) await this.rattacher(t.ref, refG);
+      const bpt = (t.bloquePar || []).map((b) => Ariane.refDeLien(b));
+      if (bpt.includes(refA)) {
+        const n = bpt.map((r) => (r === refA ? refG : r)).filter((r, i, l) => r && l.indexOf(r) === i);
+        await this.majTache(t.ref, { 'bloque-par': n.map((r) => '[[' + r + ']]') });
+      }
+    }
+
+    await this._transfererTemps(fA.path, fG);
+    await this._reciblerLiens(refA, refG, fA.path);
+
+    // Ses événements Agenda sont désormais ceux de la gardée ; son rappel,
+    // s'il est repris, est épargné (_rappelsEpargnes).
+    await this.supprimerTache(refA);
+    if (this._journalPret && this._journalTampon) this._journalNoter(refG, [{ champ: 'fusion', avant: refA, apres: refG }], 'ariane');
+    if (this._relancerPushAgenda) this._relancerPushAgenda(1500);
+    return true;
+  }
+
+  // Le temps passé et les sessions de travail d'une note rejoignent une autre.
+  async _transfererTemps(cheminA, fG) {
+    const cheminG = fG.path;
+    const totaux = this.settings.tempsTotalSecondes || (this.settings.tempsTotalSecondes = {});
+    const sec = (c) => (totaux[c] != null ? totaux[c] : Math.round(this.tempsTotalDe(c) * 60));
+    const secA = sec(cheminA);
+    if (secA > 0) {
+      totaux[cheminG] = sec(cheminG) + secA;
+      const prop = this.settings.tempsPropriete || 'temps-passe';
+      this.marquerEcriture(cheminG);
+      await this.app.fileManager.processFrontMatter(fG, (x) => { x[prop] = Math.round(totaux[cheminG] / 60); });
+    }
+    delete totaux[cheminA];
+    if (this._tempsSecondes && this._tempsSecondes.has(cheminA)) {
+      this._tempsSecondes.set(cheminG, (this._tempsSecondes.get(cheminG) || 0) + this._tempsSecondes.get(cheminA));
+      this._tempsSecondes.delete(cheminA);
+    }
+    const h = this.settings.tempsHistorique || {};
+    for (const [jour, m] of Object.entries(h)) {
+      if (!m || m[cheminA] == null) continue;
+      m[cheminG] = (Number(m[cheminG]) || 0) + (Number(m[cheminA]) || 0);
+      delete m[cheminA];
+      if (this.marquerJourSale) this.marquerJourSale(jour);
+    }
+    // Les fichiers du jour : le relevé du compteur et les sessions. Les
+    // sessions en mémoire sont les mêmes objets, renommées du même coup.
+    if (this.joursAvecDonnees) {
+      for (const jour of await this.joursAvecDonnees()) {
+        const o = await this.donneesJour(jour);
+        let touche = false;
+        if (o.temps && o.temps[cheminA] != null) {
+          o.temps[cheminG] = (Number(o.temps[cheminG]) || 0) + (Number(o.temps[cheminA]) || 0);
+          delete o.temps[cheminA];
+          touche = true;
+        }
+        for (const s of o.sessions || []) if (s && s.chemin === cheminA) { s.chemin = cheminG; touche = true; }
+        if (touche) this.marquerJourSale(jour);
+      }
+    }
+    this._renommerSessions(cheminA, cheminG);
+    await this.saveSettings();
+  }
+
+  // Les liens [[refA…]] des notes du coffre deviennent [[refG…]].
+  async _reciblerLiens(refA, refG, cheminA) {
+    const liens = this.app.metadataCache.resolvedLinks || {};
+    const motif = new RegExp('\\[\\[((?:[^\\]|#\\n]*/)?)' + echapperRegex(refA) + '(?=[\\]|#])', 'g');
+    for (const [source, cibles] of Object.entries(liens)) {
+      if (source === cheminA || !cibles || !cibles[cheminA]) continue;
+      const f = this.app.vault.getAbstractFileByPath(source);
+      if (!(f instanceof obsidian.TFile)) continue;
+      this.marquerEcriture(f.path);
+      await this.app.vault.process(f, (texte) => texte.replace(motif, (m, dossier) => '[[' + dossier + refG));
+    }
   }
 
   // Écrit en une passe les dates rendues par decalerSousArbre ou cascadeAval.
@@ -28481,6 +28747,17 @@ class Ariane extends composer(obsidian.Plugin,
       }).open(),
     });
     this.addCommand({
+      id: 'fusionner-taches',
+      module: 'taches',
+      name: tr('Tâches : fusionner deux tâches'),
+      icon: 'merge',
+      // Depuis une note de tâche, elle est la première des deux.
+      callback: () => {
+        const f = this.app.workspace.getActiveFile();
+        this.ouvrirFusion(f ? this.refDeChemin(f.path) : null);
+      },
+    });
+    this.addCommand({
       id: 'structurer-brouillon-taches',
       module: 'taches',
       name: tr('Tâches : structurer un brouillon (IA)'),
@@ -33977,6 +34254,106 @@ class ModaleTache extends obsidian.Modal {
   }
 }
 
+/* ---------------- Fusionner deux tâches --------------------------------- */
+
+// Deux cartes côte à côte : un clic sur l'une la garde, l'autre lui passe
+// ses créneaux, séances, temps et liens, puis part à la corbeille. Par
+// défaut, la plus ancienne est gardée (l'original d'un doublon).
+class ModaleFusionTaches extends obsidian.Modal {
+  constructor(greffon, refA, refB, apres) {
+    super(greffon.app);
+    this.greffon = greffon;
+    this.refs = [refA, refB];
+    this.apres = apres || null;
+    this.garde = null;
+  }
+
+  async onOpen() {
+    this.titleEl.setText(tr('Fusionner deux tâches'));
+    if (this.modalEl) this.modalEl.addClass('zfa-fusion-modale');
+    this.contentEl.addClass('zfa-fusion');
+    this.resumes = await Promise.all(this.refs.map((r) => this.greffon.resumeFusion(r)));
+    if (this.resumes.some((x) => !x)) { new obsidian.Notice(tr('Tâche introuvable.')); this.close(); return; }
+    if (!this.garde) this.garde = ModaleFusionTaches.plusAncienne(this.resumes);
+    this._dessiner();
+  }
+
+  // La plus ancienne : date de création, à défaut la référence.
+  static plusAncienne(resumes) {
+    const [a, b] = resumes;
+    const ka = (a.cree || '9999') + a.ref;
+    const kb = (b.cree || '9999') + b.ref;
+    return ka <= kb ? a.ref : b.ref;
+  }
+
+  // Ce que l'absorbée apporte, en clair.
+  static apport(r) {
+    const l = [];
+    if (r.creneaux) l.push(r.creneaux + (r.creneaux > 1 ? tr(' créneaux') : tr(' créneau')));
+    if (r.commentaires) l.push(r.commentaires + (r.commentaires > 1 ? tr(' commentaires de séance') : tr(' commentaire de séance')));
+    if (r.tempsMin) l.push(dureeLisible(r.tempsMin) + tr(' de temps passé'));
+    if (r.horsObsidian) l.push(r.horsObsidian + tr(' hors Obsidian'));
+    if (r.enfants) l.push(r.enfants + (r.enfants > 1 ? tr(' sous-tâches') : tr(' sous-tâche')));
+    if (r.note) l.push(tr('sa note de travail'));
+    return l;
+  }
+
+  _dessiner() {
+    const c = this.contentEl;
+    c.empty();
+    c.createEl('p', { cls: 'zfa-struct-intro', text: tr('Cliquez la tâche à garder. L’autre lui passe ses créneaux, ses séances, son temps et ses liens, puis va à la corbeille.') });
+    const rang = c.createDiv({ cls: 'zfa-fusion-rang' });
+    const gardee = this.resumes.find((r) => r.ref === this.garde);
+    const absorbee = this.resumes.find((r) => r.ref !== this.garde);
+    this.resumes.forEach((r, i) => {
+      if (i === 1) {
+        const inv = rang.createEl('button', { cls: 'clickable-icon zfa-fusion-sens',
+          attr: { 'aria-label': tr('Inverser') } });
+        obsidian.setIcon(inv, r.ref === this.garde ? 'arrow-right' : 'arrow-left');
+        inv.onclick = () => { this.garde = absorbee.ref; this._dessiner(); };
+      }
+      const garde = r.ref === this.garde;
+      const carte = rang.createDiv({ cls: 'zfa-fusion-carte' + (garde ? ' est-gardee' : ' est-absorbee') });
+      carte.setAttr('tabindex', '0');
+      carte.createDiv({ cls: 'zfa-fusion-etat', text: garde ? tr('Gardée') : tr('Absorbée, puis supprimée') });
+      carte.createDiv({ cls: 'zfa-fusion-ref', text: r.ref });
+      carte.createDiv({ cls: 'zfa-fusion-titre', text: r.intitule });
+      const det = carte.createEl('ul', { cls: 'zfa-fusion-det' });
+      const apport = ModaleFusionTaches.apport(r);
+      for (const x of apport.length ? apport : [tr('ni créneau, ni temps, ni note')]) det.createEl('li', { text: x });
+      if (r.rappel) det.createEl('li', { text: tr('un rappel') });
+      const choisir = () => { if (this.garde !== r.ref) { this.garde = r.ref; this._dessiner(); } };
+      carte.onclick = choisir;
+      carte.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choisir(); } };
+    });
+    const ap = ModaleFusionTaches.apport(absorbee);
+    c.createEl('p', { cls: 'zfa-fusion-bilan', text: tr('« ') + gardee.intitule + tr(' » reçoit ')
+      + (ap.length ? ap.join(', ') : tr('ses liens seulement')) + tr(' de ') + absorbee.ref
+      + tr(', qui part ensuite à la corbeille.') });
+    const pied = c.createDiv({ cls: 'zfa-tache-modale-pied' });
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    const ok = pied.createEl('button', { cls: 'mod-cta', text: tr('Fusionner dans ') + gardee.ref });
+    ok.onclick = async () => {
+      if (ok.disabled) return;
+      ok.disabled = true;
+      ok.setText(tr('Fusion…'));
+      try {
+        await this.greffon.fusionnerTaches(gardee.ref, absorbee.ref);
+        new obsidian.Notice(absorbee.ref + tr(' fusionnée dans ') + gardee.ref + '.');
+        this.close();
+        if (this.apres) this.apres(gardee.ref);
+      } catch (e) {
+        console.error('[Ariane] fusion', e);
+        new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
+        ok.disabled = false;
+        ok.setText(tr('Fusionner dans ') + gardee.ref);
+      }
+    };
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 /* ---------------- Dater une tâche sans date (depuis la frise) --------- */
 
 class ModaleDaterTache extends obsidian.Modal {
@@ -37568,6 +37945,8 @@ class MoteurFrise extends MoteurVue {
       .onClick(() => this.greffon.ajouterTacheLiee(ligne.ref, 'fille', () => this.dessiner())));
     m.addItem((i) => i.setTitle(tr('Créer une tâche mère…')).setIcon('corner-left-up')
       .onClick(() => this.greffon.ajouterTacheLiee(ligne.ref, 'mere', () => this.dessiner())));
+    m.addItem((i) => i.setTitle(tr('Fusionner avec une autre tâche…')).setIcon('merge')
+      .onClick(() => this.greffon.ouvrirFusion(ligne.ref, () => this.dessiner())));
     m.addSeparator();
 
     for (const st of ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée']) {
@@ -43744,6 +44123,8 @@ class MoteurCalendrier extends MoteurVue {
       .onClick(() => this.greffon.ajouterTacheLiee(t.ref, 'fille', () => this.dessiner())));
     m.addItem((i) => i.setTitle(tr('Créer une tâche mère…')).setIcon('corner-left-up')
       .onClick(() => this.greffon.ajouterTacheLiee(t.ref, 'mere', () => this.dessiner())));
+    m.addItem((i) => i.setTitle(tr('Fusionner avec une autre tâche…')).setIcon('merge')
+      .onClick(() => this.greffon.ouvrirFusion(t.ref, () => this.dessiner())));
     m.addSeparator();
 
     if (ev.source === 'creneau') {
@@ -50687,7 +51068,7 @@ function barreDefaut() {
     { groupe: 'Ariane', icone: 'compass', elements: [
       { cmd: a('correcteur-relire') },
       { separateur: true },
-      { cmd: a('creer-tache') }, { cmd: a('atomise-active') }, { cmd: a('biblio-note') },
+      { cmd: a('creer-tache') }, { cmd: a('fusionner-taches') }, { cmd: a('atomise-active') }, { cmd: a('biblio-note') },
     ] },
     { separateur: true },
     // Les deux gestes d'Ariane qui servent à chaque relecture : replier les
@@ -54706,6 +55087,7 @@ module.exports._test = {
   ModaleSeance,
   ModaleTacheDuCreneau,
   ModaleTache,       // création : langage naturel d'emblée, formulaire en option
+  ModaleFusionTaches,
   GestionCommentairesMarge,
   // Assistant IA : consignes, masquage des liens, différences, intention.
   AssistantEcriture,

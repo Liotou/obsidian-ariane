@@ -249,6 +249,48 @@ const avecFriseStatiques = (Base) => class extends Base {
     return String(t || '').replace(/<br\s*\/?>/gi, '\n').replace(/\\\|/g, '|').trim();
   }
 
+  // Fusion de deux tâches : ce que la gardée reçoit de l'absorbée.
+  // Chaque côté : { creneaux, agendaIds, coms, tempsReel }. Les créneaux sont
+  // réunis (triés, sans doublon) et leurs événements Agenda restent alignés
+  // dessus, comme le veut le push. L'événement d'un créneau que la gardée a
+  // déjà, ou laissé en trop, passe en fin de liste : le push suivant le
+  // supprime. Les commentaires de séance d'un même créneau se suivent.
+  static fusionCreneaux(garde, abs) {
+    const paires = (t) => {
+      const ids = [].concat((t && t.agendaIds) || []).map((x) => (x == null ? '' : String(x)));
+      const crs = Ariane.creneauxDeTache([].concat((t && t.creneaux) || []).map(String).filter(Boolean));
+      return { l: crs.map((c, i) => ({ c, id: ids[i] || '' })), surplus: ids.slice(crs.length).filter(Boolean) };
+    };
+    const g = paires(garde);
+    const a = paires(abs);
+    const cle = (p) => p.c.debut + '|' + p.c.fin;
+    const parCle = new Map(g.l.map((p) => [cle(p), p]));
+    const idsGarde = new Set(g.l.map((p) => p.id).filter(Boolean));
+    const enTrop = g.surplus.concat(a.surplus);
+    for (const p of a.l) {
+      if (parCle.has(cle(p))) { if (p.id) enTrop.push(p.id); continue; }
+      parCle.set(cle(p), { c: p.c, id: idsGarde.has(p.id) ? '' : p.id });
+    }
+    const tout = [...parCle.values()].sort((x, y) => (x.c.debut < y.c.debut ? -1 : x.c.debut > y.c.debut ? 1 : 0));
+    const utilises = new Set(tout.map((p) => p.id).filter(Boolean));
+    const supprimer = enTrop.filter((id, i, l) => !utilises.has(id) && l.indexOf(id) === i);
+    const agendaIds = tout.map((p) => p.id).concat(supprimer);
+    const coms = Object.assign({}, (garde && garde.coms) || {});
+    for (const [k, v] of Object.entries((abs && abs.coms) || {})) {
+      const t = String(v || '').trim();
+      if (!t) continue;
+      coms[k] = coms[k] && String(coms[k]).trim() !== t ? String(coms[k]).trim() + '\n' + t : t;
+    }
+    const reel = [].concat((garde && garde.tempsReel) || [], (abs && abs.tempsReel) || [])
+      .map((x) => String(x).trim()).filter(Boolean);
+    return {
+      creneaux: tout.map((p) => p.c.brut),
+      agendaIds: agendaIds.some(Boolean) ? agendaIds : [],
+      coms,
+      tempsReel: reel.filter((x, i) => reel.indexOf(x) === i),
+    };
+  }
+
   // Relit les commentaires de session depuis le bloc balisé d'une note.
   // Rendu humain (date « mer. 2 sept. », heures « 09:45 – 12:45 ») relu vers
   // la même clé que cleCommentaire — c'est elle qui fait la jointure.

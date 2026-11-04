@@ -129,6 +129,7 @@ module.exports._test = {
   ModaleSeance,
   ModaleTacheDuCreneau,
   ModaleTache,       // création : langage naturel d'emblée, formulaire en option
+  ModaleFusionTaches,
   GestionCommentairesMarge,
   // Assistant IA : consignes, masquage des liens, différences, intention.
   AssistantEcriture,

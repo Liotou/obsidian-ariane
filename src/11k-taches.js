@@ -683,6 +683,9 @@ const avecTaches = (Base) => class extends Base {
       if (!f || !this.refDeChemin(f.path)) return;
       const fm = (ancien && ancien.frontmatter) || {};
       const rid = String(this._lireT(fm, 'rappel-id') || '').trim();
+      // Une tâche absorbée par une fusion dont la gardée reprend le rappel :
+      // il reste en place (voir fusionnerTaches).
+      if (rid && this._rappelsEpargnes && this._rappelsEpargnes.delete(rid)) return;
       if (rid) this.oublierRappel(rid);
     }));
   }
@@ -2578,6 +2581,198 @@ const avecTaches = (Base) => class extends Base {
     this.marquerEcriture(f.path);
     await this.app.fileManager.trashFile(f);
     return true;
+  }
+
+  // Fusionner deux tâches : la première est `ref` (sinon on la choisit),
+  // la seconde se choisit, puis la fenêtre dit laquelle est gardée.
+  ouvrirFusion(ref, apres) {
+    const items = (sauf) => this.tachesPourGantt().filter((t) => t.ref !== sauf)
+      .map((t) => ({ nom: t.intitule + '  (' + t.ref + ')', cle: t.ref }));
+    const seconde = (r1) => {
+      const t1 = this.tachesPourGantt().find((t) => t.ref === r1);
+      new ChoixListeModal(this.app, tr('Fusionner « ') + ((t1 && t1.intitule) || r1) + tr(' » avec…'),
+        items(r1), (it) => { if (it) new ModaleFusionTaches(this, r1, it.cle, apres).open(); }).open();
+    };
+    if (ref) seconde(ref);
+    else new ChoixListeModal(this.app, tr('Première tâche à fusionner…'), items(null), (it) => { if (it) seconde(it.cle); }).open();
+  }
+
+  // Ce qu'une tâche apporterait à une fusion, pour la fenêtre de choix.
+  async resumeFusion(ref) {
+    const f = this.fichierDeRef(ref);
+    if (!f) return null;
+    const t = this.tachesPourGantt().find((x) => x.ref === ref) || { ref, intitule: ref, creneaux: [], tempsReel: [] };
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    let coms = {};
+    let note = '';
+    try {
+      coms = Ariane.commentairesDuBloc(await this.app.vault.cachedRead(f));
+      note = await this.lireNoteTache(ref);
+    } catch (e) { /* note illisible : rien à montrer */ }
+    const totaux = this.settings.tempsTotalSecondes || {};
+    const tempsMin = Math.round(totaux[f.path] != null ? totaux[f.path] / 60 : this.tempsTotalDe(f.path))
+      + Math.round(((this._tempsSecondes && this._tempsSecondes.get(f.path)) || 0) / 60);
+    return {
+      ref, intitule: t.intitule, statut: t.statut, cree: String(fm.cree || ''),
+      creneaux: Ariane.creneauxDeTache(t.creneaux).length,
+      commentaires: Object.values(coms).filter((x) => String(x || '').trim()).length,
+      horsObsidian: (t.tempsReel || []).length,
+      enfants: this.tachesPourGantt().filter((x) => Ariane.refDeLien(x.parent || '') === ref).length,
+      tempsMin, note: !!note.trim(),
+      rappel: !!String(this._lireT(fm, 'rappel-id') || '').trim(),
+    };
+  }
+
+  // Fusionne `refA` dans `refG`, puis met `refA` à la corbeille. La gardée
+  // garde ses propriétés et reçoit : les créneaux de l'absorbée (et leurs
+  // événements Agenda, que le push renommera au lieu d'en créer d'autres),
+  // les commentaires de séance, le temps hors Obsidian, le temps passé et
+  // les sessions de travail, la note de travail (à la suite de la sienne),
+  // ses filles et ses blocages, les dates qui lui manquaient, et son rappel
+  // si elle n'en avait pas. Les liens vers l'absorbée pointent ensuite vers
+  // la gardée.
+  async fusionnerTaches(refG, refA) {
+    if (!refG || !refA || refG === refA) return false;
+    const fG = this.fichierDeRef(refG);
+    const fA = this.fichierDeRef(refA);
+    if (!fG || !fA) return false;
+    const fmDe = (f) => (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+    const L = (fm, c) => this._lireT(fm, c);
+    const liste = (v) => [].concat(v == null ? [] : v).map(String).filter(Boolean);
+    const vide = (v) => v == null || String(v).trim() === '' || (Array.isArray(v) && !v.length);
+    const fmG = fmDe(fG);
+    const fmA = fmDe(fA);
+    const intituleA = ([].concat(fmA.aliases || [])[0]) || refA;
+    const cote = async (f, fm) => ({
+      creneaux: liste(L(fm, 'creneaux')),
+      agendaIds: [].concat(L(fm, 'agenda-id') == null ? [] : L(fm, 'agenda-id')),
+      coms: Ariane.commentairesDuBloc(await this.app.vault.read(f)),
+      tempsReel: liste(L(fm, 'temps-reel')),
+    });
+    const plan = Ariane.fusionCreneaux(await cote(fG, fmG), await cote(fA, fmA));
+
+    // La note de travail de l'absorbée, à la suite.
+    const noteA = await this.lireNoteTache(refA);
+    if (noteA.trim()) {
+      const noteG = await this.lireNoteTache(refG);
+      const tete = '*' + tr('Repris de ') + refA + ' (' + intituleA + ')' + tr(', fusionnée le ')
+        + jourIsoDe(new Date()) + '.*';
+      await this.ecrireNoteTache(refG, (noteG.trim() ? noteG.trim() + '\n\n---\n\n' : '') + tete + '\n\n' + noteA.trim());
+    }
+
+    const champs = { creneaux: plan.creneaux, 'agenda-id': plan.agendaIds, 'temps-reel': plan.tempsReel };
+    for (const c of ['debut', 'echeance', 'temps-estime', 'source', 'livrable', 'fichier']) {
+      if (vide(L(fmG, c)) && !vide(L(fmA, c))) champs[c] = L(fmA, c);
+    }
+    if (champs.echeance && !vide(L(fmA, 'heure'))) champs.heure = L(fmA, 'heure');
+    // Le rappel : celui que les deux partagent (doublon venu du même rappel),
+    // ou celui de l'absorbée quand la gardée n'en a pas, reste en place.
+    const ridG = String(L(fmG, 'rappel-id') || '').trim();
+    const ridA = String(L(fmA, 'rappel-id') || '').trim();
+    if (ridA && (!ridG || ridA === ridG)) {
+      if (!ridG) champs['rappel-id'] = ridA;
+      (this._rappelsEpargnes || (this._rappelsEpargnes = new Set())).add(ridA);
+    }
+    // Mère et blocages de l'absorbée, sans boucle sur la gardée.
+    const pG = Ariane.refDeLien(L(fmG, 'parent') || '');
+    const pA = Ariane.refDeLien(L(fmA, 'parent') || '');
+    if (pG === refA || (!pG && pA)) {
+      const p = pA && pA !== refG ? pA : '';
+      if (!p || !this._lienFermeCycle({ de: p, vers: refG, type: 'hier' })) champs.parent = p ? '[[' + p + ']]' : '';
+    }
+    const bpAvant = liste(L(fmG, 'bloque-par'));
+    const bp = bpAvant.concat(liste(L(fmA, 'bloque-par'))).map((b) => Ariane.refDeLien(b))
+      .filter((r, i, l) => r && r !== refA && r !== refG && l.indexOf(r) === i);
+    if (bp.length !== bpAvant.length || bpAvant.some((b) => [refA, refG].includes(Ariane.refDeLien(b)))) {
+      champs['bloque-par'] = bp.map((r) => '[[' + r + ']]');
+    }
+    this.marquerEcriture(fG.path);
+    await this.majTache(refG, champs);
+    // Le bloc des sessions se réécrit sur les créneaux réunis : attendre que
+    // le cache les voie, sinon les commentaires des créneaux venus de
+    // l'absorbée seraient écartés.
+    for (let i = 0; i < 40; i += 1) {
+      if (Ariane.creneauxDeTache(liste(L(fmDe(fG), 'creneaux'))).length === plan.creneaux.length) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    await this.majBlocCreneaux(fG, { coms: plan.coms });
+
+    // Les filles et les tâches bloquées par l'absorbée passent à la gardée.
+    for (const t of this.tachesPourGantt()) {
+      if (t.ref === refA || t.ref === refG) continue;
+      if (Ariane.refDeLien(t.parent || '') === refA) await this.rattacher(t.ref, refG);
+      const bpt = (t.bloquePar || []).map((b) => Ariane.refDeLien(b));
+      if (bpt.includes(refA)) {
+        const n = bpt.map((r) => (r === refA ? refG : r)).filter((r, i, l) => r && l.indexOf(r) === i);
+        await this.majTache(t.ref, { 'bloque-par': n.map((r) => '[[' + r + ']]') });
+      }
+    }
+
+    await this._transfererTemps(fA.path, fG);
+    await this._reciblerLiens(refA, refG, fA.path);
+
+    // Ses événements Agenda sont désormais ceux de la gardée ; son rappel,
+    // s'il est repris, est épargné (_rappelsEpargnes).
+    await this.supprimerTache(refA);
+    if (this._journalPret && this._journalTampon) this._journalNoter(refG, [{ champ: 'fusion', avant: refA, apres: refG }], 'ariane');
+    if (this._relancerPushAgenda) this._relancerPushAgenda(1500);
+    return true;
+  }
+
+  // Le temps passé et les sessions de travail d'une note rejoignent une autre.
+  async _transfererTemps(cheminA, fG) {
+    const cheminG = fG.path;
+    const totaux = this.settings.tempsTotalSecondes || (this.settings.tempsTotalSecondes = {});
+    const sec = (c) => (totaux[c] != null ? totaux[c] : Math.round(this.tempsTotalDe(c) * 60));
+    const secA = sec(cheminA);
+    if (secA > 0) {
+      totaux[cheminG] = sec(cheminG) + secA;
+      const prop = this.settings.tempsPropriete || 'temps-passe';
+      this.marquerEcriture(cheminG);
+      await this.app.fileManager.processFrontMatter(fG, (x) => { x[prop] = Math.round(totaux[cheminG] / 60); });
+    }
+    delete totaux[cheminA];
+    if (this._tempsSecondes && this._tempsSecondes.has(cheminA)) {
+      this._tempsSecondes.set(cheminG, (this._tempsSecondes.get(cheminG) || 0) + this._tempsSecondes.get(cheminA));
+      this._tempsSecondes.delete(cheminA);
+    }
+    const h = this.settings.tempsHistorique || {};
+    for (const [jour, m] of Object.entries(h)) {
+      if (!m || m[cheminA] == null) continue;
+      m[cheminG] = (Number(m[cheminG]) || 0) + (Number(m[cheminA]) || 0);
+      delete m[cheminA];
+      if (this.marquerJourSale) this.marquerJourSale(jour);
+    }
+    // Les fichiers du jour : le relevé du compteur et les sessions. Les
+    // sessions en mémoire sont les mêmes objets, renommées du même coup.
+    if (this.joursAvecDonnees) {
+      for (const jour of await this.joursAvecDonnees()) {
+        const o = await this.donneesJour(jour);
+        let touche = false;
+        if (o.temps && o.temps[cheminA] != null) {
+          o.temps[cheminG] = (Number(o.temps[cheminG]) || 0) + (Number(o.temps[cheminA]) || 0);
+          delete o.temps[cheminA];
+          touche = true;
+        }
+        for (const s of o.sessions || []) if (s && s.chemin === cheminA) { s.chemin = cheminG; touche = true; }
+        if (touche) this.marquerJourSale(jour);
+      }
+    }
+    this._renommerSessions(cheminA, cheminG);
+    await this.saveSettings();
+  }
+
+  // Les liens [[refA…]] des notes du coffre deviennent [[refG…]].
+  async _reciblerLiens(refA, refG, cheminA) {
+    const liens = this.app.metadataCache.resolvedLinks || {};
+    const motif = new RegExp('\\[\\[((?:[^\\]|#\\n]*/)?)' + echapperRegex(refA) + '(?=[\\]|#])', 'g');
+    for (const [source, cibles] of Object.entries(liens)) {
+      if (source === cheminA || !cibles || !cibles[cheminA]) continue;
+      const f = this.app.vault.getAbstractFileByPath(source);
+      if (!(f instanceof obsidian.TFile)) continue;
+      this.marquerEcriture(f.path);
+      await this.app.vault.process(f, (texte) => texte.replace(motif, (m, dossier) => '[[' + dossier + refG));
+    }
   }
 
   // Écrit en une passe les dates rendues par decalerSousArbre ou cascadeAval.

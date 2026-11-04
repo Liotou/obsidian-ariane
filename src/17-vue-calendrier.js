@@ -1539,6 +1539,8 @@ class MoteurCalendrier extends MoteurVue {
       .onClick(() => this.greffon.ajouterTacheLiee(t.ref, 'fille', () => this.dessiner())));
     m.addItem((i) => i.setTitle(tr('Créer une tâche mère…')).setIcon('corner-left-up')
       .onClick(() => this.greffon.ajouterTacheLiee(t.ref, 'mere', () => this.dessiner())));
+    m.addItem((i) => i.setTitle(tr('Fusionner avec une autre tâche…')).setIcon('merge')
+      .onClick(() => this.greffon.ouvrirFusion(t.ref, () => this.dessiner())));
     m.addSeparator();
 
     if (ev.source === 'creneau') {

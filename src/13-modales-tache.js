@@ -887,6 +887,106 @@ class ModaleTache extends obsidian.Modal {
   }
 }
 
+/* ---------------- Fusionner deux tâches --------------------------------- */
+
+// Deux cartes côte à côte : un clic sur l'une la garde, l'autre lui passe
+// ses créneaux, séances, temps et liens, puis part à la corbeille. Par
+// défaut, la plus ancienne est gardée (l'original d'un doublon).
+class ModaleFusionTaches extends obsidian.Modal {
+  constructor(greffon, refA, refB, apres) {
+    super(greffon.app);
+    this.greffon = greffon;
+    this.refs = [refA, refB];
+    this.apres = apres || null;
+    this.garde = null;
+  }
+
+  async onOpen() {
+    this.titleEl.setText(tr('Fusionner deux tâches'));
+    if (this.modalEl) this.modalEl.addClass('zfa-fusion-modale');
+    this.contentEl.addClass('zfa-fusion');
+    this.resumes = await Promise.all(this.refs.map((r) => this.greffon.resumeFusion(r)));
+    if (this.resumes.some((x) => !x)) { new obsidian.Notice(tr('Tâche introuvable.')); this.close(); return; }
+    if (!this.garde) this.garde = ModaleFusionTaches.plusAncienne(this.resumes);
+    this._dessiner();
+  }
+
+  // La plus ancienne : date de création, à défaut la référence.
+  static plusAncienne(resumes) {
+    const [a, b] = resumes;
+    const ka = (a.cree || '9999') + a.ref;
+    const kb = (b.cree || '9999') + b.ref;
+    return ka <= kb ? a.ref : b.ref;
+  }
+
+  // Ce que l'absorbée apporte, en clair.
+  static apport(r) {
+    const l = [];
+    if (r.creneaux) l.push(r.creneaux + (r.creneaux > 1 ? tr(' créneaux') : tr(' créneau')));
+    if (r.commentaires) l.push(r.commentaires + (r.commentaires > 1 ? tr(' commentaires de séance') : tr(' commentaire de séance')));
+    if (r.tempsMin) l.push(dureeLisible(r.tempsMin) + tr(' de temps passé'));
+    if (r.horsObsidian) l.push(r.horsObsidian + tr(' hors Obsidian'));
+    if (r.enfants) l.push(r.enfants + (r.enfants > 1 ? tr(' sous-tâches') : tr(' sous-tâche')));
+    if (r.note) l.push(tr('sa note de travail'));
+    return l;
+  }
+
+  _dessiner() {
+    const c = this.contentEl;
+    c.empty();
+    c.createEl('p', { cls: 'zfa-struct-intro', text: tr('Cliquez la tâche à garder. L’autre lui passe ses créneaux, ses séances, son temps et ses liens, puis va à la corbeille.') });
+    const rang = c.createDiv({ cls: 'zfa-fusion-rang' });
+    const gardee = this.resumes.find((r) => r.ref === this.garde);
+    const absorbee = this.resumes.find((r) => r.ref !== this.garde);
+    this.resumes.forEach((r, i) => {
+      if (i === 1) {
+        const inv = rang.createEl('button', { cls: 'clickable-icon zfa-fusion-sens',
+          attr: { 'aria-label': tr('Inverser') } });
+        obsidian.setIcon(inv, r.ref === this.garde ? 'arrow-right' : 'arrow-left');
+        inv.onclick = () => { this.garde = absorbee.ref; this._dessiner(); };
+      }
+      const garde = r.ref === this.garde;
+      const carte = rang.createDiv({ cls: 'zfa-fusion-carte' + (garde ? ' est-gardee' : ' est-absorbee') });
+      carte.setAttr('tabindex', '0');
+      carte.createDiv({ cls: 'zfa-fusion-etat', text: garde ? tr('Gardée') : tr('Absorbée, puis supprimée') });
+      carte.createDiv({ cls: 'zfa-fusion-ref', text: r.ref });
+      carte.createDiv({ cls: 'zfa-fusion-titre', text: r.intitule });
+      const det = carte.createEl('ul', { cls: 'zfa-fusion-det' });
+      const apport = ModaleFusionTaches.apport(r);
+      for (const x of apport.length ? apport : [tr('ni créneau, ni temps, ni note')]) det.createEl('li', { text: x });
+      if (r.rappel) det.createEl('li', { text: tr('un rappel') });
+      const choisir = () => { if (this.garde !== r.ref) { this.garde = r.ref; this._dessiner(); } };
+      carte.onclick = choisir;
+      carte.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choisir(); } };
+    });
+    const ap = ModaleFusionTaches.apport(absorbee);
+    c.createEl('p', { cls: 'zfa-fusion-bilan', text: tr('« ') + gardee.intitule + tr(' » reçoit ')
+      + (ap.length ? ap.join(', ') : tr('ses liens seulement')) + tr(' de ') + absorbee.ref
+      + tr(', qui part ensuite à la corbeille.') });
+    const pied = c.createDiv({ cls: 'zfa-tache-modale-pied' });
+    pied.createEl('button', { text: tr('Annuler') }).onclick = () => this.close();
+    const ok = pied.createEl('button', { cls: 'mod-cta', text: tr('Fusionner dans ') + gardee.ref });
+    ok.onclick = async () => {
+      if (ok.disabled) return;
+      ok.disabled = true;
+      ok.setText(tr('Fusion…'));
+      try {
+        await this.greffon.fusionnerTaches(gardee.ref, absorbee.ref);
+        new obsidian.Notice(absorbee.ref + tr(' fusionnée dans ') + gardee.ref + '.');
+        this.close();
+        if (this.apres) this.apres(gardee.ref);
+      } catch (e) {
+        console.error('[Ariane] fusion', e);
+        new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
+        ok.disabled = false;
+        ok.setText(tr('Fusionner dans ') + gardee.ref);
+      }
+    };
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 /* ---------------- Dater une tâche sans date (depuis la frise) --------- */
 
 class ModaleDaterTache extends obsidian.Modal {

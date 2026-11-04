@@ -214,6 +214,17 @@ class Ariane extends composer(obsidian.Plugin,
       }).open(),
     });
     this.addCommand({
+      id: 'fusionner-taches',
+      module: 'taches',
+      name: tr('Tâches : fusionner deux tâches'),
+      icon: 'merge',
+      // Depuis une note de tâche, elle est la première des deux.
+      callback: () => {
+        const f = this.app.workspace.getActiveFile();
+        this.ouvrirFusion(f ? this.refDeChemin(f.path) : null);
+      },
+    });
+    this.addCommand({
       id: 'structurer-brouillon-taches',
       module: 'taches',
       name: tr('Tâches : structurer un brouillon (IA)'),

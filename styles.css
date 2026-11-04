@@ -1825,6 +1825,32 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-tache-modale .zfa-tache-ln-zone { min-height: 5em; font-family: var(--font-text); font-size: var(--font-ui-medium); }
 .zfa-tache-modale .zfa-struct-apercu:empty { display: none; }
 
+/* Fusionner deux tâches : deux cartes, la gardée en accent, l'absorbée
+   estompée ; la flèche dit le sens. */
+.modal.zfa-fusion-modale { width: min(680px, calc(100vw - 32px)); }
+.zfa-fusion-rang { display: grid; grid-template-columns: 1fr auto 1fr; align-items: stretch; gap: var(--size-4-2); }
+.zfa-fusion-carte {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  padding: var(--size-4-3); border-radius: var(--radius-m); cursor: pointer;
+  border: 1px solid var(--background-modifier-border); background: var(--background-secondary);
+}
+.zfa-fusion-carte:hover { border-color: var(--interactive-accent-hover); }
+.zfa-fusion-carte:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.zfa-fusion-carte.est-gardee { border-color: var(--interactive-accent); box-shadow: 0 0 0 1px var(--interactive-accent); }
+.zfa-fusion-carte.est-absorbee { opacity: 0.7; }
+.zfa-fusion-etat { font-size: var(--font-ui-smaller); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.zfa-fusion-carte.est-gardee .zfa-fusion-etat { color: var(--text-accent); }
+.zfa-fusion-carte.est-absorbee .zfa-fusion-etat { color: var(--text-error); }
+.zfa-fusion-ref { font-size: var(--font-ui-smaller); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.zfa-fusion-titre { font-weight: var(--font-semibold); overflow-wrap: anywhere; }
+.zfa-fusion-det { margin: 4px 0 0; padding-left: 1.1em; font-size: var(--font-ui-small); color: var(--text-muted); }
+.zfa-fusion-sens { align-self: center; color: var(--text-accent); }
+.zfa-fusion-bilan { margin: var(--size-4-3) 0 0; font-size: var(--font-ui-small); color: var(--text-muted); line-height: 1.45; }
+@media (max-width: 560px) {
+  .zfa-fusion-rang { grid-template-columns: 1fr; }
+  .zfa-fusion-sens { transform: rotate(90deg); justify-self: center; }
+}
+
 /* Décompte réel de cartes, dans la barre de la vue. */
 
 /* Repères d'alignement magnétique pendant le glissé d'un nœud. */
