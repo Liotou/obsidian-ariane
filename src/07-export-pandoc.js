@@ -132,8 +132,10 @@ async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
         // insécable suffit à pandoc pour en faire une, que la finition
         // numérote sans point (« Figure 3 »).
         const chemin = lireImage ? await lireImage(cible.trim()) : null;
-        const r = ZFA_REPERE_FIGURE.exec(l);
-        const seule = (r ? l.slice(0, r.index) : l).trim() === m[0];
+        // Une figure termine sa ligne : seule, ou au bout du texte.
+        const apresFig = reste.slice(m.index + m[0].length);
+        const r = ZFA_REPERE_FIGURE.exec(apresFig);
+        const seule = !(r ? apresFig.slice(0, r.index) : apresFig).trim();
         // Une figure reçoit un identifiant pandoc (son repère, sinon le nom
         // de son fichier) : les renvois vers elle y mènent, dans Word aussi.
         const idFig = seule ? '{#' + idFigure({ id: r ? (r[1] || r[2]) : '', fichier: cible.trim(), numero: 0 }) + '}' : '';
@@ -142,7 +144,10 @@ async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
           .replace(/([[\]])/g, '\\$1') || (seule ? '\u00a0' : '');
         // Une image prise dans une phrase n'est pas une figure : elle reste
         // en ligne, dans le texte, comme Obsidian la montre.
-        rendu = !chemin ? '' : seule ? '\n![' + leg + '](<' + chemin + '>)' + idFig + '\n' : '![' + leg + '](<' + chemin + '>)';
+        // Au bout d'une ligne de texte, la figure s'en détache : un
+        // paragraphe à elle, sans quoi pandoc n'en ferait pas une figure.
+        rendu = !chemin ? '' : seule ? (morceaux.some((x) => String(x).trim()) ? '\n\n' : '\n') + '![' + leg + '](<' + chemin + '>)' + idFig + '\n'
+          : '![' + leg + '](<' + chemin + '>)';
       } else if (/\.\w{2,4}$/.test(cible.trim()) && !/\.md$/i.test(cible.trim())) {
         rendu = (alias || cible).trim();             // PDF, son… : leur nom
       } else {

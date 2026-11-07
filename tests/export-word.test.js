@@ -313,3 +313,22 @@ test('légende en lecture : l\'image retrouvée par son nom, même avant son cha
   g.numeroterFiguresRendues(el, { sourcePath: 'n.md', getSectionInfo: () => ({ text: texte, lineStart: 0, lineEnd: 2 }) });
   assert.deepEqual(poses, [['FS005 - Hochrainer.drawio.svg', 'Figure 1. ']]);
 });
+
+test('figure au bout d\'une ligne de texte : numérotée, légendée, détachée à l\'export', async () => {
+  const { figuresDeNote, ligneAvecLegende } = Ariane._test;
+  const note = [
+    'Ces résultats relèvent d\'un bruit.![[FS031 - Modèle..drawio.svg|Modèle cybernétique]]',
+    'Voir ![[icone.png]] puis la suite.',
+    'Deux images ![[a.png]] et ![[b.png]]',
+  ];
+  assert.deepEqual(figuresDeNote(note).map((f) => [f.ligne, f.numero, f.fichier, f.legende]),
+    [[0, 1, 'FS031 - Modèle..drawio.svg', 'Modèle cybernétique'], [2, 2, 'b.png', '']]);
+  // La légende va à l'image qui termine la ligne.
+  assert.equal(ligneAvecLegende(note[2], 'Le b'), 'Deux images ![[a.png]] et ![[b.png|Le b]]');
+  assert.equal(ligneAvecLegende(note[0], ''), 'Ces résultats relèvent d\'un bruit.![[FS031 - Modèle..drawio.svg]]');
+  const lireImage = async (c) => '/coffre/' + c;
+  const s = await deplierIntegrations(note[0], async () => null, lireImage);
+  assert.equal(s, 'Ces résultats relèvent d\'un bruit.\n\n![Modèle cybernétique](</coffre/FS031 - Modèle..drawio.svg>){#fig-fs031-modele-drawio}\n');
+  const t = await deplierIntegrations(note[1], async () => null, lireImage);
+  assert.equal(t, 'Voir ![](</coffre/icone.png>) puis la suite.');
+});

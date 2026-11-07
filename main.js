@@ -3130,8 +3130,10 @@ function numerosTitres(lignes) {
 // Les images d'une note, dans l'ordre : « ![[image.png|Légende]] » (la
 // légende est ce qui n'est pas une largeur, « |300 » ou « |300x200 ») et
 // « ![Légende](image.png) ». Hors propriétés et blocs de code. Une image
-// seule sur sa ligne est une FIGURE, légendée ou non : elle reçoit un
-// numéro (une image glissée dans la note en devient une d'emblée, sa
+// seule sur sa ligne, ou au bout d'une ligne de texte (Obsidian l'affiche
+// alors sous le texte, « … du bruit.![[schéma.svg]] »), est une FIGURE,
+// légendée ou non : elle reçoit un numéro. Une image suivie de texte reste
+// dans la phrase. (Une image glissée dans la note en devient une d'emblée, sa
 // légende s'ajoute ensuite). Rend [{ ligne, legende, figure, numero }]
 // (numero : 0 hors figure).
 const ZFA_REPERE_FIGURE = /(?:[ \t]+\^([\w-]+)|[ \t]*\{#([\w-]+)\})[ \t]*$/;
@@ -3166,9 +3168,10 @@ function imagesDeNote(lignes) {
     const r = ZFA_REPERE_FIGURE.exec(t);
     const id = r ? (r[1] || r[2]) : '';
     const corps = r ? t.slice(0, r.index) : t;
-    const seule = trouvees.length === 1 && corps.trim() === trouvees[0].brut;
+    const derniere = trouvees[trouvees.length - 1];
+    const auBout = !!derniere && corps.trimEnd().endsWith(derniere.brut);
     for (const x of trouvees) {
-      const figure = seule;
+      const figure = auBout && x === derniere;
       if (figure) numero += 1;
       out.push({ ligne: i, legende: x.legende, fichier: x.fichier, figure, numero: figure ? numero : 0, id: figure ? id : '' });
     }
@@ -3211,16 +3214,24 @@ function numerosFiguresParRepere(lignes) {
 
 // La ligne d'une figure, sa légende remplacée : la largeur (« |300 »)
 // reste, après elle. Les caractères qui casseraient le lien s'effacent.
+// C'est la dernière image de la ligne, celle qui la termine, qui est visée.
 function ligneAvecLegende(ligne, legende) {
   const leg = String(legende || '').replace(/[|[\]\n]/g, ' ').replace(/\s+/g, ' ').trim();
   const taille = (parts) => parts.map((a) => a.trim()).filter((a) => /^\d+(x\d+)?$/.test(a));
-  return String(ligne).replace(/!\[\[([^\]\n]+)\]\]|!\[([^\]\n]*)\]\(([^)\n]+)\)/, (m, wiki, alt, url) => {
+  const motif = /!\[\[([^\]\n]+)\]\]|!\[([^\]\n]*)\]\(([^)\n]+)\)/g;
+  let fin = null;
+  let m;
+  while ((m = motif.exec(String(ligne)))) fin = m;
+  if (!fin) return String(ligne);
+  const avant = String(ligne).slice(0, fin.index);
+  const apres = String(ligne).slice(fin.index + fin[0].length);
+  return avant + fin[0].replace(/!\[\[([^\]\n]+)\]\]|!\[([^\]\n]*)\]\(([^)\n]+)\)/, (m, wiki, alt, url) => {
     if (wiki != null) {
       const [cible, ...alias] = wiki.split('|');
       return '![[' + [cible].concat(leg ? [leg] : [], taille(alias)).join('|') + ']]';
     }
     return '![' + (leg ? [leg] : []).concat(taille(alt.split('|'))).join('|') + '](' + url + ')';
-  });
+  }) + apres;
 }
 
 // Le calcul lui-même, sur des titres relevés ({ ligne, niveau }).
@@ -5145,8 +5156,10 @@ async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
         // insécable suffit à pandoc pour en faire une, que la finition
         // numérote sans point (« Figure 3 »).
         const chemin = lireImage ? await lireImage(cible.trim()) : null;
-        const r = ZFA_REPERE_FIGURE.exec(l);
-        const seule = (r ? l.slice(0, r.index) : l).trim() === m[0];
+        // Une figure termine sa ligne : seule, ou au bout du texte.
+        const apresFig = reste.slice(m.index + m[0].length);
+        const r = ZFA_REPERE_FIGURE.exec(apresFig);
+        const seule = !(r ? apresFig.slice(0, r.index) : apresFig).trim();
         // Une figure reçoit un identifiant pandoc (son repère, sinon le nom
         // de son fichier) : les renvois vers elle y mènent, dans Word aussi.
         const idFig = seule ? '{#' + idFigure({ id: r ? (r[1] || r[2]) : '', fichier: cible.trim(), numero: 0 }) + '}' : '';
@@ -5155,7 +5168,10 @@ async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
           .replace(/([[\]])/g, '\\$1') || (seule ? '\u00a0' : '');
         // Une image prise dans une phrase n'est pas une figure : elle reste
         // en ligne, dans le texte, comme Obsidian la montre.
-        rendu = !chemin ? '' : seule ? '\n![' + leg + '](<' + chemin + '>)' + idFig + '\n' : '![' + leg + '](<' + chemin + '>)';
+        // Au bout d'une ligne de texte, la figure s'en détache : un
+        // paragraphe à elle, sans quoi pandoc n'en ferait pas une figure.
+        rendu = !chemin ? '' : seule ? (morceaux.some((x) => String(x).trim()) ? '\n\n' : '\n') + '![' + leg + '](<' + chemin + '>)' + idFig + '\n'
+          : '![' + leg + '](<' + chemin + '>)';
       } else if (/\.\w{2,4}$/.test(cible.trim()) && !/\.md$/i.test(cible.trim())) {
         rendu = (alias || cible).trim();             // PDF, son… : leur nom
       } else {
