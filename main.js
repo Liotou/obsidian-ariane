@@ -33493,6 +33493,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       const zone = this._zoneCreer();
       if (hote && hote.parentElement) hote.before(zone); else tete.after(zone);
       const titre = this.modalEl.createDiv({ cls: 'zfa-tc-section-titre' });
+      obsidian.setIcon(titre.createSpan({ cls: 'zfa-tc-section-icone' }), 'search');
       titre.createSpan({ text: tr('Attacher à une tâche existante') });
       if (hote && hote.parentElement) hote.before(titre); else zone.after(titre);
     }
@@ -33512,13 +33513,12 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
     const ia = !!(this.greffon && this.greffon.analyserTachesLN);
     const z = this.modalEl.createDiv({ cls: 'zfa-tc-ln' });
     const titre = z.createDiv({ cls: 'zfa-tc-section-titre' });
+    obsidian.setIcon(titre.createSpan({ cls: 'zfa-tc-section-icone' }), 'plus');
     titre.createSpan({ text: tr('Créer une nouvelle tâche') });
-    // Le champ prend l'habit natif de la recherche d'Obsidian
-    // (prompt-input) : mêmes bords, même focus, une seule ligne de saisie.
-    const ligne = z.createDiv({ cls: 'prompt-input-container zfa-tc-ln-saisie' });
+    const ligne = z.createDiv({ cls: 'zfa-tc-ln-saisie' });
     this.iconeLN = ligne.createSpan({ cls: 'zfa-tc-ln-icone' });
     obsidian.setIcon(this.iconeLN, ia ? 'sparkles' : 'pencil-line');
-    const champ = ligne.createEl('input', { type: 'text', cls: 'prompt-input zfa-tc-ln-champ',
+    const champ = ligne.createEl('input', { type: 'text', cls: 'zfa-tc-ln-champ',
       attr: { placeholder: ia ? tr('Décrivez la tâche : « relire le chapitre 2 pour vendredi »') : tr('Intitulé de la tâche'),
         spellcheck: 'false' } });
     this.champLN = champ;

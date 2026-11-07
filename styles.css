@@ -3609,47 +3609,61 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-tc-tete-horaire { flex: 1 1 auto; min-width: 0; }
 .zfa-tc-icone { display: inline-flex; }
 .zfa-tc-icone .svg-icon { width: 14px; height: 14px; }
-/* Deux parties, à la manière d'Obsidian : un intitulé discret au-dessus de
-   chaque champ, les deux champs à l'habit natif de la recherche
-   (prompt-input), un filet entre les deux. */
+/* Deux parties : « Créer une nouvelle tâche » dans un encadré à part, puis
+   « Attacher à une tâche existante » au-dessus de la recherche. */
 .zfa-tc-section-titre {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: var(--size-4-2) var(--size-4-3) 0;
   font-size: var(--font-ui-smaller, 12px);
-  font-weight: var(--font-medium, 500);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--text-muted);
 }
+.zfa-tc-ln > .zfa-tc-section-titre { padding: 0; color: var(--text-accent); }
+.zfa-tc-section-icone { display: inline-flex; }
+.zfa-tc-section-icone .svg-icon { width: 13px; height: 13px; }
 .zfa-tc-ln {
   display: flex;
   flex-direction: column;
-  padding-bottom: var(--size-4-2);
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-.zfa-tc-ln .zfa-tc-ln-saisie {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
-  border-bottom: none;
-}
-.zfa-tc-ln-icone { display: inline-flex; flex: 0 0 auto; color: var(--text-faint); }
-.zfa-tc-ln-saisie:focus-within .zfa-tc-ln-icone { color: var(--text-accent); }
-.zfa-tc-ln-icone .svg-icon { width: 16px; height: 16px; }
-.zfa-tc-ln-icone.est-en-cours { color: var(--text-accent); animation: zfa-seance-ia-pulse 1s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .zfa-tc-ln-icone.est-en-cours { animation: none; } }
-.zfa-tc-ln .zfa-tc-ln-champ { flex: 1 1 auto; min-width: 0; }
-/* Un seul signe de focus, l'icône : pas de cadre autour du champ. */
-.zfa-tc-ln .zfa-tc-ln-champ,
-.zfa-tc-ln .zfa-tc-ln-champ:focus,
-.zfa-tc-ln .zfa-tc-ln-champ:focus-visible { border: none; box-shadow: none; outline: none; background: transparent; }
-.zfa-tc-ln-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
   gap: var(--size-2-3);
-  padding: 0 var(--size-4-3);
+  margin: var(--size-2-3) var(--size-4-3) var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
 }
+.zfa-tc-ln-saisie {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  padding: 0 var(--size-4-2);
+}
+.zfa-tc-ln-saisie:focus-within { border-color: var(--interactive-accent); }
+.zfa-tc-ln-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--size-2-3); }
 .zfa-tc-ln-aide { margin-right: auto; color: var(--text-faint); font-size: var(--font-ui-smaller, 12px); }
 .zfa-tc-ln-bouton { display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-ui-smaller, 12px); }
-.zfa-tc-ln-propo { padding: var(--size-2-3) var(--size-4-3) 0; }
+.zfa-tc-ln-saisie { display: flex; align-items: center; gap: var(--size-4-2); }
+.zfa-tc-modale .prompt-input-container { margin-top: var(--size-2-2); }
+.zfa-tc-ln-icone { display: inline-flex; color: var(--text-accent); }
+.zfa-tc-ln-icone .svg-icon { width: 15px; height: 15px; }
+.zfa-tc-ln-icone.est-en-cours { animation: zfa-seance-ia-pulse 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .zfa-tc-ln-icone.est-en-cours { animation: none; } }
+.zfa-tc-ln-champ.zfa-tc-ln-champ {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: var(--size-2-2) 0;
+  font-size: var(--font-ui-small, 13px);
+}
+/* Au focus, un seul cadre : celui de la zone de saisie, qui passe à
+   l'accent. Celui qu'Obsidian pose sur tout champ actif s'efface. */
+.zfa-tc-ln .zfa-tc-ln-champ:focus,
+.zfa-tc-ln .zfa-tc-ln-champ:focus-visible { border: none; box-shadow: none; outline: none; background: transparent; }
 .zfa-tc-ln-propo { display: flex; flex-direction: column; gap: var(--size-2-3); }
 .zfa-tc-ln-ligne { display: flex; align-items: center; gap: var(--size-4-2); }
 .zfa-tc-ln-ligne.est-exclu { opacity: 0.5; }
