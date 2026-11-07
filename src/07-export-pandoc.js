@@ -119,13 +119,19 @@ async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
     const re = /!\[\[([^\]\n]+)\]\]/;
     while ((m = reste.match(re))) {
       if (m.index) morceaux.push(reste.slice(0, m.index));
-      const [lien, alias] = m[1].split('|');
+      const [lien, ...aliases] = m[1].split('|');
+      const alias = aliases[0];
       const [cible, ...a] = lien.split('#');
       const ancre = a.join('#').trim();
       let rendu = '';
       if (ZFA_EXT_IMAGE.test(cible.trim())) {
+        // La légende (ce qui n'est pas une largeur) devient le texte de
+        // l'image : seule dans son paragraphe, pandoc en fait une figure
+        // légendée, que la finition numérote.
         const chemin = lireImage ? await lireImage(cible.trim()) : null;
-        rendu = chemin ? '\n![](<' + chemin + '>)\n' : '';
+        const leg = aliases.map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ')
+          .replace(/([[\]])/g, '\\$1');
+        rendu = chemin ? '\n![' + leg + '](<' + chemin + '>)\n' : '';
       } else if (/\.\w{2,4}$/.test(cible.trim()) && !/\.md$/i.test(cible.trim())) {
         rendu = (alias || cible).trim();             // PDF, son… : leur nom
       } else {

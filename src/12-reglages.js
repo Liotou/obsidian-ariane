@@ -1180,6 +1180,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addToggle((t) => t.setValue(s.numerotationTitres !== false)
         .onChange(async (v) => { s.numerotationTitres = v; await maj(); this.plugin.rafraichirPonctuation(); }));
     new obsidian.Setting(c)
+      .setName(tr('Numéroter les figures'))
+      .setDesc(tr("Une image seule sur sa ligne et légendée devient une figure numérotée : « ![[image.png|Ma légende]] » ou « ![Ma légende](image.png) ». « Figure 1 : Ma légende » s'affiche dessous, en édition comme en lecture, sans rien écrire dans la note. À l'export Word, la légende prend le style Légende du modèle et un vrai numéro de figure, que la table des illustrations de Word sait relever."))
+      .addToggle((t) => t.setValue(s.figuresNumerotees !== false)
+        .onChange(async (v) => { s.figuresNumerotees = v; await maj(); }));
+    new obsidian.Setting(c)
       .setName(tr('Dossiers numérotés'))
       .setDesc(nbDossiers ? (s.numerotationDossiers || []).join(', ') : tr('Aucun pour l’instant.'))
       .addButton((b) => b.setButtonText(tr('Choisir et numéroter…')).onClick(() => this.plugin.choisirDossiersNumerotation()));

@@ -2269,6 +2269,9 @@ const TEXTES = {
     "Ajouter une tâche (langage naturel)": "Add a task (plain language)",
     "Décrire en langage naturel": "Describe in plain language",
     "Remplir à la main": "Fill in by hand",
+    "Figure ": "Figure ",
+    "Numéroter les figures": "Number figures",
+    "Une image seule sur sa ligne et légendée devient une figure numérotée : « ![[image.png|Ma légende]] » ou « ![Ma légende](image.png) ». « Figure 1 : Ma légende » s'affiche dessous, en édition comme en lecture, sans rien écrire dans la note. À l'export Word, la légende prend le style Légende du modèle et un vrai numéro de figure, que la table des illustrations de Word sait relever.": "An image alone on its line with a caption becomes a numbered figure: « ![[image.png|My caption]] » or « ![My caption](image.png) ». « Figure 1: My caption » shows below it, in editing and reading, without writing anything in the note. In the Word export, the caption takes the template's Caption style and a real figure number, which Word's table of figures can collect.",
     "Rechercher une tâche existante…": "Search an existing task…",
     "Attacher à une tâche existante": "Attach to an existing task",
     "Créer une nouvelle tâche": "Create a new task",
@@ -2405,7 +2408,7 @@ const MODULES_ARIANE = [
   { id: 'familles', nom: 'Familles de notes', coeur: false, dependances: [], macSeul: false,
     description: 'Notes conceptuelles, réflexives et autres familles : préfixes, couleurs, aparté des liens.' },
   { id: 'typographie', nom: 'Typographie', coeur: false, dependances: [], macSeul: false,
-    description: 'Ponctuation soudée à son mot, numérotation automatique des titres.' },
+    description: 'Ponctuation soudée à son mot, numérotation automatique des titres et des figures.' },
   { id: 'suggestions', nom: 'Suggestions d’annotations', coeur: false, dependances: [], macSeul: false,
     description: 'Les annotations proches de ce que vous écrivez, dans un panneau (modèle local conseillé).' },
   { id: 'barre', nom: 'Barre d’édition', coeur: false, dependances: [], macSeul: false,
@@ -2667,6 +2670,7 @@ const DEFAULT_SETTINGS = {
   numerotationTitres: true, // numéros des titres (## = 1., ### = 1.1.) écrits et tenus à jour
   numerotationDossiers: [], // dossiers dont les notes sont numérotées (vide : aucune)
   ponctuationInsecable: true, // texte justifié : ponctuation jamais séparée de son mot
+  figuresNumerotees: true,    // « Figure N : légende » sous chaque image légendée
   dropToucheStyle: 'shift', // touche qui alterne « (Auteur, année) » et « Auteur (année) » au glisser
   titreSectionNotes: 'Annotations de lecture associées', // en-tête de la section des notes
   modeleCitation: '{{auteurs}}, {{annee}}, p. {{page}}',
@@ -3111,6 +3115,49 @@ function releverTitres(lignes) {
 // Le numéro de chaque titre, par indice de ligne (0 en tête).
 function numerosTitres(lignes) {
   return numerosDepuisTitres(releverTitres(lignes));
+}
+
+// Les images d'une note, dans l'ordre : « ![[image.png|Légende]] » (la
+// légende est ce qui n'est pas une largeur, « |300 » ou « |300x200 ») et
+// « ![Légende](image.png) ». Hors propriétés et blocs de code. Une image
+// seule sur sa ligne et légendée est une FIGURE : elle reçoit un numéro.
+// Rend [{ ligne, legende, figure, numero }] (numero : 0 hors figure).
+function imagesDeNote(lignes) {
+  const l = lignes || [];
+  const out = [];
+  let i = 0;
+  if (l[0] === '---') { const f = l.indexOf('---', 1); i = f > 0 ? f + 1 : 0; }
+  let dansCode = false;
+  let numero = 0;
+  const legende = (parts) => parts.map((a) => a.trim()).filter((a) => a && !/^\d+(x\d+)?$/.test(a)).join(' | ');
+  for (; i < l.length; i += 1) {
+    const t = String(l[i] || '');
+    if (/^\s*(?:```|~~~)/.test(t)) { dansCode = !dansCode; continue; }
+    if (dansCode || !t.includes('![')) continue;
+    const re = /!\[\[([^\]\n]+)\]\]|!\[([^\]\n]*)\]\(([^)\n]+)\)/g;
+    const trouvees = [];
+    let m;
+    while ((m = re.exec(t))) {
+      if (m[1] != null) {
+        const [cible, ...alias] = m[1].split('|');
+        if (!ZFA_EXT_IMAGE.test(cible.split('#')[0].trim())) continue;
+        trouvees.push({ brut: m[0], legende: legende(alias) });
+      } else {
+        trouvees.push({ brut: m[0], legende: legende(m[2].split('|')) });
+      }
+    }
+    const seule = trouvees.length === 1 && t.trim() === trouvees[0].brut;
+    for (const x of trouvees) {
+      const figure = seule && !!x.legende;
+      if (figure) numero += 1;
+      out.push({ ligne: i, legende: x.legende, figure, numero: figure ? numero : 0 });
+    }
+  }
+  return out;
+}
+
+function figuresDeNote(lignes) {
+  return imagesDeNote(lignes).filter((x) => x.figure);
 }
 
 // Le calcul lui-même, sur des titres relevés ({ ligne, niveau }).
@@ -5022,13 +5069,19 @@ async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
     const re = /!\[\[([^\]\n]+)\]\]/;
     while ((m = reste.match(re))) {
       if (m.index) morceaux.push(reste.slice(0, m.index));
-      const [lien, alias] = m[1].split('|');
+      const [lien, ...aliases] = m[1].split('|');
+      const alias = aliases[0];
       const [cible, ...a] = lien.split('#');
       const ancre = a.join('#').trim();
       let rendu = '';
       if (ZFA_EXT_IMAGE.test(cible.trim())) {
+        // La légende (ce qui n'est pas une largeur) devient le texte de
+        // l'image : seule dans son paragraphe, pandoc en fait une figure
+        // légendée, que la finition numérote.
         const chemin = lireImage ? await lireImage(cible.trim()) : null;
-        rendu = chemin ? '\n![](<' + chemin + '>)\n' : '';
+        const leg = aliases.map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ')
+          .replace(/([[\]])/g, '\\$1');
+        rendu = chemin ? '\n![' + leg + '](<' + chemin + '>)\n' : '';
       } else if (/\.\w{2,4}$/.test(cible.trim()) && !/\.md$/i.test(cible.trim())) {
         rendu = (alias || cible).trim();             // PDF, son… : leur nom
       } else {
@@ -9864,6 +9917,40 @@ const avecNoteAtomes = (Base) => class extends Base {
     const f = this.app.vault.getAbstractFileByPath(ctx.sourcePath || '');
     if (!this.dansNumerotation(f)) return;
     for (const h of el.querySelectorAll('h2, h3, h4, h5, h6')) this.griserNumeroTitre(h);
+  }
+
+  // Figures : « Figure N : légende » sous chaque image légendée seule sur sa
+  // ligne (figuresDeNote), numérotée dans l'ordre de la note. Le numéro se
+  // lit dans le texte entier de la note : une section rendue seule le
+  // connaît. Les images de la section et celles de son texte vont de pair,
+  // dans l'ordre. Rien n'est écrit dans la note.
+  numeroterFiguresRendues(el, ctx) {
+    if (!el || !ctx || this.settings.figuresNumerotees === false) return;
+    const info = ctx.getSectionInfo && ctx.getSectionInfo(el);
+    if (!info || !info.text) return;
+    const images = imagesDeNote(String(info.text).split('\n'))
+      .filter((x) => x.ligne >= info.lineStart && x.ligne <= info.lineEnd);
+    if (!images.some((x) => x.figure)) return;
+    const els = Array.from(el.querySelectorAll('.internal-embed.image-embed, img'))
+      .filter((x) => x.tagName !== 'IMG' || !x.closest('.internal-embed'));
+    images.forEach((x, k) => {
+      const cible = els[k];
+      if (!x.figure || !cible) return;
+      const suivant = cible.nextElementSibling;
+      if (suivant && suivant.classList.contains('zfa-figure-legende')) suivant.remove();
+      cible.after(Ariane.elementLegendeFigure(el.ownerDocument, x.numero, x.legende));
+    });
+  }
+
+  static elementLegendeFigure(doc, numero, legende) {
+    const d = doc.createElement('span');
+    d.className = 'zfa-figure-legende';
+    const n = doc.createElement('span');
+    n.className = 'zfa-figure-numero';
+    n.textContent = tr('Figure ') + numero + '\u00a0: ';
+    d.appendChild(n);
+    d.appendChild(doc.createTextNode(legende));
+    return d;
   }
 
   // Le panneau « Plan » d'Obsidian : le numéro de chaque entrée est grisé.
@@ -29479,6 +29566,7 @@ class Ariane extends composer(obsidian.Plugin,
     if (this.module('typographie')) {
       this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
       this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
+      this.registerMarkdownPostProcessor((el, ctx) => this.numeroterFiguresRendues(el, ctx));
       // Le panneau « Plan » : ses entrées portent les mêmes numéros.
       this.app.workspace.onLayoutReady(() => this.brancherPlans());
       this.registerEvent(this.app.workspace.on('layout-change', () => this.brancherPlans()));
@@ -29752,6 +29840,41 @@ class Ariane extends composer(obsidian.Plugin,
       }, { decorations: (v) => v.decorations }));
     } catch (e) {
       console.error('[Ariane] Ponctuation insécable indisponible :', e);
+    }
+
+    // Légendes des figures, sous l'image, en édition comme en lecture : un
+    // bloc posé après la ligne de chaque figure (figuresDeNote).
+    if (this.module('typographie')) try {
+      const { Decoration, EditorView, WidgetType } = require('@codemirror/view');
+      const { StateField } = require('@codemirror/state');
+      const greffon = this;
+      class LegendeFigure extends WidgetType {
+        constructor(numero, legende) { super(); this.numero = numero; this.legende = legende; }
+        eq(o) { return o.numero === this.numero && o.legende === this.legende; }
+        toDOM(view) {
+          const el = Ariane.elementLegendeFigure(view.dom.ownerDocument, this.numero, this.legende);
+          el.classList.add('est-edition');
+          return el;
+        }
+        ignoreEvent() { return false; }
+      }
+      const calculer = (state) => {
+        if (greffon.settings.figuresNumerotees === false) return Decoration.none;
+        const texte = state.doc.toString();
+        if (!texte.includes('![')) return Decoration.none;
+        const figs = figuresDeNote(texte.split('\n'));
+        if (!figs.length) return Decoration.none;
+        return Decoration.set(figs.map((f) => Decoration.widget({
+          widget: new LegendeFigure(f.numero, f.legende), block: true, side: 1,
+        }).range(state.doc.line(f.ligne + 1).to)));
+      };
+      this.registerEditorExtension(StateField.define({
+        create: calculer,
+        update: (v, t) => (t.docChanged ? calculer(t.state) : v),
+        provide: (f) => EditorView.decorations.from(f),
+      }));
+    } catch (e) {
+      console.error('[Ariane] Légendes des figures indisponibles :', e);
     }
 
     // Numéros des titres (1., 1.1., …) : écrits dans la note par Ariane,
@@ -31392,6 +31515,11 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(tr("« ## » vaut 1., « ### » 1.1., « #### » 1.1.1. Les numéros sont écrits dans la note et tenus à jour par Ariane quand vous ajoutez, retirez ou déplacez un titre ; une numérotation saisie à la main est remplacée. Dans l'éditeur, ils sont grisés et protégés de la frappe. L'export Word les retire, son modèle numérotant lui-même. Une note s'en dispense par la propriété « numérotation: false »."))
       .addToggle((t) => t.setValue(s.numerotationTitres !== false)
         .onChange(async (v) => { s.numerotationTitres = v; await maj(); this.plugin.rafraichirPonctuation(); }));
+    new obsidian.Setting(c)
+      .setName(tr('Numéroter les figures'))
+      .setDesc(tr("Une image seule sur sa ligne et légendée devient une figure numérotée : « ![[image.png|Ma légende]] » ou « ![Ma légende](image.png) ». « Figure 1 : Ma légende » s'affiche dessous, en édition comme en lecture, sans rien écrire dans la note. À l'export Word, la légende prend le style Légende du modèle et un vrai numéro de figure, que la table des illustrations de Word sait relever."))
+      .addToggle((t) => t.setValue(s.figuresNumerotees !== false)
+        .onChange(async (v) => { s.figuresNumerotees = v; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Dossiers numérotés'))
       .setDesc(nbDossiers ? (s.numerotationDossiers || []).join(', ') : tr('Aucun pour l’instant.'))
@@ -55097,6 +55225,8 @@ module.exports._test = {
   plagesInsecables,
   souderPonctuation,
   numerosTitres,
+  imagesDeNote,
+  figuresDeNote,
   numerosDepuisTitres,
   renumeroterTitres,
   numeroDeLigneTitre,

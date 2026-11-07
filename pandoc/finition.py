@@ -169,6 +169,37 @@ def remapper_styles(doc, table, correspondances):
 
 
 # --------------------------------------------------------------------------
+# Figures
+#
+# Pandoc fait d'une image légendée, seule dans son paragraphe, une figure :
+# l'image, puis un paragraphe de style « ImageCaption » qui porte la légende,
+# sans numéro. On y pose « Figure », un champ SEQ Figure et « : », comme une
+# légende insérée par Word : le numéro se met à jour dans Word, et la table
+# des illustrations sait relever ces légendes. Le paragraphe prend le style
+# Légende du modèle, sauf correspondance choisie dans les réglages.
+# --------------------------------------------------------------------------
+
+def numeroter_figures(doc, table, correspondances):
+    cible = "" if (correspondances or {}).get("ImageCaption") else identifiant(table, "caption", "")
+    n = [0]
+
+    def sur_legende(m):
+        n[0] += 1
+        ppr = m.group(0)
+        if cible:
+            ppr = ppr.replace('w:val="ImageCaption"', 'w:val="%s"' % cible, 1)
+        return ppr + (
+            '<w:r><w:t xml:space="preserve">Figure </w:t></w:r>'
+            '<w:fldSimple w:instr=" SEQ Figure \\* ARABIC "><w:r><w:rPr><w:noProof/></w:rPr>'
+            '<w:t>%d</w:t></w:r></w:fldSimple>'
+            '<w:r><w:t xml:space="preserve">\u00a0: </w:t></w:r>') % n[0]
+
+    doc = re.sub(r'<w:pPr>\s*<w:pStyle w:val="ImageCaption"\s*/>(?:(?!</w:pPr>).)*</w:pPr>',
+                 sur_legende, doc, flags=re.S)
+    return doc, n[0]
+
+
+# --------------------------------------------------------------------------
 # Préférences Zotero
 #
 # Le module Zotero de Word ne reconnaît un document que s'il y trouve ses
@@ -1078,6 +1109,8 @@ def main():
     table = styles_du_docx(pieces)
     refs_modele, titlepg = section_du_modele(modele)
     doc, resume = rattacher_entetes(doc, rels, refs_modele, titlepg)
+    # Avant le remappage : les légendes s'y reconnaissent à leur style pandoc.
+    doc, figures = numeroter_figures(doc, table, ordres.get("styles") or {})
     doc, remappes = remapper_styles(doc, table, ordres.get("styles") or {})
     doc = habiller_tableaux(doc,
                             identifiant(table, st_entete, "Titredetableau"),
@@ -1155,9 +1188,9 @@ def main():
     print("section : %s | jetons : %d en-tête(s), %d corps | rangs répétés : %d "
           "| numérotations recopiées : %d | préférences Zotero : %d tranche(s) "
           "| styles remappés : %d | entités redressées : %d | encadrés : %d "
-          "| bibliographie : %s"
+          "| figures : %d | bibliographie : %s"
           % (", ".join(resume) or "—", jetons_entetes, jetons_corps, rangs,
-             numeros, tranches, remappes, entites, encadres,
+             numeros, tranches, remappes, entites, encadres, figures,
              "posée" if biblio else "—"))
     for a in alertes:
         print("ATTENTION : %s" % a)

@@ -2063,6 +2063,9 @@ const TEXTES = {
     "Ajouter une tâche (langage naturel)": "Add a task (plain language)",
     "Décrire en langage naturel": "Describe in plain language",
     "Remplir à la main": "Fill in by hand",
+    "Figure ": "Figure ",
+    "Numéroter les figures": "Number figures",
+    "Une image seule sur sa ligne et légendée devient une figure numérotée : « ![[image.png|Ma légende]] » ou « ![Ma légende](image.png) ». « Figure 1 : Ma légende » s'affiche dessous, en édition comme en lecture, sans rien écrire dans la note. À l'export Word, la légende prend le style Légende du modèle et un vrai numéro de figure, que la table des illustrations de Word sait relever.": "An image alone on its line with a caption becomes a numbered figure: « ![[image.png|My caption]] » or « ![My caption](image.png) ». « Figure 1: My caption » shows below it, in editing and reading, without writing anything in the note. In the Word export, the caption takes the template's Caption style and a real figure number, which Word's table of figures can collect.",
     "Rechercher une tâche existante…": "Search an existing task…",
     "Attacher à une tâche existante": "Attach to an existing task",
     "Créer une nouvelle tâche": "Create a new task",
@@ -2199,7 +2202,7 @@ const MODULES_ARIANE = [
   { id: 'familles', nom: 'Familles de notes', coeur: false, dependances: [], macSeul: false,
     description: 'Notes conceptuelles, réflexives et autres familles : préfixes, couleurs, aparté des liens.' },
   { id: 'typographie', nom: 'Typographie', coeur: false, dependances: [], macSeul: false,
-    description: 'Ponctuation soudée à son mot, numérotation automatique des titres.' },
+    description: 'Ponctuation soudée à son mot, numérotation automatique des titres et des figures.' },
   { id: 'suggestions', nom: 'Suggestions d’annotations', coeur: false, dependances: [], macSeul: false,
     description: 'Les annotations proches de ce que vous écrivez, dans un panneau (modèle local conseillé).' },
   { id: 'barre', nom: 'Barre d’édition', coeur: false, dependances: [], macSeul: false,
@@ -2461,6 +2464,7 @@ const DEFAULT_SETTINGS = {
   numerotationTitres: true, // numéros des titres (## = 1., ### = 1.1.) écrits et tenus à jour
   numerotationDossiers: [], // dossiers dont les notes sont numérotées (vide : aucune)
   ponctuationInsecable: true, // texte justifié : ponctuation jamais séparée de son mot
+  figuresNumerotees: true,    // « Figure N : légende » sous chaque image légendée
   dropToucheStyle: 'shift', // touche qui alterne « (Auteur, année) » et « Auteur (année) » au glisser
   titreSectionNotes: 'Annotations de lecture associées', // en-tête de la section des notes
   modeleCitation: '{{auteurs}}, {{annee}}, p. {{page}}',

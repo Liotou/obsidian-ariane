@@ -207,3 +207,33 @@ test('compatibilité : chemins des outils et lecture ZIP sans outil externe', ()
   assert.equal(lireEntreeZip(zip, 'META-INF/container.xml').toString('utf8'), '<x full-path="a.opf"/>');
   assert.equal(lireEntreeZip(zip, 'absent.txt'), null);
 });
+
+/* ------------------------------- Figures ------------------------------- */
+
+test('figures : une image légendée seule sur sa ligne, numérotée dans l\'ordre', () => {
+  const { imagesDeNote, figuresDeNote } = Ariane._test;
+  const note = [
+    '---', 'titre: ![[faux.png|pas une figure]]', '---',
+    '# Titre',
+    '![[schema.png|Le cycle du risque]]',
+    'Voir ![[icone.png|petite icône]] dans le texte.',
+    '![[photo.jpg|400]]',
+    '![[note intégrée|Pas une image]]',
+    '```', '![[code.png|dans le code]]', '```',
+    '![Carte du Havre|300](images/havre.png)',
+    '![[plan.png|Plan du site|600x400]]',
+  ];
+  assert.deepEqual(figuresDeNote(note).map((f) => [f.ligne, f.numero, f.legende]), [
+    [4, 1, 'Le cycle du risque'], [11, 2, 'Carte du Havre'], [12, 3, 'Plan du site']]);
+  // Toutes les images, figures ou non, pour les apparier au rendu.
+  assert.deepEqual(imagesDeNote(note).map((x) => [x.ligne, x.figure]),
+    [[4, true], [5, false], [6, false], [11, true], [12, true]]);
+});
+
+test('export : la légende d\'une image intégrée passe à pandoc, la largeur non', async () => {
+  const lireImage = async (c) => '/coffre/' + c;
+  const s = await deplierIntegrations('Avant\n![[schema.png|Le cycle du risque|500]]\nAprès', async () => null, lireImage);
+  assert.equal(s, 'Avant\n\n![Le cycle du risque](</coffre/schema.png>)\n\nAprès');
+  const t = await deplierIntegrations('![[photo.jpg|400]]', async () => null, lireImage);
+  assert.equal(t.trim(), '![](</coffre/photo.jpg>)');
+});

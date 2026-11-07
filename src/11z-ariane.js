@@ -951,6 +951,7 @@ class Ariane extends composer(obsidian.Plugin,
     if (this.module('typographie')) {
       this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
       this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
+      this.registerMarkdownPostProcessor((el, ctx) => this.numeroterFiguresRendues(el, ctx));
       // Le panneau « Plan » : ses entrées portent les mêmes numéros.
       this.app.workspace.onLayoutReady(() => this.brancherPlans());
       this.registerEvent(this.app.workspace.on('layout-change', () => this.brancherPlans()));
@@ -1224,6 +1225,41 @@ class Ariane extends composer(obsidian.Plugin,
       }, { decorations: (v) => v.decorations }));
     } catch (e) {
       console.error('[Ariane] Ponctuation insécable indisponible :', e);
+    }
+
+    // Légendes des figures, sous l'image, en édition comme en lecture : un
+    // bloc posé après la ligne de chaque figure (figuresDeNote).
+    if (this.module('typographie')) try {
+      const { Decoration, EditorView, WidgetType } = require('@codemirror/view');
+      const { StateField } = require('@codemirror/state');
+      const greffon = this;
+      class LegendeFigure extends WidgetType {
+        constructor(numero, legende) { super(); this.numero = numero; this.legende = legende; }
+        eq(o) { return o.numero === this.numero && o.legende === this.legende; }
+        toDOM(view) {
+          const el = Ariane.elementLegendeFigure(view.dom.ownerDocument, this.numero, this.legende);
+          el.classList.add('est-edition');
+          return el;
+        }
+        ignoreEvent() { return false; }
+      }
+      const calculer = (state) => {
+        if (greffon.settings.figuresNumerotees === false) return Decoration.none;
+        const texte = state.doc.toString();
+        if (!texte.includes('![')) return Decoration.none;
+        const figs = figuresDeNote(texte.split('\n'));
+        if (!figs.length) return Decoration.none;
+        return Decoration.set(figs.map((f) => Decoration.widget({
+          widget: new LegendeFigure(f.numero, f.legende), block: true, side: 1,
+        }).range(state.doc.line(f.ligne + 1).to)));
+      };
+      this.registerEditorExtension(StateField.define({
+        create: calculer,
+        update: (v, t) => (t.docChanged ? calculer(t.state) : v),
+        provide: (f) => EditorView.decorations.from(f),
+      }));
+    } catch (e) {
+      console.error('[Ariane] Légendes des figures indisponibles :', e);
     }
 
     // Numéros des titres (1., 1.1., …) : écrits dans la note par Ariane,

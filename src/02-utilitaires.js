@@ -248,6 +248,49 @@ function numerosTitres(lignes) {
   return numerosDepuisTitres(releverTitres(lignes));
 }
 
+// Les images d'une note, dans l'ordre : « ![[image.png|Légende]] » (la
+// légende est ce qui n'est pas une largeur, « |300 » ou « |300x200 ») et
+// « ![Légende](image.png) ». Hors propriétés et blocs de code. Une image
+// seule sur sa ligne et légendée est une FIGURE : elle reçoit un numéro.
+// Rend [{ ligne, legende, figure, numero }] (numero : 0 hors figure).
+function imagesDeNote(lignes) {
+  const l = lignes || [];
+  const out = [];
+  let i = 0;
+  if (l[0] === '---') { const f = l.indexOf('---', 1); i = f > 0 ? f + 1 : 0; }
+  let dansCode = false;
+  let numero = 0;
+  const legende = (parts) => parts.map((a) => a.trim()).filter((a) => a && !/^\d+(x\d+)?$/.test(a)).join(' | ');
+  for (; i < l.length; i += 1) {
+    const t = String(l[i] || '');
+    if (/^\s*(?:```|~~~)/.test(t)) { dansCode = !dansCode; continue; }
+    if (dansCode || !t.includes('![')) continue;
+    const re = /!\[\[([^\]\n]+)\]\]|!\[([^\]\n]*)\]\(([^)\n]+)\)/g;
+    const trouvees = [];
+    let m;
+    while ((m = re.exec(t))) {
+      if (m[1] != null) {
+        const [cible, ...alias] = m[1].split('|');
+        if (!ZFA_EXT_IMAGE.test(cible.split('#')[0].trim())) continue;
+        trouvees.push({ brut: m[0], legende: legende(alias) });
+      } else {
+        trouvees.push({ brut: m[0], legende: legende(m[2].split('|')) });
+      }
+    }
+    const seule = trouvees.length === 1 && t.trim() === trouvees[0].brut;
+    for (const x of trouvees) {
+      const figure = seule && !!x.legende;
+      if (figure) numero += 1;
+      out.push({ ligne: i, legende: x.legende, figure, numero: figure ? numero : 0 });
+    }
+  }
+  return out;
+}
+
+function figuresDeNote(lignes) {
+  return imagesDeNote(lignes).filter((x) => x.figure);
+}
+
 // Le calcul lui-même, sur des titres relevés ({ ligne, niveau }).
 function numerosDepuisTitres(liste) {
   const titres = (liste || []).filter((x) => x && x.niveau >= 2 && x.niveau <= 6);

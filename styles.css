@@ -5174,3 +5174,16 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .zfa-corr-ia .cm-tooltip:has(> .zfa-corr-bulle)::before { animation: none; }
 }
+
+/* Légende d'une figure : « Figure N : légende », centrée sous l'image. */
+.zfa-figure-legende {
+  display: block;
+  margin: var(--size-2-2) auto var(--size-4-2);
+  max-width: 90%;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-smaller, 0.875em);
+  line-height: 1.4;
+}
+.zfa-figure-legende.est-edition { padding: 0 var(--size-4-2); }
+.zfa-figure-numero { font-weight: var(--font-semibold); color: var(--text-normal); }

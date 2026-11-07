@@ -43,6 +43,8 @@ module.exports._test = {
   plagesInsecables,
   souderPonctuation,
   numerosTitres,
+  imagesDeNote,
+  figuresDeNote,
   numerosDepuisTitres,
   renumeroterTitres,
   numeroDeLigneTitre,

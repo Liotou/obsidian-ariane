@@ -402,6 +402,40 @@ const avecNoteAtomes = (Base) => class extends Base {
     for (const h of el.querySelectorAll('h2, h3, h4, h5, h6')) this.griserNumeroTitre(h);
   }
 
+  // Figures : « Figure N : légende » sous chaque image légendée seule sur sa
+  // ligne (figuresDeNote), numérotée dans l'ordre de la note. Le numéro se
+  // lit dans le texte entier de la note : une section rendue seule le
+  // connaît. Les images de la section et celles de son texte vont de pair,
+  // dans l'ordre. Rien n'est écrit dans la note.
+  numeroterFiguresRendues(el, ctx) {
+    if (!el || !ctx || this.settings.figuresNumerotees === false) return;
+    const info = ctx.getSectionInfo && ctx.getSectionInfo(el);
+    if (!info || !info.text) return;
+    const images = imagesDeNote(String(info.text).split('\n'))
+      .filter((x) => x.ligne >= info.lineStart && x.ligne <= info.lineEnd);
+    if (!images.some((x) => x.figure)) return;
+    const els = Array.from(el.querySelectorAll('.internal-embed.image-embed, img'))
+      .filter((x) => x.tagName !== 'IMG' || !x.closest('.internal-embed'));
+    images.forEach((x, k) => {
+      const cible = els[k];
+      if (!x.figure || !cible) return;
+      const suivant = cible.nextElementSibling;
+      if (suivant && suivant.classList.contains('zfa-figure-legende')) suivant.remove();
+      cible.after(Ariane.elementLegendeFigure(el.ownerDocument, x.numero, x.legende));
+    });
+  }
+
+  static elementLegendeFigure(doc, numero, legende) {
+    const d = doc.createElement('span');
+    d.className = 'zfa-figure-legende';
+    const n = doc.createElement('span');
+    n.className = 'zfa-figure-numero';
+    n.textContent = tr('Figure ') + numero + '\u00a0: ';
+    d.appendChild(n);
+    d.appendChild(doc.createTextNode(legende));
+    return d;
+  }
+
   // Le panneau « Plan » d'Obsidian : le numéro de chaque entrée est grisé.
   // Le plan se reconstruit à chaque changement de la note ; on repasse
   // derrière lui, une fois sa mise à jour faite.
