@@ -697,3 +697,27 @@ test('Créneau, langage naturel : Entrée analyse, puis crée ; « Nouvelle tâc
   m.inputEl.value = ' relire ';
   assert.equal(m.texteNouvelle(), 'relire');
 });
+
+test('Créneau : « Créer telle quelle » crée sans IA et attache le créneau', async () => {
+  const { ModaleTacheDuCreneau } = Ariane._test;
+  const m = Object.create(ModaleTacheDuCreneau.prototype);
+  const attache = [];
+  const crees = [];
+  let ferme = false;
+  Object.assign(m, {
+    champLN: { value: '  Compléter les supports de l\'AG PEPR ' },
+    o: { surChoix: (r) => attache.push(r) },
+    close: () => { ferme = true; },
+    greffon: { creerTache: async (o) => { crees.push(o.intitule); return '08 - Tâches/T080.md'; }, refDeChemin: () => 'T080' },
+  });
+  await m._creerSansIA();
+  assert.deepEqual(crees, ['Compléter les supports de l\'AG PEPR']);
+  assert.deepEqual(attache, ['T080']);
+  assert.ok(ferme && m.choisi);
+  // Champ vide : rien n'est créé.
+  const n = Object.create(ModaleTacheDuCreneau.prototype);
+  let appele = false;
+  Object.assign(n, { champLN: { value: ' ', focus() {} }, o: {}, greffon: { creerTache: async () => { appele = true; } } });
+  await n._creerSansIA();
+  assert.equal(appele, false);
+});

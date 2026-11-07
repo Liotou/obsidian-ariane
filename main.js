@@ -2269,6 +2269,17 @@ const TEXTES = {
     "Ajouter une tâche (langage naturel)": "Add a task (plain language)",
     "Décrire en langage naturel": "Describe in plain language",
     "Remplir à la main": "Fill in by hand",
+    "Rechercher une tâche existante…": "Search an existing task…",
+    "Attacher à une tâche existante": "Attach to an existing task",
+    "Créer une nouvelle tâche": "Create a new task",
+    "Décrivez la tâche : « relire le chapitre 2 pour vendredi »": "Describe the task: “reread chapter 2 by Friday”",
+    "Intitulé de la tâche": "Task title",
+    "↵ avec l’IA, ⇧↵ telle quelle": "↵ with AI, ⇧↵ as is",
+    "↵ créer": "↵ create",
+    "Analyser avec l’IA": "Analyse with AI",
+    "Créer telle quelle": "Create as is",
+    "Formulaire…": "Form…",
+    "Aucune tâche existante ne correspond : créez-la au-dessus.": "No existing task matches: create it above.",
     "Tâches : fusionner deux tâches": "Tasks: merge two tasks",
     "Fusionner avec une autre tâche…": "Merge with another task…",
     "Fusionner deux tâches": "Merge two tasks",
@@ -2311,7 +2322,6 @@ const TEXTES = {
     "Création…": "Creating…",
     "Rien n'a pu être créé.": "Nothing could be created.",
     "Tâche créée : ": "Task created: ",
-    "Ou décrivez une nouvelle tâche : « relire le chapitre 2 pour vendredi »": "Or describe a new task: “reread chapter 2 by Friday”",
     "L'IA n'a reconnu aucune tâche dans cette description.": "The AI found no task in this description.",
     "Créer et attacher": "Create and attach",
     "créneau": "slot",
@@ -33446,12 +33456,11 @@ class ChoixSourceModal extends obsidian.Modal {
 // probables (Ariane.suggererTachesCreneau : travail récent, frise, échéance),
 // chacune avec la raison de sa place ; la première est présélectionnée, et
 // Entrée suffit. En tapant, on cherche parmi toutes les tâches actives.
-// « Nouvelle tâche » n'est pas dans la liste, où il faudrait la chercher en
-// défilant : c'est un bouton fixe de l'en-tête (⌘↵ au clavier), nommé
-// d'après la saisie. Sous la recherche, un second champ décrit en langage
-// naturel une tâche neuve : l'IA des tâches (analyserTachesLN) la comprend,
-// on revoit sa proposition, puis « Créer et attacher » la crée et y attache
-// le créneau. Échap abandonne le créneau.
+// Au-dessus, dans sa propre partie, « Créer une nouvelle tâche » : décrite
+// en langage naturel, l'IA des tâches (analyserTachesLN) la comprend et on
+// revoit sa proposition avant « Créer et attacher » ; ou prise telle
+// quelle, sans IA ; ou par le formulaire complet (⌘↵). Échap abandonne le
+// créneau.
 class ModaleTacheDuCreneau extends obsidian.SuggestModal {
   // o : { taches, jour, horaire, surChoix(ref), surNouvelle(texte), surAbandon() }
   constructor(app, greffon, o) {
@@ -33461,7 +33470,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
     this.classees = Ariane.suggererTachesCreneau(this.o.taches || [], this.o.jour);
     this.choisi = false;
     this.limit = 60;
-    this.setPlaceholder(tr('À quelle tâche attacher ce créneau ?'));
+    this.setPlaceholder(tr('Rechercher une tâche existante…'));
     if (this.setInstructions) {
       this.setInstructions([
         { command: '↑↓', purpose: tr('parcourir') },
@@ -33470,21 +33479,23 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
         { command: 'échap', purpose: tr('abandonner le créneau') },
       ]);
     }
-    this.emptyStateText = tr('Aucune tâche ne correspond : ⌘↵ pour en créer une.');
+    this.emptyStateText = tr('Aucune tâche existante ne correspond : créez-la au-dessus.');
+    // Deux parties nettement séparées : en haut, créer une tâche neuve
+    // (décrite à l'IA, ou prise telle quelle) ; en dessous, sous son propre
+    // intitulé, chercher une tâche existante dans la liste.
     if (this.modalEl) {
       this.modalEl.addClass('zfa-tc-modale');
       const tete = this.modalEl.createDiv({ cls: 'zfa-tc-tete' });
       obsidian.setIcon(tete.createSpan({ cls: 'zfa-tc-tete-icone' }), 'calendar-clock');
       tete.createSpan({ cls: 'zfa-tc-tete-horaire', text: this.o.horaire || '' });
-      this.boutonNouvelle = tete.createEl('button', { cls: 'zfa-tc-nouvelle' });
-      obsidian.setIcon(this.boutonNouvelle.createSpan({ cls: 'zfa-tc-icone' }), 'plus');
-      this.libelleNouvelle = this.boutonNouvelle.createSpan();
-      this.boutonNouvelle.addEventListener('click', () => this.creerNouvelle());
       this.modalEl.prepend(tete);
-      this.majNouvelle();
-      // Le libellé suit la saisie : « Nouvelle tâche « rédiger… » ».
-      if (this.inputEl) this.inputEl.addEventListener('input', () => this.majNouvelle());
-      if (this.greffon && this.greffon.analyserTachesLN) this._zoneLN();
+      const hote = this.inputEl && this.inputEl.parentElement;
+      const zone = this._zoneCreer();
+      if (hote && hote.parentElement) hote.before(zone); else tete.after(zone);
+      const titre = this.modalEl.createDiv({ cls: 'zfa-tc-section-titre' });
+      obsidian.setIcon(titre.createSpan({ cls: 'zfa-tc-section-icone' }), 'search');
+      titre.createSpan({ text: tr('Attacher à une tâche existante') });
+      if (hote && hote.parentElement) hote.before(titre); else zone.after(titre);
     }
     if (this.scope) this.scope.register(['Mod'], 'Enter', (e) => { e.preventDefault(); this.creerNouvelle(); return false; });
   }
@@ -33496,19 +33507,36 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
   // cela, la liste attacherait la tâche surlignée. Obsidian lit le clavier
   // AVANT le champ, par sa portée : c'est donc la portée qui agit (un
   // écouteur sur le champ ne recevait jamais Entrée, 2026-11-07).
-  _zoneLN() {
+  //  ↵ analyse avec l'IA (puis crée ce qu'elle propose) ; ⇧↵ crée la tâche
+  //  telle quelle, sans IA ; « Formulaire… » ouvre la fenêtre complète.
+  _zoneCreer() {
+    const ia = !!(this.greffon && this.greffon.analyserTachesLN);
     const z = this.modalEl.createDiv({ cls: 'zfa-tc-ln' });
-    const hote = this.inputEl && this.inputEl.parentElement;
-    if (hote && hote.parentElement) hote.after(z); else this.modalEl.prepend(z);
+    const titre = z.createDiv({ cls: 'zfa-tc-section-titre' });
+    obsidian.setIcon(titre.createSpan({ cls: 'zfa-tc-section-icone' }), 'plus');
+    titre.createSpan({ text: tr('Créer une nouvelle tâche') });
     const ligne = z.createDiv({ cls: 'zfa-tc-ln-saisie' });
     this.iconeLN = ligne.createSpan({ cls: 'zfa-tc-ln-icone' });
-    obsidian.setIcon(this.iconeLN, 'sparkles');
+    obsidian.setIcon(this.iconeLN, ia ? 'sparkles' : 'pencil-line');
     const champ = ligne.createEl('input', { type: 'text', cls: 'zfa-tc-ln-champ',
-      attr: { placeholder: tr('Ou décrivez une nouvelle tâche : « relire le chapitre 2 pour vendredi »'), spellcheck: 'false' } });
+      attr: { placeholder: ia ? tr('Décrivez la tâche : « relire le chapitre 2 pour vendredi »') : tr('Intitulé de la tâche'),
+        spellcheck: 'false' } });
     this.champLN = champ;
+    const actions = z.createDiv({ cls: 'zfa-tc-ln-actions' });
+    const aide = actions.createSpan({ cls: 'zfa-tc-ln-aide' });
+    aide.setText(ia ? tr('↵ avec l’IA, ⇧↵ telle quelle') : tr('↵ créer'));
+    if (ia) {
+      const bIa = actions.createEl('button', { cls: 'zfa-tc-ln-bouton' });
+      obsidian.setIcon(bIa.createSpan({ cls: 'zfa-tc-icone' }), 'sparkles');
+      bIa.createSpan({ text: tr('Analyser avec l’IA') });
+      bIa.addEventListener('click', () => this._analyserLN());
+    }
+    const bTel = actions.createEl('button', { cls: 'zfa-tc-ln-bouton', text: tr('Créer telle quelle') });
+    bTel.addEventListener('click', () => this._creerSansIA());
+    const bForm = actions.createEl('button', { cls: 'zfa-tc-ln-bouton', text: tr('Formulaire…') });
+    bForm.addEventListener('click', () => this.creerNouvelle());
     this.propoLN = z.createDiv({ cls: 'zfa-tc-ln-propo' });
     this.propoLN.hide();
-    champ.addEventListener('input', () => this.majNouvelle());
     // Une même frappe peut passer par la portée puis par l'écouteur : elle
     // n'agit qu'une fois.
     const traitees = new WeakSet();
@@ -33516,6 +33544,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       if (!e || e.key !== 'Enter' || e.isComposing || traitees.has(e)) return;
       traitees.add(e);
       e.preventDefault();
+      if (e.shiftKey || !ia) { this._creerSansIA(); return; }
       this._entreeLN(e.target, e.metaKey || e.ctrlKey);
     };
     z.addEventListener('keydown', (e) => {
@@ -33527,12 +33556,35 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       const portee = new obsidian.Scope(this.scope);
       portee.register([], 'Enter', (e) => { touche(e); return false; });
       portee.register(['Mod'], 'Enter', (e) => { touche(e); return false; });
+      portee.register(['Shift'], 'Enter', (e) => { touche(e); return false; });
       let dedans = false;
       z.addEventListener('focusin', () => { if (!dedans) { dedans = true; this.app.keymap.pushScope(portee); } });
       z.addEventListener('focusout', (e) => {
         if (e.relatedTarget && z.contains(e.relatedTarget)) return;
         if (dedans) { dedans = false; this.app.keymap.popScope(portee); }
       });
+    }
+    return z;
+  }
+
+  // La tâche telle qu'écrite, sans IA, puis le créneau y est attaché.
+  async _creerSansIA() {
+    const texte = String((this.champLN && this.champLN.value) || '').trim();
+    if (!texte) { if (this.champLN) this.champLN.focus(); return; }
+    if (this._creationLN) return;
+    this._creationLN = true;
+    try {
+      const chemin = await this.greffon.creerTache({ intitule: texte });
+      const ref = chemin ? this.greffon.refDeChemin(chemin) : null;
+      if (!ref) { new obsidian.Notice(tr('Rien n\'a pu être créé.')); return; }
+      new obsidian.Notice(tr('Tâche créée : ') + ref);
+      this.choisi = true;
+      this.close();
+      if (this.o.surChoix) this.o.surChoix(ref);
+    } catch (e) {
+      new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
+    } finally {
+      this._creationLN = false;
     }
   }
 
@@ -33626,14 +33678,6 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
   // a tapé une, sinon la recherche.
   texteNouvelle() {
     return String((this.champLN && this.champLN.value) || '').trim() || this.saisie();
-  }
-
-  majNouvelle() {
-    if (!this.libelleNouvelle) return;
-    const q = this.texteNouvelle();
-    this.libelleNouvelle.textContent = q
-      ? tr('Nouvelle tâche « {t} »').replace('{t}', q.length > 28 ? q.slice(0, 27) + '…' : q)
-      : tr('Nouvelle tâche');
   }
 
   creerNouvelle() {
