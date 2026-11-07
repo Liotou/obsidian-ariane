@@ -402,7 +402,7 @@ const avecNoteAtomes = (Base) => class extends Base {
     for (const h of el.querySelectorAll('h2, h3, h4, h5, h6')) this.griserNumeroTitre(h);
   }
 
-  // Figures : « Figure N : légende » sous chaque image seule sur sa ligne
+  // Figures : « Figure N. Légende » sous chaque image seule sur sa ligne
   // (figuresDeNote), numérotée dans l'ordre de la note. Le numéro se lit
   // dans le texte entier de la note : une section rendue seule le connaît.
   // Les images de la section et celles de son texte vont de pair, dans
@@ -439,7 +439,7 @@ const avecNoteAtomes = (Base) => class extends Base {
     d.setAttribute('aria-label', legende ? tr('Modifier la légende') : tr('Ajouter une légende'));
     const n = doc.createElement('span');
     n.className = 'zfa-figure-numero';
-    n.textContent = tr('Figure ') + numero + (legende ? '\u00a0: ' : '');
+    n.textContent = tr('Figure ') + numero + (legende ? '. ' : '');
     d.appendChild(n);
     if (legende) d.appendChild(doc.createTextNode(legende));
     return d;

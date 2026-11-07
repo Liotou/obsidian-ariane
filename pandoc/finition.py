@@ -173,7 +173,7 @@ def remapper_styles(doc, table, correspondances):
 #
 # Pandoc fait d'une image légendée, seule dans son paragraphe, une figure :
 # l'image, puis un paragraphe de style « ImageCaption » qui porte la légende,
-# sans numéro. On y pose « Figure », un champ SEQ Figure et « : », comme une
+# sans numéro. On y pose « Figure », un champ SEQ Figure et « . », comme une
 # légende insérée par Word : le numéro se met à jour dans Word, et la table
 # des illustrations sait relever ces légendes. Le paragraphe prend le style
 # Légende du modèle, sauf correspondance choisie dans les réglages.
@@ -188,14 +188,14 @@ def numeroter_figures(doc, table, correspondances):
         ppr, reste = m.group(1), m.group(2)
         if cible:
             ppr = ppr.replace('w:val="ImageCaption"', 'w:val="%s"' % cible, 1)
-        # Une figure sans légende (une espace insécable pour pandoc) : le
-        # numéro seul, sans « : ».
+        # « Figure 1. Légende » ; une figure sans légende (une espace
+        # insécable pour pandoc) : le numéro seul, sans point.
         vide = not texte_de(reste).replace("\u00a0", " ").strip()
         return ppr + (
             '<w:r><w:t xml:space="preserve">Figure </w:t></w:r>'
             '<w:fldSimple w:instr=" SEQ Figure \\* ARABIC "><w:r><w:rPr><w:noProof/></w:rPr>'
             '<w:t>%d</w:t></w:r></w:fldSimple>') % n[0] + (
-            "" if vide else '<w:r><w:t xml:space="preserve">\u00a0: </w:t></w:r>' + reste)
+            "" if vide else '<w:r><w:t xml:space="preserve">. </w:t></w:r>' + reste)
 
     doc = re.sub(r'(<w:pPr>\s*<w:pStyle w:val="ImageCaption"\s*/>(?:(?!</w:pPr>).)*</w:pPr>)'
                  r'((?:(?!</w:p>).)*)(?=</w:p>)',

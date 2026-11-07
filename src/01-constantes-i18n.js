@@ -2469,7 +2469,7 @@ const DEFAULT_SETTINGS = {
   numerotationTitres: true, // numéros des titres (## = 1., ### = 1.1.) écrits et tenus à jour
   numerotationDossiers: [], // dossiers dont les notes sont numérotées (vide : aucune)
   ponctuationInsecable: true, // texte justifié : ponctuation jamais séparée de son mot
-  figuresNumerotees: true,    // « Figure N : légende » sous chaque image légendée
+  figuresNumerotees: true,    // « Figure N. Légende » sous chaque image seule sur sa ligne
   dropToucheStyle: 'shift', // touche qui alterne « (Auteur, année) » et « Auteur (année) » au glisser
   titreSectionNotes: 'Annotations de lecture associées', // en-tête de la section des notes
   modeleCitation: '{{auteurs}}, {{annee}}, p. {{page}}',

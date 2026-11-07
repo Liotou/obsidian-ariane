@@ -130,7 +130,7 @@ async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
         // légendée, que la finition numérote. Une image seule sur sa ligne
         // est une figure même sans légende (figuresDeNote) : une espace
         // insécable suffit à pandoc pour en faire une, que la finition
-        // numérote sans « : ».
+        // numérote sans point (« Figure 3 »).
         const chemin = lireImage ? await lireImage(cible.trim()) : null;
         const seule = l.trim() === m[0];
         const leg = aliases.map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ')

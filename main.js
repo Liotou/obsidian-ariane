@@ -2675,7 +2675,7 @@ const DEFAULT_SETTINGS = {
   numerotationTitres: true, // numéros des titres (## = 1., ### = 1.1.) écrits et tenus à jour
   numerotationDossiers: [], // dossiers dont les notes sont numérotées (vide : aucune)
   ponctuationInsecable: true, // texte justifié : ponctuation jamais séparée de son mot
-  figuresNumerotees: true,    // « Figure N : légende » sous chaque image légendée
+  figuresNumerotees: true,    // « Figure N. Légende » sous chaque image seule sur sa ligne
   dropToucheStyle: 'shift', // touche qui alterne « (Auteur, année) » et « Auteur (année) » au glisser
   titreSectionNotes: 'Annotations de lecture associées', // en-tête de la section des notes
   modeleCitation: '{{auteurs}}, {{annee}}, p. {{page}}',
@@ -5101,7 +5101,7 @@ async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
         // légendée, que la finition numérote. Une image seule sur sa ligne
         // est une figure même sans légende (figuresDeNote) : une espace
         // insécable suffit à pandoc pour en faire une, que la finition
-        // numérote sans « : ».
+        // numérote sans point (« Figure 3 »).
         const chemin = lireImage ? await lireImage(cible.trim()) : null;
         const seule = l.trim() === m[0];
         const leg = aliases.map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ')
@@ -9954,7 +9954,7 @@ const avecNoteAtomes = (Base) => class extends Base {
     for (const h of el.querySelectorAll('h2, h3, h4, h5, h6')) this.griserNumeroTitre(h);
   }
 
-  // Figures : « Figure N : légende » sous chaque image seule sur sa ligne
+  // Figures : « Figure N. Légende » sous chaque image seule sur sa ligne
   // (figuresDeNote), numérotée dans l'ordre de la note. Le numéro se lit
   // dans le texte entier de la note : une section rendue seule le connaît.
   // Les images de la section et celles de son texte vont de pair, dans
@@ -9991,7 +9991,7 @@ const avecNoteAtomes = (Base) => class extends Base {
     d.setAttribute('aria-label', legende ? tr('Modifier la légende') : tr('Ajouter une légende'));
     const n = doc.createElement('span');
     n.className = 'zfa-figure-numero';
-    n.textContent = tr('Figure ') + numero + (legende ? '\u00a0: ' : '');
+    n.textContent = tr('Figure ') + numero + (legende ? '. ' : '');
     d.appendChild(n);
     if (legende) d.appendChild(doc.createTextNode(legende));
     return d;
