@@ -30091,7 +30091,12 @@ class Ariane extends composer(obsidian.Plugin,
         }
         poser() {
           const view = this.view;
-          const embeds = Array.from(view.contentDOM.querySelectorAll('.internal-embed[src]'));
+          // L'image rendue : « .internal-embed » dans une ligne, mais un bloc
+          // « .image-embed » / « .media-embed » quand l'image est seule sur
+          // sa ligne (sans « internal-embed »), qu'un SVG de draw.io
+          // reprend à son compte.
+          const embeds = Array.from(view.contentDOM.querySelectorAll('.internal-embed[src], .image-embed[src], .media-embed[src]'))
+            .filter((e, i, l) => !l.some((o) => o !== e && o.contains(e)));
           let apercu = true;
           try { apercu = view.state.field(obsidian.editorLivePreviewField); } catch (e) { apercu = true; }
           const figs = greffon.settings.figuresNumerotees === false || !apercu ? []
@@ -30104,7 +30109,7 @@ class Ariane extends composer(obsidian.Plugin,
             // La figure de ce nom la plus proche de la ligne de l'image.
             const fig = figs.filter((f) => nom(f.fichier) === n)
               .sort((a, b) => Math.abs(a.ligne - ligne) - Math.abs(b.ligne - ligne))[0];
-            if (!fig) { if (ancienne) ancienne.remove(); continue; }
+            if (!fig) { if (ancienne) ancienne.remove(); el.classList.remove('zfa-a-legende'); continue; }
             const cle = fig.numero + '|' + fig.legende;
             if (ancienne && ancienne.dataset.cle === cle) continue;
             if (ancienne) ancienne.remove();
@@ -30138,12 +30143,15 @@ class Ariane extends composer(obsidian.Plugin,
                 new obsidian.Notice(tr('Renvoi copié : ') + lien + tr('. Collez-le dans le texte : il s’affichera « figure N ».'));
               });
             });
+            // L'image rendue est en « flex » : la légende y passe à la ligne.
+            el.classList.add('zfa-a-legende');
             el.appendChild(leg);
           }
         }
         destroy() {
           this.obs.disconnect();
           for (const l of this.view.contentDOM.querySelectorAll('.zfa-figure-legende')) l.remove();
+          for (const e of this.view.contentDOM.querySelectorAll('.zfa-a-legende')) e.classList.remove('zfa-a-legende');
         }
       }));
     } catch (e) {

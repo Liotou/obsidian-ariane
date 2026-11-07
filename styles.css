@@ -5188,9 +5188,11 @@ body {
   line-height: 1.4;
 }
 .zfa-figure-legende { cursor: pointer; user-select: none; }
-/* En édition, la légende vit dans l'image rendue : elle reprend la largeur
-   de la ligne, alignée à gauche comme le texte. */
-.markdown-source-view .internal-embed > .zfa-figure-legende { width: 100%; white-space: normal; }
+/* En édition, la légende vit dans l'image rendue, qu'Obsidian dispose en
+   « flex » (en ligne) : elle y passe à la ligne, sous l'image, alignée sur
+   son bord gauche. */
+.markdown-source-view .zfa-a-legende { flex-wrap: wrap; }
+.markdown-source-view .zfa-a-legende > .zfa-figure-legende { flex: 0 0 100%; width: 100%; white-space: normal; }
 .zfa-figure-legende:hover .zfa-figure-numero { color: var(--text-accent); }
 .zfa-figure-numero { font-weight: var(--font-semibold); color: var(--text-normal); }
 /* Un renvoi à une figure : un lien interne, qui se lit « figure N ». */
