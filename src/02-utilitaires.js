@@ -255,6 +255,8 @@ function numerosTitres(lignes) {
 // numéro (une image glissée dans la note en devient une d'emblée, sa
 // légende s'ajoute ensuite). Rend [{ ligne, legende, figure, numero }]
 // (numero : 0 hors figure).
+const ZFA_REPERE_FIGURE = /(?:[ \t]+\^([\w-]+)|[ \t]*\{#([\w-]+)\})[ \t]*$/;
+
 function imagesDeNote(lignes) {
   const l = lignes || [];
   const out = [];
@@ -279,11 +281,16 @@ function imagesDeNote(lignes) {
         trouvees.push({ brut: m[0], legende: legende(m[2].split('|')) });
       }
     }
-    const seule = trouvees.length === 1 && t.trim() === trouvees[0].brut;
+    // Le repère de bloc d'Obsidian (« ^fig-cycle ») ou l'identifiant
+    // pandoc (« {#fig-cycle} ») au bout de la ligne : l'image reste seule.
+    const r = ZFA_REPERE_FIGURE.exec(t);
+    const id = r ? (r[1] || r[2]) : '';
+    const corps = r ? t.slice(0, r.index) : t;
+    const seule = trouvees.length === 1 && corps.trim() === trouvees[0].brut;
     for (const x of trouvees) {
       const figure = seule;
       if (figure) numero += 1;
-      out.push({ ligne: i, legende: x.legende, figure, numero: figure ? numero : 0 });
+      out.push({ ligne: i, legende: x.legende, figure, numero: figure ? numero : 0, id: figure ? id : '' });
     }
   }
   return out;
@@ -291,6 +298,40 @@ function imagesDeNote(lignes) {
 
 function figuresDeNote(lignes) {
   return imagesDeNote(lignes).filter((x) => x.figure);
+}
+
+// Le renvoi à une figure : la ligne de l'image reçoit un repère de bloc
+// (« ^fig-cycle-du-risque », tiré de la légende, unique dans la note) et
+// devient un bloc à elle seule, une ligne vide de part et d'autre : sans
+// cela, le lien d'Obsidian viserait tout le paragraphe qui la suit.
+// Rend { lignes, id, ligne } (ligne : celle de l'image, après ajouts), ou
+// null si `ligne` n'est pas une figure.
+function poserRepereFigure(lignes, ligne) {
+  const l = (lignes || []).slice();
+  const fig = figuresDeNote(l).find((x) => x.ligne === ligne);
+  if (!fig) return null;
+  let id = fig.id;
+  if (!id) {
+    const base = 'fig-' + (String(fig.legende || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32).replace(/-+$/, '')
+      || String(fig.numero));
+    const pris = new Set();
+    for (const x of l) { const m = /\^([\w-]+)[ \t]*$/.exec(x); if (m) pris.add(m[1]); }
+    id = base;
+    for (let k = 2; pris.has(id); k += 1) id = base + '-' + k;
+    l[ligne] = l[ligne].replace(/[ \t]+$/, '') + ' ^' + id;
+  }
+  let i = ligne;
+  if (i + 1 < l.length && l[i + 1].trim()) l.splice(i + 1, 0, '');
+  if (i > 0 && l[i - 1].trim()) { l.splice(i, 0, ''); i += 1; }
+  return { lignes: l, id, ligne: i };
+}
+
+// Les figures d'une note par repère : { id -> numero }.
+function numerosFiguresParRepere(lignes) {
+  const m = new Map();
+  for (const f of figuresDeNote(lignes)) if (f.id) m.set(f.id, f.numero);
+  return m;
 }
 
 // La ligne d'une figure, sa légende remplacée : la largeur (« |300 »)

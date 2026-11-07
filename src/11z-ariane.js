@@ -952,6 +952,7 @@ class Ariane extends composer(obsidian.Plugin,
       this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
       this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
       this.registerMarkdownPostProcessor((el, ctx) => this.numeroterFiguresRendues(el, ctx));
+      this.registerMarkdownPostProcessor((el, ctx) => this.renvoisFiguresRendus(el, ctx));
       // Le panneau « Plan » : ses entrées portent les mêmes numéros.
       this.app.workspace.onLayoutReady(() => this.brancherPlans());
       this.registerEvent(this.app.workspace.on('layout-change', () => this.brancherPlans()));
@@ -1245,11 +1246,17 @@ class Ariane extends composer(obsidian.Plugin,
           el.addEventListener('click', (e) => {
             e.preventDefault();
             const legende = this.legende;
+            const ligneDe = () => { try { return view.state.doc.lineAt(view.posAtDOM(el)); } catch (er) { return null; } };
             greffon.demanderLegendeFigure(this.numero, legende, (v) => {
-              let ligne;
-              try { ligne = view.state.doc.lineAt(view.posAtDOM(el)); } catch (er) { return; }
+              const ligne = ligneDe();
+              if (!ligne) return;
               const nouvelle = ligneAvecLegende(ligne.text, v);
               if (nouvelle !== ligne.text) view.dispatch({ changes: { from: ligne.from, to: ligne.to, insert: nouvelle } });
+            }, () => {
+              const ligne = ligneDe();
+              let f = null;
+              try { const info = view.state.field(obsidian.editorInfoField, false); f = info && info.file; } catch (er) { f = null; }
+              if (ligne && f) greffon.copierRenvoiFigure(f, ligne.number - 1);
             });
           });
           return el;
@@ -1273,6 +1280,70 @@ class Ariane extends composer(obsidian.Plugin,
       }));
     } catch (e) {
       console.error('[Ariane] Légendes des figures indisponibles :', e);
+    }
+
+    // Renvois aux figures de la note (« [[#^fig-cycle]] ») : en aperçu en
+    // direct, hors du curseur, le lien s'affiche « figure N » ; un clic y
+    // mène. Le curseur dessus montre le lien tel qu'écrit.
+    if (this.module('typographie')) try {
+      const { ViewPlugin, Decoration, WidgetType } = require('@codemirror/view');
+      const greffon = this;
+      class RenvoiFigure extends WidgetType {
+        constructor(numero, cible) { super(); this.numero = numero; this.cible = cible; }
+        eq(o) { return o.numero === this.numero && o.cible === this.cible; }
+        toDOM(view) {
+          const a = view.dom.ownerDocument.createElement('span');
+          a.className = 'cm-hmd-internal-link zfa-renvoi-figure';
+          a.textContent = tr('figure ') + this.numero;
+          a.addEventListener('mousedown', (e) => e.preventDefault());
+          a.addEventListener('click', (e) => {
+            e.preventDefault();
+            let f = null;
+            try { const info = view.state.field(obsidian.editorInfoField, false); f = info && info.file; } catch (er) { f = null; }
+            greffon.app.workspace.openLinkText(this.cible, f ? f.path : '', false);
+          });
+          return a;
+        }
+        ignoreEvent() { return true; }
+      }
+      const calculer = (view) => {
+        if (greffon.settings.figuresNumerotees === false) return Decoration.none;
+        let apercu = true;
+        try { apercu = view.state.field(obsidian.editorLivePreviewField); } catch (e) { apercu = true; }
+        if (!apercu) return Decoration.none;
+        const doc = view.state.doc;
+        const texte = doc.toString();
+        if (!texte.includes('[[#^')) return Decoration.none;
+        const numeros = numerosFiguresParRepere(texte.split('\n'));
+        if (!numeros.size) return Decoration.none;
+        const sel = view.state.selection.ranges;
+        const deco = [];
+        const re = /\[\[#\^([\w-]+)\]\]/g;
+        for (const { from, to } of view.visibleRanges) {
+          const morceau = doc.sliceString(from, to);
+          let m;
+          re.lastIndex = 0;
+          while ((m = re.exec(morceau))) {
+            const a = from + m.index;
+            const z = a + m[0].length;
+            const n = numeros.get(m[1]);
+            if (!n || sel.some((r) => r.from <= z && r.to >= a)) continue;
+            deco.push(Decoration.replace({ widget: new RenvoiFigure(n, '#^' + m[1]) }).range(a, z));
+          }
+        }
+        return Decoration.set(deco, true);
+      };
+      this.registerEditorExtension(ViewPlugin.fromClass(class {
+        constructor(view) { this.decorations = calculer(view); }
+        update(u) {
+          if (u.docChanged || u.viewportChanged || u.selectionSet
+            || u.startState.field(obsidian.editorLivePreviewField, false) !== u.state.field(obsidian.editorLivePreviewField, false)) {
+            this.decorations = calculer(u.view);
+          }
+        }
+      }, { decorations: (v) => v.decorations }));
+    } catch (e) {
+      console.error('[Ariane] Renvois aux figures indisponibles :', e);
     }
 
     // Numéros des titres (1., 1.1., …) : écrits dans la note par Ariane,

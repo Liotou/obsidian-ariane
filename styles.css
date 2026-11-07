@@ -5190,3 +5190,6 @@ body {
 .zfa-figure-legende { cursor: pointer; }
 .zfa-figure-legende:hover .zfa-figure-numero { color: var(--text-accent); }
 .zfa-figure-numero { font-weight: var(--font-semibold); color: var(--text-normal); }
+/* Un renvoi à une figure : un lien interne, qui se lit « figure N ». */
+.zfa-renvoi-figure { color: var(--link-color); cursor: pointer; text-decoration: var(--link-decoration); }
+.zfa-renvoi-figure:hover { color: var(--link-color-hover); text-decoration: var(--link-decoration-hover); }

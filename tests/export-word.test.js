@@ -257,3 +257,37 @@ test('export : la légende d\'une image intégrée passe à pandoc, la largeur n
   assert.ok(md.includes('![Carte](a.png)'));
   assert.ok(md.includes('![\u00a0](b.png)'));
 });
+
+test('renvoi à une figure : repère posé, figure isolée dans son bloc, numéro par repère', () => {
+  const { poserRepereFigure, numerosFiguresParRepere, figuresDeNote } = Ariane._test;
+  const note = ['Intro.', '![[a.png|Le cycle du risque]]', 'Sur ce sujet, il reste à préciser.', '', '![[b.png]] ^fig-b'];
+  const r = poserRepereFigure(note, 1);
+  assert.equal(r.id, 'fig-le-cycle-du-risque');
+  assert.deepEqual(r.lignes, ['Intro.', '', '![[a.png|Le cycle du risque]] ^fig-le-cycle-du-risque', '',
+    'Sur ce sujet, il reste à préciser.', '', '![[b.png]] ^fig-b']);
+  assert.equal(r.ligne, 2);
+  // Le repère n'ôte pas son numéro à la figure.
+  assert.deepEqual(figuresDeNote(r.lignes).map((f) => [f.numero, f.id]), [[1, 'fig-le-cycle-du-risque'], [2, 'fig-b']]);
+  assert.deepEqual([...numerosFiguresParRepere(r.lignes)], [['fig-le-cycle-du-risque', 1], ['fig-b', 2]]);
+  // Une figure qui a déjà son repère le garde ; rien n'est ajouté.
+  const s = poserRepereFigure(r.lignes, 6);
+  assert.equal(s.id, 'fig-b');
+  assert.deepEqual(s.lignes, r.lignes);
+  // Pas une figure : rien.
+  assert.equal(poserRepereFigure(note, 0), null);
+  // Repère déjà pris : suffixe.
+  const t = poserRepereFigure(['![[x.png|Plan]]', '', 'texte ^fig-plan'], 0);
+  assert.equal(t.id, 'fig-plan-2');
+});
+
+test('export : un renvoi « [[#^fig-…]] » devient « figure N », lien vers la figure', async () => {
+  const lireImage = async (c) => '/coffre/' + c;
+  const brut = 'Croisée (cf. blocs bleus de la [[#^fig-actants]]).\n\n![[base.png|Actants]] ^fig-actants\n\nVoir [[#^fig-actants|ce schéma]] et [[#^autre]].';
+  const s = await deplierIntegrations(brut, async () => null, lireImage);
+  assert.ok(s.includes('![Actants](</coffre/base.png>){#fig-actants}'), s);
+  assert.ok(!s.includes('^fig-actants\n'), 'le repère quitte la ligne de l\'image');
+  const md = preparerMarkdownExport(s, () => null, {});
+  assert.ok(md.includes('(cf. blocs bleus de la [figure 1](#fig-actants))'), md);
+  assert.ok(md.includes('[ce schéma](#fig-actants)'));
+  assert.ok(md.includes('![Actants](</coffre/base.png>){#fig-actants}'));
+});

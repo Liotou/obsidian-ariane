@@ -132,12 +132,17 @@ async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
         // insécable suffit à pandoc pour en faire une, que la finition
         // numérote sans point (« Figure 3 »).
         const chemin = lireImage ? await lireImage(cible.trim()) : null;
-        const seule = l.trim() === m[0];
+        const r = ZFA_REPERE_FIGURE.exec(l);
+        const seule = (r ? l.slice(0, r.index) : l).trim() === m[0];
+        // Le repère d'une figure devient son identifiant pandoc : les renvois
+        // vers elle y mènent, dans Word aussi.
+        const idFig = seule && r ? '{#' + (r[1] || r[2]) + '}' : '';
+        if (idFig) reste = reste.replace(ZFA_REPERE_FIGURE, '');
         const leg = aliases.map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ')
           .replace(/([[\]])/g, '\\$1') || (seule ? '\u00a0' : '');
         // Une image prise dans une phrase n'est pas une figure : elle reste
         // en ligne, dans le texte, comme Obsidian la montre.
-        rendu = !chemin ? '' : seule ? '\n![' + leg + '](<' + chemin + '>)\n' : '![' + leg + '](<' + chemin + '>)';
+        rendu = !chemin ? '' : seule ? '\n![' + leg + '](<' + chemin + '>)' + idFig + '\n' : '![' + leg + '](<' + chemin + '>)';
       } else if (/\.\w{2,4}$/.test(cible.trim()) && !/\.md$/i.test(cible.trim())) {
         rendu = (alias || cible).trim();             // PDF, son… : leur nom
       } else {
@@ -186,9 +191,20 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
   // 1 quater. Une image « ![…](…) » seule sur sa ligne est une figure : sa
   //    largeur (« |300 ») quitte la légende, et sans légende une espace
   //    insécable la fait figure pour pandoc (voir deplierIntegrations).
-  s = s.replace(/^([ \t]*)!\[([^\]\n]*)\]\(([^)\n]+)\)[ \t]*$/gm, (m, ind, alt, url) => {
+  //    Son repère de bloc devient son identifiant pandoc.
+  s = s.replace(/^([ \t]*)!\[([^\]\n]*)\]\(([^)\n]+)\)(?:[ \t]+(?:\^([\w-]+)|\{#([\w-]+)\}))?[ \t]*$/gm, (m, ind, alt, url, bloc, attr) => {
     const leg = alt.split('|').map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ');
-    return ind + '![' + (leg || '\u00a0') + '](' + url + ')';
+    const id = bloc || attr;
+    return ind + '![' + (leg || '\u00a0') + '](' + url + ')' + (id ? '{#' + id + '}' : '');
+  });
+
+  // 1 quinquies. Les renvois aux figures de la note (« [[#^fig-cycle]] »)
+  //    deviennent « figure N », lien vers la figure dans Word ; un texte
+  //    choisi (« [[#^fig-cycle|ce schéma]] ») est gardé.
+  const numerosFig = numerosFiguresParRepere(s.split('\n'));
+  s = s.replace(/\[\[#\^([\w-]+)(?:\|([^\]\n]+))?\]\]/g, (m, id, alias) => {
+    if (!numerosFig.has(id)) return alias || m;
+    return '[' + (alias ? alias.trim() : tr('figure ') + numerosFig.get(id)) + '](#' + id + ')';
   });
 
   // 2. Compteurs de travaux rapportés : ils n'ont pas de sens hors d'Obsidian.

@@ -46,6 +46,8 @@ module.exports._test = {
   imagesDeNote,
   figuresDeNote,
   ligneAvecLegende,
+  poserRepereFigure,
+  numerosFiguresParRepere,
   numerosDepuisTitres,
   renumeroterTitres,
   numeroDeLigneTitre,

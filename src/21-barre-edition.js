@@ -1584,7 +1584,13 @@ class ModaleBarreTexte extends obsidian.Modal {
         });
       }
     }
-    new obsidian.Setting(contentEl)
+    const pied = new obsidian.Setting(contentEl);
+    // Des gestes en plus (« Copier un renvoi » d'une figure) : ils ferment
+    // la fenêtre sans valider la saisie.
+    for (const a of this.o.actions || []) {
+      pied.addButton((b) => b.setButtonText(a.texte).onClick(() => { this.close(); a.surClic(); }));
+    }
+    pied
       .addButton((b) => b.setButtonText(tr('Annuler')).onClick(() => this.close()))
       .addButton((b) => b.setButtonText(tr(this.o.bouton || 'Appliquer')).setCta().onClick(() => this.valider()));
     if (premier) premier.focus();

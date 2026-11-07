@@ -2272,6 +2272,11 @@ const TEXTES = {
     "Figure ": "Figure ",
     "Numéroter les figures": "Number figures",
     "Modifier la légende": "Edit caption",
+    "figure ": "figure ",
+    "Copier un renvoi": "Copy a reference",
+    "Cette ligne n’est plus une figure.": "This line is no longer a figure.",
+    "Renvoi copié : ": "Reference copied: ",
+    ". Collez-le dans le texte : il s’affichera « figure N ».": ". Paste it in the text: it will show as “figure N”.",
     "Ajouter une légende": "Add a caption",
     "Légende de la figure ": "Caption of figure ",
     "Légende": "Caption",
@@ -3129,6 +3134,8 @@ function numerosTitres(lignes) {
 // numéro (une image glissée dans la note en devient une d'emblée, sa
 // légende s'ajoute ensuite). Rend [{ ligne, legende, figure, numero }]
 // (numero : 0 hors figure).
+const ZFA_REPERE_FIGURE = /(?:[ \t]+\^([\w-]+)|[ \t]*\{#([\w-]+)\})[ \t]*$/;
+
 function imagesDeNote(lignes) {
   const l = lignes || [];
   const out = [];
@@ -3153,11 +3160,16 @@ function imagesDeNote(lignes) {
         trouvees.push({ brut: m[0], legende: legende(m[2].split('|')) });
       }
     }
-    const seule = trouvees.length === 1 && t.trim() === trouvees[0].brut;
+    // Le repère de bloc d'Obsidian (« ^fig-cycle ») ou l'identifiant
+    // pandoc (« {#fig-cycle} ») au bout de la ligne : l'image reste seule.
+    const r = ZFA_REPERE_FIGURE.exec(t);
+    const id = r ? (r[1] || r[2]) : '';
+    const corps = r ? t.slice(0, r.index) : t;
+    const seule = trouvees.length === 1 && corps.trim() === trouvees[0].brut;
     for (const x of trouvees) {
       const figure = seule;
       if (figure) numero += 1;
-      out.push({ ligne: i, legende: x.legende, figure, numero: figure ? numero : 0 });
+      out.push({ ligne: i, legende: x.legende, figure, numero: figure ? numero : 0, id: figure ? id : '' });
     }
   }
   return out;
@@ -3165,6 +3177,40 @@ function imagesDeNote(lignes) {
 
 function figuresDeNote(lignes) {
   return imagesDeNote(lignes).filter((x) => x.figure);
+}
+
+// Le renvoi à une figure : la ligne de l'image reçoit un repère de bloc
+// (« ^fig-cycle-du-risque », tiré de la légende, unique dans la note) et
+// devient un bloc à elle seule, une ligne vide de part et d'autre : sans
+// cela, le lien d'Obsidian viserait tout le paragraphe qui la suit.
+// Rend { lignes, id, ligne } (ligne : celle de l'image, après ajouts), ou
+// null si `ligne` n'est pas une figure.
+function poserRepereFigure(lignes, ligne) {
+  const l = (lignes || []).slice();
+  const fig = figuresDeNote(l).find((x) => x.ligne === ligne);
+  if (!fig) return null;
+  let id = fig.id;
+  if (!id) {
+    const base = 'fig-' + (String(fig.legende || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32).replace(/-+$/, '')
+      || String(fig.numero));
+    const pris = new Set();
+    for (const x of l) { const m = /\^([\w-]+)[ \t]*$/.exec(x); if (m) pris.add(m[1]); }
+    id = base;
+    for (let k = 2; pris.has(id); k += 1) id = base + '-' + k;
+    l[ligne] = l[ligne].replace(/[ \t]+$/, '') + ' ^' + id;
+  }
+  let i = ligne;
+  if (i + 1 < l.length && l[i + 1].trim()) l.splice(i + 1, 0, '');
+  if (i > 0 && l[i - 1].trim()) { l.splice(i, 0, ''); i += 1; }
+  return { lignes: l, id, ligne: i };
+}
+
+// Les figures d'une note par repère : { id -> numero }.
+function numerosFiguresParRepere(lignes) {
+  const m = new Map();
+  for (const f of figuresDeNote(lignes)) if (f.id) m.set(f.id, f.numero);
+  return m;
 }
 
 // La ligne d'une figure, sa légende remplacée : la largeur (« |300 »)
@@ -5103,12 +5149,17 @@ async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
         // insécable suffit à pandoc pour en faire une, que la finition
         // numérote sans point (« Figure 3 »).
         const chemin = lireImage ? await lireImage(cible.trim()) : null;
-        const seule = l.trim() === m[0];
+        const r = ZFA_REPERE_FIGURE.exec(l);
+        const seule = (r ? l.slice(0, r.index) : l).trim() === m[0];
+        // Le repère d'une figure devient son identifiant pandoc : les renvois
+        // vers elle y mènent, dans Word aussi.
+        const idFig = seule && r ? '{#' + (r[1] || r[2]) + '}' : '';
+        if (idFig) reste = reste.replace(ZFA_REPERE_FIGURE, '');
         const leg = aliases.map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ')
           .replace(/([[\]])/g, '\\$1') || (seule ? '\u00a0' : '');
         // Une image prise dans une phrase n'est pas une figure : elle reste
         // en ligne, dans le texte, comme Obsidian la montre.
-        rendu = !chemin ? '' : seule ? '\n![' + leg + '](<' + chemin + '>)\n' : '![' + leg + '](<' + chemin + '>)';
+        rendu = !chemin ? '' : seule ? '\n![' + leg + '](<' + chemin + '>)' + idFig + '\n' : '![' + leg + '](<' + chemin + '>)';
       } else if (/\.\w{2,4}$/.test(cible.trim()) && !/\.md$/i.test(cible.trim())) {
         rendu = (alias || cible).trim();             // PDF, son… : leur nom
       } else {
@@ -5157,9 +5208,20 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
   // 1 quater. Une image « ![…](…) » seule sur sa ligne est une figure : sa
   //    largeur (« |300 ») quitte la légende, et sans légende une espace
   //    insécable la fait figure pour pandoc (voir deplierIntegrations).
-  s = s.replace(/^([ \t]*)!\[([^\]\n]*)\]\(([^)\n]+)\)[ \t]*$/gm, (m, ind, alt, url) => {
+  //    Son repère de bloc devient son identifiant pandoc.
+  s = s.replace(/^([ \t]*)!\[([^\]\n]*)\]\(([^)\n]+)\)(?:[ \t]+(?:\^([\w-]+)|\{#([\w-]+)\}))?[ \t]*$/gm, (m, ind, alt, url, bloc, attr) => {
     const leg = alt.split('|').map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ');
-    return ind + '![' + (leg || '\u00a0') + '](' + url + ')';
+    const id = bloc || attr;
+    return ind + '![' + (leg || '\u00a0') + '](' + url + ')' + (id ? '{#' + id + '}' : '');
+  });
+
+  // 1 quinquies. Les renvois aux figures de la note (« [[#^fig-cycle]] »)
+  //    deviennent « figure N », lien vers la figure dans Word ; un texte
+  //    choisi (« [[#^fig-cycle|ce schéma]] ») est gardé.
+  const numerosFig = numerosFiguresParRepere(s.split('\n'));
+  s = s.replace(/\[\[#\^([\w-]+)(?:\|([^\]\n]+))?\]\]/g, (m, id, alias) => {
+    if (!numerosFig.has(id)) return alias || m;
+    return '[' + (alias ? alias.trim() : tr('figure ') + numerosFig.get(id)) + '](#' + id + ')';
   });
 
   // 2. Compteurs de travaux rapportés : ils n'ont pas de sens hors d'Obsidian.
@@ -9979,10 +10041,40 @@ const avecNoteAtomes = (Base) => class extends Base {
         e.preventDefault();
         const f = this.app.vault.getAbstractFileByPath(ctx.sourcePath || '');
         if (f) this.demanderLegendeFigure(x.numero, x.legende,
-          (v) => this.ecrireLegendeFigure(f, x.ligne, v));
+          (v) => this.ecrireLegendeFigure(f, x.ligne, v),
+          () => this.copierRenvoiFigure(f, x.ligne));
       });
       cible.after(leg);
     });
+  }
+
+  // Les liens vers une figure (« [[#^fig-cycle]] », ou vers celle d'une
+  // autre note) s'affichent « figure N » quand ils n'ont pas de texte à eux.
+  async renvoisFiguresRendus(el, ctx) {
+    if (!el || !ctx || this.settings.figuresNumerotees === false) return;
+    for (const a of el.querySelectorAll('a.internal-link')) {
+      const href = a.getAttribute('data-href') || '';
+      const m = /^(.*)#\^([\w-]+)$/.exec(href);
+      if (!m) continue;
+      const brut = String(a.textContent || '').trim();
+      if (brut !== href && brut !== m[1] + ' > ^' + m[2] && !/\^[\w-]+$/.test(brut)) continue;
+      let texte = null;
+      if (!m[1]) {
+        const info = ctx.getSectionInfo && ctx.getSectionInfo(el);
+        texte = info && info.text;
+        if (texte == null) {
+          const f0 = this.app.vault.getAbstractFileByPath(ctx.sourcePath || '');
+          texte = f0 instanceof obsidian.TFile ? await this.app.vault.cachedRead(f0) : null;
+        }
+      } else {
+        const f = this.app.metadataCache.getFirstLinkpathDest(m[1], ctx.sourcePath || '');
+        texte = f ? await this.app.vault.cachedRead(f) : null;
+      }
+      const n = texte != null && numerosFiguresParRepere(String(texte).split('\n')).get(m[2]);
+      if (!n) continue;
+      a.textContent = tr('figure ') + n;
+      a.classList.add('zfa-renvoi-figure');
+    }
   }
 
   static elementLegendeFigure(doc, numero, legende) {
@@ -9997,12 +10089,29 @@ const avecNoteAtomes = (Base) => class extends Base {
     return d;
   }
 
-  demanderLegendeFigure(numero, legende, surValider) {
+  demanderLegendeFigure(numero, legende, surValider, surRenvoi) {
     ModaleBarreTexte.demander(this, {
       titre: tr('Légende de la figure ') + numero, bouton: tr('Enregistrer'),
       champs: [{ cle: 'legende', nom: tr('Légende'), valeur: legende || '',
         aide: tr('Vide : la figure garde son numéro, sans légende.') }],
+      actions: surRenvoi ? [{ texte: tr('Copier un renvoi'), surClic: surRenvoi }] : [],
     }, (v) => surValider(String(v.legende || '').trim()));
+  }
+
+  // Un renvoi à la figure de la ligne `ligne` : repère posé (et la figure
+  // isolée dans son bloc), puis « [[#^repère]] » dans le presse-papiers.
+  async copierRenvoiFigure(file, ligne) {
+    let id = '';
+    await this.transformerNote(file, (texte) => {
+      const r = poserRepereFigure(texte.split('\n'), ligne);
+      if (!r) return texte;
+      id = r.id;
+      return r.lignes.join('\n');
+    });
+    if (!id) { new obsidian.Notice(tr('Cette ligne n’est plus une figure.')); return; }
+    const lien = '[[#^' + id + ']]';
+    try { await navigator.clipboard.writeText(lien); } catch (e) { /* presse-papiers refusé */ }
+    new obsidian.Notice(tr('Renvoi copié : ') + lien + tr('. Collez-le dans le texte : il s’affichera « figure N ».'));
   }
 
   // Écrit la légende sur la ligne `ligne` de la note, si c'est toujours
@@ -29630,6 +29739,7 @@ class Ariane extends composer(obsidian.Plugin,
       this.registerMarkdownPostProcessor((el) => this.souderPonctuationRendue(el));
       this.registerMarkdownPostProcessor((el, ctx) => this.numeroterTitresRendus(el, ctx));
       this.registerMarkdownPostProcessor((el, ctx) => this.numeroterFiguresRendues(el, ctx));
+      this.registerMarkdownPostProcessor((el, ctx) => this.renvoisFiguresRendus(el, ctx));
       // Le panneau « Plan » : ses entrées portent les mêmes numéros.
       this.app.workspace.onLayoutReady(() => this.brancherPlans());
       this.registerEvent(this.app.workspace.on('layout-change', () => this.brancherPlans()));
@@ -29923,11 +30033,17 @@ class Ariane extends composer(obsidian.Plugin,
           el.addEventListener('click', (e) => {
             e.preventDefault();
             const legende = this.legende;
+            const ligneDe = () => { try { return view.state.doc.lineAt(view.posAtDOM(el)); } catch (er) { return null; } };
             greffon.demanderLegendeFigure(this.numero, legende, (v) => {
-              let ligne;
-              try { ligne = view.state.doc.lineAt(view.posAtDOM(el)); } catch (er) { return; }
+              const ligne = ligneDe();
+              if (!ligne) return;
               const nouvelle = ligneAvecLegende(ligne.text, v);
               if (nouvelle !== ligne.text) view.dispatch({ changes: { from: ligne.from, to: ligne.to, insert: nouvelle } });
+            }, () => {
+              const ligne = ligneDe();
+              let f = null;
+              try { const info = view.state.field(obsidian.editorInfoField, false); f = info && info.file; } catch (er) { f = null; }
+              if (ligne && f) greffon.copierRenvoiFigure(f, ligne.number - 1);
             });
           });
           return el;
@@ -29951,6 +30067,70 @@ class Ariane extends composer(obsidian.Plugin,
       }));
     } catch (e) {
       console.error('[Ariane] Légendes des figures indisponibles :', e);
+    }
+
+    // Renvois aux figures de la note (« [[#^fig-cycle]] ») : en aperçu en
+    // direct, hors du curseur, le lien s'affiche « figure N » ; un clic y
+    // mène. Le curseur dessus montre le lien tel qu'écrit.
+    if (this.module('typographie')) try {
+      const { ViewPlugin, Decoration, WidgetType } = require('@codemirror/view');
+      const greffon = this;
+      class RenvoiFigure extends WidgetType {
+        constructor(numero, cible) { super(); this.numero = numero; this.cible = cible; }
+        eq(o) { return o.numero === this.numero && o.cible === this.cible; }
+        toDOM(view) {
+          const a = view.dom.ownerDocument.createElement('span');
+          a.className = 'cm-hmd-internal-link zfa-renvoi-figure';
+          a.textContent = tr('figure ') + this.numero;
+          a.addEventListener('mousedown', (e) => e.preventDefault());
+          a.addEventListener('click', (e) => {
+            e.preventDefault();
+            let f = null;
+            try { const info = view.state.field(obsidian.editorInfoField, false); f = info && info.file; } catch (er) { f = null; }
+            greffon.app.workspace.openLinkText(this.cible, f ? f.path : '', false);
+          });
+          return a;
+        }
+        ignoreEvent() { return true; }
+      }
+      const calculer = (view) => {
+        if (greffon.settings.figuresNumerotees === false) return Decoration.none;
+        let apercu = true;
+        try { apercu = view.state.field(obsidian.editorLivePreviewField); } catch (e) { apercu = true; }
+        if (!apercu) return Decoration.none;
+        const doc = view.state.doc;
+        const texte = doc.toString();
+        if (!texte.includes('[[#^')) return Decoration.none;
+        const numeros = numerosFiguresParRepere(texte.split('\n'));
+        if (!numeros.size) return Decoration.none;
+        const sel = view.state.selection.ranges;
+        const deco = [];
+        const re = /\[\[#\^([\w-]+)\]\]/g;
+        for (const { from, to } of view.visibleRanges) {
+          const morceau = doc.sliceString(from, to);
+          let m;
+          re.lastIndex = 0;
+          while ((m = re.exec(morceau))) {
+            const a = from + m.index;
+            const z = a + m[0].length;
+            const n = numeros.get(m[1]);
+            if (!n || sel.some((r) => r.from <= z && r.to >= a)) continue;
+            deco.push(Decoration.replace({ widget: new RenvoiFigure(n, '#^' + m[1]) }).range(a, z));
+          }
+        }
+        return Decoration.set(deco, true);
+      };
+      this.registerEditorExtension(ViewPlugin.fromClass(class {
+        constructor(view) { this.decorations = calculer(view); }
+        update(u) {
+          if (u.docChanged || u.viewportChanged || u.selectionSet
+            || u.startState.field(obsidian.editorLivePreviewField, false) !== u.state.field(obsidian.editorLivePreviewField, false)) {
+            this.decorations = calculer(u.view);
+          }
+        }
+      }, { decorations: (v) => v.decorations }));
+    } catch (e) {
+      console.error('[Ariane] Renvois aux figures indisponibles :', e);
     }
 
     // Numéros des titres (1., 1.1., …) : écrits dans la note par Ariane,
@@ -52076,7 +52256,13 @@ class ModaleBarreTexte extends obsidian.Modal {
         });
       }
     }
-    new obsidian.Setting(contentEl)
+    const pied = new obsidian.Setting(contentEl);
+    // Des gestes en plus (« Copier un renvoi » d'une figure) : ils ferment
+    // la fenêtre sans valider la saisie.
+    for (const a of this.o.actions || []) {
+      pied.addButton((b) => b.setButtonText(a.texte).onClick(() => { this.close(); a.surClic(); }));
+    }
+    pied
       .addButton((b) => b.setButtonText(tr('Annuler')).onClick(() => this.close()))
       .addButton((b) => b.setButtonText(tr(this.o.bouton || 'Appliquer')).setCta().onClick(() => this.valider()));
     if (premier) premier.focus();
@@ -55304,6 +55490,8 @@ module.exports._test = {
   imagesDeNote,
   figuresDeNote,
   ligneAvecLegende,
+  poserRepereFigure,
+  numerosFiguresParRepere,
   numerosDepuisTitres,
   renumeroterTitres,
   numeroDeLigneTitre,

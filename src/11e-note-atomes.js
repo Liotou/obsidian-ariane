@@ -427,10 +427,40 @@ const avecNoteAtomes = (Base) => class extends Base {
         e.preventDefault();
         const f = this.app.vault.getAbstractFileByPath(ctx.sourcePath || '');
         if (f) this.demanderLegendeFigure(x.numero, x.legende,
-          (v) => this.ecrireLegendeFigure(f, x.ligne, v));
+          (v) => this.ecrireLegendeFigure(f, x.ligne, v),
+          () => this.copierRenvoiFigure(f, x.ligne));
       });
       cible.after(leg);
     });
+  }
+
+  // Les liens vers une figure (« [[#^fig-cycle]] », ou vers celle d'une
+  // autre note) s'affichent « figure N » quand ils n'ont pas de texte à eux.
+  async renvoisFiguresRendus(el, ctx) {
+    if (!el || !ctx || this.settings.figuresNumerotees === false) return;
+    for (const a of el.querySelectorAll('a.internal-link')) {
+      const href = a.getAttribute('data-href') || '';
+      const m = /^(.*)#\^([\w-]+)$/.exec(href);
+      if (!m) continue;
+      const brut = String(a.textContent || '').trim();
+      if (brut !== href && brut !== m[1] + ' > ^' + m[2] && !/\^[\w-]+$/.test(brut)) continue;
+      let texte = null;
+      if (!m[1]) {
+        const info = ctx.getSectionInfo && ctx.getSectionInfo(el);
+        texte = info && info.text;
+        if (texte == null) {
+          const f0 = this.app.vault.getAbstractFileByPath(ctx.sourcePath || '');
+          texte = f0 instanceof obsidian.TFile ? await this.app.vault.cachedRead(f0) : null;
+        }
+      } else {
+        const f = this.app.metadataCache.getFirstLinkpathDest(m[1], ctx.sourcePath || '');
+        texte = f ? await this.app.vault.cachedRead(f) : null;
+      }
+      const n = texte != null && numerosFiguresParRepere(String(texte).split('\n')).get(m[2]);
+      if (!n) continue;
+      a.textContent = tr('figure ') + n;
+      a.classList.add('zfa-renvoi-figure');
+    }
   }
 
   static elementLegendeFigure(doc, numero, legende) {
@@ -445,12 +475,29 @@ const avecNoteAtomes = (Base) => class extends Base {
     return d;
   }
 
-  demanderLegendeFigure(numero, legende, surValider) {
+  demanderLegendeFigure(numero, legende, surValider, surRenvoi) {
     ModaleBarreTexte.demander(this, {
       titre: tr('Légende de la figure ') + numero, bouton: tr('Enregistrer'),
       champs: [{ cle: 'legende', nom: tr('Légende'), valeur: legende || '',
         aide: tr('Vide : la figure garde son numéro, sans légende.') }],
+      actions: surRenvoi ? [{ texte: tr('Copier un renvoi'), surClic: surRenvoi }] : [],
     }, (v) => surValider(String(v.legende || '').trim()));
+  }
+
+  // Un renvoi à la figure de la ligne `ligne` : repère posé (et la figure
+  // isolée dans son bloc), puis « [[#^repère]] » dans le presse-papiers.
+  async copierRenvoiFigure(file, ligne) {
+    let id = '';
+    await this.transformerNote(file, (texte) => {
+      const r = poserRepereFigure(texte.split('\n'), ligne);
+      if (!r) return texte;
+      id = r.id;
+      return r.lignes.join('\n');
+    });
+    if (!id) { new obsidian.Notice(tr('Cette ligne n’est plus une figure.')); return; }
+    const lien = '[[#^' + id + ']]';
+    try { await navigator.clipboard.writeText(lien); } catch (e) { /* presse-papiers refusé */ }
+    new obsidian.Notice(tr('Renvoi copié : ') + lien + tr('. Collez-le dans le texte : il s’affichera « figure N ».'));
   }
 
   // Écrit la légende sur la ligne `ligne` de la note, si c'est toujours
