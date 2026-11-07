@@ -276,9 +276,10 @@ function imagesDeNote(lignes) {
       if (m[1] != null) {
         const [cible, ...alias] = m[1].split('|');
         if (!ZFA_EXT_IMAGE.test(cible.split('#')[0].trim())) continue;
-        trouvees.push({ brut: m[0], legende: legende(alias) });
+        trouvees.push({ brut: m[0], legende: legende(alias), fichier: cible.split('#')[0].trim() });
       } else {
-        trouvees.push({ brut: m[0], legende: legende(m[2].split('|')) });
+        const url = m[3].trim().replace(/^<|>$/g, '').split(/\s+["']/)[0];
+        trouvees.push({ brut: m[0], legende: legende(m[2].split('|')), fichier: (() => { try { return decodeURI(url); } catch (e) { return url; } })() });
       }
     }
     // Le repère de bloc d'Obsidian (« ^fig-cycle ») ou l'identifiant
@@ -290,7 +291,7 @@ function imagesDeNote(lignes) {
     for (const x of trouvees) {
       const figure = seule;
       if (figure) numero += 1;
-      out.push({ ligne: i, legende: x.legende, figure, numero: figure ? numero : 0, id: figure ? id : '' });
+      out.push({ ligne: i, legende: x.legende, fichier: x.fichier, figure, numero: figure ? numero : 0, id: figure ? id : '' });
     }
   }
   return out;
@@ -301,7 +302,9 @@ function figuresDeNote(lignes) {
 }
 
 // Le renvoi à une figure : la ligne de l'image reçoit un repère de bloc
-// (« ^fig-cycle-du-risque », tiré de la légende, unique dans la note) et
+// tiré du nom du fichier de l'image (« base-actants.png » donne
+// « ^fig-base-actants » ; une image collée, « ^fig-pasted-image-2026… »),
+// stable quelle que soit la légende, unique dans la note. Elle
 // devient un bloc à elle seule, une ligne vide de part et d'autre : sans
 // cela, le lien d'Obsidian viserait tout le paragraphe qui la suit.
 // Rend { lignes, id, ligne } (ligne : celle de l'image, après ajouts), ou
@@ -312,8 +315,9 @@ function poserRepereFigure(lignes, ligne) {
   if (!fig) return null;
   let id = fig.id;
   if (!id) {
-    const base = 'fig-' + (String(fig.legende || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32).replace(/-+$/, '')
+    const nom = String(fig.fichier || '').split('/').pop().replace(/\.[^.]+$/, '');
+    const base = 'fig-' + (nom.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48).replace(/-+$/, '')
       || String(fig.numero));
     const pris = new Set();
     for (const x of l) { const m = /\^([\w-]+)[ \t]*$/.exec(x); if (m) pris.add(m[1]); }

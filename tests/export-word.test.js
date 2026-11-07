@@ -260,15 +260,18 @@ test('export : la légende d\'une image intégrée passe à pandoc, la largeur n
 
 test('renvoi à une figure : repère posé, figure isolée dans son bloc, numéro par repère', () => {
   const { poserRepereFigure, numerosFiguresParRepere, figuresDeNote } = Ariane._test;
-  const note = ['Intro.', '![[a.png|Le cycle du risque]]', 'Sur ce sujet, il reste à préciser.', '', '![[b.png]] ^fig-b'];
+  const note = ['Intro.', '![[Images/Base des actants.png|Le cycle du risque]]', 'Sur ce sujet, il reste à préciser.', '', '![[b.png]] ^fig-b'];
   const r = poserRepereFigure(note, 1);
-  assert.equal(r.id, 'fig-le-cycle-du-risque');
-  assert.deepEqual(r.lignes, ['Intro.', '', '![[a.png|Le cycle du risque]] ^fig-le-cycle-du-risque', '',
+  assert.equal(r.id, 'fig-base-des-actants', 'tiré du nom du fichier, pas de la légende');
+  assert.deepEqual(r.lignes, ['Intro.', '', '![[Images/Base des actants.png|Le cycle du risque]] ^fig-base-des-actants', '',
     'Sur ce sujet, il reste à préciser.', '', '![[b.png]] ^fig-b']);
   assert.equal(r.ligne, 2);
   // Le repère n'ôte pas son numéro à la figure.
-  assert.deepEqual(figuresDeNote(r.lignes).map((f) => [f.numero, f.id]), [[1, 'fig-le-cycle-du-risque'], [2, 'fig-b']]);
-  assert.deepEqual([...numerosFiguresParRepere(r.lignes)], [['fig-le-cycle-du-risque', 1], ['fig-b', 2]]);
+  assert.deepEqual(figuresDeNote(r.lignes).map((f) => [f.numero, f.id]), [[1, 'fig-base-des-actants'], [2, 'fig-b']]);
+  assert.deepEqual([...numerosFiguresParRepere(r.lignes)], [['fig-base-des-actants', 1], ['fig-b', 2]]);
+  // Une image collée garde le nom qu'Obsidian lui a donné ; une image markdown aussi.
+  assert.equal(poserRepereFigure(['![[Pasted image 20261107114503.png]]'], 0).id, 'fig-pasted-image-20261107114503');
+  assert.equal(poserRepereFigure(['![Carte](img/Carte%20du%20Havre.jpg)'], 0).id, 'fig-carte-du-havre');
   // Une figure qui a déjà son repère le garde ; rien n'est ajouté.
   const s = poserRepereFigure(r.lignes, 6);
   assert.equal(s.id, 'fig-b');
@@ -276,7 +279,7 @@ test('renvoi à une figure : repère posé, figure isolée dans son bloc, numér
   // Pas une figure : rien.
   assert.equal(poserRepereFigure(note, 0), null);
   // Repère déjà pris : suffixe.
-  const t = poserRepereFigure(['![[x.png|Plan]]', '', 'texte ^fig-plan'], 0);
+  const t = poserRepereFigure(['![[plan.png|Plan]]', '', 'texte ^fig-plan'], 0);
   assert.equal(t.id, 'fig-plan-2');
 });
 
