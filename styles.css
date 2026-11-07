@@ -5175,17 +5175,18 @@ body {
   .zfa-corr-ia .cm-tooltip:has(> .zfa-corr-bulle)::before { animation: none; }
 }
 
-/* Légende d'une figure : « Figure N : légende », centrée sous l'image. */
+/* Légende d'une figure : « Figure N : légende », à gauche sous l'image,
+   avec un blanc franc avant le paragraphe suivant. Des marges internes
+   plutôt qu'externes : l'éditeur mesure mal un bloc qui a des marges. */
 .zfa-figure-legende {
   display: block;
-  margin: var(--size-2-2) auto var(--size-4-2);
-  max-width: 90%;
-  text-align: center;
+  margin: 0;
+  padding: var(--size-2-2) 0 1.1em;
+  text-align: left;
   color: var(--text-muted);
   font-size: var(--font-smaller, 0.875em);
   line-height: 1.4;
 }
-.zfa-figure-legende.est-edition { padding: 0 var(--size-4-2); }
 .zfa-figure-legende { cursor: pointer; }
 .zfa-figure-legende:hover .zfa-figure-numero { color: var(--text-accent); }
 .zfa-figure-numero { font-weight: var(--font-semibold); color: var(--text-normal); }
