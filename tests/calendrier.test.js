@@ -671,3 +671,29 @@ test('Glisser une tâche sur la semaine : aperçu d\'une heure calé au quart d\
   m._oterApercuDepot();
   assert.equal(g.isConnected, false);
 });
+
+test('Créneau, langage naturel : Entrée analyse, puis crée ; « Nouvelle tâche » reprend la description', () => {
+  const { ModaleTacheDuCreneau } = Ariane._test;
+  const m = Object.create(ModaleTacheDuCreneau.prototype);
+  const appels = [];
+  const propo = { contains: (el) => el === titre };
+  const titre = { tagName: 'INPUT' };
+  const champ = { tagName: 'INPUT', value: 'Terminer le diaporama pour l\'AG PEPR' };
+  Object.assign(m, { champLN: champ, propoLN: propo, inputEl: { value: '' },
+    _analyserLN: () => appels.push('analyse'), _creerLN: () => appels.push('cree') });
+  m._entreeLN(champ, false);
+  m._specsLN = [{ titre: 'Terminer le diaporama' }];
+  m._texteAnalyseLN = champ.value;
+  m._entreeLN(champ, false);
+  champ.value += ' et l\'envoyer';
+  m._entreeLN(champ, false);
+  m._entreeLN(titre, false);
+  let clic = 0;
+  m._entreeLN({ tagName: 'BUTTON', click: () => { clic += 1; } }, false);
+  assert.deepEqual(appels, ['analyse', 'cree', 'analyse', 'cree']);
+  assert.equal(clic, 1);
+  assert.equal(m.texteNouvelle(), champ.value);
+  champ.value = '';
+  m.inputEl.value = ' relire ';
+  assert.equal(m.texteNouvelle(), 'relire');
+});

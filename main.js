@@ -33488,8 +33488,11 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
 
   saisie() { return String((this.inputEl && this.inputEl.value) || '').trim(); }
 
-  // Le champ en langage naturel, sous la recherche. Tant qu'il a le focus,
-  // Entrée lui appartient (sinon la liste attacherait la tâche surlignée).
+  // Le champ en langage naturel, sous la recherche. Tant que le focus est
+  // dans sa zone (le champ, la proposition), Entrée lui appartient : sans
+  // cela, la liste attacherait la tâche surlignée. Obsidian lit le clavier
+  // AVANT le champ, par sa portée : c'est donc la portée qui agit (un
+  // écouteur sur le champ ne recevait jamais Entrée, 2026-11-07).
   _zoneLN() {
     const z = this.modalEl.createDiv({ cls: 'zfa-tc-ln' });
     const hote = this.inputEl && this.inputEl.parentElement;
@@ -33502,24 +33505,43 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
     this.champLN = champ;
     this.propoLN = z.createDiv({ cls: 'zfa-tc-ln-propo' });
     this.propoLN.hide();
+    champ.addEventListener('input', () => this.majNouvelle());
+    // Une même frappe peut passer par la portée puis par l'écouteur : elle
+    // n'agit qu'une fois.
+    const traitees = new WeakSet();
     const touche = (e) => {
-      if (e.key !== 'Enter' || e.isComposing) return;
+      if (!e || e.key !== 'Enter' || e.isComposing || traitees.has(e)) return;
+      traitees.add(e);
       e.preventDefault();
-      if (e.metaKey || e.ctrlKey) { if (this._specsLN) this._creerLN(); return; }
-      this._analyserLN();
+      this._entreeLN(e.target, e.metaKey || e.ctrlKey);
     };
-    champ.addEventListener('keydown', (e) => {
+    z.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') return;
       e.stopPropagation();
       touche(e);
     });
     if (obsidian.Scope && this.app && this.app.keymap) {
       const portee = new obsidian.Scope(this.scope);
-      portee.register([], 'Enter', () => false);
-      portee.register(['Mod'], 'Enter', () => false);
-      champ.addEventListener('focus', () => this.app.keymap.pushScope(portee));
-      champ.addEventListener('blur', () => this.app.keymap.popScope(portee));
+      portee.register([], 'Enter', (e) => { touche(e); return false; });
+      portee.register(['Mod'], 'Enter', (e) => { touche(e); return false; });
+      let dedans = false;
+      z.addEventListener('focusin', () => { if (!dedans) { dedans = true; this.app.keymap.pushScope(portee); } });
+      z.addEventListener('focusout', (e) => {
+        if (e.relatedTarget && z.contains(e.relatedTarget)) return;
+        if (dedans) { dedans = false; this.app.keymap.popScope(portee); }
+      });
     }
+  }
+
+  // Entrée dans la zone : sur un bouton, le bouton ; dans la proposition,
+  // ou quand elle répond au texte tel qu'il est, on crée ; sinon on analyse.
+  _entreeLN(cible, mod) {
+    if (cible && cible.tagName === 'BUTTON') { cible.click(); return; }
+    const texte = String((this.champLN && this.champLN.value) || '').trim();
+    const dansPropo = !!(cible && this.propoLN && this.propoLN.contains && this.propoLN.contains(cible));
+    const aJour = !!this._specsLN && texte === this._texteAnalyseLN;
+    if (this._specsLN && (dansPropo || aJour || mod)) this._creerLN();
+    else this._analyserLN();
   }
 
   async _analyserLN() {
@@ -33531,6 +33553,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       const specs = await this.greffon.analyserTachesLN(texte);
       if (!specs.length) { new obsidian.Notice(tr('L\'IA n\'a reconnu aucune tâche dans cette description.')); return; }
       this._specsLN = specs;
+      this._texteAnalyseLN = texte;
       this._montrerLN();
     } catch (e) {
       new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
@@ -33558,7 +33581,6 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       const titre = l.createEl('input', { type: 'text', cls: 'zfa-tc-ln-titre' });
       titre.value = n.titre;
       titre.addEventListener('change', () => { n.titre = titre.value.trim() || n.titre; });
-      titre.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); this._creerLN(); } });
       if (familles.length) {
         const fam = l.createEl('select', { cls: 'dropdown zfa-tc-ln-fam' });
         for (const f of familles) fam.createEl('option', { value: f.id, text: f.nom || f.id });
@@ -33575,7 +33597,8 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
     ecarter.addEventListener('click', () => { this._specsLN = null; z.empty(); z.hide(); this.champLN.focus(); });
     const ok = pied.createEl('button', { cls: 'mod-cta', text: tr('Créer et attacher') });
     ok.addEventListener('click', () => this._creerLN());
-    ok.focus();
+    // Le focus reste dans le champ : Entrée une seconde fois crée.
+    this.champLN.focus();
   }
 
   async _creerLN() {
@@ -33596,16 +33619,22 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
     }
   }
 
+  // Le texte d'une tâche neuve : la description en langage naturel si on en
+  // a tapé une, sinon la recherche.
+  texteNouvelle() {
+    return String((this.champLN && this.champLN.value) || '').trim() || this.saisie();
+  }
+
   majNouvelle() {
     if (!this.libelleNouvelle) return;
-    const q = this.saisie();
+    const q = this.texteNouvelle();
     this.libelleNouvelle.textContent = q
       ? tr('Nouvelle tâche « {t} »').replace('{t}', q.length > 28 ? q.slice(0, 27) + '…' : q)
       : tr('Nouvelle tâche');
   }
 
   creerNouvelle() {
-    const texte = this.saisie();
+    const texte = this.texteNouvelle();
     this.choisi = true;
     this.close();
     if (this.o.surNouvelle) this.o.surNouvelle(texte);
