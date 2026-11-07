@@ -5187,7 +5187,10 @@ body {
   font-size: var(--font-smaller, 0.875em);
   line-height: 1.4;
 }
-.zfa-figure-legende { cursor: pointer; }
+.zfa-figure-legende { cursor: pointer; user-select: none; }
+/* En édition, la légende vit dans l'image rendue : elle reprend la largeur
+   de la ligne, alignée à gauche comme le texte. */
+.markdown-source-view .internal-embed > .zfa-figure-legende { width: 100%; white-space: normal; }
 .zfa-figure-legende:hover .zfa-figure-numero { color: var(--text-accent); }
 .zfa-figure-numero { font-weight: var(--font-semibold); color: var(--text-normal); }
 /* Un renvoi à une figure : un lien interne, qui se lit « figure N ». */

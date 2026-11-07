@@ -1228,59 +1228,93 @@ class Ariane extends composer(obsidian.Plugin,
       console.error('[Ariane] Ponctuation insécable indisponible :', e);
     }
 
-    // Légendes des figures, sous l'image, en édition comme en lecture : un
-    // bloc posé après la ligne de chaque figure (figuresDeNote).
+    // Légendes des figures en édition (aperçu en direct) : posées DANS
+    // l'image rendue par Obsidian, comme en lecture, et non en bloc de
+    // l'éditeur. Un bloc posé après la ligne de l'image disparaissait quand
+    // l'image suivait un paragraphe sans ligne vide : Obsidian rend alors
+    // cette ligne d'une façon qui le recouvre (2026-11-07). Chaque image
+    // rendue retrouve sa figure par le nom de son fichier et sa ligne ; un
+    // observateur repose la légende quand Obsidian redessine l'image.
     if (this.module('typographie')) try {
-      const { Decoration, EditorView, WidgetType } = require('@codemirror/view');
-      const { StateField } = require('@codemirror/state');
+      const { ViewPlugin } = require('@codemirror/view');
       const greffon = this;
-      class LegendeFigure extends WidgetType {
-        constructor(numero, legende) { super(); this.numero = numero; this.legende = legende; }
-        eq(o) { return o.numero === this.numero && o.legende === this.legende; }
-        toDOM(view) {
-          const el = Ariane.elementLegendeFigure(view.dom.ownerDocument, this.numero, this.legende);
-          el.classList.add('est-edition');
-          // Un clic sur la légende la fait saisir ; elle s'écrit dans la
-          // ligne de l'image, retrouvée à la position du bloc.
-          el.addEventListener('mousedown', (e) => e.preventDefault());
-          el.addEventListener('click', (e) => {
-            e.preventDefault();
-            const legende = this.legende;
-            const ligneDe = () => { try { return view.state.doc.lineAt(view.posAtDOM(el)); } catch (er) { return null; } };
-            greffon.demanderLegendeFigure(this.numero, legende, (v) => {
-              const ligne = ligneDe();
-              if (!ligne) return;
-              const nouvelle = ligneAvecLegende(ligne.text, v);
-              if (nouvelle !== ligne.text) view.dispatch({ changes: { from: ligne.from, to: ligne.to, insert: nouvelle } });
-            }, async () => {
-              // Le lien vers le fichier de l'image, lu dans l'éditeur.
-              const ligne = ligneDe();
-              const fig = ligne && figuresDeNote(view.state.doc.toString().split('\n'))
-                .find((x) => x.ligne === ligne.number - 1);
-              if (!fig || !fig.fichier) { new obsidian.Notice(tr('Cette ligne n’est plus une figure.')); return; }
-              const lien = '[[' + fig.fichier.split('/').pop() + ']]';
-              try { await navigator.clipboard.writeText(lien); } catch (er) { /* presse-papiers refusé */ }
-              new obsidian.Notice(tr('Renvoi copié : ') + lien + tr('. Collez-le dans le texte : il s’affichera « figure N ».'));
-            });
-          });
-          return el;
-        }
-        ignoreEvent() { return true; }
-      }
-      const calculer = (state) => {
-        if (greffon.settings.figuresNumerotees === false) return Decoration.none;
-        const texte = state.doc.toString();
-        if (!texte.includes('![')) return Decoration.none;
-        const figs = figuresDeNote(texte.split('\n'));
-        if (!figs.length) return Decoration.none;
-        return Decoration.set(figs.map((f) => Decoration.widget({
-          widget: new LegendeFigure(f.numero, f.legende), block: true, side: 1,
-        }).range(state.doc.line(f.ligne + 1).to)));
+      const nom = (x) => {
+        let v = String(x || '');
+        try { v = decodeURIComponent(v); } catch (e) { /* tel quel */ }
+        return v.split(/[?#|]/)[0].split('/').pop().trim().toLowerCase();
       };
-      this.registerEditorExtension(StateField.define({
-        create: calculer,
-        update: (v, t) => (t.docChanged ? calculer(t.state) : v),
-        provide: (f) => EditorView.decorations.from(f),
+      this.registerEditorExtension(ViewPlugin.fromClass(class {
+        constructor(view) {
+          this.view = view;
+          this.obs = new MutationObserver(() => this.planifier());
+          this.obs.observe(view.contentDOM, { childList: true, subtree: true });
+          this.planifier();
+        }
+        update(u) { if (u.docChanged || u.viewportChanged || u.geometryChanged) this.planifier(); }
+        planifier() {
+          if (this.prevu) return;
+          this.prevu = true;
+          (this.view.dom.ownerDocument.defaultView || window).requestAnimationFrame(() => {
+            this.prevu = false;
+            try { this.poser(); } catch (e) { console.warn('[Ariane] légendes des figures :', e); }
+          });
+        }
+        poser() {
+          const view = this.view;
+          const embeds = Array.from(view.contentDOM.querySelectorAll('.internal-embed[src]'));
+          let apercu = true;
+          try { apercu = view.state.field(obsidian.editorLivePreviewField); } catch (e) { apercu = true; }
+          const figs = greffon.settings.figuresNumerotees === false || !apercu ? []
+            : figuresDeNote(view.state.doc.toString().split('\n'));
+          for (const el of embeds) {
+            const ancienne = Array.from(el.children).find((c) => c.classList.contains('zfa-figure-legende'));
+            const n = nom(el.getAttribute('src'));
+            let ligne = -1;
+            try { ligne = view.state.doc.lineAt(view.posAtDOM(el)).number - 1; } catch (e) { ligne = -1; }
+            // La figure de ce nom la plus proche de la ligne de l'image.
+            const fig = figs.filter((f) => nom(f.fichier) === n)
+              .sort((a, b) => Math.abs(a.ligne - ligne) - Math.abs(b.ligne - ligne))[0];
+            if (!fig) { if (ancienne) ancienne.remove(); continue; }
+            const cle = fig.numero + '|' + fig.legende;
+            if (ancienne && ancienne.dataset.cle === cle) continue;
+            if (ancienne) ancienne.remove();
+            const leg = Ariane.elementLegendeFigure(el.ownerDocument, fig.numero, fig.legende);
+            leg.classList.add('est-edition');
+            leg.dataset.cle = cle;
+            leg.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
+            leg.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              // La ligne de l'image, relue au moment du clic.
+              const ligneDe = () => {
+                const l = figuresDeNote(view.state.doc.toString().split('\n')).filter((f) => nom(f.fichier) === n);
+                let p = -1;
+                try { p = view.state.doc.lineAt(view.posAtDOM(el)).number - 1; } catch (er) { p = -1; }
+                const f = l.sort((a, b) => Math.abs(a.ligne - p) - Math.abs(b.ligne - p))[0];
+                return f ? { fig: f, ligne: view.state.doc.line(f.ligne + 1) } : null;
+              };
+              const ici = ligneDe();
+              if (!ici) return;
+              greffon.demanderLegendeFigure(ici.fig.numero, ici.fig.legende, (v) => {
+                const r = ligneDe();
+                if (!r) return;
+                const nouvelle = ligneAvecLegende(r.ligne.text, v);
+                if (nouvelle !== r.ligne.text) view.dispatch({ changes: { from: r.ligne.from, to: r.ligne.to, insert: nouvelle } });
+              }, async () => {
+                const r = ligneDe();
+                if (!r || !r.fig.fichier) { new obsidian.Notice(tr('Cette ligne n’est plus une figure.')); return; }
+                const lien = '[[' + r.fig.fichier.split('/').pop() + ']]';
+                try { await navigator.clipboard.writeText(lien); } catch (er) { /* presse-papiers refusé */ }
+                new obsidian.Notice(tr('Renvoi copié : ') + lien + tr('. Collez-le dans le texte : il s’affichera « figure N ».'));
+              });
+            });
+            el.appendChild(leg);
+          }
+        }
+        destroy() {
+          this.obs.disconnect();
+          for (const l of this.view.contentDOM.querySelectorAll('.zfa-figure-legende')) l.remove();
+        }
       }));
     } catch (e) {
       console.error('[Ariane] Légendes des figures indisponibles :', e);
