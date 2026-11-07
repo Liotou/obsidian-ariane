@@ -1239,9 +1239,22 @@ class Ariane extends composer(obsidian.Plugin,
         toDOM(view) {
           const el = Ariane.elementLegendeFigure(view.dom.ownerDocument, this.numero, this.legende);
           el.classList.add('est-edition');
+          // Un clic sur la légende la fait saisir ; elle s'écrit dans la
+          // ligne de l'image, retrouvée à la position du bloc.
+          el.addEventListener('mousedown', (e) => e.preventDefault());
+          el.addEventListener('click', (e) => {
+            e.preventDefault();
+            const legende = this.legende;
+            greffon.demanderLegendeFigure(this.numero, legende, (v) => {
+              let ligne;
+              try { ligne = view.state.doc.lineAt(view.posAtDOM(el)); } catch (er) { return; }
+              const nouvelle = ligneAvecLegende(ligne.text, v);
+              if (nouvelle !== ligne.text) view.dispatch({ changes: { from: ligne.from, to: ligne.to, insert: nouvelle } });
+            });
+          });
           return el;
         }
-        ignoreEvent() { return false; }
+        ignoreEvent() { return true; }
       }
       const calculer = (state) => {
         if (greffon.settings.figuresNumerotees === false) return Decoration.none;

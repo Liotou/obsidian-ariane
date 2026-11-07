@@ -31,7 +31,8 @@ test('export : intégrations de tâche, de bloc, imbriquées, absentes et en bou
   assert.equal((await deplierIntegrations('![[NC-1#Nuance]]', lire)).trim(), 'Texte nuancé. ^b1');
   assert.equal(await deplierIntegrations('```\n![[NC-1]]\n```', lire), '```\n![[NC-1]]\n```', 'le code reste tel quel');
   const img = await deplierIntegrations('![[schema.png]]', lire, async (c) => '/coffre/' + c);
-  assert.equal(img.trim(), '![](</coffre/schema.png>)');
+  // Seule sur sa ligne : une figure, même sans légende (espace insécable).
+  assert.equal(img.trim(), '![\u00a0](</coffre/schema.png>)');
 });
 
 test('export : ni filet, ni guillemets droits, ni point final aux titres', () => {
@@ -223,17 +224,36 @@ test('figures : une image légendée seule sur sa ligne, numérotée dans l\'ord
     '![Carte du Havre|300](images/havre.png)',
     '![[plan.png|Plan du site|600x400]]',
   ];
+  // Une image seule sur sa ligne est une figure, légendée ou non (une image
+  // glissée dans la note l'est d'emblée).
   assert.deepEqual(figuresDeNote(note).map((f) => [f.ligne, f.numero, f.legende]), [
-    [4, 1, 'Le cycle du risque'], [11, 2, 'Carte du Havre'], [12, 3, 'Plan du site']]);
+    [4, 1, 'Le cycle du risque'], [6, 2, ''], [11, 3, 'Carte du Havre'], [12, 4, 'Plan du site']]);
   // Toutes les images, figures ou non, pour les apparier au rendu.
   assert.deepEqual(imagesDeNote(note).map((x) => [x.ligne, x.figure]),
-    [[4, true], [5, false], [6, false], [11, true], [12, true]]);
+    [[4, true], [5, false], [6, true], [11, true], [12, true]]);
+});
+
+test('légende d\'une figure : écrite dans le lien, la largeur gardée après elle', () => {
+  const { ligneAvecLegende } = Ariane._test;
+  assert.equal(ligneAvecLegende('![[Pasted image 2026.png]]', 'Le cycle'), '![[Pasted image 2026.png|Le cycle]]');
+  assert.equal(ligneAvecLegende('![[schema.png|Ancienne|400]]', 'Nouvelle [v2] | finale'), '![[schema.png|Nouvelle v2 finale|400]]');
+  assert.equal(ligneAvecLegende('![[schema.png|Ancienne|400]]', ''), '![[schema.png|400]]');
+  assert.equal(ligneAvecLegende('![|300](img/a.png)', 'Carte'), '![Carte|300](img/a.png)');
+  assert.equal(ligneAvecLegende('![Carte](img/a.png)', ''), '![](img/a.png)');
 });
 
 test('export : la légende d\'une image intégrée passe à pandoc, la largeur non', async () => {
   const lireImage = async (c) => '/coffre/' + c;
   const s = await deplierIntegrations('Avant\n![[schema.png|Le cycle du risque|500]]\nAprès', async () => null, lireImage);
   assert.equal(s, 'Avant\n\n![Le cycle du risque](</coffre/schema.png>)\n\nAprès');
+  // Sans légende, seule sur sa ligne : une figure quand même (espace insécable).
   const t = await deplierIntegrations('![[photo.jpg|400]]', async () => null, lireImage);
-  assert.equal(t.trim(), '![](</coffre/photo.jpg>)');
+  assert.equal(t.trim(), '![\u00a0](</coffre/photo.jpg>)');
+  // Dans une phrase : une image en ligne, pas une figure.
+  const u = await deplierIntegrations('Voir ![[icone.png|petite]] ici.', async () => null, lireImage);
+  assert.equal(u, 'Voir ![petite](</coffre/icone.png>) ici.');
+  // Une image markdown seule : sa largeur quitte la légende.
+  const md = preparerMarkdownExport('![Carte|300](a.png)\n\n![](b.png)\n', () => null, {});
+  assert.ok(md.includes('![Carte](a.png)'));
+  assert.ok(md.includes('![\u00a0](b.png)'));
 });

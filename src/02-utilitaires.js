@@ -251,8 +251,10 @@ function numerosTitres(lignes) {
 // Les images d'une note, dans l'ordre : « ![[image.png|Légende]] » (la
 // légende est ce qui n'est pas une largeur, « |300 » ou « |300x200 ») et
 // « ![Légende](image.png) ». Hors propriétés et blocs de code. Une image
-// seule sur sa ligne et légendée est une FIGURE : elle reçoit un numéro.
-// Rend [{ ligne, legende, figure, numero }] (numero : 0 hors figure).
+// seule sur sa ligne est une FIGURE, légendée ou non : elle reçoit un
+// numéro (une image glissée dans la note en devient une d'emblée, sa
+// légende s'ajoute ensuite). Rend [{ ligne, legende, figure, numero }]
+// (numero : 0 hors figure).
 function imagesDeNote(lignes) {
   const l = lignes || [];
   const out = [];
@@ -279,7 +281,7 @@ function imagesDeNote(lignes) {
     }
     const seule = trouvees.length === 1 && t.trim() === trouvees[0].brut;
     for (const x of trouvees) {
-      const figure = seule && !!x.legende;
+      const figure = seule;
       if (figure) numero += 1;
       out.push({ ligne: i, legende: x.legende, figure, numero: figure ? numero : 0 });
     }
@@ -289,6 +291,20 @@ function imagesDeNote(lignes) {
 
 function figuresDeNote(lignes) {
   return imagesDeNote(lignes).filter((x) => x.figure);
+}
+
+// La ligne d'une figure, sa légende remplacée : la largeur (« |300 »)
+// reste, après elle. Les caractères qui casseraient le lien s'effacent.
+function ligneAvecLegende(ligne, legende) {
+  const leg = String(legende || '').replace(/[|[\]\n]/g, ' ').replace(/\s+/g, ' ').trim();
+  const taille = (parts) => parts.map((a) => a.trim()).filter((a) => /^\d+(x\d+)?$/.test(a));
+  return String(ligne).replace(/!\[\[([^\]\n]+)\]\]|!\[([^\]\n]*)\]\(([^)\n]+)\)/, (m, wiki, alt, url) => {
+    if (wiki != null) {
+      const [cible, ...alias] = wiki.split('|');
+      return '![[' + [cible].concat(leg ? [leg] : [], taille(alias)).join('|') + ']]';
+    }
+    return '![' + (leg ? [leg] : []).concat(taille(alt.split('|'))).join('|') + '](' + url + ')';
+  });
 }
 
 // Le calcul lui-même, sur des titres relevés ({ ligne, niveau }).

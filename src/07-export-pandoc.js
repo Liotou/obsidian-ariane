@@ -127,11 +127,17 @@ async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
       if (ZFA_EXT_IMAGE.test(cible.trim())) {
         // La légende (ce qui n'est pas une largeur) devient le texte de
         // l'image : seule dans son paragraphe, pandoc en fait une figure
-        // légendée, que la finition numérote.
+        // légendée, que la finition numérote. Une image seule sur sa ligne
+        // est une figure même sans légende (figuresDeNote) : une espace
+        // insécable suffit à pandoc pour en faire une, que la finition
+        // numérote sans « : ».
         const chemin = lireImage ? await lireImage(cible.trim()) : null;
+        const seule = l.trim() === m[0];
         const leg = aliases.map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ')
-          .replace(/([[\]])/g, '\\$1');
-        rendu = chemin ? '\n![' + leg + '](<' + chemin + '>)\n' : '';
+          .replace(/([[\]])/g, '\\$1') || (seule ? '\u00a0' : '');
+        // Une image prise dans une phrase n'est pas une figure : elle reste
+        // en ligne, dans le texte, comme Obsidian la montre.
+        rendu = !chemin ? '' : seule ? '\n![' + leg + '](<' + chemin + '>)\n' : '![' + leg + '](<' + chemin + '>)';
       } else if (/\.\w{2,4}$/.test(cible.trim()) && !/\.md$/i.test(cible.trim())) {
         rendu = (alias || cible).trim();             // PDF, son… : leur nom
       } else {
@@ -176,6 +182,14 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
   // 1 ter. Les filets « --- » : le modèle souligne déjà ses titres, et un
   //    filet de plus se dessinait en double trait. Hors tableaux.
   s = s.replace(/^[ \t]*(?:-[ \t]*){3,}$|^[ \t]*(?:\*[ \t]*){3,}$|^[ \t]*(?:_[ \t]*){3,}$/gm, '');
+
+  // 1 quater. Une image « ![…](…) » seule sur sa ligne est une figure : sa
+  //    largeur (« |300 ») quitte la légende, et sans légende une espace
+  //    insécable la fait figure pour pandoc (voir deplierIntegrations).
+  s = s.replace(/^([ \t]*)!\[([^\]\n]*)\]\(([^)\n]+)\)[ \t]*$/gm, (m, ind, alt, url) => {
+    const leg = alt.split('|').map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ');
+    return ind + '![' + (leg || '\u00a0') + '](' + url + ')';
+  });
 
   // 2. Compteurs de travaux rapportés : ils n'ont pas de sens hors d'Obsidian.
   s = s.replace(/\s*⟨\d+⟩/g, '');

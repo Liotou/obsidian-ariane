@@ -185,16 +185,20 @@ def numeroter_figures(doc, table, correspondances):
 
     def sur_legende(m):
         n[0] += 1
-        ppr = m.group(0)
+        ppr, reste = m.group(1), m.group(2)
         if cible:
             ppr = ppr.replace('w:val="ImageCaption"', 'w:val="%s"' % cible, 1)
+        # Une figure sans légende (une espace insécable pour pandoc) : le
+        # numéro seul, sans « : ».
+        vide = not texte_de(reste).replace("\u00a0", " ").strip()
         return ppr + (
             '<w:r><w:t xml:space="preserve">Figure </w:t></w:r>'
             '<w:fldSimple w:instr=" SEQ Figure \\* ARABIC "><w:r><w:rPr><w:noProof/></w:rPr>'
-            '<w:t>%d</w:t></w:r></w:fldSimple>'
-            '<w:r><w:t xml:space="preserve">\u00a0: </w:t></w:r>') % n[0]
+            '<w:t>%d</w:t></w:r></w:fldSimple>') % n[0] + (
+            "" if vide else '<w:r><w:t xml:space="preserve">\u00a0: </w:t></w:r>' + reste)
 
-    doc = re.sub(r'<w:pPr>\s*<w:pStyle w:val="ImageCaption"\s*/>(?:(?!</w:pPr>).)*</w:pPr>',
+    doc = re.sub(r'(<w:pPr>\s*<w:pStyle w:val="ImageCaption"\s*/>(?:(?!</w:pPr>).)*</w:pPr>)'
+                 r'((?:(?!</w:p>).)*)(?=</w:p>)',
                  sur_legende, doc, flags=re.S)
     return doc, n[0]
 

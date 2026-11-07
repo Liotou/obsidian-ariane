@@ -402,11 +402,12 @@ const avecNoteAtomes = (Base) => class extends Base {
     for (const h of el.querySelectorAll('h2, h3, h4, h5, h6')) this.griserNumeroTitre(h);
   }
 
-  // Figures : « Figure N : légende » sous chaque image légendée seule sur sa
-  // ligne (figuresDeNote), numérotée dans l'ordre de la note. Le numéro se
-  // lit dans le texte entier de la note : une section rendue seule le
-  // connaît. Les images de la section et celles de son texte vont de pair,
-  // dans l'ordre. Rien n'est écrit dans la note.
+  // Figures : « Figure N : légende » sous chaque image seule sur sa ligne
+  // (figuresDeNote), numérotée dans l'ordre de la note. Le numéro se lit
+  // dans le texte entier de la note : une section rendue seule le connaît.
+  // Les images de la section et celles de son texte vont de pair, dans
+  // l'ordre. Rien n'est écrit dans la note, sauf la légende qu'on saisit
+  // d'un clic sur « Figure N ».
   numeroterFiguresRendues(el, ctx) {
     if (!el || !ctx || this.settings.figuresNumerotees === false) return;
     const info = ctx.getSectionInfo && ctx.getSectionInfo(el);
@@ -421,19 +422,46 @@ const avecNoteAtomes = (Base) => class extends Base {
       if (!x.figure || !cible) return;
       const suivant = cible.nextElementSibling;
       if (suivant && suivant.classList.contains('zfa-figure-legende')) suivant.remove();
-      cible.after(Ariane.elementLegendeFigure(el.ownerDocument, x.numero, x.legende));
+      const leg = Ariane.elementLegendeFigure(el.ownerDocument, x.numero, x.legende);
+      leg.addEventListener('click', (e) => {
+        e.preventDefault();
+        const f = this.app.vault.getAbstractFileByPath(ctx.sourcePath || '');
+        if (f) this.demanderLegendeFigure(x.numero, x.legende,
+          (v) => this.ecrireLegendeFigure(f, x.ligne, v));
+      });
+      cible.after(leg);
     });
   }
 
   static elementLegendeFigure(doc, numero, legende) {
     const d = doc.createElement('span');
-    d.className = 'zfa-figure-legende';
+    d.className = 'zfa-figure-legende' + (legende ? '' : ' est-sans-legende');
+    d.setAttribute('aria-label', legende ? tr('Modifier la légende') : tr('Ajouter une légende'));
     const n = doc.createElement('span');
     n.className = 'zfa-figure-numero';
-    n.textContent = tr('Figure ') + numero + '\u00a0: ';
+    n.textContent = tr('Figure ') + numero + (legende ? '\u00a0: ' : '');
     d.appendChild(n);
-    d.appendChild(doc.createTextNode(legende));
+    if (legende) d.appendChild(doc.createTextNode(legende));
     return d;
+  }
+
+  demanderLegendeFigure(numero, legende, surValider) {
+    ModaleBarreTexte.demander(this, {
+      titre: tr('Légende de la figure ') + numero, bouton: tr('Enregistrer'),
+      champs: [{ cle: 'legende', nom: tr('Légende'), valeur: legende || '',
+        aide: tr('Vide : la figure garde son numéro, sans légende.') }],
+    }, (v) => surValider(String(v.legende || '').trim()));
+  }
+
+  // Écrit la légende sur la ligne `ligne` de la note, si c'est toujours
+  // une figure (la note a pu changer entre-temps).
+  async ecrireLegendeFigure(file, ligne, legende) {
+    await this.transformerNote(file, (texte) => {
+      const l = texte.split('\n');
+      if (!figuresDeNote(l).some((x) => x.ligne === ligne)) return texte;
+      l[ligne] = ligneAvecLegende(l[ligne], legende);
+      return l.join('\n');
+    });
   }
 
   // Le panneau « Plan » d'Obsidian : le numéro de chaque entrée est grisé.

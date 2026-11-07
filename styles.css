@@ -5186,4 +5186,6 @@ body {
   line-height: 1.4;
 }
 .zfa-figure-legende.est-edition { padding: 0 var(--size-4-2); }
+.zfa-figure-legende { cursor: pointer; }
+.zfa-figure-legende:hover .zfa-figure-numero { color: var(--text-accent); }
 .zfa-figure-numero { font-weight: var(--font-semibold); color: var(--text-normal); }

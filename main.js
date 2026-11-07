@@ -2271,7 +2271,12 @@ const TEXTES = {
     "Remplir à la main": "Fill in by hand",
     "Figure ": "Figure ",
     "Numéroter les figures": "Number figures",
-    "Une image seule sur sa ligne et légendée devient une figure numérotée : « ![[image.png|Ma légende]] » ou « ![Ma légende](image.png) ». « Figure 1 : Ma légende » s'affiche dessous, en édition comme en lecture, sans rien écrire dans la note. À l'export Word, la légende prend le style Légende du modèle et un vrai numéro de figure, que la table des illustrations de Word sait relever.": "An image alone on its line with a caption becomes a numbered figure: « ![[image.png|My caption]] » or « ![My caption](image.png) ». « Figure 1: My caption » shows below it, in editing and reading, without writing anything in the note. In the Word export, the caption takes the template's Caption style and a real figure number, which Word's table of figures can collect.",
+    "Modifier la légende": "Edit caption",
+    "Ajouter une légende": "Add a caption",
+    "Légende de la figure ": "Caption of figure ",
+    "Légende": "Caption",
+    "Vide : la figure garde son numéro, sans légende.": "Empty: the figure keeps its number, without a caption.",
+    "Toute image seule sur sa ligne devient une figure numérotée, une image glissée dans la note comprise : « Figure 1 » s'affiche dessous, en édition comme en lecture. Un clic dessus en saisit la légende, écrite dans le lien de l'image : « ![[image.png|Ma légende]] » ou « ![Ma légende](image.png) ». À l'export Word, la légende prend le style Légende du modèle et un vrai numéro de figure, que la table des illustrations de Word sait relever.": "Any image alone on its line becomes a numbered figure, including an image dropped into the note: « Figure 1 » shows below it, in editing and reading. Clicking it sets the caption, written into the image link: « ![[image.png|My caption]] » or « ![My caption](image.png) ». In the Word export, the caption takes the template's Caption style and a real figure number, which Word's table of figures can collect.",
     "Rechercher une tâche existante…": "Search an existing task…",
     "Attacher à une tâche existante": "Attach to an existing task",
     "Créer une nouvelle tâche": "Create a new task",
@@ -3120,8 +3125,10 @@ function numerosTitres(lignes) {
 // Les images d'une note, dans l'ordre : « ![[image.png|Légende]] » (la
 // légende est ce qui n'est pas une largeur, « |300 » ou « |300x200 ») et
 // « ![Légende](image.png) ». Hors propriétés et blocs de code. Une image
-// seule sur sa ligne et légendée est une FIGURE : elle reçoit un numéro.
-// Rend [{ ligne, legende, figure, numero }] (numero : 0 hors figure).
+// seule sur sa ligne est une FIGURE, légendée ou non : elle reçoit un
+// numéro (une image glissée dans la note en devient une d'emblée, sa
+// légende s'ajoute ensuite). Rend [{ ligne, legende, figure, numero }]
+// (numero : 0 hors figure).
 function imagesDeNote(lignes) {
   const l = lignes || [];
   const out = [];
@@ -3148,7 +3155,7 @@ function imagesDeNote(lignes) {
     }
     const seule = trouvees.length === 1 && t.trim() === trouvees[0].brut;
     for (const x of trouvees) {
-      const figure = seule && !!x.legende;
+      const figure = seule;
       if (figure) numero += 1;
       out.push({ ligne: i, legende: x.legende, figure, numero: figure ? numero : 0 });
     }
@@ -3158,6 +3165,20 @@ function imagesDeNote(lignes) {
 
 function figuresDeNote(lignes) {
   return imagesDeNote(lignes).filter((x) => x.figure);
+}
+
+// La ligne d'une figure, sa légende remplacée : la largeur (« |300 »)
+// reste, après elle. Les caractères qui casseraient le lien s'effacent.
+function ligneAvecLegende(ligne, legende) {
+  const leg = String(legende || '').replace(/[|[\]\n]/g, ' ').replace(/\s+/g, ' ').trim();
+  const taille = (parts) => parts.map((a) => a.trim()).filter((a) => /^\d+(x\d+)?$/.test(a));
+  return String(ligne).replace(/!\[\[([^\]\n]+)\]\]|!\[([^\]\n]*)\]\(([^)\n]+)\)/, (m, wiki, alt, url) => {
+    if (wiki != null) {
+      const [cible, ...alias] = wiki.split('|');
+      return '![[' + [cible].concat(leg ? [leg] : [], taille(alias)).join('|') + ']]';
+    }
+    return '![' + (leg ? [leg] : []).concat(taille(alt.split('|'))).join('|') + '](' + url + ')';
+  });
 }
 
 // Le calcul lui-même, sur des titres relevés ({ ligne, niveau }).
@@ -5077,11 +5098,17 @@ async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
       if (ZFA_EXT_IMAGE.test(cible.trim())) {
         // La légende (ce qui n'est pas une largeur) devient le texte de
         // l'image : seule dans son paragraphe, pandoc en fait une figure
-        // légendée, que la finition numérote.
+        // légendée, que la finition numérote. Une image seule sur sa ligne
+        // est une figure même sans légende (figuresDeNote) : une espace
+        // insécable suffit à pandoc pour en faire une, que la finition
+        // numérote sans « : ».
         const chemin = lireImage ? await lireImage(cible.trim()) : null;
+        const seule = l.trim() === m[0];
         const leg = aliases.map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ')
-          .replace(/([[\]])/g, '\\$1');
-        rendu = chemin ? '\n![' + leg + '](<' + chemin + '>)\n' : '';
+          .replace(/([[\]])/g, '\\$1') || (seule ? '\u00a0' : '');
+        // Une image prise dans une phrase n'est pas une figure : elle reste
+        // en ligne, dans le texte, comme Obsidian la montre.
+        rendu = !chemin ? '' : seule ? '\n![' + leg + '](<' + chemin + '>)\n' : '![' + leg + '](<' + chemin + '>)';
       } else if (/\.\w{2,4}$/.test(cible.trim()) && !/\.md$/i.test(cible.trim())) {
         rendu = (alias || cible).trim();             // PDF, son… : leur nom
       } else {
@@ -5126,6 +5153,14 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
   // 1 ter. Les filets « --- » : le modèle souligne déjà ses titres, et un
   //    filet de plus se dessinait en double trait. Hors tableaux.
   s = s.replace(/^[ \t]*(?:-[ \t]*){3,}$|^[ \t]*(?:\*[ \t]*){3,}$|^[ \t]*(?:_[ \t]*){3,}$/gm, '');
+
+  // 1 quater. Une image « ![…](…) » seule sur sa ligne est une figure : sa
+  //    largeur (« |300 ») quitte la légende, et sans légende une espace
+  //    insécable la fait figure pour pandoc (voir deplierIntegrations).
+  s = s.replace(/^([ \t]*)!\[([^\]\n]*)\]\(([^)\n]+)\)[ \t]*$/gm, (m, ind, alt, url) => {
+    const leg = alt.split('|').map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ');
+    return ind + '![' + (leg || '\u00a0') + '](' + url + ')';
+  });
 
   // 2. Compteurs de travaux rapportés : ils n'ont pas de sens hors d'Obsidian.
   s = s.replace(/\s*⟨\d+⟩/g, '');
@@ -9919,11 +9954,12 @@ const avecNoteAtomes = (Base) => class extends Base {
     for (const h of el.querySelectorAll('h2, h3, h4, h5, h6')) this.griserNumeroTitre(h);
   }
 
-  // Figures : « Figure N : légende » sous chaque image légendée seule sur sa
-  // ligne (figuresDeNote), numérotée dans l'ordre de la note. Le numéro se
-  // lit dans le texte entier de la note : une section rendue seule le
-  // connaît. Les images de la section et celles de son texte vont de pair,
-  // dans l'ordre. Rien n'est écrit dans la note.
+  // Figures : « Figure N : légende » sous chaque image seule sur sa ligne
+  // (figuresDeNote), numérotée dans l'ordre de la note. Le numéro se lit
+  // dans le texte entier de la note : une section rendue seule le connaît.
+  // Les images de la section et celles de son texte vont de pair, dans
+  // l'ordre. Rien n'est écrit dans la note, sauf la légende qu'on saisit
+  // d'un clic sur « Figure N ».
   numeroterFiguresRendues(el, ctx) {
     if (!el || !ctx || this.settings.figuresNumerotees === false) return;
     const info = ctx.getSectionInfo && ctx.getSectionInfo(el);
@@ -9938,19 +9974,46 @@ const avecNoteAtomes = (Base) => class extends Base {
       if (!x.figure || !cible) return;
       const suivant = cible.nextElementSibling;
       if (suivant && suivant.classList.contains('zfa-figure-legende')) suivant.remove();
-      cible.after(Ariane.elementLegendeFigure(el.ownerDocument, x.numero, x.legende));
+      const leg = Ariane.elementLegendeFigure(el.ownerDocument, x.numero, x.legende);
+      leg.addEventListener('click', (e) => {
+        e.preventDefault();
+        const f = this.app.vault.getAbstractFileByPath(ctx.sourcePath || '');
+        if (f) this.demanderLegendeFigure(x.numero, x.legende,
+          (v) => this.ecrireLegendeFigure(f, x.ligne, v));
+      });
+      cible.after(leg);
     });
   }
 
   static elementLegendeFigure(doc, numero, legende) {
     const d = doc.createElement('span');
-    d.className = 'zfa-figure-legende';
+    d.className = 'zfa-figure-legende' + (legende ? '' : ' est-sans-legende');
+    d.setAttribute('aria-label', legende ? tr('Modifier la légende') : tr('Ajouter une légende'));
     const n = doc.createElement('span');
     n.className = 'zfa-figure-numero';
-    n.textContent = tr('Figure ') + numero + '\u00a0: ';
+    n.textContent = tr('Figure ') + numero + (legende ? '\u00a0: ' : '');
     d.appendChild(n);
-    d.appendChild(doc.createTextNode(legende));
+    if (legende) d.appendChild(doc.createTextNode(legende));
     return d;
+  }
+
+  demanderLegendeFigure(numero, legende, surValider) {
+    ModaleBarreTexte.demander(this, {
+      titre: tr('Légende de la figure ') + numero, bouton: tr('Enregistrer'),
+      champs: [{ cle: 'legende', nom: tr('Légende'), valeur: legende || '',
+        aide: tr('Vide : la figure garde son numéro, sans légende.') }],
+    }, (v) => surValider(String(v.legende || '').trim()));
+  }
+
+  // Écrit la légende sur la ligne `ligne` de la note, si c'est toujours
+  // une figure (la note a pu changer entre-temps).
+  async ecrireLegendeFigure(file, ligne, legende) {
+    await this.transformerNote(file, (texte) => {
+      const l = texte.split('\n');
+      if (!figuresDeNote(l).some((x) => x.ligne === ligne)) return texte;
+      l[ligne] = ligneAvecLegende(l[ligne], legende);
+      return l.join('\n');
+    });
   }
 
   // Le panneau « Plan » d'Obsidian : le numéro de chaque entrée est grisé.
@@ -29854,9 +29917,22 @@ class Ariane extends composer(obsidian.Plugin,
         toDOM(view) {
           const el = Ariane.elementLegendeFigure(view.dom.ownerDocument, this.numero, this.legende);
           el.classList.add('est-edition');
+          // Un clic sur la légende la fait saisir ; elle s'écrit dans la
+          // ligne de l'image, retrouvée à la position du bloc.
+          el.addEventListener('mousedown', (e) => e.preventDefault());
+          el.addEventListener('click', (e) => {
+            e.preventDefault();
+            const legende = this.legende;
+            greffon.demanderLegendeFigure(this.numero, legende, (v) => {
+              let ligne;
+              try { ligne = view.state.doc.lineAt(view.posAtDOM(el)); } catch (er) { return; }
+              const nouvelle = ligneAvecLegende(ligne.text, v);
+              if (nouvelle !== ligne.text) view.dispatch({ changes: { from: ligne.from, to: ligne.to, insert: nouvelle } });
+            });
+          });
           return el;
         }
-        ignoreEvent() { return false; }
+        ignoreEvent() { return true; }
       }
       const calculer = (state) => {
         if (greffon.settings.figuresNumerotees === false) return Decoration.none;
@@ -31517,7 +31593,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .onChange(async (v) => { s.numerotationTitres = v; await maj(); this.plugin.rafraichirPonctuation(); }));
     new obsidian.Setting(c)
       .setName(tr('Numéroter les figures'))
-      .setDesc(tr("Une image seule sur sa ligne et légendée devient une figure numérotée : « ![[image.png|Ma légende]] » ou « ![Ma légende](image.png) ». « Figure 1 : Ma légende » s'affiche dessous, en édition comme en lecture, sans rien écrire dans la note. À l'export Word, la légende prend le style Légende du modèle et un vrai numéro de figure, que la table des illustrations de Word sait relever."))
+      .setDesc(tr("Toute image seule sur sa ligne devient une figure numérotée, une image glissée dans la note comprise : « Figure 1 » s'affiche dessous, en édition comme en lecture. Un clic dessus en saisit la légende, écrite dans le lien de l'image : « ![[image.png|Ma légende]] » ou « ![Ma légende](image.png) ». À l'export Word, la légende prend le style Légende du modèle et un vrai numéro de figure, que la table des illustrations de Word sait relever."))
       .addToggle((t) => t.setValue(s.figuresNumerotees !== false)
         .onChange(async (v) => { s.figuresNumerotees = v; await maj(); }));
     new obsidian.Setting(c)
@@ -55227,6 +55303,7 @@ module.exports._test = {
   numerosTitres,
   imagesDeNote,
   figuresDeNote,
+  ligneAvecLegende,
   numerosDepuisTitres,
   renumeroterTitres,
   numeroDeLigneTitre,
