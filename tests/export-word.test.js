@@ -292,3 +292,24 @@ test('export : un renvoi devient « figure N », lien vers la figure', async () 
   assert.ok(md.includes('[ce schéma](#fig-actants)'));
   assert.ok(md.includes('![Actants](</coffre/base.png>){#fig-actants}'));
 });
+
+test('légende en lecture : l\'image retrouvée par son nom, même avant son chargement', () => {
+  const g = Object.create(Ariane.prototype);
+  g.settings = {};
+  g.app = { vault: { getAbstractFileByPath: () => null } };
+  const doc = {
+    createElement: () => ({ className: '', children: [], setAttribute() {}, appendChild(c) { this.children.push(c); },
+      addEventListener() {}, classList: { add() {} }, set textContent(t) { this.texte = t; } }),
+    createTextNode: (t) => ({ texte: t }),
+  };
+  const poses = [];
+  // Une intégration encore sans classe « image-embed », dans le paragraphe
+  // qui précède (pas de ligne vide), et une autre image avant elle.
+  const span = (src) => ({ tagName: 'SPAN', parentElement: null, nextElementSibling: null,
+    getAttribute: (a) => (a === 'src' ? src : null), after: (x) => poses.push([src, x.children[0].texte]) });
+  const el = { ownerDocument: doc,
+    querySelectorAll: () => [span('icone.png'), span('FS005 - Hochrainer.drawio.svg')] };
+  const texte = ['Texte avec ![[icone.png]] en ligne.', 'Suite du paragraphe :', '![[FS005 - Hochrainer.drawio.svg|Systèmes]]'].join('\n');
+  g.numeroterFiguresRendues(el, { sourcePath: 'n.md', getSectionInfo: () => ({ text: texte, lineStart: 0, lineEnd: 2 }) });
+  assert.deepEqual(poses, [['FS005 - Hochrainer.drawio.svg', 'Figure 1. ']]);
+});

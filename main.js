@@ -10023,21 +10023,32 @@ const avecNoteAtomes = (Base) => class extends Base {
   // Figures : « Figure N. Légende » sous chaque image seule sur sa ligne
   // (figuresDeNote), numérotée dans l'ordre de la note. Le numéro se lit
   // dans le texte entier de la note : une section rendue seule le connaît.
-  // Les images de la section et celles de son texte vont de pair, dans
-  // l'ordre. Rien n'est écrit dans la note, sauf la légende qu'on saisit
-  // d'un clic sur « Figure N ».
+  // Chaque figure retrouve son élément par le nom de son fichier (le
+  // « src » d'une intégration, l'adresse d'une image markdown) : la classe
+  // « image-embed » n'est posée qu'au chargement de l'image, souvent après
+  // ce passage quand l'image suit un paragraphe sans ligne vide. Rien n'est
+  // écrit dans la note, sauf la légende qu'on saisit d'un clic sur
+  // « Figure N ».
   numeroterFiguresRendues(el, ctx) {
     if (!el || !ctx || this.settings.figuresNumerotees === false) return;
     const info = ctx.getSectionInfo && ctx.getSectionInfo(el);
     if (!info || !info.text) return;
-    const images = imagesDeNote(String(info.text).split('\n'))
+    const figures = figuresDeNote(String(info.text).split('\n'))
       .filter((x) => x.ligne >= info.lineStart && x.ligne <= info.lineEnd);
-    if (!images.some((x) => x.figure)) return;
-    const els = Array.from(el.querySelectorAll('.internal-embed.image-embed, img'))
-      .filter((x) => x.tagName !== 'IMG' || !x.closest('.internal-embed'));
-    images.forEach((x, k) => {
-      const cible = els[k];
-      if (!x.figure || !cible) return;
+    if (!figures.length) return;
+    const nom = (x) => {
+      let v = String(x || '');
+      try { v = decodeURIComponent(v); } catch (e) { /* tel quel */ }
+      return v.split(/[?#|]/)[0].split('/').pop().trim().toLowerCase();
+    };
+    const els = Array.from(el.querySelectorAll('.internal-embed, img'))
+      .filter((x) => !(x.parentElement && x.parentElement.closest('.internal-embed')));
+    const pris = new Set();
+    figures.forEach((x) => {
+      const n = nom(x.fichier);
+      const cible = els.find((e) => !pris.has(e) && nom(e.getAttribute('src')) === n);
+      if (!cible) return;
+      pris.add(cible);
       const suivant = cible.nextElementSibling;
       if (suivant && suivant.classList.contains('zfa-figure-legende')) suivant.remove();
       const leg = Ariane.elementLegendeFigure(el.ownerDocument, x.numero, x.legende);
