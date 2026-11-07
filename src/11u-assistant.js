@@ -163,9 +163,12 @@ const avecAssistant = (Base) => class extends Base {
   }
 
   // La fenêtre que borde le halo : la dernière fenêtre modale ouverte du
-  // document actif (celle du dessus), sinon le volet actif.
+  // document actif (celle du dessus), sinon le volet actif. Une fenêtre de
+  // recherche (SuggestModal, celle du créneau par exemple) est un `.prompt`,
+  // pas un `.modal` : sans elle, le halo bordait le volet derrière.
   static cibleHaloIA(doc, feuille) {
-    const modales = doc && doc.querySelectorAll ? doc.querySelectorAll('.modal-container .modal') : [];
+    const modales = doc && doc.querySelectorAll
+      ? doc.querySelectorAll('.modal-container > .modal, .modal-container > .prompt') : [];
     if (modales.length) return modales[modales.length - 1];
     return (feuille && feuille.view && feuille.view.containerEl) || null;
   }
