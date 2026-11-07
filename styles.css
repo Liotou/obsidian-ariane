@@ -3638,10 +3638,14 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-tc-ln-saisie {
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
-  background: var(--background-primary);
+  background: var(--background-modifier-form-field);
   padding: 0 var(--size-4-2);
 }
-.zfa-tc-ln-saisie:focus-within { border-color: var(--interactive-accent); }
+.zfa-tc-ln-saisie:hover { border-color: var(--background-modifier-border-hover); }
+.zfa-tc-ln-saisie:focus-within {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-form-field-highlighted, var(--background-modifier-form-field));
+}
 .zfa-tc-ln-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--size-2-3); }
 .zfa-tc-ln-aide { margin-right: auto; color: var(--text-faint); font-size: var(--font-ui-smaller, 12px); }
 .zfa-tc-ln-bouton { display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-ui-smaller, 12px); }
@@ -3660,10 +3664,13 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
   padding: var(--size-2-2) 0;
   font-size: var(--font-ui-small, 13px);
 }
-/* Au focus, un seul cadre : celui de la zone de saisie, qui passe à
-   l'accent. Celui qu'Obsidian pose sur tout champ actif s'efface. */
+/* La zone de saisie porte seule le fond et le cadre, de bord à bord : le
+   champ reste transparent en tout état (Obsidian lui donne sinon un fond
+   gris au survol et un cadre au focus, plus étroits que la zone). */
+.zfa-tc-ln .zfa-tc-ln-champ:hover,
 .zfa-tc-ln .zfa-tc-ln-champ:focus,
-.zfa-tc-ln .zfa-tc-ln-champ:focus-visible { border: none; box-shadow: none; outline: none; background: transparent; }
+.zfa-tc-ln .zfa-tc-ln-champ:focus-visible,
+.zfa-tc-ln .zfa-tc-ln-champ:active { border: none; box-shadow: none; outline: none; background: transparent; }
 .zfa-tc-ln-propo { display: flex; flex-direction: column; gap: var(--size-2-3); }
 .zfa-tc-ln-ligne { display: flex; align-items: center; gap: var(--size-4-2); }
 .zfa-tc-ln-ligne.est-exclu { opacity: 0.5; }
