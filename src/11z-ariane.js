@@ -1252,11 +1252,15 @@ class Ariane extends composer(obsidian.Plugin,
               if (!ligne) return;
               const nouvelle = ligneAvecLegende(ligne.text, v);
               if (nouvelle !== ligne.text) view.dispatch({ changes: { from: ligne.from, to: ligne.to, insert: nouvelle } });
-            }, () => {
+            }, async () => {
+              // Le lien vers le fichier de l'image, lu dans l'éditeur.
               const ligne = ligneDe();
-              let f = null;
-              try { const info = view.state.field(obsidian.editorInfoField, false); f = info && info.file; } catch (er) { f = null; }
-              if (ligne && f) greffon.copierRenvoiFigure(f, ligne.number - 1);
+              const fig = ligne && figuresDeNote(view.state.doc.toString().split('\n'))
+                .find((x) => x.ligne === ligne.number - 1);
+              if (!fig || !fig.fichier) { new obsidian.Notice(tr('Cette ligne n’est plus une figure.')); return; }
+              const lien = '[[' + fig.fichier.split('/').pop() + ']]';
+              try { await navigator.clipboard.writeText(lien); } catch (er) { /* presse-papiers refusé */ }
+              new obsidian.Notice(tr('Renvoi copié : ') + lien + tr('. Collez-le dans le texte : il s’affichera « figure N ».'));
             });
           });
           return el;
@@ -1286,11 +1290,11 @@ class Ariane extends composer(obsidian.Plugin,
     // direct, hors du curseur, le lien s'affiche « figure N » ; un clic y
     // mène. Le curseur dessus montre le lien tel qu'écrit.
     if (this.module('typographie')) try {
-      const { ViewPlugin, Decoration, WidgetType } = require('@codemirror/view');
+      const { ViewPlugin, Decoration, WidgetType, EditorView } = require('@codemirror/view');
       const greffon = this;
       class RenvoiFigure extends WidgetType {
-        constructor(numero, cible) { super(); this.numero = numero; this.cible = cible; }
-        eq(o) { return o.numero === this.numero && o.cible === this.cible; }
+        constructor(numero, cible, ligne) { super(); this.numero = numero; this.cible = cible; this.ligne = ligne; }
+        eq(o) { return o.numero === this.numero && o.cible === this.cible && o.ligne === this.ligne; }
         toDOM(view) {
           const a = view.dom.ownerDocument.createElement('span');
           a.className = 'cm-hmd-internal-link zfa-renvoi-figure';
@@ -1298,9 +1302,13 @@ class Ariane extends composer(obsidian.Plugin,
           a.addEventListener('mousedown', (e) => e.preventDefault());
           a.addEventListener('click', (e) => {
             e.preventDefault();
-            let f = null;
-            try { const info = view.state.field(obsidian.editorInfoField, false); f = info && info.file; } catch (er) { f = null; }
-            greffon.app.workspace.openLinkText(this.cible, f ? f.path : '', false);
+            // La figure est dans cette note : on y descend, curseur en tête
+            // de sa ligne.
+            const doc = view.state.doc;
+            if (this.ligne + 1 > doc.lines) return;
+            const pos = doc.line(this.ligne + 1).from;
+            view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
+            view.focus();
           });
           return a;
         }
@@ -1313,22 +1321,27 @@ class Ariane extends composer(obsidian.Plugin,
         if (!apercu) return Decoration.none;
         const doc = view.state.doc;
         const texte = doc.toString();
-        if (!texte.includes('[[#^')) return Decoration.none;
-        const numeros = numerosFiguresParRepere(texte.split('\n'));
-        if (!numeros.size) return Decoration.none;
+        if (!texte.includes('[[')) return Decoration.none;
+        const lignes = texte.split('\n');
+        const figs = figuresDeNote(lignes);
+        if (!figs.length) return Decoration.none;
         const sel = view.state.selection.ranges;
         const deco = [];
-        const re = /\[\[#\^([\w-]+)\]\]/g;
+        // « [[image.png]] » (pas « ![[…]] », qui est la figure elle-même)
+        // ou « [[#^repère]] », sans texte choisi.
+        const re = /(^|[^!])\[\[([^\]|\n]+)\]\]/g;
         for (const { from, to } of view.visibleRanges) {
           const morceau = doc.sliceString(from, to);
           let m;
           re.lastIndex = 0;
           while ((m = re.exec(morceau))) {
-            const a = from + m.index;
-            const z = a + m[0].length;
-            const n = numeros.get(m[1]);
-            if (!n || sel.some((r) => r.from <= z && r.to >= a)) continue;
-            deco.push(Decoration.replace({ widget: new RenvoiFigure(n, '#^' + m[1]) }).range(a, z));
+            const a = from + m.index + m[1].length;
+            const z = from + m.index + m[0].length;
+            const cible = m[2];
+            const rep = /^#\^([\w-]+)$/.exec(cible);
+            const f = rep ? figs.find((x) => x.id === rep[1]) : figureDeFichier(lignes, cible);
+            if (!f || sel.some((r) => r.from <= z && r.to >= a)) continue;
+            deco.push(Decoration.replace({ widget: new RenvoiFigure(f.numero, cible, f.ligne) }).range(a, z));
           }
         }
         return Decoration.set(deco, true);

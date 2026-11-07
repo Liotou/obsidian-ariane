@@ -301,34 +301,26 @@ function figuresDeNote(lignes) {
   return imagesDeNote(lignes).filter((x) => x.figure);
 }
 
-// Le renvoi à une figure : la ligne de l'image reçoit un repère de bloc
-// tiré du nom du fichier de l'image (« base-actants.png » donne
-// « ^fig-base-actants » ; une image collée, « ^fig-pasted-image-2026… »),
-// stable quelle que soit la légende, unique dans la note. Elle
-// devient un bloc à elle seule, une ligne vide de part et d'autre : sans
-// cela, le lien d'Obsidian viserait tout le paragraphe qui la suit.
-// Rend { lignes, id, ligne } (ligne : celle de l'image, après ajouts), ou
-// null si `ligne` n'est pas une figure.
-function poserRepereFigure(lignes, ligne) {
-  const l = (lignes || []).slice();
-  const fig = figuresDeNote(l).find((x) => x.ligne === ligne);
-  if (!fig) return null;
-  let id = fig.id;
-  if (!id) {
-    const nom = String(fig.fichier || '').split('/').pop().replace(/\.[^.]+$/, '');
-    const base = 'fig-' + (nom.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48).replace(/-+$/, '')
-      || String(fig.numero));
-    const pris = new Set();
-    for (const x of l) { const m = /\^([\w-]+)[ \t]*$/.exec(x); if (m) pris.add(m[1]); }
-    id = base;
-    for (let k = 2; pris.has(id); k += 1) id = base + '-' + k;
-    l[ligne] = l[ligne].replace(/[ \t]+$/, '') + ' ^' + id;
-  }
-  let i = ligne;
-  if (i + 1 < l.length && l[i + 1].trim()) l.splice(i + 1, 0, '');
-  if (i > 0 && l[i - 1].trim()) { l.splice(i, 0, ''); i += 1; }
-  return { lignes: l, id, ligne: i };
+// Le renvoi à une figure est un lien vers le fichier de son image,
+// « [[base-actants.png]] » : stable, quelle que soit la légende, et rien
+// n'est à écrire dans la note (un repère de bloc « ^… » aurait visé tout le
+// paragraphe qui suit l'image, faute de ligne vide entre eux). Rend la
+// figure de la note dont l'image est `cible` (même nom de fichier), ou null.
+function figureDeFichier(lignes, cible) {
+  const nom = (x) => String(x || '').split('#')[0].split('/').pop().trim().toLowerCase();
+  const n = nom(cible);
+  if (!n || !ZFA_EXT_IMAGE.test(n)) return null;
+  return figuresDeNote(lignes).find((f) => nom(f.fichier) === n) || null;
+}
+
+// L'identifiant d'une figure dans le document Word : son repère s'il en a
+// un, sinon le nom de son fichier (« fig-base-actants »).
+function idFigure(fig) {
+  if (fig.id) return fig.id;
+  const nom = String(fig.fichier || '').split('/').pop().replace(/\.[^.]+$/, '');
+  return 'fig-' + (nom.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48).replace(/-+$/, '')
+    || String(fig.numero));
 }
 
 // Les figures d'une note par repère : { id -> numero }.

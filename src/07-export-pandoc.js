@@ -134,10 +134,10 @@ async function deplierIntegrations(texte, lire, lireImage, profondeur, vus) {
         const chemin = lireImage ? await lireImage(cible.trim()) : null;
         const r = ZFA_REPERE_FIGURE.exec(l);
         const seule = (r ? l.slice(0, r.index) : l).trim() === m[0];
-        // Le repère d'une figure devient son identifiant pandoc : les renvois
-        // vers elle y mènent, dans Word aussi.
-        const idFig = seule && r ? '{#' + (r[1] || r[2]) + '}' : '';
-        if (idFig) reste = reste.replace(ZFA_REPERE_FIGURE, '');
+        // Une figure reçoit un identifiant pandoc (son repère, sinon le nom
+        // de son fichier) : les renvois vers elle y mènent, dans Word aussi.
+        const idFig = seule ? '{#' + idFigure({ id: r ? (r[1] || r[2]) : '', fichier: cible.trim(), numero: 0 }) + '}' : '';
+        if (r && seule) reste = reste.replace(ZFA_REPERE_FIGURE, '');
         const leg = aliases.map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ')
           .replace(/([[\]])/g, '\\$1') || (seule ? '\u00a0' : '');
         // Une image prise dans une phrase n'est pas une figure : elle reste
@@ -194,17 +194,25 @@ function preparerMarkdownExport(contenu, resoudre, opts) {
   //    Son repère de bloc devient son identifiant pandoc.
   s = s.replace(/^([ \t]*)!\[([^\]\n]*)\]\(([^)\n]+)\)(?:[ \t]+(?:\^([\w-]+)|\{#([\w-]+)\}))?[ \t]*$/gm, (m, ind, alt, url, bloc, attr) => {
     const leg = alt.split('|').map((x) => x.trim()).filter((x) => x && !/^\d+(x\d+)?$/.test(x)).join(' | ');
-    const id = bloc || attr;
-    return ind + '![' + (leg || '\u00a0') + '](' + url + ')' + (id ? '{#' + id + '}' : '');
+    const id = bloc || attr || idFigure({ fichier: url.trim().replace(/^<|>$/g, ''), numero: 0 });
+    return ind + '![' + (leg || '\u00a0') + '](' + url + ')' + (id && id !== 'fig-0' ? '{#' + id + '}' : '');
   });
 
-  // 1 quinquies. Les renvois aux figures de la note (« [[#^fig-cycle]] »)
-  //    deviennent « figure N », lien vers la figure dans Word ; un texte
-  //    choisi (« [[#^fig-cycle|ce schéma]] ») est gardé.
-  const numerosFig = numerosFiguresParRepere(s.split('\n'));
+  // 1 quinquies. Les renvois aux figures de la note, lien vers le fichier
+  //    de l'image (« [[base-actants.png]] ») ou vers un repère
+  //    (« [[#^fig-cycle]] »), deviennent « figure N », lien vers la figure
+  //    dans Word ; un texte choisi (« [[base-actants.png|ce schéma]] ») est
+  //    gardé.
+  const lignesFig = s.split('\n');
+  const numerosFig = numerosFiguresParRepere(lignesFig);
   s = s.replace(/\[\[#\^([\w-]+)(?:\|([^\]\n]+))?\]\]/g, (m, id, alias) => {
     if (!numerosFig.has(id)) return alias || m;
     return '[' + (alias ? alias.trim() : tr('figure ') + numerosFig.get(id)) + '](#' + id + ')';
+  });
+  s = s.replace(/(^|[^!])\[\[([^\]|\n]+)(?:\|([^\]\n]+))?\]\]/g, (m, avant, cible, alias) => {
+    const f = figureDeFichier(lignesFig, cible);
+    if (!f) return m;
+    return avant + '[' + (alias ? alias.trim() : tr('figure ') + f.numero) + '](#' + idFigure(f) + ')';
   });
 
   // 2. Compteurs de travaux rapportés : ils n'ont pas de sens hors d'Obsidian.

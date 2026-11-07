@@ -434,12 +434,37 @@ const avecNoteAtomes = (Base) => class extends Base {
     });
   }
 
-  // Les liens vers une figure (« [[#^fig-cycle]] », ou vers celle d'une
-  // autre note) s'affichent « figure N » quand ils n'ont pas de texte à eux.
+  // Les renvois aux figures s'affichent « figure N » quand ils n'ont pas de
+  // texte à eux : un lien vers le fichier d'une image qui est une figure de
+  // la note (« [[base-actants.png]] »), que le clic fait rejoindre dans la
+  // note au lieu d'ouvrir l'image ; ou un lien vers un repère de bloc posé
+  // sur la ligne d'une figure (« [[#^fig-cycle]] », ici ou ailleurs).
   async renvoisFiguresRendus(el, ctx) {
     if (!el || !ctx || this.settings.figuresNumerotees === false) return;
+    let texteNote = null;
+    const lireNote = async () => {
+      if (texteNote != null) return texteNote;
+      const info = ctx.getSectionInfo && ctx.getSectionInfo(el);
+      if (info && info.text != null) return (texteNote = String(info.text));
+      const f0 = this.app.vault.getAbstractFileByPath(ctx.sourcePath || '');
+      return (texteNote = f0 instanceof obsidian.TFile ? await this.app.vault.cachedRead(f0) : '');
+    };
     for (const a of el.querySelectorAll('a.internal-link')) {
       const href = a.getAttribute('data-href') || '';
+      if (ZFA_EXT_IMAGE.test(href.split('#')[0]) && !href.includes('#')) {
+        const brut = String(a.textContent || '').trim();
+        if (brut !== href && brut !== href.split('/').pop()) continue;
+        const fig = figureDeFichier((await lireNote()).split('\n'), href);
+        if (!fig) continue;
+        a.textContent = tr('figure ') + fig.numero;
+        a.classList.add('zfa-renvoi-figure');
+        a.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.allerALigne(ctx.sourcePath, fig.ligne);
+        }, true);
+        continue;
+      }
       const m = /^(.*)#\^([\w-]+)$/.exec(href);
       if (!m) continue;
       const brut = String(a.textContent || '').trim();
@@ -484,20 +509,23 @@ const avecNoteAtomes = (Base) => class extends Base {
     }, (v) => surValider(String(v.legende || '').trim()));
   }
 
-  // Un renvoi à la figure de la ligne `ligne` : repère posé (et la figure
-  // isolée dans son bloc), puis « [[#^repère]] » dans le presse-papiers.
+  // Un renvoi à la figure de la ligne `ligne` : le lien vers le fichier de
+  // son image, dans le presse-papiers. Rien n'est écrit dans la note.
   async copierRenvoiFigure(file, ligne) {
-    let id = '';
-    await this.transformerNote(file, (texte) => {
-      const r = poserRepereFigure(texte.split('\n'), ligne);
-      if (!r) return texte;
-      id = r.id;
-      return r.lignes.join('\n');
-    });
-    if (!id) { new obsidian.Notice(tr('Cette ligne n’est plus une figure.')); return; }
-    const lien = '[[#^' + id + ']]';
+    const fig = figuresDeNote((await this.app.vault.cachedRead(file)).split('\n')).find((x) => x.ligne === ligne);
+    if (!fig || !fig.fichier) { new obsidian.Notice(tr('Cette ligne n’est plus une figure.')); return; }
+    const lien = '[[' + fig.fichier.split('/').pop() + ']]';
     try { await navigator.clipboard.writeText(lien); } catch (e) { /* presse-papiers refusé */ }
     new obsidian.Notice(tr('Renvoi copié : ') + lien + tr('. Collez-le dans le texte : il s’affichera « figure N ».'));
+  }
+
+  // Rejoint une ligne d'une note, ouverte dans l'onglet où elle est déjà.
+  async allerALigne(chemin, ligne) {
+    const f = this.app.vault.getAbstractFileByPath(chemin || '');
+    if (!(f instanceof obsidian.TFile)) return;
+    const deja = this.app.workspace.getLeavesOfType('markdown').find((l) => l.view && l.view.file === f);
+    const feuille = deja || this.app.workspace.getLeaf(false);
+    await feuille.openFile(f, { eState: { line: ligne }, active: true });
   }
 
   // Écrit la légende sur la ligne `ligne` de la note, si c'est toujours

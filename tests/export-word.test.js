@@ -32,7 +32,7 @@ test('export : intégrations de tâche, de bloc, imbriquées, absentes et en bou
   assert.equal(await deplierIntegrations('```\n![[NC-1]]\n```', lire), '```\n![[NC-1]]\n```', 'le code reste tel quel');
   const img = await deplierIntegrations('![[schema.png]]', lire, async (c) => '/coffre/' + c);
   // Seule sur sa ligne : une figure, même sans légende (espace insécable).
-  assert.equal(img.trim(), '![\u00a0](</coffre/schema.png>)');
+  assert.equal(img.trim(), '![\u00a0](</coffre/schema.png>){#fig-schema}');
 });
 
 test('export : ni filet, ni guillemets droits, ni point final aux titres', () => {
@@ -245,46 +245,44 @@ test('légende d\'une figure : écrite dans le lien, la largeur gardée après e
 test('export : la légende d\'une image intégrée passe à pandoc, la largeur non', async () => {
   const lireImage = async (c) => '/coffre/' + c;
   const s = await deplierIntegrations('Avant\n![[schema.png|Le cycle du risque|500]]\nAprès', async () => null, lireImage);
-  assert.equal(s, 'Avant\n\n![Le cycle du risque](</coffre/schema.png>)\n\nAprès');
+  assert.equal(s, 'Avant\n\n![Le cycle du risque](</coffre/schema.png>){#fig-schema}\n\nAprès');
   // Sans légende, seule sur sa ligne : une figure quand même (espace insécable).
   const t = await deplierIntegrations('![[photo.jpg|400]]', async () => null, lireImage);
-  assert.equal(t.trim(), '![\u00a0](</coffre/photo.jpg>)');
+  assert.equal(t.trim(), '![\u00a0](</coffre/photo.jpg>){#fig-photo}');
   // Dans une phrase : une image en ligne, pas une figure.
   const u = await deplierIntegrations('Voir ![[icone.png|petite]] ici.', async () => null, lireImage);
   assert.equal(u, 'Voir ![petite](</coffre/icone.png>) ici.');
   // Une image markdown seule : sa largeur quitte la légende.
   const md = preparerMarkdownExport('![Carte|300](a.png)\n\n![](b.png)\n', () => null, {});
-  assert.ok(md.includes('![Carte](a.png)'));
-  assert.ok(md.includes('![\u00a0](b.png)'));
+  assert.ok(md.includes('![Carte](a.png){#fig-a}'));
+  assert.ok(md.includes('![\u00a0](b.png){#fig-b}'));
 });
 
-test('renvoi à une figure : repère posé, figure isolée dans son bloc, numéro par repère', () => {
-  const { poserRepereFigure, numerosFiguresParRepere, figuresDeNote } = Ariane._test;
-  const note = ['Intro.', '![[Images/Base des actants.png|Le cycle du risque]]', 'Sur ce sujet, il reste à préciser.', '', '![[b.png]] ^fig-b'];
-  const r = poserRepereFigure(note, 1);
-  assert.equal(r.id, 'fig-base-des-actants', 'tiré du nom du fichier, pas de la légende');
-  assert.deepEqual(r.lignes, ['Intro.', '', '![[Images/Base des actants.png|Le cycle du risque]] ^fig-base-des-actants', '',
-    'Sur ce sujet, il reste à préciser.', '', '![[b.png]] ^fig-b']);
-  assert.equal(r.ligne, 2);
-  // Le repère n'ôte pas son numéro à la figure.
-  assert.deepEqual(figuresDeNote(r.lignes).map((f) => [f.numero, f.id]), [[1, 'fig-base-des-actants'], [2, 'fig-b']]);
-  assert.deepEqual([...numerosFiguresParRepere(r.lignes)], [['fig-base-des-actants', 1], ['fig-b', 2]]);
-  // Une image collée garde le nom qu'Obsidian lui a donné ; une image markdown aussi.
-  assert.equal(poserRepereFigure(['![[Pasted image 20261107114503.png]]'], 0).id, 'fig-pasted-image-20261107114503');
-  assert.equal(poserRepereFigure(['![Carte](img/Carte%20du%20Havre.jpg)'], 0).id, 'fig-carte-du-havre');
-  // Une figure qui a déjà son repère le garde ; rien n'est ajouté.
-  const s = poserRepereFigure(r.lignes, 6);
-  assert.equal(s.id, 'fig-b');
-  assert.deepEqual(s.lignes, r.lignes);
-  // Pas une figure : rien.
-  assert.equal(poserRepereFigure(note, 0), null);
-  // Repère déjà pris : suffixe.
-  const t = poserRepereFigure(['![[plan.png|Plan]]', '', 'texte ^fig-plan'], 0);
-  assert.equal(t.id, 'fig-plan-2');
+test('renvoi à une figure : le lien vers le fichier de son image, rien d\'écrit dans la note', () => {
+  const { figureDeFichier, idFigure, figuresDeNote } = Ariane._test;
+  const note = ['Intro.', '![[Images/Base des actants.png|Preuve de concept]]', 'Sur ce sujet, il reste à préciser.',
+    '![[Pasted image 20261107114503.png]] ^fig-b', '![Carte](img/Carte%20du%20Havre.jpg)'];
+  const f = figureDeFichier(note, 'Base des actants.png');
+  assert.equal(f.numero, 1);
+  assert.equal(f.ligne, 1);
+  assert.equal(figureDeFichier(note, 'images/base des actants.png').numero, 1, 'le chemin et la casse ne comptent pas');
+  assert.equal(figureDeFichier(note, 'Pasted image 20261107114503.png').numero, 2, 'un repère de bloc n\'ôte pas le numéro');
+  assert.equal(figureDeFichier(note, 'Carte du Havre.jpg').numero, 3);
+  assert.equal(figureDeFichier(note, 'absente.png'), null);
+  assert.equal(figureDeFichier(note, 'Une note'), null);
+  // Identifiant Word : le repère s'il y en a un, sinon le nom du fichier.
+  assert.deepEqual(figuresDeNote(note).map(idFigure), ['fig-base-des-actants', 'fig-b', 'fig-carte-du-havre']);
 });
 
-test('export : un renvoi « [[#^fig-…]] » devient « figure N », lien vers la figure', async () => {
+test('export : un renvoi devient « figure N », lien vers la figure', async () => {
   const lireImage = async (c) => '/coffre/' + c;
+  // Lien vers le fichier de l'image, la figure suivie du texte sans ligne vide.
+  const a = await deplierIntegrations('Croisée (cf. blocs bleus de la [[base-actants.png]]).\n![[base-actants.png|Actants]]\nSuite [[base-actants.png|ce schéma]].', async () => null, lireImage);
+  const ma = preparerMarkdownExport(a, () => null, {});
+  assert.ok(ma.includes('(cf. blocs bleus de la [figure 1](#fig-base-actants))'), ma);
+  assert.ok(ma.includes('![Actants](</coffre/base-actants.png>){#fig-base-actants}'), ma);
+  assert.ok(ma.includes('Suite [ce schéma](#fig-base-actants).'), ma);
+  // Lien vers un repère de bloc posé sur la ligne de la figure.
   const brut = 'Croisée (cf. blocs bleus de la [[#^fig-actants]]).\n\n![[base.png|Actants]] ^fig-actants\n\nVoir [[#^fig-actants|ce schéma]] et [[#^autre]].';
   const s = await deplierIntegrations(brut, async () => null, lireImage);
   assert.ok(s.includes('![Actants](</coffre/base.png>){#fig-actants}'), s);
