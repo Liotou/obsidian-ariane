@@ -1539,6 +1539,60 @@ const avecNoteBiblio = (Base) => class extends Base {
     }
   }
 
+  // Une image telle que Word la recevra. Un SVG dont les textes sont du
+  // HTML (draw.io) passe en PNG haute définition : par l'application
+  // draw.io si elle est installée (rendu fidèle, formules comprises), sinon
+  // par le navigateur d'Obsidian (textes justes, formules telles
+  // qu'écrites). Le reste, et tout échec, garde le fichier d'origine.
+  // `etat` : { dossier (temporaire), faits (Map), avis(texte) }.
+  async imagePourWord(chemin, etat) {
+    const fs = require('fs');
+    const pathMod = require('path');
+    if (!/\.svg$/i.test(chemin)) return chemin;
+    if (etat.faits.has(chemin)) return etat.faits.get(chemin);
+    let texte = '';
+    try { texte = fs.readFileSync(chemin, 'utf8'); } catch (e) { return chemin; }
+    const svg = svgPourWord(texte);
+    if (!svg.aRendre) { etat.faits.set(chemin, chemin); return chemin; }
+    const sortie = pathMod.join(etat.dossier, etat.faits.size + '-' + pathMod.basename(chemin).replace(/\.svg$/i, '') + '.png');
+    if (etat.avis) etat.avis(pathMod.basename(chemin));
+    let fait = false;
+    const drawio = svg.diagramme ? trouverDrawio(envOutils()) : '';
+    if (drawio) {
+      fait = await new Promise((resolve) => {
+        executer(drawio, ['-x', '-f', 'png', '--scale', '3', '-o', sortie, chemin], { timeout: 90000 },
+          (e) => resolve(!e && fs.existsSync(sortie)));
+      });
+    }
+    if (!fait) {
+      try {
+        const doc = activeDocument;
+        const url = URL.createObjectURL(new Blob([texte], { type: 'image/svg+xml' }));
+        const img = doc.createElement('img');
+        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+        const echelle = 3;
+        const toile = doc.createElement('canvas');
+        toile.width = Math.max(1, Math.round((img.naturalWidth || 800) * echelle));
+        toile.height = Math.max(1, Math.round((img.naturalHeight || 600) * echelle));
+        const c2d = toile.getContext('2d');
+        c2d.fillStyle = '#ffffff';
+        c2d.fillRect(0, 0, toile.width, toile.height);
+        c2d.drawImage(img, 0, 0, toile.width, toile.height);
+        URL.revokeObjectURL(url);
+        const blob = await new Promise((res) => toile.toBlob(res, 'image/png'));
+        if (blob) { fs.writeFileSync(sortie, Buffer.from(await blob.arrayBuffer())); fait = true; }
+      } catch (e) { console.warn('[Ariane] export, image ' + chemin + ' laissée en SVG :', e); }
+    }
+    // Rendu trois fois plus fin : 288 points par pouce, pour que Word lui
+    // garde la taille du schéma.
+    if (fait) {
+      try { fs.writeFileSync(sortie, Buffer.from(pngAvecResolution(fs.readFileSync(sortie), 96 * 3))); } catch (e) { /* taille par défaut */ }
+    }
+    const rendu = fait ? sortie : chemin;
+    etat.faits.set(chemin, rendu);
+    return rendu;
+  }
+
   async exporterWordZotero() {
     // L'étape « exporter » du tutoriel : l'export du brouillon d'exemple.
     const ex = this._tutorielExistant ? this._tutorielExistant() : null;
@@ -1563,9 +1617,21 @@ const avecNoteBiblio = (Base) => class extends Base {
     // Les notes intégrées « ![[…]] » sont dépliées dans le texte, comme
     // Obsidian les affiche.
     const cibleFichier = (c) => this.app.metadataCache.getFirstLinkpathDest(c, file.path);
+    // Les schémas que Word afficherait mal passent en PNG, dans un dossier
+    // temporaire que l'on vide après pandoc.
+    let avisImages = null;
+    const etatImages = {
+      dossier: require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'ariane-images-')),
+      faits: new Map(),
+      avis: (nom) => {
+        if (!avisImages) avisImages = new obsidian.Notice('', 0);
+        avisImages.setMessage(tr('Export Word : rendu du schéma ') + nom + '…');
+      },
+    };
     const deplie = await deplierIntegrations(contenu,
       async (c) => { const f = cibleFichier(c); return f && f.extension === 'md' ? this.app.vault.cachedRead(f) : null; },
-      async (c) => { const f = cibleFichier(c); return f ? this.cheminAbsoluVault(f.path) : null; });
+      async (c) => { const f = cibleFichier(c); return f ? this.imagePourWord(this.cheminAbsoluVault(f.path), etatImages) : null; });
+    if (avisImages) avisImages.hide();
     let md = footnotesVersCitations(deplie, resoudre, citeDans);
     // Les commentaires en marge deviennent des commentaires Word ; fils
     // reçoit de quoi rattacher ensuite réponses et résolutions.
@@ -1618,6 +1684,7 @@ const avecNoteBiblio = (Base) => class extends Base {
       console.error('[Ariane] export word', e);
     } finally {
       try { fs.unlinkSync(tmp); } catch (e) { /* */ }
+      try { fs.rmSync(etatImages.dossier, { recursive: true, force: true }); } catch (e) { /* */ }
     }
   }
 

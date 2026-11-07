@@ -332,3 +332,20 @@ test('figure au bout d\'une ligne de texte : numérotée, légendée, détachée
   const t = await deplierIntegrations(note[1], async () => null, lireImage);
   assert.equal(t, 'Voir ![](</coffre/icone.png>) puis la suite.');
 });
+
+test('export : un SVG à textes HTML (draw.io) est repéré, un PNG reçoit sa résolution', () => {
+  const { svgPourWord, pngAvecResolution } = Ariane._test;
+  assert.deepEqual(svgPourWord('<svg content="&lt;mxfile"><switch><foreignObject/></switch></svg>'), { aRendre: true, diagramme: true });
+  assert.deepEqual(svgPourWord('<svg><rect/><text>simple</text></svg>'), { aRendre: false, diagramme: false });
+  const zlib = require('zlib');
+  const bloc = (t, d) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const c = Buffer.alloc(4); c.writeUInt32BE(zlib.crc32(Buffer.concat([Buffer.from(t), d]))); return Buffer.concat([l, Buffer.from(t), d, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(1, 0); ihdr.writeUInt32BE(1, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), bloc('IHDR', ihdr),
+    bloc('pHYs', Buffer.alloc(9)), bloc('IDAT', zlib.deflateSync(Buffer.from([0, 255, 0, 0]))), bloc('IEND', Buffer.alloc(0))]);
+  const r = Buffer.from(pngAvecResolution(new Uint8Array(png), 288));
+  const i = r.indexOf('pHYs');
+  assert.ok(i > 0 && r.indexOf('pHYs', i + 1) < 0, 'un seul bloc pHYs');
+  assert.equal(r.readUInt32BE(i + 4), Math.round(288 / 0.0254));
+  assert.equal(r.readUInt32BE(i + 13), zlib.crc32(r.subarray(i, i + 13)), 'CRC juste');
+  assert.ok(r.indexOf('IHDR') < i && i < r.indexOf('IDAT'));
+});

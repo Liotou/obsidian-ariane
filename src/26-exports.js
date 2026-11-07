@@ -37,6 +37,8 @@ module.exports._test = {
   lireEntreeZip,
   argumentCmd,
   trouverExecutable,
+  svgPourWord,
+  pngAvecResolution,
   cellulesDeLigne,
   ligneDeRangee,
   insertionCellule,

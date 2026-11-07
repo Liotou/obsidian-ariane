@@ -475,6 +475,80 @@ function trouverExecutable(nom, env) {
   return '';
 }
 
+// L'application draw.io, là où ses installeurs la posent, ou dans le PATH
+// (« drawio » sous Linux). Rend son chemin, ou ''.
+function trouverDrawio(env) {
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+  const e = env || process.env;
+  const candidats = process.platform === 'darwin'
+    ? ['/Applications/draw.io.app/Contents/MacOS/draw.io',
+      path.join(os.homedir(), 'Applications', 'draw.io.app', 'Contents', 'MacOS', 'draw.io')]
+    : process.platform === 'win32'
+      ? [e.ProgramFiles && path.join(e.ProgramFiles, 'draw.io', 'draw.io.exe'),
+        e.LOCALAPPDATA && path.join(e.LOCALAPPDATA, 'Programs', 'draw.io', 'draw.io.exe')]
+      : [];
+  for (const c of candidats.filter(Boolean)) { try { if (fs.statSync(c).isFile()) return c; } catch (err) { /* absent */ } }
+  return trouverExecutable('drawio', env) || trouverExecutable('draw.io', env);
+}
+
+// Un SVG que Word affiche mal : ses textes sont du HTML (« foreignObject »,
+// ce qu'écrit draw.io), que Word remplace par une version de secours
+// (retours à la ligne perdus, formules en LaTeX brut). `diagramme` : il
+// porte aussi son schéma draw.io, que l'application sait rendre.
+function svgPourWord(texte) {
+  const t = String(texte || '');
+  return {
+    aRendre: /<foreignObject\b/i.test(t),
+    diagramme: /<svg\b[^>]*\scontent="[^"]*mxfile/i.test(t) || /<svg\b[^>]*\scontent="/i.test(t),
+  };
+}
+
+// Un PNG dont la résolution est inscrite (bloc pHYs) : rendu trois fois
+// plus fin, il garde dans Word la taille du schéma, pandoc la déduisant de
+// la résolution. `png` : Uint8Array ; rend un Uint8Array.
+function pngAvecResolution(png, dpi) {
+  const o = png instanceof Uint8Array ? png : new Uint8Array(png);
+  const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (o.length < 33 || sig.some((b, i) => o[i] !== b)) return o;
+  const u32 = (a, i) => ((a[i] << 24) >>> 0) + (a[i + 1] << 16) + (a[i + 2] << 8) + a[i + 3];
+  const crc = (octets) => {
+    let c = 0xffffffff;
+    for (const b of octets) {
+      c ^= b;
+      for (let k = 0; k < 8; k += 1) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+    }
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const ppm = Math.round(dpi / 0.0254);
+  const donnees = new Uint8Array(9);
+  const dv = new DataView(donnees.buffer);
+  dv.setUint32(0, ppm); dv.setUint32(4, ppm); donnees[8] = 1;
+  const type = [112, 72, 89, 115]; // « pHYs »
+  const bloc = new Uint8Array(21);
+  const bv = new DataView(bloc.buffer);
+  bv.setUint32(0, 9);
+  bloc.set(type, 4);
+  bloc.set(donnees, 8);
+  bv.setUint32(17, crc([...type, ...donnees]));
+  // Les blocs d'origine, sans leur éventuel pHYs ; le nôtre après IHDR.
+  const morceaux = [o.slice(0, 8)];
+  let i = 8;
+  while (i + 8 <= o.length) {
+    const lg = u32(o, i);
+    const nom = String.fromCharCode(o[i + 4], o[i + 5], o[i + 6], o[i + 7]);
+    const fin = i + 12 + lg;
+    if (nom !== 'pHYs') morceaux.push(o.slice(i, fin));
+    if (nom === 'IHDR') morceaux.push(bloc);
+    i = fin;
+  }
+  const tout = new Uint8Array(morceaux.reduce((s, m) => s + m.length, 0));
+  let p = 0;
+  for (const m of morceaux) { tout.set(m, p); p += m.length; }
+  return tout;
+}
+
 // Un argument pour cmd.exe : entre guillemets, ceux du texte doublés.
 function argumentCmd(a) {
   return '"' + String(a).replace(/"/g, '""') + '"';

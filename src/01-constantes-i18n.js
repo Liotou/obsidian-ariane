@@ -2068,6 +2068,7 @@ const TEXTES = {
     "Modifier la légende": "Edit caption",
     "figure ": "figure ",
     "Copier un renvoi": "Copy a reference",
+    "Export Word : rendu du schéma ": "Word export: rendering diagram ",
     "Cette ligne n’est plus une figure.": "This line is no longer a figure.",
     "Renvoi copié : ": "Reference copied: ",
     ". Collez-le dans le texte : il s’affichera « figure N ».": ". Paste it in the text: it will show as “figure N”.",
