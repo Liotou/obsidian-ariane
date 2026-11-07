@@ -60,6 +60,7 @@ module.exports._test = {
   construireBibliographie,
   injecterBibliographie,
   MoteurCalendrier,   // mémoire de la période consultée, par vue
+  tacheGardeeCalendrier,
   // Icônes des vues de base : clé de réglage, lecture de l'icône en place, tri
   // des éléments de menu.
   basesCleIcone,

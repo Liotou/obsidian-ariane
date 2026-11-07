@@ -721,3 +721,14 @@ test('Créneau : « Créer telle quelle » crée sans IA et attache le créneau'
   await n._creerSansIA();
   assert.equal(appele, false);
 });
+
+test('Calendrier : une tâche datée cochée reste, barrée, même sortie du filtre de la base', () => {
+  const { tacheGardeeCalendrier } = Ariane._test;
+  const dedans = new Set(['T001']);
+  assert.equal(tacheGardeeCalendrier({ ref: 'T001' }, dedans), true, 'dans le filtre');
+  assert.equal(tacheGardeeCalendrier({ ref: 'T002', creneaux: ['2026-11-07 10:00-11:00'], statut: 'terminée' }, dedans), true, 'créneau');
+  assert.equal(tacheGardeeCalendrier({ ref: 'T003', statut: 'terminée', echeance: '2026-11-07' }, dedans), true, 'terminée datée : reste dans le bandeau');
+  assert.equal(tacheGardeeCalendrier({ ref: 'T004', terminee: true, echeance: '2026-11-07' }, dedans), true);
+  assert.equal(tacheGardeeCalendrier({ ref: 'T005', statut: 'terminée', echeance: '' }, dedans), false, 'sans date : nulle part où la montrer');
+  assert.equal(tacheGardeeCalendrier({ ref: 'T006', statut: 'à faire', echeance: '2026-11-07' }, dedans), false, 'hors filtre et pas terminée');
+});

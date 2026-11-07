@@ -2667,6 +2667,8 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   -webkit-line-clamp: none; }
 .zfa-cal-carte.est-compacte .zfa-cal-carte-coche { margin: 0; }
 .zfa-cal-carte.est-terminee { color: var(--text-faint); }
+.zfa-cal-bjalon.est-terminee { color: var(--text-faint); }
+.zfa-cal-bjalon.est-terminee .zfa-cal-bjalon-t { text-decoration: line-through; }
 .zfa-cal-carte.est-terminee .zfa-cal-carte-titre { text-decoration: line-through;
   color: var(--text-faint); font-weight: var(--font-normal); }
 .zfa-cal-carte-prop { display: flex; gap: 3px; color: var(--text-muted);

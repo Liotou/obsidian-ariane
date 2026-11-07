@@ -2774,7 +2774,8 @@ class MoteurCalendrier extends MoteurVue {
         for (const { t, ev } of montres) {
           if (ev.jalon) {
             const jp = col.createDiv({ cls: 'zfa-cal-bjalon'
-              + (enRetard.has(t.ref) ? ' est-retard' : '') });
+              + (enRetard.has(t.ref) ? ' est-retard' : '')
+              + (t.statut === 'terminée' || t.terminee === true ? ' est-terminee' : '') });
             jp.dataset.ref = t.ref;
             jp.style.setProperty('--zfa-cal-coul', this.couleurTache(t));
             const ic = jp.createSpan({ cls: 'zfa-cal-bjalon-ic' });
@@ -3535,11 +3536,8 @@ function fabriquerVueCalendrierBase(greffon) {
         this._parRef.set(ref, e);
       }
       const toutes = this.greffon.tachesPourGantt();
-      // On garde les tâches du filtre de la base, PLUS toute tâche qui porte un
-      // créneau : un créneau posé doit rester visible sur le calendrier même si
-      // la tâche sort du filtre (p. ex. une fois cochée « terminée »).
-      const garde = (t) => dedans.has(t.ref) || (t.creneaux || []).length > 0;
-      if (!dedans.size && !toutes.some((t) => (t.creneaux || []).length > 0)) return [];
+      const garde = (t) => tacheGardeeCalendrier(t, dedans);
+      if (!dedans.size && !toutes.some((t) => tacheGardeeCalendrier(t, dedans))) return [];
       return toutes.filter(garde);
     }
     onunload() {
@@ -3555,6 +3553,17 @@ function fabriquerVueCalendrierBase(greffon) {
     }
   };
 }
+
+// Une tâche du calendrier : celles du filtre de la base, PLUS celles qui ne
+// doivent pas s'effacer en sortant du filtre (une fois cochées
+// « terminée ») : une tâche qui porte un créneau, et une tâche terminée
+// datée, qui reste dans le bandeau à sa date, cochée et barrée.
+function tacheGardeeCalendrier(t, dedans) {
+  if (dedans.has(t.ref) || (t.creneaux || []).length > 0) return true;
+  const finie = t.statut === 'terminée' || t.terminee === true;
+  return finie && !!Ariane.jourValide(t.echeance);
+}
+
 
 //#endregion 17 · Vue Calendrier
 
