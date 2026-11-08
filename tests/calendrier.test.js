@@ -732,3 +732,32 @@ test('Calendrier : une tâche datée cochée reste, barrée, même sortie du fil
   assert.equal(tacheGardeeCalendrier({ ref: 'T005', statut: 'terminée', echeance: '' }, dedans), false, 'sans date : nulle part où la montrer');
   assert.equal(tacheGardeeCalendrier({ ref: 'T006', statut: 'à faire', echeance: '2026-11-07' }, dedans), false, 'hors filtre et pas terminée');
 });
+
+test('Créneau lâché dans le bandeau : tâche du jour, créneau retiré, une seule annulation', async () => {
+  const { MoteurCalendrier, annulerDernier } = Ariane._test;
+  const m = Object.create(MoteurCalendrier.prototype);
+  const ecrit = [];
+  const apercus = [];
+  Object.assign(m, {
+    _taches: [{ ref: 'T090', debut: '2026-10-01', echeance: '2026-11-20', creneaux: ['2026-11-09 10:00-11:00', '2026-11-12 14:00-15:00'] }],
+    greffon: {
+      majCreneau: async (ref, c) => { ecrit.push(['creneau', ref, c.avant, c.debut, c.fin]); return true; },
+      ecrireDatesTaches: async (l) => { ecrit.push(['dates', l[0].ref, l[0].debut, l[0].echeance]); return 1; },
+    },
+    _coalesceRedessin() {},
+    _apres: (ref, a) => apercus.push(a),
+  });
+  await m._creneauVersJour('T090', '2026-11-09 10:00-11:00', '2026-11-10');
+  assert.deepEqual(ecrit, [
+    ['creneau', 'T090', '2026-11-09 10:00-11:00', '', ''],
+    ['dates', 'T090', '2026-11-10', '2026-11-10'],
+  ]);
+  assert.deepEqual(apercus[0].creneaux, ['2026-11-12 14:00-15:00'], 'les autres créneaux restent');
+  // Une seule annulation remet dates et créneau.
+  ecrit.length = 0;
+  await annulerDernier(m);
+  assert.deepEqual(ecrit, [
+    ['dates', 'T090', '2026-10-01', '2026-11-20'],
+    ['creneau', 'T090', '', '2026-11-09T10:00', '2026-11-09T11:00'],
+  ]);
+});

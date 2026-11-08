@@ -1404,6 +1404,38 @@ class MoteurCalendrier extends MoteurVue {
   // sert de valeur anticipée dans _enAttente, pour que les redessins qui
   // partent avant la propagation de l'écriture affichent déjà la nouvelle
   // géométrie au lieu de revenir à l'ancienne.
+  // Un créneau lâché dans le bandeau : la tâche devient une tâche de ce
+  // jour, échéance ce jour-là (son début aussi, s'il en avait un autre, pour
+  // qu'elle tienne dans la journée), et ce créneau-là disparaît. Ses autres
+  // créneaux restent. Une seule annulation défait le tout.
+  async _creneauVersJour(ref, brut, jour) {
+    const t = (this._taches || []).find((x) => x.ref === ref) || {};
+    const avant = { ref, debut: t.debut || '', echeance: t.echeance || '' };
+    const apres = { ref, debut: t.debut && t.debut !== jour ? jour : (t.debut || ''), echeance: jour };
+    const anc = Ariane.parseCreneau(brut);
+    const prevu = this._creneauxAnticipes(ref, brut, '', '');
+    const faire = async () => {
+      await this.greffon.majCreneau(ref, { avant: brut, debut: '', fin: '' });
+      await this.greffon.ecrireDatesTaches([apres]);
+    };
+    this._coalesceRedessin();
+    try { await faire(); } catch (e) {
+      new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
+      this.dessiner();
+      return;
+    }
+    if (this.racine && this.racine.focus) this.racine.focus({ preventScroll: true });
+    poserAnnulation(this, async () => {
+      await this.greffon.ecrireDatesTaches([avant]);
+      if (anc) await this.greffon.majCreneau(ref, { avant: '', debut: anc.debut, fin: anc.fin });
+      this._apres(ref, { debut: avant.debut, echeance: avant.echeance, creneaux: undefined });
+    }, async () => {
+      await faire();
+      this._apres(ref, { debut: apres.debut, echeance: apres.echeance, creneaux: prevu });
+    });
+    this._apres(ref, { debut: apres.debut, echeance: apres.echeance, creneaux: prevu });
+  }
+
   _creneauxAnticipes(ref, avant, debut, fin) {
     const t = (this._tachesBrutes || this._taches || []).find((x) => x.ref === ref);
     const liste = [].concat((t && t.creneaux) || []).map(String)
@@ -1927,9 +1959,32 @@ class MoteurCalendrier extends MoteurVue {
         }
       }
     };
+    // Le bandeau des tâches du jour, en haut : y lâcher le créneau en fait
+    // une tâche de ce jour (voir _creneauVersJour). Seul le geste « bouger »
+    // y mène ; le jour visé s'éclaire, le guide de la grille s'efface.
+    const bandeau = !mode && this.racine ? this.racine.querySelector('.zfa-cal-bandeau') : null;
+    let jourBandeau = null;
+    const sousBandeau = (pt) => {
+      if (!bandeau || !pt || pt.clientX == null) return null;
+      const r = bandeau.getBoundingClientRect();
+      if (pt.clientY < r.top || pt.clientY > r.bottom) return null;
+      for (const c of bandeau.querySelectorAll('.zfa-cal-bandeau-jour')) {
+        const rc = c.getBoundingClientRect();
+        if (pt.clientX >= rc.left && pt.clientX < rc.right) return c;
+      }
+      return null;
+    };
+    const viserBandeau = (c) => {
+      if (c === jourBandeau) return;
+      if (jourBandeau) jourBandeau.classList.remove('zfa-cal-cible');
+      jourBandeau = c;
+      if (c) c.classList.add('zfa-cal-cible');
+      if (guide) guide.style.visibility = c ? 'hidden' : '';
+    };
     const nettoyerGuide = () => {
       if (guide) { guide.remove(); guide = null; }
       if (colCible) { colCible.classList.remove('zfa-cal-col-cible-jour'); colCible = null; }
+      viserBandeau(null);
     };
     const bouger = (mv) => {
       const d = mv.clientY - y0;
@@ -1962,6 +2017,7 @@ class MoteurCalendrier extends MoteurVue {
         dJ = Math.max(-idxDep, Math.min(strip.length - 1 - idxDep, Math.round(dx / colW)));
       }
       poserGuide(topSnap, idxDep + dJ);
+      viserBandeau(sousBandeau(mv));
     };
     // Le navigateur peut livrer bien plus d'un pointermove par image (souris
     // haute fréquence, trackpad) ; sans throttle, chaque geste rejouait tout
@@ -1990,7 +2046,15 @@ class MoteurCalendrier extends MoteurVue {
       this._doc().removeEventListener('pointerup', lacher);
       this._doc().removeEventListener('pointercancel', lacher);
       this._gesteCal = false;
+      const versBandeau = bouge && !mode ? sousBandeau(up && up.clientX != null ? up : null) || jourBandeau : null;
       nettoyerGuide();
+      if (versBandeau && versBandeau.dataset.jour) {
+        bloc.classList.remove('zfa-cal-bloc-flotte');
+        bloc.style.transition = 'opacity 120ms ease';
+        bloc.style.opacity = '0';
+        await this._creneauVersJour(ref, brut, versBandeau.dataset.jour);
+        return;
+      }
       if (!bouge) {
         bloc.classList.remove('zfa-cal-bloc-flotte');
         bloc.style.transform = '';
@@ -2701,20 +2765,21 @@ class MoteurCalendrier extends MoteurVue {
 
     // Créneaux → blocs horaires. Bandeau « tout le jour » : SEULEMENT les jalons
     // et les tâches d'une seule journée (pas de début, ou début == échéance).
-    // Les plages multi-jours ne s'affichent pas ici pour l'instant.
+    // Les plages multi-jours ne s'affichent pas ici pour l'instant. Une tâche
+    // à créneaux y figure aussi à son échéance, quand aucun créneau ne tombe
+    // ce jour-là (un créneau glissé dans le bandeau en fait une tâche du
+    // jour, ses autres créneaux restant à leur place).
     const horaire = new Map(jours.map((j) => [j, []]));
     const toutJour = new Map(jours.map((j) => [j, []]));
     for (const t of this._taches) {
       const crs = Ariane.creneauxDeTache(t);
-      if (crs.length) {
-        for (const c of crs) {
-          const j = c.debut.slice(0, 10);
-          if (horaire.has(j)) horaire.get(j).push({ t, ev: { source: 'creneau',
-            debut: c.debut, fin: c.fin, allDay: false, brut: c.brut } });
-        }
-        continue;
+      for (const c of crs) {
+        const j = c.debut.slice(0, 10);
+        if (horaire.has(j)) horaire.get(j).push({ t, ev: { source: 'creneau',
+          debut: c.debut, fin: c.fin, allDay: false, brut: c.brut } });
       }
       const ech = Ariane.jourValide(t.echeance);
+      if (crs.some((c) => c.debut.slice(0, 10) === ech)) continue;
       if (!ech || !toutJour.has(ech)) continue;
       const deb = Ariane.jourValide(t.debut);
       if (t.jalon || !deb || deb === ech) {
