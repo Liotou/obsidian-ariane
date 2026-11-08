@@ -21672,6 +21672,7 @@ const avecTaches = (Base) => class extends Base {
       '- Une tâche par action distincte (« rédiger X » puis « envoyer X à Y » = deux tâches). Ne découpe pas une action unique en étapes.',
       '- titre : bref, verbe à l\'infinitif, sans la date ; garde à l\'identique les noms propres et sigles.',
       '- debut / echeance : AAAA-MM-JJ. Résous toute date de la description, explicite (« 30/10 », « 15 novembre ») ou relative (« demain », « vendredi prochain », « dans deux semaines », « fin du mois ») à partir de la date du jour. « pour », « avant », « d\'ici » annoncent une échéance ; « à partir de », « dès » un début. Une date qui porte sur toute la description vaut pour chaque tâche concernée. Sans date : "".',
+      '- jalon : true pour une date butoir ponctuelle plutôt qu\'un travail qui s\'étale (candidature, dépôt, rendu, soumission, soutenance, présentation, réunion de validation), ou quand la description le dit (« jalon », « c\'est un jalon », « jalon : … »). Un jalon n\'a pas de début, seulement son échéance. Sinon false.',
       '- apres : le rang (0, 1, 2…) dans TON tableau d\'une tâche à finir avant celle-ci (envoyer un résumé vient après l\'avoir rédigé), sinon null.',
       '- bloque_par : le titre approximatif d\'une tâche DÉJÀ EXISTANTE à finir avant, sinon "".',
       '- note : une précision utile qui ne tient pas dans le titre, sinon "".',
@@ -21679,7 +21680,7 @@ const avecTaches = (Base) => class extends Base {
       this._blocNotesConceptuelles(),
       '',
       'Réponds UNIQUEMENT par le tableau JSON. Chaque entrée :',
-      '{"titre": "...", "famille": "id", "debut": "", "echeance": "", "apres": null, "bloque_par": "", "note": "", "note_visee": ""}',
+      '{"titre": "...", "famille": "id", "jalon": false, "debut": "", "echeance": "", "apres": null, "bloque_par": "", "note": "", "note_visee": ""}',
       '',
       'DESCRIPTION :',
       p,
@@ -21743,7 +21744,7 @@ const avecTaches = (Base) => class extends Base {
       // autres y renvoient) mais n'est pas créée.
       if (s.inclus === false) { refs.push(null); continue; }
       const chemin = await this.creerTache({
-        intitule: s.titre, famille: s.famille, debut: s.debut, echeance: s.echeance,
+        intitule: s.titre, famille: s.famille, debut: s.jalon ? '' : s.debut, echeance: s.echeance,
         jalon: s.jalon, priorite: s.priorite,
         source: s.famille === 'lecture' ? s.source : undefined,
         livrable: s.famille !== 'lecture' && s.livrable ? s.livrable : undefined,
@@ -34285,6 +34286,11 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       const ech = l.createEl('input', { type: 'date', cls: 'zfa-tc-ln-date', attr: { 'aria-label': tr('Échéance') } });
       ech.value = n.echeance || '';
       ech.addEventListener('change', () => { n.echeance = ech.value; });
+      const jal = l.createEl('label', { cls: 'zfa-struct-jal' });
+      const jc = jal.createEl('input', { type: 'checkbox' });
+      jc.checked = !!n.jalon;
+      jc.addEventListener('change', () => { n.jalon = jc.checked; });
+      jal.createSpan({ text: tr('jalon') });
       if (i === 0) l.createSpan({ cls: 'zfa-tc-ln-marque', text: tr('créneau') });
     });
     const pied = z.createDiv({ cls: 'zfa-tc-ln-pied' });
@@ -34522,6 +34528,12 @@ class ModaleTache extends obsidian.Modal {
         attr: { title: tr('Échéance') } });
       ech.value = n.echeance || '';
       ech.onchange = () => { n.echeance = ech.value; };
+      // Jalon : ce que l'IA a compris, à corriger d'un clic.
+      const jal = d.createEl('label', { cls: 'zfa-struct-jal' });
+      const jc = jal.createEl('input', { type: 'checkbox' });
+      jc.checked = !!n.jalon;
+      jc.onchange = () => { n.jalon = jc.checked; };
+      jal.createSpan({ text: tr('jalon') });
       const liens = [];
       if (n.apres != null && specs[n.apres]) liens.push(tr('après « ') + specs[n.apres].titre + ' »');
       if (n.bloquePar) liens.push(tr('bloquée par « ') + n.bloquePar + ' »');

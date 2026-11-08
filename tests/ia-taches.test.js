@@ -293,3 +293,23 @@ test('Création en langage naturel : Entrée analyse, puis crée ; la fenêtre s
   assert.equal(fermee, false);
   assert.equal(k.repondu, false);
 });
+
+test('Langage naturel : l\'IA peut faire d\'une tâche un jalon, sans début', async () => {
+  const specs = Ariane.lireTachesLN([
+    { titre: 'Candidater à l\'atelier doctoral de l\'AIMS 2027', famille: 'action', jalon: true, debut: '2026-12-01', echeance: '2027-01-18' },
+    { titre: 'Relire', famille: 'action', jalon: false, echeance: '' },
+  ], { familles: ['action'], defaut: 'action' });
+  assert.deepEqual(specs.map((s) => s.jalon), [true, false]);
+  // À la création, un jalon perd son début.
+  const g = Object.create(Ariane.prototype);
+  const crees = [];
+  Object.assign(g, {
+    creerTache: async (o) => { crees.push(o); return '08 - Tâches/T09' + crees.length + '.md'; },
+    refDeChemin: (c) => c.split('/').pop().replace('.md', ''),
+    ajouterNoteTache: async () => {}, creerBlocage: async () => {}, tachesPourGantt: () => [],
+  });
+  await g.creerTachesLN(specs);
+  assert.equal(crees[0].jalon, true);
+  assert.equal(crees[0].debut, '');
+  assert.equal(crees[0].echeance, '2027-01-18');
+});

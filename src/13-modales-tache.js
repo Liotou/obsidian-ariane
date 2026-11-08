@@ -283,6 +283,11 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       const ech = l.createEl('input', { type: 'date', cls: 'zfa-tc-ln-date', attr: { 'aria-label': tr('Échéance') } });
       ech.value = n.echeance || '';
       ech.addEventListener('change', () => { n.echeance = ech.value; });
+      const jal = l.createEl('label', { cls: 'zfa-struct-jal' });
+      const jc = jal.createEl('input', { type: 'checkbox' });
+      jc.checked = !!n.jalon;
+      jc.addEventListener('change', () => { n.jalon = jc.checked; });
+      jal.createSpan({ text: tr('jalon') });
       if (i === 0) l.createSpan({ cls: 'zfa-tc-ln-marque', text: tr('créneau') });
     });
     const pied = z.createDiv({ cls: 'zfa-tc-ln-pied' });
@@ -520,6 +525,12 @@ class ModaleTache extends obsidian.Modal {
         attr: { title: tr('Échéance') } });
       ech.value = n.echeance || '';
       ech.onchange = () => { n.echeance = ech.value; };
+      // Jalon : ce que l'IA a compris, à corriger d'un clic.
+      const jal = d.createEl('label', { cls: 'zfa-struct-jal' });
+      const jc = jal.createEl('input', { type: 'checkbox' });
+      jc.checked = !!n.jalon;
+      jc.onchange = () => { n.jalon = jc.checked; };
+      jal.createSpan({ text: tr('jalon') });
       const liens = [];
       if (n.apres != null && specs[n.apres]) liens.push(tr('après « ') + specs[n.apres].titre + ' »');
       if (n.bloquePar) liens.push(tr('bloquée par « ') + n.bloquePar + ' »');
