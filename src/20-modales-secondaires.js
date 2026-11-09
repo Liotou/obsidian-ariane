@@ -355,12 +355,31 @@ class ModaleSommaireLecture extends obsidian.Modal {
     this.tri = 'page';
     this.colonnes = Number(greffon.settings.sommaireColonnes) === 2 ? 2 : 1;
     this.sortie = greffon.settings.sommaireSortie === 'a4' ? 'a4' : 'fiche';
+    this.tirages = [];
+    this.seulementNouvelles = false;
+  }
+
+  // L'état du suivi d'après les entrées connues et les tirages notés.
+  _etat() {
+    return Ariane.etatSommaire(this.entrees || this.greffon.annotationsPourSommaire(this.source.cle), this.tirages);
+  }
+
+  // Les entrées à imprimer : toutes, ou les seules nouvelles quand on
+  // complète un sommaire déjà imprimé. Les nouvelles sont marquées pour
+  // l'aperçu.
+  _aImprimer() {
+    const etat = this._etat();
+    const neuves = new Set(etat.nouvelles);
+    let l = (this.entrees || this.greffon.annotationsPourSommaire(this.source.cle))
+      .map((e) => Object.assign({}, e, etat.etat === 'a-completer' && neuves.has(Ariane.cleEntreeSommaire(e)) ? { nouvelle: true } : {}));
+    if (this.seulementNouvelles && etat.etat === 'a-completer') l = l.filter((e) => e.nouvelle);
+    return Ariane.trierSommaire(l, this.tri);
   }
 
   _html(imprimer) {
     const d = new Date();
     const p2 = (n) => String(n).padStart(2, '0');
-    const entrees = Ariane.trierSommaire(this.entrees || this.greffon.annotationsPourSommaire(this.source.cle), this.tri);
+    const entrees = this._aImprimer();
     return Ariane.pageSommaireLecture({
       titre: Ariane.titreCourtOuvrage(this.source.titre), citation: this.source.citation,
       date: p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + '/' + d.getFullYear(),
@@ -377,6 +396,7 @@ class ModaleSommaireLecture extends obsidian.Modal {
       ? tr('Fiches de 10 × 15 cm, trois par feuille A4 à découper. Imprimez en recto verso, reliure bord long, à 100 % (sans ajustement à la page) : chaque verso tombe au dos de son recto.')
       : tr('Au format des fiches graphiques (10 × 15 cm), une fiche par page, recto verso.'));
     majAide();
+    this.zoneSuivi = contentEl.createDiv({ cls: 'zfa-sommaire-suivi' });
     const reglages = contentEl.createDiv({ cls: 'zfa-sommaire-reglages' });
     new obsidian.Setting(reglages).setName(tr('Sortie'))
       .addDropdown((d) => d.addOptions({ fiche: tr('Fiche 10 × 15'), a4: tr('A4 à découper') }).setValue(this.sortie).onChange(async (v) => {
@@ -396,11 +416,17 @@ class ModaleSommaireLecture extends obsidian.Modal {
     new obsidian.Setting(reglages).setName(tr('Ordre'))
       .addDropdown((d) => d.addOptions({ page: tr('Par page'), ordre: tr('Ordre de lecture') }).setValue(this.tri)
         .onChange((v) => { this.tri = v; this._apercu(); }));
+    // Compléter un sommaire déjà imprimé : une fiche des seules nouvelles.
+    this.reglageQuoi = new obsidian.Setting(reglages).setName(tr('Annotations'))
+      .addDropdown((d) => d.addOptions({ toutes: tr('Toutes'), nouvelles: tr('Nouvelles seulement') }).setValue('toutes')
+        .onChange((v) => { this.seulementNouvelles = v === 'nouvelles'; this._apercu(); }));
     this.cadre = contentEl.createEl('iframe', { cls: 'zfa-sommaire-apercu', attr: { title: tr('Aperçu') } });
     this._apercu();
     // Les pages manquantes (annotations d'EPUB) se lisent dans Zotero : l'aperçu
     // se refait quand elles arrivent.
-    this.greffon.entreesSommaire(this.source.cle).then((l) => { this.entrees = l; if (this.cadre.isConnected) this._apercu(); });
+    this.greffon.entreesSommaire(this.source.cle).then((l) => { this.entrees = l; if (this.cadre.isConnected) { this._apercu(); this._dessinerSuivi(); } });
+    this._dessinerSuivi();
+    this.greffon.tiragesSommaire(this.source.cle).then((t) => { this.tirages = t; if (this.cadre.isConnected) { this._apercu(); this._dessinerSuivi(); } });
     const pied = contentEl.createDiv({ cls: 'modal-button-container' });
     const saisir = pied.createEl('button', { text: tr('Saisir les pages…') });
     saisir.onclick = async () => {
@@ -415,11 +441,84 @@ class ModaleSommaireLecture extends obsidian.Modal {
     nav.onclick = () => this._navigateur();
     const imp = pied.createEl('button', { cls: 'mod-cta', text: tr('Imprimer…') });
     imp.onclick = () => {
-      try { this.cadre.contentWindow.focus(); this.cadre.contentWindow.print(); } catch (e) { this._navigateur(); }
+      const sortie = this._aImprimer();
+      try { this.cadre.contentWindow.focus(); this.cadre.contentWindow.print(); } catch (e) { this._navigateur(); return; }
+      this._proposerMarquage(sortie);
     };
   }
 
-  _apercu() { this.cadre.srcdoc = this._html(false); }
+  _apercu() {
+    this.cadre.srcdoc = this._html(false);
+    if (this.reglageQuoi) this.reglageQuoi.settingEl.toggle(this._etat().etat === 'a-completer');
+  }
+
+  // L'état du suivi, l'historique des tirages (chacun s'oublie d'un clic,
+  // s'il a été noté par erreur) et le marquage à la main.
+  _dessinerSuivi() {
+    const z = this.zoneSuivi;
+    if (!z) return;
+    z.empty();
+    const e = this._etat();
+    const ligne = z.createDiv({ cls: 'zfa-sommaire-suivi-etat est-' + e.etat });
+    const texte = ligne.createSpan({ cls: 'zfa-sommaire-suivi-texte' });
+    if (e.etat === 'jamais') texte.setText(tr('Pas encore imprimé.'));
+    else if (e.etat === 'a-jour') texte.setText(tr('Imprimé le ') + Ariane.dateSommaire(e.dernier.date) + tr(', à jour.'));
+    else {
+      const n = e.nouvelles.length;
+      texte.setText(tr('Imprimé le ') + Ariane.dateSommaire(e.dernier.date) + ' : ' + n + ' '
+        + (n > 1 ? tr('annotations nouvelles depuis, surlignées dans l’aperçu.') : tr('annotation nouvelle depuis, surlignée dans l’aperçu.')));
+    }
+    if (e.changees.length) {
+      const n = e.changees.length;
+      ligne.createSpan({ cls: 'zfa-sommaire-suivi-pages', text: n + ' ' + (n > 1 ? tr('pages ont changé depuis le papier.') : tr('page a changé depuis le papier.')) });
+    }
+    if (e.etat !== 'a-jour') {
+      const b = ligne.createEl('button', { cls: 'zfa-sommaire-suivi-bt', text: tr('Marquer comme imprimé') });
+      b.onclick = () => this._marquer(this._aImprimer());
+    }
+    if (!e.tirages.length) return;
+    const hist = z.createEl('details', { cls: 'zfa-sommaire-historique' });
+    hist.createEl('summary', { text: tr('Tirages') + ' (' + e.tirages.length + ')' });
+    const ul = hist.createEl('ul');
+    // L'ordre du fichier, pour retirer le bon tirage.
+    this.tirages.forEach((t, rang) => {
+      const li = ul.createEl('li');
+      li.createSpan({ text: Ariane.dateSommaire(t.date) + ' : ' + t.n + ' ' + (t.n > 1 ? tr('annotations') : tr('annotation'))
+        + (t.partiel ? ' ' + tr('(nouvelles seulement)') : '') });
+      const x = li.createEl('button', { cls: 'clickable-icon zfa-sommaire-historique-x', attr: { 'aria-label': tr('Oublier ce tirage') } });
+      obsidian.setIcon(x, 'x');
+      x.onclick = async () => {
+        this.tirages = await this.greffon.retirerTirageSommaire(this.source.cle, rang);
+        this._apercu();
+        this._dessinerSuivi();
+      };
+    });
+  }
+
+  // Après le dialogue d'impression, dont on ne sait pas s'il a été annulé :
+  // la question, posée dans la fenêtre même.
+  _proposerMarquage(sortie) {
+    const z = this.zoneSuivi;
+    if (!z) return;
+    z.querySelectorAll('.zfa-sommaire-confirmer').forEach((x) => x.remove());
+    const c = z.createDiv({ cls: 'zfa-sommaire-confirmer' });
+    c.createSpan({ text: tr('Le sommaire est-il imprimé ?') });
+    const oui = c.createEl('button', { cls: 'mod-cta', text: tr('Marquer comme imprimé') });
+    oui.onclick = () => this._marquer(sortie);
+    const non = c.createEl('button', { text: tr('Pas encore') });
+    non.onclick = () => c.remove();
+  }
+
+  async _marquer(sortie) {
+    const partiel = this.seulementNouvelles && this._etat().etat === 'a-completer';
+    this.tirages = await this.greffon.enregistrerTirageSommaire(this.source.cle, sortie, partiel);
+    this.seulementNouvelles = false;
+    const d = this.reglageQuoi && this.reglageQuoi.settingEl.querySelector('select');
+    if (d) d.value = 'toutes';
+    this._apercu();
+    this._dessinerSuivi();
+    new obsidian.Notice(tr('Sommaire marqué comme imprimé.'));
+  }
 
   // Repli : la page dans le navigateur, qui ouvre aussitôt son impression.
   async _navigateur() {
@@ -429,14 +528,64 @@ class ModaleSommaireLecture extends obsidian.Modal {
       const fs = require('fs');
       const nom = 'Sommaire ' + this.source.reference.replace(/[\\/:*?"<>|]+/g, ' ') + '.html';
       const chemin = path.join(os.tmpdir(), nom);
+      const sortie = this._aImprimer();
       fs.writeFileSync(chemin, this._html(true), 'utf8');
       await require('electron').shell.openPath(chemin);
+      this._proposerMarquage(sortie);
     } catch (e) {
       new obsidian.Notice(tr('Ouverture impossible : ') + ((e && e.message) || e));
     }
   }
 
   onClose() { this.contentEl.empty(); }
+}
+
+// Le choix de la source d'un sommaire : chaque source porte l'état de son
+// sommaire (pas imprimé, imprimé le…, nouvelles depuis…), et des puces
+// filtrent la liste par état.
+class ModaleChoixSourceSommaire extends ChoixListeModal {
+  constructor(app, sources, onChoix) {
+    super(app, tr('Sommaire de lecture : quelle source ?'),
+      (sources || []).map((s) => Object.assign({ nom: s.reference + '  ' + (s.titre ? s.titre.slice(0, 80) + '  ' : '') + '(' + s.n + ')' }, s)),
+      onChoix);
+    if (!ModaleChoixSourceSommaire.filtre) ModaleChoixSourceSommaire.filtre = 'toutes';
+  }
+
+  getItems() {
+    const f = ModaleChoixSourceSommaire.filtre;
+    if (f === 'toutes') return this.items;
+    if (f === 'a-imprimer') return this.items.filter((s) => s.etat !== 'a-jour');
+    return this.items.filter((s) => s.etat === f);
+  }
+
+  renderSuggestion(m, el) {
+    super.renderSuggestion(m, el);
+    const s = m.item || m;
+    el.addClass('zfa-sommaire-choix');
+    el.createSpan({ cls: 'zfa-sommaire-choix-etat est-' + (s.etat || 'jamais'), text: Ariane.libelleEtatSommaire(s) });
+  }
+
+  onOpen() {
+    super.onOpen();
+    const compte = (f) => (f === 'toutes' ? this.items.length : f === 'a-imprimer' ? this.items.filter((s) => s.etat !== 'a-jour').length
+      : this.items.filter((s) => s.etat === f).length);
+    const barre = this.modalEl.createDiv({ cls: 'zfa-sommaire-filtres' });
+    const puces = [['toutes', tr('Toutes')], ['a-imprimer', tr('À imprimer')], ['a-completer', tr('À compléter')], ['jamais', tr('Jamais imprimées')], ['a-jour', tr('À jour')]];
+    // Un filtre retenu qui ne garde plus rien retombe sur « Toutes ».
+    if (!compte(ModaleChoixSourceSommaire.filtre)) ModaleChoixSourceSommaire.filtre = 'toutes';
+    for (const [f, nom] of puces) {
+      const n = compte(f);
+      if (!n && f !== 'toutes') continue;
+      const b = barre.createEl('button', { cls: 'zfa-sommaire-filtre' + (ModaleChoixSourceSommaire.filtre === f ? ' est-actif' : ''), text: nom + ' (' + n + ')' });
+      b.onclick = () => {
+        ModaleChoixSourceSommaire.filtre = f;
+        barre.querySelectorAll('.zfa-sommaire-filtre').forEach((x) => x.toggleClass('est-actif', x === b));
+        this.inputEl.dispatchEvent(new Event('input'));
+        this.inputEl.focus();
+      };
+    }
+    this.resultContainerEl.parentElement.insertBefore(barre, this.resultContainerEl);
+  }
 }
 
 // Pages saisies à la main pour un livre papier : les numéros notés sur

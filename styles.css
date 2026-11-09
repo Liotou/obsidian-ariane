@@ -4423,12 +4423,39 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 }
 /* Sommaire de lecture : l'aperçu de la feuille à imprimer. */
 .zfa-sommaire-modale { width: min(620px, 92vw); }
-.zfa-sommaire-reglages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 var(--size-4-4); }
+.zfa-sommaire-reglages { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0 var(--size-4-4); }
 .zfa-sommaire-reglages .setting-item { border: none; padding: var(--size-4-1) 0; }
 .zfa-sommaire-apercu { display: block; width: 100%; height: min(64vh, 640px); margin-top: var(--size-4-2);
   border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: #e8e8e8; }
 @media (max-width: 640px) { .zfa-sommaire-reglages { grid-template-columns: minmax(0, 1fr); } }
 .zfa-sommaire-aide { margin-bottom: var(--size-4-2); }
+/* Suivi des sommaires imprimés : l'état, les tirages, la question d'après
+   l'impression ; dans le choix de la source, l'état de chacune. */
+.zfa-sommaire-suivi { display: flex; flex-direction: column; gap: var(--size-4-1); margin-bottom: var(--size-4-2); font-size: var(--font-ui-small); }
+.zfa-sommaire-suivi:empty { display: none; }
+.zfa-sommaire-suivi-etat { display: flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-1) var(--size-4-3); }
+.zfa-sommaire-suivi-etat.est-a-jour .zfa-sommaire-suivi-texte { color: var(--text-success); }
+.zfa-sommaire-suivi-etat.est-a-completer .zfa-sommaire-suivi-texte { color: var(--text-warning); }
+.zfa-sommaire-suivi-etat.est-jamais .zfa-sommaire-suivi-texte { color: var(--text-muted); }
+.zfa-sommaire-suivi-pages { color: var(--text-muted); }
+.zfa-sommaire-suivi-bt { margin-left: auto; }
+.zfa-sommaire-historique summary { cursor: pointer; color: var(--text-muted); }
+.zfa-sommaire-historique ul { margin: var(--size-4-1) 0 0; padding-left: var(--size-4-5); }
+.zfa-sommaire-historique li { display: flex; align-items: center; gap: var(--size-4-2); font-variant-numeric: tabular-nums; }
+.zfa-sommaire-historique-x { padding: 2px; height: auto; }
+.zfa-sommaire-historique-x svg { width: 12px; height: 12px; }
+.zfa-sommaire-confirmer { display: flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-2); padding: var(--size-4-2) var(--size-4-3);
+  border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-secondary); }
+.zfa-sommaire-confirmer > span { margin-right: auto; }
+.zfa-sommaire-filtres { display: flex; flex-wrap: wrap; gap: var(--size-4-1); padding: var(--size-4-2) var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border); }
+.zfa-sommaire-filtre { height: auto; padding: 2px 10px; font-size: var(--font-ui-smaller); border-radius: var(--radius-l);
+  background: var(--background-secondary); box-shadow: none; border: 1px solid var(--background-modifier-border); color: var(--text-muted); }
+.zfa-sommaire-filtre.est-actif { background: var(--interactive-accent); border-color: var(--interactive-accent); color: var(--text-on-accent); }
+.suggestion-item.zfa-sommaire-choix { display: flex; align-items: baseline; gap: var(--size-4-3); }
+.zfa-sommaire-choix-etat { margin-left: auto; flex: 0 0 auto; font-size: var(--font-ui-smaller); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.zfa-sommaire-choix-etat.est-a-completer { color: var(--text-warning); }
+.zfa-sommaire-choix-etat.est-a-jour { color: var(--text-success); }
 /* Temps d'écran de l'iPhone : l'étiquette d'un créneau, ses interruptions. */
 .zfa-iphone-et { display: inline-flex; align-items: center; gap: 3px; }
 .zfa-iphone-ic { display: inline-flex; color: var(--text-muted); }

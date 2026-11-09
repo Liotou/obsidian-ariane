@@ -1954,7 +1954,9 @@ const avecNoteBiblio = (Base) => class extends Base {
     const u = (n) => (n * 0.254).toFixed(2) + 'mm';
     const colonnes = Number(o.colonnes) === 2 ? 2 : 1;
     const a4 = o.sortie === 'a4';
-    const entrees = (o.entrees || []).map((e) => ({ p: e.page ? e.page + '.' : '', t: String(e.titre || '') }));
+    // Une entrée « nouvelle » (pas encore imprimée) est surlignée à l'écran
+    // seulement : le papier n'en garde rien.
+    const entrees = (o.entrees || []).map((e) => Object.assign({ p: e.page ? e.page + '.' : '', t: String(e.titre || '') }, e.nouvelle ? { n: 1 } : {}));
     // Largeur de la colonne des pages, au plus juste : un chiffre tient un
     // demi-cadratin (chiffres tabulaires), le point un quart, le reste davantage.
     const chasse = (p) => [...p].reduce((n, c) => n + (/\d/.test(c) ? 0.53 : c === '.' ? 0.25 : 0.6), 0);
@@ -1984,6 +1986,7 @@ const avecNoteBiblio = (Base) => class extends Base {
       '    var li = document.createElement("li");',
       '    var p = document.createElement("span"); p.className = "p"; p.textContent = e.p;',
       '    var t = document.createElement("span"); t.className = "t"; t.textContent = e.t;',
+      '    if (e.n) li.className = "nouvelle";',
       '    li.appendChild(p); li.appendChild(t);',
       '    c.querySelector("ol").appendChild(li);',
       '    if (deborde(c) && c.querySelectorAll("li").length > 1) {',
@@ -2047,6 +2050,7 @@ const avecNoteBiblio = (Base) => class extends Base {
       + '@media screen { html { background: #e8e8e8; } body { padding: 16px 0; }'
       + ' .carte, .feuille { margin: 0 auto 16px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }'
       + ' .place .carte { margin: 0; box-shadow: none; }'
+      + ' li.nouvelle .t { background: linear-gradient(transparent 52%, #ffe27a 52%); }'
       + ' .feuille.est-verso::before { content: "Verso"; position: absolute; right: 4mm; top: 3mm; font: 9px Helvetica, sans-serif; color: #999; } }\n'
       + '</style></head><body>\n<div id="cartes"></div><div id="feuilles"></div>\n'
       + '<script>\n' + script + '\n</script>\n'
@@ -2349,11 +2353,126 @@ const avecNoteBiblio = (Base) => class extends Base {
     return Ariane.completerPagesSommaire(entrees, zotero);
   }
 
-  ouvrirSommaireLecture() {
+  // ── suivi des sommaires imprimés ──
+  //  Pour chaque source, ses tirages : la date et, par annotation imprimée,
+  //  la page portée sur le papier. Rangés à part
+  //  (« .ariane/sommaires-imprimes.json », par clé de source), comme les
+  //  pages saisies à la main : rien n'est écrit dans les notes.
+
+  // L'identité d'une entrée pour le suivi : la clé de l'annotation Zotero,
+  // à défaut son titre.
+  static cleEntreeSommaire(e) {
+    return (e && e.cle) ? String(e.cle) : 't:' + String((e && e.titre) || '');
+  }
+
+  // Le tirage d'entrées imprimées : { date (AAAA-MM-JJ), n, partiel, pages
+  // { clé → page } }. Partiel : seules les nouvelles ont été imprimées.
+  static tirageSommaire(entrees, date, partiel) {
+    const pages = {};
+    for (const e of entrees || []) pages[Ariane.cleEntreeSommaire(e)] = String(e.page == null ? '' : e.page);
+    return { date, n: Object.keys(pages).length, partiel: !!partiel, pages };
+  }
+
+  // L'état d'un sommaire d'après ses tirages : 'jamais' (aucun), 'a-jour',
+  // ou 'a-completer' (des annotations jamais imprimées). Rend aussi les
+  // clés des nouvelles, celles dont la page a changé depuis le papier (le
+  // dernier tirage qui les portait fait foi), et le dernier tirage.
+  static etatSommaire(entrees, tirages) {
+    const t = (tirages || []).slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const imprimees = new Map();
+    for (const x of t) for (const [c, p] of Object.entries(x.pages || {})) imprimees.set(c, p);
+    const nouvelles = [];
+    const changees = [];
+    for (const e of entrees || []) {
+      const c = Ariane.cleEntreeSommaire(e);
+      if (!imprimees.has(c)) nouvelles.push(c);
+      else if (e.page != null && String(e.page) !== imprimees.get(c)) changees.push(c);
+    }
+    const etat = !t.length ? 'jamais' : nouvelles.length ? 'a-completer' : 'a-jour';
+    return { etat, nouvelles, changees, dernier: t.length ? t[t.length - 1] : null, tirages: t };
+  }
+
+  // Une date AAAA-MM-JJ en JJ/MM/AAAA.
+  static dateSommaire(iso) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? m[3] + '/' + m[2] + '/' + m[1] : String(iso || '');
+  }
+
+  // Ce que la liste des sources dit d'un sommaire : « pas imprimé »,
+  // « imprimé le 09/11/2026 », « 4 nouvelles depuis le 09/11/2026 ».
+  static libelleEtatSommaire(s) {
+    if (!s || s.etat === 'jamais' || !s.etat) return tr('pas imprimé');
+    if (s.etat === 'a-jour') return tr('imprimé le ') + Ariane.dateSommaire(s.dernier);
+    const n = Number(s.nouvelles) || 0;
+    return n + ' ' + (n > 1 ? tr('nouvelles depuis le ') : tr('nouvelle depuis le ')) + Ariane.dateSommaire(s.dernier);
+  }
+
+  get cheminSuiviSommaires() { return '.ariane/sommaires-imprimes.json'; }
+
+  async suiviSommaires() {
+    try {
+      const a = this.app.vault.adapter;
+      if (await a.exists(this.cheminSuiviSommaires)) return JSON.parse(await a.read(this.cheminSuiviSommaires)) || {};
+    } catch (e) { /* fichier absent ou abîmé */ }
+    return {};
+  }
+
+  async _ecrireSuiviSommaires(tout) {
+    const a = this.app.vault.adapter;
+    if (!(await a.exists('.ariane'))) await a.mkdir('.ariane');
+    await a.write(this.cheminSuiviSommaires, JSON.stringify(tout, null, 1));
+  }
+
+  // Les tirages d'une source, du plus ancien au plus récent.
+  async tiragesSommaire(cleSource) {
+    const s = (await this.suiviSommaires())[cleSource];
+    return (s && Array.isArray(s.tirages)) ? s.tirages : [];
+  }
+
+  // Note un tirage (les entrées effectivement imprimées) ; rend les tirages.
+  async enregistrerTirageSommaire(cleSource, entrees, partiel) {
+    const tout = await this.suiviSommaires();
+    const s = tout[cleSource] || (tout[cleSource] = { tirages: [] });
+    if (!Array.isArray(s.tirages)) s.tirages = [];
+    s.tirages.push(Ariane.tirageSommaire(entrees, jourIsoDe(new Date()), partiel));
+    await this._ecrireSuiviSommaires(tout);
+    return s.tirages;
+  }
+
+  // Oublie un tirage noté par erreur (son rang) ; rend les tirages restants.
+  async retirerTirageSommaire(cleSource, rang) {
+    const tout = await this.suiviSommaires();
+    const s = tout[cleSource];
+    if (!s || !Array.isArray(s.tirages)) return [];
+    s.tirages.splice(rang, 1);
+    if (!s.tirages.length) delete tout[cleSource];
+    await this._ecrireSuiviSommaires(tout);
+    return s.tirages;
+  }
+
+  // L'ordre de la liste des sources : la source de la note active, puis
+  // les sommaires à compléter, ceux jamais imprimés, ceux à jour.
+  static ordreSourcesSommaire(sources, cleActive) {
+    const rang = { 'a-completer': 0, jamais: 1, 'a-jour': 2 };
+    return (sources || []).map((s, i) => ({ s, i })).sort((a, b) =>
+      ((b.s.cle === cleActive) - (a.s.cle === cleActive))
+      || ((rang[a.s.etat] ?? 1) - (rang[b.s.etat] ?? 1)) || (a.i - b.i)).map((x) => x.s);
+  }
+
+  async ouvrirSommaireLecture() {
     const sources = this.sourcesAvecAnnotations();
     if (!sources.length) { new obsidian.Notice(tr('Aucune source annotée.')); return; }
-    new ChoixListeModal(this.app, tr('Sommaire de lecture : quelle source ?'),
-      sources.map((s) => Object.assign({ nom: s.reference + '  ' + (s.titre ? s.titre.slice(0, 80) + '  ' : '') + '(' + s.n + ')' }, s)),
+    const suivi = await this.suiviSommaires();
+    for (const s of sources) {
+      const e = Ariane.etatSommaire(this.annotationsPourSommaire(s.cle), (suivi[s.cle] || {}).tirages);
+      s.etat = e.etat;
+      s.nouvelles = e.nouvelles.length;
+      s.dernier = e.dernier ? e.dernier.date : '';
+    }
+    const actif = this.app.workspace.getActiveFile();
+    const fmA = actif ? ((this.app.metadataCache.getFileCache(actif) || {}).frontmatter || {}) : {};
+    const cleA = actif ? (sansLien(fmA['zotflow-source'] || '') || actif.basename) : '';
+    new ModaleChoixSourceSommaire(this.app, Ariane.ordreSourcesSommaire(sources, cleA),
       (s) => new ModaleSommaireLecture(this.app, this, s).open()).open();
   }
 

@@ -93,3 +93,62 @@ test('EPUB : la page d’une annotation retrouvée par sa position CFI', () => {
   assert.equal(Ariane.pageDepuisCfi([doc0, doc1], 'epubcfi(/6/4!/4/2,/1:0,/1:1)'), '7', 'avant tout repère : celui du document précédent');
   assert.equal(Ariane.pageDepuisCfi([doc0], 'epubcfi(/6/2!/4/2,/1:0,/1:1)'), '');
 });
+
+test('suivi des sommaires : jamais, à jour, à compléter, pages changées depuis le papier', () => {
+  const e = [{ cle: 'A', page: '3', titre: 'a' }, { cle: 'B', page: '7', titre: 'b' }];
+  assert.equal(Ariane.etatSommaire(e, []).etat, 'jamais');
+  const t1 = Ariane.tirageSommaire(e, '2026-11-02', false);
+  assert.deepEqual(t1, { date: '2026-11-02', n: 2, partiel: false, pages: { A: '3', B: '7' } });
+  const r = Ariane.etatSommaire(e, [t1]);
+  assert.equal(r.etat, 'a-jour');
+  assert.equal(r.dernier.date, '2026-11-02');
+  // Une annotation de plus, une page corrigée.
+  const e2 = [{ cle: 'A', page: '4', titre: 'a' }, { cle: 'B', page: '7', titre: 'b' }, { cle: 'C', page: '9', titre: 'c' }, { page: '', titre: 'sans clé' }];
+  const r2 = Ariane.etatSommaire(e2, [t1]);
+  assert.equal(r2.etat, 'a-completer');
+  assert.deepEqual(r2.nouvelles, ['C', 't:sans clé']);
+  assert.deepEqual(r2.changees, ['A']);
+  // Un tirage des seules nouvelles complète le premier ; le plus récent fait foi pour les pages.
+  const t2 = Ariane.tirageSommaire([e2[2], e2[3]], '2026-11-09', true);
+  const t3 = Ariane.tirageSommaire([e2[0]], '2026-11-09', true);
+  const r3 = Ariane.etatSommaire(e2, [t3, t1, t2]);
+  assert.equal(r3.etat, 'a-jour');
+  assert.deepEqual(r3.changees, []);
+  assert.deepEqual(r3.tirages.map((x) => x.date), ['2026-11-02', '2026-11-09', '2026-11-09']);
+});
+
+test('suivi des sommaires : libellés de la liste et ordre des sources', () => {
+  assert.equal(Ariane.libelleEtatSommaire({ etat: 'jamais' }), 'pas imprimé');
+  assert.equal(Ariane.libelleEtatSommaire({ etat: 'a-jour', dernier: '2026-11-09' }), 'imprimé le 09/11/2026');
+  assert.equal(Ariane.libelleEtatSommaire({ etat: 'a-completer', nouvelles: 4, dernier: '2026-11-02' }), '4 nouvelles depuis le 02/11/2026');
+  assert.equal(Ariane.libelleEtatSommaire({ etat: 'a-completer', nouvelles: 1, dernier: '2026-11-02' }), '1 nouvelle depuis le 02/11/2026');
+  const s = [{ cle: 'a', etat: 'a-jour' }, { cle: 'b', etat: 'jamais' }, { cle: 'c', etat: 'a-completer' }, { cle: 'd', etat: 'a-jour' }, { cle: 'e', etat: 'jamais' }];
+  assert.deepEqual(Ariane.ordreSourcesSommaire(s, 'd').map((x) => x.cle), ['d', 'c', 'b', 'e', 'a']);
+  assert.deepEqual(Ariane.ordreSourcesSommaire(s, '').map((x) => x.cle), ['c', 'b', 'e', 'a', 'd']);
+});
+
+test('suivi des sommaires : les tirages se notent et s’oublient dans .ariane, pas dans les notes', async () => {
+  const fichiers = {};
+  const g = Object.create(Ariane.prototype);
+  g.app = { vault: { adapter: {
+    exists: async (p) => p === '.ariane' || p in fichiers,
+    mkdir: async () => {},
+    read: async (p) => fichiers[p],
+    write: async (p, t) => { fichiers[p] = t; },
+  } } };
+  const t = await g.enregistrerTirageSommaire('@riviere2023', [{ cle: 'A', page: '3' }], false);
+  assert.equal(t.length, 1);
+  await g.enregistrerTirageSommaire('@riviere2023', [{ cle: 'B', page: '5' }], true);
+  assert.deepEqual(Object.keys(fichiers), ['.ariane/sommaires-imprimes.json']);
+  assert.equal((await g.tiragesSommaire('@riviere2023')).length, 2);
+  assert.equal((await g.retirerTirageSommaire('@riviere2023', 0))[0].pages.B, '5');
+  await g.retirerTirageSommaire('@riviere2023', 0);
+  assert.deepEqual(JSON.parse(fichiers['.ariane/sommaires-imprimes.json']), {});
+});
+
+test('sommaire : les nouvelles surlignées à l’écran seulement', () => {
+  const html = Ariane.pageSommaireLecture({ titre: 'x', entrees: [{ page: '3', titre: 'a', nouvelle: true }, { page: '4', titre: 'b' }] });
+  assert.ok(html.includes('{"p":"3.","t":"a","n":1}'));
+  assert.ok(html.includes('{"p":"4.","t":"b"}'));
+  assert.match(html, /@media screen \{[^\n]*li\.nouvelle \.t/);
+});
