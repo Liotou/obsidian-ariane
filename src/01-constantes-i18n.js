@@ -1763,6 +1763,7 @@ const TEXTES = {
     "Sommaire de lecture : quelle source ?": "Reading index: which source?",
     "Lecture : sommaire à imprimer (annotations d’une source)": "Reading: printable index (annotations of a source)",
     "Aucune source annotée.": "No annotated source.",
+    "Actualiser les agendas": "Refresh calendars",
     "pas imprimé": "not printed",
     "imprimé le ": "printed on ",
     "nouvelles depuis le ": "new since ",

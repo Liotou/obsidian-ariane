@@ -371,11 +371,22 @@ const avecTaches = (Base) => class extends Base {
 
   // Invalide le cache de l'agenda de fond et redemande à chaque vue calendrier
   // ouverte de le recharger (après un push, ou un changement de réglage).
+  // Rend la promesse des relectures, pour qui veut en attendre la fin.
   _rafraichirFond() {
     this._fondCache = null;
+    const lectures = [];
     for (const m of (this._moteursCalendrier || [])) {
-      try { m._fondCle = null; if (m._chargerFond) m._chargerFond(); } catch (e) { /* vue fermée */ }
+      try { m._fondCle = null; if (m._chargerFond) lectures.push(m._chargerFond()); } catch (e) { /* vue fermée */ }
     }
+    return Promise.all(lectures.map((p) => Promise.resolve(p).catch(() => {})));
+  }
+
+  // Le bouton « Actualiser » du calendrier : un événement ajouté ou
+  // supprimé dans Calendrier (ou Google) se voit tout de suite, sans
+  // attendre la fin des caches (une minute pour Apple, cinq pour iCal).
+  async actualiserAgendas() {
+    this._icsCache = null;
+    await this._rafraichirFond();
   }
 
   // Instantané « dernier état synchronisé » d'une tâche, pour arbitrer les

@@ -1969,6 +1969,7 @@ const TEXTES = {
     "Sommaire de lecture : quelle source ?": "Reading index: which source?",
     "Lecture : sommaire à imprimer (annotations d’une source)": "Reading: printable index (annotations of a source)",
     "Aucune source annotée.": "No annotated source.",
+    "Actualiser les agendas": "Refresh calendars",
     "pas imprimé": "not printed",
     "imprimé le ": "printed on ",
     "nouvelles depuis le ": "new since ",
@@ -19973,11 +19974,22 @@ const avecTaches = (Base) => class extends Base {
 
   // Invalide le cache de l'agenda de fond et redemande à chaque vue calendrier
   // ouverte de le recharger (après un push, ou un changement de réglage).
+  // Rend la promesse des relectures, pour qui veut en attendre la fin.
   _rafraichirFond() {
     this._fondCache = null;
+    const lectures = [];
     for (const m of (this._moteursCalendrier || [])) {
-      try { m._fondCle = null; if (m._chargerFond) m._chargerFond(); } catch (e) { /* vue fermée */ }
+      try { m._fondCle = null; if (m._chargerFond) lectures.push(m._chargerFond()); } catch (e) { /* vue fermée */ }
     }
+    return Promise.all(lectures.map((p) => Promise.resolve(p).catch(() => {})));
+  }
+
+  // Le bouton « Actualiser » du calendrier : un événement ajouté ou
+  // supprimé dans Calendrier (ou Google) se voit tout de suite, sans
+  // attendre la fin des caches (une minute pour Apple, cinq pour iCal).
+  async actualiserAgendas() {
+    this._icsCache = null;
+    await this._rafraichirFond();
   }
 
   // Instantané « dernier état synchronisé » d'une tâche, pour arbitrer les
@@ -43654,7 +43666,7 @@ class MoteurCalendrier extends MoteurVue {
     const cle = this.mode + '|' + b.debut + '|' + b.fin;
     if (cle === this._fondCle) return;
     this._fondCle = cle;
-    this.greffon.evenementsFond(b.debut, b.fin).then((data) => {
+    return this.greffon.evenementsFond(b.debut, b.fin).then((data) => {
       if (this._detruit || cle !== this._fondCle) return;
       const nv = data || [];
       const avant = this._fond || [];
@@ -44488,6 +44500,20 @@ class MoteurCalendrier extends MoteurVue {
         this._peindreTravailReel();
       };
     }
+    // Actualiser : relire tout de suite les agendas (un événement ajouté ou
+    // supprimé dans Calendrier). L'icône tourne pendant la lecture.
+    const bActu = droite.createEl('button', { cls: 'zfa-cal-nav zfa-cal-actualiser' + (this._actualisation ? ' est-en-cours' : ''),
+      attr: { 'aria-label': tr('Actualiser les agendas') } });
+    obsidian.setIcon(bActu, 'refresh-cw');
+    bActu.onclick = async () => {
+      if (this._actualisation || !this.greffon || !this.greffon.actualiserAgendas) return;
+      this._actualisation = true;
+      bActu.addClass('est-en-cours');
+      try { await this.greffon.actualiserAgendas(); } finally {
+        this._actualisation = false;
+        if (!this._detruit) this.dessiner();
+      }
+    };
     // Bouton « Calendriers à afficher » : familles de tâches (calendriers de
     // créneaux) et, si l'intégration Apple est active, calendriers d'événements.
     const bCal = droite.createEl('button', { cls: 'zfa-cal-nav', attr: { 'aria-label': tr('Calendriers à afficher') } });

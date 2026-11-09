@@ -164,3 +164,18 @@ test('Google synchronisé : la relève déplace le créneau, et ne fait qu’oub
   assert.deepEqual(deplaces, ['2026-10-20T14:30>2026-10-20T16:00']);
   assert.deepEqual(fm['Tâche - Google ID'], ['C1::a', ''], 'lien oublié, créneau gardé');
 });
+
+test('Actualiser les agendas : caches vidés, chaque vue relit, la fin s’attend', async () => {
+  const g = Object.create(Ariane.prototype);
+  g._fondCache = { cle: 'x', le: Date.now(), data: [] };
+  g._icsCache = new Map([['u', { le: Date.now(), texte: 'BEGIN:VCALENDAR' }]]);
+  let fini = false;
+  const vue = { _fondCle: 'semaine|a|b', _chargerFond() { return new Promise((r) => setTimeout(() => { fini = true; r(); }, 5)); } };
+  const vueEnPanne = { _fondCle: 'mois', _chargerFond() { return Promise.reject(new Error('fermée')); } };
+  g._moteursCalendrier = new Set([vue, vueEnPanne]);
+  await g.actualiserAgendas();
+  assert.equal(g._fondCache, null);
+  assert.equal(g._icsCache, null);
+  assert.equal(vue._fondCle, null);
+  assert.ok(fini, 'la relecture est attendue');
+});

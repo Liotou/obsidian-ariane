@@ -218,7 +218,7 @@ class MoteurCalendrier extends MoteurVue {
     const cle = this.mode + '|' + b.debut + '|' + b.fin;
     if (cle === this._fondCle) return;
     this._fondCle = cle;
-    this.greffon.evenementsFond(b.debut, b.fin).then((data) => {
+    return this.greffon.evenementsFond(b.debut, b.fin).then((data) => {
       if (this._detruit || cle !== this._fondCle) return;
       const nv = data || [];
       const avant = this._fond || [];
@@ -1052,6 +1052,20 @@ class MoteurCalendrier extends MoteurVue {
         this._peindreTravailReel();
       };
     }
+    // Actualiser : relire tout de suite les agendas (un événement ajouté ou
+    // supprimé dans Calendrier). L'icône tourne pendant la lecture.
+    const bActu = droite.createEl('button', { cls: 'zfa-cal-nav zfa-cal-actualiser' + (this._actualisation ? ' est-en-cours' : ''),
+      attr: { 'aria-label': tr('Actualiser les agendas') } });
+    obsidian.setIcon(bActu, 'refresh-cw');
+    bActu.onclick = async () => {
+      if (this._actualisation || !this.greffon || !this.greffon.actualiserAgendas) return;
+      this._actualisation = true;
+      bActu.addClass('est-en-cours');
+      try { await this.greffon.actualiserAgendas(); } finally {
+        this._actualisation = false;
+        if (!this._detruit) this.dessiner();
+      }
+    };
     // Bouton « Calendriers à afficher » : familles de tâches (calendriers de
     // créneaux) et, si l'intégration Apple est active, calendriers d'événements.
     const bCal = droite.createEl('button', { cls: 'zfa-cal-nav', attr: { 'aria-label': tr('Calendriers à afficher') } });
