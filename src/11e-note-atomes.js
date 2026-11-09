@@ -1364,7 +1364,10 @@ const avecNoteAtomes = (Base) => class extends Base {
     if (t.trim() === '') return false;
     if (/^#{1,6}\s/.test(t)) return false; // titre
     if (/^\s*\[\^[^\]]+\]:/.test(t)) return false; // définition de note
-    if (/^[\t ]/.test(t)) return false; // ligne indentée (continuation)
+    // Ligne indentée : une continuation ou un bloc de code, refusée ; mais une
+    // puce ou une case à cocher indentée (sous-élément de liste) est un item
+    // à part entière, qui reçoit sa citation comme une puce de premier niveau.
+    if (/^[\t ]/.test(t) && !/^[\t ]+(?:[-*+]|\d+[.)])[\t ]+\S/.test(t)) return false;
     if (/^(?:!?\[\[[^\]]*\]\]\s*)+$/.test(t.trim())) return false; // ligne de liens seuls
     // exclure la zone des notes de bas de page (à partir de la 1re définition)
     for (let k = 1; k < n; k++) {

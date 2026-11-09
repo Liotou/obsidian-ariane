@@ -81,3 +81,18 @@ test('glisser la citation seule : le surlignage unique de la page, sinon la sour
   plusieurs.choisirAnnotation = async (notes) => notes[1];
   assert.deepEqual(await plusieurs.clesDepuisZotflow(charge, ''), ['autre']);
 });
+
+test('dépôt : une puce ou une tâche indentée reçoit la citation, pas une continuation ni du code', () => {
+  const lignes = [
+    '- [ ] Lire le chapitre 3',
+    '\t- [ ] Relever les définitions',
+    '    - Sous-point en espaces',
+    '\t1. Étape numérotée',
+    '  suite du texte de la puce',
+    '    const x = 1;',
+    '\t- ',
+  ];
+  const doc = { lines: lignes.length, line: (n) => ({ text: lignes[n - 1] }) };
+  const g = Object.create(Ariane.prototype);
+  assert.deepEqual(lignes.map((_, i) => g.ligneEstParagraphe(doc, i + 1)), [true, true, true, true, false, false, false]);
+});
