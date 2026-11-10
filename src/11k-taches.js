@@ -257,7 +257,10 @@ const avecTaches = (Base) => class extends Base {
   // ailleurs.
   sourceAgenda() {
     const s = this.settings.agendaSource;
-    if (s === 'apple' || s === 'google' || s === 'google-sync') return s;
+    // Apple Calendrier hors du Mac (réglage venu d'un Mac, coffre partagé) :
+    // les agendas iCal en tiennent lieu, comme pour les rappels.
+    if (s === 'apple') return obsidian.Platform.isMacOS ? 'apple' : 'google';
+    if (s === 'google' || s === 'google-sync') return s;
     return obsidian.Platform.isMacOS ? 'apple' : 'google';
   }
 

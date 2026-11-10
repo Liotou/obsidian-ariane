@@ -16,7 +16,9 @@ lit ni où il se trouve, avant d'avoir fait l'étape 1.
 python3 ".claude/skills/lecture-pdf/ou-je-lis.py"
 ```
 
-(Depuis la racine du coffre, le dossier de travail de Claudian.) Le script
+(Depuis la racine du coffre, le dossier de travail de Claudian. Sous Windows,
+`python3` se nomme souvent `py -3` ou `python` : de même pour les scripts
+ci-dessous.) Le script
 lit, sans rien modifier, les onglets qu'Obsidian enregistre et la position de
 lecture que ZotFlow garde. Il rend, pour le document lu en dernier puis pour
 les autres PDF ouverts :

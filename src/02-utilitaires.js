@@ -43,6 +43,15 @@ function normDoi(s) {
     .toLowerCase();
 }
 
+// Les symboles des touches du Mac dans un texte d'aide, dits à la manière
+// du système hors du Mac : « ⌘Z » devient « Ctrl Z », « ⇧↵ » « Maj ↵ ».
+function touchesSysteme(t, mac) {
+  const surMac = mac !== undefined ? mac : !!(typeof obsidian !== 'undefined' && obsidian.Platform && obsidian.Platform.isMacOS);
+  if (surMac) return String(t);
+  const maj = typeof LANGUE !== 'undefined' && LANGUE === 'en' ? 'Shift' : 'Maj';
+  return String(t).replace(/⌘\s?/g, 'Ctrl ').replace(/⌥\s?/g, 'Alt ').replace(/⇧\s?/g, maj + ' ');
+}
+
 function jourIsoDe(d) {
   const p = (n) => (n < 10 ? '0' : '') + n;
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());

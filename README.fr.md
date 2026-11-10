@@ -992,11 +992,23 @@ système, et la base de Zotero est lue par le module SQLite intégré à Node, s
 rien installer.
 
 Restent propres au Mac, et sans effet ailleurs (les réglages le signalent) :
-la synchronisation avec Apple Rappels et Apple Agenda, le correcteur Apple, le
-temps d'écran de l'iPhone, le relevé des onglets de Safari et les icônes des
-applications. Ailleurs, les rappels vont dans Google Tasks ou Microsoft To Do,
-et l'agenda dans Google Agenda. Sous Windows, « Ouvrir avec Word »
-(PowerPoint, Excel) lance l'application installée par Microsoft 365 ou Office.
+la synchronisation avec Apple Rappels et Apple Agenda, Apple Intelligence, le
+correcteur Apple, le temps d'écran de l'iPhone, le relevé des onglets de Safari
+et les icônes des applications. Chacune a son intermédiaire :
+
+| Sur Mac | Ailleurs |
+|---|---|
+| Apple Rappels | Google Tasks ou Microsoft To Do |
+| Apple Agenda | Google Agenda (adresse iCal, ou synchronisation) |
+| Apple Intelligence (assistant, IA des tâches) | Mistral, Claude ou Ollama |
+| Correcteur Apple | La vérification orthographique d'Obsidian (Réglages, Éditeur) |
+
+Un coffre partagé entre un Mac et un PC garde les mêmes réglages : sur le PC,
+un réglage « Apple » passe de lui-même à son intermédiaire (Google pour
+l'agenda et les rappels ; pour l'IA, Mistral si sa clé est saisie, Claude si
+Claude Code est installé, sinon Ollama). Sous Windows, « Ouvrir avec Word »
+(PowerPoint, Excel) lance l'application installée par Microsoft 365 ou Office,
+et l'export Word trouve draw.io dans « Program Files » pour ses schémas.
 
 Pour l'export Word sous Windows : installez pandoc (pandoc.org) et Python 3
 (python.org, avec le lanceur « py »).

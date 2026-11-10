@@ -1969,6 +1969,8 @@ const TEXTES = {
     "Sommaire de lecture : quelle source ?": "Reading index: which source?",
     "Lecture : sommaire à imprimer (annotations d’une source)": "Reading: printable index (annotations of a source)",
     "Aucune source annotée.": "No annotated source.",
+    "Ailleurs, la vérification orthographique intégrée à Obsidian en tient lieu (Réglages, Éditeur).": "Elsewhere, Obsidian’s built-in spellcheck takes its place (Settings, Editor).",
+    "Sur ce système, la vérification orthographique intégrée à Obsidian en tient lieu : Réglages, Éditeur, « Vérification orthographique ».": "On this system, Obsidian’s built-in spellcheck takes its place: Settings, Editor, “Spellcheck”.",
     "Actualiser les agendas": "Refresh calendars",
     "pas imprimé": "not printed",
     "imprimé le ": "printed on ",
@@ -2463,7 +2465,9 @@ const MODULES_ARIANE = [
   { id: 'temps', nom: 'Temps et activité', coeur: false, dependances: [], macSeul: false,
     description: 'Temps passé par note, chronologie, activité hors d’Obsidian, micro-interruptions.' },
   { id: 'correcteur', nom: 'Correcteur Apple', coeur: false, dependances: [], macSeul: true,
-    description: 'La relecture et l’orthographe du système, dans l’éditeur.' },
+    description: 'La relecture et l’orthographe du système, dans l’éditeur.',
+    // Ce qui en tient lieu hors du Mac.
+    horsMac: 'Ailleurs, la vérification orthographique intégrée à Obsidian en tient lieu (Réglages, Éditeur).' },
   { id: 'schemas', nom: 'Schémas draw.io', coeur: false, dependances: [], macSeul: false,
     description: 'Schémas draw.io tenus à jour dans les notes, vocabulaire, export SVG.' },
   { id: 'claude', nom: 'Pont avec Claude', coeur: false, dependances: [], macSeul: false,
@@ -2945,6 +2949,15 @@ function normDoi(s) {
     .replace(/[‐‑‒–—−]/g, '-')
     .trim()
     .toLowerCase();
+}
+
+// Les symboles des touches du Mac dans un texte d'aide, dits à la manière
+// du système hors du Mac : « ⌘Z » devient « Ctrl Z », « ⇧↵ » « Maj ↵ ».
+function touchesSysteme(t, mac) {
+  const surMac = mac !== undefined ? mac : !!(typeof obsidian !== 'undefined' && obsidian.Platform && obsidian.Platform.isMacOS);
+  if (surMac) return String(t);
+  const maj = typeof LANGUE !== 'undefined' && LANGUE === 'en' ? 'Shift' : 'Maj';
+  return String(t).replace(/⌘\s?/g, 'Ctrl ').replace(/⌥\s?/g, 'Alt ').replace(/⇧\s?/g, maj + ' ');
 }
 
 function jourIsoDe(d) {
@@ -7289,7 +7302,28 @@ const avecIa = (Base) => class extends Base {
 
 
 
+  // Apple Intelligence n'existe que sur Mac. Un réglage venu d'un Mac (un
+  // coffre partagé avec un PC) passe ailleurs au premier fournisseur prêt :
+  // Mistral si sa clé est là, Claude si Claude Code est installé, sinon
+  // Ollama, local. `claudePresent` : vrai si l'outil claude est trouvé.
+  static fournisseurSurCeSysteme(f, s, mac, claudePresent) {
+    if (f !== 'apple' || mac) return f;
+    if (String((s && s.refsCleMistral) || '').trim()) return 'mistral';
+    if (claudePresent) return 'claude';
+    return 'ollama';
+  }
+
+  fournisseurDisponible(f) {
+    const mac = typeof MoteurAppleIA !== 'undefined' ? MoteurAppleIA.disponible() : process.platform === 'darwin';
+    if (f !== 'apple' || mac) return f;
+    const bin = (this.settings.refsCheminClaude || 'claude').trim() || 'claude';
+    let claude = false;
+    try { claude = !!trouverExecutable(bin); } catch (e) { claude = false; }
+    return Ariane.fournisseurSurCeSysteme(f, this.settings, mac, claude);
+  }
+
   async genererAvecFournisseur(prompt, max, f, modele, opts) {
+    f = this.fournisseurDisponible(f);
     if (f === 'mistral') return this.genererMistral(prompt, max, modele);
     if (f === 'claude') return this.genererClaude(prompt, max, opts);
     if (f === 'apple') return this.genererApple(prompt, max);
@@ -19863,7 +19897,10 @@ const avecTaches = (Base) => class extends Base {
   // ailleurs.
   sourceAgenda() {
     const s = this.settings.agendaSource;
-    if (s === 'apple' || s === 'google' || s === 'google-sync') return s;
+    // Apple Calendrier hors du Mac (réglage venu d'un Mac, coffre partagé) :
+    // les agendas iCal en tiennent lieu, comme pour les rappels.
+    if (s === 'apple') return obsidian.Platform.isMacOS ? 'apple' : 'google';
+    if (s === 'google' || s === 'google-sync') return s;
     return obsidian.Platform.isMacOS ? 'apple' : 'google';
   }
 
@@ -28776,9 +28813,10 @@ const avecAssistant = (Base) => class extends Base {
   // (réglage « automatique »), sinon le fournisseur principal d'Ariane.
   fournisseurAssistant() {
     const choix = this.settings.assistantFournisseur || 'auto';
-    if (choix === 'apple') return 'apple';
+    if (choix === 'apple' && MoteurAppleIA.disponible()) return 'apple';
     if (choix === 'auto' && MoteurAppleIA.disponible() && !this._appleIndisponible) return 'apple';
-    return this.settings.refsFournisseur || 'ollama';
+    // Hors du Mac, un réglage « Apple » retombe sur un fournisseur présent.
+    return this.fournisseurDisponible(this.settings.refsFournisseur || 'ollama');
   }
 
   // Une génération de texte libre (non du JSON) pour l'assistant, au fil de
@@ -31211,6 +31249,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         const desc = [tr(m.description)];
         if (m.dependances.length) desc.push(tr('Demande : ') + m.dependances.map((d) => noms.get(d)).join(', ') + '.');
         if (m.macSeul) desc.push(tr('Mac uniquement.'));
+        if (m.macSeul && !mac && m.horsMac) desc.push(tr(m.horsMac));
         const st = new obsidian.Setting(c).setName(noms.get(m.id)).setDesc(desc.join(' '));
         st.settingEl.addClass('zfa-module');
         if (m.coeur) { st.addExtraButton((b) => b.setIcon('lock').setTooltip(tr('Toujours actif')).setDisabled(true)); continue; }
@@ -32195,7 +32234,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(nbDossiers ? (s.numerotationDossiers || []).join(', ') : tr('Aucun pour l’instant.'))
       .addButton((b) => b.setButtonText(tr('Choisir et numéroter…')).onClick(() => this.plugin.choisirDossiersNumerotation()));
     this._section(c, tr('Correcteur Apple'));
-    this._reserveMac(c);
+    if (this._reserveMac(c)) this._aide(c, tr('Sur ce système, la vérification orthographique intégrée à Obsidian en tient lieu : Réglages, Éditeur, « Vérification orthographique ».'));
     this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés aux couleurs d'Apple Intelligence, ou en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne."));
     const relancerCorrecteur = (vider) => { if (this.plugin.correcteur) this.plugin.correcteur.relancer(vider); };
     new obsidian.Setting(c)
@@ -32436,7 +32475,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
 
     this._section(c, tr('Les boutons'));
     this._aide(c, tr("L’ordre ici est l’ordre dans la barre. Un groupe rassemble plusieurs commandes derrière un seul bouton, qui ouvre un menu."));
-    this._aide(c, tr("Les commandes qui travaillent par lignes (trier, dédoublonner, nettoyer les espaces) portent sur la sélection ; sans sélection, elles portent sur la note entière. Un ⌘Z les annule."));
+    this._aide(c, touchesSysteme(tr("Les commandes qui travaillent par lignes (trier, dédoublonner, nettoyer les espaces) portent sur la sélection ; sans sélection, elles portent sur la note entière. Un ⌘Z les annule.")));
     this._listeBarre(c, s, redessiner);
 
     this._section(c, tr('Couleurs proposées'));
@@ -34273,7 +34312,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       this.setInstructions([
         { command: '↑↓', purpose: tr('parcourir') },
         { command: '↵', purpose: tr('attacher') },
-        { command: '⌘↵', purpose: tr('nouvelle tâche') },
+        { command: touchesSysteme('⌘↵'), purpose: tr('nouvelle tâche') },
         { command: 'échap', purpose: tr('abandonner le créneau') },
       ]);
     }
@@ -34322,7 +34361,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
     this.champLN = champ;
     const actions = z.createDiv({ cls: 'zfa-tc-ln-actions' });
     const aide = actions.createSpan({ cls: 'zfa-tc-ln-aide' });
-    aide.setText(ia ? tr('↵ avec l’IA, ⇧↵ telle quelle') : tr('↵ créer'));
+    aide.setText(ia ? touchesSysteme(tr('↵ avec l’IA, ⇧↵ telle quelle')) : tr('↵ créer'));
     if (ia) {
       const bIa = actions.createEl('button', { cls: 'zfa-tc-ln-bouton' });
       obsidian.setIcon(bIa.createSpan({ cls: 'zfa-tc-icone' }), 'sparkles');
@@ -56252,6 +56291,7 @@ module.exports._test = {
   ParagraphesTexte,
   GlisserParagraphes,
   MoteurAppleIA,
+  touchesSysteme,
   // Pont Claude : les outils de lecture s'éprouvent avec un greffon factice.
   PontClaude,
   BlocOrganisation, // tableau de bord : son rendu s'éprouve sur un DOM factice

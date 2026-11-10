@@ -31,14 +31,21 @@ def lire_json(chemin):
 
 def racine_zotero():
     # Un dossier de données déplacé est noté dans les préférences de Zotero.
-    for prefs in glob.glob(os.path.expanduser('~/Library/Application Support/Zotero/Profiles/*/prefs.js')):
-        try:
-            texte = open(prefs, encoding='utf-8').read()
-        except OSError:
-            continue
-        m = re.search(r'"extensions\.zotero\.dataDir",\s*"([^"]+)"', texte)
-        if m and os.path.isdir(m.group(1)):
-            return m.group(1)
+    # Les profils de Zotero : macOS, Windows (%APPDATA%), Linux.
+    profils = [os.path.expanduser('~/Library/Application Support/Zotero/Profiles'),
+               os.path.join(os.environ['APPDATA'], 'Zotero', 'Zotero', 'Profiles') if os.environ.get('APPDATA') else '',
+               os.path.expanduser('~/.zotero/zotero')]
+    for dossier in filter(None, profils):
+        for prefs in glob.glob(os.path.join(dossier, '*', 'prefs.js')):
+            try:
+                texte = open(prefs, encoding='utf-8').read()
+            except OSError:
+                continue
+            m = re.search(r'"extensions\.zotero\.dataDir",\s*"((?:[^"\\]|\\.)+)"', texte)
+            # Sous Windows, la préférence double ses barres obliques inverses.
+            chemin = m.group(1).replace('\\\\', '\\') if m else ''
+            if chemin and os.path.isdir(chemin):
+                return chemin
     return os.path.expanduser('~/Zotero')
 
 

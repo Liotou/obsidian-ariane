@@ -287,7 +287,28 @@ const avecIa = (Base) => class extends Base {
 
 
 
+  // Apple Intelligence n'existe que sur Mac. Un réglage venu d'un Mac (un
+  // coffre partagé avec un PC) passe ailleurs au premier fournisseur prêt :
+  // Mistral si sa clé est là, Claude si Claude Code est installé, sinon
+  // Ollama, local. `claudePresent` : vrai si l'outil claude est trouvé.
+  static fournisseurSurCeSysteme(f, s, mac, claudePresent) {
+    if (f !== 'apple' || mac) return f;
+    if (String((s && s.refsCleMistral) || '').trim()) return 'mistral';
+    if (claudePresent) return 'claude';
+    return 'ollama';
+  }
+
+  fournisseurDisponible(f) {
+    const mac = typeof MoteurAppleIA !== 'undefined' ? MoteurAppleIA.disponible() : process.platform === 'darwin';
+    if (f !== 'apple' || mac) return f;
+    const bin = (this.settings.refsCheminClaude || 'claude').trim() || 'claude';
+    let claude = false;
+    try { claude = !!trouverExecutable(bin); } catch (e) { claude = false; }
+    return Ariane.fournisseurSurCeSysteme(f, this.settings, mac, claude);
+  }
+
   async genererAvecFournisseur(prompt, max, f, modele, opts) {
+    f = this.fournisseurDisponible(f);
     if (f === 'mistral') return this.genererMistral(prompt, max, modele);
     if (f === 'claude') return this.genererClaude(prompt, max, opts);
     if (f === 'apple') return this.genererApple(prompt, max);

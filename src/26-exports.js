@@ -146,6 +146,7 @@ module.exports._test = {
   ParagraphesTexte,
   GlisserParagraphes,
   MoteurAppleIA,
+  touchesSysteme,
   // Pont Claude : les outils de lecture s'éprouvent avec un greffon factice.
   PontClaude,
   BlocOrganisation, // tableau de bord : son rendu s'éprouve sur un DOM factice

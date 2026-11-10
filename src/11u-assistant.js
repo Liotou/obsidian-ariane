@@ -74,9 +74,10 @@ const avecAssistant = (Base) => class extends Base {
   // (réglage « automatique »), sinon le fournisseur principal d'Ariane.
   fournisseurAssistant() {
     const choix = this.settings.assistantFournisseur || 'auto';
-    if (choix === 'apple') return 'apple';
+    if (choix === 'apple' && MoteurAppleIA.disponible()) return 'apple';
     if (choix === 'auto' && MoteurAppleIA.disponible() && !this._appleIndisponible) return 'apple';
-    return this.settings.refsFournisseur || 'ollama';
+    // Hors du Mac, un réglage « Apple » retombe sur un fournisseur présent.
+    return this.fournisseurDisponible(this.settings.refsFournisseur || 'ollama');
   }
 
   // Une génération de texte libre (non du JSON) pour l'assistant, au fil de

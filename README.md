@@ -959,10 +959,22 @@ database is read through Node's built-in SQLite module, with nothing to
 install.
 
 Mac only, with no effect elsewhere (the settings say so): Apple Reminders and
-Apple Calendar sync, the Apple spell checker, iPhone screen time, the Safari
-tab log and application icons. Elsewhere, reminders go to Google Tasks or
-Microsoft To Do, and the calendar to Google Calendar. On Windows, "Open with
-Word" (PowerPoint, Excel) launches the app installed by Microsoft 365 or Office.
+Apple Calendar sync, Apple Intelligence, the Apple spell checker, iPhone screen
+time, the Safari tab log and application icons. Each has a stand-in:
+
+| On Mac | Elsewhere |
+|---|---|
+| Apple Reminders | Google Tasks or Microsoft To Do |
+| Apple Calendar | Google Calendar (iCal address, or sync) |
+| Apple Intelligence (assistant, task AI) | Mistral, Claude or Ollama |
+| Apple spell checker | Obsidian's built-in spellcheck (Settings, Editor) |
+
+A vault shared between a Mac and a PC keeps the same settings: on the PC, an
+"Apple" setting switches to its stand-in by itself (Google for calendar and
+reminders; for AI, Mistral if its key is set, Claude if Claude Code is
+installed, otherwise Ollama). On Windows, "Open with Word" (PowerPoint, Excel)
+launches the app installed by Microsoft 365 or Office, and the Word export
+finds draw.io in "Program Files" for its diagrams.
 
 For the Word export on Windows, install pandoc (pandoc.org) and Python 3
 (python.org, with the "py" launcher).

@@ -14,8 +14,8 @@ import argparse
 import glob
 import os
 import re
+import pathlib
 import sqlite3
-import urllib.parse
 
 COULEURS = {
     '#ffd400': 'jaune', '#ffff00': 'jaune', '#facd5a': 'jaune', '#ff6666': 'rouge',
@@ -26,14 +26,21 @@ TYPES = {1: 'surlignage', 2: 'note', 3: 'image', 4: 'dessin', 5: 'soulignement',
 
 
 def racine_zotero():
-    for prefs in glob.glob(os.path.expanduser('~/Library/Application Support/Zotero/Profiles/*/prefs.js')):
-        try:
-            texte = open(prefs, encoding='utf-8').read()
-        except OSError:
-            continue
-        m = re.search(r'"extensions\.zotero\.dataDir",\s*"([^"]+)"', texte)
-        if m and os.path.isdir(m.group(1)):
-            return m.group(1)
+    # Les profils de Zotero : macOS, Windows (%APPDATA%), Linux.
+    profils = [os.path.expanduser('~/Library/Application Support/Zotero/Profiles'),
+               os.path.join(os.environ['APPDATA'], 'Zotero', 'Zotero', 'Profiles') if os.environ.get('APPDATA') else '',
+               os.path.expanduser('~/.zotero/zotero')]
+    for dossier in filter(None, profils):
+        for prefs in glob.glob(os.path.join(dossier, '*', 'prefs.js')):
+            try:
+                texte = open(prefs, encoding='utf-8').read()
+            except OSError:
+                continue
+            m = re.search(r'"extensions\.zotero\.dataDir",\s*"((?:[^"\\]|\\.)+)"', texte)
+            # Sous Windows, la préférence double ses barres obliques inverses.
+            chemin = m.group(1).replace('\\\\', '\\') if m else ''
+            if chemin and os.path.isdir(chemin):
+                return chemin
     return os.path.expanduser('~/Zotero')
 
 
@@ -50,7 +57,8 @@ def main():
     o = a.parse_args()
     base = os.path.join(racine_zotero(), 'zotero.sqlite')
     # immutable=1 : lecture sans verrou, même pendant que Zotero écrit.
-    uri = 'file:' + urllib.parse.quote(base) + '?immutable=1'
+    # Une adresse de fichier valable partout (C:/… sous Windows compris).
+    uri = pathlib.Path(base).resolve().as_uri() + '?immutable=1'
     con = sqlite3.connect(uri, uri=True)
     lignes = con.execute(
         'SELECT i.key, a.type, a.color, a.pageLabel, a.text, a.comment FROM itemAnnotations a '

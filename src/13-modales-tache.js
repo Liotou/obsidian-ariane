@@ -113,7 +113,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       this.setInstructions([
         { command: '↑↓', purpose: tr('parcourir') },
         { command: '↵', purpose: tr('attacher') },
-        { command: '⌘↵', purpose: tr('nouvelle tâche') },
+        { command: touchesSysteme('⌘↵'), purpose: tr('nouvelle tâche') },
         { command: 'échap', purpose: tr('abandonner le créneau') },
       ]);
     }
@@ -162,7 +162,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
     this.champLN = champ;
     const actions = z.createDiv({ cls: 'zfa-tc-ln-actions' });
     const aide = actions.createSpan({ cls: 'zfa-tc-ln-aide' });
-    aide.setText(ia ? tr('↵ avec l’IA, ⇧↵ telle quelle') : tr('↵ créer'));
+    aide.setText(ia ? touchesSysteme(tr('↵ avec l’IA, ⇧↵ telle quelle')) : tr('↵ créer'));
     if (ia) {
       const bIa = actions.createEl('button', { cls: 'zfa-tc-ln-bouton' });
       obsidian.setIcon(bIa.createSpan({ cls: 'zfa-tc-icone' }), 'sparkles');

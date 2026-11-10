@@ -7,7 +7,8 @@ const Module = require('module');
 const classes = {};
 const factice = new Proxy({}, {
   get(_, nom) {
-    if (nom === 'Platform') return { isMacOS: true, isDesktopApp: true };
+    // Un test peut se faire passer pour un autre système (global.__arianePlateforme).
+    if (nom === 'Platform') return global.__arianePlateforme || { isMacOS: true, isDesktopApp: true };
     if (nom === 'setIcon') return () => {};
     if (nom === 'setTooltip') return () => {};
     // Le catalogue d'icônes : quelques entrées, dont un doublon une fois le

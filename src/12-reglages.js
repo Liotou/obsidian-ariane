@@ -205,6 +205,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         const desc = [tr(m.description)];
         if (m.dependances.length) desc.push(tr('Demande : ') + m.dependances.map((d) => noms.get(d)).join(', ') + '.');
         if (m.macSeul) desc.push(tr('Mac uniquement.'));
+        if (m.macSeul && !mac && m.horsMac) desc.push(tr(m.horsMac));
         const st = new obsidian.Setting(c).setName(noms.get(m.id)).setDesc(desc.join(' '));
         st.settingEl.addClass('zfa-module');
         if (m.coeur) { st.addExtraButton((b) => b.setIcon('lock').setTooltip(tr('Toujours actif')).setDisabled(true)); continue; }
@@ -1189,7 +1190,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setDesc(nbDossiers ? (s.numerotationDossiers || []).join(', ') : tr('Aucun pour l’instant.'))
       .addButton((b) => b.setButtonText(tr('Choisir et numéroter…')).onClick(() => this.plugin.choisirDossiersNumerotation()));
     this._section(c, tr('Correcteur Apple'));
-    this._reserveMac(c);
+    if (this._reserveMac(c)) this._aide(c, tr('Sur ce système, la vérification orthographique intégrée à Obsidian en tient lieu : Réglages, Éditeur, « Vérification orthographique ».'));
     this._aide(c, tr("La relecture du système, celle de Mail et de Pages, appliquée à vos notes : accords, conjugaisons, participes passés, accents et mots erronés, soulignés aux couleurs d'Apple Intelligence, ou en pointillés bleus. Survolez une faute pour lire l'explication et la corriger d'un clic. Les mots isolés que la relecture ne couvre pas sont soulignés en rouge. Tout se passe sur votre Mac, rien n'est envoyé ailleurs. Comptez quelques secondes par paragraphe inédit ; une fois relu, il ne coûte plus rien. La première fois, le greffon prépare un petit programme ; il faut pour cela les outils de ligne de commande Apple (xcode-select --install). Deux façons de tout reprendre : « relire la note, faute par faute » pose une fenêtre près de chaque remarque, « ouvrir le volet de relecture » les range toutes dans un volet latéral. Le double chevron, dans la bulle comme dans le volet, ouvre cette fenêtre à partir de la faute qu'il accompagne."));
     const relancerCorrecteur = (vider) => { if (this.plugin.correcteur) this.plugin.correcteur.relancer(vider); };
     new obsidian.Setting(c)
@@ -1430,7 +1431,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
 
     this._section(c, tr('Les boutons'));
     this._aide(c, tr("L’ordre ici est l’ordre dans la barre. Un groupe rassemble plusieurs commandes derrière un seul bouton, qui ouvre un menu."));
-    this._aide(c, tr("Les commandes qui travaillent par lignes (trier, dédoublonner, nettoyer les espaces) portent sur la sélection ; sans sélection, elles portent sur la note entière. Un ⌘Z les annule."));
+    this._aide(c, touchesSysteme(tr("Les commandes qui travaillent par lignes (trier, dédoublonner, nettoyer les espaces) portent sur la sélection ; sans sélection, elles portent sur la note entière. Un ⌘Z les annule.")));
     this._listeBarre(c, s, redessiner);
 
     this._section(c, tr('Couleurs proposées'));
