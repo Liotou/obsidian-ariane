@@ -802,6 +802,10 @@ const TEXTES = {
     "Glissez ici les sous-tâches de cette séance.": "Drag this session's subtasks here.",
     "Toutes les autres sous-tâches sont terminées.": "Every other subtask is done.",
     "Aucune autre sous-tâche.": "No other subtask.",
+    "Sous : ": "Under: ",
+    "Tâche mère introuvable : « ": "Parent task not found: “",
+    "Choisir la tâche mère…": "Choose the parent task…",
+    "Ne pas rattacher": "Do not attach",
     "Retenir pour la séance": "Keep for this session",
     "Retirer de la séance": "Remove from this session",
     "Rouvrir la tâche": "Reopen the task",
@@ -19389,6 +19393,7 @@ const avecArticulationStatiques = (Base) => class extends Base {
         ? rang.get(brutRang) : null;
       return Object.assign(spec, { enfants: [], apres,
         bloquePar: String(n.bloque_par || n.bloquePar || '').trim(),
+        mere: String(n.mere || n.rattacher_a || n.parent || '').trim(),
         noteVisee: String(n.note_visee || n.noteVisee || '').trim() });
     });
   }
@@ -22301,12 +22306,13 @@ const avecTaches = (Base) => class extends Base {
       '- jalon : true pour une date butoir ponctuelle plutôt qu\'un travail qui s\'étale (candidature, dépôt, rendu, soumission, soutenance, présentation, réunion de validation), ou quand la description le dit (« jalon », « c\'est un jalon », « jalon : … »). Un jalon n\'a pas de début, seulement son échéance. Sinon false.',
       '- apres : le rang (0, 1, 2…) dans TON tableau d\'une tâche à finir avant celle-ci (envoyer un résumé vient après l\'avoir rédigé), sinon null.',
       '- bloque_par : le titre approximatif d\'une tâche DÉJÀ EXISTANTE à finir avant, sinon "".',
+      '- mere : quand la description demande de ranger la tâche SOUS une tâche DÉJÀ EXISTANTE (« à rattacher à », « tâche fille de », « sous-tâche de », « dans la tâche », « rattachée à »), le titre de cette tâche mère tel que la description le donne, ou sa référence (T070) si elle est écrite ; sinon "". Cette consigne n\'entre ni dans le titre ni dans la note.',
       '- note : une précision utile qui ne tient pas dans le titre, sinon "".',
       '- note_visee : quand la tâche porte sur une note précise du coffre (la rédiger, la compléter, la relire), son titre. Pour une note conceptuelle, recopie EXACTEMENT un titre de la liste ci-dessous ; pour une autre note, son titre en clair ; sans note visée : "".',
       this._blocNotesConceptuelles(),
       '',
       'Réponds UNIQUEMENT par le tableau JSON. Chaque entrée :',
-      '{"titre": "...", "famille": "id", "jalon": false, "debut": "", "echeance": "", "apres": null, "bloque_par": "", "note": "", "note_visee": ""}',
+      '{"titre": "...", "famille": "id", "jalon": false, "debut": "", "echeance": "", "apres": null, "bloque_par": "", "mere": "", "note": "", "note_visee": ""}',
       '',
       'DESCRIPTION :',
       p,
@@ -22323,7 +22329,31 @@ const avecTaches = (Base) => class extends Base {
       const n = this.resoudreNoteVisee(s.noteVisee);
       if (n) { s.livrable = '[[' + n.cle + ']]'; s.livrableNom = n.nom; }
     }
+    // La tâche mère demandée, retrouvée parmi les tâches existantes : la
+    // proposition la montre, à changer ou retirer avant la création.
+    for (const s of specs) {
+      if (!s.mere) continue;
+      const m = await this.tacheExistanteDuTitre(s.mere);
+      if (m) { s.mereRef = m.ref; s.mereNom = m.titre; }
+    }
     return specs;
+  }
+
+  // Une tâche existante désignée en clair : sa référence si elle est écrite
+  // (« T070 », « [[T070]] »), sinon l'intitulé le plus proche, par le sens
+  // puis par les mots. Les abandonnées ne sont pas candidates. Rend
+  // { ref, titre } ou null.
+  async tacheExistanteDuTitre(cible) {
+    const c = String(cible || '').trim();
+    if (!c) return null;
+    const taches = this.tachesPourGantt().filter((t) => t.statut !== 'abandonnée');
+    const ref = Ariane.refDeLien(c);
+    const directe = taches.find((t) => t.ref === ref || t.ref === c);
+    if (directe) return { ref: directe.ref, titre: directe.intitule };
+    const cand = taches.map((t) => ({ ref: t.ref, titre: t.intitule }));
+    const m = (await this.meilleurTitreSem(c, cand)) || Ariane.meilleurTitre(c, cand);
+    const t = m && taches.find((x) => x.ref === m.ref);
+    return t ? { ref: t.ref, titre: t.intitule } : null;
   }
 
   // Les notes conceptuelles du coffre : [{ nom (alias), cle (nom de fichier) }].
@@ -22360,8 +22390,9 @@ const avecTaches = (Base) => class extends Base {
     return meilleur(concepts, 1) || meilleur(autres, 1) || meilleur(autres, 0.75);
   }
 
-  // Crée les tâches revues, puis leurs dépendances : entre tâches de la même
-  // description (`apres`, un rang), et vers une tâche existante (`bloquePar`).
+  // Crée les tâches revues, chacune sous sa mère (`mereRef`) s'il y a lieu,
+  // puis leurs dépendances : entre tâches de la même description (`apres`,
+  // un rang), et vers une tâche existante (`bloquePar`).
   // Rend les références créées, dans l'ordre.
   async creerTachesLN(specs) {
     const refs = [];
@@ -22377,6 +22408,7 @@ const avecTaches = (Base) => class extends Base {
       });
       const ref = chemin ? this.refDeChemin(chemin) : null;
       refs.push(ref);
+      if (ref && s.mereRef && s.mereRef !== ref) await this.rattacher(ref, s.mereRef);
       if (ref && s.note) { try { await this.ajouterNoteTache(ref, s.note); } catch (e) { /* rien */ } }
     }
     for (let i = 0; i < (specs || []).length; i++) {
@@ -34792,6 +34824,46 @@ class ChoixSourceModal extends obsidian.Modal {
 // revoit sa proposition avant « Créer et attacher » ; ou prise telle
 // quelle, sans IA ; ou par le formulaire complet (⌘↵). Échap abandonne le
 // créneau.
+// La tâche mère d'une tâche proposée par l'IA (analyserTachesLN) : celle
+// qu'elle a retrouvée, à changer ou retirer ; ou, introuvable, le titre
+// demandé, avec de quoi la choisir. Sans demande, rien.
+function ligneMereLN(hote, n, greffon, app, cls) {
+  if (!n.mere && !n.mereRef) return;
+  const l = hote.createDiv({ cls: (cls || '') + ' zfa-ln-mere' });
+  const dessiner = () => {
+    l.empty();
+    obsidian.setIcon(l.createSpan({ cls: 'zfa-ln-mere-icone' }), 'git-branch');
+    if (n.mereRef) {
+      l.createSpan({ text: tr('Sous : ') });
+      l.createSpan({ cls: 'zfa-ln-mere-titre', text: n.mereNom || n.mereRef });
+      l.createSpan({ cls: 'zfa-ln-mere-ref', text: n.mereRef });
+    } else {
+      l.addClass('est-introuvable');
+      l.createSpan({ text: tr('Tâche mère introuvable : « ') + n.mere + ' »' });
+    }
+    const choisir = l.createEl('button', { cls: 'clickable-icon',
+      attr: { 'aria-label': tr('Choisir la tâche mère…') } });
+    obsidian.setIcon(choisir, 'pencil');
+    choisir.onclick = () => {
+      const items = greffon.tachesPourGantt().filter((t) => t.statut !== 'abandonnée')
+        .map((t) => ({ nom: t.intitule + '  (' + t.ref + ')', cle: t.ref, titre: t.intitule }));
+      new ChoixListeModal(app, tr('Tâche parente…'), items, (it) => {
+        if (!it) return;
+        n.mereRef = it.cle;
+        n.mereNom = it.titre;
+        l.removeClass('est-introuvable');
+        dessiner();
+      }).open();
+    };
+    if (n.mereRef) {
+      const x = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Ne pas rattacher') } });
+      obsidian.setIcon(x, 'x');
+      x.onclick = () => { n.mereRef = ''; n.mereNom = ''; n.mere = ''; l.remove(); };
+    }
+  };
+  dessiner();
+}
+
 class ModaleTacheDuCreneau extends obsidian.SuggestModal {
   // o : { taches, jour, horaire, surChoix(ref), surNouvelle(texte), surAbandon() }
   constructor(app, greffon, o) {
@@ -34982,6 +35054,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       jc.addEventListener('change', () => { n.jalon = jc.checked; });
       jal.createSpan({ text: tr('jalon') });
       if (i === 0) l.createSpan({ cls: 'zfa-tc-ln-marque', text: tr('créneau') });
+      ligneMereLN(z, n, this.greffon, this.app, 'zfa-tc-ln-sous');
     });
     const pied = z.createDiv({ cls: 'zfa-tc-ln-pied' });
     const ecarter = pied.createEl('button', { text: tr('Écarter') });
@@ -35236,6 +35309,7 @@ class ModaleTache extends obsidian.Modal {
         obsidian.setIcon(x, 'x');
         x.onclick = () => { n.livrable = ''; l.remove(); };
       }
+      if (!this.v.parent) ligneMereLN(d, n, this.greffon, this.app, 'zfa-struct-note');
       if (n.note) d.createDiv({ cls: 'zfa-struct-note', text: n.note });
     });
   }

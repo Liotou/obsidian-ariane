@@ -4570,6 +4570,16 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 
 /* Création en langage naturel : la note associée en livrable, qu'on peut retirer. */
 .zfa-ln-livrable { display: flex; align-items: center; gap: 4px; }
+/* La tâche mère comprise par l'IA, sous la ligne de la tâche proposée. */
+.zfa-ln-mere { display: flex; align-items: center; gap: 4px; font-size: var(--font-ui-smaller);
+  color: var(--text-muted); }
+.zfa-ln-mere.zfa-tc-ln-sous { padding-left: var(--size-4-2); margin-top: calc(-1 * var(--size-4-1)); }
+.zfa-ln-mere-icone svg { width: 13px; height: 13px; }
+.zfa-ln-mere-titre { color: var(--text-normal); }
+.zfa-ln-mere-ref { font-family: var(--font-monospace); color: var(--text-faint); }
+.zfa-ln-mere.est-introuvable { color: var(--text-warning); }
+.zfa-ln-mere .clickable-icon { padding: 1px; }
+.zfa-ln-mere .clickable-icon svg { width: 13px; height: 13px; }
 .zfa-ln-livrable .clickable-icon { padding: 1px; }
 .zfa-ln-livrable svg { width: 14px; height: 14px; }
 

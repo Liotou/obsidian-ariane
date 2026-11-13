@@ -99,6 +99,46 @@ class ChoixSourceModal extends obsidian.Modal {
 // revoit sa proposition avant « Créer et attacher » ; ou prise telle
 // quelle, sans IA ; ou par le formulaire complet (⌘↵). Échap abandonne le
 // créneau.
+// La tâche mère d'une tâche proposée par l'IA (analyserTachesLN) : celle
+// qu'elle a retrouvée, à changer ou retirer ; ou, introuvable, le titre
+// demandé, avec de quoi la choisir. Sans demande, rien.
+function ligneMereLN(hote, n, greffon, app, cls) {
+  if (!n.mere && !n.mereRef) return;
+  const l = hote.createDiv({ cls: (cls || '') + ' zfa-ln-mere' });
+  const dessiner = () => {
+    l.empty();
+    obsidian.setIcon(l.createSpan({ cls: 'zfa-ln-mere-icone' }), 'git-branch');
+    if (n.mereRef) {
+      l.createSpan({ text: tr('Sous : ') });
+      l.createSpan({ cls: 'zfa-ln-mere-titre', text: n.mereNom || n.mereRef });
+      l.createSpan({ cls: 'zfa-ln-mere-ref', text: n.mereRef });
+    } else {
+      l.addClass('est-introuvable');
+      l.createSpan({ text: tr('Tâche mère introuvable : « ') + n.mere + ' »' });
+    }
+    const choisir = l.createEl('button', { cls: 'clickable-icon',
+      attr: { 'aria-label': tr('Choisir la tâche mère…') } });
+    obsidian.setIcon(choisir, 'pencil');
+    choisir.onclick = () => {
+      const items = greffon.tachesPourGantt().filter((t) => t.statut !== 'abandonnée')
+        .map((t) => ({ nom: t.intitule + '  (' + t.ref + ')', cle: t.ref, titre: t.intitule }));
+      new ChoixListeModal(app, tr('Tâche parente…'), items, (it) => {
+        if (!it) return;
+        n.mereRef = it.cle;
+        n.mereNom = it.titre;
+        l.removeClass('est-introuvable');
+        dessiner();
+      }).open();
+    };
+    if (n.mereRef) {
+      const x = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Ne pas rattacher') } });
+      obsidian.setIcon(x, 'x');
+      x.onclick = () => { n.mereRef = ''; n.mereNom = ''; n.mere = ''; l.remove(); };
+    }
+  };
+  dessiner();
+}
+
 class ModaleTacheDuCreneau extends obsidian.SuggestModal {
   // o : { taches, jour, horaire, surChoix(ref), surNouvelle(texte), surAbandon() }
   constructor(app, greffon, o) {
@@ -289,6 +329,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       jc.addEventListener('change', () => { n.jalon = jc.checked; });
       jal.createSpan({ text: tr('jalon') });
       if (i === 0) l.createSpan({ cls: 'zfa-tc-ln-marque', text: tr('créneau') });
+      ligneMereLN(z, n, this.greffon, this.app, 'zfa-tc-ln-sous');
     });
     const pied = z.createDiv({ cls: 'zfa-tc-ln-pied' });
     const ecarter = pied.createEl('button', { text: tr('Écarter') });
@@ -543,6 +584,7 @@ class ModaleTache extends obsidian.Modal {
         obsidian.setIcon(x, 'x');
         x.onclick = () => { n.livrable = ''; l.remove(); };
       }
+      if (!this.v.parent) ligneMereLN(d, n, this.greffon, this.app, 'zfa-struct-note');
       if (n.note) d.createDiv({ cls: 'zfa-struct-note', text: n.note });
     });
   }

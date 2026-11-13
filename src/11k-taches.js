@@ -2231,12 +2231,13 @@ const avecTaches = (Base) => class extends Base {
       '- jalon : true pour une date butoir ponctuelle plutôt qu\'un travail qui s\'étale (candidature, dépôt, rendu, soumission, soutenance, présentation, réunion de validation), ou quand la description le dit (« jalon », « c\'est un jalon », « jalon : … »). Un jalon n\'a pas de début, seulement son échéance. Sinon false.',
       '- apres : le rang (0, 1, 2…) dans TON tableau d\'une tâche à finir avant celle-ci (envoyer un résumé vient après l\'avoir rédigé), sinon null.',
       '- bloque_par : le titre approximatif d\'une tâche DÉJÀ EXISTANTE à finir avant, sinon "".',
+      '- mere : quand la description demande de ranger la tâche SOUS une tâche DÉJÀ EXISTANTE (« à rattacher à », « tâche fille de », « sous-tâche de », « dans la tâche », « rattachée à »), le titre de cette tâche mère tel que la description le donne, ou sa référence (T070) si elle est écrite ; sinon "". Cette consigne n\'entre ni dans le titre ni dans la note.',
       '- note : une précision utile qui ne tient pas dans le titre, sinon "".',
       '- note_visee : quand la tâche porte sur une note précise du coffre (la rédiger, la compléter, la relire), son titre. Pour une note conceptuelle, recopie EXACTEMENT un titre de la liste ci-dessous ; pour une autre note, son titre en clair ; sans note visée : "".',
       this._blocNotesConceptuelles(),
       '',
       'Réponds UNIQUEMENT par le tableau JSON. Chaque entrée :',
-      '{"titre": "...", "famille": "id", "jalon": false, "debut": "", "echeance": "", "apres": null, "bloque_par": "", "note": "", "note_visee": ""}',
+      '{"titre": "...", "famille": "id", "jalon": false, "debut": "", "echeance": "", "apres": null, "bloque_par": "", "mere": "", "note": "", "note_visee": ""}',
       '',
       'DESCRIPTION :',
       p,
@@ -2253,7 +2254,31 @@ const avecTaches = (Base) => class extends Base {
       const n = this.resoudreNoteVisee(s.noteVisee);
       if (n) { s.livrable = '[[' + n.cle + ']]'; s.livrableNom = n.nom; }
     }
+    // La tâche mère demandée, retrouvée parmi les tâches existantes : la
+    // proposition la montre, à changer ou retirer avant la création.
+    for (const s of specs) {
+      if (!s.mere) continue;
+      const m = await this.tacheExistanteDuTitre(s.mere);
+      if (m) { s.mereRef = m.ref; s.mereNom = m.titre; }
+    }
     return specs;
+  }
+
+  // Une tâche existante désignée en clair : sa référence si elle est écrite
+  // (« T070 », « [[T070]] »), sinon l'intitulé le plus proche, par le sens
+  // puis par les mots. Les abandonnées ne sont pas candidates. Rend
+  // { ref, titre } ou null.
+  async tacheExistanteDuTitre(cible) {
+    const c = String(cible || '').trim();
+    if (!c) return null;
+    const taches = this.tachesPourGantt().filter((t) => t.statut !== 'abandonnée');
+    const ref = Ariane.refDeLien(c);
+    const directe = taches.find((t) => t.ref === ref || t.ref === c);
+    if (directe) return { ref: directe.ref, titre: directe.intitule };
+    const cand = taches.map((t) => ({ ref: t.ref, titre: t.intitule }));
+    const m = (await this.meilleurTitreSem(c, cand)) || Ariane.meilleurTitre(c, cand);
+    const t = m && taches.find((x) => x.ref === m.ref);
+    return t ? { ref: t.ref, titre: t.intitule } : null;
   }
 
   // Les notes conceptuelles du coffre : [{ nom (alias), cle (nom de fichier) }].
@@ -2290,8 +2315,9 @@ const avecTaches = (Base) => class extends Base {
     return meilleur(concepts, 1) || meilleur(autres, 1) || meilleur(autres, 0.75);
   }
 
-  // Crée les tâches revues, puis leurs dépendances : entre tâches de la même
-  // description (`apres`, un rang), et vers une tâche existante (`bloquePar`).
+  // Crée les tâches revues, chacune sous sa mère (`mereRef`) s'il y a lieu,
+  // puis leurs dépendances : entre tâches de la même description (`apres`,
+  // un rang), et vers une tâche existante (`bloquePar`).
   // Rend les références créées, dans l'ordre.
   async creerTachesLN(specs) {
     const refs = [];
@@ -2307,6 +2333,7 @@ const avecTaches = (Base) => class extends Base {
       });
       const ref = chemin ? this.refDeChemin(chemin) : null;
       refs.push(ref);
+      if (ref && s.mereRef && s.mereRef !== ref) await this.rattacher(ref, s.mereRef);
       if (ref && s.note) { try { await this.ajouterNoteTache(ref, s.note); } catch (e) { /* rien */ } }
     }
     for (let i = 0; i < (specs || []).length; i++) {

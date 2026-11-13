@@ -313,3 +313,44 @@ test('Langage naturel : l\'IA peut faire d\'une tâche un jalon, sans début', a
   assert.equal(crees[0].debut, '');
   assert.equal(crees[0].echeance, '2027-01-18');
 });
+
+test('Langage naturel : « à rattacher à la tâche… » range la tâche sous sa mère existante', async () => {
+  // L'IA rend la mère en clair ; elle n'entre ni dans le titre ni dans la note.
+  const specs = Ariane.lireTachesLN([
+    { titre: 'Créer le cours méthode sur le plan de la dissertation', famille: 'production',
+      echeance: '2026-11-17', mere: 'préparer les cours histoire du management' },
+    { titre: 'Relire', famille: 'action', mere: 'T070' },
+    { titre: 'Seule', famille: 'action' },
+  ], { familles: ['action', 'production'], defaut: 'action' });
+  assert.deepEqual(specs.map((s) => s.mere), ['préparer les cours histoire du management', 'T070', '']);
+  const g = Object.create(Ariane.prototype);
+  const taches = [
+    { ref: 'T050', intitule: 'Préparer les cours d\'histoire du management', statut: 'en cours' },
+    { ref: 'T051', intitule: 'Préparer les cours de stratégie', statut: 'à faire' },
+    { ref: 'T070', intitule: 'Rédiger le chapitre 2', statut: 'à faire' },
+    { ref: 'T080', intitule: 'Préparer les cours histoire du management (ancienne)', statut: 'abandonnée' },
+  ];
+  const rattaches = [];
+  const crees = [];
+  Object.assign(g, {
+    settings: { suggMoteur: 'lexical' },
+    tachesPourGantt: () => taches,
+    creerTache: async (o) => { crees.push(o); return '08 - Tâches/T09' + crees.length + '.md'; },
+    refDeChemin: (c) => c.split('/').pop().replace('.md', ''),
+    rattacher: async (e, p) => { rattaches.push([e, p]); return true; },
+    ajouterNoteTache: async () => {}, creerBlocage: async () => {},
+  });
+  // Retrouvée par les mots, par la référence ; jamais une abandonnée.
+  assert.deepEqual(await g.tacheExistanteDuTitre('préparer les cours histoire du management'),
+    { ref: 'T050', titre: 'Préparer les cours d\'histoire du management' });
+  assert.equal((await g.tacheExistanteDuTitre('[[T070]]')).ref, 'T070');
+  assert.equal(await g.tacheExistanteDuTitre('T080'), null);
+  assert.equal(await g.tacheExistanteDuTitre('Envoyer le bilan au jury'), null);
+  for (const s of specs) {
+    const m = s.mere && await g.tacheExistanteDuTitre(s.mere);
+    if (m) { s.mereRef = m.ref; s.mereNom = m.titre; }
+  }
+  // À la création, chaque tâche va sous sa mère.
+  assert.deepEqual(await g.creerTachesLN(specs), ['T091', 'T092', 'T093']);
+  assert.deepEqual(rattaches, [['T091', 'T050'], ['T092', 'T070']]);
+});
