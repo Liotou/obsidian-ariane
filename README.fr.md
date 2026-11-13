@@ -1015,6 +1015,43 @@ Pour l'export Word sous Windows : installez pandoc (pandoc.org) et Python 3
 
 ---
 
+## 📱 Sur iPhone et Android
+
+Ariane se charge aussi dans Obsidian sur téléphone, avec le coffre partagé
+par iCloud Drive, Obsidian Sync ou tout autre moyen. Ses réglages sont ceux
+de l'ordinateur : rien à refaire.
+
+**Ce qui marche sur le téléphone** : lire et écrire avec vos annotations
+(aparté des liens, citations repliables, numérotation des titres et des
+figures, typographie), la barre d'édition, les commentaires en marge, les
+paragraphes déplaçables, les bibliographies de note, le sommaire de lecture,
+les tâches (création, y compris en langage naturel, frise, calendrier, vues
+Bases) et l'assistant IA, par Mistral : un téléphone ne fait tourner ni
+Claude Code, ni Ollama, ni Apple Intelligence pour un greffon.
+
+**Citer sans glisser-déposer** : la commande « Citations : citer une
+annotation… », aussi dans la barre d'édition, ouvre une liste filtrable de
+vos annotations et notes de lecture (titre, auteur, année). La citation se
+pose comme au dépôt, avant la ponctuation de la phrase où se tient le
+curseur. Elle sert aussi sur ordinateur, au clavier.
+
+**Ce qui reste à l'ordinateur** : tout ce qui touche à Zotero (atomisation,
+rattachement des références, pages), l'export Word, Claude, la publication
+du site, les suggestions, le temps et l'activité, les rappels et agendas, la
+mise à jour des schémas draw.io (qui restent visibles comme images). Ces
+modules et commandes n'apparaissent pas sur le téléphone.
+
+**Ce que le téléphone ne fait jamais** : réagir aux notes que la
+synchronisation apporte de l'ordinateur. Pas de régénération des
+annotations, pas de suppression en cascade, pas de journal des tâches, pas
+de réécriture des tâches au démarrage : seule la note ouverte, ou celle
+qu'Ariane vient d'écrire à votre demande, est réputée changée sur place.
+Ainsi le même travail ne se fait pas deux fois, et les deux copies ne se
+heurtent pas. Le téléphone ne réécrit pas non plus les réglages partagés
+tant que vous ne les changez pas.
+
+---
+
 ## 📦 Installation
 
 Ariane ne figure pas dans le catalogue officiel d'Obsidian. Deux voies :

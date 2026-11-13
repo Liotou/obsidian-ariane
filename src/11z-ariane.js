@@ -87,6 +87,7 @@ class Ariane extends composer(obsidian.Plugin,
   _enregistrerCommandes() {
     this.addCommand({
       id: 'atomise-active',
+      bureau: true,
       module: 'annotations',
       name: tr('Atomiser : la note source active'),
       icon: 'atom',
@@ -130,6 +131,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'atomise-tout',
+      bureau: true,
       module: 'annotations',
       name: tr('Atomiser : toutes les sources'),
       callback: () => this.atomiserTout(),
@@ -154,12 +156,14 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'lier-reference-zotero',
+      bureau: true,
       module: 'annotations',
       name: tr('Références en attente : lier la référence active à une fiche Zotero'),
       callback: () => this.assistantLiageReference(),
     });
     this.addCommand({
       id: 'rattacher-toutes-references',
+      bureau: true,
       module: 'annotations',
       name: tr('Références en attente : rattacher automatiquement'),
       callback: () => this.rattacherToutesReferences(),
@@ -391,6 +395,13 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.basculerCitations(!this.settings.citationsRepliees),
     });
     this.addCommand({
+      id: 'citer-annotation',
+      module: 'citations',
+      name: tr('Citations : citer une annotation…'),
+      icon: 'text-quote',
+      editorCallback: (editor) => this.citerAnnotation(editor),
+    });
+    this.addCommand({
       id: 'citations-rafraichir',
       module: 'citations',
       name: tr('Citations : rafraîchir les libellés…'),
@@ -435,6 +446,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'notes-lecture-atomiser',
+      bureau: true,
       module: 'annotations',
       name: tr('Atomiser : les notes-filles Zotero'),
       callback: () => this.atomiserToutesNotesLecture(),
@@ -453,6 +465,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'decouper-bibliographies',
+      bureau: true,
       module: 'annotations',
       name: tr('Références citées : structurer les entrées non structurées'),
       callback: () => this.decouperBibliographies(),
@@ -478,12 +491,14 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'bibliographie-citee-source',
+      bureau: true,
       module: 'annotations',
       name: tr('Références citées : extraire celles de la source active'),
       callback: () => this.genererBibliographieSource(),
     });
     this.addCommand({
       id: 'arreter-bibliographies',
+      bureau: true,
       module: 'annotations',
       name: tr('Références citées : interrompre l’extraction'),
       callback: () => {
@@ -493,6 +508,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'bibliographies-citees-toutes',
+      bureau: true,
       module: 'annotations',
       name: tr('Références citées : extraire celles de toutes les sources'),
       callback: () => this.genererToutesBibliographies(),
@@ -559,6 +575,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'zotero-references-orphelines',
+      bureau: true,
       module: 'annotations',
       name: tr('Zotero : notes de références orphelines…'),
       callback: () => this.revoirReferencesOrphelines(false),
@@ -618,6 +635,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'annotations-sources-mentionnees',
+      bureau: true,
       module: 'annotations',
       name: tr('Annotations : revoir les sources mentionnées dans mes commentaires…'),
       callback: () => this.revoirMentionsDeSources(),
@@ -676,6 +694,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'organisation-repartir',
+      bureau: true,
       module: 'taches',
       name: tr('Tâches : répartir sur la semaine (IA)'),
       callback: () => this.repartirSemaineIA().catch((e) => new obsidian.Notice(
@@ -958,7 +977,9 @@ class Ariane extends composer(obsidian.Plugin,
       this.registerEvent(this.app.workspace.on('layout-change', () => this.brancherPlans()));
     }
     // Une fois : l'ancien titre « ## Note de travail » quitte les notes de tâche.
+    // Ces reprises réécrivent des notes : sur téléphone, l'ordinateur les fait.
     this.app.workspace.onLayoutReady(() => {
+      if (surMobile()) return;
       if (this.module('taches')) {
         this.migrerNotesTravail().catch((e) => console.warn('[Ariane] notes de travail :', e));
         this.retirerBlocsLivrable().catch((e) => console.warn('[Ariane] blocs de livrable :', e));
@@ -1495,11 +1516,15 @@ class Ariane extends composer(obsidian.Plugin,
   // elles ne servent qu'à ce câblage.
   _brancherEvenements() {
     if (this.module('taches')) {
-      // Journal des modifications des tâches (section 11k, spec 2026-09-29).
-      this.demarrerJournalTaches();
-      // Une note de tâche supprimée emporte son rappel (sinon la relève le
-      // réimporterait en tâche neuve).
-      this.ecouterSuppressionTaches();
+      // Sur téléphone, ni journal ni rappels : l'ordinateur voit les mêmes
+      // changements, et les noter des deux côtés les doublerait.
+      if (!surMobile()) {
+        // Journal des modifications des tâches (section 11k, spec 2026-09-29).
+        this.demarrerJournalTaches();
+        // Une note de tâche supprimée emporte son rappel (sinon la relève le
+        // réimporterait en tâche neuve).
+        this.ecouterSuppressionTaches();
+      }
       this._brancherTaches();
     }
     if (this.module('rappels')) this._brancherRappels();
@@ -1526,11 +1551,12 @@ class Ariane extends composer(obsidian.Plugin,
     // Notes de références sans fiche Zotero : vérifiées une minute après le
     // démarrage, puis après chaque synchronisation de ZotFlow (une rafale de
     // notes de références réécrites).
-    this.app.workspace.onLayoutReady(() => {
+    // Sur téléphone, la base de Zotero est hors d'atteinte : rien à vérifier.
+    if (!surMobile()) this.app.workspace.onLayoutReady(() => {
       const t = window.setTimeout(() => this.verifierReferencesOrphelines(), 60000);
       this.register(() => window.clearTimeout(t));
     });
-    this.registerEvent(this.app.metadataCache.on('changed', (f, _d, cache) => {
+    if (!surMobile()) this.registerEvent(this.app.metadataCache.on('changed', (f, _d, cache) => {
       const fm = cache && cache.frontmatter;
       if (fm && fm['zotero-key'] && fm.citationKey) {
         this.antirebond('orphelins-zotero', () => this.verifierReferencesOrphelines(), 20000);
@@ -1582,7 +1608,9 @@ class Ariane extends composer(obsidian.Plugin,
       this.registerEvent(this.app.vault.on('rename', (f) => revaliderIndex(f)));
     }
     // Une source renommée : les sources associées des annotations suivent.
-    this.registerEvent(this.app.vault.on('rename', (f, ancien) => { this.renommerSourceAssociee(ancien, f); }));
+    this.registerEvent(this.app.vault.on('rename', (f, ancien) => {
+      if (this.changementLocal(f)) this.renommerSourceAssociee(ancien, f);
+    }));
 
     // L'index des tâches se lit sur les chemins : seul un chemin qui bouge le
     // périme. Une modification de contenu n'y change rien, d'où l'absence de
@@ -1599,7 +1627,7 @@ class Ariane extends composer(obsidian.Plugin,
     // change vraiment, faute de quoi cette écoute se rappellerait elle-même.
     this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _donnees, cacheNote) => {
       const fm = (cacheNote && cacheNote.frontmatter) || null;
-      if (!fm) return;
+      if (!fm || !this.changementLocal(fichier)) return;
       const jour = new Date().toISOString().slice(0, 10);
       const kFin = this.cleT('termine-le');
       const fmN = Object.assign({}, fm,
@@ -1617,7 +1645,7 @@ class Ariane extends composer(obsidian.Plugin,
     // a pas. Écrite pour être sélectionnable comme n'importe quelle propriété
     // dans les bases. On ne réécrit que si la valeur change vraiment.
     this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _d, cacheNote) => {
-      if (!this.refDeChemin(fichier.path)) return;
+      if (!this.refDeChemin(fichier.path) || !this.changementLocal(fichier)) return;
       const fm = (cacheNote && cacheNote.frontmatter) || {};
       const kSE = this.cleT('sans-echeance');
       const v = Ariane.sansEcheanceAEcrire(this._lireT(fm, 'echeance'), this._lireT(fm, 'sans-echeance'));
@@ -1662,7 +1690,7 @@ class Ariane extends composer(obsidian.Plugin,
       const coche = this._lireT(fm, 'terminee') === true;
       const fini = this._lireT(fm, 'statut') === 'terminée';
       const cible = Ariane.accordTermine(this._etatTermine.get(fichier.path), coche, fini);
-      if (!cible) { this._etatTermine.set(fichier.path, { coche, fini }); return; }
+      if (!cible || !this.changementLocal(fichier)) { this._etatTermine.set(fichier.path, { coche, fini }); return; }
       this._etatTermine.set(fichier.path,
         { coche: cible.terminee != null ? cible.terminee : coche,
           fini: cible.statut ? cible.statut === 'terminée' : fini });
@@ -1688,7 +1716,7 @@ class Ariane extends composer(obsidian.Plugin,
     // se rappellerait elle-même sans fin. L'antirebond évite en outre de
     // réécrire à chaque frappe pendant que Monsieur remplit ses propriétés.
     this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
-      if (!this.refDeChemin(fichier.path)) return;
+      if (!this.refDeChemin(fichier.path) || !this.changementLocal(fichier)) return;
       this.antirebond('tache:' + fichier.path, () => this.majBlocTache(fichier));
     }));
 
@@ -1696,7 +1724,7 @@ class Ariane extends composer(obsidian.Plugin,
     // Créneaux » de la note, sans commande à lancer, et ne se réécrit que si
     // elle change vraiment (garde-fou anti-cycle dans majBlocCreneaux).
     this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
-      if (!this.refDeChemin(fichier.path)) return;
+      if (!this.refDeChemin(fichier.path) || !this.changementLocal(fichier)) return;
       this.antirebond('creneaux:' + fichier.path, () => this.majBlocCreneaux(fichier), 600);
     }));
 
@@ -1707,14 +1735,17 @@ class Ariane extends composer(obsidian.Plugin,
     this._rattachOk = this._rattachOk || new Map();
     this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
       const ref = this.refDeChemin(fichier.path);
-      if (!ref) return;
+      if (!ref || !this.changementLocal(fichier)) return;
       this.antirebond('rattach:' + fichier.path, () => this.veillerRattachements(fichier, ref), 400);
     }));
     this.app.workspace.onLayoutReady(() => this.semerRattachOk());
     this.app.workspace.onLayoutReady(() => {
       // D'abord compléter les propriétés de tâche manquantes (toute nouvelle
       // propriété du plugin est ainsi rattrapée au démarrage), puis corriger
-      // « sans-echeance » selon l'échéance courante.
+      // « sans-echeance » selon l'échéance courante. Sur téléphone, c'est
+      // l'ordinateur qui s'en charge : réécrire toutes les tâches ici les
+      // ferait croiser les siennes dans iCloud.
+      if (surMobile()) return;
       setTimeout(() => {
         Promise.resolve(this.semerConceptsTache())
           .then(() => this.semerSansEcheance())
@@ -1814,7 +1845,7 @@ class Ariane extends composer(obsidian.Plugin,
       this.registerEvent(this.app.vault.on('modify', (f) => {
         if (!this.settings.biblioAuto) return;
         if (!(f instanceof obsidian.TFile) || f.extension !== 'md') return;
-        if (this.ecritePlugin(f.path)) return;
+        if (this.ecritePlugin(f.path) || !this.changementLocal(f)) return;
         if (f.path.startsWith(this.dossierA + '/') || f.path.startsWith('Références/')) return;
         if (this.biblioExclue(f.path)) return;
         this.antirebond('biblio:' + f.path, () => this.majBibliographie(f, true), 2500);
@@ -1826,6 +1857,9 @@ class Ariane extends composer(obsidian.Plugin,
 
       // Tag « orpheline » et nombre d'appels : mis à jour quand les liens
       // changent ; au démarrage, rattrape ce qui a changé hors d'Obsidian.
+      // Sur téléphone, ce serait réécrire les annotations en même temps que
+      // l'ordinateur : il en garde seul la charge.
+      if (surMobile()) return;
       this.registerEvent(this.app.metadataCache.on('resolved', () => {
         this.antirebond('orphelines', () => this.synchroniserAppels(), 800);
       }));

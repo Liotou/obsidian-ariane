@@ -2408,6 +2408,21 @@ const TEXTES = {
     "pas de seau d'absence, ": "no away bucket, ",
     " navigateur(s).": " browser(s).",
     "aucun navigateur.": "no browser.",
+    "Sur téléphone, pandoc manque : l’export se fait depuis l’ordinateur.": "On a phone, pandoc is missing: export from the computer.",
+    "Sur téléphone, le modèle local (Ollama) manque : les suggestions restent sur l’ordinateur.": "On a phone, the local model (Ollama) is missing: suggestions stay on the computer.",
+    "Sur téléphone, la synchronisation reste à l’ordinateur, pour ne pas la faire deux fois.": "On a phone, syncing stays with the computer, so it is not done twice.",
+    "Sur téléphone, rien n’est compté : ses relevés du jour heurteraient ceux de l’ordinateur.": "On a phone, nothing is counted: its daily records would clash with the computer’s.",
+    "Sur téléphone, les schémas s’affichent comme images ; les tenir à jour se fait sur l’ordinateur.": "On a phone, diagrams show as images; keeping them up to date happens on the computer.",
+    "Sur téléphone, Claude Code et Node manquent.": "On a phone, Claude Code and Node are missing.",
+    "Sur téléphone, git manque : la publication se fait depuis l’ordinateur.": "On a phone, git is missing: publish from the computer.",
+    "Ordinateur uniquement.": "Computer only.",
+    "Sur téléphone, les modules choisis ici valent aussi pour l’ordinateur : les réglages sont partagés par le coffre.": "On a phone, the modules chosen here also apply to the computer: settings are shared through the vault.",
+    "Sur téléphone, l’IA passe par Mistral : renseignez la clé Mistral dans les réglages d’Ariane.": "On a phone, AI goes through Mistral: enter the Mistral key in Ariane’s settings.",
+    "Aucune annotation à citer dans le coffre.": "No annotation to cite in the vault.",
+    "Annotation à citer (titre, auteur, année)": "Annotation to cite (title, author, year)",
+    "Citations : citer une annotation…": "Citations: cite an annotation…",
+    "Téléphone": "Phone",
+    "Zotero, l’export Word et Claude restent sur l’ordinateur ; ici, Ariane sert à lire, écrire, citer et tenir vos tâches.": "Zotero, Word export and Claude stay on the computer; here, Ariane is for reading, writing, citing and keeping your tasks.",
   },
 };
 let LANGUE = 'fr';
@@ -2440,13 +2455,15 @@ const MODULES_ARIANE = [
     description: 'Atomisation des annotations de ZotFlow, verrouillage, notes de lecture, références et auteurs.' },
   { id: 'citations', nom: 'Citations et bibliographie', coeur: true, dependances: [], macSeul: false,
     description: 'Glisser-déposer des annotations, citations repliables, notes de bas de page, bibliographies, panier.' },
-  { id: 'export', nom: 'Export Word', coeur: false, dependances: [], macSeul: false,
+  { id: 'export', nom: 'Export Word', coeur: false, dependances: [], macSeul: false, bureauSeul: true,
+    horsBureau: 'Sur téléphone, pandoc manque : l’export se fait depuis l’ordinateur.',
     description: 'Un document Word mis en forme, avec des citations Zotero vivantes, par pandoc.' },
   { id: 'familles', nom: 'Familles de notes', coeur: false, dependances: [], macSeul: false,
     description: 'Notes conceptuelles, réflexives et autres familles : préfixes, couleurs, aparté des liens.' },
   { id: 'typographie', nom: 'Typographie', coeur: false, dependances: [], macSeul: false,
     description: 'Ponctuation soudée à son mot, numérotation automatique des titres et des figures.' },
-  { id: 'suggestions', nom: 'Suggestions d’annotations', coeur: false, dependances: [], macSeul: false,
+  { id: 'suggestions', nom: 'Suggestions d’annotations', coeur: false, dependances: [], macSeul: false, bureauSeul: true,
+    horsBureau: 'Sur téléphone, le modèle local (Ollama) manque : les suggestions restent sur l’ordinateur.',
     description: 'Les annotations proches de ce que vous écrivez, dans un panneau (modèle local conseillé).' },
   { id: 'barre', nom: 'Barre d’édition', coeur: false, dependances: [], macSeul: false,
     description: 'Une barre de mise en forme sous les onglets de chaque note.' },
@@ -2460,19 +2477,24 @@ const MODULES_ARIANE = [
     description: 'Notes de tâche, tableau de bord, frise, calendrier, IA des tâches.' },
   { id: 'canevas', nom: 'Canevas', coeur: false, dependances: [], macSeul: false,
     description: 'Les notes du canevas en cartes compactes ; les cartes de tâches si le module Tâches est actif.' },
-  { id: 'rappels', nom: 'Rappels et agendas', coeur: false, dependances: ['taches'], macSeul: false,
+  { id: 'rappels', nom: 'Rappels et agendas', coeur: false, dependances: ['taches'], macSeul: false, bureauSeul: true,
+    horsBureau: 'Sur téléphone, la synchronisation reste à l’ordinateur, pour ne pas la faire deux fois.',
     description: 'Synchronisation des tâches avec Apple, Google ou Microsoft.' },
-  { id: 'temps', nom: 'Temps et activité', coeur: false, dependances: [], macSeul: false,
+  { id: 'temps', nom: 'Temps et activité', coeur: false, dependances: [], macSeul: false, bureauSeul: true,
+    horsBureau: 'Sur téléphone, rien n’est compté : ses relevés du jour heurteraient ceux de l’ordinateur.',
     description: 'Temps passé par note, chronologie, activité hors d’Obsidian, micro-interruptions.' },
-  { id: 'correcteur', nom: 'Correcteur Apple', coeur: false, dependances: [], macSeul: true,
+  { id: 'correcteur', nom: 'Correcteur Apple', coeur: false, dependances: [], macSeul: true, bureauSeul: true,
     description: 'La relecture et l’orthographe du système, dans l’éditeur.',
     // Ce qui en tient lieu hors du Mac.
     horsMac: 'Ailleurs, la vérification orthographique intégrée à Obsidian en tient lieu (Réglages, Éditeur).' },
-  { id: 'schemas', nom: 'Schémas draw.io', coeur: false, dependances: [], macSeul: false,
+  { id: 'schemas', nom: 'Schémas draw.io', coeur: false, dependances: [], macSeul: false, bureauSeul: true,
+    horsBureau: 'Sur téléphone, les schémas s’affichent comme images ; les tenir à jour se fait sur l’ordinateur.',
     description: 'Schémas draw.io tenus à jour dans les notes, vocabulaire, export SVG.' },
-  { id: 'claude', nom: 'Pont avec Claude', coeur: false, dependances: [], macSeul: false,
+  { id: 'claude', nom: 'Pont avec Claude', coeur: false, dependances: [], macSeul: false, bureauSeul: true,
+    horsBureau: 'Sur téléphone, Claude Code et Node manquent.',
     description: 'Serveurs MCP et compétences pour que Claude lise vos tâches et vos annotations.' },
-  { id: 'publication', nom: 'Publication de site', coeur: false, dependances: [], macSeul: false,
+  { id: 'publication', nom: 'Publication de site', coeur: false, dependances: [], macSeul: false, bureauSeul: true,
+    horsBureau: 'Sur téléphone, git manque : la publication se fait depuis l’ordinateur.',
     description: 'Miroir d’une partie du coffre vers un site, avec commit et envoi.' },
 ];
 // Les modules de la 3.0.0 : un module venu depuis s'ajoute de lui-même chez
@@ -2912,6 +2934,21 @@ const DEFAULT_SETTINGS = {
 //  Petits helpers chaîne / date / format sans domaine propre, partagés par
 //  plusieurs sections.
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Sur téléphone (iPhone, Android), Obsidian n'a ni Node ni Electron : pas de
+// `process`, pas de « fs », « path », « child_process »… Lire `process` y
+// levait une erreur. Ce substitut, propre au greffon, répond comme un système
+// sans rien ; sur ordinateur, c'est le vrai.
+const process = (typeof globalThis !== 'undefined' && globalThis.process)
+  || { platform: 'mobile', env: {}, versions: {}, arch: '', cwd: () => '/' };
+
+// Vrai dans l'application Obsidian d'un téléphone ou d'une tablette. Ce qui
+// a besoin de l'ordinateur s'y retire : modules « bureauSeul », commandes
+// « bureau », automatismes qui réagissent aux notes venues d'iCloud.
+function surMobile() {
+  const P = obsidian.Platform;
+  return !!(P && (P.isMobileApp || P.isDesktopApp === false));
+}
 
 function echapperRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -6378,10 +6415,12 @@ const avecSocle = (Base) => class extends Base {
   }
 
   // Un module est-il actif ? `reglage` : la liste des réglages (null : tout).
-  static moduleActif(id, reglage, mac) {
+  // `bureau` : faux sur téléphone, où les modules « bureauSeul » n'existent pas.
+  static moduleActif(id, reglage, mac, bureau) {
     const m = MODULES_ARIANE.find((x) => x.id === id);
     if (!m) return false;
     if (m.macSeul && !mac) return false;
+    if (m.bureauSeul && bureau === false) return false;
     if (m.coeur || reglage == null) return true;
     return reglage.includes(id);
   }
@@ -6403,7 +6442,8 @@ const avecSocle = (Base) => class extends Base {
   module(ids) {
     const mac = !!(obsidian.Platform && obsidian.Platform.isMacOS);
     const reglage = Array.isArray(this.settings && this.settings.modules) ? this.settings.modules : null;
-    return [].concat(ids).every((id) => Ariane.moduleActif(id, reglage, mac));
+    const bureau = !surMobile();
+    return [].concat(ids).every((id) => Ariane.moduleActif(id, reglage, mac, bureau));
   }
 
   // Le sous-menu « Ariane » du clic droit dans l'éditeur : créé au premier
@@ -6421,12 +6461,30 @@ const avecSocle = (Base) => class extends Base {
   }
 
   // Une commande porte son module : celle d'un module coupé n'existe pas.
+  // « bureau: true » : elle a besoin de l'ordinateur (Zotero, programmes,
+  // fichiers hors du coffre) et n'existe pas sur téléphone.
   addCommand(c) {
+    if (c && c.bureau && surMobile()) return null;
     if (!c || !c.module) return super.addCommand(c);
     if (!this.module(c.module)) return null;
     const sans = Object.assign({}, c);
     delete sans.module;
+    delete sans.bureau;
     return super.addCommand(sans);
+  }
+
+  // Sur téléphone, iCloud apporte sans cesse les écritures de l'ordinateur :
+  // une note changée ailleurs ne doit rien déclencher ici, sinon le même
+  // travail se ferait deux fois et les deux copies se heurteraient. Une note
+  // est réputée changée sur place si elle est ouverte dans l'éditeur actif,
+  // ou si Ariane vient de l'écrire elle-même. Sur ordinateur, toujours vrai.
+  changementLocal(fichier) {
+    if (!surMobile()) return true;
+    const chemin = fichier && (typeof fichier === 'string' ? fichier : fichier.path);
+    if (!chemin) return false;
+    if (this.ecritePlugin(chemin)) return true;
+    const actif = this.app.workspace.getActiveFile && this.app.workspace.getActiveFile();
+    return !!(actif && actif.path === chemin);
   }
 
   // Un greffon de Zotero est-il installé ? Son paquet, dans un profil.
@@ -6460,6 +6518,14 @@ const avecSocle = (Base) => class extends Base {
       siOk: 'Installé et activé : vos annotations Zotero arrivent dans le coffre.',
       sinon: zf ? 'Installé mais désactivé : activez-le dans Réglages, Greffons tiers.'
         : 'À installer depuis les greffons de la communauté : c’est lui qui apporte vos annotations Zotero.' });
+    // Sur téléphone, Zotero et ses greffons sont l'affaire de l'ordinateur :
+    // les dire « introuvables » ici ferait croire à une panne.
+    if (surMobile()) {
+      out.push({ id: 'telephone', nom: 'Téléphone', ok: true,
+        siOk: 'Zotero, l’export Word et Claude restent sur l’ordinateur ; ici, Ariane sert à lire, écrire, citer et tenir vos tâches.',
+        sinon: '' });
+      return out;
+    }
     let base = false;
     try {
       const path = require('path'), fs = require('fs'), os = require('os');
@@ -6506,6 +6572,10 @@ const avecSocle = (Base) => class extends Base {
 
   async loadSettings() {
     const charge = await this.loadData();
+    // Sur téléphone, les réglages sont ceux de l'ordinateur, partagés par
+    // iCloud : on garde leur texte, pour ne réécrire le fichier que si
+    // quelque chose a vraiment changé (voir saveSettings).
+    this._reglagesLus = charge == null ? null : JSON.stringify(charge);
     this.settings = Object.assign({}, DEFAULT_SETTINGS, charge || {});
     // Première installation (rien d'enregistré) : le profil « Zotero et
     // écriture », et la présentation s'ouvrira, avec le choix du profil.
@@ -6560,6 +6630,13 @@ const avecSocle = (Base) => class extends Base {
     // à l'ancien défaut, qui ne connaissait que « .pdf », suit le nouveau.
     if (this.settings.pageRegex === '\\.pdf,\\s*p\\.\\s*([^\\]]+?)\\]\\(obsidian') {
       this.settings.pageRegex = DEFAULT_SETTINGS.pageRegex;
+    }
+    // Sur téléphone, les défauts et les reprises ci-dessus ne valent pas une
+    // écriture : l'ordinateur les fera de son côté.
+    if (surMobile()) {
+      const copie = Object.assign({}, this.settings);
+      delete copie.tempsHistorique;
+      this._reglagesLus = JSON.stringify(copie);
     }
   }
 
@@ -6637,6 +6714,14 @@ const avecSocle = (Base) => class extends Base {
     if (Number(this.settings.donneesJourVersion) >= 1) {
       const copie = Object.assign({}, this.settings);
       delete copie.tempsHistorique;
+      // Sur téléphone, un enregistrement sans changement réécrivait quand
+      // même le fichier partagé, qu'iCloud renvoyait à l'ordinateur au risque
+      // de croiser une écriture de sa part.
+      if (surMobile()) {
+        const texte = JSON.stringify(copie);
+        if (texte === this._reglagesLus) return;
+        this._reglagesLus = texte;
+      }
       await this.saveData(copie);
     } else {
       await this.saveData(this.settings);
@@ -6824,7 +6909,12 @@ const avecSocle = (Base) => class extends Base {
     if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
     if (this.ecritePlugin(file.path)) return;
     // Numérotation des titres, tenue à jour une fois la frappe posée.
-    if (this.dansNumerotation(file)) this.antirebond('num:' + file.path, () => this.renumeroterNote(file), 1500);
+    if (this.dansNumerotation(file) && this.changementLocal(file)) {
+      this.antirebond('num:' + file.path, () => this.renumeroterNote(file), 1500);
+    }
+    // Sur téléphone, Zotero est l'affaire de l'ordinateur : ni verrouillage,
+    // ni régénération, ni rattachement (voir changementLocal).
+    if (surMobile()) return;
 
     if (file.path.startsWith(this.dossierA + '/')) {
       if (this.settings.verrouillage) {
@@ -6859,6 +6949,7 @@ const avecSocle = (Base) => class extends Base {
   surCreation(file) {
     if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
     if (this.ecritePlugin(file.path)) return;
+    if (surMobile()) return;
     if (!this.settings.regenerationAuto && !this.settings.rattachementZotero) return;
     this.antirebond('src:' + file.path, async () => {
       const contenu = await this.app.vault.read(file);
@@ -6933,6 +7024,9 @@ const avecSocle = (Base) => class extends Base {
   surSuppression(file) {
     if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
     if (this.ecritePlugin(file.path)) return;
+    // Sur téléphone, une note disparue est le plus souvent un effet d'iCloud :
+    // ses annotations et ses liens ne la suivent pas (l'ordinateur s'en charge).
+    if (surMobile()) return;
     if (!this.settings.propagerSuppressions) return;
     if (file.path.startsWith(this.dossierA + '/')) {
       this.antirebond('del:' + file.path, () => this.retirerLiens(file.basename));
@@ -7306,7 +7400,10 @@ const avecIa = (Base) => class extends Base {
   // coffre partagé avec un PC) passe ailleurs au premier fournisseur prêt :
   // Mistral si sa clé est là, Claude si Claude Code est installé, sinon
   // Ollama, local. `claudePresent` : vrai si l'outil claude est trouvé.
-  static fournisseurSurCeSysteme(f, s, mac, claudePresent) {
+  // Sur téléphone (`mobile`), ni Claude Code, ni Ollama, ni Apple : seul un
+  // service en ligne répond, et c'est Mistral, quel que soit le réglage.
+  static fournisseurSurCeSysteme(f, s, mac, claudePresent, mobile) {
+    if (mobile) return 'mistral';
     if (f !== 'apple' || mac) return f;
     if (String((s && s.refsCleMistral) || '').trim()) return 'mistral';
     if (claudePresent) return 'claude';
@@ -7314,6 +7411,7 @@ const avecIa = (Base) => class extends Base {
   }
 
   fournisseurDisponible(f) {
+    if (surMobile()) return Ariane.fournisseurSurCeSysteme(f, this.settings, false, false, true);
     const mac = typeof MoteurAppleIA !== 'undefined' ? MoteurAppleIA.disponible() : process.platform === 'darwin';
     if (f !== 'apple' || mac) return f;
     const bin = (this.settings.refsCheminClaude || 'claude').trim() || 'claude';
@@ -7333,7 +7431,9 @@ const avecIa = (Base) => class extends Base {
   async genererMistral(prompt, max, modele) {
     const cle = (this.settings.refsCleMistral || '').trim();
     if (!cle) {
-      this._diagIA = tr('Clé Mistral absente des réglages.');
+      this._diagIA = surMobile()
+        ? tr('Sur téléphone, l’IA passe par Mistral : renseignez la clé Mistral dans les réglages d’Ariane.')
+        : tr('Clé Mistral absente des réglages.');
       new obsidian.Notice(this._diagIA);
       return null;
     }
@@ -11286,6 +11386,54 @@ const avecNoteAtomes = (Base) => class extends Base {
 
   //#region Ariane · panier d'annotations & dépôt paragraphe
   // ── panier d'annotations & dépôt paragraphe ──────────────────────────────
+
+  // Citer sans glisser-déposer : le téléphone ne glisse pas, et au clavier
+  // c'est souvent plus vite. On choisit l'annotation dans une liste filtrable
+  // (titre, auteur, année), et la citation se pose comme au dépôt sur la
+  // phrase où se tient le curseur : avant sa ponctuation finale.
+  citerAnnotation(editor) {
+    const cm = editor && editor.cm;
+    if (!cm) return;
+    const pos = cm.state.selection.main.head;
+    const items = this.annotationsCitables();
+    if (!items.length) { new obsidian.Notice(tr('Aucune annotation à citer dans le coffre.')); return; }
+    new ModaleCiterAnnotation(this.app, items, (it) => {
+      const doc = cm.state.doc;
+      const ligne = doc.lineAt(Math.min(pos, doc.length));
+      this.attacherAnnotationParagraphe(cm, ligne.number, [it.cle],
+        Ariane.positionCitationAuCurseur(ligne.text, pos - ligne.from, ligne.from));
+    }).open();
+  }
+
+  // Où poser une citation pour un curseur à la colonne `col` d'une ligne :
+  // avant la ponctuation qui clôt la phrase. Un curseur posé juste après
+  // cette ponctuation (« … fin. | ») vise la phrase qu'il suit. Ligne vide :
+  // undefined, la citation va en fin de ligne.
+  static positionCitationAuCurseur(texte, col, debut) {
+    if (!String(texte || '').trim()) return undefined;
+    let k = Math.max(0, Math.min(col, texte.length));
+    while (k > 0 && /[ \t  ]/.test(texte[k - 1])) k--;
+    const depart = k > 0 && /[.?!…]/.test(texte[k - 1]) ? k - 1 : col;
+    return (debut || 0) + finDePhraseAvantPonct(texte, depart);
+  }
+
+  // Les notes que l'on peut citer : annotations et notes de lecture, les plus
+  // récentes d'abord (ce que l'on vient de lire est ce que l'on cite).
+  annotationsCitables() {
+    const dossiers = [this.dossierA, this.settings.dossierNotesLecture]
+      .filter(Boolean).map((d) => String(d).replace(/\/+$/, '') + '/');
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!dossiers.some((d) => f.path.startsWith(d))) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      const alias = [].concat(fm.aliases || fm.alias || [])[0];
+      let libelle = '';
+      try { libelle = this.libelleCitation(f.basename) || ''; } catch (e) { libelle = ''; }
+      out.push({ cle: f.basename, titre: String(alias || f.basename), libelle,
+        recent: (f.stat && f.stat.mtime) || 0 });
+    }
+    return out.sort((a, b) => b.recent - a.recent);
+  }
 
   attacherAnnotationParagraphe(cm, lineNumber, cles, insertOffset) {
     cles = (Array.isArray(cles) ? cles : [cles]).filter(Boolean);
@@ -29271,6 +29419,7 @@ class Ariane extends composer(obsidian.Plugin,
   _enregistrerCommandes() {
     this.addCommand({
       id: 'atomise-active',
+      bureau: true,
       module: 'annotations',
       name: tr('Atomiser : la note source active'),
       icon: 'atom',
@@ -29314,6 +29463,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'atomise-tout',
+      bureau: true,
       module: 'annotations',
       name: tr('Atomiser : toutes les sources'),
       callback: () => this.atomiserTout(),
@@ -29338,12 +29488,14 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'lier-reference-zotero',
+      bureau: true,
       module: 'annotations',
       name: tr('Références en attente : lier la référence active à une fiche Zotero'),
       callback: () => this.assistantLiageReference(),
     });
     this.addCommand({
       id: 'rattacher-toutes-references',
+      bureau: true,
       module: 'annotations',
       name: tr('Références en attente : rattacher automatiquement'),
       callback: () => this.rattacherToutesReferences(),
@@ -29575,6 +29727,13 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => this.basculerCitations(!this.settings.citationsRepliees),
     });
     this.addCommand({
+      id: 'citer-annotation',
+      module: 'citations',
+      name: tr('Citations : citer une annotation…'),
+      icon: 'text-quote',
+      editorCallback: (editor) => this.citerAnnotation(editor),
+    });
+    this.addCommand({
       id: 'citations-rafraichir',
       module: 'citations',
       name: tr('Citations : rafraîchir les libellés…'),
@@ -29619,6 +29778,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'notes-lecture-atomiser',
+      bureau: true,
       module: 'annotations',
       name: tr('Atomiser : les notes-filles Zotero'),
       callback: () => this.atomiserToutesNotesLecture(),
@@ -29637,6 +29797,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'decouper-bibliographies',
+      bureau: true,
       module: 'annotations',
       name: tr('Références citées : structurer les entrées non structurées'),
       callback: () => this.decouperBibliographies(),
@@ -29662,12 +29823,14 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'bibliographie-citee-source',
+      bureau: true,
       module: 'annotations',
       name: tr('Références citées : extraire celles de la source active'),
       callback: () => this.genererBibliographieSource(),
     });
     this.addCommand({
       id: 'arreter-bibliographies',
+      bureau: true,
       module: 'annotations',
       name: tr('Références citées : interrompre l’extraction'),
       callback: () => {
@@ -29677,6 +29840,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'bibliographies-citees-toutes',
+      bureau: true,
       module: 'annotations',
       name: tr('Références citées : extraire celles de toutes les sources'),
       callback: () => this.genererToutesBibliographies(),
@@ -29743,6 +29907,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'zotero-references-orphelines',
+      bureau: true,
       module: 'annotations',
       name: tr('Zotero : notes de références orphelines…'),
       callback: () => this.revoirReferencesOrphelines(false),
@@ -29802,6 +29967,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'annotations-sources-mentionnees',
+      bureau: true,
       module: 'annotations',
       name: tr('Annotations : revoir les sources mentionnées dans mes commentaires…'),
       callback: () => this.revoirMentionsDeSources(),
@@ -29860,6 +30026,7 @@ class Ariane extends composer(obsidian.Plugin,
     });
     this.addCommand({
       id: 'organisation-repartir',
+      bureau: true,
       module: 'taches',
       name: tr('Tâches : répartir sur la semaine (IA)'),
       callback: () => this.repartirSemaineIA().catch((e) => new obsidian.Notice(
@@ -30142,7 +30309,9 @@ class Ariane extends composer(obsidian.Plugin,
       this.registerEvent(this.app.workspace.on('layout-change', () => this.brancherPlans()));
     }
     // Une fois : l'ancien titre « ## Note de travail » quitte les notes de tâche.
+    // Ces reprises réécrivent des notes : sur téléphone, l'ordinateur les fait.
     this.app.workspace.onLayoutReady(() => {
+      if (surMobile()) return;
       if (this.module('taches')) {
         this.migrerNotesTravail().catch((e) => console.warn('[Ariane] notes de travail :', e));
         this.retirerBlocsLivrable().catch((e) => console.warn('[Ariane] blocs de livrable :', e));
@@ -30679,11 +30848,15 @@ class Ariane extends composer(obsidian.Plugin,
   // elles ne servent qu'à ce câblage.
   _brancherEvenements() {
     if (this.module('taches')) {
-      // Journal des modifications des tâches (section 11k, spec 2026-09-29).
-      this.demarrerJournalTaches();
-      // Une note de tâche supprimée emporte son rappel (sinon la relève le
-      // réimporterait en tâche neuve).
-      this.ecouterSuppressionTaches();
+      // Sur téléphone, ni journal ni rappels : l'ordinateur voit les mêmes
+      // changements, et les noter des deux côtés les doublerait.
+      if (!surMobile()) {
+        // Journal des modifications des tâches (section 11k, spec 2026-09-29).
+        this.demarrerJournalTaches();
+        // Une note de tâche supprimée emporte son rappel (sinon la relève le
+        // réimporterait en tâche neuve).
+        this.ecouterSuppressionTaches();
+      }
       this._brancherTaches();
     }
     if (this.module('rappels')) this._brancherRappels();
@@ -30710,11 +30883,12 @@ class Ariane extends composer(obsidian.Plugin,
     // Notes de références sans fiche Zotero : vérifiées une minute après le
     // démarrage, puis après chaque synchronisation de ZotFlow (une rafale de
     // notes de références réécrites).
-    this.app.workspace.onLayoutReady(() => {
+    // Sur téléphone, la base de Zotero est hors d'atteinte : rien à vérifier.
+    if (!surMobile()) this.app.workspace.onLayoutReady(() => {
       const t = window.setTimeout(() => this.verifierReferencesOrphelines(), 60000);
       this.register(() => window.clearTimeout(t));
     });
-    this.registerEvent(this.app.metadataCache.on('changed', (f, _d, cache) => {
+    if (!surMobile()) this.registerEvent(this.app.metadataCache.on('changed', (f, _d, cache) => {
       const fm = cache && cache.frontmatter;
       if (fm && fm['zotero-key'] && fm.citationKey) {
         this.antirebond('orphelins-zotero', () => this.verifierReferencesOrphelines(), 20000);
@@ -30766,7 +30940,9 @@ class Ariane extends composer(obsidian.Plugin,
       this.registerEvent(this.app.vault.on('rename', (f) => revaliderIndex(f)));
     }
     // Une source renommée : les sources associées des annotations suivent.
-    this.registerEvent(this.app.vault.on('rename', (f, ancien) => { this.renommerSourceAssociee(ancien, f); }));
+    this.registerEvent(this.app.vault.on('rename', (f, ancien) => {
+      if (this.changementLocal(f)) this.renommerSourceAssociee(ancien, f);
+    }));
 
     // L'index des tâches se lit sur les chemins : seul un chemin qui bouge le
     // périme. Une modification de contenu n'y change rien, d'où l'absence de
@@ -30783,7 +30959,7 @@ class Ariane extends composer(obsidian.Plugin,
     // change vraiment, faute de quoi cette écoute se rappellerait elle-même.
     this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _donnees, cacheNote) => {
       const fm = (cacheNote && cacheNote.frontmatter) || null;
-      if (!fm) return;
+      if (!fm || !this.changementLocal(fichier)) return;
       const jour = new Date().toISOString().slice(0, 10);
       const kFin = this.cleT('termine-le');
       const fmN = Object.assign({}, fm,
@@ -30801,7 +30977,7 @@ class Ariane extends composer(obsidian.Plugin,
     // a pas. Écrite pour être sélectionnable comme n'importe quelle propriété
     // dans les bases. On ne réécrit que si la valeur change vraiment.
     this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _d, cacheNote) => {
-      if (!this.refDeChemin(fichier.path)) return;
+      if (!this.refDeChemin(fichier.path) || !this.changementLocal(fichier)) return;
       const fm = (cacheNote && cacheNote.frontmatter) || {};
       const kSE = this.cleT('sans-echeance');
       const v = Ariane.sansEcheanceAEcrire(this._lireT(fm, 'echeance'), this._lireT(fm, 'sans-echeance'));
@@ -30846,7 +31022,7 @@ class Ariane extends composer(obsidian.Plugin,
       const coche = this._lireT(fm, 'terminee') === true;
       const fini = this._lireT(fm, 'statut') === 'terminée';
       const cible = Ariane.accordTermine(this._etatTermine.get(fichier.path), coche, fini);
-      if (!cible) { this._etatTermine.set(fichier.path, { coche, fini }); return; }
+      if (!cible || !this.changementLocal(fichier)) { this._etatTermine.set(fichier.path, { coche, fini }); return; }
       this._etatTermine.set(fichier.path,
         { coche: cible.terminee != null ? cible.terminee : coche,
           fini: cible.statut ? cible.statut === 'terminée' : fini });
@@ -30872,7 +31048,7 @@ class Ariane extends composer(obsidian.Plugin,
     // se rappellerait elle-même sans fin. L'antirebond évite en outre de
     // réécrire à chaque frappe pendant que Monsieur remplit ses propriétés.
     this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
-      if (!this.refDeChemin(fichier.path)) return;
+      if (!this.refDeChemin(fichier.path) || !this.changementLocal(fichier)) return;
       this.antirebond('tache:' + fichier.path, () => this.majBlocTache(fichier));
     }));
 
@@ -30880,7 +31056,7 @@ class Ariane extends composer(obsidian.Plugin,
     // Créneaux » de la note, sans commande à lancer, et ne se réécrit que si
     // elle change vraiment (garde-fou anti-cycle dans majBlocCreneaux).
     this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
-      if (!this.refDeChemin(fichier.path)) return;
+      if (!this.refDeChemin(fichier.path) || !this.changementLocal(fichier)) return;
       this.antirebond('creneaux:' + fichier.path, () => this.majBlocCreneaux(fichier), 600);
     }));
 
@@ -30891,14 +31067,17 @@ class Ariane extends composer(obsidian.Plugin,
     this._rattachOk = this._rattachOk || new Map();
     this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
       const ref = this.refDeChemin(fichier.path);
-      if (!ref) return;
+      if (!ref || !this.changementLocal(fichier)) return;
       this.antirebond('rattach:' + fichier.path, () => this.veillerRattachements(fichier, ref), 400);
     }));
     this.app.workspace.onLayoutReady(() => this.semerRattachOk());
     this.app.workspace.onLayoutReady(() => {
       // D'abord compléter les propriétés de tâche manquantes (toute nouvelle
       // propriété du plugin est ainsi rattrapée au démarrage), puis corriger
-      // « sans-echeance » selon l'échéance courante.
+      // « sans-echeance » selon l'échéance courante. Sur téléphone, c'est
+      // l'ordinateur qui s'en charge : réécrire toutes les tâches ici les
+      // ferait croiser les siennes dans iCloud.
+      if (surMobile()) return;
       setTimeout(() => {
         Promise.resolve(this.semerConceptsTache())
           .then(() => this.semerSansEcheance())
@@ -30998,7 +31177,7 @@ class Ariane extends composer(obsidian.Plugin,
       this.registerEvent(this.app.vault.on('modify', (f) => {
         if (!this.settings.biblioAuto) return;
         if (!(f instanceof obsidian.TFile) || f.extension !== 'md') return;
-        if (this.ecritePlugin(f.path)) return;
+        if (this.ecritePlugin(f.path) || !this.changementLocal(f)) return;
         if (f.path.startsWith(this.dossierA + '/') || f.path.startsWith('Références/')) return;
         if (this.biblioExclue(f.path)) return;
         this.antirebond('biblio:' + f.path, () => this.majBibliographie(f, true), 2500);
@@ -31010,6 +31189,9 @@ class Ariane extends composer(obsidian.Plugin,
 
       // Tag « orpheline » et nombre d'appels : mis à jour quand les liens
       // changent ; au démarrage, rattrape ce qui a changé hors d'Obsidian.
+      // Sur téléphone, ce serait réécrire les annotations en même temps que
+      // l'ordinateur : il en garde seul la charge.
+      if (surMobile()) return;
       this.registerEvent(this.app.metadataCache.on('resolved', () => {
         this.antirebond('orphelines', () => this.synchroniserAppels(), 800);
       }));
@@ -31211,6 +31393,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     };
     this._section(c, tr('Modules'));
     this._aide(c, tr("Le cœur, l'intégration des annotations Zotero et des citations, est toujours actif. Le reste s'active à la carte : un module coupé ne charge rien, ni commande, ni panneau, ni réglage. Appliquer recharge Ariane, en une seconde."));
+    const mobile = surMobile();
+    if (mobile) this._aide(c, tr('Sur téléphone, les modules choisis ici valent aussi pour l’ordinateur : les réglages sont partagés par le coffre.'));
     const profils = new obsidian.Setting(c).setName(tr('Profils')).setDesc(tr('Un point de départ ; chaque module reste réglable ensuite.'));
     for (const [id, nom] of [['zotero', 'Zotero et écriture'], ['these', 'Gestion de la thèse'], ['tout', 'Tout']]) {
       profils.addButton((b) => b.setButtonText(tr(nom)).onClick(() => {
@@ -31250,12 +31434,13 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         if (m.dependances.length) desc.push(tr('Demande : ') + m.dependances.map((d) => noms.get(d)).join(', ') + '.');
         if (m.macSeul) desc.push(tr('Mac uniquement.'));
         if (m.macSeul && !mac && m.horsMac) desc.push(tr(m.horsMac));
+        if (m.bureauSeul && mobile) desc.push(tr(m.horsBureau || 'Ordinateur uniquement.'));
         const st = new obsidian.Setting(c).setName(noms.get(m.id)).setDesc(desc.join(' '));
         st.settingEl.addClass('zfa-module');
         if (m.coeur) { st.addExtraButton((b) => b.setIcon('lock').setTooltip(tr('Toujours actif')).setDisabled(true)); continue; }
         st.addToggle((tg) => {
-          tg.setValue(voulus.has(m.id) && (mac || !m.macSeul));
-          if (m.macSeul && !mac) tg.setDisabled(true);
+          tg.setValue(voulus.has(m.id) && (mac || !m.macSeul) && !(mobile && m.bureauSeul));
+          if ((m.macSeul && !mac) || (mobile && m.bureauSeul)) tg.setDisabled(true);
           tg.onChange((v) => {
             if (v) {
               for (const id of Ariane.modulesAvecDependances([m.id])) voulus.add(id);
@@ -33870,7 +34055,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Dossier de données Zotero'))
       .setDesc(tr('Vide : détection automatique dans votre dossier personnel.'))
       .addText((t) => t.setValue(s.dossierZotero || '')
-        .setPlaceholder(require('path').join(require('os').homedir(), 'Zotero'))
+        .setPlaceholder(surMobile() ? '' : require('path').join(require('os').homedir(), 'Zotero'))
         .onChange(async (v) => { s.dossierZotero = v.trim(); this.plugin._textesPdf = null; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Filtre Lua (BetterBibTeX)'))
@@ -50478,6 +50663,20 @@ class ChoixListeModal extends obsidian.FuzzySuggestModal {
   onChooseItem(it) { if (this.onChoix) this.onChoix(it); }
 }
 
+// Le choix d'une annotation à citer (commande « Citer une annotation »).
+// Le filtre porte sur le titre et sur « Auteur, année » à la fois.
+class ModaleCiterAnnotation extends obsidian.FuzzySuggestModal {
+  constructor(app, items, onChoix) {
+    super(app);
+    this.items = items || [];
+    this.onChoix = onChoix;
+    this.setPlaceholder(tr('Annotation à citer (titre, auteur, année)'));
+  }
+  getItems() { return this.items; }
+  getItemText(it) { return it.titre + (it.libelle ? ' (' + it.libelle + ')' : ''); }
+  onChooseItem(it) { if (this.onChoix) this.onChoix(it); }
+}
+
 // Rapport de conformité d'une carte.
 class RapportCarteModal extends obsidian.Modal {
   constructor(app, nom, analyse) { super(app); this.nom = nom; this.a = analyse; }
@@ -52216,6 +52415,7 @@ function barreDefaut() {
     { separateur: true },
     // Les deux gestes d'Ariane qui servent à chaque relecture : replier les
     // citations pour lire le texte seul, et ouvrir le volet de relecture.
+    { cmd: a('citer-annotation') },
     { cmd: a('citations-basculer') },
     { cmd: a('correcteur-volet') },
     { separateur: true },

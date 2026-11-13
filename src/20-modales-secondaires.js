@@ -18,6 +18,20 @@ class ChoixListeModal extends obsidian.FuzzySuggestModal {
   onChooseItem(it) { if (this.onChoix) this.onChoix(it); }
 }
 
+// Le choix d'une annotation à citer (commande « Citer une annotation »).
+// Le filtre porte sur le titre et sur « Auteur, année » à la fois.
+class ModaleCiterAnnotation extends obsidian.FuzzySuggestModal {
+  constructor(app, items, onChoix) {
+    super(app);
+    this.items = items || [];
+    this.onChoix = onChoix;
+    this.setPlaceholder(tr('Annotation à citer (titre, auteur, année)'));
+  }
+  getItems() { return this.items; }
+  getItemText(it) { return it.titre + (it.libelle ? ' (' + it.libelle + ')' : ''); }
+  onChooseItem(it) { if (this.onChoix) this.onChoix(it); }
+}
+
 // Rapport de conformité d'une carte.
 class RapportCarteModal extends obsidian.Modal {
   constructor(app, nom, analyse) { super(app); this.nom = nom; this.a = analyse; }

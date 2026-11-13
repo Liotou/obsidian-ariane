@@ -291,7 +291,10 @@ const avecIa = (Base) => class extends Base {
   // coffre partagé avec un PC) passe ailleurs au premier fournisseur prêt :
   // Mistral si sa clé est là, Claude si Claude Code est installé, sinon
   // Ollama, local. `claudePresent` : vrai si l'outil claude est trouvé.
-  static fournisseurSurCeSysteme(f, s, mac, claudePresent) {
+  // Sur téléphone (`mobile`), ni Claude Code, ni Ollama, ni Apple : seul un
+  // service en ligne répond, et c'est Mistral, quel que soit le réglage.
+  static fournisseurSurCeSysteme(f, s, mac, claudePresent, mobile) {
+    if (mobile) return 'mistral';
     if (f !== 'apple' || mac) return f;
     if (String((s && s.refsCleMistral) || '').trim()) return 'mistral';
     if (claudePresent) return 'claude';
@@ -299,6 +302,7 @@ const avecIa = (Base) => class extends Base {
   }
 
   fournisseurDisponible(f) {
+    if (surMobile()) return Ariane.fournisseurSurCeSysteme(f, this.settings, false, false, true);
     const mac = typeof MoteurAppleIA !== 'undefined' ? MoteurAppleIA.disponible() : process.platform === 'darwin';
     if (f !== 'apple' || mac) return f;
     const bin = (this.settings.refsCheminClaude || 'claude').trim() || 'claude';
@@ -318,7 +322,9 @@ const avecIa = (Base) => class extends Base {
   async genererMistral(prompt, max, modele) {
     const cle = (this.settings.refsCleMistral || '').trim();
     if (!cle) {
-      this._diagIA = tr('Clé Mistral absente des réglages.');
+      this._diagIA = surMobile()
+        ? tr('Sur téléphone, l’IA passe par Mistral : renseignez la clé Mistral dans les réglages d’Ariane.')
+        : tr('Clé Mistral absente des réglages.');
       new obsidian.Notice(this._diagIA);
       return null;
     }

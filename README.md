@@ -981,6 +981,41 @@ For the Word export on Windows, install pandoc (pandoc.org) and Python 3
 
 ---
 
+## 📱 On iPhone and Android
+
+Ariane also loads in Obsidian on a phone, with the vault shared through
+iCloud Drive, Obsidian Sync or anything else. Its settings are the
+computer's: nothing to redo.
+
+**What works on the phone**: reading and writing with your annotations
+(link asides, foldable citations, heading and figure numbers, typography),
+the editing toolbar, margin comments, movable paragraphs, note
+bibliographies, the reading summary, tasks (creation, natural language
+included, timeline, calendar, Bases views) and the AI assistant, through
+Mistral: a phone runs neither Claude Code, nor Ollama, nor Apple
+Intelligence for a plugin.
+
+**Citing without drag and drop**: the "Citations: cite an annotation…"
+command, also in the editing toolbar, opens a filterable list of your
+annotations and reading notes (title, author, year). The citation lands as
+a drop would, before the punctuation of the sentence holding the cursor. It
+is handy on a computer too, from the keyboard.
+
+**What stays on the computer**: everything that touches Zotero (atomising,
+linking references, pages), Word export, Claude, site publishing,
+suggestions, time and activity, reminders and calendars, updating draw.io
+diagrams (which still show as images). These modules and commands do not
+appear on the phone.
+
+**What the phone never does**: react to notes that syncing brings from the
+computer. No annotation regeneration, no cascading deletion, no task log,
+no task rewriting at startup: only the open note, or the one Ariane has just
+written at your request, counts as changed on the spot. So the same work is
+not done twice, and the two copies do not clash. Nor does the phone rewrite
+the shared settings until you change them.
+
+---
+
 ## 📦 Installing
 
 Ariane is not in the official Obsidian catalogue. Two ways in:

@@ -291,10 +291,12 @@ const avecSocle = (Base) => class extends Base {
   }
 
   // Un module est-il actif ? `reglage` : la liste des réglages (null : tout).
-  static moduleActif(id, reglage, mac) {
+  // `bureau` : faux sur téléphone, où les modules « bureauSeul » n'existent pas.
+  static moduleActif(id, reglage, mac, bureau) {
     const m = MODULES_ARIANE.find((x) => x.id === id);
     if (!m) return false;
     if (m.macSeul && !mac) return false;
+    if (m.bureauSeul && bureau === false) return false;
     if (m.coeur || reglage == null) return true;
     return reglage.includes(id);
   }
@@ -316,7 +318,8 @@ const avecSocle = (Base) => class extends Base {
   module(ids) {
     const mac = !!(obsidian.Platform && obsidian.Platform.isMacOS);
     const reglage = Array.isArray(this.settings && this.settings.modules) ? this.settings.modules : null;
-    return [].concat(ids).every((id) => Ariane.moduleActif(id, reglage, mac));
+    const bureau = !surMobile();
+    return [].concat(ids).every((id) => Ariane.moduleActif(id, reglage, mac, bureau));
   }
 
   // Le sous-menu « Ariane » du clic droit dans l'éditeur : créé au premier
@@ -334,12 +337,30 @@ const avecSocle = (Base) => class extends Base {
   }
 
   // Une commande porte son module : celle d'un module coupé n'existe pas.
+  // « bureau: true » : elle a besoin de l'ordinateur (Zotero, programmes,
+  // fichiers hors du coffre) et n'existe pas sur téléphone.
   addCommand(c) {
+    if (c && c.bureau && surMobile()) return null;
     if (!c || !c.module) return super.addCommand(c);
     if (!this.module(c.module)) return null;
     const sans = Object.assign({}, c);
     delete sans.module;
+    delete sans.bureau;
     return super.addCommand(sans);
+  }
+
+  // Sur téléphone, iCloud apporte sans cesse les écritures de l'ordinateur :
+  // une note changée ailleurs ne doit rien déclencher ici, sinon le même
+  // travail se ferait deux fois et les deux copies se heurteraient. Une note
+  // est réputée changée sur place si elle est ouverte dans l'éditeur actif,
+  // ou si Ariane vient de l'écrire elle-même. Sur ordinateur, toujours vrai.
+  changementLocal(fichier) {
+    if (!surMobile()) return true;
+    const chemin = fichier && (typeof fichier === 'string' ? fichier : fichier.path);
+    if (!chemin) return false;
+    if (this.ecritePlugin(chemin)) return true;
+    const actif = this.app.workspace.getActiveFile && this.app.workspace.getActiveFile();
+    return !!(actif && actif.path === chemin);
   }
 
   // Un greffon de Zotero est-il installé ? Son paquet, dans un profil.
@@ -373,6 +394,14 @@ const avecSocle = (Base) => class extends Base {
       siOk: 'Installé et activé : vos annotations Zotero arrivent dans le coffre.',
       sinon: zf ? 'Installé mais désactivé : activez-le dans Réglages, Greffons tiers.'
         : 'À installer depuis les greffons de la communauté : c’est lui qui apporte vos annotations Zotero.' });
+    // Sur téléphone, Zotero et ses greffons sont l'affaire de l'ordinateur :
+    // les dire « introuvables » ici ferait croire à une panne.
+    if (surMobile()) {
+      out.push({ id: 'telephone', nom: 'Téléphone', ok: true,
+        siOk: 'Zotero, l’export Word et Claude restent sur l’ordinateur ; ici, Ariane sert à lire, écrire, citer et tenir vos tâches.',
+        sinon: '' });
+      return out;
+    }
     let base = false;
     try {
       const path = require('path'), fs = require('fs'), os = require('os');
@@ -419,6 +448,10 @@ const avecSocle = (Base) => class extends Base {
 
   async loadSettings() {
     const charge = await this.loadData();
+    // Sur téléphone, les réglages sont ceux de l'ordinateur, partagés par
+    // iCloud : on garde leur texte, pour ne réécrire le fichier que si
+    // quelque chose a vraiment changé (voir saveSettings).
+    this._reglagesLus = charge == null ? null : JSON.stringify(charge);
     this.settings = Object.assign({}, DEFAULT_SETTINGS, charge || {});
     // Première installation (rien d'enregistré) : le profil « Zotero et
     // écriture », et la présentation s'ouvrira, avec le choix du profil.
@@ -473,6 +506,13 @@ const avecSocle = (Base) => class extends Base {
     // à l'ancien défaut, qui ne connaissait que « .pdf », suit le nouveau.
     if (this.settings.pageRegex === '\\.pdf,\\s*p\\.\\s*([^\\]]+?)\\]\\(obsidian') {
       this.settings.pageRegex = DEFAULT_SETTINGS.pageRegex;
+    }
+    // Sur téléphone, les défauts et les reprises ci-dessus ne valent pas une
+    // écriture : l'ordinateur les fera de son côté.
+    if (surMobile()) {
+      const copie = Object.assign({}, this.settings);
+      delete copie.tempsHistorique;
+      this._reglagesLus = JSON.stringify(copie);
     }
   }
 
@@ -550,6 +590,14 @@ const avecSocle = (Base) => class extends Base {
     if (Number(this.settings.donneesJourVersion) >= 1) {
       const copie = Object.assign({}, this.settings);
       delete copie.tempsHistorique;
+      // Sur téléphone, un enregistrement sans changement réécrivait quand
+      // même le fichier partagé, qu'iCloud renvoyait à l'ordinateur au risque
+      // de croiser une écriture de sa part.
+      if (surMobile()) {
+        const texte = JSON.stringify(copie);
+        if (texte === this._reglagesLus) return;
+        this._reglagesLus = texte;
+      }
       await this.saveData(copie);
     } else {
       await this.saveData(this.settings);
@@ -737,7 +785,12 @@ const avecSocle = (Base) => class extends Base {
     if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
     if (this.ecritePlugin(file.path)) return;
     // Numérotation des titres, tenue à jour une fois la frappe posée.
-    if (this.dansNumerotation(file)) this.antirebond('num:' + file.path, () => this.renumeroterNote(file), 1500);
+    if (this.dansNumerotation(file) && this.changementLocal(file)) {
+      this.antirebond('num:' + file.path, () => this.renumeroterNote(file), 1500);
+    }
+    // Sur téléphone, Zotero est l'affaire de l'ordinateur : ni verrouillage,
+    // ni régénération, ni rattachement (voir changementLocal).
+    if (surMobile()) return;
 
     if (file.path.startsWith(this.dossierA + '/')) {
       if (this.settings.verrouillage) {
@@ -772,6 +825,7 @@ const avecSocle = (Base) => class extends Base {
   surCreation(file) {
     if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
     if (this.ecritePlugin(file.path)) return;
+    if (surMobile()) return;
     if (!this.settings.regenerationAuto && !this.settings.rattachementZotero) return;
     this.antirebond('src:' + file.path, async () => {
       const contenu = await this.app.vault.read(file);
@@ -846,6 +900,9 @@ const avecSocle = (Base) => class extends Base {
   surSuppression(file) {
     if (!(file instanceof obsidian.TFile) || file.extension !== 'md') return;
     if (this.ecritePlugin(file.path)) return;
+    // Sur téléphone, une note disparue est le plus souvent un effet d'iCloud :
+    // ses annotations et ses liens ne la suivent pas (l'ordinateur s'en charge).
+    if (surMobile()) return;
     if (!this.settings.propagerSuppressions) return;
     if (file.path.startsWith(this.dossierA + '/')) {
       this.antirebond('del:' + file.path, () => this.retirerLiens(file.basename));

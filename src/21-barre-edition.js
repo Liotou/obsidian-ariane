@@ -843,6 +843,7 @@ function barreDefaut() {
     { separateur: true },
     // Les deux gestes d'Ariane qui servent à chaque relecture : replier les
     // citations pour lire le texte seul, et ouvrir le volet de relecture.
+    { cmd: a('citer-annotation') },
     { cmd: a('citations-basculer') },
     { cmd: a('correcteur-volet') },
     { separateur: true },

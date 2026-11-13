@@ -167,6 +167,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     };
     this._section(c, tr('Modules'));
     this._aide(c, tr("Le cœur, l'intégration des annotations Zotero et des citations, est toujours actif. Le reste s'active à la carte : un module coupé ne charge rien, ni commande, ni panneau, ni réglage. Appliquer recharge Ariane, en une seconde."));
+    const mobile = surMobile();
+    if (mobile) this._aide(c, tr('Sur téléphone, les modules choisis ici valent aussi pour l’ordinateur : les réglages sont partagés par le coffre.'));
     const profils = new obsidian.Setting(c).setName(tr('Profils')).setDesc(tr('Un point de départ ; chaque module reste réglable ensuite.'));
     for (const [id, nom] of [['zotero', 'Zotero et écriture'], ['these', 'Gestion de la thèse'], ['tout', 'Tout']]) {
       profils.addButton((b) => b.setButtonText(tr(nom)).onClick(() => {
@@ -206,12 +208,13 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         if (m.dependances.length) desc.push(tr('Demande : ') + m.dependances.map((d) => noms.get(d)).join(', ') + '.');
         if (m.macSeul) desc.push(tr('Mac uniquement.'));
         if (m.macSeul && !mac && m.horsMac) desc.push(tr(m.horsMac));
+        if (m.bureauSeul && mobile) desc.push(tr(m.horsBureau || 'Ordinateur uniquement.'));
         const st = new obsidian.Setting(c).setName(noms.get(m.id)).setDesc(desc.join(' '));
         st.settingEl.addClass('zfa-module');
         if (m.coeur) { st.addExtraButton((b) => b.setIcon('lock').setTooltip(tr('Toujours actif')).setDisabled(true)); continue; }
         st.addToggle((tg) => {
-          tg.setValue(voulus.has(m.id) && (mac || !m.macSeul));
-          if (m.macSeul && !mac) tg.setDisabled(true);
+          tg.setValue(voulus.has(m.id) && (mac || !m.macSeul) && !(mobile && m.bureauSeul));
+          if ((m.macSeul && !mac) || (mobile && m.bureauSeul)) tg.setDisabled(true);
           tg.onChange((v) => {
             if (v) {
               for (const id of Ariane.modulesAvecDependances([m.id])) voulus.add(id);
@@ -2826,7 +2829,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Dossier de données Zotero'))
       .setDesc(tr('Vide : détection automatique dans votre dossier personnel.'))
       .addText((t) => t.setValue(s.dossierZotero || '')
-        .setPlaceholder(require('path').join(require('os').homedir(), 'Zotero'))
+        .setPlaceholder(surMobile() ? '' : require('path').join(require('os').homedir(), 'Zotero'))
         .onChange(async (v) => { s.dossierZotero = v.trim(); this.plugin._textesPdf = null; await maj(); }));
     new obsidian.Setting(c)
       .setName(tr('Filtre Lua (BetterBibTeX)'))

@@ -1520,6 +1520,54 @@ const avecNoteAtomes = (Base) => class extends Base {
   //#region Ariane · panier d'annotations & dépôt paragraphe
   // ── panier d'annotations & dépôt paragraphe ──────────────────────────────
 
+  // Citer sans glisser-déposer : le téléphone ne glisse pas, et au clavier
+  // c'est souvent plus vite. On choisit l'annotation dans une liste filtrable
+  // (titre, auteur, année), et la citation se pose comme au dépôt sur la
+  // phrase où se tient le curseur : avant sa ponctuation finale.
+  citerAnnotation(editor) {
+    const cm = editor && editor.cm;
+    if (!cm) return;
+    const pos = cm.state.selection.main.head;
+    const items = this.annotationsCitables();
+    if (!items.length) { new obsidian.Notice(tr('Aucune annotation à citer dans le coffre.')); return; }
+    new ModaleCiterAnnotation(this.app, items, (it) => {
+      const doc = cm.state.doc;
+      const ligne = doc.lineAt(Math.min(pos, doc.length));
+      this.attacherAnnotationParagraphe(cm, ligne.number, [it.cle],
+        Ariane.positionCitationAuCurseur(ligne.text, pos - ligne.from, ligne.from));
+    }).open();
+  }
+
+  // Où poser une citation pour un curseur à la colonne `col` d'une ligne :
+  // avant la ponctuation qui clôt la phrase. Un curseur posé juste après
+  // cette ponctuation (« … fin. | ») vise la phrase qu'il suit. Ligne vide :
+  // undefined, la citation va en fin de ligne.
+  static positionCitationAuCurseur(texte, col, debut) {
+    if (!String(texte || '').trim()) return undefined;
+    let k = Math.max(0, Math.min(col, texte.length));
+    while (k > 0 && /[ \t  ]/.test(texte[k - 1])) k--;
+    const depart = k > 0 && /[.?!…]/.test(texte[k - 1]) ? k - 1 : col;
+    return (debut || 0) + finDePhraseAvantPonct(texte, depart);
+  }
+
+  // Les notes que l'on peut citer : annotations et notes de lecture, les plus
+  // récentes d'abord (ce que l'on vient de lire est ce que l'on cite).
+  annotationsCitables() {
+    const dossiers = [this.dossierA, this.settings.dossierNotesLecture]
+      .filter(Boolean).map((d) => String(d).replace(/\/+$/, '') + '/');
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!dossiers.some((d) => f.path.startsWith(d))) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      const alias = [].concat(fm.aliases || fm.alias || [])[0];
+      let libelle = '';
+      try { libelle = this.libelleCitation(f.basename) || ''; } catch (e) { libelle = ''; }
+      out.push({ cle: f.basename, titre: String(alias || f.basename), libelle,
+        recent: (f.stat && f.stat.mtime) || 0 });
+    }
+    return out.sort((a, b) => b.recent - a.recent);
+  }
+
   attacherAnnotationParagraphe(cm, lineNumber, cles, insertOffset) {
     cles = (Array.isArray(cles) ? cles : [cles]).filter(Boolean);
     if (!cles.length) return false;

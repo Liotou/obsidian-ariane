@@ -5,6 +5,21 @@
 //  plusieurs sections.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Sur téléphone (iPhone, Android), Obsidian n'a ni Node ni Electron : pas de
+// `process`, pas de « fs », « path », « child_process »… Lire `process` y
+// levait une erreur. Ce substitut, propre au greffon, répond comme un système
+// sans rien ; sur ordinateur, c'est le vrai.
+const process = (typeof globalThis !== 'undefined' && globalThis.process)
+  || { platform: 'mobile', env: {}, versions: {}, arch: '', cwd: () => '/' };
+
+// Vrai dans l'application Obsidian d'un téléphone ou d'une tablette. Ce qui
+// a besoin de l'ordinateur s'y retire : modules « bureauSeul », commandes
+// « bureau », automatismes qui réagissent aux notes venues d'iCloud.
+function surMobile() {
+  const P = obsidian.Platform;
+  return !!(P && (P.isMobileApp || P.isDesktopApp === false));
+}
+
 function echapperRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

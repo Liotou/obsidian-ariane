@@ -92,6 +92,15 @@ installation : profil « Zotero et écriture » et note de présentation
   (section 16), dont les fichiers se rangent dans « Canevas » sous le dossier
   des tâches. `migrerVuesGraphe` convertit au démarrage toute vue Graphe
   restée dans un `.base`, puis l'en retire. Ne pas la réintroduire.
+- **Téléphone (depuis 3.2.0).** Sur iPhone et Android, ni Node ni Electron :
+  pas de `process` (un substitut, en tête de 02, le remplace), pas de `fs`,
+  `path`, `child_process`. Un module qui en dépend porte `bureauSeul: true`
+  dans `MODULES_ARIANE` ; une commande d'un module présent qui en dépend porte
+  `bureau: true`. Et rien ne doit réagir aux notes qu'iCloud apporte de
+  l'ordinateur : toute écoute qui **écrit** passe par
+  `this.changementLocal(f)` (note ouverte, ou écrite par Ariane), ou se tait
+  sous `surMobile()`. `tests/telephone.test.js` démarre Ariane sans aucun
+  module de Node ; tout `require` de Node au chargement le fait échouer.
 - **Outils d'écriture d'Apple : jamais lancés depuis le code.**
   `Menu.sendActionToFirstResponder('showWritingTools:')` fait planter
   Obsidian entier (exception AppKit non rattrapée, 2026-11-04). La commande
