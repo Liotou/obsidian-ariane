@@ -463,7 +463,7 @@ const avecDonneesJour = (Base) => class extends Base {
     let texte = '';
     try {
       const prompt = Ariane.promptResumeJournee(j, matiere, this.settings.activiteIAContexte);
-      const rep = await this._genererActiviteIA(prompt, 1000, 'synthese');
+      const rep = await this._genererActiviteIA(prompt, 1000, 'activite-journee');
       texte = String((rep && (rep.resume || rep.texte)) || '').replace(/\s*[\u2014\u2013]\s*/g, ', ').replace(/\s+/g, ' ').trim();
     } catch (e) {
       if (avis) avis.hide();
@@ -473,7 +473,7 @@ const avecDonneesJour = (Base) => class extends Base {
     if (avis) avis.hide();
     if (!texte) return '';
     const d = await this.donneesJour(j);
-    d.resumeJournee = { texte, le: new Date().toISOString(), modele: this.settings.activiteIAFournisseur || this.settings.refsFournisseur || '' };
+    d.resumeJournee = { texte, le: new Date().toISOString(), modele: this.iaPour('activite-journee').f };
     this.marquerJourSale(j);
     await this.ecrireDonneesJours();
     this._signalerResumeJournee();

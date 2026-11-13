@@ -70,14 +70,21 @@ const avecAssistant = (Base) => class extends Base {
     return r.texte || null;
   }
 
-  // Le fournisseur de l'assistant : Apple Intelligence quand elle est là
-  // (réglage « automatique »), sinon le fournisseur principal d'Ariane.
+  // Le fournisseur de l'assistant : celui de sa ligne dans l'onglet IA.
+  // Apple Intelligence absente (hors du Mac, ou Mac non éligible, constaté
+  // dans la session) laisse la place au premier fournisseur prêt.
   fournisseurAssistant() {
-    const choix = this.settings.assistantFournisseur || 'auto';
-    if (choix === 'apple' && MoteurAppleIA.disponible()) return 'apple';
-    if (choix === 'auto' && MoteurAppleIA.disponible() && !this._appleIndisponible) return 'apple';
-    // Hors du Mac, un réglage « Apple » retombe sur un fournisseur présent.
-    return this.fournisseurDisponible(this.settings.refsFournisseur || 'ollama');
+    const f = this.iaPour('assistant').f;
+    if (f === 'apple' && this._appleIndisponible) return this.repliApple();
+    return f;
+  }
+
+  // Le fournisseur pris quand Apple Intelligence ne répond pas sur ce Mac.
+  repliApple() {
+    const bin = (this.settings.refsCheminClaude || 'claude').trim() || 'claude';
+    let claude = false;
+    try { claude = !surMobile() && !!trouverExecutable(bin); } catch (e) { claude = false; }
+    return Ariane.fournisseurSurCeSysteme('apple', this.settings, false, claude, surMobile());
   }
 
   // Une génération de texte libre (non du JSON) pour l'assistant, au fil de
@@ -86,6 +93,7 @@ const avecAssistant = (Base) => class extends Base {
   ecrireAvecIA(instructions, consigne, o) {
     const opts = o || {};
     const f = this.fournisseurAssistant();
+    const m = f === this.iaPour('assistant').f ? this.iaPour('assistant').m : '';
     let annule = false;
     let annulerApple = null;
     const travail = async () => {
@@ -94,17 +102,17 @@ const avecAssistant = (Base) => class extends Base {
           temperature: 0.3, surPartiel: opts.surPartiel });
         annulerApple = l.annuler;
         const r = await l.fin;
-        // Apple Intelligence absente, en réglage automatique : on passe au
-        // fournisseur principal, et on s'en souvient pour la session.
-        if (r && r.erreur && (this.settings.assistantFournisseur || 'auto') === 'auto'
+        // Apple Intelligence absente de ce Mac : on passe au premier
+        // fournisseur prêt, et on s'en souvient pour la session.
+        if (r && r.erreur
           && ['demon', 'appareil-non-eligible', 'apple-intelligence-desactivee', 'modele-pas-pret'].includes(r.code)) {
           this._appleIndisponible = true;
-          return this._texteFournisseur(instructions, consigne, opts.max, this.settings.refsFournisseur || 'ollama');
+          return this._texteFournisseur(instructions, consigne, opts.max, this.repliApple(), '');
         }
         if (r && r.erreur) return { erreur: MoteurAppleIA.raisonLisible(r.code) || r.erreur };
         return r;
       }
-      return this._texteFournisseur(instructions, consigne, opts.max, f);
+      return this._texteFournisseur(instructions, consigne, opts.max, f, m);
     };
     const fin = this.avecHaloIA(travail).then((r) => (annule ? { erreur: tr('annulé') } : r))
       .catch((e) => ({ erreur: String((e && e.message) || e) }));
@@ -112,26 +120,20 @@ const avecAssistant = (Base) => class extends Base {
   }
 
   // Les autres fournisseurs, en texte libre et d'une traite.
-  async _texteFournisseur(instructions, consigne, max, f) {
-    const s = this.settings;
-    const modele = s.refsModele || 'llama3.2';
+  // `m` : le modèle ; vide, celui du fournisseur (FOURNISSEURS_IA).
+  async _texteFournisseur(instructions, consigne, max, f, m) {
+    const four = FOURNISSEURS_IA.find((x) => x.id === f);
+    const modele = String(m || '').trim() || (four ? four.modele : '') || 'llama3.2';
     const invite = instructions + '\n\n' + consigne;
     this._diagIA = '';
     try {
       if (f === 'claude') {
-        const t = await this.genererClaude(invite, max, { parEntree: true, delai: 180000 });
+        const t = await this.genererClaude(invite, max, { parEntree: true, delai: 180000, modeleClaude: m || '' });
         return t ? { texte: t } : { erreur: this._diagIA || tr('aucune réponse') };
       }
       if (f === 'mistral') {
-        const cle = (s.refsCleMistral || '').trim();
-        if (!cle) return { erreur: tr('Clé Mistral absente des réglages.') };
-        const m = /^(mistral|ministral|magistral|codestral|pixtral|open-)/i.test(modele) ? modele : 'mistral-small-latest';
-        const rep = await obsidian.requestUrl({ url: 'https://api.mistral.ai/v1/chat/completions', method: 'POST', throw: false,
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cle },
-          body: JSON.stringify({ model: m, temperature: 0.3, max_tokens: max || 1200,
-            messages: [{ role: 'system', content: instructions }, { role: 'user', content: consigne }] }) });
-        const c = rep && rep.status < 300 && rep.json && rep.json.choices && rep.json.choices[0];
-        return c ? { texte: String(c.message.content || '') } : { erreur: 'Mistral HTTP ' + (rep ? rep.status : '?') };
+        return await this.requeteMistral({ model: Ariane.modeleMistral(modele), temperature: 0.3, max_tokens: max || 1200,
+          messages: [{ role: 'system', content: instructions }, { role: 'user', content: consigne }] });
       }
       const lm = f === 'lmstudio';
       const url = this.urlInference(lm) + (lm ? '/v1/chat/completions' : '/api/generate');

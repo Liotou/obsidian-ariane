@@ -991,7 +991,7 @@ const avecNoteBiblio = (Base) => class extends Base {
     this.decoupageEnCours = true;
     for (const t of aFaire) {
       if (!this.decoupageEnCours) break;
-      const rep = await this.genererJsonRefs(consigne + t.brut, 320);
+      const rep = await this.genererPour('biblio-decouper', consigne + t.brut, 320);
       n += 1;
       avis.setMessage(tr('Découpage : ') + n + ' / ' + aFaire.length
         + '  (' + gardes + ' ' + tr('retenus') + ', ' + jetes + ' ' + tr('rejetés') + ')');

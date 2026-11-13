@@ -2218,6 +2218,63 @@ const TEXTES = {
     "Téléphone": "Phone",
     "Zotero, l’export Word et Claude restent sur l’ordinateur ; ici, Ariane sert à lire, écrire, citer et tenir vos tâches.": "Zotero, Word export and Claude stay on the computer; here, Ariane is for reading, writing, citing and keeping your tasks.",
     "aucune réponse. Voir les réglages d’Ariane, onglet IA.": "no answer. See Ariane’s settings, AI tab.",
+    "Clé Mistral absente des réglages (onglet IA).": "Mistral key missing from the settings (AI tab).",
+    "Le modèle Mistral « ": "The Mistral model “",
+    " » n’est pas compris dans votre abonnement : Ariane a pris « mistral-small-latest ». Choisissez un autre modèle dans les réglages d’Ariane, onglet IA.": "” is not included in your subscription: Ariane used “mistral-small-latest”. Choose another model in Ariane’s settings, AI tab.",
+    " (clé valide ? modèle « ": " (valid key? model “",
+    "Réponse vide de Mistral.": "Empty answer from Mistral.",
+    "Mistral injoignable : ": "Mistral unreachable: ",
+    "L’IA n’a pas répondu : ": "The AI did not answer: ",
+    "raison inconnue": "unknown reason",
+    "par défaut": "default",
+    "Essayer": "Try",
+    "Essai…": "Trying…",
+    " répond.": " answers.",
+    "Trancher les ambiguës par l’IA (onglet IA)": "Settle ambiguous ones with the AI (AI tab)",
+    "L’IA se choisit dans l’onglet IA, ligne « Découper les bibliographies citées ».": "The AI is chosen in the AI tab, row “Split cited bibliographies”.",
+    "Son IA se choisit plus haut, ligne « Assistant IA ». Apple Intelligence travaille sur ce Mac, sans connexion ni compte ; son modèle est modeste, mais suffit à la relecture et aux reformulations. Si elle manque, l’assistant passe à Mistral, sinon à Claude, sinon à Ollama.": "Its AI is chosen above, row “AI assistant”. Apple Intelligence runs on this Mac, with no connection or account; its model is modest but enough for proofreading and rewording. If it is missing, the assistant uses Mistral, then Claude, then Ollama.",
+    "Son IA se choisit plus haut, ligne « Assistant IA ». Apple Intelligence n’existe que sur Mac.": "Its AI is chosen above, row “AI assistant”. Apple Intelligence exists only on Mac.",
+    "Il se choisit dans l’onglet IA, ligne « Reclasser les suggestions ».": "It is chosen in the AI tab, row “Rerank suggestions”.",
+    " ne répond pas. ": " does not answer. ",
+    "« Répartir sur la semaine » : l’IA estime la taille de vos tâches (titre, famille, échéance, durée de vie, ce qui est déjà fait), puis Ariane place leurs créneaux dans vos plages libres. Rien n’est appliqué sans votre accord. Son IA se choisit dans l’onglet IA, ligne « Répartir la semaine ».": "“Spread over the week”: the AI estimates the size of your tasks (title, family, due date, lifetime, what is already done), then Ariane places their slots in your free time. Nothing is applied without your approval. Its AI is chosen in the AI tab, row “Spread the week”.",
+    "Comptes et services": "Accounts and services",
+    "Saisis une fois, pour toutes les fonctions qui les emploient.": "Entered once, for every feature that uses them.",
+    "Pour les fonctions confiées à Mistral, et pour toutes sur téléphone. Conservée localement, dans les réglages du greffon.": "For the features given to Mistral, and for all of them on a phone. Kept locally, in the plugin settings.",
+    "Commande de Claude": "Claude command",
+    "Claude Code, en ligne de commande : chemin du binaire, si « claude » ne suffit pas.": "Claude Code, on the command line: path to the binary, if “claude” is not enough.",
+    "Adresse de ": "Address of ",
+    "L’IA de chaque fonction": "The AI of each feature",
+    "Sur ce téléphone, toutes passent par Mistral, quel que soit le choix fait ici : ni Claude Code, ni Ollama, ni LM Studio, ni Apple Intelligence n’y tournent pour un greffon.": "On this phone, all of them go through Mistral, whatever is chosen here: neither Claude Code, Ollama, LM Studio nor Apple Intelligence runs there for a plugin.",
+    "Le fournisseur et le modèle de chaque fonction. Modèle vide : celui du fournisseur par défaut (mistral-small-latest, llama3.2, ou celui de Claude Code). Mistral et Claude reçoivent le texte en jeu ; Ollama, LM Studio et Apple Intelligence restent sur l’ordinateur. Chaque proposition est revue avant d’être appliquée.": "The provider and model of each feature. Empty model: the provider’s default (mistral-small-latest, llama3.2, or Claude Code’s). Mistral and Claude receive the text involved; Ollama, LM Studio and Apple Intelligence stay on the computer. Every proposal is reviewed before it is applied.",
+    "Proximité des notes": "Note similarity",
+    "Les suggestions mesurent la proximité de sens entre vos notes par des embeddings, qu’Ollama ou LM Studio calculent sur l’ordinateur.": "Suggestions measure how close in meaning your notes are with embeddings, computed on the computer by Ollama or LM Studio.",
+    "L’IA de chacune de ces tâches se choisit plus haut, sous « Activité ». Le premier jet des rattachements est local, sans IA.": "The AI of each of these jobs is chosen above, under “Activity”. The first draft of the links is local, without AI.",
+    "Outils d’écriture sur la sélection, barre de demande, « Qu’en pensez-vous ? ».": "Writing tools on the selection, request bar, “What do you think?”.",
+    "Structurer un brouillon": "Structure a draft",
+    "Transforme un texte libre en tâches.": "Turns free text into tasks.",
+    "Découper une tâche": "Split a task",
+    "Propose des sous-tâches.": "Suggests subtasks.",
+    "Ajouter des tâches en langage naturel": "Add tasks in natural language",
+    "Comprend une phrase comme « relire le chapitre 2 avant vendredi ».": "Understands a sentence like “proofread chapter 2 before Friday”.",
+    "Proposer une séance": "Suggest a session",
+    "Choisit les sous-tâches à mener dans une séance de travail.": "Picks the subtasks to work on in a session.",
+    "Remet les titres des tâches au propre.": "Tidies up task titles.",
+    "Contrôle la famille de chaque tâche.": "Checks the family of each task.",
+    "Répartir la semaine": "Spread the week",
+    "Estime la taille des tâches pour placer leurs créneaux. Demande un modèle capable.": "Estimates task sizes to place their slots. Needs a capable model.",
+    "Découper les bibliographies citées": "Split cited bibliographies",
+    "Sépare une bibliographie collée en références.": "Splits a pasted bibliography into references.",
+    "Trancher un rattachement douteux": "Settle a doubtful link",
+    "Dit si une référence citée et une fiche Zotero désignent le même travail.": "Says whether a cited reference and a Zotero item are the same work.",
+    "Reclasser les suggestions": "Rerank suggestions",
+    "Remet en ordre les notes proposées (bouton ✨ du panneau).": "Reorders the suggested notes (✨ button of the panel).",
+    "Activité": "Activity",
+    "Écrit ce qui a été fait sur chaque créneau réel et le range dans une catégorie.": "Writes what was done in each real slot and files it in a category.",
+    "Rattacher l’activité aux tâches": "Link activity to tasks",
+    "« Affiner avec l’IA » des rattachements proposés.": "“Refine with AI” for suggested links.",
+    "Classer les distractions": "Classify distractions",
+    "Range les applications et sites inconnus.": "Files unknown apps and sites.",
+    "Le bilan de la journée.": "The day’s summary.",
   },
 };
 let LANGUE = 'fr';
@@ -2301,6 +2358,55 @@ const PROFILS_ARIANE = {
   these: ['annotations', 'citations', 'export', 'familles', 'typographie', 'taches', 'canevas', 'rappels', 'temps'],
   tout: MODULES_ARIANE.map((m) => m.id),
 };
+
+// Les fonctions d'Ariane qui emploient une IA générative. Chacune a son
+// fournisseur et son modèle (réglage iaFonctions, onglet IA) : il n'y a plus
+// de fournisseur principal. `herite` dit d'où vient son choix tant que
+// l'utilisateur n'y a pas touché, d'après les réglages d'avant la 3.3 (voir
+// Ariane.iaHeritee) : la mise à jour ne change donc rien. `module` : la ligne
+// ne se montre que si ce module est actif. Un test vérifie que tout appel à
+// l'IA passe par l'une d'elles.
+const FONCTIONS_IA = [
+  { id: 'assistant', domaine: 'Écriture', module: 'assistant', herite: 'assistant',
+    nom: 'Assistant IA', desc: 'Outils d’écriture sur la sélection, barre de demande, « Qu’en pensez-vous ? ».' },
+  { id: 'taches-structurer', domaine: 'Tâches', module: 'taches', herite: 'principal',
+    nom: 'Structurer un brouillon', desc: 'Transforme un texte libre en tâches.' },
+  { id: 'taches-decouper', domaine: 'Tâches', module: 'taches', herite: 'principal',
+    nom: 'Découper une tâche', desc: 'Propose des sous-tâches.' },
+  { id: 'taches-langage', domaine: 'Tâches', module: 'taches', herite: 'principal',
+    nom: 'Ajouter des tâches en langage naturel', desc: 'Comprend une phrase comme « relire le chapitre 2 avant vendredi ».' },
+  { id: 'taches-seance', domaine: 'Tâches', module: 'taches', herite: 'principal',
+    nom: 'Proposer une séance', desc: 'Choisit les sous-tâches à mener dans une séance de travail.' },
+  { id: 'taches-normaliser', domaine: 'Tâches', module: 'taches', herite: 'principal',
+    nom: 'Normaliser les intitulés', desc: 'Remet les titres des tâches au propre.' },
+  { id: 'taches-familles', domaine: 'Tâches', module: 'taches', herite: 'principal',
+    nom: 'Vérifier les familles', desc: 'Contrôle la famille de chaque tâche.' },
+  { id: 'taches-repartir', domaine: 'Tâches', module: 'taches', herite: 'repartition',
+    nom: 'Répartir la semaine', desc: 'Estime la taille des tâches pour placer leurs créneaux. Demande un modèle capable.' },
+  { id: 'biblio-decouper', domaine: 'Références', module: 'annotations', herite: 'principal',
+    nom: 'Découper les bibliographies citées', desc: 'Sépare une bibliographie collée en références.' },
+  { id: 'refs-rattacher', domaine: 'Références', module: 'annotations', herite: 'local',
+    nom: 'Trancher un rattachement douteux', desc: 'Dit si une référence citée et une fiche Zotero désignent le même travail.' },
+  { id: 'sugg-reclasser', domaine: 'Suggestions', module: 'suggestions', herite: 'local',
+    nom: 'Reclasser les suggestions', desc: 'Remet en ordre les notes proposées (bouton ✨ du panneau).' },
+  { id: 'activite-creneaux', domaine: 'Activité', module: 'temps', herite: 'activite',
+    nom: 'Résumer les créneaux', desc: 'Écrit ce qui a été fait sur chaque créneau réel et le range dans une catégorie.' },
+  { id: 'activite-rattacher', domaine: 'Activité', module: 'temps', herite: 'activite',
+    nom: 'Rattacher l’activité aux tâches', desc: '« Affiner avec l’IA » des rattachements proposés.' },
+  { id: 'activite-distractions', domaine: 'Activité', module: 'temps', herite: 'activite',
+    nom: 'Classer les distractions', desc: 'Range les applications et sites inconnus.' },
+  { id: 'activite-journee', domaine: 'Activité', module: 'temps', herite: 'activite',
+    nom: 'Résumer la journée', desc: 'Le bilan de la journée.' },
+];
+// Les fournisseurs, dans l'ordre du menu, et le modèle pris quand le champ
+// est vide. Claude : vide = le modèle par défaut de Claude Code.
+const FOURNISSEURS_IA = [
+  { id: 'mistral', nom: 'Mistral', modele: 'mistral-small-latest' },
+  { id: 'claude', nom: 'Claude en ligne de commande', modele: '' },
+  { id: 'ollama', nom: 'Ollama', modele: 'llama3.2' },
+  { id: 'lmstudio', nom: 'LM Studio', modele: 'llama3.2' },
+  { id: 'apple', nom: 'Apple Intelligence (sur ce Mac)', modele: '' },
+];
 
 const DEFAULT_SETTINGS = {
   modules: null,                // ids des modules actifs ; null : profil « Tout »
@@ -2708,6 +2814,11 @@ const DEFAULT_SETTINGS = {
   refsCleMistral: '',
   refsCheminClaude: 'claude',
   refsModeleClaude: '',         // --model du CLI Claude ; vide = son modèle par défaut
+  // L'IA de chaque fonction (voir FONCTIONS_IA) : { id: { f, m } }. Une
+  // fonction absente suit les anciens réglages (refsFournisseur, refsModele,
+  // assistantFournisseur, activiteIA…, organisationModeleClaude,
+  // suggModeleLLM), gardés pour cela seulement.
+  iaFonctions: {},
   // Dossier de données de Zotero. Vide : détection automatique (~/Zotero).
   dossierZotero: '',
   suggRerankTopN: 12,

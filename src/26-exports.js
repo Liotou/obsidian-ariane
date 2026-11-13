@@ -14,6 +14,8 @@ module.exports._test = {
   MODULES_ARIANE_3_0,
   ArianeSettingTab,
   PROFILS_ARIANE,
+  FONCTIONS_IA,      // l'IA de chaque fonction (onglet IA)
+  FOURNISSEURS_IA,
   // Notes de lecture : citations zotflow ramenées à la forme d'Ariane.
   citationsZotflowVersAriane,
   annotationsDeSource,

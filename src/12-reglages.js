@@ -60,12 +60,14 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       { id: 'schemas', module: 'schemas', icone: 'shapes',
         rubriques: [['ongletVues', 'Vocabulaire des schémas'], ['ongletVues', 'Export SVG des schémas']] },
       { id: 'publication', module: 'publication', icone: 'globe', rubriques: [['ongletExport', 'Publication du site']] },
-      // Toute l'IA dans un seul onglet : le fournisseur principal, puis
-      // l'assistant (si son module est actif), le service local, l'activité.
-      // Un troisième terme : le module dont dépend la rubrique.
+      // Toute l'IA dans un seul onglet : les comptes, l'IA de chaque
+      // fonction, puis l'assistant (si son module est actif), la proximité
+      // des notes (suggestions), l'activité. Un troisième terme : le module
+      // dont dépend la rubrique.
       { id: 'ia', nom: 'IA', icone: 'bot',
-        rubriques: [['ongletIA', 'Fournisseur principal'], ['ongletAssistant', 'Assistant IA', 'assistant'],
-          ['ongletIA', 'Service local'], ['ongletIA', "IA de l'activité"]] },
+        rubriques: [['ongletIA', 'Comptes et services'], ['ongletIA', 'L’IA de chaque fonction'],
+          ['ongletAssistant', 'Assistant IA', 'assistant'], ['ongletIA', 'Proximité des notes', 'suggestions'],
+          ['ongletIA', "IA de l'activité"]] },
       { id: 'greffons', nom: 'Greffons liés', icone: 'plug', rubriques: [['ongletGreffons', '*']] },
       { id: 'avance', nom: 'Avancé', icone: 'wrench',
         rubriques: [['ongletAnnotations', 'Dossiers des productions'], ['ongletGeneral', 'Maintenance'], ['ongletVues', 'Icônes des vues de base']] },
@@ -497,43 +499,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     rendre();
   }
 
-  // Le modèle du fournisseur « Claude en ligne de commande » (option --model).
-  // Fable, Opus, Sonnet et Haiku sont des alias : ils suivent la dernière version de
-  // leur famille. « Autre » accepte un identifiant exact.
-  // `cle` : le réglage visé (refsModeleClaude par défaut) ; `o` : { nom,
-  // desc, sansDefaut } pour un autre usage (la répartition de la semaine).
-  _modeleClaude(c, s, maj, cle, o) {
-    const k = cle || 'refsModeleClaude';
-    const opt = o || {};
-    const PRESETS = (opt.sansDefaut ? [] : ['']).concat(['fable', 'opus', 'sonnet', 'haiku']);
-    const actuel = String(s[k] || '').trim();
-    if (!this._claudeAutre || typeof this._claudeAutre !== 'object') this._claudeAutre = {};
-    const autre = !PRESETS.includes(actuel) || this._claudeAutre[k] === true;
-    new obsidian.Setting(c)
-      .setName(opt.nom || tr('Modèle'))
-      .setDesc(opt.desc || tr('Les alias suivent la dernière version de chaque modèle. Plus capable = plus lent et plus coûteux en quota : Haiku suffit pour découper des bibliographies.'))
-      .addDropdown((d) => { if (!opt.sansDefaut) d.addOption('', tr('Par défaut (celui de Claude Code)')); return d
-        .addOption('fable', 'Fable')
-        .addOption('opus', 'Opus')
-        .addOption('sonnet', tr('Sonnet : équilibré'))
-        .addOption('haiku', tr('Haiku : le plus rapide'))
-        .addOption('__autre', tr('Autre identifiant…'))
-        .setValue(autre ? '__autre' : actuel)
-        .onChange(async (v) => {
-          this._claudeAutre[k] = v === '__autre';
-          if (v !== '__autre') s[k] = v;
-          await maj();
-          this.display();
-        }); });
-    if (autre) {
-      new obsidian.Setting(c)
-        .setName(tr('Identifiant du modèle'))
-        .setDesc(tr('Tel que « claude --model » l’accepte, par exemple « claude-opus-5-5 ».'))
-        .addText((t) => t.setPlaceholder('claude-opus-5-5').setValue(PRESETS.includes(actuel) ? '' : actuel)
-          .onChange(async (v) => { s[k] = v.trim(); await maj(); }));
-    }
-  }
-
   // Éditeur de lignes : chaque ligne a ses champs (couleur, texte), se
   // déplace et se supprime ; « Ajouter » en crée une. `o.ecrire` reçoit la
   // liste à chaque changement ; la liste ne se redessine qu'à l'ajout, au
@@ -585,35 +550,48 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     dessiner();
   }
 
-  // Le fournisseur et le modèle d'IA d'un usage de l'activité réelle (voir
-  // Ariane.CLES_IA_ACTIVITE) : un intertitre, puis les mêmes champs que pour
-  // l'assistant IA. Vide : celui de l'assistant.
-  _choixIAActivite(c, s, maj, usage, titre, desc) {
-    const k = Ariane.CLES_IA_ACTIVITE[usage];
-    new obsidian.Setting(c).setName(titre).setDesc(desc).setClass('zfa-reglage-sous-titre')
-      .addDropdown((d) => d
-        .addOption('', tr('Celui de l\'assistant IA (') + (s.refsFournisseur || 'ollama') + ')')
-        .addOption('ollama', 'Ollama')
-        .addOption('lmstudio', 'LM Studio')
-        .addOption('mistral', 'Mistral')
-        .addOption('claude', tr('Claude en ligne de commande'))
-        .then((d2) => { if (MoteurAppleIA.disponible()) d2.addOption('apple', tr('Apple Intelligence (sur ce Mac)')); })
-        .setValue(s[k.f] || '')
-        .onChange(async (v) => { s[k.f] = v; await maj(); this.display(); }));
-    const f = s[k.f] || s.refsFournisseur || 'ollama';
-    if (f === 'apple') {
-      // Un seul modèle : rien à choisir.
-    } else if (f === 'claude') {
-      if (!s[k.c]) s[k.c] = k.defautClaude;
-      this._modeleClaude(c, s, maj, k.c, { nom: tr('Modèle Claude'), sansDefaut: true, desc: ' ' });
-    } else {
-      new obsidian.Setting(c)
-        .setName(tr('Modèle'))
-        .setDesc(tr('Vide : celui de l\'assistant IA (') + (s.refsModele || 'llama3.2') + ').')
-        .addText((t) => t.setPlaceholder(f === 'mistral' ? 'mistral-small-latest' : 'llama3.2')
-          .setValue(s[k.m] || '')
-          .onChange(async (v) => { s[k.m] = v.trim(); await maj(); }));
+  // Une fonction de FONCTIONS_IA : son fournisseur, son modèle, un essai.
+  // La première retouche fige toutes les fonctions dans iaFonctions, chacune
+  // avec ce qu'elle suivait : les autres ne bougent donc pas.
+  _ligneIA(c, s, maj, def) {
+    const g = this.plugin;
+    const propre = s.iaFonctions && s.iaFonctions[def.id];
+    const choix = propre && propre.f ? { f: propre.f, m: String(propre.m || '') } : Ariane.iaHeritee(def, s);
+    const ecrire = async (f, m) => {
+      const tout = {};
+      for (const d of FONCTIONS_IA) {
+        const x = s.iaFonctions && s.iaFonctions[d.id];
+        tout[d.id] = x && x.f ? { f: x.f, m: String(x.m || '') } : Ariane.iaHeritee(d, s);
+      }
+      tout[def.id] = { f, m };
+      s.iaFonctions = tout;
+      if (def.id === 'assistant') g._appleIndisponible = false;
+      await maj();
+    };
+    const four = FOURNISSEURS_IA.find((x) => x.id === choix.f);
+    const ligne = new obsidian.Setting(c).setName(tr(def.nom)).setDesc(tr(def.desc))
+      .addDropdown((d) => {
+        for (const x of FOURNISSEURS_IA) {
+          if (x.id === 'apple' && !MoteurAppleIA.disponible() && choix.f !== 'apple') continue;
+          d.addOption(x.id, tr(x.nom));
+        }
+        d.setValue(choix.f).onChange(async (v) => { await ecrire(v, ''); this.display(); });
+      });
+    if (choix.f !== 'apple') {
+      ligne.addText((t) => {
+        t.setPlaceholder(choix.f === 'claude' ? tr('par défaut') : (four ? four.modele : ''))
+          .setValue(choix.m || '')
+          .onChange(async (v) => { await ecrire(choix.f, v.trim()); });
+        t.inputEl.style.width = '11em';
+        t.inputEl.setAttr('aria-label', tr('Modèle'));
+      });
     }
+    ligne.addExtraButton((b) => b.setIcon('zap').setTooltip(tr('Essayer')).onClick(async () => {
+      const avis = new obsidian.Notice(tr('Essai…'), 0);
+      const r = await g.genererIA('Réponds exactement ceci : {"ok":true}', 60, def.id);
+      avis.hide();
+      if (r) new obsidian.Notice(tr(def.nom) + ' : ' + g.iaPour(def.id).f + tr(' répond.'));
+    }));
   }
 
   // Les canevas ouverts reprennent aussitôt les réglages de leurs liens.
@@ -912,7 +890,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addDropdown((d) => {
         d.addOption('desactive', tr('Désactivé'));
         d.addOption('certain', tr('Certaines seulement, ignorer les ambiguës'));
-        d.addOption('ia', tr('Trancher les ambiguës par le modèle local'));
+        d.addOption('ia', tr('Trancher les ambiguës par l’IA (onglet IA)'));
         d.addOption('manuel', tr('Me demander pour les ambiguës'));
         const v = s.rattachementZotero === false ? 'desactive'
           : (s.rattachementIA !== false ? 'ia'
@@ -1139,7 +1117,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .addText((t) => t.setValue(s.dossierReferences).onChange(async (v) => { s.dossierReferences = v.trim() || 'Références citées'; await maj(); }));
     this._sousTitre(c, tr('Entrées en texte brut'));
     this._aide(c, tr("Une entrée de bibliographie sur six n'existe qu'en texte brut, qu'aucune expression régulière ne découpe. Un modèle s'en charge. Il propose, il ne décide pas : chaque extraction est recoupée avec le texte d'origine, l'année, le nom et le titre devant s'y retrouver, sinon elle est jetée."));
-    this._aide(c, tr("Le modèle est celui de l'assistant IA (onglet IA, Fournisseur principal)."));
+    this._aide(c, tr("L’IA se choisit dans l’onglet IA, ligne « Découper les bibliographies citées »."));
     new obsidian.Setting(c)
       .setName(tr('Lancer le découpage'))
       .setDesc(tr("Une passe sur les entrées en texte brut, mise en cache. Interruptible, et reprise là où elle s'était arrêtée."))
@@ -1295,17 +1273,9 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     const mac = MoteurAppleIA.disponible();
     this._section(c, tr('Assistant IA'));
     this._aide(c, tr("Sélectionnez un passage, puis « Outils d’écriture » (barre d’édition, clic droit dans le sous-menu Ariane, ou palette) : le modifier par une consigne, le relire, le réécrire (plus clair, plus soutenu, plus concis, résumé, points clés, liste, tableau) ou demander « Qu’en pensez-vous ? », dont les remarques arrivent en commentaires dans la marge. Les liens, citations et notes de bas de page sont protégés : l’IA ne peut pas les altérer. Les outils d’écriture d’Apple eux-mêmes restent au clic droit."));
-    new obsidian.Setting(c)
-      .setName(tr('Moteur de l’assistant'))
-      .setDesc(mac
-        ? tr('Apple Intelligence travaille sur ce Mac, sans connexion ni compte ; son modèle est modeste, mais suffit à la relecture et aux reformulations. Automatique : Apple Intelligence si elle est là, sinon le fournisseur principal (onglet IA).')
-        : tr('Apple Intelligence n’existe que sur Mac : l’assistant emploie le fournisseur principal (onglet IA).'))
-      .addDropdown((d) => {
-        d.addOption('auto', tr('Automatique'));
-        if (mac) d.addOption('apple', 'Apple Intelligence');
-        d.addOption('principal', tr('Le fournisseur principal (') + (s.refsFournisseur || 'ollama') + ')');
-        d.setValue(s.assistantFournisseur || 'auto').onChange(async (v) => { s.assistantFournisseur = v; g._appleIndisponible = false; await maj(); });
-      });
+    this._aide(c, mac
+      ? tr('Son IA se choisit plus haut, ligne « Assistant IA ». Apple Intelligence travaille sur ce Mac, sans connexion ni compte ; son modèle est modeste, mais suffit à la relecture et aux reformulations. Si elle manque, l’assistant passe à Mistral, sinon à Claude, sinon à Ollama.')
+      : tr('Son IA se choisit plus haut, ligne « Assistant IA ». Apple Intelligence n’existe que sur Mac.'));
     if (mac) {
       new obsidian.Setting(c)
         .setName(tr('Vérifier Apple Intelligence'))
@@ -1605,8 +1575,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     }
 
     if (s.suggMoteur === 'semantique' || s.suggMoteur === 'hybride') {
-      const lm = (s.suggFournisseur || 'ollama') === 'lmstudio';
-      const nomService = lm ? 'LM Studio' : 'Ollama';
       this._section(c, tr('Reclassement par modèle de langue'));
       this._aide(c, tr("Un modèle de langue relit les meilleurs candidats et les remet en ordre. C'est de loin le poste le plus lourd du greffon : il ne part que sur demande, par le bouton ✨ du panneau."));
       new obsidian.Setting(c)
@@ -1615,13 +1583,14 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       if (s.suggRerank) {
         new obsidian.Setting(c)
           .setName(tr('Modèle de langue'))
-          .addText((t) => t.setValue(s.suggModeleLLM).onChange(async (v) => { s.suggModeleLLM = v.trim() || 'llama3.2'; await maj(); }))
+          .setDesc(tr('Il se choisit dans l’onglet IA, ligne « Reclasser les suggestions ».'))
           .addButton((b) => b.setButtonText(tr('Tester')).onClick(async () => {
             new obsidian.Notice(tr('Test du modèle…'));
             const ok = await this.plugin.testerLLM();
+            const ia = this.plugin.iaPour('sugg-reclasser');
             new obsidian.Notice(ok
               ? tr('Le modèle répond : le reclassement est disponible.')
-              : 'Échec : modèle « ' + (s.suggModeleLLM || 'llama3.2') + ' » injoignable sur ' + nomService + '.');
+              : tr('Échec : ') + ia.f + (ia.m ? ' (' + ia.m + ')' : '') + tr(' ne répond pas. ') + (this.plugin._diagIA || ''));
           }));
         new obsidian.Setting(c)
           .setName(tr('Reclasser automatiquement'))
@@ -1885,11 +1854,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       .setName(tr('Compter le week-end'))
       .addToggle((t) => t.setValue(s.organisationWeekend === true)
         .onChange(async (v) => { s.organisationWeekend = v; await maj(); }));
-    this._aide(c, tr("« Répartir sur la semaine » : Claude estime la taille de vos tâches (titre, famille, échéance, durée de vie, ce qui est déjà fait), puis Ariane place leurs créneaux dans vos plages libres. Rien n’est appliqué sans votre accord."));
-    this._modeleClaude(c, s, maj, 'organisationModeleClaude', {
-      nom: tr('Modèle de la répartition'), sansDefaut: true,
-      desc: tr('Toujours Claude en ligne de commande, quel que soit le fournisseur de l’assistant IA. Sonnet par défaut ; Opus ou Fable jugent plus finement la taille des tâches, plus lentement.'),
-    });
+    this._aide(c, tr("« Répartir sur la semaine » : l’IA estime la taille de vos tâches (titre, famille, échéance, durée de vie, ce qui est déjà fait), puis Ariane place leurs créneaux dans vos plages libres. Rien n’est appliqué sans votre accord. Son IA se choisit dans l’onglet IA, ligne « Répartir la semaine »."));
     new obsidian.Setting(c)
       .setName(tr('Au plus, par jour'))
       .setDesc(tr('Heures de tâches par jour, créneaux déjà posés compris.'))
@@ -2490,74 +2455,51 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
   }
 
   ongletIA(c, s, maj) {
-    this._section(c, tr('Fournisseur principal'));
-    this._aide(c, tr("Le fournisseur et le modèle de l'assistant (commandes « Tâches : … (IA) »), du découpage des bibliographies, du rattachement des références, et, sauf choix contraire, de l'activité."));
-    this._aide(c, tr("Structurer un brouillon, découper une tâche, normaliser les intitulés, vérifier les familles, ajouter en langage naturel, résoudre les sources : par les commandes « Tâches : … (IA) » et les menus contextuels. Chaque proposition est revue avant d'être appliquée. Le classement s'appuie sur la « Description » de chaque famille (onglet « Familles de notes »)."));
+    const mobile = surMobile();
+    this._section(c, tr('Comptes et services'));
+    this._aide(c, tr('Saisis une fois, pour toutes les fonctions qui les emploient.'));
     new obsidian.Setting(c)
-      .setName(tr('Fournisseur'))
-      .setDesc(tr('Ollama et LM Studio restent sur l’ordinateur ; leur adresse se règle dans « Service local ».'))
-      .addDropdown((d) => d
-        .addOption('ollama', 'Ollama')
-        .addOption('lmstudio', 'LM Studio')
-        .addOption('mistral', 'Mistral')
-        .addOption('claude', tr('Claude en ligne de commande'))
-        .then((d2) => { if (MoteurAppleIA.disponible()) d2.addOption('apple', tr('Apple Intelligence (sur ce Mac)')); })
-        .setValue(s.refsFournisseur || 'ollama')
-        .onChange(async (v) => {
-          s.refsFournisseur = v;
-          // Aligner le nom du modèle sur le fournisseur : un modèle local ne
-          // veut rien dire pour Mistral, et inversement.
-          const m = String(s.refsModele || '').toLowerCase();
-          if (v === 'mistral' && !/mistral|ministral|magistral|codestral|pixtral/.test(m)) {
-            s.refsModele = 'mistral-small-latest';
-          } else if ((v === 'ollama' || v === 'lmstudio')
-            && /mistral|ministral|magistral|codestral|pixtral/.test(m)) {
-            s.refsModele = 'llama3.2';
-          }
-          await maj(); this.display();
-        }));
-    if (s.refsFournisseur !== 'claude' && s.refsFournisseur !== 'apple') {
+      .setName(tr('Clé Mistral'))
+      .setDesc(tr('Pour les fonctions confiées à Mistral, et pour toutes sur téléphone. Conservée localement, dans les réglages du greffon.'))
+      .addText((t) => {
+        t.setValue(s.refsCleMistral || '')
+          .onChange(async (v) => { s.refsCleMistral = v.trim(); await maj(); });
+        t.inputEl.type = 'password';
+      });
+    if (!mobile) {
       new obsidian.Setting(c)
-        .setName(tr('Modèle'))
-        .setDesc(s.refsFournisseur === 'mistral'
-          ? tr('Ex. « mistral-small-latest ».')
-          : tr('Nom exact du modèle installé.'))
-        .addText((t) => t.setValue(s.refsModele || 'llama3.2')
-          .onChange(async (v) => { s.refsModele = v.trim() || 'llama3.2'; await maj(); }));
-    }
-    new obsidian.Setting(c)
-      .setName(tr('Tester la connexion'))
-      .addButton((b) => b.setButtonText(tr('Tester')).onClick(async () => {
-        const avis = new obsidian.Notice(tr('Test…'), 0);
-        const r = await this.plugin.genererIA('Réponds exactement ceci : {"ok":true}', 60);
-        avis.hide();
-        if (r) new obsidian.Notice(tr('Le fournisseur répond.'));
-      }));
-    if (s.refsFournisseur === 'mistral') {
-      new obsidian.Setting(c)
-        .setName(tr('Clé Mistral'))
-        .setDesc(tr('Conservée localement, dans les réglages du greffon.'))
-        .addText((t) => {
-          t.setValue(s.refsCleMistral || '')
-            .onChange(async (v) => { s.refsCleMistral = v.trim(); await maj(); });
-          t.inputEl.type = 'password';
-        });
-    }
-    if (s.refsFournisseur === 'claude') {
-      new obsidian.Setting(c)
-        .setName(tr('Commande'))
-        .setDesc(tr('Chemin du binaire, si « claude » ne suffit pas.'))
+        .setName(tr('Commande de Claude'))
+        .setDesc(tr('Claude Code, en ligne de commande : chemin du binaire, si « claude » ne suffit pas.'))
         .addText((t) => t.setValue(s.refsCheminClaude || 'claude')
           .onChange(async (v) => { s.refsCheminClaude = v.trim() || 'claude'; await maj(); }));
-      this._modeleClaude(c, s, maj);
+      const adresse = (nom, cle, defaut) => new obsidian.Setting(c)
+        .setName(tr('Adresse de ') + nom)
+        .setDesc(tr('Propre à cette machine : jamais reprise dans un profil exporté.'))
+        .addText((t) => t.setPlaceholder(defaut).setValue(s[cle] || '')
+          .onChange(async (v) => { s[cle] = v.trim() || defaut; await maj(); }));
+      adresse('Ollama', 'suggOllamaUrl', 'http://localhost:11434');
+      adresse('LM Studio', 'suggLmStudioUrl', 'http://localhost:1234');
     }
-    this._section(c, tr('Service local'));
+
+    this._section(c, tr('L’IA de chaque fonction'));
+    this._aide(c, mobile
+      ? tr('Sur ce téléphone, toutes passent par Mistral, quel que soit le choix fait ici : ni Claude Code, ni Ollama, ni LM Studio, ni Apple Intelligence n’y tournent pour un greffon.')
+      : tr('Le fournisseur et le modèle de chaque fonction. Modèle vide : celui du fournisseur par défaut (mistral-small-latest, llama3.2, ou celui de Claude Code). Mistral et Claude reçoivent le texte en jeu ; Ollama, LM Studio et Apple Intelligence restent sur l’ordinateur. Chaque proposition est revue avant d’être appliquée.'));
+    let domaine = null;
+    for (const def of FONCTIONS_IA) {
+      if (def.module && !this.plugin.module(def.module)) continue;
+      if (def.domaine !== domaine) { domaine = def.domaine; this._sousTitre(c, tr(domaine)); }
+      this._ligneIA(c, s, maj, def);
+    }
+
+    this._section(c, tr('Proximité des notes'));
     const reindexer = () => { this.plugin.invaliderIndexSuggestions(); this.plugin.majSuggestions(false, true); };
     const lm = (s.suggFournisseur || 'ollama') === 'lmstudio';
     const nomService = lm ? 'LM Studio' : 'Ollama';
+    this._aide(c, tr("Les suggestions mesurent la proximité de sens entre vos notes par des embeddings, qu’Ollama ou LM Studio calculent sur l’ordinateur."));
     this._aide(c, lm
-      ? "LM Studio, par son API compatible OpenAI. Chargez un modèle d'embeddings et un modèle de langue dans l'onglet « Developer », serveur démarré. Identifiants tels que LM Studio les affiche, par exemple « text-embedding-bge-m3-latest »."
-      : "Ollama. Dans un terminal : « ollama pull bge-m3 » pour les embeddings, « ollama pull llama3.2 » pour le reclassement. Modèle conseillé en français : bge-m3, multilingue ; plus léger : nomic-embed-text.");
+      ? "LM Studio, par son API compatible OpenAI. Chargez un modèle d'embeddings dans l'onglet « Developer », serveur démarré. Identifiant tel que LM Studio l'affiche, par exemple « text-embedding-bge-m3-latest »."
+      : "Ollama. Dans un terminal : « ollama pull bge-m3 ». Modèle conseillé en français : bge-m3, multilingue ; plus léger : nomic-embed-text.");
     new obsidian.Setting(c)
       .setName(tr('Service'))
       .setDesc(tr("Changer de service réencode l'index : les vecteurs de deux modèles ne se comparent pas."))
@@ -2566,17 +2508,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         .addOption('lmstudio', tr('LM Studio'))
         .setValue(s.suggFournisseur || 'ollama')
         .onChange(async (v) => { s.suggFournisseur = v; await maj(); this.display(); }));
-    new obsidian.Setting(c)
-      .setName(tr('Adresse'))
-      .setDesc(tr('Propre à cette machine : jamais reprise dans un profil exporté.'))
-      .addText((t) => t
-        .setPlaceholder(lm ? 'http://localhost:1234' : 'http://localhost:11434')
-        .setValue((lm ? s.suggLmStudioUrl : s.suggOllamaUrl) || '')
-        .onChange(async (v) => {
-          const url = v.trim() || (lm ? 'http://localhost:1234' : 'http://localhost:11434');
-          if (lm) s.suggLmStudioUrl = url; else s.suggOllamaUrl = url;
-          await maj();
-        }));
     new obsidian.Setting(c)
       .setName(tr("Modèle d'embeddings"))
       .setDesc(tr("Sert à mesurer la proximité de sens entre vos notes."))
@@ -2591,8 +2522,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     if (!this.plugin.module('temps')) { /* l'IA de l'activité suit le module Temps */ } else if (s.activiteActif) {
       this._section(c, tr('IA de l\'activité'));
       this._aide(c, tr("Sur chaque créneau réel, l'IA écrit ce qui a été fait et le range dans une de vos catégories, dont une pour la vie privée et les distractions (rayée dans le calendrier). Clic droit sur un créneau réel : résumer ce créneau ou la journée ; commande « Activité réelle : résumer la semaine affichée (IA) ». Les résumés sont gardés dans les fichiers du jour (« .ariane/jours »). Avec un fournisseur en ligne (Mistral, Claude), les titres de fenêtres et les sites lui sont envoyés ; Ollama et LM Studio restent sur l'ordinateur."));
-      this._choixIAActivite(c, s, maj, 'synthese', tr('Fournisseur'),
-        tr("Résume chaque créneau hors Obsidian et le range dans une catégorie (clic droit, « Résumer la journée », « Résumer la période »), et affine les suggestions de rattachement à la demande. Le premier jet de ces suggestions est local, sans cette IA. Haiku suffit, vite et à peu de frais."));
+      this._aide(c, tr('L’IA de chacune de ces tâches se choisit plus haut, sous « Activité ». Le premier jet des rattachements est local, sans IA.'));
       new obsidian.Setting(c)
         .setName(tr('Catégories'))
         .setDesc(tr("Le nom, la couleur, et ce que la catégorie recouvre : cette description guide l'IA, soyez précis. Gardez une catégorie pour la vie privée et les distractions."))

@@ -1246,7 +1246,7 @@ class ModaleSeance extends obsidian.Modal {
       try {
         const filles = this._filles().map((t) => ({ ref: t.ref, intitule: t.intitule || this.noms[t.ref] || t.ref, faite: this._faite(t) }));
         const g = this.o.greffon;
-        const j = await g.genererIA(g.promptSeance(this.o.mere, filles, texte), 1200);
+        const j = await g.genererIA(g.promptSeance(this.o.mere, filles, texte), 1200, 'taches-seance');
         if (!j) return;
         const p = Ariane.propositionSeance(j, filles);
         if (!p.retenir.length && !p.creer.length) { new obsidian.Notice(tr('L\'IA n\'a rien proposé pour cette séance.')); return; }
@@ -1528,7 +1528,7 @@ class ModaleStructurerTaches extends obsidian.Modal {
       const prompt = this.decouper
         ? this.greffon.promptDecoupage(this.decouper, texte)
         : this.greffon.promptStructuration(texte);
-      const brut = await this.greffon.genererIA(prompt, 2400);
+      const brut = await this.greffon.genererIA(prompt, 2400, this.decouper ? 'taches-decouper' : 'taches-structurer');
       const specs = Ariane.normaliserSpecsTaches(brut, {
         familles: new Set(this.greffon.famillesIA().map((f) => f.id)),
         defaut: this.decouper ? this.decouper.famille : (this.greffon.settings.familleTacheDefaut || 'action'),

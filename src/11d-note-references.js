@@ -1456,8 +1456,9 @@ const avecNoteReferences = (Base) => class extends Base {
     }
   }
 
-  // Tranche un rattachement ambigu avec le modèle local. Renvoie true, false,
-  // ou null si le modèle est injoignable (on retombe alors sur la fenêtre).
+  // Tranche un rattachement ambigu avec l'IA choisie pour cela (onglet IA).
+  // Renvoie true, false, ou null si elle est injoignable (on retombe alors
+  // sur la fenêtre).
   async deciderRattachementIA(refNom, entree) {
     try {
       const auteurs = (entree.creatorsFull || []).join(', ');
@@ -1471,7 +1472,7 @@ const avecNoteReferences = (Base) => class extends Base {
         + 'Désignent-elles le même travail ? Sois prudent : en cas de doute sérieux '
         + '(auteurs différents, homonymie possible, année incohérente), réponds false.\n'
         + 'Réponds UNIQUEMENT en JSON : {"meme": true} ou {"meme": false}.';
-      const brut = await this.genererJson(prompt, 64);
+      const brut = await this.genererPour('refs-rattacher', prompt, 64);
       if (!brut) return null;
       let obj = null;
       try { obj = JSON.parse(brut); } catch (e) {

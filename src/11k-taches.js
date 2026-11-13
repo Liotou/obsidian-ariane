@@ -1915,12 +1915,13 @@ const avecTaches = (Base) => class extends Base {
 
   /* ---- IA : structuration de tâches -------------------------------- */
 
-  // Appel LLM (fournisseur configuré dans les réglages) qui rend du JSON parsé.
-  async genererIA(prompt, jetons, opts) {
+  // Appel à l'IA de la fonction `fonction` (FONCTIONS_IA, onglet IA) qui
+  // rend du JSON lu.
+  async genererIA(prompt, jetons, fonction, opts) {
     this._diagIA = '';
-    const brut = await this.avecHaloIA(() => this.genererJsonRefs(prompt, jetons || 1800, opts));
+    const brut = await this.avecHaloIA(() => this.genererPour(fonction, prompt, jetons || 1800, opts));
     if (!brut) {
-      const f = this.settings.refsFournisseur || 'ollama';
+      const f = this.iaPour(fonction).f;
       new obsidian.Notice(tr('IA (') + f + ') : ' + (this._diagIA
         || tr('aucune réponse. Voir les réglages d’Ariane, onglet IA.')), 10000);
       return null;
@@ -2152,7 +2153,7 @@ const avecTaches = (Base) => class extends Base {
         bout.map((t) => t.ref + ' :: ' + t.intitule).join('\n'),
       ].join('\n');
       let j;
-      try { j = await this.genererIA(prompt, 1400); } finally { avis.hide(); }
+      try { j = await this.genererIA(prompt, 1400, 'taches-normaliser'); } finally { avis.hide(); }
       const arr = Array.isArray(j) ? j : (j && Array.isArray(j.taches) ? j.taches : []);
       for (const e of arr) {
         const ref = String((e && (e.ref || e.id)) || '').trim();
@@ -2185,7 +2186,7 @@ const avecTaches = (Base) => class extends Base {
         bout.map((t) => t.ref + ' :: [' + t.famille + '] ' + t.intitule).join('\n'),
       ].join('\n');
       let j;
-      try { j = await this.genererIA(prompt, 1200); } finally { avis.hide(); }
+      try { j = await this.genererIA(prompt, 1200, 'taches-familles'); } finally { avis.hide(); }
       const arr = Array.isArray(j) ? j : [];
       for (const e of arr) {
         const ref = String((e && (e.ref || e.id)) || '').trim();
@@ -2239,7 +2240,7 @@ const avecTaches = (Base) => class extends Base {
       'DESCRIPTION :',
       p,
     ].join('\n');
-    const brut = await this.genererIA(prompt, 1500);
+    const brut = await this.genererIA(prompt, 1500, 'taches-langage');
     if (!brut) return [];
     const specs = Ariane.lireTachesLN(brut, {
       familles: new Set(this.famillesIA().map((f) => f.id)),
@@ -3644,17 +3645,15 @@ const avecTaches = (Base) => class extends Base {
     if (!candidats.length) { new obsidian.Notice(tr('Aucune tâche à répartir.')); return; }
     const prompt = Ariane.promptRepartition(candidats, d.tempsLibre, auj, this.famillesIA());
     const avis = new obsidian.Notice(tr('Répartition : l’IA estime vos tâches (') + candidats.length + ')…', 0);
-    // Toujours Claude en ligne de commande, quel que soit le fournisseur de
-    // l'assistant IA (Mistral, Ollama…) : c'est le modèle choisi pour la
-    // répartition, Sonnet par défaut, avec quatre minutes pour répondre.
+    // L'IA choisie pour la répartition (Claude Sonnet jusqu'à la 3.3), avec
+    // quatre minutes pour répondre.
     let brut;
     this._diagIA = '';
     try {
-      brut = await this.genererClaude(prompt, 6000, {
-        modeleClaude: s.organisationModeleClaude || 'sonnet', delai: 240000 });
+      brut = await this.genererPour('taches-repartir', prompt, 6000, { delai: 240000 });
     } finally { avis.hide(); }
     if (!brut) {
-      new obsidian.Notice(tr('Claude n’a pas répondu : ') + (this._diagIA || tr('raison inconnue')), 10000);
+      new obsidian.Notice(tr('L’IA n’a pas répondu : ') + (this._diagIA || tr('raison inconnue')), 10000);
       return;
     }
     const reponse = Ariane.extraireJson(brut);

@@ -793,9 +793,11 @@ grand-parent, ou les laisse racines.
 
 ### Assistant IA
 
-Local (Ollama / LM Studio) ou distant (Mistral, CLI Claude) : le fournisseur est
-celui déjà réglé pour le découpage des bibliographies. Chaque proposition est
-**revue avant d'être appliquée**. Commandes et entrées de menu contextuel :
+Local (Ollama, LM Studio, Apple Intelligence) ou distant (Mistral, CLI Claude) :
+chaque fonction a sa propre IA, choisie dans l'onglet IA des réglages (« L'IA de
+chaque fonction » : un fournisseur et un modèle par ligne ; la clé Mistral, la
+commande de Claude et l'adresse des services locaux se saisissent une fois, dans
+« Comptes et services »). Chaque proposition est **revue avant d'être appliquée**. Commandes et entrées de menu contextuel :
 
 | Fonction | Ce qu'elle fait |
 |---|---|

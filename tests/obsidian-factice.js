@@ -9,6 +9,8 @@ const factice = new Proxy({}, {
   get(_, nom) {
     // Un test peut se faire passer pour un autre système (global.__arianePlateforme).
     if (nom === 'Platform') return global.__arianePlateforme || { isMacOS: true, isDesktopApp: true };
+    // Un test peut répondre aux requêtes HTTP (global.__arianeRequete).
+    if (nom === 'requestUrl' && global.__arianeRequete) return global.__arianeRequete;
     if (nom === 'setIcon') return () => {};
     if (nom === 'setTooltip') return () => {};
     // Le catalogue d'icônes : quelques entrées, dont un doublon une fois le

@@ -223,13 +223,59 @@ const avecIa = (Base) => class extends Base {
     return null;
   }
 
-  // Une génération censée rendre du JSON. Bornée dans les deux dialectes :
-  // « num_predict » pour Ollama, « max_tokens » pour LM Studio. Sans cette
-  // borne, un modèle qui ne referme pas son objet tourne jusqu'à saturer son
-  // contexte — plusieurs minutes à pleine charge.
-  async genererJson(prompt, jetons) {
-    return this.genererJsonAvec(prompt, jetons || this.settings.suggRerankJetons || 400,
-      this.fournisseurLmStudio(), this.settings.suggModeleLLM || 'llama3.2');
+  /* --- L'IA de chaque fonction ------------------------------------- */
+
+  // Le choix d'une fonction que l'utilisateur n'a pas encore réglée : celui
+  // qu'elle suivait avant la 3.3, du temps du fournisseur principal.
+  static iaHeritee(def, s) {
+    const st = s || {};
+    const principal = () => {
+      const f = st.refsFournisseur || 'ollama';
+      return { f, m: f === 'claude' ? String(st.refsModeleClaude || '') : f === 'apple' ? '' : (st.refsModele || 'llama3.2') };
+    };
+    switch (def && def.herite) {
+      case 'assistant':
+        return (st.assistantFournisseur || 'auto') === 'principal' ? principal() : { f: 'apple', m: '' };
+      case 'repartition':
+        return { f: 'claude', m: st.organisationModeleClaude || 'sonnet' };
+      case 'local':
+        return { f: st.suggFournisseur === 'lmstudio' ? 'lmstudio' : 'ollama', m: st.suggModeleLLM || 'llama3.2' };
+      case 'activite': {
+        const f = st.activiteIAFournisseur || st.refsFournisseur || 'ollama';
+        if (f === 'claude') return { f, m: st.activiteIAModeleClaude || 'haiku' };
+        if (f === 'apple') return { f, m: '' };
+        return { f, m: String(st.activiteIAModele || '').trim() || st.refsModele || 'llama3.2' };
+      }
+      default: return principal();
+    }
+  }
+
+  // Le fournisseur et le modèle réglés pour une fonction (FONCTIONS_IA), sans
+  // tenir compte de la machine. Un modèle vide prend celui du fournisseur.
+  static iaDeFonction(id, s) {
+    const def = FONCTIONS_IA.find((x) => x.id === id);
+    const c = s && s.iaFonctions && s.iaFonctions[id];
+    const choix = c && c.f ? { f: c.f, m: String(c.m || '').trim() } : Ariane.iaHeritee(def, s);
+    const four = FOURNISSEURS_IA.find((x) => x.id === choix.f);
+    return { f: choix.f, m: choix.m || (four ? four.modele : '') };
+  }
+
+  // Le même choix, sur cette machine : Apple hors du Mac, et tout sur
+  // téléphone, passent à un autre fournisseur, avec son modèle par défaut.
+  iaPour(id) {
+    const r = Ariane.iaDeFonction(id, this.settings);
+    const f = this.fournisseurDisponible(r.f);
+    if (f === r.f) return r;
+    const four = FOURNISSEURS_IA.find((x) => x.id === f);
+    return { f, m: four ? four.modele : '' };
+  }
+
+  // Toute génération d'Ariane passe par ici : `id` nomme la fonction
+  // (FONCTIONS_IA), qui dit le fournisseur et le modèle. `opts` : { delai,
+  // parEntree } pour Claude.
+  async genererPour(id, prompt, max, opts) {
+    const { f, m } = this.iaPour(id);
+    return this.genererAvecFournisseur(prompt, max, f, m, Object.assign({}, opts, { modeleClaude: f === 'claude' ? m : '' }));
   }
 
   // `ctx` (facultatif) élargit la fenêtre de contexte d'Ollama, qui tronque
@@ -275,18 +321,6 @@ const avecIa = (Base) => class extends Base {
     }
   }
 
-  // Le découpage bibliographique passe par son propre moteur. Les quatre
-  // dialectes se rejoignent ici, pour qu'il n'existe qu'un seul endroit où
-  // borner la génération et rattraper les erreurs.
-  // `opts` (facultatif) : { modeleClaude, delai } pour un appel qui veut son
-  // propre modèle Claude ou plus de temps (la répartition de la semaine).
-  async genererJsonRefs(prompt, jetons, opts) {
-    return this.genererAvecFournisseur(prompt, jetons || 300,
-      this.settings.refsFournisseur || 'ollama', this.settings.refsModele || 'llama3.2', opts);
-  }
-
-
-
   // Apple Intelligence n'existe que sur Mac. Un réglage venu d'un Mac (un
   // coffre partagé avec un PC) passe ailleurs au premier fournisseur prêt :
   // Mistral si sa clé est là, Claude si Claude Code est installé, sinon
@@ -311,6 +345,10 @@ const avecIa = (Base) => class extends Base {
     return Ariane.fournisseurSurCeSysteme(f, this.settings, mac, claude);
   }
 
+  // Les dialectes se rejoignent ici, pour qu'il n'existe qu'un seul endroit
+  // où borner la génération et rattraper les erreurs. Pour Ollama et LM
+  // Studio, la borne est « num_predict » ou « max_tokens » : sans elle, un
+  // modèle qui ne referme pas son objet tourne jusqu'à saturer son contexte.
   async genererAvecFournisseur(prompt, max, f, modele, opts) {
     f = this.fournisseurDisponible(f);
     if (f === 'mistral') return this.genererMistral(prompt, max, modele);
@@ -333,40 +371,68 @@ const avecIa = (Base) => class extends Base {
   }
 
   async genererMistral(prompt, max, modele) {
+    const r = await this.requeteMistral(Ariane.corpsMistral(Ariane.modeleMistral(modele), prompt, max));
+    this._diagIA = r.erreur || '';
+    return r.erreur ? null : r.texte;
+  }
+
+  // Un nom de modèle local (llama…, qwen…, …:tag, un alias de Claude) ne veut
+  // rien dire pour Mistral : on retombe alors sur un modèle Mistral valide.
+  static modeleMistral(modele) {
+    const m = String(modele || '').trim();
+    return /^(mistral|ministral|magistral|codestral|pixtral|devstral|open-)/i.test(m) ? m : 'mistral-small-latest';
+  }
+
+  // Le refus d'un modèle que l'abonnement n'ouvre pas (le palier gratuit
+  // n'ouvre pas tous les modèles) : HTTP 403, « tier_not_allowed ».
+  static modeleHorsAbonnement(rep) {
+    return !!rep && rep.status === 403
+      && /tier_not_allowed|not available in your subscription/i.test(String(rep.text || ''));
+  }
+
+  // Une demande à Mistral, en JSON ou en texte : rend { texte } ou { erreur }.
+  // Un modèle hors de l'abonnement est remplacé, pour cette demande, par
+  // mistral-small-latest, que tous les paliers ouvrent ; l'avis le dit une
+  // fois par session, avec le remède.
+  async requeteMistral(corps) {
     const cle = (this.settings.refsCleMistral || '').trim();
     if (!cle) {
-      this._diagIA = surMobile()
+      return { erreur: surMobile()
         ? tr('Sur téléphone, l’IA passe par Mistral : renseignez la clé Mistral dans les réglages d’Ariane.')
-        : tr('Clé Mistral absente des réglages.');
-      new obsidian.Notice(this._diagIA);
-      return null;
+        : tr('Clé Mistral absente des réglages (onglet IA).') };
     }
-    // Un nom de modèle local (llama…, qwen…, …:tag) ne veut rien dire pour
-    // Mistral : on retombe alors sur un modèle Mistral valide.
-    let m = String(modele || '').trim();
-    if (!/^(mistral|ministral|magistral|codestral|pixtral|open-)/i.test(m)) m = 'mistral-small-latest';
+    const envoyer = (c) => obsidian.requestUrl({
+      url: 'https://api.mistral.ai/v1/chat/completions',
+      method: 'POST', throw: false,
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cle },
+      body: JSON.stringify(c),
+    });
+    let c = corps;
     try {
-      const rep = await obsidian.requestUrl({
-        url: 'https://api.mistral.ai/v1/chat/completions',
-        method: 'POST', throw: false,
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cle },
-        body: JSON.stringify(Ariane.corpsMistral(m, prompt, max)),
-      });
+      let rep = await envoyer(c);
+      if (Ariane.modeleHorsAbonnement(rep) && c.model !== 'mistral-small-latest') {
+        const refuse = c.model;
+        c = Object.assign({}, c, { model: 'mistral-small-latest' });
+        rep = await envoyer(c);
+        if (!this._mistralSignale) this._mistralSignale = new Set();
+        if (rep && rep.status < 300 && !this._mistralSignale.has(refuse)) {
+          this._mistralSignale.add(refuse);
+          new obsidian.Notice(tr('Le modèle Mistral « ') + refuse
+            + tr(' » n’est pas compris dans votre abonnement : Ariane a pris « mistral-small-latest ». Choisissez un autre modèle dans les réglages d’Ariane, onglet IA.'), 12000);
+        }
+      }
       if (!rep || rep.status < 200 || rep.status >= 300) {
-        this._diagIA = 'Mistral HTTP ' + (rep ? rep.status : '?')
+        return { erreur: 'Mistral HTTP ' + (rep ? rep.status : '?')
           + (rep && rep.text ? ' : ' + String(rep.text).replace(/\s+/g, ' ').slice(0, 180) : '')
-          + tr(' (clé valide ? modèle « ') + m + ' » ?)';
-        return null;
+          + tr(' (clé valide ? modèle « ') + c.model + ' » ?)' };
       }
       const j = rep.json !== undefined ? rep.json : JSON.parse(rep.text);
-      const c = j && j.choices && j.choices[0];
-      const t = c && c.message ? String(c.message.content || '') : '';
-      this._diagIA = t ? '' : tr('Réponse vide de Mistral.');
-      return t || null;
+      const ch = j && j.choices && j.choices[0];
+      const t = ch && ch.message ? String(ch.message.content || '') : '';
+      return t ? { texte: t } : { erreur: tr('Réponse vide de Mistral.') };
     } catch (e) {
-      this._diagIA = tr('Mistral injoignable : ') + (e && e.message ? e.message : e);
       console.debug('[Ariane] Mistral indisponible', e);
-      return null;
+      return { erreur: tr('Mistral injoignable : ') + (e && e.message ? e.message : e) };
     }
   }
 
@@ -379,13 +445,13 @@ const avecIa = (Base) => class extends Base {
     return new Promise((resoudre) => {
       let fini = false;
       const env = envOutils();
-      // Le modèle choisi dans les réglages ; sans choix, celui de Claude Code.
+      // Le modèle choisi pour la fonction ; sans choix, celui de Claude Code.
       // `parEntree` : l'invite passe par l'entrée standard, qui ignore la
       // limite de taille des arguments (un long texte la dépasse).
       // Sous Windows, toujours : cmd.exe limite la ligne de commande et
       // interpréterait certains caractères de l'invite.
       const parEntree = o.parEntree || process.platform === 'win32';
-      const modele = String(o.modeleClaude || this.settings.refsModeleClaude || '').trim();
+      const modele = String(o.modeleClaude || '').trim();
       const args = (modele ? ['--model', modele] : []).concat(parEntree ? ['-p'] : ['-p', prompt]);
       const enfant = executer(
         bin, args, { env, timeout: delai, maxBuffer: parEntree ? 8 << 20 : 1 << 20 },
@@ -423,7 +489,7 @@ const avecIa = (Base) => class extends Base {
   }
 
   async testerLLM() {
-    const t = await this.genererJson('Réponds uniquement : {"ok":true}', 32);
+    const t = await this.genererPour('sugg-reclasser', 'Réponds uniquement : {"ok":true}', 32);
     return !!t;
   }
 
@@ -524,7 +590,7 @@ const avecIa = (Base) => class extends Base {
         + liste
         + '\n\nRéponds UNIQUEMENT en JSON : ' + formatJson + ', au plus '
         + (this.settings.suggK || 8) + ' éléments.';
-      const brut = await this.genererJson(prompt);
+      const brut = await this.genererPour('sugg-reclasser', prompt, this.settings.suggRerankJetons || 400);
       if (!brut) return null;
       console.debug('[Ariane] LLM brut', brut);
       // Analyse tolérante : JSON direct, sinon premier bloc { } ou [ ] trouvé.

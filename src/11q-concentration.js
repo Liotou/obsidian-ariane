@@ -263,7 +263,7 @@ const avecConcentration = (Base) => class extends Base {
     if (!cles.length) { if (!silencieux) new obsidian.Notice(tr('Distractions : rien de nouveau à classer.')); return 0; }
     const avis = silencieux ? null : new obsidian.Notice(tr('Distractions : classement de ') + cles.length + tr(' sites et applications…'), 0);
     try {
-      const rep = await this._genererActiviteIA(Ariane.promptDistractions(cles, s.activiteIAContexte), 1200, 'synthese');
+      const rep = await this._genererActiviteIA(Ariane.promptDistractions(cles, s.activiteIAContexte), 1200, 'activite-distractions');
       const le = jourIsoDe(new Date());
       let n = 0;
       for (const c of cles) {

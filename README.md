@@ -768,9 +768,11 @@ grandparent, or leaves them as roots.
 
 ### AI assistant
 
-Local (Ollama / LM Studio) or cloud (Mistral, Claude CLI): the provider is the
-one already set for bibliography splitting. Every proposal is **reviewed before
-it is applied**. Commands and context-menu entries:
+Local (Ollama, LM Studio, Apple Intelligence) or cloud (Mistral, Claude CLI):
+each feature has its own AI, chosen in the AI tab of the settings (“The AI of
+each feature”: one provider and one model per row; the Mistral key, the Claude
+command and the local services' address are entered once, under “Accounts and
+services”). Every proposal is **reviewed before it is applied**. Commands and context-menu entries:
 
 | Feature | What it does |
 |---|---|

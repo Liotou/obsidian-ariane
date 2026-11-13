@@ -62,6 +62,14 @@ coupé ne charge rien. D'où deux règles, tenues par des tests :
   `tests/modules-chargement.test.js` exécute le vrai `onload` module par
   module coupé et vérifie que chaque coupure retire ses enregistrements.
 
+L'IA : **plus de fournisseur principal** (depuis 3.3.0). Chaque fonction qui
+emploie une IA générative est au registre `FONCTIONS_IA` (01) et appelle
+`genererPour('id', …)` (ou `genererIA(…, 'id')`, `_genererActiviteIA(…, 'id')`) ;
+son fournisseur et son modèle se règlent par ligne dans l'onglet IA
+(`iaFonctions`). Une fonction jamais réglée suit les anciens réglages
+(`Ariane.iaHeritee`). `tests/ia-fonctions.test.js` échoue si un appel
+contourne le registre.
+
 Les réglages : `ArianeSettingTab.COMPOSITION` range chaque rubrique (par son
 titre, dans la méthode qui la dessine) dans l'onglet de son module ; une
 rubrique nouvelle doit y être ajoutée, sinon le test des réglages échoue.
