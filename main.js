@@ -2423,6 +2423,7 @@ const TEXTES = {
     "Citations : citer une annotation…": "Citations: cite an annotation…",
     "Téléphone": "Phone",
     "Zotero, l’export Word et Claude restent sur l’ordinateur ; ici, Ariane sert à lire, écrire, citer et tenir vos tâches.": "Zotero, Word export and Claude stay on the computer; here, Ariane is for reading, writing, citing and keeping your tasks.",
+    "aucune réponse. Voir les réglages d’Ariane, onglet IA.": "no answer. See Ariane’s settings, AI tab.",
   },
 };
 let LANGUE = 'fr';
@@ -21718,7 +21719,7 @@ const avecTaches = (Base) => class extends Base {
     if (!brut) {
       const f = this.settings.refsFournisseur || 'ollama';
       new obsidian.Notice(tr('IA (') + f + ') : ' + (this._diagIA
-        || tr('aucune réponse. Réglages → Tâches → Assistant IA.')), 10000);
+        || tr('aucune réponse. Voir les réglages d’Ariane, onglet IA.')), 10000);
       return null;
     }
     const j = Ariane.extraireJson(brut);
@@ -31277,8 +31278,6 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         rubriques: [['ongletBarre', 'La barre'], ['ongletBarre', 'Les boutons']], avance: [['ongletBarre', 'Couleurs proposées']] },
       { id: 'commentaires', module: 'commentaires', icone: 'message-square',
         rubriques: [['ongletCommentaires', 'Commentaires en marge']] },
-      { id: 'assistant', module: 'assistant', icone: 'sparkles',
-        rubriques: [['ongletAssistant', 'Assistant IA']] },
       { id: 'paragraphes', module: 'paragraphes', icone: 'list-ordered',
         rubriques: [['ongletParagraphes', 'Paragraphes']] },
       { id: 'taches', module: 'taches', icone: 'list-checks',
@@ -31296,7 +31295,12 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       { id: 'schemas', module: 'schemas', icone: 'shapes',
         rubriques: [['ongletVues', 'Vocabulaire des schémas'], ['ongletVues', 'Export SVG des schémas']] },
       { id: 'publication', module: 'publication', icone: 'globe', rubriques: [['ongletExport', 'Publication du site']] },
-      { id: 'ia', nom: 'IA', icone: 'bot', rubriques: [['ongletIA', '*']] },
+      // Toute l'IA dans un seul onglet : le fournisseur principal, puis
+      // l'assistant (si son module est actif), le service local, l'activité.
+      // Un troisième terme : le module dont dépend la rubrique.
+      { id: 'ia', nom: 'IA', icone: 'bot',
+        rubriques: [['ongletIA', 'Fournisseur principal'], ['ongletAssistant', 'Assistant IA', 'assistant'],
+          ['ongletIA', 'Service local'], ['ongletIA', "IA de l'activité"]] },
       { id: 'greffons', nom: 'Greffons liés', icone: 'plug', rubriques: [['ongletGreffons', '*']] },
       { id: 'avance', nom: 'Avancé', icone: 'wrench',
         rubriques: [['ongletAnnotations', 'Dossiers des productions'], ['ongletGeneral', 'Maintenance'], ['ongletVues', 'Icônes des vues de base']] },
@@ -31338,7 +31342,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
     for (const def of ArianeSettingTab.COMPOSITION) {
       if (def.module && !this.plugin.module(def.module)) continue;
       onglets.push([tr(def.nom || noms.get(def.module)), def.icone, (c) => {
-        for (const [meth, titre] of def.rubriques) poser(c, meth, titre, false);
+        for (const [meth, titre, mod] of def.rubriques) if (!mod || this.plugin.module(mod)) poser(c, meth, titre, false);
         if (def.avance && def.avance.length) {
           this._section(c, tr('Réglages avancés'), tr('À ne modifier qu’en connaissance de cause : les valeurs par défaut conviennent à la plupart des usages.'));
           for (const [meth, titre] of def.avance) poser(c, meth, titre, true);

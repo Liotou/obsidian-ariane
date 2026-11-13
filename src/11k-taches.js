@@ -1922,7 +1922,7 @@ const avecTaches = (Base) => class extends Base {
     if (!brut) {
       const f = this.settings.refsFournisseur || 'ollama';
       new obsidian.Notice(tr('IA (') + f + ') : ' + (this._diagIA
-        || tr('aucune réponse. Réglages → Tâches → Assistant IA.')), 10000);
+        || tr('aucune réponse. Voir les réglages d’Ariane, onglet IA.')), 10000);
       return null;
     }
     const j = Ariane.extraireJson(brut);

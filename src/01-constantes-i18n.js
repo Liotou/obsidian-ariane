@@ -2217,6 +2217,7 @@ const TEXTES = {
     "Citations : citer une annotation…": "Citations: cite an annotation…",
     "Téléphone": "Phone",
     "Zotero, l’export Word et Claude restent sur l’ordinateur ; ici, Ariane sert à lire, écrire, citer et tenir vos tâches.": "Zotero, Word export and Claude stay on the computer; here, Ariane is for reading, writing, citing and keeping your tasks.",
+    "aucune réponse. Voir les réglages d’Ariane, onglet IA.": "no answer. See Ariane’s settings, AI tab.",
   },
 };
 let LANGUE = 'fr';
