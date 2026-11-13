@@ -84,6 +84,7 @@ const avecTaches = (Base) => class extends Base {
         echeance: this._lireT(fm, 'echeance') || '',
         heure: String(this._lireT(fm, 'heure') || '').trim(),
         creneaux: [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean),
+        seances: [].concat(this._lireT(fm, 'seances') || []).map(String).filter(Boolean),
         tempsReel: Ariane.tempsReelDeTache(this._lireT(fm, 'temps-reel')),
         statut: this._lireT(fm, 'statut') || 'à faire',
         priorite: this._lireT(fm, 'priorite') || '',
@@ -2979,6 +2980,8 @@ const avecTaches = (Base) => class extends Base {
     // Le commentaire d'une session déplacée la suit ; celui d'une session
     // supprimée disparaît (majBlocCreneaux recueille et re-place).
     await this.majBlocCreneaux(f, { de: avant, vers: nouv });
+    // Les descendantes retenues pour cette séance la suivent (ou la perdent).
+    await this.propagerSeances(this.refDeChemin(f.path), { creneaux: liste });
     // marquerEcriture ci-dessus fait taire l'écoute metadataCache.changed → il
     // faut relancer le push explicitement pour que les gestes de la vue
     // calendrier (glisser / redimensionner / créer un créneau) se synchronisent.
@@ -2990,7 +2993,9 @@ const avecTaches = (Base) => class extends Base {
   // modèle de majBlocTache). Se pose sous le bloc d'accès s'il existe, sinon
   // sous le # Titre ; disparaît quand la tâche n'a plus de créneau.
   // opts : { de, vers } fait suivre le commentaire d'une session déplacée
-  // (vers vide = session supprimée) ; { coms } remplace la carte complète.
+  // (vers vide = session supprimée) ; { coms } remplace la carte complète ;
+  // { seances } la propriété « Séances » tout juste écrite, que le cache
+  // ne voit pas encore.
   async majBlocCreneaux(file, opts) {
     if (!this.refDeChemin(file.path)) return false;
     const fm = (this.app.metadataCache.getFileCache(file) || {}).frontmatter || {};
@@ -3013,8 +3018,9 @@ const avecTaches = (Base) => class extends Base {
         if (versCle) coms[versCle] = txt;
       }
     }
+    const seances = o.seances || [].concat(this._lireT(fm, 'seances') || []).map(String);
     const interieur = Ariane.blocCreneaux(liste, stats, coms,
-      [].concat(this._lireT(fm, 'temps-reel') || []).map(String));
+      [].concat(this._lireT(fm, 'temps-reel') || []).map(String), seances);
     const bloc = interieur ? ZFA_CRENEAUX_DEBUT + '\n' + interieur + '\n' + ZFA_CRENEAUX_FIN : '';
     let texte = avant;
     const d = texte.indexOf(ZFA_CRENEAUX_DEBUT);
@@ -3048,7 +3054,86 @@ const avecTaches = (Base) => class extends Base {
     const coms = Ariane.commentairesDuBloc(avant);
     const t = String(texte || '').trim();
     if (t) coms[cle] = t; else delete coms[cle];
-    return this.majBlocCreneaux(f, { coms });
+    const r = await this.majBlocCreneaux(f, { coms });
+    await this.propagerSeances(ref, { coms });
+    return r;
+  }
+
+  // Les séances de `origine` reportées chez ses descendantes (voir
+  // projectionSeances, 11i) : chaque tâche concernée reçoit dans « Séances »
+  // exactement les créneaux qui lui reviennent de cette origine, et son
+  // tableau « Sessions » suit. Rien ne s'écrit qui ne change, ce qui arrête
+  // l'écoute des notes que ces écritures déclenchent. Une origine disparue
+  // retire tout ce qu'elle avait laissé.
+  // opts : { creneaux, coms } quand l'appelant vient de les écrire et que le
+  // cache ne les voit pas encore.
+  async propagerSeances(origine, opts) {
+    if (!origine) return 0;
+    const o = opts || {};
+    const f = this.fichierDeRef(origine);
+    let creneaux = [];
+    let coms = {};
+    if (f) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      creneaux = o.creneaux || [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean);
+      coms = o.coms || Ariane.commentairesDuBloc(await this.app.vault.read(f));
+    }
+    const taches = this.tachesPourGantt();
+    const voulu = Ariane.projectionSeances(origine, taches, creneaux, coms);
+    const deCetteOrigine = (l) => { const x = Ariane.lireSeance(l); return !!x && x.origine === origine; };
+    let n = 0;
+    for (const t of taches) {
+      const avant = t.seances || [];
+      if (!voulu.has(t.ref) && !avant.some(deCetteOrigine)) continue;
+      const apres = Ariane.seancesReconciliees(avant, origine, voulu.get(t.ref));
+      if (JSON.stringify(apres) === JSON.stringify(avant)) continue;
+      await this.ecrireSeances(t.fichier, apres);
+      n += 1;
+    }
+    return n;
+  }
+
+  // Écrit la propriété « Séances » d'une tâche (supprimée quand vide), puis
+  // son tableau « Sessions ». Pas de date de modification : c'est une
+  // mémoire, la tâche n'a pas été touchée.
+  async ecrireSeances(f, liste) {
+    const cle = this.cleT('seances');
+    this.marquerEcriture(f.path);
+    await this.app.fileManager.processFrontMatter(f, (x) => {
+      if (liste.length) x[cle] = liste; else delete x[cle];
+    });
+    await this.majBlocCreneaux(f, { seances: liste });
+  }
+
+  // Toutes les séances du coffre reportées une fois, au démarrage : celles
+  // tenues avant que les descendantes n'en gardent mémoire, et celles qu'une
+  // note venue d'ailleurs aurait changées. Seules les tâches dont un
+  // commentaire de créneau retient une sous-tâche, ou qui gardent déjà une
+  // séance empruntée, sont reprises.
+  async rattraperSeances() {
+    const origines = new Set();
+    for (const t of this.tachesPourGantt()) {
+      for (const x of Ariane.seancesDeTache(t.seances)) origines.add(x.origine);
+      if (!t.creneaux.length || !t.fichier) continue;
+      const coms = Ariane.commentairesDuBloc(await this.app.vault.cachedRead(t.fichier));
+      if (Object.values(coms).some((c) => Ariane.seanceDuCommentaire(c).refs.length)) origines.add(t.ref);
+    }
+    let n = 0;
+    for (const o of origines) n += await this.propagerSeances(o);
+    return n;
+  }
+
+  // Après un changement dans la note de `ref` : ses propres séances, celles
+  // dont elle garde un créneau (elle a pu quitter la lignée), et celles de
+  // ses ascendantes (elle a pu y entrer).
+  async veillerSeances(ref) {
+    const taches = this.tachesPourGantt();
+    const t = taches.find((x) => x.ref === ref);
+    const origines = new Set([ref]);
+    for (const x of Ariane.seancesDeTache(t ? t.seances : [])) origines.add(x.origine);
+    const parent = new Map(taches.map((x) => [x.ref, Ariane.refDeLien(x.parent || '')]));
+    for (let p = parent.get(ref); p && !origines.has(p); p = parent.get(p)) origines.add(p);
+    for (const o of origines) await this.propagerSeances(o);
   }
 
   // --- Affichage des tâches : habillage des notes de tâche ouvertes (visuel),
@@ -3226,6 +3311,9 @@ const avecTaches = (Base) => class extends Base {
     const NOM_FAMILLE = 'Propriétés de la famille';
     const rang = new Map();
     groupes.forEach((g, gi) => g.concepts.forEach((cpt, ci) => rang.set(cpt, (gi + 1) * 100 + ci)));
+    // Les séances empruntées suivent les créneaux propres, sans former de
+    // groupe : elles ne sont pas amorcées dans chaque note (defautsNoyau).
+    if (rang.has('creneaux')) rang.set('seances', rang.get('creneaux'));
     const presents = new Set();
     let aFamille = false;
     for (const row of cont.querySelectorAll('.metadata-property')) {

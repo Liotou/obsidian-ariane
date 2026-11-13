@@ -798,10 +798,10 @@ const TEXTES = {
     "Proposition": "Suggestion",
     "Retenir": "Keep",
     "L'IA n'a rien proposé pour cette séance.": "The AI suggested nothing for this session.",
-    "Autres tâches filles": "Other child tasks",
+    "Autres sous-tâches": "Other subtasks",
     "Glissez ici les sous-tâches de cette séance.": "Drag this session's subtasks here.",
-    "Toutes les autres tâches filles sont terminées.": "Every other child task is done.",
-    "Aucune autre tâche fille.": "No other child task.",
+    "Toutes les autres sous-tâches sont terminées.": "Every other subtask is done.",
+    "Aucune autre sous-tâche.": "No other subtask.",
     "Retenir pour la séance": "Keep for this session",
     "Retirer de la séance": "Remove from this session",
     "Rouvrir la tâche": "Reopen the task",
@@ -6294,7 +6294,7 @@ const avecSocle = (Base) => class extends Base {
   // alias). On y ajoute les champs structurels propres aux tâches.
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
-            'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'avancement', 'temps-estime', 'parent',
+            'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'seances', 'avancement', 'temps-estime', 'parent',
             'bloque-par', 'termine-le',
             'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id'];
   }
@@ -15369,7 +15369,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       'bloque-par': 'Bloquée par', 'termine-le': 'Terminée le',
       source: 'Source', livrable: 'Livrable', fichier: 'Fichier',
       liste: 'Liste', 'rappel-id': 'Rappel ID', 'agenda-id': 'Agenda ID',
-      'temps-reel': 'Temps réel',
+      'temps-reel': 'Temps réel', seances: 'Séances',
     })[concept] || concept;
   }
 
@@ -17494,6 +17494,85 @@ const avecFriseStatiques = (Base) => class extends Base {
     return [String(libre || '').trim()].concat(lignes).filter(Boolean).join('\n');
   }
 
+  // ── séances empruntées ────────────────────────────────────────────────
+  //  Une descendante retenue pour la séance d'une ascendante garde le
+  //  créneau en mémoire, à part de ses créneaux propres, dans la propriété
+  //  « Séances » : « 2026-11-13 14:00-16:00 T070 », le créneau puis la tâche
+  //  d'origine. Les échelons intermédiaires le reçoivent aussi, leur travail
+  //  ayant avancé par leur descendante ; et cela vaut à tous les étages, une
+  //  fille pouvant tenir séance à son tour. Ces créneaux secondaires n'ont ni
+  //  agenda, ni bloc au calendrier, ni place dans le temps prévu : ce temps
+  //  reste à la tâche d'origine.
+
+  static formatSeance(c, origine) {
+    const cren = Ariane.formatCreneau(c && c.debut, c && c.fin);
+    const o = Ariane.refDeLien(origine);
+    return cren && o ? cren + ' ' + o : '';
+  }
+
+  // « 2026-11-13 14:00-16:00 T070 » -> { debut, fin, brut, origine }, ou null.
+  static lireSeance(ligne) {
+    const m = /^(.*\S)\s+(\S+)$/.exec(String(ligne == null ? '' : ligne).trim());
+    if (!m) return null;
+    const c = Ariane.parseCreneau(m[1]);
+    const origine = Ariane.refDeLien(m[2]);
+    if (!c || !origine) return null;
+    return { debut: c.debut, fin: c.fin, brut: Ariane.formatCreneau(c.debut, c.fin), origine };
+  }
+
+  // Les séances lisibles d'une valeur de propriété, triées par début, sans
+  // doublon (même créneau, même origine).
+  static seancesDeTache(v) {
+    const vus = new Set();
+    return [].concat(v == null ? [] : v).map((l) => Ariane.lireSeance(l)).filter((x) => {
+      if (!x) return false;
+      const k = x.debut + '|' + x.fin + '|' + x.origine;
+      if (vus.has(k)) return false;
+      vus.add(k);
+      return true;
+    }).sort((a, b) => (a.debut < b.debut ? -1 : a.debut > b.debut ? 1
+      : a.origine < b.origine ? -1 : a.origine > b.origine ? 1 : 0));
+  }
+
+  // Ce que les séances de `origine` doivent laisser chez ses descendantes :
+  // Map ref -> [« créneau origine »]. Pour chaque créneau, les tâches
+  // retenues dans son commentaire (seanceDuCommentaire) ; pour chacune, sa
+  // lignée en remontant jusqu'à l'origine, elle comprise, l'origine exclue.
+  // Une retenue qui n'est plus descendante ne reçoit rien.
+  static projectionSeances(origine, taches, creneaux, coms) {
+    const parent = new Map((taches || []).map((t) => [t.ref, Ariane.refDeLien(t.parent || '')]));
+    const out = new Map();
+    for (const c of Ariane.creneauxDeTache(creneaux || [])) {
+      const cle = Ariane.cleCommentaire(c);
+      const e = Ariane.formatSeance(c, origine);
+      if (!cle || !e) continue;
+      for (const r of Ariane.seanceDuCommentaire((coms || {})[cle] || '').refs) {
+        const lignee = [];
+        const vus = new Set();
+        let x = r;
+        while (x && x !== origine && !vus.has(x)) { vus.add(x); lignee.push(x); x = parent.get(x); }
+        if (x !== origine) continue;
+        for (const y of lignee) {
+          if (!out.has(y)) out.set(y, []);
+          if (!out.get(y).includes(e)) out.get(y).push(e);
+        }
+      }
+    }
+    return out;
+  }
+
+  // La propriété « Séances » d'une tâche, une fois les séances venues de
+  // `origine` remplacées par `voulues`. Celles des autres origines restent ;
+  // une ligne illisible, écrite à la main, reste aussi, en fin de liste.
+  static seancesReconciliees(actuelles, origine, voulues) {
+    const brut = [].concat(actuelles == null ? [] : actuelles).map(String).filter((l) => l.trim());
+    const illisibles = brut.filter((l) => !Ariane.lireSeance(l));
+    const autres = Ariane.seancesDeTache(brut).filter((x) => x.origine !== origine)
+      .map((x) => Ariane.formatSeance(x, x.origine));
+    return Ariane.seancesDeTache(autres.concat(voulues || []))
+      .map((x) => Ariane.formatSeance(x, x.origine)).concat(illisibles);
+  }
+
   // Rend le corps markdown de la section « ## Sessions » (sans les marqueurs).
   // Chaîne vide quand aucun créneau valide. Les commentaires (clé
   // cleCommentaire) complètent la 5ᵉ colonne ; seuls ceux des sessions
@@ -17544,28 +17623,44 @@ const avecFriseStatiques = (Base) => class extends Base {
         + Ariane._dureeHumaine(total) + ' rattachées**'].join('\n');
   }
 
-  static blocCreneaux(creneaux, stats, commentaires, reels) {
+  // `seances` : la propriété « Séances » (créneaux secondaires). Sans elle,
+  // le tableau garde ses cinq colonnes ; avec elle, une sixième dit de
+  // chaque ligne si le créneau est le sien (« principal ») ou celui d'une
+  // séance d'une ascendante. Le commentaire reste en 5ᵉ colonne, où
+  // commentairesDuBloc le relit ; une ligne secondaire n'en porte pas.
+  static blocCreneaux(creneaux, stats, commentaires, reels, seances) {
     const list = Ariane.creneauxDeTache(Array.isArray(creneaux) ? creneaux
       : (creneaux ? [creneaux] : []));
+    const secondaires = Ariane.seancesDeTache(seances);
     const horsObsidian = Ariane.blocTempsReel(reels);
-    if (!list.length) return horsObsidian ? '## Sessions\n\n' + horsObsidian : '';
+    if (!list.length && !secondaires.length) return horsObsidian ? '## Sessions\n\n' + horsObsidian : '';
     const s = stats || Ariane.statsCreneaux(list, new Date().toISOString());
     const coms = commentaires || {};
-    const lignes = list.map((c, i) => {
-      const min = Math.round((Date.parse(c.fin + ':00') - Date.parse(c.debut + ':00')) / 60000);
-      const cle = Ariane.cleCommentaire(c);
-      const com = (cle && coms[cle]) ? Ariane.echapperCellule(coms[cle]) : '';
-      return '| ' + (i + 1) + ' | ' + Ariane._jourHumain(c.debut) + ' | '
-        + c.debut.slice(11, 16) + ' – ' + c.fin.slice(11, 16) + ' | '
-        + Ariane._dureeHumaine(min) + ' | ' + com + ' |';
-    });
-    const resume = '**' + s.nb + ' session' + (s.nb > 1 ? 's' : '')
+    const minutes = (c) => Math.round((Date.parse(c.fin + ':00') - Date.parse(c.debut + ':00')) / 60000);
+    const lignes = list.map((c) => ({ c, principal: true }))
+      .concat(secondaires.map((c) => ({ c, principal: false })))
+      .sort((a, b) => (a.c.debut < b.c.debut ? -1 : a.c.debut > b.c.debut ? 1 : (a.principal ? -1 : 1)))
+      .map(({ c, principal }, i) => {
+        const cle = Ariane.cleCommentaire(c);
+        const com = (principal && cle && coms[cle]) ? Ariane.echapperCellule(coms[cle]) : '';
+        return '| ' + (i + 1) + ' | ' + Ariane._jourHumain(c.debut) + ' | '
+          + c.debut.slice(11, 16) + ' – ' + c.fin.slice(11, 16) + ' | '
+          + Ariane._dureeHumaine(minutes(c)) + ' | ' + com + ' |'
+          + (secondaires.length ? ' ' + (principal ? 'principal' : 'séance de [[' + c.origine + ']]') + ' |' : '');
+      });
+    const resume = list.length ? '**' + s.nb + ' session' + (s.nb > 1 ? 's' : '')
       + ' · ' + Ariane._dureeHumaine(s.totalMin) + ' planifiées'
       + (s.futurMin ? ' · ' + Ariane._dureeHumaine(s.futurMin) + ' à venir' : '')
-      + (s.dernier ? ' · dernière : ' + Ariane._jourHumain(s.dernier) : '') + '**';
-    return ['## Sessions', '',
-      '| Session | Date | Heures | Durée | Commentaire |', '|---|---|---|---|---|',
-      ...lignes, '', resume].join('\n') + (horsObsidian ? '\n\n' + horsObsidian : '');
+      + (s.dernier ? ' · dernière : ' + Ariane._jourHumain(s.dernier) : '') + '**' : '';
+    const nSec = secondaires.length;
+    const enSeance = nSec ? '**En séance, pour mémoire : ' + nSec + ' créneau' + (nSec > 1 ? 'x' : '') + ', '
+      + Ariane._dureeHumaine(secondaires.reduce((t, c) => t + minutes(c), 0))
+      + " (comptés dans la tâche d'origine)**" : '';
+    const tete = nSec
+      ? ['| Session | Date | Heures | Durée | Commentaire | Créneau |', '|---|---|---|---|---|---|']
+      : ['| Session | Date | Heures | Durée | Commentaire |', '|---|---|---|---|---|'];
+    return ['## Sessions', '', ...tete, ...lignes, '', [resume, enSeance].filter(Boolean).join('\n\n')]
+      .join('\n') + (horsObsidian ? '\n\n' + horsObsidian : '');
   }
 
   static lundiDeSemaine(iso) {
@@ -20059,6 +20154,7 @@ const avecTaches = (Base) => class extends Base {
         echeance: this._lireT(fm, 'echeance') || '',
         heure: String(this._lireT(fm, 'heure') || '').trim(),
         creneaux: [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean),
+        seances: [].concat(this._lireT(fm, 'seances') || []).map(String).filter(Boolean),
         tempsReel: Ariane.tempsReelDeTache(this._lireT(fm, 'temps-reel')),
         statut: this._lireT(fm, 'statut') || 'à faire',
         priorite: this._lireT(fm, 'priorite') || '',
@@ -22954,6 +23050,8 @@ const avecTaches = (Base) => class extends Base {
     // Le commentaire d'une session déplacée la suit ; celui d'une session
     // supprimée disparaît (majBlocCreneaux recueille et re-place).
     await this.majBlocCreneaux(f, { de: avant, vers: nouv });
+    // Les descendantes retenues pour cette séance la suivent (ou la perdent).
+    await this.propagerSeances(this.refDeChemin(f.path), { creneaux: liste });
     // marquerEcriture ci-dessus fait taire l'écoute metadataCache.changed → il
     // faut relancer le push explicitement pour que les gestes de la vue
     // calendrier (glisser / redimensionner / créer un créneau) se synchronisent.
@@ -22965,7 +23063,9 @@ const avecTaches = (Base) => class extends Base {
   // modèle de majBlocTache). Se pose sous le bloc d'accès s'il existe, sinon
   // sous le # Titre ; disparaît quand la tâche n'a plus de créneau.
   // opts : { de, vers } fait suivre le commentaire d'une session déplacée
-  // (vers vide = session supprimée) ; { coms } remplace la carte complète.
+  // (vers vide = session supprimée) ; { coms } remplace la carte complète ;
+  // { seances } la propriété « Séances » tout juste écrite, que le cache
+  // ne voit pas encore.
   async majBlocCreneaux(file, opts) {
     if (!this.refDeChemin(file.path)) return false;
     const fm = (this.app.metadataCache.getFileCache(file) || {}).frontmatter || {};
@@ -22988,8 +23088,9 @@ const avecTaches = (Base) => class extends Base {
         if (versCle) coms[versCle] = txt;
       }
     }
+    const seances = o.seances || [].concat(this._lireT(fm, 'seances') || []).map(String);
     const interieur = Ariane.blocCreneaux(liste, stats, coms,
-      [].concat(this._lireT(fm, 'temps-reel') || []).map(String));
+      [].concat(this._lireT(fm, 'temps-reel') || []).map(String), seances);
     const bloc = interieur ? ZFA_CRENEAUX_DEBUT + '\n' + interieur + '\n' + ZFA_CRENEAUX_FIN : '';
     let texte = avant;
     const d = texte.indexOf(ZFA_CRENEAUX_DEBUT);
@@ -23023,7 +23124,86 @@ const avecTaches = (Base) => class extends Base {
     const coms = Ariane.commentairesDuBloc(avant);
     const t = String(texte || '').trim();
     if (t) coms[cle] = t; else delete coms[cle];
-    return this.majBlocCreneaux(f, { coms });
+    const r = await this.majBlocCreneaux(f, { coms });
+    await this.propagerSeances(ref, { coms });
+    return r;
+  }
+
+  // Les séances de `origine` reportées chez ses descendantes (voir
+  // projectionSeances, 11i) : chaque tâche concernée reçoit dans « Séances »
+  // exactement les créneaux qui lui reviennent de cette origine, et son
+  // tableau « Sessions » suit. Rien ne s'écrit qui ne change, ce qui arrête
+  // l'écoute des notes que ces écritures déclenchent. Une origine disparue
+  // retire tout ce qu'elle avait laissé.
+  // opts : { creneaux, coms } quand l'appelant vient de les écrire et que le
+  // cache ne les voit pas encore.
+  async propagerSeances(origine, opts) {
+    if (!origine) return 0;
+    const o = opts || {};
+    const f = this.fichierDeRef(origine);
+    let creneaux = [];
+    let coms = {};
+    if (f) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      creneaux = o.creneaux || [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean);
+      coms = o.coms || Ariane.commentairesDuBloc(await this.app.vault.read(f));
+    }
+    const taches = this.tachesPourGantt();
+    const voulu = Ariane.projectionSeances(origine, taches, creneaux, coms);
+    const deCetteOrigine = (l) => { const x = Ariane.lireSeance(l); return !!x && x.origine === origine; };
+    let n = 0;
+    for (const t of taches) {
+      const avant = t.seances || [];
+      if (!voulu.has(t.ref) && !avant.some(deCetteOrigine)) continue;
+      const apres = Ariane.seancesReconciliees(avant, origine, voulu.get(t.ref));
+      if (JSON.stringify(apres) === JSON.stringify(avant)) continue;
+      await this.ecrireSeances(t.fichier, apres);
+      n += 1;
+    }
+    return n;
+  }
+
+  // Écrit la propriété « Séances » d'une tâche (supprimée quand vide), puis
+  // son tableau « Sessions ». Pas de date de modification : c'est une
+  // mémoire, la tâche n'a pas été touchée.
+  async ecrireSeances(f, liste) {
+    const cle = this.cleT('seances');
+    this.marquerEcriture(f.path);
+    await this.app.fileManager.processFrontMatter(f, (x) => {
+      if (liste.length) x[cle] = liste; else delete x[cle];
+    });
+    await this.majBlocCreneaux(f, { seances: liste });
+  }
+
+  // Toutes les séances du coffre reportées une fois, au démarrage : celles
+  // tenues avant que les descendantes n'en gardent mémoire, et celles qu'une
+  // note venue d'ailleurs aurait changées. Seules les tâches dont un
+  // commentaire de créneau retient une sous-tâche, ou qui gardent déjà une
+  // séance empruntée, sont reprises.
+  async rattraperSeances() {
+    const origines = new Set();
+    for (const t of this.tachesPourGantt()) {
+      for (const x of Ariane.seancesDeTache(t.seances)) origines.add(x.origine);
+      if (!t.creneaux.length || !t.fichier) continue;
+      const coms = Ariane.commentairesDuBloc(await this.app.vault.cachedRead(t.fichier));
+      if (Object.values(coms).some((c) => Ariane.seanceDuCommentaire(c).refs.length)) origines.add(t.ref);
+    }
+    let n = 0;
+    for (const o of origines) n += await this.propagerSeances(o);
+    return n;
+  }
+
+  // Après un changement dans la note de `ref` : ses propres séances, celles
+  // dont elle garde un créneau (elle a pu quitter la lignée), et celles de
+  // ses ascendantes (elle a pu y entrer).
+  async veillerSeances(ref) {
+    const taches = this.tachesPourGantt();
+    const t = taches.find((x) => x.ref === ref);
+    const origines = new Set([ref]);
+    for (const x of Ariane.seancesDeTache(t ? t.seances : [])) origines.add(x.origine);
+    const parent = new Map(taches.map((x) => [x.ref, Ariane.refDeLien(x.parent || '')]));
+    for (let p = parent.get(ref); p && !origines.has(p); p = parent.get(p)) origines.add(p);
+    for (const o of origines) await this.propagerSeances(o);
   }
 
   // --- Affichage des tâches : habillage des notes de tâche ouvertes (visuel),
@@ -23201,6 +23381,9 @@ const avecTaches = (Base) => class extends Base {
     const NOM_FAMILLE = 'Propriétés de la famille';
     const rang = new Map();
     groupes.forEach((g, gi) => g.concepts.forEach((cpt, ci) => rang.set(cpt, (gi + 1) * 100 + ci)));
+    // Les séances empruntées suivent les créneaux propres, sans former de
+    // groupe : elles ne sont pas amorcées dans chaque note (defautsNoyau).
+    if (rang.has('creneaux')) rang.set('seances', rang.get('creneaux'));
     const presents = new Set();
     let aFamille = false;
     for (const row of cont.querySelectorAll('.metadata-property')) {
@@ -31237,6 +31420,20 @@ class Ariane extends composer(obsidian.Plugin,
       this.antirebond('creneaux:' + fichier.path, () => this.majBlocCreneaux(fichier), 600);
     }));
 
+    // Les séances empruntées suivent les créneaux, les commentaires et les
+    // rattachements, à tous les étages (veillerSeances) ; une tâche supprimée
+    // reprend ce qu'elle avait laissé chez ses descendantes.
+    this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
+      const ref = this.refDeChemin(fichier.path);
+      if (!ref || !this.changementLocal(fichier)) return;
+      this.antirebond('seances:' + fichier.path, () => this.veillerSeances(ref), 900);
+    }));
+    this.registerEvent(this.app.vault.on('delete', (fichier) => {
+      const ref = fichier && this.refDeChemin(fichier.path);
+      if (!ref || surMobile()) return;
+      this.antirebond('seances-suppr:' + ref, () => this.propagerSeances(ref), 900);
+    }));
+
     // Les mêmes règles anti-cycle quand on modifie « Rattachement » ou « Bloquée
     // par » à la main — dans la note de tâche comme dans une base normale
     // (même événement). Un lien qui ferme un cycle du graphe fusionné est
@@ -31258,6 +31455,7 @@ class Ariane extends composer(obsidian.Plugin,
       setTimeout(() => {
         Promise.resolve(this.semerConceptsTache())
           .then(() => this.semerSansEcheance())
+          .then(() => this.rattraperSeances())
           .catch(() => {});
       }, 3000);
     });
@@ -33100,6 +33298,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       const iconeAutre = {
         'bloque-par': 'ban', 'termine-le': 'calendar-check', source: 'book-marked',
         livrable: 'package', fichier: 'file', liste: 'list', 'rappel-id': 'bell',
+        seances: 'users',
       };
       const genPar = {};
       for (const p of Ariane.PROPS_GENERIQUES) genPar[p.cle] = p;
@@ -35661,13 +35860,33 @@ class ModaleSeance extends obsidian.Modal {
     this.glisse = null;
   }
 
-  // Toutes les filles connues : celles de l'index, celles créées à l'instant,
-  // et une retenue qui ne serait plus fille (pour pouvoir la retirer).
+  // Toute la descendance connue, en arbre (chaque fille suivie des siennes,
+  // `prof` 0 pour une fille directe) : une séance retient une sous-tâche à
+  // n'importe quel étage. S'y ajoutent les filles créées à l'instant, et une
+  // retenue qui ne serait plus descendante (pour pouvoir la retirer). Une
+  // abandonnée n'est pas proposée, ses propres filles le restent.
   _filles() {
     const g = this.o.greffon;
     const toutes = g.tachesPourGantt();
     const mere = this.o.mere.ref;
-    const filles = toutes.filter((x) => Ariane.refDeLien(x.parent || '') === mere && x.statut !== 'abandonnée');
+    const enfants = new Map();
+    for (const x of toutes) {
+      const p = Ariane.refDeLien(x.parent || '');
+      if (!enfants.has(p)) enfants.set(p, []);
+      enfants.get(p).push(x);
+    }
+    const filles = [];
+    const vues = new Set([mere]);
+    const descendre = (ref, prof) => {
+      for (const x of enfants.get(ref) || []) {
+        if (vues.has(x.ref)) continue;
+        vues.add(x.ref);
+        if (x.statut === 'abandonnée') { descendre(x.ref, prof); continue; }
+        filles.push(Object.assign({}, x, { prof }));
+        descendre(x.ref, prof + 1);
+      }
+    };
+    descendre(mere, 0);
     const ajouter = (ref) => {
       if (filles.some((x) => x.ref === ref)) return;
       filles.push(toutes.find((x) => x.ref === ref) || { ref, intitule: this.noms[ref] || ref });
@@ -35691,7 +35910,7 @@ class ModaleSeance extends obsidian.Modal {
     this._zoneIA(contentEl);
     const grille = contentEl.createDiv({ cls: 'zfa-seance-grille' });
     this.colG = this._colonne(grille, 'retenues', tr('Pour cette séance'));
-    this.colD = this._colonne(grille, 'autres', tr('Autres tâches filles'));
+    this.colD = this._colonne(grille, 'autres', tr('Autres sous-tâches'));
 
     const ajout = this.colG.pied.createDiv({ cls: 'zfa-seance-ajout' });
     const champ = ajout.createEl('input', { type: 'text',
@@ -35893,6 +36112,11 @@ class ModaleSeance extends obsidian.Modal {
       this._dessiner();
       await this.o.greffon.majTache(t.ref, { statut: cb.checked ? 'terminée' : 'à faire' });
     });
+    // Dans la colonne de droite, rangée en arbre, l'étage se voit au retrait.
+    if (!retenue && t.prof > 0) {
+      el.addClass('est-descendante');
+      el.style.setProperty('--zfa-seance-prof', String(t.prof));
+    }
     el.createSpan({ cls: 'zfa-seance-titre', text: t.intitule || this.noms[t.ref] || t.ref });
     el.createSpan({ cls: 'zfa-seance-ref', text: t.ref });
     const bt = el.createDiv({ cls: 'clickable-icon zfa-seance-bouger',
@@ -35931,8 +36155,8 @@ class ModaleSeance extends obsidian.Modal {
     for (const t of ouvertes) this._ligne(d, t, false);
     if (!ouvertes.length) {
       d.createDiv({ cls: 'zfa-seance-vide', text: autres.length
-        ? tr('Toutes les autres tâches filles sont terminées.')
-        : tr('Aucune autre tâche fille.') });
+        ? tr('Toutes les autres sous-tâches sont terminées.')
+        : tr('Aucune autre sous-tâche.') });
     }
     // Les terminées, repliées par défaut ; l'état ouvert survit aux redessins.
     if (closes.length) {

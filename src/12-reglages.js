@@ -1697,6 +1697,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       const iconeAutre = {
         'bloque-par': 'ban', 'termine-le': 'calendar-check', source: 'book-marked',
         livrable: 'package', fichier: 'file', liste: 'list', 'rappel-id': 'bell',
+        seances: 'users',
       };
       const genPar = {};
       for (const p of Ariane.PROPS_GENERIQUES) genPar[p.cle] = p;

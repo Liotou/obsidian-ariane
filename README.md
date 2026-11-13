@@ -730,6 +730,15 @@ créneau** if the task carries `Créneaux`. `Créneaux` is a **list**
 keeps a `## Créneaux` table in the note with duration stats (sessions, planned
 time, upcoming), so the information stays **self-contained in the note**.
 
+A **séance** retains, on a créneau, subtasks taken from any level of the
+descendants. Each keeps a record of it in its `Séances` property
+(`2026-11-13 14:00-16:00 T070`: the créneau, then the originating task), apart
+from its own `Créneaux`, and so do the levels in between. Its sessions table
+then tells, for each row, whether the créneau is **principal** or **a séance
+of** that task. These secondary créneaux follow the séance (moved, deleted,
+subtask removed); they get no calendar event and no calendar block, and their
+time stays counted in the originating task.
+
 Drag a chip to reschedule it; in week view, drag or resize a block to rewrite
 that créneau, Delete to remove it. **Dragging a row's left-column link from the
 timeline** (or a `[[T26-001]]` link from anywhere) onto a calendar day adds a

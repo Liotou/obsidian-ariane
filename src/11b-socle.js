@@ -58,7 +58,7 @@ const avecSocle = (Base) => class extends Base {
   // alias). On y ajoute les champs structurels propres aux tâches.
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
-            'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'avancement', 'temps-estime', 'parent',
+            'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'seances', 'avancement', 'temps-estime', 'parent',
             'bloque-par', 'termine-le',
             'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id'];
   }

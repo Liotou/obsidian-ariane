@@ -751,6 +751,15 @@ plusieurs sessions. Ariane entretient dans la note un tableau `## Créneaux` ave
 les statistiques de durée (sessions, temps planifié, à venir), pour que
 l'information reste **autoportée par la note**.
 
+Une **séance** retient, sur un créneau, des sous-tâches prises à n'importe quel
+étage de la descendance. Chacune en garde la mémoire dans sa propriété
+`Séances` (`2026-11-13 14:00-16:00 T070`, le créneau puis la tâche d'origine),
+distincte de ses propres `Créneaux`, et les échelons intermédiaires aussi. Son
+tableau de sessions dit alors de chaque ligne si le créneau est **principal**
+ou **une séance de** telle tâche. Ces créneaux secondaires suivent la séance
+(déplacée, supprimée, sous-tâche retirée) ; ils n'ont ni agenda, ni bloc au
+calendrier, et leur temps reste compté dans la tâche d'origine.
+
 Glisser une carte la reprogramme ; en vue semaine, glisser ou redimensionner
 un bloc réécrit ce créneau, Suppr le retire. **Glisser le lien d'une ligne
 depuis la colonne de gauche de la frise** (ou un lien `[[T26-001]]` depuis

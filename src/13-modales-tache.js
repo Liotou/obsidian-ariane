@@ -1167,13 +1167,33 @@ class ModaleSeance extends obsidian.Modal {
     this.glisse = null;
   }
 
-  // Toutes les filles connues : celles de l'index, celles créées à l'instant,
-  // et une retenue qui ne serait plus fille (pour pouvoir la retirer).
+  // Toute la descendance connue, en arbre (chaque fille suivie des siennes,
+  // `prof` 0 pour une fille directe) : une séance retient une sous-tâche à
+  // n'importe quel étage. S'y ajoutent les filles créées à l'instant, et une
+  // retenue qui ne serait plus descendante (pour pouvoir la retirer). Une
+  // abandonnée n'est pas proposée, ses propres filles le restent.
   _filles() {
     const g = this.o.greffon;
     const toutes = g.tachesPourGantt();
     const mere = this.o.mere.ref;
-    const filles = toutes.filter((x) => Ariane.refDeLien(x.parent || '') === mere && x.statut !== 'abandonnée');
+    const enfants = new Map();
+    for (const x of toutes) {
+      const p = Ariane.refDeLien(x.parent || '');
+      if (!enfants.has(p)) enfants.set(p, []);
+      enfants.get(p).push(x);
+    }
+    const filles = [];
+    const vues = new Set([mere]);
+    const descendre = (ref, prof) => {
+      for (const x of enfants.get(ref) || []) {
+        if (vues.has(x.ref)) continue;
+        vues.add(x.ref);
+        if (x.statut === 'abandonnée') { descendre(x.ref, prof); continue; }
+        filles.push(Object.assign({}, x, { prof }));
+        descendre(x.ref, prof + 1);
+      }
+    };
+    descendre(mere, 0);
     const ajouter = (ref) => {
       if (filles.some((x) => x.ref === ref)) return;
       filles.push(toutes.find((x) => x.ref === ref) || { ref, intitule: this.noms[ref] || ref });
@@ -1197,7 +1217,7 @@ class ModaleSeance extends obsidian.Modal {
     this._zoneIA(contentEl);
     const grille = contentEl.createDiv({ cls: 'zfa-seance-grille' });
     this.colG = this._colonne(grille, 'retenues', tr('Pour cette séance'));
-    this.colD = this._colonne(grille, 'autres', tr('Autres tâches filles'));
+    this.colD = this._colonne(grille, 'autres', tr('Autres sous-tâches'));
 
     const ajout = this.colG.pied.createDiv({ cls: 'zfa-seance-ajout' });
     const champ = ajout.createEl('input', { type: 'text',
@@ -1399,6 +1419,11 @@ class ModaleSeance extends obsidian.Modal {
       this._dessiner();
       await this.o.greffon.majTache(t.ref, { statut: cb.checked ? 'terminée' : 'à faire' });
     });
+    // Dans la colonne de droite, rangée en arbre, l'étage se voit au retrait.
+    if (!retenue && t.prof > 0) {
+      el.addClass('est-descendante');
+      el.style.setProperty('--zfa-seance-prof', String(t.prof));
+    }
     el.createSpan({ cls: 'zfa-seance-titre', text: t.intitule || this.noms[t.ref] || t.ref });
     el.createSpan({ cls: 'zfa-seance-ref', text: t.ref });
     const bt = el.createDiv({ cls: 'clickable-icon zfa-seance-bouger',
@@ -1437,8 +1462,8 @@ class ModaleSeance extends obsidian.Modal {
     for (const t of ouvertes) this._ligne(d, t, false);
     if (!ouvertes.length) {
       d.createDiv({ cls: 'zfa-seance-vide', text: autres.length
-        ? tr('Toutes les autres tâches filles sont terminées.')
-        : tr('Aucune autre tâche fille.') });
+        ? tr('Toutes les autres sous-tâches sont terminées.')
+        : tr('Aucune autre sous-tâche.') });
     }
     // Les terminées, repliées par défaut ; l'état ouvert survit aux redessins.
     if (closes.length) {

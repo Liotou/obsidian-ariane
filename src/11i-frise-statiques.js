@@ -344,6 +344,85 @@ const avecFriseStatiques = (Base) => class extends Base {
     return [String(libre || '').trim()].concat(lignes).filter(Boolean).join('\n');
   }
 
+  // ── séances empruntées ────────────────────────────────────────────────
+  //  Une descendante retenue pour la séance d'une ascendante garde le
+  //  créneau en mémoire, à part de ses créneaux propres, dans la propriété
+  //  « Séances » : « 2026-11-13 14:00-16:00 T070 », le créneau puis la tâche
+  //  d'origine. Les échelons intermédiaires le reçoivent aussi, leur travail
+  //  ayant avancé par leur descendante ; et cela vaut à tous les étages, une
+  //  fille pouvant tenir séance à son tour. Ces créneaux secondaires n'ont ni
+  //  agenda, ni bloc au calendrier, ni place dans le temps prévu : ce temps
+  //  reste à la tâche d'origine.
+
+  static formatSeance(c, origine) {
+    const cren = Ariane.formatCreneau(c && c.debut, c && c.fin);
+    const o = Ariane.refDeLien(origine);
+    return cren && o ? cren + ' ' + o : '';
+  }
+
+  // « 2026-11-13 14:00-16:00 T070 » -> { debut, fin, brut, origine }, ou null.
+  static lireSeance(ligne) {
+    const m = /^(.*\S)\s+(\S+)$/.exec(String(ligne == null ? '' : ligne).trim());
+    if (!m) return null;
+    const c = Ariane.parseCreneau(m[1]);
+    const origine = Ariane.refDeLien(m[2]);
+    if (!c || !origine) return null;
+    return { debut: c.debut, fin: c.fin, brut: Ariane.formatCreneau(c.debut, c.fin), origine };
+  }
+
+  // Les séances lisibles d'une valeur de propriété, triées par début, sans
+  // doublon (même créneau, même origine).
+  static seancesDeTache(v) {
+    const vus = new Set();
+    return [].concat(v == null ? [] : v).map((l) => Ariane.lireSeance(l)).filter((x) => {
+      if (!x) return false;
+      const k = x.debut + '|' + x.fin + '|' + x.origine;
+      if (vus.has(k)) return false;
+      vus.add(k);
+      return true;
+    }).sort((a, b) => (a.debut < b.debut ? -1 : a.debut > b.debut ? 1
+      : a.origine < b.origine ? -1 : a.origine > b.origine ? 1 : 0));
+  }
+
+  // Ce que les séances de `origine` doivent laisser chez ses descendantes :
+  // Map ref -> [« créneau origine »]. Pour chaque créneau, les tâches
+  // retenues dans son commentaire (seanceDuCommentaire) ; pour chacune, sa
+  // lignée en remontant jusqu'à l'origine, elle comprise, l'origine exclue.
+  // Une retenue qui n'est plus descendante ne reçoit rien.
+  static projectionSeances(origine, taches, creneaux, coms) {
+    const parent = new Map((taches || []).map((t) => [t.ref, Ariane.refDeLien(t.parent || '')]));
+    const out = new Map();
+    for (const c of Ariane.creneauxDeTache(creneaux || [])) {
+      const cle = Ariane.cleCommentaire(c);
+      const e = Ariane.formatSeance(c, origine);
+      if (!cle || !e) continue;
+      for (const r of Ariane.seanceDuCommentaire((coms || {})[cle] || '').refs) {
+        const lignee = [];
+        const vus = new Set();
+        let x = r;
+        while (x && x !== origine && !vus.has(x)) { vus.add(x); lignee.push(x); x = parent.get(x); }
+        if (x !== origine) continue;
+        for (const y of lignee) {
+          if (!out.has(y)) out.set(y, []);
+          if (!out.get(y).includes(e)) out.get(y).push(e);
+        }
+      }
+    }
+    return out;
+  }
+
+  // La propriété « Séances » d'une tâche, une fois les séances venues de
+  // `origine` remplacées par `voulues`. Celles des autres origines restent ;
+  // une ligne illisible, écrite à la main, reste aussi, en fin de liste.
+  static seancesReconciliees(actuelles, origine, voulues) {
+    const brut = [].concat(actuelles == null ? [] : actuelles).map(String).filter((l) => l.trim());
+    const illisibles = brut.filter((l) => !Ariane.lireSeance(l));
+    const autres = Ariane.seancesDeTache(brut).filter((x) => x.origine !== origine)
+      .map((x) => Ariane.formatSeance(x, x.origine));
+    return Ariane.seancesDeTache(autres.concat(voulues || []))
+      .map((x) => Ariane.formatSeance(x, x.origine)).concat(illisibles);
+  }
+
   // Rend le corps markdown de la section « ## Sessions » (sans les marqueurs).
   // Chaîne vide quand aucun créneau valide. Les commentaires (clé
   // cleCommentaire) complètent la 5ᵉ colonne ; seuls ceux des sessions
@@ -394,28 +473,44 @@ const avecFriseStatiques = (Base) => class extends Base {
         + Ariane._dureeHumaine(total) + ' rattachées**'].join('\n');
   }
 
-  static blocCreneaux(creneaux, stats, commentaires, reels) {
+  // `seances` : la propriété « Séances » (créneaux secondaires). Sans elle,
+  // le tableau garde ses cinq colonnes ; avec elle, une sixième dit de
+  // chaque ligne si le créneau est le sien (« principal ») ou celui d'une
+  // séance d'une ascendante. Le commentaire reste en 5ᵉ colonne, où
+  // commentairesDuBloc le relit ; une ligne secondaire n'en porte pas.
+  static blocCreneaux(creneaux, stats, commentaires, reels, seances) {
     const list = Ariane.creneauxDeTache(Array.isArray(creneaux) ? creneaux
       : (creneaux ? [creneaux] : []));
+    const secondaires = Ariane.seancesDeTache(seances);
     const horsObsidian = Ariane.blocTempsReel(reels);
-    if (!list.length) return horsObsidian ? '## Sessions\n\n' + horsObsidian : '';
+    if (!list.length && !secondaires.length) return horsObsidian ? '## Sessions\n\n' + horsObsidian : '';
     const s = stats || Ariane.statsCreneaux(list, new Date().toISOString());
     const coms = commentaires || {};
-    const lignes = list.map((c, i) => {
-      const min = Math.round((Date.parse(c.fin + ':00') - Date.parse(c.debut + ':00')) / 60000);
-      const cle = Ariane.cleCommentaire(c);
-      const com = (cle && coms[cle]) ? Ariane.echapperCellule(coms[cle]) : '';
-      return '| ' + (i + 1) + ' | ' + Ariane._jourHumain(c.debut) + ' | '
-        + c.debut.slice(11, 16) + ' – ' + c.fin.slice(11, 16) + ' | '
-        + Ariane._dureeHumaine(min) + ' | ' + com + ' |';
-    });
-    const resume = '**' + s.nb + ' session' + (s.nb > 1 ? 's' : '')
+    const minutes = (c) => Math.round((Date.parse(c.fin + ':00') - Date.parse(c.debut + ':00')) / 60000);
+    const lignes = list.map((c) => ({ c, principal: true }))
+      .concat(secondaires.map((c) => ({ c, principal: false })))
+      .sort((a, b) => (a.c.debut < b.c.debut ? -1 : a.c.debut > b.c.debut ? 1 : (a.principal ? -1 : 1)))
+      .map(({ c, principal }, i) => {
+        const cle = Ariane.cleCommentaire(c);
+        const com = (principal && cle && coms[cle]) ? Ariane.echapperCellule(coms[cle]) : '';
+        return '| ' + (i + 1) + ' | ' + Ariane._jourHumain(c.debut) + ' | '
+          + c.debut.slice(11, 16) + ' – ' + c.fin.slice(11, 16) + ' | '
+          + Ariane._dureeHumaine(minutes(c)) + ' | ' + com + ' |'
+          + (secondaires.length ? ' ' + (principal ? 'principal' : 'séance de [[' + c.origine + ']]') + ' |' : '');
+      });
+    const resume = list.length ? '**' + s.nb + ' session' + (s.nb > 1 ? 's' : '')
       + ' · ' + Ariane._dureeHumaine(s.totalMin) + ' planifiées'
       + (s.futurMin ? ' · ' + Ariane._dureeHumaine(s.futurMin) + ' à venir' : '')
-      + (s.dernier ? ' · dernière : ' + Ariane._jourHumain(s.dernier) : '') + '**';
-    return ['## Sessions', '',
-      '| Session | Date | Heures | Durée | Commentaire |', '|---|---|---|---|---|',
-      ...lignes, '', resume].join('\n') + (horsObsidian ? '\n\n' + horsObsidian : '');
+      + (s.dernier ? ' · dernière : ' + Ariane._jourHumain(s.dernier) : '') + '**' : '';
+    const nSec = secondaires.length;
+    const enSeance = nSec ? '**En séance, pour mémoire : ' + nSec + ' créneau' + (nSec > 1 ? 'x' : '') + ', '
+      + Ariane._dureeHumaine(secondaires.reduce((t, c) => t + minutes(c), 0))
+      + " (comptés dans la tâche d'origine)**" : '';
+    const tete = nSec
+      ? ['| Session | Date | Heures | Durée | Commentaire | Créneau |', '|---|---|---|---|---|---|']
+      : ['| Session | Date | Heures | Durée | Commentaire |', '|---|---|---|---|---|'];
+    return ['## Sessions', '', ...tete, ...lignes, '', [resume, enSeance].filter(Boolean).join('\n\n')]
+      .join('\n') + (horsObsidian ? '\n\n' + horsObsidian : '');
   }
 
   static lundiDeSemaine(iso) {

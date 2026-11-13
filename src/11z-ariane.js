@@ -1728,6 +1728,20 @@ class Ariane extends composer(obsidian.Plugin,
       this.antirebond('creneaux:' + fichier.path, () => this.majBlocCreneaux(fichier), 600);
     }));
 
+    // Les séances empruntées suivent les créneaux, les commentaires et les
+    // rattachements, à tous les étages (veillerSeances) ; une tâche supprimée
+    // reprend ce qu'elle avait laissé chez ses descendantes.
+    this.registerEvent(this.app.metadataCache.on('changed', (fichier) => {
+      const ref = this.refDeChemin(fichier.path);
+      if (!ref || !this.changementLocal(fichier)) return;
+      this.antirebond('seances:' + fichier.path, () => this.veillerSeances(ref), 900);
+    }));
+    this.registerEvent(this.app.vault.on('delete', (fichier) => {
+      const ref = fichier && this.refDeChemin(fichier.path);
+      if (!ref || surMobile()) return;
+      this.antirebond('seances-suppr:' + ref, () => this.propagerSeances(ref), 900);
+    }));
+
     // Les mêmes règles anti-cycle quand on modifie « Rattachement » ou « Bloquée
     // par » à la main — dans la note de tâche comme dans une base normale
     // (même événement). Un lien qui ferme un cycle du graphe fusionné est
@@ -1749,6 +1763,7 @@ class Ariane extends composer(obsidian.Plugin,
       setTimeout(() => {
         Promise.resolve(this.semerConceptsTache())
           .then(() => this.semerSansEcheance())
+          .then(() => this.rattraperSeances())
           .catch(() => {});
       }, 3000);
     });

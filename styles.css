@@ -2640,6 +2640,8 @@ input[type="checkbox"].zfa-cal-carte-coche:checked {
   background: var(--background-primary); border: 1px solid var(--background-modifier-border); cursor: grab; }
 .zfa-seance-ligne:hover { border-color: var(--background-modifier-border-hover); }
 .zfa-seance-ligne.est-glissee { opacity: 0.4; }
+/* Une petite-fille et au-delà, sous sa mère, dans la colonne rangée en arbre. */
+.zfa-seance-ligne.est-descendante { margin-left: calc(var(--zfa-seance-prof, 1) * var(--size-4-5)); }
 .zfa-seance-ligne.est-insertion-avant::before,
 .zfa-seance-ligne.est-insertion-apres::after { content: ""; position: absolute; left: 0; right: 0; height: 2px;
   border-radius: 1px; background: var(--interactive-accent); }
