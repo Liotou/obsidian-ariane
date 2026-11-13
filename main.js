@@ -7428,6 +7428,19 @@ const avecIa = (Base) => class extends Base {
     return this.genererJsonAvec(prompt, max, f === 'lmstudio', modele);
   }
 
+  // La demande faite à Mistral. Température 0 : la même réponse à chaque
+  // fois. Depuis novembre 2026, Mistral refuse ce tirage « glouton » si
+  // top_p n'est pas explicitement à 1 (erreur 3054, « top_p must be 1 when
+  // using greedy sampling »), alors que 1 était déjà sa valeur par défaut.
+  static corpsMistral(modele, prompt, max) {
+    return {
+      model: modele,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0, top_p: 1, max_tokens: max,
+      response_format: { type: 'json_object' },
+    };
+  }
+
   async genererMistral(prompt, max, modele) {
     const cle = (this.settings.refsCleMistral || '').trim();
     if (!cle) {
@@ -7446,12 +7459,7 @@ const avecIa = (Base) => class extends Base {
         url: 'https://api.mistral.ai/v1/chat/completions',
         method: 'POST', throw: false,
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cle },
-        body: JSON.stringify({
-          model: m,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0, max_tokens: max,
-          response_format: { type: 'json_object' },
-        }),
+        body: JSON.stringify(Ariane.corpsMistral(m, prompt, max)),
       });
       if (!rep || rep.status < 200 || rep.status >= 300) {
         this._diagIA = 'Mistral HTTP ' + (rep ? rep.status : '?')

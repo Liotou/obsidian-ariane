@@ -161,3 +161,11 @@ test('téléphone : les réglages partagés ne se réécrivent que s’ils chang
     assert.equal(ecritures, 1);
   });
 });
+
+test('Mistral : une demande à température 0 porte top_p à 1 (exigé depuis novembre 2026)', () => {
+  const c = Ariane.corpsMistral('mistral-large-latest', 'Bonjour', 300);
+  assert.equal(c.temperature, 0);
+  assert.equal(c.top_p, 1);
+  assert.equal(c.max_tokens, 300);
+  assert.deepEqual(c.response_format, { type: 'json_object' });
+});
