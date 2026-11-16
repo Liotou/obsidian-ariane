@@ -20286,16 +20286,33 @@ const avecTaches = (Base) => class extends Base {
     this._agendas = (d && Array.isArray(d.calendriers)) ? d.calendriers.filter(Boolean) : [];
     this._agendasChargeLe = Date.now();
     if (this._agendaStatut === 2 || this._agendaStatut === 1) this._avertirAccesAgenda();
-    // Couleurs des calendriers via AppleScript (impossible en JXA — SIGBUS).
-    // Peut demander l'accès « Automatisation » à Calendar une première fois ;
-    // en cas d'échec, les événements de fond gardent la couleur de repli.
     if (this._agendaStatut === 3) {
-      try {
-        const cs = await this._osascriptAS(Ariane.genererASCouleursAgendas(), 20000);
-        this._agendaCouleurs = Ariane.parseCouleursAgendas(cs);
-      } catch (e) { /* couleurs indisponibles */ }
+      try { await this.chargerCouleursAgendas(); } catch (e) { /* couleurs plus tard */ }
     }
     return this._agendas;
+  }
+
+  // Couleurs des calendriers, par AppleScript (en JXA, les lire fait planter
+  // osascript). Peut demander une première fois l'accès « Automatisation » à
+  // Calendrier. Un échec ne se retient PAS : un Calendrier lent à s'ouvrir au
+  // démarrage d'Obsidian laissait une réponse vide en mémoire, et tous les
+  // événements restaient gris jusqu'au redémarrage. On réessaie donc, au plus
+  // toutes les deux minutes ; dès que les couleurs arrivent, les vues
+  // calendrier ouvertes se redessinent.
+  async chargerCouleursAgendas(force) {
+    if (!force && this._couleursEssaiLe && Date.now() - this._couleursEssaiLe < 120000) return false;
+    this._couleursEssaiLe = Date.now();
+    const cs = await this._osascriptAS(Ariane.genererASCouleursAgendas(), 45000);
+    const c = Ariane.parseCouleursAgendas(cs);
+    if (!Object.keys(c).length) {
+      console.warn('[Ariane] Couleurs des calendriers Apple illisibles ('
+        + (cs == null ? 'osascript a échoué' : 'réponse vide') + ') : nouvel essai dans deux minutes.');
+      return false;
+    }
+    const avant = JSON.stringify(this._agendaCouleurs || {});
+    this._agendaCouleurs = c;
+    if (JSON.stringify(c) !== avant) this._rafraichirFond();
+    return true;
   }
 
   _osascriptAS(script, ms) {
@@ -20304,7 +20321,13 @@ const avecTaches = (Base) => class extends Base {
     return new Promise((res) => {
       require('child_process').execFile('osascript', ['-e', script],
         { timeout: ms || 30000, maxBuffer: 1 << 20 },
-        (err, out) => res(err ? null : String(out == null ? '' : out)));
+        (err, out, errOut) => {
+          if (err) {
+            console.warn('[Ariane] AppleScript a échoué :', err.code, err.killed ? '(timeout)' : '',
+              String(errOut || '').trim());
+          }
+          res(err ? null : String(out == null ? '' : out));
+        });
     });
   }
 
@@ -20405,7 +20428,10 @@ const avecTaches = (Base) => class extends Base {
     const cle = String(debutISO) + '|' + String(finISO);
     const c = this._fondCache;
     if (c && c.cle === cle && Date.now() - c.le < 60000) return c.data;
-    if (!this._agendaCouleurs) { try { await this.chargerAgendas(); } catch (e) { /* couleurs plus tard */ } }
+    if (!this._agendaCouleurs) {
+      if (!this._agendas) { try { await this.chargerAgendas(); } catch (e) { /* couleurs plus tard */ } }
+      else this.chargerCouleursAgendas().catch(() => {});
+    }
     const cals = this._agendasAffiches();
     if (!cals.length) { this._fondCache = { cle, le: Date.now(), data: [] }; return []; }
     const connus = new Set();
@@ -20465,6 +20491,9 @@ const avecTaches = (Base) => class extends Base {
   // attendre la fin des caches (une minute pour Apple, cinq pour iCal).
   async actualiserAgendas() {
     this._icsCache = null;
+    if (this.settings && obsidian.Platform.isMacOS && this.sourceAgenda() === 'apple') {
+      try { await this.chargerCouleursAgendas(true); } catch (e) { /* couleurs plus tard */ }
+    }
     await this._rafraichirFond();
   }
 

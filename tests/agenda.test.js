@@ -120,3 +120,28 @@ test('genererJXAAgendas : script valide, statut d\'accès + liste des calendrier
   assert.ok(s.includes('calendriers'));
   assert.ok(s.includes('defaultCalendarForNewEvents'));
 });
+
+test('Couleurs des calendriers Apple : un échec ne se retient pas, la vue se redessine à l\'arrivée', async () => {
+  const g = Object.create(Ariane.prototype);
+  const reponses = [null, '', 'Personnel\t64633,3275,17438\nCalendrier\t3282,28637,65430\n'];
+  let redessins = 0;
+  Object.assign(g, {
+    _osascriptAS: async () => reponses.shift(),
+    _rafraichirFond: () => { redessins += 1; },
+  });
+  const avert = console.warn;
+  console.warn = () => {};
+  try {
+    // osascript en échec (Calendrier lent au démarrage) : rien de gardé.
+    assert.equal(await g.chargerCouleursAgendas(), false);
+    assert.equal(g._agendaCouleurs, undefined);
+    // Deux minutes ne sont pas passées : pas de nouvel essai, sauf à la demande.
+    assert.equal(await g.chargerCouleursAgendas(), false);
+    assert.equal(reponses.length, 2);
+    assert.equal(await g.chargerCouleursAgendas(true), false, 'réponse vide');
+    assert.equal(g._agendaCouleurs, undefined);
+    assert.equal(await g.chargerCouleursAgendas(true), true);
+  } finally { console.warn = avert; }
+  assert.deepEqual(g._agendaCouleurs, { Personnel: '#fb0d44', Calendrier: '#0d6fff' });
+  assert.equal(redessins, 1, 'les vues ouvertes reprennent les couleurs');
+});
