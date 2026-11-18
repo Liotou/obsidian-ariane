@@ -812,6 +812,14 @@ const TEXTES = {
     "Cette tâche ne sera pas créée : le lien tombe.": "This task will not be created, so the link is dropped.",
     "Retirer cette dépendance": "Remove this dependency",
     " (introuvable)": " (not found)",
+    "Événement lié": "Linked event",
+    "Fait suite à": "Follows",
+    "Tâche mère": "Parent task",
+    "Bloquée par": "Blocked by",
+    "Sous-tâche": "Subtask",
+    "Bloque": "Blocks",
+    "Détails techniques": "Technical details",
+    "Ressource": "Resource",
     " note(s) d’événement renommée(s).": " event note(s) renamed.",
     "Description": "Description",
     " note(s) d’événement créée(s).": " event note(s) created.",
@@ -16385,6 +16393,13 @@ const avecTachesStatiques = (Base) => class extends Base {
     return [].concat(liste || []).map(String).filter((x) => x && Ariane.cibleRessource(x) !== c);
   }
 
+  // Les propriétés qu'Ariane tient seule : elles restent dans la note, mais
+  // sous « Détails techniques », pour que seul l'utile s'affiche.
+  static proprieteTechnique(concept, cleNue) {
+    return ['terminee', 'sans-echeance', 'liste', 'rappel-id', 'agenda-id', 'temps-reel'].includes(concept)
+      || /^(aliases|cree|modifie|type|temps|temps-reel|événement id|synchro .*|google .*)$/.test(String(cleNue || ''));
+  }
+
   // Le nom nu d'une clé de propriété, sans préfixe ni casse.
   static cleFamilleNue(cle, prefixe) {
     const c = String(cle || '').trim().toLowerCase();
@@ -22785,8 +22800,9 @@ const avecTaches = (Base) => class extends Base {
     let n = 0;
     for (const f of this.app.vault.getMarkdownFiles()) {
       if (!f.path.startsWith(dossier + '/')) continue;
-      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
-      if (!cles.some((c) => c in fm)) continue;
+      // Dans le texte : au démarrage, le cache ne connaît pas toutes les notes.
+      const texte = await this.app.vault.cachedRead(f);
+      if (!cles.some((c) => new RegExp('^' + echapperRegex(c) + ':', 'm').test(texte))) continue;
       this.marquerEcriture(f.path);
       await this.app.fileManager.processFrontMatter(f, (x) => {
         const valeurs = cles.flatMap((c) => [].concat(x[c] == null ? [] : x[c]));
@@ -23437,6 +23453,58 @@ const avecTaches = (Base) => class extends Base {
     new obsidian.Notice(tr('macOS protège les pièces jointes de Calendrier. Pour les ouvrir depuis Obsidian : Réglages Système, Confidentialité et sécurité, Accès complet au disque, puis relancez Obsidian.'), 12000);
   }
 
+  // Dans un nouvel onglet : le calendrier d'où l'on clique reste ouvert. Ce
+  // qu'Obsidian ne sait pas afficher (Word, Excel…) va à son application.
+  async ouvrirFichierCoffre(f) {
+    const shell = (() => { try { return require('electron').shell; } catch (e) { return null; } })();
+    if (/^(pdf|png|jpe?g|gif|webp|mp3|m4a|wav|mp4|mov|md|canvas|drawio|svg)$/i.test(f.extension) || !shell) {
+      await this.app.workspace.getLeaf('tab').openFile(f);
+    } else await shell.openPath(this.app.vault.adapter.getFullPath(f.path));
+  }
+
+  // Ce à quoi une tâche renvoie, pour la carte de survol de ses créneaux :
+  // [{ icone, genre, libelle, f }], `f` absent si le lien ne mène nulle part.
+  liensAssociesTache(ref) {
+    const note = this.fichierDeRef(ref);
+    if (!note) return [];
+    const mc = this.app.metadataCache;
+    const fm = (mc.getFileCache(note) || {}).frontmatter || {};
+    const toutes = this.tachesPourGantt ? this.tachesPourGantt() : [];
+    const parRef = new Map(toutes.map((t) => [t.ref, t]));
+    const nomTache = (t) => (t.intitule || t.ref) + ' (' + t.ref + ')';
+    const out = [];
+    const ajouter = (concept, icone, genre) => {
+      for (const brut of [].concat(this._lireT(fm, concept) || [])) {
+        const cible = Ariane.cibleRessource(brut);
+        if (!cible) continue;
+        const f = mc.getFirstLinkpathDest(cible, note.path);
+        const m = f && f.extension === 'md' ? ((mc.getFileCache(f) || {}).frontmatter || {}) : {};
+        const tache = parRef.get(f && f.extension === 'md' ? f.basename : cible);
+        let libelle = [].concat(m.aliases || [])[0] || (f ? (f.extension === 'md' ? f.basename : f.name) : cible.split('/').pop());
+        if (tache) libelle = nomTache(tache);
+        else if (m['Événement ID']) {
+          const q = Ariane.quandDeNoteEvenement(m).slice(0, 10).split('-').reverse().join('/');
+          libelle = (m.Titre || libelle) + (q ? ', ' + q : '');
+        }
+        out.push({ icone, genre, libelle, f });
+      }
+    };
+    ajouter('source', 'book-marked', tr('Source'));
+    ajouter('livrable', 'package', tr('Livrable'));
+    ajouter('ressources', 'paperclip', tr('Ressource'));
+    ajouter('prepare', 'calendar-clock', tr('Événement lié'));
+    ajouter('fait-suite', 'calendar-check', tr('Fait suite à'));
+    ajouter('parent', 'git-branch', tr('Tâche mère'));
+    ajouter('bloque-par', 'ban', tr('Bloquée par'));
+    const active = (t) => t.statut !== 'abandonnée';
+    const pousser = (liste, icone, genre) => {
+      for (const t of liste.filter(active).slice(0, 8)) out.push({ icone, genre, libelle: nomTache(t), f: t.fichier });
+    };
+    pousser(toutes.filter((t) => Ariane.refDeLien(t.parent || '') === ref), 'list-tree', tr('Sous-tâche'));
+    pousser(toutes.filter((t) => (t.bloquePar || []).some((b) => Ariane.refDeLien(b) === ref)), 'arrow-right', tr('Bloque'));
+    return out;
+  }
+
   // Ouvre une pièce : sa copie du coffre, sinon une copie temporaire du
   // fichier de Calendrier (l'application qui l'ouvrira n'a pas accès à
   // l'original), sinon son adresse. Rend false quand il faut passer par
@@ -23444,14 +23512,7 @@ const avecTaches = (Base) => class extends Base {
   async ouvrirPieceEvenement(p) {
     const shell = (() => { try { return require('electron').shell; } catch (e) { return null; } })();
     const copie = this.fichierDePiece(p);
-    if (copie) {
-      // Dans un nouvel onglet : le calendrier d'où l'on clique reste ouvert.
-      // Ce qu'Obsidian ne sait pas afficher (Word, Excel…) va à son application.
-      if (/^(pdf|png|jpe?g|gif|webp|mp3|m4a|wav|mp4|mov|md)$/i.test(copie.extension) || !shell) {
-        await this.app.workspace.getLeaf('tab').openFile(copie);
-      } else await shell.openPath(this.app.vault.adapter.getFullPath(copie.path));
-      return true;
-    }
+    if (copie) { await this.ouvrirFichierCoffre(copie); return true; }
     if (p.url) {
       if (shell && shell.openExternal) shell.openExternal(p.url); else window.open(p.url);
       return true;
@@ -24710,6 +24771,13 @@ const avecTaches = (Base) => class extends Base {
       const valeur = standard ? this._lireT(fm, cpt) : (cleFm ? fm[cleFm] : '');
       row.classList.toggle('zfa-champ-famille-masque', !Ariane.champFamilleVisible(standard ? cpt : nue, valeur, famille, pre));
     }
+    // La date de fin n'a de sens que remplie, l'heure qu'avec une échéance.
+    const vide = (c) => !String(this._lireT(fm, c) == null ? '' : this._lireT(fm, c)).trim();
+    for (const row of contEl.querySelectorAll('.metadata-property')) {
+      const cpt = row.dataset.zfaConcept || '';
+      if (cpt === 'termine-le') row.classList.toggle('zfa-champ-famille-masque', vide('termine-le'));
+      if (cpt === 'heure') row.classList.toggle('zfa-champ-famille-masque', vide('echeance'));
+    }
   }
 
   // La section « Sessions » (bloc des créneaux, voir majBlocCreneaux) : ses
@@ -24754,11 +24822,16 @@ const avecTaches = (Base) => class extends Base {
     if (rang.has('bloque-par')) { rang.set('prepare', rang.get('bloque-par')); rang.set('fait-suite', rang.get('bloque-par')); }
     const presents = new Set();
     let aFamille = false;
+    let aTechnique = false;
+    const pre = this.settings.prefixeTaches || '';
     for (const row of cont.querySelectorAll('.metadata-property')) {
       const cpt = row.dataset.zfaConcept || '';
       const cleBrute = String(row.dataset.propertyKey || '').toLowerCase();
       row.classList.toggle('zfa-note-tache-cle', cpt === 'famille');
       if (cpt === 'famille') { row.style.order = '0'; continue; }
+      const technique = Ariane.proprieteTechnique(cpt, Ariane.cleFamilleNue(cleBrute, pre));
+      row.classList.toggle('zfa-prop-technique', technique);
+      if (technique) { row.style.order = '901'; aTechnique = true; continue; }
       if (rang.has(cpt)) {
         row.style.order = String(rang.get(cpt));
         // L'heure est l'heure de l'échéance : on la rattache visuellement
@@ -24773,7 +24846,7 @@ const avecTaches = (Base) => class extends Base {
       if (estFamille) { row.style.order = '700'; row.dataset.zfaGroupe = 'famille'; if (!row.classList.contains('zfa-champ-famille-masque')) aFamille = true; continue; }
       row.style.order = '950';
     }
-    const attendus = [...groupes.filter((g) => presents.has(g.id)).map((g) => g.id)];
+    const attendus = [...groupes.filter((g) => presents.has(g.id)).map((g) => g.id), 'details'];
     if (aFamille) attendus.push('famille');
     const vus = new Set();
     for (const h of cont.querySelectorAll(':scope > .zfa-note-tache-groupe')) {
@@ -24790,6 +24863,19 @@ const avecTaches = (Base) => class extends Base {
       const h = cont.createDiv({ cls: 'zfa-note-tache-groupe', text: tr(NOM_FAMILLE) });
       h.dataset.zfaGroupe = 'famille';
       h.style.order = '699';
+    }
+    // Les propriétés techniques, repliées derrière un seul titre.
+    cont.classList.toggle('zfa-details-ouverts', !!this._detailsTacheOuverts);
+    let d = cont.querySelector(':scope > .zfa-note-tache-details');
+    if (!aTechnique) { if (d) d.remove(); return; }
+    if (!d) {
+      d = cont.createDiv({ cls: 'zfa-note-tache-groupe zfa-note-tache-details', text: tr('Détails techniques') });
+      d.dataset.zfaGroupe = 'details';
+      d.style.order = '900';
+      d.addEventListener('click', () => {
+        this._detailsTacheOuverts = !this._detailsTacheOuverts;
+        this.habillerNotesTache();
+      });
     }
   }
 
@@ -45971,8 +46057,21 @@ class MoteurCalendrier extends MoteurVue {
       if (min) quand += ' (' + dureeLisible(min) + ')';
     }
     ligne('clock', quand);
+    // Les liens de la tâche ont leurs lignes propres, cliquables, juste après.
+    const dejaListees = /^(source|livrable|ressources|événement\(s\) lié\(s\)|fait suite à|rattachement|rattachée à|bloquée par)$/i;
     for (const p of Ariane.lignesProprietes(this._pairesProps(t.ref), t.intitule, 99)) {
-      ligne('info', p.nom + ' : ' + p.valeur);
+      if (!dejaListees.test(String(p.nom).trim())) ligne('info', p.nom + ' : ' + p.valeur);
+    }
+    // Sources, livrable, ressources, événements et tâches liés : un clic les ouvre.
+    for (const a of (g.liensAssociesTache ? g.liensAssociesTache(t.ref) : [])) {
+      const tx = ligne(a.icone, a.genre + ' : ' + a.libelle);
+      if (!a.f) continue;
+      tx.parentElement.addClass('est-lien');
+      tx.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._cacherCarteActivite();
+        g.ouvrirFichierCoffre(a.f).catch(() => {});
+      });
     }
     if (libre) carte.createDiv({ cls: 'zfa-evt-survol-notes', text: libre });
 

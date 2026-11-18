@@ -1878,6 +1878,11 @@ body.zfa-citations-repliees .zfa-cit.zfa-cit--ouverte .zfa-cit-pastille {
 .zfa-note-tache .metadata-property[data-property-key="type"],
 .zfa-note-tache .metadata-property[data-property-key="cree"],
 .zfa-note-tache .metadata-property[data-property-key="modifie"] { display: none; }
+/* Ce qu'Ariane tient seule, replié sous « Détails techniques ». */
+.zfa-note-tache-skin .metadata-properties:not(.zfa-details-ouverts) .metadata-property.zfa-prop-technique { display: none; }
+.zfa-note-tache-skin .zfa-note-tache-details { cursor: pointer; }
+.zfa-note-tache-skin .zfa-note-tache-details::before { content: "▸ "; }
+.zfa-note-tache-skin .zfa-details-ouverts > .zfa-note-tache-details::before { content: "▾ "; }
 
 /* --- Habillage complet (réglage « Habillage de la note de tâche »). --- */
 .zfa-note-tache-skin .metadata-container {

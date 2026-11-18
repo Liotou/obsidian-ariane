@@ -140,7 +140,7 @@ test('migrerChampFichier : note nettoyée, liens repris, une seule fois', async 
   g.marquerEcriture = () => {};
   g.cleT = (c) => ({ fichier: 'Tâche - Fichier', ressources: 'Tâche - Ressources' })[c];
   g._lireT = (x, c) => x[g.cleT(c)];
-  g.app = { vault: { getMarkdownFiles: () => [{ path: 'T/T1.md' }] },
+  g.app = { vault: { getMarkdownFiles: () => [{ path: 'T/T1.md' }], cachedRead: async () => '---\nTâche - Fichier: "[[Plan]]"\n---\n' },
     metadataCache: { getFileCache: () => ({ frontmatter: fm }) },
     fileManager: { processFrontMatter: async (f, fn) => fn(fm) } };
   assert.equal(await g.migrerChampFichier(), 1);
@@ -148,4 +148,47 @@ test('migrerChampFichier : note nettoyée, liens repris, une seule fois', async 
   assert.deepEqual(g.settings.famillesTaches[0].proprietes, []);
   assert.equal(await g.migrerChampFichier(), 0);
   assert.equal(sauve, 1);
+});
+
+test('propriétés techniques : repliées ; les champs de travail restent visibles', () => {
+  for (const [c, k] of [['terminee', 'terminée'], ['rappel-id', 'rappel id'], ['', 'synchro agenda'], ['', 'modifie'], ['', 'événement id']]) {
+    assert.equal(Ariane.proprieteTechnique(c, k), true, k);
+  }
+  for (const [c, k] of [['statut', 'statut'], ['echeance', 'échéance'], ['ressources', 'ressources'], ['prepare', 'événement(s) lié(s)']]) {
+    assert.equal(Ariane.proprieteTechnique(c, k), false, k);
+  }
+});
+
+test('survol d’un créneau : source, livrable et ressources, avec leur titre', () => {
+  const fichiers = { '@a': { path: 'R/@a.md', extension: 'md', basename: '@a' }, L: { path: 'L.md', extension: 'md', basename: 'L' },
+    'p.pdf': { path: 'p.pdf', extension: 'pdf', name: 'p.pdf' } };
+  const fm = { source: '[[@a]]', livrable: '[[L]]', ressources: ['[[p.pdf]]', '[[Absente]]'] };
+  const g = Object.create(Ariane.prototype);
+  g.fichierDeRef = () => ({ path: 'T1.md' });
+  g.tachesPourGantt = () => [];
+  g._lireT = (x, c) => x[c];
+  g.app = { metadataCache: {
+    getFileCache: (f) => ({ frontmatter: f.path === 'T1.md' ? fm : (f.basename === 'L' ? { aliases: ['Mon livrable'] } : {}) }),
+    getFirstLinkpathDest: (c) => fichiers[c] || null } };
+  assert.deepEqual(g.liensAssociesTache('T1').map((x) => [x.genre, x.libelle, !!x.f]),
+    [['Source', '@a', true], ['Livrable', 'Mon livrable', true], ['Ressource', 'p.pdf', true], ['Ressource', 'Absente', false]]);
+});
+
+test('survol d’un créneau : événements et tâches liés, dans les deux sens', () => {
+  const ev = { path: 'EV/E.md', extension: 'md', basename: 'E' };
+  const mere = { path: 'T/T0.md', extension: 'md', basename: 'T0' };
+  const fille = { path: 'T/T2.md', extension: 'md', basename: 'T2' };
+  const fm = { prepare: ['[[E]]'], parent: '[[T0]]' };
+  const g = Object.create(Ariane.prototype);
+  g.fichierDeRef = () => ({ path: 'T/T1.md' });
+  g._lireT = (x, c) => x[c];
+  g.tachesPourGantt = () => [{ ref: 'T0', intitule: 'Mère', fichier: mere, statut: 'à faire' },
+    { ref: 'T1', intitule: 'Moi', fichier: {}, statut: 'à faire', parent: '[[T0]]' },
+    { ref: 'T2', intitule: 'Fille', fichier: fille, statut: 'à faire', parent: '[[T1]]', bloquePar: ['[[T1]]'] },
+    { ref: 'T3', intitule: 'Abandonnée', fichier: {}, statut: 'abandonnée', parent: '[[T1]]' }];
+  g.app = { metadataCache: {
+    getFileCache: (f) => ({ frontmatter: f.path === 'T/T1.md' ? fm : (f === ev ? { 'Événement ID': 'A', Titre: 'Réunion', 'Début': '2026-11-20T10:00' } : {}) }),
+    getFirstLinkpathDest: (c) => ({ E: ev, T0: mere })[c] || null } };
+  assert.deepEqual(g.liensAssociesTache('T1').map((x) => x.genre + ' : ' + x.libelle), [
+    'Événement lié : Réunion, 20/11/2026', 'Tâche mère : Mère (T0)', 'Sous-tâche : Fille (T2)', 'Bloque : Fille (T2)']);
 });

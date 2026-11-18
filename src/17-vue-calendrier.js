@@ -433,8 +433,21 @@ class MoteurCalendrier extends MoteurVue {
       if (min) quand += ' (' + dureeLisible(min) + ')';
     }
     ligne('clock', quand);
+    // Les liens de la tâche ont leurs lignes propres, cliquables, juste après.
+    const dejaListees = /^(source|livrable|ressources|événement\(s\) lié\(s\)|fait suite à|rattachement|rattachée à|bloquée par)$/i;
     for (const p of Ariane.lignesProprietes(this._pairesProps(t.ref), t.intitule, 99)) {
-      ligne('info', p.nom + ' : ' + p.valeur);
+      if (!dejaListees.test(String(p.nom).trim())) ligne('info', p.nom + ' : ' + p.valeur);
+    }
+    // Sources, livrable, ressources, événements et tâches liés : un clic les ouvre.
+    for (const a of (g.liensAssociesTache ? g.liensAssociesTache(t.ref) : [])) {
+      const tx = ligne(a.icone, a.genre + ' : ' + a.libelle);
+      if (!a.f) continue;
+      tx.parentElement.addClass('est-lien');
+      tx.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._cacherCarteActivite();
+        g.ouvrirFichierCoffre(a.f).catch(() => {});
+      });
     }
     if (libre) carte.createDiv({ cls: 'zfa-evt-survol-notes', text: libre });
 

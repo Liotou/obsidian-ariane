@@ -787,6 +787,13 @@ const avecTachesStatiques = (Base) => class extends Base {
     return [].concat(liste || []).map(String).filter((x) => x && Ariane.cibleRessource(x) !== c);
   }
 
+  // Les propriétés qu'Ariane tient seule : elles restent dans la note, mais
+  // sous « Détails techniques », pour que seul l'utile s'affiche.
+  static proprieteTechnique(concept, cleNue) {
+    return ['terminee', 'sans-echeance', 'liste', 'rappel-id', 'agenda-id', 'temps-reel'].includes(concept)
+      || /^(aliases|cree|modifie|type|temps|temps-reel|événement id|synchro .*|google .*)$/.test(String(cleNue || ''));
+  }
+
   // Le nom nu d'une clé de propriété, sans préfixe ni casse.
   static cleFamilleNue(cle, prefixe) {
     const c = String(cle || '').trim().toLowerCase();
