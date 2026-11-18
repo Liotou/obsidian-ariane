@@ -18,6 +18,33 @@ class ChoixListeModal extends obsidian.FuzzySuggestModal {
   onChooseItem(it) { if (this.onChoix) this.onChoix(it); }
 }
 
+// Avant l'export Word : y ajouter un PDF ? Rend 'word', 'pdf', ou null.
+class ModaleExportWord extends obsidian.Modal {
+  constructor(app, surChoix) {
+    super(app);
+    this.surChoix = surChoix;
+    this.choix = null;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    this.setTitle(tr('Exporter en Word'));
+    contentEl.createEl('p', { text: tr('Ajouter aussi un PDF ? Il reprend votre modèle, avec des citations et une bibliographie définitives, sans lien avec Zotero.') });
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const bouton = (texte, valeur, cls) => {
+      const b = pied.createEl('button', { text: texte, cls });
+      b.addEventListener('click', () => { this.choix = valeur; this.close(); });
+      return b;
+    };
+    bouton(tr('Annuler'), null);
+    bouton(tr('Word seul'), 'word');
+    bouton(tr('Word et PDF'), 'pdf', 'mod-cta').focus();
+  }
+  onClose() {
+    this.contentEl.empty();
+    this.surChoix(this.choix);
+  }
+}
+
 // Le choix d'une annotation à citer (commande « Citer une annotation »).
 // Le filtre porte sur le titre et sur « Auteur, année » à la fois.
 class ModaleCiterAnnotation extends obsidian.FuzzySuggestModal {

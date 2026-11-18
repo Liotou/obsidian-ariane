@@ -277,7 +277,7 @@ class MoteurCalendrier extends MoteurVue {
   // pour la dixième.
   async _noteEvenement(e) {
     const f = await this.greffon.noteEvenementAJour(e);
-    if (f) await this.app.workspace.getLeaf(false).openFile(f);
+    if (f) await this._ouvrirFichier(f);
   }
 
   // Clic (note de l'événement) + clic droit (menu) sur un bloc d'événement
@@ -356,7 +356,7 @@ class MoteurCalendrier extends MoteurVue {
     for (const a of (this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [])) {
       const t = ligne('link', tr('Tâche : ') + a.tache.intitule + ' (' + a.tache.ref + ')'
         + (a.suite ? tr(' (suite)') : ''), 'est-lien');
-      t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref, false); });
+      t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref); });
     }
     const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e.id) : null;
     const actions = carte.createDiv({ cls: 'zfa-act-survol-actions' });
@@ -460,7 +460,7 @@ class MoteurCalendrier extends MoteurVue {
         nom.addEventListener('click', (e) => {
           e.preventDefault(); e.stopPropagation();
           this._cacherCarteActivite();
-          this.ouvrir(r, e.metaKey || e.ctrlKey);
+          this.ouvrir(r);
         });
         l.createSpan({ cls: 'zfa-cren-survol-st-ref', text: r });
       }
@@ -473,7 +473,7 @@ class MoteurCalendrier extends MoteurVue {
       bt.createSpan({ text: libelle });
       bt.addEventListener('click', (e) => { e.stopPropagation(); this._cacherCarteActivite(); faire(e); });
     };
-    action('file-text', tr('Ouvrir'), (e) => this.ouvrir(t.ref, e.metaKey || e.ctrlKey));
+    action('file-text', tr('Ouvrir'), (e) => this.ouvrir(t.ref));
     action('list-checks', tr('Sous-tâches de la séance…'), () => this._ouvrirSeance(t, ev));
     action('message-square', tr('Commentaire'), () => this._ouvrirCommentaire(t, ev));
 
@@ -506,7 +506,7 @@ class MoteurCalendrier extends MoteurVue {
     const noteExistante = e.id ? this.greffon.noteDeEvenement(e.id) : null;
     if (jalonExistant) {
       m.addItem((i) => i.setTitle(tr('Ouvrir le jalon de cet événement')).setIcon('diamond')
-        .onClick(() => this.ouvrir(jalonExistant.ref, false)));
+        .onClick(() => this.ouvrir(jalonExistant.ref)));
     } else {
     m.addItem((i) => i.setTitle(tr('Créer un jalon à partir de cet événement')).setIcon('diamond')
       .onClick(async () => {
@@ -518,7 +518,7 @@ class MoteurCalendrier extends MoteurVue {
         const ref = chemin.split('/').pop().replace(/\.md$/, '');
         if (e.id) await this.greffon.majTache(ref, { 'Événement ID': e.id });
         this.dessiner();
-        this.ouvrir(ref, false);
+        this.ouvrir(ref);
       }));
     }
     if ((e.pieces || []).some((p) => p.local && Ariane.piecePermise(p.nom) && !this.greffon.fichierDePiece(p))) {
@@ -529,7 +529,7 @@ class MoteurCalendrier extends MoteurVue {
     const associees = this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [];
     for (const a of associees) {
       m.addItem((i) => i.setTitle(tr('Ouvrir la tâche ') + a.tache.ref + ' : ' + a.tache.intitule)
-        .setIcon('square-check').onClick(() => this.ouvrir(a.tache.ref, false)));
+        .setIcon('square-check').onClick(() => this.ouvrir(a.tache.ref)));
       m.addItem((i) => i.setTitle(tr('Dissocier de ') + a.tache.ref).setIcon('unlink')
         .onClick(async () => {
           await this.greffon.dissocierEvenementTache(a.tache.ref, a.cle);
@@ -719,7 +719,7 @@ class MoteurCalendrier extends MoteurVue {
         const lien = rt.createDiv({ cls: 'zfa-act-survol-ratt-l' });
         obsidian.setIcon(lien.createSpan({ cls: 'zfa-act-survol-bt-ic' }), 'link');
         lien.createSpan({ text: r.ref + ' ' + (r.intitule || '') + ' (' + dureeLisible(r.min) + ')' });
-        lien.addEventListener('click', (e) => { e.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(r.ref, e.metaKey || e.ctrlKey); });
+        lien.addEventListener('click', (e) => { e.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(r.ref); });
       }
     }
     const apps = carte.createDiv({ cls: 'zfa-act-survol-apps' });
@@ -873,13 +873,11 @@ class MoteurCalendrier extends MoteurVue {
     const m = new obsidian.Menu();
     if (f) {
       m.addItem((i) => i.setTitle(tr('Ouvrir la note')).setIcon('file-text')
-        .onClick(() => this.app.workspace.getLeaf(false).openFile(f)));
-      m.addItem((i) => i.setTitle(tr('Ouvrir dans un nouvel onglet')).setIcon('separator-vertical')
-        .onClick(() => this.app.workspace.getLeaf(true).openFile(f)));
+        .onClick(() => this._ouvrirFichier(f)));
     }
     if (t) {
       m.addItem((i) => i.setTitle(tr('Ouvrir la tâche ') + t.ref).setIcon('check-square')
-        .onClick(() => this.ouvrir(t.ref, false)));
+        .onClick(() => this.ouvrir(t.ref)));
     }
     m.addSeparator();
     m.addItem((i) => i.setTitle(t ? tr('Lier cette note à une autre tâche…') : tr('Lier cette note à une tâche…')).setIcon('link')
@@ -1332,7 +1330,7 @@ class MoteurCalendrier extends MoteurVue {
       const { debut, fin } = this._bornesPeriode();
       const jour = Ariane.jourSeme(this._jourSel || '', debut, fin, auj);
       const chemin = await this.greffon.creerTache({ debut: jour, echeance: jour });
-      if (chemin) this.ouvrir(chemin.split('/').pop().replace(/\.md$/, ''), false);
+      if (chemin) this.ouvrir(chemin.split('/').pop().replace(/\.md$/, ''));
     } catch (e) {
       new obsidian.Notice(tr('Création impossible : ') + (e && e.message ? e.message : e));
     }
@@ -1350,9 +1348,15 @@ class MoteurCalendrier extends MoteurVue {
       + d6 + ' ' + (MOIS_COURTS[m6 - 1] || '') + ' ' + a6;
   }
 
-  ouvrir(ref, nouveau) {
+  // Tout ce qu'on ouvre depuis le calendrier va dans un nouvel onglet : le
+  // calendrier reste en place.
+  _ouvrirFichier(f) {
+    return this.app.workspace.getLeaf('tab').openFile(f);
+  }
+
+  ouvrir(ref) {
     const f = this.greffon.fichierDeRef(ref);
-    if (f) this.app.workspace.getLeaf(!!nouveau).openFile(f);
+    if (f) this._ouvrirFichier(f);
   }
   // Couleur d'un créneau : suit le réglage de la frise pour les modes
   // « statut » et « famille » ; les autres modes (racine, priorité,
@@ -1421,7 +1425,7 @@ class MoteurCalendrier extends MoteurVue {
         hoverParent: this, targetEl: carte, linktext: t.ref, sourcePath: '' });
     });
     carte.addEventListener('click', (e) => { e.stopPropagation();
-      this.ouvrir(t.ref, e.metaKey || e.ctrlKey); });
+      this.ouvrir(t.ref); });
     carte.addEventListener('contextmenu', (e) => this.menuCarte(e, t, ev));
     return carte;
   }
@@ -1600,7 +1604,7 @@ class MoteurCalendrier extends MoteurVue {
           this.dessiner();
         });
         const nom = ligne.createSpan({ cls: 'zfa-cal-seance-titre', text: st ? (st.intitule || r) : r });
-        nom.addEventListener('click', (e) => { e.stopPropagation(); this.ouvrir(r, e.metaKey || e.ctrlKey); });
+        nom.addEventListener('click', (e) => { e.stopPropagation(); this.ouvrir(r); });
         nom.addEventListener('pointerdown', (e) => e.stopPropagation());
       }
     }
@@ -1611,9 +1615,7 @@ class MoteurCalendrier extends MoteurVue {
     const m = new obsidian.Menu();
     const poser = async (champs) => { await this.greffon.majTache(t.ref, champs); this.dessiner(); };
 
-    m.addItem((i) => i.setTitle(tr('Ouvrir')).setIcon('file-text').onClick(() => this.ouvrir(t.ref, false)));
-    m.addItem((i) => i.setTitle(tr('Ouvrir dans un nouveau volet')).setIcon('separator-vertical')
-      .onClick(() => this.ouvrir(t.ref, true)));
+    m.addItem((i) => i.setTitle(tr('Ouvrir')).setIcon('file-text').onClick(() => this.ouvrir(t.ref)));
     m.addSeparator();
 
     for (const st of ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée']) {
@@ -1737,7 +1739,7 @@ class MoteurCalendrier extends MoteurVue {
       row.appendChild(nom);
       row.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.ouvrir(r, e.metaKey || e.ctrlKey);
+        this.ouvrir(r);
       });
       corps.appendChild(row);
     };
@@ -1789,7 +1791,7 @@ class MoteurCalendrier extends MoteurVue {
     m.addItem((i) => i.setTitle(tr('Nouvelle tâche ce jour-là')).setIcon('plus')
       .onClick(async () => {
         const chemin = await this.greffon.creerTache({ debut: jourISO, echeance: jourISO });
-        if (chemin) this.ouvrir(chemin.split('/').pop().replace(/\.md$/, ''), false);
+        if (chemin) this.ouvrir(chemin.split('/').pop().replace(/\.md$/, ''));
       }));
     m.addItem((i) => i.setTitle(tr('Coller le lien en créneau')).setIcon('clipboard-paste')
       .onClick(async () => {
@@ -2523,7 +2525,7 @@ class MoteurCalendrier extends MoteurVue {
   // ou une pastille de la vue mois.
   _brancherOuvertureCarte(el, t, ev) {
     el.addEventListener('click', (e) => { e.stopPropagation();
-      this.ouvrir(t.ref, e.metaKey || e.ctrlKey); });
+      this.ouvrir(t.ref); });
     el.addEventListener('contextmenu', (e) => this.menuCarte(e, t, ev));
     el.addEventListener('mouseover', (e) => {
       this.app.workspace.trigger('hover-link', { event: e, source: 'zfa-calendrier',
@@ -3403,7 +3405,7 @@ class MoteurCalendrier extends MoteurVue {
           e.stopPropagation();
           this._cacherCarteActivite();
           const f = this.app.vault.getAbstractFileByPath(x.chemin);
-          if (f) this.app.workspace.getLeaf(e.metaKey || e.ctrlKey).openFile(f);
+          if (f) this._ouvrirFichier(f);
         });
         el.addEventListener('contextmenu', (e) => this._menuPresence(e, x, t));
         travail.push({ a: p.a, b: p.b, el });

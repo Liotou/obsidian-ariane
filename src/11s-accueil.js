@@ -367,7 +367,7 @@ const avecAccueil = (Base) => class extends Base {
       replier: ['Replier les citations', 'Les citations se replient en pastilles, pour relire le texte d’un trait ; un clic sur une pastille la déplie.', 'Replier ou déplier', () => this.basculerCitations(!this.settings.citationsRepliees)],
       exporter: ['Exporter en Word', 'Le brouillon devient un document Word, avec des citations Zotero vivantes (pandoc et Better BibTeX requis).', 'Exporter le brouillon', async () => {
         if (brouillon instanceof obsidian.TFile) await this.app.workspace.getLeaf(false).openFile(brouillon);
-        await this.exporterWordZotero();
+        await this.exporterWordZotero({ pdf: false });
       }],
     };
     const liste = el.createDiv({ cls: 'zfa-tuto' });

@@ -24,6 +24,11 @@ module.exports._test = {
   extraireNotesFilles,
   // Export Word : préparation du markdown pour pandoc.
   preparerMarkdownExport,
+  clesCitationsPandoc,   // version PDF : citations figées
+  styleZoteroDuModele,
+  markdownPourPdf,
+  scriptPdfWord,
+  ModaleExportWord,
   texteCommentaireWord,
   deplierIntegrations,
   footnotesVersCitations,

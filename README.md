@@ -549,6 +549,12 @@ Along the way the export also:
 - adds the Zotero bibliography field at the end, so you do not have to insert it
   yourself.
 
+On a Mac with Word installed, the export asks whether to **add a PDF**. The
+`.docx` stays linked to Zotero; the PDF is a separate document: citations and
+bibliography are written once and for all in your template's style, without
+comments, then Word saves it. Zotero must be running, and Obsidian needs Full
+Disk Access to collect the file.
+
 ⚠️ Requires pandoc, the Better BibTeX Lua filter, and Zotero running.
 
 ## ⏱️ Tracking time

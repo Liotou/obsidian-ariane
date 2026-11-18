@@ -812,6 +812,19 @@ const TEXTES = {
     "Cette tâche ne sera pas créée : le lien tombe.": "This task will not be created, so the link is dropped.",
     "Retirer cette dépendance": "Remove this dependency",
     " (introuvable)": " (not found)",
+    "Export PDF…": "PDF export…",
+    "style de citation introuvable dans Zotero : ": "citation style not found in Zotero: ",
+    "Citations absentes de Zotero : ": "Citations missing from Zotero: ",
+    "Zotero ne répond pas : lancez-le, avec Better BibTeX.": "Zotero is not responding: start it, with Better BibTeX.",
+    "Word n’a pas produit le PDF (autorisez Obsidian à le piloter).": "Word did not produce the PDF (allow Obsidian to control it).",
+    "macOS refuse l’accès au PDF de Word : accordez à Obsidian l’accès complet au disque, puis relancez-le.": "macOS denies access to Word's PDF: grant Obsidian Full Disk Access, then relaunch it.",
+    "PDF exporté : ": "PDF exported: ",
+    "PDF non produit : ": "PDF not produced: ",
+    "Ajouter aussi un PDF ? Il reprend votre modèle, avec des citations et une bibliographie définitives, sans lien avec Zotero.": "Also add a PDF? It uses your template, with final citations and bibliography, not linked to Zotero.",
+    "Word seul": "Word only",
+    "Word et PDF": "Word and PDF",
+    "Bibliographie": "Bibliography",
+    "dans": "in",
     " (suite)": " (follow-up)",
     " : échéance inchangée.": ": due date unchanged.",
     "Que fait cette tâche pour l’événement ?": "What does this task do for the event?",
@@ -5346,6 +5359,65 @@ function citationsEnLigneVersPandoc(texte, resoudre, connecteur) {
     if (!entrees.length) return tout;            // rien de reconnu : on n'abîme pas
     return '[' + rendreGrappe(entrees, connecteur).join('; ') + ']';
   });
+}
+
+// ── Version PDF de l'export : citations et bibliographie figées ─────────────
+// Le PDF ne peut pas porter de champs Zotero à actualiser : pandoc y écrit
+// directement citations et bibliographie, d'après le style du modèle Word.
+
+// Les clés citées dans un markdown pandoc (« [@a, p. 2; -@b] », « @c [p. 3] »).
+// Une adresse électronique n'en est pas une : l'arobase y suit une lettre.
+function clesCitationsPandoc(md) {
+  const out = new Set();
+  const re = /(^|[\s[(;,-])@([\p{L}\p{N}_](?:[\p{L}\p{N}_]|[:.#$%&+?<>~/-](?=[\p{L}\p{N}_]))*)/gmu;
+  let m;
+  while ((m = re.exec(String(md)))) out.add(m[2]);
+  return [...out];
+}
+
+// Le style Zotero que porte le modèle Word (docProps/custom.xml, ZOTERO_PREF).
+function styleZoteroDuModele(xml) {
+  const t = String(xml || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+  const m = /<style\b[^>]*>/.exec(t);
+  const attr = (n) => { const a = m && new RegExp('\\b' + n + '="([^"]*)"').exec(m[0]); return a ? a[1] : ''; };
+  const id = attr('id');
+  return { id: id || 'http://www.zotero.org/styles/apa', nom: (id.split('/').pop() || 'apa'), locale: attr('locale') || 'fr-FR' };
+}
+
+function markdownPourPdf(corps, o) {
+  const opt = o || {};
+  const tete = ['---', 'lang: ' + JSON.stringify(opt.locale || 'fr-FR')];
+  if (!opt.bibliographie) tete.push('suppress-bibliography: true');
+  tete.push('---', '', String(corps).trim(), '');
+  if (opt.bibliographie) tete.push('', '# ' + tr('Bibliographie'), '', '::: {#refs}', ':::', '');
+  return tete.join('\n');
+}
+
+// Word enregistre le PDF dans son propre dossier, le seul où il écrit sans
+// demander d'autorisation. `etaitOuvert` : sinon, on le referme après usage.
+function scriptPdfWord(nomDocument, sortie, etaitOuvert) {
+  const q = (s) => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  return [
+    'tell application "Microsoft Word"',
+    '  set d to missing value',
+    '  repeat 180 times',
+    '    try',
+    '      if exists document ' + q(nomDocument) + ' then',
+    '        set d to document ' + q(nomDocument),
+    '        exit repeat',
+    '      end if',
+    '    end try',
+    '    delay 0.5',
+    '  end repeat',
+    '  if d is missing value then error "document absent"',
+    '  with timeout of 180 seconds',
+    '    save as d file name ' + q(sortie) + ' file format format PDF',
+    '  end timeout',
+    '  close d saving no',
+    etaitOuvert ? '' : '  if (count of documents) is 0 then quit saving no',
+    'end tell',
+    'return "ok"',
+  ].filter(Boolean).join('\n');
 }
 
 // Citations narratives « [[clé|Ackoff (2006, p. 12)]] » -> « @cle [p. 12] »,
@@ -14320,7 +14392,13 @@ const avecNoteBiblio = (Base) => class extends Base {
     return rendu;
   }
 
-  async exporterWordZotero() {
+  // Le PDF passe par Word, seul à reproduire fidèlement le modèle.
+  pdfWordDisponible() {
+    return process.platform === 'darwin' && require('fs').existsSync('/Applications/Microsoft Word.app');
+  }
+
+  // `o.pdf` décide sans demander ; sinon on demande, si Word peut le faire.
+  async exporterWordZotero(o) {
     // L'étape « exporter » du tutoriel : l'export du brouillon d'exemple.
     const ex = this._tutorielExistant ? this._tutorielExistant() : null;
     const active = this.app.workspace.getActiveFile();
@@ -14335,6 +14413,12 @@ const avecNoteBiblio = (Base) => class extends Base {
     }
     const file = this.app.workspace.getActiveFile();
     if (!file || file.extension !== 'md') { new obsidian.Notice(tr('Ouvrez la note à exporter.')); return; }
+    let avecPdf = !!(o && o.pdf);
+    if (!o && this.pdfWordDisponible()) {
+      const choix = await new Promise((res) => new ModaleExportWord(this.app, res).open());
+      if (!choix) return;
+      avecPdf = choix === 'pdf';
+    }
     const contenu = await this.app.vault.read(file);
     const ctx = { index: this.construireIndexZotero() };
     const resoudre = (c) => this.resoudreCitation(c, file.path, ctx);
@@ -14359,11 +14443,11 @@ const avecNoteBiblio = (Base) => class extends Base {
       async (c) => { const f = cibleFichier(c); return f && f.extension === 'md' ? this.app.vault.cachedRead(f) : null; },
       async (c) => { const f = cibleFichier(c); return f ? this.imagePourWord(this.cheminAbsoluVault(f.path), etatImages) : null; });
     if (avisImages) avisImages.hide();
-    let md = footnotesVersCitations(deplie, resoudre, citeDans);
+    const source = footnotesVersCitations(deplie, resoudre, citeDans);
     // Les commentaires en marge deviennent des commentaires Word ; fils
     // reçoit de quoi rattacher ensuite réponses et résolutions.
     const fils = [];
-    md = preparerMarkdownExport(md, resoudre, {
+    const optionsMd = {
       citeDans,
       commentaires: this.settings.exportCommentaires || 'tous',
       auteurCommentaires: this.auteurCommentaires ? this.auteurCommentaires() : '',
@@ -14372,7 +14456,11 @@ const avecNoteBiblio = (Base) => class extends Base {
       insecables: this.settings.exportInsecables !== false,
       decalerTitres: this.settings.exportDecalerTitres !== false,
       retirerNumerotation: this.settings.exportRetirerNumerotation !== false,
-    });
+    };
+    let md = preparerMarkdownExport(source, resoudre, optionsMd);
+    // Le PDF se lit tel quel : ni commentaires en marge, ni champs Zotero.
+    const corpsPdf = avecPdf
+      ? preparerMarkdownExport(source, resoudre, Object.assign({}, optionsMd, { commentaires: 'aucun', fils: [] })) : '';
     // La bibliographie est ajoutée APRÈS la préparation, qui supprime celle
     // d'Ariane : c'est Zotero qui produira la sienne à cet emplacement.
     if (this.settings.exportBibliographie) md += '\n\n# Bibliographie\n';
@@ -14405,6 +14493,7 @@ const avecNoteBiblio = (Base) => class extends Base {
       await this.enfilerCommentaires(outPath, env, fils);
       notice.hide();
       new obsidian.Notice(tr('Export terminé : ') + file.basename + '.docx (dans « ' + this.settings.exportDossier + ' »).');
+      if (avecPdf) await this.exporterPdfCitationsFigees(file, corpsPdf, env, dirFiltre);
     } catch (e) {
       notice.hide();
       new obsidian.Notice(tr('Export — échec : ') + (e && e.message ? e.message : e) + ' — pandoc installé ? Zotero lancé ?');
@@ -14412,6 +14501,91 @@ const avecNoteBiblio = (Base) => class extends Base {
     } finally {
       try { fs.unlinkSync(tmp); } catch (e) { /* */ }
       try { fs.rmSync(etatImages.dossier, { recursive: true, force: true }); } catch (e) { /* */ }
+    }
+  }
+
+  // Les données CSL des clés citées, par Better BibTeX (Zotero doit tourner).
+  async _itemsCslZotero(cles, style) {
+    if (!cles.length) return { items: [], absentes: [] };
+    const rep = await obsidian.requestUrl({
+      url: 'http://127.0.0.1:23119/better-bibtex/json-rpc', method: 'POST', throw: false,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'item.pandoc_filter',
+        params: { citekeys: cles, asCSL: true, style } }),
+    });
+    const r = rep && rep.status === 200 && rep.json ? rep.json.result : null;
+    if (!r) throw new Error(tr('Zotero ne répond pas : lancez-le, avec Better BibTeX.'));
+    return { items: Object.values(r.items || {}), absentes: Object.keys(r.errors || {}) };
+  }
+
+  _fichierStyleCsl(style) {
+    const fs = require('fs'), path = require('path');
+    const dossier = path.join(this.racineZotero(), 'styles');
+    const direct = path.join(dossier, style.nom + '.csl');
+    if (fs.existsSync(direct)) return direct;
+    for (const n of (fs.existsSync(dossier) ? fs.readdirSync(dossier) : [])) {
+      const c = path.join(dossier, n);
+      if (n.endsWith('.csl') && fs.readFileSync(c, 'utf8').includes('<id>' + style.id + '</id>')) return c;
+    }
+    return '';
+  }
+
+  // Le PDF : un second document, aux citations et à la bibliographie écrites
+  // par pandoc, mis en forme par le même modèle, puis enregistré par Word. Un
+  // échec ici laisse intact le .docx déjà produit.
+  async exporterPdfCitationsFigees(file, corps, env, cwd) {
+    const fs = require('fs'), os = require('os'), pathMod = require('path');
+    const notice = new obsidian.Notice(tr('Export PDF…'), 0);
+    const dossier = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'ariane-pdf-'));
+    const jeton = Date.now();
+    const nomDoc = 'Ariane-PDF-' + jeton + '.docx';
+    const docx = pathMod.join(dossier, nomDoc);
+    const pdfWord = pathMod.join(os.homedir(), 'Library/Containers/com.microsoft.Word/Data/tmp', 'Ariane-PDF-' + jeton + '.pdf');
+    try {
+      const modele = this.settings.exportModeleWord;
+      const aModele = !!(modele && fs.existsSync(modele));
+      const custom = aModele ? lireEntreeZip(fs.readFileSync(modele), 'docProps/custom.xml') : null;
+      const style = styleZoteroDuModele(custom ? custom.toString('utf8') : '');
+      const csl = this._fichierStyleCsl(style);
+      if (!csl) throw new Error(tr('style de citation introuvable dans Zotero : ') + style.nom);
+      const { items, absentes } = await this._itemsCslZotero(clesCitationsPandoc(corps), style.nom);
+      if (absentes.length) new obsidian.Notice(tr('Citations absentes de Zotero : ') + absentes.join(', '), 12000);
+      const biblio = this.settings.exportBibliographie !== false && items.length > 0;
+      const md = pathMod.join(dossier, 'document.md');
+      const refs = pathMod.join(dossier, 'references.json');
+      fs.writeFileSync(md, markdownPourPdf(corps, { locale: style.locale, bibliographie: biblio }), 'utf8');
+      fs.writeFileSync(refs, JSON.stringify(items), 'utf8');
+      const args = ['--citeproc', '--bibliography', refs, '--csl', csl];
+      if (aModele) args.push('--reference-doc', modele);
+      args.push(md, '-s', '-o', docx);
+      await new Promise((resolve, reject) => {
+        executer(this.settings.exportPandocBin || 'pandoc', args, { maxBuffer: 64 * 1024 * 1024, env, cwd },
+          (e, so, se) => (e ? reject(new Error(String(se || e.message || e).slice(0, 400))) : resolve()));
+      });
+      await this.remapperStyles(docx, env);
+      await this.finirDocument(docx, env, file, { bibliographie: false, silencieux: true });
+      const etat = await this._osascriptAS('return application "Microsoft Word" is running', 10000);
+      await new Promise((resolve, reject) => {
+        require('child_process').execFile('open', ['-g', '-a', 'Microsoft Word', docx],
+          (e) => (e ? reject(e) : resolve()));
+      });
+      const ok = await this._osascriptAS(scriptPdfWord(nomDoc, pdfWord, String(etat).trim() === 'true'), 300000);
+      if (ok == null) throw new Error(tr('Word n’a pas produit le PDF (autorisez Obsidian à le piloter).'));
+      const sortie = pathMod.join(this.cheminAbsoluVault(this.settings.exportDossier), file.basename + '.pdf');
+      try {
+        fs.copyFileSync(pdfWord, sortie);
+      } catch (e) {
+        throw new Error(tr('macOS refuse l’accès au PDF de Word : accordez à Obsidian l’accès complet au disque, puis relancez-le.'));
+      }
+      try { fs.unlinkSync(pdfWord); } catch (e) { /* Word videra son dossier */ }
+      notice.hide();
+      new obsidian.Notice(tr('PDF exporté : ') + file.basename + '.pdf (' + tr('dans') + ' « ' + this.settings.exportDossier + ' »).');
+    } catch (e) {
+      notice.hide();
+      new obsidian.Notice(tr('PDF non produit : ') + (e && e.message ? e.message : e), 12000);
+      console.error('[Ariane] export pdf', e);
+    } finally {
+      try { fs.rmSync(dossier, { recursive: true, force: true }); } catch (e) { /* */ }
     }
   }
 
@@ -14440,7 +14614,10 @@ const avecNoteBiblio = (Base) => class extends Base {
   // Finition du .docx : en-têtes du modèle rattachés, en-tête de première page
   // alimenté par les propriétés de la note, tableaux habillés. Pandoc écrit sa
   // propre section et laisse les en-têtes du modèle orphelins dans le fichier.
-  async finirDocument(chemin, env, fichier) {
+  // `opts.bibliographie` : false pour ne pas poser le champ Zotero (PDF) ;
+  // `opts.silencieux` : les anomalies du modèle ont déjà été signalées.
+  async finirDocument(chemin, env, fichier, opts) {
+    const o = opts || {};
     if (this.settings.exportEntetes === false) return;
     const fs = require('fs'), os = require('os'), pathMod = require('path');
     const script = this.cheminScriptPandoc('finition.py');
@@ -14495,7 +14672,7 @@ const avecNoteBiblio = (Base) => class extends Base {
       // la section et le gabarit du tableau des propriétés.
       modele: this.settings.exportModeleWord || '',
       // Le champ ZOTERO_BIBL, que le filtre ne pose que pour l'ODT.
-      bibliographie: this.settings.exportBibliographie !== false,
+      bibliographie: o.bibliographie !== false && this.settings.exportBibliographie !== false,
       styleEnteteTableau: this.settings.exportStyleEnteteTableau || 'Titre de tableau',
       styleCelluleTableau: this.settings.exportStyleCelluleTableau || 'Champ de tableau',
       // Les styles que pandoc invente pour le corps de texte sont ramenés à
@@ -14513,7 +14690,7 @@ const avecNoteBiblio = (Base) => class extends Base {
       // Rien ne doit se dérégler en silence : ce que la finition signale est
       // remonté à l'utilisateur, l'export ayant tout de même abouti.
       const alertes = sortie.split('\n').filter((l) => l.startsWith('ATTENTION'));
-      if (alertes.length) {
+      if (alertes.length && !o.silencieux) {
         new obsidian.Notice(tr('Modèle Word — ') + alertes.length + ' anomalie(s) :\n'
           + alertes.join('\n') + '\n(commande « Vérifier le modèle Word » pour le détail)', 0);
       }
@@ -29158,7 +29335,7 @@ const avecAccueil = (Base) => class extends Base {
       replier: ['Replier les citations', 'Les citations se replient en pastilles, pour relire le texte d’un trait ; un clic sur une pastille la déplie.', 'Replier ou déplier', () => this.basculerCitations(!this.settings.citationsRepliees)],
       exporter: ['Exporter en Word', 'Le brouillon devient un document Word, avec des citations Zotero vivantes (pandoc et Better BibTeX requis).', 'Exporter le brouillon', async () => {
         if (brouillon instanceof obsidian.TFile) await this.app.workspace.getLeaf(false).openFile(brouillon);
-        await this.exporterWordZotero();
+        await this.exporterWordZotero({ pdf: false });
       }],
     };
     const liste = el.createDiv({ cls: 'zfa-tuto' });
@@ -45042,7 +45219,7 @@ class MoteurCalendrier extends MoteurVue {
   // pour la dixième.
   async _noteEvenement(e) {
     const f = await this.greffon.noteEvenementAJour(e);
-    if (f) await this.app.workspace.getLeaf(false).openFile(f);
+    if (f) await this._ouvrirFichier(f);
   }
 
   // Clic (note de l'événement) + clic droit (menu) sur un bloc d'événement
@@ -45121,7 +45298,7 @@ class MoteurCalendrier extends MoteurVue {
     for (const a of (this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [])) {
       const t = ligne('link', tr('Tâche : ') + a.tache.intitule + ' (' + a.tache.ref + ')'
         + (a.suite ? tr(' (suite)') : ''), 'est-lien');
-      t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref, false); });
+      t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref); });
     }
     const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e.id) : null;
     const actions = carte.createDiv({ cls: 'zfa-act-survol-actions' });
@@ -45225,7 +45402,7 @@ class MoteurCalendrier extends MoteurVue {
         nom.addEventListener('click', (e) => {
           e.preventDefault(); e.stopPropagation();
           this._cacherCarteActivite();
-          this.ouvrir(r, e.metaKey || e.ctrlKey);
+          this.ouvrir(r);
         });
         l.createSpan({ cls: 'zfa-cren-survol-st-ref', text: r });
       }
@@ -45238,7 +45415,7 @@ class MoteurCalendrier extends MoteurVue {
       bt.createSpan({ text: libelle });
       bt.addEventListener('click', (e) => { e.stopPropagation(); this._cacherCarteActivite(); faire(e); });
     };
-    action('file-text', tr('Ouvrir'), (e) => this.ouvrir(t.ref, e.metaKey || e.ctrlKey));
+    action('file-text', tr('Ouvrir'), (e) => this.ouvrir(t.ref));
     action('list-checks', tr('Sous-tâches de la séance…'), () => this._ouvrirSeance(t, ev));
     action('message-square', tr('Commentaire'), () => this._ouvrirCommentaire(t, ev));
 
@@ -45271,7 +45448,7 @@ class MoteurCalendrier extends MoteurVue {
     const noteExistante = e.id ? this.greffon.noteDeEvenement(e.id) : null;
     if (jalonExistant) {
       m.addItem((i) => i.setTitle(tr('Ouvrir le jalon de cet événement')).setIcon('diamond')
-        .onClick(() => this.ouvrir(jalonExistant.ref, false)));
+        .onClick(() => this.ouvrir(jalonExistant.ref)));
     } else {
     m.addItem((i) => i.setTitle(tr('Créer un jalon à partir de cet événement')).setIcon('diamond')
       .onClick(async () => {
@@ -45283,7 +45460,7 @@ class MoteurCalendrier extends MoteurVue {
         const ref = chemin.split('/').pop().replace(/\.md$/, '');
         if (e.id) await this.greffon.majTache(ref, { 'Événement ID': e.id });
         this.dessiner();
-        this.ouvrir(ref, false);
+        this.ouvrir(ref);
       }));
     }
     if ((e.pieces || []).some((p) => p.local && Ariane.piecePermise(p.nom) && !this.greffon.fichierDePiece(p))) {
@@ -45294,7 +45471,7 @@ class MoteurCalendrier extends MoteurVue {
     const associees = this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [];
     for (const a of associees) {
       m.addItem((i) => i.setTitle(tr('Ouvrir la tâche ') + a.tache.ref + ' : ' + a.tache.intitule)
-        .setIcon('square-check').onClick(() => this.ouvrir(a.tache.ref, false)));
+        .setIcon('square-check').onClick(() => this.ouvrir(a.tache.ref)));
       m.addItem((i) => i.setTitle(tr('Dissocier de ') + a.tache.ref).setIcon('unlink')
         .onClick(async () => {
           await this.greffon.dissocierEvenementTache(a.tache.ref, a.cle);
@@ -45484,7 +45661,7 @@ class MoteurCalendrier extends MoteurVue {
         const lien = rt.createDiv({ cls: 'zfa-act-survol-ratt-l' });
         obsidian.setIcon(lien.createSpan({ cls: 'zfa-act-survol-bt-ic' }), 'link');
         lien.createSpan({ text: r.ref + ' ' + (r.intitule || '') + ' (' + dureeLisible(r.min) + ')' });
-        lien.addEventListener('click', (e) => { e.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(r.ref, e.metaKey || e.ctrlKey); });
+        lien.addEventListener('click', (e) => { e.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(r.ref); });
       }
     }
     const apps = carte.createDiv({ cls: 'zfa-act-survol-apps' });
@@ -45638,13 +45815,11 @@ class MoteurCalendrier extends MoteurVue {
     const m = new obsidian.Menu();
     if (f) {
       m.addItem((i) => i.setTitle(tr('Ouvrir la note')).setIcon('file-text')
-        .onClick(() => this.app.workspace.getLeaf(false).openFile(f)));
-      m.addItem((i) => i.setTitle(tr('Ouvrir dans un nouvel onglet')).setIcon('separator-vertical')
-        .onClick(() => this.app.workspace.getLeaf(true).openFile(f)));
+        .onClick(() => this._ouvrirFichier(f)));
     }
     if (t) {
       m.addItem((i) => i.setTitle(tr('Ouvrir la tâche ') + t.ref).setIcon('check-square')
-        .onClick(() => this.ouvrir(t.ref, false)));
+        .onClick(() => this.ouvrir(t.ref)));
     }
     m.addSeparator();
     m.addItem((i) => i.setTitle(t ? tr('Lier cette note à une autre tâche…') : tr('Lier cette note à une tâche…')).setIcon('link')
@@ -46097,7 +46272,7 @@ class MoteurCalendrier extends MoteurVue {
       const { debut, fin } = this._bornesPeriode();
       const jour = Ariane.jourSeme(this._jourSel || '', debut, fin, auj);
       const chemin = await this.greffon.creerTache({ debut: jour, echeance: jour });
-      if (chemin) this.ouvrir(chemin.split('/').pop().replace(/\.md$/, ''), false);
+      if (chemin) this.ouvrir(chemin.split('/').pop().replace(/\.md$/, ''));
     } catch (e) {
       new obsidian.Notice(tr('Création impossible : ') + (e && e.message ? e.message : e));
     }
@@ -46115,9 +46290,15 @@ class MoteurCalendrier extends MoteurVue {
       + d6 + ' ' + (MOIS_COURTS[m6 - 1] || '') + ' ' + a6;
   }
 
-  ouvrir(ref, nouveau) {
+  // Tout ce qu'on ouvre depuis le calendrier va dans un nouvel onglet : le
+  // calendrier reste en place.
+  _ouvrirFichier(f) {
+    return this.app.workspace.getLeaf('tab').openFile(f);
+  }
+
+  ouvrir(ref) {
     const f = this.greffon.fichierDeRef(ref);
-    if (f) this.app.workspace.getLeaf(!!nouveau).openFile(f);
+    if (f) this._ouvrirFichier(f);
   }
   // Couleur d'un créneau : suit le réglage de la frise pour les modes
   // « statut » et « famille » ; les autres modes (racine, priorité,
@@ -46186,7 +46367,7 @@ class MoteurCalendrier extends MoteurVue {
         hoverParent: this, targetEl: carte, linktext: t.ref, sourcePath: '' });
     });
     carte.addEventListener('click', (e) => { e.stopPropagation();
-      this.ouvrir(t.ref, e.metaKey || e.ctrlKey); });
+      this.ouvrir(t.ref); });
     carte.addEventListener('contextmenu', (e) => this.menuCarte(e, t, ev));
     return carte;
   }
@@ -46365,7 +46546,7 @@ class MoteurCalendrier extends MoteurVue {
           this.dessiner();
         });
         const nom = ligne.createSpan({ cls: 'zfa-cal-seance-titre', text: st ? (st.intitule || r) : r });
-        nom.addEventListener('click', (e) => { e.stopPropagation(); this.ouvrir(r, e.metaKey || e.ctrlKey); });
+        nom.addEventListener('click', (e) => { e.stopPropagation(); this.ouvrir(r); });
         nom.addEventListener('pointerdown', (e) => e.stopPropagation());
       }
     }
@@ -46376,9 +46557,7 @@ class MoteurCalendrier extends MoteurVue {
     const m = new obsidian.Menu();
     const poser = async (champs) => { await this.greffon.majTache(t.ref, champs); this.dessiner(); };
 
-    m.addItem((i) => i.setTitle(tr('Ouvrir')).setIcon('file-text').onClick(() => this.ouvrir(t.ref, false)));
-    m.addItem((i) => i.setTitle(tr('Ouvrir dans un nouveau volet')).setIcon('separator-vertical')
-      .onClick(() => this.ouvrir(t.ref, true)));
+    m.addItem((i) => i.setTitle(tr('Ouvrir')).setIcon('file-text').onClick(() => this.ouvrir(t.ref)));
     m.addSeparator();
 
     for (const st of ['à faire', 'en cours', 'en attente', 'terminée', 'abandonnée']) {
@@ -46502,7 +46681,7 @@ class MoteurCalendrier extends MoteurVue {
       row.appendChild(nom);
       row.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.ouvrir(r, e.metaKey || e.ctrlKey);
+        this.ouvrir(r);
       });
       corps.appendChild(row);
     };
@@ -46554,7 +46733,7 @@ class MoteurCalendrier extends MoteurVue {
     m.addItem((i) => i.setTitle(tr('Nouvelle tâche ce jour-là')).setIcon('plus')
       .onClick(async () => {
         const chemin = await this.greffon.creerTache({ debut: jourISO, echeance: jourISO });
-        if (chemin) this.ouvrir(chemin.split('/').pop().replace(/\.md$/, ''), false);
+        if (chemin) this.ouvrir(chemin.split('/').pop().replace(/\.md$/, ''));
       }));
     m.addItem((i) => i.setTitle(tr('Coller le lien en créneau')).setIcon('clipboard-paste')
       .onClick(async () => {
@@ -47288,7 +47467,7 @@ class MoteurCalendrier extends MoteurVue {
   // ou une pastille de la vue mois.
   _brancherOuvertureCarte(el, t, ev) {
     el.addEventListener('click', (e) => { e.stopPropagation();
-      this.ouvrir(t.ref, e.metaKey || e.ctrlKey); });
+      this.ouvrir(t.ref); });
     el.addEventListener('contextmenu', (e) => this.menuCarte(e, t, ev));
     el.addEventListener('mouseover', (e) => {
       this.app.workspace.trigger('hover-link', { event: e, source: 'zfa-calendrier',
@@ -48168,7 +48347,7 @@ class MoteurCalendrier extends MoteurVue {
           e.stopPropagation();
           this._cacherCarteActivite();
           const f = this.app.vault.getAbstractFileByPath(x.chemin);
-          if (f) this.app.workspace.getLeaf(e.metaKey || e.ctrlKey).openFile(f);
+          if (f) this._ouvrirFichier(f);
         });
         el.addEventListener('contextmenu', (e) => this._menuPresence(e, x, t));
         travail.push({ a: p.a, b: p.b, el });
@@ -51799,6 +51978,33 @@ class ChoixListeModal extends obsidian.FuzzySuggestModal {
   getItems() { return this.items; }
   getItemText(it) { return it.nom; }
   onChooseItem(it) { if (this.onChoix) this.onChoix(it); }
+}
+
+// Avant l'export Word : y ajouter un PDF ? Rend 'word', 'pdf', ou null.
+class ModaleExportWord extends obsidian.Modal {
+  constructor(app, surChoix) {
+    super(app);
+    this.surChoix = surChoix;
+    this.choix = null;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    this.setTitle(tr('Exporter en Word'));
+    contentEl.createEl('p', { text: tr('Ajouter aussi un PDF ? Il reprend votre modèle, avec des citations et une bibliographie définitives, sans lien avec Zotero.') });
+    const pied = contentEl.createDiv({ cls: 'modal-button-container' });
+    const bouton = (texte, valeur, cls) => {
+      const b = pied.createEl('button', { text: texte, cls });
+      b.addEventListener('click', () => { this.choix = valeur; this.close(); });
+      return b;
+    };
+    bouton(tr('Annuler'), null);
+    bouton(tr('Word seul'), 'word');
+    bouton(tr('Word et PDF'), 'pdf', 'mod-cta').focus();
+  }
+  onClose() {
+    this.contentEl.empty();
+    this.surChoix(this.choix);
+  }
 }
 
 // Le choix d'une annotation à citer (commande « Citer une annotation »).
@@ -57509,6 +57715,11 @@ module.exports._test = {
   extraireNotesFilles,
   // Export Word : préparation du markdown pour pandoc.
   preparerMarkdownExport,
+  clesCitationsPandoc,   // version PDF : citations figées
+  styleZoteroDuModele,
+  markdownPourPdf,
+  scriptPdfWord,
+  ModaleExportWord,
   texteCommentaireWord,
   deplierIntegrations,
   footnotesVersCitations,

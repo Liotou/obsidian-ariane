@@ -1593,7 +1593,13 @@ const avecNoteBiblio = (Base) => class extends Base {
     return rendu;
   }
 
-  async exporterWordZotero() {
+  // Le PDF passe par Word, seul à reproduire fidèlement le modèle.
+  pdfWordDisponible() {
+    return process.platform === 'darwin' && require('fs').existsSync('/Applications/Microsoft Word.app');
+  }
+
+  // `o.pdf` décide sans demander ; sinon on demande, si Word peut le faire.
+  async exporterWordZotero(o) {
     // L'étape « exporter » du tutoriel : l'export du brouillon d'exemple.
     const ex = this._tutorielExistant ? this._tutorielExistant() : null;
     const active = this.app.workspace.getActiveFile();
@@ -1608,6 +1614,12 @@ const avecNoteBiblio = (Base) => class extends Base {
     }
     const file = this.app.workspace.getActiveFile();
     if (!file || file.extension !== 'md') { new obsidian.Notice(tr('Ouvrez la note à exporter.')); return; }
+    let avecPdf = !!(o && o.pdf);
+    if (!o && this.pdfWordDisponible()) {
+      const choix = await new Promise((res) => new ModaleExportWord(this.app, res).open());
+      if (!choix) return;
+      avecPdf = choix === 'pdf';
+    }
     const contenu = await this.app.vault.read(file);
     const ctx = { index: this.construireIndexZotero() };
     const resoudre = (c) => this.resoudreCitation(c, file.path, ctx);
@@ -1632,11 +1644,11 @@ const avecNoteBiblio = (Base) => class extends Base {
       async (c) => { const f = cibleFichier(c); return f && f.extension === 'md' ? this.app.vault.cachedRead(f) : null; },
       async (c) => { const f = cibleFichier(c); return f ? this.imagePourWord(this.cheminAbsoluVault(f.path), etatImages) : null; });
     if (avisImages) avisImages.hide();
-    let md = footnotesVersCitations(deplie, resoudre, citeDans);
+    const source = footnotesVersCitations(deplie, resoudre, citeDans);
     // Les commentaires en marge deviennent des commentaires Word ; fils
     // reçoit de quoi rattacher ensuite réponses et résolutions.
     const fils = [];
-    md = preparerMarkdownExport(md, resoudre, {
+    const optionsMd = {
       citeDans,
       commentaires: this.settings.exportCommentaires || 'tous',
       auteurCommentaires: this.auteurCommentaires ? this.auteurCommentaires() : '',
@@ -1645,7 +1657,11 @@ const avecNoteBiblio = (Base) => class extends Base {
       insecables: this.settings.exportInsecables !== false,
       decalerTitres: this.settings.exportDecalerTitres !== false,
       retirerNumerotation: this.settings.exportRetirerNumerotation !== false,
-    });
+    };
+    let md = preparerMarkdownExport(source, resoudre, optionsMd);
+    // Le PDF se lit tel quel : ni commentaires en marge, ni champs Zotero.
+    const corpsPdf = avecPdf
+      ? preparerMarkdownExport(source, resoudre, Object.assign({}, optionsMd, { commentaires: 'aucun', fils: [] })) : '';
     // La bibliographie est ajoutée APRÈS la préparation, qui supprime celle
     // d'Ariane : c'est Zotero qui produira la sienne à cet emplacement.
     if (this.settings.exportBibliographie) md += '\n\n# Bibliographie\n';
@@ -1678,6 +1694,7 @@ const avecNoteBiblio = (Base) => class extends Base {
       await this.enfilerCommentaires(outPath, env, fils);
       notice.hide();
       new obsidian.Notice(tr('Export terminé : ') + file.basename + '.docx (dans « ' + this.settings.exportDossier + ' »).');
+      if (avecPdf) await this.exporterPdfCitationsFigees(file, corpsPdf, env, dirFiltre);
     } catch (e) {
       notice.hide();
       new obsidian.Notice(tr('Export — échec : ') + (e && e.message ? e.message : e) + ' — pandoc installé ? Zotero lancé ?');
@@ -1685,6 +1702,91 @@ const avecNoteBiblio = (Base) => class extends Base {
     } finally {
       try { fs.unlinkSync(tmp); } catch (e) { /* */ }
       try { fs.rmSync(etatImages.dossier, { recursive: true, force: true }); } catch (e) { /* */ }
+    }
+  }
+
+  // Les données CSL des clés citées, par Better BibTeX (Zotero doit tourner).
+  async _itemsCslZotero(cles, style) {
+    if (!cles.length) return { items: [], absentes: [] };
+    const rep = await obsidian.requestUrl({
+      url: 'http://127.0.0.1:23119/better-bibtex/json-rpc', method: 'POST', throw: false,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'item.pandoc_filter',
+        params: { citekeys: cles, asCSL: true, style } }),
+    });
+    const r = rep && rep.status === 200 && rep.json ? rep.json.result : null;
+    if (!r) throw new Error(tr('Zotero ne répond pas : lancez-le, avec Better BibTeX.'));
+    return { items: Object.values(r.items || {}), absentes: Object.keys(r.errors || {}) };
+  }
+
+  _fichierStyleCsl(style) {
+    const fs = require('fs'), path = require('path');
+    const dossier = path.join(this.racineZotero(), 'styles');
+    const direct = path.join(dossier, style.nom + '.csl');
+    if (fs.existsSync(direct)) return direct;
+    for (const n of (fs.existsSync(dossier) ? fs.readdirSync(dossier) : [])) {
+      const c = path.join(dossier, n);
+      if (n.endsWith('.csl') && fs.readFileSync(c, 'utf8').includes('<id>' + style.id + '</id>')) return c;
+    }
+    return '';
+  }
+
+  // Le PDF : un second document, aux citations et à la bibliographie écrites
+  // par pandoc, mis en forme par le même modèle, puis enregistré par Word. Un
+  // échec ici laisse intact le .docx déjà produit.
+  async exporterPdfCitationsFigees(file, corps, env, cwd) {
+    const fs = require('fs'), os = require('os'), pathMod = require('path');
+    const notice = new obsidian.Notice(tr('Export PDF…'), 0);
+    const dossier = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'ariane-pdf-'));
+    const jeton = Date.now();
+    const nomDoc = 'Ariane-PDF-' + jeton + '.docx';
+    const docx = pathMod.join(dossier, nomDoc);
+    const pdfWord = pathMod.join(os.homedir(), 'Library/Containers/com.microsoft.Word/Data/tmp', 'Ariane-PDF-' + jeton + '.pdf');
+    try {
+      const modele = this.settings.exportModeleWord;
+      const aModele = !!(modele && fs.existsSync(modele));
+      const custom = aModele ? lireEntreeZip(fs.readFileSync(modele), 'docProps/custom.xml') : null;
+      const style = styleZoteroDuModele(custom ? custom.toString('utf8') : '');
+      const csl = this._fichierStyleCsl(style);
+      if (!csl) throw new Error(tr('style de citation introuvable dans Zotero : ') + style.nom);
+      const { items, absentes } = await this._itemsCslZotero(clesCitationsPandoc(corps), style.nom);
+      if (absentes.length) new obsidian.Notice(tr('Citations absentes de Zotero : ') + absentes.join(', '), 12000);
+      const biblio = this.settings.exportBibliographie !== false && items.length > 0;
+      const md = pathMod.join(dossier, 'document.md');
+      const refs = pathMod.join(dossier, 'references.json');
+      fs.writeFileSync(md, markdownPourPdf(corps, { locale: style.locale, bibliographie: biblio }), 'utf8');
+      fs.writeFileSync(refs, JSON.stringify(items), 'utf8');
+      const args = ['--citeproc', '--bibliography', refs, '--csl', csl];
+      if (aModele) args.push('--reference-doc', modele);
+      args.push(md, '-s', '-o', docx);
+      await new Promise((resolve, reject) => {
+        executer(this.settings.exportPandocBin || 'pandoc', args, { maxBuffer: 64 * 1024 * 1024, env, cwd },
+          (e, so, se) => (e ? reject(new Error(String(se || e.message || e).slice(0, 400))) : resolve()));
+      });
+      await this.remapperStyles(docx, env);
+      await this.finirDocument(docx, env, file, { bibliographie: false, silencieux: true });
+      const etat = await this._osascriptAS('return application "Microsoft Word" is running', 10000);
+      await new Promise((resolve, reject) => {
+        require('child_process').execFile('open', ['-g', '-a', 'Microsoft Word', docx],
+          (e) => (e ? reject(e) : resolve()));
+      });
+      const ok = await this._osascriptAS(scriptPdfWord(nomDoc, pdfWord, String(etat).trim() === 'true'), 300000);
+      if (ok == null) throw new Error(tr('Word n’a pas produit le PDF (autorisez Obsidian à le piloter).'));
+      const sortie = pathMod.join(this.cheminAbsoluVault(this.settings.exportDossier), file.basename + '.pdf');
+      try {
+        fs.copyFileSync(pdfWord, sortie);
+      } catch (e) {
+        throw new Error(tr('macOS refuse l’accès au PDF de Word : accordez à Obsidian l’accès complet au disque, puis relancez-le.'));
+      }
+      try { fs.unlinkSync(pdfWord); } catch (e) { /* Word videra son dossier */ }
+      notice.hide();
+      new obsidian.Notice(tr('PDF exporté : ') + file.basename + '.pdf (' + tr('dans') + ' « ' + this.settings.exportDossier + ' »).');
+    } catch (e) {
+      notice.hide();
+      new obsidian.Notice(tr('PDF non produit : ') + (e && e.message ? e.message : e), 12000);
+      console.error('[Ariane] export pdf', e);
+    } finally {
+      try { fs.rmSync(dossier, { recursive: true, force: true }); } catch (e) { /* */ }
     }
   }
 
@@ -1713,7 +1815,10 @@ const avecNoteBiblio = (Base) => class extends Base {
   // Finition du .docx : en-têtes du modèle rattachés, en-tête de première page
   // alimenté par les propriétés de la note, tableaux habillés. Pandoc écrit sa
   // propre section et laisse les en-têtes du modèle orphelins dans le fichier.
-  async finirDocument(chemin, env, fichier) {
+  // `opts.bibliographie` : false pour ne pas poser le champ Zotero (PDF) ;
+  // `opts.silencieux` : les anomalies du modèle ont déjà été signalées.
+  async finirDocument(chemin, env, fichier, opts) {
+    const o = opts || {};
     if (this.settings.exportEntetes === false) return;
     const fs = require('fs'), os = require('os'), pathMod = require('path');
     const script = this.cheminScriptPandoc('finition.py');
@@ -1768,7 +1873,7 @@ const avecNoteBiblio = (Base) => class extends Base {
       // la section et le gabarit du tableau des propriétés.
       modele: this.settings.exportModeleWord || '',
       // Le champ ZOTERO_BIBL, que le filtre ne pose que pour l'ODT.
-      bibliographie: this.settings.exportBibliographie !== false,
+      bibliographie: o.bibliographie !== false && this.settings.exportBibliographie !== false,
       styleEnteteTableau: this.settings.exportStyleEnteteTableau || 'Titre de tableau',
       styleCelluleTableau: this.settings.exportStyleCelluleTableau || 'Champ de tableau',
       // Les styles que pandoc invente pour le corps de texte sont ramenés à
@@ -1786,7 +1891,7 @@ const avecNoteBiblio = (Base) => class extends Base {
       // Rien ne doit se dérégler en silence : ce que la finition signale est
       // remonté à l'utilisateur, l'export ayant tout de même abouti.
       const alertes = sortie.split('\n').filter((l) => l.startsWith('ATTENTION'));
-      if (alertes.length) {
+      if (alertes.length && !o.silencieux) {
         new obsidian.Notice(tr('Modèle Word — ') + alertes.length + ' anomalie(s) :\n'
           + alertes.join('\n') + '\n(commande « Vérifier le modèle Word » pour le détail)', 0);
       }

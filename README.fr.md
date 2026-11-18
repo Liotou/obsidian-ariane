@@ -558,6 +558,12 @@ L'export, au passage :
 - pose le champ de bibliographie Zotero à la fin, pour que vous n'ayez pas à
   l'insérer vous-même.
 
+Sur Mac, avec Word installé, l'export demande s'il faut **ajouter un PDF**. Le
+`.docx` reste relié à Zotero ; le PDF, lui, est un document distinct : citations
+et bibliographie y sont écrites une fois pour toutes dans le style de votre
+modèle, sans commentaires, puis Word l'enregistre. Zotero doit être lancé, et
+Obsidian avoir l'accès complet au disque pour reprendre le fichier.
+
 ⚠️ Demande pandoc, le filtre Lua de Better BibTeX, et Zotero ouvert.
 
 ## ⏱️ Compter le temps

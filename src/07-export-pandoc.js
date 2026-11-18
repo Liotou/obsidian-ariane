@@ -24,6 +24,65 @@ function citationsEnLigneVersPandoc(texte, resoudre, connecteur) {
   });
 }
 
+// ── Version PDF de l'export : citations et bibliographie figées ─────────────
+// Le PDF ne peut pas porter de champs Zotero à actualiser : pandoc y écrit
+// directement citations et bibliographie, d'après le style du modèle Word.
+
+// Les clés citées dans un markdown pandoc (« [@a, p. 2; -@b] », « @c [p. 3] »).
+// Une adresse électronique n'en est pas une : l'arobase y suit une lettre.
+function clesCitationsPandoc(md) {
+  const out = new Set();
+  const re = /(^|[\s[(;,-])@([\p{L}\p{N}_](?:[\p{L}\p{N}_]|[:.#$%&+?<>~/-](?=[\p{L}\p{N}_]))*)/gmu;
+  let m;
+  while ((m = re.exec(String(md)))) out.add(m[2]);
+  return [...out];
+}
+
+// Le style Zotero que porte le modèle Word (docProps/custom.xml, ZOTERO_PREF).
+function styleZoteroDuModele(xml) {
+  const t = String(xml || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+  const m = /<style\b[^>]*>/.exec(t);
+  const attr = (n) => { const a = m && new RegExp('\\b' + n + '="([^"]*)"').exec(m[0]); return a ? a[1] : ''; };
+  const id = attr('id');
+  return { id: id || 'http://www.zotero.org/styles/apa', nom: (id.split('/').pop() || 'apa'), locale: attr('locale') || 'fr-FR' };
+}
+
+function markdownPourPdf(corps, o) {
+  const opt = o || {};
+  const tete = ['---', 'lang: ' + JSON.stringify(opt.locale || 'fr-FR')];
+  if (!opt.bibliographie) tete.push('suppress-bibliography: true');
+  tete.push('---', '', String(corps).trim(), '');
+  if (opt.bibliographie) tete.push('', '# ' + tr('Bibliographie'), '', '::: {#refs}', ':::', '');
+  return tete.join('\n');
+}
+
+// Word enregistre le PDF dans son propre dossier, le seul où il écrit sans
+// demander d'autorisation. `etaitOuvert` : sinon, on le referme après usage.
+function scriptPdfWord(nomDocument, sortie, etaitOuvert) {
+  const q = (s) => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  return [
+    'tell application "Microsoft Word"',
+    '  set d to missing value',
+    '  repeat 180 times',
+    '    try',
+    '      if exists document ' + q(nomDocument) + ' then',
+    '        set d to document ' + q(nomDocument),
+    '        exit repeat',
+    '      end if',
+    '    end try',
+    '    delay 0.5',
+    '  end repeat',
+    '  if d is missing value then error "document absent"',
+    '  with timeout of 180 seconds',
+    '    save as d file name ' + q(sortie) + ' file format format PDF',
+    '  end timeout',
+    '  close d saving no',
+    etaitOuvert ? '' : '  if (count of documents) is 0 then quit saving no',
+    'end tell',
+    'return "ok"',
+  ].filter(Boolean).join('\n');
+}
+
 // Citations narratives « [[clé|Ackoff (2006, p. 12)]] » -> « @cle [p. 12] »,
 // la forme pandoc d'une citation dans le texte : Zotero y écrit l'auteur
 // hors de la parenthèse. Une citation qui renvoie à plusieurs travaux, ou de
