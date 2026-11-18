@@ -606,6 +606,7 @@ const TEXTES = {
     "Cette tâche ne sera pas créée : le lien tombe.": "This task will not be created, so the link is dropped.",
     "Retirer cette dépendance": "Remove this dependency",
     " (introuvable)": " (not found)",
+    "Notes de tâche : rubrique « Journal » retirée de ": "Task notes: “Journal” section removed from ",
     "Export PDF…": "PDF export…",
     "style de citation introuvable dans Zotero : ": "citation style not found in Zotero: ",
     "Citations absentes de Zotero : ": "Citations missing from Zotero: ",

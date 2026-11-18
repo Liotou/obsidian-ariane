@@ -22,7 +22,7 @@ const avecSocle = (Base) => class extends Base {
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
             'dossierTaches', 'tempsDossierJournal', 'dossierNotesEvenements', 'chronoDepuis',
-            '_noteTravailSansTitre', '_blocLivrableRetire', '_pagesEpubReprises', '_tutoriel'];
+            '_noteTravailSansTitre', '_journalTacheRetire', '_blocLivrableRetire', '_pagesEpubReprises', '_tutoriel'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu

@@ -52,3 +52,39 @@ test('sansTitreNoteTravail : l’ancien titre disparaît, le contenu suit le tit
     '# Titre\n\nMon texte.\n\n## Journal\n');
   assert.equal(Ariane.sansTitreNoteTravail('# Titre\nRien à retirer.'), '# Titre\nRien à retirer.');
 });
+
+test('sansJournalTache : le titre part, le contenu rejoint le texte, la bibliographie reste', () => {
+  assert.equal(Ariane.sansJournalTache('---\na: 1\n---\n# T\n\n## Journal\n'), '---\na: 1\n---\n# T\n');
+  assert.equal(Ariane.sansJournalTache('# T\n\nTexte.\n\n## Journal\n\n- Remarque\n'), '# T\n\nTexte.\n\n- Remarque\n');
+  const bib = '---\n## Bibliographie\n%% ariane:biblio %%\n- A\n%% /ariane:biblio %%';
+  assert.equal(Ariane.sansJournalTache('# T\n\nTexte.\n\n## Journal\n\n' + bib + '\n'), '# T\n\nTexte.\n\n' + bib + '\n');
+  const sans = '# T\n\nJournal de bord\n';
+  assert.equal(Ariane.sansJournalTache(sans), sans);
+});
+
+test('zoneNoteTravail : sans Journal, le texte s’arrête avant le filet de la bibliographie', () => {
+  const l = ['# T', '', 'Texte.', '', '---', '## Bibliographie', '%% ariane:biblio %%', '- A', '%% /ariane:biblio %%', ''];
+  const z = Ariane.zoneNoteTravail(l);
+  assert.equal(l.slice(z.debut, z.fin).join('\n').trim(), 'Texte.');
+  assert.equal(l[z.fin], '---');
+});
+
+test('migrerJournalTaches : une seule fois, dans le dossier des tâches seulement', async () => {
+  const notes = { 'T/T1.md': '# A\n\n## Journal\n\nNote.\n', 'T/T2.md': '# B\n', 'N/x.md': '# C\n\n## Journal\n' };
+  const g = Object.create(Ariane.prototype);
+  let sauve = 0;
+  g.settings = { dossierTaches: 'T' };
+  g.saveSettings = async () => { sauve += 1; };
+  g.marquerEcriture = () => {};
+  g.app = { vault: {
+    getMarkdownFiles: () => Object.keys(notes).map((path) => ({ path })),
+    cachedRead: async (f) => notes[f.path],
+    process: async (f, fn) => { notes[f.path] = fn(notes[f.path]); },
+  } };
+  assert.equal(await g.migrerJournalTaches(), 1);
+  assert.equal(notes['T/T1.md'], '# A\n\nNote.\n');
+  assert.ok(notes['N/x.md'].includes('## Journal'));
+  assert.equal(g.settings._journalTacheRetire, true);
+  assert.equal(await g.migrerJournalTaches(), 0);
+  assert.equal(sauve, 1);
+});

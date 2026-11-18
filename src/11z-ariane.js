@@ -1016,6 +1016,7 @@ class Ariane extends composer(obsidian.Plugin,
       if (surMobile()) return;
       if (this.module('taches')) {
         this.migrerNotesTravail().catch((e) => console.warn('[Ariane] notes de travail :', e));
+        this.migrerJournalTaches().catch((e) => console.warn('[Ariane] journal des notes de tâche :', e));
         this.retirerBlocsLivrable().catch((e) => console.warn('[Ariane] blocs de livrable :', e));
       }
       this.reprendrePagesEpub().catch((e) => console.warn('[Ariane] pages des EPUB :', e));

@@ -812,6 +812,7 @@ const TEXTES = {
     "Cette tâche ne sera pas créée : le lien tombe.": "This task will not be created, so the link is dropped.",
     "Retirer cette dépendance": "Remove this dependency",
     " (introuvable)": " (not found)",
+    "Notes de tâche : rubrique « Journal » retirée de ": "Task notes: “Journal” section removed from ",
     "Export PDF…": "PDF export…",
     "style de citation introuvable dans Zotero : ": "citation style not found in Zotero: ",
     "Citations absentes de Zotero : ": "Citations missing from Zotero: ",
@@ -6369,7 +6370,7 @@ const avecSocle = (Base) => class extends Base {
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
             'dossierTaches', 'tempsDossierJournal', 'dossierNotesEvenements', 'chronoDepuis',
-            '_noteTravailSansTitre', '_blocLivrableRetire', '_pagesEpubReprises', '_tutoriel'];
+            '_noteTravailSansTitre', '_journalTacheRetire', '_blocLivrableRetire', '_pagesEpubReprises', '_tutoriel'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
@@ -15724,14 +15725,15 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push('---');
     l.push('# ' + intitule);
     l.push('');
-    l.push('## Journal');
-    l.push('');
     return l.join('\n');
   }
 
   // La note de travail d'une tâche : ce qui suit son titre et les blocs
-  // qu'Ariane y tient (accès, sessions), jusqu'au journal ou au bloc
-  // suivant. Sans titre de section : elle est le corps même de la note.
+  // qu'Ariane y tient (accès, sessions), jusqu'au bloc suivant. La
+  // bibliographie commence à son filet et à son titre, posés avant son
+  // marqueur. « ## Journal » ne borne plus que les notes pas encore reprises
+  // (voir sansJournalTache). Sans titre de section : la note de travail est
+  // le corps même de la note.
   // Rend { debut, fin } en indices de lignes (fin exclue).
   static zoneNoteTravail(lignes) {
     const l = lignes || [];
@@ -15758,7 +15760,29 @@ const avecTachesStatiques = (Base) => class extends Base {
     }
     let fin = i;
     while (fin < l.length && !/^##\s+Journal\s*$/.test(l[fin]) && !ouvre(l[fin])) fin += 1;
+    const bloc = fin < l.length ? ouvre(l[fin]) : null;
+    if (bloc && bloc[1] === 'biblio') {
+      if (fin > i && /^#{1,6}\s/.test(l[fin - 1])) fin -= 1;
+      if (fin > i && /^---\s*$/.test(l[fin - 1])) fin -= 1;
+    }
     return { debut: i, fin };
+  }
+
+  // Retire d'une note de tâche le titre « ## Journal » : ce qu'il contenait
+  // rejoint le texte de la note, à sa place. Une seule ligne vide là où il se
+  // tenait (un filet collé à du texte en ferait un titre). Rend le texte,
+  // inchangé s'il n'y a rien à retirer.
+  static sansJournalTache(texte) {
+    const t = String(texte == null ? '' : texte);
+    const l = t.split('\n');
+    const k = l.findIndex((x) => /^##\s+Journal\s*$/.test(x));
+    if (k < 0) return t;
+    const avant = l.slice(0, k);
+    const apres = l.slice(k + 1);
+    while (avant.length && avant[avant.length - 1].trim() === '') avant.pop();
+    while (apres.length && apres[0].trim() === '') apres.shift();
+    while (apres.length && apres[apres.length - 1].trim() === '') apres.pop();
+    return avant.concat(apres.length ? [''].concat(apres) : [], ['']).join('\n');
   }
 
   // Retire d'une note de tâche l'ancien titre « ## Note de travail » : son
@@ -22582,6 +22606,28 @@ const avecTaches = (Base) => class extends Base {
     return n;
   }
 
+  // Une fois pour toutes : les notes de tâche perdent la rubrique « Journal »,
+  // que rien ne remplissait ; ce qu'on y avait écrit rejoint le texte de la
+  // note. L'historique des changements, lui, est dans journal-taches.jsonl.
+  async migrerJournalTaches() {
+    if (this.settings._journalTacheRetire) return 0;
+    const dossier = this.settings.dossierTaches;
+    if (!dossier) return 0;
+    let n = 0;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(dossier + '/')) continue;
+      const avant = await this.app.vault.cachedRead(f);
+      if (!/^##\s+Journal\s*$/m.test(avant)) continue;
+      this.marquerEcriture(f.path);
+      await this.app.vault.process(f, (t) => Ariane.sansJournalTache(t));
+      n += 1;
+    }
+    this.settings._journalTacheRetire = true;
+    await this.saveSettings();
+    if (n) new obsidian.Notice(tr('Notes de tâche : rubrique « Journal » retirée de ') + n + tr(' note(s).'));
+    return n;
+  }
+
   // Insère un texte en tête de la note de travail d'une tâche (ce qui suit
   // son titre).
   async ajouterNoteTache(ref, texte) {
@@ -22596,8 +22642,8 @@ const avecTaches = (Base) => class extends Base {
     await this.app.vault.modify(f, lignes.join('\n'));
   }
 
-  // La note de travail d'une tâche : ce qui suit son titre, sans le journal
-  // ni les blocs qu'Ariane tient.
+  // La note de travail d'une tâche : ce qui suit son titre, sans les blocs
+  // qu'Ariane tient.
   async lireNoteTache(ref) {
     const f = this.fichierDeRef(ref);
     if (!f) return '';
@@ -31513,6 +31559,7 @@ class Ariane extends composer(obsidian.Plugin,
       if (surMobile()) return;
       if (this.module('taches')) {
         this.migrerNotesTravail().catch((e) => console.warn('[Ariane] notes de travail :', e));
+        this.migrerJournalTaches().catch((e) => console.warn('[Ariane] journal des notes de tâche :', e));
         this.retirerBlocsLivrable().catch((e) => console.warn('[Ariane] blocs de livrable :', e));
       }
       this.reprendrePagesEpub().catch((e) => console.warn('[Ariane] pages des EPUB :', e));

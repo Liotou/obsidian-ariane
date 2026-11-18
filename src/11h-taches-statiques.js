@@ -155,14 +155,15 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push('---');
     l.push('# ' + intitule);
     l.push('');
-    l.push('## Journal');
-    l.push('');
     return l.join('\n');
   }
 
   // La note de travail d'une tâche : ce qui suit son titre et les blocs
-  // qu'Ariane y tient (accès, sessions), jusqu'au journal ou au bloc
-  // suivant. Sans titre de section : elle est le corps même de la note.
+  // qu'Ariane y tient (accès, sessions), jusqu'au bloc suivant. La
+  // bibliographie commence à son filet et à son titre, posés avant son
+  // marqueur. « ## Journal » ne borne plus que les notes pas encore reprises
+  // (voir sansJournalTache). Sans titre de section : la note de travail est
+  // le corps même de la note.
   // Rend { debut, fin } en indices de lignes (fin exclue).
   static zoneNoteTravail(lignes) {
     const l = lignes || [];
@@ -189,7 +190,29 @@ const avecTachesStatiques = (Base) => class extends Base {
     }
     let fin = i;
     while (fin < l.length && !/^##\s+Journal\s*$/.test(l[fin]) && !ouvre(l[fin])) fin += 1;
+    const bloc = fin < l.length ? ouvre(l[fin]) : null;
+    if (bloc && bloc[1] === 'biblio') {
+      if (fin > i && /^#{1,6}\s/.test(l[fin - 1])) fin -= 1;
+      if (fin > i && /^---\s*$/.test(l[fin - 1])) fin -= 1;
+    }
     return { debut: i, fin };
+  }
+
+  // Retire d'une note de tâche le titre « ## Journal » : ce qu'il contenait
+  // rejoint le texte de la note, à sa place. Une seule ligne vide là où il se
+  // tenait (un filet collé à du texte en ferait un titre). Rend le texte,
+  // inchangé s'il n'y a rien à retirer.
+  static sansJournalTache(texte) {
+    const t = String(texte == null ? '' : texte);
+    const l = t.split('\n');
+    const k = l.findIndex((x) => /^##\s+Journal\s*$/.test(x));
+    if (k < 0) return t;
+    const avant = l.slice(0, k);
+    const apres = l.slice(k + 1);
+    while (avant.length && avant[avant.length - 1].trim() === '') avant.pop();
+    while (apres.length && apres[0].trim() === '') apres.shift();
+    while (apres.length && apres[apres.length - 1].trim() === '') apres.pop();
+    return avant.concat(apres.length ? [''].concat(apres) : [], ['']).join('\n');
   }
 
   // Retire d'une note de tâche l'ancien titre « ## Note de travail » : son

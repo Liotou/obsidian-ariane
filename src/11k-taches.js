@@ -2043,6 +2043,28 @@ const avecTaches = (Base) => class extends Base {
     return n;
   }
 
+  // Une fois pour toutes : les notes de tâche perdent la rubrique « Journal »,
+  // que rien ne remplissait ; ce qu'on y avait écrit rejoint le texte de la
+  // note. L'historique des changements, lui, est dans journal-taches.jsonl.
+  async migrerJournalTaches() {
+    if (this.settings._journalTacheRetire) return 0;
+    const dossier = this.settings.dossierTaches;
+    if (!dossier) return 0;
+    let n = 0;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(dossier + '/')) continue;
+      const avant = await this.app.vault.cachedRead(f);
+      if (!/^##\s+Journal\s*$/m.test(avant)) continue;
+      this.marquerEcriture(f.path);
+      await this.app.vault.process(f, (t) => Ariane.sansJournalTache(t));
+      n += 1;
+    }
+    this.settings._journalTacheRetire = true;
+    await this.saveSettings();
+    if (n) new obsidian.Notice(tr('Notes de tâche : rubrique « Journal » retirée de ') + n + tr(' note(s).'));
+    return n;
+  }
+
   // Insère un texte en tête de la note de travail d'une tâche (ce qui suit
   // son titre).
   async ajouterNoteTache(ref, texte) {
@@ -2057,8 +2079,8 @@ const avecTaches = (Base) => class extends Base {
     await this.app.vault.modify(f, lignes.join('\n'));
   }
 
-  // La note de travail d'une tâche : ce qui suit son titre, sans le journal
-  // ni les blocs qu'Ariane tient.
+  // La note de travail d'une tâche : ce qui suit son titre, sans les blocs
+  // qu'Ariane tient.
   async lireNoteTache(ref) {
     const f = this.fichierDeRef(ref);
     if (!f) return '';
