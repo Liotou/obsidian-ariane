@@ -600,14 +600,18 @@ class ModaleTache extends obsidian.Modal {
       + tr(' tâche(s) à créer'));
     majCompte();
     const liste = ap.createDiv({ cls: 'zfa-struct-liste' });
-    specs.forEach((n) => {
+    // Les lignes de dépendances se redessinent ensemble : décocher une tâche
+    // ou la renommer change ce qu'affichent celles qui y renvoient.
+    const lignesLiens = [];
+    const majLiens = () => lignesLiens.forEach((f) => f());
+    specs.forEach((n, i) => {
       const d = liste.createDiv({ cls: 'zfa-struct-noeud zfa-ln-noeud' });
       const inc = d.createEl('input', { type: 'checkbox', cls: 'zfa-struct-inc' });
       inc.checked = n.inclus !== false;
-      inc.onchange = () => { n.inclus = inc.checked; d.toggleClass('est-exclu', !inc.checked); majCompte(); };
+      inc.onchange = () => { n.inclus = inc.checked; d.toggleClass('est-exclu', !inc.checked); majCompte(); majLiens(); };
       const titre = d.createEl('input', { type: 'text', cls: 'zfa-struct-titre' });
       titre.value = n.titre;
-      titre.onchange = () => { n.titre = titre.value.trim() || n.titre; };
+      titre.onchange = () => { n.titre = titre.value.trim() || n.titre; majLiens(); };
       const fam = d.createEl('select', { cls: 'zfa-struct-fam dropdown' });
       for (const f of familles) fam.createEl('option', { value: f.id, text: f.nom || f.id });
       fam.value = n.famille;
@@ -622,11 +626,8 @@ class ModaleTache extends obsidian.Modal {
       jc.checked = !!n.jalon;
       jc.onchange = () => { n.jalon = jc.checked; };
       jal.createSpan({ text: tr('jalon') });
-      const liens = [];
-      if (n.apres != null && specs[n.apres]) liens.push(tr('après « ') + specs[n.apres].titre + ' »');
-      if (n.bloquePar) liens.push(tr('bloquée par « ') + n.bloquePar + ' »');
-      if (n.debut) liens.push(tr('début ') + n.debut);
-      if (liens.length) d.createDiv({ cls: 'zfa-struct-note', text: liens.join(', ') });
+      lignesLiens.push(ligneLiensLN(d, specs, i, 'zfa-struct-note', majLiens));
+      if (n.debut) d.createDiv({ cls: 'zfa-struct-note', text: tr('début ') + n.debut });
       if (n.livrable) {
         const l = d.createDiv({ cls: 'zfa-struct-note zfa-ln-livrable' });
         l.createSpan({ text: tr('Livrable : ') + (n.livrableNom || n.livrable) });

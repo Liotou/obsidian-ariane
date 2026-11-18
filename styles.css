@@ -4590,6 +4590,7 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-ln-lien { display: inline-flex; align-items: center; gap: 2px; }
 .zfa-ln-lien.est-tombe > span { text-decoration: line-through; color: var(--text-faint); }
 .zfa-ln-liens .clickable-icon { padding: 1px; }
+.zfa-ln-noeud .zfa-ln-liens { font-style: normal; }
 .zfa-ln-mere .clickable-icon svg { width: 13px; height: 13px; }
 .zfa-ln-livrable .clickable-icon { padding: 1px; }
 .zfa-ln-livrable svg { width: 14px; height: 14px; }

@@ -2156,8 +2156,6 @@ const TEXTES = {
     "Décrivez ce qu’il y a à faire, en une phrase ou plusieurs : une tâche par action, famille devinée, dates comprises (« lundi prochain », « le 30/10 »), dépendances rattachées.": "Describe what needs doing, in one or several sentences: one task per action, family guessed, dates understood (“next Monday”, “30/10”), dependencies linked.",
     "Ex. : rédiger le résumé du webinaire pour lundi prochain, puis l’envoyer à Solène.": "E.g.: write the webinar summary by next Monday, then send it to Solène.",
     "Analyser": "Analyse",
-    "après « ": "after “",
-    "bloquée par « ": "blocked by “",
     "début ": "start ",
     " tâche(s) créée(s) : ": " task(s) created: ",
     "Une phrase → une tâche : famille devinée, dates prises seulement si écrites, blocage rattaché si vous nommez une tâche existante.": "One sentence → one task: family guessed, dates only if written, blocker linked if you name an existing task.",
