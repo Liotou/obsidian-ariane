@@ -264,6 +264,18 @@ class Ariane extends composer(obsidian.Plugin,
       },
     });
     this.addCommand({
+      id: 'ajouter-ressource-tache',
+      module: 'taches',
+      name: tr('Tâches : ajouter une ressource à cette tâche…'),
+      icon: 'paperclip',
+      callback: () => {
+        const f = this.app.workspace.getActiveFile();
+        const ref = f && this.refDeChemin(f.path);
+        if (!ref) { new obsidian.Notice(tr('Ouvrez d\'abord une note de tâche.')); return; }
+        this.choisirRessource(ref, (l) => { this.ajouterRessourcesTache(ref, l).catch(() => {}); });
+      },
+    });
+    this.addCommand({
       id: 'importer-pieces-evenement',
       module: 'taches',
       bureau: true,
@@ -1658,6 +1670,12 @@ class Ariane extends composer(obsidian.Plugin,
   // Les écoutes des notes de tâche (module Tâches) : champs dérivés, blocs
   // entretenus, incohérences, anti-cycle.
   _brancherTaches() {
+    // Clic droit sur une note ou un fichier : l'ajouter aux ressources d'une tâche.
+    this.registerEvent(this.app.workspace.on('file-menu', (menu, f) => {
+      if (!(f instanceof obsidian.TFile)) return;
+      menu.addItem((i) => i.setTitle(tr('Ajouter aux ressources d’une tâche…')).setIcon('paperclip')
+        .onClick(() => this.choisirTachePourRessource(f)));
+    }));
     // La date d'achèvement suit le statut. La passe ne réécrit que si la valeur
     // change vraiment, faute de quoi cette écoute se rappellerait elle-même.
     this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _donnees, cacheNote) => {

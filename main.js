@@ -812,6 +812,18 @@ const TEXTES = {
     "Cette tâche ne sera pas créée : le lien tombe.": "This task will not be created, so the link is dropped.",
     "Retirer cette dépendance": "Remove this dependency",
     " (introuvable)": " (not found)",
+    " ressource(s) ajoutée(s) à ": " resource(s) added to ",
+    "Déjà dans les ressources de ": "Already in the resources of ",
+    "Note ou fichier à ajouter…": "Note or file to add…",
+    "Ajout impossible : ": "Could not add: ",
+    "Ajouter une note ou un fichier": "Add a note or file",
+    "Tâche qui se sert de ce fichier…": "Task that uses this file…",
+    "Tâches : ajouter une ressource à cette tâche…": "Tasks: add a resource to this task…",
+    "Ajouter aux ressources d’une tâche…": "Add to a task's resources…",
+    "Ressources": "Resources",
+    "Les notes et fichiers utiles : choisissez-les, ou glissez-les ici.": "Useful notes and files: pick them, or drag them here.",
+    "Ajouter…": "Add…",
+    "Retirer cette ressource": "Remove this resource",
     "Notes de tâche : rubrique « Journal » retirée de ": "Task notes: “Journal” section removed from ",
     "Export PDF…": "PDF export…",
     "style de citation introuvable dans Zotero : ": "citation style not found in Zotero: ",
@@ -6407,7 +6419,7 @@ const avecSocle = (Base) => class extends Base {
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
             'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'seances', 'avancement', 'temps-estime', 'parent',
-            'bloque-par', 'evenements', 'termine-le',
+            'bloque-par', 'ressources', 'evenements', 'termine-le',
             'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id', 'evenements-id'];
   }
 
@@ -6418,7 +6430,7 @@ const avecSocle = (Base) => class extends Base {
     return [
       { id: 'etat', nom: 'État & progression', concepts: ['statut', 'terminee', 'priorite', 'avancement'] },
       { id: 'planning', nom: 'Planning', concepts: ['debut', 'echeance', 'heure', 'temps-estime', 'creneaux', 'jalon', 'termine-le'] },
-      { id: 'relations', nom: 'Relations', concepts: ['parent', 'bloque-par'] },
+      { id: 'relations', nom: 'Relations', concepts: ['parent', 'bloque-par', 'ressources'] },
       { id: 'rappel', nom: 'Rappel', concepts: ['liste', 'rappel-id'] },
       { id: 'agenda', nom: 'Agenda', concepts: ['agenda-id'] },
     ];
@@ -6432,7 +6444,7 @@ const avecSocle = (Base) => class extends Base {
   static defautsNoyau() {
     const typees = {
       terminee: false, jalon: false,
-      creneaux: [], 'bloque-par': [],
+      creneaux: [], 'bloque-par': [], ressources: [],
       avancement: 0, statut: 'à faire',
     };
     const out = {};
@@ -15587,7 +15599,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       source: 'Source', livrable: 'Livrable', fichier: 'Fichier',
       liste: 'Liste', 'rappel-id': 'Rappel ID', 'agenda-id': 'Agenda ID',
       'temps-reel': 'Temps réel', seances: 'Séances',
-      evenements: 'Événements', 'evenements-id': 'Événements ID',
+      evenements: 'Événements', 'evenements-id': 'Événements ID', ressources: 'Ressources',
     })[concept] || concept;
   }
 
@@ -15712,6 +15724,7 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push(K('jalon') + ': ' + (c.jalon ? 'true' : 'false'));
     l.push(K('parent') + ':');
     l.push(K('bloque-par') + ': []');
+    l.push(K('ressources') + ': []');
     l.push(ligne(K('source'), q(c.source)));
     l.push(ligne(K('livrable'), q(c.livrable)));
     l.push(ligne(K('fichier'), q(c.fichier)));
@@ -16335,6 +16348,25 @@ const avecTachesStatiques = (Base) => class extends Base {
   // C'est ce qui relie une note libre, ou un jalon, à l'événement d'origine.
   static idEvenementDe(fm) {
     return String(((fm || {})['Événement ID']) || '').trim();
+  }
+
+  // ── Ressources d'une tâche ───────────────────────────────────────────────
+  //  Les notes et fichiers dont la tâche se sert (ce qu'elle produit va dans
+  //  Livrable et Fichier). Une liste de liens, sans doublon.
+  static cibleRessource(lien) {
+    return String(lien || '').trim().replace(/^!?\[\[/, '').replace(/\]\]$/, '')
+      .split('|')[0].split('#')[0].trim().normalize('NFC');
+  }
+
+  static ressourcesAvec(liste, lien) {
+    const l = [].concat(liste || []).map(String).filter(Boolean);
+    const c = Ariane.cibleRessource(lien);
+    return !c || l.some((x) => Ariane.cibleRessource(x) === c) ? l : l.concat([lien]);
+  }
+
+  static ressourcesSans(liste, lien) {
+    const c = Ariane.cibleRessource(lien);
+    return [].concat(liste || []).map(String).filter((x) => x && Ariane.cibleRessource(x) !== c);
   }
 
   // ── Pièces jointes d'un événement ────────────────────────────────────────
@@ -20648,6 +20680,7 @@ const avecTaches = (Base) => class extends Base {
         heure: String(this._lireT(fm, 'heure') || '').trim(),
         creneaux: [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean),
         seances: [].concat(this._lireT(fm, 'seances') || []).map(String).filter(Boolean),
+        ressources: [].concat(this._lireT(fm, 'ressources') || []).map(String).filter(Boolean),
         evenementsId: [].concat(this._lireT(fm, 'evenements-id') || []).map(String).filter(Boolean),
         evenements: [].concat(this._lireT(fm, 'evenements') || []).map(String).filter(Boolean),
         tempsReel: Ariane.tempsReelDeTache(this._lireT(fm, 'temps-reel')),
@@ -23128,6 +23161,107 @@ const avecTaches = (Base) => class extends Base {
     return true;
   }
 
+  // ── Ressources des tâches ────────────────────────────────────────────────
+  //  Ajouter une note ou un fichier ne demande pas d'écrire dans la propriété :
+  //  bouton +, glisser-déposer, clic droit dans l'explorateur, commande.
+  lienRessource(f, ref) {
+    const note = ref ? this.fichierDeRef(ref) : null;
+    return '[[' + this.app.metadataCache.fileToLinktext(f, note ? note.path : '', f.extension === 'md') + ']]';
+  }
+
+  async ajouterRessourcesTache(ref, fichiers) {
+    const note = this.fichierDeRef(ref);
+    const liste = (fichiers || []).filter((f) => f && f.path !== (note && note.path));
+    if (!note || !liste.length) return 0;
+    const cle = this.cleT('ressources');
+    let n = 0;
+    this.marquerOrigineTache(note.path);
+    await this.app.fileManager.processFrontMatter(note, (x) => {
+      let l = [].concat(this._lireT(x, 'ressources') || []).map(String).filter(Boolean);
+      const avant = l.length;
+      for (const f of liste) l = Ariane.ressourcesAvec(l, this.lienRessource(f, ref));
+      n = l.length - avant;
+      x[cle] = l;
+      if (n) x.modifie = new Date().toISOString().slice(0, 10);
+    });
+    new obsidian.Notice(n ? n + tr(' ressource(s) ajoutée(s) à ') + ref + '.' : tr('Déjà dans les ressources de ') + ref + '.');
+    return n;
+  }
+
+  // Choisir une note ou un fichier du coffre.
+  choisirRessource(ref, surFichiers) {
+    const note = ref ? this.fichierDeRef(ref) : null;
+    const items = this.app.vault.getFiles().filter((f) => !note || f.path !== note.path)
+      .map((f) => ({ nom: f.path, f }));
+    new ChoixListeModal(this.app, tr('Note ou fichier à ajouter…'), items, (it) => {
+      if (it) surFichiers([it.f]);
+    }).open();
+  }
+
+  // Ce qu'un dépôt apporte : des fichiers du coffre, ou du Finder, copiés
+  // alors dans le dossier des pièces jointes.
+  async _fichiersDuDepot(e, ref) {
+    const out = [];
+    const d = this.app.dragManager && this.app.dragManager.draggable;
+    if (d) {
+      if (d.file) out.push(d.file);
+      if (Array.isArray(d.files)) out.push(...d.files);
+    }
+    const note = ref ? this.fichierDeRef(ref) : null;
+    const externes = !out.length && e.dataTransfer ? [...e.dataTransfer.files] : [];
+    for (const x of externes) {
+      const chemin = await this.app.fileManager.getAvailablePathForAttachment(Ariane.nomFichierPiece(x.name), note ? note.path : '');
+      const dossier = chemin.includes('/') ? chemin.slice(0, chemin.lastIndexOf('/')) : '';
+      if (dossier) await this.assurerDossier(dossier);
+      out.push(await this.app.vault.createBinary(chemin, await x.arrayBuffer()));
+    }
+    return out.filter((f) => f && f.extension);
+  }
+
+  // Fait d'un élément une zone de dépôt. En capture : le champ de propriété
+  // d'Obsidian y écrirait sinon le texte du lien.
+  brancherDepotRessources(el, ref, surFichiers) {
+    if (el.dataset.zfaDepotRessources) return;
+    el.dataset.zfaDepotRessources = '1';
+    const accepte = (e) => !!(this.app.dragManager && this.app.dragManager.draggable)
+      || [...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files');
+    el.addEventListener('dragover', (e) => {
+      if (!accepte(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      el.addClass('zfa-ressources-depot');
+    }, true);
+    el.addEventListener('dragleave', () => el.removeClass('zfa-ressources-depot'), true);
+    el.addEventListener('drop', (e) => {
+      el.removeClass('zfa-ressources-depot');
+      if (!accepte(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      this._fichiersDuDepot(e, ref).then((l) => { if (l.length) surFichiers(l); })
+        .catch((err) => new obsidian.Notice(tr('Ajout impossible : ') + (err && err.message ? err.message : err)));
+    }, true);
+  }
+
+  // La ligne « Ressources » des propriétés reçoit un bouton + et les dépôts.
+  _equiperLigneRessources(row, ref) {
+    const ajouter = (l) => { this.ajouterRessourcesTache(ref, l).catch(() => {}); };
+    if (!row.querySelector('.zfa-ressources-ajout')) {
+      const b = row.createEl('button', { cls: 'clickable-icon zfa-ressources-ajout',
+        attr: { 'aria-label': tr('Ajouter une note ou un fichier') } });
+      obsidian.setIcon(b, 'plus');
+      b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.choisirRessource(ref, ajouter); });
+    }
+    this.brancherDepotRessources(row, ref, ajouter);
+  }
+
+  // Clic droit sur un fichier : à quelle tâche le donner ?
+  choisirTachePourRessource(f) {
+    const items = this.tachesPourGantt()
+      .filter((t) => t.statut !== 'terminée' && t.statut !== 'abandonnée' && t.fichier && t.fichier.path !== f.path)
+      .map((t) => ({ nom: t.intitule + '  (' + t.ref + ')', cle: t.ref }));
+    new ChoixListeModal(this.app, tr('Tâche qui se sert de ce fichier…'), items, (it) => {
+      if (it) this.ajouterRessourcesTache(it.cle, [f]).catch(() => {});
+    }).open();
+  }
+
   // ── Pièces jointes des événements ────────────────────────────────────────
   // La copie d'une pièce dans le coffre, s'il y en a une.
   fichierDePiece(p) {
@@ -23599,6 +23733,10 @@ const avecTaches = (Base) => class extends Base {
       if (vide(L(fmG, c)) && !vide(L(fmA, c))) champs[c] = L(fmA, c);
     }
     if (champs.echeance && !vide(L(fmA, 'heure'))) champs.heure = L(fmA, 'heure');
+    const ressourcesA = [].concat(L(fmA, 'ressources') || []);
+    if (ressourcesA.length) {
+      champs.ressources = ressourcesA.reduce((l, x) => Ariane.ressourcesAvec(l, String(x)), [].concat(L(fmG, 'ressources') || []));
+    }
     // Le rappel : celui que les deux partagent (doublon venu du même rappel),
     // ou celui de l'absorbée quand la gardée n'en a pas, reste en place.
     const ridG = String(L(fmG, 'rappel-id') || '').trim();
@@ -24129,7 +24267,7 @@ const avecTaches = (Base) => class extends Base {
       const vue = leaf && leaf.view;
       if (!vue || !vue.contentEl) continue;
       const estTache = !!(vue.file && this.refDeChemin(vue.file.path));
-      this._habillerConteneur(vue.contentEl, estTache, ctx);
+      this._habillerConteneur(vue.contentEl, estTache, ctx, estTache ? this.refDeChemin(vue.file.path) : '');
     }
     // Fenêtres de survol : pas de fichier accessible, on reconnaît la tâche à
     // son entête (type: tache, ou au moins deux propriétés de tâche).
@@ -24160,7 +24298,7 @@ const avecTaches = (Base) => class extends Base {
 
   // Applique (ou retire) l'habillage tâche sur un conteneur : classes, tags de
   // concept sur les lignes de propriété, icônes, regroupement en zones.
-  _habillerConteneur(contEl, estTache, ctx) {
+  _habillerConteneur(contEl, estTache, ctx, ref) {
     contEl.toggleClass('zfa-note-tache', estTache);
     contEl.toggleClass('zfa-note-tache-skin', estTache && ctx.skin);
     if (!estTache) return;
@@ -24174,6 +24312,7 @@ const avecTaches = (Base) => class extends Base {
       const con = ctx.parCle.get(cle);
       if (!con) { if (row.dataset.zfaConcept) delete row.dataset.zfaConcept; continue; }
       row.dataset.zfaConcept = con;
+      if (con === 'ressources' && ref) this._equiperLigneRessources(row, ref);
       const cleEl = row.querySelector('.metadata-property-key');
       if (cleEl) {
         if (ctx.masquer) cleEl.dataset.zfaLabel = this.libelleColonne(this.cleT(con));
@@ -30807,6 +30946,18 @@ class Ariane extends composer(obsidian.Plugin,
       },
     });
     this.addCommand({
+      id: 'ajouter-ressource-tache',
+      module: 'taches',
+      name: tr('Tâches : ajouter une ressource à cette tâche…'),
+      icon: 'paperclip',
+      callback: () => {
+        const f = this.app.workspace.getActiveFile();
+        const ref = f && this.refDeChemin(f.path);
+        if (!ref) { new obsidian.Notice(tr('Ouvrez d\'abord une note de tâche.')); return; }
+        this.choisirRessource(ref, (l) => { this.ajouterRessourcesTache(ref, l).catch(() => {}); });
+      },
+    });
+    this.addCommand({
       id: 'importer-pieces-evenement',
       module: 'taches',
       bureau: true,
@@ -32201,6 +32352,12 @@ class Ariane extends composer(obsidian.Plugin,
   // Les écoutes des notes de tâche (module Tâches) : champs dérivés, blocs
   // entretenus, incohérences, anti-cycle.
   _brancherTaches() {
+    // Clic droit sur une note ou un fichier : l'ajouter aux ressources d'une tâche.
+    this.registerEvent(this.app.workspace.on('file-menu', (menu, f) => {
+      if (!(f instanceof obsidian.TFile)) return;
+      menu.addItem((i) => i.setTitle(tr('Ajouter aux ressources d’une tâche…')).setIcon('paperclip')
+        .onClick(() => this.choisirTachePourRessource(f)));
+    }));
     // La date d'achèvement suit le statut. La passe ne réécrit que si la valeur
     // change vraiment, faute de quoi cette écoute se rappellerait elle-même.
     this.registerEvent(this.app.metadataCache.on('changed', async (fichier, _donnees, cacheNote) => {
@@ -34185,7 +34342,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       const iconeAutre = {
         'bloque-par': 'ban', 'termine-le': 'calendar-check', source: 'book-marked',
         livrable: 'package', fichier: 'file', liste: 'list', 'rappel-id': 'bell',
-        seances: 'users', evenements: 'calendar-days', 'evenements-id': 'calendar-cog',
+        seances: 'users', evenements: 'calendar-days', 'evenements-id': 'calendar-cog', ressources: 'paperclip',
       };
       const genPar = {};
       for (const p of Ariane.PROPS_GENERIQUES) genPar[p.cle] = p;
@@ -36343,6 +36500,7 @@ class ModaleTache extends obsidian.Modal {
     this.v.tempsEstime = Ariane.dureeEstimeeMin(L('temps-estime'));
     this.v.jalon = L('jalon') === true;
     this.v.parent = Ariane.refDeLien(L('parent') || '') || '';
+    this.v.ressources = [].concat(L('ressources') || []).map(String).filter(Boolean);
     const fmN = Object.assign({}, fm, {
       famille: L('famille'), source: L('source'),
       livrable: L('livrable'), fichier: L('fichier'),
@@ -36502,6 +36660,7 @@ class ModaleTache extends obsidian.Modal {
       }))
       .addExtraButton((b) => b.setIcon('x').setTooltip(tr('Détacher'))
         .onClick(() => { this.v.parent = ''; this._dessiner(); }));
+    this._champRessources(c);
 
     const fam = this.familles.find((x) => x.id === this.v.famille);
     const ps = (fam && fam.proprietes) || [];
@@ -36525,6 +36684,28 @@ class ModaleTache extends obsidian.Modal {
     const ok = pied.createEl('button', {
       cls: 'mod-cta', text: this.ref ? tr('Enregistrer') : tr('Créer') });
     ok.onclick = () => this._valider();
+  }
+
+  // Les notes et fichiers dont la tâche se sert : un bouton, ou un dépôt.
+  _champRessources(c) {
+    const g = this.greffon;
+    const liste = this.v.ressources || (this.v.ressources = []);
+    const ajouter = (fichiers) => {
+      for (const f of fichiers) this.v.ressources = Ariane.ressourcesAvec(this.v.ressources, g.lienRessource(f, this.ref));
+      this._dessiner();
+    };
+    const s = this._setting(c, tr('Ressources'), 'paperclip', true)
+      .setDesc(liste.length ? '' : tr('Les notes et fichiers utiles : choisissez-les, ou glissez-les ici.'))
+      .addButton((b) => b.setButtonText(tr('Ajouter…')).onClick(() => g.choisirRessource(this.ref, ajouter)));
+    g.brancherDepotRessources(s.settingEl, this.ref, ajouter);
+    for (const lien of liste) {
+      const l = c.createDiv({ cls: 'zfa-ressource-ligne' });
+      obsidian.setIcon(l.createSpan({ cls: 'zfa-ressource-ic' }), 'paperclip');
+      l.createSpan({ cls: 'zfa-ressource-nom', text: Ariane.cibleRessource(lien).split('/').pop() });
+      const x = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Retirer cette ressource') } });
+      obsidian.setIcon(x, 'x');
+      x.onclick = () => { this.v.ressources = Ariane.ressourcesSans(this.v.ressources, lien); this._dessiner(); };
+    }
   }
 
   _champProp(c, p) {
@@ -36610,6 +36791,7 @@ class ModaleTache extends obsidian.Modal {
         'temps-estime': Number(this.v.tempsEstime) > 0 ? Number(this.v.tempsEstime) : '',
         jalon: this.v.jalon === true,
         parent: this.v.parent ? '[[' + this.v.parent + ']]' : '',
+        ressources: this.v.ressources || [],
         famille: this.v.famille,
       };
       // Un rattachement qui fermerait un cycle n'est pas appliqué (le reste l'est).
@@ -53802,7 +53984,7 @@ function barreDefaut() {
       { cmd: a('correcteur-relire') },
       { separateur: true },
       { cmd: a('creer-tache') }, { cmd: a('fusionner-taches') }, { cmd: a('associer-evenement-tache') },
-      { cmd: a('importer-pieces-evenement') },
+      { cmd: a('ajouter-ressource-tache') }, { cmd: a('importer-pieces-evenement') },
       { cmd: a('atomise-active') }, { cmd: a('biblio-note') },
     ] },
     { separateur: true },

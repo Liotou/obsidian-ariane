@@ -85,6 +85,7 @@ const avecTaches = (Base) => class extends Base {
         heure: String(this._lireT(fm, 'heure') || '').trim(),
         creneaux: [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean),
         seances: [].concat(this._lireT(fm, 'seances') || []).map(String).filter(Boolean),
+        ressources: [].concat(this._lireT(fm, 'ressources') || []).map(String).filter(Boolean),
         evenementsId: [].concat(this._lireT(fm, 'evenements-id') || []).map(String).filter(Boolean),
         evenements: [].concat(this._lireT(fm, 'evenements') || []).map(String).filter(Boolean),
         tempsReel: Ariane.tempsReelDeTache(this._lireT(fm, 'temps-reel')),
@@ -2565,6 +2566,107 @@ const avecTaches = (Base) => class extends Base {
     return true;
   }
 
+  // ── Ressources des tâches ────────────────────────────────────────────────
+  //  Ajouter une note ou un fichier ne demande pas d'écrire dans la propriété :
+  //  bouton +, glisser-déposer, clic droit dans l'explorateur, commande.
+  lienRessource(f, ref) {
+    const note = ref ? this.fichierDeRef(ref) : null;
+    return '[[' + this.app.metadataCache.fileToLinktext(f, note ? note.path : '', f.extension === 'md') + ']]';
+  }
+
+  async ajouterRessourcesTache(ref, fichiers) {
+    const note = this.fichierDeRef(ref);
+    const liste = (fichiers || []).filter((f) => f && f.path !== (note && note.path));
+    if (!note || !liste.length) return 0;
+    const cle = this.cleT('ressources');
+    let n = 0;
+    this.marquerOrigineTache(note.path);
+    await this.app.fileManager.processFrontMatter(note, (x) => {
+      let l = [].concat(this._lireT(x, 'ressources') || []).map(String).filter(Boolean);
+      const avant = l.length;
+      for (const f of liste) l = Ariane.ressourcesAvec(l, this.lienRessource(f, ref));
+      n = l.length - avant;
+      x[cle] = l;
+      if (n) x.modifie = new Date().toISOString().slice(0, 10);
+    });
+    new obsidian.Notice(n ? n + tr(' ressource(s) ajoutée(s) à ') + ref + '.' : tr('Déjà dans les ressources de ') + ref + '.');
+    return n;
+  }
+
+  // Choisir une note ou un fichier du coffre.
+  choisirRessource(ref, surFichiers) {
+    const note = ref ? this.fichierDeRef(ref) : null;
+    const items = this.app.vault.getFiles().filter((f) => !note || f.path !== note.path)
+      .map((f) => ({ nom: f.path, f }));
+    new ChoixListeModal(this.app, tr('Note ou fichier à ajouter…'), items, (it) => {
+      if (it) surFichiers([it.f]);
+    }).open();
+  }
+
+  // Ce qu'un dépôt apporte : des fichiers du coffre, ou du Finder, copiés
+  // alors dans le dossier des pièces jointes.
+  async _fichiersDuDepot(e, ref) {
+    const out = [];
+    const d = this.app.dragManager && this.app.dragManager.draggable;
+    if (d) {
+      if (d.file) out.push(d.file);
+      if (Array.isArray(d.files)) out.push(...d.files);
+    }
+    const note = ref ? this.fichierDeRef(ref) : null;
+    const externes = !out.length && e.dataTransfer ? [...e.dataTransfer.files] : [];
+    for (const x of externes) {
+      const chemin = await this.app.fileManager.getAvailablePathForAttachment(Ariane.nomFichierPiece(x.name), note ? note.path : '');
+      const dossier = chemin.includes('/') ? chemin.slice(0, chemin.lastIndexOf('/')) : '';
+      if (dossier) await this.assurerDossier(dossier);
+      out.push(await this.app.vault.createBinary(chemin, await x.arrayBuffer()));
+    }
+    return out.filter((f) => f && f.extension);
+  }
+
+  // Fait d'un élément une zone de dépôt. En capture : le champ de propriété
+  // d'Obsidian y écrirait sinon le texte du lien.
+  brancherDepotRessources(el, ref, surFichiers) {
+    if (el.dataset.zfaDepotRessources) return;
+    el.dataset.zfaDepotRessources = '1';
+    const accepte = (e) => !!(this.app.dragManager && this.app.dragManager.draggable)
+      || [...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files');
+    el.addEventListener('dragover', (e) => {
+      if (!accepte(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      el.addClass('zfa-ressources-depot');
+    }, true);
+    el.addEventListener('dragleave', () => el.removeClass('zfa-ressources-depot'), true);
+    el.addEventListener('drop', (e) => {
+      el.removeClass('zfa-ressources-depot');
+      if (!accepte(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      this._fichiersDuDepot(e, ref).then((l) => { if (l.length) surFichiers(l); })
+        .catch((err) => new obsidian.Notice(tr('Ajout impossible : ') + (err && err.message ? err.message : err)));
+    }, true);
+  }
+
+  // La ligne « Ressources » des propriétés reçoit un bouton + et les dépôts.
+  _equiperLigneRessources(row, ref) {
+    const ajouter = (l) => { this.ajouterRessourcesTache(ref, l).catch(() => {}); };
+    if (!row.querySelector('.zfa-ressources-ajout')) {
+      const b = row.createEl('button', { cls: 'clickable-icon zfa-ressources-ajout',
+        attr: { 'aria-label': tr('Ajouter une note ou un fichier') } });
+      obsidian.setIcon(b, 'plus');
+      b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.choisirRessource(ref, ajouter); });
+    }
+    this.brancherDepotRessources(row, ref, ajouter);
+  }
+
+  // Clic droit sur un fichier : à quelle tâche le donner ?
+  choisirTachePourRessource(f) {
+    const items = this.tachesPourGantt()
+      .filter((t) => t.statut !== 'terminée' && t.statut !== 'abandonnée' && t.fichier && t.fichier.path !== f.path)
+      .map((t) => ({ nom: t.intitule + '  (' + t.ref + ')', cle: t.ref }));
+    new ChoixListeModal(this.app, tr('Tâche qui se sert de ce fichier…'), items, (it) => {
+      if (it) this.ajouterRessourcesTache(it.cle, [f]).catch(() => {});
+    }).open();
+  }
+
   // ── Pièces jointes des événements ────────────────────────────────────────
   // La copie d'une pièce dans le coffre, s'il y en a une.
   fichierDePiece(p) {
@@ -3036,6 +3138,10 @@ const avecTaches = (Base) => class extends Base {
       if (vide(L(fmG, c)) && !vide(L(fmA, c))) champs[c] = L(fmA, c);
     }
     if (champs.echeance && !vide(L(fmA, 'heure'))) champs.heure = L(fmA, 'heure');
+    const ressourcesA = [].concat(L(fmA, 'ressources') || []);
+    if (ressourcesA.length) {
+      champs.ressources = ressourcesA.reduce((l, x) => Ariane.ressourcesAvec(l, String(x)), [].concat(L(fmG, 'ressources') || []));
+    }
     // Le rappel : celui que les deux partagent (doublon venu du même rappel),
     // ou celui de l'absorbée quand la gardée n'en a pas, reste en place.
     const ridG = String(L(fmG, 'rappel-id') || '').trim();
@@ -3566,7 +3672,7 @@ const avecTaches = (Base) => class extends Base {
       const vue = leaf && leaf.view;
       if (!vue || !vue.contentEl) continue;
       const estTache = !!(vue.file && this.refDeChemin(vue.file.path));
-      this._habillerConteneur(vue.contentEl, estTache, ctx);
+      this._habillerConteneur(vue.contentEl, estTache, ctx, estTache ? this.refDeChemin(vue.file.path) : '');
     }
     // Fenêtres de survol : pas de fichier accessible, on reconnaît la tâche à
     // son entête (type: tache, ou au moins deux propriétés de tâche).
@@ -3597,7 +3703,7 @@ const avecTaches = (Base) => class extends Base {
 
   // Applique (ou retire) l'habillage tâche sur un conteneur : classes, tags de
   // concept sur les lignes de propriété, icônes, regroupement en zones.
-  _habillerConteneur(contEl, estTache, ctx) {
+  _habillerConteneur(contEl, estTache, ctx, ref) {
     contEl.toggleClass('zfa-note-tache', estTache);
     contEl.toggleClass('zfa-note-tache-skin', estTache && ctx.skin);
     if (!estTache) return;
@@ -3611,6 +3717,7 @@ const avecTaches = (Base) => class extends Base {
       const con = ctx.parCle.get(cle);
       if (!con) { if (row.dataset.zfaConcept) delete row.dataset.zfaConcept; continue; }
       row.dataset.zfaConcept = con;
+      if (con === 'ressources' && ref) this._equiperLigneRessources(row, ref);
       const cleEl = row.querySelector('.metadata-property-key');
       if (cleEl) {
         if (ctx.masquer) cleEl.dataset.zfaLabel = this.libelleColonne(this.cleT(con));

@@ -88,3 +88,29 @@ test('migrerJournalTaches : une seule fois, dans le dossier des tâches seulemen
   assert.equal(await g.migrerJournalTaches(), 0);
   assert.equal(sauve, 1);
 });
+
+test('ressources : sans doublon, quel que soit l’alias ; retrait par la cible', () => {
+  assert.equal(Ariane.cibleRessource('![[Dossier/a.pdf|Mon PDF]]'), 'Dossier/a.pdf');
+  let l = Ariane.ressourcesAvec([], '[[a.pdf]]');
+  l = Ariane.ressourcesAvec(l, '[[a.pdf|autre nom]]');
+  l = Ariane.ressourcesAvec(l, '[[Note]]');
+  assert.deepEqual(l, ['[[a.pdf]]', '[[Note]]']);
+  assert.deepEqual(Ariane.ressourcesSans(l, '[[a.pdf|x]]'), ['[[Note]]']);
+});
+
+test('ajouterRessourcesTache : lien sans .md pour une note, avec extension pour un fichier', async () => {
+  const fm = { ressources: ['[[a.pdf]]'] };
+  const note = { path: 'T/T1.md' };
+  const g = Object.create(Ariane.prototype);
+  g.fichierDeRef = () => note;
+  g.cleT = (c) => c;
+  g._lireT = (x, c) => x[c];
+  g.marquerOrigineTache = () => {};
+  g.app = {
+    metadataCache: { fileToLinktext: (f, s, sansMd) => (sansMd ? f.path.replace(/\.md$/, '') : f.path) },
+    fileManager: { processFrontMatter: async (f, fn) => fn(fm) },
+  };
+  const n = await g.ajouterRessourcesTache('T1', [{ path: 'Note.md', extension: 'md' }, { path: 'a.pdf', extension: 'pdf' }, note]);
+  assert.equal(n, 1);
+  assert.deepEqual(fm.ressources, ['[[a.pdf]]', '[[Note]]']);
+});

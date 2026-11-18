@@ -752,6 +752,11 @@ in the vault's attachment folder, linked from the note) require granting
 Obsidian Full Disk Access. Only common documents can be opened or imported,
 never a program or script.
 
+A task's **resources** are the notes and files it uses (what it produces goes in
+`Livrable` and `Fichier`). No need to type in the property: the `+` button on its
+row, drag and drop from the file explorer or Finder, right-click on a file, the
+task window, or a command. A file from Finder is copied to the attachment folder.
+
 A **calendar event** can be linked to a task: right-click the event in the
 calendar, “Link to a task…”, or from the task, the command “Link an event to
 this task…” (also on the editing toolbar). The task lists it under

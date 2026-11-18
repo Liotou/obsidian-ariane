@@ -59,7 +59,7 @@ const avecSocle = (Base) => class extends Base {
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
             'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'seances', 'avancement', 'temps-estime', 'parent',
-            'bloque-par', 'evenements', 'termine-le',
+            'bloque-par', 'ressources', 'evenements', 'termine-le',
             'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id', 'evenements-id'];
   }
 
@@ -70,7 +70,7 @@ const avecSocle = (Base) => class extends Base {
     return [
       { id: 'etat', nom: 'État & progression', concepts: ['statut', 'terminee', 'priorite', 'avancement'] },
       { id: 'planning', nom: 'Planning', concepts: ['debut', 'echeance', 'heure', 'temps-estime', 'creneaux', 'jalon', 'termine-le'] },
-      { id: 'relations', nom: 'Relations', concepts: ['parent', 'bloque-par'] },
+      { id: 'relations', nom: 'Relations', concepts: ['parent', 'bloque-par', 'ressources'] },
       { id: 'rappel', nom: 'Rappel', concepts: ['liste', 'rappel-id'] },
       { id: 'agenda', nom: 'Agenda', concepts: ['agenda-id'] },
     ];
@@ -84,7 +84,7 @@ const avecSocle = (Base) => class extends Base {
   static defautsNoyau() {
     const typees = {
       terminee: false, jalon: false,
-      creneaux: [], 'bloque-par': [],
+      creneaux: [], 'bloque-par': [], ressources: [],
       avancement: 0, statut: 'à faire',
     };
     const out = {};

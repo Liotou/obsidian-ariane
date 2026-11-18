@@ -17,7 +17,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       source: 'Source', livrable: 'Livrable', fichier: 'Fichier',
       liste: 'Liste', 'rappel-id': 'Rappel ID', 'agenda-id': 'Agenda ID',
       'temps-reel': 'Temps réel', seances: 'Séances',
-      evenements: 'Événements', 'evenements-id': 'Événements ID',
+      evenements: 'Événements', 'evenements-id': 'Événements ID', ressources: 'Ressources',
     })[concept] || concept;
   }
 
@@ -142,6 +142,7 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push(K('jalon') + ': ' + (c.jalon ? 'true' : 'false'));
     l.push(K('parent') + ':');
     l.push(K('bloque-par') + ': []');
+    l.push(K('ressources') + ': []');
     l.push(ligne(K('source'), q(c.source)));
     l.push(ligne(K('livrable'), q(c.livrable)));
     l.push(ligne(K('fichier'), q(c.fichier)));
@@ -765,6 +766,25 @@ const avecTachesStatiques = (Base) => class extends Base {
   // C'est ce qui relie une note libre, ou un jalon, à l'événement d'origine.
   static idEvenementDe(fm) {
     return String(((fm || {})['Événement ID']) || '').trim();
+  }
+
+  // ── Ressources d'une tâche ───────────────────────────────────────────────
+  //  Les notes et fichiers dont la tâche se sert (ce qu'elle produit va dans
+  //  Livrable et Fichier). Une liste de liens, sans doublon.
+  static cibleRessource(lien) {
+    return String(lien || '').trim().replace(/^!?\[\[/, '').replace(/\]\]$/, '')
+      .split('|')[0].split('#')[0].trim().normalize('NFC');
+  }
+
+  static ressourcesAvec(liste, lien) {
+    const l = [].concat(liste || []).map(String).filter(Boolean);
+    const c = Ariane.cibleRessource(lien);
+    return !c || l.some((x) => Ariane.cibleRessource(x) === c) ? l : l.concat([lien]);
+  }
+
+  static ressourcesSans(liste, lien) {
+    const c = Ariane.cibleRessource(lien);
+    return [].concat(liste || []).map(String).filter((x) => x && Ariane.cibleRessource(x) !== c);
   }
 
   // ── Pièces jointes d'un événement ────────────────────────────────────────

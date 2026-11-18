@@ -80,7 +80,7 @@ test('defautsNoyau : le jeu de concepts et leurs valeurs par défaut', () => {
   const d = Ariane.defautsNoyau();
   assert.deepEqual(Object.keys(d).sort(), [
     'avancement', 'bloque-par', 'creneaux', 'debut', 'echeance', 'heure',
-    'jalon', 'parent', 'priorite', 'sans-echeance', 'statut', 'temps-estime', 'termine-le',
+    'jalon', 'parent', 'priorite', 'ressources', 'sans-echeance', 'statut', 'temps-estime', 'termine-le',
     'terminee',
   ]);
   assert.deepEqual(d.creneaux, []);

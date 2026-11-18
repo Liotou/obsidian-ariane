@@ -774,6 +774,12 @@ du coffre, lien dans la note) demandent d'accorder à Obsidian l'accès complet
 au disque. Seuls les documents courants s'ouvrent ou s'importent, jamais un
 programme ou un script.
 
+Les **ressources** d'une tâche sont les notes et fichiers dont elle se sert (ce
+qu'elle produit va dans `Livrable` et `Fichier`). Inutile d'écrire dans la
+propriété : bouton `+` sur sa ligne, glisser-déposer depuis l'explorateur ou le
+Finder, clic droit sur un fichier, fenêtre de la tâche, ou commande. Un fichier
+venu du Finder est copié dans le dossier des pièces jointes.
+
 Un **événement de l'agenda** s'associe à une tâche : clic droit sur
 l'événement au calendrier, « Associer à une tâche… », ou depuis la tâche,
 commande « Associer un événement à cette tâche… » (aussi dans la barre

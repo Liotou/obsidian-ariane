@@ -763,6 +763,7 @@ class ModaleTache extends obsidian.Modal {
     this.v.tempsEstime = Ariane.dureeEstimeeMin(L('temps-estime'));
     this.v.jalon = L('jalon') === true;
     this.v.parent = Ariane.refDeLien(L('parent') || '') || '';
+    this.v.ressources = [].concat(L('ressources') || []).map(String).filter(Boolean);
     const fmN = Object.assign({}, fm, {
       famille: L('famille'), source: L('source'),
       livrable: L('livrable'), fichier: L('fichier'),
@@ -922,6 +923,7 @@ class ModaleTache extends obsidian.Modal {
       }))
       .addExtraButton((b) => b.setIcon('x').setTooltip(tr('Détacher'))
         .onClick(() => { this.v.parent = ''; this._dessiner(); }));
+    this._champRessources(c);
 
     const fam = this.familles.find((x) => x.id === this.v.famille);
     const ps = (fam && fam.proprietes) || [];
@@ -945,6 +947,28 @@ class ModaleTache extends obsidian.Modal {
     const ok = pied.createEl('button', {
       cls: 'mod-cta', text: this.ref ? tr('Enregistrer') : tr('Créer') });
     ok.onclick = () => this._valider();
+  }
+
+  // Les notes et fichiers dont la tâche se sert : un bouton, ou un dépôt.
+  _champRessources(c) {
+    const g = this.greffon;
+    const liste = this.v.ressources || (this.v.ressources = []);
+    const ajouter = (fichiers) => {
+      for (const f of fichiers) this.v.ressources = Ariane.ressourcesAvec(this.v.ressources, g.lienRessource(f, this.ref));
+      this._dessiner();
+    };
+    const s = this._setting(c, tr('Ressources'), 'paperclip', true)
+      .setDesc(liste.length ? '' : tr('Les notes et fichiers utiles : choisissez-les, ou glissez-les ici.'))
+      .addButton((b) => b.setButtonText(tr('Ajouter…')).onClick(() => g.choisirRessource(this.ref, ajouter)));
+    g.brancherDepotRessources(s.settingEl, this.ref, ajouter);
+    for (const lien of liste) {
+      const l = c.createDiv({ cls: 'zfa-ressource-ligne' });
+      obsidian.setIcon(l.createSpan({ cls: 'zfa-ressource-ic' }), 'paperclip');
+      l.createSpan({ cls: 'zfa-ressource-nom', text: Ariane.cibleRessource(lien).split('/').pop() });
+      const x = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Retirer cette ressource') } });
+      obsidian.setIcon(x, 'x');
+      x.onclick = () => { this.v.ressources = Ariane.ressourcesSans(this.v.ressources, lien); this._dessiner(); };
+    }
   }
 
   _champProp(c, p) {
@@ -1030,6 +1054,7 @@ class ModaleTache extends obsidian.Modal {
         'temps-estime': Number(this.v.tempsEstime) > 0 ? Number(this.v.tempsEstime) : '',
         jalon: this.v.jalon === true,
         parent: this.v.parent ? '[[' + this.v.parent + ']]' : '',
+        ressources: this.v.ressources || [],
         famille: this.v.famille,
       };
       // Un rattachement qui fermerait un cycle n'est pas appliqué (le reste l'est).
