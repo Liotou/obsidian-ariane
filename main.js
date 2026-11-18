@@ -45980,8 +45980,9 @@ class MoteurCalendrier extends MoteurVue {
     }
     // Les tâches associées à cet événement : un clic ouvre la tâche.
     for (const a of (this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [])) {
-      const t = ligne('link', tr('Tâche : ') + a.tache.intitule + ' (' + a.tache.ref + ')',
+      const t = ligne('square-check', a.tache.intitule + ' (' + a.tache.ref + ')',
         'est-lien' + (Ariane.tacheClose(a.tache) ? ' est-tache-close' : ''));
+      t.parentElement.setAttr('title', tr('Tâche'));
       t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref); });
     }
     const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e) : null;
@@ -46068,7 +46069,9 @@ class MoteurCalendrier extends MoteurVue {
     }
     // Sources, livrable, ressources, événements et tâches liés : un clic les ouvre.
     for (const a of (g.liensAssociesTache ? g.liensAssociesTache(t.ref) : [])) {
-      const tx = ligne(a.icone, a.genre + ' : ' + a.libelle);
+      // L'icône dit le genre ; l'infobulle le précise au besoin.
+      const tx = ligne(a.icone, a.libelle);
+      tx.parentElement.setAttr('title', a.genre);
       if (a.close) tx.parentElement.addClass('est-tache-close');
       if (!a.f) continue;
       tx.parentElement.addClass('est-lien');
