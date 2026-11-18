@@ -907,7 +907,9 @@ const avecTachesStatiques = (Base) => class extends Base {
   // sa copie du coffre) ; sans copie, le nom seul, ou un lien vers l'adresse.
   static blocPiecesEvenement(pieces, liens) {
     if (!(pieces || []).length) return '';
-    const l = ['<!-- ariane:pieces -->', '## ' + tr('Pièces jointes'), ''];
+    // En gras, pas en titre : ce dossier peut numéroter ses titres, et le bloc,
+    // ainsi modifié, serait réécrit à chaque passe.
+    const l = ['<!-- ariane:pieces -->', '**' + tr('Pièces jointes') + '**', ''];
     for (const p of pieces) {
       const lien = liens && liens.get(p);
       const nom = lien || (p.url ? '[' + p.nom.replace(/[[\]]/g, '') + '](' + p.url.replace(/\)/g, '%29') + ')' : p.nom);
@@ -980,6 +982,25 @@ const avecTachesStatiques = (Base) => class extends Base {
   static nomNoteEvenement(e) {
     const q = Ariane.quandEvenement(e);
     return 'EV-' + q.slice(0, 10).replace(/-/g, '') + (q.length > 10 ? '-' + q.slice(11, 16).replace(':', '') : '');
+  }
+
+  // L'ancien nom d'une note d'événement : daté de sa création, non de l'événement.
+  static estAncienNomNoteEvenement(nom) {
+    return /^EV-\d{12}(-\d+)?$/.test(String(nom || ''));
+  }
+
+  // Identifiant et instant lus dans le texte d'une note, pour reconnaître
+  // celle que le cache d'Obsidian n'a pas encore indexée.
+  static enteteNoteEvenement(texte) {
+    const t = String(texte || '');
+    const fin = t.startsWith('---\n') ? t.indexOf('\n---', 4) : -1;
+    const y = fin > 0 ? t.slice(4, fin) : '';
+    const lire = (k) => {
+      const m = new RegExp('^' + k + ':[ \\t]*(.*)$', 'm').exec(y);
+      return m ? m[1].trim().replace(/^["']|["']$/g, '') : '';
+    };
+    return { id: Ariane.idStableEvenement(lire('Événement ID')),
+      quand: Ariane.quandDeNoteEvenement({ 'Début': lire('Début'), Date: lire('Date') }) };
   }
 
   // Les propriétés que l'agenda tient à jour. Une valeur vide retire la clé.
@@ -1069,7 +1090,7 @@ const avecTachesStatiques = (Base) => class extends Base {
 
   static blocDescriptionEvenement(texte) {
     const t = String(texte || '').trim().replace(/<!--/g, '&lt;!--');
-    return t ? '<!-- ariane:description -->\n## ' + tr('Description') + '\n\n' + t + '\n<!-- /ariane:description -->' : '';
+    return t ? '<!-- ariane:description -->\n**' + tr('Description') + '**\n\n' + t + '\n<!-- /ariane:description -->' : '';
   }
 
   // Le corps d'une note d'événement : ses blocs et, si l'utilisateur ne l'a

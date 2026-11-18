@@ -812,6 +812,7 @@ const TEXTES = {
     "Cette tâche ne sera pas créée : le lien tombe.": "This task will not be created, so the link is dropped.",
     "Retirer cette dépendance": "Remove this dependency",
     " (introuvable)": " (not found)",
+    " note(s) d’événement renommée(s).": " event note(s) renamed.",
     "Description": "Description",
     " note(s) d’événement créée(s).": " event note(s) created.",
     "Aucun événement lu dans l’agenda.": "No event read from the calendar.",
@@ -16504,7 +16505,9 @@ const avecTachesStatiques = (Base) => class extends Base {
   // sa copie du coffre) ; sans copie, le nom seul, ou un lien vers l'adresse.
   static blocPiecesEvenement(pieces, liens) {
     if (!(pieces || []).length) return '';
-    const l = ['<!-- ariane:pieces -->', '## ' + tr('Pièces jointes'), ''];
+    // En gras, pas en titre : ce dossier peut numéroter ses titres, et le bloc,
+    // ainsi modifié, serait réécrit à chaque passe.
+    const l = ['<!-- ariane:pieces -->', '**' + tr('Pièces jointes') + '**', ''];
     for (const p of pieces) {
       const lien = liens && liens.get(p);
       const nom = lien || (p.url ? '[' + p.nom.replace(/[[\]]/g, '') + '](' + p.url.replace(/\)/g, '%29') + ')' : p.nom);
@@ -16577,6 +16580,25 @@ const avecTachesStatiques = (Base) => class extends Base {
   static nomNoteEvenement(e) {
     const q = Ariane.quandEvenement(e);
     return 'EV-' + q.slice(0, 10).replace(/-/g, '') + (q.length > 10 ? '-' + q.slice(11, 16).replace(':', '') : '');
+  }
+
+  // L'ancien nom d'une note d'événement : daté de sa création, non de l'événement.
+  static estAncienNomNoteEvenement(nom) {
+    return /^EV-\d{12}(-\d+)?$/.test(String(nom || ''));
+  }
+
+  // Identifiant et instant lus dans le texte d'une note, pour reconnaître
+  // celle que le cache d'Obsidian n'a pas encore indexée.
+  static enteteNoteEvenement(texte) {
+    const t = String(texte || '');
+    const fin = t.startsWith('---\n') ? t.indexOf('\n---', 4) : -1;
+    const y = fin > 0 ? t.slice(4, fin) : '';
+    const lire = (k) => {
+      const m = new RegExp('^' + k + ':[ \\t]*(.*)$', 'm').exec(y);
+      return m ? m[1].trim().replace(/^["']|["']$/g, '') : '';
+    };
+    return { id: Ariane.idStableEvenement(lire('Événement ID')),
+      quand: Ariane.quandDeNoteEvenement({ 'Début': lire('Début'), Date: lire('Date') }) };
   }
 
   // Les propriétés que l'agenda tient à jour. Une valeur vide retire la clé.
@@ -16666,7 +16688,7 @@ const avecTachesStatiques = (Base) => class extends Base {
 
   static blocDescriptionEvenement(texte) {
     const t = String(texte || '').trim().replace(/<!--/g, '&lt;!--');
-    return t ? '<!-- ariane:description -->\n## ' + tr('Description') + '\n\n' + t + '\n<!-- /ariane:description -->' : '';
+    return t ? '<!-- ariane:description -->\n**' + tr('Description') + '**\n\n' + t + '\n<!-- /ariane:description -->' : '';
   }
 
   // Le corps d'une note d'événement : ses blocs et, si l'utilisateur ne l'a
@@ -23447,7 +23469,7 @@ const avecTaches = (Base) => class extends Base {
 
   // La note d'un événement, créée au besoin, alignée sur lui.
   async noteEvenementAJour(e) {
-    let f = e ? this.noteDeEvenement(e) : null;
+    let f = e ? (this.noteDeEvenement(e) || await this._noteEvenementSurDisque(e)) : null;
     if (!f) {
       const jour = String((e && e.debut) || '').slice(0, 10);
       const nom = String((e && e.titre) || '').trim() || (tr('Événement ') + (jour || ''));
@@ -23461,6 +23483,33 @@ const avecTaches = (Base) => class extends Base {
   }
 
   majPiecesNoteEvenement(f, e) { return this.actualiserNoteEvenement(f, e); }
+
+  // La note déjà écrite pour cet événement, lue dans le fichier : le cache
+  // d'Obsidian ne connaît pas tout de suite une note qui vient d'être créée,
+  // et s'y fier ferait créer un doublon à la passe suivante.
+  async _noteEvenementSurDisque(e) {
+    const base = this.dossierNE + '/' + Ariane.nomNoteEvenement(e);
+    const id = Ariane.idStableEvenement(e.id);
+    const quand = Ariane.quandEvenement(e);
+    for (let n = 1; n < 100; n += 1) {
+      const f = this.app.vault.getAbstractFileByPath(base + (n > 1 ? '-' + n : '') + '.md');
+      if (!f) return null;
+      const h = Ariane.enteteNoteEvenement(await this.app.vault.cachedRead(f));
+      if (h.id === id && (h.quand === quand || h.quand.slice(0, 10) === quand.slice(0, 10))) return f;
+    }
+    return null;
+  }
+
+  // Donne à une note son nom daté d'après l'événement. Par Obsidian : les liens
+  // suivent, comme le temps passé et les autres relevés tenus par chemin.
+  async _renommerNoteEvenement(f, e) {
+    const dossier = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/') + 1) : '';
+    const base = dossier + Ariane.nomNoteEvenement(e);
+    let chemin = base + '.md';
+    for (let n = 2; this.app.vault.getAbstractFileByPath(chemin); n += 1) chemin = base + '-' + n + '.md';
+    await this.app.fileManager.renameFile(f, chemin);
+    this._indexNE = null;
+  }
 
   // Aligne une note sur son événement. N'écrit que ce qui diffère : ni les
   // propriétés d'Ariane absentes de l'agenda, ni le texte de l'utilisateur ne
@@ -23721,7 +23770,7 @@ const avecTaches = (Base) => class extends Base {
     const opt = o || {};
     if (surMobile() || this._syncNE || !(evenements || []).length) return { creees: 0, maj: 0 };
     this._syncNE = true;
-    let creees = 0, maj = 0;
+    let creees = 0, maj = 0, renommees = 0;
     try {
       this._indexNE = null;
       const dansFenetre = [...this._indexNotesEvenement().values()].flat().filter((n) => {
@@ -23738,6 +23787,10 @@ const avecTaches = (Base) => class extends Base {
           absences.delete(n.cle);
           await this.actualiserNoteEvenement(n.f, e);
           maj += 1;
+          if (opt.lecture && Ariane.estAncienNomNoteEvenement(n.f.basename)) {
+            await this._renommerNoteEvenement(n.f, e);
+            renommees += 1;
+          }
           await souffler();
         } else if (opt.lecture && Ariane.noteEvenementJugeable(n, bornes, opt.lecture)) {
           const depuis = absences.get(n.cle);
@@ -23752,7 +23805,7 @@ const avecTaches = (Base) => class extends Base {
       const auj = jourIsoDe(new Date());
       for (const e of restants.sort((a, b) => String(a.debut).localeCompare(String(b.debut)))) {
         if (!this._calendrierAvecNotes(e) || !Ariane.evenementDansHorizon(e, origine, auj)) continue;
-        if (this.noteDeEvenement(e)) continue;
+        if (this.noteDeEvenement(e) || await this._noteEvenementSurDisque(e)) continue;
         await this.noteEvenementAJour(e);
         creees += 1;
         await souffler();
@@ -23761,7 +23814,7 @@ const avecTaches = (Base) => class extends Base {
       this._syncNE = false;
       this._indexNE = null;
     }
-    return { creees, maj };
+    return { creees, maj, renommees };
   }
 
   // Relecture complète : de l'origine du coffre à un peu plus d'un an.
@@ -23777,6 +23830,7 @@ const avecTaches = (Base) => class extends Base {
     if (!lecture || lecture.cle !== debut + '|' + fin || !lecture.ok) return null;
     const r = await this.synchroniserNotesEvenements(evs, { debut, fin: Ariane.decalerJour(fin, -1) }, { lecture });
     if (r.creees) new obsidian.Notice(r.creees + tr(' note(s) d’événement créée(s).'));
+    if (r.renommees) new obsidian.Notice(r.renommees + tr(' note(s) d’événement renommée(s).'));
     return r;
   }
 

@@ -2780,7 +2780,7 @@ const avecTaches = (Base) => class extends Base {
 
   // La note d'un événement, créée au besoin, alignée sur lui.
   async noteEvenementAJour(e) {
-    let f = e ? this.noteDeEvenement(e) : null;
+    let f = e ? (this.noteDeEvenement(e) || await this._noteEvenementSurDisque(e)) : null;
     if (!f) {
       const jour = String((e && e.debut) || '').slice(0, 10);
       const nom = String((e && e.titre) || '').trim() || (tr('Événement ') + (jour || ''));
@@ -2794,6 +2794,33 @@ const avecTaches = (Base) => class extends Base {
   }
 
   majPiecesNoteEvenement(f, e) { return this.actualiserNoteEvenement(f, e); }
+
+  // La note déjà écrite pour cet événement, lue dans le fichier : le cache
+  // d'Obsidian ne connaît pas tout de suite une note qui vient d'être créée,
+  // et s'y fier ferait créer un doublon à la passe suivante.
+  async _noteEvenementSurDisque(e) {
+    const base = this.dossierNE + '/' + Ariane.nomNoteEvenement(e);
+    const id = Ariane.idStableEvenement(e.id);
+    const quand = Ariane.quandEvenement(e);
+    for (let n = 1; n < 100; n += 1) {
+      const f = this.app.vault.getAbstractFileByPath(base + (n > 1 ? '-' + n : '') + '.md');
+      if (!f) return null;
+      const h = Ariane.enteteNoteEvenement(await this.app.vault.cachedRead(f));
+      if (h.id === id && (h.quand === quand || h.quand.slice(0, 10) === quand.slice(0, 10))) return f;
+    }
+    return null;
+  }
+
+  // Donne à une note son nom daté d'après l'événement. Par Obsidian : les liens
+  // suivent, comme le temps passé et les autres relevés tenus par chemin.
+  async _renommerNoteEvenement(f, e) {
+    const dossier = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/') + 1) : '';
+    const base = dossier + Ariane.nomNoteEvenement(e);
+    let chemin = base + '.md';
+    for (let n = 2; this.app.vault.getAbstractFileByPath(chemin); n += 1) chemin = base + '-' + n + '.md';
+    await this.app.fileManager.renameFile(f, chemin);
+    this._indexNE = null;
+  }
 
   // Aligne une note sur son événement. N'écrit que ce qui diffère : ni les
   // propriétés d'Ariane absentes de l'agenda, ni le texte de l'utilisateur ne
@@ -3054,7 +3081,7 @@ const avecTaches = (Base) => class extends Base {
     const opt = o || {};
     if (surMobile() || this._syncNE || !(evenements || []).length) return { creees: 0, maj: 0 };
     this._syncNE = true;
-    let creees = 0, maj = 0;
+    let creees = 0, maj = 0, renommees = 0;
     try {
       this._indexNE = null;
       const dansFenetre = [...this._indexNotesEvenement().values()].flat().filter((n) => {
@@ -3071,6 +3098,10 @@ const avecTaches = (Base) => class extends Base {
           absences.delete(n.cle);
           await this.actualiserNoteEvenement(n.f, e);
           maj += 1;
+          if (opt.lecture && Ariane.estAncienNomNoteEvenement(n.f.basename)) {
+            await this._renommerNoteEvenement(n.f, e);
+            renommees += 1;
+          }
           await souffler();
         } else if (opt.lecture && Ariane.noteEvenementJugeable(n, bornes, opt.lecture)) {
           const depuis = absences.get(n.cle);
@@ -3085,7 +3116,7 @@ const avecTaches = (Base) => class extends Base {
       const auj = jourIsoDe(new Date());
       for (const e of restants.sort((a, b) => String(a.debut).localeCompare(String(b.debut)))) {
         if (!this._calendrierAvecNotes(e) || !Ariane.evenementDansHorizon(e, origine, auj)) continue;
-        if (this.noteDeEvenement(e)) continue;
+        if (this.noteDeEvenement(e) || await this._noteEvenementSurDisque(e)) continue;
         await this.noteEvenementAJour(e);
         creees += 1;
         await souffler();
@@ -3094,7 +3125,7 @@ const avecTaches = (Base) => class extends Base {
       this._syncNE = false;
       this._indexNE = null;
     }
-    return { creees, maj };
+    return { creees, maj, renommees };
   }
 
   // Relecture complète : de l'origine du coffre à un peu plus d'un an.
@@ -3110,6 +3141,7 @@ const avecTaches = (Base) => class extends Base {
     if (!lecture || lecture.cle !== debut + '|' + fin || !lecture.ok) return null;
     const r = await this.synchroniserNotesEvenements(evs, { debut, fin: Ariane.decalerJour(fin, -1) }, { lecture });
     if (r.creees) new obsidian.Notice(r.creees + tr(' note(s) d’événement créée(s).'));
+    if (r.renommees) new obsidian.Notice(r.renommees + tr(' note(s) d’événement renommée(s).'));
     return r;
   }
 

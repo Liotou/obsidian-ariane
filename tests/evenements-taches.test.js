@@ -84,7 +84,8 @@ function coffre(notes, taches) {
   };
   g.creerNoteEvenement = async (c) => {
     const p = 'EV/' + c.nom + '.md';
-    notes[p] = { fm: null, nouveau: { 'Événement ID': c.evenementId, Date: c.date, aliases: [c.intitule] }, corps: '# ' + c.intitule + '\n' };
+    notes[p] = { fm: null, nouveau: { 'Événement ID': c.evenementId, Date: c.date, aliases: [c.intitule] },
+      corps: Ariane.corpsNouvelleNoteEvenement({ intitule: c.intitule, date: c.date, evenementId: c.evenementId }) };
     fs.set(p, fichier(p));
     return p;
   };
@@ -100,7 +101,11 @@ function coffre(notes, taches) {
       fileToLinktext: (f) => f.basename,
       getFirstLinkpathDest: (c) => [...fs.values()].find((f) => f.basename === c) || null,
     },
-    fileManager: { processFrontMatter: async (f, fn) => {
+    fileManager: { renameFile: async (f, nv) => {
+      g.renommages = (g.renommages || []).concat([[f.path, nv]]);
+      notes[nv] = notes[f.path]; delete notes[f.path];
+      fs.delete(f.path); fs.set(nv, fichier(nv));
+    }, processFrontMatter: async (f, fn) => {
       g.ecritures.push(['fm', f.path]);
       const n = notes[f.path] || f.fm;
       if (!notes[f.path]) { fn(f.fm); return; }
@@ -184,4 +189,37 @@ test('tâche : préparer fixe l’échéance, faire suite non ; retirer vide la 
   assert.deepEqual(g.tachesDeEvenement(a).map((x) => [x.tache.ref, x.suite]), [['T1', false]]);
   await g.dissocierEvenementTache('T1', '[[EV-20261120-1000]]');
   assert.equal('prepare' in f.fm, false);
+});
+
+test('pas de doublon quand le cache d’Obsidian ignore encore une note créée', async () => {
+  const notes = {};
+  const g = coffre(notes, []);
+  const e = ev('A', J(5) + 'T10:00', 'Réunion');
+  const b = { debut: '2025-06-13', fin: J(399) };
+  assert.equal((await g.synchroniserNotesEvenements([e], b)).creees, 1);
+  for (const n of Object.values(notes)) n.fm = null;     // le cache n'a pas encore suivi
+  assert.equal((await g.synchroniserNotesEvenements([e], b)).creees, 0);
+  assert.equal(Object.keys(notes).length, 1);
+  assert.deepEqual(Ariane.enteteNoteEvenement('---\nÉvénement ID: "ics:u|2026-11-20T10:00"\nDate: 2026-11-20\n---\n'),
+    { id: 'ics:u', quand: '2026-11-20' });
+});
+
+test('anciens noms : renommés par Obsidian lors d’une relecture sûre, jamais sur une simple vue', async () => {
+  const e = ev('A', '2026-11-20T09:00', 'GT');
+  const notes = { 'EV/EV-202611181106.md': { fm: Object.assign(Ariane.champsNoteEvenement(e), { Ressources: [] }), corps: '# GT\n' },
+    'EV/EV-20261120-0900.md': { fm: Object.assign(Ariane.champsNoteEvenement(ev('B', '2026-11-20T09:00', 'Autre')), { Ressources: [] }), corps: '# Autre\n' } };
+  const g = coffre(notes, []);
+  const evs = [e, ev('B', '2026-11-20T09:00', 'Autre')];
+  const b = { debut: '2026-11-01', fin: '2026-11-30' };
+  await g.synchroniserNotesEvenements(evs, b);
+  assert.equal(g.renommages, undefined);
+  const r = await g.synchroniserNotesEvenements(evs, b, { lecture: { ok: true, calendriers: ['Calendrier'] } });
+  assert.equal(r.renommees, 1);
+  assert.deepEqual(g.renommages, [['EV/EV-202611181106.md', 'EV/EV-20261120-0900-2.md']]);
+});
+
+test('blocs de la note : sans titre, que la numérotation du dossier ne peut pas modifier', () => {
+  const c = Ariane.corpsNoteEvenement('# T\n', ev('A', '2026-11-20T10:00', 'T', { notes: 'Texte' }), 'T', [{ nom: 'a.pdf', taille: 10 }]);
+  assert.ok(!/^##/m.test(c));
+  assert.ok(c.includes('**Description**') && c.includes('**Pièces jointes**'));
 });

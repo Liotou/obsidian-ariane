@@ -606,6 +606,7 @@ const TEXTES = {
     "Cette tâche ne sera pas créée : le lien tombe.": "This task will not be created, so the link is dropped.",
     "Retirer cette dépendance": "Remove this dependency",
     " (introuvable)": " (not found)",
+    " note(s) d’événement renommée(s).": " event note(s) renamed.",
     "Description": "Description",
     " note(s) d’événement créée(s).": " event note(s) created.",
     "Aucun événement lu dans l’agenda.": "No event read from the calendar.",
