@@ -354,3 +354,79 @@ test('Langage naturel : « à rattacher à la tâche… » range la tâche sous 
   assert.deepEqual(await g.creerTachesLN(specs), ['T091', 'T092', 'T093']);
   assert.deepEqual(rattaches, [['T091', 'T050'], ['T092', 'T070']]);
 });
+
+// ── Aperçu en langage naturel : les dépendances sous chaque ligne ─────────
+// Un DOM réduit au strict nécessaire : des nœuds qui gardent texte, classes,
+// attributs et enfants, et un bouton dont on peut appeler onclick.
+function noeudFactice(cls) {
+  const n = {
+    classes: new Set(String(cls || '').split(/\s+/).filter(Boolean)),
+    enfants: [], texte: '', attrs: {}, onclick: null,
+    creer(o) {
+      const e = noeudFactice(o && o.cls);
+      if (o && o.text) e.texte = o.text;
+      if (o && o.attr) Object.assign(e.attrs, o.attr);
+      n.enfants.push(e);
+      return e;
+    },
+    createDiv(o) { return n.creer(o); },
+    createSpan(o) { return n.creer(o); },
+    createEl(_, o) { return n.creer(o); },
+    empty() { n.enfants = []; },
+    toggleClass(c, oui) { if (oui) n.classes.add(c); else n.classes.delete(c); },
+    addClass(c) { n.classes.add(c); },
+    setAttr(k, v) { n.attrs[k] = v; },
+    tout() { return n.enfants.flatMap((e) => [e, ...e.tout()]); },
+    lu() { return n.tout().map((e) => e.texte).join(''); },
+  };
+  return n;
+}
+
+test('ligneLiensLN : « puis » se lit sous les deux tâches, avant et après', () => {
+  const { ligneLiensLN } = Ariane._test;
+  const specs = [
+    { titre: 'Ajouter les données sur Excel RESENA', apres: null, bloquePar: '' },
+    { titre: 'Répondre au mail de Thomas MARCON', apres: 0, bloquePar: '' },
+  ];
+  const hote = noeudFactice();
+  ligneLiensLN(hote, specs, 0, 'zfa-tc-ln-sous');
+  ligneLiensLN(hote, specs, 1, 'zfa-tc-ln-sous');
+  const [l0, l1] = hote.enfants;
+  assert.equal(l0.lu(), 'Avant « Répondre au mail de Thomas MARCON »');
+  assert.equal(l1.lu(), 'Après « Ajouter les données sur Excel RESENA »');
+  assert.ok(!l1.classes.has('est-vide'));
+});
+
+test('ligneLiensLN : sans dépendance, la ligne se cache ; une tâche existante bloquante se lit', () => {
+  const { ligneLiensLN } = Ariane._test;
+  const hote = noeudFactice();
+  ligneLiensLN(hote, [{ titre: 'Seule', apres: null, bloquePar: '' }], 0);
+  assert.ok(hote.enfants[0].classes.has('est-vide'));
+  const h2 = noeudFactice();
+  ligneLiensLN(h2, [{ titre: 'Envoyer', apres: null, bloquePar: 'Relire le chapitre 2' }], 0);
+  assert.equal(h2.enfants[0].lu(), 'Bloquée par la tâche existante « Relire le chapitre 2 »');
+});
+
+test('ligneLiensLN : tâche décochée, le lien est barré ; ✕ retire la dépendance et prévient', () => {
+  const { ligneLiensLN } = Ariane._test;
+  const specs = [
+    { titre: 'Rédiger le résumé', apres: null, bloquePar: '' },
+    { titre: 'Envoyer le résumé', apres: 0, bloquePar: '' },
+  ];
+  const hote = noeudFactice();
+  const maj = [];
+  const toutes = () => maj.forEach((f) => f());
+  maj.push(ligneLiensLN(hote, specs, 0, '', toutes));
+  maj.push(ligneLiensLN(hote, specs, 1, '', toutes));
+  specs[0].inclus = false;
+  toutes();
+  const lien1 = hote.enfants[1].tout().find((e) => e.classes.has('zfa-ln-lien'));
+  assert.ok(lien1.classes.has('est-tombe'));
+  assert.ok(lien1.attrs.title);
+  // Le ✕ de la seconde tâche retire « après » : les deux lignes se vident.
+  const bouton = hote.enfants[1].tout().find((e) => e.onclick);
+  bouton.onclick();
+  assert.equal(specs[1].apres, null);
+  assert.ok(hote.enfants[0].classes.has('est-vide'));
+  assert.ok(hote.enfants[1].classes.has('est-vide'));
+});

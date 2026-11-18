@@ -140,6 +140,7 @@ module.exports._test = {
   ModaleSeance,
   ModaleTacheDuCreneau,
   ModaleTache,       // création : langage naturel d'emblée, formulaire en option
+  ligneLiensLN,      // dépendances des tâches proposées en langage naturel
   ModaleFusionTaches,
   GestionCommentairesMarge,
   // Assistant IA : consignes, masquage des liens, différences, intention.

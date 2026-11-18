@@ -139,6 +139,51 @@ function ligneMereLN(hote, n, greffon, app, cls) {
   dessiner();
 }
 
+// Les dépendances d'une tâche proposée en langage naturel, sous sa ligne :
+// la tâche de la même phrase à finir avant (`apres`, un rang dans `specs`),
+// celles de la phrase qui l'attendent, et une tâche existante qui la bloque
+// (`bloquePar`). Une tâche décochée n'est pas créée : le lien qui passe par
+// elle tombe, et la ligne le montre barré. ✕ retire une dépendance. Rend la
+// fonction qui redessine, à rappeler quand une case ou un titre change ;
+// `surChange` prévient les autres lignes, que le retrait touche aussi.
+function ligneLiensLN(hote, specs, i, cls, surChange) {
+  const n = specs[i];
+  const l = hote.createDiv({ cls: (cls || '') + ' zfa-ln-liens' });
+  const dessiner = () => {
+    l.empty();
+    const liens = [];
+    const avant = n.apres != null ? specs[n.apres] : null;
+    if (avant) {
+      liens.push({ texte: tr('Après « ') + avant.titre + ' »', tombe: avant.inclus === false,
+        retirer: () => { n.apres = null; } });
+    }
+    specs.forEach((s, k) => {
+      if (k === i || s.apres !== i) return;
+      liens.push({ texte: tr('Avant « ') + s.titre + ' »', tombe: s.inclus === false,
+        retirer: () => { s.apres = null; } });
+    });
+    if (n.bloquePar) {
+      liens.push({ texte: tr('Bloquée par la tâche existante « ') + n.bloquePar + ' »', tombe: false,
+        retirer: () => { n.bloquePar = ''; } });
+    }
+    l.toggleClass('est-vide', !liens.length);
+    if (!liens.length) return;
+    obsidian.setIcon(l.createSpan({ cls: 'zfa-ln-liens-icone' }), 'arrow-right-left');
+    for (const x of liens) {
+      const tombe = x.tombe || n.inclus === false;
+      const lien = l.createSpan({ cls: 'zfa-ln-lien' + (tombe ? ' est-tombe' : '') });
+      lien.createSpan({ text: x.texte });
+      if (tombe) lien.setAttr('title', tr('Cette tâche ne sera pas créée : le lien tombe.'));
+      const ot = lien.createEl('button', { cls: 'clickable-icon',
+        attr: { 'aria-label': tr('Retirer cette dépendance') } });
+      obsidian.setIcon(ot, 'x');
+      ot.onclick = () => { x.retirer(); if (surChange) surChange(); else dessiner(); };
+    }
+  };
+  dessiner();
+  return dessiner;
+}
+
 class ModaleTacheDuCreneau extends obsidian.SuggestModal {
   // o : { taches, jour, horaire, surChoix(ref), surNouvelle(texte), surAbandon() }
   constructor(app, greffon, o) {
@@ -304,16 +349,20 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
     z.empty();
     z.show();
     const familles = (this.greffon.famillesIA && this.greffon.famillesIA()) || [];
+    // Les lignes de dépendances se redessinent ensemble : décocher une tâche
+    // ou la renommer change ce qu'affichent celles qui y renvoient.
+    const liens = [];
+    const majLiens = () => liens.forEach((f) => f());
     specs.forEach((n, i) => {
       const l = z.createDiv({ cls: 'zfa-tc-ln-ligne' });
       if (specs.length > 1) {
         const cb = l.createEl('input', { type: 'checkbox' });
         cb.checked = n.inclus !== false;
-        cb.addEventListener('change', () => { n.inclus = cb.checked; l.toggleClass('est-exclu', !cb.checked); });
+        cb.addEventListener('change', () => { n.inclus = cb.checked; l.toggleClass('est-exclu', !cb.checked); majLiens(); });
       }
       const titre = l.createEl('input', { type: 'text', cls: 'zfa-tc-ln-titre' });
       titre.value = n.titre;
-      titre.addEventListener('change', () => { n.titre = titre.value.trim() || n.titre; });
+      titre.addEventListener('change', () => { n.titre = titre.value.trim() || n.titre; majLiens(); });
       if (familles.length) {
         const fam = l.createEl('select', { cls: 'dropdown zfa-tc-ln-fam' });
         for (const f of familles) fam.createEl('option', { value: f.id, text: f.nom || f.id });
@@ -329,6 +378,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       jc.addEventListener('change', () => { n.jalon = jc.checked; });
       jal.createSpan({ text: tr('jalon') });
       if (i === 0) l.createSpan({ cls: 'zfa-tc-ln-marque', text: tr('créneau') });
+      liens.push(ligneLiensLN(z, specs, i, 'zfa-tc-ln-sous', majLiens));
       ligneMereLN(z, n, this.greffon, this.app, 'zfa-tc-ln-sous');
     });
     const pied = z.createDiv({ cls: 'zfa-tc-ln-pied' });

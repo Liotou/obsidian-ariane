@@ -4579,6 +4579,17 @@ body.zfa-cal-pose-en-cours * { cursor: copy !important; }
 .zfa-ln-mere-ref { font-family: var(--font-monospace); color: var(--text-faint); }
 .zfa-ln-mere.est-introuvable { color: var(--text-warning); }
 .zfa-ln-mere .clickable-icon { padding: 1px; }
+/* Les dépendances comprises par l'IA (après, avant, bloquée par), sous la
+   ligne de la tâche proposée ; barrées quand l'autre tâche est décochée. */
+.zfa-ln-liens { display: flex; align-items: center; flex-wrap: wrap; gap: 2px var(--size-4-2);
+  font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.zfa-ln-liens.est-vide { display: none; }
+.zfa-ln-liens.zfa-tc-ln-sous { padding-left: var(--size-4-2); margin-top: calc(-1 * var(--size-4-1)); }
+.zfa-ln-liens-icone { display: inline-flex; color: var(--text-accent); }
+.zfa-ln-liens-icone svg { width: 13px; height: 13px; }
+.zfa-ln-lien { display: inline-flex; align-items: center; gap: 2px; }
+.zfa-ln-lien.est-tombe > span { text-decoration: line-through; color: var(--text-faint); }
+.zfa-ln-liens .clickable-icon { padding: 1px; }
 .zfa-ln-mere .clickable-icon svg { width: 13px; height: 13px; }
 .zfa-ln-livrable .clickable-icon { padding: 1px; }
 .zfa-ln-livrable svg { width: 14px; height: 14px; }
