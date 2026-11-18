@@ -2570,8 +2570,10 @@ const avecTaches = (Base) => class extends Base {
     const shell = (() => { try { return require('electron').shell; } catch (e) { return null; } })();
     const copie = this.fichierDePiece(p);
     if (copie) {
-      if (/^(pdf|png|jpe?g|gif|webp|mp3|m4a|wav|mp4|mov)$/i.test(copie.extension) || !shell) {
-        await this.app.workspace.getLeaf(false).openFile(copie);
+      // Dans un nouvel onglet : le calendrier d'où l'on clique reste ouvert.
+      // Ce qu'Obsidian ne sait pas afficher (Word, Excel…) va à son application.
+      if (/^(pdf|png|jpe?g|gif|webp|mp3|m4a|wav|mp4|mov|md)$/i.test(copie.extension) || !shell) {
+        await this.app.workspace.getLeaf('tab').openFile(copie);
       } else await shell.openPath(this.app.vault.adapter.getFullPath(copie.path));
       return true;
     }

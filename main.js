@@ -16137,8 +16137,10 @@ const avecTachesStatiques = (Base) => class extends Base {
   //  reçu avec une invitation vient de n'importe qui : seuls les documents
   //  courants s'ouvrent ou s'importent, jamais un programme ni un script.
 
+  // En forme composée (NFC) : Calendrier rend les accents décomposés, le
+  // coffre les garde composés, et deux formes du même nom ne s'égalent pas.
   static nomFichierPiece(nom) {
-    const n = String(nom || '').replace(/[\\/:*?"<>|#^[\]\u0000-\u001f]/g, '-').replace(/^\.+/, '').trim();
+    const n = String(nom || '').normalize('NFC').replace(/[\\/:*?"<>|#^[\]\u0000-\u001f]/g, '-').replace(/^\.+/, '').trim();
     return n || 'piece-jointe';
   }
 
@@ -16202,8 +16204,9 @@ const avecTachesStatiques = (Base) => class extends Base {
     const i = nom.lastIndexOf('.');
     if (i <= 0 || !f || !f.name || !p.taille || !f.stat || f.stat.size !== p.taille) return false;
     const racine = nom.slice(0, i), ext = nom.slice(i);
-    if (!f.name.endsWith(ext)) return false;
-    const base = f.name.slice(0, -ext.length);
+    const nomF = String(f.name).normalize('NFC');
+    if (!nomF.endsWith(ext)) return false;
+    const base = nomF.slice(0, -ext.length);
     return base === racine || (base.startsWith(racine + ' ') && /^\d+$/.test(base.slice(racine.length + 1)));
   }
 
@@ -22902,8 +22905,10 @@ const avecTaches = (Base) => class extends Base {
     const shell = (() => { try { return require('electron').shell; } catch (e) { return null; } })();
     const copie = this.fichierDePiece(p);
     if (copie) {
-      if (/^(pdf|png|jpe?g|gif|webp|mp3|m4a|wav|mp4|mov)$/i.test(copie.extension) || !shell) {
-        await this.app.workspace.getLeaf(false).openFile(copie);
+      // Dans un nouvel onglet : le calendrier d'où l'on clique reste ouvert.
+      // Ce qu'Obsidian ne sait pas afficher (Word, Excel…) va à son application.
+      if (/^(pdf|png|jpe?g|gif|webp|mp3|m4a|wav|mp4|mov|md)$/i.test(copie.extension) || !shell) {
+        await this.app.workspace.getLeaf('tab').openFile(copie);
       } else await shell.openPath(this.app.vault.adapter.getFullPath(copie.path));
       return true;
     }

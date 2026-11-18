@@ -109,3 +109,23 @@ test('le script d’agenda demande les pièces en gardant le test du sélecteur'
   assert.ok(s.includes('respondsToSelector("attachments")'));
   assert.ok(s.includes('pj.join("\\u001e")'));
 });
+
+test('copie du coffre : le nom décomposé de Calendrier retrouve le nom composé du coffre', () => {
+  const nfd = 'Programme détaillé.pdf'.normalize('NFD');
+  const nfc = 'Programme détaillé.pdf'.normalize('NFC');
+  assert.notEqual(nfd, nfc);
+  assert.ok(Ariane.fichierEstPiece({ name: nfc, stat: { size: 10 } }, { nom: nfd, taille: 10 }));
+  assert.equal(Ariane.nomFichierPiece(nfd), nfc);
+});
+
+test('une pièce importée s’ouvre dans un onglet d’Obsidian, sans copie temporaire', async () => {
+  const nfd = 'Programme détaillé.pdf'.normalize('NFD');
+  const copie = { name: nfd.normalize('NFC'), extension: 'pdf', path: 'PJ/x.pdf', stat: { size: 10 } };
+  const ouverts = [];
+  const g = Object.create(Ariane.prototype);
+  g.app = { vault: { getFiles: () => [copie] },
+    workspace: { getLeaf: (o) => ({ openFile: async (f) => ouverts.push([o, f]) }) } };
+  g._contenuPiece = async () => { throw new Error('ne doit pas relire Calendrier'); };
+  assert.equal(await g.ouvrirPieceEvenement({ nom: nfd, taille: 10, local: '/x', url: '' }), true);
+  assert.deepEqual(ouverts, [['tab', copie]]);
+});
