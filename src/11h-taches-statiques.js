@@ -859,8 +859,11 @@ const avecTachesStatiques = (Base) => class extends Base {
   //  `evenements` en porte la forme lisible, réécrite d'après elle. L'heure
   //  de début fait partie de l'identité : dans Calendrier, toutes les séances
   //  d'une série récurrente partagent le même identifiant, et associer la
-  //  séance du 20 ne doit pas lier toute la série. L'échéance de la tâche est
-  //  le dernier événement associé.
+  //  séance du 20 ne doit pas lier toute la série. Une tâche peut préparer
+  //  l'événement, ou lui faire suite (un compte rendu) : la clé porte alors
+  //  « |suite », et sa forme lisible « (suite) ». L'échéance de la tâche est le
+  //  dernier événement qu'elle prépare ; ceux auxquels elle fait suite ne la
+  //  touchent jamais.
 
   static quandEvenement(e) {
     const d = String((e && e.debut) || '');
@@ -868,33 +871,49 @@ const avecTachesStatiques = (Base) => class extends Base {
     return e.allDay || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(d) ? d.slice(0, 10) : d.slice(0, 16);
   }
 
-  static cleEvenementTache(e) {
+  static cleEvenementTache(e, suite) {
     const id = String((e && e.id) || '').trim();
     const quand = Ariane.quandEvenement(e);
-    return id && quand ? id + '|' + quand : '';
+    return id && quand ? id + '|' + quand + (suite ? '|suite' : '') : '';
   }
 
-  // { id, quand } d'une clé, ou null. L'identifiant peut lui-même contenir
-  // « | » (ceux des calendriers iCal) : on coupe au dernier.
+  // La clé sans son rôle : ce qui désigne l'événement lui-même.
+  static cleBaseEvenement(cle) {
+    return String(cle || '').trim().replace(/\|suite$/, '');
+  }
+
+  // Un événement commencé ne se prépare plus : on ne peut que lui faire suite.
+  // Un événement d'un jour entier reste à venir jusqu'à la fin de son jour.
+  static evenementPasse(e, maintenant) {
+    const quand = Ariane.quandEvenement(e);
+    if (!quand) return false;
+    const ici = Ariane.isoLocal(maintenant instanceof Date ? maintenant.getTime() : maintenant);
+    return quand.length === 10 ? quand < ici.slice(0, 10) : quand <= ici.slice(0, 16);
+  }
+
+  // { id, quand, suite } d'une clé, ou null. L'identifiant peut lui-même
+  // contenir « | » (ceux des calendriers iCal) : on coupe au dernier.
   static lireCleEvenement(cle) {
-    const s = String(cle || '').trim();
+    const brut = String(cle || '').trim();
+    const s = Ariane.cleBaseEvenement(brut);
     const i = s.lastIndexOf('|');
     if (i <= 0) return null;
     const quand = s.slice(i + 1);
     if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(quand)) return null;
-    return { id: s.slice(0, i), quand };
+    return { id: s.slice(0, i), quand, suite: s !== brut };
   }
 
-  static libelleEvenementTache(quand, titre, introuvable) {
+  static libelleEvenementTache(quand, titre, introuvable, suite) {
     return String(quand || '').replace('T', ' ') + ' ' + (String(titre || '').trim() || tr('(sans titre)'))
-      + (introuvable ? tr(' (introuvable)') : '');
+      + (suite ? tr(' (suite)') : '') + (introuvable ? tr(' (introuvable)') : '');
   }
 
   // Le titre qu'une forme lisible garde, sans sa date ni la marque
   // « introuvable » : de quoi la réécrire quand l'événement n'est pas relu.
-  static titreDuLibelleEvenement(libelle) {
-    return String(libelle || '').replace(/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})? ?/, '')
-      .replace(new RegExp(echapperRegex(tr(' (introuvable)')) + '$'), '').trim();
+  static titreDuLibelleEvenement(libelle, suite) {
+    const t = String(libelle || '').replace(/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})? ?/, '')
+      .replace(new RegExp(echapperRegex(tr(' (introuvable)')) + '$'), '');
+    return (suite ? t.replace(new RegExp(echapperRegex(tr(' (suite)')) + '$'), '') : t).trim();
   }
 
   // Les paires { cle, libelle } d'une tâche, par ordre chronologique. Les
@@ -906,15 +925,16 @@ const avecTachesStatiques = (Base) => class extends Base {
     [].concat(cles || []).map(String).forEach((cle, i) => {
       const k = Ariane.lireCleEvenement(cle);
       if (!k || out.some((p) => p.cle === cle)) return;
-      out.push({ cle, quand: k.quand, libelle: lib[i] || Ariane.libelleEvenementTache(k.quand, '') });
+      out.push({ cle, quand: k.quand, suite: k.suite,
+        libelle: lib[i] || Ariane.libelleEvenementTache(k.quand, '', false, k.suite) });
     });
     return out.sort((a, b) => a.quand.localeCompare(b.quand));
   }
 
-  // L'échéance que fixent des clés : le jour du dernier événement, et son
-  // heure de début (vide pour un jour entier). null sans clé lisible.
+  // L'échéance que fixent des clés : le jour du dernier événement préparé, et
+  // son heure de début (vide pour un jour entier). null s'il n'y en a aucun.
   static echeanceDesEvenements(cles) {
-    const q = [].concat(cles || []).map((c) => Ariane.lireCleEvenement(c)).filter(Boolean)
+    const q = [].concat(cles || []).map((c) => Ariane.lireCleEvenement(c)).filter((k) => k && !k.suite)
       .map((k) => k.quand).sort();
     if (!q.length) return null;
     const der = q[q.length - 1];
@@ -939,6 +959,7 @@ const avecTachesStatiques = (Base) => class extends Base {
   // sort de la fenêtre n'est pas jugée : l'événement n'a simplement pas été
   // lu. Dans la fenêtre : titre et heure suivent l'événement ; introuvable,
   // la clé reste, marquée telle dans sa forme lisible (on ne supprime rien).
+  // `quandChange` : un événement préparé a bougé, l'échéance doit suivre.
   // Rend { cles, libelles, change, quandChange }.
   static reconcilierEvenementsTache(cles, libelles, evenements, bornes) {
     const b = bornes || {};
@@ -950,11 +971,12 @@ const avecTachesStatiques = (Base) => class extends Base {
       const e = Ariane.evenementDeCle(p.cle, evenements);
       if (!e) {
         return Object.assign({}, p, { libelle: Ariane.libelleEvenementTache(p.quand,
-          Ariane.titreDuLibelleEvenement(p.libelle), true) });
+          Ariane.titreDuLibelleEvenement(p.libelle, p.suite), true, p.suite) });
       }
-      const cle = Ariane.cleEvenementTache(e);
-      if (cle !== p.cle) quandChange = true;
-      return { cle, quand: Ariane.quandEvenement(e), libelle: Ariane.libelleEvenementTache(Ariane.quandEvenement(e), e.titre) };
+      const cle = Ariane.cleEvenementTache(e, p.suite);
+      if (cle !== p.cle && !p.suite) quandChange = true;
+      const quand = Ariane.quandEvenement(e);
+      return { cle, quand, suite: p.suite, libelle: Ariane.libelleEvenementTache(quand, e.titre, false, p.suite) };
     }).sort((a, b2) => a.quand.localeCompare(b2.quand));
     const avantCles = [].concat(cles || []).map(String);
     const avantLib = [].concat(libelles || []).map(String);

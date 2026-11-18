@@ -354,7 +354,8 @@ class MoteurCalendrier extends MoteurVue {
     }
     // Les tâches associées à cet événement : un clic ouvre la tâche.
     for (const a of (this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [])) {
-      const t = ligne('link', tr('Tâche : ') + a.tache.intitule + ' (' + a.tache.ref + ')', 'est-lien');
+      const t = ligne('link', tr('Tâche : ') + a.tache.intitule + ' (' + a.tache.ref + ')'
+        + (a.suite ? tr(' (suite)') : ''), 'est-lien');
       t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref, false); });
     }
     const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e.id) : null;
@@ -543,10 +544,8 @@ class MoteurCalendrier extends MoteurVue {
             .filter((t) => t.statut !== 'terminée' && t.statut !== 'abandonnée' && !prises.has(t.ref))
             .map((t) => ({ nom: t.intitule + '  (' + t.ref + ')', cle: t.ref }));
           if (!items.length) { new obsidian.Notice(tr('Aucune tâche en cours.')); return; }
-          new ChoixListeModal(this.app, tr('Tâche à associer à cet événement…'), items, async (it) => {
-            if (!it) return;
-            await this.greffon.associerEvenementTache(it.cle, e);
-            this.dessiner();
+          new ChoixListeModal(this.app, tr('Tâche à associer à cet événement…'), items, (it) => {
+            if (it) this.greffon.associerEvenementAvecRole(it.cle, e, () => this.dessiner());
           }).open();
         }));
     }

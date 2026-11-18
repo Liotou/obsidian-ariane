@@ -773,9 +773,12 @@ l'événement au calendrier, « Associer à une tâche… », ou depuis la tâch
 commande « Associer un événement à cette tâche… » (aussi dans la barre
 d'édition). La tâche en garde la liste dans `Événements`
 (`2026-11-20 10:00 Réunion WP1`), et la carte de survol de l'événement montre
-la tâche. L'**échéance** devient le jour du dernier événement associé, son
-heure celle où il commence ; elle se recalcule quand on associe, dissocie, ou
-quand l'événement est déplacé dans Calendrier, et une échéance corrigée à la
+la tâche. Une tâche **prépare** l'événement ou lui **fait suite** (un compte
+rendu) : Ariane le demande pour un événement à venir, et un événement commencé
+ne peut recevoir qu'une suite, marquée `(suite)`. L'**échéance** devient le jour
+du dernier événement préparé, son heure celle où il commence ; une suite ne la
+touche jamais. Elle se recalcule quand on associe, dissocie, ou quand un
+événement préparé est déplacé dans Calendrier, et une échéance corrigée à la
 main est respectée entre-temps. Les identifiants sont gardés à part
 (`Événements ID`, écrit par Ariane seule) ; pour une série récurrente, seule
 la séance choisie est liée. Un événement disparu reste dans la liste, marqué

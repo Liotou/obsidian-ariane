@@ -12,7 +12,7 @@ test('clé : identifiant et instant ; un jour entier garde le seul jour ; un id 
   assert.equal(Ariane.cleEvenementTache(ev('A2', '2026-11-21', 'Colloque', true)), 'A2|2026-11-21');
   assert.equal(Ariane.cleEvenementTache(ev('', '2026-11-20T10:00', 'x')), '');
   assert.deepEqual(Ariane.lireCleEvenement('ics:uid|2026-11-20T10:00|2026-11-20T10:00'),
-    { id: 'ics:uid|2026-11-20T10:00', quand: '2026-11-20T10:00' });
+    { id: 'ics:uid|2026-11-20T10:00', quand: '2026-11-20T10:00', suite: false });
   assert.equal(Ariane.lireCleEvenement('n’importe quoi'), null);
 });
 
@@ -122,4 +122,61 @@ test('réalignement des tâches : une lecture vide ne marque rien introuvable ; 
   assert.equal(g.ecrits.length, 1);
   assert.equal(g.ecrits[0].champs.echeance, '2026-11-24');
   assert.equal(g.ecrits[0].champs.heure, '16:00');
+});
+
+test('rôle : une suite se relit, garde sa marque et ne fixe pas l’échéance', () => {
+  const e = ev('A', '2026-11-20T10:00', 'Réunion');
+  const cle = Ariane.cleEvenementTache(e, true);
+  assert.equal(cle, 'A|2026-11-20T10:00|suite');
+  assert.deepEqual(Ariane.lireCleEvenement(cle), { id: 'A', quand: '2026-11-20T10:00', suite: true });
+  assert.equal(Ariane.lireCleEvenement('A|2026-11-20T10:00').suite, false);
+  assert.deepEqual(Ariane.lireCleEvenement('ics:u|2026-11-20T10:00|2026-11-20T10:00|suite'),
+    { id: 'ics:u|2026-11-20T10:00', quand: '2026-11-20T10:00', suite: true });
+  assert.equal(Ariane.echeanceDesEvenements([cle]), null);
+  assert.deepEqual(Ariane.echeanceDesEvenements([cle.replace('10:00', '18:00'), 'B|2026-11-10T09:00']),
+    { echeance: '2026-11-10', heure: '09:00' });
+  const l = Ariane.libelleEvenementTache('2026-11-20T10:00', 'Réunion', true, true);
+  assert.equal(l, '2026-11-20 10:00 Réunion (suite) (introuvable)');
+  assert.equal(Ariane.titreDuLibelleEvenement(l, true), 'Réunion');
+});
+
+test('événement passé : commencé, oui ; jour entier, seulement le lendemain', () => {
+  const ici = new Date(2026, 10, 18, 12, 0);
+  assert.equal(Ariane.evenementPasse(ev('A', '2026-11-18T12:00', 'x'), ici), true);
+  assert.equal(Ariane.evenementPasse(ev('A', '2026-11-18T12:01', 'x'), ici), false);
+  assert.equal(Ariane.evenementPasse(ev('A', '2026-11-18', 'x', true), ici), false);
+  assert.equal(Ariane.evenementPasse(ev('A', '2026-11-17', 'x', true), ici), true);
+});
+
+test('une suite déplacée suit l’événement sans toucher l’échéance', () => {
+  const r = Ariane.reconcilierEvenementsTache(['A|2026-11-20T10:00|suite'], ['2026-11-20 10:00 Réunion (suite)'],
+    [ev('A', '2026-11-21T15:00', 'Réunion')], { debut: '2026-11-01', fin: '2026-11-30' });
+  assert.deepEqual(r.cles, ['A|2026-11-21T15:00|suite']);
+  assert.deepEqual(r.libelles, ['2026-11-21 15:00 Réunion (suite)']);
+  assert.equal(r.change, true);
+  assert.equal(r.quandChange, false);
+});
+
+test('associer ou retirer une suite laisse l’échéance ; le même événement ne s’associe pas deux fois', async () => {
+  const t = { ref: 'T4', evenementsId: ['P|2026-12-01T09:00'], evenements: ['2026-12-01 09:00 Cours'] };
+  const g = greffonFactice([t]);
+  assert.equal(await g.associerEvenementTache('T4', ev('A', '2026-11-02T10:00', 'Réunion'), { suite: true }), true);
+  let c = g.ecrits[g.ecrits.length - 1].champs;
+  assert.equal('echeance' in c, false);
+  assert.deepEqual(t.evenements, ['2026-11-02 10:00 Réunion (suite)', '2026-12-01 09:00 Cours']);
+  assert.equal(await g.associerEvenementTache('T4', ev('A', '2026-11-02T10:00', 'Réunion')), false);
+  await g.dissocierEvenementTache('T4', 'A|2026-11-02T10:00|suite');
+  c = g.ecrits[g.ecrits.length - 1].champs;
+  assert.equal('echeance' in c, false);
+  assert.deepEqual(t.evenementsId, ['P|2026-12-01T09:00']);
+});
+
+test('un événement commencé devient une suite sans question', async () => {
+  const t = { ref: 'T5', evenementsId: [], evenements: [] };
+  const g = greffonFactice([t]);
+  let fini = null;
+  await g.associerEvenementAvecRole('T5', ev('A', '2020-01-06T10:00', 'Réunion'), (r) => { fini = r; });
+  assert.equal(fini, true);
+  assert.deepEqual(t.evenementsId, ['A|2020-01-06T10:00|suite']);
+  assert.equal('echeance' in g.ecrits[0].champs, false);
 });

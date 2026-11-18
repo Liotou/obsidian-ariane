@@ -2674,7 +2674,7 @@ const avecTaches = (Base) => class extends Base {
       for (const cle of t.evenementsId || []) {
         const k = Ariane.lireCleEvenement(cle);
         if (k && k.id === id && (k.quand === quand || k.quand.slice(0, 10) === quand.slice(0, 10))) {
-          out.push({ tache: t, cle });
+          out.push({ tache: t, cle, suite: k.suite });
           break;
         }
       }
@@ -2683,7 +2683,7 @@ const avecTaches = (Base) => class extends Base {
   }
 
   // Écrit les événements d'une tâche. `avecEcheance` : l'échéance et l'heure
-  // suivent le dernier événement (association, retrait, événement déplacé) ;
+  // suivent le dernier événement préparé (association, retrait, déplacement) ;
   // le reste du temps, une échéance corrigée à la main est respectée.
   async ecrireEvenementsTache(ref, cles, libelles, avecEcheance) {
     const champs = { 'evenements-id': cles, evenements: libelles };
@@ -2692,20 +2692,28 @@ const avecTaches = (Base) => class extends Base {
     return this.majTache(ref, champs);
   }
 
-  async associerEvenementTache(ref, e) {
+  // Associe un événement. `o.suite` : la tâche lui fait suite, l'échéance
+  // ne bouge pas.
+  async associerEvenementTache(ref, e, o) {
+    const suite = !!(o && o.suite);
     const t = this.tachesPourGantt().find((x) => x.ref === ref);
-    const cle = Ariane.cleEvenementTache(e);
+    const cle = Ariane.cleEvenementTache(e, suite);
     if (!t || !cle) return false;
-    if ((t.evenementsId || []).includes(cle)) {
+    const base = Ariane.cleBaseEvenement(cle);
+    if ((t.evenementsId || []).some((c) => Ariane.cleBaseEvenement(c) === base)) {
       new obsidian.Notice(tr('Cet événement est déjà associé à ') + ref + '.');
       return false;
     }
     const quand = Ariane.quandEvenement(e);
     const paires = Ariane.pairesEvenementsTache(t.evenementsId, t.evenements)
-      .concat([{ cle, quand, libelle: Ariane.libelleEvenementTache(quand, e.titre) }])
+      .concat([{ cle, quand, suite, libelle: Ariane.libelleEvenementTache(quand, e.titre, false, suite) }])
       .sort((a, b) => a.quand.localeCompare(b.quand));
     const cles = paires.map((p) => p.cle);
-    await this.ecrireEvenementsTache(ref, cles, paires.map((p) => p.libelle), true);
+    await this.ecrireEvenementsTache(ref, cles, paires.map((p) => p.libelle), !suite);
+    if (suite) {
+      new obsidian.Notice(tr('Événement associé à ') + ref + tr(' : échéance inchangée.'));
+      return true;
+    }
     const ech = Ariane.echeanceDesEvenements(cles);
     const jour = new Date(ech.echeance + 'T12:00:00').toLocaleDateString('fr-FR',
       { weekday: 'long', day: 'numeric', month: 'long' });
@@ -2714,13 +2722,27 @@ const avecTaches = (Base) => class extends Base {
     return true;
   }
 
-  // Retire une association. L'échéance suit les événements qui restent ; s'il
-  // n'en reste aucun, elle ne bouge pas.
+  // Le rôle de la tâche, puis l'association : un événement commencé ne peut
+  // qu'appeler une suite ; à venir, on demande. `apres` suit l'écriture.
+  associerEvenementAvecRole(ref, e, apres) {
+    const faire = (suite) => this.associerEvenementTache(ref, e, { suite })
+      .then((r) => { if (apres) apres(r); return r; }).catch(() => false);
+    if (Ariane.evenementPasse(e, new Date())) return faire(true);
+    new ChoixListeModal(this.app, tr('Que fait cette tâche pour l’événement ?'), [
+      { nom: tr('Préparer cet événement (l’échéance suit sa date)'), suite: false },
+      { nom: tr('Faire suite à cet événement (échéance inchangée)'), suite: true },
+    ], (it) => { if (it) faire(it.suite); }).open();
+    return null;
+  }
+
+  // Retire une association. L'échéance suit les événements préparés qui
+  // restent ; retirer une suite, ou le dernier préparé, ne la change pas.
   async dissocierEvenementTache(ref, cle) {
     const t = this.tachesPourGantt().find((x) => x.ref === ref);
     if (!t || !(t.evenementsId || []).includes(cle)) return false;
+    const k = Ariane.lireCleEvenement(cle);
     const paires = Ariane.pairesEvenementsTache(t.evenementsId, t.evenements).filter((p) => p.cle !== cle);
-    await this.ecrireEvenementsTache(ref, paires.map((p) => p.cle), paires.map((p) => p.libelle), paires.length > 0);
+    await this.ecrireEvenementsTache(ref, paires.map((p) => p.cle), paires.map((p) => p.libelle), !(k && k.suite));
     return true;
   }
 
@@ -2775,13 +2797,13 @@ const avecTaches = (Base) => class extends Base {
     try { evs = (await this.evenementsFond(Ariane.decalerJour(auj, -7), Ariane.decalerJour(auj, 61))) || []; } catch (e) { evs = []; }
     if (!evs.length) { new obsidian.Notice(tr('Aucun événement lu dans l’agenda (60 prochains jours).')); return; }
     const t = this.tachesPourGantt().find((x) => x.ref === ref);
-    const deja = new Set((t && t.evenementsId) || []);
+    const deja = new Set(((t && t.evenementsId) || []).map((c) => Ariane.cleBaseEvenement(c)));
     const items = evs.filter((e) => !deja.has(Ariane.cleEvenementTache(e)))
       .sort((a, b) => String(a.debut).localeCompare(String(b.debut)))
       .map((e) => ({ nom: Ariane.libelleEvenementTache(Ariane.quandEvenement(e), e.titre)
         + (e.calendrier ? '  (' + e.calendrier + ')' : ''), e }));
     new ChoixListeModal(this.app, tr('Événement à associer à ') + ref + '…', items, (it) => {
-      if (it) this.associerEvenementTache(ref, it.e).catch(() => {});
+      if (it) this.associerEvenementAvecRole(ref, it.e);
     }).open();
   }
 

@@ -750,9 +750,12 @@ A **calendar event** can be linked to a task: right-click the event in the
 calendar, “Link to a task…”, or from the task, the command “Link an event to
 this task…” (also on the editing toolbar). The task lists it under
 `Événements` (`2026-11-20 10:00 Réunion WP1`), and the event's hover card shows
-the task. The **due date** becomes the day of the last linked event, its time
-the event's start; it is recomputed when an event is linked, unlinked or moved
-in Calendar, and a due date edited by hand is kept in between. Identifiers are
+the task. A task either **prepares** the event or **follows up** on it (minutes):
+Ariane asks for an upcoming event, and an event that has started can only get a
+follow-up, marked `(suite)`. The **due date** becomes the day of the last
+prepared event, its time the event's start; a follow-up never touches it. It is
+recomputed when an event is linked, unlinked or a prepared event is moved in
+Calendar, and a due date edited by hand is kept in between. Identifiers are
 kept apart (`Événements ID`, written by Ariane only); for a recurring series,
 only the chosen occurrence is linked. An event that disappears stays listed,
 marked “(introuvable)”.
