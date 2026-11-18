@@ -5265,3 +5265,4 @@ body {
 .zfa-ressource-ic svg { width: 13px; height: 13px; }
 .zfa-ressource-nom { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .zfa-ressource-ligne .clickable-icon { padding: 1px; }
+.zfa-note-tache .metadata-property.zfa-champ-famille-masque { display: none; }

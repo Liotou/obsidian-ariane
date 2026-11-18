@@ -145,7 +145,7 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push(K('ressources') + ': []');
     l.push(ligne(K('source'), q(c.source)));
     l.push(ligne(K('livrable'), q(c.livrable)));
-    l.push(ligne(K('fichier'), q(c.fichier)));
+    if (c.fichier) l.push(ligne(K('fichier'), q(c.fichier)));
     l.push(ligne(K('liste'), q(c.liste)));
     l.push(K('rappel-id') + ':');
     l.push(K('agenda-id') + ': []');
@@ -785,6 +785,43 @@ const avecTachesStatiques = (Base) => class extends Base {
   static ressourcesSans(liste, lien) {
     const c = Ariane.cibleRessource(lien);
     return [].concat(liste || []).map(String).filter((x) => x && Ariane.cibleRessource(x) !== c);
+  }
+
+  // Le nom nu d'une clé de propriété, sans préfixe ni casse.
+  static cleFamilleNue(cle, prefixe) {
+    const c = String(cle || '').trim().toLowerCase();
+    const p = String(prefixe || '').toLowerCase();
+    return p && c.startsWith(p) ? c.slice(p.length).trim() : c;
+  }
+
+  // « Fichier » n'est plus un champ de famille : Ressources le remplace.
+  static famillesSansFichier(familles, prefixe) {
+    if (!Array.isArray(familles)) return familles;
+    return familles.map((f) => (f && Array.isArray(f.proprietes)
+      ? Object.assign({}, f, { proprietes: f.proprietes.filter((p) => Ariane.cleFamilleNue(p && p.cle, prefixe) !== 'fichier') })
+      : f));
+  }
+
+  // Ce que devient un ancien champ Fichier : ses liens rejoignent les
+  // ressources ; un chemin écrit en clair, sans équivalent, reste à sa place.
+  static repriseChampFichier(valeur, ressources) {
+    const v = [].concat(valeur == null ? [] : valeur).map((x) => String(x).trim()).filter(Boolean);
+    let liste = [].concat(ressources || []).map(String).filter(Boolean);
+    const reste = [];
+    for (const x of v) {
+      if (/^\[\[[^\]]+\]\]$/.test(x)) liste = Ariane.ressourcesAvec(liste, x);
+      else reste.push(x);
+    }
+    return { ressources: liste, reste };
+  }
+
+  // Un champ de famille se montre s'il est rempli, ou s'il appartient à la
+  // famille de la tâche. Un champ rempli n'est jamais caché.
+  static champFamilleVisible(cle, valeur, famille, prefixe) {
+    const v = [].concat(valeur == null ? [] : valeur).map((x) => String(x).trim()).filter(Boolean);
+    if (v.length) return true;
+    const nue = Ariane.cleFamilleNue(cle, prefixe);
+    return ((famille && famille.proprietes) || []).some((p) => Ariane.cleFamilleNue(p && p.cle, prefixe) === nue);
   }
 
   // ── Pièces jointes d'un événement ────────────────────────────────────────

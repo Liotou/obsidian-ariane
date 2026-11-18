@@ -22,7 +22,7 @@ const avecSocle = (Base) => class extends Base {
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
             'dossierTaches', 'tempsDossierJournal', 'dossierNotesEvenements', 'chronoDepuis',
-            '_noteTravailSansTitre', '_journalTacheRetire', '_blocLivrableRetire', '_pagesEpubReprises', '_tutoriel'];
+            '_noteTravailSansTitre', '_journalTacheRetire', '_champFichierRetire', '_blocLivrableRetire', '_pagesEpubReprises', '_tutoriel'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
@@ -465,6 +465,11 @@ const avecSocle = (Base) => class extends Base {
     this.settings.modules = Ariane.modulesAvecNouveaux(this.settings.modules, this.settings.modulesConnus);
     this.settings.modulesConnus = MODULES_ARIANE.map((m) => m.id);
     this.settings.correspondancesSuffixe = migrerCorrespondances(this.settings.correspondancesSuffixe);
+    // Le champ « Fichier » quitte les familles avant que quoi que ce soit ne
+    // complète les notes d'après elles (voir migrerChampFichier).
+    if (!this.settings._champFichierRetire) {
+      this.settings.famillesTaches = Ariane.famillesSansFichier(this.settings.famillesTaches, this.settings.prefixeTaches);
+    }
 
     // clesTaches ne contient plus que de VRAIES personnalisations de label.
     // On enlève : un préfixe redondant collé dedans (ancien réglage), et les

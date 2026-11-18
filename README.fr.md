@@ -775,7 +775,9 @@ au disque. Seuls les documents courants s'ouvrent ou s'importent, jamais un
 programme ou un script.
 
 Les **ressources** d'une tâche sont les notes et fichiers dont elle se sert (ce
-qu'elle produit va dans `Livrable` et `Fichier`). Inutile d'écrire dans la
+qu'elle produit va dans `Livrable`), et le temps passé dans ces notes compte pour
+elle. Une tâche n'affiche que les champs de sa famille, plus ceux qui sont
+remplis. Inutile d'écrire dans la
 propriété : bouton `+` sur sa ligne, glisser-déposer depuis l'explorateur ou le
 Finder, clic droit sur un fichier, fenêtre de la tâche, ou commande. Un fichier
 venu du Finder est copié dans le dossier des pièces jointes.

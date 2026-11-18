@@ -2804,8 +2804,7 @@ const DEFAULT_SETTINGS = {
       proprietes: [{ cle: 'source', libelle: 'Source', type: 'lien' }] },
     { id: 'production', nom: 'Production', couleur: '#e0873d', icone: 'file-pen',
       description: 'Rédiger ou fabriquer un livrable : document, section, présentation, courrier formalisé.',
-      proprietes: [{ cle: 'livrable', libelle: 'Livrable', type: 'lien' },
-                   { cle: 'fichier', libelle: 'Fichier', type: 'texte' }] },
+      proprietes: [{ cle: 'livrable', libelle: 'Livrable', type: 'lien' }] },
     { id: 'action', nom: 'Action', couleur: '#6aa84f', icone: 'zap',
       description: 'Démarche concrète : envoyer un message, prendre un rendez-vous, relancer, réserver.',
       proprietes: [] },
@@ -6382,7 +6381,7 @@ const avecSocle = (Base) => class extends Base {
             'famillesNotes', 'dossierAnnotations', 'dossierNotesLecture',
             'dossierReferences', 'dossierBibliographies', 'exportDossier',
             'dossierTaches', 'tempsDossierJournal', 'dossierNotesEvenements', 'chronoDepuis',
-            '_noteTravailSansTitre', '_journalTacheRetire', '_blocLivrableRetire', '_pagesEpubReprises', '_tutoriel'];
+            '_noteTravailSansTitre', '_journalTacheRetire', '_champFichierRetire', '_blocLivrableRetire', '_pagesEpubReprises', '_tutoriel'];
   }
 
   // Vocabulaire de type FR partagé entre l'éditeur de familles, le menu
@@ -6825,6 +6824,11 @@ const avecSocle = (Base) => class extends Base {
     this.settings.modules = Ariane.modulesAvecNouveaux(this.settings.modules, this.settings.modulesConnus);
     this.settings.modulesConnus = MODULES_ARIANE.map((m) => m.id);
     this.settings.correspondancesSuffixe = migrerCorrespondances(this.settings.correspondancesSuffixe);
+    // Le champ « Fichier » quitte les familles avant que quoi que ce soit ne
+    // complète les notes d'après elles (voir migrerChampFichier).
+    if (!this.settings._champFichierRetire) {
+      this.settings.famillesTaches = Ariane.famillesSansFichier(this.settings.famillesTaches, this.settings.prefixeTaches);
+    }
 
     // clesTaches ne contient plus que de VRAIES personnalisations de label.
     // On enlève : un préfixe redondant collé dedans (ancien réglage), et les
@@ -15727,7 +15731,7 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push(K('ressources') + ': []');
     l.push(ligne(K('source'), q(c.source)));
     l.push(ligne(K('livrable'), q(c.livrable)));
-    l.push(ligne(K('fichier'), q(c.fichier)));
+    if (c.fichier) l.push(ligne(K('fichier'), q(c.fichier)));
     l.push(ligne(K('liste'), q(c.liste)));
     l.push(K('rappel-id') + ':');
     l.push(K('agenda-id') + ': []');
@@ -16367,6 +16371,43 @@ const avecTachesStatiques = (Base) => class extends Base {
   static ressourcesSans(liste, lien) {
     const c = Ariane.cibleRessource(lien);
     return [].concat(liste || []).map(String).filter((x) => x && Ariane.cibleRessource(x) !== c);
+  }
+
+  // Le nom nu d'une clé de propriété, sans préfixe ni casse.
+  static cleFamilleNue(cle, prefixe) {
+    const c = String(cle || '').trim().toLowerCase();
+    const p = String(prefixe || '').toLowerCase();
+    return p && c.startsWith(p) ? c.slice(p.length).trim() : c;
+  }
+
+  // « Fichier » n'est plus un champ de famille : Ressources le remplace.
+  static famillesSansFichier(familles, prefixe) {
+    if (!Array.isArray(familles)) return familles;
+    return familles.map((f) => (f && Array.isArray(f.proprietes)
+      ? Object.assign({}, f, { proprietes: f.proprietes.filter((p) => Ariane.cleFamilleNue(p && p.cle, prefixe) !== 'fichier') })
+      : f));
+  }
+
+  // Ce que devient un ancien champ Fichier : ses liens rejoignent les
+  // ressources ; un chemin écrit en clair, sans équivalent, reste à sa place.
+  static repriseChampFichier(valeur, ressources) {
+    const v = [].concat(valeur == null ? [] : valeur).map((x) => String(x).trim()).filter(Boolean);
+    let liste = [].concat(ressources || []).map(String).filter(Boolean);
+    const reste = [];
+    for (const x of v) {
+      if (/^\[\[[^\]]+\]\]$/.test(x)) liste = Ariane.ressourcesAvec(liste, x);
+      else reste.push(x);
+    }
+    return { ressources: liste, reste };
+  }
+
+  // Un champ de famille se montre s'il est rempli, ou s'il appartient à la
+  // famille de la tâche. Un champ rempli n'est jamais caché.
+  static champFamilleVisible(cle, valeur, famille, prefixe) {
+    const v = [].concat(valeur == null ? [] : valeur).map((x) => String(x).trim()).filter(Boolean);
+    if (v.length) return true;
+    const nue = Ariane.cleFamilleNue(cle, prefixe);
+    return ((famille && famille.proprietes) || []).some((p) => Ariane.cleFamilleNue(p && p.cle, prefixe) === nue);
   }
 
   // ── Pièces jointes d'un événement ────────────────────────────────────────
@@ -22661,6 +22702,35 @@ const avecTaches = (Base) => class extends Base {
     return n;
   }
 
+  // Une fois pour toutes : le champ Fichier quitte les notes de tâche. Ses
+  // liens rejoignent Ressources ; un chemin écrit en clair reste en place.
+  async migrerChampFichier() {
+    if (this.settings._champFichierRetire) return 0;
+    const dossier = this.settings.dossierTaches;
+    if (!dossier) return 0;
+    const kF = this.cleT('fichier');
+    const cles = [...new Set([kF, 'Fichier', 'fichier'])];
+    let n = 0;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(dossier + '/')) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (!cles.some((c) => c in fm)) continue;
+      this.marquerEcriture(f.path);
+      await this.app.fileManager.processFrontMatter(f, (x) => {
+        const valeurs = cles.flatMap((c) => [].concat(x[c] == null ? [] : x[c]));
+        const r = Ariane.repriseChampFichier(valeurs, this._lireT(x, 'ressources'));
+        for (const c of cles) delete x[c];
+        if (r.reste.length) x[kF] = r.reste.length === 1 ? r.reste[0] : r.reste;
+        if (r.ressources.length) x[this.cleT('ressources')] = r.ressources;
+      });
+      n += 1;
+    }
+    this.settings.famillesTaches = Ariane.famillesSansFichier(this.settings.famillesTaches, this.settings.prefixeTaches);
+    this.settings._champFichierRetire = true;
+    await this.saveSettings();
+    return n;
+  }
+
   // Insère un texte en tête de la note de travail d'une tâche (ce qui suit
   // son titre).
   async ajouterNoteTache(ref, texte) {
@@ -24324,11 +24394,37 @@ const avecTaches = (Base) => class extends Base {
         icEl.dataset.zfaIc = con;
       }
     }
+    if (ref) this._masquerChampsFamille(contEl, ref, ctx);
     if (ctx.skin) {
       for (const cont of contEl.querySelectorAll('.metadata-properties')) {
         try { this._grouperProprietes(cont, ctx.clesFamille); } catch (e) { /* rien */ }
       }
       try { this._habillerSessions(contEl); } catch (e) { /* rien */ }
+    }
+  }
+
+  // Les champs vides d'une autre famille ne s'affichent pas. Rien n'est retiré
+  // de la note : un champ rempli, ou de la bonne famille, reste visible.
+  _masquerChampsFamille(contEl, ref, ctx) {
+    const f = this.fichierDeRef(ref);
+    const fm = f ? ((this.app.metadataCache.getFileCache(f) || {}).frontmatter || {}) : {};
+    const s = this.settings;
+    const pre = s.prefixeTaches || '';
+    const id = Ariane.familleTache(Object.assign({}, fm, {
+      famille: this._lireT(fm, 'famille'), source: this._lireT(fm, 'source'),
+      livrable: this._lireT(fm, 'livrable'), fichier: this._lireT(fm, 'fichier'),
+    }), s.famillesTaches, s.familleTacheDefaut);
+    const famille = this.familleDe(id);
+    const nues = new Set([...ctx.clesFamille].map((c) => Ariane.cleFamilleNue(c, pre)));
+    for (const row of contEl.querySelectorAll('.metadata-property')) {
+      const cpt = row.dataset.zfaConcept || '';
+      const brute = String(row.dataset.propertyKey || '');
+      const nue = Ariane.cleFamilleNue(brute, pre);
+      const standard = ['source', 'livrable', 'fichier'].includes(cpt);
+      if (!standard && (cpt || !nues.has(nue))) { row.classList.remove('zfa-champ-famille-masque'); continue; }
+      const cleFm = Object.keys(fm).find((k) => k.toLowerCase() === brute.toLowerCase());
+      const valeur = standard ? this._lireT(fm, cpt) : (cleFm ? fm[cleFm] : '');
+      row.classList.toggle('zfa-champ-famille-masque', !Ariane.champFamilleVisible(standard ? cpt : nue, valeur, famille, pre));
     }
   }
 
@@ -24392,7 +24488,7 @@ const avecTaches = (Base) => class extends Base {
       }
       const estFamille = ['source', 'livrable', 'fichier'].includes(cpt)
         || (clesFamille && clesFamille.has(cleBrute));
-      if (estFamille) { row.style.order = '700'; row.dataset.zfaGroupe = 'famille'; aFamille = true; continue; }
+      if (estFamille) { row.style.order = '700'; row.dataset.zfaGroupe = 'famille'; if (!row.classList.contains('zfa-champ-famille-masque')) aFamille = true; continue; }
       row.style.order = '950';
     }
     const attendus = [...groupes.filter((g) => presents.has(g.id)).map((g) => g.id)];
@@ -24669,7 +24765,7 @@ const avecTaches = (Base) => class extends Base {
     // Lus dans les propriétés : dans l'objet tâche, `fichier` est la note
     // elle-même et masque la propriété « fichier » de la tâche.
     const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
-    for (const v of [this._lireT(fm, 'livrable'), this._lireT(fm, 'fichier'), this._lireT(fm, 'source')]) {
+    for (const v of [this._lireT(fm, 'livrable'), this._lireT(fm, 'fichier'), this._lireT(fm, 'source'), this._lireT(fm, 'ressources')]) {
       for (const brut of [].concat(v || [])) {
         const lien = String(brut || '').trim().replace(/^!?\[\[/, '').replace(/\]\]$/, '')
           .split('|')[0].split('#')[0].trim();
@@ -26630,24 +26726,12 @@ const avecActivite = (Base) => class extends Base {
     return inverse;
   }
 
-  // Une note travaillée devient une des notes de la tâche (propriété
-  // « Fichier », en liste) : le temps qui y est passé compte alors pour elle.
+  // Une note travaillée devient une ressource de la tâche : le temps qui y
+  // est passé compte alors pour elle (voir _cheminsLiesTache).
   async lierNoteATache(ref, chemin) {
-    const f = this.fichierDeRef(ref);
     const note = this.app.vault.getAbstractFileByPath(chemin);
-    if (!f || !note) return false;
-    const lien = '[[' + this.app.metadataCache.fileToLinktext(note, f.path, true) + ']]';
-    const cle = this.cleT('fichier');
-    this.marquerOrigineTache(f.path);
-    let deja = false;
-    await this.app.fileManager.processFrontMatter(f, (fm) => {
-      const cur = [].concat(this._lireT(fm, 'fichier') || []).map(String).filter(Boolean);
-      deja = cur.some((x) => x.replace(/\|.*\]\]$/, ']]') === lien);
-      if (!deja) cur.push(lien);
-      fm[cle] = cur.length === 1 ? cur[0] : cur;
-      fm.modifie = new Date().toISOString().slice(0, 10);
-    });
-    new obsidian.Notice(deja ? tr('Note déjà liée à ') + ref + '.' : tr('Note liée à ') + ref + '.');
+    if (!this.fichierDeRef(ref) || !note) return false;
+    await this.ajouterRessourcesTache(ref, [note]);
     return true;
   }
 
@@ -31711,6 +31795,7 @@ class Ariane extends composer(obsidian.Plugin,
       if (this.module('taches')) {
         this.migrerNotesTravail().catch((e) => console.warn('[Ariane] notes de travail :', e));
         this.migrerJournalTaches().catch((e) => console.warn('[Ariane] journal des notes de tâche :', e));
+        this.migrerChampFichier().catch((e) => console.warn('[Ariane] champ Fichier :', e));
         this.retirerBlocsLivrable().catch((e) => console.warn('[Ariane] blocs de livrable :', e));
       }
       this.reprendrePagesEpub().catch((e) => console.warn('[Ariane] pages des EPUB :', e));

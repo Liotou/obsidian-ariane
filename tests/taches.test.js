@@ -114,3 +114,38 @@ test('ajouterRessourcesTache : lien sans .md pour une note, avec extension pour 
   assert.equal(n, 1);
   assert.deepEqual(fm.ressources, ['[[a.pdf]]', '[[Note]]']);
 });
+
+test('champ Fichier : retiré des familles, ses liens passent aux ressources, un chemin reste', () => {
+  const fam = [{ id: 'p', proprietes: [{ cle: 'Livrable' }, { cle: 'Tâche - Fichier' }, { cle: 'Fichier' }] }];
+  assert.deepEqual(Ariane.famillesSansFichier(fam, 'Tâche - ')[0].proprietes, [{ cle: 'Livrable' }]);
+  assert.deepEqual(Ariane.repriseChampFichier(['[[a]]', '', '/x/y.pptx'], ['[[b]]']),
+    { ressources: ['[[b]]', '[[a]]'], reste: ['/x/y.pptx'] });
+  assert.deepEqual(Ariane.repriseChampFichier('', []), { ressources: [], reste: [] });
+});
+
+test('champs de famille : vide d’une autre famille caché, rempli toujours visible', () => {
+  const lecture = { proprietes: [{ cle: 'Source' }] };
+  assert.equal(Ariane.champFamilleVisible('source', '', lecture, 'Tâche - '), true);
+  assert.equal(Ariane.champFamilleVisible('livrable', '', lecture, 'Tâche - '), false);
+  assert.equal(Ariane.champFamilleVisible('livrable', '[[x]]', lecture, 'Tâche - '), true);
+  assert.equal(Ariane.champFamilleVisible('source', null, { proprietes: [] }, 'Tâche - '), false);
+});
+
+test('migrerChampFichier : note nettoyée, liens repris, une seule fois', async () => {
+  const fm = { 'Tâche - Fichier': '[[Plan]]', Fichier: '', 'Tâche - Ressources': [] };
+  const g = Object.create(Ariane.prototype);
+  let sauve = 0;
+  g.settings = { dossierTaches: 'T', prefixeTaches: 'Tâche - ', famillesTaches: [{ id: 'p', proprietes: [{ cle: 'Fichier' }] }] };
+  g.saveSettings = async () => { sauve += 1; };
+  g.marquerEcriture = () => {};
+  g.cleT = (c) => ({ fichier: 'Tâche - Fichier', ressources: 'Tâche - Ressources' })[c];
+  g._lireT = (x, c) => x[g.cleT(c)];
+  g.app = { vault: { getMarkdownFiles: () => [{ path: 'T/T1.md' }] },
+    metadataCache: { getFileCache: () => ({ frontmatter: fm }) },
+    fileManager: { processFrontMatter: async (f, fn) => fn(fm) } };
+  assert.equal(await g.migrerChampFichier(), 1);
+  assert.deepEqual(fm, { 'Tâche - Ressources': ['[[Plan]]'] });
+  assert.deepEqual(g.settings.famillesTaches[0].proprietes, []);
+  assert.equal(await g.migrerChampFichier(), 0);
+  assert.equal(sauve, 1);
+});

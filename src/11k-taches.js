@@ -2066,6 +2066,35 @@ const avecTaches = (Base) => class extends Base {
     return n;
   }
 
+  // Une fois pour toutes : le champ Fichier quitte les notes de tâche. Ses
+  // liens rejoignent Ressources ; un chemin écrit en clair reste en place.
+  async migrerChampFichier() {
+    if (this.settings._champFichierRetire) return 0;
+    const dossier = this.settings.dossierTaches;
+    if (!dossier) return 0;
+    const kF = this.cleT('fichier');
+    const cles = [...new Set([kF, 'Fichier', 'fichier'])];
+    let n = 0;
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (!f.path.startsWith(dossier + '/')) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || {};
+      if (!cles.some((c) => c in fm)) continue;
+      this.marquerEcriture(f.path);
+      await this.app.fileManager.processFrontMatter(f, (x) => {
+        const valeurs = cles.flatMap((c) => [].concat(x[c] == null ? [] : x[c]));
+        const r = Ariane.repriseChampFichier(valeurs, this._lireT(x, 'ressources'));
+        for (const c of cles) delete x[c];
+        if (r.reste.length) x[kF] = r.reste.length === 1 ? r.reste[0] : r.reste;
+        if (r.ressources.length) x[this.cleT('ressources')] = r.ressources;
+      });
+      n += 1;
+    }
+    this.settings.famillesTaches = Ariane.famillesSansFichier(this.settings.famillesTaches, this.settings.prefixeTaches);
+    this.settings._champFichierRetire = true;
+    await this.saveSettings();
+    return n;
+  }
+
   // Insère un texte en tête de la note de travail d'une tâche (ce qui suit
   // son titre).
   async ajouterNoteTache(ref, texte) {
@@ -3729,11 +3758,37 @@ const avecTaches = (Base) => class extends Base {
         icEl.dataset.zfaIc = con;
       }
     }
+    if (ref) this._masquerChampsFamille(contEl, ref, ctx);
     if (ctx.skin) {
       for (const cont of contEl.querySelectorAll('.metadata-properties')) {
         try { this._grouperProprietes(cont, ctx.clesFamille); } catch (e) { /* rien */ }
       }
       try { this._habillerSessions(contEl); } catch (e) { /* rien */ }
+    }
+  }
+
+  // Les champs vides d'une autre famille ne s'affichent pas. Rien n'est retiré
+  // de la note : un champ rempli, ou de la bonne famille, reste visible.
+  _masquerChampsFamille(contEl, ref, ctx) {
+    const f = this.fichierDeRef(ref);
+    const fm = f ? ((this.app.metadataCache.getFileCache(f) || {}).frontmatter || {}) : {};
+    const s = this.settings;
+    const pre = s.prefixeTaches || '';
+    const id = Ariane.familleTache(Object.assign({}, fm, {
+      famille: this._lireT(fm, 'famille'), source: this._lireT(fm, 'source'),
+      livrable: this._lireT(fm, 'livrable'), fichier: this._lireT(fm, 'fichier'),
+    }), s.famillesTaches, s.familleTacheDefaut);
+    const famille = this.familleDe(id);
+    const nues = new Set([...ctx.clesFamille].map((c) => Ariane.cleFamilleNue(c, pre)));
+    for (const row of contEl.querySelectorAll('.metadata-property')) {
+      const cpt = row.dataset.zfaConcept || '';
+      const brute = String(row.dataset.propertyKey || '');
+      const nue = Ariane.cleFamilleNue(brute, pre);
+      const standard = ['source', 'livrable', 'fichier'].includes(cpt);
+      if (!standard && (cpt || !nues.has(nue))) { row.classList.remove('zfa-champ-famille-masque'); continue; }
+      const cleFm = Object.keys(fm).find((k) => k.toLowerCase() === brute.toLowerCase());
+      const valeur = standard ? this._lireT(fm, cpt) : (cleFm ? fm[cleFm] : '');
+      row.classList.toggle('zfa-champ-famille-masque', !Ariane.champFamilleVisible(standard ? cpt : nue, valeur, famille, pre));
     }
   }
 
@@ -3797,7 +3852,7 @@ const avecTaches = (Base) => class extends Base {
       }
       const estFamille = ['source', 'livrable', 'fichier'].includes(cpt)
         || (clesFamille && clesFamille.has(cleBrute));
-      if (estFamille) { row.style.order = '700'; row.dataset.zfaGroupe = 'famille'; aFamille = true; continue; }
+      if (estFamille) { row.style.order = '700'; row.dataset.zfaGroupe = 'famille'; if (!row.classList.contains('zfa-champ-famille-masque')) aFamille = true; continue; }
       row.style.order = '950';
     }
     const attendus = [...groupes.filter((g) => presents.has(g.id)).map((g) => g.id)];
@@ -4074,7 +4129,7 @@ const avecTaches = (Base) => class extends Base {
     // Lus dans les propriétés : dans l'objet tâche, `fichier` est la note
     // elle-même et masque la propriété « fichier » de la tâche.
     const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
-    for (const v of [this._lireT(fm, 'livrable'), this._lireT(fm, 'fichier'), this._lireT(fm, 'source')]) {
+    for (const v of [this._lireT(fm, 'livrable'), this._lireT(fm, 'fichier'), this._lireT(fm, 'source'), this._lireT(fm, 'ressources')]) {
       for (const brut of [].concat(v || [])) {
         const lien = String(brut || '').trim().replace(/^!?\[\[/, '').replace(/\]\]$/, '')
           .split('|')[0].split('#')[0].trim();

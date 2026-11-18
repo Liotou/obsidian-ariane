@@ -21,7 +21,7 @@ test('le frontmatter porte tous les champs du schéma, même vides', () => {
   const s = Ariane.corpsNouvelleTache(base);
   for (const cle of ['Type', 'statut', 'priorite', 'debut', 'echeance',
                      'avancement', 'termine-le', 'jalon', 'parent', 'bloque-par',
-                     'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id',
+                     'source', 'livrable', 'liste', 'rappel-id', 'agenda-id',
                      'cree', 'modifie']) {
     assert.ok(new RegExp('^' + cle + ':', 'm').test(s), 'champ manquant : ' + cle);
   }
@@ -132,4 +132,8 @@ test('conceptsAAmorcer : note déjà complète → résultat vide', () => {
   const d = Ariane.defautsNoyau();
   const out = Ariane.conceptsAAmorcer(d, (c) => (c in d ? 'x' : undefined), (c) => c);
   assert.deepEqual(out, {});
+});
+
+test('le champ Fichier n’est plus posé dans une nouvelle tâche', () => {
+  assert.ok(!/^fichier:/m.test(Ariane.corpsNouvelleTache(base)));
 });

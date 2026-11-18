@@ -753,7 +753,9 @@ Obsidian Full Disk Access. Only common documents can be opened or imported,
 never a program or script.
 
 A task's **resources** are the notes and files it uses (what it produces goes in
-`Livrable` and `Fichier`). No need to type in the property: the `+` button on its
+`Livrable`), and time spent in those notes counts for it. A task only shows its
+family's fields, plus any that are filled in. No need to type in the property:
+the `+` button on its
 row, drag and drop from the file explorer or Finder, right-click on a file, the
 task window, or a command. A file from Finder is copied to the attachment folder.
 
