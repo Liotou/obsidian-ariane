@@ -226,11 +226,9 @@ class MoteurCalendrier extends MoteurVue {
       // Jalons liés à un événement : réaligner sur l'événement fraîchement lu
       // (le redessin suit, déclenché par les écritures ou par la ligne ci-dessous).
       this._reconcilierJalonsEvenements().catch(() => { /* rien */ });
-      // De même les tâches associées à un événement de la fenêtre lue. La
-      // borne de fin de la lecture est exclue : on ne juge que jusqu'à la veille.
-      if (this.greffon.reconcilierEvenementsTaches) {
-        this.greffon.reconcilierEvenementsTaches(nv, { debut: b.debut, fin: Ariane.decalerJour(b.fin, -1) })
-          .catch(() => { /* rien */ });
+      // Les notes d'événement de la fenêtre lue suivent l'agenda.
+      if (this.greffon.synchroniserNotesEvenements) {
+        this.greffon.synchroniserNotesEvenements(nv, { debut: b.debut, fin: b.fin }).catch(() => { /* rien */ });
       }
       if (nv.length || avant.length) this.dessiner();
     }).catch(() => { /* macOS indisponible */ });
@@ -340,7 +338,7 @@ class MoteurCalendrier extends MoteurVue {
       const t = ligne('link', e.url.replace(/^https?:\/\//, ''), 'est-lien');
       t.addEventListener('click', (ev) => { ev.stopPropagation(); window.open(e.url); });
     }
-    if (e.notes) carte.createDiv({ cls: 'zfa-evt-survol-notes', text: e.notes });
+    if (e.notes) carte.createDiv({ cls: 'zfa-evt-survol-notes', text: e.notes.slice(0, 600) });
     // Les pièces jointes : un clic ouvre le fichier quand c'est possible,
     // sinon l'événement dans Calendrier, qui sait toujours l'ouvrir.
     const pieces = e.pieces || [];
@@ -358,7 +356,7 @@ class MoteurCalendrier extends MoteurVue {
         + (a.suite ? tr(' (suite)') : ''), 'est-lien');
       t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref); });
     }
-    const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e.id) : null;
+    const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e) : null;
     const actions = carte.createDiv({ cls: 'zfa-act-survol-actions' });
     const action = (icone, libelle, faire) => {
       const bt = actions.createEl('button', { cls: 'zfa-act-survol-bt' });
@@ -503,7 +501,7 @@ class MoteurCalendrier extends MoteurVue {
     // menu proposait de recréer une note ou un jalon à chaque clic droit, et
     // le coffre se remplissait de doublons.
     const jalonExistant = e.id ? this.greffon.jalonDeEvenement(e.id) : null;
-    const noteExistante = e.id ? this.greffon.noteDeEvenement(e.id) : null;
+    const noteExistante = e.id ? this.greffon.noteDeEvenement(e) : null;
     if (jalonExistant) {
       m.addItem((i) => i.setTitle(tr('Ouvrir le jalon de cet événement')).setIcon('diamond')
         .onClick(() => this.ouvrir(jalonExistant.ref)));
@@ -532,7 +530,7 @@ class MoteurCalendrier extends MoteurVue {
         .setIcon('square-check').onClick(() => this.ouvrir(a.tache.ref)));
       m.addItem((i) => i.setTitle(tr('Dissocier de ') + a.tache.ref).setIcon('unlink')
         .onClick(async () => {
-          await this.greffon.dissocierEvenementTache(a.tache.ref, a.cle);
+          await this.greffon.dissocierEvenementTache(a.tache.ref, a.lien);
           this.dessiner();
         }));
     }

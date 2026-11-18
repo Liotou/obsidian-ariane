@@ -839,7 +839,7 @@ function barreDefaut() {
       { cmd: a('correcteur-relire') },
       { separateur: true },
       { cmd: a('creer-tache') }, { cmd: a('fusionner-taches') }, { cmd: a('associer-evenement-tache') },
-      { cmd: a('ajouter-ressource-tache') }, { cmd: a('importer-pieces-evenement') },
+      { cmd: a('ajouter-ressource-tache') }, { cmd: a('lier-note-evenement') }, { cmd: a('importer-pieces-evenement') },
       { cmd: a('atomise-active') }, { cmd: a('biblio-note') },
     ] },
     { separateur: true },

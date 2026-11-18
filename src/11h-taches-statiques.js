@@ -17,7 +17,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       source: 'Source', livrable: 'Livrable', fichier: 'Fichier',
       liste: 'Liste', 'rappel-id': 'Rappel ID', 'agenda-id': 'Agenda ID',
       'temps-reel': 'Temps réel', seances: 'Séances',
-      evenements: 'Événements', 'evenements-id': 'Événements ID', ressources: 'Ressources',
+      prepare: 'Prépare', 'fait-suite': 'Fait suite à', ressources: 'Ressources',
     })[concept] || concept;
   }
 
@@ -919,9 +919,9 @@ const avecTachesStatiques = (Base) => class extends Base {
 
   // Remplace le bloc, ou le pose sous le titre de la note ; un bloc vide
   // retire l'ancien. Le reste de la note ne change pas.
-  static corpsAvecPieces(corps, bloc) {
+  static corpsAvecBloc(corps, nom, bloc) {
     const t = String(corps || '');
-    const re = /<!-- ariane:pieces -->[\s\S]*?<!-- \/ariane:pieces -->\n?/;
+    const re = new RegExp('<!-- ariane:' + nom + ' -->[\\s\\S]*?<!-- /ariane:' + nom + ' -->\\n?');
     if (re.test(t)) return t.replace(re, () => (bloc ? bloc + '\n' : ''));
     if (!bloc) return t;
     const fm = t.startsWith('---\n') ? t.indexOf('\n---', 4) : -1;
@@ -932,34 +932,29 @@ const avecTachesStatiques = (Base) => class extends Base {
     return avant.replace(/\n*$/, '\n') + (m ? '\n' : '') + bloc + '\n' + (apres ? '\n' + apres : '');
   }
 
-  // ── Événements associés à une tâche ──────────────────────────────────────
-  //  Une tâche garde ses événements sous deux propriétés parallèles :
-  //  `evenements-id`, écrite par Ariane seule, porte « identifiant|quand »
-  //  (quand : AAAA-MM-JJTHH:MM, ou AAAA-MM-JJ pour un jour entier) ;
-  //  `evenements` en porte la forme lisible, réécrite d'après elle. L'heure
-  //  de début fait partie de l'identité : dans Calendrier, toutes les séances
-  //  d'une série récurrente partagent le même identifiant, et associer la
-  //  séance du 20 ne doit pas lier toute la série. Une tâche peut préparer
-  //  l'événement, ou lui faire suite (un compte rendu) : la clé porte alors
-  //  « |suite », et sa forme lisible « (suite) ». L'échéance de la tâche est le
-  //  dernier événement qu'elle prépare ; ceux auxquels elle fait suite ne la
-  //  touchent jamais.
+  static corpsAvecPieces(corps, bloc) {
+    return Ariane.corpsAvecBloc(corps, 'pieces', bloc);
+  }
+
+  // ── Notes d'événement ────────────────────────────────────────────────────
+  //  Chaque événement a sa note, pivot auquel tâches, fichiers et comptes
+  //  rendus se relient par de simples liens. L'agenda fait foi pour les
+  //  propriétés listées par champsNoteEvenement et pour les blocs d'Ariane ;
+  //  le reste de la note n'appartient qu'à l'utilisateur. Une séance se
+  //  reconnaît à son identifiant ET à sa date : une série les partage.
+
+  // L'identifiant qui survit à un déplacement. Celui d'un agenda iCal porte
+  // l'instant de l'occurrence, et changerait avec elle.
+  static idStableEvenement(id) {
+    const s = String(id || '').trim();
+    const m = /^(ics:.*)\|\d{4}-\d{2}-\d{2}(?:T[\d:]+)?$/.exec(s);
+    return m ? m[1] : s;
+  }
 
   static quandEvenement(e) {
     const d = String((e && e.debut) || '');
     if (!/^\d{4}-\d{2}-\d{2}/.test(d)) return '';
     return e.allDay || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(d) ? d.slice(0, 10) : d.slice(0, 16);
-  }
-
-  static cleEvenementTache(e, suite) {
-    const id = String((e && e.id) || '').trim();
-    const quand = Ariane.quandEvenement(e);
-    return id && quand ? id + '|' + quand + (suite ? '|suite' : '') : '';
-  }
-
-  // La clé sans son rôle : ce qui désigne l'événement lui-même.
-  static cleBaseEvenement(cle) {
-    return String(cle || '').trim().replace(/\|suite$/, '');
   }
 
   // Un événement commencé ne se prépare plus : on ne peut que lui faire suite.
@@ -971,99 +966,123 @@ const avecTachesStatiques = (Base) => class extends Base {
     return quand.length === 10 ? quand < ici.slice(0, 10) : quand <= ici.slice(0, 16);
   }
 
-  // { id, quand, suite } d'une clé, ou null. L'identifiant peut lui-même
-  // contenir « | » (ceux des calendriers iCal) : on coupe au dernier.
-  static lireCleEvenement(cle) {
-    const brut = String(cle || '').trim();
-    const s = Ariane.cleBaseEvenement(brut);
-    const i = s.lastIndexOf('|');
-    if (i <= 0) return null;
-    const quand = s.slice(i + 1);
-    if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(quand)) return null;
-    return { id: s.slice(0, i), quand, suite: s !== brut };
+  // Une note naît dès que l'événement existe : de l'origine du coffre à un an
+  // devant soi.
+  static evenementDansHorizon(e, origine, aujourdhui) {
+    const jour = Ariane.quandEvenement(e).slice(0, 10);
+    return !!jour && jour >= origine && jour <= Ariane.decalerJour(aujourdhui, 365);
   }
 
-  static libelleEvenementTache(quand, titre, introuvable, suite) {
-    return String(quand || '').replace('T', ' ') + ' ' + (String(titre || '').trim() || tr('(sans titre)'))
-      + (suite ? tr(' (suite)') : '') + (introuvable ? tr(' (introuvable)') : '');
+  static libelleEvenement(e) {
+    return Ariane.quandEvenement(e).replace('T', ' ') + ' ' + (String((e && e.titre) || '').trim() || tr('(sans titre)'));
   }
 
-  // Le titre qu'une forme lisible garde, sans sa date ni la marque
-  // « introuvable » : de quoi la réécrire quand l'événement n'est pas relu.
-  static titreDuLibelleEvenement(libelle, suite) {
-    const t = String(libelle || '').replace(/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})? ?/, '')
-      .replace(new RegExp(echapperRegex(tr(' (introuvable)')) + '$'), '');
-    return (suite ? t.replace(new RegExp(echapperRegex(tr(' (suite)')) + '$'), '') : t).trim();
+  static nomNoteEvenement(e) {
+    const q = Ariane.quandEvenement(e);
+    return 'EV-' + q.slice(0, 10).replace(/-/g, '') + (q.length > 10 ? '-' + q.slice(11, 16).replace(':', '') : '');
   }
 
-  // Les paires { cle, libelle } d'une tâche, par ordre chronologique. Les
-  // deux listes vont d'ordinaire de pair ; une ligne lisible qui manque est
-  // refaite d'après la clé.
-  static pairesEvenementsTache(cles, libelles) {
-    const lib = [].concat(libelles || []).map(String);
-    const out = [];
-    [].concat(cles || []).map(String).forEach((cle, i) => {
-      const k = Ariane.lireCleEvenement(cle);
-      if (!k || out.some((p) => p.cle === cle)) return;
-      out.push({ cle, quand: k.quand, suite: k.suite,
-        libelle: lib[i] || Ariane.libelleEvenementTache(k.quand, '', false, k.suite) });
-    });
-    return out.sort((a, b) => a.quand.localeCompare(b.quand));
+  // Les propriétés que l'agenda tient à jour. Une valeur vide retire la clé.
+  static champsNoteEvenement(e) {
+    const quand = Ariane.quandEvenement(e);
+    const fin = String((e && e.fin) || '');
+    return {
+      'Événement ID': Ariane.idStableEvenement(e.id),
+      Titre: String(e.titre || '').trim(),
+      Date: quand.slice(0, 10),
+      'Début': quand,
+      Fin: e.allDay ? fin.slice(0, 10) : fin.slice(0, 16),
+      Calendrier: e.calendrier || '',
+      Lieu: e.lieu || '',
+      Organisateur: e.organisateur || '',
+      Participants: (e.participants || []).filter(Boolean),
+      Lien: e.url || '',
+    };
   }
 
-  // L'échéance que fixent des clés : le jour du dernier événement préparé, et
-  // son heure de début (vide pour un jour entier). null s'il n'y en a aucun.
-  static echeanceDesEvenements(cles) {
-    const q = [].concat(cles || []).map((c) => Ariane.lireCleEvenement(c)).filter((k) => k && !k.suite)
-      .map((k) => k.quand).sort();
+  // Ce qu'il faut écrire pour aligner une note sur l'événement : { poser,
+  // retirer }, vides si elle est à jour (aucune écriture alors).
+  static ecartNoteEvenement(fm, e) {
+    const n = (v) => JSON.stringify([].concat(v == null ? [] : v).map(String).filter(Boolean));
+    const poser = {};
+    const retirer = [];
+    const f = fm || {};
+    for (const [k, v] of Object.entries(Ariane.champsNoteEvenement(e))) {
+      if (n(f[k]) === n(v)) continue;
+      if (n(v) === '[]') retirer.push(k); else poser[k] = v;
+    }
+    if (f['Statut agenda'] != null) retirer.push('Statut agenda');
+    return { poser, retirer };
+  }
+
+  static quandDeNoteEvenement(fm) {
+    const f = fm || {};
+    const d = String(f['Début'] || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?/.test(d)) return d.slice(0, d.length > 10 ? 16 : 10);
+    return String(f.Date || '').trim().slice(0, 10);
+  }
+
+  // Relie notes et événements lus. notes : [{ cle, id, quand }]. D'abord le
+  // même instant, puis le même jour (l'heure a changé), puis, pour un
+  // événement unique, son seul homonyme (il a changé de jour). Dans une série,
+  // une séance sans correspondant n'est jamais confondue avec une autre.
+  static apparierNotesEvenements(notes, evenements) {
+    const paires = new Map();
+    const libres = new Map();
+    for (const e of evenements || []) {
+      const id = Ariane.idStableEvenement(e && e.id);
+      if (id) (libres.get(id) || libres.set(id, []).get(id)).push(e);
+    }
+    const total = new Map([...libres].map(([k, l]) => [k, l.length]));
+    const passe = (test) => {
+      for (const n of notes || []) {
+        if (paires.has(n.cle)) continue;
+        const l = libres.get(n.id) || [];
+        const i = l.findIndex((e) => test(n, Ariane.quandEvenement(e)));
+        if (i >= 0) paires.set(n.cle, l.splice(i, 1)[0]);
+      }
+    };
+    passe((n, q) => q === n.quand);
+    passe((n, q) => q.slice(0, 10) === String(n.quand).slice(0, 10));
+    passe((n) => total.get(n.id) === 1);
+    return { paires, restants: [...libres.values()].flat() };
+  }
+
+  // L'échéance que fixent les événements préparés : le dernier d'entre eux.
+  static echeanceDesQuands(quands) {
+    const q = [].concat(quands || []).map(String).filter(Boolean).sort();
     if (!q.length) return null;
     const der = q[q.length - 1];
     return { echeance: der.slice(0, 10), heure: der.length > 10 ? der.slice(11, 16) : '' };
   }
 
-  // L'événement de `evenements` qui répond à une clé : le même instant ; à
-  // défaut le même jour (l'heure a bougé) ; à défaut, le seul événement de
-  // ce nom dans la liste (il a changé de jour). Plusieurs événements du même
-  // nom sans aucun ce jour-là : une série dont cette séance a disparu.
-  static evenementDeCle(cle, evenements) {
-    const k = typeof cle === 'string' ? Ariane.lireCleEvenement(cle) : cle;
-    if (!k) return null;
-    const memes = (evenements || []).filter((e) => e && String(e.id || '') === k.id);
-    return memes.find((e) => Ariane.quandEvenement(e) === k.quand)
-      || memes.find((e) => Ariane.quandEvenement(e).slice(0, 10) === k.quand.slice(0, 10))
-      || (memes.length === 1 ? memes[0] : null);
+  // Une note peut être jugée disparue si la lecture couvrait son jour et son
+  // calendrier, et si l'événement n'a pas été écarté comme créneau d'Ariane.
+  static noteEvenementJugeable(n, bornes, lecture) {
+    const l = lecture || {};
+    const jour = String(n.quand || '').slice(0, 10);
+    const cal = String(n.calendrier || '').trim().toLowerCase();
+    return !!(l.ok && jour && cal && bornes && jour >= bornes.debut && jour <= bornes.fin
+      && (l.calendriers || []).some((c) => String(c).toLowerCase() === cal)
+      && !(l.ignores && l.ignores.has(n.id)));
   }
 
-  // Réaligne les événements d'une tâche sur ceux qui viennent d'être lus,
-  // pour la fenêtre `bornes` ({ debut, fin }, jours ISO). Une clé dont le jour
-  // sort de la fenêtre n'est pas jugée : l'événement n'a simplement pas été
-  // lu. Dans la fenêtre : titre et heure suivent l'événement ; introuvable,
-  // la clé reste, marquée telle dans sa forme lisible (on ne supprime rien).
-  // `quandChange` : un événement préparé a bougé, l'échéance doit suivre.
-  // Rend { cles, libelles, change, quandChange }.
-  static reconcilierEvenementsTache(cles, libelles, evenements, bornes) {
-    const b = bornes || {};
-    const paires = Ariane.pairesEvenementsTache(cles, libelles);
-    let quandChange = false;
-    const nv = paires.map((p) => {
-      const jour = p.quand.slice(0, 10);
-      if (!b.debut || !b.fin || jour < b.debut || jour > b.fin) return p;
-      const e = Ariane.evenementDeCle(p.cle, evenements);
-      if (!e) {
-        return Object.assign({}, p, { libelle: Ariane.libelleEvenementTache(p.quand,
-          Ariane.titreDuLibelleEvenement(p.libelle, p.suite), true, p.suite) });
-      }
-      const cle = Ariane.cleEvenementTache(e, p.suite);
-      if (cle !== p.cle && !p.suite) quandChange = true;
-      const quand = Ariane.quandEvenement(e);
-      return { cle, quand, suite: p.suite, libelle: Ariane.libelleEvenementTache(quand, e.titre, false, p.suite) };
-    }).sort((a, b2) => a.quand.localeCompare(b2.quand));
-    const avantCles = [].concat(cles || []).map(String);
-    const avantLib = [].concat(libelles || []).map(String);
-    const c2 = nv.map((p) => p.cle);
-    const l2 = nv.map((p) => p.libelle);
-    const change = JSON.stringify(c2) !== JSON.stringify(avantCles) || JSON.stringify(l2) !== JSON.stringify(avantLib);
-    return { cles: c2, libelles: l2, change, quandChange };
+  static blocDescriptionEvenement(texte) {
+    const t = String(texte || '').trim().replace(/<!--/g, '&lt;!--');
+    return t ? '<!-- ariane:description -->\n## ' + tr('Description') + '\n\n' + t + '\n<!-- /ariane:description -->' : '';
+  }
+
+  // Le corps d'une note d'événement : ses blocs et, si l'utilisateur ne l'a
+  // pas changé, son titre. Tout le reste est conservé tel quel.
+  static corpsNoteEvenement(corps, e, titreAvant, piecesRestantes) {
+    let t = Ariane.corpsAvecBloc(corps, 'pieces', Ariane.blocPiecesEvenement(piecesRestantes || []));
+    t = Ariane.corpsAvecBloc(t, 'description', Ariane.blocDescriptionEvenement(e && e.notes));
+    const titre = String((e && e.titre) || '').trim();
+    if (titre && titreAvant && titre !== titreAvant) {
+      const m = /^# (.*)$/m.exec(t);
+      if (m && m[1].trim() === titreAvant) t = t.slice(0, m.index) + '# ' + titre + t.slice(m.index + m[0].length);
+    }
+    return t;
   }
 
   static corpsNouvelleNoteEvenement(champs) {
@@ -1077,6 +1096,7 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push('Type: evenement');
     l.push('Événement ID:' + (c.evenementId ? ' ' + q(c.evenementId) : ''));
     l.push('Date:' + (c.date ? ' ' + c.date : ''));
+    l.push('Ressources: []');
     l.push('tags:');
     // Le titre suit directement les propriétés : pas de ligne vide entre
     // les deux, qu'Obsidian affiche comme un blanc sous l'en-tête.

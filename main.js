@@ -812,6 +812,15 @@ const TEXTES = {
     "Cette tâche ne sera pas créée : le lien tombe.": "This task will not be created, so the link is dropped.",
     "Retirer cette dépendance": "Remove this dependency",
     " (introuvable)": " (not found)",
+    "Description": "Description",
+    " note(s) d’événement créée(s).": " event note(s) created.",
+    "Aucun événement lu dans l’agenda.": "No event read from the calendar.",
+    "Ouvrez la note à relier.": "Open the note to link.",
+    "Événement de cette note…": "Event of this note…",
+    "Note reliée à ": "Note linked to ",
+    "Événement : relier cette note à un événement…": "Event: link this note to an event…",
+    "Notes d’événement automatiques": "Automatic event notes",
+    "Calendriers dont chaque événement reçoit une note, jusqu’à un an à l’avance, séparés par des virgules. Vide : aucune note automatique.": "Calendars whose events each get a note, up to one year ahead, separated by commas. Empty: no automatic notes.",
     " ressource(s) ajoutée(s) à ": " resource(s) added to ",
     "Déjà dans les ressources de ": "Already in the resources of ",
     "Note ou fichier à ajouter…": "Note or file to add…",
@@ -2810,6 +2819,8 @@ const DEFAULT_SETTINGS = {
       proprietes: [] },
   ],
   familleTacheDefaut: 'action',
+  notesEvenementsCalendriers: ['Calendrier'], // calendriers dont les événements ont d'office une note
+  notesEvenementsDepuis: '',            // AAAA-MM-JJ ; vide : depuis l'origine du coffre
   // Anciennes clés, conservées le temps de la migration (voir migrerFamilles).
   dossierNotesConceptuelles: '',
   prefixeNoteConceptuelle: '',
@@ -6418,8 +6429,8 @@ const avecSocle = (Base) => class extends Base {
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
             'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'seances', 'avancement', 'temps-estime', 'parent',
-            'bloque-par', 'ressources', 'evenements', 'termine-le',
-            'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id', 'evenements-id'];
+            'bloque-par', 'ressources', 'prepare', 'fait-suite', 'termine-le',
+            'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id'];
   }
 
   // Regroupement des propriétés d'une tâche (habillage de la note). `famille`
@@ -15603,7 +15614,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       source: 'Source', livrable: 'Livrable', fichier: 'Fichier',
       liste: 'Liste', 'rappel-id': 'Rappel ID', 'agenda-id': 'Agenda ID',
       'temps-reel': 'Temps réel', seances: 'Séances',
-      evenements: 'Événements', 'evenements-id': 'Événements ID', ressources: 'Ressources',
+      prepare: 'Prépare', 'fait-suite': 'Fait suite à', ressources: 'Ressources',
     })[concept] || concept;
   }
 
@@ -16505,9 +16516,9 @@ const avecTachesStatiques = (Base) => class extends Base {
 
   // Remplace le bloc, ou le pose sous le titre de la note ; un bloc vide
   // retire l'ancien. Le reste de la note ne change pas.
-  static corpsAvecPieces(corps, bloc) {
+  static corpsAvecBloc(corps, nom, bloc) {
     const t = String(corps || '');
-    const re = /<!-- ariane:pieces -->[\s\S]*?<!-- \/ariane:pieces -->\n?/;
+    const re = new RegExp('<!-- ariane:' + nom + ' -->[\\s\\S]*?<!-- /ariane:' + nom + ' -->\\n?');
     if (re.test(t)) return t.replace(re, () => (bloc ? bloc + '\n' : ''));
     if (!bloc) return t;
     const fm = t.startsWith('---\n') ? t.indexOf('\n---', 4) : -1;
@@ -16518,34 +16529,29 @@ const avecTachesStatiques = (Base) => class extends Base {
     return avant.replace(/\n*$/, '\n') + (m ? '\n' : '') + bloc + '\n' + (apres ? '\n' + apres : '');
   }
 
-  // ── Événements associés à une tâche ──────────────────────────────────────
-  //  Une tâche garde ses événements sous deux propriétés parallèles :
-  //  `evenements-id`, écrite par Ariane seule, porte « identifiant|quand »
-  //  (quand : AAAA-MM-JJTHH:MM, ou AAAA-MM-JJ pour un jour entier) ;
-  //  `evenements` en porte la forme lisible, réécrite d'après elle. L'heure
-  //  de début fait partie de l'identité : dans Calendrier, toutes les séances
-  //  d'une série récurrente partagent le même identifiant, et associer la
-  //  séance du 20 ne doit pas lier toute la série. Une tâche peut préparer
-  //  l'événement, ou lui faire suite (un compte rendu) : la clé porte alors
-  //  « |suite », et sa forme lisible « (suite) ». L'échéance de la tâche est le
-  //  dernier événement qu'elle prépare ; ceux auxquels elle fait suite ne la
-  //  touchent jamais.
+  static corpsAvecPieces(corps, bloc) {
+    return Ariane.corpsAvecBloc(corps, 'pieces', bloc);
+  }
+
+  // ── Notes d'événement ────────────────────────────────────────────────────
+  //  Chaque événement a sa note, pivot auquel tâches, fichiers et comptes
+  //  rendus se relient par de simples liens. L'agenda fait foi pour les
+  //  propriétés listées par champsNoteEvenement et pour les blocs d'Ariane ;
+  //  le reste de la note n'appartient qu'à l'utilisateur. Une séance se
+  //  reconnaît à son identifiant ET à sa date : une série les partage.
+
+  // L'identifiant qui survit à un déplacement. Celui d'un agenda iCal porte
+  // l'instant de l'occurrence, et changerait avec elle.
+  static idStableEvenement(id) {
+    const s = String(id || '').trim();
+    const m = /^(ics:.*)\|\d{4}-\d{2}-\d{2}(?:T[\d:]+)?$/.exec(s);
+    return m ? m[1] : s;
+  }
 
   static quandEvenement(e) {
     const d = String((e && e.debut) || '');
     if (!/^\d{4}-\d{2}-\d{2}/.test(d)) return '';
     return e.allDay || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(d) ? d.slice(0, 10) : d.slice(0, 16);
-  }
-
-  static cleEvenementTache(e, suite) {
-    const id = String((e && e.id) || '').trim();
-    const quand = Ariane.quandEvenement(e);
-    return id && quand ? id + '|' + quand + (suite ? '|suite' : '') : '';
-  }
-
-  // La clé sans son rôle : ce qui désigne l'événement lui-même.
-  static cleBaseEvenement(cle) {
-    return String(cle || '').trim().replace(/\|suite$/, '');
   }
 
   // Un événement commencé ne se prépare plus : on ne peut que lui faire suite.
@@ -16557,99 +16563,123 @@ const avecTachesStatiques = (Base) => class extends Base {
     return quand.length === 10 ? quand < ici.slice(0, 10) : quand <= ici.slice(0, 16);
   }
 
-  // { id, quand, suite } d'une clé, ou null. L'identifiant peut lui-même
-  // contenir « | » (ceux des calendriers iCal) : on coupe au dernier.
-  static lireCleEvenement(cle) {
-    const brut = String(cle || '').trim();
-    const s = Ariane.cleBaseEvenement(brut);
-    const i = s.lastIndexOf('|');
-    if (i <= 0) return null;
-    const quand = s.slice(i + 1);
-    if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(quand)) return null;
-    return { id: s.slice(0, i), quand, suite: s !== brut };
+  // Une note naît dès que l'événement existe : de l'origine du coffre à un an
+  // devant soi.
+  static evenementDansHorizon(e, origine, aujourdhui) {
+    const jour = Ariane.quandEvenement(e).slice(0, 10);
+    return !!jour && jour >= origine && jour <= Ariane.decalerJour(aujourdhui, 365);
   }
 
-  static libelleEvenementTache(quand, titre, introuvable, suite) {
-    return String(quand || '').replace('T', ' ') + ' ' + (String(titre || '').trim() || tr('(sans titre)'))
-      + (suite ? tr(' (suite)') : '') + (introuvable ? tr(' (introuvable)') : '');
+  static libelleEvenement(e) {
+    return Ariane.quandEvenement(e).replace('T', ' ') + ' ' + (String((e && e.titre) || '').trim() || tr('(sans titre)'));
   }
 
-  // Le titre qu'une forme lisible garde, sans sa date ni la marque
-  // « introuvable » : de quoi la réécrire quand l'événement n'est pas relu.
-  static titreDuLibelleEvenement(libelle, suite) {
-    const t = String(libelle || '').replace(/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})? ?/, '')
-      .replace(new RegExp(echapperRegex(tr(' (introuvable)')) + '$'), '');
-    return (suite ? t.replace(new RegExp(echapperRegex(tr(' (suite)')) + '$'), '') : t).trim();
+  static nomNoteEvenement(e) {
+    const q = Ariane.quandEvenement(e);
+    return 'EV-' + q.slice(0, 10).replace(/-/g, '') + (q.length > 10 ? '-' + q.slice(11, 16).replace(':', '') : '');
   }
 
-  // Les paires { cle, libelle } d'une tâche, par ordre chronologique. Les
-  // deux listes vont d'ordinaire de pair ; une ligne lisible qui manque est
-  // refaite d'après la clé.
-  static pairesEvenementsTache(cles, libelles) {
-    const lib = [].concat(libelles || []).map(String);
-    const out = [];
-    [].concat(cles || []).map(String).forEach((cle, i) => {
-      const k = Ariane.lireCleEvenement(cle);
-      if (!k || out.some((p) => p.cle === cle)) return;
-      out.push({ cle, quand: k.quand, suite: k.suite,
-        libelle: lib[i] || Ariane.libelleEvenementTache(k.quand, '', false, k.suite) });
-    });
-    return out.sort((a, b) => a.quand.localeCompare(b.quand));
+  // Les propriétés que l'agenda tient à jour. Une valeur vide retire la clé.
+  static champsNoteEvenement(e) {
+    const quand = Ariane.quandEvenement(e);
+    const fin = String((e && e.fin) || '');
+    return {
+      'Événement ID': Ariane.idStableEvenement(e.id),
+      Titre: String(e.titre || '').trim(),
+      Date: quand.slice(0, 10),
+      'Début': quand,
+      Fin: e.allDay ? fin.slice(0, 10) : fin.slice(0, 16),
+      Calendrier: e.calendrier || '',
+      Lieu: e.lieu || '',
+      Organisateur: e.organisateur || '',
+      Participants: (e.participants || []).filter(Boolean),
+      Lien: e.url || '',
+    };
   }
 
-  // L'échéance que fixent des clés : le jour du dernier événement préparé, et
-  // son heure de début (vide pour un jour entier). null s'il n'y en a aucun.
-  static echeanceDesEvenements(cles) {
-    const q = [].concat(cles || []).map((c) => Ariane.lireCleEvenement(c)).filter((k) => k && !k.suite)
-      .map((k) => k.quand).sort();
+  // Ce qu'il faut écrire pour aligner une note sur l'événement : { poser,
+  // retirer }, vides si elle est à jour (aucune écriture alors).
+  static ecartNoteEvenement(fm, e) {
+    const n = (v) => JSON.stringify([].concat(v == null ? [] : v).map(String).filter(Boolean));
+    const poser = {};
+    const retirer = [];
+    const f = fm || {};
+    for (const [k, v] of Object.entries(Ariane.champsNoteEvenement(e))) {
+      if (n(f[k]) === n(v)) continue;
+      if (n(v) === '[]') retirer.push(k); else poser[k] = v;
+    }
+    if (f['Statut agenda'] != null) retirer.push('Statut agenda');
+    return { poser, retirer };
+  }
+
+  static quandDeNoteEvenement(fm) {
+    const f = fm || {};
+    const d = String(f['Début'] || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?/.test(d)) return d.slice(0, d.length > 10 ? 16 : 10);
+    return String(f.Date || '').trim().slice(0, 10);
+  }
+
+  // Relie notes et événements lus. notes : [{ cle, id, quand }]. D'abord le
+  // même instant, puis le même jour (l'heure a changé), puis, pour un
+  // événement unique, son seul homonyme (il a changé de jour). Dans une série,
+  // une séance sans correspondant n'est jamais confondue avec une autre.
+  static apparierNotesEvenements(notes, evenements) {
+    const paires = new Map();
+    const libres = new Map();
+    for (const e of evenements || []) {
+      const id = Ariane.idStableEvenement(e && e.id);
+      if (id) (libres.get(id) || libres.set(id, []).get(id)).push(e);
+    }
+    const total = new Map([...libres].map(([k, l]) => [k, l.length]));
+    const passe = (test) => {
+      for (const n of notes || []) {
+        if (paires.has(n.cle)) continue;
+        const l = libres.get(n.id) || [];
+        const i = l.findIndex((e) => test(n, Ariane.quandEvenement(e)));
+        if (i >= 0) paires.set(n.cle, l.splice(i, 1)[0]);
+      }
+    };
+    passe((n, q) => q === n.quand);
+    passe((n, q) => q.slice(0, 10) === String(n.quand).slice(0, 10));
+    passe((n) => total.get(n.id) === 1);
+    return { paires, restants: [...libres.values()].flat() };
+  }
+
+  // L'échéance que fixent les événements préparés : le dernier d'entre eux.
+  static echeanceDesQuands(quands) {
+    const q = [].concat(quands || []).map(String).filter(Boolean).sort();
     if (!q.length) return null;
     const der = q[q.length - 1];
     return { echeance: der.slice(0, 10), heure: der.length > 10 ? der.slice(11, 16) : '' };
   }
 
-  // L'événement de `evenements` qui répond à une clé : le même instant ; à
-  // défaut le même jour (l'heure a bougé) ; à défaut, le seul événement de
-  // ce nom dans la liste (il a changé de jour). Plusieurs événements du même
-  // nom sans aucun ce jour-là : une série dont cette séance a disparu.
-  static evenementDeCle(cle, evenements) {
-    const k = typeof cle === 'string' ? Ariane.lireCleEvenement(cle) : cle;
-    if (!k) return null;
-    const memes = (evenements || []).filter((e) => e && String(e.id || '') === k.id);
-    return memes.find((e) => Ariane.quandEvenement(e) === k.quand)
-      || memes.find((e) => Ariane.quandEvenement(e).slice(0, 10) === k.quand.slice(0, 10))
-      || (memes.length === 1 ? memes[0] : null);
+  // Une note peut être jugée disparue si la lecture couvrait son jour et son
+  // calendrier, et si l'événement n'a pas été écarté comme créneau d'Ariane.
+  static noteEvenementJugeable(n, bornes, lecture) {
+    const l = lecture || {};
+    const jour = String(n.quand || '').slice(0, 10);
+    const cal = String(n.calendrier || '').trim().toLowerCase();
+    return !!(l.ok && jour && cal && bornes && jour >= bornes.debut && jour <= bornes.fin
+      && (l.calendriers || []).some((c) => String(c).toLowerCase() === cal)
+      && !(l.ignores && l.ignores.has(n.id)));
   }
 
-  // Réaligne les événements d'une tâche sur ceux qui viennent d'être lus,
-  // pour la fenêtre `bornes` ({ debut, fin }, jours ISO). Une clé dont le jour
-  // sort de la fenêtre n'est pas jugée : l'événement n'a simplement pas été
-  // lu. Dans la fenêtre : titre et heure suivent l'événement ; introuvable,
-  // la clé reste, marquée telle dans sa forme lisible (on ne supprime rien).
-  // `quandChange` : un événement préparé a bougé, l'échéance doit suivre.
-  // Rend { cles, libelles, change, quandChange }.
-  static reconcilierEvenementsTache(cles, libelles, evenements, bornes) {
-    const b = bornes || {};
-    const paires = Ariane.pairesEvenementsTache(cles, libelles);
-    let quandChange = false;
-    const nv = paires.map((p) => {
-      const jour = p.quand.slice(0, 10);
-      if (!b.debut || !b.fin || jour < b.debut || jour > b.fin) return p;
-      const e = Ariane.evenementDeCle(p.cle, evenements);
-      if (!e) {
-        return Object.assign({}, p, { libelle: Ariane.libelleEvenementTache(p.quand,
-          Ariane.titreDuLibelleEvenement(p.libelle, p.suite), true, p.suite) });
-      }
-      const cle = Ariane.cleEvenementTache(e, p.suite);
-      if (cle !== p.cle && !p.suite) quandChange = true;
-      const quand = Ariane.quandEvenement(e);
-      return { cle, quand, suite: p.suite, libelle: Ariane.libelleEvenementTache(quand, e.titre, false, p.suite) };
-    }).sort((a, b2) => a.quand.localeCompare(b2.quand));
-    const avantCles = [].concat(cles || []).map(String);
-    const avantLib = [].concat(libelles || []).map(String);
-    const c2 = nv.map((p) => p.cle);
-    const l2 = nv.map((p) => p.libelle);
-    const change = JSON.stringify(c2) !== JSON.stringify(avantCles) || JSON.stringify(l2) !== JSON.stringify(avantLib);
-    return { cles: c2, libelles: l2, change, quandChange };
+  static blocDescriptionEvenement(texte) {
+    const t = String(texte || '').trim().replace(/<!--/g, '&lt;!--');
+    return t ? '<!-- ariane:description -->\n## ' + tr('Description') + '\n\n' + t + '\n<!-- /ariane:description -->' : '';
+  }
+
+  // Le corps d'une note d'événement : ses blocs et, si l'utilisateur ne l'a
+  // pas changé, son titre. Tout le reste est conservé tel quel.
+  static corpsNoteEvenement(corps, e, titreAvant, piecesRestantes) {
+    let t = Ariane.corpsAvecBloc(corps, 'pieces', Ariane.blocPiecesEvenement(piecesRestantes || []));
+    t = Ariane.corpsAvecBloc(t, 'description', Ariane.blocDescriptionEvenement(e && e.notes));
+    const titre = String((e && e.titre) || '').trim();
+    if (titre && titreAvant && titre !== titreAvant) {
+      const m = /^# (.*)$/m.exec(t);
+      if (m && m[1].trim() === titreAvant) t = t.slice(0, m.index) + '# ' + titre + t.slice(m.index + m[0].length);
+    }
+    return t;
   }
 
   static corpsNouvelleNoteEvenement(champs) {
@@ -16663,6 +16693,7 @@ const avecTachesStatiques = (Base) => class extends Base {
     l.push('Type: evenement');
     l.push('Événement ID:' + (c.evenementId ? ' ' + q(c.evenementId) : ''));
     l.push('Date:' + (c.date ? ' ' + c.date : ''));
+    l.push('Ressources: []');
     l.push('tags:');
     // Le titre suit directement les propriétés : pas de ligne vide entre
     // les deux, qu'Obsidian affiche comme un blanc sous l'en-tête.
@@ -19824,7 +19855,7 @@ const avecArticulationStatiques = (Base) => class extends Base {
       // en \u001f), lien, participants, organisateur. Chaque lecture est
       // gardée : un champ absent ne doit pas perdre l'événement.
       '    var lieu=""; try{ lieu=net(ObjC.unwrap(e.location)); }catch(el){}',
-      '    var nts=""; try{ nts=String(ObjC.unwrap(e.notes)||"").slice(0,600).replace(/\\t/g," ").replace(/\\r?\\n/g,"\\u001f"); }catch(en){}',
+      '    var nts=""; try{ nts=String(ObjC.unwrap(e.notes)||"").slice(0,3000).replace(/\\t/g," ").replace(/\\r?\\n/g,"\\u001f"); }catch(en){}',
       '    var url=""; try{ if(e.URL && !e.URL.isNil()) url=net(ObjC.unwrap(e.URL.absoluteString)); }catch(eu){}',
       '    var parts=[]; try{ var at=e.attendees; if(at && !at.isNil()){ for(var q=0;q<at.count && q<12;q++){ var nm=ObjC.unwrap(at.objectAtIndex(q).name); if(nm) parts.push(net(nm)); } } }catch(ea){}',
       '    var org=""; try{ if(e.organizer && !e.organizer.isNil()) org=net(ObjC.unwrap(e.organizer.name)); }catch(eo){}',
@@ -20722,8 +20753,8 @@ const avecTaches = (Base) => class extends Base {
         creneaux: [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean),
         seances: [].concat(this._lireT(fm, 'seances') || []).map(String).filter(Boolean),
         ressources: [].concat(this._lireT(fm, 'ressources') || []).map(String).filter(Boolean),
-        evenementsId: [].concat(this._lireT(fm, 'evenements-id') || []).map(String).filter(Boolean),
-        evenements: [].concat(this._lireT(fm, 'evenements') || []).map(String).filter(Boolean),
+        prepare: [].concat(this._lireT(fm, 'prepare') || []).map(String).filter(Boolean),
+        faitSuite: [].concat(this._lireT(fm, 'fait-suite') || []).map(String).filter(Boolean),
         tempsReel: Ariane.tempsReelDeTache(this._lireT(fm, 'temps-reel')),
         statut: this._lireT(fm, 'statut') || 'à faire',
         priorite: this._lireT(fm, 'priorite') || '',
@@ -20818,7 +20849,7 @@ const avecTaches = (Base) => class extends Base {
     if (process.platform !== 'darwin') return Promise.resolve(null);
     return new Promise((res) => {
       require('child_process').execFile('osascript', ['-l', 'JavaScript', '-e', script],
-        { timeout: ms || 60000, maxBuffer: 1 << 20 },
+        { timeout: ms || 60000, maxBuffer: 16 << 20 },
         (err, out, errOut) => {
           if (err) {
             console.warn('[Ariane] osascript a échoué :', err.code, err.killed ? '(timeout)' : '',
@@ -20956,7 +20987,7 @@ const avecTaches = (Base) => class extends Base {
     if (!cals.length) return [];
     const cle = 'ics|' + String(debutISO) + '|' + String(finISO);
     const c = this._fondCache;
-    if (c && c.cle === cle && Date.now() - c.le < 60000) return c.data;
+    if (c && c.cle === cle && Date.now() - c.le < 60000) { this._fondLecture = c.lecture; return c.data; }
     // Ceux que la synchronisation Google a créés représentent des créneaux,
     // déjà dessinés : on ne les montre pas deux fois (identifiant connu, ou
     // référence d'une tâche entre crochets dans le titre).
@@ -20974,15 +21005,20 @@ const avecTaches = (Base) => class extends Base {
       return !!(m && refs.has(m[1].trim()));
     };
     const data = [];
+    const lecture = { cle: String(debutISO) + '|' + String(finISO), ok: true, calendriers: [], ignores: new Set() };
     for (const cal of cals) {
+      const nom = cal.nom || tr('Google Agenda');
       const texte = await this.lireIcsDistant(cal.url);
-      if (!texte) continue;
+      if (!texte) { lecture.ok = false; continue; }
       try {
-        data.push(...Ariane.evenementsIcs(texte, debutISO, finISO,
-          { nom: cal.nom || tr('Google Agenda'), couleur: cal.couleur || '' }).filter((e) => !aNous(e)));
-      } catch (e) { console.warn('[Ariane] agenda iCal illisible :', cal.nom, e); }
+        for (const e of Ariane.evenementsIcs(texte, debutISO, finISO, { nom, couleur: cal.couleur || '' })) {
+          if (aNous(e)) lecture.ignores.add(Ariane.idStableEvenement(e.id)); else data.push(e);
+        }
+        lecture.calendriers.push(nom);
+      } catch (e) { lecture.ok = false; console.warn('[Ariane] agenda iCal illisible :', cal.nom, e); }
     }
-    this._fondCache = { cle, le: Date.now(), data };
+    this._fondCache = { cle, le: Date.now(), data, lecture };
+    this._fondLecture = lecture;
     return data;
   }
 
@@ -20991,7 +21027,8 @@ const avecTaches = (Base) => class extends Base {
     if (!obsidian.Platform.isMacOS || !this.settings.agendaActif) return [];
     const cle = String(debutISO) + '|' + String(finISO);
     const c = this._fondCache;
-    if (c && c.cle === cle && Date.now() - c.le < 60000) return c.data;
+    if (c && c.cle === cle && Date.now() - c.le < 60000) { this._fondLecture = c.lecture; return c.data; }
+    this._fondLecture = { cle, ok: false };
     if (!this._agendaCouleurs) {
       if (!this._agendas) { try { await this.chargerAgendas(); } catch (e) { /* couleurs plus tard */ } }
       else this.chargerCouleursAgendas().catch(() => {});
@@ -21023,6 +21060,7 @@ const avecTaches = (Base) => class extends Base {
       return [];
     }
     const couleurs = this._agendaCouleurs || {};
+    const ignores = new Set();
     const data = (s == null ? [] : s.split('\n').filter(Boolean).map((l) => {
       const p = l.split('\t');
       const cal = p[5] || '';
@@ -21031,10 +21069,19 @@ const avecTaches = (Base) => class extends Base {
                lieu: p[6] || '', notes: String(p[7] || '').split('\u001f').join('\n').trim(),
                url: p[8] || '', participants: p[9] ? p[9].split('; ').filter(Boolean) : [],
                organisateur: p[10] || '', pieces: Ariane.lirePiecesEvenement(p[11]) };
-    })).filter((e) => e.id && e.debut && !aNous(e));
+    })).filter((e) => {
+      if (!e.id || !e.debut) return false;
+      if (!aNous(e)) return true;
+      ignores.add(Ariane.idStableEvenement(e.id));
+      return false;
+    });
     if (s == null) return [];              // échec dur : ne pas cacher, ne pas marquer l'accès OK
     this._agendaStatut = 3;
-    this._fondCache = { cle, le: Date.now(), data };
+    // Ce que vaut cette lecture : seule une lecture réussie peut faire juger
+    // un événement disparu, et seulement dans les calendriers lus.
+    const lecture = { cle, ok: true, calendriers: cals.slice(), ignores };
+    this._fondCache = { cle, le: Date.now(), data, lecture };
+    this._fondLecture = lecture;
     return data;
   }
 
@@ -21059,6 +21106,9 @@ const avecTaches = (Base) => class extends Base {
       try { await this.chargerCouleursAgendas(true); } catch (e) { /* couleurs plus tard */ }
     }
     await this._rafraichirFond();
+    if (this.settings && this.synchroniserToutesNotesEvenements) {
+      this.synchroniserToutesNotesEvenements().catch((e) => console.warn('[Ariane] notes d’événement :', e));
+    }
   }
 
   // Instantané « dernier état synchronisé » d'une tâche, pour arbitrer les
@@ -23236,26 +23286,35 @@ const avecTaches = (Base) => class extends Base {
   //  bouton +, glisser-déposer, clic droit dans l'explorateur, commande.
   lienRessource(f, ref) {
     const note = ref ? this.fichierDeRef(ref) : null;
-    return '[[' + this.app.metadataCache.fileToLinktext(f, note ? note.path : '', f.extension === 'md') + ']]';
+    return this._lienVers(f, note ? note.path : '');
   }
 
-  async ajouterRessourcesTache(ref, fichiers) {
-    const note = this.fichierDeRef(ref);
-    const liste = (fichiers || []).filter((f) => f && f.path !== (note && note.path));
-    if (!note || !liste.length) return 0;
-    const cle = this.cleT('ressources');
+  _lienVers(f, source) {
+    return '[[' + this.app.metadataCache.fileToLinktext(f, source || '', f.extension === 'md') + ']]';
+  }
+
+  // Ajoute des liens à la liste `cle` d'une note, sans doublon.
+  async _ajouterRessourcesA(note, cle, fichiers, lire, etiquette) {
+    const liste = (fichiers || []).filter((f) => f && f.path !== note.path);
+    if (!liste.length) return 0;
     let n = 0;
-    this.marquerOrigineTache(note.path);
     await this.app.fileManager.processFrontMatter(note, (x) => {
-      let l = [].concat(this._lireT(x, 'ressources') || []).map(String).filter(Boolean);
+      let l = [].concat(lire(x) || []).map(String).filter(Boolean);
       const avant = l.length;
-      for (const f of liste) l = Ariane.ressourcesAvec(l, this.lienRessource(f, ref));
+      for (const f of liste) l = Ariane.ressourcesAvec(l, this._lienVers(f, note.path));
       n = l.length - avant;
       x[cle] = l;
       if (n) x.modifie = new Date().toISOString().slice(0, 10);
     });
-    new obsidian.Notice(n ? n + tr(' ressource(s) ajoutée(s) à ') + ref + '.' : tr('Déjà dans les ressources de ') + ref + '.');
+    new obsidian.Notice(n ? n + tr(' ressource(s) ajoutée(s) à ') + etiquette + '.' : tr('Déjà dans les ressources de ') + etiquette + '.');
     return n;
+  }
+
+  async ajouterRessourcesTache(ref, fichiers) {
+    const note = this.fichierDeRef(ref);
+    if (!note) return 0;
+    this.marquerOrigineTache(note.path);
+    return this._ajouterRessourcesA(note, this.cleT('ressources'), fichiers, (x) => this._lireT(x, 'ressources'), ref);
   }
 
   // Choisir une note ou un fichier du coffre.
@@ -23311,8 +23370,13 @@ const avecTaches = (Base) => class extends Base {
   }
 
   // La ligne « Ressources » des propriétés reçoit un bouton + et les dépôts.
-  _equiperLigneRessources(row, ref) {
-    const ajouter = (l) => { this.ajouterRessourcesTache(ref, l).catch(() => {}); };
+  _equiperLigneRessources(row, ref, noteEvenement) {
+    const ajouter = (l) => {
+      const fait = noteEvenement
+        ? this._ajouterRessourcesA(noteEvenement, 'Ressources', l, (x) => x.Ressources, noteEvenement.basename)
+        : this.ajouterRessourcesTache(ref, l);
+      fait.catch(() => {});
+    };
     if (!row.querySelector('.zfa-ressources-ajout')) {
       const b = row.createEl('button', { cls: 'clickable-icon zfa-ressources-ajout',
         attr: { 'aria-label': tr('Ajouter une note ou un fichier') } });
@@ -23381,29 +23445,64 @@ const avecTaches = (Base) => class extends Base {
     return !err;
   }
 
-  // La note d'un événement, créée au besoin, avec ses pièces à jour.
+  // La note d'un événement, créée au besoin, alignée sur lui.
   async noteEvenementAJour(e) {
-    let f = e && e.id ? this.noteDeEvenement(e.id) : null;
+    let f = e ? this.noteDeEvenement(e) : null;
     if (!f) {
       const jour = String((e && e.debut) || '').slice(0, 10);
       const nom = String((e && e.titre) || '').trim() || (tr('Événement ') + (jour || ''));
-      const chemin = await this.creerNoteEvenement({ intitule: nom, date: jour, evenementId: (e && e.id) || '' });
+      const chemin = await this.creerNoteEvenement({ intitule: nom, date: jour,
+        evenementId: Ariane.idStableEvenement(e && e.id), nom: Ariane.nomNoteEvenement(e) });
+      this._indexNE = null;
       f = this.app.vault.getAbstractFileByPath(chemin);
     }
-    if (f) await this.majPiecesNoteEvenement(f, e);
+    if (f) await this.actualiserNoteEvenement(f, e);
     return f;
   }
 
-  async majPiecesNoteEvenement(f, e) {
-    const pieces = (e && e.pieces) || [];
-    const liens = new Map();
-    for (const p of pieces) {
-      const c = this.fichierDePiece(p);
-      if (c) liens.set(p, this.app.fileManager.generateMarkdownLink(c, f.path));
+  majPiecesNoteEvenement(f, e) { return this.actualiserNoteEvenement(f, e); }
+
+  // Aligne une note sur son événement. N'écrit que ce qui diffère : ni les
+  // propriétés d'Ariane absentes de l'agenda, ni le texte de l'utilisateur ne
+  // sont touchés. Rend true si la date a changé.
+  async actualiserNoteEvenement(f, e) {
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter || null;
+    const quandAvant = Ariane.quandDeNoteEvenement(fm);
+    const quand = Ariane.quandEvenement(e);
+    const titre = String(e.titre || '').trim();
+    const titreAvant = String((fm && (fm.Titre || [].concat(fm.aliases || [])[0])) || '').trim();
+    const pieces = e.pieces || [];
+    const copies = pieces.map((p) => this.fichierDePiece(p)).filter(Boolean);
+    const restantes = pieces.filter((p) => !this.fichierDePiece(p));
+    const ecart = Ariane.ecartNoteEvenement(fm, e);
+    let ressources = [].concat((fm && fm.Ressources) || []).map(String).filter(Boolean);
+    const nb = ressources.length;
+    for (const c of copies) ressources = Ariane.ressourcesAvec(ressources, this._lienVers(c, f.path));
+    if (!fm || Object.keys(ecart.poser).length || ecart.retirer.length || ressources.length !== nb
+      || !('Ressources' in fm)) {
+      this.marquerEcriture(f.path);
+      await this.app.fileManager.processFrontMatter(f, (x) => {
+        const avant = String(x.Titre || [].concat(x.aliases || [])[0] || '').trim();
+        const e2 = Ariane.ecartNoteEvenement(x, e);
+        Object.assign(x, e2.poser);
+        for (const k of e2.retirer) delete x[k];
+        let l = [].concat(x.Ressources || []).map(String).filter(Boolean);
+        for (const c of copies) l = Ariane.ressourcesAvec(l, this._lienVers(c, f.path));
+        x.Ressources = l;
+        const al = [].concat(x.aliases || []);
+        if (titre && avant && avant !== titre && al[0] === avant) { al[0] = titre; x.aliases = al; }
+      });
     }
-    const bloc = Ariane.blocPiecesEvenement(pieces, liens);
-    this.marquerEcriture(f.path);
-    await this.app.vault.process(f, (t) => Ariane.corpsAvecPieces(t, bloc));
+    const corps = await this.app.vault.cachedRead(f);
+    if (Ariane.corpsNoteEvenement(corps, e, titreAvant, restantes) !== corps) {
+      this.marquerEcriture(f.path);
+      await this.app.vault.process(f, (t) => Ariane.corpsNoteEvenement(t, e, titreAvant, restantes));
+    }
+    this._indexNE = null;
+    // Une ancienne note ne connaissait que le jour : l'enrichir n'est pas un déplacement.
+    const bouge = !!(fm && quandAvant && (fm['Début'] ? quand !== quandAvant : quand.slice(0, 10) !== quandAvant));
+    if (bouge) await this._suivreDateEvenement(f, quand);
+    return bouge;
   }
 
   // Copie dans le dossier des pièces jointes du coffre celles qui n'y sont
@@ -23439,71 +23538,115 @@ const avecTaches = (Base) => class extends Base {
   async importerPiecesNoteActive() {
     const f = this.app.workspace.getActiveFile();
     const fm = f ? (this.app.metadataCache.getFileCache(f) || {}).frontmatter : null;
-    const id = Ariane.idEvenementDe(fm);
+    const id = Ariane.idStableEvenement(Ariane.idEvenementDe(fm));
     const jour = String((fm && fm.Date) || '').slice(0, 10);
     if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(jour)) {
       new obsidian.Notice(tr('Ouvrez d’abord la note d’un événement.'));
       return 0;
     }
     const evs = (await this.evenementsFond(Ariane.decalerJour(jour, -1), Ariane.decalerJour(jour, 1))) || [];
-    const e = evs.find((x) => x.id === id && String(x.debut).slice(0, 10) === jour) || evs.find((x) => x.id === id);
+    const memes = evs.filter((x) => Ariane.idStableEvenement(x.id) === id);
+    const e = memes.find((x) => String(x.debut).slice(0, 10) === jour) || memes[0];
     if (!e) { new obsidian.Notice(tr('Événement introuvable dans l’agenda.')); return 0; }
     return this.importerPiecesEvenement(e);
   }
 
-  // ── Événements associés (voir Ariane.reconcilierEvenementsTache) ─────────
-  // Les tâches qu'un événement concerne : [{ tache, cle }]. Même identifiant,
-  // et même instant, ou du moins même jour (une série partage l'identifiant).
-  tachesDeEvenement(e) {
-    const id = String((e && e.id) || '');
-    const quand = Ariane.quandEvenement(e);
-    if (!id || !quand) return [];
+  // ── Notes d'événement : index et liens natifs ────────────────────────────
+  _indexNotesEvenement() {
+    if (this._indexNE && Date.now() - this._indexNE.le < 2000) return this._indexNE.parId;
+    const parId = new Map();
+    const dossier = this.dossierNE;
+    const fichiers = this.app.vault.getMarkdownFiles();
+    const dedans = dossier ? fichiers.filter((f) => f.path.startsWith(dossier + '/')) : fichiers;
+    const dehors = dossier ? fichiers.filter((f) => !f.path.startsWith(dossier + '/')) : [];
+    for (const f of dedans.concat(dehors)) {
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      const id = Ariane.idStableEvenement(Ariane.idEvenementDe(fm));
+      if (!id || /^t[aâ]che$/i.test(String(fm.Type || '').trim())) continue;
+      const n = { cle: f.path, f, id, quand: Ariane.quandDeNoteEvenement(fm), calendrier: fm.Calendrier || '' };
+      (parId.get(id) || parId.set(id, []).get(id)).push(n);
+    }
+    this._indexNE = { le: Date.now(), parId };
+    return parId;
+  }
+
+  // La note d'un événement (objet) : même instant, sinon même jour. Avec un
+  // simple identifiant : sa première note.
+  noteDeEvenement(x) {
+    const objet = x && typeof x === 'object';
+    const id = Ariane.idStableEvenement(objet ? x.id : x);
+    if (!id) return null;
+    const l = this._indexNotesEvenement().get(id) || [];
+    if (!objet) return l.length ? l[0].f : null;
+    const q = Ariane.quandEvenement(x);
+    const n = l.find((c) => c.quand === q) || l.find((c) => c.quand.slice(0, 10) === q.slice(0, 10));
+    return n ? n.f : null;
+  }
+
+  _cibleLien(lien, source) {
+    return this.app.metadataCache.getFirstLinkpathDest(Ariane.cibleRessource(lien), source || '');
+  }
+
+  // Les tâches reliées à une note d'événement : [{ tache, lien, suite }].
+  tachesDeNoteEvenement(note) {
     const out = [];
     for (const t of this.tachesPourGantt()) {
-      for (const cle of t.evenementsId || []) {
-        const k = Ariane.lireCleEvenement(cle);
-        if (k && k.id === id && (k.quand === quand || k.quand.slice(0, 10) === quand.slice(0, 10))) {
-          out.push({ tache: t, cle, suite: k.suite });
-          break;
-        }
+      for (const [liste, suite] of [[t.prepare || [], false], [t.faitSuite || [], true]]) {
+        const lien = liste.find((l) => { const c = this._cibleLien(l, t.fichier.path); return c && c.path === note.path; });
+        if (lien) out.push({ tache: t, lien, suite });
       }
     }
     return out;
   }
 
-  // Écrit les événements d'une tâche. `avecEcheance` : l'échéance et l'heure
-  // suivent le dernier événement préparé (association, retrait, déplacement) ;
-  // le reste du temps, une échéance corrigée à la main est respectée.
-  async ecrireEvenementsTache(ref, cles, libelles, avecEcheance) {
-    const champs = { 'evenements-id': cles, evenements: libelles };
-    const ech = avecEcheance ? Ariane.echeanceDesEvenements(cles) : null;
-    if (ech) Object.assign(champs, { echeance: ech.echeance, heure: ech.heure || null, 'sans-echeance': false });
-    return this.majTache(ref, champs);
+  tachesDeEvenement(e) {
+    const note = this.noteDeEvenement(e);
+    return note ? this.tachesDeNoteEvenement(note) : [];
   }
 
-  // Associe un événement. `o.suite` : la tâche lui fait suite, l'échéance
-  // ne bouge pas.
+  // L'échéance d'une tâche suit le dernier événement qu'elle prépare.
+  // `dates` : Map(chemin -> instant) pour une note qui vient de changer.
+  async _caleEcheanceTache(t, liens, dates) {
+    const quands = [];
+    for (const l of liens) {
+      const n = this._cibleLien(l, t.fichier.path);
+      if (!n) continue;
+      const fm = (this.app.metadataCache.getFileCache(n) || {}).frontmatter;
+      quands.push((dates && dates.get(n.path)) || Ariane.quandDeNoteEvenement(fm));
+    }
+    const ech = Ariane.echeanceDesQuands(quands);
+    if (ech) await this.majTache(t.ref, { echeance: ech.echeance, heure: ech.heure || null, 'sans-echeance': false });
+    return ech;
+  }
+
+  async _suivreDateEvenement(note, quand) {
+    for (const a of this.tachesDeNoteEvenement(note)) {
+      if (!a.suite) await this._caleEcheanceTache(a.tache, a.tache.prepare, new Map([[note.path, quand]]));
+    }
+  }
+
+  // Relie une tâche à un événement ; sa note est créée au besoin. `o.suite` :
+  // la tâche lui fait suite, l'échéance ne bouge pas.
   async associerEvenementTache(ref, e, o) {
     const suite = !!(o && o.suite);
     const t = this.tachesPourGantt().find((x) => x.ref === ref);
-    const cle = Ariane.cleEvenementTache(e, suite);
-    if (!t || !cle) return false;
-    const base = Ariane.cleBaseEvenement(cle);
-    if ((t.evenementsId || []).some((c) => Ariane.cleBaseEvenement(c) === base)) {
-      new obsidian.Notice(tr('Cet événement est déjà associé à ') + ref + '.');
-      return false;
-    }
-    const quand = Ariane.quandEvenement(e);
-    const paires = Ariane.pairesEvenementsTache(t.evenementsId, t.evenements)
-      .concat([{ cle, quand, suite, libelle: Ariane.libelleEvenementTache(quand, e.titre, false, suite) }])
-      .sort((a, b) => a.quand.localeCompare(b.quand));
-    const cles = paires.map((p) => p.cle);
-    await this.ecrireEvenementsTache(ref, cles, paires.map((p) => p.libelle), !suite);
+    if (!t || !Ariane.quandEvenement(e)) return false;
+    const note = await this.noteEvenementAJour(e);
+    if (!note) return false;
+    const deja = (t.prepare || []).concat(t.faitSuite || []).some((l) => {
+      const c = this._cibleLien(l, t.fichier.path);
+      return c && c.path === note.path;
+    });
+    if (deja) { new obsidian.Notice(tr('Cet événement est déjà associé à ') + ref + '.'); return false; }
+    const lien = this._lienVers(note, t.fichier.path);
+    const concept = suite ? 'fait-suite' : 'prepare';
+    const liste = Ariane.ressourcesAvec(suite ? t.faitSuite : t.prepare, lien);
+    await this.majTache(ref, { [concept]: liste });
     if (suite) {
       new obsidian.Notice(tr('Événement associé à ') + ref + tr(' : échéance inchangée.'));
       return true;
     }
-    const ech = Ariane.echeanceDesEvenements(cles);
+    const ech = await this._caleEcheanceTache(t, liste, new Map([[note.path, Ariane.quandEvenement(e)]]));
     const jour = new Date(ech.echeance + 'T12:00:00').toLocaleDateString('fr-FR',
       { weekday: 'long', day: 'numeric', month: 'long' });
     new obsidian.Notice(tr('Événement associé à ') + ref + tr(' : échéance le ') + jour
@@ -23524,86 +23667,163 @@ const avecTaches = (Base) => class extends Base {
     return null;
   }
 
-  // Retire une association. L'échéance suit les événements préparés qui
-  // restent ; retirer une suite, ou le dernier préparé, ne la change pas.
-  async dissocierEvenementTache(ref, cle) {
+  // Retire un lien. L'échéance suit les événements préparés qui restent ;
+  // retirer une suite, ou le dernier préparé, ne la change pas. Une propriété
+  // vidée disparaît de la note.
+  async dissocierEvenementTache(ref, lien) {
     const t = this.tachesPourGantt().find((x) => x.ref === ref);
-    if (!t || !(t.evenementsId || []).includes(cle)) return false;
-    const k = Ariane.lireCleEvenement(cle);
-    const paires = Ariane.pairesEvenementsTache(t.evenementsId, t.evenements).filter((p) => p.cle !== cle);
-    await this.ecrireEvenementsTache(ref, paires.map((p) => p.cle), paires.map((p) => p.libelle), !(k && k.suite));
+    if (!t) return false;
+    const prepare = Ariane.ressourcesSans(t.prepare, lien);
+    const suite = Ariane.ressourcesSans(t.faitSuite, lien);
+    const estPrepare = prepare.length !== (t.prepare || []).length;
+    if (!estPrepare && suite.length === (t.faitSuite || []).length) return false;
+    const [concept, reste] = estPrepare ? ['prepare', prepare] : ['fait-suite', suite];
+    const cle = this.cleT(concept);
+    this.marquerOrigineTache(t.fichier.path);
+    await this.app.fileManager.processFrontMatter(t.fichier, (x) => {
+      if (reste.length) x[cle] = reste; else delete x[cle];
+      x.modifie = new Date().toISOString().slice(0, 10);
+    });
+    if (estPrepare && reste.length) await this._caleEcheanceTache(t, reste);
     return true;
   }
 
-  // Après une lecture de l'agenda sur `bornes` (vue calendrier, démarrage) :
-  // chaque tâche dont un événement a changé est réécrite ; l'échéance ne suit
-  // que si un événement a bougé. Une lecture vide ne prouve rien (agenda
-  // injoignable, accès refusé) : on ne juge alors aucun événement introuvable.
-  // Sur téléphone, c'est l'ordinateur qui s'en charge : les deux réécritures
-  // se croiseraient dans iCloud.
-  async reconcilierEvenementsTaches(evenements, bornes) {
-    if (surMobile() || !(evenements || []).length) return 0;
-    let n = 0;
-    for (const t of this.tachesPourGantt()) {
-      if (!(t.evenementsId || []).length) continue;
-      const r = Ariane.reconcilierEvenementsTache(t.evenementsId, t.evenements, evenements, bornes);
-      if (!r.change) continue;
-      await this.ecrireEvenementsTache(t.ref, r.cles, r.libelles, r.quandChange);
-      n++;
+  // ── Notes d'événement : actualisation depuis l'agenda ────────────────────
+  //  L'agenda fait foi, mais on ne conclut jamais d'un silence : une lecture
+  //  ratée, un calendrier masqué ou un événement hors de la fenêtre ne disent
+  //  pas qu'il a disparu. Seule la relecture complète en juge, à deux reprises
+  //  espacées, et rien n'est jamais supprimé. Téléphone : l'ordinateur s'en
+  //  charge, pour ne pas croiser ses écritures dans iCloud.
+
+  // Le plus ancien jour du coffre : réglage, sinon notes datées et fichiers.
+  dateOrigineCoffre() {
+    const r = String(this.settings.notesEvenementsDepuis || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(r)) return r;
+    let min = jourIsoDe(new Date());
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      const m = /^[A-Z]{1,4}-(20\d{2})(\d{2})(\d{2})/.exec(f.basename);
+      const j = m ? m[1] + '-' + m[2] + '-' + m[3] : (f.stat && f.stat.ctime ? jourIsoDe(new Date(f.stat.ctime)) : '');
+      if (j && j < min) min = j;
     }
-    return n;
+    return min;
   }
 
-  // Au démarrage : relit l'agenda sur les jours que couvrent les événements
-  // associés (au plus un an de part et d'autre d'aujourd'hui), puis réaligne.
-  async rattraperEvenementsTaches() {
-    if (surMobile() || !this.evenementsFond) return 0;
-    const jours = [];
-    for (const t of this.tachesPourGantt()) {
-      for (const c of t.evenementsId || []) {
-        const k = Ariane.lireCleEvenement(c);
-        if (k) jours.push(k.quand.slice(0, 10));
+  _calendrierAvecNotes(e) {
+    const cal = String(e.calendrier || '').trim().toLowerCase();
+    return [].concat(this.settings.notesEvenementsCalendriers || [])
+      .some((c) => String(c).trim().toLowerCase() === cal);
+  }
+
+  // Aligne les notes sur les événements lus dans `bornes` ({ debut, fin }, fin
+  // comprise) et crée celles des événements à moins d'un an. `o.lecture` : lecture
+  // complète et sûre, seule habilitée à constater une disparition.
+  async synchroniserNotesEvenements(evenements, bornes, o) {
+    const opt = o || {};
+    if (surMobile() || this._syncNE || !(evenements || []).length) return { creees: 0, maj: 0 };
+    this._syncNE = true;
+    let creees = 0, maj = 0;
+    try {
+      this._indexNE = null;
+      const dansFenetre = [...this._indexNotesEvenement().values()].flat().filter((n) => {
+        const j = n.quand.slice(0, 10);
+        return j && j >= bornes.debut && j <= bornes.fin;
+      });
+      const { paires, restants } = Ariane.apparierNotesEvenements(dansFenetre, evenements);
+      const absences = this._absencesNE || (this._absencesNE = new Map());
+      let pas = 0;
+      const souffler = async () => { pas += 1; if (pas % 25 === 0) await new Promise((r) => setTimeout(r, 0)); };
+      for (const n of dansFenetre) {
+        const e = paires.get(n.cle);
+        if (e) {
+          absences.delete(n.cle);
+          await this.actualiserNoteEvenement(n.f, e);
+          maj += 1;
+          await souffler();
+        } else if (opt.lecture && Ariane.noteEvenementJugeable(n, bornes, opt.lecture)) {
+          const depuis = absences.get(n.cle);
+          if (!depuis) absences.set(n.cle, Date.now());
+          else if (Date.now() - depuis >= 30 * 60000) {
+            this.marquerEcriture(n.f.path);
+            await this.app.fileManager.processFrontMatter(n.f, (x) => { x['Statut agenda'] = 'supprimé de Calendrier'; });
+          }
+        }
       }
+      const origine = this.dateOrigineCoffre();
+      const auj = jourIsoDe(new Date());
+      for (const e of restants.sort((a, b) => String(a.debut).localeCompare(String(b.debut)))) {
+        if (!this._calendrierAvecNotes(e) || !Ariane.evenementDansHorizon(e, origine, auj)) continue;
+        if (this.noteDeEvenement(e)) continue;
+        await this.noteEvenementAJour(e);
+        creees += 1;
+        await souffler();
+      }
+    } finally {
+      this._syncNE = false;
+      this._indexNE = null;
     }
-    if (!jours.length) return 0;
-    jours.sort();
-    const auj = jourIsoDe(new Date());
-    const min = Ariane.decalerJour(auj, -365);
-    const max = Ariane.decalerJour(auj, 365);
-    const debut = jours[0] < min ? min : jours[0];
-    const fin = jours[jours.length - 1] > max ? max : jours[jours.length - 1];
-    if (debut > fin) return 0;
-    let evs = [];
-    try { evs = (await this.evenementsFond(debut, Ariane.decalerJour(fin, 1))) || []; } catch (e) { return 0; }
-    return this.reconcilierEvenementsTaches(evs, { debut, fin });
+    return { creees, maj };
   }
 
-  // Associer un événement à la tâche ouverte : ceux des 60 prochains jours
-  // (et de la semaine passée), du plus proche au plus lointain.
-  async choisirEvenementPourTache(ref) {
+  // Relecture complète : de l'origine du coffre à un peu plus d'un an.
+  async synchroniserToutesNotesEvenements() {
+    if (surMobile() || !this.evenementsFond) return null;
+    // Une passe de la vue calendrier peut être en cours : on attend sa fin.
+    for (let i = 0; this._syncNE && i < 24; i += 1) await new Promise((r) => setTimeout(r, 5000));
+    if (this._syncNE) return null;
+    const debut = this.dateOrigineCoffre();
+    const fin = Ariane.decalerJour(jourIsoDe(new Date()), 400);
+    const evs = await this.evenementsFond(debut, fin);
+    const lecture = this._fondLecture;
+    if (!lecture || lecture.cle !== debut + '|' + fin || !lecture.ok) return null;
+    const r = await this.synchroniserNotesEvenements(evs, { debut, fin: Ariane.decalerJour(fin, -1) }, { lecture });
+    if (r.creees) new obsidian.Notice(r.creees + tr(' note(s) d’événement créée(s).'));
+    return r;
+  }
+
+  async _choisirEvenement(titre, garder, surChoix) {
     const auj = jourIsoDe(new Date());
     let evs = [];
-    try { evs = (await this.evenementsFond(Ariane.decalerJour(auj, -7), Ariane.decalerJour(auj, 61))) || []; } catch (e) { evs = []; }
-    if (!evs.length) { new obsidian.Notice(tr('Aucun événement lu dans l’agenda (60 prochains jours).')); return; }
-    const t = this.tachesPourGantt().find((x) => x.ref === ref);
-    const deja = new Set(((t && t.evenementsId) || []).map((c) => Ariane.cleBaseEvenement(c)));
-    const items = evs.filter((e) => !deja.has(Ariane.cleEvenementTache(e)))
-      .sort((a, b) => String(a.debut).localeCompare(String(b.debut)))
-      .map((e) => ({ nom: Ariane.libelleEvenementTache(Ariane.quandEvenement(e), e.titre)
-        + (e.calendrier ? '  (' + e.calendrier + ')' : ''), e }));
-    new ChoixListeModal(this.app, tr('Événement à associer à ') + ref + '…', items, (it) => {
-      if (it) this.associerEvenementAvecRole(ref, it.e);
-    }).open();
+    try { evs = (await this.evenementsFond(Ariane.decalerJour(auj, -60), Ariane.decalerJour(auj, 61))) || []; } catch (e) { evs = []; }
+    const items = evs.filter(garder).sort((a, b) => String(b.debut).localeCompare(String(a.debut)))
+      .map((e) => ({ nom: Ariane.libelleEvenement(e) + (e.calendrier ? '  (' + e.calendrier + ')' : ''), e }));
+    if (!items.length) { new obsidian.Notice(tr('Aucun événement lu dans l’agenda.')); return; }
+    new ChoixListeModal(this.app, titre, items, (it) => { if (it) surChoix(it.e); }).open();
+  }
+
+  // Associer un événement à la tâche ouverte.
+  async choisirEvenementPourTache(ref) {
+    const liees = new Set(this.tachesPourGantt().filter((t) => t.ref === ref)
+      .flatMap((t) => (t.prepare || []).concat(t.faitSuite || []).map((l) => {
+        const c = this._cibleLien(l, t.fichier.path);
+        return c ? c.path : '';
+      })));
+    await this._choisirEvenement(tr('Événement à associer à ') + ref + '…', (e) => {
+      const n = this.noteDeEvenement(e);
+      return !n || !liees.has(n.path);
+    }, (e) => this.associerEvenementAvecRole(ref, e));
   }
 
   choisirEvenementADissocier(ref) {
     const t = this.tachesPourGantt().find((x) => x.ref === ref);
-    const paires = t ? Ariane.pairesEvenementsTache(t.evenementsId, t.evenements) : [];
-    if (!paires.length) { new obsidian.Notice(tr('Aucun événement associé à cette tâche.')); return; }
+    const liens = t ? (t.prepare || []).map((l) => [l, '']).concat((t.faitSuite || []).map((l) => [l, tr(' (suite)')])) : [];
+    if (!liens.length) { new obsidian.Notice(tr('Aucun événement associé à cette tâche.')); return; }
     new ChoixListeModal(this.app, tr('Événement à dissocier de ') + ref + '…',
-      paires.map((p) => ({ nom: p.libelle, cle: p.cle })), (it) => {
+      liens.map(([l, m]) => ({ nom: Ariane.cibleRessource(l) + m, cle: l })), (it) => {
         if (it) this.dissocierEvenementTache(ref, it.cle).catch(() => {});
       }).open();
+  }
+
+  // Relier une note (un compte rendu…) à un événement.
+  async lierNoteActiveAEvenement() {
+    const f = this.app.workspace.getActiveFile();
+    if (!f || f.extension !== 'md') { new obsidian.Notice(tr('Ouvrez la note à relier.')); return; }
+    await this._choisirEvenement(tr('Événement de cette note…'), () => true, async (e) => {
+      const note = await this.noteEvenementAJour(e);
+      if (!note || note.path === f.path) return;
+      const lien = this._lienVers(note, f.path);
+      await this.app.fileManager.processFrontMatter(f, (x) => { x['Événement'] = Ariane.ressourcesAvec(x['Événement'], lien); });
+      new obsidian.Notice(tr('Note reliée à ') + note.basename + '.');
+    });
   }
 
   async retirerBlocage(deRef, versRef) {
@@ -24338,6 +24558,7 @@ const avecTaches = (Base) => class extends Base {
       if (!vue || !vue.contentEl) continue;
       const estTache = !!(vue.file && this.refDeChemin(vue.file.path));
       this._habillerConteneur(vue.contentEl, estTache, ctx, estTache ? this.refDeChemin(vue.file.path) : '');
+      if (!estTache && vue.file) this._equiperNoteEvenement(vue.contentEl, vue.file);
     }
     // Fenêtres de survol : pas de fichier accessible, on reconnaît la tâche à
     // son entête (type: tache, ou au moins deux propriétés de tâche).
@@ -24345,6 +24566,15 @@ const avecTaches = (Base) => class extends Base {
       const cont = pop.querySelector(
         '.markdown-reading-view, .markdown-preview-view, .markdown-source-view') || pop;
       this._habillerConteneur(cont, this._conteneurEstTache(cont, parCle), ctx);
+    }
+  }
+
+  // Une note d'événement reçoit, comme une tâche, ses ressources d'un geste.
+  _equiperNoteEvenement(contEl, f) {
+    const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+    if (!fm || !Ariane.idEvenementDe(fm)) return;
+    for (const row of contEl.querySelectorAll('.metadata-property')) {
+      if (String(row.dataset.propertyKey || '').toLowerCase() === 'ressources') this._equiperLigneRessources(row, '', f);
     }
   }
 
@@ -24466,10 +24696,8 @@ const avecTaches = (Base) => class extends Base {
     // Les séances empruntées suivent les créneaux propres, sans former de
     // groupe : elles ne sont pas amorcées dans chaque note (defautsNoyau).
     if (rang.has('creneaux')) rang.set('seances', rang.get('creneaux'));
-    // De même les événements associés : la liste lisible avec les relations,
-    // leurs identifiants avec ceux de l'agenda.
-    if (rang.has('bloque-par')) rang.set('evenements', rang.get('bloque-par'));
-    if (rang.has('agenda-id')) rang.set('evenements-id', rang.get('agenda-id'));
+    // De même les événements reliés, présents seulement quand ils sont remplis.
+    if (rang.has('bloque-par')) { rang.set('prepare', rang.get('bloque-par')); rang.set('fait-suite', rang.get('bloque-par')); }
     const presents = new Set();
     let aFamille = false;
     for (const row of cont.querySelectorAll('.metadata-property')) {
@@ -24575,23 +24803,6 @@ const avecTaches = (Base) => class extends Base {
   // La note déjà écrite pour un événement Apple, s'il y en a une. Le dossier
   // des notes d'événements est regardé d'abord, mais pas seulement : une note
   // déplacée à la main doit rester retrouvable.
-  noteDeEvenement(id) {
-    const cle = String(id || '').trim();
-    if (!cle) return null;
-    const dossier = this.dossierNE;
-    const fichiers = this.app.vault.getMarkdownFiles();
-    const dedans = [];
-    const dehors = [];
-    for (const f of fichiers) {
-      (dossier && f.path.startsWith(dossier + '/') ? dedans : dehors).push(f);
-    }
-    for (const f of dedans.concat(dehors)) {
-      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
-      if (Ariane.idEvenementDe(fm) === cle) return f;
-    }
-    return null;
-  }
-
   // Le jalon déjà créé pour un événement Apple, s'il y en a un.
   jalonDeEvenement(id) {
     const cle = String(id || '').trim();
@@ -24610,7 +24821,7 @@ const avecTaches = (Base) => class extends Base {
   async creerNoteEvenement(champs) {
     const dossier = this.dossierNE;
     await this.assurerDossier(dossier);
-    const base = 'EV-' + new Date().toISOString().replace(/[^\d]/g, '').slice(0, 12);
+    const base = (champs && champs.nom) || ('EV-' + new Date().toISOString().replace(/[^\d]/g, '').slice(0, 12));
     let ref = base;
     let n = 1;
     while (this.app.vault.getAbstractFileByPath(dossier + '/' + ref + '.md')) {
@@ -31015,8 +31226,7 @@ class Ariane extends composer(obsidian.Plugin,
         this.ouvrirDecoupage(ref);
       },
     });
-    // Événements de l'agenda associés à la tâche ouverte : l'échéance suit le
-    // dernier (voir Ariane.reconcilierEvenementsTache).
+    // Événements de l'agenda reliés à la tâche ouverte, par leur note.
     this.addCommand({
       id: 'associer-evenement-tache',
       module: 'taches',
@@ -31040,6 +31250,13 @@ class Ariane extends composer(obsidian.Plugin,
         if (!ref) { new obsidian.Notice(tr('Ouvrez d\'abord une note de tâche.')); return; }
         this.choisirRessource(ref, (l) => { this.ajouterRessourcesTache(ref, l).catch(() => {}); });
       },
+    });
+    this.addCommand({
+      id: 'lier-note-evenement',
+      module: 'taches',
+      name: tr('Événement : relier cette note à un événement…'),
+      icon: 'calendar-check',
+      callback: () => { this.lierNoteActiveAEvenement().catch(() => {}); },
     });
     this.addCommand({
       id: 'importer-pieces-evenement',
@@ -32584,9 +32801,13 @@ class Ariane extends composer(obsidian.Plugin,
         Promise.resolve(this.semerConceptsTache())
           .then(() => this.semerSansEcheance())
           .then(() => this.rattraperSeances())
-          .then(() => this.rattraperEvenementsTaches())
           .catch(() => {});
+        // Les notes d'événement : à part, car la première passe peut être longue.
+        this.synchroniserToutesNotesEvenements().catch((e) => console.warn('[Ariane] notes d’événement :', e));
       }, 3000);
+      this.registerInterval(window.setInterval(() => {
+        this.synchroniserToutesNotesEvenements().catch((e) => console.warn('[Ariane] notes d’événement :', e));
+      }, 3600000));
     });
   }
 
@@ -34427,7 +34648,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       const iconeAutre = {
         'bloque-par': 'ban', 'termine-le': 'calendar-check', source: 'book-marked',
         livrable: 'package', fichier: 'file', liste: 'list', 'rappel-id': 'bell',
-        seances: 'users', evenements: 'calendar-days', 'evenements-id': 'calendar-cog', ressources: 'paperclip',
+        seances: 'users', prepare: 'calendar-clock', 'fait-suite': 'calendar-check', ressources: 'paperclip',
       };
       const genPar = {};
       for (const p of Ariane.PROPS_GENERIQUES) genPar[p.cle] = p;
@@ -34728,6 +34949,13 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           this.display();
         });
       });
+    new obsidian.Setting(c).setName(tr('Notes d’événement automatiques'))
+      .setDesc(tr('Calendriers dont chaque événement reçoit une note, jusqu’à un an à l’avance, séparés par des virgules. Vide : aucune note automatique.'))
+      .addText((t) => t.setValue([].concat(s.notesEvenementsCalendriers || []).join(', '))
+        .onChange(async (v) => {
+          s.notesEvenementsCalendriers = v.split(',').map((x) => x.trim()).filter(Boolean);
+          await maj();
+        }));
     if (source === 'google-sync') {
       this._googleSynchro(c, s, maj);
       this._sousTitre(c, tr('Agendas affichés en fond'));
@@ -45482,11 +45710,9 @@ class MoteurCalendrier extends MoteurVue {
       // Jalons liés à un événement : réaligner sur l'événement fraîchement lu
       // (le redessin suit, déclenché par les écritures ou par la ligne ci-dessous).
       this._reconcilierJalonsEvenements().catch(() => { /* rien */ });
-      // De même les tâches associées à un événement de la fenêtre lue. La
-      // borne de fin de la lecture est exclue : on ne juge que jusqu'à la veille.
-      if (this.greffon.reconcilierEvenementsTaches) {
-        this.greffon.reconcilierEvenementsTaches(nv, { debut: b.debut, fin: Ariane.decalerJour(b.fin, -1) })
-          .catch(() => { /* rien */ });
+      // Les notes d'événement de la fenêtre lue suivent l'agenda.
+      if (this.greffon.synchroniserNotesEvenements) {
+        this.greffon.synchroniserNotesEvenements(nv, { debut: b.debut, fin: b.fin }).catch(() => { /* rien */ });
       }
       if (nv.length || avant.length) this.dessiner();
     }).catch(() => { /* macOS indisponible */ });
@@ -45596,7 +45822,7 @@ class MoteurCalendrier extends MoteurVue {
       const t = ligne('link', e.url.replace(/^https?:\/\//, ''), 'est-lien');
       t.addEventListener('click', (ev) => { ev.stopPropagation(); window.open(e.url); });
     }
-    if (e.notes) carte.createDiv({ cls: 'zfa-evt-survol-notes', text: e.notes });
+    if (e.notes) carte.createDiv({ cls: 'zfa-evt-survol-notes', text: e.notes.slice(0, 600) });
     // Les pièces jointes : un clic ouvre le fichier quand c'est possible,
     // sinon l'événement dans Calendrier, qui sait toujours l'ouvrir.
     const pieces = e.pieces || [];
@@ -45614,7 +45840,7 @@ class MoteurCalendrier extends MoteurVue {
         + (a.suite ? tr(' (suite)') : ''), 'est-lien');
       t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref); });
     }
-    const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e.id) : null;
+    const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e) : null;
     const actions = carte.createDiv({ cls: 'zfa-act-survol-actions' });
     const action = (icone, libelle, faire) => {
       const bt = actions.createEl('button', { cls: 'zfa-act-survol-bt' });
@@ -45759,7 +45985,7 @@ class MoteurCalendrier extends MoteurVue {
     // menu proposait de recréer une note ou un jalon à chaque clic droit, et
     // le coffre se remplissait de doublons.
     const jalonExistant = e.id ? this.greffon.jalonDeEvenement(e.id) : null;
-    const noteExistante = e.id ? this.greffon.noteDeEvenement(e.id) : null;
+    const noteExistante = e.id ? this.greffon.noteDeEvenement(e) : null;
     if (jalonExistant) {
       m.addItem((i) => i.setTitle(tr('Ouvrir le jalon de cet événement')).setIcon('diamond')
         .onClick(() => this.ouvrir(jalonExistant.ref)));
@@ -45788,7 +46014,7 @@ class MoteurCalendrier extends MoteurVue {
         .setIcon('square-check').onClick(() => this.ouvrir(a.tache.ref)));
       m.addItem((i) => i.setTitle(tr('Dissocier de ') + a.tache.ref).setIcon('unlink')
         .onClick(async () => {
-          await this.greffon.dissocierEvenementTache(a.tache.ref, a.cle);
+          await this.greffon.dissocierEvenementTache(a.tache.ref, a.lien);
           this.dessiner();
         }));
     }
@@ -54069,7 +54295,7 @@ function barreDefaut() {
       { cmd: a('correcteur-relire') },
       { separateur: true },
       { cmd: a('creer-tache') }, { cmd: a('fusionner-taches') }, { cmd: a('associer-evenement-tache') },
-      { cmd: a('ajouter-ressource-tache') }, { cmd: a('importer-pieces-evenement') },
+      { cmd: a('ajouter-ressource-tache') }, { cmd: a('lier-note-evenement') }, { cmd: a('importer-pieces-evenement') },
       { cmd: a('atomise-active') }, { cmd: a('biblio-note') },
     ] },
     { separateur: true },

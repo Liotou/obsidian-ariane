@@ -249,8 +249,7 @@ class Ariane extends composer(obsidian.Plugin,
         this.ouvrirDecoupage(ref);
       },
     });
-    // Événements de l'agenda associés à la tâche ouverte : l'échéance suit le
-    // dernier (voir Ariane.reconcilierEvenementsTache).
+    // Événements de l'agenda reliés à la tâche ouverte, par leur note.
     this.addCommand({
       id: 'associer-evenement-tache',
       module: 'taches',
@@ -274,6 +273,13 @@ class Ariane extends composer(obsidian.Plugin,
         if (!ref) { new obsidian.Notice(tr('Ouvrez d\'abord une note de tâche.')); return; }
         this.choisirRessource(ref, (l) => { this.ajouterRessourcesTache(ref, l).catch(() => {}); });
       },
+    });
+    this.addCommand({
+      id: 'lier-note-evenement',
+      module: 'taches',
+      name: tr('Événement : relier cette note à un événement…'),
+      icon: 'calendar-check',
+      callback: () => { this.lierNoteActiveAEvenement().catch(() => {}); },
     });
     this.addCommand({
       id: 'importer-pieces-evenement',
@@ -1818,9 +1824,13 @@ class Ariane extends composer(obsidian.Plugin,
         Promise.resolve(this.semerConceptsTache())
           .then(() => this.semerSansEcheance())
           .then(() => this.rattraperSeances())
-          .then(() => this.rattraperEvenementsTaches())
           .catch(() => {});
+        // Les notes d'événement : à part, car la première passe peut être longue.
+        this.synchroniserToutesNotesEvenements().catch((e) => console.warn('[Ariane] notes d’événement :', e));
       }, 3000);
+      this.registerInterval(window.setInterval(() => {
+        this.synchroniserToutesNotesEvenements().catch((e) => console.warn('[Ariane] notes d’événement :', e));
+      }, 3600000));
     });
   }
 

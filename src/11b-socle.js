@@ -59,8 +59,8 @@ const avecSocle = (Base) => class extends Base {
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
             'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'seances', 'avancement', 'temps-estime', 'parent',
-            'bloque-par', 'ressources', 'evenements', 'termine-le',
-            'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id', 'evenements-id'];
+            'bloque-par', 'ressources', 'prepare', 'fait-suite', 'termine-le',
+            'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id'];
   }
 
   // Regroupement des propriétés d'une tâche (habillage de la note). `famille`

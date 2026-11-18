@@ -1697,7 +1697,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       const iconeAutre = {
         'bloque-par': 'ban', 'termine-le': 'calendar-check', source: 'book-marked',
         livrable: 'package', fichier: 'file', liste: 'list', 'rappel-id': 'bell',
-        seances: 'users', evenements: 'calendar-days', 'evenements-id': 'calendar-cog', ressources: 'paperclip',
+        seances: 'users', prepare: 'calendar-clock', 'fait-suite': 'calendar-check', ressources: 'paperclip',
       };
       const genPar = {};
       for (const p of Ariane.PROPS_GENERIQUES) genPar[p.cle] = p;
@@ -1998,6 +1998,13 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           this.display();
         });
       });
+    new obsidian.Setting(c).setName(tr('Notes d’événement automatiques'))
+      .setDesc(tr('Calendriers dont chaque événement reçoit une note, jusqu’à un an à l’avance, séparés par des virgules. Vide : aucune note automatique.'))
+      .addText((t) => t.setValue([].concat(s.notesEvenementsCalendriers || []).join(', '))
+        .onChange(async (v) => {
+          s.notesEvenementsCalendriers = v.split(',').map((x) => x.trim()).filter(Boolean);
+          await maj();
+        }));
     if (source === 'google-sync') {
       this._googleSynchro(c, s, maj);
       this._sousTitre(c, tr('Agendas affichés en fond'));

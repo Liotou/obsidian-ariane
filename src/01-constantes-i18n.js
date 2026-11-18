@@ -606,6 +606,15 @@ const TEXTES = {
     "Cette tâche ne sera pas créée : le lien tombe.": "This task will not be created, so the link is dropped.",
     "Retirer cette dépendance": "Remove this dependency",
     " (introuvable)": " (not found)",
+    "Description": "Description",
+    " note(s) d’événement créée(s).": " event note(s) created.",
+    "Aucun événement lu dans l’agenda.": "No event read from the calendar.",
+    "Ouvrez la note à relier.": "Open the note to link.",
+    "Événement de cette note…": "Event of this note…",
+    "Note reliée à ": "Note linked to ",
+    "Événement : relier cette note à un événement…": "Event: link this note to an event…",
+    "Notes d’événement automatiques": "Automatic event notes",
+    "Calendriers dont chaque événement reçoit une note, jusqu’à un an à l’avance, séparés par des virgules. Vide : aucune note automatique.": "Calendars whose events each get a note, up to one year ahead, separated by commas. Empty: no automatic notes.",
     " ressource(s) ajoutée(s) à ": " resource(s) added to ",
     "Déjà dans les ressources de ": "Already in the resources of ",
     "Note ou fichier à ajouter…": "Note or file to add…",
@@ -2604,6 +2613,8 @@ const DEFAULT_SETTINGS = {
       proprietes: [] },
   ],
   familleTacheDefaut: 'action',
+  notesEvenementsCalendriers: ['Calendrier'], // calendriers dont les événements ont d'office une note
+  notesEvenementsDepuis: '',            // AAAA-MM-JJ ; vide : depuis l'origine du coffre
   // Anciennes clés, conservées le temps de la migration (voir migrerFamilles).
   dossierNotesConceptuelles: '',
   prefixeNoteConceptuelle: '',

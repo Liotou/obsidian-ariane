@@ -759,19 +759,14 @@ the `+` button on its
 row, drag and drop from the file explorer or Finder, right-click on a file, the
 task window, or a command. A file from Finder is copied to the attachment folder.
 
-A **calendar event** can be linked to a task: right-click the event in the
-calendar, “Link to a task…”, or from the task, the command “Link an event to
-this task…” (also on the editing toolbar). The task lists it under
-`Événements` (`2026-11-20 10:00 Réunion WP1`), and the event's hover card shows
-the task. A task either **prepares** the event or **follows up** on it (minutes):
-Ariane asks for an upcoming event, and an event that has started can only get a
-follow-up, marked `(suite)`. The **due date** becomes the day of the last
-prepared event, its time the event's start; a follow-up never touches it. It is
-recomputed when an event is linked, unlinked or a prepared event is moved in
-Calendar, and a due date edited by hand is kept in between. Identifiers are
-kept apart (`Événements ID`, written by Ariane only); for a recurring series,
-only the chosen occurrence is linked. An event that disappears stays listed,
-marked “(introuvable)”.
+Each **event** has a note, created as soon as it exists, up to a year ahead, for
+the chosen calendars (or on demand), back to the vault's origin. It keeps date, times, calendar, place,
+attendees, link and description, and follows the calendar; your own text is never
+touched. A vanished event erases nothing: after two full rereads, the note is
+marked `supprimé de Calendrier`. Everything links to it natively: `Prépare` or
+`Fait suite à` on a task, `Ressources` on the note, `Événement` on minutes. A
+task's **due date** follows the last event it prepares; each occurrence of a series
+has its own note.
 
 Drag a chip to reschedule it; in week view, drag or resize a block to rewrite
 that créneau, Delete to remove it. **Dragging a row's left-column link from the
