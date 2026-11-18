@@ -59,7 +59,7 @@ const avecSocle = (Base) => class extends Base {
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
             'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'seances', 'avancement', 'temps-estime', 'parent',
-            'bloque-par', 'ressources', 'prepare', 'fait-suite', 'termine-le',
+            'bloque-par', 'ressources', 'evenements', 'termine-le',
             'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id'];
   }
 

@@ -78,8 +78,8 @@ function coffre(notes, taches) {
   g.majTache = async (ref, c) => {
     g.ecritures.push(['tache', ref, c]);
     const t = taches.find((x) => x.ref === ref);
-    if (c.prepare) t.prepare = c.prepare;
-    if (c['fait-suite']) t.faitSuite = c['fait-suite'];
+    if (c.evenements) t.evenements = c.evenements;
+    if (c.echeance) t.echeance = c.echeance;
     return true;
   };
   g.creerNoteEvenement = async (c) => {
@@ -132,11 +132,11 @@ test('synchronisation : crée à un an près, pour les calendriers choisis, sans
   assert.deepEqual(g.ecritures, [], 'une note à jour n’est pas réécrite');
 });
 
-test('agenda modifié : la note suit, le texte reste, l’échéance des seules préparations bouge', async () => {
+test('agenda modifié : la note suit, le texte reste, seule l’échéance calée sur l’événement bouge', async () => {
   const fm = Object.assign(Ariane.champsNoteEvenement(ev('A', '2026-11-20T10:00', 'Réunion')), { aliases: ['Réunion'], Ressources: [] });
   const notes = { 'EV/N.md': { fm, corps: '# Réunion\n\nMes notes.\n' } };
-  const prep = { ref: 'T1', fichier: { path: 'T/T1.md' }, prepare: ['[[N]]'], faitSuite: [] };
-  const suite = { ref: 'T2', fichier: { path: 'T/T2.md' }, prepare: [], faitSuite: ['[[N]]'] };
+  const prep = { ref: 'T1', fichier: { path: 'T/T1.md' }, evenements: ['[[N]]'], echeance: '2026-11-20', heure: '10:00' };
+  const suite = { ref: 'T2', fichier: { path: 'T/T2.md' }, evenements: ['[[N]]'], echeance: '2026-11-27' };
   const g = coffre(notes, [prep, suite]);
   await g.synchroniserNotesEvenements([ev('A', '2026-11-24T16:00', 'Réunion WP1')], { debut: '2026-11-01', fin: '2026-11-30' });
   assert.equal(fm['Début'], '2026-11-24T16:00');
@@ -171,24 +171,24 @@ test('disparition : jamais sur une lecture vide ou partielle ; deux lectures sû
   assert.equal(notes['EV/N.md'].fm['Statut agenda'], undefined, 'l’événement revenu efface la marque');
 });
 
-test('tâche : préparer fixe l’échéance, faire suite non ; retirer vide la propriété', async () => {
+test('tâche : préparer fixe l’échéance, faire suite non ; tout va dans la même propriété', async () => {
   const notes = {};
-  const f = { path: 'T/T1.md', fm: { prepare: ['[[EV-20261120-1000]]'] } };
-  const t = { ref: 'T1', fichier: f, prepare: [], faitSuite: [] };
+  const f = { path: 'T/T1.md', fm: { evenements: ['[[EV-20261120-1000]]'] } };
+  const t = { ref: 'T1', fichier: f, evenements: [] };
   const g = coffre(notes, [t]);
   const a = ev('A', '2026-11-20T10:00', 'Cours');
   assert.equal(await g.associerEvenementTache('T1', a), true);
-  assert.deepEqual(t.prepare, ['[[EV-20261120-1000]]']);
+  assert.deepEqual(t.evenements, ['[[EV-20261120-1000]]']);
   let c = g.ecritures.filter((x) => x[0] === 'tache').pop()[2];
   assert.equal(c.echeance, '2026-11-20');
   assert.equal(await g.associerEvenementTache('T1', a, { suite: true }), false, 'déjà relié');
   await g.associerEvenementTache('T1', ev('B', '2026-11-02T10:00', 'Réunion'), { suite: true });
   c = g.ecritures.filter((x) => x[0] === 'tache').pop()[2];
-  assert.deepEqual(c['fait-suite'], ['[[EV-20261102-1000]]']);
+  assert.deepEqual(c.evenements, ['[[EV-20261120-1000]]', '[[EV-20261102-1000]]']);
   assert.equal('echeance' in c, false);
-  assert.deepEqual(g.tachesDeEvenement(a).map((x) => [x.tache.ref, x.suite]), [['T1', false]]);
+  assert.deepEqual(g.tachesDeEvenement(a).map((x) => x.tache.ref), ['T1']);
   await g.dissocierEvenementTache('T1', '[[EV-20261120-1000]]');
-  assert.equal('prepare' in f.fm, false);
+  assert.deepEqual(f.fm.evenements, ['[[EV-20261102-1000]]']);
 });
 
 test('pas de doublon quand le cache d’Obsidian ignore encore une note créée', async () => {
@@ -224,6 +224,7 @@ test('blocs de la note : sans titre, que la numérotation du dossier ne peut pas
   assert.ok(c.includes('**Description**') && c.includes('**Pièces jointes**'));
 });
 
-test('propriété des événements préparés : « Événement(s) lié(s) »', () => {
-  assert.equal(Ariane.libelleConcept('prepare'), 'Événement(s) lié(s)');
+test('une seule propriété d’événements : « Événement(s) lié(s) »', () => {
+  assert.equal(Ariane.libelleConcept('evenements'), 'Événement(s) lié(s)');
+  assert.ok(!Ariane.CONCEPTS_TACHE.includes('fait-suite'));
 });

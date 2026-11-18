@@ -154,7 +154,7 @@ test('propriétés techniques : repliées ; les champs de travail restent visibl
   for (const [c, k] of [['terminee', 'terminée'], ['rappel-id', 'rappel id'], ['', 'synchro agenda'], ['', 'modifie'], ['', 'événement id']]) {
     assert.equal(Ariane.proprieteTechnique(c, k), true, k);
   }
-  for (const [c, k] of [['statut', 'statut'], ['echeance', 'échéance'], ['ressources', 'ressources'], ['prepare', 'événement(s) lié(s)']]) {
+  for (const [c, k] of [['statut', 'statut'], ['echeance', 'échéance'], ['ressources', 'ressources'], ['evenements', 'événement(s) lié(s)']]) {
     assert.equal(Ariane.proprieteTechnique(c, k), false, k);
   }
 });
@@ -178,7 +178,7 @@ test('survol d’un créneau : événements et tâches liés, dans les deux sens
   const ev = { path: 'EV/E.md', extension: 'md', basename: 'E' };
   const mere = { path: 'T/T0.md', extension: 'md', basename: 'T0' };
   const fille = { path: 'T/T2.md', extension: 'md', basename: 'T2' };
-  const fm = { prepare: ['[[E]]'], parent: '[[T0]]' };
+  const fm = { evenements: ['[[E]]'], parent: '[[T0]]' };
   const g = Object.create(Ariane.prototype);
   g.fichierDeRef = () => ({ path: 'T/T1.md' });
   g._lireT = (x, c) => x[c];
@@ -191,4 +191,12 @@ test('survol d’un créneau : événements et tâches liés, dans les deux sens
     getFirstLinkpathDest: (c) => ({ E: ev, T0: mere })[c] || null } };
   assert.deepEqual(g.liensAssociesTache('T1').map((x) => x.genre + ' : ' + x.libelle), [
     'Événement lié : Réunion, 20/11/2026', 'Tâche mère : Mère (T0)', 'Sous-tâche : Fille (T2)', 'Bloque : Fille (T2)']);
+});
+
+test('tâche close : terminée ou abandonnée', () => {
+  assert.equal(Ariane.tacheClose({ statut: 'terminée' }), true);
+  assert.equal(Ariane.tacheClose({ statut: 'abandonnée' }), true);
+  assert.equal(Ariane.tacheClose({ statut: 'à faire', terminee: true }), true);
+  assert.equal(Ariane.tacheClose({ statut: 'en cours' }), false);
+  assert.equal(Ariane.tacheClose(null), false);
 });

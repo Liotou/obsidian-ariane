@@ -86,8 +86,7 @@ const avecTaches = (Base) => class extends Base {
         creneaux: [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean),
         seances: [].concat(this._lireT(fm, 'seances') || []).map(String).filter(Boolean),
         ressources: [].concat(this._lireT(fm, 'ressources') || []).map(String).filter(Boolean),
-        prepare: [].concat(this._lireT(fm, 'prepare') || []).map(String).filter(Boolean),
-        faitSuite: [].concat(this._lireT(fm, 'fait-suite') || []).map(String).filter(Boolean),
+        evenements: [].concat(this._lireT(fm, 'evenements') || []).map(String).filter(Boolean),
         tempsReel: Ariane.tempsReelDeTache(this._lireT(fm, 'temps-reel')),
         statut: this._lireT(fm, 'statut') || 'à faire',
         priorite: this._lireT(fm, 'priorite') || '',
@@ -2777,24 +2776,24 @@ const avecTaches = (Base) => class extends Base {
         const m = f && f.extension === 'md' ? ((mc.getFileCache(f) || {}).frontmatter || {}) : {};
         const tache = parRef.get(f && f.extension === 'md' ? f.basename : cible);
         let libelle = [].concat(m.aliases || [])[0] || (f ? (f.extension === 'md' ? f.basename : f.name) : cible.split('/').pop());
+        const close = Ariane.tacheClose(tache);
         if (tache) libelle = nomTache(tache);
         else if (m['Événement ID']) {
           const q = Ariane.quandDeNoteEvenement(m).slice(0, 10).split('-').reverse().join('/');
           libelle = (m.Titre || libelle) + (q ? ', ' + q : '');
         }
-        out.push({ icone, genre, libelle, f });
+        out.push({ icone, genre, libelle, f, close });
       }
     };
     ajouter('source', 'book-marked', tr('Source'));
     ajouter('livrable', 'package', tr('Livrable'));
     ajouter('ressources', 'paperclip', tr('Ressource'));
-    ajouter('prepare', 'calendar-clock', tr('Événement lié'));
-    ajouter('fait-suite', 'calendar-check', tr('Fait suite à'));
+    ajouter('evenements', 'calendar-clock', tr('Événement lié'));
     ajouter('parent', 'git-branch', tr('Tâche mère'));
     ajouter('bloque-par', 'ban', tr('Bloquée par'));
     const active = (t) => t.statut !== 'abandonnée';
     const pousser = (liste, icone, genre) => {
-      for (const t of liste.filter(active).slice(0, 8)) out.push({ icone, genre, libelle: nomTache(t), f: t.fichier });
+      for (const t of liste.filter(active).slice(0, 8)) out.push({ icone, genre, libelle: nomTache(t), f: t.fichier, close: Ariane.tacheClose(t) });
     };
     pousser(toutes.filter((t) => Ariane.refDeLien(t.parent || '') === ref), 'list-tree', tr('Sous-tâche'));
     pousser(toutes.filter((t) => (t.bloquePar || []).some((b) => Ariane.refDeLien(b) === ref)), 'arrow-right', tr('Bloque'));
@@ -2907,7 +2906,7 @@ const avecTaches = (Base) => class extends Base {
     this._indexNE = null;
     // Une ancienne note ne connaissait que le jour : l'enrichir n'est pas un déplacement.
     const bouge = !!(fm && quandAvant && (fm['Début'] ? quand !== quandAvant : quand.slice(0, 10) !== quandAvant));
-    if (bouge) await this._suivreDateEvenement(f, quand);
+    if (bouge) await this._suivreDateEvenement(f, quand, quandAvant);
     return bouge;
   }
 
@@ -2993,14 +2992,15 @@ const avecTaches = (Base) => class extends Base {
     return this.app.metadataCache.getFirstLinkpathDest(Ariane.cibleRessource(lien), source || '');
   }
 
-  // Les tâches reliées à une note d'événement : [{ tache, lien, suite }].
+  // Les tâches reliées à une note d'événement : [{ tache, lien }].
   tachesDeNoteEvenement(note) {
     const out = [];
     for (const t of this.tachesPourGantt()) {
-      for (const [liste, suite] of [[t.prepare || [], false], [t.faitSuite || [], true]]) {
-        const lien = liste.find((l) => { const c = this._cibleLien(l, t.fichier.path); return c && c.path === note.path; });
-        if (lien) out.push({ tache: t, lien, suite });
-      }
+      const lien = (t.evenements || []).find((l) => {
+        const c = this._cibleLien(l, t.fichier.path);
+        return c && c.path === note.path;
+      });
+      if (lien) out.push({ tache: t, lien });
     }
     return out;
   }
@@ -3010,24 +3010,31 @@ const avecTaches = (Base) => class extends Base {
     return note ? this.tachesDeNoteEvenement(note) : [];
   }
 
-  // L'échéance d'une tâche suit le dernier événement qu'elle prépare.
-  // `dates` : Map(chemin -> instant) pour une note qui vient de changer.
-  async _caleEcheanceTache(t, liens, dates) {
-    const quands = [];
-    for (const l of liens) {
+  // Préparer un événement : l'échéance devient le dernier des événements
+  // qui la fixent déjà et de celui-ci.
+  async _caleEcheanceTache(t, note, quand) {
+    const jour = String(t.echeance || '').slice(0, 10);
+    const quands = [quand];
+    for (const l of t.evenements || []) {
       const n = this._cibleLien(l, t.fichier.path);
-      if (!n) continue;
-      const fm = (this.app.metadataCache.getFileCache(n) || {}).frontmatter;
-      quands.push((dates && dates.get(n.path)) || Ariane.quandDeNoteEvenement(fm));
+      if (!n || n.path === note.path) continue;
+      const q = Ariane.quandDeNoteEvenement((this.app.metadataCache.getFileCache(n) || {}).frontmatter);
+      if (q && q.slice(0, 10) === jour) quands.push(q);
     }
     const ech = Ariane.echeanceDesQuands(quands);
-    if (ech) await this.majTache(t.ref, { echeance: ech.echeance, heure: ech.heure || null, 'sans-echeance': false });
+    await this.majTache(t.ref, { echeance: ech.echeance, heure: ech.heure || null, 'sans-echeance': false });
     return ech;
   }
 
-  async _suivreDateEvenement(note, quand) {
+  // Un événement déplacé n'entraîne que les tâches dont l'échéance était
+  // calée sur lui : un compte rendu dû plus tard garde la sienne.
+  async _suivreDateEvenement(note, quand, avant) {
+    const ech = Ariane.echeanceDesQuands([quand]);
     for (const a of this.tachesDeNoteEvenement(note)) {
-      if (!a.suite) await this._caleEcheanceTache(a.tache, a.tache.prepare, new Map([[note.path, quand]]));
+      const t = a.tache;
+      if (String(t.echeance || '').slice(0, 10) !== avant.slice(0, 10)) continue;
+      if (quand.slice(0, 10) === avant.slice(0, 10) && String(t.heure || '') !== avant.slice(11, 16)) continue;
+      await this.majTache(t.ref, { echeance: ech.echeance, heure: ech.heure || null, 'sans-echeance': false });
     }
   }
 
@@ -3039,20 +3046,17 @@ const avecTaches = (Base) => class extends Base {
     if (!t || !Ariane.quandEvenement(e)) return false;
     const note = await this.noteEvenementAJour(e);
     if (!note) return false;
-    const deja = (t.prepare || []).concat(t.faitSuite || []).some((l) => {
+    const deja = (t.evenements || []).some((l) => {
       const c = this._cibleLien(l, t.fichier.path);
       return c && c.path === note.path;
     });
     if (deja) { new obsidian.Notice(tr('Cet événement est déjà associé à ') + ref + '.'); return false; }
-    const lien = this._lienVers(note, t.fichier.path);
-    const concept = suite ? 'fait-suite' : 'prepare';
-    const liste = Ariane.ressourcesAvec(suite ? t.faitSuite : t.prepare, lien);
-    await this.majTache(ref, { [concept]: liste });
+    await this.majTache(ref, { evenements: Ariane.ressourcesAvec(t.evenements, this._lienVers(note, t.fichier.path)) });
     if (suite) {
       new obsidian.Notice(tr('Événement associé à ') + ref + tr(' : échéance inchangée.'));
       return true;
     }
-    const ech = await this._caleEcheanceTache(t, liste, new Map([[note.path, Ariane.quandEvenement(e)]]));
+    const ech = await this._caleEcheanceTache(t, note, Ariane.quandEvenement(e));
     const jour = new Date(ech.echeance + 'T12:00:00').toLocaleDateString('fr-FR',
       { weekday: 'long', day: 'numeric', month: 'long' });
     new obsidian.Notice(tr('Événement associé à ') + ref + tr(' : échéance le ') + jour
@@ -3073,24 +3077,18 @@ const avecTaches = (Base) => class extends Base {
     return null;
   }
 
-  // Retire un lien. L'échéance suit les événements préparés qui restent ;
-  // retirer une suite, ou le dernier préparé, ne la change pas. Une propriété
-  // vidée disparaît de la note.
+  // Retire un lien ; l'échéance ne change pas. Une propriété vidée disparaît.
   async dissocierEvenementTache(ref, lien) {
     const t = this.tachesPourGantt().find((x) => x.ref === ref);
     if (!t) return false;
-    const prepare = Ariane.ressourcesSans(t.prepare, lien);
-    const suite = Ariane.ressourcesSans(t.faitSuite, lien);
-    const estPrepare = prepare.length !== (t.prepare || []).length;
-    if (!estPrepare && suite.length === (t.faitSuite || []).length) return false;
-    const [concept, reste] = estPrepare ? ['prepare', prepare] : ['fait-suite', suite];
-    const cle = this.cleT(concept);
+    const reste = Ariane.ressourcesSans(t.evenements, lien);
+    if (reste.length === (t.evenements || []).length) return false;
+    const cle = this.cleT('evenements');
     this.marquerOrigineTache(t.fichier.path);
     await this.app.fileManager.processFrontMatter(t.fichier, (x) => {
       if (reste.length) x[cle] = reste; else delete x[cle];
       x.modifie = new Date().toISOString().slice(0, 10);
     });
-    if (estPrepare && reste.length) await this._caleEcheanceTache(t, reste);
     return true;
   }
 
@@ -3204,7 +3202,7 @@ const avecTaches = (Base) => class extends Base {
   // Associer un événement à la tâche ouverte.
   async choisirEvenementPourTache(ref) {
     const liees = new Set(this.tachesPourGantt().filter((t) => t.ref === ref)
-      .flatMap((t) => (t.prepare || []).concat(t.faitSuite || []).map((l) => {
+      .flatMap((t) => (t.evenements || []).map((l) => {
         const c = this._cibleLien(l, t.fichier.path);
         return c ? c.path : '';
       })));
@@ -3216,10 +3214,10 @@ const avecTaches = (Base) => class extends Base {
 
   choisirEvenementADissocier(ref) {
     const t = this.tachesPourGantt().find((x) => x.ref === ref);
-    const liens = t ? (t.prepare || []).map((l) => [l, '']).concat((t.faitSuite || []).map((l) => [l, tr(' (suite)')])) : [];
+    const liens = t ? (t.evenements || []) : [];
     if (!liens.length) { new obsidian.Notice(tr('Aucun événement associé à cette tâche.')); return; }
     new ChoixListeModal(this.app, tr('Événement à dissocier de ') + ref + '…',
-      liens.map(([l, m]) => ({ nom: Ariane.cibleRessource(l) + m, cle: l })), (it) => {
+      liens.map((l) => ({ nom: Ariane.cibleRessource(l), cle: l })), (it) => {
         if (it) this.dissocierEvenementTache(ref, it.cle).catch(() => {});
       }).open();
   }
@@ -4115,7 +4113,7 @@ const avecTaches = (Base) => class extends Base {
     // groupe : elles ne sont pas amorcées dans chaque note (defautsNoyau).
     if (rang.has('creneaux')) rang.set('seances', rang.get('creneaux'));
     // De même les événements reliés, présents seulement quand ils sont remplis.
-    if (rang.has('bloque-par')) { rang.set('prepare', rang.get('bloque-par')); rang.set('fait-suite', rang.get('bloque-par')); }
+    if (rang.has('bloque-par')) rang.set('evenements', rang.get('bloque-par'));
     const presents = new Set();
     let aFamille = false;
     let aTechnique = false;

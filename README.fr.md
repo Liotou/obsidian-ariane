@@ -787,9 +787,10 @@ pour les calendriers choisis (ou à la demande), depuis l'origine du coffre. Ell
 calendrier, lieu, participants, lien et description, et suit l'agenda ; votre
 texte n'est jamais touché. Un événement disparu n'efface rien : après deux
 relectures complètes, la note est marquée `supprimé de Calendrier`. Tout s'y relie
-par de simples liens : `Événement(s) lié(s)` ou `Fait suite à` sur une tâche, `Ressources` sur
-la note, `Événement` sur un compte rendu. L'**échéance** d'une tâche suit le
-dernier événement qu'elle prépare ; une séance d'une série a sa propre note.
+par de simples liens : `Événement(s) lié(s)` sur une tâche, `Ressources` sur la
+note, `Événement` sur un compte rendu. Une tâche qui **prépare** un événement prend
+sa date pour **échéance** et la suit s'il est déplacé ; une tâche qui lui **fait
+suite** garde la sienne. Une séance d'une série a sa propre note.
 
 Glisser une carte la reprogramme ; en vue semaine, glisser ou redimensionner
 un bloc réécrit ce créneau, Suppr le retire. **Glisser le lien d'une ligne

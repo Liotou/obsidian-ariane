@@ -17,7 +17,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       source: 'Source', livrable: 'Livrable', fichier: 'Fichier',
       liste: 'Liste', 'rappel-id': 'Rappel ID', 'agenda-id': 'Agenda ID',
       'temps-reel': 'Temps réel', seances: 'Séances',
-      prepare: 'Événement(s) lié(s)', 'fait-suite': 'Fait suite à', ressources: 'Ressources',
+      evenements: 'Événement(s) lié(s)', ressources: 'Ressources',
     })[concept] || concept;
   }
 
@@ -794,6 +794,11 @@ const avecTachesStatiques = (Base) => class extends Base {
       || /^(aliases|cree|modifie|type|temps|temps-reel|événement id|synchro .*|google .*)$/.test(String(cleNue || ''));
   }
 
+  // Une tâche close : terminée ou abandonnée.
+  static tacheClose(t) {
+    return !!t && (t.statut === 'terminée' || t.statut === 'abandonnée' || t.terminee === true);
+  }
+
   // Le nom nu d'une clé de propriété, sans préfixe ni casse.
   static cleFamilleNue(cle, prefixe) {
     const c = String(cle || '').trim().toLowerCase();
@@ -1076,7 +1081,7 @@ const avecTachesStatiques = (Base) => class extends Base {
     return { paires, restants: [...libres.values()].flat() };
   }
 
-  // L'échéance que fixent les événements préparés : le dernier d'entre eux.
+  // L'échéance que fixent des événements : le dernier d'entre eux.
   static echeanceDesQuands(quands) {
     const q = [].concat(quands || []).map(String).filter(Boolean).sort();
     if (!q.length) return null;

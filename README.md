@@ -764,9 +764,9 @@ the chosen calendars (or on demand), back to the vault's origin. It keeps date, 
 attendees, link and description, and follows the calendar; your own text is never
 touched. A vanished event erases nothing: after two full rereads, the note is
 marked `supprimé de Calendrier`. Everything links to it natively: `Événement(s) lié(s)`
-or `Fait suite à` on a task, `Ressources` on the note, `Événement` on minutes. A
-task's **due date** follows the last event it prepares; each occurrence of a series
-has its own note.
+on a task, `Ressources` on the note, `Événement` on minutes. A task that **prepares**
+an event takes its date as **due date** and follows it if moved; a **follow-up** task
+keeps its own. Each occurrence of a series has its own note.
 
 Drag a chip to reschedule it; in week view, drag or resize a block to rewrite
 that créneau, Delete to remove it. **Dragging a row's left-column link from the

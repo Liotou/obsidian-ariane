@@ -438,6 +438,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
   renderSuggestion(item, el) {
     el.addClass('zfa-tc-item');
     const t = item.t;
+    el.toggleClass('est-tache-close', Ariane.tacheClose(t));
     const fam = (this.greffon.familleDe && this.greffon.familleDe(t.famille)) || {};
     const pastille = el.createSpan({ cls: 'zfa-tc-pastille' });
     if (fam.couleur) pastille.style.background = fam.couleur;

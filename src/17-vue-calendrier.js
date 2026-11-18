@@ -352,8 +352,8 @@ class MoteurCalendrier extends MoteurVue {
     }
     // Les tâches associées à cet événement : un clic ouvre la tâche.
     for (const a of (this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [])) {
-      const t = ligne('link', tr('Tâche : ') + a.tache.intitule + ' (' + a.tache.ref + ')'
-        + (a.suite ? tr(' (suite)') : ''), 'est-lien');
+      const t = ligne('link', tr('Tâche : ') + a.tache.intitule + ' (' + a.tache.ref + ')',
+        'est-lien' + (Ariane.tacheClose(a.tache) ? ' est-tache-close' : ''));
       t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref); });
     }
     const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e) : null;
@@ -434,13 +434,14 @@ class MoteurCalendrier extends MoteurVue {
     }
     ligne('clock', quand);
     // Les liens de la tâche ont leurs lignes propres, cliquables, juste après.
-    const dejaListees = /^(source|livrable|ressources|événement\(s\) lié\(s\)|fait suite à|rattachement|rattachée à|bloquée par)$/i;
+    const dejaListees = /^(source|livrable|ressources|événement\(s\) lié\(s\)|rattachement|rattachée à|bloquée par)$/i;
     for (const p of Ariane.lignesProprietes(this._pairesProps(t.ref), t.intitule, 99)) {
       if (!dejaListees.test(String(p.nom).trim())) ligne('info', p.nom + ' : ' + p.valeur);
     }
     // Sources, livrable, ressources, événements et tâches liés : un clic les ouvre.
     for (const a of (g.liensAssociesTache ? g.liensAssociesTache(t.ref) : [])) {
       const tx = ligne(a.icone, a.genre + ' : ' + a.libelle);
+      if (a.close) tx.parentElement.addClass('est-tache-close');
       if (!a.f) continue;
       tx.parentElement.addClass('est-lien');
       tx.addEventListener('click', (e) => {
@@ -458,7 +459,7 @@ class MoteurCalendrier extends MoteurVue {
       for (const r of seance.refs) {
         const f = parRef.get(r);
         const fini = !!f && (f.statut === 'terminée' || f.terminee === true);
-        const l = st.createEl('label', { cls: 'zfa-cren-survol-st-l' + (fini ? ' est-terminee' : '') });
+        const l = st.createEl('label', { cls: 'zfa-cren-survol-st-l' + (Ariane.tacheClose(f) ? ' est-terminee' : '') });
         const cb = l.createEl('input', { type: 'checkbox', cls: 'task-list-item-checkbox' });
         cb.checked = fini;
         cb.disabled = !f;
