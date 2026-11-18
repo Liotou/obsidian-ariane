@@ -223,3 +223,7 @@ test('blocs de la note : sans titre, que la numérotation du dossier ne peut pas
   assert.ok(!/^##/m.test(c));
   assert.ok(c.includes('**Description**') && c.includes('**Pièces jointes**'));
 });
+
+test('propriété des événements préparés : « Événement(s) lié(s) »', () => {
+  assert.equal(Ariane.libelleConcept('prepare'), 'Événement(s) lié(s)');
+});

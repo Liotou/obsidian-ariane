@@ -787,7 +787,7 @@ pour les calendriers choisis (ou à la demande), depuis l'origine du coffre. Ell
 calendrier, lieu, participants, lien et description, et suit l'agenda ; votre
 texte n'est jamais touché. Un événement disparu n'efface rien : après deux
 relectures complètes, la note est marquée `supprimé de Calendrier`. Tout s'y relie
-par de simples liens : `Prépare` ou `Fait suite à` sur une tâche, `Ressources` sur
+par de simples liens : `Événement(s) lié(s)` ou `Fait suite à` sur une tâche, `Ressources` sur
 la note, `Événement` sur un compte rendu. L'**échéance** d'une tâche suit le
 dernier événement qu'elle prépare ; une séance d'une série a sa propre note.
 

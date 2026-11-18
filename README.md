@@ -763,8 +763,8 @@ Each **event** has a note, created as soon as it exists, up to a year ahead, for
 the chosen calendars (or on demand), back to the vault's origin. It keeps date, times, calendar, place,
 attendees, link and description, and follows the calendar; your own text is never
 touched. A vanished event erases nothing: after two full rereads, the note is
-marked `supprimé de Calendrier`. Everything links to it natively: `Prépare` or
-`Fait suite à` on a task, `Ressources` on the note, `Événement` on minutes. A
+marked `supprimé de Calendrier`. Everything links to it natively: `Événement(s) lié(s)`
+or `Fait suite à` on a task, `Ressources` on the note, `Événement` on minutes. A
 task's **due date** follows the last event it prepares; each occurrence of a series
 has its own note.
 
