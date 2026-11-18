@@ -739,6 +739,17 @@ of** that task. These secondary créneaux follow the séance (moved, deleted,
 subtask removed); they get no calendar event and no calendar block, and their
 time stays counted in the originating task.
 
+A **calendar event** can be linked to a task: right-click the event in the
+calendar, “Link to a task…”, or from the task, the command “Link an event to
+this task…” (also on the editing toolbar). The task lists it under
+`Événements` (`2026-11-20 10:00 Réunion WP1`), and the event's hover card shows
+the task. The **due date** becomes the day of the last linked event, its time
+the event's start; it is recomputed when an event is linked, unlinked or moved
+in Calendar, and a due date edited by hand is kept in between. Identifiers are
+kept apart (`Événements ID`, written by Ariane only); for a recurring series,
+only the chosen occurrence is linked. An event that disappears stays listed,
+marked “(introuvable)”.
+
 Drag a chip to reschedule it; in week view, drag or resize a block to rewrite
 that créneau, Delete to remove it. **Dragging a row's left-column link from the
 timeline** (or a `[[T26-001]]` link from anywhere) onto a calendar day adds a

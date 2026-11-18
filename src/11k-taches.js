@@ -85,6 +85,8 @@ const avecTaches = (Base) => class extends Base {
         heure: String(this._lireT(fm, 'heure') || '').trim(),
         creneaux: [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean),
         seances: [].concat(this._lireT(fm, 'seances') || []).map(String).filter(Boolean),
+        evenementsId: [].concat(this._lireT(fm, 'evenements-id') || []).map(String).filter(Boolean),
+        evenements: [].concat(this._lireT(fm, 'evenements') || []).map(String).filter(Boolean),
         tempsReel: Ariane.tempsReelDeTache(this._lireT(fm, 'temps-reel')),
         statut: this._lireT(fm, 'statut') || 'à faire',
         priorite: this._lireT(fm, 'priorite') || '',
@@ -2541,6 +2543,139 @@ const avecTaches = (Base) => class extends Base {
     return true;
   }
 
+  // ── Événements associés (voir Ariane.reconcilierEvenementsTache) ─────────
+  // Les tâches qu'un événement concerne : [{ tache, cle }]. Même identifiant,
+  // et même instant, ou du moins même jour (une série partage l'identifiant).
+  tachesDeEvenement(e) {
+    const id = String((e && e.id) || '');
+    const quand = Ariane.quandEvenement(e);
+    if (!id || !quand) return [];
+    const out = [];
+    for (const t of this.tachesPourGantt()) {
+      for (const cle of t.evenementsId || []) {
+        const k = Ariane.lireCleEvenement(cle);
+        if (k && k.id === id && (k.quand === quand || k.quand.slice(0, 10) === quand.slice(0, 10))) {
+          out.push({ tache: t, cle });
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
+  // Écrit les événements d'une tâche. `avecEcheance` : l'échéance et l'heure
+  // suivent le dernier événement (association, retrait, événement déplacé) ;
+  // le reste du temps, une échéance corrigée à la main est respectée.
+  async ecrireEvenementsTache(ref, cles, libelles, avecEcheance) {
+    const champs = { 'evenements-id': cles, evenements: libelles };
+    const ech = avecEcheance ? Ariane.echeanceDesEvenements(cles) : null;
+    if (ech) Object.assign(champs, { echeance: ech.echeance, heure: ech.heure || null, 'sans-echeance': false });
+    return this.majTache(ref, champs);
+  }
+
+  async associerEvenementTache(ref, e) {
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    const cle = Ariane.cleEvenementTache(e);
+    if (!t || !cle) return false;
+    if ((t.evenementsId || []).includes(cle)) {
+      new obsidian.Notice(tr('Cet événement est déjà associé à ') + ref + '.');
+      return false;
+    }
+    const quand = Ariane.quandEvenement(e);
+    const paires = Ariane.pairesEvenementsTache(t.evenementsId, t.evenements)
+      .concat([{ cle, quand, libelle: Ariane.libelleEvenementTache(quand, e.titre) }])
+      .sort((a, b) => a.quand.localeCompare(b.quand));
+    const cles = paires.map((p) => p.cle);
+    await this.ecrireEvenementsTache(ref, cles, paires.map((p) => p.libelle), true);
+    const ech = Ariane.echeanceDesEvenements(cles);
+    const jour = new Date(ech.echeance + 'T12:00:00').toLocaleDateString('fr-FR',
+      { weekday: 'long', day: 'numeric', month: 'long' });
+    new obsidian.Notice(tr('Événement associé à ') + ref + tr(' : échéance le ') + jour
+      + (ech.heure ? tr(' à ') + ech.heure : '') + '.');
+    return true;
+  }
+
+  // Retire une association. L'échéance suit les événements qui restent ; s'il
+  // n'en reste aucun, elle ne bouge pas.
+  async dissocierEvenementTache(ref, cle) {
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    if (!t || !(t.evenementsId || []).includes(cle)) return false;
+    const paires = Ariane.pairesEvenementsTache(t.evenementsId, t.evenements).filter((p) => p.cle !== cle);
+    await this.ecrireEvenementsTache(ref, paires.map((p) => p.cle), paires.map((p) => p.libelle), paires.length > 0);
+    return true;
+  }
+
+  // Après une lecture de l'agenda sur `bornes` (vue calendrier, démarrage) :
+  // chaque tâche dont un événement a changé est réécrite ; l'échéance ne suit
+  // que si un événement a bougé. Une lecture vide ne prouve rien (agenda
+  // injoignable, accès refusé) : on ne juge alors aucun événement introuvable.
+  // Sur téléphone, c'est l'ordinateur qui s'en charge : les deux réécritures
+  // se croiseraient dans iCloud.
+  async reconcilierEvenementsTaches(evenements, bornes) {
+    if (surMobile() || !(evenements || []).length) return 0;
+    let n = 0;
+    for (const t of this.tachesPourGantt()) {
+      if (!(t.evenementsId || []).length) continue;
+      const r = Ariane.reconcilierEvenementsTache(t.evenementsId, t.evenements, evenements, bornes);
+      if (!r.change) continue;
+      await this.ecrireEvenementsTache(t.ref, r.cles, r.libelles, r.quandChange);
+      n++;
+    }
+    return n;
+  }
+
+  // Au démarrage : relit l'agenda sur les jours que couvrent les événements
+  // associés (au plus un an de part et d'autre d'aujourd'hui), puis réaligne.
+  async rattraperEvenementsTaches() {
+    if (surMobile() || !this.evenementsFond) return 0;
+    const jours = [];
+    for (const t of this.tachesPourGantt()) {
+      for (const c of t.evenementsId || []) {
+        const k = Ariane.lireCleEvenement(c);
+        if (k) jours.push(k.quand.slice(0, 10));
+      }
+    }
+    if (!jours.length) return 0;
+    jours.sort();
+    const auj = jourIsoDe(new Date());
+    const min = Ariane.decalerJour(auj, -365);
+    const max = Ariane.decalerJour(auj, 365);
+    const debut = jours[0] < min ? min : jours[0];
+    const fin = jours[jours.length - 1] > max ? max : jours[jours.length - 1];
+    if (debut > fin) return 0;
+    let evs = [];
+    try { evs = (await this.evenementsFond(debut, Ariane.decalerJour(fin, 1))) || []; } catch (e) { return 0; }
+    return this.reconcilierEvenementsTaches(evs, { debut, fin });
+  }
+
+  // Associer un événement à la tâche ouverte : ceux des 60 prochains jours
+  // (et de la semaine passée), du plus proche au plus lointain.
+  async choisirEvenementPourTache(ref) {
+    const auj = jourIsoDe(new Date());
+    let evs = [];
+    try { evs = (await this.evenementsFond(Ariane.decalerJour(auj, -7), Ariane.decalerJour(auj, 61))) || []; } catch (e) { evs = []; }
+    if (!evs.length) { new obsidian.Notice(tr('Aucun événement lu dans l’agenda (60 prochains jours).')); return; }
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    const deja = new Set((t && t.evenementsId) || []);
+    const items = evs.filter((e) => !deja.has(Ariane.cleEvenementTache(e)))
+      .sort((a, b) => String(a.debut).localeCompare(String(b.debut)))
+      .map((e) => ({ nom: Ariane.libelleEvenementTache(Ariane.quandEvenement(e), e.titre)
+        + (e.calendrier ? '  (' + e.calendrier + ')' : ''), e }));
+    new ChoixListeModal(this.app, tr('Événement à associer à ') + ref + '…', items, (it) => {
+      if (it) this.associerEvenementTache(ref, it.e).catch(() => {});
+    }).open();
+  }
+
+  choisirEvenementADissocier(ref) {
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    const paires = t ? Ariane.pairesEvenementsTache(t.evenementsId, t.evenements) : [];
+    if (!paires.length) { new obsidian.Notice(tr('Aucun événement associé à cette tâche.')); return; }
+    new ChoixListeModal(this.app, tr('Événement à dissocier de ') + ref + '…',
+      paires.map((p) => ({ nom: p.libelle, cle: p.cle })), (it) => {
+        if (it) this.dissocierEvenementTache(ref, it.cle).catch(() => {});
+      }).open();
+  }
+
   async retirerBlocage(deRef, versRef) {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === versRef);
     if (!f) return false;
@@ -3370,6 +3505,10 @@ const avecTaches = (Base) => class extends Base {
     // Les séances empruntées suivent les créneaux propres, sans former de
     // groupe : elles ne sont pas amorcées dans chaque note (defautsNoyau).
     if (rang.has('creneaux')) rang.set('seances', rang.get('creneaux'));
+    // De même les événements associés : la liste lisible avec les relations,
+    // leurs identifiants avec ceux de l'agenda.
+    if (rang.has('bloque-par')) rang.set('evenements', rang.get('bloque-par'));
+    if (rang.has('agenda-id')) rang.set('evenements-id', rang.get('agenda-id'));
     const presents = new Set();
     let aFamille = false;
     for (const row of cont.querySelectorAll('.metadata-property')) {

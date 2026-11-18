@@ -811,6 +811,24 @@ const TEXTES = {
     "Bloquée par la tâche existante « ": "Blocked by the existing task “",
     "Cette tâche ne sera pas créée : le lien tombe.": "This task will not be created, so the link is dropped.",
     "Retirer cette dépendance": "Remove this dependency",
+    " (introuvable)": " (not found)",
+    "(sans titre)": "(untitled)",
+    "Cet événement est déjà associé à ": "This event is already linked to ",
+    "Événement associé à ": "Event linked to ",
+    " : échéance le ": ": due on ",
+    " à ": " at ",
+    "Aucun événement lu dans l’agenda (60 prochains jours).": "No event read from the calendar (next 60 days).",
+    "Événement à associer à ": "Event to link to ",
+    "Aucun événement associé à cette tâche.": "No event is linked to this task.",
+    "Événement à dissocier de ": "Event to unlink from ",
+    "Tâches : associer un événement à cette tâche…": "Tasks: link an event to this task…",
+    "Tâches : dissocier un événement de cette tâche…": "Tasks: unlink an event from this task…",
+    "Tâche : ": "Task: ",
+    "Ouvrir la tâche ": "Open task ",
+    "Dissocier de ": "Unlink from ",
+    "Associer à une tâche…": "Link to a task…",
+    "Aucune tâche en cours.": "No open task.",
+    "Tâche à associer à cet événement…": "Task to link to this event…",
     "Retenir pour la séance": "Keep for this session",
     "Retirer de la séance": "Remove from this session",
     "Rouvrir la tâche": "Reopen the task",
@@ -6302,8 +6320,8 @@ const avecSocle = (Base) => class extends Base {
   static get CONCEPTS_TACHE() {
     return ['famille', 'statut', 'terminee', 'priorite', 'jalon',
             'debut', 'echeance', 'heure', 'sans-echeance', 'creneaux', 'seances', 'avancement', 'temps-estime', 'parent',
-            'bloque-par', 'termine-le',
-            'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id'];
+            'bloque-par', 'evenements', 'termine-le',
+            'source', 'livrable', 'fichier', 'liste', 'rappel-id', 'agenda-id', 'evenements-id'];
   }
 
   // Regroupement des propriétés d'une tâche (habillage de la note). `famille`
@@ -15377,6 +15395,7 @@ const avecTachesStatiques = (Base) => class extends Base {
       source: 'Source', livrable: 'Livrable', fichier: 'Fichier',
       liste: 'Liste', 'rappel-id': 'Rappel ID', 'agenda-id': 'Agenda ID',
       'temps-reel': 'Temps réel', seances: 'Séances',
+      evenements: 'Événements', 'evenements-id': 'Événements ID',
     })[concept] || concept;
   }
 
@@ -16096,6 +16115,118 @@ const avecTachesStatiques = (Base) => class extends Base {
   // C'est ce qui relie une note libre, ou un jalon, à l'événement d'origine.
   static idEvenementDe(fm) {
     return String(((fm || {})['Événement ID']) || '').trim();
+  }
+
+  // ── Événements associés à une tâche ──────────────────────────────────────
+  //  Une tâche garde ses événements sous deux propriétés parallèles :
+  //  `evenements-id`, écrite par Ariane seule, porte « identifiant|quand »
+  //  (quand : AAAA-MM-JJTHH:MM, ou AAAA-MM-JJ pour un jour entier) ;
+  //  `evenements` en porte la forme lisible, réécrite d'après elle. L'heure
+  //  de début fait partie de l'identité : dans Calendrier, toutes les séances
+  //  d'une série récurrente partagent le même identifiant, et associer la
+  //  séance du 20 ne doit pas lier toute la série. L'échéance de la tâche est
+  //  le dernier événement associé.
+
+  static quandEvenement(e) {
+    const d = String((e && e.debut) || '');
+    if (!/^\d{4}-\d{2}-\d{2}/.test(d)) return '';
+    return e.allDay || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(d) ? d.slice(0, 10) : d.slice(0, 16);
+  }
+
+  static cleEvenementTache(e) {
+    const id = String((e && e.id) || '').trim();
+    const quand = Ariane.quandEvenement(e);
+    return id && quand ? id + '|' + quand : '';
+  }
+
+  // { id, quand } d'une clé, ou null. L'identifiant peut lui-même contenir
+  // « | » (ceux des calendriers iCal) : on coupe au dernier.
+  static lireCleEvenement(cle) {
+    const s = String(cle || '').trim();
+    const i = s.lastIndexOf('|');
+    if (i <= 0) return null;
+    const quand = s.slice(i + 1);
+    if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(quand)) return null;
+    return { id: s.slice(0, i), quand };
+  }
+
+  static libelleEvenementTache(quand, titre, introuvable) {
+    return String(quand || '').replace('T', ' ') + ' ' + (String(titre || '').trim() || tr('(sans titre)'))
+      + (introuvable ? tr(' (introuvable)') : '');
+  }
+
+  // Le titre qu'une forme lisible garde, sans sa date ni la marque
+  // « introuvable » : de quoi la réécrire quand l'événement n'est pas relu.
+  static titreDuLibelleEvenement(libelle) {
+    return String(libelle || '').replace(/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})? ?/, '')
+      .replace(new RegExp(echapperRegex(tr(' (introuvable)')) + '$'), '').trim();
+  }
+
+  // Les paires { cle, libelle } d'une tâche, par ordre chronologique. Les
+  // deux listes vont d'ordinaire de pair ; une ligne lisible qui manque est
+  // refaite d'après la clé.
+  static pairesEvenementsTache(cles, libelles) {
+    const lib = [].concat(libelles || []).map(String);
+    const out = [];
+    [].concat(cles || []).map(String).forEach((cle, i) => {
+      const k = Ariane.lireCleEvenement(cle);
+      if (!k || out.some((p) => p.cle === cle)) return;
+      out.push({ cle, quand: k.quand, libelle: lib[i] || Ariane.libelleEvenementTache(k.quand, '') });
+    });
+    return out.sort((a, b) => a.quand.localeCompare(b.quand));
+  }
+
+  // L'échéance que fixent des clés : le jour du dernier événement, et son
+  // heure de début (vide pour un jour entier). null sans clé lisible.
+  static echeanceDesEvenements(cles) {
+    const q = [].concat(cles || []).map((c) => Ariane.lireCleEvenement(c)).filter(Boolean)
+      .map((k) => k.quand).sort();
+    if (!q.length) return null;
+    const der = q[q.length - 1];
+    return { echeance: der.slice(0, 10), heure: der.length > 10 ? der.slice(11, 16) : '' };
+  }
+
+  // L'événement de `evenements` qui répond à une clé : le même instant ; à
+  // défaut le même jour (l'heure a bougé) ; à défaut, le seul événement de
+  // ce nom dans la liste (il a changé de jour). Plusieurs événements du même
+  // nom sans aucun ce jour-là : une série dont cette séance a disparu.
+  static evenementDeCle(cle, evenements) {
+    const k = typeof cle === 'string' ? Ariane.lireCleEvenement(cle) : cle;
+    if (!k) return null;
+    const memes = (evenements || []).filter((e) => e && String(e.id || '') === k.id);
+    return memes.find((e) => Ariane.quandEvenement(e) === k.quand)
+      || memes.find((e) => Ariane.quandEvenement(e).slice(0, 10) === k.quand.slice(0, 10))
+      || (memes.length === 1 ? memes[0] : null);
+  }
+
+  // Réaligne les événements d'une tâche sur ceux qui viennent d'être lus,
+  // pour la fenêtre `bornes` ({ debut, fin }, jours ISO). Une clé dont le jour
+  // sort de la fenêtre n'est pas jugée : l'événement n'a simplement pas été
+  // lu. Dans la fenêtre : titre et heure suivent l'événement ; introuvable,
+  // la clé reste, marquée telle dans sa forme lisible (on ne supprime rien).
+  // Rend { cles, libelles, change, quandChange }.
+  static reconcilierEvenementsTache(cles, libelles, evenements, bornes) {
+    const b = bornes || {};
+    const paires = Ariane.pairesEvenementsTache(cles, libelles);
+    let quandChange = false;
+    const nv = paires.map((p) => {
+      const jour = p.quand.slice(0, 10);
+      if (!b.debut || !b.fin || jour < b.debut || jour > b.fin) return p;
+      const e = Ariane.evenementDeCle(p.cle, evenements);
+      if (!e) {
+        return Object.assign({}, p, { libelle: Ariane.libelleEvenementTache(p.quand,
+          Ariane.titreDuLibelleEvenement(p.libelle), true) });
+      }
+      const cle = Ariane.cleEvenementTache(e);
+      if (cle !== p.cle) quandChange = true;
+      return { cle, quand: Ariane.quandEvenement(e), libelle: Ariane.libelleEvenementTache(Ariane.quandEvenement(e), e.titre) };
+    }).sort((a, b2) => a.quand.localeCompare(b2.quand));
+    const avantCles = [].concat(cles || []).map(String);
+    const avantLib = [].concat(libelles || []).map(String);
+    const c2 = nv.map((p) => p.cle);
+    const l2 = nv.map((p) => p.libelle);
+    const change = JSON.stringify(c2) !== JSON.stringify(avantCles) || JSON.stringify(l2) !== JSON.stringify(avantLib);
+    return { cles: c2, libelles: l2, change, quandChange };
   }
 
   static corpsNouvelleNoteEvenement(champs) {
@@ -20163,6 +20294,8 @@ const avecTaches = (Base) => class extends Base {
         heure: String(this._lireT(fm, 'heure') || '').trim(),
         creneaux: [].concat(this._lireT(fm, 'creneaux') || []).map(String).filter(Boolean),
         seances: [].concat(this._lireT(fm, 'seances') || []).map(String).filter(Boolean),
+        evenementsId: [].concat(this._lireT(fm, 'evenements-id') || []).map(String).filter(Boolean),
+        evenements: [].concat(this._lireT(fm, 'evenements') || []).map(String).filter(Boolean),
         tempsReel: Ariane.tempsReelDeTache(this._lireT(fm, 'temps-reel')),
         statut: this._lireT(fm, 'statut') || 'à faire',
         priorite: this._lireT(fm, 'priorite') || '',
@@ -22619,6 +22752,139 @@ const avecTaches = (Base) => class extends Base {
     return true;
   }
 
+  // ── Événements associés (voir Ariane.reconcilierEvenementsTache) ─────────
+  // Les tâches qu'un événement concerne : [{ tache, cle }]. Même identifiant,
+  // et même instant, ou du moins même jour (une série partage l'identifiant).
+  tachesDeEvenement(e) {
+    const id = String((e && e.id) || '');
+    const quand = Ariane.quandEvenement(e);
+    if (!id || !quand) return [];
+    const out = [];
+    for (const t of this.tachesPourGantt()) {
+      for (const cle of t.evenementsId || []) {
+        const k = Ariane.lireCleEvenement(cle);
+        if (k && k.id === id && (k.quand === quand || k.quand.slice(0, 10) === quand.slice(0, 10))) {
+          out.push({ tache: t, cle });
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
+  // Écrit les événements d'une tâche. `avecEcheance` : l'échéance et l'heure
+  // suivent le dernier événement (association, retrait, événement déplacé) ;
+  // le reste du temps, une échéance corrigée à la main est respectée.
+  async ecrireEvenementsTache(ref, cles, libelles, avecEcheance) {
+    const champs = { 'evenements-id': cles, evenements: libelles };
+    const ech = avecEcheance ? Ariane.echeanceDesEvenements(cles) : null;
+    if (ech) Object.assign(champs, { echeance: ech.echeance, heure: ech.heure || null, 'sans-echeance': false });
+    return this.majTache(ref, champs);
+  }
+
+  async associerEvenementTache(ref, e) {
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    const cle = Ariane.cleEvenementTache(e);
+    if (!t || !cle) return false;
+    if ((t.evenementsId || []).includes(cle)) {
+      new obsidian.Notice(tr('Cet événement est déjà associé à ') + ref + '.');
+      return false;
+    }
+    const quand = Ariane.quandEvenement(e);
+    const paires = Ariane.pairesEvenementsTache(t.evenementsId, t.evenements)
+      .concat([{ cle, quand, libelle: Ariane.libelleEvenementTache(quand, e.titre) }])
+      .sort((a, b) => a.quand.localeCompare(b.quand));
+    const cles = paires.map((p) => p.cle);
+    await this.ecrireEvenementsTache(ref, cles, paires.map((p) => p.libelle), true);
+    const ech = Ariane.echeanceDesEvenements(cles);
+    const jour = new Date(ech.echeance + 'T12:00:00').toLocaleDateString('fr-FR',
+      { weekday: 'long', day: 'numeric', month: 'long' });
+    new obsidian.Notice(tr('Événement associé à ') + ref + tr(' : échéance le ') + jour
+      + (ech.heure ? tr(' à ') + ech.heure : '') + '.');
+    return true;
+  }
+
+  // Retire une association. L'échéance suit les événements qui restent ; s'il
+  // n'en reste aucun, elle ne bouge pas.
+  async dissocierEvenementTache(ref, cle) {
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    if (!t || !(t.evenementsId || []).includes(cle)) return false;
+    const paires = Ariane.pairesEvenementsTache(t.evenementsId, t.evenements).filter((p) => p.cle !== cle);
+    await this.ecrireEvenementsTache(ref, paires.map((p) => p.cle), paires.map((p) => p.libelle), paires.length > 0);
+    return true;
+  }
+
+  // Après une lecture de l'agenda sur `bornes` (vue calendrier, démarrage) :
+  // chaque tâche dont un événement a changé est réécrite ; l'échéance ne suit
+  // que si un événement a bougé. Une lecture vide ne prouve rien (agenda
+  // injoignable, accès refusé) : on ne juge alors aucun événement introuvable.
+  // Sur téléphone, c'est l'ordinateur qui s'en charge : les deux réécritures
+  // se croiseraient dans iCloud.
+  async reconcilierEvenementsTaches(evenements, bornes) {
+    if (surMobile() || !(evenements || []).length) return 0;
+    let n = 0;
+    for (const t of this.tachesPourGantt()) {
+      if (!(t.evenementsId || []).length) continue;
+      const r = Ariane.reconcilierEvenementsTache(t.evenementsId, t.evenements, evenements, bornes);
+      if (!r.change) continue;
+      await this.ecrireEvenementsTache(t.ref, r.cles, r.libelles, r.quandChange);
+      n++;
+    }
+    return n;
+  }
+
+  // Au démarrage : relit l'agenda sur les jours que couvrent les événements
+  // associés (au plus un an de part et d'autre d'aujourd'hui), puis réaligne.
+  async rattraperEvenementsTaches() {
+    if (surMobile() || !this.evenementsFond) return 0;
+    const jours = [];
+    for (const t of this.tachesPourGantt()) {
+      for (const c of t.evenementsId || []) {
+        const k = Ariane.lireCleEvenement(c);
+        if (k) jours.push(k.quand.slice(0, 10));
+      }
+    }
+    if (!jours.length) return 0;
+    jours.sort();
+    const auj = jourIsoDe(new Date());
+    const min = Ariane.decalerJour(auj, -365);
+    const max = Ariane.decalerJour(auj, 365);
+    const debut = jours[0] < min ? min : jours[0];
+    const fin = jours[jours.length - 1] > max ? max : jours[jours.length - 1];
+    if (debut > fin) return 0;
+    let evs = [];
+    try { evs = (await this.evenementsFond(debut, Ariane.decalerJour(fin, 1))) || []; } catch (e) { return 0; }
+    return this.reconcilierEvenementsTaches(evs, { debut, fin });
+  }
+
+  // Associer un événement à la tâche ouverte : ceux des 60 prochains jours
+  // (et de la semaine passée), du plus proche au plus lointain.
+  async choisirEvenementPourTache(ref) {
+    const auj = jourIsoDe(new Date());
+    let evs = [];
+    try { evs = (await this.evenementsFond(Ariane.decalerJour(auj, -7), Ariane.decalerJour(auj, 61))) || []; } catch (e) { evs = []; }
+    if (!evs.length) { new obsidian.Notice(tr('Aucun événement lu dans l’agenda (60 prochains jours).')); return; }
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    const deja = new Set((t && t.evenementsId) || []);
+    const items = evs.filter((e) => !deja.has(Ariane.cleEvenementTache(e)))
+      .sort((a, b) => String(a.debut).localeCompare(String(b.debut)))
+      .map((e) => ({ nom: Ariane.libelleEvenementTache(Ariane.quandEvenement(e), e.titre)
+        + (e.calendrier ? '  (' + e.calendrier + ')' : ''), e }));
+    new ChoixListeModal(this.app, tr('Événement à associer à ') + ref + '…', items, (it) => {
+      if (it) this.associerEvenementTache(ref, it.e).catch(() => {});
+    }).open();
+  }
+
+  choisirEvenementADissocier(ref) {
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    const paires = t ? Ariane.pairesEvenementsTache(t.evenementsId, t.evenements) : [];
+    if (!paires.length) { new obsidian.Notice(tr('Aucun événement associé à cette tâche.')); return; }
+    new ChoixListeModal(this.app, tr('Événement à dissocier de ') + ref + '…',
+      paires.map((p) => ({ nom: p.libelle, cle: p.cle })), (it) => {
+        if (it) this.dissocierEvenementTache(ref, it.cle).catch(() => {});
+      }).open();
+  }
+
   async retirerBlocage(deRef, versRef) {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === versRef);
     if (!f) return false;
@@ -23448,6 +23714,10 @@ const avecTaches = (Base) => class extends Base {
     // Les séances empruntées suivent les créneaux propres, sans former de
     // groupe : elles ne sont pas amorcées dans chaque note (defautsNoyau).
     if (rang.has('creneaux')) rang.set('seances', rang.get('creneaux'));
+    // De même les événements associés : la liste lisible avec les relations,
+    // leurs identifiants avec ceux de l'agenda.
+    if (rang.has('bloque-par')) rang.set('evenements', rang.get('bloque-par'));
+    if (rang.has('agenda-id')) rang.set('evenements-id', rang.get('agenda-id'));
     const presents = new Set();
     let aFamille = false;
     for (const row of cont.querySelectorAll('.metadata-property')) {
@@ -30005,6 +30275,32 @@ class Ariane extends composer(obsidian.Plugin,
         this.ouvrirDecoupage(ref);
       },
     });
+    // Événements de l'agenda associés à la tâche ouverte : l'échéance suit le
+    // dernier (voir Ariane.reconcilierEvenementsTache).
+    this.addCommand({
+      id: 'associer-evenement-tache',
+      module: 'taches',
+      name: tr('Tâches : associer un événement à cette tâche…'),
+      icon: 'calendar-plus',
+      callback: () => {
+        const f = this.app.workspace.getActiveFile();
+        const ref = f && this.refDeChemin(f.path);
+        if (!ref) { new obsidian.Notice(tr('Ouvrez d\'abord une note de tâche.')); return; }
+        this.choisirEvenementPourTache(ref).catch(() => {});
+      },
+    });
+    this.addCommand({
+      id: 'dissocier-evenement-tache',
+      module: 'taches',
+      name: tr('Tâches : dissocier un événement de cette tâche…'),
+      icon: 'calendar-minus',
+      callback: () => {
+        const f = this.app.workspace.getActiveFile();
+        const ref = f && this.refDeChemin(f.path);
+        if (!ref) { new obsidian.Notice(tr('Ouvrez d\'abord une note de tâche.')); return; }
+        this.choisirEvenementADissocier(ref);
+      },
+    });
     this.addCommand({
       id: 'normaliser-intitules-taches',
       module: 'taches',
@@ -31520,6 +31816,7 @@ class Ariane extends composer(obsidian.Plugin,
         Promise.resolve(this.semerConceptsTache())
           .then(() => this.semerSansEcheance())
           .then(() => this.rattraperSeances())
+          .then(() => this.rattraperEvenementsTaches())
           .catch(() => {});
       }, 3000);
     });
@@ -33362,7 +33659,7 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       const iconeAutre = {
         'bloque-par': 'ban', 'termine-le': 'calendar-check', source: 'book-marked',
         livrable: 'package', fichier: 'file', liste: 'list', 'rappel-id': 'bell',
-        seances: 'users',
+        seances: 'users', evenements: 'calendar-days', 'evenements-id': 'calendar-cog',
       };
       const genPar = {};
       for (const p of Ariane.PROPS_GENERIQUES) genPar[p.cle] = p;
@@ -44392,6 +44689,12 @@ class MoteurCalendrier extends MoteurVue {
       // Jalons liés à un événement : réaligner sur l'événement fraîchement lu
       // (le redessin suit, déclenché par les écritures ou par la ligne ci-dessous).
       this._reconcilierJalonsEvenements().catch(() => { /* rien */ });
+      // De même les tâches associées à un événement de la fenêtre lue. La
+      // borne de fin de la lecture est exclue : on ne juge que jusqu'à la veille.
+      if (this.greffon.reconcilierEvenementsTaches) {
+        this.greffon.reconcilierEvenementsTaches(nv, { debut: b.debut, fin: Ariane.decalerJour(b.fin, -1) })
+          .catch(() => { /* rien */ });
+      }
       if (nv.length || avant.length) this.dessiner();
     }).catch(() => { /* macOS indisponible */ });
   }
@@ -44507,6 +44810,11 @@ class MoteurCalendrier extends MoteurVue {
       t.addEventListener('click', (ev) => { ev.stopPropagation(); window.open(e.url); });
     }
     if (e.notes) carte.createDiv({ cls: 'zfa-evt-survol-notes', text: e.notes });
+    // Les tâches associées à cet événement : un clic ouvre la tâche.
+    for (const a of (this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [])) {
+      const t = ligne('link', tr('Tâche : ') + a.tache.intitule + ' (' + a.tache.ref + ')', 'est-lien');
+      t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref, false); });
+    }
     const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e.id) : null;
     const actions = carte.createDiv({ cls: 'zfa-act-survol-actions' });
     const action = (icone, libelle, faire) => {
@@ -44666,6 +44974,32 @@ class MoteurCalendrier extends MoteurVue {
         this.dessiner();
         this.ouvrir(ref, false);
       }));
+    }
+    // Tâches associées : ouvrir, dissocier ; et en associer une autre.
+    const associees = this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [];
+    for (const a of associees) {
+      m.addItem((i) => i.setTitle(tr('Ouvrir la tâche ') + a.tache.ref + ' : ' + a.tache.intitule)
+        .setIcon('square-check').onClick(() => this.ouvrir(a.tache.ref, false)));
+      m.addItem((i) => i.setTitle(tr('Dissocier de ') + a.tache.ref).setIcon('unlink')
+        .onClick(async () => {
+          await this.greffon.dissocierEvenementTache(a.tache.ref, a.cle);
+          this.dessiner();
+        }));
+    }
+    if (e.id && this.greffon.associerEvenementTache) {
+      m.addItem((i) => i.setTitle(tr('Associer à une tâche…')).setIcon('link')
+        .onClick(() => {
+          const prises = new Set(associees.map((a) => a.tache.ref));
+          const items = this.greffon.tachesPourGantt()
+            .filter((t) => t.statut !== 'terminée' && t.statut !== 'abandonnée' && !prises.has(t.ref))
+            .map((t) => ({ nom: t.intitule + '  (' + t.ref + ')', cle: t.ref }));
+          if (!items.length) { new obsidian.Notice(tr('Aucune tâche en cours.')); return; }
+          new ChoixListeModal(this.app, tr('Tâche à associer à cet événement…'), items, async (it) => {
+            if (!it) return;
+            await this.greffon.associerEvenementTache(it.cle, e);
+            this.dessiner();
+          }).open();
+        }));
     }
     m.addItem((i) => i
       .setTitle(noteExistante ? tr('Ouvrir la note de cet événement')
@@ -52901,7 +53235,8 @@ function barreDefaut() {
     { groupe: 'Ariane', icone: 'compass', elements: [
       { cmd: a('correcteur-relire') },
       { separateur: true },
-      { cmd: a('creer-tache') }, { cmd: a('fusionner-taches') }, { cmd: a('atomise-active') }, { cmd: a('biblio-note') },
+      { cmd: a('creer-tache') }, { cmd: a('fusionner-taches') }, { cmd: a('associer-evenement-tache') },
+      { cmd: a('atomise-active') }, { cmd: a('biblio-note') },
     ] },
     { separateur: true },
     // Les deux gestes d'Ariane qui servent à chaque relecture : replier les

@@ -760,6 +760,19 @@ ou **une séance de** telle tâche. Ces créneaux secondaires suivent la séance
 (déplacée, supprimée, sous-tâche retirée) ; ils n'ont ni agenda, ni bloc au
 calendrier, et leur temps reste compté dans la tâche d'origine.
 
+Un **événement de l'agenda** s'associe à une tâche : clic droit sur
+l'événement au calendrier, « Associer à une tâche… », ou depuis la tâche,
+commande « Associer un événement à cette tâche… » (aussi dans la barre
+d'édition). La tâche en garde la liste dans `Événements`
+(`2026-11-20 10:00 Réunion WP1`), et la carte de survol de l'événement montre
+la tâche. L'**échéance** devient le jour du dernier événement associé, son
+heure celle où il commence ; elle se recalcule quand on associe, dissocie, ou
+quand l'événement est déplacé dans Calendrier, et une échéance corrigée à la
+main est respectée entre-temps. Les identifiants sont gardés à part
+(`Événements ID`, écrit par Ariane seule) ; pour une série récurrente, seule
+la séance choisie est liée. Un événement disparu reste dans la liste, marqué
+« (introuvable) ».
+
 Glisser une carte la reprogramme ; en vue semaine, glisser ou redimensionner
 un bloc réécrit ce créneau, Suppr le retire. **Glisser le lien d'une ligne
 depuis la colonne de gauche de la frise** (ou un lien `[[T26-001]]` depuis

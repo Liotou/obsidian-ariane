@@ -249,6 +249,32 @@ class Ariane extends composer(obsidian.Plugin,
         this.ouvrirDecoupage(ref);
       },
     });
+    // Événements de l'agenda associés à la tâche ouverte : l'échéance suit le
+    // dernier (voir Ariane.reconcilierEvenementsTache).
+    this.addCommand({
+      id: 'associer-evenement-tache',
+      module: 'taches',
+      name: tr('Tâches : associer un événement à cette tâche…'),
+      icon: 'calendar-plus',
+      callback: () => {
+        const f = this.app.workspace.getActiveFile();
+        const ref = f && this.refDeChemin(f.path);
+        if (!ref) { new obsidian.Notice(tr('Ouvrez d\'abord une note de tâche.')); return; }
+        this.choisirEvenementPourTache(ref).catch(() => {});
+      },
+    });
+    this.addCommand({
+      id: 'dissocier-evenement-tache',
+      module: 'taches',
+      name: tr('Tâches : dissocier un événement de cette tâche…'),
+      icon: 'calendar-minus',
+      callback: () => {
+        const f = this.app.workspace.getActiveFile();
+        const ref = f && this.refDeChemin(f.path);
+        if (!ref) { new obsidian.Notice(tr('Ouvrez d\'abord une note de tâche.')); return; }
+        this.choisirEvenementADissocier(ref);
+      },
+    });
     this.addCommand({
       id: 'normaliser-intitules-taches',
       module: 'taches',
@@ -1764,6 +1790,7 @@ class Ariane extends composer(obsidian.Plugin,
         Promise.resolve(this.semerConceptsTache())
           .then(() => this.semerSansEcheance())
           .then(() => this.rattraperSeances())
+          .then(() => this.rattraperEvenementsTaches())
           .catch(() => {});
       }, 3000);
     });

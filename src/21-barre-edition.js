@@ -838,7 +838,8 @@ function barreDefaut() {
     { groupe: 'Ariane', icone: 'compass', elements: [
       { cmd: a('correcteur-relire') },
       { separateur: true },
-      { cmd: a('creer-tache') }, { cmd: a('fusionner-taches') }, { cmd: a('atomise-active') }, { cmd: a('biblio-note') },
+      { cmd: a('creer-tache') }, { cmd: a('fusionner-taches') }, { cmd: a('associer-evenement-tache') },
+      { cmd: a('atomise-active') }, { cmd: a('biblio-note') },
     ] },
     { separateur: true },
     // Les deux gestes d'Ariane qui servent à chaque relecture : replier les

@@ -226,6 +226,12 @@ class MoteurCalendrier extends MoteurVue {
       // Jalons liés à un événement : réaligner sur l'événement fraîchement lu
       // (le redessin suit, déclenché par les écritures ou par la ligne ci-dessous).
       this._reconcilierJalonsEvenements().catch(() => { /* rien */ });
+      // De même les tâches associées à un événement de la fenêtre lue. La
+      // borne de fin de la lecture est exclue : on ne juge que jusqu'à la veille.
+      if (this.greffon.reconcilierEvenementsTaches) {
+        this.greffon.reconcilierEvenementsTaches(nv, { debut: b.debut, fin: Ariane.decalerJour(b.fin, -1) })
+          .catch(() => { /* rien */ });
+      }
       if (nv.length || avant.length) this.dessiner();
     }).catch(() => { /* macOS indisponible */ });
   }
@@ -341,6 +347,11 @@ class MoteurCalendrier extends MoteurVue {
       t.addEventListener('click', (ev) => { ev.stopPropagation(); window.open(e.url); });
     }
     if (e.notes) carte.createDiv({ cls: 'zfa-evt-survol-notes', text: e.notes });
+    // Les tâches associées à cet événement : un clic ouvre la tâche.
+    for (const a of (this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [])) {
+      const t = ligne('link', tr('Tâche : ') + a.tache.intitule + ' (' + a.tache.ref + ')', 'est-lien');
+      t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref, false); });
+    }
     const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e.id) : null;
     const actions = carte.createDiv({ cls: 'zfa-act-survol-actions' });
     const action = (icone, libelle, faire) => {
@@ -500,6 +511,32 @@ class MoteurCalendrier extends MoteurVue {
         this.dessiner();
         this.ouvrir(ref, false);
       }));
+    }
+    // Tâches associées : ouvrir, dissocier ; et en associer une autre.
+    const associees = this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [];
+    for (const a of associees) {
+      m.addItem((i) => i.setTitle(tr('Ouvrir la tâche ') + a.tache.ref + ' : ' + a.tache.intitule)
+        .setIcon('square-check').onClick(() => this.ouvrir(a.tache.ref, false)));
+      m.addItem((i) => i.setTitle(tr('Dissocier de ') + a.tache.ref).setIcon('unlink')
+        .onClick(async () => {
+          await this.greffon.dissocierEvenementTache(a.tache.ref, a.cle);
+          this.dessiner();
+        }));
+    }
+    if (e.id && this.greffon.associerEvenementTache) {
+      m.addItem((i) => i.setTitle(tr('Associer à une tâche…')).setIcon('link')
+        .onClick(() => {
+          const prises = new Set(associees.map((a) => a.tache.ref));
+          const items = this.greffon.tachesPourGantt()
+            .filter((t) => t.statut !== 'terminée' && t.statut !== 'abandonnée' && !prises.has(t.ref))
+            .map((t) => ({ nom: t.intitule + '  (' + t.ref + ')', cle: t.ref }));
+          if (!items.length) { new obsidian.Notice(tr('Aucune tâche en cours.')); return; }
+          new ChoixListeModal(this.app, tr('Tâche à associer à cet événement…'), items, async (it) => {
+            if (!it) return;
+            await this.greffon.associerEvenementTache(it.cle, e);
+            this.dessiner();
+          }).open();
+        }));
     }
     m.addItem((i) => i
       .setTitle(noteExistante ? tr('Ouvrir la note de cet événement')
