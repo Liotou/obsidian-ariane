@@ -393,7 +393,7 @@ const avecTaches = (Base) => class extends Base {
                allDay: p[4] === '1', couleur: couleurs[cal] || '', calendrier: cal,
                lieu: p[6] || '', notes: String(p[7] || '').split('\u001f').join('\n').trim(),
                url: p[8] || '', participants: p[9] ? p[9].split('; ').filter(Boolean) : [],
-               organisateur: p[10] || '' };
+               organisateur: p[10] || '', pieces: Ariane.lirePiecesEvenement(p[11]) };
     })).filter((e) => e.id && e.debut && !aNous(e));
     if (s == null) return [];              // échec dur : ne pas cacher, ne pas marquer l'accès OK
     this._agendaStatut = 3;
@@ -2541,6 +2541,123 @@ const avecTaches = (Base) => class extends Base {
       x.modifie = new Date().toISOString().slice(0, 10);
     });
     return true;
+  }
+
+  // ── Pièces jointes des événements ────────────────────────────────────────
+  // La copie d'une pièce dans le coffre, s'il y en a une.
+  fichierDePiece(p) {
+    return this.app.vault.getFiles().find((f) => Ariane.fichierEstPiece(f, p)) || null;
+  }
+
+  // Le contenu d'une pièce, ou null si macOS le refuse (Obsidian n'a pas
+  // l'accès complet au disque) ou si le fichier n'est pas sur ce Mac.
+  async _contenuPiece(p) {
+    if (!p.local || surMobile()) return null;
+    try { return await require('fs').promises.readFile(p.local); } catch (e) { return null; }
+  }
+
+  _avisAccesPieces() {
+    if (this._avisPiecesFait) return;
+    this._avisPiecesFait = true;
+    new obsidian.Notice(tr('macOS protège les pièces jointes de Calendrier. Pour les ouvrir depuis Obsidian : Réglages Système, Confidentialité et sécurité, Accès complet au disque, puis relancez Obsidian.'), 12000);
+  }
+
+  // Ouvre une pièce : sa copie du coffre, sinon une copie temporaire du
+  // fichier de Calendrier (l'application qui l'ouvrira n'a pas accès à
+  // l'original), sinon son adresse. Rend false quand il faut passer par
+  // Calendrier.
+  async ouvrirPieceEvenement(p) {
+    const shell = (() => { try { return require('electron').shell; } catch (e) { return null; } })();
+    const copie = this.fichierDePiece(p);
+    if (copie) {
+      if (/^(pdf|png|jpe?g|gif|webp|mp3|m4a|wav|mp4|mov)$/i.test(copie.extension) || !shell) {
+        await this.app.workspace.getLeaf(false).openFile(copie);
+      } else await shell.openPath(this.app.vault.adapter.getFullPath(copie.path));
+      return true;
+    }
+    if (p.url) {
+      if (shell && shell.openExternal) shell.openExternal(p.url); else window.open(p.url);
+      return true;
+    }
+    if (!p.local || !shell || !Ariane.piecePermise(p.nom)) return false;
+    const contenu = await this._contenuPiece(p);
+    if (!contenu) { this._avisAccesPieces(); return false; }
+    const fs = require('fs'), os = require('os'), path = require('path');
+    const dossier = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ariane-piece-'));
+    const chemin = path.join(dossier, Ariane.nomFichierPiece(p.nom));
+    await fs.promises.writeFile(chemin, contenu);
+    const err = await shell.openPath(chemin);
+    return !err;
+  }
+
+  // La note d'un événement, créée au besoin, avec ses pièces à jour.
+  async noteEvenementAJour(e) {
+    let f = e && e.id ? this.noteDeEvenement(e.id) : null;
+    if (!f) {
+      const jour = String((e && e.debut) || '').slice(0, 10);
+      const nom = String((e && e.titre) || '').trim() || (tr('Événement ') + (jour || ''));
+      const chemin = await this.creerNoteEvenement({ intitule: nom, date: jour, evenementId: (e && e.id) || '' });
+      f = this.app.vault.getAbstractFileByPath(chemin);
+    }
+    if (f) await this.majPiecesNoteEvenement(f, e);
+    return f;
+  }
+
+  async majPiecesNoteEvenement(f, e) {
+    const pieces = (e && e.pieces) || [];
+    const liens = new Map();
+    for (const p of pieces) {
+      const c = this.fichierDePiece(p);
+      if (c) liens.set(p, this.app.fileManager.generateMarkdownLink(c, f.path));
+    }
+    const bloc = Ariane.blocPiecesEvenement(pieces, liens);
+    this.marquerEcriture(f.path);
+    await this.app.vault.process(f, (t) => Ariane.corpsAvecPieces(t, bloc));
+  }
+
+  // Copie dans le dossier des pièces jointes du coffre celles qui n'y sont
+  // pas encore, puis met la note de l'événement à jour.
+  async importerPiecesEvenement(e) {
+    const aFaire = ((e && e.pieces) || []).filter((p) => p.local && Ariane.piecePermise(p.nom) && !this.fichierDePiece(p));
+    if (!aFaire.length) {
+      new obsidian.Notice(tr('Aucune pièce jointe à importer.'));
+      return 0;
+    }
+    const note = await this.noteEvenementAJour(e);
+    let n = 0, refus = 0;
+    for (const p of aFaire) {
+      const contenu = await this._contenuPiece(p);
+      if (!contenu) { refus++; continue; }
+      const chemin = await this.app.fileManager.getAvailablePathForAttachment(Ariane.nomFichierPiece(p.nom), note ? note.path : '');
+      const dossier = chemin.includes('/') ? chemin.slice(0, chemin.lastIndexOf('/')) : '';
+      if (dossier) await this.assurerDossier(dossier);
+      const o = contenu.buffer.slice(contenu.byteOffset, contenu.byteOffset + contenu.byteLength);
+      await this.app.vault.createBinary(chemin, o);
+      n++;
+    }
+    if (refus) this._avisAccesPieces();
+    if (n) {
+      if (note) await this.majPiecesNoteEvenement(note, e);
+      new obsidian.Notice(n + tr(' pièce(s) jointe(s) importée(s) dans le coffre.'));
+    }
+    return n;
+  }
+
+  // Depuis la note d'événement ouverte : retrouve l'événement par son
+  // identifiant et le jour de la note.
+  async importerPiecesNoteActive() {
+    const f = this.app.workspace.getActiveFile();
+    const fm = f ? (this.app.metadataCache.getFileCache(f) || {}).frontmatter : null;
+    const id = Ariane.idEvenementDe(fm);
+    const jour = String((fm && fm.Date) || '').slice(0, 10);
+    if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(jour)) {
+      new obsidian.Notice(tr('Ouvrez d’abord la note d’un événement.'));
+      return 0;
+    }
+    const evs = (await this.evenementsFond(Ariane.decalerJour(jour, -1), Ariane.decalerJour(jour, 1))) || [];
+    const e = evs.find((x) => x.id === id && String(x.debut).slice(0, 10) === jour) || evs.find((x) => x.id === id);
+    if (!e) { new obsidian.Notice(tr('Événement introuvable dans l’agenda.')); return 0; }
+    return this.importerPiecesEvenement(e);
   }
 
   // ── Événements associés (voir Ariane.reconcilierEvenementsTache) ─────────

@@ -760,6 +760,14 @@ ou **une séance de** telle tâche. Ces créneaux secondaires suivent la séance
 (déplacée, supprimée, sous-tâche retirée) ; ils n'ont ni agenda, ni bloc au
 calendrier, et leur temps reste compté dans la tâche d'origine.
 
+Les **pièces jointes d'un événement** (nom, type, taille) paraissent dans sa
+carte de survol et dans sa note. Un clic ouvre le fichier, ou l'événement dans
+Calendrier si macOS le refuse : ce dossier est protégé, et l'ouverture directe
+comme « Importer les pièces jointes » (copie dans le dossier des pièces jointes
+du coffre, lien dans la note) demandent d'accorder à Obsidian l'accès complet
+au disque. Seuls les documents courants s'ouvrent ou s'importent, jamais un
+programme ou un script.
+
 Un **événement de l'agenda** s'associe à une tâche : clic droit sur
 l'événement au calendrier, « Associer à une tâche… », ou depuis la tâche,
 commande « Associer un événement à cette tâche… » (aussi dans la barre

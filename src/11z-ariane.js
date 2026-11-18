@@ -264,6 +264,14 @@ class Ariane extends composer(obsidian.Plugin,
       },
     });
     this.addCommand({
+      id: 'importer-pieces-evenement',
+      module: 'taches',
+      bureau: true,
+      name: tr('Événement : importer ses pièces jointes dans le coffre'),
+      icon: 'paperclip',
+      callback: () => { this.importerPiecesNoteActive().catch(() => {}); },
+    });
+    this.addCommand({
       id: 'dissocier-evenement-tache',
       module: 'taches',
       name: tr('Tâches : dissocier un événement de cette tâche…'),

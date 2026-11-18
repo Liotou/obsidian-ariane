@@ -739,6 +739,13 @@ of** that task. These secondary créneaux follow the séance (moved, deleted,
 subtask removed); they get no calendar event and no calendar block, and their
 time stays counted in the originating task.
 
+**Event attachments** (name, type, size) appear in the event's hover card and
+note. A click opens the file, or the event in Calendar when macOS refuses: that
+folder is protected, and both direct opening and “Import attachments” (a copy
+in the vault's attachment folder, linked from the note) require granting
+Obsidian Full Disk Access. Only common documents can be opened or imported,
+never a program or script.
+
 A **calendar event** can be linked to a task: right-click the event in the
 calendar, “Link to a task…”, or from the task, the command “Link an event to
 this task…” (also on the editing toolbar). The task lists it under

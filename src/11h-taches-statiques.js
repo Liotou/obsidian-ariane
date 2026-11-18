@@ -344,6 +344,10 @@ const avecTachesStatiques = (Base) => class extends Base {
       else if (nom === 'STATUS') e.statut = valeur.trim().toUpperCase();
       else if (nom === 'ORGANIZER') e.organisateur = params.CN || valeur.replace(/^mailto:/i, '');
       else if (nom === 'ATTENDEE') e.participants.push(params.CN || valeur.replace(/^mailto:/i, ''));
+      else if (nom === 'ATTACH') {
+        const p = Ariane.pieceIcs(valeur, params);
+        if (p) (e.pieces = e.pieces || []).push(p);
+      }
     }
     return out;
   }
@@ -461,7 +465,8 @@ const avecTachesStatiques = (Base) => class extends Base {
         if (fin.slice(0, 10) < borneD || debut.slice(0, 10) > borneF) continue;
         out.push({ id: 'ics:' + (e.uid || '') + '|' + debut, titre: e.titre || '', debut, fin, allDay: !!e.debut.jour,
           couleur: c.couleur || '', calendrier: c.nom || '', lieu: e.lieu || '', notes: e.notes || '',
-          url: e.url || '', participants: e.participants.filter(Boolean), organisateur: e.organisateur || '', source: 'ics' });
+          url: e.url || '', participants: e.participants.filter(Boolean), organisateur: e.organisateur || '', source: 'ics',
+          pieces: e.pieces || [] });
       }
     }
     return out.sort((a, b) => a.debut.localeCompare(b.debut));
@@ -737,6 +742,111 @@ const avecTachesStatiques = (Base) => class extends Base {
   // C'est ce qui relie une note libre, ou un jalon, à l'événement d'origine.
   static idEvenementDe(fm) {
     return String(((fm || {})['Événement ID']) || '').trim();
+  }
+
+  // ── Pièces jointes d'un événement ────────────────────────────────────────
+  //  Calendrier donne leur nom, leur type, leur taille et leur place sur le
+  //  disque ; leur contenu est dans un dossier que macOS protège. Un fichier
+  //  reçu avec une invitation vient de n'importe qui : seuls les documents
+  //  courants s'ouvrent ou s'importent, jamais un programme ni un script.
+
+  static nomFichierPiece(nom) {
+    const n = String(nom || '').replace(/[\\/:*?"<>|#^[\]\u0000-\u001f]/g, '-').replace(/^\.+/, '').trim();
+    return n || 'piece-jointe';
+  }
+
+  static piecePermise(nom) {
+    const m = /\.([a-z0-9]+)$/i.exec(String(nom || ''));
+    return !!m && new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'txt',
+      'md', 'csv', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'tif', 'tiff', 'mp3', 'm4a', 'wav', 'mp4', 'mov']).has(m[1].toLowerCase());
+  }
+
+  // Le champ rendu par le script d'agenda : pièces séparées par \u001e,
+  // valeurs par \u001d (nom, type, taille, chemin local, adresse). Un chemin
+  // n'est gardé que dans le dossier de Calendrier ; une adresse, en http(s),
+  // hors du serveur iCloud, qui exige une connexion.
+  static lirePiecesEvenement(champ) {
+    const out = [];
+    for (const brut of String(champ || '').split('\u001e')) {
+      const [nom, type, taille, local, url] = brut.split('\u001d');
+      if (!nom) continue;
+      const chemin = /\/Library\/Group Containers\/group\.com\.apple\.calendar\/Attachments\//.test(local || '')
+        && !String(local).includes('/../') ? local : '';
+      const lien = /^https?:\/\//i.test(url || '') && !/^https?:\/\/[^/]*\bicloud\.com\//i.test(url) ? url : '';
+      out.push({ nom, type: type || '', taille: Number(taille) || 0, local: chemin, url: lien });
+    }
+    return out;
+  }
+
+  // ATTACH d'un fichier iCal : seules les adresses web valent ici (le contenu
+  // encodé dans le fichier serait trop lourd à garder pour chaque occurrence).
+  static pieceIcs(valeur, params) {
+    const p = params || {};
+    const url = String(valeur || '').trim();
+    if (p.VALUE === 'BINARY' || p.ENCODING || !/^https?:\/\//i.test(url)) return null;
+    let nom = p.FILENAME || p['X-FILENAME'] || '';
+    if (!nom) {
+      const bout = url.split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop() || '';
+      try { nom = decodeURIComponent(bout); } catch (e) { nom = bout; }
+    }
+    return { nom: nom || url, type: p.FMTTYPE || '', taille: 0, local: '', url };
+  }
+
+  static tailleLisible(octets) {
+    const n = Number(octets) || 0;
+    if (n <= 0) return '';
+    if (n < 1024) return n + ' o';
+    if (n < 1048576) return Math.round(n / 1024) + ' Ko';
+    return String(Math.round(n / 104857.6) / 10).replace('.', ',') + ' Mo';
+  }
+
+  // « QUIRICONI.pdf (PDF, 659 Ko) » ; `nom` remplace au besoin le nom affiché.
+  static libellePiece(p, nom) {
+    const ext = /\.([a-z0-9]+)$/i.exec(String(p.nom || ''));
+    const genre = ext ? ext[1] : String(p.type || '').split(/[/;]/).pop();
+    const infos = [String(genre || '').toUpperCase(), Ariane.tailleLisible(p.taille)].filter(Boolean);
+    return (nom || p.nom) + (infos.length ? ' (' + infos.join(', ') + ')' : '');
+  }
+
+  // Un fichier du coffre est la copie d'une pièce : même extension, même
+  // taille, et le même nom, au numéro près qu'Obsidian ajoute aux homonymes.
+  static fichierEstPiece(f, p) {
+    const nom = Ariane.nomFichierPiece(p && p.nom);
+    const i = nom.lastIndexOf('.');
+    if (i <= 0 || !f || !f.name || !p.taille || !f.stat || f.stat.size !== p.taille) return false;
+    const racine = nom.slice(0, i), ext = nom.slice(i);
+    if (!f.name.endsWith(ext)) return false;
+    const base = f.name.slice(0, -ext.length);
+    return base === racine || (base.startsWith(racine + ' ') && /^\d+$/.test(base.slice(racine.length + 1)));
+  }
+
+  // Le bloc d'une note d'événement. `liens` : Map(pièce -> lien Markdown vers
+  // sa copie du coffre) ; sans copie, le nom seul, ou un lien vers l'adresse.
+  static blocPiecesEvenement(pieces, liens) {
+    if (!(pieces || []).length) return '';
+    const l = ['<!-- ariane:pieces -->', '## ' + tr('Pièces jointes'), ''];
+    for (const p of pieces) {
+      const lien = liens && liens.get(p);
+      const nom = lien || (p.url ? '[' + p.nom.replace(/[[\]]/g, '') + '](' + p.url.replace(/\)/g, '%29') + ')' : p.nom);
+      l.push('- ' + Ariane.libellePiece(p, nom));
+    }
+    l.push('<!-- /ariane:pieces -->');
+    return l.join('\n');
+  }
+
+  // Remplace le bloc, ou le pose sous le titre de la note ; un bloc vide
+  // retire l'ancien. Le reste de la note ne change pas.
+  static corpsAvecPieces(corps, bloc) {
+    const t = String(corps || '');
+    const re = /<!-- ariane:pieces -->[\s\S]*?<!-- \/ariane:pieces -->\n?/;
+    if (re.test(t)) return t.replace(re, () => (bloc ? bloc + '\n' : ''));
+    if (!bloc) return t;
+    const fm = t.startsWith('---\n') ? t.indexOf('\n---', 4) : -1;
+    const debut = fm >= 0 ? fm + 4 : 0;
+    const m = /^# .*$/m.exec(t.slice(debut));
+    const pos = m ? debut + m.index + m[0].length : debut;
+    const avant = t.slice(0, pos), apres = t.slice(pos).replace(/^\n+/, '');
+    return avant.replace(/\n*$/, '\n') + (m ? '\n' : '') + bloc + '\n' + (apres ? '\n' + apres : '');
   }
 
   // ── Événements associés à une tâche ──────────────────────────────────────

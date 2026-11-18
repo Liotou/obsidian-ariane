@@ -276,13 +276,7 @@ class MoteurCalendrier extends MoteurVue {
   // puis s'ouvre. Un seul geste, qu'on soit passé là pour la première fois ou
   // pour la dixième.
   async _noteEvenement(e) {
-    const existante = e && e.id ? this.greffon.noteDeEvenement(e.id) : null;
-    if (existante) { await this.app.workspace.getLeaf(false).openFile(existante); return; }
-    const jour = String((e && e.debut) || '').slice(0, 10);
-    const nom = String((e && e.titre) || '').trim() || (tr('Événement ') + (jour || ''));
-    const chemin = await this.greffon.creerNoteEvenement({
-      intitule: nom, date: jour, evenementId: (e && e.id) || '' });
-    const f = this.app.vault.getAbstractFileByPath(chemin);
+    const f = await this.greffon.noteEvenementAJour(e);
     if (f) await this.app.workspace.getLeaf(false).openFile(f);
   }
 
@@ -347,6 +341,17 @@ class MoteurCalendrier extends MoteurVue {
       t.addEventListener('click', (ev) => { ev.stopPropagation(); window.open(e.url); });
     }
     if (e.notes) carte.createDiv({ cls: 'zfa-evt-survol-notes', text: e.notes });
+    // Les pièces jointes : un clic ouvre le fichier quand c'est possible,
+    // sinon l'événement dans Calendrier, qui sait toujours l'ouvrir.
+    const pieces = e.pieces || [];
+    for (const p of pieces) {
+      const t = ligne('paperclip', Ariane.libellePiece(p), 'est-lien');
+      t.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this.greffon.ouvrirPieceEvenement(p).then((ok) => { if (!ok && e.id) this._ouvrirEvenement(e.id); })
+          .catch(() => { if (e.id) this._ouvrirEvenement(e.id); });
+      });
+    }
     // Les tâches associées à cet événement : un clic ouvre la tâche.
     for (const a of (this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [])) {
       const t = ligne('link', tr('Tâche : ') + a.tache.intitule + ' (' + a.tache.ref + ')', 'est-lien');
@@ -362,6 +367,9 @@ class MoteurCalendrier extends MoteurVue {
     };
     action('file-text', note ? tr('Ouvrir la note') : tr('Créer la note'), () => this._noteEvenement(e).catch(() => {}));
     if (e.id) action('external-link', this._libelleOuvrir(e), () => this._ouvrirEvenement(e.id));
+    if (pieces.some((p) => p.local && Ariane.piecePermise(p.nom) && !this.greffon.fichierDePiece(p))) {
+      action('download', tr('Importer les pièces jointes'), () => this.greffon.importerPiecesEvenement(e).catch(() => {}));
+    }
 
     const r = el.getBoundingClientRect();
     let x = r.right + 8;
@@ -511,6 +519,10 @@ class MoteurCalendrier extends MoteurVue {
         this.dessiner();
         this.ouvrir(ref, false);
       }));
+    }
+    if ((e.pieces || []).some((p) => p.local && Ariane.piecePermise(p.nom) && !this.greffon.fichierDePiece(p))) {
+      m.addItem((i) => i.setTitle(tr('Importer les pièces jointes dans le coffre')).setIcon('download')
+        .onClick(() => { this.greffon.importerPiecesEvenement(e).catch(() => {}); }));
     }
     // Tâches associées : ouvrir, dissocier ; et en associer une autre.
     const associees = this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [];
