@@ -946,6 +946,21 @@ const avecTachesStatiques = (Base) => class extends Base {
     return avant.replace(/\n*$/, '\n') + (m ? '\n' : '') + bloc + '\n' + (apres ? '\n' + apres : '');
   }
 
+  // Comme corpsAvecBloc, mais le bloc va à la fin de la note, après le texte
+  // de l'utilisateur ; s'il était ailleurs, il y est déplacé. Un bloc déjà à
+  // la fin et inchangé rend le corps à l'identique (pas d'écriture).
+  static corpsAvecBlocEnFin(corps, nom, bloc) {
+    const t = String(corps || '');
+    const re = new RegExp('\\n*<!-- ariane:' + nom + ' -->[\\s\\S]*?<!-- /ariane:' + nom + ' -->\\n?');
+    const sans = t.replace(re, '\n');
+    if (!bloc) return re.test(t) ? sans.replace(/^\n+/, '') : t;
+    const fm = sans.startsWith('---\n') ? sans.indexOf('\n---', 4) : -1;
+    const debut = fm >= 0 ? sans.indexOf('\n', fm + 4) + 1 : 0;
+    const tete = sans.slice(0, debut);
+    const reste = sans.slice(debut).replace(/\s+$/, '');
+    return tete + (reste ? reste + '\n\n' : '') + bloc + '\n';
+  }
+
   static corpsAvecPieces(corps, bloc) {
     return Ariane.corpsAvecBloc(corps, 'pieces', bloc);
   }
@@ -1106,10 +1121,12 @@ const avecTachesStatiques = (Base) => class extends Base {
   }
 
   // Le corps d'une note d'événement : ses blocs et, si l'utilisateur ne l'a
-  // pas changé, son titre. Tout le reste est conservé tel quel.
+  // pas changé, son titre. Tout le reste est conservé tel quel. Les pièces
+  // jointes sous le titre ; la description de l'agenda à la fin, après les
+  // notes de l'utilisateur (demande du 2026-11-19).
   static corpsNoteEvenement(corps, e, titreAvant, piecesRestantes) {
     let t = Ariane.corpsAvecBloc(corps, 'pieces', Ariane.blocPiecesEvenement(piecesRestantes || []));
-    t = Ariane.corpsAvecBloc(t, 'description', Ariane.blocDescriptionEvenement(e && e.notes));
+    t = Ariane.corpsAvecBlocEnFin(t, 'description', Ariane.blocDescriptionEvenement(e && e.notes));
     const titre = String((e && e.titre) || '').trim();
     if (titre && titreAvant && titre !== titreAvant) {
       const m = /^# (.*)$/m.exec(t);

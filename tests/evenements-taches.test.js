@@ -43,7 +43,15 @@ test('corps : le texte de l’utilisateur reste, seuls les blocs et un titre inc
   const e = ev('A', '2026-11-20T10:00', 'Réunion WP1', { notes: 'Ordre du jour' });
   const c = Ariane.corpsNoteEvenement(avant, e, 'Réunion', [{ nom: 'a.pdf', taille: 2048 }]);
   assert.ok(c.includes('# Réunion WP1'));
-  assert.ok(c.includes('Ordre du jour') && c.includes('a.pdf (PDF, 2 Ko)') && c.endsWith('Mes notes.\n'));
+  assert.ok(c.includes('Ordre du jour') && c.includes('a.pdf (PDF, 2 Ko)'));
+  // La description vient après les notes de l'utilisateur, à la fin.
+  assert.ok(c.indexOf('Mes notes.') < c.indexOf('ariane:description'), c);
+  assert.ok(c.endsWith('Ordre du jour\n<!-- /ariane:description -->\n'));
+  // Une description restée sous le titre (notes d'avant) descend à la fin, sans rien perdre.
+  const ancienne = '---\nType: evenement\n---\n# Réunion WP1\n\n<!-- ariane:description -->\n**Description**\n\nOrdre du jour\n<!-- /ariane:description -->\n\nMes notes.\n';
+  const deplacee = Ariane.corpsNoteEvenement(ancienne, e, 'Réunion WP1', []);
+  assert.equal(deplacee, '---\nType: evenement\n---\n# Réunion WP1\n\nMes notes.\n\n<!-- ariane:description -->\n**Description**\n\nOrdre du jour\n<!-- /ariane:description -->\n');
+  assert.equal(Ariane.corpsNoteEvenement(deplacee, e, 'Réunion WP1', []), deplacee, 'stable');
   assert.equal(Ariane.corpsNoteEvenement(c, e, 'Réunion WP1', [{ nom: 'a.pdf', taille: 2048 }]), c, 'stable : pas d’écriture');
   const perso = Ariane.corpsNoteEvenement('# Mon titre\n', e, 'Réunion', []);
   assert.ok(perso.startsWith('# Mon titre'), 'un titre changé à la main est respecté');
