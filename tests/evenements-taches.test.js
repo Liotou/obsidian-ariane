@@ -46,11 +46,11 @@ test('corps : le texte de l’utilisateur reste, seuls les blocs et un titre inc
   assert.ok(c.includes('Ordre du jour') && c.includes('a.pdf (PDF, 2 Ko)'));
   // La description vient après les notes de l'utilisateur, à la fin.
   assert.ok(c.indexOf('Mes notes.') < c.indexOf('ariane:description'), c);
-  assert.ok(c.endsWith('Ordre du jour\n<!-- /ariane:description -->\n'));
+  assert.ok(c.endsWith('<!-- ariane:description -->\n> [!info]- Description\n> Ordre du jour\n<!-- /ariane:description -->\n'), c);
   // Une description restée sous le titre (notes d'avant) descend à la fin, sans rien perdre.
   const ancienne = '---\nType: evenement\n---\n# Réunion WP1\n\n<!-- ariane:description -->\n**Description**\n\nOrdre du jour\n<!-- /ariane:description -->\n\nMes notes.\n';
   const deplacee = Ariane.corpsNoteEvenement(ancienne, e, 'Réunion WP1', []);
-  assert.equal(deplacee, '---\nType: evenement\n---\n# Réunion WP1\n\nMes notes.\n\n<!-- ariane:description -->\n**Description**\n\nOrdre du jour\n<!-- /ariane:description -->\n');
+  assert.equal(deplacee, '---\nType: evenement\n---\n# Réunion WP1\n\nMes notes.\n\n<!-- ariane:description -->\n> [!info]- Description\n> Ordre du jour\n<!-- /ariane:description -->\n');
   assert.equal(Ariane.corpsNoteEvenement(deplacee, e, 'Réunion WP1', []), deplacee, 'stable');
   assert.equal(Ariane.corpsNoteEvenement(c, e, 'Réunion WP1', [{ nom: 'a.pdf', taille: 2048 }]), c, 'stable : pas d’écriture');
   const perso = Ariane.corpsNoteEvenement('# Mon titre\n', e, 'Réunion', []);
@@ -229,7 +229,10 @@ test('anciens noms : renommés par Obsidian lors d’une relecture sûre, jamais
 test('blocs de la note : sans titre, que la numérotation du dossier ne peut pas modifier', () => {
   const c = Ariane.corpsNoteEvenement('# T\n', ev('A', '2026-11-20T10:00', 'T', { notes: 'Texte' }), 'T', [{ nom: 'a.pdf', taille: 10 }]);
   assert.ok(!/^##/m.test(c));
-  assert.ok(c.includes('**Description**') && c.includes('**Pièces jointes**'));
+  assert.ok(c.includes('> [!info]- Description') && c.includes('**Pièces jointes**'));
+  // Plusieurs lignes : toutes dans l'encadré, les vides comprises.
+  assert.equal(Ariane.blocDescriptionEvenement('Un\n\nDeux'),
+    '<!-- ariane:description -->\n> [!info]- Description\n> Un\n>\n> Deux\n<!-- /ariane:description -->');
 });
 
 test('une seule propriété d’événements : « Événement(s) lié(s) »', () => {

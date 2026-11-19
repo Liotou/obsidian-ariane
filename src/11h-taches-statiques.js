@@ -1115,9 +1115,13 @@ const avecTachesStatiques = (Base) => class extends Base {
       && !(l.ignores && l.ignores.has(n.id)));
   }
 
+  // La description de l'agenda, dans un encadré repliable (« callout »),
+  // replié par défaut.
   static blocDescriptionEvenement(texte) {
     const t = String(texte || '').trim().replace(/<!--/g, '&lt;!--');
-    return t ? '<!-- ariane:description -->\n**' + tr('Description') + '**\n\n' + t + '\n<!-- /ariane:description -->' : '';
+    if (!t) return '';
+    const lignes = t.split(/\r?\n/).map((l) => (l.trim() ? '> ' + l : '>'));
+    return ['<!-- ariane:description -->', '> [!info]- ' + tr('Description'), ...lignes, '<!-- /ariane:description -->'].join('\n');
   }
 
   // Le corps d'une note d'événement : ses blocs et, si l'utilisateur ne l'a
