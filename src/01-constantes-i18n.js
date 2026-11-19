@@ -2431,6 +2431,9 @@ const MODULES_ARIANE = [
   { id: 'publication', nom: 'Publication de site', coeur: false, dependances: [], macSeul: false, bureauSeul: true,
     horsBureau: 'Sur téléphone, git manque : la publication se fait depuis l’ordinateur.',
     description: 'Miroir d’une partie du coffre vers un site, avec commit et envoi.' },
+  { id: 'manuscrites', nom: 'Notes manuscrites', coeur: false, dependances: [], macSeul: false, bureauSeul: true,
+    horsBureau: 'Sur téléphone, rien n’est relu : l’ordinateur importe les cahiers, une seule fois.',
+    description: 'Les cahiers de la tablette Boox, relus sur un WebDAV : une note par cahier, le PDF, les séances d’écriture.' },
 ];
 // Les modules de la 3.0.0 : un module venu depuis s'ajoute de lui-même chez
 // qui les avait tous (voir Ariane.modulesAvecNouveaux).
@@ -2757,6 +2760,11 @@ const DEFAULT_SETTINGS = {
   assistantEffets: true,          // halo au bord de la fenêtre, miroitement du passage
   assistantFilet: true,           // signaler les citations perdues par une réécriture venue d'ailleurs
   // --- Paragraphes (module « paragraphes ») ---
+  // --- Notes manuscrites (module « manuscrites ») ---
+  manuscritesUrl: '',             // adresse WebDAV du dossier où la Boox dépose « onyx/ »
+  manuscritesUtilisateur: '',     // identifiant WebDAV ; le mot de passe va au trousseau d'Obsidian
+  manuscritesDossier: '12 - Notes manuscrites',
+  manuscritesIntervalle: 15,      // minutes entre deux relèves
   paragraphesMode: 'toujours',  // toujours : numéros visibles ; survol : au survol du paragraphe ; poignee : pas de numéro, une poignée au survol
 
   // --- Comportement ---

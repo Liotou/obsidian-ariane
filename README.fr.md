@@ -108,6 +108,7 @@ une seconde pour l'appliquer.
 | Schémas draw.io | schémas tenus à jour dans les notes | | |
 | Pont avec Claude | serveurs MCP et compétences | | |
 | Publication de site | miroir du coffre vers un site | | |
+| Notes manuscrites | cahiers de la tablette Boox relus sur un WebDAV, une note et le PDF par cahier | | |
 
 Les deux colonnes sont des profils de départ ; le profil « Tout » active
 l'ensemble. Les sections qui suivent décrivent chaque fonction ; celle d'un

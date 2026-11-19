@@ -94,6 +94,7 @@
  *            11t  avecCommentaires commentaires en marge (branchement de la section 23)
  *            11u  avecAssistant  assistant IA : moteur Apple, halo, outils d’écriture (section 24)
  *            11v  avecParagraphes paragraphes numérotés et déplaçables (section 25)
+ *            11w  avecNotesManuscrites cahiers de la Boox relus sur WebDAV, notes NM-…
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab

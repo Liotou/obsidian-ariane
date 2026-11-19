@@ -94,6 +94,7 @@
  *            11t  avecCommentaires commentaires en marge (branchement de la section 23)
  *            11u  avecAssistant  assistant IA : moteur Apple, halo, outils d’écriture (section 24)
  *            11v  avecParagraphes paragraphes numérotés et déplaçables (section 25)
+ *            11w  avecNotesManuscrites cahiers de la Boox relus sur WebDAV, notes NM-…
  *            11z  class Ariane   composition + cycle de vie (onload)
  *          Sous-régions « Ariane · … » à l'intérieur de chaque mixin.
  *   12 · ArianeSettingTab
@@ -2637,6 +2638,9 @@ const MODULES_ARIANE = [
   { id: 'publication', nom: 'Publication de site', coeur: false, dependances: [], macSeul: false, bureauSeul: true,
     horsBureau: 'Sur téléphone, git manque : la publication se fait depuis l’ordinateur.',
     description: 'Miroir d’une partie du coffre vers un site, avec commit et envoi.' },
+  { id: 'manuscrites', nom: 'Notes manuscrites', coeur: false, dependances: [], macSeul: false, bureauSeul: true,
+    horsBureau: 'Sur téléphone, rien n’est relu : l’ordinateur importe les cahiers, une seule fois.',
+    description: 'Les cahiers de la tablette Boox, relus sur un WebDAV : une note par cahier, le PDF, les séances d’écriture.' },
 ];
 // Les modules de la 3.0.0 : un module venu depuis s'ajoute de lui-même chez
 // qui les avait tous (voir Ariane.modulesAvecNouveaux).
@@ -2963,6 +2967,11 @@ const DEFAULT_SETTINGS = {
   assistantEffets: true,          // halo au bord de la fenêtre, miroitement du passage
   assistantFilet: true,           // signaler les citations perdues par une réécriture venue d'ailleurs
   // --- Paragraphes (module « paragraphes ») ---
+  // --- Notes manuscrites (module « manuscrites ») ---
+  manuscritesUrl: '',             // adresse WebDAV du dossier où la Boox dépose « onyx/ »
+  manuscritesUtilisateur: '',     // identifiant WebDAV ; le mot de passe va au trousseau d'Obsidian
+  manuscritesDossier: '12 - Notes manuscrites',
+  manuscritesIntervalle: 15,      // minutes entre deux relèves
   paragraphesMode: 'toujours',  // toujours : numéros visibles ; survol : au survol du paragraphe ; poignee : pas de numéro, une poignée au survol
 
   // --- Comportement ---
@@ -31118,6 +31127,593 @@ const avecParagraphes = (Base) => class extends Base {
   }
   //#endregion Ariane · paragraphes
 };
+// ── avecNotesManuscrites ──────────────────────────────────────────────────
+// Domaine : les cahiers de la tablette Boox (module « manuscrites »).
+// La Boox dépose chaque cahier en PDF vectoriel sur un WebDAV, à la fermeture
+// du cahier, sous « onyx/<appareil>/<dossier>/<nom>.pdf ». Ariane le relit
+// depuis l'ordinateur : une note NM-AAAAMMJJHHMM par cahier (date de la
+// première fois qu'Ariane le voit, figée ensuite), le PDF entier dans le
+// dossier des pièces jointes, et les séances d'écriture repérées par les
+// traits nouveaux. Chaque trait du PDF de la Boox porte un identifiant
+// stable : ce qui est nouveau depuis le passage précédent est donc exact.
+// Rien n'est jamais supprimé ; un cahier disparu est seulement signalé.
+const avecNotesManuscrites = (Base) => class extends Base {
+  //#region Ariane · notes manuscrites
+  // ── fonctions pures (testées seules) ──
+
+  // Le nom d'une note manuscrite, d'après une date locale.
+  static nomNoteManuscrite(d) {
+    const x = d instanceof Date ? d : new Date(d);
+    const p = (n) => String(n).padStart(2, '0');
+    return 'NM-' + x.getFullYear() + p(x.getMonth() + 1) + p(x.getDate()) + p(x.getHours()) + p(x.getMinutes());
+  }
+
+  // « AAAA-MM-JJTHH:MM », en heure locale.
+  static isoLocalManuscrit(d) {
+    const x = d instanceof Date ? d : new Date(d);
+    const p = (n) => String(n).padStart(2, '0');
+    return x.getFullYear() + '-' + p(x.getMonth() + 1) + '-' + p(x.getDate()) + 'T' + p(x.getHours()) + ':' + p(x.getMinutes());
+  }
+
+  // La réponse d'un PROPFIND (207 Multi-Status) : une entrée par ressource.
+  // Les préfixes d'espace de noms varient d'un serveur à l'autre (d:, D:,
+  // lp1:…), d'où la lecture par motifs plutôt que par un analyseur XML, qui
+  // manquerait d'ailleurs aux tests. chemin : décodé, relatif à la base.
+  static listeWebdav(xml, base) {
+    const t = String(xml || '');
+    const baseChemin = (() => {
+      try { return decodeURIComponent(new URL(base).pathname); } catch (e) { return String(base || ''); }
+    })().replace(/\/+$/, '') + '/';
+    const balise = (bloc, nom) => {
+      const m = new RegExp('<(?:[\\w-]+:)?' + nom + '(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[\\w-]+:)?' + nom + '>', 'i').exec(bloc);
+      return m ? m[1].trim() : '';
+    };
+    const entites = (s) => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+    const sortie = [];
+    for (const m of t.matchAll(/<(?:[\w-]+:)?response(?:\s[^>]*)?>([\s\S]*?)<\/(?:[\w-]+:)?response>/gi)) {
+      const bloc = m[1];
+      const href = entites(balise(bloc, 'href'));
+      if (!href) continue;
+      let absolu;
+      try { absolu = decodeURIComponent(/^https?:/i.test(href) ? new URL(href).pathname : href); } catch (e) { absolu = href; }
+      const dossier = /<(?:[\w-]+:)?collection\s*\/?>/i.test(balise(bloc, 'resourcetype'));
+      let chemin = absolu.startsWith(baseChemin) ? absolu.slice(baseChemin.length) : absolu.replace(/^\/+/, '');
+      chemin = chemin.replace(/\/+$/, '');
+      const modif = Date.parse(balise(bloc, 'getlastmodified'));
+      sortie.push({
+        chemin, href, dossier,
+        taille: Number(balise(bloc, 'getcontentlength')) || 0,
+        modif: Number.isFinite(modif) ? modif : 0,
+        etag: entites(balise(bloc, 'getetag')).replace(/^W\//, '').replace(/"/g, ''),
+      });
+    }
+    return sortie;
+  }
+
+  // Ce que dit le chemin d'un cahier : « onyx/NoteAir5C/Cahiers/Nom.pdf ».
+  static cheminCahierBoox(chemin) {
+    const morceaux = String(chemin || '').split('/').filter(Boolean);
+    const i = morceaux.findIndex((x) => x.toLowerCase() === 'onyx');
+    const utiles = i >= 0 ? morceaux.slice(i + 1) : morceaux;
+    const nom = (utiles.pop() || '').replace(/\.pdf$/i, '');
+    const appareil = i >= 0 && utiles.length ? utiles.shift() : '';
+    return { titre: nom, appareil, dossier: utiles.join('/') };
+  }
+
+  // Un PDF arrivé en entier se termine par « %%EOF ». La Boox met plus
+  // d'une minute à envoyer un gros cahier : lu trop tôt, il est tronqué.
+  static pdfComplet(texte) {
+    const t = String(texte || '');
+    return t.startsWith('%PDF') && /%%EOF\s*$/.test(t.slice(-2048));
+  }
+
+  // Une date de PDF (« D:20261119102437 ») : la Boox l'écrit en heure
+  // locale, sans fuseau.
+  static dateBoox(s) {
+    const m = /D:(\d{4})(\d{2})(\d{2})(\d{2})?(\d{2})?(\d{2})?/.exec(String(s || ''));
+    if (!m) return null;
+    return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+  }
+
+  // La clé courte d'un trait : douze chiffres hexadécimaux de son identifiant.
+  static cleTrait(id) {
+    return String(id || '').replace(/-/g, '').toLowerCase().slice(0, 12);
+  }
+
+  // Les traits d'un PDF de la Boox, page par page. Le fichier s'allonge de
+  // révisions successives : la dernière définition d'un objet fait foi.
+  // Rend { pages: [{ traits: [{ cle, y1, y2 }] }], date, vectoriel }.
+  static traitsPdfBoox(texte) {
+    const t = String(texte || '');
+    const objets = new Map();
+    for (const m of t.matchAll(/(?:^|[\r\n\s])(\d+) 0 obj\b/g)) {
+      const debut = m.index + m[0].length;
+      let fin = t.indexOf('endobj', debut);
+      if (fin < 0) fin = t.length;
+      const flux = t.indexOf('stream', debut);
+      if (flux >= 0 && flux < fin) fin = flux;
+      objets.set(Number(m[1]), t.slice(debut, fin));
+    }
+    const refs = (s) => [...String(s || '').matchAll(/(\d+) 0 R/g)].map((x) => Number(x[1]));
+    const tableau = (dict, cle) => {
+      const m = new RegExp('/' + cle + '\\s*(\\[[^\\]]*\\]|\\d+ 0 R)').exec(dict || '');
+      if (!m) return [];
+      if (m[1].startsWith('[')) return refs(m[1]);
+      return refs(objets.get(refs(m[1])[0]) || '');
+    };
+    const trait = (dict) => {
+      if (!/#ONYX-|onyxtag/.test(dict || '')) return null;
+      const id = /"id":"([0-9A-Za-z-]{8,})"/.exec(dict);
+      if (!id) return null;
+      const r = /\/Rect\s*\[\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)/.exec(dict);
+      const y1 = r ? Math.min(+r[2], +r[4]) : 0;
+      const y2 = r ? Math.max(+r[2], +r[4]) : 0;
+      return { cle: Ariane.cleTrait(id[1]), y1, y2 };
+    };
+    // L'ordre des pages : celui de la racine /Pages (sans /Parent), en
+    // descendant dans les nœuds intermédiaires.
+    let racine = null;
+    for (const [n, d] of objets) if (/\/Type\s*\/Pages\b/.test(d) && !/\/Parent\b/.test(d)) racine = n;
+    const pages = [];
+    const vus = new Set();
+    const descendre = (n) => {
+      if (vus.has(n)) return;
+      vus.add(n);
+      const d = objets.get(n) || '';
+      if (/\/Type\s*\/Pages\b/.test(d)) { for (const k of tableau(d, 'Kids')) descendre(k); return; }
+      if (/\/Type\s*\/Page\b/.test(d)) pages.push(d);
+    };
+    if (racine != null) descendre(racine);
+    const sortie = pages.map((d) => {
+      const traits = [];
+      const cles = new Set();
+      for (const a of tableau(d, 'Annots')) {
+        const x = trait(objets.get(a));
+        if (x && !cles.has(x.cle)) { cles.add(x.cle); traits.push(x); }
+      }
+      return { traits };
+    });
+    // Sans arbre de pages lisible : tous les traits sur une seule page.
+    if (!sortie.length) {
+      const traits = [];
+      const cles = new Set();
+      for (const d of objets.values()) {
+        const x = trait(d);
+        if (x && !cles.has(x.cle)) { cles.add(x.cle); traits.push(x); }
+      }
+      sortie.push({ traits });
+    }
+    let date = null;
+    for (const m of t.matchAll(/\/(?:ModDate|LastModified)\s*\(\s*(D:\d{8,14})/g)) {
+      const x = Ariane.dateBoox(m[1]);
+      if (x && (!date || x > date)) date = x;
+    }
+    const vectoriel = sortie.some((p) => p.traits.length);
+    return { pages: sortie, date, vectoriel };
+  }
+
+  // La séance : les traits nouveaux depuis le passage précédent (connus :
+  // un Set de clés), par page, avec la bande de la page qu'ils occupent.
+  static seanceManuscrite(analyse, connus) {
+    const pages = [];
+    let nouveaux = 0;
+    analyse.pages.forEach((p, i) => {
+      const n = p.traits.filter((x) => !connus.has(x.cle));
+      if (!n.length) return;
+      nouveaux += n.length;
+      pages.push({ page: i + 1, traits: n.length,
+        zone: [Math.min(...n.map((x) => x.y1)), Math.max(...n.map((x) => x.y2))].map((v) => Math.round(v)) });
+    });
+    return { nouveaux, pages };
+  }
+
+  // Un cahier renommé ou déplacé sur la Boox arrive sous un autre chemin :
+  // on le reconnaît à ses traits, déjà connus pour plus de la moitié.
+  // candidats : [{ chemin, cles: Set }]. Rend le chemin reconnu, ou null.
+  static cahierReconnu(cles, candidats) {
+    if (!cles.length) return null;
+    let mieux = null;
+    let part = 0.5;
+    for (const c of candidats || []) {
+      let communs = 0;
+      for (const k of cles) if (c.cles.has(k)) communs += 1;
+      const p = communs / cles.length;
+      if (p > part) { part = p; mieux = c.chemin; }
+    }
+    return mieux;
+  }
+
+  // Un cahier se lit quand il a fini d'arriver : modifié depuis deux minutes,
+  // ou vu deux fois, à une minute d'écart au moins, sans avoir bougé.
+  static cahierPret(f, attente, maintenant) {
+    if (f.modif && maintenant - f.modif >= 120000) return true;
+    return !!(attente && attente.taille === f.taille && attente.etag === f.etag && maintenant - attente.t >= 60000);
+  }
+
+  // Le cahier a-t-il changé depuis la dernière lecture ?
+  static cahierChange(f, connu) {
+    if (!connu) return true;
+    if (f.etag && connu.etag) return f.etag !== connu.etag;
+    return f.taille !== connu.taille || f.modif !== connu.modif;
+  }
+
+  // Le bloc des séances, le plus récent en tête.
+  static blocSeancesManuscrites(seances) {
+    if (!seances || !seances.length) return '';
+    const nb = (n) => Number(n).toLocaleString('fr-FR');
+    const lignes = seances.slice().reverse().map((s) => {
+      const d = new Date(s.quand);
+      const jour = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+      const heure = String(d.getHours()) + ' h ' + String(d.getMinutes()).padStart(2, '0');
+      const pages = (s.pages || []).map((p) => p.page);
+      const ou = pages.length ? (pages.length > 1 ? tr(', pages ') : tr(', page ')) + pages.join(', ') : '';
+      const quoi = s.premiere ? tr('premier import, ') + nb(s.nouveaux) + tr(' traits')
+        : nb(s.nouveaux) + (s.nouveaux > 1 ? tr(' traits nouveaux') : tr(' trait nouveau'));
+      return '- ' + jour + tr(' à ') + heure + ' : ' + quoi + ou;
+    });
+    return ['<!-- ariane:seances -->', '**' + tr('Séances d’écriture') + '**', '', ...lignes, '<!-- /ariane:seances -->'].join('\n');
+  }
+
+  // La note d'un cahier, à sa création.
+  static noteManuscriteInitiale(info) {
+    const q = (s) => JSON.stringify(String(s == null ? '' : s));
+    return [
+      '---',
+      'Type: note-manuscrite',
+      'Titre: ' + q(info.titre),
+      'Cahier: ' + q(info.dossier ? info.dossier + '/' + info.titre : info.titre),
+      'Appareil: ' + q(info.appareil),
+      'PDF: ' + q('[[' + info.pdf + ']]'),
+      'Première synchronisation: ' + info.vu,
+      'Dernière écriture: ' + info.derniere,
+      'Pages: ' + info.pages,
+      'Traits: ' + info.traits,
+      'aliases: [' + q(info.titre) + ']',
+      '---',
+      '# ' + info.titre,
+      '',
+      info.bloc || '',
+      '',
+      '![[' + info.pdf + ']]',
+      '',
+    ].join('\n');
+  }
+
+  // ── réglages et accès au WebDAV ──
+
+  get dossierNM() {
+    return this.settings.manuscritesDossier || '12 - Notes manuscrites';
+  }
+
+  // Le mot de passe va au trousseau d'Obsidian, jamais dans data.json (que
+  // iCloud recopie). Sans trousseau (Obsidian ancien), il reste en mémoire.
+  static get SECRET_WEBDAV() { return 'ariane-webdav-manuscrites'; }
+
+  motDePasseWebdav() {
+    const s = this.app && this.app.secretStorage;
+    if (s && typeof s.getSecret === 'function') return s.getSecret(Ariane.SECRET_WEBDAV) || '';
+    return this._mdpWebdav || '';
+  }
+
+  enregistrerMotDePasseWebdav(v) {
+    const s = this.app && this.app.secretStorage;
+    if (s && typeof s.setSecret === 'function') s.setSecret(Ariane.SECRET_WEBDAV, String(v || ''));
+    else this._mdpWebdav = String(v || '');
+  }
+
+  _baseWebdav() {
+    const u = String(this.settings.manuscritesUrl || '').trim();
+    return u ? u.replace(/\/*$/, '/') : '';
+  }
+
+  _authWebdav() {
+    const brut = String(this.settings.manuscritesUtilisateur || '') + ':' + this.motDePasseWebdav();
+    const octets = new TextEncoder().encode(brut);
+    let bin = '';
+    for (const o of octets) bin += String.fromCharCode(o);
+    return 'Basic ' + btoa(bin);
+  }
+
+  async _requeteWebdav(url, o) {
+    return obsidian.requestUrl(Object.assign({ url, throw: false }, o || {},
+      { headers: Object.assign({ Authorization: this._authWebdav() }, (o && o.headers) || {}) }));
+  }
+
+  async _propfind(url, profondeur) {
+    const corps = '<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop>'
+      + '<d:resourcetype/><d:getcontentlength/><d:getlastmodified/><d:getetag/></d:prop></d:propfind>';
+    const r = await this._requeteWebdav(url, { method: 'PROPFIND', body: corps, contentType: 'application/xml; charset=utf-8',
+      headers: { Depth: String(profondeur) } });
+    if (r.status !== 207) throw new Error('WebDAV ' + r.status);
+    return Ariane.listeWebdav(r.text, this._baseWebdav());
+  }
+
+  // Tous les PDF sous la base, dossier par dossier (bien des serveurs
+  // refusent la profondeur infinie). Une erreur arrête tout : une liste
+  // partielle ferait croire à des cahiers disparus.
+  async listerCahiersBoox() {
+    const base = this._baseWebdav();
+    const origine = new URL(base).origin;
+    const fichiers = [];
+    const aVisiter = [{ url: base, chemin: '' }];
+    const vus = new Set();
+    while (aVisiter.length) {
+      const d = aVisiter.shift();
+      if (vus.has(d.chemin) || vus.size > 200) continue;
+      vus.add(d.chemin);
+      for (const e of await this._propfind(d.url, 1)) {
+        if (e.chemin === d.chemin) continue;
+        if (e.dossier) {
+          if (e.chemin.split('/').length <= 6) aVisiter.push({ url: origine + e.href, chemin: e.chemin });
+        } else if (/\.pdf$/i.test(e.chemin)) {
+          fichiers.push(Object.assign({ url: origine + e.href }, e));
+        }
+      }
+    }
+    return fichiers;
+  }
+
+  // Pour le bouton des réglages : la base répond-elle ?
+  async verifierWebdav() {
+    if (!this._baseWebdav()) return tr('Indiquez d’abord l’adresse du WebDAV.');
+    try {
+      const r = await this._requeteWebdav(this._baseWebdav(), { method: 'PROPFIND', headers: { Depth: '0' } });
+      if (r.status === 207) return tr('Connexion établie.');
+      if (r.status === 401 || r.status === 403) return tr('Le serveur refuse l’accès : vérifiez l’identifiant et le mot de passe.');
+      if (r.status === 404) return tr('Adresse introuvable sur le serveur.');
+      return tr('Le serveur répond : ') + r.status;
+    } catch (e) {
+      return tr('Serveur injoignable : ') + (e && e.message ? e.message : e);
+    }
+  }
+
+  // ── état gardé dans le coffre (.ariane) ──
+  //  « notes-manuscrites.json » : un résumé par cahier, petit. Les clés des
+  //  traits et les séances, plus lourdes, ont un fichier par note.
+
+  async _lireJsonAriane(chemin, defaut) {
+    try {
+      const a = this.app.vault.adapter;
+      if (await a.exists(chemin)) return JSON.parse(await a.read(chemin)) || defaut;
+    } catch (e) { /* absent ou abîmé */ }
+    return defaut;
+  }
+
+  async _ecrireJsonAriane(chemin, valeur) {
+    const a = this.app.vault.adapter;
+    const dossier = chemin.slice(0, chemin.lastIndexOf('/'));
+    if (!(await a.exists('.ariane'))) await a.mkdir('.ariane');
+    if (dossier !== '.ariane' && !(await a.exists(dossier))) await a.mkdir(dossier);
+    await a.write(chemin, JSON.stringify(valeur));
+  }
+
+  async etatManuscrites() {
+    const e = await this._lireJsonAriane('.ariane/notes-manuscrites.json', null);
+    return e && e.cahiers ? e : { version: 1, cahiers: {}, attente: {} };
+  }
+
+  _cheminTraits(note) { return '.ariane/notes-manuscrites/' + note + '.json'; }
+
+  async traitsCahier(note) {
+    const d = await this._lireJsonAriane(this._cheminTraits(note), null);
+    return { cles: new Set((d && d.cles) || []), seances: (d && d.seances) || [] };
+  }
+
+  // ── la synchronisation ──
+
+  // Lit le WebDAV, importe les cahiers nouveaux, met à jour ceux qui ont
+  // changé. manuel : un avis dit ce qui s'est passé. Rend le bilan.
+  async synchroniserNotesManuscrites(manuel) {
+    if (surMobile()) return null;
+    if (!this._baseWebdav()) {
+      if (manuel) new obsidian.Notice(tr('Notes manuscrites : indiquez d’abord le WebDAV dans les réglages.'));
+      return null;
+    }
+    if (this._syncNM) return this._syncNM;
+    this._syncNM = this._passeNotesManuscrites(manuel).finally(() => { this._syncNM = null; });
+    return this._syncNM;
+  }
+
+  async _passeNotesManuscrites(manuel) {
+    const bilan = { nouvelles: 0, majs: 0, attente: 0, erreurs: 0 };
+    let fichiers;
+    try {
+      fichiers = await this.listerCahiersBoox();
+    } catch (e) {
+      console.warn('[Ariane] notes manuscrites :', e);
+      if (manuel) new obsidian.Notice(tr('Notes manuscrites : le WebDAV ne répond pas (') + (e && e.message ? e.message : e) + ')');
+      return null;
+    }
+    const etat = await this.etatManuscrites();
+    etat.attente = etat.attente || {};
+    const maintenant = Date.now();
+    const presents = new Set(fichiers.map((f) => f.chemin));
+    for (const f of fichiers) {
+      const connu = etat.cahiers[f.chemin];
+      if (connu && connu.ignore) continue;
+      if (!Ariane.cahierChange(f, connu)) { delete etat.attente[f.chemin]; continue; }
+      if (!Ariane.cahierPret(f, etat.attente[f.chemin], maintenant)) {
+        const a = etat.attente[f.chemin];
+        if (!a || a.taille !== f.taille || a.etag !== f.etag) etat.attente[f.chemin] = { taille: f.taille, etag: f.etag, t: maintenant };
+        bilan.attente += 1;
+        continue;
+      }
+      try {
+        const r = await this._requeteWebdav(f.url, { method: 'GET' });
+        if (r.status !== 200) throw new Error('WebDAV ' + r.status);
+        const octets = r.arrayBuffer;
+        const texte = new TextDecoder('latin1').decode(new Uint8Array(octets));
+        if (!Ariane.pdfComplet(texte)) {
+          etat.attente[f.chemin] = { taille: f.taille, etag: f.etag, t: maintenant };
+          bilan.attente += 1;
+          continue;
+        }
+        delete etat.attente[f.chemin];
+        const fait = await this._traiterCahier(f, octets, Ariane.traitsPdfBoox(texte), etat, presents);
+        if (fait === 'nouvelle') bilan.nouvelles += 1;
+        else if (fait === 'maj') bilan.majs += 1;
+      } catch (e) {
+        console.warn('[Ariane] notes manuscrites, ' + f.chemin + ' :', e);
+        bilan.erreurs += 1;
+      }
+    }
+    // Les cahiers disparus du WebDAV : signalés après une demi-heure
+    // d'absence, jamais supprimés.
+    for (const [chemin, c] of Object.entries(etat.cahiers)) {
+      if (presents.has(chemin) || c.ignore) { if (c.absentDepuis && !c.retire) delete c.absentDepuis; continue; }
+      if (!c.absentDepuis) c.absentDepuis = maintenant;
+      else if (!c.retire && maintenant - c.absentDepuis >= 30 * 60000) {
+        const note = this._fichierNM(c.note);
+        if (note) {
+          this.marquerEcriture(note.path);
+          await this.app.fileManager.processFrontMatter(note, (x) => { x.Statut = tr('retiré de la Boox'); });
+        }
+        c.retire = true;
+      }
+    }
+    for (const chemin of Object.keys(etat.attente)) if (!presents.has(chemin)) delete etat.attente[chemin];
+    await this._ecrireJsonAriane('.ariane/notes-manuscrites.json', etat);
+    if (bilan.attente) this._relancerNotesManuscrites();
+    if (manuel) {
+      const morceaux = [];
+      if (bilan.nouvelles) morceaux.push(bilan.nouvelles + (bilan.nouvelles > 1 ? tr(' notes nouvelles') : tr(' note nouvelle')));
+      if (bilan.majs) morceaux.push(bilan.majs + (bilan.majs > 1 ? tr(' mises à jour') : tr(' mise à jour')));
+      if (bilan.attente) morceaux.push(bilan.attente + tr(' en cours d’envoi depuis la Boox'));
+      if (bilan.erreurs) morceaux.push(bilan.erreurs + (bilan.erreurs > 1 ? tr(' erreurs (voir la console)') : tr(' erreur (voir la console)')));
+      new obsidian.Notice(tr('Notes manuscrites : ') + (morceaux.length ? morceaux.join(', ') : tr('rien de nouveau')) + '.');
+    }
+    return bilan;
+  }
+
+  // Un cahier encore en cours d'envoi : nouvel essai dans deux minutes.
+  _relancerNotesManuscrites() {
+    clearTimeout(this._relanceNM);
+    this._relanceNM = setTimeout(() => {
+      this.synchroniserNotesManuscrites(false).catch((e) => console.warn('[Ariane] notes manuscrites :', e));
+    }, 120000);
+  }
+
+  // Le fichier d'une note (ou d'un PDF) par son nom, où qu'il ait été rangé.
+  _fichierNM(nom) {
+    if (!nom) return null;
+    const f = this.app.metadataCache.getFirstLinkpathDest(nom, '');
+    return f || null;
+  }
+
+  // Importe ou met à jour un cahier. Rend 'nouvelle', 'maj' ou null.
+  async _traiterCahier(f, octets, analyse, etat, presents) {
+    const info = Ariane.cheminCahierBoox(f.chemin);
+    const quand = analyse.date || new Date(f.modif || Date.now());
+    const toutes = analyse.pages.flatMap((p) => p.traits.map((x) => x.cle));
+    let chemin = f.chemin;
+    let connu = etat.cahiers[chemin];
+    // Un chemin nouveau : peut-être un cahier renommé ou déplacé sur la Boox.
+    if (!connu) {
+      const candidats = [];
+      for (const [c, x] of Object.entries(etat.cahiers)) {
+        if (presents.has(c) || x.ignore) continue;
+        candidats.push({ chemin: c, cles: (await this.traitsCahier(x.note)).cles });
+      }
+      const ancien = Ariane.cahierReconnu(toutes, candidats);
+      if (ancien) {
+        connu = etat.cahiers[ancien];
+        delete etat.cahiers[ancien];
+        delete connu.absentDepuis;
+        delete connu.retire;
+        etat.cahiers[chemin] = connu;
+      }
+    }
+    if (!connu) return this._importerCahier(f, octets, analyse, etat, info, quand, toutes);
+
+    const note = this._fichierNM(connu.note);
+    if (!note) {
+      // L'utilisateur a supprimé la note : le cahier n'est plus suivi.
+      connu.ignore = true;
+      return null;
+    }
+    const traits = await this.traitsCahier(connu.note);
+    const seance = Ariane.seanceManuscrite(analyse, traits.cles);
+    for (const k of toutes) traits.cles.add(k);
+    if (seance.nouveaux) traits.seances.push({ quand: Ariane.isoLocalManuscrit(quand), nouveaux: seance.nouveaux, pages: seance.pages });
+    const pdf = this._fichierNM(connu.pdf);
+    if (pdf) await this.app.vault.modifyBinary(pdf, octets);
+    else await this._poserPdf(connu.pdf, octets, note.path);
+    this.marquerEcriture(note.path);
+    await this.app.fileManager.processFrontMatter(note, (x) => {
+      x.Titre = info.titre;
+      x.Cahier = info.dossier ? info.dossier + '/' + info.titre : info.titre;
+      x['Dernière écriture'] = Ariane.isoLocalManuscrit(quand);
+      x.Pages = analyse.pages.length;
+      x.Traits = traits.cles.size;
+      delete x.Statut;
+      const al = [].concat(x.aliases || []).map(String);
+      if (!al.includes(info.titre)) x.aliases = al.concat(info.titre);
+    });
+    const corps = await this.app.vault.read(note);
+    const nouveau = Ariane.corpsAvecBloc(corps, 'seances', Ariane.blocSeancesManuscrites(traits.seances));
+    if (nouveau !== corps) { this.marquerEcriture(note.path); await this.app.vault.modify(note, nouveau); }
+    await this._ecrireJsonAriane(this._cheminTraits(connu.note), { cles: [...traits.cles], seances: traits.seances });
+    Object.assign(connu, { etag: f.etag, taille: f.taille, modif: f.modif, titre: info.titre });
+    return 'maj';
+  }
+
+  async _poserPdf(nom, octets, cheminNote) {
+    const chemin = await this.app.fileManager.getAvailablePathForAttachment(nom, cheminNote);
+    const dossier = chemin.includes('/') ? chemin.slice(0, chemin.lastIndexOf('/')) : '';
+    if (dossier) await this.assurerDossier(dossier);
+    this.marquerEcriture(chemin);
+    await this.app.vault.createBinary(chemin, octets);
+    return chemin;
+  }
+
+  async _importerCahier(f, octets, analyse, etat, info, quand, toutes) {
+    await this.assurerDossier(this.dossierNM);
+    // Le nom : la minute où Ariane voit le cahier, avec -2, -3… si la minute
+    // est déjà prise.
+    const base = Ariane.nomNoteManuscrite(new Date());
+    let nom = base;
+    for (let n = 2; this.app.vault.getAbstractFileByPath(this.dossierNM + '/' + nom + '.md')
+      || Object.values(etat.cahiers).some((c) => c.note === nom); n += 1) nom = base + '-' + n;
+    const cheminNote = this.dossierNM + '/' + nom + '.md';
+    const cheminPdf = await this._poserPdf(nom + '.pdf', octets, cheminNote);
+    const nomPdf = cheminPdf.slice(cheminPdf.lastIndexOf('/') + 1);
+    const seance = Ariane.seanceManuscrite(analyse, new Set());
+    const seances = toutes.length
+      ? [{ quand: Ariane.isoLocalManuscrit(quand), nouveaux: seance.nouveaux, pages: seance.pages, premiere: true }] : [];
+    const texte = Ariane.noteManuscriteInitiale({
+      titre: info.titre, dossier: info.dossier, appareil: info.appareil, pdf: nomPdf,
+      vu: Ariane.isoLocalManuscrit(new Date()), derniere: Ariane.isoLocalManuscrit(quand),
+      pages: analyse.pages.length, traits: new Set(toutes).size, bloc: Ariane.blocSeancesManuscrites(seances),
+    });
+    await this.ecrire(cheminNote, texte);
+    await this._ecrireJsonAriane(this._cheminTraits(nom), { cles: [...new Set(toutes)], seances });
+    etat.cahiers[f.chemin] = { note: nom, pdf: nomPdf, titre: info.titre, etag: f.etag, taille: f.taille, modif: f.modif,
+      vu: Ariane.isoLocalManuscrit(new Date()) };
+    return 'nouvelle';
+  }
+
+  // ── branchement ──
+  // Tout ce que le module enregistre ; appelé seulement s'il est actif.
+  brancherNotesManuscrites() {
+    this.addCommand({
+      id: 'manuscrites-synchroniser', module: 'manuscrites', bureau: true, icon: 'notebook-pen',
+      name: tr('Notes manuscrites : synchroniser avec la Boox'),
+      callback: () => this.synchroniserNotesManuscrites(true),
+    });
+    this.register(() => clearTimeout(this._relanceNM));
+    this.app.workspace.onLayoutReady(() => {
+      if (surMobile()) return;
+      setTimeout(() => {
+        this.synchroniserNotesManuscrites(false).catch((e) => console.warn('[Ariane] notes manuscrites :', e));
+      }, 20000);
+      this.registerInterval(window.setInterval(() => {
+        this.synchroniserNotesManuscrites(false).catch((e) => console.warn('[Ariane] notes manuscrites :', e));
+      }, Math.max(5, Number(this.settings.manuscritesIntervalle) || 15) * 60000));
+    });
+  }
+  //#endregion Ariane · notes manuscrites
+};
 
 // ── class Ariane ──────────────────────────────────────────────────────────
 // Le point d'assemblage. Ne porte que le cycle de vie : onload, et les
@@ -31142,7 +31738,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecAccueil,
   avecCommentaires,
   avecAssistant,
-  avecParagraphes) {
+  avecParagraphes,
+  avecNotesManuscrites) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -32041,6 +32638,8 @@ class Ariane extends composer(obsidian.Plugin,
     if (this.module('assistant')) this.brancherAssistant();
     // Les paragraphes numérotés et déplaçables (section 25).
     if (this.module('paragraphes')) this.brancherParagraphes();
+    // Les cahiers de la Boox, relus sur le WebDAV.
+    if (this.module('manuscrites')) this.brancherNotesManuscrites();
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
     if (this.module('suggestions')) this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());
@@ -33139,6 +33738,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         rubriques: [['ongletCommentaires', 'Commentaires en marge']] },
       { id: 'paragraphes', module: 'paragraphes', icone: 'list-ordered',
         rubriques: [['ongletParagraphes', 'Paragraphes']] },
+      { id: 'manuscrites', module: 'manuscrites', icone: 'notebook-pen',
+        rubriques: [['ongletManuscrites', 'Notes manuscrites']] },
       { id: 'taches', module: 'taches', icone: 'list-checks',
         rubriques: [['ongletTaches', 'Tâches'], ['ongletTaches', 'Familles de tâches'], ['ongletTaches', 'Tableau de bord'],
           ['ongletVues', 'Calendrier'], ['ongletVues', 'Vue Frise']],
@@ -34407,6 +35008,53 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           if (g.redessinerParagraphes) g.redessinerParagraphes();
         });
       });
+  }
+
+  // ── Notes manuscrites (11w) ──────────────────────────────────────────
+  ongletManuscrites(c, s, maj) {
+    const g = this.plugin;
+    this._section(c, tr('Notes manuscrites'));
+    this._aide(c, tr('Sur la Boox : Paramètres, Comptes, WebDAV, avec l’adresse d’un dossier où vous pouvez écrire ; puis, dans l’appli Notes, ≡, Paramètres de synchronisation : export en PDF vectoriel à la fermeture. Chaque cahier fermé part alors sur le serveur, et Ariane le relit depuis l’ordinateur : une note « NM-AAAAMMJJHHMM » par cahier, le PDF dans le dossier des pièces jointes, et les séances d’écriture repérées par les traits nouveaux. Rien n’est supprimé : un cahier retiré de la Boox est seulement signalé. Supprimer une note manuscrite arrête le suivi de son cahier.'));
+    new obsidian.Setting(c)
+      .setName(tr('Adresse du WebDAV'))
+      .setDesc(tr('Le dossier où la Boox crée « onyx », par exemple https://sharedocs.huma-num.fr/dav.php/@Home/boox/'))
+      .addText((t) => t.setPlaceholder('https://…/').setValue(s.manuscritesUrl || '').onChange(async (v) => {
+        s.manuscritesUrl = v.trim();
+        await maj();
+      }));
+    new obsidian.Setting(c)
+      .setName(tr('Identifiant'))
+      .addText((t) => t.setValue(s.manuscritesUtilisateur || '').onChange(async (v) => {
+        s.manuscritesUtilisateur = v.trim();
+        await maj();
+      }));
+    new obsidian.Setting(c)
+      .setName(tr('Mot de passe'))
+      .setDesc(tr('Gardé dans le trousseau d’Obsidian, jamais dans les réglages du greffon.'))
+      .addText((t) => {
+        t.inputEl.type = 'password';
+        t.setValue(g.motDePasseWebdav()).onChange((v) => g.enregistrerMotDePasseWebdav(v));
+      });
+    new obsidian.Setting(c)
+      .setName(tr('Dossier des notes'))
+      .addText((t) => t.setValue(s.manuscritesDossier || '').onChange(async (v) => {
+        s.manuscritesDossier = v.trim() || '12 - Notes manuscrites';
+        await maj();
+      }));
+    new obsidian.Setting(c)
+      .setName(tr('Relève (minutes)'))
+      .setDesc(tr('Ariane relit le WebDAV au démarrage, puis à cet intervalle. Prend effet au prochain démarrage.'))
+      .addText((t) => t.setValue(String(s.manuscritesIntervalle || 15)).onChange(async (v) => {
+        s.manuscritesIntervalle = Math.max(5, parseInt(v, 10) || 15);
+        await maj();
+      }));
+    const etat = new obsidian.Setting(c).setName(tr('Connexion'));
+    etat.addButton((b) => b.setButtonText(tr('Vérifier')).onClick(async () => {
+      etat.setDesc(tr('Vérification…'));
+      etat.setDesc(await g.verifierWebdav());
+    }));
+    etat.addButton((b) => b.setButtonText(tr('Synchroniser maintenant')).setCta()
+      .onClick(() => g.synchroniserNotesManuscrites(true)));
   }
 
   // ── Commentaires en marge (section 23) ───────────────────────────────

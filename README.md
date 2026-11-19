@@ -108,6 +108,7 @@ to apply it.
 | draw.io diagrams | diagrams kept up to date in notes | | |
 | Claude bridge | MCP servers and skills | | |
 | Site publishing | mirror of the vault to a website | | |
+| Handwritten notes | Boox tablet notebooks read from a WebDAV server, one note and the PDF per notebook | | |
 
 The two columns are starting profiles; the "Everything" profile turns them all
 on. The sections below describe each feature; an optional module's section

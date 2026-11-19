@@ -45,6 +45,8 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
         rubriques: [['ongletCommentaires', 'Commentaires en marge']] },
       { id: 'paragraphes', module: 'paragraphes', icone: 'list-ordered',
         rubriques: [['ongletParagraphes', 'Paragraphes']] },
+      { id: 'manuscrites', module: 'manuscrites', icone: 'notebook-pen',
+        rubriques: [['ongletManuscrites', 'Notes manuscrites']] },
       { id: 'taches', module: 'taches', icone: 'list-checks',
         rubriques: [['ongletTaches', 'Tâches'], ['ongletTaches', 'Familles de tâches'], ['ongletTaches', 'Tableau de bord'],
           ['ongletVues', 'Calendrier'], ['ongletVues', 'Vue Frise']],
@@ -1313,6 +1315,53 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
           if (g.redessinerParagraphes) g.redessinerParagraphes();
         });
       });
+  }
+
+  // ── Notes manuscrites (11w) ──────────────────────────────────────────
+  ongletManuscrites(c, s, maj) {
+    const g = this.plugin;
+    this._section(c, tr('Notes manuscrites'));
+    this._aide(c, tr('Sur la Boox : Paramètres, Comptes, WebDAV, avec l’adresse d’un dossier où vous pouvez écrire ; puis, dans l’appli Notes, ≡, Paramètres de synchronisation : export en PDF vectoriel à la fermeture. Chaque cahier fermé part alors sur le serveur, et Ariane le relit depuis l’ordinateur : une note « NM-AAAAMMJJHHMM » par cahier, le PDF dans le dossier des pièces jointes, et les séances d’écriture repérées par les traits nouveaux. Rien n’est supprimé : un cahier retiré de la Boox est seulement signalé. Supprimer une note manuscrite arrête le suivi de son cahier.'));
+    new obsidian.Setting(c)
+      .setName(tr('Adresse du WebDAV'))
+      .setDesc(tr('Le dossier où la Boox crée « onyx », par exemple https://sharedocs.huma-num.fr/dav.php/@Home/boox/'))
+      .addText((t) => t.setPlaceholder('https://…/').setValue(s.manuscritesUrl || '').onChange(async (v) => {
+        s.manuscritesUrl = v.trim();
+        await maj();
+      }));
+    new obsidian.Setting(c)
+      .setName(tr('Identifiant'))
+      .addText((t) => t.setValue(s.manuscritesUtilisateur || '').onChange(async (v) => {
+        s.manuscritesUtilisateur = v.trim();
+        await maj();
+      }));
+    new obsidian.Setting(c)
+      .setName(tr('Mot de passe'))
+      .setDesc(tr('Gardé dans le trousseau d’Obsidian, jamais dans les réglages du greffon.'))
+      .addText((t) => {
+        t.inputEl.type = 'password';
+        t.setValue(g.motDePasseWebdav()).onChange((v) => g.enregistrerMotDePasseWebdav(v));
+      });
+    new obsidian.Setting(c)
+      .setName(tr('Dossier des notes'))
+      .addText((t) => t.setValue(s.manuscritesDossier || '').onChange(async (v) => {
+        s.manuscritesDossier = v.trim() || '12 - Notes manuscrites';
+        await maj();
+      }));
+    new obsidian.Setting(c)
+      .setName(tr('Relève (minutes)'))
+      .setDesc(tr('Ariane relit le WebDAV au démarrage, puis à cet intervalle. Prend effet au prochain démarrage.'))
+      .addText((t) => t.setValue(String(s.manuscritesIntervalle || 15)).onChange(async (v) => {
+        s.manuscritesIntervalle = Math.max(5, parseInt(v, 10) || 15);
+        await maj();
+      }));
+    const etat = new obsidian.Setting(c).setName(tr('Connexion'));
+    etat.addButton((b) => b.setButtonText(tr('Vérifier')).onClick(async () => {
+      etat.setDesc(tr('Vérification…'));
+      etat.setDesc(await g.verifierWebdav());
+    }));
+    etat.addButton((b) => b.setButtonText(tr('Synchroniser maintenant')).setCta()
+      .onClick(() => g.synchroniserNotesManuscrites(true)));
   }
 
   // ── Commentaires en marge (section 23) ───────────────────────────────

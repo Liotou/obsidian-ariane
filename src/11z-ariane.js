@@ -22,7 +22,8 @@ class Ariane extends composer(obsidian.Plugin,
   avecAccueil,
   avecCommentaires,
   avecAssistant,
-  avecParagraphes) {
+  avecParagraphes,
+  avecNotesManuscrites) {
   //#region Ariane · cycle de vie
   // ── cycle de vie ─────────────────────────────────────────────────────────
 
@@ -921,6 +922,8 @@ class Ariane extends composer(obsidian.Plugin,
     if (this.module('assistant')) this.brancherAssistant();
     // Les paragraphes numérotés et déplaçables (section 25).
     if (this.module('paragraphes')) this.brancherParagraphes();
+    // Les cahiers de la Boox, relus sur le WebDAV.
+    if (this.module('manuscrites')) this.brancherNotesManuscrites();
     this.addRibbonIcon('quote', 'Citations : replier ou déplier (Ariane)',
       () => this.basculerCitations(!this.settings.citationsRepliees));
     if (this.module('suggestions')) this.addRibbonIcon('sparkles', "Suggestions d'annotations (Ariane)", () => this.ouvrirVueSuggestions());

@@ -76,7 +76,7 @@ test('téléphone : chaque module se charge seul, sans module de Node', async ()
 test('moduleActif : les modules « bureauSeul » n’existent pas sur téléphone', () => {
   const tout = MODULES_ARIANE.map((m) => m.id);
   const bureau = MODULES_ARIANE.filter((m) => m.bureauSeul).map((m) => m.id);
-  assert.deepEqual(bureau.sort(), ['claude', 'correcteur', 'export', 'publication', 'rappels', 'schemas', 'suggestions', 'temps']);
+  assert.deepEqual(bureau.sort(), ['claude', 'correcteur', 'export', 'manuscrites', 'publication', 'rappels', 'schemas', 'suggestions', 'temps']);
   for (const id of bureau) {
     assert.equal(Ariane.moduleActif(id, tout, false, false), false, id);
     if (id !== 'correcteur') assert.equal(Ariane.moduleActif(id, tout, false, true), true, id);
