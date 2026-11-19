@@ -602,18 +602,25 @@ const avecNotesManuscrites = (Base) => class extends Base {
     if (pdf) await this.app.vault.modifyBinary(pdf, octets);
     else await this._poserPdf(connu.pdf, octets, note.path);
     this.marquerEcriture(note.path);
+    let ancienTitre = '';
     await this.app.fileManager.processFrontMatter(note, (x) => {
+      ancienTitre = String(x.Titre || '');
       x.Titre = info.titre;
       x.Cahier = info.dossier ? info.dossier + '/' + info.titre : info.titre;
       x['Dernière écriture'] = Ariane.isoLocalManuscrit(quand);
       x.Pages = analyse.pages.length;
       x.Traits = traits.cles.size;
       delete x.Statut;
-      const al = [].concat(x.aliases || []).map(String);
-      if (!al.includes(info.titre)) x.aliases = al.concat(info.titre);
+      // Renommé sur la Boox : l'alias suit le nom (les autres alias restent).
+      const al = [].concat(x.aliases || []).map(String).filter((a) => a !== ancienTitre || a === info.titre);
+      x.aliases = al.includes(info.titre) ? al : al.concat(info.titre);
     });
     const corps = await this.app.vault.read(note);
-    const nouveau = Ariane.corpsAvecBloc(corps, 'seances', Ariane.blocSeancesManuscrites(traits.seances));
+    let nouveau = Ariane.corpsAvecBloc(corps, 'seances', Ariane.blocSeancesManuscrites(traits.seances));
+    // Le titre de la note aussi, s'il était encore l'ancien nom.
+    if (ancienTitre && ancienTitre !== info.titre) {
+      nouveau = nouveau.replace(new RegExp('^# ' + echapperRegex(ancienTitre) + '[ \\t]*$', 'm'), () => '# ' + info.titre);
+    }
     if (nouveau !== corps) { this.marquerEcriture(note.path); await this.app.vault.modify(note, nouveau); }
     await this._ecrireJsonAriane(this._cheminTraits(connu.note), { cles: [...traits.cles], seances: traits.seances,
       aTranscrire: traits.aTranscrire });

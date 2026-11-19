@@ -255,6 +255,10 @@ test('synchronisation : import d’un cahier, puis séance nouvelle, puis cahier
     assert.equal([...fichiers.keys()].filter((p) => p.startsWith('12 - Notes manuscrites/')).length, 1);
     assert.equal(fm.get(notes[0]).Titre, 'Réunion du mardi');
     assert.equal(fm.get(notes[0]).Cahier, 'Terrain/Réunion du mardi');
+    // L'alias et le titre de la note suivent le nouveau nom.
+    assert.deepEqual(fm.get(notes[0]).aliases, ['Réunion du mardi']);
+    assert.ok(fichiers.get(notes[0]).includes('\n# Réunion du mardi\n'));
+    assert.ok(!fichiers.get(notes[0]).includes('\n# Réunion\n'));
   } finally {
     delete global.__arianeRequete;
   }
