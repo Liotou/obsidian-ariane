@@ -20,7 +20,7 @@ test('IA : le registre, des ids uniques, des modules et des fournisseurs connus'
   for (const d of FONCTIONS_IA) {
     assert.ok(modules.has(d.module), d.id + ' : module ' + d.module);
     assert.ok(d.nom && d.desc && d.domaine, d.id);
-    assert.ok(['principal', 'assistant', 'repartition', 'local', 'activite'].includes(d.herite), d.id);
+    assert.ok(['principal', 'assistant', 'repartition', 'local', 'activite', 'images'].includes(d.herite), d.id);
   }
   assert.deepEqual(FOURNISSEURS_IA.map((x) => x.id), ['mistral', 'claude', 'ollama', 'lmstudio', 'apple']);
 });
@@ -32,7 +32,7 @@ test('IA : tout appel passe par une fonction du registre, et chaque fonction ser
   // genererPour('id', …), genererIA(…, 'id'), _genererActiviteIA(…, 'id'), iaPour('id').
   const motifs = [/genererPour\('([\w-]+)'/g, /_genererActiviteIA\([\s\S]{0,160}?, '([\w-]+)'\)/g,
     /genererIA\([\s\S]{0,160}?, (?:\d+|60), '([\w-]+)'\)/g, /'(taches-decouper)' : '(taches-structurer)'/g,
-    /iaPour\('([\w-]+)'\)/g];
+    /iaPour\('([\w-]+)'\)/g, /genererImagesPour\('([\w-]+)'/g];
   for (const { f, t } of sources) {
     for (const re of motifs) {
       for (const m of t.matchAll(re)) {
@@ -72,6 +72,8 @@ test('IA : à la mise à jour, chaque fonction garde l’IA qu’elle suivait', 
   assert.deepEqual(ia('refs-rattacher'), { f: 'ollama', m: 'llama3.2' });
   assert.deepEqual(ia('sugg-reclasser'), { f: 'ollama', m: 'llama3.2' });
   assert.deepEqual(ia('activite-journee'), { f: 'mistral', m: 'mistral-large-latest' });
+  // La transcription des cahiers, venue après : Claude (Sonnet), qui lit l'écriture.
+  assert.deepEqual(ia('manuscrites-transcrire'), { f: 'claude', m: 'sonnet' });
   // L'activité en Claude reprend son modèle à elle, Haiku par défaut.
   assert.deepEqual(Ariane.iaDeFonction('activite-creneaux', { activiteIAFournisseur: 'claude' }), { f: 'claude', m: 'haiku' });
   // L'assistant réglé sur le fournisseur principal le suit.

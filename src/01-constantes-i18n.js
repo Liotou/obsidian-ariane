@@ -2483,6 +2483,8 @@ const FONCTIONS_IA = [
     nom: 'Classer les distractions', desc: 'Range les applications et sites inconnus.' },
   { id: 'activite-journee', domaine: 'Activité', module: 'temps', herite: 'activite',
     nom: 'Résumer la journée', desc: 'Le bilan de la journée.' },
+  { id: 'manuscrites-transcrire', domaine: 'Notes manuscrites', module: 'manuscrites', herite: 'images',
+    nom: 'Transcrire les cahiers', desc: 'Lit les pages des cahiers de la Boox et en écrit le texte. Demande une IA qui lit les images : Claude ou Mistral.' },
 ];
 // Les fournisseurs, dans l'ordre du menu, et le modèle pris quand le champ
 // est vide. Claude : vide = le modèle par défaut de Claude Code.
@@ -2764,7 +2766,8 @@ const DEFAULT_SETTINGS = {
   manuscritesUrl: '',             // adresse WebDAV du dossier où la Boox dépose « onyx/ »
   manuscritesUtilisateur: '',     // identifiant WebDAV ; le mot de passe va au trousseau d'Obsidian
   manuscritesDossier: '12 - Notes manuscrites',
-  manuscritesIntervalle: 15,      // minutes entre deux relèves
+  manuscritesIntervalle: 1,       // minutes entre deux relèves (et une au retour dans Obsidian)
+  manuscritesTranscrire: true,    // transcrire l'écriture des séances nouvelles (fonction IA « manuscrites-transcrire »)
   paragraphesMode: 'toujours',  // toujours : numéros visibles ; survol : au survol du paragraphe ; poignee : pas de numéro, une poignée au survol
 
   // --- Comportement ---

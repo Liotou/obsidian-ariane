@@ -147,7 +147,8 @@ function coffre() {
   const dossiers = new Set();
   const fm = new Map();
   const g = Object.create(Ariane.prototype);
-  g.settings = { manuscritesUrl: BASE, manuscritesUtilisateur: 'moi', manuscritesDossier: '12 - Notes manuscrites' };
+  g.settings = { manuscritesUrl: BASE, manuscritesUtilisateur: 'moi', manuscritesDossier: '12 - Notes manuscrites',
+    manuscritesTranscrire: false };
   g.ecrituresRecentes = new Map();
   const fichier = (path) => ({ path, name: path.slice(path.lastIndexOf('/') + 1), basename: path.slice(path.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '') });
   const yaml = (texte) => {
@@ -177,6 +178,7 @@ function coffre() {
       createBinary: async (p, v) => { fichiers.set(p, v); },
       modifyBinary: async (f, v) => { fichiers.set(f.path, v); },
       read: async (f) => fichiers.get(f.path),
+      readBinary: async (f) => fichiers.get(f.path),
       modify: async (f, v) => { fichiers.set(f.path, v); },
     },
     fileManager: {
@@ -221,7 +223,7 @@ test('synchronisation : import d’un cahier, puis séance nouvelle, puis cahier
     const traits1 = [{ id: id('1'), y: 100 }, { id: id('2'), y: 300 }];
     serveur = { 'onyx/NoteAir5C/Cahiers/Réunion.pdf': pdfBoox([traits1]) };
     const b1 = await g.synchroniserNotesManuscrites(false);
-    assert.deepEqual(b1, { nouvelles: 1, majs: 0, attente: 0, erreurs: 0 });
+    assert.deepEqual(b1, { nouvelles: 1, majs: 0, attente: 0, erreurs: 0, transcrites: 0 });
     assert.equal(auth, 'Basic ' + Buffer.from('moi:secret').toString('base64'));
     const notes = [...fichiers.keys()].filter((p) => p.startsWith('12 - Notes manuscrites/'));
     assert.equal(notes.length, 1);
@@ -236,18 +238,18 @@ test('synchronisation : import d’un cahier, puis séance nouvelle, puis cahier
     assert.ok(texte.includes('![[' + nom + '.pdf]]'));
 
     // Rien n'a changé : rien n'est relu.
-    assert.deepEqual(await g.synchroniserNotesManuscrites(false), { nouvelles: 0, majs: 0, attente: 0, erreurs: 0 });
+    assert.deepEqual(await g.synchroniserNotesManuscrites(false), { nouvelles: 0, majs: 0, attente: 0, erreurs: 0, transcrites: 0 });
 
     // Une séance : un trait de plus en page 2.
     serveur['onyx/NoteAir5C/Cahiers/Réunion.pdf'] = pdfBoox([traits1, [{ id: id('5'), y: 40 }]], { date: 'D:20261120083000' });
-    assert.deepEqual(await g.synchroniserNotesManuscrites(false), { nouvelles: 0, majs: 1, attente: 0, erreurs: 0 });
+    assert.deepEqual(await g.synchroniserNotesManuscrites(false), { nouvelles: 0, majs: 1, attente: 0, erreurs: 0, transcrites: 0 });
     assert.ok(fichiers.get(notes[0]).includes('20 novembre 2026 à 8 h 30 : 1 trait nouveau, page 2'));
     assert.equal(fm.get(notes[0]).Traits, 3);
     assert.equal(fm.get(notes[0])['Dernière écriture'], '2026-11-20T08:30');
 
     // Renommé sur la Boox : même note, nouveau titre, pas de doublon.
     serveur = { 'onyx/NoteAir5C/Terrain/Réunion du mardi.pdf': serveur['onyx/NoteAir5C/Cahiers/Réunion.pdf'] + ' ' };
-    assert.deepEqual(await g.synchroniserNotesManuscrites(false), { nouvelles: 0, majs: 1, attente: 0, erreurs: 0 });
+    assert.deepEqual(await g.synchroniserNotesManuscrites(false), { nouvelles: 0, majs: 1, attente: 0, erreurs: 0, transcrites: 0 });
     assert.equal([...fichiers.keys()].filter((p) => p.startsWith('12 - Notes manuscrites/')).length, 1);
     assert.equal(fm.get(notes[0]).Titre, 'Réunion du mardi');
     assert.equal(fm.get(notes[0]).Cahier, 'Terrain/Réunion du mardi');
@@ -268,7 +270,7 @@ test('synchronisation : un cahier encore en cours d’envoi attend, rien n’est
     return { status: 200, arrayBuffer: Uint8Array.from(Buffer.from(p.slice(0, 40), 'latin1')).buffer };
   };
   try {
-    assert.deepEqual(await g.synchroniserNotesManuscrites(false), { nouvelles: 0, majs: 0, attente: 1, erreurs: 0 });
+    assert.deepEqual(await g.synchroniserNotesManuscrites(false), { nouvelles: 0, majs: 0, attente: 1, erreurs: 0, transcrites: 0 });
     assert.equal([...fichiers.keys()].filter((x) => x.endsWith('.md')).length, 0);
   } finally {
     delete global.__arianeRequete;
@@ -284,4 +286,107 @@ test('synchronisation : un serveur qui refuse ne fait croire à aucune dispariti
   } finally {
     delete global.__arianeRequete;
   }
+});
+
+// ── transcription ──
+
+test('bandes : de haut en bas, 1 000 points au plus, chevauchées, dans la page', () => {
+  assert.deepEqual(Ariane.bandesZone([100, 400], 842), [[80, 420]]);
+  const b = Ariane.bandesZone([726, 6323], 6327);
+  assert.equal(b[0][1], 6327);
+  assert.equal(b[b.length - 1][0], 706);
+  for (let i = 0; i < b.length; i += 1) {
+    assert.ok(b[i][1] - b[i][0] <= 1000);
+    if (i) assert.equal(b[i - 1][0] + 30, b[i][1], 'chevauchement');
+  }
+  assert.equal(b.length, 6);
+});
+
+test('tâches : une séance très haute se coupe, les pages suivent', () => {
+  const t = Ariane.tachesTranscription({ pages: [{ page: 1, zone: [0, 15000] }, { page: 2, zone: [10, 20] }] }, '2026-11-19T10:24', true);
+  assert.deepEqual(t.map((x) => [x.page, x.zone]), [[1, [8000, 15000]], [1, [1000, 8000]], [1, [0, 1000]], [2, [10, 20]]]);
+  assert.ok(t.every((x) => x.premiere && x.quand === '2026-11-19T10:24'));
+});
+
+test('note : la transcription s’ajoute sous sa page, avant le PDF, sans rien remplacer', () => {
+  const note = '---\nType: note-manuscrite\n---\n# Réunion\n\nbloc\n\n![[NM-1.pdf]]\n';
+  const c1 = Ariane.corpsAvecTranscription(note, 1, 'Première ligne.');
+  assert.ok(c1.includes('<!-- ariane:transcription-p1 -->\n**Transcription, page 1**\n\nPremière ligne.\n<!-- /ariane:transcription-p1 -->\n\n![[NM-1.pdf]]'));
+  // L'utilisateur corrige ; la séance suivante s'ajoute après sa correction.
+  const corrige = c1.replace('Première ligne.', 'Première ligne, corrigée.');
+  const c2 = Ariane.corpsAvecTranscription(corrige, 1, 'Ajout.', 'Séance du 20 novembre 2026, 8 h 30');
+  assert.ok(c2.includes('Première ligne, corrigée.\n\n*Séance du 20 novembre 2026, 8 h 30*\n\nAjout.\n<!-- /ariane:transcription-p1 -->'));
+  assert.equal(Ariane.transcriptionDePage(c2, 1), 'Première ligne, corrigée.\n\n*Séance du 20 novembre 2026, 8 h 30*\n\nAjout.');
+  // Une page nouvelle : son bloc après celui de la page 1, avant le PDF.
+  const c3 = Ariane.corpsAvecTranscription(c2, 2, 'Page deux.');
+  assert.ok(c3.indexOf('transcription-p2') > c3.indexOf('/ariane:transcription-p1'));
+  assert.ok(c3.indexOf('transcription-p2') < c3.indexOf('![[NM-1.pdf]]'));
+  assert.equal(Ariane.corpsAvecTranscription(c3, 1, '  '), c3);
+  assert.ok(Ariane.transcriptionVide('Rien de nouveau.'));
+  assert.ok(!Ariane.transcriptionVide('Rien à signaler sur le site.'));
+});
+
+test('consigne : bandes successives, et le déjà transcrit pour ne rendre que l’ajout', () => {
+  assert.match(Ariane.promptTranscription(3, ''), /ces 3 images/);
+  assert.doesNotMatch(Ariane.promptTranscription(1, ''), /déjà transcrite/);
+  assert.match(Ariane.promptTranscription(1, 'Ligne connue.'), /déjà transcrite[\s\S]*Ligne connue\./);
+});
+
+test('Claude : le texte de la ligne « result » du flux, rien si échec', () => {
+  const flux = ['{"type":"system"}', '{"type":"assistant","message":{}}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"  Texte lu. "}'].join('\n');
+  assert.equal(Ariane.resultatClaudeFlux(flux), 'Texte lu.');
+  assert.equal(Ariane.resultatClaudeFlux('{"type":"result","subtype":"error_max_turns","is_error":true}'), null);
+  assert.equal(Ariane.resultatClaudeFlux('pas du json'), null);
+});
+
+test('synchronisation : un cahier importé est transcrit, par l’IA de « Transcrire les cahiers »', async () => {
+  const { g, fichiers } = coffre();
+  g.settings.manuscritesTranscrire = true;
+  const vues = [];
+  g._ouvrirPdfManuscrit = async () => ({ destroy: () => {} });
+  g._rendreBandesPdf = async (doc, page, zone) => { vues.push([page, zone]); return [{ type: 'image/png', base64: 'AAAA' }]; };
+  const demandes = [];
+  g.genererImagesPour = async (id, prompt, images) => { demandes.push(id); return 'Ligne transcrite.'; };
+  const p = pdfBoox([[{ id: id('1'), y: 100 }]]);
+  global.__arianeRequete = async (o) => {
+    if (o.method === 'PROPFIND') {
+      return { status: 207, text: multistatus(reponse('/dav.php/@Home/boox/', { dossier: true }),
+        reponse('/dav.php/@Home/boox/onyx/NoteAir5C/Cahiers/A.pdf', { taille: p.length, modif: new Date(Date.now() - 600000).toUTCString(), etag: 'x' })) };
+    }
+    return { status: 200, arrayBuffer: Uint8Array.from(Buffer.from(p, 'latin1')).buffer };
+  };
+  try {
+    const b = await g.synchroniserNotesManuscrites(false);
+    assert.deepEqual(b, { nouvelles: 1, majs: 0, attente: 0, erreurs: 0, transcrites: 1 });
+    assert.deepEqual(demandes, ['manuscrites-transcrire']);
+    assert.deepEqual(vues, [[1, [100, 105]]]);
+    const note = [...fichiers.keys()].find((x) => x.startsWith('12 - Notes manuscrites/'));
+    assert.ok(fichiers.get(note).includes('**Transcription, page 1**\n\nLigne transcrite.'));
+    const etat = JSON.parse(fichiers.get('.ariane/notes-manuscrites.json'));
+    assert.equal(Object.values(etat.cahiers)[0].aTranscrire, 0);
+  } finally {
+    delete global.__arianeRequete;
+  }
+});
+
+test('transcription : un échec reste en file et se retente, abandonné au troisième', async () => {
+  const { g, fichiers } = coffre();
+  g.settings.manuscritesTranscrire = true;
+  g._ouvrirPdfManuscrit = async () => ({});
+  g._rendreBandesPdf = async () => [{ type: 'image/png', base64: 'AAAA' }];
+  g.genererImagesPour = async () => null;
+  fichiers.set('12 - Notes manuscrites/NM-1.md', '# A\n');
+  fichiers.set('94 - Pièces jointes/NM-1.pdf', new ArrayBuffer(1));
+  fichiers.set('.ariane/notes-manuscrites/NM-1.json', JSON.stringify({ cles: [], seances: [],
+    aTranscrire: [{ page: 1, zone: [0, 10], quand: '2026-11-19T10:00', premiere: true }] }));
+  const etat = { cahiers: { a: { note: 'NM-1', pdf: 'NM-1.pdf', aTranscrire: 1 } } };
+  const bilan = { transcrites: 0 };
+  for (let i = 1; i <= 3; i += 1) {
+    await g._transcrireEnAttente(etat, bilan, false);
+    const file = JSON.parse(fichiers.get('.ariane/notes-manuscrites/NM-1.json')).aTranscrire;
+    assert.equal(file.length, i < 3 ? 1 : 0, 'passe ' + i);
+  }
+  assert.equal(etat.cahiers.a.aTranscrire, 0);
+  assert.equal(fichiers.get('12 - Notes manuscrites/NM-1.md'), '# A\n');
 });

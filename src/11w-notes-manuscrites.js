@@ -251,6 +251,82 @@ const avecNotesManuscrites = (Base) => class extends Base {
     ].join('\n');
   }
 
+  // ── transcription (fonctions pures) ──
+
+  // Une zone haute (cahier infini) se lit en bandes : 1 000 points au plus,
+  // chevauchées de 30, de haut en bas (y du PDF : origine en bas). La zone
+  // est d'abord élargie d'une marge, dans les limites de la page.
+  static bandesZone(zone, hauteur, max, marge, recouvrement) {
+    const m = marge == null ? 20 : marge;
+    const pas = max || 1000;
+    const rec = recouvrement == null ? 30 : recouvrement;
+    const bas = Math.max(0, Math.min(zone[0], zone[1]) - m);
+    const haut = Math.min(hauteur, Math.max(zone[0], zone[1]) + m);
+    const bandes = [];
+    for (let h = haut; h > bas; h -= pas - rec) {
+      bandes.push([Math.max(bas, h - pas), h]);
+      if (h - pas <= bas) break;
+    }
+    return bandes;
+  }
+
+  // Une séance trop haute pour un seul appel (huit bandes) se coupe en
+  // plusieurs tâches de transcription, de haut en bas.
+  static tachesTranscription(seance, quand, premiere) {
+    const taches = [];
+    const max = 7000;
+    for (const p of seance.pages || []) {
+      const [b, h] = [Math.min(p.zone[0], p.zone[1]), Math.max(p.zone[0], p.zone[1])];
+      for (let x = h; x > b; x -= max) {
+        taches.push({ page: p.page, zone: [Math.max(b, x - max), x], quand, premiere: !!premiere });
+        if (x - max <= b) break;
+      }
+    }
+    return taches;
+  }
+
+  static promptTranscription(n, deja) {
+    return [
+      n > 1
+        ? 'Transcris fidèlement, en français, l’écriture manuscrite de ces ' + n + ' images : des bandes successives d’une même page de cahier, de haut en bas, qui se chevauchent un peu (ne répète pas une ligne coupée entre deux bandes).'
+        : 'Transcris fidèlement, en français, l’écriture manuscrite de cette image : une bande d’une page de cahier.',
+      'Rends seulement le texte, en Markdown simple : garde les retours à la ligne et les listes ; une flèche s’écrit →, un mot souligné en **gras**. Mot illisible : [?]. Mot barré : omis. Un dessin ou un schéma : [schéma : quelques mots]. Aucun commentaire, aucune introduction.',
+      deja ? 'Une partie de cette page est déjà transcrite, ci-dessous. Ne rends que ce qui n’y figure pas encore (les ajouts de la dernière séance), et rien du tout s’il n’y a rien de nouveau.\n\n---\n' + deja + '\n---' : '',
+    ].filter(Boolean).join('\n\n');
+  }
+
+  // Le texte déjà transcrit d'une page, tel que la note le porte (vos
+  // corrections comprises), sans le titre du bloc.
+  static transcriptionDePage(corps, page) {
+    const m = new RegExp('<!-- ariane:transcription-p' + page + ' -->([\\s\\S]*?)<!-- /ariane:transcription-p' + page + ' -->').exec(String(corps || ''));
+    if (!m) return '';
+    return m[1].split('\n').filter((l) => !/^\*\*Transcription, /.test(l.trim())).join('\n').trim();
+  }
+
+  // Ajoute le texte d'une séance à la transcription de sa page. Jamais de
+  // remplacement : ce qui est déjà écrit, et vos corrections, restent. Le
+  // bloc d'une page nouvelle se pose avant le PDF intégré.
+  static corpsAvecTranscription(corps, page, texte, etiquette) {
+    const t = String(corps || '');
+    const ajout = (etiquette ? '*' + etiquette + '*\n\n' : '') + String(texte || '').trim();
+    if (!String(texte || '').trim()) return t;
+    const ouv = '<!-- ariane:transcription-p' + page + ' -->';
+    const fer = '<!-- /ariane:transcription-p' + page + ' -->';
+    const i = t.indexOf(ouv);
+    const j = t.indexOf(fer);
+    if (i >= 0 && j > i) return t.slice(0, j).replace(/\n*$/, '\n\n') + ajout + '\n' + t.slice(j);
+    const bloc = [ouv, '**' + tr('Transcription, page ') + page + '**', '', ajout, fer].join('\n');
+    const pdf = /^!\[\[[^\]]+\.pdf\]\]\s*$/m.exec(t);
+    if (pdf) return t.slice(0, pdf.index).replace(/\n*$/, '\n\n') + bloc + '\n\n' + t.slice(pdf.index);
+    return t.replace(/\n*$/, '\n\n') + bloc + '\n';
+  }
+
+  // Une réponse vide, ou qui ne dit que « rien de nouveau ».
+  static transcriptionVide(texte) {
+    const t = String(texte || '').trim().replace(/[*_.«»"]/g, '').trim();
+    return !t || /^(rien( de nouveau)?|aucun (ajout|texte nouveau)|néant)$/i.test(t);
+  }
+
   // ── réglages et accès au WebDAV ──
 
   get dossierNM() {
@@ -368,7 +444,7 @@ const avecNotesManuscrites = (Base) => class extends Base {
 
   async traitsCahier(note) {
     const d = await this._lireJsonAriane(this._cheminTraits(note), null);
-    return { cles: new Set((d && d.cles) || []), seances: (d && d.seances) || [] };
+    return { cles: new Set((d && d.cles) || []), seances: (d && d.seances) || [], aTranscrire: (d && d.aTranscrire) || [] };
   }
 
   // ── la synchronisation ──
@@ -387,7 +463,7 @@ const avecNotesManuscrites = (Base) => class extends Base {
   }
 
   async _passeNotesManuscrites(manuel) {
-    const bilan = { nouvelles: 0, majs: 0, attente: 0, erreurs: 0 };
+    const bilan = { nouvelles: 0, majs: 0, attente: 0, erreurs: 0, transcrites: 0 };
     let fichiers;
     try {
       fichiers = await this.listerCahiersBoox();
@@ -445,12 +521,17 @@ const avecNotesManuscrites = (Base) => class extends Base {
     }
     for (const chemin of Object.keys(etat.attente)) if (!presents.has(chemin)) delete etat.attente[chemin];
     await this._ecrireJsonAriane('.ariane/notes-manuscrites.json', etat);
+    if (this.settings.manuscritesTranscrire !== false) {
+      await this._transcrireEnAttente(etat, bilan, manuel);
+      await this._ecrireJsonAriane('.ariane/notes-manuscrites.json', etat);
+    }
     if (bilan.attente) this._relancerNotesManuscrites();
     if (manuel) {
       const morceaux = [];
       if (bilan.nouvelles) morceaux.push(bilan.nouvelles + (bilan.nouvelles > 1 ? tr(' notes nouvelles') : tr(' note nouvelle')));
       if (bilan.majs) morceaux.push(bilan.majs + (bilan.majs > 1 ? tr(' mises à jour') : tr(' mise à jour')));
       if (bilan.attente) morceaux.push(bilan.attente + tr(' en cours d’envoi depuis la Boox'));
+      if (bilan.transcrites) morceaux.push(bilan.transcrites + (bilan.transcrites > 1 ? tr(' passages transcrits') : tr(' passage transcrit')));
       if (bilan.erreurs) morceaux.push(bilan.erreurs + (bilan.erreurs > 1 ? tr(' erreurs (voir la console)') : tr(' erreur (voir la console)')));
       new obsidian.Notice(tr('Notes manuscrites : ') + (morceaux.length ? morceaux.join(', ') : tr('rien de nouveau')) + '.');
     }
@@ -506,7 +587,10 @@ const avecNotesManuscrites = (Base) => class extends Base {
     const traits = await this.traitsCahier(connu.note);
     const seance = Ariane.seanceManuscrite(analyse, traits.cles);
     for (const k of toutes) traits.cles.add(k);
-    if (seance.nouveaux) traits.seances.push({ quand: Ariane.isoLocalManuscrit(quand), nouveaux: seance.nouveaux, pages: seance.pages });
+    if (seance.nouveaux) {
+      traits.seances.push({ quand: Ariane.isoLocalManuscrit(quand), nouveaux: seance.nouveaux, pages: seance.pages });
+      traits.aTranscrire.push(...Ariane.tachesTranscription(seance, Ariane.isoLocalManuscrit(quand), false));
+    }
     const pdf = this._fichierNM(connu.pdf);
     if (pdf) await this.app.vault.modifyBinary(pdf, octets);
     else await this._poserPdf(connu.pdf, octets, note.path);
@@ -524,8 +608,9 @@ const avecNotesManuscrites = (Base) => class extends Base {
     const corps = await this.app.vault.read(note);
     const nouveau = Ariane.corpsAvecBloc(corps, 'seances', Ariane.blocSeancesManuscrites(traits.seances));
     if (nouveau !== corps) { this.marquerEcriture(note.path); await this.app.vault.modify(note, nouveau); }
-    await this._ecrireJsonAriane(this._cheminTraits(connu.note), { cles: [...traits.cles], seances: traits.seances });
-    Object.assign(connu, { etag: f.etag, taille: f.taille, modif: f.modif, titre: info.titre });
+    await this._ecrireJsonAriane(this._cheminTraits(connu.note), { cles: [...traits.cles], seances: traits.seances,
+      aTranscrire: traits.aTranscrire });
+    Object.assign(connu, { etag: f.etag, taille: f.taille, modif: f.modif, titre: info.titre, aTranscrire: traits.aTranscrire.length });
     return 'maj';
   }
 
@@ -558,10 +643,95 @@ const avecNotesManuscrites = (Base) => class extends Base {
       pages: analyse.pages.length, traits: new Set(toutes).size, bloc: Ariane.blocSeancesManuscrites(seances),
     });
     await this.ecrire(cheminNote, texte);
-    await this._ecrireJsonAriane(this._cheminTraits(nom), { cles: [...new Set(toutes)], seances });
+    const aTranscrire = Ariane.tachesTranscription(seance, Ariane.isoLocalManuscrit(quand), true);
+    await this._ecrireJsonAriane(this._cheminTraits(nom), { cles: [...new Set(toutes)], seances, aTranscrire });
     etat.cahiers[f.chemin] = { note: nom, pdf: nomPdf, titre: info.titre, etag: f.etag, taille: f.taille, modif: f.modif,
-      vu: Ariane.isoLocalManuscrit(new Date()) };
+      vu: Ariane.isoLocalManuscrit(new Date()), aTranscrire: aTranscrire.length };
     return 'nouvelle';
+  }
+
+  // ── transcription ──
+  //  Après chaque relève, quelques passages en attente (six appels au plus
+  //  par passe, pour ne pas monopoliser l'IA) : la bande de la page écrite à
+  //  la séance, rendue en images, lue par l'IA de « Transcrire les cahiers ».
+  //  Un échec se retente à la passe suivante, trois fois.
+  async _transcrireEnAttente(etat, bilan, manuel) {
+    let budget = 6;
+    for (const c of Object.values(etat.cahiers)) {
+      if (budget <= 0) break;
+      if (!c.aTranscrire || c.ignore) continue;
+      const note = this._fichierNM(c.note);
+      const pdf = this._fichierNM(c.pdf);
+      if (!note || !pdf) continue;
+      const traits = await this.traitsCahier(c.note);
+      let doc = null;
+      try {
+        while (traits.aTranscrire.length && budget > 0) {
+          const t = traits.aTranscrire[0];
+          budget -= 1;
+          let texte = null;
+          try {
+            if (!doc) doc = await this._ouvrirPdfManuscrit(await this.app.vault.readBinary(pdf));
+            const deja = t.premiere ? '' : Ariane.transcriptionDePage(await this.app.vault.read(note), t.page);
+            const images = await this._rendreBandesPdf(doc, t.page, t.zone);
+            texte = await this.genererImagesPour('manuscrites-transcrire', Ariane.promptTranscription(images.length, deja), images, 4000);
+          } catch (e) {
+            this._diagIA = String(e && e.message ? e.message : e);
+          }
+          if (texte === null) {
+            t.essais = (t.essais || 0) + 1;
+            console.warn('[Ariane] transcription, ' + c.note + ' : ' + (this._diagIA || tr('échec')));
+            if (manuel && this._diagIA) new obsidian.Notice(tr('Transcription : ') + this._diagIA, 10000);
+            if (t.essais >= 3) traits.aTranscrire.shift();
+            break;
+          }
+          traits.aTranscrire.shift();
+          if (!Ariane.transcriptionVide(texte)) {
+            const d = new Date(t.quand);
+            const etiquette = t.premiere ? '' : tr('Séance du ') + d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+              + ', ' + d.getHours() + ' h ' + String(d.getMinutes()).padStart(2, '0');
+            const corps = await this.app.vault.read(note);
+            const nouveau = Ariane.corpsAvecTranscription(corps, t.page, texte, etiquette);
+            if (nouveau !== corps) { this.marquerEcriture(note.path); await this.app.vault.modify(note, nouveau); }
+            bilan.transcrites += 1;
+          }
+        }
+      } finally {
+        if (doc && typeof doc.destroy === 'function') { try { doc.destroy(); } catch (e) { /* déjà fermé */ } }
+        await this._ecrireJsonAriane(this._cheminTraits(c.note), { cles: [...traits.cles], seances: traits.seances,
+          aTranscrire: traits.aTranscrire });
+        c.aTranscrire = traits.aTranscrire.length;
+      }
+    }
+  }
+
+  // Le PDF d'un cahier, ouvert par pdf.js, celui qu'Obsidian embarque.
+  async _ouvrirPdfManuscrit(octets) {
+    const pdfjs = await obsidian.loadPdfJs();
+    return pdfjs.getDocument({ data: new Uint8Array(octets) }).promise;
+  }
+
+  // Les bandes d'une zone de page, en images PNG d'environ 1 400 pixels de
+  // large : assez pour l'écriture, sous la limite d'image des IA.
+  async _rendreBandesPdf(doc, numero, zone) {
+    const page = await doc.getPage(numero);
+    const [x0, y0, x1, y1] = page.view;
+    const largeur = x1 - x0;
+    const echelle = Math.min(2, 1400 / largeur);
+    const vue = page.getViewport({ scale: echelle });
+    const images = [];
+    for (const [b, h] of Ariane.bandesZone([zone[0] - y0, zone[1] - y0], y1 - y0)) {
+      const toile = createEl('canvas');
+      toile.width = Math.ceil(vue.width);
+      toile.height = Math.ceil((h - b) * echelle);
+      const ctx = toile.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, toile.width, toile.height);
+      await page.render({ canvasContext: ctx, viewport: vue, transform: [1, 0, 0, 1, 0, -((y1 - y0) - h) * echelle] }).promise;
+      images.push({ type: 'image/png', base64: toile.toDataURL('image/png').split(',')[1] });
+    }
+    if (typeof page.cleanup === 'function') page.cleanup();
+    return images;
   }
 
   // ── branchement ──
@@ -580,7 +750,13 @@ const avecNotesManuscrites = (Base) => class extends Base {
       }, 20000);
       this.registerInterval(window.setInterval(() => {
         this.synchroniserNotesManuscrites(false).catch((e) => console.warn('[Ariane] notes manuscrites :', e));
-      }, Math.max(5, Number(this.settings.manuscritesIntervalle) || 15) * 60000));
+      }, Math.max(1, Number(this.settings.manuscritesIntervalle) || 1) * 60000));
+      // Au retour dans Obsidian (la tablette posée), une relève, une par minute au plus.
+      this.registerDomEvent(window, 'focus', () => {
+        if (Date.now() - (this._focusNM || 0) < 60000) return;
+        this._focusNM = Date.now();
+        this.synchroniserNotesManuscrites(false).catch((e) => console.warn('[Ariane] notes manuscrites :', e));
+      });
     });
   }
   //#endregion Ariane · notes manuscrites

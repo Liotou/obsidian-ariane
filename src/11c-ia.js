@@ -238,6 +238,9 @@ const avecIa = (Base) => class extends Base {
         return (st.assistantFournisseur || 'auto') === 'principal' ? principal() : { f: 'apple', m: '' };
       case 'repartition':
         return { f: 'claude', m: st.organisationModeleClaude || 'sonnet' };
+      // Venue après la 3.3, sans réglage d'avant : Claude, qui lit l'écriture.
+      case 'images':
+        return { f: 'claude', m: 'sonnet' };
       case 'local':
         return { f: st.suggFournisseur === 'lmstudio' ? 'lmstudio' : 'ollama', m: st.suggModeleLLM || 'llama3.2' };
       case 'activite': {
@@ -355,6 +358,60 @@ const avecIa = (Base) => class extends Base {
     if (f === 'claude') return this.genererClaude(prompt, max, opts);
     if (f === 'apple') return this.genererApple(prompt, max);
     return this.genererJsonAvec(prompt, max, f === 'lmstudio', modele);
+  }
+
+  // Une génération qui lit des images (images : [{ type: 'image/png', base64 }]).
+  // Seuls Claude et Mistral lisent les images ; les autres rendent null, avec
+  // la raison dans _diagIA.
+  async genererImagesPour(id, prompt, images, max) {
+    const { f, m } = this.iaPour(id);
+    if (f === 'claude') return this.genererClaudeImages(prompt, images, m);
+    if (f === 'mistral') {
+      const contenu = [{ type: 'text', text: prompt }].concat((images || []).map((i) =>
+        ({ type: 'image_url', image_url: 'data:' + i.type + ';base64,' + i.base64 })));
+      const r = await this.requeteMistral({ model: Ariane.modeleMistral(m), messages: [{ role: 'user', content: contenu }],
+        temperature: 0, top_p: 1, max_tokens: max || 4000 });
+      this._diagIA = r.erreur || '';
+      return r.erreur ? null : r.texte;
+    }
+    this._diagIA = tr('Ce fournisseur ne lit pas les images : choisissez Claude ou Mistral dans l’onglet IA.');
+    return null;
+  }
+
+  // Claude en ligne de commande, avec des images : un message au format
+  // stream-json sur l'entrée standard. Sans outils, et sans session gardée
+  // sur le disque (les images de vos pages n'y restent pas).
+  genererClaudeImages(prompt, images, modele) {
+    const bin = (this.settings.refsCheminClaude || 'claude').trim() || 'claude';
+    const delai = 300000;
+    const message = JSON.stringify({ type: 'user', message: { role: 'user', content: (images || []).map((i) =>
+      ({ type: 'image', source: { type: 'base64', media_type: i.type, data: i.base64 } })).concat([{ type: 'text', text: prompt }]) } });
+    const args = (modele ? ['--model', modele] : []).concat(['-p', '--input-format', 'stream-json',
+      '--output-format', 'stream-json', '--verbose', '--no-session-persistence', '--tools', '']);
+    return new Promise((resoudre) => {
+      let fini = false;
+      const enfant = executer(bin, args, { env: envOutils(), timeout: delai, maxBuffer: 32 << 20 }, (err, sortie, erreurs) => {
+        if (fini) return;
+        fini = true;
+        const r = Ariane.resultatClaudeFlux(sortie);
+        this._diagIA = err ? Ariane.diagnosticClaude(err, erreurs, bin) : (r === null ? tr('CLI Claude : réponse illisible.') : '');
+        resoudre(err ? null : r);
+      });
+      try { if (enfant.stdin) enfant.stdin.end(message + '\n'); } catch (e) { /* déjà fermée */ }
+      setTimeout(() => { if (!fini) { try { enfant.kill('SIGKILL'); } catch (e) { /* déjà mort */ } } }, delai + 1000);
+    });
+  }
+
+  // Le texte rendu par le CLI en stream-json : la ligne « result » réussie.
+  static resultatClaudeFlux(sortie) {
+    for (const l of String(sortie || '').split('\n').reverse()) {
+      if (!l.trim().startsWith('{')) continue;
+      try {
+        const d = JSON.parse(l);
+        if (d.type === 'result') return d.subtype === 'success' && !d.is_error ? String(d.result || '').trim() : null;
+      } catch (e) { /* ligne coupée */ }
+    }
+    return null;
   }
 
   // La demande faite à Mistral. Température 0 : la même réponse à chaque

@@ -1350,9 +1350,16 @@ class ArianeSettingTab extends obsidian.PluginSettingTab {
       }));
     new obsidian.Setting(c)
       .setName(tr('Relève (minutes)'))
-      .setDesc(tr('Ariane relit le WebDAV au démarrage, puis à cet intervalle. Prend effet au prochain démarrage.'))
-      .addText((t) => t.setValue(String(s.manuscritesIntervalle || 15)).onChange(async (v) => {
-        s.manuscritesIntervalle = Math.max(5, parseInt(v, 10) || 15);
+      .setDesc(tr('Ariane relit le WebDAV au démarrage, à cet intervalle, et quand vous revenez dans Obsidian. Seule la liste des fichiers est demandée ; un cahier n’est téléchargé que s’il a changé. Prend effet au prochain démarrage.'))
+      .addText((t) => t.setValue(String(s.manuscritesIntervalle || 1)).onChange(async (v) => {
+        s.manuscritesIntervalle = Math.max(1, parseInt(v, 10) || 1);
+        await maj();
+      }));
+    new obsidian.Setting(c)
+      .setName(tr('Transcrire l’écriture'))
+      .setDesc(tr('Après chaque séance, le passage écrit est lu par l’IA de « Transcrire les cahiers » (onglet IA ; Claude par défaut) et son texte s’ajoute à la note, sous la page. L’image du passage est envoyée à cette IA. Rien n’est remplacé : vos corrections restent.'))
+      .addToggle((tg) => tg.setValue(s.manuscritesTranscrire !== false).onChange(async (v) => {
+        s.manuscritesTranscrire = v;
         await maj();
       }));
     const etat = new obsidian.Setting(c).setName(tr('Connexion'));
