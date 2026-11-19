@@ -305,7 +305,8 @@ const avecNotesManuscrites = (Base) => class extends Base {
 
   // Ajoute le texte d'une séance à la transcription de sa page. Jamais de
   // remplacement : ce qui est déjà écrit, et vos corrections, restent. Le
-  // bloc d'une page nouvelle se pose avant le PDF intégré.
+  // bloc d'une page nouvelle se pose après le PDF intégré, à la suite des
+  // pages déjà transcrites.
   static corpsAvecTranscription(corps, page, texte, etiquette) {
     const t = String(corps || '');
     const ajout = (etiquette ? '*' + etiquette + '*\n\n' : '') + String(texte || '').trim();
@@ -316,9 +317,15 @@ const avecNotesManuscrites = (Base) => class extends Base {
     const j = t.indexOf(fer);
     if (i >= 0 && j > i) return t.slice(0, j).replace(/\n*$/, '\n\n') + ajout + '\n' + t.slice(j);
     const bloc = [ouv, '**' + tr('Transcription, page ') + page + '**', '', ajout, fer].join('\n');
-    const pdf = /^!\[\[[^\]]+\.pdf\]\]\s*$/m.exec(t);
-    if (pdf) return t.slice(0, pdf.index).replace(/\n*$/, '\n\n') + bloc + '\n\n' + t.slice(pdf.index);
-    return t.replace(/\n*$/, '\n\n') + bloc + '\n';
+    let pos = -1;
+    for (const m of t.matchAll(/<!-- \/ariane:transcription-p\d+ -->/g)) pos = m.index + m[0].length;
+    if (pos < 0) {
+      const pdf = /^!\[\[[^\]]+\.pdf\]\][ \t]*$/m.exec(t);
+      if (pdf) pos = pdf.index + pdf[0].length;
+    }
+    if (pos < 0) return t.replace(/\n*$/, '\n\n') + bloc + '\n';
+    const apres = t.slice(pos).replace(/^\n+/, '');
+    return t.slice(0, pos) + '\n\n' + bloc + '\n' + (apres ? '\n' + apres : '');
   }
 
   // Une réponse vide, ou qui ne dit que « rien de nouveau ».

@@ -308,19 +308,22 @@ test('tâches : une séance très haute se coupe, les pages suivent', () => {
   assert.ok(t.every((x) => x.premiere && x.quand === '2026-11-19T10:24'));
 });
 
-test('note : la transcription s’ajoute sous sa page, avant le PDF, sans rien remplacer', () => {
-  const note = '---\nType: note-manuscrite\n---\n# Réunion\n\nbloc\n\n![[NM-1.pdf]]\n';
+test('note : la transcription s’ajoute après le PDF, page par page, sans rien remplacer', () => {
+  const note = '---\nType: note-manuscrite\n---\n# Réunion\n\nbloc\n\n![[NM-1.pdf]]\n\nMes notes.\n';
   const c1 = Ariane.corpsAvecTranscription(note, 1, 'Première ligne.');
-  assert.ok(c1.includes('<!-- ariane:transcription-p1 -->\n**Transcription, page 1**\n\nPremière ligne.\n<!-- /ariane:transcription-p1 -->\n\n![[NM-1.pdf]]'));
+  assert.ok(c1.includes('![[NM-1.pdf]]\n\n<!-- ariane:transcription-p1 -->\n**Transcription, page 1**\n\nPremière ligne.\n<!-- /ariane:transcription-p1 -->\n\nMes notes.\n'), c1);
   // L'utilisateur corrige ; la séance suivante s'ajoute après sa correction.
   const corrige = c1.replace('Première ligne.', 'Première ligne, corrigée.');
   const c2 = Ariane.corpsAvecTranscription(corrige, 1, 'Ajout.', 'Séance du 20 novembre 2026, 8 h 30');
   assert.ok(c2.includes('Première ligne, corrigée.\n\n*Séance du 20 novembre 2026, 8 h 30*\n\nAjout.\n<!-- /ariane:transcription-p1 -->'));
   assert.equal(Ariane.transcriptionDePage(c2, 1), 'Première ligne, corrigée.\n\n*Séance du 20 novembre 2026, 8 h 30*\n\nAjout.');
-  // Une page nouvelle : son bloc après celui de la page 1, avant le PDF.
+  // Une page nouvelle : son bloc juste après celui de la page 1, avant le texte de l'utilisateur.
   const c3 = Ariane.corpsAvecTranscription(c2, 2, 'Page deux.');
   assert.ok(c3.indexOf('transcription-p2') > c3.indexOf('/ariane:transcription-p1'));
-  assert.ok(c3.indexOf('transcription-p2') < c3.indexOf('![[NM-1.pdf]]'));
+  assert.ok(c3.indexOf('transcription-p2') > c3.indexOf('![[NM-1.pdf]]'));
+  assert.ok(c3.indexOf('transcription-p2') < c3.indexOf('Mes notes.'));
+  // Sans PDF intégré : à la fin.
+  assert.ok(Ariane.corpsAvecTranscription('# A\n', 1, 'x').endsWith('<!-- /ariane:transcription-p1 -->\n'));
   assert.equal(Ariane.corpsAvecTranscription(c3, 1, '  '), c3);
   assert.ok(Ariane.transcriptionVide('Rien de nouveau.'));
   assert.ok(!Ariane.transcriptionVide('Rien à signaler sur le site.'));
@@ -399,7 +402,7 @@ test('commande : toute la note ouverte, une page déjà transcrite n’est que c
   const consignes = [];
   g.genererImagesPour = async (id, prompt) => { consignes.push(prompt); return 'Texte ' + consignes.length + '.'; };
   const pdf = pdfBoox([[{ id: id('1'), y: 100 }], [{ id: id('2'), y: 200 }]]);
-  fichiers.set('12 - Notes manuscrites/NM-1.md', '---\nType: note-manuscrite\n---\n# A\n\n<!-- ariane:transcription-p1 -->\n**Transcription, page 1**\n\nDéjà là.\n<!-- /ariane:transcription-p1 -->\n\n![[NM-1.pdf]]\n');
+  fichiers.set('12 - Notes manuscrites/NM-1.md', '---\nType: note-manuscrite\n---\n# A\n\n![[NM-1.pdf]]\n\n<!-- ariane:transcription-p1 -->\n**Transcription, page 1**\n\nDéjà là.\n<!-- /ariane:transcription-p1 -->\n');
   fichiers.set('94 - Pièces jointes/NM-1.pdf', Uint8Array.from(Buffer.from(pdf, 'latin1')).buffer);
   fichiers.set('.ariane/notes-manuscrites.json', JSON.stringify({ cahiers: { 'onyx/X/C/A.pdf': { note: 'NM-1', pdf: 'NM-1.pdf' } }, attente: {} }));
   g.app.workspace = { getActiveFile: () => ({ path: '12 - Notes manuscrites/NM-1.md', basename: 'NM-1' }) };
@@ -412,6 +415,6 @@ test('commande : toute la note ouverte, une page déjà transcrite n’est que c
   const note = fichiers.get('12 - Notes manuscrites/NM-1.md');
   assert.match(note, /Déjà là\.\n\n\*Complément du \d+ \S+ \d{4}\*\n\nTexte 1\./);
   assert.ok(note.includes('**Transcription, page 2**\n\nTexte 2.'));
-  assert.ok(note.indexOf('transcription-p2') < note.indexOf('![[NM-1.pdf]]'));
+  assert.ok(note.indexOf('transcription-p2') > note.indexOf('![[NM-1.pdf]]'));
   assert.equal(JSON.parse(fichiers.get('.ariane/notes-manuscrites.json')).cahiers['onyx/X/C/A.pdf'].aTranscrire, 0);
 });
