@@ -129,15 +129,17 @@ test('envoi en cours : lu quand il ne bouge plus, ou deux minutes après sa modi
   assert.equal(Ariane.cahierChange({ taille: 10, modif: 5 }, { taille: 10, modif: 5 }), false);
 });
 
-test('bloc des séances : la plus récente en tête, pages et nombres lisibles', () => {
+test('tableau des séances : la plus récente en tête, pages et nombres lisibles', () => {
   const b = Ariane.blocSeancesManuscrites([
-    { quand: '2026-11-19T10:24', nouveaux: 5021, pages: [{ page: 1 }], premiere: true },
-    { quand: '2026-11-20T08:05', nouveaux: 1, pages: [{ page: 2 }, { page: 3 }] },
+    { quand: '2026-11-19T10:24', nouveaux: 5021, pages: [{ page: 1 }, { page: 2 }], premiere: true },
+    { quand: '2026-11-20T08:05', nouveaux: 1, pages: [{ page: 3 }] },
   ]);
   const l = b.split('\n');
   assert.equal(l[0], '<!-- ariane:seances -->');
-  assert.ok(l[3].startsWith('- 20 novembre 2026 à 8 h 05 : 1 trait nouveau, pages 2, 3'), l[3]);
-  assert.ok(/^- 19 novembre 2026 à 10 h 24 : premier import, 5\s021 traits, page 1$/.test(l[4]), l[4]);
+  assert.equal(l[3], '| Date | Heure | Séance | Traits | Pages |');
+  assert.equal(l[5], '| 20 novembre 2026 | 8 h 05 | Écriture | 1 | 3 |');
+  assert.ok(/^\| 19 novembre 2026 \| 10 h 24 \| Premier import \| 5\s021 \| 1, 2 \|$/.test(l[6]), l[6]);
+  assert.equal(l[7], '', 'une ligne vide referme le tableau');
   assert.equal(Ariane.blocSeancesManuscrites([]), '');
 });
 
@@ -234,7 +236,7 @@ test('synchronisation : import d’un cahier, puis séance nouvelle, puis cahier
     assert.ok(texte.includes('Type: note-manuscrite'));
     assert.ok(texte.includes('Titre: "Réunion"'));
     assert.ok(texte.includes('PDF: "[[' + nom + '.pdf]]"'));
-    assert.ok(texte.includes('premier import, 2 traits, page 1'));
+    assert.ok(texte.includes('| Premier import | 2 | 1 |'));
     assert.ok(texte.includes('![[' + nom + '.pdf]]'));
 
     // Rien n'a changé : rien n'est relu.
@@ -243,7 +245,7 @@ test('synchronisation : import d’un cahier, puis séance nouvelle, puis cahier
     // Une séance : un trait de plus en page 2.
     serveur['onyx/NoteAir5C/Cahiers/Réunion.pdf'] = pdfBoox([traits1, [{ id: id('5'), y: 40 }]], { date: 'D:20261120083000' });
     assert.deepEqual(await g.synchroniserNotesManuscrites(false), { nouvelles: 0, majs: 1, attente: 0, erreurs: 0, transcrites: 0 });
-    assert.ok(fichiers.get(notes[0]).includes('20 novembre 2026 à 8 h 30 : 1 trait nouveau, page 2'));
+    assert.ok(fichiers.get(notes[0]).includes('| 20 novembre 2026 | 8 h 30 | Écriture | 1 | 2 |'));
     assert.equal(fm.get(notes[0]).Traits, 3);
     assert.equal(fm.get(notes[0])['Dernière écriture'], '2026-11-20T08:30');
 

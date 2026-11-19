@@ -209,7 +209,7 @@ const avecNotesManuscrites = (Base) => class extends Base {
     return f.taille !== connu.taille || f.modif !== connu.modif;
   }
 
-  // Le bloc des séances, le plus récent en tête.
+  // Le tableau des séances, la plus récente en tête.
   static blocSeancesManuscrites(seances) {
     if (!seances || !seances.length) return '';
     const nb = (n) => Number(n).toLocaleString('fr-FR');
@@ -217,13 +217,13 @@ const avecNotesManuscrites = (Base) => class extends Base {
       const d = new Date(s.quand);
       const jour = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
       const heure = String(d.getHours()) + ' h ' + String(d.getMinutes()).padStart(2, '0');
-      const pages = (s.pages || []).map((p) => p.page);
-      const ou = pages.length ? (pages.length > 1 ? tr(', pages ') : tr(', page ')) + pages.join(', ') : '';
-      const quoi = s.premiere ? tr('premier import, ') + nb(s.nouveaux) + tr(' traits')
-        : nb(s.nouveaux) + (s.nouveaux > 1 ? tr(' traits nouveaux') : tr(' trait nouveau'));
-      return '- ' + jour + tr(' à ') + heure + ' : ' + quoi + ou;
+      const pages = (s.pages || []).map((p) => p.page).join(', ');
+      const quoi = s.premiere ? tr('Premier import') : tr('Écriture');
+      return '| ' + [jour, heure, quoi, nb(s.nouveaux), pages].join(' | ') + ' |';
     });
-    return ['<!-- ariane:seances -->', '**' + tr('Séances d’écriture') + '**', '', ...lignes, '<!-- /ariane:seances -->'].join('\n');
+    return ['<!-- ariane:seances -->', '**' + tr('Séances d’écriture') + '**', '',
+      '| ' + [tr('Date'), tr('Heure'), tr('Séance'), tr('Traits'), tr('Pages')].join(' | ') + ' |',
+      '| --- | --- | --- | ---: | --- |', ...lignes, '', '<!-- /ariane:seances -->'].join('\n');
   }
 
   // La note d'un cahier, à sa création.
