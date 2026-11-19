@@ -390,3 +390,28 @@ test('transcription : un échec reste en file et se retente, abandonné au trois
   assert.equal(etat.cahiers.a.aTranscrire, 0);
   assert.equal(fichiers.get('12 - Notes manuscrites/NM-1.md'), '# A\n');
 });
+
+test('commande : toute la note ouverte, une page déjà transcrite n’est que complétée', async () => {
+  const { g, fichiers } = coffre();
+  const vues = [];
+  g._ouvrirPdfManuscrit = async () => ({});
+  g._rendreBandesPdf = async (doc, page, zone) => { vues.push(page); return [{ type: 'image/png', base64: 'AAAA' }]; };
+  const consignes = [];
+  g.genererImagesPour = async (id, prompt) => { consignes.push(prompt); return 'Texte ' + consignes.length + '.'; };
+  const pdf = pdfBoox([[{ id: id('1'), y: 100 }], [{ id: id('2'), y: 200 }]]);
+  fichiers.set('12 - Notes manuscrites/NM-1.md', '---\nType: note-manuscrite\n---\n# A\n\n<!-- ariane:transcription-p1 -->\n**Transcription, page 1**\n\nDéjà là.\n<!-- /ariane:transcription-p1 -->\n\n![[NM-1.pdf]]\n');
+  fichiers.set('94 - Pièces jointes/NM-1.pdf', Uint8Array.from(Buffer.from(pdf, 'latin1')).buffer);
+  fichiers.set('.ariane/notes-manuscrites.json', JSON.stringify({ cahiers: { 'onyx/X/C/A.pdf': { note: 'NM-1', pdf: 'NM-1.pdf' } }, attente: {} }));
+  g.app.workspace = { getActiveFile: () => ({ path: '12 - Notes manuscrites/NM-1.md', basename: 'NM-1' }) };
+  g.app.metadataCache.getFileCache = () => ({ frontmatter: { Type: 'note-manuscrite' } });
+  const n = await g.transcrireNoteManuscriteActive();
+  assert.equal(n, 2);
+  assert.deepEqual(vues, [1, 2]);
+  assert.match(consignes[0], /déjà transcrite[\s\S]*Déjà là\./);
+  assert.doesNotMatch(consignes[1], /déjà transcrite/);
+  const note = fichiers.get('12 - Notes manuscrites/NM-1.md');
+  assert.match(note, /Déjà là\.\n\n\*Complément du \d+ \S+ \d{4}\*\n\nTexte 1\./);
+  assert.ok(note.includes('**Transcription, page 2**\n\nTexte 2.'));
+  assert.ok(note.indexOf('transcription-p2') < note.indexOf('![[NM-1.pdf]]'));
+  assert.equal(JSON.parse(fichiers.get('.ariane/notes-manuscrites.json')).cahiers['onyx/X/C/A.pdf'].aTranscrire, 0);
+});

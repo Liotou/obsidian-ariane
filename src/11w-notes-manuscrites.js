@@ -688,7 +688,7 @@ const avecNotesManuscrites = (Base) => class extends Base {
           traits.aTranscrire.shift();
           if (!Ariane.transcriptionVide(texte)) {
             const d = new Date(t.quand);
-            const etiquette = t.premiere ? '' : tr('Séance du ') + d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+            const etiquette = t.etiquette != null ? t.etiquette : t.premiere ? '' : tr('Séance du ') + d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
               + ', ' + d.getHours() + ' h ' + String(d.getMinutes()).padStart(2, '0');
             const corps = await this.app.vault.read(note);
             const nouveau = Ariane.corpsAvecTranscription(corps, t.page, texte, etiquette);
@@ -703,6 +703,58 @@ const avecNotesManuscrites = (Base) => class extends Base {
         c.aTranscrire = traits.aTranscrire.length;
       }
     }
+  }
+
+  // Transcrit toute la note manuscrite ouverte : un cahier importé avant la
+  // transcription, ou à relire. Une page déjà transcrite n'est que complétée
+  // (l'IA reçoit ce qui y est écrit et ne rend que ce qui manque).
+  async transcrireNoteManuscriteActive() {
+    const f = this.app.workspace.getActiveFile();
+    const fm = f && (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+    if (!f || !fm || fm.Type !== 'note-manuscrite') {
+      new obsidian.Notice(tr('Ouvrez d’abord une note manuscrite (NM-…).'));
+      return 0;
+    }
+    if (this._syncNM) await this._syncNM.catch(() => {});
+    const travail = (async () => {
+      const etat = await this.etatManuscrites();
+      const entree = Object.entries(etat.cahiers).find(([, x]) => x.note === f.basename);
+      const pdf = entree && this._fichierNM(entree[1].pdf);
+      if (!pdf) {
+        new obsidian.Notice(tr('Notes manuscrites : le PDF de ce cahier est introuvable.'));
+        return 0;
+      }
+      const [chemin, c] = entree;
+      const analyse = Ariane.traitsPdfBoox(new TextDecoder('latin1').decode(new Uint8Array(await this.app.vault.readBinary(pdf))));
+      const corps = await this.app.vault.read(f);
+      const maintenant = new Date();
+      const complement = tr('Complément du ') + maintenant.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+      const taches = Ariane.tachesTranscription(Ariane.seanceManuscrite(analyse, new Set()), Ariane.isoLocalManuscrit(maintenant), true)
+        .map((t) => (Ariane.transcriptionDePage(corps, t.page) ? Object.assign(t, { premiere: false, etiquette: complement }) : t));
+      if (!taches.length) {
+        new obsidian.Notice(tr('Notes manuscrites : aucun trait à transcrire dans ce cahier.'));
+        return 0;
+      }
+      const traits = await this.traitsCahier(c.note);
+      await this._ecrireJsonAriane(this._cheminTraits(c.note), { cles: [...traits.cles], seances: traits.seances, aTranscrire: taches });
+      c.aTranscrire = taches.length;
+      const avis = new obsidian.Notice(tr('Transcription en cours : ') + taches.length + (taches.length > 1 ? tr(' passages…') : tr(' passage…')), 0);
+      const bilan = { transcrites: 0 };
+      const seul = { cahiers: { [chemin]: c } };
+      let avant = -1;
+      while (c.aTranscrire && c.aTranscrire !== avant) {
+        avant = c.aTranscrire;
+        await this._transcrireEnAttente(seul, bilan, true);
+      }
+      await this._ecrireJsonAriane('.ariane/notes-manuscrites.json', Object.assign(etat, { cahiers: Object.assign(etat.cahiers, seul.cahiers) }));
+      if (avis && typeof avis.hide === 'function') avis.hide();
+      new obsidian.Notice(c.aTranscrire
+        ? tr('Transcription interrompue : ') + (this._diagIA || tr('voir la console')) + tr('. Elle reprendra à la prochaine relève.')
+        : tr('Transcription terminée.'));
+      return bilan.transcrites;
+    })();
+    this._syncNM = travail.catch(() => {}).finally(() => { this._syncNM = null; });
+    return travail;
   }
 
   // Le PDF d'un cahier, ouvert par pdf.js, celui qu'Obsidian embarque.
@@ -741,6 +793,12 @@ const avecNotesManuscrites = (Base) => class extends Base {
       id: 'manuscrites-synchroniser', module: 'manuscrites', bureau: true, icon: 'notebook-pen',
       name: tr('Notes manuscrites : synchroniser avec la Boox'),
       callback: () => this.synchroniserNotesManuscrites(true),
+    });
+    // Elle porte sur la note ouverte : elle a donc aussi sa place dans la barre d'édition.
+    this.addCommand({
+      id: 'manuscrites-transcrire-note', module: 'manuscrites', bureau: true, icon: 'scan-text',
+      name: tr('Notes manuscrites : transcrire toute la note ouverte'),
+      callback: () => { this.transcrireNoteManuscriteActive().catch((e) => console.warn('[Ariane] transcription :', e)); },
     });
     this.register(() => clearTimeout(this._relanceNM));
     this.app.workspace.onLayoutReady(() => {
