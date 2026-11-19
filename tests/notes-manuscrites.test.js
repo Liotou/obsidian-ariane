@@ -317,11 +317,11 @@ test('tâches : une séance très haute se coupe, les pages suivent', () => {
 test('note : la transcription s’ajoute après le PDF, page par page, sans rien remplacer', () => {
   const note = '---\nType: note-manuscrite\n---\n# Réunion\n\nbloc\n\n![[NM-1.pdf]]\n\nMes notes.\n';
   const c1 = Ariane.corpsAvecTranscription(note, 1, 'Première ligne.');
-  assert.ok(c1.includes('![[NM-1.pdf]]\n\n<!-- ariane:transcription-p1 -->\n**Transcription, page 1**\n\nPremière ligne.\n<!-- /ariane:transcription-p1 -->\n\nMes notes.\n'), c1);
+  assert.ok(c1.includes('![[NM-1.pdf]]\n\n<!-- ariane:transcription-p1 -->\n> [!info]- Transcription, page 1\n> Première ligne.\n<!-- /ariane:transcription-p1 -->\n\nMes notes.\n'), c1);
   // L'utilisateur corrige ; la séance suivante s'ajoute après sa correction.
   const corrige = c1.replace('Première ligne.', 'Première ligne, corrigée.');
   const c2 = Ariane.corpsAvecTranscription(corrige, 1, 'Ajout.', 'Séance du 20 novembre 2026, 8 h 30');
-  assert.ok(c2.includes('Première ligne, corrigée.\n\n*Séance du 20 novembre 2026, 8 h 30*\n\nAjout.\n<!-- /ariane:transcription-p1 -->'));
+  assert.ok(c2.includes('> Première ligne, corrigée.\n>\n> *Séance du 20 novembre 2026, 8 h 30*\n>\n> Ajout.\n<!-- /ariane:transcription-p1 -->'), c2);
   assert.equal(Ariane.transcriptionDePage(c2, 1), 'Première ligne, corrigée.\n\n*Séance du 20 novembre 2026, 8 h 30*\n\nAjout.');
   // Une page nouvelle : son bloc juste après celui de la page 1, avant le texte de l'utilisateur.
   const c3 = Ariane.corpsAvecTranscription(c2, 2, 'Page deux.');
@@ -371,7 +371,7 @@ test('synchronisation : un cahier importé est transcrit, par l’IA de « Trans
     assert.deepEqual(demandes, ['manuscrites-transcrire']);
     assert.deepEqual(vues, [[1, [100, 105]]]);
     const note = [...fichiers.keys()].find((x) => x.startsWith('12 - Notes manuscrites/'));
-    assert.ok(fichiers.get(note).includes('**Transcription, page 1**\n\nLigne transcrite.'));
+    assert.ok(fichiers.get(note).includes('> [!info]- Transcription, page 1\n> Ligne transcrite.'));
     const etat = JSON.parse(fichiers.get('.ariane/notes-manuscrites.json'));
     assert.equal(Object.values(etat.cahiers)[0].aTranscrire, 0);
   } finally {
@@ -419,8 +419,10 @@ test('commande : toute la note ouverte, une page déjà transcrite n’est que c
   assert.match(consignes[0], /déjà transcrite[\s\S]*Déjà là\./);
   assert.doesNotMatch(consignes[1], /déjà transcrite/);
   const note = fichiers.get('12 - Notes manuscrites/NM-1.md');
-  assert.match(note, /Déjà là\.\n\n\*Complément du \d+ \S+ \d{4}\*\n\nTexte 1\./);
-  assert.ok(note.includes('**Transcription, page 2**\n\nTexte 2.'));
+  // L'ancien bloc à titre gras passe en encadré en recevant son complément.
+  assert.match(note, /> \[!info\]- Transcription, page 1\n> Déjà là\.\n>\n> \*Complément du \d+ \S+ \d{4}\*\n>\n> Texte 1\./);
+  assert.ok(!note.includes('**Transcription, page 1**'));
+  assert.ok(note.includes('> [!info]- Transcription, page 2\n> Texte 2.'));
   assert.ok(note.indexOf('transcription-p2') > note.indexOf('![[NM-1.pdf]]'));
   assert.equal(JSON.parse(fichiers.get('.ariane/notes-manuscrites.json')).cahiers['onyx/X/C/A.pdf'].aTranscrire, 0);
 });

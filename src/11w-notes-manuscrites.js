@@ -296,11 +296,23 @@ const avecNotesManuscrites = (Base) => class extends Base {
   }
 
   // Le texte déjà transcrit d'une page, tel que la note le porte (vos
-  // corrections comprises), sans le titre du bloc.
+  // corrections comprises), sans le titre du bloc ni les « > » de
+  // l'encadré. L'ancien bloc à titre gras se lit aussi.
   static transcriptionDePage(corps, page) {
     const m = new RegExp('<!-- ariane:transcription-p' + page + ' -->([\\s\\S]*?)<!-- /ariane:transcription-p' + page + ' -->').exec(String(corps || ''));
     if (!m) return '';
-    return m[1].split('\n').filter((l) => !/^\*\*Transcription, /.test(l.trim())).join('\n').trim();
+    return m[1].split('\n')
+      .filter((l) => !/^(\*\*Transcription, |>\s*\[!\w+\][-+]?\s)/.test(l.trim()))
+      .map((l) => l.replace(/^\s*> ?/, ''))
+      .join('\n').trim();
+  }
+
+  // Le bloc d'une page : un encadré replié par défaut, dont le titre seul
+  // reste visible tant qu'on ne l'ouvre pas.
+  static blocTranscription(page, texte) {
+    const lignes = String(texte || '').trim().replace(/<!--/g, '&lt;!--').split(/\r?\n/).map((l) => (l.trim() ? '> ' + l : '>'));
+    return ['<!-- ariane:transcription-p' + page + ' -->', '> [!info]- ' + tr('Transcription, page ') + page, ...lignes,
+      '<!-- /ariane:transcription-p' + page + ' -->'].join('\n');
   }
 
   // Ajoute le texte d'une séance à la transcription de sa page. Jamais de
@@ -315,8 +327,11 @@ const avecNotesManuscrites = (Base) => class extends Base {
     const fer = '<!-- /ariane:transcription-p' + page + ' -->';
     const i = t.indexOf(ouv);
     const j = t.indexOf(fer);
-    if (i >= 0 && j > i) return t.slice(0, j).replace(/\n*$/, '\n\n') + ajout + '\n' + t.slice(j);
-    const bloc = [ouv, '**' + tr('Transcription, page ') + page + '**', '', ajout, fer].join('\n');
+    if (i >= 0 && j > i) {
+      const deja = Ariane.transcriptionDePage(t, page);
+      return t.slice(0, i) + Ariane.blocTranscription(page, (deja ? deja + '\n\n' : '') + ajout) + t.slice(j + fer.length);
+    }
+    const bloc = Ariane.blocTranscription(page, ajout);
     let pos = -1;
     for (const m of t.matchAll(/<!-- \/ariane:transcription-p\d+ -->/g)) pos = m.index + m[0].length;
     if (pos < 0) {
