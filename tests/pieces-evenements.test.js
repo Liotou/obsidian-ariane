@@ -129,3 +129,16 @@ test('une pièce importée s’ouvre dans un onglet d’Obsidian, sans copie tem
   assert.equal(await g.ouvrirPieceEvenement({ nom: nfd, taille: 10, local: '/x', url: '' }), true);
   assert.deepEqual(ouverts, [['tab', copie]]);
 });
+
+test('un document Office s’ouvre dans Obsidian quand un greffon (ONLYOFFICE) le prend en charge', async () => {
+  const pris = new Set(['docx', 'xlsx', 'pptx']);
+  const app = { viewRegistry: { isExtensionRegistered: (e) => pris.has(e) } };
+  for (const e of ['docx', 'XLSX', 'pptx', 'pdf', 'md', 'png']) assert.ok(Ariane.ouvrableDansObsidian(app, e), e);
+  for (const e of ['doc', 'odt', 'zip']) assert.ok(!Ariane.ouvrableDansObsidian(app, e), e);
+  assert.ok(!Ariane.ouvrableDansObsidian({}, 'docx'), 'sans greffon : l’application du système');
+  const ouverts = [];
+  const g = Object.create(Ariane.prototype);
+  g.app = Object.assign({ workspace: { getLeaf: (o) => ({ openFile: async (f) => ouverts.push([o, f.path]) }) } }, app);
+  await g.ouvrirFichierCoffre({ path: 'Livrables/Rapport.docx', extension: 'docx' });
+  assert.deepEqual(ouverts, [['tab', 'Livrables/Rapport.docx']]);
+});

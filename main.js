@@ -23530,9 +23530,23 @@ const avecTaches = (Base) => class extends Base {
   // qu'Obsidian ne sait pas afficher (Word, Excel…) va à son application.
   async ouvrirFichierCoffre(f) {
     const shell = (() => { try { return require('electron').shell; } catch (e) { return null; } })();
-    if (/^(pdf|png|jpe?g|gif|webp|mp3|m4a|wav|mp4|mov|md|canvas|drawio|svg)$/i.test(f.extension) || !shell) {
+    if (Ariane.ouvrableDansObsidian(this.app, f.extension) || !shell) {
       await this.app.workspace.getLeaf('tab').openFile(f);
     } else await shell.openPath(this.app.vault.adapter.getFullPath(f.path));
+  }
+
+  // Obsidian sait-il afficher ce format ? Les siens, et ceux qu'un greffon
+  // déclare : ONLYOFFICE prend docx, xlsx et pptx, qui s'ouvrent alors dans
+  // Obsidian plutôt que dans Microsoft Office.
+  static ouvrableDansObsidian(app, extension) {
+    const e = String(extension || '').toLowerCase();
+    if (/^(pdf|png|jpe?g|gif|webp|bmp|avif|mp3|m4a|wav|ogg|flac|webm|mp4|mov|ogv|md|canvas|base|drawio|svg)$/.test(e)) return true;
+    const vr = app && app.viewRegistry;
+    try {
+      if (vr && typeof vr.isExtensionRegistered === 'function') return !!vr.isExtensionRegistered(e);
+      if (vr && typeof vr.getTypeByExtension === 'function') return !!vr.getTypeByExtension(e);
+    } catch (err) { /* registre indisponible */ }
+    return false;
   }
 
   // Ce à quoi une tâche renvoie, pour la carte de survol de ses créneaux :
