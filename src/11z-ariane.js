@@ -283,6 +283,13 @@ class Ariane extends composer(obsidian.Plugin,
       callback: () => { this.lierNoteActiveAEvenement().catch(() => {}); },
     });
     this.addCommand({
+      id: 'notes-jointes-evenement',
+      module: 'taches',
+      name: tr('Événement : notes jointes…'),
+      icon: 'link',
+      callback: () => this.ouvrirNotesJointesActive(),
+    });
+    this.addCommand({
       id: 'importer-pieces-evenement',
       module: 'taches',
       bureau: true,

@@ -391,35 +391,6 @@ const avecNotesManuscrites = (Base) => class extends Base {
     return !t || /^(rien( de nouveau)?|aucun (ajout|texte nouveau)|néant)$/i.test(t);
   }
 
-  // ── rattachement à un événement (fonctions pures) ──
-
-  // Les événements de l'agenda, du plus proche au plus lointain de l'heure
-  // donnée (la dernière écriture du cahier) ; chacun avec son libellé.
-  static evenementsPourNoteManuscrite(evenements, quandISO) {
-    const ref = new Date(quandISO).getTime();
-    const p = (n) => String(n).padStart(2, '0');
-    const heure = (d) => d.getHours() + ' h ' + p(d.getMinutes());
-    return (evenements || []).filter((e) => e && e.debut && !isNaN(new Date(e.debut).getTime()))
-      .map((e) => {
-        const d = new Date(e.debut);
-        const fin = e.fin ? new Date(e.fin) : null;
-        const jour = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-        const quand = e.allDay ? tr('journée entière')
-          : heure(d) + (fin && !isNaN(fin.getTime()) ? tr(' à ') + heure(fin) : '');
-        const titre = String(e.titre || '').trim() || tr('(sans titre)');
-        return { e, nom: titre + '  (' + jour + ', ' + quand + (e.calendrier ? ', ' + e.calendrier : '') + ')',
-          ecart: isNaN(ref) ? 0 : Math.abs(d.getTime() - ref) };
-      })
-      .sort((a, b) => a.ecart - b.ecart);
-  }
-
-  // Une liste de liens augmentée d'un lien, sans doublon (même note visée).
-  static liensAvecNote(liste, nom) {
-    const l = [].concat(liste == null ? [] : liste).map(String).filter(Boolean);
-    const cible = (x) => x.replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
-    return l.some((x) => cible(x) === nom) ? l : l.concat('[[' + nom + ']]');
-  }
-
   // ── réglages et accès au WebDAV ──
 
   get dossierNM() {
@@ -886,53 +857,6 @@ const avecNotesManuscrites = (Base) => class extends Base {
     return images;
   }
 
-  // Rattache la note manuscrite ouverte à un événement de l'agenda, choisi
-  // dans une liste (les plus proches de la dernière écriture d'abord). La
-  // note d'événement est créée au besoin ; chacune renvoie à l'autre.
-  async rattacherNoteManuscriteEvenement() {
-    const f = this.app.workspace.getActiveFile();
-    const fm = f && (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
-    if (!f || !fm || fm.Type !== 'note-manuscrite') {
-      new obsidian.Notice(tr('Ouvrez d’abord une note manuscrite (NM-…).'));
-      return null;
-    }
-    const quand = String(fm['Dernière écriture'] || Ariane.isoLocalManuscrit(new Date()));
-    const jour = quand.slice(0, 10);
-    let evs = [];
-    try { evs = (await this.evenementsFond(Ariane.decalerJour(jour, -30), Ariane.decalerJour(jour, 2))) || []; } catch (e) { evs = []; }
-    const items = Ariane.evenementsPourNoteManuscrite(evs, quand);
-    if (!items.length) {
-      new obsidian.Notice(tr('Aucun événement dans l’agenda autour du ') + jour + '.');
-      return null;
-    }
-    return new Promise((resolve) => {
-      new ChoixListeModal(this.app, tr('Événement (titre, jour)…'), items, async (it) => {
-        try { resolve(it ? await this.lierNoteManuscriteEvenement(f, it.e) : null); } catch (e) {
-          console.warn('[Ariane] rattachement à un événement :', e);
-          new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
-          resolve(null);
-        }
-      }).open();
-    });
-  }
-
-  // Les deux liens : « Événements » dans la note manuscrite, « Notes
-  // manuscrites » dans la note d'événement. Rend la note d'événement.
-  async lierNoteManuscriteEvenement(note, e) {
-    const ev = await this.noteEvenementAJour(e);
-    if (!ev) return null;
-    this.marquerEcriture(note.path);
-    await this.app.fileManager.processFrontMatter(note, (x) => {
-      x['Événements'] = Ariane.liensAvecNote(x['Événements'], ev.basename);
-    });
-    this.marquerEcriture(ev.path);
-    await this.app.fileManager.processFrontMatter(ev, (x) => {
-      x['Notes manuscrites'] = Ariane.liensAvecNote(x['Notes manuscrites'], note.basename);
-    });
-    new obsidian.Notice(tr('Note rattachée à « ') + (String(e.titre || '').trim() || ev.basename) + ' ».');
-    return ev;
-  }
-
   // ── branchement ──
   // Tout ce que le module enregistre ; appelé seulement s'il est actif.
   brancherNotesManuscrites() {
@@ -946,12 +870,6 @@ const avecNotesManuscrites = (Base) => class extends Base {
       id: 'manuscrites-transcrire-note', module: 'manuscrites', bureau: true, icon: 'scan-text',
       name: tr('Notes manuscrites : transcrire toute la note ouverte'),
       callback: () => { this.transcrireNoteManuscriteActive().catch((e) => console.warn('[Ariane] transcription :', e)); },
-    });
-    // L'agenda est celui des tâches : la commande demande les deux modules.
-    this.addCommand({
-      id: 'manuscrites-rattacher-evenement', module: ['manuscrites', 'taches'], bureau: true, icon: 'calendar-plus',
-      name: tr('Notes manuscrites : rattacher la note ouverte à un événement'),
-      callback: () => { this.rattacherNoteManuscriteEvenement().catch((e) => console.warn('[Ariane] rattachement :', e)); },
     });
     this.register(() => clearTimeout(this._relanceNM));
     this.app.workspace.onLayoutReady(() => {

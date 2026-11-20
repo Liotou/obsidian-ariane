@@ -142,3 +142,159 @@ test('un document Office s’ouvre dans Obsidian quand un greffon (ONLYOFFICE) l
   await g.ouvrirFichierCoffre({ path: 'Livrables/Rapport.docx', extension: 'docx' });
   assert.deepEqual(ouverts, [['tab', 'Livrables/Rapport.docx']]);
 });
+
+test('Notes jointes : un onglet par famille, les tâches à la place de leur famille, puis les autres', () => {
+  const fam = (nom, dossiers, icone) => ({ nom, dossiers, icone: icone || '', couleur: '' });
+  const o = Ariane.ongletsNotesJointes([
+    fam('Note conceptuelle', ['03 - Notes conceptuelles'], 'book'),
+    fam('Tâches', ['08 - Tâches']),
+    fam('Notes d\'événements', ['10 - Notes d\'événements']),
+    fam('Notes manuscrites', ['12 - Notes manuscrites']),
+  ], { dossierT: '08 - Tâches', dossierNE: '10 - Notes d\'événements', taches: true });
+  assert.deepEqual(o.map((x) => x.id), ['famille:Note conceptuelle', 'taches', 'famille:Notes manuscrites', 'autres']);
+  assert.equal(o[0].icone, 'book');
+  assert.equal(o[1].icone, 'square-check');
+  // Sans famille pour les tâches : l'onglet vient quand même ; sans le module, non.
+  assert.deepEqual(Ariane.ongletsNotesJointes([], { dossierT: '08', dossierNE: '10', taches: true }).map((x) => x.id), ['taches', 'autres']);
+  assert.deepEqual(Ariane.ongletsNotesJointes([], { dossierT: '08', dossierNE: '10', taches: false }).map((x) => x.id), ['autres']);
+  assert.ok(Ariane.correspondRecherche('Journée d’études GT incertitude', 'gt etudes'));
+  assert.ok(!Ariane.correspondRecherche('Journée', 'gt'));
+});
+
+test('Notes jointes : joindre et détacher une note ou une tâche ; l’échéance de la tâche ne bouge pas', async () => {
+  const g = Object.create(Ariane.prototype);
+  const fichier = (path, mtime) => ({ path, basename: path.split('/').pop().replace(/\.md$/, ''), extension: 'md', stat: { mtime }, parent: { path: path.slice(0, path.lastIndexOf('/')) } });
+  const ev = fichier('10 - Notes d\'événements/EV-20261120-0900.md', 1);
+  const nm = fichier('12 - Notes manuscrites/NM-202611201427.md', 50);
+  const nc = fichier('03 - Notes conceptuelles/NC-1.md', 40);
+  const libre = fichier('Brouillon.md', 45);
+  const tache = fichier('08 - Tâches/T001.md', 60);
+  const notes = [ev, nm, nc, libre, tache];
+  const fms = new Map([
+    ['EV-20261120-0900', { 'Événement ID': 'abc', Date: '2026-11-20' }],
+    ['NM-202611201427', { Type: 'note-manuscrite', Titre: 'GT incertitude' }],
+    ['NC-1', { aliases: ['Risque'] }],
+  ]);
+  g.settings = { famillesNotes: [
+    { nom: 'Note conceptuelle', dossiers: ['03 - Notes conceptuelles'] },
+    { nom: 'Notes manuscrites', dossiers: ['12 - Notes manuscrites'] },
+  ] };
+  g.ecrituresRecentes = new Map();
+  Object.defineProperty(g, 'dossierT', { value: '08 - Tâches' });
+  Object.defineProperty(g, 'dossierNE', { value: '10 - Notes d\'événements' });
+  g.refDeChemin = (c) => (c.startsWith('08 - Tâches/') ? c.split('/').pop().replace('.md', '') : null);
+  g.module = () => true;
+  const t1 = { ref: 'T001', intitule: 'Préparer la journée', statut: 'à faire', fichier: tache, evenements: [], echeance: '2026-12-01' };
+  g.tachesPourGantt = () => [t1];
+  const maj = [];
+  g.majTache = async (ref, champs) => { maj.push(champs); Object.assign(t1, champs); };
+  g.marquerOrigineTache = () => {};
+  g.app = {
+    vault: { getMarkdownFiles: () => notes },
+    metadataCache: {
+      getFileCache: (f) => ({ frontmatter: fms.get(f.basename) }),
+      getFirstLinkpathDest: (n) => notes.find((f) => f.basename === String(n).replace(/\.md$/, '').split('/').pop()) || null,
+    },
+    fileManager: { processFrontMatter: async (f, fn) => { const x = fms.get(f.basename) || {}; fn(x); fms.set(f.basename, x); } },
+  };
+  g._lienVers = (f) => '[[' + f.basename + ']]';
+  g.tachesDeNoteEvenement = (note) => [t1].filter((t) => g._visePath(t.evenements, t.fichier.path, note.path))
+    .map((t) => ({ tache: t, lien: t.evenements[0] }));
+  const onglets = g.ongletsNotesJointes();
+  const parId = (id) => onglets.find((o) => o.id === id);
+  assert.deepEqual(onglets.map((o) => o.id), ['famille:Note conceptuelle', 'famille:Notes manuscrites', 'taches', 'autres']);
+  // Rien de joint ; les notes de chaque onglet, sans l'événement ni les tâches.
+  assert.deepEqual(g.notesJointesDe(ev), []);
+  const manus = g.candidatsNotesJointes(ev, parId('famille:Notes manuscrites'), []);
+  assert.deepEqual(manus.map((x) => x.titre), ['GT incertitude']);
+  assert.deepEqual(g.candidatsNotesJointes(ev, parId('autres'), []).map((x) => x.f.basename), ['Brouillon']);
+  // Joindre une note : « Événement » ; une tâche : son lien, échéance intacte.
+  await g.joindreNoteEvenement(ev, manus[0]);
+  assert.deepEqual(fms.get('NM-202611201427')['Événement'], ['[[EV-20261120-0900]]']);
+  const taches = g.candidatsNotesJointes(ev, parId('taches'), []);
+  await g.joindreNoteEvenement(ev, taches[0]);
+  assert.deepEqual(maj, [{ evenements: ['[[EV-20261120-0900]]'] }]);
+  assert.equal(t1.echeance, '2026-12-01');
+  const jointes = g.notesJointesDe(ev);
+  assert.deepEqual(jointes.map((j) => j.type + ':' + j.f.basename), ['note:NM-202611201427', 'tache:T001']);
+  assert.equal(jointes[0].sous, 'Notes manuscrites');
+  // Ce qui est joint ne se propose plus.
+  assert.deepEqual(g.candidatsNotesJointes(ev, parId('famille:Notes manuscrites'), jointes), []);
+  // Détacher la note : la propriété vidée disparaît.
+  await g.detacherNoteEvenement(ev, jointes[0]);
+  assert.ok(!('Événement' in fms.get('NM-202611201427')));
+});
+
+// Un élément d'affichage minimal, assez pour dessiner une fenêtre et y cliquer.
+function elementFactice(tag, o) {
+  const e = { tag, enfants: [], classes: new Set(String((o && o.cls) || '').split(' ').filter(Boolean)), texte: (o && o.text) || '',
+    attrs: Object.assign({}, (o && o.attr) || {}), style: {}, ecoutes: {}, value: '' };
+  const creer = (t) => (x) => { const c = elementFactice(t, typeof x === 'string' ? { cls: x } : x); e.enfants.push(c); return c; };
+  Object.assign(e, {
+    createDiv: creer('div'), createSpan: creer('span'), createEl: (t, x) => creer(t)(x),
+    empty() { e.enfants = []; }, addClass(c) { e.classes.add(c); }, setText(t) { e.texte = t; },
+    addEventListener(n, f) { e.ecoutes[n] = f; }, focus() {},
+    tout() { return [e].concat(...e.enfants.map((c) => c.tout())); },
+    texteTotal() { return [e.texte].concat(e.enfants.map((c) => c.texteTotal())).filter(Boolean).join(' | '); },
+  });
+  return e;
+}
+
+test('Notes jointes : la fenêtre s’ouvre, joint d’un clic, change d’onglet', async () => {
+  const obs = require('obsidian');
+  const proto = obs.Modal.prototype;
+  const avant = { open: proto.open, setTitle: proto.setTitle, close: proto.close };
+  proto.open = function () { this.app = this.app || global.__appModale; this.contentEl = elementFactice('div'); this.modalEl = elementFactice('div'); this.onOpen(); global.__modale = this; };
+  proto.setTitle = function (t) { this.titre = t; };
+  proto.close = function () {};
+  const ancienSetTimeout = global.setTimeout;
+  try {
+    const g = Object.create(Ariane.prototype);
+    const fichier = (path, mtime) => ({ path, basename: path.split('/').pop().replace(/\.md$/, ''), extension: 'md', stat: { mtime }, parent: { path: path.slice(0, path.lastIndexOf('/')) } });
+    const ev = fichier('10/EV-20261120-0900.md', 1);
+    const nm = fichier('12 - Notes manuscrites/NM-1.md', 50);
+    const nc = fichier('03 - Notes conceptuelles/NC-1.md', 40);
+    const notes = [ev, nm, nc];
+    const fms = new Map([['EV-20261120-0900', { 'Événement ID': 'abc', Titre: 'Journée du GT', 'Début': '2026-11-20T09:00', Fin: '2026-11-20T18:00' }],
+      ['NM-1', { Titre: 'GT incertitude' }], ['NC-1', { aliases: ['Risque'] }]]);
+    g.settings = { famillesNotes: [{ nom: 'Notes manuscrites', dossiers: ['12 - Notes manuscrites'], icone: 'pen' },
+      { nom: 'Note conceptuelle', dossiers: ['03 - Notes conceptuelles'] }] };
+    g.ecrituresRecentes = new Map();
+    Object.defineProperty(g, 'dossierT', { value: '08' });
+    Object.defineProperty(g, 'dossierNE', { value: '10' });
+    g.refDeChemin = () => null;
+    g.module = () => false;
+    g.tachesPourGantt = () => [];
+    g.tachesDeNoteEvenement = () => [];
+    g._lienVers = (f) => '[[' + f.basename + ']]';
+    g.app = {
+      vault: { getMarkdownFiles: () => notes },
+      metadataCache: { getFileCache: (f) => ({ frontmatter: fms.get(f.basename) }),
+        getFirstLinkpathDest: (n) => notes.find((f) => f.basename === String(n)) || null },
+      fileManager: { processFrontMatter: async (f, fn) => fn(fms.get(f.basename)) },
+    };
+    global.__appModale = g.app;
+    g.ouvrirNotesJointes(ev);
+    const m = global.__modale;
+    assert.equal(m.titre, 'Notes jointes');
+    const texte = m.contentEl.texteTotal();
+    assert.match(texte, /Journée du GT \| vendredi 20 novembre 2026, 9 h 00 à 18 h 00/);
+    assert.match(texte, /Aucune note jointe pour l’instant\./);
+    assert.match(texte, /Notes manuscrites \| .*Note conceptuelle \| .*Autres notes/);
+    // L'onglet des notes manuscrites (le premier) : un clic joint la note.
+    const ligne = m.contentEl.tout().find((x) => x.classes.has('est-candidate'));
+    assert.match(ligne.texteTotal(), /GT incertitude/);
+    await ligne.ecoutes.click();
+    assert.deepEqual(fms.get('NM-1')['Événement'], ['[[EV-20261120-0900]]']);
+    assert.match(m.contentEl.texteTotal(), /Jointes \(1\) \| GT incertitude \| Notes manuscrites/);
+    // Changer d'onglet : les notes conceptuelles.
+    const onglet = m.contentEl.tout().find((x) => x.classes.has('zfa-nj-onglet') && x.texteTotal().includes('Note conceptuelle'));
+    onglet.ecoutes.click();
+    assert.ok(m.contentEl.tout().some((x) => x.classes.has('est-candidate') && x.texteTotal().includes('Risque')));
+  } finally {
+    Object.assign(proto, avant);
+    global.setTimeout = ancienSetTimeout;
+    delete global.__modale;
+    delete global.__appModale;
+  }
+});

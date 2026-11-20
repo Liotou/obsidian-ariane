@@ -252,7 +252,7 @@ test('disposition par défaut : des entrées bien formées, et nos commandes exi
   const dossier = require('path').join(__dirname, '..', 'src');
   for (const f of require('fs').readdirSync(dossier).filter((x) => /^11[t-y]-.*\.js$/.test(x))) {
     const t = require('fs').readFileSync(require('path').join(dossier, f), 'utf8');
-    for (const m of t.matchAll(/\bid: '([a-z0-9-]+)', module: (?:'[a-z]+'|\[)/g)) arianeHorsBarre.add('obsidian-ariane:' + m[1]);
+    for (const m of t.matchAll(/\bid: '([a-z0-9-]+)', module: '[a-z]+'/g)) arianeHorsBarre.add('obsidian-ariane:' + m[1]);
   }
   assert.ok(arianeHorsBarre.has('obsidian-ariane:citations-basculer'), 'relecture de la source ratée');
   let boutons = 0;

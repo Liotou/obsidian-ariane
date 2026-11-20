@@ -444,35 +444,3 @@ test('note : les anciens encadrés par page se réunissent en un seul', () => {
   assert.equal(Ariane.transcriptionDePage(n, 2), 'Trois.\n\nQuatre.');
   assert.equal(Ariane.corpsAvecTranscription(n, 1, '  '), n);
 });
-
-test('rattachement : les événements du plus proche au plus lointain, liens sans doublon', () => {
-  const evs = [
-    { id: 'a', titre: 'Séminaire', debut: '2026-11-18T10:00', fin: '2026-11-18T12:00', calendrier: 'Travail' },
-    { id: 'b', titre: 'Journée d’études du GT AIMS', debut: '2026-11-20T09:00', fin: '2026-11-20T18:00' },
-    { id: 'c', titre: 'Congés', debut: '2026-11-21', allDay: true },
-    { id: 'd', titre: 'sans date' },
-  ];
-  const l = Ariane.evenementsPourNoteManuscrite(evs, '2026-11-20T14:23');
-  assert.deepEqual(l.map((x) => x.e.id), ['b', 'c', 'a']);
-  assert.match(l[0].nom, /^Journée d’études du GT AIMS {2}\(vendredi 20 novembre 2026, 9 h 00 à 18 h 00\)$/);
-  assert.match(l[1].nom, /journée entière/);
-  assert.match(l[2].nom, /, Travail\)$/);
-  assert.deepEqual(Ariane.liensAvecNote(undefined, 'EV-1'), ['[[EV-1]]']);
-  assert.deepEqual(Ariane.liensAvecNote(['[[EV-1|Réunion]]'], 'EV-1'), ['[[EV-1|Réunion]]']);
-  assert.deepEqual(Ariane.liensAvecNote('[[EV-1]]', 'EV-2'), ['[[EV-1]]', '[[EV-2]]']);
-});
-
-test('rattachement : chaque note renvoie à l’autre', async () => {
-  const g = Object.create(Ariane.prototype);
-  const fms = new Map([['NM-1', { Type: 'note-manuscrite' }], ['EV-20261120-0900', { Titre: 'Journée' }]]);
-  const ev = { path: '10/EV-20261120-0900.md', basename: 'EV-20261120-0900' };
-  const nm = { path: '12/NM-1.md', basename: 'NM-1' };
-  g.ecrituresRecentes = new Map();
-  g.noteEvenementAJour = async () => ev;
-  g.app = { fileManager: { processFrontMatter: async (f, fn) => fn(fms.get(f.basename)) } };
-  const e = { id: 'b', titre: 'Journée', debut: '2026-11-20T09:00' };
-  assert.equal(await g.lierNoteManuscriteEvenement(nm, e), ev);
-  await g.lierNoteManuscriteEvenement(nm, e);
-  assert.deepEqual(fms.get('NM-1')['Événements'], ['[[EV-20261120-0900]]']);
-  assert.deepEqual(fms.get('EV-20261120-0900')['Notes manuscrites'], ['[[NM-1]]']);
-});

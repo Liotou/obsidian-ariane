@@ -366,6 +366,12 @@ class MoteurCalendrier extends MoteurVue {
       bt.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); faire(); });
     };
     action('file-text', note ? tr('Ouvrir la note') : tr('Créer la note'), () => this._noteEvenement(e).catch(() => {}));
+    if (e.id && this.greffon.ouvrirNotesJointes) {
+      action('link', tr('Notes jointes'), async () => {
+        const n = await this.greffon.noteEvenementAJour(e);
+        if (n) this.greffon.ouvrirNotesJointes(n);
+      });
+    }
     if (e.id) action('external-link', this._libelleOuvrir(e), () => this._ouvrirEvenement(e.id));
     if (pieces.some((p) => p.local && Ariane.piecePermise(p.nom) && !this.greffon.fichierDePiece(p))) {
       action('download', tr('Importer les pièces jointes'), () => this.greffon.importerPiecesEvenement(e).catch(() => {}));
@@ -536,33 +542,17 @@ class MoteurCalendrier extends MoteurVue {
         this.ouvrir(ref);
       }));
     }
+    // Notes et tâches jointes : une seule fenêtre, pour joindre, ouvrir, détacher.
+    if (e.id && this.greffon.ouvrirNotesJointes) {
+      m.addItem((i) => i.setTitle(tr('Notes jointes…')).setIcon('link')
+        .onClick(async () => {
+          const note = await this.greffon.noteEvenementAJour(e);
+          if (note) this.greffon.ouvrirNotesJointes(note);
+        }));
+    }
     if ((e.pieces || []).some((p) => p.local && Ariane.piecePermise(p.nom) && !this.greffon.fichierDePiece(p))) {
       m.addItem((i) => i.setTitle(tr('Importer les pièces jointes dans le coffre')).setIcon('download')
         .onClick(() => { this.greffon.importerPiecesEvenement(e).catch(() => {}); }));
-    }
-    // Tâches associées : ouvrir, dissocier ; et en associer une autre.
-    const associees = this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [];
-    for (const a of associees) {
-      m.addItem((i) => i.setTitle(tr('Ouvrir la tâche ') + a.tache.ref + ' : ' + a.tache.intitule)
-        .setIcon('square-check').onClick(() => this.ouvrir(a.tache.ref)));
-      m.addItem((i) => i.setTitle(tr('Dissocier de ') + a.tache.ref).setIcon('unlink')
-        .onClick(async () => {
-          await this.greffon.dissocierEvenementTache(a.tache.ref, a.lien);
-          this.dessiner();
-        }));
-    }
-    if (e.id && this.greffon.associerEvenementTache) {
-      m.addItem((i) => i.setTitle(tr('Associer à une tâche…')).setIcon('link')
-        .onClick(() => {
-          const prises = new Set(associees.map((a) => a.tache.ref));
-          const items = this.greffon.tachesPourGantt()
-            .filter((t) => t.statut !== 'terminée' && t.statut !== 'abandonnée' && !prises.has(t.ref))
-            .map((t) => ({ nom: t.intitule + '  (' + t.ref + ')', cle: t.ref }));
-          if (!items.length) { new obsidian.Notice(tr('Aucune tâche en cours.')); return; }
-          new ChoixListeModal(this.app, tr('Tâche à associer à cet événement…'), items, (it) => {
-            if (it) this.greffon.associerEvenementAvecRole(it.cle, e, () => this.dessiner());
-          }).open();
-        }));
     }
     m.addItem((i) => i
       .setTitle(noteExistante ? tr('Ouvrir la note de cet événement')

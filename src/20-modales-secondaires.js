@@ -950,5 +950,138 @@ class ModaleLiensConcepts extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// Les notes jointes à un événement (Ariane · notes jointes, 11k) : ce qui y
+// est joint, à ouvrir ou détacher ; puis un onglet par type de note, une
+// recherche, et un clic pour joindre. L'onglet choisi reste d'une fois à
+// l'autre.
+class ModaleNotesEvenement extends obsidian.Modal {
+  constructor(greffon, noteEv) {
+    super(greffon.app);
+    this.g = greffon;
+    this.ev = noteEv;
+    this.requete = '';
+  }
+
+  // « vendredi 20 novembre 2026, 9 h 00 à 18 h 00 », d'après la note.
+  static quandLisible(fm) {
+    const x = fm || {};
+    const debut = String(x['Début'] || x.Date || '');
+    const d = new Date(/T\d/.test(debut) ? debut : debut + 'T12:00');
+    if (!debut || isNaN(d.getTime())) return '';
+    const jour = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    if (!/T\d/.test(debut)) return jour;
+    const h = (z) => z.getHours() + ' h ' + String(z.getMinutes()).padStart(2, '0');
+    const f = new Date(String(x.Fin || ''));
+    return jour + ', ' + h(d) + (/T\d/.test(String(x.Fin || '')) && !isNaN(f.getTime()) ? tr(' à ') + h(f) : '');
+  }
+
+  onOpen() {
+    const fm = (this.app.metadataCache.getFileCache(this.ev) || {}).frontmatter || {};
+    this.modalEl.addClass('zfa-nj');
+    this.setTitle(tr('Notes jointes'));
+    const c = this.contentEl;
+    const tete = c.createDiv({ cls: 'zfa-nj-evt' });
+    tete.createDiv({ cls: 'zfa-nj-evt-titre', text: String(fm.Titre || [].concat(fm.aliases || [])[0] || this.ev.basename) });
+    const quand = ModaleNotesEvenement.quandLisible(fm);
+    if (quand) tete.createDiv({ cls: 'zfa-nj-evt-quand', text: quand });
+    this.zJointes = c.createDiv({ cls: 'zfa-nj-jointes' });
+    this.onglets = this.g.ongletsNotesJointes();
+    if (!this.onglets.some((o) => o.id === ModaleNotesEvenement.onglet)) ModaleNotesEvenement.onglet = this.onglets[0].id;
+    this.zOnglets = c.createDiv({ cls: 'zfa-nj-onglets' });
+    this.recherche = c.createEl('input', { type: 'search', cls: 'zfa-nj-recherche', attr: { placeholder: tr('Rechercher une note…') } });
+    this.recherche.addEventListener('input', () => { this.requete = this.recherche.value; this._liste(); });
+    this.zListe = c.createDiv({ cls: 'zfa-nj-liste' });
+    this._tout();
+    setTimeout(() => this.recherche.focus(), 0);
+  }
+
+  _tout() {
+    this.jointes = this.g.notesJointesDe(this.ev);
+    this._jointes();
+    this._onglets();
+    this._liste();
+  }
+
+  _icone(hote, icone, couleur) {
+    const ic = hote.createSpan({ cls: 'zfa-nj-ic' });
+    obsidian.setIcon(ic, icone || 'file-text');
+    if (couleur) ic.style.color = couleur;
+    return ic;
+  }
+
+  _ouvrir(f) {
+    if (!f) return;
+    this.close();
+    this.app.workspace.getLeaf('tab').openFile(f);
+  }
+
+  _jointes() {
+    const z = this.zJointes;
+    z.empty();
+    if (!this.jointes.length) {
+      z.createDiv({ cls: 'zfa-nj-vide', text: tr('Aucune note jointe pour l’instant.') });
+      return;
+    }
+    z.createDiv({ cls: 'zfa-nj-section', text: tr('Jointes') + ' (' + this.jointes.length + ')' });
+    for (const j of this.jointes) {
+      const l = z.createDiv({ cls: 'zfa-nj-ligne est-jointe' });
+      this._icone(l, j.icone, j.couleur);
+      const t = l.createDiv({ cls: 'zfa-nj-txt' });
+      t.createDiv({ cls: 'zfa-nj-titre', text: j.titre });
+      if (j.sous) t.createDiv({ cls: 'zfa-nj-sous', text: j.sous });
+      t.addEventListener('click', () => this._ouvrir(j.f));
+      const x = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Détacher de l’événement') } });
+      obsidian.setIcon(x, 'x');
+      x.addEventListener('click', async () => {
+        try { await this.g.detacherNoteEvenement(this.ev, j); } catch (e) { new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e)); }
+        this._tout();
+      });
+    }
+  }
+
+  _onglets() {
+    const z = this.zOnglets;
+    z.empty();
+    for (const o of this.onglets) {
+      const b = z.createEl('button', { cls: 'zfa-nj-onglet' + (o.id === ModaleNotesEvenement.onglet ? ' est-actif' : '') });
+      this._icone(b, o.icone, o.couleur);
+      b.createSpan({ text: o.nom });
+      b.addEventListener('click', () => {
+        ModaleNotesEvenement.onglet = o.id;
+        this._onglets();
+        this._liste();
+        this.recherche.focus();
+      });
+    }
+  }
+
+  _liste() {
+    const z = this.zListe;
+    z.empty();
+    const onglet = this.onglets.find((o) => o.id === ModaleNotesEvenement.onglet) || this.onglets[0];
+    const tous = this.g.candidatsNotesJointes(this.ev, onglet, this.jointes)
+      .filter((it) => Ariane.correspondRecherche(it.titre + ' ' + it.sous + ' ' + it.f.basename, this.requete));
+    if (!tous.length) {
+      z.createDiv({ cls: 'zfa-nj-vide', text: this.requete ? tr('Aucune note ne correspond.') : tr('Aucune note à joindre dans cet onglet.') });
+      return;
+    }
+    const MAX = 60;
+    for (const it of tous.slice(0, MAX)) {
+      const l = z.createDiv({ cls: 'zfa-nj-ligne est-candidate', attr: { 'aria-label': tr('Joindre à l’événement') } });
+      this._icone(l, 'plus', '');
+      const t = l.createDiv({ cls: 'zfa-nj-txt' });
+      t.createDiv({ cls: 'zfa-nj-titre', text: it.titre });
+      if (it.sous) t.createDiv({ cls: 'zfa-nj-sous', text: it.sous });
+      l.addEventListener('click', async () => {
+        try { await this.g.joindreNoteEvenement(this.ev, it); } catch (e) { new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e)); }
+        this._tout();
+      });
+    }
+    if (tous.length > MAX) z.createDiv({ cls: 'zfa-nj-vide', text: (tous.length - MAX) + tr(' autres : précisez la recherche.') });
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 //#endregion 20 · Modales secondaires
 

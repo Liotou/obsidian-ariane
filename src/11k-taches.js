@@ -3116,12 +3116,7 @@ const avecTaches = (Base) => class extends Base {
     if (!t || !Ariane.quandEvenement(e)) return false;
     const note = await this.noteEvenementAJour(e);
     if (!note) return false;
-    const deja = (t.evenements || []).some((l) => {
-      const c = this._cibleLien(l, t.fichier.path);
-      return c && c.path === note.path;
-    });
-    if (deja) { new obsidian.Notice(tr('Cet événement est déjà associé à ') + ref + '.'); return false; }
-    await this.majTache(ref, { evenements: Ariane.ressourcesAvec(t.evenements, this._lienVers(note, t.fichier.path)) });
+    if (!(await this.lierTacheNoteEvenement(ref, note))) { new obsidian.Notice(tr('Cet événement est déjà associé à ') + ref + '.'); return false; }
     if (suite) {
       new obsidian.Notice(tr('Événement associé à ') + ref + tr(' : échéance inchangée.'));
       return true;
@@ -3131,6 +3126,16 @@ const avecTaches = (Base) => class extends Base {
       { weekday: 'long', day: 'numeric', month: 'long' });
     new obsidian.Notice(tr('Événement associé à ') + ref + tr(' : échéance le ') + jour
       + (ech.heure ? tr(' à ') + ech.heure : '') + '.');
+    return true;
+  }
+
+  // Le lien d'une tâche vers une note d'événement ; l'échéance ne bouge pas.
+  // Rend false s'il y était déjà.
+  async lierTacheNoteEvenement(ref, note) {
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    if (!t || !note) return false;
+    if (this._visePath(t.evenements, t.fichier.path, note.path)) return false;
+    await this.majTache(ref, { evenements: Ariane.ressourcesAvec(t.evenements, this._lienVers(note, t.fichier.path)) });
     return true;
   }
 
@@ -3298,11 +3303,137 @@ const avecTaches = (Base) => class extends Base {
     if (!f || f.extension !== 'md') { new obsidian.Notice(tr('Ouvrez la note à relier.')); return; }
     await this._choisirEvenement(tr('Événement de cette note…'), () => true, async (e) => {
       const note = await this.noteEvenementAJour(e);
-      if (!note || note.path === f.path) return;
-      const lien = this._lienVers(note, f.path);
-      await this.app.fileManager.processFrontMatter(f, (x) => { x['Événement'] = Ariane.ressourcesAvec(x['Événement'], lien); });
-      new obsidian.Notice(tr('Note reliée à ') + note.basename + '.');
+      if (note) await this.relierNoteEvenement(f, note);
     });
+  }
+
+  // Le lien d'une note vers une note d'événement : la propriété
+  // « Événement » de la note (la note d'événement le voit en rétrolien).
+  async relierNoteEvenement(f, noteEv, o) {
+    if (!f || !noteEv || noteEv.path === f.path) return false;
+    const lien = this._lienVers(noteEv, f.path);
+    this.marquerEcriture(f.path);
+    await this.app.fileManager.processFrontMatter(f, (x) => { x['Événement'] = Ariane.ressourcesAvec(x['Événement'], lien); });
+    if (!(o && o.muet)) new obsidian.Notice(tr('Note reliée à ') + noteEv.basename + '.');
+    return true;
+  }
+
+  // ── Notes jointes à un événement ──
+  //  Une seule fenêtre, depuis l'événement : ce qui y est joint, puis, par
+  //  type de note (les familles de l'utilisateur, les tâches, le reste), de
+  //  quoi en joindre d'autres. Une note jointe porte « Événement » ; une
+  //  tâche, son lien d'événement, sans que son échéance bouge.
+
+  ouvrirNotesJointes(noteEv) {
+    if (noteEv) new ModaleNotesEvenement(this, noteEv).open();
+  }
+
+  ouvrirNotesJointesActive() {
+    const f = this.app.workspace.getActiveFile();
+    const fm = f && (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+    if (!f || !Ariane.idEvenementDe(fm)) { new obsidian.Notice(tr('Ouvrez d’abord la note d’un événement.')); return; }
+    this.ouvrirNotesJointes(f);
+  }
+
+  // Les onglets : une famille par type de note, sauf celle des notes
+  // d'événement ; celle du dossier des tâches devient l'onglet des tâches.
+  static ongletsNotesJointes(familles, o) {
+    const dans = (fam, d) => !!d && fam.dossiers.some((x) => x === d || d.startsWith(x + '/') || x.startsWith(d + '/'));
+    const out = [];
+    let taches = false;
+    for (const fam of familles || []) {
+      if (dans(fam, o.dossierNE)) continue;
+      if (dans(fam, o.dossierT)) {
+        if (o.taches && !taches) out.push({ id: 'taches', type: 'taches', nom: fam.nom || tr('Tâches'), icone: fam.icone || 'square-check', couleur: fam.couleur });
+        taches = true;
+        continue;
+      }
+      out.push({ id: 'famille:' + fam.nom, type: 'famille', nom: fam.nom, icone: fam.icone || 'file-text', couleur: fam.couleur, famille: fam });
+    }
+    if (o.taches && !taches) out.push({ id: 'taches', type: 'taches', nom: tr('Tâches'), icone: 'square-check', couleur: '' });
+    out.push({ id: 'autres', type: 'autres', nom: tr('Autres notes'), icone: 'files', couleur: '' });
+    return out;
+  }
+
+  ongletsNotesJointes() {
+    return Ariane.ongletsNotesJointes(this.familles(), {
+      dossierT: this.dossierT, dossierNE: this.dossierNE, taches: !!this.module('taches') });
+  }
+
+  // Tous les mots de la recherche, sans accents ni casse.
+  static correspondRecherche(texte, requete) {
+    const n = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const t = n(texte);
+    return n(requete).split(/\s+/).filter(Boolean).every((m) => t.includes(m));
+  }
+
+  _titreNote(f, fm) {
+    const x = fm || {};
+    return String(x.Titre || [].concat(x.aliases || [])[0] || '').trim() || f.basename;
+  }
+
+  _visePath(liens, source, chemin) {
+    return [].concat(liens || []).some((l) => { const c = this._cibleLien(l, source); return c && c.path === chemin; });
+  }
+
+  // Ce qui est joint à la note d'événement : les notes dont « Événement » y
+  // renvoie, et les tâches qui lui sont associées.
+  notesJointesDe(noteEv) {
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (f.path === noteEv.path || this.refDeChemin(f.path)) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      if (!fm || !this._visePath(fm['Événement'], f.path, noteEv.path)) continue;
+      const fam = this.familleDuChemin(f.path, f.basename);
+      out.push({ type: 'note', f, titre: this._titreNote(f, fm), sous: fam ? fam.nom : '', icone: (fam && fam.icone) || 'file-text', couleur: fam ? fam.couleur : '' });
+    }
+    for (const a of this.tachesDeNoteEvenement(noteEv)) {
+      out.push({ type: 'tache', f: a.tache.fichier, ref: a.tache.ref, lien: a.lien, titre: a.tache.intitule, sous: a.tache.ref, icone: 'square-check', couleur: '' });
+    }
+    return out;
+  }
+
+  // Ce qu'on peut joindre, onglet par onglet, les plus récemment modifiées
+  // d'abord ; jamais ce qui est déjà joint.
+  candidatsNotesJointes(noteEv, onglet, jointes) {
+    const prises = new Set((jointes || []).map((j) => j.f && j.f.path));
+    const recent = (a, b) => ((b.f.stat && b.f.stat.mtime) || 0) - ((a.f.stat && a.f.stat.mtime) || 0);
+    if (onglet.type === 'taches') {
+      return this.tachesPourGantt()
+        .filter((t) => t.fichier && !prises.has(t.fichier.path) && t.statut !== 'terminée' && t.statut !== 'abandonnée')
+        .map((t) => ({ type: 'tache', f: t.fichier, ref: t.ref, titre: t.intitule, sous: t.ref }))
+        .sort(recent);
+    }
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (f.path === noteEv.path || prises.has(f.path) || this.refDeChemin(f.path)) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      if (Ariane.idEvenementDe(fm)) continue;
+      const fam = this.familleDuChemin(f.path, f.basename);
+      if (onglet.type === 'famille' ? !fam || fam.nom !== onglet.famille.nom : !!fam) continue;
+      const titre = this._titreNote(f, fm);
+      const dossier = f.parent && f.parent.path && f.parent.path !== '/' ? f.parent.path : '';
+      out.push({ type: 'note', f, titre, sous: [titre !== f.basename ? f.basename : '', onglet.type === 'autres' ? dossier : ''].filter(Boolean).join(', ') });
+    }
+    return out.sort(recent);
+  }
+
+  async joindreNoteEvenement(noteEv, it) {
+    if (it.type === 'tache') return this.lierTacheNoteEvenement(it.ref, noteEv);
+    return this.relierNoteEvenement(it.f, noteEv, { muet: true });
+  }
+
+  async detacherNoteEvenement(noteEv, j) {
+    if (j.type === 'tache') return this.dissocierEvenementTache(j.ref, j.lien);
+    this.marquerEcriture(j.f.path);
+    await this.app.fileManager.processFrontMatter(j.f, (x) => {
+      const reste = [].concat(x['Événement'] || []).map(String).filter((l) => {
+        const c = this._cibleLien(l, j.f.path);
+        return !(c && c.path === noteEv.path);
+      });
+      if (reste.length) x['Événement'] = reste; else delete x['Événement'];
+    });
+    return true;
   }
 
   async retirerBlocage(deRef, versRef) {

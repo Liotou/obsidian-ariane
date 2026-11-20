@@ -23931,12 +23931,7 @@ const avecTaches = (Base) => class extends Base {
     if (!t || !Ariane.quandEvenement(e)) return false;
     const note = await this.noteEvenementAJour(e);
     if (!note) return false;
-    const deja = (t.evenements || []).some((l) => {
-      const c = this._cibleLien(l, t.fichier.path);
-      return c && c.path === note.path;
-    });
-    if (deja) { new obsidian.Notice(tr('Cet événement est déjà associé à ') + ref + '.'); return false; }
-    await this.majTache(ref, { evenements: Ariane.ressourcesAvec(t.evenements, this._lienVers(note, t.fichier.path)) });
+    if (!(await this.lierTacheNoteEvenement(ref, note))) { new obsidian.Notice(tr('Cet événement est déjà associé à ') + ref + '.'); return false; }
     if (suite) {
       new obsidian.Notice(tr('Événement associé à ') + ref + tr(' : échéance inchangée.'));
       return true;
@@ -23946,6 +23941,16 @@ const avecTaches = (Base) => class extends Base {
       { weekday: 'long', day: 'numeric', month: 'long' });
     new obsidian.Notice(tr('Événement associé à ') + ref + tr(' : échéance le ') + jour
       + (ech.heure ? tr(' à ') + ech.heure : '') + '.');
+    return true;
+  }
+
+  // Le lien d'une tâche vers une note d'événement ; l'échéance ne bouge pas.
+  // Rend false s'il y était déjà.
+  async lierTacheNoteEvenement(ref, note) {
+    const t = this.tachesPourGantt().find((x) => x.ref === ref);
+    if (!t || !note) return false;
+    if (this._visePath(t.evenements, t.fichier.path, note.path)) return false;
+    await this.majTache(ref, { evenements: Ariane.ressourcesAvec(t.evenements, this._lienVers(note, t.fichier.path)) });
     return true;
   }
 
@@ -24113,11 +24118,137 @@ const avecTaches = (Base) => class extends Base {
     if (!f || f.extension !== 'md') { new obsidian.Notice(tr('Ouvrez la note à relier.')); return; }
     await this._choisirEvenement(tr('Événement de cette note…'), () => true, async (e) => {
       const note = await this.noteEvenementAJour(e);
-      if (!note || note.path === f.path) return;
-      const lien = this._lienVers(note, f.path);
-      await this.app.fileManager.processFrontMatter(f, (x) => { x['Événement'] = Ariane.ressourcesAvec(x['Événement'], lien); });
-      new obsidian.Notice(tr('Note reliée à ') + note.basename + '.');
+      if (note) await this.relierNoteEvenement(f, note);
     });
+  }
+
+  // Le lien d'une note vers une note d'événement : la propriété
+  // « Événement » de la note (la note d'événement le voit en rétrolien).
+  async relierNoteEvenement(f, noteEv, o) {
+    if (!f || !noteEv || noteEv.path === f.path) return false;
+    const lien = this._lienVers(noteEv, f.path);
+    this.marquerEcriture(f.path);
+    await this.app.fileManager.processFrontMatter(f, (x) => { x['Événement'] = Ariane.ressourcesAvec(x['Événement'], lien); });
+    if (!(o && o.muet)) new obsidian.Notice(tr('Note reliée à ') + noteEv.basename + '.');
+    return true;
+  }
+
+  // ── Notes jointes à un événement ──
+  //  Une seule fenêtre, depuis l'événement : ce qui y est joint, puis, par
+  //  type de note (les familles de l'utilisateur, les tâches, le reste), de
+  //  quoi en joindre d'autres. Une note jointe porte « Événement » ; une
+  //  tâche, son lien d'événement, sans que son échéance bouge.
+
+  ouvrirNotesJointes(noteEv) {
+    if (noteEv) new ModaleNotesEvenement(this, noteEv).open();
+  }
+
+  ouvrirNotesJointesActive() {
+    const f = this.app.workspace.getActiveFile();
+    const fm = f && (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+    if (!f || !Ariane.idEvenementDe(fm)) { new obsidian.Notice(tr('Ouvrez d’abord la note d’un événement.')); return; }
+    this.ouvrirNotesJointes(f);
+  }
+
+  // Les onglets : une famille par type de note, sauf celle des notes
+  // d'événement ; celle du dossier des tâches devient l'onglet des tâches.
+  static ongletsNotesJointes(familles, o) {
+    const dans = (fam, d) => !!d && fam.dossiers.some((x) => x === d || d.startsWith(x + '/') || x.startsWith(d + '/'));
+    const out = [];
+    let taches = false;
+    for (const fam of familles || []) {
+      if (dans(fam, o.dossierNE)) continue;
+      if (dans(fam, o.dossierT)) {
+        if (o.taches && !taches) out.push({ id: 'taches', type: 'taches', nom: fam.nom || tr('Tâches'), icone: fam.icone || 'square-check', couleur: fam.couleur });
+        taches = true;
+        continue;
+      }
+      out.push({ id: 'famille:' + fam.nom, type: 'famille', nom: fam.nom, icone: fam.icone || 'file-text', couleur: fam.couleur, famille: fam });
+    }
+    if (o.taches && !taches) out.push({ id: 'taches', type: 'taches', nom: tr('Tâches'), icone: 'square-check', couleur: '' });
+    out.push({ id: 'autres', type: 'autres', nom: tr('Autres notes'), icone: 'files', couleur: '' });
+    return out;
+  }
+
+  ongletsNotesJointes() {
+    return Ariane.ongletsNotesJointes(this.familles(), {
+      dossierT: this.dossierT, dossierNE: this.dossierNE, taches: !!this.module('taches') });
+  }
+
+  // Tous les mots de la recherche, sans accents ni casse.
+  static correspondRecherche(texte, requete) {
+    const n = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const t = n(texte);
+    return n(requete).split(/\s+/).filter(Boolean).every((m) => t.includes(m));
+  }
+
+  _titreNote(f, fm) {
+    const x = fm || {};
+    return String(x.Titre || [].concat(x.aliases || [])[0] || '').trim() || f.basename;
+  }
+
+  _visePath(liens, source, chemin) {
+    return [].concat(liens || []).some((l) => { const c = this._cibleLien(l, source); return c && c.path === chemin; });
+  }
+
+  // Ce qui est joint à la note d'événement : les notes dont « Événement » y
+  // renvoie, et les tâches qui lui sont associées.
+  notesJointesDe(noteEv) {
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (f.path === noteEv.path || this.refDeChemin(f.path)) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      if (!fm || !this._visePath(fm['Événement'], f.path, noteEv.path)) continue;
+      const fam = this.familleDuChemin(f.path, f.basename);
+      out.push({ type: 'note', f, titre: this._titreNote(f, fm), sous: fam ? fam.nom : '', icone: (fam && fam.icone) || 'file-text', couleur: fam ? fam.couleur : '' });
+    }
+    for (const a of this.tachesDeNoteEvenement(noteEv)) {
+      out.push({ type: 'tache', f: a.tache.fichier, ref: a.tache.ref, lien: a.lien, titre: a.tache.intitule, sous: a.tache.ref, icone: 'square-check', couleur: '' });
+    }
+    return out;
+  }
+
+  // Ce qu'on peut joindre, onglet par onglet, les plus récemment modifiées
+  // d'abord ; jamais ce qui est déjà joint.
+  candidatsNotesJointes(noteEv, onglet, jointes) {
+    const prises = new Set((jointes || []).map((j) => j.f && j.f.path));
+    const recent = (a, b) => ((b.f.stat && b.f.stat.mtime) || 0) - ((a.f.stat && a.f.stat.mtime) || 0);
+    if (onglet.type === 'taches') {
+      return this.tachesPourGantt()
+        .filter((t) => t.fichier && !prises.has(t.fichier.path) && t.statut !== 'terminée' && t.statut !== 'abandonnée')
+        .map((t) => ({ type: 'tache', f: t.fichier, ref: t.ref, titre: t.intitule, sous: t.ref }))
+        .sort(recent);
+    }
+    const out = [];
+    for (const f of this.app.vault.getMarkdownFiles()) {
+      if (f.path === noteEv.path || prises.has(f.path) || this.refDeChemin(f.path)) continue;
+      const fm = (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
+      if (Ariane.idEvenementDe(fm)) continue;
+      const fam = this.familleDuChemin(f.path, f.basename);
+      if (onglet.type === 'famille' ? !fam || fam.nom !== onglet.famille.nom : !!fam) continue;
+      const titre = this._titreNote(f, fm);
+      const dossier = f.parent && f.parent.path && f.parent.path !== '/' ? f.parent.path : '';
+      out.push({ type: 'note', f, titre, sous: [titre !== f.basename ? f.basename : '', onglet.type === 'autres' ? dossier : ''].filter(Boolean).join(', ') });
+    }
+    return out.sort(recent);
+  }
+
+  async joindreNoteEvenement(noteEv, it) {
+    if (it.type === 'tache') return this.lierTacheNoteEvenement(it.ref, noteEv);
+    return this.relierNoteEvenement(it.f, noteEv, { muet: true });
+  }
+
+  async detacherNoteEvenement(noteEv, j) {
+    if (j.type === 'tache') return this.dissocierEvenementTache(j.ref, j.lien);
+    this.marquerEcriture(j.f.path);
+    await this.app.fileManager.processFrontMatter(j.f, (x) => {
+      const reste = [].concat(x['Événement'] || []).map(String).filter((l) => {
+        const c = this._cibleLien(l, j.f.path);
+        return !(c && c.path === noteEv.path);
+      });
+      if (reste.length) x['Événement'] = reste; else delete x['Événement'];
+    });
+    return true;
   }
 
   async retirerBlocage(deRef, versRef) {
@@ -31687,35 +31818,6 @@ const avecNotesManuscrites = (Base) => class extends Base {
     return !t || /^(rien( de nouveau)?|aucun (ajout|texte nouveau)|néant)$/i.test(t);
   }
 
-  // ── rattachement à un événement (fonctions pures) ──
-
-  // Les événements de l'agenda, du plus proche au plus lointain de l'heure
-  // donnée (la dernière écriture du cahier) ; chacun avec son libellé.
-  static evenementsPourNoteManuscrite(evenements, quandISO) {
-    const ref = new Date(quandISO).getTime();
-    const p = (n) => String(n).padStart(2, '0');
-    const heure = (d) => d.getHours() + ' h ' + p(d.getMinutes());
-    return (evenements || []).filter((e) => e && e.debut && !isNaN(new Date(e.debut).getTime()))
-      .map((e) => {
-        const d = new Date(e.debut);
-        const fin = e.fin ? new Date(e.fin) : null;
-        const jour = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-        const quand = e.allDay ? tr('journée entière')
-          : heure(d) + (fin && !isNaN(fin.getTime()) ? tr(' à ') + heure(fin) : '');
-        const titre = String(e.titre || '').trim() || tr('(sans titre)');
-        return { e, nom: titre + '  (' + jour + ', ' + quand + (e.calendrier ? ', ' + e.calendrier : '') + ')',
-          ecart: isNaN(ref) ? 0 : Math.abs(d.getTime() - ref) };
-      })
-      .sort((a, b) => a.ecart - b.ecart);
-  }
-
-  // Une liste de liens augmentée d'un lien, sans doublon (même note visée).
-  static liensAvecNote(liste, nom) {
-    const l = [].concat(liste == null ? [] : liste).map(String).filter(Boolean);
-    const cible = (x) => x.replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim();
-    return l.some((x) => cible(x) === nom) ? l : l.concat('[[' + nom + ']]');
-  }
-
   // ── réglages et accès au WebDAV ──
 
   get dossierNM() {
@@ -32182,53 +32284,6 @@ const avecNotesManuscrites = (Base) => class extends Base {
     return images;
   }
 
-  // Rattache la note manuscrite ouverte à un événement de l'agenda, choisi
-  // dans une liste (les plus proches de la dernière écriture d'abord). La
-  // note d'événement est créée au besoin ; chacune renvoie à l'autre.
-  async rattacherNoteManuscriteEvenement() {
-    const f = this.app.workspace.getActiveFile();
-    const fm = f && (this.app.metadataCache.getFileCache(f) || {}).frontmatter;
-    if (!f || !fm || fm.Type !== 'note-manuscrite') {
-      new obsidian.Notice(tr('Ouvrez d’abord une note manuscrite (NM-…).'));
-      return null;
-    }
-    const quand = String(fm['Dernière écriture'] || Ariane.isoLocalManuscrit(new Date()));
-    const jour = quand.slice(0, 10);
-    let evs = [];
-    try { evs = (await this.evenementsFond(Ariane.decalerJour(jour, -30), Ariane.decalerJour(jour, 2))) || []; } catch (e) { evs = []; }
-    const items = Ariane.evenementsPourNoteManuscrite(evs, quand);
-    if (!items.length) {
-      new obsidian.Notice(tr('Aucun événement dans l’agenda autour du ') + jour + '.');
-      return null;
-    }
-    return new Promise((resolve) => {
-      new ChoixListeModal(this.app, tr('Événement (titre, jour)…'), items, async (it) => {
-        try { resolve(it ? await this.lierNoteManuscriteEvenement(f, it.e) : null); } catch (e) {
-          console.warn('[Ariane] rattachement à un événement :', e);
-          new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e));
-          resolve(null);
-        }
-      }).open();
-    });
-  }
-
-  // Les deux liens : « Événements » dans la note manuscrite, « Notes
-  // manuscrites » dans la note d'événement. Rend la note d'événement.
-  async lierNoteManuscriteEvenement(note, e) {
-    const ev = await this.noteEvenementAJour(e);
-    if (!ev) return null;
-    this.marquerEcriture(note.path);
-    await this.app.fileManager.processFrontMatter(note, (x) => {
-      x['Événements'] = Ariane.liensAvecNote(x['Événements'], ev.basename);
-    });
-    this.marquerEcriture(ev.path);
-    await this.app.fileManager.processFrontMatter(ev, (x) => {
-      x['Notes manuscrites'] = Ariane.liensAvecNote(x['Notes manuscrites'], note.basename);
-    });
-    new obsidian.Notice(tr('Note rattachée à « ') + (String(e.titre || '').trim() || ev.basename) + ' ».');
-    return ev;
-  }
-
   // ── branchement ──
   // Tout ce que le module enregistre ; appelé seulement s'il est actif.
   brancherNotesManuscrites() {
@@ -32242,12 +32297,6 @@ const avecNotesManuscrites = (Base) => class extends Base {
       id: 'manuscrites-transcrire-note', module: 'manuscrites', bureau: true, icon: 'scan-text',
       name: tr('Notes manuscrites : transcrire toute la note ouverte'),
       callback: () => { this.transcrireNoteManuscriteActive().catch((e) => console.warn('[Ariane] transcription :', e)); },
-    });
-    // L'agenda est celui des tâches : la commande demande les deux modules.
-    this.addCommand({
-      id: 'manuscrites-rattacher-evenement', module: ['manuscrites', 'taches'], bureau: true, icon: 'calendar-plus',
-      name: tr('Notes manuscrites : rattacher la note ouverte à un événement'),
-      callback: () => { this.rattacherNoteManuscriteEvenement().catch((e) => console.warn('[Ariane] rattachement :', e)); },
     });
     this.register(() => clearTimeout(this._relanceNM));
     this.app.workspace.onLayoutReady(() => {
@@ -32551,6 +32600,13 @@ class Ariane extends composer(obsidian.Plugin,
       name: tr('Événement : relier cette note à un événement…'),
       icon: 'calendar-check',
       callback: () => { this.lierNoteActiveAEvenement().catch(() => {}); },
+    });
+    this.addCommand({
+      id: 'notes-jointes-evenement',
+      module: 'taches',
+      name: tr('Événement : notes jointes…'),
+      icon: 'link',
+      callback: () => this.ouvrirNotesJointesActive(),
     });
     this.addCommand({
       id: 'importer-pieces-evenement',
@@ -47251,6 +47307,12 @@ class MoteurCalendrier extends MoteurVue {
       bt.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); faire(); });
     };
     action('file-text', note ? tr('Ouvrir la note') : tr('Créer la note'), () => this._noteEvenement(e).catch(() => {}));
+    if (e.id && this.greffon.ouvrirNotesJointes) {
+      action('link', tr('Notes jointes'), async () => {
+        const n = await this.greffon.noteEvenementAJour(e);
+        if (n) this.greffon.ouvrirNotesJointes(n);
+      });
+    }
     if (e.id) action('external-link', this._libelleOuvrir(e), () => this._ouvrirEvenement(e.id));
     if (pieces.some((p) => p.local && Ariane.piecePermise(p.nom) && !this.greffon.fichierDePiece(p))) {
       action('download', tr('Importer les pièces jointes'), () => this.greffon.importerPiecesEvenement(e).catch(() => {}));
@@ -47421,33 +47483,17 @@ class MoteurCalendrier extends MoteurVue {
         this.ouvrir(ref);
       }));
     }
+    // Notes et tâches jointes : une seule fenêtre, pour joindre, ouvrir, détacher.
+    if (e.id && this.greffon.ouvrirNotesJointes) {
+      m.addItem((i) => i.setTitle(tr('Notes jointes…')).setIcon('link')
+        .onClick(async () => {
+          const note = await this.greffon.noteEvenementAJour(e);
+          if (note) this.greffon.ouvrirNotesJointes(note);
+        }));
+    }
     if ((e.pieces || []).some((p) => p.local && Ariane.piecePermise(p.nom) && !this.greffon.fichierDePiece(p))) {
       m.addItem((i) => i.setTitle(tr('Importer les pièces jointes dans le coffre')).setIcon('download')
         .onClick(() => { this.greffon.importerPiecesEvenement(e).catch(() => {}); }));
-    }
-    // Tâches associées : ouvrir, dissocier ; et en associer une autre.
-    const associees = this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [];
-    for (const a of associees) {
-      m.addItem((i) => i.setTitle(tr('Ouvrir la tâche ') + a.tache.ref + ' : ' + a.tache.intitule)
-        .setIcon('square-check').onClick(() => this.ouvrir(a.tache.ref)));
-      m.addItem((i) => i.setTitle(tr('Dissocier de ') + a.tache.ref).setIcon('unlink')
-        .onClick(async () => {
-          await this.greffon.dissocierEvenementTache(a.tache.ref, a.lien);
-          this.dessiner();
-        }));
-    }
-    if (e.id && this.greffon.associerEvenementTache) {
-      m.addItem((i) => i.setTitle(tr('Associer à une tâche…')).setIcon('link')
-        .onClick(() => {
-          const prises = new Set(associees.map((a) => a.tache.ref));
-          const items = this.greffon.tachesPourGantt()
-            .filter((t) => t.statut !== 'terminée' && t.statut !== 'abandonnée' && !prises.has(t.ref))
-            .map((t) => ({ nom: t.intitule + '  (' + t.ref + ')', cle: t.ref }));
-          if (!items.length) { new obsidian.Notice(tr('Aucune tâche en cours.')); return; }
-          new ChoixListeModal(this.app, tr('Tâche à associer à cet événement…'), items, (it) => {
-            if (it) this.greffon.associerEvenementAvecRole(it.cle, e, () => this.dessiner());
-          }).open();
-        }));
     }
     m.addItem((i) => i
       .setTitle(noteExistante ? tr('Ouvrir la note de cet événement')
@@ -54870,6 +54916,139 @@ class ModaleLiensConcepts extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// Les notes jointes à un événement (Ariane · notes jointes, 11k) : ce qui y
+// est joint, à ouvrir ou détacher ; puis un onglet par type de note, une
+// recherche, et un clic pour joindre. L'onglet choisi reste d'une fois à
+// l'autre.
+class ModaleNotesEvenement extends obsidian.Modal {
+  constructor(greffon, noteEv) {
+    super(greffon.app);
+    this.g = greffon;
+    this.ev = noteEv;
+    this.requete = '';
+  }
+
+  // « vendredi 20 novembre 2026, 9 h 00 à 18 h 00 », d'après la note.
+  static quandLisible(fm) {
+    const x = fm || {};
+    const debut = String(x['Début'] || x.Date || '');
+    const d = new Date(/T\d/.test(debut) ? debut : debut + 'T12:00');
+    if (!debut || isNaN(d.getTime())) return '';
+    const jour = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    if (!/T\d/.test(debut)) return jour;
+    const h = (z) => z.getHours() + ' h ' + String(z.getMinutes()).padStart(2, '0');
+    const f = new Date(String(x.Fin || ''));
+    return jour + ', ' + h(d) + (/T\d/.test(String(x.Fin || '')) && !isNaN(f.getTime()) ? tr(' à ') + h(f) : '');
+  }
+
+  onOpen() {
+    const fm = (this.app.metadataCache.getFileCache(this.ev) || {}).frontmatter || {};
+    this.modalEl.addClass('zfa-nj');
+    this.setTitle(tr('Notes jointes'));
+    const c = this.contentEl;
+    const tete = c.createDiv({ cls: 'zfa-nj-evt' });
+    tete.createDiv({ cls: 'zfa-nj-evt-titre', text: String(fm.Titre || [].concat(fm.aliases || [])[0] || this.ev.basename) });
+    const quand = ModaleNotesEvenement.quandLisible(fm);
+    if (quand) tete.createDiv({ cls: 'zfa-nj-evt-quand', text: quand });
+    this.zJointes = c.createDiv({ cls: 'zfa-nj-jointes' });
+    this.onglets = this.g.ongletsNotesJointes();
+    if (!this.onglets.some((o) => o.id === ModaleNotesEvenement.onglet)) ModaleNotesEvenement.onglet = this.onglets[0].id;
+    this.zOnglets = c.createDiv({ cls: 'zfa-nj-onglets' });
+    this.recherche = c.createEl('input', { type: 'search', cls: 'zfa-nj-recherche', attr: { placeholder: tr('Rechercher une note…') } });
+    this.recherche.addEventListener('input', () => { this.requete = this.recherche.value; this._liste(); });
+    this.zListe = c.createDiv({ cls: 'zfa-nj-liste' });
+    this._tout();
+    setTimeout(() => this.recherche.focus(), 0);
+  }
+
+  _tout() {
+    this.jointes = this.g.notesJointesDe(this.ev);
+    this._jointes();
+    this._onglets();
+    this._liste();
+  }
+
+  _icone(hote, icone, couleur) {
+    const ic = hote.createSpan({ cls: 'zfa-nj-ic' });
+    obsidian.setIcon(ic, icone || 'file-text');
+    if (couleur) ic.style.color = couleur;
+    return ic;
+  }
+
+  _ouvrir(f) {
+    if (!f) return;
+    this.close();
+    this.app.workspace.getLeaf('tab').openFile(f);
+  }
+
+  _jointes() {
+    const z = this.zJointes;
+    z.empty();
+    if (!this.jointes.length) {
+      z.createDiv({ cls: 'zfa-nj-vide', text: tr('Aucune note jointe pour l’instant.') });
+      return;
+    }
+    z.createDiv({ cls: 'zfa-nj-section', text: tr('Jointes') + ' (' + this.jointes.length + ')' });
+    for (const j of this.jointes) {
+      const l = z.createDiv({ cls: 'zfa-nj-ligne est-jointe' });
+      this._icone(l, j.icone, j.couleur);
+      const t = l.createDiv({ cls: 'zfa-nj-txt' });
+      t.createDiv({ cls: 'zfa-nj-titre', text: j.titre });
+      if (j.sous) t.createDiv({ cls: 'zfa-nj-sous', text: j.sous });
+      t.addEventListener('click', () => this._ouvrir(j.f));
+      const x = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Détacher de l’événement') } });
+      obsidian.setIcon(x, 'x');
+      x.addEventListener('click', async () => {
+        try { await this.g.detacherNoteEvenement(this.ev, j); } catch (e) { new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e)); }
+        this._tout();
+      });
+    }
+  }
+
+  _onglets() {
+    const z = this.zOnglets;
+    z.empty();
+    for (const o of this.onglets) {
+      const b = z.createEl('button', { cls: 'zfa-nj-onglet' + (o.id === ModaleNotesEvenement.onglet ? ' est-actif' : '') });
+      this._icone(b, o.icone, o.couleur);
+      b.createSpan({ text: o.nom });
+      b.addEventListener('click', () => {
+        ModaleNotesEvenement.onglet = o.id;
+        this._onglets();
+        this._liste();
+        this.recherche.focus();
+      });
+    }
+  }
+
+  _liste() {
+    const z = this.zListe;
+    z.empty();
+    const onglet = this.onglets.find((o) => o.id === ModaleNotesEvenement.onglet) || this.onglets[0];
+    const tous = this.g.candidatsNotesJointes(this.ev, onglet, this.jointes)
+      .filter((it) => Ariane.correspondRecherche(it.titre + ' ' + it.sous + ' ' + it.f.basename, this.requete));
+    if (!tous.length) {
+      z.createDiv({ cls: 'zfa-nj-vide', text: this.requete ? tr('Aucune note ne correspond.') : tr('Aucune note à joindre dans cet onglet.') });
+      return;
+    }
+    const MAX = 60;
+    for (const it of tous.slice(0, MAX)) {
+      const l = z.createDiv({ cls: 'zfa-nj-ligne est-candidate', attr: { 'aria-label': tr('Joindre à l’événement') } });
+      this._icone(l, 'plus', '');
+      const t = l.createDiv({ cls: 'zfa-nj-txt' });
+      t.createDiv({ cls: 'zfa-nj-titre', text: it.titre });
+      if (it.sous) t.createDiv({ cls: 'zfa-nj-sous', text: it.sous });
+      l.addEventListener('click', async () => {
+        try { await this.g.joindreNoteEvenement(this.ev, it); } catch (e) { new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e)); }
+        this._tout();
+      });
+    }
+    if (tous.length > MAX) z.createDiv({ cls: 'zfa-nj-vide', text: (tous.length - MAX) + tr(' autres : précisez la recherche.') });
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 //#endregion 20 · Modales secondaires
 
 //#region 21 · Barre d'édition
@@ -55713,8 +55892,9 @@ function barreDefaut() {
       { cmd: a('correcteur-relire') },
       { separateur: true },
       { cmd: a('creer-tache') }, { cmd: a('fusionner-taches') }, { cmd: a('associer-evenement-tache') },
-      { cmd: a('ajouter-ressource-tache') }, { cmd: a('lier-note-evenement') }, { cmd: a('importer-pieces-evenement') },
-      { cmd: a('manuscrites-transcrire-note') }, { cmd: a('manuscrites-rattacher-evenement') },
+      { cmd: a('ajouter-ressource-tache') }, { cmd: a('lier-note-evenement') }, { cmd: a('notes-jointes-evenement') },
+      { cmd: a('importer-pieces-evenement') },
+      { cmd: a('manuscrites-transcrire-note') },
       { cmd: a('atomise-active') }, { cmd: a('biblio-note') },
     ] },
     { separateur: true },
