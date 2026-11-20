@@ -99,6 +99,50 @@ class ChoixSourceModal extends obsidian.Modal {
 // revoit sa proposition avant « Créer et attacher » ; ou prise telle
 // quelle, sans IA ; ou par le formulaire complet (⌘↵). Échap abandonne le
 // créneau.
+// La source d'une lecture proposée par l'IA (analyserTachesLN) : la fiche
+// Zotero retrouvée, à changer ou retirer ; ou, introuvable, la source en
+// clair, avec de quoi choisir la fiche. Rien pour une autre famille. Rend de
+// quoi redessiner la ligne quand la famille change.
+function ligneSourceLN(hote, n, greffon, app, cls) {
+  const l = hote.createDiv({ cls: (cls || '') + ' zfa-ln-mere zfa-ln-source' });
+  const dessiner = () => {
+    l.empty();
+    l.toggle(n.famille === 'lecture');
+    if (n.famille !== 'lecture') return;
+    obsidian.setIcon(l.createSpan({ cls: 'zfa-ln-mere-icone' }), 'book-open');
+    const lien = /^\[\[.*\]\]$/.test(String(n.source || ''));
+    l.toggleClass('est-introuvable', !lien);
+    if (lien) {
+      l.createSpan({ text: tr('Source : ') });
+      l.createSpan({ cls: 'zfa-ln-mere-titre', text: n.sourceNom || n.source });
+    } else if (n.source) {
+      l.createSpan({ text: tr('Source introuvable : « ') + n.source + ' »' });
+    } else {
+      l.createSpan({ text: tr('Aucune source') });
+    }
+    const choisir = l.createEl('button', { cls: 'clickable-icon',
+      attr: { 'aria-label': tr('Choisir la source…') } });
+    obsidian.setIcon(choisir, 'pencil');
+    choisir.onclick = () => {
+      const items = greffon.sourcesZoteroPourChoix();
+      if (!items.length) { new obsidian.Notice(tr('Aucune note à proposer.')); return; }
+      new ChoixListeModal(app, tr('Auteur, titre, année ou clé…'), items, (it) => {
+        if (!it) return;
+        n.source = '[[' + it.cle + ']]';
+        n.sourceNom = it.nom;
+        dessiner();
+      }).open();
+    };
+    if (n.source) {
+      const x = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Sans source') } });
+      obsidian.setIcon(x, 'x');
+      x.onclick = () => { n.source = ''; n.sourceNom = ''; dessiner(); };
+    }
+  };
+  dessiner();
+  return dessiner;
+}
+
 // La tâche mère d'une tâche proposée par l'IA (analyserTachesLN) : celle
 // qu'elle a retrouvée, à changer ou retirer ; ou, introuvable, le titre
 // demandé, avec de quoi la choisir. Sans demande, rien.
@@ -363,11 +407,12 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       const titre = l.createEl('input', { type: 'text', cls: 'zfa-tc-ln-titre' });
       titre.value = n.titre;
       titre.addEventListener('change', () => { n.titre = titre.value.trim() || n.titre; majLiens(); });
+      let majSource = () => {};
       if (familles.length) {
         const fam = l.createEl('select', { cls: 'dropdown zfa-tc-ln-fam' });
         for (const f of familles) fam.createEl('option', { value: f.id, text: f.nom || f.id });
         fam.value = n.famille;
-        fam.addEventListener('change', () => { n.famille = fam.value; });
+        fam.addEventListener('change', () => { n.famille = fam.value; majSource(); });
       }
       const ech = l.createEl('input', { type: 'date', cls: 'zfa-tc-ln-date', attr: { 'aria-label': tr('Échéance') } });
       ech.value = n.echeance || '';
@@ -380,6 +425,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       if (i === 0) l.createSpan({ cls: 'zfa-tc-ln-marque', text: tr('créneau') });
       liens.push(ligneLiensLN(z, specs, i, 'zfa-tc-ln-sous', majLiens));
       ligneMereLN(z, n, this.greffon, this.app, 'zfa-tc-ln-sous');
+      majSource = ligneSourceLN(z, n, this.greffon, this.app, 'zfa-tc-ln-sous');
     });
     const pied = z.createDiv({ cls: 'zfa-tc-ln-pied' });
     const ecarter = pied.createEl('button', { text: tr('Écarter') });
@@ -616,7 +662,8 @@ class ModaleTache extends obsidian.Modal {
       const fam = d.createEl('select', { cls: 'zfa-struct-fam dropdown' });
       for (const f of familles) fam.createEl('option', { value: f.id, text: f.nom || f.id });
       fam.value = n.famille;
-      fam.onchange = () => { n.famille = fam.value; };
+      let majSource = () => {};
+      fam.onchange = () => { n.famille = fam.value; majSource(); };
       const ech = d.createEl('input', { type: 'date', cls: 'zfa-ln-date',
         attr: { title: tr('Échéance') } });
       ech.value = n.echeance || '';
@@ -637,6 +684,7 @@ class ModaleTache extends obsidian.Modal {
         x.onclick = () => { n.livrable = ''; l.remove(); };
       }
       if (!this.v.parent) ligneMereLN(d, n, this.greffon, this.app, 'zfa-struct-note');
+      majSource = ligneSourceLN(d, n, this.greffon, this.app, 'zfa-struct-note');
       if (n.note) d.createDiv({ cls: 'zfa-struct-note', text: n.note });
     });
   }

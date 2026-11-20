@@ -1295,6 +1295,22 @@ const avecTachesStatiques = (Base) => class extends Base {
     return alias.length ? alias.join(' / ') + '  ·  ' + basename : basename;
   }
 
+  // La référence auteur-année qu'un texte libre désigne : « Hardy et al.
+  // (2020) », « Weick, 1993 », « Hardy & Maguire 2020 ». La dernière du
+  // texte, au format des références citées ({ auteurs, annee, annee4,
+  // etAl }) ; null sans année.
+  static refAuteurAnnee(texte) {
+    const NOM = "[A-ZÀ-Ý][\\p{L}'’-]+";
+    const SEP = '\\s*(?:,|&|;|\\bet\\b|\\band\\b)\\s*';
+    const re = new RegExp('(' + NOM + '(?:' + SEP + NOM + ')*)(\\s+et\\s+al\\.?)?\\s*,?\\s*\\(?\\s*((?:1[5-9]|20)\\d\\d)([a-z]?)(?![\\d\\p{L}])', 'gu');
+    let m;
+    let der = null;
+    while ((m = re.exec(String(texte || '')))) der = m;
+    if (!der) return null;
+    const auteurs = der[1].split(new RegExp(SEP, 'u')).map((x) => x.trim()).filter(Boolean);
+    return { auteurs, annee: der[3] + der[4], annee4: der[3], etAl: !!der[2] };
+  }
+
   // Libellé d'une fiche Zotero dans le sélecteur. Tout y est réuni pour que la
   // recherche approchée morde sur l'auteur, l'année, le titre ou la clé : on ne
   // retient pas une clé de citation par cœur.

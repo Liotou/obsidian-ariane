@@ -16970,6 +16970,22 @@ const avecTachesStatiques = (Base) => class extends Base {
     return alias.length ? alias.join(' / ') + '  ·  ' + basename : basename;
   }
 
+  // La référence auteur-année qu'un texte libre désigne : « Hardy et al.
+  // (2020) », « Weick, 1993 », « Hardy & Maguire 2020 ». La dernière du
+  // texte, au format des références citées ({ auteurs, annee, annee4,
+  // etAl }) ; null sans année.
+  static refAuteurAnnee(texte) {
+    const NOM = "[A-ZÀ-Ý][\\p{L}'’-]+";
+    const SEP = '\\s*(?:,|&|;|\\bet\\b|\\band\\b)\\s*';
+    const re = new RegExp('(' + NOM + '(?:' + SEP + NOM + ')*)(\\s+et\\s+al\\.?)?\\s*,?\\s*\\(?\\s*((?:1[5-9]|20)\\d\\d)([a-z]?)(?![\\d\\p{L}])', 'gu');
+    let m;
+    let der = null;
+    while ((m = re.exec(String(texte || '')))) der = m;
+    if (!der) return null;
+    const auteurs = der[1].split(new RegExp(SEP, 'u')).map((x) => x.trim()).filter(Boolean);
+    return { auteurs, annee: der[3] + der[4], annee4: der[3], etAl: !!der[2] };
+  }
+
   // Libellé d'une fiche Zotero dans le sélecteur. Tout y est réuni pour que la
   // recherche approchée morde sur l'auteur, l'année, le titre ou la clé : on ne
   // retient pas une clé de citation par cœur.
@@ -23134,11 +23150,12 @@ const avecTaches = (Base) => class extends Base {
       '- bloque_par : le titre approximatif d\'une tâche DÉJÀ EXISTANTE à finir avant, sinon "".',
       '- mere : quand la description demande de ranger la tâche SOUS une tâche DÉJÀ EXISTANTE (« à rattacher à », « tâche fille de », « sous-tâche de », « dans la tâche », « rattachée à »), le titre de cette tâche mère tel que la description le donne, ou sa référence (T070) si elle est écrite ; sinon "". Cette consigne n\'entre ni dans le titre ni dans la note.',
       '- note : une précision utile qui ne tient pas dans le titre, sinon "".',
+      '- source : pour une tâche de LECTURE, l\'œuvre à lire telle que la description la désigne, sans verbe ni article (« Hardy et al. (2020) », « Weick 1993 », un titre, ou une clé « @… ») ; sinon "".',
       '- note_visee : quand la tâche porte sur une note précise du coffre (la rédiger, la compléter, la relire), son titre. Pour une note conceptuelle, recopie EXACTEMENT un titre de la liste ci-dessous ; pour une autre note, son titre en clair ; sans note visée : "".',
       this._blocNotesConceptuelles(),
       '',
       'Réponds UNIQUEMENT par le tableau JSON. Chaque entrée :',
-      '{"titre": "...", "famille": "id", "jalon": false, "debut": "", "echeance": "", "apres": null, "bloque_par": "", "mere": "", "note": "", "note_visee": ""}',
+      '{"titre": "...", "famille": "id", "jalon": false, "debut": "", "echeance": "", "apres": null, "bloque_par": "", "mere": "", "source": "", "note": "", "note_visee": ""}',
       '',
       'DESCRIPTION :',
       p,
@@ -23149,6 +23166,17 @@ const avecTaches = (Base) => class extends Base {
       familles: new Set(this.famillesIA().map((f) => f.id)),
       defaut: this.settings.familleTacheDefaut || 'action',
     });
+    // La source d'une lecture, rattachée à sa fiche Zotero quand une seule
+    // convient ; sinon gardée en clair, à choisir dans l'aperçu. À défaut de
+    // source, l'intitulé, s'il cite un auteur et une année.
+    for (const s of specs) {
+      if (s.famille !== 'lecture') continue;
+      try {
+        const z = this.resoudreSourceLecture(s.source || s.noteVisee)
+          || this.resoudreSourceLecture(s.titre, { titre: false });
+        if (z) { s.source = '[[' + z.cle + ']]'; s.sourceNom = z.nom; }
+      } catch (e) { console.debug('[Ariane] source de la lecture', e); }
+    }
     // La note visée devient le livrable de la tâche (une lecture, elle, a sa source).
     for (const s of specs) {
       if (!s.noteVisee || s.famille === 'lecture') continue;
@@ -23252,6 +23280,49 @@ const avecTaches = (Base) => class extends Base {
     return refs.filter(Boolean);
   }
 
+  // La fiche Zotero que désigne une source écrite en clair : sa clé
+  // (« @hardyOrganizingRisk…2020 »), une référence auteur-année (« Hardy et
+  // al. (2020) »), ou, sauf `titre: false`, son titre. Une seule fiche
+  // certaine, sinon null : mieux vaut une source à choisir qu'une source
+  // fausse. Rend { cle, nom } ou null.
+  resoudreSourceLecture(texte, opts) {
+    const t = String(texte || '').trim();
+    if (!t) return null;
+    const index = this.construireIndexZotero().filter((z) => z.basename.charAt(0) === '@');
+    if (!index.length) return null;
+    const rendre = (z) => {
+      const f = this.app.metadataCache.getFirstLinkpathDest(z.basename, '');
+      const fm = f ? ((this.app.metadataCache.getFileCache(f) || {}).frontmatter || {}) : {};
+      return { cle: z.basename, nom: Ariane.libelleSource(fm, z.basename) };
+    };
+    const parCle = (c) => {
+      const k = String(c || '').replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim().replace(/^@/, '').toLowerCase();
+      return k ? index.find((z) => z.basename.slice(1).toLowerCase() === k || String(z.citkey).toLowerCase() === k) : null;
+    };
+    const cle = parCle(t) || parCle((/@([\w:.-]+)/.exec(t) || [])[1]);
+    if (cle) return rendre(cle);
+    // Le meilleur titre, à condition qu'aucun autre ne fasse aussi bien.
+    const seulMeilleur = (entrees, seuil) => {
+      const cand = entrees.map((z) => ({ ref: z.basename, titre: z.titre }));
+      const m = Ariane.meilleurTitre(t, cand, seuil);
+      if (!m) return null;
+      const second = Ariane.meilleurTitre(t, cand.filter((c) => c.ref !== m.ref), seuil);
+      return second && second.score >= m.score ? null : entrees.find((z) => z.basename === m.ref);
+    };
+    const ref = Ariane.refAuteurAnnee(t);
+    if (ref) {
+      const cands = candidatsSource(ref, index);
+      const forts = cands.filter((c) => c.force === 'fort');
+      const lot = (forts.length ? forts : cands).map((c) => c.entree);
+      if (lot.length === 1) return rendre(lot[0]);
+      const z = lot.length ? seulMeilleur(lot, 0.5) : null;
+      return z ? rendre(z) : null;
+    }
+    if (opts && opts.titre === false) return null;
+    const z = seulMeilleur(index, 0.75);
+    return z ? rendre(z) : null;
+  }
+
   // Résout les sources en clair des tâches « lecture » vers un [[@citekey]] du
   // coffre. Rend [{ ref, avant, apres, titre }] à passer à ModaleRevueLot.
   async resoudreSourcesLecture(refs) {
@@ -23274,7 +23345,8 @@ const avecTaches = (Base) => class extends Base {
       const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
       const src = String(this._lireT(fm, 'source') || '').trim();
       if (!src || /\[\[.*\]\]/.test(src)) continue;
-      const m = (await this.meilleurTitreSem(src, cand, 0.5)) || Ariane.meilleurTitre(src, cand, 0.3);
+      const z = this.resoudreSourceLecture(src);
+      const m = z ? { ref: z.cle } : ((await this.meilleurTitreSem(src, cand, 0.5)) || Ariane.meilleurTitre(src, cand, 0.3));
       if (m) out.push({ ref: t.ref, avant: src, apres: '[[' + m.ref + ']]', titre: t.intitule });
     }
     return out;
@@ -37305,6 +37377,50 @@ class ChoixSourceModal extends obsidian.Modal {
 // revoit sa proposition avant « Créer et attacher » ; ou prise telle
 // quelle, sans IA ; ou par le formulaire complet (⌘↵). Échap abandonne le
 // créneau.
+// La source d'une lecture proposée par l'IA (analyserTachesLN) : la fiche
+// Zotero retrouvée, à changer ou retirer ; ou, introuvable, la source en
+// clair, avec de quoi choisir la fiche. Rien pour une autre famille. Rend de
+// quoi redessiner la ligne quand la famille change.
+function ligneSourceLN(hote, n, greffon, app, cls) {
+  const l = hote.createDiv({ cls: (cls || '') + ' zfa-ln-mere zfa-ln-source' });
+  const dessiner = () => {
+    l.empty();
+    l.toggle(n.famille === 'lecture');
+    if (n.famille !== 'lecture') return;
+    obsidian.setIcon(l.createSpan({ cls: 'zfa-ln-mere-icone' }), 'book-open');
+    const lien = /^\[\[.*\]\]$/.test(String(n.source || ''));
+    l.toggleClass('est-introuvable', !lien);
+    if (lien) {
+      l.createSpan({ text: tr('Source : ') });
+      l.createSpan({ cls: 'zfa-ln-mere-titre', text: n.sourceNom || n.source });
+    } else if (n.source) {
+      l.createSpan({ text: tr('Source introuvable : « ') + n.source + ' »' });
+    } else {
+      l.createSpan({ text: tr('Aucune source') });
+    }
+    const choisir = l.createEl('button', { cls: 'clickable-icon',
+      attr: { 'aria-label': tr('Choisir la source…') } });
+    obsidian.setIcon(choisir, 'pencil');
+    choisir.onclick = () => {
+      const items = greffon.sourcesZoteroPourChoix();
+      if (!items.length) { new obsidian.Notice(tr('Aucune note à proposer.')); return; }
+      new ChoixListeModal(app, tr('Auteur, titre, année ou clé…'), items, (it) => {
+        if (!it) return;
+        n.source = '[[' + it.cle + ']]';
+        n.sourceNom = it.nom;
+        dessiner();
+      }).open();
+    };
+    if (n.source) {
+      const x = l.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': tr('Sans source') } });
+      obsidian.setIcon(x, 'x');
+      x.onclick = () => { n.source = ''; n.sourceNom = ''; dessiner(); };
+    }
+  };
+  dessiner();
+  return dessiner;
+}
+
 // La tâche mère d'une tâche proposée par l'IA (analyserTachesLN) : celle
 // qu'elle a retrouvée, à changer ou retirer ; ou, introuvable, le titre
 // demandé, avec de quoi la choisir. Sans demande, rien.
@@ -37569,11 +37685,12 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       const titre = l.createEl('input', { type: 'text', cls: 'zfa-tc-ln-titre' });
       titre.value = n.titre;
       titre.addEventListener('change', () => { n.titre = titre.value.trim() || n.titre; majLiens(); });
+      let majSource = () => {};
       if (familles.length) {
         const fam = l.createEl('select', { cls: 'dropdown zfa-tc-ln-fam' });
         for (const f of familles) fam.createEl('option', { value: f.id, text: f.nom || f.id });
         fam.value = n.famille;
-        fam.addEventListener('change', () => { n.famille = fam.value; });
+        fam.addEventListener('change', () => { n.famille = fam.value; majSource(); });
       }
       const ech = l.createEl('input', { type: 'date', cls: 'zfa-tc-ln-date', attr: { 'aria-label': tr('Échéance') } });
       ech.value = n.echeance || '';
@@ -37586,6 +37703,7 @@ class ModaleTacheDuCreneau extends obsidian.SuggestModal {
       if (i === 0) l.createSpan({ cls: 'zfa-tc-ln-marque', text: tr('créneau') });
       liens.push(ligneLiensLN(z, specs, i, 'zfa-tc-ln-sous', majLiens));
       ligneMereLN(z, n, this.greffon, this.app, 'zfa-tc-ln-sous');
+      majSource = ligneSourceLN(z, n, this.greffon, this.app, 'zfa-tc-ln-sous');
     });
     const pied = z.createDiv({ cls: 'zfa-tc-ln-pied' });
     const ecarter = pied.createEl('button', { text: tr('Écarter') });
@@ -37822,7 +37940,8 @@ class ModaleTache extends obsidian.Modal {
       const fam = d.createEl('select', { cls: 'zfa-struct-fam dropdown' });
       for (const f of familles) fam.createEl('option', { value: f.id, text: f.nom || f.id });
       fam.value = n.famille;
-      fam.onchange = () => { n.famille = fam.value; };
+      let majSource = () => {};
+      fam.onchange = () => { n.famille = fam.value; majSource(); };
       const ech = d.createEl('input', { type: 'date', cls: 'zfa-ln-date',
         attr: { title: tr('Échéance') } });
       ech.value = n.echeance || '';
@@ -37843,6 +37962,7 @@ class ModaleTache extends obsidian.Modal {
         x.onclick = () => { n.livrable = ''; l.remove(); };
       }
       if (!this.v.parent) ligneMereLN(d, n, this.greffon, this.app, 'zfa-struct-note');
+      majSource = ligneSourceLN(d, n, this.greffon, this.app, 'zfa-struct-note');
       if (n.note) d.createDiv({ cls: 'zfa-struct-note', text: n.note });
     });
   }

@@ -430,3 +430,89 @@ test('ligneLiensLN : tâche décochée, le lien est barré ; ✕ retire la dépe
   assert.ok(hote.enfants[0].classes.has('est-vide'));
   assert.ok(hote.enfants[1].classes.has('est-vide'));
 });
+
+test('refAuteurAnnee : la référence auteur-année d\'un texte libre', () => {
+  assert.deepEqual(Ariane.refAuteurAnnee('Lire l’article Hardy et al. (2020)'),
+    { auteurs: ['Hardy'], annee: '2020', annee4: '2020', etAl: true });
+  assert.deepEqual(Ariane.refAuteurAnnee('Hardy, Maguire, Power et Tsoukas (2020a)').auteurs,
+    ['Hardy', 'Maguire', 'Power', 'Tsoukas']);
+  assert.deepEqual(Ariane.refAuteurAnnee('Lire Weick 1993').auteurs, ['Weick']);
+  assert.equal(Ariane.refAuteurAnnee('Organizing risk'), null);
+  assert.equal(Ariane.refAuteurAnnee('Lire le chapitre 3 avant 2026'), null);
+});
+
+// Un greffon dont le coffre ne contient que des fiches Zotero.
+function greffonSources(fiches) {
+  const g = Object.create(Ariane.prototype);
+  const fichiers = fiches.map((x) => ({ basename: x.cle, path: '98/' + x.cle + '.md', fm: x.fm }));
+  Object.assign(g, {
+    settings: { suggMoteur: 'lexical', familleTacheDefaut: 'action' },
+    chargerDatesOriginales: () => Promise.resolve(),
+    app: {
+      vault: { getMarkdownFiles: () => fichiers },
+      metadataCache: {
+        getFileCache: (f) => ({ frontmatter: f.fm }),
+        getFirstLinkpathDest: (n) => fichiers.find((f) => f.basename === n) || null,
+      },
+    },
+  });
+  return g;
+}
+
+const HARDY = [
+  { cle: '@hardyOrganizingRiskOrganization2020', fm: { citationKey: 'hardyOrganizingRiskOrganization2020', year: 2020,
+    title: 'Organizing Risk: Organization and Management Theory for the Risk Society',
+    creators: ['[[Cynthia Hardy]]', '[[Steve Maguire]]', '[[Michael Power]]', '[[Haridimos Tsoukas]]'] } },
+  { cle: '@hardyOrganizingRiskDiscourse2016', fm: { citationKey: 'hardyOrganizingRiskDiscourse2016', year: 2016,
+    title: 'Organizing Risk: Discourse, Power, and Riskification', creators: ['[[Cynthia Hardy]]', '[[Steve Maguire]]'] } },
+  { cle: '@weickCollapseSensemakingOrganizations1993', fm: { citationKey: 'weickCollapseSensemakingOrganizations1993', year: 1993,
+    title: 'The Collapse of Sensemaking in Organizations', creators: ['[[Karl E. Weick]]'] } },
+];
+
+test('resoudreSourceLecture : par la clé, par l\'auteur et l\'année, jamais au hasard', () => {
+  const g = greffonSources(HARDY);
+  const cle = (t, o) => (g.resoudreSourceLecture(t, o) || {}).cle || null;
+  assert.equal(cle('Hardy et al. (2020)'), '@hardyOrganizingRiskOrganization2020');
+  assert.equal(cle('Lire l’article Hardy et al. (2020)', { titre: false }), '@hardyOrganizingRiskOrganization2020');
+  assert.equal(cle('@hardyOrganizingRiskOrganization2020'), '@hardyOrganizingRiskOrganization2020');
+  assert.equal(cle('[[@weickCollapseSensemakingOrganizations1993]]'), '@weickCollapseSensemakingOrganizations1993');
+  assert.equal(cle('Weick 1993'), '@weickCollapseSensemakingOrganizations1993');
+  assert.equal(cle('The collapse of sensemaking in organizations'), '@weickCollapseSensemakingOrganizations1993');
+  assert.match(g.resoudreSourceLecture('Hardy et al. (2020)').nom, /Organizing Risk/);
+  // Introuvable, ou ambigu : rien plutôt qu'une source fausse.
+  assert.equal(cle('Hardy et al. (2019)'), null);
+  assert.equal(cle('Organizing risk'), null);
+  assert.equal(cle('Lire le rapport annuel', { titre: false }), null);
+});
+
+test('Langage naturel : une lecture se rattache à sa fiche Zotero', async () => {
+  const g = greffonSources(HARDY);
+  g.famillesIA = () => [{ id: 'lecture' }, { id: 'action' }];
+  g._blocFamilles = () => '';
+  g._blocNotesConceptuelles = () => '';
+  let consigne = '';
+  g.genererIA = async (p) => {
+    consigne = p;
+    return ([
+      { titre: 'Lire l\'article Hardy et al. (2020)', famille: 'lecture', source: 'Hardy et al. (2020)' },
+      { titre: 'Lire Weick (1993)', famille: 'lecture', source: '' },
+      { titre: 'Lire le rapport de l\'INERIS', famille: 'lecture', source: 'rapport INERIS 2025' },
+    ]);
+  };
+  const specs = await g.analyserTachesLN('Lire l\'article Hardy et al. (2020)');
+  assert.match(consigne, /"source": ""/);
+  assert.equal(specs[0].source, '[[@hardyOrganizingRiskOrganization2020]]');
+  assert.match(specs[0].sourceNom, /Organizing Risk/);
+  // Sans source rendue par l'IA, l'intitulé suffit s'il cite auteur et année.
+  assert.equal(specs[1].source, '[[@weickCollapseSensemakingOrganizations1993]]');
+  // Introuvable : gardée en clair, à choisir dans l'aperçu.
+  assert.equal(specs[2].source, 'rapport INERIS 2025');
+  const crees = [];
+  Object.assign(g, {
+    creerTache: async (o) => { crees.push(o); return '08 - Tâches/T09' + crees.length + '.md'; },
+    refDeChemin: (c) => c.split('/').pop().replace('.md', ''),
+    ajouterNoteTache: async () => {}, creerBlocage: async () => {}, tachesPourGantt: () => [],
+  });
+  await g.creerTachesLN(specs);
+  assert.equal(crees[0].source, '[[@hardyOrganizingRiskOrganization2020]]');
+});

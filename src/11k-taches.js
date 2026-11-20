@@ -2335,11 +2335,12 @@ const avecTaches = (Base) => class extends Base {
       '- bloque_par : le titre approximatif d\'une tâche DÉJÀ EXISTANTE à finir avant, sinon "".',
       '- mere : quand la description demande de ranger la tâche SOUS une tâche DÉJÀ EXISTANTE (« à rattacher à », « tâche fille de », « sous-tâche de », « dans la tâche », « rattachée à »), le titre de cette tâche mère tel que la description le donne, ou sa référence (T070) si elle est écrite ; sinon "". Cette consigne n\'entre ni dans le titre ni dans la note.',
       '- note : une précision utile qui ne tient pas dans le titre, sinon "".',
+      '- source : pour une tâche de LECTURE, l\'œuvre à lire telle que la description la désigne, sans verbe ni article (« Hardy et al. (2020) », « Weick 1993 », un titre, ou une clé « @… ») ; sinon "".',
       '- note_visee : quand la tâche porte sur une note précise du coffre (la rédiger, la compléter, la relire), son titre. Pour une note conceptuelle, recopie EXACTEMENT un titre de la liste ci-dessous ; pour une autre note, son titre en clair ; sans note visée : "".',
       this._blocNotesConceptuelles(),
       '',
       'Réponds UNIQUEMENT par le tableau JSON. Chaque entrée :',
-      '{"titre": "...", "famille": "id", "jalon": false, "debut": "", "echeance": "", "apres": null, "bloque_par": "", "mere": "", "note": "", "note_visee": ""}',
+      '{"titre": "...", "famille": "id", "jalon": false, "debut": "", "echeance": "", "apres": null, "bloque_par": "", "mere": "", "source": "", "note": "", "note_visee": ""}',
       '',
       'DESCRIPTION :',
       p,
@@ -2350,6 +2351,17 @@ const avecTaches = (Base) => class extends Base {
       familles: new Set(this.famillesIA().map((f) => f.id)),
       defaut: this.settings.familleTacheDefaut || 'action',
     });
+    // La source d'une lecture, rattachée à sa fiche Zotero quand une seule
+    // convient ; sinon gardée en clair, à choisir dans l'aperçu. À défaut de
+    // source, l'intitulé, s'il cite un auteur et une année.
+    for (const s of specs) {
+      if (s.famille !== 'lecture') continue;
+      try {
+        const z = this.resoudreSourceLecture(s.source || s.noteVisee)
+          || this.resoudreSourceLecture(s.titre, { titre: false });
+        if (z) { s.source = '[[' + z.cle + ']]'; s.sourceNom = z.nom; }
+      } catch (e) { console.debug('[Ariane] source de la lecture', e); }
+    }
     // La note visée devient le livrable de la tâche (une lecture, elle, a sa source).
     for (const s of specs) {
       if (!s.noteVisee || s.famille === 'lecture') continue;
@@ -2453,6 +2465,49 @@ const avecTaches = (Base) => class extends Base {
     return refs.filter(Boolean);
   }
 
+  // La fiche Zotero que désigne une source écrite en clair : sa clé
+  // (« @hardyOrganizingRisk…2020 »), une référence auteur-année (« Hardy et
+  // al. (2020) »), ou, sauf `titre: false`, son titre. Une seule fiche
+  // certaine, sinon null : mieux vaut une source à choisir qu'une source
+  // fausse. Rend { cle, nom } ou null.
+  resoudreSourceLecture(texte, opts) {
+    const t = String(texte || '').trim();
+    if (!t) return null;
+    const index = this.construireIndexZotero().filter((z) => z.basename.charAt(0) === '@');
+    if (!index.length) return null;
+    const rendre = (z) => {
+      const f = this.app.metadataCache.getFirstLinkpathDest(z.basename, '');
+      const fm = f ? ((this.app.metadataCache.getFileCache(f) || {}).frontmatter || {}) : {};
+      return { cle: z.basename, nom: Ariane.libelleSource(fm, z.basename) };
+    };
+    const parCle = (c) => {
+      const k = String(c || '').replace(/^\[\[|\]\]$/g, '').replace(/\|.*$/, '').trim().replace(/^@/, '').toLowerCase();
+      return k ? index.find((z) => z.basename.slice(1).toLowerCase() === k || String(z.citkey).toLowerCase() === k) : null;
+    };
+    const cle = parCle(t) || parCle((/@([\w:.-]+)/.exec(t) || [])[1]);
+    if (cle) return rendre(cle);
+    // Le meilleur titre, à condition qu'aucun autre ne fasse aussi bien.
+    const seulMeilleur = (entrees, seuil) => {
+      const cand = entrees.map((z) => ({ ref: z.basename, titre: z.titre }));
+      const m = Ariane.meilleurTitre(t, cand, seuil);
+      if (!m) return null;
+      const second = Ariane.meilleurTitre(t, cand.filter((c) => c.ref !== m.ref), seuil);
+      return second && second.score >= m.score ? null : entrees.find((z) => z.basename === m.ref);
+    };
+    const ref = Ariane.refAuteurAnnee(t);
+    if (ref) {
+      const cands = candidatsSource(ref, index);
+      const forts = cands.filter((c) => c.force === 'fort');
+      const lot = (forts.length ? forts : cands).map((c) => c.entree);
+      if (lot.length === 1) return rendre(lot[0]);
+      const z = lot.length ? seulMeilleur(lot, 0.5) : null;
+      return z ? rendre(z) : null;
+    }
+    if (opts && opts.titre === false) return null;
+    const z = seulMeilleur(index, 0.75);
+    return z ? rendre(z) : null;
+  }
+
   // Résout les sources en clair des tâches « lecture » vers un [[@citekey]] du
   // coffre. Rend [{ ref, avant, apres, titre }] à passer à ModaleRevueLot.
   async resoudreSourcesLecture(refs) {
@@ -2475,7 +2530,8 @@ const avecTaches = (Base) => class extends Base {
       const fm = (this.app.metadataCache.getFileCache(t.fichier) || {}).frontmatter || {};
       const src = String(this._lireT(fm, 'source') || '').trim();
       if (!src || /\[\[.*\]\]/.test(src)) continue;
-      const m = (await this.meilleurTitreSem(src, cand, 0.5)) || Ariane.meilleurTitre(src, cand, 0.3);
+      const z = this.resoudreSourceLecture(src);
+      const m = z ? { ref: z.cle } : ((await this.meilleurTitreSem(src, cand, 0.5)) || Ariane.meilleurTitre(src, cand, 0.3));
       if (m) out.push({ ref: t.ref, avant: src, apres: '[[' + m.ref + ']]', titre: t.intitule });
     }
     return out;
