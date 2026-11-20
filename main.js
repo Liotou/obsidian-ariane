@@ -54916,7 +54916,7 @@ class ModaleLiensConcepts extends obsidian.Modal {
   onClose() { this.contentEl.empty(); }
 }
 
-// Les notes jointes à un événement (Ariane · notes jointes, 11k) : ce qui y
+// Les notes jointes à un événement (leurs méthodes : 11k, tâches) : ce qui y
 // est joint, à ouvrir ou détacher ; puis un onglet par type de note, une
 // recherche, et un clic pour joindre. L'onglet choisi reste d'une fois à
 // l'autre.
