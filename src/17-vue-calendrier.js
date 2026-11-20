@@ -351,11 +351,13 @@ class MoteurCalendrier extends MoteurVue {
       });
     }
     // Les tâches associées à cet événement : un clic ouvre la tâche.
+    const liees = [];
     for (const a of (this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [])) {
       const t = ligne('square-check', a.tache.intitule + ' (' + a.tache.ref + ')',
         'est-lien' + (Ariane.tacheClose(a.tache) ? ' est-tache-close' : ''));
       t.parentElement.setAttr('title', tr('Tâche'));
       t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref); });
+      liees.push(t.parentElement);
     }
     const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e) : null;
     // Les notes jointes (fenêtre « Notes jointes »), avec l'icône de leur
@@ -366,6 +368,22 @@ class MoteurCalendrier extends MoteurVue {
       t.parentElement.setAttr('title', tr('Note jointe'));
       if (j.couleur) t.parentElement.querySelector('.zfa-evt-survol-ic').style.color = j.couleur;
       t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this._ouvrirFichier(j.f); });
+      liees.push(t.parentElement);
+    }
+    // Trop de tâches et de notes : les premières, et de quoi dérouler le reste.
+    const MAX_LIEES = 4;
+    if (liees.length > MAX_LIEES + 1) {
+      const cachees = liees.slice(MAX_LIEES);
+      for (const l of cachees) l.style.display = 'none';
+      const plus = ligne('chevron-down', cachees.length + tr(' de plus'), 'est-lien est-plus');
+      plus.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        for (const l of cachees) l.style.display = '';
+        plus.parentElement.remove();
+        // Plus haute, la carte reste dans la fenêtre.
+        const haut = parseFloat(carte.style.top) || 8;
+        carte.style.top = Math.max(8, Math.min(haut, win.innerHeight - carte.offsetHeight - 8)) + 'px';
+      });
     }
     const actions = carte.createDiv({ cls: 'zfa-act-survol-actions' });
     const action = (icone, libelle, faire) => {

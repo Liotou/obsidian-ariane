@@ -5301,3 +5301,6 @@ body {
 .zfa-nj-titre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .zfa-nj-sous { color: var(--text-muted); font-size: var(--font-ui-smaller); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .zfa-nj-vide { color: var(--text-muted); font-size: var(--font-ui-small); padding: 4px 6px; }
+
+/* Carte d'un événement : longue, elle défile plutôt que de sortir de l'écran. */
+.zfa-evt-survol { max-height: calc(100vh - 16px); overflow-y: auto; }
