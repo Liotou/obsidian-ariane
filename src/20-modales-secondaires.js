@@ -978,7 +978,7 @@ class ModaleNotesEvenement extends obsidian.Modal {
   onOpen() {
     const fm = (this.app.metadataCache.getFileCache(this.ev) || {}).frontmatter || {};
     this.modalEl.addClass('zfa-nj');
-    this.setTitle(tr('Notes jointes'));
+    this.setTitle(tr('Notes et fichiers joints'));
     const c = this.contentEl;
     const tete = c.createDiv({ cls: 'zfa-nj-evt' });
     tete.createDiv({ cls: 'zfa-nj-evt-titre', text: String(fm.Titre || [].concat(fm.aliases || [])[0] || this.ev.basename) });
@@ -988,9 +988,16 @@ class ModaleNotesEvenement extends obsidian.Modal {
     this.onglets = this.g.ongletsNotesJointes();
     if (!this.onglets.some((o) => o.id === ModaleNotesEvenement.onglet)) ModaleNotesEvenement.onglet = this.onglets[0].id;
     this.zOnglets = c.createDiv({ cls: 'zfa-nj-onglets' });
-    this.recherche = c.createEl('input', { type: 'search', cls: 'zfa-nj-recherche', attr: { placeholder: tr('Rechercher une note…') } });
+    this.recherche = c.createEl('input', { type: 'search', cls: 'zfa-nj-recherche', attr: { placeholder: tr('Rechercher…') } });
     this.recherche.addEventListener('input', () => { this.requete = this.recherche.value; this._liste(); });
     this.zListe = c.createDiv({ cls: 'zfa-nj-liste' });
+    c.createDiv({ cls: 'zfa-nj-aide', text: tr('Glissez ici des notes ou des fichiers, du coffre ou du Finder.') });
+    // Tout l'intérieur de la fenêtre reçoit les dépôts.
+    this.g.brancherDepotRessources(this.modalEl, null, (fichiers) => {
+      this.g.joindreFichiersEvenement(this.ev, fichiers)
+        .catch((e) => new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e)))
+        .then(() => this._tout());
+    });
     this._tout();
     setTimeout(() => this.recherche.focus(), 0);
   }
@@ -1012,6 +1019,9 @@ class ModaleNotesEvenement extends obsidian.Modal {
   _ouvrir(f) {
     if (!f) return;
     this.close();
+    // Un fichier qui n'est pas une note s'ouvre comme ailleurs dans Ariane
+    // (OnlyOffice, lecteur PDF, ou l'application du Mac).
+    if (f.extension !== 'md' && this.g.ouvrirFichierCoffre) { this.g.ouvrirFichierCoffre(f).catch(() => {}); return; }
     this.app.workspace.getLeaf('tab').openFile(f);
   }
 
@@ -1019,7 +1029,7 @@ class ModaleNotesEvenement extends obsidian.Modal {
     const z = this.zJointes;
     z.empty();
     if (!this.jointes.length) {
-      z.createDiv({ cls: 'zfa-nj-vide', text: tr('Aucune note jointe pour l’instant.') });
+      z.createDiv({ cls: 'zfa-nj-vide', text: tr('Rien de joint pour l’instant.') });
       return;
     }
     z.createDiv({ cls: 'zfa-nj-section', text: tr('Jointes') + ' (' + this.jointes.length + ')' });
@@ -1062,13 +1072,13 @@ class ModaleNotesEvenement extends obsidian.Modal {
     const tous = this.g.candidatsNotesJointes(this.ev, onglet, this.jointes)
       .filter((it) => Ariane.correspondRecherche(it.titre + ' ' + it.sous + ' ' + it.f.basename, this.requete));
     if (!tous.length) {
-      z.createDiv({ cls: 'zfa-nj-vide', text: this.requete ? tr('Aucune note ne correspond.') : tr('Aucune note à joindre dans cet onglet.') });
+      z.createDiv({ cls: 'zfa-nj-vide', text: this.requete ? tr('Rien ne correspond.') : tr('Rien à joindre dans cet onglet.') });
       return;
     }
     const MAX = 60;
     for (const it of tous.slice(0, MAX)) {
       const l = z.createDiv({ cls: 'zfa-nj-ligne est-candidate', attr: { 'aria-label': tr('Joindre à l’événement') } });
-      this._icone(l, 'plus', '');
+      this._icone(l, it.type === 'fichier' ? Ariane.iconeFichier(it.f.extension) : 'plus', '');
       const t = l.createDiv({ cls: 'zfa-nj-txt' });
       t.createDiv({ cls: 'zfa-nj-titre', text: it.titre });
       if (it.sous) t.createDiv({ cls: 'zfa-nj-sous', text: it.sous });

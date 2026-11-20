@@ -5309,3 +5309,6 @@ body {
    continue sur tous ses jours, posée sur sa ligne en haut des colonnes. */
 .zfa-cal-bandeau .zfa-cal-sem-piste { position: relative; }
 .zfa-cal-barre-jour { position: absolute; height: 20px; box-sizing: border-box; z-index: 1; cursor: pointer; }
+
+.zfa-nj-aide { color: var(--text-faint); font-size: var(--font-ui-smaller); }
+.zfa-nj.zfa-ressources-depot { outline: 2px dashed var(--interactive-accent); outline-offset: -6px; }

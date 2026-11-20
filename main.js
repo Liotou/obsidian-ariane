@@ -24168,9 +24168,11 @@ const avecTaches = (Base) => class extends Base {
 
   // ── Notes jointes à un événement ──
   //  Une seule fenêtre, depuis l'événement : ce qui y est joint, puis, par
-  //  type de note (les familles de l'utilisateur, les tâches, le reste), de
-  //  quoi en joindre d'autres. Une note jointe porte « Événement » ; une
-  //  tâche, son lien d'événement, sans que son échéance bouge.
+  //  type de note (les familles de l'utilisateur, les tâches, le reste, les
+  //  fichiers), de quoi en joindre d'autres. Une note jointe porte
+  //  « Événement » ; une tâche, son lien d'événement, sans que son échéance
+  //  bouge ; un fichier (Word, PowerPoint, PDF…) va dans les « Ressources »
+  //  de la note d'événement.
 
   ouvrirNotesJointes(noteEv) {
     if (noteEv) new ModaleNotesEvenement(this, noteEv).open();
@@ -24200,7 +24202,21 @@ const avecTaches = (Base) => class extends Base {
     }
     if (o.taches && !taches) out.push({ id: 'taches', type: 'taches', nom: tr('Tâches'), icone: 'square-check', couleur: '' });
     out.push({ id: 'autres', type: 'autres', nom: tr('Autres notes'), icone: 'files', couleur: '' });
+    out.push({ id: 'fichiers', type: 'fichiers', nom: tr('Fichiers'), icone: 'paperclip', couleur: '' });
     return out;
+  }
+
+  // L'icône d'un fichier qui n'est pas une note, d'après son extension.
+  static iconeFichier(extension) {
+    const x = String(extension || '').toLowerCase();
+    if (/^(pptx?|key|odp)$/.test(x)) return 'presentation';
+    if (/^(xlsx?|csv|numbers|ods)$/.test(x)) return 'sheet';
+    if (/^(docx?|pages|odt|rtf|txt|pdf)$/.test(x)) return 'file-text';
+    if (/^(png|jpe?g|gif|webp|svg|heic|bmp)$/.test(x)) return 'file-image';
+    if (/^(mp3|m4a|wav|ogg|flac)$/.test(x)) return 'file-audio';
+    if (/^(mp4|mov|webm|mkv)$/.test(x)) return 'file-video';
+    if (/^(zip|rar|7z|gz)$/.test(x)) return 'file-archive';
+    return 'file';
   }
 
   ongletsNotesJointes() {
@@ -24238,6 +24254,12 @@ const avecTaches = (Base) => class extends Base {
     for (const a of this.tachesDeNoteEvenement(noteEv)) {
       out.push({ type: 'tache', f: a.tache.fichier, ref: a.tache.ref, lien: a.lien, titre: a.tache.intitule, sous: a.tache.ref, icone: 'square-check', couleur: '' });
     }
+    const fmEv = (this.app.metadataCache.getFileCache(noteEv) || {}).frontmatter || {};
+    for (const lien of [].concat(fmEv.Ressources || []).map(String).filter(Boolean)) {
+      const f = this._cibleLien(lien, noteEv.path);
+      if (!f || f.extension === 'md') continue;
+      out.push({ type: 'fichier', f, lien, titre: f.name, sous: f.parent && f.parent.path !== '/' ? f.parent.path : '', icone: Ariane.iconeFichier(f.extension), couleur: '' });
+    }
     return out;
   }
 
@@ -24246,6 +24268,12 @@ const avecTaches = (Base) => class extends Base {
   candidatsNotesJointes(noteEv, onglet, jointes) {
     const prises = new Set((jointes || []).map((j) => j.f && j.f.path));
     const recent = (a, b) => ((b.f.stat && b.f.stat.mtime) || 0) - ((a.f.stat && a.f.stat.mtime) || 0);
+    if (onglet.type === 'fichiers') {
+      return this.app.vault.getFiles()
+        .filter((f) => f.extension && f.extension !== 'md' && !prises.has(f.path))
+        .map((f) => ({ type: 'fichier', f, titre: f.name, sous: f.parent && f.parent.path !== '/' ? f.parent.path : '' }))
+        .sort(recent);
+    }
     if (onglet.type === 'taches') {
       return this.tachesPourGantt()
         .filter((t) => t.fichier && !prises.has(t.fichier.path) && t.statut !== 'terminée' && t.statut !== 'abandonnée')
@@ -24268,11 +24296,36 @@ const avecTaches = (Base) => class extends Base {
 
   async joindreNoteEvenement(noteEv, it) {
     if (it.type === 'tache') return this.lierTacheNoteEvenement(it.ref, noteEv);
+    if (it.type === 'fichier' || (it.f && it.f.extension !== 'md')) {
+      this.marquerEcriture(noteEv.path);
+      return this._ajouterRessourcesA(noteEv, 'Ressources', [it.f], (x) => x.Ressources, noteEv.basename);
+    }
     return this.relierNoteEvenement(it.f, noteEv, { muet: true });
+  }
+
+  // Ce qu'on glisse dans la fenêtre : des notes ou des fichiers, du coffre ou
+  // du Finder (copiés alors dans le dossier des pièces jointes).
+  async joindreFichiersEvenement(noteEv, fichiers) {
+    let n = 0;
+    for (const f of fichiers || []) {
+      if (!f || f.path === noteEv.path) continue;
+      const ref = this.refDeChemin(f.path);
+      await this.joindreNoteEvenement(noteEv, ref ? { type: 'tache', ref, f } : { type: f.extension === 'md' ? 'note' : 'fichier', f });
+      n += 1;
+    }
+    return n;
   }
 
   async detacherNoteEvenement(noteEv, j) {
     if (j.type === 'tache') return this.dissocierEvenementTache(j.ref, j.lien);
+    if (j.type === 'fichier') {
+      this.marquerEcriture(noteEv.path);
+      await this.app.fileManager.processFrontMatter(noteEv, (x) => {
+        const reste = Ariane.ressourcesSans(x.Ressources, j.lien);
+        if (reste.length) x.Ressources = reste; else x.Ressources = [];
+      });
+      return true;
+    }
     this.marquerEcriture(j.f.path);
     await this.app.fileManager.processFrontMatter(j.f, (x) => {
       const reste = [].concat(x['Événement'] || []).map(String).filter((l) => {
@@ -47355,13 +47408,18 @@ class MoteurCalendrier extends MoteurVue {
     const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e) : null;
     // Les notes jointes (fenêtre « Notes jointes »), avec l'icône de leur
     // famille : un clic ouvre la note. Les tâches sont déjà au-dessus.
-    const jointes = note && this.greffon.notesJointesDe ? this.greffon.notesJointesDe(note).filter((j) => j.type === 'note') : [];
+    const copies = new Set(pieces.map((p) => this.greffon.fichierDePiece(p)).filter(Boolean).map((f) => f.path));
+    const jointes = note && this.greffon.notesJointesDe
+      ? this.greffon.notesJointesDe(note).filter((j) => j.type === 'note' || (j.type === 'fichier' && !copies.has(j.f.path))) : [];
     for (const j of jointes) {
       // L'icône de la famille dit le type : son nom ne vient qu'au survol.
       const t = ligne(j.icone || 'file-text', j.titre, 'est-lien');
-      t.parentElement.setAttr('title', j.sous || tr('Note jointe'));
+      t.parentElement.setAttr('title', j.type === 'fichier' ? tr('Fichier joint') : (j.sous || tr('Note jointe')));
       if (j.couleur) t.parentElement.querySelector('.zfa-evt-survol-ic').style.color = j.couleur;
-      t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this._ouvrirFichier(j.f); });
+      t.addEventListener('click', (ev) => {
+        ev.stopPropagation(); this._cacherCarteActivite();
+        if (j.type === 'fichier') this.greffon.ouvrirFichierCoffre(j.f).catch(() => {}); else this._ouvrirFichier(j.f);
+      });
       liees.push(t.parentElement);
     }
     // Trop de tâches et de notes : les premières, et de quoi dérouler le reste.
@@ -55045,7 +55103,7 @@ class ModaleNotesEvenement extends obsidian.Modal {
   onOpen() {
     const fm = (this.app.metadataCache.getFileCache(this.ev) || {}).frontmatter || {};
     this.modalEl.addClass('zfa-nj');
-    this.setTitle(tr('Notes jointes'));
+    this.setTitle(tr('Notes et fichiers joints'));
     const c = this.contentEl;
     const tete = c.createDiv({ cls: 'zfa-nj-evt' });
     tete.createDiv({ cls: 'zfa-nj-evt-titre', text: String(fm.Titre || [].concat(fm.aliases || [])[0] || this.ev.basename) });
@@ -55055,9 +55113,16 @@ class ModaleNotesEvenement extends obsidian.Modal {
     this.onglets = this.g.ongletsNotesJointes();
     if (!this.onglets.some((o) => o.id === ModaleNotesEvenement.onglet)) ModaleNotesEvenement.onglet = this.onglets[0].id;
     this.zOnglets = c.createDiv({ cls: 'zfa-nj-onglets' });
-    this.recherche = c.createEl('input', { type: 'search', cls: 'zfa-nj-recherche', attr: { placeholder: tr('Rechercher une note…') } });
+    this.recherche = c.createEl('input', { type: 'search', cls: 'zfa-nj-recherche', attr: { placeholder: tr('Rechercher…') } });
     this.recherche.addEventListener('input', () => { this.requete = this.recherche.value; this._liste(); });
     this.zListe = c.createDiv({ cls: 'zfa-nj-liste' });
+    c.createDiv({ cls: 'zfa-nj-aide', text: tr('Glissez ici des notes ou des fichiers, du coffre ou du Finder.') });
+    // Tout l'intérieur de la fenêtre reçoit les dépôts.
+    this.g.brancherDepotRessources(this.modalEl, null, (fichiers) => {
+      this.g.joindreFichiersEvenement(this.ev, fichiers)
+        .catch((e) => new obsidian.Notice(tr('Échec : ') + (e && e.message ? e.message : e)))
+        .then(() => this._tout());
+    });
     this._tout();
     setTimeout(() => this.recherche.focus(), 0);
   }
@@ -55079,6 +55144,9 @@ class ModaleNotesEvenement extends obsidian.Modal {
   _ouvrir(f) {
     if (!f) return;
     this.close();
+    // Un fichier qui n'est pas une note s'ouvre comme ailleurs dans Ariane
+    // (OnlyOffice, lecteur PDF, ou l'application du Mac).
+    if (f.extension !== 'md' && this.g.ouvrirFichierCoffre) { this.g.ouvrirFichierCoffre(f).catch(() => {}); return; }
     this.app.workspace.getLeaf('tab').openFile(f);
   }
 
@@ -55086,7 +55154,7 @@ class ModaleNotesEvenement extends obsidian.Modal {
     const z = this.zJointes;
     z.empty();
     if (!this.jointes.length) {
-      z.createDiv({ cls: 'zfa-nj-vide', text: tr('Aucune note jointe pour l’instant.') });
+      z.createDiv({ cls: 'zfa-nj-vide', text: tr('Rien de joint pour l’instant.') });
       return;
     }
     z.createDiv({ cls: 'zfa-nj-section', text: tr('Jointes') + ' (' + this.jointes.length + ')' });
@@ -55129,13 +55197,13 @@ class ModaleNotesEvenement extends obsidian.Modal {
     const tous = this.g.candidatsNotesJointes(this.ev, onglet, this.jointes)
       .filter((it) => Ariane.correspondRecherche(it.titre + ' ' + it.sous + ' ' + it.f.basename, this.requete));
     if (!tous.length) {
-      z.createDiv({ cls: 'zfa-nj-vide', text: this.requete ? tr('Aucune note ne correspond.') : tr('Aucune note à joindre dans cet onglet.') });
+      z.createDiv({ cls: 'zfa-nj-vide', text: this.requete ? tr('Rien ne correspond.') : tr('Rien à joindre dans cet onglet.') });
       return;
     }
     const MAX = 60;
     for (const it of tous.slice(0, MAX)) {
       const l = z.createDiv({ cls: 'zfa-nj-ligne est-candidate', attr: { 'aria-label': tr('Joindre à l’événement') } });
-      this._icone(l, 'plus', '');
+      this._icone(l, it.type === 'fichier' ? Ariane.iconeFichier(it.f.extension) : 'plus', '');
       const t = l.createDiv({ cls: 'zfa-nj-txt' });
       t.createDiv({ cls: 'zfa-nj-titre', text: it.titre });
       if (it.sous) t.createDiv({ cls: 'zfa-nj-sous', text: it.sous });

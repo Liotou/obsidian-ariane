@@ -151,12 +151,12 @@ test('Notes jointes : un onglet par famille, les tâches à la place de leur fam
     fam('Notes d\'événements', ['10 - Notes d\'événements']),
     fam('Notes manuscrites', ['12 - Notes manuscrites']),
   ], { dossierT: '08 - Tâches', dossierNE: '10 - Notes d\'événements', taches: true });
-  assert.deepEqual(o.map((x) => x.id), ['famille:Note conceptuelle', 'taches', 'famille:Notes manuscrites', 'autres']);
+  assert.deepEqual(o.map((x) => x.id), ['famille:Note conceptuelle', 'taches', 'famille:Notes manuscrites', 'autres', 'fichiers']);
   assert.equal(o[0].icone, 'book');
   assert.equal(o[1].icone, 'square-check');
   // Sans famille pour les tâches : l'onglet vient quand même ; sans le module, non.
-  assert.deepEqual(Ariane.ongletsNotesJointes([], { dossierT: '08', dossierNE: '10', taches: true }).map((x) => x.id), ['taches', 'autres']);
-  assert.deepEqual(Ariane.ongletsNotesJointes([], { dossierT: '08', dossierNE: '10', taches: false }).map((x) => x.id), ['autres']);
+  assert.deepEqual(Ariane.ongletsNotesJointes([], { dossierT: '08', dossierNE: '10', taches: true }).map((x) => x.id), ['taches', 'autres', 'fichiers']);
+  assert.deepEqual(Ariane.ongletsNotesJointes([], { dossierT: '08', dossierNE: '10', taches: false }).map((x) => x.id), ['autres', 'fichiers']);
   assert.ok(Ariane.correspondRecherche('Journée d’études GT incertitude', 'gt etudes'));
   assert.ok(!Ariane.correspondRecherche('Journée', 'gt'));
 });
@@ -202,7 +202,7 @@ test('Notes jointes : joindre et détacher une note ou une tâche ; l’échéan
     .map((t) => ({ tache: t, lien: t.evenements[0] }));
   const onglets = g.ongletsNotesJointes();
   const parId = (id) => onglets.find((o) => o.id === id);
-  assert.deepEqual(onglets.map((o) => o.id), ['famille:Note conceptuelle', 'famille:Notes manuscrites', 'taches', 'autres']);
+  assert.deepEqual(onglets.map((o) => o.id), ['famille:Note conceptuelle', 'famille:Notes manuscrites', 'taches', 'autres', 'fichiers']);
   // Rien de joint ; les notes de chaque onglet, sans l'événement ni les tâches.
   assert.deepEqual(g.notesJointesDe(ev), []);
   const manus = g.candidatsNotesJointes(ev, parId('famille:Notes manuscrites'), []);
@@ -223,17 +223,37 @@ test('Notes jointes : joindre et détacher une note ou une tâche ; l’échéan
   // Détacher la note : la propriété vidée disparaît.
   await g.detacherNoteEvenement(ev, jointes[0]);
   assert.ok(!('Événement' in fms.get('NM-202611201427')));
+  // Un fichier (Word, PowerPoint…) : dans les Ressources de la note d'événement.
+  const pptx = Object.assign(fichier('94 - Pièces jointes/Présentation.pptx', 70), { extension: 'pptx', name: 'Présentation.pptx' });
+  notes.push(pptx);
+  g.app.vault.getFiles = () => notes;
+  g._lienVers = (f) => '[[' + (f.extension === 'md' ? f.basename : f.name) + ']]';
+  const fichiers = g.candidatsNotesJointes(ev, parId('fichiers'), g.notesJointesDe(ev));
+  assert.deepEqual(fichiers.map((x) => x.titre), ['Présentation.pptx']);
+  await g.joindreNoteEvenement(ev, fichiers[0]);
+  assert.deepEqual(fms.get('EV-20261120-0900').Ressources, ['[[Présentation.pptx]]']);
+  const j2 = g.notesJointesDe(ev).find((j) => j.type === 'fichier');
+  assert.equal(j2.icone, 'presentation');
+  assert.deepEqual(g.candidatsNotesJointes(ev, parId('fichiers'), g.notesJointesDe(ev)), []);
+  await g.detacherNoteEvenement(ev, j2);
+  assert.deepEqual(fms.get('EV-20261120-0900').Ressources, []);
+  // Glissés dans la fenêtre : une note et un fichier, chacun à sa place.
+  assert.equal(await g.joindreFichiersEvenement(ev, [nm, pptx, ev]), 2);
+  assert.deepEqual(fms.get('NM-202611201427')['Événement'], ['[[EV-20261120-0900]]']);
+  assert.deepEqual(fms.get('EV-20261120-0900').Ressources, ['[[Présentation.pptx]]']);
+  assert.equal(Ariane.iconeFichier('DOCX'), 'file-text');
+  assert.equal(Ariane.iconeFichier('xyz'), 'file');
 });
 
 // Un élément d'affichage minimal, assez pour dessiner une fenêtre et y cliquer.
 function elementFactice(tag, o) {
   const e = { tag, enfants: [], classes: new Set(String((o && o.cls) || '').split(' ').filter(Boolean)), texte: (o && o.text) || '',
-    attrs: Object.assign({}, (o && o.attr) || {}), style: {}, ecoutes: {}, value: '' };
+    attrs: Object.assign({}, (o && o.attr) || {}), style: {}, ecoutes: {}, value: '', dataset: {} };
   const creer = (t) => (x) => { const c = elementFactice(t, typeof x === 'string' ? { cls: x } : x); e.enfants.push(c); return c; };
   Object.assign(e, {
     createDiv: creer('div'), createSpan: creer('span'), createEl: (t, x) => creer(t)(x),
     empty() { e.enfants = []; }, addClass(c) { e.classes.add(c); }, setText(t) { e.texte = t; },
-    addEventListener(n, f) { e.ecoutes[n] = f; }, focus() {},
+    addEventListener(n, f) { e.ecoutes[n] = f; }, focus() {}, removeClass(c) { e.classes.delete(c); },
     tout() { return [e].concat(...e.enfants.map((c) => c.tout())); },
     texteTotal() { return [e.texte].concat(e.enfants.map((c) => c.texteTotal())).filter(Boolean).join(' | '); },
   });
@@ -276,11 +296,12 @@ test('Notes jointes : la fenêtre s’ouvre, joint d’un clic, change d’ongle
     global.__appModale = g.app;
     g.ouvrirNotesJointes(ev);
     const m = global.__modale;
-    assert.equal(m.titre, 'Notes jointes');
+    assert.equal(m.titre, 'Notes et fichiers joints');
     const texte = m.contentEl.texteTotal();
     assert.match(texte, /Journée du GT \| vendredi 20 novembre 2026, 9 h 00 à 18 h 00/);
-    assert.match(texte, /Aucune note jointe pour l’instant\./);
-    assert.match(texte, /Notes manuscrites \| .*Note conceptuelle \| .*Autres notes/);
+    assert.match(texte, /Rien de joint pour l’instant\./);
+    assert.match(texte, /Glissez ici des notes ou des fichiers/);
+    assert.match(texte, /Notes manuscrites \| .*Note conceptuelle \| .*Autres notes \| .*Fichiers/);
     // L'onglet des notes manuscrites (le premier) : un clic joint la note.
     const ligne = m.contentEl.tout().find((x) => x.classes.has('est-candidate'));
     assert.match(ligne.texteTotal(), /GT incertitude/);

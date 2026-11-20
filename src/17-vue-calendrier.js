@@ -362,13 +362,18 @@ class MoteurCalendrier extends MoteurVue {
     const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e) : null;
     // Les notes jointes (fenêtre « Notes jointes »), avec l'icône de leur
     // famille : un clic ouvre la note. Les tâches sont déjà au-dessus.
-    const jointes = note && this.greffon.notesJointesDe ? this.greffon.notesJointesDe(note).filter((j) => j.type === 'note') : [];
+    const copies = new Set(pieces.map((p) => this.greffon.fichierDePiece(p)).filter(Boolean).map((f) => f.path));
+    const jointes = note && this.greffon.notesJointesDe
+      ? this.greffon.notesJointesDe(note).filter((j) => j.type === 'note' || (j.type === 'fichier' && !copies.has(j.f.path))) : [];
     for (const j of jointes) {
       // L'icône de la famille dit le type : son nom ne vient qu'au survol.
       const t = ligne(j.icone || 'file-text', j.titre, 'est-lien');
-      t.parentElement.setAttr('title', j.sous || tr('Note jointe'));
+      t.parentElement.setAttr('title', j.type === 'fichier' ? tr('Fichier joint') : (j.sous || tr('Note jointe')));
       if (j.couleur) t.parentElement.querySelector('.zfa-evt-survol-ic').style.color = j.couleur;
-      t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this._ouvrirFichier(j.f); });
+      t.addEventListener('click', (ev) => {
+        ev.stopPropagation(); this._cacherCarteActivite();
+        if (j.type === 'fichier') this.greffon.ouvrirFichierCoffre(j.f).catch(() => {}); else this._ouvrirFichier(j.f);
+      });
       liees.push(t.parentElement);
     }
     // Trop de tâches et de notes : les premières, et de quoi dérouler le reste.

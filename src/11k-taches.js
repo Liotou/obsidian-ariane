@@ -3320,9 +3320,11 @@ const avecTaches = (Base) => class extends Base {
 
   // ── Notes jointes à un événement ──
   //  Une seule fenêtre, depuis l'événement : ce qui y est joint, puis, par
-  //  type de note (les familles de l'utilisateur, les tâches, le reste), de
-  //  quoi en joindre d'autres. Une note jointe porte « Événement » ; une
-  //  tâche, son lien d'événement, sans que son échéance bouge.
+  //  type de note (les familles de l'utilisateur, les tâches, le reste, les
+  //  fichiers), de quoi en joindre d'autres. Une note jointe porte
+  //  « Événement » ; une tâche, son lien d'événement, sans que son échéance
+  //  bouge ; un fichier (Word, PowerPoint, PDF…) va dans les « Ressources »
+  //  de la note d'événement.
 
   ouvrirNotesJointes(noteEv) {
     if (noteEv) new ModaleNotesEvenement(this, noteEv).open();
@@ -3352,7 +3354,21 @@ const avecTaches = (Base) => class extends Base {
     }
     if (o.taches && !taches) out.push({ id: 'taches', type: 'taches', nom: tr('Tâches'), icone: 'square-check', couleur: '' });
     out.push({ id: 'autres', type: 'autres', nom: tr('Autres notes'), icone: 'files', couleur: '' });
+    out.push({ id: 'fichiers', type: 'fichiers', nom: tr('Fichiers'), icone: 'paperclip', couleur: '' });
     return out;
+  }
+
+  // L'icône d'un fichier qui n'est pas une note, d'après son extension.
+  static iconeFichier(extension) {
+    const x = String(extension || '').toLowerCase();
+    if (/^(pptx?|key|odp)$/.test(x)) return 'presentation';
+    if (/^(xlsx?|csv|numbers|ods)$/.test(x)) return 'sheet';
+    if (/^(docx?|pages|odt|rtf|txt|pdf)$/.test(x)) return 'file-text';
+    if (/^(png|jpe?g|gif|webp|svg|heic|bmp)$/.test(x)) return 'file-image';
+    if (/^(mp3|m4a|wav|ogg|flac)$/.test(x)) return 'file-audio';
+    if (/^(mp4|mov|webm|mkv)$/.test(x)) return 'file-video';
+    if (/^(zip|rar|7z|gz)$/.test(x)) return 'file-archive';
+    return 'file';
   }
 
   ongletsNotesJointes() {
@@ -3390,6 +3406,12 @@ const avecTaches = (Base) => class extends Base {
     for (const a of this.tachesDeNoteEvenement(noteEv)) {
       out.push({ type: 'tache', f: a.tache.fichier, ref: a.tache.ref, lien: a.lien, titre: a.tache.intitule, sous: a.tache.ref, icone: 'square-check', couleur: '' });
     }
+    const fmEv = (this.app.metadataCache.getFileCache(noteEv) || {}).frontmatter || {};
+    for (const lien of [].concat(fmEv.Ressources || []).map(String).filter(Boolean)) {
+      const f = this._cibleLien(lien, noteEv.path);
+      if (!f || f.extension === 'md') continue;
+      out.push({ type: 'fichier', f, lien, titre: f.name, sous: f.parent && f.parent.path !== '/' ? f.parent.path : '', icone: Ariane.iconeFichier(f.extension), couleur: '' });
+    }
     return out;
   }
 
@@ -3398,6 +3420,12 @@ const avecTaches = (Base) => class extends Base {
   candidatsNotesJointes(noteEv, onglet, jointes) {
     const prises = new Set((jointes || []).map((j) => j.f && j.f.path));
     const recent = (a, b) => ((b.f.stat && b.f.stat.mtime) || 0) - ((a.f.stat && a.f.stat.mtime) || 0);
+    if (onglet.type === 'fichiers') {
+      return this.app.vault.getFiles()
+        .filter((f) => f.extension && f.extension !== 'md' && !prises.has(f.path))
+        .map((f) => ({ type: 'fichier', f, titre: f.name, sous: f.parent && f.parent.path !== '/' ? f.parent.path : '' }))
+        .sort(recent);
+    }
     if (onglet.type === 'taches') {
       return this.tachesPourGantt()
         .filter((t) => t.fichier && !prises.has(t.fichier.path) && t.statut !== 'terminée' && t.statut !== 'abandonnée')
@@ -3420,11 +3448,36 @@ const avecTaches = (Base) => class extends Base {
 
   async joindreNoteEvenement(noteEv, it) {
     if (it.type === 'tache') return this.lierTacheNoteEvenement(it.ref, noteEv);
+    if (it.type === 'fichier' || (it.f && it.f.extension !== 'md')) {
+      this.marquerEcriture(noteEv.path);
+      return this._ajouterRessourcesA(noteEv, 'Ressources', [it.f], (x) => x.Ressources, noteEv.basename);
+    }
     return this.relierNoteEvenement(it.f, noteEv, { muet: true });
+  }
+
+  // Ce qu'on glisse dans la fenêtre : des notes ou des fichiers, du coffre ou
+  // du Finder (copiés alors dans le dossier des pièces jointes).
+  async joindreFichiersEvenement(noteEv, fichiers) {
+    let n = 0;
+    for (const f of fichiers || []) {
+      if (!f || f.path === noteEv.path) continue;
+      const ref = this.refDeChemin(f.path);
+      await this.joindreNoteEvenement(noteEv, ref ? { type: 'tache', ref, f } : { type: f.extension === 'md' ? 'note' : 'fichier', f });
+      n += 1;
+    }
+    return n;
   }
 
   async detacherNoteEvenement(noteEv, j) {
     if (j.type === 'tache') return this.dissocierEvenementTache(j.ref, j.lien);
+    if (j.type === 'fichier') {
+      this.marquerEcriture(noteEv.path);
+      await this.app.fileManager.processFrontMatter(noteEv, (x) => {
+        const reste = Ariane.ressourcesSans(x.Ressources, j.lien);
+        if (reste.length) x.Ressources = reste; else x.Ressources = [];
+      });
+      return true;
+    }
     this.marquerEcriture(j.f.path);
     await this.app.fileManager.processFrontMatter(j.f, (x) => {
       const reste = [].concat(x['Événement'] || []).map(String).filter((l) => {
