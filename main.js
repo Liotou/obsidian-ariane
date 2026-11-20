@@ -31591,50 +31591,92 @@ const avecNotesManuscrites = (Base) => class extends Base {
     ].filter(Boolean).join('\n\n');
   }
 
-  // Le texte déjà transcrit d'une page, tel que la note le porte (vos
-  // corrections comprises), sans le titre du bloc ni les « > » de
-  // l'encadré. L'ancien bloc à titre gras se lit aussi.
-  static transcriptionDePage(corps, page) {
-    const m = new RegExp('<!-- ariane:transcription-p' + page + ' -->([\\s\\S]*?)<!-- /ariane:transcription-p' + page + ' -->').exec(String(corps || ''));
-    if (!m) return '';
-    return m[1].split('\n')
-      .filter((l) => !/^(\*\*Transcription, |>\s*\[!\w+\][-+]?\s)/.test(l.trim()))
-      .map((l) => l.replace(/^\s*> ?/, ''))
-      .join('\n').trim();
+  // Les transcriptions d'une note : un seul encadré « Transcription », replié,
+  // où chaque page a sa section, bornée par ses repères. Se lisent aussi les
+  // formats d'avant (un encadré par page, ou un bloc à titre gras par page),
+  // pour qu'une note ancienne passe au nouveau au premier complément.
+  // Rend { lignes, zones (intervalles de lignes [début, fin[), pages (Map
+  // numéro → texte, vos corrections comprises, sans titre ni « > ») }.
+  static lireTranscriptions(corps) {
+    const lignes = String(corps || '').split('\n');
+    const zones = [];
+    for (let i = 0; i < lignes.length; i++) {
+      const ouv = /^<!-- ariane:transcription-p(\d+) -->\s*$/.exec(lignes[i]);
+      if (ouv) {
+        const fer = '<!-- /ariane:transcription-p' + ouv[1] + ' -->';
+        let j = i + 1;
+        while (j < lignes.length && lignes[j].trim() !== fer) j++;
+        if (j >= lignes.length) continue;
+        zones.push([i, j + 1]);
+        i = j;
+        continue;
+      }
+      if (/^>\s*\[!\w+\][-+]?\s+Transcription\b/i.test(lignes[i])) {
+        let j = i + 1;
+        while (j < lignes.length && /^\s*>/.test(lignes[j])) j++;
+        zones.push([i, j]);
+        i = j - 1;
+      }
+    }
+    const texte = zones.map(([a, b]) => lignes.slice(a, b).map((l) => l.replace(/^\s*> ?/, '')).join('\n')).join('\n');
+    const titre = /^\s*(\*\*(Transcription, page|Page) \d+\*\*|\[!\w+\][-+]?\s+Transcription\b.*)\s*$/i;
+    const pages = new Map();
+    for (const m of texte.matchAll(/<!-- ariane:transcription-p(\d+) -->([\s\S]*?)<!-- \/ariane:transcription-p\1 -->/g)) {
+      const t = m[2].split('\n').filter((l) => !titre.test(l)).join('\n').trim();
+      if (!t) continue;
+      pages.set(m[1], pages.has(m[1]) ? pages.get(m[1]) + '\n\n' + t : t);
+    }
+    return { lignes, zones, pages };
   }
 
-  // Le bloc d'une page : un encadré replié par défaut, dont le titre seul
-  // reste visible tant qu'on ne l'ouvre pas.
-  static blocTranscription(page, texte) {
-    const lignes = String(texte || '').trim().replace(/<!--/g, '&lt;!--').split(/\r?\n/).map((l) => (l.trim() ? '> ' + l : '>'));
-    return ['<!-- ariane:transcription-p' + page + ' -->', '> [!info]- ' + tr('Transcription, page ') + page, ...lignes,
-      '<!-- /ariane:transcription-p' + page + ' -->'].join('\n');
+  // Le texte déjà transcrit d'une page, tel que la note le porte.
+  static transcriptionDePage(corps, page) {
+    return Ariane.lireTranscriptions(corps).pages.get(String(page)) || '';
+  }
+
+  // L'encadré des transcriptions : replié par défaut, une section par page,
+  // dans l'ordre des pages. Les repères restent dans l'encadré, invisibles.
+  static blocTranscriptions(pages) {
+    const l = ['> [!info]- ' + tr('Transcription')];
+    [...pages.entries()].sort((a, b) => Number(a[0]) - Number(b[0])).forEach(([n, t], k) => {
+      if (k) l.push('>');
+      l.push('> <!-- ariane:transcription-p' + n + ' -->', '> **' + tr('Page ') + n + '**', '>');
+      for (const x of String(t).trim().replace(/<!--/g, '&lt;!--').split(/\r?\n/)) l.push(x.trim() ? '> ' + x : '>');
+      l.push('> <!-- /ariane:transcription-p' + n + ' -->');
+    });
+    return l.join('\n');
   }
 
   // Ajoute le texte d'une séance à la transcription de sa page. Jamais de
-  // remplacement : ce qui est déjà écrit, et vos corrections, restent. Le
-  // bloc d'une page nouvelle se pose après le PDF intégré, à la suite des
-  // pages déjà transcrites.
+  // remplacement : ce qui est déjà écrit, et vos corrections, restent.
+  // L'encadré se pose après le PDF intégré, ou reste où il est.
   static corpsAvecTranscription(corps, page, texte, etiquette) {
     const t = String(corps || '');
-    const ajout = (etiquette ? '*' + etiquette + '*\n\n' : '') + String(texte || '').trim();
-    if (!String(texte || '').trim()) return t;
-    const ouv = '<!-- ariane:transcription-p' + page + ' -->';
-    const fer = '<!-- /ariane:transcription-p' + page + ' -->';
-    const i = t.indexOf(ouv);
-    const j = t.indexOf(fer);
-    if (i >= 0 && j > i) {
-      const deja = Ariane.transcriptionDePage(t, page);
-      return t.slice(0, i) + Ariane.blocTranscription(page, (deja ? deja + '\n\n' : '') + ajout) + t.slice(j + fer.length);
+    const neuf = String(texte || '').trim();
+    if (!neuf) return t;
+    const ajout = (etiquette ? '*' + etiquette + '*\n\n' : '') + neuf;
+    const { lignes, zones, pages } = Ariane.lireTranscriptions(t);
+    const p = String(page);
+    pages.set(p, pages.has(p) ? pages.get(p) + '\n\n' + ajout : ajout);
+    const bloc = Ariane.blocTranscriptions(pages);
+    if (zones.length) {
+      // L'encadré prend la place de la première zone ; les autres s'effacent.
+      const ICI = '';
+      const RIEN = '';
+      const sortie = [];
+      lignes.forEach((l, i) => {
+        const z = zones.findIndex(([a, b]) => i >= a && i < b);
+        if (z < 0) sortie.push(l);
+        else if (i === zones[z][0]) sortie.push(z === 0 ? ICI : RIEN);
+      });
+      const r = sortie.join('\n').replace(/\n*\n*/g, '\n\n');
+      const avant = r.slice(0, r.indexOf(ICI)).replace(/\n*$/, '');
+      const apres = r.slice(r.indexOf(ICI) + 1).replace(/^\n*/, '');
+      return (avant ? avant + '\n\n' : '') + bloc + '\n' + (apres ? '\n' + apres : '');
     }
-    const bloc = Ariane.blocTranscription(page, ajout);
-    let pos = -1;
-    for (const m of t.matchAll(/<!-- \/ariane:transcription-p\d+ -->/g)) pos = m.index + m[0].length;
-    if (pos < 0) {
-      const pdf = /^!\[\[[^\]]+\.pdf\]\][ \t]*$/m.exec(t);
-      if (pdf) pos = pdf.index + pdf[0].length;
-    }
-    if (pos < 0) return t.replace(/\n*$/, '\n\n') + bloc + '\n';
+    const pdf = /^!\[\[[^\]]+\.pdf\]\][ \t]*$/m.exec(t);
+    if (!pdf) return t.replace(/\n*$/, '\n\n') + bloc + '\n';
+    const pos = pdf.index + pdf[0].length;
     const apres = t.slice(pos).replace(/^\n+/, '');
     return t.slice(0, pos) + '\n\n' + bloc + '\n' + (apres ? '\n' + apres : '');
   }
