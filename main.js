@@ -47396,6 +47396,20 @@ class MoteurCalendrier extends MoteurVue {
           .catch(() => { if (e.id) this._ouvrirEvenement(e.id); });
       });
     }
+    // Une ligne jointe se retire d'une croix, à gauche : au survol, l'icône
+    // devient croix. Le titre, lui, ouvre toujours.
+    const retirable = (l, libelle, faire) => {
+      l.addClass('est-retirable');
+      const x = l.createSpan({ cls: 'zfa-evt-survol-retirer', attr: { 'aria-label': libelle } });
+      obsidian.setIcon(x, 'x');
+      l.prepend(x);
+      x.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        try { await faire(); l.remove(); } catch (err) {
+          new obsidian.Notice(tr('Échec : ') + (err && err.message ? err.message : err));
+        }
+      });
+    };
     // Les tâches associées à cet événement : un clic ouvre la tâche.
     const liees = [];
     for (const a of (this.greffon.tachesDeEvenement ? this.greffon.tachesDeEvenement(e) : [])) {
@@ -47403,6 +47417,7 @@ class MoteurCalendrier extends MoteurVue {
         'est-lien' + (Ariane.tacheClose(a.tache) ? ' est-tache-close' : ''));
       t.parentElement.setAttr('title', tr('Tâche'));
       t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref); });
+      retirable(t.parentElement, tr('Dissocier de l’événement'), () => this.greffon.dissocierEvenementTache(a.tache.ref, a.lien));
       liees.push(t.parentElement);
     }
     const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e) : null;
@@ -47420,6 +47435,7 @@ class MoteurCalendrier extends MoteurVue {
         ev.stopPropagation(); this._cacherCarteActivite();
         if (j.type === 'fichier') this.greffon.ouvrirFichierCoffre(j.f).catch(() => {}); else this._ouvrirFichier(j.f);
       });
+      retirable(t.parentElement, tr('Détacher de l’événement'), () => this.greffon.detacherNoteEvenement(note, j));
       liees.push(t.parentElement);
     }
     // Trop de tâches et de notes : les premières, et de quoi dérouler le reste.
