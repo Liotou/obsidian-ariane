@@ -358,6 +358,15 @@ class MoteurCalendrier extends MoteurVue {
       t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this.ouvrir(a.tache.ref); });
     }
     const note = e.id && this.greffon.noteDeEvenement ? this.greffon.noteDeEvenement(e) : null;
+    // Les notes jointes (fenêtre « Notes jointes »), avec l'icône de leur
+    // famille : un clic ouvre la note. Les tâches sont déjà au-dessus.
+    const jointes = note && this.greffon.notesJointesDe ? this.greffon.notesJointesDe(note).filter((j) => j.type === 'note') : [];
+    for (const j of jointes) {
+      const t = ligne(j.icone || 'file-text', j.titre + (j.sous ? ' (' + j.sous + ')' : ''), 'est-lien');
+      t.parentElement.setAttr('title', tr('Note jointe'));
+      if (j.couleur) t.parentElement.querySelector('.zfa-evt-survol-ic').style.color = j.couleur;
+      t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this._ouvrirFichier(j.f); });
+    }
     const actions = carte.createDiv({ cls: 'zfa-act-survol-actions' });
     const action = (icone, libelle, faire) => {
       const bt = actions.createEl('button', { cls: 'zfa-act-survol-bt' });
