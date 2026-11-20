@@ -342,6 +342,8 @@ test('note : la transcription s’ajoute après le PDF, page par page, sans rien
 
 test('consigne : bandes successives, et le déjà transcrit pour ne rendre que l’ajout', () => {
   assert.match(Ariane.promptTranscription(3, ''), /ces 3 images/);
+  // Ses puces en « o » sont des tirets.
+  assert.match(Ariane.promptTranscription(1, ''), /petit « o » est un tiret de liste, écris « - »/);
   assert.doesNotMatch(Ariane.promptTranscription(1, ''), /déjà transcrite/);
   assert.match(Ariane.promptTranscription(1, 'Ligne connue.'), /déjà transcrite[\s\S]*Ligne connue\./);
 });

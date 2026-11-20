@@ -290,7 +290,7 @@ const avecNotesManuscrites = (Base) => class extends Base {
       n > 1
         ? 'Transcris fidèlement, en français, l’écriture manuscrite de ces ' + n + ' images : des bandes successives d’une même page de cahier, de haut en bas, qui se chevauchent un peu (ne répète pas une ligne coupée entre deux bandes).'
         : 'Transcris fidèlement, en français, l’écriture manuscrite de cette image : une bande d’une page de cahier.',
-      'Rends seulement le texte, en Markdown simple : garde les retours à la ligne et les listes ; une flèche s’écrit →, un mot souligné en **gras**. Mot illisible : [?]. Mot barré : omis. Un dessin ou un schéma : [schéma : quelques mots]. Aucun commentaire, aucune introduction.',
+      'Rends seulement le texte, en Markdown simple : garde les retours à la ligne et les listes ; une puce dessinée comme un petit « o » est un tiret de liste, écris « - » ; une flèche s’écrit →, un mot souligné en **gras**. Mot illisible : [?]. Mot barré : omis. Un dessin ou un schéma : [schéma : quelques mots]. Aucun commentaire, aucune introduction.',
       deja ? 'Une partie de cette page est déjà transcrite, ci-dessous. Ne rends que ce qui n’y figure pas encore (les ajouts de la dernière séance), et rien du tout s’il n’y a rien de nouveau.\n\n---\n' + deja + '\n---' : '',
     ].filter(Boolean).join('\n\n');
   }
