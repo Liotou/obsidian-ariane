@@ -47305,8 +47305,9 @@ class MoteurCalendrier extends MoteurVue {
     // famille : un clic ouvre la note. Les tâches sont déjà au-dessus.
     const jointes = note && this.greffon.notesJointesDe ? this.greffon.notesJointesDe(note).filter((j) => j.type === 'note') : [];
     for (const j of jointes) {
-      const t = ligne(j.icone || 'file-text', j.titre + (j.sous ? ' (' + j.sous + ')' : ''), 'est-lien');
-      t.parentElement.setAttr('title', tr('Note jointe'));
+      // L'icône de la famille dit le type : son nom ne vient qu'au survol.
+      const t = ligne(j.icone || 'file-text', j.titre, 'est-lien');
+      t.parentElement.setAttr('title', j.sous || tr('Note jointe'));
       if (j.couleur) t.parentElement.querySelector('.zfa-evt-survol-ic').style.color = j.couleur;
       t.addEventListener('click', (ev) => { ev.stopPropagation(); this._cacherCarteActivite(); this._ouvrirFichier(j.f); });
       liees.push(t.parentElement);
