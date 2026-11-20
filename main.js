@@ -31636,7 +31636,8 @@ const avecNotesManuscrites = (Base) => class extends Base {
     return f.taille !== connu.taille || f.modif !== connu.modif;
   }
 
-  // Le tableau des séances, la plus récente en tête.
+  // Le tableau des séances, la plus récente en tête, dans un encadré replié ;
+  // ses repères sont dedans, invisibles.
   static blocSeancesManuscrites(seances) {
     if (!seances || !seances.length) return '';
     const nb = (n) => Number(n).toLocaleString('fr-FR');
@@ -31648,9 +31649,27 @@ const avecNotesManuscrites = (Base) => class extends Base {
       const quoi = s.premiere ? tr('Premier import') : tr('Écriture');
       return '| ' + [jour, heure, quoi, nb(s.nouveaux), pages].join(' | ') + ' |';
     });
-    return ['<!-- ariane:seances -->', '**' + tr('Séances d’écriture') + '**', '',
-      '| ' + [tr('Date'), tr('Heure'), tr('Séance'), tr('Traits'), tr('Pages')].join(' | ') + ' |',
-      '| --- | --- | --- | ---: | --- |', ...lignes, '', '<!-- /ariane:seances -->'].join('\n');
+    return ['> [!info]- ' + tr('Séances d’écriture'), '> <!-- ariane:seances -->', '>',
+      '> | ' + [tr('Date'), tr('Heure'), tr('Séance'), tr('Traits'), tr('Pages')].join(' | ') + ' |',
+      '> | --- | --- | --- | ---: | --- |', ...lignes.map((l) => '> ' + l), '>', '> <!-- /ariane:seances -->'].join('\n');
+  }
+
+  // La note avec ce tableau des séances : à la place de l'ancien (encadré, ou
+  // bloc d'avant, à repères visibles), sinon sous le titre.
+  static corpsAvecSeances(corps, bloc) {
+    const lignes = String(corps || '').split('\n');
+    for (let i = 0; i < lignes.length; i++) {
+      let j = -1;
+      if (/^>\s*\[!\w+\][-+]?\s+S[ée]ances d.[ée]criture/i.test(lignes[i])) {
+        j = i + 1;
+        while (j < lignes.length && /^\s*>/.test(lignes[j])) j++;
+      } else if (lignes[i].trim() === '<!-- ariane:seances -->') {
+        j = lignes.findIndex((l, k) => k > i && l.trim() === '<!-- /ariane:seances -->');
+        if (j > i) j += 1;
+      }
+      if (j > i) return lignes.slice(0, i).concat(bloc ? [bloc] : [], lignes.slice(j)).join('\n');
+    }
+    return Ariane.corpsAvecBloc(corps, 'seances', bloc);
   }
 
   // La note d'un cahier, à sa création.
@@ -32100,7 +32119,7 @@ const avecNotesManuscrites = (Base) => class extends Base {
       x.aliases = al.includes(info.titre) ? al : al.concat(info.titre);
     });
     const corps = await this.app.vault.read(note);
-    let nouveau = Ariane.corpsAvecBloc(corps, 'seances', Ariane.blocSeancesManuscrites(traits.seances));
+    let nouveau = Ariane.corpsAvecSeances(corps, Ariane.blocSeancesManuscrites(traits.seances));
     // Le titre de la note aussi, s'il était encore l'ancien nom.
     if (ancienTitre && ancienTitre !== info.titre) {
       nouveau = nouveau.replace(new RegExp('^# ' + echapperRegex(ancienTitre) + '[ \\t]*$', 'm'), () => '# ' + info.titre);

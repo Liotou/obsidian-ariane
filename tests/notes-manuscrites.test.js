@@ -135,12 +135,28 @@ test('tableau des séances : la plus récente en tête, pages et nombres lisible
     { quand: '2026-11-20T08:05', nouveaux: 1, pages: [{ page: 3 }] },
   ]);
   const l = b.split('\n');
-  assert.equal(l[0], '<!-- ariane:seances -->');
-  assert.equal(l[3], '| Date | Heure | Séance | Traits | Pages |');
-  assert.equal(l[5], '| 20 novembre 2026 | 8 h 05 | Écriture | 1 | 3 |');
-  assert.ok(/^\| 19 novembre 2026 \| 10 h 24 \| Premier import \| 5\s021 \| 1, 2 \|$/.test(l[6]), l[6]);
-  assert.equal(l[7], '', 'une ligne vide referme le tableau');
+  assert.equal(l[0], '> [!info]- Séances d’écriture');
+  assert.equal(l[1], '> <!-- ariane:seances -->');
+  assert.equal(l[3], '> | Date | Heure | Séance | Traits | Pages |');
+  assert.equal(l[5], '> | 20 novembre 2026 | 8 h 05 | Écriture | 1 | 3 |');
+  assert.ok(/^> \| 19 novembre 2026 \| 10 h 24 \| Premier import \| 5\s021 \| 1, 2 \|$/.test(l[6]), l[6]);
+  assert.equal(l[7], '>', 'une ligne vide referme le tableau');
+  assert.equal(l[8], '> <!-- /ariane:seances -->');
   assert.equal(Ariane.blocSeancesManuscrites([]), '');
+});
+
+test('tableau des séances : l’encadré remplace l’ancien bloc, puis se remplace lui-même', () => {
+  const s1 = Ariane.blocSeancesManuscrites([{ quand: '2026-11-19T10:24', nouveaux: 5, pages: [{ page: 1 }], premiere: true }]);
+  const s2 = Ariane.blocSeancesManuscrites([{ quand: '2026-11-19T10:24', nouveaux: 5, pages: [{ page: 1 }], premiere: true },
+    { quand: '2026-11-20T08:05', nouveaux: 1, pages: [{ page: 2 }] }]);
+  const ancien = '---\nType: note-manuscrite\n---\n# A\n\n<!-- ariane:seances -->\n**Séances d’écriture**\n\n| Date |\n| --- |\n| x |\n\n<!-- /ariane:seances -->\n\n![[NM-1.pdf]]\n';
+  const n1 = Ariane.corpsAvecSeances(ancien, s1);
+  assert.equal(n1, '---\nType: note-manuscrite\n---\n# A\n\n' + s1 + '\n\n![[NM-1.pdf]]\n');
+  const n2 = Ariane.corpsAvecSeances(n1, s2);
+  assert.equal(n2, '---\nType: note-manuscrite\n---\n# A\n\n' + s2 + '\n\n![[NM-1.pdf]]\n');
+  assert.equal(Ariane.corpsAvecSeances(n2, s2), n2);
+  // Sans tableau encore : sous le titre.
+  assert.match(Ariane.corpsAvecSeances('# A\n\nTexte.\n', s1), /^# A\n\n> \[!info\]- Séances d’écriture[\s\S]*\n\nTexte\.\n$/);
 });
 
 // ── de bout en bout, avec un serveur et un coffre factices ──
