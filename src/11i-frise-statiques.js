@@ -139,6 +139,39 @@ const avecFriseStatiques = (Base) => class extends Base {
     return out;
   }
 
+  // Les événements « journée entière » d'une bande de jours consécutifs, en
+  // barres continues : chacune avec sa première colonne (i0), la colonne
+  // après sa dernière (i1) et sa ligne (voie), la plus haute libre. Les plus
+  // longues d'abord, à début égal. `occupe[i]` : lignes prises sur la
+  // colonne i. Une fin absente ou non postérieure vaut un jour.
+  static barresJourEntier(evenements, jours) {
+    const rang = new Map((jours || []).map((j, i) => [j, i]));
+    const n = (jours || []).length;
+    const barres = [];
+    for (const e of evenements || []) {
+      const d = String((e && e.debut) || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+      let f = String(e.fin || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || f <= d) f = Ariane.decalerJour(d, 1);
+      if (!n || f <= jours[0] || d > jours[n - 1]) continue;
+      const i0 = d < jours[0] ? 0 : rang.get(d);
+      const i1 = f > jours[n - 1] ? n : rang.get(f);
+      if (i0 == null || i1 == null || i1 <= i0) continue;
+      barres.push({ e, i0, i1, voie: 0 });
+    }
+    barres.sort((a, b) => a.i0 - b.i0 || (b.i1 - b.i0) - (a.i1 - a.i0));
+    const fins = [];
+    for (const b of barres) {
+      let v = fins.findIndex((x) => x <= b.i0);
+      if (v < 0) { v = fins.length; fins.push(0); }
+      fins[v] = b.i1;
+      b.voie = v;
+    }
+    const occupe = new Array(n).fill(0);
+    for (const b of barres) for (let i = b.i0; i < b.i1; i++) occupe[i] = Math.max(occupe[i], b.voie + 1);
+    return { barres, occupe };
+  }
+
   // Coupe une liste à `plafond` éléments et dit combien restent cachés.
   // plafond <= 0 → aucun repli.
   static replierListe(items, plafond) {

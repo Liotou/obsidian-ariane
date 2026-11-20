@@ -18029,6 +18029,39 @@ const avecFriseStatiques = (Base) => class extends Base {
     return out;
   }
 
+  // Les événements « journée entière » d'une bande de jours consécutifs, en
+  // barres continues : chacune avec sa première colonne (i0), la colonne
+  // après sa dernière (i1) et sa ligne (voie), la plus haute libre. Les plus
+  // longues d'abord, à début égal. `occupe[i]` : lignes prises sur la
+  // colonne i. Une fin absente ou non postérieure vaut un jour.
+  static barresJourEntier(evenements, jours) {
+    const rang = new Map((jours || []).map((j, i) => [j, i]));
+    const n = (jours || []).length;
+    const barres = [];
+    for (const e of evenements || []) {
+      const d = String((e && e.debut) || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+      let f = String(e.fin || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || f <= d) f = Ariane.decalerJour(d, 1);
+      if (!n || f <= jours[0] || d > jours[n - 1]) continue;
+      const i0 = d < jours[0] ? 0 : rang.get(d);
+      const i1 = f > jours[n - 1] ? n : rang.get(f);
+      if (i0 == null || i1 == null || i1 <= i0) continue;
+      barres.push({ e, i0, i1, voie: 0 });
+    }
+    barres.sort((a, b) => a.i0 - b.i0 || (b.i1 - b.i0) - (a.i1 - a.i0));
+    const fins = [];
+    for (const b of barres) {
+      let v = fins.findIndex((x) => x <= b.i0);
+      if (v < 0) { v = fins.length; fins.push(0); }
+      fins[v] = b.i1;
+      b.voie = v;
+    }
+    const occupe = new Array(n).fill(0);
+    for (const b of barres) for (let i = b.i0; i < b.i1; i++) occupe[i] = Math.max(occupe[i], b.voie + 1);
+    return { barres, occupe };
+  }
+
   // Coupe une liste à `plafond` éléments et dit combien restent cachés.
   // plafond <= 0 → aucun repli.
   static replierListe(items, plafond) {
@@ -47390,13 +47423,13 @@ class MoteurCalendrier extends MoteurVue {
   // tout ou porte un commentaire (que le bloc ne montre jamais) : intitulé
   // entier, horaire, propriétés, commentaire et sous-tâches de la séance,
   // qui s'y cochent. Rien pendant un geste.
-  _montrerCarteCreneau(el, t, ev) {
+  _montrerCarteCreneau(el, t, ev, o) {
     if (this._gesteCal) return;
     clearTimeout(this._carteMinuterie);
     if (this._carteActivite && this._carteActiviteEl === el) return;
     const seance = el._seance || { texte: '', refs: [] };
     const libre = String(seance.texte || '').trim();
-    if (!libre && !this._blocDeborde(el)) return;
+    if (!(o && o.toujours) && !libre && !this._blocDeborde(el)) return;
     this._cacherCarteActivite();
     // La carte remplace la bulle native, qui viendrait s'y superposer.
     el.removeAttribute('title');
@@ -47422,12 +47455,15 @@ class MoteurCalendrier extends MoteurVue {
     const jour = String(ev.debut || '').slice(0, 10);
     const jl = new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     let quand = jl.charAt(0).toUpperCase() + jl.slice(1);
-    if (ev.fin) {
+    if (ev.source === 'dates') {
+      // Tâche ou jalon du bandeau : son jour, et son heure s'il en a une.
+      quand = (ev.jalon ? tr('Jalon, ') : tr('Échéance, ')) + jl + (!ev.jalon && t.heure ? tr(' à ') + t.heure : '');
+    } else if (ev.fin) {
       quand += ', ' + ev.debut.slice(11, 16) + ' → ' + ev.fin.slice(11, 16);
       const min = Ariane.dureeCreneauMin(ev.debut.slice(0, 16), ev.fin.slice(0, 16));
       if (min) quand += ' (' + dureeLisible(min) + ')';
     }
-    ligne('clock', quand);
+    ligne(ev.jalon ? 'diamond' : 'clock', quand);
     // Les liens de la tâche ont leurs lignes propres, cliquables, juste après.
     const dejaListees = /^(source|livrable|ressources|événement\(s\) lié\(s\)|rattachement|rattachée à|bloquée par)$/i;
     for (const p of Ariane.lignesProprietes(this._pairesProps(t.ref), t.intitule, 99)) {
@@ -49870,11 +49906,24 @@ class MoteurCalendrier extends MoteurVue {
     const bPiste = bDefil.createDiv({ cls: 'zfa-cal-sem-piste' });
     bPiste.style.width = (jours.length * colW) + 'px';
     const PLAFOND = 3;
-    for (const j of jours) {
+    // Événements « journée entière » : une barre continue sur tous leurs
+    // jours, posée sur une ligne en haut du bandeau ; tâches et jalons
+    // viennent dessous, colonne par colonne.
+    const VOIE = 22;
+    const { barres, occupe } = Ariane.barresJourEntier((this._fond || []).filter((e) => e && e.allDay), jours);
+    // Survol d'une tâche ou d'un jalon du bandeau : sa carte, à chaque fois.
+    const survol = (el, t, ev) => {
+      el.addEventListener('mouseenter', () => this._montrerCarteCreneau(el, t, ev, { toujours: true }));
+      el.addEventListener('mouseleave', () => this._cacherCarteDiffere());
+      el.addEventListener('pointerdown', () => this._cacherCarteActivite(true), true);
+      el.addEventListener('contextmenu', () => this._cacherCarteActivite(true), true);
+    };
+    jours.forEach((j, ij) => {
       const col = bPiste.createDiv({ cls: 'zfa-cal-bandeau-jour'
         + (j === auj ? ' est-aujourdhui' : '') });
       col.dataset.jour = j;
       col.style.width = colW + 'px';
+      if (occupe[ij]) col.style.paddingTop = (2 + occupe[ij] * VOIE) + 'px';
       if (this._jourSel === j) col.addClass('est-selection');
       col.addEventListener('click', (e) => {
         if (e.target.closest('.zfa-cal-carte, .zfa-cal-bjalon')) return;
@@ -49905,6 +49954,7 @@ class MoteurCalendrier extends MoteurVue {
             jp.createSpan({ cls: 'zfa-cal-bjalon-t', text: t.intitule || t.ref });
             jp.title = t.ref + ' ' + (t.intitule || '');
             this._brancherOuvertureCarte(jp, t, ev);
+            survol(jp, t, ev);
             // Glissable : vers un autre jour du bandeau (le jalon change de
             // date) ou dans la grille des heures (il devient une tâche avec
             // un créneau à cet endroit).
@@ -49916,6 +49966,7 @@ class MoteurCalendrier extends MoteurVue {
             });
           } else {
             const carte = this.rendreCarte(col, t, ev, { compact: true, avecCoche: true });
+            if (carte) survol(carte, t, ev);
             // Tâche sans créneau, portée par ses dates : glissable comme un
             // jalon (vers un autre jour, ou dans la grille pour lui donner un
             // créneau).
@@ -49933,15 +49984,18 @@ class MoteurCalendrier extends MoteurVue {
           const plus = col.createDiv({ cls: 'zfa-cal-bandeau-plus', text: '+' + reste });
           plus.onclick = (e) => { e.stopPropagation(); deplie = true; rendre(); };
         }
-        // Événements Apple « journée entière » du jour → chips zfa-cal-evt.
-        for (const e of this._fondDuJour(j).jour) {
-          const ch = col.createDiv({ cls: 'zfa-cal-evt est-jour' });
-          if (e.couleur) ch.style.setProperty('--zfa-cal-coul', e.couleur);
-          ch.createDiv({ cls: 'zfa-cal-evt-t', text: e.titre || tr('(sans titre)') });
-                this._brancherEvenement(ch, e);
-        }
       };
       rendre();
+    });
+    for (const b of barres) {
+      const e = b.e;
+      const barre = bPiste.createDiv({ cls: 'zfa-cal-evt est-jour zfa-cal-barre-jour' });
+      barre.style.left = (b.i0 * colW + 4) + 'px';
+      barre.style.width = ((b.i1 - b.i0) * colW - 6) + 'px';
+      barre.style.top = (2 + b.voie * VOIE) + 'px';
+      if (e.couleur) barre.style.setProperty('--zfa-cal-coul', e.couleur);
+      barre.createDiv({ cls: 'zfa-cal-evt-t', text: e.titre || tr('(sans titre)') });
+      this._brancherEvenement(barre, e);
     }
 
     // Poignée de redimensionnement : bande fine sur le bord bas du bandeau, grip

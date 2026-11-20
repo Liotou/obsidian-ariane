@@ -5304,3 +5304,8 @@ body {
 
 /* Carte d'un événement : longue, elle défile plutôt que de sortir de l'écran. */
 .zfa-evt-survol { max-height: calc(100vh - 16px); overflow-y: auto; }
+
+/* Bandeau de la semaine : un événement « journée entière » est une barre
+   continue sur tous ses jours, posée sur sa ligne en haut des colonnes. */
+.zfa-cal-bandeau .zfa-cal-sem-piste { position: relative; }
+.zfa-cal-barre-jour { position: absolute; height: 20px; box-sizing: border-box; z-index: 1; cursor: pointer; }

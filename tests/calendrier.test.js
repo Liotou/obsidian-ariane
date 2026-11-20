@@ -761,3 +761,23 @@ test('Créneau lâché dans le bandeau : tâche du jour, créneau retiré, une s
     ['creneau', 'T090', '', '2026-11-09T10:00', '2026-11-09T11:00'],
   ]);
 });
+
+test('barresJourEntier : une barre par événement sur tous ses jours, lignes partagées sans chevauchement', () => {
+  const jours = ['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29'];
+  const { barres, occupe } = Ariane.barresJourEntier([
+    { titre: 'Sables d’Olonne', debut: '2026-11-26', fin: '2026-11-30', allDay: true },
+    { titre: 'Un jour', debut: '2026-11-27', fin: '2026-11-28', allDay: true },
+    { titre: 'Avant', debut: '2026-11-20', fin: '2026-11-24', allDay: true },
+    { titre: 'Sans fin', debut: '2026-11-23', allDay: true },
+    { titre: 'Hors bande', debut: '2026-12-05', fin: '2026-12-06', allDay: true },
+  ], jours);
+  const vu = Object.fromEntries(barres.map((b) => [b.e.titre, [b.i0, b.i1, b.voie]]));
+  // Commencé avant la bande : coupé à la première colonne ; fin exclusive.
+  assert.deepEqual(vu['Avant'], [0, 1, 0]);
+  assert.deepEqual(vu['Sans fin'], [0, 1, 1]);
+  // Quatre jours d'un tenant : une seule barre, du jeudi au dimanche.
+  assert.deepEqual(vu['Sables d’Olonne'], [3, 7, 0]);
+  assert.deepEqual(vu['Un jour'], [4, 5, 1]);
+  assert.equal(vu['Hors bande'], undefined);
+  assert.deepEqual(occupe, [2, 0, 0, 1, 2, 1, 1]);
+});
