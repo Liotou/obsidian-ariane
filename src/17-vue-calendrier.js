@@ -498,7 +498,8 @@ class MoteurCalendrier extends MoteurVue {
       if (!dejaListees.test(String(p.nom).trim())) ligne('info', p.nom + ' : ' + p.valeur);
     }
     // Sources, livrable, ressources, événements et tâches liés : un clic les ouvre.
-    for (const a of (g.liensAssociesTache ? g.liensAssociesTache(t.ref) : [])) {
+    // Une sous-tâche retenue pour la séance n'y figure pas : elle se coche plus bas.
+    for (const a of (g.liensAssociesTache ? g.liensAssociesTache(t.ref) : []).filter((x) => !x.ref || !seance.refs.includes(x.ref))) {
       // L'icône dit le genre ; l'infobulle le précise au besoin.
       const tx = ligne(a.icone, a.libelle);
       tx.parentElement.setAttr('title', a.genre);

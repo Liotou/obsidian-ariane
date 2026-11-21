@@ -23729,7 +23729,7 @@ const avecTaches = (Base) => class extends Base {
     ajouter('bloque-par', 'ban', tr('Bloquée par'));
     const active = (t) => t.statut !== 'abandonnée';
     const pousser = (liste, icone, genre) => {
-      for (const t of liste.filter(active).slice(0, 8)) out.push({ icone, genre, libelle: nomTache(t), f: t.fichier, close: Ariane.tacheClose(t) });
+      for (const t of liste.filter(active).slice(0, 8)) out.push({ icone, genre, libelle: nomTache(t), f: t.fichier, close: Ariane.tacheClose(t), ref: t.ref });
     };
     pousser(toutes.filter((t) => Ariane.refDeLien(t.parent || '') === ref), 'list-tree', tr('Sous-tâche'));
     pousser(toutes.filter((t) => (t.bloquePar || []).some((b) => Ariane.refDeLien(b) === ref)), 'arrow-right', tr('Bloque'));
@@ -47562,7 +47562,8 @@ class MoteurCalendrier extends MoteurVue {
       if (!dejaListees.test(String(p.nom).trim())) ligne('info', p.nom + ' : ' + p.valeur);
     }
     // Sources, livrable, ressources, événements et tâches liés : un clic les ouvre.
-    for (const a of (g.liensAssociesTache ? g.liensAssociesTache(t.ref) : [])) {
+    // Une sous-tâche retenue pour la séance n'y figure pas : elle se coche plus bas.
+    for (const a of (g.liensAssociesTache ? g.liensAssociesTache(t.ref) : []).filter((x) => !x.ref || !seance.refs.includes(x.ref))) {
       // L'icône dit le genre ; l'infobulle le précise au besoin.
       const tx = ligne(a.icone, a.libelle);
       tx.parentElement.setAttr('title', a.genre);

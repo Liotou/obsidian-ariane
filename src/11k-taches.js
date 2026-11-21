@@ -2863,7 +2863,7 @@ const avecTaches = (Base) => class extends Base {
     ajouter('bloque-par', 'ban', tr('Bloquée par'));
     const active = (t) => t.statut !== 'abandonnée';
     const pousser = (liste, icone, genre) => {
-      for (const t of liste.filter(active).slice(0, 8)) out.push({ icone, genre, libelle: nomTache(t), f: t.fichier, close: Ariane.tacheClose(t) });
+      for (const t of liste.filter(active).slice(0, 8)) out.push({ icone, genre, libelle: nomTache(t), f: t.fichier, close: Ariane.tacheClose(t), ref: t.ref });
     };
     pousser(toutes.filter((t) => Ariane.refDeLien(t.parent || '') === ref), 'list-tree', tr('Sous-tâche'));
     pousser(toutes.filter((t) => (t.bloquePar || []).some((b) => Ariane.refDeLien(b) === ref)), 'arrow-right', tr('Bloque'));
