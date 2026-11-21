@@ -214,3 +214,24 @@ test('ModaleSeance : toute la descendance, en arbre, les abandonnées écartées
   assert.deepEqual(m._filles().map((t) => [t.ref, t.prof]),
     [['T071', 0], ['T072', 1], ['T074', 0], ['T073', 0]]);
 });
+
+test('Temps : un fichier qui n’est pas une note compte pour les sessions, pas pour la propriété', () => {
+  const g = Object.create(Ariane.prototype);
+  const vue = (type, file, mode) => ({ getViewType: () => type, file, getMode: () => mode || 'source' });
+  g.settings = {};
+  g.app = { workspace: { activeLeaf: null }, metadataCache: { getFileCache: () => ({}) } };
+  const pptx = { path: '94 - Pièces jointes/AG.pptx', extension: 'pptx' };
+  g.app.workspace.activeLeaf = { view: vue('onlyoffice', pptx) };
+  assert.equal(g.noteChronometrable(true), '94 - Pièces jointes/AG.pptx');
+  assert.equal(g.noteChronometrable(), '');
+  const md = { path: 'N.md', extension: 'md' };
+  g.app.workspace.activeLeaf = { view: vue('markdown', md) };
+  assert.equal(g.noteChronometrable(true), 'N.md');
+  g.app.workspace.activeLeaf = { view: vue('markdown', md, 'preview') };
+  assert.equal(g.noteChronometrable(true), '');
+  g.app.workspace.activeLeaf = { view: vue('empty', null) };
+  assert.equal(g.noteChronometrable(true), '');
+  // L'inactivité selon macOS.
+  assert.equal(Ariane.inactiviteIoreg('    |   "HIDIdleTime" = 118777708\n'), 118);
+  assert.equal(Ariane.inactiviteIoreg('rien'), null);
+});

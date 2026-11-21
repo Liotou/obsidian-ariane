@@ -25941,6 +25941,12 @@ const avecTaches = (Base) => class extends Base {
   noteChronometrable(pourSessions) {
     const feuille = this.app.workspace.activeLeaf;
     const vue = feuille && feuille.view;
+    // Les sessions comptent aussi un fichier qui n'est pas une note, ouvert
+    // dans Obsidian (PowerPoint dans OnlyOffice, PDF…) : rattaché à une
+    // tâche, il nourrit la jauge de ses créneaux. Pas la propriété de temps,
+    // qu'un tel fichier ne peut porter.
+    const fv = vue && vue.file;
+    if (pourSessions && vue && vue.getViewType() !== 'markdown' && fv && fv.extension && fv.extension !== 'md') return fv.path;
     if (!vue || vue.getViewType() !== 'markdown') return '';
     // Mode lecture : on ne chronomètre que ce qui est modifiable.
     if (typeof vue.getMode === 'function' && vue.getMode() !== 'source') return '';
@@ -25982,6 +25988,10 @@ const avecTaches = (Base) => class extends Base {
     const enPause = !chemin || inactifDepuis > seuil || !this.fenetreNoteActive();
 
     const noteSession = this.noteChronometrable(true);
+    // Dans un fichier qui n'est pas une note, la frappe et la souris restent
+    // dans sa propre page (OnlyOffice) : macOS dit, lui, depuis quand on n'a
+    // touché à rien. Lu pour le battement suivant.
+    if (noteSession && !noteSession.endsWith('.md')) this._sonderInactiviteSysteme();
     if (noteSession && inactifDepuis <= seuil && this.fenetreNoteActive()) this._noterSession(noteSession);
 
     if (!enPause) {
@@ -26002,6 +26012,27 @@ const avecTaches = (Base) => class extends Base {
     }
 
     this.rafraichirBarreTemps(chemin, enPause);
+  }
+
+  // L'inactivité du clavier et de la souris selon macOS (HIDIdleTime, en
+  // nanosecondes), en millisecondes ; null si illisible.
+  static inactiviteIoreg(sortie) {
+    const m = /"HIDIdleTime"\s*=\s*(\d+)/.exec(String(sortie || ''));
+    return m ? Math.floor(Number(m[1]) / 1e6) : null;
+  }
+
+  // Une activité récente, vue par macOS, repousse l'inactivité du compteur.
+  // Une seule lecture à la fois ; sur Mac seulement.
+  _sonderInactiviteSysteme() {
+    if (this._sondeIdle || surMobile() || !obsidian.Platform.isMacOS) return;
+    this._sondeIdle = true;
+    try {
+      require('child_process').execFile('ioreg', ['-c', 'IOHIDSystem', '-d', '4'], { timeout: 3000 }, (err, sortie) => {
+        this._sondeIdle = false;
+        const ms = err ? null : Ariane.inactiviteIoreg(sortie);
+        if (ms != null) this._tempsDerniereActivite = Math.max(this._tempsDerniereActivite || 0, Date.now() - ms);
+      });
+    } catch (e) { this._sondeIdle = false; }
   }
 
   // La fenêtre portant la note active a-t-elle le focus ? On interroge son
