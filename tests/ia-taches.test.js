@@ -185,10 +185,18 @@ test('diagnosticClaude : la cause, pas la ligne de commande ; le remède à une 
   assert.match(m, /expiré/);
   assert.match(m, /\/login/);
   assert.ok(!/Tu transformes/.test(m), 'l’invite ne revient pas dans le message');
-  assert.match(d(longue, ''), /expiré/, 'la cause se lit aussi dans le message');
   assert.match(d({ code: 'ENOENT' }, ''), /introuvable/);
   assert.match(d({ killed: true, signal: 'SIGTERM' }, ''), /délai/);
-  assert.equal(d({ message: 'Command failed: claude -p x\nerreur réseau', code: 1 }, ''), 'CLI Claude : erreur réseau');
+  // Le cas réel du 2026-11-21 : rien sur la sortie d'erreur, la cause sur la
+  // sortie normale, et une invite de plusieurs lignes dans le message.
+  const invite = { message: 'Command failed: claude --model sonnet -p Tu transformes une description\nFamilles de tâches disponibles (choisir l’id EXACT) :\n- lecture', code: 1 };
+  const reel = Ariane.diagnosticClaude(invite, '', 'claude', 'Failed to authenticate: OAuth session expired and could not be refreshed\n');
+  assert.match(reel, /expiré[\s\S]*\/login/);
+  assert.ok(!/Familles|transformes/.test(reel), 'l’invite ne revient pas dans le message');
+  assert.equal(Ariane.diagnosticClaude(invite, '', 'claude', ''), 'CLI Claude : échec sans message (code 1)');
+  // En flux JSON : le résultat en erreur.
+  const flux = '{"type":"system"}\n{"type":"result","subtype":"success","is_error":true,"result":"Credit balance is too low"}\n';
+  assert.equal(Ariane.diagnosticClaude({ code: 1 }, '', 'claude', flux), 'CLI Claude : Credit balance is too low');
 });
 
 test('langage naturel : la note visée devient le livrable de la tâche', async () => {

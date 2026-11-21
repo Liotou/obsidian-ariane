@@ -394,7 +394,7 @@ const avecIa = (Base) => class extends Base {
         if (fini) return;
         fini = true;
         const r = Ariane.resultatClaudeFlux(sortie);
-        this._diagIA = err ? Ariane.diagnosticClaude(err, erreurs, bin) : (r === null ? tr('CLI Claude : réponse illisible.') : '');
+        this._diagIA = err ? Ariane.diagnosticClaude(err, erreurs, bin, sortie) : (r === null ? tr('CLI Claude : réponse illisible.') : '');
         resoudre(err ? null : r);
       });
       try { if (enfant.stdin) enfant.stdin.end(message + '\n'); } catch (e) { /* déjà fermée */ }
@@ -515,7 +515,7 @@ const avecIa = (Base) => class extends Base {
         (err, sortie, erreurs) => {
           if (fini) return;
           fini = true;
-          this._diagIA = err ? Ariane.diagnosticClaude(err, erreurs, bin) : '';
+          this._diagIA = err ? Ariane.diagnosticClaude(err, erreurs, bin, sortie) : '';
           resoudre(err ? null : String(sortie || '').trim());
         });
       // Sans cela le CLI attend trois secondes une entrée standard qui ne
@@ -525,19 +525,37 @@ const avecIa = (Base) => class extends Base {
     });
   }
 
-  // Le message d'un échec du CLI : sa sortie d'erreur plutôt que la ligne de
-  // commande (qui recopie toute l'invite), et le remède quand on le connaît.
-  static diagnosticClaude(err, erreurs, bin) {
+  // Le message d'un échec du CLI, et le remède quand on le connaît. Le CLI
+  // écrit son erreur tantôt sur sa sortie d'erreur, tantôt sur sa sortie
+  // normale (« Failed to authenticate… », 2026-11-21) ; jamais le message
+  // du système, dont la suite recopie la ligne de commande, donc toute
+  // l'invite.
+  static diagnosticClaude(err, erreurs, bin, sortie) {
     const e = err || {};
     if (e.code === 'ENOENT') return tr('CLI Claude introuvable : « ') + bin + tr(' » n’est pas dans le PATH (Réglages, chemin du CLI Claude).');
     if (e.killed || e.signal === 'SIGKILL' || e.signal === 'SIGTERM') return tr('CLI Claude : pas de réponse dans le délai imparti.');
-    const brut = String(erreurs || '').trim() || String(e.message || e).split('\n').slice(1).join(' ').trim();
+    const brut = String(erreurs || '').trim() || Ariane.erreurSortieClaude(sortie);
     const cause = brut.split('\n').map((l) => l.trim()).filter(Boolean).slice(-3).join(' ').slice(0, 300);
     if (/authenticat|OAuth|log ?in|401/i.test(cause)) {
       return tr('CLI Claude : la connexion à votre compte a expiré. Ouvrez un terminal, lancez « claude », puis tapez /login.')
         + (cause ? ' (' + cause + ')' : '');
     }
     return tr('CLI Claude : ') + (cause || tr('échec sans message') + (e.code != null ? ' (code ' + e.code + ')' : ''));
+  }
+
+  // L'erreur que le CLI a écrite sur sa sortie normale : le texte nu, ou, en
+  // flux JSON, le résultat marqué en erreur.
+  static erreurSortieClaude(sortie) {
+    const t = String(sortie || '').trim();
+    if (!t) return '';
+    for (const l of t.split('\n').reverse()) {
+      if (!l.trim().startsWith('{')) continue;
+      try {
+        const d = JSON.parse(l);
+        if (d.type === 'result' && (d.is_error || d.subtype !== 'success')) return String(d.result || d.subtype || '').trim();
+      } catch (x) { /* ligne coupée */ }
+    }
+    return t.startsWith('{') ? '' : t;
   }
 
   async testerEncodage() {
